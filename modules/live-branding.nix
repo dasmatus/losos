@@ -36,11 +36,11 @@ in
   networking.hostName = "losos-installer";
 
   # The label stage 1 finds the medium by (`root=LABEL=`), and the one a
-  # desktop shows for the stick. flake/disk-images.nix forces its own for
+  # desktop shows for the stick. nix/disk-images.nix forces its own for
   # the closure-carrying medium.
   isoImage.volumeID = "LOSOS_INSTALLER";
   # Above iso-image.nix's plain definition, below the mkForce
-  # flake/disk-images.nix uses for the closure-carrying medium.
+  # nix/disk-images.nix uses for the closure-carrying medium.
   image.baseName = lib.mkOverride 60 "losos-installer-${label}-${pkgs.stdenv.hostPlatform.system}";
 
   # BIOS boot menu (syslinux). The entry itself reads

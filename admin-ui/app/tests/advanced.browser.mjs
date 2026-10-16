@@ -2,12 +2,12 @@
  * pane (the configuration repository on LosOS Git).
  *
  * The option document under test is the real one: LOSOS_OPTIONS_JSON points
- * at the file flake/options-doc.nix generated from the install configuration
- * (tests/admin-ui.nix passes the `losos-options-doc` check), and the fixture
+ * at the file nix/options-doc.nix generated from the install configuration
+ * (nix/tests/admin-ui.nix passes the `losos-options-doc` check), and the fixture
  * at tests/fixtures/options.json is a copy of it for a run outside nix.
  * Rendering the real document is the CI gate the pane exists for: an option
  * whose editor kind the pane cannot draw fails here, and one whose Nix type
- * flake/options-doc.nix cannot classify failed earlier, in the eval job.
+ * nix/options-doc.nix cannot classify failed earlier, in the eval job.
  *
  * Same arrangement as app.browser.mjs: the dist/ bundle, the API stubbed with
  * page.route(), under the admin CSP so a control that styles itself with an

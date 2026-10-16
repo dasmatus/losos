@@ -262,7 +262,7 @@ the `losos.gpu` group plumbing for podman (kept for /dev/dri host perms),
   marshalling round-trip tests using the `dbus` client's in-process loopback
   is not feasible — instead validate against `schema.json` examples and add a
   NixOS VM test.
-- NixOS VM test (new, `tests/admin-vm.nix`, run via `nix build .#checks…` or
+- NixOS VM test (new, `nix/tests/admin-vm.nix`, run via `nix build .#checks…` or
   `nixosTest`): boots the install config with the daemon, asserts:
   `losos-ctl state --json` as root returns the settings JSON; the admin
   endpoint answers 401 without a token and 200 with it; `containers.nextcloud`

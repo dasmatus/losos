@@ -58,7 +58,7 @@ in
         the disk has the data.
 
         This default is the mode the installer ISO picks wherever a chip
-        exists, and tests/invariants.nix asserts the two agree: the published
+        exists, and nix/tests/invariants.nix asserts the two agree: the published
         flake (no modules/install-target.nix) must describe a box the ISO
         actually produces. A box the installer put in keyfile mode has that
         recorded in install-target.nix, and flake.nix reads that file from
@@ -131,7 +131,7 @@ in
     # Chrome's Local Network Access permission lets a public, HTTPS page ask
     # the owner once ("look for and connect to devices on your local network")
     # and then fetch from `<hostName>.local`. The finder page on the edge host
-    # (edge-vercel/public/find.html) uses that to read `/setup/state.json`
+    # (edge/vercel/public/find.html) uses that to read `/setup/state.json`
     # and hand the owner a link to their box, instead of a tty1 banner and an
     # address to type. The document is LAN-only and holds no secret, but it
     # is inventory — the box's name and its certificate's fingerprint — and
@@ -246,7 +246,7 @@ in
     # and transparent baseline" and was "more of a 'grab bag' of settings than
     # a cohesive security policy" — so modules/hardening.nix splits the safe
     # part from the parts that can break something, and the second group is
-    # opt-in. Every flag is asserted in tests/hardening.nix, which also asserts
+    # opt-in. Every flag is asserted in nix/tests/hardening.nix, which also asserts
     # that nothing here blocks the kernel surface k3s, rke2, containerd and
     # Longhorn need.
     hardening.enable = lib.mkOption {
@@ -343,7 +343,7 @@ in
 
     proxy.registrarUrl = lib.mkOption {
       type = lib.types.str;
-      # The demo edge (edge-vercel/, the registrar as a Vercel Function at the
+      # The demo edge (edge/vercel/, the registrar as a Vercel Function at the
       # owner's domain). Not proxy.losos.dasmat.us: that name is the Nix binary
       # cache proxy (`losos.cache.substituters`). A
       # self-hosted edge is register.<losos.edge.publicDomain>, e.g.
@@ -407,8 +407,8 @@ in
 
     proxy.officialRootKeyFile = lib.mkOption {
       type = lib.types.path;
-      default = ../keys/official-edge-root.pub;
-      defaultText = lib.literalExpression "../keys/official-edge-root.pub";
+      default = ../nix/keys/official-edge-root.pub;
+      defaultText = lib.literalExpression "../nix/keys/official-edge-root.pub";
       description = ''
         The LosOS root **public** key (Ed25519, 64 hex characters; `#` lines
         are comments), read by lososd on every edge scan. An edge counts as
@@ -636,7 +636,7 @@ in
 
     # ── Workload images ─────────────────────────────────────────────────────
     # The OCI images the LOCAL cluster runs, wired by modules/defaults.nix to
-    # this flake's own derivations (flake/images.nix). Internal: they are an
+    # this flake's own derivations (nix/images.nix). Internal: they are an
     # implementation detail of container mode, not a knob.
     #
     # They are listed in the k3s instance's `images` option, which symlinks each
@@ -1057,7 +1057,7 @@ in
     # discovery and share endpoints other servers call. Gated on
     # losos.sharingMyStorage like LosOS Git's (lososInternal.federation).
     # Off, the front vhost answers 404 for those endpoints and Nextcloud's
-    # own switches are set to no on every start (flake/images.nix in
+    # own switches are set to no on every start (nix/images.nix in
     # container mode, modules/services.nix natively), so neither an inbound
     # share nor an outbound one can be made.
     nextcloud.federation.enable = lib.mkOption {
@@ -1369,7 +1369,7 @@ in
     };
 
     # Path of the built admin SPA (built from this flake's ./admin-ui/app by
-    # flake/packages.nix with buildNpmPackage; wired in via
+    # nix/packages.nix with buildNpmPackage; wired in via
     # modules/defaults.nix). Internal.
     admin.ui = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
@@ -1385,7 +1385,7 @@ in
       '';
     };
 
-    # Path of the built owner's handbook (handbook/, built by flake/packages.nix
+    # Path of the built owner's handbook (handbook/, built by nix/packages.nix
     # as losos-handbook with its base set to /handbook/; wired in via
     # modules/defaults.nix). Internal, like admin.ui.
     admin.handbook = lib.mkOption {
@@ -1509,8 +1509,8 @@ in
 
     secureBoot.certFile = lib.mkOption {
       type = lib.types.path;
-      default = ../keys/secure-boot-db.pem;
-      defaultText = lib.literalExpression "../keys/secure-boot-db.pem";
+      default = ../nix/keys/secure-boot-db.pem;
+      defaultText = lib.literalExpression "../nix/keys/secure-boot-db.pem";
       description = ''
         The LosOS Secure Boot signing certificate (X.509, PEM; `#` lines
         before the block are comments): the public half of the db key
@@ -1519,7 +1519,7 @@ in
         firmware's "enroll from file" dialog can take it from the stick, and
         the certificate `SHA256SUMS.sig` on a release verifies against. The
         committed file carries no certificate until the key ceremony in
-        provisioning/secure-boot/ has run: then the medium ships no
+        docs/provisioning/secure-boot/ has run: then the medium ships no
         certificate and nothing presents LosOS as a Secure Boot signer.
       '';
     };
@@ -1550,7 +1550,7 @@ in
         the edge over IPv6 (the common case, and the nixosTest inter-VM path)
         and over IPv4 both reach the tunnel. Serialised bracketed for IPv6
         (`[::]:<port>`) by the `fmtBind` helper in modules/edge.nix and the
-        `format_bind` helper in backend-registrar/src/config.rs, which must
+        `format_bind` helper in edge/registrar/src/config.rs, which must
         agree byte-for-byte.
       '';
     };
@@ -2242,7 +2242,7 @@ in
 
     # ── Virtual machines on the mesh (edge side) ────────────────────────────
     # KubeVirt and CDI on the edge's rke2 cluster, sold through the market by
-    # the replica (backend-registrar/src/vms.rs,
+    # the replica (edge/registrar/src/vms.rs,
     # handbook/docs/in-depth/virtual-machines.md). Boxes host them only while
     # they share their storage.
     edge.vms.enable = lib.mkOption {
@@ -2323,7 +2323,7 @@ in
     # registrar API, and the box's `avahi-browse` finds it. Off by default
     # because a production edge is a VPS with no LAN to speak of; on for an
     # edge that sits beside the boxes (a home server, the two-VM demo in
-    # demo/edge-lan/), where it is what lets a box with no internet share.
+    # nix/demo/edge-lan/), where it is what lets a box with no internet share.
     edge.lan.advertise = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -2358,7 +2358,7 @@ in
     # TXT record; the edge then routes and certifies the domain. The whole of
     # it only on an edge that holds an identity certificate, and the box
     # names only with the market on (that is where the Stripe data lives).
-    # See backend-registrar/src/domains.rs and
+    # See edge/registrar/src/domains.rs and
     # handbook/docs/in-depth/master-proxy.md.
     edge.dns.enable = lib.mkOption {
       type = lib.types.bool;
@@ -2441,7 +2441,7 @@ in
     # edge"). The official edge keeps the route table in the registrar's own
     # state and sends a domain to the local edge whose box proved it, once the
     # box has vouched for that local edge with a relay pass and joined this
-    # edge's mesh. See backend-registrar/src/routes.rs.
+    # edge's mesh. See edge/registrar/src/routes.rs.
     edge.dns.relayRoutes.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -2722,7 +2722,7 @@ in
   # ── Federation, as it actually runs ─────────────────────────────────────
   # The one place the per-service switch meets the sharing gate, so the
   # modules that act on it (services.nix, workloads.nix, containers.nix,
-  # flake/images.nix through the rendered config) cannot disagree about
+  # nix/images.nix through the rendered config) cannot disagree about
   # whether a box federates. Read-only: set losos.<service>.federation.enable
   # or losos.sharingMyStorage instead.
   options.lososInternal.federation = {

@@ -48,7 +48,7 @@ Zwei weitere Gründe, die die Seite nennen kann:
 | Cloud-Images      | Von Quickemu unterstützte Systeme mit fertigem Cloud-Image        |
 | Eigenes QCOW2     | Ein Image, das du auf der Seite Maschinen hochlädst               |
 
-Der Katalog ist `backend-registrar/vm-images.json`, in den Registrar
+Der Katalog ist `edge/registrar/vm-images.json`, in den Registrar
 eingebaut; Betreiber können ihn mit `--vm-catalogue` ersetzen. Er enthält
 Ubuntu Server 26.04 und 24.04, Debian 13 und 12, Fedora 43 Cloud, AlmaLinux 10,
 Rocky Linux 10, CentOS Stream 10, Arch Linux, openSUSE Tumbleweed, Alpine Linux
@@ -58,7 +58,7 @@ und FreeBSD, jeweils von der Download-Adresse des eigenen Projekts.
 **Das LosOS-Image ist die Demo-Festplatte, nicht die Appliance.** Es ist
 dasselbe `losos-disk-qcow2`, das das Release veröffentlicht, ohne
 Festplattenverschlüsselung und ohne zustandslose Wurzel (siehe
-`flake/disk-images.nix`). Es startet mit UEFI und braucht 4 GiB
+`nix/disk-images.nix`). Es startet mit UEFI und braucht 4 GiB
 Arbeitsspeicher, weil es zwei Cluster und LosOS Cloud betreibt. Der
 Release-Job veröffentlicht es als
 `ghcr.io/<owner>/<repo>-demo-containerdisk:<tag>` und verschiebt den Tag

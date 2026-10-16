@@ -43,7 +43,7 @@
 # HOW IT FITS THE EXISTING WIRING, which was the hard part. Three consumers
 # name the plaintext path and none of them can be changed from here:
 # services.nextcloud loads it as a systemd credential, modules/workloads.nix
-# hostPath-mounts it into the pod with `type: File`, and flake/images.nix
+# hostPath-mounts it into the pod with `type: File`, and nix/images.nix
 # hardcodes the literal /var/secrets/nextcloud-admin-pass inside the image.
 # Moving the path is therefore not an option. Instead the path becomes a
 # symlink into a tmpfs RuntimeDirectory, and the durable file next to it is the

@@ -4,7 +4,7 @@
 # There are two ways this appliance runs Nextcloud and exactly one description
 # of what it runs. modules/nextcloud-stack.nix holds that description as plain
 # data (package, apps, php, paths, database, cache); this file turns it into a
-# services.nextcloud attrset for the native path, and flake/images.nix bakes
+# services.nextcloud attrset for the native path, and nix/images.nix bakes
 # the same data into the OCI image the local k3s cluster runs as a static pod.
 # Neither mode may grow a fact the other cannot see — see the header of
 # nextcloud-stack.nix for why the data lives in a third file.

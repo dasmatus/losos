@@ -698,7 +698,7 @@ git commit -m "feat(design-system): add unified component stylesheet"
 ### Task 3: Ship the stylesheets in the losos-admin-ui package
 
 **Files:**
-- Modify: `flake/packages.nix` (the `losos-admin-ui` runCommand, currently `cp -rT ${lib.cleanSource ./../admin-ui} $out` + `chmod -R u+rwX $out`)
+- Modify: `nix/packages.nix` (the `losos-admin-ui` runCommand, currently `cp -rT ${lib.cleanSource ./../admin-ui} $out` + `chmod -R u+rwX $out`)
 
 **Interfaces:**
 - Produces: `$out/ds/tokens.css`, `$out/ds/losos.css` in the package for Task 4's nginx alias.
@@ -725,7 +725,7 @@ Expected: `OK`
 - [ ] **Step 3: Commit**
 
 ```bash
-git add flake/packages.nix
+git add nix/packages.nix
 git commit -m "feat(design-system): ship ds stylesheets in losos-admin-ui"
 ```
 

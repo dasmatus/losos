@@ -705,7 +705,7 @@ mod tests {
 
     #[test]
     fn disko_script_mode_enrols_the_tpm_too() {
-        // tests/tpm.nix drives this seam with swtpm, so the test-mode flow
+        // nix/tests/tpm.nix drives this seam with swtpm, so the test-mode flow
         // has to seal the token just like the real one, right after the
         // prebuilt script formats.
         let o = Options {

@@ -14,7 +14,7 @@
 //! # Why `curl` rather than an HTTP client crate
 //!
 //! `backend/Cargo.toml` has no outbound client, and adding one is not a free
-//! choice here: `flake/packages.nix` pins `cargoHash`, so a new dependency is a
+//! choice here: `nix/packages.nix` pins `cargoHash`, so a new dependency is a
 //! new `Cargo.lock` and a hash only a `nix build` can produce. Shelling out
 //! also keeps a TLS stack out of the one process that terminates untrusted
 //! HTTP, and the daemon already runs external commands for every other

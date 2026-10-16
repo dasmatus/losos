@@ -13,7 +13,7 @@
 
 let
   # Every crate, since this repo is deliberately not a Cargo workspace: each
-  # has its own Cargo.lock and its own pinned cargoHash in flake/packages.nix.
+  # has its own Cargo.lock and its own pinned cargoHash in nix/packages.nix.
   # Every Rust command therefore has to be run twice with --manifest-path.
   crates = [
     "backend"
@@ -21,10 +21,10 @@ let
     # depend on by path. Its own workspace, so `cargo fmt` of either parent
     # does not reach it.
     "backend/access"
-    "backend-registrar"
-    # The Vercel host for the registrar (edge-vercel/README.md). Not built by
+    "edge/registrar"
+    # The Vercel host for the registrar (edge/vercel/README.md). Not built by
     # nix — Vercel builds it — but linted and tested with the other two.
-    "edge-vercel"
+    "edge/vercel"
     # LosOS Lab's core (admin-ui/lab/core/README.md), compiled to wasm for
     # the Lab page. Linted and tested natively like the others.
     "admin-ui/lab/core"
@@ -44,12 +44,12 @@ let
   forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
 
   # mold as the linker, ccache in front of gcc, sccache in front of rustc:
-  # the stdenv flake/packages.nix builds the crates with and flake.nix's
+  # the stdenv nix/packages.nix builds the crates with and flake.nix's
   # devShells carry, imported here so `cargo` under devenv links and caches
   # the same way. A function of `pkgs` precisely so this standalone shell
   # can share it with the flake without being wired through it. What each
   # tool buys, and the Nix-sandbox caveat, is in that file's header.
-  fast = import ./flake/fast-build.nix { inherit pkgs lib; };
+  fast = import ./nix/fast-build.nix { inherit pkgs lib; };
 
   # Print the attribute names of one of this flake's per-system output sets,
   # space separated, for the loops in `vm-tests`, `build-pkgs` and
@@ -74,8 +74,8 @@ let
     "command nix eval --raw --apply 'as: builtins.concatStringsSep \" \" (builtins.attrNames as)' .#${output}.x86_64-linux";
 
   # Package-name prefixes whose outputs are gigabytes rather than megabytes:
-  # the OCI images the local cluster runs (flake/images.nix) and the bootable
-  # media — the demo QCOW2 and the closure-carrying ISO (flake/disk-images.nix).
+  # the OCI images the local cluster runs (nix/images.nix) and the bootable
+  # media — the demo QCOW2 and the closure-carrying ISO (nix/disk-images.nix).
   # `build-pkgs` skips both sets, and each gets its own opt-in script below.
   #
   # One list, three uses: the skip in `build-pkgs` and the select in
@@ -140,7 +140,7 @@ let
 
     # Dev shortcuts for the two backends.
     alias bcd 'cd backend'                # control plane (lososd + losos-ctl)
-    alias rcd 'cd backend-registrar'      # master-proxy registrar
+    alias rcd 'cd edge/registrar'      # master-proxy registrar
   '';
 in
 {
@@ -206,7 +206,7 @@ in
   # ── Pre-commit hooks ─────────────────────────────────────────────────────
   # These are the gate CI runs, moved to before the commit instead of after
   # the push. Until the `lint` CI job was added, nothing enforced clippy or
-  # rustfmt anywhere, and backend-registrar had drifted to 17 rustfmt hunks
+  # rustfmt anywhere, and edge/registrar had drifted to 17 rustfmt hunks
   # plus a clippy error without anyone noticing.
   #
   # The stock `rustfmt`/`clippy` hooks are not used: they assume one crate at
@@ -237,7 +237,10 @@ in
 
     nixfmt-rfc-style.enable = true;
     deadnix.enable = true;
-    statix.enable = true;
+    statix = {
+      enable = true;
+      settings.config = "nix/statix.toml";
+    };
 
     # Codeberg's Terms of Use ban repos that mostly consist of generated code,
     # and an attribution trailer is the cheapest thing to flag on. Keep the
@@ -290,7 +293,7 @@ in
   scripts.lint-wasm.description = "clippy -D warnings on the Lab canvas's WebGL2 and WebGPU builds.";
 
   # The registrar's Bitcoin and Monero orders run against real regtest
-  # nodes (backend-registrar/tests/{bitcoin,monero}.rs); CI's test job
+  # nodes (edge/registrar/tests/{bitcoin,monero}.rs); CI's test job
   # builds the same packages from the flake's nixpkgs.
   scripts.test-rust.exec = ''
     export LOSOS_TEST_BITCOIND=${pkgs.bitcoind}/bin/bitcoind
@@ -373,7 +376,7 @@ in
   scripts.build-pkgs.description = "Build every flake package except the images and media.";
 
   # The three images the LOCAL k3s cluster runs as static pods
-  # (flake/images.nix, wired to losos.workloads.* in modules/defaults.nix).
+  # (nix/images.nix, wired to losos.workloads.* in modules/defaults.nix).
   #
   # Opt-in, and deliberately not part of `devenv test`, because of what they
   # cost: measured on a dev machine, the Nextcloud image's content closure is
@@ -393,12 +396,12 @@ in
   # `nix flake check --no-build` evaluates these derivations, and evaluation
   # cannot see an entrypoint that fails shellcheck (writeShellApplication runs
   # it at build time) or a buildEnv whose paths collide. Run this before
-  # pushing anything that touches flake/images.nix or
+  # pushing anything that touches nix/images.nix or
   # modules/nextcloud-stack.nix.
   scripts.build-images.exec = buildMatching "losos-image-";
   scripts.build-images.description = "Build the OCI images the local cluster runs (gigabytes; opt-in).";
 
-  # The two bootable media (flake/disk-images.nix), built off the same
+  # The two bootable media (nix/disk-images.nix), built off the same
   # `install` system the ISO installs:
   #
   #   losos-disk-qcow2  a preinstalled QCOW2 for a VM. A demo and dev artifact,

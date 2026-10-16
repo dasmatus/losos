@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn a_key_file_is_passed_to_cryptsetup_and_to_nothing_else() {
-        // Found by tests/resize.nix rather than reasoned about: without a key,
+        // Found by nix/tests/resize.nix rather than reasoned about: without a key,
         // `cryptsetup resize` looks for the volume key in the kernel keyring,
         // does not find it, and falls back to prompting on stdin. A daemon has
         // no stdin, so it dies with "Nothing to read on input." — *after*

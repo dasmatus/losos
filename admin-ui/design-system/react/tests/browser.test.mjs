@@ -6,7 +6,7 @@
 // Needs `npm run build` first (reads dist/styles.css) and a browsers dir:
 //   PLAYWRIGHT_BROWSERS_PATH=$(nix build --print-out-paths --no-link \
 //     nixpkgs#playwright-driver.browsers)
-// The nix check (tests/design-system.nix) sets all of this up; keep the
+// The nix check (nix/tests/design-system.nix) sets all of this up; keep the
 // `playwright` devDependency version identical to nixpkgs' playwright-driver.
 import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';

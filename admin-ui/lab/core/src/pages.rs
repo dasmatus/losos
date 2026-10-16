@@ -205,7 +205,7 @@ impl LabCore {
                     return json_page(json!({
                         "cert": {
                             "name": format!("register.{domain}"),
-                            "signedBy": if d.flag("certified") { "LosOS root (keys/official-edge-root.pub)" } else { "unknown" },
+                            "signedBy": if d.flag("certified") { "LosOS root (nix/keys/official-edge-root.pub)" } else { "unknown" },
                             "expires": "2027-04-01",
                         },
                         "nonceSignature": "ed25519:…",

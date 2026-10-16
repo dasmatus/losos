@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Put the newest release tag into flake/version.nix on main.
+# Put the newest release tag into nix/version.nix on main.
 #
 #   sync-version.sh            commit the tag to main through the GitHub API
 #   sync-version.sh --dry-run  say what it would commit, change nothing
@@ -32,7 +32,7 @@ case "${1:-}" in
 esac
 
 cd "$(git rev-parse --show-toplevel)"
-file=flake/version.nix
+file=nix/version.nix
 tag_shape='^v[0-9]+(\.[0-9]+)*$'
 
 newest=$(git ls-remote --tags --refs origin 'v*' |

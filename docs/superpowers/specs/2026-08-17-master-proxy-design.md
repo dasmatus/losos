@@ -162,10 +162,10 @@ hostname arrives) is preserved — Traefik+rathole deliver it transparently.
   (built-in) so the VPS operator can't read appliance traffic — replaces
   Cloudflare Tunnel's origin encryption.
 
-## Rust registrar (`backend-registrar/`)
+## Rust registrar (`edge/registrar/`)
 
 One cargo workspace, one binary `losos-registrar` with two subcommands, built
-via `rustPlatform.buildRustPackage` in `flake/packages.nix` (mirrors how
+via `rustPlatform.buildRustPackage` in `nix/packages.nix` (mirrors how
 `losos-ctl` is built).
 
 ### `losos-registrar serve` (edge)
@@ -262,7 +262,7 @@ local = ["127.0.0.1:80"]   # the slave Nginx
 - **Rust unit tests** (`#[test]`): `desired_config` for add/heartbeat/prune;
   idempotent writes; re-attach from `registry.json`; port allocation within
   range + reuse.
-- **NixOS VM test** (`tests/edge-vm.nix`, mirrors `tests/admin-vm.nix`):
+- **NixOS VM test** (`nix/tests/edge-vm.nix`, mirrors `nix/tests/admin-vm.nix`):
   edge VM + appliance VM on a test net; appliance registers;
   `curl https://mattbox.losos.cfd/` through Traefik+rathole reaches the
   appliance Nginx; prune after TTL removes the route.

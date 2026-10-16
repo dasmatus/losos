@@ -14,7 +14,7 @@
 # choose is which entry of `losos.edge.credentials.secrets` to replace.
 #
 # The Stripe key's mode (test or live) is read off the key by the gate itself
-# (backend-registrar/src/stripe_mode.rs); this script only reports it.
+# (edge/registrar/src/stripe_mode.rs); this script only reports it.
 {
   config,
   lib,

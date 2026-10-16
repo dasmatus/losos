@@ -149,7 +149,7 @@ worse than one of them refusing to start.
 
 The rest of the coexistence story — kubelet ports, `/etc/cni/net.d`, the
 `KUBE-*` chains, the shared `/etc/rancher/node/password` — is settled by the
-table above and asserted by `tests/cluster-vm.nix`. That test remains the gate;
+table above and asserted by `nix/tests/cluster-vm.nix`. That test remains the gate;
 it has never been run, because it needs KVM and roughly 10 GiB of guest RAM.
 
 Cost: an rke2 agent is heavier than a k3s agent — roughly 400–500 MiB RSS
@@ -361,14 +361,14 @@ be sharing with is CPU work, so CPU pressure is the contention that matters.
 
 ## Testing
 
-- `tests/cluster-vm.nix` (new) — an edge VM running the mesh k3s server and an
+- `nix/tests/cluster-vm.nix` (new) — an edge VM running the mesh k3s server and an
   appliance VM running both instances. Assert node registration and a running
   static pod via `crictl`, **not** the node `Ready` condition: with
   `--flannel-backend=none` the kubelet reports `NetworkReady=false` and the node
   is legitimately NotReady for the life of the cluster.
-- `tests/front-vhost.nix` — every assertion coupled to the nspawn container IPs
+- `nix/tests/front-vhost.nix` — every assertion coupled to the nspawn container IPs
   (`10.231.1.2`, `10.231.2.2`) must be rewritten.
-- `tests/impermanence.nix` — extend to assert `/etc/rancher` survives a reboot,
+- `nix/tests/impermanence.nix` — extend to assert `/etc/rancher` survives a reboot,
   and that the shared domain is opaque when sharing is off.
 
 ## Out of scope

@@ -1,6 +1,6 @@
 //! The `losos.*` option tree as a document, and the gate it puts on `apply`.
 //!
-//! `flake/options-doc.nix` walks the option declarations and
+//! `nix/options-doc.nix` walks the option declarations and
 //! `modules/config-repo.nix` writes the result to `/etc/losos/options.json`
 //! (`$LOSOS_OPTIONS_FILE`) at build time. This module reads that document,
 //! joins the current `overrides.nix` assignments into it for
@@ -24,11 +24,11 @@ use serde_json::{json, Map, Value};
 
 /// Where `modules/config-repo.nix` writes the document.
 pub const DEFAULT_OPTIONS_FILE: &str = "/etc/losos/options.json";
-/// The document version this build reads; `flake/options-doc.nix` stamps it.
+/// The document version this build reads; `nix/options-doc.nix` stamps it.
 pub const VERSION: u64 = 1;
 
 /// The editor a declaration gets, by its Nix type (`classify` in
-/// `flake/options-doc.nix`). The JSON carries `kind` plus the fields below.
+/// `nix/options-doc.nix`). The JSON carries `kind` plus the fields below.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Editor {
@@ -410,7 +410,7 @@ pub fn quote(s: &str) -> String {
 pub(crate) mod tests {
     use super::*;
 
-    /// A small document in the shape `flake/options-doc.nix` produces.
+    /// A small document in the shape `nix/options-doc.nix` produces.
     pub(crate) fn sample() -> OptionsDoc {
         parse(
             r#"{

@@ -96,7 +96,7 @@ fn conflict<T>(message: impl Into<String>) -> anyhow::Result<T> {
 // ── Who the app runs as ───────────────────────────────────────────────────
 
 /// The two data users of `modules/configuration.nix`. Their uids are pinned
-/// there and asserted by `tests/impermanence.nix`.
+/// there and asserted by `nix/tests/impermanence.nix`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RunAs {

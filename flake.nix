@@ -41,7 +41,7 @@
       pkgs = nixpkgs.legacyPackages.${system};
       # The release this tree is, spelled like its Git tag ("v0.4.0"). CI
       # keeps the file on the newest tag; see its header.
-      version = import ./flake/version.nix;
+      version = import ./nix/version.nix;
       # The module list entry for one of the box-specific files, see the
       # `install` system below: the live copy under /etc/nixos when it can be
       # read (impure evaluation on the box), else the in-tree copy when the
@@ -60,9 +60,9 @@
     {
       # Flake packages: losos-ctl (the Rust lososd daemon + losos-ctl facade),
       # losos-registrar (the master-proxy edge) and losos-admin-ui (the static
-      # admin SPA). See flake/packages.nix.
+      # admin SPA). See nix/packages.nix.
       packages.${system} =
-        import ./flake/packages.nix { inherit pkgs version; }
+        import ./nix/packages.nix { inherit pkgs version; }
         # Bootable media, built off nixosConfigurations.install. Separate from
         # packages.nix because these are the only outputs that reach back into
         # `self` — they overlay the install system rather than building
@@ -73,9 +73,9 @@
         # losos-disk-qcow2 is a DEMO medium and not the appliance: it gives up
         # full-disk encryption, the TPM and the tmpfs root, because a file
         # cannot carry a key sealed to hardware it does not have. The header of
-        # flake/disk-images.nix says so at length; read it before handing the
+        # nix/disk-images.nix says so at length; read it before handing the
         # image to anyone as a way to actually run this.
-        // import ./flake/disk-images.nix { inherit self nixpkgs pkgs; };
+        // import ./nix/disk-images.nix { inherit self nixpkgs pkgs; };
 
       # The dev environment is devenv.nix, entered with `devenv shell` (see
       # devenv.yaml). This devShell exists so a bare `nix develop` still
@@ -99,13 +99,13 @@
             pkgs.rustfmt
           ];
           # mold as the linker, ccache and sccache in front of the compilers
-          # — the same stdenv flake/packages.nix builds the crates with, so
+          # — the same stdenv nix/packages.nix builds the crates with, so
           # `cargo` in either shell links and caches the way `nix build`
           # does. The stdenv carries ccache and mold (so `cc` on PATH is
           # both); `env` carries sccache. See the header of
-          # flake/fast-build.nix for what each tool buys and for the one
-          # piece (edge-vercel on Vercel) it cannot reach.
-          fast = import ./flake/fast-build.nix { inherit pkgs; };
+          # nix/fast-build.nix for what each tool buys and for the one
+          # piece (edge/vercel on Vercel) it cannot reach.
+          fast = import ./nix/fast-build.nix { inherit pkgs; };
           mkShell = pkgs.mkShell.override { inherit (fast) stdenv; };
         in
         {
@@ -212,7 +212,7 @@
                 # into real fileSystems."/persist", boot.initrd.luks.devices
                 # .persist and swapDevices entries in this ISO's own config —
                 # so stage 1 waits forever for a LUKS volume that exists only
-                # on the machine being installed. tests/install.nix sets the
+                # on the machine being installed. nix/tests/install.nix sets the
                 # same guard for the same reason.
                 disko.enableConfig = false;
                 # No flake source is baked into the ISO: losos-install clones
@@ -234,7 +234,7 @@
             # in place of GRUB, so a firmware under Secure Boot can verify
             # it. `nix build` leaves it unsigned; CI and the release job
             # sign it in place with `losos-sign-iso` (see that module's
-            # header and tests/secure-boot.nix).
+            # header and nix/tests/secure-boot.nix).
             ./modules/secure-boot.nix
             # LosOS and its release tag, not NixOS, on everything the medium
             # shows: boot menu, splash, volume label, console banner, host
@@ -351,7 +351,7 @@
           # mode, and reset every setting. So the live copies on the box are
           # preferred when they can be read: updates.nix and lososd pass
           # `--impure` to nixos-rebuild for exactly this. Under pure
-          # evaluation (CI, `nix flake check`, tests/invariants.nix, the
+          # evaluation (CI, `nix flake check`, nix/tests/invariants.nix, the
           # installer) builtins.pathExists on an absolute path is false, not
           # an error, so the in-tree file or the defaults apply as before.
           # Only one copy of each is ever imported: two would double-define
@@ -369,16 +369,16 @@
       # nixosConfiguration would fail the root-fs/bootloader assertions and
       # could not be configured from outside anyway). `self` is baked in so
       # losos.edge.registrar.package resolves to this flake's registrar.
-      # The edge of the two-VM LAN demo (demo/edge-lan/): the edge module on a
+      # The edge of the two-VM LAN demo (nix/demo/edge-lan/): the edge module on a
       # QEMU VM that is also the LAN's router. `nix build
       # .#nixosConfigurations.edge-demo.config.system.build.vm` makes the
-      # run script; demo/edge-lan/run.sh drives it beside the installer ISO.
+      # run script; nix/demo/edge-lan/run.sh drives it beside the installer ISO.
       nixosConfigurations.edge-demo = nixpkgs.lib.nixosSystem {
         inherit system;
         modules = [
           self.nixosModules.edge
           "${nixpkgs}/nixos/modules/virtualisation/qemu-vm.nix"
-          ./demo/edge-lan/edge-vm.nix
+          ./nix/demo/edge-lan/edge-vm.nix
         ];
       };
       nixosModules.edge = {
@@ -396,12 +396,12 @@
       # module with LAN advertising, open enrolment and a runtime uplink, as a
       # VM image for a LAN that has no NixOS machine to import nixosModules.edge
       # on. `nix build .#losos-disk-edge-qcow2` images it
-      # (flake/disk-images.nix); this configuration is what the image boots.
+      # (nix/disk-images.nix); this configuration is what the image boots.
       nixosConfigurations.edge-gateway = nixpkgs.lib.nixosSystem {
         inherit system;
         modules = [
           self.nixosModules.edge
-          ./flake/edge-gateway-vm.nix
+          ./nix/edge-gateway-vm.nix
         ];
       };
 
@@ -409,24 +409,24 @@
       # at its top what it asserts. Most boot VMs, which CI (no KVM) never
       # builds.
       checks.${system} = {
-        losos-install = import ./tests/install.nix { inherit pkgs disko; };
-        losos-tpm-unlock = import ./tests/tpm.nix { inherit pkgs disko; };
-        losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
-        losos-edge-proxy = import ./tests/edge-vm.nix { inherit pkgs; };
-        losos-edge-lan = import ./tests/edge-lan.nix { inherit pkgs; };
-        losos-edge-federation = import ./tests/edge-federation.nix { inherit pkgs; };
-        losos-edge-lan-two-boxes = import ./demo/edge-lan/two-boxes.nix { inherit pkgs; };
-        losos-edge-market = import ./tests/market-vm.nix { inherit pkgs; };
-        losos-edge-dns = import ./tests/edge-dns.nix { inherit pkgs; };
-        losos-ds-render = import ./tests/design-system.nix { inherit pkgs; };
-        losos-front-vhost = import ./tests/front-vhost.nix { inherit pkgs; };
-        losos-impermanence = import ./tests/impermanence.nix { inherit pkgs impermanence; };
-        losos-cluster = import ./tests/cluster-vm.nix { inherit pkgs; };
-        losos-hardening = import ./tests/hardening.nix { inherit pkgs; };
-        losos-resize = import ./tests/resize.nix { inherit pkgs; };
-        losos-tls = import ./tests/tls.nix { inherit pkgs; };
-        losos-setup = import ./tests/setup.nix { inherit pkgs; };
-        losos-admin-ui = import ./tests/admin-ui.nix {
+        losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
+        losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
+        losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
+        losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
+        losos-edge-lan = import ./nix/tests/edge-lan.nix { inherit pkgs; };
+        losos-edge-federation = import ./nix/tests/edge-federation.nix { inherit pkgs; };
+        losos-edge-lan-two-boxes = import ./nix/demo/edge-lan/two-boxes.nix { inherit pkgs; };
+        losos-edge-market = import ./nix/tests/market-vm.nix { inherit pkgs; };
+        losos-edge-dns = import ./nix/tests/edge-dns.nix { inherit pkgs; };
+        losos-ds-render = import ./nix/tests/design-system.nix { inherit pkgs; };
+        losos-front-vhost = import ./nix/tests/front-vhost.nix { inherit pkgs; };
+        losos-impermanence = import ./nix/tests/impermanence.nix { inherit pkgs impermanence; };
+        losos-cluster = import ./nix/tests/cluster-vm.nix { inherit pkgs; };
+        losos-hardening = import ./nix/tests/hardening.nix { inherit pkgs; };
+        losos-resize = import ./nix/tests/resize.nix { inherit pkgs; };
+        losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
+        losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
+        losos-admin-ui = import ./nix/tests/admin-ui.nix {
           inherit pkgs;
           # The real option document, so the Advanced pane is drawn from
           # every option the install configuration declares and the check
@@ -438,46 +438,46 @@
           inherit (self.packages.${system}.losos-admin-ui) labCorePkg labVirtPkg labRenderPkg;
         };
         # Not a VM: the option document of the install configuration
-        # (flake/options-doc.nix via modules/config-repo.nix), forced here so
+        # (nix/options-doc.nix via modules/config-repo.nix), forced here so
         # `nix flake check --no-build` fails the moment an option is declared
         # with a type the Advanced pane has no editor for.
         losos-options-doc =
           self.nixosConfigurations.install.config.environment.etc."losos/options.json".source;
-        losos-keyring = import ./tests/keyring.nix { inherit pkgs; };
-        losos-erase = import ./tests/erase.nix { inherit pkgs impermanence; };
-        losos-console = import ./tests/console.nix { inherit pkgs; };
+        losos-keyring = import ./nix/tests/keyring.nix { inherit pkgs; };
+        losos-erase = import ./nix/tests/erase.nix { inherit pkgs impermanence; };
+        losos-console = import ./nix/tests/console.nix { inherit pkgs; };
         # The text search behind the admin palette: the cloud index pass in
         # its sandbox, PDFs, a changed file, the Git search and who may ask
-        # (tests/search.nix).
-        losos-search = import ./tests/search.nix { inherit pkgs; };
-        losos-installer-screen = import ./tests/installer-screen.nix { inherit pkgs disko; };
+        # (nix/tests/search.nix).
+        losos-search = import ./nix/tests/search.nix { inherit pkgs; };
+        losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
         # The real Forgejo with losos.forgejo.federation on, asked what another
         # server would ask, in both deployment modes; then off, and gone
-        # (tests/forgejo-federation.nix).
-        losos-forgejo-federation = import ./tests/forgejo-federation.nix { inherit pkgs; };
+        # (nix/tests/forgejo-federation.nix).
+        losos-forgejo-federation = import ./nix/tests/forgejo-federation.nix { inherit pkgs; };
         # The signed installer medium under OVMF's Secure Boot build: the
         # real ISO (plus the test backdoor) signed with a throwaway key the
         # sandbox makes, boots with that key enrolled beside Microsoft's and
         # proves it from inside, and Ubuntu's Microsoft-signed shim starts on
         # the same firmware; the same medium is refused by a firmware holding only
         # Microsoft's keys, a tampered copy is refused, and so is the
-        # unsigned build (tests/secure-boot.nix). Builds the ISO, so it is
+        # unsigned build (nix/tests/secure-boot.nix). Builds the ISO, so it is
         # the slowest check here.
-        losos-secure-boot = import ./tests/secure-boot.nix {
+        losos-secure-boot = import ./nix/tests/secure-boot.nix {
           inherit pkgs;
           iso = self.nixosConfigurations.iso;
           inherit (self.packages.${system}) losos-sign-iso;
         };
         # Not a VM either: starts the Nextcloud pod's httpd and php-fpm in the
-        # build sandbox on the config text flake/images.nix bakes, against a
+        # build sandbox on the config text nix/images.nix bakes, against a
         # fixture webroot, and asserts which entry point every URL shape
         # reaches — the pretty /nextcloud/apps/<app>/ links the homepage
-        # tiles use included (tests/nextcloud-httpd.nix).
-        losos-nextcloud-httpd = import ./tests/nextcloud-httpd.nix { inherit pkgs; };
+        # tiles use included (nix/tests/nextcloud-httpd.nix).
+        losos-nextcloud-httpd = import ./nix/tests/nextcloud-httpd.nix { inherit pkgs; };
         # Not a VM: evaluates the install configuration and asserts on the
         # merged option values, so `nix flake check --no-build` turns red the
-        # moment a load-bearing default drifts (tests/invariants.nix).
-        losos-invariants = import ./tests/invariants.nix {
+        # moment a load-bearing default drifts (nix/tests/invariants.nix).
+        losos-invariants = import ./nix/tests/invariants.nix {
           inherit pkgs;
           inherit (nixpkgs) lib;
           inherit (self.nixosConfigurations.install) config;

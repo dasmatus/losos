@@ -498,7 +498,7 @@ mod tests {
     /// not, so a byte comparison would fail on the arrangement the design
     /// intends.
     ///
-    /// The `include_str!` reaches OUTSIDE this crate, and `flake/packages.nix`
+    /// The `include_str!` reaches OUTSIDE this crate, and `nix/packages.nix`
     /// copies only `backend/` into the store. That is fine as long as
     /// `doCheck` stays off — the shipping build never compiles this module —
     /// and `cargo test` / `cargo clippy --all-targets` always run from the

@@ -674,7 +674,7 @@ pub fn drive(prev_env: Option<&str>, had_none: bool, next_env: Option<&str>) -> 
 // key by signing the nonce the box sends (`GET /identity?nonce=…`). Four
 // checks: the root's signature, the URL the box is talking to, the clock,
 // the nonce signature. The formats are the contract with
-// `backend-registrar/src/identity.rs`, byte for byte; the tests pin them.
+// `edge/registrar/src/identity.rs`, byte for byte; the tests pin them.
 
 /// Domain separators, versioned. Must match the registrar's.
 pub const CERT_PREFIX: &str = "losos-edge-identity-v1";

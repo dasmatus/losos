@@ -6,11 +6,11 @@
 #
 # Plain data rather than a module, for modules/nextcloud-stack.nix's reason:
 # the same files are installed by NixOS modules (native mode) and baked into
-# the OCI images by flake/images.nix (workload mode), and an image is built
+# the OCI images by nix/images.nix (workload mode), and an image is built
 # from the flake where there is no module system to read an option from. So
 # everything both paths need is written down here once — and three callers
 # import it: modules/nextcloud-stack.nix (the Nextcloud package), and, for
-# Forgejo, modules/services.nix (native) and flake/images.nix (the image).
+# Forgejo, modules/services.nix (native) and nix/images.nix (the image).
 #
 # The palette is not copied into this directory. Both themes ship the admin
 # SPA's own admin-ui/app/src/styles/tokens.css, byte for byte, under the name

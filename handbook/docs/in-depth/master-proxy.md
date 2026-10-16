@@ -91,10 +91,10 @@ to find it.
   domain (one VLAN).
 :::
 
-`demo/edge-lan/run.sh` stands this whole arrangement up on one machine as VMs
+`nix/demo/edge-lan/run.sh` stands this whole arrangement up on one machine as VMs
 on a virtual switch: the edge, which is also the LAN's router, and two boxes
 installed from the ISO. It walks through the verification checklist
-(`demo/edge-lan/CHECKLIST.md`). With no edge, both boxes refuse. The edge
+(`nix/demo/edge-lan/CHECKLIST.md`). With no edge, both boxes refuse. The edge
 appears, and both find it and allow sharing. The edge goes away, they refuse
 again, and it comes back. Its README says which parts stand in for what on a
 real site, and what the pooled-storage steps still need.
@@ -118,7 +118,7 @@ except the market.
 The check is an Ed25519 identity:
 
 - **The LosOS root key.** One keypair. The public half is a file every box
-  ships, `keys/official-edge-root.pub` in this repository
+  ships, `nix/keys/official-edge-root.pub` in this repository
   (`losos.proxy.officialRootKeyFile`). The project owner holds the private
   half offline. It never enters the repository or any box, and signs edge
   certificates and nothing else. Until someone writes the public key into
@@ -148,7 +148,7 @@ the edge. For an official edge, LosOS signs a certificate with the root and
 installs it there; the edge writes it beside the key
 (`losos.edge.identity.certFile`). Until a certificate arrives, the edge
 answers `/identity` with 404 and is not official. A company's own edge looks
-like that, including the one `demo/edge-lan/` boots. An edge with both
+like that, including the one `nix/demo/edge-lan/` boots. An edge with both
 options set to `null` serves no identity at all.
 
 What this protects: a company that runs its own edge gets a working
@@ -239,14 +239,14 @@ federation](edge-federation.md#custom-domains-behind-a-local-edge) has the
 details and `losos.edge.dns.relayRoutes`.
 
 :::note[How this is tested]
-`tests/edge-dns.nix` (`losos-edge-dns`) boots an edge and a client and asks
-Knot over UDP and TCP. `backend-registrar/tests/domains.rs` drives the claim
+`nix/tests/edge-dns.nix` (`losos-edge-dns`) boots an edge and a client and asks
+Knot over UDP and TCP. `edge/registrar/tests/domains.rs` drives the claim
 flow against a real registrar and a fake DNS-over-HTTPS server.
 :::
 
 ## Demo deployment on Vercel
 
-`edge-vercel/` runs the registrar's API, the same router and the same token
+`edge/vercel/` runs the registrar's API, the same router and the same token
 check, as a Vercel Function at `https://losos-edge.dasmat.us`, which is the
 default `losos.proxy.registrarUrl`. The registry lives in a Neon Postgres,
 and a status page at `/` shows the registered boxes and the Traefik
@@ -256,4 +256,4 @@ serverless host, so the data path, reaching a box through its public
 hostname, still needs the VPS. The page also lists ids and hostnames to
 anyone with the URL. It is a demonstration host, not an edge. Deployment
 steps and the environment variables are in
-[edge-vercel/README.md](https://github.com/dasmatus/losos/blob/main/edge-vercel/README.md).
+[edge/vercel/README.md](https://github.com/dasmatus/losos/blob/main/edge/vercel/README.md).

@@ -1342,7 +1342,7 @@ async fn delete_builder_build(
 }
 
 // ── Virtual machines ──────────────────────────────────────────────────────
-// The market's third kind (`backend-registrar/src/vms.rs`), on its own page
+// The market's third kind (`edge/registrar/src/vms.rs`), on its own page
 // and its own routes, because every one of them is refused unless this box
 // shares its storage (`crate::losos::cmd_vm_op`). Onboarding is the market's.
 

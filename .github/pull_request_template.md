@@ -41,7 +41,7 @@ only, a test, a refactor with the same output).
 <!--
 What ran and what it showed, then what did not run and why. The VM tests
 need KVM, so a session usually cannot run them; say so rather than leaving
-the line out. A bare `nix build` is not a test gate (see CLAUDE.md).
+the line out. A bare `nix build` is not a test gate (see .claude/CLAUDE.md).
 -->
 
 - `devenv test` (pins, lint, `cargo test`, flake eval):

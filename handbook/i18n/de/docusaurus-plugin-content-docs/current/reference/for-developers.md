@@ -11,7 +11,7 @@ Der größte Teil dieses Handbuchs ist für Besitzer. LosOS bauen, testen und
 - das Kapitel [Im Detail](/in-depth/index.md): Installation im Detail,
   Administration, Mesh, Marktplatz, Virtuelle Maschinen, Master-Proxy,
   Edge-Föderation, Lab, Härtung, Architektur;
-- [`CLAUDE.md`](https://github.com/dasmatus/losos/blob/main/CLAUDE.md) im
+- [`.claude/CLAUDE.md`](https://github.com/dasmatus/losos/blob/main/.claude/CLAUDE.md) im
   Repository: die Build-Befehle, die dateiübergreifende Architektur und die
   Liste der Fehler, die man leicht noch einmal macht.
 
@@ -32,9 +32,9 @@ npm run build             # fails on a broken link, on purpose
 Jeder Push auf `main` veröffentlicht die Site unter
 [losos.dasmat.us](https://losos.dasmat.us)
 (`.github/workflows/handbook.yml`), und jede Box baut ihre eigene Kopie
-(`losos-handbook` in `flake/packages.nix`, unter `/handbook/` ausgeliefert
+(`losos-handbook` in `nix/packages.nix`, unter `/handbook/` ausgeliefert
 von `modules/containers.nix`). Nach einer Änderung an `package-lock.json`
-aktualisiere `npmDepsHash` in `flake/packages.nix`:
+aktualisiere `npmDepsHash` in `nix/packages.nix`:
 
 ```sh
 nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json
@@ -53,7 +53,7 @@ Die Bilder liegen in `handbook/docs/img/`. Es gibt drei Arten:
   die übersetzten Seiten zeigen diese.
 - **Bildschirme eines echten Rechners.** Der Installer, das tty1-Banner, die
   Passphrase-Abfrage und die Ablehnungen durch Secure Boot stammen aus
-  VM-Läufen (`tests/secure-boot.nix` und Installationen in eine VM). Kein
+  VM-Läufen (`nix/tests/secure-boot.nix` und Installationen in eine VM). Kein
   Skript nimmt sie neu auf.
 - **Diagramme.** Das sind von Hand geschriebene SVGs auf einer weißen Karte,
   in der Palette der Admin-UI (`admin-ui/app/src/styles/tokens.css`), sodass

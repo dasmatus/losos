@@ -105,7 +105,7 @@ const HOLD_MARGIN_SECS = 120;
 
 /** The edge's answer when it holds a payment it will not keep: the seller's
  *  address cannot receive it, or the order was paid or sold meanwhile. The
- *  escrow sends it back (backend-registrar's `RefundReason::message`). */
+ *  escrow sends it back (edge/registrar's `RefundReason::message`). */
 const REFUNDING = /being refunded/;
 
 /** How long a payment waits for its block, and then for the edge to count
