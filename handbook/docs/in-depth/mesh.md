@@ -53,7 +53,8 @@ share anything, whatever its switches say, so `lososd` looks for one every
 
 - **on the local network**, by DNS-SD. An edge configured with
   `losos.edge.lan.advertise = true` publishes `_losos-edge._tcp` over mDNS
-  with a `url=` record naming its registrar API, and the box's Avahi finds it.
+  with a `url=` record naming its registrar API, and the box finds it
+  through systemd-resolved.
 - **at the configured address**, `losos.proxy.registrarUrl`, which on a box
   with internet is the public edge. The box probes it whether or not the
   master proxy is switched on.

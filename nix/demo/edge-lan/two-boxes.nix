@@ -18,7 +18,7 @@
 #     recording shows the product, not a stub.
 #
 # What the boxes are here: the appliance's control plane (lososd, the facade,
-# the front nginx with the admin SPA, Avahi), not an installed appliance —
+# the front nginx with the admin SPA, mDNS), not an installed appliance —
 # nix/tests/admin-vm.nix and nix/tests/front-vhost.nix are the same shape, and the
 # install itself is demonstrated by the installer recordings. What this
 # cannot show is the mesh pooling storage (B3/B4 of the checklist): the join a
@@ -70,6 +70,7 @@ let
         ../../../modules/options.nix
         ../../../modules/daemon.nix
         ../../../modules/containers.nix
+        ../../../modules/mdns.nix
       ];
       networking.hostName = name;
       losos = {
@@ -80,20 +81,10 @@ let
         proxy.registrarUrl = "http://edge.local:8444";
         proxy.officialRootKeyFile = "${identityFixture}/root.pub";
       };
-      # What modules/configuration.nix gives the real box.
-      services.avahi = {
-        enable = true;
-        nssmdns4 = true;
-        openFirewall = true;
-        publish = {
-          enable = true;
-          addresses = true;
-        };
-      };
-      environment.systemPackages = [
-        pkgs.avahi
-        pkgs.jq
-      ];
+      # What modules/configuration.nix gives the real box: mDNS through
+      # resolved (modules/mdns.nix).
+      losos.mdns.enable = true;
+      environment.systemPackages = [ pkgs.jq ];
       virtualisation = {
         memorySize = 1024;
         cores = 2;
@@ -205,7 +196,7 @@ pkgs.testers.nixosTest {
     box1.start()
     box2.start(allow_reboot=True)
     for name, m in boxes.items():
-        m.wait_for_unit("avahi-daemon.service")
+        m.wait_for_unit("systemd-resolved.service")
         m.wait_for_unit("nginx.service")
         m.wait_until_succeeds("losos-ctl state --json")
         m.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
@@ -322,7 +313,7 @@ pkgs.testers.nixosTest {
     # ── Scenario B: the edge appears ───────────────────────────────────────
     edge.start()
     edge.wait_for_unit("losos-registrar.service")
-    edge.wait_for_unit("avahi-daemon.service")
+    edge.wait_for_unit("systemd-resolved.service")
     edge.wait_until_succeeds("curl -fsS http://localhost:8443/health")
     edge.wait_for_unit("losos-plain-edge.service")
     edge.wait_until_succeeds("curl -fsS http://localhost:8444/health")

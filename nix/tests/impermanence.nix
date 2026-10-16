@@ -79,7 +79,7 @@ pkgs.testers.nixosTest {
       # Neither is under test and both slow the boot down (NetworkManager also
       # fights the test framework's own interface setup).
       networking.networkmanager.enable = lib.mkForce false;
-      services.avahi.enable = lib.mkForce false;
+      losos.mdns.enable = lib.mkForce false;
 
       # An unprivileged third account, to check the homes keep out someone who
       # is neither owner (see the isolation subtest).

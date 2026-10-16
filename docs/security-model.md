@@ -149,7 +149,8 @@ settings are listed individually.
 kernel pointers and logs, unprivileged eBPF, ptrace, `userfaultfd`,
 `fs.protected_*` and the network stack; a module blacklist that also blocks
 explicit `modprobe`; a tmpfs `/tmp` and `noexec` on `/dev/shm`; dbus-broker;
-systemd sandboxing on `nginx`, `avahi-daemon` and `lososd`.
+systemd sandboxing on `nginx` and `lososd`; mDNS is systemd-resolved, under its
+own upstream sandbox, in place of Avahi (`modules/mdns.nix`).
 
 **Opt-in**: `hardening.apparmor`, `hardening.malloc`, `hardening.nosmt`,
 `hardening.usbguard`. They are in the Security pane of the settings page.

@@ -652,7 +652,9 @@ left to wrap — `profiles/hardened.nix` was removed in 26.05 and
 layer that costs nothing: kernel params, sysctls, a module blacklist that also
 blocks explicit `modprobe` (plain `boot.blacklistedKernelModules` does **not** —
 it only stops alias autoloading), `boot.tmp.useTmpfs`, dbus-broker, and systemd
-sandboxing on `nginx`/`avahi-daemon`/`lososd`. Four opt-in flags — `apparmor`,
+sandboxing on `nginx`/`lososd`. mDNS is systemd-resolved (`mdns.nix`,
+`losos.mdns.*`, set by modules and kept off the Advanced pane), on every
+physical interface and with LLMNR off; there is no Avahi. Four opt-in flags — `apparmor`,
 `malloc`, `nosmt`, `usbguard` — carry what can break something. Not imported by
 `iso`: the live medium needs squashfs. `nix/tests/hardening.nix` asserts both halves,
 including that nothing blocks the kernel surface k3s, rke2, containerd and

@@ -68,8 +68,9 @@ let
       losos.gpu.enable = false;
 
       # NetworkManager fights the test framework's own interface setup, and
-      # nothing here is testing it. Avahi stays on — it is the subject of the
-      # "can we still reach the box" assertion.
+      # nothing here is testing it. mDNS stays on without it (modules/mdns.nix
+      # turns it on per interface) — it is the subject of the "can we still
+      # reach the box" assertion.
       networking.networkmanager.enable = lib.mkForce false;
 
       # nginx is the front door and one of the units the baseline sandboxes, so
@@ -301,16 +302,25 @@ pkgs.testers.nixosTest {
         assert "ok" in hardened.succeed("curl -fsS localhost:80/")
 
     with subtest("mDNS still resolves — the only way into this box"):
-        hardened.wait_for_unit("avahi-daemon.service")
-        hardened.wait_until_succeeds("avahi-resolve-host-name -4 hardened.local")
+        # systemd-resolved answers it, alone: no Avahi beside it, and no
+        # LLMNR listener (modules/mdns.nix turns that off).
+        for m in (hardened, full):
+            m.wait_for_unit("systemd-resolved.service")
+            m.fail("systemctl cat avahi-daemon.service")
+            m.fail("ss -Hlnu 'sport = :5355' | grep -q .")
+        # Each finds the other by name, and by the service a computer on the
+        # LAN lists boxes by, as LosOS Desktop does: over the wire, not from
+        # its own records.
+        hardened.wait_until_succeeds("resolvectl query -4 --synthesize=no full.local")
+        full.wait_until_succeeds("resolvectl query -4 --synthesize=no hardened.local")
+        service = hardened.wait_until_succeeds("resolvectl service full _losos._tcp local")
+        assert "full.local:80" in service and "version=" in service, service
 
     with subtest("every opt-in flag can be on at once"):
         full.wait_for_unit("lososd.service")
         full.wait_until_succeeds("losos-ctl state --json")
         full.wait_for_unit("nginx.service")
         full.wait_until_succeeds("curl -fsS localhost:8082/api/health")
-        full.wait_for_unit("avahi-daemon.service")
-        full.wait_until_succeeds("avahi-resolve-host-name -4 full.local")
         # And the container runtime's kernel surface survives them too.
         full.succeed("modprobe overlay")
         full.succeed("modprobe br_netfilter")
@@ -325,7 +335,7 @@ pkgs.testers.nixosTest {
         # Worth knowing what this does NOT cover: k3s, rke2 and containerd are
         # static Go binaries and ignore preloading entirely, and a pod has its
         # own rootfs and therefore its own (absent) preload file. So this
-        # hardens the host's dynamically linked processes — nginx, avahi,
+        # hardens the host's dynamically linked processes — nginx, resolved,
         # lososd — and nothing inside Kubernetes.
         preload = full.succeed("cat /etc/ld-nix.so.preload")
         assert "hardened_malloc" in preload, f"ld-nix.so.preload: {preload!r}"

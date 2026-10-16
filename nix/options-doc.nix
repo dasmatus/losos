@@ -47,6 +47,7 @@ let
   # the omission is a decision rather than an accident of the walk).
   excluded = {
     edge = "declared for the edge VPS (nixosModules.edge); nothing on the appliance reads it";
+    mdns = "set by modules/configuration.nix and modules/edge.nix; with it off nothing on the LAN finds the box";
   };
 
   # Options another file on the box sets at normal priority: a line in

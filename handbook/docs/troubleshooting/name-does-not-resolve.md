@@ -26,8 +26,8 @@ most Linux desktops do. These do not:
 - **A computer on another network**, or behind a router that blocks
   multicast between Wi-Fi and wired clients, as some "AP isolation"
   settings do.
-- **Linux without an mDNS resolver**, meaning no Avahi, or no `.local` in
-  `nsswitch.conf`.
+- **Linux without an mDNS resolver**, meaning neither Avahi nor
+  systemd-resolved with mDNS turned on, or no `.local` in `nsswitch.conf`.
 
 ## What to do
 
@@ -42,8 +42,9 @@ most Linux desktops do. These do not:
   `C:\Windows\System32\drivers\etc\hosts` on Windows. The line is
   `192.168.122.56  <name>.local`. Then the name and the certificate both
   work.
-- **On Linux without Avahi**, install `avahi` and `nss-mdns`, or use the
-  hosts file as above.
+- **On Linux without an mDNS resolver**, install `avahi` and `nss-mdns`,
+  or set `MulticastDNS=yes` in systemd-resolved's `resolved.conf` and on the
+  network connection, or use the hosts file as above.
 
 ## Not this page
 

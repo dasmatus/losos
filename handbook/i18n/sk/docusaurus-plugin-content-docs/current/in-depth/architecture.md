@@ -344,8 +344,9 @@ postavené z primitív KSPP namiesto obalenia upstreamového profilu, pretože
 žiadny na obalenie nezostal. `profiles/hardened.nix` bol odstránený v 26.05
 a `linux_hardened` je teraz `throw`. `hardening.enable` (predvolene true) je
 vrstva, ktorá nič nestojí: parametre jadra, sysctl, čierna listina modulov,
-`boot.tmp.useTmpfs`, dbus-broker a systemd sandboxing pre `nginx`,
-`avahi-daemon` a `lososd`. Čierna listina blokuje aj explicitný `modprobe`.
+`boot.tmp.useTmpfs`, dbus-broker a systemd sandboxing pre `nginx`
+a `lososd`. mDNS je systemd-resolved v sandboxe jeho vlastnej upstream
+jednotky (`modules/mdns.nix`). Čierna listina blokuje aj explicitný `modprobe`.
 Obyčajné `boot.blacklistedKernelModules` to **nerobí**; zastaví iba
 automatické načítanie cez aliasy. Štyri voliteľné príznaky nesú to, čo môže
 niečo pokaziť: `apparmor`, `malloc`, `nosmt`, `usbguard`. Systém `iso` modul

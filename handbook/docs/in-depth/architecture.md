@@ -336,8 +336,9 @@ from KSPP primitives rather than wrapping an upstream profile, because none
 is left to wrap. `profiles/hardened.nix` was removed in 26.05, and
 `linux_hardened` is now a `throw`. `hardening.enable` (default true) is the
 layer that costs nothing: kernel parameters, sysctls, a module blacklist,
-`boot.tmp.useTmpfs`, dbus-broker, and systemd sandboxing on `nginx`,
-`avahi-daemon` and `lososd`. The blacklist also blocks explicit `modprobe`.
+`boot.tmp.useTmpfs`, dbus-broker, and systemd sandboxing on `nginx` and
+`lososd`. mDNS is systemd-resolved under its own upstream sandbox
+(`modules/mdns.nix`). The blacklist also blocks explicit `modprobe`.
 Plain `boot.blacklistedKernelModules` does **not**; it only stops alias
 autoloading. Four opt-in flags carry what can break something: `apparmor`,
 `malloc`, `nosmt`, `usbguard`. The `iso` system does not import the module,

@@ -283,7 +283,7 @@ in
         Use GrapheneOS' hardened_malloc as the system allocator
         (environment.memoryAllocator.provider). Be clear about the blast
         radius: it works by LD_PRELOAD, so it covers the host's dynamically
-        linked processes (nginx, avahi, lososd) and neither the static Go
+        linked processes (nginx, resolved, lososd) and neither the static Go
         binaries of k3s/rke2/containerd nor anything inside a pod, which has
         its own rootfs. A real hardening win over a smaller surface than it
         first appears, at a throughput and memory cost.
@@ -761,7 +761,32 @@ in
     hostName = lib.mkOption {
       type = lib.types.str;
       default = "mattbox";
-      description = "System hostname. Avahi publishes <hostName>.local via mDNS.";
+      description = "System hostname. systemd-resolved publishes <hostName>.local via mDNS.";
+    };
+
+    # mDNS and DNS-SD through systemd-resolved (modules/mdns.nix). Set by the
+    # box's own modules/configuration.nix and by an edge that advertises
+    # itself (losos.edge.lan.advertise), never by an owner: nix/options-doc.nix
+    # leaves the whole prefix out of the Advanced pane and /api/apply, because
+    # a box with mDNS off is a box nobody can find.
+    mdns.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      internal = true;
+      description = ''
+        Answer and publish mDNS through systemd-resolved on every physical
+        network interface, and announce losos.mdns.services.
+      '';
+    };
+
+    mdns.services = lib.mkOption {
+      type = lib.types.attrsOf lib.types.lines;
+      default = { };
+      internal = true;
+      description = ''
+        DNS-SD services to announce, by file name: the [Service] section of
+        a systemd.dnssd(5) file, written to /etc/systemd/dnssd/<name>.dnssd.
+      '';
     };
 
     splash.enable = lib.mkOption {
@@ -2339,7 +2364,7 @@ in
     # storage (backend/src/edge.rs): at losos.proxy.registrarUrl, and on its
     # own network by DNS-SD. This is the network half: the edge publishes
     # `_losos-edge._tcp` over mDNS with a `url=` TXT record naming its
-    # registrar API, and the box's `avahi-browse` finds it. Off by default
+    # registrar API, and the box's browse through resolved finds it. Off by default
     # because a production edge is a VPS with no LAN to speak of; on for an
     # edge that sits beside the boxes (a home server, the two-VM demo in
     # nix/demo/edge-lan/), where it is what lets a box with no internet share.
@@ -2364,8 +2389,9 @@ in
         The registrar API URL the advertisement carries (`url=` TXT record).
         Appliances probe `<url>/health` before they count the edge as found,
         so it must be reachable from the LAN as written. The default is the
-        edge's own mDNS name, resolvable by every appliance (they run Avahi's
-        NSS module); set an IP literal when the LAN's mDNS is unreliable.
+        edge's own mDNS name, resolvable by every appliance (they resolve
+        `.local` through systemd-resolved); set an IP literal when the LAN's
+        mDNS is unreliable.
       '';
     };
 

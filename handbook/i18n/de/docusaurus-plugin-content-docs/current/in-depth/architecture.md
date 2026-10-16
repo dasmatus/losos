@@ -367,7 +367,8 @@ keines mehr zum Kapseln übrig. `profiles/hardened.nix` wurde in 26.05
 entfernt, und `linux_hardened` ist jetzt ein `throw`. `hardening.enable`
 (Standard true) ist die Schicht, die nichts kostet: Kernel-Parameter,
 sysctls, eine Modul-Blacklist, `boot.tmp.useTmpfs`, dbus-broker und
-systemd-Sandboxing für `nginx`, `avahi-daemon` und `lososd`. Die Blacklist
+systemd-Sandboxing für `nginx` und `lososd`. mDNS ist systemd-resolved in
+der Sandbox seiner eigenen Upstream-Unit (`modules/mdns.nix`). Die Blacklist
 blockiert auch ein explizites `modprobe`. Ein einfaches
 `boot.blacklistedKernelModules` tut das **nicht**; es verhindert nur das
 automatische Laden über Aliase. Vier Opt-in-Flags tragen das, was etwas

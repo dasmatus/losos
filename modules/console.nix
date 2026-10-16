@@ -5,7 +5,7 @@
 # a web UI at an address the owner has no other way to learn. A login prompt
 # on tty1 would be a dead end (neither user has a password), so tty1 shows the
 # address instead — the box's current LAN IPv4 address, and the `<hostName>.local`
-# name Avahi publishes — in a full-screen banner that redraws as the address
+# name resolved publishes — in a full-screen banner that redraws as the address
 # changes (DHCP arrives some seconds after boot, and a lease can move).
 #
 # It replaces getty on tty1 only. tty2..tty6 keep their login prompts, which

@@ -11,9 +11,12 @@
 //!
 //!   * **the LAN**, by DNS-SD. The edge publishes `_losos-edge._tcp` over
 //!     mDNS (`losos.edge.lan.advertise` in `modules/edge.nix`), with a `url=`
-//!     TXT record naming its registrar API. The box already runs Avahi for its
-//!     own `.local` name, so `avahi-browse` is the one extra binary on the
-//!     unit path, and the browse costs nothing the box was not already paying.
+//!     TXT record naming its registrar API. The box already runs
+//!     systemd-resolved with MulticastDNS on for its own `.local` name, so
+//!     the browse is two Varlink calls on resolved's socket
+//!     (`io.systemd.Resolve.BrowseServices`, then `ResolveService` per
+//!     instance): no extra binary on the unit path, and nothing the box was
+//!     not already running.
 //!   * **the configured URL**, `losos.proxy.registrarUrl`, which on a box with
 //!     internet is the public edge. It is probed whether or not the master
 //!     proxy is switched on, because the question here is "is there an edge
@@ -34,10 +37,13 @@
 //! says what the daemon knows instead. Local use keeps working throughout:
 //! nothing here touches Nextcloud, Forgejo or the box's own disk.
 //!
-//! This module is the pure half: the record shapes, the `avahi-browse` output
-//! parser and the gate rule, all unit-tested. The subprocesses are in
-//! `io_backend.rs` behind [`crate::losos::Losos::edge_status`], for the
-//! reasons in `catalogue.rs` (lososd shells out rather than linking a client).
+//! This module is the pure half: the record shapes, the Varlink framing and
+//! what resolved's replies mean, and the gate rule, all unit-tested. The
+//! socket and the subprocesses are in `io_backend.rs` behind
+//! [`crate::losos::Losos::edge_status`]. The probes shell out to curl for the
+//! reasons in `catalogue.rs`; the browse speaks Varlink itself, because it is
+//! a NUL-terminated JSON message on a local socket, which std and serde_json
+//! already cover, and resolved ships no command that browses and exits.
 
 use std::time::Duration;
 
@@ -67,9 +73,25 @@ pub const PATH_UNITS: [&str; 2] = [
     "losos-registrar-announce.service",
 ];
 
-/// Budget for one `avahi-browse --terminate`. The browse itself settles in
-/// about a second; the ceiling is for an Avahi that is not answering at all.
+/// Ceiling for one whole LAN browse, resolving included: what a resolved
+/// that accepts the call and then never answers can cost a scan.
 pub const BROWSE_TIMEOUT_SECS: u64 = 10;
+
+/// How long the browse listens before it takes what it has. resolved's
+/// browser answers from its cache at once and sends its first mDNS query
+/// straight away, and an edge on the LAN answers within a second (Avahi's
+/// `--terminate` settled in about that); the rest covers the second query,
+/// which resolved sends a second after the first, and its answers. resolved
+/// sends *nothing* while nothing is found, so a quiet LAN costs exactly this
+/// long.
+pub const BROWSE_SETTLE: Duration = Duration::from_secs(3);
+
+/// systemd-resolved's Varlink socket. Any local user may browse and resolve
+/// on it, so lososd needs no extra privilege for it.
+pub const RESOLVE_SOCKET: &str = "/run/systemd/resolve/io.systemd.Resolve";
+
+/// mDNS's domain, the only one an edge advertises on.
+pub const DOMAIN: &str = "local";
 
 /// Budget for one `/health` probe. Loopback or LAN answers in milliseconds;
 /// the configured public edge in well under a second. Anything slower is
@@ -132,9 +154,10 @@ pub struct EdgeStatus {
     pub official: bool,
     /// Every edge that answered, LAN first.
     pub edges: Vec<Edge>,
-    /// Whether the LAN could be searched at all. False means `avahi-browse`
-    /// did not run (missing from the unit path, Avahi down), which the UI
-    /// says in so many words rather than claiming the network is empty.
+    /// Whether the LAN could be searched at all. False means resolved's
+    /// socket could not be opened or it refused the browse (resolved down,
+    /// too old to browse), which the UI says in so many words rather than
+    /// claiming the network is empty.
     pub lan_searched: bool,
     /// The configured URL, when there is one, so the UI can name what was
     /// tried when nothing answered.
@@ -317,11 +340,14 @@ pub fn check_mesh(overrides: &str) -> Result<(), MeshNotReady> {
     Ok(())
 }
 
-/// A resolved DNS-SD record out of `avahi-browse --parsable --resolve`.
+/// One resolved DNS-SD instance, out of a `ResolveService` reply
+/// ([`advert_from_resolved`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Advert {
     pub name: String,
+    /// The SRV record's target host, without its final dot.
     pub host: String,
+    /// One address of that host, as text: IPv4 when it has one.
     pub address: String,
     pub port: u16,
     /// The `url=` TXT value, when the edge published one.
@@ -369,88 +395,250 @@ pub fn plain_http_url(url: &str) -> bool {
     }
 }
 
-/// Undo `avahi-browse --parsable`'s escaping: a byte outside the printable
-/// range is written as a backslash and three decimal digits (`\032` is a
-/// space), and a literal backslash as `\\`.
-fn unescape(field: &str) -> String {
-    let mut out = String::with_capacity(field.len());
-    let mut chars = field.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c != '\\' {
-            out.push(c);
+// ── the LAN browse, over resolved's Varlink ─────────────────────────────────
+//
+// Varlink is JSON over a stream socket, each message ended by a NUL byte. A
+// call is `{"method", "parameters", "more"?}`; a reply is `{"parameters",
+// "continues"?}` or `{"error", "parameters"?}`. The field names below are
+// systemd 261's `io.systemd.Resolve` interface
+// (src/shared/varlink-io.systemd.Resolve.c), what resolved itself checks
+// replies against. io_backend.rs owns the socket; everything it reads comes
+// through here, so a reply of the wrong shape is a test case, not a panic.
+
+/// Upper bound on one Varlink message. A browse reply is a few hundred bytes
+/// per instance and a resolve reply a few hundred more; anything near this is
+/// not resolved talking, and the reader stops rather than buffer it.
+pub const VARLINK_MAX_MESSAGE: u64 = 1024 * 1024;
+
+/// One Varlink call: its JSON and the NUL that ends a message. `more` asks
+/// for a stream of replies, which `BrowseServices` requires (resolved
+/// answers anything else with `org.varlink.service.ExpectedMore`).
+#[must_use]
+pub fn varlink_call(method: &str, parameters: Value, more: bool) -> Vec<u8> {
+    let mut call = json!({ "method": method, "parameters": parameters });
+    if more {
+        call["more"] = Value::Bool(true);
+    }
+    let mut bytes = call.to_string().into_bytes();
+    bytes.push(0);
+    bytes
+}
+
+/// One Varlink reply that was not an error.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VarlinkReply {
+    /// `Null` when the reply carried none: sd-varlink leaves an empty
+    /// parameters object out of the message altogether.
+    pub parameters: Value,
+    /// More replies follow on this call.
+    pub continues: bool,
+}
+
+/// Parse one message, its NUL already removed. A Varlink error comes back
+/// as `Err` with its name and any parameters, which is what the journal
+/// wants to say about it (`io.systemd.Resolve.NoSuchResourceRecord`,
+/// `org.varlink.service.MethodNotFound` from a resolved too old to browse).
+///
+/// # Errors
+/// The message is not a JSON object, or it is a Varlink error.
+pub fn parse_varlink_reply(message: &[u8]) -> Result<VarlinkReply, String> {
+    let value: Value =
+        serde_json::from_slice(message).map_err(|e| format!("not a Varlink message: {e}"))?;
+    if !value.is_object() {
+        return Err("not a Varlink message: not a JSON object".into());
+    }
+    let parameters = value.get("parameters").cloned().unwrap_or(Value::Null);
+    if let Some(error) = value.get("error") {
+        let name = error.as_str().unwrap_or("an unnamed Varlink error");
+        return Err(match parameters {
+            Value::Null => name.to_string(),
+            p => format!("{name} {p}"),
+        });
+    }
+    Ok(VarlinkReply {
+        parameters,
+        continues: value.get("continues").and_then(Value::as_bool) == Some(true),
+    })
+}
+
+/// The parameters of the one `BrowseServices` call a scan makes: every link
+/// (`ifindex` 0) and flags 0, which resolved widens to every protocol it has,
+/// mDNS included (it refuses a browse without mDNS).
+#[must_use]
+pub fn browse_parameters() -> Value {
+    json!({ "domain": DOMAIN, "type": SERVICE_TYPE, "ifindex": 0, "flags": 0 })
+}
+
+/// One DNS-SD instance on one link: what `ResolveService` is asked about.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Instance {
+    pub name: String,
+    pub service_type: String,
+    pub domain: String,
+    /// The link it was seen on. Resolving on that link asks the edge there,
+    /// which is the address this box can reach it at.
+    pub ifindex: u32,
+}
+
+/// The instances present so far, each with the mDNS family it was seen over
+/// (resolved runs one mDNS scope per link and family and reports each), in
+/// the order they were first seen.
+pub type Present = Vec<(Instance, i64)>;
+
+/// Apply one `BrowseServices` reply to `present`: each `browserServiceData`
+/// entry is `{updateFlag: "added"|"removed", family, name, type, domain,
+/// ifindex}`. An entry with no name (resolved allows that for a plain SRV
+/// service, and an edge always names itself), of another type, or of any
+/// other shape is skipped: the browse goes on without it.
+pub fn apply_browse(present: &mut Present, parameters: &Value) {
+    let Some(entries) = parameters
+        .get("browserServiceData")
+        .and_then(Value::as_array)
+    else {
+        return;
+    };
+    for entry in entries {
+        let seen = (|| {
+            let instance = Instance {
+                name: entry.get("name")?.as_str()?.to_string(),
+                service_type: entry.get("type")?.as_str()?.to_string(),
+                domain: entry.get("domain")?.as_str()?.to_string(),
+                ifindex: u32::try_from(entry.get("ifindex")?.as_u64()?).ok()?,
+            };
+            let family = entry.get("family")?.as_i64()?;
+            let added = match entry.get("updateFlag")?.as_str()? {
+                "added" => true,
+                "removed" => false,
+                _ => return None,
+            };
+            Some((instance, family, added))
+        })();
+        let Some((instance, family, added)) = seen else {
+            continue;
+        };
+        if instance.name.is_empty() || instance.service_type != SERVICE_TYPE {
             continue;
         }
-        match chars.peek() {
-            Some('\\') => {
-                chars.next();
-                out.push('\\');
+        let key = (instance, family);
+        let known = present.iter().position(|k| *k == key);
+        match (added, known) {
+            (true, None) => present.push(key),
+            (false, Some(i)) => {
+                present.remove(i);
             }
-            Some(d) if d.is_ascii_digit() => {
-                let digits: String = (0..3)
-                    .filter_map(|_| chars.next_if(char::is_ascii_digit))
-                    .collect();
-                match digits.parse::<u8>() {
-                    Ok(b) if digits.len() == 3 => out.push(char::from(b)),
-                    _ => {
-                        out.push('\\');
-                        out.push_str(&digits);
-                    }
-                }
-            }
-            _ => out.push('\\'),
+            _ => {}
+        }
+    }
+}
+
+/// The instances to resolve: one per name and link, in the order first
+/// seen. An edge reachable over both families on one link is one lookup,
+/// because `ResolveService` with no family returns its IPv4 and IPv6
+/// addresses together.
+#[must_use]
+pub fn to_resolve(present: &Present) -> Vec<Instance> {
+    let mut out: Vec<Instance> = Vec::new();
+    for (instance, _) in present {
+        if !out.contains(instance) {
+            out.push(instance.clone());
         }
     }
     out
 }
 
-/// Parse `avahi-browse --parsable --resolve --terminate` output into the
-/// resolved records.
-///
-/// Only `=` lines (resolved) count; `+` (seen) and `-` (gone) lines carry no
-/// address. The columns are
-/// `=;iface;proto;name;type;domain;host;address;port;txt`, with the TXT
-/// records as space-separated quoted strings. IPv4 records are preferred:
-/// Avahi reports a dual-stack edge twice, and the box's own network is
-/// IPv4-first, so the IPv6 copy is kept only when there is no IPv4 one for
-/// the same instance.
+/// The parameters of the `ResolveService` call for one instance. `family` 0
+/// (AF_UNSPEC) asks for both address families, and `flags` 0 keeps the TXT
+/// and address lookups resolved does by default.
 #[must_use]
-pub fn parse_browse(output: &str) -> Vec<Advert> {
-    let mut v4: Vec<Advert> = Vec::new();
-    let mut v6: Vec<Advert> = Vec::new();
-    for line in output.lines() {
-        let cols: Vec<&str> = line.split(';').collect();
-        if cols.len() < 9 || cols[0] != "=" || cols[4] != SERVICE_TYPE {
-            continue;
-        }
-        let Ok(port) = cols[8].trim().parse::<u16>() else {
-            continue;
-        };
-        let txt = cols.get(9).copied().unwrap_or("");
-        let record = |key: &str| {
-            txt.split('"')
-                .filter(|s| !s.trim().is_empty())
-                .find_map(|s| s.strip_prefix(key).map(str::to_string))
-        };
-        let advert = Advert {
-            name: unescape(cols[3]),
-            host: cols[6].to_string(),
-            address: cols[7].to_string(),
-            port,
-            url: record("url="),
-            rathole: record("rathole="),
-        };
-        if cols[2] == "IPv4" {
-            v4.push(advert);
-        } else {
-            v6.push(advert);
-        }
+pub fn resolve_parameters(instance: &Instance) -> Value {
+    json!({
+        "name": instance.name,
+        "type": instance.service_type,
+        "domain": instance.domain,
+        "ifindex": instance.ifindex,
+        "family": 0,
+        "flags": 0,
+    })
+}
+
+/// Read a `ResolveService` reply's parameters into the [`Advert`] for the
+/// instance `name`. The reply is `{services: [{priority, weight, port,
+/// hostname, canonicalName?, addresses?: [{ifindex?, family, address: [byte,
+/// …]}]}], txt?: [string], canonical, flags}`; the first service is the one,
+/// since an edge publishes a single SRV record.
+///
+/// IPv4 is preferred: a dual-stack edge resolves to both, and the box's own
+/// network is IPv4-first. Without one, a routable IPv6 address comes before a
+/// link-local one, which means nothing in a URL without its interface.
+/// `None` for anything malformed (no service, a port that is missing or 0,
+/// no hostname, no usable address, a `txt` that is not a list), so a broken
+/// advert is skipped rather than dialled.
+#[must_use]
+pub fn advert_from_resolved(name: &str, parameters: &Value) -> Option<Advert> {
+    use std::net::IpAddr;
+
+    let service = parameters.get("services")?.as_array()?.first()?;
+    let port = u16::try_from(service.get("port")?.as_u64()?)
+        .ok()
+        .filter(|p| *p != 0)?;
+    let host = service
+        .get("hostname")?
+        .as_str()?
+        .trim_end_matches('.')
+        .to_string();
+    if host.is_empty() {
+        return None;
     }
-    for a in v6 {
-        if !v4.iter().any(|b| b.name == a.name) {
-            v4.push(a);
-        }
-    }
-    v4
+    let addresses: Vec<IpAddr> = service
+        .get("addresses")?
+        .as_array()?
+        .iter()
+        .filter_map(|a| {
+            let bytes: Vec<u8> = a
+                .get("address")?
+                .as_array()?
+                .iter()
+                .map(|b| b.as_u64().and_then(|b| u8::try_from(b).ok()))
+                .collect::<Option<_>>()?;
+            // The family must agree with the length, or the entry is not
+            // one resolved wrote: AF_INET is 2 and AF_INET6 10 on Linux.
+            match (a.get("family")?.as_i64()?, bytes.len()) {
+                (2, 4) => Some(IpAddr::from(<[u8; 4]>::try_from(bytes).ok()?)),
+                (10, 16) => Some(IpAddr::from(<[u8; 16]>::try_from(bytes).ok()?)),
+                _ => None,
+            }
+        })
+        .collect();
+    let link_local =
+        |ip: &IpAddr| matches!(ip, IpAddr::V6(v6) if v6.segments()[0] & 0xffc0 == 0xfe80);
+    let address = addresses
+        .iter()
+        .find(|ip| ip.is_ipv4())
+        .or_else(|| addresses.iter().find(|ip| !link_local(ip)))
+        .or_else(|| addresses.first())?
+        .to_string();
+    // resolved leaves `txt` out when the service has none.
+    let txt: Vec<&str> = match parameters.get("txt") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(t) => t.as_array()?.iter().filter_map(Value::as_str).collect(),
+    };
+    // DNS-SD keys are case-insensitive (RFC 6763 section 6.4). A value
+    // resolved had to escape keeps its backslashes and fails the URL and
+    // endpoint checks downstream.
+    let record = |key: &str| {
+        txt.iter()
+            .filter_map(|t| t.split_once('='))
+            .find(|(k, _)| k.eq_ignore_ascii_case(key))
+            .map(|(_, v)| v.to_string())
+    };
+    Some(Advert {
+        name: name.to_string(),
+        host,
+        address,
+        port,
+        url: record("url"),
+        rathole: record("rathole"),
+    })
 }
 
 /// Reduce a list of adverts to one candidate per registrar URL, in the order
@@ -528,11 +716,12 @@ pub fn host_of(url: &str) -> String {
     rest.split('/').next().unwrap_or(rest).to_string()
 }
 
-/// One scan's inputs, as the subprocess layer hands them in: what the browse
-/// said and which candidate URLs answered `/health`. Pure, so the whole
-/// decision is testable without Avahi or curl.
+/// One scan's inputs, as the I/O layer hands them in: what the browse found
+/// (`None` when the LAN could not be searched) and which candidate URLs
+/// answered `/health`. Pure, so the whole decision is testable without
+/// resolved or curl.
 pub fn assemble(
-    browse: Option<&str>,
+    browse: Option<&[Advert]>,
     configured_url: Option<&str>,
     answered: impl Fn(&str) -> bool,
     trust: &Trust<'_>,
@@ -546,7 +735,7 @@ pub fn assemble(
 /// (`losos.proxy.edgeRatholeEndpoint`), which is what lets that edge be the
 /// path when the LAN has none.
 pub fn assemble_with(
-    browse: Option<&str>,
+    browse: Option<&[Advert]>,
     configured_url: Option<&str>,
     configured_rathole: Option<&str>,
     answered: impl Fn(&str) -> bool,
@@ -555,8 +744,8 @@ pub fn assemble_with(
     now: u64,
 ) -> EdgeStatus {
     let mut edges: Vec<Edge> = Vec::new();
-    if let Some(output) = browse {
-        for edge in candidates(&parse_browse(output)) {
+    if let Some(adverts) = browse {
+        for edge in candidates(adverts) {
             if answered(&edge.url) {
                 edges.push(edge);
             }
@@ -835,12 +1024,57 @@ mod tests {
         nonce: "00",
     };
 
-    const BROWSE: &str = "\
-+;eth0;IPv6;edge\\032demo;_losos-edge._tcp;local
-+;eth0;IPv4;edge\\032demo;_losos-edge._tcp;local
-=;eth0;IPv6;edge\\032demo;_losos-edge._tcp;local;edge.local;fe80::5054:ff:fe12:3456;8443;\"url=http://edge.local:8443\" \"txtvers=1\"
-=;eth0;IPv4;edge\\032demo;_losos-edge._tcp;local;edge.local;192.168.100.1;8443;\"url=http://edge.local:8443\" \"txtvers=1\"
-";
+    /// The browse of a LAN with one dual-stack edge on one link, as resolved
+    /// sends it: the instance over its IPv6 and its IPv4 mDNS scope.
+    const BROWSE_REPLY: &[u8] = br#"{"parameters":{"browserServiceData":[{"updateFlag":"added","family":10,"name":"edge demo","type":"_losos-edge._tcp","domain":"local","ifindex":2},{"updateFlag":"added","family":2,"name":"edge demo","type":"_losos-edge._tcp","domain":"local","ifindex":2}]},"continues":true}"#;
+
+    /// resolved's answer to `ResolveService` for that instance: the SRV
+    /// record, the host's link-local IPv6 and its IPv4 address, the TXT
+    /// strings.
+    const RESOLVE_REPLY: &[u8] = br#"{"parameters":{"services":[{"priority":0,"weight":0,"port":8443,"hostname":"edge.local","addresses":[{"ifindex":2,"family":10,"address":[254,128,0,0,0,0,0,0,80,84,0,255,254,18,52,86]},{"ifindex":2,"family":2,"address":[192,168,100,1]}]}],"txt":["url=http://edge.local:8443","txtvers=1"],"canonical":{"name":"edge demo","type":"_losos-edge._tcp","domain":"local"},"flags":0}}"#;
+
+    /// A `ResolveService` reply's parameters for one SRV record on `host`,
+    /// with `addresses` as resolved encodes them and `txt` left out when
+    /// empty, as resolved leaves it out.
+    fn resolved(host: &str, port: u16, addresses: &[&str], txt: &[&str]) -> Value {
+        let addresses: Vec<Value> = addresses
+            .iter()
+            .map(|a| match a.parse::<std::net::IpAddr>().unwrap() {
+                std::net::IpAddr::V4(v4) => {
+                    json!({"ifindex": 2, "family": 2, "address": v4.octets()})
+                }
+                std::net::IpAddr::V6(v6) => {
+                    json!({"ifindex": 2, "family": 10, "address": v6.octets()})
+                }
+            })
+            .collect();
+        let mut reply = json!({
+            "services": [{"priority": 0, "weight": 0, "port": port,
+                          "hostname": host, "addresses": addresses}],
+            "canonical": {"name": "x", "type": SERVICE_TYPE, "domain": "local"},
+            "flags": 0
+        });
+        if !txt.is_empty() {
+            reply["txt"] = json!(txt);
+        }
+        reply
+    }
+
+    /// The whole pure path of a browse: the browse reply, the instances it
+    /// leaves to resolve, and each one's resolve reply, as io_backend.rs
+    /// runs them.
+    fn browse() -> Vec<Advert> {
+        let mut present = Present::new();
+        apply_browse(
+            &mut present,
+            &parse_varlink_reply(BROWSE_REPLY).unwrap().parameters,
+        );
+        let resolve = parse_varlink_reply(RESOLVE_REPLY).unwrap().parameters;
+        to_resolve(&present)
+            .iter()
+            .filter_map(|i| advert_from_resolved(&i.name, &resolve))
+            .collect()
+    }
 
     #[test]
     fn the_mesh_join_needs_the_proxy_and_a_name_of_its_own() {
@@ -881,33 +1115,59 @@ mod tests {
     }
 
     #[test]
-    fn resolved_ipv4_record_wins_and_the_name_is_unescaped() {
-        let adverts = parse_browse(BROWSE);
+    fn the_ipv4_address_wins_and_one_link_over_two_families_is_one_advert() {
+        let adverts = browse();
         assert_eq!(adverts.len(), 1, "{adverts:?}");
         let a = &adverts[0];
+        // resolved hands the name over as text; there is nothing to unescape.
         assert_eq!(a.name, "edge demo");
+        assert_eq!(a.host, "edge.local");
         assert_eq!(a.address, "192.168.100.1");
         assert_eq!(a.port, 8443);
         assert_eq!(a.url.as_deref(), Some("http://edge.local:8443"));
         assert_eq!(a.registrar_url(), "http://edge.local:8443");
+        // Without IPv4, a routable IPv6 address before a link-local one.
+        let v6 = resolved("edge.local.", 8443, &["fe80::1", "fd00::2"], &[]);
+        let a = advert_from_resolved("edge", &v6).unwrap();
+        assert_eq!(a.address, "fd00::2");
+        assert_eq!(a.host, "edge.local");
+        let ll = resolved("edge.local", 8443, &["fe80::1"], &[]);
+        assert_eq!(
+            advert_from_resolved("edge", &ll).unwrap().address,
+            "fe80::1"
+        );
     }
 
     #[test]
     fn an_edge_without_a_url_record_is_reached_by_address_and_port() {
-        let out = "=;eth0;IPv4;edge;_losos-edge._tcp;local;edge.local;10.0.0.2;8443;\n";
-        let adverts = parse_browse(out);
-        assert_eq!(adverts[0].registrar_url(), "http://10.0.0.2:8443");
-        let out6 = "=;eth0;IPv6;edge;_losos-edge._tcp;local;edge.local;fd00::2;8443;\n";
+        let reply = resolved("edge.local", 8443, &["10.0.0.2"], &[]);
+        assert!(reply.get("txt").is_none());
+        let a = advert_from_resolved("edge", &reply).unwrap();
+        assert_eq!(a.url, None);
+        assert_eq!(a.registrar_url(), "http://10.0.0.2:8443");
+        let reply6 = resolved("edge.local", 8443, &["fd00::2"], &[]);
         assert_eq!(
-            parse_browse(out6)[0].registrar_url(),
+            advert_from_resolved("edge", &reply6)
+                .unwrap()
+                .registrar_url(),
             "http://[fd00::2]:8443"
         );
     }
 
     #[test]
     fn a_url_record_that_is_not_http_is_ignored() {
-        let out = "=;eth0;IPv4;edge;_losos-edge._tcp;local;edge.local;10.0.0.2;8443;\"url=javascript:alert(1)\"\n";
-        assert_eq!(parse_browse(out)[0].registrar_url(), "http://10.0.0.2:8443");
+        let reply = resolved(
+            "edge.local",
+            8443,
+            &["10.0.0.2"],
+            &["url=javascript:alert(1)"],
+        );
+        assert_eq!(
+            advert_from_resolved("edge", &reply)
+                .unwrap()
+                .registrar_url(),
+            "http://10.0.0.2:8443"
+        );
         assert!(!plain_http_url("ftp://x"));
         assert!(!plain_http_url("http://"));
         assert!(!plain_http_url("http://a b"));
@@ -916,23 +1176,146 @@ mod tests {
     }
 
     #[test]
-    fn other_service_types_and_unresolved_lines_are_skipped() {
-        let out = "\
-=;eth0;IPv4;printer;_ipp._tcp;local;p.local;10.0.0.9;631;
-+;eth0;IPv4;edge;_losos-edge._tcp;local
--;eth0;IPv4;edge;_losos-edge._tcp;local
-";
-        assert!(parse_browse(out).is_empty());
+    fn a_malformed_resolve_reply_is_no_advert() {
+        let good = resolved("edge.local", 8443, &["10.0.0.2"], &["url=http://e:1"]);
+        assert!(advert_from_resolved("edge", &good).is_some());
+        let without = |pointer: &str, key: &str| {
+            let mut r = good.clone();
+            r.pointer_mut(pointer)
+                .and_then(Value::as_object_mut)
+                .unwrap()
+                .remove(key);
+            r
+        };
+        let with = |pointer: &str, value: Value| {
+            let mut r = good.clone();
+            *r.pointer_mut(pointer).unwrap() = value;
+            r
+        };
+        for (why, reply) in [
+            ("no services", without("", "services")),
+            ("no service", with("/services", json!([]))),
+            ("services not a list", with("/services", json!({}))),
+            ("no port", without("/services/0", "port")),
+            ("port 0", with("/services/0/port", json!(0))),
+            ("port past 65535", with("/services/0/port", json!(70000))),
+            ("port as text", with("/services/0/port", json!("8443"))),
+            ("no hostname", without("/services/0", "hostname")),
+            ("empty hostname", with("/services/0/hostname", json!("."))),
+            ("no addresses", without("/services/0", "addresses")),
+            ("no address", with("/services/0/addresses", json!([]))),
+            (
+                "family and length disagree",
+                with(
+                    "/services/0/addresses",
+                    json!([{"family": 10, "address": [10, 0, 0, 2]}]),
+                ),
+            ),
+            (
+                "a byte past 255",
+                with(
+                    "/services/0/addresses",
+                    json!([{"family": 2, "address": [10, 0, 0, 256]}]),
+                ),
+            ),
+            ("txt not a list", with("/txt", json!("url=http://e:1"))),
+            ("not an object", json!("services")),
+        ] {
+            assert_eq!(advert_from_resolved("edge", &reply), None, "{why}");
+        }
+        // One bad address beside a good one costs only itself.
+        let mixed = with(
+            "/services/0/addresses",
+            json!([{"family": 2, "address": [1, 2]},
+                   {"family": 2, "address": [10, 0, 0, 3]}]),
+        );
+        assert_eq!(
+            advert_from_resolved("edge", &mixed).unwrap().address,
+            "10.0.0.3"
+        );
+        // TXT keys are case-insensitive, and an entry that is not a string
+        // is skipped.
+        let txt = with("/txt", json!([7, "URL=http://e:2", "Rathole=e:2333"]));
+        let a = advert_from_resolved("edge", &txt).unwrap();
+        assert_eq!(a.url.as_deref(), Some("http://e:2"));
+        assert_eq!(a.rathole.as_deref(), Some("e:2333"));
+    }
+
+    #[test]
+    fn other_service_types_unnamed_and_malformed_entries_are_skipped() {
+        let mut present = Present::new();
+        apply_browse(
+            &mut present,
+            &json!({"browserServiceData": [
+                {"updateFlag": "added", "family": 2, "name": "printer",
+                 "type": "_ipp._tcp", "domain": "local", "ifindex": 2},
+                // resolved leaves the name out of a plain SRV service.
+                {"updateFlag": "added", "family": 2,
+                 "type": "_losos-edge._tcp", "domain": "local", "ifindex": 2},
+                {"updateFlag": "added", "family": 2, "name": "edge",
+                 "type": "_losos-edge._tcp", "domain": "local", "ifindex": -1},
+                {"updateFlag": "changed", "family": 2, "name": "edge",
+                 "type": "_losos-edge._tcp", "domain": "local", "ifindex": 2},
+                {"updateFlag": "added", "family": "2", "name": "edge",
+                 "type": "_losos-edge._tcp", "domain": "local", "ifindex": 2},
+                "added"
+            ]}),
+        );
+        assert!(present.is_empty(), "{present:?}");
+        // A reply of another shape altogether changes nothing either.
+        apply_browse(&mut present, &json!({"browserServiceData": {}}));
+        apply_browse(&mut present, &Value::Null);
+        assert!(to_resolve(&present).is_empty());
+    }
+
+    #[test]
+    fn an_instance_stays_until_its_last_family_is_removed() {
+        let entry = |flag: &str, family: i64, ifindex: u32| {
+            json!({"updateFlag": flag, "family": family, "name": "edge",
+                   "type": SERVICE_TYPE, "domain": "local", "ifindex": ifindex})
+        };
+        let mut present = Present::new();
+        apply_browse(
+            &mut present,
+            &json!({"browserServiceData": [
+                entry("added", 2, 2), entry("added", 10, 2), entry("added", 2, 3),
+                // resolved repeats itself after a cache revisit; still one.
+                entry("added", 2, 2)
+            ]}),
+        );
+        let links: Vec<u32> = to_resolve(&present).iter().map(|i| i.ifindex).collect();
+        assert_eq!(links, [2, 3]);
+        apply_browse(
+            &mut present,
+            &json!({"browserServiceData": [entry("removed", 10, 2), entry("removed", 2, 3)]}),
+        );
+        let links: Vec<u32> = to_resolve(&present).iter().map(|i| i.ifindex).collect();
+        assert_eq!(links, [2]);
+        apply_browse(
+            &mut present,
+            &json!({"browserServiceData": [entry("removed", 2, 2)]}),
+        );
+        assert!(to_resolve(&present).is_empty());
+        // Removing what was never added is not an error.
+        apply_browse(
+            &mut present,
+            &json!({"browserServiceData": [entry("removed", 2, 9)]}),
+        );
+        assert!(present.is_empty());
     }
 
     #[test]
     fn one_edge_seen_on_two_interfaces_is_one_candidate() {
-        let out = "\
-=;eth0;IPv4;edge;_losos-edge._tcp;local;edge.local;10.0.0.2;8443;\"url=http://edge.local:8443\"
-=;eth1;IPv4;edge;_losos-edge._tcp;local;edge.local;10.0.1.2;8443;\"url=http://edge.local:8443\"
-=;eth0;IPv4;other;_losos-edge._tcp;local;other.local;10.0.0.3;8443;
-";
-        let c = candidates(&parse_browse(out));
+        let url = ["url=http://edge.local:8443"];
+        let adverts: Vec<Advert> = [
+            ("edge", resolved("edge.local", 8443, &["10.0.0.2"], &url)),
+            ("edge", resolved("edge.local", 8443, &["10.0.1.2"], &url)),
+            ("other", resolved("other.local", 8443, &["10.0.0.3"], &[])),
+        ]
+        .iter()
+        .filter_map(|(name, reply)| advert_from_resolved(name, reply))
+        .collect();
+        let c = candidates(&adverts);
         assert_eq!(c.len(), 2, "{c:?}");
         assert_eq!(c[0].url, "http://edge.local:8443");
         assert_eq!(c[1].url, "http://10.0.0.3:8443");
@@ -942,7 +1325,7 @@ mod tests {
     #[test]
     fn a_candidate_counts_only_when_its_health_answers() {
         let status = assemble(
-            Some(BROWSE),
+            Some(&browse()),
             Some("https://losos-edge.example/"),
             |_| false,
             &NO_TRUST,
@@ -959,7 +1342,7 @@ mod tests {
         assert_eq!(status.checked_at, Some(7));
 
         let status = assemble(
-            Some(BROWSE),
+            Some(&browse()),
             Some("https://losos-edge.example"),
             |url| url == "http://edge.local:8443",
             &NO_TRUST,
@@ -975,7 +1358,7 @@ mod tests {
     #[test]
     fn the_configured_edge_is_named_by_its_host_and_listed_after_the_lan() {
         let status = assemble(
-            Some(BROWSE),
+            Some(&browse()),
             Some("https://losos-edge.example"),
             |_| true,
             &NO_TRUST,
@@ -987,7 +1370,7 @@ mod tests {
         assert_eq!(status.edges[1].source, Source::Configured);
         // The same edge on both roads is one edge.
         let status = assemble(
-            Some(BROWSE),
+            Some(&browse()),
             Some("http://edge.local:8443/"),
             |_| true,
             &NO_TRUST,
@@ -1052,11 +1435,64 @@ mod tests {
     }
 
     #[test]
-    fn unescape_handles_avahi_escapes() {
-        assert_eq!(unescape("a\\032b"), "a b");
-        assert_eq!(unescape("a\\\\b"), "a\\b");
-        assert_eq!(unescape("plain"), "plain");
-        assert_eq!(unescape("bad\\9"), "bad\\9");
+    fn a_varlink_call_is_json_and_a_nul() {
+        let bytes = varlink_call(
+            "io.systemd.Resolve.BrowseServices",
+            browse_parameters(),
+            true,
+        );
+        assert_eq!(bytes.last(), Some(&0));
+        assert_eq!(bytes.iter().filter(|b| **b == 0).count(), 1);
+        let call: Value = serde_json::from_slice(&bytes[..bytes.len() - 1]).unwrap();
+        assert_eq!(call["method"], "io.systemd.Resolve.BrowseServices");
+        assert_eq!(
+            call["parameters"],
+            json!({"domain": "local", "type": "_losos-edge._tcp", "ifindex": 0, "flags": 0})
+        );
+        assert_eq!(call["more"], true);
+
+        let instance = Instance {
+            name: "edge demo".into(),
+            service_type: SERVICE_TYPE.into(),
+            domain: "local".into(),
+            ifindex: 2,
+        };
+        let once = varlink_call(
+            "io.systemd.Resolve.ResolveService",
+            resolve_parameters(&instance),
+            false,
+        );
+        let call: Value = serde_json::from_slice(&once[..once.len() - 1]).unwrap();
+        assert!(call.get("more").is_none());
+        assert_eq!(
+            call["parameters"],
+            json!({"name": "edge demo", "type": "_losos-edge._tcp", "domain": "local",
+                   "ifindex": 2, "family": 0, "flags": 0})
+        );
+    }
+
+    #[test]
+    fn varlink_replies_errors_and_garbage() {
+        let reply = parse_varlink_reply(BROWSE_REPLY).unwrap();
+        assert!(reply.continues);
+        assert_eq!(reply.parameters["browserServiceData"][1]["family"], 2);
+        let last = parse_varlink_reply(br#"{"parameters":{"a":1}}"#).unwrap();
+        assert!(!last.continues);
+        // sd-varlink leaves an empty parameters object out of the message.
+        let empty = parse_varlink_reply(br#"{"continues":true}"#).unwrap();
+        assert_eq!(empty.parameters, Value::Null);
+        assert_eq!(
+            parse_varlink_reply(br#"{"error":"io.systemd.Resolve.NoSuchResourceRecord"}"#),
+            Err("io.systemd.Resolve.NoSuchResourceRecord".to_string())
+        );
+        assert_eq!(
+            parse_varlink_reply(
+                br#"{"error":"org.varlink.service.InvalidParameter","parameters":{"parameter":"type"}}"#
+            ),
+            Err(r#"org.varlink.service.InvalidParameter {"parameter":"type"}"#.to_string())
+        );
+        assert!(parse_varlink_reply(b"not json").is_err());
+        assert!(parse_varlink_reply(b"[1]").is_err());
     }
 
     // ── identity ───────────────────────────────────────────────────────────
@@ -1199,7 +1635,7 @@ mod tests {
         };
         // The LAN edge proves itself; the configured one answers 404.
         let status = assemble(
-            Some(BROWSE),
+            Some(&browse()),
             Some("https://losos-edge.example"),
             |_| true,
             &trust,
@@ -1216,7 +1652,7 @@ mod tests {
         // No root key on this box: nothing is asked and nothing is official.
         let asked = std::cell::Cell::new(0);
         let status = assemble(
-            Some(BROWSE),
+            Some(&browse()),
             None,
             |_| true,
             &NO_TRUST,
@@ -1234,19 +1670,33 @@ mod tests {
             .contains("only edges LosOS runs may process the market"));
     }
 
-    const BROWSE_WITH_RATHOLE: &str = "\
-=;eth0;IPv4;gateway;_losos-edge._tcp;local;gw.local;192.168.1.2;8443;\"url=http://gw.local:8443\" \"rathole=gw.local:2333\" \"enrol=open\" \"txtvers=1\"
-";
+    /// A gateway edge's resolve reply, with the `rathole=` record and the
+    /// other TXT strings `losos.edge.lan.advertise` publishes.
+    fn gateway(rathole: &str) -> Vec<Advert> {
+        let reply = resolved(
+            "gw.local",
+            8443,
+            &["192.168.1.2"],
+            &[
+                "url=http://gw.local:8443",
+                &format!("rathole={rathole}"),
+                "enrol=open",
+                "txtvers=1",
+            ],
+        );
+        advert_from_resolved("gateway", &reply)
+            .into_iter()
+            .collect()
+    }
 
     #[test]
     fn the_advert_carries_the_tunnel_endpoint_and_an_old_one_gets_the_default_port() {
-        let c = candidates(&parse_browse(BROWSE_WITH_RATHOLE));
+        let c = candidates(&gateway("gw.local:2333"));
         assert_eq!(c[0].rathole.as_deref(), Some("gw.local:2333"));
-        let c = candidates(&parse_browse(BROWSE));
+        let c = candidates(&browse());
         assert_eq!(c[0].rathole.as_deref(), Some("edge.local:2333"));
         // A malformed record is ignored, not dialled.
-        let bad = BROWSE_WITH_RATHOLE.replace("rathole=gw.local:2333", "rathole=gw.local:2333;rm");
-        let c = candidates(&parse_browse(&bad));
+        let c = candidates(&gateway("gw.local:2333;rm"));
         assert_eq!(c[0].rathole.as_deref(), Some("gw.local:2333"));
         assert!(plain_endpoint("[fe80::1]:2333"));
         assert!(!plain_endpoint("gw.local"));
@@ -1259,7 +1709,7 @@ mod tests {
     #[test]
     fn the_path_is_the_lan_edge_then_the_configured_one_then_none() {
         let both = assemble_with(
-            Some(BROWSE_WITH_RATHOLE),
+            Some(&gateway("gw.local:2333")),
             Some("https://losos-edge.example"),
             Some("edge.losos.cfd:2333"),
             |_| true,
@@ -1274,7 +1724,7 @@ mod tests {
         assert_eq!(both.to_json()["path"]["rathole"], "gw.local:2333");
 
         let official_only = assemble_with(
-            Some(BROWSE_WITH_RATHOLE),
+            Some(&gateway("gw.local:2333")),
             Some("https://losos-edge.example"),
             Some("edge.losos.cfd:2333"),
             |url| url.starts_with("https://"),
@@ -1299,7 +1749,7 @@ mod tests {
         assert!(no_endpoint.reachable);
         assert_eq!(no_endpoint.path, None);
 
-        let none = assemble(Some(BROWSE), None, |_| false, &NO_TRUST, |_, _| None, 1);
+        let none = assemble(Some(&browse()), None, |_| false, &NO_TRUST, |_, _| None, 1);
         assert_eq!(none.path, None);
         assert_eq!(none.to_json()["path"], Value::Null);
     }

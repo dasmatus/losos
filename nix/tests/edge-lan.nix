@@ -5,13 +5,13 @@
 #              API bound off-loopback and announced over mDNS as
 #              `_losos-edge._tcp` with a `url=` record (modules/edge.nix).
 #   * `box`  — the appliance's control plane (modules/daemon.nix, like
-#              nix/tests/admin-vm.nix) plus the Avahi the real box runs
-#              (modules/configuration.nix gives it; this test enables the same
-#              daemon by hand so it stays disko-free).
+#              nix/tests/admin-vm.nix) plus the mDNS the real box runs
+#              (modules/mdns.nix, which modules/configuration.nix turns on;
+#              this test turns it on by hand so it stays disko-free).
 #
 # Asserts what backend/src/edge.rs promises:
-#   1. the edge's advert is on the wire: `avahi-browse` on the box resolves
-#      the service with the url record;
+#   1. the edge's advert is on the wire: `resolvectl service` on the box
+#      resolves the service with the url record;
 #   2. lososd's scan finds it: `GET /api/edge` says reachable, source lan,
 #      and names the advertised URL;
 #   3. with the edge in reach, `change --mode mesh` is accepted (the gate is
@@ -111,7 +111,7 @@ pkgs.testers.nixosTest {
             tokenFile = proxyToken;
           };
           # The feature under test. The url defaults to the edge's own
-          # mDNS name; the box resolves it through nss-mdns.
+          # mDNS name; the box resolves it through resolved.
           lan.advertise = true;
           # Step 7: this edge is "official" to a box that trusts the fixture's
           # root. The certificate names the advertised URL, as it must.
@@ -143,26 +143,17 @@ pkgs.testers.nixosTest {
         imports = [
           ../../modules/options.nix
           ../../modules/daemon.nix
+          ../../modules/mdns.nix
         ];
         networking.hostName = "mattbox";
         losos.backend.package = lososPkgs.losos-ctl;
         # The unsigned second edge: see the header.
         losos.proxy.registrarUrl = "http://edge.local:8444";
         losos.proxy.officialRootKeyFile = "${identityFixture}/root.pub";
-        # What modules/configuration.nix gives the real box.
-        services.avahi = {
-          enable = true;
-          nssmdns4 = true;
-          openFirewall = true;
-          publish = {
-            enable = true;
-            addresses = true;
-          };
-        };
-        environment.systemPackages = [
-          pkgs.avahi
-          pkgs.jq
-        ];
+        # What modules/configuration.nix gives the real box: mDNS through
+        # resolved, which lososd's scan browses and which resolves edge.local.
+        losos.mdns.enable = true;
+        environment.systemPackages = [ pkgs.jq ];
         virtualisation = {
           memorySize = 1024;
           cores = 2;
@@ -178,12 +169,12 @@ pkgs.testers.nixosTest {
     box.start()
 
     edge.wait_for_unit("losos-registrar.service")
-    edge.wait_for_unit("avahi-daemon.service")
+    edge.wait_for_unit("systemd-resolved.service")
     edge.wait_until_succeeds("curl -fsS http://localhost:8443/health")
     edge.wait_for_unit("losos-plain-edge.service")
     edge.wait_until_succeeds("curl -fsS http://localhost:8444/health")
 
-    box.wait_for_unit("avahi-daemon.service")
+    box.wait_for_unit("systemd-resolved.service")
     box.wait_until_succeeds("losos-ctl state --json")
     box.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
     token = box.succeed("cat /var/secrets/losos-admin-token").strip()
@@ -204,7 +195,7 @@ pkgs.testers.nixosTest {
 
     # 1. The advert is on the wire and carries the url record.
     browse = box.wait_until_succeeds(
-      "avahi-browse --parsable --resolve --terminate _losos-edge._tcp | grep '^=' | grep IPv4"
+      "resolvectl service 'losos edge on edge' _losos-edge._tcp local"
     )
     print("browse:", browse)
     assert "url=http://edge.local:8443" in browse, f"advert without the url record: {browse!r}"
@@ -363,8 +354,10 @@ pkgs.testers.nixosTest {
     # 6. The edges come back; the gate reopens, the market with it.
     edge.succeed("systemctl start losos-plain-edge.service losos-registrar.service")
     edge.wait_until_succeeds("curl -fsS http://localhost:8443/health")
+    edge.wait_until_succeeds("curl -fsS http://localhost:8444/health")
     wait_edge(True, official=True)
-    assert len(edge_doc()["edges"]) == 2, edge_doc()
+    # The official one can come back a scan before the plain one does.
+    wait_edges(["http://edge.local:8443", "http://edge.local:8444"])
     code, body = api("POST", "/api/change", {"mode": "mesh"})
     assert code == "200", f"change to mesh after the edge returned answered {code}: {body!r}"
   '';

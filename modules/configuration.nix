@@ -8,6 +8,8 @@
 }:
 
 {
+  imports = [ ./mdns.nix ];
+
   # No nixpkgs.overlays. The one entry this file used to carry rebuilt
   # tahoe-lafs against Python 3.12 — nixos-unstable moved to 3.14 and
   # txi2p-tahoe does not build under it — and it left with Tahoe-LAFS itself
@@ -20,46 +22,38 @@
   services.userborn.enable = true;
 
   # Hostname + mDNS: the appliance is reachable on the LAN as `<hostName>.local`
-  # via Avahi/mDNS. (`networking.hostName` is the bare label, routed through the
-  # losos.hostName option so the admin app can change it — see modules/overrides.nix;
-  # Avahi publishes the `<hostname>.local` form. Keep it ≤15 chars for NetBIOS/mDNS
-  # safety.)
+  # through systemd-resolved's mDNS (modules/mdns.nix). (`networking.hostName`
+  # is the bare label, routed through the losos.hostName option so the admin
+  # app can change it — see modules/overrides.nix; resolved publishes the
+  # `<hostname>.local` form. Keep it ≤15 chars for NetBIOS/mDNS safety.)
   networking.hostName = config.losos.hostName;
   networking.networkmanager.enable = true;
 
-  # Publish `mattbox.local` and resolve other `.local` names on the LAN via
-  # mDNS, so the appliance is reachable by name without a local DNS server.
-  #
-  # allowInterfaces is deliberately unset (Avahi's default is every interface).
-  # This box is a repurposed mini-PC and mDNS is the *only* way to reach it —
-  # no SSH, no shell logins — so a hardcoded NIC list is a brick: a machine
-  # whose interface enumerates as eno1 or enp0s31f6 instead publishes nothing
-  # and has no recovery short of reinstalling.
-  services.avahi = {
+  # Publish `mattbox.local` and resolve other `.local` names on the LAN, so
+  # the appliance is reachable by name without a local DNS server, on every
+  # physical interface (modules/mdns.nix says why there is no interface list).
+  losos.mdns = {
     enable = true;
-    nssmdns4 = true;
-    publish = {
-      enable = true;
-      addresses = true;
-      workstation = true;
-    };
     # `_losos._tcp` on the front vhost's port says what this machine is, so
     # a computer on the LAN can list the boxes by browsing one service type
     # (LosOS Desktop does) instead of asking every workstation for
     # /setup/state.json. The release tag is there for a client to show; the
-    # name is the box's own, which is also its `.local` name.
-    extraServiceFiles.losos = ''
-      <?xml version="1.0" standalone='no'?>
-      <!DOCTYPE service-group SYSTEM "avahi-service.dtd">
-      <service-group>
-        <name replace-wildcards="yes">%h</name>
-        <service>
-          <type>_losos._tcp</type>
-          <port>80</port>
-          <txt-record>txtvers=1</txt-record>
-          <txt-record>version=${import ../nix/version.nix}</txt-record>
-        </service>
-      </service-group>
+    # name is the box's own (%H, the host name), which is also its `.local`
+    # name.
+    services.losos = ''
+      Name=%H
+      Type=_losos._tcp
+      Port=80
+      TxtText=txtvers=1 version=${import ../nix/version.nix}
+    '';
+    # What Avahi announced for every box before `_losos._tcp` existed, kept
+    # for whatever lists the machines on a LAN by it (a file manager's
+    # Network view, `avahi-browse` on someone's laptop). Port 9, discard, as
+    # Avahi had it: there is no service behind it.
+    services.workstation = ''
+      Name=%H
+      Type=_workstation._tcp
+      Port=9
     '';
   };
 

@@ -69,7 +69,7 @@ pkgs.testers.nixosTest {
       losos.gpu.enable = false;
 
       networking.networkmanager.enable = lib.mkForce false;
-      services.avahi.enable = lib.mkForce false;
+      losos.mdns.enable = lib.mkForce false;
 
       services.postgresql = {
         enable = true;

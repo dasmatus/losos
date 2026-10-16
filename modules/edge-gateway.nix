@@ -327,10 +327,11 @@ in
       cli
       edge.registrar.package
       pkgs.jq
-      pkgs.avahi
       pkgs.curl
     ];
-    # Resolve the boxes' `.local` names from the gateway's own shell.
-    services.avahi.nssmdns4 = true;
+    # Resolve the boxes' `.local` names from the gateway's own shell, even
+    # with lan.advertise turned off (modules/mdns.nix); `resolvectl query
+    # mattbox.local` and `resolvectl service` are the lookups by hand.
+    losos.mdns.enable = true;
   };
 }
