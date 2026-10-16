@@ -49,6 +49,33 @@ After a few wrong passwords in a row, LosOS Login refuses that name for
 a few minutes. Wait, then try again.
 :::
 
+## LosOS cloud and LosOS Git
+
+On the box's own network, LosOS cloud and LosOS Git sign you in with LosOS
+Login too. Open either one signed out and you land on LosOS Login; sign in
+there once and both apps let you in, with no second password.
+
+The person who set up the box arrives in both apps as the owner's account,
+the one that holds the files and repositories from before. Anyone else gets
+an account of their own in each app the first time they open it, named
+after their sign-in name.
+
+The apps keep their own sign-in page where LosOS Login cannot help:
+
+- through the internet (the box's public address), where LosOS Login does not
+  answer;
+- while LosOS Login is still starting after a boot;
+- on LosOS cloud, at `/nextcloud/login?direct=1`, if you ask for it.
+
+There, the owner signs in with their password as before. Desktop and phone
+apps, WebDAV and `git` keep using app passwords and tokens.
+
+**Log out** in LosOS cloud also signs you out of LosOS Login. LosOS Git's
+**Sign out** does not: while you are signed in to LosOS Login, LosOS Git
+signs you straight back in. Sign out of LosOS Login (in the admin pages or
+in LosOS cloud) to leave both. An app tab that is already open stays signed
+in until you sign out of that app too.
+
 ## Who sees what
 
 The admin pages are split into sections: storage, backup, apps, market

@@ -45,6 +45,7 @@ let
   # path (modules/nextcloud-common.nix). See that file's header for why it is
   # data in a third file rather than an option.
   nc = import ../modules/nextcloud-stack.nix { inherit pkgs lib; };
+  signIn = import ../modules/app-sign-in.nix { inherit lib; };
 
   # Every image gets these. `/bin/sh` comes from bash and is what Forgejo's
   # generated git hooks and Nextcloud's occ expect to exist; coreutils is there
@@ -388,6 +389,16 @@ let
         ${nc.federation.occ "occ" ''"$(cat "$conf_dir/federation")"''}
       else
         echo "losos-nextcloud: $conf_dir/federation is missing; federation settings left unchanged." >&2
+      fi
+
+      # Sign-in with LosOS Login, on or off as the host says
+      # (modules/workloads.nix renders the file; modules/app-sign-in.nix
+      # says what each value sets). Missing on a host config that predates
+      # it: the app's own sign-in page, as before.
+      if [ -r "$conf_dir/sign-in" ]; then
+        ${signIn.nextcloud.occ "occ" ''"$(cat "$conf_dir/sign-in")"''}
+      else
+        occ app:disable user_saml >/dev/null 2>&1 || true
       fi
 
       # The owner's box-wide settings that live in Nextcloud's database
