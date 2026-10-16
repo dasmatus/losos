@@ -24,8 +24,13 @@ import styles from './home.module.css';
 
 export {styles};
 
-export const RELEASES = 'https://github.com/dasmatus/losos/releases/latest';
 export const SOURCE = 'https://github.com/dasmatus/losos';
+
+/** The newest release's page, from docusaurus.config.ts. */
+export function useReleaseUrl(): string {
+  const {siteConfig} = useDocusaurusContext();
+  return siteConfig.customFields?.releaseUrl as string;
+}
 
 export type Action = {label: ReactNode; to?: string; href?: string};
 
