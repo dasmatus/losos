@@ -37,6 +37,7 @@ import { paneFromPath, paneHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { SHORTCUT_ARIA, openPalette, shortcutLabel } from "@/palette/store";
 import { paneById, type SettingsPaneId } from "@/screens/settings/panes";
+import { openInNewTab, PinMenu } from "@/components/pin-menu";
 import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
 import { pinKey, viewPin, type PinView } from "@/lib/pins";
 
@@ -322,26 +323,29 @@ function PinnedSection({
           {views.map((view) => {
             const name = view.labelKey !== null ? t(view.labelKey) : view.label;
             const active = view.inApp && pathname === view.href;
+            const pin = pins.find((candidate) => pinKey(candidate) === view.key) ?? null;
             return (
               <SidebarMenuItem key={view.key}>
-                <SidebarMenuButton
-                  isActive={active}
-                  tooltip={name}
-                  render={
-                    view.inApp ? (
-                      <Link to={view.href} aria-current={active ? "page" : undefined} />
-                    ) : (
-                      <a
-                        href={view.href}
-                        title={view.detail === null ? undefined : `${name} · ${view.detail}`}
-                        {...(view.newTab ? { target: "_blank", rel: "noreferrer noopener" } : {})}
-                      />
-                    )
-                  }
-                >
-                  <Glyph icon={view.icon} active={active} />
-                  <span className="group-data-[collapsible=icon]/sidebar:sr-only">{name}</span>
-                </SidebarMenuButton>
+                <PinMenu pin={pin} name={name} newTab={() => openInNewTab(view.href)}>
+                  <SidebarMenuButton
+                    isActive={active}
+                    tooltip={name}
+                    render={
+                      view.inApp ? (
+                        <Link to={view.href} aria-current={active ? "page" : undefined} />
+                      ) : (
+                        <a
+                          href={view.href}
+                          title={view.detail === null ? undefined : `${name} · ${view.detail}`}
+                          {...(view.newTab ? { target: "_blank", rel: "noreferrer noopener" } : {})}
+                        />
+                      )
+                    }
+                  >
+                    <Glyph icon={view.icon} active={active} />
+                    <span className="group-data-[collapsible=icon]/sidebar:sr-only">{name}</span>
+                  </SidebarMenuButton>
+                </PinMenu>
                 <SidebarMenuAction
                   aria-label={t("pins.unpin", { name })}
                   disabled={busy}

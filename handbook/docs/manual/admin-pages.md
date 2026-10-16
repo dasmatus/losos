@@ -83,6 +83,9 @@ every browser you sign in from shows the same pins.
   walks the folders of LosOS cloud, and **Repositories**.
 - Point at a pin in the sidebar and click the crossed-out pin to unpin it.
   The [search](#search) finds pins too.
+- Right-click a file, folder or repository in the search, an app tile on
+  the Overview, or a pin in the sidebar, and choose **Pin to sidebar** or
+  **Unpin from sidebar**. On a touch screen, press and hold instead.
 
 ![The Overview with six pins under Pinned in the sidebar, and the pinned Calendar and Notes tiles marked.](../img/pins-overview.png)
 
