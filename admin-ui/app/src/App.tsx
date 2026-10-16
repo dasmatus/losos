@@ -1,7 +1,7 @@
 import * as React from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Compass01Icon } from "@hugeicons/core-free-icons";
+import { Compass01Icon, UserCircleIcon } from "@hugeicons/core-free-icons";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,7 @@ import {
   signOut,
   subscribeAuth,
   TOKEN_PATTERN,
+  useMe,
 } from "@/lib/api";
 import { followAuth } from "@/lib/look";
 import { followPins } from "@/lib/pins";
@@ -362,6 +363,7 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
         <div className="flex-1" />
         <LanguagePicker />
         <ThemeToggle />
+        {signedIn && <WhoIsSignedIn />}
         {signedIn && (
           <Button variant="ghost" size="sm" onClick={signOut}>
             {t("shell.signOut")}
@@ -369,6 +371,41 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
         )}
       </div>
     </header>
+  );
+}
+
+/* Who this tab is signed in as, from GET /api/me: the person's name on
+ * LosOS Login, or the spare key. The name hides on a phone, where the icon
+ * stays and the tooltip says the rest. */
+function WhoIsSignedIn() {
+  const t = useT();
+  const me = useMe();
+  if (me === null) return null;
+  const name = me.spareKey ? t("shell.me.spareKey") : (me.displayName ?? me.name ?? "");
+  const tip = me.spareKey
+    ? t("shell.me.spareKeyTip")
+    : `${t("shell.me.signedIn", { name: me.name ?? name })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`;
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              aria-label={tip}
+              data-testid="signed-in-as"
+              className="inline-flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            />
+          }
+        >
+          <HugeiconsIcon icon={UserCircleIcon} size={18} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <span className="hidden max-w-[12rem] truncate sm:inline">{name}</span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="end" className="max-w-[22rem]">
+          {tip}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

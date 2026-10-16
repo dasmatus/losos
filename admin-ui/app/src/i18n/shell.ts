@@ -31,6 +31,27 @@ export default defineMessages({
     de: "Losos ist Slowakisch für Lachs. An Halloween ist das Logo ein Teller davon.",
   },
   "shell.signOut": { en: "Sign out", sk: "Odhlásiť sa", de: "Abmelden" },
+  "shell.me.spareKey": { en: "Spare admin key", sk: "Náhradný kľúč", de: "Ersatzschlüssel" },
+  "shell.me.signedIn": {
+    en: "Signed in on LosOS Login as {name}.",
+    sk: "Prihlásený v LosOS Login ako {name}.",
+    de: "Bei LosOS Login angemeldet als {name}.",
+  },
+  "shell.me.admin": {
+    en: "You are an administrator, so every pane is yours.",
+    sk: "Ste správca, takže môžete používať všetky časti.",
+    de: "Du bist Administrator, also gehören dir alle Bereiche.",
+  },
+  "shell.me.limited": {
+    en: "You see the panes your account was given.",
+    sk: "Vidíte časti, ktoré dostal váš účet.",
+    de: "Du siehst die Bereiche, die dein Konto bekommen hat.",
+  },
+  "shell.me.spareKeyTip": {
+    en: "This tab is unlocked with the spare admin key, which opens every pane.",
+    sk: "Táto karta je odomknutá náhradným správcovským kľúčom, ktorý otvorí všetky časti.",
+    de: "Dieser Tab ist mit dem Ersatz-Admin-Schlüssel entsperrt, der alle Bereiche öffnet.",
+  },
   "shell.notFound.title": { en: "Nothing here", sk: "Nič tu nie je", de: "Hier ist nichts" },
   "shell.notFound.body": {
     en: "That address does not match any section of this box's admin page.",
