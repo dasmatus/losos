@@ -408,6 +408,7 @@ await check('step 2 shows the four password rules up front and ticks them as the
   assert.deepStrictEqual(await met(), ['true', 'true', 'true', 'true'], 'all four should be met');
   // The server's refusal has a local twin: a password that misses a rule is
   // refused next to the field, before any request, naming the rule.
+  await page.locator('input[name="username"]').fill('matus');
   await field.fill('correct horse battery staple');
   await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
@@ -797,11 +798,13 @@ await check('the OS picker is a Toggle Group: arrow keys switch the command too'
   await page.close();
 });
 
-await check('the password form is two Fields, and a refusal marks both invalid with one announced error', async () => {
+await check('the form is the sign-in name, the password and its repeat as three Fields, and a refusal marks both passwords invalid with one announced error', async () => {
   const { page } = await open({ claimed: false });
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  const fields = page.locator('form [data-slot="field"]');
-  assert.equal(await fields.count(), 2, 'expected the password and its repeat as two fields');
+  const all = page.locator('form [data-slot="field"]');
+  assert.equal(await all.count(), 3, 'expected the name, the password and its repeat as three fields');
+  assert.equal(await all.first().locator('input[name="username"]').count(), 1, 'the sign-in name is not the first field');
+  const fields = page.locator('form [data-slot="field"]:has(input[type="password"])');
   const group = fields.first().locator('[data-slot="input-group"]');
   assert.equal(await group.locator('input[name="new-password"]').count(), 1, 'the password is not inside the Input Group');
   assert.equal(await group.getByRole('button', { name: /show the password/i }).count(), 1, 'the eye is not inside the field');

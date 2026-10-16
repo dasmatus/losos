@@ -195,19 +195,25 @@ this is the reasoning behind it.
   "Fixing" it with `allow 127.0.0.1` exposes the whole admin interface to the
   internet whenever `losos.proxy.enable` is on. Test against lososd's :8082
   directly, or curl with a LAN source address.
-- **The owner's password unlocks the admin pages, and Nextcloud is the
-  judge.** `POST /api/sign-in` (`backend/src/signin.rs`) sends the password
-  to Nextcloud over loopback (`$LOSOS_NEXTCLOUD_LOGIN_URL`, set per mode in
-  `daemon.nix`) in a Basic header and answers with the admin token on a 200.
-  lososd keeps no hash of the password on purpose, because a second copy
-  would drift the moment the owner changed it inside Nextcloud. The cost is
-  that the route answers 503 while Nextcloud is down, and that is what the
-  printed spare key is for. So don't remove the key path from the unlock
-  dialog, and don't turn the sign-in probe into a `curl -u`, which would put
-  the password in an argv. A new password needs 12+ characters, both cases, a
-  digit and a symbol (`setup::validate_password`). A sign-in checks only the
-  candidate's shape (`signin::validate_candidate`). Anything stricter would
-  lock out an owner whose password was set under an older rule set.
+- **Sign-in is LosOS Login (Authelia), over a people file lososd writes.**
+  People sign in at `https://<host>/auth/` (`modules/identity.nix`). nginx asks Authelia
+  before every `/api/` request (`auth_request`) and passes `Remote-User`,
+  which lososd believes only from loopback and only with
+  `LOSOS_IDENTITY=authelia`. lososd is the only writer of
+  `/var/lib/losos-identity/users.yml` (`backend/src/people.rs`, argon2id
+  hashes), and Authelia must start only after that file exists: its file
+  backend refuses an empty users map, and with no file it writes an example
+  account of its own. A request with `Authorization: Bearer` skips Authelia
+  in the authz location and lososd checks the token itself, which is what
+  keeps the spare key working while Authelia is down; keep that bypass, and
+  keep the spare-key path in the sign-in dialog. Who may call what is
+  `backend/sections.json`, read by lososd (`backend/src/sections.rs`) and by
+  nginx; a route missing there is admin only. `tests/identity.nix` boots it.
+  `backend/src/signin.rs` now only holds the LosOS cloud login helpers that
+  device setup (`losos cloud setup`, `losos git setup`) and the pin picker
+  use: keep the password in a Basic header over loopback, never a `curl -u`
+  (it would be in an argv), and let `signin::validate_candidate` check shape
+  only.
 - **Nextcloud trusts the box's own IP address through one nginx header.**
   The `/nextcloud` location sets `X-Losos-Server-Addr $server_addr`, and the
   pod's `losos.config.php` appends that value to `trusted_domains` per

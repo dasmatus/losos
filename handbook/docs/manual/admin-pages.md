@@ -7,8 +7,9 @@ sidebar_position: 1
 
 The admin pages are the box's own web page at `http://<address>/`. The box
 serves them to your local network only, even when an edge publishes the box.
-Every tab asks for the owner's password before it shows anything you can
-change.
+Every tab asks you to sign in with your own name and password on LosOS
+Login, the box's sign-in page at `https://<address>/auth/`, before it shows
+anything you can change.
 
 ## The sections
 
@@ -53,9 +54,10 @@ The arrow keys move through the list, Enter opens the highlighted entry and
 Escape closes the list. Files and repositories open in their own app, and
 Ctrl+Enter or Cmd+Enter opens one in a new tab.
 
-:::note[File search needs your password]
-File search needs one sign-in with your password, not the spare key. Until
-then the list says so in place of the files.
+:::note[File search needs the box's app password]
+File search uses an app password the box gets from LosOS cloud when the
+owner's password is set, which the wizard does. Without it, the list says so
+in place of the files; see [How the box lists your files](#pins) below.
 :::
 
 To search inside your LosOS cloud files, the box keeps an index of their
@@ -95,10 +97,11 @@ every browser you sign in from shows the same pins.
 
 :::note[How the box lists your files]
 The box lists your files with an app password it asks LosOS cloud for when
-you sign in with your password. Until you have done that once, the
-**Files** tab asks you to. The app password shows up in LosOS cloud's
-security settings as "LosOS admin page", and revoking it there stops the
-listing until your next sign-in. The sidebar holds 24 pins.
+the owner's password is set, which the wizard does. The app password shows
+up in LosOS cloud's security settings as "LosOS admin page". Revoking it
+there stops the listing, and file search, until the owner's password is set
+again, through the spare-key route in
+[Forgot the password](../troubleshooting/forgot-password#you-have-the-spare-admin-key). The sidebar holds 24 pins.
 :::
 
 ## The tour
@@ -126,7 +129,9 @@ The bar at the top switches between English, Slovak and German, and between
 
 ## Sign out
 
-**Sign out** forgets the admin key in this tab. Closing the tab does the
+**Sign out** ends your sign-in on LosOS Login too, so the next visit asks
+for your name and password again. If you opened the pages with the spare
+key, it forgets the key in this tab instead, and closing the tab does the
 same. See [Sign-in and the spare key](sign-in-and-spare-key).
 
 ## What the admin pages cannot do

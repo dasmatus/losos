@@ -115,6 +115,20 @@ pkgs.testers.nixosTest {
         assert m, f"no session cookie for {name}: {head}"
         return m.group(1)
 
+    def journal_mark():
+        """Where Authelia's journal ends now; see reloaded_since."""
+        return box.succeed(
+            "journalctl -u authelia-losos -n 0 --show-cursor | sed -n 's/^-- cursor: //p'"
+        ).strip()
+
+    def reloaded_since(mark):
+        """Wait until Authelia has read the people file again after `mark`."""
+        box.wait_until_succeeds(
+            f"journalctl -u authelia-losos --after-cursor='{mark}'"
+            " | grep -q 'Reloaded successfully'",
+            timeout=60,
+        )
+
     def api(path, cookie=None, method="GET", data=None, extra=""):
         args = f"-X {method} https://{BOX}{path} {extra}"
         if cookie:
@@ -193,11 +207,19 @@ pkgs.testers.nixosTest {
     with subtest("the spare key opens the box without Authelia"):
         code, body = api("/api/me", extra=f"-H 'Authorization: Bearer {spare}'")
         assert code == 200 and json.loads(body)["spareKey"] is True, (code, body)
+        assert status(f"http://{BOX}/auth/api/health") == "200"
         box.systemctl("stop authelia-losos.service")
         code, _ = api("/api/state", extra=f"-H 'Authorization: Bearer {spare}'")
         assert code == 200, code
+        # The admin pages ask this, over plain http too, and wait while it
+        # is not 200 rather than send anyone to an error page.
+        assert status(f"http://{BOX}/auth/api/health") == "502"
+        # Without the key, Authelia being down reads as signed out, not 500.
+        code, _ = api("/api/me")
+        assert code == 401, code
         box.systemctl("start authelia-losos.service")
         box.wait_for_open_port(9091)
+        laptop.wait_until_succeeds(f"curl -sf http://{BOX}/auth/api/health", timeout=60)
         # The spare key cannot make a second first administrator.
         code, _ = api(
             "/api/setup/claim",
@@ -217,7 +239,10 @@ pkgs.testers.nixosTest {
 
     with subtest("a person in one section gets that section and no more"):
         # Nothing in the admin pages adds people yet, so Eva is written in
-        # the way lososd writes the file, hashed by Authelia's own tool.
+        # the way lososd writes the file, hashed by Authelia's own tool, and
+        # renamed into place: a file Authelia sees half made is a failed
+        # reload.
+        mark = journal_mark()
         box.succeed(
             "${pkgs.writeShellScript "add-eva" ''
               set -eu
@@ -227,12 +252,11 @@ pkgs.testers.nixosTest {
                 '.users.eva = {disabled: false, displayname: "Eva", email: "eva@mattbox.local",
                   groups: ["losos-backup"], password: $h}' \
                 /var/lib/losos-identity/users.yml > /tmp/users.yml
-              install -m 0640 -g authelia-losos /tmp/users.yml /var/lib/losos-identity/users.yml
+              install -m 0640 -g authelia-losos /tmp/users.yml /var/lib/losos-identity/.users.tmp
+              mv /var/lib/losos-identity/.users.tmp /var/lib/losos-identity/users.yml
             ''}"
         )
-        box.wait_until_succeeds(
-            "journalctl -u authelia-losos --since -1min | grep -qi 'reload'", timeout=60
-        )
+        reloaded_since(mark)
         eva = sign_in("eva", "Eva-Long-Password-3")
         code, body = api("/api/me", eva)
         me = json.loads(body)
@@ -249,20 +273,22 @@ pkgs.testers.nixosTest {
         assert '"outcome":"forbidden"' in audit, audit
 
     with subtest("a person changes their own password and it takes at once"):
+        mark = journal_mark()
         code, body = api(
             "/api/set-password", eva, method="POST", data={"password": "Eva-New-Password-44"}
         )
         assert code == 200, (code, body)
         # Eva does not own LosOS cloud, so it was not touched.
         assert json.loads(body)["cloud"] is None, body
-        box.sleep(3)
+        reloaded_since(mark)
         eva = sign_in("eva", "Eva-New-Password-44")
         assert api("/api/me", eva)[0] == 200
 
     with subtest("a removed account is refused at once"):
         box.succeed(
             "jq 'del(.users.eva)' /var/lib/losos-identity/users.yml > /tmp/u.yml"
-            " && install -m 0640 -g authelia-losos /tmp/u.yml /var/lib/losos-identity/users.yml"
+            " && install -m 0640 -g authelia-losos /tmp/u.yml /var/lib/losos-identity/.users.tmp"
+            " && mv /var/lib/losos-identity/.users.tmp /var/lib/losos-identity/users.yml"
         )
         code, body = api("/api/me", eva)
         assert code in (401, 403), (code, body)

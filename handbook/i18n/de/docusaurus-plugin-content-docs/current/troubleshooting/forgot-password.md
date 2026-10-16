@@ -8,38 +8,45 @@ slug: /troubleshooting/forgot-password
 
 <div className="losos-symptom">
 
-**Was du siehst:** „Dieses Passwort wurde nicht akzeptiert.“ im
-Entsperrdialog oder auf der Anmeldeseite von LosOS cloud.
+**Was du siehst:** LosOS Login, die Anmeldeseite der Box unter
+`https://<box>/auth/`, nimmt deinen Anmeldenamen und dein Passwort nicht an,
+oder die Anmeldeseite von LosOS cloud nimmt das Passwort nicht an.
 
 </div>
 
 ## Erst sicherstellen, dass es am Passwort liegt \{#first-make-sure-it-is-the-password}
 
-- **LosOS cloud läuft nicht.** Der Entsperrdialog sagt dann „LosOS cloud
-  läuft gerade nicht, deshalb kann das Passwort im Moment nicht geprüft
-  werden“, statt das Passwort abzulehnen. Warte nach einem Neustart ein paar
-  Minuten, oder nimm den Ersatzschlüssel wie unten beschrieben.
-- **Eine Box von vor dem 7. Oktober 2026** lehnte auf den Admin-Seiten
-  jedes Passwort ab, auch wenn LosOS cloud es annahm, weil das Passwort nie
-  bei der Prüfung ankam. Pull Request #71 hat das behoben, und das
-  nächtliche Update bringt die Korrektur mit. Bis sie ankommt, funktioniert
-  der Ersatzschlüssel.
-- **Zu viele Versuche.** Zehn Fehlversuche sperren den Rechner für eine
-  wachsende Zeit aus. Warte ein paar Minuten.
+- **Der Anmeldename.** Anmeldenamen sind kleingeschrieben. Prüf den Namen
+  genauso wie das Passwort.
+- **Zu viele Versuche.** Nach einigen falschen Passwörtern hintereinander
+  weist LosOS Login diesen Namen ein paar Minuten lang ab, auch mit dem
+  richtigen Passwort. Warte und versuch es dann noch einmal.
+- **Eine früher eingerichtete Box** hat noch keine Anmeldenamen. Ihr Dialog
+  sagt **Lege deine Anmeldung an** und braucht den Ersatz-Admin-Schlüssel;
+  siehe
+  [Eine früher eingerichtete Box](../manual/sign-in-and-spare-key#a-box-set-up-earlier).
+
+## Jemand anderes hat die Box eingerichtet \{#someone-else-set-up-the-box}
+
+Frag diese Person. Die Admin-Seiten haben noch keine Seite zum Verwalten von
+Personen, also lässt sich nur das Passwort des Besitzers neu setzen, mit dem
+Ersatzschlüssel wie unten beschrieben.
 
 ## Du hast den Ersatz-Admin-Schlüssel \{#you-have-the-spare-admin-key}
 
-![Der Entsperrdialog, der nach dem Ersatz-Admin-Schlüssel fragt.](@site/docs/img/unlock-spare-key-de.png)
+![Der Dialog, der nach dem Ersatz-Admin-Schlüssel fragt.](@site/docs/img/unlock-spare-key-de.png)
 
-Wähle im Entsperrdialog **Stattdessen den Ersatz-Admin-Schlüssel verwenden**
-und füge den Schlüssel mit 64 Zeichen vom gedruckten Blatt ein. Die
-Admin-Seiten gehen auf.
+Wähle im Dialog **An dieser Box anmelden** die Option **Stattdessen den
+Ersatz-Admin-Schlüssel verwenden** und füge den Schlüssel mit 64 Zeichen vom
+gedruckten Blatt ein. Die Admin-Seiten gehen auf.
 
-Mit dem Schlüssel kannst du außerdem ein neues Besitzer-Passwort für LosOS
-cloud setzen, über denselben Weg, den der Assistent benutzt hat. In den
-Bereichen gibt es dafür noch keine Schaltfläche, also führst du einen
-Befehl auf einem Rechner im LAN aus. Ersetze den Schlüssel, die Adresse und
-das Passwort. Das neue Passwort muss die vier Regeln erfüllen:
+Mit dem Schlüssel kannst du außerdem ein neues Passwort für den Besitzer
+setzen, also für die Person, die die Box eingerichtet hat, über denselben
+Weg, den der Assistent benutzt hat. Er ändert das Anmeldepasswort des
+Besitzers und sein Passwort für LosOS cloud zusammen. In den Bereichen gibt
+es dafür noch keine Schaltfläche, also führst du einen Befehl auf einem
+Rechner im LAN aus. Ersetze den Schlüssel, die Adresse und das Passwort. Das
+neue Passwort muss die vier Regeln erfüllen:
 
 ```bash
 curl -H "Authorization: Bearer <spare key>" -H "Content-Type: application/json" \
@@ -47,22 +54,22 @@ curl -H "Authorization: Bearer <spare key>" -H "Content-Type: application/json" 
   http://<address>/api/set-password
 ```
 
-Die Antwort nennt das Konto, das zurückgesetzt wurde. Melde dich mit dem
-neuen Passwort bei LosOS cloud an. Ab dann akzeptieren es auch die
-Admin-Seiten.
+Die Antwort nennt das Konto in LosOS cloud, das zurückgesetzt wurde. Melde
+dich bei LosOS Login mit deinem Anmeldenamen und dem neuen Passwort an und
+bei LosOS cloud mit demselben Passwort.
 
 ## Du hast keins von beiden \{#you-have-neither}
 
-LosOS cloud prüft das Passwort und hat die einzige Kopie davon. Einen Link
-zum Zurücksetzen gibt es nicht, weil die Box keine Mails verschickt, und
-auch keine Shell, auf der man ein Zurücksetzen ausführen könnte. Bevor du
-neu installierst, prüf, ob ein anderes Konto in LosOS cloud die
-Admin-Rolle hat. Dieses Konto kann das Passwort des Besitzers auf der Seite
-Benutzer von LosOS cloud zurücksetzen. Sonst führt der einzige Weg zurück
-über eine **Neuinstallation**, die die Festplatte löscht, und danach über
-das Wiederherstellen deiner Dateien aus der anderen Kopie, die du
-aufbewahrst, etwa dem Ordner des Desktop-Clients oder den Uploads vom
-Handy.
+Die Box behält dein Passwort nur als Hash. Einen Link zum Zurücksetzen gibt
+es nicht, weil die Box keine Mails verschickt, und auch keine Shell, auf der
+man ein Zurücksetzen ausführen könnte. Bevor du neu installierst, prüf, ob
+ein anderes Konto in LosOS cloud die Admin-Rolle hat. Dieses Konto kann das
+Passwort des Besitzers auf der Seite Benutzer von LosOS cloud zurücksetzen.
+Damit kommst du wieder an deine Dateien, aber nicht in die Admin-Seiten. Für
+die Admin-Seiten führt der einzige Weg zurück über eine
+**Neuinstallation**, die die Festplatte löscht, und danach über das
+Wiederherstellen deiner Dateien aus der anderen Kopie, die du aufbewahrst,
+etwa dem Ordner des Desktop-Clients oder den Uploads vom Handy.
 
 ## Damit es nicht wieder passiert \{#preventing-the-next-time}
 

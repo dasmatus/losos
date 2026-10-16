@@ -7,8 +7,9 @@ sidebar_position: 1
 
 Die Admin-Seiten sind die eigene Webseite der Box unter `http://<address>/`.
 Die Box liefert sie nur in dein lokales Netz aus, auch wenn eine Edge die Box
-veröffentlicht. Jeder Tab fragt nach dem Passwort des Besitzers, bevor er
-etwas zeigt, das du ändern kannst.
+veröffentlicht. Jeder Tab bittet dich, dich mit deinem eigenen Namen und
+Passwort bei LosOS Login anzumelden, der Anmeldeseite der Box unter
+`https://<address>/auth/`, bevor er etwas zeigt, das du ändern kannst.
 
 ## Die Bereiche \{#the-sections}
 
@@ -54,9 +55,11 @@ markierten Eintrag, und Escape schließt die Liste. Dateien und Repositorys
 öffnen sich in ihrer eigenen App, und Strg+Enter oder Cmd+Enter öffnet einen
 Eintrag in einem neuen Tab.
 
-:::note[Die Dateisuche braucht dein Passwort]
-Die Dateisuche braucht eine Anmeldung mit deinem Passwort, nicht mit dem
-Ersatzschlüssel. Bis dahin sagt die Liste das anstelle der Dateien.
+:::note[Die Dateisuche braucht das App-Passwort der Box]
+Die Dateisuche benutzt ein App-Passwort, das die Box von LosOS cloud
+bekommt, wenn das Passwort des Besitzers gesetzt wird, und das tut der
+Assistent. Fehlt es, sagt die Liste das anstelle der Dateien; siehe
+[Wie die Box deine Dateien auflistet](#pins) weiter unten.
 :::
 
 Damit du in deinen Dateien in LosOS cloud suchen kannst, führt die Box einen
@@ -103,11 +106,12 @@ anmeldest, dieselben Einträge zeigt.
 
 :::note[Wie die Box deine Dateien auflistet]
 Die Box listet deine Dateien mit einem App-Passwort auf, das sie bei LosOS
-cloud anfordert, wenn du dich mit deinem Passwort anmeldest. Bis du das
-einmal getan hast, bittet dich der Tab **Dateien** darum. Das App-Passwort
-erscheint in den Sicherheitseinstellungen von LosOS cloud als „LosOS admin
-page“, und wenn du es dort widerrufst, endet die Auflistung bis zu deiner
-nächsten Anmeldung. Die Seitenleiste fasst 24 angeheftete Einträge.
+cloud anfordert, wenn das Passwort des Besitzers gesetzt wird, und das tut
+der Assistent. Das App-Passwort erscheint in den Sicherheitseinstellungen
+von LosOS cloud als „LosOS admin page“. Widerrufst du es dort, enden die
+Auflistung und die Dateisuche, bis das Passwort des Besitzers wieder gesetzt
+wird, über den Weg mit dem Ersatzschlüssel unter
+[Passwort vergessen](../troubleshooting/forgot-password#you-have-the-spare-admin-key). Die Seitenleiste fasst 24 angeheftete Einträge.
 :::
 
 ## Die Tour \{#the-tour}
@@ -137,9 +141,11 @@ zwischen „Wie im Browser“, hell und dunkel. Dieser Browser merkt sich beides
 
 ## Abmelden \{#sign-out}
 
-**Abmelden** vergisst den Admin-Schlüssel in diesem Tab. Das Schließen des
-Tabs bewirkt dasselbe. Siehe [Anmeldung und der
-Ersatzschlüssel](sign-in-and-spare-key).
+**Abmelden** beendet deine Anmeldung auch bei LosOS Login, sodass der
+nächste Besuch wieder nach Name und Passwort fragt. Hast du die Seiten mit
+dem Ersatzschlüssel geöffnet, vergisst es stattdessen den Schlüssel in
+diesem Tab, und das Schließen des Tabs bewirkt dasselbe. Siehe [Anmeldung
+und der Ersatzschlüssel](sign-in-and-spare-key).
 
 ## Was die Admin-Seiten nicht können \{#what-the-admin-pages-cannot-do}
 

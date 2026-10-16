@@ -29,15 +29,16 @@ it never enters the Nix store.
 The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
 `overrides.nix` and runs `nixos-rebuild switch`.
 
-- On an unclaimed box, the first LAN caller to `POST /api/setup/claim` can set
-  the owner password without a token. The response hands that caller the admin
-  token exactly once, then the route refuses further claims. Set up a new box
-  only on a trusted LAN: whoever claims it first becomes its owner. The window
-  is guarded by source address (`lanOnly`, with loopback denied), not by a
-  secret, and closes on first use. While Nextcloud is still installing itself
-  the route answers 503 and changes nothing (`GET /api/setup/claim` says
-  `ready: false` with the reason); the window stays open until a claim
-  succeeds.
+- On an unclaimed box, the first LAN caller to `POST /api/setup/claim` can
+  set the owner password, and the first person's sign-in name and password,
+  without a token. That person is an administrator. The response hands that
+  caller the admin token exactly once, then the route refuses further
+  claims. Set up a new box only on a trusted LAN: whoever claims it first
+  becomes its owner. The window is guarded by source address (`lanOnly`,
+  with loopback denied), not by a secret, and closes on first use. While
+  Nextcloud is still installing itself the route answers 503 and changes
+  nothing (`GET /api/setup/claim` says `ready: false` with the reason); the
+  window stays open until a claim succeeds.
 - The claim route also refuses what a web page in a LAN browser could send:
   a body that is not `application/json` (which would skip the CORS
   preflight), a `Host` that is not the box's hostname, `<hostname>.local` or
@@ -48,21 +49,13 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
   state path is unclaimed.
 - The file must contain exactly 64 lowercase hex characters. Anything else is
   discarded and replaced, with an error in the log.
-- A claimed box gets the token again only by proving the owner's password:
-  `POST /api/sign-in` (`backend/src/signin.rs`) asks Nextcloud, over
-  loopback, whether the password is the admin account's, and answers with
-  the token on a 200. lososd keeps no copy or hash of the password, so there
-  is exactly one credential and it lives in Nextcloud; the cost is that the
-  route answers 503 while Nextcloud is not running, which is what the spare
-  admin key shown (and printable) during setup is for. The route is unauthenticated by
-  nature and so carries the claim route's three same-box checks, and the
-  per-address throttle counts a wrong password as it counts a wrong token;
-  Nextcloud's own brute-force protection sees the browser's address through
-  `X-Forwarded-For` and throttles it too.
+- A claimed box never hands the token out again. People sign in through
+  LosOS Login instead ([Signing in](#signing-in)), and the token stays what it
+  was printed as during setup: the spare admin key.
 - To rotate the token, write a new 64-character lowercase-hex value to the
   file and restart `lososd`, or delete the file and restart it to mint a
-  random replacement. The next password sign-in hands out the new one; the
-  printed spare is then stale.
+  random replacement. Nothing on the box shows the new value, so the printed
+  spare is then stale and only someone who can read the file has a key.
 - Comparison is constant-time.
 - The API listens on `127.0.0.1` only. nginx proxies `/api/` to it behind the
   LAN-only guard. The hostNetwork Nextcloud and Forgejo pods share that
@@ -76,6 +69,58 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
   a hostNetwork pod that binds the LAN address and goes through nginx. Not
   covered: a box with two local addresses, where a pod binds one and connects
   to the other.
+
+## Signing in
+
+People sign in to the admin pages on LosOS Login, which is Authelia
+(`modules/identity.nix`, `losos.identity.enable`, on by default), on
+`127.0.0.1:${losos.identity.port}` (9091) behind nginx at
+`https://<host>/auth/`. The portal is https only; plain http to `/auth/`
+redirects.
+
+- **The people file.** `/var/lib/losos-identity/users.yml` holds each
+  person's name, groups and argon2id hash. lososd is its only writer
+  (`backend/src/people.rs`); it is root-owned and readable by Authelia's
+  group. Authelia watches it, so a password change or a removed account takes
+  effect at once. Password change and reset inside Authelia are off, because
+  the box sends no mail. A sign-in name is lower case, starts with a letter,
+  then letters, digits, `.`, `_` or `-`, at most 32 characters.
+- **Start order.** Authelia starts only once the people file exists (a path
+  unit, after the claim). Its file backend refuses to start with an empty
+  users map, and without the file it writes an example account of its own.
+- **nginx asks Authelia before every `/api/` request** (`auth_request`) and
+  passes `Remote-User` and `Remote-Groups` on. Every location that proxies to
+  lososd sets both, and `X-Losos-As`, itself, empty when nobody signed in, so
+  a client cannot supply them. lososd believes `Remote-User` only from
+  loopback and only with `LOSOS_IDENTITY=authelia`; the iptables owner rule
+  keeps everyone but root and nginx off the API port.
+- **The spare key bypasses Authelia.** A request carrying
+  `Authorization: Bearer` skips the `auth_request` and lososd checks the
+  token itself, so the printed key opens the box while Authelia is down,
+  misconfigured or not started yet. The public routes (health, the claim, the
+  terminal's host key and call routes) never ask Authelia.
+- **Sections.** `backend/sections.json` maps each route to `public`,
+  `signed-in`, `admin` or a section (storage, backup, apps, market, network,
+  look, lab, access), and both lososd (`backend/src/sections.rs`) and nginx
+  read it. A section needs the group `losos-<section>`; `losos-admins` may do
+  everything and `losos-viewers` may `GET` every section. `signed-in` covers
+  the overview's reads, `GET /api/me` and `POST /api/set-password`, which
+  changes the caller's own password (and, for the person who claimed the box,
+  the LosOS cloud password). A route missing from the file is admin only. A
+  person outside a route's section gets 403 with the section named. A person
+  whose account was removed after signing in gets 403 with `noAccount`, not
+  401, which would send the page round Authelia and back.
+- **`X-Losos-As`** names the person a call runs as. lososd honours it only
+  together with the admin Bearer token; it is how a terminal call runs as
+  its token's owner (`docs/terminal-access.md`).
+- **Session.** Cookie `losos_session`, 12 h, 2 h of inactivity, one month
+  with "remember me". Its domains are `<host>.local` and each LAN IPv4 of the
+  box, rendered into `/run` by `losos-identity-setup` and re-checked every
+  2 minutes; Authelia restarts when the set changes.
+- **Brute force.** Authelia's own regulation covers wrong passwords on
+  `/auth/`. lososd's per-address throttle still counts bad Bearer tokens.
+- **Backup and erase.** The people file is in the backup and comes back on a
+  restore. The factory wipe deletes it and Authelia's state.
 
 ## Enrollment at the edge
 
@@ -134,10 +179,12 @@ not address the limitations below.
 `<host>.local/` serves the admin UI and `/api/`. The same origin serves
 `/nextcloud` and `/forgejo/`, which host user content.
 
-`sessionStorage` is per origin, so a stored XSS in either application can read
-the admin token. A CSP on the admin pages does not help, and neither would an
-`HttpOnly` cookie. **An XSS in Nextcloud or Forgejo is a full appliance
-compromise.**
+`sessionStorage` is per origin, so a stored XSS in either application can
+read the admin token while a tab holds the spare key. A CSP on the admin
+pages does not help, and neither would an `HttpOnly` cookie: Authelia's
+session cookie rides on every request to the origin, so a script there can
+call `/api/` as whoever is signed in. **An XSS in Nextcloud or Forgejo is a
+full appliance compromise.**
 
 The fix is a separate origin for the admin UI, such as a second mDNS name.
 That was declined in favour of a single URL. In place instead: a strict CSP,
@@ -157,11 +204,11 @@ is the one path nginx serves under a permissive CSP of its own
 widget learns about the box comes over postMessage from the page, which
 answers only the readings the built-in widgets already have.
 
-The author is the owner, signed in with the admin token, so this is not an
-injection surface: what it is, is a way for a hand-written widget that does
-not work to not take the admin page with it. A widget may fetch the internet
-(`connect-src https: http:` in the frame's policy); the admin page itself
-still cannot.
+The author is a person allowed to change the look, or the spare key's
+holder, so this is not an injection surface: what it is, is a way for a
+hand-written widget that does not work to not take the admin page with it. A
+widget may fetch the internet (`connect-src https: http:` in the frame's
+policy); the admin page itself still cannot.
 
 ### The LAN
 
@@ -212,14 +259,16 @@ Setting either option to `null` falls back to plain TCP.
 nginx). After 10 failures the address gets `429` with `Retry-After`, for a
 window starting at 1 s and doubling up to 5 min. During the window even the
 correct token is refused; a correct token afterwards clears the count.
-`/api/health` and `/api/setup/claim` are not throttled; `/api/sign-in` is,
-by the same counter.
+`/api/health` and `/api/setup/claim` are not throttled. Wrong passwords on
+`/auth/` are Authelia's to count, not lososd's.
 
 `POST /api/apply`, `/api/change`, `/api/set-password`, `/api/factory-reset`
 and `/api/grow` each append a JSON line to `/var/lib/losos/audit.log`:
-timestamp, route, remote address and outcome (`ok`, `rejected`, `error`,
-`unauthorized`, `throttled`). The file is mode 0600 and survives reboots. It
-does not record the token or request bodies. Read-only routes are not logged.
+timestamp, route, remote address, outcome (`ok`, `rejected`, `error`,
+`unauthorized`, `forbidden`, `no account`, `throttled`) and, once the caller
+is known, `who`: the sign-in name, or `spare-key`. The file is mode 0600 and
+survives reboots. It does not record the token or request bodies. Read-only
+routes are not logged.
 
 Not covered: root can rewrite the audit log, it does not rotate, and a failed
 write does not block the request. Throttling is per address, so an attacker

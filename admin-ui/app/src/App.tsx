@@ -37,6 +37,7 @@ import {
   loadMe,
   makeFirstAccount,
   signIn,
+  signInPageReady,
   signInUrl,
   signOut,
   subscribeAuth,
@@ -413,6 +414,18 @@ function NotFound() {
  * people had names, the key is also how the owner makes the first account.
  *
  * Non-dismissible: there is nothing to look at behind it. */
+/* Shown under the spinner while the sign-in page starts. */
+const FACTS = [
+  "shell.facts.1",
+  "shell.facts.2",
+  "shell.facts.3",
+  "shell.facts.4",
+  "shell.facts.5",
+  "shell.facts.6",
+  "shell.facts.7",
+  "shell.facts.8",
+] as const;
+
 function SignInDialog({ open }: { open: boolean }) {
   const t = useT();
   const [mode, setMode] = React.useState<"signin" | "key" | "first">(
@@ -431,6 +444,40 @@ function SignInDialog({ open }: { open: boolean }) {
   const titleId = React.useId();
   const hintId = React.useId();
 
+  /* Authelia starts after the box does. Until its page answers, the
+   * dialog waits with a spinner and a fact about LosOS instead of sending
+   * anyone to an error page, and goes on by itself once it is up. */
+  const [portal, setPortal] = React.useState<"checking" | "starting" | "ready">("checking");
+  const [wanted, setWanted] = React.useState(false);
+  const [fact, setFact] = React.useState(() => Math.floor(Math.random() * FACTS.length));
+  React.useEffect(() => {
+    if (!open || mode !== "signin" || portal === "ready") return;
+    const controller = new AbortController();
+    let timer: number | undefined;
+    const ask = async (): Promise<void> => {
+      if (await signInPageReady(controller.signal)) {
+        setPortal("ready");
+        return;
+      }
+      if (controller.signal.aborted) return;
+      setPortal("starting");
+      timer = window.setTimeout(() => void ask(), 2000);
+    };
+    void ask();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [open, mode, portal]);
+  React.useEffect(() => {
+    if (portal !== "starting") return;
+    const timer = window.setInterval(() => setFact((n) => (n + 1) % FACTS.length), 7000);
+    return () => window.clearInterval(timer);
+  }, [portal]);
+  React.useEffect(() => {
+    if (wanted && portal === "ready") window.location.assign(signInUrl());
+  }, [wanted, portal]);
+
   const switchTo = (next: "signin" | "key" | "first"): void => {
     setMode(next);
     setValue("");
@@ -440,7 +487,8 @@ function SignInDialog({ open }: { open: boolean }) {
   const submit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault();
     if (mode === "signin") {
-      window.location.assign(signInUrl());
+      if (portal === "ready") window.location.assign(signInUrl());
+      else setWanted(true);
       return;
     }
     const candidate = value.trim();
@@ -565,6 +613,18 @@ function SignInDialog({ open }: { open: boolean }) {
               </Field>
             </>
           )}
+          {mode === "signin" && portal === "starting" && (
+            <div className="flex flex-col gap-3 rounded-card border border-line bg-sunk p-3">
+              <div className="flex items-center gap-2 text-[13px] text-muted">
+                <Spinner />
+                <p aria-live="polite">{t("shell.signIn.starting")}</p>
+              </div>
+              <p className="text-[13px] text-ink">
+                <span className="font-medium">{t("shell.facts.title")}. </span>
+                {t(FACTS[fact] ?? "shell.facts.1")}
+              </p>
+            </div>
+          )}
           {mode !== "signin" && (
             <Field invalid={problem !== null} disabled={busy}>
               {keyField}
@@ -585,7 +645,11 @@ function SignInDialog({ open }: { open: boolean }) {
         </DialogBody>
         <DialogFooter>
           {busy && <Spinner label={t("shell.signIn.checking")} className="mr-auto text-muted" />}
-          <Button type="submit" disabled={busy || !ready} autoFocus={mode === "signin"}>
+          <Button
+            type="submit"
+            disabled={busy || !ready || (mode === "signin" && wanted)}
+            autoFocus={mode === "signin"}
+          >
             {t(
               mode === "signin"
                 ? "shell.signIn.go"

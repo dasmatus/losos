@@ -1,4 +1,4 @@
-# Sign-in: Authelia in front of the admin pages.
+# Sign-in: LosOS Login, the box's own Authelia, in front of the admin pages.
 #
 # People sign in once, at https://<host>/auth/, with a name and a password,
 # and Authelia's session cookie opens every admin route after that. nginx
@@ -256,6 +256,13 @@ in
           }
         '';
       };
+      # Whether the portal answers yet, over http too: the admin pages ask
+      # before they send anyone to sign in, and wait with a spinner while
+      # Authelia starts (nginx answers 502 until it does).
+      "= /auth/api/health" = {
+        proxyPass = "http://127.0.0.1:${toString port}/auth/api/health";
+        extraConfig = lanOnly;
+      };
       # The question nginx asks before every /api/ request. A Bearer
       # header is the spare key or a token lososd checks itself, so it
       # skips Authelia and the box stays reachable when Authelia is down.
@@ -266,6 +273,10 @@ in
           if ($http_authorization ~* "^bearer ") {
             return 200;
           }
+          # Authelia down (starting, restarting) is "not signed in", not a
+          # 500: the admin pages then wait for LosOS Login with a spinner.
+          proxy_intercept_errors on;
+          error_page 500 502 503 504 = @losos-authz-down;
           proxy_pass_request_body off;
           proxy_set_header Content-Length "";
           proxy_set_header X-Original-Method $request_method;
@@ -273,6 +284,7 @@ in
           proxy_set_header X-Forwarded-For $remote_addr;
         '';
       };
+      "@losos-authz-down".extraConfig = "return 401;";
       "/api/".extraConfig = askAuthelia;
       "= /api/vms/images".extraConfig = askAuthelia;
     }

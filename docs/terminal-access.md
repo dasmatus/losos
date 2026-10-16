@@ -10,7 +10,8 @@ the shared Rust crate both servers use (`backend/access/`, `losos-access`).
 
 - **A personal access token.** Made and revoked in the web UI
   (Settings, Access tokens). The web UI shows it once. The box keeps only
-  its SHA-256.
+  its SHA-256. A token carries its owner, the person who was signed in when
+  it was made, and every call with it runs as that person.
 - **A GPG key that was seeded before the box ran.** The public half is
   `losos.access.gpgKeys`, written into the box's `install-target.nix` by the
   installer (`losos-ctl install --gpg-key FILE`, or the ISO's own
@@ -31,7 +32,7 @@ losos_pat_<id: 8 hex>_<secret: 40 hex>
 ```
 
 The box stores `{id, name, fingerprint, scope, created, expires, lastUsed,
-sha256}` in `/var/lib/losos/access/tokens.json` (mode 0600, under `/var`, so
+sha256, owner}` in `/var/lib/losos/access/tokens.json` (mode 0600, under `/var`, so
 it survives the nightly reboot). `scope` is `read` (GET only) or `full`.
 `expires` is a Unix time or `null`. At most 32 tokens.
 
@@ -83,12 +84,17 @@ The server, in this order:
 4. checks the token: known, not expired, bound to the key that signed, and
    its scope allows `method` (401, or 403 for scope);
 5. checks the path: it starts with `/api/`, has no `..`, and is not under
-   `/api/access`, `/api/setup` or `/api/sign-in` (403). A token can never
-   make, list or revoke tokens;
-6. runs the request against its own loopback API as the web UI would, and
-   seals the answer. A `body` that is a JSON string goes as raw
-   `text/plain`, which is how `/api/apply` takes its Nix; any other body
-   goes as JSON.
+   `/api/access` or `/api/setup` (403). A token can never make, list or
+   revoke tokens;
+6. runs the request against its own loopback API as the web UI would, with
+   the admin token and, for a token with an owner, `X-Losos-As: <name>`, and
+   seals the answer. lososd honours `X-Losos-As` only together with the
+   admin token, and it makes the call run as that person, so their sections
+   (`backend/sections.json`) apply as they do in the browser. A token with
+   no owner, made before tokens carried one or made with the spare key, acts
+   as an administrator. A token whose owner is no longer on the box gets
+   401. A `body` that is a JSON string goes as raw `text/plain`, which is
+   how `/api/apply` takes its Nix; any other body goes as JSON.
 
 Failures in steps 1 to 5 answer plain JSON, `{"error": "…"}`, with the
 status above, because the server cannot yet encrypt to anyone it trusts.
@@ -109,12 +115,15 @@ JSON.
 
 ## The web UI's side
 
-All three need the admin Bearer token, like every other settings route.
+All three are in the `access` section: an administrator, a person in
+`losos-access`, or the spare key. A person who is not an administrator sees
+and revokes only their own tokens (revoking someone else's answers 404); a
+new token's owner is the person who made it, and none for the spare key.
 
 ```
 GET  /api/access
 200 {"hostKey": {"fingerprint"}, "keys": [{"fingerprint", "userIds", "created"}],
-     "tokens": [{"id", "name", "fingerprint", "scope", "created", "expires", "lastUsed"}]}
+     "tokens": [{"id", "name", "fingerprint", "scope", "created", "expires", "lastUsed", "owner"?}]}
 
 POST /api/access/tokens   {"name", "fingerprint", "scope": "read"|"full", "expiresInDays": 30|90|365|null}
 200 {"token": "losos_pat_…", "record": {…}}

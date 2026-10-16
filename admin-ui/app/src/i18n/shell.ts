@@ -54,11 +54,57 @@ export default defineMessages({
   },
   "shell.signIn.title": { en: "Sign in to this box", sk: "Prihláste sa do tohto zariadenia", de: "An dieser Box anmelden" },
   "shell.signIn.authHint": {
-    en: "Sign in with your name and password. Each person has their own, and what you can change here depends on yours.",
-    sk: "Prihláste sa svojím menom a heslom. Každý má vlastné a to, čo tu môžete meniť, závisí od vášho účtu.",
-    de: "Melde dich mit deinem Namen und Passwort an. Jede Person hat ein eigenes, und was du hier ändern kannst, hängt von deinem ab.",
+    en: "Sign in on LosOS Login, this box's sign-in page, with your name and password. Each person has their own, and what you can change here depends on yours.",
+    sk: "Prihláste sa v LosOS Login, prihlasovacej stránke tohto zariadenia, svojím menom a heslom. Každý má vlastné a to, čo tu môžete meniť, závisí od vášho účtu.",
+    de: "Melde dich bei LosOS Login, der Anmeldeseite dieser Box, mit deinem Namen und Passwort an. Jede Person hat ein eigenes, und was du hier ändern kannst, hängt von deinem ab.",
   },
   "shell.signIn.go": { en: "Sign in", sk: "Prihlásiť sa", de: "Anmelden" },
+  "shell.signIn.starting": {
+    en: "LosOS Login is starting. This page goes on by itself once it answers.",
+    sk: "LosOS Login sa spúšťa. Keď odpovie, táto stránka pokračuje sama.",
+    de: "LosOS Login startet. Sobald es antwortet, geht es hier von selbst weiter.",
+  },
+  "shell.facts.title": { en: "While you wait", sk: "Kým čakáte", de: "Während du wartest" },
+  "shell.facts.1": {
+    en: "The LosOS logo is a live coho salmon, cut out of a NOAA Fisheries photo.",
+    sk: "Logo LosOS je živý losos kisuč, vystrihnutý z fotografie NOAA Fisheries.",
+    de: "Das LosOS-Logo ist ein lebender Silberlachs, ausgeschnitten aus einem Foto von NOAA Fisheries.",
+  },
+  "shell.facts.2": {
+    en: "On 31 October the salmon in the logo is served on a plate.",
+    sk: "31. októbra sa losos z loga podáva na tanieri.",
+    de: "Am 31. Oktober wird der Lachs im Logo auf einem Teller serviert.",
+  },
+  "shell.facts.3": {
+    en: "The startup sound has no recording behind it. It is written as code and played from the end of the LosOS launch film's score.",
+    sk: "Za zvukom pri štarte nie je žiadna nahrávka. Je napísaný ako kód a hrá koniec hudby z úvodného filmu LosOS.",
+    de: "Hinter dem Startton steckt keine Aufnahme. Er ist als Code geschrieben und spielt das Ende der Musik aus dem LosOS-Startfilm.",
+  },
+  "shell.facts.4": {
+    en: "This box has no SSH and no shell. Everything you change on it goes through pages like this one.",
+    sk: "Toto zariadenie nemá SSH ani shell. Všetko, čo na ňom meníte, ide cez stránky ako táto.",
+    de: "Diese Box hat kein SSH und keine Shell. Alles, was du an ihr änderst, läuft über Seiten wie diese.",
+  },
+  "shell.facts.5": {
+    en: "The box starts from an empty root file system on every boot. Only what is listed for /persist survives.",
+    sk: "Zariadenie pri každom štarte začína s prázdnym koreňovým súborovým systémom. Prežije len to, čo je uvedené pre /persist.",
+    de: "Die Box startet bei jedem Boot mit einem leeren Root-Dateisystem. Nur was für /persist eingetragen ist, bleibt erhalten.",
+  },
+  "shell.facts.6": {
+    en: "The whole system is described in Nix. Every setting you apply is a commit in the box's own Git repository.",
+    sk: "Celý systém je opísaný v Nixe. Každé použité nastavenie je commit vo vlastnom Git repozitári zariadenia.",
+    de: "Das ganze System ist in Nix beschrieben. Jede übernommene Einstellung ist ein Commit im eigenen Git-Repository der Box.",
+  },
+  "shell.facts.7": {
+    en: "These pages, LosOS cloud, LosOS Git and LosOS Login all take their colours from one file.",
+    sk: "Tieto stránky, LosOS cloud, LosOS Git aj LosOS Login berú farby z jedného súboru.",
+    de: "Diese Seiten, LosOS cloud, LosOS Git und LosOS Login nehmen ihre Farben aus einer einzigen Datei.",
+  },
+  "shell.facts.8": {
+    en: "LosOS Lab draws your setup with Bevy, a game engine, compiled to WebAssembly.",
+    sk: "LosOS Lab kreslí vaše zapojenie pomocou Bevy, herného enginu skompilovaného do WebAssembly.",
+    de: "LosOS Lab zeichnet dein Setup mit Bevy, einer Spiele-Engine, kompiliert zu WebAssembly.",
+  },
   "shell.signIn.useSignIn": {
     en: "Sign in with your name instead",
     sk: "Prihlásiť sa namiesto toho menom",

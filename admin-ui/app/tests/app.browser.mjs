@@ -500,6 +500,25 @@ await check('signed out, Sign in goes to the box sign-in page over https and com
   await page.close();
 });
 
+await check('while the sign-in page starts, the prompt waits with a spinner and a fact, then goes on by itself', async () => {
+  const { page, portal } = await openGate();
+  let up = false;
+  await page.route('**/auth/api/health', (route) =>
+    up ? json(route, 200, { status: 'OK' }) : route.fulfill({ status: 502, contentType: 'text/html', body: 'Bad Gateway' }),
+  );
+  await page.reload();
+  await page.getByText('LosOS Login is starting').waitFor();
+  assert.ok(/While you wait/.test(await body(page)), 'no fact under the spinner');
+  assert.equal(await page.locator('dialog [data-slot="spinner"], [role="dialog"] [data-slot="spinner"]').count() > 0, true, 'no spinner');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.waitForTimeout(500);
+  assert.equal(portal.length, 0, 'went to the sign-in page before it answered');
+  up = true;
+  await page.waitForURL(/\/auth\//, { timeout: 10000 });
+  assert.equal(portal.length, 1, 'did not go on once the sign-in page answered');
+  await page.close();
+});
+
 await check('a person signed in at the box sign-in page gets the app without a key', async () => {
   const { page } = await open({
     person: { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage', 'backup'] },
@@ -577,7 +596,7 @@ await check('a box with nobody to sign in as makes its first administrator with 
   assert.equal(made.length, 1, 'expected one claim');
   assert.equal(made[0].auth, `Bearer ${TOKEN}`, 'the spare key did not go with it');
   assert.deepEqual(made[0].body, { name: 'matus', password: PASSWORD }, 'the name was not lower-cased or the body is wrong');
-  assert.ok(/sign in with matus/i.test(await body(page)), 'the new name was not shown');
+  await page.getByText(/sign in with matus/i).first().waitFor({ timeout: 5000 });
   await page.close();
 });
 

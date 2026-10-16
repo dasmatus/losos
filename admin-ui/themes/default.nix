@@ -140,11 +140,12 @@ in
     # Tailwind and shadcn/ui like the admin SPA's, so the whole palette is
     # one file: ./authelia/losos-authelia.css replaces its
     # src/themes/tailwind-themes.css and points shadcn's names at tokens.css.
-    # Two more edits take the upstream name off the pages: the page titles
-    # read "Login - LosOS" (the name is kept base64-encoded in
+    # Two more edits take the upstream name off the pages: the portal is
+    # called LosOS Login, so its page titles read "Login - LosOS Login" (the
+    # name is kept base64-encoded in
     # src/constants/constants.ts, as an array of character codes), and the
-    # "Powered by" line under the form is gone, as it is in LosOS cloud and
-    # LosOS Git. The licence (Apache-2.0) stays in the package.
+    # "Powered by" line under the form names LosOS Login instead, as LosOS
+    # cloud and LosOS Git name themselves. The licence (Apache-2.0) stays in the package.
     web =
       web:
       web.overrideAttrs (old: {
@@ -153,12 +154,12 @@ in
           install -m0644 ${tokens} src/themes/losos-tokens.css
           substituteInPlace src/constants/constants.ts \
             --replace-fail 'export const EncodedName = [81, 88, 86, 48, 97, 71, 86, 115, 97, 87, 69, 61];' \
-                           'export const EncodedName = [84, 71, 57, 122, 84, 49, 77, 61];'
+                           'export const EncodedName = [84, 71, 57, 122, 84, 49, 77, 103, 84, 71, 57, 110, 97, 87, 52, 61];'
           cat > src/components/Brand.tsx <<'TSX'
         export interface Props {}
 
         const Brand = function () {
-            return null;
+            return <p className="mt-4 text-center text-sm text-muted-foreground">LosOS Login</p>;
         };
 
         export default Brand;

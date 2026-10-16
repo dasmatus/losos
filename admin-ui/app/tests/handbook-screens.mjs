@@ -841,6 +841,7 @@ const SHOTS = [
     langs: true,
     act: async (page, t) => {
       await wizardToPassword(page, t);
+      await page.locator('input[name="username"]').fill('matus');
       await page.locator('input[type="password"]').first().fill('Correct-horse 1');
       // Typing scrolls the field into view; the shot starts at the top.
       await page.evaluate(() => window.scrollTo(0, 0));

@@ -144,6 +144,9 @@ function PasswordForm({
 }) {
   const t = useT();
   const [name, setName] = React.useState("");
+  // The LosOS Login name the claim made, shown beside the LosOS cloud
+  // account once the password is set.
+  const [login, setLogin] = React.useState<string | null>(null);
   const [password, setPassword] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
   const [visible, setVisible] = React.useState(false);
@@ -158,6 +161,9 @@ function PasswordForm({
   // The sign-in name is asked for once, at the claim. A tab that already
   // holds the key is changing the password, not making the account.
   const askName = account === null && !hasToken();
+  // A refused name marks the name field; anything else, the two passwords.
+  const nameInvalid = problem !== null && problem === t("wizard.signin.badName");
+  const passwordInvalid = problem !== null && !nameInvalid;
   const confirmId = React.useId();
   const problemId = React.useId();
 
@@ -190,6 +196,7 @@ function PasswordForm({
       setPassword("");
       setConfirm("");
       setVisible(false);
+      setLogin(result.login);
       onPasswordSet(result.user, result.adminKey);
       toast.success(
         t("wizard.signin.done.title"),
@@ -247,7 +254,7 @@ function PasswordForm({
           the password box, and the four rules are the field's description. */}
       <FieldGroup>
         {askName && (
-          <Field invalid={problem !== null} disabled={busy || waiting}>
+          <Field invalid={nameInvalid} disabled={busy || waiting}>
             <FieldLabel htmlFor={nameId}>{t("wizard.signin.name")}</FieldLabel>
             <Input
               id={nameId}
@@ -257,7 +264,7 @@ function PasswordForm({
               spellCheck={false}
               value={name}
               disabled={busy || waiting}
-              aria-invalid={problem !== null}
+              aria-invalid={nameInvalid}
               onChange={(event) => {
                 setName(event.target.value.toLowerCase());
                 setProblem(null);
@@ -266,7 +273,7 @@ function PasswordForm({
             <FieldDescription>{t("wizard.signin.nameHint")}</FieldDescription>
           </Field>
         )}
-        <Field invalid={problem !== null} disabled={busy || waiting}>
+        <Field invalid={passwordInvalid} disabled={busy || waiting}>
           <FieldLabel htmlFor={passwordId}>{t("wizard.signin.newPassword")}</FieldLabel>
           <InputGroup>
             <InputGroupInput
@@ -276,7 +283,7 @@ function PasswordForm({
               autoComplete="new-password"
               value={password}
               disabled={busy || waiting}
-              aria-invalid={problem !== null}
+              aria-invalid={passwordInvalid}
               aria-describedby={problem !== null ? problemId : undefined}
               onChange={(event) => {
                 setPassword(event.target.value);
@@ -306,7 +313,7 @@ function PasswordForm({
           <PasswordRules password={password} />
         </Field>
 
-        <Field invalid={problem !== null} disabled={busy || waiting}>
+        <Field invalid={passwordInvalid} disabled={busy || waiting}>
           <FieldLabel htmlFor={confirmId}>{t("wizard.signin.again")}</FieldLabel>
           <Input
             id={confirmId}
@@ -315,7 +322,7 @@ function PasswordForm({
             autoComplete="new-password"
             value={confirm}
             disabled={busy || waiting}
-            aria-invalid={problem !== null}
+            aria-invalid={passwordInvalid}
             onChange={(event) => {
               setConfirm(event.target.value);
               setProblem(null);
@@ -359,6 +366,11 @@ function PasswordForm({
           <HugeiconsIcon icon={CheckmarkCircle02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
           <AlertTitle>{t("wizard.signin.done.title")}</AlertTitle>
           <AlertDescription>
+            {login !== null && (
+              <ReadoutRow label={t("wizard.signin.done.login")} className="mt-2">
+                <code className="numeric text-[13px] text-ink select-all">{login}</code>
+              </ReadoutRow>
+            )}
             <ReadoutRow label={t("wizard.signin.done.name")} className="mt-2">
               <code className="numeric text-[13px] text-ink select-all">
                 {account}
@@ -439,16 +451,16 @@ function PasswordRules({ password }: { password: string }) {
 async function setFirstPassword(
   password: string,
   name: string,
-): Promise<{ user: string; adminKey: string | null }> {
+): Promise<{ user: string; login: string | null; adminKey: string | null }> {
   if (hasToken()) {
     const result = await postSetPassword(password);
-    return { user: result.user, adminKey: null };
+    return { user: result.user, login: null, adminKey: null };
   }
   const claimed = await claimAgainIfTheReplyWasLost(password, name);
   saveToken(claimed.token);
-  // The sign-in name the box made; the LosOS cloud account behind it when
-  // an older box does not say.
-  return { user: claimed.name ?? claimed.user ?? name, adminKey: claimed.token };
+  // `user` is the LosOS cloud account step 3 signs in to; `name` is the
+  // LosOS Login name the box made for the admin pages.
+  return { user: claimed.user ?? name, login: claimed.name ?? name, adminKey: claimed.token };
 }
 
 /** A sign-in name lososd takes (backend/src/people.rs `validate_name`). */

@@ -254,6 +254,20 @@ export function signInUrl(): string {
   return `https://${window.location.host}/auth/?rd=${encodeURIComponent(httpsHere())}`;
 }
 
+/** Whether the box's sign-in page answers. Authelia starts after the box
+ *  does, and until it answers nginx says 502; the sign-in dialog waits with
+ *  a spinner rather than send anyone to an error page. */
+export async function signInPageReady(signal?: AbortSignal): Promise<boolean> {
+  try {
+    const init: RequestInit = { cache: "no-store" };
+    if (signal !== undefined) init.signal = signal;
+    const response = await fetch("/auth/api/health", init);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Sign out: forget the key, and end the Authelia session if there is one. */
 export function signOut(): void {
   const session = me !== null && !me.spareKey;
@@ -1543,7 +1557,7 @@ export function postAccessRevoke(
 /* Probe a pasted token against a cheap authed route and store it if lososd
  * accepts it. Resolves false on rejection, throws on anything else, and a
  * rejected candidate leaves the stored token alone. The spare way in, for
- * when LosOS cloud is not running to check the password. */
+ * a day LosOS Login does not answer. */
 export async function signIn(candidate: string, options: RequestOptions = {}): Promise<boolean> {
   const token = candidate.trim();
   if (token.length === 0) return false;

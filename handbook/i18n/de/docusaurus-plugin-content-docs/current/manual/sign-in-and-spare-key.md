@@ -6,45 +6,89 @@ slug: /manual/sign-in-and-spare-key
 
 # Anmeldung und der Ersatzschlüssel
 
-Eine Box hat ein Passwort und einen Ersatzschlüssel.
+Jede Person meldet sich an den Admin-Seiten bei LosOS Login, der
+Anmeldeseite der Box, mit ihrem eigenen Anmeldenamen und Passwort an. Die
+Box hat außerdem einen Ersatz-Admin-Schlüssel, der bei der Einrichtung
+einmal gezeigt wird.
 
-## Das Passwort \{#the-password}
+## Dein Anmeldename und dein Passwort \{#your-sign-in-name-and-password}
 
-Das im Assistenten gesetzte Passwort ist das Passwort des Besitzers für
-LosOS cloud. Es entsperrt auch die Admin-Seiten. Öffnest du sie, fragt ein
-Dialog mit dem Titel **Diese Box entsperren** danach, und die Box lässt
-LosOS cloud es über ihre eigene Loopback-Verbindung prüfen. Eine zweite
-Kopie behält die Box nicht. Ändere das Passwort in LosOS cloud unter
-Einstellungen → Persönlich → Sicherheit, und die Admin-Seiten nehmen das neue
-sofort an.
+Der Passwort-Schritt des Assistenten fragt nach einem Anmeldenamen und
+einem Passwort. Wer ihn abschließt, wird der erste Administrator der Box.
+Dasselbe Passwort wird auch das Passwort des Besitzers für LosOS cloud, ein
+Passwort öffnet also beides.
 
-![Der Dialog Diese Box entsperren fragt nach dem Passwort des Besitzers, mit dem Link zum Ersatz-Admin-Schlüssel.](@site/docs/img/unlock-dialog-de.png)
-
+Ein Anmeldename ist kleingeschrieben. Er beginnt mit einem Buchstaben,
+danach folgen Buchstaben, Ziffern, `.`, `_` oder `-`, höchstens 32 Zeichen.
 Ein neues Passwort braucht mindestens 12 Zeichen, einen Kleinbuchstaben,
-einen Großbuchstaben, eine Ziffer und ein Sonderzeichen. Ein Passwort, das
-gesetzt wurde, bevor es diese Regel gab, funktioniert bei der Anmeldung
-weiterhin.
+einen Großbuchstaben, eine Ziffer und ein Sonderzeichen.
 
-![Ein falsches Passwort: Der Dialog sagt, dass das Passwort nicht akzeptiert wurde, und bleibt offen.](@site/docs/img/unlock-refused-de.png)
+Die Box behält jedes Passwort nur als Hash. Einen Link zum Zurücksetzen gibt
+es nicht, weil die Box keine Mails verschickt. Verlierst du deins, sieh
+unter [Passwort vergessen](../troubleshooting/forgot-password) nach.
 
-:::note[Falsche Versuche sperren einen Rechner aus]
-Der Tab bleibt entsperrt, bis du ihn schließt. Nach zehn falschen Versuchen
-von einem Rechner sperrt die Box diesen Rechner aus. Die Sperre beginnt bei
-einer Sekunde und verdoppelt sich bis zu fünf Minuten.
+## LosOS Login \{#losos-login}
+
+LosOS Login ist die Anmeldeseite der Box unter `https://<box>/auth/`, in den
+Farben von LosOS. Öffnest du die Admin-Seiten abgemeldet, hat ein Dialog mit
+dem Titel **An dieser Box anmelden** eine Schaltfläche **Anmelden**. Sie
+bringt dich zu LosOS Login und nach der Anmeldung zurück. Solange LosOS
+Login noch startet, gleich nach einem Neustart, zeigen die Admin-Seiten
+„LosOS Login startet“ mit einem Ladekreis und ein paar Fakten über LosOS und
+gehen dann von selbst weiter.
+
+![Der Dialog An dieser Box anmelden mit der Schaltfläche Anmelden und dem Link zum Ersatz-Admin-Schlüssel.](@site/docs/img/unlock-dialog-de.png)
+
+LosOS Login funktioniert nur über HTTPS. Eine einfache
+`http://`-Adresse dafür wird an `https://` weitergeleitet. Solange das
+Zertifikat der Box nicht installiert ist, warnt der Browser zuerst; siehe
+[Zertifikatswarnung](../troubleshooting/certificate-warning).
+
+Eine Anmeldung gilt 12 Stunden und endet früher, wenn zwei Stunden lang
+nichts passiert. Setzt du bei LosOS Login den Haken, damit es dich behält,
+bleibst du an diesem Rechner einen Monat angemeldet. **Abmelden** in den
+Admin-Seiten beendet sie sofort.
+
+:::note[Falsche Versuche]
+Nach einigen falschen Passwörtern hintereinander weist LosOS Login diesen
+Namen ein paar Minuten lang ab. Warte und versuch es dann noch einmal.
 :::
+
+## Wer was sieht \{#who-sees-what}
+
+Die Admin-Seiten sind in Bereiche aufgeteilt: Speicher, Sicherung, Apps,
+Markt (mit virtuellen Maschinen), Netzwerk (eigene Domains), Aussehen, das
+Labor und Zugriffstokens. Ein Administrator kann alle benutzen. Nur ein
+Administrator kann Einstellungen anwenden, Mesh, Hardware, Sicherheit,
+Erweitert, Historie, Über und Zurücksetzen öffnen, die Box löschen oder
+wiederherstellen und den Wiederherstellungscode sehen. Wer kein
+Administrator ist, bekommt die Bereiche, die ihm gegeben wurden, oder liest
+alle Bereiche, ohne etwas ändern zu können. Die Übersicht sieht jeder, der
+angemeldet ist. Die Admin-Seiten blenden die Bereiche aus, die eine Person
+nicht benutzen kann.
+
+Die erste Person auf einer Box ist immer Administrator. Eine Seite zum
+Hinzufügen weiterer Personen haben die Admin-Seiten noch nicht.
 
 ## Der Ersatz-Admin-Schlüssel \{#the-spare-admin-key}
 
-Was die Admin-Seiten tatsächlich entsperrt, ist ein Schlüssel mit 64
-Zeichen, den die Box bei ihrem ersten Start erzeugt hat. Das Passwort ist
-der Weg, an ihn zu kommen. Der Assistent hat dir diesen Schlüssel einmal
-gezeigt, nachdem du das Passwort gesetzt hattest, mit den Schaltflächen
-**Schlüssel kopieren** und **Drucken**. Er ist der Ersatz für den einen
-Fall, den das Passwort nicht abdeckt. Läuft LosOS cloud nicht, kann nichts
-das Passwort prüfen. Der Dialog zum Entsperren sagt das dann und bietet
-**Stattdessen den Ersatz-Admin-Schlüssel verwenden** an.
+Die Box hat bei ihrem ersten Start einen Schlüssel mit 64 Zeichen erzeugt.
+Der Assistent hat ihn dir einmal gezeigt, nachdem du das Passwort gesetzt
+hattest, mit den Schaltflächen **Schlüssel kopieren** und **Drucken**. Der
+Schlüssel öffnet jeden Bereich als Administrator, ohne LosOS Login. Er
+funktioniert also auch an einem Tag, an dem LosOS Login nicht funktioniert.
 
-![Der Dialog zum Entsperren, während LosOS cloud nicht läuft: Nichts kann das Passwort prüfen, also bietet der Dialog den Ersatz-Admin-Schlüssel an.](@site/docs/img/unlock-dialog-cloud-down-de.png)
+Wähle im Dialog **An dieser Box anmelden** die Option **Stattdessen den
+Ersatz-Admin-Schlüssel verwenden** und füge den Schlüssel ein. Der Tab
+bleibt entsperrt, bis du ihn schließt.
+
+![Der Dialog fragt nach dem Ersatz-Admin-Schlüssel mit 64 Zeichen.](@site/docs/img/unlock-spare-key-de.png)
+
+![Ein falscher Ersatzschlüssel: Der Dialog sagt, dass der Schlüssel nicht akzeptiert wurde, und bleibt offen.](@site/docs/img/unlock-refused-de.png)
+
+Nach zehn falschen Schlüsseln von einem Rechner sperrt die Box diesen
+Rechner aus. Die Sperre beginnt bei einer Sekunde und verdoppelt sich bis zu
+fünf Minuten.
 
 :::warning[Ersatzschlüssel nicht bei der Box aufbewahren]
 Bewahre das gedruckte Blatt nicht bei der Box auf. Wer den Schlüssel hat,
@@ -54,20 +98,27 @@ hat. Verlierst du das Passwort *und* den Ersatzschlüssel, musst du vom Stick
 neu installieren, und das löscht die Festplatte.
 :::
 
-![Der Dialog zum Entsperren fragt nach dem Ersatz-Admin-Schlüssel mit 64 Zeichen.](@site/docs/img/unlock-spare-key-de.png)
+## Eine früher eingerichtete Box \{#a-box-set-up-earlier}
+
+Eine Box, die eingerichtet wurde, bevor Personen eigene Anmeldenamen hatten,
+hat niemanden, als den man sich anmelden könnte. Ihr Dialog sagt **Lege
+deine Anmeldung an** und fragt nach einem Anmeldenamen, einem Passwort und
+dem Ersatz-Admin-Schlüssel. Der Schlüssel beweist, dass die Box dir gehört,
+und du wirst ihr erster Administrator. Ab dann meldest du dich mit diesem
+Namen und Passwort an.
 
 ## Passkeys \{#passkeys}
 
-Sobald das Zertifikat installiert ist und du über HTTPS verbindest, bieten
-der Assistent und LosOS cloud einen Passkey an. Ein Handy oder Laptop meldet
-sich dann mit seiner eigenen Entsperrung an statt mit dem Passwort. Ein
-Passkey ist kein zweiter Ersatzschlüssel. LosOS cloud prüft ihn genauso, wie
-es das Passwort prüft.
+Sobald das Zertifikat installiert ist und du über HTTPS verbindest, bietet
+LosOS cloud einen Passkey an. Ein Handy oder Laptop meldet sich dann bei
+LosOS cloud mit seiner eigenen Entsperrung an statt mit dem Passwort. LosOS
+Login nimmt keine Passkeys an und fragt immer nach Name und Passwort. Ein
+Passkey ist kein zweiter Ersatzschlüssel.
 
 ## Das Zeitfenster zum Beanspruchen \{#the-claim-window}
 
 Eine frische Box hat keinen Besitzer. Der erste Browser im LAN, der den
-Assistenten abschließt, wird der Besitzer, und das Fenster schließt sich.
-Führe den Assistenten also bald nach der Installation aus, in einem Netz,
-dem du vertraust. Nichts außerhalb des LAN kann eine Box beanspruchen, und
-erst eine Neuinstallation erlaubt es wieder.
+Assistenten abschließt, wird der Besitzer und ihr erster Administrator, und
+das Fenster schließt sich. Führe den Assistenten also bald nach der
+Installation aus, in einem Netz, dem du vertraust. Nichts außerhalb des LAN
+kann eine Box beanspruchen, und erst eine Neuinstallation erlaubt es wieder.
