@@ -25,8 +25,8 @@ the handbook's last chapter.
 
 ## Install
 
-1. Download the ISO from the
-   [latest release](https://github.com/dasmatus/losos/releases/latest), or
+1. Download the ISO from the newest release on the
+   [releases page](https://github.com/dasmatus/losos/releases), or
    build it with
    `nix build .#nixosConfigurations.iso.config.system.build.isoImage`.
 2. Boot the target in UEFI mode, with Secure Boot off or with the LosOS

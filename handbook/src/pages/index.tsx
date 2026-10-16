@@ -27,7 +27,6 @@ import styles from './index.module.css';
  * the features from "What LosOS is", the requirements from "Install". If a
  * fact changes there, change it here too. */
 
-const RELEASES = 'https://github.com/dasmatus/losos/releases/latest';
 const SOURCE = 'https://github.com/dasmatus/losos';
 
 type Feature = {title: ReactNode; body: ReactNode; to: string};
@@ -574,6 +573,9 @@ function Requirements(): ReactNode {
 }
 
 function Closing(): ReactNode {
+  // The newest release's page, from docusaurus.config.ts.
+  const {siteConfig} = useDocusaurusContext();
+  const releases = siteConfig.customFields?.releaseUrl as string;
   return (
     <section className={styles.closing}>
       <h2 className={styles.sectionTitle}>
@@ -586,7 +588,7 @@ function Closing(): ReactNode {
         </Translate>
       </p>
       <div className={styles.actions}>
-        <Link className={styles.primary} href={RELEASES}>
+        <Link className={styles.primary} href={releases}>
           <Translate id="losos.home.closing.download">Download the latest release</Translate>
         </Link>
         <Link className={styles.secondary} href={SOURCE}>

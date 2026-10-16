@@ -24,14 +24,25 @@ without saying so.
 
 ## Releases
 
-Set `flake/version.nix` to the new tag on main first, then push a `v*`
-tag, or draft a release with a new `v*` tag in the web UI. The boot menus,
-the boot pictures, os-release and the console banners show that file's
-value, and an installed box builds from the committed tree. The release
-job:
+Push a `v*` tag, or draft a release with a new `v*` tag in the web UI.
+The version needs no bump first. The boot menus, the boot pictures,
+os-release, the console banners and `losos --version` show
+`flake/version.nix`, and CI keeps that file on the newest tag:
 
-1. writes the tag into `flake/version.nix` (with a warning if the committed
-   value was another one), then builds the installer ISO and the demo QCOW2,
+- `version.yml` commits the newest `v*` tag to `flake/version.nix` on
+  main when a tag is pushed, and again on any push to main that finds the
+  file behind. Installed boxes build from main, so they show the new
+  version after their next nightly update. The commit goes through the
+  GitHub API with `GITHUB_TOKEN`, so GitHub signs it, and it only
+  fast-forwards. A file already ahead of every tag is left alone.
+  `.github/scripts/sync-version.sh --dry-run` shows what it would commit.
+- The `tui` job writes the tag over the file before it builds `losos`, so
+  the client published for the tag names it.
+
+The release job:
+
+1. writes the tag into `flake/version.nix`, then builds the installer ISO
+   and the demo QCOW2,
 2. signs the ISO's UEFI loader in place with the `SECURE_BOOT_DB_KEY`
    secret (`losos-sign-iso`) and signs `SHA256SUMS` with the same key. If
    the secret is missing or signing fails, the release still publishes:

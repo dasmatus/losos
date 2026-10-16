@@ -72,8 +72,8 @@ let
         }
       ];
 
-  # The caption: "LosOS v0.1.8 is starting", or on the installer medium
-  # "LosOS v0.1.8 installer is starting".
+  # The caption: "LosOS <tag> is starting", or on the installer medium
+  # "LosOS <tag> installer is starting".
   name = lib.concatStringsSep " " (
     [ "LosOS" ]
     ++ lib.optional (config.system.image.version != null) config.system.image.version
