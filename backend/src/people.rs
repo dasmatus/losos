@@ -378,8 +378,22 @@ mod tests {
     #[test]
     fn a_new_password_replaces_the_old_one() {
         let (_d, p) = people();
-        let old = Secret::new("correct horse battery");
-        let new = Secret::new("another long password");
+        let old_password = format!(
+            "test-old-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let new_password = format!(
+            "test-new-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let old = Secret::new(&old_password);
+        let new = Secret::new(&new_password);
         p.add("eva", "", "", &old, &[]).unwrap();
         p.set_password("eva", &new).unwrap();
         let v: serde_json::Value =
