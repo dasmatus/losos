@@ -27,7 +27,6 @@ on:
     paths:
       - "handbook/**"
       - ".github/workflows/handbook.yml"
-      - "flake/version.nix"
       # The one file the handbook's checks read from the admin UI: the error
       # map (check:links). The palette is the desktop's now (handbook's
       # scripts/derisk-theme.sh), no longer the admin UI's tokens.css.
@@ -36,7 +35,6 @@ on:
     paths:
       - "handbook/**"
       - ".github/workflows/handbook.yml"
-      - "flake/version.nix"
       - "admin-ui/app/src/lib/handbook.ts"
   # Picks up the cache copy a ci run on main just published.
   workflow_run:
@@ -70,10 +68,6 @@ jobs:
           cache: npm
           cache-dependency-path: handbook/package-lock.json
       - run: npm ci --no-audit --no-fund
-      # "The latest release" links to the tag flake/version.nix names
-      # (docusaurus.config.ts).
-      - name: read the release
-        run: sed -n 's/^"\(.*\)"$/LOSOS_VERSION=\1/p' ../flake/version.nix >> "$GITHUB_ENV"
       - run: npm run typecheck
       # The admin UI's "What to do" links must all land on a page.
       - run: npm run check

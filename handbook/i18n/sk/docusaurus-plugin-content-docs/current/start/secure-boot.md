@@ -69,7 +69,7 @@ firmvéru, vedľa certifikátov Microsoftu:
 
 1. Získajte certifikát. Je priamo na USB kľúči na
    `EFI/losos/losos-secure-boot.cer` vo formáte DER a ako `.pem` a v každom
-   [vydaní](https://github.com/dasmatus/losos/releases/latest) ako
+   [vydaní](https://github.com/dasmatus/losos/releases) ako
    `losos-secure-boot-db.cer`. Poznámky k vydaniu uvádzajú jeho odtlačok
    SHA-256 a `openssl x509 -in losos-secure-boot-db.pem -noout
    -fingerprint -sha256` vypíše to isté pre súbor, ktorý máte.

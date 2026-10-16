@@ -29,30 +29,6 @@ const baseUrl = process.env.LOSOS_HANDBOOK_BASE ?? '/';
 // The box's copy is the only build under another base (flake/packages.nix).
 const landing = baseUrl === '/';
 
-/* The release this build documents, spelled like its tag ("v0.4.0"): CI and
- * flake/packages.nix pass flake/version.nix in, and CI keeps that file on the
- * newest tag. The pages link "the latest release" as
- * github.com/dasmatus/losos/releases/latest, which GitHub serves only for a
- * release not marked pre-release, and every LosOS release so far is one. So
- * the link is pointed at the tag itself, or at the list of releases when a
- * build is given no version (`npm start` in a checkout). */
-const version = process.env.LOSOS_VERSION ?? '';
-const latestRelease = 'https://github.com/dasmatus/losos/releases/latest';
-const releaseUrl = /^v[0-9]+(\.[0-9]+)*$/.test(version)
-  ? `https://github.com/dasmatus/losos/releases/tag/${version}`
-  : 'https://github.com/dasmatus/losos/releases';
-
-type MdNode = {type: string; url?: string; children?: MdNode[]};
-function pointLatestRelease() {
-  const walk = (node: MdNode) => {
-    if (node.type === 'link' && node.url === latestRelease) {
-      node.url = releaseUrl;
-    }
-    node.children?.forEach(walk);
-  };
-  return walk;
-}
-
 const config: Config = {
   title: 'LosOS handbook',
   tagline: 'A box for your files that looks after itself',
@@ -69,9 +45,6 @@ const config: Config = {
 
   url,
   baseUrl,
-
-  // The landing page's download button (src/pages/index.tsx).
-  customFields: {releaseUrl},
 
   organizationName: 'dasmatus',
   projectName: 'losos',
@@ -119,7 +92,6 @@ const config: Config = {
           sidebarPath: './sidebars.ts',
           editUrl: 'https://github.com/dasmatus/losos/tree/main/handbook/',
           showLastUpdateTime: false,
-          remarkPlugins: [pointLatestRelease],
         },
         blog: false,
         // src/pages holds only the landing page, which the box leaves out.
