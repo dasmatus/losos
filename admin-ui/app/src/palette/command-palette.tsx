@@ -10,11 +10,12 @@ import {
   Search01Icon,
   SourceCodeIcon,
 } from "@hugeicons/core-free-icons";
+import { openInNewTab, PinMenu } from "@/components/pin-menu";
 import { Dialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import type { MessageKey } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
-import { getPinsState, getServerPinsState, subscribePins, viewPin, type PinView } from "@/lib/pins";
+import { getPinsState, getServerPinsState, subscribePins, viewPin } from "@/lib/pins";
 import { getTheme, subscribeTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { actionItems, appItems, pageItems, pinItems, rank, type GroupId, type Item, type Target } from "./items";
@@ -126,7 +127,10 @@ function PaletteBody({ initial }: { initial: string }) {
   const gitText = useRemote(true, query, TEXT_MIN, searchGitText);
   const pins = React.useSyncExternalStore(subscribePins, getPinsState, getServerPinsState);
   const pinned = pinItems(
-    pins.pins.map((pin) => viewPin(pin, pins.installed)).filter((view): view is PinView => view !== null),
+    pins.pins.flatMap((pin) => {
+      const view = viewPin(pin, pins.installed);
+      return view === null ? [] : [{ pin, view }];
+    }),
   );
 
   const groups: Group[] = [];
@@ -151,6 +155,7 @@ function PaletteBody({ initial }: { initial: string }) {
       detail: parentOf(file.path),
       icon: file.folder ? Folder01Icon : File01Icon,
       target: { kind: "href", href: fileHref(file) },
+      pin: { kind: "file", id: file.id, path: file.path, folder: file.folder },
     })),
     remoteNote(files, {
       busy: "palette.files.looking",
@@ -168,6 +173,7 @@ function PaletteBody({ initial }: { initial: string }) {
       detail: repo.description,
       icon: SourceCodeIcon,
       target: { kind: "href", href: repoHref(repo) },
+      pin: { kind: "repo", owner: repo.owner, name: repo.name },
     })),
     remoteNote(repos, {
       busy: "palette.repos.looking",
@@ -364,57 +370,62 @@ function Option({
   onHover: () => void;
   onChoose: (newTab: boolean) => void;
 }) {
+  const target = item.target;
+  const newTab =
+    target.kind === "href" ? () => onChoose(true) : target.kind === "route" ? () => openInNewTab(target.to) : undefined;
   return (
-    <div
-      id={id}
-      role="option"
-      aria-selected={selected}
-      data-group={item.group}
-      // The input keeps focus; a press here must not take it away first.
-      onMouseDown={(event) => event.preventDefault()}
-      onMouseMove={selected ? undefined : onHover}
-      onClick={(event) => onChoose(event.ctrlKey || event.metaKey)}
-      className={cn(
-        "flex cursor-default items-center gap-3 rounded-control px-2.5 py-2",
-        selected ? "bg-accent-wash text-ink" : "text-ink",
-      )}
-    >
-      <span
+    <PinMenu pin={item.pin ?? null} name={item.title} newTab={item.pin === undefined ? undefined : newTab}>
+      <div
+        id={id}
+        role="option"
+        aria-selected={selected}
+        data-group={item.group}
+        // The input keeps focus; a press here must not take it away first.
+        onMouseDown={(event) => event.preventDefault()}
+        onMouseMove={selected ? undefined : onHover}
+        onClick={(event) => onChoose(event.ctrlKey || event.metaKey)}
         className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-control border border-line bg-sunk",
-          selected ? "text-accent" : "text-muted",
+          "flex cursor-default items-center gap-3 rounded-control px-2.5 py-2",
+          selected ? "bg-accent-wash text-ink" : "text-ink",
         )}
       >
-        <HugeiconsIcon icon={item.icon} size={15} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-baseline gap-2">
-          <span className="truncate text-[13.5px] leading-tight font-medium">{item.title}</span>
-          {item.location !== undefined && (
-            <span className="min-w-0 shrink truncate text-[12px] leading-tight text-faint">{item.location}</span>
+        <span
+          className={cn(
+            "flex size-7 shrink-0 items-center justify-center rounded-control border border-line bg-sunk",
+            selected ? "text-accent" : "text-muted",
           )}
+        >
+          <HugeiconsIcon icon={item.icon} size={15} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
         </span>
-        {item.snippet !== undefined ? (
-          <span className="block truncate text-[12px] leading-tight text-muted">
-            {item.snippet.map((run, index) =>
-              index % 2 === 1 ? (
-                <mark key={index} className="bg-transparent font-semibold text-ink">
-                  {run}
-                </mark>
-              ) : (
-                <React.Fragment key={index}>{run}</React.Fragment>
-              ),
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span className="truncate text-[13.5px] leading-tight font-medium">{item.title}</span>
+            {item.location !== undefined && (
+              <span className="min-w-0 shrink truncate text-[12px] leading-tight text-faint">{item.location}</span>
             )}
           </span>
-        ) : (
-          item.detail !== undefined &&
-          item.detail !== null &&
-          item.detail.length > 0 && (
-            <span className="block truncate text-[12px] leading-tight text-muted">{item.detail}</span>
-          )
-        )}
-      </span>
-    </div>
+          {item.snippet !== undefined ? (
+            <span className="block truncate text-[12px] leading-tight text-muted">
+              {item.snippet.map((run, index) =>
+                index % 2 === 1 ? (
+                  <mark key={index} className="bg-transparent font-semibold text-ink">
+                    {run}
+                  </mark>
+                ) : (
+                  <React.Fragment key={index}>{run}</React.Fragment>
+                ),
+              )}
+            </span>
+          ) : (
+            item.detail !== undefined &&
+            item.detail !== null &&
+            item.detail.length > 0 && (
+              <span className="block truncate text-[12px] leading-tight text-muted">{item.detail}</span>
+            )
+          )}
+        </span>
+      </div>
+    </PinMenu>
   );
 }
 

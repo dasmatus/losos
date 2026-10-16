@@ -14,7 +14,7 @@ import { dropToken } from "@/lib/api";
 import { CATALOGUE, recallAvailability, type AppDefinition } from "@/lib/apps";
 import { HANDBOOK_BASE } from "@/lib/handbook";
 import { LOCALE_NAMES, LOCALES, getLocaleChoice, setLocale, t, template, type MessageKey } from "@/lib/i18n";
-import type { PinView } from "@/lib/pins";
+import type { Pin, PinView } from "@/lib/pins";
 import { paneHref } from "@/lib/routes";
 import { getTheme, setTheme, type Theme } from "@/lib/theme";
 import { SETTINGS_PANES } from "@/screens/settings/panes";
@@ -52,6 +52,8 @@ export interface Item {
   icon: IconSvgElement;
   words?: string;
   target: Target;
+  /** What its right-click menu pins to the sidebar (components/pin-menu.tsx). */
+  pin?: Pin;
 }
 
 /** Lower-case and strip diacritics: "Úložisko" -> "ulozisko". */
@@ -149,13 +151,14 @@ export function appItems(): Item[] {
     icon: app.icon,
     words: `${template(app.name, undefined, "en")} ${both(app.note)}`,
     target: { kind: "href", href: app.provider === "code" ? "/forgejo/" : `/nextcloud${app.path}` },
+    pin: { kind: "tile", app: app.id },
   }));
 }
 
 /* The owner's pins (lib/pins.ts), in their own order, each opening where
  * its sidebar row does. */
-export function pinItems(views: readonly PinView[]): Item[] {
-  return views.map((view) => ({
+export function pinItems(pinned: readonly { pin: Pin; view: PinView }[]): Item[] {
+  return pinned.map(({ pin, view }) => ({
     id: `pin-${view.key}`,
     group: "pins" as const,
     title: view.labelKey !== null ? t(view.labelKey) : view.label,
@@ -165,6 +168,7 @@ export function pinItems(views: readonly PinView[]): Item[] {
     target: view.inApp
       ? { kind: "route" as const, to: view.href }
       : { kind: "href" as const, href: view.href, newTab: view.newTab },
+    pin,
   }));
 }
 

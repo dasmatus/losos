@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PinIcon } from "@hugeicons/core-free-icons";
+import { openInNewTab, PinMenu } from "@/components/pin-menu";
 import { usePins, useSavePins } from "@/components/pins-dialog";
 import { StatusDot } from "@/components/ui/badge";
 import type { AppTileModel } from "@/lib/apps";
@@ -122,15 +123,17 @@ export function AppTile({ tile, index = 0 }: AppTileProps) {
   return (
     <li className={cn("group/tile relative animate-rise", staggerClass(index))}>
       <TilePin pin={{ kind: "tile", app: app.id }} name={name} />
-      {leavesAdmin ? (
-        <a href={href} title={note} className={className}>
-          {body}
-        </a>
-      ) : (
-        <Link to={href} title={note} className={className}>
-          {body}
-        </Link>
-      )}
+      <PinMenu pin={{ kind: "tile", app: app.id }} name={name} newTab={() => openInNewTab(href)}>
+        {leavesAdmin ? (
+          <a href={href} title={note} className={className}>
+            {body}
+          </a>
+        ) : (
+          <Link to={href} title={note} className={className}>
+            {body}
+          </Link>
+        )}
+      </PinMenu>
     </li>
   );
 }

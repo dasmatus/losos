@@ -27,6 +27,10 @@ export default defineMessages({
     de: "Die Seitenleiste fasst {limit} angeheftete Einträge. Löse einen, um einen weiteren hinzuzufügen.",
   },
 
+  "pins.menu.pin": { en: "Pin to sidebar", sk: "Pripnúť na bočný panel", de: "An die Seitenleiste anheften" },
+  "pins.menu.unpin": { en: "Unpin from sidebar", sk: "Odopnúť z bočného panela", de: "Von der Seitenleiste lösen" },
+  "pins.menu.newTab": { en: "Open in new tab", sk: "Otvoriť na novej karte", de: "In neuem Tab öffnen" },
+
   "pins.dialog.title": { en: "Pins", sk: "Pripnuté položky", de: "Angeheftete Einträge" },
   "pins.dialog.body": {
     en: "Pinned items sit in the sidebar under the sections and open in their own app. This box keeps the list, so every browser you sign in from shows it.",

@@ -134,6 +134,10 @@ async function open({
   await page.route('**/api/git/repos', (route) =>
     authed(route) ? json(route, 200, REPOS) : json(route, 401, { error: 'unauthorized' }),
   );
+  // The palette's search for repositories carries the query.
+  await page.route('**/api/git/repos?**', (route) =>
+    authed(route) ? json(route, 200, REPOS) : json(route, 401, { error: 'unauthorized' }),
+  );
   // The apps the Overview probes, answering as on a box that is set up.
   await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true }));
   await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
@@ -275,6 +279,70 @@ await check('the palette lists the pins first and finds one by name or by its fo
   await page.close();
 });
 
+const menu = (page) => page.locator('[data-slot="pin-menu"]');
+
+await check('right-clicking a file or a repository in the palette pins it, and the palette stays open', async () => {
+  const { page, box } = await open({ pins: [] });
+  await pinned(page).getByRole('button', { name: 'Pin apps, files and repositories here.' }).waitFor();
+  await page.keyboard.press('Control+Shift+P');
+  const field = page.getByRole('combobox', { name: /^Search pages/ });
+  await field.fill('notes');
+  const palette = page.locator('dialog[open]');
+  const file = palette.getByRole('option').filter({ hasText: 'notes.md' });
+  await file.click({ button: 'right' });
+  // Inside the palette's <dialog>, or the top layer would hide it.
+  await palette.locator('[data-slot="pin-menu"]').waitFor();
+  await menu(page).getByRole('menuitem', { name: 'Pin to sidebar' }).click();
+  await pinned(page).getByRole('link', { name: 'notes.md' }).waitFor();
+  assert.deepEqual(box.puts.at(-1), [{ kind: 'file', id: 12, path: '/notes.md', folder: false }]);
+  assert.equal(await field.isVisible(), true);
+
+  await field.fill('site');
+  const repo = palette
+    .getByRole('group', { name: 'Repositories in LosOS Git', exact: true })
+    .getByRole('option')
+    .filter({ hasText: 'notshared/site' });
+  await repo.click({ button: 'right' });
+  await menu(page).getByRole('menuitem', { name: 'Pin to sidebar' }).click();
+  await pinned(page).getByRole('link', { name: 'site' }).waitFor();
+  assert.deepEqual(box.puts.at(-1).at(-1), { kind: 'repo', owner: 'notshared', name: 'site' });
+
+  // A pinned one offers the way back, and Escape closes the menu, not the palette.
+  await repo.click({ button: 'right' });
+  await menu(page).getByRole('menuitem', { name: 'Unpin from sidebar' }).waitFor();
+  await page.keyboard.press('Escape');
+  await menu(page).waitFor({ state: 'detached' });
+  assert.equal(await field.isVisible(), true);
+  await page.close();
+});
+
+await check('right-clicking an Overview tile or a pin in the sidebar pins or unpins it', async () => {
+  const { page, box } = await open();
+  await pinned(page).waitFor();
+  await page.getByRole('main').getByRole('link', { name: 'Contacts' }).click({ button: 'right' });
+  await menu(page).getByRole('menuitem', { name: 'Pin to sidebar' }).click();
+  await pinned(page).getByRole('link', { name: 'Contacts' }).waitFor();
+  assert.deepEqual(box.puts.at(-1), [...PINNED, { kind: 'tile', app: 'contacts' }]);
+
+  await pinned(page).getByRole('link', { name: 'plan.pdf' }).click({ button: 'right' });
+  assert.deepEqual(await menu(page).getByRole('menuitem').allInnerTexts(), ['Unpin from sidebar', 'Open in new tab']);
+  await menu(page).getByRole('menuitem', { name: 'Unpin from sidebar' }).click();
+  await pinned(page).getByRole('link', { name: 'plan.pdf' }).waitFor({ state: 'detached' });
+  assert.equal(box.puts.at(-1).some((pin) => pin.kind === 'file'), false);
+  await page.close();
+});
+
+await check('a full sidebar greys out Pin to sidebar in the menu', async () => {
+  const many = Array.from({ length: 24 }, (_, i) => ({ kind: 'file', id: 1000 + i, path: `/f${i}.txt`, folder: false }));
+  const { page, box } = await open({ pins: many });
+  await pinned(page).waitFor();
+  await page.getByRole('main').getByRole('link', { name: 'Contacts' }).click({ button: 'right' });
+  const item = menu(page).getByRole('menuitem', { name: 'Pin to sidebar' });
+  assert.equal(await item.getAttribute('aria-disabled'), 'true');
+  assert.equal(box.puts.length, 0);
+  await page.close();
+});
+
 await check('on the rail each pin is an icon that names itself', async () => {
   const { page } = await open();
   await page.keyboard.press('Control+b');
@@ -284,7 +352,7 @@ await check('on the rail each pin is an icon that names itself', async () => {
   await page.close();
 });
 
-await check('under the appliance CSP the pins, the tile button and the dialog add no violation', async () => {
+await check('under the appliance CSP the pins, the tile button, the dialog and the right-click menu add no violation', async () => {
   const { origin: strict, close } = await serve({ csp: true });
   try {
     const { page, errors } = await open({ csp: strict });
@@ -298,6 +366,10 @@ await check('under the appliance CSP the pins, the tile button and the dialog ad
     await dialog.getByRole('button', { name: 'Open Documents' }).waitFor();
     await dialog.getByRole('tab', { name: 'Repositories' }).click();
     await dialog.getByText('losos-config').waitFor();
+    await dialog.getByRole('button', { name: 'Done' }).click();
+    await pinned(page).getByRole('link', { name: 'site' }).click({ button: 'right' });
+    await page.locator('[data-slot="pin-menu"]').waitFor();
+    await page.keyboard.press('Escape');
     const after = await page.evaluate(() => window.__violations);
     assert.equal(after.length, atLoad, `pins added CSP violations: ${after.slice(atLoad).join(', ')}`);
     assert.deepEqual(errors, []);
