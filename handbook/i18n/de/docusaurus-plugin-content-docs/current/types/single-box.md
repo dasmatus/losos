@@ -30,7 +30,7 @@ diesem Netz erreichen ihn, sonst niemand.
   den Schalter nicht aus Versehen einschalten kannst.
 - **Kein Markt.**
 
-![Der Bereich Mesh auf einer Box ohne Edge: Kein Edge-Proxy gefunden, mit dem, was die Box versucht hat, und die ausgegrauten Mesh-Schalter mit Braucht einen erreichbaren Edge-Proxy.](@site/docs/img/mesh-none.png)
+![Der Bereich Mesh auf einer Box ohne Edge: Kein Edge-Proxy gefunden, mit dem, was die Box versucht hat, und die ausgegrauten Mesh-Schalter mit Braucht einen erreichbaren Edge-Proxy.](@site/docs/img/mesh-none-de.png)
 
 ## Wann diese Art die richtige ist \{#when-this-is-the-right-type}
 

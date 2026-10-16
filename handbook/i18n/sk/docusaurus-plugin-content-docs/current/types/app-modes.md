@@ -42,7 +42,7 @@ polnoc by tak odpojil vaše vlastné súbory.
 
 ## Kde sú aplikácie \{#where-the-apps-are}
 
-![Panel Aplikácie: LosOS cloud a LosOS Git, každá so svojím režimom, jedna nainštalovaná aplikácia a pod nimi Nájsť ďalšie.](@site/docs/img/apps.png)
+![Panel Aplikácie: LosOS cloud a LosOS Git, každá so svojím režimom, jedna nainštalovaná aplikácia a pod nimi Nájsť ďalšie.](@site/docs/img/apps-sk.png)
 
 | Aplikácia    | Adresa              | Poznámka                                                                                  |
 | ------------ | ------------------- | ----------------------------------------------------------------------------------------- |

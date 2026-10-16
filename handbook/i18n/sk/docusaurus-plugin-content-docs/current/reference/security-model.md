@@ -51,7 +51,7 @@ paneli Zabezpečenie: AppArmor, spevnený alokátor pamäte, vypnuté SMT,
 USBGuard. [Hardening](/in-depth/hardening.md) opisuje každý prepínač a čo
 stojí.
 
-![Nastavenia, Zabezpečenie: štyri ďalšie ochrany, ktoré sú predvolene vypnuté, každá s tým, čo stojí.](@site/docs/img/settings-security.png)
+![Nastavenia, Zabezpečenie: štyri ďalšie ochrany, ktoré sú predvolene vypnuté, každá s tým, čo stojí.](@site/docs/img/settings-security-sk.png)
 
 ## Známe obmedzenia bez prikrášľovania \{#known-limitations-stated-plainly}
 

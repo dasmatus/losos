@@ -14,7 +14,7 @@ cez nedôveryhodnú doménu“.
 
 </div>
 
-![Panel Aplikácie s LosOS cloud a LosOS Git; dlaždice aplikácií na Prehľade otvárajú tie isté aplikácie.](@site/docs/img/apps.png)
+![Panel Aplikácie s LosOS cloud a LosOS Git; dlaždice aplikácií na Prehľade otvárajú tie isté aplikácie.](@site/docs/img/apps-sk.png)
 
 ## „Not Found“ z dlaždice aplikácie \{#not-found-from-an-app-tile}
 

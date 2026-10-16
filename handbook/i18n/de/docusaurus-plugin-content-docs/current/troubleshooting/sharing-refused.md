@@ -16,7 +16,7 @@ ist ausgegraut, oder Anwenden lehnt die Änderung mit einer Begründung ab.
 
 ## Die Gründe, und welcher bei dir zutrifft \{#the-reasons-and-which-one-you-have}
 
-![Der Bereich Mesh ohne erreichbare Edge: Die Schalter zum Teilen sind ausgegraut mit Braucht einen erreichbaren Edge-Proxy.](@site/docs/img/mesh-none.png)
+![Der Bereich Mesh ohne erreichbare Edge: Die Schalter zum Teilen sind ausgegraut mit Braucht einen erreichbaren Edge-Proxy.](@site/docs/img/mesh-none-de.png)
 
 | Was du siehst                                          | Grund                                                                                       | Was zu tun ist                                                             |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |

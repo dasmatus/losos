@@ -37,7 +37,7 @@ máte. Odkazy, ktoré rozdávajú aplikácie, napríklad odkazy na zdieľanie
 a URL na klonovanie, používajú názov. Názov zostáva rovnaký, aj keď router
 pridelí novú adresu.
 
-![Panel O zariadení: adresa, ktorú použil tento prehliadač, názov .local, režim úložiska, stav mesh siete a odkaz na túto príručku.](@site/docs/img/settings-about.png)
+![Panel O zariadení: adresa, ktorú použil tento prehliadač, názov .local, režim úložiska, stav mesh siete a odkaz na túto príručku.](@site/docs/img/settings-about-sk.png)
 
 ## Cez HTTPS \{#over-https}
 
@@ -68,4 +68,4 @@ s [oficiálnym edge](../types/official-edge) mu dá verejnú adresu cez tunel.
 Aj vtedy zostávajú admin stránky iba pre LAN a cez tunel idú von iba LosOS
 cloud a LosOS Git.
 
-![Nastavenia, Sieť: názov, Šifrovať pripojenie a Dostupné aj mimo domova, prepínač, ktorý otvorí tunel k edge.](@site/docs/img/settings-network.png)
+![Nastavenia, Sieť: názov, Šifrovať pripojenie a Dostupné aj mimo domova, prepínač, ktorý otvorí tunel k edge.](@site/docs/img/settings-network-sk.png)

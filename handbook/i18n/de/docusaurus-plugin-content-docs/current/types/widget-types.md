@@ -26,7 +26,7 @@ die neueste zuerst. Jedes zeichnet sich in einer von vier Formen:
 Heatmap, Zahl, Balken oder Liste. Die eingebauten Widgets sind Teil des
 eigenen Codes der Admin-Seite und kommen mit System-Updates.
 
-![Die Widget-Galerie: die eingebauten Widgets, Eins bauen und Eins schreiben.](@site/docs/img/widget-gallery.png)
+![Die Widget-Galerie: die eingebauten Widgets, Eins bauen und Eins schreiben.](@site/docs/img/widget-gallery-de.png)
 
 ## Aus Messwerten gebaut \{#built-from-readings}
 
@@ -41,7 +41,7 @@ einen Messwert. Das begrenzt es auch: Es kann nicht zwischen Messwerten
 verzweigen, keine Schleifen laufen und sich zwischen zwei Durchläufen nichts
 merken.
 
-![Eins bauen: ein Messwert, eine Form, der anzuzeigende Ausdruck und eine Vorschau der Kachel.](@site/docs/img/widget-build-one.png)
+![Eins bauen: ein Messwert, eine Form, der anzuzeigende Ausdruck und eine Vorschau der Kachel.](@site/docs/img/widget-build-one-de.png)
 
 ## Von Hand geschrieben \{#written-by-hand}
 
@@ -51,7 +51,7 @@ Daten, die es beim Namen einbindet. Die Box speichert das Widget, sodass
 jeder Browser, der die Box öffnet, es sieht. Es steht unter
 **Einstellungen → Aussehen**, wo du es bearbeiten und löschen kannst.
 
-![Eins schreiben: der Quelltext eines von Hand geschriebenen Widgets neben seiner Live-Vorschau im Sandbox-Frame.](@site/docs/img/widget-write-one.png)
+![Eins schreiben: der Quelltext eines von Hand geschriebenen Widgets neben seiner Live-Vorschau im Sandbox-Frame.](@site/docs/img/widget-write-one-de.png)
 
 Ein von Hand geschriebenes Widget läuft in einem Sandbox-Frame. Der Frame ist
 ein eigener Origin, ohne Zugriff auf die Admin-Seiten, den Admin-Schlüssel

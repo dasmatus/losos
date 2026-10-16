@@ -17,7 +17,7 @@ Všetko po tomto kroku by malo ísť cez šifrované spojenie, aj heslo, ktoré
 idete nastaviť. Preto sprievodca chce, aby ste certifikát nainštalovali
 ako prvý.
 
-<img src={require("@site/docs/img/wizard-step1-trust.png").default} alt="Krok 1 sprievodcu: jednoriadkové inštalátory pre macOS, Linux a Windows, stiahnutie certifikátu a odtlačok na porovnanie." width="520" />
+<img src={require("@site/docs/img/wizard-step1-trust-sk.png").default} alt="Krok 1 sprievodcu: jednoriadkové inštalátory pre macOS, Linux a Windows, stiahnutie certifikátu a odtlačok na porovnanie." width="520" />
 
 Najrýchlejšie je to jedným riadkom v termináli, ukázaným pre počítač, na
 ktorom práve ste:
@@ -60,13 +60,13 @@ písmeno, číslicu a symbol, napríklad `-` alebo `!`. Sprievodca počas
 písania odškrtáva každé pravidlo. Toto jedno heslo otvára LosOS cloud,
 LosOS Git aj admin stránky.
 
-<img src={require("@site/docs/img/wizard-step2-password.png").default} alt="Krok 2 so zadaným heslom: každé zo štyroch pravidiel je odškrtnuté, keď je splnené." width="520" />
+<img src={require("@site/docs/img/wizard-step2-password-sk.png").default} alt="Krok 2 so zadaným heslom: každé zo štyroch pravidiel je odškrtnuté, keď je splnené." width="520" />
 
 Krok čaká, kým LosOS cloud dokončí svoje vlastné prvé spustenie, čo na
 novom zariadení trvá niekoľko minút. Medzitým stránka ukazuje „Čaká sa“
 a dôvod. Pokračuje sama.
 
-<img src={require("@site/docs/img/wizard-step2-waiting.png").default} alt="Krok 2, kým sa LosOS cloud ešte inštaluje: stránka hovorí, na čo čaká, a pokračuje sama." width="520" />
+<img src={require("@site/docs/img/wizard-step2-waiting-sk.png").default} alt="Krok 2, kým sa LosOS cloud ešte inštaluje: stránka hovorí, na čo čaká, a pokračuje sama." width="520" />
 
 Keď je heslo nastavené, stránka raz ukáže **náhradný správcovský kľúč**:
 64 znakov s tlačidlami **Kopírovať kľúč** a **Tlačiť**. Vytlačte si ho alebo
@@ -75,7 +75,7 @@ ktorú heslo nezvládne: keď LosOS cloud nebeží. Stránka ho už znova ukáza
 nevie. Pozrite si
 [Prihlásenie a náhradný kľúč](../manual/sign-in-and-spare-key).
 
-<img src={require("@site/docs/img/wizard-step2-spare-key.png").default} alt="Krok 2 po nastavení hesla: prihlasovacie meno a náhradný správcovský kľúč, ukázaný raz, s tlačidlami Kopírovať a Tlačiť." width="520" />
+<img src={require("@site/docs/img/wizard-step2-spare-key-sk.png").default} alt="Krok 2 po nastavení hesla: prihlasovacie meno a náhradný správcovský kľúč, ukázaný raz, s tlačidlami Kopírovať a Tlačiť." width="520" />
 
 Na spojení cez HTTPS krok ponúkne aj **prístupový kľúč** (passkey), aby sa
 telefón alebo notebook mohli prihlásiť bez písania hesla.
@@ -94,6 +94,6 @@ kde prehliadku znova nájdete. **Preskočiť prehliadku** ju zavrie a v tom
 prehliadači sa už sama neotvorí. **Spustiť prehliadku** v časti Nastavenia,
 O zariadení ju vráti.
 
-![Prvý krok prehliadky nad prehľadom: obrázok stránky s otvorenou aplikáciou Súbory, „1 z 6“ a tlačidlá Preskočiť prehliadku a Ďalej.](@site/docs/img/tour.png)
+![Prvý krok prehliadky nad prehľadom: obrázok stránky s otvorenou aplikáciou Súbory, „1 z 6“ a tlačidlá Preskočiť prehliadku a Ďalej.](@site/docs/img/tour-sk.png)
 
-![Krok 3: Ste prihlásení. To bol posledný krok.](@site/docs/img/wizard-step3-sign-in.png)
+![Krok 3: Ste prihlásení. To bol posledný krok.](@site/docs/img/wizard-step3-sign-in-sk.png)

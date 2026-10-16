@@ -27,7 +27,7 @@ a telefóny v tej sieti a nič iné.
   zdieľanie úložiska, ktoré závisí od siete, takže prepínač omylom nezapnete.
 - **Žiadny trh.**
 
-![Panel Mesh na zariadení bez edge: Žiadny okrajový proxy server sa nenašiel, s tým, čo zariadenie skúsilo, a prepínače mesh sivé s textom Vyžaduje dostupný okrajový proxy server.](@site/docs/img/mesh-none.png)
+![Panel Mesh na zariadení bez edge: Žiadny okrajový proxy server sa nenašiel, s tým, čo zariadenie skúsilo, a prepínače mesh sivé s textom Vyžaduje dostupný okrajový proxy server.](@site/docs/img/mesh-none-sk.png)
 
 ## Kedy je to správny typ \{#when-this-is-the-right-type}
 

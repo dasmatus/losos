@@ -17,7 +17,7 @@ Mesh.
 Alles, was du auf der Box ablegst, bleibt auf der Box. Die Box kopiert nichts
 woandershin. Die Festplatte hat zwei Teile:
 
-![Der Bereich Speicher auf einer Box, die ihre Festplatte für sich behält: belegter Platz, freier Platz und die Reserve, mit Reserve nutzen.](@site/docs/img/storage.png)
+![Der Bereich Speicher auf einer Box, die ihre Festplatte für sich behält: belegter Platz, freier Platz und die Reserve, mit Reserve nutzen.](@site/docs/img/storage-de.png)
 
 - der **belegte Platz** von LosOS cloud, LosOS Git und dem System;
 - die **Reserve**, der Teil, den der Installer zurückgehalten hat. Der
@@ -33,7 +33,7 @@ gelten:
 
 ![Das Mesh: Drei Boxen behalten jeweils die Dateien ihres Besitzers für sich und leihen den Platz, den sie nicht nutzen, einem gemeinsamen replizierten Pool; darunter ein Zeitfenster von 23:00 bis 07:00, in dem freie Zeit verliehen wird, nur bei Leerlauf.](@site/docs/img/mesh-de.svg)
 
-![Der Bereich Speicher auf einer Box, die teilt: der an das Mesh verliehene Platz schraffiert neben dem eigenen der Box.](@site/docs/img/storage-shared.png)
+![Der Bereich Speicher auf einer Box, die teilt: der an das Mesh verliehene Platz schraffiert neben dem eigenen der Box.](@site/docs/img/storage-shared-de.png)
 
 - Geteilte Daten liegen in einem eigenen Konto auf der Box, `shared`, in
   einem Verzeichnis, das mit einem im TPM versiegelten Schlüssel
@@ -51,7 +51,7 @@ gelten:
 Das ist von der Festplatte getrennt und liegt im Bereich Mesh. Eine Box
 führt Arbeit anderer Leute nur aus, wenn beides gilt:
 
-![Der Bereich Mesh mit beigetretener Box: Diese Box verleihen, während ich schlafe ist eingeschaltet, und die Stunden sind auf 23:00 bis 07:00 gesetzt.](@site/docs/img/mesh-two-edges.png)
+![Der Bereich Mesh mit beigetretener Box: Diese Box verleihen, während ich schlafe ist eingeschaltet, und die Stunden sind auf 23:00 bis 07:00 gesetzt.](@site/docs/img/mesh-two-edges-de.png)
 
 1. die Uhrzeit liegt im Zeitfenster, das du festgelegt hast, einem Beginn
    und einem Ende in deiner Zeitzone;

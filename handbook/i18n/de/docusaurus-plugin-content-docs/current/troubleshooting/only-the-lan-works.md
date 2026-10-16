@@ -37,7 +37,7 @@ sie behebt.
 
 ## Was weiter funktioniert \{#what-still-works}
 
-![Eine Box, deren Internet ausgefallen ist, deren Firmen-Edge im LAN aber noch antwortet: Der Bereich Mesh führt sie unter In diesem Netzwerk.](@site/docs/img/mesh-company.png)
+![Eine Box, deren Internet ausgefallen ist, deren Firmen-Edge im LAN aber noch antwortet: Der Bereich Mesh führt sie unter In diesem Netzwerk.](@site/docs/img/mesh-company-de.png)
 
 | Was                                 | Warum es kein Internet braucht                                                                                   |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |

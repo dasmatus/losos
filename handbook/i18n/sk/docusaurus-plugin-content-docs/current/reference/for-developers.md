@@ -47,7 +47,8 @@ Obrázky sú v `handbook/docs/img/`. Sú troch druhov:
   ich nasníma zo zostavenej SPA voči náhradnému lososd, takže ukazujú
   aktuálne rozhranie a logo bez zariadenia. Zapisuje PNG v rozlíšení 2x,
   ktoré idú do príručky zmenšené na šírku 1600 px a zredukované na
-  256 farieb.
+  256 farieb. Väčšina z nich je aj v slovenčine a nemčine ako
+  `<name>-sk.png` a `<name>-de.png` a preložené stránky ukazujú tie.
 - **Obrazovky skutočného počítača.** Inštalátor, banner na tty1, výzva na
   heslo a odmietnutia pri Secure Boot pochádzajú z behov vo VM
   (`tests/secure-boot.nix` a inštalácie do VM). Žiadny skript ich znova

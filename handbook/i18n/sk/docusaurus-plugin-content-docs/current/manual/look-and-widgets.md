@@ -16,14 +16,14 @@ patrí prehliadaču, v ktorom ste ju usporiadali. Iný počítač vidí vlastnú
 nástenku. Pridanie vstavaného widgetu alebo widgetu zostaveného z hodnôt
 zariadenia na zariadení nič nemení a nič nespúšťa.
 
-![Prehľad s pozadím Príliv a ručne písaným widgetom Greeting na vrchu nástenky.](@site/docs/img/overview-tide.png)
+![Prehľad s pozadím Príliv a ručne písaným widgetom Greeting na vrchu nástenky.](@site/docs/img/overview-tide-sk.png)
 
 ## Nastavenia → Vzhľad \{#settings--look}
 
 Tento panel mení vzhľad správcovských stránok v každom prehliadači, ktorý
 zariadenie otvorí. Zmena platí hneď, ako ju uložíte, bez nového zostavenia.
 
-![Nastavenia, Vzhľad: pozadia Bez obrázka, Príliv, Mriežka, Súmrak a váš vlastný obrázok, posuvník závoja a ručne písané widgety uložené na tomto zariadení.](@site/docs/img/settings-look.png)
+![Nastavenia, Vzhľad: pozadia Bez obrázka, Príliv, Mriežka, Súmrak a váš vlastný obrázok, posuvník závoja a ručne písané widgety uložené na tomto zariadení.](@site/docs/img/settings-look-sk.png)
 
 - **Pozadie**: jeden z troch dodaných obrázkov (Príliv, Mriežka, Súmrak),
   vlastný nahraný obrázok (PNG, JPEG, WebP, GIF alebo SVG, do 8 MiB) alebo
@@ -48,7 +48,7 @@ skript načíta cez `fetch`, alebo `dot.svg` pre `<img>`. Editor počas písania
 dopĺňa: objekt `losos`, mená hodnôt, farebné premenné zariadenia po `var(--`
 a mená vlastných súborov widgetu. Ctrl+Medzerník ponúkne návrhy kdekoľvek.
 
-![Editor widgetov: súbory a ich kód vľavo, živý náhľad v skutočnom sandboxovanom rámci vpravo a karta Ako to funguje.](@site/docs/img/widget-write-one.png)
+![Editor widgetov: súbory a ich kód vľavo, živý náhľad v skutočnom sandboxovanom rámci vpravo a karta Ako to funguje.](@site/docs/img/widget-write-one-sk.png)
 
 Ručne písaný widget beží v každom prehliadači, ktorý zariadenie otvorí.
 Všetko, čo vložíte z internetu, si pred uložením prečítajte, ako hovorí aj

@@ -14,7 +14,7 @@ zlyhá.
 
 </div>
 
-![Prehľad na zariadení, ktoré je takmer plné.](@site/docs/img/overview-almost-full.png)
+![Prehľad na zariadení, ktoré je takmer plné.](@site/docs/img/overview-almost-full-sk.png)
 
 ## Prečo na tom záleží viac ako na notebooku \{#why-it-matters-more-than-on-a-laptop}
 
@@ -25,7 +25,7 @@ opravuje, takže konajte skôr, než sa objaví **Nie je miesto**.
 
 ## Čo robiť, v tomto poradí \{#what-to-do-in-order}
 
-![Použitie rezervy, to prvé, čo treba skúsiť: dialóg uvádza, koľko miesta pridá.](@site/docs/img/storage-use-reserve.png)
+![Použitie rezervy, to prvé, čo treba skúsiť: dialóg uvádza, koľko miesta pridá.](@site/docs/img/storage-use-reserve-sk.png)
 
 1. **Zaberte rezervu.** Panel Úložisko → **Použiť rezervu**. Inštalátor na
    to odložil 10 % disku. Zabratie trvá minútu a nepotrebuje reštart.

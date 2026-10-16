@@ -17,7 +17,7 @@ pribudne. Zariadenie zväčší zväzok, šifrovaciu vrstvu a súborový systém
 tomto poradí. Nič sa nezastaví a nič sa neodpojí. Ukazovateľ kapacity na
 paneli zobrazuje rezervu ako šrafovaný dielik, kým si ju nevezmete.
 
-![Dialóg Použiť rezervu: koľko miesta pribudne, s tlačidlom Zrušiť ako prvým.](@site/docs/img/storage-use-reserve.png)
+![Dialóg Použiť rezervu: koľko miesta pribudne, s tlačidlom Zrušiť ako prvým.](@site/docs/img/storage-use-reserve-sk.png)
 
 ![Tri vrstvy zväčšené v poradí: logický zväzok, potom šifrovacia vrstva, potom súborový systém.](@site/docs/img/disk-growth-sk.svg)
 
@@ -46,4 +46,4 @@ Prehľad ukáže **Takmer plné** a potom **Nie je miesto**. Plný disk zabráni
 LosOS cloud prijímať nahrávané súbory. Horšie je, že môže zastaviť nočné
 zostavenie. Postup nájdete v časti [Nie je miesto](../troubleshooting/out-of-room).
 
-![Prehľad na takmer plnom zariadení: dlaždica Súbory a karta úložiska varujú.](@site/docs/img/overview-almost-full.png)
+![Prehľad na takmer plnom zariadení: dlaždica Súbory a karta úložiska varujú.](@site/docs/img/overview-almost-full-sk.png)

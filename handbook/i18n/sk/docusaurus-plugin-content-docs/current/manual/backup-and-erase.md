@@ -29,7 +29,7 @@ adresu vo vašej vlastnej sieti, napríklad NAS. Po uložení sa tajný kľúč 
 nikdy neukáže. Keď budete neskôr bucket meniť, nechajte pole tajného kľúča
 prázdne a uložený kľúč zostane.
 
-![Nastavenia, Záloha: bucket, kód obnovy za tlačidlom Zobraziť, posledná záloha a pole na obnovu.](@site/docs/img/settings-backup.png)
+![Nastavenia, Záloha: bucket, kód obnovy za tlačidlom Zobraziť, posledná záloha a pole na obnovu.](@site/docs/img/settings-backup-sk.png)
 
 ### Glacier na Amazon S3 \{#glacier-on-amazon-s3}
 
@@ -44,7 +44,7 @@ a čítanie späť viac:
 | Glacier Flexible Retrieval | po 3 až 5 hodinách | kópiu pre prípad, že zariadenie zmizne |
 | Glacier Deep Archive | až po 12 hodinách | najlacnejšiu kópiu, na najhorší deň |
 
-![Nastavenia, Záloha: formulár bucketu s Glacier Deep Archive vybraným v poli Úložisko.](@site/docs/img/settings-backup-glacier.png)
+![Nastavenia, Záloha: formulár bucketu s Glacier Deep Archive vybraným v poli Úložisko.](@site/docs/img/settings-backup-glacier-sk.png)
 
 Do Glacier idú iba súbory. Malý index so zoznamom záloh zostáva v triede
 Štandardné, takže zariadenie stále dokáže okamžite overiť kód obnovy a
@@ -107,7 +107,7 @@ súbory, repozitáre, zdieľaný priečinok, každé nastavenie, heslo, náhradn
 kľúč a kód obnovy. LosOS zostane nainštalovaný a zariadenie privíta
 ďalšieho človeka sprievodcom nastavením.
 
-![Dialóg vymazania: čo zmizne, čo sa mimo zariadenia uvoľní a prepínač Najprv zálohovať.](@site/docs/img/settings-erase-dialog.png)
+![Dialóg vymazania: čo zmizne, čo sa mimo zariadenia uvoľní a prepínač Najprv zálohovať.](@site/docs/img/settings-erase-dialog-sk.png)
 
 Zariadenie postupne:
 
@@ -122,7 +122,7 @@ Zariadenie postupne:
 4. vráti všetky nastavenia, reštartuje sa a na začiatku ďalšieho štartu, skôr
    než beží akákoľvek aplikácia, zmaže dáta.
 
-![Odpočítavanie s tlačidlom Zrušiť vymazanie.](@site/docs/img/settings-erase-countdown.png)
+![Odpočítavanie s tlačidlom Zrušiť vymazanie.](@site/docs/img/settings-erase-countdown-sk.png)
 
 Od kroku 3 sa vymazanie zastaviť nedá. Krok, ktorý edge nepotvrdí,
 zariadenie zaznamená a vo vymazaní pokračuje. Po reštarte Nastavenia →

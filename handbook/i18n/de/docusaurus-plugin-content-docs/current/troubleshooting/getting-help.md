@@ -13,7 +13,7 @@ worum ein Maintainer bitten kann. Sammle es, bevor du schreibst.
 
 ## Was dazugehört \{#what-to-include}
 
-![Der Bereich Über, dessen Zeilen in einen Bericht gehören: Name, Adresse, Speichermodus und Zustand des Mesh.](@site/docs/img/settings-about.png)
+![Der Bereich Über, dessen Zeilen in einen Bericht gehören: Name, Adresse, Speichermodus und Zustand des Mesh.](@site/docs/img/settings-about-de.png)
 
 1. **Was du getan und was du gesehen hast**, mit dem genauen Text jeder
    Meldung und einem Screenshot, falls es einen gab.

@@ -51,7 +51,7 @@ a [Správa](/in-depth/administration.md#settings) ich opisuje úplne.
 | Binárna cache                        | `losos.cache.substituters`         | `https://proxy.losos.dasmat.us`, potom `https://losos-cache-proxy.vercel.app`, potom `https://losos.dasmat.us/proxy` |
 | Kto môže z webovej stránky čítať `/setup/state.json` | `losos.setup.finderOrigins` | stránka find na edge LosOS     |
 
-![Panel Rozšírené, kde sa upravujú voľby, ktoré nie sú na iných paneloch, každá skontrolovaná pred stlačením Použiť.](@site/docs/img/settings-advanced.png)
+![Panel Rozšírené, kde sa upravujú voľby, ktoré nie sú na iných paneloch, každá skontrolovaná pred stlačením Použiť.](@site/docs/img/settings-advanced-sk.png)
 
 ## Pravidlá, ktoré panely vynucujú \{#rules-the-panes-enforce}
 

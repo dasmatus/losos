@@ -29,7 +29,7 @@ Entsperrdialog oder auf der Anmeldeseite von LosOS cloud.
 
 ## Du hast den Ersatz-Admin-Schlüssel \{#you-have-the-spare-admin-key}
 
-![Der Entsperrdialog, der nach dem Ersatz-Admin-Schlüssel fragt.](@site/docs/img/unlock-spare-key.png)
+![Der Entsperrdialog, der nach dem Ersatz-Admin-Schlüssel fragt.](@site/docs/img/unlock-spare-key-de.png)
 
 Wähle im Entsperrdialog **Stattdessen den Ersatz-Admin-Schlüssel verwenden**
 und füge den Schlüssel mit 64 Zeichen vom gedruckten Blatt ein. Die
