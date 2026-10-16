@@ -5,7 +5,11 @@
  *   npm run build && node tests/handbook-screens.mjs /tmp/handbook-screens [name]
  *
  * Each entry in SHOTS is one PNG: a path, a box state (the stub's answers),
- * a theme and a locale, and optionally what to click before the picture.
+ * a theme and a locale, and optionally what to click before the picture and
+ * which part of the page to keep (`crop`). An entry with `langs` is taken in
+ * English, Slovak and German, the last two as <name>-sk and <name>-de, for
+ * the handbook's translated pages; its clicks name buttons through the UI's
+ * own catalogue (src/i18n), so they find them in every language.
  * The stubbed answers are the shapes tests/*.browser.mjs use; nothing here is
  * read by the app in production. A second argument narrows the run to the
  * names that contain it. The PNGs are 2x; the handbook carries them
@@ -14,6 +18,8 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import * as esbuild from 'esbuild';
 import { launch, serve } from './harness.mjs';
 
 const [outDir = '/tmp/handbook-screens', only = ''] = process.argv.slice(2);
@@ -280,13 +286,61 @@ const CHART = {
   },
 };
 
+/* The UI's message catalogue, so a click can name a button in the language
+ * the shot is taken in: T(lang)(key, vars) is what t(key, vars) draws. */
+const catalogue = await esbuild.build({
+  entryPoints: [fileURLToPath(new URL('../src/i18n/index.ts', import.meta.url))],
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  write: false,
+});
+const { MESSAGES } = await import(`data:text/javascript;base64,${Buffer.from(catalogue.outputFiles[0].text).toString('base64')}`);
+const T = (lang) => (key, vars = {}) => {
+  const text = MESSAGES[key]?.[lang];
+  if (typeof text !== 'string') throw new Error(`no ${lang} string for ${key}`);
+  return text.replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? ''));
+};
+const LOCALES = { en: 'en-US', sk: 'sk-SK', de: 'de-DE' };
+
 const DOC = JSON.parse(await readFile('tests/fixtures/options.json', 'utf8'));
-const OPTIONS = {
+const options = (overrides = {}) => ({
   available: true,
   version: DOC.version,
-  options: DOC.options.map((option) => ({ ...option, set: null })),
+  options: DOC.options.map((option) => ({ ...option, set: overrides[option.name] ?? null })),
   stray: [],
   excluded: DOC.excluded,
+});
+
+/* Six pins, as an owner would have them after a week: two LosOS cloud apps,
+ * a file, a folder, a repository and an app installed from the search. */
+const PINS = [
+  { kind: 'tile', app: 'calendar' },
+  { kind: 'tile', app: 'notes' },
+  { kind: 'file', id: 42, path: '/Documents/plan.pdf', folder: false },
+  { kind: 'file', id: 11, path: '/Photos/Holidays 2026', folder: true },
+  { kind: 'repo', owner: 'notshared', name: 'site' },
+  { kind: 'app', release: 'jellyfin' },
+];
+const FOLDERS = {
+  '/': [
+    { name: 'Documents', path: '/Documents', id: 10, folder: true, size: 4096 },
+    { name: 'Photos', path: '/Photos', id: 11, folder: true, size: 900000 },
+    { name: 'notes.md', path: '/notes.md', id: 12, folder: false, size: 812 },
+  ],
+  '/Documents': [
+    { name: 'Tax', path: '/Documents/Tax', id: 20, folder: true, size: 1000 },
+    { name: 'budget.ods', path: '/Documents/budget.ods', id: 43, folder: false, size: 9000 },
+    { name: 'plan.pdf', path: '/Documents/plan.pdf', id: 42, folder: false, size: 120000 },
+    { name: 'recipes.md', path: '/Documents/recipes.md', id: 44, folder: false, size: 3100 },
+  ],
+};
+const REPOS = {
+  available: true,
+  repos: [
+    { owner: 'notshared', name: 'losos-config', private: true, description: "This box's NixOS configuration." },
+    { owner: 'notshared', name: 'site', private: false, description: 'My web page' },
+  ],
 };
 
 /* A board the owner arranged: the five built-ins, as the gallery adds them. */
@@ -347,6 +401,8 @@ async function open({
   cloudDown = false,
   apply = { job: 'losos-rebuild-7f3a' },
   reducedMotion = 'no-preference',
+  overrides = {},
+  pins = [],
 } = {}) {
   const page = await browser.newPage({ viewport, locale, colorScheme: theme, deviceScaleFactor: 2, reducedMotion });
   await page.clock.setFixedTime(NOW);
@@ -404,7 +460,17 @@ async function open({
   await page.route('**/api/domains', (route) => json(route, 200, domains));
   await page.route('**/api/backup', (route) => json(route, 200, backup));
   await page.route('**/api/config', (route) => json(route, 200, CONFIG));
-  await page.route('**/api/options', (route) => json(route, 200, OPTIONS));
+  await page.route('**/api/options', (route) => json(route, 200, options(overrides)));
+  let pinned = pins;
+  await page.route('**/api/pins', (route) => {
+    if (route.request().method() === 'PUT') pinned = route.request().postDataJSON().pins;
+    return json(route, 200, { pins: pinned, limit: 24 });
+  });
+  await page.route('**/api/cloud/files?**', (route) => {
+    const at = new URL(route.request().url()).searchParams.get('path') ?? '/';
+    return json(route, 200, { available: true, path: at, query: null, entries: FOLDERS[at] ?? [], more: false });
+  });
+  await page.route('**/api/git/repos', (route) => json(route, 200, REPOS));
   await page.route('**/api/apply', (route) => json(route, 200, apply));
   await page.route('**/api/recovery', (route) => json(route, 200, { code: '7d1c3a52-9b0e-4f61-8c2d-5a7e9f0b1c3d', minted: true }));
   await page.route('**/api/apps', (route) => json(route, 200, APPS));
@@ -444,32 +510,59 @@ const hideToasts = (page) =>
     for (const el of document.querySelectorAll('[data-sonner-toaster], [data-toast], ol[tabindex="-1"]')) el.style.display = 'none';
   });
 
+/* The wizard's steps, each from a fresh page: Continue past the certificate,
+ * then the password, then on to signing in. */
+const wizardToPassword = async (page, t) => {
+  await page.getByRole('button', { name: t('wizard.nav.continue') }).first().click();
+  await settle(page);
+};
+const wizardSetPassword = async (page, t) => {
+  await wizardToPassword(page, t);
+  const inputs = page.locator('input[type="password"]');
+  const n = await inputs.count();
+  for (let i = 0; i < n; i++) await inputs.nth(i).fill(PASSWORD);
+  await page.getByRole('button', { name: t('wizard.signin.set') }).first().click();
+  await settle(page, 1500);
+  await hideToasts(page);
+};
+const openPins = async (page, t) => {
+  await page.getByRole('group', { name: t('pins.title') }).getByRole('button', { name: t('pins.edit') }).click();
+  await settle(page);
+};
+
+/* The Overview's apps and disk card: the status line, the tiles and the disk
+ * bar, without the board under it. */
+const OVERVIEW_CARD = 'main [data-slot="card"]';
+
 const SHOTS = [
   // ── The admin pages ──────────────────────────────────────────────────
-  { name: 'overview', path: '/' },
-  { name: 'overview-dark', path: '/', theme: 'dark' },
-  { name: 'overview-phone', path: '/', viewport: { width: 390, height: 844 } },
+  { name: 'overview', path: '/', langs: true },
+  { name: 'overview-dark', path: '/', theme: 'dark', langs: true },
+  { name: 'overview-phone', path: '/', viewport: { width: 390, height: 844 }, langs: true },
   {
     name: 'overview-phone-sheet',
     path: '/',
     viewport: { width: 390, height: 844 },
+    langs: true,
     act: async (page) => {
-      await page.getByRole('button', { name: /sections|menu|sidebar/i }).first().click();
+      await page.locator('[data-slot="sidebar-trigger"]').first().click();
       await settle(page);
     },
   },
-  { name: 'overview-not-answering', path: '/', health: false, status: { state: 'idle', progress: 0, message: '' } },
-  { name: 'overview-almost-full', path: '/', storage: STORAGE_FULL },
-  { name: 'overview-apply-failed', path: '/', status: { state: 'failed', progress: 100, job: '7', message: 'nixos-rebuild exited with status 1' } },
-  { name: 'unlock-dialog', path: '/', signedIn: false, board: null },
+  { name: 'overview-not-answering', path: '/', health: false, crop: { down: OVERVIEW_CARD }, langs: true },
+  { name: 'overview-almost-full', path: '/', storage: STORAGE_FULL, crop: { down: OVERVIEW_CARD }, langs: true },
+  { name: 'overview-apply-failed', path: '/', status: { state: 'failed', progress: 100, job: '7', message: 'nixos-rebuild exited with status 1' }, crop: { down: OVERVIEW_CARD }, langs: true },
+  { name: 'unlock-dialog', path: '/', signedIn: false, board: null, crop: 'dialog', langs: true },
   {
     name: 'unlock-dialog-cloud-down',
     path: '/',
     signedIn: false,
     cloudDown: true,
-    act: async (page) => {
+    crop: 'dialog',
+    langs: true,
+    act: async (page, t) => {
       await page.locator('input#owner-password').fill(PASSWORD);
-      await page.getByRole('button', { name: 'Unlock' }).click();
+      await page.getByRole('button', { name: t('shell.signIn.unlock'), exact: true }).click();
       await settle(page, 800);
     },
   },
@@ -477,8 +570,10 @@ const SHOTS = [
     name: 'unlock-spare-key',
     path: '/',
     signedIn: false,
-    act: async (page) => {
-      await page.getByRole('button', { name: /Use the spare admin key instead/ }).click();
+    crop: 'dialog',
+    langs: true,
+    act: async (page, t) => {
+      await page.getByRole('button', { name: t('shell.signIn.useKey') }).click();
       await settle(page);
     },
   },
@@ -486,60 +581,89 @@ const SHOTS = [
     name: 'unlock-refused',
     path: '/',
     signedIn: false,
-    act: async (page) => {
+    crop: 'dialog',
+    langs: true,
+    act: async (page, t) => {
       await page.locator('input#owner-password').fill('Wrong-horse battery staple 1');
-      await page.getByRole('button', { name: 'Unlock' }).click();
+      await page.getByRole('button', { name: t('shell.signIn.unlock'), exact: true }).click();
       await settle(page, 800);
     },
   },
-  { name: 'apps', path: '/apps' },
+  { name: 'apps', path: '/apps', langs: true },
   {
     name: 'apps-find-more',
     path: '/apps',
-    act: async (page) => {
-      await page.getByPlaceholder('Search for an app').fill('media');
+    langs: true,
+    act: async (page, t) => {
+      const search = page.getByPlaceholder(t('panes.apps.searchPlaceholder'));
+      await search.fill('media');
       await page.keyboard.press('Enter');
       await settle(page, 1000);
+      // The results with the installed apps above them, not the app settings.
+      await search.evaluate((el) => {
+        el.closest('section').previousElementSibling.scrollIntoView({ block: 'start' });
+        window.scrollBy(0, -72);
+      });
+      await settle(page);
     },
   },
   {
     name: 'apps-install',
     path: '/apps',
-    act: async (page) => {
-      await page.getByPlaceholder('Search for an app').fill('media');
+    langs: true,
+    act: async (page, t) => {
+      await page.getByPlaceholder(t('panes.apps.searchPlaceholder')).fill('media');
       await page.keyboard.press('Enter');
       await settle(page, 1000);
-      await page.getByRole('button', { name: 'Install jellyfin' }).click();
+      await page.getByRole('button', { name: t('install.buttonLabel', { name: 'jellyfin' }) }).click();
       await page.locator('dialog[open] summary', { hasText: 'service' }).click();
       await settle(page, 800);
     },
   },
-  { name: 'storage', path: '/storage' },
-  { name: 'storage-shared', path: '/storage', storage: STORAGE_SHARED, state: { mode: 'mesh', sharing: true }, settings: { ...JOINED, sharingMyStorage: true } },
+  /* The box-wide settings of both apps, with the cloud's language set to the
+   * page's own and the trash emptied after 30 days. */
+  {
+    name: 'apps-site-settings',
+    path: '/apps',
+    langs: true,
+    perLang: (lang) => ({
+      overrides: {
+        'nextcloud.site.trashDays': '30',
+        ...(lang === 'en' ? {} : { 'nextcloud.site.defaultLanguage': `"${lang}"` }),
+      },
+    }),
+    crop: { selector: '[data-testid="site-cloud"], [data-testid="site-git"]', pad: 8 },
+  },
+  { name: 'storage', path: '/storage', crop: 'fit', langs: true },
+  { name: 'storage-shared', path: '/storage', storage: STORAGE_SHARED, state: { mode: 'mesh', sharing: true }, settings: { ...JOINED, sharingMyStorage: true }, crop: 'fit', langs: true },
   {
     name: 'storage-use-reserve',
     path: '/storage',
-    act: async (page) => {
-      await page.getByRole('button', { name: /Use reserve/ }).click();
+    crop: 'dialog',
+    langs: true,
+    act: async (page, t) => {
+      await page.getByRole('button', { name: t('panes.storage.useReserve') }).click();
       await settle(page);
     },
   },
-  { name: 'mesh-none', path: '/mesh' },
-  { name: 'mesh-official', path: '/mesh', edge: EDGE_OFFICIAL },
-  { name: 'mesh-company', path: '/mesh', edge: EDGE_COMPANY, market: MARKET_UNOFFICIAL },
-  { name: 'mesh-two-edges', path: '/mesh', edge: EDGE_BOTH, settings: JOINED },
+  { name: 'mesh-none', path: '/mesh', crop: 'fit', langs: true },
+  { name: 'mesh-official', path: '/mesh', edge: EDGE_OFFICIAL, crop: 'fit', langs: true },
+  { name: 'mesh-company', path: '/mesh', edge: EDGE_COMPANY, market: MARKET_UNOFFICIAL, crop: 'fit', langs: true },
+  { name: 'mesh-two-edges', path: '/mesh', edge: EDGE_BOTH, settings: JOINED, crop: 'fit', langs: true },
   {
     name: 'mesh-warning-tooltip',
     path: '/mesh',
     edge: EDGE_COMPANY,
     market: MARKET_UNOFFICIAL,
+    crop: { selector: 'main', pad: 8, through: 'main section' },
+    langs: true,
     act: async (page) => {
       await page.locator('[data-edge-sign="warning"]').first().hover();
       await settle(page, 800);
     },
   },
   { name: 'market-soon', path: '/mesh', edge: EDGE_OFFICIAL },
-  { name: 'settings-network', path: '/settings/network' },
+  { name: 'settings-network', path: '/settings/network', crop: 'fit', langs: true },
   { name: 'settings-network-full', path: '/settings/network', full: true },
   { name: 'settings-domain-stripe', path: '/settings/network', full: true, edge: EDGE_OFFICIAL, domains: DOMAINS_UNVOUCHED },
   {
@@ -551,8 +675,19 @@ const SHOTS = [
     domains: DOMAINS_READY,
   },
   {
+    name: 'custom-domain',
+    path: '/settings/network',
+    edge: EDGE_OFFICIAL,
+    settings: { ...SETTINGS, proxyEnable: true },
+    domains: DOMAINS_READY,
+    crop: { selector: '[data-testid="custom-domains"]', pad: 12 },
+    langs: true,
+  },
+  {
     name: 'settings-apply-bar',
     path: '/settings/network',
+    crop: 'fit',
+    langs: true,
     act: async (page) => {
       await page.getByRole('textbox').first().fill('kitchenbox');
       await settle(page);
@@ -561,82 +696,92 @@ const SHOTS = [
   {
     name: 'settings-apply-invalid',
     path: '/settings/network',
+    crop: 'fit',
+    langs: true,
     act: async (page) => {
       await page.getByRole('textbox').first().fill('kitchen box');
       await settle(page);
     },
   },
   { name: 'settings-hardware', path: '/settings/hardware' },
-  { name: 'settings-security', path: '/settings/security' },
-  { name: 'settings-look', path: '/settings/look', look: LOOK_TIDE },
-  { name: 'settings-about', path: '/settings/about' },
+  { name: 'settings-security', path: '/settings/security', crop: 'fit', langs: true },
+  { name: 'settings-look', path: '/settings/look', look: LOOK_TIDE, langs: true },
+  { name: 'settings-about', path: '/settings/about', langs: true },
   /* The first-run tour, one shot per step, over the overview it opens on.
    * Under reduced motion each scene shows its composed still, so the
-   * pictures do not depend on timing. */
+   * pictures do not depend on timing. `tour` is the first step again, in
+   * every language, for the first-run page. */
   ...[1, 2, 3, 4, 5, 6].flatMap((step) =>
-    [['', 'light'], ['-dark', 'dark'], ...(step === 1 ? [['-phone', 'light']] : [])].map(([suffix, theme]) => ({
-      name: `tour-${step}${suffix}`,
+    [['', 'light'], ['-dark', 'dark'], ...(step === 1 ? [['-phone', 'light'], ['', 'light', 'tour']] : [])].map(([suffix, theme, name]) => ({
+      name: name ?? `tour-${step}${suffix}`,
       path: '/',
       theme,
       ...(suffix === '-phone' ? { viewport: { width: 390, height: 844 } } : {}),
+      ...(name ? { langs: true } : {}),
       reducedMotion: 'reduce',
-      act: async (page) => {
+      act: async (page, t) => {
         // As the wizard's Finish leaves it: the tour pending over the overview.
         await page.evaluate(() => window.localStorage.setItem('losos-tour', 'pending'));
         await page.reload({ waitUntil: 'networkidle' });
         const tour = page.getByTestId('tour');
         await tour.waitFor();
-        if (step > 1) await tour.getByRole('button', { name: `Go to step ${step}` }).click();
+        if (step > 1) await tour.getByRole('button', { name: t('tour.step', { n: step }) }).click();
         await settle(page, 700);
         await hideToasts(page);
       },
     })),
   ),
-  { name: 'settings-reset', path: '/settings/reset' },
+  { name: 'settings-reset', path: '/settings/reset', langs: true },
   {
     name: 'settings-reset-dialog',
     path: '/settings/reset',
-    act: async (page) => {
-      await page.getByRole('button', { name: /Reset/ }).last().click();
+    crop: 'dialog',
+    langs: true,
+    act: async (page, t) => {
+      await page.getByRole('button', { name: t('panes.reset.button') }).click();
       await settle(page);
     },
   },
-  { name: 'settings-backup', path: '/settings/backup' },
+  { name: 'settings-backup', path: '/settings/backup', langs: true },
   {
     name: 'settings-backup-glacier',
     path: '/settings/backup',
-    act: async (page) => {
-      await page.getByTestId('backup-target').getByRole('button', { name: 'Change…' }).click();
-      await page.getByTestId('backup-target-form').getByLabel('Storage').selectOption('deepArchive');
+    langs: true,
+    act: async (page, t) => {
+      await page.getByTestId('backup-target').getByRole('button', { name: t('panes.backup.target.change') }).click();
+      await page.getByTestId('backup-target-form').getByLabel(t('panes.backup.target.class')).selectOption('deepArchive');
       await settle(page);
     },
   },
   {
     name: 'settings-erase-dialog',
     path: '/settings/reset',
-    act: async (page) => {
-      await page.getByRole('button', { name: 'Erase…' }).click();
+    langs: true,
+    act: async (page, t) => {
+      await page.getByRole('button', { name: t('panes.erase.button') }).click();
       await settle(page);
     },
   },
-  { name: 'settings-erase-countdown', path: '/settings/reset', backup: BACKUP_COUNTDOWN },
-  { name: 'settings-advanced', path: '/settings/advanced' },
-  { name: 'settings-history', path: '/settings/history' },
+  { name: 'settings-erase-countdown', path: '/settings/reset', backup: BACKUP_COUNTDOWN, langs: true },
+  { name: 'settings-advanced', path: '/settings/advanced', langs: true },
+  { name: 'settings-history', path: '/settings/history', crop: 'fit', langs: true },
   {
     name: 'settings-search',
     path: '/settings/security',
-    act: async (page) => {
-      await page.getByPlaceholder(/search|hľadať/i).first().fill('usb');
+    act: async (page, t) => {
+      await page.getByRole('button', { name: t('palette.open', { shortcut: '' }).split('(')[0].trim() }).first().click();
+      await page.getByPlaceholder(t('palette.placeholder')).fill('usb');
       await settle(page);
     },
   },
-  { name: 'overview-tide', path: '/', look: LOOK_TIDE, board: { ...BOARD, widgets: [{ id: 'h', source: { kind: 'hand', id: 'w1' } }, ...BOARD.widgets.slice(0, 3)] } },
+  { name: 'overview-tide', path: '/', look: LOOK_TIDE, board: { ...BOARD, widgets: [{ id: 'h', source: { kind: 'hand', id: 'w1' } }, ...BOARD.widgets.slice(0, 3)] }, langs: true },
   {
     name: 'widget-gallery',
     path: '/',
     board: { version: 1, widgets: [] },
-    act: async (page) => {
-      await page.getByRole('button', { name: /Add a widget/ }).first().click();
+    langs: true,
+    act: async (page, t) => {
+      await page.getByRole('button', { name: t('widgets.board.add') }).first().click();
       await settle(page, 800);
     },
   },
@@ -644,10 +789,11 @@ const SHOTS = [
     name: 'widget-build-one',
     path: '/',
     board: { version: 1, widgets: [] },
-    act: async (page) => {
-      await page.getByRole('button', { name: /Add a widget/ }).first().click();
+    langs: true,
+    act: async (page, t) => {
+      await page.getByRole('button', { name: t('widgets.board.add') }).first().click();
       await settle(page);
-      await page.getByRole('button', { name: /Build one/ }).first().click();
+      await page.getByRole('button', { name: t('widgets.gallery.buildOne') }).first().click();
       await settle(page, 800);
     },
   },
@@ -656,32 +802,34 @@ const SHOTS = [
     path: '/',
     look: LOOK_TIDE,
     board: { version: 1, widgets: [] },
-    act: async (page) => {
-      await page.getByRole('button', { name: /Add a widget/ }).first().click();
+    langs: true,
+    act: async (page, t) => {
+      await page.getByRole('button', { name: t('widgets.board.add') }).first().click();
       await settle(page);
-      await page.getByRole('button', { name: /Write one/ }).first().click();
+      await page.getByRole('button', { name: t('look.gallery.writeOne') }).first().click();
       await settle(page, 1200);
     },
   },
-  { name: 'settings-hardware-sk-dark', path: '/settings/hardware', locale: 'sk-SK', theme: 'dark' },
-  { name: 'overview-sk', path: '/', locale: 'sk-SK' },
-  { name: 'mesh-two-edges-sk', path: '/mesh', edge: EDGE_BOTH, settings: JOINED, locale: 'sk-SK' },
-  { name: 'unlock-dialog-sk', path: '/', signedIn: false, board: null, locale: 'sk-SK' },
-  { name: 'overview-de-dark', path: '/', locale: 'de-DE', theme: 'dark' },
+  /* Pins: the sidebar with six, and the list open on a LosOS cloud folder. */
+  { name: 'pins-overview', path: '/', pins: PINS, langs: true },
   {
-    name: 'settings-search-sk',
-    path: '/settings/security',
-    locale: 'sk-SK',
-    act: async (page) => {
-      await page.getByPlaceholder(/search|hľadať/i).first().fill('usb');
-      await settle(page);
+    name: 'pins-dialog',
+    path: '/',
+    pins: PINS,
+    langs: true,
+    act: async (page, t) => {
+      await openPins(page, t);
+      const dialog = page.locator('dialog[open]');
+      await dialog.getByRole('tab', { name: t('pins.tab.files') }).click();
+      await dialog.getByRole('button', { name: t('pins.files.open', { name: 'Documents' }) }).click();
+      await settle(page, 800);
     },
   },
-  { name: 'market-open', path: '/settings/market', edge: EDGE_OFFICIAL, market: MARKET_OPEN, settings: JOINED },
-  { name: 'market-open-sk', path: '/settings/market', locale: 'sk-SK', edge: EDGE_OFFICIAL, market: MARKET_OPEN, settings: JOINED },
+  { name: 'settings-hardware-sk-dark', path: '/settings/hardware', lang: 'sk', theme: 'dark' },
+  { name: 'overview-de-dark', path: '/', lang: 'de', theme: 'dark' },
+  { name: 'market-open', path: '/settings/market', edge: EDGE_OFFICIAL, market: MARKET_OPEN, settings: JOINED, langs: true },
   // ── The wizard ───────────────────────────────────────────────────────
-  { name: 'wizard-step1-trust', path: '/', claimed: false, signedIn: false, full: true },
-  { name: 'wizard-step1-trust-sk', path: '/', claimed: false, signedIn: false, locale: 'sk-SK' },
+  { name: 'wizard-step1-trust', path: '/', claimed: false, signedIn: false, full: true, crop: 'column', langs: true },
   { name: 'wizard-step1-trust-phone', path: '/', claimed: false, signedIn: false, viewport: { width: 390, height: 844 } },
   {
     name: 'wizard-step2-waiting',
@@ -690,9 +838,11 @@ const SHOTS = [
     signedIn: false,
     ready: false,
     waitingFor: 'LosOS cloud is still installing itself',
-    act: async (page) => {
-      await page.getByRole('button', { name: /next|continue|skip|pokračovať/i }).first().click();
-      await settle(page, 800);
+    crop: 'column',
+    langs: true,
+    act: async (page, t) => {
+      await wizardToPassword(page, t);
+      await settle(page, 300);
     },
   },
   {
@@ -700,102 +850,106 @@ const SHOTS = [
     path: '/',
     claimed: false,
     signedIn: false,
-    act: async (page) => {
-      await page.getByRole('button', { name: /next|continue|skip|pokračovať/i }).first().click();
-      await settle(page);
-      const pw = page.locator('input[type="password"]').first();
-      await pw.fill('Correct-horse 1');
+    crop: 'column',
+    langs: true,
+    act: async (page, t) => {
+      await wizardToPassword(page, t);
+      await page.locator('input[type="password"]').first().fill('Correct-horse 1');
+      // Typing scrolls the field into view; the shot starts at the top.
+      await page.evaluate(() => window.scrollTo(0, 0));
       await settle(page);
     },
   },
-  {
-    name: 'wizard-step2-spare-key',
-    path: '/',
-    claimed: false,
-    signedIn: false,
-    act: async (page) => {
-      await page.getByRole('button', { name: /next|continue|skip|pokračovať/i }).first().click();
-      await settle(page);
-      const inputs = page.locator('input[type="password"]');
-      const n = await inputs.count();
-      for (let i = 0; i < n; i++) await inputs.nth(i).fill(PASSWORD);
-      await page.getByRole('button', { name: /set the password|set password|continue|next|nastaviť heslo/i }).first().click();
-      await settle(page, 1500);
-      await hideToasts(page);
-    },
-    full: true,
-  },
-  {
-    name: 'wizard-step2-spare-key-sk',
-    locale: 'sk-SK',
-    path: '/',
-    claimed: false,
-    signedIn: false,
-    act: async (page) => {
-      await page.getByRole('button', { name: /next|continue|skip|pokračovať/i }).first().click();
-      await settle(page);
-      const inputs = page.locator('input[type="password"]');
-      const n = await inputs.count();
-      for (let i = 0; i < n; i++) await inputs.nth(i).fill(PASSWORD);
-      await page.getByRole('button', { name: /set the password|set password|continue|next|nastaviť heslo/i }).first().click();
-      await settle(page, 1500);
-      await hideToasts(page);
-    },
-    full: true,
-  },
+  { name: 'wizard-step2-spare-key', path: '/', claimed: false, signedIn: false, full: true, crop: 'column', langs: true, act: wizardSetPassword },
   {
     name: 'wizard-step3-sign-in',
-    clip: { x: 300, y: 0, width: 680, height: 200 },
     path: '/',
     claimed: false,
     signedIn: false,
-    act: async (page) => {
-      await page.getByRole('button', { name: /next|continue|skip|pokračovať/i }).first().click();
-      await settle(page);
-      const inputs = page.locator('input[type="password"]');
-      const n = await inputs.count();
-      for (let i = 0; i < n; i++) await inputs.nth(i).fill(PASSWORD);
-      await page.getByRole('button', { name: /set the password|set password|continue|next|nastaviť heslo/i }).first().click();
-      await settle(page, 1200);
-      await page.getByRole('button', { name: /next|continue|sign in|pokračovať|prihlásiť/i }).last().click();
-      await settle(page, 2500);
-      await hideToasts(page);
-    },
-  },
-  {
-    name: 'wizard-step3-sign-in-sk',
-    locale: 'sk-SK',
-    clip: { x: 300, y: 0, width: 680, height: 200 },
-    path: '/',
-    claimed: false,
-    signedIn: false,
-    act: async (page) => {
-      await page.getByRole('button', { name: /next|continue|skip|pokračovať/i }).first().click();
-      await settle(page);
-      const inputs = page.locator('input[type="password"]');
-      const n = await inputs.count();
-      for (let i = 0; i < n; i++) await inputs.nth(i).fill(PASSWORD);
-      await page.getByRole('button', { name: /set the password|set password|continue|next|nastaviť heslo/i }).first().click();
-      await settle(page, 1200);
-      await page.getByRole('button', { name: /next|continue|sign in|pokračovať|prihlásiť/i }).last().click();
+    crop: { clip: { x: 300, y: 0, width: 680, height: 200 } },
+    langs: true,
+    act: async (page, t) => {
+      await wizardSetPassword(page, t);
+      await page.getByRole('button', { name: t('wizard.nav.continue') }).last().click();
       await settle(page, 2500);
       await hideToasts(page);
     },
   },
 ];
 
-for (const shot of SHOTS) {
-  if (only && !shot.name.includes(only)) continue;
-  const { name, act, full = false, clip = null, ...options } = shot;
-  const page = await open(options);
-  try {
-    if (act) await act(page);
-    await page.screenshot({ path: join(outDir, `${name}.png`), fullPage: full, ...(clip ? { clip } : {}) });
-    console.log('  wrote', name);
-  } catch (e) {
-    console.log('  FAIL', name, e.message.split('\n')[0]);
+/* What part of the page a shot keeps, in CSS pixels:
+ *   'fit'     the whole width, down to the lowest thing drawn, so a short
+ *             pane carries no empty band under it
+ *   'column'  the width of the centred column (the wizard), every row
+ *   'dialog'  the open dialog and a margin of the page around it
+ *   { selector, pad, through }   the box around every match, cut off under
+ *             the first match of `through` when given
+ *   { down }  the whole width, from the top to the bottom of the first match
+ *   { clip }  a fixed rectangle */
+async function region(page, crop, full) {
+  if (!crop) return null;
+  const view = page.viewportSize();
+  if (crop.clip) return crop.clip;
+  const pad = (box, by) => {
+    const x = Math.max(0, Math.floor(box.x - by));
+    const y = Math.max(0, Math.floor(box.y - by));
+    return { x, y, width: Math.min(view.width, Math.ceil(box.x + box.width + by)) - x, height: Math.ceil(box.y + box.height + by) - y };
+  };
+  if (crop === 'dialog') return pad(await page.locator('dialog[open]').last().boundingBox(), 48);
+  const drawn = await page.evaluate(() => {
+    let left = Infinity;
+    let right = 0;
+    let bottom = 0;
+    for (const el of document.body.querySelectorAll('*')) {
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2 || getComputedStyle(el).visibility === 'hidden') continue;
+      // Wrappers as tall or as wide as the window say nothing about where
+      // the page ends.
+      if (r.height < window.innerHeight - 1) bottom = Math.max(bottom, r.bottom + window.scrollY);
+      if (r.width < window.innerWidth - 1) {
+        left = Math.min(left, r.left);
+        right = Math.max(right, r.right);
+      }
+    }
+    return { left, right, bottom, height: document.documentElement.scrollHeight };
+  });
+  if (crop.down) {
+    const box = await page.locator(crop.down).first().boundingBox();
+    return { x: 0, y: 0, width: view.width, height: Math.ceil(box.y + box.height) + 14 };
   }
-  await page.close();
+  if (crop === 'fit') return { x: 0, y: 0, width: view.width, height: Math.min(Math.ceil(drawn.bottom) + 32, full ? drawn.height : view.height) };
+  if (crop === 'column') {
+    const x = Math.max(0, Math.floor(drawn.left) - 32);
+    return { x, y: 0, width: Math.min(view.width, Math.ceil(drawn.right) + 32) - x, height: full ? drawn.height : view.height };
+  }
+  const boxes = (await Promise.all((await page.locator(crop.selector).all()).map((l) => l.boundingBox()))).filter(Boolean);
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  let end = Math.max(...boxes.map((b) => b.y + b.height));
+  if (crop.through) {
+    const stop = await page.locator(crop.through).first().boundingBox();
+    if (stop) end = Math.min(end, stop.y + stop.height);
+  }
+  const right = Math.max(...boxes.map((b) => b.x + b.width));
+  return pad({ x, y, width: right - x, height: end - y }, crop.pad ?? 0);
+}
+
+for (const shot of SHOTS) {
+  const { name, act, full = false, crop = null, langs = false, lang: only1 = 'en', perLang = () => ({}), ...options } = shot;
+  for (const lang of langs ? ['en', 'sk', 'de'] : [only1]) {
+    const file = langs && lang !== 'en' ? `${name}-${lang}` : name;
+    if (only && !file.includes(only)) continue;
+    const page = await open({ ...options, ...perLang(lang), locale: LOCALES[lang] });
+    try {
+      if (act) await act(page, T(lang));
+      const clip = await region(page, crop, full);
+      await page.screenshot({ path: join(outDir, `${file}.png`), fullPage: full || (clip ? clip.y + clip.height > page.viewportSize().height : false), ...(clip ? { clip } : {}) });
+      console.log('  wrote', file);
+    } catch (e) {
+      console.log('  FAIL', file, e.message.split('\n')[0]);
+    }
+    await page.close();
+  }
 }
 
 await browser.close();

@@ -53,7 +53,7 @@ vollständig.
 | Der Binär-Cache                      | `losos.cache.substituters`         | `https://proxy.losos.dasmat.us`, dann `https://losos-cache-proxy.vercel.app`, dann `https://losos.dasmat.us/proxy` |
 | Wer `/setup/state.json` von einer Webseite aus lesen darf | `losos.setup.finderOrigins` | die Suchseite der LosOS-Edge |
 
-![Der Bereich Erweitert, in dem die Optionen bearbeitet werden, die in keinem anderen Bereich stehen, jede vor Anwenden geprüft.](@site/docs/img/settings-advanced.png)
+![Der Bereich Erweitert, in dem die Optionen bearbeitet werden, die in keinem anderen Bereich stehen, jede vor Anwenden geprüft.](@site/docs/img/settings-advanced-de.png)
 
 ## Regeln, die die Bereiche durchsetzen \{#rules-the-panes-enforce}
 

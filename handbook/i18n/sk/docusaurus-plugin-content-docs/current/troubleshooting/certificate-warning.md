@@ -28,7 +28,7 @@ prechádzalo sieťou nešifrované.
 Prvý krok sprievodcu ukazuje jednoriadkový inštalátor. Po nastavení
 zariadenie tie isté súbory poskytuje ďalej, iba do LAN:
 
-<img src={require("@site/docs/img/wizard-step1-trust.png").default} alt="Krok sprievodcu s certifikátom, kde sú jednoriadkové inštalátory a odtlačok." width="520" />
+<img src={require("@site/docs/img/wizard-step1-trust-sk.png").default} alt="Krok sprievodcu s certifikátom, kde sú jednoriadkové inštalátory a odtlačok." width="520" />
 
 ```bash title="macOS a Linux"
 curl -fsSL http://<address>/setup/trust.sh | sh

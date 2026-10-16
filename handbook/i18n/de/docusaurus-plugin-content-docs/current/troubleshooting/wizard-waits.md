@@ -13,7 +13,7 @@ Box fertig gestartet ist“ und bleibt dabei.
 
 </div>
 
-<img src={require("@site/docs/img/wizard-step2-waiting.png").default} alt="Schritt 2 des Assistenten wartet auf LosOS cloud und zeigt, worauf genau." width="520" />
+<img src={require("@site/docs/img/wizard-step2-waiting-de.png").default} alt="Schritt 2 des Assistenten wartet auf LosOS cloud und zeigt, worauf genau." width="520" />
 
 ## Warum \{#why}
 

@@ -28,7 +28,7 @@ prihlasovacej stránke LosOS cloud.
 
 ## Máte náhradný správcovský kľúč \{#you-have-the-spare-admin-key}
 
-![Dialóg odomknutia, ktorý žiada náhradný správcovský kľúč.](@site/docs/img/unlock-spare-key.png)
+![Dialóg odomknutia, ktorý žiada náhradný správcovský kľúč.](@site/docs/img/unlock-spare-key-sk.png)
 
 V dialógu odomknutia zvoľte **Použiť namiesto toho náhradný správcovský
 kľúč** a vložte 64-znakový kľúč z vytlačeného hárku. Správcovské stránky sa

@@ -26,9 +26,9 @@ ktoré neprejde kontrolou, napríklad názov s medzerou alebo port mimo
 rozsahu, a Použiť počká, kým ho neopravíte. Kým nestlačíte Použiť,
 k zariadeniu sa nič nedostane.
 
-![Názov s medzerou: pole je označené a Použiť čaká, kým sa neopraví.](@site/docs/img/settings-apply-invalid.png)
+![Názov s medzerou: pole je označené a Použiť čaká, kým sa neopraví.](@site/docs/img/settings-apply-invalid-sk.png)
 
-![Panel Sieť s napísaným novým názvom: lišta hovorí, že jedna zmena ešte nie je použitá.](@site/docs/img/settings-apply-bar.png)
+![Panel Sieť s napísaným novým názvom: lišta hovorí, že jedna zmena ešte nie je použitá.](@site/docs/img/settings-apply-bar-sk.png)
 
 ## Čo urobí Použiť \{#what-apply-does}
 
@@ -43,7 +43,7 @@ k zariadeniu sa nič nedostane.
 
 ## Dve nastavenia, ktoré menia adresu \{#two-settings-that-change-the-address}
 
-![Panel História: každá použitá zmena, zmena režimu a reset je commit vo vlastnom opise zariadenia, od najnovšieho.](@site/docs/img/settings-history.png)
+![Panel História: každá použitá zmena, zmena režimu a reset je commit vo vlastnom opise zariadenia, od najnovšieho.](@site/docs/img/settings-history-sk.png)
 
 - **Názov**: zariadenie odpovedá na `<name>.local` a aplikácie rozdávajú
   odkazy s týmto menom. Po premenovaní sa k zariadeniu dostanete na novom
@@ -67,4 +67,4 @@ to dokumenty, ktoré zariadenie uchováva, a nie časti jeho opisu:
 každé pole panelov k voľbe Nixu, ktorá je za ním, pre deň, keď budete chcieť
 zmeniť niečo, čo panely neponúkajú.
 
-![Panel Rozšírené: každá voľba losos s aktuálnou hodnotou a editorom podľa typu a odkazy na panely, ktoré vlastnia tie bežné.](@site/docs/img/settings-advanced.png)
+![Panel Rozšírené: každá voľba losos s aktuálnou hodnotou a editorom podľa typu a odkazy na panely, ktoré vlastnia tie bežné.](@site/docs/img/settings-advanced-sk.png)

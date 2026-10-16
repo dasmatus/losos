@@ -16,7 +16,7 @@ dvojicu: plná výplň pre toto zariadenie, šrafovanie pre mesh.
 Všetko, čo máte na zariadení, zostáva na zariadení. Zariadenie nič
 nekopíruje nikam inam. Disk má dve časti:
 
-![Panel Úložisko na zariadení, ktoré si disk nechává pre seba: použité miesto, voľné miesto a rezerva, s tlačidlom Použiť rezervu.](@site/docs/img/storage.png)
+![Panel Úložisko na zariadení, ktoré si disk nechává pre seba: použité miesto, voľné miesto a rezerva, s tlačidlom Použiť rezervu.](@site/docs/img/storage-sk.png)
 
 - **použité miesto**, ktoré zaberá LosOS cloud, LosOS Git a systém;
 - **rezerva**, časť, ktorú inštalátor odložil bokom. Panel Úložisko ju môže
@@ -31,7 +31,7 @@ v spoločnom priestore. Platia tri veci:
 
 ![Mesh: tri zariadenia, každé si nechá súbory svojho vlastníka pre seba a miesto, ktoré nevyužíva, požičia do jedného replikovaného spoločného priestoru; dole okno od 23:00 do 07:00, keď sa požičiava voľný čas, iba v nečinnosti.](@site/docs/img/mesh-sk.svg)
 
-![Panel Úložisko na zariadení, ktoré zdieľa: miesto požičané mesh je vykreslené šrafovane vedľa vlastného miesta zariadenia.](@site/docs/img/storage-shared.png)
+![Panel Úložisko na zariadení, ktoré zdieľa: miesto požičané mesh je vykreslené šrafovane vedľa vlastného miesta zariadenia.](@site/docs/img/storage-shared-sk.png)
 
 - Zdieľané dáta sú na zariadení v samostatnom účte `shared`, v adresári
   šifrovanom kľúčom zapečateným v TPM. Keď je zdieľanie vypnuté, zariadenie
@@ -47,7 +47,7 @@ v spoločnom priestore. Platia tri veci:
 Toto je od disku oddelené a nachádza sa na paneli Mesh. Zariadenie spúšťa
 prácu iných ľudí iba vtedy, keď platí oboje:
 
-![Panel Mesh s pripojeným zariadením: Požičiavať toto zariadenie, kým spím, je zapnuté a hodiny sú nastavené od 23:00 do 07:00.](@site/docs/img/mesh-two-edges.png)
+![Panel Mesh s pripojeným zariadením: Požičiavať toto zariadenie, kým spím, je zapnuté a hodiny sú nastavené od 23:00 do 07:00.](@site/docs/img/mesh-two-edges-sk.png)
 
 1. čas je vnútri okna, ktoré ste nastavili, so začiatkom a koncom vo vašom
    časovom pásme;

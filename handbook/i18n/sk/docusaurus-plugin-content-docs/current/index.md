@@ -13,7 +13,7 @@ fotky, kalendár a kód a stará sa samo o seba. Nemá obrazovku na prihlásenie
 shell ani SSH. Pristupujete k nemu z webového prehliadača v tej istej sieti
 a raz za noc sa samo zostaví nanovo a reštartuje.
 
-![Admin stránky zariadenia s názvom mattbox: dlaždice aplikácií, karta úložiska a nástenka s widgetmi.](@site/docs/img/overview.png)
+![Admin stránky zariadenia s názvom mattbox: dlaždice aplikácií, karta úložiska a nástenka s widgetmi.](@site/docs/img/overview-sk.png)
 
 Táto príručka je návod pre vlastníka, teda pre človeka, ktorý má zariadenie
 na stole. Ľudia, ktorí LosOS vyvíjajú, prevádzkujú edge alebo pripravujú

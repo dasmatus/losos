@@ -13,7 +13,7 @@ o čo vás správca projektu môže požiadať. Zhromaždite to skôr, ako napí
 
 ## Čo uviesť \{#what-to-include}
 
-![Panel O zariadení, ktorého riadky patria do hlásenia: meno, adresa, režim úložiska a stav mesh.](@site/docs/img/settings-about.png)
+![Panel O zariadení, ktorého riadky patria do hlásenia: meno, adresa, režim úložiska a stav mesh.](@site/docs/img/settings-about-sk.png)
 
 1. **Čo ste urobili a čo ste videli**, s presným textom každej hlášky a so
    snímkou obrazovky, ak nejaká bola.

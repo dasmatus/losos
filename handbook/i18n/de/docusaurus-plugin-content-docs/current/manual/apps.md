@@ -76,7 +76,7 @@ Box holt die Ergebnisse selbst, also braucht die Suche das Internet. Jede
 Zeile nennt, wer das Chart veröffentlicht hat. Niemand auf der Seite von
 LosOS hat eines davon geprüft.
 
-![Der Bereich Apps mit einer installierten App über Mehr finden und Suchergebnissen aus Artifact Hub, jedes mit dem Herausgeber und einer Schaltfläche Installieren oder Ändern.](@site/docs/img/apps-find-more.png)
+![Der Bereich Apps mit einer installierten App über Mehr finden und Suchergebnissen aus Artifact Hub, jedes mit dem Herausgeber und einer Schaltfläche Installieren oder Ändern.](@site/docs/img/apps-find-more-de.png)
 
 ## Einstellungen für alle \{#settings-for-everyone}
 
@@ -98,7 +98,7 @@ das letzte des Kontos beginnt, ob die E-Mail-Adresse eines neuen Kontos
 verborgen ist und ob ein Push in ein noch nicht vorhandenes Repository es
 anlegt.
 
-![Der Bereich Apps mit den Einstellungen für alle in LosOS cloud und LosOS Git.](@site/docs/img/apps-site-settings.png)
+![Der Bereich Apps mit den Einstellungen für alle in LosOS cloud und LosOS Git.](@site/docs/img/apps-site-settings-de.png)
 
 Drücke **Anwenden**, um sie zu übernehmen, wie bei jeder anderen
 Einstellung. Die Box setzt sie bei jedem Start der App erneut, sodass die
@@ -127,7 +127,7 @@ Der erste Schritt liest das Chart und zeigt drei Dinge.
   Values-Datei zum Bearbeiten. Eine Eigenschaft, die du im Formular änderst,
   hat Vorrang vor derselben Zeile im Text.
 
-![Der Installationsdialog: der Name, die Wahl zwischen notshared und shared mit ausgegrautem shared, und die Eigenschaften des Charts nach Abschnitten eingeklappt.](@site/docs/img/apps-install.png)
+![Der Installationsdialog: der Name, die Wahl zwischen notshared und shared mit ausgegrautem shared, und die Eigenschaften des Charts nach Abschnitten eingeklappt.](@site/docs/img/apps-install-de.png)
 
 Der zweite Schritt fragt noch einmal nach. Er sagt, dass die Box Code
 herunterlädt und ausführt, den der Herausgeber geschrieben hat, als der von

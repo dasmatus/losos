@@ -28,7 +28,7 @@ durchs Netzwerk geht.
 Der erste Schritt des Assistenten zeigt den Einzeiler-Installer. Nach der
 Einrichtung liefert die Box dieselben Dateien weiter aus, nur ins LAN:
 
-<img src={require("@site/docs/img/wizard-step1-trust.png").default} alt="Der Zertifikatsschritt des Assistenten mit den Einzeiler-Installern und dem Fingerabdruck." width="520" />
+<img src={require("@site/docs/img/wizard-step1-trust-de.png").default} alt="Der Zertifikatsschritt des Assistenten mit den Einzeiler-Installern und dem Fingerabdruck." width="520" />
 
 ```bash title="macOS und Linux"
 curl -fsSL http://<address>/setup/trust.sh | sh

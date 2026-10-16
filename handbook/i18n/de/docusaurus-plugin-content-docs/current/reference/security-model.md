@@ -57,7 +57,7 @@ können, schaltest du im Bereich Sicherheit ein: AppArmor, ein gehärteter
 Speicherallokator, kein SMT, USBGuard. [Härtung](/in-depth/hardening.md)
 beschreibt jeden Schalter und was er kostet.
 
-![Einstellungen, Sicherheit: die vier zusätzlichen Schutzmaßnahmen, die standardmäßig aus sind, jede mit dem, was sie kostet.](@site/docs/img/settings-security.png)
+![Einstellungen, Sicherheit: die vier zusätzlichen Schutzmaßnahmen, die standardmäßig aus sind, jede mit dem, was sie kostet.](@site/docs/img/settings-security-de.png)
 
 ## Bekannte Grenzen, offen gesagt \{#known-limitations-stated-plainly}
 

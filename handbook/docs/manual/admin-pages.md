@@ -12,19 +12,20 @@ change.
 
 ## The sections
 
-The sidebar on the left has five sections, and under them the things you
+The sidebar on the left has six sections, and under them the things you
 pinned. Collapsed, it shrinks to a rail of icons. On a phone it opens as a
 sheet.
 
-![The Overview: the sidebar with the five sections on the left, the box's name and whether it is answering, the app tiles, the storage card and the board.](../img/overview.png)
+![The Overview: the sidebar with the six sections on the left, the box's name and whether it is answering, the app tiles, the storage card and the board.](../img/overview.png)
 
 | Section      | What is there                                                                                              |
 | ------------ | ---------------------------------------------------------------------------------------------------------- |
 | **Overview** | Whether the box is answering and for how long, the storage card, the app tiles and your board of widgets.  |
 | **Apps**     | The apps on this box with their mode, a search of Artifact Hub, and the apps installed from it.            |
 | **Storage**  | How full the disk is, what is holding the room, and the reserve to claim.                                   |
-| **Mesh**     | Joining other boxes, the hours this one lends its spare time, and **Market** with disk sharing.            |
-| **Settings** | Network, Look, Hardware, Security, Advanced, History, About and Reset, each a pane.                         |
+| **Mesh**     | Joining other boxes, the hours this one lends its spare time, **Market** with disk sharing, and **Machines**. |
+| **Lab**      | LosOS Lab, which draws this box and its network as a diagram.                                              |
+| **Settings** | Network, Look, Hardware, Security, Access tokens, Advanced, History, Backup, About and Reset, each a pane.  |
 
 <img src={require("../img/overview-phone.png").default} alt="The Overview on a phone: the sections fold into a menu button." width="260" /> <img src={require("../img/overview-phone-sheet.png").default} alt="The same phone with the menu open as a sheet over the page." width="260" />
 

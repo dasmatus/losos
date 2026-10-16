@@ -13,7 +13,7 @@ dokončí spúšťať“ a zostane pri tom.
 
 </div>
 
-<img src={require("@site/docs/img/wizard-step2-waiting.png").default} alt="Krok 2 sprievodcu čaká na LosOS cloud a uvádza, na čo čaká." width="520" />
+<img src={require("@site/docs/img/wizard-step2-waiting-sk.png").default} alt="Krok 2 sprievodcu čaká na LosOS cloud a uvádza, na čo čaká." width="520" />
 
 ## Prečo \{#why}
 

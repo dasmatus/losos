@@ -14,7 +14,7 @@ sich selbst. Sie hat keinen Bildschirm zum Anmelden, keine Shell und kein
 SSH. Du erreichst sie aus einem Webbrowser im selben Netzwerk, und einmal pro
 Nacht baut sie sich neu und startet neu.
 
-![Die Admin-Seiten einer Box namens mattbox: die App-Kacheln, die Speicherkarte und das Board mit den Widgets.](@site/docs/img/overview.png)
+![Die Admin-Seiten einer Box namens mattbox: die App-Kacheln, die Speicherkarte und das Board mit den Widgets.](@site/docs/img/overview-de.png)
 
 Dieses Handbuch ist die Bedienungsanleitung für die Person, bei der die Box
 auf dem Schreibtisch steht. Wer LosOS baut, eine Edge betreibt oder ein

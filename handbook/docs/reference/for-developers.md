@@ -45,7 +45,9 @@ Pictures live in `handbook/docs/img/`. There are three kinds:
 - **Admin pages and wizard.** `admin-ui/app/tests/handbook-screens.mjs`
   takes them from the built SPA against a stubbed lososd, so they show the
   current UI and logo without a box. It writes 2x PNGs, which go into the
-  handbook downscaled to 1600 px wide and reduced to 256 colours.
+  handbook downscaled to 1600 px wide and reduced to 256 colours. Most come
+  in Slovak and German too, as `<name>-sk.png` and `<name>-de.png`, and the
+  translated pages show those.
 - **Screens of a real machine.** The installer, the tty1 banner, the
   passphrase prompt and the Secure Boot refusals come from VM runs
   (`tests/secure-boot.nix` and installs into a VM). No script retakes them.

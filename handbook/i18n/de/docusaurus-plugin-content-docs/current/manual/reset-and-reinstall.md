@@ -18,9 +18,9 @@ baut sich neu auf und kommt unter ihrem ursprünglichen Namen zurück, also
 IP-Adresse bleibt gleich. Der Dialog listet, was geht und was bleibt, und du
 musst ein zweites Mal drücken.
 
-![Der Dialog zum Zurücksetzen: Er sagt genau, was zurückgesetzt wird und was bleibt, mit Einstellungen behalten an erster Stelle.](@site/docs/img/settings-reset-dialog.png)
+![Der Dialog zum Zurücksetzen: Er sagt genau, was zurückgesetzt wird und was bleibt, mit Einstellungen behalten an erster Stelle.](@site/docs/img/settings-reset-dialog-de.png)
 
-![Einstellungen, Zurücksetzen: Alle Einstellungen zurücksetzen, mit dem, was geht und was bleibt.](@site/docs/img/settings-reset.png)
+![Einstellungen, Zurücksetzen: Alle Einstellungen zurücksetzen, mit dem, was geht und was bleibt.](@site/docs/img/settings-reset-de.png)
 
 Ein Zurücksetzen ändert weder das Passwort des Besitzers noch den
 Ersatzschlüssel und öffnet das Zeitfenster zum Beanspruchen der Box nicht

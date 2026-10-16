@@ -20,7 +20,7 @@ tohto edge.
 | **Trh**                | Dostanete zaplatené za disk a CPU, ktoré zdieľate, a môžete si ich kúpiť od iných. Kupujúci platia v USDC, Bitcoine alebo Monere, alebo kartou cez Stripe, ak edge karty prijíma, a edge si ponechá poplatok 4 %. Edge môže prijímať iba mince bez platieb kartou, takže na prevádzku trhu netreba firemný účet u spracovateľa kariet. Panel Trh je v bočnom paneli pod Mesh. |
 | **Nájsť moje zariadenie** | Edge hostí stránku, ktorá z prehliadača nájde zariadenie vo vašej LAN.                                  |
 
-![Panel Trh: čo toto zariadenie kúpilo, úložisko a výpočtový výkon na kúpu od iných zariadení a výplaty cez Stripe.](@site/docs/img/market-open.png)
+![Panel Trh: čo toto zariadenie kúpilo, úložisko a výpočtový výkon na kúpu od iných zariadení a výplaty cez Stripe.](@site/docs/img/market-open-sk.png)
 
 ## Ako zariadenie nájde svoj edge \{#how-a-box-finds-its-edge}
 
@@ -44,7 +44,7 @@ vysvetľuje nasledujúca časť. Ak nič neodpovedá, panel ukáže **Žiadny ok
 proxy server sa nenašiel** a čo zariadenie skúsilo: „Zariadenie prehľadalo
 svoju sieť a oslovilo `<address>`; nič neodpovedalo.“
 
-![Panel Mesh s oficiálnym edge LosOS nájdeným cez internet, označeným fajkou.](@site/docs/img/mesh-official.png)
+![Panel Mesh s oficiálnym edge LosOS nájdeným cez internet, označeným fajkou.](@site/docs/img/mesh-official-sk.png)
 
 Kým nič neodpovedá, zariadenie odmieta zapnúť zdieľanie, ktoré závisí od
 siete. Prepnutie úložiska do režimu mesh, **Pripojiť sa k sieti mesh**
@@ -78,7 +78,7 @@ vzdialený prístup a zdieľanie fungujú, obchodovanie nie, a panel Trh hlási
 Nič, čo firma nastaví, nedokáže z jej vlastného edge urobiť oficiálny. Je to
 zámer.
 
-![Výstražný znak vedľa edge, ktorý nie je oficiálny, s popisom, ktorý vymenúva, čo tento edge pre zariadenie urobiť nedokáže.](@site/docs/img/mesh-warning-tooltip.png)
+![Výstražný znak vedľa edge, ktorý nie je oficiálny, s popisom, ktorý vymenúva, čo tento edge pre zariadenie urobiť nedokáže.](@site/docs/img/mesh-warning-tooltip-sk.png)
 
 :::note[Kým nie je kľúč zverejnený]
 Každé zariadenie sa dodáva s prázdnym súborom koreňového kľúča, kým projekt
@@ -108,7 +108,7 @@ osobu, ktorú Stripe overil, a cudzí človek si bez takého účtu nemôže
 požičať certifikáty edge. Kým zariadenie taký účet nemá, časť na paneli Sieť
 uvádza, čo chýba, a neponúka nič na vyplnenie.
 
-![Časť Vlastná doména na paneli Sieť: názov zariadenia na edge, jedna funkčná doména, jedna čakajúca na svoj CNAME s dvoma záznamami na zverejnenie a pole na pridanie ďalšej.](@site/docs/img/custom-domain.png)
+![Časť Vlastná doména na paneli Sieť: názov zariadenia na edge, jedna funkčná doména, jedna čakajúca na svoj CNAME s dvoma záznamami na zverejnenie a pole na pridanie ďalšej.](@site/docs/img/custom-domain-sk.png)
 
 Keď je účet pripravený, panel Sieť ukáže **Názov tohto zariadenia na
 okrajovom serveri**, niečo ako `3f9a1c0e7b2d4a55.boxes.losos.dasmat.us`.

@@ -41,7 +41,7 @@ siehst, welche du hast. Links, die die Apps herausgeben, etwa Freigabelinks
 und Clone-URLs, verwenden den Namen. Der Name bleibt gleich, wenn der Router
 eine neue Adresse vergibt.
 
-![Der Bereich Über: die Adresse, die dieser Browser benutzt hat, der .local-Name, der Speichermodus, der Zustand des Mesh und der Link zu diesem Handbuch.](@site/docs/img/settings-about.png)
+![Der Bereich Über: die Adresse, die dieser Browser benutzt hat, der .local-Name, der Speichermodus, der Zustand des Mesh und der Link zu diesem Handbuch.](@site/docs/img/settings-about-de.png)
 
 ## Über HTTPS \{#over-https}
 
@@ -74,4 +74,4 @@ gibt ihr über einen Tunnel eine öffentliche Adresse. Selbst dann bleiben die
 Admin-Seiten nur im LAN erreichbar, und nur LosOS cloud und LosOS Git gehen
 durch den Tunnel nach außen.
 
-![Einstellungen, Netzwerk: der Name, Verbindung verschlüsseln und Auch von außerhalb erreichbar, der Schalter, der den Tunnel zu einer Edge öffnet.](@site/docs/img/settings-network.png)
+![Einstellungen, Netzwerk: der Name, Verbindung verschlüsseln und Auch von außerhalb erreichbar, der Schalter, der den Tunnel zu einer Edge öffnet.](@site/docs/img/settings-network-de.png)

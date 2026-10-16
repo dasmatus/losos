@@ -48,7 +48,9 @@ Die Bilder liegen in `handbook/docs/img/`. Es gibt drei Arten:
   nimmt sie aus der gebauten SPA gegen ein nachgebildetes lososd auf, sodass
   sie die aktuelle Oberfläche und das aktuelle Logo ohne Box zeigen. Es
   schreibt PNGs in doppelter Auflösung, die auf 1600 px Breite verkleinert
-  und auf 256 Farben reduziert ins Handbuch kommen.
+  und auf 256 Farben reduziert ins Handbuch kommen. Die meisten gibt es auch
+  auf Slowakisch und Deutsch, als `<name>-sk.png` und `<name>-de.png`, und
+  die übersetzten Seiten zeigen diese.
 - **Bildschirme eines echten Rechners.** Der Installer, das tty1-Banner, die
   Passphrase-Abfrage und die Ablehnungen durch Secure Boot stammen aus
   VM-Läufen (`tests/secure-boot.nix` und Installationen in eine VM). Kein
