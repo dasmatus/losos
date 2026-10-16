@@ -875,7 +875,7 @@ export function stopBuilderBuild(id: string, options: RequestOptions = {}): Prom
 
 /* Virtual machines on the mesh, sold by the replica through the market and
  * offered only while this box shares its disk (lososd's /api/vms; the
- * registrar's backend-registrar/src/vms.rs). The shapes are the registrar's
+ * registrar's edge/registrar/src/vms.rs). The shapes are the registrar's
  * documents, passed through. */
 
 export interface VmOrderInfo {
@@ -1133,7 +1133,7 @@ export function postAppRemove(release: string, options: RequestOptions = {}): Pr
 // ── Custom domains ────────────────────────────────────────────────────────
 
 /* A domain the owner already has, pointed at this box through an official
- * edge (backend-registrar/src/domains.rs). lososd relays it like the market
+ * edge (edge/registrar/src/domains.rs). lososd relays it like the market
  * and asks only an official edge. The edge gives the box a name in its own
  * DNS zone (`target`) once the box's Stripe account is ready, the owner
  * points a CNAME there and publishes the TXT value, and the edge routes the
@@ -1874,7 +1874,7 @@ export function deleteHandWidget(
 
 // ── Every option, and the configuration repository ────────────────────────
 
-/* The editor kind of one `losos.*` option, as flake/options-doc.nix
+/* The editor kind of one `losos.*` option, as nix/options-doc.nix
  * classifies its Nix type. `nullable` wraps another; `opaque` is a package,
  * a path or an attribute set, shown but never edited. The pane has to draw
  * every kind here, and a kind it cannot draw is what tests/advanced.browser.mjs

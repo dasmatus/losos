@@ -2,7 +2,7 @@
 
 This repository already released: a `v*` tag built the ISO and attached it to a
 Forgejo release, proven on `v0.0.1-ci-test` and `v0.1.0`. What it could not do
-was release *twice*. `flake/disk-images.nix:56-66` already said where this was
+was release *twice*. `nix/disk-images.nix:56-66` already said where this was
 going — a larger image "cannot be published on Codeberg", and if it ever is
 published "it goes somewhere that hosts large files".
 
@@ -138,7 +138,7 @@ here.
 ## Specific to this repository
 
 **Scope is the host, not the catalogue.** `.#losos-disk-iso` — the
-closure-carrying image `flake/disk-images.nix` has been waiting to publish —
+closure-carrying image `nix/disk-images.nix` has been waiting to publish —
 stays out. Its exclusion is a CI *build*-budget question as much as a hosting
 one (its own comment says it cannot be built in CI), so unblocking it is
 separate work that this change merely makes possible.

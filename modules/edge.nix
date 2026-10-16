@@ -140,7 +140,7 @@ let
   # Note that this router has no path rule, so it also fronts the mesh join
   # route (POST /cluster/join). That route is therefore on the public
   # internet and authenticates every caller against the same per-appliance
-  # token the proxy uses — see backend-registrar/src/server.rs.
+  # token the proxy uses — see edge/registrar/src/server.rs.
   # The two middlewares are what keeps one anonymous client from taking the
   # registrar's whole in-flight budget. Every route there shares one pool of
   # 64 permits, taken before the body is read, so 64 connections that send
@@ -185,7 +185,7 @@ let
               - url: "http://127.0.0.1:${toString cfg.registrarApiPort}"
   '';
 
-  # The two machine image transfers (backend-registrar/src/server/vm.rs)
+  # The two machine image transfers (edge/registrar/src/server/vm.rs)
   # cannot go through `register-buffer`: a disk image is gigabytes, and
   # buffering it would hold all of it in Traefik first. This router takes
   # the two path prefixes ahead of `register` (the longer rule wins) and
@@ -217,7 +217,7 @@ let
   #
   # The Nix attribute name and the JSON key are not guaranteed to match —
   # `tokenFile` is rendered as `token_file` because the Rust struct
-  # `TenantEntry` (backend-registrar/src/server.rs) spells its fields in
+  # `TenantEntry` (edge/registrar/src/server.rs) spells its fields in
   # snake_case and takes no serde rename. `hostname` and `cluster` happen to
   # be identical in both languages. Whenever a field is added on either side,
   # the key written here must be the one the struct actually deserializes.
@@ -306,7 +306,7 @@ let
           ];
         }
       ]
-      # Market fulfilment (backend-registrar/src/market.rs): a paid storage
+      # Market fulfilment (edge/registrar/src/market.rs): a paid storage
       # order becomes a PersistentVolumeClaim in a `market-<buyer>` namespace.
       # Neither can be scoped to those namespaces — a namespace does not exist
       # before it is created, and a ClusterRole cannot say "namespaces named
@@ -325,7 +325,7 @@ let
           ];
         }
       ]
-      # Machine fulfilment (backend-registrar/src/server/vm.rs): one
+      # Machine fulfilment (edge/registrar/src/server/vm.rs): one
       # VirtualMachine per paid replica and a Service in front, in the same
       # `market-<buyer>` namespaces. `patch` is the halt of a lapsed order
       # (runStrategy only) and `list` the buyer's status page; still nothing
@@ -526,7 +526,7 @@ let
     }
 
     # Wire shape, and the only coupling between this unit and the registrar.
-    # It is defined by backend-registrar/src/window.rs, which owns the writer:
+    # It is defined by edge/registrar/src/window.rs, which owns the writer:
     #   { "nodes": [ { "node_name": "mattbox-01", "share_compute": true,
     #                  "window_start": "23:00", "window_end": "07:00",
     #                  "tz": "Europe/Berlin", "idle": true } ] }
@@ -774,7 +774,7 @@ let
   # the registrar, not a flag: a flag would put the provider key in the
   # unit's command line.
   usdcOn = cfg.market.enable && cfg.market.usdc.enable;
-  # The registrar's own table (backend-registrar/src/stablecoin.rs); it
+  # The registrar's own table (edge/registrar/src/stablecoin.rs); it
   # refuses anything else at start, this says so at eval.
   usdcKnown = [
     "base"
@@ -885,7 +885,7 @@ let
       "/var/lib/losos-registrar/relay-pass.key"
     ]
   );
-  # Custom domains for boxes behind a local edge (backend-registrar's
+  # Custom domains for boxes behind a local edge (edge/registrar's
   # routes.rs): the route table and the key relay passes are signed with,
   # both in the registrar's StateDirectory, the key made on its first start.
   relayRoutes = dnsCfg.enable && dnsCfg.relayRoutes.enable;
@@ -1377,7 +1377,7 @@ in
     };
 
     # ── DNS: the edge's own zone, served by Knot ─────────────────────────
-    # losos-registrar renders the zone (backend-registrar/src/zone.rs) into
+    # losos-registrar renders the zone (edge/registrar/src/zone.rs) into
     # /var/lib/losos-dns, world-readable, with a fresh serial whenever it
     # says something new; Knot loads it whole and keeps no journal, so the
     # file is the whole truth. The path unit below reloads the zone when the

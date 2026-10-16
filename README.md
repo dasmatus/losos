@@ -1,4 +1,4 @@
-# LosOS
+<h1><img src="admin-ui/themes/brand/salmon-128.png" alt="" width="56" height="56" align="center"> LosOS</h1>
 
 A NixOS appliance for a mini-PC. It runs Nextcloud for your own files and can
 lend spare disk and CPU to a mesh of other losos boxes. There is no SSH and no
@@ -67,7 +67,18 @@ devenv shell vm-tests
 ```
 
 See [docs/development.md](docs/development.md) and
-`CLAUDE.md` for architecture notes and known pitfalls.
+[`.claude/CLAUDE.md`](.claude/CLAUDE.md) for architecture notes and known
+pitfalls.
+
+| Folder      | What is in it                                                     |
+| ----------- | ----------------------------------------------------------------- |
+| `admin-ui/` | The admin pages, the `losos` terminal client and LosOS Lab        |
+| `backend/`  | `lososd` and `losos-ctl`, the box's control plane (Rust)          |
+| `edge/`     | The edge registrar, its Vercel demo host and the escrow contracts |
+| `modules/`  | The NixOS modules both systems are built from                     |
+| `nix/`      | Packages, images and the NixOS VM tests                           |
+| `handbook/` | The owner's handbook                                              |
+| `docs/`     | Developer notes, the security model and design records            |
 
 ## Licence
 

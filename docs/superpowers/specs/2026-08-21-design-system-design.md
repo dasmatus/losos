@@ -132,7 +132,7 @@ Migration edits, all verified against current code:
   4 `class="open"` anchors to `class="btn-outline"`.
 - **Delete** `admin-ui/common.css`, `admin-ui/dashboard/style.css`,
   `admin-ui/settings/style.css`.
-- **`flake/packages.nix`**: the `losos-admin-ui` runCommand additionally
+- **`nix/packages.nix`**: the `losos-admin-ui` runCommand additionally
   creates `$out/ds/` and copies `design-system/tokens.css` and
   `design-system/losos.css` into it by explicit path (never
   `cleanSource` of `design-system/`, so `react/` and `node_modules` can

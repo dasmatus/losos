@@ -79,7 +79,7 @@ let
 
   # Written by modules/tls.nix. Spelled out here rather than shared, because
   # tls.nix keeps the path in a `let` and not in an option — so the two files
-  # can drift. tests/setup.nix fetches this route and byte-compares the result
+  # can drift. nix/tests/setup.nix fetches this route and byte-compares the result
   # against that file, which turns a drift into a failing test instead of a 404
   # in a wizard, on a box with no shell to debug it from.
   certFile = "/var/lib/losos-tls/cert.pem";
@@ -199,7 +199,7 @@ let
   # and `d` drops the marker line), the fingerprint is the display spelling
   # the owner is told to compare, and the name is for the entry's label and
   # the closing sentence. The certificate is pasted raw, so what the script
-  # installs is byte for byte what ${certUrl} serves — tests/setup.nix
+  # installs is byte for byte what ${certUrl} serves — nix/tests/setup.nix
   # extracts it back out and cmp's it. temp + rename, as for state.json.
   renderInstaller = template: out: ''
     sed -e "/^@PEM@$/{r ${certFile}" -e "d}" \

@@ -94,7 +94,7 @@ in
     # socket changes every test that talks to :8082. An owner match on
     # OUTPUT says it at the kernel instead: a locally generated packet to the
     # port is rejected unless its socket belongs to root (the daemon's own
-    # tooling, the VM tests) or nginx. tests/admin-vm.nix asserts both halves.
+    # tooling, the VM tests) or nginx. nix/tests/admin-vm.nix asserts both halves.
     #
     # `-I`, so it sits ahead of anything appended later; the delete first
     # makes a firewall reload idempotent. nginx is named only when it runs:

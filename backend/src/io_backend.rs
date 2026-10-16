@@ -270,7 +270,7 @@ impl FileCodeStore {
 /// Fetch a catalogue URL with one `curl` and hand back its body.
 ///
 /// A subprocess rather than a client crate, for the reasons in the header of
-/// `catalogue.rs` — chiefly that `flake/packages.nix` pins `cargoHash`, so a
+/// `catalogue.rs` — chiefly that `nix/packages.nix` pins `cargoHash`, so a
 /// new dependency needs a hash only a `nix build` can produce.
 ///
 /// The flags are the interesting part, and each one closes something:
@@ -694,7 +694,7 @@ fn curl_market(
     /// A listing page is small; a registrar that sends more is wrong.
     const MAX_BYTES: usize = 1024 * 1024;
     /// Above the registrar's own budget for the routes that wait on Stripe
-    /// (`STRIPE_ROUTE_TIMEOUT` in backend-registrar/src/server.rs, 22 s:
+    /// (`STRIPE_ROUTE_TIMEOUT` in edge/registrar/src/server.rs, 22 s:
     /// four gate calls of 5 s plus persistence), so a slow but successful
     /// onboarding is not dropped here after the account was already made.
     const TIMEOUT_SECS: &str = "25";
@@ -1627,7 +1627,7 @@ impl Losos for IoLosos {
         // cryptsetup falls back to prompting on stdin
         // — and a daemon has none, so the resize dies with "Nothing to read on
         // input." *after* lvextend has already grown the logical volume. That
-        // is not theoretical: it is how tests/resize.nix failed first.
+        // is not theoretical: it is how nix/tests/resize.nix failed first.
         Ok(std::env::var("LOSOS_LUKS_KEYFILE")
             .ok()
             .filter(|p| !p.is_empty()))
@@ -1658,7 +1658,7 @@ impl Losos for IoLosos {
         // A subprocess rather than statvfs(2) because the alternative is a new
         // crate dependency, and backend/Cargo.toml declares its whole set up
         // front specifically so Cargo.lock — and the cargoHash pinned in
-        // flake/packages.nix — settles once. The other three steps here are
+        // nix/packages.nix — settles once. The other three steps here are
         // subprocesses anyway.
         df_persist("size")
     }

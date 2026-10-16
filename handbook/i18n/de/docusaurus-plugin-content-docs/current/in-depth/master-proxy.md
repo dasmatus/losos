@@ -100,10 +100,10 @@ ausschließlich per mDNS.
   Broadcast-Domäne teilen (ein VLAN).
 :::
 
-`demo/edge-lan/run.sh` baut diese ganze Anordnung auf einem Rechner als VMs
+`nix/demo/edge-lan/run.sh` baut diese ganze Anordnung auf einem Rechner als VMs
 an einem virtuellen Switch auf: die Edge, die zugleich der Router des LAN
 ist, und zwei vom ISO installierte Boxen. Es arbeitet die
-Verifikations-Checkliste ab (`demo/edge-lan/CHECKLIST.md`). Ohne Edge
+Verifikations-Checkliste ab (`nix/demo/edge-lan/CHECKLIST.md`). Ohne Edge
 verweigern beide Boxen. Die Edge erscheint, beide finden sie und erlauben das
 Teilen. Die Edge verschwindet, sie verweigern wieder, und sie kommt zurück.
 Die zugehörige README erklärt, welche Teile an einem echten Standort wofür
@@ -130,7 +130,7 @@ Scan, und die eigene Edge einer Firma bekommt alles außer dem Marktplatz.
 Die Prüfung ist eine Ed25519-Identität:
 
 - **Der LosOS-Root-Schlüssel.** Ein Schlüsselpaar. Die öffentliche Hälfte
-  ist eine Datei, die jede Box mitbringt, `keys/official-edge-root.pub` in
+  ist eine Datei, die jede Box mitbringt, `nix/keys/official-edge-root.pub` in
   diesem Repository (`losos.proxy.officialRootKeyFile`). Der Projektinhaber
   verwahrt die private Hälfte offline. Sie gelangt nie in das Repository
   oder auf eine Box und signiert Edge-Zertifikate und sonst nichts. Bis
@@ -164,7 +164,7 @@ Edge nie. Für eine offizielle Edge signiert LosOS mit dem Root ein Zertifikat
 und installiert es dort; die Edge schreibt es neben den Schlüssel
 (`losos.edge.identity.certFile`). Bis ein Zertifikat eintrifft, beantwortet
 die Edge `/identity` mit 404 und ist nicht offiziell. So sieht die eigene Edge
-einer Firma aus, einschließlich der, die `demo/edge-lan/` bootet. Eine Edge,
+einer Firma aus, einschließlich der, die `nix/demo/edge-lan/` bootet. Eine Edge,
 bei der beide Optionen auf `null` stehen, stellt überhaupt keine Identität
 bereit.
 
@@ -262,15 +262,15 @@ diese Routen selbst, in `relay-routes.json` neben seiner Registry.
 enthält die Details und `losos.edge.dns.relayRoutes`.
 
 :::note[Wie das getestet wird]
-`tests/edge-dns.nix` (`losos-edge-dns`) bootet eine Edge und einen Client und
-fragt Knot über UDP und TCP ab. `backend-registrar/tests/domains.rs` spielt
+`nix/tests/edge-dns.nix` (`losos-edge-dns`) bootet eine Edge und einen Client und
+fragt Knot über UDP und TCP ab. `edge/registrar/tests/domains.rs` spielt
 den Anspruchsablauf gegen einen echten Registrar und einen nachgebildeten
 DNS-over-HTTPS-Server durch.
 :::
 
 ## Demo-Betrieb auf Vercel {#demo-deployment-on-vercel}
 
-`edge-vercel/` betreibt die API des Registrars, denselben Router und dieselbe
+`edge/vercel/` betreibt die API des Registrars, denselben Router und dieselbe
 Token-Prüfung, als Vercel Function unter `https://losos-edge.dasmat.us`, dem
 Standardwert von `losos.proxy.registrarUrl`. Die Registry liegt in einer Neon
 Postgres, und eine Statusseite unter `/` zeigt die registrierten Boxen und
@@ -281,4 +281,4 @@ Datenpfad, also das Erreichen einer Box über ihren öffentlichen Hostnamen,
 weiterhin den VPS. Die Seite listet außerdem IDs und Hostnamen für jeden auf,
 der die URL kennt. Sie ist ein Demonstrations-Host, keine Edge. Die Schritte
 für das Deployment und die Umgebungsvariablen stehen in
-[edge-vercel/README.md](https://github.com/dasmatus/losos/blob/main/edge-vercel/README.md).
+[edge/vercel/README.md](https://github.com/dasmatus/losos/blob/main/edge/vercel/README.md).

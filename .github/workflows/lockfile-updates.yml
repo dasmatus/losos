@@ -80,7 +80,7 @@ jobs:
 
           nix develop -c bash -euo pipefail -c '
             cargo update --manifest-path backend/Cargo.toml
-            cargo update --manifest-path backend-registrar/Cargo.toml
+            cargo update --manifest-path edge/registrar/Cargo.toml
             npm update --prefix admin-ui/app --package-lock-only
             npm update --prefix admin-ui/design-system/react --package-lock-only
           '
@@ -106,7 +106,7 @@ jobs:
             devenv.yaml \
             devenv.lock \
             backend/Cargo.lock \
-            backend-registrar/Cargo.lock \
+            edge/registrar/Cargo.lock \
             admin-ui/app/package-lock.json \
             admin-ui/design-system/react/package-lock.json
 

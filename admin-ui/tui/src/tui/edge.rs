@@ -154,7 +154,7 @@ pub fn overview(ctx: &Ctx<'_>, cols: usize) -> PaneModel {
                 .tone(if official { Tone::Ok } else { Tone::Warn }),
         );
     }
-    // `notAfter` is Unix seconds (backend-registrar/src/server/operator.rs).
+    // `notAfter` is Unix seconds (edge/registrar/src/server/operator.rs).
     let cert_until = match identity["notAfter"].as_f64() {
         Some(secs) => Some(format_unix(secs)),
         None => str_of(&identity["expires"]).map(format_iso),

@@ -37,7 +37,7 @@ boot menu, its console banners and os-release (`NAME=LosOS`,
   "Access Denied"; other firmware may skip the stick without a word.
   The installed box's loader is not signed, so the box itself needs Secure
   Boot off. The handbook's *Secure Boot and signed media* page has the steps
-  and the `SHA256SUMS.sig` check. `tests/secure-boot.nix` is the proof.
+  and the `SHA256SUMS.sig` check. `nix/tests/secure-boot.nix` is the proof.
 - **UEFI or BIOS, both work.** On the installer ISO, a menu on the boot
   screen lets you choose BIOS, UEFI, or autodetect (the firmware that booted
   the ISO) by pressing 1, 2 or 3. UEFI

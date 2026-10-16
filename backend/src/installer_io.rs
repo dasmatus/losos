@@ -189,7 +189,7 @@ fn owner_only_dir(p: &Path) -> anyhow::Result<()> {
 /// the first boot of a fresh install sat at "Please enter passphrase for disk
 /// persist" with no passphrase anyone could type. Hex is NUL-free and
 /// newline-free, so it survives the substitution byte for byte;
-/// `tests/install.nix` asserts the generated file opens the volume.
+/// `nix/tests/install.nix` asserts the generated file opens the volume.
 fn keyfile_text(random: &[u8]) -> String {
     use std::fmt::Write;
     random

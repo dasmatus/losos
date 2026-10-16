@@ -93,10 +93,10 @@ cez mDNS.
   doménu (jednu VLAN).
 :::
 
-`demo/edge-lan/run.sh` postaví celé toto usporiadanie na jednom stroji ako
+`nix/demo/edge-lan/run.sh` postaví celé toto usporiadanie na jednom stroji ako
 VM na virtuálnom prepínači: edge, ktorý je zároveň routerom LAN, a dve zariadenia
 nainštalované z ISO. Prejde overovací kontrolný zoznam
-(`demo/edge-lan/CHECKLIST.md`). Bez edge obe zariadenia odmietnu. Edge sa objaví,
+(`nix/demo/edge-lan/CHECKLIST.md`). Bez edge obe zariadenia odmietnu. Edge sa objaví,
 obe ho nájdu a povolia zdieľanie. Edge zmizne, znova odmietnu, a potom sa
 vráti. Jeho README hovorí, ktoré časti čo zastupujú v skutočnej lokalite a
 čo ešte potrebujú kroky so spoločným úložiskom.
@@ -121,7 +121,7 @@ vlastný edge firmy dostane všetko okrem trhu.
 Overenie je identita Ed25519:
 
 - **Koreňový kľúč LosOS.** Jeden pár kľúčov. Verejná polovica je súbor,
-  ktorý má každé zariadenie, `keys/official-edge-root.pub` v tomto repozitári
+  ktorý má každé zariadenie, `nix/keys/official-edge-root.pub` v tomto repozitári
   (`losos.proxy.officialRootKeyFile`). Súkromnú polovicu drží vlastník
   projektu offline. Nikdy sa nedostane do repozitára ani do žiadneho zariadenia a
   podpisuje certifikáty edge a nič iné. Kým niekto nezapíše verejný kľúč do
@@ -151,7 +151,7 @@ edge. Pre oficiálny edge podpíše LosOS koreňom certifikát a nainštaluje ho
 tam; edge ho zapíše vedľa kľúča (`losos.edge.identity.certFile`). Kým
 certifikát nepríde, edge odpovedá na `/identity` kódom 404 a nie je
 oficiálny. Tak vyzerá vlastný edge firmy, vrátane toho, ktorý spúšťa
-`demo/edge-lan/`. Edge s oboma voľbami nastavenými na `null` neposkytuje
+`nix/demo/edge-lan/`. Edge s oboma voľbami nastavenými na `null` neposkytuje
 žiadnu identitu.
 
 Čo to chráni: firma, ktorá prevádzkuje vlastný edge, dostane funkčné
@@ -242,14 +242,14 @@ edge](/in-depth/edge-federation.md#custom-domains-behind-a-local-edge) obsahuje
 podrobnosti a `losos.edge.dns.relayRoutes`.
 
 :::note[Ako sa to testuje]
-`tests/edge-dns.nix` (`losos-edge-dns`) spustí edge a klienta a pýta sa
-Knotu cez UDP aj TCP. `backend-registrar/tests/domains.rs` prevedie tok
+`nix/tests/edge-dns.nix` (`losos-edge-dns`) spustí edge a klienta a pýta sa
+Knotu cez UDP aj TCP. `edge/registrar/tests/domains.rs` prevedie tok
 nárokov proti skutočnému registraru a falošnému serveru DNS-over-HTTPS.
 :::
 
 ## Demo nasadenie na Verceli {#demo-deployment-on-vercel}
 
-`edge-vercel/` spúšťa API registrara, ten istý router a tú istú kontrolu
+`edge/vercel/` spúšťa API registrara, ten istý router a tú istú kontrolu
 tokenu, ako Vercel Function na `https://losos-edge.dasmat.us`, čo je
 predvolená hodnota `losos.proxy.registrarUrl`. Register je uložený v Neon
 Postgres a stavová stránka na `/` ukazuje registrované zariadenia a konfiguráciu
@@ -259,4 +259,4 @@ takže dátová cesta, teda dosiahnutie zariadenia cez jeho verejný názov host
 stále potrebuje VPS. Stránka navyše ukazuje id a názvy hostiteľov
 komukoľvek, kto má URL. Je to demonštračný hostiteľ, nie edge. Kroky
 nasadenia a premenné prostredia sú v
-[edge-vercel/README.md](https://github.com/dasmatus/losos/blob/main/edge-vercel/README.md).
+[edge/vercel/README.md](https://github.com/dasmatus/losos/blob/main/edge/vercel/README.md).

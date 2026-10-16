@@ -3,7 +3,7 @@
 # KubeVirt runs the machines and CDI imports their disks, both on the edge's
 # rke2 cluster, deployed the way Longhorn is: pinned upstream manifests that
 # rke2 applies from its manifests directory, fetched at build time so a
-# rebuild at 03:00 resolves nothing new. The registrar (backend-registrar's
+# rebuild at 03:00 resolves nothing new. The registrar (edge/registrar's
 # vms.rs and server/vm.rs) sells the replicas and creates the
 # VirtualMachines; this file only gives the cluster the parts it needs to
 # run them:

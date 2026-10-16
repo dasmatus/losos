@@ -49,7 +49,7 @@ v Nixe. Ten určuje verejnú doménu, zariadenia, ktoré sa smú pripojiť, či 
 bežať riadiaca vrstva mesh a či sa má edge ohlasovať v LAN. Postup pre
 prevádzkovateľa je v kapitolách [Master proxy](/in-depth/master-proxy.md)
 a [Mesh](/in-depth/mesh.md). Repozitár obsahuje aj ukážku presne tohto
-nasadenia v `demo/edge-lan/`: dve zariadenia a edge v jednej virtuálnej sieti.
+nasadenia v `nix/demo/edge-lan/`: dve zariadenia a edge v jednej virtuálnej sieti.
 `run.sh` ju spustí a `CHECKLIST.md` je poradie, v ktorom ňou prechádza.
 
 ![Obrazovka počítača s edge bránou z ukážky: ohlasuje sa v sieti a zariadenia v tej sieti ho nájdu samy.](@site/docs/img/edge-gateway-tty1.png)

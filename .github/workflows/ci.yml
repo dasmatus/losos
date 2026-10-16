@@ -143,7 +143,7 @@ jobs:
         with:
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-      # The compiler caches that devShells.ci carries (flake/fast-build.nix):
+      # The compiler caches that devShells.ci carries (nix/fast-build.nix):
       # sccache in front of rustc, ccache in front of gcc. Both write to
       # ~/.cache on the runner, which is a fresh VM every run, so without
       # this step they would start empty every time and cache nothing. Keyed
@@ -166,8 +166,8 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend/access/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path backend-registrar/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path edge-vercel/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --manifest-path edge/registrar/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --manifest-path edge/vercel/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path admin-ui/lab/core/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path admin-ui/lab/virt-rpc/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path admin-ui/lab/render/Cargo.toml --all-targets -- -D warnings
@@ -183,8 +183,8 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml --check
             cargo fmt --manifest-path backend/access/Cargo.toml --check
-            cargo fmt --manifest-path backend-registrar/Cargo.toml --check
-            cargo fmt --manifest-path edge-vercel/Cargo.toml --check
+            cargo fmt --manifest-path edge/registrar/Cargo.toml --check
+            cargo fmt --manifest-path edge/vercel/Cargo.toml --check
             cargo fmt --manifest-path admin-ui/lab/core/Cargo.toml --check
             cargo fmt --manifest-path admin-ui/lab/virt-rpc/Cargo.toml --check
             cargo fmt --manifest-path admin-ui/lab/render/Cargo.toml --check
@@ -232,7 +232,7 @@ jobs:
     # run them, but it also recompiles each crate in test configuration and
     # links a binary per test target, which pushed `nix build .#losos-ctl` to
     # 7.7-10.3 minutes. Mirrors devenv.nix's `test-rust`, plus a Postgres for
-    # edge-vercel's gated store suite (tests/postgres.rs), which devenv does
+    # edge/vercel's gated store suite (tests/postgres.rs), which devenv does
     # not start: without LOSOS_TEST_DATABASE_URL that suite passes trivially.
     services:
       postgres:
@@ -268,7 +268,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-test-compiler-cache-
       # The registrar's Bitcoin and Monero orders run against real regtest
-      # nodes (backend-registrar/tests/{bitcoin,monero}.rs), from the flake's
+      # nodes (edge/registrar/tests/{bitcoin,monero}.rs), from the flake's
       # nixpkgs; devenv.nix's test-rust points at the same packages.
       - run: |
           export LOSOS_TEST_BITCOIND="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#bitcoind)/bin/bitcoind"
@@ -276,8 +276,8 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
             cargo test --manifest-path backend/access/Cargo.toml
-            cargo test --manifest-path backend-registrar/Cargo.toml
-            cargo test --manifest-path edge-vercel/Cargo.toml
+            cargo test --manifest-path edge/registrar/Cargo.toml
+            cargo test --manifest-path edge/vercel/Cargo.toml
             cargo test --manifest-path admin-ui/lab/core/Cargo.toml
             cargo test --manifest-path admin-ui/lab/virt-rpc/Cargo.toml
             cargo test --manifest-path admin-ui/lab/render/Cargo.toml
@@ -317,7 +317,7 @@ jobs:
       # an eval-reachable regression in the iso block or isoImage.* would
       # surface only in the ISO build.
       - run: nix path-info --derivation .#nixosConfigurations.iso.config.system.build.isoImage
-      # The edge gateway image (flake/disk-images.nix), for the same reason.
+      # The edge gateway image (nix/disk-images.nix), for the same reason.
       - run: nix path-info --derivation .#losos-disk-edge-qcow2
 
   losos-ctl:
@@ -334,7 +334,7 @@ jobs:
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Compiles the shipping binaries only — doCheck is off, and the suite runs
-      # in the test job instead (see flake/packages.nix for why). Even so this
+      # in the test job instead (see nix/packages.nix for why). Even so this
       # is the longest job here; re-time it before adding any heavy dependency
       # to backend/Cargo.toml.
       - run: nix build .#losos-ctl -L
@@ -390,7 +390,7 @@ jobs:
       # qemu-wasm engine.
       - run: nix build .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-lab-virt -L
       # The same crate linked statically against musl, for the operator's own
-      # machine (the key ceremony, provisioning/edge-identity/README.md): the
+      # machine (the key ceremony, docs/provisioning/edge-identity/README.md): the
       # glibc build above only runs where /nix/store exists. It is built here,
       # where the registrar's cargo vendor tarball is already realised, and
       # handed to the publish-tool job as a plain file: that job pushes it to
@@ -558,7 +558,7 @@ jobs:
   # `org.opencontainers.image.title` is the file name (oras sets that per
   # file) and redirects to GHCR's blob storage, SHA256SUMS inline. So an
   # operator fetches the binary with one curl, see
-  # provisioning/edge-identity/README.md. The channel is `main` for pushes to
+  # docs/provisioning/edge-identity/README.md. The channel is `main` for pushes to
   # main, the tag for a release tag (which also moves `stable`), and the
   # branch name - lowercased, anything the proxy's channel grammar refuses
   # replaced by `-` - for a manual run on any other branch. Never on a pull
@@ -583,7 +583,7 @@ jobs:
         with:
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-      # `losos --version` says flake/version.nix. On a tag the file can
+      # `losos --version` says nix/version.nix. On a tag the file can
       # still name the previous release (version.yml commits the new one to
       # main afterwards), so the tag is written over it and staged, as the
       # release job does for its media.
@@ -594,11 +594,11 @@ jobs:
         run: |
           set -euo pipefail
           if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+(\.[0-9]+)*$'; then
-            echo "::notice::${TAG} is not a release tag; losos says what flake/version.nix says"
+            echo "::notice::${TAG} is not a release tag; losos says what nix/version.nix says"
             exit 0
           fi
-          sed -i "s/^\".*\"\$/\"${TAG}\"/" flake/version.nix
-          git add flake/version.nix
+          sed -i "s/^\".*\"\$/\"${TAG}\"/" nix/version.nix
+          git add nix/version.nix
       - run: nix build .#losos-static -o result-tui -L
       - name: the static binary runs and links nothing
         run: |
@@ -789,8 +789,8 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml
             cargo fmt --manifest-path backend/access/Cargo.toml
-            cargo fmt --manifest-path backend-registrar/Cargo.toml
-            cargo fmt --manifest-path edge-vercel/Cargo.toml
+            cargo fmt --manifest-path edge/registrar/Cargo.toml
+            cargo fmt --manifest-path edge/vercel/Cargo.toml
             cargo fmt --manifest-path admin-ui/lab/core/Cargo.toml
             cargo fmt --manifest-path admin-ui/lab/virt-rpc/Cargo.toml
             cargo fmt --manifest-path admin-ui/lab/render/Cargo.toml
@@ -896,8 +896,8 @@ jobs:
           set -euo pipefail
           cp -L result/iso/*.iso installer.iso
           chmod u+w installer.iso
-          if ! grep -q '^-----BEGIN CERTIFICATE-----' keys/secure-boot-db.pem; then
-            echo "keys/secure-boot-db.pem carries no certificate yet: the ISO stays unsigned"
+          if ! grep -q '^-----BEGIN CERTIFICATE-----' nix/keys/secure-boot-db.pem; then
+            echo "nix/keys/secure-boot-db.pem carries no certificate yet: the ISO stays unsigned"
             echo "signed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -913,8 +913,8 @@ jobs:
             key=$(mktemp)
             trap 'rm -f "$key"' EXIT
             printf '%s\n' "$SECURE_BOOT_DB_KEY" > "$key"
-            nix run .#losos-sign-iso -- sign --key "$key" --cert keys/secure-boot-db.pem installer.iso
-            nix run .#losos-sign-iso -- verify --cert keys/secure-boot-db.pem installer.iso
+            nix run .#losos-sign-iso -- sign --key "$key" --cert nix/keys/secure-boot-db.pem installer.iso
+            nix run .#losos-sign-iso -- verify --cert nix/keys/secure-boot-db.pem installer.iso
           )
           status=$?
           set -e
@@ -929,7 +929,7 @@ jobs:
       # Building the ISO says nothing about whether it boots: v0.1.1 built
       # green here and was then reported "not bootable in UEFI". So boot the
       # image just built (signed, where it was), from a virtual USB stick
-      # under OVMF (UEFI) and SeaBIOS. tests/iso-boot.py passes once the
+      # under OVMF (UEFI) and SeaBIOS. nix/tests/iso-boot.py passes once the
       # installer resolves github.com, which needs the whole chain to work,
       # from the firmware to root's autologin. The VM is killed within two
       # seconds of that query, and the disk it would install to is a sparse
@@ -958,15 +958,15 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           status=0
           for fw in uefi bios; do
-            python3 tests/iso-boot.py --iso installer.iso --firmware "$fw" --media usb \
+            python3 nix/tests/iso-boot.py --iso installer.iso --firmware "$fw" --media usb \
               --timeout 600 --out iso-boot || status=1
           done
-          python3 tests/iso-boot.py --iso installer.iso --firmware uefi-sb-ms --media usb \
+          python3 nix/tests/iso-boot.py --iso installer.iso --firmware uefi-sb-ms --media usb \
             --expect refused --timeout 300 --out iso-boot || status=1
           if [ "$SIGNED" = true ]; then
             nix shell --inputs-from . nixpkgs#python3Packages.virt-firmware -c \
-              python3 tests/iso-boot.py --iso installer.iso --firmware uefi-sb --media usb \
-                --enroll keys/secure-boot-db.pem --timeout 600 --out iso-boot || status=1
+              python3 nix/tests/iso-boot.py --iso installer.iso --firmware uefi-sb --media usb \
+                --enroll nix/keys/secure-boot-db.pem --timeout 600 --out iso-boot || status=1
           fi
           exit "$status"
       - uses: actions/upload-artifact@v7
@@ -1088,26 +1088,29 @@ jobs:
           xargs -r nix copy --from "file://$PWD/ctl-cache" --no-check-sigs < ctl-cache/store-paths
           xargs -r nix copy --from "file://$PWD/ui-cache" --no-check-sigs < ui-cache/store-paths
           xargs -r nix copy --from "file://$PWD/registrar-cache" --no-check-sigs < registrar-cache/store-paths
-      # The media carry their own tag (flake/version.nix): written over the
-      # committed value and staged, since nix's git fetcher reads staged
-      # files. A tag made before the file named it is the usual case:
-      # version.yml then commits the tag to main, which is what installed
-      # boxes build from. Tags older than the file are built as they are.
+      # The media carry their own tag (nix/version.nix, flake/version.nix in
+      # tags older than the nix/ folder): written over the committed value
+      # and staged, since nix's git fetcher reads staged files. A tag made
+      # before the file named it is the usual case: version.yml then commits
+      # the tag to main, which is what installed boxes build from. Tags older
+      # than the file are built as they are.
       - name: stamp the release tag
         env:
           TAG: ${{ matrix.tag }}
         run: |
           set -euo pipefail
-          if [ ! -f flake/version.nix ]; then
-            echo "::notice::${TAG} has no flake/version.nix; its media show the version its tree carries"
+          file=nix/version.nix
+          [ -f "$file" ] || file=flake/version.nix
+          if [ ! -f "$file" ]; then
+            echo "::notice::${TAG} has no version.nix; its media show the version its tree carries"
             exit 0
           fi
-          committed=$(nix eval --raw --file flake/version.nix)
+          committed=$(nix eval --raw --file "$file")
           if [ "$committed" != "$TAG" ]; then
-            echo "::notice::flake/version.nix says ${committed} in the tag's tree; the media say ${TAG}, and version.yml puts ${TAG} on main"
+            echo "::notice::${file} says ${committed} in the tag's tree; the media say ${TAG}, and version.yml puts ${TAG} on main"
           fi
-          printf '"%s"\n' "$TAG" > flake/version.nix
-          git add flake/version.nix
+          printf '"%s"\n' "$TAG" > "$file"
+          git add "$file"
       # A tag that does not build as tagged gets its fix from
       # .github/release-fixes/<tag>/, read from this run's commit and staged
       # over the tag's tree the same way, so the published tag never moves.
@@ -1165,12 +1168,15 @@ jobs:
             echo "signed=false" >> "$GITHUB_OUTPUT"
             echo "unsignedReason=$1" >> "$GITHUB_OUTPUT"
           }
-          if ! grep -q '^-----BEGIN CERTIFICATE-----' keys/secure-boot-db.pem; then
-            unsigned no-certificate "keys/secure-boot-db.pem carries no certificate: this release is unsigned (run provisioning/secure-boot/keygen.sh)"
+          # Tags older than the nix/ folder keep the certificate in keys/.
+          cert=nix/keys/secure-boot-db.pem
+          [ -f "$cert" ] || cert=keys/secure-boot-db.pem
+          if ! grep -q '^-----BEGIN CERTIFICATE-----' "$cert"; then
+            unsigned no-certificate "${cert} carries no certificate: this release is unsigned (run docs/provisioning/secure-boot/keygen.sh)"
             exit 0
           fi
           if [ -z "$SECURE_BOOT_DB_KEY" ]; then
-            unsigned no-key "keys/secure-boot-db.pem is committed but the SECURE_BOOT_DB_KEY secret is missing: this release is unsigned"
+            unsigned no-key "${cert} is committed but the SECURE_BOOT_DB_KEY secret is missing: this release is unsigned"
             exit 0
           fi
           set +e
@@ -1180,12 +1186,12 @@ jobs:
             key=$(mktemp)
             trap 'rm -f "$key"' EXIT
             printf '%s\n' "$SECURE_BOOT_DB_KEY" > "$key"
-            nix run .#losos-sign-iso -- sign --key "$key" --cert keys/secure-boot-db.pem "./${iso}"
-            nix run .#losos-sign-iso -- verify --cert keys/secure-boot-db.pem "./${iso}"
+            nix run .#losos-sign-iso -- sign --key "$key" --cert "$cert" "./${iso}"
+            nix run .#losos-sign-iso -- verify --cert "$cert" "./${iso}"
             sha256sum "$iso" "$qcow2" "$edge" | tee SHA256SUMS
             openssl dgst -sha256 -sign "$key" -out SHA256SUMS.sig SHA256SUMS
-            openssl x509 -in keys/secure-boot-db.pem -out losos-secure-boot-db.pem
-            openssl x509 -in keys/secure-boot-db.pem -outform DER -out losos-secure-boot-db.cer
+            openssl x509 -in "$cert" -out losos-secure-boot-db.pem
+            openssl x509 -in "$cert" -outform DER -out losos-secure-boot-db.cer
             openssl dgst -sha256 -verify <(openssl x509 -pubkey -noout -in losos-secure-boot-db.pem) \
               -signature SHA256SUMS.sig SHA256SUMS
           )
@@ -1267,7 +1273,7 @@ jobs:
       # The same demo disk as a KubeVirt containerDisk: a container image with
       # the disk under /disk/, owned by qemu's uid 107, which is the layout
       # KubeVirt and CDI's registry import read. The edge's machine catalogue
-      # (backend-registrar/vm-images.json) starts LosOS replicas from its
+      # (edge/registrar/vm-images.json) starts LosOS replicas from its
       # `stable` tag, and only the tag's own push moves it: a manual run for
       # older tags pushes their versions and leaves `stable` where it is.
       # Compressed, because every replica's importer pulls it whole.

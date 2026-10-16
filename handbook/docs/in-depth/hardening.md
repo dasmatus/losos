@@ -41,7 +41,7 @@ containerd, which are static Go binaries, nor anything inside a pod.
 
 ## Left out on purpose
 
-`tests/hardening.nix` checks that these stay off:
+`nix/tests/hardening.nix` checks that these stay off:
 
 | Setting               | Why not                                                         |
 | --------------------- | --------------------------------------------------------------- |

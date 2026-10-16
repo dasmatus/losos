@@ -22,7 +22,7 @@
     # settings instead of evaluating the published defaults. Under the local
     # default URI the files are in-tree anyway and the flag changes nothing.
     # lososd passes the same flag (backend/src/supervisor.rs);
-    # tests/invariants.nix pins this one.
+    # nix/tests/invariants.nix pins this one.
     flags = [ "--impure" ];
     dates = "03:00"; # build/upgrade well away from the midnight reboot
     allowReboot = true; # reboot if the upgrade changed kernel/initrd

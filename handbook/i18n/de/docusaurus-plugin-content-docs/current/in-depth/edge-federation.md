@@ -166,7 +166,7 @@ Market-Relay braucht keinen zusätzlichen Schalter: Es hängt davon ab, dass
 eine *offizielle* Edge antwortet, und ist keine erreichbar, meldet es
 bereits `available: false`.
 
-`tests/edge-federation.nix` betreibt die drei Maschinen (Hub, Gateway, Box)
+`nix/tests/edge-federation.nix` betreibt die drei Maschinen (Hub, Gateway, Box)
 und geht genau das durch: LAN-Pfad, Einschreibung, Uplink, Rückfall, aus,
 wieder da.
 
@@ -291,10 +291,10 @@ beide im Statusverzeichnis des Registrars. Auf der lokalen Edge und der Box
 ändert sich nichts. Beide übernehmen den Pass ab einem Build mit dieser
 Änderung.
 
-`backend-registrar/tests/domains.rs` testet den ganzen Pfad gegen echte
+`edge/registrar/tests/domains.rs` testet den ganzen Pfad gegen echte
 Registrare. Eine Box hinter einem Gateway bekommt ihre Domain, eine Box
 außerhalb des Mesh bekommt nichts, und drei gefälschte Pässe bekommen
-nichts. `tests/edge-dns.nix` bootet die NixOS-Verdrahtung. Es prüft die
+nichts. `nix/tests/edge-dns.nix` bootet die NixOS-Verdrahtung. Es prüft die
 Schlüsseldatei, `/relay` mit einem Pass, dass die Bindung in
 `relay-routes.json` landet und dass sie nach einem Neustart des Registrars
 noch da ist.
@@ -330,7 +330,7 @@ Zwei Formen, eine Konfiguration:
 2. **Eine bestehende NixOS-Maschine**: Importiere `nixosModules.edge`
    und setze entweder `losos.edge.gateway.enable = true` (die Form des
    Images) oder schreib die Optionen oben von Hand, wie es die
-   Zwei-VM-Demo und `tests/edge-lan.nix` tun.
+   Zwei-VM-Demo und `nix/tests/edge-lan.nix` tun.
 
 Die Hub-Seite für die offiziellen Edges ist eine Tenant-Zeile pro Standort.
 Der Vercel-Host hat dieselbe `/relay`-Route und kann daher für eine Demo

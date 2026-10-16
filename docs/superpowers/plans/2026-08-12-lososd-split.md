@@ -683,7 +683,7 @@ services.nginx = {
 
 **Files:**
 - Delete: `nextcloud-app/` (whole tree), plus its flake package
-- Modify: `flake/packages.nix` (read first: remove `losos-app`; add `losos-admin-ui` via runCommand — or keep admin-ui packaging inside daemon.nix/options.nix default as designed in Task 6; pick ONE place: options.nix default `pkgs.runCommand`)
+- Modify: `nix/packages.nix` (read first: remove `losos-app`; add `losos-admin-ui` via runCommand — or keep admin-ui packaging inside daemon.nix/options.nix default as designed in Task 6; pick ONE place: options.nix default `pkgs.runCommand`)
 - Modify: `flake/devshell.nix` (drop PHP/composer bits + `losos-occ`/`ncd` aliases; keep ghc dev shell)
 - Modify: `backend/schema.json` title/description (no longer "as invoked by the losos Nextcloud app" — facade + HTTP + D-Bus)
 - Modify: `README.md`, `CLAUDE.md` (rewrite bridge/containers sections: daemon + facade + admin endpoint + nspawn; delete sudoers gotcha; add `losos.admin.*` description)
@@ -698,7 +698,7 @@ services.nginx = {
 
 **Files:**
 - Read: `tests/` (existing installer VM test harness — reuse its patterns)
-- Create: `tests/admin-vm.nix` — `pkgs.testers.nixosTest`:
+- Create: `nix/tests/admin-vm.nix` — `pkgs.testers.nixosTest`:
   - machine imports the same module set as `install` (options, configuration, impermanence? — the existing installer test shows the pattern; reuse its disko-free variant), with `losos.backend.package = self.packages...losos-ctl`… follow how the existing test wires flake outputs.
   - test script (python): `machine.wait_for_unit("lososd.service")`; `machine.succeed("losos-ctl state --json")` contains `"mode"`; `machine.fail("curl -s localhost:8081/api/state")` 401 path via API port: `machine.succeed("curl -s localhost:8082/api/state | grep unauthorized")`; token flow: `token=$(machine.succeed("cat /var/secrets/losos-admin-token"))`; `curl -H "Authorization: Bearer $token" localhost:8081/api/state` 200 via nginx; `systemctl is-active container@nextcloud` active; `curl -s 127.0.0.1:11000`… no — container reachability: `curl -s http://10.231.1.2` nextcloud status page reachable.
 - Modify: `flake.nix` (add `checks.x86_64-linux.admin-vm = …` if the flake has a checks pattern; otherwise expose as a package output. Match how the existing tests/ entry is wired.)

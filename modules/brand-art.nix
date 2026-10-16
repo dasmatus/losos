@@ -22,7 +22,7 @@
 #   splash-hatch.png          one seamless tile of the hatched accent rule
 #
 # Each picture but the splash logo carries the release tag, so it changes with
-# flake/version.nix. The Plymouth theme writes the tag as text instead.
+# nix/version.nix. The Plymouth theme writes the tag as text instead.
 { pkgs, version }:
 
 let

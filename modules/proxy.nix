@@ -15,7 +15,7 @@
 # no edge in reach runs no tunnel at all. Both files live on /run and are
 # gone at boot: until lososd's first scan the units dial the configured
 # edge, which is also what they do on a box that runs no lososd
-# (tests/edge-vm.nix). The daemon only writes the files when
+# (nix/tests/edge-vm.nix). The daemon only writes the files when
 # losos.proxy.enable is on; see modules/daemon.nix.
 #
 # See docs/superpowers/specs/2026-08-17-master-proxy-design.md, the edge side in

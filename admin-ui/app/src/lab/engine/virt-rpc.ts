@@ -10,7 +10,7 @@
  * Per guest: a ticket, one relayed connection, a transient domain created
  * paused with AUTODESTROY (it dies with the connection, so a closed tab ends
  * it), its console opened before it is resumed (so the first byte is seen),
- * then resumed. The domain XML is the helper's (backend-registrar/src/lab/
+ * then resumed. The domain XML is the helper's (edge/registrar/src/lab/
  * spec.rs) with the serial port as a pty, read through DOMAIN_OPEN_CONSOLE.
  *
  * The network card: the ticket comes with a UDP tunnel the helper owns and

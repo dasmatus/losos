@@ -174,7 +174,7 @@ pub trait Losos {
     /// only the box learning the answer. Sorted, lowercase, deduplicated.
     fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()>;
     /// Keep the relay pass the official edge issued (`None`: forget it), for
-    /// the announce loop to hand a local edge (backend-registrar's
+    /// the announce loop to hand a local edge (edge/registrar's
     /// `routes.rs`). Root-only: it lets a local edge route this box's
     /// custom domains for a few hours.
     fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()>;
@@ -1303,7 +1303,7 @@ fn record_view<L: Losos>(l: &mut L, view: &mut Value) {
     }
 }
 
-/// The shape backend-registrar's `routes::well_formed_pass` accepts:
+/// The shape edge/registrar's `routes::well_formed_pass` accepts:
 /// `v1.<digits>.<64 lowercase hex>`. Anything else from the edge is dropped
 /// rather than written to a file the announce loop sends on.
 #[must_use]

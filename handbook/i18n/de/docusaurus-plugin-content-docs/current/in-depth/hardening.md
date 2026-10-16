@@ -44,7 +44,7 @@ innerhalb eines Pods.
 
 ## Bewusst weggelassen {#left-out-on-purpose}
 
-`tests/hardening.nix` prüft, dass diese ausgeschaltet bleiben:
+`nix/tests/hardening.nix` prüft, dass diese ausgeschaltet bleiben:
 
 | Einstellung           | Warum nicht                                                     |
 | --------------------- | --------------------------------------------------------------- |

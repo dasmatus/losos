@@ -1,5 +1,5 @@
 # The terminal client's credentials, shared by both servers: lososd on a box
-# (backend/) and losos-registrar on an edge (backend-registrar/). One crate,
+# (backend/) and losos-registrar on an edge (edge/registrar/). One crate,
 # so the two cannot disagree on the envelope, the token format or the checks.
 # The wire contract is docs/terminal-access.md.
 [package]

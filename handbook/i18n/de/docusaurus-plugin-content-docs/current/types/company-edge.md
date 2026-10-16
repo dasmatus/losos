@@ -54,7 +54,7 @@ konfiguriert wird, mit einer kurzen Nix-Datei. Sie nennt die öffentliche
 Domain, die Boxen, die sich verbinden dürfen, ob die Control Plane des Mesh
 laufen soll und ob sich die Edge im LAN ankündigen soll. Die Anleitung für
 Betreiber steht in [Master-Proxy](/in-depth/master-proxy.md) und
-[Mesh](/in-depth/mesh.md). Das Repository enthält unter `demo/edge-lan/`
+[Mesh](/in-depth/mesh.md). Das Repository enthält unter `nix/demo/edge-lan/`
 außerdem eine Vorführung genau dieser Einrichtung: zwei Boxen und eine Edge
 in einem virtuellen Netz. `run.sh` startet sie, und `CHECKLIST.md` gibt die
 Reihenfolge vor, die sie durchläuft.

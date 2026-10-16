@@ -88,7 +88,7 @@ The box runs in QEMU, virt-manager or VirtualBox. Two things to know:
 ### With quickemu
 
 The repository carries a [quickemu](https://github.com/quickemu-project/quickemu)
-configuration, `vm/losos.conf`. It gives the VM 4 cores, 8 GiB of memory and
+configuration, `docs/vm/losos.conf`. It gives the VM 4 cores, 8 GiB of memory and
 a 64 GiB disk, UEFI firmware with Secure Boot off, and an emulated TPM, so the
 installer seals the disk key the way it does on a mini-PC. The numbers are
 above the minimum because the box runs LosOS cloud and LosOS Git in their own
@@ -96,9 +96,9 @@ cluster and rebuilds itself every night onto the same disk.
 
 1. Install quickemu and `swtpm`.
 2. Download the installer ISO from a release and save it as
-   `vm/losos/losos-installer.iso`.
-3. Run `quickemu --vm vm/losos.conf`. The disk, the firmware variables and the
-   TPM state are kept in `vm/losos/`, so later boots find the sealed key.
+   `docs/vm/losos/losos-installer.iso`.
+3. Run `quickemu --vm docs/vm/losos.conf`. The disk, the firmware variables and the
+   TPM state are kept in `docs/vm/losos/`, so later boots find the sealed key.
 4. When the installer says LosOS is installed, press a key to restart. The
    installer puts the box's boot loader first in the firmware's boot order,
    so the VM comes up from its disk. Later runs of quickemu leave the ISO out,

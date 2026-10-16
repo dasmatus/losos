@@ -4,7 +4,7 @@
 //! history; this file holds the real [`Losos`] implementation to the same
 //! contract with an actual repository, a bare remote and a clone that pushes
 //! — the arrangement the box and LosOS Git are in. No Forgejo: the remote is
-//! a path, which is the `$LOSOS_CONFIG_REMOTE_URL` seam `tests/admin-vm.nix`
+//! a path, which is the `$LOSOS_CONFIG_REMOTE_URL` seam `nix/tests/admin-vm.nix`
 //! uses too.
 
 use assert_fs::TempDir;
