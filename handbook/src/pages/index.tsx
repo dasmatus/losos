@@ -19,7 +19,7 @@ import {
   styles,
   type Feature,
   type Step,
-  useReleaseUrl,
+  RELEASES,
 } from '@site/src/components/home';
 
 /* The public site's front page: what LosOS is, for someone who has never
@@ -141,7 +141,6 @@ const STEPS: Step[] = [
 ];
 
 export default function Home(): ReactNode {
-  const releases = useReleaseUrl();
   return (
     <Layout
       title={translate({id: 'losos.home.pageTitle', message: 'A box for your files that looks after itself'})}
@@ -239,7 +238,7 @@ export default function Home(): ReactNode {
             </Translate>
           }
           primary={{
-            href: releases,
+            href: RELEASES,
             label: (
               <Translate id="losos.home.closing.download">Download the latest release</Translate>
             ),

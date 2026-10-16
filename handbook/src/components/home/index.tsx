@@ -26,11 +26,9 @@ export {styles};
 
 export const SOURCE = 'https://github.com/dasmatus/losos';
 
-/** The newest release's page, from docusaurus.config.ts. */
-export function useReleaseUrl(): string {
-  const {siteConfig} = useDocusaurusContext();
-  return siteConfig.customFields?.releaseUrl as string;
-}
+/** Every release, newest first. Not /releases/latest: GitHub serves that
+ * only for a release that is not marked pre-release. */
+export const RELEASES = 'https://github.com/dasmatus/losos/releases';
 
 export type Action = {label: ReactNode; to?: string; href?: string};
 

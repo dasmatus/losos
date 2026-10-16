@@ -39,7 +39,7 @@ mit deinem Schlüssel darauf baust.
 ## Schritte \{#steps}
 
 1. Lade das Installer-ISO und seine `.sha256` aus dem
-   [neuesten Release](https://github.com/dasmatus/losos/releases/latest)
+   [neuesten Release](https://github.com/dasmatus/losos/releases)
    herunter und schreib es mit balenaEtcher, Rufus im DD-Modus oder `dd` auf
    den Stick.
 2. **Schalte Secure Boot** in der Firmware des Rechners **aus**, oder füge

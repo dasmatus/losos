@@ -67,8 +67,8 @@
 #                tests/secure-boot.nix with a throwaway key.
 {
   pkgs,
-  # flake/version.nix, the release tag. The terminal client and the
-  # handbook carry it; the crates and the SPA keep their own package
+  # flake/version.nix, the release tag. Only the terminal client carries
+  # it; the crates, the SPA and the handbook keep their own package
   # versions, so a release does not rebuild what the release job imports
   # from its sibling jobs. flake.nix passes it; the tests that import this
   # file directly get the same file.
@@ -337,9 +337,6 @@ images
 
     npmFlags = [ "--ignore-scripts" ];
     env.LOSOS_HANDBOOK_BASE = "/handbook/";
-    # "The latest release" links to this release's page
-    # (handbook/docusaurus.config.ts).
-    env.LOSOS_VERSION = version;
     # Docusaurus reads the git log for "last updated" stamps when asked; the
     # config does not ask, and there is no .git in the sandbox anyway.
     env.CI = "true";

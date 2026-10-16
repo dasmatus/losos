@@ -72,7 +72,7 @@ das LosOS-Zertifikat zur `db` der Firmware hinzu, neben das von Microsoft:
 
 1. Besorg dir das Zertifikat. Es liegt auf dem Stick selbst unter
    `EFI/losos/losos-secure-boot.cer` im DER-Format und als `.pem`, und in
-   jedem [Release](https://github.com/dasmatus/losos/releases/latest) als
+   jedem [Release](https://github.com/dasmatus/losos/releases) als
    `losos-secure-boot-db.cer`. Die Release Notes geben seinen
    SHA-256-Fingerabdruck an, und `openssl x509 -in losos-secure-boot-db.pem -noout
    -fingerprint -sha256` gibt denselben für die Datei aus, die du hast.
