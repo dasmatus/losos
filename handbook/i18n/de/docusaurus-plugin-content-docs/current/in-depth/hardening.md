@@ -16,12 +16,28 @@ mdx:
   blockiert
 - ein tmpfs-`/tmp` und `noexec` auf `/dev/shm`
 - dbus-broker
-- systemd-Sandboxing für `nginx`, `avahi-daemon` und `lososd`
+- systemd-Sandboxing für `nginx` und `lososd`
 
 :::note[Warum das Modul sie selbst setzt]
 NixOS hat sein Hardened-Profil in 26.05 entfernt, und `linux_hardened` gibt
 es nicht mehr, deshalb setzt `modules/hardening.nix` diese Werte direkt.
 :::
+
+## mDNS {#mdns}
+
+Die Box kündigt `<name>.local` und ihre Dienste über systemd-resolved an,
+nicht über Avahi. resolved ist ohnehin Teil des Systems, läuft als eigener
+Benutzer in der Sandbox seiner Upstream-Unit und gibt nichts anderem auf
+der Box einen Weg, Dienste anzukündigen. Sein zweites Namensprotokoll,
+LLMNR, ist aus. Avahi lief als root mit einer leichteren Sandbox, weil es
+Netlink brauchte, um den Netzwerkschnittstellen zu folgen. Es ist weg und
+läuft nicht neben resolved weiter, denn zwei Responder an einem Port
+beantworten jede Frage doppelt.
+
+mDNS ist auf jeder physischen Netzwerkschnittstelle an, ohne Liste von
+Namen, weil der Name der einzige Weg zu einer Box ohne Bildschirm und ohne
+Shell ist. `nix/tests/hardening.nix` prüft, dass zwei Boxen einander
+weiterhin finden.
 
 ## Optional {#opt-in}
 

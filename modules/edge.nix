@@ -972,6 +972,9 @@ let
   ];
 in
 {
+  # Where losos.mdns below lands (lan.advertise).
+  imports = [ ./mdns.nix ];
+
   config = lib.mkIf enabled {
     # The edge module is only imported by the edge system, so wiring the
     # registrar package here (gated on `enabled`, which is always true for the
@@ -1710,41 +1713,28 @@ in
     };
 
     # ── On the LAN: let appliances find this edge ────────────────────────
-    # DNS-SD over the Avahi daemon, which also gives the edge its `.local`
-    # name — the one the default losos.edge.lan.url points at. The service
-    # file carries the registrar API port and a `url=` record; the appliance
-    # side (backend/src/edge.rs) prefers the record and falls back to the
-    # resolved address and port, then probes /health before believing either.
-    # `rathole=` is where a box that picks this edge dials its tunnel, and
-    # `enrol=` tells it (and a person reading `avahi-browse`) whether an
-    # unprovisioned box can expect to be let in; neither is trusted for
-    # anything the box would not have done anyway.
+    # DNS-SD over systemd-resolved's mDNS (modules/mdns.nix), which also
+    # gives the edge its `.local` name — the one the default
+    # losos.edge.lan.url points at. The service carries the registrar API
+    # port and a `url=` record; the appliance side (backend/src/edge.rs)
+    # prefers the record and falls back to the resolved address and port,
+    # then probes /health before believing either. `rathole=` is where a box
+    # that picks this edge dials its tunnel, and `enrol=` tells it (and a
+    # person running `resolvectl service`) whether an unprovisioned box can
+    # expect to be let in; neither is trusted for anything the box would not
+    # have done anyway.
     # Off-loopback binding is forced here only when the operator left the
     # bind at its loopback default, because an advertised edge nobody can
     # dial is worse than none: the box would show "found" and then refuse.
-    services.avahi = lib.mkIf cfg.lan.advertise {
+    losos.mdns = lib.mkIf cfg.lan.advertise {
       enable = true;
-      nssmdns4 = true;
-      openFirewall = true;
-      publish = {
-        enable = true;
-        addresses = true;
-        workstation = true;
-      };
-      extraServiceFiles.losos-edge = ''
-        <?xml version="1.0" standalone='no'?>
-        <!DOCTYPE service-group SYSTEM "avahi-service.dtd">
-        <service-group>
-          <name replace-wildcards="yes">losos edge on %h</name>
-          <service>
-            <type>_losos-edge._tcp</type>
-            <port>${toString cfg.registrarApiPort}</port>
-            <txt-record>url=${cfg.lan.url}</txt-record>
-            <txt-record>rathole=${cfg.lan.ratholeEndpoint}</txt-record>
-            <txt-record>enrol=${if cfg.lan.openEnrolment then "open" else "closed"}</txt-record>
-            <txt-record>txtvers=1</txt-record>
-          </service>
-        </service-group>
+      services.losos-edge = ''
+        Name=losos edge on %H
+        Type=_losos-edge._tcp
+        Port=${toString cfg.registrarApiPort}
+        TxtText=url=${cfg.lan.url} rathole=${cfg.lan.ratholeEndpoint} enrol=${
+          if cfg.lan.openEnrolment then "open" else "closed"
+        } txtvers=1
       '';
     };
     losos.edge.registrarApiBind = lib.mkIf cfg.lan.advertise (lib.mkDefault "::");

@@ -153,6 +153,7 @@ pkgs.testers.nixosTest {
           ../../modules/options.nix
           ../../modules/daemon.nix
           ../../modules/proxy.nix
+          ../../modules/mdns.nix
           secretFiles
         ];
         networking.hostName = "mattbox";
@@ -170,17 +171,10 @@ pkgs.testers.nixosTest {
           heartbeatInterval = "3s";
           registrar.package = lososPkgs.losos-registrar;
         };
-        # What modules/configuration.nix gives the real box: Avahi, so the
-        # LAN edge's advert is seen and its .local name resolves.
-        services.avahi = {
-          enable = true;
-          nssmdns4 = true;
-          openFirewall = true;
-          publish = {
-            enable = true;
-            addresses = true;
-          };
-        };
+        # What modules/configuration.nix gives the real box: mDNS through
+        # resolved, so the LAN edge's advert is seen and its .local name
+        # resolves.
+        losos.mdns.enable = true;
         # The slave proxy: a minimal Nginx on :80 that the tunnels end at.
         services.nginx = {
           enable = true;
@@ -197,10 +191,7 @@ pkgs.testers.nixosTest {
             '';
           };
         };
-        environment.systemPackages = [
-          pkgs.avahi
-          pkgs.jq
-        ];
+        environment.systemPackages = [ pkgs.jq ];
         virtualisation = {
           memorySize = 1024;
           cores = 2;
@@ -225,7 +216,7 @@ pkgs.testers.nixosTest {
     spoke.wait_for_unit("losos-edge-gateway-secrets.service")
     spoke.wait_for_unit("losos-registrar.service")
     spoke.wait_for_unit("losos-rathole.service")
-    spoke.wait_for_unit("avahi-daemon.service")
+    spoke.wait_for_unit("systemd-resolved.service")
     spoke.wait_until_succeeds("curl -fsS http://localhost:8443/health")
     spoke_pub = spoke.succeed("curl -fsS http://localhost:8443/noise-public-key").strip()
     # The gateway minted its own bootstrap token and expired the first
@@ -237,7 +228,7 @@ pkgs.testers.nixosTest {
     # What a person sees on the gateway's tty1 before logging in.
     spoke.screenshot("edge-gateway-tty1")
 
-    box.wait_for_unit("avahi-daemon.service")
+    box.wait_for_unit("systemd-resolved.service")
     box.wait_for_unit("nginx.service")
     box.wait_until_succeeds("losos-ctl state --json")
     box.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
@@ -272,7 +263,7 @@ pkgs.testers.nixosTest {
 
     # ── 1. The LAN edge is the path, with no configuration ────────────────
     browse = box.wait_until_succeeds(
-      "avahi-browse --parsable --resolve --terminate _losos-edge._tcp | grep '^=' | grep IPv4"
+      "resolvectl service 'losos edge on spoke' _losos-edge._tcp local"
     )
     assert "url=http://spoke.local:8443" in browse, browse
     assert "rathole=spoke.local:2333" in browse, browse
@@ -352,7 +343,11 @@ pkgs.testers.nixosTest {
     assert through(hub, hub_port).strip() == "hello-losos"
 
     # ── 4. The spoke goes away: fall back to the official edge ───────────
-    spoke.succeed("systemctl stop losos-registrar.service losos-rathole.service avahi-daemon.service avahi-daemon.socket")
+    # resolved and both its sockets, or a lookup on the spoke starts it again.
+    spoke.succeed(
+        "systemctl stop losos-registrar.service losos-rathole.service "
+        "systemd-resolved.service systemd-resolved-varlink.socket systemd-resolved-monitor.socket"
+    )
     wait_path("configured")
     doc = edge_doc()
     assert doc["path"]["url"] == "http://hub:8443" and doc["path"]["rathole"] == "hub:2333", doc
@@ -387,7 +382,7 @@ pkgs.testers.nixosTest {
     assert json.loads(body)["edgeRequired"] is True, body
 
     # ── 6. The spoke comes back: the LAN path again, units running ───────
-    spoke.succeed("systemctl start avahi-daemon.service losos-rathole.service losos-registrar.service")
+    spoke.succeed("systemctl start systemd-resolved.service losos-rathole.service losos-registrar.service")
     spoke.wait_until_succeeds("curl -fsS http://localhost:8443/health")
     wait_path("lan")
     box.wait_until_succeeds("! test -e /run/losos/edge-none")

@@ -477,10 +477,11 @@ export function getStorage(options: RequestOptions = {}): Promise<StorageRespons
 
 /* ── Edge proxies ─────────────────────────────────────────────────────────
  * What lososd found when it last looked for an edge proxy: on the LAN by
- * DNS-SD (`_losos-edge._tcp` over the Avahi the box already runs) and at the
- * configured registrar URL. Both are probed; a candidate is listed only once
- * its /health answered. The daemon refreshes this every few seconds, and the
- * same answer gates sharing: POST /api/change to mesh, or an apply that turns
+ * DNS-SD (`_losos-edge._tcp`, browsed through the systemd-resolved the box
+ * already runs for mDNS) and at the configured registrar URL. Both are
+ * probed; a candidate is listed only once its /health answered. The daemon
+ * refreshes this every few seconds, and the same answer gates sharing:
+ * POST /api/change to mesh, or an apply that turns
  * `sharingMyStorage` or `clusterEnable` on, is a 409 `{edgeRequired: true}`
  * while `reachable` is false. See backend/src/edge.rs. */
 
@@ -506,7 +507,8 @@ export interface EdgeResponse {
   official: boolean;
   /** Every edge that answered, LAN first. */
   edges: EdgeProxy[];
-  /** False when the LAN could not be searched at all (Avahi down). */
+  /** False when the LAN could not be searched at all (systemd-resolved down,
+   *  or it refused the browse). */
   lanSearched: boolean;
   /** The configured registrar URL that was tried, if any. */
   configuredUrl: string | null;

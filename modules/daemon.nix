@@ -172,7 +172,8 @@ in
       # the configured registrar, probed whether or not the master proxy is on,
       # because the question is "is there an edge anywhere this box could share
       # through", not "is this box enrolled". The LAN half needs no setting; it
-      # is the `_losos-edge._tcp` browse over the Avahi the box already runs.
+      # is the `_losos-edge._tcp` browse over the resolved the box already
+      # runs for its own `.local` name (modules/mdns.nix).
       // {
         LOSOS_EDGE_URL = config.losos.proxy.registrarUrl;
         # Where the tunnel goes when that configured edge is the path. An
@@ -255,12 +256,9 @@ in
         # shape as the grow binaries above if this line goes: ENOENT at the
         # exec, reported to the owner as a search that will not come back.
         pkgs.curl
-        # What the edge scan browses the LAN with (backend/src/edge.rs):
-        # `avahi-browse` for `_losos-edge._tcp`, under coreutils' `timeout`.
-        # Missing, the scan reports the LAN as unsearched and only the
-        # configured edge can open the sharing gate — a box on a LAN with an
-        # edge and no internet would then never be allowed to share.
-        pkgs.avahi
+        # The edge scan's LAN browse needs no binary here: it asks
+        # systemd-resolved over its Varlink socket (backend/src/edge.rs), which
+        # is why there is no avahi-browse on this list any more.
         # What Apply, a storage-mode change and a factory reset run. The
         # rebuild is a `systemd-run` transient unit, and systemd-run resolves a
         # bare command against the caller's PATH before PID 1 sees it: with

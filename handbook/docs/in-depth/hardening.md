@@ -15,12 +15,27 @@ mdx:
 - a kernel-module blacklist that also blocks explicit `modprobe`
 - a tmpfs `/tmp` and `noexec` on `/dev/shm`
 - dbus-broker
-- systemd sandboxing for `nginx`, `avahi-daemon` and `lososd`
+- systemd sandboxing for `nginx` and `lososd`
 
 :::note[Why the module sets these itself]
 NixOS removed its hardened profile in 26.05 and `linux_hardened` no longer
 exists, so `modules/hardening.nix` sets these directly.
 :::
+
+## mDNS
+
+The box announces `<name>.local` and its services through
+systemd-resolved, not Avahi. resolved is already part of the system, runs
+as its own user under its upstream sandbox, and gives nothing else on the
+box a way to announce services. Its other name protocol, LLMNR, is off.
+Avahi ran as root with a lighter sandbox, because it needed netlink to
+follow the network interfaces. It is gone, not kept beside resolved, since
+two responders on one port answer every question twice.
+
+mDNS is on for every physical network interface, with no list of names,
+because the name is the only way to reach a box with no screen and no
+shell. `nix/tests/hardening.nix` checks that two boxes still find each
+other.
 
 ## Opt-in
 

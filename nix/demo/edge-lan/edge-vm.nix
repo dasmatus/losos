@@ -164,11 +164,10 @@ in
   environment.systemPackages = with pkgs; [
     tcpdump
     jq
-    avahi
     curl
   ];
-  # Resolve the box's `.local` name from the edge's shell too.
-  services.avahi.nssmdns4 = true;
+  # The box's `.local` name resolves from the edge's shell through the
+  # resolved that lan.advertise turns on (modules/mdns.nix).
   # The serial pane is a tool, not a product: a plain prompt reads better on
   # video than the distribution's.
   programs.bash.promptInit = "PS1='edge# ' ";

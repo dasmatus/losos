@@ -58,7 +58,7 @@ kann nichts teilen, egal was ihre Schalter sagen, deshalb sucht `lososd` alle
 - **im lokalen Netzwerk**, per DNS-SD. Eine Edge, die mit
   `losos.edge.lan.advertise = true` konfiguriert ist, veröffentlicht
   `_losos-edge._tcp` über mDNS mit einem `url=`-Eintrag, der ihre
-  Registrar-API nennt, und das Avahi der Box findet sie.
+  Registrar-API nennt, und die Box findet sie über systemd-resolved.
 - **unter der konfigurierten Adresse**, `losos.proxy.registrarUrl`, die auf
   einer Box mit Internet die öffentliche Edge ist. Die Box prüft sie, ob der
   Master-Proxy eingeschaltet ist oder nicht.

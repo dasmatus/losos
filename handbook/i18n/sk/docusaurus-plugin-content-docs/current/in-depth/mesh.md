@@ -54,7 +54,8 @@ hľadá, na dvoch miestach:
 
 - **v lokálnej sieti**, cez DNS-SD. Edge nastavený s
   `losos.edge.lan.advertise = true` publikuje `_losos-edge._tcp` cez mDNS so
-  záznamom `url=`, ktorý uvádza jeho API registrátora, a Avahi zariadenia ho nájde.
+  záznamom `url=`, ktorý uvádza jeho API registrátora, a zariadenie ho nájde
+  cez systemd-resolved.
 - **na nastavenej adrese**, `losos.proxy.registrarUrl`, čo je na zariadení s
   internetom verejný edge. Zariadenie ho skúša bez ohľadu na to, či je master proxy
   zapnutá.

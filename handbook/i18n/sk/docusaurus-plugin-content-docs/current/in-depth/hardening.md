@@ -15,12 +15,28 @@ mdx:
 - čiernu listinu modulov kernelu, ktorá blokuje aj explicitné `modprobe`
 - tmpfs `/tmp` a `noexec` na `/dev/shm`
 - dbus-broker
-- systemd sandboxing pre `nginx`, `avahi-daemon` a `lososd`
+- systemd sandboxing pre `nginx` a `lososd`
 
 :::note[Prečo ich modul nastavuje sám]
 NixOS vo verzii 26.05 odstránil svoj hardened profil a `linux_hardened` už
 neexistuje, preto ich `modules/hardening.nix` nastavuje priamo.
 :::
+
+## mDNS {#mdns}
+
+Zariadenie ohlasuje `<name>.local` a svoje služby cez systemd-resolved, nie
+cez Avahi. resolved je aj tak súčasťou systému, beží pod vlastným
+používateľom v sandboxe svojej upstream jednotky a ničomu inému na
+zariadení nedáva spôsob, ako ohlasovať služby. Jeho druhý protokol mien,
+LLMNR, je vypnutý. Avahi bežalo ako root s ľahším sandboxom, lebo
+potrebovalo netlink, aby sledovalo sieťové rozhrania. Je preč a nebeží
+vedľa resolved, pretože dva respondery na jednom porte odpovedajú na každú
+otázku dvakrát.
+
+mDNS je zapnuté na každom fyzickom sieťovom rozhraní, bez zoznamu mien,
+lebo meno je jediná cesta k zariadeniu bez obrazovky a bez shellu.
+`nix/tests/hardening.nix` overuje, že sa dve zariadenia stále navzájom
+nájdu.
 
 ## Voliteľné {#opt-in}
 

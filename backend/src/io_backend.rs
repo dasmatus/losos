@@ -325,39 +325,223 @@ fn curl_get(url: &str) -> anyhow::Result<String> {
     String::from_utf8(out.stdout).context("the catalogue returned a body that is not UTF-8")
 }
 
-/// Browse the LAN for `_losos-edge._tcp` once.
+/// Browse the LAN for `_losos-edge._tcp` once, through systemd-resolved.
 ///
-/// `None` when `avahi-browse` could not run at all (not on the unit path,
-/// Avahi down, the browse hung past its budget): the caller reports the LAN
-/// as unsearched rather than empty. `--terminate` makes the browse return
-/// once the cache has settled; `timeout` is the ceiling for an Avahi that
-/// never settles. Both binaries come from the unit's `path` in
-/// modules/daemon.nix.
-fn browse_lan() -> Option<String> {
-    let out = std::process::Command::new("timeout")
-        .arg(crate::edge::BROWSE_TIMEOUT_SECS.to_string())
-        .args([
-            "avahi-browse",
-            "--parsable",
-            "--resolve",
-            "--terminate",
-            crate::edge::SERVICE_TYPE,
-        ])
-        .stdin(std::process::Stdio::null())
-        .output();
-    match out {
-        Ok(out) if out.status.success() => Some(String::from_utf8_lossy(&out.stdout).into_owned()),
-        Ok(out) => {
-            tracing::info!(
-                status = ?out.status.code(),
-                stderr = %String::from_utf8_lossy(&out.stderr).trim(),
-                "avahi-browse did not complete; the LAN was not searched"
-            );
+/// `None` when the LAN could not be searched: resolved's socket would not
+/// open (resolved down), or resolved refused or dropped the browse (one too
+/// old to browse answers `MethodNotFound`). The caller reports that as
+/// unsearched rather than empty. `Some` of what was found otherwise, which
+/// is empty when nothing answered inside [`crate::edge::BROWSE_SETTLE`]: resolved sends no
+/// reply at all until it sees an instance, and with MulticastDNS off on
+/// every link it stays silent the same way, so silence reads as a LAN with
+/// no edge on it.
+///
+/// The browse listens for the settle window and takes the instances still
+/// present; each is then resolved on a connection of its own, inside the
+/// [`crate::edge::BROWSE_TIMEOUT_SECS`] ceiling. Every read has a timeout, so
+/// a resolved that accepts a call and never answers costs the scan the
+/// ceiling and no more.
+fn browse_lan() -> Option<Vec<crate::edge::Advert>> {
+    browse_lan_at(
+        Path::new(crate::edge::RESOLVE_SOCKET),
+        crate::edge::BROWSE_SETTLE,
+        std::time::Duration::from_secs(crate::edge::BROWSE_TIMEOUT_SECS),
+    )
+}
+
+/// [`browse_lan`] against the socket at `socket`, listening for `settle` and
+/// done within `ceiling`: the tests run it against a stand-in resolved with
+/// windows short enough to wait for.
+fn browse_lan_at(
+    socket: &Path,
+    settle: std::time::Duration,
+    ceiling: std::time::Duration,
+) -> Option<Vec<crate::edge::Advert>> {
+    use crate::edge::{self, Present};
+
+    let started = std::time::Instant::now();
+    let settle = started + settle;
+    let ceiling = started + ceiling;
+
+    let mut browser = match VarlinkConn::open(socket, settle) {
+        Ok(conn) => conn,
+        Err(e) => {
+            tracing::info!(error = %e, socket = %socket.display(), "systemd-resolved could not be reached; the LAN was not searched");
+            return None;
+        }
+    };
+    if let Err(e) = browser.send(
+        "io.systemd.Resolve.BrowseServices",
+        edge::browse_parameters(),
+        true,
+    ) {
+        tracing::info!(error = %e, "the browse could not be sent to systemd-resolved; the LAN was not searched");
+        return None;
+    }
+    let mut present = Present::new();
+    loop {
+        match browser.receive(settle) {
+            // The settle window is over: what is present now is the answer.
+            Ok(None) => break,
+            Ok(Some(Ok(reply))) => {
+                edge::apply_browse(&mut present, &reply.parameters);
+                // A browse never ends by itself; a last reply means resolved
+                // closed it, and what it reported so far still stands.
+                if !reply.continues {
+                    break;
+                }
+            }
+            Ok(Some(Err(error))) => {
+                tracing::info!(%error, "systemd-resolved refused the browse; the LAN was not searched");
+                return None;
+            }
+            Err(e) => {
+                tracing::info!(error = %e, "systemd-resolved dropped the browse; the LAN was not searched");
+                return None;
+            }
+        }
+    }
+    // Closing the browse connection is what ends resolved's browser; the
+    // lookups below do not need it.
+    drop(browser);
+
+    let mut adverts = Vec::new();
+    for instance in edge::to_resolve(&present) {
+        if std::time::Instant::now() >= ceiling {
+            tracing::info!(name = %instance.name, "the browse ran out of time before this edge was resolved");
+            break;
+        }
+        if let Some(advert) = resolve_instance(socket, &instance, ceiling) {
+            adverts.push(advert);
+        }
+    }
+    tracing::debug!(found = adverts.len(), "LAN browse for edges done");
+    Some(adverts)
+}
+
+/// One `ResolveService` call, on a fresh connection: resolved refuses a
+/// second call on a connection whose first is still running, and a call
+/// that timed out would leave its late reply in the way of the next one.
+fn resolve_instance(
+    socket: &Path,
+    instance: &crate::edge::Instance,
+    deadline: std::time::Instant,
+) -> Option<crate::edge::Advert> {
+    let reply = VarlinkConn::open(socket, deadline).and_then(|mut conn| {
+        conn.send(
+            "io.systemd.Resolve.ResolveService",
+            crate::edge::resolve_parameters(instance),
+            false,
+        )?;
+        conn.receive(deadline)
+    });
+    match reply {
+        Ok(Some(Ok(reply))) => {
+            let advert = crate::edge::advert_from_resolved(&instance.name, &reply.parameters);
+            if advert.is_none() {
+                tracing::info!(name = %instance.name, parameters = %reply.parameters, "systemd-resolved's answer for this edge is not usable; skipped");
+            }
+            advert
+        }
+        // The usual case is NoSuchResourceRecord or QueryTimedOut: the
+        // edge went away between the browse and the lookup.
+        Ok(Some(Err(error))) => {
+            tracing::debug!(name = %instance.name, %error, "this edge did not resolve");
+            None
+        }
+        Ok(None) => {
+            tracing::info!(name = %instance.name, "systemd-resolved did not resolve this edge in time");
             None
         }
         Err(e) => {
-            tracing::info!(error = %e, "avahi-browse could not run (is it on lososd's unit path? see modules/daemon.nix)");
+            tracing::info!(name = %instance.name, error = %e, "resolving this edge failed");
             None
+        }
+    }
+}
+
+/// One connection to systemd-resolved's Varlink socket
+/// ([`crate::edge::RESOLVE_SOCKET`] outside the tests). The framing and the
+/// meaning of a reply are in `edge.rs`, where they are tested; this is only
+/// the socket.
+struct VarlinkConn {
+    reader: std::io::BufReader<std::os::unix::net::UnixStream>,
+}
+
+impl VarlinkConn {
+    /// Connect, with writes bounded by `deadline` too: resolved reads a call
+    /// at once, but a resolved that is wedged must not hold a scan on a full
+    /// socket buffer.
+    fn open(socket: &Path, deadline: std::time::Instant) -> std::io::Result<VarlinkConn> {
+        let stream = std::os::unix::net::UnixStream::connect(socket)?;
+        stream.set_write_timeout(Some(Self::left(deadline)?))?;
+        Ok(VarlinkConn {
+            reader: std::io::BufReader::new(stream),
+        })
+    }
+
+    /// Time left until `deadline`, as a timeout the socket accepts: a zero
+    /// timeout is an error to `set_read_timeout`, so a deadline already
+    /// passed is a `TimedOut` here instead.
+    fn left(deadline: std::time::Instant) -> std::io::Result<std::time::Duration> {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            return Err(std::io::ErrorKind::TimedOut.into());
+        }
+        Ok(left)
+    }
+
+    fn send(
+        &mut self,
+        method: &str,
+        parameters: serde_json::Value,
+        more: bool,
+    ) -> std::io::Result<()> {
+        self.reader
+            .get_mut()
+            .write_all(&crate::edge::varlink_call(method, parameters, more))
+    }
+
+    /// The next message by `deadline`: `Ok(None)` when none came in time,
+    /// `Ok(Some(Err))` for a Varlink error or a message that is not one, and
+    /// `Err` when resolved hung up or the socket failed. A message cut off by
+    /// the deadline is dropped with the connection, which every caller
+    /// closes once its deadline has passed.
+    fn receive(
+        &mut self,
+        deadline: std::time::Instant,
+    ) -> std::io::Result<Option<Result<crate::edge::VarlinkReply, String>>> {
+        use std::io::{BufRead, Read};
+        let left = match Self::left(deadline) {
+            Ok(left) => left,
+            Err(_) => return Ok(None),
+        };
+        self.reader.get_ref().set_read_timeout(Some(left))?;
+        let mut message = Vec::new();
+        let read = (&mut self.reader)
+            .take(crate::edge::VARLINK_MAX_MESSAGE)
+            .read_until(0, &mut message);
+        match read {
+            // A timed-out read is EAGAIN on Linux; TimedOut is what the
+            // standard library documents, so both mean "nothing in time".
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(e) => Err(e),
+            Ok(0) => Err(std::io::ErrorKind::UnexpectedEof.into()),
+            Ok(_) if message.last() != Some(&0) => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "a Varlink message ended without its NUL, or ran past the size bound",
+            )),
+            Ok(_) => {
+                message.pop();
+                Ok(Some(crate::edge::parse_varlink_reply(&message)))
+            }
         }
     }
 }
@@ -2547,6 +2731,122 @@ mod tests {
         ));
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    // ── the LAN browse, against a stand-in resolved ────────────────────────
+
+    /// How a stand-in resolved answers one `ResolveService` call: with this
+    /// message, or not at all (the connection is held until lososd hangs up).
+    type Answer = fn(&str) -> Option<&'static [u8]>;
+
+    /// A stand-in for systemd-resolved's Varlink socket at a path of its
+    /// own. `BrowseServices` is answered with `browse`, each message written
+    /// in two halves so the reader has to put it back together, and the
+    /// browse is then held open the way resolved holds it; `ResolveService`
+    /// gets `resolve(name)`.
+    fn fake_resolved(tag: &str, browse: &'static [&'static [u8]], resolve: Answer) -> PathBuf {
+        use std::io::{BufRead, Read};
+        let dir = tmpdir().join(format!("resolved-{tag}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("io.systemd.Resolve");
+        std::fs::remove_file(&path).ok();
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        std::thread::spawn(move || {
+            for conn in listener.incoming() {
+                let Ok(mut conn) = conn else { return };
+                std::thread::spawn(move || {
+                    let mut reader = std::io::BufReader::new(conn.try_clone().unwrap());
+                    let mut call = Vec::new();
+                    reader.read_until(0, &mut call).unwrap();
+                    call.pop();
+                    let call: serde_json::Value = serde_json::from_slice(&call).unwrap();
+                    let messages: Vec<&[u8]> = match call["method"].as_str().unwrap() {
+                        "io.systemd.Resolve.BrowseServices" => {
+                            assert_eq!(call["more"], true, "a browse needs more");
+                            assert_eq!(call["parameters"]["type"], "_losos-edge._tcp");
+                            browse.to_vec()
+                        }
+                        "io.systemd.Resolve.ResolveService" => {
+                            resolve(call["parameters"]["name"].as_str().unwrap())
+                                .into_iter()
+                                .collect()
+                        }
+                        other => panic!("unexpected call {other}"),
+                    };
+                    for m in messages {
+                        let (a, b) = m.split_at(m.len() / 2);
+                        conn.write_all(a).unwrap();
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                        conn.write_all(b).unwrap();
+                        conn.write_all(&[0]).unwrap();
+                    }
+                    // Hold the connection until lososd closes it.
+                    let _ = reader.read_to_end(&mut Vec::new());
+                });
+            }
+        });
+        path
+    }
+
+    const EDGE_BROWSE: &[u8] = br#"{"parameters":{"browserServiceData":[{"updateFlag":"added","family":10,"name":"edge demo","type":"_losos-edge._tcp","domain":"local","ifindex":2},{"updateFlag":"added","family":2,"name":"edge demo","type":"_losos-edge._tcp","domain":"local","ifindex":2},{"updateFlag":"added","family":2,"name":"gone","type":"_losos-edge._tcp","domain":"local","ifindex":2},{"updateFlag":"added","family":2,"name":"ghost","type":"_losos-edge._tcp","domain":"local","ifindex":2}]},"continues":true}"#;
+    const GONE_BROWSE: &[u8] = br#"{"parameters":{"browserServiceData":[{"updateFlag":"removed","family":2,"name":"gone","type":"_losos-edge._tcp","domain":"local","ifindex":2}]},"continues":true}"#;
+    const EDGE_RESOLVED: &[u8] = br#"{"parameters":{"services":[{"priority":0,"weight":0,"port":8443,"hostname":"edge.local","addresses":[{"ifindex":2,"family":10,"address":[254,128,0,0,0,0,0,0,80,84,0,255,254,18,52,86]},{"ifindex":2,"family":2,"address":[192,168,100,1]}]}],"txt":["url=http://edge.local:8443","txtvers=1"],"canonical":{"name":"edge demo","type":"_losos-edge._tcp","domain":"local"},"flags":0}}"#;
+    const NO_SUCH_RECORD: &[u8] = br#"{"error":"io.systemd.Resolve.NoSuchResourceRecord"}"#;
+
+    const SETTLE: std::time::Duration = std::time::Duration::from_millis(400);
+    const CEILING: std::time::Duration = std::time::Duration::from_secs(2);
+
+    #[test]
+    fn the_browse_finds_the_edges_still_there_and_resolves_each_once() {
+        let socket = fake_resolved("found", &[EDGE_BROWSE, GONE_BROWSE], |name| match name {
+            "edge demo" => Some(EDGE_RESOLVED),
+            // Answered like a live edge, so resolving it by mistake would
+            // show as a second advert.
+            "gone" => Some(EDGE_RESOLVED),
+            _ => Some(NO_SUCH_RECORD),
+        });
+        let adverts = browse_lan_at(&socket, SETTLE, CEILING).expect("the LAN was searched");
+        assert_eq!(adverts.len(), 1, "{adverts:?}");
+        assert_eq!(adverts[0].name, "edge demo");
+        assert_eq!(adverts[0].address, "192.168.100.1");
+        assert_eq!(adverts[0].registrar_url(), "http://edge.local:8443");
+    }
+
+    #[test]
+    fn a_quiet_lan_is_searched_and_empty() {
+        // resolved sends nothing until it sees an instance.
+        let socket = fake_resolved("quiet", &[], |_| unreachable!());
+        let started = std::time::Instant::now();
+        assert_eq!(browse_lan_at(&socket, SETTLE, CEILING), Some(Vec::new()));
+        assert!(started.elapsed() >= SETTLE);
+        assert!(started.elapsed() < CEILING);
+    }
+
+    #[test]
+    fn no_resolved_or_a_refused_browse_is_a_lan_not_searched() {
+        let missing = tmpdir().join("no-resolved-here");
+        assert_eq!(browse_lan_at(&missing, SETTLE, CEILING), None);
+        let socket = fake_resolved(
+            "refused",
+            &[br#"{"error":"org.varlink.service.MethodNotFound","parameters":{"method":"io.systemd.Resolve.BrowseServices"}}"#],
+            |_| unreachable!(),
+        );
+        assert_eq!(browse_lan_at(&socket, SETTLE, CEILING), None);
+        let socket = fake_resolved("garbage", &[b"not varlink"], |_| unreachable!());
+        assert_eq!(browse_lan_at(&socket, SETTLE, CEILING), None);
+    }
+
+    #[test]
+    fn a_resolve_that_never_answers_costs_the_ceiling_and_no_more() {
+        let socket = fake_resolved("stuck", &[EDGE_BROWSE], |_| None);
+        let started = std::time::Instant::now();
+        assert_eq!(browse_lan_at(&socket, SETTLE, CEILING), Some(Vec::new()));
+        let took = started.elapsed();
+        assert!(took >= CEILING, "{took:?}");
+        assert!(
+            took < CEILING + std::time::Duration::from_secs(1),
+            "{took:?}"
+        );
     }
 
     #[test]

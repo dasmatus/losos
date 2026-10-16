@@ -271,8 +271,8 @@ in
         # not route back out the interface they arrived on, which is what
         # multicast replies look like on a multi-homed machine — and mDNS is
         # the ONLY way to reach an appliance with no SSH and no shell login.
-        # modules/configuration.nix makes the same argument about not pinning
-        # Avahi to a fixed interface list.
+        # modules/mdns.nix makes the same argument about not pinning mDNS to
+        # a fixed interface list.
         #
         # Second, Calico — half of the canal CNI the mesh cluster runs — does
         # not work under strict rp_filter at all.
@@ -336,11 +336,12 @@ in
             ProtectHome = true;
           };
 
-          avahi-daemon.serviceConfig = commonSandbox // {
-            ProtectHome = true;
-            # No RestrictAddressFamilies: Avahi needs AF_NETLINK to watch
-            # interfaces come and go, and losing that is losing mDNS.
-          };
+          # No entry for mDNS: systemd-resolved answers it (modules/mdns.nix)
+          # and comes with its upstream unit's sandbox, stricter than
+          # commonSandbox (its own user, ProtectSystem=strict, an address
+          # family and system call allowlist). Avahi, which sat here with
+          # only commonSandbox and ProtectHome because it needed netlink and
+          # root to start, is gone from the box.
         }
 
         # Only when there is a daemon to harden. Defining serviceConfig for a
@@ -397,7 +398,7 @@ in
       # the blast radius: k3s, rke2 and containerd are static Go binaries and
       # ignore LD_PRELOAD entirely, and a pod has its own rootfs and therefore
       # its own (absent) /etc/ld.so.preload. So this hardens the host's
-      # dynamically linked processes — nginx, avahi, lososd — and nothing
+      # dynamically linked processes — nginx, resolved, lososd — and nothing
       # inside Kubernetes. That is a smaller win than it first appears, and the
       # reason it is opt-in rather than on.
       environment.memoryAllocator.provider = "graphene-hardened";

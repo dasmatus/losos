@@ -26,8 +26,8 @@ linuxových desktopov to robí. Tieto nie:
 - **Počítač v inej sieti** alebo za routerom, ktorý blokuje multicast medzi
   klientmi na Wi-Fi a na kábli, ako to robia niektoré nastavenia
   „izolácie AP“.
-- **Linux bez mDNS resolvera**, teda bez Avahi alebo bez `.local`
-  v `nsswitch.conf`.
+- **Linux bez mDNS resolvera**, teda bez Avahi aj bez systemd-resolved
+  so zapnutým mDNS, alebo bez `.local` v `nsswitch.conf`.
 
 ## Čo robiť \{#what-to-do}
 
@@ -41,8 +41,10 @@ linuxových desktopov to robí. Tieto nie:
   Linuxe a macOS je to `/etc/hosts`, vo Windows
   `C:\Windows\System32\drivers\etc\hosts`. Riadok je
   `192.168.122.56  <name>.local`. Potom funguje meno aj certifikát.
-- **Na Linuxe bez Avahi** nainštalujte `avahi` a `nss-mdns`, alebo použite
-  súbor hosts, ako je opísané vyššie.
+- **Na Linuxe bez mDNS resolvera** nainštalujte `avahi` a `nss-mdns`,
+  alebo nastavte `MulticastDNS=yes` v `resolved.conf` systemd-resolved
+  a na sieťovom pripojení, alebo použite súbor hosts, ako je opísané
+  vyššie.
 
 ## Nie je to táto stránka \{#not-this-page}
 

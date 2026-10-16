@@ -27,7 +27,8 @@ die meisten Linux-Desktops tun das. Diese nicht:
 - **Ein Rechner in einem anderen Netzwerk** oder hinter einem Router, der
   Multicast zwischen WLAN- und kabelgebundenen Geräten blockiert, wie es
   manche Einstellungen zur „AP-Isolation“ tun.
-- **Linux ohne mDNS-Resolver**, also ohne Avahi oder ohne `.local` in der
+- **Linux ohne mDNS-Resolver**, also weder mit Avahi noch mit
+  systemd-resolved mit eingeschaltetem mDNS, oder ohne `.local` in der
   `nsswitch.conf`.
 
 ## Was du tun kannst \{#what-to-do}
@@ -44,8 +45,10 @@ die meisten Linux-Desktops tun das. Diese nicht:
   `C:\Windows\System32\drivers\etc\hosts` unter Windows. Die Zeile lautet
   `192.168.122.56  <name>.local`. Dann funktionieren der Name und das
   Zertifikat.
-- **Unter Linux ohne Avahi** installierst du `avahi` und `nss-mdns`, oder
-  du nimmst die hosts-Datei wie oben.
+- **Unter Linux ohne mDNS-Resolver** installierst du `avahi` und
+  `nss-mdns`, oder du setzt `MulticastDNS=yes` in der `resolved.conf` von
+  systemd-resolved und an der Netzwerkverbindung, oder du nimmst die
+  hosts-Datei wie oben.
 
 ## Nicht diese Seite \{#not-this-page}
 

@@ -108,7 +108,7 @@
         },
         "hostName": {
           "type": "string",
-          "description": "System hostname; Avahi publishes <hostName>.local, and Nginx routes /<service> paths on it."
+          "description": "System hostname; systemd-resolved publishes <hostName>.local over mDNS, and Nginx routes /<service> paths on it."
         },
         "https": {
           "type": "boolean"
@@ -969,7 +969,7 @@
         },
         "lanSearched": {
           "type": "boolean",
-          "description": "False when avahi-browse could not run at all (Avahi down, binary missing): the LAN was not searched, as opposed to searched and empty."
+          "description": "False when the LAN could not be browsed at all (systemd-resolved down, or it refused the browse): the LAN was not searched, as opposed to searched and empty."
         },
         "configuredUrl": {
           "type": [
@@ -1444,7 +1444,7 @@
       }
     },
     "edge": {
-      "description": "`losos-ctl edge` \u2014 what lososd found when it last looked for an edge proxy. The daemon scans every 20 s: `avahi-browse --parsable --resolve --terminate _losos-edge._tcp` on the LAN (the edge advertises the service with a `url=` TXT record, losos.edge.lan.advertise), plus the configured registrar URL; every candidate's /health is probed and only the ones that answer are listed. stdout: edgeResponse.",
+      "description": "`losos-ctl edge` \u2014 what lososd found when it last looked for an edge proxy. The daemon scans every 20 s: a DNS-SD browse for `_losos-edge._tcp` on the LAN through systemd-resolved's Varlink API (`io.systemd.Resolve.BrowseServices`, then `ResolveService` per instance; the edge advertises the service with a `url=` TXT record, losos.edge.lan.advertise), plus the configured registrar URL; every candidate's /health is probed and only the ones that answer are listed. stdout: edgeResponse.",
       "stdout": {
         "$ref": "#/$defs/edgeResponse"
       }
