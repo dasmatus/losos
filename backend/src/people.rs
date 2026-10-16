@@ -27,6 +27,8 @@ use crate::setup::Secret;
 
 /// Where `modules/identity.nix` points Authelia.
 const DEFAULT_FILE: &str = "/var/lib/losos-identity/users.yml";
+/// Directory that may contain the people file.
+const PEOPLE_DIR: &str = "/var/lib/losos-identity";
 /// The group every first person lands in.
 pub const ADMINS: &str = "losos-admins";
 /// Sign-in names: what Authelia and the audit log show. Lower case so two
@@ -130,6 +132,7 @@ impl People {
         let is_absolute = path.is_absolute();
         let in_allowed_base = path.starts_with(allowed_base);
 
+            .map(Self::sanitize_people_path)
         if is_absolute && !has_parent && in_allowed_base {
             path
         } else {
@@ -139,6 +142,37 @@ impl People {
                 "invalid LOSOS_PEOPLE_FILE path; falling back to default"
             );
             default
+    fn sanitize_people_path(input: PathBuf) -> PathBuf {
+        let base = PathBuf::from(PEOPLE_DIR);
+        let candidate = if input.is_absolute() { input } else { base.join(input) };
+
+        if candidate
+            .components()
+            .any(|c| matches!(c, Component::ParentDir))
+        {
+            return PathBuf::from(DEFAULT_FILE);
+        }
+
+        let Some(file_name) = candidate.file_name() else {
+            return PathBuf::from(DEFAULT_FILE);
+        };
+        let Some(parent) = candidate.parent() else {
+            return PathBuf::from(DEFAULT_FILE);
+        };
+        let Ok(parent_real) = std::fs::canonicalize(parent) else {
+            return PathBuf::from(DEFAULT_FILE);
+        };
+        let Ok(base_real) = std::fs::canonicalize(&base) else {
+            return PathBuf::from(DEFAULT_FILE);
+        };
+        let resolved = parent_real.join(file_name);
+        if resolved.starts_with(&base_real) {
+            resolved
+        } else {
+            PathBuf::from(DEFAULT_FILE)
+        }
+    }
+
         }
     }
 
