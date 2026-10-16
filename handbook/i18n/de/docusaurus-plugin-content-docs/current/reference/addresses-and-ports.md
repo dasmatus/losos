@@ -36,7 +36,7 @@ der durch den Tunnel einer Edge ankommt, bekommt **403**.
 | ------- | --------- | ------------------------------------------------------ |
 | 80      | HTTP      | Alles oben Genannte                                    |
 | 443     | HTTPS     | Dasselbe, mit dem eigenen Zertifikat der Box (`losos.tls.enable`, standardmäßig an) |
-| 5353    | mDNS      | Ankündigung von `<name>.local`                         |
+| 5353    | mDNS      | Ankündigung von `<name>.local` und der Box als `_losos._tcp`-Dienst |
 | 8082    | HTTP      | Die Steuer-API, nur auf dem Loopback der Box; nginx leitet `/api/` dorthin weiter |
 
 Sonst ist nichts offen. Die Box erreicht das Mesh und die Edge nach außen.
