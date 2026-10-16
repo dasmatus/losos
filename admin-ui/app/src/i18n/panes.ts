@@ -2065,6 +2065,101 @@ export default defineMessages({
     sk: "Obnoviť",
     de: "Aktualisieren",
   },
+  "panes.market.onramp.title": {
+    en: "Buy USDC with euros",
+    sk: "Kúpiť USDC za eurá",
+    de: "USDC mit Euro kaufen",
+  },
+  "panes.market.onramp.detail": {
+    en: "Through Onramp.money, by bank transfer. The USDC arrives on Base at {address}.",
+    sk: "Cez Onramp.money, bankovým prevodom. USDC príde na sieti Base na {address}.",
+    de: "Über Onramp.money, per Banküberweisung. Die USDC kommen auf Base bei {address} an.",
+  },
+  "panes.market.onramp.buy": {
+    en: "Buy",
+    sk: "Kúpiť",
+    de: "Kaufen",
+  },
+  "panes.market.onramp.notice": {
+    en: "Onramp.money sells the USDC, not LosOS. You pay them in euros by SEPA transfer or Open Banking, they check who you are, and they show their rate and fee before you pay. Their page gets only the address and the amount from here.",
+    sk: "USDC predáva Onramp.money, nie LosOS. Platíte im v eurách prevodom SEPA alebo cez Open Banking, overia vašu totožnosť a pred platbou ukážu kurz a poplatok. Ich stránka odtiaľto dostane len adresu a sumu.",
+    de: "Die USDC verkauft Onramp.money, nicht LosOS. Du bezahlst sie in Euro per SEPA-Überweisung oder Open Banking, sie prüfen deine Identität und zeigen Kurs und Gebühr, bevor du zahlst. Ihre Seite bekommt von hier nur die Adresse und den Betrag.",
+  },
+  "panes.market.onramp.terms": {
+    en: "Terms and Conditions",
+    sk: "Obchodné podmienky",
+    de: "Geschäftsbedingungen",
+  },
+  "panes.market.onramp.privacy": {
+    en: "Privacy Policy",
+    sk: "Zásady ochrany súkromia",
+    de: "Datenschutzerklärung",
+  },
+  "panes.market.onramp.risk": {
+    en: "Risk disclosure",
+    sk: "Upozornenie na riziká",
+    de: "Risikohinweis",
+  },
+  "panes.market.onramp.accept": {
+    en: "I have read Onramp.money's terms and accept them for this purchase.",
+    sk: "Prečítal som si podmienky Onramp.money a pre tento nákup ich prijímam.",
+    de: "Ich habe die Bedingungen von Onramp.money gelesen und akzeptiere sie für diesen Kauf.",
+  },
+  "panes.market.onramp.amount": {
+    en: "Amount in euros",
+    sk: "Suma v eurách",
+    de: "Betrag in Euro",
+  },
+  "panes.market.onramp.amountPlaceholder": {
+    en: "EUR",
+    sk: "EUR",
+    de: "EUR",
+  },
+  "panes.market.onramp.continue": {
+    en: "Continue to Onramp.money",
+    sk: "Pokračovať na Onramp.money",
+    de: "Weiter zu Onramp.money",
+  },
+  "panes.market.onramp.cancel": {
+    en: "Cancel",
+    sk: "Zrušiť",
+    de: "Abbrechen",
+  },
+  "panes.market.onramp.range": {
+    en: "Onramp.money takes {min} to {max} euros per order.",
+    sk: "Onramp.money prijme od {min} do {max} eur na objednávku.",
+    de: "Onramp.money nimmt {min} bis {max} Euro pro Bestellung.",
+  },
+  "panes.market.onramp.waiting": {
+    en: "Waiting for {euros} euros of USDC to reach this wallet on Base. A bank transfer can take a day or two; while this page is open it checks every 20 seconds.",
+    sk: "Čaká sa, kým USDC za {euros} eur príde do tejto peňaženky na sieti Base. Bankový prevod môže trvať deň či dva; kým je táto stránka otvorená, kontroluje to každých 20 sekúnd.",
+    de: "Warte, bis USDC für {euros} Euro auf Base in dieser Wallet ankommen. Eine Überweisung kann ein, zwei Tage dauern; solange diese Seite offen ist, prüft sie alle 20 Sekunden.",
+  },
+  "panes.market.onramp.waitingOrder": {
+    en: "Onramp.money is still processing order {order}. Waiting for {euros} euros of USDC to reach this wallet on Base.",
+    sk: "Onramp.money ešte spracúva objednávku {order}. Čaká sa, kým USDC za {euros} eur príde do tejto peňaženky na sieti Base.",
+    de: "Onramp.money bearbeitet Bestellung {order} noch. Warte, bis USDC für {euros} Euro auf Base in dieser Wallet ankommen.",
+  },
+  "panes.market.onramp.paidOrder": {
+    en: "Onramp.money order {order} is paid. Waiting for {euros} euros of USDC to reach this wallet on Base.",
+    sk: "Objednávka {order} na Onramp.money je zaplatená. Čaká sa, kým USDC za {euros} eur príde do tejto peňaženky na sieti Base.",
+    de: "Bestellung {order} bei Onramp.money ist bezahlt. Warte, bis USDC für {euros} Euro auf Base in dieser Wallet ankommen.",
+  },
+  "panes.market.onramp.stop": {
+    en: "Stop waiting",
+    sk: "Prestať čakať",
+    de: "Nicht mehr warten",
+  },
+  "panes.market.onramp.arrived": {
+    en: "{amount} USDC arrived on Base.",
+    sk: "Na sieti Base prišlo {amount} USDC.",
+    de: "{amount} USDC sind auf Base angekommen.",
+  },
+  "panes.market.onramp.viewTransfers": {
+    en: "View transfers",
+    sk: "Zobraziť prevody",
+    de: "Transfers ansehen",
+  },
   "panes.market.usdc.sendTitle": {
     en: "Send USDC",
     sk: "Poslať USDC",

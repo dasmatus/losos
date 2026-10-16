@@ -407,6 +407,33 @@ For a test edge, test USDC comes from
 comes from each network's own faucet and test SOL from the Solana faucet.
 None of it has value.
 
+### Buying USDC with euros
+
+A wallet with an address on Base can buy USDC there with euros through
+[Onramp.money](https://onramp.money). The Market pane shows the row only for
+an edge that settles on Base mainnet: Onramp.money sells nothing a test edge
+takes.
+
+1. Choose Buy. The pane says that Onramp.money, not LosOS, sells the USDC,
+   and links its Terms and Conditions, Privacy Policy and Risk disclosure.
+   Tick the box to accept them, then enter an amount from 5 to 100,000
+   euros. The browser remembers the acceptance for those terms and asks
+   again when they change.
+2. Continue opens Onramp.money's page in a new tab, with the amount, USDC on
+   Base and the wallet's address filled in. The box sends nothing else, and
+   there is no account or key on the box's side. Onramp.money checks who you
+   are, shows its rate and fee, and takes the euros by SEPA transfer or Open
+   Banking.
+3. When it is done, Onramp.money sends the tab back to the Market pane with
+   its order number, and the pane shows it.
+4. The pane reads the wallet's USDC on Base every 20 seconds while it is
+   open and says when the USDC has arrived, with a link to the transfers on
+   the explorer. A bank transfer can take a day or two. The pane stops
+   waiting after five days, or when you choose Stop waiting.
+
+The purchase is between you and Onramp.money: a refund or a dispute goes to
+them, not to the edge.
+
 ### ENS names and sending USDC
 
 The pane can send USDC from the wallet to an address on any of the edge's
