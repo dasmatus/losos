@@ -24,7 +24,7 @@ pub const MAX_CANDIDATE_BYTES: usize = crate::setup::MAX_PASSWORD_BYTES;
 
 /// Default of `$LOSOS_NEXTCLOUD_LOGIN_URL`: the workload pod's Apache on the
 /// host's loopback, at the subpath the front vhost preserves
-/// (modules/containers.nix, modules/workloads.nix, flake/images.nix). The
+/// (modules/containers.nix, modules/workloads.nix, nix/images.nix). The
 /// port is the default of `losos.nextcloud.apachePort`; modules/daemon.nix
 /// sets the variable from the option so the two cannot drift.
 pub const DEFAULT_LOGIN_URL: &str = "http://127.0.0.1:8080/nextcloud/ocs/v2.php/cloud/user";
@@ -180,7 +180,7 @@ pub fn interpret_login(status: Option<u16>) -> LoginOutcome {
 
 /// Standard base64 with padding, as RFC 7617 wants it. Hand-rolled rather
 /// than a crate: it is twelve lines, and a new dependency changes the
-/// `cargoHash` in flake/packages.nix for every builder of this appliance.
+/// `cargoHash` in nix/packages.nix for every builder of this appliance.
 pub fn base64(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);

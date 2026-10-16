@@ -1,6 +1,6 @@
 //! The market, as the admin UI reaches it.
 //!
-//! The market itself lives on the edge (`backend-registrar/src/market.rs`),
+//! The market itself lives on the edge (`edge/registrar/src/market.rs`),
 //! which is the Stripe platform and the only place money is accounted for.
 //! This appliance is one of its tenants. The admin pages are served under
 //! `connect-src 'self'`, so the browser cannot call the edge, and the
@@ -63,7 +63,7 @@ const RPC_METHODS: &[&str] = &[
 ];
 
 /// Solana methods the box will relay, the registrar's list
-/// (`backend-registrar/src/solana.rs`).
+/// (`edge/registrar/src/solana.rs`).
 const SOLANA_METHODS: &[&str] = &[
     "getAccountInfo",
     "getBalance",
@@ -232,7 +232,7 @@ pub enum Op {
         network: Option<String>,
     },
     /// This box's custom domains on the edge, and whether it may add one
-    /// (`backend-registrar/src/domains.rs`). Not the market, but the same
+    /// (`edge/registrar/src/domains.rs`). Not the market, but the same
     /// relay: the edge wants the proxy token, and only an official edge is
     /// asked.
     Domains,
@@ -254,7 +254,7 @@ pub enum Op {
         items: Vec<(String, u64)>,
     },
     /// The machine images the edge offers, the replica's shape and the
-    /// split (`backend-registrar/src/vms.rs`). Anonymous.
+    /// split (`edge/registrar/src/vms.rs`). Anonymous.
     VmImages,
     /// What each replica of this box's machines is doing.
     VmStatus,

@@ -1,6 +1,6 @@
 //! What a box and an edge answer, for the pane tests and the screenshots.
 //! The shapes are the web UI's (admin-ui/app/src/lib/api.ts) and the edge's
-//! (backend-registrar/src/server/operator.rs).
+//! (edge/registrar/src/server/operator.rs).
 
 #![allow(dead_code)]
 

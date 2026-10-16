@@ -571,7 +571,7 @@
           "description": "This box's claims, each {domain, status: live|waiting, txt_name, txt_value (null until eligible), txt_found, points_here, problem: null|stripeAccount|txtMissing|txtWrong|notPointing|takenElsewhere|lookupFailed, checked_at, verified_at}."
         }
       },
-      "description": "The edge's view of this box's custom domains (backend-registrar/src/domains.rs), plus `available`. The same document answers GET, add and remove."
+      "description": "The edge's view of this box's custom domains (edge/registrar/src/domains.rs), plus `available`. The same document answers GET, add and remove."
     },
     "backupResponse": {
       "type": "object",
@@ -1058,7 +1058,7 @@
             "nullable",
             "opaque"
           ],
-          "description": "The editor the admin UI's Advanced pane draws, decided from the option's Nix type by `classify` in flake/options-doc.nix. A type that file does not know is an evaluation error, so an option with a new type turns the eval check red rather than landing on the pane as an empty row; add it there AND in admin-ui/app/src/lib/option-value.ts."
+          "description": "The editor the admin UI's Advanced pane draws, decided from the option's Nix type by `classify` in nix/options-doc.nix. A type that file does not know is an evaluation error, so an option with a new type turns the eval check red rather than landing on the pane as an empty row; add it there AND in admin-ui/app/src/lib/option-value.ts."
         },
         "min": {
           "type": "integer",
@@ -1113,7 +1113,7 @@
         },
         "options": {
           "type": "array",
-          "description": "Every `losos.*` option the box declares, from flake/options-doc.nix evaluated against the box's own configuration at build time and written to /etc/losos/options.json by modules/config-repo.nix. `losos.edge.*` is left out (declared for the VPS side; nothing on the appliance reads it).",
+          "description": "Every `losos.*` option the box declares, from nix/options-doc.nix evaluated against the box's own configuration at build time and written to /etc/losos/options.json by modules/config-repo.nix. `losos.edge.*` is left out (declared for the VPS side; nothing on the appliance reads it).",
           "items": {
             "type": "object",
             "required": [
@@ -1164,7 +1164,7 @@
               },
               "danger": {
                 "type": "boolean",
-                "description": "True for the options whose wrong value leaves the box unreachable, unbootable or locked out of the thing that would fix it (the `dangerous` prefixes in flake/options-doc.nix). The pane asks before changing one."
+                "description": "True for the options whose wrong value leaves the box unreachable, unbootable or locked out of the thing that would fix it (the `dangerous` prefixes in nix/options-doc.nix). The pane asks before changing one."
               },
               "fixed": {
                 "type": [
@@ -1488,7 +1488,7 @@
       }
     },
     "recovery": {
-      "description": "`losos-ctl recovery` — print the appliance recovery code, minting one on first use. Idempotent: every later call returns the same code and writes nothing. There is deliberately no rotate subcommand. NOTE: nothing consumes this code. It was conceived as proof that a re-imaged box is the same box, but that lockout is already prevented by /cluster/join in backend-registrar, which deletes the caller's stale Node object and node-password Secret before handing back a mesh token and proves identity with the proxy token the box already has. There is no `recovery` map in registry.json and no /recover route, and building one would be a different feature — self-service re-issue of the proxy token over an unauthenticated route — which has not been agreed. See the second section of backend/src/recovery.rs. Clients must not imply the code recovers anything. Non-zero exit + stderr when the code file exists but cannot be read — minting over an unreadable file would destroy a code the owner still holds, so that case fails loudly instead.",
+      "description": "`losos-ctl recovery` — print the appliance recovery code, minting one on first use. Idempotent: every later call returns the same code and writes nothing. There is deliberately no rotate subcommand. NOTE: nothing consumes this code. It was conceived as proof that a re-imaged box is the same box, but that lockout is already prevented by /cluster/join in edge/registrar, which deletes the caller's stale Node object and node-password Secret before handing back a mesh token and proves identity with the proxy token the box already has. There is no `recovery` map in registry.json and no /recover route, and building one would be a different feature — self-service re-issue of the proxy token over an unauthenticated route — which has not been agreed. See the second section of backend/src/recovery.rs. Clients must not imply the code recovers anything. Non-zero exit + stderr when the code file exists but cannot be read — minting over an unreadable file would destroy a code the owner still holds, so that case fails loudly instead.",
       "stdout": {
         "$ref": "#/$defs/recoveryResponse"
       }
@@ -1503,7 +1503,7 @@
       }
     },
     "options": {
-      "description": "`losos-ctl options` — print every losos.* option this box declares (from /etc/losos/options.json, written at build time by modules/config-repo.nix from flake/options-doc.nix), with its editor kind, default, current value and what overrides.nix sets. The document the admin UI's Advanced pane is drawn from, and the second gate `apply` goes through: a body that assigns an undeclared or read-only option, or a literal of the wrong kind, is refused by name.",
+      "description": "`losos-ctl options` — print every losos.* option this box declares (from /etc/losos/options.json, written at build time by modules/config-repo.nix from nix/options-doc.nix), with its editor kind, default, current value and what overrides.nix sets. The document the admin UI's Advanced pane is drawn from, and the second gate `apply` goes through: a body that assigns an undeclared or read-only option, or a literal of the wrong kind, is refused by name.",
       "args": {},
       "out": {
         "$ref": "#/$defs/optionsResponse"
@@ -1695,7 +1695,7 @@
       "GET /api/vms": {
         "auth": true,
         "out": "vmsResponse",
-        "note": "Virtual machines on the mesh, sold per replica through the market (backend-registrar/src/vms.rs). Offered only while this box shares its disk: otherwise available:false with reason notSharing, and every /api/vms action below is refused with 409 before the edge is asked. A 200 in every not-offered case, deliberately NOT 404."
+        "note": "Virtual machines on the mesh, sold per replica through the market (edge/registrar/src/vms.rs). Offered only while this box shares its disk: otherwise available:false with reason notSharing, and every /api/vms action below is refused with 409 before the edge is asked. A 200 in every not-offered case, deliberately NOT 404."
       },
       "POST /api/vms/orders": {
         "auth": true,

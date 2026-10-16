@@ -14,9 +14,9 @@ Measured with Nix 2.35.2, single-user store, 16 threads, `/dev/kvm` available.
 | `nix build .#losos-registrar` | pass | 9 tests via `doCheck` |
 | `nix build .#losos-admin-ui` | pass | |
 | `cargo test` / `clippy` / `fmt` (backend) | pass | |
-| `cargo test` (backend-registrar) | pass | 9 passed |
-| `cargo clippy -D warnings` (backend-registrar) | **fail** | `needless_return` at `src/opts.rs:154` |
-| `cargo fmt --check` (backend-registrar) | **fail** | 17 hunks |
+| `cargo test` (edge/registrar) | pass | 9 passed |
+| `cargo clippy -D warnings` (edge/registrar) | **fail** | `needless_return` at `src/opts.rs:154` |
+| `cargo fmt --check` (edge/registrar) | **fail** | 17 hunks |
 | `nixosConfigurations.install` toplevel | **fail** | tahoe-lafs tests |
 | VM `losos-admin-daemon` | pass | 24.7 s |
 | VM `losos-install` | pass | |
@@ -43,6 +43,6 @@ time.
 Either a cascade from the npm failure or a concurrent change to the
 registrar endpoints the test used. Not isolated.
 
-**Lint had never run.** `backend-registrar` had drifted from rustfmt and
+**Lint had never run.** `edge/registrar` had drifted from rustfmt and
 clippy while CI stayed green, because CI only ran `nix build`, and `doCheck`
 runs tests, not linters.

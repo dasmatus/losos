@@ -99,7 +99,7 @@ let
   # *uid* of the connecting process, and the pod shares the host's user
   # namespace, so the pod's runAsUser is what Postgres maps to a role. gid ==
   # uid by construction there, hence one binding each. Nextcloud's comes from
-  # nextcloud-stack.nix, which flake/images.nix reads too: the image bakes
+  # nextcloud-stack.nix, which nix/images.nix reads too: the image bakes
   # /run/nextcloud owned by that uid, so the two must not drift.
   nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
   nextcloudUid = nc.uid;
@@ -246,7 +246,7 @@ let
     # load-bearing under hostNetwork: httpd would otherwise bind every address
     # on the box, including the LAN one, behind Nginx's back.
     "listen.conf" = pkgs.writeText "listen.conf" "Listen 127.0.0.1:${toString apachePort}\n";
-    # yes or no: whether the entrypoint (flake/images.nix) switches
+    # yes or no: whether the entrypoint (nix/images.nix) switches
     # Nextcloud's federation on or off at start. losos.nextcloud.federation
     # .enable gated on losos.sharingMyStorage (lososInternal.federation); the
     # front vhost refuses the federation addresses on the same value
@@ -538,7 +538,7 @@ in
       message = ''
         losos.nextcloud.mode = "container" needs losos.workloads.nextcloudImage,
         which modules/defaults.nix wires to this flake's own image derivation
-        (flake/images.nix). Either restore that wiring or set
+        (nix/images.nix). Either restore that wiring or set
         losos.nextcloud.mode = "native".
       '';
     }
@@ -547,7 +547,7 @@ in
       message = ''
         losos.forgejo.mode = "container" needs losos.workloads.forgejoImage,
         which modules/defaults.nix wires to this flake's own image derivation
-        (flake/images.nix). Either restore that wiring, set
+        (nix/images.nix). Either restore that wiring, set
         losos.forgejo.mode = "native", or set losos.forgejo.enable = false.
       '';
     }

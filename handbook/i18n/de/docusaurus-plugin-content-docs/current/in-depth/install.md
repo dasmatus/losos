@@ -40,7 +40,7 @@ os-release (`NAME=LosOS`, `IMAGE_VERSION`) und behält `ID=nixos`.
   Der Loader der installierten Box ist nicht signiert, die Box selbst braucht
   also abgeschaltetes Secure Boot. Die Seite *Secure Boot und signierte Medien*
   im Handbuch enthält die Schritte und die Prüfung von `SHA256SUMS.sig`.
-  `tests/secure-boot.nix` ist der Nachweis.
+  `nix/tests/secure-boot.nix` ist der Nachweis.
 - **UEFI oder BIOS, beides funktioniert.** Auf dem Installer-ISO lässt dich
   ein Menü auf dem Startbildschirm mit den Tasten 1, 2 oder 3 BIOS, UEFI oder
   automatische Erkennung (die Firmware, die das ISO gebootet hat) wählen.

@@ -56,19 +56,24 @@ smeruje podľa cesty.
 ## Rozloženie repozitára {#repository-layout}
 
 ```
-modules/                 NixOS modules; options in options.nix
-backend/                 lososd + losos-ctl (Rust)
-backend-registrar/       master-proxy edge registrar (Rust)
 admin-ui/app/            the admin SPA
+admin-ui/tui/            losos, the terminal client (Rust)
+admin-ui/lab/            LosOS Lab's core and canvas (Rust, WebAssembly)
 admin-ui/themes/         LosOS cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
 admin-ui/design-system/  dev-only tokens and React wrapper; not shipped
-tests/                   NixOS VM tests
-docs/                    security model, design specs and plans
+backend/                 lososd + losos-ctl (Rust)
+edge/registrar/          the edge registrar (Rust)
+edge/vercel/             the registrar as one Vercel Function, for demos
+edge/contracts/          the payment and escrow contracts (Solidity)
+modules/                 NixOS modules; options in options.nix
+nix/                     packages, images and build helpers
+nix/tests/               NixOS VM tests
+docs/                    security model, developer notes, design specs and plans
 handbook/                this handbook (Docusaurus)
 ```
 
 :::note[Skomprimovaná podoba tejto stránky]
-`CLAUDE.md` v repozitári je skomprimovaná podoba tejto stránky a vymenúva
+`.claude/CLAUDE.md` v repozitári je skomprimovaná podoba tejto stránky a vymenúva
 záludnosti, ktoré hryznú potichu.
 :::
 
@@ -113,9 +118,9 @@ Ak inštalačné médium nevidí `/dev/tpmrm0`, alebo s `losos-ctl install
 `tpm.enable = false` a kľúčový súbor ide do initrd ako
 `/crypto_keyfile.bin` na nešifrovanom ESP. Dva tvary crypttab sa navzájom
 vylučujú: systemd-cryptsetup, ktorý dostane kľúčový súbor *aj* `tpm2-device=`,
-číta súbor ako zapečatený blob. `tests/invariants.nix` pripína predvolenú
+číta súbor ako zapečatený blob. `nix/tests/invariants.nix` pripína predvolenú
 hodnotu a overuje, že cesta s TPM nedeklaruje žiadne tajomstvo v initrd.
-`tests/tpm.nix` ju celú nabootuje pod swtpm.
+`nix/tests/tpm.nix` ju celú nabootuje pod swtpm.
 
 Vzdialené URI `github:` pre upgrade vyhodnocuje strom bez
 `install-target.nix`. Preto `flake.nix` uprednostní živé
@@ -129,7 +134,7 @@ do mesh. Oba domovské adresáre majú režim `700`, každý s vlastnou primárn
 skupinou, takže žiadny z používateľov nemôže čítať súbory toho druhého.
 `isNormalUser` bez explicitnej `group` dá oboch do `users` a domovský adresár
 s `750` potom tejto skupine povolí r-x. To potichu rušilo izoláciu, kým to
-nezachytil `tests/impermanence.nix`. Žiadny z používateľov nemá heslo a
+nezachytil `nix/tests/impermanence.nix`. Žiadny z používateľov nemá heslo a
 `services.openssh.enable = false`. Jediné zmeny konfigurácie dostupné z
 bežiaceho zariadenia idú cez administračné UI: prepínač úložiska Local alebo Mesh,
 **join the compute mesh** (pripojiť sa k výpočtovému mesh) a **share my
@@ -200,7 +205,7 @@ formátoval. Komunikačný kontrakt je `backend/schema.json`. Nastavte
 `losos.backend.package = null`, ak chcete bežať bez démona.
 
 **Každá voľba na jednom paneli a konfigurácia v LosOS Git**
-(`flake/options-doc.nix`, `modules/config-repo.nix`,
+(`nix/options-doc.nix`, `modules/config-repo.nix`,
 `backend/src/options.rs`, `backend/src/config_repo.rs`,
 `admin-ui/app/src/screens/settings/pane-advanced.tsx`, `pane-history.tsx`).
 Pri zostavení sa deklarácie `losos.*` prejdú do
@@ -212,7 +217,7 @@ pre každý riadok typovaný editor.
 Bránou je `classify` v Nix súbore. Deklarácia s typom, ktorý nepozná, je
 `throw`, takže úloha eval zčervenie namiesto toho, aby na panel dopadol
 prázdny riadok. `tests/advanced.browser.mjs` vykreslí skutočný dokument
-(`tests/admin-ui.nix` odovzdáva kontrolu `losos-options-doc`) a zlyhá pri
+(`nix/tests/admin-ui.nix` odovzdáva kontrolu `losos-options-doc`) a zlyhá pri
 každom riadku, ktorý panel nevie vykresliť. `POST /api/apply` overí každý
 riadok proti dokumentu (`check_body`). Odmietne nedeklarované kľúče, kľúče
 iba na čítanie (hodnoty pevne dané inštalátorom, balíky), hodnoty zlého typu
@@ -223,7 +228,7 @@ repozitári, ktorý vytvoril inštalátor. Zosúlaďovacie vlákno v lososd sa
 dopytuje každých 30 s. Vytvorí administrátorov účet vo Forgejo (`notshared`,
 s heslom vlastníka, udržiavaným v súlade pri zmene hesla a nastavení počítača) a
 súkromný repozitár `losos-config`. Robí to cez účet bota, ktorého token
-vyrobí štartovací skript Forgejo (`flake/forgejo-bootstrap.nix`, token v
+vyrobí štartovací skript Forgejo (`nix/forgejo-bootstrap.nix`, token v
 `/var/lib/forgejo/.losos-token`). Keď Forgejo zaostáva, pushne. Keď klon
 pushol dopredu, urobí fast-forward, nový `overrides.nix` prepustí rovnakou
 bránou a spustí prestavbu. Rozdvojenú históriu nahlási a nikdy sa jej
@@ -295,15 +300,15 @@ robí `services.nextcloud`. `admin-ui/themes/default.nix` sú čisté dáta, kto
 importujú všetci traja volajúci, z rovnakého dôvodu ako `nextcloud-stack.nix`.
 Pody záťaží používajú `hostNetwork`, keďže lokálny klaster nemá žiadne CNI,
 takže odpovedajú na loopbacku. Čo to stojí, vysvetľuje záludnosť o strážcovi
-`lanOnly` v `CLAUDE.md`.
+`lanOnly` v `.claude/CLAUDE.md`.
 
-**Demo hostiteľ na Verceli** (`edge-vercel/`). Tretí Rust crate, mimo
+**Demo hostiteľ na Verceli** (`edge/vercel/`). Tretí Rust crate, mimo
 flaku, ktorý spúšťa router registrátora ako jednu Vercel Function. Register je
 jeden riadok `jsonb` v Neon Postgres (tokio-postgres cez rustls), s
 `DATABASE_URL` z marketplace integrácie Vercelu, načítaný pred každou
 požiadavkou a po nej uložený cez upsert. Pridáva dve trasy len pre demo
 (`/status`, `/status/traefik`) a statickú stránku. Existuje pre prezentácie
-a je určený na zmazanie. V `backend-registrar` potreboval iba dve zmeny.
+a je určený na zmazanie. V `edge/registrar` potreboval iba dve zmeny.
 `server::build` vracia router a zosúlaďovač bez poslucháča a časovača a
 `serve` ho volá. `Registry::{export,import}` je snímka s vekmi, aby register
 mohol putovať medzi procesmi, a `import` uplatní TTL heartbeatu, pretože
@@ -321,7 +326,7 @@ Jeho druhá statická stránka, `public/find.html`, je postup „find my box“
 (nájdi moje zariadenie). Povolenie Local Network Access v Chrome jej dovolí čítať
 `/setup/state.json` zariadenia z verejného originu. `modules/setup.nix` povoľuje
 presne originy v `losos.setup.finderOrigins` (nginx map, overený v
-`tests/setup.nix`), nikdy `*`, pretože dokument je inventár LAN.
+`nix/tests/setup.nix`), nikdy `*`, pretože dokument je inventár LAN.
 
 **Menný priestor volieb `losos.*`** (`options.nix`). Všetky nastavenia
 špecifické pre projekt sú pod `options.losos`, s predvolenými hodnotami v
@@ -344,7 +349,7 @@ vrstva, ktorá nič nestojí: parametre jadra, sysctl, čierna listina modulov,
 Obyčajné `boot.blacklistedKernelModules` to **nerobí**; zastaví iba
 automatické načítanie cez aliasy. Štyri voliteľné príznaky nesú to, čo môže
 niečo pokaziť: `apparmor`, `malloc`, `nosmt`, `usbguard`. Systém `iso` modul
-neimportuje, pretože živé médium potrebuje squashfs. `tests/hardening.nix`
+neimportuje, pretože živé médium potrebuje squashfs. `nix/tests/hardening.nix`
 overuje obe polovice, vrátane toho, že nič neblokuje funkcie jadra, ktoré
 potrebujú k3s, rke2, containerd a Longhorn.
 
@@ -354,7 +359,7 @@ bez otvárania zariadenia. `/persist` *je* `/nix`, cez impermanence.
 `losos-ctl grow` spustí lvextend, potom `cryptsetup resize`, potom
 `resize2fs`, v tomto poradí, za behu. Poradie je celý argument správnosti a
 chyba v ňom zlyhá potichu. Preto ho `grow.rs` overuje voči *plánu* a
-`tests/resize.nix` ho kontroluje od začiatku do konca.
+`nix/tests/resize.nix` ho kontroluje od začiatku do konca.
 
 **BIOS a banner na tty1** (`losos.bios`, `modules/console.nix`). Menu
 firmvéru na inštalačnom ISO zapíše `losos.bios` do
@@ -362,14 +367,14 @@ firmvéru na inštalačnom ISO zapíše `losos.bios` do
 detekcia zvolí BIOS, keď chýba `/sys/firmware/efi`. `--bios` a `--uefi`
 zvolia bez menu. Menu existuje iba na inštalačnom ISO, nie v nainštalovanom
 systéme, a po 30 s bez odpovede zvolí automatickú detekciu, pretože médium
-má inštalovať bez obsluhy a `tests/iso-boot.py` nikdy nepíše. Na médiu je
+má inštalovať bez obsluhy a `nix/tests/iso-boot.py` nikdy nepíše. Na médiu je
 inštalátor služba na tty1, nie prihlasovací shell (`installer.nix`). Kde
 Plymouth kreslí, beží pod úvodnou obrazovkou. Menu, kroky a výsledok
 inštalácie idú na panel (`backend/src/install_screen.rs`) a klávesy
 prichádzajú z `plymouth watch-keystroke`, lebo Plymouth počas kreslenia drží
 klávesnicu. Úvodná obrazovka v textovom režime sa ukončí a inštalátor beží
 ako text. Po inštalácii obrazovka zmizne a odkryje výpis na tty1 a shell
-roota. `tests/installer-screen.nix` nabootuje obe varianty. BIOS prepne
+roota. `nix/tests/installer-screen.nix` nabootuje obe varianty. BIOS prepne
 `boot.nix` na GRUB a pridá oddiel EF02 na prvý disk v `disko.nix`. ESP
 zostáva v oboch prípadoch `/boot`. `console.nix` nahradí getty na tty1
 službou s bannerom, ktorá ukazuje IPv4 adresu v LAN a `<hostName>.local`.
@@ -403,7 +408,7 @@ lososd pri 10 MB a pravidlu pre nginx, ktoré dodáva nixpkgs, pridáva hranicu
 20 MB. Pravidlo tmpfiles maže záznamy zostavení Nixu staršie ako 30 dní,
 ktoré zberač odpadu nechá tak. rke2 a libvirt otáčajú svoje súbory
 záznamov samy a na edge `bitcoind` zapisuje len do žurnálu.
-`tests/invariants.nix` overuje strop žurnálu, obe pravidlá logrotate a strop
+`nix/tests/invariants.nix` overuje strop žurnálu, obe pravidlá logrotate a strop
 záznamov podov v oboch klastroch.
 
 **Automatický upgrade a nočný reštart** (`updates.nix`). `system.autoUpgrade`
@@ -419,7 +424,7 @@ prestavba potom zostavujú ten istý strom, čo by URI `github:` tu nedalo:
 Apply by zostavil staršie `/etc/nixos` a vrátil nočnú aktualizáciu späť.
 lososd krok preskočí a hlási `kept`, keď sa od poslednej aktualizácie
 zmenil iný súbor, takže ručná zmena pushnutá do LosOS Git sa nikdy
-neprepíše. `tests/invariants.nix` krok pripína.
+neprepíše. `nix/tests/invariants.nix` krok pripína.
 
 :::warning[Obe cesty prestavby nechajte nečisté]
 **Obe cesty prestavby sú zámerne `--impure`**: `system.autoUpgrade.flags`
@@ -431,14 +436,14 @@ upgrade z `github:` prepne zariadenie s kľúčovým súborom do tvaru s TPM, za
 jeho disky a režim firmvéru a resetuje každé nastavenie. Pri čistom
 vyhodnotení je `builtins.pathExists` na absolútnej ceste `false`, nie chyba.
 Takže CI, `nix flake check` a inštalátor zostávajú čisté a vidia súbor zo
-stromu alebo predvolené hodnoty. `tests/invariants.nix` príznak pripína.
+stromu alebo predvolené hodnoty. `nix/tests/invariants.nix` príznak pripína.
 :::
 
 `nix.gc` beží o 04:30 s `--delete-older-than 14d` a `boot.nix` obmedzuje
 oba zavádzače na päť generácií. `/nix` *je* `/persist`, ESP má 500 MiB a
 `linuxPackages_latest` tam väčšinu nocí pridá nové jadro. Bez oboch limitov
 sa zariadenie samo zaplní a prepnutie o 03:00 zlyhá v kroku zavádzača.
-`tests/invariants.nix` overuje oboje už pri vyhodnotení.
+`nix/tests/invariants.nix` overuje oboje už pri vyhodnotení.
 
 **Fragment `#install` je nosný.** Bez neho `nixos-rebuild` hľadá
 `nixosConfigurations.$(hostname)`. Tento flake exportuje iba `iso` a

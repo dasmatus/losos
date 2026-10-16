@@ -196,7 +196,7 @@ und führt `nixos-rebuild switch` aus. Daher:
 ### Erweitert {#advanced}
 
 **Einstellungen, Erweitert** listet jede `losos.*`-Option, die die Box deklariert,
-gelesen aus den Modulen, die sie ausführt. `flake/options-doc.nix` erzeugt
+gelesen aus den Modulen, die sie ausführt. `nix/options-doc.nix` erzeugt
 das Dokument beim Build, und lososd liefert es unter `GET /api/options` aus,
 mit dem aktuellen `overrides.nix` eingefügt. Jede Zeile zeigt die
 Beschreibung der Option, ihren Standardwert, den Wert, mit dem die Box
@@ -269,7 +269,7 @@ Die Klon-Adresse wird im Bereich angezeigt (`http://<box>/forgejo/<owner>/
 losos-config.git`). Das Repository ist privat und braucht daher das
 Admin-Passwort. Der Daemon spricht über Loopback mit Forgejo, mit einem
 Bot-Konto `losos`, das das Start-Skript von Forgejo anlegt und dem es ein
-Token ausstellt (`flake/forgejo-bootstrap.nix`).
+Token ausstellt (`nix/forgejo-bootstrap.nix`).
 
 ### Föderation {#federation}
 
@@ -298,7 +298,7 @@ Nur-LAN-Schutz abgesichert. Die Reichweite folgt `ROOT_URL`: über die Edge
 ist es `https://<proxy hostname>/forgejo/`, und jeder Server kann mit der
 Box föderieren; auf einer reinen LAN-Box ist es
 `https://<host>.local/forgejo/`, sodass das nur andere Boxen im selben LAN
-können. `tests/forgejo-federation.nix` startet das echte Forgejo und fragt
+können. `nix/tests/forgejo-federation.nix` startet das echte Forgejo und fragt
 es ab, mit eingeschaltetem und dann ausgeschaltetem Teilen.
 
 `losos.nextcloud.federation.enable` (standardmäßig an) ist die Seite von
@@ -317,8 +317,8 @@ von `federation` und `federatedfilesharing`. Die vhost-Hälfte ist nötig,
 weil die OCM-Discovery sich als aktiviert meldet, egal was die
 Einstellungen sagen, und `cloud_federation_api` und `federatedfilesharing`
 immer aktivierte Apps sind, die sich nicht abschalten lassen.
-`tests/front-vhost.nix` prüft die Routen beider Dienste mit ein- und
-ausgeschaltetem Teilen; `tests/invariants.nix` prüft das Gate zur
+`nix/tests/front-vhost.nix` prüft die Routen beider Dienste mit ein- und
+ausgeschaltetem Teilen; `nix/tests/invariants.nix` prüft das Gate zur
 Evaluierungszeit.
 
 ### Box-weite App-Einstellungen {#box-wide-app-settings}
@@ -362,7 +362,7 @@ Nextcloud speichern diese Schlüssel über
 der vordere vhost antwortet für jeden Schlüssel, den LosOS setzt, mit 403,
 die Föderationsschalter eingeschlossen. Eine Änderung dort kann sich also
 nicht von der Box entfernen. Die Verwaltungsseite zeigt den Wert weiterhin.
-`tests/front-vhost.nix` prüft die 403 und dass andere Schlüssel Nextcloud
+`nix/tests/front-vhost.nix` prüft die 403 und dass andere Schlüssel Nextcloud
 weiter erreichen.
 
 Die fünf von Forgejo sind `app.ini`-Schlüssel, die Forgejos
@@ -456,7 +456,7 @@ und die Schlüsseldatei der Festplatte bleiben, LosOS ist also weiterhin
 installiert, und die Box öffnet den Einrichtungsassistenten.
 `/var/lib/losos-erase/report.json` hält fest, was das Löschen außerhalb der
 Box aufgegeben hat, als Zählwerte, und Einstellungen, Zurücksetzen zeigt es an.
-`tests/erase.nix` durchläuft den ganzen Zyklus gegen einen MinIO-Bucket in
+`nix/tests/erase.nix` durchläuft den ganzen Zyklus gegen einen MinIO-Bucket in
 einer VM.
 :::
 
@@ -470,7 +470,7 @@ Zwei Datenbenutzer, beide ohne Passwort und ohne Shell:
 | `shared`    | Mesh-Speicher       |
 
 Jeder hat seine eigene primäre Gruppe und ein Home mit Modus 700, sodass
-keiner die Dateien des anderen lesen kann. `tests/impermanence.nix` prüft
+keiner die Dateien des anderen lesen kann. `nix/tests/impermanence.nix` prüft
 das.
 
 ## Updates und Neustarts {#upgrades-and-reboots}

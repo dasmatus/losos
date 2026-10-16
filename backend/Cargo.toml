@@ -9,7 +9,7 @@ license = "AGPL-3.0-or-later"
 
 # The whole dependency set is declared up front, even for modules that land in
 # later phases, so Cargo.lock — and therefore the `cargoHash` in
-# flake/packages.nix — settles once instead of churning every phase.
+# nix/packages.nix — settles once instead of churning every phase.
 [dependencies]
 # CLI. The surface is user-facing (losos-ctl is root's login shell on the
 # installer ISO), so it earns real --help and parse-time validation.
@@ -44,7 +44,7 @@ rustix = { version = "1", features = ["event"] }
 
 # Ed25519 verification of an edge's identity (`edge.rs`): is the edge the box
 # found one LosOS runs, or a company's own? Verification only — the box never
-# holds a signing key — and the same crate backend-registrar signs with, so
+# holds a signing key — and the same crate edge/registrar signs with, so
 # the two sides cannot disagree on the primitive.
 ring = "0.17"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -54,7 +54,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures-core = { version = "0.3", default-features = false }
 
 # Personal access tokens and the OpenPGP envelope of the losos terminal
-# client (src/access.rs). Shared with backend-registrar by path, so the box
+# client (src/access.rs). Shared with edge/registrar by path, so the box
 # and the edge speak one contract (docs/terminal-access.md).
 losos-access = { path = "access" }
 
@@ -86,7 +86,7 @@ assert_cmd = "2"
 predicates = "3"
 assert_fs = "1"
 
-# Crate-wide lint policy, matching backend-registrar/Cargo.toml.
+# Crate-wide lint policy, matching edge/registrar/Cargo.toml.
 [lints.rust]
 unsafe_code = "forbid"
 unreachable_pub = "warn"

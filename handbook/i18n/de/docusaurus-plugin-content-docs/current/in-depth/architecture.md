@@ -56,19 +56,24 @@ routet nach Pfad.
 ## Aufbau des Repositorys {#repository-layout}
 
 ```
-modules/                 NixOS modules; options in options.nix
-backend/                 lososd + losos-ctl (Rust)
-backend-registrar/       master-proxy edge registrar (Rust)
 admin-ui/app/            the admin SPA
+admin-ui/tui/            losos, the terminal client (Rust)
+admin-ui/lab/            LosOS Lab's core and canvas (Rust, WebAssembly)
 admin-ui/themes/         LosOS cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
 admin-ui/design-system/  dev-only tokens and React wrapper; not shipped
-tests/                   NixOS VM tests
-docs/                    security model, design specs and plans
+backend/                 lososd + losos-ctl (Rust)
+edge/registrar/          the edge registrar (Rust)
+edge/vercel/             the registrar as one Vercel Function, for demos
+edge/contracts/          the payment and escrow contracts (Solidity)
+modules/                 NixOS modules; options in options.nix
+nix/                     packages, images and build helpers
+nix/tests/               NixOS VM tests
+docs/                    security model, developer notes, design specs and plans
 handbook/                this handbook (Docusaurus)
 ```
 
 :::note[Die komprimierte Fassung dieser Seite]
-`CLAUDE.md` im Repository ist die komprimierte Fassung dieser Seite und
+`.claude/CLAUDE.md` im Repository ist die komprimierte Fassung dieser Seite und
 listet die Fallstricke, die lautlos zubeißen.
 :::
 
@@ -118,8 +123,8 @@ Sieht das Installationsmedium kein `/dev/tpmrm0`, oder mit `losos-ctl install
 `/crypto_keyfile.bin` in die initrd, auf der unverschlüsselten ESP. Die
 beiden crypttab-Formen schließen einander aus: systemd-cryptsetup, das eine
 Schlüsseldatei *und* `tpm2-device=` bekommt, liest die Datei als versiegelten
-Blob. `tests/invariants.nix` legt den Standardwert fest und prüft, dass der
-TPM-Pfad kein initrd-Geheimnis deklariert. `tests/tpm.nix` bootet ihn unter
+Blob. `nix/tests/invariants.nix` legt den Standardwert fest und prüft, dass der
+TPM-Pfad kein initrd-Geheimnis deklariert. `nix/tests/tpm.nix` bootet ihn unter
 swtpm von Anfang bis Ende.
 
 Eine entfernte `github:`-Upgrade-URI wertet einen Baum ohne
@@ -134,7 +139,7 @@ dem Mesh zur Verfügung gestellt wird. Beide Home-Verzeichnisse haben Modus
 `700`, jedes mit eigener primärer Gruppe, sodass keiner der beiden Benutzer
 die Dateien des anderen lesen kann. `isNormalUser` ohne explizite `group`
 steckt beide in `users`, und ein Home mit `750` gibt dieser Gruppe dann r-x.
-Das hat die Isolation unbemerkt ausgehebelt, bis `tests/impermanence.nix` es
+Das hat die Isolation unbemerkt ausgehebelt, bis `nix/tests/impermanence.nix` es
 aufgedeckt hat. Keiner der Benutzer hat ein Passwort, und
 `services.openssh.enable = false`. Die einzigen Konfigurationsänderungen, die
 auf der laufenden Box erreichbar sind, gehen über die Admin-UI: der
@@ -209,7 +214,7 @@ ohne irgendetwas zu formatieren. Der Wire-Vertrag ist `backend/schema.json`.
 Setze `losos.backend.package = null`, um ohne den Daemon zu laufen.
 
 **Jede Option in einem Bereich, und die Konfiguration in LosOS Git**
-(`flake/options-doc.nix`, `modules/config-repo.nix`,
+(`nix/options-doc.nix`, `modules/config-repo.nix`,
 `backend/src/options.rs`, `backend/src/config_repo.rs`,
 `admin-ui/app/src/screens/settings/pane-advanced.tsx`, `pane-history.tsx`).
 Beim Build werden die `losos.*`-Deklarationen nach
@@ -221,7 +226,7 @@ der Bereich Erweitert zeichnet pro Zeile einen typisierten Editor.
 `classify` in der Nix-Datei ist das Tor. Eine Deklaration mit einem Typ, den
 es nicht kennt, ist ein `throw`, sodass der Eval-Job rot wird, statt dass
 eine leere Zeile im Bereich landet. `tests/advanced.browser.mjs` rendert das
-echte Dokument (`tests/admin-ui.nix` übergibt den Check `losos-options-doc`)
+echte Dokument (`nix/tests/admin-ui.nix` übergibt den Check `losos-options-doc`)
 und schlägt bei jeder Zeile fehl, die der Bereich nicht zeichnen kann.
 `POST /api/apply` prüft jede Zeile gegen das Dokument (`check_body`). Es
 lehnt nicht deklarierte Schlüssel, schreibgeschützte (vom Installer
@@ -235,7 +240,7 @@ Admins an (`notshared`, mit dem Passwort des Besitzers, das bei
 Passwortänderungen und beim Einrichten eines Rechners mitgezogen wird) sowie
 ein privates Repository
 `losos-config`. Das geschieht über ein Bot-Konto, dessen Token das
-Forgejo-Startskript erzeugt (`flake/forgejo-bootstrap.nix`, Token unter
+Forgejo-Startskript erzeugt (`nix/forgejo-bootstrap.nix`, Token unter
 `/var/lib/forgejo/.losos-token`). Er pusht, wenn Forgejo zurückliegt. Hat
 ein Klon vorausgepusht, macht er einen Fast-Forward, lässt das neue
 `overrides.nix` durch dasselbe Tor und baut neu. Eine divergierte Historie
@@ -314,16 +319,16 @@ Dateien aus `core/img/` über den absoluten Pfad, deshalb überschreibt
 importieren, aus demselben Grund wie bei `nextcloud-stack.nix`. Die
 Workload-Pods nutzen `hostNetwork`, da der lokale Cluster kein CNI hat, und
 antworten daher auf Loopback. Was das kostet, erklärt die Stolperfalle zum
-`lanOnly`-Wächter in `CLAUDE.md`.
+`lanOnly`-Wächter in `.claude/CLAUDE.md`.
 
-**Der Vercel-Demo-Host** (`edge-vercel/`). Ein drittes Rust-Crate außerhalb
+**Der Vercel-Demo-Host** (`edge/vercel/`). Ein drittes Rust-Crate außerhalb
 des Flakes, das den Router des Registrars als eine Vercel Function ausführt.
 Die Registry ist eine `jsonb`-Zeile in einem Neon-Postgres (tokio-postgres
 über rustls), mit `DATABASE_URL` aus der Marketplace-Integration von Vercel,
 vor jedem Request geladen und danach per Upsert gespeichert. Es fügt zwei
 reine Demo-Routen (`/status`, `/status/traefik`) und eine statische Seite
 hinzu. Es existiert für Präsentationen und soll danach gelöscht werden. In
-`backend-registrar` brauchte es nur zwei Änderungen. `server::build` liefert
+`edge/registrar` brauchte es nur zwei Änderungen. `server::build` liefert
 Router und Abgleicher ohne Listener und Timer, und `serve` ruft es auf.
 `Registry::{export,import}` ist ein Snapshot mit Altersangaben, damit die
 Registry zwischen Prozessen wandern kann, und `import` wendet die
@@ -341,7 +346,7 @@ Seine zweite statische Seite, `public/find.html`, ist der Ablauf „find my
 box“ (meine Box finden). Die Berechtigung Local Network Access in Chrome
 erlaubt ihr, `/setup/state.json` einer Box vom öffentlichen Origin aus zu
 lesen. `modules/setup.nix` erlaubt genau die Origins in
-`losos.setup.finderOrigins` (eine nginx-Map, geprüft von `tests/setup.nix`),
+`losos.setup.finderOrigins` (eine nginx-Map, geprüft von `nix/tests/setup.nix`),
 nie `*`, denn das Dokument ist ein LAN-Inventar.
 
 **Der Options-Namensraum `losos.*`** (`options.nix`). Alle
@@ -368,7 +373,7 @@ blockiert auch ein explizites `modprobe`. Ein einfaches
 automatische Laden über Aliase. Vier Opt-in-Flags tragen das, was etwas
 kaputt machen kann: `apparmor`, `malloc`, `nosmt`, `usbguard`. Das System
 `iso` importiert das Modul nicht, weil das Live-Medium squashfs braucht.
-`tests/hardening.nix` prüft beide Hälften, auch dass nichts die
+`nix/tests/hardening.nix` prüft beide Hälften, auch dass nichts die
 Kernel-Funktionen blockiert, die k3s, rke2, containerd und Longhorn brauchen.
 
 **Online-Vergrößerung** (`grow.rs`, `losos.storage.fillPercent`). Das
@@ -378,7 +383,7 @@ Logical Volume endet absichtlich vor dem Ende der Volume Group, damit
 `cryptsetup resize`, dann `resize2fs`, in dieser Reihenfolge, im laufenden
 Betrieb. Die Reihenfolge ist das ganze Korrektheitsargument, und ein Fehler
 darin scheitert lautlos. Deshalb prüft `grow.rs` sie gegen den *Plan*, und
-`tests/resize.nix` prüft sie von Anfang bis Ende.
+`nix/tests/resize.nix` prüft sie von Anfang bis Ende.
 
 **BIOS und das tty1-Banner** (`losos.bios`, `modules/console.nix`). Das
 Firmware-Menü der Installer-ISO schreibt `losos.bios` in
@@ -387,14 +392,14 @@ Autoerkennung wählt BIOS, wenn `/sys/firmware/efi` fehlt. `--bios` und
 `--uefi` wählen ohne Menü. Das Menü gibt es nur auf der Installer-ISO, nicht
 im installierten System, und es nimmt nach 30 s ohne Antwort die
 Autoerkennung, weil das Medium unbeaufsichtigt installieren soll und
-`tests/iso-boot.py` nie tippt. Auf dem Medium ist der Installer ein Dienst
+`nix/tests/iso-boot.py` nie tippt. Auf dem Medium ist der Installer ein Dienst
 auf tty1 statt einer Login-Shell (`installer.nix`). Wo Plymouth zeichnet,
 läuft er unter dem Startbildschirm. Menü, Schritte und das Ergebnis kommen
 auf das Panel (`backend/src/install_screen.rs`), und die Tasten kommen von
 `plymouth watch-keystroke`, weil Plymouth beim Zeichnen die Tastatur hält.
 Ein Startbildschirm im Textmodus wird beendet, und der Installer läuft als
 Text. Nach der Installation verschwindet der Startbildschirm und gibt die
-Ausgabe auf tty1 und eine Root-Shell frei. `tests/installer-screen.nix`
+Ausgabe auf tty1 und eine Root-Shell frei. `nix/tests/installer-screen.nix`
 bootet beide Varianten. BIOS stellt `boot.nix` auf GRUB um und fügt
 der ersten Platte in `disko.nix` eine EF02-Partition hinzu. Die ESP bleibt
 in beiden Fällen `/boot`. `console.nix` ersetzt getty auf tty1 durch einen
@@ -433,7 +438,7 @@ nginx-Regel, die nixpkgs mitbringt, um eine Grenze von 20 MB. Eine
 tmpfiles-Regel löscht Nix-Build-Protokolle, die älter als 30 Tage sind und
 die die Garbage Collection liegen lässt. rke2 und libvirt rotieren ihre
 Protokolldateien selbst, und auf einem Edge schreibt `bitcoind` nur ins
-Journal. `tests/invariants.nix` prüft die Journalgrenze, beide
+Journal. `nix/tests/invariants.nix` prüft die Journalgrenze, beide
 logrotate-Regeln und die Grenze der Pod-Protokolle in beiden Clustern.
 
 **Automatisches Upgrade und der nächtliche Neustart** (`updates.nix`).
@@ -451,7 +456,7 @@ würde: ein Apply baute das ältere `/etc/nixos` und machte das Update der
 Nacht rückgängig. lososd überspringt den Schritt und meldet `kept`, wenn
 seit dem letzten Update eine andere Datei geändert wurde, sodass eine von
 Hand nach LosOS Git gepushte Änderung nie überschrieben wird.
-`tests/invariants.nix` pinnt den Schritt.
+`nix/tests/invariants.nix` pinnt den Schritt.
 
 :::warning[Beide Rebuild-Pfade impure lassen]
 **Beide Rebuild-Pfade sind absichtlich `--impure`**:
@@ -464,7 +469,7 @@ eine Box mit Schlüsseldatei auf die TPM-Form um, vergisst ihre Platten und
 ihren Firmware-Modus und setzt jede Einstellung zurück. Bei reiner
 Auswertung ist `builtins.pathExists` auf einem absoluten Pfad `false`, kein
 Fehler. So bleiben CI, `nix flake check` und der Installer rein und sehen
-die Datei aus dem Baum oder die Standardwerte. `tests/invariants.nix` legt
+die Datei aus dem Baum oder die Standardwerte. `nix/tests/invariants.nix` legt
 das Flag fest.
 :::
 
@@ -473,7 +478,7 @@ begrenzt beide Bootloader auf fünf Generationen. `/nix` *ist* `/persist`,
 die ESP hat 500 MiB, und `linuxPackages_latest` legt dort in den meisten
 Nächten einen neuen Kernel ab. Ohne beide Grenzen füllt sich die Box selbst,
 und der Switch um 03:00 scheitert beim Bootloader-Schritt.
-`tests/invariants.nix` prüft beides schon bei der Auswertung.
+`nix/tests/invariants.nix` prüft beides schon bei der Auswertung.
 
 **Das Fragment `#install` ist tragend.** Ohne es sucht `nixos-rebuild`
 nach `nixosConfigurations.$(hostname)`. Dieser Flake exportiert nur `iso`

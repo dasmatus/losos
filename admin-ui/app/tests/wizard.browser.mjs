@@ -17,7 +17,7 @@
  * Needs `npm run build` first and a browsers dir:
  *   PLAYWRIGHT_BROWSERS_PATH=$(nix build --print-out-paths --no-link \
  *     nixpkgs#playwright-driver.browsers)
- * tests/admin-ui.nix sets all of that up; keep the `playwright` devDependency
+ * nix/tests/admin-ui.nix sets all of that up; keep the `playwright` devDependency
  * pinned to the same version as nixpkgs' playwright-driver.
  */
 

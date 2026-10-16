@@ -143,18 +143,18 @@ nix run github:dasmatus/losos#losos-sign-iso -- verify --cert losos-secure-boot-
 ```
 
 Compare the certificate's fingerprint with the one in the release notes,
-and with `keys/secure-boot-db.pem` in the repository. All three are the same
+and with `nix/keys/secure-boot-db.pem` in the repository. All three are the same
 file.
 
 ## Where the key lives
 
 The private key never enters a Nix build or a box. The owner makes it
-once, on their own computer, with `provisioning/secure-boot/keygen.sh`, and
+once, on their own computer, with `docs/provisioning/secure-boot/keygen.sh`, and
 keeps it offline. The only other copy is the repository secret CI signs
-with. The certificate is committed as `keys/secure-boot-db.pem`. Until that
+with. The certificate is committed as `nix/keys/secure-boot-db.pem`. Until that
 file carries one, releases say *Not signed* and the stick needs Secure Boot
 off. The test suite checks the mechanism with a throwaway key it generates
-and discards. `tests/secure-boot.nix` boots the signed medium under OVMF's
+and discards. `nix/tests/secure-boot.nix` boots the signed medium under OVMF's
 Secure Boot build and shows the firmware's own *enabled* flag from inside.
 The firmware in that test holds Microsoft's certificates beside the test
 key, and a Microsoft-signed shim still starts on it. It also watches the

@@ -28,7 +28,7 @@ cargo test   --manifest-path backend/Cargo.toml
 cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
 ```
 
-Same for `backend-registrar/`. Both crates must be clean under clippy and
+Same for `edge/registrar/`. Both crates must be clean under clippy and
 rustfmt. The Nix packages set `doCheck = false`, so `nix build` runs no
 tests.
 
@@ -56,7 +56,7 @@ playwright check that `.#checks.x86_64-linux.losos-admin-ui` wraps.
 
 `tests/advanced.browser.mjs` renders every option the box declares. Outside
 nix it reads `tests/fixtures/options.json`, a copy of the document
-`flake/options-doc.nix` generates; refresh it after changing
+`nix/options-doc.nix` generates; refresh it after changing
 `modules/options.nix` with
 
 ```sh
@@ -65,7 +65,7 @@ cp "$(nix build --no-link --print-out-paths .#checks.x86_64-linux.losos-options-
    admin-ui/app/tests/fixtures/options.json
 ```
 
-`nix flake check` and `tests/admin-ui.nix` use a freshly generated
+`nix flake check` and `nix/tests/admin-ui.nix` use a freshly generated
 document, so a stale fixture affects only a run on a dev machine.
 
 ## VM tests
@@ -85,7 +85,7 @@ Also build the system closure locally:
 nix build .#nixosConfigurations.install.config.system.build.toplevel
 ```
 
-One flake check is not a VM. `losos-invariants` (`tests/invariants.nix`)
+One flake check is not a VM. `losos-invariants` (`nix/tests/invariants.nix`)
 evaluates the published `install` configuration and asserts the option values
 the appliance cannot afford to lose to a drifting default: garbage
 collection, the boot-menu cap, the unlock mode, the `#install` fragment.
@@ -113,8 +113,8 @@ say so when they did not run.
 - `flake.lock` pins the nixpkgs that builds the appliance; `devenv.lock` the
   one that lints and tests it. Update them together.
 - After changing `Cargo.lock` or `admin-ui/app/package-lock.json`, update
-  `cargoHash` or `npmDepsHash` in `flake/packages.nix`. The admin UI hash is
-  also in `tests/admin-ui.nix`.
+  `cargoHash` or `npmDepsHash` in `nix/packages.nix`. The admin UI hash is
+  also in `nix/tests/admin-ui.nix`.
 
 ## Handbook
 
@@ -127,7 +127,7 @@ the people working on LosOS, not for owners.
 
 ## Gotchas that bite silently
 
-Each of these was paid for once. `CLAUDE.md` carries the one-line rule, and
+Each of these was paid for once. `.claude/CLAUDE.md` carries the one-line rule, and
 this is the reasoning behind it.
 
 - **Three hardening settings are deliberately *not* applied**, and all three
@@ -137,7 +137,7 @@ this is the reasoning behind it.
   `user.max_user_namespaces` stays non-zero, because zero stops both kubelets
   and containerd. `/tmp` is not `noexec`, because nix builds execute there and
   the nightly unattended rebuild is the box's only way to repair itself.
-  `tests/hardening.nix` asserts all three absent, so "fixing" one turns a test
+  `nix/tests/hardening.nix` asserts all three absent, so "fixing" one turns a test
   red instead of bricking a box.
 - **`fileSystems."/tmp"` does not mount anything.** NixOS masks `tmp.mount`
   unless `boot.tmp.useTmpfs` is set. The declaration produces no mount and no
@@ -162,14 +162,14 @@ this is the reasoning behind it.
     Apply failed before the rebuild unit existed.
   - lososd must not get `ProcSubset=pid`. It hides `/proc/devices`, and vgs
     exits 4 without it.
-  - `tests/invariants.nix` pins both of the last two.
+  - `nix/tests/invariants.nix` pins both of the last two.
 - **The LUKS keyfile is hex text and must stay NUL-free.** disko hands
   `passwordFile` to `luksFormat` as `<(echo -n "$(cat FILE)")`, a command
   substitution that drops NUL bytes and a trailing newline. The initrd
   (`/crypto_keyfile.bin`) and `systemd-cryptenroll --unlock-key-file` read
   the file raw. The installer used to write 4096 random bytes, so on nearly
   every install the volume was formatted with one key and unlocked with
-  another. Nothing hit that failure until `tests/tpm.nix` enrolled the chip.
+  another. Nothing hit that failure until `nix/tests/tpm.nix` enrolled the chip.
   `ensure_keyfile` now writes 2048 random bytes as 4096 hex characters. Don't
   "harden" it back to raw bytes, and don't put a newline in it.
 - **The LUKS key file must not live under `/root` or `/home`.** `lososd` runs
@@ -179,7 +179,7 @@ this is the reasoning behind it.
   grown the volume. `/etc/keys/persist-keyfile` is the path everything agrees
   on. `disko.nix` formats from it, the installer keeps it inside `/persist`
   on both unlock paths, `daemon.nix` passes it as `LOSOS_LUKS_KEYFILE`, and
-  `tests/resize.nix` uses it instead of a fixture of its own, so the four
+  `nix/tests/resize.nix` uses it instead of a fixture of its own, so the four
   cannot drift apart unnoticed.
 - **`lososd` is restarted mid-rebuild.** `nixos-rebuild switch` restarts the
   changed `lososd.service` and kills the watcher thread that was tracking the
@@ -208,7 +208,7 @@ this is the reasoning behind it.
   keeps the spare key working while Authelia is down; keep that bypass, and
   keep the spare-key path in the sign-in dialog. Who may call what is
   `backend/sections.json`, read by lososd (`backend/src/sections.rs`) and by
-  nginx; a route missing there is admin only. `tests/identity.nix` boots it.
+  nginx; a route missing there is admin only. `nix/tests/identity.nix` boots it.
   `backend/src/signin.rs` now only holds the LosOS cloud login helpers that
   device setup (`losos cloud setup`, `losos git setup`) and the pin picker
   use: keep the password in a Basic header over loopback, never a `curl -u`
@@ -239,7 +239,7 @@ this is the reasoning behind it.
   `containers.nix` is the one path served under a permissive CSP. An
   `<iframe srcdoc>` or a `blob:` document would inherit the admin page's
   strict policy and refuse the inline script just the same, so don't
-  "simplify" the frame into one. `tests/front-vhost.nix` asserts the arm and
+  "simplify" the frame into one. `nix/tests/front-vhost.nix` asserts the arm and
   that the strict policy still covers everything else.
 - **lososd creates the admin token, not NixOS.** lososd writes
   `losos.admin.tokenFile` (default `/var/secrets/losos-admin-token`,
@@ -289,7 +289,7 @@ this is the reasoning behind it.
   hoist `now` back out of the per-node loop in `modules/edge.nix`. It is per
   node because the zone is.
 - **The market is the registrar's third opt-in.** `/market/*` (Stripe
-  Connect, `backend-registrar/src/market.rs`, [Market](../handbook/docs/in-depth/market.md)) answers 503
+  Connect, `edge/registrar/src/market.rs`, [Market](../handbook/docs/in-depth/market.md)) answers 503
   unless `losos.edge.market.enable` is set, and 403 unless
   `losos.edge.tenants.<id>.market` is. `modules/edge.nix`'s `tenantsJson`
   hardcodes its attributes, so the `market` key must stay listed there, or
@@ -329,7 +329,7 @@ this is the reasoning behind it.
   - On top of that, lososd challenges each answering edge
     (`GET /identity?nonce=`). An edge counts as official only if its
     certificate is signed by the LosOS root key in
-    `keys/official-edge-root.pub` (`losos.proxy.officialRootKeyFile`), names
+    `nix/keys/official-edge-root.pub` (`losos.proxy.officialRootKeyFile`), names
     that URL and has not expired, and the certificate's key signed the
     nonce. The market relay refuses everything else (`{available:false,
     reason:"noOfficialEdge"}`, 409 `officialEdgeRequired`).
@@ -338,17 +338,17 @@ this is the reasoning behind it.
     is off. The private key lives offline with the owner and is never
     committed.
   - `losos-registrar identity {keygen,sign,show,verify}` are the low-level
-    commands (`backend-registrar/src/identity.rs`). `tests/edge-lan.nix`
+    commands (`edge/registrar/src/identity.rs`). `nix/tests/edge-lan.nix`
     uses them to build its own root at build time rather than trusting the
     shipped file. `losos.edge.identity.{keyFile,certFile}` are the edge
     side.
   - The ceremony an operator runs is `losos-registrar provision
     {whoami,root-keygen,publish,edge,verify}`
-    (`backend-registrar/src/provision.rs`), **on the operator's own
+    (`edge/registrar/src/provision.rs`), **on the operator's own
     machine**. Every verb that makes or uses the root key first signs the
     operator in with GitHub's OAuth device flow (public client id only, no
     secret). It refuses unless the account's *numeric id* is in
-    `backend-registrar/operators.json`, which is compiled into the binary.
+    `edge/registrar/operators.json`, which is compiled into the binary.
   - `provision edge` reads the edge's own public key from
     `GET /identity/public-key`; the registrar makes that key on its first
     start, and the private half never leaves the edge. The tool signs the
@@ -356,7 +356,7 @@ this is the reasoning behind it.
     GitHub token, and runs the four checks. The edge resolves the token
     against the same compiled-in allowlist before it installs anything
     (`server::identity_push`). There is no SSH. `root-keygen --publish` and
-    `publish` open the PR that fills `keys/official-edge-root.pub`, with the
+    `publish` open the PR that fills `nix/keys/official-edge-root.pub`, with the
     same sign-in (`public_repo`). `tests/provision.rs` runs all of it
     against a fake GitHub and a real registrar.
   - The allowlist decides whom the tooling serves. The root key is still the
@@ -364,7 +364,7 @@ this is the reasoning behind it.
   - Forgejo Actions is **off** in both Forgejo modes and the box runs no
     runner. The earlier ceremony from the box (Actions workflows plus
     `modules/git-runner.nix`) is gone, and
-    `provisioning/edge-identity/README.md` is the operator runbook.
+    `docs/provisioning/edge-identity/README.md` is the operator runbook.
   - The operator's machine has no Nix store, so `.#losos-registrar-static`
     (`pkgsStatic`, musl, same `cargoHash`) is the binary for it. CI's
     `publish-tool` job pushes it to GHCR as `images:<channel>-x86_64`

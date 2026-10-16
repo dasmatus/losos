@@ -1,0 +1,21 @@
+# The LosOS root public key (Ed25519, 64 hex characters on one line).
+#
+# Every box ships this file (losos.proxy.officialRootKeyFile). An edge is
+# "official" only if it presents a certificate signed by the matching private
+# key and answers a fresh nonce with that certificate's key; only official
+# edges may process P2P storage and compute trading (the market). Edges a
+# company runs for itself still get discovery and storage sharing.
+#
+# The private half is held offline by the project owner and never enters this
+# repository. Until a key is written below, no edge is official and the market
+# is off on every box built from this tree (fail closed).
+#
+# Made and published from the operator's own machine, behind a GitHub
+# sign-in against edge/registrar/operators.json:
+#
+#   losos-registrar provision root-keygen --out root.key --publish
+#   losos-registrar provision edge --name "LosOS edge Berlin" \
+#       --url https://register.losos.cfd --ssh root@edge.example --root-key root.key
+#
+# See handbook/docs/in-depth/master-proxy.md, "Official edges", and
+# docs/provisioning/edge-identity/README.md.

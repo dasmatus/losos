@@ -153,19 +153,19 @@ nix run github:dasmatus/losos#losos-sign-iso -- verify --cert losos-secure-boot-
 ```
 
 Vergleiche den Fingerabdruck des Zertifikats mit dem in den Release Notes und
-mit `keys/secure-boot-db.pem` im Repository. Alle drei sind dieselbe Datei.
+mit `nix/keys/secure-boot-db.pem` im Repository. Alle drei sind dieselbe Datei.
 
 ## Wo der Schlüssel liegt \{#where-the-key-lives}
 
 Der private Schlüssel kommt nie in einen Nix-Build oder auf eine Box. Der
 Projektinhaber erzeugt ihn einmal auf seinem eigenen Rechner mit
-`provisioning/secure-boot/keygen.sh` und bewahrt ihn offline auf. Die einzige
+`docs/provisioning/secure-boot/keygen.sh` und bewahrt ihn offline auf. Die einzige
 andere Kopie ist das Repository-Secret, mit dem CI signiert. Das Zertifikat
-liegt im Repository als `keys/secure-boot-db.pem`. Solange diese Datei keins
+liegt im Repository als `nix/keys/secure-boot-db.pem`. Solange diese Datei keins
 enthält, steht bei Releases *Not signed*, und der Stick braucht
 ausgeschaltetes Secure Boot. Die Testsuite prüft den Mechanismus mit einem
 Wegwerfschlüssel, den sie erzeugt und wieder verwirft.
-`tests/secure-boot.nix` startet das signierte Medium unter dem
+`nix/tests/secure-boot.nix` startet das signierte Medium unter dem
 Secure-Boot-Build von OVMF und zeigt von innen das eigene Flag *enabled* der
 Firmware. Die Firmware in diesem Test enthält die Zertifikate von Microsoft
 neben dem Testschlüssel, und ein von Microsoft signierter shim startet

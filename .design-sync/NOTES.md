@@ -44,7 +44,7 @@
   overlay in an explicitly sized `position: relative; transform:
   translateZ(0)` div, a miniature viewport. Don't fork lib/emit.mjs for
   this.
-- The `losos-ds-render` flake check (tests/design-system.nix) pins
+- The `losos-ds-render` flake check (nix/tests/design-system.nix) pins
   `npmDepsHash` over admin-ui/design-system/react/package-lock.json. Bump the hash
   whenever the lockfile changes:
   `nix run <nixpkgs>#prefetch-npm-deps -- admin-ui/design-system/react/package-lock.json`.
@@ -71,7 +71,7 @@
 - Playwright lockstep is three-sided. A nixpkgs bump moves
   `playwright-driver`, which must move (a) the `.ds-sync` npm playwright,
   (b) admin-ui/design-system/react's `playwright` devDependency, and (c)
-  `npmDepsHash` in tests/design-system.nix. The flake check asserts (b);
+  `npmDepsHash` in nix/tests/design-system.nix. The flake check asserts (b);
   nothing asserts (a), and a stale `.ds-sync` fails at capture time with
   "Executable doesn't exist".
 - The `PLAYWRIGHT_BROWSERS_PATH` store paths in this file's commands are

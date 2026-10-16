@@ -178,7 +178,7 @@ runs `nixos-rebuild switch`. So:
 ### Advanced
 
 **Settings, Advanced** lists every `losos.*` option the box declares, read
-from the modules it runs. `flake/options-doc.nix` generates the document at
+from the modules it runs. `nix/options-doc.nix` generates the document at
 build time, and lososd serves it at `GET /api/options` with the current
 `overrides.nix` joined in. Each row shows the option's description, its
 default, the value the box is running with, and an editor for its type: a
@@ -243,7 +243,7 @@ The clone address is shown on the pane (`http://<box>/forgejo/<owner>/
 losos-config.git`). The repository is private, so it needs the admin's
 password. The daemon talks to Forgejo on loopback with a bot account,
 `losos`, that the Forgejo start-up script creates and mints a token for
-(`flake/forgejo-bootstrap.nix`).
+(`nix/forgejo-bootstrap.nix`).
 
 ### Federation
 
@@ -268,7 +268,7 @@ which Forgejo serves at the host's root rather than under `ROOT_URL`; they
 are not LAN-guarded, like `/forgejo/`. Reach follows `ROOT_URL`: through the
 edge it is `https://<proxy hostname>/forgejo/` and any server can federate
 with the box; on a LAN-only box it is `https://<host>.local/forgejo/`, so only
-other boxes on the same LAN can. `tests/forgejo-federation.nix` boots the
+other boxes on the same LAN can. `nix/tests/forgejo-federation.nix` boots the
 real Forgejo and asks it, with sharing on and then off.
 
 `losos.nextcloud.federation.enable` (default on) is LosOS cloud's side:
@@ -285,8 +285,8 @@ mounts; native mode appends it to `nextcloud-setup`. And the vhost answers
 `federation` and `federatedfilesharing` app routes. The vhost half is needed
 because OCM discovery reports itself enabled whatever the settings say, and
 `cloud_federation_api` and `federatedfilesharing` are always-enabled apps
-that cannot be switched off. `tests/front-vhost.nix` checks both services'
-routes with sharing on and off; `tests/invariants.nix` checks the gate at
+that cannot be switched off. `nix/tests/front-vhost.nix` checks both services'
+routes with sharing on and off; `nix/tests/invariants.nix` checks the gate at
 eval time.
 
 ### Box-wide app settings
@@ -326,7 +326,7 @@ mode at the end of `nextcloud-setup`. Nextcloud's admin pages save those
 keys through `ocs/v[12].php/apps/provisioning_api/api/v1/config/apps/<app>/<key>`,
 and the front vhost answers 403 for each key LosOS sets, the federation
 switches included, so a change made there cannot drift from the box. The
-admin page still shows the value. `tests/front-vhost.nix` checks the 403 and
+admin page still shows the value. `nix/tests/front-vhost.nix` checks the 403 and
 that other keys still reach Nextcloud.
 
 Forgejo's five are `app.ini` keys, which Forgejo's Site administration shows
@@ -407,7 +407,7 @@ Cancelling is possible in steps 1 and 2 only. `/nix`, `/etc/nixos` and the
 disk's keyfile stay, so LosOS is still installed and the box opens the
 setup wizard. `/var/lib/losos-erase/report.json` keeps what the erase gave
 up outside the box, as counts, and Settings, Reset shows it.
-`tests/erase.nix` runs the whole cycle against a MinIO bucket in one VM.
+`nix/tests/erase.nix` runs the whole cycle against a MinIO bucket in one VM.
 :::
 
 ## Users
@@ -420,7 +420,7 @@ Two data users, both without passwords or shells:
 | `shared`    | Mesh storage        |
 
 Each has its own primary group and a mode-700 home, so neither can read the
-other's files. `tests/impermanence.nix` checks this.
+other's files. `nix/tests/impermanence.nix` checks this.
 
 ## Upgrades and reboots
 

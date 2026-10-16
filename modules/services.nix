@@ -34,7 +34,7 @@ let
   nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
 
   # The LosOS look for Forgejo (admin-ui/themes/), shared with the workload
-  # image in flake/images.nix.
+  # image in nix/images.nix.
   themes = import ../admin-ui/themes { inherit pkgs; };
   forgejoNative = config.losos.forgejo.mode == "native" && config.losos.forgejo.enable;
   forgejoManagedDirs = [

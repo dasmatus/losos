@@ -11,7 +11,7 @@ is covered in two places:
 - the [In depth](/in-depth/index.md) chapter: Install in depth,
   Administration, Mesh, Market, Virtual machines, Master proxy, Edge
   federation, Lab, Hardening, Architecture;
-- [`CLAUDE.md`](https://github.com/dasmatus/losos/blob/main/CLAUDE.md) in the
+- [`.claude/CLAUDE.md`](https://github.com/dasmatus/losos/blob/main/.claude/CLAUDE.md) in the
   repository: the build commands, the cross-file architecture and the list of
   mistakes that are easy to make again.
 
@@ -30,9 +30,9 @@ npm run build             # fails on a broken link, on purpose
 
 Every push to `main` publishes the site to [losos.dasmat.us](https://losos.dasmat.us)
 (`.github/workflows/handbook.yml`), and every box builds its own copy
-(`losos-handbook` in `flake/packages.nix`, served at `/handbook/` by
+(`losos-handbook` in `nix/packages.nix`, served at `/handbook/` by
 `modules/containers.nix`). After changing `package-lock.json`, refresh
-`npmDepsHash` in `flake/packages.nix`:
+`npmDepsHash` in `nix/packages.nix`:
 
 ```sh
 nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json
@@ -50,7 +50,7 @@ Pictures live in `handbook/docs/img/`. There are three kinds:
   translated pages show those.
 - **Screens of a real machine.** The installer, the tty1 banner, the
   passphrase prompt and the Secure Boot refusals come from VM runs
-  (`tests/secure-boot.nix` and installs into a VM). No script retakes them.
+  (`nix/tests/secure-boot.nix` and installs into a VM). No script retakes them.
 - **Diagrams.** These are hand-written SVG on a white card, in the palette
   of the admin UI (`admin-ui/app/src/styles/tokens.css`), so they read the
   same in the light and the dark theme. Edit them as text.

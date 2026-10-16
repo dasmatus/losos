@@ -25,7 +25,7 @@
 # edge for Longhorn and mesh compute. Published hardening baselines are written
 # for machines that do not run a container runtime, and a large fraction of
 # what they recommend breaks one. Every such setting is called out by name here
-# and asserted absent in tests/hardening.nix, so none of them can be
+# and asserted absent in nix/tests/hardening.nix, so none of them can be
 # reintroduced later as an obvious improvement:
 #
 #   * `overlay` must load, or containerd has no snapshotter.
@@ -40,11 +40,11 @@
 #   * `rp_filter` must not be strict — Calico does not work under it.
 #   * user namespaces must stay available, or neither kubelet starts.
 #
-# Every claim in this file is asserted in tests/hardening.nix against three
+# Every claim in this file is asserted in nix/tests/hardening.nix against three
 # booted VMs, including the claims about what is deliberately *not* set. That
 # test does not boot Kubernetes (pulling the ~2.6 GiB Nextcloud image into a
 # test VM is a multi-hour build); it asserts the kernel surface Kubernetes
-# needs is intact, and tests/cluster-vm.nix covers the rest.
+# needs is intact, and nix/tests/cluster-vm.nix covers the rest.
 #
 # Scope note: imported by the `install` system only. The ISO must keep squashfs
 # loadable and its module policy permissive, and hardening a live installer
@@ -66,7 +66,7 @@ let
   #
   # What is deliberately NOT here is the interesting part — see the header.
   # Nothing in the container, CNI, or Longhorn path appears below, and adding
-  # one turns tests/hardening.nix red rather than breaking a box in a cupboard.
+  # one turns nix/tests/hardening.nix red rather than breaking a box in a cupboard.
   blockedModules = [
     # Legacy and rare network protocols. An unprivileged socket() call is
     # enough to autoload most of these, which is what makes them worth blocking
@@ -278,7 +278,7 @@ in
         # not work under strict rp_filter at all.
         #
         # A box you cannot reach is not a hardened box, and neither is one that
-        # cannot schedule a pod. tests/hardening.nix asserts the 2.
+        # cannot schedule a pod. nix/tests/hardening.nix asserts the 2.
         "net.ipv4.conf.all.rp_filter" = 2;
         "net.ipv4.conf.default.rp_filter" = 2;
 
@@ -299,7 +299,7 @@ in
       # dead. `security.lockKernelModules` is the same story twice over:
       # NetworkManager, the CNI plugins and Longhorn's iSCSI path all load
       # modules on demand long after boot. Both are asserted absent in
-      # tests/hardening.nix.
+      # nix/tests/hardening.nix.
 
       boot.blacklistedKernelModules = blockedModules;
       boot.extraModprobeConfig = modprobeDenials;
@@ -362,7 +362,7 @@ in
             # vgs exit 4). `losos-ctl grow` starts with vgs, so with it every
             # "Use reserve" on a hardened box failed at once with an opaque
             # 500. ProtectProc=invisible still hides every other process.
-            # tests/invariants.nix pins this.
+            # nix/tests/invariants.nix pins this.
             ProtectProc = "invisible";
             MemoryDenyWriteExecute = true;
             RestrictAddressFamilies = [
@@ -392,7 +392,7 @@ in
       # Works by LD_PRELOAD via /etc/ld-nix.so.preload — NixOS' patched loader
       # reads that path, not the glibc-standard /etc/ld.so.preload, which never
       # exists here. Asserting the standard path passes while the allocator is
-      # off and fails once it is on; tests/hardening.nix uses the real one.
+      # off and fails once it is on; nix/tests/hardening.nix uses the real one.
       # Worth being precise about
       # the blast radius: k3s, rke2 and containerd are static Go binaries and
       # ignore LD_PRELOAD entirely, and a pod has its own rootfs and therefore

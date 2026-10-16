@@ -2,14 +2,14 @@
 #
 # The auto-installer is a subcommand of the Rust losos-ctl backend (see
 # backend/src/installer.rs). This module packages it as the `losos-install`
-# command name the VM tests (tests/install.nix, tests/tpm.nix) and the handbook
+# command name the VM tests (nix/tests/install.nix, nix/tests/tpm.nix) and the handbook
 # rely on, so the CLI surface is unchanged: `losos-install --emit-target …`,
 # `--disko-script …`, `--tpm` / `--no-tpm`, `--drives …`, `--no-install`.
 #
 # It stays free of any flake coupling (no `self`) so the VM test can import it:
 # the losos-ctl derivation is supplied via the `losos.installer.package` option
 # (the flake's iso system sets it to self.packages.<system>.losos-ctl; the test
-# sets it via flake/packages.nix). The flake the installer builds from is
+# sets it via nix/packages.nix). The flake the installer builds from is
 # cloned over the network at run time (LOSOS_FLAKE_URL, default the public
 # GitHub repo) — the ISO needs working network either way, since evaluating
 # the flake fetches its nixpkgs input.

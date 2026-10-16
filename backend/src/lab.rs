@@ -1,7 +1,7 @@
 //! `/api/lab/*`: LosOS Lab's guests, relayed to `losos-registrar lab`.
 //!
 //! With `losos.lab.libvirt.enable` the box runs the Lab's libvirt helper
-//! (`backend-registrar/src/lab/`) on a loopback port, and the Lab page asks
+//! (`edge/registrar/src/lab/`) on a loopback port, and the Lab page asks
 //! for its guests here, under the admin token like every other page. lososd
 //! holds no libvirt code: it checks the token, forwards the four JSON
 //! routes with the same token, and passes the helper's answer back. The

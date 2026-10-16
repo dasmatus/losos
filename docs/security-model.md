@@ -17,7 +17,7 @@ durable secrets live on the encrypted `/persist`.
    a mode-700 home. Neither can read the other's data.
 
    This used to be broken: both users had the primary group `users` and
-   mode-750 homes, so each could read the other. `tests/impermanence.nix` now
+   mode-750 homes, so each could read the other. `nix/tests/impermanence.nix` now
    checks cross-reads in a booted VM.
 
 ## The admin token
@@ -162,7 +162,7 @@ body agree.
 rke2 or containerd (static Go binaries) or anything in a pod. Hardening does
 not address the limitations below.
 
-**Left out on purpose.** `tests/hardening.nix` checks that these stay off:
+**Left out on purpose.** `nix/tests/hardening.nix` checks that these stay off:
 
 - **Strict `rp_filter`.** It is `2` (loose). Strict mode drops mDNS replies on
   a multi-homed host, and mDNS is how the box is found. Calico also fails
@@ -237,8 +237,8 @@ open.
 
 Without a chip, or with `losos-ctl install --no-tpm`, that keyfile is baked
 into the initrd on the unencrypted ESP instead, so whoever has the disk has
-the data. `tests/tpm.nix` boots the TPM path end to end under swtpm;
-`tests/install.nix` the keyfile path.
+the data. `nix/tests/tpm.nix` boots the TPM path end to end under swtpm;
+`nix/tests/install.nix` the keyfile path.
 
 ### Tunnel encryption
 

@@ -130,7 +130,7 @@ export interface AppDefinition {
 /** Where the Files app answers on this box's front door, when it does.
  *
  * Every app path below goes through `index.php`. The workload image serves
- * Nextcloud without its pretty-URL rewrites (flake/images.nix transcribes
+ * Nextcloud without its pretty-URL rewrites (nix/images.nix transcribes
  * upstream's .htaccess minus that block, and never sets
  * `front_controller_active`), so `/nextcloud/apps/tasks/` is an Apache 404
  * (the short form is what the tiles used to link) while

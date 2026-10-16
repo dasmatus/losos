@@ -184,7 +184,7 @@ export function useMarket(enabled: boolean): MarketData {
  *  KWD), from the browser's ISO 4217 table. Stripe and the edge both count
  *  prices in that minor unit, so this is the one place the scale is decided.
  *  The edge only accepts two-decimal currencies today (`SUPPORTED_CURRENCIES`
- *  in backend-registrar/src/market.rs); this keeps the pane right if that
+ *  in edge/registrar/src/market.rs); this keeps the pane right if that
  *  list grows rather than relying on it. */
 export function minorDigits(currency: string): number {
   try {

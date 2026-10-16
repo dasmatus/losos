@@ -16,7 +16,7 @@ without saying so.
 - flake evaluation
 - package builds
 - the installer ISO, built on every push and then booted under OVMF and
-  SeaBIOS by `tests/iso-boot.py`. A boot passes when the installer sends a
+  SeaBIOS by `nix/tests/iso-boot.py`. A boot passes when the installer sends a
   DNS query for `github.com`. On timeout, the job uploads a screenshot.
 - the Nextcloud image, weekly and on request only
 - `losos-registrar` for the dev machine, a static musl build pushed to GHCR
@@ -36,9 +36,9 @@ it by hand from the Actions tab for a dry run.
 Push a `v*` tag, or draft a release with a new `v*` tag in the web UI.
 The version needs no bump first. The boot menus, the boot pictures,
 os-release, the console banners and `losos --version` show
-`flake/version.nix`, and CI keeps that file on the newest tag:
+`nix/version.nix`, and CI keeps that file on the newest tag:
 
-- `version.yml` commits the newest `v*` tag to `flake/version.nix` on
+- `version.yml` commits the newest `v*` tag to `nix/version.nix` on
   main when a tag is pushed, and again on any push to main that finds the
   file behind. Installed boxes build from main, so they show the new
   version after their next nightly update. The commit goes through the
@@ -50,7 +50,7 @@ os-release, the console banners and `losos --version` show
 
 The release job:
 
-1. writes the tag into `flake/version.nix`, then builds the installer ISO
+1. writes the tag into `nix/version.nix`, then builds the installer ISO
    and the demo QCOW2,
 2. signs the ISO's UEFI loader in place with the `SECURE_BOOT_DB_KEY`
    secret (`losos-sign-iso`) and signs `SHA256SUMS` with the same key. If
@@ -64,10 +64,10 @@ The release job:
 
 The `iso` job on main does the same signing before its boot legs. OVMF with
 Microsoft's keys must refuse the medium, and the same OVMF store with the
-committed certificate added beside Microsoft's must boot it (`tests/iso-boot.py --firmware
+committed certificate added beside Microsoft's must boot it (`nix/tests/iso-boot.py --firmware
 uefi-sb-ms|uefi-sb`). A fork's pull request has no key, so it boots unsigned
 and skips the enrolled leg, and so does a run where signing failed. The key is made once on the owner's machine with
-`provisioning/secure-boot/keygen.sh`.
+`docs/provisioning/secure-boot/keygen.sh`.
 
 Your release notes are kept. The download section goes between two marker
 comments, and a re-run replaces only that section.
@@ -124,7 +124,7 @@ Setup:
    `https://losos-cache-proxy.vercel.app` for when the custom domain does
    not resolve, and the `losos-1` public key, so a stock
    appliance and installer medium already pull from the cache, and
-   `tests/invariants.nix` fails if either default is dropped. Rotating the
+   `nix/tests/invariants.nix` fails if either default is dropped. Rotating the
    signing key means changing the variable and the default together.
 
 Every job reports what it got from the cache. `setup-nix` puts a `nix` shim
@@ -168,7 +168,7 @@ source must be "GitHub Actions" (Settings, Pages), as for the handbook.
 
 ## The dev-machine tool
 
-The key ceremony ([edge-identity runbook](../provisioning/edge-identity/README.md))
+The key ceremony ([edge-identity runbook](./provisioning/edge-identity/README.md))
 runs `losos-registrar provision` on the operator's own computer, which has no
 Nix store. `.#losos-registrar-static` is the same crate linked statically
 against musl. The `registrar-and-ui` job builds it and the `publish-tool` job
@@ -250,7 +250,7 @@ losos.edge.market.usdc = {
 The names are `base`, `arbitrum`, `optimism` and `solana`. For a test edge
 they are `base-sepolia`, `arbitrum-sepolia`, `optimism-sepolia` and
 `solana-devnet`. Each EVM network needs its own
-`LososEscrow` deployment (`contracts/`), with the same treasury and the
+`LososEscrow` deployment (`edge/contracts/`), with the same treasury and the
 releaser key's address. Deploying it from a fresh key at nonce 0 gives it the
 same address on every chain. On Solana the treasury is the owner of
 the USDC account that takes the fee, and there is no contract: the buyer's
@@ -409,7 +409,7 @@ and that two operators answer. The default servers came from
 hosh.zec.rocks/zec; replace one that goes away. There is nothing to seal and
 nothing to sync.
 
-`backend-registrar/tests/zcash.rs` runs in every `cargo test`, with no node:
+`edge/registrar/tests/zcash.rs` runs in every `cargo test`, with no node:
 stand-in lightwalletd servers in the test process serve compact blocks whose
 payments are real Orchard and Ironwood notes encrypted to the order's
 address, one of them lying.
@@ -447,6 +447,6 @@ Two things move USDC to the treasury for it, both into
   ledger), never for more than is owed, and a transaction that paid an order
   is refused. Solana is refused.
 
-`backend-registrar/tests/usdc.rs` covers both paths and the pause against a
-stand-in RPC. `contracts/test-payment.sh` also sends a real fee transfer on
+`edge/registrar/tests/usdc.rs` covers both paths and the pause against a
+stand-in RPC. `edge/contracts/test-payment.sh` also sends a real fee transfer on
 anvil and checks the registrar reads it.
