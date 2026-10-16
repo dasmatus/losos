@@ -23,8 +23,10 @@ ich miesto:
 
 ![Systémový disk je v RAM a pri každom štarte sa zostaví nanovo; deväť adresárov sa cez bind mount vráti zo šifrovaného zväzku /persist a všetko ostatné zmizne pri reštarte o 00:07.](@site/docs/img/what-survives-sk.svg)
 
+:::note[Všetko ostatné o 00:07 zmizne]
 Všetko ostatné, aj čokoľvek, čo útočník alebo chyba zapísali kdekoľvek inde,
 o 00:07 zmizne.
+:::
 
 ## Dve veci, ktoré sú dokumenty, nie nastavenia \{#two-things-that-are-documents-not-settings}
 

@@ -38,8 +38,11 @@ Set `losos.proxy.enable = true` and the `losos.proxy.*` options
 rathole uses its Noise transport. The edge generates a key pair on first
 boot. Each appliance fetches the public key from the registrar on first start
 and stores it at `losos.proxy.noisePublicKeyFile`. To pin the key out of band,
-put the file there beforehand; the appliance never overwrites it. Setting
-either key option to `null` falls back to plain TCP. Don't.
+put the file there beforehand; the appliance never overwrites it.
+
+:::warning[Keep the tunnel encrypted]
+Setting either key option to `null` falls back to plain TCP. Don't.
+:::
 
 ## Admin UI stays LAN-only
 
@@ -78,13 +81,15 @@ disk without any edge (`losos-ctl grow`, Local mode). Pooling across boxes is
 the mesh, though, and the mesh's control plane (rke2 server, Longhorn, the
 registrar) lives on the edge machine. So an edge on a LAN PC is what makes an
 offline site work. The WAN can be unplugged, since mDNS is all the boxes use
-to find it. Two limits today:
+to find it.
 
+:::note[Two limits today]
 - The tunnel's enrolment address (`losos.proxy.registrarUrl`) is a
   build-time option that still defaults to the public edge. A site that
   wants the tunnel to end on its own edge sets it in its own flake.
 - The advert is mDNS, so the edge and the boxes must share a broadcast
   domain (one VLAN).
+:::
 
 `demo/edge-lan/run.sh` stands this whole arrangement up on one machine as VMs
 on a virtual switch: the edge, which is also the LAN's router, and two boxes
@@ -187,9 +192,11 @@ ns1.boxes.losos.dasmat.us.  A   203.0.113.7
 ns1.boxes.losos.dasmat.us.  AAAA 2001:db8::7
 ```
 
+:::note[Only with an identity certificate]
 Nothing is handed out until the edge holds an unexpired identity certificate
 ([Official edges](#official-edges)). Before that the zone is only SOA, NS and
 glue, and `/domains/*` answers 503.
+:::
 
 ### Custom domains
 
@@ -231,9 +238,11 @@ this edge's mesh. The registrar keeps those routes itself, in
 federation](edge-federation.md#custom-domains-behind-a-local-edge) has the
 details and `losos.edge.dns.relayRoutes`.
 
+:::note[How this is tested]
 `tests/edge-dns.nix` (`losos-edge-dns`) boots an edge and a client and asks
 Knot over UDP and TCP. `backend-registrar/tests/domains.rs` drives the claim
 flow against a real registrar and a fake DNS-over-HTTPS server.
+:::
 
 ## Demo deployment on Vercel
 

@@ -67,11 +67,16 @@ zariadením dorozumieva cez malý objekt `losos`, ktorý mu rámec poskytuje:
 | `losos.asset(name)`         | jeden zo súborov widgetu ako URL `data:`, pre obrázok nastavený zo skriptu    |
 
 Karta **Ako to funguje** v editore to zopakuje s príkladom. Jej náhľad je
-skutočný rámec, takže dlaždica ukazuje presne to, čo náhľad. Ručne napísaný
-widget smie sťahovať dáta z internetu, napríklad pre dlaždicu s počasím, ale
-nesmie sa dostať k API zariadenia. Beží v každom prehliadači, ktorý
-zariadenie otvorí, preto si všetko, čo vložíte z internetu, pred uložením
-prečítajte. Limit je 24 widgetov, každý najviac 12 súborov a spolu 128 KiB.
+skutočný rámec, takže dlaždica ukazuje presne to, čo náhľad.
+
+:::warning[Vložený kód si pred uložením prečítajte]
+Ručne napísaný widget smie sťahovať dáta z internetu, napríklad pre dlaždicu
+s počasím, ale nesmie sa dostať k API zariadenia. Beží v každom prehliadači,
+ktorý zariadenie otvorí, preto si všetko, čo vložíte z internetu, pred
+uložením prečítajte.
+:::
+
+Limit je 24 widgetov, každý najviac 12 súborov a spolu 128 KiB.
 
 
 Samotnú nástenku, pozadia a závoj opisuje [Vzhľad a widgety](../manual/look-and-widgets).

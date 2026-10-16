@@ -23,8 +23,10 @@ place:
 
 ![The system disk lives in RAM and is rebuilt every boot; nine directories are bind-mounted back from the encrypted /persist volume, and everything else is gone at the 00:07 restart.](../img/what-survives.svg)
 
+:::note[Everything else is gone at 00:07]
 Everything else, including anything an attacker or a bug wrote anywhere
 else, is gone at 00:07.
+:::
 
 ## Two things that are documents, not settings
 

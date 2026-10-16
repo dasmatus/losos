@@ -22,9 +22,11 @@ musst ein zweites Mal drücken.
 
 ![Einstellungen, Zurücksetzen: Alle Einstellungen zurücksetzen, mit dem, was geht und was bleibt.](@site/docs/img/settings-reset-de.png)
 
+:::note[Was ein Zurücksetzen behält]
 Ein Zurücksetzen ändert weder das Passwort des Besitzers noch den
 Ersatzschlüssel und öffnet das Zeitfenster zum Beanspruchen der Box nicht
 wieder.
+:::
 
 Um auch die Daten zu löschen, verwende **Löschen…** darunter auf demselben
 Bildschirm. [Sicherung und Löschen](./backup-and-erase) erklärt das, und
@@ -32,11 +34,13 @@ auch, wie eine Sicherung danach alles zurückholt.
 
 ## Neuinstallation: alles löschen und neu anfangen \{#reinstall-wipe-and-start-over}
 
+:::danger[Eine Neuinstallation löscht jede Festplatte]
 Startest du den Installations-Stick erneut, installiert er von Grund auf
 neu. Dabei **löscht er jede Festplatte**, samt deinen Dateien, dem Passwort,
 dem Ersatzschlüssel, der Identität der Box im Mesh und ihren Schlüsseln. Eine
 Option „meine Daten behalten“ gibt es bewusst nicht. Die Box ist eine Kopie,
 und deine andere Kopie ist der Ort, an dem deine Daten sicher sind.
+:::
 
 Nach einer Neuinstallation ist die Box eine neue Box. Führe den Assistenten
 erneut aus, drucke einen neuen Ersatzschlüssel und vertraue dem neuen

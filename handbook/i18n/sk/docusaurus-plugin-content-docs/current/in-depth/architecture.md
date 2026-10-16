@@ -25,8 +25,10 @@ systému bind-mountuje z `/persist` tieto cesty: `/nix`, `/var`, `/etc/ssh`,
 `/etc/keys`, `/etc/nixos`, `/etc/rancher`, dva dátové domovské adresáre a
 `machine-id`.
 
+:::warning[Nezapísaný stav sa pri reštarte stratí]
 **Všetko, čo na tomto zozname nie je, sa reštartom stratí.** Nový stav
 pridajte do `modules/impermanence.nix`.
+:::
 
 ## Riadiaca vrstva {#control-plane}
 
@@ -65,8 +67,10 @@ docs/                    security model, design specs and plans
 handbook/                this handbook (Docusaurus)
 ```
 
+:::note[Skomprimovaná podoba tejto stránky]
 `CLAUDE.md` v repozitári je skomprimovaná podoba tejto stránky a vymenúva
 záludnosti, ktoré hryznú potichu.
+:::
 
 ## Do hĺbky {#in-depth}
 
@@ -417,6 +421,7 @@ lososd krok preskočí a hlási `kept`, keď sa od poslednej aktualizácie
 zmenil iný súbor, takže ručná zmena pushnutá do LosOS Git sa nikdy
 neprepíše. `tests/invariants.nix` krok pripína.
 
+:::warning[Obe cesty prestavby nechajte nečisté]
 **Obe cesty prestavby sú zámerne `--impure`**: `system.autoUpgrade.flags`
 a `rebuild_command` v lososd. Publikovaný strom neobsahuje ani
 `modules/install-target.nix` tohto zariadenia, ani jeho `modules/overrides.nix`,
@@ -427,6 +432,7 @@ jeho disky a režim firmvéru a resetuje každé nastavenie. Pri čistom
 vyhodnotení je `builtins.pathExists` na absolútnej ceste `false`, nie chyba.
 Takže CI, `nix flake check` a inštalátor zostávajú čisté a vidia súbor zo
 stromu alebo predvolené hodnoty. `tests/invariants.nix` príznak pripína.
+:::
 
 `nix.gc` beží o 04:30 s `--delete-older-than 14d` a `boot.nix` obmedzuje
 oba zavádzače na päť generácií. `/nix` *je* `/persist`, ESP má 500 MiB a

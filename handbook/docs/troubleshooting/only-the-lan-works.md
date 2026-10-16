@@ -63,8 +63,10 @@ it.
 
 ## How to tell an outage from a box fault
 
+:::note[No light for the internet]
 The box has no indicator light for "the internet works". What it has is the
 things listed above.
+:::
 
 1. Open the box's address. If the Overview says **answering** and the app
    tiles open, the box and the LAN are fine. If even that does not open,

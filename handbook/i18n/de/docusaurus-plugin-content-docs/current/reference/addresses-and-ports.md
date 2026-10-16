@@ -23,10 +23,12 @@ sidebar_position: 1
 | `/.well-known/nodeinfo`, `/.well-known/webfinger` | Die Föderations-Erkennung von LosOS Git, solange die Föderation an ist und die Festplatte geteilt wird | jeder, auch über eine Edge |
 | `/nextcloud/ocm-provider/`, `/nextcloud/ocm/…` und die anderen Föderationsadressen unter `/nextcloud` | Die Föderation von LosOS cloud, solange die Föderation an ist und die Festplatte geteilt wird; sonst **404** | jeder, auch über eine Edge |
 
+:::note[Was das lokale Netzwerk heißt]
 „Nur das lokale Netzwerk“ heißt: eine Quelladresse in einem privaten Bereich
 (`10.…`, `172.16.…` bis `172.31.…`, `192.168.…`), die weder die eigene
 Adresse der Box noch im Pod-Bereich des Mesh ist. Alles andere, auch Verkehr,
 der durch den Tunnel einer Edge ankommt, bekommt **403**.
+:::
 
 ## Ports \{#ports}
 

@@ -71,11 +71,17 @@ oder die API der Box. Mit der Box spricht das Widget über ein kleines
 
 Der Tab **So funktioniert es** im Editor wiederholt das mit einem Beispiel.
 Seine Vorschau ist der echte Frame, die Kachel zeigt also genau, was die
-Vorschau zeigt. Ein von Hand geschriebenes Widget darf Daten aus dem
-Internet abrufen, etwa für eine Wetterkachel, aber nicht die API der Box
-erreichen. Es läuft in jedem Browser, der die Box öffnet, also lies alles,
-was du aus dem Internet einfügst, bevor du es behältst. Die Grenze liegt bei
-24 Widgets mit je höchstens 12 Dateien und zusammen 128 KiB.
+Vorschau zeigt.
+
+:::warning[Eingefügten Code vor dem Behalten lesen]
+Ein von Hand geschriebenes Widget darf Daten aus dem Internet abrufen, etwa
+für eine Wetterkachel, aber nicht die API der Box erreichen. Es läuft in
+jedem Browser, der die Box öffnet, also lies alles, was du aus dem Internet
+einfügst, bevor du es behältst.
+:::
+
+Die Grenze liegt bei 24 Widgets mit je höchstens 12 Dateien und zusammen
+128 KiB.
 
 
 Unter [Aussehen und Widgets](../manual/look-and-widgets) findest du das Board

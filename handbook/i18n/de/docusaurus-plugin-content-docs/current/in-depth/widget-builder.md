@@ -39,12 +39,14 @@ das es im Widget nicht gibt. Findet sie einen, bekommt das Modell noch eine
 Runde mit dem benannten Fehler, und der Tab sagt das. Das bessere der zwei
 Widgets landet im Editor.
 
+:::tip[Bitte um eine Sache pro Widget]
 Das Modell ist klein. Am besten gelingt ihm eine klare Sache pro Widget: eine
 Uhr, ein Countdown, die Platte als Balken, die Liste der Apps, das Wetter für
 eine Stadt. Bitte um eine Sache in ein, zwei Sätzen. Sieh dir das Ergebnis in
 der Vorschau an, bevor du speicherst; manchmal zeigt ein Widget nichts oder
 den falschen Messwert, und dann hilft ein neuer Bau oder eine kleine Änderung
 von Hand.
+:::
 
 ## Speicher {#memory}
 
@@ -53,9 +55,11 @@ dem, was die Box ohnehin nutzt. Fünf Minuten nach dem letzten Bau gibt es ihn
 wieder frei. Mit 8 GiB Speicher oder mehr ist Platz für beides. Auf einer Box
 mit weniger kann ein Bau aus Speichermangel scheitern, und der Tab sagt das.
 
+:::note[Den Baukasten abschalten]
 **Einstellungen, Erweitert** hat `losos.builder.enable`. Schaltest du es ab,
 lädt und startet die Box das Modell nicht, und der Tab sagt, dass der
 Baukasten aus ist.
+:::
 
 ## Bedingungen von Llama {#llamas-terms}
 

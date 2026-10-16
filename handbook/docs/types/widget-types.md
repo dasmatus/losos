@@ -67,11 +67,15 @@ provides:
 | `losos.asset(name)`         | one of the widget's files as a `data:` URL, for an image set from script      |
 
 The editor's **Help** tab repeats this with an example. Its preview is the
-real frame, so the tile shows exactly what the preview shows. A hand-written
-widget may fetch from the internet, for a weather tile say, but it may not
-reach the box's API. It runs in every browser that opens the box, so read
-anything you paste from the internet before you keep it. The limit is 24
-widgets, each at most 12 files and 128 KiB together.
+real frame, so the tile shows exactly what the preview shows.
+
+:::warning[Read pasted code before you keep it]
+A hand-written widget may fetch from the internet, for a weather tile say,
+but it may not reach the box's API. It runs in every browser that opens the
+box, so read anything you paste from the internet before you keep it.
+:::
+
+The limit is 24 widgets, each at most 12 files and 128 KiB together.
 
 
 See [Look and widgets](../manual/look-and-widgets) for the board itself,

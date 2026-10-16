@@ -46,10 +46,12 @@ Die Box versiegelt außerdem zwei kleinere Geheimnisse im Chip:
 - Den Schlüssel, der das Speicherverzeichnis des Mesh verschlüsselt
   (`modules/fscrypt.nix`).
 
+:::note[Die Wiederherstellungskopie des Schlüssels]
 Eine Kopie des Festplattenschlüssels bleibt außerdem im verschlüsselten
 Volume unter `/etc/keys/persist-keyfile`. `losos-ctl grow` verwendet sie, um
 das Volume zu vergrößern. Von außen kann sie das Volume nicht öffnen, weil
 sie darin liegt.
+:::
 
 ## Worauf eine Box ohne TPM verzichtet \{#what-a-box-without-a-tpm-gives-up}
 
@@ -90,10 +92,12 @@ dass jemand zusieht. Ein an diese Messwerte gebundener Schlüssel würde die
 Box nach einem Update von ihrer eigenen Festplatte aussperren, und die Box
 hat keine Shell, um sich davon zu erholen.
 
-Der Chip gibt den Schlüssel also an alles heraus, was auf diesem Rechner
+:::warning[Ein Dieb mit der ganzen Box]
+Der Chip gibt den Schlüssel an alles heraus, was auf diesem Rechner
 startet, auch an den USB-Stick eines Diebes. Ein TPM macht die Festplatte
 allein unlesbar. Es hilft nicht mehr, sobald jemand die ganze Box hat. Das
 [Sicherheitsmodell](/reference/security-model.md) führt das als bekannte Einschränkung.
+:::
 
 ## Wie man erkennt, in welchem Modus eine Box läuft \{#how-to-tell-which-mode-a-box-is-in}
 
@@ -120,11 +124,13 @@ ist eine Neuinstallation.
    den Chip und verwendet ihn. `losos-ctl install --tpm` macht einen
    fehlenden Chip zu einem Fehler statt zu einer stillen Keyfile-Installation.
 
+:::warning[Den swtpm-Zustand beim Image aufbewahren]
 Eine VM braucht einen emulierten Chip bei der Installation und bei jedem
 späteren Start. Die swtpm-Zeilen stehen unter
 [Installation im Detail](/in-depth/install.md#try-it-in-a-vm-bios). Bewahre das
 swtpm-Zustandsverzeichnis zusammen mit dem Festplatten-Image auf, sonst kann
 die VM ihre Festplatte nicht entsperren.
+:::
 
 Der Keyfile-Modus ist in Ordnung für eine VM, eine Testbox oder eine Box,
 die nichts Privates enthält. Für echte Dateien eines Besitzers auf einer

@@ -43,9 +43,11 @@ What that line does, and does not do:
 - macOS asks for your account password once. The keychain asks for it, not
   the script. Windows shows its own "install this root certificate?" dialog.
 
+:::note[The certificate on a phone]
 Phones have no terminal. On a phone, download `losos-ca.crt` from the same
 page and add it as a trusted certificate in the phone's settings. You can do
 the same by hand on a computer.
+:::
 
 Then restart the browser and reopen the page at `https://<name>.local` or
 `https://<address>`. You can also skip this step and come back to it later.
@@ -67,11 +69,13 @@ reason. It continues on its own.
 
 <img src={require("../img/wizard-step2-waiting.png").default} alt="Step 2 while LosOS cloud is still installing itself: the page says what it is waiting for and continues on its own." width="520" />
 
+:::warning[The spare key is shown once]
 When the password is set, the page shows the **spare admin key** once: 64
 characters, with **Copy** and **Print** buttons. Print it or write it down and
 keep it away from the box. It covers the one situation the password cannot:
 LosOS cloud not running. The page cannot show it again. See
 [Sign-in and the spare key](../manual/sign-in-and-spare-key).
+:::
 
 <img src={require("../img/wizard-step2-spare-key.png").default} alt="Step 2 after the password is set: the sign-in name, and the spare admin key shown once with Copy and Print." width="520" />
 

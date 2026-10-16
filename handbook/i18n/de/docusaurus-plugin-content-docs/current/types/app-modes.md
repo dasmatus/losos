@@ -52,6 +52,8 @@ Mitternacht würde deine eigenen Dateien also vom Netz nehmen.
 | Admin-Seiten | `/`                 | Nur im LAN.                                                                               |
 | Handbuch     | `/handbook/`        | Nur im LAN.                                                                               |
 
+:::note[App-Kacheln gehen über index.php]
 Die App-Kacheln der Admin-Seiten öffnen die Apps von LosOS cloud über
 `index.php` (`/nextcloud/index.php/apps/<app>/`), worauf jede Konfiguration
 antwortet.
+:::

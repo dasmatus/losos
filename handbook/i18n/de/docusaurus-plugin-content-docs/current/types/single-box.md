@@ -49,5 +49,7 @@ an, weil die Box sie selbst holt, und der Weg der Updates braucht keine Edge.
 | Hardware     | Grafik                      | aus, außer die Box hat eine GPU, die Pods nutzen sollen |
 | Sicherheit   | die vier zusätzlichen Schutzmaßnahmen | aus; jede kostet etwas                  |
 
+:::tip[Wechsel zur nächsten Art]
 Schalte **Auch von außerhalb erreichbar** ein, während eine Edge erreichbar ist, und
 die Box wird zur nächsten Art. Neu installiert wird dabei nichts.
+:::

@@ -47,5 +47,7 @@ itself, and the update path needs no edge.
 | Hardware     | Graphics                    | off unless the box has a GPU you want pods to use |
 | Security     | the four extra protections  | off; each one costs something                     |
 
+:::tip[Moving to the next type]
 Switch **Reachable from outside** on while an edge is in reach, and the box
 becomes the next type. Nothing is reinstalled.
+:::

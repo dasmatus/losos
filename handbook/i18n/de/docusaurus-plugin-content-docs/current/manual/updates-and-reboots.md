@@ -45,10 +45,12 @@ wie die Box sie hat: `modules/overrides.nix` mit deinen Einstellungen und
 Firmware-Modus und dem Entsperrmodus. Der Neuaufbau baut dann diesen Commit,
 und genauso jedes Anwenden danach.
 
+:::note[Eigene Änderungen stoppen Updates]
 Hast du eine andere Datei im Repository der Box geändert, zum Beispiel
 indem du aus einem Klon einen Commit nach LosOS Git gepusht hast, behält die
 Box deine Änderung und aktualisiert sich nicht. Der Bereich Historie sagt
 das. Setze diese Dateien zurück, um dem Projekt wieder zu folgen.
+:::
 
 Drei Nix-Einstellungen steuern das, und der Bereich Erweitert zeigt sie:
 
@@ -62,8 +64,10 @@ Eine Firma kann die Adresse auf ihren eigenen Fork zeigen lassen. Das
 Repository muss ohne Passwort lesbar sein. Schaltest du die erste aus, baut
 sich die Box nur noch aus der Version neu auf, die sie hat.
 
+:::note[Kein Internet um 03:00]
 Eine Box, die um 03:00 kein Internet hat, baut die Version neu, die sie hat,
 und versucht es in der nächsten Nacht erneut.
+:::
 
 ## Wenn die Box aus ist \{#when-the-box-is-off}
 

@@ -53,12 +53,14 @@ prevádzkovateľ ho môže nahradiť cez `--vm-catalogue`. Obsahuje Ubuntu Serve
 CentOS Stream 10, Arch Linux, openSUSE Tumbleweed, Alpine Linux a FreeBSD,
 každý z adresy vlastného projektu.
 
+:::note[Nie nainštalované zariadenie]
 **Obraz LosOS je ukážkový disk, nie zariadenie.** Je to ten istý
 `losos-disk-qcow2`, ktorý vydanie zverejňuje, bez šifrovania disku a bez
 bezstavového koreňa (pozri `flake/disk-images.nix`). Štartuje cez UEFI a
 potrebuje 4 GiB pamäte, pretože spúšťa dva klastre a LosOS cloud. Úloha vydania
 ho zverejní ako `ghcr.io/<owner>/<repo>-demo-containerdisk:<tag>` a posunie
 jeho značku `stable`, na ktorú sa katalóg odvoláva.
+:::
 
 **Väčšina zoznamu Quickemu v ponuke nie je.** Tieto systémy existujú len ako
 inštalačné ISO a ich inštalácia potrebuje konzolu v prehliadači, ktorú stránka
@@ -145,10 +147,12 @@ a disky replík sú v `losos.edge.vms.hostPath` (predvolene `/home/shared/vms`),
 teda v domovskom priečinku zdieľaného používateľa a vnútri zdieľanej dátovej
 domény.
 
+:::warning[Stroje ignorujú výpočtové okno]
 Stroje bežia nepretržite. Uzlový agent KubeVirt aj importéry CDI tolerujú
 taint výpočtového okna, pretože stroj kúpený na mesiac sa nemôže každé ráno
 zastaviť. Ponúknite len toľko replík, koľko zariadenie unesie popri vlastnej
 práci.
+:::
 
 ### Vnorená virtualizácia {#nested-virtualisation}
 

@@ -51,6 +51,8 @@ polnoc by tak odpojil vaše vlastné súbory.
 | Admin stránky | `/`                | Iba LAN.                                                                                  |
 | Príručka     | `/handbook/`        | Iba LAN.                                                                                  |
 
+:::note[Dlaždice aplikácií idú cez index.php]
 Dlaždice aplikácií na admin stránkach otvárajú aplikácie LosOS cloud cez
 `index.php` (`/nextcloud/index.php/apps/<app>/`), na ktorý odpovedá každá
 konfigurácia.
+:::

@@ -20,8 +20,10 @@ musíte ešte raz.
 
 ![Nastavenia, Reset: Vrátiť všetky nastavenia, s tým, čo zmizne a čo zostane.](@site/docs/img/settings-reset-sk.png)
 
+:::note[Čo reset ponechá]
 Reset nezmení heslo vlastníka ani náhradný kľúč a znova neotvorí okno na
 prevzatie zariadenia.
+:::
 
 Ak chcete zmazať aj dáta, použite **Vymazať…** pod ním na tej istej
 obrazovke. [Záloha a vymazanie](./backup-and-erase) ho vysvetľuje spolu
@@ -29,11 +31,13 @@ s tým, ako záloha potom všetko vráti.
 
 ## Preinštalovanie: zmazať a začať odznova \{#reinstall-wipe-and-start-over}
 
+:::danger[Preinštalovanie zmaže každý disk]
 Keď znova spustíte zariadenie z USB kľúča, nainštaluje sa od
 začiatku. Inštalácia **zmaže každý disk** vrátane vašich súborov, hesla,
 náhradného kľúča, identity zariadenia v mesh a jeho kľúčov. Možnosť
 „ponechať moje dáta“ zámerne neexistuje. Zariadenie je jedna kópia a vaše
 dáta sú v bezpečí tam, kde máte druhú.
+:::
 
 Po preinštalovaní je zariadenie nové zariadenie. Znova prejdite
 sprievodcom, vytlačte nový náhradný kľúč a dôverujte novému certifikátu. Ak

@@ -54,8 +54,10 @@ markierten Eintrag, und Escape schließt die Liste. Dateien und Repositorys
 öffnen sich in ihrer eigenen App, und Strg+Enter oder Cmd+Enter öffnet einen
 Eintrag in einem neuen Tab.
 
+:::note[Die Dateisuche braucht dein Passwort]
 Die Dateisuche braucht eine Anmeldung mit deinem Passwort, nicht mit dem
 Ersatzschlüssel. Bis dahin sagt die Liste das anstelle der Dateien.
+:::
 
 Damit du in deinen Dateien in LosOS cloud suchen kannst, führt die Box einen
 Index ihres Texts. Sie prüft alle zwei Minuten auf neue und geänderte Dateien
@@ -99,12 +101,14 @@ anmeldest, dieselben Einträge zeigt.
 
 ![Die Liste der angehefteten Einträge, mit dem Tab Dateien auf dem Ordner Documents von LosOS cloud geöffnet.](@site/docs/img/pins-dialog-de.png)
 
+:::note[Wie die Box deine Dateien auflistet]
 Die Box listet deine Dateien mit einem App-Passwort auf, das sie bei LosOS
 cloud anfordert, wenn du dich mit deinem Passwort anmeldest. Bis du das
 einmal getan hast, bittet dich der Tab **Dateien** darum. Das App-Passwort
 erscheint in den Sicherheitseinstellungen von LosOS cloud als „LosOS admin
 page“, und wenn du es dort widerrufst, endet die Auflistung bis zu deiner
 nächsten Anmeldung. Die Seitenleiste fasst 24 angeheftete Einträge.
+:::
 
 ## Die Tour \{#the-tour}
 

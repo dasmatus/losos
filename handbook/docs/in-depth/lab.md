@@ -127,10 +127,12 @@ Each build is about 16 MB of WebAssembly, 3.4 MB with brotli for WebGPU and
 canvas is drawn. The page's content security policy needs no change,
 because `'wasm-unsafe-eval'` already lets the browser compile the core.
 
+:::tip[Pick the canvas yourself]
 To pick a canvas, add `?canvas=svg`, `?canvas=webgpu` or `?canvas=webgl2` to
 the address. The local storage key `losos-lab-canvas` takes the same values
 and keeps the choice in that browser. The engine badge in the top bar names
 the canvas in its tooltip.
+:::
 
 ## Guests under libvirt
 
@@ -265,6 +267,7 @@ client on its own, through its demo page.
 
 ### Security
 
+:::warning[Avoid the system instance on your PC]
 Whoever holds a relayed socket has libvirt with the helper's rights.
 libvirt identifies a socket's peer by its user id, so it sees the helper and
 never the page, and polkit asks about the helper too. With
@@ -273,6 +276,7 @@ create a domain that attaches any host file or disk, and the relay cannot
 refuse such a domain without parsing libvirt's protocol. Prefer
 `qemu:///session` on your own PC: then the worst case is your own user's
 files. The Lab's guests need nothing from the system instance.
+:::
 
 The helper therefore admits the relay socket only with a ticket, and a
 ticket costs the same as starting a guest: the bearer token when the helper

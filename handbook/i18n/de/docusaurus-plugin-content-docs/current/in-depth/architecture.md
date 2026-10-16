@@ -25,8 +25,10 @@ bindet diese Pfade per Bind-Mount aus `/persist` ein: `/nix`, `/var`,
 `/etc/ssh`, `/etc/keys`, `/etc/nixos`, `/etc/rancher`, die beiden
 Daten-Home-Verzeichnisse und `machine-id`.
 
+:::warning[Nicht gelisteter Zustand geht beim Neustart verloren]
 **Alles, was nicht auf dieser Liste steht, geht beim Neustart verloren.**
 Neuen Zustand trägst du in `modules/impermanence.nix` ein.
+:::
 
 ## Steuerungsebene {#control-plane}
 
@@ -65,8 +67,10 @@ docs/                    security model, design specs and plans
 handbook/                this handbook (Docusaurus)
 ```
 
+:::note[Die komprimierte Fassung dieser Seite]
 `CLAUDE.md` im Repository ist die komprimierte Fassung dieser Seite und
 listet die Fallstricke, die lautlos zubeißen.
+:::
 
 ## Im Detail {#in-depth}
 
@@ -448,6 +452,7 @@ seit dem letzten Update eine andere Datei geändert wurde, sodass eine von
 Hand nach LosOS Git gepushte Änderung nie überschrieben wird.
 `tests/invariants.nix` pinnt den Schritt.
 
+:::warning[Beide Rebuild-Pfade impure lassen]
 **Beide Rebuild-Pfade sind absichtlich `--impure`**:
 `system.autoUpgrade.flags` und `rebuild_command` von lososd. Der
 veröffentlichte Baum enthält weder `modules/install-target.nix` dieser Box
@@ -460,6 +465,7 @@ Auswertung ist `builtins.pathExists` auf einem absoluten Pfad `false`, kein
 Fehler. So bleiben CI, `nix flake check` und der Installer rein und sehen
 die Datei aus dem Baum oder die Standardwerte. `tests/invariants.nix` legt
 das Flag fest.
+:::
 
 `nix.gc` läuft um 04:30 mit `--delete-older-than 14d`, und `boot.nix`
 begrenzt beide Bootloader auf fünf Generationen. `/nix` *ist* `/persist`,

@@ -54,6 +54,8 @@ Dateinamen des Widgets. Strg+Leertaste fragt überall nach Vorschlägen.
 
 ![Der Widget-Editor: links die Dateien und ihr Code, rechts die Live-Vorschau im echten Sandbox-Rahmen, und der Tab mit Hilfe.](@site/docs/img/widget-write-one-de.png)
 
+:::warning[Lies eingefügten Code zuerst]
 Ein von Hand geschriebenes Widget läuft in jedem Browser, der die Box
 öffnet. Lies alles, was du aus dem Internet einfügst, bevor du es behältst,
 wie es auch der Hinweis über dem Editor sagt.
+:::

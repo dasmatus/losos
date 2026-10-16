@@ -12,11 +12,13 @@ Táto kapitola počíta s najhorším prípadom, s ktorým sa ešte dá pracova�
 internet, žiadny edge, žiadny shell. Každá stránka je usporiadaná podľa
 toho, čo vidíte, a každá začína krokmi, ktoré fungujú len zo samotnej LAN.
 
+:::note[Keď chýba iba svet zvonku]
 Ak sa vlastné stránky zariadenia otvárajú a chýba iba svet zvonku, chyba nie
 je v zariadení. Stránka [Funguje iba lokálna sieť](/troubleshooting/only-the-lan-works.md)
 vymenúva príčiny, napríklad linku poskytovateľa, pripojenie routera do
 internetu alebo edge. Uvádza aj to, čo stále funguje, čo počká a prečo
 potom nemusíte nič znova nastavovať.
+:::
 
 ## Prvých päť minút \{#the-first-five-minutes}
 

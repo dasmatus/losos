@@ -31,8 +31,10 @@ vezme celé zariadenie aj s čipom, ho stále dokáže naštartovať.
 
 ![Dôkaz z inštalácie vo virtuálnom stroji s emulovaným TPM: šifrovaný zväzok má v slote kľúča 1 token systemd-tpm2 a súbor s kľúčom zostáva iba na šifrovanom zväzku.](@site/docs/img/install-done-tpm.png)
 
+:::note[Pri štarte žiadne heslo]
 Zariadenie si pri štarte nikdy nepýta heslo. Ak sa na heslo pýta to vaše, niečo
 nie je v poriadku. Pozrite si [Zaseknuté na výzve na heslo](../troubleshooting/stuck-at-passphrase).
+:::
 
 ## UEFI alebo BIOS \{#uefi-or-bios}
 

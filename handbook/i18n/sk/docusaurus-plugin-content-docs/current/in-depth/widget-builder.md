@@ -35,11 +35,13 @@ malý model robí najčastejšie, napríklad skript, ktorý hľadá prvok, aký
 widget nemá. Keď nejakú nájde, model dostane ešte jedno kolo s pomenovanou
 chybou a karta to oznámi. Do editora sa dostane lepší z dvoch widgetov.
 
+:::tip[Žiadajte jednu vec na widget]
 Model je malý. Najlepšie zvláda jednu jasnú vec na widget: hodiny,
 odpočítavanie, disk ako pruh, zoznam aplikácií, počasie pre jedno mesto.
 Požiadajte o jednu vec vetou či dvoma. Pred uložením sa na výsledok pozrite v
 náhľade; niekedy widget neukáže nič alebo ukáže nesprávnu hodnotu, a vtedy
 pomôže nová tvorba alebo malá ručná úprava.
+:::
 
 ## Pamäť {#memory}
 
@@ -48,8 +50,10 @@ používa tak či tak. Uvoľní ju päť minút po poslednej tvorbe. S 8 GiB pam
 alebo viac je miesto pre oboje. Na zariadení s menšou pamäťou môže tvorba
 zlyhať pre nedostatok pamäte a karta to oznámi.
 
+:::note[Vypnutie tvorcu]
 **Nastavenia, Pokročilé** majú `losos.builder.enable`. Keď ho vypnete,
 zariadenie model nesťahuje ani nespúšťa a karta oznámi, že tvorca je vypnutý.
+:::
 
 ## Podmienky Llamy {#llamas-terms}
 

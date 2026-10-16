@@ -12,11 +12,13 @@ the same local network as the box, and that is all you have.** No internet,
 no edge, no shell. Each page is organised by what you see, and each starts
 with the steps that work from the LAN alone.
 
+:::note[When only the outside is missing]
 If the box's own pages open and only the outside is missing, the box is not
 at fault. [Only the local network works](./only-the-lan-works.md) lists the
 causes, such as the provider's line, the router's uplink or the edge. It
 also says what still works, what waits, and why you have nothing to
 reconfigure afterwards.
+:::
 
 ## The first five minutes
 

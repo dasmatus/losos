@@ -23,9 +23,11 @@ Each box runs two Kubernetes instances:
 | Server              | this box                    | the edge VPS                     |
 | Needs the network   | no                          | yes                              |
 
+:::warning[Keep the two clusters separate]
 A Kubernetes agent cannot start while its server is unreachable, and the box
 reboots every night. If your own services ran in the mesh cluster, an edge
 outage over midnight would take them offline. Keep them separate.
+:::
 
 ## Sharing compute
 
@@ -37,9 +39,11 @@ The box takes mesh work only when both are true:
 
 Idleness can close the window early. It cannot open it outside the window.
 
+:::note[Unknown counts as busy]
 Anything unknown counts as busy: no idleness report, a stale report, or an
 edge that just restarted. The edge evaluates the window in the appliance's
 time zone.
+:::
 
 ## Finding the edge
 
@@ -83,6 +87,7 @@ box's spare storage and compute. A company's own edge wears the warning, and
 that is not a fault. See [Master proxy, Official
 edges](master-proxy.md#official-edges).
 
+:::note[Try it on virtual machines]
 `demo/edge-lan/run.sh` boots two boxes and an edge on one virtual network and
 walks through exactly this in the order of the verification checklist
 (`demo/edge-lan/CHECKLIST.md`). First with no edge anywhere: nothing found,
@@ -90,6 +95,7 @@ sharing refused, local use intact, a reboot changes nothing. Then with the
 edge on: found on both boxes within a scan, allowed, edge gone, refused,
 back. `demo/edge-lan/record.sh` records the same walk from the boxes' admin
 UI.
+:::
 
 ## Sharing storage
 

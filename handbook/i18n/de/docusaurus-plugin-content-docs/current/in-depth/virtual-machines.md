@@ -54,6 +54,7 @@ Ubuntu Server 26.04 und 24.04, Debian 13 und 12, Fedora 43 Cloud, AlmaLinux 10,
 Rocky Linux 10, CentOS Stream 10, Arch Linux, openSUSE Tumbleweed, Alpine Linux
 und FreeBSD, jeweils von der Download-Adresse des eigenen Projekts.
 
+:::note[Nicht die installierte Appliance]
 **Das LosOS-Image ist die Demo-Festplatte, nicht die Appliance.** Es ist
 dasselbe `losos-disk-qcow2`, das das Release veröffentlicht, ohne
 Festplattenverschlüsselung und ohne zustandslose Wurzel (siehe
@@ -62,6 +63,7 @@ Arbeitsspeicher, weil es zwei Cluster und LosOS Cloud betreibt. Der
 Release-Job veröffentlicht es als
 `ghcr.io/<owner>/<repo>-demo-containerdisk:<tag>` und verschiebt den Tag
 `stable`, auf den sich der Katalog bezieht.
+:::
 
 **Der Großteil der Quickemu-Liste wird nicht angeboten.** Diese Systeme gibt
 es nur als Installations-ISO, und eine Installation braucht eine Konsole im
@@ -155,10 +157,12 @@ Festplatten der Replikate liegen unter `losos.edge.vms.hostPath` (standardmäßi
 `/home/shared/vms`), im Home des geteilten Benutzers und damit in der
 geteilten Datendomäne.
 
+:::warning[Maschinen ignorieren das Rechenfenster]
 Maschinen laufen rund um die Uhr. Der Node-Agent von KubeVirt und die
 Importer von CDI tolerieren den Taint des Rechenfensters, weil eine für einen
 Monat gekaufte Maschine nicht jeden Morgen anhalten kann. Biete nur so viele
 Replikate an, wie die Box neben ihrer eigenen Arbeit tragen kann.
+:::
 
 ### Verschachtelte Virtualisierung {#nested-virtualisation}
 

@@ -41,10 +41,12 @@ The script adds one certificate to your user's browser stores and prints its
 fingerprint. Compare it with `http://<address>/setup/state.json`. Then
 **restart the browser** and open `https://<name>.local`.
 
+:::note[Adding the certificate by hand]
 To do it by hand, download `http://<address>/setup/losos-ca.crt` and add it
 as a trusted certificate authority. On macOS that is Keychain Access. On
 Windows it is `certmgr.msc` → Trusted Root Certification Authorities. Firefox
 has its own certificate settings, and a phone has its security settings.
+:::
 
 ## Still warning after installing
 

@@ -28,11 +28,13 @@ eingebaute Festplatte im Rechner.**
   Installation. Danach zeigt der Bildschirm ein Banner mit der Adresse der
   Box, und die Box braucht keins von beiden.
 
+:::tip[Entscheide jetzt über den Terminal-Client]
 Wenn du die Box später mit `losos` aus einem Terminal verwalten willst,
 entscheide das jetzt. Die Box vertraut nur einem GPG-Schlüssel, der auf dem
 Stick war, von dem sie installiert wurde, und der Release-Stick enthält
 keinen. [Der Terminal-Client](/manual/terminal.md) zeigt, wie du einen Stick
 mit deinem Schlüssel darauf baust.
+:::
 
 ## Schritte \{#steps}
 
@@ -118,5 +120,7 @@ dieselbe Festplatte neu baut.
 5. Öffne `http://localhost:8080` auf dem Host. quickemu leitet Port 8080 an
    Port 80 der Box weiter und 8443 an 443.
 
+:::note[quickemu braucht KVM]
 quickemu braucht Hardware-Virtualisierung, unter Linux also KVM, und
 startet auf einem Host ohne sie nicht.
+:::

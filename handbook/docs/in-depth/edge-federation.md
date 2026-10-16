@@ -60,10 +60,12 @@ the hub never holds a box's token. Hostname authority stays where it was: the
 hub operator chose the zone; the spoke chooses labels inside it; anything
 else is refused per box and the spoke logs it.
 
+:::note[Why boxes do not register with the hub]
 Why not let a spoke's boxes register with the hub directly? Because then the
 hub operator lists every box in the world, which is the thing a local
 gateway exists to avoid. One tenant row per site is the whole cost of a
 site on the official edge.
+:::
 
 ## Spoke side: the uplink
 
@@ -240,10 +242,12 @@ plans it again from the bindings and never loads it. The box's name in the
 edge's zone, `<label>.<zone>`, goes the same way as its domains, so the
 CNAME target reaches it too.
 
+:::note[The gateway's copy is for reading]
 The local edge gets its own rows back in the `/relay` answer. The gateway
 writes them to `/var/lib/losos-registrar/hub-routes.json` and logs each
 change. That file only tells you what the official edge routes your way.
 Nothing on the local edge routes by it.
+:::
 
 ### Turning it on
 

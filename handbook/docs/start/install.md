@@ -24,11 +24,13 @@ own. **It wipes every fixed disk in the machine.**
 - A screen and keyboard for the machine, for the install only. After that the
   screen shows a banner with the box's address, and the box needs neither.
 
+:::tip[Decide on the terminal client now]
 If you want to manage the box from a terminal later with `losos`, decide
 now. The box only trusts a GPG key that was on the stick it was installed
 from, and the release stick carries none.
 [The terminal client](../manual/terminal.md) shows how to build a stick
 with your key on it.
+:::
 
 ## Steps
 
@@ -104,5 +106,7 @@ cluster and rebuilds itself every night onto the same disk.
 5. Open `http://localhost:8080` on the host. quickemu forwards port 8080 to the
    box's port 80 and 8443 to 443.
 
+:::note[quickemu needs KVM]
 quickemu needs hardware virtualisation, which is KVM on Linux, and refuses to
 start on a host without it.
+:::

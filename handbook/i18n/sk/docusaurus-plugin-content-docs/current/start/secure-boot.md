@@ -43,6 +43,7 @@ akomkoľvek inom štarte cez BIOS.
 
 ![Prvá obrazovka inštalátora na podpísanom USB kľúči: Secure Boot je zapnutý, firmvér overil podpis tohto média.](@site/docs/img/installer-menu.png)
 
+:::warning[Nainštalované zariadenie potrebuje Secure Boot vypnutý]
 Čo pokryté **nie je**, je nainštalovaný systém. Zariadenie štartuje cez
 systemd-boot zo svojho vlastného disku. Podpísaný nie je ani tento zavádzač,
 ani jadrá, ktoré inštalujú jeho nočné prestavby, takže samotné zariadenie
@@ -53,6 +54,7 @@ vypnite. Alebo ho nechajte vypnutý celý čas a namiesto toho overte
 stiahnutý súbor ručne, ako je opísané nižšie. Podpisovanie zavádzacieho
 reťazca nainštalovaného systému by pri každej prestavbe potrebovalo
 podpisový kľúč na zariadení. To je samostatný návrh a do tohto nepatrí.
+:::
 
 ## Ako firmvéru povoliť dôverovať LosOS \{#letting-your-firmware-trust-losos}
 
@@ -92,10 +94,12 @@ v momente, keď tieto certifikáty zmiznú z `db`:
   Na stolnom počítači so samostatnou grafickou kartou môže ich strata
   znamenať úplne čiernu obrazovku, a to aj v nastaveniach firmvéru.
 
-Preto sa vyhnite voľbám *Delete all keys*, *Clear Secure Boot keys* a *Reset
+:::warning[Nemažte zoznam kľúčov]
+Vyhnite sa voľbám *Delete all keys*, *Clear Secure Boot keys* a *Reset
 to Setup Mode*, pokiaľ ďalším krokom nie je *Restore factory keys*. Ak váš
 firmvér dokáže pridať kľúč iba po ich vymazaní, najprv obnovte továrenské
 kľúče a až potom pridajte certifikát LosOS.
+:::
 
 Z bežiaceho Linuxu v režime *Setup* pridáte certifikát príkazom
 `efi-updatevar -a -c losos-secure-boot-db.pem db` z balíka efitools.
@@ -113,11 +117,13 @@ odmietne:
 
 Zápis certifikátu je jednorazová zmena daného počítača.
 
+:::note[Shim podpísaný Microsoftom zatiaľ nie je]
 Zavádzač LosOS podpisuje LosOS, nie Microsoft. USB kľúč, ktorý by
 naštartoval na bežnom počítači bez zapísaného certifikátu, by potreboval
 shim, ktorý Microsoft podpísal pre LosOS, po verejnej revízii shimu
 a podpisovom procese Microsoftu. Tým LosOS neprešiel. Dovtedy si každý
 počítač certifikát LosOS raz zapíše.
+:::
 
 ## Ručné overenie stiahnutého súboru \{#verifying-a-download-by-hand}
 

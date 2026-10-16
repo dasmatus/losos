@@ -51,7 +51,9 @@ for suggestions anywhere.
 
 ![The widget editor: the files and their code on the left, the live preview in the real sandboxed frame on the right, and the Help tab.](../img/widget-write-one.png)
 
+:::warning[Read pasted code first]
 A hand-written widget runs in every browser that opens the box. Read
 anything you paste from the internet before you keep it, as the note above
 the editor says.
+:::
 

@@ -138,9 +138,11 @@ Domain hinzu:
    stimmen, wird die Domain **Aktiv**, die Edge holt ein Zertifikat für sie,
    und LosOS cloud antwortet unter `https://<your domain>/nextcloud`.
 
+:::note[Eine Domain, vor der nichts steht]
 Eine Domain, vor der nichts steht, etwa `novak-family.eu` selbst, kann keinen
 CNAME tragen. Verwende stattdessen die A- und AAAA-Adressen, die der Bereich
 auflistet.
+:::
 
 Eine Box kann bis zu fünf Domains haben, und eine Domain gehört immer nur zu
 einer Box. Entfernst du sie im Bereich, hört die Edge beim nächsten Durchlauf

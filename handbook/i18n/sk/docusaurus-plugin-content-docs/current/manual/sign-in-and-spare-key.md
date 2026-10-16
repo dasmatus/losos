@@ -25,9 +25,11 @@ stále.
 
 ![Nesprávne heslo: dialóg hovorí, že heslo nebolo prijaté, a zostane otvorený.](@site/docs/img/unlock-refused-sk.png)
 
+:::note[Nesprávne pokusy zablokujú počítač]
 Karta zostane odomknutá, kým ju nezatvoríte. Po desiatich nesprávnych
 pokusoch z jedného počítača zariadenie tento počítač zablokuje. Blokovanie
 začína na jednej sekunde a zdvojnásobuje sa až do piatich minút.
+:::
 
 ## Náhradný správcovský kľúč \{#the-spare-admin-key}
 
@@ -41,10 +43,12 @@ správcovský kľúč**.
 
 ![Dialóg na odomknutie, keď LosOS cloud nebeží: heslo nemá kto overiť, preto dialóg ponúka náhradný správcovský kľúč.](@site/docs/img/unlock-dialog-cloud-down-sk.png)
 
+:::warning[Náhradný kľúč držte ďalej od zariadenia]
 Vytlačený list držte ďalej od zariadenia. Ktokoľvek s kľúčom môže zmeniť
 každé nastavenie, čo sa rovná rootovi. Zariadenie kľúč nedokáže ukázať znova
 ani ho vymeniť, pretože nemá shell. Ak stratíte heslo *aj* náhradný kľúč,
 musíte zariadenie preinštalovať z USB kľúča, čo zmaže disk.
+:::
 
 ![Dialóg na odomknutie, ktorý si pýta náhradný správcovský kľúč so 64 znakmi.](@site/docs/img/unlock-spare-key-sk.png)
 
