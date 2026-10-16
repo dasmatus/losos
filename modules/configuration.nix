@@ -43,6 +43,24 @@
       addresses = true;
       workstation = true;
     };
+    # `_losos._tcp` on the front vhost's port says what this machine is, so
+    # a computer on the LAN can list the boxes by browsing one service type
+    # (LosOS Desktop does) instead of asking every workstation for
+    # /setup/state.json. The release tag is there for a client to show; the
+    # name is the box's own, which is also its `.local` name.
+    extraServiceFiles.losos = ''
+      <?xml version="1.0" standalone='no'?>
+      <!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+      <service-group>
+        <name replace-wildcards="yes">%h</name>
+        <service>
+          <type>_losos._tcp</type>
+          <port>80</port>
+          <txt-record>txtvers=1</txt-record>
+          <txt-record>version=${import ../nix/version.nix}</txt-record>
+        </service>
+      </service-group>
+    '';
   };
 
   time.timeZone = "Europe/Berlin";
