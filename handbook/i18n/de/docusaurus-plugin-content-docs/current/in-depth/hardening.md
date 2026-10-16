@@ -18,8 +18,10 @@ mdx:
 - dbus-broker
 - systemd-Sandboxing für `nginx`, `avahi-daemon` und `lososd`
 
+:::note[Warum das Modul sie selbst setzt]
 NixOS hat sein Hardened-Profil in 26.05 entfernt, und `linux_hardened` gibt
 es nicht mehr, deshalb setzt `modules/hardening.nix` diese Werte direkt.
+:::
 
 ## Optional {#opt-in}
 
@@ -34,9 +36,11 @@ losos.hardening.nosmt    = true;   # disable SMT; about half the cores
 losos.hardening.usbguard = true;   # block USB devices not present at boot
 ```
 
+:::note[Was hardened_malloc nicht erreicht]
 `hardened_malloc` arbeitet per Preloading und erreicht deshalb weder k3s,
 rke2 noch containerd, die statische Go-Binaries sind, und auch nichts
 innerhalb eines Pods.
+:::
 
 ## Bewusst weggelassen {#left-out-on-purpose}
 

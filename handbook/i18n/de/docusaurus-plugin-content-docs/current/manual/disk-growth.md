@@ -38,10 +38,12 @@ Kommandozeile der Box, und die gibt es nur auf dem Installationsmedium:
 pvcreate /dev/sdX && vgextend persist-vg /dev/sdX && losos-ctl grow
 ```
 
+:::danger[Eine Neuinstallation löscht alles]
 Das ist eine Aufgabe für die Person, die die Box wartet, keine Schaltfläche
 für Besitzer. Für die meisten ist eine vollständige Neuinstallation mit der
 neuen Festplatte im Rechner einfacher. Sichere vorher, denn der Installer
 löscht alles.
+:::
 
 ## Wenn der Platz ausgeht \{#running-out-of-room}
 

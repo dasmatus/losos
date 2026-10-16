@@ -49,10 +49,12 @@ Was diese Zeile tut und was nicht:
   Schlüsselbund, nicht das Skript. Windows zeigt einen eigenen Dialog
   „Dieses Stammzertifikat installieren?“.
 
+:::note[Das Zertifikat auf dem Handy]
 Handys haben kein Terminal. Lade auf einem Handy `losos-ca.crt` von derselben
 Seite herunter und füge es in den Einstellungen des Handys als
 vertrauenswürdiges Zertifikat hinzu. Auf einem Rechner kannst du dasselbe
 von Hand machen.
+:::
 
 Starte dann den Browser neu und öffne die Seite erneut unter
 `https://<name>.local` oder `https://<address>`. Du kannst diesen Schritt
@@ -76,6 +78,7 @@ selbst weiter.
 
 <img src={require("@site/docs/img/wizard-step2-waiting-de.png").default} alt="Schritt 2, während LosOS cloud sich noch installiert: Die Seite sagt, worauf sie wartet, und macht von selbst weiter." width="520" />
 
+:::warning[Der Ersatzschlüssel erscheint nur einmal]
 Sobald das Passwort gesetzt ist, zeigt die Seite einmal den
 **Ersatz-Admin-Schlüssel**: 64 Zeichen, mit den Schaltflächen **Schlüssel
 kopieren** und **Drucken**. Druck ihn aus oder schreib ihn auf und bewahre
@@ -83,6 +86,7 @@ ihn getrennt von der Box auf. Er deckt den einen Fall ab, den das Passwort
 nicht abdeckt: LosOS cloud läuft nicht. Die Seite kann ihn nicht noch einmal
 anzeigen. Siehe
 [Anmeldung und der Ersatzschlüssel](../manual/sign-in-and-spare-key).
+:::
 
 <img src={require("@site/docs/img/wizard-step2-spare-key-de.png").default} alt="Schritt 2 nach dem Setzen des Passworts: der Anmeldename und der einmal angezeigte Ersatz-Admin-Schlüssel mit Schlüssel kopieren und Drucken." width="520" />
 

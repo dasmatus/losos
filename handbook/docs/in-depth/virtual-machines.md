@@ -53,12 +53,14 @@ Server 26.04 and 24.04, Debian 13 and 12, Fedora 43 Cloud, AlmaLinux 10, Rocky
 Linux 10, CentOS Stream 10, Arch Linux, openSUSE Tumbleweed, Alpine Linux and
 FreeBSD, each from its project's own download address.
 
+:::note[Not the installed appliance]
 **The LosOS image is the demo disk, not the appliance.** It is the same
 `losos-disk-qcow2` the release publishes, with no disk encryption and no
 stateless root (see `flake/disk-images.nix`). It boots with UEFI and asks for
 4 GiB of memory, since it runs two clusters and LosOS cloud. The release job
 pushes it as `ghcr.io/<owner>/<repo>-demo-containerdisk:<tag>` and moves its
 `stable` tag, which the catalogue names.
+:::
 
 **Most of Quickemu's list is not offered.** Those systems ship installer ISOs
 only, and installing one needs a console in the browser, which the page does
@@ -141,10 +143,12 @@ and the edge lets it list machines. On such a box the `kvm-intel`, `kvm-amd`,
 under `losos.edge.vms.hostPath` (`/home/shared/vms` by default), in the shared
 user's home and so inside the shared data domain.
 
+:::warning[Machines ignore the compute window]
 Machines run around the clock. KubeVirt's node agent and CDI's importers
 tolerate the compute-window taint, because a machine bought for a month cannot
 stop each morning. Offer only as many replicas as the box can carry next to
 its own work.
+:::
 
 ### Nested virtualisation
 

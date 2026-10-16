@@ -54,9 +54,11 @@ bežia, kým sa súbory nevrátia. AWS si sprístupnenie účtuje a triedy Glaci
 majú aj minimálnu dobu uloženia, takže záloha upratovaná skôr sa za ňu aj
 tak zaplatí.
 
+:::warning[Žiadne pravidlo životného cyklu na buckete]
 Triedu vyberte tu, nie pravidlom životného cyklu na buckete. Pravidlo pre
 celý bucket presunie do Glacier aj index a potom sa žiadna záloha nedá
 vypísať ani otvoriť, kým ho AWS nesprístupní.
+:::
 
 ## Kód obnovy \{#the-recovery-code}
 
@@ -96,9 +98,11 @@ Potom sa prihláste heslom, ktoré ste mali, keď záloha vznikla. Nesprávny k�
 skončí chybou „the recovery code does not open this backup“ a na zariadení
 sa nič nezmení.
 
+:::tip[Obnova na novom zariadení]
 Na zariadení, ktoré bolo vymazané alebo nanovo nainštalované, najprv
 prejdite sprievodcom, potom v časti Záloha nastavte ten istý bucket a obnovte
 zálohu odtiaľ.
+:::
 
 ## Vymazanie zariadenia \{#erasing-the-box}
 
@@ -124,10 +128,12 @@ Zariadenie postupne:
 
 ![Odpočítavanie s tlačidlom Zrušiť vymazanie.](@site/docs/img/settings-erase-countdown-sk.png)
 
+:::danger[Od kroku 3 niet cesty späť]
 Od kroku 3 sa vymazanie zastaviť nedá. Krok, ktorý edge nepotvrdí,
 zariadenie zaznamená a vo vymazaní pokračuje. Po reštarte Nastavenia →
 Reset ukážu, čo posledné vymazanie uvoľnilo, ako počty, a povedia, kedy edge
 niektorý krok nepotvrdil.
+:::
 
 Zálohy, ktoré už sú v buckete, tam zostanú. Vymazanie sa bucketu nikdy
 nedotkne.

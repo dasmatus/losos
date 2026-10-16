@@ -43,10 +43,12 @@ has them: `modules/overrides.nix`, which holds your settings, and
 and the unlock mode. The rebuild then builds that commit, and so does every
 Apply after it.
 
+:::note[Your own changes stop updates]
 If you changed any other file in the box's repository, for example by
 pushing a commit to LosOS Git from a clone, the box keeps your change and
 does not update. The History pane says so. Put those files back to follow
 the project again.
+:::
 
 Three Nix settings control this, and the Advanced pane shows them:
 
@@ -60,8 +62,10 @@ A company can point the address at its own fork. The repository must be
 readable without a password. Turn the first one off and the box rebuilds
 only from the version it has.
 
+:::note[No internet at 03:00]
 A box with no internet at 03:00 rebuilds the version it has and tries
 again the next night.
+:::
 
 ## When the box is off
 

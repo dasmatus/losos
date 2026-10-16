@@ -52,8 +52,10 @@ kdekoľvek mimo textového poľa. Nájde:
 zoznam zavrie. Súbory a repozitáre sa otvárajú vo vlastnej aplikácii a
 Ctrl+Enter alebo Cmd+Enter otvorí položku na novej karte.
 
+:::note[Vyhľadávanie súborov potrebuje heslo]
 Vyhľadávanie súborov potrebuje jedno prihlásenie heslom, nie náhradným
 kľúčom. Dovtedy to zoznam napíše tam, kde by boli súbory.
+:::
 
 Aby mohlo hľadať vnútri vašich súborov v LosOS cloud, zariadenie si vedie
 index ich textu. Každé dve minúty skontroluje nové a zmenené súbory a číta
@@ -93,11 +95,13 @@ prihlásite, ukazuje tie isté pripnuté položky.
 
 ![Zoznam pripnutých položiek s kartou Súbory otvorenou na priečinku Documents v LosOS cloud.](@site/docs/img/pins-dialog-sk.png)
 
+:::note[Ako zariadenie vypisuje vaše súbory]
 Zariadenie vypisuje vaše súbory s heslom aplikácie, o ktoré požiada LosOS
 cloud, keď sa prihlásite heslom. Kým to raz neurobíte, karta **Súbory** vás
 o to požiada. Heslo aplikácie sa v nastaveniach zabezpečenia LosOS cloud
 zobrazí ako „LosOS admin page“ a keď ho tam zrušíte, výpis sa zastaví až do
 vášho ďalšieho prihlásenia. Bočný panel pojme 24 pripnutých položiek.
+:::
 
 ## Prehliadka \{#the-tour}
 

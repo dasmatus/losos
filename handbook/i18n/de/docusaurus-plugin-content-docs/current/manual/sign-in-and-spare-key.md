@@ -27,9 +27,11 @@ weiterhin.
 
 ![Ein falsches Passwort: Der Dialog sagt, dass das Passwort nicht akzeptiert wurde, und bleibt offen.](@site/docs/img/unlock-refused-de.png)
 
+:::note[Falsche Versuche sperren einen Rechner aus]
 Der Tab bleibt entsperrt, bis du ihn schließt. Nach zehn falschen Versuchen
 von einem Rechner sperrt die Box diesen Rechner aus. Die Sperre beginnt bei
 einer Sekunde und verdoppelt sich bis zu fünf Minuten.
+:::
 
 ## Der Ersatz-Admin-Schlüssel \{#the-spare-admin-key}
 
@@ -44,11 +46,13 @@ das Passwort prüfen. Der Dialog zum Entsperren sagt das dann und bietet
 
 ![Der Dialog zum Entsperren, während LosOS cloud nicht läuft: Nichts kann das Passwort prüfen, also bietet der Dialog den Ersatz-Admin-Schlüssel an.](@site/docs/img/unlock-dialog-cloud-down-de.png)
 
+:::warning[Ersatzschlüssel nicht bei der Box aufbewahren]
 Bewahre das gedruckte Blatt nicht bei der Box auf. Wer den Schlüssel hat,
 kann jede Einstellung ändern, und das kommt root gleich. Die Box kann den
 Schlüssel weder noch einmal anzeigen noch austauschen, weil sie keine Shell
 hat. Verlierst du das Passwort *und* den Ersatzschlüssel, musst du vom Stick
 neu installieren, und das löscht die Festplatte.
+:::
 
 ![Der Dialog zum Entsperren fragt nach dem Ersatz-Admin-Schlüssel mit 64 Zeichen.](@site/docs/img/unlock-spare-key-de.png)
 

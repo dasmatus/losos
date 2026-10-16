@@ -13,12 +13,14 @@ nicht.** Kein Internet, keine Edge, keine Shell. Jede Seite ist danach
 geordnet, was du siehst, und beginnt mit den Schritten, die allein aus dem
 LAN funktionieren.
 
+:::note[Wenn nur die Verbindung nach außen fehlt]
 Wenn die eigenen Seiten der Box aufgehen und nur die Verbindung nach außen
 fehlt, liegt der Fehler nicht bei der Box. [Nur das lokale Netzwerk
 funktioniert](/troubleshooting/only-the-lan-works.md) nennt die möglichen
 Ursachen, etwa die Leitung des Anbieters, den Uplink des Routers oder die
 Edge. Dort steht auch, was weiter funktioniert, was wartet und warum du
 danach nichts neu einrichten musst.
+:::
 
 ## Die ersten fünf Minuten \{#the-first-five-minutes}
 

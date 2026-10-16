@@ -28,8 +28,10 @@ There are two causes. Pull requests #65 and #66 fixed both on 6 October
 - The app itself is not installed or is disabled in LosOS cloud. Open LosOS
   cloud → Apps and enable it.
 
+:::tip[Until the update lands]
 Until the update lands, open LosOS cloud from the **Files** tile or at
 `/nextcloud`, and use its own app menu. Its links work.
+:::
 
 ## "Access through untrusted domain"
 

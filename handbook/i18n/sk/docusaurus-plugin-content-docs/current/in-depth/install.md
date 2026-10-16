@@ -89,8 +89,10 @@ nenájde displej včas, inštalátor vypíše to isté na tty1 ako text.
 - Vo VM mu dajte TPM (swtpm, pozri nižšie), inak sa nainštaluje v režime so
   súborom s kľúčom.
 
+:::note[Prečo ext4 a nie btrfs]
 `/persist` je ext4 s funkciou `encrypt`, pretože ju fscrypt potrebuje a btrfs
 ju nepodporuje. Prichádzate o kompresiu a kontrolné súčty dát.
+:::
 
 Po reštarte obrazovka ukazuje lososa, kým zariadenie štartuje. Keď je
 hotové, losos sa presunie hore a panel pod ním ukáže IP adresu zariadenia a
@@ -118,6 +120,7 @@ mohli porovnať s tým na stránke. Telefóny dostanú namiesto toho obyčajné
 stiahnutie. Ručná cesta zostáva pod tým: stiahnite `losos-ca.crt` a pridajte
 ho sami ako dôveryhodnú autoritu.
 
+:::tip[Nech zariadenie nájde Chrome]
 Ak je strašidelnou časťou čítanie obrazovky a písanie adresy, otvorte radšej
 [losos-edge.dasmat.us/find](https://losos-edge.dasmat.us/find) v Chrome a
 stlačte **Find my box** (Nájsť moje zariadenie). Chrome sa raz opýta, či stránka smie
@@ -129,12 +132,17 @@ obsahuje jeho meno a odtlačok certifikátu a nič viac, a nič o vašej sieti
 neopustí váš počítač. Zariadenie dovolí čítať tento dokument iba tejto jednej stránke
 (`losos.setup.finderOrigins`). Firefox a Safari také povolenie nemajú a
 dostanú namiesto toho návod s písaním adresy.
+:::
 
 ## Vyskúšajte to vo VM (BIOS) {#try-it-in-a-vm-bios}
 
+:::warning[Rovnaký stav TPM pri každom štarte]
 Pre cestu s TPM potrebuje VM emulovaný čip pri inštalácii *aj* pri každom
 štarte, s tým istým adresárom stavu, inak nainštalovaný systém nenájde kľúč,
-ktorý zapečatil. So swtpm:
+ktorý zapečatil.
+:::
+
+So swtpm:
 
 ```sh
 mkdir -p tpm

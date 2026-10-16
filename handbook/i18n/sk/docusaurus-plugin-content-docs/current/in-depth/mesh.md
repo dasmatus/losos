@@ -24,9 +24,11 @@ Každé zariadenie beží s dvoma inštanciami Kubernetes:
 | Server              | toto zariadenie             | edge VPS                         |
 | Potrebuje sieť      | nie                         | áno                              |
 
+:::warning[Držte dva klastre oddelene]
 Agent Kubernetes nemôže naštartovať, kým je jeho server nedostupný, a zariadenie sa
 každú noc reštartuje. Keby vaše vlastné služby bežali v mesh klastri,
 výpadok edge cez polnoc by ich odstavil. Držte ich oddelene.
+:::
 
 ## Zdieľanie výpočtového výkonu {#sharing-compute}
 
@@ -38,9 +40,11 @@ Zariadenie prijíma prácu z mesh iba vtedy, keď platí oboje:
 
 Nečinnosť môže okno zavrieť skôr. Mimo okna ho otvoriť nemôže.
 
+:::note[Neznáme sa počíta ako zaneprázdnené]
 Všetko neznáme sa počíta ako zaneprázdnené: chýbajúce hlásenie o nečinnosti,
 zastarané hlásenie alebo edge, ktorý sa práve reštartoval. Edge vyhodnocuje
 okno v časovom pásme zariadenia.
+:::
 
 ## Hľadanie edge {#finding-the-edge}
 
@@ -86,6 +90,7 @@ pre toto zariadenie urobiť nemôže: nakupovať na markete a predávať voľné
 nie je to chyba. Pozri [Master proxy, oficiálne
 edge](/in-depth/master-proxy.md#official-edges).
 
+:::note[Vyskúšajte to na virtuálnych strojoch]
 `demo/edge-lan/run.sh` nabootuje dve zariadenia a jeden edge v jednej virtuálnej
 sieti a prejde presne týmto v poradí overovacieho kontrolného zoznamu
 (`demo/edge-lan/CHECKLIST.md`). Najprv bez edge kdekoľvek: nič sa nenašlo,
@@ -93,6 +98,7 @@ zdieľanie odmietnuté, lokálne používanie nedotknuté, reštart nič nezmen�
 Potom so zapnutým edge: nájdený na oboch zariadeniach v rámci jedného skenovania,
 povolené, edge preč, odmietnuté, späť. `demo/edge-lan/record.sh` nahrá ten
 istý priebeh z admin UI zariadení.
+:::
 
 ## Zdieľanie úložiska {#sharing-storage}
 

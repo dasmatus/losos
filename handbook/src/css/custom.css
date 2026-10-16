@@ -776,28 +776,29 @@ article {
   margin-bottom: 0;
 }
 
-/* Admonitions: the SPA's Alert in its four tones (default, ok, warn, crit):
- * the icon carries the tone, the text stays ink. */
+/* Admonitions: the SPA's Alert in its tones, with a rail on the left so a
+ * skimming reader finds them. The icon, the rail and the title carry the
+ * tone; the body text stays ink. Note and info share the accent, tip is ok,
+ * warning is warn, danger is crit. */
 .theme-admonition {
   --tone: var(--accent);
-  border: 1px solid rgb(from var(--tone) r g b / 0.25);
-  border-left-width: 1px;
+  border: 1px solid rgb(from var(--tone) r g b / 0.22);
+  border-left: 3px solid var(--tone);
   border-radius: var(--control-radius);
-  background: rgb(from var(--tone) r g b / 0.08);
+  background: rgb(from var(--tone) r g b / 0.07);
   color: var(--ink);
   box-shadow: none;
-  padding: 12px 14px;
+  padding: 12px 16px 12px 14px;
   font-size: 13.5px;
   margin-bottom: 1.25rem;
 }
 .theme-admonition.alert--success { --tone: var(--ok); }
 .theme-admonition.alert--warning { --tone: var(--warn); }
 .theme-admonition.alert--danger { --tone: var(--crit); }
-.theme-admonition.alert--secondary { --tone: var(--muted); }
 .theme-admonition [class*='admonitionHeading'] {
-  color: var(--ink);
+  color: var(--tone);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   text-transform: none;
   letter-spacing: 0;
   margin-bottom: 4px;
@@ -808,7 +809,9 @@ article {
 .theme-admonition [class*='admonitionContent'] {
   color: var(--ink);
 }
-.theme-admonition [class*='admonitionContent'] p:last-child {
+.theme-admonition [class*='admonitionContent'] p:last-child,
+.theme-admonition [class*='admonitionContent'] > ul:last-child,
+.theme-admonition [class*='admonitionContent'] > ol:last-child {
   margin-bottom: 0;
 }
 .theme-admonition a {

@@ -42,9 +42,12 @@ rathole nutzt seinen Noise-Transport. Die Edge erzeugt beim ersten Booten ein
 Schlüsselpaar. Jede Appliance holt sich beim ersten Start den öffentlichen
 Schlüssel vom Registrar und legt ihn unter `losos.proxy.noisePublicKeyFile`
 ab. Willst du den Schlüssel auf einem separaten Weg festlegen, leg die
-Datei vorher dort ab; die Appliance überschreibt sie nie. Wird eine der beiden
-Schlüsseloptionen auf `null` gesetzt, fällt die Verbindung auf reines TCP
-zurück. Tu das nicht.
+Datei vorher dort ab; die Appliance überschreibt sie nie.
+
+:::warning[Lass den Tunnel verschlüsselt]
+Wird eine der beiden Schlüsseloptionen auf `null` gesetzt, fällt die
+Verbindung auf reines TCP zurück. Tu das nicht.
+:::
 
 ## Die Admin-Oberfläche bleibt im LAN {#admin-ui-stays-lan-only}
 
@@ -86,14 +89,16 @@ Bündeln über mehrere Boxen hinweg ist jedoch das Mesh, und die Control Plane
 des Mesh (rke2-Server, Longhorn, der Registrar) läuft auf dem Edge-Rechner.
 Eine Edge auf einem PC im LAN ist also das, was einen Offline-Standort zum
 Laufen bringt. Das WAN kann abgezogen werden, denn die Boxen finden sie
-ausschließlich per mDNS. Derzeit gibt es zwei Einschränkungen:
+ausschließlich per mDNS.
 
+:::note[Derzeit zwei Einschränkungen]
 - Die Registrierungsadresse des Tunnels (`losos.proxy.registrarUrl`) ist
   eine Build-Option, die standardmäßig noch auf die öffentliche Edge zeigt.
   Ein Standort, an dem der Tunnel auf der eigenen Edge enden soll, setzt sie
   in seinem eigenen Flake.
 - Die Ankündigung läuft über mDNS, daher müssen Edge und Boxen eine
   Broadcast-Domäne teilen (ein VLAN).
+:::
 
 `demo/edge-lan/run.sh` baut diese ganze Anordnung auf einem Rechner als VMs
 an einem virtuellen Switch auf: die Edge, die zugleich der Router des LAN
@@ -207,9 +212,11 @@ ns1.boxes.losos.dasmat.us.  A   203.0.113.7
 ns1.boxes.losos.dasmat.us.  AAAA 2001:db8::7
 ```
 
+:::note[Nur mit Identitätszertifikat]
 Nichts wird vergeben, bevor die Edge ein nicht abgelaufenes
 Identitätszertifikat besitzt ([Offizielle Edges](#official-edges)). Bis dahin
 besteht die Zone nur aus SOA, NS und Glue, und `/domains/*` antwortet mit 503.
+:::
 
 ### Eigene Domains {#custom-domains}
 
@@ -254,10 +261,12 @@ diese Routen selbst, in `relay-routes.json` neben seiner Registry.
 [Edge-Föderation](/in-depth/edge-federation.md#custom-domains-behind-a-local-edge)
 enthält die Details und `losos.edge.dns.relayRoutes`.
 
+:::note[Wie das getestet wird]
 `tests/edge-dns.nix` (`losos-edge-dns`) bootet eine Edge und einen Client und
 fragt Knot über UDP und TCP ab. `backend-registrar/tests/domains.rs` spielt
 den Anspruchsablauf gegen einen echten Registrar und einen nachgebildeten
 DNS-over-HTTPS-Server durch.
+:::
 
 ## Demo-Betrieb auf Vercel {#demo-deployment-on-vercel}
 

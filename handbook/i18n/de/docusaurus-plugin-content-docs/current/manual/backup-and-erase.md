@@ -56,10 +56,12 @@ weiter, bis die Dateien zurück sind. AWS berechnet die Bereitstellung, und
 Glacier-Klassen haben außerdem eine Mindestspeicherdauer, sodass eine früh
 aufgeräumte Sicherung trotzdem für diese Dauer berechnet wird.
 
+:::warning[Keine Lifecycle-Regel auf dem Bucket]
 Wähle die Klasse hier und nicht mit einer Lifecycle-Regel auf dem Bucket.
 Eine Regel für den ganzen Bucket verschiebt auch den Index nach Glacier, und
 dann lässt sich keine Sicherung mehr auflisten oder öffnen, bis AWS sie
 bereitstellt.
+:::
 
 ## Der Wiederherstellungscode \{#the-recovery-code}
 
@@ -102,9 +104,11 @@ Melde dich danach mit dem Passwort an, das du beim Erstellen der Sicherung
 hattest. Ein falscher Code schlägt mit „the recovery code does not open
 this backup“ fehl, und auf der Box ändert sich nichts.
 
+:::tip[Wiederherstellen auf einer neuen Box]
 Auf einer gelöschten oder neu installierten Box führst du zuerst den
 Assistenten aus, richtest dann unter Sicherung denselben Bucket ein und
 stellst von dort wieder her.
+:::
 
 ## Die Box löschen \{#erasing-the-box}
 
@@ -131,11 +135,13 @@ Der Reihe nach tut die Box Folgendes:
 
 ![Der Countdown mit Löschen abbrechen.](@site/docs/img/settings-erase-countdown-de.png)
 
+:::danger[Ab Schritt 3 kein Zurück]
 Ab Schritt 3 lässt sich das Löschen nicht mehr aufhalten. Einen Schritt, den
 die Edge nicht bestätigt, vermerkt die Box, und das Löschen geht weiter.
 Nach dem Neustart zeigt Einstellungen → Zurücksetzen als Zahlen, was das
 letzte Löschen aufgegeben hat, und sagt, wenn die Edge einen Schritt nicht
 bestätigt hat.
+:::
 
 Sicherungen, die schon im Bucket liegen, bleiben dort. Das Löschen rührt den
 Bucket nie an.

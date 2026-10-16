@@ -54,9 +54,11 @@ WebP, GIF alebo SVG, do 8 MiB). Posuvník **Závoj** kladie farbu
 stránky cez obrázok, od 20 % do 90 %, aby text zostal čitateľný vo svetlej
 aj tmavej téme. *Bez obrázka* obrázok opäť odstráni.
 
+:::note[Prečo obrázok nepotrebuje token]
 Nahraný obrázok servíruje lososd na `/api/look/background` bez tokenu, lebo
 CSS `background-image` ho poslať nevie. Cesta je za tou istou ochranou „len
 LAN“ ako zvyšok administrátorských stránok a tapeta nie je tajomstvo.
+:::
 
 ### Ručne písané widgety {#widgets-written-by-hand}
 
@@ -152,9 +154,11 @@ Nové heslo musí mať aspoň 12 znakov s malým písmenom, veľkým písmenom,
 ukazuje štyri pravidlá, každé s fajkou. Heslo nastavené pred zavedením tohto
 pravidla sa stále prihlási.
 
+:::warning[Stratené heslo aj náhradný kľúč]
 Token sa na zariadení nedá vymeniť, pretože nemá shell. Strata hesla *aj*
 náhradného kľúča znamená preinštalovanie z inštalačného média, ktoré vymaže
 disk.
+:::
 
 ## Nastavenia {#settings}
 
@@ -327,10 +331,12 @@ Päť nastavení Forgejo sú kľúče `app.ini`, ktoré Správa stránky vo Forg
 ukazuje bez možnosti zmeny. Oba režimy čítajú jednu množinu atribútov,
 `lososInternal.forgejoSite`.
 
+:::note[Čo zostáva v aplikáciách]
 Všetko, čo si nastaví účet sám pre seba, zostáva v aplikácii, a tak aj
 nastavenia správy, ktoré LosOS zatiaľ nepokrýva: doručovanie pošty, úlohy na
 pozadí, vynútenie dvojfaktorového overenia, nastavenia Forgejo uložené v
 databáze a zoznamy účtov.
+:::
 
 ## Záloha, obnova a vymazanie {#backup-restore-and-erase}
 
@@ -394,11 +400,13 @@ fázach uložených v `state.json`, takže pokračuje aj bez otvorenej karty:
    journal a metadáta fscrypt. Vyprázdni oba dátové domovy. Značka ide
    posledná, takže prerušené mazanie sa spustí znova.
 
+:::danger[Zrušiť sa dajú iba prvé dva kroky]
 Zrušiť sa dá iba v krokoch 1 a 2. `/nix`, `/etc/nixos` a kľúčový súbor
 disku zostanú, takže LosOS je stále nainštalovaný a zariadenie otvorí
 sprievodcu nastavením. `/var/lib/losos-erase/report.json` uchováva, čoho sa
 vymazanie vzdalo mimo zariadenia, ako počty, a Nastavenia, Reset to ukazuje.
 `tests/erase.nix` prebehne celý cyklus voči bucketu MinIO v jednej VM.
+:::
 
 ## Používatelia {#users}
 

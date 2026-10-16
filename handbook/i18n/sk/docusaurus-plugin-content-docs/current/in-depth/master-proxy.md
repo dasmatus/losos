@@ -39,8 +39,12 @@ rathole používa svoj transport Noise. Edge si pri prvom štarte vygeneruje pá
 kľúčov. Každé zariadenie si pri prvom spustení stiahne verejný kľúč z
 registrara a uloží ho do `losos.proxy.noisePublicKeyFile`. Ak chcete kľúč
 pripnúť mimo tohto kanála, vložte súbor na to miesto vopred; zariadenie ho
-nikdy neprepíše. Nastavenie ktorejkoľvek z dvoch kľúčových volieb na `null`
+nikdy neprepíše.
+
+:::warning[Nechajte tunel šifrovaný]
+Nastavenie ktorejkoľvek z dvoch kľúčových volieb na `null`
 prepne späť na obyčajné TCP. Nerobte to.
+:::
 
 ## Administrátorské UI zostáva len v LAN {#admin-ui-stays-lan-only}
 
@@ -79,13 +83,15 @@ bez akéhokoľvek edge (`losos-ctl grow`, režim Local). Spájanie naprieč
 zariadeniami je však mesh a riadiaca vrstva meshu (server rke2, Longhorn,
 registrar) beží na stroji s edge. Edge na PC v LAN je teda to, vďaka čomu
 funguje lokalita offline. WAN môžete odpojiť, keďže zariadenia ho hľadajú výlučne
-cez mDNS. Dnes platia dve obmedzenia:
+cez mDNS.
 
+:::note[Dnes platia dve obmedzenia]
 - Adresa tunela na registráciu (`losos.proxy.registrarUrl`) je voľba
   zostavenia, ktorá predvolene stále ukazuje na verejný edge. Lokalita, ktorá
   chce, aby tunel končil na jej vlastnom edge, ju nastaví vo svojom flaku.
 - Ohlásenie ide cez mDNS, takže edge a zariadenia musia zdieľať jednu broadcastovú
   doménu (jednu VLAN).
+:::
 
 `demo/edge-lan/run.sh` postaví celé toto usporiadanie na jednom stroji ako
 VM na virtuálnom prepínači: edge, ktorý je zároveň routerom LAN, a dve zariadenia
@@ -189,9 +195,11 @@ ns1.boxes.losos.dasmat.us.  A   203.0.113.7
 ns1.boxes.losos.dasmat.us.  AAAA 2001:db8::7
 ```
 
+:::note[Iba s certifikátom identity]
 Nič sa neprideľuje, kým edge nemá neexpirovaný certifikát identity
 ([Oficiálne edge](#official-edges)). Dovtedy zónu tvoria iba SOA, NS a
 glue a `/domains/*` odpovedá 503.
+:::
 
 ### Vlastné domény {#custom-domains}
 
@@ -233,9 +241,11 @@ vedľa svojho registra. [Federácia
 edge](/in-depth/edge-federation.md#custom-domains-behind-a-local-edge) obsahuje
 podrobnosti a `losos.edge.dns.relayRoutes`.
 
+:::note[Ako sa to testuje]
 `tests/edge-dns.nix` (`losos-edge-dns`) spustí edge a klienta a pýta sa
 Knotu cez UDP aj TCP. `backend-registrar/tests/domains.rs` prevedie tok
 nárokov proti skutočnému registraru a falošnému serveru DNS-over-HTTPS.
+:::
 
 ## Demo nasadenie na Verceli {#demo-deployment-on-vercel}
 

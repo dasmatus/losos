@@ -102,9 +102,11 @@ eine Anzeige findet, gibt der Installer dasselbe als Text auf tty1 aus.
 - Gib einer VM ein TPM (swtpm, siehe unten), sonst installiert sie im
   Schlüsseldatei-Modus.
 
+:::note[Warum ext4 und nicht btrfs]
 `/persist` ist ext4 mit dem Feature `encrypt`, weil fscrypt es braucht und
 btrfs es nicht unterstützt. Du verzichtest auf Kompression und
 Prüfsummen der Daten.
+:::
 
 Nach dem Neustart zeigt der Bildschirm den Lachs, während die Box startet.
 Sobald sie läuft, wandert der Lachs nach oben, und ein Feld darunter zeigt
@@ -136,6 +138,7 @@ vergleichen kannst. Smartphones bekommen stattdessen den einfachen Download.
 Der manuelle Weg bleibt darunter: Lade `losos-ca.crt` herunter und füge
 es selbst als vertrauenswürdige Zertifizierungsstelle hinzu.
 
+:::tip[Lass Chrome die Box finden]
 Wenn das Ablesen eines Bildschirms und das Eintippen einer Adresse der
 abschreckende Teil ist, öffne stattdessen
 [losos-edge.dasmat.us/find](https://losos-edge.dasmat.us/find) in Chrome und
@@ -149,12 +152,17 @@ ihres Zertifikats enthält und sonst nichts, und nichts über dein Netzwerk
 verlässt deinen Rechner. Die Box lässt nur diese eine Seite das Dokument lesen
 (`losos.setup.finderOrigins`). Firefox und Safari haben keine solche
 Berechtigung und bekommen stattdessen die Anleitung mit eingetippter Adresse.
+:::
 
 ## In einer VM ausprobieren (BIOS) {#try-it-in-a-vm-bios}
 
+:::warning[Derselbe TPM-Zustand bei jedem Start]
 Für den TPM-Weg braucht die VM einen emulierten Chip bei der Installation
 *und* bei jedem Start, mit demselben Zustandsverzeichnis, sonst findet das
-installierte System den Schlüssel nicht, den es versiegelt hat. Mit swtpm:
+installierte System den Schlüssel nicht, den es versiegelt hat.
+:::
+
+Mit swtpm:
 
 ```sh
 mkdir -p tpm

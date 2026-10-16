@@ -49,10 +49,12 @@ pripojí sa znova samo.
 
 ## Stále nič \{#still-nothing}
 
+:::tip[Načítajte stránku mimo cache]
 Ak banner ukazuje adresu a `http://<address>/api/health` odpovedá, ale
 správcovské stránky sa nenačítajú, prehliadač môže mať v cache stránku
 spred aktualizácie. Načítajte ju znova cez Ctrl+Shift+R, čím cache
 obídete, alebo otvorte súkromné okno.
+:::
 
 Ak banner ukazuje adresu a na nej neodpovedá vôbec nič, nefunguje webový
 server zariadenia, nginx, a opraví ho nočný reštart. Ak nefunguje ani

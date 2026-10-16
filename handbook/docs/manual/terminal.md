@@ -23,10 +23,12 @@ got into the admin pages could add their own key and then make a token for
 it. So the terminal client needs a little planning: the stick you install
 from has to carry your key.
 
+:::warning[The release stick carries no key]
 The stick from the release page carries no key. A box installed from it
 works in every other way, and its Access tokens pane says that no key was
 seeded and makes no tokens. The only way to give that box a key is to
 install it again from a stick that carries one, and installing wipes it.
+:::
 
 You need a GPG key with an encryption subkey, because the box encrypts its
 answers to it. `gpg --full-generate-key` makes one by default. A key the
@@ -69,8 +71,10 @@ The ISO lands in `result/iso/`. Write it to the stick and
 tokens pane lists your key under **Seeded GPG keys**. Two keys work too:
 list both, as in `[ key (builtins.readFile ./other.asc) ]`.
 
+:::note[Self-built sticks are not signed]
 A stick you build yourself is not signed, so turn Secure Boot off in the
 firmware to boot it.
+:::
 
 ## Make a token
 
@@ -139,8 +143,10 @@ searches the panes, `?` lists the rest and `q` quits. A change stays a
 draft until you press `a` to apply it, and the box asks before it rebuilds,
 as the admin pages do.
 
+:::note[What stays in the admin pages]
 Access tokens, the market, the Lab and anything that wipes data stay in
 the admin pages.
+:::
 
 ## Use LosOS cloud and LosOS Git from this computer
 

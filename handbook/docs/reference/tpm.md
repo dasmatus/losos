@@ -39,9 +39,11 @@ The box seals two smaller secrets to the chip as well:
   password (`modules/keyring.nix`, through `systemd-creds`).
 - The key that encrypts the mesh's storage directory (`modules/fscrypt.nix`).
 
+:::note[The recovery copy of the key]
 A copy of the disk key also stays inside the encrypted volume at
 `/etc/keys/persist-keyfile`. `losos-ctl grow` uses it to resize the volume.
 It cannot open the volume from outside, because it is inside it.
+:::
 
 ## What a box without a TPM gives up
 
@@ -77,10 +79,12 @@ box updates its bootloader and kernel every night with nobody watching. A key
 bound to those measurements would lock the box out of its own disk after an
 update, and the box has no shell to recover from that.
 
-So the chip hands the key to anything booted on that machine, including a
+:::warning[A thief with the whole box]
+The chip hands the key to anything booted on that machine, including a
 thief's USB stick. A TPM keeps the disk on its own unreadable. It does not
 help once someone has the whole box. The [security model](security-model.md)
 lists this as a known limitation.
+:::
 
 ## How to tell which mode a box is in
 
@@ -104,9 +108,11 @@ collide with the installer's. The way to a TPM is a reinstall.
    and uses it. `losos-ctl install --tpm` makes a missing chip an error
    instead of a quiet keyfile install.
 
+:::warning[Keep the swtpm state with the image]
 A VM needs an emulated chip at install time and at every boot after it. The
 swtpm lines are in [Install in depth](/in-depth/install.md#try-it-in-a-vm-bios). Keep the swtpm
 state directory with the disk image, or the VM cannot unlock its disk.
+:::
 
 Keyfile mode is fine for a VM, a test box, or a box that holds nothing
 private. For an owner's real files on a box that could ever leave the house,

@@ -67,7 +67,9 @@ node tests/handbook-screens.mjs /tmp/handbook-screens          # every shot
 node tests/handbook-screens.mjs /tmp/handbook-screens mesh     # names containing "mesh"
 ```
 
+:::note[Wenn Playwright kein Chromium hat]
 Setz `LOSOS_CHROMIUM` auf ein Chromium-Binary, wenn das von Playwright fehlt.
+:::
 
 Schreib Alt-Texte, die sagen, was das Bild zeigt, nicht was die Seite sagt.
 
@@ -80,7 +82,9 @@ und übersetze die Kopie. Eine Seite ohne Übersetzung erscheint auf Englisch
 innerhalb der übersetzten Oberfläche, du kannst also eine Seite nach der
 anderen übersetzen.
 
+:::tip[Halte die drei Sprachen im Gleichschritt]
 Jede Seite ist vollständig übersetzt. Ändere alle drei Sprachen zusammen.
+:::
 
 ```sh
 npm run write-translations -- --locale sk   # refresh the string files

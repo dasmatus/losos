@@ -50,6 +50,8 @@ a mená vlastných súborov widgetu. Ctrl+Medzerník ponúkne návrhy kdekoľvek
 
 ![Editor widgetov: súbory a ich kód vľavo, živý náhľad v skutočnom sandboxovanom rámci vpravo a karta Ako to funguje.](@site/docs/img/widget-write-one-sk.png)
 
+:::warning[Vložený kód si najprv prečítajte]
 Ručne písaný widget beží v každom prehliadači, ktorý zariadenie otvorí.
 Všetko, čo vložíte z internetu, si pred uložením prečítajte, ako hovorí aj
 poznámka nad editorom.
+:::

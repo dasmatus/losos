@@ -45,6 +45,7 @@ bei jedem anderen BIOS-Start.
 
 ![Der erste Bildschirm des Installers auf einem signierten Stick: Secure Boot eingeschaltet, die Firmware hat die Signatur dieses Mediums geprüft.](@site/docs/img/installer-menu.png)
 
+:::warning[Die installierte Box braucht Secure Boot aus]
 **Nicht** abgedeckt ist das installierte System. Die Box startet mit
 systemd-boot von ihrer eigenen Festplatte. Weder dieser Bootloader noch die
 Kernel, die ihre nächtlichen Neubauten installieren, sind signiert, also
@@ -56,6 +57,7 @@ es die ganze Zeit aus und prüfe stattdessen den Download von Hand, wie unten
 beschrieben. Die Bootkette des installierten Systems zu signieren, würde
 einen Signaturschlüssel auf der Box für jeden Neubau erfordern. Das ist ein
 eigener Entwurf und nicht Teil dieses.
+:::
 
 ## Die Firmware LosOS vertrauen lassen \{#letting-your-firmware-trust-losos}
 
@@ -95,11 +97,13 @@ starten nicht mehr, sobald diese Zertifikate aus der `db` verschwinden:
   ROMs. Auf einem Desktop mit eigener Grafikkarte kann ihr Verlust bedeuten,
   dass du überhaupt kein Bild bekommst, auch nicht im Setup der Firmware.
 
-Meide also *Delete all keys*, *Clear Secure Boot keys* und *Reset to Setup
+:::warning[Die Schlüsselliste nicht leeren]
+Meide *Delete all keys*, *Clear Secure Boot keys* und *Reset to Setup
 Mode*, außer der nächste Schritt ist *Restore factory keys*. Wenn deine
 Firmware einen Schlüssel nur hinzufügen kann, nachdem sie alle gelöscht hat,
 stell zuerst die Werksschlüssel wieder her und füge dann das
 LosOS-Zertifikat hinzu.
+:::
 
 Aus einem laufenden Linux im Modus *Setup* fügt `efi-updatevar -a -c
 losos-secure-boot-db.pem db` aus efitools das Zertifikat hinzu. Gib sbctl
@@ -117,12 +121,14 @@ wird abgelehnt:
 
 Das Eintragen ist eine einmalige Änderung an diesem Rechner.
 
+:::note[Noch kein von Microsoft signierter shim]
 Der LosOS-Bootloader ist von LosOS signiert, nicht von Microsoft. Ein Stick,
 der auf einem PC im Auslieferungszustand ohne eingetragenes Zertifikat
 startet, bräuchte einen shim, den Microsoft für LosOS signiert hat, nach dem
 öffentlichen shim-Review und dem Signaturverfahren von Microsoft, die LosOS
 nicht durchlaufen hat. Bis dahin trägt jeder Rechner das LosOS-Zertifikat
 einmal ein.
+:::
 
 ## Einen Download von Hand prüfen \{#verifying-a-download-by-hand}
 

@@ -53,10 +53,12 @@ LosOS cloud federates too: you can share files and calendars with people
 whose accounts are on other Nextcloud servers, by their `user@server`
 address. `losos.nextcloud.federation.enable` turns that off.
 
+:::note[Federation needs disk sharing]
 Both kinds of federation work only while the box shares its disk
 (`losos.sharingMyStorage`), because that is when the shared part of the
 disk is unlocked. With sharing off, the box talks to no other server, and
 the **Advanced** pane shows both federation switches as unavailable.
+:::
 
 ## The Apps pane
 
@@ -128,11 +130,13 @@ the way LosOS cloud and LosOS Git do.
 - The app gets one port of its own from `losos.apps.ports`, 30000 to 30099
   by default, and only your local network can reach it.
 
+:::note[Charts the box refuses]
 The box refuses a chart that needs more than that and says why. Typical
 reasons are admin rights, a port below 1024, a port another app already
 uses, or a folder of the system. An app built from several services that
 call each other by name may not start, because the box's own cluster has
 no internal network.
+:::
 
 **Installed apps**, above the search, lists each app with its state.
 **Open** goes to the app's port on the address you are using. **Change**
@@ -140,10 +144,12 @@ opens the same dialog on the app's current properties. **Remove** asks
 first, then takes the app off the box. Its data folder stays, so an install
 under the same name finds the data again.
 
+:::note[Installs need workload mode]
 The search offers installs only while Files or Code is set to **Kept
 separate**, which is [workload mode](../types/app-modes). The box's own
 cluster runs only then. To turn installing off, set `losos.apps.enable` to
 false on the **Advanced** pane.
+:::
 
 ## Trusted addresses
 

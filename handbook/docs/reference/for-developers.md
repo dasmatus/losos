@@ -62,7 +62,9 @@ node tests/handbook-screens.mjs /tmp/handbook-screens          # every shot
 node tests/handbook-screens.mjs /tmp/handbook-screens mesh     # names containing "mesh"
 ```
 
+:::note[When Playwright has no Chromium]
 Set `LOSOS_CHROMIUM` to a Chromium binary if Playwright's own is missing.
+:::
 
 Write alt text that says what the picture shows, not what the page says.
 
@@ -74,7 +76,9 @@ Slovak and German are wired in. The interface strings live in
 and translate the copy. A page without a translation shows in English under
 the translated chrome, so you can translate one page at a time.
 
+:::tip[Keep the three languages in step]
 Every page is translated in full. Change all three languages together.
+:::
 
 ```sh
 npm run write-translations -- --locale sk   # refresh the string files

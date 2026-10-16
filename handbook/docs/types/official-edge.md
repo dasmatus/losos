@@ -124,8 +124,10 @@ made from the box's identity but does not reveal it. To add a domain:
    **Live**, the edge fetches a certificate for it, and LosOS cloud answers at
    `https://<your domain>/nextcloud`.
 
+:::note[Domains with nothing in front of them]
 A domain with nothing in front of it, such as `novak-family.eu` itself,
 cannot carry a CNAME. Use the A and AAAA addresses the pane lists instead.
+:::
 
 A box can have up to five domains, and a domain belongs to one box at a time.
 Removing it in the pane stops the edge serving it at the next pass. The edge

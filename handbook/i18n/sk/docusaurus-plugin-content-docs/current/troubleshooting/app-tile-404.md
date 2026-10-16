@@ -29,8 +29,10 @@ aktualizácia opravy prinesie:
 - Samotná aplikácia v LosOS cloud nie je nainštalovaná alebo je vypnutá.
   Otvorte LosOS cloud → Aplikácie a zapnite ju.
 
+:::tip[Kým aktualizácia nepríde]
 Kým aktualizácia nepríde, otvorte LosOS cloud z dlaždice **Súbory** alebo na
 `/nextcloud` a použite jeho vlastnú ponuku aplikácií. Jej odkazy fungujú.
+:::
 
 ## „Prístup cez nedôveryhodnú doménu“ \{#access-through-untrusted-domain}
 

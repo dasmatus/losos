@@ -48,10 +48,12 @@ it does not. The box reconnects on its own once it finds the edge.
 
 ## Still nothing
 
+:::tip[Reload past the browser cache]
 If the banner shows an address and `http://<address>/api/health` answers,
 but the admin pages do not load, your browser may have cached the page from
 before an update. Reload with Ctrl+Shift+R to bypass the cache, or open a
 private window.
+:::
 
 If the banner shows an address and nothing at all answers on it, the box's
 web server, nginx, is down, and the nightly restart repairs it. If it is

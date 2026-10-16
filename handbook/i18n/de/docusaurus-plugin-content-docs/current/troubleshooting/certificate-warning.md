@@ -43,11 +43,13 @@ ein Zertifikat hinzu und gibt dessen Fingerabdruck aus. Vergleich ihn mit
 `http://<address>/setup/state.json`. Dann **starte den Browser neu** und
 öffne `https://<name>.local`.
 
+:::note[Zertifikat von Hand hinzufügen]
 Von Hand lädst du `http://<address>/setup/losos-ca.crt` herunter und fügst
 es als vertrauenswürdige Zertifizierungsstelle hinzu. Unter macOS geht das
 in der Schlüsselbundverwaltung. Unter Windows ist es `certmgr.msc` →
 Vertrauenswürdige Stammzertifizierungsstellen. Firefox hat eigene
 Zertifikatseinstellungen, ein Handy hat seine Sicherheitseinstellungen.
+:::
 
 ## Warnt nach der Installation immer noch \{#still-warning-after-installing}
 

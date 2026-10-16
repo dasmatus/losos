@@ -30,9 +30,11 @@ inštalácie odomknúť malo:
 
 ## Čo môžete urobiť \{#what-you-can-do}
 
+:::note[Žiadne heslo na zadanie]
 Nie je žiadne heslo, ktoré by sa dalo napísať. Kľúč je náhodný reťazec so
 4096 znakmi, ktorý nikto nikdy nevidel. Záložná kópia je *vnútri*
 šifrovaného zväzku, takže ho otvoriť nedokáže.
+:::
 
 1. **Raz vypnite a zapnite.** TPM, ktorý počas uponáhľaného štartu
    neodpovedal, niekedy odpovie nabudúce.

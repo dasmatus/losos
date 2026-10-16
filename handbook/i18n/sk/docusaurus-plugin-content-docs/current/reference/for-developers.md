@@ -64,8 +64,10 @@ node tests/handbook-screens.mjs /tmp/handbook-screens          # every shot
 node tests/handbook-screens.mjs /tmp/handbook-screens mesh     # names containing "mesh"
 ```
 
+:::note[Keď Playwright nemá Chromium]
 Ak chýba vlastný Chromium od Playwrightu, nastavte `LOSOS_CHROMIUM` na
 binárku Chromia.
+:::
 
 Alt text píšte tak, aby hovoril, čo obrázok ukazuje, nie čo hovorí stránka.
 
@@ -77,7 +79,9 @@ ju do `handbook/i18n/<locale>/docusaurus-plugin-content-docs/current/<same path>
 a preložte kópiu. Stránka bez prekladu sa zobrazí v angličtine v preloženom
 rámci stránky, takže môžete prekladať po jednej stránke.
 
+:::tip[Držte tri jazyky v súlade]
 Každá stránka je preložená celá. Meňte všetky tri jazyky naraz.
+:::
 
 ```sh
 npm run write-translations -- --locale sk   # refresh the string files

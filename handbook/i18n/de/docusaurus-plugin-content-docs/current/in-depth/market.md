@@ -133,6 +133,7 @@ nach Monatsende weiterhin Longhorn-Kapazität.
 - **Rechenleistung.** Ein Guthaben in vCPU-Stunden, aufgeführt unter
   `entitlements`. Noch misst nichts dagegen und plant nichts danach.
 
+:::note[Noch nicht durchgesetzte Grenzen]
 Grenzen, die du kennen solltest und von denen noch keine durchgesetzt wird:
 
 - Der Claim ist nicht an den Node des Verkäufers gebunden. Longhorn verteilt
@@ -150,6 +151,7 @@ Grenzen, die du kennen solltest und von denen noch keine durchgesetzt wird:
 - Der ServiceAccount des Registrars erhält clusterweit `get`/`create` auf
   Namespaces und PersistentVolumeClaims, wenn der Marktplatz aktiviert ist.
   Kubernetes-RBAC kann keines von beiden auf `market-*`-Namen einschränken.
+:::
 
 ## Admin-UI {#admin-ui}
 
@@ -270,10 +272,12 @@ Diese Schritte richten Kartenzahlungen ein. Eine Edge, die nur Coins annimmt,
 5. Setze `losos.edge.tenants.<id>.market = true` für jede Box, die
    handeln darf.
 
+:::tip[Im Stripe-Testmodus beginnen]
 Beginne im Stripe-**test mode** (Testmodus). Die Edge wurde bisher nur
 gegen einen Ersatz für Stripe getestet. Der prüft, was die Edge sendet und wie
 sie reagiert, kann aber nicht sagen, ob Stripe es akzeptiert. Das klärt der
 erste Lauf im Testmodus.
+:::
 
 ### Testmodus und Live-Modus {#test-mode-and-live-mode}
 
@@ -451,10 +455,12 @@ dem Escrow zurück, und der Bereich sagt es. Auf Solana, wo es kein Escrow
 gibt, bleibt eine solche Zahlung beim Verkäufer, und die Rückzahlung muss
 außerhalb des Markts geregelt werden.
 
+:::tip[Testmünzen kommen aus Faucets]
 Für einen Test-Edge kommt Test-USDC aus
 [Circles Faucet](https://faucet.circle.com), der alle vier bedient. Test-ETH
 gibt der Faucet jedes Netzes, Test-SOL der Solana-Faucet. Nichts davon hat
 einen Wert.
+:::
 
 ### ENS-Namen und USDC senden {#ens-names-and-sending-usdc}
 
@@ -479,12 +485,14 @@ Dieselbe Phrase lässt sich in MetaMask, Rabby, Rainbow, Trust Wallet oder
 Phantom importieren, wenn du das Geld ausgeben willst. Für diese Verkäufe gibt
 es kein verbundenes Stripe-Konto.
 
+:::warning[Eine hier angelegte Wallet bleibt in einem Browser]
 Eine im Markt angelegte Wallet lebt nur in diesem Browser, deshalb fragt der
 Bereich vor dem Anbieten, wohin ihre Verkäufe gehen sollen. Mit ihr wie oben
 signieren, oder „Adresse einer anderen Wallet nehmen“ wählen: die Adresse
 einer Wallet einfügen, die du anderswo hältst, mit dieser Wallet die Nachricht
 signieren, die der Bereich zeigt, und die Signatur einfügen. Der Edge prüft sie
 genauso.
+:::
 
 ## Mit Bitcoin zahlen {#paying-with-bitcoin}
 

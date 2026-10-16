@@ -31,10 +31,12 @@ die sie installiert wurde:
 
 ## Was du tun kannst \{#what-you-can-do}
 
+:::note[Keine Passphrase zum Eintippen]
 Es gibt keine Passphrase, die du eintippen könntest. Der Schlüssel ist eine
 zufällige Zeichenkette mit 4096 Zeichen, die nie jemand gesehen hat. Die
 Wiederherstellungskopie liegt *im* verschlüsselten Volume, also kann sie
 dieses Volume nicht öffnen.
+:::
 
 1. **Einmal aus- und wieder einschalten.** Ein TPM, das bei einem eiligen
    Start nicht geantwortet hat, antwortet manchmal beim nächsten Mal.

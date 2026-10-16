@@ -36,9 +36,11 @@ na inštalačnom médiu:
 pvcreate /dev/sdX && vgextend persist-vg /dev/sdX && losos-ctl grow
 ```
 
+:::danger[Preinštalovanie zmaže všetko]
 Je to práca pre toho, kto zariadenie spravuje, nie tlačidlo pre vlastníka.
 Pre väčšinu ľudí je jednoduchšie celé zariadenie preinštalovať s novým
 diskom na mieste. Najprv zálohujte, pretože inštalátor zmaže všetko.
+:::
 
 ## Keď dochádza miesto \{#running-out-of-room}
 

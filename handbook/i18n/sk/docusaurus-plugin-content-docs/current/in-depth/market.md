@@ -121,6 +121,7 @@ claim zmizne, pretože claim drží kapacitu v Longhorne aj po skončení mesiac
 - **Výpočtový výkon.** Kredit vo vCPU-hodinách, uvedený pod `entitlements`.
   Zatiaľ ho nič nemeria ani podľa neho neplánuje.
 
+:::note[Obmedzenia, ktoré sa zatiaľ nevynucujú]
 Obmedzenia, o ktorých treba vedieť a z ktorých sa zatiaľ žiadne nevynucuje:
 
 - Claim nie je pripnutý k uzlu predajcu. Longhorn rozmiestňuje repliky po
@@ -137,6 +138,7 @@ Obmedzenia, o ktorých treba vedieť a z ktorých sa zatiaľ žiadne nevynucuje:
 - ServiceAccount registrara získa po zapnutí trhu `get`/`create` na
   namespaces a PersistentVolumeClaims v celom klastri. Kubernetes RBAC
   nedokáže ani jedno obmedziť na mená `market-*`.
+:::
 
 ## Admin UI {#admin-ui}
 
@@ -243,9 +245,11 @@ vynechá; ten prípad opisujú poznámky pre operátora pri zdrojovom kóde
 5. Nastavte `losos.edge.tenants.<id>.market = true` pre každé zariadenie, ktoré smie
    obchodovať.
 
+:::tip[Začnite v testovacom režime Stripe]
 Začnite v Stripe **test mode** (testovací režim). Edge bol testovaný len proti
 náhrade za Stripe. Tá overí, čo edge posiela a ako reaguje, no nevie povedať,
 či to Stripe prijme. To rozhodne prvý beh v testovacom režime.
+:::
 
 ### Testovací a ostrý režim {#test-mode-and-live-mode}
 
@@ -400,10 +404,12 @@ medzitým predali alebo objednávku už zaplatila iná platba, edge platbu z
 escrow vráti a panel to oznámi. Na Solane, kde escrow nie je, taká platba
 zostane predajcovi a vrátenie peňazí sa musí vyriešiť mimo trhu.
 
+:::tip[Testovacie mince sú z faucetov]
 Pre testovací edge je testovacie USDC z
 [faucet Circle](https://faucet.circle.com), ktorý obsluhuje všetky štyri.
 Testovacie ETH dá faucet každej siete, testovacie SOL faucet Solany. Nič z
 toho nemá hodnotu.
+:::
 
 ### Mená ENS a posielanie USDC {#ens-names-and-sending-usdc}
 
@@ -426,11 +432,13 @@ jednu z nich, sa ponúka iba kupujúcim na tom druhu siete. Tú istú frázu
 importujete do MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom, keď
 peniaze chcete minúť. Pre tieto predaje nie je žiadny pripojený účet Stripe.
 
+:::warning[Peňaženka vytvorená tu zostane v jednom prehliadači]
 Peňaženka vytvorená na Trhu žije len v tom prehliadači, preto sa panel pred
 ponukou spýta, kam majú ísť jej predaje. Podpíšte ňou ako vyššie, alebo
 zvoľte „Použiť adresu inej peňaženky“: vložte adresu peňaženky, ktorú držíte
 inde, podpíšte ňou správu, ktorú panel ukáže, a vložte podpis. Edge ho overí
 rovnako.
+:::
 
 ## Platba v bitcoinoch {#paying-with-bitcoin}
 

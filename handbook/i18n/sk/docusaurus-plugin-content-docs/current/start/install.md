@@ -25,11 +25,13 @@ beží sám. **Vymaže všetky pevné disky v počítači.**
 - Obrazovku a klávesnicu k počítaču, iba na inštaláciu. Potom obrazovka
   ukazuje banner s adresou zariadenia a zariadenie nepotrebuje ani jedno.
 
+:::tip[O terminálovom klientovi rozhodnite teraz]
 Ak chcete zariadenie neskôr spravovať z terminálu cez `losos`, rozhodnite
 sa teraz. Zariadenie dôveruje iba GPG kľúču, ktorý bol na USB kľúči, z ktorého
 sa inštalovalo, a USB kľúč z vydania žiadny nemá.
 [Terminálový klient](/manual/terminal.md) ukazuje, ako pripraviť USB kľúč
 s vaším kľúčom.
+:::
 
 ## Postup \{#steps}
 
@@ -106,5 +108,7 @@ Git vo vlastnom clustri a každú noc sa nanovo zostavuje na ten istý disk.
 5. Na hostiteľovi otvorte `http://localhost:8080`. quickemu presmeruje port
    8080 na port 80 zariadenia a 8443 na 443.
 
+:::note[quickemu potrebuje KVM]
 quickemu potrebuje hardvérovú virtualizáciu, na Linuxe je to KVM, a na
 hostiteľovi bez nej sa odmietne spustiť.
+:::

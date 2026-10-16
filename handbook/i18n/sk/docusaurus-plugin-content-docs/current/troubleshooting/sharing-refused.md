@@ -27,9 +27,11 @@ odmietne s udaním dôvodu.
 | Hodiny sú nastavené, no nič sa nikdy nepožičia         | Okno začína a končí v tej istej minúte, alebo zariadenie v ňom nikdy nie je nečinné.         | Nastavte skutočné okno. Popis pod hodinami uvádza, aké je dlhé.            |
 | Použitie zmien v mesh zlyhá                            | Zlyhala samotná prestavba, po tom, čo zariadenie zmenu prijalo.                             | [Použitie zmien zlyhá](apply-fails), potom to skúste znova, keď edge beží. |
 
+:::note[Odmieta sa iba zapínanie]
 Zariadenie vždy odmieta iba *zapínanie*. Zariadenie, ktorému edge zmizol, si
 zdieľanie, ktoré už malo, ponechá, môže ďalej meniť všetky ostatné
 nastavenia a zdieľanie môže kedykoľvek vypnúť.
+:::
 
 ## Čo zdieľanie nikdy nerobí \{#what-sharing-never-does}
 

@@ -55,10 +55,12 @@ findet.
 
 ## Immer noch nichts \{#still-nothing}
 
+:::tip[Neu laden ohne Browser-Cache]
 Wenn das Banner eine Adresse zeigt und `http://<address>/api/health`
 antwortet, die Admin-Seiten aber nicht laden, hat dein Browser vielleicht
 die Seite von vor einem Update im Cache. Lade mit Strg+Umschalt+R neu, um
 den Cache zu umgehen, oder öffne ein privates Fenster.
+:::
 
 Wenn das Banner eine Adresse zeigt und unter ihr gar nichts antwortet, ist
 der Webserver der Box, nginx, ausgefallen, und der nächtliche Neustart
