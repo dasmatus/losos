@@ -10,7 +10,7 @@ mdx:
 ## Den Installer besorgen {#get-the-installer}
 
 Lade das ISO und seine `.sha256` aus dem
-[neuesten Release](https://github.com/dasmatus/losos/releases/latest) herunter, oder bau es:
+[neuesten Release](https://github.com/dasmatus/losos/releases) herunter, oder bau es:
 
 ```sh
 nix build .#nixosConfigurations.iso.config.system.build.isoImage

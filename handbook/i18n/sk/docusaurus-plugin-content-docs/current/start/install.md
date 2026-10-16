@@ -36,7 +36,7 @@ s vaším kľúčom.
 ## Postup \{#steps}
 
 1. Stiahnite inštalačné ISO a jeho `.sha256` z
-   [najnovšieho vydania](https://github.com/dasmatus/losos/releases/latest)
+   [najnovšieho vydania](https://github.com/dasmatus/losos/releases)
    a zapíšte ho na USB kľúč pomocou balenaEtcher, Rufus v režime DD alebo `dd`.
 2. Vo firmvéri počítača buď **vypnite Secure Boot**, alebo pridajte
    certifikát LosOS vedľa certifikátov Microsoftu, aby firmvér mohol USB kľúč

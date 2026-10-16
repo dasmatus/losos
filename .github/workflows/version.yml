@@ -22,10 +22,9 @@ on:
 # The commit is made through the GitHub API with GITHUB_TOKEN, which GitHub
 # signs and which fast-forwards only (see .github/scripts/sync-version.sh).
 # Like every GITHUB_TOKEN push it starts no workflow run on its own, so it
-# cannot loop. The job then starts ci.yml and handbook.yml on main through
+# cannot loop. The job then starts ci.yml on main through
 # workflow_dispatch, which a GITHUB_TOKEN may do: main's new head is built,
-# its binary cache pushed and the terminal client republished, and the
-# public handbook links the new release.
+# its binary cache pushed and the terminal client republished.
 
 concurrency:
   group: version
@@ -38,7 +37,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
-      # Starting ci.yml and handbook.yml on main after a commit.
+      # Starting ci.yml on main after a commit.
       actions: write
     steps:
       # main, whatever ref started the run: a tag push checks out the tag.
@@ -51,12 +50,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: .github/scripts/sync-version.sh
-      - name: run ci and the handbook on main's new head
+      - name: run ci on main's new head
         if: steps.sync.outputs.committed
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          gh workflow run ci.yml --repo "$REPO" --ref main
-          gh workflow run handbook.yml --repo "$REPO" --ref main
+        run: gh workflow run ci.yml --repo "$REPO" --ref main
