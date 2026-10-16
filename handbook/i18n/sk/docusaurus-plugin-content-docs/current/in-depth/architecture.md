@@ -388,6 +388,20 @@ zostávajú tiché: pri vypínaní kvôli reštartu sa v
 `/var/lib/losos-startup-sound` zanechá značka a ďalší štart ju namiesto
 hrania odstráni.
 
+**Limity záznamov** (`logs.nix`, na zariadení aj na edge). `/var` je na
+rovnakom zväzku ako `/nix`, takže záznam, ktorý rastie bez konca, skončí
+nočnou prestavbou, ktorá nemá kde zostavovať. Žurnál má strop
+`losos.logs.journalMaxUse` (512 MB) a mesiac. Kubelet každého klastra si
+nechá tri súbory po 10 MiB na kontajner (`containerLogMaxSize`,
+`containerLogMaxFiles`), čo pokrýva LosOS cloud, LosOS Git aj aplikácie,
+lebo zapisujú na stdout. logrotate otáča `audit.log` a `rebuild.log` démona
+lososd pri 10 MB a pravidlu pre nginx, ktoré dodáva nixpkgs, pridáva hranicu
+20 MB. Pravidlo tmpfiles maže záznamy zostavení Nixu staršie ako 30 dní,
+ktoré zberač odpadu nechá tak. rke2 a libvirt otáčajú svoje súbory
+záznamov samy a na edge `bitcoind` zapisuje len do žurnálu.
+`tests/invariants.nix` overuje strop žurnálu, obe pravidlá logrotate a strop
+záznamov podov v oboch klastroch.
+
 **Automatický upgrade a nočný reštart** (`updates.nix`). `system.autoUpgrade`
 prestavuje z `losos.upgradeFlakeUri` o 03:00, predvolene
 `git+file:///etc/nixos#install`. Pred zostavením spustí

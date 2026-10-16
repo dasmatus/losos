@@ -175,6 +175,12 @@ and is never served or built by nix.
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot
   generations, unconditional reboot at 00:07. `tests/invariants.nix` pins
   these at eval time.
+- `logs.nix` (install and edge) caps every log: the journal at
+  `losos.logs.journalMaxUse` and a month, pod logs at three files of 10 MiB
+  per container in all three clusters, logrotate for lososd's `audit.log`
+  and `rebuild.log` and a size bound on nixpkgs' nginx rule, Nix build logs
+  after 30 days. A new service that writes its own log file gets a cap
+  here or in its own flags. `tests/invariants.nix` pins it.
 - `grow.rs`: `losos-ctl grow` runs lvextend, `cryptsetup resize`, `resize2fs`
   online, asserted against the plan and in `tests/resize.nix`.
 - `backup.nix` + `backup.rs` + `erase.rs`: restic backups to an S3 bucket,
