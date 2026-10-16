@@ -9,7 +9,7 @@ import { hmac } from "@noble/hashes/hmac.js";
 import { sha256, sha512 } from "@noble/hashes/sha2.js";
 import { base58, base64 } from "@scure/base";
 import { mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
-import { wordlist } from "@scure/bip39/wordlists/english";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
 
 export const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 export const ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
@@ -73,9 +73,8 @@ function pubkey(address: string): Uint8Array {
 // The runtime's own test (curve25519-dalek decompress) accepts what ZIP-215
 // accepts, so a hash RFC 8032 would refuse still counts as on the curve.
 function onCurve(bytes: Uint8Array): boolean {
-  const fromHex = ed25519.ExtendedPoint.fromHex as unknown as (h: Uint8Array, zip215: boolean) => unknown;
   try {
-    fromHex.call(ed25519.ExtendedPoint, bytes, true);
+    ed25519.Point.fromBytes(bytes, true);
     return true;
   } catch {
     return false;
