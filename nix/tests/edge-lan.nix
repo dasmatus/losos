@@ -354,8 +354,10 @@ pkgs.testers.nixosTest {
     # 6. The edges come back; the gate reopens, the market with it.
     edge.succeed("systemctl start losos-plain-edge.service losos-registrar.service")
     edge.wait_until_succeeds("curl -fsS http://localhost:8443/health")
+    edge.wait_until_succeeds("curl -fsS http://localhost:8444/health")
     wait_edge(True, official=True)
-    assert len(edge_doc()["edges"]) == 2, edge_doc()
+    # The official one can come back a scan before the plain one does.
+    wait_edges(["http://edge.local:8443", "http://edge.local:8444"])
     code, body = api("POST", "/api/change", {"mode": "mesh"})
     assert code == "200", f"change to mesh after the edge returned answered {code}: {body!r}"
   '';
