@@ -4,7 +4,7 @@
 #
 #   * /etc/losos/options.json — every `losos.*` option this box declares,
 #     with its type, default, description and the value the last rebuild
-#     merged, generated from the declarations by flake/options-doc.nix. lososd
+#     merged, generated from the declarations by nix/options-doc.nix. lososd
 #     serves it at GET /api/options with the current overrides.nix joined in,
 #     and checks every Apply against it (backend/src/options.rs), so a key the
 #     pane could not draw is a key the daemon refuses.
@@ -14,7 +14,7 @@
 #     `losos.configRepo.enable` it keeps that repository in step with a private
 #     one on the box's own Forgejo, owned by the owner's account
 #     (backend/src/config_repo.rs). The daemon needs to know where Forgejo
-#     listens and where the bootstrap (flake/forgejo-bootstrap.nix) left the
+#     listens and where the bootstrap (nix/forgejo-bootstrap.nix) left the
 #     bot account's token; that is the environment below.
 #
 # Nothing here is the installer's business: the ISO imports neither this
@@ -44,13 +44,13 @@ let
   # are both /var/lib/forgejo, persisted by impermanence's whole-/var mount.
   tokenFile = "/var/lib/forgejo/.losos-token";
 
-  doc = import ../flake/options-doc.nix { inherit lib options config; };
+  doc = import ../nix/options-doc.nix { inherit lib options config; };
 in
 {
   config = lib.mkIf daemonOn {
     # Evaluated at build time, against this box's own configuration — so
     # `current` is what this generation merged, and a declaration with a type
-    # flake/options-doc.nix cannot classify fails the build here rather than
+    # nix/options-doc.nix cannot classify fails the build here rather than
     # the pane at run time.
     environment.etc."losos/options.json".source = pkgs.writeText "losos-options.json" (
       builtins.toJSON doc
@@ -93,14 +93,14 @@ in
       })
 
       # The bot account for the native service. The workload image carries
-      # the same snippet in its entrypoint (flake/images.nix). The mkIf sits
+      # the same snippet in its entrypoint (nix/images.nix). The mkIf sits
       # on the whole attrset, not on `preStart`: a definition under
       # `systemd.services.forgejo` that evaluates to nothing still creates the
       # `forgejo` entry, and NixOS then writes an empty forgejo.service on a
       # container-mode box that has no such service.
       (lib.mkIf (config.losos.forgejo.mode == "native" && config.losos.forgejo.enable) {
         forgejo.preStart = lib.mkAfter (
-          import ../flake/forgejo-bootstrap.nix {
+          import ../nix/forgejo-bootstrap.nix {
             forgejo = lib.getExe config.services.forgejo.package;
             tokenFile = "${config.services.forgejo.stateDir}/.losos-token";
           }

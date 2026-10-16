@@ -1,7 +1,7 @@
 # What a LosOS system calls itself: LosOS and its release tag.
 #
 # Imported by both systems; modules/live-branding.nix adds what only the
-# installer medium shows. The tag comes from flake/version.nix and is the
+# installer medium shows. The tag comes from nix/version.nix and is the
 # system label, so the boot menu entries, the toplevel's store name and the
 # console banners carry it. os-release keeps NixOS's VERSION and VERSION_ID
 # and adds the tag as IMAGE_VERSION.
@@ -20,7 +20,7 @@
 
 let
   inherit (config.system.nixos) release;
-  version = import ../flake/version.nix;
+  version = import ../nix/version.nix;
   art = import ./brand-art.nix { inherit pkgs version; };
   inherit (art.palette) ground accent;
 

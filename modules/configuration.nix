@@ -87,7 +87,7 @@
   #
   # The homes are 700 now, so group access is moot for reading; the per-account
   # groups stay because files created inside inherit the directory's group, and
-  # `users` is the wrong owner for either data domain. tests/impermanence.nix
+  # `users` is the wrong owner for either data domain. nix/tests/impermanence.nix
   # asserts both halves in a booted VM.
   users.groups.notshared = {
     gid = 1000;
@@ -111,7 +111,7 @@
   # no web UI of its own any more now that the Tahoe WUI is gone.
   #
   # The uid, the gid and the 700 home are the isolation model and are asserted
-  # by tests/impermanence.nix in a booted VM — the account outlives the service
+  # by nix/tests/impermanence.nix in a booted VM — the account outlives the service
   # that used to own it, so do not renumber or repurpose it.
   users.users."shared" = {
     uid = 1001;

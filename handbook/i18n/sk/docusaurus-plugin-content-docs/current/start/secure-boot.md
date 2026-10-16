@@ -147,18 +147,18 @@ nix run github:dasmatus/losos#losos-sign-iso -- verify --cert losos-secure-boot-
 ```
 
 Odtlačok certifikátu porovnajte s tým v poznámkach k vydaniu a s
-`keys/secure-boot-db.pem` v repozitári. Všetky tri sú ten istý súbor.
+`nix/keys/secure-boot-db.pem` v repozitári. Všetky tri sú ten istý súbor.
 
 ## Kde je kľúč \{#where-the-key-lives}
 
 Súkromný kľúč sa nikdy nedostane do zostavenia Nix ani na zariadenie.
 Vlastník ho raz vytvorí na vlastnom počítači pomocou
-`provisioning/secure-boot/keygen.sh` a uchováva ho offline. Jediná ďalšia
+`docs/provisioning/secure-boot/keygen.sh` a uchováva ho offline. Jediná ďalšia
 kópia je tajomstvo repozitára, ktorým podpisuje CI. Certifikát je v
-repozitári ako `keys/secure-boot-db.pem`. Kým tento súbor žiadny certifikát
+repozitári ako `nix/keys/secure-boot-db.pem`. Kým tento súbor žiadny certifikát
 neobsahuje, vydania uvádzajú *Not signed* a USB kľúč potrebuje Secure Boot
 vypnutý. Testovacia sada overuje mechanizmus s jednorazovým kľúčom, ktorý
-vytvorí a potom zahodí. `tests/secure-boot.nix` naštartuje podpísané médium
+vytvorí a potom zahodí. `nix/tests/secure-boot.nix` naštartuje podpísané médium
 pod verziou OVMF so Secure Boot a zvnútra ukáže príznak *enabled* priamo
 z firmvéru. Firmvér v tomto teste má certifikáty Microsoftu vedľa
 testovacieho kľúča a shim podpísaný Microsoftom na ňom stále naštartuje.

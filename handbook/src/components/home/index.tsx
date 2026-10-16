@@ -208,10 +208,10 @@ export function Steps({items}: {items: Step[]}): ReactNode {
 /* Planned, each with the page that says how far along it is, and its parts
  * in order with the ones already shipped crossed off. The list is the
  * project page's "What is done and what is planned" plus what the code
- * shows unfinished: keys/official-edge-root.pub is empty, so no box sees an
+ * shows unfinished: nix/keys/official-edge-root.pub is empty, so no box sees an
  * official edge to trade through yet, no edge deploys Longhorn while
  * losos.edge.cluster.longhornChart defaults to null, and
- * keys/secure-boot-db.pem holds no certificate. Nothing goes here that is
+ * nix/keys/secure-boot-db.pem holds no certificate. Nothing goes here that is
  * not built or started. Once every part of a card is done, the card says
  * so; move it up to the features then. */
 type Part = {done: boolean; text: ReactNode};

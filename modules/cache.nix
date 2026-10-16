@@ -25,7 +25,7 @@
 # CI also READS from this cache — setup-nix uses repository variables for the
 # proxy URL and public key. The appliance carries the same two values as the
 # defaults of losos.cache.* (modules/options.nix), so a stock install pulls
-# from the cache without the owner configuring anything; tests/invariants.nix
+# from the cache without the owner configuring anything; nix/tests/invariants.nix
 # pins them. Set losos.cache.substituters = [ ] to opt out.
 #
 # The second default substituter is the same proxy under its vercel.app name,
@@ -44,7 +44,7 @@
 # and nobody has measured whether it fits. It has its own manual job
 # (`image-nextcloud`, workflow_dispatch) that builds it, pushes it and prints
 # its own timing. The image only changes when modules/nextcloud-stack.nix or
-# flake/images.nix does, so running it by hand after those change is enough to
+# nix/images.nix does, so running it by hand after those change is enough to
 # keep the cache honest.
 #
 # If that job is never run, this substituter simply does not have the image and

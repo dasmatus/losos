@@ -2,7 +2,7 @@
 
 Operator notes, kept out of the handbook. The envelope is the one in
 [terminal-access.md](terminal-access.md); this page lists what differs on an
-edge (`backend-registrar/src/operator.rs`).
+edge (`edge/registrar/src/operator.rs`).
 
 ## Seeding and tokens
 
@@ -10,7 +10,7 @@ The operator's public key is `losos.edge.access.gpgKeys` in the edge's NixOS
 configuration. With the list empty (the default) the edge serves no
 `/operator/*` route. The edge has no web UI, so its tokens come from the
 operator's machine, behind the same GitHub sign-in and allowlist as the
-certificate push (`backend-registrar/operators.json`):
+certificate push (`edge/registrar/operators.json`):
 
 ```sh
 losos-registrar provision token create --edge https://register.<domain> \

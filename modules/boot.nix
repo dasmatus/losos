@@ -31,7 +31,7 @@ in
   # a kernel and an initrd into it; with no cap the ESP fills in months and
   # `nixos-rebuild switch` fails on the bootloader step, on a box with no
   # shell. The store side is nix.gc in updates.nix; this is the half that
-  # frees the ESP, and the two are kept together in tests/invariants.nix.
+  # frees the ESP, and the two are kept together in nix/tests/invariants.nix.
   boot.loader.systemd-boot.configurationLimit = 5;
 
   # Latest upstream kernel. The losos appliance runs on repurposed mini-PCs
@@ -68,7 +68,7 @@ in
   # in stage 1 on "waiting for device /dev/persist-vg/persist" and drops to
   # an emergency shell that no one can log in to, because the initrd has no
   # driver for the virtio disk the volume group lives on. Found by recording
-  # a real install-and-reboot under QEMU/SeaBIOS; tests/install.nix never
+  # a real install-and-reboot under QEMU/SeaBIOS; nix/tests/install.nix never
   # sees it because its boot leg stops at GRUB. Real mini-PCs never load
   # these, so they cost nothing there, and a VM is a supported way to try
   # this system without putting a box on a network.
@@ -89,7 +89,7 @@ in
   # path needs no secret — the key lives in the LUKS2 header, sealed by TPM2 —
   # and must declare none: /etc/keys/persist-keyfile exists on that path too
   # (the recovery slot inside /persist), and an entry here would bake it onto
-  # the ESP. tests/invariants.nix asserts the set is empty.
+  # the ESP. nix/tests/invariants.nix asserts the set is empty.
   boot.initrd.secrets =
     if useTpm then { } else { "/crypto_keyfile.bin" = "/etc/keys/persist-keyfile"; };
 

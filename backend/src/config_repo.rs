@@ -23,7 +23,7 @@
 //! cmd_config_sync`] is tested against the fake with no git and no Forgejo.
 //!
 //! One account does the talking: `losos`, a site administrator the Forgejo
-//! bootstrap (`flake/forgejo-bootstrap.nix`) creates with a random password
+//! bootstrap (`nix/forgejo-bootstrap.nix`) creates with a random password
 //! and an access token at `$LOSOS_FORGEJO_TOKEN_FILE`. lososd never reads the
 //! owner's Forgejo password back; it *sets* it, from the one password the
 //! owner proves at claim, set-password and sign-in time, so LosOS Git opens

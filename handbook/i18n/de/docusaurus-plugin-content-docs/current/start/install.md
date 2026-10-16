@@ -98,7 +98,7 @@ wissen:
 ### Mit quickemu \{#with-quickemu}
 
 Das Repository enthält eine Konfiguration für
-[quickemu](https://github.com/quickemu-project/quickemu), `vm/losos.conf`.
+[quickemu](https://github.com/quickemu-project/quickemu), `docs/vm/losos.conf`.
 Sie gibt der VM 4 Kerne, 8 GiB Arbeitsspeicher und eine Festplatte mit
 64 GiB, UEFI-Firmware mit ausgeschaltetem Secure Boot und ein emuliertes
 TPM, sodass der Installer den Festplattenschlüssel so versiegelt wie auf
@@ -108,9 +108,9 @@ dieselbe Festplatte neu baut.
 
 1. Installiere quickemu und `swtpm`.
 2. Lade das Installer-ISO aus einem Release herunter und speichere es als
-   `vm/losos/losos-installer.iso`.
-3. Führe `quickemu --vm vm/losos.conf` aus. Die Festplatte, die
-   Firmware-Variablen und der TPM-Zustand liegen in `vm/losos/`, sodass
+   `docs/vm/losos/losos-installer.iso`.
+3. Führe `quickemu --vm docs/vm/losos.conf` aus. Die Festplatte, die
+   Firmware-Variablen und der TPM-Zustand liegen in `docs/vm/losos/`, sodass
    spätere Starts den versiegelten Schlüssel finden.
 4. Wenn der Installer meldet, dass LosOS installiert ist, drück eine Taste
    für den Neustart. Der Installer setzt den Bootloader der Box an die erste

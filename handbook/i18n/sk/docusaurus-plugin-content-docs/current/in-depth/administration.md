@@ -173,7 +173,7 @@ spustí `nixos-rebuild switch`. Teda:
 ### Rozšírené {#advanced}
 
 **Nastavenia, Rozšírené** vypisuje každú voľbu `losos.*`, ktorú zariadenie
-deklaruje, načítanú z modulov, ktoré beží. `flake/options-doc.nix` vygeneruje
+deklaruje, načítanú z modulov, ktoré beží. `nix/options-doc.nix` vygeneruje
 dokument pri zostavení a lososd ho servíruje na `GET /api/options` s
 pripojeným aktuálnym `overrides.nix`. Každý riadok ukazuje popis voľby, jej
 predvolenú hodnotu, hodnotu, s ktorou zariadenie beží, a editor pre jej typ:
@@ -238,7 +238,7 @@ runner Forgejo Actions. Zariadenie sa periodicky dotazuje.
 Adresa na klonovanie je zobrazená na paneli (`http://<box>/forgejo/<owner>/
 losos-config.git`). Repozitár je súkromný, takže potrebuje admin heslo.
 Démon komunikuje s Forgejom cez loopback s bot účtom `losos`, ktorý vytvorí
-štartovací skript Forgeja a vydá mu token (`flake/forgejo-bootstrap.nix`).
+štartovací skript Forgeja a vydá mu token (`nix/forgejo-bootstrap.nix`).
 
 ### Federácia {#federation}
 
@@ -264,7 +264,7 @@ nie sú chránené ochranou „len LAN“, rovnako ako `/forgejo/`. Dosah sa ria
 `ROOT_URL`: cez edge je to `https://<proxy hostname>/forgejo/` a federovať
 so zariadením môže akýkoľvek server; na zariadení len v LAN je to
 `https://<host>.local/forgejo/`, takže môžu iba iné zariadenia v tej istej
-LAN. `tests/forgejo-federation.nix` spustí skutočný Forgejo a opýta sa ho, so
+LAN. `nix/tests/forgejo-federation.nix` spustí skutočný Forgejo a opýta sa ho, so
 zapnutým a potom vypnutým zdieľaním.
 
 `losos.nextcloud.federation.enable` (predvolene zapnuté) je strana LosOS
@@ -282,8 +282,8 @@ false a aplikácia `federation` sa vypne. Entrypoint podu to urobí zo súboru
 `federatedfilesharing`. Polovica vo vhoste je potrebná, pretože OCM discovery
 hlási, že je zapnuté, nech hovoria nastavenia čokoľvek, a
 `cloud_federation_api` a `federatedfilesharing` sú vždy zapnuté aplikácie,
-ktoré sa vypnúť nedajú. `tests/front-vhost.nix` kontroluje cesty oboch
-služieb so zapnutým aj vypnutým zdieľaním; `tests/invariants.nix` kontroluje
+ktoré sa vypnúť nedajú. `nix/tests/front-vhost.nix` kontroluje cesty oboch
+služieb so zapnutým aj vypnutým zdieľaním; `nix/tests/invariants.nix` kontroluje
 bránu pri evaluácii.
 
 ### Nastavenia aplikácií pre celé zariadenie {#box-wide-app-settings}
@@ -324,7 +324,7 @@ tieto kľúče cez
 `ocs/v[12].php/apps/provisioning_api/api/v1/config/apps/<app>/<key>` a
 predný vhost odpovie 403 pre každý kľúč, ktorý nastavuje LosOS, vrátane
 prepínačov federácie, takže zmena urobená tam sa nemôže rozísť so
-zariadením. Stránka správy hodnotu stále ukazuje. `tests/front-vhost.nix`
+zariadením. Stránka správy hodnotu stále ukazuje. `nix/tests/front-vhost.nix`
 kontroluje 403 a to, že ostatné kľúče sa do Nextcloudu stále dostanú.
 
 Päť nastavení Forgejo sú kľúče `app.ini`, ktoré Správa stránky vo Forgejo
@@ -405,7 +405,7 @@ Zrušiť sa dá iba v krokoch 1 a 2. `/nix`, `/etc/nixos` a kľúčový súbor
 disku zostanú, takže LosOS je stále nainštalovaný a zariadenie otvorí
 sprievodcu nastavením. `/var/lib/losos-erase/report.json` uchováva, čoho sa
 vymazanie vzdalo mimo zariadenia, ako počty, a Nastavenia, Reset to ukazuje.
-`tests/erase.nix` prebehne celý cyklus voči bucketu MinIO v jednej VM.
+`nix/tests/erase.nix` prebehne celý cyklus voči bucketu MinIO v jednej VM.
 :::
 
 ## Používatelia {#users}
@@ -418,7 +418,7 @@ Dvaja dátoví používatelia, obaja bez hesiel a shellov:
 | `shared`    | Úložisko mesh       |
 
 Každý má vlastnú primárnu skupinu a domov s módom 700, takže ani jeden
-nemôže čítať súbory toho druhého. `tests/impermanence.nix` to kontroluje.
+nemôže čítať súbory toho druhého. `nix/tests/impermanence.nix` to kontroluje.
 
 ## Aktualizácie a reštarty {#upgrades-and-reboots}
 

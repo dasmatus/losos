@@ -11,7 +11,7 @@ LosOS opisujú dve miesta:
 - kapitola [Do hĺbky](/in-depth/index.md): Inštalácia podrobne, Správa,
   Mesh, Trh, Virtuálne stroje, Master proxy, Federácia edge, Lab, Hardening,
   Architektúra;
-- [`CLAUDE.md`](https://github.com/dasmatus/losos/blob/main/CLAUDE.md)
+- [`.claude/CLAUDE.md`](https://github.com/dasmatus/losos/blob/main/.claude/CLAUDE.md)
   v repozitári: príkazy na zostavenie, architektúra naprieč súbormi a zoznam
   chýb, ktoré sa ľahko zopakujú.
 
@@ -31,9 +31,9 @@ npm run build             # fails on a broken link, on purpose
 
 Každý push do `main` zverejní stránku na [losos.dasmat.us](https://losos.dasmat.us)
 (`.github/workflows/handbook.yml`) a každé zariadenie si zostaví vlastnú
-kópiu (`losos-handbook` vo `flake/packages.nix`, poskytovanú na `/handbook/`
+kópiu (`losos-handbook` vo `nix/packages.nix`, poskytovanú na `/handbook/`
 cez `modules/containers.nix`). Po zmene `package-lock.json` obnovte
-`npmDepsHash` vo `flake/packages.nix`:
+`npmDepsHash` vo `nix/packages.nix`:
 
 ```sh
 nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json
@@ -51,7 +51,7 @@ Obrázky sú v `handbook/docs/img/`. Sú troch druhov:
   `<name>-sk.png` a `<name>-de.png` a preložené stránky ukazujú tie.
 - **Obrazovky skutočného počítača.** Inštalátor, banner na tty1, výzva na
   heslo a odmietnutia pri Secure Boot pochádzajú z behov vo VM
-  (`tests/secure-boot.nix` a inštalácie do VM). Žiadny skript ich znova
+  (`nix/tests/secure-boot.nix` a inštalácie do VM). Žiadny skript ich znova
   nenasníma.
 - **Diagramy.** Sú to ručne písané SVG na bielej karte, vo farbách admin
   rozhrania (`admin-ui/app/src/styles/tokens.css`), takže sa čítajú rovnako

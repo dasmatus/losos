@@ -22,13 +22,13 @@
 # The UKI leaves `nix build` UNSIGNED, on purpose. A Nix build is pure and
 # its outputs are world-readable store paths that CI pushes to a public
 # cache, so the private db key cannot be a build input. `losos-sign-iso`
-# (flake/packages.nix) signs the finished ISO in place instead: it finds the
+# (nix/packages.nix) signs the finished ISO in place instead: it finds the
 # EFI system partition image inside the ISO through the El Torito catalog,
 # pulls the UKI out of that FAT image with mtools, `sbsign`s it and writes it
 # back over the original. Nothing else in the ISO moves, so the El Torito
 # entry, the hybrid GPT and the squashfs stay valid. CI does that with the
 # `SECURE_BOOT_DB_KEY` secret on main and on tags (never on a fork's pull
-# request, which has no key and ships unsigned), and tests/secure-boot.nix
+# request, which has no key and ships unsigned), and nix/tests/secure-boot.nix
 # does it with a throwaway key it generates in the build sandbox. The FAT
 # image is sized with 8 MiB of slack so the signed copy, a few KiB larger
 # than the unsigned one, always fits.
@@ -46,7 +46,7 @@
 # (The squashfs is built here rather than inside make-iso9660-image so the
 # hash is known when the UKI is built; the ISO builder takes the same file.)
 #
-# The public certificate (`losos.secureBoot.certFile`, keys/secure-boot-db.pem)
+# The public certificate (`losos.secureBoot.certFile`, nix/keys/secure-boot-db.pem)
 # rides on the ESP as `EFI/losos/losos-secure-boot.{cer,pem}` when the
 # committed file carries one, so a firmware's "enroll key from file" dialog
 # can take it straight from the stick: a machine with only the stock
@@ -54,7 +54,7 @@
 # to `db` beside Microsoft's (or turns Secure Boot off), and that refusal is
 # the feature. Beside, not instead: Windows, other distributions' shim and
 # option ROMs are signed under Microsoft's certificates, and
-# tests/secure-boot.nix boots on a store holding both.
+# nix/tests/secure-boot.nix boots on a store holding both.
 #
 # `system.build.isoImage` is forced here because iso-image.nix offers no seam
 # for the EFI image: its `efiImg` is a `let` binding, and the only way to
@@ -97,7 +97,7 @@ let
   roStoreMount = "${utils.escapeSystemdPath "/sysroot/nix/.ro-store"}.mount";
 
   # What `bootctl status` and a UKI-aware boot menu show for the medium.
-  # IMAGE_ID is also the byte string tests/secure-boot.nix flips to make its
+  # IMAGE_ID is also the byte string nix/tests/secure-boot.nix flips to make its
   # tampered copy: it occurs in the UKI's .osrel section and nowhere else in
   # the ISO outside the (compressed) squashfs.
   osRelease = pkgs.writeText "losos-installer-os-release" ''

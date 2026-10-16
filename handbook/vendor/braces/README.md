@@ -24,7 +24,7 @@ and that deep nesting is refused.
 
 Drop this directory, the `braces` line in `devDependencies` and the one in
 `overrides` once braces publishes a fixed release, then recompute
-`npmDepsHash` in `flake/packages.nix`.
+`npmDepsHash` in `nix/packages.nix`.
 
 ## Licence
 

@@ -151,7 +151,7 @@ the official edge keeps the same name through its direct tenant row. The
 market relay needs no extra switch: it is gated on an *official* edge
 answering, and with none in reach it already says `available: false`.
 
-`tests/edge-federation.nix` runs the three machines (hub, gateway, box) and
+`nix/tests/edge-federation.nix` runs the three machines (hub, gateway, box) and
 walks exactly this: LAN path, enrolment, uplink, fall back, off, back.
 
 ## What stays local
@@ -264,9 +264,9 @@ Nothing else runs for it. The table file and the pass key both live in the
 registrar's state directory. Nothing changes on the local edge or the box.
 Both pick the pass up from a build with this change.
 
-`backend-registrar/tests/domains.rs` runs the whole path against real
+`edge/registrar/tests/domains.rs` runs the whole path against real
 registrars. A box behind a gateway gets its domain, a box outside the mesh
-gets nothing, and three forged passes get nothing. `tests/edge-dns.nix`
+gets nothing, and three forged passes get nothing. `nix/tests/edge-dns.nix`
 boots the NixOS wiring. It checks the key file, `/relay` with a pass, the
 binding landing in `relay-routes.json`, and the binding still being there
 after the registrar restarts.
@@ -300,7 +300,7 @@ Two forms, one configuration:
    clear` stops relaying.
 2. **An existing NixOS machine**: import `nixosModules.edge` and either set
    `losos.edge.gateway.enable = true` (the image's shape) or write the
-   options above by hand, as the two-VM demo and `tests/edge-lan.nix` do.
+   options above by hand, as the two-VM demo and `nix/tests/edge-lan.nix` do.
 
 The hub side for the official edges is one tenant row per site. The Vercel
 host carries the same `/relay` route and so can *accept* a spoke for a demo,
