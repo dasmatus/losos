@@ -226,6 +226,8 @@ and is never served or built by nix.
   `release-media`. `history-scrub.yml` rewrites the history after every push
   to main (rules in `.github/scripts/scrub-message.py`), pushing branches
   with the `HISTORY_SCRUB_DEPLOY_KEY` deploy key and tags with the CI token.
+  `stale-branches.yml` deletes, each Sunday, branches with no commit in 30
+  days that no open PR uses as head or base.
   The VM tests are not in CI; there is no KVM there.
 
 ## Rules

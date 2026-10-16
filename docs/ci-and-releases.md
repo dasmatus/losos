@@ -22,6 +22,15 @@ without saying so.
 - `losos-registrar` for the dev machine, a static musl build pushed to GHCR
   on every push to main and every tag and served by the proxy (below)
 
+Beside `ci.yml`, `stale-branches.yml` deletes stale branches every Sunday:
+any branch whose last commit is older than 30 days (the `STALE_BRANCH_DAYS`
+repository variable overrides it), except the default branch, `gh-pages`,
+`release/*`, and branches that are the head or base of an open pull request.
+Each deletion is leased to the tip it judged, so a branch pushed to during
+the run survives. The job summary lists what went, with the
+`git push origin <hash>:refs/heads/<branch>` line that restores each one. Run
+it by hand from the Actions tab for a dry run.
+
 ## Releases
 
 Push a `v*` tag, or draft a release with a new `v*` tag in the web UI.
