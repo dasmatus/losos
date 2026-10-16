@@ -274,43 +274,6 @@ const SOON: Planned[] = [
     ],
     to: '/types/company-edge',
   },
-  {
-    title: (
-      <Translate id="losos.home.soon.translations.title">The handbook in Slovak and German</Translate>
-    ),
-    body: (
-      <Translate id="losos.home.soon.translations.body">
-        Every page of this handbook in Slovak and German.
-      </Translate>
-    ),
-    parts: [
-      {
-        done: true,
-        text: (
-          <Translate id="losos.home.soon.translations.menus">
-            The menus and this page
-          </Translate>
-        ),
-      },
-      {
-        done: true,
-        text: (
-          <Translate id="losos.home.soon.translations.depth">
-            The In depth chapter, TPM and the security model
-          </Translate>
-        ),
-      },
-      {
-        done: false,
-        text: (
-          <Translate id="losos.home.soon.translations.rest">
-            The rest of the pages
-          </Translate>
-        ),
-      },
-    ],
-    to: '/reference/for-developers#translating',
-  },
 ];
 
 type Step = {title: ReactNode; body: ReactNode; to: string; link: ReactNode};
