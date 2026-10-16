@@ -381,7 +381,7 @@ await check('step 2 shows the spare admin key from the claim, since nothing else
   const { page, text } = await claimThroughStepTwo();
   assert.ok(text.includes('0'.repeat(64)), `the admin key is not on screen after the claim:\n${text}`);
   assert.ok(/spare admin key/i.test(text), 'the key is shown without saying what it is for');
-  assert.ok(/your password unlocks these admin pages/i.test(text), 'step 2 does not say the password is the way in now');
+  assert.ok(/you sign in to these admin pages on LosOS Login/i.test(text), 'step 2 does not say LosOS Login is the way in now');
   await page.close();
 });
 
