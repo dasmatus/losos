@@ -591,5 +591,284 @@
   },
   "losos.home.soon.chip": {
     "message": "Bald"
+  },
+  "losos.companies.box.cloud.title": {
+    "message": "LosOS cloud"
+  },
+  "losos.companies.box.cloud.body": {
+    "message": "Dateien, Fotos, Kalender, Kontakte, Notizen, Aufgaben, Deck, Forms, Tables und mehr, mit Apps für Computer und Telefon. Jede Kollegin und jeder Kollege bekommt ein Konto. Gebaut auf Nextcloud."
+  },
+  "losos.companies.box.git.title": {
+    "message": "LosOS Git"
+  },
+  "losos.companies.box.git.body": {
+    "message": "Repositories, Issues und Pull Requests. Ihr Quellcode liegt nicht länger auf fremden Servern. Gebaut auf Forgejo."
+  },
+  "losos.companies.box.disk.title": {
+    "message": "Ein Laufwerk, das gestohlen nichts nützt"
+  },
+  "losos.companies.box.disk.body": {
+    "message": "Das Datenlaufwerk ist verschlüsselt, und sein Schlüssel ist im TPM-Chip des Rechners versiegelt. Wer das Laufwerk ausbaut und anderswo anschließt, kann es nicht lesen."
+  },
+  "losos.companies.box.forget.title": {
+    "message": "Ein System, das vergisst"
+  },
+  "losos.companies.box.forget.body": {
+    "message": "Das Systemlaufwerk liegt im Arbeitsspeicher und wird bei jedem Neustart neu gebaut. Was sich außerhalb einer kurzen Liste behaltener Ordner geändert hat, ist am nächsten Morgen weg."
+  },
+  "losos.companies.box.history.title": {
+    "message": "Jede Einstellung ist ein Commit"
+  },
+  "losos.companies.box.history.body": {
+    "message": "Die Box hält ihre ganze Beschreibung in einem eigenen Git-Repository. Jede Änderung ist ein Commit im Bereich Historie, also wissen Sie immer, was sich wann geändert hat."
+  },
+  "losos.companies.box.shell.title": {
+    "message": "Nichts, wo man sich anmelden könnte"
+  },
+  "losos.companies.box.shell.body": {
+    "message": "Keine Shell und kein SSH. Die Verwaltung antwortet nur in Ihrem eigenen Netz, und der Terminal-Client signiert jeden Aufruf mit OpenPGP."
+  },
+  "losos.companies.box.ai.title": {
+    "message": "KI, die im Haus bleibt"
+  },
+  "losos.companies.box.ai.body": {
+    "message": "Der Reiter Mit KI bauen schreibt Widgets mit einem Sprachmodell, das auf der Box selbst läuft. Was Sie eingeben, verlässt sie nie, und es gibt keine Rechnung pro Wort."
+  },
+  "losos.companies.box.search.title": {
+    "message": "Suche in jeder Datei"
+  },
+  "losos.companies.box.search.body": {
+    "message": "Die Box indexiert den Text in Ihren Word-, Excel-, PowerPoint-, OpenDocument- und PDF-Dateien. Sie finden einen Vertrag über einen Satz darin, und der Index verlässt die Box nie."
+  },
+  "losos.companies.box.backup.title": {
+    "message": "Sicherungen, zu denen Sie den Schlüssel haben"
+  },
+  "losos.companies.box.backup.body": {
+    "message": "Kopien gehen in einen S3-kompatiblen Bucket Ihrer Wahl, bei einem Anbieter in der EU oder in Ihrem eigenen Netz, verschlüsselt mit Ihrem Wiederherstellungscode, bevor sie die Box verlassen."
+  },
+  "losos.companies.eu.nextcloud": {
+    "message": "Die Grundlage von LosOS cloud. Entwickelt von der Nextcloud GmbH in Stuttgart."
+  },
+  "losos.companies.eu.forgejo": {
+    "message": "Die Grundlage von LosOS Git. Ein Gemeinschaftsprojekt unter dem Dach von Codeberg e.V., einem gemeinnützigen Verein in Berlin."
+  },
+  "losos.companies.eu.nixos": {
+    "message": "Das System, aus dem sich jede Box baut. Betreut von der NixOS Foundation in den Niederlanden."
+  },
+  "losos.companies.where.files.what": {
+    "message": "Dateien, Fotos, Kalender und Kontakte in LosOS cloud"
+  },
+  "losos.companies.where.files.where": {
+    "message": "Auf der Box, auf ihrem verschlüsselten Laufwerk"
+  },
+  "losos.companies.where.code.what": {
+    "message": "Code, Issues und Pull Requests in LosOS Git"
+  },
+  "losos.companies.where.code.where": {
+    "message": "Auf der Box"
+  },
+  "losos.companies.where.ai.what": {
+    "message": "Ihre Eingaben im Reiter Mit KI bauen"
+  },
+  "losos.companies.where.ai.where": {
+    "message": "Auf der Box, wo das Modell läuft"
+  },
+  "losos.companies.where.admin.what": {
+    "message": "Die Verwaltung"
+  },
+  "losos.companies.where.admin.where": {
+    "message": "Nur in Ihrem eigenen Netz"
+  },
+  "losos.companies.where.backup.what": {
+    "message": "Sicherungen, wenn Sie sie einrichten"
+  },
+  "losos.companies.where.backup.where": {
+    "message": "Ein Bucket Ihrer Wahl, auf der Box verschlüsselt, bevor sie sie verlassen"
+  },
+  "losos.companies.where.remote.what": {
+    "message": "Fernzugriff, wenn Sie ihn einrichten"
+  },
+  "losos.companies.where.remote.where": {
+    "message": "Ihr eigener Edge-Server"
+  },
+  "losos.companies.where.updates.what": {
+    "message": "Updates"
+  },
+  "losos.companies.where.updates.where": {
+    "message": "Öffentlicher Quellcode kommt von GitHub herein. Ihre Daten gehen nicht hinaus."
+  },
+  "losos.companies.where.title": {
+    "message": "Wo Ihre Daten liegen"
+  },
+  "losos.companies.where.head.what": {
+    "message": "Was"
+  },
+  "losos.companies.where.head.where": {
+    "message": "Wo es liegt"
+  },
+  "losos.companies.why.title": {
+    "message": "Ein Server in Frankfurt macht eine US-Cloud nicht europäisch"
+  },
+  "losos.companies.why.head.year": {
+    "message": "Jahr"
+  },
+  "losos.companies.why.head.basis": {
+    "message": "Worauf Übermittlungen aus der EU in die USA beruhten"
+  },
+  "losos.companies.why.2015": {
+    "message": "Safe Harbor, vom Gerichtshof aufgehoben (Schrems I)"
+  },
+  "losos.companies.why.2020": {
+    "message": "Privacy Shield, vom Gerichtshof aufgehoben (Schrems II)"
+  },
+  "losos.companies.why.2023": {
+    "message": "Das Data Privacy Framework, heute in Kraft"
+  },
+  "losos.companies.why.losos": {
+    "message": "Gar keine Übermittlung. Nichts auf der Box überquert eine Grenze."
+  },
+  "losos.companies.why.cloudAct": {
+    "message": "Der US CLOUD Act von 2018 erlaubt amerikanischen Behörden, von einem US-Anbieter Daten zu verlangen, die er besitzt, verwahrt oder kontrolliert. Wo der Server steht, spielt keine Rolle. Wem der Anbieter gehört, schon."
+  },
+  "losos.companies.why.dpf": {
+    "message": "Personenbezogene Daten, die heute in die USA gehen, stützen sich auf das EU-US Data Privacy Framework. Der Gerichtshof der EU hat beide Vorgänger aufgehoben. Ein Unternehmen, dessen Dateien bei einem US-Anbieter liegen, wettet darauf, dass das dritte hält."
+  },
+  "losos.companies.why.losos.body": {
+    "message": "Mit LosOS bleiben die Daten in Ihrem Gebäude, und es gibt keine Wette."
+  },
+  "losos.companies.night.title": {
+    "message": "Patchday ist jede Nacht, und niemand muss daran denken"
+  },
+  "losos.companies.night.alt": {
+    "message": "Eine Nacht auf einer Box: Neustart um 00:07, Update um 03:00, Aufräumen um 04:30."
+  },
+  "losos.companies.night.body": {
+    "message": "Um 00:07 startet jede Box neu und baut ihr Systemlaufwerk aus ihrer Beschreibung neu auf. Um 03:00 holt sie das neueste LosOS, behält Ihre Einstellungen und baut darauf neu. Schlägt das fehl, läuft das vorige System weiter, und die Box versucht es in der nächsten Nacht wieder. Um 04:30 löscht sie Versionen, die älter als 14 Tage sind, damit sich das Laufwerk nie selbst füllt."
+  },
+  "losos.companies.night.fork": {
+    "message": "Soll Ihre IT jedes Update zuerst lesen? Die Quelle der Updates ist eine Einstellung, also können Ihre Boxen Ihrer eigenen Kopie von LosOS folgen."
+  },
+  "losos.companies.night.link": {
+    "message": "Updates und Neustarts"
+  },
+  "losos.companies.law.encryption.ask": {
+    "message": "Verschlüsselung personenbezogener Daten"
+  },
+  "losos.companies.law.encryption.does": {
+    "message": "Das Datenlaufwerk ist verschlüsselt, mit dem Schlüssel im TPM. Die Box liefert in Ihrem Netz HTTPS mit eigenem Zertifikat aus, und ihr Tunnel zu einem Edge ist Ende-zu-Ende verschlüsselt."
+  },
+  "losos.companies.law.transfer.ask": {
+    "message": "Auftragsverarbeiter und Übermittlungen in Drittländer"
+  },
+  "losos.companies.law.transfer.does": {
+    "message": "Daten auf der Box verarbeitet kein Cloud-Anbieter, und sie verlassen den EWR nie. Es gibt also keinen Auftragsverarbeitungsvertrag und keine Übermittlungsprüfung für sie zu schreiben."
+  },
+  "losos.companies.law.storage.ask": {
+    "message": "Speicherbegrenzung"
+  },
+  "losos.companies.law.storage.does": {
+    "message": "Das Systemprotokoll behält einen Monat und löscht sich dann selbst. Container-Protokolle sind auf drei Dateien zu je 10 MiB begrenzt, und Build-Protokolle verschwinden nach 30 Tagen."
+  },
+  "losos.companies.law.backup.ask": {
+    "message": "Backup-Management und Wiederherstellung nach einem Notfall"
+  },
+  "losos.companies.law.backup.does": {
+    "message": "Verschlüsselte Sicherungen in einen Bucket Ihrer Wahl. Der Wiederherstellungscode holt alles zurück, auf dieselbe Box oder auf eine neue."
+  },
+  "losos.companies.law.supply.ask": {
+    "message": "Sicherheit der Lieferkette"
+  },
+  "losos.companies.law.supply.does": {
+    "message": "Ganz LosOS ist öffentlicher Quellcode unter der AGPL. Jede Box baut aus festgelegten Eingaben in einer Lock-Datei, also können Sie prüfen, was läuft."
+  },
+  "losos.companies.law.access.ask": {
+    "message": "Zugriffskontrolle"
+  },
+  "losos.companies.law.access.does": {
+    "message": "Die Verwaltung antwortet nur in Ihrem eigenen Netz, auch mit eingeschaltetem Fernzugriff. Zehn fehlgeschlagene Anmeldungen bremsen eine Adresse, und ein Audit-Protokoll hält Änderungen an Einstellungen, Passwort-Rücksetzungen und Resets fest."
+  },
+  "losos.companies.law.title": {
+    "message": "Für Ihre Datenschutzbeauftragten und Ihre Prüfer"
+  },
+  "losos.companies.law.head.ask": {
+    "message": "Was das Gesetz verlangt"
+  },
+  "losos.companies.law.head.does": {
+    "message": "Was LosOS tut"
+  },
+  "losos.companies.law.note.title": {
+    "message": "Keine Software macht Sie konform"
+  },
+  "losos.companies.law.note.body": {
+    "message": "LosOS behauptet das auch nicht. Es gibt Ihnen Maßnahmen, die schon funktionieren, damit Ihre Unterlagen etwas Echtes beschreiben."
+  },
+  "losos.companies.edge.title": {
+    "message": "Ihre Boxen, Ihr Edge, Ihre Domain"
+  },
+  "losos.companies.edge.body": {
+    "message": "Betreiben Sie einen eigenen Edge-Server, im Büro oder auf einem Server, den Sie bei einem Hoster in der EU mieten. Boxen im selben Netz finden ihn von selbst, innerhalb einer 20-Sekunden-Suche."
+  },
+  "losos.companies.edge.domain": {
+    "message": "Jede Box antwortet unter der Domain Ihres Unternehmens, ohne dass an einer Box ein Port offen ist. Die Boxen wählen sich nach außen ein, und nichts wählt sich herein."
+  },
+  "losos.companies.edge.keys": {
+    "message": "Die Tunnelschlüssel, das Cluster-Token und die Liste der erlaubten Boxen liegen auf Ihrem Edge. Nichts von Ihrem Verkehr berührt das LosOS-Projekt."
+  },
+  "losos.companies.edge.lan": {
+    "message": "Die Verwaltung jeder Box bleibt in Ihrem eigenen Netz."
+  },
+  "losos.companies.edge.optin": {
+    "message": "Boxen können einander über Ihren Edge freien Speicher und Rechenzeit leihen. Das ist standardmäßig aus, der Eigentümer jeder Box schaltet es ein, und es läuft nur in den Stunden, die er wählt, und nur, solange die Box nichts zu tun hat."
+  },
+  "losos.companies.edge.link": {
+    "message": "Ein Unternehmen mit eigenem Edge"
+  },
+  "losos.companies.pageTitle": {
+    "message": "LosOS für Unternehmen"
+  },
+  "losos.companies.description": {
+    "message": "LosOS hält die Dateien, Kalender und den Code eines Unternehmens auf einer verschlüsselten Box im eigenen Büro, nach EU-Recht und ohne US-Cloud-Anbieter dazwischen."
+  },
+  "losos.companies.eyebrow": {
+    "message": "Für Unternehmen in der EU und im EWR"
+  },
+  "losos.companies.title": {
+    "message": "LosOS für Unternehmen"
+  },
+  "losos.companies.lead": {
+    "message": "Die Cloud Ihres Unternehmens, in Ihrem eigenen Büro, nach EU-Recht."
+  },
+  "losos.companies.body": {
+    "message": "LosOS macht aus einem Büro-Mini-PC eine private Cloud für die Dateien, Kalender, Kontakte und den Code Ihres Teams. Die Daten liegen auf einem verschlüsselten Laufwerk in einem Gebäude, das Sie kontrollieren. Kein US-Cloud-Anbieter hat eine Kopie, also kann auch keine Anordnung an einen solchen Anbieter sie herausgeben."
+  },
+  "losos.companies.cta.plan": {
+    "message": "Einrichtung für Unternehmen planen"
+  },
+  "losos.companies.box.title": {
+    "message": "Alles, was Ihr Team heute mietet, auf Hardware, die Ihnen gehört"
+  },
+  "losos.companies.eu.title": {
+    "message": "Gebaut auf Software aus Deutschland und den Niederlanden"
+  },
+  "losos.companies.eu.languages": {
+    "message": "Die Verwaltung und dieses Handbuch gibt es auf Englisch, Slowakisch und Deutsch. LosOS cloud und LosOS Git folgen der Browsersprache jeder Person und können noch viele mehr."
+  },
+  "losos.companies.cost.title": {
+    "message": "Keine Gebühr pro Nutzer"
+  },
+  "losos.companies.cost.body": {
+    "message": "LosOS, Nextcloud und Forgejo sind freie Software. Ihre vierzigste Einstellung kostet ein Benutzerkonto, kein Abonnement. Sie zahlen einmal für die Hardware und dann für den Strom, und ein Büro-Mini-PC reicht dafür."
+  },
+  "losos.companies.soon.intro": {
+    "message": "LosOS ist eine Vorabversion, noch ohne Supportvertrag und ohne Zertifizierung. Das sind die Teile, die noch entstehen."
+  },
+  "losos.companies.closing.title": {
+    "message": "LosOS für Ihr Unternehmen einrichten"
+  },
+  "losos.companies.closing.body": {
+    "message": "Die Seite zur Einrichtung für Unternehmen zeigt Boxen für jedes Team, einen Edge für das Büro und wie die Installation abläuft. Probieren Sie zuerst eine einzelne Box aus, gern in einer virtuellen Maschine."
+  },
+  "losos.home.setups.companies": {
+    "message": "LosOS für Unternehmen"
   }
 }

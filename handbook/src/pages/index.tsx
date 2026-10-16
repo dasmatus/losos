@@ -1,22 +1,26 @@
 import React, {type ReactNode} from 'react';
-import clsx from 'clsx';
 import Link from '@docusaurus/Link';
 import Layout from '@theme/Layout';
-import ThemedImage from '@theme/ThemedImage';
 import Translate, {translate} from '@docusaurus/Translate';
-import useBaseUrl from '@docusaurus/useBaseUrl';
-import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 
-import overviewLight from '@site/docs/img/overview.png';
-import overviewDark from '@site/docs/img/overview-dark.png';
-import overviewLightSk from '@site/docs/img/overview-sk.png';
-import overviewDarkSk from '@site/docs/img/overview-dark-sk.png';
-import overviewLightDe from '@site/docs/img/overview-de.png';
-import overviewDarkDe from '@site/docs/img/overview-dark-de.png';
 import SetupTypes from '@site/docs/img/setup-types.svg';
 
-import {logoTip, useHalloween} from '@site/src/lib/logo';
-import styles from './index.module.css';
+import {
+  Closing,
+  Hero,
+  RELEASES,
+  Requirements,
+  Screen,
+  Section,
+  Soon,
+  SOURCE,
+  Split,
+  Steps,
+  Tiles,
+  styles,
+  type Feature,
+  type Step,
+} from '@site/src/components/home';
 
 /* The public site's front page: what LosOS is, for someone who has never
  * seen a box, and the way into the handbook. Only the public build has it
@@ -25,12 +29,8 @@ import styles from './index.module.css';
  *
  * Every claim on it is one the handbook makes in more words, and links to:
  * the features from "What LosOS is", the requirements from "Install". If a
- * fact changes there, change it here too. */
-
-const RELEASES = 'https://github.com/dasmatus/losos/releases/latest';
-const SOURCE = 'https://github.com/dasmatus/losos';
-
-type Feature = {title: ReactNode; body: ReactNode; to: string};
+ * fact changes there, change it here too. The sections are shared with
+ * LosOS for companies (src/components/home). */
 
 const FEATURES: Feature[] = [
   {
@@ -104,180 +104,6 @@ const FEATURES: Feature[] = [
   },
 ];
 
-/* Planned, each with the page that says how far along it is, and its parts
- * in order with the ones already shipped crossed off. The list is the
- * project page's "What is done and what is planned" plus what the code
- * shows unfinished: keys/official-edge-root.pub is empty, so no box sees an
- * official edge to trade through yet, no edge deploys Longhorn while
- * losos.edge.cluster.longhornChart defaults to null, and
- * keys/secure-boot-db.pem holds no certificate. Nothing goes here that is
- * not built or started. Once every part of a card is done, the card says
- * so; move it up to the features then. */
-type Part = {done: boolean; text: ReactNode};
-type Planned = Feature & {parts: Part[]};
-
-const SOON: Planned[] = [
-  {
-    title: <Translate id="losos.home.soon.market.title">The market</Translate>,
-    body: (
-      <Translate id="losos.home.soon.market.body">
-        Get paid for the disk and CPU your box lends, and buy room from other
-        boxes.
-      </Translate>
-    ),
-    parts: [
-      {
-        done: true,
-        text: (
-          <Translate id="losos.home.soon.market.card">
-            Card payments through Stripe, tested in its test mode
-          </Translate>
-        ),
-      },
-      {
-        done: true,
-        text: (
-          <Translate id="losos.home.soon.market.coins">
-            Payments in USDC, Bitcoin, Monero and Zcash
-          </Translate>
-        ),
-      },
-      {
-        done: true,
-        text: (
-          <Translate id="losos.home.soon.market.pane">
-            The Market pane on every box
-          </Translate>
-        ),
-      },
-      {
-        done: false,
-        text: (
-          <Translate id="losos.home.soon.market.edge">
-            The official LosOS edge it trades through
-          </Translate>
-        ),
-      },
-    ],
-    to: '/types/official-edge',
-  },
-  {
-    title: (
-      <Translate id="losos.home.soon.pool.title">One storage pool across boxes</Translate>
-    ),
-    body: (
-      <Translate id="losos.home.soon.pool.body">
-        Boxes behind one edge lend their unused disk to one replicated pool.
-      </Translate>
-    ),
-    parts: [
-      {
-        done: true,
-        text: (
-          <Translate id="losos.home.soon.pool.share">
-            The encrypted share on each box
-          </Translate>
-        ),
-      },
-      {
-        done: false,
-        text: (
-          <Translate id="losos.home.soon.pool.service">
-            The pool's storage service on the edge
-          </Translate>
-        ),
-      },
-      {
-        done: true,
-        text: (
-          <Translate id="losos.home.soon.pool.switch">
-            The sharing switch, which opens with the market
-          </Translate>
-        ),
-      },
-    ],
-    to: '/types/storage-modes',
-  },
-  {
-    title: (
-      <Translate id="losos.home.soon.secureboot.title">A signed installer</Translate>
-    ),
-    body: (
-      <Translate id="losos.home.soon.secureboot.body">
-        Firmware that trusts the LosOS certificate boots the installer with
-        Secure Boot on.
-      </Translate>
-    ),
-    parts: [
-      {
-        done: true,
-        text: (
-          <Translate id="losos.home.soon.secureboot.ready">
-            An installer ready to be signed
-          </Translate>
-        ),
-      },
-      {
-        done: false,
-        text: (
-          <Translate id="losos.home.soon.secureboot.key">
-            The LosOS signing key
-          </Translate>
-        ),
-      },
-      {
-        done: false,
-        text: (
-          <Translate id="losos.home.soon.secureboot.releases">
-            A signature on every release
-          </Translate>
-        ),
-      },
-    ],
-    to: '/start/secure-boot',
-  },
-  {
-    title: (
-      <Translate id="losos.home.soon.company.title">Ready setups for companies</Translate>
-    ),
-    body: (
-      <Translate id="losos.home.soon.company.body">
-        Boxes for each team, one edge for the office and the install done for
-        you.
-      </Translate>
-    ),
-    parts: [
-      {
-        done: true,
-        text: (
-          <Translate id="losos.home.soon.company.setup">
-            The company setup, with the office's own edge
-          </Translate>
-        ),
-      },
-      {
-        done: true,
-        text: (
-          <Translate id="losos.home.soon.company.image">
-            An edge image attached to every release
-          </Translate>
-        ),
-      },
-      {
-        done: false,
-        text: (
-          <Translate id="losos.home.soon.company.package">
-            Selling it as a package
-          </Translate>
-        ),
-      },
-    ],
-    to: '/types/company-edge',
-  },
-];
-
-type Step = {title: ReactNode; body: ReactNode; to: string; link: ReactNode};
-
 const STEPS: Step[] = [
   {
     title: <Translate id="losos.home.step.install.title">Install it</Translate>,
@@ -314,289 +140,6 @@ const STEPS: Step[] = [
   },
 ];
 
-function Hero(): ReactNode {
-  const halloween = useHalloween();
-  const salmon = useBaseUrl('/img/salmon.png');
-  const plate = useBaseUrl('/img/plate.png');
-  const logo = halloween ? plate : salmon;
-  const tip = logoTip(halloween);
-  return (
-    <header className={styles.hero}>
-      <div className={styles.heroText}>
-        <p className={styles.eyebrow}>
-          <Translate id="losos.home.eyebrow">
-            For a small computer at home or in the office
-          </Translate>
-        </p>
-        <h1 className={styles.heroTitle}>LosOS</h1>
-        <p className={styles.heroLead}>
-          <Translate id="losos.home.lead">
-            A box for your files that looks after itself.
-          </Translate>
-        </p>
-        <p className={styles.heroBody}>
-          <Translate id="losos.home.body">
-            LosOS turns an old office mini-PC, or any small 64-bit PC, into
-            your own cloud. You install it once from a USB stick and then use
-            it from a web browser. It restarts every night and installs its
-            own updates.
-          </Translate>
-        </p>
-        <div className={styles.actions}>
-          <Link className={styles.primary} to="/start/install">
-            <Translate id="losos.home.cta.install">Install LosOS</Translate>
-          </Link>
-          <Link className={styles.secondary} to="/welcome">
-            <Translate id="losos.home.cta.handbook">Read the handbook</Translate>
-          </Link>
-        </div>
-        <p className={styles.fine}>
-          <Translate id="losos.home.fine">
-            Free software under the AGPL. Runs on 64-bit Intel and AMD
-            computers.
-          </Translate>
-        </p>
-      </div>
-      <img
-        className={styles.logo}
-        src={logo}
-        width={240}
-        height={240}
-        alt={tip}
-        title={tip}
-      />
-    </header>
-  );
-}
-
-// The admin pages in the language the handbook is read in.
-const OVERVIEW: Record<string, {light: string; dark: string}> = {
-  en: {light: overviewLight, dark: overviewDark},
-  sk: {light: overviewLightSk, dark: overviewDarkSk},
-  de: {light: overviewLightDe, dark: overviewDarkDe},
-};
-
-function Screen(): ReactNode {
-  const {i18n} = useDocusaurusContext();
-  return (
-    <figure className={styles.screen}>
-      <ThemedImage
-        className={styles.screenImage}
-        sources={OVERVIEW[i18n.currentLocale] ?? OVERVIEW.en}
-        alt={translate({
-          id: 'losos.home.screen.alt',
-          message:
-            'The admin pages of a box: the app tiles for LosOS cloud and LosOS Git, the storage card and a board of widgets.',
-        })}
-        width={1600}
-        height={1125}
-      />
-      <figcaption className={styles.caption}>
-        <Translate id="losos.home.screen.caption">
-          The admin pages, where you set up and look after the box.
-        </Translate>
-      </figcaption>
-    </figure>
-  );
-}
-
-function Features(): ReactNode {
-  return (
-    <section className={styles.section}>
-      <h2 className={styles.sectionTitle}>
-        <Translate id="losos.home.features.title">What you get</Translate>
-      </h2>
-      <div className={styles.grid}>
-        {FEATURES.map((f, i) => (
-          <Link key={i} to={f.to} className={styles.tile}>
-            <h3 className={styles.itemTitle}>{f.title}</h3>
-            <p className={styles.itemBody}>{f.body}</p>
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function Steps(): ReactNode {
-  return (
-    <section className={styles.section}>
-      <h2 className={styles.sectionTitle}>
-        <Translate id="losos.home.steps.title">Three steps to a running box</Translate>
-      </h2>
-      <ol className={styles.steps}>
-        {STEPS.map((s, i) => (
-          <li key={i} className={styles.step}>
-            <span className={styles.stepNumber} aria-hidden="true">
-              {i + 1}
-            </span>
-            <h3 className={styles.itemTitle}>{s.title}</h3>
-            <p className={styles.itemBody}>{s.body}</p>
-            <Link className={styles.more} to={s.to}>
-              {s.link}
-            </Link>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-function Setups(): ReactNode {
-  return (
-    <section className={styles.section}>
-      <div className={styles.split}>
-        <div>
-          <h2 className={styles.sectionTitle}>
-            <Translate id="losos.home.setups.title">From one box to a company</Translate>
-          </h2>
-          <p className={styles.prose}>
-            <Translate id="losos.home.setups.body">
-              Every box starts on its own, on a home network. Later it can get
-              a public address through an edge server, with no port opened at
-              home. It can also lend its spare disk and CPU to other boxes,
-              only in the hours you choose. A company can run several boxes
-              behind its own edge. Each of these is a change of settings, not
-              a reinstall.
-            </Translate>
-          </p>
-          <Link className={styles.more} to="/types">
-            <Translate id="losos.home.setups.link">Types of setup</Translate>
-          </Link>
-        </div>
-        <SetupTypes
-          className={styles.diagram}
-          role="img"
-          title={translate({
-            id: 'losos.home.setups.alt',
-            message:
-              'Three setup types side by side: a box on its own, a box with the LosOS edge, and a company with its own edge.',
-          })}
-        />
-      </div>
-    </section>
-  );
-}
-
-function Soon(): ReactNode {
-  return (
-    <section className={styles.section}>
-      <h2 className={styles.sectionTitle}>
-        <Translate id="losos.home.soon.title">Coming soon</Translate>
-      </h2>
-      <div className={styles.soonGrid}>
-        {SOON.map((f, i) => {
-          const shipped = f.parts.every((p) => p.done);
-          return (
-            <Link key={i} to={f.to} className={clsx(styles.tile, styles.soon)}>
-              <span className={clsx(styles.soonChip, shipped && styles.soonChipDone)}>
-                {shipped ? (
-                  <Translate id="losos.home.soon.chip.done">Done</Translate>
-                ) : (
-                  <Translate id="losos.home.soon.chip">Soon</Translate>
-                )}
-              </span>
-              <h3 className={styles.itemTitle}>
-                {shipped ? <s>{f.title}</s> : f.title}
-              </h3>
-              <p className={styles.itemBody}>{f.body}</p>
-              <ul className={styles.parts}>
-                {f.parts.map((p, j) => (
-                  <li key={j} className={clsx(styles.part, p.done && styles.partDone)}>
-                    {p.done ? (
-                      <>
-                        <span className={styles.srOnly}>
-                          <Translate id="losos.home.soon.done">Done:</Translate>{' '}
-                        </span>
-                        <s>{p.text}</s>
-                      </>
-                    ) : (
-                      p.text
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </Link>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function Requirements(): ReactNode {
-  return (
-    <section className={styles.section}>
-      <div className={styles.needs}>
-        <h2 className={styles.sectionTitle}>
-          <Translate id="losos.home.needs.title">What you need</Translate>
-        </h2>
-        <ul className={styles.needsList}>
-          <li>
-            <Translate id="losos.home.needs.cpu">
-              A machine with a 64-bit Intel or AMD processor (x86_64) and UEFI
-              or BIOS firmware.
-            </Translate>
-          </li>
-          <li>
-            <Translate id="losos.home.needs.memory">
-              At least 4 GiB of memory and one disk of 40 GiB or more.
-            </Translate>
-          </li>
-          <li>
-            <Translate id="losos.home.needs.tpm">
-              Ideally a TPM 2.0 chip, which most office mini-PCs have. Without
-              one the box still installs and unlocks with a key file.
-            </Translate>
-          </li>
-          <li>
-            <Translate id="losos.home.needs.install">
-              For the install only: a USB stick of 2 GiB, a wired network with
-              internet access, a screen and a keyboard.
-            </Translate>
-          </li>
-        </ul>
-        <p className={styles.warning}>
-          <Translate id="losos.home.needs.arm">
-            LosOS runs on x86_64 only. It does not install on ARM machines,
-            and in particular not on Apple Silicon (M-series) Macs.
-          </Translate>
-        </p>
-        <p className={styles.prose}>
-          <Translate id="losos.home.needs.vm">
-            You can try it in a virtual machine first. QEMU, virt-manager and
-            VirtualBox all work.
-          </Translate>
-        </p>
-      </div>
-    </section>
-  );
-}
-
-function Closing(): ReactNode {
-  return (
-    <section className={styles.closing}>
-      <h2 className={styles.sectionTitle}>
-        <Translate id="losos.home.closing.title">Get the installer</Translate>
-      </h2>
-      <p className={styles.prose}>
-        <Translate id="losos.home.closing.body">
-          Each release carries the installer ISO and its checksum. The
-          handbook's Install page shows how to write it to a USB stick.
-        </Translate>
-      </p>
-      <div className={styles.actions}>
-        <Link className={styles.primary} href={RELEASES}>
-          <Translate id="losos.home.closing.download">Download the latest release</Translate>
-        </Link>
-        <Link className={styles.secondary} href={SOURCE}>
-          <Translate id="losos.home.closing.source">Source on GitHub</Translate>
-        </Link>
-      </div>
-    </section>
-  );
-}
-
 export default function Home(): ReactNode {
   return (
     <Layout
@@ -607,14 +150,104 @@ export default function Home(): ReactNode {
           'LosOS turns a small 64-bit PC into your own cloud for files, photos, calendar and code. It restarts every night and installs its own updates.',
       })}>
       <main className={styles.page}>
-        <Hero />
+        <Hero
+          eyebrow={
+            <Translate id="losos.home.eyebrow">
+              For a small computer at home or in the office
+            </Translate>
+          }
+          title="LosOS"
+          lead={
+            <Translate id="losos.home.lead">
+              A box for your files that looks after itself.
+            </Translate>
+          }
+          body={
+            <Translate id="losos.home.body">
+              LosOS turns an old office mini-PC, or any small 64-bit PC, into
+              your own cloud. You install it once from a USB stick and then use
+              it from a web browser. It restarts every night and installs its
+              own updates.
+            </Translate>
+          }
+          primary={{
+            to: '/start/install',
+            label: <Translate id="losos.home.cta.install">Install LosOS</Translate>,
+          }}
+          secondary={{
+            to: '/welcome',
+            label: <Translate id="losos.home.cta.handbook">Read the handbook</Translate>,
+          }}
+          fine={
+            <Translate id="losos.home.fine">
+              Free software under the AGPL. Runs on 64-bit Intel and AMD
+              computers.
+            </Translate>
+          }
+        />
         <Screen />
-        <Features />
-        <Steps />
-        <Setups />
+        <Section title={<Translate id="losos.home.features.title">What you get</Translate>}>
+          <Tiles items={FEATURES} />
+        </Section>
+        <Section
+          title={
+            <Translate id="losos.home.steps.title">Three steps to a running box</Translate>
+          }>
+          <Steps items={STEPS} />
+        </Section>
+        <Split
+          title={<Translate id="losos.home.setups.title">From one box to a company</Translate>}
+          aside={
+            <SetupTypes
+              className={styles.diagram}
+              role="img"
+              title={translate({
+                id: 'losos.home.setups.alt',
+                message:
+                  'Three setup types side by side: a box on its own, a box with the LosOS edge, and a company with its own edge.',
+              })}
+            />
+          }>
+          <p className={styles.prose}>
+            <Translate id="losos.home.setups.body">
+              Every box starts on its own, on a home network. Later it can get
+              a public address through an edge server, with no port opened at
+              home. It can also lend its spare disk and CPU to other boxes,
+              only in the hours you choose. A company can run several boxes
+              behind its own edge. Each of these is a change of settings, not
+              a reinstall.
+            </Translate>
+          </p>
+          <p className={styles.links}>
+            <Link className={styles.more} to="/types">
+              <Translate id="losos.home.setups.link">Types of setup</Translate>
+            </Link>
+            <Link className={styles.more} to="/companies">
+              <Translate id="losos.home.setups.companies">LosOS for companies</Translate>
+            </Link>
+          </p>
+        </Split>
         <Soon />
         <Requirements />
-        <Closing />
+        <Closing
+          title={<Translate id="losos.home.closing.title">Get the installer</Translate>}
+          body={
+            <Translate id="losos.home.closing.body">
+              Each release carries the installer ISO and its checksum. The
+              handbook's Install page shows how to write it to a USB stick.
+            </Translate>
+          }
+          primary={{
+            href: RELEASES,
+            label: (
+              <Translate id="losos.home.closing.download">Download the latest release</Translate>
+            ),
+          }}
+          secondary={{
+            href: SOURCE,
+            label: <Translate id="losos.home.closing.source">Source on GitHub</Translate>,
+          }}
+        />
       </main>
     </Layout>
   );
