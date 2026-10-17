@@ -8,9 +8,13 @@ mdx:
 # Trh
 
 Voliteľný trh, na ktorom jedno zariadenie predáva voľné úložisko alebo výpočtový
-výkon a iný ho kupuje. Kupujúci platia v USDC, bitcoinoch alebo Monere,
-alebo kartou cez **Stripe Connect**, ak edge karty prijíma, a edge si
-ponecháva 4 % na pokrytie svojich prevádzkových nákladov.
+výkon a iný ho kupuje. Kupujúci platia kartou cez **Stripe Connect**, ak edge
+karty prijíma, alebo v USDC na Base, Arbitrum alebo OP. Edge každú platbu
+drží, kým neskončí obdobie, za ktoré kupujúci zaplatil, vráti peniaze
+kupujúcemu, keď zariadenie predajcu prestane dodávať, a ponecháva si 4 % na
+pokrytie svojich prevádzkových nákladov. Edge sa dá nastaviť aj na príjem
+bitcoinov, Monera, Zcashu a USDC na Solane, ktoré prídu predajcovi hneď,
+a preto sa nedajú vrátiť.
 
 Riadok **Trh** pod Mesh v bočnom paneli otvára panel na adrese
 `/settings/market`. Zariadenie ukáže trh, len keď je v dosahu oficiálny edge
@@ -37,29 +41,41 @@ zdieľanie obnovíte, a už zaplatené objednávky to neovplyvní.
 
 ## Ako sa pohybujú peniaze {#how-the-money-moves}
 
-Peniaze sa nikdy nedotknú zariadenia LosOS. Kupujúci platia jedným zo štyroch
+Peniaze sa nikdy nedotknú zariadenia LosOS. Kupujúci platia jedným z týchto
 spôsobov, podľa toho, čo edge dovolí:
 
 - **USDC na Base, Arbitrum One alebo OP Mainnet.** Platba ide do kontraktu
-  `LososEscrow`. Edge ju overí (adresu predajcu, sumu, potvrdenia) a keď
-  kúpené existuje, uvoľní ju predajcovi a pokladnici platformy, ktorá si berie
-  4 % poplatok. Alebo celú platbu vráti kupujúcemu: keď je adresa predajcu
-  nesprávna alebo je to kontrakt, keď objednávka už bola zaplatená, keď jej
-  jednotky prepadli, alebo keď sa kúpené nepodarilo včas pripraviť. Ak edge nič neurobí, kupujúci si môže vklad z kontraktu vziať
-  späť deň po skončení rezervácie objednávky. Pozri
+  `LososEscrow`. Edge ju overí (adresu predajcu, sumu, potvrdenia) a drží ju
+  tam, kým obdobie kupujúceho neskončí. Potom ju uvoľní predajcovi
+  a pokladnici platformy, ktorá si berie 4 % poplatok. Alebo celú platbu
+  vráti kupujúcemu: keď je adresa predajcu nesprávna alebo je to kontrakt,
+  keď objednávka už bola zaplatená, keď jej jednotky prepadli, alebo keď sa
+  kúpené nepodarilo včas pripraviť. Keď bolo zariadenie predajcu príliš dlho
+  offline, platbu rozdelí: kupujúci dostane späť podiel, ktorý nebol
+  dodaný, a predajca si ponechá zvyšok. Ak edge nič neurobí, kupujúci si
+  môže vklad z kontraktu vziať späť 33 dní po objednaní. Pozri
   [Platba v USDC](#paying-with-usdc).
+- **Karta cez Stripe Connect.** Na edge voliteľná. Platba zostáva na
+  zostatku platformy v Stripe, kým obdobie kupujúceho neskončí, potom edge
+  prevedie podiel predajcu, vráti ju alebo ju rozdelí, rovnako ako pri
+  escrow. Edge môže prijímať len USDC, bez platieb kartou, takže na
+  prevádzku trhu netreba firemný účet u spracovateľa kariet.
+
+Na edge, ktorý nie je nastavený aj na priame platby, sú to jediné dva
+spôsoby platby. Keď sú priame platby zapnuté, kupujúci vidia aj:
+
 - **USDC na Solane.** Priamy prevod, rozdelený medzi predajcu a pokladnicu
   v transakcii samotného kupujúceho.
-- **Bitcoin a Monero.** Priamo do vlastnej peňaženky predajcu, na novú adresu
-  pre každú objednávku, odvodenú z verejného kľúča predajcu: rozšíreného
-  verejného kľúča alebo deskriptora pre Bitcoin, primárnej adresy
-  a súkromného kľúča na prezeranie pre Monero. Edge len sleduje a mince nikdy
-  nedrží. 4 % poplatok z týchto predajov je dlh, ktorý predajca vyrovná
-  v USDC, pozri
+- **Bitcoin, Monero a Zcash.** Priamo do vlastnej peňaženky predajcu, na
+  novú adresu pre každú objednávku, odvodenú z verejného kľúča predajcu:
+  rozšíreného verejného kľúča alebo deskriptora pre Bitcoin, primárnej
+  adresy a súkromného kľúča na prezeranie pre Monero, zjednoteného kľúča na
+  prezeranie pre Zcash. Edge len sleduje a mince nikdy nedrží. 4 % poplatok
+  z týchto predajov je dlh, ktorý predajca vyrovná v USDC, pozri
   [Poplatky platformy z predajov v minciach](#platform-fees-on-coin-sales).
-- **Karta cez Stripe Connect.** Na edge voliteľná. Edge môže prijímať len
-  mince, bez platieb kartou, takže na prevádzku trhu netreba firemný účet
-  u spracovateľa kariet.
+
+Nič zaplatené priamo sa nedá podržať, takže kupujúci, ktorý takto platí,
+nemôže dostať peniaze späť, keď je zariadenie predajcu offline.
 
 Pri platbách kartou je edge Stripe **platforma**:
 
@@ -71,15 +87,53 @@ Pri platbách kartou je edge Stripe **platforma**:
 2. Stripe oznámi edge (`account.updated`), keď účet môže prijímať prevody.
    Na edge, ktorý neprijíma mince, môže predajca niečo ponúknuť až potom.
 3. Kupujúci si objedná jednotky z ponuky. Edge ich zarezervuje a vytvorí
-   Stripe Checkout Session ako **destination charge**. Kupujúci zaplatí
-   platforme, `transfer_data[destination]` prepošle tržbu na účet predajcu
-   a `application_fee_amount` zostane platforme.
+   Stripe Checkout Session ako platbu na platformu, s objednávkou ako jej
+   `transfer_group` a s účtom predajcu a poplatkom v metadátach. Predajcovi
+   zatiaľ nič nepríde.
 4. Stripe oznámi edge (`checkout.session.completed`), že platba prešla.
-   Objednávka prejde do stavu `paid`.
+   Objednávka prejde do stavu `paid` a začne sa jej obdobie.
+5. Keď sa obdobie skončí, edge z tejto platby prevedie podiel predajcu
+   (`source_transaction`), vráti peniaze kupujúcemu, alebo urobí časť
+   z oboch. Platforma si ponechá poplatok z toho, čo predajca dostane.
 
 Poplatok je `feeBps` bázických bodov z hrubej sumy, zaokrúhlený polovicou
 nahor. Pri predvolenej hodnote 400 zaplatí predaj za 20.00 EUR platforme 0.80
 a predajcovi 19.20. Nastavená hodnota je obmedzená na 2000 (20 %).
+
+## Zaplatené obdobia a vrátenie peňazí {#paid-periods-and-refunds}
+
+Zaplatená objednávka kupuje obdobie: mesiac úložiska, výpočtového výkonu
+alebo stroja. Edge drží peniaze kupujúceho počas tohto obdobia a sleduje
+zariadenie predajcu, kým beží, takže ani jedna strana nemôže odísť
+s podielom tej druhej.
+
+- **Predajca nemôže stiahnuť ponuku.** Kým na ponuke beží niečie obdobie,
+  tlačidlo Prestať predávať je sivé a uvádza, dokedy. Edge ju pred týmto
+  dátumom odmietne zatvoriť.
+- **Edge kontroluje, že zariadenie je dostupné.** Pri každom prechode
+  reconcile sa pýta mesh, či je uzol predajcu `Ready`, a kde nemá mesh,
+  ktorého by sa spýtal, použije heartbeat zariadenia. Čas, keď bol samotný
+  edge nedostupný alebo príliš zaneprázdnený na kontrolu, sa predajcovi
+  nikdy nepočíta.
+- **Zariadenie offline vráti peniaze kupujúcemu.** Ak je zariadenie
+  predajcu počas obdobia offline 24 hodín v kuse alebo spolu 48 hodín,
+  obdobie sa tým skončí. Kupujúci dostane späť podiel obdobia, ktorý nebol
+  dodaný, zaokrúhlený nahor na cent, a predajca dostane zaplatené za
+  zvyšok, mínus poplatok z tejto časti. Zariadenie, ktoré je offline od
+  začiatku, vráti celú platbu.
+- **Nič nepripravené, nič nezaplatené.** Ak kúpené nie je pripravené do 23
+  hodín od platby, kupujúci dostane všetko späť.
+- **Predajca dostane zaplatené, keď obdobie skončí.** Skupina Zárobky na
+  paneli Trh ukazuje, čo sa drží, čo je pripravené a čo je na ceste.
+  Vyplatiť pošle pripravené hneď a je sivé, kým nejaké obdobie neskončí.
+  Edge vypláca aj sám, deň po skončení každého obdobia, a vždy dosť skoro
+  na to, aby si kupujúci v USDC nemohol vziať späť vklad za obdobie, ktoré
+  bolo dodané.
+- **Kupujúci nemôže zrušiť obdobie, ktoré sa práve dodáva**, a nemôže
+  spustiť vrátenie peňazí. To robia len kontroly edge.
+
+Platbu kartou, ktorú niekto napadne u svojej banky, rieši Stripe: kým je
+spor otvorený, edge ju nevyplatí ani nevráti.
 
 ## Čo sa predáva {#what-is-for-sale}
 
@@ -157,6 +211,13 @@ zariadenia, nie edge.
   k mesh, výpočtový výkon, keď zároveň zdieľa výpočtový výkon. Všetko ostatné
   je sivé s uvedeným dôvodom. Edge vynucuje to isté pravidlo, panel ho len
   vysvetľuje.
+- Ponuka, za ktorú niekto zaplatil, uvádza „zaplatené do“ s dátumom a jej
+  tlačidlo Prestať predávať zostáva dovtedy sivé. Každá objednávka uvádza,
+  kde sú jej peniaze: držané, na ceste k predajcovi, vrátené alebo
+  rozdelené, s vrátenou sumou a dôvodom.
+- Skupina Zárobky sa objaví, len čo sa drží nejaký predaj: čo sa drží za
+  bežiace obdobia, čo je pripravené a čo je na ceste, s tlačidlom
+  Vyplatiť, ktoré je sivé, kým nejaké obdobie neskončí.
 - Platba kartou a onboarding do Stripe otvárajú vlastné stránky Stripe na novej
   karte. Nič v admin UI kartu nevidí. lososd a potom znova stránka overia,
   že odkaz je stránka `https://checkout.stripe.com` alebo
@@ -165,7 +226,7 @@ zariadenia, nie edge.
   podporované.
 - Stránky nemôžu volať edge samy, keďže CSP admin UI je `connect-src 'self'`.
   Namiesto toho to preposiela `lososd`: `GET /api/market`
-  a `POST /api/market/{onboard,listings,listings/close,orders}`. Relay
+  a `POST /api/market/{onboard,listings,listings/close,orders,release}`. Relay
   používa URL registrara, id appliance a proxy token, ktoré už poskytuje
   `losos.proxy.enable`. Vyžaduje https a token posiela do `curl` cez stdin,
   nie na príkazovom riadku.
@@ -186,8 +247,9 @@ Telá sú JSON.
 | `POST /market/account`         | token      | Vaše ponuky, nákupy, predaje, nároky             |
 | `POST /market/seller/onboard`  | token      | Spustiť alebo obnoviť onboarding do Stripe       |
 | `POST /market/listings`        | token      | `kind`, `unit_price`, `capacity`                 |
-| `POST /market/listings/close`  | token      | `listing_id`; zaplatené objednávky si jednotky ponechajú |
+| `POST /market/listings/close`  | token      | `listing_id`; zaplatené objednávky si jednotky ponechajú; 409, kým beží zaplatené obdobie |
 | `POST /market/orders`          | token      | `listing_id`, `quantity`; vráti URL Checkout     |
+| `POST /market/sales/release`   | token      | Vyplatí predaje, ktorých obdobia skončili; 409, kým žiadne také nie sú |
 | `POST /market/fees/pay`        | token      | `tx`, `network`; započíta prevod USDC do dlžných poplatkov z mincí |
 | `POST /market/webhook`         | podpis     | Udalosti Stripe                                  |
 
@@ -292,18 +354,24 @@ zapečatí zodpovedajúci pár, nič sa nestratí.
   ho má. Registrar s gate komunikuje cez Unix socket
   (`/run/losos-stripe-gate/gate.sock`, 0600) a smie žiadať len o vytvorenie
   účtu, označenie účtu, kontrolu účtu, vytvorenie odkazu na onboarding,
-  spustenie Checkout Session alebo overenie podpisu webhooku. Gate odmietne
-  checkout, ktorého cieľ nie je id `acct_...`, ktorého mena sa líši od
-  nastavenej, ktorého poplatok presahuje strop 20 % alebo celú sumu, ktorého
-  návratová URL nie je obyčajná http(s) URL alebo ktorého session žije dlhšie
-  ako deň. Odmietne aj Stripe endpoint, ktorý nie je `https`. Neexistuje
-  operácia „prepošli toto do Stripe“. Skompromitovaný registrar preto nemôže
-  prečítať kľúč, nemôže poslať peniaze nikam inam než na pripojený účet
-  v rámci limitov poplatkov gate a nemôže vystavovať refundácie ani výplaty.
-  Stále môže žiadať o checkouty, pretože to je jeho úloha. Obe jednotky bežia
-  ako procesy na tom istom stroji a root na edge sa stále dostane k obom. Ako
-  druhá vrstva jednotka registrara označí zapečatené bloby a adresár
-  s credentials gate ako nedostupné.
+  spustenie Checkout Session, overenie podpisu webhooku alebo vyrovnanie
+  držanej platby na trhu. Gate odmietne checkout, ktorého cieľ nie je id
+  `acct_...`, ktorého mena sa líši od nastavenej, ktorého poplatok presahuje
+  strop 20 % alebo celú sumu, ktorého návratová URL nie je obyčajná http(s)
+  URL alebo ktorého session žije dlhšie ako deň. Odmietne aj Stripe
+  endpoint, ktorý nie je `https`. Pri vyrovnaní si gate platbu sám prečíta
+  zo Stripe a rozdelí len platbu, ktorú vytvoril pre trh, medzi jej
+  kupujúceho a predajcu uvedeného pri checkoute: nikdy nevráti viac, než sa
+  zaplatilo, nič nevráti, keď už predajca dostal zaplatené, nič neurobí,
+  kým je platba v spore, a každé vrátenie a každý prevod urobí najviac raz.
+  Neexistuje operácia „prepošli toto do Stripe“. Skompromitovaný registrar
+  preto nemôže prečítať kľúč, nemôže poslať peniaze nikam inam než na
+  pripojený účet v rámci limitov poplatkov gate alebo späť kupujúcemu,
+  ktorý ich zaplatil, a nemôže hýbať vlastnými peniazmi platformy. Stále
+  môže žiadať o checkouty a vyrovnania, pretože to je jeho úloha. Obe
+  jednotky bežia ako procesy na tom istom stroji a root na edge sa stále
+  dostane k obom. Ako druhá vrstva jednotka registrara označí zapečatené
+  bloby a adresár s credentials gate ako nedostupné.
 - Edge nikdy neukladá tajomstvá Stripe v otvorenom texte. Sú uložené ako
   bloby `systemd-creds`, zapečatené pomocou TPM2, kde ho edge má, a inak
   kľúčom hostiteľa, a ku gate sa dostanú cez `LoadCredentialEncrypted=`.
@@ -339,6 +407,9 @@ Hardvér zostáva na Stripe. Ktoré siete prijíma, si vyberá edge:
 | OP Mainnet   | OP Sepolia          |
 | Solana       | Solana Devnet       |
 
+Solana sa ponúka len na edge, ktorý prijíma aj priame platby, keďže nič
+zaplatené na nej sa nedá podržať.
+
 Edge beží buď na ostrých, alebo na testovacích sieťach, nikdy na oboch. Na
 edge, ktorý prijíma karty, sa režim riadi jeho kľúčom Stripe: ostré siete
 s kľúčom `sk_live_`, testovacie s `sk_test_`. Edge, ktorý prijíma len mince,
@@ -371,13 +442,13 @@ poznámky pre operátora pri zdrojovom kóde (`docs/ci-and-releases.md`).
    označí ako zaplatenú. Jedna transakcia zaplatí len jednu objednávku.
    Objednávka potom uvádza svoju sieť a odkaz na transakciu v prehliadači
    blokov tej siete, pre kupujúceho aj predajcu.
-6. Na sieti Etherea potom edge počká, kým kúpené existuje (zväzok
-   objednávky úložiska je pripojený, stroj je vytvorený), overí adresu
-   predajcu na tej sieti a vklad uvoľní: poplatok do treasury, zvyšok
-   predajcovi. Ak adresa na tej sieti USDC prijať nemôže, edge namiesto toho
-   vráti celú platbu kupujúcemu a objednávka sa nevybaví. Ak kúpené ešte nie
-   je pripravené hodinu predtým, ako by si kupujúci mohol vklad vziať späť,
-   edge ho tiež vráti. Objednávka ukáže, čo z toho sa stalo.
+6. Na sieti Etherea edge overí adresu predajcu na tej sieti. Ak tam USDC
+   prijať nemôže, edge vráti celú platbu kupujúcemu a objednávka sa
+   nevybaví. Inak vklad zostane v escrow, kým obdobie beží, a edge ho
+   vyrovná tak, ako opisuje
+   [Zaplatené obdobia a vrátenie peňazí](#paid-periods-and-refunds):
+   poplatok do treasury a zvyšok predajcovi, všetko späť kupujúcemu, alebo
+   rozdelenie. Objednávka ukáže, čo z toho sa stalo.
 
 Kým platbu na sieti Etherea započíta, edge overí, že RPC odpovedá za reťazec
 tej siete, že `LososEscrow` sťahuje USDC od Circle pre tento reťazec, platí
@@ -390,11 +461,13 @@ Adresa predajcu USDC prijať môže, keď na tej sieti nemá kód zmluvy, alebo 
 len delegáciu podľa EIP-7702, takže zostáva účtom, ku ktorému niekto má
 kľúč. Že ho niekto má, ukázal už podpis výplatnej adresy. Treasury, zmluva
 USDC, escrow a nulová adresa sa nepočítajú nikdy. Kľúč edge môže vklad
-uvoľniť len predajcovi a treasury zapísaným pri platbe, alebo ho vrátiť
-kupujúcemu; nikam inam ho poslať nevie. Ak edge vklad neuvoľní do dňa po
-skončení držania objednávky, kupujúci si ho môže zo zmluvy vziať späť sám. Na Solane edge overí, že endpoint hlási
-genesis hash siete, že transakcia prešla a je potvrdená, že jej memo uvádza
-objednávku a že USDC predajcu a treasury narástli presne o ich podiely.
+uvoľniť len predajcovi a treasury zapísaným pri platbe, vrátiť ho kupujúcemu,
+alebo ho medzi nich rozdeliť (`settle`); nikam inam ho poslať nevie. Ak edge
+vklad nevyrovná do 33 dní od zadania objednávky, kupujúci si ho môže zo zmluvy
+vziať späť sám. Edge vypláca aspoň dva dni predtým. Na Solane edge overí, že
+endpoint hlási genesis hash siete, že transakcia prešla a je potvrdená, že jej
+memo uvádza objednávku a že USDC predajcu a treasury narástli presne o ich
+podiely.
 
 Objednávka drží svoje jednotky štvrť hodiny. Panel v posledných dvoch
 minútach novú platbu nezačne a transakciu odoslanej platby si pamätá, kým ju
@@ -448,15 +521,15 @@ obsluhované cez gateway mimo reťazca sa nehľadajú.
 
 ### Ako dostávať platby {#how-you-get-paid}
 
-Podpíšte peňaženkou, ktorá má USDC prijímať. Jedno kliknutie podpíše za oba
-druhy sietí: adresa Etherea berie predaje zaplatené na Base, Arbitrum a OP,
-adresa Solany predaje zaplatené na Solane. Edge overí každý podpis a uloží
-len adresy. Predaje zaplatené na Solane idú priamo na ne; predaje na sieťach
-Etherea na ne prídu, keď edge adresu na tej sieti overí a platbu z escrow
-uvoľní. Predajca, ktorý má nastavenú len
-jednu z nich, sa ponúka iba kupujúcim na tom druhu siete. Tú istú frázu
-importujete do MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom, keď
-peniaze chcete minúť. Pre tieto predaje nie je žiadny pripojený účet Stripe.
+Podpíšte peňaženkou, ktorá má USDC prijímať. Adresa Etherea berie predaje
+zaplatené na Base, Arbitrum a OP; prídu na ňu, keď obdobie kupujúceho skončí a
+edge platbu z escrow uvoľní. Na edge, ktorý prijíma aj priame platby, to isté
+kliknutie podpíše aj adresu Solany, ktorá berie predaje zaplatené na Solane
+priamo. Edge overí každý podpis a uloží len adresy. Predajca, ktorý má
+nastavenú len jednu z nich, sa ponúka iba kupujúcim na tom druhu siete. Tú
+istú frázu importujete do MetaMask, Rabby, Rainbow, Trust Wallet alebo
+Phantom, keď peniaze chcete minúť. Pre tieto predaje nie je žiadny pripojený
+účet Stripe.
 
 :::warning[Peňaženka vytvorená tu zostane v jednom prehliadači]
 Peňaženka vytvorená na Trhu žije len v tom prehliadači, preto sa panel pred
@@ -468,11 +541,12 @@ rovnako.
 
 ## Platba v bitcoinoch {#paying-with-bitcoin}
 
-Edge, ktorý vyrovnáva v USDC, môže za objednávky úložiska, výpočtov a strojov
-prijímať aj bitcoiny. Beží na ňom vlastný orezaný uzol Bitcoinu: na mainnete
-pre ostrý edge, na testnet4, signete alebo regteste pre testovací. Registrár
-odmietne každé iné spárovanie, takže ostrý edge nikdy nezapočíta testovacie
-mince. Uzol drží peňaženku len na sledovanie a žiadny súkromný kľúč.
+Edge, ktorý vyrovnáva v USDC a prijíma priame platby, môže za objednávky
+úložiska, výpočtov a strojov prijímať aj bitcoiny. Beží na ňom vlastný orezaný
+uzol Bitcoinu: na mainnete pre ostrý edge, na testnet4, signete alebo regteste
+pre testovací. Registrár odmietne každé iné spárovanie, takže ostrý edge nikdy
+nezapočíta testovacie mince. Uzol drží peňaženku len na sledovanie a žiadny
+súkromný kľúč.
 
 ### Predaj za bitcoiny {#selling-for-bitcoin}
 
@@ -512,11 +586,11 @@ transakciu na mempool.space.
 
 ## Platba v Monere {#paying-with-monero}
 
-Edge, ktorý vyrovnáva v USDC, môže za tie isté objednávky prijímať aj Monero.
-Beží na ňom vlastný orezaný uzol Monera a vedľa neho služba peňaženiek: na
-mainnete pre ostrý edge, na stagenete alebo testnete pre testovací. Registrár
-odmietne každé iné spárovanie aj adresu vytvorenú pre inú sieť, než na akej
-je uzol.
+Edge, ktorý vyrovnáva v USDC a prijíma priame platby, môže za tie isté
+objednávky prijímať aj Monero. Beží na ňom vlastný orezaný uzol Monera
+a vedľa neho služba peňaženiek: na mainnete pre ostrý edge, na stagenete
+alebo testnete pre testovací. Registrár odmietne každé iné spárovanie aj
+adresu vytvorenú pre inú sieť, než na akej je uzol.
 
 ### Predaj za Monero {#selling-for-monero}
 
@@ -551,14 +625,15 @@ prehliadač blokov.
 
 ## Platba v Zcashi {#paying-with-zcash}
 
-Edge, ktorý vyrovnáva v USDC, môže za tie isté objednávky prijímať aj tienený
-Zcash. Nebeží na ňom žiadny uzol Zcashu. Pýta si kompaktné bloky od verejných
-serverov lightwalletd, predvolene od štyroch serverov na mainnete od rôznych
-prevádzkovateľov, a dešifruje ich sám, takže váš kľúč na prezeranie edge nikdy
-neopustí. Platba sa počíta, až keď ju servery dvoch rôznych prevádzkovateľov
-ukážu v bloku s rovnakým hašom; server, ktorý ukáže niečo, čo nikto iný
-neukáže, je prehlasovaný. Ostrý edge vyrovnáva len na mainnete a nepýta sa
-servera, ktorý hlási inú sieť; testnet a regtest sú pre testovací edge.
+Edge, ktorý vyrovnáva v USDC a prijíma priame platby, môže za tie isté
+objednávky prijímať aj tienený Zcash. Nebeží na ňom žiadny uzol Zcashu. Pýta
+si kompaktné bloky od verejných serverov lightwalletd, predvolene od štyroch
+serverov na mainnete od rôznych prevádzkovateľov, a dešifruje ich sám, takže
+váš kľúč na prezeranie edge nikdy neopustí. Platba sa počíta, až keď ju
+servery dvoch rôznych prevádzkovateľov ukážu v bloku s rovnakým hašom; server,
+ktorý ukáže niečo, čo nikto iný neukáže, je prehlasovaný. Ostrý edge vyrovnáva
+len na mainnete a nepýta sa servera, ktorý hlási inú sieť; testnet a regtest
+sú pre testovací edge.
 
 ### Predaj za Zcash {#selling-for-zcash}
 
@@ -634,9 +709,13 @@ objednávať nedá.
 
 ## Čo nie je pokryté {#not-covered}
 
-- **Refundácie a spory pri kartách.** Riešte ich v Stripe dashboarde pomocou
-  `reverse_transfer` a `refund_application_fee`, aby sa vrátil podiel
-  predajcu aj provízia platformy. Trh nemodeluje ani jedno.
+- **Spory a vrátenia peňazí, ktoré neurobil edge.** Spor pri karte sa rieši
+  v Stripe dashboarde. Vrátenie peňazí z akéhokoľvek iného dôvodu potom, ako
+  predajca dostal zaplatené, je na rozhodnutí operátora, s
+  `reverse_transfer`, aby sa vrátil aj podiel predajcu.
+- **Dôkaz, že úložisko je v poriadku.** Zariadenie sa počíta ako online,
+  kým je jeho uzol v mesh `Ready`. Edge nekontroluje, či zväzok kupujúceho
+  odpovedá.
 - **Vynucovanie nároku.** Plnenie vytvorí claim; nebráni kupujúcemu použiť
   viac, než kúpil, nemeria výpočtový výkon a pri expirácii neodoberá prístup.
 - **Dane, fakturácia a overovanie predajcov** nad rámec toho, čo robí

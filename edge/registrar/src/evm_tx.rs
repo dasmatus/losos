@@ -127,6 +127,17 @@ pub fn refund_data(deposit: u64) -> Vec<u8> {
     call_data("refund(uint256)", deposit)
 }
 
+/// `settle(uint256,uint256)` on the escrow: `refund` base units back to the
+/// payer, the rest to the seller and the treasury.
+#[must_use]
+pub fn settle_data(deposit: u64, refund: u128) -> Vec<u8> {
+    let mut data = call_data("settle(uint256,uint256)", deposit);
+    let mut word = [0u8; 32];
+    word[16..].copy_from_slice(&refund.to_be_bytes());
+    data.extend_from_slice(&word);
+    data
+}
+
 /// `deposits(uint256)`: the escrow's record of one deposit. The last word
 /// of the answer is its state.
 #[must_use]
@@ -399,6 +410,15 @@ mod tests {
         assert_eq!(data.len(), 36);
         assert_eq!(data[35], 7);
         assert_eq!(crate::identity::to_hex(&refund_data(1)[..4]), "278ecde1");
+        // `cast calldata 'settle(uint256,uint256)' 7 2500000`
+        assert_eq!(
+            crate::identity::to_hex(&settle_data(7, 2_500_000)),
+            concat!(
+                "9a9c29f6",
+                "0000000000000000000000000000000000000000000000000000000000000007",
+                "00000000000000000000000000000000000000000000000000000000002625a0",
+            )
+        );
     }
 
     #[test]

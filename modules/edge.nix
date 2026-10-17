@@ -689,6 +689,7 @@ let
       gateSocket
     ]
     ++ lib.optionals (cfg.market.enable && !cfg.market.cards.enable) [ "--market-no-cards" ]
+    ++ lib.optionals (cfg.market.enable && cfg.market.directPay) [ "--market-direct-pay" ]
     ++ lib.optionals cfg.market.enable [
       "--market-state-file"
       "/var/lib/losos-registrar/market.json"
@@ -696,6 +697,8 @@ let
       (toString cfg.market.feeBps)
       "--market-coin-fee-limit"
       (toString cfg.market.coinFeeLimit)
+      "--market-offline-refund-after"
+      (toString cfg.market.offlineRefundAfter)
       "--market-currency"
       cfg.market.currency
       "--market-storage-class"
@@ -1455,6 +1458,8 @@ in
             "%d/stripe-webhook-secret"
             "--currency"
             cfg.market.currency
+            "--stripe-api"
+            (utils.escapeSystemdExecArg cfg.market.stripeApi)
             # The same two values the registrar is given. The gate holds every
             # Checkout and onboarding link to them exactly, so a compromised
             # registrar can neither raise the platform's cut past what the

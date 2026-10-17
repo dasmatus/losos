@@ -8,6 +8,7 @@ import {
   postMarketListing,
   postMarketOnboard,
   postMarketOrder,
+  postMarketRelease,
   type MarketAccount,
   type MarketActionResponse,
   type MarketKind,
@@ -48,6 +49,8 @@ export interface MarketData {
   list: (kind: MarketKind, priceMinor: number, capacity: number) => Promise<boolean>;
   close: (listingId: string) => Promise<boolean>;
   order: (listingId: string, quantity: number) => Promise<MarketActionResponse | null>;
+  /** Pay out now the sales whose periods are over. */
+  release: () => Promise<boolean>;
 }
 
 const KIND_NAME: Record<MarketKind, MessageKey> = {
@@ -175,6 +178,20 @@ export function useMarket(enabled: boolean): MarketData {
         () => toast.done(t("panes.market.closedTitle")),
       )) !== null,
     order: (id, quantity) => act(() => postMarketOrder(id, quantity)),
+    release: async () => {
+      const ready = state.kind === "ready" ? (state.account.payouts?.ready ?? 0) : 0;
+      const currency = state.kind === "ready" ? state.account.currency : "eur";
+      return (
+        (await act(
+          () => postMarketRelease(),
+          () =>
+            toast.success(
+              t("panes.market.earnings.sentTitle"),
+              t("panes.market.earnings.sentBody", { amount: formatMoney(ready, currency) }),
+            ),
+        )) !== null
+      );
+    },
   };
 }
 

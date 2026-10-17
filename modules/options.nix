@@ -1961,8 +1961,8 @@ in
         extended public key, so the coins go straight to the seller and the
         edge never holds a private key. The platform fee on these orders is
         owed by the seller and settled in USDC (`coinFeeLimit`). Needs
-        `losos.edge.market.usdc.enable`.
-        See handbook/docs/in-depth/market.md.
+        `losos.edge.market.usdc.enable`, and buyers see it only with
+        `directPay`. See handbook/docs/in-depth/market.md.
       '';
     };
 
@@ -2004,8 +2004,8 @@ in
         fresh subaddress of the seller's own wallet, so the coins go straight
         to the seller and nothing on the edge can spend them. The platform
         fee on these orders is owed by the seller and settled in USDC
-        (`coinFeeLimit`). Needs
-        `losos.edge.market.usdc.enable`. See handbook/docs/in-depth/market.md.
+        (`coinFeeLimit`). Needs `losos.edge.market.usdc.enable`, and buyers
+        see it only with `directPay`. See handbook/docs/in-depth/market.md.
       '';
     };
 
@@ -2038,8 +2038,8 @@ in
         itself, so the key never leaves the edge, and counts a payment only
         when servers of two different operators agree on it. The platform fee
         on these orders is owed by the seller and settled in USDC
-        (`coinFeeLimit`). Needs
-        `losos.edge.market.usdc.enable`. See handbook/docs/in-depth/market.md.
+        (`coinFeeLimit`). Needs `losos.edge.market.usdc.enable`, and buyers
+        see it only with `directPay`. See handbook/docs/in-depth/market.md.
       '';
     };
 
@@ -2170,9 +2170,37 @@ in
       default = 400;
       description = ''
         The platform's cut of every sale in basis points of the gross amount:
-        400 is 4%. Collected as Stripe's application_fee_amount on a
-        destination charge. Capped at 20% so a typo cannot take a third of
-        every sale.
+        400 is 4%. Kept by the platform when a held card payment is paid
+        out to the seller, and by the treasury when an escrowed USDC payment
+        is. Capped at 20% so a typo cannot take a third of every sale.
+      '';
+    };
+
+    edge.market.offlineRefundAfter = lib.mkOption {
+      type = lib.types.ints.between 60 604800;
+      default = 86400;
+      description = ''
+        How long, in seconds, a seller's box may be offline in a row while a
+        buyer's slot runs before the buyer gets back the share of the slot
+        not delivered, and the slot ends. Twice this in all during one slot
+        does the same. Offline means the seller's node is not `Ready` in the
+        mesh, or, without a mesh apiserver, no heartbeat within the TTL. Time
+        the edge itself was down or shedding load never counts. Keep it well
+        above how long the boxes' nightly reboot takes.
+        See handbook/docs/in-depth/market.md.
+      '';
+    };
+
+    edge.market.directPay = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Also let buyers pay in ways that reach the seller's wallet at once:
+        Bitcoin, Monero and Zcash (`bitcoin`, `monero`, `zcash`) and USDC on
+        Solana. Nothing paid that way can be held for the slot, so a buyer
+        whose seller goes offline cannot be refunded. Off, the market takes
+        only cards and USDC on the EVM networks, which the edge holds until
+        each slot ends.
       '';
     };
 
@@ -2227,6 +2255,16 @@ in
         Where Stripe sends a buyer back to after Checkout and a seller back to
         after onboarding. `?order=<id>&status=paid|cancelled` is appended for
         Checkout. Required when the market is enabled.
+      '';
+    };
+
+    edge.market.stripeApi = lib.mkOption {
+      type = lib.types.str;
+      default = "https://api.stripe.com";
+      visible = false;
+      description = ''
+        Where the Stripe gate reaches Stripe's API. Only the market VM test
+        changes it, to point the gate at a stub on the edge itself.
       '';
     };
 

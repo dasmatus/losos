@@ -884,6 +884,24 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
             "--market-coin-fee-limit {coin_fee_limit} exceeds {MAX_COIN_FEE_LIMIT} cents"
         ));
     }
+    // How long a seller's box may be offline in a row before its buyers are
+    // refunded (`crate::slots`). Under a minute would refund a box for a
+    // reboot; over a week would leave a buyer paying for nothing that long.
+    let offline_refund_secs: u64 = match arg(args, "--market-offline-refund-after") {
+        None => crate::slots::DEFAULT_OFFLINE_SECS,
+        Some(raw) => raw
+            .parse()
+            .map_err(|_| miette!("bad --market-offline-refund-after {raw:?}; expected seconds"))?,
+    };
+    if !(MIN_OFFLINE_REFUND_SECS..=MAX_OFFLINE_REFUND_SECS).contains(&offline_refund_secs) {
+        return Err(miette!(
+            "--market-offline-refund-after {offline_refund_secs} is outside {MIN_OFFLINE_REFUND_SECS}..={MAX_OFFLINE_REFUND_SECS} seconds"
+        ));
+    }
+    // Coins and Solana USDC reach the seller's wallet at once, so nothing
+    // can be held for the slot or refunded from it. Off unless the operator
+    // takes that on.
+    let direct_pay = args.iter().any(|a| a == "--market-direct-pay");
     Ok(Some(Box::new(MarketOpts {
         state_file: arg(args, "--market-state-file")
             .unwrap_or("/var/lib/losos-registrar/market.json")
@@ -901,8 +919,13 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         cards,
         zec: parse_zec(args, currency)?,
         coin_fee_limit,
+        offline_refund_secs,
+        direct_pay,
     })))
 }
+
+const MIN_OFFLINE_REFUND_SECS: u64 = 60;
+const MAX_OFFLINE_REFUND_SECS: u64 = 7 * 24 * 60 * 60;
 
 /// Bitcoin orders, through the edge's own node:
 ///

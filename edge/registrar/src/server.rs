@@ -51,7 +51,7 @@
 //! `Result<T, E: Diagnostic>`, not for plain `std::error::Error`). It logs and
 //! continues rather than killing the server.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -608,6 +608,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/market/seller/onboard", post(market_onboard))
         .route("/market/orders", post(market_order))
         .route("/market/payout", post(market_payout))
+        .route("/market/sales/release", post(market_release))
         .route("/market/confirm", post(market_confirm))
         .route("/market/coins/key", post(market_coin_key))
         .route("/market/coins/pay", post(market_coin_pay))
@@ -1412,6 +1413,17 @@ async fn market_close(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// The seller asks to be paid for every sale whose slot is over.
+async fn market_release(
+    State(st): State<AppState>,
+    Json(auth): Json<MarketAuth>,
+) -> Result<Json<crate::slots::PayoutView>, ApiError> {
+    let market = market_tenant(&st, &auth).await?;
+    let view = market.release_sales(&auth.appliance_id).await?;
+    st.notify.notify_one();
+    Ok(Json(view))
+}
+
 async fn market_order(
     State(st): State<AppState>,
     Json(req): Json<MarketOrderReq>,
@@ -1896,6 +1908,86 @@ async fn market_webhook(
 ///
 /// Compute orders have nothing to provision: they are a ledger credit.
 /// Machine orders are fulfilled by `vm::fulfil` first, on the same pass.
+/// Which of `watched` (sellers with a running, held slot) are online, and
+/// whether this pass could tell at all. Online is the seller's node `Ready`
+/// in the mesh, which is what serves what they sold; when the mesh apiserver
+/// cannot be asked, a heartbeat within the TTL. While the API is shedding
+/// load a missed heartbeat proves nothing, so such a pass counts no offline
+/// time (`crate::slots::observe`), the same rule the prune keeps.
+async fn seller_presence(st: &AppState, watched: &BTreeSet<String>) -> (BTreeSet<String>, bool) {
+    if watched.is_empty() {
+        return (BTreeSet::new(), true);
+    }
+    let ttl = st.opts.heartbeat_ttl;
+    let shedding = st
+        .last_shed
+        .lock()
+        .map(|last| last.is_some_and(|t| t.elapsed() < ttl))
+        .unwrap_or(true);
+    let heard = st.reg.alive(ttl).await;
+    let kube = if st.opts.kube_token_file.is_some() {
+        kube_access(st).await.ok()
+    } else {
+        None
+    };
+    let mut online = BTreeSet::new();
+    let mut can_tell = !shedding;
+    for seller in watched {
+        let ready = match &kube {
+            Some(kube) if kube_name_fault(seller).is_none() => node_ready(kube, seller).await,
+            _ => None,
+        };
+        match ready {
+            Some(true) => {
+                online.insert(seller.clone());
+            }
+            Some(false) => {}
+            None => {
+                if heard.contains(seller) {
+                    online.insert(seller.clone());
+                } else if kube.is_some() {
+                    // Neither the apiserver nor the box answered: the edge
+                    // cannot tell which side is down.
+                    can_tell = false;
+                }
+            }
+        }
+    }
+    (online, can_tell)
+}
+
+/// Whether node `name` is `Ready`: `Some(false)` when it is not, or is not
+/// in the mesh at all; `None` when the apiserver did not answer.
+async fn node_ready(kube: &KubeAccess, name: &str) -> Option<bool> {
+    let url = format!("{}/api/v1/nodes/{name}", kube.api);
+    let response = kube
+        .client
+        .get(&url)
+        .bearer_auth(&kube.token)
+        .send()
+        .await
+        .ok()?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Some(false);
+    }
+    if !response.status().is_success() {
+        return None;
+    }
+    let node: serde_json::Value = response.json().await.ok()?;
+    Some(node_is_ready(&node))
+}
+
+/// A Node object's `Ready` condition is `True`.
+fn node_is_ready(node: &serde_json::Value) -> bool {
+    node["status"]["conditions"]
+        .as_array()
+        .is_some_and(|conditions| {
+            conditions
+                .iter()
+                .any(|c| c["type"] == "Ready" && c["status"] == "True")
+        })
+}
+
 async fn fulfil_market(st: &AppState) {
     let Some(market) = &st.market else {
         return;
@@ -1923,7 +2015,17 @@ async fn fulfil_market(st: &AppState) {
             "could not record stale orders as expired: {e}",
         ),
     }
+    let watched = market.watched_sellers().await;
+    let (online, can_tell) = seller_presence(st, &watched).await;
+    let max_gap = st
+        .opts
+        .reconcile_interval
+        .as_secs()
+        .saturating_mul(3)
+        .max(300);
+    market.slots_pass(&online, can_tell, max_gap).await;
     market.settle_escrow().await;
+    market.settle_cards().await;
     vm::fulfil(st, market).await;
     let pending = market.pending_provisions().await;
     let lapsed = market.lapsed_volumes().await;

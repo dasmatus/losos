@@ -45,6 +45,8 @@ fn opts(state: &Path) -> MarketOpts {
         cards: true,
         zec: None,
         coin_fee_limit: losos_registrar::market::DEFAULT_COIN_FEE_LIMIT,
+        offline_refund_secs: losos_registrar::slots::DEFAULT_OFFLINE_SECS,
+        direct_pay: true,
     }
 }
 

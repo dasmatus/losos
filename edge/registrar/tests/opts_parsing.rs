@@ -402,6 +402,30 @@ fn the_coin_fee_limit_is_cents_and_bounded() {
 }
 
 #[test]
+fn slots_refund_after_a_day_offline_and_take_only_held_payments_by_default() {
+    let market = serve_opts(MARKET_FLAGS).market.expect("market enabled");
+    assert_eq!(market.offline_refund_secs, 24 * 60 * 60);
+    assert!(!market.direct_pay);
+
+    let mut args = vec![
+        "--market-offline-refund-after",
+        "43200",
+        "--market-direct-pay",
+    ];
+    args.extend(MARKET_FLAGS);
+    let market = serve_opts(&args).market.expect("market enabled");
+    assert_eq!(market.offline_refund_secs, 43_200);
+    assert!(market.direct_pay);
+    // Under a minute refunds a reboot; over a week leaves a buyer paying for
+    // nothing that long.
+    for bad in ["59", "604801", "a day", "-1"] {
+        let mut args = vec!["--market-offline-refund-after", bad];
+        args.extend(MARKET_FLAGS);
+        assert!(parse(serve_args(&args)).is_err(), "{bad}");
+    }
+}
+
+#[test]
 fn market_flags_are_all_or_nothing_and_bounded() {
     // Taking payment without a place to send the buyer back to must fail at
     // boot.

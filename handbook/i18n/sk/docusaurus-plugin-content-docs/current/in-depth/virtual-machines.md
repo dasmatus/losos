@@ -104,12 +104,15 @@ Všetky repliky na jednom okrajovom serveri majú rovnakú veľkosť:
 `losos.edge.vms.cpu` vCPU, `memoryMiB` pamäte a `diskGiB` disku (predvolene 1,
 2048 a 20), alebo viac, ak to obraz vyžaduje.
 
-**Delenie je pevne 50 %.** Platba za stroj je destination charge ako každý iný
-predaj na trhu a `application_fee_amount` je presne polovica sumy. Na stroje
-sa nevzťahuje `losos.edge.market.feeBps` prevádzkovateľa a brána Stripe
-odmietne platbu za stroj s akýmkoľvek iným poplatkom. Pri cene 6,00 EUR za
-repliku na mesiac stoja tri repliky 18,00 EUR; vlastník hosťujúceho zariadenia
-dostane 9,00 a LosOS si ponechá 9,00.
+**Delenie je pevne 50 %.** Platba za stroj sa drží ako každý iný predaj na
+trhu, kým mesiac kupujúceho neskončí, s poplatkom presne vo výške polovice
+sumy; ak je hostiteľ príliš dlho offline, kupujúci dostane späť podiel,
+ktorý nebol dodaný (pozri
+[Zaplatené obdobia a vrátenie peňazí](market.md#paid-periods-and-refunds)).
+Na stroje sa nevzťahuje `losos.edge.market.feeBps` prevádzkovateľa a brána
+Stripe odmietne platbu za stroj s akýmkoľvek iným poplatkom. Pri cene
+6,00 EUR za repliku na mesiac stoja tri repliky 18,00 EUR; vlastník
+hosťujúceho zariadenia dostane 9,00 a LosOS si ponechá 9,00.
 
 ## Po zaplatení {#after-payment}
 

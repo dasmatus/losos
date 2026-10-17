@@ -77,6 +77,13 @@ pub const MAX_COIN_FEE_LIMIT: u64 = 100_000;
 /// pay them in coins, whatever the amount.
 pub const COIN_FEE_GRACE_SECS: u64 = 30 * 24 * 3600;
 /// What `pay_with_coin` answers while a seller's coin fees are overdue.
+/// Why a listing cannot be closed: a buyer paid for a slot on it that is
+/// still running (`crate::slots::locked_until`).
+const SLOT_RUNNING: &str =
+    "someone has paid for this listing; it can be closed once their slot ends";
+/// Why a payout was refused: every held payment is for a slot still running.
+const NOTHING_TO_PAY_OUT: &str =
+    "nothing is ready to pay out yet; held payments are paid once their slots end";
 const COINS_PAUSED: &str = "the seller owes platform fees on earlier coin sales, so this order cannot be paid in coins until they are settled; pay in USDC where the seller takes it";
 
 /// Smallest charge, in minor units. Stripe refuses anything below roughly 50
@@ -360,6 +367,35 @@ pub struct Order {
     /// Whether `fee_offset` has been taken off what the seller owes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub offset_collected: bool,
+    /// Where a card payment held on the platform is going. `None` on every
+    /// other rail, and on card orders paid before the platform held them
+    /// (a destination charge, already with the seller).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card: Option<Card>,
+    /// The seller's [`crate::slots::Presence::offline`] when the order was
+    /// paid, so the offline time that counts against it is only its own.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub offline_base: u64,
+}
+
+/// A card payment the platform holds until the slot it bought is over
+/// (`crate::slots`). Stripe charged the platform; the seller's share is
+/// transferred to their connected account only at the end, and the gate
+/// refunds from the platform's balance before that. One step at a time, the
+/// same steps as an [`Escrow`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Card {
+    /// `pi_...`, from the paid Checkout Session.
+    pub payment_intent: String,
+    pub step: EscrowStep,
+    /// When the last settle of this step failed, so the next waits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tried_at: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<RefundReason>,
+    /// On [`EscrowStep::Split`], what goes back to the buyer, minor units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refund: Option<u64>,
 }
 
 /// What the edge does with one deposit in `LososEscrow`, and how far it got.
@@ -377,25 +413,44 @@ pub struct Escrow {
     pub tx: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sent_at: Option<u64>,
+    /// On [`EscrowStep::Split`], what goes back to the payer, in the
+    /// market's minor unit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refund: Option<u64>,
 }
 
 impl Escrow {
     /// Whether the edge still has a transaction to send or follow.
     #[must_use]
     pub fn pending(&self) -> bool {
-        matches!(self.step, EscrowStep::Release | EscrowStep::Refund)
+        self.step.pending()
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EscrowStep {
+    /// Kept while the slot runs, so the buyer can still be refunded. Nothing
+    /// to send yet (`crate::slots`).
+    Held,
     /// To the seller and the treasury, once the edge's call is mined.
     Release,
     Released,
     /// Back to the payer, once the edge's call is mined.
     Refund,
     Refunded,
+    /// [`Escrow::refund`] back to the payer and the rest to the seller and
+    /// the treasury, once the edge's call is mined.
+    Split,
+    Settled,
+}
+
+impl EscrowStep {
+    /// Whether the edge has a call to make or follow.
+    #[must_use]
+    pub fn pending(self) -> bool {
+        matches!(self, Self::Release | Self::Refund | Self::Split)
+    }
 }
 
 /// `GET /escrow/releaser` from the terminal (`crate::operator`).
@@ -440,6 +495,9 @@ pub enum RefundReason {
     /// claim that never bound, or machines never created. The edge sends the
     /// deposit back rather than pay the seller for nothing.
     NotDelivered,
+    /// The seller's box was offline for too long while the slot ran
+    /// (`crate::slots`). The buyer gets back the share not delivered.
+    SellerOffline,
 }
 
 impl RefundReason {
@@ -457,6 +515,9 @@ impl RefundReason {
             Self::BuyerReclaimed => "the buyer took the payment back from the escrow",
             Self::NotDelivered => {
                 "what was bought could not be set up in time; the payment is being refunded"
+            }
+            Self::SellerOffline => {
+                "the seller's box was offline too long; the part not delivered is being refunded"
             }
         }
     }
@@ -504,6 +565,14 @@ pub struct MarketState {
     /// transaction, so each one is counted once.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub fee_payments: BTreeMap<String, FeePayment>,
+    /// How long each seller with a running slot has been offline
+    /// (`crate::slots`), by appliance id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub presence: BTreeMap<String, crate::slots::Presence>,
+    /// When the edge last looked, so time it was not looking (down, or too
+    /// busy to hear heartbeats) is never counted against a seller.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presence_tick: Option<u64>,
 }
 
 /// A seller's watch-only keys for coin orders (`crate::coins`), and the
@@ -759,7 +828,7 @@ const USDC_HOLD_SECS: u64 = 15 * 60;
 /// or six Bitcoin blocks on a slow hour.
 const COIN_CONFIRM_SECS: u64 = 3 * 60 * 60;
 /// The `deadline` a USDC order's invoice names for `LososEscrow.pay`.
-fn usdc_deadline(order: &Order) -> u64 {
+pub(crate) fn usdc_deadline(order: &Order) -> u64 {
     crate::stablecoin::refund_deadline(order.created_at.saturating_add(USDC_HOLD_SECS))
 }
 
@@ -787,17 +856,20 @@ fn pending_live(order: &Order, now: u64) -> bool {
 }
 
 /// Whether an order's fee offset may still reach the treasury: a USDC order
-/// still held, or paid with its escrow release still to come.
+/// still pending, or paid with its deposit held or its release or split
+/// still to come.
 fn offset_in_flight(order: &Order, now: u64) -> bool {
     order.fee_offset > 0
         && !order.offset_collected
         && order.rail == Rail::Usdc
         && (pending_live(order, now)
             || (order.status == OrderStatus::Paid
-                && order
-                    .escrow
-                    .as_ref()
-                    .is_some_and(|e| e.step == EscrowStep::Release)))
+                && order.escrow.as_ref().is_some_and(|e| {
+                    matches!(
+                        e.step,
+                        EscrowStep::Held | EscrowStep::Release | EscrowStep::Split
+                    )
+                })))
 }
 
 /// What a new USDC order of `amount` for `seller`, whose platform fee is
@@ -843,6 +915,32 @@ pub fn collect_offset(state: &mut MarketState, order_id: &str) -> u64 {
     offset
 }
 
+/// The share of `order_id`'s fee offset that reached the treasury when its
+/// deposit was split with `refund` going back to the buyer: the offset
+/// scaled to what the seller kept, rounded down as `LososEscrow.settle`
+/// scales the fee.
+pub fn collect_offset_share(state: &mut MarketState, order_id: &str, refund: u64) -> u64 {
+    let Some(order) = state.orders.get_mut(order_id) else {
+        return 0;
+    };
+    if order.fee_offset == 0 || order.offset_collected || order.amount == 0 {
+        return 0;
+    }
+    order.offset_collected = true;
+    let kept = order.amount.saturating_sub(refund);
+    let share = u128::from(order.fee_offset) * u128::from(kept) / u128::from(order.amount);
+    let share = u64::try_from(share).unwrap_or(0);
+    let seller = order.seller.clone();
+    if share > 0 {
+        state
+            .coin_sellers
+            .entry(seller)
+            .or_default()
+            .settle(share, true);
+    }
+    share
+}
+
 /// Give a debt from a ledger written before the edge kept its start the
 /// time it was first read, so the age rule has something to count from.
 pub fn stamp_debts(state: &mut MarketState, now: u64) {
@@ -851,6 +949,15 @@ pub fn stamp_debts(state: &mut MarketState, now: u64) {
             seller.owed_since = Some(now);
         }
     }
+}
+
+/// The seller of `order_id`, or nothing.
+fn seller_of(state: &MarketState, order_id: &str) -> String {
+    state
+        .orders
+        .get(order_id)
+        .map(|o| o.seller.clone())
+        .unwrap_or_default()
 }
 
 /// One side of an account's order history: live orders first, then newest
@@ -962,41 +1069,12 @@ fn holds_replicas(order: &Order) -> bool {
 /// machines created. Compute is a ledger credit and exists once paid. The
 /// escrow pays the seller only after this, so a buyer never pays for a
 /// volume the mesh could not give them.
-fn delivered(order: &Order) -> bool {
+pub(crate) fn delivered(order: &Order) -> bool {
     match order.kind {
         Kind::Storage => order.volume.is_some(),
         Kind::Vm => order.vm.as_ref().is_some_and(|vm| vm.created),
         Kind::Compute => true,
     }
-}
-
-/// How long before the escrow deadline the edge stops waiting for an order
-/// to be set up and sends the deposit back itself, so the buyer is refunded
-/// without having to reclaim it.
-const UNDELIVERED_REFUND_BEFORE_SECS: u64 = 60 * 60;
-
-/// Paid USDC orders whose release is waiting on delivery and whose deadline
-/// is close: queue their deposits for a refund and end the order.
-pub fn refund_undelivered(state: &mut MarketState, now: u64) -> Vec<String> {
-    let mut refunded = Vec::new();
-    for order in state.orders.values_mut() {
-        let waiting = order.status == OrderStatus::Paid
-            && !delivered(order)
-            && order
-                .escrow
-                .as_ref()
-                .is_some_and(|e| e.step == EscrowStep::Release && e.tx.is_none());
-        if !waiting || now.saturating_add(UNDELIVERED_REFUND_BEFORE_SECS) < usdc_deadline(order) {
-            continue;
-        }
-        if let Some(escrow) = order.escrow.as_mut() {
-            escrow.step = EscrowStep::Refund;
-            escrow.reason = Some(RefundReason::NotDelivered);
-        }
-        order.expires_at = Some(order.expires_at.map_or(now, |at| at.min(now)));
-        refunded.push(order.id.clone());
-    }
-    refunded
 }
 
 /// Whether a storage order's claim may still exist. The volume holds the
@@ -1031,7 +1109,7 @@ pub fn lapsed_volumes(state: &MarketState, now: u64) -> Vec<(String, String)> {
 
 /// Whether a paid order's entitlement is still running at `now`. A lapsed
 /// order hands its units back to the listing.
-fn paid_live(order: &Order, now: u64) -> bool {
+pub(crate) fn paid_live(order: &Order, now: u64) -> bool {
     order.status == OrderStatus::Paid && order.expires_at.is_none_or(|e| now < e)
 }
 
@@ -1248,9 +1326,18 @@ pub fn apply_event(state: &mut MarketState, event: &Value, now: u64) -> bool {
             paid,
             amount,
             currency,
+            payment_intent,
         } => {
             paid && order.is_some_and(|order| {
-                complete_checkout(state, &order, session, amount, currency.as_deref(), now)
+                complete_checkout(
+                    state,
+                    &order,
+                    session,
+                    amount,
+                    currency.as_deref(),
+                    payment_intent,
+                    now,
+                )
             })
         }
         Event::CheckoutExpired { session, order } => {
@@ -1269,15 +1356,37 @@ pub fn apply_event(state: &mut MarketState, event: &Value, now: u64) -> bool {
     changed
 }
 
-/// `checkout.session.completed`, paid, for `order_id`.
+/// Whether `id` has the shape of a Stripe payment intent id.
+pub(crate) fn payment_intent_ok(id: &str) -> bool {
+    id.len() <= 64
+        && id.strip_prefix("pi_").is_some_and(|rest| {
+            !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        })
+}
+
+/// `checkout.session.completed`, paid, for `order_id`. The platform holds
+/// the payment ([`Card`]) until the slot is over.
 fn complete_checkout(
     state: &mut MarketState,
     order_id: &str,
     session: Option<String>,
     amount: Option<u64>,
     currency: Option<&str>,
+    payment_intent: Option<String>,
     now: u64,
 ) -> bool {
+    let card = |step, reason| {
+        payment_intent
+            .clone()
+            .filter(|pi| payment_intent_ok(pi))
+            .map(|payment_intent| Card {
+                payment_intent,
+                step,
+                reason,
+                refund: None,
+                tried_at: None,
+            })
+    };
     let Some(order) = state.orders.get(order_id) else {
         return false;
     };
@@ -1305,21 +1414,38 @@ fn complete_checkout(
         OrderStatus::Pending => {}
         // Paid after its reservation was released: Stripe retried for
         // longer than the hold. Honour it if the units are still free;
-        // otherwise they belong to someone else now and the buyer is
-        // owed a refund, which only the dashboard can issue.
+        // otherwise they belong to someone else now and the payment goes
+        // back to the buyer.
         OrderStatus::Expired => {
             let room = state
                 .listings
                 .get(&order.listing_id)
                 .map_or(0, |l| available(state, l, now));
             if order.quantity > room {
-                tracing::error!(
+                let refund = card(EscrowStep::Refund, Some(RefundReason::Lapsed));
+                if refund.is_none() {
+                    tracing::error!(
+                        target: Action::Market.target(),
+                        "order {} was paid after its reservation lapsed and its units are sold, but the event names no payment to refund; refund session {} in the Stripe dashboard",
+                        order.id,
+                        session.unwrap_or_default(),
+                    );
+                    return false;
+                }
+                tracing::warn!(
                     target: Action::Market.target(),
-                    "order {} was paid after its reservation lapsed and its units are sold; refund session {} in the Stripe dashboard",
+                    "order {} was paid after its reservation lapsed and its units are sold; refunding it",
                     order.id,
-                    session.unwrap_or_default(),
                 );
-                return false;
+                let Some(order) = state.orders.get_mut(order_id) else {
+                    return false;
+                };
+                if order.card.is_some() {
+                    return false;
+                }
+                order.session_id = session;
+                order.card = refund;
+                return true;
             }
             tracing::warn!(
                 target: Action::Market.target(),
@@ -1328,6 +1454,15 @@ fn complete_checkout(
             );
         }
     }
+    let held = card(EscrowStep::Held, None);
+    if held.is_none() {
+        tracing::error!(
+            target: Action::Market.target(),
+            "paid session for order {} names no payment intent; the seller's share must be transferred by hand",
+            order.id,
+        );
+    }
+    let offline_base = state.presence.get(&order.seller).map_or(0, |p| p.offline);
     let Some(order) = state.orders.get_mut(order_id) else {
         return false;
     };
@@ -1335,6 +1470,8 @@ fn complete_checkout(
     order.status = OrderStatus::Paid;
     order.paid_at = Some(now);
     order.expires_at = Some(crate::plans::plan(order.kind).expiry(now));
+    order.card = held;
+    order.offline_base = offline_base;
     true
 }
 
@@ -1422,6 +1559,21 @@ pub struct OwnListing {
     pub capacity: u64,
     pub available: u64,
     pub active: bool,
+    /// While a slot someone paid for runs on it, the seller cannot stop
+    /// selling it before this time (`crate::slots::locked_until`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locked_until: Option<u64>,
+}
+
+/// A card payment's progress as either party sees it. The payment intent
+/// stays on the edge.
+#[derive(Debug, Serialize)]
+pub struct CardView {
+    pub step: EscrowStep,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<RefundReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refund: Option<u64>,
 }
 
 /// An order as either party sees it: the counterparty is not named.
@@ -1461,6 +1613,13 @@ pub struct OrderView {
     /// The coin payment, when the buyer chose one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub coin: Option<CoinView>,
+    /// Where the card payment is going, on a card order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub card: Option<CardView>,
+    /// While the payment is held: when the edge pays the seller by itself if
+    /// the seller has not asked sooner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payout_at: Option<u64>,
 }
 
 /// A coin payment as the buyer's wallet shows it. Amounts are in whole coins
@@ -1574,6 +1733,12 @@ impl OrderView {
             network: o.paid_network.clone(),
             coin: o.coin.as_ref().map(|c| CoinView::of(&o.id, c)),
             escrow: o.escrow.clone(),
+            card: o.card.as_ref().map(|c| CardView {
+                step: c.step,
+                reason: c.reason,
+                refund: c.refund,
+            }),
+            payout_at: crate::slots::payout_at(o),
         }
     }
 }
@@ -1604,6 +1769,15 @@ pub struct AccountView {
     pub entitlements: Entitlements,
     pub purchases: Vec<OrderView>,
     pub sales: Vec<OrderView>,
+    /// The seller's money held for running slots and ready to pay out.
+    pub payouts: crate::slots::PayoutView,
+    /// Whether buyers may pay in ways that cannot be refunded
+    /// ([`MarketOpts::direct_pay`]). Off, a Solana payout address is not
+    /// offered to buyers.
+    pub direct_pay: bool,
+    /// How long a seller's box may be offline in a row during a slot before
+    /// its buyer is refunded the share not delivered.
+    pub offline_refund_secs: u64,
     /// The seller's USDC address, when they have set one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payout: Option<String>,
@@ -1756,6 +1930,15 @@ pub struct MarketOpts {
     /// unit, before buyers can no longer pay them in coins
     /// (`--market-coin-fee-limit`, [`DEFAULT_COIN_FEE_LIMIT`]).
     pub coin_fee_limit: u64,
+    /// How long a seller's box may be offline in a row before its buyers are
+    /// refunded (`--market-offline-refund-after`,
+    /// [`crate::slots::DEFAULT_OFFLINE_SECS`]).
+    pub offline_refund_secs: u64,
+    /// Whether buyers may also pay in ways that reach the seller's wallet at
+    /// once: Bitcoin, Monero, Zcash and Solana USDC (`--market-direct-pay`).
+    /// Nothing paid that way can be held for the slot or refunded, so it is
+    /// off unless the operator turns it on.
+    pub direct_pay: bool,
 }
 
 /// How long an escrow call may sit unmined before the edge checks the
@@ -1791,7 +1974,20 @@ pub struct Market {
     /// The Zcash servers and what each served before, when the edge takes
     /// Zcash.
     zec: Option<crate::zcash::Scanner>,
+    /// When the slots pass last wrote what it watched to disk
+    /// ([`Market::slots_pass`]).
+    presence_saved: std::sync::atomic::AtomicU64,
+    /// One card settle pass at a time.
+    card_lock: Mutex<()>,
 }
+
+/// How often the slots pass writes the offline time it counted even when
+/// nothing turned. A restart loses at most this much of it, which counts in
+/// the seller's favour.
+const PRESENCE_SAVE_SECS: u64 = 5 * 60;
+
+/// How long a card settle that failed waits before it is tried again.
+const CARD_RETRY_SECS: u64 = 10 * 60;
 
 /// The ledger of the mode the gate's key is in, and where it is kept. The
 /// edge reads the mode off the key on every market request
@@ -1955,6 +2151,8 @@ impl Market {
             ens_checked: std::sync::atomic::AtomicBool::new(false),
             prices,
             escrow_lock: Mutex::new(()),
+            presence_saved: std::sync::atomic::AtomicU64::new(0),
+            card_lock: Mutex::new(()),
         })
     }
 
@@ -2119,6 +2317,7 @@ impl Market {
                     capacity: l.capacity,
                     available: available(&state, l, now),
                     active: l.active,
+                    locked_until: crate::slots::locked_until(&state, &l.id, now),
                 })
                 .collect(),
             entitlements: entitlements(&state, id, now),
@@ -2132,14 +2331,28 @@ impl Market {
                 now,
                 self.vm_domain(),
             ),
+            payouts: crate::slots::payout_view(&state, id, now),
+            direct_pay: self.opts.direct_pay,
+            offline_refund_secs: self.opts.offline_refund_secs,
             payout: seller.and_then(|s| s.payout.clone()),
             payout_solana: seller.and_then(|s| s.payout_solana.clone()),
-            usdc: self.opts.usdc.as_ref().map(|usdc| {
+            usdc: self.opts.usdc.as_ref().and_then(|usdc| {
                 let mut public = usdc.public();
+                // Solana pays the seller at once, so without direct pay it is
+                // neither a way to pay nor a payout to set up.
+                if !self.opts.direct_pay {
+                    public
+                        .chains
+                        .retain(|c| c.family == crate::stablecoin::Family::Evm);
+                    public.solana = None;
+                    if public.chains.is_empty() {
+                        return None;
+                    }
+                }
                 public.prices = self.prices.snapshot(&crate::coins::Coin::FEES, now);
                 self.prices
                     .refresh_in_background(&crate::coins::Coin::FEES, now);
-                public
+                Some(public)
             }),
             coins: self.coins().iter().map(|c| c.key()).collect(),
             coin_keys: state
@@ -2176,8 +2389,13 @@ impl Market {
     }
 
     /// Coins this edge takes for orders, in the order the buyer sees them.
+    /// None without [`MarketOpts::direct_pay`]: a coin payment reaches the
+    /// seller at once, so the slot has nothing held to refund from.
     pub fn coins(&self) -> Vec<crate::coins::Coin> {
         let mut coins = Vec::new();
+        if !self.opts.direct_pay {
+            return coins;
+        }
         if self.opts.btc.is_some() {
             coins.push(crate::coins::Coin::Btc);
         }
@@ -2201,10 +2419,15 @@ impl Market {
             .collect()
     }
 
+    /// Whether a buyer can pay `seller` in USDC or by card. Solana USDC
+    /// counts only with [`MarketOpts::direct_pay`]: it goes straight to the
+    /// seller, so the slot has nothing held to refund from.
     fn accepts_payouts(&self, seller: &Seller) -> bool {
         if let Some(usdc) = &self.opts.usdc {
             (seller.payout.is_some() && usdc.has(crate::stablecoin::Family::Evm))
-                || (seller.payout_solana.is_some() && usdc.has(crate::stablecoin::Family::Solana))
+                || (self.opts.direct_pay
+                    && seller.payout_solana.is_some()
+                    && usdc.has(crate::stablecoin::Family::Solana))
         } else {
             seller.ready
         }
@@ -2436,6 +2659,12 @@ impl Market {
             .filter(|l| l.seller == seller)
             .ok_or(MarketError::NotFound)?;
         if listing.active {
+            if crate::slots::locked_until(&state, listing_id, now_secs()).is_some() {
+                return Err(MarketError::Conflict(SLOT_RUNNING));
+            }
+            let Some(listing) = next.listings.get_mut(listing_id) else {
+                return Err(MarketError::NotFound);
+            };
             listing.active = false;
             // Nothing refers to a listing nobody ordered from, so it goes now
             // rather than lingering as a closed row.
@@ -2617,7 +2846,7 @@ impl Market {
                 } else {
                     None
                 },
-                pay_to_solana: if rail == Rail::Usdc {
+                pay_to_solana: if rail == Rail::Usdc && self.opts.direct_pay {
                     seller.payout_solana.clone()
                 } else {
                     None
@@ -2627,6 +2856,8 @@ impl Market {
                 escrow: None,
                 fee_offset,
                 offset_collected: false,
+                card: None,
+                offline_base: 0,
             };
             let mut next = state.clone();
             expire_stale(&mut next, now);
@@ -3940,18 +4171,25 @@ impl Market {
         let (_, stray) = self.usdc_expected(&state, buyer, order_id, &tx, &chain)?;
         let mut next = state.clone();
         let now = now_secs();
+        // A deposit the order takes is held until its slot is over
+        // (`crate::slots`); one it cannot take goes back at once.
         let escrow = |deposit, reason: Option<RefundReason>| Escrow {
             network: chain.network.key.to_string(),
             deposit,
             step: if reason.is_some() {
                 EscrowStep::Refund
             } else {
-                EscrowStep::Release
+                EscrowStep::Held
             },
             reason,
             tx: None,
             sent_at: None,
+            refund: None,
         };
+        let offline_base = next
+            .presence
+            .get(&seller_of(&next, order_id))
+            .map_or(0, |p| p.offline);
         if let (Some(reason), Some((deposit, _))) = (stray, held) {
             tracing::warn!(
                 target: Action::Market.target(),
@@ -3989,6 +4227,7 @@ impl Market {
         order.paid_at = Some(now);
         order.expires_at = Some(now + ENTITLEMENT_SECS);
         order.escrow = held.map(|(deposit, _)| escrow(deposit, None));
+        order.offline_base = offline_base;
         // A Solana transfer paid the treasury its share as it was confirmed;
         // an escrowed one does so when the edge releases it.
         if held.is_none() {
@@ -4200,7 +4439,6 @@ impl Market {
         let Some(usdc) = self.opts.usdc.as_ref() else {
             return;
         };
-        self.refund_undelivered().await;
         let jobs: Vec<(EscrowJob, Escrow)> = {
             let state = self.state.lock().await;
             // A release waits until what was bought exists. One already sent
@@ -4266,7 +4504,9 @@ impl Market {
                     if order.escrow.as_ref() != Some(&before) {
                         continue;
                     }
-                    if before.step == EscrowStep::Release && after.step == EscrowStep::Refunded {
+                    let reclaimed = matches!(before.step, EscrowStep::Release | EscrowStep::Split)
+                        && after.step == EscrowStep::Refunded;
+                    if reclaimed {
                         tracing::warn!(
                             target: Action::Market.target(),
                             "order {id}: the buyer took the payment back before the edge released it; the order lapses",
@@ -4276,10 +4516,15 @@ impl Market {
                     }
                     let released =
                         before.step == EscrowStep::Release && after.step == EscrowStep::Released;
+                    let settled =
+                        before.step == EscrowStep::Split && after.step == EscrowStep::Settled;
+                    let refund = after.refund.unwrap_or(0);
                     order.escrow = Some(after);
                     // The treasury has the fee, offset included, only now.
                     if released {
                         collect_offset(&mut next, &id);
+                    } else if settled {
+                        collect_offset_share(&mut next, &id, refund);
                     }
                 }
                 EscrowJob::Stray(tx) => {
@@ -4301,25 +4546,148 @@ impl Market {
         }
     }
 
-    /// Send back the deposits of orders that could not be set up before
-    /// their deadline ([`refund_undelivered`]).
-    async fn refund_undelivered(&self) {
+    /// The sellers whose boxes the slots pass needs to hear about.
+    pub async fn watched_sellers(&self) -> BTreeSet<String> {
+        let state = self.state.lock().await;
+        crate::slots::watched(&state, now_secs())
+    }
+
+    /// Run the slot rules once (`crate::slots`): count offline time against
+    /// the watched sellers not in `online`, refund the buyers of a seller
+    /// offline too long, refund slots never set up, and pay out the slots
+    /// that are over. `can_tell` is false when the edge could not have heard
+    /// the boxes; such a pass counts no offline time. Money moves in the
+    /// escrow and card passes that follow.
+    pub async fn slots_pass(&self, online: &BTreeSet<String>, can_tell: bool, max_gap: u64) {
+        use std::sync::atomic::Ordering;
+        let now = now_secs();
         let mut state = self.state.lock().await;
-        let mut next = state.clone();
-        let refunded = refund_undelivered(&mut next, now_secs());
-        if refunded.is_empty() {
+        if state.mode.is_none() {
             return;
         }
-        for id in &refunded {
+        let mut next = state.clone();
+        let observed = crate::slots::observe(&mut next, online, now, can_tell, max_gap);
+        let offline = crate::slots::refund_offline(&mut next, now, self.opts.offline_refund_secs);
+        let undelivered = crate::slots::refund_undelivered(&mut next, now);
+        let released = crate::slots::release_due(&mut next, now);
+        for (id, refund) in &offline {
             tracing::warn!(
                 target: Action::Market.target(),
-                "order {id} could not be set up before its escrow deadline; refunding the buyer",
+                "order {id}: the seller's box was offline too long; refunding {refund} of it to the buyer",
             );
+        }
+        for id in &undelivered {
+            tracing::warn!(
+                target: Action::Market.target(),
+                "order {id} was not set up within a day of payment; refunding the buyer",
+            );
+        }
+        for id in &released {
+            tracing::info!(target: Action::Market.target(), "order {id}: slot over; paying the seller");
+        }
+        let moved = !offline.is_empty() || !undelivered.is_empty() || !released.is_empty();
+        let due = now
+            >= self
+                .presence_saved
+                .load(Ordering::Relaxed)
+                .saturating_add(PRESENCE_SAVE_SECS);
+        if !(moved || observed.turned || due) {
+            // Only the watch moved on: keep it in memory until the next write.
+            state.presence = next.presence;
+            state.presence_tick = next.presence_tick;
+            return;
+        }
+        match self.commit(&mut state, next).await {
+            Ok(()) => self.presence_saved.store(now, Ordering::Relaxed),
+            Err(e) => tracing::error!(
+                target: Action::Market.target(),
+                "could not record the slots pass: {e}",
+            ),
+        }
+    }
+
+    /// `POST /market/sales/release`: the seller asks to be paid for every
+    /// sale whose slot is over. Returns what goes out.
+    ///
+    /// # Errors
+    /// [`MarketError::Conflict`] while nothing is ready: a slot still runs,
+    /// or there is nothing held.
+    pub async fn release_sales(
+        &self,
+        seller: &str,
+    ) -> Result<crate::slots::PayoutView, MarketError> {
+        let now = now_secs();
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        let (ids, _) = crate::slots::release_for(&mut next, seller, now);
+        if ids.is_empty() {
+            return Err(MarketError::Conflict(NOTHING_TO_PAY_OUT));
+        }
+        self.commit(&mut state, next).await?;
+        Ok(crate::slots::payout_view(&state, seller, now))
+    }
+
+    /// Settle the card payments the slot rules moved on: pay the seller,
+    /// refund the buyer, or split it ([`Connect::settle`]). A failure waits
+    /// [`CARD_RETRY_SECS`] before it is tried again.
+    pub async fn settle_cards(&self) {
+        let now = now_secs();
+        let jobs: Vec<(String, Card, u64)> = {
+            let state = self.state.lock().await;
+            state
+                .orders
+                .values()
+                .filter_map(|o| {
+                    let c = o.card.as_ref()?;
+                    let refund = match c.step {
+                        EscrowStep::Release => 0,
+                        EscrowStep::Refund => o.amount,
+                        EscrowStep::Split => c.refund?,
+                        _ => return None,
+                    };
+                    let waiting = c
+                        .tried_at
+                        .is_some_and(|t| now < t.saturating_add(CARD_RETRY_SECS));
+                    (!waiting).then(|| (o.id.clone(), c.clone(), refund))
+                })
+                .collect()
+        };
+        if jobs.is_empty() {
+            return;
+        }
+        let _one_pass = self.card_lock.lock().await;
+        let mut outcomes = Vec::new();
+        for (id, card, refund) in jobs {
+            let result = self.connect.settle(&card.payment_intent, refund).await;
+            if let Err(e) = &result {
+                tracing::warn!(target: Action::Market.target(), "order {id}: card settle: {e}");
+            }
+            outcomes.push((id, card, result.is_ok()));
+        }
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        for (id, before, ok) in outcomes {
+            let Some(order) = next.orders.get_mut(&id) else {
+                continue;
+            };
+            let Some(card) = order.card.as_mut().filter(|c| **c == before) else {
+                continue;
+            };
+            if ok {
+                card.step = match card.step {
+                    EscrowStep::Release => EscrowStep::Released,
+                    EscrowStep::Refund => EscrowStep::Refunded,
+                    _ => EscrowStep::Settled,
+                };
+                card.tried_at = None;
+            } else {
+                card.tried_at = Some(now);
+            }
         }
         if let Err(e) = self.commit(&mut state, next).await {
             tracing::error!(
                 target: Action::Market.target(),
-                "could not record the refund of undelivered orders: {e}",
+                "could not record card settlements: {e}",
             );
         }
     }
@@ -4348,7 +4716,11 @@ impl Market {
         let finished = match escrow.step {
             EscrowStep::Release => EscrowStep::Released,
             EscrowStep::Refund => EscrowStep::Refunded,
-            EscrowStep::Released | EscrowStep::Refunded => return Ok(None),
+            EscrowStep::Split => EscrowStep::Settled,
+            EscrowStep::Held
+            | EscrowStep::Released
+            | EscrowStep::Refunded
+            | EscrowStep::Settled => return Ok(None),
         };
         if let Some(tx) = &escrow.tx {
             match crate::stablecoin::fetch_receipt(&url, tx).await {
@@ -4372,6 +4744,10 @@ impl Market {
             DepositState::Held => {
                 let data = match escrow.step {
                     EscrowStep::Release => crate::evm_tx::release_data(escrow.deposit),
+                    EscrowStep::Split => crate::evm_tx::settle_data(
+                        escrow.deposit,
+                        crate::stablecoin::cents_to_usdc(escrow.refund.unwrap_or(0)),
+                    ),
                     _ => crate::evm_tx::refund_data(escrow.deposit),
                 };
                 let replace = escrow.tx.is_some();
@@ -4391,6 +4767,7 @@ impl Market {
             }
             DepositState::Released => Ok(Some(done(EscrowStep::Released))),
             DepositState::Refunded => Ok(Some(done(EscrowStep::Refunded))),
+            DepositState::Split => Ok(Some(done(EscrowStep::Settled))),
             DepositState::None => Err(MarketError::Conflict(
                 "the escrow has no such deposit; the payment may have been reorganised away",
             )),
@@ -4616,8 +4993,10 @@ mod tests {
             paid_network: None,
             coin: None,
             escrow: None,
+            card: None,
             fee_offset: 0,
             offset_collected: false,
+            offline_base: 0,
         }
     }
 
@@ -5212,6 +5591,8 @@ mod tests {
             cards: true,
             zec: None,
             coin_fee_limit: DEFAULT_COIN_FEE_LIMIT,
+            offline_refund_secs: crate::slots::DEFAULT_OFFLINE_SECS,
+            direct_pay: true,
         })
         .await
         .unwrap();
@@ -5243,6 +5624,8 @@ mod tests {
             cards: true,
             zec: None,
             coin_fee_limit: DEFAULT_COIN_FEE_LIMIT,
+            offline_refund_secs: crate::slots::DEFAULT_OFFLINE_SECS,
+            direct_pay: true,
         }
     }
 
@@ -5515,57 +5898,41 @@ mod tests {
         a.escrow = Some(Escrow {
             network: "base".into(),
             deposit: 1,
-            step: EscrowStep::Release,
+            step: EscrowStep::Held,
             reason: None,
+            refund: None,
             tx: None,
             sent_at: None,
         });
-        assert_eq!(fee_offset_for(&state, "s", 200, 8, late), 28);
+        // Held for its slot, then on its way: still riding on that order.
+        for step in [EscrowStep::Held, EscrowStep::Release, EscrowStep::Split] {
+            let a = state.orders.get_mut("ord_a").unwrap();
+            a.escrow.as_mut().unwrap().step = step;
+            assert_eq!(fee_offset_for(&state, "s", 200, 8, late), 28, "{step:?}");
+        }
+        // Refunded whole, nothing of it reached the treasury.
+        let a = state.orders.get_mut("ord_a").unwrap();
+        a.escrow.as_mut().unwrap().step = EscrowStep::Refunded;
+        assert_eq!(fee_offset_for(&state, "s", 200, 8, late), 92);
     }
 
     #[test]
-    fn an_order_that_cannot_be_set_up_goes_back_before_its_deadline() {
-        let held = || Escrow {
-            network: "base".into(),
-            deposit: 1,
-            step: EscrowStep::Release,
-            reason: None,
-            tx: None,
-            sent_at: None,
-        };
-        let created = 1_000;
+    fn a_split_collects_the_offset_share_the_seller_kept() {
         let mut state = MarketState::default();
-        for id in ["ord_waiting", "ord_bound", "ord_compute"] {
-            let mut o = usdc_order(id, 200, 0, created);
-            o.status = OrderStatus::Paid;
-            o.expires_at = Some(created + ENTITLEMENT_SECS);
-            o.escrow = Some(held());
-            state.orders.insert(id.into(), o);
-        }
-        state.orders.get_mut("ord_bound").unwrap().volume = Some("market-b/ord-bound".into());
-        state.orders.get_mut("ord_compute").unwrap().kind = Kind::Compute;
-        let deadline = usdc_deadline(&state.orders["ord_waiting"]);
-
-        // Well before the deadline the edge keeps waiting for the volume.
-        let early = deadline - UNDELIVERED_REFUND_BEFORE_SECS - 1;
-        assert!(refund_undelivered(&mut state, early).is_empty());
-        assert_eq!(state.orders["ord_waiting"].escrow, Some(held()));
-
-        // An hour out it gives up on the one still without a volume.
-        let late = deadline - UNDELIVERED_REFUND_BEFORE_SECS;
-        assert_eq!(refund_undelivered(&mut state, late), ["ord_waiting"]);
-        let o = &state.orders["ord_waiting"];
-        let e = o.escrow.as_ref().unwrap();
-        assert_eq!(e.step, EscrowStep::Refund);
-        assert_eq!(e.reason, Some(RefundReason::NotDelivered));
-        assert_eq!(o.expires_at, Some(late));
-        assert!(!paid_live(o, late));
-        // The bound volume and the compute credit are left to be released.
-        for id in ["ord_bound", "ord_compute"] {
-            assert_eq!(state.orders[id].escrow, Some(held()), "{id}");
-        }
-        // Once is enough.
-        assert!(refund_undelivered(&mut state, late + 1).is_empty());
+        state.coin_sellers.insert("s".into(), owing(90, Some(7)));
+        state
+            .orders
+            .insert("ord_a".into(), usdc_order("ord_a", 300, 90, 1));
+        // A third went back to the buyer: two thirds of the offset arrived.
+        assert_eq!(collect_offset_share(&mut state, "ord_a", 100), 60);
+        assert_eq!(state.coin_sellers["s"].fees_owed, 30);
+        // Once only, and a whole refund collects nothing.
+        assert_eq!(collect_offset_share(&mut state, "ord_a", 100), 0);
+        state
+            .orders
+            .insert("ord_b".into(), usdc_order("ord_b", 300, 30, 1));
+        assert_eq!(collect_offset_share(&mut state, "ord_b", 300), 0);
+        assert_eq!(state.coin_sellers["s"].fees_owed, 30);
     }
 
     #[test]

@@ -655,7 +655,22 @@ export interface MarketOwnListing {
   capacity: number;
   available: number;
   active: boolean;
+  /** Unix seconds. Someone paid for a slot on this listing that runs until
+   *  then, and it cannot be closed before. */
+  locked_until?: number | null;
 }
+
+/** Where a held payment stands: kept for the slot, on its way, or done.
+ *  `split` and `settled` send the buyer part back and the seller the rest. */
+export type HoldStep = "held" | "release" | "released" | "refund" | "refunded" | "split" | "settled";
+
+export type RefundReason =
+  | "sellerCannotReceive"
+  | "alreadyPaid"
+  | "lapsed"
+  | "buyerReclaimed"
+  | "notDelivered"
+  | "sellerOffline";
 
 export interface MarketOrder {
   id: string;
@@ -687,13 +702,41 @@ export interface MarketOrder {
   coin?: CoinPayment | null;
   /** Where an EVM payment held in the escrow is going. */
   escrow?: MarketEscrow | null;
+  /** Where a card payment the platform holds is going. */
+  card?: MarketCardHold | null;
+  /** Unix seconds. While the payment is held: when the edge pays the
+   *  seller by itself, if the seller has not asked sooner. */
+  payout_at?: number | null;
 }
 
 export interface MarketEscrow {
   network: string;
   deposit: number;
-  step: "release" | "released" | "refund" | "refunded";
-  reason?: "sellerCannotReceive" | "alreadyPaid" | "lapsed" | "buyerReclaimed" | "notDelivered" | null;
+  step: HoldStep;
+  reason?: RefundReason | null;
+  /** On a split, what goes back to the buyer, minor units. */
+  refund?: number | null;
+}
+
+export interface MarketCardHold {
+  step: HoldStep;
+  reason?: RefundReason | null;
+  /** On a split, what goes back to the buyer, minor units. */
+  refund?: number | null;
+}
+
+/** A seller's held money, minor units. */
+export interface MarketPayouts {
+  /** Held for slots still running. */
+  held: number;
+  /** From slots that are over: Pay out sends it now. */
+  ready: number;
+  /** On its way to the seller. */
+  paying: number;
+  /** Unix seconds: when the next running slot ends. */
+  next_at?: number | null;
+  /** The edge pays out by itself this long after a slot ends. */
+  auto_after_secs: number;
 }
 
 /** Coins other than USDC an order can be paid in. */
@@ -737,6 +780,14 @@ export interface MarketAccount {
   entitlements: { storage_gib: number; compute_vcpu_hours: number; next_expiry: number | null };
   purchases: MarketOrder[];
   sales: MarketOrder[];
+  /** What this box's sales hold for it. */
+  payouts?: MarketPayouts;
+  /** The edge also takes payments it cannot hold for the slot (coins, USDC
+   *  on Solana). Off, it offers only cards and USDC on EVM networks. */
+  direct_pay?: boolean;
+  /** A seller's box offline this long in a row during a slot refunds its
+   *  buyer the share not delivered. */
+  offline_refund_secs?: number;
   /** The seller's USDC address on EVM chains, once they have signed it.
    *  Absent on Stripe. */
   payout?: string | null;
@@ -891,6 +942,14 @@ export function postMarketClose(
   options: RequestOptions = {},
 ): Promise<MarketActionResponse> {
   return marketPost("/api/market/listings/close", { listing_id: listingId }, options);
+}
+
+/** POST /api/market/release — pay this box now for the sales whose slots
+ *  are over. 409 while none are. The reply carries the new payouts. */
+export function postMarketRelease(
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/market/release", {}, options);
 }
 
 /** POST /api/market/orders — buy. Stripe replies with a Checkout URL; USDC

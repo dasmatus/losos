@@ -10,8 +10,11 @@
 //!
 //! What the split buys, and what it does not. A bug in the registrar's public
 //! surface can no longer leak the key out of the registrar's memory or files,
-//! and the key can no longer be used for refunds, payouts, customer lists or
-//! any other endpoint: the gate has no such operation. It does **not** stop a
+//! and the key can no longer be used for payouts, customer lists or any other
+//! endpoint: the gate has no such operation. The one way money leaves a
+//! market charge is [`Request::Settle`], which only splits a charge the gate
+//! itself made for the market between its buyer and the seller it named at
+//! checkout ([`settle_plan`]). It does **not** stop a
 //! compromised registrar asking the gate to create a Checkout Session, so the
 //! gate also bounds what that request may say (the currency, the destination
 //! being an `acct_` id, the platform fee within [`crate::market::MAX_FEE_BPS`], the session's
@@ -60,6 +63,9 @@ const MAX_REQUEST_BYTES: u64 = 2 * 256 * 1024 + 4096;
 const MAX_REPLY_BYTES: u64 = 16 * 1024;
 /// Connections handled at once. The registrar is the only client.
 const MAX_IN_FLIGHT: usize = 16;
+/// Budget for a settle, which reads the charge and its transfers and may
+/// then refund and transfer: four Stripe requests at most.
+pub const SETTLE_TIMEOUT: Duration = Duration::from_secs(STRIPE_TIMEOUT.as_secs() * 4 + 2);
 /// Stripe takes a Checkout Session expiry between 30 minutes and 24 hours out.
 const MAX_SESSION_SECS: u64 = 24 * 3600;
 const SOCKET_MODE: u32 = 0o600;
@@ -235,52 +241,17 @@ impl StripeClient {
             .ok_or_else(|| MarketError::Stripe("account link had no url".to_string()))
     }
 
-    /// A Checkout Session that charges the platform, forwards the amount
-    /// minus the fee to `destination`, and keeps `fee`.
+    /// A Checkout Session that charges the platform and holds the money on
+    /// its balance. The seller and the fee are written onto the payment, so
+    /// [`Request::Settle`] can later pay `destination` only what is left
+    /// after any refund, less the fee scaled the same way. Nothing reaches
+    /// the seller at checkout.
     async fn checkout(
         &self,
         key: &str,
         c: &CheckoutRequest,
     ) -> Result<(String, String), MarketError> {
-        let return_url = &c.return_url;
-        let sep = if return_url.contains('?') { '&' } else { '?' };
-        let form = [
-            ("mode", "payment".to_string()),
-            ("payment_method_types[]", "card".to_string()),
-            ("client_reference_id", c.order_id.clone()),
-            (
-                "success_url",
-                format!("{return_url}{sep}order={}&status=paid", c.order_id),
-            ),
-            (
-                "cancel_url",
-                format!("{return_url}{sep}order={}&status=cancelled", c.order_id),
-            ),
-            ("expires_at", c.expires_at.to_string()),
-            ("metadata[order_id]", c.order_id.clone()),
-            ("line_items[0][quantity]", c.quantity.to_string()),
-            ("line_items[0][price_data][currency]", c.currency.clone()),
-            (
-                "line_items[0][price_data][unit_amount]",
-                c.unit_price.to_string(),
-            ),
-            (
-                "line_items[0][price_data][product_data][name]",
-                crate::plans::plan(c.kind).line_item(),
-            ),
-            (
-                "payment_intent_data[application_fee_amount]",
-                c.fee.to_string(),
-            ),
-            (
-                "payment_intent_data[transfer_data][destination]",
-                c.destination.clone(),
-            ),
-            (
-                "payment_intent_data[metadata][order_id]",
-                c.order_id.clone(),
-            ),
-        ];
+        let form = checkout_form(c);
         let body = self
             .post(
                 key,
@@ -296,6 +267,287 @@ impl StripeClient {
             )),
         }
     }
+}
+
+/// The form a market Checkout Session is created with. Pure, so the exact
+/// fields Stripe sees are asserted in a test: no transfer and no application
+/// fee, so the money stays on the platform's balance until the slot is over.
+fn checkout_form(c: &CheckoutRequest) -> [(&'static str, String); 15] {
+    let return_url = &c.return_url;
+    let sep = if return_url.contains('?') { '&' } else { '?' };
+    [
+        ("mode", "payment".to_string()),
+        ("payment_method_types[]", "card".to_string()),
+        ("client_reference_id", c.order_id.clone()),
+        (
+            "success_url",
+            format!("{return_url}{sep}order={}&status=paid", c.order_id),
+        ),
+        (
+            "cancel_url",
+            format!("{return_url}{sep}order={}&status=cancelled", c.order_id),
+        ),
+        ("expires_at", c.expires_at.to_string()),
+        ("metadata[order_id]", c.order_id.clone()),
+        ("line_items[0][quantity]", c.quantity.to_string()),
+        ("line_items[0][price_data][currency]", c.currency.clone()),
+        (
+            "line_items[0][price_data][unit_amount]",
+            c.unit_price.to_string(),
+        ),
+        (
+            "line_items[0][price_data][product_data][name]",
+            crate::plans::plan(c.kind).line_item(),
+        ),
+        ("payment_intent_data[transfer_group]", c.order_id.clone()),
+        (
+            "payment_intent_data[metadata][order_id]",
+            c.order_id.clone(),
+        ),
+        (
+            "payment_intent_data[metadata][losos_destination]",
+            c.destination.clone(),
+        ),
+        (
+            "payment_intent_data[metadata][losos_fee]",
+            c.fee.to_string(),
+        ),
+    ]
+}
+
+impl StripeClient {
+    async fn get(
+        &self,
+        key: &str,
+        segments: &[&str],
+        query: &[(&str, &str)],
+    ) -> Result<Value, MarketError> {
+        let url = self.url(segments);
+        let what = format!("GET {}", url.path());
+        self.send(key, self.http.get(url).query(query), &what).await
+    }
+
+    /// What the gate needs to know about a payment before settling it.
+    async fn charge_facts(
+        &self,
+        key: &str,
+        payment_intent: &str,
+    ) -> Result<ChargeFacts, MarketError> {
+        let pi = self
+            .get(
+                key,
+                &["v1", "payment_intents", payment_intent],
+                &[("expand[]", "latest_charge")],
+            )
+            .await?;
+        let mut facts = ChargeFacts::of(&pi);
+        if let Some(group) = facts.order_id.clone() {
+            let transfers = self
+                .get(
+                    key,
+                    &["v1", "transfers"],
+                    &[("transfer_group", group.as_str()), ("limit", "1")],
+                )
+                .await?;
+            facts.transferred = transfers["data"].as_array().is_some_and(|d| !d.is_empty());
+        }
+        Ok(facts)
+    }
+
+    /// Refund the buyer until `total` is refunded in all.
+    async fn refund_to(
+        &self,
+        key: &str,
+        payment_intent: &str,
+        more: u64,
+        total: u64,
+    ) -> Result<(), MarketError> {
+        self.post(
+            key,
+            &["v1", "refunds"],
+            &[
+                ("payment_intent", payment_intent.to_string()),
+                ("amount", more.to_string()),
+                ("metadata[losos_refund_total]", total.to_string()),
+            ],
+            Some(&format!("losos-refund-{payment_intent}-{total}")),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Pay the seller their share out of this charge's funds.
+    async fn transfer(
+        &self,
+        key: &str,
+        facts: &ChargeFacts,
+        amount: u64,
+    ) -> Result<(), MarketError> {
+        let (Some(destination), Some(order_id), Some(charge)) = (
+            facts.destination.as_ref(),
+            facts.order_id.as_ref(),
+            facts.charge_id.as_ref(),
+        ) else {
+            return Err(MarketError::Stripe("not a market charge".to_string()));
+        };
+        self.post(
+            key,
+            &["v1", "transfers"],
+            &[
+                ("amount", amount.to_string()),
+                ("currency", facts.currency.clone()),
+                ("destination", destination.clone()),
+                ("source_transaction", charge.clone()),
+                ("transfer_group", order_id.clone()),
+                ("metadata[order_id]", order_id.clone()),
+            ],
+            Some(&format!("losos-transfer-{}", facts.payment_intent)),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Settle a market charge: refund `refund` to the buyer and transfer the
+    /// rest, less the scaled fee, to the seller ([`settle_plan`]).
+    async fn settle(
+        &self,
+        key: &str,
+        payment_intent: &str,
+        refund: u64,
+        currency: &str,
+    ) -> Result<Result<Settled, &'static str>, MarketError> {
+        let facts = self.charge_facts(key, payment_intent).await?;
+        let plan = match settle_plan(&facts, refund, currency) {
+            Ok(plan) => plan,
+            Err(why) => return Ok(Err(why)),
+        };
+        if plan.refund_more > 0 {
+            self.refund_to(key, payment_intent, plan.refund_more, refund)
+                .await?;
+        }
+        if plan.transfer > 0 {
+            self.transfer(key, &facts, plan.transfer).await?;
+        }
+        Ok(Ok(Settled {
+            refunded: facts.refunded.max(refund),
+            transferred: plan.transfer,
+        }))
+    }
+}
+
+/// A market charge as Stripe describes it, read by the gate itself.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ChargeFacts {
+    pub(crate) payment_intent: String,
+    /// `metadata.order_id`, which is also the transfer group.
+    pub(crate) order_id: Option<String>,
+    /// The seller the gate named at checkout.
+    pub(crate) destination: Option<String>,
+    /// The platform's fee on the whole charge, minor units.
+    pub(crate) fee: Option<u64>,
+    pub(crate) succeeded: bool,
+    pub(crate) amount: u64,
+    pub(crate) currency: String,
+    pub(crate) charge_id: Option<String>,
+    pub(crate) refunded: u64,
+    pub(crate) disputed: bool,
+    /// Whether a transfer to the seller already exists.
+    pub(crate) transferred: bool,
+}
+
+impl ChargeFacts {
+    fn of(pi: &Value) -> Self {
+        let meta = &pi["metadata"];
+        let charge = &pi["latest_charge"];
+        let text = |v: &Value| v.as_str().map(str::to_string);
+        Self {
+            payment_intent: pi["id"].as_str().unwrap_or_default().to_string(),
+            order_id: text(&meta["order_id"]),
+            destination: text(&meta["losos_destination"]),
+            fee: meta["losos_fee"].as_str().and_then(|f| f.parse().ok()),
+            succeeded: pi["status"].as_str() == Some("succeeded"),
+            amount: pi["amount_received"].as_u64().unwrap_or(0),
+            currency: pi["currency"].as_str().unwrap_or_default().to_string(),
+            charge_id: text(&charge["id"]),
+            refunded: charge["amount_refunded"].as_u64().unwrap_or(0),
+            disputed: charge["disputed"].as_bool().unwrap_or(false),
+            transferred: false,
+        }
+    }
+}
+
+/// What one settle sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SettlePlan {
+    /// Refunded now, on top of what already was.
+    pub(crate) refund_more: u64,
+    /// Transferred to the seller now.
+    pub(crate) transfer: u64,
+}
+
+/// How a settle ended, as the gate reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Settled {
+    pub(crate) refunded: u64,
+    pub(crate) transferred: u64,
+}
+
+/// What settling `facts` with `refund` going back to the buyer sends, or why
+/// the gate will not. The bounds are the gate's own, whatever the registrar
+/// asks: only a market charge the gate made (its seller and fee are on the
+/// payment), only once it succeeded, never while it is disputed, never more
+/// back than was paid, nothing back once the seller has been paid, and the
+/// seller gets what the buyer kept paying for less the fee scaled the same
+/// way, rounded down. A settle that already happened sends nothing.
+pub(crate) fn settle_plan(
+    facts: &ChargeFacts,
+    refund: u64,
+    currency: &str,
+) -> Result<SettlePlan, &'static str> {
+    let (Some(destination), Some(fee), Some(_), Some(_)) = (
+        facts.destination.as_deref(),
+        facts.fee,
+        facts.order_id.as_deref(),
+        facts.charge_id.as_deref(),
+    ) else {
+        return Err("not a market charge");
+    };
+    if !account_id_ok(destination) {
+        return Err("not a market charge");
+    }
+    if !facts.succeeded || facts.amount == 0 {
+        return Err("the payment has not succeeded");
+    }
+    if facts.currency != currency {
+        return Err("currency is not the one this edge sells in");
+    }
+    if fee >= facts.amount {
+        return Err("the payment's fee is not below its amount");
+    }
+    if facts.disputed {
+        return Err("the payment is disputed; Stripe decides where it goes");
+    }
+    if refund > facts.amount {
+        return Err("refund is more than was paid");
+    }
+    if facts.transferred {
+        return if refund > facts.refunded {
+            Err("the seller has already been paid")
+        } else {
+            Ok(SettlePlan {
+                refund_more: 0,
+                transfer: 0,
+            })
+        };
+    }
+    let refund_more = refund.saturating_sub(facts.refunded);
+    let kept = facts.amount - refund.max(facts.refunded).min(facts.amount);
+    let fee_kept = u128::from(fee) * u128::from(kept) / u128::from(facts.amount);
+    let transfer = kept - u64::try_from(fee_kept).unwrap_or(kept);
+    Ok(SettlePlan {
+        refund_more,
+        transfer,
+    })
 }
 
 impl StripeClient {
@@ -546,6 +798,12 @@ pub(crate) enum Request {
         signature: String,
         body_hex: String,
     },
+    /// End a market charge's hold: `refund` back to the buyer, the rest to
+    /// the seller named at checkout ([`settle_plan`]).
+    Settle {
+        payment_intent: String,
+        refund: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -578,6 +836,12 @@ pub(crate) struct Reply {
     pub(crate) url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) ready: Option<bool>,
+    /// After a settle: what the buyer has been refunded in all, and what was
+    /// transferred to the seller by this call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) refunded: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) transferred: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) error: Option<Fault>,
 }
@@ -956,6 +1220,27 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
                 None => Reply::in_mode(mode),
             }
         }
+        Request::Settle {
+            payment_intent,
+            refund,
+        } => {
+            if !crate::market::payment_intent_ok(&payment_intent) {
+                return refuse("bad payment intent");
+            }
+            stripe_or_reply!(opts, key, mode, s);
+            match s
+                .settle(&key, &payment_intent, refund, &opts.currency)
+                .await
+            {
+                Ok(Ok(done)) => Reply {
+                    refunded: Some(done.refunded),
+                    transferred: Some(done.transferred),
+                    ..Reply::in_mode(mode)
+                },
+                Ok(Err(why)) => refuse(why),
+                Err(e) => e.into(),
+            }
+        }
     }
 }
 
@@ -1015,7 +1300,7 @@ where
                 tokio::spawn(async move {
                     let _permit = permit;
                     let work = serve_connection(&opts, stream);
-                    match tokio::time::timeout(GATE_TIMEOUT, work).await {
+                    match tokio::time::timeout(SETTLE_TIMEOUT, work).await {
                         Ok(Ok(())) => {}
                         Ok(Err(e)) => tracing::warn!(target: Action::Market.target(), "gate connection: {e}"),
                         Err(_) => tracing::warn!(target: Action::Market.target(), "gate connection timed out"),
@@ -1132,7 +1417,11 @@ impl GateClient {
     }
 
     async fn call(&self, request: &Request) -> Result<Reply, MarketError> {
-        let reply = tokio::time::timeout(GATE_TIMEOUT, self.exchange(request))
+        self.call_within(request, GATE_TIMEOUT).await
+    }
+
+    async fn call_within(&self, request: &Request, budget: Duration) -> Result<Reply, MarketError> {
+        let reply = tokio::time::timeout(budget, self.exchange(request))
             .await
             .map_err(|_| MarketError::Stripe("gate: timed out".to_string()))??;
         match reply.error {
@@ -1262,6 +1551,26 @@ impl GateClient {
                 "checkout session had no id, url or mode".to_string(),
             )),
         }
+    }
+
+    /// End a card payment's hold: `refund` back to the buyer, the rest to the
+    /// seller. Returns what the buyer has been refunded in all. Asked again
+    /// after it went through, it sends nothing more.
+    ///
+    /// # Errors
+    /// A refusal when the gate's bounds do not allow it ([`settle_plan`]);
+    /// others if the gate is unavailable or Stripe refuses.
+    pub async fn settle(&self, payment_intent: &str, refund: u64) -> Result<u64, MarketError> {
+        self.call_within(
+            &Request::Settle {
+                payment_intent: payment_intent.to_string(),
+                refund,
+            },
+            SETTLE_TIMEOUT,
+        )
+        .await?
+        .refunded
+        .ok_or_else(|| MarketError::Stripe("gate: no refund total".to_string()))
     }
 
     /// Whether `signature` is a valid `Stripe-Signature` for `body` under any
@@ -1505,16 +1814,167 @@ mod tests {
             r#"{"op":"tag_account","account_id":"acct_1","box_uuid":"x"}"#,
             r#"{"op":"account_ready","account_id":"acct_1"}"#,
             r#"{"op":"verify_webhook","signature":"s","body_hex":"00"}"#,
+            r#"{"op":"settle","payment_intent":"pi_1","refund":0}"#,
         ] {
             assert!(serde_json::from_str::<Request>(ok).is_ok(), "{ok}");
         }
         for bad in [
             r#"{"op":"refund","payment_intent":"pi_1"}"#,
+            r#"{"op":"transfer","destination":"acct_1","amount":1}"#,
             r#"{"op":"forward","path":"/v1/payouts"}"#,
             r#"{}"#,
         ] {
             assert!(serde_json::from_str::<Request>(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_market_checkout_holds_the_money_on_the_platform() {
+        let c = checkout();
+        let form = checkout_form(&c);
+        let field = |name: &str| {
+            form.iter()
+                .find(|(k, _)| *k == name)
+                .map(|(_, v)| v.as_str())
+        };
+        // Nothing goes to the seller at checkout.
+        assert_eq!(field("payment_intent_data[application_fee_amount]"), None);
+        assert_eq!(
+            field("payment_intent_data[transfer_data][destination]"),
+            None
+        );
+        // Who is paid later, and the fee, ride on the payment itself.
+        assert_eq!(
+            field("payment_intent_data[metadata][losos_destination]"),
+            Some(c.destination.as_str())
+        );
+        let fee = c.fee.to_string();
+        assert_eq!(
+            field("payment_intent_data[metadata][losos_fee]"),
+            Some(fee.as_str())
+        );
+        assert_eq!(
+            field("payment_intent_data[transfer_group]"),
+            Some(c.order_id.as_str())
+        );
+    }
+
+    fn facts() -> ChargeFacts {
+        ChargeFacts {
+            payment_intent: "pi_1".into(),
+            order_id: Some("ord_1".into()),
+            destination: Some("acct_seller".into()),
+            fee: Some(80),
+            succeeded: true,
+            amount: 1000,
+            currency: "eur".into(),
+            charge_id: Some("ch_1".into()),
+            refunded: 0,
+            disputed: false,
+            transferred: false,
+        }
+    }
+
+    #[test]
+    fn a_settle_pays_the_seller_what_the_buyer_kept() {
+        let plan = |f: &ChargeFacts, refund| settle_plan(f, refund, "eur");
+        // All of it delivered: the seller gets everything but the fee.
+        assert_eq!(
+            plan(&facts(), 0),
+            Ok(SettlePlan {
+                refund_more: 0,
+                transfer: 920
+            })
+        );
+        // A third back: the fee shrinks with the share, rounded down.
+        assert_eq!(
+            plan(&facts(), 333),
+            Ok(SettlePlan {
+                refund_more: 333,
+                transfer: 667 - 53
+            })
+        );
+        // All of it back: nothing to transfer.
+        assert_eq!(
+            plan(&facts(), 1000),
+            Ok(SettlePlan {
+                refund_more: 1000,
+                transfer: 0
+            })
+        );
+        // A refund that already went through is not sent twice.
+        let mut f = facts();
+        f.refunded = 333;
+        assert_eq!(plan(&f, 333).map(|p| p.refund_more), Ok(0));
+        // Refunded more by hand than asked: the seller is paid only for the
+        // rest.
+        f.refunded = 500;
+        assert_eq!(
+            plan(&f, 333),
+            Ok(SettlePlan {
+                refund_more: 0,
+                transfer: 500 - 40
+            })
+        );
+    }
+
+    #[test]
+    fn a_settle_stays_inside_the_gates_bounds() {
+        let plan = |f: &ChargeFacts, refund| settle_plan(f, refund, "eur");
+        assert_eq!(plan(&facts(), 1001), Err("refund is more than was paid"));
+        // Hardware and anything else the gate did not make for the market.
+        let mut f = facts();
+        f.destination = None;
+        assert_eq!(plan(&f, 0), Err("not a market charge"));
+        let mut f = facts();
+        f.destination = Some("https://evil.example".into());
+        assert_eq!(plan(&f, 0), Err("not a market charge"));
+        let mut f = facts();
+        f.fee = None;
+        assert_eq!(plan(&f, 0), Err("not a market charge"));
+        let mut f = facts();
+        f.succeeded = false;
+        assert_eq!(plan(&f, 0), Err("the payment has not succeeded"));
+        let mut f = facts();
+        f.disputed = true;
+        assert!(plan(&f, 0).is_err());
+        assert!(plan(&f, 1000).is_err());
+        assert_eq!(
+            settle_plan(&facts(), 0, "usd"),
+            Err("currency is not the one this edge sells in")
+        );
+        // Once the seller has been paid nothing more goes back, and a
+        // repeat of the same settle sends nothing.
+        let mut f = facts();
+        f.transferred = true;
+        assert_eq!(plan(&f, 1), Err("the seller has already been paid"));
+        assert_eq!(
+            plan(&f, 0),
+            Ok(SettlePlan {
+                refund_more: 0,
+                transfer: 0
+            })
+        );
+    }
+
+    #[test]
+    fn charge_facts_are_read_off_the_payment() {
+        let pi = serde_json::json!({
+            "id": "pi_1",
+            "status": "succeeded",
+            "amount_received": 1000,
+            "currency": "eur",
+            "metadata": {
+                "order_id": "ord_1",
+                "losos_destination": "acct_seller",
+                "losos_fee": "80",
+            },
+            "latest_charge": { "id": "ch_1", "amount_refunded": 5, "disputed": true },
+        });
+        let mut want = facts();
+        want.refunded = 5;
+        want.disputed = true;
+        assert_eq!(ChargeFacts::of(&pi), want);
     }
 
     fn hardware() -> (HardwareRequest, Catalogue) {

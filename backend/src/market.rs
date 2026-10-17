@@ -217,6 +217,9 @@ pub enum Op {
         tx: String,
         network: Option<String>,
     },
+    /// Pay this box the sales whose slots are over, without waiting for the
+    /// edge to do it a day later. The edge refuses (409) while none are.
+    Release,
     /// Tell the edge a USDC transfer on the EVM `network` paid this seller's
     /// platform fees on coin sales into the edge's treasury.
     FeePay {
@@ -376,6 +379,7 @@ impl Op {
             | Op::Domains
             | Op::Hardware
             | Op::Deregister
+            | Op::Release
             | Op::VmImages
             | Op::VmStatus => Ok(()),
             Op::VmOrder {
@@ -591,6 +595,7 @@ impl Op {
             Op::Payout { .. } => ("POST", "/market/payout"),
             Op::Confirm { .. } => ("POST", "/market/confirm"),
             Op::FeePay { .. } => ("POST", "/market/fees/pay"),
+            Op::Release => ("POST", "/market/sales/release"),
             Op::CoinKey { .. } => ("POST", "/market/coins/key"),
             Op::CoinPay { .. } => ("POST", "/market/coins/pay"),
             Op::Rpc { .. } => ("POST", "/market/rpc"),
@@ -644,7 +649,7 @@ impl Op {
                     .map(|(sku, quantity)| json!({ "sku": sku, "quantity": quantity }))
                     .collect::<Vec<_>>(),
             }),
-            Op::Account | Op::Domains | Op::Deregister => json!({}),
+            Op::Account | Op::Domains | Op::Deregister | Op::Release => json!({}),
             Op::DomainAdd { domain } | Op::DomainRemove { domain } => json!({ "domain": domain }),
             Op::Onboard { box_uuid } => match box_uuid {
                 Some(u) => json!({ "box_uuid": u }),
@@ -1086,6 +1091,10 @@ mod tests {
             ("POST", "/market/listings/close")
         );
         assert_eq!(Op::Deregister.route(), ("POST", "/deregister"));
+        assert_eq!(Op::Release.route(), ("POST", "/market/sales/release"));
+        assert!(Op::Release.validate().is_ok());
+        let doc: Value = serde_json::from_str(&Op::Release.body("box", "tok").unwrap()).unwrap();
+        assert_eq!(doc, json!({ "appliance_id": "box", "token": "tok" }));
         let pay = Op::CoinPay {
             order_id: "ord_1".to_string(),
             coin: "btc".to_string(),

@@ -110,10 +110,13 @@ Alle Replikate auf einem Edge sind gleich groß: `losos.edge.vms.cpu` vCPU,
 `memoryMiB` Arbeitsspeicher und `diskGiB` Festplatte (standardmäßig 1, 2048
 und 20), oder mehr, wo ein Image mehr verlangt.
 
-**Die Aufteilung ist fest auf 50 %.** Die Zahlung für eine Maschine ist eine
-Destination Charge wie jeder andere Verkauf auf dem Marktplatz, mit
-`application_fee_amount` genau der Hälfte des Betrags. Die
-`losos.edge.market.feeBps` des Betreibers gilt für Maschinen nicht, und das
+**Die Aufteilung ist fest auf 50 %.** Die Zahlung für eine Maschine wird wie
+jeder andere Verkauf auf dem Marktplatz zurückgehalten, bis der Monat der
+Käuferin oder des Käufers endet, mit einer Gebühr von genau der Hälfte des
+Betrags; geht die betreibende Box zu lange offline, bekommt die Käuferin oder
+der Käufer den Anteil zurück, der nicht geliefert wurde (siehe
+[Bezahlte Zeiträume und Erstattungen](market.md#paid-periods-and-refunds)).
+Die `losos.edge.market.feeBps` des Betreibers gilt für Maschinen nicht, und das
 Stripe-Gate lehnt eine Maschinenzahlung mit jeder anderen Gebühr ab. Bei
 6,00 EUR pro Replikat-Monat kosten drei Replikate 18,00 EUR; die betreibende
 Box bekommt 9,00 und LosOS behält 9,00.

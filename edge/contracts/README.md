@@ -74,17 +74,23 @@ through `LososPay` on a fork of `https://sepolia.base.org`.
 
 The held version of `LososPay`. A buyer approves USDC and calls `pay` as
 before, with a deadline. Instead of forwarding the money, the contract holds
-it as one deposit and emits `Held`. The edge then checks the order and the
-seller's payout address and either:
+it as one deposit and emits `Held`. The edge keeps it there for as long as
+what was bought runs, watching that the seller delivers it, and then either:
 
 - calls `release`, which sends the fee to `treasury` and the rest to the
-  seller recorded in `pay`, or
-- calls `refund`, which sends the whole deposit back to the payer.
+  seller recorded in `pay`,
+- calls `refund`, which sends the whole deposit back to the payer, or
+- calls `settle(depositId, refundAmount)` when the seller stopped
+  delivering partway: `refundAmount` goes back to the payer, and the rest
+  is released, with the fee scaled down to the seller's share and rounded
+  down. It emits `Settled`, and the deposit ends in the `Split` state.
 
-The edge's key, `releaser`, can do only those two things. It cannot change a
-deposit's seller, amount or payer. If the edge never answers, the payer calls
-`refund` after the deadline, which must lie between one hour and 30 days
-after the payment. Paying the same order twice makes two deposits.
+The edge's key, `releaser`, can do only those three things. It cannot change
+a deposit's seller, amount or payer. If the edge never answers, the payer
+calls `refund` after the deadline, which must lie between one hour and 35
+days after the payment: a month of storage or machines, plus the days the
+edge has to settle once the month is over. Paying the same order twice
+makes two deposits.
 
 `treasury` is the only account that can replace `releaser` or call `rescue`.
 `rescue` moves tokens that arrived by plain transfer instead of `pay`, and for

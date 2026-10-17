@@ -42,6 +42,9 @@ pub enum Event {
         paid: bool,
         amount: Option<u64>,
         currency: Option<String>,
+        /// `pi_...`: what the platform holds until the slot is over, and
+        /// what the gate refunds or transfers from.
+        payment_intent: Option<String>,
     },
     /// `checkout.session.expired`.
     CheckoutExpired {
@@ -84,6 +87,7 @@ impl Delivery {
                 paid: object["payment_status"].as_str() == Some("paid"),
                 amount: object["amount_total"].as_u64(),
                 currency: text(&object["currency"]),
+                payment_intent: text(&object["payment_intent"]),
             },
             "checkout.session.expired" => Event::CheckoutExpired {
                 session: text(&object["id"]),
@@ -182,6 +186,7 @@ mod tests {
                 "payment_status": "paid",
                 "amount_total": 2_000,
                 "currency": "eur",
+                "payment_intent": "pi_1",
             }},
         }));
         assert_eq!(d.id.as_deref(), Some("evt_1"));
@@ -194,6 +199,7 @@ mod tests {
                 paid: true,
                 amount: Some(2_000),
                 currency: Some("eur".into()),
+                payment_intent: Some("pi_1".into()),
             }
         );
     }

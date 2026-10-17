@@ -2245,6 +2245,17 @@ async fn post_market_close(
     .await
 }
 
+async fn post_market_release(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/release", |_| {
+        Some(crate::market::Op::Release)
+    })
+    .await
+}
+
 async fn post_market_order(
     api: web::Data<Api>,
     req: HttpRequest,
@@ -3330,6 +3341,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 )
                 .route("/api/market/orders", web::post().to(post_market_order))
                 .route("/api/market/payout", web::post().to(post_market_payout))
+                .route("/api/market/release", web::post().to(post_market_release))
                 .route("/api/market/confirm", web::post().to(post_market_confirm))
                 .route("/api/market/fees/pay", web::post().to(post_market_fees_pay))
                 .route(
