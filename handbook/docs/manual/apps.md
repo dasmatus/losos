@@ -55,11 +55,12 @@ To take part, list the other servers whose stars count on a repository's
 
 LosOS cloud federates too: you can share files and calendars with people
 whose accounts are on other Nextcloud servers, by their `user@server`
-address, such as `notshared@otherbox.local` for the owner of another box.
+address. The owner of another box is `notshared@otherbox.local/nextcloud`.
 **Share with other Nextcloud servers** in the LosOS cloud fold turns that
 off. While it is on, LosOS cloud may reach names that end in `.local` and
-addresses on your local network, which Nextcloud refuses on its own. That
-is how it reaches other boxes on the same network.
+addresses on your local network, and accepts the certificate each box makes
+for itself, which Nextcloud refuses on its own. That is how it reaches
+other boxes on the same network.
 
 :::note[Federation needs disk sharing]
 Both kinds of federation work only while the box shares its disk

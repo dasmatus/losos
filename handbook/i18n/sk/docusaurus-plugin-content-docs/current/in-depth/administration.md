@@ -311,16 +311,22 @@ služieb so zapnutým aj vypnutým zdieľaním; `nix/tests/invariants.nix` kontr
 bránu pri evaluácii.
 
 Zapnutá federácia dá LosOS cloud aj `allow_local_remote_servers = true`
+a `sharing.federation.allowSelfSignedCertificates = true`
 (`modules/nextcloud-stack.nix`, `federation.system`; natívne v
 `override.config.php` modulu, v pode v `losos.config.php`). `RemoteHostValidator`
 v Nextcloud inak odmietne každý server pod `.local`, každé meno bez bodky a
 každú súkromnú adresu, teda každé iné zariadenie v LAN, takže zdieľanie pre
-`owner@inezariadenie.local` zlyhalo skôr, než požiadavka opustila
-zariadenie. Cenou je, že čokoľvek, čo účet dokáže Nextcloud prikázať
-stiahnuť, môže tiež mieriť do LAN. `nix/tests/cloud-apps.nix` spustí dve
-zariadenia v natívnom režime so zapnutým zdieľaním a pošle súbor od jedného
-vlastníka druhému: zdieľanie sa na druhom zariadení ponúkne, prijme a
-prečíta späť cez WebDAV.
+`notshared@inezariadenie.local/nextcloud` zlyhalo skôr, než požiadavka
+opustila zariadenie. Adresu bez protokolu Nextcloud skúša iba cez https
+a každé zariadenie má vlastný certifikát (`modules/tls.nix`), preto druhý
+kľúč vypne kontrolu certifikátov pri volaniach federácie. Cena: čokoľvek,
+čo účet dokáže Nextcloud prikázať stiahnuť, môže tiež mieriť do LAN, a
+volania federácie sú otvorené každému, kto sedí medzi dvoma zariadeniami.
+Zariadenie bez https má adresu `notshared@http://inezariadenie.local/nextcloud`.
+`nix/tests/cloud-apps.nix` spustí dve zariadenia v natívnom režime so
+zapnutým zdieľaním a vlastnými certifikátmi pre https a pošle súbor od
+jedného vlastníka druhému: zdieľanie sa na druhom zariadení ponúkne, prijme
+a prečíta späť cez WebDAV.
 
 ### Nastavenia aplikácií pre celé zariadenie {#box-wide-app-settings}
 

@@ -306,16 +306,22 @@ that cannot be switched off. `nix/tests/front-vhost.nix` checks both services'
 routes with sharing on and off; `nix/tests/invariants.nix` checks the gate at
 eval time.
 
-On, LosOS cloud also gets `allow_local_remote_servers = true`
+On, LosOS cloud also gets `allow_local_remote_servers = true` and
+`sharing.federation.allowSelfSignedCertificates = true`
 (`modules/nextcloud-stack.nix`, `federation.system`; the module's
 `override.config.php` natively, `losos.config.php` in the pod). Nextcloud's
 `RemoteHostValidator` otherwise refuses any server under `.local`, any
 single-label name and any private address, which is every other box on a
-LAN, so a share to `owner@otherbox.local` failed before a request left the
-box. The cost is that whatever an account can make Nextcloud fetch may point
-at the LAN too. `nix/tests/cloud-apps.nix` boots two boxes in native mode
-with sharing on and sends a file from one owner to the other: the share is
-offered on the second box, accepted, and read back through WebDAV.
+LAN, so a share to `notshared@otherbox.local/nextcloud` failed before a
+request left the box. An address with no protocol is tried over https only,
+and every box's certificate is its own (`modules/tls.nix`), so the second
+key turns off certificate checks on federation calls. The costs: whatever an
+account can make Nextcloud fetch may point at the LAN, and federation calls
+are open to whoever sits between two boxes. A box without https is reached
+as `notshared@http://otherbox.local/nextcloud`. `nix/tests/cloud-apps.nix`
+boots two boxes in native mode with sharing on and self-signed https, and
+sends a file from one owner to the other: the share is offered on the second
+box, accepted, and read back through WebDAV.
 
 ### Box-wide app settings
 

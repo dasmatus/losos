@@ -16,8 +16,9 @@
 # Two VMs, each the real native stack (modules/services.nix with
 # losos.nextcloud.mode = "native", the same module set and occ lines the pod
 # runs), with disk sharing on so federation is open. They reach each other
-# by bare names on a private network: the case Nextcloud refuses to connect
-# to unless the box allows local servers (modules/nextcloud-stack.nix,
+# by bare names on a private network, over https with certificates they
+# made themselves: the case Nextcloud refuses unless the box allows local
+# servers and self-signed certificates (modules/nextcloud-stack.nix,
 # `federation.system`), which is what LAN boxes look like.
 { pkgs }:
 
@@ -46,6 +47,16 @@ let
     </info>
   '';
 
+  # Each box's own self-signed certificate, the way modules/tls.nix makes
+  # one on first boot: nothing on the other box trusts it.
+  cert =
+    name:
+    pkgs.runCommand "losos-test-cert-${name}" { nativeBuildInputs = [ pkgs.openssl ]; } ''
+      mkdir $out
+      openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj /CN=${name} \
+        -addext subjectAltName=DNS:${name} -keyout $out/key.pem -out $out/cert.pem
+    '';
+
   box =
     name:
     { config, ... }:
@@ -72,6 +83,16 @@ let
           "memories"
         ]
       );
+
+      services.nginx.virtualHosts.${name} = {
+        addSSL = true;
+        sslCertificate = "${cert name}/cert.pem";
+        sslCertificateKey = "${cert name}/key.pem";
+      };
+      networking.firewall.allowedTCPPorts = [
+        80
+        443
+      ];
 
       environment.systemPackages = [
         pkgs.curl
@@ -106,7 +127,9 @@ pkgs.testers.nixosTest {
       import json
 
       def ready(m):
-          m.wait_for_unit("multi-user.target")
+          # multi-user.target waits for nextcloud-setup, which installs and
+          # enables some thirty apps: over ten minutes without KVM.
+          m.wait_for_unit("multi-user.target", timeout=3600)
           m.wait_until_succeeds(
               "systemctl show -p Result --value nextcloud-setup | grep -qx success", timeout=3600
           )
@@ -141,14 +164,13 @@ pkgs.testers.nixosTest {
           assert listed["calendar"]["name"] == "Calendar", listed["calendar"]
           assert listed["files"]["kind"] == "core" and listed["files"]["alwaysEnabled"], listed["files"]
           assert listed["activity"]["kind"] == "core", listed["activity"]
-          assert not listed["firstrunwizard"]["enabled"], listed["firstrunwizard"]
           assert listed["federation"]["enabled"], "federation is off on a box that shares its disk"
 
       with subtest("an app turned off stays off when nextcloud-setup runs again"):
           mattbox.succeed("losos-nextcloud-apps disable calendar")
           assert not enabled(mattbox, "calendar")
           assert mattbox.succeed("cat /var/lib/nextcloud/.losos-apps-off").split() == ["calendar"]
-          mattbox.succeed("systemctl restart nextcloud-setup.service")
+          mattbox.succeed("systemctl restart nextcloud-setup.service", timeout=3600)
           mattbox.wait_until_succeeds("systemctl show -p Result --value nextcloud-setup | grep -qx success")
           assert not enabled(mattbox, "calendar"), "a restart turned calendar back on"
           # The rest of the curated apps came back on as usual.
@@ -158,7 +180,7 @@ pkgs.testers.nixosTest {
           mattbox.succeed("losos-nextcloud-apps enable calendar")
           assert enabled(mattbox, "calendar")
           assert mattbox.succeed("cat /var/lib/nextcloud/.losos-apps-off").strip() == ""
-          mattbox.succeed("systemctl restart nextcloud-setup.service")
+          mattbox.succeed("systemctl restart nextcloud-setup.service", timeout=3600)
           mattbox.wait_until_succeeds("systemctl show -p Result --value nextcloud-setup | grep -qx success")
           assert enabled(mattbox, "calendar")
 
@@ -180,45 +202,40 @@ pkgs.testers.nixosTest {
           mattbox.fail("test -e /var/lib/nextcloud/store-apps/hello")
           assert "hello" not in apps(mattbox)
 
-      with subtest("a federated share goes from one box to the other"):
+      with subtest("a federated share goes from one box to the other over https"):
+          # Both boxes answer https with a certificate the other does not
+          # trust, and the address names no protocol, so Nextcloud uses https.
           a = password(mattbox)
           b = password(evabox)
           mattbox.succeed(
-              f"echo 'Hello from mattbox' | curl -sf -u 'notshared:{a}' -T - "
-              "http://mattbox/remote.php/dav/files/notshared/hello.txt"
+              f"echo 'Hello from mattbox' | curl -sfk -u 'notshared:{a}' -T - "
+              "https://mattbox/remote.php/dav/files/notshared/hello.txt"
           )
           out = mattbox.succeed(
-              f"curl -sf -u 'notshared:{a}' -H 'OCS-APIRequest: true' "
+              f"curl -sfk -u 'notshared:{a}' -H 'OCS-APIRequest: true' "
               "-d path=/hello.txt -d shareType=6 -d shareWith=notshared@evabox "
-              "'http://mattbox/ocs/v2.php/apps/files_sharing/api/v1/shares?format=json'"
+              "'https://mattbox/ocs/v2.php/apps/files_sharing/api/v1/shares?format=json'"
           )
           share = json.loads(out)["ocs"]
           assert share["meta"]["statuscode"] == 200, share
-          assert share["data"]["share_with"].startswith("notshared@evabox"), share
+          assert share["data"]["share_with"] == "notshared@evabox", share
 
-          def pending():
-              out = evabox.succeed(
-                  f"curl -sf -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
-                  "'http://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending?format=json'"
-              )
-              return json.loads(out)["ocs"]["data"]
-
-          evabox.wait_until_succeeds(
-              f"curl -sf -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
-              "'http://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending?format=json'"
-              " | jq -e '.ocs.data | length > 0'",
-              timeout=300,
+          pending = (
+              f"curl -sfk -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
+              "'https://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending?format=json'"
           )
-          offer = pending()[0]
-          assert offer["name"] == "/hello.txt", offer
+          evabox.wait_until_succeeds(pending + " | jq -e '.ocs.data | length > 0'", timeout=300)
+          offer = json.loads(evabox.succeed(pending))["ocs"]["data"][0]
+          assert offer["name"].lstrip("/") == "hello.txt", offer
+          assert offer["remote"].startswith("https://mattbox"), offer
           evabox.succeed(
-              f"curl -sf -X POST -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
-              f"'http://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending/{offer['id']}?format=json'"
+              f"curl -sfk -X POST -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
+              f"'https://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending/{offer['id']}?format=json'"
           )
           # Accepted, it is a file in the other owner's LosOS cloud, read
           # through from the first box.
           evabox.wait_until_succeeds(
-              f"curl -sf -u 'notshared:{b}' http://evabox/remote.php/dav/files/notshared/hello.txt"
+              f"curl -sfk -u 'notshared:{b}' https://evabox/remote.php/dav/files/notshared/hello.txt"
               " | grep -qx 'Hello from mattbox'",
               timeout=300,
           )

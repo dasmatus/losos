@@ -60,11 +60,13 @@ Abschnitt LosOS Git des Bereichs **Apps** aus.
 
 LosOS cloud föderiert ebenfalls: Du kannst Dateien und Kalender mit Leuten
 teilen, deren Konten auf anderen Nextcloud-Servern liegen, über ihre Adresse
-`user@server`, etwa `notshared@andereBox.local` für den Besitzer einer
-anderen Box. **Mit anderen Nextcloud-Servern teilen** im Abschnitt LosOS
-cloud schaltet das ab. Solange es an ist, darf LosOS cloud Namen, die auf
-`.local` enden, und Adressen in deinem lokalen Netz erreichen, was
-Nextcloud von sich aus ablehnt. So erreicht es andere Boxen im selben Netz.
+`user@server`. Der Besitzer einer anderen Box ist
+`notshared@andereBox.local/nextcloud`. **Mit anderen Nextcloud-Servern
+teilen** im Abschnitt LosOS cloud schaltet das ab. Solange es an ist, darf
+LosOS cloud Namen, die auf `.local` enden, und Adressen in deinem lokalen
+Netz erreichen und nimmt das Zertifikat an, das sich jede Box selbst
+ausstellt, was Nextcloud von sich aus ablehnt. So erreicht es andere Boxen
+im selben Netz.
 
 :::note[Föderation nur mit geteilter Festplatte]
 Beide Arten der Föderation funktionieren nur, solange die Box ihre
