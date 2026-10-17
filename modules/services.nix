@@ -124,6 +124,16 @@ in
   # source of truth for the stack is modules/nextcloud-common.nix.
   services.nextcloud = lib.mkIf nextcloudNative config.lososInternal.nextcloudStack;
 
+  # The module creates config/ and data/ under the datadir but not the
+  # datadir itself, which LosOS puts one level below the home
+  # (modules/nextcloud-stack.nix). systemd-tmpfiles then made it as root
+  # under the nextcloud-owned home, refused config/ as an unsafe path
+  # transition, and nextcloud-setup stopped at "config is not owned by user
+  # 'nextcloud'" on a fresh box.
+  systemd.tmpfiles.rules = lib.mkIf nextcloudNative [
+    "d ${nc.datadir} 0750 nextcloud nextcloud - -"
+  ];
+
   # Federation follows losos.nextcloud.federation.enable and the sharing gate
   # (lososInternal.federation), the same two halves as the pod
   # (modules/nextcloud-stack.nix, `federation`): Nextcloud's own switches,
@@ -151,6 +161,11 @@ in
       # with no nginx in front to vouch for a header, so sign-in with LosOS
       # Login stays off here (modules/app-sign-in.nix).
       + signIn.nextcloud.occ "${config.services.nextcloud.occ}/bin/nextcloud-occ" "no"
+      # The apps the owner turned off on the Apps pane, off again: the module
+      # has just enabled every bundled one (extraAppsEnable).
+      + nc.offOcc "${config.services.nextcloud.occ}/bin/nextcloud-occ"
+      # The owner's account, a standard one (modules/nextcloud-stack.nix).
+      + nc.demoteOwner "${config.services.nextcloud.occ}/bin/nextcloud-occ"
     )
   );
   services.nginx.virtualHosts.${config.losos.nextcloud.hostName}.locations =

@@ -292,15 +292,25 @@ impl FileCodeStore {
 /// Nothing is passed through a shell: the argument vector goes to `execve`, so
 /// the query needs no quoting to be safe. [`crate::catalogue::validate_query`]
 /// still refuses control characters, so the property does not rest on that.
-fn curl_get(url: &str) -> anyhow::Result<String> {
-    /// Bytes of response body accepted. The screen renders twenty rows.
-    const MAX_BYTES: usize = 2 * 1024 * 1024;
+/// The app store's list for this box's Nextcloud, from
+/// `$LOSOS_NEXTCLOUD_VERSION` (modules/daemon.nix); `None` without one.
+fn nextcloud_store_url() -> Option<String> {
+    crate::cloud_apps::store_url(&std::env::var("LOSOS_NEXTCLOUD_VERSION").ok()?)
+}
 
+fn curl_get(url: &str) -> anyhow::Result<String> {
+    // Bytes of response body accepted. The screen renders twenty rows.
+    curl_get_bounded(url, 2 * 1024 * 1024, crate::catalogue::TIMEOUT_SECS)
+}
+
+/// [`curl_get`] with its two bounds given: the app store's list for one
+/// Nextcloud version is about 17 MB, where a catalogue search is kilobytes.
+fn curl_get_bounded(url: &str, max_bytes: usize, timeout_secs: u32) -> anyhow::Result<String> {
     let out = std::process::Command::new("curl")
         .args(["--silent", "--show-error", "--fail", "--location"])
         .args(["--proto", "=https", "--proto-redir", "=https"])
-        .args(["--max-time", &crate::catalogue::TIMEOUT_SECS.to_string()])
-        .args(["--max-filesize", &MAX_BYTES.to_string()])
+        .args(["--max-time", &timeout_secs.to_string()])
+        .args(["--max-filesize", &max_bytes.to_string()])
         .args(["--header", "Accept: application/json"])
         .arg(url)
         .output()
@@ -317,10 +327,10 @@ fn curl_get(url: &str) -> anyhow::Result<String> {
         let why = String::from_utf8_lossy(&out.stderr);
         anyhow::bail!("the catalogue search failed: {}", why.trim());
     }
-    if out.stdout.len() > MAX_BYTES {
+    if out.stdout.len() > max_bytes {
         // --max-filesize only acts on a declared Content-Length, so a
         // chunked response can still overrun it.
-        anyhow::bail!("the catalogue returned more than {MAX_BYTES} bytes");
+        anyhow::bail!("the catalogue returned more than {max_bytes} bytes");
     }
     String::from_utf8(out.stdout).context("the catalogue returned a body that is not UTF-8")
 }
@@ -2129,6 +2139,74 @@ impl Losos for IoLosos {
     fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>> {
         let body = curl_get(&crate::catalogue::search_url(query))?;
         crate::catalogue::parse_results(&body)
+    }
+
+    fn run_cloud_apps(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome> {
+        let (cmd, args) = argv
+            .split_first()
+            .context("cloud_apps::plan is never empty")?;
+        let mut child = std::process::Command::new(cmd);
+        child.args(args);
+        // Natively the tool runs nixpkgs' nextcloud-occ, which reads `$USER`
+        // under `set -u` (the same reason as RunOcc above).
+        child.env("USER", "root");
+        let out = child.output().with_context(|| {
+            format!(
+                "running {} (is it on lososd's unit path, or in the pod's image?)",
+                argv.join(" ")
+            )
+        })?;
+        Ok(crate::setup::OccOutcome {
+            code: out.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        })
+    }
+
+    fn cloud_store_offered(&mut self) -> bool {
+        nextcloud_store_url().is_some()
+    }
+
+    fn cloud_store(&mut self) -> anyhow::Result<std::sync::Arc<Vec<crate::cloud_apps::StoreApp>>> {
+        use std::sync::{Arc, Mutex};
+        use std::time::{Duration, Instant};
+        /// How long a fetched list is used before the store is asked again.
+        const FRESH: Duration = Duration::from_secs(6 * 60 * 60);
+        type Cached = (Instant, String, Arc<Vec<crate::cloud_apps::StoreApp>>);
+        static CACHE: Mutex<Option<Cached>> = Mutex::new(None);
+
+        let url = nextcloud_store_url().context(
+            "LOSOS_NEXTCLOUD_VERSION is not a plain Nextcloud version (modules/daemon.nix)",
+        )?;
+        let stale = {
+            let cache = CACHE
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            match cache.as_ref() {
+                Some((at, for_url, index)) if *for_url == url && at.elapsed() < FRESH => {
+                    return Ok(Arc::clone(index));
+                }
+                Some((_, for_url, index)) if *for_url == url => Some(Arc::clone(index)),
+                _ => None,
+            }
+        };
+        let fetched = curl_get_bounded(&url, 48 * 1024 * 1024, 60)
+            .and_then(|body| crate::cloud_apps::parse_store(&body));
+        match fetched {
+            Ok(index) => {
+                let index = Arc::new(index);
+                *CACHE
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    Some((Instant::now(), url, Arc::clone(&index)));
+                Ok(index)
+            }
+            // An old list beats none while the store is unreachable, which
+            // is the store's fault, not the request's (502).
+            Err(e) => stale.ok_or_else(|| {
+                crate::cloud_apps::Failed(format!("The app store did not answer: {e:#}")).into()
+            }),
+        }
     }
 
     fn apps_config(&mut self) -> Option<crate::apps::Config> {
