@@ -290,7 +290,9 @@ let
       else
         mv "$tmp" ${sessionFile}
         echo "sign-in answers on: ''${names[*]}"
-        systemctl try-restart authelia-losos.service
+        # --no-block: Authelia starts after this unit, so a restart that
+        # waited here would wait on itself, leaving Authelia stopped.
+        systemctl --no-block try-restart authelia-losos.service
       fi
     '';
   };
