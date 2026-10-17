@@ -3,7 +3,8 @@
 //! The admin pages are split into sections (storage, backup, apps, ...),
 //! and each section is an Authelia group, `losos-<section>`. A route belongs
 //! to one section, or is `public` (no sign-in at all, and never reaches
-//! [`crate::http`]'s guard), `signed-in` (anyone with an account) or
+//! [`crate::http`]'s guard), `internal` (asked by nginx alone, for its own
+//! decisions, and never proxied to a client), `signed-in` (anyone with an account) or
 //! `admin`. `losos-admins` may do everything, `losos-viewers` may read every
 //! named section, and a route the table does not name is `admin`, so a new
 //! route is closed until someone puts it in a section.
@@ -48,7 +49,7 @@ pub fn allows(person: &Person, method: &str, section: &str) -> bool {
     }
     match section {
         "public" | "signed-in" => true,
-        "admin" => false,
+        "admin" | "internal" => false,
         named => {
             let group = format!("losos-{named}");
             person.groups.contains(&group)
@@ -139,7 +140,7 @@ mod tests {
     fn every_section_named_by_a_route_is_declared() {
         for (route, s) in &table().routes {
             assert!(
-                ["public", "signed-in", "admin"].contains(&s.as_str())
+                ["public", "internal", "signed-in", "admin"].contains(&s.as_str())
                     || table().sections.contains(s),
                 "{route} is in an undeclared section {s}"
             );

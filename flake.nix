@@ -430,6 +430,7 @@
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
+        losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         losos-admin-ui = import ./nix/tests/admin-ui.nix {
           inherit pkgs;
           # The real option document, so the Advanced pane is drawn from
@@ -478,6 +479,10 @@
         # reaches — the pretty /nextcloud/apps/<app>/ links the homepage
         # tiles use included (nix/tests/nextcloud-httpd.nix).
         losos-nextcloud-httpd = import ./nix/tests/nextcloud-httpd.nix { inherit pkgs; };
+        # LosOS cloud's apps managed from the Apps pane, the owner's account a
+        # standard one, and a federated share between two boxes
+        # (nix/tests/cloud-apps.nix).
+        losos-cloud-apps = import ./nix/tests/cloud-apps.nix { inherit pkgs; };
         # Not a VM: evaluates the install configuration and asserts on the
         # merged option values, so `nix flake check --no-build` turns red the
         # moment a load-bearing default drifts (nix/tests/invariants.nix).

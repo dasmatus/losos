@@ -138,6 +138,20 @@ pub trait Losos {
     /// route" (a 404) and offers the field again.
     fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>>;
 
+    // ── LosOS cloud's own apps ──────────────────────────────────────────
+    // `crate::cloud_apps` holds the rules; these are the effects.
+    /// Run `losos-nextcloud-apps` with the argv [`crate::cloud_apps::plan`]
+    /// built. `Err` means it could not be run at all; a non-zero exit is
+    /// data, as for [`Losos::run_occ`].
+    fn run_cloud_apps(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome>;
+    /// Whether this box knows which Nextcloud version to ask the app store
+    /// about, and so offers adding apps from it.
+    fn cloud_store_offered(&mut self) -> bool;
+    /// The app store's apps for this box's Nextcloud, parsed by
+    /// [`crate::cloud_apps::parse_store`]. The real backend keeps the parsed
+    /// list for a few hours: the store's own list is about 17 MB.
+    fn cloud_store(&mut self) -> anyhow::Result<std::sync::Arc<Vec<crate::cloud_apps::StoreApp>>>;
+
     // ── Installing an app from the catalogue ────────────────────────────
     // `crate::apps` holds the rules; these are the effects.
     /// `None` when this box runs no local cluster (both apps native) or the
@@ -2240,6 +2254,20 @@ mod tests {
             }
             fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>> {
                 self.0.search_apps(query)
+            }
+            fn run_cloud_apps(
+                &mut self,
+                argv: &[String],
+            ) -> anyhow::Result<crate::setup::OccOutcome> {
+                self.0.run_cloud_apps(argv)
+            }
+            fn cloud_store_offered(&mut self) -> bool {
+                self.0.cloud_store_offered()
+            }
+            fn cloud_store(
+                &mut self,
+            ) -> anyhow::Result<std::sync::Arc<Vec<crate::cloud_apps::StoreApp>>> {
+                self.0.cloud_store()
             }
             fn apps_config(&mut self) -> Option<crate::apps::Config> {
                 self.0.apps_config()

@@ -8,8 +8,10 @@ import { nixUnquote, toLiteral } from "@/lib/option-value";
 import { cn } from "@/lib/utils";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, SwitchRow } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
+import { draftOn } from "./pane-advanced";
 
-/* The box-wide settings of LosOS cloud and LosOS Git, on the Apps pane.
+/* The box-wide settings of LosOS cloud and LosOS Git, on the Apps pane,
+ * each inside that app's accordion.
  *
  * What an administrator would otherwise change in Nextcloud's
  * Administration settings and Forgejo's Site administration. Each row is
@@ -61,13 +63,6 @@ const PRIVATE: readonly (readonly [string, MessageKey])[] = [
 
 const PHONE_REGION = /^[A-Z]{2}$/;
 
-/** What the rows need from a form: the box's own settings form, or the
- *  edge's form over GET /api/site (src/manage/). */
-export type SiteForm = Pick<
-  SettingsForm,
-  "options" | "extra" | "extraProblems" | "locked" | "ready" | "setExtra"
->;
-
 /** One option's row state: the literal the draft holds, else the default's. */
 interface Slot {
   option: OptionDoc;
@@ -77,6 +72,13 @@ interface Slot {
   problem: string | null;
   set: (next: string | null) => void;
 }
+
+/** What the rows need from a form: the box's own settings form, or the
+ *  edge's form over GET /api/site (src/manage/), whose draft is null. */
+export type SiteForm = Pick<
+  SettingsForm,
+  "draft" | "options" | "extra" | "extraProblems" | "locked" | "ready" | "setExtra"
+>;
 
 function slotFor(form: SiteForm, name: string): Slot | null {
   const option = form.options?.options.find((candidate) => candidate.name === name);
@@ -93,8 +95,39 @@ function slotFor(form: SiteForm, name: string): Slot | null {
   };
 }
 
-export function SiteSettings({ form }: { form: SiteForm }) {
+/** Whether the box declares any of `app`'s settings, so the pane can leave
+ *  out an accordion that would hold nothing. */
+export function hasSiteSettings(form: SiteForm, app: "cloud" | "git"): boolean {
+  const svc = app === "cloud" ? "nextcloud" : "forgejo";
+  return (
+    form.options?.options.some(
+      (o) => !o.readOnly && (o.name.startsWith(`${svc}.site.`) || o.name === `${svc}.federation.enable`),
+    ) ?? false
+  );
+}
+
+/* One app's settings, under the title the accordion it sits in leaves room
+ * for: the app's name is on the accordion. A page with no accordion (the
+ * edge's, src/manage/) names the app in `title` instead. */
+export function SiteSettings({
+  form,
+  app,
+  title,
+}: {
+  form: SiteForm;
+  app: "cloud" | "git";
+  title?: string;
+}) {
   const t = useT();
+  const cloudFederation = slotFor(form, "nextcloud.federation.enable");
+  const gitFederation = slotFor(form, "forgejo.federation.enable");
+  /* Both switches act only while the box shares its disk (`needs` in the
+   * option document): greyed with the reason while sharing is off, as on the
+   * Advanced pane, and open again once it is on. */
+  const needsLine = (slot: Slot | null) =>
+    slot?.option.needs !== undefined && !draftOn(form, slot.option.needs)
+      ? t("cloudApps.federation.needsSharing")
+      : undefined;
   const cloud = {
     language: slotFor(form, "nextcloud.site.defaultLanguage"),
     phone: slotFor(form, "nextcloud.site.phoneRegion"),
@@ -129,15 +162,25 @@ export function SiteSettings({ form }: { form: SiteForm }) {
   };
 
   const linksOff = cloud.links !== null && cloud.links.raw === "false";
-  const cloudRows = Object.values(cloud).some((slot) => slot !== null);
-  const gitRows = Object.values(git).some((slot) => slot !== null);
+  const cloudRows = cloudFederation !== null || Object.values(cloud).some((slot) => slot !== null);
+  const gitRows = gitFederation !== null || Object.values(git).some((slot) => slot !== null);
+  const federationIds = { cloud: React.useId(), git: React.useId() };
 
   return (
     <>
-      {cloudRows && (
+      {app === "cloud" && cloudRows && (
         <PaneSection data-testid="site-cloud">
-          <GroupTitle>LosOS cloud</GroupTitle>
+          <GroupTitle>{title ?? t("cloudApps.settings.title")}</GroupTitle>
           <Group>
+            {cloudFederation !== null && (
+              <BoolRow
+                id={federationIds.cloud}
+                slot={cloudFederation}
+                title={t("cloudApps.federation.cloud")}
+                description={needsLine(cloudFederation) ?? t("cloudApps.federation.cloudDetail")}
+                off={needsLine(cloudFederation) !== undefined}
+              />
+            )}
             {cloud.language !== null && (
               <SelectRow
                 id={ids.language}
@@ -210,10 +253,19 @@ export function SiteSettings({ form }: { form: SiteForm }) {
         </PaneSection>
       )}
 
-      {gitRows && (
+      {app === "git" && gitRows && (
         <PaneSection data-testid="site-git">
-          <GroupTitle>LosOS Git</GroupTitle>
+          <GroupTitle>{title ?? t("cloudApps.settings.title")}</GroupTitle>
           <Group>
+            {gitFederation !== null && (
+              <BoolRow
+                id={federationIds.git}
+                slot={gitFederation}
+                title={t("cloudApps.federation.git")}
+                description={needsLine(gitFederation) ?? t("cloudApps.federation.gitDetail")}
+                off={needsLine(gitFederation) !== undefined}
+              />
+            )}
             {git.signIn !== null && (
               <BoolRow
                 id={ids.signIn}

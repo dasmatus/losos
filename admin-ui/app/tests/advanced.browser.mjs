@@ -49,11 +49,15 @@ const OWNED = {
   'hardening.usbguard': 'security',
 };
 /* Lines of overrides.nix another pane draws its own editor for: each app's
- * box-wide settings, on the Apps pane (lib/option-value.ts, ON_PANE). The
- * Advanced row shows the value and links there. */
+ * box-wide settings and its federation switch, on the Apps pane
+ * (lib/option-value.ts, ON_PANE). The Advanced row shows the value and links
+ * there, to the app's fold. */
 const ON_PANE = Object.fromEntries(
-  DOC.options.filter((option) => /^(nextcloud|forgejo)\.site\./.test(option.name)).map((option) => [option.name, 'apps']),
+  DOC.options
+    .filter((option) => /^(nextcloud|forgejo)\.(site\.|federation\.enable$)/.test(option.name))
+    .map((option) => [option.name, 'apps']),
 );
+const fold = (name) => (name.startsWith('nextcloud.') ? 'cloud' : 'git');
 const KINDS = new Set(['bool', 'str', 'int', 'float', 'enum', 'list', 'nullable', 'opaque']);
 
 const SETTINGS = {
@@ -193,7 +197,7 @@ await check('every option in the document is drawn, with an editor kind the pane
     } else if (option.name in ON_PANE) {
       assert.equal(controls, 0, `losos.${option.name} has a second editor beside the ${ON_PANE[option.name]} pane's`);
       const href = await r.getByRole('link').getAttribute('href');
-      assert.ok(href.endsWith(`/${ON_PANE[option.name]}`), `losos.${option.name} links to ${href}`);
+      assert.ok(href.endsWith(`/${ON_PANE[option.name]}#${fold(option.name)}`), `losos.${option.name} links to ${href}`);
     } else {
       assert.ok(controls >= 1, `losos.${option.name} (${option.editor.kind}) has no editor`);
     }
@@ -212,25 +216,38 @@ await check('federation is unavailable while disk sharing is off, and opens when
   for (const name of FEDERATION) {
     assert.equal(DOC.options.find((o) => o.name === name)?.needs, 'sharingMyStorage', `losos.${name} does not name its gate`);
   }
+  // The Advanced pane shows the gate and links to the Apps pane's folds.
   const { page, errors } = await open();
   for (const name of FEDERATION) {
     const r = row(page, name);
     assert.equal(await r.getAttribute('data-gated'), 'true', `losos.${name} is not greyed with sharing off`);
     await r.getByText('Unavailable', { exact: true }).waitFor();
     await r.getByTestId('option-needs').getByText('Federation runs only while this box shares its disk', { exact: false }).waitFor();
-    assert.ok(await r.locator('input').isDisabled(), `losos.${name} can still be switched`);
+    assert.equal(await r.getByRole('link', { name: 'Change under Apps' }).getAttribute('href'), `/apps#${fold(name)}`);
   }
   assert.deepEqual(errors, []);
   await page.close();
 
-  // Disk sharing is switched on the Market pane; with it on, both rows open.
-  const sharing = await open({ settings: { ...SETTINGS, sharingMyStorage: true } });
+  // On the Apps pane each switch is greyed with the reason while sharing is off.
+  const apps = await open({ path: '/apps' });
+  for (const id of ['accordion-cloud', 'accordion-git']) await main(apps.page).getByTestId(id).getByRole('button').first().click();
   for (const name of FEDERATION) {
-    const r = row(sharing.page, name);
+    const r = main(apps.page).locator(`[data-option="${name}"]`);
+    await r.getByText('Runs only while the box shares its disk', { exact: false }).waitFor();
+    assert.ok(await r.locator('input').isDisabled(), `losos.${name} can still be switched`);
+  }
+  assert.deepEqual(apps.errors, []);
+  await apps.page.close();
+
+  // Disk sharing is switched on the Market pane; with it on, both open.
+  const sharing = await open({ path: '/apps', settings: { ...SETTINGS, sharingMyStorage: true } });
+  for (const id of ['accordion-cloud', 'accordion-git']) await main(sharing.page).getByTestId(id).getByRole('button').first().click();
+  for (const name of FEDERATION) {
+    const r = main(sharing.page).locator(`[data-option="${name}"]`);
     await r.waitFor();
-    assert.equal(await r.getAttribute('data-gated'), null, `losos.${name} stayed greyed with sharing on`);
-    assert.equal(await r.getByTestId('option-needs').count(), 0);
+    assert.equal(await r.getByText('Runs only while the box shares its disk', { exact: false }).count(), 0);
     assert.ok(!(await r.locator('input').isDisabled()), `losos.${name} is still disabled`);
+    assert.ok(await r.locator('input').isChecked(), `losos.${name} is off by default`);
   }
   await noViolations(sharing.page);
   assert.deepEqual(sharing.errors, []);
@@ -442,9 +459,15 @@ await check('History on a box with LosOS Git off says so and still lists the com
 });
 
 await check('the Apps pane draws every box-wide setting of both apps, and Apply writes their lines', async () => {
-  assert.equal(Object.keys(ON_PANE).length, 13, `expected 8 LosOS cloud and 5 LosOS Git settings, the document has ${Object.keys(ON_PANE).length}`);
+  assert.equal(Object.keys(ON_PANE).length, 15, `expected 9 LosOS cloud and 6 LosOS Git settings, the document has ${Object.keys(ON_PANE).length}`);
   const { page, applies, errors } = await open({ path: '/apps', overrides: { 'nextcloud.site.trashDays': '30' } });
+  // Each app's settings are folded away until its fold is opened.
+  await main(page).getByTestId('accordion-cloud').waitFor();
+  assert.equal(await main(page).getByTestId('site-cloud').isVisible(), false, 'the LosOS cloud fold starts open');
+  await main(page).getByTestId('accordion-cloud').getByRole('button').first().click();
+  await main(page).getByTestId('accordion-git').getByRole('button').first().click();
   await main(page).getByTestId('site-cloud').waitFor();
+  await main(page).getByTestId('site-git').waitFor();
   for (const name of Object.keys(ON_PANE)) {
     assert.equal(await row(page, name).count(), 1, `losos.${name} has no row on the Apps pane`);
     assert.ok((await row(page, name).locator('input, select').count()) >= 1, `losos.${name} has no control on the Apps pane`);
@@ -502,10 +525,12 @@ await check('the Advanced pane links each box-wide setting to the Apps pane', as
   await r.getByText('explore', { exact: true }).waitFor();
   await r.getByText('Set here').waitFor();
   const link = r.getByRole('link', { name: 'Change under Apps' });
-  assert.equal(await link.getAttribute('href'), '/apps');
+  assert.equal(await link.getAttribute('href'), '/apps#git');
   await link.click();
-  await page.waitForURL(origin + '/apps');
+  await page.waitForURL(origin + '/apps#git');
+  // The link opens the LosOS Git fold and leaves LosOS cloud's shut.
   await main(page).getByTestId('site-git').waitFor();
+  assert.equal(await main(page).getByTestId('site-cloud').isVisible(), false);
   await page.close();
 });
 

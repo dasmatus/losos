@@ -78,8 +78,10 @@ führt. Gleich nach einem Neustart, solange LosOS Login noch startet, zeigen
 die Apps eine Seite, die das sagt, und versuchen es alle paar Sekunden von
 selbst erneut.
 
-Desktop- und Handy-Apps, WebDAV und `git` nutzen weiter App-Passwörter und
-Tokens und begegnen LosOS Login nie.
+Desktop- und Handy-Apps und `git` nutzen weiter App-Passwörter und Tokens.
+Der Netzwerkordner von LosOS cloud nimmt im Netz der Box deinen Namen und
+dein Passwort von LosOS Login, über das Internet ein App-Passwort; siehe
+[Dateien auf deinem Computer](files-on-your-computer).
 
 **Abmelden** in LosOS cloud meldet dich auch bei LosOS Login ab. **Abmelden**
 in LosOS Git tut das nicht: Solange du bei LosOS Login angemeldet bist,

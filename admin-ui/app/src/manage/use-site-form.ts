@@ -169,6 +169,8 @@ export function useSiteForm(): EdgeSiteForm {
   const discard = React.useCallback(() => setExtra_(saved), [saved]);
 
   return {
+    // The edge never sees the box's whole settings form.
+    draft: null,
     options,
     extra,
     extraProblems,

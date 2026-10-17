@@ -304,6 +304,20 @@ let
     '';
   };
 
+  # The owner's LosOS cloud apps, from the Apps pane: lososd execs
+  # `/bin/losos-nextcloud-apps <verb> [id]` in this pod (backend/src/cloud_apps.rs).
+  # The contract is in modules/nextcloud-stack.nix (`appsTool`); the prelude
+  # is what the entrypoint's `occ` does before every call, which an external
+  # exec does not inherit.
+  nextcloudApps = nc.appsTool {
+    occ = "${nc.php}/bin/php occ";
+    inherit (nc) webroot;
+    prelude = ''
+      cd ${nc.webroot}
+      export NEXTCLOUD_CONFIG_DIR=${nc.configDir}
+    '';
+  };
+
   nextcloudEntrypoint = pkgs.writeShellApplication {
     name = "losos-nextcloud";
     runtimeInputs = [ pkgs.coreutils ];
@@ -389,7 +403,10 @@ let
       # Not fatal, equally on purpose: one app that went incompatible across a
       # nixpkgs bump must not take the whole box's file sync offline. It is
       # loud in the pod log and visible in the admin UI instead.
-      occ app:enable ${lib.concatStringsSep " " (lib.attrNames nc.apps)} ||
+      # Less the ones the owner turned off on the Apps pane (nc.offFile),
+      # which would otherwise be back on after every restart.
+      # shellcheck disable=SC2046
+      occ app:enable ${nc.withoutOff} ||
         echo "losos-nextcloud: app:enable failed for at least one app; Nextcloud is still serving. Check the admin UI's app list." >&2
 
       # Nextcloud's own "Welcome to Nextcloud" modal, off.
@@ -408,6 +425,10 @@ let
       # Not fatal, for the same reason as app:enable above.
       occ app:disable firstrunwizard ||
         echo "losos-nextcloud: could not disable firstrunwizard; expect its modal inside the setup wizard." >&2
+
+      # The owner's account, a standard one: LosOS keeps the settings and the
+      # apps on its Apps pane (modules/nextcloud-stack.nix, `demoteOwner`).
+      ${nc.demoteOwner "occ"}
 
       # Federation, on or off as the host says (modules/workloads.nix renders
       # the file from losos.nextcloud.federation.enable and the sharing gate;
@@ -625,6 +646,27 @@ let
     '';
   };
 
+  # What the Nextcloud image's /bin holds.
+  nextcloudRoot = pkgs.buildEnv {
+    name = "losos-image-nextcloud-root";
+    paths = baseTools ++ [
+      pkgs.tini
+      nextcloudEntrypoint
+      # Not on the Entrypoint — `losos-ctl set-password` execs it directly
+      # with `crictl exec`. It has to be in the image because that is the only
+      # place an exec into this pod can reach.
+      nextcloudSetpass
+      # Likewise: lososd execs it to learn whether Nextcloud is installed
+      # and serving before it lets the wizard set the first password.
+      nextcloudStatus
+      # And this one to list, add, turn on and off, and remove apps.
+      nextcloudApps
+      # And this one to give a person LosOS Login's name and address.
+      nextcloudPerson
+      nc.php
+    ];
+  };
+
   # ── Pause ─────────────────────────────────────────────────────────────────
 
   # The sandbox image every pod on the local cluster is built around: PID 1 of
@@ -659,23 +701,11 @@ in
     # zstd rather than gzip: the agent decompresses every one of these at
     # import time, on the appliance, and the mini-PC notices.
     compressor = "zstd";
-    contents = pkgs.buildEnv {
-      name = "losos-image-nextcloud-root";
-      paths = baseTools ++ [
-        pkgs.tini
-        nextcloudEntrypoint
-        # Not on the Entrypoint — `losos-ctl set-password` execs it directly
-        # with `crictl exec`. It has to be in the image because that is the only
-        # place an exec into this pod can reach.
-        nextcloudSetpass
-        # Likewise: lososd execs it to learn whether Nextcloud is installed
-        # and serving before it lets the wizard set the first password.
-        nextcloudStatus
-        # And this one to give a person LosOS Login's name and address.
-        nextcloudPerson
-        nc.php
-      ];
-    };
+    contents = nextcloudRoot;
+    # The image's /bin without the tarball around it, for
+    # nix/tests/cloud-webdav.nix, which runs the pod's entrypoint on the
+    # manifest's mounts with no kubelet (and no 2.6 GiB image to build).
+    passthru.root = nextcloudRoot;
     extraCommands = commonLayout;
     # Apache's runtime directory, owned by the uid the pod runs as. The pod
     # drops every capability and runs as nc.uid, and the image's /run is
