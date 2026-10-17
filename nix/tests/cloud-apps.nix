@@ -210,28 +210,44 @@ pkgs.testers.nixosTest {
           # Each box can find the other's OCM endpoint, through its
           # self-signed certificate. Nextcloud gives up on that call after
           # ten seconds, and a box's first PHP requests take longer than
-          # that without KVM, so wait until both answer quickly.
+          # that without KVM, so wait until both answer quickly. The first
+          # answer makes the box's signing key, a public and a private file
+          # written one after the other: one unhurried request per box first,
+          # or the retries below race and leave halves of two different keys.
+          for m in (mattbox, evabox):
+              m.succeed(f"curl -sfkL https://{m.name}/.well-known/ocm | jq -e '.publicKey'", timeout=900)
           for m, other in ((mattbox, "evabox"), (evabox, "mattbox")):
               for path in ("/.well-known/ocm", "/ocm-provider/"):
                   m.wait_until_succeeds(
                       f"curl -sfkL --max-time 5 https://{other}{path} | jq -e '.enabled'",
                       timeout=900,
                   )
-          mattbox.succeed(
-              f"echo 'Hello from mattbox' | curl -sfk -u 'notshared:{a}' -T - "
-              "https://mattbox/remote.php/dav/files/notshared/hello.txt"
-          )
           # The share itself is one call to the other box that Nextcloud
           # gives five seconds, and a box receiving its first share takes
-          # longer without KVM. A failed try is undone on the sending box,
-          # so try until one goes through and take the newest offer.
-          create = (
-              f"curl -sfk -u 'notshared:{a}' -H 'OCS-APIRequest: true' "
-              "-d path=/hello.txt -d shareType=6 -d shareWith=notshared@evabox "
-              "'https://mattbox/ocs/v2.php/apps/files_sharing/api/v1/shares?format=json'"
-          )
-          mattbox.wait_until_succeeds(f"{create} > /tmp/share.json", timeout=900)
-          share = json.loads(mattbox.succeed("cat /tmp/share.json"))["ocs"]
+          # longer without KVM. A try that timed out may still have reached
+          # the other box, so each try shares its own file and the test
+          # accepts the offer for the one that went through.
+          for attempt in range(10):
+              name = f"hello-{attempt}.txt"
+              # From a file: piped in, curl sends no length and Nextcloud
+              # stores an empty file.
+              mattbox.succeed(
+                  "echo 'Hello from mattbox' > /tmp/hello.txt",
+                  f"curl -sfk -u 'notshared:{a}' -T /tmp/hello.txt "
+                  f"https://mattbox/remote.php/dav/files/notshared/{name}",
+                  f"curl -sfk -u 'notshared:{a}' https://mattbox/remote.php/dav/files/notshared/{name}"
+                  " | grep -qx 'Hello from mattbox'",
+              )
+              code, out = mattbox.execute(
+                  f"curl -sfk -u 'notshared:{a}' -H 'OCS-APIRequest: true' "
+                  f"-d path=/{name} -d shareType=6 -d shareWith=notshared@evabox "
+                  "'https://mattbox/ocs/v2.php/apps/files_sharing/api/v1/shares?format=json'"
+              )
+              if code == 0:
+                  break
+          else:
+              raise Exception("no federated share went through in ten tries")
+          share = json.loads(out)["ocs"]
           assert share["meta"]["statuscode"] == 200, share
           assert share["data"]["share_with"] == "notshared@evabox", share
 
@@ -239,20 +255,36 @@ pkgs.testers.nixosTest {
               f"curl -sfk -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
               "'https://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending?format=json'"
           )
-          evabox.wait_until_succeeds(pending + " | jq -e '.ocs.data | length > 0'", timeout=300)
-          offer = max(json.loads(evabox.succeed(pending))["ocs"]["data"], key=lambda o: int(o["id"]))
-          assert offer["name"].lstrip("/") == "hello.txt", offer
+          evabox.wait_until_succeeds(
+              f"{pending} | jq -e --arg n {name} '.ocs.data | map(.name | ltrimstr(\"/\")) | any(. == $n)'",
+              timeout=300,
+          )
+          offers = json.loads(evabox.succeed(pending))["ocs"]["data"]
+          offer = next(o for o in offers if o["name"].lstrip("/") == name)
           assert "mattbox" in offer["remote"], offer
+          # Everything the receiving box does with the share from here, in
+          # the journal if the read below fails.
+          evabox.succeed("nextcloud-occ log:manage --level=debug")
           evabox.succeed(
               f"curl -sfk -X POST -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
               f"'https://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending/{offer['id']}?format=json'"
           )
           # Accepted, it is a file in the other owner's LosOS cloud, read
           # through from the first box.
-          evabox.wait_until_succeeds(
-              f"curl -sfk -u 'notshared:{b}' https://evabox/remote.php/dav/files/notshared/hello.txt"
-              " | grep -qx 'Hello from mattbox'",
-              timeout=300,
-          )
+          read = f"curl -sfk -u 'notshared:{b}' https://evabox/remote.php/dav/files/notshared/{name}"
+          try:
+              evabox.wait_until_succeeds(f"{read} | grep -qx 'Hello from mattbox'", timeout=300)
+          except Exception:
+              sql = "sudo -u postgres psql -d nextcloud -c "
+              print(evabox.execute(read.replace("-sfk", "-sk -w '\\n%{http_code}\\n'"))[1])
+              print(evabox.execute(f"{sql}'select id, remote, share_token, name, mountpoint, accepted from oc_share_external'")[1])
+              print(mattbox.execute(f"{sql}'select id, share_type, share_with, file_target, token from oc_share'")[1])
+              token = evabox.execute(
+                  "sudo -u postgres psql -d nextcloud -tAc 'select share_token from oc_share_external order by id desc limit 1'"
+              )[1].strip()
+              print(evabox.execute(
+                  f"curl -sk -X PROPFIND -u '{token}:' -w '\\n%{{http_code}}\\n' http://mattbox/public.php/webdav/"
+              )[1])
+              raise
     '';
 }
