@@ -20,7 +20,14 @@ import type { SettingsForm } from "./use-settings-form";
  * last row of the Reset pane is the reset button.
  */
 
-export function ApplyBar({ form }: { form: SettingsForm }) {
+/** What the bar reads: the box's own settings form, or the edge's form
+ *  over GET /api/site (src/manage/). */
+export type ApplyBarForm = Pick<
+  SettingsForm,
+  "rebuild" | "dirty" | "changeCount" | "valid" | "discard" | "apply" | "applying"
+>;
+
+export function ApplyBar({ form }: { form: ApplyBarForm }) {
   const t = useT();
   const { rebuild } = form;
 

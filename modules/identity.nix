@@ -26,14 +26,25 @@
 # argon2id hashes in Authelia's format, JSON (which is YAML), root-owned and
 # readable by Authelia's group. Authelia watches it and reloads on change.
 # Password change and reset inside Authelia are off: there is no mail on
-# the box, and lososd owns the file.
+# the box, and lososd owns the file. Authenticator apps and passkeys are
+# Authelia's own (its settings page); lososd reads which ones each person
+# has, and sets the rules an administrator chose (backend/src/login.rs).
 #
 # The session cookie needs a domain per name the box is opened by:
-# <host>.local and each LAN address. Those change at runtime, so they are
-# rendered into /run by a small unit and re-rendered by a timer, which
-# restarts Authelia when the set changes. Authelia wants https for all of
-# it, so /auth/ redirects plain http to https, and the admin UI does the
-# same before it sends anyone to sign in.
+# <host>.local, each LAN address, and the public names an edge routes to the
+# box (its tunnel name and the owner's own domains, which lososd writes to
+# /var/lib/losos-public-names). Those change at runtime, so they are
+# rendered into /run by a small unit, re-rendered by a timer and whenever
+# the public names change, and Authelia is restarted when the set changes.
+# Authelia wants https for all of it, so /auth/ redirects plain http to
+# https, and the admin UI does the same before it sends anyone to sign in.
+#
+# LosOS Login answers from anywhere, the tunnel included, because LosOS
+# cloud and LosOS Git have no sign-in page of their own any more: their
+# sign-in pages always send people here. The edge ends TLS and sends the
+# request on as http from 127.0.0.1, with `X-Forwarded-Proto: https`; that
+# header is believed from loopback only (`$losos_proto`). The admin pages
+# stay on the LAN (modules/lan-only.nix).
 #
 # The portal is Authelia's own web app built with the LosOS palette, logo
 # and name (admin-ui/themes/default.nix, `authelia`).
@@ -58,7 +69,7 @@ let
   enabled = cfg.enable && config.losos.admin.enable && config.losos.admin.ui != null;
   fqdn = "${config.losos.hostName}.local";
   apiPort = config.losos.admin.apiPort;
-  port = cfg.port;
+  inherit (cfg) port;
   user = "authelia-losos";
   dir = "/var/lib/losos-identity";
   peopleFile = "${dir}/users.yml";
@@ -66,6 +77,98 @@ let
   runDir = "/run/losos-identity";
   sessionFile = "${runDir}/session.yml";
   lanOnly = import ./lan-only.nix;
+  # The owner's live custom domains, a JSON list lososd writes
+  # (backend/src/io_backend.rs, DEFAULT_PUBLIC_NAMES_FILE).
+  publicNamesFile = "/var/lib/losos-public-names/domains.json";
+  # The name the edge routes to this box through the tunnel.
+  tunnelName = lib.optionalString config.losos.proxy.enable config.losos.proxy.hostname;
+
+  # What an app's sign-in page shows when LosOS Login cannot sign the person
+  # in: while it starts (`waiting`, which asks again by itself), and for a
+  # person a rule of LosOS Login holds to their own account (`held`). Plain
+  # pages, so they work whatever is down.
+  page = name: title: body: ''
+    <!doctype html>
+    <html lang="en">
+    <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    ${lib.optionalString (name == "waiting") ''<meta http-equiv="refresh" content="5">''}
+    <title>${title}</title>
+    <style>
+    :root { color-scheme: light dark; --ground: #f3f5f7; --surface: #ffffff; --ink: #18212a; --muted: #5c6a77; --line: #dce1e6; --accent: #0e6e7d; }
+    @media (prefers-color-scheme: dark) { :root { --ground: #0a0e12; --surface: #141b22; --ink: #e2e8ee; --muted: #94a2b0; --line: #212c36; --accent: #48b3c0; } }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--ground); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
+    main { max-width: 30rem; margin: 1rem; padding: 1.5rem 1.75rem; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+    h1 { font-size: 1.15rem; font-weight: 600; margin: 0 0 .5rem; }
+    p { margin: .5rem 0; }
+    p[lang] { color: var(--muted); font-size: 13.5px; }
+    a { color: var(--accent); }
+    </style>
+    </head>
+    <body><main>${body}</main></body>
+    </html>
+  '';
+  signInPages = pkgs.runCommand "losos-sign-in-pages" { } ''
+    mkdir -p $out
+    cp ${pkgs.writeText "waiting.html" (
+      page "waiting" "LosOS Login is starting" ''
+        <h1>LosOS Login is starting</h1>
+        <p>The box has just started. This page tries again by itself in a few seconds.</p>
+        <p lang="sk">LosOS Login sa spúšťa. Stránka to o chvíľu skúsi znova sama.</p>
+        <p lang="de">LosOS Login startet. Die Seite versucht es gleich von selbst erneut.</p>
+      ''
+    )} $out/waiting.html
+    cp ${pkgs.writeText "held.html" (
+      page "held" "Finish your account first" ''
+        <h1>Finish your account first</h1>
+        <p>This box asks something of your account before you can use LosOS cloud and LosOS Git: a second step at sign-in, or a new password. Open <a href="/settings/account">Your account</a> in the box's admin pages, on the box's own network.</p>
+        <p lang="sk">Toto zariadenie od vášho účtu najprv niečo žiada: druhý krok pri prihlásení alebo nové heslo. Otvorte Váš účet na stránkach správy zariadenia, v jeho sieti.</p>
+        <p lang="de">Diese Box verlangt zuerst etwas von deinem Konto: einen zweiten Schritt bei der Anmeldung oder ein neues Passwort. Öffne Dein Konto auf den Verwaltungsseiten der Box, in ihrem eigenen Netz.</p>
+      ''
+    )} $out/held.html
+  '';
+  # For the two apps: where their sign-in page sends a person back to, and
+  # the person's account in them, the owner's own for the person who
+  # claimed the box and their sign-in name for everyone else
+  # (modules/app-sign-in.nix).
+  appMaps = ''
+    # Where a request comes from, for LosOS cloud's share below: the LAN,
+    # or anywhere else (the tunnel arrives from 127.0.0.1). The ranges are
+    # lanOnly's (modules/lan-only.nix).
+    geo $losos_lan {
+      default 0;
+      10.42.0.0/16 0;
+      10.0.0.0/8 1;
+      172.16.0.0/12 1;
+      192.168.0.0/16 1;
+    }
+    # LosOS cloud's share (`/internal/losos-cloud-share`): the client's
+    # own credentials go on unless lososd named the person they are for.
+    map $losos_user $losos_share_authorization {
+      "" $http_authorization;
+      default "";
+    }
+    map $uri $losos_app_back {
+      ~^/forgejo/ /forgejo/user/login;
+      default /nextcloud/login;
+    }
+    map "$losos_groups|$losos_user" $losos_app_user {
+      "~(^|,)\s*${signIn.ownerGroup}\s*(,|\|)" ${signIn.ownerAccount};
+      "~\|(?<losos_named>[a-z][a-z0-9._-]*)$" $losos_named;
+      default "";
+    }
+  '';
+  # Headers for those two pages: the strict policy a page with no script
+  # needs, and no caching, since both change the moment LosOS Login does.
+  # add_header here drops the server's own, so all of them are repeated.
+  pageHeaders = ''
+    add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+    add_header Cache-Control "no-store" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+  '';
 
   signIn = import ./app-sign-in.nix { inherit lib; };
   appSignIn = config.lososInternal.appSignIn;
@@ -125,6 +228,8 @@ let
   toLososd = ''
     ${lanOnly}
     proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Losos-Via-Edge "";
+    proxy_set_header X-Losos-Edge "";
     proxy_set_header Remote-User "";
     proxy_set_header Remote-Groups "";
     proxy_set_header X-Losos-As "";
@@ -140,7 +245,9 @@ let
       pkgs.coreutils
       pkgs.diffutils
       pkgs.gawk
+      pkgs.gnugrep
       pkgs.iproute2
+      pkgs.jq
       pkgs.systemd
     ];
     text = ''
@@ -149,6 +256,16 @@ let
       while read -r addr; do
         names+=("''${addr%%/*}")
       done < <(ip -4 -o addr show scope global | awk '{print $4}')
+      # The names an edge routes here. Plain host names only, whatever the
+      # file says: each goes into YAML below.
+      public=()
+      for n in ${lib.escapeShellArg tunnelName} \
+        $(jq -r '.[]? | strings' ${publicNamesFile} 2>/dev/null || true); do
+        if [ -n "$n" ] && [ "''${#n}" -le 253 ] &&
+          printf '%s' "$n" | grep -Eqx '[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+'; then
+          public+=("$n")
+        fi
+      done
       tmp=$(mktemp ${runDir}/.session.XXXXXX)
       {
         echo "session:"
@@ -158,6 +275,13 @@ let
           echo "      authelia_url: 'https://$n/auth'"
           echo "      default_redirection_url: 'https://$n/'"
         done
+        # The admin pages answer on the LAN only, so from outside a sign-in
+        # with nowhere else to go lands in LosOS cloud.
+        for n in $(printf '%s\n' "''${public[@]}" | sort -u); do
+          echo "    - domain: '$n'"
+          echo "      authelia_url: 'https://$n/auth'"
+          echo "      default_redirection_url: 'https://$n/nextcloud/'"
+        done
       } > "$tmp"
       chgrp ${user} "$tmp"
       chmod 0640 "$tmp"
@@ -166,7 +290,9 @@ let
       else
         mv "$tmp" ${sessionFile}
         echo "sign-in answers on: ''${names[*]}"
-        systemctl try-restart authelia-losos.service
+        # --no-block: Authelia starts after this unit, so a restart that
+        # waited here would wait on itself, leaving Authelia stopped.
+        systemctl --no-block try-restart authelia-losos.service
       fi
     '';
   };
@@ -194,21 +320,54 @@ in
         authentication_backend = {
           password_reset.disable = true;
           password_change.disable = true;
+          # Look the person up on every request, not every five minutes: a
+          # person removed on the Users pane loses LosOS cloud and LosOS Git
+          # at their next click, and a changed group reaches nginx at once.
+          # The file backend keeps everyone in memory, so it costs nothing.
+          refresh_interval = "always";
           file = {
             path = peopleFile;
             watch = true;
           };
         };
         # Everyone with an account may pass; lososd decides what each person
-        # may do (backend/sections.json).
+        # may do (backend/sections.json). Two marks lososd keeps in the people
+        # file come first (backend/src/login.rs): a person a rule holds to
+        # their own account gets no LosOS cloud or LosOS Git, and a person
+        # with an authenticator app or a passkey is asked for it.
         access_control = {
           default_policy = "deny";
           rules = [
             {
               domain_regex = ".*";
+              subject = [ "group:losos-locked" ];
+              resources = [ "^/(nextcloud|forgejo)([/?].*)?$" ];
+              policy = "deny";
+            }
+            {
+              domain_regex = ".*";
+              subject = [ "group:losos-two-factor" ];
+              policy = "two_factor";
+            }
+            {
+              domain_regex = ".*";
               policy = "one_factor";
             }
           ];
+        };
+        # Adding or removing a second factor asks for a one-time code, which
+        # Authelia mails; the box has no mail, so the notifier below writes
+        # it to a file and lososd hands it to the person behind their
+        # password (POST /api/account/code). Always asked, a second factor
+        # or not, so that code is the only way to change one.
+        identity_validation.elevated_session = {
+          require_second_factor = false;
+          skip_second_factor = false;
+        };
+        totp.issuer = "LosOS";
+        webauthn = {
+          display_name = "LosOS Login";
+          enable_passkey_login = true;
         };
         session = {
           name = "losos_session";
@@ -248,6 +407,16 @@ in
       '';
     };
 
+    # The public names change when the owner adds or drops a domain.
+    systemd.paths.losos-identity-public-names = {
+      description = "Re-render sign-in's session domains when the public names change";
+      wantedBy = [ "multi-user.target" ];
+      pathConfig = {
+        PathChanged = publicNamesFile;
+        Unit = "losos-identity-setup.service";
+      };
+    };
+
     # The LAN addresses change at runtime; follow them.
     systemd.timers.losos-identity-setup = {
       wantedBy = [ "timers.target" ];
@@ -278,39 +447,19 @@ in
       # lososd believes `Remote-User` only when this is set, so a box
       # without this module ignores the header whoever sends it.
       LOSOS_IDENTITY = "authelia";
+      LOSOS_AUTHELIA_DB = "/var/lib/authelia-losos/db.sqlite3";
+      LOSOS_AUTHELIA_NOTES = "/var/lib/authelia-losos/notifications.txt";
     };
 
-    # Where a request comes from, for the two apps' sign-in pages: the LAN,
-    # where LosOS Login answers, or anywhere else (the tunnel arrives from
-    # 127.0.0.1). The ranges are lanOnly's (modules/lan-only.nix).
-    # `direct=1` asks for an app's own page. The person's account in the
-    # apps: the owner's own for the person who claimed the box, their
-    # sign-in name for everyone else (modules/app-sign-in.nix).
-    services.nginx.appendHttpConfig = lib.mkIf anyAppSignIn ''
-      geo $losos_lan {
-        default 0;
-        10.42.0.0/16 0;
-        10.0.0.0/8 1;
-        172.16.0.0/12 1;
-        192.168.0.0/16 1;
+    # The scheme the person's browser used. The edge ends TLS and sends the
+    # request through the tunnel as http from 127.0.0.1 with
+    # `X-Forwarded-Proto: https`, which is believed from there only.
+    services.nginx.appendHttpConfig = ''
+      map "$remote_addr|$http_x_forwarded_proto" $losos_proto {
+        "127.0.0.1|https" https;
+        default $scheme;
       }
-      map $request_uri $losos_direct {
-        "~[?&]direct=1(&|$)" 1;
-        default 0;
-      }
-      map "$losos_lan$losos_direct" $losos_app_own_page {
-        "10" 0;
-        default 1;
-      }
-      map $uri $losos_app_back {
-        ~^/forgejo/ /forgejo/user/login;
-        default /nextcloud/login;
-      }
-      map "$losos_groups|$losos_user" $losos_app_user {
-        "~(^|,)\s*${signIn.ownerGroup}\s*(,|\|)" ${signIn.ownerAccount};
-        "~\|(?<losos_named>[a-z][a-z0-9._-]*)$" $losos_named;
-        default "";
-      }
+      ${lib.optionalString anyAppSignIn appMaps}
     '';
 
     networking.firewall = lib.mkIf (config.networking.firewall.enable && loopbackRules != [ ]) {
@@ -327,16 +476,13 @@ in
       lib.optionalAttrs anyAppSignIn {
         # Who is calling, for every request to LosOS Git (modules/containers.nix,
         # `signInMaybe`). Never a refusal: a person LosOS Login does not know,
-        # a client with credentials of its own, a request from off the LAN
-        # and a LosOS Login that is down all go on as nobody.
+        # a client with credentials of its own and a LosOS Login that is down
+        # all go on as nobody.
         "= /internal/losos-app-authz" = {
           proxyPass = "http://127.0.0.1:${toString port}/auth/api/authz/auth-request";
           extraConfig = ''
             internal;
             if ($http_authorization) {
-              return 200;
-            }
-            if ($losos_lan = 0) {
               return 200;
             }
             proxy_intercept_errors on;
@@ -345,43 +491,77 @@ in
           '';
         };
         "@losos-app-nobody".extraConfig = "return 200;";
-        # The apps' sign-in pages (modules/containers.nix, `signInPage`): 2xx
-        # signs the person in, 401 sends them to LosOS Login, 403 to the
-        # app's own page, which is all that works off the LAN, while LosOS
-        # Login is down, when asked for with `direct=1`, and for the form that
-        # page posts.
+        # Whose request to LosOS cloud's share this is (backend/src/cloud_share.rs):
+        # lososd checks a LosOS Login name and password in the Basic header
+        # and names the person, or names nobody and the request goes on as it
+        # came. Never a refusal, so app passwords and LosOS cloud's own
+        # accounts keep working, off the LAN and while lososd is down too.
+        "= /internal/losos-cloud-share" = {
+          proxyPass = "http://127.0.0.1:${toString apiPort}/internal/cloud-share";
+          extraConfig = ''
+            internal;
+            if ($losos_lan = 0) {
+              return 200;
+            }
+            proxy_pass_request_body off;
+            proxy_set_header Content-Length "";
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header Remote-User "";
+            proxy_set_header Remote-Groups "";
+            proxy_set_header X-Losos-As "";
+            proxy_intercept_errors on;
+            error_page 500 502 503 504 = @losos-app-nobody;
+          '';
+        };
+        # The apps' sign-in pages (modules/containers.nix, `signInPage`), from
+        # the LAN and through the tunnel alike: 2xx signs the person in, 401
+        # sends them to LosOS Login, 403 (a rule holds them to their own
+        # account) shows `held`. LosOS Login down is nginx's own 500, which
+        # shows `waiting`. Neither app shows a sign-in page of its own.
         "= /internal/losos-app-sign-in" = {
           proxyPass = "http://127.0.0.1:${toString port}/auth/api/authz/auth-request";
           extraConfig = ''
             internal;
-            if ($losos_app_own_page) {
-              return 403;
-            }
-            # A posted sign-in page is the app's own form being sent.
-            if ($request_method = POST) {
-              return 403;
-            }
-            proxy_intercept_errors on;
-            error_page 403 500 502 503 504 = @losos-app-own-page;
             ${askAboutRequest}
           '';
         };
-        "@losos-app-own-page".extraConfig = "return 403;";
         # Back to the app's sign-in page once they are signed in, which then
         # goes on as above. https, because LosOS Login's cookie is Secure.
         "@losos-app-sign-in".extraConfig =
           "return 302 https://$host/auth/?rd=https://$host$losos_app_back;";
+        "@losos-app-held" = {
+          root = signInPages;
+          extraConfig = ''
+            ${pageHeaders}
+            rewrite ^ /held.html break;
+          '';
+        };
+        "@losos-app-waiting" = {
+          root = signInPages;
+          extraConfig = ''
+            ${pageHeaders}
+            add_header Retry-After "5" always;
+            rewrite ^ /waiting.html break;
+          '';
+        };
       }
       // {
-        # The portal: sign-in page, its API and assets. https only, because
-        # Authelia's cookies are Secure and it refuses an http address.
+        # The portal: sign-in page, its API and assets, from anywhere (see
+        # the header). https only, because Authelia's cookies are Secure and
+        # it refuses an http address; behind the edge the browser's https
+        # arrives as `$losos_proto`.
         "/auth/" = {
           proxyPass = "http://127.0.0.1:${toString port}";
+          recommendedProxySettings = false;
           extraConfig = ''
-            ${lanOnly}
-            if ($scheme = http) {
+            if ($losos_proto = http) {
               return 301 https://$host$request_uri;
             }
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-Proto $losos_proto;
+            proxy_set_header X-Forwarded-Host $host;
           '';
         };
         # Whether the portal answers yet, over http too: the admin pages ask
@@ -389,7 +569,6 @@ in
         # Authelia starts (nginx answers 502 until it does).
         "= /auth/api/health" = {
           proxyPass = "http://127.0.0.1:${toString port}/auth/api/health";
-          extraConfig = lanOnly;
         };
         # The question nginx asks before every /api/ request. A Bearer
         # header is the spare key or a token lososd checks itself, so it

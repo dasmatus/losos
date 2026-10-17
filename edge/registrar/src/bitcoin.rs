@@ -93,7 +93,7 @@ pub fn descriptor_for(key: &str) -> Option<String> {
     if key.is_empty() || key.len() > 1024 || key.chars().any(|c| c.is_whitespace()) {
         return None;
     }
-    if key.contains("prv") {
+    if names_a_private_key(key) {
         return None;
     }
     if FUNCTIONS.iter().any(|f| key.starts_with(f)) {
@@ -113,6 +113,16 @@ pub fn descriptor_for(key: &str) -> Option<String> {
         "sh-wpkh" => format!("sh(wpkh({xpub}/0/*))"),
         _ => format!("wpkh({xpub}/0/*)"),
     })
+}
+
+/// Whether an extended private key (`xprv`, `tprv`, `zprv`, ...) starts the
+/// text or follows a `(`, `]` or `,`, where a descriptor puts its keys. Not a
+/// bare `contains("prv")`: base58 public keys hold those three letters often
+/// enough (about one seller in two thousand) to refuse a good key.
+fn names_a_private_key(key: &str) -> bool {
+    std::iter::once(key)
+        .chain(key.split(['(', ']', ',']).skip(1))
+        .any(|token| token.get(1..4) == Some("prv"))
 }
 
 // ── The node ──────────────────────────────────────────────────────────────
@@ -418,9 +428,21 @@ mod tests {
     }
 
     #[test]
+    fn a_public_key_holding_the_letters_prv_passes() {
+        // Random base58 contains "prv" now and then; only a key's prefix says
+        // whether it is private. The node's `hasprivatekeys` has the last word.
+        let d = "wpkh([73c5da0a/84h/1h/0h]tpubDCprvXq/0/*)";
+        assert_eq!(descriptor_for(d), Some(d.to_string()));
+    }
+
+    #[test]
     fn private_keys_and_noise_are_refused() {
         assert_eq!(descriptor_for("xprvNotARealKeyOnlyTheShapeOfOneNotARealKeyOnlyTheShapeOfOneNotARealKeyOnlyTheShapeOfOneNotARealKeyOnlyTheShapeOfOne"), None);
         assert_eq!(descriptor_for("wpkh(tprv8ZgxMBicQKsPd/0/*)"), None);
+        assert_eq!(
+            descriptor_for("wpkh([73c5da0a/84h/1h/0h]tprv8ZgxMBicQKsPd/0/*)"),
+            None
+        );
         assert_eq!(
             descriptor_for("bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"),
             None

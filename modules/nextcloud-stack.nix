@@ -34,6 +34,11 @@ let
   # (datadir is not the *data* directory: the module puts config/ and data/
   # underneath it. Hence the nesting below, which reads odd and is correct.)
   home = "/var/lib/nextcloud";
+
+  # The `notshared` user owns this instance — see modules/configuration.nix for
+  # the two-domain split. The name is Nextcloud's "admin user", which
+  # maintenance:install makes; `demoteOwner` below makes it a standard one.
+  adminUser = "notshared";
   datadir = "${home}/data";
 
   # Where Nextcloud actually keeps things, spelled out once so the image's
@@ -224,6 +229,23 @@ in
   # a Nextcloud that will not take a setting still serves the owner's files,
   # and the vhost half holds either way.
   federation = {
+    # config.php keys while the box federates. Nextcloud refuses to call a
+    # server whose name ends in .local or that has a private address
+    # (RemoteHostValidator), which is every other LosOS box on the LAN: a
+    # share to owner@otherbox.local failed before a byte left the box. So
+    # federation turns that rule off. It also lets anything an account can
+    # make LosOS cloud fetch (a share's server, a link preview) point at
+    # the LAN; the accounts are the owner's people.
+    #
+    # Every box answers https with a certificate it made itself
+    # (modules/tls.nix), and an address with no protocol is tried over
+    # https only, so without the second key a share to another box failed
+    # its certificate check. It turns that check off for federation calls
+    # alone, which leaves those calls open to whoever sits between two boxes.
+    system = {
+      allow_local_remote_servers = true;
+      "sharing.federation.allowSelfSignedCertificates" = true;
+    };
     locations = prefix: [
       "~* ^${prefix}/(?:index\\.php/)?(?:ocm-provider|ocs-provider|ocm|\\.well-known/ocm|apps/federation|apps/federatedfilesharing)(?:$|/)"
       "~* ^${prefix}/ocs/v[12]\\.php/(?:cloud/shares|apps/federation|apps/federatedfilesharing)(?:$|/)"
@@ -341,9 +363,142 @@ in
     ];
   };
 
-  # The `notshared` user owns this instance — see modules/configuration.nix for
-  # the two-domain split.
-  adminUser = "notshared";
+  # The owner's LosOS cloud apps, managed from the admin UI's Apps pane
+  # through lososd (backend/src/cloud_apps.rs), in the shapes both modes need.
+  #
+  #   offFile   the apps the owner turned off, one id per line. Both modes
+  #             enable every app in `apps` on every start, so without it a
+  #             bundled app turned off on the Apps pane came back after the
+  #             nightly reboot. Kept in Nextcloud's own state root, which the
+  #             pod mounts and `appsTool` (running as Nextcloud, or as root
+  #             natively) can write.
+  #   offOcc    the start-up half: turn those apps off again, given the
+  #             command to run occ with. Non-fatal like the rest of start-up.
+  #   withoutOff  a shell word for `apps`' ids minus the ones in offFile, for
+  #             the pod's own enable line, so a turned-off app is never even
+  #             switched on for a moment.
+  #   appsTool  `losos-nextcloud-apps`, the one command lososd runs for all of
+  #             it, given the command to run occ with and a prelude (the pod's
+  #             `cd` and config directory, which a `crictl exec` does not
+  #             inherit). Its contract, depended on by backend/src/cloud_apps.rs:
+  #
+  #               list              one JSON array, nextcloud-apps-list.php's
+  #               install <id>      occ app:install, from the app store
+  #               enable <id>       occ app:enable, and off the offFile
+  #               disable <id>      onto the offFile, then occ app:disable
+  #               remove <id>       occ app:remove --keep-data, store-apps only
+  #
+  #             exit 2 for a bad call, 3 for removing an app that did not come
+  #             from the store, otherwise occ's status. lososd checks the id
+  #             and the locked apps first; the id is checked here again
+  #             because this is what puts it in an argv.
+  offFile = "${home}/.losos-apps-off";
+
+  offOcc = occ: ''
+    if [ -r ${home}/.losos-apps-off ]; then
+      while read -r app; do
+        [ -n "$app" ] || continue
+        ${occ} app:disable "$app" >/dev/null 2>&1 ||
+          echo "losos-nextcloud: could not turn $app off again" >&2
+      done < ${home}/.losos-apps-off
+    fi
+  '';
+
+  withoutOff = ''$(printf '%s\n' ${lib.concatStringsSep " " (lib.attrNames apps)} | { if [ -r ${home}/.losos-apps-off ]; then grep -vxF -f ${home}/.losos-apps-off || true; else cat; fi; })'';
+
+  appsTool =
+    {
+      occ,
+      webroot,
+      prelude ? "",
+    }:
+    pkgs.writeShellApplication {
+      name = "losos-nextcloud-apps";
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.gnugrep
+      ];
+      text = ''
+        usage() {
+          echo "usage: losos-nextcloud-apps list | install|enable|disable|remove <app id>" >&2
+          exit 2
+        }
+        verb=''${1-}
+        id=
+        case "$verb" in
+          list) [ "$#" -eq 1 ] || usage ;;
+          install | enable | disable | remove)
+            [ "$#" -eq 2 ] || usage
+            id=$2
+            # Nextcloud's own rule for an app id, and no more.
+            printf '%s' "$id" | grep -qxE '[a-z0-9_]{1,64}' || usage
+            ;;
+          *) usage ;;
+        esac
+
+        off=${home}/.losos-apps-off
+        off_write() {
+          chmod 0644 "$off.tmp"
+          mv -f "$off.tmp" "$off"
+        }
+        off_add() {
+          { if [ -r "$off" ]; then grep -vxF -- "$1" "$off" || true; fi; printf '%s\n' "$1"; } > "$off.tmp"
+          off_write
+        }
+        off_drop() {
+          [ -e "$off" ] || return 0
+          { grep -vxF -- "$1" "$off" || true; } > "$off.tmp"
+          off_write
+        }
+
+        ${prelude}
+
+        case "$verb" in
+          list)
+            state=$(${occ} app:list --output=json)
+            printf '%s' "$state" | ${php}/bin/php ${./nextcloud-apps-list.php} ${webroot}
+            ;;
+          install)
+            ${occ} app:install "$id"
+            off_drop "$id"
+            ;;
+          enable)
+            ${occ} app:enable "$id"
+            off_drop "$id"
+            ;;
+          disable)
+            # Recorded first: an app occ says is already off is still one
+            # the owner wants kept off.
+            off_add "$id"
+            ${occ} app:disable "$id"
+            ;;
+          remove)
+            if [ ! -d ${webroot}/store-apps/"$id" ]; then
+              echo "losos-nextcloud-apps: $id did not come from the app store, so it can be turned off but not removed" >&2
+              exit 3
+            fi
+            # --keep-data skips the app's uninstall steps, which may delete
+            # what the owner made in it; adding it again finds that again.
+            ${occ} app:remove --keep-data "$id"
+            off_drop "$id"
+            ;;
+        esac
+      '';
+    };
+
+  # The owner's account is a standard one, not a Nextcloud administrator:
+  # LosOS keeps the box-wide settings (`site` above) and the apps (`appsTool`)
+  # on its own Apps pane, and the start-up scripts run occ, which needs no
+  # account. `maintenance:install` makes the first account an administrator,
+  # so this runs on every start in both modes, after the install. Removing an
+  # account from a group it is not in succeeds, so the call is idempotent.
+  # Non-fatal like the rest of start-up.
+  demoteOwner = occ: ''
+    ${occ} group:removeuser admin ${adminUser} >/dev/null ||
+      echo "losos-nextcloud: could not make ${adminUser} a standard account" >&2
+  '';
+
+  inherit adminUser;
 
   # Postgres over the peer-authenticated unix socket, which is why
   # modules/configuration.nix pins the nextcloud uid: peer auth matches the

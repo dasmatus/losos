@@ -415,6 +415,7 @@
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
         losos-edge-lan = import ./nix/tests/edge-lan.nix { inherit pkgs; };
+        losos-edge-manage = import ./nix/tests/edge-manage.nix { inherit pkgs; };
         losos-edge-federation = import ./nix/tests/edge-federation.nix { inherit pkgs; };
         losos-edge-lan-two-boxes = import ./nix/demo/edge-lan/two-boxes.nix { inherit pkgs; };
         losos-edge-market = import ./nix/tests/market-vm.nix { inherit pkgs; };
@@ -429,6 +430,7 @@
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
+        losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         losos-admin-ui = import ./nix/tests/admin-ui.nix {
           inherit pkgs;
           # The real option document, so the Advanced pane is drawn from
@@ -477,6 +479,10 @@
         # reaches — the pretty /nextcloud/apps/<app>/ links the homepage
         # tiles use included (nix/tests/nextcloud-httpd.nix).
         losos-nextcloud-httpd = import ./nix/tests/nextcloud-httpd.nix { inherit pkgs; };
+        # LosOS cloud's apps managed from the Apps pane, the owner's account a
+        # standard one, and a federated share between two boxes
+        # (nix/tests/cloud-apps.nix).
+        losos-cloud-apps = import ./nix/tests/cloud-apps.nix { inherit pkgs; };
         # Not a VM: evaluates the install configuration and asserts on the
         # merged option values, so `nix flake check --no-build` turns red the
         # moment a load-bearing default drifts (nix/tests/invariants.nix).

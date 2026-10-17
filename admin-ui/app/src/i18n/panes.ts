@@ -282,9 +282,9 @@ export default defineMessages({
     de: "Automatisch",
   },
   "panes.apps.site.cloudCaption": {
-    en: "These hold for all of LosOS cloud. The box sets them each time the app starts, so LosOS cloud's own administration pages show them but cannot change them. What each account sets for itself stays in LosOS cloud. An empty field leaves the choice to LosOS cloud.",
-    sk: "Tieto nastavenia platia pre celý LosOS cloud. Zariadenie ich nastaví pri každom spustení aplikácie, takže vlastné stránky správy LosOS cloud ich ukážu, ale nedajú sa tam zmeniť. Čo si každý účet nastaví sám pre seba, zostáva v LosOS cloud. Prázdne pole nechá voľbu na LosOS cloud.",
-    de: "Diese gelten für ganz LosOS cloud. Die Box setzt sie bei jedem Start der App, deshalb zeigen die Verwaltungsseiten von LosOS cloud sie an, können sie aber nicht ändern. Was jedes Konto für sich selbst einstellt, bleibt in LosOS cloud. Ein leeres Feld überlässt die Wahl LosOS cloud.",
+    en: "These hold for every account in LosOS cloud. The box sets them each time the app starts. What each account sets for itself stays in LosOS cloud. An empty field leaves the choice to LosOS cloud.",
+    sk: "Tieto nastavenia platia pre každý účet v LosOS cloud. Zariadenie ich nastaví pri každom spustení aplikácie. Čo si každý účet nastaví sám pre seba, zostáva v LosOS cloud. Prázdne pole nechá voľbu na LosOS cloud.",
+    de: "Diese gelten für jedes Konto in LosOS cloud. Die Box setzt sie bei jedem Start der App. Was jedes Konto für sich selbst einstellt, bleibt in LosOS cloud. Ein leeres Feld überlässt die Wahl LosOS cloud.",
   },
   "panes.apps.site.signIn": {
     en: "Only signed-in accounts see anything",
@@ -525,6 +525,66 @@ export default defineMessages({
     en: "The edge proxy is the box in the middle: it holds the mesh together and makes yours reachable from outside. Several can be in reach at once; sharing works through any of them. None of these is run by LosOS, so the market (buying and selling storage and compute) stays off until an official edge answers. Your own files and apps work either way.",
     sk: "Okrajový proxy server je zariadenie uprostred: drží sieť mesh pohromade a sprístupňuje to vaše zvonku. Dostupných ich môže byť viac naraz; zdieľanie funguje cez ktorýkoľvek. Žiadny z týchto neprevádzkuje LosOS, takže trh (nákup a predaj úložiska a výpočtov) zostane vypnutý, kým sa neozve oficiálny. Vaše vlastné súbory a aplikácie fungujú tak či tak.",
     de: "Der Edge-Proxy ist die Box in der Mitte: Er hält das Mesh zusammen und macht deine von außen erreichbar. Mehrere können zugleich erreichbar sein; Teilen funktioniert über jeden davon. Keiner davon wird von LosOS betrieben, darum bleibt der Markt (Speicher und Rechenleistung kaufen und verkaufen) aus, bis ein offizieller antwortet. Deine eigenen Dateien und Apps laufen so oder so.",
+  },
+  "panes.mesh.manage.title": {
+    en: "Managed from the edge",
+    sk: "Správa z okrajového servera",
+    de: "Verwaltung durch den Edge",
+  },
+  "panes.mesh.manage.switch": {
+    en: "Let the company edge manage this box",
+    sk: "Nechať firemný okrajový server spravovať toto zariadenie",
+    de: "Den Firmen-Edge diese Box verwalten lassen",
+  },
+  "panes.mesh.manage.switchNamed": {
+    en: "Let {name} manage this box",
+    sk: "Nechať {name} spravovať toto zariadenie",
+    de: "{name} diese Box verwalten lassen",
+  },
+  "panes.mesh.manage.offDetail": {
+    en: "Its admins could then change LosOS cloud, LosOS Git and the apps here from the edge's page.",
+    sk: "Jeho správcovia by potom mohli meniť LosOS cloud, LosOS Git a aplikácie tu zo stránky okrajového servera.",
+    de: "Seine Admins könnten dann LosOS cloud, LosOS Git und die Apps hier von der Seite des Edge aus ändern.",
+  },
+  "panes.mesh.manage.active": {
+    en: "{name} can change LosOS cloud, LosOS Git and the apps here. It cannot see your files, add people or change anything else.",
+    sk: "{name} môže meniť LosOS cloud, LosOS Git a aplikácie tu. Nevidí vaše súbory, nepridáva ľudí a nič iné nemení.",
+    de: "{name} kann LosOS cloud, LosOS Git und die Apps hier ändern. Er sieht deine Dateien nicht, fügt keine Personen hinzu und ändert sonst nichts.",
+  },
+  "panes.mesh.manage.elsewhere": {
+    en: "On for {url}, which this box does not use right now, so nothing manages it.",
+    sk: "Zapnuté pre {url}, ktorý toto zariadenie práve nepoužíva, takže ho nikto nespravuje.",
+    de: "An für {url}, den diese Box gerade nicht nutzt, also verwaltet sie niemand.",
+  },
+  "panes.mesh.manage.noLocalEdge": {
+    en: "Only an edge on this network can manage the box, and this box uses none right now.",
+    sk: "Zariadenie môže spravovať iba okrajový server v tejto sieti a toto zariadenie teraz žiadny nepoužíva.",
+    de: "Nur ein Edge in diesem Netz kann die Box verwalten, und diese Box nutzt gerade keinen.",
+  },
+  "panes.mesh.manage.official": {
+    en: "The edge in use is run by LosOS, and LosOS never manages anyone's box.",
+    sk: "Používaný okrajový server prevádzkuje LosOS a LosOS nikdy nespravuje cudzie zariadenia.",
+    de: "Der genutzte Edge wird von LosOS betrieben, und LosOS verwaltet nie die Box von jemandem.",
+  },
+  "panes.mesh.manage.caption": {
+    en: "For a company's own edge. The switch is tied to the edge it was turned on for, so a different edge never inherits it. Turn it off and the edge loses access at once.",
+    sk: "Pre vlastný okrajový server firmy. Prepínač patrí k serveru, pre ktorý bol zapnutý, takže iný server ho nikdy nezdedí. Po vypnutí server stratí prístup okamžite.",
+    de: "Für den eigenen Edge einer Firma. Der Schalter gilt nur für den Edge, für den er eingeschaltet wurde, ein anderer erbt ihn nie. Ausgeschaltet verliert der Edge den Zugriff sofort.",
+  },
+  "panes.mesh.manage.turnedOn": {
+    en: "{name} can manage this box now",
+    sk: "{name} teraz môže spravovať toto zariadenie",
+    de: "{name} kann diese Box jetzt verwalten",
+  },
+  "panes.mesh.manage.turnedOff": {
+    en: "No edge manages this box now",
+    sk: "Toto zariadenie teraz nespravuje žiadny okrajový server",
+    de: "Kein Edge verwaltet diese Box mehr",
+  },
+  "panes.mesh.manage.failed": {
+    en: "Could not change who manages this box",
+    sk: "Nepodarilo sa zmeniť, kto spravuje toto zariadenie",
+    de: "Konnte nicht ändern, wer diese Box verwaltet",
   },
   "panes.mesh.edge.needed": {
     en: "Needs an edge proxy in reach.",

@@ -18,15 +18,18 @@ sa synchronizujú cez CalDAV a CardDAV.
 Prehľad má dlaždicu pre každú aplikáciu z ponuky LosOS cloud, v rovnakom
 poradí: Súbory, Nástenka, Fotky, Aktivita, Kontakty, Kalendár, Poznámky,
 Záložky, Deck, Hudba, Kolektívy, Ankety, Formuláre, Tabuľky, Memories,
-Správy, Úlohy a Mapy. Zariadenie ich pri každom štarte všetky zapne. Pošta
-medzi nimi nie je, pretože zariadenie nemá poštový server, ktorý by mohla
-čítať. Ak si Poštu aj tak nainštalujete z obchodu s aplikáciami, jej dlaždica
-sa na Prehľade objaví pri ďalšom načítaní stránky. Odkazy vedú zámerne cez
+Správy, Úlohy a Mapy. Zariadenie ich pri každom štarte všetky zapne, okrem
+tých, ktoré ste vypli na paneli **Aplikácie**. Pošta medzi nimi nie je,
+pretože zariadenie nemá poštový server, ktorý by mohla čítať. Ak si Poštu
+aj tak pridáte z obchodu s aplikáciami, jej dlaždica sa na Prehľade objaví
+pri ďalšom načítaní stránky. Odkazy vedú zámerne cez
 `index.php`, pretože na túto cestu odpovedá každá konfigurácia.
 
-Účty pre rodinu alebo kolegov zakladáte vnútri LosOS cloud, v časti
-Používatelia, nie na správcovských stránkach. Správcovské stránky odomkne iba
-účet vlastníka.
+Rodina alebo kolegovia dostanú účet v LosOS cloud, keď ho prvýkrát otvoria,
+prihlásení cez LosOS Login ([Prihlásenie](sign-in-and-spare-key)). Aj účet
+vlastníka je bežný účet, nie správca LosOS cloud. To, ktoré aplikácie
+bežia, a nastavenia pre všetkých sú namiesto toho na paneli **Aplikácie**,
+v sekcii LosOS cloud.
 
 ## LosOS Git \{#losos-git}
 
@@ -50,36 +53,64 @@ ostatné zariadenia v tej sieti. Zariadenie nikdy nezverejňuje, koľko má
 
 Ak sa chcete zapojiť, vypíšte na stránke repozitára
 **Nastavenia → Federácia** ostatné servery, ktorých hviezdičky sa majú
-počítať. Federáciu úplne vypnete cez `losos.forgejo.federation.enable` na
-paneli **Rozšírené**.
+počítať. Federáciu úplne vypnete prepínačom **Federovať s inými servermi
+Forgejo** v sekcii LosOS Git na paneli **Aplikácie**.
 
 Federuje aj LosOS cloud: súbory a kalendáre môžete zdieľať s ľuďmi, ktorí
-majú účty na iných serveroch Nextcloud, podľa ich adresy `user@server`.
-`losos.nextcloud.federation.enable` to vypne.
+majú účty na iných serveroch Nextcloud, podľa ich adresy `user@server`;
+vlastník iného zariadenia je `notshared@inezariadenie.local/nextcloud`.
+Vypne to prepínač **Zdieľať s inými servermi Nextcloud** v sekcii LosOS
+cloud. Kým je zapnutý, LosOS cloud smie siahnuť na mená končiace na
+`.local` a na adresy vo vašej lokálnej sieti a prijme certifikát, ktorý si
+každé zariadenie vyrobí samo, čo Nextcloud sám odmieta. Tak sa dostane
+k ostatným zariadeniam v tej istej sieti.
 
 :::note[Federácia potrebuje zdieľanie disku]
 Oba druhy federácie fungujú iba vtedy, keď zariadenie zdieľa svoj disk
 (`losos.sharingMyStorage`), pretože iba vtedy je zdieľaná časť disku
 odomknutá. So zdieľaním vypnutým sa zariadenie nerozpráva so žiadnym iným
-serverom a panel **Rozšírené** ukazuje oba prepínače federácie ako
-nedostupné.
+serverom a panel **Aplikácie** ukazuje oba prepínače federácie sivé.
 :::
 
 ## Panel Aplikácie \{#the-apps-pane}
 
 Pri každej aplikácii panel ukazuje, či je zapnutá, v akom
-[režime](../types/app-modes) beží, a odkaz. Pod tým **Nájsť ďalšie** hľadá
+[režime](../types/app-modes) beží, a odkaz. Pod nimi majú LosOS cloud aj
+LosOS Git vlastnú rozbaľovaciu sekciu, zavretú, kým ju neotvoríte. Pod tým
+**Nájsť ďalšie** hľadá
 Helm charty v [Artifact Hub](https://artifacthub.io). Výsledky sťahuje
 zariadenie, takže vyhľadávanie potrebuje internet. Každý riadok uvádza, kto
 chart zverejnil. Nikto na strane LosOS žiadny z nich neskontroloval.
 
 ![Panel Aplikácie s jednou nainštalovanou aplikáciou nad Nájsť ďalšie a výsledkami vyhľadávania v Artifact Hub, každý s tým, kto ho zverejnil, a tlačidlom Inštalovať alebo Zmeniť.](@site/docs/img/apps-find-more-sk.png)
 
+## Aplikácie v LosOS cloud \{#losos-clouds-apps}
+
+Sekcia LosOS cloud vypisuje aplikácie vnútri LosOS cloud, každú s
+prepínačom. Vypnutá aplikácia zmizne zo všetkých účtov a to, čo v nej ľudia
+vytvorili, zostane uložené pre jej návrat. Vypnutá zostane aj po reštarte
+zariadenia. Aplikácie zabudované v LosOS cloud čakajú za tlačidlom
+**Zobraziť**, lebo ich potrebujete zriedka; nájde ich aj filter. Niekoľko
+prepínačov sa pohnúť nedá a riadok povie prečo: LosOS cloud bez nich
+nebeží, zariadenie ich potrebuje na prihlásenie alebo sa riadia zdieľaním
+disku.
+
+**Pridať z obchodu s aplikáciami** hľadá v obchode s aplikáciami Nextcloud
+a tlačidlom **Pridať** aplikáciu pridá. Hľadá zariadenie, takže to potrebuje
+internet. Nikto na strane LosOS tieto aplikácie neskontroloval. Aplikácia
+pridaná z obchodu má tlačidlo **Odstrániť**, ktoré sa najprv opýta.
+Odstránenie zoberie zo zariadenia jej kód a ponechá, čo v nej účty
+vytvorili, takže ju opätovné pridanie nájde. Aplikácie, ktoré zariadenie
+prináša, sa dajú vypnúť, ale nie odstrániť.
+
+![Sekcia LosOS cloud: aplikácie s prepínačmi, Deck z obchodu s aplikáciami s tlačidlom Odstrániť, prihlasovacia aplikácia uzamknutá s dôvodom a hľadanie Whiteboard v obchode s tlačidlom Pridať.](@site/docs/img/apps-cloud-sk.png)
+
 ## Nastavenia pre všetkých \{#settings-for-everyone}
 
-Pod dvoma aplikáciami má panel Aplikácie nastavenia, ktoré platia pre každý
-účet v LosOS cloud a LosOS Git. Inak by ste ich našli na vlastných
-administrátorských stránkach každej aplikácie.
+V sekciách LosOS cloud a LosOS Git má panel Aplikácie nastavenia, ktoré
+platia pre každý účet v danej aplikácii. Inak by ste ich našli na vlastných
+administrátorských stránkach každej aplikácie. Každá sekcia začína
+prepínačom federácie danej aplikácie ([Federácia](#federation)).
 
 Pre LosOS cloud: jazyk prihlasovacej stránky a účtov, ktoré si žiadny
 nevybrali, krajina, do ktorej patrí telefónne číslo bez predvoľby krajiny,
@@ -96,10 +127,8 @@ repozitára, ktorý ešte neexistuje, ho vytvorí.
 ![Panel Aplikácie s nastaveniami pre všetkých v LosOS cloud a LosOS Git.](@site/docs/img/apps-site-settings-sk.png)
 
 Ako každé iné nastavenie ich použijete tlačidlom **Použiť**. Zariadenie ich
-nastaví znova pri každom štarte aplikácie, takže vlastné administrátorské
-stránky aplikácií tieto hodnoty ukazujú, ale zmeniť ich nedokážu. Vlastné
-nastavenia každého účtu, zoznam účtov a všetko, čo na paneli nie je,
-zostáva v aplikácii.
+nastaví znova pri každom štarte aplikácie, takže zmena urobená vnútri
+aplikácie nevydrží. Vlastné nastavenia každého účtu zostávajú v aplikácii.
 
 ## Inštalácia aplikácie z vyhľadávania \{#installing-an-app-from-the-search}
 

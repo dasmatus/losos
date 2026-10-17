@@ -3,7 +3,8 @@
 //! The admin pages are split into sections (storage, backup, apps, ...),
 //! and each section is an Authelia group, `losos-<section>`. A route belongs
 //! to one section, or is `public` (no sign-in at all, and never reaches
-//! [`crate::http`]'s guard), `signed-in` (anyone with an account) or
+//! [`crate::http`]'s guard), `internal` (asked by nginx alone, for its own
+//! decisions, and never proxied to a client), `signed-in` (anyone with an account) or
 //! `admin`. `losos-admins` may do everything, `losos-viewers` may read every
 //! named section, and a route the table does not name is `admin`, so a new
 //! route is closed until someone puts it in a section.
@@ -24,6 +25,7 @@ const TABLE: &str = include_str!("../sections.json");
 struct Table {
     viewers: String,
     sections: Vec<String>,
+    edge: Vec<String>,
     routes: BTreeMap<String, String>,
 }
 
@@ -47,7 +49,7 @@ pub fn allows(person: &Person, method: &str, section: &str) -> bool {
     }
     match section {
         "public" | "signed-in" => true,
-        "admin" => false,
+        "admin" | "internal" => false,
         named => {
             let group = format!("losos-{named}");
             person.groups.contains(&group)
@@ -55,6 +57,25 @@ pub fn allows(person: &Person, method: &str, section: &str) -> bool {
                     && person.groups.iter().any(|g| *g == table().viewers))
         }
     }
+}
+
+/// Whether a company edge the owner let manage this box may call `method`
+/// on a route in `section`: the sections in the table's `edge` list, and
+/// reading what anyone signed in may read. Never an `admin` route, so the
+/// edge cannot let itself in further, read the recovery code or add people.
+pub fn edge_allows(method: &str, section: &str) -> bool {
+    match section {
+        "public" => true,
+        "signed-in" => method.eq_ignore_ascii_case("GET"),
+        "admin" => false,
+        named => table().edge.iter().any(|s| s == named),
+    }
+}
+
+/// Every named section, in the table's order: the parts of the box a person
+/// can be given one by one on the Users pane.
+pub fn names() -> Vec<&'static str> {
+    table().sections.iter().map(String::as_str).collect()
 }
 
 /// The named sections `person` can use, for `GET /api/me`: the admin UI
@@ -119,7 +140,7 @@ mod tests {
     fn every_section_named_by_a_route_is_declared() {
         for (route, s) in &table().routes {
             assert!(
-                ["public", "signed-in", "admin"].contains(&s.as_str())
+                ["public", "internal", "signed-in", "admin"].contains(&s.as_str())
                     || table().sections.contains(s),
                 "{route} is in an undeclared section {s}"
             );
@@ -150,6 +171,24 @@ mod tests {
         assert!(!allows(&p, "POST", section("POST", "/api/grow")));
         assert!(!allows(&p, "GET", section("GET", "/api/recovery")));
         assert_eq!(usable(&p).len(), table().sections.len());
+    }
+
+    #[test]
+    fn a_managing_edge_reaches_the_apps_and_nothing_admin() {
+        assert!(edge_allows("GET", section("GET", "/api/apps")));
+        assert!(edge_allows("POST", section("POST", "/api/apps/install")));
+        assert!(edge_allows("GET", section("GET", "/api/status")));
+        assert!(!edge_allows("POST", section("POST", "/api/set-password")));
+        assert!(!edge_allows("POST", section("POST", "/api/edge/manage")));
+        assert!(!edge_allows("GET", section("GET", "/api/recovery")));
+        assert!(!edge_allows("POST", section("POST", "/api/people")));
+        assert!(!edge_allows("POST", section("POST", "/api/backup/run")));
+        for s in &table().edge {
+            assert!(
+                table().sections.contains(s),
+                "edge section {s} is not declared"
+            );
+        }
     }
 
     #[test]

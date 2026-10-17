@@ -145,7 +145,13 @@ once. nginx asks LosOS Login about every `/api/` request and passes the
 person's name on to lososd, which opens the sections their groups allow. The
 first person is always an administrator. A person changes their own password
 with `POST /api/set-password`, and for the owner that changes the LosOS
-cloud password too.
+cloud password too. An administrator adds, changes and removes everyone
+else on the Users pane, through `GET` and `POST /api/people` and
+`POST /api/people/{access,password,remove}`. The pane is there only while
+the box signs people in itself (`standalone` in `GET /api/me`). lososd
+refuses to touch the owner, the caller's own account or the last
+administrator. LosOS Login looks each person up again on every request, so
+a removal or a changed group reaches the apps at the next click too.
 
 LosOS cloud and LosOS Git sign people in the same way when they run as
 pods, the default. nginx asks LosOS Login on each app's sign-in page and
@@ -155,13 +161,35 @@ send its own. The owner, in the `losos-owner` group, arrives as the
 `notshared` account in both; everyone else under their sign-in name.
 Nextcloud reads the headers with its user_saml app in environment-variable
 mode, Forgejo with its reverse-proxy sign-in, and each makes an account
-the first time. A person LosOS Login does not know is sent to it; off the
-LAN, while it starts, or with `?direct=1` on LosOS cloud, the app's own
-sign-in page answers instead. Both apps listen on loopback, and the
+the first time; lososd then keeps the name and address in both apps in
+step with the people file. A person LosOS Login does not know is sent to it,
+from the LAN and through the edge alike; neither app shows its own sign-in
+page. Through the edge, the tunnel delivers from loopback with
+`X-Forwarded-Proto: https`, which nginx believes from loopback only, and
+lososd adds each public name the box answers on to LosOS Login's cookie
+domains. While LosOS Login starts, the apps answer 503 with a page that
+retries by itself. Both apps listen on loopback, and the
 firewall rejects a connection to either port from any process on the box
 but root, nginx and the app itself, so nothing on the box can name a
 person to them. The names `notshared`, `shared` and `losos` are kept for
 the box's own accounts.
+
+Each person with the `losos-account` group (Own account on the Users pane)
+keeps their own name, email address and password through `GET` and
+`POST /api/account`. LosOS Login keeps their authenticator app and passkeys
+in its own database; adding or removing one needs a one-time code it would
+normally mail, so its notifier writes the code to a file and
+`POST /api/account/code` hands it back behind the person's password. An
+administrator sets two rules with `POST /api/people/rules`: two-factor
+sign-in for everyone, and passwords that run out after a number of days.
+lososd marks the people file with two groups: `losos-two-factor` for
+everyone with a second factor, which LosOS Login asks for on every sign-in,
+and `losos-locked` for anyone a rule catches. LosOS Login denies a locked
+person LosOS cloud and LosOS Git, and lososd answers them only on their
+account (`locked` in `GET /api/me`). lososd refuses the two-factor rule
+while the administrator setting it has no second factor, and the spare key
+is never locked. `POST /api/people/two-factor/reset` removes a person's
+second factors.
 
 The token itself is still shown once, after the password is set, as the
 **spare admin key**, with Copy and Print buttons. A request that carries it
@@ -267,8 +295,9 @@ Federation runs only while the box shares its disk. Both federation options
 below are ANDed with `losos.sharingMyStorage`, the setting that unlocks the
 shared data pool (`lososInternal.federation` in `modules/options.nix`). With
 sharing off, neither LosOS Git nor LosOS cloud talks to other servers,
-whatever its own option says, and the Advanced pane shows both rows as
-unavailable with the reason.
+whatever its own option says. The Apps pane greys both switches out with
+the reason, and the Advanced pane shows both rows as unavailable and links
+to them.
 
 `losos.forgejo.federation.enable` (default on) turns Forgejo's ActivityPub
 side on in both modes: `[federation] ENABLED` in app.ini, with
@@ -305,6 +334,23 @@ that cannot be switched off. `nix/tests/front-vhost.nix` checks both services'
 routes with sharing on and off; `nix/tests/invariants.nix` checks the gate at
 eval time.
 
+On, LosOS cloud also gets `allow_local_remote_servers = true` and
+`sharing.federation.allowSelfSignedCertificates = true`
+(`modules/nextcloud-stack.nix`, `federation.system`; the module's
+`override.config.php` natively, `losos.config.php` in the pod). Nextcloud's
+`RemoteHostValidator` otherwise refuses any server under `.local`, any
+single-label name and any private address, which is every other box on a
+LAN, so a share to `notshared@otherbox.local/nextcloud` failed before a
+request left the box. An address with no protocol is tried over https only,
+and every box's certificate is its own (`modules/tls.nix`), so the second
+key turns off certificate checks on federation calls. The costs: whatever an
+account can make Nextcloud fetch may point at the LAN, and federation calls
+are open to whoever sits between two boxes. A box without https is reached
+as `notshared@http://otherbox.local/nextcloud`. `nix/tests/cloud-apps.nix`
+boots two boxes in native mode with sharing on and self-signed https, and
+sends a file from one owner to the other: the share is offered on the second
+box, accepted, and read back through WebDAV.
+
 ### Box-wide app settings
 
 The Apps pane carries the settings that hold for everyone on LosOS cloud
@@ -312,8 +358,10 @@ and LosOS Git, the ones each app otherwise keeps on its own administration
 pages. Each field is an option under `losos.nextcloud.site.*` or
 `losos.forgejo.site.*`, so it goes through Apply, the gate, History and the
 configuration repository like any other setting. The Advanced pane shows
-their values and links to the Apps pane instead of drawing a second editor
-(`ON_PANE` in `admin-ui/app/src/lib/option-value.ts`).
+their values and links to the app's fold on the Apps pane (`/apps#cloud`,
+`/apps#git`) instead of drawing a second editor (`ON_PANE` in
+`admin-ui/app/src/lib/option-value.ts`). The two federation switches above
+are drawn there too, at the top of each fold.
 
 | Option | What it sets in the app |
 | --- | --- |
@@ -350,11 +398,56 @@ without a way to change them. Both modes read one attribute set,
 `lososInternal.forgejoSite`.
 
 :::note[What stays in the apps]
-Everything an account sets for itself stays in the app, and so do the
-admin settings LosOS does not cover yet: mail delivery, background jobs,
-two-factor enforcement, Forgejo's database-backed settings and the account
-lists.
+Everything an account sets for itself stays in the app. In LosOS Git, the
+owner's account stays Forgejo's administrator for what LosOS does not cover
+yet: Forgejo's database-backed settings and the account list. In LosOS
+cloud no account is an administrator (next section), so mail delivery,
+background jobs and two-factor enforcement keep the values the box sets.
 :::
+
+### LosOS cloud's apps
+
+The Apps pane's LosOS cloud fold lists every app Nextcloud has, with a
+switch each, removes apps added from the store and searches the store.
+lososd serves it under the `apps` section:
+
+| Route | Does |
+| --- | --- |
+| `GET /api/cloud/apps` | `{available, store, apps}`, or `{available: false, reason}` while LosOS cloud is not answering |
+| `GET /api/cloud/apps/search?q=` | the store's best matches for this Nextcloud version |
+| `POST /api/cloud/apps/{install,enable,disable,remove}` | `{id}`; answers with the whole list after the change |
+
+lososd checks a change before it runs it (`backend/src/cloud_apps.rs`). It
+refuses the apps LosOS sets itself (`user_saml` and `provisioning_api` for
+sign-in, `federation` for sharing, `theming` for the look, `firstrunwizard`
+for the setup wizard), the apps Nextcloud keeps on (`alwaysEnabled` in
+`core/shipped.json`), and removing anything not under `store-apps`, since a
+bundled app would come back on the next start. A refusal is a 400, a
+Nextcloud that is not up a 409 and a failed `occ` run a 502 with its
+message.
+
+The work is done by `losos-nextcloud-apps` (`modules/nextcloud-stack.nix`,
+`appsTool`), in the pod (`crictl exec`) or on lososd's unit path natively.
+`list` joins `occ app:list` with each app's `appinfo/info.xml`
+(`modules/nextcloud-apps-list.php`); the verbs run `occ app:install`,
+`app:enable`, `app:disable` and `app:remove --keep-data`. Turning an app
+off writes its id to `/var/lib/nextcloud/.losos-apps-off`, and every start
+honours it: the pod leaves those ids out of its `app:enable` line, and
+native mode turns them off again after the module's `extraAppsEnable`.
+Turning it on or adding it again takes the id off the list. The store
+search downloads the store's index for this Nextcloud version once every
+six hours (`apps.nextcloud.com/api/v1/platform/<version>/apps.json`, about
+17 MB) and keeps the newest stable release of each app.
+
+The owner's account (`notshared`) is taken out of Nextcloud's `admin`
+group on every start (`demoteOwner`, after the installer made it the first
+administrator), so a signed-in owner cannot change from inside LosOS cloud
+what LosOS sets. Everything lososd asks of Nextcloud as the owner (app
+passwords, WebDAV, `cloud/user`) works for a standard account. Nextcloud's
+own Apps and Users pages are therefore out of reach; people get their
+accounts from LosOS Login on first visit. `nix/tests/cloud-apps.nix` checks
+the group, the list, that an app turned off is still off after
+`nextcloud-setup` runs again, and that only a store app can be removed.
 
 ## Backup, restore and erase
 

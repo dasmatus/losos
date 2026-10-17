@@ -87,14 +87,22 @@ let
   # Every request: the person if there is one, nobody otherwise.
   signInMaybe = passSignIn "/internal/losos-app-authz";
   # An app's sign-in page. Signed in to LosOS Login: on to the app, which
-  # signs the person in. Not signed in, on the LAN: to LosOS Login, which
-  # sends them back here. Anywhere LosOS Login cannot help (through the
-  # tunnel, while it starts, or asked with `direct=1`): to `own`, the app's
-  # own page.
-  signInPage = own: ''
+  # signs the person in. Not signed in: to LosOS Login, which sends them
+  # back here, from the LAN and through the tunnel alike. Held to their own
+  # account by a rule of LosOS Login: a page that says so. LosOS Login
+  # starting: a page that waits for it. Never the app's own sign-in page.
+  signInPage = ''
     ${passSignIn "/internal/losos-app-sign-in"}
     error_page 401 = @losos-app-sign-in;
-    error_page 403 = ${own};
+    error_page 403 @losos-app-held;
+    error_page 500 =503 @losos-app-waiting;
+  '';
+  # Uploads of any size, streamed, and sync runs that take all day.
+  nextcloudFiles = ''
+    client_max_body_size 0;
+    proxy_request_buffering off;
+    proxy_read_timeout 86400s;
+    proxy_send_timeout 86400s;
   '';
   # What the `/nextcloud` location below does for every page, for the two
   # sign-in locations that sit beside it. The reasons are written there.
@@ -106,6 +114,13 @@ let
 
   adminUi = config.losos.admin.ui;
   adminApiPort = config.losos.admin.apiPort;
+  # Only nginx's `losos-manage.invalid` server (modules/proxy.nix) may
+  # tell lososd a call came from the edge that manages the box; on the front
+  # door the headers are cleared, whatever the client sent.
+  notTheEdge = ''
+    proxy_set_header X-Losos-Via-Edge "";
+    proxy_set_header X-Losos-Edge "";
+  '';
   adminEnabled = config.losos.admin.enable && adminUi != null;
   # The owner's handbook (handbook/, built as losos-handbook with its base at
   # /handbook/). Served under the admin guard: it is part of the admin
@@ -484,6 +499,7 @@ in
             extraConfig = ''
               ${lanOnly}
               proxy_set_header X-Real-IP $remote_addr;
+              ${notTheEdge}
               # lososd answers most calls in milliseconds, but the first
               # claim runs `occ user:resetpassword` inside a pod that is
               # still warming up, and under emulation that outlived the
@@ -507,6 +523,7 @@ in
             extraConfig = ''
               ${lanOnly}
               proxy_set_header X-Real-IP $remote_addr;
+              ${notTheEdge}
               client_max_body_size 0;
               proxy_request_buffering off;
               proxy_http_version 1.1;
@@ -515,6 +532,11 @@ in
             '';
           };
         })
+        {
+          # A company edge's manage page (manage/index.html, src/manage/)
+          # rides in the same bundle. The edge serves it; the box never does.
+          "/manage/".return = "404";
+        }
         (lib.mkIf labEnabled {
           # LosOS Lab: lab/index.html in the admin UI's bundle, on real paths
           # under /lab/ like the SPA is on /, so every deep link and reload
@@ -595,10 +617,7 @@ in
             proxyPass = "http://127.0.0.1:${toString apachePort}";
             proxyWebsockets = true;
             extraConfig = ''
-              client_max_body_size 0;
-              proxy_request_buffering off;
-              proxy_read_timeout 86400s;
-              proxy_send_timeout 86400s;
+              ${nextcloudFiles}
               # The address this request reached the box on. The pod's
               # losos.config.php (modules/workloads.nix) adds it to
               # trusted_domains, so a browser that opens the box by its IP
@@ -640,41 +659,33 @@ in
           };
         })
         (lib.mkIf (forgejoWorkload && signInForgejo) {
-          # Forgejo's sign-in page: LosOS Login's instead, or Forgejo's own
-          # where LosOS Login cannot help (see `signInPage`).
+          # Forgejo's sign-in page: LosOS Login's instead (see `signInPage`).
           "= /forgejo/user/login" = {
             proxyPass = "http://127.0.0.1:${toString forgejoPort}/user/login";
-            extraConfig = signInPage "@losos-forgejo-own-sign-in";
-          };
-          "@losos-forgejo-own-sign-in" = {
-            proxyPass = "http://127.0.0.1:${toString forgejoPort}";
-            extraConfig = ''
-              rewrite ^/forgejo(/.*)$ $1 break;
-              ${clearSignIn}
-            '';
+            extraConfig = signInPage;
           };
         })
         (lib.mkIf (nextcloudWorkload && signInNextcloud) {
           # Nextcloud's sign-in page and user_saml's, which reads the
-          # headers (modules/app-sign-in.nix): LosOS Login's instead, or
-          # Nextcloud's own form where LosOS Login cannot help. Regex, so it
-          # wins over the `/nextcloud` prefix; both spellings Nextcloud links.
+          # headers (modules/app-sign-in.nix): LosOS Login's instead (see
+          # `signInPage`). Regex, so it wins over the `/nextcloud` prefix;
+          # both spellings Nextcloud links.
           "~ ^/nextcloud/(?:index\\.php/)?(?:login|apps/user_saml/saml/login)$" = {
             proxyPass = "http://127.0.0.1:${toString apachePort}";
             extraConfig = ''
-              ${signInPage "@losos-nextcloud-own-sign-in"}
+              ${signInPage}
               ${nextcloudPage}
             '';
           };
           # Log out: Nextcloud ends its session, then LosOS Login ends its
           # own, or the sign-in page would sign the person straight back in.
-          # Only for a person LosOS Login signed in; anyone else gets
-          # Nextcloud's own answer.
+          # Only for a person LosOS Login signed in; anyone else, and anyone
+          # while LosOS Login is down, gets Nextcloud's own answer.
           "~ ^/nextcloud/(?:index\\.php/)?logout$" = {
             proxyPass = "http://127.0.0.1:${toString apachePort}";
             extraConfig = ''
               auth_request /internal/losos-app-sign-in;
-              error_page 401 403 = @losos-nextcloud-page;
+              error_page 401 403 500 = @losos-nextcloud-page;
               proxy_redirect ~.* https://$host/auth/logout?rd=https://$host/nextcloud/login;
               ${clearSignIn}
               ${nextcloudPage}
@@ -687,13 +698,17 @@ in
               ${nextcloudPage}
             '';
           };
-          # `direct=1` is how user_saml leaves Nextcloud's own form alone.
-          # The original arguments follow it, a posted form included.
-          "@losos-nextcloud-own-sign-in" = {
+          # The WebDAV share, as file managers and the sync apps open it
+          # (the announcement below): a LosOS Login name and password open
+          # it as that person, anything else goes on to Nextcloud as it came
+          # (modules/identity.nix, backend/src/cloud_share.rs). Regex, so it
+          # wins over the `/nextcloud` prefix.
+          "~ ^/nextcloud/remote\\.php/(?:webdav|dav)(?:/|$)" = {
             proxyPass = "http://127.0.0.1:${toString apachePort}";
             extraConfig = ''
-              rewrite ^ /nextcloud/index.php/login?direct=1 break;
-              ${clearSignIn}
+              ${passSignIn "/internal/losos-cloud-share"}
+              proxy_set_header Authorization $losos_share_authorization;
+              ${nextcloudFiles}
               ${nextcloudPage}
             '';
           };
@@ -744,6 +759,31 @@ in
         })
       ];
     };
+  };
+
+  # ── LosOS cloud in a file manager's Network view ─────────────────────────
+  # The WebDAV share, announced over DNS-SD (modules/mdns.nix), which is how
+  # GNOME Files, KDE Dolphin and other Linux file managers list shares on the
+  # LAN: an entry named after the box that opens the owner's files as a
+  # folder, after their user name and password. `path` is where those
+  # clients go on the host; remote.php/webdav is Nextcloud's WebDAV root for
+  # whoever signs in, so one announcement serves every account. Over TLS
+  # whenever the box has it, so the password does not cross the LAN in the
+  # clear; a client that has not trusted the box's certificate asks first.
+  # Windows Explorer and the macOS Finder do not list WebDAV announcements;
+  # handbook/docs/manual/files-on-your-computer.md has their way in.
+  # nix/tests/cloud-webdav.nix browses for it and follows it.
+  losos.mdns.services = lib.mkIf nextcloudWorkload {
+    losos-cloud =
+      let
+        tls = config.losos.tls.enable;
+      in
+      ''
+        Name=LosOS cloud on %H
+        Type=${if tls then "_webdavs._tcp" else "_webdav._tcp"}
+        Port=${if tls then "443" else "80"}
+        TxtText=path=/nextcloud/remote.php/webdav/
+      '';
   };
 
   # ── Firewall ──────────────────────────────────────────────────────────────

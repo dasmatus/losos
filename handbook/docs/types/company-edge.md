@@ -71,6 +71,42 @@ In short:
    Advanced, in `losos.proxy.registrarUrl`. mDNS announcements do not cross
    routers.
 
+## Managing the boxes from the edge
+
+The people who run the company's edge can change LosOS cloud, LosOS Git and
+the apps on its boxes from one page on the edge. Each box's owner decides
+whether that edge may.
+
+1. On the box, open Settings, then Mesh, and turn on **Let the company edge
+   manage this box**. The switch shows the edge's name when the box knows
+   it. It is off until the owner turns it on, and it belongs to the edge the
+   box uses at that moment. A different edge never inherits it.
+
+   ![The Mesh pane with the switch that lets the company edge manage the box turned on.](../img/mesh-manage.png)
+
+2. On the edge, set `losos.edge.manage.enable` (an edge gateway machine has
+   it on). The edge makes a manage key on its first start and keeps it in
+   `/var/lib/losos-registrar/manage-key`. On an edge gateway machine,
+   `losos-edge manage-key` prints it with the page's address.
+3. Open `/manage/` at the edge's address, for example
+   `http://<edge>.local:8443/manage/`, and sign in with the key. The page
+   lists the boxes the edge routes and opens the ones whose owner turned the
+   switch on.
+4. A box's page has the LosOS cloud and LosOS Git settings from the box's
+   Apps pane, its installed apps and the app search. A change rebuilds the
+   box like a change made on the box.
+
+![A box's page on the company edge: LosOS cloud and LosOS Git settings, the installed apps and the app search.](../img/edge-manage-box.png)
+
+The edge cannot see anyone's files, add people, change passwords, or touch
+storage, backups, the network or the switch itself. The box checks each call
+on its own, so a changed page on the edge gets no further. Only an edge on
+the box's own network can manage it, and never the LosOS edge: LosOS does not
+manage anyone's box. When the owner turns the switch off, the edge's next
+call is refused.
+
+[Edge web page](../in-depth/edge-web-ui.md) goes through the page in full.
+
 ## Who this is for
 
 Small companies that want the "one box per team, one pool for all" setup

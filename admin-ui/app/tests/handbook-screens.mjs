@@ -64,6 +64,25 @@ const EDGE_COMPANY = {
   edges: [{ name: 'office edge', url: 'http://edge.local:8443', source: 'lan', official: false }],
 };
 const EDGE_BOTH = { ...EDGE_OFFICIAL, edges: [EDGE_COMPANY.edges[0], EDGE_OFFICIAL.edges[0]] };
+/* The company edge in use, and the owner has let it manage the box. */
+const EDGE_MANAGED = {
+  ...EDGE_COMPANY,
+  path: { name: 'office edge', url: 'http://edge.local:8443', source: 'lan', rathole: 'edge.local:2333' },
+  manage: {
+    candidate: { name: 'office edge', url: 'http://edge.local:8443' },
+    refused: null,
+    managedBy: 'http://edge.local:8443',
+    active: true,
+  },
+};
+/* What the company edge's manage page lists (src/manage/). */
+const MANAGED_BOXES = {
+  boxes: [
+    { id: 'design-box', hostname: 'design-box', seenAgoSecs: 4, managed: true },
+    { id: 'mattbox', hostname: 'mattbox', seenAgoSecs: 9, managed: true },
+    { id: 'reception', hostname: 'reception', seenAgoSecs: 420, managed: false },
+  ],
+};
 
 const STORAGE = { totalBytes: 480 * 1024 ** 3, usedBytes: 131 * 1024 ** 3, lentBytes: 0, reserveBytes: 48 * 1024 ** 3 };
 const STORAGE_SHARED = { ...STORAGE, lentBytes: 96 * 1024 ** 3 };
@@ -288,6 +307,27 @@ const RESULTS = {
 
 /* One app installed from the search, and what the box reads out of a chart
  * for the install dialog. */
+/* LosOS cloud's own apps on the Apps pane's LosOS cloud fold. */
+const CLOUD_APPS = {
+  available: true,
+  store: true,
+  apps: [
+    { id: 'calendar', name: 'Calendar', summary: 'A calendar app for LosOS cloud.', version: '5.5.4', kind: 'bundled', enabled: true, locked: null },
+    { id: 'contacts', name: 'Contacts', summary: 'An address book for LosOS cloud.', version: '7.2.5', kind: 'bundled', enabled: true, locked: null },
+    { id: 'deck', name: 'Deck', summary: 'Kanban-style boards for your projects.', version: '1.15.2', kind: 'store', enabled: true, locked: null },
+    { id: 'notes', name: 'Notes', summary: 'Distraction-free notes.', version: '4.12.1', kind: 'bundled', enabled: false, locked: null },
+    { id: 'user_saml', name: 'SSO & SAML authentication', summary: null, version: '7.1.0', kind: 'bundled', enabled: true, locked: { by: 'losos', reason: 'signIn' } },
+    { id: 'files', name: 'Files', summary: null, version: '2.4.0', kind: 'core', enabled: true, locked: { by: 'nextcloud' } },
+    { id: 'activity', name: 'Activity', summary: null, version: '5.0.0', kind: 'core', enabled: true, locked: null },
+  ],
+};
+const CLOUD_STORE = {
+  results: [
+    { id: 'whiteboard', name: 'Whiteboard', summary: 'A shared whiteboard to draw on together.', version: '1.5.6', homepage: 'https://apps.nextcloud.com/apps/whiteboard', featured: true },
+    { id: 'polls', name: 'Polls', summary: 'Polls for dates and opinions.', version: '8.4.2', homepage: 'https://apps.nextcloud.com/apps/polls', featured: false },
+  ],
+};
+
 const APPS = {
   available: true,
   sharedAvailable: false,
@@ -355,6 +395,12 @@ const options = (overrides = {}) => ({
   stray: [],
   excluded: DOC.excluded,
 });
+/* GET /api/site: the settings of LosOS cloud and LosOS Git only. */
+const SITE_OPTION = /^(nextcloud|forgejo)\.(site\.|federation\.enable$)/;
+const site = (overrides = {}) => {
+  const doc = options(overrides);
+  return { ...doc, options: doc.options.filter((o) => SITE_OPTION.test(o.name)), excluded: {} };
+};
 
 /* Six pins, as an owner would have them after a week: two LosOS cloud apps,
  * a file, a folder, a repository and an app installed from the search. */
@@ -420,6 +466,42 @@ const json = (route, status, body) => route.fulfill({ status, contentType: 'appl
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 
+/* The Users pane: the owner signed in on a box that signs people in itself,
+ * and the two people they added. */
+const SECTION_NAMES = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab', 'access', 'account'];
+const SET_AT = Date.UTC(2026, 7, 20) / 1000;
+const ME_OWNER = {
+  name: 'matus',
+  displayName: 'Matus',
+  groups: ['losos-admins', 'losos-owner'],
+  admin: true,
+  spareKey: false,
+  sections: SECTION_NAMES,
+  standalone: true,
+};
+const PEOPLE = {
+  standalone: true,
+  you: 'matus',
+  sections: SECTION_NAMES,
+  people: [
+    { name: 'eva', displayName: 'Eva Novak', email: 'eva@mattbox.local', groups: ['losos-storage', 'losos-backup', 'losos-account', 'losos-two-factor'], disabled: false, twoFactor: true, passwordSetAt: SET_AT },
+    { name: 'matus', displayName: 'Matus', email: 'matus@mattbox.local', groups: ['losos-admins', 'losos-owner', 'losos-two-factor'], disabled: false, twoFactor: true, passwordSetAt: SET_AT },
+    { name: 'oma', displayName: 'Oma', email: 'oma@mattbox.local', groups: ['losos-viewers', 'losos-account', 'losos-locked'], disabled: false, twoFactor: false, passwordSetAt: Date.UTC(2026, 2, 2) / 1000, locked: ['password'] },
+  ],
+  rules: { twoFactor: false, passwordDays: 180 },
+};
+/* The owner's own account, as Your account shows it. */
+const ACCOUNT = {
+  name: 'matus',
+  displayName: 'Matus',
+  email: 'matus@mattbox.local',
+  factors: { app: true, passkeys: ['Laptop'] },
+  passwordSetAt: SET_AT,
+  passwordExpiresAt: SET_AT + 180 * 24 * 60 * 60,
+  rules: PEOPLE.rules,
+  locked: [],
+};
+
 /* One page wired to a box in a given state. */
 async function open({
   path = '/',
@@ -446,6 +528,9 @@ async function open({
   reducedMotion = 'no-preference',
   overrides = {},
   pins = [],
+  // Who GET /api/me says is signed in; null leaves it to the catch-all,
+  // which reads as the spare key on a box that predates the field.
+  me = null,
 } = {}) {
   const page = await browser.newPage({ viewport, locale, colorScheme: theme, deviceScaleFactor: 2, reducedMotion });
   await page.clock.setFixedTime(NOW);
@@ -499,6 +584,9 @@ async function open({
     const auth = route.request().headers()['authorization'];
     return auth !== undefined && auth !== `Bearer ${TOKEN}` ? json(route, 401, { error: 'unauthorized' }) : json(route, 200, state);
   });
+  if (me !== null) await page.route('**/api/me', (route) => json(route, 200, me));
+  await page.route('**/api/people', (route) => json(route, 200, PEOPLE));
+  await page.route('**/api/account', (route) => json(route, 200, ACCOUNT));
   await page.route('**/api/settings', (route) => json(route, 200, settings));
   await page.route('**/api/status', (route) => json(route, 200, status));
   await page.route('**/api/edge', (route) => json(route, 200, edge));
@@ -508,6 +596,8 @@ async function open({
   await page.route('**/api/backup', (route) => json(route, 200, backup));
   await page.route('**/api/config', (route) => json(route, 200, CONFIG));
   await page.route('**/api/options', (route) => json(route, 200, options(overrides)));
+  await page.route('**/api/site', (route) => json(route, 200, site(overrides)));
+  await page.route('**/manage/api/boxes', (route) => json(route, 200, MANAGED_BOXES));
   let pinned = pins;
   await page.route('**/api/pins', (route) => {
     if (route.request().method() === 'PUT') pinned = route.request().postDataJSON().pins;
@@ -521,6 +611,8 @@ async function open({
   await page.route('**/api/apply', (route) => json(route, 200, apply));
   await page.route('**/api/recovery', (route) => json(route, 200, { code: '7d1c3a52-9b0e-4f61-8c2d-5a7e9f0b1c3d', minted: true }));
   await page.route('**/api/apps', (route) => json(route, 200, APPS));
+  await page.route('**/api/cloud/apps', (route) => json(route, 200, CLOUD_APPS));
+  await page.route('**/api/cloud/apps/search**', (route) => json(route, 200, CLOUD_STORE));
   await page.route('**/api/apps/search**', (route) => json(route, 200, RESULTS));
   await page.route('**/api/apps/chart**', (route) => json(route, 200, CHART));
   await page.route('**/api/look', (route) => {
@@ -651,12 +743,36 @@ const SHOTS = [
       await settle(page, 800);
     },
   },
+  /* LosOS cloud's fold: its apps, each with a switch, and the app store
+   * search under them. */
+  {
+    name: 'apps-cloud',
+    path: '/apps#cloud',
+    langs: true,
+    act: async (page) => {
+      await page.getByTestId('cloud-apps').waitFor();
+      await page.getByTestId('cloud-store').locator('input[type="search"]').fill('whiteboard');
+      await page.locator('[data-store-app="whiteboard"]').waitFor();
+      await settle(page, 600);
+      // The crop measures from the window, so from the top of the page.
+      await page.evaluate(() => window.scrollTo(0, 0));
+    },
+    crop: {
+      selector: '[data-slot="accordion-trigger"]:has-text("LosOS cloud"), [data-testid="cloud-apps"], [data-testid="cloud-store"]',
+      pad: 8,
+    },
+  },
   /* The box-wide settings of both apps, with the cloud's language set to the
    * page's own and the trash emptied after 30 days. */
   {
     name: 'apps-site-settings',
     path: '/apps',
     langs: true,
+    act: async (page) => {
+      for (const id of ['accordion-cloud', 'accordion-git']) await page.getByTestId(id).getByRole('button').first().click();
+      await settle(page, 600);
+      await page.evaluate(() => window.scrollTo(0, 0));
+    },
     perLang: (lang) => ({
       overrides: {
         'nextcloud.site.trashDays': '30',
@@ -694,7 +810,19 @@ const SHOTS = [
     },
   },
   { name: 'market-soon', path: '/mesh', edge: EDGE_OFFICIAL },
+  {
+    name: 'mesh-manage',
+    path: '/mesh',
+    edge: EDGE_MANAGED,
+    crop: { selector: 'section:has([data-option="edge-manage"])', pad: 16 },
+    langs: true,
+  },
+  // ── A company edge's manage page ─────────────────────────────────────
+  { name: 'edge-manage-boxes', path: '/manage/', crop: 'fit', langs: true },
+  { name: 'edge-manage-box', path: '/manage/boxes/mattbox', full: true, crop: 'fit', langs: true },
   { name: 'settings-network', path: '/settings/network', crop: 'fit', langs: true },
+  { name: 'settings-users', path: '/settings/users', me: ME_OWNER, full: true, crop: 'fit', langs: true },
+  { name: 'settings-account', path: '/settings/account', me: ME_OWNER, full: true, crop: 'fit', langs: true },
   { name: 'settings-network-full', path: '/settings/network', full: true },
   { name: 'settings-domain-stripe', path: '/settings/network', full: true, edge: EDGE_OFFICIAL, domains: DOMAINS_UNVOUCHED },
   {

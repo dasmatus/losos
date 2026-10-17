@@ -1014,9 +1014,118 @@ pub fn check_market_gate(edge: &EdgeStatus) -> Result<(), OfficialEdgeRequired> 
     }
 }
 
+// ── management: a company's own edge looking after this box ───────────────
+//
+// A local edge's web page can change this box's LosOS cloud, LosOS Git and
+// app settings, but only once the owner switched it on for that edge
+// (`State::managed_by`, `POST /api/edge/manage`). The edge calls lososd
+// through the box's own tunnel, which is pinned to the edge's Noise key, and
+// nginx's `losos-manage.invalid` server, which takes only loopback (where
+// the tunnel lands); the call carries the box's proxy token, which only this
+// box and the edge it enrolled with hold. lososd then lets it use the
+// sections in `sections.json`'s `edge` list and nothing else.
+
+/// Why the switch could not be turned on. Rendered as a 409.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum NotManageable {
+    /// The box reaches no edge, or only through the configured one.
+    #[error("this box is not joined to an edge on its own network")]
+    NoLocalEdge,
+    /// The edge it is joined to is an official LosOS edge, which never
+    /// looks after anyone's box.
+    #[error("an official LosOS edge does not manage boxes; only a company's own edge does")]
+    Official,
+}
+
+/// The edge that may manage this box right now: the path, when it is an edge
+/// on the LAN that is not official. Official edges never manage boxes.
+///
+/// # Errors
+/// What stands in the way.
+pub fn manageable(status: &EdgeStatus) -> Result<&EdgePath, NotManageable> {
+    let path = status
+        .path
+        .as_ref()
+        .filter(|p| p.source == Source::Lan)
+        .ok_or(NotManageable::NoLocalEdge)?;
+    let official = status.edges.iter().any(|e| e.url == path.url && e.official);
+    if official {
+        return Err(NotManageable::Official);
+    }
+    Ok(path)
+}
+
+/// Whether the edge the owner switched management on for (`managed_by`, its
+/// registrar URL) is the one this box uses now. A box that moves to another
+/// edge is not managed by it until the owner says so again.
+#[must_use]
+pub fn manager_active(managed_by: Option<&str>, status: &EdgeStatus) -> bool {
+    match (managed_by, manageable(status)) {
+        (Some(url), Ok(path)) => path.url == url,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn lan_edge(url: &str, official: bool) -> Edge {
+        Edge {
+            name: "office".into(),
+            url: url.into(),
+            source: Source::Lan,
+            official,
+            rathole: Some("192.168.1.2:2333".into()),
+        }
+    }
+
+    #[test]
+    fn only_a_local_unofficial_edge_can_manage() {
+        let none = EdgeStatus::found(vec![], true, None);
+        assert_eq!(manageable(&none), Err(NotManageable::NoLocalEdge));
+
+        let configured = EdgeStatus::found(
+            vec![Edge {
+                source: Source::Configured,
+                ..lan_edge("https://register.example", false)
+            }],
+            true,
+            None,
+        );
+        assert_eq!(manageable(&configured), Err(NotManageable::NoLocalEdge));
+
+        let official =
+            EdgeStatus::found(vec![lan_edge("http://office.local:8443", true)], true, None);
+        assert_eq!(manageable(&official), Err(NotManageable::Official));
+
+        let company = EdgeStatus::found(
+            vec![lan_edge("http://office.local:8443", false)],
+            true,
+            None,
+        );
+        assert_eq!(
+            manageable(&company).map(|p| p.url.as_str()),
+            Ok("http://office.local:8443")
+        );
+    }
+
+    #[test]
+    fn management_follows_the_edge_it_was_switched_on_for() {
+        let office = EdgeStatus::found(
+            vec![lan_edge("http://office.local:8443", false)],
+            true,
+            None,
+        );
+        assert!(manager_active(Some("http://office.local:8443"), &office));
+        assert!(!manager_active(None, &office));
+
+        let other = EdgeStatus::found(vec![lan_edge("http://other.local:8443", false)], true, None);
+        assert!(!manager_active(Some("http://office.local:8443"), &other));
+
+        let gone = EdgeStatus::found(vec![], true, None);
+        assert!(!manager_active(Some("http://office.local:8443"), &gone));
+    }
 
     /// No root key: nothing can be official and no challenge is sent.
     const NO_TRUST: Trust<'static> = Trust {

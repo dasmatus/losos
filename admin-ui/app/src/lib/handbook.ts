@@ -38,12 +38,23 @@ export const HANDBOOK_ENTRIES = {
   "backup-and-erase": "manual/backup-and-erase/",
   terminal: "manual/terminal/",
   "custom-domain": "types/official-edge/",
+  "edge-manages-box": "types/company-edge/",
   tpm: "reference/tpm/",
 } as const;
 
 export type HandbookEntry = keyof typeof HANDBOOK_ENTRIES;
 
+/* A company edge's manage page (src/manage/) is served by the edge, which
+ * carries no handbook, so it links the published copy, where every page has
+ * the same path. */
+let base: string = HANDBOOK_BASE;
+
+/** Link the handbook at `next` instead of this box's own copy. */
+export function linkHandbookAt(next: string): void {
+  base = next;
+}
+
 /** The address of a handbook page on this box. */
 export function handbookHref(entry: HandbookEntry): string {
-  return HANDBOOK_BASE + HANDBOOK_ENTRIES[entry];
+  return base + HANDBOOK_ENTRIES[entry];
 }

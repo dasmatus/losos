@@ -110,6 +110,28 @@ export default defineMessages({
     sk: "bezpečnosť ochrana spevnenie pamäť procesor uzamknúť bezpečný",
     de: "Härtung härten Schutz Speicher Prozessor absichern sicher",
   },
+  "settings.panes.users.label": { en: "Users", sk: "Používatelia", de: "Benutzer" },
+  "settings.panes.users.summary": {
+    en: "Who can sign in to this box, and what each person can change.",
+    sk: "Kto sa môže prihlásiť do tohto zariadenia a čo môže každý zmeniť.",
+    de: "Wer sich an dieser Box anmelden kann und was jede Person ändern darf.",
+  },
+  "settings.panes.users.keywords": {
+    en: "",
+    sk: "používateľ používatelia ľudia osoba účet účty člen rodina tím pridať prihlásenie heslo správca oprávnenia skupiny",
+    de: "Benutzer Nutzer Personen Person Konto Konten Mitglied Familie Team hinzufügen Anmeldung Passwort Administrator Rechte Gruppen",
+  },
+  "settings.panes.account.label": { en: "Your account", sk: "Váš účet", de: "Dein Konto" },
+  "settings.panes.account.summary": {
+    en: "Your name, email address, password and two-factor sign-in on LosOS Login.",
+    sk: "Vaše meno, e-mailová adresa, heslo a dvojstupňové prihlásenie v LosOS Login.",
+    de: "Dein Name, deine E-Mail-Adresse, dein Passwort und die Zwei-Faktor-Anmeldung bei LosOS Login.",
+  },
+  "settings.panes.account.keywords": {
+    en: "",
+    sk: "účet profil meno e-mail heslo dvojstupňové prihlásenie overovacia aplikácia prístupový kľúč kód",
+    de: "Konto Profil Name E-Mail Passwort Zwei-Faktor Anmeldung Authenticator Passkey Sicherheitsschlüssel Code",
+  },
   "settings.panes.access.label": {
     en: "Access tokens",
     sk: "Prístupové tokeny",
