@@ -258,6 +258,30 @@ fn plain_route(rest: &str) -> bool {
         })
 }
 
+/// A query string this relay passes on: the URL-safe characters a page's
+/// search or filter needs, and nothing that could end the URL early.
+fn plain_query(query: &str) -> bool {
+    query.len() <= 512
+        && query.bytes().all(|b| {
+            b.is_ascii_alphanumeric()
+                || matches!(
+                    b,
+                    b'-' | b'_'
+                        | b'.'
+                        | b'~'
+                        | b'%'
+                        | b'='
+                        | b'&'
+                        | b'+'
+                        | b'!'
+                        | b'*'
+                        | b'('
+                        | b')'
+                        | b'\''
+                )
+        })
+}
+
 /// One call to a managed box's lososd, through the box's tunnel.
 async fn relay(
     State(st): State<AppState>,
@@ -273,7 +297,7 @@ async fn relay(
     if !manage.signed_in(&headers) {
         return unauthorized();
     }
-    if !plain_route(&rest) {
+    if !plain_route(&rest) || !query.as_deref().is_none_or(plain_query) {
         return plain(StatusCode::BAD_REQUEST, "not a route on the box");
     }
     if !manage.is_managed(&id, st.opts.heartbeat_ttl) {
@@ -471,6 +495,19 @@ mod tests {
         assert!(!plain_route("apps//install"));
         assert!(!plain_route("apps/%2e%2e"));
         assert!(!plain_route("apps?x=1"));
+    }
+
+    #[test]
+    fn only_plain_queries_are_relayed() {
+        assert!(plain_query("q=nextcloud%20news&page=2"));
+        assert!(plain_query(""));
+        // What encodeURIComponent leaves as it is.
+        assert!(plain_query("q=it%27s(a)*!"));
+        assert!(plain_query("q=it's(a)*!"));
+        assert!(!plain_query("q=a#frag"));
+        assert!(!plain_query("q=a b"));
+        assert!(!plain_query("q=@evil.example/"));
+        assert!(!plain_query(&"a".repeat(513)));
     }
 
     #[test]
