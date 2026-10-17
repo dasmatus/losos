@@ -146,6 +146,7 @@ pkgs.testers.nixosTest {
   testScript = ''
     import json
     import re
+    import urllib.parse
 
     BOX = "192.168.1.1"
     PASSWORD = "Correct-Horse-Battery-9"
@@ -370,13 +371,21 @@ pkgs.testers.nixosTest {
         assert app("/forgejo/explore/repos", eva)[1]["path"] == "/explore/repos"
 
     with subtest("each app's sign-in page goes to LosOS Login, or past it"):
-        signin = f"https://{BOX}/auth/?rd=https://{BOX}"
-        for page, back in [("/nextcloud/login", "/nextcloud/login"),
-                           ("/nextcloud/index.php/login", "/nextcloud/login"),
-                           ("/nextcloud/apps/user_saml/saml/login", "/nextcloud/login"),
-                           ("/forgejo/user/login", "/forgejo/user/login")]:
+        def back_to(where):
+            """Where LosOS Login sends the browser once it is signed in."""
+            u = urllib.parse.urlparse(where)
+            assert f"{u.scheme}://{u.netloc}{u.path}" == f"https://{BOX}/auth/", where
+            return urllib.parse.parse_qs(u.query)["rd"][0]
+        # Back to the page that sent them, everything after the `?` too: the
+        # desktop app's login flow rides on `redirect_url`.
+        grant = urllib.parse.quote("/nextcloud/login/flow/grant?clientIdentifier=&stateToken=x", safe="")
+        for page in ["/nextcloud/login",
+                     "/nextcloud/index.php/login",
+                     "/nextcloud/apps/user_saml/saml/login",
+                     f"/nextcloud/login?redirect_url={grant}",
+                     "/forgejo/user/login"]:
             code, where = app(page)
-            assert code == 302 and where == signin + back, (page, code, where)
+            assert code == 302 and back_to(where) == f"https://{BOX}{page}", (page, code, where)
         code, sent = app("/nextcloud/login?redirect_url=/nextcloud/apps/files/", cookie)
         assert person((code, sent))[0] == "notshared", sent
         assert sent["path"] == "/nextcloud/login?redirect_url=/nextcloud/apps/files/", sent
