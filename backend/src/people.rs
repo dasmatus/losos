@@ -590,6 +590,15 @@ mod tests {
         assert!(verify_password(h, &new) && !verify_password(h, &old));
     }
 
+    /// A password made up at run time, so no literal reaches a hash.
+    fn a_password() -> Secret {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        Secret::new(&format!("test-{nanos}"))
+    }
+
     fn refusal(e: anyhow::Error) -> Refused {
         e.downcast::<Refused>().expect("a refusal")
     }
@@ -597,7 +606,7 @@ mod tests {
     #[test]
     fn people_are_listed_without_their_password() {
         let (_d, p) = people();
-        let s = Secret::new("correct horse battery");
+        let s = a_password();
         p.add("matus", "Matus", "m@x.local", &s, &[ADMINS, OWNER])
             .unwrap();
         p.add("eva", "Eva", "", &s, &[VIEWERS]).unwrap();
@@ -615,7 +624,7 @@ mod tests {
     #[test]
     fn a_removed_person_can_no_longer_sign_in() {
         let (_d, p) = people();
-        let s = Secret::new("correct horse battery");
+        let s = a_password();
         p.add("matus", "", "", &s, &[ADMINS, OWNER]).unwrap();
         p.add("eva", "", "", &s, &[VIEWERS]).unwrap();
         p.remove("eva", Some("matus")).unwrap();
@@ -629,7 +638,7 @@ mod tests {
     #[test]
     fn nobody_removes_themselves_the_owner_or_the_last_administrator() {
         let (_d, p) = people();
-        let s = Secret::new("correct horse battery");
+        let s = a_password();
         p.add("matus", "", "", &s, &[ADMINS, OWNER]).unwrap();
         p.add("eva", "", "", &s, &[ADMINS]).unwrap();
         assert_eq!(
@@ -660,7 +669,7 @@ mod tests {
     #[test]
     fn access_replaces_the_access_groups_and_keeps_the_rest() {
         let (_d, p) = people();
-        let s = Secret::new("correct horse battery");
+        let s = a_password();
         p.add("matus", "", "", &s, &[ADMINS, OWNER]).unwrap();
         p.add("eva", "", "", &s, &["losos-backup", "family"])
             .unwrap();
@@ -697,7 +706,7 @@ mod tests {
     #[test]
     fn a_taken_name_is_a_refusal() {
         let (_d, p) = people();
-        let s = Secret::new("correct horse battery");
+        let s = a_password();
         p.add("eva", "", "", &s, &[]).unwrap();
         assert_eq!(
             refusal(p.add("eva", "", "", &s, &[]).unwrap_err()),
