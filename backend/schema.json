@@ -1665,6 +1665,11 @@
         "out": "marketActionResponse",
         "note": "Buy units. Returns a Stripe Checkout URL for the page to open. Audited. Owner-actionable refusals are 400/409 carrying the registrar's own sentence."
       },
+      "POST /api/market/release": {
+        "auth": true,
+        "out": "marketActionResponse",
+        "note": "Pay this box now for its sales whose slots are over, instead of waiting for the edge to do it a day after each slot ends (registrar POST /market/sales/release). The body is ignored. The reply adds held, ready, paying and next_at, in minor units and Unix seconds, as the account's payouts. 409 while nothing is ready: every sale's slot still runs, or nothing is held. Audited."
+      },
       "POST /api/market/fees/pay": {
         "auth": true,
         "in": "{\"tx\": \"0x<64 hex>\", \"network\"?: \"<EVM network key>\"}",

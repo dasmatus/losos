@@ -44,6 +44,7 @@
     "POST /api/market/listings/close": "market",
     "POST /api/market/orders": "market",
     "POST /api/market/payout": "market",
+    "POST /api/market/release": "market",
     "POST /api/market/confirm": "market",
     "POST /api/market/fees/pay": "market",
     "POST /api/market/coins/key": "market",
