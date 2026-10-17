@@ -210,4 +210,6 @@ export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
   "forgejo.site.defaultPrivate": "apps",
   "forgejo.site.keepEmailPrivate": "apps",
   "forgejo.site.pushCreate": "apps",
+  "nextcloud.federation.enable": "apps",
+  "forgejo.federation.enable": "apps",
 };

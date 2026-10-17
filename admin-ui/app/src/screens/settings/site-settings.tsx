@@ -8,8 +8,10 @@ import { nixUnquote, toLiteral } from "@/lib/option-value";
 import { cn } from "@/lib/utils";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, SwitchRow } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
+import { draftOn } from "./pane-advanced";
 
-/* The box-wide settings of LosOS cloud and LosOS Git, on the Apps pane.
+/* The box-wide settings of LosOS cloud and LosOS Git, on the Apps pane,
+ * each inside that app's accordion.
  *
  * What an administrator would otherwise change in Nextcloud's
  * Administration settings and Forgejo's Site administration. Each row is
@@ -86,8 +88,30 @@ function slotFor(form: SettingsForm, name: string): Slot | null {
   };
 }
 
-export function SiteSettings({ form }: { form: SettingsForm }) {
+/** Whether the box declares any of `app`'s settings, so the pane can leave
+ *  out an accordion that would hold nothing. */
+export function hasSiteSettings(form: SettingsForm, app: "cloud" | "git"): boolean {
+  const svc = app === "cloud" ? "nextcloud" : "forgejo";
+  return (
+    form.options?.options.some(
+      (o) => !o.readOnly && (o.name.startsWith(`${svc}.site.`) || o.name === `${svc}.federation.enable`),
+    ) ?? false
+  );
+}
+
+/* One app's settings, under the title the accordion it sits in leaves room
+ * for: the app's name is on the accordion. */
+export function SiteSettings({ form, app }: { form: SettingsForm; app: "cloud" | "git" }) {
   const t = useT();
+  const cloudFederation = slotFor(form, "nextcloud.federation.enable");
+  const gitFederation = slotFor(form, "forgejo.federation.enable");
+  /* Both switches act only while the box shares its disk (`needs` in the
+   * option document): greyed with the reason while sharing is off, as on the
+   * Advanced pane, and open again once it is on. */
+  const needsLine = (slot: Slot | null) =>
+    slot?.option.needs !== undefined && !draftOn(form, slot.option.needs)
+      ? t("cloudApps.federation.needsSharing")
+      : undefined;
   const cloud = {
     language: slotFor(form, "nextcloud.site.defaultLanguage"),
     phone: slotFor(form, "nextcloud.site.phoneRegion"),
@@ -122,15 +146,25 @@ export function SiteSettings({ form }: { form: SettingsForm }) {
   };
 
   const linksOff = cloud.links !== null && cloud.links.raw === "false";
-  const cloudRows = Object.values(cloud).some((slot) => slot !== null);
-  const gitRows = Object.values(git).some((slot) => slot !== null);
+  const cloudRows = cloudFederation !== null || Object.values(cloud).some((slot) => slot !== null);
+  const gitRows = gitFederation !== null || Object.values(git).some((slot) => slot !== null);
+  const federationIds = { cloud: React.useId(), git: React.useId() };
 
   return (
     <>
-      {cloudRows && (
+      {app === "cloud" && cloudRows && (
         <PaneSection data-testid="site-cloud">
-          <GroupTitle>LosOS cloud</GroupTitle>
+          <GroupTitle>{t("cloudApps.settings.title")}</GroupTitle>
           <Group>
+            {cloudFederation !== null && (
+              <BoolRow
+                id={federationIds.cloud}
+                slot={cloudFederation}
+                title={t("cloudApps.federation.cloud")}
+                description={needsLine(cloudFederation) ?? t("cloudApps.federation.cloudDetail")}
+                off={needsLine(cloudFederation) !== undefined}
+              />
+            )}
             {cloud.language !== null && (
               <SelectRow
                 id={ids.language}
@@ -203,10 +237,19 @@ export function SiteSettings({ form }: { form: SettingsForm }) {
         </PaneSection>
       )}
 
-      {gitRows && (
+      {app === "git" && gitRows && (
         <PaneSection data-testid="site-git">
-          <GroupTitle>LosOS Git</GroupTitle>
+          <GroupTitle>{t("cloudApps.settings.title")}</GroupTitle>
           <Group>
+            {gitFederation !== null && (
+              <BoolRow
+                id={federationIds.git}
+                slot={gitFederation}
+                title={t("cloudApps.federation.git")}
+                description={needsLine(gitFederation) ?? t("cloudApps.federation.gitDetail")}
+                off={needsLine(gitFederation) !== undefined}
+              />
+            )}
             {git.signIn !== null && (
               <BoolRow
                 id={ids.signIn}

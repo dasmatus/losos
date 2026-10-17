@@ -282,9 +282,9 @@ export default defineMessages({
     de: "Automatisch",
   },
   "panes.apps.site.cloudCaption": {
-    en: "These hold for all of LosOS cloud. The box sets them each time the app starts, so LosOS cloud's own administration pages show them but cannot change them. What each account sets for itself stays in LosOS cloud. An empty field leaves the choice to LosOS cloud.",
-    sk: "Tieto nastavenia platia pre celý LosOS cloud. Zariadenie ich nastaví pri každom spustení aplikácie, takže vlastné stránky správy LosOS cloud ich ukážu, ale nedajú sa tam zmeniť. Čo si každý účet nastaví sám pre seba, zostáva v LosOS cloud. Prázdne pole nechá voľbu na LosOS cloud.",
-    de: "Diese gelten für ganz LosOS cloud. Die Box setzt sie bei jedem Start der App, deshalb zeigen die Verwaltungsseiten von LosOS cloud sie an, können sie aber nicht ändern. Was jedes Konto für sich selbst einstellt, bleibt in LosOS cloud. Ein leeres Feld überlässt die Wahl LosOS cloud.",
+    en: "These hold for every account in LosOS cloud. The box sets them each time the app starts. What each account sets for itself stays in LosOS cloud. An empty field leaves the choice to LosOS cloud.",
+    sk: "Tieto nastavenia platia pre každý účet v LosOS cloud. Zariadenie ich nastaví pri každom spustení aplikácie. Čo si každý účet nastaví sám pre seba, zostáva v LosOS cloud. Prázdne pole nechá voľbu na LosOS cloud.",
+    de: "Diese gelten für jedes Konto in LosOS cloud. Die Box setzt sie bei jedem Start der App. Was jedes Konto für sich selbst einstellt, bleibt in LosOS cloud. Ein leeres Feld überlässt die Wahl LosOS cloud.",
   },
   "panes.apps.site.signIn": {
     en: "Only signed-in accounts see anything",
