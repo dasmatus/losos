@@ -326,6 +326,15 @@ pkgs.testers.nixosTest {
         forged = "-H 'X-Losos-Cloud-User: notshared' -H 'Remote-User: matus'"
         assert code(f"{forged} -X PROPFIND '{DAV}'") == 401
 
+    def assert_not_the_owners(user, password):
+        """Another person's share holds none of the owner's files."""
+        owners = f"{BASE}/nextcloud/remote.php/dav/files/notshared"
+        assert code(f"-u '{user}:{password}' '{owners}/by-name.txt'") in (401, 403, 404)
+        listing = curl(f"-u '{user}:{password}' -X PROPFIND -H 'Depth: 1' '{owners}/'")
+        print(listing)
+        assert "by-name.txt" not in listing, listing
+        assert "by-name.txt" not in curl(f"-u '{user}:{password}' -X PROPFIND -H 'Depth: 1' '{DAV}'")
+
     with subtest("a LosOS Login name and password open the share too"):
         # What someone types into the file manager's prompt after clicking
         # the entry: the name and password they sign in with everywhere
@@ -335,7 +344,7 @@ pkgs.testers.nixosTest {
         assert curl(f"-f -u 'notshared:{PASSWORD}' '{DAV}by-name.txt'") == "typed as matus"
         # Eva has never opened LosOS cloud: the share makes her account.
         files_round_trip("eva", EVA, "eva-name")
-        assert code(f"-u 'eva:{EVA}' -X PROPFIND '{BASE}/nextcloud/remote.php/dav/files/notshared/'") in (401, 403, 404)
+        assert_not_the_owners("eva", EVA)
         # A wrong LosOS password is LosOS cloud's 401, as before.
         assert code(f"-u 'eva:not-her-password' -X PROPFIND '{DAV}'") == 401
         assert code(f"-u 'matus:not-his-password' -X PROPFIND '{DAV}'") == 401
@@ -384,7 +393,7 @@ pkgs.testers.nixosTest {
         eva_app = got["appPassword"]
         files_round_trip("eva", eva_app, "eva")
         # Each person's share is their own.
-        assert code(f"-u 'eva:{eva_app}' -X PROPFIND '{BASE}/nextcloud/remote.php/dav/files/notshared/'") in (401, 403, 404)
+        assert_not_the_owners("eva", eva_app)
 
     with subtest("the desktop client's sync engine syncs a folder both ways"):
         laptop.succeed("mkdir -p /tmp/sync && echo 'from the laptop' > /tmp/sync/laptop.txt")
