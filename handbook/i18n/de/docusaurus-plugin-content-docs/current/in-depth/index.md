@@ -39,6 +39,7 @@ erhalten, und zwar auf einer verschlüsselten Partition `/persist`.
 - [Master-Proxy](/in-depth/master-proxy.md). Die Box aus dem Internet erreichen, ohne
   einen Port zu öffnen.
 - [Edge-Föderation](/in-depth/edge-federation.md). Deine eigene Edge im LAN, weitergeleitet über die offiziellen.
+- [Webseite der Edge](/in-depth/edge-web-ui.md). Die Seite unter `/manage/`, von der eine Firmen-Edge ihre Boxen verwaltet.
 - [Lab](/in-depth/lab.md). Der Visualisierer unter `/lab/`, seine simulierten und
   echten Gäste.
 - [Härtung](/in-depth/hardening.md). Die standardmäßige Härtungsbasis und die

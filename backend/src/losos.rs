@@ -83,6 +83,9 @@ pub trait Losos {
         &mut self,
         target: &crate::setup::Target,
     ) -> anyhow::Result<crate::setup::OccOutcome>;
+    /// Run one step of [`crate::setup::plan_person`]. `Err` means it could
+    /// not be run at all; a non-zero exit is data.
+    fn nextcloud_run(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome>;
     /// The last few log lines of the most recent Nextcloud container in any
     /// state, when [`Losos::nextcloud_target`] found no running one: the argv
     /// pair is [`crate::setup::last_container_argv`] then
@@ -134,6 +137,20 @@ pub trait Losos {
     /// why the screen distinguishes them from "this box does not serve the
     /// route" (a 404) and offers the field again.
     fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>>;
+
+    // ── LosOS cloud's own apps ──────────────────────────────────────────
+    // `crate::cloud_apps` holds the rules; these are the effects.
+    /// Run `losos-nextcloud-apps` with the argv [`crate::cloud_apps::plan`]
+    /// built. `Err` means it could not be run at all; a non-zero exit is
+    /// data, as for [`Losos::run_occ`].
+    fn run_cloud_apps(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome>;
+    /// Whether this box knows which Nextcloud version to ask the app store
+    /// about, and so offers adding apps from it.
+    fn cloud_store_offered(&mut self) -> bool;
+    /// The app store's apps for this box's Nextcloud, parsed by
+    /// [`crate::cloud_apps::parse_store`]. The real backend keeps the parsed
+    /// list for a few hours: the store's own list is about 17 MB.
+    fn cloud_store(&mut self) -> anyhow::Result<std::sync::Arc<Vec<crate::cloud_apps::StoreApp>>>;
 
     // ── Installing an app from the catalogue ────────────────────────────
     // `crate::apps` holds the rules; these are the effects.
@@ -1268,7 +1285,52 @@ pub fn valid_relay_pass(s: &str) -> bool {
 
 /// What the daemon knows about edge proxies: `GET /api/edge`.
 pub fn cmd_edge<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
-    Ok(l.edge_status()?.to_json())
+    let status = l.edge_status()?;
+    let managed_by = l.load_state()?.managed_by;
+    let mut out = status.to_json();
+    out["manage"] = manage_json(managed_by.as_deref(), &status);
+    Ok(out)
+}
+
+/// The management switch as `GET /api/edge` shows it: which edge could
+/// manage the box now (or why none can), which one the owner switched it on
+/// for, and whether that one is the edge in use.
+fn manage_json(managed_by: Option<&str>, status: &crate::edge::EdgeStatus) -> Value {
+    let (candidate, refused) = match crate::edge::manageable(status) {
+        Ok(path) => (json!({ "name": path.name, "url": path.url }), Value::Null),
+        Err(e) => (
+            Value::Null,
+            json!(match e {
+                crate::edge::NotManageable::NoLocalEdge => "noLocalEdge",
+                crate::edge::NotManageable::Official => "official",
+            }),
+        ),
+    };
+    json!({
+        "candidate": candidate,
+        "refused": refused,
+        "managedBy": managed_by,
+        "active": crate::edge::manager_active(managed_by, status),
+    })
+}
+
+/// Let the company edge this box uses manage its LosOS cloud, LosOS Git and
+/// app settings, or stop it (`POST /api/edge/manage`). Switching on names the
+/// edge in use, so a box that later moves to another edge is not managed by
+/// that one. Switching off always works.
+///
+/// # Errors
+/// [`crate::edge::NotManageable`] when switching on with no company edge in use.
+pub fn cmd_edge_manage<L: Losos>(l: &mut L, enabled: bool) -> anyhow::Result<Value> {
+    let status = l.edge_status()?;
+    let mut s = l.load_state()?;
+    s.managed_by = if enabled {
+        Some(crate::edge::manageable(&status)?.url.clone())
+    } else {
+        None
+    };
+    l.save_state(&s)?;
+    Ok(json!({ "manage": manage_json(s.managed_by.as_deref(), &status) }))
 }
 
 /// Every `losos.*` option the box declares, with what `overrides.nix` sets
@@ -1291,6 +1353,38 @@ pub fn cmd_options<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
             Ok(crate::options::join(&doc, &content))
         }
     }
+}
+
+/// The settings of LosOS cloud and LosOS Git (`GET /api/site`; see
+/// `crate::site`), in the shape of `GET /api/options`.
+pub fn cmd_site<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    match l.read_options_doc()? {
+        None => cmd_options(l),
+        Some(doc) => Ok(crate::site::view(&doc, &l.read_overrides()?)),
+    }
+}
+
+/// Change some of them (`POST /api/site`): each name is checked, the lines
+/// are patched, and the file goes through [`cmd_apply`] like any other.
+pub fn cmd_site_set<L: Losos>(
+    l: &mut L,
+    changes: &[(String, Option<String>)],
+) -> anyhow::Result<Value> {
+    let Some(doc) = l.read_options_doc()? else {
+        return Err(crate::options::Rejected(
+            "this box has no option document, so its settings can only be changed by an administrator"
+                .to_string(),
+        )
+        .into());
+    };
+    if changes.is_empty() {
+        return Err(crate::options::Rejected("nothing to change".to_string()).into());
+    }
+    for (name, raw) in changes {
+        crate::site::check(&doc, name, raw.as_deref())?;
+    }
+    let body = crate::site::patch(&l.read_overrides()?, changes)?;
+    cmd_apply(l, &body)
 }
 
 /// The configuration repository as the History pane shows it: where it is
@@ -2126,6 +2220,12 @@ mod tests {
             ) -> anyhow::Result<crate::setup::OccOutcome> {
                 self.0.nextcloud_status(target)
             }
+            fn nextcloud_run(
+                &mut self,
+                argv: &[String],
+            ) -> anyhow::Result<crate::setup::OccOutcome> {
+                self.0.nextcloud_run(argv)
+            }
             fn nextcloud_last_log(
                 &mut self,
                 mode: crate::setup::NcMode,
@@ -2154,6 +2254,20 @@ mod tests {
             }
             fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>> {
                 self.0.search_apps(query)
+            }
+            fn run_cloud_apps(
+                &mut self,
+                argv: &[String],
+            ) -> anyhow::Result<crate::setup::OccOutcome> {
+                self.0.run_cloud_apps(argv)
+            }
+            fn cloud_store_offered(&mut self) -> bool {
+                self.0.cloud_store_offered()
+            }
+            fn cloud_store(
+                &mut self,
+            ) -> anyhow::Result<std::sync::Arc<Vec<crate::cloud_apps::StoreApp>>> {
+                self.0.cloud_store()
             }
             fn apps_config(&mut self) -> Option<crate::apps::Config> {
                 self.0.apps_config()
@@ -2508,6 +2622,45 @@ mod tests {
         let doc = cmd_edge(&mut fake).unwrap();
         assert_eq!(doc["reachable"], false);
         assert_eq!(doc["edges"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn only_a_company_edge_in_use_can_be_let_manage_the_box() {
+        // The fake's edge is official: never a manager.
+        let mut fake = FakeLosos::new();
+        let e = cmd_edge_manage(&mut fake, true).unwrap_err();
+        assert_eq!(
+            e.downcast_ref::<crate::edge::NotManageable>(),
+            Some(&crate::edge::NotManageable::Official)
+        );
+        assert_eq!(fake.state.managed_by, None);
+        assert_eq!(
+            cmd_edge(&mut fake).unwrap()["manage"]["refused"],
+            "official"
+        );
+
+        let mut fake = fake.with_company_edge();
+        let doc = cmd_edge_manage(&mut fake, true).unwrap();
+        assert_eq!(
+            fake.state.managed_by.as_deref(),
+            Some("http://edge.local:8443")
+        );
+        assert_eq!(doc["manage"]["active"], true);
+        let doc = cmd_edge(&mut fake).unwrap();
+        assert_eq!(doc["manage"]["managedBy"], "http://edge.local:8443");
+        assert_eq!(doc["manage"]["candidate"]["url"], "http://edge.local:8443");
+
+        // Switching off works with or without an edge.
+        let mut gone = fake.without_edge();
+        assert_eq!(cmd_edge(&mut gone).unwrap()["manage"]["active"], false);
+        cmd_edge_manage(&mut gone, false).unwrap();
+        assert_eq!(gone.state.managed_by, None);
+        assert_eq!(
+            cmd_edge_manage(&mut gone, true)
+                .unwrap_err()
+                .downcast_ref::<crate::edge::NotManageable>(),
+            Some(&crate::edge::NotManageable::NoLocalEdge)
+        );
     }
 
     #[test]
@@ -3117,6 +3270,97 @@ mod tests {
             options_doc: Some(crate::options::tests::sample()),
             ..f
         }
+    }
+
+    /// A document declaring every line of the committed overrides, plus two
+    /// settings of the apps, so an apply of the default file passes the gate.
+    fn site_doc() -> crate::options::OptionsDoc {
+        let mut options: Vec<Value> = crate::overrides::assignments(DEFAULT_OVERRIDES_NIX)
+            .into_iter()
+            .map(|(k, v)| {
+                let editor = match v.as_str() {
+                    "true" | "false" => json!({ "kind": "bool" }),
+                    _ if v.parse::<i64>().is_ok() => json!({ "kind": "int" }),
+                    _ => json!({ "kind": "str" }),
+                };
+                json!({ "name": k, "group": "general", "editor": editor, "nixType": "x" })
+            })
+            .collect();
+        options.push(
+            json!({ "name": "nextcloud.site.trashDays", "group": "nextcloud",
+            "editor": { "kind": "int", "min": 1 }, "nixType": "int" }),
+        );
+        options.push(
+            json!({ "name": "forgejo.site.landingPage", "group": "forgejo",
+            "editor": { "kind": "enum", "values": ["home", "explore"] }, "nixType": "enum" }),
+        );
+        serde_json::from_value(json!({ "version": 1, "options": options })).unwrap()
+    }
+
+    #[test]
+    fn the_apps_settings_change_alone_and_rebuild() {
+        let mut f = FakeLosos {
+            options_doc: Some(site_doc()),
+            ..FakeLosos::new()
+        };
+        let view = cmd_site(&mut f).unwrap();
+        let names: Vec<&str> = view["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| o["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            ["nextcloud.site.trashDays", "forgejo.site.landingPage"]
+        );
+
+        let out = cmd_site_set(
+            &mut f,
+            &[
+                ("nextcloud.site.trashDays".into(), Some("30".into())),
+                (
+                    "forgejo.site.landingPage".into(),
+                    Some("\"explore\"".into()),
+                ),
+            ],
+        )
+        .unwrap();
+        assert!(out["job"].is_string());
+        let body = f.read_overrides().unwrap();
+        assert_eq!(
+            crate::overrides::lookup_nix("nextcloud.site.trashDays", &body).as_deref(),
+            Some("30")
+        );
+        assert_eq!(
+            crate::overrides::lookup_nix("hostName", &body).as_deref(),
+            Some("\"mattbox\"")
+        );
+        assert!(f.commits.last().unwrap().subject.contains("trashDays"));
+
+        // Anything else is refused by name, and nothing is written.
+        for (name, raw) in [
+            ("hostName", Some("\"evil\"")),
+            ("sharingMyStorage", Some("false")),
+            ("nextcloud.site.trashDays", Some("0")),
+            (
+                "nextcloud.site.trashDays",
+                Some("30;\n  losos.hostName = \"x\""),
+            ),
+        ] {
+            let e = cmd_site_set(&mut f, &[(name.into(), raw.map(str::to_string))]).unwrap_err();
+            assert!(
+                e.downcast_ref::<crate::options::Rejected>().is_some(),
+                "{name}: {e}"
+            );
+            assert_eq!(f.read_overrides().unwrap(), body);
+        }
+
+        cmd_site_set(&mut f, &[("nextcloud.site.trashDays".into(), None)]).unwrap();
+        assert_eq!(
+            crate::overrides::lookup_nix("nextcloud.site.trashDays", &f.read_overrides().unwrap()),
+            None
+        );
     }
 
     #[test]

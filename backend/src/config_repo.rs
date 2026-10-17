@@ -145,6 +145,13 @@ pub enum ForgejoOp {
     ListRepos {
         login: String,
     },
+    /// An account's full name and address, as LosOS Login has them
+    /// (`crate::app_names`). An empty address is left as it is.
+    SetProfile {
+        login: String,
+        full_name: String,
+        email: String,
+    },
 }
 
 impl ForgejoOp {
@@ -153,7 +160,9 @@ impl ForgejoOp {
         match self {
             ForgejoOp::GetUser { login } => ("GET", format!("/api/v1/users/{login}")),
             ForgejoOp::CreateUser { .. } => ("POST", "/api/v1/admin/users".to_string()),
-            ForgejoOp::MakeAdmin { login } | ForgejoOp::SetPassword { login } => {
+            ForgejoOp::MakeAdmin { login }
+            | ForgejoOp::SetPassword { login }
+            | ForgejoOp::SetProfile { login, .. } => {
                 ("PATCH", format!("/api/v1/admin/users/{login}"))
             }
             ForgejoOp::GetRepo { owner, name } => ("GET", format!("/api/v1/repos/{owner}/{name}")),
@@ -205,6 +214,21 @@ impl ForgejoOp {
                     "password": secret.expose(),
                     "must_change_password": false,
                 })
+            }
+            ForgejoOp::SetProfile {
+                login,
+                full_name,
+                email,
+            } => {
+                let mut doc = json!({
+                    "login_name": login,
+                    "source_id": 0,
+                    "full_name": full_name,
+                });
+                if !email.is_empty() {
+                    doc["email"] = json!(email);
+                }
+                doc
             }
             ForgejoOp::CreateRepo { name, branch, .. } => json!({
                 "name": name,

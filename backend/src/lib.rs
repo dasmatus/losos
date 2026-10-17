@@ -26,11 +26,14 @@
 //! document, D-Bus method and HTTP route here.
 
 pub mod access;
+pub mod app_names;
 pub mod apps;
 pub mod backup;
 pub mod boxid;
 pub mod builder;
 pub mod catalogue;
+pub mod cloud_apps;
+pub mod cloud_share;
 pub mod config_repo;
 pub mod dbus;
 pub mod devices;
@@ -46,6 +49,7 @@ pub mod installer;
 pub mod installer_io;
 pub mod io_backend;
 pub mod lab;
+pub mod login;
 pub mod look;
 pub mod losos;
 pub mod market;
@@ -60,6 +64,7 @@ pub mod recovery;
 pub mod sections;
 pub mod setup;
 pub mod signin;
+pub mod site;
 pub mod supervisor;
 pub mod textsearch;
 pub mod vm_upload;

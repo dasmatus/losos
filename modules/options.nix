@@ -2571,6 +2571,31 @@ in
       '';
     };
 
+    edge.manage.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Serve the page a company's admins look after their boxes from, at
+        `/manage/` on the registrar: every box this edge routes, and for each
+        box whose owner let this edge manage it (the switch on the box's Mesh
+        page), its LosOS cloud, LosOS Git and app settings. The page signs in
+        with a key the registrar makes on its first start, in
+        /var/lib/losos-registrar/manage-key; `losos-edge manage-key` on the
+        gateway's console prints it. Boxes refuse to be managed by an
+        official LosOS edge, so leave this off on one.
+      '';
+    };
+
+    edge.manage.ui = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = ''
+        The built admin UI whose `manage/` page the registrar serves. Null
+        serves only the JSON routes. Set by modules/edge.nix to this flake's
+        admin UI when losos.edge.manage.enable is on.
+      '';
+    };
+
     # ── Uplink: this edge as a spoke of another ─────────────────────────────
     # handbook/docs/in-depth/edge-federation.md. A spoke keeps everything it has
     # and adds one outbound tunnel plus one `POST /relay` loop to a hub, which

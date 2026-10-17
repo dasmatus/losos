@@ -36,8 +36,8 @@ import { useLocale, useT } from "@/lib/i18n-react";
 import { paneFromPath, paneHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { SHORTCUT_ARIA, openPalette, shortcutLabel } from "@/palette/store";
-import { paneById, paneSection, type SettingsPaneId } from "@/screens/settings/panes";
-import { canUse, useMe } from "@/lib/api";
+import { paneById, paneOpen, type SettingsPaneId } from "@/screens/settings/panes";
+import { canUse, heldBy, useMe } from "@/lib/api";
 import { openInNewTab, PinMenu } from "@/components/pin-menu";
 import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
 import { pinKey, viewPin, type PinView } from "@/lib/pins";
@@ -142,7 +142,7 @@ const TREE: readonly Entry[] = [
     icon: Settings01Icon,
     railTo: "/settings",
     children: (
-      ["network", "look", "hardware", "security", "access", "advanced", "history", "backup", "about", "reset"] as const
+      ["network", "look", "hardware", "security", "account", "users", "access", "advanced", "history", "backup", "about", "reset"] as const
     ).map(
       settingsLeaf,
     ),
@@ -154,7 +154,7 @@ const TREE: readonly Entry[] = [
  * own children that stay visible move up a level, so someone in the market
  * section sees Market without Mesh. A fold left empty goes. */
 function allowed(entry: LinkEntry): boolean {
-  if (entry.pane !== undefined) return canUse(paneSection(entry.pane));
+  if (entry.pane !== undefined) return paneOpen(entry.pane);
   if (entry.key === "lab") return canUse("lab");
   return true;
 }
@@ -192,7 +192,11 @@ export function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
   const rail = !isMobile && state === "collapsed";
   const me = useMe();
-  const tree = React.useMemo(() => visible(TREE), [me]);
+  // Someone a rule of LosOS Login holds gets their account, at the top.
+  const tree = React.useMemo(
+    () => ((me?.locked?.length ?? 0) > 0 ? [settingsLeaf("account")] : visible(TREE)),
+    [me],
+  );
 
   // Which folds are open. One that holds the current page opens by itself.
   const [openFolds, setOpenFolds] = React.useState<Record<string, boolean>>({});
@@ -287,7 +291,7 @@ export function AppSidebar() {
           </SidebarMenu>
           {/* Signed out there is nothing to show; the box keeps the list,
               and a box that did not send one (an older build) gets none. */}
-          {(pins.status === "ready" || pins.pins.length > 0) && (
+          {(pins.status === "ready" || pins.pins.length > 0) && heldBy().length === 0 && (
             <PinnedSection views={views} pathname={pathname} rail={rail} onEdit={openEditor} />
           )}
         </SidebarContent>

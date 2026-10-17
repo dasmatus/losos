@@ -85,6 +85,13 @@ redirects.
   effect at once. Password change and reset inside Authelia are off, because
   the box sends no mail. A sign-in name is lower case, starts with a letter,
   then letters, digits, `.`, `_` or `-`, at most 32 characters.
+- **The Users pane** (`/api/people*`, admin only in `backend/sections.json`)
+  adds, changes and removes people, and answers 409 on a box that does not
+  sign people in itself. It hands out only `losos-admins`, `losos-viewers`
+  and `losos-<section>`, never `losos-owner`, and refuses to change or remove
+  the owner, the caller's own account or the last administrator. Authelia's
+  `refresh_interval` is `always`, so a removed person's session stops naming
+  them to LosOS cloud and LosOS Git at their next request.
 - **Start order.** Authelia starts only once the people file exists (a path
   unit, after the claim). Its file backend refuses to start with an empty
   users map, and without the file it writes an example account of its own.

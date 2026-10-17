@@ -221,6 +221,21 @@ pub struct ServeOpts {
     /// The terminal (`crate::operator`). `None` unless `--access-dir` was
     /// given, and every `/operator/*` route answers 404.
     pub operator: Option<crate::operator::OperatorOpts>,
+    /// The page a company's admins look after their boxes from
+    /// (`server::manage`). `None` unless `--manage-key-file` was given, and
+    /// every `/manage*` route answers 404.
+    pub manage: Option<ManageOpts>,
+}
+
+/// `serve --manage-key-file FILE [--manage-ui DIR]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManageOpts {
+    /// The key the page signs in with: 64 hex characters, 0600, made on the
+    /// first start if missing and shown on the gateway's console.
+    pub key_file: String,
+    /// The built admin UI, whose `manage/index.html` is the page. `None`
+    /// serves only the JSON routes.
+    pub ui_dir: Option<String>,
 }
 
 /// `identity` options: the offline key ceremony (`crate::identity`).
@@ -288,6 +303,9 @@ pub struct AnnounceOpts {
     /// heartbeat and sent along so a local edge can forward it. Missing or
     /// empty sends none.
     pub relay_pass_file: Option<String>,
+    /// `--managed-file`: lososd's marker that the owner lets this edge
+    /// manage the box (present means yes), re-read on every heartbeat.
+    pub managed_file: Option<String>,
 }
 
 /// `join` options. Runs once per boot on the appliance, from
@@ -490,6 +508,10 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     seal_script: arg(&rest, "--seal-credential").map(str::to_string),
                     systemd_run: arg(&rest, "--systemd-run").map(str::to_string),
                 }),
+                manage: arg(&rest, "--manage-key-file").map(|file| ManageOpts {
+                    key_file: file.to_string(),
+                    ui_dir: arg(&rest, "--manage-ui").map(str::to_string),
+                }),
                 uplink: match arg(&rest, "--uplink-file") {
                     None => None,
                     Some(file) => Some(crate::relay::UplinkOpts {
@@ -573,6 +595,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 arg(&rest, "--idle-load-threshold").unwrap_or("0.25"),
             )?,
             relay_pass_file: arg(&rest, "--relay-pass-file").map(str::to_string),
+            managed_file: arg(&rest, "--managed-file").map(str::to_string),
         })),
         "seed" => Ok(Mode::Seed(SeedOpts {
             rathole_config: req(&rest, "--rathole-config")?.to_string(),

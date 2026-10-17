@@ -70,6 +70,21 @@ export const LAB_CSP = [
   "form-action 'none'",
 ].join('; ');
 
+/* A company edge's manage page (/manage/, served by the edge itself:
+ * PAGE_CSP in edge/registrar/src/server/manage.rs). Mirror it here. */
+export const MANAGE_CSP = [
+  "default-src 'none'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "manifest-src 'self'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
+
 /* Serves dist/ with an SPA fallback (`try_files $uri /index.html`). Without it
  * a deep link 404s and the test would be asserting against an error page. */
 export async function serve({ csp = false } = {}) {
@@ -82,7 +97,9 @@ export async function serve({ csp = false } = {}) {
         ? WIDGET_FRAME_CSP
         : file.startsWith('/lab/') || file === 'lab/index.html'
           ? LAB_CSP
-          : ADMIN_CSP;
+          : file.startsWith('/manage/') || file === 'manage/index.html'
+            ? MANAGE_CSP
+            : ADMIN_CSP;
       res.writeHead(200, {
         'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
         ...(csp ? { 'Content-Security-Policy': policy } : {}),
@@ -91,8 +108,14 @@ export async function serve({ csp = false } = {}) {
     };
     // A directory gets its index, as nginx's `index` directive gives it.
     const file = rel === '/' ? 'index.html' : rel.endsWith('/') ? rel + 'index.html' : rel;
-    // /lab/ is its own page with its own fallback, as its nginx location is.
-    const fallback = rel.startsWith('/lab/') || rel === '/lab' ? 'lab/index.html' : 'index.html';
+    // /lab/ is its own page with its own fallback, as its nginx location is,
+    // and so is the edge's /manage/.
+    const fallback =
+      rel.startsWith('/lab/') || rel === '/lab'
+        ? 'lab/index.html'
+        : rel.startsWith('/manage/') || rel === '/manage'
+          ? 'manage/index.html'
+          : 'index.html';
     send(file).catch(() =>
       send(fallback).catch(() => {
         res.writeHead(404);

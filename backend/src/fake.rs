@@ -68,6 +68,9 @@ pub struct FakeLosos {
     pub status_spawn_fails: bool,
     /// Every readiness probe that ran, with the target it was aimed at.
     pub status_probed: Vec<crate::setup::Target>,
+    /// Every `plan_person` step that ran, and what each exits with.
+    pub nextcloud_runs: Vec<Vec<String>>,
+    pub nextcloud_run_exit: i32,
     /// What `crictl logs` of the latest container would print; `None` is
     /// "no container has ever run".
     pub last_log: Option<String>,
@@ -98,6 +101,16 @@ pub struct FakeLosos {
     /// Every query the fake was asked for, in order. A test reads this to
     /// prove the command trimmed before searching rather than after.
     pub catalogue_queries: Vec<String>,
+
+    // ── LosOS cloud's own apps ──────────────────────────────────────────
+    /// What `losos-nextcloud-apps list` prints.
+    pub cloud_apps_list: String,
+    /// What any other call of the tool reports.
+    pub cloud_apps_action: crate::setup::OccOutcome,
+    /// Every argv the tool was run with, in order.
+    pub cloud_apps_ran: Vec<Vec<String>>,
+    /// The app store's list; `None` models a box that offers no store.
+    pub cloud_store_body: Option<String>,
 
     // ── Installing an app ───────────────────────────────────────────────
     /// `None` models a box with no local cluster.
@@ -265,6 +278,8 @@ impl FakeLosos {
             status_stderr: String::new(),
             status_spawn_fails: false,
             status_probed: Vec::new(),
+            nextcloud_runs: Vec::new(),
+            nextcloud_run_exit: 0,
             last_log: None,
             last_log_asked: 0,
             // A reachable Nextcloud whose password nobody knows yet, like a
@@ -286,6 +301,14 @@ impl FakeLosos {
                     .to_string(),
             ),
             catalogue_queries: Vec::new(),
+            cloud_apps_list: "[]".to_string(),
+            cloud_apps_action: crate::setup::OccOutcome {
+                code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+            cloud_apps_ran: Vec::new(),
+            cloud_store_body: Some("[]".to_string()),
             apps: Some(crate::apps::Config {
                 ports: (30000, 30099),
             }),
@@ -517,6 +540,31 @@ impl Losos for FakeLosos {
         crate::recovery::ensure_code(&mut self.recovery)
     }
 
+    fn run_cloud_apps(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome> {
+        self.cloud_apps_ran.push(argv.to_vec());
+        if argv.last().map(String::as_str) == Some("list") {
+            return Ok(crate::setup::OccOutcome {
+                code: 0,
+                stdout: self.cloud_apps_list.clone(),
+                stderr: String::new(),
+            });
+        }
+        Ok(self.cloud_apps_action.clone())
+    }
+
+    fn cloud_store_offered(&mut self) -> bool {
+        self.cloud_store_body.is_some()
+    }
+
+    /// The real parser, as for `search_apps` below.
+    fn cloud_store(&mut self) -> anyhow::Result<std::sync::Arc<Vec<crate::cloud_apps::StoreApp>>> {
+        let body = self
+            .cloud_store_body
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("the app store could not be reached"))?;
+        Ok(std::sync::Arc::new(crate::cloud_apps::parse_store(body)?))
+    }
+
     /// The real parser, run against a recorded body — same reasoning as
     /// `recovery_code` above: a fake that reimplemented the mapping would
     /// prove only that the fake agrees with itself.
@@ -637,6 +685,7 @@ impl Losos for FakeLosos {
             crate::pins::CloudRequest::Search { key, query } => {
                 format!("search {} {query}", key.user)
             }
+            crate::pins::CloudRequest::Arrive { user, .. } => format!("arrive {user}"),
         });
         self.cloud_answers
             .pop_front()
@@ -752,6 +801,15 @@ impl Losos for FakeLosos {
             code: self.status_exit,
             stdout: self.status_stdout.clone(),
             stderr: self.status_stderr.clone(),
+        })
+    }
+
+    fn nextcloud_run(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome> {
+        self.nextcloud_runs.push(argv.to_vec());
+        Ok(crate::setup::OccOutcome {
+            code: self.nextcloud_run_exit,
+            stdout: String::new(),
+            stderr: String::new(),
         })
     }
 

@@ -38,6 +38,7 @@ oddiele `/persist`.
 - [Master proxy](/in-depth/master-proxy.md). Prístup k zariadeniu z internetu bez
   otvorenia portu.
 - [Federácia edge](/in-depth/edge-federation.md). Vlastný edge v LAN, preposielaný cez oficiálne.
+- [Webová stránka edge](/in-depth/edge-web-ui.md). Stránka na `/manage/`, z ktorej firemný edge spravuje svoje zariadenia.
 - [Lab](/in-depth/lab.md). Vizualizér nasadenia na `/lab/`, jeho simulovaní a
   skutoční hostia.
 - [Hardening](/in-depth/hardening.md). Predvolený základ zabezpečenia a voliteľné

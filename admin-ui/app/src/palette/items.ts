@@ -17,7 +17,7 @@ import { LOCALE_NAMES, LOCALES, getLocaleChoice, setLocale, t, template, type Me
 import type { Pin, PinView } from "@/lib/pins";
 import { paneHref } from "@/lib/routes";
 import { getTheme, setTheme, type Theme } from "@/lib/theme";
-import { SETTINGS_PANES, paneSection } from "@/screens/settings/panes";
+import { SETTINGS_PANES, paneOpen } from "@/screens/settings/panes";
 import { openTour } from "@/tour/store";
 
 /* The palette's own entries: everything it can list without asking the box.
@@ -107,7 +107,7 @@ export function pageItems(): Item[] {
   ];
   for (const pane of SETTINGS_PANES) {
     // The panes this person's sections do not open are not offered.
-    if (!canUse(paneSection(pane.id))) continue;
+    if (!paneOpen(pane.id)) continue;
     items.push({
       id: `page-${pane.id}`,
       group: "pages",

@@ -43,6 +43,9 @@ LosOS Login funguje iba cez HTTPS. Obyčajnú adresu `http://` na
 zariadenia, prehliadač najprv zobrazí varovanie; pozrite
 [Varovanie o certifikáte](../troubleshooting/certificate-warning).
 
+Ak ste si k účtu pridali overovaciu aplikáciu alebo prístupový kľúč, LosOS
+Login si ich po hesle vypýta. Pozrite [Váš účet](#your-account).
+
 Prihlásenie platí 12 hodín a skončí skôr, ak dve hodiny nič nerobíte. Ak v
 LosOS Login zaškrtnete, aby si vás zapamätal, zostanete na tom počítači
 prihlásení mesiac. **Odhlásiť sa** v správcovských stránkach ho ukončí hneď.
@@ -54,24 +57,29 @@ odmietne. Počkajte a skúste to znova.
 
 ## LosOS cloud a LosOS Git \{#losos-cloud-and-losos-git}
 
-Na vlastnej sieti zariadenia vás LosOS cloud aj LosOS Git prihlásia cez
-LosOS Login. Keď otvoríte niektorú z nich neprihlásení, ocitnete sa v LosOS
-Login; prihláste sa tam raz a pustia vás obe aplikácie, bez druhého hesla.
+LosOS cloud aj LosOS Git vás prihlásia cez LosOS Login, na vlastnej sieti
+zariadenia aj cez internet. Keď otvoríte niektorú z nich neprihlásení,
+ocitnete sa v LosOS Login; prihláste sa tam raz a pustia vás obe aplikácie,
+bez druhého hesla. Ani jedna aplikácia neukazuje vlastnú prihlasovaciu
+stránku.
 
 Človek, ktorý zariadenie nastavil, príde do oboch aplikácií ako účet
 vlastníka, ten, ktorý drží súbory a repozitáre spred tejto zmeny. Ktokoľvek
 iný dostane v každej aplikácii vlastný účet, keď ju prvýkrát otvorí,
-pomenovaný podľa svojho prihlasovacieho mena.
+pomenovaný podľa svojho prihlasovacieho mena. Obe aplikácie ukazujú celé
+meno a e-mailovú adresu z LosOS Login a zmenia ich, keď ich zmeníte v
+[Vašom účte](#your-account).
 
-Aplikácie si nechávajú vlastnú prihlasovaciu stránku tam, kde LosOS Login
-pomôcť nemôže:
+Cez internet LosOS Login odpovedá na verejnej adrese zariadenia: na jeho
+mene na okrajovom serveri alebo na vlastnej doméne, keď už vedie na
+zariadenie. Hneď po štarte, kým sa LosOS Login ešte spúšťa, aplikácie
+ukážu stránku, ktorá to oznamuje, a každých pár sekúnd to skúsia znova
+samy.
 
-- cez internet (verejnú adresu zariadenia), kde LosOS Login neodpovedá;
-- kým sa LosOS Login po štarte zariadenia ešte spúšťa;
-- v LosOS cloud na `/nextcloud/login?direct=1`, ak o ňu požiadate.
-
-Tam sa vlastník prihlási svojím heslom ako doteraz. Aplikácie pre počítač a
-telefón, WebDAV a `git` ďalej používajú heslá aplikácií a tokeny.
+Aplikácie pre počítač a telefón a `git` ďalej používajú heslá aplikácií a
+tokeny. Sieťový priečinok LosOS cloud berie v sieti zariadenia vaše meno a
+heslo z LosOS Login a cez internet heslo aplikácie; pozrite
+[Súbory vo vašom počítači](files-on-your-computer).
 
 **Odhlásiť sa** v LosOS cloud vás odhlási aj z LosOS Login. **Odhlásiť sa**
 v LosOS Git nie: kým ste prihlásení v LosOS Login, LosOS Git vás hneď
@@ -84,14 +92,102 @@ prihlásená, kým sa neodhlásite aj z tej aplikácie.
 Správcovské stránky sú rozdelené na časti: úložisko, záloha, aplikácie, trh
 (aj s virtuálnymi strojmi), sieť (vlastné domény), vzhľad, Laboratórium a
 prístupové tokeny. Správca môže používať všetky. Iba správca môže použiť
-nastavenia, otvoriť Mesh, Hardvér, Zabezpečenie, Rozšírené, História,
+nastavenia, otvoriť Mesh, Hardvér, Zabezpečenie, Používatelia, Rozšírené, História,
 O zariadení a Reset, zmazať alebo obnoviť zariadenie a pozrieť si kód na
 obnovenie. Kto nie je správca, dostane časti, ktoré mu boli pridelené, alebo
 číta všetky časti bez možnosti niečo zmeniť. Prehľad vidí každý prihlásený.
 Správcovské stránky skryjú panely, ktoré daný človek nemôže použiť.
 
-Prvý človek na zariadení je vždy správca. Stránku na pridávanie ďalších
-ľudí správcovské stránky zatiaľ nemajú.
+Ďalšia časť, **Vlastný účet**, otvára panel **Váš účet**, kde si človek
+spravuje vlastné meno, e-mailovú adresu, heslo a druhé faktory. Noví ľudia
+ju dostanú automaticky. Bez nej si človek nemôže pridať overovaciu
+aplikáciu ani prístupový kľúč a heslo mu mení správca.
+
+## Pridávanie ľudí \{#adding-people}
+
+Prvý človek na zariadení je vždy správca. Ďalších ľudí pridáva správca v
+**Nastavenia > Používatelia**. Tento panel je tam vtedy, keď zariadenie
+prihlasuje ľudí samo cez LosOS Login. Zariadenie, ktorého prihlasovanie beží
+inde, panel Používatelia nemá.
+
+Nového človeka pridáte vyplnením **Pridať človeka**: prihlasovacie meno,
+celé meno, heslo podľa rovnakých pravidiel ako to vaše a prístup.
+
+- **Vybrané časti**: vidí a mení iba zapnuté časti, napríklad Úložisko a
+  Záloha.
+- **Vidí všetko**: vidí každý panel a mení iba zapnuté časti.
+- **Správca**: môže meniť všetko vrátane toho, kto sa môže prihlásiť.
+
+![Panel Používatelia: traja ľudia s ich prístupom a pod nimi formulár Pridať človeka.](@site/docs/img/settings-users-sk.png)
+
+Nový človek má **Vlastný účet** zapnutý. Meno a heslo mu odovzdajte sami. Prihlási sa cez LosOS Login. LosOS cloud aj
+LosOS Git mu pri prvom otvorení vytvoria vlastný účet.
+
+Kto má overovaciu aplikáciu alebo prístupový kľúč, má štítok
+**Dvojstupňové**. Koho zadržiava pravidlo prihlásenia, má štítok
+**Zadržaný** a pod menom dôvod.
+
+Každý človek v zozname má tieto tlačidlá:
+
+- **Prístup** mení, čo môže robiť. Platí od jeho ďalšieho kliknutia, bez
+  nového prihlásenia.
+- **Nové heslo** je pre toho, kto svoje stratil. Staré prestane platiť hneď.
+- **Obnoviť dvojstupňové** mu odstráni overovaciu aplikáciu a prístupové
+  kľúče, keď stratil telefón alebo kľúč. Prihlasuje sa potom iba heslom,
+  kým si nepridá nové. Zobrazí sa iba pri tom, kto nejaké má.
+- **Odstrániť** mu hneď zastaví prihlasovanie do správcovských stránok aj do
+  oboch aplikácií. Jeho účty a súbory v LosOS cloud a LosOS Git na zariadení
+  zostanú.
+
+Váš vlastný riadok tlačidlá nemá. Riadok vlastníka má iba **Obnoviť
+dvojstupňové**, pre iného správcu. Vlastníka tu nikto nemôže odstrániť,
+zmeniť mu prístup ani nastaviť heslo; pri stratenom hesle vlastníka pozrite
+[Zabudnuté heslo](../troubleshooting/forgot-password). Zariadenie si vždy
+ponechá aspoň jedného správcu.
+
+## Váš účet \{#your-account}
+
+**Nastavenia > Váš účet** je vlastná stránka každého človeka. Má ju každý s
+časťou Vlastný účet, aj správcovia, a nikdy nie náhradný kľúč, ktorý účet
+nemá.
+
+![Váš účet: vaše údaje, heslo, dvojstupňové prihlásenie a jednorazový kód.](@site/docs/img/settings-account-sk.png)
+
+- **Vaše údaje**: celé meno a e-mailová adresa. LosOS cloud aj LosOS Git
+  ukazujú tie isté. Prihlasovacie meno môže zmeniť iba správca.
+- **Heslo**: kedy ste ho naposledy zmenili a kedy vyprší, ak má zariadenie
+  také pravidlo. Nové heslo sa riadi rovnakými pravidlami ako prvé a otvára
+  aj LosOS cloud a LosOS Git.
+- **Dvojstupňové prihlásenie**: či máte overovaciu aplikáciu a koľko
+  prístupových kľúčov. **Otvoriť LosOS Login** otvorí vlastnú stránku LosOS
+  Login na novej karte, kde ich pridáte alebo odstránite. S ktorýmkoľvek z
+  nich si ho LosOS Login vypýta po hesle pri každom prihlásení.
+- **Jednorazový kód**: LosOS Login si pred zmenou druhých faktorov pýta kód,
+  ktorý by inak poslal e-mailom. Zariadenie e-maily neposiela, preto si kód
+  vypýtajte na stránke LosOS Login, vráťte sa sem, napíšte svoje heslo a
+  zvoľte **Zobraziť kód**.
+
+## Pravidlá prihlásenia \{#sign-in-rules}
+
+Správca nastavuje dve pravidlá pre všetkých v **Nastavenia > Používatelia >
+Pravidlá prihlásenia**:
+
+- **Vyžadovať dvojstupňové prihlásenie**: každý si pridá overovaciu
+  aplikáciu alebo prístupový kľúč.
+- **Heslá vypršia**: heslo platí zadaný počet dní, od 1 do 1200, rátané od
+  chvíle, keď si ho človek naposledy nastavil.
+
+Koho pravidlo zachytí, je zadržaný. Stále sa prihlási, ale správcovské
+stránky mu ukážu iba **Váš účet** s poznámkou, čo treba urobiť, a LosOS
+Login ho nepustí do LosOS cloud ani LosOS Git. Keď si zvolí nové heslo alebo
+pridá druhý faktor, zvyšok sa znova otvorí. Po novom druhom faktore si ho
+LosOS Login raz vypýta pred ďalšou stránkou. Zadržaný človek, ktorý otvorí
+LosOS cloud alebo LosOS Git, uvidí stránku, ktorá ho pošle do jeho účtu; ten sa otvára na vlastnej sieti zariadenia.
+
+Kým začnete vyžadovať dvojstupňové prihlásenie, pridajte si overovaciu
+aplikáciu alebo prístupový kľúč do vlastného účtu. Zariadenie pravidlo
+odmietne, kým ho nemáte, aby nezadržalo aj vás. Náhradný správcovský kľúč
+nie je zadržaný nikdy.
 
 ## Náhradný správcovský kľúč \{#the-spare-admin-key}
 
@@ -129,11 +225,12 @@ správcom. Odvtedy sa prihlasujte týmto menom a heslom.
 
 ## Prístupové kľúče \{#passkeys}
 
-Keď je certifikát nainštalovaný a pripájate sa cez HTTPS, LosOS cloud
-ponúkne prístupový kľúč (passkey). Telefón alebo notebook sa potom do LosOS
-cloud prihlasuje vlastným odomknutím namiesto hesla. LosOS Login prístupové
-kľúče neprijíma a vždy si pýta meno a heslo. Prístupový kľúč nie je druhý
-náhradný kľúč.
+LosOS Login prijíma prístupové kľúče (passkeys). Pridáte si ho na stránke
+LosOS Login z [Vášho účtu](#your-account), cez HTTPS, keď je certifikát
+zariadenia nainštalovaný. Na prihlasovacej stránke vás potom telefón alebo
+notebook prihlási vlastným odomknutím namiesto mena a hesla, do
+správcovských stránok, LosOS cloud aj LosOS Git. Prístupový kľúč nie je
+druhý náhradný kľúč: otvára iba váš vlastný účet.
 
 ## Okno na prevzatie \{#the-claim-window}
 
