@@ -653,6 +653,8 @@ impl Edge {
                 cards: true,
                 zec: None,
                 coin_fee_limit: losos_registrar::market::DEFAULT_COIN_FEE_LIMIT,
+                offline_refund_secs: losos_registrar::slots::DEFAULT_OFFLINE_SECS,
+                direct_pay: true,
             })
         });
 
@@ -941,6 +943,9 @@ struct StubState {
     expect_bearer: Option<String>,
     /// The `status.phase` a `GET` of a PersistentVolumeClaim reports.
     claim_phase: Arc<Mutex<String>>,
+    /// Nodes that are not `Ready` (`false`) or not in the mesh at all
+    /// (`true`, answered 404). Every other node is `Ready`.
+    nodes_down: Arc<Mutex<BTreeMap<String, bool>>>,
 }
 
 impl KubeStub {
@@ -968,6 +973,7 @@ impl KubeStub {
             status: StatusCode::from_u16(status).expect("a valid status code"),
             expect_bearer,
             claim_phase: Arc::new(Mutex::new(phase.to_string())),
+            nodes_down: Arc::new(Mutex::new(BTreeMap::new())),
         };
         let app = Router::new()
             .fallback(stub_handler)
@@ -1018,6 +1024,21 @@ impl KubeStub {
             .claim_phase
             .lock()
             .expect("the stub's claim phase is not poisoned") = phase.to_string();
+    }
+
+    /// Take node `name` out of `Ready` (`gone`: out of the mesh entirely), or
+    /// with `up` put it back.
+    pub fn set_node(&self, name: &str, up: bool, gone: bool) {
+        let mut down = self
+            .state
+            .nodes_down
+            .lock()
+            .expect("the stub's nodes are not poisoned");
+        if up {
+            down.remove(name);
+        } else {
+            down.insert(name.to_string(), gone);
+        }
     }
 
     pub async fn shutdown(mut self) {
@@ -1079,6 +1100,29 @@ async fn stub_handler(
             })
             .collect();
         return axum::Json(serde_json::json!({ "items": items })).into_response();
+    }
+    if let Some(name) = uri
+        .path()
+        .strip_prefix("/api/v1/nodes/")
+        .filter(|_| method == Method::GET)
+    {
+        let down = state
+            .nodes_down
+            .lock()
+            .expect("the stub's nodes are not poisoned")
+            .get(name)
+            .copied();
+        return match down {
+            Some(true) => StatusCode::NOT_FOUND.into_response(),
+            ready => axum::Json(serde_json::json!({
+                "metadata": { "name": name },
+                "status": { "conditions": [
+                    { "type": "MemoryPressure", "status": "False" },
+                    { "type": "Ready", "status": if ready.is_none() { "True" } else { "False" } },
+                ]},
+            }))
+            .into_response(),
+        };
     }
     if method == Method::GET && uri.path().contains("/persistentvolumeclaims/") {
         let phase = state

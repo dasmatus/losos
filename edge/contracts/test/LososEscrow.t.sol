@@ -166,15 +166,82 @@ contract LososEscrowTest is Test {
         vm.stopPrank();
     }
 
-    function test_the_deadline_must_leave_an_hour_and_at_most_thirty_days() public {
+    function test_the_deadline_must_leave_an_hour_and_at_most_thirty_five_days() public {
         vm.startPrank(BUYER);
         vm.expectRevert(LososEscrow.BadDeadline.selector);
         escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(block.timestamp + 59 minutes));
         vm.expectRevert(LososEscrow.BadDeadline.selector);
-        escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(block.timestamp + 30 days + 1));
+        escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(block.timestamp + 35 days + 1));
         escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(block.timestamp + 1 hours));
-        escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(block.timestamp + 30 days));
+        escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(block.timestamp + 35 days));
         vm.stopPrank();
+    }
+
+    function test_settle_refunds_the_undelivered_share_and_pays_the_rest() public {
+        // A month of storage, the seller's box offline for the last quarter.
+        uint256 id = _pay(2_000_000, 80_000);
+        vm.prank(EDGE);
+        escrow.settle(id, 500_000);
+        assertEq(token.balanceOf(BUYER), 10_000_000 - 2_000_000 + 500_000);
+        // The fee shrinks with the seller's share: 4% of 1.5 USDC.
+        assertEq(token.balanceOf(TREASURY), 60_000);
+        assertEq(token.balanceOf(SELLER), 1_440_000);
+        assertEq(token.balanceOf(address(escrow)), 0);
+        assertEq(escrow.held(), 0);
+        (,,,,,, LososEscrow.State state) = escrow.deposits(id);
+        assertEq(uint8(state), uint8(LososEscrow.State.Split));
+    }
+
+    function test_the_fee_of_a_split_rounds_down() public {
+        uint256 id = _pay(1_000_001, 333_333);
+        vm.prank(EDGE);
+        escrow.settle(id, 1);
+        // 333_333 * 1_000_000 / 1_000_001 = 333_332.67
+        assertEq(token.balanceOf(TREASURY), 333_332);
+        assertEq(token.balanceOf(SELLER), 1_000_000 - 333_332);
+    }
+
+    function test_only_the_edge_settles_and_only_a_real_split() public {
+        uint256 id = _pay(1_000_000, 0);
+        vm.prank(BUYER);
+        vm.expectRevert(LososEscrow.NotReleaser.selector);
+        escrow.settle(id, 1);
+        vm.prank(SELLER);
+        vm.expectRevert(LososEscrow.NotReleaser.selector);
+        escrow.settle(id, 999_999);
+        vm.startPrank(EDGE);
+        vm.expectRevert(LososEscrow.BadSplit.selector);
+        escrow.settle(id, 0);
+        vm.expectRevert(LososEscrow.BadSplit.selector);
+        escrow.settle(id, 1_000_000);
+        escrow.settle(id, 250_000);
+        vm.expectRevert(LososEscrow.NotHeld.selector);
+        escrow.settle(id, 250_000);
+        vm.expectRevert(LososEscrow.NotHeld.selector);
+        escrow.release(id);
+        vm.expectRevert(LososEscrow.NotHeld.selector);
+        escrow.refund(id);
+        vm.stopPrank();
+    }
+
+    function test_a_settled_deposit_cannot_be_reclaimed_after_the_deadline() public {
+        uint256 id = _pay(1_000_000, 40_000);
+        vm.prank(EDGE);
+        escrow.settle(id, 400_000);
+        vm.warp(block.timestamp + 2 days);
+        vm.prank(BUYER);
+        vm.expectRevert(LososEscrow.NotHeld.selector);
+        escrow.refund(id);
+    }
+
+    function test_a_deposit_the_payer_reclaimed_cannot_be_settled() public {
+        uint256 id = _pay(1_000_000, 40_000);
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(BUYER);
+        escrow.refund(id);
+        vm.prank(EDGE);
+        vm.expectRevert(LososEscrow.NotHeld.selector);
+        escrow.settle(id, 400_000);
     }
 
     function test_short_allowance_reverts_and_records_nothing() public {
@@ -239,23 +306,25 @@ contract LososEscrowTest is Test {
         new LososEscrow(IERC20(address(token)), TREASURY, address(0));
     }
 
-    /// Whatever order of pays, releases and refunds, the contract's balance
-    /// is exactly what open deposits are owed.
+    /// Whatever order of pays, releases, refunds and splits, the contract's
+    /// balance is exactly what open deposits are owed.
     function testFuzz_balance_always_covers_open_deposits(uint8[16] calldata steps) public {
         uint256 open;
         for (uint256 i = 0; i < steps.length; i++) {
             uint256 count = escrow.depositCount();
-            uint8 step = steps[i] % 3;
+            uint8 step = steps[i] % 4;
             if (step == 0 || count == 0) {
                 _pay(uint256(steps[i]) * 1000 + 1, 0);
                 continue;
             }
             uint256 id = uint256(steps[i]) % count + 1;
-            (,,,,,, LososEscrow.State state) = escrow.deposits(id);
+            (,,, uint256 gross,,, LososEscrow.State state) = escrow.deposits(id);
             if (state != LososEscrow.State.Held) continue;
+            if (step == 3 && gross < 2) continue;
             vm.prank(EDGE);
             if (step == 1) escrow.release(id);
-            else escrow.refund(id);
+            else if (step == 2) escrow.refund(id);
+            else escrow.settle(id, gross / 2);
         }
         for (uint256 id = 1; id <= escrow.depositCount(); id++) {
             (,,, uint256 gross,,, LososEscrow.State state) = escrow.deposits(id);

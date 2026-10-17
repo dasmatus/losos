@@ -41,6 +41,8 @@ const RELEASER_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae
 const RELEASER: &str = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
 const RELEASE: &str = "37bdc99b";
 const REFUND: &str = "278ecde1";
+const SETTLE: &str = "9a9c29f6";
+const DAY: u64 = 24 * 60 * 60;
 const SOL_TREASURY: &str = "5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG";
 const SOL_BUYER: &str = "HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH";
 /// A local validator's genesis, which the test network is configured with.
@@ -208,6 +210,20 @@ async fn start_full(
     btc: bool,
     kube: &KubeStub,
 ) -> Edge {
+    start_opts(tag, rpc_url, state, cards, btc, kube, true).await
+}
+
+/// As [`start_full`]; `direct_pay: false` is the default edge, which takes
+/// only payments it can hold for a slot.
+async fn start_opts(
+    tag: &str,
+    rpc_url: &str,
+    state: Option<&Value>,
+    cards: bool,
+    btc: bool,
+    kube: &KubeStub,
+    direct_pay: bool,
+) -> Edge {
     let stripe = start_stripe().await;
     let rpc_url = rpc_url.to_string();
     let kube_api = kube.base.clone();
@@ -225,6 +241,7 @@ async fn start_full(
             opts.kube_token_file = Some(dir.path_str("kube.token"));
             let market = opts.market.as_mut().expect("market on");
             market.currency = "usd".to_string();
+            market.direct_pay = direct_pay;
             if !cards {
                 market.cards = false;
                 market.gate_socket = dir.path_str("no-gate.sock");
@@ -407,11 +424,57 @@ fn sent_calls(chain: &Chain) -> Vec<(String, u64)> {
             let at = raw
                 .find(RELEASE)
                 .or_else(|| raw.find(REFUND))
+                .or_else(|| raw.find(SETTLE))
                 .expect("an escrow call");
             let deposit = u64::from_str_radix(&raw[at + 8 + 48..at + 8 + 64], 16).unwrap();
             (raw[at..at + 8].to_string(), deposit)
         })
         .collect()
+}
+
+/// The edge's test-mode ledger as it stands on disk.
+fn ledger(edge: &Edge) -> Value {
+    let raw = std::fs::read(edge.dir.join("market-test.json")).expect("read the ledger");
+    serde_json::from_slice(&raw).expect("the ledger is JSON")
+}
+
+/// Every order's clock moved back by `secs`, as if that long had passed.
+fn aged(mut ledger: Value, secs: u64) -> Value {
+    if let Some(orders) = ledger["orders"].as_object_mut() {
+        for o in orders.values_mut() {
+            for key in ["created_at", "paid_at", "expires_at"] {
+                if let Some(t) = o[key].as_u64() {
+                    o[key] = json!(t - secs);
+                }
+            }
+        }
+    }
+    ledger
+}
+
+/// Stop `edge` and start it again on its ledger aged by `secs`: how these
+/// tests let a slot run its course. The chain stand-in carries on.
+async fn later(edge: Edge, tag: &str, url: &str, secs: u64, kube: &KubeStub) -> Edge {
+    let ledger = aged(ledger(&edge), secs);
+    edge.shutdown().await;
+    start_full(tag, url, Some(&ledger), true, false, kube).await
+}
+
+/// Wait until the order's volume is bound: what was bought exists.
+async fn wait_volume(edge: &Edge, order_id: &str) {
+    for _ in 0..100 {
+        if !purchase(edge, order_id).await["volume"].is_null() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("{order_id} never got its volume");
+}
+
+/// Give the reconciler a few passes, then say the edge sent nothing.
+async fn sends_nothing(chain: &Chain) {
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    assert!(sent_calls(chain).is_empty(), "{:?}", sent_calls(chain));
 }
 
 /// Wait for the reconciler to have sent `n` escrow calls.
@@ -612,18 +675,63 @@ async fn a_payment_counts_once_it_has_a_block_on_top() {
     // Reporting the same transaction again is not an error.
     assert_eq!(confirm(&edge, &order_id, &tx(1)).await.0, 204);
 
-    // The edge releases the deposit, once, and follows the call until it
-    // has a block on top.
+    // The deposit is held while the slot runs: the seller sees it, cannot
+    // be paid yet, and cannot stop selling what was bought.
+    sends_nothing(&chain).await;
+    assert_eq!(purchase(&edge, &order_id).await["escrow"]["step"], "held");
+    let account = seller_account(&edge).await;
+    assert_eq!(account["payouts"]["held"], 192, "{account}");
+    assert_eq!(account["payouts"]["ready"], 0, "{account}");
+    let listing = account["listings"][0]["id"].as_str().unwrap().to_string();
+    assert!(account["listings"][0]["locked_until"].as_u64().is_some());
+    let (status, body) = release(&edge).await;
+    assert_eq!(status, 409, "{body}");
+    let (status, body) = close(&edge, &listing).await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("slot ends"), "{body}");
+
+    // A month on, the slot is over: the seller asks, and the edge releases
+    // the deposit once and follows the call until it has a block on top.
+    let kube = mesh("Bound").await;
+    wait_volume(&edge, &order_id).await;
+    let edge = later(edge, "usdc-paid-later", &url, 30 * DAY + 60, kube).await;
+    let account = seller_account(&edge).await;
+    assert_eq!(account["payouts"]["ready"], 192, "{account}");
+    assert!(
+        account["listings"][0].get("locked_until").is_none(),
+        "{account}"
+    );
+    let (status, body) = release(&edge).await;
+    assert_eq!(status, 200, "{body}");
     assert_eq!(wait_sent(&chain, 1).await, [(RELEASE.to_string(), 1)]);
     assert_eq!(
         purchase(&edge, &order_id).await["escrow"]["step"],
         "release"
     );
+    // Asking twice pays nothing twice.
+    assert_eq!(release(&edge).await.0, 409);
     mine_sent(&chain, "0x1");
     let order = wait_step(&edge, &order_id, "released").await;
     assert!(order["escrow"]["tx"].is_null(), "{order}");
     assert_eq!(sent_calls(&chain).len(), 1);
+    assert_eq!(close(&edge, &listing).await.0, 204);
     edge.shutdown().await;
+}
+
+async fn release(edge: &Edge) -> (u16, String) {
+    edge.post("/market/sales/release", auth("seller-box", GOOD_TOKEN))
+        .await
+}
+
+async fn close(edge: &Edge, listing: &str) -> (u16, String) {
+    edge.post(
+        "/market/listings/close",
+        with(
+            auth("seller-box", GOOD_TOKEN),
+            json!({ "listing_id": listing }),
+        ),
+    )
+    .await
 }
 
 #[tokio::test]
@@ -653,15 +761,41 @@ async fn the_seller_is_paid_only_once_the_storage_exists() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
-    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-    assert!(sent_calls(&chain).is_empty(), "{:?}", sent_calls(&chain));
-    assert_eq!(
-        purchase(&edge, &order_id).await["escrow"]["step"],
-        "release"
-    );
+    sends_nothing(&chain).await;
+    assert_eq!(purchase(&edge, &order_id).await["escrow"]["step"], "held");
 
-    // The volume binds: now the seller is paid.
+    // Not a minute short of a day, and still nothing: the volume may bind.
+    let edge = later(edge, "usdc-undelivered-23h", &url, 23 * 3600 - 60, kube).await;
+    sends_nothing(&chain).await;
+    // A day without a volume: the buyer gets it all back, and the seller
+    // is never paid for it.
+    let edge = later(edge, "usdc-undelivered-day", &url, 120, kube).await;
+    assert_eq!(wait_sent(&chain, 1).await, [(REFUND.to_string(), 1)]);
+    let order = purchase(&edge, &order_id).await;
+    assert_eq!(order["escrow"]["reason"], "notDelivered", "{order}");
+    assert_eq!(order["expired"], true, "{order}");
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_seller_is_paid_once_the_slot_with_its_storage_is_over() {
+    let (chain, url) = start_chain().await;
+    let kube = mesh("Pending").await;
+    let edge = start_full("usdc-bound-late", &url, None, true, false, kube).await;
+    let seller = set_payout(&edge, 7).await;
+    let invoice = order(&edge, 40).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    chain.set(|c| {
+        c.receipts.insert(tx(1), receipt(&invoice, &seller, 100, 1));
+        c.head = 101;
+    });
+    assert_eq!(confirm(&edge, &order_id, &tx(1)).await.0, 204);
+    // The volume binds within the hour; a month on, the seller is paid by
+    // the edge itself a day after the slot, without asking.
     kube.set_claim_phase("Bound");
+    wait_volume(&edge, &order_id).await;
+    sends_nothing(&chain).await;
+    let edge = later(edge, "usdc-bound-later", &url, 31 * DAY + 60, kube).await;
     assert_eq!(wait_sent(&chain, 1).await, [(RELEASE.to_string(), 1)]);
     mine_sent(&chain, "0x1");
     wait_step(&edge, &order_id, "released").await;
@@ -694,6 +828,10 @@ async fn an_edge_without_a_stripe_account_takes_usdc() {
     let (status, body) = confirm(&edge, &order_id, &tx(1)).await;
     assert_eq!(status, 204, "{body}");
     assert_eq!(status_of(&edge, &order_id).await, "paid");
+    sends_nothing(&chain).await;
+    let ledger = aged(ledger(&edge), 31 * DAY + 60);
+    edge.shutdown().await;
+    let edge = start_with_cards("usdc-no-cards-later", &url, Some(&ledger), false).await;
     assert_eq!(wait_sent(&chain, 1).await, [(RELEASE.to_string(), 1)]);
     mine_sent(&chain, "0x1");
     wait_step(&edge, &order_id, "released").await;
@@ -712,6 +850,15 @@ async fn a_release_that_reverts_is_sent_again_while_the_deposit_is_held() {
         c.receipts.insert(tx(1), receipt(&invoice, &seller, 100, 1));
     });
     assert_eq!(confirm(&edge, &order_id, &tx(1)).await.0, 204);
+    wait_volume(&edge, &order_id).await;
+    let edge = later(
+        edge,
+        "usdc-release-again-later",
+        &url,
+        31 * DAY + 60,
+        mesh("Bound").await,
+    )
+    .await;
     wait_sent(&chain, 1).await;
     mine_sent(&chain, "0x0");
     let calls = wait_sent(&chain, 2).await;
@@ -774,6 +921,15 @@ async fn a_seller_account_delegated_under_eip_7702_is_paid() {
     });
     let (status, body) = confirm(&edge, &order_id, &tx(3)).await;
     assert_eq!(status, 204, "{body}");
+    wait_volume(&edge, &order_id).await;
+    let edge = later(
+        edge,
+        "usdc-seller-7702-later",
+        &url,
+        31 * DAY + 60,
+        mesh("Bound").await,
+    )
+    .await;
     assert_eq!(wait_sent(&chain, 1).await, [(RELEASE.to_string(), 3)]);
     edge.shutdown().await;
 }
@@ -794,13 +950,12 @@ async fn a_second_payment_for_a_paid_order_goes_back() {
     let (status, body) = confirm(&edge, &order_id, &tx(5)).await;
     assert_eq!(status, 409, "{body}");
     assert!(body.contains("already paid"), "{body}");
-    let mut calls = wait_sent(&chain, 2).await;
-    calls.sort();
-    assert_eq!(calls, [(REFUND.to_string(), 5), (RELEASE.to_string(), 4)]);
-    // The first payment still holds the order.
+    // The second goes back at once; the first is held for the slot.
+    assert_eq!(wait_sent(&chain, 1).await, [(REFUND.to_string(), 5)]);
     let order = purchase(&edge, &order_id).await;
     assert_eq!(order["status"], "paid", "{order}");
     assert_eq!(order["tx"], tx(4).as_str(), "{order}");
+    assert_eq!(order["escrow"]["step"], "held", "{order}");
     edge.shutdown().await;
 }
 
@@ -818,6 +973,16 @@ async fn a_deposit_the_buyer_took_back_ends_the_order() {
         c.deposits.insert(6, 3);
     });
     assert_eq!(confirm(&edge, &order_id, &tx(6)).await.0, 204);
+    // The edge finds out when it comes to pay the seller.
+    wait_volume(&edge, &order_id).await;
+    let edge = later(
+        edge,
+        "usdc-reclaimed-later",
+        &url,
+        31 * DAY + 60,
+        mesh("Bound").await,
+    )
+    .await;
     let order = wait_step(&edge, &order_id, "refunded").await;
     assert_eq!(order["escrow"]["reason"], "buyerReclaimed", "{order}");
     assert_eq!(order["expired"], true, "{order}");
@@ -1335,6 +1500,17 @@ async fn a_usdc_sale_collects_coin_fees_owed_once_the_escrow_releases_it() {
         (&json!(200), &json!(8), &json!(50), &json!(142)),
         "{sale}"
     );
+    sends_nothing(&chain).await;
+    assert_eq!(owed(&edge).await, 50);
+    wait_volume(&edge, &order_id).await;
+    let edge = later(
+        edge,
+        "usdc-offset-later",
+        &url,
+        31 * DAY + 60,
+        mesh("Bound").await,
+    )
+    .await;
     assert_eq!(wait_sent(&chain, 1).await, [(RELEASE.to_string(), 1)]);
     assert_eq!(owed(&edge).await, 50);
     mine_sent(&chain, "0x1");
@@ -1362,6 +1538,15 @@ async fn a_usdc_sale_that_goes_back_to_the_buyer_collects_nothing() {
         c.deposits.insert(6, 3);
     });
     assert_eq!(confirm(&edge, &order_id, &tx(6)).await.0, 204);
+    wait_volume(&edge, &order_id).await;
+    let edge = later(
+        edge,
+        "usdc-offset-refund-later",
+        &url,
+        31 * DAY + 60,
+        mesh("Bound").await,
+    )
+    .await;
     let refunded = wait_step(&edge, &order_id, "refunded").await;
     assert_eq!(refunded["escrow"]["reason"], "buyerReclaimed", "{refunded}");
     assert_eq!(owed(&edge).await, 50);
@@ -1588,4 +1773,182 @@ fn silent_prices() -> [losos_registrar::coins::PriceSource; 2] {
             base: "http://127.0.0.1:9".to_string(),
         },
     ]
+}
+
+/// `ledger` with the seller's box seen offline for `streak` seconds in a
+/// row and `offline` in all, the last check `ago` seconds back.
+fn with_presence(mut ledger: Value, streak: u64, offline: u64, ago: u64) -> Value {
+    let now = losos_registrar::market::now_secs();
+    ledger["presence"] = json!({ "seller-box": { "streak": streak, "offline": offline } });
+    ledger["presence_tick"] = json!(now - ago);
+    ledger
+}
+
+/// A paid and delivered 40 GiB slot, ten days into its month.
+async fn ten_days_in(tag: &str) -> (Chain, String, Edge, String) {
+    let (chain, url) = start_chain().await;
+    let edge = start(tag, &url, None).await;
+    let seller = set_payout(&edge, 7).await;
+    let invoice = order(&edge, 40).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    chain.set(|c| {
+        c.receipts.insert(tx(1), receipt(&invoice, &seller, 100, 1));
+        c.head = 101;
+    });
+    assert_eq!(confirm(&edge, &order_id, &tx(1)).await.0, 204);
+    wait_volume(&edge, &order_id).await;
+    (chain, url, edge, order_id)
+}
+
+/// The refund a sent `settle` carries, in USDC base units.
+fn settled_refund(chain: &Chain) -> u128 {
+    let raw = chain.inner.lock().expect("chain not poisoned").sent[0].clone();
+    let at = raw.find(SETTLE).expect("a settle call");
+    u128::from_str_radix(&raw[at + 8 + 64..at + 8 + 128], 16).unwrap()
+}
+
+#[tokio::test]
+async fn a_box_offline_for_a_day_refunds_what_it_did_not_deliver() {
+    let (chain, url, edge, order_id) = ten_days_in("usdc-offline").await;
+    // The seller's node drops out of Ready a few minutes short of a day
+    // offline in a row; the next pass the edge watches makes it a day.
+    let kube = mesh("Bound").await;
+    kube.set_node("seller-box", false, false);
+    let ledger = with_presence(aged(ledger(&edge), 10 * DAY), DAY - 100, DAY - 100, 200);
+    edge.shutdown().await;
+    let edge = start_full("usdc-offline-later", &url, Some(&ledger), true, false, kube).await;
+    // Twenty days still to come and the day it was down (a little over, by
+    // the last pass): just over 21 of 30 days of the 2 USD go back to the
+    // buyer, rounded up to the cent; the seller keeps the rest.
+    let calls = wait_sent(&chain, 1).await;
+    assert_eq!(calls, [(SETTLE.to_string(), 1)]);
+    assert_eq!(settled_refund(&chain), 1_410_000);
+    let order = purchase(&edge, &order_id).await;
+    assert_eq!(order["escrow"]["step"], "split", "{order}");
+    assert_eq!(order["escrow"]["reason"], "sellerOffline", "{order}");
+    assert_eq!(order["escrow"]["refund"], 141, "{order}");
+    assert_eq!(order["expired"], true, "{order}");
+    // The slot is over, so the seller may stop selling it now.
+    let account = seller_account(&edge).await;
+    assert!(
+        account["listings"][0].get("locked_until").is_none(),
+        "{account}"
+    );
+    mine_sent(&chain, "0x1");
+    chain.set(|c| {
+        c.deposits.insert(1, 4);
+    });
+    wait_step(&edge, &order_id, "settled").await;
+    assert_eq!(sent_calls(&chain).len(), 1);
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_box_that_comes_back_in_time_keeps_its_buyer() {
+    let (chain, url, edge, order_id) = ten_days_in("usdc-back").await;
+    // Almost a day down, but the node is Ready again at the next pass.
+    let kube = mesh("Bound").await;
+    let ledger = with_presence(aged(ledger(&edge), 10 * DAY), DAY - 100, DAY - 100, 200);
+    edge.shutdown().await;
+    let edge = start_full("usdc-back-later", &url, Some(&ledger), true, false, kube).await;
+    sends_nothing(&chain).await;
+    assert_eq!(purchase(&edge, &order_id).await["escrow"]["step"], "held");
+    // The count in a row starts over; what it was down in all stays.
+    let raw = std::fs::read(edge.dir.join("market-test.json")).unwrap();
+    let saved: Value = serde_json::from_slice(&raw).unwrap();
+    assert_eq!(saved["presence"]["seller-box"]["streak"], 0, "{saved}");
+    assert_eq!(
+        saved["presence"]["seller-box"]["offline"],
+        DAY - 100,
+        "{saved}"
+    );
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_box_down_a_minute_a_day_is_refunded_after_two_days_in_all() {
+    let (chain, url, edge, _) = ten_days_in("usdc-blink").await;
+    // Never a day in a row, but two days in all since the purchase.
+    let kube = mesh("Bound").await;
+    kube.set_node("seller-box", false, true);
+    let ledger = with_presence(aged(ledger(&edge), 10 * DAY), 3_600, 2 * DAY - 100, 200);
+    edge.shutdown().await;
+    let edge = start_full("usdc-blink-later", &url, Some(&ledger), true, false, kube).await;
+    assert_eq!(wait_sent(&chain, 1).await, [(SETTLE.to_string(), 1)]);
+    // Twenty days to come and two down: 22 of 30, rounded up to the cent.
+    assert_eq!(settled_refund(&chain), 1_470_000);
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn an_edge_that_was_down_counts_none_of_it_against_the_seller() {
+    let (chain, url, edge, order_id) = ten_days_in("usdc-edge-down").await;
+    // The node is not Ready, but the edge's last look was two hours ago:
+    // it was down itself, and cannot say the box was.
+    let kube = mesh("Bound").await;
+    kube.set_node("seller-box", false, false);
+    let ledger = with_presence(aged(ledger(&edge), 10 * DAY), DAY - 100, DAY - 100, 7_200);
+    edge.shutdown().await;
+    let edge = start_full(
+        "usdc-edge-down-later",
+        &url,
+        Some(&ledger),
+        true,
+        false,
+        kube,
+    )
+    .await;
+    sends_nothing(&chain).await;
+    assert_eq!(purchase(&edge, &order_id).await["escrow"]["step"], "held");
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn an_edge_takes_only_payments_it_can_hold_unless_told_otherwise() {
+    let (_chain, url) = start_chain().await;
+    let edge = start_opts(
+        "usdc-held-only",
+        &url,
+        None,
+        true,
+        true,
+        mesh("Bound").await,
+        false,
+    )
+    .await;
+    // A seller with only a Solana payout cannot be paid in a way the edge
+    // could refund: not on the shelf, and no order can be made.
+    set_solana_payout(&edge, 9).await;
+    let account = seller_account(&edge).await;
+    assert_eq!(account["seller_ready"], false, "{account}");
+    assert_eq!(account["direct_pay"], false, "{account}");
+    assert!(account.get("coins").is_none(), "{account}");
+    // With an EVM payout too, the checkout names only the EVM networks and
+    // no coin, though the edge runs a Bitcoin node.
+    set_payout(&edge, 7).await;
+    let invoice = order(&edge, 10).await;
+    let chains: Vec<&str> = invoice["chains"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["network"].as_str().unwrap())
+        .collect();
+    assert_eq!(chains, ["base-sepolia", "arbitrum-sepolia"], "{invoice}");
+    assert!(
+        invoice
+            .get("coins")
+            .is_none_or(|c| c.as_array().is_some_and(Vec::is_empty)),
+        "{invoice}"
+    );
+    let (status, body) = edge
+        .post(
+            "/market/coins/pay",
+            with(
+                auth("buyer-box", OTHER_TOKEN),
+                json!({ "order_id": invoice["order_id"], "coin": "btc" }),
+            ),
+        )
+        .await;
+    assert_eq!(status, 400, "{body}");
+    edge.shutdown().await;
 }

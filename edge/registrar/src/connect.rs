@@ -1,9 +1,10 @@
 //! Stripe Connect behind one interface.
 //!
 //! The market is a Connect platform. A seller gets an Express account and
-//! finishes Stripe's hosted onboarding; a buyer pays through a *destination
-//! charge*, where the platform charges the card, keeps its fee and forwards
-//! the rest to the seller's account. [`Connect`] is that list of operations
+//! finishes Stripe's hosted onboarding; a buyer pays the platform, which holds
+//! the money until the slot is over (`crate::slots`) and then *settles* it:
+//! the seller's account gets what was delivered less the fee, and the buyer
+//! gets back what was not. [`Connect`] is that list of operations
 //! and nothing else, so the market's flow is written once and runs against
 //! either platform:
 //!
@@ -264,6 +265,12 @@ pub trait Connect: Send + Sync {
         signature: &'a str,
         body: &'a [u8],
     ) -> ConnectFuture<'a, StripeMode>;
+
+    /// End a paid charge's hold: `refund` back to the buyer, the rest less
+    /// the scaled fee to the seller named at checkout. Returns what the
+    /// buyer has been refunded in all. Asking again once it went through
+    /// sends nothing more.
+    fn settle<'a>(&'a self, payment_intent: &'a str, refund: u64) -> ConnectFuture<'a, u64>;
 }
 
 impl Connect for GateClient {
@@ -311,6 +318,10 @@ impl Connect for GateClient {
         body: &'a [u8],
     ) -> ConnectFuture<'a, StripeMode> {
         Box::pin(GateClient::verify_webhook(self, signature, body))
+    }
+
+    fn settle<'a>(&'a self, payment_intent: &'a str, refund: u64) -> ConnectFuture<'a, u64> {
+        Box::pin(GateClient::settle(self, payment_intent, refund))
     }
 }
 
@@ -373,6 +384,10 @@ impl Connect for NoCards {
     ) -> ConnectFuture<'a, StripeMode> {
         no_cards()
     }
+
+    fn settle<'a>(&'a self, _payment_intent: &'a str, _refund: u64) -> ConnectFuture<'a, u64> {
+        no_cards()
+    }
 }
 
 // ── the in-memory platform ───────────────────────────────────────────────
@@ -394,8 +409,21 @@ struct Memory {
     accounts: BTreeMap<String, MemoryAccount>,
     by_tenant: BTreeMap<String, String>,
     sessions: BTreeMap<String, (Session, DestinationCharge)>,
+    /// Paid charges by payment intent.
+    payments: BTreeMap<String, MemoryPayment>,
     links: u64,
     events: u64,
+}
+
+/// A paid charge as the in-memory platform holds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemoryPayment {
+    pub charge: DestinationCharge,
+    /// Refunded to the buyer in all.
+    pub refunded: u64,
+    /// Transferred to the seller.
+    pub transferred: Option<u64>,
+    pub disputed: bool,
 }
 
 /// A Connect platform in memory, with Stripe's rules where the market relies
@@ -474,6 +502,21 @@ impl MemoryConnect {
         })
     }
 
+    /// The payment behind `session_id`, once its completed event was made.
+    #[must_use]
+    pub fn payment_of(&self, session_id: &str) -> Option<MemoryPayment> {
+        self.with(|m| m.payments.get(&memory_id("pi_", session_id)).cloned())
+    }
+
+    /// Open (or close) a dispute on the payment behind `session_id`.
+    pub fn set_disputed(&self, session_id: &str, disputed: bool) {
+        self.with(|m| {
+            if let Some(p) = m.payments.get_mut(&memory_id("pi_", session_id)) {
+                p.disputed = disputed;
+            }
+        });
+    }
+
     /// How many onboarding links were handed out.
     #[must_use]
     pub fn links(&self) -> u64 {
@@ -545,6 +588,19 @@ impl MemoryConnect {
                 MarketError::Stripe(format!("No such checkout.session: {session_id}"))
             })?;
         let paid = kind == "checkout.session.completed";
+        let payment_intent = memory_id("pi_", &session.id);
+        if paid {
+            self.with(|m| {
+                m.payments
+                    .entry(payment_intent.clone())
+                    .or_insert_with(|| MemoryPayment {
+                        charge: charge.clone(),
+                        refunded: 0,
+                        transferred: None,
+                        disputed: false,
+                    });
+            });
+        }
         Ok(self.signed(&json!({
             "id": self.next_event_id(),
             "created": now_secs(),
@@ -556,6 +612,7 @@ impl MemoryConnect {
                 "payment_status": if paid { "paid" } else { "unpaid" },
                 "amount_total": charge.split.gross(),
                 "currency": charge.currency,
+                "payment_intent": paid.then_some(payment_intent),
                 "metadata": { "order_id": charge.order_id },
             }},
         })))
@@ -737,6 +794,38 @@ impl Connect for MemoryConnect {
                 }
             }
             Ok(self.mode)
+        })
+    }
+
+    fn settle<'a>(&'a self, payment_intent: &'a str, refund: u64) -> ConnectFuture<'a, u64> {
+        Box::pin(async move {
+            self.configured()?;
+            self.with(|m| {
+                let p = m.payments.get_mut(payment_intent).ok_or_else(|| {
+                    MarketError::Stripe(format!("No such payment_intent: '{payment_intent}'"))
+                })?;
+                // The gate's own rules, on the gate's own reading of the charge.
+                let facts = crate::stripe_gate::ChargeFacts {
+                    payment_intent: payment_intent.to_string(),
+                    order_id: Some(p.charge.order_id.clone()),
+                    destination: Some(p.charge.destination.clone()),
+                    fee: Some(p.charge.split.fee()),
+                    succeeded: true,
+                    amount: p.charge.split.gross(),
+                    currency: p.charge.currency.clone(),
+                    charge_id: Some(format!("ch_{payment_intent}")),
+                    refunded: p.refunded,
+                    disputed: p.disputed,
+                    transferred: p.transferred.is_some(),
+                };
+                let plan = crate::stripe_gate::settle_plan(&facts, refund, &p.charge.currency)
+                    .map_err(|why| MarketError::Stripe(format!("gate refused: {why}")))?;
+                p.refunded += plan.refund_more;
+                if plan.transfer > 0 {
+                    p.transferred = Some(plan.transfer);
+                }
+                Ok(p.refunded)
+            })
         })
     }
 }

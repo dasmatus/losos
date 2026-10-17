@@ -2,9 +2,10 @@
 pragma solidity 0.8.24;
 
 /// @title LososEscrow
-/// @notice Holds one USDC payment per deposit until the edge has checked the
-/// order. The edge then releases it to the treasury and the seller recorded
-/// at payment time, or refunds it to the payer. The edge's key can do nothing
+/// @notice Holds one USDC payment per deposit for as long as what it bought
+/// runs. The edge then releases it to the treasury and the seller recorded
+/// at payment time, refunds it to the payer, or splits it between the two
+/// when the seller stopped delivering partway. The edge's key can do nothing
 /// else: it cannot change where a deposit goes. If the edge never answers,
 /// the payer takes the deposit back after its deadline.
 interface IERC20 {
@@ -18,7 +19,8 @@ contract LososEscrow {
         None,
         Held,
         Released,
-        Refunded
+        Refunded,
+        Split
     }
 
     struct Deposit {
@@ -43,9 +45,10 @@ contract LososEscrow {
     uint256 public constant MAX_FEE_BPS = 5000;
     /// A payer can take a deposit back only after its deadline, and the
     /// deadline has to leave the edge time to check the payment: at least an
-    /// hour, at most 30 days.
+    /// hour. At most 35 days: a month of storage or machines, plus the days
+    /// the edge has to pay the seller once the month is over.
     uint64 public constant MIN_HOLD = 1 hours;
-    uint64 public constant MAX_HOLD = 30 days;
+    uint64 public constant MAX_HOLD = 35 days;
 
     uint256 public depositCount;
     /// USDC this contract owes to open deposits. Anything above it is a
@@ -66,6 +69,9 @@ contract LososEscrow {
         uint256 indexed depositId, bytes32 indexed orderId, address indexed seller, uint256 gross, uint256 fee
     );
     event Refunded(uint256 indexed depositId, bytes32 indexed orderId, address indexed payer, uint256 gross);
+    event Settled(
+        uint256 indexed depositId, bytes32 indexed orderId, address indexed seller, uint256 refunded, uint256 fee
+    );
     event ReleaserChanged(address indexed previous, address indexed next);
     event Rescued(address indexed token, address indexed to, uint256 amount);
 
@@ -78,6 +84,7 @@ contract LososEscrow {
     error NotTreasury();
     error NotHeld();
     error TooEarly();
+    error BadSplit();
     error OwedToDeposits();
     error TransferFailed();
 
@@ -138,6 +145,26 @@ contract LososEscrow {
         held -= d.gross;
         _send(d.payer, d.gross);
         emit Refunded(depositId, d.orderId, d.payer, d.gross);
+    }
+
+    /// Part back to the payer, the rest released: the seller's box went
+    /// offline partway through what was bought, so the payer gets back the
+    /// share that was not delivered and the seller keeps the share that was.
+    /// The fee shrinks with the seller's share, rounded down. For all or
+    /// nothing, the edge calls `refund` or `release`.
+    function settle(uint256 depositId, uint256 refundAmount) external {
+        if (msg.sender != releaser) revert NotReleaser();
+        Deposit storage d = deposits[depositId];
+        if (d.state != State.Held) revert NotHeld();
+        if (refundAmount == 0 || refundAmount >= d.gross) revert BadSplit();
+        d.state = State.Split;
+        held -= d.gross;
+        uint256 kept = d.gross - refundAmount;
+        uint256 fee = d.fee * kept / d.gross;
+        _send(d.payer, refundAmount);
+        _send(treasury, fee);
+        _send(d.seller, kept - fee);
+        emit Settled(depositId, d.orderId, d.seller, refundAmount, fee);
     }
 
     /// A new edge key, for a rotation or after a compromise.

@@ -516,6 +516,17 @@ impl Registry {
     /// enriches views from the on-disk token files so the secret stays the
     /// single source of truth.
     #[must_use]
+    /// The tenants heard from within `ttl`, relayed ones included.
+    pub async fn alive(&self, ttl: Duration) -> std::collections::BTreeSet<String> {
+        let st = self.inner.lock().await;
+        let now = Instant::now();
+        st.tenants
+            .iter()
+            .filter(|(_, t)| now.duration_since(t.last_seen) < ttl)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
     pub async fn views(&self) -> Vec<TenantView> {
         let st = self.inner.lock().await;
         let mut v: Vec<TenantView> = st

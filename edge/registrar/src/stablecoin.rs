@@ -317,9 +317,10 @@ pub struct ExpectedPayment {
 }
 
 /// How long after an order's hold the payer may take an unreleased deposit
-/// back. The edge releases within seconds of confirming a payment, so this
-/// only matters when the edge is down for a day.
-pub const ESCROW_REFUND_AFTER_SECS: u64 = 24 * 60 * 60;
+/// back: the month the slot runs (`crate::slots`), the day the seller has to
+/// ask for the payout, and the two days the edge keeps in hand before the
+/// deadline. `LososEscrow` takes deadlines up to 35 days out.
+pub const ESCROW_REFUND_AFTER_SECS: u64 = 33 * 24 * 60 * 60;
 
 /// The escrow deadline for an order whose hold ends at `pay_before`.
 #[must_use]
@@ -334,6 +335,8 @@ pub enum DepositState {
     Held,
     Released,
     Refunded,
+    /// Part refunded, the rest released (`settle`).
+    Split,
 }
 
 /// Cents of the market's currency, as USDC base units (6 decimals).
@@ -868,6 +871,7 @@ pub async fn deposit_state(
         Some(1) => Ok(DepositState::Held),
         Some(2) => Ok(DepositState::Released),
         Some(3) => Ok(DepositState::Refunded),
+        Some(4) => Ok(DepositState::Split),
         _ => Err(MarketError::Conflict("the chain endpoint did not answer")),
     }
 }

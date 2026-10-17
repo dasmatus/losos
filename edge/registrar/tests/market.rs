@@ -2,8 +2,9 @@
 //!
 //! The real routes run on a real socket against a stand-in for Stripe that
 //! records every request. What is asserted is what the edge sends Stripe (a
-//! destination charge carrying the 4% application fee, to the seller's own
-//! connected account), what it refuses to do (sell before onboarding, oversell,
+//! charge the platform holds, naming the seller's own connected account and
+//! the 4% fee, then one transfer or refund once the slot is settled), what it
+//! refuses to do (sell before onboarding, oversell,
 //! trust an unsigned or mismatched webhook), and what each party can see.
 //!
 //! The stub cannot say whether Stripe accepts the shapes; the first test-mode
@@ -48,6 +49,10 @@ struct StripeState {
     /// Make checkout creation fail with a 500.
     fail_checkout: Arc<AtomicBool>,
     sessions: Arc<AtomicU64>,
+    /// Payment intents by id, made paid as each session is created.
+    payments: Arc<Mutex<HashMap<String, Value>>>,
+    /// Transfers made, as their forms.
+    transfers: Arc<Mutex<Vec<HashMap<String, String>>>>,
 }
 
 struct StripeStub {
@@ -64,6 +69,8 @@ impl StripeStub {
             account_ready: Arc::default(),
             fail_checkout: Arc::default(),
             sessions: Arc::default(),
+            payments: Arc::default(),
+            transfers: Arc::default(),
         };
         let app = Router::new()
             .fallback(stripe_handler)
@@ -90,6 +97,15 @@ impl StripeStub {
 
     fn seen(&self) -> Vec<Seen> {
         self.state.seen.lock().expect("log not poisoned").clone()
+    }
+
+    fn payment(&self, id: &str) -> Value {
+        self.state.payments.lock().expect("payments not poisoned")[id].clone()
+    }
+
+    fn set_payment(&self, id: &str, f: impl FnOnce(&mut Value)) {
+        let mut payments = self.state.payments.lock().expect("payments not poisoned");
+        f(payments.get_mut(id).expect("a payment"));
     }
 
     fn calls(&self, method: &str, path: &str) -> Vec<Seen> {
@@ -135,7 +151,7 @@ async fn stripe_handler(
         path: uri.path().to_string(),
         bearer: header("authorization").unwrap_or_default(),
         idempotency_key: header("idempotency-key"),
-        form,
+        form: form.clone(),
     });
     match (method.as_str(), uri.path()) {
         ("POST", "/v1/accounts") => Json(json!({ "id": "acct_test_1" })).into_response(),
@@ -159,11 +175,80 @@ async fn stripe_handler(
                     .into_response();
             }
             let n = state.sessions.fetch_add(1, Ordering::SeqCst) + 1;
+            let field = |k: &str| form.get(k).cloned().unwrap_or_default();
+            let quantity: u64 = field("line_items[0][quantity]").parse().unwrap_or(0);
+            let unit: u64 = field("line_items[0][price_data][unit_amount]")
+                .parse()
+                .unwrap_or(0);
+            state.payments.lock().expect("payments not poisoned").insert(
+                format!("pi_test_{n}"),
+                json!({
+                    "id": format!("pi_test_{n}"),
+                    "status": "succeeded",
+                    "amount_received": quantity * unit,
+                    "currency": field("line_items[0][price_data][currency]"),
+                    "metadata": {
+                        "order_id": field("payment_intent_data[metadata][order_id]"),
+                        "losos_destination": field("payment_intent_data[metadata][losos_destination]"),
+                        "losos_fee": field("payment_intent_data[metadata][losos_fee]"),
+                    },
+                    "latest_charge": { "id": format!("ch_test_{n}"), "amount_refunded": 0, "disputed": false },
+                }),
+            );
             Json(json!({
                 "id": format!("cs_test_{n}"),
                 "url": format!("https://checkout.stripe.test/c/pay/cs_test_{n}"),
             }))
             .into_response()
+        }
+        ("GET", path) if path.starts_with("/v1/payment_intents/") => {
+            let id = &path["/v1/payment_intents/".len()..];
+            match state
+                .payments
+                .lock()
+                .expect("payments not poisoned")
+                .get(id)
+            {
+                Some(pi) => Json(pi.clone()).into_response(),
+                None => StatusCode::NOT_FOUND.into_response(),
+            }
+        }
+        ("GET", "/v1/transfers") => {
+            let group = uri
+                .query()
+                .unwrap_or("")
+                .split('&')
+                .find_map(|p| p.strip_prefix("transfer_group="))
+                .map(decode)
+                .unwrap_or_default();
+            let data: Vec<Value> = state
+                .transfers
+                .lock()
+                .expect("transfers not poisoned")
+                .iter()
+                .filter(|t| t.get("transfer_group") == Some(&group))
+                .map(|t| json!(t))
+                .collect();
+            Json(json!({ "data": data })).into_response()
+        }
+        ("POST", "/v1/transfers") => {
+            state
+                .transfers
+                .lock()
+                .expect("transfers not poisoned")
+                .push(form.clone());
+            Json(json!({ "id": "tr_test_1" })).into_response()
+        }
+        ("POST", "/v1/refunds") => {
+            let id = form.get("payment_intent").cloned().unwrap_or_default();
+            let amount: u64 = form.get("amount").and_then(|a| a.parse().ok()).unwrap_or(0);
+            let mut payments = state.payments.lock().expect("payments not poisoned");
+            let Some(pi) = payments.get_mut(&id) else {
+                return StatusCode::NOT_FOUND.into_response();
+            };
+            let before = pi["latest_charge"]["amount_refunded"].as_u64().unwrap_or(0);
+            pi["latest_charge"]["amount_refunded"] = json!(before + amount);
+            Json(json!({ "id": "re_test_1" })).into_response()
         }
         _ => StatusCode::NOT_FOUND.into_response(),
     }
@@ -292,6 +377,63 @@ async fn order(edge: &Edge, listing_id: &str, quantity: u64) -> (u16, String) {
     .await
 }
 
+const DAY: u64 = 24 * 60 * 60;
+
+async fn close(edge: &Edge, listing_id: &str) -> (u16, String) {
+    edge.post(
+        "/market/listings/close",
+        with(
+            auth("seller-box", GOOD_TOKEN),
+            json!({ "listing_id": listing_id }),
+        ),
+    )
+    .await
+}
+
+/// Every order's clock moved back by `secs`, as if that long had passed.
+fn aged(mut ledger: Value, secs: u64) -> Value {
+    if let Some(orders) = ledger["orders"].as_object_mut() {
+        for o in orders.values_mut() {
+            for key in ["created_at", "paid_at", "expires_at"] {
+                if let Some(t) = o[key].as_u64() {
+                    o[key] = json!(t - secs);
+                }
+            }
+        }
+    }
+    ledger
+}
+
+fn ledger(edge: &Edge) -> Value {
+    let raw = std::fs::read(edge.dir.join("market-test.json")).expect("read the ledger");
+    serde_json::from_slice(&raw).expect("the ledger is JSON")
+}
+
+/// Stop `edge` and start it again on its ledger aged by `secs`, against the
+/// same Stripe stand-in: how a test lets a slot run its course.
+async fn later(edge: Edge, stripe: &StripeStub, tag: &str, secs: u64) -> Edge {
+    restart(edge, stripe, tag, |l| aged(l, secs)).await
+}
+
+async fn restart(
+    edge: Edge,
+    stripe: &StripeStub,
+    tag: &str,
+    f: impl FnOnce(Value) -> Value,
+) -> Edge {
+    let ledger = f(ledger(&edge));
+    edge.shutdown().await;
+    Edge::start_market_with_state(
+        tag,
+        &tenants(),
+        &stripe.base,
+        MeshFixture::default(),
+        &[("seller-box", true)],
+        &ledger,
+    )
+    .await
+}
+
 fn completed(order_id: &str, session_id: &str, amount: u64) -> Value {
     json!({
         "type": "checkout.session.completed",
@@ -301,6 +443,7 @@ fn completed(order_id: &str, session_id: &str, amount: u64) -> Value {
             "payment_status": "paid",
             "amount_total": amount,
             "currency": "eur",
+            "payment_intent": session_id.replace("cs_", "pi_"),
         }}
     })
 }
@@ -536,13 +679,22 @@ async fn a_purchase_is_a_destination_charge_with_the_four_percent_cut() {
     assert_eq!(sent.form["line_items[0][price_data][unit_amount]"], "250");
     assert_eq!(sent.form["line_items[0][price_data][currency]"], "eur");
     assert_eq!(sent.form["payment_method_types[]"], "card");
+    // The platform holds the money: nothing is sent to the seller at
+    // checkout, and the seller and the fee ride on the payment.
+    assert!(!sent
+        .form
+        .contains_key("payment_intent_data[application_fee_amount]"));
+    assert!(!sent
+        .form
+        .contains_key("payment_intent_data[transfer_data][destination]"));
+    assert_eq!(sent.form["payment_intent_data[metadata][losos_fee]"], "80");
     assert_eq!(
-        sent.form["payment_intent_data[application_fee_amount]"],
-        "80"
+        sent.form["payment_intent_data[metadata][losos_destination]"],
+        "acct_test_1"
     );
     assert_eq!(
-        sent.form["payment_intent_data[transfer_data][destination]"],
-        "acct_test_1"
+        sent.form["payment_intent_data[transfer_group]"],
+        sent.form["client_reference_id"]
     );
     assert!(sent.form["success_url"].starts_with(RETURN_URL));
     let expires: u64 = sent.form["expires_at"].parse().expect("expires_at");
@@ -757,23 +909,30 @@ async fn closing_a_listing_stops_new_orders_but_keeps_paid_ones() {
         )
         .await;
     assert_eq!(status, 404);
-    let (status, _) = edge
-        .post(
-            "/market/listings/close",
-            with(
-                auth("seller-box", GOOD_TOKEN),
-                json!({ "listing_id": listing_id }),
-            ),
-        )
-        .await;
-    assert_eq!(status, 204);
+    // Not while a buyer's slot on it runs.
+    let (status, body) = close(&edge, &listing_id).await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("slot ends"), "{body}");
+    assert_eq!(order(&edge, &listing_id, 1).await.0, 201);
+
+    // A month on, it can go.
+    let edge = later(edge, &stripe, "market-close-later", 30 * DAY + 60).await;
+    let (status, body) = close(&edge, &listing_id).await;
+    assert_eq!(status, 204, "{body}");
 
     assert_eq!(order(&edge, &listing_id, 1).await.0, 404);
     assert_eq!(browse(&edge).await.1.as_array().map(Vec::len), Some(0));
     let (_, body) = edge
         .post("/market/account", auth("buyer-box", OTHER_TOKEN))
         .await;
-    assert_eq!(parse(&body)["purchases"][0]["status"], "paid");
+    let paid = parse(&body)["purchases"]
+        .as_array()
+        .expect("purchases")
+        .iter()
+        .find(|o| o["id"] == order_id.as_str())
+        .cloned()
+        .expect("the paid order");
+    assert_eq!(paid["status"], "paid", "{paid}");
 
     edge.shutdown().await;
     stripe.shutdown().await;
@@ -983,9 +1142,16 @@ async fn a_paid_storage_order_becomes_a_claim_in_the_buyers_namespace() {
     assert_eq!(pvc.1["spec"]["accessModes"][0], "ReadWriteOnce");
 
     // Fulfilment is once-only: later reconcile passes create nothing more.
-    let seen = kube.seen().len();
+    // They do look at the seller's node, whose slot is running.
+    let writes = || {
+        kube.seen()
+            .into_iter()
+            .filter(|r| !r.starts_with("GET /api/v1/nodes/"))
+            .count()
+    };
+    let seen = writes();
     tokio::time::sleep(Duration::from_millis(300)).await;
-    assert_eq!(kube.seen().len(), seen);
+    assert_eq!(writes(), seen);
 
     edge.shutdown().await;
     kube.shutdown().await;
@@ -1201,7 +1367,14 @@ async fn compute_orders_are_a_credit_and_touch_no_cluster() {
     assert_eq!(account["entitlements"]["compute_vcpu_hours"], 12);
     assert_eq!(account["entitlements"]["storage_gib"], 0);
     assert!(account["purchases"][0]["volume"].is_null());
-    assert!(kube.seen().is_empty(), "{:?}", kube.seen());
+    // Only the seller's node is looked at, for the running slot.
+    assert!(
+        kube.seen()
+            .iter()
+            .all(|r| r == "GET /api/v1/nodes/seller-box"),
+        "{:?}",
+        kube.seen()
+    );
 
     edge.shutdown().await;
     kube.shutdown().await;
@@ -1724,12 +1897,9 @@ async fn a_machine_order_is_split_in_half_and_becomes_replicas_on_the_hosting_bo
         "half to the platform, half to the host"
     );
     let sent = &stripe.calls("POST", "/v1/checkout/sessions")[0];
+    assert_eq!(sent.form["payment_intent_data[metadata][losos_fee]"], "900");
     assert_eq!(
-        sent.form["payment_intent_data[application_fee_amount]"],
-        "900"
-    );
-    assert_eq!(
-        sent.form["payment_intent_data[transfer_data][destination]"],
+        sent.form["payment_intent_data[metadata][losos_destination]"],
         "acct_test_1"
     );
     let order_id = checkout["order_id"].as_str().expect("order id").to_string();
@@ -2257,6 +2427,306 @@ async fn a_key_that_names_no_mode_is_refused() {
         stripe.seen().is_empty(),
         "a key of unknown mode is never sent"
     );
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+// ── slots on a card ──────────────────────────────────────────────────────
+
+async fn seller_account(edge: &Edge) -> Value {
+    let (status, body) = edge
+        .post("/market/account", auth("seller-box", GOOD_TOKEN))
+        .await;
+    assert_eq!(status, 200, "{body}");
+    parse(&body)
+}
+
+async fn release(edge: &Edge) -> (u16, String) {
+    edge.post("/market/sales/release", auth("seller-box", GOOD_TOKEN))
+        .await
+}
+
+/// Wait until the buyer's first purchase's card payment reaches `step`.
+async fn wait_card(edge: &Edge, step: &str) -> Value {
+    for _ in 0..100 {
+        let order = buyer_account(edge).await["purchases"][0].clone();
+        if order["card"]["step"] == step {
+            return order;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!(
+        "the card payment never reached {step}: {}",
+        buyer_account(edge).await
+    );
+}
+
+/// `ledger` with the seller's box seen offline for `streak` seconds in a
+/// row and `offline` in all, the last check `ago` seconds back.
+fn with_presence(mut ledger: Value, streak: u64, offline: u64, ago: u64) -> Value {
+    ledger["presence"] = json!({ "seller-box": { "streak": streak, "offline": offline } });
+    ledger["presence_tick"] = json!(now() - ago);
+    ledger
+}
+
+#[tokio::test]
+async fn a_card_payment_is_held_until_the_slot_ends_then_paid_once() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("card-slot", &tenants(), &stripe.base).await;
+    // 20 vCPU-hours at 1 EUR: the seller is owed 19.20 once the month is up.
+    buy_paid(&edge, "compute", 20).await;
+    let order = wait_card(&edge, "held").await;
+    assert!(order["payout_at"].as_u64().is_some(), "{order}");
+    assert!(order["card"].get("payment_intent").is_none(), "{order}");
+
+    let account = seller_account(&edge).await;
+    assert_eq!(account["payouts"]["held"], 1920, "{account}");
+    assert_eq!(account["payouts"]["ready"], 0, "{account}");
+    let (status, body) = release(&edge).await;
+    assert_eq!(status, 409, "{body}");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(stripe.calls("POST", "/v1/transfers").is_empty());
+    assert!(stripe.calls("POST", "/v1/refunds").is_empty());
+
+    // Over: the seller asks and is paid, out of this very charge.
+    let edge = later(edge, &stripe, "card-slot-later", 30 * DAY + 60).await;
+    assert_eq!(seller_account(&edge).await["payouts"]["ready"], 1920);
+    let (status, body) = release(&edge).await;
+    assert_eq!(status, 200, "{body}");
+    wait_card(&edge, "released").await;
+    let transfers = stripe.calls("POST", "/v1/transfers");
+    assert_eq!(transfers.len(), 1);
+    let t = &transfers[0];
+    assert_eq!(t.form["amount"], "1920");
+    assert_eq!(t.form["destination"], "acct_test_1");
+    assert_eq!(t.form["source_transaction"], "ch_test_1");
+    assert_eq!(
+        t.idempotency_key.as_deref(),
+        Some("losos-transfer-pi_test_1")
+    );
+    assert!(stripe.calls("POST", "/v1/refunds").is_empty());
+    // Nothing more, however often it is asked.
+    assert_eq!(release(&edge).await.0, 409);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(stripe.calls("POST", "/v1/transfers").len(), 1);
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_edge_pays_a_seller_who_never_asks_a_day_after_the_slot() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("card-auto", &tenants(), &stripe.base).await;
+    buy_paid(&edge, "compute", 20).await;
+    wait_card(&edge, "held").await;
+    // Just under a day after the end: still waiting for the seller.
+    let edge = later(edge, &stripe, "card-auto-23h", 31 * DAY - 120).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(stripe.calls("POST", "/v1/transfers").is_empty());
+    let edge = later(edge, &stripe, "card-auto-day", 240).await;
+    wait_card(&edge, "released").await;
+    assert_eq!(stripe.calls("POST", "/v1/transfers").len(), 1);
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_box_offline_for_a_day_refunds_the_card_for_what_it_did_not_deliver() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("card-offline", &tenants(), &stripe.base).await;
+    buy_paid(&edge, "compute", 20).await;
+    wait_card(&edge, "held").await;
+    // Ten days in, a day offline as of the next pass: the box has not
+    // heartbeated, and there is no mesh apiserver to ask instead.
+    let edge = restart(edge, &stripe, "card-offline-later", |l| {
+        with_presence(aged(l, 10 * DAY), DAY - 100, DAY - 100, 200)
+    })
+    .await;
+    let order = wait_card(&edge, "settled").await;
+    assert_eq!(order["card"]["reason"], "sellerOffline", "{order}");
+    // Just over 21 of 30 days back, rounded up to the cent.
+    assert_eq!(order["card"]["refund"], 1401, "{order}");
+    let refunds = stripe.calls("POST", "/v1/refunds");
+    assert_eq!(refunds.len(), 1);
+    assert_eq!(refunds[0].form["amount"], "1401");
+    assert_eq!(refunds[0].form["payment_intent"], "pi_test_1");
+    // The seller keeps the 5.99 delivered, less its share of the fee.
+    let transfers = stripe.calls("POST", "/v1/transfers");
+    assert_eq!(transfers.len(), 1);
+    assert_eq!(
+        transfers[0].form["amount"],
+        (599 - 80 * 599 / 2000).to_string()
+    );
+    assert_eq!(
+        stripe.payment("pi_test_1")["latest_charge"]["amount_refunded"],
+        1401
+    );
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_box_offline_from_the_start_refunds_the_card_in_full() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("card-never", &tenants(), &stripe.base).await;
+    buy_paid(&edge, "compute", 20).await;
+    wait_card(&edge, "held").await;
+    let edge = restart(edge, &stripe, "card-never-later", |l| {
+        with_presence(aged(l, DAY), DAY - 100, DAY - 100, 200)
+    })
+    .await;
+    let order = wait_card(&edge, "refunded").await;
+    assert_eq!(order["card"]["reason"], "sellerOffline", "{order}");
+    let refunds = stripe.calls("POST", "/v1/refunds");
+    assert_eq!(refunds.len(), 1);
+    assert_eq!(refunds[0].form["amount"], "2000");
+    assert!(stripe.calls("POST", "/v1/transfers").is_empty());
+    // The seller has nothing to pay out and nothing held.
+    let account = seller_account(&edge).await;
+    assert_eq!(account["payouts"]["held"], 0, "{account}");
+    assert_eq!(account["payouts"]["ready"], 0, "{account}");
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_disputed_card_payment_moves_nowhere() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("card-dispute", &tenants(), &stripe.base).await;
+    buy_paid(&edge, "compute", 20).await;
+    wait_card(&edge, "held").await;
+    stripe.set_payment("pi_test_1", |pi| {
+        pi["latest_charge"]["disputed"] = json!(true);
+    });
+    let edge = later(edge, &stripe, "card-dispute-later", 30 * DAY + 60).await;
+    assert_eq!(release(&edge).await.0, 200);
+    // The gate refuses both ways while Stripe decides; the edge waits.
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(stripe.calls("POST", "/v1/transfers").is_empty());
+    assert!(stripe.calls("POST", "/v1/refunds").is_empty());
+    let order = buyer_account(&edge).await["purchases"][0].clone();
+    assert_eq!(order["card"]["step"], "release", "{order}");
+    // A failed try waits before the next: one read of the payment, not one
+    // per pass.
+    let reads = stripe
+        .seen()
+        .iter()
+        .filter(|s| s.path == "/v1/payment_intents/pi_test_1")
+        .count();
+    assert_eq!(reads, 1);
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_gate_never_refunds_a_seller_already_paid() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("card-paid-then", &tenants(), &stripe.base).await;
+    buy_paid(&edge, "compute", 20).await;
+    wait_card(&edge, "held").await;
+    let edge = later(edge, &stripe, "card-paid-then-later", 30 * DAY + 60).await;
+    assert_eq!(release(&edge).await.0, 200);
+    wait_card(&edge, "released").await;
+    // A ledger edited to refund after the transfer (a bug, or someone with
+    // the edge's disk) gets nothing from the gate.
+    let edge = restart(edge, &stripe, "card-paid-then-edit", |mut l| {
+        for o in l["orders"].as_object_mut().unwrap().values_mut() {
+            o["card"]["step"] = json!("refund");
+        }
+        l
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(stripe.calls("POST", "/v1/refunds").is_empty());
+    assert_eq!(
+        buyer_account(&edge).await["purchases"][0]["card"]["step"],
+        "refund"
+    );
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_seller_heard_from_keeps_its_buyer() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("card-heard", &tenants(), &stripe.base).await;
+    buy_paid(&edge, "compute", 20).await;
+    wait_card(&edge, "held").await;
+    // Most of a day down, and then its box is heard from again.
+    let edge = restart(edge, &stripe, "card-heard-later", |l| {
+        with_presence(aged(l, 10 * DAY), DAY - 1_000, DAY - 1_000, 200)
+    })
+    .await;
+    let (status, body) = edge
+        .register("seller-box", "seller.example", GOOD_TOKEN)
+        .await;
+    assert!(status == 200 || status == 201, "{status} {body}");
+    let back = edge
+        .wait_for(|| {
+            let l = ledger(&edge);
+            l["presence"]["seller-box"]["streak"] == 0
+        })
+        .await;
+    assert!(back, "{}", ledger(&edge));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(stripe.calls("POST", "/v1/refunds").is_empty());
+    assert_eq!(
+        buyer_account(&edge).await["purchases"][0]["card"]["step"],
+        "held"
+    );
+    // What it was down in all still counts toward the two-day rule.
+    assert!(ledger(&edge)["presence"]["seller-box"]["offline"].as_u64() >= Some(DAY - 1_000));
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_card_paid_after_its_units_were_sold_is_refunded_in_full() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("card-late", &tenants(), &stripe.base).await;
+    ready_seller(&edge).await;
+    let (_, body) = list(&edge, "compute", 100, 2).await;
+    let listing_id = parse(&body)["listing_id"].as_str().expect("id").to_string();
+    let (_, body) = order(&edge, &listing_id, 2).await;
+    let first = parse(&body)["order_id"].as_str().expect("id").to_string();
+    let expired = json!({
+        "type": "checkout.session.expired",
+        "data": { "object": { "id": "cs_test_1", "client_reference_id": first } }
+    });
+    assert_eq!(webhook(&edge, &expired).await.0, 200);
+    let (_, body) = order(&edge, &listing_id, 2).await;
+    let second = parse(&body)["order_id"].as_str().expect("id").to_string();
+    assert_eq!(
+        webhook(&edge, &completed(&second, "cs_test_2", 200))
+            .await
+            .0,
+        200
+    );
+    // Stripe retried the first session's payment after all.
+    assert_eq!(
+        webhook(&edge, &completed(&first, "cs_test_1", 200)).await.0,
+        200
+    );
+    for _ in 0..100 {
+        if !stripe.calls("POST", "/v1/refunds").is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let refunds = stripe.calls("POST", "/v1/refunds");
+    assert_eq!(refunds.len(), 1);
+    assert_eq!(refunds[0].form["payment_intent"], "pi_test_1");
+    assert_eq!(refunds[0].form["amount"], "200");
+    assert!(stripe.calls("POST", "/v1/transfers").is_empty());
+    let account = buyer_account(&edge).await;
+    let late = account["purchases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["id"] == first.as_str())
+        .cloned()
+        .unwrap();
+    assert_eq!(late["card"]["reason"], "lapsed", "{late}");
     edge.shutdown().await;
     stripe.shutdown().await;
 }
