@@ -210,6 +210,50 @@ const MARKET_OPEN = {
   },
 };
 
+/* A seller a month into selling: one listing a buyer has paid for until
+ * 30 October, that buyer's sale held, an earlier sale ready to pay out, and
+ * one purchase of its own whose seller went offline, partly refunded. */
+const SLOT_END = Date.UTC(2026, 9, 30, 9, 30) / 1000;
+const slotOrder = (id, extra) => ({
+  id,
+  listing_id: 'lst_held',
+  kind: 'storage',
+  unit: 'GiB-month',
+  quantity: 40,
+  amount: 2000,
+  fee: 80,
+  seller_net: 1920,
+  currency: 'eur',
+  status: 'paid',
+  created_at: SLOT_END - 30 * 86400,
+  paid_at: SLOT_END - 30 * 86400,
+  expires_at: SLOT_END,
+  expired: false,
+  volume: null,
+  ...extra,
+});
+const MARKET_SLOTS = {
+  ...MARKET_OPEN,
+  account: {
+    ...MARKET_OPEN.account,
+    seller_onboarded: true,
+    seller_ready: true,
+    listings: [
+      { id: 'lst_held', kind: 'storage', unit: 'GiB-month', unit_price: 50, capacity: 100, available: 60, active: true, locked_until: SLOT_END },
+    ],
+    sales: [
+      slotOrder('ord_sale1', { card: { step: 'held' }, payout_at: SLOT_END + 86400 }),
+      slotOrder('ord_sale2', { quantity: 20, amount: 1000, fee: 40, seller_net: 960, expires_at: NOW / 1000 - 3 * 86400, card: { step: 'held' } }),
+    ],
+    purchases: [
+      slotOrder('ord_bought', { kind: 'compute', unit: 'vCPU-hour', quantity: 20, card: { step: 'settled', reason: 'sellerOffline', refund: 1401 } }),
+    ],
+    payouts: { held: 1920, ready: 960, paying: 0, next_at: SLOT_END, auto_after_secs: 86400 },
+    offline_refund_secs: 86400,
+    direct_pay: false,
+  },
+};
+
 const CONFIG = {
   enabled: true,
   repository: {
@@ -815,6 +859,7 @@ const SHOTS = [
   { name: 'settings-hardware-sk-dark', path: '/settings/hardware', lang: 'sk', theme: 'dark' },
   { name: 'overview-de-dark', path: '/', lang: 'de', theme: 'dark' },
   { name: 'market-open', path: '/settings/market', edge: EDGE_OFFICIAL, market: MARKET_OPEN, settings: JOINED, langs: true },
+  { name: 'market-slots', path: '/settings/market', edge: EDGE_OFFICIAL, market: MARKET_SLOTS, settings: JOINED, full: true },
   // ── The wizard ───────────────────────────────────────────────────────
   { name: 'wizard-step1-trust', path: '/', claimed: false, signedIn: false, full: true, crop: 'column', langs: true },
   { name: 'wizard-step1-trust-phone', path: '/', claimed: false, signedIn: false, viewport: { width: 390, height: 844 } },

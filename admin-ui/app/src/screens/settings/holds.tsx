@@ -58,13 +58,18 @@ export function HoldNote({ order }: { order: MarketOrder }) {
   const hold = order.card ?? order.escrow ?? null;
   if (hold === null) return null;
   const refund = formatMoney(hold.refund ?? 0, order.currency);
-  const step = t(`panes.market.escrow.${hold.step}` as MessageKey, { refund });
+  // The edge keeps a payment `held` until it is paid out, also after the
+  // period is over; say which of the two it is.
+  const over = hold.step === "held" && order.expires_at !== null && order.expires_at * 1000 <= Date.now();
+  const step = over
+    ? t("panes.market.escrow.over")
+    : t(`panes.market.escrow.${hold.step}` as MessageKey, { refund });
   const reason =
     hold.reason != null && REASONS.includes(hold.reason) && hold.step !== "release" && hold.step !== "released"
       ? t(`panes.market.escrow.${hold.reason}` as MessageKey)
       : null;
   return (
-    <p className="mt-0.5 text-[12px] text-faint" data-testid="market-hold">
+    <p className="mt-0.5 text-[12px] whitespace-normal text-faint" data-testid="market-hold">
       {step}
       {reason !== null && ` · ${reason}`}
     </p>

@@ -1718,6 +1718,11 @@ export default defineMessages({
     sk: "Držané do konca zaplateného obdobia",
     de: "Gehalten, bis der bezahlte Zeitraum endet",
   },
+  "panes.market.escrow.over": {
+    en: "The paid period is over; waiting to be paid out",
+    sk: "Zaplatené obdobie skončilo; čaká na výplatu",
+    de: "Der bezahlte Zeitraum ist vorbei; wartet auf die Auszahlung",
+  },
   "panes.market.escrow.release": {
     en: "On its way to the seller",
     sk: "Na ceste k predajcovi",
