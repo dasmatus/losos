@@ -38,6 +38,16 @@ pub const OWNER: &str = "losos-owner";
 /// The group that may read every section and change none
 /// (`backend/sections.json`'s `viewers`).
 pub const VIEWERS: &str = "losos-viewers";
+/// The person has an authenticator app or a passkey, so LosOS Login asks
+/// for it at every sign-in (`crate::login`, `modules/identity.nix`).
+pub const TWO_FACTOR: &str = "losos-two-factor";
+/// A rule of LosOS Login holds the person to their own account
+/// (`crate::login`): LosOS Login keeps them out of LosOS cloud and LosOS
+/// Git, and this daemon out of everything but their account.
+pub const LOCKED: &str = "losos-locked";
+/// The marks this daemon keeps in step itself. Nobody hands them out, and a
+/// change of access keeps them.
+pub const MARKS: [&str; 2] = [TWO_FACTOR, LOCKED];
 /// Names already taken by the box's own accounts in LosOS cloud and LosOS
 /// Git: the owner's, the shared domain's and the Forgejo bot's. A person
 /// signing in under one of them would arrive as that account.
@@ -101,6 +111,19 @@ impl std::fmt::Display for Refused {
 }
 
 impl std::error::Error for Refused {}
+
+/// A name or email address a person cannot give their account, in words
+/// the Account pane shows as they are (a 400).
+#[derive(Debug, Clone, PartialEq)]
+pub struct BadDetails(pub String);
+
+impl std::fmt::Display for BadDetails {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for BadDetails {}
 
 impl Refused {
     /// 404 for nobody by that name, 409 for everything else.
@@ -387,7 +410,7 @@ impl People {
         let mut next: Vec<String> = record
             .groups
             .iter()
-            .filter(|g| *g == OWNER || !g.starts_with("losos-"))
+            .filter(|g| *g == OWNER || MARKS.contains(&g.as_str()) || !g.starts_with("losos-"))
             .cloned()
             .collect();
         for g in groups {
@@ -463,6 +486,67 @@ impl People {
         }
         record.groups.push(group.to_string());
         self.write(&doc)
+    }
+
+    /// Put each person in exactly the marks `marks` names for them (none
+    /// for a person it leaves out). Writes only when something changes, and
+    /// says whether it did.
+    pub fn set_marks(&self, marks: &BTreeMap<String, Vec<&'static str>>) -> anyhow::Result<bool> {
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut doc = self.read()?;
+        let mut changed = false;
+        for (name, record) in &mut doc.users {
+            let want = marks.get(name).map(Vec::as_slice).unwrap_or(&[]);
+            let mut next: Vec<String> = record
+                .groups
+                .iter()
+                .filter(|g| !MARKS.contains(&g.as_str()))
+                .cloned()
+                .collect();
+            next.extend(want.iter().map(ToString::to_string));
+            if next != record.groups {
+                record.groups = next;
+                changed = true;
+            }
+        }
+        if changed {
+            self.write(&doc)?;
+        }
+        Ok(changed)
+    }
+
+    /// A person's own name and email address, from their account.
+    pub fn set_details(&self, name: &str, display_name: &str, email: &str) -> anyhow::Result<()> {
+        let display_name = display_name.trim();
+        let email = email.trim();
+        if display_name.is_empty() || display_name.chars().count() > 100 {
+            anyhow::bail!(BadDetails("a name is 1 to 100 characters".into()));
+        }
+        if display_name.chars().any(char::is_control) {
+            anyhow::bail!(BadDetails("a name is one line of text".into()));
+        }
+        if !email.contains('@') || email.contains(char::is_whitespace) || email.len() > 254 {
+            anyhow::bail!(BadDetails("that is not an email address".into()));
+        }
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut doc = self.read()?;
+        let record = doc
+            .users
+            .get_mut(name)
+            .ok_or_else(|| Refused::Unknown(name.to_string()))?;
+        record.displayname = display_name.to_string();
+        record.email = email.to_string();
+        self.write(&doc)
+    }
+
+    /// Whether `secret` is `name`'s password.
+    pub fn check_password(&self, name: &str, secret: &Secret) -> anyhow::Result<bool> {
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        Ok(self
+            .read()?
+            .users
+            .get(name)
+            .is_some_and(|r| !r.disabled && verify_password(&r.password, secret)))
     }
 
     /// Replace `name`'s password.
@@ -664,6 +748,64 @@ mod tests {
             Refused::LastAdmin
         );
         assert!(q.get("solo").unwrap().is_some(), "a refused removal wrote");
+    }
+
+    #[test]
+    fn marks_follow_the_map_survive_a_change_of_access_and_write_only_on_change() {
+        let (_d, p) = people();
+        let s = a_password();
+        p.add("matus", "", "", &s, &[ADMINS, OWNER]).unwrap();
+        p.add("eva", "", "", &s, &["losos-backup"]).unwrap();
+        let mut marks = BTreeMap::new();
+        marks.insert("eva".to_string(), vec![TWO_FACTOR, LOCKED]);
+        assert!(p.set_marks(&marks).unwrap());
+        assert!(
+            !p.set_marks(&marks).unwrap(),
+            "nothing changed, nothing written"
+        );
+        let eva = p.get("eva").unwrap().unwrap();
+        assert_eq!(eva.groups, ["losos-backup", TWO_FACTOR, LOCKED]);
+        p.set_access("eva", &["losos-storage".to_string()], Some("matus"))
+            .unwrap();
+        let eva = p.get("eva").unwrap().unwrap();
+        assert_eq!(eva.groups, [TWO_FACTOR, LOCKED, "losos-storage"]);
+        marks.insert("eva".to_string(), vec![TWO_FACTOR]);
+        assert!(p.set_marks(&marks).unwrap());
+        assert_eq!(
+            p.get("eva").unwrap().unwrap().groups,
+            ["losos-storage", TWO_FACTOR]
+        );
+        assert_eq!(p.get("matus").unwrap().unwrap().groups, [ADMINS, OWNER]);
+    }
+
+    #[test]
+    fn a_person_sets_their_own_name_and_email_within_limits() {
+        let (_d, p) = people();
+        let s = a_password();
+        p.add("eva", "", "eva@box.local", &s, &[]).unwrap();
+        p.set_details("eva", " Eva Novak ", "eva@example.org")
+            .unwrap();
+        let eva = p.list().unwrap().remove(0);
+        assert_eq!(
+            (eva.display_name.as_str(), eva.email.as_str()),
+            ("Eva Novak", "eva@example.org")
+        );
+        for (name, email) in [
+            ("", "eva@example.org"),
+            ("Eva\nNovak", "eva@example.org"),
+            ("Eva", "not an address"),
+        ] {
+            let e = p.set_details("eva", name, email).unwrap_err();
+            assert!(
+                e.downcast_ref::<BadDetails>().is_some(),
+                "{name:?} {email:?}"
+            );
+        }
+        assert!(p.check_password("eva", &s).unwrap());
+        assert!(!p
+            .check_password("eva", &Secret::new("something else"))
+            .unwrap());
+        assert!(!p.check_password("nobody", &s).unwrap());
     }
 
     #[test]

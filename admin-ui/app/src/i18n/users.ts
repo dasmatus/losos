@@ -175,4 +175,97 @@ export default defineMessages({
   "users.cancel": { en: "Cancel", sk: "Zrušiť", de: "Abbrechen" },
   "users.save": { en: "Save", sk: "Uložiť", de: "Speichern" },
   "users.keep": { en: "Keep", sk: "Ponechať", de: "Behalten" },
+  // ── Own account, two-factor and the rules ───────────────────────────
+  "users.section.account": { en: "Own account", sk: "Vlastný účet", de: "Eigenes Konto" },
+  "users.badge.twoFactor": { en: "Two-factor", sk: "Dvojstupňové", de: "Zwei-Faktor" },
+  "users.badge.held": { en: "Held", sk: "Zadržaný", de: "Angehalten" },
+  "users.held.twoFactor": {
+    en: "Reaches only their own account until they add an authenticator app or a passkey",
+    sk: "Dostane sa iba k vlastnému účtu, kým nepridá overovaciu aplikáciu alebo prístupový kľúč",
+    de: "Erreicht nur das eigene Konto, bis eine Authenticator-App oder ein Passkey hinzugefügt ist",
+  },
+  "users.held.password": {
+    en: "Reaches only their own account until they choose a new password",
+    sk: "Dostane sa iba k vlastnému účtu, kým si nezvolí nové heslo",
+    de: "Erreicht nur das eigene Konto, bis ein neues Passwort gewählt ist",
+  },
+  "users.action.resetFactors": {
+    en: "Reset two-factor",
+    sk: "Zrušiť dvojstupňové",
+    de: "Zwei-Faktor zurücksetzen",
+  },
+  "users.resetDialog.title": {
+    en: "Remove {name}'s authenticator app and passkeys?",
+    sk: "Odstrániť overovaciu aplikáciu a prístupové kľúče používateľa {name}?",
+    de: "Authenticator-App und Passkeys von {name} entfernen?",
+  },
+  "users.resetDialog.body": {
+    en: "Do this when they lost their phone or key. They sign in with their password alone until they add new ones. If this box requires two-factor sign-in, they reach only their own account until then.",
+    sk: "Urobte to, keď stratili telefón alebo kľúč. Kým nepridajú nové, prihlasujú sa iba heslom. Ak toto zariadenie vyžaduje dvojstupňové prihlásenie, dovtedy sa dostanú iba k vlastnému účtu.",
+    de: "Tu das, wenn Telefon oder Schlüssel verloren sind. Bis neue hinzugefügt sind, reicht das Passwort allein. Verlangt diese Box die Zwei-Faktor-Anmeldung, erreicht die Person bis dahin nur ihr eigenes Konto.",
+  },
+  "users.resetDialog.confirm": { en: "Remove them", sk: "Odstrániť", de: "Entfernen" },
+  "users.factorsReset": {
+    en: "{name} signs in with a password alone now",
+    sk: "{name} sa teraz prihlasuje iba heslom",
+    de: "{name} meldet sich jetzt nur mit dem Passwort an",
+  },
+  "users.factorsResetFailed": {
+    en: "Could not reset {name}'s two-factor sign-in",
+    sk: "Dvojstupňové prihlásenie používateľa {name} sa nepodarilo zrušiť",
+    de: "Die Zwei-Faktor-Anmeldung von {name} konnte nicht zurückgesetzt werden",
+  },
+  "users.rules.title": { en: "Sign-in rules", sk: "Pravidlá prihlásenia", de: "Anmelderegeln" },
+  "users.rules.twoFactor": {
+    en: "Require two-factor sign-in",
+    sk: "Vyžadovať dvojstupňové prihlásenie",
+    de: "Zwei-Faktor-Anmeldung verlangen",
+  },
+  "users.rules.twoFactorDetail": {
+    en: "Everyone adds an authenticator app or a passkey. Until they do, they reach only their own account.",
+    sk: "Každý si pridá overovaciu aplikáciu alebo prístupový kľúč. Kým to neurobí, dostane sa iba k vlastnému účtu.",
+    de: "Alle fügen eine Authenticator-App oder einen Passkey hinzu. Bis dahin erreichen sie nur ihr eigenes Konto.",
+  },
+  "users.rules.expire": {
+    en: "Passwords run out",
+    sk: "Heslá vypršia",
+    de: "Passwörter laufen ab",
+  },
+  "users.rules.expireDetail": {
+    en: "After the days below, a person chooses a new password before they reach anything else.",
+    sk: "Po uvedenom počte dní si človek zvolí nové heslo, než sa dostane k čomukoľvek inému.",
+    de: "Nach den Tagen unten wählt eine Person ein neues Passwort, bevor sie etwas anderes erreicht.",
+  },
+  "users.rules.days": { en: "Days", sk: "Dni", de: "Tage" },
+  "users.rules.daysDetail": {
+    en: "1 to {max}, counted from when each person last set a password.",
+    sk: "1 až {max}, počítané od posledného nastavenia hesla každého človeka.",
+    de: "1 bis {max}, gezählt ab dem Zeitpunkt, an dem jede Person zuletzt ein Passwort gesetzt hat.",
+  },
+  "users.rules.save": { en: "Save rules", sk: "Uložiť pravidlá", de: "Regeln speichern" },
+  "users.rules.saved": {
+    en: "The sign-in rules are saved",
+    sk: "Pravidlá prihlásenia sú uložené",
+    de: "Die Anmelderegeln sind gespeichert",
+  },
+  "users.rules.failed": {
+    en: "Could not save the sign-in rules.",
+    sk: "Pravidlá prihlásenia sa nepodarilo uložiť.",
+    de: "Die Anmelderegeln konnten nicht gespeichert werden.",
+  },
+  "users.rules.needsOwnFactor": {
+    en: "Add an authenticator app or a passkey to your own account first, or the rule would hold you too.",
+    sk: "Najprv si pridajte overovaciu aplikáciu alebo prístupový kľúč k vlastnému účtu, inak by pravidlo zadržalo aj vás.",
+    de: "Füge zuerst deinem eigenen Konto eine Authenticator-App oder einen Passkey hinzu, sonst hält die Regel auch dich an.",
+  },
+  "users.rules.openAccount": {
+    en: "Open your account",
+    sk: "Otvoriť váš účet",
+    de: "Dein Konto öffnen",
+  },
+  "users.rules.caption": {
+    en: "People held by a rule reach only their own account, and LosOS Login keeps them out of LosOS cloud and LosOS Git. The spare key is never held.",
+    sk: "Ľudia zadržaní pravidlom sa dostanú iba k vlastnému účtu a LosOS Login ich nepustí do LosOS cloud ani LosOS Git. Náhradný kľúč sa nezadržiava nikdy.",
+    de: "Wen eine Regel anhält, erreicht nur das eigene Konto, und LosOS Login lässt ihn nicht in LosOS cloud und LosOS Git. Der Ersatzschlüssel wird nie angehalten.",
+  },
 });

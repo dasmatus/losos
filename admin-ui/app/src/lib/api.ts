@@ -203,6 +203,19 @@ export interface Me {
    *  pane: a box whose sign-in runs elsewhere has nobody to add here.
    *  Missing on a box whose lososd predates the field. */
   standalone?: boolean;
+  /** What LosOS Login's rules hold this person to their own account for
+   *  (backend/src/login.rs). Empty or missing: nothing. */
+  locked?: LoginReason[];
+}
+
+/** Why a rule holds someone to their own account. */
+export type LoginReason = "twoFactor" | "password";
+
+/** The rules an administrator sets on the Users pane. */
+export interface LoginRules {
+  twoFactor: boolean;
+  /** A password runs out this many days after it was set; 0 never. */
+  passwordDays: number;
 }
 
 let me: Me | null = null;
@@ -239,6 +252,11 @@ export async function loadMe(options: RequestOptions = {}): Promise<Me | null> {
 export function canUse(section: string): boolean {
   if (me === null) return true;
   return me.admin || me.sections.includes(section);
+}
+
+/** What holds the signed-in person to their own account, if anything. */
+export function heldBy(): LoginReason[] {
+  return me?.locked ?? [];
 }
 
 /** Whether this box signs people in itself (GET /api/me's `standalone`).
@@ -1625,6 +1643,12 @@ export interface PersonEntry {
    *  person who claimed the box. */
   groups: string[];
   disabled: boolean;
+  /** Has an authenticator app or a passkey on LosOS Login. */
+  twoFactor?: boolean;
+  /** When their password was last set, in seconds since 1970. */
+  passwordSetAt?: number;
+  /** What the rules hold them to their own account for. */
+  locked?: LoginReason[];
 }
 
 export interface PeopleResponse {
@@ -1634,6 +1658,8 @@ export interface PeopleResponse {
   you: string | null;
   /** The parts of the box a person can be given one by one. */
   sections: string[];
+  /** LosOS Login's rules; missing on a lososd that predates them. */
+  rules?: LoginRules;
   people: PersonEntry[];
 }
 
@@ -1688,6 +1714,61 @@ export function postPersonRemove(
   options: RequestOptions = {},
 ): Promise<{ name: string; removed: boolean }> {
   return postJson("/api/people/remove", { name }, options);
+}
+
+/** POST /api/people/rules — LosOS Login's two rules. 409 `needsOwnFactor`
+ *  when the caller turns two-factor sign-in on without a second factor of
+ *  their own. */
+export function postPeopleRules(rules: LoginRules, options: RequestOptions = {}): Promise<LoginRules> {
+  return postJson("/api/people/rules", rules, options);
+}
+
+/** POST /api/people/two-factor/reset — remove someone's authenticator app
+ *  and passkeys, for a lost phone or key. */
+export function postPersonFactorsReset(
+  name: string,
+  options: RequestOptions = {},
+): Promise<{ name: string; reset: boolean }> {
+  return postJson("/api/people/two-factor/reset", { name }, options);
+}
+
+// ── Your own account ──────────────────────────────────────────────────────
+
+/** GET /api/account: the caller's own account on LosOS Login. */
+export interface Account {
+  name: string;
+  displayName: string;
+  email: string;
+  factors: { app: boolean; passkeys: string[] };
+  /** Seconds since 1970. */
+  passwordSetAt: number;
+  /** When the password runs out, or null when it does not. */
+  passwordExpiresAt: number | null;
+  rules: LoginRules;
+  locked: LoginReason[];
+}
+
+export function getAccount(options: RequestOptions = {}): Promise<Account> {
+  return call<Account>("/api/account", options);
+}
+
+/** POST /api/account — their own name and email address. */
+export function postAccount(
+  details: { displayName: string; email: string },
+  options: RequestOptions = {},
+): Promise<{ name: string; displayName: string; email: string }> {
+  return postJson("/api/account", details, options);
+}
+
+/** POST /api/account/code — the one-time code LosOS Login last made for
+ *  them, behind their password. 403 `wrongPassword`, 404 `noCode`. */
+export function postAccountCode(password: string, options: RequestOptions = {}): Promise<{ code: string }> {
+  return postJson("/api/account/code", { password }, options);
+}
+
+/** LosOS Login's own page for adding an authenticator app or a passkey. */
+export function twoFactorSettingsUrl(): string {
+  return `https://${window.location.host}/auth/settings/two-factor-authentication`;
 }
 
 // ── Sign-in ───────────────────────────────────────────────────────────────

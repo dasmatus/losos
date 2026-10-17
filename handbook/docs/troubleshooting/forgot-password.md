@@ -10,7 +10,7 @@ slug: /troubleshooting/forgot-password
 
 **What you see:** LosOS Login, the box's sign-in page at
 `https://<box>/auth/`, does not accept your sign-in name and password, or
-LosOS cloud's sign-in page does not accept the password.
+asks for an authenticator app or a passkey you no longer have.
 
 </div>
 
@@ -31,6 +31,16 @@ Ask an administrator. Under **Settings > Users** they can set a new password
 for you with **New password**; see
 [Adding people](../manual/sign-in-and-spare-key#adding-people). Only the
 owner's password needs the spare key, as below.
+
+## You lost your phone or passkey
+
+LosOS Login asks for the second step after your password, and you no longer
+have the phone or key. An administrator removes your authenticator app and
+passkeys with **Reset two-factor** under **Settings > Users**; then you sign
+in with your password alone and add new ones under **Your account**. The
+owner asks another administrator, or uses the spare admin key, which can
+reset the owner too. See
+[Your account](../manual/sign-in-and-spare-key#your-account).
 
 ## You have the spare admin key
 
@@ -54,19 +64,17 @@ curl -H "Authorization: Bearer <spare key>" -H "Content-Type: application/json" 
 ```
 
 The answer names the LosOS cloud account it reset. Sign in on LosOS Login
-with your sign-in name and the new password, and to LosOS cloud with the same
-password.
+with your sign-in name and the new password; LosOS cloud and LosOS Git follow.
 
 ## You have neither
 
 The box keeps only a hash of your password. There is no reset link, because
 the box sends no mail, and no shell to run a reset on. Before you reinstall,
-check whether another account in LosOS cloud has the admin role. That account
-can reset the owner's password from LosOS cloud's Users page, which gets you
-back to your files, but not into the admin pages. For the admin pages the
-only way back is a **reinstall**, which wipes the disk, and then a restore of
-your files from the other copy you keep, such as the desktop client's folder
-or the phone's uploads.
+check whether another person on the box is an administrator: they can set a
+new password for anyone but the owner. For the owner, the only way back is a
+**reinstall**, which wipes the disk, and then a restore of your files from
+the other copy you keep, such as the desktop client's folder or the phone's
+uploads.
 
 ## Preventing the next time
 

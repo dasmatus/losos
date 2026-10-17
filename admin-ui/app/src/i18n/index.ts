@@ -5,6 +5,7 @@
  * — see define.ts. lib/i18n.ts is the only reader. */
 
 import access from "./access";
+import account from "./account";
 import advanced from "./advanced";
 import apps from "./apps";
 import home from "./home";
@@ -39,6 +40,7 @@ export const MESSAGES = {
   ...advanced,
   ...access,
   ...users,
+  ...account,
   ...lab,
   ...tour,
   ...palette,

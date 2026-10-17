@@ -176,14 +176,38 @@ kein Client eigene schicken kann. Der Eigentümer, in der Gruppe
 `losos-owner`, kommt in beiden als Konto `notshared` an; alle anderen unter
 ihrem Anmeldenamen. Nextcloud liest die Header mit der App user_saml im
 Modus für Umgebungsvariablen, Forgejo mit seiner Anmeldung über den Reverse
-Proxy, und beide legen beim ersten Mal ein Konto an. Wen LosOS Login nicht
-kennt, den schickt nginx dorthin; außerhalb des LAN, solange LosOS Login
-startet, oder mit `?direct=1` in LosOS cloud antwortet die eigene
-Anmeldeseite der App. Beide Apps lauschen auf Loopback, und die Firewall
+Proxy, und beide legen beim ersten Mal ein Konto an; danach hält lososd
+Namen und Adresse in beiden Apps mit der Personendatei gleich. Wen LosOS
+Login nicht kennt, den schickt nginx dorthin, aus dem LAN wie über den Edge;
+keine der beiden Apps zeigt eine eigene Anmeldeseite. Über den Edge liefert
+der Tunnel von Loopback mit `X-Forwarded-Proto: https`, was nginx nur von
+Loopback glaubt, und lososd nimmt jeden öffentlichen Namen, unter dem die
+Box antwortet, in die Cookie-Domains von LosOS Login auf. Solange LosOS
+Login startet, antworten die Apps mit 503 und einer Seite, die es von selbst
+erneut versucht. Beide Apps lauschen auf Loopback, und die Firewall
 weist eine Verbindung zu ihren Ports von jedem Prozess auf der Box ab außer
 root, nginx und der App selbst, sodass nichts auf der Box ihnen eine Person
 nennen kann. Die Namen `notshared`, `shared` und `losos` sind für die
 eigenen Konten der Box reserviert.
+
+Jede Person mit der Gruppe `losos-account` (Eigenes Konto im Bereich
+Benutzer) pflegt ihren eigenen Namen, ihre E-Mail-Adresse und ihr Passwort
+über `GET` und `POST /api/account`. Authenticator-App und Passkeys hält
+LosOS Login in seiner eigenen Datenbank; sie hinzuzufügen oder zu entfernen
+verlangt einen Einmalcode, den es sonst per Mail schicken würde, also
+schreibt sein Notifier den Code in eine Datei, und `POST /api/account/code`
+gibt ihn hinter dem Passwort der Person heraus. Ein Administrator setzt mit
+`POST /api/people/rules` zwei Regeln: Zwei-Faktor-Anmeldung für alle und
+Passwörter, die nach einer Zahl von Tagen ablaufen. lososd markiert die
+Personendatei mit zwei Gruppen: `losos-two-factor` für alle mit einem
+zweiten Faktor, nach dem LosOS Login bei jeder Anmeldung fragt, und
+`losos-locked` für alle, die eine Regel erfasst. LosOS Login verweigert
+einer gesperrten Person LosOS cloud und LosOS Git, und lososd antwortet ihr
+nur zu ihrem Konto (`locked` in `GET /api/me`). lososd lehnt die
+Zwei-Faktor-Regel ab, solange der Administrator, der sie setzt, keinen
+zweiten Faktor hat, und der Ersatzschlüssel wird nie gesperrt.
+`POST /api/people/two-factor/reset` entfernt die zweiten Faktoren einer
+Person.
 
 Das Token selbst wird nach dem Setzen des Passworts trotzdem einmal als
 **Ersatz-Admin-Schlüssel** angezeigt, mit den Schaltflächen Kopieren und

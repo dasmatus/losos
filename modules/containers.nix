@@ -87,14 +87,15 @@ let
   # Every request: the person if there is one, nobody otherwise.
   signInMaybe = passSignIn "/internal/losos-app-authz";
   # An app's sign-in page. Signed in to LosOS Login: on to the app, which
-  # signs the person in. Not signed in, on the LAN: to LosOS Login, which
-  # sends them back here. Anywhere LosOS Login cannot help (through the
-  # tunnel, while it starts, or asked with `direct=1`): to `own`, the app's
-  # own page.
-  signInPage = own: ''
+  # signs the person in. Not signed in: to LosOS Login, which sends them
+  # back here, from the LAN and through the tunnel alike. Held to their own
+  # account by a rule of LosOS Login: a page that says so. LosOS Login
+  # starting: a page that waits for it. Never the app's own sign-in page.
+  signInPage = ''
     ${passSignIn "/internal/losos-app-sign-in"}
     error_page 401 = @losos-app-sign-in;
-    error_page 403 = ${own};
+    error_page 403 @losos-app-held;
+    error_page 500 =503 @losos-app-waiting;
   '';
   # What the `/nextcloud` location below does for every page, for the two
   # sign-in locations that sit beside it. The reasons are written there.
@@ -654,41 +655,33 @@ in
           };
         })
         (lib.mkIf (forgejoWorkload && signInForgejo) {
-          # Forgejo's sign-in page: LosOS Login's instead, or Forgejo's own
-          # where LosOS Login cannot help (see `signInPage`).
+          # Forgejo's sign-in page: LosOS Login's instead (see `signInPage`).
           "= /forgejo/user/login" = {
             proxyPass = "http://127.0.0.1:${toString forgejoPort}/user/login";
-            extraConfig = signInPage "@losos-forgejo-own-sign-in";
-          };
-          "@losos-forgejo-own-sign-in" = {
-            proxyPass = "http://127.0.0.1:${toString forgejoPort}";
-            extraConfig = ''
-              rewrite ^/forgejo(/.*)$ $1 break;
-              ${clearSignIn}
-            '';
+            extraConfig = signInPage;
           };
         })
         (lib.mkIf (nextcloudWorkload && signInNextcloud) {
           # Nextcloud's sign-in page and user_saml's, which reads the
-          # headers (modules/app-sign-in.nix): LosOS Login's instead, or
-          # Nextcloud's own form where LosOS Login cannot help. Regex, so it
-          # wins over the `/nextcloud` prefix; both spellings Nextcloud links.
+          # headers (modules/app-sign-in.nix): LosOS Login's instead (see
+          # `signInPage`). Regex, so it wins over the `/nextcloud` prefix;
+          # both spellings Nextcloud links.
           "~ ^/nextcloud/(?:index\\.php/)?(?:login|apps/user_saml/saml/login)$" = {
             proxyPass = "http://127.0.0.1:${toString apachePort}";
             extraConfig = ''
-              ${signInPage "@losos-nextcloud-own-sign-in"}
+              ${signInPage}
               ${nextcloudPage}
             '';
           };
           # Log out: Nextcloud ends its session, then LosOS Login ends its
           # own, or the sign-in page would sign the person straight back in.
-          # Only for a person LosOS Login signed in; anyone else gets
-          # Nextcloud's own answer.
+          # Only for a person LosOS Login signed in; anyone else, and anyone
+          # while LosOS Login is down, gets Nextcloud's own answer.
           "~ ^/nextcloud/(?:index\\.php/)?logout$" = {
             proxyPass = "http://127.0.0.1:${toString apachePort}";
             extraConfig = ''
               auth_request /internal/losos-app-sign-in;
-              error_page 401 403 = @losos-nextcloud-page;
+              error_page 401 403 500 = @losos-nextcloud-page;
               proxy_redirect ~.* https://$host/auth/logout?rd=https://$host/nextcloud/login;
               ${clearSignIn}
               ${nextcloudPage}
@@ -697,16 +690,6 @@ in
           "@losos-nextcloud-page" = {
             proxyPass = "http://127.0.0.1:${toString apachePort}";
             extraConfig = ''
-              ${clearSignIn}
-              ${nextcloudPage}
-            '';
-          };
-          # `direct=1` is how user_saml leaves Nextcloud's own form alone.
-          # The original arguments follow it, a posted form included.
-          "@losos-nextcloud-own-sign-in" = {
-            proxyPass = "http://127.0.0.1:${toString apachePort}";
-            extraConfig = ''
-              rewrite ^ /nextcloud/index.php/login?direct=1 break;
               ${clearSignIn}
               ${nextcloudPage}
             '';

@@ -58,6 +58,8 @@ struct Api {
     builder: crate::builder::Builder,
     /// The people Authelia signs in (`crate::people`).
     people: crate::people::People,
+    /// LosOS Login's rules and second factors (`crate::login`).
+    login: crate::login::Login,
 }
 
 /// Who made a call.
@@ -157,6 +159,10 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
         })
         .or_else(|| {
             e.downcast_ref::<crate::backup::Invalid>()
+                .map(ToString::to_string)
+        })
+        .or_else(|| {
+            e.downcast_ref::<crate::people::BadDetails>()
                 .map(ToString::to_string)
         })
     {
@@ -445,7 +451,22 @@ fn guarded_as(
         .unwrap_or_else(|| req.path().to_string());
     let section = crate::sections::section(method, &pattern);
     if let Principal::Person(person) = &who {
-        if !crate::sections::allows(person, method, section) {
+        // A rule of LosOS Login holds them to their own account until they
+        // comply (`crate::login`): that, and what every signed-in page
+        // reads, is all they reach.
+        if person.groups.iter().any(|g| g == crate::people::LOCKED)
+            && !matches!(section, "account" | "signed-in" | "public")
+        {
+            audit("locked", Some(&person.name));
+            return HttpResponse::Forbidden().json(serde_json::json!({
+                "error": "finish what LosOS Login asks of your account first",
+                "locked": true,
+                "section": section,
+            }));
+        }
+        let locked_to_account =
+            section == "account" && person.groups.iter().any(|g| g == crate::people::LOCKED);
+        if !locked_to_account && !crate::sections::allows(person, method, section) {
             audit("forbidden", Some(&person.name));
             return HttpResponse::Forbidden().json(serde_json::json!({
                 "error": "your account cannot use this part of the box",
@@ -496,15 +517,31 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 "sections": all(),
                 "standalone": api.people.headers,
             })),
-            Principal::Person(p) => HttpResponse::Ok().json(serde_json::json!({
-                "name": p.name,
-                "displayName": p.display_name,
-                "groups": p.groups,
-                "admin": p.is_admin(),
-                "spareKey": false,
-                "sections": crate::sections::usable(p),
-                "standalone": api.people.headers,
-            })),
+            Principal::Person(p) => {
+                // What holds them now, not at their last request: a page
+                // that has just added a passkey asks again to be let go.
+                let locked = if api.people.headers {
+                    reconcile_login(&api);
+                    login_standing(&api, &p.name, api.login.rules(), crate::login::now()).2
+                } else {
+                    Vec::new()
+                };
+                let sections = if locked.is_empty() {
+                    crate::sections::usable(p)
+                } else {
+                    vec!["account"]
+                };
+                HttpResponse::Ok().json(serde_json::json!({
+                    "name": p.name,
+                    "displayName": p.display_name,
+                    "groups": p.groups,
+                    "admin": p.is_admin() && locked.is_empty(),
+                    "spareKey": false,
+                    "sections": sections,
+                    "standalone": api.people.headers,
+                    "locked": locked,
+                }))
+            }
             Principal::Edge => HttpResponse::Ok().json(serde_json::json!({
                 "name": null,
                 "displayName": null,
@@ -584,10 +621,24 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
         } else {
             Vec::new()
         };
+        let rules = api.login.rules();
+        let now = crate::login::now();
+        let people: Vec<serde_json::Value> = people
+            .into_iter()
+            .map(|p| {
+                let (factors, set_at, reasons) = login_standing(&api, &p.name, rules, now);
+                let mut row = serde_json::to_value(&p).unwrap_or_default();
+                row["twoFactor"] = serde_json::json!(factors.any());
+                row["passwordSetAt"] = serde_json::json!(set_at);
+                row["locked"] = serde_json::json!(reasons);
+                row
+            })
+            .collect();
         HttpResponse::Ok().json(serde_json::json!({
             "standalone": api.people.headers,
             "you": who.person().map(|p| p.name.clone()),
             "sections": crate::sections::names(),
+            "rules": rules,
             "people": people,
         }))
     })
@@ -633,7 +684,10 @@ async fn post_person(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) ->
         let display = field("displayName").unwrap_or("");
         let refs: Vec<&str> = groups.iter().map(String::as_str).collect();
         match api.people.add(name, display, &email, &secret, &refs) {
-            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "name": name })),
+            Ok(()) => {
+                note_password(&api, name);
+                HttpResponse::Ok().json(serde_json::json!({ "name": name }))
+            }
             Err(e) => error_response(e),
         }
     })
@@ -714,7 +768,10 @@ async fn post_person_password(
             return error_response(crate::people::Refused::Owner(name).into());
         }
         match api.people.set_password(&name, &secret) {
-            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "name": name, "changed": true })),
+            Ok(()) => {
+                note_password(&api, &name);
+                HttpResponse::Ok().json(serde_json::json!({ "name": name, "changed": true }))
+            }
             Err(e) => error_response(e),
         }
     })
@@ -739,7 +796,339 @@ async fn post_person_remove(
         };
         let by = who.person().map(|p| p.name.as_str());
         match api.people.remove(&name, by) {
-            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "name": name, "removed": true })),
+            Ok(()) => {
+                if let Err(e) = api.login.forget(&name) {
+                    tracing::warn!(error = ?e, "a removed person's password date stayed");
+                }
+                HttpResponse::Ok().json(serde_json::json!({ "name": name, "removed": true }))
+            }
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+// ── LosOS Login: rules, second factors, own account ──────────────────────
+
+/* What `crate::login` says about each person, carried into the people file
+ * as two marks Authelia's access rules read: `losos-two-factor` (has a
+ * second factor, so it is asked for) and `losos-locked` (a rule holds them
+ * to their own account). Kept in step every few seconds, since a person
+ * adds a passkey on LosOS Login's own page and a password runs out on its
+ * own, and at once after every change made here. */
+
+/// A person's standing under the rules, at `now`.
+fn login_standing(
+    api: &Api,
+    name: &str,
+    rules: crate::login::Rules,
+    now: u64,
+) -> (crate::login::Factors, u64, Vec<crate::login::Reason>) {
+    let factors = api.login.factors(name);
+    let set_at = api.login.password_set(name, now);
+    let reasons = crate::login::reasons(rules, &factors, set_at, now);
+    (factors, set_at, reasons)
+}
+
+/// `name` has just set a password: the date the rule counts from, then the
+/// marks, so a person held for an old password is let go at once.
+fn note_password(api: &Api, name: &str) {
+    if let Err(e) = api.login.record_password(name, crate::login::now()) {
+        tracing::warn!(error = ?e, "could not record when a password was set");
+    }
+    reconcile_login(api);
+}
+
+/// Bring every person's marks in step with the rules and their factors.
+fn reconcile_login(api: &Api) {
+    if !api.people.headers {
+        return;
+    }
+    let people = match api.people.list() {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error = ?e, "the people file could not be read");
+            return;
+        }
+    };
+    let rules = api.login.rules();
+    let now = crate::login::now();
+    let mut marks = std::collections::BTreeMap::new();
+    for person in people {
+        let (factors, _, reasons) = login_standing(api, &person.name, rules, now);
+        let mut want = Vec::new();
+        if factors.any() {
+            want.push(crate::people::TWO_FACTOR);
+        }
+        if !reasons.is_empty() {
+            want.push(crate::people::LOCKED);
+        }
+        marks.insert(person.name, want);
+    }
+    if let Err(e) = api.people.set_marks(&marks) {
+        tracing::warn!(error = ?e, "LosOS Login's marks could not be written");
+    }
+}
+
+/// The thread that keeps the marks in step.
+fn start_login_marks(api: web::Data<Api>) {
+    if !api.people.headers {
+        return;
+    }
+    std::thread::spawn(move || loop {
+        reconcile_login(&api);
+        std::thread::sleep(std::time::Duration::from_secs(10));
+    });
+}
+
+/// Give LosOS cloud and LosOS Git LosOS Login's name and address for
+/// everyone (`only` none) or one person, in the background: either app may
+/// still be starting, so whoever is left is asked again for a while.
+fn sync_names_later(api: web::Data<Api>, only: Option<String>) {
+    if !api.people.headers {
+        return;
+    }
+    std::thread::spawn(move || {
+        let mut backend = api.backend.clone();
+        let mut done = std::collections::BTreeSet::new();
+        for round in 0..40 {
+            if round > 0 {
+                std::thread::sleep(std::time::Duration::from_secs(30));
+            }
+            let Ok(people) = api.people.list() else {
+                continue;
+            };
+            let mut left = false;
+            for person in people {
+                if only.as_ref().is_some_and(|n| *n != person.name) || done.contains(&person.name) {
+                    continue;
+                }
+                if crate::app_names::sync(&mut backend, &crate::app_names::profile(&person)) {
+                    done.insert(person.name);
+                } else {
+                    left = true;
+                }
+            }
+            if !left {
+                return;
+            }
+        }
+    });
+}
+
+/// `GET /api/account`: the caller's own account: name, email, second
+/// factors, when their password runs out, and what holds them.
+async fn get_account(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/account", false, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.headers {
+            return not_standalone();
+        }
+        reconcile_login(&api);
+        let listed = match api.people.list() {
+            Ok(all) => all.into_iter().find(|p| p.name == person.name),
+            Err(e) => return error_response(e),
+        };
+        let Some(listed) = listed else {
+            return error_response(crate::people::Refused::Unknown(person.name.clone()).into());
+        };
+        let rules = api.login.rules();
+        let (factors, set_at, reasons) =
+            login_standing(&api, &person.name, rules, crate::login::now());
+        HttpResponse::Ok().json(serde_json::json!({
+            "name": listed.name,
+            "displayName": listed.display_name,
+            "email": listed.email,
+            "factors": factors,
+            "passwordSetAt": set_at,
+            "passwordExpiresAt": crate::login::expires_at(rules, set_at),
+            "rules": rules,
+            "locked": reasons,
+        }))
+    })
+}
+
+/// `POST /api/account`: `{"displayName", "email"}`, the caller's own.
+async fn post_account(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"displayName": "...", "email": "..."}"#;
+    guarded_as(&api, &req, "/api/account", true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&body) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let field = |k: &str| doc.get(k).and_then(|v| v.as_str());
+        let (Some(display), Some(email)) = (field("displayName"), field("email")) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        match api.people.set_details(&person.name, display, email) {
+            Ok(()) => {
+                sync_names_later(api.clone(), Some(person.name.clone()));
+                HttpResponse::Ok().json(serde_json::json!({
+                "name": person.name,
+                "displayName": display.trim(),
+                "email": email.trim(),
+                }))
+            }
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/account/code`: `{"password"}`. The one-time code LosOS Login
+/// last sent the caller, which it asks for before they add or remove an
+/// authenticator app or a passkey. The box has no mail, so this is where
+/// the code arrives, behind their password.
+async fn post_account_code(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let remote = remote_addr(&req);
+    guarded_as(&api, &req, "/api/account/code", true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let Some(password) = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|d| {
+                d.get("password")
+                    .and_then(|p| p.as_str())
+                    .map(str::to_string)
+            })
+        else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"password": "..."}"#,
+            );
+        };
+        let secret = match crate::signin::validate_candidate(&password) {
+            Ok(s) => s,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+        };
+        match api.people.check_password(&person.name, &secret) {
+            Ok(true) => {}
+            Ok(false) => {
+                api.throttle.record_failure(&remote, Instant::now());
+                return HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "that is not your password",
+                    "wrongPassword": true,
+                }));
+            }
+            Err(e) => return error_response(e),
+        }
+        let email = api
+            .people
+            .list()
+            .ok()
+            .and_then(|all| all.into_iter().find(|p| p.name == person.name))
+            .map(|p| p.email)
+            .unwrap_or_default();
+        match api.login.code_for(&email) {
+            Some(code) => HttpResponse::Ok().json(serde_json::json!({ "code": code })),
+            None => HttpResponse::NotFound().json(serde_json::json!({
+                "error": "LosOS Login has not made a code for you yet",
+                "noCode": true,
+            })),
+        }
+    })
+}
+
+/// `POST /api/people/rules`: `{"twoFactor": bool, "passwordDays": n}`.
+async fn post_people_rules(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/people/rules", true, |who| {
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let Ok(rules) = serde_json::from_slice::<crate::login::Rules>(&body) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"twoFactor": true|false, "passwordDays": 0..1200}"#,
+            );
+        };
+        if rules.password_days > crate::login::MAX_PASSWORD_DAYS {
+            return err(
+                StatusCode::BAD_REQUEST,
+                &format!(
+                    "a password can be kept for at most {} days",
+                    crate::login::MAX_PASSWORD_DAYS
+                ),
+            );
+        }
+        // Whoever turns two-factor sign-in on has a second factor already,
+        // or the rule would hold them to their own account the moment it
+        // took. The spare key has no account to hold.
+        if let Some(person) = who.person() {
+            if rules.two_factor
+                && !api.login.rules().two_factor
+                && !api.login.factors(&person.name).any()
+            {
+                return HttpResponse::Conflict().json(serde_json::json!({
+                    "error": "add an authenticator app or a passkey to your own account first",
+                    "needsOwnFactor": true,
+                }));
+            }
+        }
+        match api.login.set_rules(rules) {
+            Ok(()) => {
+                reconcile_login(&api);
+                HttpResponse::Ok().json(rules)
+            }
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/people/two-factor/reset`: `{"name"}`. Remove the person's
+/// authenticator app and passkeys, for someone who lost the phone or key.
+async fn post_person_factors_reset(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/people/two-factor/reset", true, || {
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let Some((name, _)) = named(&body) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"name": "..."}"#,
+            );
+        };
+        let known = api
+            .people
+            .list()
+            .is_ok_and(|all| all.iter().any(|p| p.name == name));
+        if !known {
+            return error_response(crate::people::Refused::Unknown(name).into());
+        }
+        match api.login.reset_factors(&name) {
+            Ok(()) => {
+                reconcile_login(&api);
+                HttpResponse::Ok().json(serde_json::json!({ "name": name, "reset": true }))
+            }
             Err(e) => error_response(e),
         }
     })
@@ -1186,6 +1575,16 @@ fn post_own_password(api: &Api, person: &crate::people::Person, body: &[u8]) -> 
         Ok(s) => s,
         Err(e) => return err(StatusCode::BAD_REQUEST, &e),
     };
+    if api
+        .people
+        .check_password(&person.name, &secret)
+        .unwrap_or(false)
+    {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "that is the password you have now; choose a new one",
+        );
+    }
     let name = person.name.clone();
     run(api, move |l| {
         use crate::losos::Losos;
@@ -1200,6 +1599,7 @@ fn post_own_password(api: &Api, person: &crate::people::Person, body: &[u8]) -> 
             None
         };
         api.people.set_password(&name, &secret)?;
+        note_password(api, &name);
         Ok(serde_json::json!({ "name": name, "changed": true, "cloud": cloud }))
     })
 }
@@ -1238,6 +1638,7 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
                 let secret =
                     crate::setup::validate_password(&password).map_err(|e| anyhow::anyhow!(e))?;
                 api.people.set_password(&owner, &secret)?;
+                note_password(api, &owner);
             }
         }
         Ok(out)
@@ -2693,6 +3094,8 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
     let token = ensure_token(Path::new(&token_file))?;
 
     actix_web::rt::System::new().block_on(async move {
+        let people = crate::people::People::from_env();
+        let login = crate::login::Login::from_env(people.path());
         let api = web::Data::new(Api {
             backend,
             token,
@@ -2702,9 +3105,12 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             access: crate::access::Access::from_env(),
             port,
             builder: crate::builder::Builder::from_env(),
-            people: crate::people::People::from_env(),
+            people,
+            login,
         });
         owner_in_owner_group(&api);
+        start_login_marks(api.clone());
+        sync_names_later(api.clone(), None);
         let server = HttpServer::new(move || {
             App::new()
                 .app_data(api.clone())
@@ -2741,6 +3147,14 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/people/access", web::post().to(post_person_access))
                 .route("/api/people/password", web::post().to(post_person_password))
                 .route("/api/people/remove", web::post().to(post_person_remove))
+                .route("/api/people/rules", web::post().to(post_people_rules))
+                .route(
+                    "/api/people/two-factor/reset",
+                    web::post().to(post_person_factors_reset),
+                )
+                .route("/api/account", web::get().to(get_account))
+                .route("/api/account", web::post().to(post_account))
+                .route("/api/account/code", web::post().to(post_account_code))
                 .route("/api/recovery", web::get().to(get_recovery))
                 .route("/api/devices/{kind}", web::post().to(post_device))
                 .route("/api/apps/search", web::get().to(get_apps_search))

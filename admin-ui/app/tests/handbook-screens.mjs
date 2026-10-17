@@ -403,7 +403,8 @@ const browser = await launch();
 
 /* The Users pane: the owner signed in on a box that signs people in itself,
  * and the two people they added. */
-const SECTION_NAMES = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab', 'access'];
+const SECTION_NAMES = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab', 'access', 'account'];
+const SET_AT = Date.UTC(2026, 7, 20) / 1000;
 const ME_OWNER = {
   name: 'matus',
   displayName: 'Matus',
@@ -418,10 +419,22 @@ const PEOPLE = {
   you: 'matus',
   sections: SECTION_NAMES,
   people: [
-    { name: 'eva', displayName: 'Eva Novak', email: 'eva@mattbox.local', groups: ['losos-storage', 'losos-backup'], disabled: false },
-    { name: 'matus', displayName: 'Matus', email: 'matus@mattbox.local', groups: ['losos-admins', 'losos-owner'], disabled: false },
-    { name: 'oma', displayName: 'Oma', email: 'oma@mattbox.local', groups: ['losos-viewers'], disabled: false },
+    { name: 'eva', displayName: 'Eva Novak', email: 'eva@mattbox.local', groups: ['losos-storage', 'losos-backup', 'losos-account', 'losos-two-factor'], disabled: false, twoFactor: true, passwordSetAt: SET_AT },
+    { name: 'matus', displayName: 'Matus', email: 'matus@mattbox.local', groups: ['losos-admins', 'losos-owner', 'losos-two-factor'], disabled: false, twoFactor: true, passwordSetAt: SET_AT },
+    { name: 'oma', displayName: 'Oma', email: 'oma@mattbox.local', groups: ['losos-viewers', 'losos-account', 'losos-locked'], disabled: false, twoFactor: false, passwordSetAt: Date.UTC(2026, 2, 2) / 1000, locked: ['password'] },
   ],
+  rules: { twoFactor: false, passwordDays: 180 },
+};
+/* The owner's own account, as Your account shows it. */
+const ACCOUNT = {
+  name: 'matus',
+  displayName: 'Matus',
+  email: 'matus@mattbox.local',
+  factors: { app: true, passkeys: ['Laptop'] },
+  passwordSetAt: SET_AT,
+  passwordExpiresAt: SET_AT + 180 * 24 * 60 * 60,
+  rules: PEOPLE.rules,
+  locked: [],
 };
 
 /* One page wired to a box in a given state. */
@@ -508,6 +521,7 @@ async function open({
   });
   if (me !== null) await page.route('**/api/me', (route) => json(route, 200, me));
   await page.route('**/api/people', (route) => json(route, 200, PEOPLE));
+  await page.route('**/api/account', (route) => json(route, 200, ACCOUNT));
   await page.route('**/api/settings', (route) => json(route, 200, settings));
   await page.route('**/api/status', (route) => json(route, 200, status));
   await page.route('**/api/edge', (route) => json(route, 200, edge));
@@ -717,6 +731,7 @@ const SHOTS = [
   { name: 'edge-manage-box', path: '/manage/boxes/mattbox', full: true, crop: 'fit', langs: true },
   { name: 'settings-network', path: '/settings/network', crop: 'fit', langs: true },
   { name: 'settings-users', path: '/settings/users', me: ME_OWNER, full: true, crop: 'fit', langs: true },
+  { name: 'settings-account', path: '/settings/account', me: ME_OWNER, full: true, crop: 'fit', langs: true },
   { name: 'settings-network-full', path: '/settings/network', full: true },
   { name: 'settings-domain-stripe', path: '/settings/network', full: true, edge: EDGE_OFFICIAL, domains: DOMAINS_UNVOUCHED },
   {

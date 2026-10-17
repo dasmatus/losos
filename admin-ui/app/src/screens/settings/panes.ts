@@ -15,9 +15,10 @@ import {
   GitCommitIcon,
   ShoppingCart01Icon,
   Shield01Icon,
+  UserCircleIcon,
   UserMultipleIcon,
 } from "@hugeicons/core-free-icons";
-import { canUse, runsOwnSignIn } from "@/lib/api";
+import { canUse, getMe, heldBy, runsOwnSignIn } from "@/lib/api";
 import { t, type MessageKey } from "@/lib/i18n";
 
 /* The sidebar's list of panes, in order.
@@ -51,6 +52,7 @@ export type SettingsPaneId =
   | "look"
   | "hardware"
   | "security"
+  | "account"
   | "users"
   | "access"
   | "advanced"
@@ -233,6 +235,27 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "lock down",
     "safe",
   ]),
+  /* Your account sits before Users: a person's own name, password and
+   * second factors, then everyone's. Shown to a person signed in to a box
+   * that signs people in itself, never to the spare key (`paneOpen`). */
+  pane("account", UserCircleIcon, [
+    "account",
+    "profile",
+    "me",
+    "name",
+    "email",
+    "password",
+    "two-factor",
+    "2fa",
+    "mfa",
+    "totp",
+    "authenticator",
+    "passkey",
+    "passkeys",
+    "webauthn",
+    "security key",
+    "code",
+  ]),
   /* Users sits after Security, before Access tokens: who may sign in, then
    * how they reach the box from a terminal. Only a box that signs people in
    * itself shows it (`paneOpen`). */
@@ -347,6 +370,7 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
   look: "look",
   hardware: "admin",
   security: "admin",
+  account: "account",
   users: "admin",
   access: "access",
   advanced: "admin",
@@ -362,9 +386,13 @@ export function paneSection(id: SettingsPaneId): string {
 }
 
 /** Whether the signed-in person can open `id`: their sections allow it,
- *  and for Users, the box signs people in itself. */
+ *  and for Users and Your account, the box signs people in itself. Your
+ *  account is a person's, so the spare key does not see it. Someone a rule
+ *  of LosOS Login holds sees Your account and nothing else. */
 export function paneOpen(id: SettingsPaneId): boolean {
-  if (id === "users" && !runsOwnSignIn()) return false;
+  if ((id === "users" || id === "account") && !runsOwnSignIn()) return false;
+  if (id === "account") return getMe()?.spareKey !== true && canUse("account");
+  if (heldBy().length > 0) return false;
   return canUse(paneSection(id));
 }
 
