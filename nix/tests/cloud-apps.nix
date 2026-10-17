@@ -229,9 +229,14 @@ pkgs.testers.nixosTest {
           # accepts the offer for the one that went through.
           for attempt in range(10):
               name = f"hello-{attempt}.txt"
+              # From a file: piped in, curl sends no length and Nextcloud
+              # stores an empty file.
               mattbox.succeed(
-                  f"echo 'Hello from mattbox' | curl -sfk -u 'notshared:{a}' -T - "
-                  f"https://mattbox/remote.php/dav/files/notshared/{name}"
+                  "echo 'Hello from mattbox' > /tmp/hello.txt",
+                  f"curl -sfk -u 'notshared:{a}' -T /tmp/hello.txt "
+                  f"https://mattbox/remote.php/dav/files/notshared/{name}",
+                  f"curl -sfk -u 'notshared:{a}' https://mattbox/remote.php/dav/files/notshared/{name}"
+                  " | grep -qx 'Hello from mattbox'",
               )
               code, out = mattbox.execute(
                   f"curl -sfk -u 'notshared:{a}' -H 'OCS-APIRequest: true' "
