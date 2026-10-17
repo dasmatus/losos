@@ -221,12 +221,17 @@ pkgs.testers.nixosTest {
               f"echo 'Hello from mattbox' | curl -sfk -u 'notshared:{a}' -T - "
               "https://mattbox/remote.php/dav/files/notshared/hello.txt"
           )
-          out = mattbox.succeed(
+          # The share itself is one call to the other box that Nextcloud
+          # gives five seconds, and a box receiving its first share takes
+          # longer without KVM. A failed try is undone on the sending box,
+          # so try until one goes through and take the newest offer.
+          create = (
               f"curl -sfk -u 'notshared:{a}' -H 'OCS-APIRequest: true' "
               "-d path=/hello.txt -d shareType=6 -d shareWith=notshared@evabox "
               "'https://mattbox/ocs/v2.php/apps/files_sharing/api/v1/shares?format=json'"
           )
-          share = json.loads(out)["ocs"]
+          mattbox.wait_until_succeeds(f"{create} > /tmp/share.json", timeout=900)
+          share = json.loads(mattbox.succeed("cat /tmp/share.json"))["ocs"]
           assert share["meta"]["statuscode"] == 200, share
           assert share["data"]["share_with"] == "notshared@evabox", share
 
@@ -235,9 +240,9 @@ pkgs.testers.nixosTest {
               "'https://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending?format=json'"
           )
           evabox.wait_until_succeeds(pending + " | jq -e '.ocs.data | length > 0'", timeout=300)
-          offer = json.loads(evabox.succeed(pending))["ocs"]["data"][0]
+          offer = max(json.loads(evabox.succeed(pending))["ocs"]["data"], key=lambda o: int(o["id"]))
           assert offer["name"].lstrip("/") == "hello.txt", offer
-          assert offer["remote"].startswith("https://mattbox"), offer
+          assert "mattbox" in offer["remote"], offer
           evabox.succeed(
               f"curl -sfk -X POST -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
               f"'https://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending/{offer['id']}?format=json'"
