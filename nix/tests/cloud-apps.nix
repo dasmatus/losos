@@ -210,7 +210,12 @@ pkgs.testers.nixosTest {
           # Each box can find the other's OCM endpoint, through its
           # self-signed certificate. Nextcloud gives up on that call after
           # ten seconds, and a box's first PHP requests take longer than
-          # that without KVM, so wait until both answer quickly.
+          # that without KVM, so wait until both answer quickly. The first
+          # answer makes the box's signing key, a public and a private file
+          # written one after the other: one unhurried request per box first,
+          # or the retries below race and leave halves of two different keys.
+          for m in (mattbox, evabox):
+              m.succeed(f"curl -sfkL https://{m.name}/.well-known/ocm | jq -e '.publicKey'", timeout=900)
           for m, other in ((mattbox, "evabox"), (evabox, "mattbox")):
               for path in ("/.well-known/ocm", "/ocm-provider/"):
                   m.wait_until_succeeds(
