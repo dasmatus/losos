@@ -163,13 +163,34 @@ aplikácií, takže žiadny klient nepošle vlastné. Vlastník, v skupine
 `losos-owner`, príde do oboch ako účet `notshared`; ktokoľvek iný pod svojím
 prihlasovacím menom. Nextcloud číta hlavičky aplikáciou user_saml v režime
 premenných prostredia, Forgejo svojím prihlásením cez reverzný proxy, a
-každá pri prvej návšteve vytvorí účet. Človeka, ktorého LosOS Login nepozná,
-pošle nginx tam; mimo LAN, kým sa LosOS Login spúšťa, alebo s `?direct=1`
-v LosOS cloud odpovie vlastná prihlasovacia stránka aplikácie. Obe aplikácie
+každá pri prvej návšteve vytvorí účet; lososd potom drží meno a adresu v
+oboch aplikáciách v súlade so súborom ľudí. Človeka, ktorého LosOS Login
+nepozná, pošle nginx tam, z LAN aj cez okrajový server; žiadna aplikácia
+neukazuje vlastnú prihlasovaciu stránku. Cez okrajový server tunel doručuje
+z loopbacku s `X-Forwarded-Proto: https`, čomu nginx verí iba z loopbacku, a
+lososd pridá každé verejné meno, na ktorom zariadenie odpovedá, medzi domény
+cookies LosOS Login. Kým sa LosOS Login spúšťa, aplikácie odpovedajú 503 so
+stránkou, ktorá to skúša znova sama. Obe aplikácie
 počúvajú na loopbacku a firewall odmietne spojenie na ktorýkoľvek z ich
 portov od akéhokoľvek procesu na zariadení okrem roota, nginx a samotnej
 aplikácie, takže nič na zariadení im nemôže pomenovať človeka. Mená
 `notshared`, `shared` a `losos` sú vyhradené pre vlastné účty zariadenia.
+
+Každý človek so skupinou `losos-account` (Vlastný účet na paneli
+Používatelia) si spravuje vlastné meno, e-mailovú adresu a heslo cez `GET` a
+`POST /api/account`. Overovaciu aplikáciu a prístupové kľúče drží LosOS Login
+vo vlastnej databáze; ich pridanie alebo odstránenie si pýta jednorazový
+kód, ktorý by inak poslal e-mailom, preto ho jeho notifikátor zapíše do
+súboru a `POST /api/account/code` ho vráti za heslom daného človeka. Správca
+nastavuje dve pravidlá cez `POST /api/people/rules`: dvojstupňové
+prihlásenie pre všetkých a heslá, ktoré po určitom počte dní vypršia. lososd
+označí súbor ľudí dvoma skupinami: `losos-two-factor` pre každého s druhým
+faktorom, ktorý si LosOS Login pýta pri každom prihlásení, a `losos-locked`
+pre každého, koho zachytí pravidlo. LosOS Login takého človeka nepustí do
+LosOS cloud ani LosOS Git a lososd mu odpovedá iba na jeho účet (`locked` v
+`GET /api/me`). lososd odmietne pravidlo dvojstupňového prihlásenia, kým ho
+nastavujúci správca nemá druhý faktor, a náhradný kľúč nie je zadržaný
+nikdy. `POST /api/people/two-factor/reset` odstráni druhé faktory človeka.
 
 Samotný token sa po nastavení hesla stále raz zobrazí ako **náhradný
 správcovský kľúč**, s tlačidlami Kopírovať a Tlačiť. Požiadavka, ktorá ho

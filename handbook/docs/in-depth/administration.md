@@ -161,13 +161,35 @@ send its own. The owner, in the `losos-owner` group, arrives as the
 `notshared` account in both; everyone else under their sign-in name.
 Nextcloud reads the headers with its user_saml app in environment-variable
 mode, Forgejo with its reverse-proxy sign-in, and each makes an account
-the first time. A person LosOS Login does not know is sent to it; off the
-LAN, while it starts, or with `?direct=1` on LosOS cloud, the app's own
-sign-in page answers instead. Both apps listen on loopback, and the
+the first time; lososd then keeps the name and address in both apps in
+step with the people file. A person LosOS Login does not know is sent to it,
+from the LAN and through the edge alike; neither app shows its own sign-in
+page. Through the edge, the tunnel delivers from loopback with
+`X-Forwarded-Proto: https`, which nginx believes from loopback only, and
+lososd adds each public name the box answers on to LosOS Login's cookie
+domains. While LosOS Login starts, the apps answer 503 with a page that
+retries by itself. Both apps listen on loopback, and the
 firewall rejects a connection to either port from any process on the box
 but root, nginx and the app itself, so nothing on the box can name a
 person to them. The names `notshared`, `shared` and `losos` are kept for
 the box's own accounts.
+
+Each person with the `losos-account` group (Own account on the Users pane)
+keeps their own name, email address and password through `GET` and
+`POST /api/account`. LosOS Login keeps their authenticator app and passkeys
+in its own database; adding or removing one needs a one-time code it would
+normally mail, so its notifier writes the code to a file and
+`POST /api/account/code` hands it back behind the person's password. An
+administrator sets two rules with `POST /api/people/rules`: two-factor
+sign-in for everyone, and passwords that run out after a number of days.
+lososd marks the people file with two groups: `losos-two-factor` for
+everyone with a second factor, which LosOS Login asks for on every sign-in,
+and `losos-locked` for anyone a rule catches. LosOS Login denies a locked
+person LosOS cloud and LosOS Git, and lososd answers them only on their
+account (`locked` in `GET /api/me`). lososd refuses the two-factor rule
+while the administrator setting it has no second factor, and the spare key
+is never locked. `POST /api/people/two-factor/reset` removes a person's
+second factors.
 
 The token itself is still shown once, after the password is set, as the
 **spare admin key**, with Copy and Print buttons. A request that carries it

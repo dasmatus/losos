@@ -8,6 +8,9 @@ import {
   postPersonAccess,
   postPersonPassword,
   postPersonRemove,
+  postPeopleRules,
+  postPersonFactorsReset,
+  type LoginRules,
   type NewPerson,
   type PeopleResponse,
 } from "@/lib/api";
@@ -25,8 +28,9 @@ export type PeopleState =
   | { kind: "failed"; message: string }
   | { kind: "ready"; view: PeopleResponse };
 
-/** What a change came to: done, or lososd's refusal in its own words. */
-export type Outcome = { ok: true } | { ok: false; message: string };
+/** What a change came to: done, or lososd's refusal in its own words.
+ *  `status` is the refusal's HTTP status, when there was one. */
+export type Outcome = { ok: true } | { ok: false; message: string; status?: number };
 
 export interface PeopleData {
   state: PeopleState;
@@ -36,6 +40,8 @@ export interface PeopleData {
   setAccess: (name: string, groups: string[]) => Promise<Outcome>;
   setPassword: (name: string, password: string) => Promise<Outcome>;
   remove: (name: string) => Promise<boolean>;
+  setRules: (rules: LoginRules) => Promise<Outcome>;
+  resetFactors: (name: string) => Promise<boolean>;
 }
 
 function viewOf(reply: Partial<PeopleResponse>): PeopleResponse {
@@ -43,6 +49,7 @@ function viewOf(reply: Partial<PeopleResponse>): PeopleResponse {
     standalone: reply.standalone === true,
     you: typeof reply.you === "string" ? reply.you : null,
     sections: Array.isArray(reply.sections) ? reply.sections : [],
+    ...(reply.rules !== undefined ? { rules: reply.rules } : {}),
     people: Array.isArray(reply.people) ? reply.people : [],
   };
 }
@@ -83,7 +90,8 @@ export function usePeople(enabled: boolean): PeopleData {
       } catch (error) {
         if (isUnauthorized(error)) return { ok: false, message: "" };
         const said = messageOf(error);
-        return { ok: false, message: said.length > 0 ? said : fallback };
+        const message = said.length > 0 ? said : fallback;
+        return error instanceof ApiError ? { ok: false, message, status: error.status } : { ok: false, message };
       } finally {
         setBusy(false);
         refresh();
@@ -136,5 +144,28 @@ export function usePeople(enabled: boolean): PeopleData {
     [attempt],
   );
 
-  return { state, busy, refresh, add, setAccess, setPassword, remove };
+  const setRules = React.useCallback(
+    async (rules: LoginRules) => {
+      const outcome = await attempt(() => postPeopleRules(rules), t("users.rules.failed"));
+      if (outcome.ok) toast.done(t("users.rules.saved"));
+      return outcome;
+    },
+    [attempt],
+  );
+
+  const resetFactors = React.useCallback(
+    async (name: string) => {
+      const outcome = await attempt(
+        () => postPersonFactorsReset(name),
+        t("users.factorsResetFailed", { name }),
+      );
+      if (outcome.ok) toast.done(t("users.factorsReset", { name }));
+      else if (outcome.message.length > 0)
+        toast.error(t("users.factorsResetFailed", { name }), outcome.message, { help: "sign-in-and-spare-key" });
+      return outcome.ok;
+    },
+    [attempt],
+  );
+
+  return { state, busy, refresh, add, setAccess, setPassword, remove, setRules, resetFactors };
 }

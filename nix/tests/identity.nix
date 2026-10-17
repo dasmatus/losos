@@ -18,7 +18,15 @@
 #   * the Users pane's routes add, change and remove people, refuse
 #     anyone but an administrator, and never touch the owner;
 #   * a password change and a removed account must take effect at once,
-#     in the admin pages and in the apps.
+#     in the admin pages and in the apps;
+#   * a person's own account: their name and address, the one-time code
+#     LosOS Login asks for before a second factor is added (the box has no
+#     mail, so lososd hands it out behind their password), an authenticator
+#     app added through LosOS Login's own API and then asked for at every
+#     sign-in, and an administrator's reset of it;
+#   * the two rules an administrator sets, two-factor sign-in and passwords
+#     that run out, hold a person to their own account and out of the apps
+#     until they comply, and let them go the moment they do.
 #
 # LosOS cloud is a stub: lososd runs in native mode with a `nextcloud-occ`
 # that says "installed" and takes any password, which is all the claim asks
@@ -147,8 +155,13 @@ pkgs.testers.nixosTest {
   };
 
   testScript = ''
+    import base64
+    import hashlib
+    import hmac
     import json
     import re
+    import struct
+    import time
 
     BOX = "192.168.1.1"
     PASSWORD = "Correct-Horse-Battery-9"
@@ -309,7 +322,7 @@ pkgs.testers.nixosTest {
         assert listed["standalone"] is True and listed["you"] == "matus", listed
         assert [p["name"] for p in listed["people"]] == ["matus"], listed
         assert "backup" in listed["sections"], listed
-        assert "argon2" not in body and "password" not in body, body
+        assert "argon2" not in body and '"password"' not in body, body
         # Groups the pane does not hand out, a taken name and a short
         # password are refused before anything is written.
         before = box.succeed(f"sha256sum {PEOPLE}")
@@ -429,23 +442,76 @@ pkgs.testers.nixosTest {
         code, where = app("/nextcloud/index.php/logout")
         assert where == f"https://{BOX}/nextcloud/login?clear=1", (code, where)
 
-    with subtest("Nextcloud's own form where LosOS Login cannot help"):
-        own = "/nextcloud/index.php/login?direct=1"
-        code, sent = app("/nextcloud/login?direct=1")
-        assert sent["path"].startswith(own) and person((code, sent))[0] is None, sent
-        # A posted form keeps its fields.
-        code, sent = app("/nextcloud/login", extra="-d user=notshared -d direct=1")
-        assert sent["path"] == own, sent
-        # Off the LAN (the tunnel arrives from 127.0.0.1): never LosOS Login.
-        code, sent = app("/nextcloud/login?redirect_url=/x", host="127.0.0.1", via=box,
-                         extra=f"-H 'Host: {BOX}'")
-        assert sent["path"] == own + "&redirect_url=/x", sent
-        code, sent = app("/forgejo/user/login", host="127.0.0.1", via=box)
-        assert sent["path"] == "/user/login" and person((code, sent))[0] is None, sent
-        # LosOS Login down: the apps' own pages, nobody named.
+    def tunnel(path, host, cookie=None, proto="https", extra=""):
+        """A request the way the edge's tunnel delivers it: plain http from
+        127.0.0.1, with the browser's scheme in X-Forwarded-Proto."""
+        args = (f"-o /tmp/tunnel -w '%{{http_code}} %{{redirect_url}}' {extra}"
+                f" -H 'Host: {host}' -H 'X-Forwarded-Proto: {proto}' http://127.0.0.1{path}")
+        if cookie:
+            args += f" -H 'Cookie: {cookie}'"
+        code, _, where = box.succeed(f"curl -s {args}").partition(" ")
+        if code != "200":
+            return int(code), where
+        body = box.succeed("cat /tmp/tunnel")
+        try:
+            return 200, json.loads(body)
+        except ValueError:
+            return 200, body
+
+    with subtest("LosOS Login answers through the tunnel, and the apps send people there"):
+        public = "cloud.example.org"
+        # Nextcloud's own form is gone, direct=1 or not.
+        code, where = app("/nextcloud/login?direct=1")
+        assert code == 302 and where.startswith(f"https://{BOX}/auth/?rd="), (code, where)
+        code, where = app("/nextcloud/login", extra="-d user=notshared -d direct=1")
+        assert code == 302 and where.startswith(f"https://{BOX}/auth/"), (code, where)
+        # Through the tunnel: LosOS Login, on the public name.
+        for page, back in [("/nextcloud/login", "/nextcloud/login"),
+                           ("/forgejo/user/login", "/forgejo/user/login")]:
+            code, where = tunnel(page, public)
+            assert code == 302, (page, code, where)
+            assert where == f"https://{public}/auth/?rd=https://{public}{back}", where
+        # The portal answers there over the browser's https, with no loop;
+        # plain http through the tunnel goes to https, and a LAN client
+        # cannot claim https it does not have.
+        code, body = tunnel("/auth/", public)
+        assert code == 200 and "LosOS" in body, (code, body[:200])
+        assert tunnel("/auth/", public, proto="http")[0] == 301
+        assert status(f"-H 'X-Forwarded-Proto: https' http://{BOX}/auth/") == "301"
+        # The owner adds a domain; LosOS Login takes cookies for it.
+        mark = journal_mark()
+        box.succeed(
+            f"install -d /var/lib/losos-public-names && echo '[\"{public}\", \"bad name\"]'"
+            " > /var/lib/losos-public-names/domains.json"
+        )
+        box.wait_until_succeeds(f"grep -q \"domain: '{public}'\" /run/losos-identity/session.yml")
+        box.fail("grep -q 'bad name' /run/losos-identity/session.yml")
+        box.wait_until_succeeds(
+            f"journalctl -u authelia-losos --after-cursor='{mark}' | grep -q 'Startup complete'",
+            timeout=120,
+        )
+        laptop.wait_until_succeeds(f"curl -sf http://{BOX}/auth/api/health", timeout=60)
+        body = json.dumps({"username": "eva", "password": "Eva-Long-Password-3"})
+        head = box.succeed(
+            f"curl -s -D - -o /dev/null -H 'Host: {public}' -H 'X-Forwarded-Proto: https'"
+            f" -H 'Content-Type: application/json' -d '{body}' http://127.0.0.1/auth/api/firstfactor"
+        )
+        m = re.search(r"(?im)^set-cookie: (losos_session=[^;]+);.*domain={}".format(re.escape(public)), head)
+        assert m, head
+        outside = m.group(1)
+        code, sent = tunnel("/nextcloud/login", public, outside)
+        assert code == 200 and sent["headers"].get("x-losos-cloud-user") == "eva", (code, sent)
+        code, sent = tunnel("/forgejo/", public, outside)
+        assert sent["headers"].get("x-losos-cloud-user") == "eva", sent
+        # The admin pages stay on the LAN.
+        assert tunnel("/api/state", public, outside)[0] == 403
+        # LosOS Login down: a page that waits for it, nobody named.
         box.systemctl("stop losos-identity.path authelia-losos.service")
-        code, sent = app("/nextcloud/login", cookie)
-        assert sent["path"] == own and person((code, sent))[0] is None, sent
+        code, _ = app("/nextcloud/login", cookie)
+        assert code == 503, code
+        page = laptop.succeed("cat /tmp/app")
+        assert "LosOS Login is starting" in page and 'http-equiv="refresh"' in page, page
+        assert tunnel("/forgejo/user/login", public)[0] == 503
         assert person(app("/forgejo/", cookie)) == (None, None, None)
         box.systemctl("start authelia-losos.service losos-identity.path")
         box.wait_for_open_port(9091)
@@ -539,5 +605,256 @@ pkgs.testers.nixosTest {
         assert code == "401", code
         # The owner is still there.
         assert api("/api/me", cookie)[0] == 200
+
+    # ── LosOS Login: own account, second factors, rules ─────────────────────
+
+    used_steps = {}
+
+    def totp(secret):
+        """A code for `secret` by the box's clock, never one used before:
+        LosOS Login refuses a code twice, and accepts the next step's."""
+        key = base64.b32decode(secret + "=" * (-len(secret) % 8))
+        while True:
+            step = int(box.succeed("date +%s")) // 30
+            want = max(step, used_steps.get(secret, -1) + 1)
+            if want <= step + 1:
+                break
+            time.sleep(10)
+        used_steps[secret] = want
+        mac = hmac.new(key, struct.pack(">Q", want), hashlib.sha1).digest()
+        at = mac[-1] & 0x0F
+        n = struct.unpack(">I", mac[at:at + 4])[0] & 0x7FFFFFFF
+        return f"{n % 1000000:06d}"
+
+    def authelia(path, cookie, method="POST", data=None):
+        """LosOS Login's own API, as its settings page calls it."""
+        code, body = api(f"/auth/api{path}", cookie, method=method, data=data)
+        return code, (json.loads(body) if body.strip() else {})
+
+    def add_app(cookie, password):
+        """Add an authenticator app the way LosOS Login's settings page does:
+        a one-time code first, read from the box behind the password."""
+        code, body = authelia("/user/session/elevation", cookie)
+        assert code == 200, (code, body)
+        code, body = api("/api/account/code", cookie, method="POST", data={"password": password})
+        assert code == 200, (code, body)
+        otc = json.loads(body)["code"]
+        assert re.fullmatch(r"[A-Z0-9]{6,32}", otc), otc
+        code, body = authelia("/user/session/elevation", cookie, method="PUT", data={"otc": otc})
+        assert code == 200 and body["status"] == "OK", (code, body)
+        code, body = authelia("/secondfactor/totp/register", cookie, method="PUT",
+                              data={"algorithm": "SHA1", "length": 6, "period": 30})
+        assert code == 200, (code, body)
+        secret = body["data"]["base32_secret"]
+        code, body = authelia("/secondfactor/totp/register", cookie, data={"token": totp(secret)})
+        assert code == 200 and body["status"] == "OK", (code, body)
+        return secret
+
+    def second_factor(cookie, secret):
+        """Answer LosOS Login's second step; return the session cookie."""
+        body = json.dumps({"token": totp(secret)})
+        out = curl(
+            f"-D - -o /tmp/2fa -w '%{{http_code}}' https://{BOX}/auth/api/secondfactor/totp"
+            f" -H 'Content-Type: application/json' -H 'Cookie: {cookie}' -d '{body}'"
+        )
+        assert out.endswith("200"), (out, laptop.succeed("cat /tmp/2fa"))
+        m = re.search(r"(?im)^set-cookie: (losos_session=[^;]+)", out)
+        return m.group(1) if m else cookie
+
+    def groups(name):
+        return json.loads(box.succeed(f"cat {PEOPLE}"))["users"][name]["groups"]
+
+    def wait_marks(name, has=(), lacks=()):
+        """Until lososd's marks for `name` in the people file say so."""
+        cond = " and ".join(
+            [f'index("{g}") != null' for g in has] + [f'index("{g}") == null' for g in lacks]
+        )
+        box.wait_until_succeeds(f"jq -e '.users.{name}.groups | {cond}' {PEOPLE}", timeout=60)
+
+    def eventually(check, timeout=90):
+        """Until `check()` holds: LosOS Login reads the people file again
+        a moment after lososd writes it."""
+        for _ in range(timeout):
+            if check():
+                return
+            time.sleep(1)
+        assert check()
+
+    def as_spare(path, method="GET", data=None):
+        return api(path, method=method, data=data, extra=f"-H 'Authorization: Bearer {spare}'")
+
+    with subtest("a person with Own account sets their own name and address"):
+        mark = journal_mark()
+        for name, pw, access in [("oma", "Oma-Long-Password-6", ["losos-account"]),
+                                 ("ivo", "Ivo-Long-Password-8", ["losos-backup"])]:
+            code, body = api("/api/people", cookie, method="POST", data={
+                "name": name, "displayName": name.title(), "email": f"{name}@mattbox.local",
+                "password": pw, "groups": access,
+            })
+            assert code == 200, (code, body)
+        reloaded_since(mark)
+        oma = sign_in("oma", "Oma-Long-Password-6")
+        ivo = sign_in("ivo", "Ivo-Long-Password-8")
+        code, body = api("/api/account", oma)
+        assert code == 200, (code, body)
+        mine = json.loads(body)
+        assert mine["name"] == "oma" and mine["email"] == "oma@mattbox.local", mine
+        assert mine["factors"] == {"app": False, "passkeys": []} and mine["locked"] == [], mine
+        assert mine["rules"] == {"twoFactor": False, "passwordDays": 0}, mine
+        assert mine["passwordExpiresAt"] is None and mine["passwordSetAt"] > 0, mine
+        code, body = api("/api/account", oma, method="POST",
+                         data={"displayName": "Oma Horvathova", "email": "oma@example.org"})
+        assert code == 200, (code, body)
+        file = json.loads(box.succeed(f"cat {PEOPLE}"))["users"]["oma"]
+        assert file["displayname"] == "Oma Horvathova" and file["email"] == "oma@example.org", file
+        assert file["groups"] == ["losos-account"], file
+        for bad in [{"displayName": "", "email": "oma@example.org"},
+                    {"displayName": "Oma", "email": "not an address"},
+                    {"displayName": "Oma"}]:
+            assert api("/api/account", oma, method="POST", data=bad)[0] == 400, bad
+        # Without the access a person has no account page, and the spare
+        # key has no account; an administrator has one.
+        code, body = api("/api/account", ivo)
+        assert code == 403 and json.loads(body)["section"] == "account", (code, body)
+        assert as_spare("/api/account")[0] == 409
+        assert api("/api/account", cookie)[0] == 200
+
+    with subtest("the one-time code reaches only its owner, behind their password"):
+        code, body = api("/api/account/code", oma, method="POST",
+                         data={"password": "Oma-Long-Password-6"})
+        assert code == 404 and json.loads(body)["noCode"] is True, (code, body)
+        code, body = authelia("/user/session/elevation", oma)
+        assert code == 200, (code, body)
+        code, body = api("/api/account/code", oma, method="POST",
+                         data={"password": "Wrong-Password-1234"})
+        assert code == 403 and json.loads(body)["wrongPassword"] is True, (code, body)
+        # The code was sent to Oma's address, not Matus's.
+        code, body = api("/api/account/code", cookie, method="POST", data={"password": PASSWORD})
+        assert code == 404, (code, body)
+        code, body = api("/api/account/code", oma, method="POST",
+                         data={"password": "Oma-Long-Password-6"})
+        assert code == 200, (code, body)
+        otc = json.loads(body)["code"]
+        box.succeed(f"grep -qx '{otc}' /var/lib/authelia-losos/notifications.txt")
+        box.succeed("grep -q 'oma@example.org' /var/lib/authelia-losos/notifications.txt")
+
+    with subtest("an authenticator app is asked for at every sign-in once added"):
+        # Nobody turns on a rule that would hold them at once.
+        code, body = api("/api/people/rules", cookie, method="POST", data={"twoFactor": True})
+        assert code == 409 and json.loads(body)["needsOwnFactor"] is True, (code, body)
+        matus_app = add_app(cookie, PASSWORD)
+        wait_marks("matus", has=["losos-two-factor"])
+        assert groups("matus") == ["losos-admins", "losos-owner", "losos-two-factor"]
+        # The session that added it signed in with a password alone.
+        eventually(lambda: api("/api/state", cookie)[0] == 401)
+        cookie = second_factor(cookie, matus_app)
+        assert api("/api/state", cookie)[0] == 200
+        mine = json.loads(api("/api/account", cookie)[1])
+        assert mine["factors"]["app"] is True and mine["locked"] == [], mine
+        # A new sign-in needs both steps.
+        fresh = sign_in("matus", PASSWORD)
+        assert api("/api/state", fresh)[0] == 401
+        fresh = second_factor(fresh, matus_app)
+        assert api("/api/state", fresh)[0] == 200
+        listed = json.loads(api("/api/people", cookie)[1])["people"]
+        assert {p["name"]: p["twoFactor"] for p in listed} == {
+            "matus": True, "oma": False, "ivo": False
+        }, listed
+
+    with subtest("required two-factor sign-in holds people to their own account"):
+        code, body = api("/api/people/rules", oma, method="POST", data={"twoFactor": True})
+        assert code == 403 and json.loads(body)["section"] == "admin", (code, body)
+        code, _ = api("/api/people/rules", cookie, method="POST",
+                      data={"twoFactor": True, "passwordDays": 5000})
+        assert code == 400, code
+        code, body = api("/api/people/rules", cookie, method="POST", data={"twoFactor": True})
+        assert code == 200, (code, body)
+        wait_marks("oma", has=["losos-locked"])
+        wait_marks("ivo", has=["losos-locked"])
+        assert "losos-locked" not in groups("matus")
+        me = json.loads(api("/api/me", oma)[1])
+        assert me["locked"] == ["twoFactor"] and me["sections"] == ["account"], me
+        assert me["admin"] is False, me
+        code, body = api("/api/state", oma)
+        assert code == 403 and json.loads(body)["locked"] is True, (code, body)
+        code, body = api("/api/backup", ivo)
+        assert code == 403 and json.loads(body)["locked"] is True, (code, body)
+        # Their own account is open to them, Own account access or not.
+        assert api("/api/account", ivo)[0] == 200
+        assert json.loads(api("/api/account", oma)[1])["locked"] == ["twoFactor"]
+        # LosOS Login names them to no app, and the apps' sign-in pages say
+        # why.
+        eventually(lambda: person(app("/forgejo/", oma)) == (None, None, None))
+        assert app("/nextcloud/login", oma)[0] == 403
+        assert "Finish your account first" in laptop.succeed("cat /tmp/app")
+        assert person(app("/forgejo/", cookie))[0] == "notshared"
+        listed = json.loads(api("/api/people", cookie)[1])
+        assert listed["rules"] == {"twoFactor": True, "passwordDays": 0}, listed
+        assert {p["name"]: p["locked"] for p in listed["people"]} == {
+            "matus": [], "oma": ["twoFactor"], "ivo": ["twoFactor"]
+        }, listed
+        # Oma adds an app and is let go.
+        oma_app = add_app(oma, "Oma-Long-Password-6")
+        wait_marks("oma", has=["losos-two-factor"], lacks=["losos-locked"])
+        oma = second_factor(oma, oma_app)
+        me = json.loads(api("/api/me", oma)[1])
+        assert me["locked"] == [] and me["sections"] == ["account"], me
+        assert api("/api/state", oma)[0] == 200
+        eventually(lambda: person(app("/forgejo/", oma))[:2] == ("oma", "Oma Horvathova"))
+
+    with subtest("an administrator resets a lost authenticator app"):
+        code, _ = api("/api/people/two-factor/reset", oma, method="POST", data={"name": "oma"})
+        assert code == 403, code
+        code, _ = api("/api/people/two-factor/reset", cookie, method="POST", data={"name": "nobody"})
+        assert code == 404, code
+        code, body = api("/api/people/two-factor/reset", cookie, method="POST", data={"name": "oma"})
+        assert code == 200, (code, body)
+        wait_marks("oma", has=["losos-locked"], lacks=["losos-two-factor"])
+        assert json.loads(api("/api/me", oma)[1])["locked"] == ["twoFactor"]
+        # Root wrote LosOS Login's database; LosOS Login still owns every
+        # file of it, and adds the new app.
+        box.succeed("test -z \"$(find /var/lib/authelia-losos/ ! -user authelia-losos)\"")
+        oma_app = add_app(oma, "Oma-Long-Password-6")
+        wait_marks("oma", has=["losos-two-factor"], lacks=["losos-locked"])
+        oma = second_factor(oma, oma_app)
+        assert api("/api/state", oma)[0] == 200
+
+    with subtest("passwords run out after the days an administrator sets"):
+        code, body = api("/api/people/rules", cookie, method="POST",
+                         data={"twoFactor": False, "passwordDays": 30})
+        assert code == 200, (code, body)
+        wait_marks("ivo", lacks=["losos-locked"])
+        # Everyone's password was set today, so nobody is held yet.
+        assert json.loads(api("/api/me", oma)[1])["locked"] == []
+        day = 24 * 60 * 60
+        box.succeed(
+            f"jq '.oma = (now | floor) - {31 * day}' /var/lib/losos-identity/passwords.json"
+            " > /tmp/p.json && install -m 0600 /tmp/p.json /var/lib/losos-identity/passwords.json"
+        )
+        wait_marks("oma", has=["losos-locked"])
+        me = json.loads(api("/api/me", oma)[1])
+        assert me["locked"] == ["password"], me
+        mine = json.loads(api("/api/account", oma)[1])
+        assert mine["passwordExpiresAt"] <= int(box.succeed("date +%s")), mine
+        assert api("/api/state", oma)[0] == 403
+        # The same password again is no change.
+        code, body = api("/api/set-password", oma, method="POST",
+                         data={"password": "Oma-Long-Password-6"})
+        assert code == 400, (code, body)
+        code, body = api("/api/set-password", oma, method="POST",
+                         data={"password": "Oma-Fresh-Password-77"})
+        assert code == 200, (code, body)
+        assert "losos-locked" not in groups("oma")
+        me = json.loads(api("/api/me", oma)[1])
+        assert me["locked"] == [], me
+        mine = json.loads(api("/api/account", oma)[1])
+        assert mine["passwordExpiresAt"] - mine["passwordSetAt"] == 30 * day, mine
+        # Off again: nobody is held, and the second factors stay.
+        code, _ = as_spare("/api/people/rules", method="POST",
+                           data={"twoFactor": False, "passwordDays": 0})
+        assert code == 200, code
+        assert all("losos-locked" not in p["groups"]
+                   for p in json.loads(box.succeed(f"cat {PEOPLE}"))["users"].values())
+        assert "losos-two-factor" in groups("oma")
   '';
 }

@@ -10,7 +10,7 @@ slug: /troubleshooting/forgot-password
 
 **Čo vidíte:** LosOS Login, prihlasovacia stránka zariadenia na
 `https://<zariadenie>/auth/`, neprijme vaše prihlasovacie meno a heslo alebo
-prihlasovacia stránka LosOS cloud neprijme heslo.
+si pýta overovaciu aplikáciu či prístupový kľúč, ktorý už nemáte.
 
 </div>
 
@@ -33,6 +33,15 @@ heslo** nastaví nové heslo; pozrite
 [Pridávanie ľudí](../manual/sign-in-and-spare-key#adding-people). Náhradný
 kľúč treba iba na heslo vlastníka, ako je opísané nižšie.
 
+## Stratili ste telefón alebo prístupový kľúč \{#you-lost-your-phone-or-passkey}
+
+LosOS Login si po hesle pýta druhý krok a telefón alebo kľúč už nemáte.
+Správca vám v **Nastavenia > Používatelia** tlačidlom **Obnoviť
+dvojstupňové** odstráni overovaciu aplikáciu aj prístupové kľúče; potom sa
+prihlásite iba heslom a nové si pridáte vo **Vašom účte**. Vlastník požiada
+iného správcu alebo použije náhradný správcovský kľúč, ktorý obnoví aj
+vlastníka. Pozrite [Váš účet](../manual/sign-in-and-spare-key#your-account).
+
 ## Máte náhradný správcovský kľúč \{#you-have-the-spare-admin-key}
 
 ![Dialóg, ktorý žiada náhradný správcovský kľúč.](@site/docs/img/unlock-spare-key-sk.png)
@@ -54,18 +63,16 @@ curl -H "Authorization: Bearer <spare key>" -H "Content-Type: application/json" 
 ```
 
 Odpoveď uvedie účet LosOS cloud, ktorého heslo sa zmenilo. V LosOS Login sa
-prihláste svojím prihlasovacím menom a novým heslom a do LosOS cloud tým
-istým heslom.
+prihláste svojím prihlasovacím menom a novým heslom; LosOS cloud a LosOS Git
+sa pridajú.
 
 ## Nemáte ani jedno \{#you-have-neither}
 
 Zariadenie si vaše heslo drží iba ako hash. Odkaz na obnovenie neexistuje,
 pretože zariadenie neposiela poštu, a nie je ani shell, v ktorom by sa heslo
-dalo obnoviť. Skôr ako preinštalujete, zistite, či má rolu správcu iný účet
-v LosOS cloud. Ten môže heslo vlastníka obnoviť na stránke Používatelia
-v LosOS cloud, čím sa dostanete k svojim súborom, no nie do správcovských
-stránok. Do správcovských stránok je jedinou cestou späť
-**preinštalovanie**, ktoré vymaže disk, a potom obnovenie súborov z inej
+dalo obnoviť. Skôr ako preinštalujete, zistite, či je na zariadení správcom
+aj niekto iný: ten nastaví nové heslo komukoľvek okrem vlastníka. Pre
+vlastníka je jedinou cestou späť **preinštalovanie**, ktoré vymaže disk, a potom obnovenie súborov z inej
 kópie, ktorú si uchovávate, napríklad z priečinka desktopového klienta alebo
 z nahrávok z telefónu.
 

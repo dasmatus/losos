@@ -68,6 +68,9 @@ pub struct FakeLosos {
     pub status_spawn_fails: bool,
     /// Every readiness probe that ran, with the target it was aimed at.
     pub status_probed: Vec<crate::setup::Target>,
+    /// Every `plan_person` step that ran, and what each exits with.
+    pub nextcloud_runs: Vec<Vec<String>>,
+    pub nextcloud_run_exit: i32,
     /// What `crictl logs` of the latest container would print; `None` is
     /// "no container has ever run".
     pub last_log: Option<String>,
@@ -265,6 +268,8 @@ impl FakeLosos {
             status_stderr: String::new(),
             status_spawn_fails: false,
             status_probed: Vec::new(),
+            nextcloud_runs: Vec::new(),
+            nextcloud_run_exit: 0,
             last_log: None,
             last_log_asked: 0,
             // A reachable Nextcloud whose password nobody knows yet, like a
@@ -752,6 +757,15 @@ impl Losos for FakeLosos {
             code: self.status_exit,
             stdout: self.status_stdout.clone(),
             stderr: self.status_stderr.clone(),
+        })
+    }
+
+    fn nextcloud_run(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome> {
+        self.nextcloud_runs.push(argv.to_vec());
+        Ok(crate::setup::OccOutcome {
+            code: self.nextcloud_run_exit,
+            stdout: String::new(),
+            stderr: String::new(),
         })
     }
 

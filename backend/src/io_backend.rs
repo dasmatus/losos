@@ -2031,6 +2031,21 @@ impl Losos for IoLosos {
         })
     }
 
+    fn nextcloud_run(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome> {
+        let (cmd, args) = argv.split_first().context("an occ step is never empty")?;
+        let out = std::process::Command::new(cmd)
+            .args(args)
+            // The native wrapper reads `$USER` under `set -u`, as above.
+            .env("USER", "root")
+            .output()
+            .with_context(|| format!("running {cmd}"))?;
+        Ok(crate::setup::OccOutcome {
+            code: out.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        })
+    }
+
     fn nextcloud_last_log(&mut self, mode: crate::setup::NcMode) -> anyhow::Result<Option<String>> {
         if mode == crate::setup::NcMode::Native {
             return Ok(None);

@@ -7,8 +7,11 @@
  * goes out with the body backend/schema.json names, and only once the name
  * and password pass the box's rules; a refusal shows beside the form;
  * access, a new password and a removal each send their own request, the
- * removal only after asking; Slovak names the pane; and none of it adds to
- * the Content-Security-Policy violations a plain load logs.
+ * removal only after asking; the sign-in rules go out as one request and a
+ * 409 for a missing second factor of the caller's own says what to do; a
+ * second factor and a rule's hold show on the person, and resetting the
+ * factors asks first; Slovak names the pane; and none of it adds to the
+ * Content-Security-Policy violations a plain load logs.
  *
  * Same arrangement as the other files: the real dist/ bundle under the real
  * policy, the routes stubbed with page.route() as a small stateful lososd.
@@ -21,7 +24,7 @@ const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();
 
-const SECTIONS = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab', 'access'];
+const SECTIONS = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab', 'access', 'account'];
 const SETTINGS = {
   sharingMyStorage: false,
   nextcloudMode: 'container',
@@ -45,6 +48,26 @@ const PEOPLE = [
   { name: 'jan', displayName: 'Jan', email: 'jan@mattbox.local', groups: ['losos-admins'], disabled: false },
   { name: 'matus', displayName: 'Matus', email: 'matus@mattbox.local', groups: ['losos-admins', 'losos-owner'], disabled: false },
   { name: 'oma', displayName: 'Oma', email: 'oma@mattbox.local', groups: ['losos-viewers'], disabled: false },
+  {
+    name: 'ivo',
+    displayName: 'Ivo',
+    email: 'ivo@mattbox.local',
+    groups: ['losos-account', 'losos-two-factor'],
+    disabled: false,
+    twoFactor: true,
+    passwordSetAt: 1790000000,
+    locked: [],
+  },
+  {
+    name: 'zoe',
+    displayName: 'Zoe',
+    email: 'zoe@mattbox.local',
+    groups: ['losos-account', 'losos-locked'],
+    disabled: false,
+    twoFactor: false,
+    passwordSetAt: 1790000000,
+    locked: ['password'],
+  },
 ];
 const GOOD_PASSWORD = 'Salmon-river-42';
 
@@ -54,12 +77,20 @@ const json = (route, status, body) =>
 /* A box with `you` signed in as an administrator. `standalone` is what
  * GET /api/me and GET /api/people say; `refuse` answers POST /api/people
  * with that status and sentence. */
-async function open({ path = '/settings/users', standalone = true, refuse = null, locale = 'en-US', you = 'jan' } = {}) {
+async function open({
+  path = '/settings/users',
+  standalone = true,
+  refuse = null,
+  refuseRules = null,
+  locale = 'en-US',
+  you = 'jan',
+} = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   let people = structuredClone(PEOPLE);
+  let rules = { twoFactor: false, passwordDays: 0 };
   const posts = [];
   const body = (route) => JSON.parse(route.request().postData() ?? '{}');
 
@@ -81,7 +112,7 @@ async function open({ path = '/settings/users', standalone = true, refuse = null
   await page.route('**/api/status', (route) => json(route, 200, { state: 'idle', progress: 0, message: '' }));
   await page.route('**/api/people', (route) => {
     if (route.request().method() === 'GET') {
-      return json(route, 200, { standalone, you, sections: SECTIONS, people: standalone ? people : [] });
+      return json(route, 200, { standalone, you, sections: SECTIONS, rules, people: standalone ? people : [] });
     }
     const b = body(route);
     posts.push({ path: '/api/people', body: b });
@@ -100,6 +131,19 @@ async function open({ path = '/settings/users', standalone = true, refuse = null
     const b = body(route);
     posts.push({ path: '/api/people/password', body: b });
     return json(route, 200, { name: b.name, changed: true });
+  });
+  await page.route('**/api/people/rules', (route) => {
+    const b = body(route);
+    posts.push({ path: '/api/people/rules', body: b });
+    if (refuseRules !== null) return json(route, refuseRules.status, refuseRules.body);
+    rules = b;
+    return json(route, 200, b);
+  });
+  await page.route('**/api/people/two-factor/reset', (route) => {
+    const b = body(route);
+    posts.push({ path: '/api/people/two-factor/reset', body: b });
+    people = people.map((p) => (p.name === b.name ? { ...p, twoFactor: false } : p));
+    return json(route, 200, { name: b.name, reset: true });
   });
   await page.route('**/api/people/remove', (route) => {
     const b = body(route);
@@ -138,11 +182,15 @@ const BASELINE = await baseline();
 
 console.log('admin-ui users pane checks');
 
-await check('on a box that signs people in itself, Users sits between Security and Access tokens', async () => {
+await check('on a box that signs people in itself, Your account and Users sit between Security and Access tokens', async () => {
   const { page, context } = await open({ path: '/settings/security' });
   const labels = (await nav(page).getByRole('link').allInnerTexts()).map((l) => l.trim());
   const at = labels.indexOf('Security');
-  assert.deepEqual(labels.slice(at, at + 3), ['Security', 'Users', 'Access tokens'], labels.join(' | '));
+  assert.deepEqual(
+    labels.slice(at, at + 4),
+    ['Security', 'Your account', 'Users', 'Access tokens'],
+    labels.join(' | '),
+  );
   await nav(page).getByRole('button', { name: /^Search or jump to/ }).click();
   const box = page.getByRole('combobox', { name: /^Search pages/ });
   for (const word of ['people', 'family', 'add']) {
@@ -159,6 +207,7 @@ await check('a box whose sign-in runs elsewhere has no Users pane', async () => 
   const { page, context } = await open({ path: '/settings/security', standalone: false });
   const labels = (await nav(page).getByRole('link').allInnerTexts()).map((l) => l.trim());
   assert.ok(!labels.includes('Users'), labels.join(' | '));
+  assert.ok(!labels.includes('Your account'), labels.join(' | '));
   await nav(page).getByRole('button', { name: /^Search or jump to/ }).click();
   await page.getByRole('combobox', { name: /^Search pages/ }).fill('people');
   await page.waitForTimeout(300);
@@ -173,7 +222,7 @@ await check('a box whose sign-in runs elsewhere has no Users pane', async () => 
 await check('the list marks the owner and the caller and gives neither a button', async () => {
   const { page, context, errors } = await open();
   await page.getByTestId('users-people').waitFor();
-  assert.equal(await page.getByTestId('users-person').count(), 4);
+  assert.equal(await page.getByTestId('users-person').count(), PEOPLE.length);
   const owner = row(page, 'matus');
   assert.match(await owner.innerText(), /Owner/);
   assert.equal(await owner.getByRole('button').count(), 0);
@@ -216,7 +265,12 @@ await check('a new person goes out once the name and password pass, with the gro
   assert.deepEqual(posts, [
     {
       path: '/api/people',
-      body: { name: 'lea', displayName: 'Lea Novak', password: GOOD_PASSWORD, groups: ['losos-storage', 'losos-look'] },
+      body: {
+        name: 'lea',
+        displayName: 'Lea Novak',
+        password: GOOD_PASSWORD,
+        groups: ['losos-account', 'losos-storage', 'losos-look'],
+      },
     },
   ]);
   assert.equal(await page.getByTestId('users-name').inputValue(), '', 'the form kept the name');
@@ -241,7 +295,7 @@ await check('an administrator is asked for without sections, a viewer with them'
   await toggle(form, 'Backup');
   await page.getByTestId('users-add').click();
   await row(page, 'ola').waitFor();
-  assert.deepEqual(posts.at(-1).body.groups, ['losos-viewers', 'losos-backup']);
+  assert.deepEqual(posts.at(-1).body.groups, ['losos-viewers', 'losos-account', 'losos-backup']);
   await context.close();
 });
 
@@ -290,6 +344,70 @@ await check('access, a new password and a removal each send their own request', 
   await removeDialog.getByTestId('users-remove-confirm').click();
   await eva.waitFor({ state: 'detached' });
   assert.deepEqual(posts.at(-1), { path: '/api/people/remove', body: { name: 'eva' } });
+  await context.close();
+});
+
+await check('a second factor and a rule\'s hold show on the person, and a reset asks first', async () => {
+  const { page, context, posts } = await open();
+  const ivo = row(page, 'ivo');
+  await ivo.waitFor();
+  await ivo.getByTestId('users-two-factor').waitFor();
+  assert.equal(await row(page, 'eva').getByTestId('users-two-factor').count(), 0);
+  const zoe = row(page, 'zoe');
+  await zoe.getByTestId('users-held').waitFor();
+  assert.match(await zoe.innerText(), /until they choose a new password/);
+  assert.match(await ivo.innerText(), /Can change: Own account/);
+  assert.equal(await zoe.getByTestId('users-reset-factors').count(), 0, 'a reset for nothing to reset');
+
+  const before = posts.length;
+  await ivo.getByTestId('users-reset-factors').click();
+  const dialog = page.getByRole('dialog', { name: "Remove Ivo's authenticator app and passkeys?" });
+  await dialog.waitFor();
+  assert.match(await dialog.innerText(), /lost their phone or key/);
+  assert.equal(posts.length, before, 'the reset went out before it asked');
+  await dialog.getByTestId('users-reset-factors-confirm').click();
+  await ivo.getByTestId('users-two-factor').waitFor({ state: 'detached' });
+  assert.deepEqual(posts.at(-1), { path: '/api/people/two-factor/reset', body: { name: 'ivo' } });
+  await context.close();
+});
+
+await check('the sign-in rules go out together, with the days the field holds', async () => {
+  const { page, context, posts } = await open();
+  const rules = page.getByTestId('users-rules');
+  await rules.waitFor();
+  const save = page.getByTestId('users-rules-save');
+  assert.ok(await save.isDisabled(), 'Save is on with nothing changed');
+  assert.equal(await page.getByTestId('users-rules-days').count(), 0, 'days shown with the rule off');
+  await toggle(rules, 'Passwords run out');
+  assert.equal(await page.getByTestId('users-rules-days').inputValue(), '90');
+  await page.getByTestId('users-rules-days').fill('0');
+  assert.ok(await save.isDisabled(), 'Save is on with 0 days');
+  await page.getByTestId('users-rules-days').fill('1201');
+  assert.ok(await save.isDisabled(), 'Save is on past the most days');
+  await page.getByTestId('users-rules-days').fill('30');
+  await toggle(rules, 'Require two-factor sign-in');
+  await save.click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="users-rules-save"]')?.disabled === true);
+  assert.deepEqual(posts.at(-1), { path: '/api/people/rules', body: { twoFactor: true, passwordDays: 30 } });
+  await context.close();
+});
+
+await check('turning on two-factor sign-in without a second factor of your own says what to do', async () => {
+  const { page, context } = await open({
+    refuseRules: {
+      status: 409,
+      body: { error: 'add an authenticator app or a passkey to your own account first', needsOwnFactor: true },
+    },
+  });
+  const rules = page.getByTestId('users-rules');
+  await rules.waitFor();
+  await toggle(rules, 'Require two-factor sign-in');
+  await page.getByTestId('users-rules-save').click();
+  const error = page.getByTestId('users-rules-error');
+  await error.waitFor();
+  assert.match(await error.innerText(), /to your own account first, or the rule would hold you too/);
+  await error.getByRole('link', { name: 'Open your account' }).click();
+  await page.waitForURL(origin + '/settings/account');
   await context.close();
 });
 

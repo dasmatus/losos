@@ -22,7 +22,9 @@ import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Spinner } from "@/components/ui/progress";
-import type { PeopleResponse, PersonEntry } from "@/lib/api";
+import type { LoginRules, PeopleResponse, PersonEntry } from "@/lib/api";
+import { paneHref } from "@/lib/routes";
+import { Link } from "react-router-dom";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { MIN_PASSWORD_CHARS, passwordRules } from "@/screens/wizard/api";
@@ -49,6 +51,9 @@ function strong(password: string): boolean {
 const ADMINS = "losos-admins";
 const VIEWERS = "losos-viewers";
 const OWNER = "losos-owner";
+/* Marks lososd keeps in step itself (backend/src/people.rs, MARKS): a
+ * second factor, and a rule's hold. Nobody hands them out. */
+const MARKS = ["losos-two-factor", "losos-locked"];
 
 type Level = "admin" | "viewer" | "parts";
 
@@ -75,12 +80,13 @@ const SECTION_LABELS: Record<string, MessageKey> = {
   look: "settings.panes.look.label",
   lab: "shell.nav.lab",
   access: "settings.panes.access.label",
+  account: "users.section.account",
 };
 
 /** The access a list of groups gives, as the pane draws it. */
 export function accessOf(groups: readonly string[]): AccessDraft {
   const parts = groups
-    .filter((g) => g.startsWith("losos-") && g !== ADMINS && g !== VIEWERS && g !== OWNER)
+    .filter((g) => g.startsWith("losos-") && g !== ADMINS && g !== VIEWERS && g !== OWNER && !MARKS.includes(g))
     .map((g) => g.slice("losos-".length));
   if (groups.includes(ADMINS)) return { level: "admin", parts: [] };
   return { level: groups.includes(VIEWERS) ? "viewer" : "parts", parts };
@@ -154,6 +160,9 @@ export function UsersPane({ locked }: { locked: boolean }) {
   return (
     <>
       <PeopleSection view={state.view} people={people} disabled={locked || people.busy} />
+      {state.view.rules !== undefined && (
+        <RulesSection rules={state.view.rules} people={people} disabled={locked || people.busy} />
+      )}
       <NewPersonSection view={state.view} people={people} locked={locked} />
     </>
   );
@@ -183,8 +192,11 @@ function PeopleSection({
   const [editing, setEditing] = React.useState<PersonEntry | null>(null);
   const [resetting, setResetting] = React.useState<PersonEntry | null>(null);
   const [removing, setRemoving] = React.useState<PersonEntry | null>(null);
+  const [unpairing, setUnpairing] = React.useState<PersonEntry | null>(null);
   const titleId = React.useId();
   const bodyId = React.useId();
+  const resetTitleId = React.useId();
+  const resetBodyId = React.useId();
 
   return (
     <PaneSection data-testid="users-people">
@@ -209,6 +221,16 @@ function PeopleSection({
                   {owner && <Badge variant="local">{t("users.badge.owner")}</Badge>}
                   {you && <Badge variant="outline">{t("users.badge.you")}</Badge>}
                   {person.disabled && <Badge variant="warn">{t("users.badge.disabled")}</Badge>}
+                  {person.twoFactor === true && (
+                    <Badge variant="ok" data-testid="users-two-factor">
+                      {t("users.badge.twoFactor")}
+                    </Badge>
+                  )}
+                  {(person.locked?.length ?? 0) > 0 && (
+                    <Badge variant="warn" data-testid="users-held">
+                      {t("users.badge.held")}
+                    </Badge>
+                  )}
                   <Badge variant={access.level === "admin" ? "local" : "neutral"} data-testid="users-level">
                     {t(`users.level.${access.level}`)}
                   </Badge>
@@ -223,8 +245,31 @@ function PeopleSection({
                     : t("users.canChange", { list: parts.join(", ") })}
                 </p>
               )}
+              {person.locked?.map((reason) => (
+                <p key={reason} className="text-[12.5px] leading-snug text-warn">
+                  {t(reason === "password" ? "users.held.password" : "users.held.twoFactor")}
+                </p>
+              ))}
+              {!you && person.twoFactor === true && owner && (
+                <div className="flex flex-wrap justify-end gap-2 pt-0.5">
+                  <Button size="sm" variant="secondary" disabled={disabled} onClick={() => setUnpairing(person)}>
+                    {t("users.action.resetFactors")}
+                  </Button>
+                </div>
+              )}
               {!owner && !you && (
                 <div className="flex flex-wrap justify-end gap-2 pt-0.5">
+                  {person.twoFactor === true && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={disabled}
+                      data-testid="users-reset-factors"
+                      onClick={() => setUnpairing(person)}
+                    >
+                      {t("users.action.resetFactors")}
+                    </Button>
+                  )}
                   <Button size="sm" variant="secondary" disabled={disabled} onClick={() => setEditing(person)}>
                     {t("users.action.access")}
                   </Button>
@@ -249,6 +294,36 @@ function PeopleSection({
         onClose={() => setEditing(null)}
       />
       <PasswordDialog person={resetting} people={people} onClose={() => setResetting(null)} />
+      <Dialog
+        open={unpairing !== null}
+        onOpenChange={(open) => {
+          if (!open) setUnpairing(null);
+        }}
+        labelledBy={resetTitleId}
+        describedBy={resetBodyId}
+      >
+        <DialogHeader>
+          <DialogTitle id={resetTitleId}>
+            {t("users.resetDialog.title", { name: unpairing?.displayName ?? "" })}
+          </DialogTitle>
+          <DialogDescription id={resetBodyId}>{t("users.resetDialog.body")}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setUnpairing(null)}>
+            {t("users.keep")}
+          </Button>
+          <Button
+            data-testid="users-reset-factors-confirm"
+            onClick={() => {
+              const person = unpairing;
+              setUnpairing(null);
+              if (person !== null) void people.resetFactors(person.name);
+            }}
+          >
+            {t("users.resetDialog.confirm")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
       <Dialog
         open={removing !== null}
         onOpenChange={(open) => {
@@ -488,6 +563,122 @@ function PasswordDialog({
   );
 }
 
+// ── Sign-in rules ───────────────────────────────────────────────────────
+
+/** backend/src/login.rs, `MAX_PASSWORD_DAYS`. */
+export const MAX_PASSWORD_DAYS = 1200;
+/** What the days field starts at when the rule is switched on. */
+const DEFAULT_PASSWORD_DAYS = 90;
+
+function RulesSection({
+  rules,
+  people,
+  disabled,
+}: {
+  rules: LoginRules;
+  people: PeopleData;
+  disabled: boolean;
+}) {
+  const t = useT();
+  const ids = { twoFactor: React.useId(), expire: React.useId(), days: React.useId() };
+  const [twoFactor, setTwoFactor] = React.useState(rules.twoFactor);
+  const [expire, setExpire] = React.useState(rules.passwordDays > 0);
+  const [days, setDays] = React.useState(String(rules.passwordDays > 0 ? rules.passwordDays : DEFAULT_PASSWORD_DAYS));
+  const [error, setError] = React.useState<{ message: string; ownFactor: boolean } | null>(null);
+
+  // The box's answer is the new starting point after every save.
+  React.useEffect(() => {
+    setTwoFactor(rules.twoFactor);
+    setExpire(rules.passwordDays > 0);
+    if (rules.passwordDays > 0) setDays(String(rules.passwordDays));
+  }, [rules.twoFactor, rules.passwordDays]);
+
+  const count = Number(days);
+  const daysValid = Number.isInteger(count) && count >= 1 && count <= MAX_PASSWORD_DAYS;
+  const next: LoginRules = { twoFactor, passwordDays: expire ? count : 0 };
+  const changed = next.twoFactor !== rules.twoFactor || next.passwordDays !== rules.passwordDays;
+  const ready = changed && (!expire || daysValid);
+
+  const save = async () => {
+    if (!ready) return;
+    setError(null);
+    const outcome = await people.setRules(next);
+    if (!outcome.ok && outcome.message.length > 0) {
+      const ownFactor = outcome.status === 409;
+      setError({ message: ownFactor ? t("users.rules.needsOwnFactor") : outcome.message, ownFactor });
+    }
+  };
+
+  return (
+    <PaneSection data-testid="users-rules">
+      <GroupTitle>{t("users.rules.title")}</GroupTitle>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save();
+        }}
+      >
+        <Group>
+          <SwitchRow
+            id={ids.twoFactor}
+            title={t("users.rules.twoFactor")}
+            description={t("users.rules.twoFactorDetail")}
+            checked={twoFactor}
+            disabled={disabled}
+            onCheckedChange={setTwoFactor}
+          />
+          <SwitchRow
+            id={ids.expire}
+            title={t("users.rules.expire")}
+            description={t("users.rules.expireDetail")}
+            checked={expire}
+            disabled={disabled}
+            last={!expire}
+            onCheckedChange={setExpire}
+          />
+          {expire && (
+            <FieldRow
+              id={ids.days}
+              title={t("users.rules.days")}
+              detail={t("users.rules.daysDetail", { max: String(MAX_PASSWORD_DAYS) })}
+              last
+            >
+              <Input
+                id={ids.days}
+                data-testid="users-rules-days"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={MAX_PASSWORD_DAYS}
+                value={days}
+                disabled={disabled}
+                aria-invalid={!daysValid ? true : undefined}
+                onChange={(event) => setDays(event.target.value)}
+              />
+            </FieldRow>
+          )}
+        </Group>
+        <div className="flex flex-wrap items-center justify-end gap-3 pt-3">
+          {error !== null && (
+            <FieldError className="mr-auto" data-testid="users-rules-error">
+              {error.message}{" "}
+              {error.ownFactor && (
+                <Link to={paneHref("account")} className="underline underline-offset-2">
+                  {t("users.rules.openAccount")}
+                </Link>
+              )}
+            </FieldError>
+          )}
+          <Button type="submit" size="sm" data-testid="users-rules-save" disabled={disabled || !ready}>
+            {t("users.rules.save")}
+          </Button>
+        </div>
+      </form>
+      <GroupCaption>{t("users.rules.caption")}</GroupCaption>
+    </PaneSection>
+  );
+}
+
 // ── Adding someone ──────────────────────────────────────────────────────
 
 interface Draft {
@@ -497,7 +688,15 @@ interface Draft {
   access: AccessDraft;
 }
 
-const EMPTY: Draft = { name: "", displayName: "", password: "", access: { level: "parts", parts: [] } };
+/* A new person starts with their own account (name, password, second
+ * factors), which most people need and an administrator rarely means to
+ * withhold. */
+const EMPTY: Draft = {
+  name: "",
+  displayName: "",
+  password: "",
+  access: { level: "parts", parts: ["account"] },
+};
 
 /** The shape lososd accepts for a sign-in name (people.rs, validate_name). */
 export const NAME_PATTERN = /^[a-z][a-z0-9._-]{0,31}$/;
@@ -611,15 +810,17 @@ function FieldRow({
   id,
   title,
   detail,
+  last,
   children,
 }: {
   id: string;
   title: string;
   detail?: string | undefined;
+  last?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <Row>
+    <Row last={last}>
       <RowText htmlFor={id} title={title} detail={detail} />
       <div className="w-[16rem] max-sm:w-[11rem]">{children}</div>
     </Row>

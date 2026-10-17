@@ -83,6 +83,9 @@ pub trait Losos {
         &mut self,
         target: &crate::setup::Target,
     ) -> anyhow::Result<crate::setup::OccOutcome>;
+    /// Run one step of [`crate::setup::plan_person`]. `Err` means it could
+    /// not be run at all; a non-zero exit is data.
+    fn nextcloud_run(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome>;
     /// The last few log lines of the most recent Nextcloud container in any
     /// state, when [`Losos::nextcloud_target`] found no running one: the argv
     /// pair is [`crate::setup::last_container_argv`] then
@@ -2202,6 +2205,12 @@ mod tests {
                 target: &crate::setup::Target,
             ) -> anyhow::Result<crate::setup::OccOutcome> {
                 self.0.nextcloud_status(target)
+            }
+            fn nextcloud_run(
+                &mut self,
+                argv: &[String],
+            ) -> anyhow::Result<crate::setup::OccOutcome> {
+                self.0.nextcloud_run(argv)
             }
             fn nextcloud_last_log(
                 &mut self,

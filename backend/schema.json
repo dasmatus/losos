@@ -1631,12 +1631,12 @@
       },
       "GET /api/me": {
         "auth": true,
-        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"], \"standalone\": bool, \"edge\": bool}",
-        "note": "Who is calling (backend/src/http.rs, get_me). A person signed in at the box's sign-in page (Authelia at /auth/) arrives as the Remote-User nginx sets from Authelia's answer; lososd looks them up in the people file it writes (backend/src/people.rs) and answers with their name, groups and the sections of backend/sections.json those groups open. `standalone` is true when this box signs people in itself (LOSOS_IDENTITY=authelia), which is when the Users pane is shown. The spare key answers with name null, admin true and spareKey true. The admin pages show the panes `sections` names and hide the rest. 401 signed out; 403 with noAccount:true for a Remote-User the people file does not hold (removed since they signed in). A company edge the owner lets manage the box (POST /api/edge/manage) answers with edge true, name null, admin false and the sections it may use."
+        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"], \"standalone\": bool, \"edge\": bool, \"locked\": [\"twoFactor\"|\"password\"]}",
+        "note": "Who is calling (backend/src/http.rs, get_me). A person signed in at the box's sign-in page (Authelia at /auth/) arrives as the Remote-User nginx sets from Authelia's answer; lososd looks them up in the people file it writes (backend/src/people.rs) and answers with their name, groups and the sections of backend/sections.json those groups open. `standalone` is true when this box signs people in itself (LOSOS_IDENTITY=authelia), which is when the Users pane is shown. The spare key answers with name null, admin true and spareKey true. The admin pages show the panes `sections` names and hide the rest. 401 signed out; 403 with noAccount:true for a Remote-User the people file does not hold (removed since they signed in). A company edge the owner lets manage the box (POST /api/edge/manage) answers with edge true, name null, admin false and the sections it may use. `locked` lists what a rule of LosOS Login holds the person to their own account for (backend/src/login.rs); while it is not empty, `sections` is [\"account\"], `admin` is false, and every other route but the signed-in ones answers 403 with locked:true."
       },
       "GET /api/people": {
         "auth": true,
-        "out": "{\"standalone\": bool, \"you\": \"...\"|null, \"sections\": [\"...\"], \"people\": [{\"name\": \"...\", \"displayName\": \"...\", \"email\": \"...\", \"groups\": [\"...\"], \"disabled\": bool}]}",
+        "out": "{\"standalone\": bool, \"you\": \"...\"|null, \"sections\": [\"...\"], \"rules\": {\"twoFactor\": bool, \"passwordDays\": n}, \"people\": [{\"name\": \"...\", \"displayName\": \"...\", \"email\": \"...\", \"groups\": [\"...\"], \"disabled\": bool, \"twoFactor\": bool, \"passwordSetAt\": seconds, \"locked\": [\"twoFactor\"|\"password\"]}]}",
         "note": "Everyone in the people file (backend/src/people.rs), never a password hash, for the Users pane. `you` is the caller's name, null for the spare key. `sections` are the parts of backend/sections.json a person can be given one by one. On a box that does not sign people in itself `standalone` is false and `people` is empty. Administrators only."
       },
       "POST /api/people": {
@@ -1662,6 +1662,35 @@
         "in": "{\"name\":\"...\"}",
         "out": "{\"name\": \"...\", \"removed\": true}",
         "note": "Take someone out of the people file: their next request is a 403 with noAccount:true and they cannot sign in again. Their LosOS cloud and LosOS Git accounts and files stay. 404 for nobody by that name; 409 for the caller, the owner, or the last administrator. Administrators only."
+      },
+      "POST /api/people/rules": {
+        "auth": true,
+        "in": "{\"twoFactor\": bool, \"passwordDays\": 0..1200}",
+        "out": "{\"twoFactor\": bool, \"passwordDays\": n}",
+        "note": "LosOS Login's two rules (backend/src/login.rs): everyone needs an authenticator app or a passkey, and a password runs out passwordDays after it was set (0 never). Someone a rule holds reaches only their own account, and Authelia keeps them out of LosOS cloud and LosOS Git, until they comply. 409 with needsOwnFactor:true when a person turns twoFactor on without a second factor of their own. Administrators only."
+      },
+      "POST /api/people/two-factor/reset": {
+        "auth": true,
+        "in": "{\"name\":\"...\"}",
+        "out": "{\"name\": \"...\", \"reset\": true}",
+        "note": "Remove someone's authenticator app and passkeys from LosOS Login, for a lost phone or key. 404 for nobody by that name. Administrators only."
+      },
+      "GET /api/account": {
+        "auth": true,
+        "out": "{\"name\": \"...\", \"displayName\": \"...\", \"email\": \"...\", \"factors\": {\"app\": bool, \"passkeys\": [\"...\"]}, \"passwordSetAt\": seconds, \"passwordExpiresAt\": seconds|null, \"rules\": {\"twoFactor\": bool, \"passwordDays\": n}, \"locked\": [\"twoFactor\"|\"password\"]}",
+        "note": "The caller's own account on LosOS Login, for Your account. Section account; a person a rule holds reaches it whatever their sections. 409 for the spare key, which has no account, and on a box that does not sign people in itself."
+      },
+      "POST /api/account": {
+        "auth": true,
+        "in": "{\"displayName\": \"...\", \"email\": \"...\"}",
+        "out": "{\"name\": \"...\", \"displayName\": \"...\", \"email\": \"...\"}",
+        "note": "The caller's own name (1 to 100 characters, one line) and email address. LosOS cloud and LosOS Git get them too, in the background (backend/src/app_names.rs). 400 with the reason otherwise. Section account."
+      },
+      "POST /api/account/code": {
+        "auth": true,
+        "in": "{\"password\": \"...\"}",
+        "out": "{\"code\": \"...\"}",
+        "note": "The one-time code LosOS Login last made for the caller, which it asks for before they add or remove an authenticator app or a passkey. The box sends no email, so the code is read from Authelia's notification file, behind the caller's password. 403 with wrongPassword:true, 404 with noCode:true. Section account."
       },
       "GET /api/recovery": {
         "auth": true,

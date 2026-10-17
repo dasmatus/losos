@@ -7,6 +7,10 @@
 # Forgejo with the same app.ini sections the pod mounts, each sent the three
 # headers straight on its own port, as nginx sends them.
 #
+# It also runs the calls lososd makes to keep each person's name and
+# address from LosOS Login in both apps (backend/src/app_names.rs): the occ
+# steps of setup::plan_person, and ForgejoOp::SetProfile's request.
+#
 # Both apps run natively here, on loopback, because that is the cheapest way
 # to boot them. A box never runs them this way with sign-in on: native mode
 # has no nginx in front to vouch for the headers (modules/services.nix keeps
@@ -166,5 +170,50 @@ pkgs.testers.nixosTest {
           assert code == "303", code
           page = apps.succeed("curl -s http://127.0.0.1:3000/user/sign_up")
           assert 'name="password"' not in page, "the sign-up form is open"
+
+      with subtest("Nextcloud: lososd's occ steps give an account LosOS Login's name"):
+          # plan_person, natively: is there an account, then the name and the
+          # address, each after `--` so a name with a leading dash is a name.
+          apps.succeed("nextcloud-occ user:info -- eva")
+          apps.fail("nextcloud-occ user:info -- nobody")
+          apps.succeed("nextcloud-occ user:setting -- eva settings display_name '-Eva Novak'")
+          apps.succeed("nextcloud-occ user:setting -- eva settings email eva@example.org")
+          apps.succeed("nextcloud-occ user:setting -- ${owner} settings display_name 'Matus K'")
+          info = json.loads(apps.succeed("nextcloud-occ user:info eva --output=json"))
+          assert info["display_name"] == "-Eva Novak" and info["email"] == "eva@example.org", info
+          info = json.loads(apps.succeed("nextcloud-occ user:info ${owner} --output=json"))
+          assert info["display_name"] == "Matus K", info
+
+      with subtest("Forgejo: lososd's request gives an account LosOS Login's name"):
+          token = apps.succeed(
+              f"{FORGEJO} admin user generate-access-token --username ${owner}"
+              " --token-name losos --scopes write:admin,read:user --raw"
+          ).strip().splitlines()[-1]
+          def patch(login, body):
+              return apps.succeed(
+                  f"curl -s -o /tmp/patch -w '%{{http_code}}' -X PATCH"
+                  f" -H 'Authorization: token {token}' -H 'Content-Type: application/json'"
+                  f" -d '{json.dumps(body)}' http://127.0.0.1:3000/api/v1/admin/users/{login}"
+              ).strip()
+          # ForgejoOp::SetProfile's body. The sign-in header never renames an
+          # account Forgejo already has, so this is the only way it changes.
+          code = patch("eva", {"login_name": "eva", "source_id": 0,
+                               "full_name": "Eva Novak", "email": "eva@example.org"})
+          assert code == "200", (code, apps.succeed("cat /tmp/patch"))
+          code = patch("${owner}", {"login_name": "${owner}", "source_id": 0, "full_name": "Matus K"})
+          assert code == "200", (code, apps.succeed("cat /tmp/patch"))
+          for login, name in [("eva", "Eva Novak"), ("${owner}", "Matus K")]:
+              user = json.loads(apps.succeed(
+                  f"curl -sf -H 'Authorization: token {token}' http://127.0.0.1:3000/api/v1/users/{login}"
+              ))
+              assert user["full_name"] == name, user
+          # The account still signs in with LosOS Login's header.
+          code = apps.succeed(
+              f"curl -s -o /dev/null -w '%{{http_code}}' {who('eva', 'Eva Novak', 'eva@example.org')}"
+              " http://127.0.0.1:3000/user/settings"
+          ).strip()
+          assert code == "200", code
+          # No account yet: 404, left to the person's first sign-in.
+          assert patch("nobody", {"login_name": "nobody", "source_id": 0, "full_name": "N"}) == "404"
     '';
 }

@@ -274,6 +274,36 @@ let
     '';
   };
 
+  # A person's name and address from LosOS Login, kept in LosOS cloud
+  # (backend/src/app_names.rs). Same shape as the two above.
+  #
+  # Contract, depended on by backend/src/setup.rs (`IMAGE_OCC_PERSON`):
+  #
+  #   losos-nextcloud-occ-person <account> <name> <email>
+  #     sets the account's display name, and its address unless <email> is
+  #     empty, with `occ user:setting`; exits 3 when the account does not
+  #     exist yet, else with occ's status.
+  nextcloudPerson = pkgs.writeShellApplication {
+    name = "losos-nextcloud-occ-person";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = ''
+      if [ "$#" -ne 3 ]; then
+        echo "usage: losos-nextcloud-occ-person <account> <name> <email>" >&2
+        exit 2
+      fi
+      cd ${nc.webroot}
+      export NEXTCLOUD_CONFIG_DIR=${nc.configDir}
+      # `--` ends occ's options, so a name that starts with a dash is a name.
+      if ! ${nc.php}/bin/php occ user:info -- "$1" >/dev/null 2>&1; then
+        exit 3
+      fi
+      ${nc.php}/bin/php occ user:setting -- "$1" settings display_name "$2"
+      if [ -n "$3" ]; then
+        ${nc.php}/bin/php occ user:setting -- "$1" settings email "$3"
+      fi
+    '';
+  };
+
   nextcloudEntrypoint = pkgs.writeShellApplication {
     name = "losos-nextcloud";
     runtimeInputs = [ pkgs.coreutils ];
@@ -641,6 +671,8 @@ in
         # Likewise: lososd execs it to learn whether Nextcloud is installed
         # and serving before it lets the wizard set the first password.
         nextcloudStatus
+        # And this one to give a person LosOS Login's name and address.
+        nextcloudPerson
         nc.php
       ];
     };

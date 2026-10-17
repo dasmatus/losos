@@ -136,6 +136,19 @@ pub const IMAGE_OCC_SETPASS: &str = "/bin/losos-nextcloud-occ-setpass";
 /// [`interpret_status`]'s question first and waits.
 pub const IMAGE_OCC_STATUS: &str = "/bin/losos-nextcloud-occ-status";
 
+/// The container-mode call that gives an account LosOS Login's name and
+/// address (`crate::app_names`), also **inside the image**:
+///
+/// > `/bin/losos-nextcloud-occ-person <account> <name> <email>` sets the
+/// > display name, and the address unless it is empty, with
+/// > `occ user:setting`, and exits [`NO_ACCOUNT`] when the account does not
+/// > exist yet.
+pub const IMAGE_OCC_PERSON: &str = "/bin/losos-nextcloud-occ-person";
+
+/// What the steps of [`plan_person`] exit with when LosOS cloud has no such
+/// account yet: it makes one, with the name, at the person's first sign-in.
+pub const NO_ACCOUNT: i32 = 3;
+
 /// The CRI socket of the box's **own** k3s cluster's containerd
 /// (`modules/cluster.nix`, `localCriSocket`).
 ///
@@ -679,6 +692,56 @@ pub fn plan_status(target: &Target) -> Vec<String> {
             id.clone(),
             IMAGE_OCC_STATUS.into(),
         ],
+    }
+}
+
+/// The calls that give `account` in LosOS cloud the `name` and `email`
+/// LosOS Login has for its person, in order. Neither is a secret, so both
+/// travel as arguments; `--` ends occ's (and crictl's) options first, so a
+/// name that starts with a dash stays a name. Natively the first step asks
+/// whether the account exists, the way the image's wrapper does.
+pub fn plan_person(target: &Target, account: &str, name: &str, email: &str) -> Vec<Vec<String>> {
+    let s = |v: &[&str]| v.iter().map(ToString::to_string).collect::<Vec<String>>();
+    match target {
+        Target::Native => {
+            let mut steps = vec![
+                s(&[NATIVE_OCC, "user:info", "--", account]),
+                s(&[
+                    NATIVE_OCC,
+                    "user:setting",
+                    "--",
+                    account,
+                    "settings",
+                    "display_name",
+                    name,
+                ]),
+            ];
+            if !email.is_empty() {
+                steps.push(s(&[
+                    NATIVE_OCC,
+                    "user:setting",
+                    "--",
+                    account,
+                    "settings",
+                    "email",
+                    email,
+                ]));
+            }
+            steps
+        }
+        Target::Container { socket, id } => vec![s(&[
+            "crictl",
+            "--runtime-endpoint",
+            socket,
+            "exec",
+            "--sync",
+            id,
+            "--",
+            IMAGE_OCC_PERSON,
+            account,
+            name,
+            email,
+        ])],
     }
 }
 
