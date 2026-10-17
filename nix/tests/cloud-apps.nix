@@ -257,16 +257,29 @@ pkgs.testers.nixosTest {
           offers = json.loads(evabox.succeed(pending))["ocs"]["data"]
           offer = next(o for o in offers if o["name"].lstrip("/") == name)
           assert "mattbox" in offer["remote"], offer
+          # Everything the receiving box does with the share from here, in
+          # the journal if the read below fails.
+          evabox.succeed("nextcloud-occ log:manage --level=debug")
           evabox.succeed(
               f"curl -sfk -X POST -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
               f"'https://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending/{offer['id']}?format=json'"
           )
           # Accepted, it is a file in the other owner's LosOS cloud, read
           # through from the first box.
-          evabox.wait_until_succeeds(
-              f"curl -sfk -u 'notshared:{b}' https://evabox/remote.php/dav/files/notshared/{name}"
-              " | grep -qx 'Hello from mattbox'",
-              timeout=300,
-          )
+          read = f"curl -sfk -u 'notshared:{b}' https://evabox/remote.php/dav/files/notshared/{name}"
+          try:
+              evabox.wait_until_succeeds(f"{read} | grep -qx 'Hello from mattbox'", timeout=300)
+          except Exception:
+              sql = "sudo -u postgres psql -d nextcloud -c "
+              print(evabox.execute(read.replace("-sfk", "-sk -w '\\n%{http_code}\\n'"))[1])
+              print(evabox.execute(f"{sql}'select id, remote, share_token, name, mountpoint, accepted from oc_share_external'")[1])
+              print(mattbox.execute(f"{sql}'select id, share_type, share_with, file_target, token from oc_share'")[1])
+              token = evabox.execute(
+                  "sudo -u postgres psql -d nextcloud -tAc 'select share_token from oc_share_external order by id desc limit 1'"
+              )[1].strip()
+              print(evabox.execute(
+                  f"curl -sk -X PROPFIND -u '{token}:' -w '\\n%{{http_code}}\\n' http://mattbox/public.php/webdav/"
+              )[1])
+              raise
     '';
 }
