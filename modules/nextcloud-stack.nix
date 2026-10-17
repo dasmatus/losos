@@ -236,8 +236,15 @@ in
     # federation turns that rule off. It also lets anything an account can
     # make LosOS cloud fetch (a share's server, a link preview) point at
     # the LAN; the accounts are the owner's people.
+    #
+    # Every box answers https with a certificate it made itself
+    # (modules/tls.nix), and an address with no protocol is tried over
+    # https only, so without the second key a share to another box failed
+    # its certificate check. It turns that check off for federation calls
+    # alone, which leaves those calls open to whoever sits between two boxes.
     system = {
       allow_local_remote_servers = true;
+      "sharing.federation.allowSelfSignedCertificates" = true;
     };
     locations = prefix: [
       "~* ^${prefix}/(?:index\\.php/)?(?:ocm-provider|ocs-provider|ocm|\\.well-known/ocm|apps/federation|apps/federatedfilesharing)(?:$|/)"

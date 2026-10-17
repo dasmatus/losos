@@ -340,16 +340,23 @@ ausgeschaltetem Teilen; `nix/tests/invariants.nix` prüft das Gate zur
 Evaluierungszeit.
 
 Eingeschaltet bekommt LosOS cloud außerdem `allow_local_remote_servers = true`
+und `sharing.federation.allowSelfSignedCertificates = true`
 (`modules/nextcloud-stack.nix`, `federation.system`; nativ in der
 `override.config.php` des Moduls, im Pod in `losos.config.php`). Der
 `RemoteHostValidator` von Nextcloud lehnt sonst jeden Server unter `.local`,
 jeden Namen ohne Punkt und jede private Adresse ab, also jede andere Box im
-LAN, und eine Freigabe an `owner@andereBox.local` scheiterte, bevor eine
-Anfrage die Box verließ. Der Preis: Was ein Konto Nextcloud abrufen lassen
-kann, darf dann auch ins LAN zeigen. `nix/tests/cloud-apps.nix` startet zwei
-Boxen im nativen Modus mit eingeschaltetem Teilen und schickt eine Datei von
-einem Besitzer zum anderen: Die Freigabe wird auf der zweiten Box angeboten,
-angenommen und über WebDAV zurückgelesen.
+LAN, und eine Freigabe an `notshared@andereBox.local/nextcloud` scheiterte,
+bevor eine Anfrage die Box verließ. Eine Adresse ohne Protokoll versucht
+Nextcloud nur über https, und jede Box hat ihr eigenes Zertifikat
+(`modules/tls.nix`), also schaltet der zweite Schlüssel die
+Zertifikatsprüfung bei Föderationsaufrufen ab. Der Preis: Was ein Konto
+Nextcloud abrufen lassen kann, darf dann auch ins LAN zeigen, und
+Föderationsaufrufe sind für jeden offen, der zwischen zwei Boxen sitzt. Eine
+Box ohne https erreicht man als `notshared@http://andereBox.local/nextcloud`.
+`nix/tests/cloud-apps.nix` startet zwei Boxen im nativen Modus mit
+eingeschaltetem Teilen und selbst ausgestellten Zertifikaten für https und
+schickt eine Datei von einem Besitzer zum anderen: Die Freigabe wird auf der
+zweiten Box angeboten, angenommen und über WebDAV zurückgelesen.
 
 ### Box-weite App-Einstellungen {#box-wide-app-settings}
 

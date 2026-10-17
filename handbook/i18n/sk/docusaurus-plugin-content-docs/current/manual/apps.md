@@ -57,12 +57,13 @@ počítať. Federáciu úplne vypnete prepínačom **Federovať s inými serverm
 Forgejo** v sekcii LosOS Git na paneli **Aplikácie**.
 
 Federuje aj LosOS cloud: súbory a kalendáre môžete zdieľať s ľuďmi, ktorí
-majú účty na iných serveroch Nextcloud, podľa ich adresy `user@server`,
-napríklad `notshared@inezariadenie.local` pre vlastníka iného zariadenia.
+majú účty na iných serveroch Nextcloud, podľa ich adresy `user@server`;
+vlastník iného zariadenia je `notshared@inezariadenie.local/nextcloud`.
 Vypne to prepínač **Zdieľať s inými servermi Nextcloud** v sekcii LosOS
 cloud. Kým je zapnutý, LosOS cloud smie siahnuť na mená končiace na
-`.local` a na adresy vo vašej lokálnej sieti, čo Nextcloud sám odmieta.
-Tak sa dostane k ostatným zariadeniam v tej istej sieti.
+`.local` a na adresy vo vašej lokálnej sieti a prijme certifikát, ktorý si
+každé zariadenie vyrobí samo, čo Nextcloud sám odmieta. Tak sa dostane
+k ostatným zariadeniam v tej istej sieti.
 
 :::note[Federácia potrebuje zdieľanie disku]
 Oba druhy federácie fungujú iba vtedy, keď zariadenie zdieľa svoj disk
