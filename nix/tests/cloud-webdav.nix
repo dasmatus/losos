@@ -189,6 +189,8 @@ pkgs.testers.nixosTest {
       environment.variables.SSL_CERT_FILE = "/etc/losos-box.pem";
       virtualisation = {
         memorySize = 1536;
+        # The sync client keeps 250 MB free and refuses downloads below it.
+        diskSize = 2048;
         vlans = [ 1 ];
       };
     };
@@ -221,6 +223,13 @@ pkgs.testers.nixosTest {
     # The owner's computer trusts the box's certificate (first run, step 1).
     cert = box.succeed("cat /var/lib/losos-tls/cert.pem")
     laptop.succeed(f"cat > {CA} <<'EOF'\n{cert}EOF")
+    # The desktop client (Qt) reads the system bundle, not SSL_CERT_FILE.
+    laptop.succeed(
+        "cat /etc/ssl/certs/ca-certificates.crt"
+        f" {CA} > /tmp/bundle.crt"
+        " && rm /etc/ssl/certs/ca-certificates.crt"
+        " && mv /tmp/bundle.crt /etc/ssl/certs/ca-certificates.crt"
+    )
 
     def curl(args):
         return laptop.succeed(f"curl -s --cacert {CA} {args}")
@@ -397,6 +406,7 @@ pkgs.testers.nixosTest {
 
     with subtest("the desktop client's sync engine syncs a folder both ways"):
         laptop.succeed("mkdir -p /tmp/sync && echo 'from the laptop' > /tmp/sync/laptop.txt")
+        print(laptop.succeed("df -h /tmp"))
         sync = (
             f"nextcloudcmd --non-interactive -u notshared -p '{owner_app}'"
             f" /tmp/sync {BASE}/nextcloud"
