@@ -75,7 +75,10 @@ kann:
 - in LosOS cloud unter `/nextcloud/login?direct=1`, wenn du danach fragst.
 
 Dort meldet sich der Eigentümer wie bisher mit dem eigenen Passwort an. Desktop-
-und Handy-Apps, WebDAV und `git` nutzen weiter App-Passwörter und Tokens.
+und Handy-Apps und `git` nutzen weiter App-Passwörter und Tokens. Der
+Netzwerkordner von LosOS cloud nimmt im Netz der Box deinen Namen und dein
+Passwort von LosOS Login, über das Internet ein App-Passwort; siehe
+[Dateien auf deinem Computer](files-on-your-computer).
 
 **Abmelden** in LosOS cloud meldet dich auch bei LosOS Login ab. **Abmelden**
 in LosOS Git tut das nicht: Solange du bei LosOS Login angemeldet bist,

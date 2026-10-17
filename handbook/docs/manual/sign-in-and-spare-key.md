@@ -68,7 +68,10 @@ The apps keep their own sign-in page where LosOS Login cannot help:
 - on LosOS cloud, at `/nextcloud/login?direct=1`, if you ask for it.
 
 There, the owner signs in with their password as before. Desktop and phone
-apps, WebDAV and `git` keep using app passwords and tokens.
+apps and `git` keep using app passwords and tokens. LosOS cloud's network
+folder takes your LosOS Login name and password on the box's network, and
+an app password through the internet; see
+[Files on your computer](files-on-your-computer).
 
 **Log out** in LosOS cloud also signs you out of LosOS Login. LosOS Git's
 **Sign out** does not: while you are signed in to LosOS Login, LosOS Git

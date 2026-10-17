@@ -58,7 +58,7 @@ let
   enabled = cfg.enable && config.losos.admin.enable && config.losos.admin.ui != null;
   fqdn = "${config.losos.hostName}.local";
   apiPort = config.losos.admin.apiPort;
-  port = cfg.port;
+  inherit (cfg) port;
   user = "authelia-losos";
   dir = "/var/lib/losos-identity";
   peopleFile = "${dir}/users.yml";
@@ -306,6 +306,12 @@ in
         ~^/forgejo/ /forgejo/user/login;
         default /nextcloud/login;
       }
+      # LosOS cloud's share (`/internal/losos-cloud-share`): the client's
+      # own credentials go on unless lososd named the person they are for.
+      map $losos_user $losos_share_authorization {
+        "" $http_authorization;
+        default "";
+      }
       map "$losos_groups|$losos_user" $losos_app_user {
         "~(^|,)\s*${signIn.ownerGroup}\s*(,|\|)" ${signIn.ownerAccount};
         "~\|(?<losos_named>[a-z][a-z0-9._-]*)$" $losos_named;
@@ -345,6 +351,28 @@ in
           '';
         };
         "@losos-app-nobody".extraConfig = "return 200;";
+        # Whose request to LosOS cloud's share this is (backend/src/cloud_share.rs):
+        # lososd checks a LosOS Login name and password in the Basic header
+        # and names the person, or names nobody and the request goes on as it
+        # came. Never a refusal, so app passwords and LosOS cloud's own
+        # accounts keep working, off the LAN and while lososd is down too.
+        "= /internal/losos-cloud-share" = {
+          proxyPass = "http://127.0.0.1:${toString apiPort}/internal/cloud-share";
+          extraConfig = ''
+            internal;
+            if ($losos_lan = 0) {
+              return 200;
+            }
+            proxy_pass_request_body off;
+            proxy_set_header Content-Length "";
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header Remote-User "";
+            proxy_set_header Remote-Groups "";
+            proxy_set_header X-Losos-As "";
+            proxy_intercept_errors on;
+            error_page 500 502 503 504 = @losos-app-nobody;
+          '';
+        };
         # The apps' sign-in pages (modules/containers.nix, `signInPage`): 2xx
         # signs the person in, 401 sends them to LosOS Login, 403 to the
         # app's own page, which is all that works off the LAN, while LosOS

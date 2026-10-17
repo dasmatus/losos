@@ -616,6 +616,25 @@ let
     '';
   };
 
+  # What the Nextcloud image's /bin holds.
+  nextcloudRoot = pkgs.buildEnv {
+    name = "losos-image-nextcloud-root";
+    paths = baseTools ++ [
+      pkgs.tini
+      nextcloudEntrypoint
+      # Not on the Entrypoint — `losos-ctl set-password` execs it directly
+      # with `crictl exec`. It has to be in the image because that is the only
+      # place an exec into this pod can reach.
+      nextcloudSetpass
+      # Likewise: lososd execs it to learn whether Nextcloud is installed
+      # and serving before it lets the wizard set the first password.
+      nextcloudStatus
+      # And this one to list, add, turn on and off, and remove apps.
+      nextcloudApps
+      nc.php
+    ];
+  };
+
   # ── Pause ─────────────────────────────────────────────────────────────────
 
   # The sandbox image every pod on the local cluster is built around: PID 1 of
@@ -650,23 +669,11 @@ in
     # zstd rather than gzip: the agent decompresses every one of these at
     # import time, on the appliance, and the mini-PC notices.
     compressor = "zstd";
-    contents = pkgs.buildEnv {
-      name = "losos-image-nextcloud-root";
-      paths = baseTools ++ [
-        pkgs.tini
-        nextcloudEntrypoint
-        # Not on the Entrypoint — `losos-ctl set-password` execs it directly
-        # with `crictl exec`. It has to be in the image because that is the only
-        # place an exec into this pod can reach.
-        nextcloudSetpass
-        # Likewise: lososd execs it to learn whether Nextcloud is installed
-        # and serving before it lets the wizard set the first password.
-        nextcloudStatus
-        # And this one to list, add, turn on and off, and remove apps.
-        nextcloudApps
-        nc.php
-      ];
-    };
+    contents = nextcloudRoot;
+    # The image's /bin without the tarball around it, for
+    # nix/tests/cloud-webdav.nix, which runs the pod's entrypoint on the
+    # manifest's mounts with no kubelet (and no 2.6 GiB image to build).
+    passthru.root = nextcloudRoot;
     extraCommands = commonLayout;
     # Apache's runtime directory, owned by the uid the pod runs as. The pod
     # drops every capability and runs as nc.uid, and the image's /run is

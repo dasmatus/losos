@@ -96,6 +96,13 @@ let
     error_page 401 = @losos-app-sign-in;
     error_page 403 = ${own};
   '';
+  # Uploads of any size, streamed, and sync runs that take all day.
+  nextcloudFiles = ''
+    client_max_body_size 0;
+    proxy_request_buffering off;
+    proxy_read_timeout 86400s;
+    proxy_send_timeout 86400s;
+  '';
   # What the `/nextcloud` location below does for every page, for the two
   # sign-in locations that sit beside it. The reasons are written there.
   nextcloudPage = ''
@@ -595,10 +602,7 @@ in
             proxyPass = "http://127.0.0.1:${toString apachePort}";
             proxyWebsockets = true;
             extraConfig = ''
-              client_max_body_size 0;
-              proxy_request_buffering off;
-              proxy_read_timeout 86400s;
-              proxy_send_timeout 86400s;
+              ${nextcloudFiles}
               # The address this request reached the box on. The pod's
               # losos.config.php (modules/workloads.nix) adds it to
               # trusted_domains, so a browser that opens the box by its IP
@@ -687,6 +691,20 @@ in
               ${nextcloudPage}
             '';
           };
+          # The WebDAV share, as file managers and the sync apps open it
+          # (the announcement below): a LosOS Login name and password open
+          # it as that person, anything else goes on to Nextcloud as it came
+          # (modules/identity.nix, backend/src/cloud_share.rs). Regex, so it
+          # wins over the `/nextcloud` prefix.
+          "~ ^/nextcloud/remote\\.php/(?:webdav|dav)(?:/|$)" = {
+            proxyPass = "http://127.0.0.1:${toString apachePort}";
+            extraConfig = ''
+              ${passSignIn "/internal/losos-cloud-share"}
+              proxy_set_header Authorization $losos_share_authorization;
+              ${nextcloudFiles}
+              ${nextcloudPage}
+            '';
+          };
           # `direct=1` is how user_saml leaves Nextcloud's own form alone.
           # The original arguments follow it, a posted form included.
           "@losos-nextcloud-own-sign-in" = {
@@ -744,6 +762,31 @@ in
         })
       ];
     };
+  };
+
+  # ── LosOS cloud in a file manager's Network view ─────────────────────────
+  # The WebDAV share, announced over DNS-SD (modules/mdns.nix), which is how
+  # GNOME Files, KDE Dolphin and other Linux file managers list shares on the
+  # LAN: an entry named after the box that opens the owner's files as a
+  # folder, after their user name and password. `path` is where those
+  # clients go on the host; remote.php/webdav is Nextcloud's WebDAV root for
+  # whoever signs in, so one announcement serves every account. Over TLS
+  # whenever the box has it, so the password does not cross the LAN in the
+  # clear; a client that has not trusted the box's certificate asks first.
+  # Windows Explorer and the macOS Finder do not list WebDAV announcements;
+  # handbook/docs/manual/files-on-your-computer.md has their way in.
+  # nix/tests/cloud-webdav.nix browses for it and follows it.
+  losos.mdns.services = lib.mkIf nextcloudWorkload {
+    losos-cloud =
+      let
+        tls = config.losos.tls.enable;
+      in
+      ''
+        Name=LosOS cloud on %H
+        Type=${if tls then "_webdavs._tcp" else "_webdav._tcp"}
+        Port=${if tls then "443" else "80"}
+        TxtText=path=/nextcloud/remote.php/webdav/
+      '';
   };
 
   # ── Firewall ──────────────────────────────────────────────────────────────
