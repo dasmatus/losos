@@ -8,9 +8,14 @@ mdx:
 # Marktplatz
 
 Ein optionaler Marktplatz, auf dem eine Box freien Speicher oder Rechenleistung
-verkauft und eine andere sie kauft. Käufer zahlen in USDC, Bitcoin oder
-Monero, oder per Karte über **Stripe Connect**, wo die Edge Karten annimmt,
-und die Edge behält 4 % ein, um ihre Betriebskosten zu decken.
+verkauft und eine andere sie kauft. Käufer zahlen per Karte über **Stripe
+Connect**, wo die Edge Karten annimmt, oder in USDC auf Base, Arbitrum oder
+OP. Die Edge hält jede Zahlung zurück, bis der Zeitraum endet, für den der
+Käufer bezahlt hat, erstattet dem Käufer, wenn die Box des Verkäufers nicht
+mehr liefert, und behält 4 % ein, um ihre Betriebskosten zu decken. Eine Edge
+lässt sich auch so einstellen, dass sie Bitcoin, Monero, Zcash und USDC auf
+Solana annimmt; diese erreichen den Verkäufer sofort und lassen sich deshalb
+nicht erstatten.
 
 Die Zeile **Markt** unter Mesh in der Seitenleiste öffnet den Bereich, unter
 `/settings/market`. Eine Box zeigt den Marktplatz nur, wenn eine offizielle
@@ -41,31 +46,47 @@ nicht betroffen.
 
 ## Wie das Geld fließt {#how-the-money-moves}
 
-Geld berührt nie eine LosOS-Box. Käufer zahlen auf eine von vier Arten, je
+Geld berührt nie eine LosOS-Box. Käufer zahlen auf eine dieser Arten, je
 nachdem, was die Edge erlaubt:
 
 - **USDC auf Base, Arbitrum One oder OP Mainnet.** Die Zahlung geht in den
   Vertrag `LososEscrow`. Die Edge prüft sie (die Adresse des Verkäufers, den
-  Betrag, die Bestätigungen) und gibt sie, sobald das Gekaufte existiert, an
-  den Verkäufer und an die Kasse der Plattform frei, die die Gebühr von 4 %
-  erhält. Oder sie zahlt die ganze Zahlung an den Käufer zurück: wenn die
-  Adresse des Verkäufers falsch oder ein Vertrag ist, wenn die Bestellung
-  schon bezahlt war, wenn ihre Einheiten verfallen sind oder wenn sich das
-  Gekaufte nicht rechtzeitig einrichten ließ. Handelt die Edge nicht, kann der Käufer die
-  Einzahlung einen Tag nach dem Ende der Reservierung der Bestellung selbst
-  aus dem Vertrag zurückholen. Siehe [Mit USDC zahlen](#paying-with-usdc).
+  Betrag, die Bestätigungen) und hält sie dort, bis der Zeitraum des Käufers
+  endet. Dann gibt sie sie an den Verkäufer und an die Kasse der Plattform
+  frei, die die Gebühr von 4 % erhält. Oder sie zahlt die ganze Zahlung an
+  den Käufer zurück: wenn die Adresse des Verkäufers falsch oder ein Vertrag
+  ist, wenn die Bestellung schon bezahlt war, wenn ihre Einheiten verfallen
+  sind oder wenn sich das Gekaufte nicht rechtzeitig einrichten ließ. War die
+  Box des Verkäufers zu lange offline, teilt sie die Zahlung auf: Der Käufer
+  bekommt den Anteil zurück, der nicht geliefert wurde, und der Verkäufer
+  behält den Rest. Handelt die Edge nicht, kann der Käufer die Einzahlung 33
+  Tage nach der Bestellung selbst aus dem Vertrag zurückholen. Siehe
+  [Mit USDC zahlen](#paying-with-usdc).
+- **Karte, über Stripe Connect.** Auf einer Edge optional. Die Zahlung
+  bleibt auf dem Stripe-Guthaben der Plattform, bis der Zeitraum des Käufers
+  endet. Dann überweist die Edge den Anteil des Verkäufers, erstattet sie
+  oder teilt sie auf, genauso wie beim Escrow. Eine Edge kann nur USDC
+  annehmen, ohne Kartenzahlungen, sodass der Betrieb des Marktplatzes kein
+  Geschäftskonto bei einem Kartenabwickler braucht.
+
+Das sind die einzigen Zahlungswege auf einer Edge, die nicht zusätzlich auf
+direkte Zahlungen eingestellt ist. Mit direkten Zahlungen sehen Käufer
+außerdem:
+
 - **USDC auf Solana.** Eine direkte Überweisung, in der eigenen Transaktion
   des Käufers zwischen Verkäufer und Kasse aufgeteilt.
-- **Bitcoin und Monero.** Direkt in die eigene Wallet des Verkäufers, an eine
-  neue Adresse für jede Bestellung, abgeleitet aus dem öffentlichen Schlüssel
-  des Verkäufers: einem erweiterten öffentlichen Schlüssel oder Deskriptor
-  für Bitcoin, der Hauptadresse und dem privaten View-Key für Monero. Die
-  Edge schaut nur zu und hält nie Coins. Die Gebühr von 4 % auf diese
-  Verkäufe ist eine Schuld, die der Verkäufer in USDC begleicht, siehe
+- **Bitcoin, Monero und Zcash.** Direkt in die eigene Wallet des Verkäufers,
+  an eine neue Adresse für jede Bestellung, abgeleitet aus dem öffentlichen
+  Schlüssel des Verkäufers: einem erweiterten öffentlichen Schlüssel oder
+  Deskriptor für Bitcoin, der Hauptadresse und dem privaten View-Key für
+  Monero, dem Unified Viewing Key für Zcash. Die Edge schaut nur zu und hält
+  nie Coins. Die Gebühr von 4 % auf diese Verkäufe ist eine Schuld, die der
+  Verkäufer in USDC begleicht, siehe
   [Plattformgebühren aus Coin-Verkäufen](#platform-fees-on-coin-sales).
-- **Karte, über Stripe Connect.** Auf einer Edge optional. Eine Edge kann
-  nur Coins annehmen, ohne Kartenzahlungen, sodass der Betrieb des
-  Marktplatzes kein Geschäftskonto bei einem Kartenabwickler braucht.
+
+Was direkt gezahlt wird, lässt sich nicht zurückhalten. Ein Käufer, der so
+zahlt, kann daher kein Geld zurückbekommen, wenn die Box des Verkäufers
+offline geht.
 
 Für Kartenzahlungen ist die Edge die Stripe-**Plattform**:
 
@@ -79,17 +100,59 @@ Für Kartenzahlungen ist die Edge die Stripe-**Plattform**:
    empfangen kann. Auf einer Edge ohne Coins kann der Verkäufer erst dann
    etwas anbieten.
 3. Ein Käufer bestellt Einheiten eines Angebots. Die Edge reserviert sie und
-   erstellt eine Stripe Checkout Session als **Destination Charge**. Der
-   Käufer zahlt an die Plattform, `transfer_data[destination]` leitet den
-   Verkaufserlös an das Konto des Verkäufers weiter, und
-   `application_fee_amount` bleibt bei der Plattform.
+   erstellt eine Stripe Checkout Session als Zahlung an die Plattform, mit
+   der Bestellung als `transfer_group` und dem Konto des Verkäufers und der
+   Gebühr in ihren Metadaten. Beim Verkäufer kommt noch nichts an.
 4. Stripe teilt der Edge mit (`checkout.session.completed`), dass die Zahlung
-   eingegangen ist. Die Bestellung wird `paid`.
+   eingegangen ist. Die Bestellung wird `paid`, und ihr Zeitraum beginnt.
+5. Ist der Zeitraum vorbei, überweist die Edge den Anteil des Verkäufers aus
+   dieser Zahlung (`source_transaction`), erstattet dem Käufer oder tut von
+   beidem einen Teil. Die Plattform behält die Gebühr auf das, was der
+   Verkäufer ausgezahlt bekommt.
 
 Die Gebühr beträgt `feeBps` Basispunkte des Bruttobetrags, kaufmännisch
 gerundet. Beim Standardwert 400 bringt ein Verkauf über 20.00 EUR der
 Plattform 0.80 und dem Verkäufer 19.20. Der konfigurierte Wert ist auf 2000
 (20 %) begrenzt.
+
+## Bezahlte Zeiträume und Erstattungen {#paid-periods-and-refunds}
+
+Eine bezahlte Bestellung kauft einen Zeitraum: einen Monat Speicher,
+Rechenleistung oder eine Maschine. Die Edge hält das Geld des Käufers für
+diesen Zeitraum zurück und beobachtet die Box des Verkäufers, solange er
+läuft, sodass keine Seite mit dem Anteil der anderen davongehen kann.
+
+- **Der Verkäufer kann das Angebot nicht zurückziehen.** Solange auf einem
+  Angebot der Zeitraum eines Käufers läuft, ist Nicht mehr verkaufen
+  ausgegraut und sagt, bis wann. Die Edge lehnt es ab, das Angebot vorher zu
+  schließen.
+- **Die Edge prüft, ob die Box da ist.** Sie fragt das Mesh bei jedem
+  Reconcile-Durchlauf, ob der Node des Verkäufers `Ready` ist, und nimmt den
+  Heartbeat der Box, wo sie kein Mesh fragen kann. Zeit, in der die Edge
+  selbst ausgefallen oder zu beschäftigt zum Nachsehen war, zählt nie gegen
+  den Verkäufer.
+- **Ist die Box offline, bekommt der Käufer Geld zurück.** Ist die Box des
+  Verkäufers während des Zeitraums 24 Stunden am Stück oder insgesamt 48
+  Stunden offline, endet der Zeitraum dort. Der Käufer bekommt den Anteil des
+  Zeitraums zurück, der nicht geliefert wurde, auf den Cent aufgerundet, und
+  der Verkäufer wird für den Rest bezahlt, abzüglich der Gebühr auf diesen
+  Teil. Ist die Box von Anfang an offline, wird die ganze Zahlung erstattet.
+- **Nichts eingerichtet, nichts bezahlt.** Ist das Gekaufte nicht innerhalb
+  von 23 Stunden nach der Zahlung eingerichtet, bekommt der Käufer alles
+  zurück.
+- **Der Verkäufer wird bezahlt, wenn der Zeitraum endet.** Die Gruppe
+  Einnahmen im Markt-Bereich zeigt, was gehalten wird, was bereit ist und was
+  unterwegs ist. Auszahlen schickt sofort, was bereit ist, und ist
+  ausgegraut, bis ein Zeitraum endet. Die Edge zahlt auch von selbst aus,
+  einen Tag nach dem Ende jedes Zeitraums, und immer früh genug, dass ein
+  USDC-Käufer keine Einzahlung für einen gelieferten Zeitraum zurückholen
+  kann.
+- **Der Käufer kann einen Zeitraum, der geliefert wird, nicht kündigen** und
+  keine Erstattung anstoßen. Das tun nur die Prüfungen der Edge.
+
+Eine Kartenzahlung, die jemand bei seiner Bank anficht, bleibt Stripe
+überlassen: Die Edge zahlt sie weder aus noch erstattet sie, solange der
+Streitfall offen ist.
 
 ## Was verkauft wird {#what-is-for-sale}
 
@@ -173,6 +236,14 @@ der Box, nicht der Edge.
   zusätzlich Rechenleistung teilt. Alles andere ist ausgegraut, mit Angabe
   des Grundes. Die Edge setzt dieselbe Regel durch, der Bereich erklärt sie
   nur.
+- Ein Angebot, für das jemand bezahlt hat, zeigt „bezahlt bis“ mit dem
+  Datum, und seine Schaltfläche Nicht mehr verkaufen bleibt bis dahin
+  ausgegraut. Jede Bestellung sagt, wo ihr Geld steht: gehalten, unterwegs
+  zum Verkäufer, erstattet oder aufgeteilt, mit dem erstatteten Betrag und
+  dem Grund.
+- Die Gruppe Einnahmen erscheint, sobald ein Verkauf gehalten wird: was für
+  laufende Zeiträume gehalten wird, was bereit ist und was unterwegs ist, mit
+  einer Schaltfläche Auszahlen, die ausgegraut ist, bis ein Zeitraum endet.
 - Kartenzahlung und Stripe-Onboarding öffnen die eigenen Seiten von Stripe in einem
   neuen Tab. Nichts in der Admin-UI sieht eine Karte. lososd und danach noch
   einmal die Seite prüfen, dass der Link eine Seite unter
@@ -183,7 +254,7 @@ der Box, nicht der Edge.
 - Die Seiten können die Edge nicht selbst aufrufen, da die CSP der Admin-UI
   `connect-src 'self'` ist. Stattdessen leitet `lososd` weiter:
   `GET /api/market` und
-  `POST /api/market/{onboard,listings,listings/close,orders}`. Das Relay
+  `POST /api/market/{onboard,listings,listings/close,orders,release}`. Das Relay
   verwendet die URL des Registrars, die Appliance-ID und das Proxy-Token, die
   `losos.proxy.enable` bereits bereitstellt. Es verlangt https und übergibt
   das Token an `curl` über stdin statt auf der Kommandozeile.
@@ -205,8 +276,9 @@ Alle Routen liegen auf der öffentlichen API des Registrars
 | `POST /market/account`         | Token      | Deine Angebote, Käufe, Verkäufe, Ansprüche           |
 | `POST /market/seller/onboard`  | Token      | Stripe-Onboarding starten oder fortsetzen            |
 | `POST /market/listings`        | Token      | `kind`, `unit_price`, `capacity`                     |
-| `POST /market/listings/close`  | Token      | `listing_id`; bezahlte Bestellungen behalten ihre Einheiten |
+| `POST /market/listings/close`  | Token      | `listing_id`; bezahlte Bestellungen behalten ihre Einheiten; 409, solange ein bezahlter Zeitraum läuft |
 | `POST /market/orders`          | Token      | `listing_id`, `quantity`; liefert eine Checkout-URL  |
+| `POST /market/sales/release`   | Token      | Zahlt die Verkäufe aus, deren Zeiträume vorbei sind; 409, solange es keine gibt |
 | `POST /market/fees/pay`        | Token      | `tx`, `network`; rechnet eine USDC-Überweisung auf offene Coin-Gebühren an |
 | `POST /market/webhook`         | Signatur   | Stripe-Ereignisse                                    |
 
@@ -326,18 +398,25 @@ dieser Zeit versiegelt, geht nichts verloren.
   der ihn hat. Der Registrar spricht mit dem Gate über einen Unix-Socket
   (`/run/losos-stripe-gate/gate.sock`, 0600) und darf nur darum bitten, ein
   Konto anzulegen, ein Konto zu kennzeichnen, ein Konto zu prüfen, einen
-  Onboarding-Link zu erzeugen, eine Checkout Session zu starten oder eine
-  Webhook-Signatur zu verifizieren. Das Gate lehnt einen Checkout ab, dessen
-  Ziel keine `acct_...`-ID ist, dessen Währung von der konfigurierten
-  abweicht, dessen Gebühr die Obergrenze von 20 % oder den ganzen Betrag
-  übersteigt, dessen Rücksprung-URL keine einfache http(s)-URL ist oder
-  dessen Session-Lebensdauer mehr als einen Tag beträgt. Es lehnt auch einen
-  Stripe-Endpunkt ab, der nicht `https` ist. Es gibt keine Operation „leite
-  das an Stripe weiter“. Ein kompromittierter Registrar kann daher den
-  Schlüssel nicht lesen, kein Geld irgendwohin schicken außer an ein
-  verbundenes Konto innerhalb der Gebührengrenzen des Gates und keine
-  Erstattungen oder Auszahlungen auslösen. Er kann weiterhin Checkouts
-  anfordern, denn das ist seine Aufgabe. Beide Units laufen als Prozesse auf
+  Onboarding-Link zu erzeugen, eine Checkout Session zu starten, eine
+  Webhook-Signatur zu verifizieren oder eine gehaltene Zahlung des
+  Marktplatzes abzurechnen. Das Gate lehnt einen Checkout ab, dessen Ziel
+  keine `acct_...`-ID ist, dessen Währung von der konfigurierten abweicht,
+  dessen Gebühr die Obergrenze von 20 % oder den ganzen Betrag übersteigt,
+  dessen Rücksprung-URL keine einfache http(s)-URL ist oder dessen
+  Session-Lebensdauer mehr als einen Tag beträgt. Es lehnt auch einen
+  Stripe-Endpunkt ab, der nicht `https` ist. Zum Abrechnen liest das Gate die
+  Zahlung selbst bei Stripe nach und teilt nur eine Zahlung auf, die es für
+  den Marktplatz erstellt hat, zwischen ihrem Käufer und dem beim Checkout
+  genannten Verkäufer: nie mehr zurück, als gezahlt wurde, nichts zurück,
+  sobald der Verkäufer bezahlt ist, nichts, solange die Zahlung angefochten
+  ist, und jede Erstattung und Überweisung höchstens einmal. Es gibt keine
+  Operation „leite das an Stripe weiter“. Ein kompromittierter Registrar kann
+  daher den Schlüssel nicht lesen, kein Geld irgendwohin schicken außer an
+  ein verbundenes Konto innerhalb der Gebührengrenzen des Gates oder zurück an
+  den Käufer, der es gezahlt hat, und das eigene Geld der Plattform nicht
+  bewegen. Er kann weiterhin Checkouts und Abrechnungen anfordern, denn das
+  ist seine Aufgabe. Beide Units laufen als Prozesse auf
   derselben Maschine, und root auf der Edge kommt weiterhin an beide heran.
   Als zweite Schicht markiert die Unit des Registrars die versiegelten Blobs
   und das Credential-Verzeichnis des Gates als unzugänglich.
@@ -379,6 +458,9 @@ Edge:
 | OP Mainnet   | OP Sepolia          |
 | Solana       | Solana Devnet       |
 
+Solana wird nur auf einem Edge angeboten, der auch direkte Zahlungen
+annimmt, da sich dort nichts zurückhalten lässt.
+
 Ein Edge läuft auf Live-Netzen oder auf Testnetzen, nie auf beiden. Bei
 einem Edge, der Karten annimmt, folgt der Modus seinem Stripe-Schlüssel:
 Live-Netze mit einem `sk_live_`-Schlüssel, Testnetze mit `sk_test_`. Ein Edge,
@@ -413,15 +495,15 @@ beschreiben die Betreiberhinweise beim Quellcode (`docs/ci-and-releases.md`).
    markiert die Bestellung als bezahlt. Eine Transaktion bezahlt nur eine
    Bestellung. Die Bestellung nennt dann ihr Netz und verlinkt die
    Transaktion im Block-Explorer dieses Netzes, für Käufer und Verkäufer.
-6. Auf einem Ethereum-Netz wartet der Edge danach, bis das Gekaufte
-   existiert (das Volume einer Speicherbestellung ist gebunden, eine
-   Maschine ist angelegt), prüft die Adresse des Verkäufers in diesem Netz
-   und gibt die Einzahlung frei: die Gebühr an die Treasury, den Rest an den
-   Verkäufer. Kann die Adresse dort kein USDC empfangen, zahlt der Edge
-   stattdessen die ganze Zahlung an den Käufer zurück, und die Bestellung
-   wird nicht ausgeführt. Ist das Gekaufte eine Stunde, bevor der Käufer die
-   Einzahlung selbst zurückholen könnte, noch nicht eingerichtet, zahlt der
-   Edge sie ebenfalls zurück. Die Bestellung zeigt, was davon geschah.
+6. Auf einem Ethereum-Netz prüft der Edge danach die Adresse des Verkäufers
+   in diesem Netz. Kann sie dort kein USDC empfangen, zahlt der Edge die
+   ganze Zahlung an den Käufer zurück, und die Bestellung wird nicht
+   ausgeführt. Sonst bleibt die Einzahlung im Escrow, solange der Zeitraum
+   läuft, und der Edge rechnet sie ab, wie
+   [Bezahlte Zeiträume und Erstattungen](#paid-periods-and-refunds)
+   beschreibt: die Gebühr an die Treasury und den Rest an den Verkäufer,
+   alles zurück an den Käufer oder eine Aufteilung. Die Bestellung zeigt,
+   was davon geschah.
 
 Bevor er eine Zahlung auf einem Ethereum-Netz zählt, prüft der Edge, dass der
 RPC-Endpunkt für die Chain dieses Netzes antwortet, dass `LososEscrow`
@@ -437,10 +519,11 @@ bleibt, zu dem jemand den Schlüssel hat. Dass jemand ihn hat, hat schon die
 Signatur der Auszahlungsadresse gezeigt. Die Treasury, der USDC-Vertrag, das
 Escrow und die Nulladresse zählen nie. Der Schlüssel des Edge kann eine
 Einzahlung nur an Verkäufer und Treasury freigeben, die bei der Zahlung
-vermerkt wurden, oder sie an den Käufer zurückgeben; anderswohin schicken kann
-er sie nicht. Hat der Edge eine Einzahlung einen Tag nach dem Ende der
-Haltezeit nicht freigegeben, holt der Käufer sie direkt aus dem Vertrag
-zurück. Auf Solana prüft der Edge, dass der Endpunkt den
+vermerkt wurden, sie an den Käufer zurückgeben oder zwischen beiden aufteilen
+(`settle`); anderswohin schicken kann er sie nicht. Hat der Edge eine
+Einzahlung 33 Tage nach der Bestellung nicht abgerechnet, holt der Käufer sie
+direkt aus dem Vertrag zurück. Der Edge zahlt mindestens zwei Tage vorher
+aus. Auf Solana prüft der Edge, dass der Endpunkt den
 Genesis-Hash des Netzes meldet, dass die Transaktion gelungen und bestätigt
 ist, dass ihr Memo die Bestellung nennt und dass das USDC von Verkäufer und
 Treasury um genau ihre Anteile gewachsen ist.
@@ -502,13 +585,13 @@ Namen über ein Gateway außerhalb der Chain nicht nachgeschlagen.
 
 ### So bekommst du Geld {#how-you-get-paid}
 
-Mit der Wallet signieren, die USDC empfangen soll. Ein Klick signiert für
-beide Arten von Netz: die Ethereum-Adresse nimmt Verkäufe auf Base, Arbitrum
-und OP, die Solana-Adresse Verkäufe auf Solana. Der Edge prüft jede Signatur,
-speichert nur die Adressen. Verkäufe auf Solana gehen direkt an sie; Verkäufe
-auf den Ethereum-Netzen kommen an, sobald der Edge die Adresse in diesem Netz
-geprüft und die Zahlung aus dem Escrow freigegeben hat. Ein Verkäufer
-mit nur einer der beiden wird nur Käufern auf dieser Art von Netz angeboten.
+Mit der Wallet signieren, die USDC empfangen soll. Die Ethereum-Adresse nimmt
+Verkäufe auf Base, Arbitrum und OP; sie kommen an, sobald der Zeitraum des
+Käufers endet und der Edge die Zahlung aus dem Escrow freigibt. Auf einem
+Edge, der auch direkte Zahlungen annimmt, signiert derselbe Klick eine
+Solana-Adresse, die Verkäufe auf Solana direkt nimmt. Der Edge prüft jede
+Signatur, speichert nur die Adressen. Ein Verkäufer mit nur einer der beiden
+wird nur Käufern auf dieser Art von Netz angeboten.
 Dieselbe Phrase lässt sich in MetaMask, Rabby, Rainbow, Trust Wallet oder
 Phantom importieren, wenn du das Geld ausgeben willst. Für diese Verkäufe gibt
 es kein verbundenes Stripe-Konto.
@@ -524,8 +607,8 @@ genauso.
 
 ## Mit Bitcoin zahlen {#paying-with-bitcoin}
 
-Ein Edge, der in USDC abrechnet, kann für Speicher-, Rechen- und
-Maschinenbestellungen auch Bitcoin annehmen. Er betreibt dafür einen eigenen
+Ein Edge, der in USDC abrechnet und direkte Zahlungen annimmt, kann für
+Speicher-, Rechen- und Maschinenbestellungen auch Bitcoin annehmen. Er betreibt dafür einen eigenen
 geprunten Bitcoin-Knoten: auf Mainnet für einen Live-Edge, auf testnet4,
 Signet oder Regtest für einen Test-Edge. Der Registrar lehnt jede andere
 Paarung ab, sodass ein Live-Edge nie Testmünzen zählt. Der Knoten hält eine
@@ -574,8 +657,8 @@ Netz und verlinkt die Transaktion auf mempool.space.
 
 ## Mit Monero zahlen {#paying-with-monero}
 
-Ein Edge, der in USDC abrechnet, kann für dieselben Bestellungen auch Monero
-annehmen. Er betreibt dafür einen eigenen geprunten Monero-Knoten und daneben
+Ein Edge, der in USDC abrechnet und direkte Zahlungen annimmt, kann für
+dieselben Bestellungen auch Monero annehmen. Er betreibt dafür einen eigenen geprunten Monero-Knoten und daneben
 einen Wallet-Dienst: auf Mainnet für einen Live-Edge, auf Stagenet oder
 Testnet für einen Test-Edge. Der Registrar lehnt jede andere Paarung ab und
 ebenso eine Adresse, die für ein anderes Netz gemacht ist als das des Knotens.
@@ -615,8 +698,8 @@ zu einem Block-Explorer.
 
 ## Mit Zcash zahlen {#paying-with-zcash}
 
-Ein Edge, der in USDC abrechnet, kann für dieselben Bestellungen auch
-abgeschirmtes Zcash annehmen. Er betreibt keinen Zcash-Knoten. Er fragt
+Ein Edge, der in USDC abrechnet und direkte Zahlungen annimmt, kann für
+dieselben Bestellungen auch abgeschirmtes Zcash annehmen. Er betreibt keinen Zcash-Knoten. Er fragt
 öffentliche lightwalletd-Server nach kompakten Blöcken, standardmäßig vier
 Mainnet-Server verschiedener Betreiber, und entschlüsselt sie selbst, sodass
 dein Viewing Key den Edge nie verlässt. Eine Zahlung zählt erst, wenn Server
@@ -707,10 +790,14 @@ der nur Coins annimmt, kann bis dahin nicht bestellt werden.
 
 ## Nicht abgedeckt {#not-covered}
 
-- **Erstattungen und Streitfälle bei Karten.** Bearbeite diese im Stripe-Dashboard
-  mit `reverse_transfer` und `refund_application_fee`, damit sowohl der Anteil
-  des Verkäufers als auch der Anteil der Plattform zurückfließen. Der
-  Marktplatz bildet keines von beiden ab.
+- **Streitfälle und Erstattungen, die nicht die Edge vorgenommen hat.** Ein
+  Streitfall bei einer Karte wird im Stripe-Dashboard bearbeitet. Eine
+  Erstattung aus einem anderen Grund, nachdem der Verkäufer bezahlt wurde,
+  entscheidet der Betreiber, mit `reverse_transfer`, damit auch der Anteil
+  des Verkäufers zurückkommt.
+- **Nachweis, dass der Speicher intakt ist.** Eine Box gilt als online,
+  solange ihr Node im Mesh `Ready` ist. Die Edge prüft nicht, ob das Volume
+  des Käufers antwortet.
 - **Durchsetzung des Anspruchs.** Die Erfüllung legt den Claim an; sie hindert
   einen Käufer nicht daran, mehr zu nutzen, als er gekauft hat, misst keine
   Rechenleistung und entzieht bei Ablauf keinen Zugriff.

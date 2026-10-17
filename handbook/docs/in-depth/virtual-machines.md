@@ -103,9 +103,11 @@ Every replica on one edge has the same size: `losos.edge.vms.cpu` vCPU,
 `memoryMiB` of memory and `diskGiB` of disk (1, 2048 and 20 by default), or
 more where an image asks for more.
 
-**The split is fixed at 50%.** The machine checkout is a destination charge
-like every other market sale, with `application_fee_amount` exactly half of
-the total. The operator's `losos.edge.market.feeBps` does not apply to
+**The split is fixed at 50%.** The machine checkout is held like every
+other market sale until the buyer's month ends, with a fee of exactly half
+of the total; if the host goes offline for too long, the buyer gets back
+the share not delivered (see
+[Paid periods and refunds](market.md#paid-periods-and-refunds)). The operator's `losos.edge.market.feeBps` does not apply to
 machines, and the Stripe gate refuses a machine checkout with any other fee.
 At 6.00 EUR per replica-month, three replicas cost 18.00 EUR; the hosting
 box's owner receives 9.00 and LosOS keeps 9.00.

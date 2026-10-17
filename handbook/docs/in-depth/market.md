@@ -8,9 +8,12 @@ mdx:
 # Market
 
 An optional marketplace where one box sells spare storage or compute and
-another buys it. Buyers pay in USDC, Bitcoin or Monero, or by card through
-**Stripe Connect** where the edge takes cards, and the edge keeps a 4% cut to
-cover its running costs.
+another buys it. Buyers pay by card through **Stripe Connect** where the edge
+takes cards, or in USDC on Base, Arbitrum or OP. The edge holds each payment
+until the period the buyer paid for ends, refunds the buyer when the
+seller's box stops delivering, and keeps a 4% cut to cover its running
+costs. An edge can also be set to take Bitcoin, Monero, Zcash and USDC on
+Solana, which reach the seller at once and so cannot be refunded.
 
 The **Market** row under Mesh in the sidebar opens the pane, at
 `/settings/market`. A box shows the market only when an official LosOS edge
@@ -37,29 +40,42 @@ at once. They return if you resume, and orders already paid are unaffected.
 
 ## How the money moves
 
-Money never touches a LosOS box. Buyers pay in one of four ways, as the edge
+Money never touches a LosOS box. Buyers pay in one of these ways, as the edge
 allows:
 
 - **USDC on Base, Arbitrum One or OP Mainnet.** The payment goes into the
   `LososEscrow` contract. The edge checks it (the seller's address, the
-  amount, the confirmations) and, once what was bought exists, releases it
-  to the seller and to the platform treasury, which takes the 4% fee. Or it
-  refunds the whole payment to the buyer: when the seller's address is wrong
-  or is a contract, when the order was already paid, when its units lapsed,
-  or when what was bought could not be set up in time. If the edge never acts,
-  the buyer can reclaim the deposit from the contract a day after the
-  order's hold ends. See [Paying with USDC](#paying-with-usdc).
+  amount, the confirmations) and holds it there until the buyer's period
+  ends. Then it releases it to the seller and to the platform treasury,
+  which takes the 4% fee. Or it refunds the whole payment to the buyer: when
+  the seller's address is wrong or is a contract, when the order was already
+  paid, when its units lapsed, or when what was bought could not be set up
+  in time. When the seller's box was offline for too long, it splits the
+  payment: the buyer gets back the share not delivered and the seller keeps
+  the rest. If the edge never acts, the buyer can reclaim the deposit from
+  the contract 33 days after ordering. See
+  [Paying with USDC](#paying-with-usdc).
+- **Card, through Stripe Connect.** Optional on an edge. The payment stays
+  on the platform's Stripe balance until the buyer's period ends, then the
+  edge transfers the seller's share, refunds it, or splits it, the same way
+  as the escrow. An edge can take USDC only, without card payments, so
+  running the market needs no business account with a card processor.
+
+Those two are the only ways to pay on an edge that has not been set to take
+direct payments as well. With direct payments on, buyers also see:
+
 - **USDC on Solana.** A direct transfer, split between the seller and the
   treasury in the buyer's own transaction.
-- **Bitcoin and Monero.** Straight to the seller's own wallet, at a fresh
-  address for each order, derived from the seller's public key: an extended
-  public key or descriptor for Bitcoin, the primary address and private view
-  key for Monero. The edge only watches and never holds the coins. The 4%
-  fee on these sales is a debt the seller settles in USDC, see
+- **Bitcoin, Monero and Zcash.** Straight to the seller's own wallet, at a
+  fresh address for each order, derived from the seller's public key: an
+  extended public key or descriptor for Bitcoin, the primary address and
+  private view key for Monero, the unified viewing key for Zcash. The edge
+  only watches and never holds the coins. The 4% fee on these sales is a
+  debt the seller settles in USDC, see
   [Platform fees on coin sales](#platform-fees-on-coin-sales).
-- **Card, through Stripe Connect.** Optional on an edge. An edge can take
-  coins only, without card payments, so running the market needs no business
-  account with a card processor.
+
+Nothing paid directly can be held, so a buyer who pays that way cannot get
+money back when the seller's box goes offline.
 
 For card payments the edge is the Stripe **platform**:
 
@@ -71,15 +87,51 @@ For card payments the edge is the Stripe **platform**:
    transfers. On an edge that takes no coins, only then can the seller list
    anything.
 3. A buyer orders units of a listing. The edge reserves them and creates a
-   Stripe Checkout Session as a **destination charge**. The buyer pays the
-   platform, `transfer_data[destination]` forwards the sale to the seller's
-   account, and `application_fee_amount` stays with the platform.
+   Stripe Checkout Session as a charge on the platform, with the order as
+   its `transfer_group` and the seller's account and the fee in its
+   metadata. Nothing reaches the seller yet.
 4. Stripe tells the edge (`checkout.session.completed`) that the payment
-   cleared. The order becomes `paid`.
+   cleared. The order becomes `paid` and its period starts.
+5. When the period is over, the edge transfers the seller's share out of
+   that charge (`source_transaction`), refunds the buyer, or does part of
+   each. The platform keeps the fee on whatever the seller is paid.
 
 The fee is `feeBps` basis points of the gross amount, rounded half up. At the
 default 400, a 20.00 EUR sale pays the platform 0.80 and the seller 19.20. The
 configured value is capped at 2000 (20%).
+
+## Paid periods and refunds
+
+A paid order buys a period: a month of storage, compute or a machine. The
+edge holds the buyer's money for that period and watches the seller's box
+while it runs, so neither side can walk away with the other's share.
+
+- **The seller cannot pull the listing.** While someone's period runs on a
+  listing, Stop selling is greyed and says until when. The edge refuses to
+  close it before then.
+- **The edge checks that the box is there.** It asks the mesh every
+  reconcile pass whether the seller's node is `Ready`, and falls back to the
+  box's heartbeat where it has no mesh to ask. Time the edge itself was down
+  or too busy to look never counts against the seller.
+- **An offline box refunds its buyer.** If the seller's box is offline for
+  24 hours in a row while the period runs, or for 48 hours in all, the
+  period ends there. The buyer gets back the share of the period not
+  delivered, rounded up to the cent, and the seller is paid for the rest,
+  less the fee on that part. A box offline from the start refunds the whole
+  payment.
+- **Nothing set up, nothing paid.** If what was bought is not set up within
+  23 hours of payment, the buyer gets everything back.
+- **The seller is paid when the period ends.** The Market pane's Earnings
+  group shows what is held, what is ready and what is on its way. Pay out
+  sends what is ready at once and is greyed until a period ends. The edge
+  also pays out by itself a day after each period ends, and always early
+  enough that a USDC buyer cannot reclaim a deposit for a period that was
+  delivered.
+- **The buyer cannot cancel a period that is being delivered**, and cannot
+  start a refund. Only the edge's checks do.
+
+A card payment someone disputes with their bank is left to Stripe: the edge
+neither pays it out nor refunds it while the dispute is open.
 
 ## What is for sale
 
@@ -155,6 +207,13 @@ setting of the box, not of the edge.
   has joined the mesh, compute once it also shares compute. Anything else is
   greyed with the reason. The edge enforces the same rule, and the pane only
   explains it.
+- A listing someone has paid for says "paid for until" with the date, and
+  its Stop selling button stays greyed until then. Every order says where
+  its money stands: held, on its way to the seller, refunded, or split, with
+  the amount refunded and why.
+- The Earnings group appears once any sale is held: what is held for
+  running periods, what is ready, and what is on its way, with a Pay out
+  button that is greyed until a period ends.
 - Card payment and Stripe onboarding open Stripe's own pages in a new tab.
   Nothing in the admin UI sees a card. lososd, and then the page again, check
   that the link is a `https://checkout.stripe.com` or
@@ -163,7 +222,7 @@ setting of the box, not of the edge.
   supported.
 - The pages cannot call the edge themselves, since the admin UI's CSP is
   `connect-src 'self'`. `lososd` relays instead: `GET /api/market` and
-  `POST /api/market/{onboard,listings,listings/close,orders}`. The relay uses
+  `POST /api/market/{onboard,listings,listings/close,orders,release}`. The relay uses
   the registrar's URL, the appliance id and the proxy token that
   `losos.proxy.enable` already provides. It requires https and sends the
   token to `curl` on stdin rather than on the command line.
@@ -185,8 +244,9 @@ Bodies are JSON.
 | `POST /market/account`         | token      | Your listings, purchases, sales, entitlements   |
 | `POST /market/seller/onboard`  | token      | Start or resume Stripe onboarding               |
 | `POST /market/listings`        | token      | `kind`, `unit_price`, `capacity`                |
-| `POST /market/listings/close`  | token      | `listing_id`; paid orders keep their units      |
+| `POST /market/listings/close`  | token      | `listing_id`; paid orders keep their units; 409 while a paid period runs |
 | `POST /market/orders`          | token      | `listing_id`, `quantity`; returns a Checkout URL |
+| `POST /market/sales/release`   | token      | Pay out the sales whose periods are over; 409 while none are |
 | `POST /market/fees/pay`        | token      | `tx`, `network`; counts a USDC transfer against coin fees owed |
 | `POST /market/webhook`         | signature  | Stripe events                                   |
 
@@ -289,15 +349,21 @@ that time loses nothing.
   that has it. The registrar talks to the gate over a Unix socket
   (`/run/losos-stripe-gate/gate.sock`, 0600) and may ask only to create an
   account, tag an account, check an account, make an onboarding link, start a
-  Checkout Session, or verify a webhook signature. The gate refuses a
-  checkout whose destination is not an `acct_...` id, whose currency differs
-  from the configured one, whose fee exceeds the 20% ceiling or the whole
-  amount, whose return URL is not a plain http(s) URL, or whose session
-  lifetime is more than a day. It also refuses a non-`https` Stripe endpoint.
-  There is no "forward this to Stripe" operation. A compromised registrar
-  therefore cannot read the key, cannot send money anywhere but a connected
-  account within the gate's fee limits, and cannot issue refunds or payouts.
-  It can still ask for checkouts, because that is its job. Both units run as
+  Checkout Session, verify a webhook signature, or settle a held market
+  payment. The gate refuses a checkout whose destination is not an `acct_...`
+  id, whose currency differs from the configured one, whose fee exceeds the
+  20% ceiling or the whole amount, whose return URL is not a plain http(s)
+  URL, or whose session lifetime is more than a day. It also refuses a
+  non-`https` Stripe endpoint. To settle, the gate reads the payment back
+  from Stripe itself and splits only a charge it made for the market,
+  between its buyer and the seller named at checkout: never more back than
+  was paid, nothing back once the seller has been paid, nothing while the
+  payment is disputed, and each refund and transfer at most once. There is
+  no "forward this to Stripe" operation. A compromised registrar therefore
+  cannot read the key, cannot send money anywhere but a connected account
+  within the gate's fee limits or back to the buyer who paid it, and cannot
+  move the platform's own money. It can still ask for checkouts and
+  settlements, because that is its job. Both units run as
   processes on the same machine, and root on the edge can still reach both.
   As a second layer, the registrar's unit marks the sealed blobs and the
   gate's credential directory inaccessible.
@@ -335,6 +401,9 @@ Stripe. Hardware stays on Stripe. The edge chooses which networks it accepts:
 | OP Mainnet   | OP Sepolia       |
 | Solana       | Solana Devnet    |
 
+Solana is offered only on an edge that also takes direct payments, since
+nothing paid there can be held.
+
 An edge runs on live networks or on test networks, never both. On an edge
 that takes cards the mode follows its Stripe key: live networks with a
 `sk_live_` key, test networks with a `sk_test_` key. An edge that takes coins
@@ -368,14 +437,13 @@ the source (`docs/ci-and-releases.md`) cover setting it up.
    marks the order paid. A transaction can pay only one order. The order
    then names its network and links the transaction on that network's
    explorer, for the buyer and the seller alike.
-6. On an Ethereum network the edge then waits until what was bought exists
-   (a storage order's volume is bound, a machine is created), checks the
-   seller's address on that network and releases the deposit: the fee to
-   the treasury, the rest to the seller. If the address cannot receive USDC
-   there, the edge refunds the whole payment to the buyer instead and the
-   order is not fulfilled. If what was bought is still not set up an hour
-   before the buyer could reclaim the deposit, the edge refunds it too. The
-   order shows which of these happened.
+6. On an Ethereum network the edge checks the seller's address on that
+   network. If it cannot receive USDC there, the edge refunds the whole
+   payment to the buyer and the order is not fulfilled. Otherwise the
+   deposit stays in the escrow while the period runs, and the edge settles
+   it as [Paid periods and refunds](#paid-periods-and-refunds) describes:
+   the fee to the treasury and the rest to the seller, all of it back to the
+   buyer, or a split. The order shows which of these happened.
 
 Before it counts a payment on an Ethereum network, the edge checks that the
 RPC endpoint answers for that network's chain, that `LososEscrow` pulls
@@ -389,9 +457,11 @@ network, or holds only an EIP-7702 delegation, which keeps it an account
 someone has the key to. The payout signature already showed that someone
 does. The treasury, the USDC contract, the escrow and the zero address never
 count. The edge's key can release a deposit only to the seller and the
-treasury recorded at payment, or refund it to the buyer; it cannot send a
-deposit anywhere else. If the edge has not released a deposit a day after the
-order's hold ends, the buyer can take it back from the contract directly. On
+treasury recorded at payment, refund it to the buyer, or split it between
+the two (`settle`); it cannot send a deposit anywhere else. If the edge has
+not settled a deposit 33 days after the order was placed, the buyer can take
+it back from the contract directly. The edge pays out at least two days
+before that. On
 Solana the edge checks that the endpoint reports the network's genesis hash,
 that the transaction succeeded and is confirmed, that its memo names the
 order, and that the seller's and the treasury's USDC grew by exactly their
@@ -452,13 +522,13 @@ gateway are not looked up.
 
 ### How you get paid
 
-Sign with the wallet that should receive USDC. One click signs for both kinds
-of network: the Ethereum address takes sales paid on Base, Arbitrum and OP,
-the Solana address sales paid on Solana. The edge checks each signature and
-stores only the addresses. Sales paid on Solana go to them directly; sales
-on the Ethereum networks reach them once the edge has checked the address on
-that network and released the payment from the escrow. A seller with only
-one of the two set is offered to buyers on that kind of network only. Import
+Sign with the wallet that should receive USDC. The Ethereum address takes
+sales paid on Base, Arbitrum and OP; they reach it once the buyer's period
+ends and the edge releases the payment from the escrow. On an edge that also
+takes direct payments, the same click signs a Solana address, which takes
+sales paid on Solana directly. The edge checks each signature and stores
+only the addresses. A seller with only one of the two set is offered to
+buyers on that kind of network only. Import
 the same phrase into MetaMask, Rabby, Rainbow, Trust Wallet or Phantom when
 you want to spend it. There is no Stripe connected account for these sales.
 
@@ -472,8 +542,8 @@ signature. The edge checks it the same way.
 
 ## Paying with Bitcoin
 
-An edge that settles in USDC can also take Bitcoin for storage, compute and
-machine orders. It runs its own pruned Bitcoin node: on mainnet for a live
+An edge that settles in USDC and takes direct payments can also take
+Bitcoin for storage, compute and machine orders. It runs its own pruned Bitcoin node: on mainnet for a live
 edge, on testnet4, signet or regtest for a test edge. The registrar refuses
 any other pairing, so a live edge never counts test coins. The node holds a
 watch-only wallet and no private key.
@@ -517,8 +587,8 @@ the transaction on mempool.space.
 
 ## Paying with Monero
 
-An edge that settles in USDC can also take Monero for the same orders. It
-runs its own pruned Monero node and a wallet service beside it: on mainnet
+An edge that settles in USDC and takes direct payments can also take
+Monero for the same orders. It runs its own pruned Monero node and a wallet service beside it: on mainnet
 for a live edge, on stagenet or testnet for a test edge. The registrar
 refuses any other pairing, and refuses an address made for another network
 than the node's.
@@ -553,8 +623,8 @@ so a paid order names Monero as its network without a link to an explorer.
 
 ## Paying with Zcash
 
-An edge that settles in USDC can also take shielded Zcash for the same
-orders. It runs no Zcash node. It asks public lightwalletd servers for
+An edge that settles in USDC and takes direct payments can also take
+shielded Zcash for the same orders. It runs no Zcash node. It asks public lightwalletd servers for
 compact blocks, by default four mainnet servers run by different operators,
 and decrypts them itself, so your viewing key never leaves the edge. A
 payment counts only when servers of two different operators show it in a
@@ -636,9 +706,13 @@ from until then.
 
 ## Not covered
 
-- **Card refunds and disputes.** Handle them in the Stripe dashboard, using
-  `reverse_transfer` and `refund_application_fee` so the seller's share and the
-  platform's cut are both returned. The market does not model either.
+- **Disputes, and refunds the edge did not make.** A card dispute is
+  handled in the Stripe dashboard. A refund for any other reason after the
+  seller was paid is the operator's call, with `reverse_transfer` so the
+  seller's share comes back too.
+- **Proof that the storage is healthy.** A box counts as online while its
+  node is `Ready` in the mesh. The edge does not check that the buyer's
+  volume answers.
 - **Enforcing the entitlement.** Fulfilment creates the claim; it does not
   stop a buyer using more than they bought, meter compute, or revoke access at
   expiry.
