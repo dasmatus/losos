@@ -1749,6 +1749,41 @@
         "out": "appRecord",
         "note": "Uninstall, in a `losos-app-<release>` unit. Answers with the record in phase removing; the job deletes it once Helm is done. The app's folders under /home/<runAs>/data/apps/<release> stay. 409 while a job for it is running, 400 for an unknown name. Audited."
       },
+      "GET /api/cloud/apps": {
+        "auth": true,
+        "out": "{\"available\": true, \"store\": bool, \"apps\": [{\"id\", \"name\", \"summary\": string|null, \"version\": string|null, \"kind\": \"core|bundled|store\", \"enabled\": bool, \"locked\": null | {\"by\": \"nextcloud\"} | {\"by\": \"losos\", \"reason\": \"signIn|sharing|look|wizard\"}}]} | {\"available\": false, \"store\": bool, \"reason\": string}",
+        "note": "Every app LosOS cloud has (backend/src/cloud_apps.rs), from `losos-nextcloud-apps list` run in the pod or natively (modules/nextcloud-stack.nix, appsTool). `locked` names why the page may not change an app. LosOS cloud not answering yet is 200 with available:false and the reason, deliberately NOT 404, which the SPA reads as an older box. `store` is whether the app store search is offered. HTTP-only, following /api/apps/search."
+      },
+      "GET /api/cloud/apps/search": {
+        "auth": true,
+        "in": "query string: q (2 to 128 characters)",
+        "out": "{\"results\": [{\"id\", \"name\", \"summary\": string|null, \"version\": string|null, \"homepage\", \"featured\": bool}]}",
+        "note": "The app store's best matches for this Nextcloud version (LOSOS_NEXTCLOUD_VERSION), at most 20. lososd downloads the store's index (apps.nextcloud.com/api/v1/platform/<version>/apps.json) at most every six hours and keeps a stale copy when a refresh fails. 400 for a bad q, 409 where the store is off, 502 when the store cannot be reached."
+      },
+      "POST /api/cloud/apps/install": {
+        "auth": true,
+        "in": "{\"id\": \"<app id>\"}",
+        "out": "the GET /api/cloud/apps response, after the change",
+        "note": "Add an app from the app store (`occ app:install`). 409 when it is already in LosOS cloud. Each of the four verbs refuses the apps LosOS sets itself and the ones Nextcloud keeps on with 400, answers 409 while LosOS cloud is not running, and 502 with occ's message when the change fails. Audited."
+      },
+      "POST /api/cloud/apps/enable": {
+        "auth": true,
+        "in": "{\"id\": \"<app id>\"}",
+        "out": "the GET /api/cloud/apps response, after the change",
+        "note": "Turn an app on and take it off the off-list (/var/lib/nextcloud/.losos-apps-off). Same refusals as install. Audited."
+      },
+      "POST /api/cloud/apps/disable": {
+        "auth": true,
+        "in": "{\"id\": \"<app id>\"}",
+        "out": "the GET /api/cloud/apps response, after the change",
+        "note": "Turn an app off and add it to the off-list, which every start of LosOS cloud honours, so it stays off. Same refusals as install. Audited."
+      },
+      "POST /api/cloud/apps/remove": {
+        "auth": true,
+        "in": "{\"id\": \"<app id>\"}",
+        "out": "the GET /api/cloud/apps response, after the change",
+        "note": "Remove an app added from the store (`occ app:remove --keep-data`): its code leaves the box, its data stays. 400 for any app not under store-apps, which would come back on the next start. Same refusals as install. Audited."
+      },
       "GET /api/market": {
         "auth": true,
         "out": "marketResponse",

@@ -43,7 +43,10 @@ import { useInstalledApps } from "./use-installed-apps";
 import { usePins, useSavePins } from "@/components/pins-dialog";
 import { isPinned, toggled } from "@/lib/pins";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
-import { SiteSettings } from "./site-settings";
+import { hasSiteSettings, SiteSettings } from "./site-settings";
+import { CloudAppsSection } from "./cloud-apps";
+import { useCloudApps } from "./use-cloud-apps";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import type { SettingsForm } from "./use-settings-form";
 
 /* The apps this box runs, and where to look for more.
@@ -74,6 +77,17 @@ export function AppsPane({ form }: { form: SettingsForm }) {
 
   const draft = form.draft;
   const disabled = form.locked || !form.ready;
+  const location = useLocation();
+  const cloudApps = useCloudApps(!form.locked);
+  const cloudOn =
+    cloudApps.state.kind === "ready" ? cloudApps.state.apps.filter((app) => app.enabled).length : null;
+  const showCloud = cloudApps.state.kind !== "unsupported" || hasSiteSettings(form, "cloud");
+  const showGit = hasSiteSettings(form, "git");
+  /* A link from the Advanced pane names the fold to open: /apps#git. */
+  const [folds, setFolds] = React.useState<string[]>(() => {
+    const hash = location.hash.slice(1);
+    return hash === "cloud" || hash === "git" ? [hash] : [];
+  });
 
   return (
     <>
@@ -111,9 +125,42 @@ export function AppsPane({ form }: { form: SettingsForm }) {
         </GroupCaption>
       </PaneSection>
 
-      {/* Each app's box-wide settings, the ones its own admin pages would
-          otherwise hold. */}
-      <SiteSettings form={form} />
+      {/* LosOS cloud and LosOS Git, each folded in an accordion of its own:
+          LosOS cloud's apps and app store, then each app's settings for
+          everyone, the ones its own admin pages would otherwise hold. */}
+      {(showCloud || showGit) && (
+        <Accordion
+          aria-label={t("panes.apps.onThisBox")}
+          value={folds}
+          onValueChange={(open) => setFolds(open.map(String))}
+        >
+          {showCloud && (
+            <AccordionItem value="cloud" data-testid="accordion-cloud">
+              <AccordionTrigger
+                detail={
+                  cloudOn === null
+                    ? t("cloudApps.cloud.detailPlain")
+                    : t("cloudApps.cloud.detail", { count: cloudOn })
+                }
+              >
+                LosOS cloud
+              </AccordionTrigger>
+              <AccordionContent>
+                <CloudAppsSection apps={cloudApps} disabled={disabled} />
+                <SiteSettings form={form} app="cloud" />
+              </AccordionContent>
+            </AccordionItem>
+          )}
+          {showGit && (
+            <AccordionItem value="git" data-testid="accordion-git">
+              <AccordionTrigger detail={t("cloudApps.git.detail")}>LosOS Git</AccordionTrigger>
+              <AccordionContent>
+                <SiteSettings form={form} app="git" />
+              </AccordionContent>
+            </AccordionItem>
+          )}
+        </Accordion>
+      )}
 
       <BoxApps active={!form.locked} disabled={disabled} />
     </>

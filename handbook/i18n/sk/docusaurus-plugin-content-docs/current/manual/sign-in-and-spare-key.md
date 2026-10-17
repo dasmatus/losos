@@ -76,8 +76,10 @@ zariadenie. Hneď po štarte, kým sa LosOS Login ešte spúšťa, aplikácie
 ukážu stránku, ktorá to oznamuje, a každých pár sekúnd to skúsia znova
 samy.
 
-Aplikácie pre počítač a telefón, WebDAV a `git` ďalej používajú heslá
-aplikácií a tokeny a s LosOS Login sa nestretnú.
+Aplikácie pre počítač a telefón a `git` ďalej používajú heslá aplikácií a
+tokeny. Sieťový priečinok LosOS cloud berie v sieti zariadenia vaše meno a
+heslo z LosOS Login a cez internet heslo aplikácie; pozrite
+[Súbory vo vašom počítači](files-on-your-computer).
 
 **Odhlásiť sa** v LosOS cloud vás odhlási aj z LosOS Login. **Odhlásiť sa**
 v LosOS Git nie: kým ste prihlásení v LosOS Login, LosOS Git vás hneď

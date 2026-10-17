@@ -60,6 +60,8 @@ struct Api {
     people: crate::people::People,
     /// LosOS Login's rules and second factors (`crate::login`).
     login: crate::login::Login,
+    /// LosOS Login names on LosOS cloud's share (`crate::cloud_share`).
+    share: crate::cloud_share::Share,
 }
 
 /// Who made a call.
@@ -180,6 +182,12 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
         })
     {
         return err(StatusCode::CONFLICT, &why);
+    }
+    // LosOS cloud turned an app change down, or could not make it: its own
+    // words, as a 502, because the box itself did what it was asked.
+    if let Some(why) = e.downcast_ref::<crate::cloud_apps::Failed>() {
+        tracing::warn!(reason = why.0.as_str(), "cloud app change failed");
+        return err(StatusCode::BAD_GATEWAY, &why.0);
     }
     // The first boot's one expected failure: Nextcloud is still installing
     // itself, so the first password cannot be set *yet*. 503 with the
@@ -1134,6 +1142,40 @@ async fn post_person_factors_reset(
     })
 }
 
+/// `GET /internal/cloud-share`: whose request to LosOS cloud's share this
+/// is, for nginx (`crate::cloud_share`). Always a 200; the person, if any,
+/// in the headers nginx reads from Authelia's answers too. Only with
+/// LosOS Login on: without it nginx does not ask, and nobody is named.
+async fn get_cloud_share(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    if !api.people.headers {
+        return HttpResponse::Ok().finish();
+    }
+    let authorization = req
+        .headers()
+        .get(actix_web::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let api = api.clone();
+    let answer = web::block(move || {
+        let mut backend = api.backend.clone();
+        api.share.answer(
+            &api.people,
+            &mut backend,
+            authorization.as_deref(),
+            Instant::now(),
+        )
+    })
+    .await;
+    match answer {
+        Ok(crate::cloud_share::Answer::Person(p)) => HttpResponse::Ok()
+            .insert_header(("Remote-User", p.name.as_str()))
+            .insert_header(("Remote-Groups", p.groups.join(",")))
+            .insert_header(("Remote-Name", p.display_name.as_str()))
+            .finish(),
+        _ => HttpResponse::Ok().finish(),
+    }
+}
+
 async fn health() -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({ "ok": true }))
 }
@@ -1895,6 +1937,99 @@ async fn post_app_remove(api: web::Data<Api>, req: HttpRequest, body: web::Bytes
             ),
         }
     })
+}
+
+// ── LosOS cloud's own apps ───────────────────────────────────────────────
+// `crate::cloud_apps` holds the rules. HTTP-only, like the chart installs.
+// None of these take the state lock: they run occ in LosOS cloud, which can
+// take as long as an app store download, and touch no state of lososd's.
+
+/// `GET /api/cloud/apps` — every app LosOS cloud has, and what may be done
+/// to each.
+async fn get_cloud_apps(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/cloud/apps", false, || {
+        let mut backend = api.backend.clone();
+        match crate::cloud_apps::cmd_cloud_apps(&mut backend) {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `GET /api/cloud/apps/search?q=` — the app store's best matches.
+async fn get_cloud_apps_search(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/cloud/apps/search", false, || {
+        let q =
+            web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+                .map(web::Query::into_inner)
+                .unwrap_or_default();
+        let query = q.get("q").cloned().unwrap_or_default();
+        let mut backend = api.backend.clone();
+        match crate::cloud_apps::cmd_cloud_store_search(&mut backend, &query) {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/cloud/apps/<verb>` `{id}` — answered with the list after it.
+fn post_cloud_app(
+    api: &Api,
+    req: &HttpRequest,
+    body: &web::Bytes,
+    verb: crate::cloud_apps::Verb,
+    route: &str,
+) -> HttpResponse {
+    guarded(api, req, route, true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(body).unwrap_or_default();
+        let Some(id) = field_str(&doc, "id") else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"id": "<app id>"}"#,
+            );
+        };
+        let mut backend = api.backend.clone();
+        match crate::cloud_apps::cmd_cloud_app(&mut backend, verb, &id) {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+async fn post_cloud_app_install(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    use crate::cloud_apps::Verb;
+    post_cloud_app(&api, &req, &body, Verb::Install, "/api/cloud/apps/install")
+}
+
+async fn post_cloud_app_enable(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    use crate::cloud_apps::Verb;
+    post_cloud_app(&api, &req, &body, Verb::Enable, "/api/cloud/apps/enable")
+}
+
+async fn post_cloud_app_disable(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    use crate::cloud_apps::Verb;
+    post_cloud_app(&api, &req, &body, Verb::Disable, "/api/cloud/apps/disable")
+}
+
+async fn post_cloud_app_remove(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    use crate::cloud_apps::Verb;
+    post_cloud_app(&api, &req, &body, Verb::Remove, "/api/cloud/apps/remove")
 }
 
 /// Where the Lab's libvirt helper listens, from `$LOSOS_LAB_URL`; `None`
@@ -3107,6 +3242,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             builder: crate::builder::Builder::from_env(),
             people,
             login,
+            share: crate::cloud_share::Share::default(),
         });
         owner_in_owner_group(&api);
         start_login_marks(api.clone());
@@ -3164,6 +3300,27 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/apps/chart", web::get().to(get_app_chart))
                 .route("/api/apps/install", web::post().to(post_app_install))
                 .route("/api/apps/remove", web::post().to(post_app_remove))
+                .route("/api/cloud/apps", web::get().to(get_cloud_apps))
+                .route(
+                    "/api/cloud/apps/search",
+                    web::get().to(get_cloud_apps_search),
+                )
+                .route(
+                    "/api/cloud/apps/install",
+                    web::post().to(post_cloud_app_install),
+                )
+                .route(
+                    "/api/cloud/apps/enable",
+                    web::post().to(post_cloud_app_enable),
+                )
+                .route(
+                    "/api/cloud/apps/disable",
+                    web::post().to(post_cloud_app_disable),
+                )
+                .route(
+                    "/api/cloud/apps/remove",
+                    web::post().to(post_cloud_app_remove),
+                )
                 .route("/api/market", web::get().to(get_market))
                 .route("/api/market/onboard", web::post().to(post_market_onboard))
                 .route("/api/market/listings", web::post().to(post_market_listing))
@@ -3247,6 +3404,9 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 // the claim refuses once the box has an owner.
                 .route("/api/setup/claim", web::get().to(get_claim_state))
                 .route("/api/setup/claim", web::post().to(post_claim))
+                // Asked by nginx alone, never proxied to a client
+                // (crate::cloud_share, modules/identity.nix).
+                .route("/internal/cloud-share", web::get().to(get_cloud_share))
                 .default_service(web::route().to(not_found))
         })
         .bind(("127.0.0.1", port))

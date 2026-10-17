@@ -460,6 +460,20 @@ pkgs.testers.nixosTest {
 
     with subtest("LosOS Login answers through the tunnel, and the apps send people there"):
         public = "cloud.example.org"
+        # The owner's domain, which lososd lists for the apps; LosOS Login
+        # takes cookies for it (and restarts, so every sign-in ends).
+        mark = journal_mark()
+        box.succeed(
+            f"install -d /var/lib/losos-public-names && echo '[\"{public}\", \"bad name\"]'"
+            " > /var/lib/losos-public-names/domains.json"
+        )
+        box.wait_until_succeeds(f"grep -q \"domain: '{public}'\" /run/losos-identity/session.yml")
+        box.fail("grep -q 'bad name' /run/losos-identity/session.yml")
+        box.wait_until_succeeds(
+            f"journalctl -u authelia-losos --after-cursor='{mark}' | grep -q 'Startup complete'",
+            timeout=120,
+        )
+        laptop.wait_until_succeeds(f"curl -sf http://{BOX}/auth/api/health", timeout=60)
         # Nextcloud's own form is gone, direct=1 or not.
         code, where = app("/nextcloud/login?direct=1")
         assert code == 302 and where.startswith(f"https://{BOX}/auth/?rd="), (code, where)
@@ -478,19 +492,6 @@ pkgs.testers.nixosTest {
         assert code == 200 and "LosOS" in body, (code, body[:200])
         assert tunnel("/auth/", public, proto="http")[0] == 301
         assert status(f"-H 'X-Forwarded-Proto: https' http://{BOX}/auth/") == "301"
-        # The owner adds a domain; LosOS Login takes cookies for it.
-        mark = journal_mark()
-        box.succeed(
-            f"install -d /var/lib/losos-public-names && echo '[\"{public}\", \"bad name\"]'"
-            " > /var/lib/losos-public-names/domains.json"
-        )
-        box.wait_until_succeeds(f"grep -q \"domain: '{public}'\" /run/losos-identity/session.yml")
-        box.fail("grep -q 'bad name' /run/losos-identity/session.yml")
-        box.wait_until_succeeds(
-            f"journalctl -u authelia-losos --after-cursor='{mark}' | grep -q 'Startup complete'",
-            timeout=120,
-        )
-        laptop.wait_until_succeeds(f"curl -sf http://{BOX}/auth/api/health", timeout=60)
         body = json.dumps({"username": "eva", "password": "Eva-Long-Password-3"})
         head = box.succeed(
             f"curl -s -D - -o /dev/null -H 'Host: {public}' -H 'X-Forwarded-Proto: https'"

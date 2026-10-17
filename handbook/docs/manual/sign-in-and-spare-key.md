@@ -71,8 +71,10 @@ name on the edge, or a domain of your own once it is routed to the box.
 Right after a boot, while LosOS Login is still starting, the apps show a
 page saying so and try again every few seconds by themselves.
 
-Desktop and phone apps, WebDAV and `git` keep using app passwords and
-tokens, and never meet LosOS Login.
+Desktop and phone apps and `git` keep using app passwords and tokens.
+LosOS cloud's network folder takes your LosOS Login name and password on
+the box's network, and an app password through the internet; see
+[Files on your computer](files-on-your-computer).
 
 **Log out** in LosOS cloud also signs you out of LosOS Login. LosOS Git's
 **Sign out** does not: while you are signed in to LosOS Login, LosOS Git

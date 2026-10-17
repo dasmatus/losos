@@ -328,7 +328,10 @@ function BoxParts() {
           <GroupCaption>{t("manage.site.none")}</GroupCaption>
         </PaneSection>
       ) : (
-        <SiteSettings form={form} />
+        <>
+          <SiteSettings form={form} app="cloud" title="LosOS cloud" />
+          <SiteSettings form={form} app="git" title="LosOS Git" />
+        </>
       )}
 
       <BoxApps active={form.failed === null} disabled={form.applying} onBox={false} />
