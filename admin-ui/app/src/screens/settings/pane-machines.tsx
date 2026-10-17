@@ -19,6 +19,7 @@ import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } 
 import { formatBytes, useMachines, type MachinesData } from "./machines";
 import { formatDay, formatMoney, isStripePage, minorDigits, toMinorUnits, ORDER_STATUS } from "./market";
 import { rememberInvoice } from "./usdc-wallet";
+import { HoldNote, lockedSuffix, StopSelling } from "./holds";
 
 /* Virtual machines on the mesh, sold by the replica.
  *
@@ -821,12 +822,10 @@ function HostSection({
               title={t("machines.host.offer", { price: formatMoney(l.unit_price, account.currency) })}
               detail={`${t("machines.host.free", { count: l.available, capacity: l.capacity })} · ${
                 l.active ? t("panes.market.open") : t("panes.market.closed")
-              }`}
+              }${lockedSuffix(t, l)}`}
             />
             {l.active && (
-              <Button size="sm" variant="secondary" disabled={disabled} onClick={() => void machines.close(l.id)}>
-                {t("panes.market.closeButton")}
-              </Button>
+              <StopSelling listing={l} disabled={disabled} onClose={() => void machines.close(l.id)} />
             )}
           </Row>
         ))}
@@ -836,10 +835,13 @@ function HostSection({
         <Group className="mt-3">
           {sales.map((o, i) => (
             <Row key={o.id} last={i === sales.length - 1}>
-              <RowText
-                title={`${o.vm?.name ?? t("panes.market.kind.vm")} · ${t("machines.mine.replicas", { count: o.quantity })}`}
-                detail={t("panes.market.youReceive", { amount: formatMoney(o.seller_net, o.currency) })}
-              />
+              <div className="min-w-0">
+                <RowText
+                  title={`${o.vm?.name ?? t("panes.market.kind.vm")} · ${t("machines.mine.replicas", { count: o.quantity })}`}
+                  detail={t("panes.market.youReceive", { amount: formatMoney(o.seller_net, o.currency) })}
+                />
+                <HoldNote order={o} />
+              </div>
               <span className="text-[13px] text-muted">{t(`panes.market.status.${o.status}` as MessageKey)}</span>
             </Row>
           ))}

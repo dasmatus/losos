@@ -1923,6 +1923,15 @@ async fn an_edge_takes_only_payments_it_can_hold_unless_told_otherwise() {
     assert_eq!(account["seller_ready"], false, "{account}");
     assert_eq!(account["direct_pay"], false, "{account}");
     assert!(account.get("coins").is_none(), "{account}");
+    // Nor is Solana offered as a payout to set up.
+    let networks: Vec<&str> = account["usdc"]["chains"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["network"].as_str().unwrap())
+        .collect();
+    assert_eq!(networks, ["base-sepolia", "arbitrum-sepolia"], "{account}");
+    assert!(account["usdc"]["solana"].is_null(), "{account}");
     // With an EVM payout too, the checkout names only the EVM networks and
     // no coin, though the edge runs a Bitcoin node.
     set_payout(&edge, 7).await;

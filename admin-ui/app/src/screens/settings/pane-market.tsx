@@ -41,6 +41,7 @@ import type { SettingsForm } from "./use-settings-form";
 import { explorerTx, listNames } from "@/wallet/chains";
 import { invoicePayDetail, rememberInvoice, UsdcWallet } from "./usdc-wallet";
 import { COIN_NAMES } from "./coin-pay";
+import { EarningsSection, HoldNote, lockedSuffix, StopSelling } from "./holds";
 
 /* Sharing this box's disk, and buying and selling what the mesh shares.
  *
@@ -253,6 +254,15 @@ export function MarketPane({ form }: { form: SettingsForm }) {
       </PaneSection>
 
       <SellSection market={market} disabled={disabled} />
+      {account.payouts && account.payouts.held + account.payouts.ready + account.payouts.paying > 0 && (
+        <EarningsSection
+          payouts={account.payouts}
+          currency={account.currency}
+          offlineSecs={account.offline_refund_secs ?? 86400}
+          disabled={disabled}
+          onPayOut={() => void market.release()}
+        />
+      )}
     </>
   );
 }
@@ -333,33 +343,18 @@ function PaidTx({ order, usdc }: { order: MarketOrder; usdc: UsdcPublic | null }
     (order.network ? undefined : usdc.chains.find((c) => c.family === "evm"));
   if (!chain) return null;
   const href = explorerTx(chain.network, order.tx);
-  const escrow = order.escrow;
-  const reason =
-    escrow?.reason === "sellerCannotReceive" ||
-    escrow?.reason === "buyerReclaimed" ||
-    escrow?.reason === "notDelivered"
-      ? t(`panes.market.escrow.${escrow.reason}`)
-      : null;
   return (
-    <>
-      <p className="mt-0.5 text-[12px] text-faint">
-        {t("panes.market.paidOn", { network: chain.name })}
-        {href !== null && (
-          <>
-            {" · "}
-            <a className="underline underline-offset-2 hover:text-ink" href={href} target="_blank" rel="noopener noreferrer">
-              {t("panes.market.viewTx")}
-            </a>
-          </>
-        )}
-      </p>
-      {escrow && (
-        <p className="mt-0.5 text-[12px] text-faint">
-          {t(`panes.market.escrow.${escrow.step}`)}
-          {reason !== null && ` · ${reason}`}
-        </p>
+    <p className="mt-0.5 text-[12px] text-faint">
+      {t("panes.market.paidOn", { network: chain.name })}
+      {href !== null && (
+        <>
+          {" · "}
+          <a className="underline underline-offset-2 hover:text-ink" href={href} target="_blank" rel="noopener noreferrer">
+            {t("panes.market.viewTx")}
+          </a>
+        </>
       )}
-    </>
+    </p>
   );
 }
 
@@ -383,6 +378,7 @@ function PurchaseRow({ order, usdc }: { order: MarketOrder; usdc: UsdcPublic | n
           </p>
         )}
         <PaidTx order={order} usdc={usdc} />
+        <HoldNote order={order} />
       </TableCell>
       <TableCell className="numeric">{quantityOf(order.quantity, order.unit)}</TableCell>
       <TableCell className="numeric text-muted">{until}</TableCell>
@@ -681,17 +677,10 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
                 title={`${t(KIND_LABEL[l.kind])} · ${formatMoney(l.unit_price, account.currency)} / ${unitName(l.unit)}`}
                 detail={`${t("panes.market.available", { count: l.available })} · ${
                   l.active ? t("panes.market.open") : t("panes.market.closed")
-                }`}
+                }${lockedSuffix(t, l)}`}
               />
               {l.active && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={disabled}
-                  onClick={() => void market.close(l.id)}
-                >
-                  {t("panes.market.closeButton")}
-                </Button>
+                <StopSelling listing={l} disabled={disabled} onClose={() => void market.close(l.id)} />
               )}
             </Row>
           ))}
@@ -718,6 +707,7 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
                     }
                   />
                   <PaidTx order={o} usdc={account.usdc ?? null} />
+                  <HoldNote order={o} />
                 </div>
                 <span className="text-[13px] text-muted">
                   {t(`panes.market.status.${o.status}` as MessageKey)}

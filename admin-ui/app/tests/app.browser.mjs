@@ -1143,6 +1143,71 @@ await check('buying opens Stripe Checkout in a new tab', async () => {
   await page.close();
 });
 
+/* A seller with a paid period running on its one listing, a sale held for
+ * it, and a purchase whose seller went offline: part refunded, the rest
+ * paid. */
+const SLOT_END = 1792800000;
+const slotOrder = (id, extra) => ({
+  id,
+  listing_id: 'lst_held',
+  kind: 'storage',
+  unit: 'GiB-month',
+  quantity: 4,
+  amount: 2000,
+  fee: 80,
+  seller_net: 1920,
+  currency: 'eur',
+  status: 'paid',
+  created_at: 1790200000,
+  paid_at: 1790200000,
+  expires_at: SLOT_END,
+  expired: false,
+  volume: null,
+  ...extra,
+});
+const SLOTS = {
+  ...MARKET,
+  account: {
+    ...MARKET.account,
+    listings: [
+      { id: 'lst_held', kind: 'storage', unit: 'GiB-month', unit_price: 500, capacity: 10, available: 6, active: true, locked_until: SLOT_END },
+    ],
+    sales: [slotOrder('ord_sale', { card: { step: 'held' }, payout_at: SLOT_END + 86400 })],
+    purchases: [slotOrder('ord_bought', { card: { step: 'settled', reason: 'sellerOffline', refund: 1401 } })],
+    payouts: { held: 1920, ready: 960, paying: 0, next_at: SLOT_END, auto_after_secs: 86400 },
+    offline_refund_secs: 86400,
+    direct_pay: false,
+  },
+};
+
+await check('a paid period greys Stop selling, and Pay out sends what is ready', async () => {
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: SLOTS });
+  await page.getByText(/on sale · paid for until/).waitFor();
+  const stop = page.getByRole('button', { name: 'Stop selling' });
+  assert.ok(await stop.isDisabled(), 'Stop selling is live while a paid period runs');
+  assert.match((await stop.getAttribute('title')) ?? '', /Someone has paid for this until/);
+  await page.getByText('Held until the paid period ends').waitFor();
+  await page.getByText("€14.01 refunded to the buyer, the rest paid to the seller · the seller's box was offline for too long").waitFor();
+  await page.getByText('If this box is offline for 24 hours in a row', { exact: false }).waitFor();
+  const sent = page.waitForRequest((request) => request.url().endsWith('/api/market/release'));
+  await page.getByRole('button', { name: 'Pay out' }).click();
+  await sent;
+  await page.locator('[data-toast]').filter({ hasText: '€9.60 is on its way to you.' }).waitFor();
+  assert.deepEqual(marketPosts, [['/api/market/release', {}]]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('Pay out is greyed until a period ends, and says when the next one does', async () => {
+  const waiting = { ...SLOTS, account: { ...SLOTS.account, payouts: { ...SLOTS.account.payouts, ready: 0 } } };
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: waiting });
+  await page.getByText('You can pay out once a period ends, the next on', { exact: false }).waitFor();
+  assert.ok(await page.getByRole('button', { name: 'Pay out' }).isDisabled(), 'Pay out is live with nothing ready');
+  assert.deepEqual(marketPosts, []);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 await check('a payment page that is not Stripe is never opened', async () => {
   const { page, marketPosts } = await open({
     path: '/settings/market',

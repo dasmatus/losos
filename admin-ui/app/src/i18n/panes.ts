@@ -1618,9 +1618,9 @@ export default defineMessages({
     de: "Im Moment verkauft niemand etwas.",
   },
   "panes.market.payCaption": {
-    en: "You pay on Stripe's own page, which opens in a new tab. This box never sees your card. Come back here and refresh once you have paid.",
-    sk: "Platíte na stránke Stripe, ktorá sa otvorí na novej karte. Toto zariadenie vašu kartu nikdy nevidí. Po zaplatení sa vráťte sem a obnovte stránku.",
-    de: "Du bezahlst auf der Seite von Stripe, die sich in einem neuen Tab öffnet. Diese Box sieht deine Karte nie. Komm nach der Zahlung hierher zurück und aktualisiere.",
+    en: "You pay on Stripe's own page, which opens in a new tab. This box never sees your card. Come back here and refresh once you have paid. The seller is paid when your period ends; if their box is offline for too long, you get back the part you did not get.",
+    sk: "Platíte na stránke Stripe, ktorá sa otvorí na novej karte. Toto zariadenie vašu kartu nikdy nevidí. Po zaplatení sa vráťte sem a obnovte stránku. Predajca dostane peniaze po skončení vášho obdobia; ak je jeho zariadenie príliš dlho offline, dostanete späť časť, ktorú ste nedostali.",
+    de: "Du bezahlst auf der Seite von Stripe, die sich in einem neuen Tab öffnet. Diese Box sieht deine Karte nie. Komm nach der Zahlung hierher zurück und aktualisiere. Der Verkäufer wird bezahlt, wenn dein Zeitraum endet; ist seine Box zu lange offline, bekommst du den Teil zurück, den du nicht bekommen hast.",
   },
   "panes.market.kind.storage": {
     en: "Storage",
@@ -1713,10 +1713,15 @@ export default defineMessages({
     sk: "Pozrieť transakciu",
     de: "Transaktion ansehen",
   },
+  "panes.market.escrow.held": {
+    en: "Held until the paid period ends",
+    sk: "Držané do konca zaplateného obdobia",
+    de: "Gehalten, bis der bezahlte Zeitraum endet",
+  },
   "panes.market.escrow.release": {
-    en: "Held in escrow until the edge releases it to the seller",
-    sk: "V úschove, kým ju edge neuvoľní predajcovi",
-    de: "In Treuhand, bis der Edge sie an den Verkäufer freigibt",
+    en: "On its way to the seller",
+    sk: "Na ceste k predajcovi",
+    de: "Unterwegs zum Verkäufer",
   },
   "panes.market.escrow.released": {
     en: "Released to the seller",
@@ -1732,6 +1737,31 @@ export default defineMessages({
     en: "Refunded to the buyer",
     sk: "Vrátené kupujúcemu",
     de: "An den Käufer zurückerstattet",
+  },
+  "panes.market.escrow.split": {
+    en: "{refund} going back to the buyer, the rest to the seller",
+    sk: "{refund} sa vracia kupujúcemu, zvyšok ide predajcovi",
+    de: "{refund} gehen an den Käufer zurück, der Rest an den Verkäufer",
+  },
+  "panes.market.escrow.settled": {
+    en: "{refund} refunded to the buyer, the rest paid to the seller",
+    sk: "{refund} vrátené kupujúcemu, zvyšok vyplatený predajcovi",
+    de: "{refund} an den Käufer erstattet, der Rest an den Verkäufer gezahlt",
+  },
+  "panes.market.escrow.sellerOffline": {
+    en: "the seller's box was offline for too long",
+    sk: "zariadenie predajcu bolo príliš dlho offline",
+    de: "die Box des Verkäufers war zu lange offline",
+  },
+  "panes.market.escrow.lapsed": {
+    en: "the payment came after the order had run out",
+    sk: "platba prišla, keď už objednávka vypršala",
+    de: "die Zahlung kam, nachdem die Bestellung abgelaufen war",
+  },
+  "panes.market.escrow.alreadyPaid": {
+    en: "the order had already been paid",
+    sk: "objednávka už bola zaplatená",
+    de: "die Bestellung war schon bezahlt",
   },
   "panes.market.escrow.sellerCannotReceive": {
     en: "the seller's address cannot receive USDC on this network",
@@ -1873,10 +1903,70 @@ export default defineMessages({
     sk: "Prestať predávať",
     de: "Nicht mehr verkaufen",
   },
+  "panes.market.lockedUntil": {
+    en: "paid for until {date}",
+    sk: "zaplatené do {date}",
+    de: "bezahlt bis {date}",
+  },
+  "panes.market.lockedHint": {
+    en: "Someone has paid for this until {date}. You can stop selling it once that ends.",
+    sk: "Niekto za toto zaplatil do {date}. Predávať to môžete prestať, až potom.",
+    de: "Jemand hat bis {date} dafür bezahlt. Du kannst den Verkauf beenden, wenn das vorbei ist.",
+  },
+  "panes.market.earnings.title": {
+    en: "Earnings",
+    sk: "Zárobky",
+    de: "Einnahmen",
+  },
+  "panes.market.earnings.held": {
+    en: "Held while buyers use it",
+    sk: "Držané, kým to kupujúci používajú",
+    de: "Gehalten, solange Käufer es nutzen",
+  },
+  "panes.market.earnings.heldDetail": {
+    en: "If this box is offline for {hours} hours in a row while someone's period runs, they get back the part they did not get.",
+    sk: "Ak je toto zariadenie počas niečieho obdobia {hours} hodín v kuse offline, kupujúci dostane späť časť, ktorú nedostal.",
+    de: "Ist diese Box während des Zeitraums eines Käufers {hours} Stunden am Stück offline, bekommt er den Teil zurück, den er nicht bekommen hat.",
+  },
+  "panes.market.earnings.ready": {
+    en: "Ready to pay out",
+    sk: "Pripravené na výplatu",
+    de: "Bereit zur Auszahlung",
+  },
+  "panes.market.earnings.readyDetail": {
+    en: "From periods that have ended. Otherwise the edge pays it out by itself a day after each one ends.",
+    sk: "Z období, ktoré skončili. Inak ich edge vyplatí sám deň po konci každého z nich.",
+    de: "Aus Zeiträumen, die vorbei sind. Sonst zahlt der Edge sie einen Tag nach dem Ende jedes Zeitraums selbst aus.",
+  },
+  "panes.market.earnings.waitDetail": {
+    en: "You can pay out once a period ends, the next on {date}.",
+    sk: "Vyplatiť si môžete, keď obdobie skončí, najbližšie {date}.",
+    de: "Auszahlen kannst du, sobald ein Zeitraum endet, der nächste am {date}.",
+  },
+  "panes.market.earnings.paying": {
+    en: "On its way to you",
+    sk: "Na ceste k vám",
+    de: "Unterwegs zu dir",
+  },
+  "panes.market.earnings.payOut": {
+    en: "Pay out",
+    sk: "Vyplatiť",
+    de: "Auszahlen",
+  },
+  "panes.market.earnings.sentTitle": {
+    en: "Payout started",
+    sk: "Výplata sa začala",
+    de: "Auszahlung gestartet",
+  },
+  "panes.market.earnings.sentBody": {
+    en: "{amount} is on its way to you.",
+    sk: "{amount} je na ceste k vám.",
+    de: "{amount} ist unterwegs zu dir.",
+  },
   "panes.market.sellCaption": {
-    en: "The platform keeps {percent}% of each sale to cover running costs. The rest goes to your Stripe account.",
-    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov. Zvyšok ide na váš účet Stripe.",
-    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten. Der Rest geht an dein Stripe-Konto.",
+    en: "The platform keeps {percent}% of each sale to cover running costs. The rest is held until the buyer's period ends, then goes to your Stripe account.",
+    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov. Zvyšok sa drží do konca obdobia kupujúceho a potom ide na váš účet Stripe.",
+    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten. Der Rest wird bis zum Ende des Zeitraums des Käufers gehalten und geht dann an dein Stripe-Konto.",
   },
   "panes.market.youReceive": {
     en: "you receive {amount}",
@@ -2001,14 +2091,14 @@ export default defineMessages({
     de: "Wohin du bezahlt wirst",
   },
   "panes.market.usdc.payCaption": {
-    en: "You pay from the wallet below, in USDC on {chain}. The platform fee goes to the edge's treasury and the rest to the seller once the edge has confirmed the payment and what was bought is ready.",
-    sk: "Platíte z peňaženky nižšie, v USDC na sieti {chain}. Poplatok platformy ide do pokladnice edge a zvyšok predajcovi, keď edge platbu potvrdí a kúpené je pripravené.",
-    de: "Du bezahlst mit der Wallet unten, in USDC auf {chain}. Die Plattformgebühr geht an die Kasse des Edge, der Rest an den Verkäufer, sobald der Edge die Zahlung bestätigt hat und das Gekaufte bereitsteht.",
+    en: "You pay from the wallet below, in USDC on {chain}. The escrow holds it until your period ends, then the platform fee goes to the edge's treasury and the rest to the seller. If the seller's box is offline for too long, you get back the part you did not get.",
+    sk: "Platíte z peňaženky nižšie, v USDC na sieti {chain}. Úschova platbu drží do konca vášho obdobia, potom ide poplatok platformy do pokladnice edge a zvyšok predajcovi. Ak je zariadenie predajcu príliš dlho offline, dostanete späť časť, ktorú ste nedostali.",
+    de: "Du bezahlst mit der Wallet unten, in USDC auf {chain}. Die Treuhand hält die Zahlung bis zum Ende deines Zeitraums, dann geht die Plattformgebühr an die Kasse des Edge und der Rest an den Verkäufer. Ist die Box des Verkäufers zu lange offline, bekommst du den Teil zurück, den du nicht bekommen hast.",
   },
   "panes.market.usdc.sellCaption": {
-    en: "The platform keeps {percent}% of each sale to cover running costs. The rest reaches your payout address once the edge has confirmed the payment and what was bought is ready.",
-    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov. Zvyšok príde na vašu adresu pre výplaty, keď edge platbu potvrdí a kúpené je pripravené.",
-    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten. Der Rest kommt auf deiner Auszahlungsadresse an, sobald der Edge die Zahlung bestätigt hat und das Gekaufte bereitsteht.",
+    en: "The platform keeps {percent}% of each sale to cover running costs. The escrow holds the rest until the buyer's period ends, then it reaches your payout address.",
+    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov. Zvyšok drží úschova do konca obdobia kupujúceho a potom príde na vašu adresu pre výplaty.",
+    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten. Den Rest hält die Treuhand bis zum Ende des Zeitraums des Käufers, dann kommt er auf deiner Auszahlungsadresse an.",
   },
   "panes.market.usdc.payoutFirst": {
     en: "Set where you get paid in the wallet above, then list what this box shares.",

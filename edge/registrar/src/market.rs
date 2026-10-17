@@ -1775,6 +1775,9 @@ pub struct AccountView {
     /// ([`MarketOpts::direct_pay`]). Off, a Solana payout address is not
     /// offered to buyers.
     pub direct_pay: bool,
+    /// How long a seller's box may be offline in a row during a slot before
+    /// its buyer is refunded the share not delivered.
+    pub offline_refund_secs: u64,
     /// The seller's USDC address, when they have set one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payout: Option<String>,
@@ -2330,14 +2333,26 @@ impl Market {
             ),
             payouts: crate::slots::payout_view(&state, id, now),
             direct_pay: self.opts.direct_pay,
+            offline_refund_secs: self.opts.offline_refund_secs,
             payout: seller.and_then(|s| s.payout.clone()),
             payout_solana: seller.and_then(|s| s.payout_solana.clone()),
-            usdc: self.opts.usdc.as_ref().map(|usdc| {
+            usdc: self.opts.usdc.as_ref().and_then(|usdc| {
                 let mut public = usdc.public();
+                // Solana pays the seller at once, so without direct pay it is
+                // neither a way to pay nor a payout to set up.
+                if !self.opts.direct_pay {
+                    public
+                        .chains
+                        .retain(|c| c.family == crate::stablecoin::Family::Evm);
+                    public.solana = None;
+                    if public.chains.is_empty() {
+                        return None;
+                    }
+                }
                 public.prices = self.prices.snapshot(&crate::coins::Coin::FEES, now);
                 self.prices
                     .refresh_in_background(&crate::coins::Coin::FEES, now);
-                public
+                Some(public)
             }),
             coins: self.coins().iter().map(|c| c.key()).collect(),
             coin_keys: state
