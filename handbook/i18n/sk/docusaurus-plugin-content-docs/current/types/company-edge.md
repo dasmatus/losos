@@ -106,6 +106,8 @@ zariadenie môže len edge v jeho vlastnej sieti, nikdy edge LosOS: LosOS
 nikomu zariadenie nespravuje. Keď vlastník prepínač vypne, ďalšie volanie
 edge zariadenie odmietne.
 
+Stránku celú opisuje [Webová stránka edge](/in-depth/edge-web-ui.md).
+
 ## Pre koho je to \{#who-this-is-for}
 
 Pre malé firmy, ktoré chcú nasadenie „jedno zariadenie na tím, jeden

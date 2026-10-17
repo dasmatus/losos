@@ -105,6 +105,8 @@ the box's own network can manage it, and never the LosOS edge: LosOS does not
 manage anyone's box. When the owner turns the switch off, the edge's next
 call is refused.
 
+[Edge web page](../in-depth/edge-web-ui.md) goes through the page in full.
+
 ## Who this is for
 
 Small companies that want the "one box per team, one pool for all" setup

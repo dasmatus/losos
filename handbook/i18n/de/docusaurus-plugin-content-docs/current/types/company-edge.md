@@ -116,6 +116,8 @@ Seite auf der Edge nicht weiter. Nur eine Edge im eigenen Netz der Box kann
 sie verwalten, nie die LosOS-Edge: LosOS verwaltet keine fremde Box. Schaltet
 der Besitzer den Schalter aus, lehnt die Box den nächsten Aufruf der Edge ab.
 
+[Webseite der Edge](/in-depth/edge-web-ui.md) beschreibt die Seite vollständig.
+
 ## Für wen das ist \{#who-this-is-for}
 
 Für kleine Firmen, die die Einrichtung „eine Box pro Team, ein Pool für

@@ -36,6 +36,7 @@ directories listed in `modules/impermanence.nix` survive, on an encrypted
 - [Master proxy](master-proxy.md). Reaching the box from the internet without
   opening a port.
 - [Edge federation](edge-federation.md). Your own edge on the LAN, relayed through the official ones.
+- [Edge web page](edge-web-ui.md). The page a company edge manages its boxes from, at `/manage/`.
 - [Lab](lab.md). The setup visualiser at `/lab/`, its simulated and real
   guests.
 - [Hardening](hardening.md). The default hardening baseline and the opt-in flags.
