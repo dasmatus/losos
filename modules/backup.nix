@@ -386,6 +386,7 @@ let
     # Who can sign in, and Authelia's sessions (modules/identity.nix).
     "/persist/var/lib/losos-identity"
     "/persist/var/lib/authelia-losos"
+    "/persist/var/lib/redis-losos-login"
     "/persist/var/lib/rancher"
     "/persist/var/lib/kubelet"
     "/persist/var/lib/longhorn"

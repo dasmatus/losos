@@ -153,7 +153,9 @@ zariadenie prihlasuje ľudí samo (`standalone` v `GET /api/me`). lososd
 odmietne siahnuť na vlastníka, na vlastný účet volajúceho aj na posledného
 správcu. LosOS Login si človeka vyhľadá znova pri každej požiadavke, takže
 odstránenie alebo zmenená skupina sa do aplikácií dostane tiež pri ďalšom
-kliknutí.
+kliknutí. Prihlásenia sú vo vlastnom Redise LosOS Login, na sokete, ktorý
+otvorí iba on, takže reštart LosOS Login ani nočný reštart nikoho
+neodhlási.
 
 LosOS cloud a LosOS Git prihlasujú ľudí rovnako, keď bežia ako pody, čo je
 predvolené. nginx sa na prihlasovacej stránke každej aplikácie spýta LosOS

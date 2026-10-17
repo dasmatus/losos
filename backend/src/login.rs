@@ -355,7 +355,14 @@ impl Login {
         let Some(db) = self.open_db(true) else {
             return Ok(());
         };
-        for table in ["totp_configurations", "webauthn_credentials"] {
+        // The codes already used go too: Authelia refuses a code from a new
+        // app in a 30-second step an old one was used in, so someone who
+        // signed in a moment ago could not add their new app.
+        for table in [
+            "totp_configurations",
+            "totp_history",
+            "webauthn_credentials",
+        ] {
             match db.execute(&format!("DELETE FROM {table} WHERE username = ?1"), [name]) {
                 Ok(_) => {}
                 Err(rusqlite::Error::SqliteFailure(_, Some(msg)))
@@ -502,6 +509,8 @@ If you did not initiate the process your credentials may have been compromised.\
         let db = rusqlite::Connection::open(&db_path).unwrap();
         db.execute_batch(
             "CREATE TABLE totp_configurations (id INTEGER PRIMARY KEY, username TEXT, secret BLOB);
+             CREATE TABLE totp_history (id INTEGER PRIMARY KEY, username TEXT, step TEXT);
+             INSERT INTO totp_history (username, step) VALUES ('eva', '1'), ('oma', '1');
              CREATE TABLE webauthn_credentials (id INTEGER PRIMARY KEY, created_at INTEGER, username TEXT, description TEXT);
              INSERT INTO totp_configurations (username, secret) VALUES ('eva', x'00');
              INSERT INTO webauthn_credentials (created_at, username, description) VALUES (2, 'eva', 'phone'), (1, 'eva', 'laptop'), (1, 'oma', 'key');",
@@ -519,5 +528,16 @@ If you did not initiate the process your credentials may have been compromised.\
         login.reset_factors("eva").unwrap();
         assert!(!login.factors("eva").any());
         assert_eq!(login.factors("oma").passkeys, vec!["key".to_string()]);
+        let history = |name: &str| -> i64 {
+            rusqlite::Connection::open(&db_path)
+                .unwrap()
+                .query_row(
+                    "SELECT COUNT(*) FROM totp_history WHERE username = ?1",
+                    [name],
+                    |r| r.get(0),
+                )
+                .unwrap()
+        };
+        assert_eq!((history("eva"), history("oma")), (0, 1));
     }
 }
