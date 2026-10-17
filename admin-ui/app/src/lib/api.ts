@@ -199,6 +199,23 @@ export interface Me {
   spareKey: boolean;
   /** The sections of backend/sections.json this person can use. */
   sections: string[];
+  /** Whether this box signs people in itself. Only then is there a Users
+   *  pane: a box whose sign-in runs elsewhere has nobody to add here.
+   *  Missing on a box whose lososd predates the field. */
+  standalone?: boolean;
+  /** What LosOS Login's rules hold this person to their own account for
+   *  (backend/src/login.rs). Empty or missing: nothing. */
+  locked?: LoginReason[];
+}
+
+/** Why a rule holds someone to their own account. */
+export type LoginReason = "twoFactor" | "password";
+
+/** The rules an administrator sets on the Users pane. */
+export interface LoginRules {
+  twoFactor: boolean;
+  /** A password runs out this many days after it was set; 0 never. */
+  passwordDays: number;
 }
 
 let me: Me | null = null;
@@ -235,6 +252,17 @@ export async function loadMe(options: RequestOptions = {}): Promise<Me | null> {
 export function canUse(section: string): boolean {
   if (me === null) return true;
   return me.admin || me.sections.includes(section);
+}
+
+/** What holds the signed-in person to their own account, if anything. */
+export function heldBy(): LoginReason[] {
+  return me?.locked ?? [];
+}
+
+/** Whether this box signs people in itself (GET /api/me's `standalone`).
+ *  False until /api/me has said so. */
+export function runsOwnSignIn(): boolean {
+  return me?.standalone === true;
 }
 
 /** For components: who is signed in, re-read when that changes. */
@@ -323,8 +351,27 @@ interface CallOptions extends RequestOptions {
   anonymous?: boolean;
 }
 
+/* The edge's manage page (src/manage/) shows one box's panes from the
+ * company edge: every /api/ path then goes to the edge, which relays it into
+ * that box (`/manage/api/boxes/<id>/api/…`), and the stored token is the
+ * edge's manage key rather than a box's. Null is the box's own page. */
+let routeBase: string | null = null;
+
+/** Send every /api/ call through `base` (the manage page's box), or stop. */
+export function routeThrough(base: string | null): void {
+  routeBase = base;
+  me = null;
+}
+
+/** Where a call to `path` goes from this page: the box's own route, or the
+ *  edge's relay into the box the manage page shows. */
+export function apiPath(path: string): string {
+  return routeBase !== null && path.startsWith("/api/") ? routeBase + path : path;
+}
+
 async function call<T>(path: string, options: CallOptions = {}): Promise<T> {
   const { method = "GET", body, contentType, signal, token, anonymous } = options;
+  path = apiPath(path);
 
   const headers: Record<string, string> = {};
   if (contentType !== undefined) headers["Content-Type"] = contentType;
@@ -514,11 +561,42 @@ export interface EdgeResponse {
   configuredUrl: string | null;
   /** Unix seconds of the scan; null before the first. */
   checkedAt: number | null;
+  /** Whether a company edge may manage this box. Missing on a box whose
+   *  lososd predates the switch. */
+  manage?: EdgeManage;
+}
+
+/** The switch that lets a company edge on this LAN manage LosOS cloud,
+ *  LosOS Git and the apps (backend/src/edge.rs, "management"). */
+export interface EdgeManage {
+  /** The edge in use that could manage the box, or null. */
+  candidate: { name: string; url: string } | null;
+  /** Why none can: no company edge on this network, or the one in use is
+   *  official (official edges never manage boxes). */
+  refused: "noLocalEdge" | "official" | null;
+  /** The registrar URL the owner switched management on for, or null. */
+  managedBy: string | null;
+  /** That edge is the one in use, so it manages the box now. */
+  active: boolean;
 }
 
 /** GET /api/edge — the last edge scan. */
 export function getEdge(options: RequestOptions = {}): Promise<EdgeResponse> {
   return call<EdgeResponse>("/api/edge", options);
+}
+
+/** POST /api/edge/manage — let the company edge in use manage the box, or
+ *  stop it. Takes effect at once; it is not part of Apply. */
+export function postEdgeManage(
+  enabled: boolean,
+  options: RequestOptions = {},
+): Promise<{ manage: EdgeManage }> {
+  return call<{ manage: EdgeManage }>("/api/edge/manage", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ enabled }),
+  });
 }
 
 /** POST /api/apply — overwrite overrides.nix with `nix` and rebuild.
@@ -1622,6 +1700,145 @@ export function postAccessRevoke(
   });
 }
 
+// ── People (the Users pane) ───────────────────────────────────────────────
+
+/** Someone who may sign in to this box, as GET /api/people lists them. */
+export interface PersonEntry {
+  name: string;
+  displayName: string;
+  email: string;
+  /** losos-admins, losos-viewers, losos-<section>, and losos-owner for the
+   *  person who claimed the box. */
+  groups: string[];
+  disabled: boolean;
+  /** Has an authenticator app or a passkey on LosOS Login. */
+  twoFactor?: boolean;
+  /** When their password was last set, in seconds since 1970. */
+  passwordSetAt?: number;
+  /** What the rules hold them to their own account for. */
+  locked?: LoginReason[];
+}
+
+export interface PeopleResponse {
+  /** False on a box whose sign-in runs elsewhere; `people` is empty then. */
+  standalone: boolean;
+  /** The caller's own name, null for the spare key. */
+  you: string | null;
+  /** The parts of the box a person can be given one by one. */
+  sections: string[];
+  /** LosOS Login's rules; missing on a lososd that predates them. */
+  rules?: LoginRules;
+  people: PersonEntry[];
+}
+
+export interface NewPerson {
+  name: string;
+  displayName: string;
+  password: string;
+  groups: string[];
+}
+
+/** GET /api/people — everyone who may sign in, never a password. */
+export function getPeople(options: RequestOptions = {}): Promise<PeopleResponse> {
+  return call<PeopleResponse>("/api/people", options);
+}
+
+function postJson<T>(path: string, body: unknown, options: RequestOptions): Promise<T> {
+  return call<T>(path, {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+}
+
+/** POST /api/people — add someone. 400 for a bad name or password, 409 for
+ *  a name already taken. */
+export function postPerson(person: NewPerson, options: RequestOptions = {}): Promise<{ name: string }> {
+  return postJson("/api/people", person, options);
+}
+
+/** POST /api/people/access — replace someone's access groups. */
+export function postPersonAccess(
+  name: string,
+  groups: string[],
+  options: RequestOptions = {},
+): Promise<{ name: string; groups: string[] }> {
+  return postJson("/api/people/access", { name, groups }, options);
+}
+
+/** POST /api/people/password — a new password for someone who forgot theirs. */
+export function postPersonPassword(
+  name: string,
+  password: string,
+  options: RequestOptions = {},
+): Promise<{ name: string; changed: boolean }> {
+  return postJson("/api/people/password", { name, password }, options);
+}
+
+/** POST /api/people/remove — they can no longer sign in; their files stay. */
+export function postPersonRemove(
+  name: string,
+  options: RequestOptions = {},
+): Promise<{ name: string; removed: boolean }> {
+  return postJson("/api/people/remove", { name }, options);
+}
+
+/** POST /api/people/rules — LosOS Login's two rules. 409 `needsOwnFactor`
+ *  when the caller turns two-factor sign-in on without a second factor of
+ *  their own. */
+export function postPeopleRules(rules: LoginRules, options: RequestOptions = {}): Promise<LoginRules> {
+  return postJson("/api/people/rules", rules, options);
+}
+
+/** POST /api/people/two-factor/reset — remove someone's authenticator app
+ *  and passkeys, for a lost phone or key. */
+export function postPersonFactorsReset(
+  name: string,
+  options: RequestOptions = {},
+): Promise<{ name: string; reset: boolean }> {
+  return postJson("/api/people/two-factor/reset", { name }, options);
+}
+
+// ── Your own account ──────────────────────────────────────────────────────
+
+/** GET /api/account: the caller's own account on LosOS Login. */
+export interface Account {
+  name: string;
+  displayName: string;
+  email: string;
+  factors: { app: boolean; passkeys: string[] };
+  /** Seconds since 1970. */
+  passwordSetAt: number;
+  /** When the password runs out, or null when it does not. */
+  passwordExpiresAt: number | null;
+  rules: LoginRules;
+  locked: LoginReason[];
+}
+
+export function getAccount(options: RequestOptions = {}): Promise<Account> {
+  return call<Account>("/api/account", options);
+}
+
+/** POST /api/account — their own name and email address. */
+export function postAccount(
+  details: { displayName: string; email: string },
+  options: RequestOptions = {},
+): Promise<{ name: string; displayName: string; email: string }> {
+  return postJson("/api/account", details, options);
+}
+
+/** POST /api/account/code — the one-time code LosOS Login last made for
+ *  them, behind their password. 403 `wrongPassword`, 404 `noCode`. */
+export function postAccountCode(password: string, options: RequestOptions = {}): Promise<{ code: string }> {
+  return postJson("/api/account/code", { password }, options);
+}
+
+/** LosOS Login's own page for adding an authenticator app or a passkey. */
+export function twoFactorSettingsUrl(): string {
+  return `https://${window.location.host}/auth/settings/two-factor-authentication`;
+}
+
 // ── Sign-in ───────────────────────────────────────────────────────────────
 
 /* Probe a pasted token against a cheap authed route and store it if lososd
@@ -2099,6 +2316,40 @@ export interface OptionsResponse {
 /** GET /api/options — every losos.* option with the current overrides joined in. */
 export function getOptions(options: RequestOptions = {}): Promise<OptionsResponse> {
   return call<OptionsResponse>("/api/options", options);
+}
+
+/** GET /api/site: the settings of LosOS cloud and LosOS Git only, in the
+ *  shape of GET /api/options. Open to the apps section and to a company edge
+ *  the owner lets manage the box. */
+export function getSite(options: RequestOptions = {}): Promise<OptionsResponse> {
+  return call<OptionsResponse>("/api/site", options);
+}
+
+/** POST /api/site: set each named option to its Nix literal, or back to its
+ *  default with null. The box changes those lines and rebuilds. */
+export function postSite(set: Readonly<Record<string, string | null>>): Promise<ChangeResponse> {
+  return call<ChangeResponse>("/api/site", {
+    method: "POST",
+    body: JSON.stringify({ set }),
+    contentType: "application/json",
+  });
+}
+
+/* ── The company edge's manage page ───────────────────────────────────────
+ * Served by the edge itself (edge/registrar/src/server/manage.rs) with the
+ * edge's manage key as the Bearer token. */
+
+/** A box this edge routes, and whether its owner lets the edge manage it. */
+export interface ManagedBox {
+  id: string;
+  hostname: string;
+  seenAgoSecs: number;
+  managed: boolean;
+}
+
+/** GET /manage/api/boxes on the edge. */
+export function getManagedBoxes(options: RequestOptions = {}): Promise<{ boxes: ManagedBox[] }> {
+  return call<{ boxes: ManagedBox[] }>("/manage/api/boxes", options);
 }
 
 /** How the last sync with LosOS Git went. `off`: LosOS Git is off on this

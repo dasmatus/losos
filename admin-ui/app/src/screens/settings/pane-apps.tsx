@@ -74,31 +74,10 @@ export function AppsPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const filesId = React.useId();
   const codeId = React.useId();
-  const searchId = React.useId();
 
   const draft = form.draft;
   const disabled = form.locked || !form.ready;
-  const catalogue = useCatalogue(!form.locked);
-  const installed = useInstalledApps(!form.locked);
-  const [target, setTarget] = React.useState<InstallTarget | null>(null);
-  const [removing, setRemoving] = React.useState<InstalledApp | null>(null);
   const location = useLocation();
-  const navigate = useNavigate();
-  /* An app picked in the command palette (src/palette/) arrives as router
-   * state: the pane searches what was typed there and opens the install
-   * dialog for the pick once the box can take an install, so the palette
-   * never installs anything by itself. The state is dropped at once, so a
-   * reload or Back does not open the dialog again. */
-  const handoff = React.useRef<PaletteHandoff | null>(null);
-  React.useEffect(() => {
-    const picked = readHandoff(location.state);
-    if (picked === null) return;
-    handoff.current = picked;
-    catalogue.setQuery(picked.query);
-    navigate(location.pathname, { replace: true, state: null });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new pick, not each render of the same one
-  }, [location.state]);
-
   const cloudApps = useCloudApps(!form.locked);
   const cloudOn =
     cloudApps.state.kind === "ready" ? cloudApps.state.apps.filter((app) => app.enabled).length : null;
@@ -108,29 +87,6 @@ export function AppsPane({ form }: { form: SettingsForm }) {
   const [folds, setFolds] = React.useState<string[]>(() => {
     const hash = location.hash.slice(1);
     return hash === "cloud" || hash === "git" ? [hash] : [];
-  });
-
-  const ready = installed.state.kind === "ready" ? installed.state : null;
-  const records = ready?.apps ?? [];
-  const install: Installer | null =
-    ready === null || disabled
-      ? null
-      : {
-          records,
-          start: (app, source) =>
-            setTarget({
-              title: app.name,
-              publisher: app.source,
-              source,
-              existing: records.find((r) => r.chart.name === source.name && r.chart.repo === source.repo) ?? null,
-            }),
-        };
-
-  React.useEffect(() => {
-    const picked = handoff.current;
-    if (picked === null || install === null || target !== null) return;
-    handoff.current = null;
-    install.start(picked.app, picked.app.chart);
   });
 
   return (
@@ -206,6 +162,73 @@ export function AppsPane({ form }: { form: SettingsForm }) {
         </Accordion>
       )}
 
+      <BoxApps active={!form.locked} disabled={disabled} />
+    </>
+  );
+}
+
+/** The apps installed from the search, and the search itself, with their
+ *  dialogs. Also the apps half of a company edge's page for a box
+ *  (src/manage/), where `onBox` is false. */
+export function BoxApps({
+  active,
+  disabled,
+  onBox = true,
+}: {
+  /** Whether to load anything yet: false while nobody is signed in. */
+  active: boolean;
+  disabled: boolean;
+  onBox?: boolean;
+}) {
+  const t = useT();
+  const searchId = React.useId();
+  const catalogue = useCatalogue(active);
+  const installed = useInstalledApps(active);
+  const [target, setTarget] = React.useState<InstallTarget | null>(null);
+  const [removing, setRemoving] = React.useState<InstalledApp | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  /* An app picked in the command palette (src/palette/) arrives as router
+   * state: the pane searches what was typed there and opens the install
+   * dialog for the pick once the box can take an install, so the palette
+   * never installs anything by itself. The state is dropped at once, so a
+   * reload or Back does not open the dialog again. */
+  const handoff = React.useRef<PaletteHandoff | null>(null);
+  React.useEffect(() => {
+    const picked = readHandoff(location.state);
+    if (picked === null) return;
+    handoff.current = picked;
+    catalogue.setQuery(picked.query);
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new pick, not each render of the same one
+  }, [location.state]);
+
+  const ready = installed.state.kind === "ready" ? installed.state : null;
+  const records = ready?.apps ?? [];
+  const install: Installer | null =
+    ready === null || disabled
+      ? null
+      : {
+          records,
+          start: (app, source) =>
+            setTarget({
+              title: app.name,
+              publisher: app.source,
+              source,
+              existing: records.find((r) => r.chart.name === source.name && r.chart.repo === source.repo) ?? null,
+            }),
+        };
+
+  React.useEffect(() => {
+    const picked = handoff.current;
+    if (picked === null || install === null || target !== null) return;
+    handoff.current = null;
+    install.start(picked.app, picked.app.chart);
+  });
+
+  return (
+    <>
+
       {(records.length > 0 || installed.state.kind === "failed") && (
         <PaneSection>
           <GroupTitle>{t("install.installed")}</GroupTitle>
@@ -224,6 +247,7 @@ export function AppsPane({ form }: { form: SettingsForm }) {
                   record={record}
                   disabled={disabled}
                   last={index === records.length - 1}
+                  onBox={onBox}
                   onChange={() =>
                     setTarget({
                       title: record.chart.name,
@@ -533,19 +557,23 @@ function InstalledRow({
   last,
   onChange,
   onRemove,
+  onBox = true,
 }: {
   record: InstalledApp;
   disabled: boolean;
   last: boolean;
   onChange: () => void;
   onRemove: () => void;
+  /** False on a company edge's page (src/manage/): the app's port is on the
+   *  box's own network, and the sidebar pins belong to the box's people. */
+  onBox?: boolean;
 }) {
   const t = useT();
   const busy = record.phase === "installing" || record.phase === "removing";
   // The forward listens on every address of the box, so the page's own host
   // reaches it: the .local name, or the IP address the owner typed.
   const href =
-    record.phase === "running" && record.appPort !== null
+    onBox && record.phase === "running" && record.appPort !== null
       ? `http://${window.location.hostname}:${record.frontPort}/`
       : null;
   return (
@@ -584,7 +612,7 @@ function InstalledRow({
               <HugeiconsIcon icon={LinkSquare02Icon} size={13} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
             </a>
           )}
-          <InstalledPin release={record.release} />
+          {onBox && <InstalledPin release={record.release} />}
           <Button size="sm" variant="secondary" disabled={disabled || busy} onClick={onChange}>
             {t("install.change")}
           </Button>

@@ -73,7 +73,14 @@ interface Slot {
   set: (next: string | null) => void;
 }
 
-function slotFor(form: SettingsForm, name: string): Slot | null {
+/** What the rows need from a form: the box's own settings form, or the
+ *  edge's form over GET /api/site (src/manage/), whose draft is null. */
+export type SiteForm = Pick<
+  SettingsForm,
+  "draft" | "options" | "extra" | "extraProblems" | "locked" | "ready" | "setExtra"
+>;
+
+function slotFor(form: SiteForm, name: string): Slot | null {
   const option = form.options?.options.find((candidate) => candidate.name === name);
   if (option === undefined || option.readOnly) return null;
   const defaultRaw = toLiteral(option.editor, option.default);
@@ -90,7 +97,7 @@ function slotFor(form: SettingsForm, name: string): Slot | null {
 
 /** Whether the box declares any of `app`'s settings, so the pane can leave
  *  out an accordion that would hold nothing. */
-export function hasSiteSettings(form: SettingsForm, app: "cloud" | "git"): boolean {
+export function hasSiteSettings(form: SiteForm, app: "cloud" | "git"): boolean {
   const svc = app === "cloud" ? "nextcloud" : "forgejo";
   return (
     form.options?.options.some(
@@ -100,8 +107,17 @@ export function hasSiteSettings(form: SettingsForm, app: "cloud" | "git"): boole
 }
 
 /* One app's settings, under the title the accordion it sits in leaves room
- * for: the app's name is on the accordion. */
-export function SiteSettings({ form, app }: { form: SettingsForm; app: "cloud" | "git" }) {
+ * for: the app's name is on the accordion. A page with no accordion (the
+ * edge's, src/manage/) names the app in `title` instead. */
+export function SiteSettings({
+  form,
+  app,
+  title,
+}: {
+  form: SiteForm;
+  app: "cloud" | "git";
+  title?: string;
+}) {
   const t = useT();
   const cloudFederation = slotFor(form, "nextcloud.federation.enable");
   const gitFederation = slotFor(form, "forgejo.federation.enable");
@@ -154,7 +170,7 @@ export function SiteSettings({ form, app }: { form: SettingsForm; app: "cloud" |
     <>
       {app === "cloud" && cloudRows && (
         <PaneSection data-testid="site-cloud">
-          <GroupTitle>{t("cloudApps.settings.title")}</GroupTitle>
+          <GroupTitle>{title ?? t("cloudApps.settings.title")}</GroupTitle>
           <Group>
             {cloudFederation !== null && (
               <BoolRow
@@ -239,7 +255,7 @@ export function SiteSettings({ form, app }: { form: SettingsForm; app: "cloud" |
 
       {app === "git" && gitRows && (
         <PaneSection data-testid="site-git">
-          <GroupTitle>{t("cloudApps.settings.title")}</GroupTitle>
+          <GroupTitle>{title ?? t("cloudApps.settings.title")}</GroupTitle>
           <Group>
             {gitFederation !== null && (
               <BoolRow

@@ -14,7 +14,7 @@
  * plainly in the UI, not an error to paint red.
  */
 
-import { ApiError, dropToken, getToken } from "@/lib/api";
+import { ApiError, apiPath, dropToken, getToken } from "@/lib/api";
 
 /** The box answered, and its answer was "I do not serve that route". */
 export function notPresent(error: unknown): boolean {
@@ -37,7 +37,7 @@ export async function authedGet(path: string, options: GetOptions = {}): Promise
   const init: RequestInit = { method: "GET", headers, cache: "no-store" };
   if (options.signal !== undefined) init.signal = options.signal;
 
-  const response = await fetch(path, init);
+  const response = await fetch(apiPath(path), init);
 
   if (response.status === 401) {
     dropToken();

@@ -136,6 +136,11 @@ pub struct State {
     /// that account's too.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
+    /// The registrar URL of the company edge the owner let manage this box's
+    /// LosOS cloud, LosOS Git and app settings (`crate::edge::manager_active`).
+    /// `None`, the default, is nobody.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed_by: Option<String>,
 }
 
 /// See [`State::claimed`]: a state file without the field predates it.
@@ -170,6 +175,7 @@ impl Default for State {
             backup_job: None,
             erase: None,
             owner: None,
+            managed_by: None,
         }
     }
 }

@@ -274,6 +274,36 @@ let
     '';
   };
 
+  # A person's name and address from LosOS Login, kept in LosOS cloud
+  # (backend/src/app_names.rs). Same shape as the two above.
+  #
+  # Contract, depended on by backend/src/setup.rs (`IMAGE_OCC_PERSON`):
+  #
+  #   losos-nextcloud-occ-person <account> <name> <email>
+  #     sets the account's display name, and its address unless <email> is
+  #     empty, with `occ user:setting`; exits 3 when the account does not
+  #     exist yet, else with occ's status.
+  nextcloudPerson = pkgs.writeShellApplication {
+    name = "losos-nextcloud-occ-person";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = ''
+      if [ "$#" -ne 3 ]; then
+        echo "usage: losos-nextcloud-occ-person <account> <name> <email>" >&2
+        exit 2
+      fi
+      cd ${nc.webroot}
+      export NEXTCLOUD_CONFIG_DIR=${nc.configDir}
+      # `--` ends occ's options, so a name that starts with a dash is a name.
+      if ! ${nc.php}/bin/php occ user:info -- "$1" >/dev/null 2>&1; then
+        exit 3
+      fi
+      ${nc.php}/bin/php occ user:setting -- "$1" settings display_name "$2"
+      if [ -n "$3" ]; then
+        ${nc.php}/bin/php occ user:setting -- "$1" settings email "$3"
+      fi
+    '';
+  };
+
   # The owner's LosOS cloud apps, from the Apps pane: lososd execs
   # `/bin/losos-nextcloud-apps <verb> [id]` in this pod (backend/src/cloud_apps.rs).
   # The contract is in modules/nextcloud-stack.nix (`appsTool`); the prelude
@@ -631,6 +661,8 @@ let
       nextcloudStatus
       # And this one to list, add, turn on and off, and remove apps.
       nextcloudApps
+      # And this one to give a person LosOS Login's name and address.
+      nextcloudPerson
       nc.php
     ];
   };

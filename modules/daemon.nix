@@ -224,6 +224,9 @@ in
         # announce to hand a local edge (modules/proxy.nix reads the same
         # path). Root-only, on /run: it is good for hours, not across a boot.
         LOSOS_RELAY_PASS_FILE = "/run/losos/relay-pass";
+        # Present while the owner lets the company edge in use manage the
+        # box; announce says so on its heartbeats (modules/proxy.nix).
+        LOSOS_EDGE_MANAGED_FILE = "/run/losos/edge-managed";
         LOSOS_EDGE_PIN_DIR = "/var/secrets/losos-edge-pins";
         # The token files the tunnel and announce read. lososd mints both
         # (64 hex characters, 0600) when absent, so a stock box can enrol

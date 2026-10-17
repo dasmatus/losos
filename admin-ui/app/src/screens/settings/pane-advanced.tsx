@@ -420,7 +420,7 @@ function OptionRow({
  * pane owns it, else the line overrides.nix will carry, else what the box
  * runs with. An option the document does not have counts as on, so a stale
  * `needs` never locks a row. */
-export function draftOn(form: SettingsForm, name: string): boolean {
+export function draftOn(form: Pick<SettingsForm, "draft" | "extra" | "options">, name: string): boolean {
   const owned = OWNED[name];
   if (owned !== undefined && form.draft !== null) return form.draft[owned.key] === true;
   const raw = form.extra[name];

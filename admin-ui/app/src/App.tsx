@@ -204,6 +204,12 @@ function Shell() {
 
   const inSetup = setupStarted && !setupDone;
   const signedIn = gate === "open";
+  /* A rule of LosOS Login holds this person to their own account
+   * (backend/src/login.rs): every address shows it, and nothing else opens
+   * until they comply. lososd refuses the rest anyway; this is so the page
+   * says why instead of failing pane by pane. */
+  const me = useMe();
+  const held = signedIn && (me?.locked?.length ?? 0) > 0;
   const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
   const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
   // Once fetched, the palette stays mounted so it can close the way it opened.
@@ -216,7 +222,7 @@ function Shell() {
    * outside a text field. A key some field has already handled (a code
    * editor's own binding) is left to it. */
   React.useEffect(() => {
-    if (!signedIn || inSetup) {
+    if (!signedIn || inSetup || held) {
       closePalette();
       return;
     }
@@ -233,7 +239,7 @@ function Shell() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [signedIn, inSetup]);
+  }, [signedIn, inSetup, held]);
 
   // A box being set up gets the wizard and nothing else: no chrome, no
   // navigation, no dialog over the top. There is nothing behind it worth
@@ -285,6 +291,9 @@ function Shell() {
         <AppSidebar />
         <main className="min-w-0 flex-1">
           <React.Suspense fallback={<ScreenFallback />}>
+          {held ? (
+            <Settings pane="account" />
+          ) : (
           <Routes>
             <Route
               path="/"
@@ -307,6 +316,7 @@ function Shell() {
             <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          )}
           </React.Suspense>
         </main>
       </SidebarProvider>
@@ -317,7 +327,7 @@ function Shell() {
           <CommandPalette />
         </React.Suspense>
       )}
-      {signedIn && tourOpen && (
+      {signedIn && !held && tourOpen && (
         <React.Suspense fallback={null}>
           <Tour />
         </React.Suspense>

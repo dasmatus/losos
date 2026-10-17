@@ -25,6 +25,7 @@ const TABLE: &str = include_str!("../sections.json");
 struct Table {
     viewers: String,
     sections: Vec<String>,
+    edge: Vec<String>,
     routes: BTreeMap<String, String>,
 }
 
@@ -56,6 +57,25 @@ pub fn allows(person: &Person, method: &str, section: &str) -> bool {
                     && person.groups.iter().any(|g| *g == table().viewers))
         }
     }
+}
+
+/// Whether a company edge the owner let manage this box may call `method`
+/// on a route in `section`: the sections in the table's `edge` list, and
+/// reading what anyone signed in may read. Never an `admin` route, so the
+/// edge cannot let itself in further, read the recovery code or add people.
+pub fn edge_allows(method: &str, section: &str) -> bool {
+    match section {
+        "public" => true,
+        "signed-in" => method.eq_ignore_ascii_case("GET"),
+        "admin" => false,
+        named => table().edge.iter().any(|s| s == named),
+    }
+}
+
+/// Every named section, in the table's order: the parts of the box a person
+/// can be given one by one on the Users pane.
+pub fn names() -> Vec<&'static str> {
+    table().sections.iter().map(String::as_str).collect()
 }
 
 /// The named sections `person` can use, for `GET /api/me`: the admin UI
@@ -151,6 +171,24 @@ mod tests {
         assert!(!allows(&p, "POST", section("POST", "/api/grow")));
         assert!(!allows(&p, "GET", section("GET", "/api/recovery")));
         assert_eq!(usable(&p).len(), table().sections.len());
+    }
+
+    #[test]
+    fn a_managing_edge_reaches_the_apps_and_nothing_admin() {
+        assert!(edge_allows("GET", section("GET", "/api/apps")));
+        assert!(edge_allows("POST", section("POST", "/api/apps/install")));
+        assert!(edge_allows("GET", section("GET", "/api/status")));
+        assert!(!edge_allows("POST", section("POST", "/api/set-password")));
+        assert!(!edge_allows("POST", section("POST", "/api/edge/manage")));
+        assert!(!edge_allows("GET", section("GET", "/api/recovery")));
+        assert!(!edge_allows("POST", section("POST", "/api/people")));
+        assert!(!edge_allows("POST", section("POST", "/api/backup/run")));
+        for s in &table().edge {
+            assert!(
+                table().sections.contains(s),
+                "edge section {s} is not declared"
+            );
+        }
     }
 
     #[test]

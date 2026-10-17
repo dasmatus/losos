@@ -1583,7 +1583,43 @@ impl IoLosos {
         );
         *self.edge.lock().unwrap_or_else(|p| p.into_inner()) = Some(status.clone());
         drive_edge_path(&status);
+        self.publish_managed();
         status
+    }
+
+    /// Whether the company edge in use may manage this box now
+    /// (`crate::edge::manager_active`): the owner switched it on for this
+    /// very edge, and it is still the path.
+    pub fn edge_manager_active(&self) -> bool {
+        let managed_by = read_state(&self.paths.state_file()).managed_by;
+        managed_by.is_some()
+            && crate::edge::manager_active(managed_by.as_deref(), &self.edge_cached())
+    }
+
+    /// Tell `losos-registrar announce` whether to say on its heartbeats that
+    /// the edge may manage this box (`$LOSOS_EDGE_MANAGED_FILE`, which
+    /// modules/proxy.nix passes as `--managed-file`). The file only lets the
+    /// edge show the box's settings; what the edge may do is decided here, on
+    /// every call, by [`IoLosos::edge_manager_active`].
+    pub fn publish_managed(&self) {
+        let Some(file) = std::env::var("LOSOS_EDGE_MANAGED_FILE")
+            .ok()
+            .filter(|v| !v.is_empty())
+        else {
+            return;
+        };
+        let file = PathBuf::from(file);
+        if self.edge_manager_active() {
+            if !file.exists() {
+                if let Err(e) = atomic_write(&file, b"1\n") {
+                    tracing::error!(error = %e, path = %file.display(), "could not write the managed marker");
+                }
+            }
+        } else if file.exists() {
+            if let Err(e) = std::fs::remove_file(&file) {
+                tracing::error!(error = %e, path = %file.display(), "could not clear the managed marker");
+            }
+        }
     }
 
     /// The cached scan, or a fresh one when there is none yet.
@@ -1998,6 +2034,21 @@ impl Losos for IoLosos {
         let out = child
             .output()
             .with_context(|| format!("running {}", argv.join(" ")))?;
+        Ok(crate::setup::OccOutcome {
+            code: out.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        })
+    }
+
+    fn nextcloud_run(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome> {
+        let (cmd, args) = argv.split_first().context("an occ step is never empty")?;
+        let out = std::process::Command::new(cmd)
+            .args(args)
+            // The native wrapper reads `$USER` under `set -u`, as above.
+            .env("USER", "root")
+            .output()
+            .with_context(|| format!("running {cmd}"))?;
         Ok(crate::setup::OccOutcome {
             code: out.status.code().unwrap_or(-1),
             stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -3048,6 +3099,7 @@ mod tests {
             backup_job: None,
             erase: None,
             owner: Some("matus".into()),
+            managed_by: Some("http://office.local:8443".into()),
         };
         write_state(&p, &s).unwrap();
         assert_eq!(read_state(&p), s);

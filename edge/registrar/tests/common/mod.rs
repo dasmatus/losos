@@ -705,6 +705,7 @@ impl Edge {
             uplink: None,
             routes: None,
             operator: None,
+            manage: None,
         };
         if let Some(tweak) = tweak {
             tweak(&mut opts, &dir);

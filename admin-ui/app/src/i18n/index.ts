@@ -5,6 +5,7 @@
  * — see define.ts. lib/i18n.ts is the only reader. */
 
 import access from "./access";
+import account from "./account";
 import advanced from "./advanced";
 import apps from "./apps";
 import cloudApps from "./cloud-apps";
@@ -13,12 +14,14 @@ import install from "./install";
 import lab from "./lab";
 import look from "./look";
 import machines from "./machines";
+import manage from "./manage";
 import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
 import settings from "./settings";
 import shell from "./shell";
 import tour from "./tour";
+import users from "./users";
 import widgets from "./widgets";
 import wizard from "./wizard";
 
@@ -38,10 +41,13 @@ export const MESSAGES = {
   ...machines,
   ...advanced,
   ...access,
+  ...users,
+  ...account,
   ...lab,
   ...tour,
   ...palette,
   ...pins,
+  ...manage,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

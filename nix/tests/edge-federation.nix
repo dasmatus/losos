@@ -62,7 +62,11 @@ let
   };
   selfShim = {
     _module.args.self = {
-      packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
+      # The gateway preset turns on losos.edge.manage, whose page is the
+      # admin UI's manage/ build.
+      packages.x86_64-linux = {
+        inherit (lososPkgs) losos-registrar losos-admin-ui;
+      };
     };
   };
 in

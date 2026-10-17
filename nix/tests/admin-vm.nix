@@ -169,5 +169,22 @@ pkgs.testers.nixosTest {
     assert "noSuch.option" in machine.succeed("cat /tmp/apply.out")
     claim = machine.succeed("curl -fsS 127.0.0.1:8082/api/setup/claim")
     assert '"claimed":false' in claim.replace(" ", ""), f"box got claimed: {claim!r}"
+
+    # 10. No LosOS Login here (identity.nix is not imported), so the box does
+    # not sign people in itself: GET /api/me says so, which hides the Users
+    # pane, and the people routes list nobody and add nobody.
+    me = machine.succeed(f"curl -fsS -H '{hdr}' localhost:8082/api/me")
+    assert '"standalone":false' in me.replace(" ", ""), f"/api/me: {me!r}"
+    people = machine.succeed(f"curl -fsS -H '{hdr}' localhost:8082/api/people")
+    assert '"people":[]' in people.replace(" ", ""), f"/api/people: {people!r}"
+    code = machine.succeed(
+      f"curl -s -o /tmp/people.out -w '%{{http_code}}' -H '{hdr}' "
+      "-H 'Content-Type: application/json' "
+      "-d '{\"name\":\"eva\",\"password\":\"Eva-Long-Password-3\",\"groups\":[]}' "
+      "localhost:8082/api/people"
+    )
+    assert code == "409", f"adding a person here answered {code!r}, expected 409"
+    assert "own sign-in" in machine.succeed("cat /tmp/people.out")
+    machine.fail("test -e /var/lib/losos-identity/users.yml")
   '';
 }

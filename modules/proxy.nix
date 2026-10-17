@@ -48,6 +48,12 @@ let
   # key is pinned). The marker means "no edge in reach".
   pathEnv = "/run/losos/edge-path.env";
   noneMarker = "/run/losos/edge-none";
+  managedMarker = "/run/losos/edge-managed";
+
+  # The name the edge that manages this box calls it by through the tunnel.
+  # `.invalid` never resolves, so no browser or public route can ask for it:
+  # Traefik on the edge routes a box by its own host names only.
+  manageHost = "losos-manage.invalid";
 
   # Generates client.toml at start from the secret files. The non-secret
   # parts (remote_addr, service name, local_addr) are templated in; the
@@ -139,6 +145,11 @@ let
     # every heartbeat; no file sends none.
     "--relay-pass-file"
     "/run/losos/relay-pass"
+    # lososd's marker for "the owner let this edge manage the box"
+    # (backend/src/io_backend.rs, publish_managed). Read on every heartbeat,
+    # so the edge's page lists the box within one interval of the switch.
+    "--managed-file"
+    managedMarker
   ];
 in
 {
@@ -188,6 +199,45 @@ in
         RuntimeDirectoryMode = "0700";
       };
     };
+
+    # ── the edge that manages this box ───────────────────────────────────
+    # A company's own edge may change LosOS cloud, LosOS Git and the apps,
+    # once the owner switched that on for it on the Mesh page
+    # (backend/src/edge.rs, "management"). Its calls come through this box's
+    # own tunnel, which lands on 127.0.0.1:80, so this server takes loopback
+    # only; the front door's LAN guard turns loopback away, which is why it is
+    # a server of its own. It tells lososd the call came this way and passes
+    # the box's proxy token the edge sends; lososd checks the token and the
+    # owner's switch on every call and opens only the sections
+    # backend/sections.json lists under `edge`. Nothing a person can send
+    # reaches lososd from here: no spare key, no signed-in name.
+    services.nginx.virtualHosts.losos-manage =
+      lib.mkIf (config.losos.admin.enable && config.services.nginx.enable)
+        {
+          serverName = manageHost;
+          listen = [
+            {
+              addr = "0.0.0.0";
+              port = 80;
+            }
+          ];
+          locations."/".return = "404";
+          locations."/api/" = {
+            proxyPass = "http://127.0.0.1:${toString config.losos.admin.apiPort}";
+            extraConfig = ''
+              allow 127.0.0.1;
+              deny all;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Losos-Via-Edge 1;
+              proxy_set_header Authorization "";
+              proxy_set_header Remote-User "";
+              proxy_set_header Remote-Groups "";
+              proxy_set_header X-Losos-As "";
+              proxy_read_timeout 600s;
+              proxy_send_timeout 600s;
+            '';
+          };
+        };
 
     # ── losos-registrar announce (register + heartbeat) ─────────────────
     systemd.services.losos-registrar-announce = {
