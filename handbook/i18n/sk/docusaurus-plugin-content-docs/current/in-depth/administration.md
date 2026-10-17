@@ -269,8 +269,9 @@ Federácia beží iba vtedy, keď zariadenie zdieľa svoj disk. Obe voľby
 federácie nižšie sú spojené logickým AND s `losos.sharingMyStorage`,
 nastavením, ktoré odomyká zdieľaný dátový pool (`lososInternal.federation` v
 `modules/options.nix`). S vypnutým zdieľaním nekomunikuje ani LosOS Git, ani
-LosOS cloud s inými servermi, nech hovorí ich vlastná voľba čokoľvek, a
-panel Rozšírené zobrazí oba riadky ako nedostupné aj s dôvodom.
+LosOS cloud s inými servermi, nech hovorí ich vlastná voľba čokoľvek. Panel
+Aplikácie oba prepínače zosivie aj s dôvodom a panel Rozšírené zobrazí oba
+riadky ako nedostupné a odkáže na ne.
 
 `losos.forgejo.federation.enable` (predvolene zapnuté) zapína ActivityPub
 stránku Forgeja v oboch režimoch: `[federation] ENABLED` v app.ini, so
@@ -309,6 +310,18 @@ ktoré sa vypnúť nedajú. `nix/tests/front-vhost.nix` kontroluje cesty oboch
 služieb so zapnutým aj vypnutým zdieľaním; `nix/tests/invariants.nix` kontroluje
 bránu pri evaluácii.
 
+Zapnutá federácia dá LosOS cloud aj `allow_local_remote_servers = true`
+(`modules/nextcloud-stack.nix`, `federation.system`; natívne v
+`override.config.php` modulu, v pode v `losos.config.php`). `RemoteHostValidator`
+v Nextcloud inak odmietne každý server pod `.local`, každé meno bez bodky a
+každú súkromnú adresu, teda každé iné zariadenie v LAN, takže zdieľanie pre
+`owner@inezariadenie.local` zlyhalo skôr, než požiadavka opustila
+zariadenie. Cenou je, že čokoľvek, čo účet dokáže Nextcloud prikázať
+stiahnuť, môže tiež mieriť do LAN. `nix/tests/cloud-apps.nix` spustí dve
+zariadenia v natívnom režime so zapnutým zdieľaním a pošle súbor od jedného
+vlastníka druhému: zdieľanie sa na druhom zariadení ponúkne, prijme a
+prečíta späť cez WebDAV.
+
 ### Nastavenia aplikácií pre celé zariadenie {#box-wide-app-settings}
 
 Panel Aplikácie nesie nastavenia, ktoré platia pre všetkých v LosOS cloud a
@@ -316,8 +329,10 @@ LosOS Git, teda tie, ktoré si inak každá aplikácia drží na vlastných
 stránkach správy. Každé pole je voľba pod `losos.nextcloud.site.*` alebo
 `losos.forgejo.site.*`, takže ide cez Použiť, bránu, Históriu a repozitár
 konfigurácie ako každé iné nastavenie. Panel Rozšírené ukazuje ich hodnoty a
-odkazuje na panel Aplikácie, namiesto toho aby kreslil druhý editor
-(`ON_PANE` v `admin-ui/app/src/lib/option-value.ts`).
+odkazuje na sekciu aplikácie na paneli Aplikácie (`/apps#cloud`,
+`/apps#git`), namiesto toho aby kreslil druhý editor (`ON_PANE` v
+`admin-ui/app/src/lib/option-value.ts`). Kreslia sa tam aj oba prepínače
+federácie vyššie, na začiatku každej sekcie.
 
 | Voľba | Čo nastaví v aplikácii |
 | --- | --- |
@@ -355,11 +370,57 @@ ukazuje bez možnosti zmeny. Oba režimy čítajú jednu množinu atribútov,
 `lososInternal.forgejoSite`.
 
 :::note[Čo zostáva v aplikáciách]
-Všetko, čo si nastaví účet sám pre seba, zostáva v aplikácii, a tak aj
-nastavenia správy, ktoré LosOS zatiaľ nepokrýva: doručovanie pošty, úlohy na
-pozadí, vynútenie dvojfaktorového overenia, nastavenia Forgejo uložené v
-databáze a zoznamy účtov.
+Všetko, čo si nastaví účet sám pre seba, zostáva v aplikácii. V LosOS Git
+zostáva účet vlastníka správcom Forgejo pre to, čo LosOS zatiaľ nepokrýva:
+nastavenia Forgejo uložené v databáze a zoznam účtov. V LosOS cloud nie je
+správcom žiadny účet (ďalšia časť), takže doručovanie pošty, úlohy na
+pozadí a vynútenie dvojfaktorového overenia majú hodnoty, ktoré nastaví
+zariadenie.
 :::
+
+### Aplikácie v LosOS cloud {#losos-clouds-apps}
+
+Sekcia LosOS cloud na paneli Aplikácie vypisuje každú aplikáciu, ktorú
+Nextcloud má, každú s prepínačom, odstraňuje aplikácie pridané z obchodu a
+hľadá v obchode. lososd ju obsluhuje v sekcii `apps`:
+
+| Cesta | Čo robí |
+| --- | --- |
+| `GET /api/cloud/apps` | `{available, store, apps}`, alebo `{available: false, reason}`, kým LosOS cloud neodpovedá |
+| `GET /api/cloud/apps/search?q=` | najlepšie zhody obchodu pre túto verziu Nextcloud |
+| `POST /api/cloud/apps/{install,enable,disable,remove}` | `{id}`; odpovie celým zoznamom po zmene |
+
+lososd zmenu skontroluje skôr, než ju spustí (`backend/src/cloud_apps.rs`).
+Odmietne aplikácie, ktoré LosOS nastavuje sám (`user_saml` a
+`provisioning_api` pre prihlásenie, `federation` pre zdieľanie, `theming`
+pre vzhľad, `firstrunwizard` pre sprievodcu nastavením), aplikácie, ktoré
+Nextcloud drží zapnuté (`alwaysEnabled` v `core/shipped.json`), a
+odstránenie čohokoľvek mimo `store-apps`, lebo pribalená aplikácia by sa
+pri ďalšom štarte vrátila. Odmietnutie je 400, Nextcloud, ktorý nebeží, 409
+a neúspešný beh `occ` 502 s jeho správou.
+
+Prácu robí `losos-nextcloud-apps` (`modules/nextcloud-stack.nix`,
+`appsTool`), v pode (`crictl exec`) alebo natívne na ceste jednotky lososd.
+`list` spojí `occ app:list` so súborom `appinfo/info.xml` každej aplikácie
+(`modules/nextcloud-apps-list.php`); slovesá spúšťajú `occ app:install`,
+`app:enable`, `app:disable` a `app:remove --keep-data`. Vypnutie aplikácie
+zapíše jej id do `/var/lib/nextcloud/.losos-apps-off` a každý štart to
+rešpektuje: pod tieto id vynechá zo svojho riadku `app:enable` a natívny
+režim ich po `extraAppsEnable` modulu znova vypne. Zapnutie alebo opätovné
+pridanie id zo zoznamu zoberie. Hľadanie v obchode stiahne index obchodu
+pre túto verziu Nextcloud raz za šesť hodín
+(`apps.nextcloud.com/api/v1/platform/<version>/apps.json`, asi 17 MB) a
+ponechá najnovšie stabilné vydanie každej aplikácie.
+
+Účet vlastníka (`notshared`) sa pri každom štarte vyberie zo skupiny
+`admin` v Nextcloud (`demoteOwner`, keď ho inštalácia urobila prvým
+správcom), takže prihlásený vlastník nemôže vnútri LosOS cloud zmeniť, čo
+nastavuje LosOS. Všetko, čo lososd od Nextcloud ako vlastník žiada (heslá
+aplikácií, WebDAV, `cloud/user`), funguje pre bežný účet. Vlastné stránky
+Aplikácie a Používatelia v Nextcloud sú preto nedostupné; ľudia dostanú
+účty z LosOS Login pri prvej návšteve. `nix/tests/cloud-apps.nix` kontroluje
+skupinu, zoznam, to, že vypnutá aplikácia je vypnutá aj po ďalšom behu
+`nextcloud-setup`, a to, že odstrániť sa dá iba aplikácia z obchodu.
 
 ## Záloha, obnova a vymazanie {#backup-restore-and-erase}
 

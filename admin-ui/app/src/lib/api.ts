@@ -1231,6 +1231,74 @@ export function postAppInstall(request: AppInstallRequest, options: RequestOptio
   });
 }
 
+// ── LosOS cloud's own apps ────────────────────────────────────────────────
+// backend/src/cloud_apps.rs. lososd runs Nextcloud's own app commands.
+
+/** Where an app lives: shipped with Nextcloud, shipped with LosOS, or added
+ *  from the app store (the only kind that can be removed). */
+export type CloudAppKind = "core" | "bundled" | "store";
+
+/** Why LosOS keeps an app as it is. */
+export type CloudAppManaged = "signIn" | "sharing" | "look" | "wizard";
+
+export type CloudAppLocked = { by: "nextcloud" } | { by: "losos"; reason: CloudAppManaged };
+
+export interface CloudApp {
+  id: string;
+  name: string;
+  summary: string | null;
+  version: string | null;
+  kind: CloudAppKind;
+  enabled: boolean;
+  /** Set when the page may not change it. */
+  locked: CloudAppLocked | null;
+}
+
+export type CloudAppsResponse =
+  | { available: true; store: boolean; apps: CloudApp[] }
+  | { available: false; store: boolean; reason: string };
+
+export type CloudAppVerb = "install" | "enable" | "disable" | "remove";
+
+export interface CloudStoreApp {
+  id: string;
+  name: string;
+  summary: string | null;
+  version: string | null;
+  homepage: string;
+  featured: boolean;
+}
+
+/** GET /api/cloud/apps — every app LosOS cloud has. */
+export function getCloudApps(options: RequestOptions = {}): Promise<CloudAppsResponse> {
+  return call<CloudAppsResponse>("/api/cloud/apps", options);
+}
+
+/** POST /api/cloud/apps/<verb> — answered with the list after the change. */
+export function postCloudApp(
+  verb: CloudAppVerb,
+  id: string,
+  options: RequestOptions = {},
+): Promise<CloudAppsResponse> {
+  return call<CloudAppsResponse>(`/api/cloud/apps/${verb}`, {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ id }),
+  });
+}
+
+/** GET /api/cloud/apps/search — the app store's best matches. */
+export function searchCloudStore(
+  query: string,
+  options: RequestOptions = {},
+): Promise<{ results: CloudStoreApp[] }> {
+  return call<{ results: CloudStoreApp[] }>(
+    `/api/cloud/apps/search?${new URLSearchParams({ q: query }).toString()}`,
+    options,
+  );
+}
+
 /** POST /api/apps/remove — its files stay in the user's data folder. */
 export function postAppRemove(release: string, options: RequestOptions = {}): Promise<InstalledApp> {
   return call<InstalledApp>("/api/apps/remove", {

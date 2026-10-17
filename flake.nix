@@ -477,6 +477,10 @@
         # reaches — the pretty /nextcloud/apps/<app>/ links the homepage
         # tiles use included (nix/tests/nextcloud-httpd.nix).
         losos-nextcloud-httpd = import ./nix/tests/nextcloud-httpd.nix { inherit pkgs; };
+        # LosOS cloud's apps managed from the Apps pane, the owner's account a
+        # standard one, and a federated share between two boxes
+        # (nix/tests/cloud-apps.nix).
+        losos-cloud-apps = import ./nix/tests/cloud-apps.nix { inherit pkgs; };
         # Not a VM: evaluates the install configuration and asserts on the
         # merged option values, so `nix flake check --no-build` turns red the
         # moment a load-bearing default drifts (nix/tests/invariants.nix).

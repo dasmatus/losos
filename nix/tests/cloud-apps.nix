@@ -1,0 +1,226 @@
+# nixos-test-vms config for managing LosOS cloud's apps from the admin UI's
+# Apps pane, the owner's account being a standard one, and a federated share
+# between two boxes.
+#
+# lososd's side (which app may change, the refusals, the store search) is
+# unit-tested in backend/src/cloud_apps.rs. What a unit test cannot reach is
+# the tool lososd runs, `losos-nextcloud-apps` (modules/nextcloud-stack.nix,
+# `appsTool`), against a real Nextcloud: that its list is what Nextcloud has,
+# that an app turned off stays off when nextcloud-setup runs again (every
+# start turns the bundled apps on, and the off-list has to win), and that
+# only an app from the store can be removed. Then what Matus asked for
+# alongside it: the owner's account (`notshared`) is not in Nextcloud's admin
+# group after a start, and two boxes that both share their disk send each
+# other a file with Federated Cloud Sharing.
+#
+# Two VMs, each the real native stack (modules/services.nix with
+# losos.nextcloud.mode = "native", the same module set and occ lines the pod
+# runs), with disk sharing on so federation is open. They reach each other
+# by bare names on a private network: the case Nextcloud refuses to connect
+# to unless the box allows local servers (modules/nextcloud-stack.nix,
+# `federation.system`), which is what LAN boxes look like.
+{ pkgs }:
+
+let
+  inherit (pkgs) lib;
+  nc = import ../../modules/nextcloud-stack.nix { inherit pkgs lib; };
+
+  # A stand-in for an app added from the app store: the VMs have no
+  # internet, so it is copied into store-apps the way app:install leaves
+  # one. An info.xml is all Nextcloud needs to list and enable an app.
+  helloApp = pkgs.writeTextDir "hello/appinfo/info.xml" ''
+    <?xml version="1.0"?>
+    <info>
+      <id>hello</id>
+      <name>Hello</name>
+      <summary>Says hello</summary>
+      <description>A stand-in for an app from the store.</description>
+      <version>1.0.0</version>
+      <licence>agpl</licence>
+      <author>LosOS</author>
+      <namespace>Hello</namespace>
+      <category>tools</category>
+      <dependencies>
+        <nextcloud min-version="30" max-version="40"/>
+      </dependencies>
+    </info>
+  '';
+
+  box =
+    name:
+    { config, ... }:
+    {
+      imports = [
+        ../../modules/options.nix
+        ../../modules/services.nix
+        ../../modules/nextcloud-common.nix
+      ];
+
+      losos = {
+        hostName = name;
+        nextcloud.mode = "native";
+        nextcloud.hostName = name;
+        # Federation runs only while the box shares its disk.
+        sharingMyStorage = true;
+      };
+
+      # Two of the curated apps download from hosts a build sandbox may not
+      # reach; neither has anything to do with what is tested here.
+      services.nextcloud.extraApps = lib.mkForce (
+        removeAttrs nc.apps [
+          "files_linkeditor"
+          "memories"
+        ]
+      );
+
+      environment.systemPackages = [
+        pkgs.curl
+        pkgs.jq
+        # The tool lososd runs natively (modules/daemon.nix), built the same way.
+        (nc.appsTool {
+          occ = "${config.services.nextcloud.occ}/bin/nextcloud-occ";
+          webroot = config.services.nextcloud.finalPackage;
+        })
+      ];
+      systemd.services.postgresql.serviceConfig.TimeoutStartSec = "15min";
+      systemd.services.nextcloud-setup.serviceConfig.TimeoutStartSec = "60min";
+      virtualisation = {
+        memorySize = 3072;
+        cores = 2;
+        diskSize = 4096;
+      };
+    };
+in
+
+pkgs.testers.nixosTest {
+  name = "losos-cloud-apps";
+
+  nodes = {
+    mattbox = box "mattbox";
+    evabox = box "evabox";
+  };
+
+  testScript =
+    { nodes, ... }:
+    ''
+      import json
+
+      def ready(m):
+          m.wait_for_unit("multi-user.target")
+          m.wait_until_succeeds(
+              "systemctl show -p Result --value nextcloud-setup | grep -qx success", timeout=3600
+          )
+          m.wait_for_unit("phpfpm-nextcloud.service")
+          m.wait_for_open_port(80)
+
+      def apps(m):
+          return {a["id"]: a for a in json.loads(m.succeed("losos-nextcloud-apps list"))}
+
+      def enabled(m, app):
+          state = json.loads(m.succeed("nextcloud-occ app:list --output=json"))
+          return app in state["enabled"]
+
+      def password(m):
+          return m.succeed("cat ${toString nodes.mattbox.losos.nextcloud.adminpassFile}").strip()
+
+      start_all()
+      ready(mattbox)
+      ready(evabox)
+
+      with subtest("the owner's account is a standard one"):
+          for m in (mattbox, evabox):
+              groups = json.loads(m.succeed("nextcloud-occ group:list --output=json"))
+              assert "notshared" not in groups.get("admin", []), groups
+              info = json.loads(m.succeed("nextcloud-occ user:info notshared --output=json"))
+              assert "admin" not in info["groups"], info
+              assert info["enabled"], info
+
+      with subtest("the list is every app Nextcloud has, with its name and whether it may change"):
+          listed = apps(mattbox)
+          assert listed["calendar"]["kind"] == "bundled" and listed["calendar"]["enabled"], listed["calendar"]
+          assert listed["calendar"]["name"] == "Calendar", listed["calendar"]
+          assert listed["files"]["kind"] == "core" and listed["files"]["alwaysEnabled"], listed["files"]
+          assert listed["activity"]["kind"] == "core", listed["activity"]
+          assert not listed["firstrunwizard"]["enabled"], listed["firstrunwizard"]
+          assert listed["federation"]["enabled"], "federation is off on a box that shares its disk"
+
+      with subtest("an app turned off stays off when nextcloud-setup runs again"):
+          mattbox.succeed("losos-nextcloud-apps disable calendar")
+          assert not enabled(mattbox, "calendar")
+          assert mattbox.succeed("cat /var/lib/nextcloud/.losos-apps-off").split() == ["calendar"]
+          mattbox.succeed("systemctl restart nextcloud-setup.service")
+          mattbox.wait_until_succeeds("systemctl show -p Result --value nextcloud-setup | grep -qx success")
+          assert not enabled(mattbox, "calendar"), "a restart turned calendar back on"
+          # The rest of the curated apps came back on as usual.
+          assert enabled(mattbox, "contacts")
+
+      with subtest("turned on again, it leaves the off-list"):
+          mattbox.succeed("losos-nextcloud-apps enable calendar")
+          assert enabled(mattbox, "calendar")
+          assert mattbox.succeed("cat /var/lib/nextcloud/.losos-apps-off").strip() == ""
+          mattbox.succeed("systemctl restart nextcloud-setup.service")
+          mattbox.wait_until_succeeds("systemctl show -p Result --value nextcloud-setup | grep -qx success")
+          assert enabled(mattbox, "calendar")
+
+      with subtest("only an app from the store can be removed"):
+          code = mattbox.execute("losos-nextcloud-apps remove calendar")[0]
+          assert code == 3, f"removing a bundled app exited {code}"
+          assert enabled(mattbox, "calendar")
+          mattbox.fail("losos-nextcloud-apps disable 'calendar;id'")
+          mattbox.succeed(
+              "cp -r ${helloApp}/hello /var/lib/nextcloud/store-apps/",
+              "chown -R nextcloud:nextcloud /var/lib/nextcloud/store-apps/hello",
+              "chmod -R u+w /var/lib/nextcloud/store-apps/hello",
+          )
+          mattbox.succeed("losos-nextcloud-apps enable hello")
+          listed = apps(mattbox)
+          assert listed["hello"]["kind"] == "store" and listed["hello"]["enabled"], listed["hello"]
+          assert listed["hello"]["name"] == "Hello", listed["hello"]
+          mattbox.succeed("losos-nextcloud-apps remove hello")
+          mattbox.fail("test -e /var/lib/nextcloud/store-apps/hello")
+          assert "hello" not in apps(mattbox)
+
+      with subtest("a federated share goes from one box to the other"):
+          a = password(mattbox)
+          b = password(evabox)
+          mattbox.succeed(
+              f"echo 'Hello from mattbox' | curl -sf -u 'notshared:{a}' -T - "
+              "http://mattbox/remote.php/dav/files/notshared/hello.txt"
+          )
+          out = mattbox.succeed(
+              f"curl -sf -u 'notshared:{a}' -H 'OCS-APIRequest: true' "
+              "-d path=/hello.txt -d shareType=6 -d shareWith=notshared@evabox "
+              "'http://mattbox/ocs/v2.php/apps/files_sharing/api/v1/shares?format=json'"
+          )
+          share = json.loads(out)["ocs"]
+          assert share["meta"]["statuscode"] == 200, share
+          assert share["data"]["share_with"].startswith("notshared@evabox"), share
+
+          def pending():
+              out = evabox.succeed(
+                  f"curl -sf -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
+                  "'http://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending?format=json'"
+              )
+              return json.loads(out)["ocs"]["data"]
+
+          evabox.wait_until_succeeds(
+              f"curl -sf -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
+              "'http://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending?format=json'"
+              " | jq -e '.ocs.data | length > 0'",
+              timeout=300,
+          )
+          offer = pending()[0]
+          assert offer["name"] == "/hello.txt", offer
+          evabox.succeed(
+              f"curl -sf -X POST -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
+              f"'http://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending/{offer['id']}?format=json'"
+          )
+          # Accepted, it is a file in the other owner's LosOS cloud, read
+          # through from the first box.
+          evabox.wait_until_succeeds(
+              f"curl -sf -u 'notshared:{b}' http://evabox/remote.php/dav/files/notshared/hello.txt"
+              " | grep -qx 'Hello from mattbox'",
+              timeout=300,
+          )
+    '';
+}

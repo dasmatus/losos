@@ -244,6 +244,27 @@ const RESULTS = {
 
 /* One app installed from the search, and what the box reads out of a chart
  * for the install dialog. */
+/* LosOS cloud's own apps on the Apps pane's LosOS cloud fold. */
+const CLOUD_APPS = {
+  available: true,
+  store: true,
+  apps: [
+    { id: 'calendar', name: 'Calendar', summary: 'A calendar app for LosOS cloud.', version: '5.5.4', kind: 'bundled', enabled: true, locked: null },
+    { id: 'contacts', name: 'Contacts', summary: 'An address book for LosOS cloud.', version: '7.2.5', kind: 'bundled', enabled: true, locked: null },
+    { id: 'deck', name: 'Deck', summary: 'Kanban-style boards for your projects.', version: '1.15.2', kind: 'store', enabled: true, locked: null },
+    { id: 'notes', name: 'Notes', summary: 'Distraction-free notes.', version: '4.12.1', kind: 'bundled', enabled: false, locked: null },
+    { id: 'user_saml', name: 'SSO & SAML authentication', summary: null, version: '7.1.0', kind: 'bundled', enabled: true, locked: { by: 'losos', reason: 'signIn' } },
+    { id: 'files', name: 'Files', summary: null, version: '2.4.0', kind: 'core', enabled: true, locked: { by: 'nextcloud' } },
+    { id: 'activity', name: 'Activity', summary: null, version: '5.0.0', kind: 'core', enabled: true, locked: null },
+  ],
+};
+const CLOUD_STORE = {
+  results: [
+    { id: 'whiteboard', name: 'Whiteboard', summary: 'A shared whiteboard to draw on together.', version: '1.5.6', homepage: 'https://apps.nextcloud.com/apps/whiteboard', featured: true },
+    { id: 'polls', name: 'Polls', summary: 'Polls for dates and opinions.', version: '8.4.2', homepage: 'https://apps.nextcloud.com/apps/polls', featured: false },
+  ],
+};
+
 const APPS = {
   available: true,
   sharedAvailable: false,
@@ -477,6 +498,8 @@ async function open({
   await page.route('**/api/apply', (route) => json(route, 200, apply));
   await page.route('**/api/recovery', (route) => json(route, 200, { code: '7d1c3a52-9b0e-4f61-8c2d-5a7e9f0b1c3d', minted: true }));
   await page.route('**/api/apps', (route) => json(route, 200, APPS));
+  await page.route('**/api/cloud/apps', (route) => json(route, 200, CLOUD_APPS));
+  await page.route('**/api/cloud/apps/search**', (route) => json(route, 200, CLOUD_STORE));
   await page.route('**/api/apps/search**', (route) => json(route, 200, RESULTS));
   await page.route('**/api/apps/chart**', (route) => json(route, 200, CHART));
   await page.route('**/api/look', (route) => {
@@ -607,12 +630,36 @@ const SHOTS = [
       await settle(page, 800);
     },
   },
+  /* LosOS cloud's fold: its apps, each with a switch, and the app store
+   * search under them. */
+  {
+    name: 'apps-cloud',
+    path: '/apps#cloud',
+    langs: true,
+    act: async (page) => {
+      await page.getByTestId('cloud-apps').waitFor();
+      await page.getByTestId('cloud-store').locator('input[type="search"]').fill('whiteboard');
+      await page.locator('[data-store-app="whiteboard"]').waitFor();
+      await settle(page, 600);
+      // The crop measures from the window, so from the top of the page.
+      await page.evaluate(() => window.scrollTo(0, 0));
+    },
+    crop: {
+      selector: '[data-slot="accordion-trigger"]:has-text("LosOS cloud"), [data-testid="cloud-apps"], [data-testid="cloud-store"]',
+      pad: 8,
+    },
+  },
   /* The box-wide settings of both apps, with the cloud's language set to the
    * page's own and the trash emptied after 30 days. */
   {
     name: 'apps-site-settings',
     path: '/apps',
     langs: true,
+    act: async (page) => {
+      for (const id of ['accordion-cloud', 'accordion-git']) await page.getByTestId(id).getByRole('button').first().click();
+      await settle(page, 600);
+      await page.evaluate(() => window.scrollTo(0, 0));
+    },
     perLang: (lang) => ({
       overrides: {
         'nextcloud.site.trashDays': '30',
