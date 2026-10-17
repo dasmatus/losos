@@ -71,7 +71,10 @@ pomôcť nemôže:
 - v LosOS cloud na `/nextcloud/login?direct=1`, ak o ňu požiadate.
 
 Tam sa vlastník prihlási svojím heslom ako doteraz. Aplikácie pre počítač a
-telefón, WebDAV a `git` ďalej používajú heslá aplikácií a tokeny.
+telefón a `git` ďalej používajú heslá aplikácií a tokeny. Sieťový priečinok
+LosOS cloud berie v sieti zariadenia vaše meno a heslo z LosOS Login a cez
+internet heslo aplikácie; pozrite
+[Súbory vo vašom počítači](files-on-your-computer).
 
 **Odhlásiť sa** v LosOS cloud vás odhlási aj z LosOS Login. **Odhlásiť sa**
 v LosOS Git nie: kým ste prihlásení v LosOS Login, LosOS Git vás hneď

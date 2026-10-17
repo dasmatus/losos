@@ -274,6 +274,27 @@ impl People {
             }))
     }
 
+    /// [`People::get`], with the stored hash beside the person, for a
+    /// password check outside the lock (`crate::cloud_share`).
+    pub fn with_hash(&self, name: &str) -> anyhow::Result<Option<(Person, String)>> {
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        Ok(self
+            .read()?
+            .users
+            .get(name)
+            .filter(|r| !r.disabled)
+            .map(|r| {
+                (
+                    Person {
+                        name: name.to_string(),
+                        display_name: r.displayname.clone(),
+                        groups: r.groups.clone(),
+                    },
+                    r.password.clone(),
+                )
+            }))
+    }
+
     /// Add `name` with `groups`. Refuses a name already taken.
     pub fn add(
         &self,
