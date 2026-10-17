@@ -207,6 +207,16 @@ pkgs.testers.nixosTest {
           # trust, and the address names no protocol, so Nextcloud uses https.
           a = password(mattbox)
           b = password(evabox)
+          # Each box can find the other's OCM endpoint, through its
+          # self-signed certificate. Nextcloud gives up on that call after
+          # ten seconds, and a box's first PHP requests take longer than
+          # that without KVM, so wait until both answer quickly.
+          for m, other in ((mattbox, "evabox"), (evabox, "mattbox")):
+              for path in ("/.well-known/ocm", "/ocm-provider/"):
+                  m.wait_until_succeeds(
+                      f"curl -sfkL --max-time 5 https://{other}{path} | jq -e '.enabled'",
+                      timeout=900,
+                  )
           mattbox.succeed(
               f"echo 'Hello from mattbox' | curl -sfk -u 'notshared:{a}' -T - "
               "https://mattbox/remote.php/dav/files/notshared/hello.txt"
