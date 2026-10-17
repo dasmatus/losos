@@ -15,7 +15,9 @@ import {
   GitCommitIcon,
   ShoppingCart01Icon,
   Shield01Icon,
+  UserMultipleIcon,
 } from "@hugeicons/core-free-icons";
+import { canUse, runsOwnSignIn } from "@/lib/api";
 import { t, type MessageKey } from "@/lib/i18n";
 
 /* The sidebar's list of panes, in order.
@@ -49,6 +51,7 @@ export type SettingsPaneId =
   | "look"
   | "hardware"
   | "security"
+  | "users"
   | "access"
   | "advanced"
   | "history"
@@ -230,6 +233,30 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "lock down",
     "safe",
   ]),
+  /* Users sits after Security, before Access tokens: who may sign in, then
+   * how they reach the box from a terminal. Only a box that signs people in
+   * itself shows it (`paneOpen`). */
+  pane("users", UserMultipleIcon, [
+    "user",
+    "users",
+    "people",
+    "person",
+    "account",
+    "accounts",
+    "member",
+    "members",
+    "family",
+    "team",
+    "add",
+    "invite",
+    "sign in",
+    "login",
+    "password",
+    "administrator",
+    "admin",
+    "permissions",
+    "groups",
+  ]),
   /* Access tokens sit right after Security: they are the other way into
    * the box, and an owner who is thinking about one is thinking about the
    * other. */
@@ -320,6 +347,7 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
   look: "look",
   hardware: "admin",
   security: "admin",
+  users: "admin",
   access: "access",
   advanced: "admin",
   history: "admin",
@@ -331,6 +359,13 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
 /** The section a pane belongs to, for `canUse`. */
 export function paneSection(id: SettingsPaneId): string {
   return PANE_SECTION[id];
+}
+
+/** Whether the signed-in person can open `id`: their sections allow it,
+ *  and for Users, the box signs people in itself. */
+export function paneOpen(id: SettingsPaneId): boolean {
+  if (id === "users" && !runsOwnSignIn()) return false;
+  return canUse(paneSection(id));
 }
 
 /** Parse a URL segment into the id of a pane that can be opened. For an

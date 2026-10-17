@@ -117,6 +117,13 @@ fn run(
 fn error_response(e: anyhow::Error) -> HttpResponse {
     // A market answer the owner can act on keeps its words; it is the
     // registrar's own sentence, vetted by `market::classify`.
+    // A change to the people the Users pane cannot make: who and why.
+    if let Some(r) = e.downcast_ref::<crate::people::Refused>() {
+        return err(
+            StatusCode::from_u16(r.status()).unwrap_or(StatusCode::CONFLICT),
+            &r.to_string(),
+        );
+    }
     if let Some(r) = e.downcast_ref::<crate::market::Refused>() {
         return err(
             StatusCode::from_u16(r.status).unwrap_or(StatusCode::BAD_REQUEST),
@@ -436,6 +443,7 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 "admin": true,
                 "spareKey": true,
                 "sections": all(),
+                "standalone": api.people.headers,
             })),
             Principal::Person(p) => HttpResponse::Ok().json(serde_json::json!({
                 "name": p.name,
@@ -444,7 +452,231 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 "admin": p.is_admin(),
                 "spareKey": false,
                 "sections": crate::sections::usable(p),
+                "standalone": api.people.headers,
             })),
+        }
+    })
+}
+
+// ── People ────────────────────────────────────────────────────────────────
+
+/* The Users pane: everyone who may sign in to LosOS Login on this box, and
+ * what they may do. Only while the box signs people in itself
+ * (`People::headers`, `LOSOS_IDENTITY=authelia`); a box whose sign-in runs
+ * elsewhere lists nobody and changes nothing here. */
+
+/// The groups the Users pane may hand out: administrator, viewer, and one
+/// per section of `backend/sections.json`.
+fn grantable_groups() -> Vec<String> {
+    let mut all = vec![
+        crate::people::ADMINS.to_string(),
+        crate::people::VIEWERS.to_string(),
+    ];
+    all.extend(
+        crate::sections::names()
+            .into_iter()
+            .map(|s| format!("losos-{s}")),
+    );
+    all
+}
+
+/// `groups` from a request body, each one a group the pane may hand out.
+fn requested_groups(doc: &serde_json::Value) -> Result<Vec<String>, String> {
+    let Some(list) = doc.get("groups").and_then(|g| g.as_array()) else {
+        return Err("groups must be a list".into());
+    };
+    let allowed = grantable_groups();
+    let mut out = Vec::new();
+    for g in list {
+        let Some(g) = g.as_str() else {
+            return Err("groups must be a list of names".into());
+        };
+        if !allowed.iter().any(|a| a == g) {
+            return Err(format!("{g} is not a group this box hands out"));
+        }
+        if !out.iter().any(|o| o == g) {
+            out.push(g.to_string());
+        }
+    }
+    Ok(out)
+}
+
+fn not_standalone() -> HttpResponse {
+    HttpResponse::Conflict().json(serde_json::json!({
+        "error": "this box does not run its own sign-in",
+        "standalone": false,
+    }))
+}
+
+/// `GET /api/people`: everyone in the people file, and the sections they
+/// can be given.
+async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/people", false, |who| {
+        let people = if api.people.headers {
+            match api.people.list() {
+                Ok(p) => p,
+                Err(e) => return error_response(e),
+            }
+        } else {
+            Vec::new()
+        };
+        HttpResponse::Ok().json(serde_json::json!({
+            "standalone": api.people.headers,
+            "you": who.person().map(|p| p.name.clone()),
+            "sections": crate::sections::names(),
+            "people": people,
+        }))
+    })
+}
+
+/// `POST /api/people`: add someone. Body `{"name", "displayName",
+/// "password", "groups"}`; `email` is optional and defaults to the name at
+/// the box's `.local` address, as the owner's does.
+async fn post_person(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"name": "...", "displayName": "...", "password": "...", "groups": [...]}"#;
+    guarded(&api, &req, "/api/people", true, || {
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&body) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let field = |k: &str| doc.get(k).and_then(|v| v.as_str()).map(str::trim);
+        let (Some(name), Some(password)) =
+            (field("name"), doc.get("password").and_then(|p| p.as_str()))
+        else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        if let Err(e) = crate::people::validate_name(name) {
+            return err(StatusCode::BAD_REQUEST, &e);
+        }
+        let secret = match crate::setup::validate_password(password) {
+            Ok(s) => s,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+        };
+        let groups = match requested_groups(&doc) {
+            Ok(g) => g,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+        };
+        let email = match field("email").filter(|e| !e.is_empty()) {
+            Some(e) if e.contains('@') && !e.contains(char::is_whitespace) => e.to_string(),
+            Some(_) => return err(StatusCode::BAD_REQUEST, "that is not an email address"),
+            None => {
+                let host = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+                format!("{name}@{}.local", host.trim())
+            }
+        };
+        let display = field("displayName").unwrap_or("");
+        let refs: Vec<&str> = groups.iter().map(String::as_str).collect();
+        match api.people.add(name, display, &email, &secret, &refs) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "name": name })),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// The `name` in a request body.
+fn named(body: &[u8]) -> Option<(String, serde_json::Value)> {
+    let doc = serde_json::from_slice::<serde_json::Value>(body).ok()?;
+    let name = doc.get("name")?.as_str()?.trim().to_string();
+    Some((name, doc))
+}
+
+/// `POST /api/people/access`: `{"name", "groups"}` in place of what they
+/// had. Nobody changes their own, and the owner's stays.
+async fn post_person_access(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/people/access", true, |who| {
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let Some((name, doc)) = named(&body) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"name": "...", "groups": [...]}"#,
+            );
+        };
+        let groups = match requested_groups(&doc) {
+            Ok(g) => g,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+        };
+        let by = who.person().map(|p| p.name.as_str());
+        match api.people.set_access(&name, &groups, by) {
+            Ok(()) => {
+                HttpResponse::Ok().json(serde_json::json!({ "name": name, "groups": groups }))
+            }
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/people/password`: `{"name", "password"}`, for someone who
+/// forgot theirs. The owner changes their own on the Account menu, which
+/// keeps their LosOS cloud password in step.
+async fn post_person_password(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/people/password", true, || {
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let Some((name, doc)) = named(&body) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"name": "...", "password": "..."}"#,
+            );
+        };
+        let secret = match doc
+            .get("password")
+            .and_then(|p| p.as_str())
+            .ok_or_else(|| "a password is needed".to_string())
+            .and_then(crate::setup::validate_password)
+        {
+            Ok(s) => s,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+        };
+        let owner = api
+            .people
+            .list()
+            .ok()
+            .and_then(|all| all.into_iter().find(|p| p.name == name))
+            .is_some_and(|p| p.groups.iter().any(|g| g == crate::people::OWNER));
+        if owner {
+            return error_response(crate::people::Refused::Owner(name).into());
+        }
+        match api.people.set_password(&name, &secret) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "name": name, "changed": true })),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/people/remove`: `{"name"}`. They can no longer sign in; their
+/// accounts in LosOS cloud and LosOS Git, and the files in them, stay.
+async fn post_person_remove(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/people/remove", true, |who| {
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let Some((name, _)) = named(&body) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"name": "..."}"#,
+            );
+        };
+        let by = who.person().map(|p| p.name.as_str());
+        match api.people.remove(&name, by) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "name": name, "removed": true })),
+            Err(e) => error_response(e),
         }
     })
 }
@@ -2378,6 +2610,11 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/storage", web::get().to(get_storage))
                 .route("/api/grow", web::post().to(post_grow))
                 .route("/api/set-password", web::post().to(post_set_password))
+                .route("/api/people", web::get().to(get_people))
+                .route("/api/people", web::post().to(post_person))
+                .route("/api/people/access", web::post().to(post_person_access))
+                .route("/api/people/password", web::post().to(post_person_password))
+                .route("/api/people/remove", web::post().to(post_person_remove))
                 .route("/api/recovery", web::get().to(get_recovery))
                 .route("/api/devices/{kind}", web::post().to(post_device))
                 .route("/api/apps/search", web::get().to(get_apps_search))

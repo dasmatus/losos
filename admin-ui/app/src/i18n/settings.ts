@@ -110,6 +110,17 @@ export default defineMessages({
     sk: "bezpečnosť ochrana spevnenie pamäť procesor uzamknúť bezpečný",
     de: "Härtung härten Schutz Speicher Prozessor absichern sicher",
   },
+  "settings.panes.users.label": { en: "Users", sk: "Používatelia", de: "Benutzer" },
+  "settings.panes.users.summary": {
+    en: "Who can sign in to this box, and what each person can change.",
+    sk: "Kto sa môže prihlásiť do tohto zariadenia a čo môže každý zmeniť.",
+    de: "Wer sich an dieser Box anmelden kann und was jede Person ändern darf.",
+  },
+  "settings.panes.users.keywords": {
+    en: "",
+    sk: "používateľ používatelia ľudia osoba účet účty člen rodina tím pridať prihlásenie heslo správca oprávnenia skupiny",
+    de: "Benutzer Nutzer Personen Person Konto Konten Mitglied Familie Team hinzufügen Anmeldung Passwort Administrator Rechte Gruppen",
+  },
   "settings.panes.access.label": {
     en: "Access tokens",
     sk: "Prístupové tokeny",

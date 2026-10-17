@@ -84,14 +84,45 @@ prihlásená, kým sa neodhlásite aj z tej aplikácie.
 Správcovské stránky sú rozdelené na časti: úložisko, záloha, aplikácie, trh
 (aj s virtuálnymi strojmi), sieť (vlastné domény), vzhľad, Laboratórium a
 prístupové tokeny. Správca môže používať všetky. Iba správca môže použiť
-nastavenia, otvoriť Mesh, Hardvér, Zabezpečenie, Rozšírené, História,
+nastavenia, otvoriť Mesh, Hardvér, Zabezpečenie, Používatelia, Rozšírené, História,
 O zariadení a Reset, zmazať alebo obnoviť zariadenie a pozrieť si kód na
 obnovenie. Kto nie je správca, dostane časti, ktoré mu boli pridelené, alebo
 číta všetky časti bez možnosti niečo zmeniť. Prehľad vidí každý prihlásený.
 Správcovské stránky skryjú panely, ktoré daný človek nemôže použiť.
 
-Prvý človek na zariadení je vždy správca. Stránku na pridávanie ďalších
-ľudí správcovské stránky zatiaľ nemajú.
+## Pridávanie ľudí \{#adding-people}
+
+Prvý človek na zariadení je vždy správca. Ďalších ľudí pridáva správca v
+**Nastavenia > Používatelia**. Tento panel je tam vtedy, keď zariadenie
+prihlasuje ľudí samo cez LosOS Login. Zariadenie, ktorého prihlasovanie beží
+inde, panel Používatelia nemá.
+
+Nového človeka pridáte vyplnením **Pridať človeka**: prihlasovacie meno,
+celé meno, heslo podľa rovnakých pravidiel ako to vaše a prístup.
+
+- **Vybrané časti**: vidí a mení iba zapnuté časti, napríklad Úložisko a
+  Záloha.
+- **Vidí všetko**: vidí každý panel a mení iba zapnuté časti.
+- **Správca**: môže meniť všetko vrátane toho, kto sa môže prihlásiť.
+
+![Panel Používatelia: traja ľudia s ich prístupom a pod nimi formulár Pridať človeka.](@site/docs/img/settings-users-sk.png)
+
+Meno a heslo mu odovzdajte sami. Prihlási sa cez LosOS Login. LosOS cloud aj
+LosOS Git mu pri prvom otvorení vytvoria vlastný účet.
+
+Každý človek v zozname má tri tlačidlá:
+
+- **Prístup** mení, čo môže robiť. Platí od jeho ďalšieho kliknutia, bez
+  nového prihlásenia.
+- **Nové heslo** je pre toho, kto svoje stratil. Staré prestane platiť hneď.
+- **Odstrániť** mu hneď zastaví prihlasovanie do správcovských stránok aj do
+  oboch aplikácií. Jeho účty a súbory v LosOS cloud a LosOS Git na zariadení
+  zostanú.
+
+Vlastník a váš vlastný riadok tlačidlá nemajú. Vlastníka tu nikto nemôže
+odstrániť, zmeniť mu prístup ani nastaviť heslo; pri stratenom hesle
+vlastníka pozrite [Zabudnuté heslo](../troubleshooting/forgot-password).
+Zariadenie si vždy ponechá aspoň jedného správcu.
 
 ## Náhradný správcovský kľúč \{#the-spare-admin-key}
 

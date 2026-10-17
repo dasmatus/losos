@@ -159,7 +159,14 @@ Login bei jeder Anfrage an `/api/` und gibt den Namen der Person an lososd
 weiter, das die Bereiche öffnet, die ihre Gruppen erlauben. Die erste Person
 ist immer Administrator. Ihr eigenes Passwort ändert eine Person mit `POST
 /api/set-password`, und beim Eigentümer ändert das auch das Passwort für
-LosOS cloud.
+LosOS cloud. Alle anderen fügt ein Administrator im Bereich Benutzer hinzu,
+ändert und entfernt sie, über `GET` und `POST /api/people` und
+`POST /api/people/{access,password,remove}`. Den Bereich gibt es nur, solange
+die Box Personen selbst anmeldet (`standalone` in `GET /api/me`). lososd
+weigert sich, den Eigentümer, das eigene Konto des Aufrufers oder den letzten
+Administrator anzufassen. LosOS Login schlägt jede Person bei jeder Anfrage
+neu nach, daher erreicht eine Entfernung oder eine geänderte Gruppe auch die
+Apps beim nächsten Klick.
 
 LosOS cloud und LosOS Git melden Menschen genauso an, wenn sie als Pods
 laufen, was der Standard ist. nginx fragt auf der Anmeldeseite jeder App

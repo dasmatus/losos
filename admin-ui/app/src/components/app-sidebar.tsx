@@ -36,7 +36,7 @@ import { useLocale, useT } from "@/lib/i18n-react";
 import { paneFromPath, paneHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { SHORTCUT_ARIA, openPalette, shortcutLabel } from "@/palette/store";
-import { paneById, paneSection, type SettingsPaneId } from "@/screens/settings/panes";
+import { paneById, paneOpen, type SettingsPaneId } from "@/screens/settings/panes";
 import { canUse, useMe } from "@/lib/api";
 import { openInNewTab, PinMenu } from "@/components/pin-menu";
 import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
@@ -142,7 +142,7 @@ const TREE: readonly Entry[] = [
     icon: Settings01Icon,
     railTo: "/settings",
     children: (
-      ["network", "look", "hardware", "security", "access", "advanced", "history", "backup", "about", "reset"] as const
+      ["network", "look", "hardware", "security", "users", "access", "advanced", "history", "backup", "about", "reset"] as const
     ).map(
       settingsLeaf,
     ),
@@ -154,7 +154,7 @@ const TREE: readonly Entry[] = [
  * own children that stay visible move up a level, so someone in the market
  * section sees Market without Mesh. A fold left empty goes. */
 function allowed(entry: LinkEntry): boolean {
-  if (entry.pane !== undefined) return canUse(paneSection(entry.pane));
+  if (entry.pane !== undefined) return paneOpen(entry.pane);
   if (entry.key === "lab") return canUse("lab");
   return true;
 }

@@ -28,9 +28,10 @@ prihlasovacia stránka LosOS cloud neprijme heslo.
 
 ## Zariadenie nastavil niekto iný \{#someone-else-set-up-the-box}
 
-Opýtajte sa ho. Správcovské stránky zatiaľ nemajú stránku na správu ľudí,
-takže nové heslo sa dá nastaviť iba vlastníkovi, a to náhradným kľúčom, ako
-je opísané nižšie.
+Opýtajte sa správcu. V **Nastavenia > Používatelia** vám tlačidlom **Nové
+heslo** nastaví nové heslo; pozrite
+[Pridávanie ľudí](../manual/sign-in-and-spare-key#adding-people). Náhradný
+kľúč treba iba na heslo vlastníka, ako je opísané nižšie.
 
 ## Máte náhradný správcovský kľúč \{#you-have-the-spare-admin-key}
 
@@ -72,4 +73,4 @@ z nahrávok z telefónu.
 
 Náhradný kľúč si vytlačte, keď ho sprievodca ukáže, a uchovávajte ho mimo
 zariadenia. Heslo si uložte do správcu hesiel. Dajte druhej dôveryhodnej
-osobe správcovský účet v LosOS cloud.
+osobe správcovský účet v **Nastavenia > Používatelia**.

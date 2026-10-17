@@ -145,7 +145,13 @@ once. nginx asks LosOS Login about every `/api/` request and passes the
 person's name on to lososd, which opens the sections their groups allow. The
 first person is always an administrator. A person changes their own password
 with `POST /api/set-password`, and for the owner that changes the LosOS
-cloud password too.
+cloud password too. An administrator adds, changes and removes everyone
+else on the Users pane, through `GET` and `POST /api/people` and
+`POST /api/people/{access,password,remove}`. The pane is there only while
+the box signs people in itself (`standalone` in `GET /api/me`). lososd
+refuses to touch the owner, the caller's own account or the last
+administrator. LosOS Login looks each person up again on every request, so
+a removal or a changed group reaches the apps at the next click too.
 
 LosOS cloud and LosOS Git sign people in the same way when they run as
 pods, the default. nginx asks LosOS Login on each app's sign-in page and

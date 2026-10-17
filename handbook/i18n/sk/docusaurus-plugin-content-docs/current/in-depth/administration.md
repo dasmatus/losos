@@ -146,7 +146,14 @@ argon2id, a LosOS Login jeho zmenu prevezme hneď. nginx sa LosOS Login pýta
 na každú požiadavku na `/api/` a meno človeka odovzdá lososd, ktorý otvorí
 časti, ktoré povoľujú jeho skupiny. Prvý človek je vždy správca. Vlastné
 heslo si človek zmení cez `POST /api/set-password` a vlastníkovi to zmení aj
-heslo do LosOS cloud.
+heslo do LosOS cloud. Všetkých ostatných pridáva, mení a odstraňuje správca
+na paneli Používatelia cez `GET` a `POST /api/people` a
+`POST /api/people/{access,password,remove}`. Panel je tam iba vtedy, keď
+zariadenie prihlasuje ľudí samo (`standalone` v `GET /api/me`). lososd
+odmietne siahnuť na vlastníka, na vlastný účet volajúceho aj na posledného
+správcu. LosOS Login si človeka vyhľadá znova pri každej požiadavke, takže
+odstránenie alebo zmenená skupina sa do aplikácií dostane tiež pri ďalšom
+kliknutí.
 
 LosOS cloud a LosOS Git prihlasujú ľudí rovnako, keď bežia ako pody, čo je
 predvolené. nginx sa na prihlasovacej stránke každej aplikácie spýta LosOS

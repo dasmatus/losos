@@ -1,0 +1,140 @@
+import * as React from "react";
+import {
+  ApiError,
+  getPeople,
+  isAbort,
+  isUnauthorized,
+  postPerson,
+  postPersonAccess,
+  postPersonPassword,
+  postPersonRemove,
+  type NewPerson,
+  type PeopleResponse,
+} from "@/lib/api";
+import { toast } from "@/components/ui/toast";
+import { t } from "@/lib/i18n";
+import { notPresent } from "./http";
+
+/* The people who may sign in to this box (`GET /api/people`), for the Users
+ * pane. Like Access tokens, nothing here is part of the box's configuration:
+ * no Apply bar, every button is its own request, and nothing polls. */
+
+export type PeopleState =
+  | { kind: "loading" }
+  | { kind: "unavailable" }
+  | { kind: "failed"; message: string }
+  | { kind: "ready"; view: PeopleResponse };
+
+/** What a change came to: done, or lososd's refusal in its own words. */
+export type Outcome = { ok: true } | { ok: false; message: string };
+
+export interface PeopleData {
+  state: PeopleState;
+  busy: boolean;
+  refresh: () => void;
+  add: (person: NewPerson) => Promise<Outcome>;
+  setAccess: (name: string, groups: string[]) => Promise<Outcome>;
+  setPassword: (name: string, password: string) => Promise<Outcome>;
+  remove: (name: string) => Promise<boolean>;
+}
+
+function viewOf(reply: Partial<PeopleResponse>): PeopleResponse {
+  return {
+    standalone: reply.standalone === true,
+    you: typeof reply.you === "string" ? reply.you : null,
+    sections: Array.isArray(reply.sections) ? reply.sections : [],
+    people: Array.isArray(reply.people) ? reply.people : [],
+  };
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof ApiError || error instanceof Error ? error.message : "";
+}
+
+export function usePeople(enabled: boolean): PeopleData {
+  const [state, setState] = React.useState<PeopleState>({ kind: "loading" });
+  const [busy, setBusy] = React.useState(false);
+  const [tick, setTick] = React.useState(0);
+  const refresh = React.useCallback(() => setTick((n) => n + 1), []);
+
+  React.useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const view = viewOf(await getPeople({ signal: controller.signal }));
+        if (!controller.signal.aborted) setState({ kind: "ready", view });
+      } catch (error) {
+        if (isAbort(error) || isUnauthorized(error)) return;
+        setState(notPresent(error) ? { kind: "unavailable" } : { kind: "failed", message: messageOf(error) });
+      }
+    })();
+    return () => controller.abort();
+  }, [enabled, tick]);
+
+  /* One request, then a fresh list. A refusal comes back for the caller to
+   * show beside the field or in the dialog it is about. */
+  const attempt = React.useCallback(
+    async (send: () => Promise<unknown>, fallback: string): Promise<Outcome> => {
+      setBusy(true);
+      try {
+        await send();
+        return { ok: true };
+      } catch (error) {
+        if (isUnauthorized(error)) return { ok: false, message: "" };
+        const said = messageOf(error);
+        return { ok: false, message: said.length > 0 ? said : fallback };
+      } finally {
+        setBusy(false);
+        refresh();
+      }
+    },
+    [refresh],
+  );
+
+  const add = React.useCallback(
+    async (person: NewPerson) => {
+      const outcome = await attempt(() => postPerson(person), t("users.form.failed"));
+      if (outcome.ok) toast.done(t("users.added", { name: person.name }));
+      return outcome;
+    },
+    [attempt],
+  );
+
+  const setAccess = React.useCallback(
+    async (name: string, groups: string[]) => {
+      const outcome = await attempt(
+        () => postPersonAccess(name, groups),
+        t("users.accessFailed", { name }),
+      );
+      if (outcome.ok) toast.done(t("users.accessSaved", { name }));
+      return outcome;
+    },
+    [attempt],
+  );
+
+  const setPassword = React.useCallback(
+    async (name: string, password: string) => {
+      const outcome = await attempt(
+        () => postPersonPassword(name, password),
+        t("users.form.failed"),
+      );
+      if (outcome.ok) toast.done(t("users.passwordSaved", { name }));
+      return outcome;
+    },
+    [attempt],
+  );
+
+  const remove = React.useCallback(
+    async (name: string) => {
+      const outcome = await attempt(() => postPersonRemove(name), t("users.removeFailed", { name }));
+      if (outcome.ok) toast.done(t("users.removed", { name }));
+      else if (outcome.message.length > 0)
+        toast.error(t("users.removeFailed", { name }), outcome.message, { help: "sign-in-and-spare-key" });
+      return outcome.ok;
+    },
+    [attempt],
+  );
+
+  return { state, busy, refresh, add, setAccess, setPassword, remove };
+}

@@ -35,6 +35,9 @@ pub const ADMINS: &str = "losos-admins";
 /// LosOS Git as the account that holds their files and repositories
 /// (`modules/app-sign-in.nix`); everyone else arrives under their own name.
 pub const OWNER: &str = "losos-owner";
+/// The group that may read every section and change none
+/// (`backend/sections.json`'s `viewers`).
+pub const VIEWERS: &str = "losos-viewers";
 /// Names already taken by the box's own accounts in LosOS cloud and LosOS
 /// Git: the owner's, the shared domain's and the Forgejo bot's. A person
 /// signing in under one of them would arrive as that account.
@@ -60,6 +63,71 @@ pub struct Record {
 struct Document {
     #[serde(default)]
     users: BTreeMap<String, Record>,
+}
+
+/// A change to the people file that cannot be made, in words the Users pane
+/// shows as they are.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Refused {
+    /// Nobody by that name.
+    Unknown(String),
+    /// The name is taken.
+    Taken(String),
+    /// The person who claimed the box keeps their account and their access:
+    /// their files in LosOS cloud and LosOS Git hang off it.
+    Owner(String),
+    /// A person cannot remove themselves or change their own access, so
+    /// nobody locks themselves out by a slip.
+    Yourself,
+    /// The change would leave nobody who can sign in as an administrator.
+    LastAdmin,
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Refused::Unknown(n) => write!(f, "{n} has no account"),
+            Refused::Taken(n) => write!(f, "{n} already has an account"),
+            Refused::Owner(n) => write!(
+                f,
+                "{n} owns this box; their account and access stay as they are"
+            ),
+            Refused::Yourself => {
+                f.write_str("you cannot remove yourself or change your own access")
+            }
+            Refused::LastAdmin => f.write_str("the box needs at least one administrator"),
+        }
+    }
+}
+
+impl std::error::Error for Refused {}
+
+impl Refused {
+    /// 404 for nobody by that name, 409 for everything else.
+    pub fn status(&self) -> u16 {
+        match self {
+            Refused::Unknown(_) => 404,
+            _ => 409,
+        }
+    }
+}
+
+/// One person as the Users pane lists them: never the password hash.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Listed {
+    pub name: String,
+    pub display_name: String,
+    pub email: String,
+    pub groups: Vec<String>,
+    pub disabled: bool,
+}
+
+/// Whether anyone enabled in `doc` is an administrator.
+fn any_admin(doc: &Document) -> bool {
+    doc.users
+        .values()
+        .any(|r| !r.disabled && r.groups.iter().any(|g| g == ADMINS))
 }
 
 /// A signed-in person, as the rest of the daemon sees them.
@@ -252,11 +320,86 @@ impl People {
     /// Whether anyone can sign in as an administrator yet.
     pub fn has_admin(&self) -> anyhow::Result<bool> {
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        Ok(any_admin(&self.read()?))
+    }
+
+    /// Everyone in the file, by name.
+    pub fn list(&self) -> anyhow::Result<Vec<Listed>> {
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         Ok(self
             .read()?
             .users
-            .values()
-            .any(|r| !r.disabled && r.groups.iter().any(|g| g == ADMINS)))
+            .into_iter()
+            .map(|(name, r)| Listed {
+                name,
+                display_name: r.displayname,
+                email: r.email,
+                groups: r.groups,
+                disabled: r.disabled,
+            })
+            .collect())
+    }
+
+    /// Take `name` out of the file. `by` is the person asking, if a person
+    /// is: nobody removes themselves, the owner, or the last administrator.
+    /// Their accounts in LosOS cloud and LosOS Git, and the files in them,
+    /// stay where they are.
+    pub fn remove(&self, name: &str, by: Option<&str>) -> anyhow::Result<()> {
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut doc = self.read()?;
+        let Some(record) = doc.users.get(name) else {
+            return Err(Refused::Unknown(name.to_string()).into());
+        };
+        if by == Some(name) {
+            return Err(Refused::Yourself.into());
+        }
+        if record.groups.iter().any(|g| g == OWNER) {
+            return Err(Refused::Owner(name.to_string()).into());
+        }
+        doc.users.remove(name);
+        if !any_admin(&doc) {
+            return Err(Refused::LastAdmin.into());
+        }
+        self.write(&doc)
+    }
+
+    /// Give `name` the access groups in `groups` in place of the ones they
+    /// have. Groups that are not access (the owner's mark, anything written
+    /// by hand without the `losos-` prefix) stay. Same refusals as
+    /// [`People::remove`].
+    pub fn set_access(
+        &self,
+        name: &str,
+        groups: &[String],
+        by: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut doc = self.read()?;
+        let Some(record) = doc.users.get_mut(name) else {
+            return Err(Refused::Unknown(name.to_string()).into());
+        };
+        if by == Some(name) {
+            return Err(Refused::Yourself.into());
+        }
+        if record.groups.iter().any(|g| g == OWNER) {
+            return Err(Refused::Owner(name.to_string()).into());
+        }
+        let mut next: Vec<String> = record
+            .groups
+            .iter()
+            .filter(|g| *g == OWNER || !g.starts_with("losos-"))
+            .cloned()
+            .collect();
+        for g in groups {
+            if !next.contains(g) {
+                next.push(g.clone());
+            }
+        }
+        record.groups = next;
+        if !any_admin(&doc) {
+            return Err(Refused::LastAdmin.into());
+        }
+        self.write(&doc)
     }
 
     /// The person signed in as `name`, unless they are unknown or disabled.
@@ -288,7 +431,7 @@ impl People {
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         let mut doc = self.read()?;
         if doc.users.contains_key(name) {
-            anyhow::bail!("{name} already has an account");
+            return Err(Refused::Taken(name.to_string()).into());
         }
         doc.users.insert(
             name.to_string(),
@@ -330,7 +473,7 @@ impl People {
         let record = doc
             .users
             .get_mut(name)
-            .ok_or_else(|| anyhow::anyhow!("{name} has no account"))?;
+            .ok_or_else(|| Refused::Unknown(name.to_string()))?;
         record.password = hash;
         self.write(&doc)
     }
@@ -445,5 +588,120 @@ mod tests {
             serde_json::from_slice(&std::fs::read(p.path()).unwrap()).unwrap();
         let h = v["users"]["eva"]["password"].as_str().unwrap();
         assert!(verify_password(h, &new) && !verify_password(h, &old));
+    }
+
+    fn refusal(e: anyhow::Error) -> Refused {
+        e.downcast::<Refused>().expect("a refusal")
+    }
+
+    #[test]
+    fn people_are_listed_without_their_password() {
+        let (_d, p) = people();
+        let s = Secret::new("correct horse battery");
+        p.add("matus", "Matus", "m@x.local", &s, &[ADMINS, OWNER])
+            .unwrap();
+        p.add("eva", "Eva", "", &s, &[VIEWERS]).unwrap();
+        let all = p.list().unwrap();
+        assert_eq!(
+            all.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(),
+            ["eva", "matus"]
+        );
+        assert_eq!(all[0].display_name, "Eva");
+        let json = serde_json::to_string(&all).unwrap();
+        assert!(!json.contains("argon2"), "{json}");
+        assert!(json.contains("\"displayName\":\"Eva\""), "{json}");
+    }
+
+    #[test]
+    fn a_removed_person_can_no_longer_sign_in() {
+        let (_d, p) = people();
+        let s = Secret::new("correct horse battery");
+        p.add("matus", "", "", &s, &[ADMINS, OWNER]).unwrap();
+        p.add("eva", "", "", &s, &[VIEWERS]).unwrap();
+        p.remove("eva", Some("matus")).unwrap();
+        assert!(p.get("eva").unwrap().is_none());
+        assert_eq!(
+            refusal(p.remove("eva", Some("matus")).unwrap_err()),
+            Refused::Unknown("eva".into())
+        );
+    }
+
+    #[test]
+    fn nobody_removes_themselves_the_owner_or_the_last_administrator() {
+        let (_d, p) = people();
+        let s = Secret::new("correct horse battery");
+        p.add("matus", "", "", &s, &[ADMINS, OWNER]).unwrap();
+        p.add("eva", "", "", &s, &[ADMINS]).unwrap();
+        assert_eq!(
+            refusal(p.remove("eva", Some("eva")).unwrap_err()),
+            Refused::Yourself
+        );
+        assert_eq!(
+            refusal(p.remove("matus", Some("eva")).unwrap_err()),
+            Refused::Owner("matus".into())
+        );
+        // The spare key is nobody in particular, and the owner still stays.
+        assert_eq!(
+            refusal(p.remove("matus", None).unwrap_err()),
+            Refused::Owner("matus".into())
+        );
+        // A box whose only administrator is not the owner (a people file
+        // written by hand) keeps them too.
+        let (_d2, q) = people();
+        q.add("solo", "", "", &s, &[ADMINS]).unwrap();
+        q.add("lea", "", "", &s, &[]).unwrap();
+        assert_eq!(
+            refusal(q.remove("solo", Some("lea")).unwrap_err()),
+            Refused::LastAdmin
+        );
+        assert!(q.get("solo").unwrap().is_some(), "a refused removal wrote");
+    }
+
+    #[test]
+    fn access_replaces_the_access_groups_and_keeps_the_rest() {
+        let (_d, p) = people();
+        let s = Secret::new("correct horse battery");
+        p.add("matus", "", "", &s, &[ADMINS, OWNER]).unwrap();
+        p.add("eva", "", "", &s, &["losos-backup", "family"])
+            .unwrap();
+        p.set_access(
+            "eva",
+            &["losos-storage".into(), VIEWERS.into()],
+            Some("matus"),
+        )
+        .unwrap();
+        assert_eq!(
+            p.get("eva").unwrap().unwrap().groups,
+            ["family", "losos-storage", VIEWERS]
+        );
+        assert_eq!(
+            refusal(p.set_access("matus", &[], Some("eva")).unwrap_err()),
+            Refused::Owner("matus".into())
+        );
+        assert_eq!(
+            refusal(p.set_access("eva", &[], Some("eva")).unwrap_err()),
+            Refused::Yourself
+        );
+        assert_eq!(
+            refusal(p.set_access("nobody", &[], None).unwrap_err()),
+            Refused::Unknown("nobody".into())
+        );
+        let (_d2, q) = people();
+        q.add("solo", "", "", &s, &[ADMINS]).unwrap();
+        assert_eq!(
+            refusal(q.set_access("solo", &[], None).unwrap_err()),
+            Refused::LastAdmin
+        );
+    }
+
+    #[test]
+    fn a_taken_name_is_a_refusal() {
+        let (_d, p) = people();
+        let s = Secret::new("correct horse battery");
+        p.add("eva", "", "", &s, &[]).unwrap();
+        assert_eq!(
+            refusal(p.add("eva", "", "", &s, &[]).unwrap_err()),
+            Refused::Taken("eva".into())
+        );
     }
 }

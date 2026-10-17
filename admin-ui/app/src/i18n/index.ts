@@ -18,6 +18,7 @@ import pins from "./pins";
 import settings from "./settings";
 import shell from "./shell";
 import tour from "./tour";
+import users from "./users";
 import widgets from "./widgets";
 import wizard from "./wizard";
 
@@ -36,6 +37,7 @@ export const MESSAGES = {
   ...machines,
   ...advanced,
   ...access,
+  ...users,
   ...lab,
   ...tour,
   ...palette,

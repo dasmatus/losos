@@ -376,6 +376,29 @@ const json = (route, status, body) => route.fulfill({ status, contentType: 'appl
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 
+/* The Users pane: the owner signed in on a box that signs people in itself,
+ * and the two people they added. */
+const SECTION_NAMES = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab', 'access'];
+const ME_OWNER = {
+  name: 'matus',
+  displayName: 'Matus',
+  groups: ['losos-admins', 'losos-owner'],
+  admin: true,
+  spareKey: false,
+  sections: SECTION_NAMES,
+  standalone: true,
+};
+const PEOPLE = {
+  standalone: true,
+  you: 'matus',
+  sections: SECTION_NAMES,
+  people: [
+    { name: 'eva', displayName: 'Eva Novak', email: 'eva@mattbox.local', groups: ['losos-storage', 'losos-backup'], disabled: false },
+    { name: 'matus', displayName: 'Matus', email: 'matus@mattbox.local', groups: ['losos-admins', 'losos-owner'], disabled: false },
+    { name: 'oma', displayName: 'Oma', email: 'oma@mattbox.local', groups: ['losos-viewers'], disabled: false },
+  ],
+};
+
 /* One page wired to a box in a given state. */
 async function open({
   path = '/',
@@ -402,6 +425,9 @@ async function open({
   reducedMotion = 'no-preference',
   overrides = {},
   pins = [],
+  // Who GET /api/me says is signed in; null leaves it to the catch-all,
+  // which reads as the spare key on a box that predates the field.
+  me = null,
 } = {}) {
   const page = await browser.newPage({ viewport, locale, colorScheme: theme, deviceScaleFactor: 2, reducedMotion });
   await page.clock.setFixedTime(NOW);
@@ -455,6 +481,8 @@ async function open({
     const auth = route.request().headers()['authorization'];
     return auth !== undefined && auth !== `Bearer ${TOKEN}` ? json(route, 401, { error: 'unauthorized' }) : json(route, 200, state);
   });
+  if (me !== null) await page.route('**/api/me', (route) => json(route, 200, me));
+  await page.route('**/api/people', (route) => json(route, 200, PEOPLE));
   await page.route('**/api/settings', (route) => json(route, 200, settings));
   await page.route('**/api/status', (route) => json(route, 200, status));
   await page.route('**/api/edge', (route) => json(route, 200, edge));
@@ -651,6 +679,7 @@ const SHOTS = [
   },
   { name: 'market-soon', path: '/mesh', edge: EDGE_OFFICIAL },
   { name: 'settings-network', path: '/settings/network', crop: 'fit', langs: true },
+  { name: 'settings-users', path: '/settings/users', me: ME_OWNER, full: true, crop: 'fit', langs: true },
   { name: 'settings-network-full', path: '/settings/network', full: true },
   { name: 'settings-domain-stripe', path: '/settings/network', full: true, edge: EDGE_OFFICIAL, domains: DOMAINS_UNVOUCHED },
   {

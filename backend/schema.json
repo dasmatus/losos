@@ -1576,8 +1576,37 @@
       },
       "GET /api/me": {
         "auth": true,
-        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"]}",
-        "note": "Who is calling (backend/src/http.rs, get_me). A person signed in at the box's sign-in page (Authelia at /auth/) arrives as the Remote-User nginx sets from Authelia's answer; lososd looks them up in the people file it writes (backend/src/people.rs) and answers with their name, groups and the sections of backend/sections.json those groups open. The spare key answers with name null, admin true and spareKey true. The admin pages show the panes `sections` names and hide the rest. 401 signed out; 403 with noAccount:true for a Remote-User the people file does not hold (removed since they signed in)."
+        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"], \"standalone\": bool}",
+        "note": "Who is calling (backend/src/http.rs, get_me). A person signed in at the box's sign-in page (Authelia at /auth/) arrives as the Remote-User nginx sets from Authelia's answer; lososd looks them up in the people file it writes (backend/src/people.rs) and answers with their name, groups and the sections of backend/sections.json those groups open. `standalone` is true when this box signs people in itself (LOSOS_IDENTITY=authelia), which is when the Users pane is shown. The spare key answers with name null, admin true and spareKey true. The admin pages show the panes `sections` names and hide the rest. 401 signed out; 403 with noAccount:true for a Remote-User the people file does not hold (removed since they signed in)."
+      },
+      "GET /api/people": {
+        "auth": true,
+        "out": "{\"standalone\": bool, \"you\": \"...\"|null, \"sections\": [\"...\"], \"people\": [{\"name\": \"...\", \"displayName\": \"...\", \"email\": \"...\", \"groups\": [\"...\"], \"disabled\": bool}]}",
+        "note": "Everyone in the people file (backend/src/people.rs), never a password hash, for the Users pane. `you` is the caller's name, null for the spare key. `sections` are the parts of backend/sections.json a person can be given one by one. On a box that does not sign people in itself `standalone` is false and `people` is empty. Administrators only."
+      },
+      "POST /api/people": {
+        "auth": true,
+        "in": "{\"name\":\"...\",\"displayName\":\"...\",\"password\":\"...\",\"groups\":[\"...\"],\"email\":\"...\" (optional)}",
+        "out": "{\"name\": \"...\"}",
+        "note": "Add someone who may sign in at /auth/. `groups` are losos-admins, losos-viewers or losos-<section>; anything else is a 400, as are a bad name or a short password. `email` defaults to <name>@<hostname>.local. 409 for a name already taken, or with standalone:false on a box that does not sign people in itself. Administrators only."
+      },
+      "POST /api/people/access": {
+        "auth": true,
+        "in": "{\"name\":\"...\",\"groups\":[\"...\"]}",
+        "out": "{\"name\": \"...\", \"groups\": [\"...\"]}",
+        "note": "Replace someone's access groups (the same set as POST /api/people). Other groups, such as losos-owner, stay. 404 for nobody by that name; 409 for the caller's own account, the owner's, or a change that would leave no administrator. Administrators only."
+      },
+      "POST /api/people/password": {
+        "auth": true,
+        "in": "{\"name\":\"...\",\"password\":\"...\"}",
+        "out": "{\"name\": \"...\", \"changed\": true}",
+        "note": "Set a new password for someone who forgot theirs. 409 for the owner, who changes their own through POST /api/set-password so their LosOS cloud password follows. Administrators only."
+      },
+      "POST /api/people/remove": {
+        "auth": true,
+        "in": "{\"name\":\"...\"}",
+        "out": "{\"name\": \"...\", \"removed\": true}",
+        "note": "Take someone out of the people file: their next request is a 403 with noAccount:true and they cannot sign in again. Their LosOS cloud and LosOS Git accounts and files stay. 404 for nobody by that name; 409 for the caller, the owner, or the last administrator. Administrators only."
       },
       "GET /api/recovery": {
         "auth": true,

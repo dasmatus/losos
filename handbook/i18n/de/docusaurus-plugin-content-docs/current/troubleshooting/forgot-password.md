@@ -28,9 +28,11 @@ oder die Anmeldeseite von LosOS cloud nimmt das Passwort nicht an.
 
 ## Jemand anderes hat die Box eingerichtet \{#someone-else-set-up-the-box}
 
-Frag diese Person. Die Admin-Seiten haben noch keine Seite zum Verwalten von
-Personen, also lässt sich nur das Passwort des Besitzers neu setzen, mit dem
-Ersatzschlüssel wie unten beschrieben.
+Frag einen Administrator. Unter **Einstellungen > Benutzer** setzt er dir
+mit **Neues Passwort** ein neues; siehe
+[Personen hinzufügen](../manual/sign-in-and-spare-key#adding-people). Nur
+für das Passwort des Besitzers braucht es den Ersatzschlüssel, wie unten
+beschrieben.
 
 ## Du hast den Ersatz-Admin-Schlüssel \{#you-have-the-spare-admin-key}
 
@@ -75,4 +77,5 @@ etwa dem Ordner des Desktop-Clients oder den Uploads vom Handy.
 
 Druck den Ersatzschlüssel aus, wenn der Assistent ihn zeigt, und bewahr
 ihn nicht bei der Box auf. Leg das Passwort in einem Passwort-Manager ab.
-Gib einer zweiten Person, der du vertraust, ein Admin-Konto in LosOS cloud.
+Gib einer zweiten Person, der du vertraust, ein Administratorkonto unter
+**Einstellungen > Benutzer**.

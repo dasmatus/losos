@@ -199,6 +199,10 @@ export interface Me {
   spareKey: boolean;
   /** The sections of backend/sections.json this person can use. */
   sections: string[];
+  /** Whether this box signs people in itself. Only then is there a Users
+   *  pane: a box whose sign-in runs elsewhere has nobody to add here.
+   *  Missing on a box whose lososd predates the field. */
+  standalone?: boolean;
 }
 
 let me: Me | null = null;
@@ -235,6 +239,12 @@ export async function loadMe(options: RequestOptions = {}): Promise<Me | null> {
 export function canUse(section: string): boolean {
   if (me === null) return true;
   return me.admin || me.sections.includes(section);
+}
+
+/** Whether this box signs people in itself (GET /api/me's `standalone`).
+ *  False until /api/me has said so. */
+export function runsOwnSignIn(): boolean {
+  return me?.standalone === true;
 }
 
 /** For components: who is signed in, re-read when that changes. */
@@ -1552,6 +1562,82 @@ export function postAccessRevoke(
     contentType: "application/json",
     body: JSON.stringify({ id }),
   });
+}
+
+// ── People (the Users pane) ───────────────────────────────────────────────
+
+/** Someone who may sign in to this box, as GET /api/people lists them. */
+export interface PersonEntry {
+  name: string;
+  displayName: string;
+  email: string;
+  /** losos-admins, losos-viewers, losos-<section>, and losos-owner for the
+   *  person who claimed the box. */
+  groups: string[];
+  disabled: boolean;
+}
+
+export interface PeopleResponse {
+  /** False on a box whose sign-in runs elsewhere; `people` is empty then. */
+  standalone: boolean;
+  /** The caller's own name, null for the spare key. */
+  you: string | null;
+  /** The parts of the box a person can be given one by one. */
+  sections: string[];
+  people: PersonEntry[];
+}
+
+export interface NewPerson {
+  name: string;
+  displayName: string;
+  password: string;
+  groups: string[];
+}
+
+/** GET /api/people — everyone who may sign in, never a password. */
+export function getPeople(options: RequestOptions = {}): Promise<PeopleResponse> {
+  return call<PeopleResponse>("/api/people", options);
+}
+
+function postJson<T>(path: string, body: unknown, options: RequestOptions): Promise<T> {
+  return call<T>(path, {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+}
+
+/** POST /api/people — add someone. 400 for a bad name or password, 409 for
+ *  a name already taken. */
+export function postPerson(person: NewPerson, options: RequestOptions = {}): Promise<{ name: string }> {
+  return postJson("/api/people", person, options);
+}
+
+/** POST /api/people/access — replace someone's access groups. */
+export function postPersonAccess(
+  name: string,
+  groups: string[],
+  options: RequestOptions = {},
+): Promise<{ name: string; groups: string[] }> {
+  return postJson("/api/people/access", { name, groups }, options);
+}
+
+/** POST /api/people/password — a new password for someone who forgot theirs. */
+export function postPersonPassword(
+  name: string,
+  password: string,
+  options: RequestOptions = {},
+): Promise<{ name: string; changed: boolean }> {
+  return postJson("/api/people/password", { name, password }, options);
+}
+
+/** POST /api/people/remove — they can no longer sign in; their files stay. */
+export function postPersonRemove(
+  name: string,
+  options: RequestOptions = {},
+): Promise<{ name: string; removed: boolean }> {
+  return postJson("/api/people/remove", { name }, options);
 }
 
 // ── Sign-in ───────────────────────────────────────────────────────────────

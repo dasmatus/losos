@@ -81,14 +81,48 @@ in until you sign out of that app too.
 The admin pages are split into sections: storage, backup, apps, market
 (with virtual machines), network (custom domains), look, the Lab and access
 tokens. An administrator can use all of them, and only an administrator can
-apply settings or use Mesh, Hardware, Security, Advanced, History, About and
-Reset, erase or restore the box, or see the recovery code. A person who is
+apply settings or use Mesh, Hardware, Security, Users, Advanced, History,
+About and Reset, erase or restore the box, or see the recovery code. A person who is
 not an administrator gets the sections they were given, or reads every
 section without changing anything. Anyone signed in sees the overview. The
 admin pages hide the panes a person cannot use.
 
-The first person on a box is always an administrator. The admin pages have
-no page for adding more people yet.
+## Adding people
+
+The first person on a box is always an administrator. An administrator adds
+everyone else under **Settings > Users**. The pane is there when the box signs
+people in itself with LosOS Login. A box whose sign-in runs somewhere else has
+no Users pane.
+
+To add someone, fill in **Add a person**: a sign-in name, their full name, a
+password that follows the same rules as yours, and their access.
+
+- **Chosen parts**: they see and change only the parts switched on, for
+  example Storage and Backup.
+- **Sees everything**: they see every pane and change only the parts
+  switched on.
+- **Administrator**: they can change everything, including who can sign in.
+
+![The Users pane: three people with their access, and the Add a person form below them.](../img/settings-users.png)
+
+Give them the name and password yourself. They sign in on LosOS Login.
+LosOS cloud and LosOS Git each make them an account of their own the first
+time they open the app.
+
+Each person in the list has three buttons:
+
+- **Access** changes what they can do. It applies from their next click,
+  with no new sign-in.
+- **New password** is for someone who lost theirs. The old one stops working
+  at once.
+- **Remove** stops them signing in, to the admin pages and to both apps, at
+  once. Their accounts and files in LosOS cloud and LosOS Git stay on the
+  box.
+
+The owner and your own row have no buttons. Nobody can remove the owner,
+change the owner's access or set the owner's password here; for a lost owner
+password, see [Forgot the password](../troubleshooting/forgot-password). The
+box always keeps at least one administrator.
 
 ## The spare admin key
 

@@ -194,6 +194,11 @@ in
         authentication_backend = {
           password_reset.disable = true;
           password_change.disable = true;
+          # Look the person up on every request, not every five minutes: a
+          # person removed on the Users pane loses LosOS cloud and LosOS Git
+          # at their next click, and a changed group reaches nginx at once.
+          # The file backend keeps everyone in memory, so it costs nothing.
+          refresh_interval = "always";
           file = {
             path = peopleFile;
             watch = true;

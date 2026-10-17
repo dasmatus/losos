@@ -76,6 +76,12 @@
     "POST /api/access/tokens": "access",
     "POST /api/access/tokens/revoke": "access",
 
+    "GET /api/people": "admin",
+    "POST /api/people": "admin",
+    "POST /api/people/access": "admin",
+    "POST /api/people/password": "admin",
+    "POST /api/people/remove": "admin",
+
     "POST /api/apply": "admin",
     "POST /api/factory-reset": "admin",
     "POST /api/backup/restore": "admin",

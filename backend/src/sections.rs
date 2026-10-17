@@ -57,6 +57,12 @@ pub fn allows(person: &Person, method: &str, section: &str) -> bool {
     }
 }
 
+/// Every named section, in the table's order: the parts of the box a person
+/// can be given one by one on the Users pane.
+pub fn names() -> Vec<&'static str> {
+    table().sections.iter().map(String::as_str).collect()
+}
+
 /// The named sections `person` can use, for `GET /api/me`: the admin UI
 /// shows the panes these open and hides the rest.
 pub fn usable(person: &Person) -> Vec<&'static str> {

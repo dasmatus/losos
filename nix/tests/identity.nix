@@ -15,7 +15,10 @@
 #   * the sections in backend/sections.json must hold: a person in
 #     losos-backup reaches the backup routes and nothing an administrator
 #     owns;
-#   * a password change and a removed account must take effect at once.
+#   * the Users pane's routes add, change and remove people, refuse
+#     anyone but an administrator, and never touch the owner;
+#   * a password change and a removed account must take effect at once,
+#     in the admin pages and in the apps.
 #
 # LosOS cloud is a stub: lososd runs in native mode with a `nextcloud-occ`
 # that says "installed" and takes any password, which is all the claim asks
@@ -296,26 +299,53 @@ pkgs.testers.nixosTest {
         )
         assert code == 409, code
 
-    with subtest("a person in one section gets that section and no more"):
-        # Nothing in the admin pages adds people yet, so Eva is written in
-        # the way lososd writes the file, hashed by Authelia's own tool, and
-        # renamed into place: a file Authelia sees half made is a failed
-        # reload.
+    with subtest("the Users pane lists people and adds one, and only for administrators"):
+        cookie = sign_in("matus", PASSWORD)
+        me = json.loads(api("/api/me", cookie)[1])
+        assert me["standalone"] is True, me
+        code, body = api("/api/people", cookie)
+        assert code == 200, (code, body)
+        listed = json.loads(body)
+        assert listed["standalone"] is True and listed["you"] == "matus", listed
+        assert [p["name"] for p in listed["people"]] == ["matus"], listed
+        assert "backup" in listed["sections"], listed
+        assert "argon2" not in body and "password" not in body, body
+        # Groups the pane does not hand out, a taken name and a short
+        # password are refused before anything is written.
+        before = box.succeed(f"sha256sum {PEOPLE}")
+        for data, want in [
+            ({"name": "eva", "password": "Eva-Long-Password-3", "groups": ["losos-owner"]}, 400),
+            ({"name": "eva", "password": "Eva-Long-Password-3", "groups": ["wheel"]}, 400),
+            ({"name": "matus", "password": "Eva-Long-Password-3", "groups": []}, 409),
+            ({"name": "notshared", "password": "Eva-Long-Password-3", "groups": []}, 400),
+            ({"name": "eva", "password": "short", "groups": []}, 400),
+        ]:
+            code, body = api("/api/people", cookie, method="POST", data=data)
+            assert code == want, (data, code, body)
+        assert box.succeed(f"sha256sum {PEOPLE}") == before
+        # Eva arrives through the Users pane's own route.
         mark = journal_mark()
-        box.succeed(
-            "${pkgs.writeShellScript "add-eva" ''
-              set -eu
-              hash=$(${pkgs.authelia}/bin/authelia crypto hash generate argon2 \
-                --password 'Eva-Long-Password-3' --no-confirm | sed 's/^Digest: //')
-              ${pkgs.jq}/bin/jq --arg h "$hash" \
-                '.users.eva = {disabled: false, displayname: "Eva", email: "eva@mattbox.local",
-                  groups: ["losos-backup"], password: $h}' \
-                /var/lib/losos-identity/users.yml > /tmp/users.yml
-              install -m 0640 -g authelia-losos /tmp/users.yml /var/lib/losos-identity/.users.tmp
-              mv /var/lib/losos-identity/.users.tmp /var/lib/losos-identity/users.yml
-            ''}"
+        code, body = api(
+            "/api/people",
+            cookie,
+            method="POST",
+            data={
+                "name": "eva",
+                "displayName": "Eva",
+                "email": "eva@mattbox.local",
+                "password": "Eva-Long-Password-3",
+                "groups": ["losos-backup"],
+            },
         )
+        assert code == 200, (code, body)
         reloaded_since(mark)
+        file = json.loads(box.succeed(f"cat {PEOPLE}"))
+        assert file["users"]["eva"]["groups"] == ["losos-backup"], file
+        assert box.succeed(f"stat -c '%a %U %G' {PEOPLE}").strip() == "640 root authelia-losos"
+        audit = box.succeed("grep '/api/people' /var/lib/losos/audit.log")
+        assert '"who":"matus"' in audit and '"outcome":"ok"' in audit, audit
+
+    with subtest("a person in one section gets that section and no more"):
         eva = sign_in("eva", "Eva-Long-Password-3")
         code, body = api("/api/me", eva)
         me = json.loads(body)
@@ -328,6 +358,10 @@ pkgs.testers.nixosTest {
         assert code == 403 and json.loads(body)["section"] == "admin", (code, body)
         code, _ = api("/api/apply", eva, method="POST", data="{}")
         assert code == 403, code
+        for path, method in [("/api/people", "GET"), ("/api/people", "POST"),
+                             ("/api/people/remove", "POST")]:
+            code, body = api(path, eva, method=method, data={"name": "matus"})
+            assert code == 403 and json.loads(body)["section"] == "admin", (path, code, body)
         audit = box.succeed("grep '\"who\":\"eva\"' /var/lib/losos/audit.log")
         assert '"outcome":"forbidden"' in audit, audit
 
@@ -452,15 +486,58 @@ pkgs.testers.nixosTest {
         eva = sign_in("eva", "Eva-New-Password-44")
         assert api("/api/me", eva)[0] == 200
 
-    with subtest("a removed account is refused at once"):
-        box.succeed(
-            "jq 'del(.users.eva)' /var/lib/losos-identity/users.yml > /tmp/u.yml"
-            " && install -m 0640 -g authelia-losos /tmp/u.yml /var/lib/losos-identity/.users.tmp"
-            " && mv /var/lib/losos-identity/.users.tmp /var/lib/losos-identity/users.yml"
+    with subtest("an administrator changes a person's access and password"):
+        code, body = api(
+            "/api/people/access", cookie, method="POST",
+            data={"name": "eva", "groups": ["losos-storage", "losos-viewers"]},
         )
+        assert code == 200, (code, body)
+        # lososd reads the file on every call: no new sign-in needed.
+        me = json.loads(api("/api/me", eva)[1])
+        assert me["groups"] == ["losos-storage", "losos-viewers"], me
+        assert api("/api/grow", eva, method="POST")[0] != 403
+        mark = journal_mark()
+        code, body = api(
+            "/api/people/password", cookie, method="POST",
+            data={"name": "eva", "password": "Eva-Reset-Password-55"},
+        )
+        assert code == 200, (code, body)
+        reloaded_since(mark)
+        eva = sign_in("eva", "Eva-Reset-Password-55")
+        # The owner keeps their account, access and password, and nobody
+        # changes or removes themselves.
+        for path, data in [
+            ("/api/people/access", {"name": "matus", "groups": []}),
+            ("/api/people/password", {"name": "matus", "password": "Another-Long-Pass-7"}),
+            ("/api/people/remove", {"name": "matus"}),
+        ]:
+            code, body = api(path, cookie, method="POST", data=data)
+            assert code == 409, (path, code, body)
+        code, body = api("/api/people/remove", extra=f"-H 'Authorization: Bearer {spare}'",
+                         method="POST", data={"name": "nobody"})
+        assert code == 404, (code, body)
+        assert json.loads(box.succeed(f"cat {PEOPLE}"))["users"]["matus"]["groups"] == [
+            "losos-admins", "losos-owner"
+        ]
+
+    with subtest("a removed person loses the admin pages and the apps at once"):
+        assert person(app("/forgejo/", eva))[0] == "eva"
+        code, body = api("/api/people/remove", cookie, method="POST", data={"name": "eva"})
+        assert code == 200, (code, body)
+        assert "eva" not in json.loads(box.succeed(f"cat {PEOPLE}"))["users"]
         code, body = api("/api/me", eva)
         assert code in (401, 403), (code, body)
         if code == 403:
             assert json.loads(body)["noAccount"] is True, body
+        # LosOS Login looks the person up on every request, so the old
+        # cookie no longer names anyone to LosOS Git.
+        assert person(app("/forgejo/", eva)) == (None, None, None)
+        body = json.dumps({"username": "eva", "password": "Eva-Reset-Password-55"})
+        code = status(
+            f"https://{BOX}/auth/api/firstfactor -H 'Content-Type: application/json' -d '{body}'"
+        )
+        assert code == "401", code
+        # The owner is still there.
+        assert api("/api/me", cookie)[0] == 200
   '';
 }

@@ -89,15 +89,51 @@ Die Admin-Seiten sind in Bereiche aufgeteilt: Speicher, Sicherung, Apps,
 Markt (mit virtuellen Maschinen), Netzwerk (eigene Domains), Aussehen, das
 Labor und Zugriffstokens. Ein Administrator kann alle benutzen. Nur ein
 Administrator kann Einstellungen anwenden, Mesh, Hardware, Sicherheit,
-Erweitert, Historie, Über und Zurücksetzen öffnen, die Box löschen oder
+Benutzer, Erweitert, Historie, Über und Zurücksetzen öffnen, die Box löschen oder
 wiederherstellen und den Wiederherstellungscode sehen. Wer kein
 Administrator ist, bekommt die Bereiche, die ihm gegeben wurden, oder liest
 alle Bereiche, ohne etwas ändern zu können. Die Übersicht sieht jeder, der
 angemeldet ist. Die Admin-Seiten blenden die Bereiche aus, die eine Person
 nicht benutzen kann.
 
-Die erste Person auf einer Box ist immer Administrator. Eine Seite zum
-Hinzufügen weiterer Personen haben die Admin-Seiten noch nicht.
+## Personen hinzufügen \{#adding-people}
+
+Die erste Person auf einer Box ist immer Administrator. Alle weiteren fügt
+ein Administrator unter **Einstellungen > Benutzer** hinzu. Den Bereich gibt
+es, wenn die Box Personen selbst mit LosOS Login anmeldet. Eine Box, deren
+Anmeldung woanders läuft, hat keinen Bereich Benutzer.
+
+Um jemanden hinzuzufügen, füll **Person hinzufügen** aus: einen Anmeldenamen,
+den vollständigen Namen, ein Passwort nach denselben Regeln wie deins und den
+Zugriff.
+
+- **Ausgewählte Teile**: sieht und ändert nur die eingeschalteten Teile, zum
+  Beispiel Speicher und Sicherung.
+- **Sieht alles**: sieht jeden Bereich und ändert nur die eingeschalteten
+  Teile.
+- **Administrator**: darf alles ändern, auch wer sich anmelden kann.
+
+![Der Bereich Benutzer: drei Personen mit ihrem Zugriff, darunter das Formular Person hinzufügen.](@site/docs/img/settings-users-de.png)
+
+Gib Namen und Passwort selbst weiter. Die Anmeldung läuft über LosOS Login.
+LosOS cloud und LosOS Git legen beim ersten Öffnen jeweils ein eigenes Konto
+an.
+
+Jede Person in der Liste hat drei Knöpfe:
+
+- **Zugriff** ändert, was die Person tun darf. Das gilt ab dem nächsten
+  Klick, ohne neue Anmeldung.
+- **Neues Passwort** ist für jemanden, der seins verloren hat. Das alte gilt
+  sofort nicht mehr.
+- **Entfernen** beendet sofort die Anmeldung an den Admin-Seiten und an
+  beiden Apps. Konten und Dateien in LosOS cloud und LosOS Git bleiben auf
+  der Box.
+
+Der Besitzer und deine eigene Zeile haben keine Knöpfe. Den Besitzer kann
+hier niemand entfernen, seinen Zugriff ändern oder sein Passwort setzen; bei
+einem verlorenen Besitzer-Passwort siehe
+[Passwort vergessen](../troubleshooting/forgot-password). Die Box behält
+immer mindestens einen Administrator.
 
 ## Der Ersatz-Admin-Schlüssel \{#the-spare-admin-key}
 

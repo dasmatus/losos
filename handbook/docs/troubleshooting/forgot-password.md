@@ -27,8 +27,10 @@ LosOS cloud's sign-in page does not accept the password.
 
 ## Someone else set up the box
 
-Ask them. The admin pages have no page for managing people yet, so only the
-owner's password can be set anew, with the spare key as below.
+Ask an administrator. Under **Settings > Users** they can set a new password
+for you with **New password**; see
+[Adding people](../manual/sign-in-and-spare-key#adding-people). Only the
+owner's password needs the spare key, as below.
 
 ## You have the spare admin key
 
@@ -69,5 +71,5 @@ or the phone's uploads.
 ## Preventing the next time
 
 Print the spare key when the wizard shows it, and keep it away from the box.
-Put the password in a password manager. Give a second trusted person an admin
-account in LosOS cloud.
+Put the password in a password manager. Give a second trusted person an
+administrator account under **Settings > Users**.
