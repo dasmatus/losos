@@ -92,6 +92,22 @@ impl Releaser {
         ))
     }
 
+    /// The seed of this edge's Solana releaser
+    /// ([`crate::solana_escrow::SolanaReleaser`]): HMAC-SHA256 of a fixed
+    /// label under this key's secret. One sealed credential holds both keys,
+    /// and neither can be worked out from the other's signatures.
+    #[must_use]
+    pub fn solana_seed(&self) -> Zeroizing<[u8; 32]> {
+        let secret = Zeroizing::new(self.key.to_bytes());
+        let mac = ring::hmac::sign(
+            &ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_slice()),
+            b"LosOS Solana releaser v1",
+        );
+        let mut seed = Zeroizing::new([0u8; 32]);
+        seed.copy_from_slice(mac.as_ref());
+        seed
+    }
+
     #[must_use]
     pub fn address(&self) -> [u8; 20] {
         self.address

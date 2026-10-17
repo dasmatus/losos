@@ -803,9 +803,12 @@ let
       ++ lib.optional (n.genesisHash != null) "genesis=${n.genesisHash}"
     );
   ensOn = usdcOn && cfg.market.usdc.ensRpcUrlSealed != null;
-  # EVM payments wait in LososEscrow until the registrar releases them with
-  # this key.
-  releaserOn = usdcOn && lib.any (name: !lib.hasPrefix "solana" name) (lib.attrNames usdcNetworks);
+  # Payments wait in an escrow (LososEscrow on EVM, losos-escrow on Solana)
+  # until the registrar releases them with this key. A Solana network with no
+  # `pay` is a direct transfer and needs none.
+  releaserOn =
+    usdcOn
+    && lib.any (n: n.pay != null) (lib.attrValues usdcNetworks);
   usdcServeArgs =
     lib.optionals usdcOn (
       lib.concatLists (
@@ -1094,7 +1097,11 @@ in
           lib.mapAttrsToList (
             name: n:
             if lib.hasPrefix "solana" name then
-              n.pay == null && builtins.match "[1-9A-HJ-NP-Za-km-z]{32,44}" n.treasury != null
+              builtins.match "[1-9A-HJ-NP-Za-km-z]{32,44}" n.treasury != null
+              && (
+                n.pay == null
+                || (builtins.match "[1-9A-HJ-NP-Za-km-z]{32,44}" n.pay != null && n.pay != n.treasury)
+              )
             else
               n.pay != null
               && builtins.match "0x[0-9a-fA-F]{40}" n.treasury != null
@@ -1104,8 +1111,9 @@ in
         );
         message = ''
           losos.edge.market.usdc.networks: an EVM network needs `pay` and an
-          `0x` treasury that differ; a Solana network takes no `pay` and a
-          base58 treasury. Only `solana-devnet` takes `genesisHash`.
+          `0x` treasury that differ; a Solana network needs a base58 treasury
+          and, for its escrow, a base58 `pay` that differs from it. Only
+          `solana-devnet` takes `genesisHash`.
         '';
       }
       {

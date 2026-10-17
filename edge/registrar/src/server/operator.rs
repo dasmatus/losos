@@ -157,7 +157,7 @@ async fn run(st: &AppState, op: &Operator, call: Call) -> (u16, serde_json::Valu
 fn no_evm() -> (u16, serde_json::Value) {
     (
         404,
-        serde_json::json!({ "error": "this edge settles USDC on no EVM network, so it has no escrow" }),
+        serde_json::json!({ "error": "this edge holds USDC in no escrow, so it has no releaser" }),
     )
 }
 
@@ -174,7 +174,7 @@ async fn new_releaser(st: &AppState, op: &Operator, replace: bool) -> (u16, serd
             return (
                 409,
                 serde_json::json!({
-                    "error": "this edge already has a releaser key; pass replace to make a new one, then have the treasury call setReleaser with its address on every escrow",
+                    "error": "this edge already has a releaser key; pass replace to make a new one, then have the treasury name its addresses on every escrow (setReleaser on EVM, set_releaser on Solana)",
                 }),
             )
         }
@@ -187,6 +187,13 @@ async fn new_releaser(st: &AppState, op: &Operator, replace: bool) -> (u16, serd
     match op.set_secret(RELEASER_SECRET, &hex).await {
         Ok(out) if out.ok => {
             let address = releaser.address_hex();
+            let solana = st
+                .market
+                .as_ref()
+                .is_some_and(|m| m.solana_escrowed())
+                .then(|| {
+                    crate::solana_escrow::SolanaReleaser::from_releaser(&releaser).address_base58()
+                });
             tracing::info!(
                 target: Action::Authenticate.target(),
                 "escrow releaser {address} made and sealed from the terminal{}",
@@ -194,7 +201,12 @@ async fn new_releaser(st: &AppState, op: &Operator, replace: bool) -> (u16, serd
             );
             (
                 200,
-                serde_json::json!({ "address": address, "replaced": replace, "report": out.output }),
+                serde_json::json!({
+                    "address": address,
+                    "solanaAddress": solana,
+                    "replaced": replace,
+                    "report": out.output,
+                }),
             )
         }
         Ok(out) => (500, serde_json::json!({ "error": out.output })),

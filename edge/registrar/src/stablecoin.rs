@@ -7,9 +7,12 @@
 //! payout address can receive USDC on that chain; then it releases the
 //! deposit to the treasury and that seller, or refunds the payer
 //! ([`crate::evm_tx`] sends both). The edge's key can do nothing else with a
-//! deposit: the contract fixes where each one may go. On Solana the wallet
-//! makes the two transfers itself in one transaction with the order in a
-//! memo, and [`crate::solana`] checks the balances it moved.
+//! deposit: the contract fixes where each one may go. On Solana the same
+//! holds with the `losos-escrow` program ([`crate::solana_escrow`]). A
+//! Solana network without the program is paid straight to the seller: the
+//! wallet makes the two transfers itself with the order in a memo, and
+//! [`crate::solana`] checks the balances it moved. Only a direct-pay edge
+//! offers that.
 //!
 //! The secrets are the RPC URLs, because a provider key usually sits in
 //! them, and the escrow's releaser key. systemd-creds seals one URL per chain
@@ -62,7 +65,9 @@ pub enum Family {
     /// `LososEscrow.pay` on an EVM chain; the receipt's `Held` log is the
     /// proof.
     Evm,
-    /// Two `TransferChecked` and a memo; the token balances are the proof.
+    /// `pay` on the `losos-escrow` program, whose deposit account is the
+    /// proof; or, without the program, two `TransferChecked` and a memo,
+    /// whose token balances are.
     Solana,
 }
 
@@ -181,8 +186,8 @@ pub struct UsdcChain {
     pub network: &'static Network,
     /// Decrypted systemd credential: one URL, read per request.
     pub rpc_file: String,
-    /// `LososEscrow` on an EVM chain. `None` on Solana, where the wallet
-    /// splits the payment itself.
+    /// `LososEscrow` on an EVM chain, the `losos-escrow` program on Solana.
+    /// `None` only on a Solana network paid straight to the seller.
     pub pay: Option<String>,
     /// EVM: a lowercase `0x` address. Solana: the owner whose USDC account
     /// takes the fee.
@@ -236,6 +241,14 @@ impl UsdcOpts {
     #[must_use]
     pub fn has(&self, family: Family) -> bool {
         self.chains.iter().any(|c| c.network.family == family)
+    }
+
+    /// Whether a Solana network here holds payments in the escrow program.
+    #[must_use]
+    pub fn solana_escrowed(&self) -> bool {
+        self.chains
+            .iter()
+            .any(|c| c.network.family == Family::Solana && c.pay.is_some())
     }
 
     /// The chain id an EVM payout signature names: the first EVM chain's. The
