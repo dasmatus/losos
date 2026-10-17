@@ -333,6 +333,13 @@ pub enum CloudRequest<'a> {
     List { key: &'a CloudKey, path: &'a str },
     /// Files and folders anywhere whose name holds `query`.
     Search { key: &'a CloudKey, query: &'a str },
+    /// Sign `user` in through LosOS Login's headers, as nginx does for a
+    /// browser, so LosOS cloud makes their account if it has none yet
+    /// (`crate::cloud_share`).
+    Arrive {
+        user: &'a str,
+        display_name: &'a str,
+    },
 }
 
 /// Where LosOS cloud answers on loopback: the socket, the `Host` header and
@@ -415,6 +422,18 @@ pub fn request_bytes(endpoint: &CloudEndpoint, request: &CloudRequest<'_>) -> Ve
             out.push_str(&format!("User-Agent: {KEY_CLIENT}\r\n"));
             out.push_str("Connection: close\r\n\r\n");
             out.push_str(&body);
+        }
+        CloudRequest::Arrive { user, display_name } => {
+            let clean = |v: &str| v.chars().filter(|c| !c.is_control()).collect::<String>();
+            out.push_str(&format!(
+                "GET {}/index.php/apps/user_saml/saml/login HTTP/1.1\r\n",
+                endpoint.root
+            ));
+            out.push_str(&format!("Host: {host}\r\n"));
+            out.push_str(&format!("X-Losos-Cloud-User: {}\r\n", clean(user)));
+            out.push_str(&format!("X-Losos-Cloud-Name: {}\r\n", clean(display_name)));
+            out.push_str(&format!("User-Agent: {KEY_CLIENT}\r\n"));
+            out.push_str("Connection: close\r\n\r\n");
         }
     }
     out.into_bytes()

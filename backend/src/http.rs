@@ -58,6 +58,8 @@ struct Api {
     builder: crate::builder::Builder,
     /// The people Authelia signs in (`crate::people`).
     people: crate::people::People,
+    /// LosOS Login names on LosOS cloud's share (`crate::cloud_share`).
+    share: crate::cloud_share::Share,
 }
 
 /// Who made a call.
@@ -447,6 +449,40 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
             })),
         }
     })
+}
+
+/// `GET /internal/cloud-share`: whose request to LosOS cloud's share this
+/// is, for nginx (`crate::cloud_share`). Always a 200; the person, if any,
+/// in the headers nginx reads from Authelia's answers too. Only with
+/// LosOS Login on: without it nginx does not ask, and nobody is named.
+async fn get_cloud_share(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    if !api.people.headers {
+        return HttpResponse::Ok().finish();
+    }
+    let authorization = req
+        .headers()
+        .get(actix_web::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let api = api.clone();
+    let answer = web::block(move || {
+        let mut backend = api.backend.clone();
+        api.share.answer(
+            &api.people,
+            &mut backend,
+            authorization.as_deref(),
+            Instant::now(),
+        )
+    })
+    .await;
+    match answer {
+        Ok(crate::cloud_share::Answer::Person(p)) => HttpResponse::Ok()
+            .insert_header(("Remote-User", p.name.as_str()))
+            .insert_header(("Remote-Groups", p.groups.join(",")))
+            .insert_header(("Remote-Name", p.display_name.as_str()))
+            .finish(),
+        _ => HttpResponse::Ok().finish(),
+    }
 }
 
 async fn health() -> HttpResponse {
@@ -2346,6 +2382,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             port,
             builder: crate::builder::Builder::from_env(),
             people: crate::people::People::from_env(),
+            share: crate::cloud_share::Share::default(),
         });
         owner_in_owner_group(&api);
         let server = HttpServer::new(move || {
@@ -2468,6 +2505,9 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 // the claim refuses once the box has an owner.
                 .route("/api/setup/claim", web::get().to(get_claim_state))
                 .route("/api/setup/claim", web::post().to(post_claim))
+                // Asked by nginx alone, never proxied to a client
+                // (crate::cloud_share, modules/identity.nix).
+                .route("/internal/cloud-share", web::get().to(get_cloud_share))
                 .default_service(web::route().to(not_found))
         })
         .bind(("127.0.0.1", port))
