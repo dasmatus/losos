@@ -396,9 +396,18 @@ in
         };
         "@losos-app-own-page".extraConfig = "return 403;";
         # Back to the app's sign-in page once they are signed in, which then
-        # goes on as above. https, because LosOS Login's cookie is Secure.
-        "@losos-app-sign-in".extraConfig =
-          "return 302 https://$host/auth/?rd=https://$host$losos_app_back;";
+        # goes on as above. LosOS Login's own answer names that page with
+        # everything after its `?`, encoded, so a sign-in that started from
+        # somewhere (the desktop and phone apps' login flows pass
+        # `redirect_url`) ends there and not on the app's start page.
+        # Without that answer, the bare sign-in page. https, because LosOS
+        # Login's cookie is Secure.
+        "@losos-app-sign-in".extraConfig = ''
+          if ($losos_sign_in_at) {
+            return 302 $losos_sign_in_at;
+          }
+          return 302 https://$host/auth/?rd=https://$host$losos_app_back;
+        '';
       }
       // {
         # The portal: sign-in page, its API and assets. https only, because

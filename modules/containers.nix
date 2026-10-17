@@ -93,6 +93,7 @@ let
   # own page.
   signInPage = own: ''
     ${passSignIn "/internal/losos-app-sign-in"}
+    auth_request_set $losos_sign_in_at $upstream_http_location;
     error_page 401 = @losos-app-sign-in;
     error_page 403 = ${own};
   '';
