@@ -267,8 +267,9 @@ Federation runs only while the box shares its disk. Both federation options
 below are ANDed with `losos.sharingMyStorage`, the setting that unlocks the
 shared data pool (`lososInternal.federation` in `modules/options.nix`). With
 sharing off, neither LosOS Git nor LosOS cloud talks to other servers,
-whatever its own option says, and the Advanced pane shows both rows as
-unavailable with the reason.
+whatever its own option says. The Apps pane greys both switches out with
+the reason, and the Advanced pane shows both rows as unavailable and links
+to them.
 
 `losos.forgejo.federation.enable` (default on) turns Forgejo's ActivityPub
 side on in both modes: `[federation] ENABLED` in app.ini, with
@@ -305,6 +306,23 @@ that cannot be switched off. `nix/tests/front-vhost.nix` checks both services'
 routes with sharing on and off; `nix/tests/invariants.nix` checks the gate at
 eval time.
 
+On, LosOS cloud also gets `allow_local_remote_servers = true` and
+`sharing.federation.allowSelfSignedCertificates = true`
+(`modules/nextcloud-stack.nix`, `federation.system`; the module's
+`override.config.php` natively, `losos.config.php` in the pod). Nextcloud's
+`RemoteHostValidator` otherwise refuses any server under `.local`, any
+single-label name and any private address, which is every other box on a
+LAN, so a share to `notshared@otherbox.local/nextcloud` failed before a
+request left the box. An address with no protocol is tried over https only,
+and every box's certificate is its own (`modules/tls.nix`), so the second
+key turns off certificate checks on federation calls. The costs: whatever an
+account can make Nextcloud fetch may point at the LAN, and federation calls
+are open to whoever sits between two boxes. A box without https is reached
+as `notshared@http://otherbox.local/nextcloud`. `nix/tests/cloud-apps.nix`
+boots two boxes in native mode with sharing on and self-signed https, and
+sends a file from one owner to the other: the share is offered on the second
+box, accepted, and read back through WebDAV.
+
 ### Box-wide app settings
 
 The Apps pane carries the settings that hold for everyone on LosOS cloud
@@ -312,8 +330,10 @@ and LosOS Git, the ones each app otherwise keeps on its own administration
 pages. Each field is an option under `losos.nextcloud.site.*` or
 `losos.forgejo.site.*`, so it goes through Apply, the gate, History and the
 configuration repository like any other setting. The Advanced pane shows
-their values and links to the Apps pane instead of drawing a second editor
-(`ON_PANE` in `admin-ui/app/src/lib/option-value.ts`).
+their values and links to the app's fold on the Apps pane (`/apps#cloud`,
+`/apps#git`) instead of drawing a second editor (`ON_PANE` in
+`admin-ui/app/src/lib/option-value.ts`). The two federation switches above
+are drawn there too, at the top of each fold.
 
 | Option | What it sets in the app |
 | --- | --- |
@@ -350,11 +370,56 @@ without a way to change them. Both modes read one attribute set,
 `lososInternal.forgejoSite`.
 
 :::note[What stays in the apps]
-Everything an account sets for itself stays in the app, and so do the
-admin settings LosOS does not cover yet: mail delivery, background jobs,
-two-factor enforcement, Forgejo's database-backed settings and the account
-lists.
+Everything an account sets for itself stays in the app. In LosOS Git, the
+owner's account stays Forgejo's administrator for what LosOS does not cover
+yet: Forgejo's database-backed settings and the account list. In LosOS
+cloud no account is an administrator (next section), so mail delivery,
+background jobs and two-factor enforcement keep the values the box sets.
 :::
+
+### LosOS cloud's apps
+
+The Apps pane's LosOS cloud fold lists every app Nextcloud has, with a
+switch each, removes apps added from the store and searches the store.
+lososd serves it under the `apps` section:
+
+| Route | Does |
+| --- | --- |
+| `GET /api/cloud/apps` | `{available, store, apps}`, or `{available: false, reason}` while LosOS cloud is not answering |
+| `GET /api/cloud/apps/search?q=` | the store's best matches for this Nextcloud version |
+| `POST /api/cloud/apps/{install,enable,disable,remove}` | `{id}`; answers with the whole list after the change |
+
+lososd checks a change before it runs it (`backend/src/cloud_apps.rs`). It
+refuses the apps LosOS sets itself (`user_saml` and `provisioning_api` for
+sign-in, `federation` for sharing, `theming` for the look, `firstrunwizard`
+for the setup wizard), the apps Nextcloud keeps on (`alwaysEnabled` in
+`core/shipped.json`), and removing anything not under `store-apps`, since a
+bundled app would come back on the next start. A refusal is a 400, a
+Nextcloud that is not up a 409 and a failed `occ` run a 502 with its
+message.
+
+The work is done by `losos-nextcloud-apps` (`modules/nextcloud-stack.nix`,
+`appsTool`), in the pod (`crictl exec`) or on lososd's unit path natively.
+`list` joins `occ app:list` with each app's `appinfo/info.xml`
+(`modules/nextcloud-apps-list.php`); the verbs run `occ app:install`,
+`app:enable`, `app:disable` and `app:remove --keep-data`. Turning an app
+off writes its id to `/var/lib/nextcloud/.losos-apps-off`, and every start
+honours it: the pod leaves those ids out of its `app:enable` line, and
+native mode turns them off again after the module's `extraAppsEnable`.
+Turning it on or adding it again takes the id off the list. The store
+search downloads the store's index for this Nextcloud version once every
+six hours (`apps.nextcloud.com/api/v1/platform/<version>/apps.json`, about
+17 MB) and keeps the newest stable release of each app.
+
+The owner's account (`notshared`) is taken out of Nextcloud's `admin`
+group on every start (`demoteOwner`, after the installer made it the first
+administrator), so a signed-in owner cannot change from inside LosOS cloud
+what LosOS sets. Everything lososd asks of Nextcloud as the owner (app
+passwords, WebDAV, `cloud/user`) works for a standard account. Nextcloud's
+own Apps and Users pages are therefore out of reach; people get their
+accounts from LosOS Login on first visit. `nix/tests/cloud-apps.nix` checks
+the group, the list, that an app turned off is still off after
+`nextcloud-setup` runs again, and that only a store app can be removed.
 
 ## Backup, restore and erase
 

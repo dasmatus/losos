@@ -226,6 +226,11 @@ let
   # value is a string. Read after config.php, so Nextcloud's own writes
   # there never win over these.
   // lib.mapAttrs (_: phpStr) (nc.site.system config.losos.nextcloud.site)
+  # While it federates, the key that lets it reach other boxes on the LAN
+  # (modules/nextcloud-stack.nix, `federation`). Booleans, written as PHP.
+  // lib.optionalAttrs config.lososInternal.federation.nextcloud (
+    lib.mapAttrs (_: v: lib.boolToString v) nc.federation.system
+  )
   # Behind the master proxy Traefik terminates TLS and the pod is reached over
   # plain HTTP. Without these Nextcloud derives http:// absolute URLs and
   # embeds them in an https:// page — mixed content, blocked by browsers, and

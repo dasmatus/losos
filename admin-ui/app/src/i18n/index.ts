@@ -7,6 +7,7 @@
 import access from "./access";
 import advanced from "./advanced";
 import apps from "./apps";
+import cloudApps from "./cloud-apps";
 import home from "./home";
 import install from "./install";
 import lab from "./lab";
@@ -31,6 +32,7 @@ export const MESSAGES = {
   ...panes,
   ...widgets,
   ...apps,
+  ...cloudApps,
   ...install,
   ...look,
   ...machines,

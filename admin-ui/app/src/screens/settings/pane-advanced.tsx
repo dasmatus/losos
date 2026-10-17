@@ -380,7 +380,7 @@ function OptionRow({
         ) : elsewhere ? (
           <>
             <RowValue className="text-ink">{describeLiteral(raw ?? defaultRaw, t)}</RowValue>
-            <PaneLink pane={onPane} className="text-[12.5px] text-accent underline-offset-4 hover:underline">
+            <PaneLink pane={onPane} hash={appFold(option.name)} className="text-[12.5px] text-accent underline-offset-4 hover:underline">
               {t("advanced.owned.changeIn", { pane: paneById(onPane).label })}
             </PaneLink>
           </>
@@ -420,7 +420,7 @@ function OptionRow({
  * pane owns it, else the line overrides.nix will carry, else what the box
  * runs with. An option the document does not have counts as on, so a stale
  * `needs` never locks a row. */
-function draftOn(form: SettingsForm, name: string): boolean {
+export function draftOn(form: SettingsForm, name: string): boolean {
   const owned = OWNED[name];
   if (owned !== undefined && form.draft !== null) return form.draft[owned.key] === true;
   const raw = form.extra[name];
@@ -703,18 +703,29 @@ function groupBy(options: readonly OptionDoc[]): [string, OptionDoc[]][] {
   return general === undefined ? rest : [["general", general], ...rest];
 }
 
+/* The Apps pane keeps each app's settings in its own fold (pane-apps.tsx),
+ * opened by the link's hash. */
+function appFold(name: string): string | undefined {
+  if (name.startsWith("nextcloud.")) return "cloud";
+  if (name.startsWith("forgejo.")) return "git";
+  return undefined;
+}
+
 /* A link to another pane: the router's Link when there is a router above
  * (the app), a plain anchor otherwise (a test rendering the screen alone). */
 function PaneLink({
   pane,
+  hash,
   className,
   children,
 }: {
   pane: Parameters<typeof paneHref>[0];
+  /** A fold on that pane to open, such as the Apps pane's `cloud`. */
+  hash?: string;
   className?: string;
   children: React.ReactNode;
 }) {
-  const href = paneHref(pane);
+  const href = paneHref(pane) + (hash === undefined ? "" : `#${hash}`);
   const routed = useInRouterContext();
   return routed ? (
     <Link to={href} className={className}>
