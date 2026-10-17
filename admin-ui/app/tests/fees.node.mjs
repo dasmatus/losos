@@ -111,6 +111,23 @@ chain['solana-devnet'] = {
   assert.equal(est.usdMicros, null);
 }
 
+// Through the escrow program the edge opens the token accounts; the buyer
+// lends the rent of the deposit and its vault, which comes back, and pays
+// only the signature.
+chain['solana-devnet'] = {
+  getAccountInfo: () => {
+    throw new Error('the escrow estimate looks up no token account');
+  },
+  getMinimumBalanceForRentExemption: ([bytes]) => ({ 196: 2_255_040, 165: 2_039_280 })[bytes],
+};
+{
+  const escrowed = { ...sol, pay: 'LosEscrow1111111111111111111111111111111111' };
+  const est = await fees.estimateFee(escrowed, { kind: 'pay', amount: 1_000_000n, recipients: [seller] }, { sol: '150000000' });
+  assert.equal(est.native, 5_000n + 2_255_040n + 2_039_280n);
+  // 150 dollars per SOL: 5000 lamports is 750 micro-dollars.
+  assert.equal(est.usdMicros, 750n);
+}
+
 // The ranking: the cheapest network the wallet can pay on, in dollars.
 const e = (network, native, usdMicros, symbol = 'ETH') => ({ network, native, symbol, decimals: 18, usdMicros });
 const held = (network, usdc, gas) => ({ network, usdc, gas });

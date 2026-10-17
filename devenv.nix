@@ -42,6 +42,11 @@ let
     "admin-ui/tui"
   ];
   forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
+  # The Solana escrow program (edge/contracts/solana/README.md). Linted with
+  # the others; its suite runs the program `cargo build-sbf` makes, so it is
+  # `test-solana-escrow`'s, not test-rust's.
+  linted = crates ++ [ "edge/contracts/solana" ];
+  forEachLinted = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') linted;
 
   # mold as the linker, ccache in front of gcc, sccache in front of rustc:
   # the stdenv nix/packages.nix builds the crates with and flake.nix's
@@ -218,7 +223,7 @@ in
       name = "rustfmt (both crates)";
       entry = "${pkgs.writeShellScript "rustfmt-both" ''
         set -e
-        ${forEachCrate (c: "cargo fmt --manifest-path ${c}/Cargo.toml --check")}
+        ${forEachLinted (c: "cargo fmt --manifest-path ${c}/Cargo.toml --check")}
       ''}";
       files = "\\.rs$";
       pass_filenames = false;
@@ -229,7 +234,7 @@ in
       name = "clippy -D warnings (both crates)";
       entry = "${pkgs.writeShellScript "clippy-both" ''
         set -e
-        ${forEachCrate (c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings")}
+        ${forEachLinted (c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings")}
       ''}";
       files = "\\.(rs|toml)$";
       pass_filenames = false;
@@ -267,13 +272,13 @@ in
   # NIX_TOOLBOX_STORE is unset, and the alias would otherwise shadow the real
   # binary inside these scripts.
 
-  scripts.fmt.exec = forEachCrate (c: "cargo fmt --manifest-path ${c}/Cargo.toml");
+  scripts.fmt.exec = forEachLinted (c: "cargo fmt --manifest-path ${c}/Cargo.toml");
   scripts.fmt.description = "Format both Rust crates.";
 
   scripts.lint.exec = ''
     set -e
-    ${forEachCrate (c: "cargo fmt --manifest-path ${c}/Cargo.toml --check")}
-    ${forEachCrate (c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings")}
+    ${forEachLinted (c: "cargo fmt --manifest-path ${c}/Cargo.toml --check")}
+    ${forEachLinted (c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings")}
   '';
   scripts.lint.description = "rustfmt --check + clippy -D warnings, every crate.";
 
@@ -301,6 +306,25 @@ in
     ${forEachCrate (c: "cargo test --manifest-path ${c}/Cargo.toml")}
   '';
   scripts.test-rust.description = "Unit tests for every Rust crate.";
+
+  # The escrow program built for the Solana VM, its suite in LiteSVM, then the
+  # registrar against a real solana-test-validator running it. Needs Anza's
+  # tool suite on PATH (cargo-build-sbf, solana-test-validator), which nixpkgs
+  # does not carry at the pinned version; CI's `solana-escrow` job installs
+  # it. Not in `devenv test` for that reason.
+  scripts.test-solana-escrow.exec = ''
+    set -eu
+    for tool in cargo-build-sbf solana-test-validator; do
+      command -v "$tool" >/dev/null || { echo "$tool is not on PATH (Anza's tool suite)" >&2; exit 1; }
+    done
+    manifest="$DEVENV_ROOT/edge/contracts/solana/Cargo.toml"
+    cargo build-sbf --manifest-path "$manifest"
+    export LOSOS_ESCROW_SO="$DEVENV_ROOT/edge/contracts/solana/target/deploy/losos_escrow.so"
+    cargo test --manifest-path "$manifest"
+    LOSOS_SOLANA_TEST_VALIDATOR="$(command -v solana-test-validator)" \
+      cargo test --manifest-path "$DEVENV_ROOT/edge/registrar/Cargo.toml" --test solana_escrow
+  '';
+  scripts.test-solana-escrow.description = "Build the Solana escrow program and test it and the registrar against it.";
 
   # losos, the terminal client (admin-ui/tui/README.md), as CI's `tui` job
   # ships it: the static musl binary, then the pseudo-terminal test against
@@ -468,6 +492,7 @@ in
     echo "losos dev shell"
     echo "  fmt · lint · test-rust        Rust"
     echo "  test-tui                      the static losos in a pseudo-terminal"
+    echo "  test-solana-escrow            the Solana escrow program (needs Anza's tools)"
     echo "  lint-wasm                     clippy on the Lab canvas's wasm32 builds"
     echo "  check-flake · check-eval      Nix eval gates"
     echo "  build-pkgs · build-images     builds"

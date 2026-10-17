@@ -2681,9 +2681,9 @@ export default defineMessages({
     de: "Zahlung geht zurück",
   },
   "panes.market.usdc.gas": {
-    en: "USDC does not pay the network fee. The wallet also needs a little ETH on the network it pays on, or SOL on Solana, where the first payment to a seller also opens their USDC account. The wallet offers the network with the lowest fee first and pays the lowest fee that still gets into a block.",
-    sk: "USDC neplatí poplatok siete. Peňaženka na to potrebuje aj trochu ETH na sieti, na ktorej platí, alebo SOL na Solane, kde prvá platba predajcovi mu aj otvorí účet pre USDC. Peňaženka ponúkne najprv sieť s najnižším poplatkom a platí najnižší poplatok, s ktorým sa platba ešte dostane do bloku.",
-    de: "USDC zahlt die Netzwerkgebühr nicht. Die Wallet braucht dafür auch ein wenig ETH auf dem Netzwerk, auf dem sie zahlt, oder SOL auf Solana, wo die erste Zahlung an einen Verkäufer auch sein USDC-Konto eröffnet. Die Wallet bietet zuerst das Netzwerk mit der niedrigsten Gebühr an und zahlt die niedrigste Gebühr, mit der die Zahlung noch in einen Block kommt.",
+    en: "USDC does not pay the network fee. The wallet also needs a little ETH on the network it pays on, or SOL on Solana. Through the escrow on Solana, a payment also sets aside about 0.0043 SOL for its deposit, which comes back when the deposit closes. The wallet offers Solana's escrow first, then the network with the lowest fee, and pays the lowest fee that still gets into a block.",
+    sk: "USDC neplatí poplatok siete. Peňaženka na to potrebuje aj trochu ETH na sieti, na ktorej platí, alebo SOL na Solane. Cez escrow na Solane platba navyše odloží asi 0,0043 SOL na svoj vklad, ktoré sa vrátia, keď sa vklad uzavrie. Peňaženka ponúkne najprv escrow na Solane, potom sieť s najnižším poplatkom, a platí najnižší poplatok, s ktorým sa platba ešte dostane do bloku.",
+    de: "USDC zahlt die Netzwerkgebühr nicht. Die Wallet braucht dafür auch ein wenig ETH auf dem Netzwerk, auf dem sie zahlt, oder SOL auf Solana. Über den Escrow auf Solana legt eine Zahlung zusätzlich etwa 0,0043 SOL für ihre Einlage zurück, die zurückkommen, sobald die Einlage geschlossen wird. Die Wallet bietet zuerst den Escrow auf Solana an, dann das Netzwerk mit der niedrigsten Gebühr, und zahlt die niedrigste Gebühr, mit der die Zahlung noch in einen Block kommt.",
   },
   "panes.market.usdc.saved": {
     en: "Wallet saved in this browser",

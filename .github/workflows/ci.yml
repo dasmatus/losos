@@ -172,6 +172,7 @@ jobs:
             cargo clippy --manifest-path admin-ui/lab/virt-rpc/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path admin-ui/lab/render/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path admin-ui/tui/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --manifest-path edge/contracts/solana/Cargo.toml --all-targets -- -D warnings
           '
       # rustfmt is only *checked* on pull requests. On a push to main fmt-bot
       # fixes it instead — checking it here too would mean this job goes red
@@ -189,6 +190,7 @@ jobs:
             cargo fmt --manifest-path admin-ui/lab/virt-rpc/Cargo.toml --check
             cargo fmt --manifest-path admin-ui/lab/render/Cargo.toml --check
             cargo fmt --manifest-path admin-ui/tui/Cargo.toml --check
+            cargo fmt --manifest-path edge/contracts/solana/Cargo.toml --check
           '
       # The hit rate, so a cache that stopped being taken is visible in the
       # log rather than as a job that quietly got slower.
@@ -288,6 +290,50 @@ jobs:
       - name: compiler cache statistics
         if: always()
         run: nix develop .#ci -c bash -euo pipefail -c 'sccache --show-stats; ccache --show-stats'
+
+  solana-escrow:
+    name: "solana: build and test the escrow program"
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # devenv.nix's test-solana-escrow. The program is built for the Solana VM
+    # by Anza's cargo-build-sbf, which nixpkgs does not carry at this
+    # version, so the tool suite comes from Anza's installer, pinned by
+    # version and checked by hash. Its suite then runs the built program in
+    # LiteSVM, and the registrar's tests/solana_escrow.rs drives a real edge
+    # against solana-test-validator with the program loaded.
+    env:
+      AGAVE_VERSION: v4.0.3
+      AGAVE_INSTALL_SHA256: 9cefdb7493c9b42e91bf5d44663aea84042c5d2e6420a70aea10be11b7d74aaa
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+        with:
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/sccache
+            ~/.cache/ccache
+          key: ${{ runner.os }}-solana-compiler-cache-${{ hashFiles('edge/contracts/solana/Cargo.lock', 'edge/registrar/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-solana-compiler-cache-
+      - name: install Anza's tool suite
+        run: |
+          curl -sSfL "https://release.anza.xyz/${AGAVE_VERSION}/install" -o agave-install.sh
+          echo "${AGAVE_INSTALL_SHA256}  agave-install.sh" | sha256sum -c -
+          sh agave-install.sh
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: build the program
+        run: cargo build-sbf --manifest-path edge/contracts/solana/Cargo.toml
+      - name: test the program and the registrar against it
+        run: |
+          export LOSOS_ESCROW_SO="$PWD/edge/contracts/solana/target/deploy/losos_escrow.so"
+          export LOSOS_SOLANA_TEST_VALIDATOR="$(command -v solana-test-validator)"
+          nix develop .#ci -c bash -euo pipefail -c '
+            cargo test --manifest-path edge/contracts/solana/Cargo.toml
+            cargo test --manifest-path edge/registrar/Cargo.toml --test solana_escrow
+          '
 
   eval:
     name: "nix: flake check + module merge + ISO derivation"
@@ -795,6 +841,7 @@ jobs:
             cargo fmt --manifest-path admin-ui/lab/virt-rpc/Cargo.toml
             cargo fmt --manifest-path admin-ui/lab/render/Cargo.toml
             cargo fmt --manifest-path admin-ui/tui/Cargo.toml
+            cargo fmt --manifest-path edge/contracts/solana/Cargo.toml
           '
       - name: commit and push if anything changed
         run: |

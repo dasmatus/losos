@@ -842,6 +842,21 @@ fn edge(io: &mut Io, host: Option<&str>, command: EdgeCommand) -> Result<u8> {
     Ok(0)
 }
 
+/// Lamports as SOL with up to six decimals, without floating point.
+pub fn format_sol(lamports: &str) -> String {
+    let Ok(n) = lamports.trim().parse::<u64>() else {
+        return format!("{lamports} lamports");
+    };
+    let unit = 1_000_000_000;
+    let frac = format!("{:06}", (n % unit) / 1_000);
+    let frac = frac.trim_end_matches('0');
+    if frac.is_empty() {
+        format!("{} SOL", n / unit)
+    } else {
+        format!("{}.{frac} SOL", n / unit)
+    }
+}
+
 /// Wei as ETH with up to six decimals, without floating point.
 pub fn format_eth(wei: &str) -> String {
     let Ok(n) = wei.trim().parse::<u128>() else {
@@ -872,6 +887,9 @@ fn releaser(io: &mut Io, host: Option<&str>, make: bool, replace: bool) -> Resul
         let address = answer.get("address").and_then(Value::as_str).unwrap_or("");
         io.line(tr!("tui.edge.releaserMade", address = address));
         io.line(tr!("tui.edge.releaserNext", address = address));
+        if let Some(solana) = answer.get("solanaAddress").and_then(Value::as_str) {
+            io.line(tr!("tui.edge.releaserSolanaNext", address = solana));
+        }
         return Ok(0);
     }
     let report = session.get("/escrow/releaser")?;
@@ -880,6 +898,9 @@ fn releaser(io: &mut Io, host: Option<&str>, make: bool, replace: bool) -> Resul
         return Ok(0);
     };
     io.line(tr!("tui.edge.releaserAddress", address = address));
+    if let Some(solana) = report.get("solanaAddress").and_then(Value::as_str) {
+        io.line(tr!("tui.edge.releaserSolanaAddress", address = solana));
+    }
     for n in report
         .get("networks")
         .and_then(Value::as_array)
@@ -890,15 +911,24 @@ fn releaser(io: &mut Io, host: Option<&str>, make: bool, replace: bool) -> Resul
         let state = match n.get("error").and_then(Value::as_str) {
             Some(error) => error.to_string(),
             None => {
-                let balance = format_eth(
-                    &n.get("balanceWei")
-                        .and_then(Value::as_str)
-                        .map_or("0".into(), str::to_string),
-                );
-                let agrees = if n.get("escrowAgrees").and_then(Value::as_bool) == Some(true) {
-                    tr!("tui.edge.releaserAgrees")
-                } else {
-                    tr!("tui.edge.releaserDisagrees", escrow = field("escrow"))
+                let solana = n.get("balanceLamports").and_then(Value::as_str);
+                let balance = match solana {
+                    Some(lamports) => format_sol(lamports),
+                    None => format_eth(
+                        &n.get("balanceWei")
+                            .and_then(Value::as_str)
+                            .map_or("0".into(), str::to_string),
+                    ),
+                };
+                let agrees = match (n.get("escrowAgrees").and_then(Value::as_bool), solana) {
+                    (Some(true), _) => tr!("tui.edge.releaserAgrees"),
+                    (None, Some(_)) => {
+                        tr!("tui.edge.releaserNoConfig", escrow = field("escrow"))
+                    }
+                    (_, Some(_)) => {
+                        tr!("tui.edge.releaserSolanaDisagrees", escrow = field("escrow"))
+                    }
+                    (_, None) => tr!("tui.edge.releaserDisagrees", escrow = field("escrow")),
                 };
                 format!("{balance}  {agrees}")
             }
@@ -1132,6 +1162,10 @@ mod tests {
         assert_eq!(format_eth("1234567890000000000"), "1.234567 ETH");
         assert_eq!(format_eth("500000000000000"), "0.0005 ETH");
         assert_eq!(format_eth("x"), "x wei");
+        assert_eq!(format_sol("0"), "0 SOL");
+        assert_eq!(format_sol("1000000000"), "1 SOL");
+        assert_eq!(format_sol("2039280"), "0.002039 SOL");
+        assert_eq!(format_sol("x"), "x lamports");
     }
 
     #[test]

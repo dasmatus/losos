@@ -74,6 +74,7 @@ pub mod seed;
 pub mod server;
 pub mod slots;
 pub mod solana;
+pub mod solana_escrow;
 pub mod stablecoin;
 pub mod stripe_gate;
 pub mod stripe_mode;

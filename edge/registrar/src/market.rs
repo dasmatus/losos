@@ -398,12 +398,21 @@ pub struct Card {
     pub refund: Option<u64>,
 }
 
-/// What the edge does with one deposit in `LososEscrow`, and how far it got.
+/// What the edge does with one deposit in `LososEscrow` or `losos-escrow`,
+/// and how far it got.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Escrow {
     pub network: String,
-    /// The escrow's deposit id, from the `Held` log.
+    /// The escrow's deposit id, from the `Held` log. Zero on Solana, where
+    /// a deposit is an account: [`Escrow::account`].
     pub deposit: u64,
+    /// Solana: the deposit account. It exists while the payment is held.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
+    /// Solana: when the payer may take the deposit back alone, from the
+    /// deposit itself. A deposit gone before then was finished by the edge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline: Option<u64>,
     pub step: EscrowStep,
     /// Why the deposit goes back to the payer. `None` on a release.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -459,7 +468,12 @@ impl EscrowStep {
 pub struct ReleaserReport {
     /// `None` until a key is sealed.
     pub address: Option<String>,
-    /// One row per EVM network, in the order they are configured.
+    /// The same key's Solana address, when a Solana network has the escrow
+    /// program.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub solana_address: Option<String>,
+    /// One row per network with an escrow, in the order they are
+    /// configured.
     pub networks: Vec<ReleaserNetwork>,
 }
 
@@ -469,10 +483,15 @@ pub struct ReleaserNetwork {
     pub network: &'static str,
     /// The `LososEscrow` this network's payments go to.
     pub escrow: String,
-    /// The gas the key holds there, in wei as a decimal string.
+    /// The gas the key holds there, in wei as a decimal string. EVM only.
     pub balance_wei: Option<String>,
+    /// The SOL the key holds there, in lamports as a decimal string. Solana
+    /// only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub balance_lamports: Option<String>,
     /// Whether that escrow's `releaser()` is this key. `false` until the
-    /// treasury calls `setReleaser` with the address.
+    /// treasury calls `setReleaser` with the address. On Solana `None` until
+    /// the treasury has made its config with `initialize`.
     pub escrow_agrees: Option<bool>,
     /// Why the other two are missing, when the key exists.
     pub error: Option<&'static str>,
@@ -1945,6 +1964,11 @@ pub struct MarketOpts {
 /// deposit and sends it again at a higher fee.
 const ESCROW_RESEND_SECS: u64 = 10 * 60;
 
+/// How long the edge waits for a Solana transaction it sent before it reads
+/// the deposit again. Its blockhash lasts about a minute, so after this it
+/// either landed or never will.
+const SOLANA_RESEND_SECS: u64 = 3 * 60;
+
 /// Whose escrow record a pass is updating.
 enum EscrowJob {
     Order(String),
@@ -1955,7 +1979,19 @@ enum EscrowJob {
 /// What a USDC payment must show, per family.
 enum Expected {
     Evm(crate::stablecoin::ExpectedPayment),
+    /// Held in `losos-escrow`.
+    SolanaEscrow(crate::solana_escrow::ExpectedDeposit),
+    /// Straight to the seller, on a direct-pay edge.
     Solana(crate::solana::ExpectedTransfer),
+}
+
+/// Where a confirmed payment is held: the deposit, and whether the seller
+/// can receive it.
+struct HeldAt {
+    deposit: u64,
+    account: Option<String>,
+    deadline: Option<u64>,
+    seller_ok: bool,
 }
 
 pub struct Market {
@@ -2338,13 +2374,18 @@ impl Market {
             payout_solana: seller.and_then(|s| s.payout_solana.clone()),
             usdc: self.opts.usdc.as_ref().and_then(|usdc| {
                 let mut public = usdc.public();
-                // Solana pays the seller at once, so without direct pay it is
-                // neither a way to pay nor a payout to set up.
+                // Solana without the escrow program pays the seller at once,
+                // so without direct pay it is neither a way to pay nor a
+                // payout to set up.
                 if !self.opts.direct_pay {
-                    public
+                    public.chains.retain(|c| c.pay.is_some());
+                    if !public
                         .chains
-                        .retain(|c| c.family == crate::stablecoin::Family::Evm);
-                    public.solana = None;
+                        .iter()
+                        .any(|c| c.family == crate::stablecoin::Family::Solana)
+                    {
+                        public.solana = None;
+                    }
                     if public.chains.is_empty() {
                         return None;
                     }
@@ -2388,6 +2429,17 @@ impl Market {
             || !self.coins_of(state, id).is_empty()
     }
 
+    /// Whether orders may be paid in USDC on Solana: held in the escrow
+    /// program, or straight to the seller on a direct-pay edge.
+    fn solana_takes_orders(&self) -> bool {
+        self.opts.direct_pay
+            || self
+                .opts
+                .usdc
+                .as_ref()
+                .is_some_and(crate::stablecoin::UsdcOpts::solana_escrowed)
+    }
+
     /// Coins this edge takes for orders, in the order the buyer sees them.
     /// None without [`MarketOpts::direct_pay`]: a coin payment reaches the
     /// seller at once, so the slot has nothing held to refund from.
@@ -2420,12 +2472,13 @@ impl Market {
     }
 
     /// Whether a buyer can pay `seller` in USDC or by card. Solana USDC
-    /// counts only with [`MarketOpts::direct_pay`]: it goes straight to the
-    /// seller, so the slot has nothing held to refund from.
+    /// counts when the escrow program holds it, or with
+    /// [`MarketOpts::direct_pay`]: without the program it goes straight to
+    /// the seller, so the slot has nothing held to refund from.
     fn accepts_payouts(&self, seller: &Seller) -> bool {
         if let Some(usdc) = &self.opts.usdc {
             (seller.payout.is_some() && usdc.has(crate::stablecoin::Family::Evm))
-                || (self.opts.direct_pay
+                || (self.solana_takes_orders()
                     && seller.payout_solana.is_some()
                     && usdc.has(crate::stablecoin::Family::Solana))
         } else {
@@ -2846,7 +2899,7 @@ impl Market {
                 } else {
                     None
                 },
-                pay_to_solana: if rail == Rail::Usdc && self.opts.direct_pay {
+                pay_to_solana: if rail == Rail::Usdc && self.solana_takes_orders() {
                     seller.payout_solana.clone()
                 } else {
                     None
@@ -4149,7 +4202,61 @@ impl Market {
                         );
                     })
                     .is_ok();
-                held = Some((deposit, seller));
+                held = Some(HeldAt {
+                    deposit,
+                    account: None,
+                    deadline: None,
+                    seller_ok: seller,
+                });
+            }
+            Expected::SolanaEscrow(expected) => {
+                let releaser = crate::evm_tx::Releaser::read(std::path::Path::new(
+                    usdc.releaser_file
+                        .as_deref()
+                        .ok_or(MarketError::Unconfigured)?,
+                ))
+                .await
+                .inspect_err(misconfigured)?;
+                let releaser = crate::solana_escrow::SolanaReleaser::from_releaser(&releaser);
+                let genesis = chain
+                    .genesis
+                    .as_deref()
+                    .or(chain.network.genesis)
+                    .ok_or(MarketError::Unconfigured)?;
+                crate::solana::check_genesis(&url, genesis)
+                    .await
+                    .inspect_err(misconfigured)?;
+                crate::solana_escrow::check_config(
+                    &url,
+                    &expected.program,
+                    &chain.treasury,
+                    chain.network.usdc,
+                    &releaser.address(),
+                )
+                .await
+                .inspect_err(misconfigured)?;
+                // A test network may run a program still being worked on.
+                if !chain.network.test {
+                    crate::solana_escrow::check_final(&url, &expected.program)
+                        .await
+                        .inspect_err(misconfigured)?;
+                }
+                let found = crate::solana::fetch_transaction(&url, &tx).await?;
+                let account = crate::solana_escrow::deposit_of(&found, &expected.program)
+                    .map_err(MarketError::Conflict)?;
+                let deposit = crate::solana_escrow::read_deposit(&url, &expected.program, &account)
+                    .await?
+                    .ok_or(MarketError::Conflict(
+                        "the escrow holds no such deposit; it may have been paid out already",
+                    ))?;
+                crate::solana_escrow::deposit_matches(&deposit, expected)
+                    .map_err(MarketError::Conflict)?;
+                held = Some(HeldAt {
+                    deposit: 0,
+                    account: Some(account),
+                    deadline: Some(expected.deadline),
+                    seller_ok: true,
+                });
             }
             Expected::Solana(expected) => {
                 let genesis = chain
@@ -4173,9 +4280,11 @@ impl Market {
         let now = now_secs();
         // A deposit the order takes is held until its slot is over
         // (`crate::slots`); one it cannot take goes back at once.
-        let escrow = |deposit, reason: Option<RefundReason>| Escrow {
+        let escrow = |at: &HeldAt, reason: Option<RefundReason>| Escrow {
             network: chain.network.key.to_string(),
-            deposit,
+            deposit: at.deposit,
+            account: at.account.clone(),
+            deadline: at.deadline,
             step: if reason.is_some() {
                 EscrowStep::Refund
             } else {
@@ -4190,7 +4299,7 @@ impl Market {
             .presence
             .get(&seller_of(&next, order_id))
             .map_or(0, |p| p.offline);
-        if let (Some(reason), Some((deposit, _))) = (stray, held) {
+        if let (Some(reason), Some(at)) = (stray, &held) {
             tracing::warn!(
                 target: Action::Market.target(),
                 "order {order_id} cannot take the payment in {tx} ({reason:?}); refunding it",
@@ -4201,7 +4310,7 @@ impl Market {
                     order_id: order_id.to_string(),
                     buyer: buyer.to_string(),
                     received_at: now,
-                    escrow: escrow(deposit, Some(reason)),
+                    escrow: escrow(at, Some(reason)),
                 },
             );
             self.commit(&mut state, next).await?;
@@ -4210,10 +4319,10 @@ impl Market {
         let order = next.orders.get_mut(order_id).ok_or(MarketError::NotFound)?;
         order.tx_hash = Some(tx);
         order.paid_network = Some(chain.network.key.to_string());
-        if let Some((deposit, false)) = held {
+        if let Some(at) = held.as_ref().filter(|at| !at.seller_ok) {
             let reason = RefundReason::SellerCannotReceive;
             order.status = OrderStatus::Expired;
-            order.escrow = Some(escrow(deposit, Some(reason)));
+            order.escrow = Some(escrow(at, Some(reason)));
             self.commit(&mut state, next).await?;
             return Err(MarketError::Conflict(reason.message()));
         }
@@ -4226,7 +4335,7 @@ impl Market {
         order.status = OrderStatus::Paid;
         order.paid_at = Some(now);
         order.expires_at = Some(now + ENTITLEMENT_SECS);
-        order.escrow = held.map(|(deposit, _)| escrow(deposit, None));
+        order.escrow = held.as_ref().map(|at| escrow(at, None));
         order.offline_base = offline_base;
         // A Solana transfer paid the treasury its share as it was confirmed;
         // an escrowed one does so when the edge releases it.
@@ -4383,9 +4492,18 @@ impl Market {
             .is_some_and(|u| u.releaser_file.is_some())
     }
 
-    /// The releaser key as the operator needs to see it: its address, and on
-    /// each EVM network the gas it holds and whether the escrow there takes
-    /// orders from it. The key itself never leaves this process.
+    /// Whether a Solana network holds payments in the escrow program, so the
+    /// releaser key has a Solana address too.
+    pub fn solana_escrowed(&self) -> bool {
+        self.opts
+            .usdc
+            .as_ref()
+            .is_some_and(crate::stablecoin::UsdcOpts::solana_escrowed)
+    }
+
+    /// The releaser key as the operator needs to see it: its addresses, and
+    /// on each network with an escrow the gas it holds and whether the
+    /// escrow there takes orders from it. The key itself never leaves this process.
     pub async fn releaser_report(&self) -> Result<ReleaserReport, MarketError> {
         let usdc = self.opts.usdc.as_ref().ok_or(MarketError::Unconfigured)?;
         let file = usdc
@@ -4393,17 +4511,50 @@ impl Market {
             .as_deref()
             .ok_or(MarketError::Unconfigured)?;
         let releaser = crate::evm_tx::Releaser::read(Path::new(file)).await.ok();
+        let solana = releaser
+            .as_ref()
+            .map(crate::solana_escrow::SolanaReleaser::from_releaser);
         let mut networks = Vec::new();
         for chain in usdc.chains.iter().filter(|c| c.pay.is_some()) {
             let mut row = ReleaserNetwork {
                 network: chain.network.key,
                 escrow: chain.pay.clone().unwrap_or_default(),
                 balance_wei: None,
+                balance_lamports: None,
                 escrow_agrees: None,
                 error: None,
             };
             match crate::stablecoin::read_rpc_url(Path::new(&chain.rpc_file)).await {
                 Err(_) => row.error = Some("the network's endpoint is not sealed yet"),
+                Ok(url) if chain.network.family == crate::stablecoin::Family::Solana => {
+                    if let Some(r) = &solana {
+                        match crate::solana_escrow::releaser_on_chain(
+                            &url,
+                            &row.escrow,
+                            &chain.treasury,
+                            chain.network.usdc,
+                            &r.address(),
+                        )
+                        .await
+                        {
+                            Ok((lamports, agrees)) => {
+                                row.balance_lamports = Some(lamports.to_string());
+                                row.escrow_agrees = agrees;
+                                if !chain.network.test {
+                                    if let Err(MarketError::Conflict(why)) =
+                                        crate::solana_escrow::check_final(&url, &row.escrow).await
+                                    {
+                                        row.error = Some(why);
+                                    }
+                                }
+                            }
+                            Err(MarketError::Conflict(why) | MarketError::Invalid(why)) => {
+                                row.error = Some(why);
+                            }
+                            Err(_) => row.error = Some("the chain endpoint did not answer"),
+                        }
+                    }
+                }
                 Ok(url) => {
                     if let Some(r) = &releaser {
                         match crate::stablecoin::releaser_on_chain(&url, &row.escrow, r.address())
@@ -4425,6 +4576,9 @@ impl Market {
         }
         Ok(ReleaserReport {
             address: releaser.map(|r| r.address_hex()),
+            solana_address: solana
+                .filter(|_| usdc.solana_escrowed())
+                .map(|r| r.address_base58()),
             networks,
         })
     }
@@ -4484,7 +4638,10 @@ impl Market {
                 Err(e) => tracing::warn!(
                     target: Action::Market.target(),
                     "escrow deposit {} on {}: {e}",
-                    escrow.deposit,
+                    escrow
+                        .account
+                        .clone()
+                        .unwrap_or_else(|| escrow.deposit.to_string()),
                     escrow.network,
                 ),
             }
@@ -4702,6 +4859,10 @@ impl Market {
     ) -> Result<Option<Escrow>, MarketError> {
         use crate::stablecoin::DepositState;
         let chain = Self::usdc_chain(usdc, Some(&escrow.network))?;
+        if chain.network.family == crate::stablecoin::Family::Solana {
+            let releaser = crate::solana_escrow::SolanaReleaser::from_releaser(releaser);
+            return self.solana_escrow_step(&chain, &releaser, escrow).await;
+        }
         let chain_id = chain.network.chain_id.ok_or(MarketError::Unconfigured)?;
         let pay = chain.pay.as_deref().ok_or(MarketError::Unconfigured)?;
         let to = crate::stablecoin::address_bytes(pay).ok_or(MarketError::Unconfigured)?;
@@ -4772,6 +4933,91 @@ impl Market {
                 "the escrow has no such deposit; the payment may have been reorganised away",
             )),
         }
+    }
+
+    /// [`Market::escrow_step`] on Solana. The program closes a deposit when
+    /// it is released, refunded or split, so the edge's own transaction is
+    /// the first truth and the deposit the second: one still there is still
+    /// held, and one gone before its deadline was finished by this edge,
+    /// the only key that can before then. One gone after it, by a
+    /// transaction that is not the edge's, was taken back by the payer.
+    async fn solana_escrow_step(
+        &self,
+        chain: &crate::stablecoin::UsdcChain,
+        releaser: &crate::solana_escrow::SolanaReleaser,
+        escrow: &Escrow,
+    ) -> Result<Option<Escrow>, MarketError> {
+        use crate::solana_escrow::{Landed, Move};
+        let program = chain.pay.as_deref().ok_or(MarketError::Unconfigured)?;
+        let account = escrow
+            .account
+            .as_deref()
+            .ok_or(MarketError::Conflict("the escrow record names no deposit"))?;
+        let url = crate::stablecoin::read_rpc_url(std::path::Path::new(&chain.rpc_file)).await?;
+        let now = now_secs();
+        let done = |step| Escrow {
+            step,
+            tx: None,
+            sent_at: None,
+            ..escrow.clone()
+        };
+        let (finished, step) = match escrow.step {
+            EscrowStep::Release => (EscrowStep::Released, Move::Release),
+            EscrowStep::Refund => (EscrowStep::Refunded, Move::Refund),
+            EscrowStep::Split => (
+                EscrowStep::Settled,
+                Move::Split(
+                    u64::try_from(crate::stablecoin::cents_to_usdc(escrow.refund.unwrap_or(0)))
+                        .map_err(|_| MarketError::Conflict("the refund is too large"))?,
+                ),
+            ),
+            EscrowStep::Held
+            | EscrowStep::Released
+            | EscrowStep::Refunded
+            | EscrowStep::Settled => return Ok(None),
+        };
+        if let Some(tx) = &escrow.tx {
+            match crate::solana_escrow::status(&url, tx).await? {
+                Landed::Done => return Ok(Some(done(finished))),
+                // Refused: the deposit says why.
+                Landed::Failed => {}
+                Landed::Unknown if now < escrow.sent_at.unwrap_or(0) + SOLANA_RESEND_SECS => {
+                    return Ok(None);
+                }
+                // Its blockhash has expired, so it can no longer land.
+                Landed::Unknown => {}
+            }
+        }
+        let held = crate::solana_escrow::read_deposit(&url, program, account).await?;
+        let Some(held) = held else {
+            let before_deadline = escrow.deadline.is_some_and(|d| now < d);
+            return Ok(Some(done(if before_deadline {
+                finished
+            } else {
+                EscrowStep::Refunded
+            })));
+        };
+        let parties = crate::solana_escrow::Parties {
+            program: crate::solana_escrow::key(program).ok_or(MarketError::Unconfigured)?,
+            mint: crate::solana_escrow::key(chain.network.usdc).ok_or(MarketError::Unconfigured)?,
+            treasury: crate::solana_escrow::key(&chain.treasury)
+                .ok_or(MarketError::Unconfigured)?,
+            deposit: crate::solana_escrow::key(account)
+                .ok_or(MarketError::Conflict("the escrow record names no deposit"))?,
+            held,
+        };
+        let signature = crate::solana_escrow::send(&url, releaser, &parties, step).await?;
+        tracing::info!(
+            target: Action::Market.target(),
+            "escrow deposit {account} on {}: sent {:?} as {signature}",
+            escrow.network,
+            escrow.step,
+        );
+        Ok(Some(Escrow {
+            tx: Some(signature),
+            sent_at: Some(now),
+            ..escrow.clone()
+        }))
     }
 
     /// Forward one allowlisted chain call to `network`, or to the ENS
@@ -4857,7 +5103,7 @@ impl Market {
         if order.rail != Rail::Usdc {
             return Err(MarketError::Conflict("this order is not a USDC order"));
         }
-        let escrowed = chain.network.family == Family::Evm;
+        let escrowed = chain.pay.is_some();
         let now = now_secs();
         let mut stray = None;
         match order.status {
@@ -4926,6 +5172,18 @@ impl Market {
                 let seller = order.pay_to_solana.clone().ok_or(no_payout)?;
                 let gross = crate::stablecoin::cents_to_usdc(order.amount);
                 let fee = crate::stablecoin::cents_to_usdc(order.fee + order.fee_offset);
+                if chain.pay.is_some() {
+                    let expected = crate::solana_escrow::ExpectedDeposit::new(
+                        chain,
+                        &seller,
+                        crate::stablecoin::order_id_hash(order_id),
+                        gross,
+                        fee,
+                        usdc_deadline(order),
+                    )
+                    .ok_or(MarketError::Unconfigured)?;
+                    return Ok((Expected::SolanaEscrow(expected), stray));
+                }
                 Ok((
                     Expected::Solana(crate::solana::ExpectedTransfer {
                         mint: chain.network.usdc.to_string(),
@@ -5898,6 +6156,8 @@ mod tests {
         a.escrow = Some(Escrow {
             network: "base".into(),
             deposit: 1,
+            account: None,
+            deadline: None,
             step: EscrowStep::Held,
             reason: None,
             refund: None,

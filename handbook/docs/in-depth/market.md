@@ -9,11 +9,11 @@ mdx:
 
 An optional marketplace where one box sells spare storage or compute and
 another buys it. Buyers pay by card through **Stripe Connect** where the edge
-takes cards, or in USDC on Base, Arbitrum or OP. The edge holds each payment
-until the period the buyer paid for ends, refunds the buyer when the
+takes cards, or in USDC on Solana, Base, Arbitrum or OP. The edge holds each
+payment until the period the buyer paid for ends, refunds the buyer when the
 seller's box stops delivering, and keeps a 4% cut to cover its running
-costs. An edge can also be set to take Bitcoin, Monero, Zcash and USDC on
-Solana, which reach the seller at once and so cannot be refunded.
+costs. An edge can also be set to take Bitcoin, Monero and Zcash, which
+reach the seller at once and so cannot be refunded.
 
 The **Market** row under Mesh in the sidebar opens the pane, at
 `/settings/market`. A box shows the market only when an official LosOS edge
@@ -43,8 +43,9 @@ at once. They return if you resume, and orders already paid are unaffected.
 Money never touches a LosOS box. Buyers pay in one of these ways, as the edge
 allows:
 
-- **USDC on Base, Arbitrum One or OP Mainnet.** The payment goes into the
-  `LososEscrow` contract. The edge checks it (the seller's address, the
+- **USDC on Solana, Base, Arbitrum One or OP Mainnet.** The payment goes
+  into an escrow: the `losos-escrow` program on Solana, the `LososEscrow`
+  contract on the others. The edge checks it (the seller's address, the
   amount, the confirmations) and holds it there until the buyer's period
   ends. Then it releases it to the seller and to the platform treasury,
   which takes the 4% fee. Or it refunds the whole payment to the buyer: when
@@ -53,7 +54,7 @@ allows:
   in time. When the seller's box was offline for too long, it splits the
   payment: the buyer gets back the share not delivered and the seller keeps
   the rest. If the edge never acts, the buyer can reclaim the deposit from
-  the contract 33 days after ordering. See
+  the escrow 33 days after ordering. See
   [Paying with USDC](#paying-with-usdc).
 - **Card, through Stripe Connect.** Optional on an edge. The payment stays
   on the platform's Stripe balance until the buyer's period ends, then the
@@ -64,8 +65,9 @@ allows:
 Those two are the only ways to pay on an edge that has not been set to take
 direct payments as well. With direct payments on, buyers also see:
 
-- **USDC on Solana.** A direct transfer, split between the seller and the
-  treasury in the buyer's own transaction.
+- **USDC on Solana, on an edge without the escrow program.** A direct
+  transfer, split between the seller and the treasury in the buyer's own
+  transaction.
 - **Bitcoin, Monero and Zcash.** Straight to the seller's own wallet, at a
   fresh address for each order, derived from the seller's public key: an
   extended public key or descriptor for Bitcoin, the primary address and
@@ -401,8 +403,10 @@ Stripe. Hardware stays on Stripe. The edge chooses which networks it accepts:
 | OP Mainnet   | OP Sepolia       |
 | Solana       | Solana Devnet    |
 
-Solana is offered only on an edge that also takes direct payments, since
-nothing paid there can be held.
+On Solana the payment is held by the `losos-escrow` program where the edge
+names one. Solana settles in seconds for a fraction of a cent, so the pane
+offers it first. An edge without the program offers Solana only when it also
+takes direct payments, since nothing paid there could be held.
 
 An edge runs on live networks or on test networks, never both. On an edge
 that takes cards the mode follows its Stripe key: live networks with a
@@ -425,13 +429,18 @@ the source (`docs/ci-and-releases.md`) cover setting it up.
 2. The pane lists the wallet's USDC on each network, next to the coin that
    pays that network's fees: ETH, or SOL on Solana.
 3. Order from the shelf. There is no Stripe page. The pane shows the USDC
-   amount and asks which network to pay on, offering first one where the
-   wallet holds enough.
+   amount and asks which network to pay on. It offers Solana's escrow first,
+   unless the wallet holds the USDC only on another network; then the
+   network where the wallet holds enough at the lowest fee.
 4. Pay. On an Ethereum network the wallet approves USDC for `LososEscrow`
    and calls `pay`. The contract holds the payment and records the seller,
    the fee and a refund deadline; nothing reaches the seller yet. On Solana
-   one transaction pays the platform fee to the treasury and the rest to the
-   seller, and names the order in a memo. The first payment to a seller or
+   one transaction calls the escrow program's `pay`, which opens a deposit
+   for the order, moves the USDC into it and records the same three things.
+   The deposit holds about 0.0043 SOL of rent from the wallet, which goes
+   back to it when the deposit closes. Without the escrow program, one
+   transaction pays the platform fee to the treasury and the rest to the
+   seller, and names the order in a memo; the first payment to a seller or
    to the treasury also opens their USDC account, which costs a little SOL.
 5. The edge reads the transaction through its endpoint for that network and
    marks the order paid. A transaction can pay only one order. The order
@@ -439,8 +448,9 @@ the source (`docs/ci-and-releases.md`) cover setting it up.
    explorer, for the buyer and the seller alike.
 6. On an Ethereum network the edge checks the seller's address on that
    network. If it cannot receive USDC there, the edge refunds the whole
-   payment to the buyer and the order is not fulfilled. Otherwise the
-   deposit stays in the escrow while the period runs, and the edge settles
+   payment to the buyer and the order is not fulfilled. Otherwise, and on
+   Solana, the deposit stays in the escrow while the period runs, and the
+   edge settles
    it as [Paid periods and refunds](#paid-periods-and-refunds) describes:
    the fee to the treasury and the rest to the seller, all of it back to the
    buyer, or a split. The order shows which of these happened.
@@ -461,20 +471,31 @@ treasury recorded at payment, refund it to the buyer, or split it between
 the two (`settle`); it cannot send a deposit anywhere else. If the edge has
 not settled a deposit 33 days after the order was placed, the buyer can take
 it back from the contract directly. The edge pays out at least two days
-before that. On
-Solana the edge checks that the endpoint reports the network's genesis hash,
-that the transaction succeeded and is confirmed, that its memo names the
-order, and that the seller's and the treasury's USDC grew by exactly their
-shares.
+before that.
+
+On Solana the edge checks that the endpoint reports the network's genesis
+hash, and that the escrow program's config for the treasury names Circle's
+USDC and the edge's own key. It then reads the deposit the confirmed
+transaction made, and counts it only when it belongs to that config and
+names the order, the seller, and the exact amount, fee and refund deadline.
+The program keeps the same rules as `LososEscrow`: at most half as the fee,
+a release only to the recorded seller and treasury, a refund only to the
+buyer, and the buyer's own refund only after the deadline. A deposit closes
+when it is paid out, and its rent goes back to the buyer. The edge pays the
+small fee of its own transactions in SOL, and opens the seller's and the
+treasury's USDC accounts when they have none. Without the escrow program it
+checks that the transaction succeeded and is confirmed, that its memo names
+the order, and that the seller's and the treasury's USDC grew by exactly
+their shares.
 
 An order holds its units for a quarter of an hour. The pane starts no payment
 in the last two minutes of that, and it keeps the transaction of a payment it
 sent until the edge has counted it, so checking again never pays twice. A
 payment that lands after the hold is still honoured while its units are free.
 If they were sold in the meantime, or another payment already paid the order,
-the edge refunds the payment from the escrow and the pane says so. On Solana,
-which has no escrow, such a payment stays with the seller and the refund has
-to be settled outside the market.
+the edge refunds the payment from the escrow and the pane says so. A direct
+payment on Solana, without the escrow program, stays with the seller, and
+the refund has to be settled outside the market.
 
 :::tip[Test coins come from faucets]
 For a test edge, test USDC comes from
@@ -524,9 +545,9 @@ gateway are not looked up.
 
 Sign with the wallet that should receive USDC. The Ethereum address takes
 sales paid on Base, Arbitrum and OP; they reach it once the buyer's period
-ends and the edge releases the payment from the escrow. On an edge that also
-takes direct payments, the same click signs a Solana address, which takes
-sales paid on Solana directly. The edge checks each signature and stores
+ends and the edge releases the payment from the escrow. The same click
+signs a Solana address, which takes sales paid on Solana the same way, or
+directly on an edge without the escrow program. The edge checks each signature and stores
 only the addresses. A seller with only one of the two set is offered to
 buyers on that kind of network only. Import
 the same phrase into MetaMask, Rabby, Rainbow, Trust Wallet or Phantom when
@@ -679,8 +700,8 @@ and on Solana alike. The buyer still pays the listed price. Only the
 seller's share is smaller, and the sale on the pane says how much of it went
 to fees owed. The fee never exceeds half the order's price, the most the
 escrow contract takes. The debt goes down only once the money reaches the
-treasury: when the escrow releases the payment, or when a Solana payment is
-confirmed. An order that is refunded or lapses collects nothing. When
+treasury: when the escrow releases the payment, or when a direct Solana
+payment is confirmed. An order that is refunded or lapses collects nothing. When
 several USDC orders are open at once, each takes only what the others have
 not already taken. If a sale collects more than is still owed, because a
 direct payment settled the debt in the meantime, the rest is kept as credit

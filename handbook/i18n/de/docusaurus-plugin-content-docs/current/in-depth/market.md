@@ -9,13 +9,13 @@ mdx:
 
 Ein optionaler Marktplatz, auf dem eine Box freien Speicher oder Rechenleistung
 verkauft und eine andere sie kauft. Käufer zahlen per Karte über **Stripe
-Connect**, wo die Edge Karten annimmt, oder in USDC auf Base, Arbitrum oder
-OP. Die Edge hält jede Zahlung zurück, bis der Zeitraum endet, für den der
+Connect**, wo die Edge Karten annimmt, oder in USDC auf Solana, Base,
+Arbitrum oder OP. Die Edge hält jede Zahlung zurück, bis der Zeitraum endet, für den der
 Käufer bezahlt hat, erstattet dem Käufer, wenn die Box des Verkäufers nicht
 mehr liefert, und behält 4 % ein, um ihre Betriebskosten zu decken. Eine Edge
-lässt sich auch so einstellen, dass sie Bitcoin, Monero, Zcash und USDC auf
-Solana annimmt; diese erreichen den Verkäufer sofort und lassen sich deshalb
-nicht erstatten.
+lässt sich auch so einstellen, dass sie Bitcoin, Monero und Zcash annimmt;
+diese erreichen den Verkäufer sofort und lassen sich deshalb nicht
+erstatten.
 
 Die Zeile **Markt** unter Mesh in der Seitenleiste öffnet den Bereich, unter
 `/settings/market`. Eine Box zeigt den Marktplatz nur, wenn eine offizielle
@@ -49,8 +49,9 @@ nicht betroffen.
 Geld berührt nie eine LosOS-Box. Käufer zahlen auf eine dieser Arten, je
 nachdem, was die Edge erlaubt:
 
-- **USDC auf Base, Arbitrum One oder OP Mainnet.** Die Zahlung geht in den
-  Vertrag `LososEscrow`. Die Edge prüft sie (die Adresse des Verkäufers, den
+- **USDC auf Solana, Base, Arbitrum One oder OP Mainnet.** Die Zahlung geht
+  in einen Escrow: das Programm `losos-escrow` auf Solana, den Vertrag
+  `LososEscrow` auf den anderen. Die Edge prüft sie (die Adresse des Verkäufers, den
   Betrag, die Bestätigungen) und hält sie dort, bis der Zeitraum des Käufers
   endet. Dann gibt sie sie an den Verkäufer und an die Kasse der Plattform
   frei, die die Gebühr von 4 % erhält. Oder sie zahlt die ganze Zahlung an
@@ -60,7 +61,7 @@ nachdem, was die Edge erlaubt:
   Box des Verkäufers zu lange offline, teilt sie die Zahlung auf: Der Käufer
   bekommt den Anteil zurück, der nicht geliefert wurde, und der Verkäufer
   behält den Rest. Handelt die Edge nicht, kann der Käufer die Einzahlung 33
-  Tage nach der Bestellung selbst aus dem Vertrag zurückholen. Siehe
+  Tage nach der Bestellung selbst aus dem Escrow zurückholen. Siehe
   [Mit USDC zahlen](#paying-with-usdc).
 - **Karte, über Stripe Connect.** Auf einer Edge optional. Die Zahlung
   bleibt auf dem Stripe-Guthaben der Plattform, bis der Zeitraum des Käufers
@@ -73,8 +74,9 @@ Das sind die einzigen Zahlungswege auf einer Edge, die nicht zusätzlich auf
 direkte Zahlungen eingestellt ist. Mit direkten Zahlungen sehen Käufer
 außerdem:
 
-- **USDC auf Solana.** Eine direkte Überweisung, in der eigenen Transaktion
-  des Käufers zwischen Verkäufer und Kasse aufgeteilt.
+- **USDC auf Solana, auf einer Edge ohne das Escrow-Programm.** Eine direkte
+  Überweisung, in der eigenen Transaktion des Käufers zwischen Verkäufer und
+  Kasse aufgeteilt.
 - **Bitcoin, Monero und Zcash.** Direkt in die eigene Wallet des Verkäufers,
   an eine neue Adresse für jede Bestellung, abgeleitet aus dem öffentlichen
   Schlüssel des Verkäufers: einem erweiterten öffentlichen Schlüssel oder
@@ -458,8 +460,11 @@ Edge:
 | OP Mainnet   | OP Sepolia          |
 | Solana       | Solana Devnet       |
 
-Solana wird nur auf einem Edge angeboten, der auch direkte Zahlungen
-annimmt, da sich dort nichts zurückhalten lässt.
+Auf Solana hält das Programm `losos-escrow` die Zahlung, wo der Edge eines
+nennt. Solana rechnet in Sekunden und für einen Bruchteil eines Cents ab,
+deshalb bietet der Bereich es zuerst an. Ein Edge ohne das Programm bietet
+Solana nur an, wenn er auch direkte Zahlungen annimmt, da sich dort nichts
+zurückhalten ließe.
 
 Ein Edge läuft auf Live-Netzen oder auf Testnetzen, nie auf beiden. Bei
 einem Edge, der Karten annimmt, folgt der Modus seinem Stripe-Schlüssel:
@@ -482,15 +487,21 @@ beschreiben die Betreiberhinweise beim Quellcode (`docs/ci-and-releases.md`).
 2. Der Bereich zeigt das USDC der Wallet auf jedem Netz, daneben die Münze,
    mit der dort Gebühren bezahlt werden: ETH, auf Solana SOL.
 3. Aus dem Angebot bestellen. Es gibt keine Stripe-Seite. Der Bereich zeigt
-   den Betrag in USDC und fragt, auf welchem Netz gezahlt wird; zuerst bietet
-   er eines an, auf dem die Wallet genug hat.
+   den Betrag in USDC und fragt, auf welchem Netz gezahlt wird. Zuerst bietet
+   er den Escrow auf Solana an, außer die Wallet hat das USDC nur auf einem
+   anderen Netz; dann das Netz, auf dem die Wallet genug hat, mit der
+   niedrigsten Gebühr.
 4. Zahlen. Auf einem Ethereum-Netz genehmigt die Wallet USDC für
    `LososEscrow` und ruft `pay` auf. Der Vertrag hält die Zahlung und
    vermerkt Verkäufer, Gebühr und eine Rückgabefrist; beim Verkäufer kommt
-   noch nichts an. Auf Solana schickt eine Transaktion die Plattformgebühr
-   an die Treasury und den Rest an den Verkäufer und nennt die Bestellung in
-   einem Memo. Die erste Zahlung an einen Verkäufer oder die Treasury
-   eröffnet auch deren USDC-Konto, was etwas SOL kostet.
+   noch nichts an. Auf Solana ruft eine Transaktion `pay` des
+   Escrow-Programms auf, das für die Bestellung eine Einlage eröffnet, das
+   USDC hineinlegt und dieselben drei Angaben vermerkt. Die Einlage hält etwa
+   0,0043 SOL Miete aus der Wallet, die zu ihr zurückgehen, wenn die Einlage
+   geschlossen wird. Ohne das Escrow-Programm schickt eine Transaktion die
+   Plattformgebühr an die Treasury und den Rest an den Verkäufer und nennt
+   die Bestellung in einem Memo; die erste Zahlung an einen Verkäufer oder
+   die Treasury eröffnet auch deren USDC-Konto, was etwas SOL kostet.
 5. Der Edge liest die Transaktion über seinen Endpunkt für dieses Netz und
    markiert die Bestellung als bezahlt. Eine Transaktion bezahlt nur eine
    Bestellung. Die Bestellung nennt dann ihr Netz und verlinkt die
@@ -498,8 +509,8 @@ beschreiben die Betreiberhinweise beim Quellcode (`docs/ci-and-releases.md`).
 6. Auf einem Ethereum-Netz prüft der Edge danach die Adresse des Verkäufers
    in diesem Netz. Kann sie dort kein USDC empfangen, zahlt der Edge die
    ganze Zahlung an den Käufer zurück, und die Bestellung wird nicht
-   ausgeführt. Sonst bleibt die Einzahlung im Escrow, solange der Zeitraum
-   läuft, und der Edge rechnet sie ab, wie
+   ausgeführt. Sonst, und auf Solana immer, bleibt die Einzahlung im Escrow,
+   solange der Zeitraum läuft, und der Edge rechnet sie ab, wie
    [Bezahlte Zeiträume und Erstattungen](#paid-periods-and-refunds)
    beschreibt: die Gebühr an die Treasury und den Rest an den Verkäufer,
    alles zurück an den Käufer oder eine Aufteilung. Die Bestellung zeigt,
@@ -523,10 +534,23 @@ vermerkt wurden, sie an den Käufer zurückgeben oder zwischen beiden aufteilen
 (`settle`); anderswohin schicken kann er sie nicht. Hat der Edge eine
 Einzahlung 33 Tage nach der Bestellung nicht abgerechnet, holt der Käufer sie
 direkt aus dem Vertrag zurück. Der Edge zahlt mindestens zwei Tage vorher
-aus. Auf Solana prüft der Edge, dass der Endpunkt den
-Genesis-Hash des Netzes meldet, dass die Transaktion gelungen und bestätigt
-ist, dass ihr Memo die Bestellung nennt und dass das USDC von Verkäufer und
-Treasury um genau ihre Anteile gewachsen ist.
+aus.
+
+Auf Solana prüft der Edge, dass der Endpunkt den Genesis-Hash des Netzes
+meldet und dass die Konfiguration des Escrow-Programms für die Treasury
+Circles USDC und den eigenen Schlüssel des Edge nennt. Dann liest er die
+Einlage, die die bestätigte Transaktion angelegt hat, und zählt sie nur, wenn
+sie zu dieser Konfiguration gehört und die Bestellung, den Verkäufer und den
+genauen Betrag, die Gebühr und die Rückgabefrist nennt. Das Programm hält
+dieselben Regeln wie `LososEscrow`: höchstens die Hälfte als Gebühr, eine
+Freigabe nur an den vermerkten Verkäufer und die Treasury, eine Erstattung
+nur an den Käufer und die eigene Erstattung des Käufers erst nach der Frist.
+Eine Einlage wird bei der Auszahlung geschlossen, und ihre Miete geht an den
+Käufer zurück. Die kleine Gebühr seiner eigenen Transaktionen zahlt der Edge
+in SOL, und er eröffnet die USDC-Konten von Verkäufer und Treasury, wenn sie
+keine haben. Ohne das Escrow-Programm prüft er, dass die Transaktion
+gelungen und bestätigt ist, dass ihr Memo die Bestellung nennt und dass das
+USDC von Verkäufer und Treasury um genau ihre Anteile gewachsen ist.
 
 Eine Bestellung hält ihre Einheiten eine Viertelstunde. In den letzten zwei
 Minuten startet der Bereich keine Zahlung mehr, und er behält die Transaktion
@@ -534,8 +558,8 @@ einer gesendeten Zahlung, bis der Edge sie gezählt hat, sodass erneutes
 Prüfen nie doppelt zahlt. Eine Zahlung nach Ablauf dieser Zeit gilt noch,
 solange die Einheiten frei sind. Wurden sie inzwischen verkauft oder hat eine
 andere Zahlung die Bestellung schon bezahlt, zahlt der Edge die Zahlung aus
-dem Escrow zurück, und der Bereich sagt es. Auf Solana, wo es kein Escrow
-gibt, bleibt eine solche Zahlung beim Verkäufer, und die Rückzahlung muss
+dem Escrow zurück, und der Bereich sagt es. Eine direkte Zahlung auf Solana,
+ohne das Escrow-Programm, bleibt beim Verkäufer, und die Rückzahlung muss
 außerhalb des Markts geregelt werden.
 
 :::tip[Testmünzen kommen aus Faucets]
@@ -587,9 +611,9 @@ Namen über ein Gateway außerhalb der Chain nicht nachgeschlagen.
 
 Mit der Wallet signieren, die USDC empfangen soll. Die Ethereum-Adresse nimmt
 Verkäufe auf Base, Arbitrum und OP; sie kommen an, sobald der Zeitraum des
-Käufers endet und der Edge die Zahlung aus dem Escrow freigibt. Auf einem
-Edge, der auch direkte Zahlungen annimmt, signiert derselbe Klick eine
-Solana-Adresse, die Verkäufe auf Solana direkt nimmt. Der Edge prüft jede
+Käufers endet und der Edge die Zahlung aus dem Escrow freigibt. Derselbe
+Klick signiert eine Solana-Adresse, die Verkäufe auf Solana auf dieselbe Weise
+nimmt, oder direkt auf einem Edge ohne das Escrow-Programm. Der Edge prüft jede
 Signatur, speichert nur die Adressen. Ein Verkäufer mit nur einer der beiden
 wird nur Käufern auf dieser Art von Netz angeboten.
 Dieselbe Phrase lässt sich in MetaMask, Rabby, Rainbow, Trust Wallet oder
@@ -760,8 +784,8 @@ angegebenen Preis. Nur der Anteil des Verkäufers ist kleiner, und der
 Verkauf im Bereich nennt, wie viel davon auf offene Gebühren ging. Die
 Gebühr übersteigt nie die Hälfte des Bestellpreises, das Höchste, was der
 Escrow-Vertrag nimmt. Die Schuld sinkt erst, wenn das Geld die Kasse
-erreicht: wenn der Escrow die Zahlung freigibt oder eine Zahlung auf Solana
-bestätigt ist. Eine Bestellung, die erstattet wird oder verfällt, zieht
+erreicht: wenn der Escrow die Zahlung freigibt oder eine direkte Zahlung auf
+Solana bestätigt ist. Eine Bestellung, die erstattet wird oder verfällt, zieht
 nichts ein. Sind mehrere USDC-Bestellungen gleichzeitig offen, nimmt jede
 nur, was die anderen nicht schon genommen haben. Zieht ein Verkauf mehr ein,
 als noch offen ist, weil eine direkte Zahlung die Schuld inzwischen beglichen

@@ -34,12 +34,13 @@ npm run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
 ```
 
-Eight Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
+Nine Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
 (the terminal envelope, its own workspace, a path dependency of lososd, the
 registrar and the client), `edge/registrar/`, `edge/vercel/` (outside the
 flake), the terminal client `admin-ui/tui`, and the Lab's `admin-ui/lab/core`,
-`admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32). All
-eight must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
+`admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32), and
+the Solana escrow program `edge/contracts/solana` (`cargo build-sbf`, outside
+the flake). All nine must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
 hooks, `lint` and CI each check it. Bevy is a wasm32-only dependency of
 `render`, so `lint-wasm` and CI's `clippy-wasm` lint its WebGL2 and WebGPU
 builds too, one after the other. `nix develop` is a toolchain-only shell for people without devenv.
@@ -238,6 +239,10 @@ and is never served or built by nix.
   from the other mode is refused. `modules/edge-credentials.nix` and
   `.github/workflows/edge-credentials.yml` seal `STRIPE_KEY` and the webhook
   secrets from Actions secrets over a forced-command SSH key.
+  USDC is held in `LososEscrow` on EVM networks and in the `losos-escrow`
+  program on Solana (`edge/contracts/solana`, `solana_escrow.rs`, signed by
+  a key derived from the EVM releaser's); a live edge counts no payment into
+  a program that still has an upgrade authority.
 - `edge/registrar/src/{vms,server/vm}.rs` + `modules/edge-vms.nix`:
   virtual machines on the mesh, sold per replica-month through the market
   with a fixed 50/50 fee the Stripe gate enforces. KubeVirt and CDI from
