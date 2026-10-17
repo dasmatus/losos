@@ -8,6 +8,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon, CheckmarkBadge01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { Rich, useT } from "@/lib/i18n-react";
+import { postEdgeManage, useMe } from "@/lib/api";
+import { toast } from "@/components/ui/toast";
 import { HourStrip } from "./hour-strip";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow, SwitchRow } from "./rows";
 import { describeWindow } from "./window";
@@ -164,6 +166,66 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
   );
 }
 
+/* A company's own edge may look after LosOS cloud, LosOS Git and the apps
+ * from its own page, once the owner says so here. The switch names the edge
+ * in use and is bound to it: a box that moves to another edge is not managed
+ * by that one. It takes effect at once, like the Access tokens pane, rather
+ * than waiting for Apply, and only an administrator sees it. */
+export function ManageGroup({ view, locked }: { view: EdgeView; locked: boolean }) {
+  const t = useT();
+  const id = React.useId();
+  const me = useMe();
+  const [busy, setBusy] = React.useState(false);
+  const { state } = view;
+  if (state.kind !== "known" || state.edge.manage === undefined) return null;
+  if (me !== null && !me.admin) return null;
+  const manage = state.edge.manage;
+  const on = manage.managedBy !== null;
+  const name = manage.candidate?.name ?? null;
+  const description = on
+    ? manage.active
+      ? t("panes.mesh.manage.active", { name: name ?? manage.managedBy ?? "" })
+      : t("panes.mesh.manage.elsewhere", { url: manage.managedBy ?? "" })
+    : manage.refused === "official"
+      ? t("panes.mesh.manage.official")
+      : manage.refused === "noLocalEdge"
+        ? t("panes.mesh.manage.noLocalEdge")
+        : t("panes.mesh.manage.offDetail");
+  const flip = async (next: boolean): Promise<void> => {
+    setBusy(true);
+    try {
+      await postEdgeManage(next);
+      toast.done(next ? t("panes.mesh.manage.turnedOn", { name: name ?? "" }) : t("panes.mesh.manage.turnedOff"));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      toast.error(t("panes.mesh.manage.failed"), message, { help: "edge-manages-box" });
+    } finally {
+      setBusy(false);
+      view.refresh();
+    }
+  };
+  return (
+    <PaneSection>
+      <GroupTitle>{t("panes.mesh.manage.title")}</GroupTitle>
+      <Group>
+        <SwitchRow
+          id={id}
+          title={name !== null ? t("panes.mesh.manage.switchNamed", { name }) : t("panes.mesh.manage.switch")}
+          description={description}
+          checked={on}
+          disabled={locked || busy || (!on && manage.candidate === null)}
+          onCheckedChange={(next) => void flip(next)}
+          option="edge-manage"
+          last
+        />
+      </Group>
+      <GroupCaption>
+        {t("panes.mesh.manage.caption")} <HelpLink entry="edge-manages-box" />
+      </GroupCaption>
+    </PaneSection>
+  );
+}
+
 export function MeshPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const edge = useEdge();
@@ -207,6 +269,7 @@ export function MeshPane({ form }: { form: SettingsForm }) {
   return (
     <>
       <EdgeGroup view={edge} />
+      <ManageGroup view={edge} locked={form.locked} />
 
       <PaneSection>
         <GroupTitle>{t("panes.mesh.otherBoxes")}</GroupTitle>

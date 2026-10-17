@@ -333,8 +333,27 @@ interface CallOptions extends RequestOptions {
   anonymous?: boolean;
 }
 
+/* The edge's manage page (src/manage/) shows one box's panes from the
+ * company edge: every /api/ path then goes to the edge, which relays it into
+ * that box (`/manage/api/boxes/<id>/api/…`), and the stored token is the
+ * edge's manage key rather than a box's. Null is the box's own page. */
+let routeBase: string | null = null;
+
+/** Send every /api/ call through `base` (the manage page's box), or stop. */
+export function routeThrough(base: string | null): void {
+  routeBase = base;
+  me = null;
+}
+
+/** Where a call to `path` goes from this page: the box's own route, or the
+ *  edge's relay into the box the manage page shows. */
+export function apiPath(path: string): string {
+  return routeBase !== null && path.startsWith("/api/") ? routeBase + path : path;
+}
+
 async function call<T>(path: string, options: CallOptions = {}): Promise<T> {
   const { method = "GET", body, contentType, signal, token, anonymous } = options;
+  path = apiPath(path);
 
   const headers: Record<string, string> = {};
   if (contentType !== undefined) headers["Content-Type"] = contentType;
@@ -524,11 +543,42 @@ export interface EdgeResponse {
   configuredUrl: string | null;
   /** Unix seconds of the scan; null before the first. */
   checkedAt: number | null;
+  /** Whether a company edge may manage this box. Missing on a box whose
+   *  lososd predates the switch. */
+  manage?: EdgeManage;
+}
+
+/** The switch that lets a company edge on this LAN manage LosOS cloud,
+ *  LosOS Git and the apps (backend/src/edge.rs, "management"). */
+export interface EdgeManage {
+  /** The edge in use that could manage the box, or null. */
+  candidate: { name: string; url: string } | null;
+  /** Why none can: no company edge on this network, or the one in use is
+   *  official (official edges never manage boxes). */
+  refused: "noLocalEdge" | "official" | null;
+  /** The registrar URL the owner switched management on for, or null. */
+  managedBy: string | null;
+  /** That edge is the one in use, so it manages the box now. */
+  active: boolean;
 }
 
 /** GET /api/edge — the last edge scan. */
 export function getEdge(options: RequestOptions = {}): Promise<EdgeResponse> {
   return call<EdgeResponse>("/api/edge", options);
+}
+
+/** POST /api/edge/manage — let the company edge in use manage the box, or
+ *  stop it. Takes effect at once; it is not part of Apply. */
+export function postEdgeManage(
+  enabled: boolean,
+  options: RequestOptions = {},
+): Promise<{ manage: EdgeManage }> {
+  return call<{ manage: EdgeManage }>("/api/edge/manage", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ enabled }),
+  });
 }
 
 /** POST /api/apply — overwrite overrides.nix with `nix` and rebuild.
@@ -2117,6 +2167,40 @@ export interface OptionsResponse {
 /** GET /api/options — every losos.* option with the current overrides joined in. */
 export function getOptions(options: RequestOptions = {}): Promise<OptionsResponse> {
   return call<OptionsResponse>("/api/options", options);
+}
+
+/** GET /api/site: the settings of LosOS cloud and LosOS Git only, in the
+ *  shape of GET /api/options. Open to the apps section and to a company edge
+ *  the owner lets manage the box. */
+export function getSite(options: RequestOptions = {}): Promise<OptionsResponse> {
+  return call<OptionsResponse>("/api/site", options);
+}
+
+/** POST /api/site: set each named option to its Nix literal, or back to its
+ *  default with null. The box changes those lines and rebuilds. */
+export function postSite(set: Readonly<Record<string, string | null>>): Promise<ChangeResponse> {
+  return call<ChangeResponse>("/api/site", {
+    method: "POST",
+    body: JSON.stringify({ set }),
+    contentType: "application/json",
+  });
+}
+
+/* ── The company edge's manage page ───────────────────────────────────────
+ * Served by the edge itself (edge/registrar/src/server/manage.rs) with the
+ * edge's manage key as the Bearer token. */
+
+/** A box this edge routes, and whether its owner lets the edge manage it. */
+export interface ManagedBox {
+  id: string;
+  hostname: string;
+  seenAgoSecs: number;
+  managed: boolean;
+}
+
+/** GET /manage/api/boxes on the edge. */
+export function getManagedBoxes(options: RequestOptions = {}): Promise<{ boxes: ManagedBox[] }> {
+  return call<{ boxes: ManagedBox[] }>("/manage/api/boxes", options);
 }
 
 /** How the last sync with LosOS Git went. `off`: LosOS Git is off on this

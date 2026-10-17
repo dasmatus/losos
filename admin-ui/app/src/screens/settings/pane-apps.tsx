@@ -71,12 +71,72 @@ export function AppsPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const filesId = React.useId();
   const codeId = React.useId();
-  const searchId = React.useId();
 
   const draft = form.draft;
   const disabled = form.locked || !form.ready;
-  const catalogue = useCatalogue(!form.locked);
-  const installed = useInstalledApps(!form.locked);
+
+  return (
+    <>
+      <PaneSection>
+        <GroupTitle>{t("panes.apps.onThisBox")}</GroupTitle>
+        <Group>
+          <AppModeRow
+            id={filesId}
+            title={t("panes.apps.files.title")}
+            detail={t("panes.apps.files.detail")}
+            value={draft?.nextcloudMode ?? "container"}
+            disabled={disabled}
+            onChange={(mode) => form.set("nextcloudMode", mode)}
+          />
+          <AppModeRow
+            id={codeId}
+            title={t("panes.apps.code.title")}
+            detail={t("panes.apps.code.detail")}
+            value={draft?.forgejoMode ?? "container"}
+            disabled={disabled}
+            onChange={(mode) => form.set("forgejoMode", mode)}
+            last
+          />
+        </Group>
+        <GroupCaption>
+          <Rich
+            k="panes.apps.modeCaption"
+            vars={{
+              kept: (
+                <strong className="font-medium text-ink">{t(MODE_LABEL.container)}</strong>
+              ),
+              native: <strong className="font-medium text-ink">{t(MODE_LABEL.native)}</strong>,
+            }}
+          />
+        </GroupCaption>
+      </PaneSection>
+
+      {/* Each app's box-wide settings, the ones its own admin pages would
+          otherwise hold. */}
+      <SiteSettings form={form} />
+
+      <BoxApps active={!form.locked} disabled={disabled} />
+    </>
+  );
+}
+
+/** The apps installed from the search, and the search itself, with their
+ *  dialogs. Also the apps half of a company edge's page for a box
+ *  (src/manage/), where `onBox` is false. */
+export function BoxApps({
+  active,
+  disabled,
+  onBox = true,
+}: {
+  /** Whether to load anything yet: false while nobody is signed in. */
+  active: boolean;
+  disabled: boolean;
+  onBox?: boolean;
+}) {
+  const t = useT();
+  const searchId = React.useId();
+  const catalogue = useCatalogue(active);
+  const installed = useInstalledApps(active);
   const [target, setTarget] = React.useState<InstallTarget | null>(null);
   const [removing, setRemoving] = React.useState<InstalledApp | null>(null);
   const location = useLocation();
@@ -121,43 +181,6 @@ export function AppsPane({ form }: { form: SettingsForm }) {
 
   return (
     <>
-      <PaneSection>
-        <GroupTitle>{t("panes.apps.onThisBox")}</GroupTitle>
-        <Group>
-          <AppModeRow
-            id={filesId}
-            title={t("panes.apps.files.title")}
-            detail={t("panes.apps.files.detail")}
-            value={draft?.nextcloudMode ?? "container"}
-            disabled={disabled}
-            onChange={(mode) => form.set("nextcloudMode", mode)}
-          />
-          <AppModeRow
-            id={codeId}
-            title={t("panes.apps.code.title")}
-            detail={t("panes.apps.code.detail")}
-            value={draft?.forgejoMode ?? "container"}
-            disabled={disabled}
-            onChange={(mode) => form.set("forgejoMode", mode)}
-            last
-          />
-        </Group>
-        <GroupCaption>
-          <Rich
-            k="panes.apps.modeCaption"
-            vars={{
-              kept: (
-                <strong className="font-medium text-ink">{t(MODE_LABEL.container)}</strong>
-              ),
-              native: <strong className="font-medium text-ink">{t(MODE_LABEL.native)}</strong>,
-            }}
-          />
-        </GroupCaption>
-      </PaneSection>
-
-      {/* Each app's box-wide settings, the ones its own admin pages would
-          otherwise hold. */}
-      <SiteSettings form={form} />
 
       {(records.length > 0 || installed.state.kind === "failed") && (
         <PaneSection>
@@ -177,6 +200,7 @@ export function AppsPane({ form }: { form: SettingsForm }) {
                   record={record}
                   disabled={disabled}
                   last={index === records.length - 1}
+                  onBox={onBox}
                   onChange={() =>
                     setTarget({
                       title: record.chart.name,
@@ -486,19 +510,23 @@ function InstalledRow({
   last,
   onChange,
   onRemove,
+  onBox = true,
 }: {
   record: InstalledApp;
   disabled: boolean;
   last: boolean;
   onChange: () => void;
   onRemove: () => void;
+  /** False on a company edge's page (src/manage/): the app's port is on the
+   *  box's own network, and the sidebar pins belong to the box's people. */
+  onBox?: boolean;
 }) {
   const t = useT();
   const busy = record.phase === "installing" || record.phase === "removing";
   // The forward listens on every address of the box, so the page's own host
   // reaches it: the .local name, or the IP address the owner typed.
   const href =
-    record.phase === "running" && record.appPort !== null
+    onBox && record.phase === "running" && record.appPort !== null
       ? `http://${window.location.hostname}:${record.frontPort}/`
       : null;
   return (
@@ -537,7 +565,7 @@ function InstalledRow({
               <HugeiconsIcon icon={LinkSquare02Icon} size={13} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
             </a>
           )}
-          <InstalledPin release={record.release} />
+          {onBox && <InstalledPin release={record.release} />}
           <Button size="sm" variant="secondary" disabled={disabled || busy} onClick={onChange}>
             {t("install.change")}
           </Button>

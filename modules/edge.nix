@@ -943,6 +943,20 @@ let
     ++ enrolArgs
     ++ uplinkArgs
     ++ accessArgs
+    ++ manageArgs
+  );
+
+  # The page boxes are managed from (losos.edge.manage, server/manage.rs in
+  # the registrar). The key is made by the registrar on its first start.
+  manageArgs = lib.optionals cfg.manage.enable (
+    [
+      "--manage-key-file"
+      "/var/lib/losos-registrar/manage-key"
+    ]
+    ++ lib.optionals (cfg.manage.ui != null) [
+      "--manage-ui"
+      "${cfg.manage.ui}"
+    ]
   );
 
   # The terminal (docs/edge-terminal.md): on once a key is seeded. The key
@@ -981,6 +995,9 @@ in
     # edge system) keeps edge.nix self-contained — mirrors defaults.nix wiring
     # losos.backend.package on the appliance.
     losos.edge.registrar.package = self.packages.x86_64-linux.losos-registrar;
+    losos.edge.manage.ui = lib.mkIf cfg.manage.enable (
+      lib.mkDefault self.packages.x86_64-linux.losos-admin-ui
+    );
 
     assertions = [
       {

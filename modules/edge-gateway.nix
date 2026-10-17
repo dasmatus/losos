@@ -80,6 +80,7 @@ let
         losos-edge uplink show                 the uplink as set
         losos-edge uplink clear                stop relaying
         losos-edge ssh on|off                  start or stop sshd (off at every boot)
+        losos-edge manage-key                  the key the manage page signs in with
 
       Boxes on this LAN find the gateway on their own (mDNS, _losos-edge._tcp)
       and enrol on first contact; nothing is provisioned for them.
@@ -120,6 +121,17 @@ let
           if [ -s "$registry" ]; then
             jq -r '.tenants // {} | to_entries[] | select(.value.via == null) | "\(.key)\t\(.value.hostname)\tport \(.value.port)"' "$registry" \
               | sort
+          fi
+          ;;
+        manage-key)
+          key=/var/lib/losos-registrar/manage-key
+          if [ -s "$key" ]; then
+            cat "$key"
+            echo "Sign in at ${edge.lan.url}/manage/ with it. A box shows its settings there once"
+            echo "its owner lets this gateway manage it, on the box's Mesh page."
+          else
+            echo "No key yet: the registrar makes it when it starts ($(active losos-registrar.service))." >&2
+            exit 1
           fi
           ;;
         forget)
@@ -226,6 +238,7 @@ in
       enable = true;
       lan.advertise = lib.mkDefault true;
       lan.openEnrolment = lib.mkDefault true;
+      manage.enable = lib.mkDefault true;
       uplink.enable = lib.mkDefault true;
       uplink.configFile = lib.mkDefault uplinkJson;
       # Traefik's ACME needs a public name this machine does not have; the

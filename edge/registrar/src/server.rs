@@ -90,6 +90,7 @@ use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 use crate::zone::{self, ZoneNames};
 
+mod manage;
 mod operator;
 mod vm;
 
@@ -244,6 +245,9 @@ struct AppState {
     transfers: Arc<Semaphore>,
     /// The terminal (`crate::operator`); `None` without `--access-dir`.
     operator: Option<Arc<crate::operator::Operator>>,
+    /// The page boxes are managed from (`manage`); `None` without
+    /// `--manage-key-file`.
+    manage: manage::Shared,
 }
 
 #[derive(Debug, Deserialize)]
@@ -272,6 +276,9 @@ struct HeartbeatReq {
     /// As on [`RegisterReq`].
     #[serde(default)]
     relay_pass: Option<String>,
+    /// The box's owner lets this edge manage it (`manage`). Absent is no.
+    #[serde(default)]
+    managed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -514,6 +521,12 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         }
     };
 
+    // The manage page's key, made on the first start like the terminal's.
+    let manage = match &opts.manage {
+        None => None,
+        Some(m) => Some(Arc::new(manage::Manage::load(m)?)),
+    };
+
     // Opened before the API accepts: the key is made on the first start,
     // and a seeded key that does not parse stops the edge here.
     let operator = match &opts.operator {
@@ -556,6 +569,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         passes: Arc::new(std::sync::Mutex::new(HashMap::new())),
         transfers: Arc::new(Semaphore::new(vm::MAX_TRANSFERS)),
         operator,
+        manage,
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -641,7 +655,10 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         // Merged after the layers above, so none of them applies: a disk
         // image is gigabytes and takes minutes. `vm::transfer_router` has
         // its own cap, idle timeout and size limit.
-        .merge(vm::transfer_router(state.clone()));
+        .merge(vm::transfer_router(state.clone()))
+        // The same for the manage page: an app install on a box outlasts
+        // the API's budget (`manage`).
+        .merge(manage::router(state.clone()));
 
     Ok(App { state, router })
 }
@@ -1019,6 +1036,9 @@ async fn heartbeat(
         .await;
     if st.reg.heartbeat(&req.appliance_id).await {
         remember_pass(&st, &req.appliance_id, req.relay_pass.as_deref());
+        if let Some(manage) = &st.manage {
+            manage.record(&req.appliance_id, req.managed);
+        }
         Ok(StatusCode::NO_CONTENT)
     } else {
         // Unknown id mid-run: tell the appliance to re-register. (It will, on

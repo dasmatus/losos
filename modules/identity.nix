@@ -125,6 +125,8 @@ let
   toLososd = ''
     ${lanOnly}
     proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Losos-Via-Edge "";
+    proxy_set_header X-Losos-Edge "";
     proxy_set_header Remote-User "";
     proxy_set_header Remote-Groups "";
     proxy_set_header X-Losos-As "";

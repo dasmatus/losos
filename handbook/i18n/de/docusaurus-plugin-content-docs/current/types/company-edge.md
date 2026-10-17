@@ -80,6 +80,42 @@ Kurz gesagt:
    `losos.proxy.registrarUrl` ein. mDNS-Ankündigungen gehen nicht über
    Router hinweg.
 
+## Die Boxen von der Edge aus verwalten \{#managing-the-boxes-from-the-edge}
+
+Wer die Edge der Firma betreut, kann LosOS cloud, LosOS Git und die Apps
+ihrer Boxen auf einer Seite der Edge ändern. Ob diese Edge das darf,
+entscheidet der Besitzer jeder Box.
+
+1. Öffnen Sie auf der Box Einstellungen, dann Mesh, und schalten Sie **Den
+   Firmen-Edge diese Box verwalten lassen** ein. Kennt die Box den Namen der
+   Edge, zeigt der Schalter ihn. Er ist aus, bis der Besitzer ihn
+   einschaltet, und gehört zu der Edge, die die Box in dem Moment nutzt.
+   Eine andere Edge erbt ihn nie.
+
+   ![Der Bereich Mesh mit eingeschaltetem Schalter, der die Firmen-Edge die Box verwalten lässt.](@site/docs/img/mesh-manage-de.png)
+
+2. Setzen Sie auf der Edge `losos.edge.manage.enable` (ein Edge-Gateway-Rechner
+   hat es an). Die Edge erzeugt beim ersten Start einen Verwaltungsschlüssel
+   und legt ihn in `/var/lib/losos-registrar/manage-key` ab. Auf einem
+   Edge-Gateway-Rechner gibt `losos-edge manage-key` ihn mit der Adresse der
+   Seite aus.
+3. Öffnen Sie `/manage/` unter der Adresse der Edge, zum Beispiel
+   `http://<edge>.local:8443/manage/`, und melden Sie sich mit dem Schlüssel
+   an. Die Seite listet die Boxen, die die Edge weiterleitet, und öffnet die,
+   deren Besitzer den Schalter eingeschaltet hat.
+4. Die Seite einer Box hat die Einstellungen von LosOS cloud und LosOS Git
+   aus dem Bereich Apps der Box, ihre installierten Apps und die App-Suche.
+   Eine Änderung baut die Box neu, wie eine Änderung auf der Box selbst.
+
+![Die Seite einer Box auf der Firmen-Edge: Einstellungen von LosOS cloud und LosOS Git, die installierten Apps und die App-Suche.](@site/docs/img/edge-manage-box-de.png)
+
+Die Edge sieht keine Dateien, legt keine Personen an, ändert keine
+Passwörter und rührt Speicher, Sicherungen, Netzwerk und den Schalter selbst
+nicht an. Die Box prüft jeden Aufruf selbst, also kommt eine veränderte
+Seite auf der Edge nicht weiter. Nur eine Edge im eigenen Netz der Box kann
+sie verwalten, nie die LosOS-Edge: LosOS verwaltet keine fremde Box. Schaltet
+der Besitzer den Schalter aus, lehnt die Box den nächsten Aufruf der Edge ab.
+
 ## Für wen das ist \{#who-this-is-for}
 
 Für kleine Firmen, die die Einrichtung „eine Box pro Team, ein Pool für

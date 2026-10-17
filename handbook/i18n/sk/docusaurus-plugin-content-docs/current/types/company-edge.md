@@ -72,6 +72,40 @@ Stručne:
    Rozšírené, v `losos.proxy.registrarUrl`. Ohlasovania mDNS neprejdú cez
    routery.
 
+## Správa zariadení z edge \{#managing-the-boxes-from-the-edge}
+
+Ľudia, ktorí spravujú firemný edge, môžu na jednej stránke edge meniť LosOS
+cloud, LosOS Git a aplikácie na jeho zariadeniach. Či to edge smie, rozhoduje
+vlastník každého zariadenia.
+
+1. Na zariadení otvorte Nastavenia, potom Mesh, a zapnite **Nechať firemný
+   okrajový server spravovať toto zariadenie**. Ak zariadenie pozná meno
+   edge, prepínač ho ukáže. Je vypnutý, kým ho vlastník nezapne, a patrí
+   edge, ktorý zariadenie práve používa. Iný edge ho nikdy nezdedí.
+
+   ![Panel Mesh so zapnutým prepínačom, ktorý dovoľuje firemnému edge spravovať zariadenie.](@site/docs/img/mesh-manage-sk.png)
+
+2. Na edge nastavte `losos.edge.manage.enable` (počítač s edge bránou ho má
+   zapnuté). Edge si pri prvom spustení vytvorí kľúč na správu a uloží ho do
+   `/var/lib/losos-registrar/manage-key`. Na počítači s edge bránou ho
+   `losos-edge manage-key` vypíše spolu s adresou stránky.
+3. Otvorte `/manage/` na adrese edge, napríklad
+   `http://<edge>.local:8443/manage/`, a prihláste sa kľúčom. Stránka ukáže
+   zariadenia, ktoré edge smeruje, a otvorí tie, ktorých vlastník prepínač
+   zapol.
+4. Stránka zariadenia má nastavenia LosOS cloud a LosOS Git z panela
+   Aplikácie na zariadení, nainštalované aplikácie a hľadanie aplikácií.
+   Zmena zariadenie prebuduje rovnako ako zmena urobená priamo na ňom.
+
+![Stránka zariadenia na firemnom edge: nastavenia LosOS cloud a LosOS Git, nainštalované aplikácie a hľadanie aplikácií.](@site/docs/img/edge-manage-box-sk.png)
+
+Edge nevidí ničie súbory, nepridáva ľudí, nemení heslá a nesiaha na
+úložisko, zálohy, sieť ani na samotný prepínač. Zariadenie kontroluje každé
+volanie samo, takže upravená stránka na edge sa ďalej nedostane. Spravovať
+zariadenie môže len edge v jeho vlastnej sieti, nikdy edge LosOS: LosOS
+nikomu zariadenie nespravuje. Keď vlastník prepínač vypne, ďalšie volanie
+edge zariadenie odmietne.
+
 ## Pre koho je to \{#who-this-is-for}
 
 Pre malé firmy, ktoré chcú nasadenie „jedno zariadenie na tím, jeden

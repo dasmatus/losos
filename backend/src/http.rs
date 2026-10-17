@@ -67,6 +67,10 @@ pub(crate) enum Principal {
     Spare,
     /// Someone Authelia signed in, or a terminal call made with their token.
     Person(crate::people::Person),
+    /// The company edge the owner let manage this box, through the box's
+    /// own tunnel (`crate::edge::manager_active`). It may use the sections
+    /// `sections.json` lists under `edge`, and nothing admin.
+    Edge,
 }
 
 impl Principal {
@@ -74,6 +78,7 @@ impl Principal {
         match self {
             Principal::Spare => "spare-key",
             Principal::Person(p) => &p.name,
+            Principal::Edge => "edge",
         }
     }
 
@@ -81,12 +86,13 @@ impl Principal {
         match self {
             Principal::Spare => true,
             Principal::Person(p) => p.is_admin(),
+            Principal::Edge => false,
         }
     }
 
     fn person(&self) -> Option<&crate::people::Person> {
         match self {
-            Principal::Spare => None,
+            Principal::Spare | Principal::Edge => None,
             Principal::Person(p) => Some(p),
         }
     }
@@ -227,6 +233,14 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
             "officialEdgeRequired": true,
         }));
     }
+    // Management switched on with no company edge in use (`crate::edge::
+    // manageable`): the sentence, as a 409.
+    if let Some(why) = e.downcast_ref::<crate::edge::NotManageable>() {
+        return HttpResponse::build(StatusCode::CONFLICT).json(serde_json::json!({
+            "error": why.to_string(),
+            "notManageable": true,
+        }));
+    }
     // A second owner, or the first one again after the grace window:
     // the sentence, as a 409 the wizard already knows how to show.
     if let Some(why) = e.downcast_ref::<crate::setup::AlreadyClaimed>() {
@@ -283,17 +297,47 @@ fn identify(api: &Api, req: &HttpRequest) -> Option<Principal> {
             None
         }
     };
+    // nginx's `losos-manage.invalid` server, which takes only loopback, where
+    // the box's tunnel to its edge lands (modules/proxy.nix), sets
+    // this on every request and every other location clears it. Such a
+    // request is the edge or nobody: no spare key, no person.
+    let from_loopback = req.peer_addr().is_some_and(|a| a.ip().is_loopback());
+    if header("x-losos-via-edge").is_some() {
+        return (from_loopback
+            && edge_token_ok(header("x-losos-edge"))
+            && api.backend.edge_manager_active())
+        .then_some(Principal::Edge);
+    }
     if authorized(api, req) {
         return match header("x-losos-as") {
             Some(name) => lookup(name),
             None => Some(Principal::Spare),
         };
     }
-    let from_loopback = api.people.headers && req.peer_addr().is_some_and(|a| a.ip().is_loopback());
     match header("remote-user") {
-        Some(name) if from_loopback => lookup(name),
+        Some(name) if from_loopback && api.people.headers => lookup(name),
         _ => None,
     }
+}
+
+/// Whether `presented` is this box's proxy token (`$LOSOS_PROXY_TOKEN_FILE`),
+/// the secret the box enrolled with its edge by: only the box and that edge
+/// hold it. Read per call, like the market relay does.
+fn edge_token_ok(presented: Option<&str>) -> bool {
+    let Some(presented) = presented else {
+        return false;
+    };
+    let Some(file) = std::env::var("LOSOS_PROXY_TOKEN_FILE")
+        .ok()
+        .filter(|v| !v.is_empty())
+    else {
+        return false;
+    };
+    let Ok(token) = std::fs::read_to_string(file) else {
+        return false;
+    };
+    let token = token.trim();
+    !token.is_empty() && constant_time_eq(presented.as_bytes(), token.as_bytes())
 }
 
 /// Whether the request carries the admin token.
@@ -409,6 +453,13 @@ fn guarded_as(
             }));
         }
     }
+    if matches!(who, Principal::Edge) && !crate::sections::edge_allows(method, section) {
+        audit("forbidden", Some("edge"));
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "the edge may manage only LosOS cloud, LosOS Git and the apps on this box",
+            "section": section,
+        }));
+    }
     let resp = f(&who);
     let status = resp.status();
     audit(
@@ -452,6 +503,19 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 "admin": p.is_admin(),
                 "spareKey": false,
                 "sections": crate::sections::usable(p),
+                "standalone": api.people.headers,
+            })),
+            Principal::Edge => HttpResponse::Ok().json(serde_json::json!({
+                "name": null,
+                "displayName": null,
+                "groups": [],
+                "admin": false,
+                "spareKey": false,
+                "edge": true,
+                "sections": crate::sections::names()
+                    .into_iter()
+                    .filter(|s| crate::sections::edge_allows("POST", s))
+                    .collect::<Vec<_>>(),
                 "standalone": api.people.headers,
             })),
         }
@@ -702,6 +766,25 @@ async fn get_status(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 /// What the daemon found when it last looked for an edge proxy.
 async fn get_edge(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/edge", false, || run(&api, cmd_edge))
+}
+
+/// The owner lets the company edge in use manage LosOS cloud, LosOS Git and
+/// the apps, or stops it: `{"enabled": bool}`.
+async fn post_edge_manage(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/edge/manage", true, || {
+        let Some(enabled) = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("enabled").and_then(serde_json::Value::as_bool))
+        else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"enabled": true|false}"#,
+            );
+        };
+        let resp = run(&api, |l| crate::losos::cmd_edge_manage(l, enabled));
+        api.backend.publish_managed();
+        resp
+    })
 }
 
 async fn post_change(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
@@ -1080,6 +1163,7 @@ async fn post_set_password(
     guarded_as(&api, &req, "/api/set-password", true, |who| match who {
         Principal::Person(p) => post_own_password(&api, p, &body),
         Principal::Spare => post_set_password_inner(&api, &body),
+        Principal::Edge => err(StatusCode::FORBIDDEN, "the edge has no password here"),
     })
 }
 
@@ -2162,6 +2246,47 @@ async fn get_options(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/options", false, || run(&api, cmd_options))
 }
 
+/// `GET /api/site` — the settings of LosOS cloud and LosOS Git only
+/// (`crate::site`), for the apps section and a managing edge, which may not
+/// read every option.
+async fn get_site(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/site", false, || {
+        run(&api, crate::losos::cmd_site)
+    })
+}
+
+/// `POST /api/site` — `{"set": {"nextcloud.site.trashDays": "30",
+/// "forgejo.site.landingPage": null}}`: each value a Nix literal, or null to
+/// go back to the default. Only those lines of `overrides.nix` change; the
+/// rest is an apply.
+async fn post_site(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/site", true, || {
+        let set = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("set").and_then(|s| s.as_object()).cloned());
+        let Some(set) = set else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"set": {"<option>": "<Nix literal>" | null}}"#,
+            );
+        };
+        let mut changes = Vec::with_capacity(set.len());
+        for (name, value) in set {
+            match value {
+                serde_json::Value::Null => changes.push((name, None)),
+                serde_json::Value::String(raw) => changes.push((name, Some(raw))),
+                _ => {
+                    return err(
+                        StatusCode::BAD_REQUEST,
+                        "each value must be a Nix literal as a string, or null",
+                    )
+                }
+            }
+        }
+        run(&api, |l| crate::losos::cmd_site_set(l, &changes))
+    })
+}
+
 /// `GET /api/config` — the configuration repository as the History pane
 /// shows it (`crate::config_repo`).
 async fn get_config(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
@@ -2597,6 +2722,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/settings", web::get().to(get_settings))
                 .route("/api/status", web::get().to(get_status))
                 .route("/api/edge", web::get().to(get_edge))
+                .route("/api/edge/manage", web::post().to(post_edge_manage))
                 .route("/api/change", web::post().to(post_change))
                 .route("/api/apply", web::post().to(post_apply))
                 .route("/api/factory-reset", web::post().to(post_factory_reset))
@@ -2673,6 +2799,8 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/domains", web::post().to(post_domain_add))
                 .route("/api/domains/remove", web::post().to(post_domain_remove))
                 .route("/api/options", web::get().to(get_options))
+                .route("/api/site", web::get().to(get_site))
+                .route("/api/site", web::post().to(post_site))
                 .route("/api/config", web::get().to(get_config))
                 .route("/api/config/sync", web::post().to(post_config_sync))
                 .route("/api/look", web::get().to(get_look))

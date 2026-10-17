@@ -106,6 +106,13 @@ let
 
   adminUi = config.losos.admin.ui;
   adminApiPort = config.losos.admin.apiPort;
+  # Only nginx's `losos-manage.invalid` server (modules/proxy.nix) may
+  # tell lososd a call came from the edge that manages the box; on the front
+  # door the headers are cleared, whatever the client sent.
+  notTheEdge = ''
+    proxy_set_header X-Losos-Via-Edge "";
+    proxy_set_header X-Losos-Edge "";
+  '';
   adminEnabled = config.losos.admin.enable && adminUi != null;
   # The owner's handbook (handbook/, built as losos-handbook with its base at
   # /handbook/). Served under the admin guard: it is part of the admin
@@ -484,6 +491,7 @@ in
             extraConfig = ''
               ${lanOnly}
               proxy_set_header X-Real-IP $remote_addr;
+              ${notTheEdge}
               # lososd answers most calls in milliseconds, but the first
               # claim runs `occ user:resetpassword` inside a pod that is
               # still warming up, and under emulation that outlived the
@@ -507,6 +515,7 @@ in
             extraConfig = ''
               ${lanOnly}
               proxy_set_header X-Real-IP $remote_addr;
+              ${notTheEdge}
               client_max_body_size 0;
               proxy_request_buffering off;
               proxy_http_version 1.1;
@@ -515,6 +524,11 @@ in
             '';
           };
         })
+        {
+          # A company edge's manage page (manage/index.html, src/manage/)
+          # rides in the same bundle. The edge serves it; the box never does.
+          "/manage/".return = "404";
+        }
         (lib.mkIf labEnabled {
           # LosOS Lab: lab/index.html in the admin UI's bundle, on real paths
           # under /lab/ like the SPA is on /, so every deep link and reload

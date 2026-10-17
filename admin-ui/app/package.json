@@ -13,7 +13,7 @@
     "lab:core": "node scripts/lab-core.mjs core",
     "lab:virt": "node scripts/lab-core.mjs virt",
     "lab:render": "node scripts/lab-core.mjs render",
-    "test:browser": "node tests/solana.node.mjs && node tests/fees.node.mjs && node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs && node tests/look.browser.mjs && node tests/advanced.browser.mjs && node tests/lab.browser.mjs && node tests/apps.browser.mjs && node tests/pins.browser.mjs && node tests/tour.browser.mjs && node tests/access.browser.mjs && node tests/users.browser.mjs && node tests/palette.browser.mjs"
+    "test:browser": "node tests/solana.node.mjs && node tests/fees.node.mjs && node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs && node tests/look.browser.mjs && node tests/advanced.browser.mjs && node tests/lab.browser.mjs && node tests/apps.browser.mjs && node tests/pins.browser.mjs && node tests/tour.browser.mjs && node tests/access.browser.mjs && node tests/users.browser.mjs && node tests/manage.browser.mjs && node tests/palette.browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

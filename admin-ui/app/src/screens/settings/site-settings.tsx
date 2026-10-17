@@ -61,6 +61,13 @@ const PRIVATE: readonly (readonly [string, MessageKey])[] = [
 
 const PHONE_REGION = /^[A-Z]{2}$/;
 
+/** What the rows need from a form: the box's own settings form, or the
+ *  edge's form over GET /api/site (src/manage/). */
+export type SiteForm = Pick<
+  SettingsForm,
+  "options" | "extra" | "extraProblems" | "locked" | "ready" | "setExtra"
+>;
+
 /** One option's row state: the literal the draft holds, else the default's. */
 interface Slot {
   option: OptionDoc;
@@ -71,7 +78,7 @@ interface Slot {
   set: (next: string | null) => void;
 }
 
-function slotFor(form: SettingsForm, name: string): Slot | null {
+function slotFor(form: SiteForm, name: string): Slot | null {
   const option = form.options?.options.find((candidate) => candidate.name === name);
   if (option === undefined || option.readOnly) return null;
   const defaultRaw = toLiteral(option.editor, option.default);
@@ -86,7 +93,7 @@ function slotFor(form: SettingsForm, name: string): Slot | null {
   };
 }
 
-export function SiteSettings({ form }: { form: SettingsForm }) {
+export function SiteSettings({ form }: { form: SiteForm }) {
   const t = useT();
   const cloud = {
     language: slotFor(form, "nextcloud.site.defaultLanguage"),

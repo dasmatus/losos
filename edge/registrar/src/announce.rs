@@ -54,6 +54,11 @@ struct HeartbeatReq<'a> {
     idle: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     relay_pass: Option<&'a str>,
+    /// The owner lets this edge manage the box's LosOS cloud, LosOS Git and
+    /// apps (`crate::server::manage`). Only lets the edge's page list it:
+    /// the box decides what the edge may do on every call it makes.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    managed: bool,
 }
 
 /// The pass in `file`, re-read every time: lososd refreshes it every few
@@ -161,6 +166,10 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
                 token: &token,
                 idle,
                 relay_pass: pass.as_deref(),
+                managed: match opts.managed_file.as_deref() {
+                    Some(file) => tokio::fs::try_exists(file).await.unwrap_or(false),
+                    None => false,
+                },
             };
             match client.post(&heartbeat_url).json(&req).send().await {
                 Ok(r) if r.status().is_success() => {

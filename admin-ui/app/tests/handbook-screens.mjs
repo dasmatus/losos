@@ -64,6 +64,25 @@ const EDGE_COMPANY = {
   edges: [{ name: 'office edge', url: 'http://edge.local:8443', source: 'lan', official: false }],
 };
 const EDGE_BOTH = { ...EDGE_OFFICIAL, edges: [EDGE_COMPANY.edges[0], EDGE_OFFICIAL.edges[0]] };
+/* The company edge in use, and the owner has let it manage the box. */
+const EDGE_MANAGED = {
+  ...EDGE_COMPANY,
+  path: { name: 'office edge', url: 'http://edge.local:8443', source: 'lan', rathole: 'edge.local:2333' },
+  manage: {
+    candidate: { name: 'office edge', url: 'http://edge.local:8443' },
+    refused: null,
+    managedBy: 'http://edge.local:8443',
+    active: true,
+  },
+};
+/* What the company edge's manage page lists (src/manage/). */
+const MANAGED_BOXES = {
+  boxes: [
+    { id: 'design-box', hostname: 'design-box', seenAgoSecs: 4, managed: true },
+    { id: 'mattbox', hostname: 'mattbox', seenAgoSecs: 9, managed: true },
+    { id: 'reception', hostname: 'reception', seenAgoSecs: 420, managed: false },
+  ],
+};
 
 const STORAGE = { totalBytes: 480 * 1024 ** 3, usedBytes: 131 * 1024 ** 3, lentBytes: 0, reserveBytes: 48 * 1024 ** 3 };
 const STORAGE_SHARED = { ...STORAGE, lentBytes: 96 * 1024 ** 3 };
@@ -311,6 +330,12 @@ const options = (overrides = {}) => ({
   stray: [],
   excluded: DOC.excluded,
 });
+/* GET /api/site: the settings of LosOS cloud and LosOS Git only. */
+const SITE_OPTION = /^(nextcloud|forgejo)\.(site\.|federation\.enable$)/;
+const site = (overrides = {}) => {
+  const doc = options(overrides);
+  return { ...doc, options: doc.options.filter((o) => SITE_OPTION.test(o.name)), excluded: {} };
+};
 
 /* Six pins, as an owner would have them after a week: two LosOS cloud apps,
  * a file, a folder, a repository and an app installed from the search. */
@@ -492,6 +517,8 @@ async function open({
   await page.route('**/api/backup', (route) => json(route, 200, backup));
   await page.route('**/api/config', (route) => json(route, 200, CONFIG));
   await page.route('**/api/options', (route) => json(route, 200, options(overrides)));
+  await page.route('**/api/site', (route) => json(route, 200, site(overrides)));
+  await page.route('**/manage/api/boxes', (route) => json(route, 200, MANAGED_BOXES));
   let pinned = pins;
   await page.route('**/api/pins', (route) => {
     if (route.request().method() === 'PUT') pinned = route.request().postDataJSON().pins;
@@ -678,6 +705,16 @@ const SHOTS = [
     },
   },
   { name: 'market-soon', path: '/mesh', edge: EDGE_OFFICIAL },
+  {
+    name: 'mesh-manage',
+    path: '/mesh',
+    edge: EDGE_MANAGED,
+    crop: { selector: 'section:has([data-option="edge-manage"])', pad: 16 },
+    langs: true,
+  },
+  // ── A company edge's manage page ─────────────────────────────────────
+  { name: 'edge-manage-boxes', path: '/manage/', crop: 'fit', langs: true },
+  { name: 'edge-manage-box', path: '/manage/boxes/mattbox', full: true, crop: 'fit', langs: true },
   { name: 'settings-network', path: '/settings/network', crop: 'fit', langs: true },
   { name: 'settings-users', path: '/settings/users', me: ME_OWNER, full: true, crop: 'fit', langs: true },
   { name: 'settings-network-full', path: '/settings/network', full: true },

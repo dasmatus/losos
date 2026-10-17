@@ -60,6 +60,7 @@ pub mod recovery;
 pub mod sections;
 pub mod setup;
 pub mod signin;
+pub mod site;
 pub mod supervisor;
 pub mod textsearch;
 pub mod vm_upload;
