@@ -152,6 +152,8 @@ the box signs people in itself (`standalone` in `GET /api/me`). lososd
 refuses to touch the owner, the caller's own account or the last
 administrator. LosOS Login looks each person up again on every request, so
 a removal or a changed group reaches the apps at the next click too.
+Sessions live in a Redis of LosOS Login's own, on a socket only it can
+open, so a restart of LosOS Login or the nightly reboot signs nobody out.
 
 LosOS cloud and LosOS Git sign people in the same way when they run as
 pods, the default. nginx asks LosOS Login on each app's sign-in page and

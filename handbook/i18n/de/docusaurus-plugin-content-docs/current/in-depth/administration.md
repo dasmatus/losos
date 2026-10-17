@@ -167,6 +167,9 @@ weigert sich, den Eigentümer, das eigene Konto des Aufrufers oder den letzten
 Administrator anzufassen. LosOS Login schlägt jede Person bei jeder Anfrage
 neu nach, daher erreicht eine Entfernung oder eine geänderte Gruppe auch die
 Apps beim nächsten Klick.
+Die Anmeldungen liegen in einem eigenen Redis von LosOS Login, auf einem
+Socket, den nur es öffnet, daher meldet weder ein Neustart von LosOS Login
+noch der nächtliche Neustart jemanden ab.
 
 LosOS cloud und LosOS Git melden Menschen genauso an, wenn sie als Pods
 laufen, was der Standard ist. nginx fragt auf der Anmeldeseite jeder App

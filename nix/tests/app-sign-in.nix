@@ -98,6 +98,12 @@ pkgs.testers.nixosTest {
       # ask how it ended.
       apps.wait_for_unit("multi-user.target")
       apps.wait_until_succeeds("systemctl show -p Result --value nextcloud-setup | grep -qx success")
+      # The schema pass setup starts after itself holds SQLite's lock while
+      # it runs; a sign-in during it fails with "database is locked".
+      apps.wait_until_succeeds(
+          "! systemctl list-jobs --no-legend | grep -q nextcloud-update-db"
+          " && ! systemctl is-active -q nextcloud-update-db"
+      )
       apps.wait_for_unit("phpfpm-nextcloud.service")
       apps.wait_for_unit("forgejo.service")
       apps.wait_for_open_port(80)

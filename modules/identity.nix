@@ -76,6 +76,12 @@ let
   secretsDir = "/var/secrets/losos-identity";
   runDir = "/run/losos-identity";
   sessionFile = "${runDir}/session.yml";
+  # Where LosOS Login keeps its sessions: a Redis of its own, on a socket
+  # only Authelia's group opens. Authelia's in-memory store keys a session
+  # by a string that shares bytes with the request buffer, so the next
+  # request rewrites the key and someone else's sign-in silently ends.
+  sessionRedis = "losos-login";
+  sessionSocket = "/run/redis-${sessionRedis}/redis.sock";
   lanOnly = import ./lan-only.nix;
   # The owner's live custom domains, a JSON list lososd writes
   # (backend/src/io_backend.rs, DEFAULT_PUBLIC_NAMES_FILE).
@@ -374,10 +380,20 @@ in
           expiration = "12h";
           inactivity = "2h";
           remember_me = "1M";
+          redis.host = sessionSocket;
         };
         storage.local.path = "/var/lib/authelia-losos/db.sqlite3";
         notifier.filesystem.filename = "/var/lib/authelia-losos/notifications.txt";
       };
+    };
+
+    # Run as Authelia's group, because Authelia runs with PrivateUsers and
+    # sees no other group: the socket is 0660 to it and to nobody else.
+    services.redis.servers.${sessionRedis} = {
+      enable = true;
+      group = user;
+      unixSocket = sessionSocket;
+      unixSocketPerm = 660;
     };
 
     systemd.services.losos-identity-setup = {
@@ -427,8 +443,12 @@ in
     };
 
     systemd.services.authelia-losos = {
-      after = [ "losos-identity-setup.service" ];
+      after = [
+        "losos-identity-setup.service"
+        "redis-${sessionRedis}.service"
+      ];
       wants = [ "losos-identity-setup.service" ];
+      requires = [ "redis-${sessionRedis}.service" ];
       # Not before the claim: see the header.
       unitConfig.ConditionPathExists = peopleFile;
     };
