@@ -32,6 +32,7 @@ let
   # with no shell to investigate from.
   ncMode = config.losos.nextcloud.mode;
   ncContainer = ncMode == "container";
+  nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
 
   # modules/cluster.nix's `localCriSocket`, which is a `let` binding there and
   # so cannot be read from here. Repeated as a literal rather than promoted to
@@ -139,6 +140,9 @@ in
         # See the `ncMode` binding above for why this is always set and never
         # defaulted daemon-side.
         LOSOS_NEXTCLOUD_MODE = ncMode;
+        # Which app store releases `GET /api/cloud/apps/search` offers: the
+        # store lists apps per Nextcloud version (backend/src/cloud_apps.rs).
+        LOSOS_NEXTCLOUD_VERSION = nc.package.version;
         # Terminal access (backend/src/access.rs): the box's own OpenPGP key
         # and the token file under its state directory, and the owner's
         # seeded keys from losos.access.gpgKeys.
@@ -279,7 +283,15 @@ in
       # this attribute pulls a whole second Nextcloud closure into a system
       # that does not run one. `lib.optional false` does not force its
       # argument, so the attribute is not even evaluated there.
-      ++ lib.optional (!ncContainer) config.services.nextcloud.occ;
+      ++ lib.optional (!ncContainer) config.services.nextcloud.occ
+      # The Apps pane's LosOS cloud apps (backend/src/cloud_apps.rs). In
+      # container mode the same command is in the pod and reached by crictl.
+      ++ lib.optional (!ncContainer) (
+        nc.appsTool {
+          occ = "${config.services.nextcloud.occ}/bin/nextcloud-occ";
+          webroot = config.services.nextcloud.finalPackage;
+        }
+      );
       serviceConfig = {
         ExecStart = "${pkg}/bin/lososd";
         # `always`, not `on-failure`: a clean exit(0) — an unhandled shutdown

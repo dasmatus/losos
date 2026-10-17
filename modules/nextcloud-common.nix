@@ -71,7 +71,11 @@ in
     # the keys that drop Nextcloud's welcome files and links out. Then the
     # owner's box-wide settings (losos.nextcloud.site.*); the module writes
     # these into override.config.php, read after config.php.
-    settings = nc.brandSettings // nc.site.system config.losos.nextcloud.site;
+    # While it federates, the key that lets it reach other boxes on the LAN.
+    settings =
+      nc.brandSettings
+      // nc.site.system config.losos.nextcloud.site
+      // lib.optionalAttrs config.lososInternal.federation.nextcloud nc.federation.system;
   };
 
   # ── The admin password file ───────────────────────────────────────────────
