@@ -1057,7 +1057,7 @@ fn parse_zec(args: &[String], currency: &str) -> Result<Option<crate::zcash::Zec
 ///
 /// ```text
 /// --market-usdc network=base-sepolia,rpc=/run/credentials/losos-registrar.service/usdc-rpc-base-sepolia,pay=0x...,treasury=0x...
-/// --market-usdc network=solana-devnet,rpc=/run/credentials/losos-registrar.service/usdc-rpc-solana-devnet,treasury=<base58>
+/// --market-usdc network=solana-devnet,rpc=/run/credentials/losos-registrar.service/usdc-rpc-solana-devnet,pay=<program>,treasury=<base58>
 /// ```
 ///
 /// The token address is Circle's for the network, from
@@ -1067,7 +1067,10 @@ fn parse_zec(args: &[String], currency: &str) -> Result<Option<crate::zcash::Zec
 /// command line, where `ps` would show it. Every network must be of one
 /// mode, test or live. `--market-ens-rpc-file` adds name lookups on Ethereum
 /// (live) or Sepolia (test). `--market-usdc-releaser-file` is the escrow's
-/// releaser key, also a credential file, and every EVM network needs it.
+/// releaser key, also a credential file, and every network with an escrow
+/// needs it: every EVM network, and Solana when `pay` names the
+/// `losos-escrow` program. A Solana network without `pay` is paid straight
+/// to the seller, which only a direct-pay edge offers.
 fn parse_usdc(args: &[String], currency: &str) -> Result<Option<crate::stablecoin::UsdcOpts>> {
     use crate::stablecoin::{Family, UsdcChain, UsdcOpts};
     let specs = args_all(args, "--market-usdc");
@@ -1173,11 +1176,13 @@ fn parse_usdc(args: &[String], currency: &str) -> Result<Option<crate::stablecoi
                 }
             }
             Family::Solana => {
-                if field("pay").is_some() {
-                    return Err(miette!(
-                        "--market-usdc {key} takes no pay; Solana has no pay contract"
-                    ));
-                }
+                let pay = field("pay")
+                    .map(|p| {
+                        crate::solana::normalize_address(p).ok_or_else(|| {
+                            miette!("--market-usdc {key} pay is not the escrow program's address")
+                        })
+                    })
+                    .transpose()?;
                 let Some(treasury) = crate::solana::normalize_address(treasury) else {
                     return Err(miette!(
                         "--market-usdc {key} treasury is not a Solana address"
@@ -1197,10 +1202,13 @@ fn parse_usdc(args: &[String], currency: &str) -> Result<Option<crate::stablecoi
                             .ok_or_else(|| miette!("--market-usdc {key} genesis is not a hash"))?,
                     ),
                 };
+                if pay.as_deref() == Some(treasury.as_str()) {
+                    return Err(miette!("--market-usdc {key} pay and treasury must differ"));
+                }
                 UsdcChain {
                     network,
                     rpc_file: rpc,
-                    pay: None,
+                    pay,
                     treasury,
                     genesis,
                 }
@@ -1247,11 +1255,11 @@ fn parse_usdc(args: &[String], currency: &str) -> Result<Option<crate::stablecoi
     let releaser_file = releaser
         .map(|path| credential("--market-usdc-releaser-file", path))
         .transpose()?;
-    // The escrow holds every EVM payment until the edge releases it, so an
-    // edge without the key would take payments it can never pay out.
-    if releaser_file.is_none() && chains.iter().any(|c| c.network.family == Family::Evm) {
+    // An escrow holds each payment until the edge releases it, so an edge
+    // without the key would take payments it can never pay out.
+    if releaser_file.is_none() && chains.iter().any(|c| c.pay.is_some()) {
         return Err(miette!(
-            "an EVM --market-usdc needs --market-usdc-releaser-file: the escrow's releaser key"
+            "a --market-usdc with an escrow needs --market-usdc-releaser-file: the escrow's releaser key"
         ));
     }
     Ok(Some(UsdcOpts {

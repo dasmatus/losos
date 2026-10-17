@@ -24,6 +24,8 @@ const BYTES = { approve: 120n, pay: 260n, send: 120n } as const;
 const LAMPORTS_PER_SIGNATURE = 5_000n;
 /** Size of an SPL token account, for its rent-exempt minimum. */
 const TOKEN_ACCOUNT_BYTES = 165;
+/** The escrow program's deposit account (`Deposit::LEN`). */
+const ESCROW_DEPOSIT_BYTES = 196;
 
 const OP_STACK = new Set(["base", "base-sepolia", "optimism", "optimism-sepolia"]);
 const ARBITRUM = new Set(["arbitrum", "arbitrum-sepolia"]);
@@ -121,11 +123,14 @@ export async function lowFeeFields(
 
 export interface FeeEstimate {
   network: string;
-  /** In the fee coin's smallest unit: wei or lamports. */
+  /** What the wallet must hold to send it, in the fee coin's smallest unit:
+   *  wei or lamports. On Solana's escrow that includes the rent its deposit
+   *  holds until it closes, which then comes back. */
   native: bigint;
   symbol: "ETH" | "SOL";
   decimals: number;
-  /** In micro-dollars, when the edge had a price for the fee coin. */
+  /** What it costs, in micro-dollars, when the edge had a price for the
+   *  fee coin. */
   usdMicros: bigint | null;
 }
 
@@ -157,6 +162,23 @@ export async function estimateFee(
   prices: Prices = {},
 ): Promise<FeeEstimate | null> {
   try {
+    if (chain.family === "solana" && question.kind === "pay" && chain.pay) {
+      // The edge opens the seller's and treasury's token accounts; the
+      // payer only lends the rent of the deposit and its vault.
+      const rent = await Promise.all(
+        [ESCROW_DEPOSIT_BYTES, TOKEN_ACCOUNT_BYTES].map((bytes) =>
+          solanaRpc<number>(chain.network, "getMinimumBalanceForRentExemption", [bytes]),
+        ),
+      );
+      const native = LAMPORTS_PER_SIGNATURE + rent.reduce((a, b) => a + BigInt(b), 0n);
+      return {
+        network: chain.network,
+        native,
+        symbol: "SOL",
+        decimals: 9,
+        usdMicros: usd(LAMPORTS_PER_SIGNATURE, 9, prices.sol),
+      };
+    }
     if (chain.family === "solana") {
       const owners = [...(question.recipients ?? [])];
       if (question.kind === "pay") owners.push(chain.treasury);

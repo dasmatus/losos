@@ -1860,13 +1860,18 @@ in
           {
             options = {
               pay = lib.mkOption {
-                type = lib.types.nullOr (lib.types.strMatching "0x[0-9a-fA-F]{40}");
+                type = lib.types.nullOr (
+                  lib.types.strMatching "0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}"
+                );
                 default = null;
                 description = ''
-                  The LososEscrow contract on an EVM network. Public. Its
-                  releaser must be the address of
-                  `losos.edge.market.usdc.releaserKeySealed`. Solana networks
-                  take none: the wallet splits the payment itself.
+                  The escrow payments wait in until each slot ends. Public. On
+                  an EVM network, the LososEscrow contract (`0x`), required. On
+                  Solana, the losos-escrow program (base58), whose config for
+                  this treasury must name the releaser
+                  `losos edge escrow releaser` shows. A Solana network
+                  without it takes direct transfers to the seller, offered only
+                  with `losos.edge.market.directPay`.
                 '';
               };
               treasury = lib.mkOption {
@@ -1910,7 +1915,7 @@ in
         {
           base-sepolia = { pay = "0x…"; treasury = "0x…"; };
           arbitrum-sepolia = { pay = "0x…"; treasury = "0x…"; };
-          solana-devnet.treasury = "5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG";
+          solana-devnet = { pay = "…"; treasury = "5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG"; };
         }
       '';
       description = ''
@@ -1933,8 +1938,9 @@ in
         `usdc-releaser-key`. It pays gas on every EVM network, so it holds a
         little ETH on each, and it can only release a deposit to the seller
         and treasury recorded at payment or refund it to the payer. The
-        escrow's treasury can replace it. Needed whenever an EVM network is
-        listed. The edge makes it itself (`losos edge escrow releaser
+        escrow's treasury can replace it. On Solana the edge signs with an
+        ed25519 key derived from it, which holds a little SOL for fees and
+        the token accounts it opens. Needed whenever a network has `pay`. The edge makes it itself (`losos edge escrow releaser
         --new`), so the key never exists anywhere else.
       '';
     };
@@ -2197,10 +2203,10 @@ in
       description = ''
         Also let buyers pay in ways that reach the seller's wallet at once:
         Bitcoin, Monero and Zcash (`bitcoin`, `monero`, `zcash`) and USDC on
-        Solana. Nothing paid that way can be held for the slot, so a buyer
-        whose seller goes offline cannot be refunded. Off, the market takes
-        only cards and USDC on the EVM networks, which the edge holds until
-        each slot ends.
+        Solana without an escrow program. Nothing paid that way can be held
+        for the slot, so a buyer whose seller goes offline cannot be refunded.
+        Off, the market takes only cards and USDC through an escrow, which
+        the edge holds until each slot ends.
       '';
     };
 

@@ -1,9 +1,17 @@
 // Sending USDC on Solana through the box's relay: a recent blockhash, the
-// transaction solana.ts builds, the send, and the wait for `confirmed`, the
-// commitment the edge reads a payment back at.
+// transaction solana.ts builds (a transfer, or a payment into the escrow
+// program), the send, and the wait for `confirmed`, the commitment the edge
+// reads a payment back at.
 import { base58 } from "@scure/base";
 import { solanaRpc } from "./chains";
-import { signTransaction, usdcTransferMessage, type SolanaKey, type UsdcTransfer } from "./solana";
+import {
+  escrowPayMessage,
+  signTransaction,
+  usdcTransferMessage,
+  type EscrowPay,
+  type SolanaKey,
+  type UsdcTransfer,
+} from "./solana";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -32,14 +40,32 @@ export async function sendUsdc(
   signer: SolanaSigner,
   transfer: Omit<UsdcTransfer, "payer" | "recentBlockhash">,
 ): Promise<string> {
+  return send(network, signer, (payer, recentBlockhash) =>
+    usdcTransferMessage({ ...transfer, payer, recentBlockhash }),
+  );
+}
+
+/** Pay into the escrow program; the signature is the payment's id. */
+export async function payEscrow(
+  network: string,
+  signer: SolanaSigner,
+  pay: Omit<EscrowPay, "payer" | "recentBlockhash" | "nonce">,
+): Promise<string> {
+  const nonce = crypto.getRandomValues(new Uint8Array(32));
+  return send(network, signer, (payer, recentBlockhash) =>
+    escrowPayMessage({ ...pay, payer, recentBlockhash, nonce }),
+  );
+}
+
+async function send(
+  network: string,
+  signer: SolanaSigner,
+  build: (payer: string, recentBlockhash: string) => Uint8Array,
+): Promise<string> {
   const { value } = await solanaRpc<{ value: { blockhash: string } }>(network, "getLatestBlockhash", [
     { commitment: "confirmed" },
   ]);
-  const message = usdcTransferMessage({
-    ...transfer,
-    payer: signerAddress(signer),
-    recentBlockhash: value.blockhash,
-  });
+  const message = build(signerAddress(signer), value.blockhash);
   if (signer.kind === "injected") {
     // The extension sends it on its own cluster.
     const reply = (await signer.provider.request({

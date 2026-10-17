@@ -29,8 +29,9 @@ Each network's HTTPS RPC URL is a secret (it usually carries an API key),
 sealed with systemd-creds as `usdc-rpc-<network>`; see
 [CI and releases](../../docs/ci-and-releases.md#usdc-networks). The registrar is
 the only unit that reads it, and the browser never does: chain reads are
-proxied through the box. Solana needs no contract: the buyer's transaction
-splits the payment itself.
+proxied through the box. On Solana the escrow is a program,
+[`solana/`](solana/README.md); without one the buyer's transaction splits the
+payment itself and nothing is held.
 
 Circle USDC:
 

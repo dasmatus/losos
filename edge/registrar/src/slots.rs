@@ -416,6 +416,8 @@ mod tests {
             escrow: Some(Escrow {
                 network: "base".into(),
                 deposit: 1,
+                account: None,
+                deadline: None,
                 step: EscrowStep::Held,
                 reason: None,
                 tx: None,
