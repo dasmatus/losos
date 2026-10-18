@@ -133,6 +133,10 @@ pkgs.testers.nixosTest {
         ];
         # The stub above, not a pod.
         systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+        # The script asks for more one-time codes from one address than
+        # LosOS Login allows in five minutes (three).
+        services.authelia.instances.losos.settings.server.endpoints.rate_limits.session_elevation_start.enable =
+          false;
         systemd.services.nextcloud-stand-in = echoService 11000;
         systemd.services.forgejo-stand-in = echoService 3000;
         environment.systemPackages = [ pkgs.jq ];
@@ -400,7 +404,7 @@ pkgs.testers.nixosTest {
         )
 
     with subtest("LosOS Git hears who LosOS Login vouches for, and nobody else"):
-        # Authelia was restarted above, and its sessions live in memory.
+        # A fresh sign-in, after the restarts above.
         cookie = sign_in("matus", PASSWORD)
         got = person(app("/forgejo/", cookie))
         # The claim's address is <name>@<the box's hostname>.local.
@@ -461,7 +465,7 @@ pkgs.testers.nixosTest {
     with subtest("LosOS Login answers through the tunnel, and the apps send people there"):
         public = "cloud.example.org"
         # The owner's domain, which lososd lists for the apps; LosOS Login
-        # takes cookies for it (and restarts, so every sign-in ends).
+        # takes cookies for it (and restarts; sign-ins outlive that).
         mark = journal_mark()
         box.succeed(
             f"install -d /var/lib/losos-public-names && echo '[\"{public}\", \"bad name\"]'"
@@ -474,6 +478,8 @@ pkgs.testers.nixosTest {
             timeout=120,
         )
         laptop.wait_until_succeeds(f"curl -sf http://{BOX}/auth/api/health", timeout=60)
+        # The sessions are in LosOS Login's Redis, so the restart ended none.
+        assert api("/api/state", cookie)[0] == 200
         # Nextcloud's own form is gone, direct=1 or not.
         code, where = app("/nextcloud/login?direct=1")
         assert code == 302 and where.startswith(f"https://{BOX}/auth/?rd="), (code, where)
@@ -489,7 +495,7 @@ pkgs.testers.nixosTest {
         # plain http through the tunnel goes to https, and a LAN client
         # cannot claim https it does not have.
         code, body = tunnel("/auth/", public)
-        assert code == 200 and "LosOS" in body, (code, body[:200])
+        assert code == 200 and f'<base href="https://{public}/auth/"' in body, (code, body[:200])
         assert tunnel("/auth/", public, proto="http")[0] == 301
         assert status(f"-H 'X-Forwarded-Proto: https' http://{BOX}/auth/") == "301"
         body = json.dumps({"username": "eva", "password": "Eva-Long-Password-3"})
@@ -628,28 +634,34 @@ pkgs.testers.nixosTest {
         return f"{n % 1000000:06d}"
 
     def authelia(path, cookie, method="POST", data=None):
-        """LosOS Login's own API, as its settings page calls it."""
-        code, body = api(f"/auth/api{path}", cookie, method=method, data=data)
-        return code, (json.loads(body) if body.strip() else {})
+        """LosOS Login's own API, as its settings page calls it. Asking for
+        and answering an elevation gives the session a new id, the way a
+        browser follows Set-Cookie, so the cookie comes back too."""
+        code, body = api(f"/auth/api{path}", cookie, method=method, data=data,
+                         extra="-D /tmp/authelia-head")
+        m = re.search(r"(?im)^set-cookie: (losos_session=[^;]+)",
+                      laptop.succeed("cat /tmp/authelia-head"))
+        return code, (json.loads(body) if body.strip() else {}), (m.group(1) if m else cookie)
 
     def add_app(cookie, password):
         """Add an authenticator app the way LosOS Login's settings page does:
-        a one-time code first, read from the box behind the password."""
-        code, body = authelia("/user/session/elevation", cookie)
+        a one-time code first, read from the box behind the password. Returns
+        the app's secret and the session's new cookie."""
+        code, body, cookie = authelia("/user/session/elevation", cookie)
         assert code == 200, (code, body)
         code, body = api("/api/account/code", cookie, method="POST", data={"password": password})
         assert code == 200, (code, body)
         otc = json.loads(body)["code"]
         assert re.fullmatch(r"[A-Z0-9]{6,32}", otc), otc
-        code, body = authelia("/user/session/elevation", cookie, method="PUT", data={"otc": otc})
+        code, body, cookie = authelia("/user/session/elevation", cookie, method="PUT", data={"otc": otc})
         assert code == 200 and body["status"] == "OK", (code, body)
-        code, body = authelia("/secondfactor/totp/register", cookie, method="PUT",
+        code, body, cookie = authelia("/secondfactor/totp/register", cookie, method="PUT",
                               data={"algorithm": "SHA1", "length": 6, "period": 30})
         assert code == 200, (code, body)
         secret = body["data"]["base32_secret"]
-        code, body = authelia("/secondfactor/totp/register", cookie, data={"token": totp(secret)})
+        code, body, cookie = authelia("/secondfactor/totp/register", cookie, data={"token": totp(secret)})
         assert code == 200 and body["status"] == "OK", (code, body)
-        return secret
+        return secret, cookie
 
     def second_factor(cookie, secret):
         """Answer LosOS Login's second step; return the session cookie."""
@@ -724,7 +736,7 @@ pkgs.testers.nixosTest {
         code, body = api("/api/account/code", oma, method="POST",
                          data={"password": "Oma-Long-Password-6"})
         assert code == 404 and json.loads(body)["noCode"] is True, (code, body)
-        code, body = authelia("/user/session/elevation", oma)
+        code, body, oma = authelia("/user/session/elevation", oma)
         assert code == 200, (code, body)
         code, body = api("/api/account/code", oma, method="POST",
                          data={"password": "Wrong-Password-1234"})
@@ -743,7 +755,7 @@ pkgs.testers.nixosTest {
         # Nobody turns on a rule that would hold them at once.
         code, body = api("/api/people/rules", cookie, method="POST", data={"twoFactor": True})
         assert code == 409 and json.loads(body)["needsOwnFactor"] is True, (code, body)
-        matus_app = add_app(cookie, PASSWORD)
+        matus_app, cookie = add_app(cookie, PASSWORD)
         wait_marks("matus", has=["losos-two-factor"])
         assert groups("matus") == ["losos-admins", "losos-owner", "losos-two-factor"]
         # The session that added it signed in with a password alone.
@@ -776,7 +788,9 @@ pkgs.testers.nixosTest {
         me = json.loads(api("/api/me", oma)[1])
         assert me["locked"] == ["twoFactor"] and me["sections"] == ["account"], me
         assert me["admin"] is False, me
-        code, body = api("/api/state", oma)
+        # What every page reads stays open; any section is closed.
+        assert api("/api/state", oma)[0] == 200
+        code, body = api("/api/storage", oma)
         assert code == 403 and json.loads(body)["locked"] is True, (code, body)
         code, body = api("/api/backup", ivo)
         assert code == 403 and json.loads(body)["locked"] is True, (code, body)
@@ -795,7 +809,7 @@ pkgs.testers.nixosTest {
             "matus": [], "oma": ["twoFactor"], "ivo": ["twoFactor"]
         }, listed
         # Oma adds an app and is let go.
-        oma_app = add_app(oma, "Oma-Long-Password-6")
+        oma_app, oma = add_app(oma, "Oma-Long-Password-6")
         wait_marks("oma", has=["losos-two-factor"], lacks=["losos-locked"])
         oma = second_factor(oma, oma_app)
         me = json.loads(api("/api/me", oma)[1])
@@ -815,7 +829,7 @@ pkgs.testers.nixosTest {
         # Root wrote LosOS Login's database; LosOS Login still owns every
         # file of it, and adds the new app.
         box.succeed("test -z \"$(find /var/lib/authelia-losos/ ! -user authelia-losos)\"")
-        oma_app = add_app(oma, "Oma-Long-Password-6")
+        oma_app, oma = add_app(oma, "Oma-Long-Password-6")
         wait_marks("oma", has=["losos-two-factor"], lacks=["losos-locked"])
         oma = second_factor(oma, oma_app)
         assert api("/api/state", oma)[0] == 200
@@ -837,7 +851,8 @@ pkgs.testers.nixosTest {
         assert me["locked"] == ["password"], me
         mine = json.loads(api("/api/account", oma)[1])
         assert mine["passwordExpiresAt"] <= int(box.succeed("date +%s")), mine
-        assert api("/api/state", oma)[0] == 403
+        code, body = api("/api/storage", oma)
+        assert code == 403 and json.loads(body)["locked"] is True, (code, body)
         # The same password again is no change.
         code, body = api("/api/set-password", oma, method="POST",
                          data={"password": "Oma-Long-Password-6"})
