@@ -474,9 +474,9 @@ async fn pay(
     treasury: &[u8; 32],
     invoice: &Value,
     seller: &[u8; 32],
-    nonce: u8,
+    n: u8,
 ) -> Result<String, Value> {
-    pay_into(PROGRAM, url, buyer, treasury, invoice, seller, nonce).await
+    pay_into(PROGRAM, url, buyer, treasury, invoice, seller, n).await
 }
 
 async fn pay_into(
@@ -486,12 +486,12 @@ async fn pay_into(
     treasury: &[u8; 32],
     invoice: &Value,
     seller: &[u8; 32],
-    nonce: u8,
+    n: u8,
 ) -> Result<String, Value> {
     let program_name = program;
     let program = key(program).expect("program");
     let mint = key(USDC_SOLANA_DEVNET).expect("mint");
-    let nonce = a_nonce(nonce);
+    let nonce = a_nonce(n);
     let config = config_address(&program, treasury, &mint);
     let deposit = deposit_in(program_name, treasury, &nonce);
     let order = invoice["order_id_hash"].as_str().expect("hash");
