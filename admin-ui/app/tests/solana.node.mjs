@@ -7,7 +7,9 @@
  * `solana-test-validator --clone`) with USDC on the buyer, and runs only when
  * LOSOS_SOLANA_RPC is set: it pays a seller and a treasury in one transaction
  * and reads the result back the way the edge's verifier will. With
- * LOSOS_SOLANA_SAMPLE set, the jsonParsed transaction is written there.
+ * LOSOS_SOLANA_SAMPLE set, the jsonParsed transaction is written there. With
+ * LOSOS_ESCROW_PROGRAM set to the program the validator loaded at
+ * LosEscrow111…, it also pays into the escrow and reads the deposit back.
  *
  *   node tests/solana.node.mjs
  *   LOSOS_SOLANA_RPC=http://127.0.0.1:8899 node tests/solana.node.mjs
@@ -143,6 +145,77 @@ await check('signTransaction frames one signature over the message', () => {
   assert.ok(ed25519.verify(tx.subarray(1, 65), msg, base58.decode(buyer.address)));
 });
 
+// The program's address in the edge's tests; any address serves.
+const ESCROW = 'LosEscrow1111111111111111111111111111111111';
+
+function escrowPay(seller = freshOwner(), treasury = freshOwner()) {
+  return {
+    payer: buyer.address,
+    program: ESCROW,
+    mint: USDC_DEVNET,
+    treasury,
+    seller,
+    orderIdHash: memo(),
+    gross: 6_000_000n,
+    fee: 240_000n,
+    deadline: BigInt(Math.floor(Date.now() / 1000) + 33 * 86_400),
+    nonce: new Uint8Array(randomBytes(32)),
+    recentBlockhash: sol.formatBase58(new Uint8Array(32).fill(9)),
+  };
+}
+
+await check('escrow addresses match the edge', () => {
+  // edge/registrar/src/solana_escrow.rs, `program_addresses_match_the_runtime`.
+  assert.equal(
+    sol.escrowVaultAddress(ESCROW, '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM'),
+    '92UMAvkSCU1ATw3VWw8b1kXV16DHQS7G3hxjeCSzyjHL',
+  );
+});
+
+await check("escrow pay layout: the program's nine accounts and 89 bytes", () => {
+  const p = escrowPay();
+  const msg = sol.escrowPayMessage(p);
+  // one signer; writable: the buyer's token account, the deposit, its
+  // vault; readonly: config, seller, mint, token and system programs, the
+  // escrow program.
+  assert.deepEqual([...msg.subarray(0, 4)], [1, 0, 6, 10]);
+  const keys = Array.from({ length: 10 }, (_, i) => base58.encode(msg.subarray(4 + 32 * i, 36 + 32 * i)));
+  const config = sol.escrowConfigAddress(ESCROW, p.treasury, p.mint);
+  const deposit = sol.escrowDepositAddress(ESCROW, config, p.nonce);
+  const order = [
+    buyer.address,
+    sol.associatedTokenAddress(buyer.address, p.mint),
+    config,
+    deposit,
+    sol.escrowVaultAddress(ESCROW, deposit),
+    p.seller,
+    p.mint,
+    sol.TOKEN_PROGRAM,
+    sol.SYSTEM_PROGRAM,
+  ];
+  const at = 4 + 32 * 10 + 32;
+  assert.equal(msg[at], 1, 'one instruction');
+  assert.equal(keys[msg[at + 1]], ESCROW);
+  assert.equal(msg[at + 2], 9);
+  assert.deepEqual([...msg.subarray(at + 3, at + 12)].map((i) => keys[i]), order);
+  assert.equal(msg[at + 12], 89);
+  const data = msg.subarray(at + 13);
+  assert.equal(data.length, 89);
+  assert.equal(data[0], 1);
+  assert.deepEqual(data.subarray(1, 33), p.nonce);
+  assert.equal(`0x${Buffer.from(data.subarray(33, 65)).toString('hex')}`, p.orderIdHash);
+  const view = new DataView(data.buffer, data.byteOffset);
+  assert.equal(view.getBigUint64(65, true), p.gross);
+  assert.equal(view.getBigUint64(73, true), p.fee);
+  assert.equal(view.getBigInt64(81, true), p.deadline);
+});
+
+await check('escrow pay refuses a fee over the gross or a short nonce', () => {
+  assert.throws(() => sol.escrowPayMessage({ ...escrowPay(), fee: 7_000_000n }), /amount/);
+  assert.throws(() => sol.escrowPayMessage({ ...escrowPay(), nonce: new Uint8Array(31) }), /nonce/);
+  assert.throws(() => sol.escrowPayMessage({ ...escrowPay(), orderIdHash: '0x12' }), /order id hash/);
+});
+
 const RPC = process.env.LOSOS_SOLANA_RPC;
 if (RPC === undefined || RPC === '') {
   console.log('  skip live payment (LOSOS_SOLANA_RPC is not set)');
@@ -201,6 +274,78 @@ if (RPC === undefined || RPC === '') {
     assert.equal(delta(t.seller), 5_760_000n);
     assert.equal(delta(t.treasury), 240_000n);
     assert.equal(delta(t.payer), -6_000_000n);
+  });
+}
+
+// With the escrow program loaded at ESCROW as well (the edge's test loads it
+// the same way: `--bpf-program LosEscrow111… losos_escrow.so`), the page's
+// payment goes into a deposit the program then holds.
+if (RPC && process.env.LOSOS_ESCROW_PROGRAM === ESCROW) {
+  await check(`live escrow payment against ${RPC}`, async () => {
+    let id = 0;
+    const rpc = async (method, params = []) => {
+      const res = await fetch(RPC, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }),
+      });
+      const body = await res.json();
+      if (body.error) throw new Error(`${method}: ${JSON.stringify(body.error)}`);
+      return body.result;
+    };
+    const landed = async (signature) => {
+      for (let i = 0; ; i++) {
+        const { value } = await rpc('getSignatureStatuses', [[signature]]);
+        const s = value[0];
+        if (s?.err) throw new Error(`failed on chain: ${JSON.stringify(s.err)}`);
+        if (s && ['confirmed', 'finalized'].includes(s.confirmationStatus)) return;
+        if (i > 120) throw new Error('not confirmed within 60 s');
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    };
+    // A treasury of its own makes its config: `initialize`, which the
+    // page never sends, framed here by hand.
+    const secret = ed25519.utils.randomSecretKey();
+    const treasury = base58.encode(ed25519.getPublicKey(secret));
+    await landed(await rpc('requestAirdrop', [treasury, 1_000_000_000]));
+    const config = sol.escrowConfigAddress(ESCROW, treasury, USDC_DEVNET);
+    const { value: first } = await rpc('getLatestBlockhash', [{ commitment: 'confirmed' }]);
+    const keys = [treasury, config, USDC_DEVNET, sol.SYSTEM_PROGRAM, ESCROW];
+    const init = Uint8Array.from([
+      1, 0, 3, keys.length,
+      ...keys.flatMap((k) => [...base58.decode(k)]),
+      ...base58.decode(first.blockhash),
+      1, 4, 4, 0, 1, 2, 3, 33, 0,
+      ...base58.decode(freshOwner()),
+    ]);
+    const initSig = ed25519.sign(init, secret);
+    await rpc('sendTransaction', [
+      base64.encode(Uint8Array.from([1, ...initSig, ...init])),
+      { encoding: 'base64', preflightCommitment: 'confirmed' },
+    ]);
+    await landed(base58.encode(initSig));
+
+    const seller = freshOwner();
+    const { value: latest } = await rpc('getLatestBlockhash', [{ commitment: 'confirmed' }]);
+    const p = { ...escrowPay(seller, treasury), recentBlockhash: latest.blockhash };
+    const { wire, signature } = sol.signTransaction(buyer, sol.escrowPayMessage(p));
+    assert.equal(await rpc('sendTransaction', [wire, { encoding: 'base64', preflightCommitment: 'confirmed' }]), signature);
+    await landed(signature);
+
+    const deposit = sol.escrowDepositAddress(ESCROW, config, p.nonce);
+    const info = await rpc('getAccountInfo', [deposit, { encoding: 'base64', commitment: 'confirmed' }]);
+    assert.equal(info.value.owner, ESCROW);
+    const d = base64.decode(info.value.data[0]);
+    assert.equal(d.length, 196);
+    assert.equal(base58.encode(d.subarray(36, 68)), buyer.address);
+    assert.equal(base58.encode(d.subarray(68, 100)), seller);
+    assert.equal(`0x${Buffer.from(d.subarray(100, 132)).toString('hex')}`, p.orderIdHash);
+    const view = new DataView(d.buffer, d.byteOffset);
+    assert.equal(view.getBigUint64(164, true), p.gross);
+    assert.equal(view.getBigUint64(172, true), p.fee);
+    assert.equal(view.getBigInt64(180, true), p.deadline);
+    const vault = await rpc('getTokenAccountBalance', [sol.escrowVaultAddress(ESCROW, deposit), { commitment: 'confirmed' }]);
+    assert.equal(vault.value.amount, p.gross.toString());
   });
 }
 

@@ -46,7 +46,14 @@ import {
 } from "@/wallet/hot";
 import { isSolanaAddress, signMessage, solanaKeyFromPhrase } from "@/wallet/solana";
 import { cheapest, estimateFee, formatFeeUsd, lowFeeFields, type FeeEstimate } from "@/wallet/fees";
-import { sendUsdc, solanaInjected, waitConfirmed, type SolanaInjected, type SolanaSigner } from "@/wallet/solana-pay";
+import {
+  payEscrow,
+  sendUsdc,
+  solanaInjected,
+  waitConfirmed,
+  type SolanaInjected,
+  type SolanaSigner,
+} from "@/wallet/solana-pay";
 import { Group, GroupCaption, GroupTitle, Row, RowText } from "./rows";
 import { COIN_NAMES, CoinKeyRow, CoinPayPanel } from "./coin-pay";
 import { formatDay, formatMoney } from "./market";
@@ -295,9 +302,11 @@ export function UsdcWallet({
     };
   }, [invoice, payable, address, solAddress, usdc.prices]);
 
-  // Offer first the network where the wallet holds the USDC and the fee and
-  // the fee is lowest; else the first holding the USDC; else the first. A
-  // network the owner picked stays picked.
+  // Offer first USDC on Solana through the escrow, where it settles in
+  // seconds for a fraction of a cent, unless the wallet holds the USDC only
+  // elsewhere; then the network where the wallet holds the USDC and the fee
+  // and the fee is lowest; else the first holding the USDC; else the first.
+  // A network the owner picked stays picked.
   React.useEffect(() => {
     if (!invoice || payable.length === 0) return;
     if (payPicked.current && payable.some((c) => c.network === payOn)) return;
@@ -307,8 +316,12 @@ export function UsdcWallet({
       balances,
       gross,
     );
-    const funded = payable.find((c) => (balances ?? []).some((b) => b.network === c.network && b.usdc >= gross));
-    const pick = low ?? funded?.network ?? payable[0]?.network;
+    const holds = (c: { network: string }) =>
+      (balances ?? []).some((b) => b.network === c.network && b.usdc >= gross);
+    const funded = payable.find(holds);
+    const escrow = payable.find((c) => c.family === "solana" && c.pay);
+    const preferred = escrow && (holds(escrow) || funded === undefined) ? escrow.network : null;
+    const pick = preferred ?? low ?? funded?.network ?? payable[0]?.network;
     if (pick && pick !== payOn) setPayOn(pick);
   }, [invoice, payable, payOn, balances, payFees]);
 
@@ -781,8 +794,9 @@ export function UsdcWallet({
     await confirm(paid);
   };
 
-  /** Pay on Solana: the seller's share and the fee in one transaction, with
-   *  the order in a memo. */
+  /** Pay on Solana: into the escrow program when the edge has one, which
+   *  holds the payment until the slot is over; else the seller's share and
+   *  the fee in one transaction, with the order in a memo. */
   const paySolana = async (chain: UsdcChain & { seller: string }, words: string | null) => {
     if (!invoice) return;
     const signer: SolanaSigner =
@@ -791,14 +805,25 @@ export function UsdcWallet({
         : { kind: "injected", address: solAddress!, provider: solProvider! };
     const gross = BigInt(invoice.gross);
     const fee = BigInt(invoice.fee);
-    const signature = await sendUsdc(chain.network, signer, {
-      mint: chain.usdc,
-      seller: chain.seller,
-      treasury: chain.treasury,
-      sellerAmount: gross - fee,
-      feeAmount: fee,
-      memo: invoice.order_id_hash,
-    });
+    const signature = chain.pay
+      ? await payEscrow(chain.network, signer, {
+          program: chain.pay,
+          mint: chain.usdc,
+          treasury: chain.treasury,
+          seller: chain.seller,
+          orderIdHash: invoice.order_id_hash,
+          gross,
+          fee,
+          deadline: BigInt(invoice.deadline),
+        })
+      : await sendUsdc(chain.network, signer, {
+          mint: chain.usdc,
+          seller: chain.seller,
+          treasury: chain.treasury,
+          sellerAmount: gross - fee,
+          feeAmount: fee,
+          memo: invoice.order_id_hash,
+        });
     const paid = { ...invoice, tx: signature, network: chain.network };
     sessionStorage.setItem(PENDING_INVOICE, JSON.stringify(paid));
     setInvoice(paid);

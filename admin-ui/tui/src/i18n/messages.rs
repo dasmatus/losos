@@ -863,6 +863,26 @@ messages! {
         sk: "escrow {escrow} uvádza iný kľúč; jeho pokladnica zavolá setReleaser s touto adresou",
         de: "der Escrow {escrow} nennt einen anderen Schlüssel; seine Treasury ruft setReleaser mit dieser Adresse auf",
     },
+    "tui.edge.releaserSolanaAddress" => {
+        en: "On Solana it signs as {address}.",
+        sk: "Na Solane podpisuje ako {address}.",
+        de: "Auf Solana unterschreibt er als {address}.",
+    },
+    "tui.edge.releaserNoConfig" => {
+        en: "the escrow program {escrow} has no config for this treasury yet; the treasury runs initialize with this key's Solana address",
+        sk: "program escrow {escrow} ešte nemá konfiguráciu pre túto pokladnicu; pokladnica spustí initialize so Solana adresou tohto kľúča",
+        de: "das Escrow-Programm {escrow} hat noch keine Konfiguration für diese Treasury; die Treasury ruft initialize mit der Solana-Adresse dieses Schlüssels auf",
+    },
+    "tui.edge.releaserSolanaDisagrees" => {
+        en: "the escrow program {escrow} names another key; its treasury calls set_releaser with this key's Solana address",
+        sk: "program escrow {escrow} uvádza iný kľúč; jeho pokladnica zavolá set_releaser so Solana adresou tohto kľúča",
+        de: "das Escrow-Programm {escrow} nennt einen anderen Schlüssel; seine Treasury ruft set_releaser mit der Solana-Adresse dieses Schlüssels auf",
+    },
+    "tui.edge.releaserSolanaNext" => {
+        en: "On Solana the same key signs as {address}. Send it a little SOL for fees and new token accounts, and have the treasury run initialize (or set_releaser) on the escrow program with that address.",
+        sk: "Na Solane ten istý kľúč podpisuje ako {address}. Pošlite naň trochu SOL na poplatky a nové tokenové účty a nech pokladnica spustí initialize (alebo set_releaser) v programe escrow s touto adresou.",
+        de: "Auf Solana unterschreibt derselbe Schlüssel als {address}. Senden Sie ihm etwas SOL für Gebühren und neue Token-Konten, und lassen Sie die Treasury im Escrow-Programm initialize (oder set_releaser) mit dieser Adresse aufrufen.",
+    },
     "tui.edge.releaserMade" => {
         en: "The edge made a new escrow key and sealed it. Its address is {address}. The key itself never leaves the edge.",
         sk: "Edge vytvoril nový kľúč pre escrow a zapečatil ho. Jeho adresa je {address}. Samotný kľúč edge nikdy neopustí.",

@@ -9,12 +9,12 @@ mdx:
 
 Voliteľný trh, na ktorom jedno zariadenie predáva voľné úložisko alebo výpočtový
 výkon a iný ho kupuje. Kupujúci platia kartou cez **Stripe Connect**, ak edge
-karty prijíma, alebo v USDC na Base, Arbitrum alebo OP. Edge každú platbu
-drží, kým neskončí obdobie, za ktoré kupujúci zaplatil, vráti peniaze
+karty prijíma, alebo v USDC na Solane, Base, Arbitrum alebo OP. Edge každú
+platbu drží, kým neskončí obdobie, za ktoré kupujúci zaplatil, vráti peniaze
 kupujúcemu, keď zariadenie predajcu prestane dodávať, a ponecháva si 4 % na
 pokrytie svojich prevádzkových nákladov. Edge sa dá nastaviť aj na príjem
-bitcoinov, Monera, Zcashu a USDC na Solane, ktoré prídu predajcovi hneď,
-a preto sa nedajú vrátiť.
+bitcoinov, Monera a Zcashu, ktoré prídu predajcovi hneď, a preto sa nedajú
+vrátiť.
 
 Riadok **Trh** pod Mesh v bočnom paneli otvára panel na adrese
 `/settings/market`. Zariadenie ukáže trh, len keď je v dosahu oficiálny edge
@@ -44,8 +44,9 @@ zdieľanie obnovíte, a už zaplatené objednávky to neovplyvní.
 Peniaze sa nikdy nedotknú zariadenia LosOS. Kupujúci platia jedným z týchto
 spôsobov, podľa toho, čo edge dovolí:
 
-- **USDC na Base, Arbitrum One alebo OP Mainnet.** Platba ide do kontraktu
-  `LososEscrow`. Edge ju overí (adresu predajcu, sumu, potvrdenia) a drží ju
+- **USDC na Solane, Base, Arbitrum One alebo OP Mainnet.** Platba ide do
+  escrow: do programu `losos-escrow` na Solane, do kontraktu `LososEscrow` na
+  ostatných. Edge ju overí (adresu predajcu, sumu, potvrdenia) a drží ju
   tam, kým obdobie kupujúceho neskončí. Potom ju uvoľní predajcovi
   a pokladnici platformy, ktorá si berie 4 % poplatok. Alebo celú platbu
   vráti kupujúcemu: keď je adresa predajcu nesprávna alebo je to kontrakt,
@@ -53,7 +54,7 @@ spôsobov, podľa toho, čo edge dovolí:
   kúpené nepodarilo včas pripraviť. Keď bolo zariadenie predajcu príliš dlho
   offline, platbu rozdelí: kupujúci dostane späť podiel, ktorý nebol
   dodaný, a predajca si ponechá zvyšok. Ak edge nič neurobí, kupujúci si
-  môže vklad z kontraktu vziať späť 33 dní po objednaní. Pozri
+  môže vklad z escrow vziať späť 33 dní po objednaní. Pozri
   [Platba v USDC](#paying-with-usdc).
 - **Karta cez Stripe Connect.** Na edge voliteľná. Platba zostáva na
   zostatku platformy v Stripe, kým obdobie kupujúceho neskončí, potom edge
@@ -64,8 +65,8 @@ spôsobov, podľa toho, čo edge dovolí:
 Na edge, ktorý nie je nastavený aj na priame platby, sú to jediné dva
 spôsoby platby. Keď sú priame platby zapnuté, kupujúci vidia aj:
 
-- **USDC na Solane.** Priamy prevod, rozdelený medzi predajcu a pokladnicu
-  v transakcii samotného kupujúceho.
+- **USDC na Solane, na edge bez programu escrow.** Priamy prevod, rozdelený
+  medzi predajcu a pokladnicu v transakcii samotného kupujúceho.
 - **Bitcoin, Monero a Zcash.** Priamo do vlastnej peňaženky predajcu, na
   novú adresu pre každú objednávku, odvodenú z verejného kľúča predajcu:
   rozšíreného verejného kľúča alebo deskriptora pre Bitcoin, primárnej
@@ -407,8 +408,10 @@ Hardvér zostáva na Stripe. Ktoré siete prijíma, si vyberá edge:
 | OP Mainnet   | OP Sepolia          |
 | Solana       | Solana Devnet       |
 
-Solana sa ponúka len na edge, ktorý prijíma aj priame platby, keďže nič
-zaplatené na nej sa nedá podržať.
+Na Solane platbu drží program `losos-escrow`, ak ho edge uvádza. Solana
+vyrovná platbu za pár sekúnd a za zlomok centu, preto ju panel ponúkne ako
+prvú. Edge bez tohto programu ponúka Solanu len vtedy, keď prijíma aj priame
+platby, keďže nič zaplatené na nej by sa nedalo podržať.
 
 Edge beží buď na ostrých, alebo na testovacích sieťach, nikdy na oboch. Na
 edge, ktorý prijíma karty, sa režim riadi jeho kľúčom Stripe: ostré siete
@@ -430,22 +433,26 @@ poznámky pre operátora pri zdrojovom kóde (`docs/ci-and-releases.md`).
 2. Panel ukáže USDC peňaženky na každej sieti a vedľa mince, ktorou sa na
    nej platia poplatky: ETH, na Solane SOL.
 3. Objednajte ponuku. Nie je stránka Stripe. Panel ukáže sumu v USDC a
-   spýta sa, na ktorej sieti platiť; ako prvú ponúkne tú, kde má peňaženka
-   dosť.
+   spýta sa, na ktorej sieti platiť. Ako prvé ponúkne escrow na Solane,
+   pokiaľ peňaženka nemá USDC len na inej sieti; potom sieť, kde má
+   peňaženka dosť, s najnižším poplatkom.
 4. Zaplaťte. Na sieti Etherea peňaženka schváli USDC pre `LososEscrow` a
    zavolá `pay`. Zmluva platbu podrží a zapíše si predajcu, poplatok a
    lehotu na vrátenie; predajcovi zatiaľ nič nepríde. Na Solane jedna
-   transakcia pošle poplatok platformy do treasury a zvyšok predajcovi a v
-   memo uvedie objednávku. Prvá platba predajcovi alebo treasury im aj
-   otvorí účet USDC, čo stojí trochu SOL.
+   transakcia zavolá `pay` programu escrow, ktorý pre objednávku otvorí
+   vklad, presunie doň USDC a zapíše tie isté tri údaje. Vklad drží z
+   peňaženky asi 0,0043 SOL nájomného, ktoré sa jej vrátia, keď sa vklad
+   uzavrie. Bez programu escrow jedna transakcia pošle poplatok platformy do
+   treasury a zvyšok predajcovi a v memo uvedie objednávku; prvá platba
+   predajcovi alebo treasury im aj otvorí účet USDC, čo stojí trochu SOL.
 5. Edge prečíta transakciu cez svoj endpoint pre danú sieť a objednávku
    označí ako zaplatenú. Jedna transakcia zaplatí len jednu objednávku.
    Objednávka potom uvádza svoju sieť a odkaz na transakciu v prehliadači
    blokov tej siete, pre kupujúceho aj predajcu.
 6. Na sieti Etherea edge overí adresu predajcu na tej sieti. Ak tam USDC
    prijať nemôže, edge vráti celú platbu kupujúcemu a objednávka sa
-   nevybaví. Inak vklad zostane v escrow, kým obdobie beží, a edge ho
-   vyrovná tak, ako opisuje
+   nevybaví. Inak, a na Solane vždy, vklad zostane v escrow, kým obdobie
+   beží, a edge ho vyrovná tak, ako opisuje
    [Zaplatené obdobia a vrátenie peňazí](#paid-periods-and-refunds):
    poplatok do treasury a zvyšok predajcovi, všetko späť kupujúcemu, alebo
    rozdelenie. Objednávka ukáže, čo z toho sa stalo.
@@ -464,18 +471,28 @@ USDC, escrow a nulová adresa sa nepočítajú nikdy. Kľúč edge môže vklad
 uvoľniť len predajcovi a treasury zapísaným pri platbe, vrátiť ho kupujúcemu,
 alebo ho medzi nich rozdeliť (`settle`); nikam inam ho poslať nevie. Ak edge
 vklad nevyrovná do 33 dní od zadania objednávky, kupujúci si ho môže zo zmluvy
-vziať späť sám. Edge vypláca aspoň dva dni predtým. Na Solane edge overí, že
-endpoint hlási genesis hash siete, že transakcia prešla a je potvrdená, že jej
-memo uvádza objednávku a že USDC predajcu a treasury narástli presne o ich
-podiely.
+vziať späť sám. Edge vypláca aspoň dva dni predtým.
+
+Na Solane edge overí, že endpoint hlási genesis hash siete a že konfigurácia
+programu escrow pre treasury uvádza USDC od Circle a vlastný kľúč edge. Potom
+prečíta vklad, ktorý potvrdená transakcia vytvorila, a započíta ho, len keď
+patrí k tejto konfigurácii a uvádza objednávku, predajcu a presnú sumu,
+poplatok a lehotu na vrátenie. Program drží tie isté pravidlá ako
+`LososEscrow`: poplatok najviac polovica, uvoľnenie len zapísanému predajcovi
+a treasury, vrátenie len kupujúcemu a vlastné vrátenie kupujúceho až po
+lehote. Vklad sa pri vyplatení uzavrie a jeho nájomné sa vráti kupujúcemu.
+Malý poplatok za vlastné transakcie platí edge v SOL a predajcovi a treasury
+otvorí účty USDC, ak ich nemajú. Bez programu escrow edge overí, že
+transakcia prešla a je potvrdená, že jej memo uvádza objednávku a že USDC
+predajcu a treasury narástli presne o ich podiely.
 
 Objednávka drží svoje jednotky štvrť hodiny. Panel v posledných dvoch
 minútach novú platbu nezačne a transakciu odoslanej platby si pamätá, kým ju
 edge nezapočíta, takže opätovná kontrola nikdy nezaplatí dvakrát. Platba,
 ktorá príde po uplynutí tejto doby, platí, kým sú jednotky voľné. Ak sa
 medzitým predali alebo objednávku už zaplatila iná platba, edge platbu z
-escrow vráti a panel to oznámi. Na Solane, kde escrow nie je, taká platba
-zostane predajcovi a vrátenie peňazí sa musí vyriešiť mimo trhu.
+escrow vráti a panel to oznámi. Priama platba na Solane, bez programu
+escrow, zostane predajcovi a vrátenie peňazí sa musí vyriešiť mimo trhu.
 
 :::tip[Testovacie mince sú z faucetov]
 Pre testovací edge je testovacie USDC z
@@ -523,9 +540,9 @@ obsluhované cez gateway mimo reťazca sa nehľadajú.
 
 Podpíšte peňaženkou, ktorá má USDC prijímať. Adresa Etherea berie predaje
 zaplatené na Base, Arbitrum a OP; prídu na ňu, keď obdobie kupujúceho skončí a
-edge platbu z escrow uvoľní. Na edge, ktorý prijíma aj priame platby, to isté
-kliknutie podpíše aj adresu Solany, ktorá berie predaje zaplatené na Solane
-priamo. Edge overí každý podpis a uloží len adresy. Predajca, ktorý má
+edge platbu z escrow uvoľní. To isté kliknutie podpíše aj adresu Solany,
+ktorá berie predaje zaplatené na Solane rovnako, alebo priamo na edge bez
+programu escrow. Edge overí každý podpis a uloží len adresy. Predajca, ktorý má
 nastavenú len jednu z nich, sa ponúka iba kupujúcim na tom druhu siete. Tú
 istú frázu importujete do MetaMask, Rabby, Rainbow, Trust Wallet alebo
 Phantom, keď peniaze chcete minúť. Pre tieto predaje nie je žiadny pripojený
@@ -683,7 +700,7 @@ aj na Solane. Kupujúci platí stále uvedenú cenu. Menší je len podiel
 predajcu a predaj na paneli uvádza, koľko z neho išlo na dlžné poplatky.
 Poplatok nikdy neprekročí polovicu ceny objednávky, čo je najviac, koľko si
 escrow kontrakt vezme. Dlh klesne až vtedy, keď peniaze prídu do pokladnice:
-keď escrow platbu uvoľní, alebo keď sa potvrdí platba na Solane.
+keď escrow platbu uvoľní, alebo keď sa potvrdí priama platba na Solane.
 Objednávka, ktorá sa vráti alebo prepadne, nevyberie nič. Keď je naraz
 otvorených viac objednávok v USDC, každá si vezme len to, čo si ešte
 nevzali ostatné. Ak predaj vyberie viac, než sa ešte dlží, lebo dlh medzitým

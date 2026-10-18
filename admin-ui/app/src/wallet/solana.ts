@@ -165,6 +165,83 @@ export function usdcTransferMessage(t: UsdcTransfer): Uint8Array {
   return compile(t.payer, ixs, t.recentBlockhash);
 }
 
+/** One payment into the escrow program (`edge/contracts/solana`): the order
+ *  is held in a deposit of its own until the edge releases it to the seller
+ *  and treasury, refunds it, or splits it. `nonce` names the deposit; a
+ *  fresh random one per payment. */
+export interface EscrowPay {
+  payer: string;
+  program: string;
+  mint: string;
+  treasury: string;
+  seller: string;
+  /** The invoice's `order_id_hash`, 0x and 64 hex digits. */
+  orderIdHash: string;
+  gross: bigint;
+  fee: bigint;
+  /** Unix seconds: after it the payer may take an unreleased deposit back. */
+  deadline: bigint;
+  nonce: Uint8Array;
+  recentBlockhash: string;
+}
+
+const enc = (s: string) => new TextEncoder().encode(s);
+
+/** The program's config for `treasury`: who it pays the fee and who releases. */
+export function escrowConfigAddress(program: string, treasury: string, mint: string): string {
+  return findProgramAddress([enc("config"), pubkey(treasury), pubkey(mint)], program);
+}
+
+/** The deposit a payment with `nonce` makes. */
+export function escrowDepositAddress(program: string, config: string, nonce: Uint8Array): string {
+  return findProgramAddress([enc("deposit"), pubkey(config), nonce], program);
+}
+
+/** The token account the deposit holds the USDC in. */
+export function escrowVaultAddress(program: string, deposit: string): string {
+  return findProgramAddress([enc("vault"), pubkey(deposit)], program);
+}
+
+function hex32(raw: string): Uint8Array {
+  const h = raw.startsWith("0x") ? raw.slice(2) : raw;
+  if (!/^[0-9a-fA-F]{64}$/.test(h)) throw new Error("order id hash");
+  return Uint8Array.from(h.match(/../g)!.map((b) => parseInt(b, 16)));
+}
+
+/** The escrow's `pay`: the program opens the deposit and its vault, paid for
+ *  by the payer and given back when the deposit closes, and moves the gross
+ *  in. The seller's and treasury's token accounts are the edge's to open. */
+export function escrowPayMessage(p: EscrowPay): Uint8Array {
+  if (p.gross <= 0n || p.fee < 0n || p.fee > p.gross) throw new Error("amount");
+  if (p.nonce.length !== 32) throw new Error("nonce");
+  const config = escrowConfigAddress(p.program, p.treasury, p.mint);
+  const deposit = escrowDepositAddress(p.program, config, p.nonce);
+  const data = new Uint8Array(89);
+  const view = new DataView(data.buffer);
+  data[0] = 1;
+  data.set(p.nonce, 1);
+  data.set(hex32(p.orderIdHash), 33);
+  view.setBigUint64(65, p.gross, true);
+  view.setBigUint64(73, p.fee, true);
+  view.setBigInt64(81, p.deadline, true);
+  const ix: Instruction = {
+    program: p.program,
+    accounts: [
+      { key: p.payer, signer: true, writable: true },
+      w(associatedTokenAddress(p.payer, p.mint)),
+      r(config),
+      w(deposit),
+      w(escrowVaultAddress(p.program, deposit)),
+      r(p.seller),
+      r(p.mint),
+      r(TOKEN_PROGRAM),
+      r(SYSTEM_PROGRAM),
+    ],
+    data,
+  };
+  return compile(p.payer, [ix], p.recentBlockhash);
+}
+
 // The fee payer must be key 0, and the header only works if keys are grouped
 // signer-writable, signer-readonly, writable, readonly.
 function compile(payer: string, ixs: Instruction[], blockhash: string): Uint8Array {

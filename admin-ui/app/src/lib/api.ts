@@ -836,7 +836,8 @@ export interface UsdcChain {
   chain_id: number | null;
   /** Circle's USDC: an 0x address, or the SPL mint on Solana. */
   usdc: string;
-  /** LososEscrow on an EVM chain; null on Solana. */
+  /** The escrow payments wait in: LososEscrow on an EVM chain, the escrow
+   *  program on Solana. Null on Solana when the edge takes direct transfers. */
   pay: string | null;
   treasury: string;
 }
@@ -871,9 +872,9 @@ export interface StablecoinInvoice {
   fee_offset?: string;
   /** Unix seconds. The order holds its units until then; start no payment after it. */
   pay_before: number;
-  /** Unix seconds, the `deadline` of `LososEscrow.pay`: after it the buyer
-   *  can take a deposit the edge never released back. Absent on Solana's
-   *  direct transfer, which has no escrow; the edge always sends it. */
+  /** Unix seconds, the `deadline` of the escrow's `pay` on either family:
+   *  after it the buyer can take a deposit the edge never released back. A
+   *  direct transfer on Solana ignores it. */
   deadline: number;
   chains: (UsdcChain & { seller: string })[];
   /** Coins other than USDC the seller takes for this order. */

@@ -602,8 +602,10 @@ fn usdc_takes_one_flag_per_network_of_one_mode() {
         vec!["--market-usdc", BASE, "--market-usdc", BASE],
         vec!["--market-usdc", "network=polygon,rpc=/run/c/x,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444"],
         vec!["--market-usdc", "network=base-sepolia,rpc=https://x.example/key,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444"],
-        // Solana has no pay contract, and only a test network names a genesis.
+        // Solana's escrow is a base58 program other than the treasury, and
+        // only a test network names a genesis.
         vec!["--market-usdc", "network=solana-devnet,rpc=/run/c/x,pay=0x1111111111111111111111111111111111111111,treasury=5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG"],
+        vec!["--market-usdc", "network=solana-devnet,rpc=/run/c/x,pay=5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG,treasury=5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG"],
         vec!["--market-usdc", "network=solana,rpc=/run/c/x,treasury=5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG,genesis=DhAHV5FNDCT3mnxKYD4jGR9Luk9eA9TTjxHG557JT2Bm"],
         vec!["--market-usdc", "network=solana-devnet,rpc=/run/c/x,treasury=0x4444444444444444444444444444444444444444"],
         vec!["--market-usdc", "network=base-sepolia,rpc=/run/c/x,treasury=0x4444444444444444444444444444444444444444"],
@@ -616,8 +618,9 @@ fn usdc_takes_one_flag_per_network_of_one_mode() {
             "{bad:?}"
         );
     }
-    // An EVM network pays into the escrow, which only the releaser key
-    // empties; Solana alone needs no key. The key is a credential file.
+    // An escrow, on either family, is emptied only by the releaser key;
+    // Solana's direct transfers alone need none. The key is a credential
+    // file.
     let parses = |args: Vec<String>| {
         parse(serve_args(
             &args.iter().map(String::as_str).collect::<Vec<_>>(),
@@ -626,6 +629,9 @@ fn usdc_takes_one_flag_per_network_of_one_mode() {
     };
     assert!(!parses(without_key(&["--market-usdc", BASE])));
     assert!(parses(without_key(&["--market-usdc", SOL])));
+    let sol_escrow = format!("{SOL},pay=LosEscrow1111111111111111111111111111111111");
+    assert!(!parses(without_key(&["--market-usdc", &sol_escrow])));
+    assert!(parses(with(&["--market-usdc", &sol_escrow])));
     assert!(!parses(without_key(&RELEASER)));
     assert!(!parses(without_key(&[
         "--market-usdc",
