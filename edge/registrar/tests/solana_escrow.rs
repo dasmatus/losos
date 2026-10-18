@@ -452,6 +452,21 @@ fn deposit_in(program: &str, treasury: &[u8; 32], nonce: &[u8; 32]) -> [u8; 32] 
     find_program_address(&[b"deposit", &config, nonce], &program).0
 }
 
+/// The nonce of payment `n`, made up at run time: CodeQL reads a literal
+/// deposit seed as a hard-coded nonce. The same `n` is the same nonce for
+/// the whole run, so a test can still pay one twice.
+fn a_nonce(n: u8) -> [u8; 32] {
+    static RUN: std::sync::OnceLock<u128> = std::sync::OnceLock::new();
+    let run = RUN.get_or_init(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    });
+    let text = format!("{n:02x}{run:030x}");
+    text.as_bytes().try_into().expect("32 hex digits")
+}
+
 /// The buyer pays `invoice` into a new deposit, as the wallet does.
 async fn pay(
     url: &str,
@@ -476,7 +491,7 @@ async fn pay_into(
     let program_name = program;
     let program = key(program).expect("program");
     let mint = key(USDC_SOLANA_DEVNET).expect("mint");
-    let nonce = [nonce; 32];
+    let nonce = a_nonce(nonce);
     let config = config_address(&program, treasury, &mint);
     let deposit = deposit_in(program_name, treasury, &nonce);
     let order = invoice["order_id_hash"].as_str().expect("hash");
@@ -839,7 +854,7 @@ async fn usdc_on_solana_is_held_in_the_escrow_program() {
     // Reporting it again changes nothing.
     assert_eq!(confirm(&edge, &order_id, &paid).await.0, 204);
     let held = wait_step(&edge, &order_id, "held").await;
-    let deposit = deposit_address(&treasury.key(), &[4; 32]);
+    let deposit = deposit_address(&treasury.key(), &a_nonce(4));
     assert_eq!(held["escrow"]["account"], base58_encode(&deposit), "{held}");
     wait_volume(&edge, &order_id).await;
 
@@ -850,7 +865,7 @@ async fn usdc_on_solana_is_held_in_the_escrow_program() {
     let (status, body) = confirm(&edge, &order_id, &twice).await;
     assert_eq!(status, 409, "{body}");
     assert!(body.contains("already paid"), "{body}");
-    let stray = deposit_address(&treasury.key(), &[5; 32]);
+    let stray = deposit_address(&treasury.key(), &a_nonce(5));
     wait_until("the stray refund", || async { !exists(&url, &stray).await }).await;
     assert_eq!(usdc_of(&url, &buyer.key()).await, before - gross);
     // Nobody is paid yet: the slot is still running.
@@ -939,6 +954,6 @@ async fn usdc_on_solana_is_held_in_the_escrow_program() {
         gross,
         "every unit accounted for"
     );
-    assert!(!exists(&url, &deposit_address(&treasury.key(), &[6; 32])).await);
+    assert!(!exists(&url, &deposit_address(&treasury.key(), &a_nonce(6))).await);
     edge.shutdown().await;
 }

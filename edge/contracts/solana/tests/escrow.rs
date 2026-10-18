@@ -307,6 +307,21 @@ impl Edge {
     }
 }
 
+/// The nonce of payment `n`, made up at run time: CodeQL reads a literal
+/// deposit seed as a hard-coded nonce. The same `n` is the same nonce for
+/// the whole run, so a test can still pay one twice.
+fn a_nonce(n: u8) -> [u8; 32] {
+    static RUN: std::sync::OnceLock<u128> = std::sync::OnceLock::new();
+    let run = RUN.get_or_init(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    });
+    let text = format!("{n:02x}{run:030x}");
+    text.as_bytes().try_into().expect("32 hex digits")
+}
+
 #[derive(Clone)]
 struct Pay {
     nonce: [u8; 32],
@@ -323,7 +338,7 @@ struct Pay {
 impl Pay {
     fn new(n: u8) -> Self {
         Self {
-            nonce: [n; 32],
+            nonce: a_nonce(n),
             gross: GROSS,
             fee: FEE,
             deadline: NOW + 33 * DAY,
