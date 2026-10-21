@@ -255,7 +255,11 @@ async function phone() {
   await page.waitForSelector('[data-entry="budget.ods"]');
   await settle(page);
   const row = page.locator('[data-entry="budget.ods"]');
+  // On a phone the places sit above the list and push the row down.
+  await row.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(400);
   const b = await row.boundingBox();
+  assert.ok(b.y > 0 && b.y + b.height < PHONE.height, `row off the screen: ${JSON.stringify(b)}`);
   const cdp = await context.newCDPSession(page);
   // The row is wider than a phone; press on the part that is on screen.
   const point = [{ x: Math.min(b.x + b.width / 2, PHONE.width / 2), y: b.y + b.height / 2 }];
