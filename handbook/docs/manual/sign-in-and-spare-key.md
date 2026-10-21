@@ -135,9 +135,11 @@ Each person in the list has these buttons:
 - **Reset two-factor** removes their authenticator app and passkeys, for
   someone who lost a phone or a key. They sign in with their password
   alone until they add new ones. It shows only for someone who has one.
+- **Remove picture** and **Remove banner** take down a picture someone
+  else should not see. They show only for someone who has one.
 - **Remove** stops them signing in, to the admin pages and to both apps, at
-  once. Their accounts and files in LosOS cloud and LosOS Git stay on the
-  box.
+  once, and deletes their profile. Their accounts and files in LosOS cloud
+  and LosOS Git stay on the box.
 
 Your own row has no buttons. The owner's row has only **Reset two-factor**,
 for another administrator to use. Nobody can remove the owner, change the
@@ -153,6 +155,14 @@ the spare key, which has no account.
 
 ![Your account: your details, your password, two-factor sign-in and the one-time code.](../img/settings-account.png)
 
+- **Profile**: a picture, a banner, a colour, your pronouns and a line
+  about you. Everyone signed in to the box sees them next to your name: in
+  the top bar, on the Users pane and in the box's apps. Choose a picture or
+  banner, drag and zoom to the part you want, and choose **Use this**. The
+  box crops the picture again and saves it as a new file, so the place and
+  camera a photo was taken with stay on your device. Your sign-in name is
+  always shown beside the profile, so a picture cannot pass you off as
+  someone else.
 - **Your details**: your full name and email address. LosOS cloud and LosOS
   Git show the same ones. Only an administrator can change your sign-in
   name.

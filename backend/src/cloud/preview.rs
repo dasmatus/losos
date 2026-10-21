@@ -104,8 +104,10 @@ pub fn serve(req: &HttpRequest, cloud: &Cloud, login: &str, id: i64, size: u32) 
         Some(c) => c,
         None => match render(&cloud.store.disk_path(login, &e.path), size) {
             Ok((bytes, is_png)) => {
-                // Older pictures of this file go; the new one is kept.
-                let _ = std::fs::remove_dir_all(&dir);
+                // Pictures of older content go; every size of this content
+                // stays, since the rows, Photos and the viewer each ask for
+                // their own.
+                forget_older(&dir, &e.etag);
                 if std::fs::create_dir_all(&dir).is_ok() {
                     let _ = std::fs::write(if is_png { &png } else { &jpg }, &bytes);
                 }
@@ -124,6 +126,25 @@ pub fn serve(req: &HttpRequest, cloud: &Cloud, login: &str, id: i64, size: u32) 
         .body(bytes)
 }
 
+/// Remove the cached pictures in `dir` that are not of content `etag`.
+/// Names are `<size>-<etag>.<ext>`.
+fn forget_older(dir: &std::path::Path, etag: &str) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let current = name
+            .split_once('-')
+            .and_then(|(_, rest)| rest.rsplit_once('.'))
+            .is_some_and(|(tag, _)| tag == etag);
+        if !current {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,6 +161,21 @@ mod tests {
         assert_eq!((back.width(), back.height()), (64, 32));
         assert_eq!(size_for(100), 256);
         assert_eq!(size_for(5000), 1024);
+    }
+
+    #[test]
+    fn a_new_size_keeps_the_other_sizes_of_the_same_content() {
+        let d = tempfile::tempdir().unwrap();
+        for name in ["64-e2.jpg", "256-e2.png", "1024-e1.jpg", "64-e1.jpg"] {
+            std::fs::write(d.path().join(name), b"x").unwrap();
+        }
+        forget_older(d.path(), "e2");
+        let mut left: Vec<String> = std::fs::read_dir(d.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(left, ["256-e2.png", "64-e2.jpg"]);
     }
 
     #[test]

@@ -144,6 +144,20 @@ export default defineConfig({
         target: process.env["LOSOS_API_ORIGIN"] ?? "http://127.0.0.1:8082",
         changeOrigin: true,
       },
+      // LosOS Cloud's API: `losos-cloud serve --listen 127.0.0.1:8095
+      // --trust-header` and a header-setting proxy, or a box. Host stays the
+      // dev origin's: the service refuses a write whose Origin names another
+      // host than Host, and the browser's Origin is this dev server.
+      "/cloud/api": {
+        target: process.env["LOSOS_CLOUD_ORIGIN"] ?? "http://127.0.0.1:8095",
+        changeOrigin: false,
+        headers: { "X-Losos-Cloud-User": process.env["LOSOS_CLOUD_USER"] ?? "owner" },
+      },
+      // A knowledge base's data, read as nobody.
+      "/kb/api": {
+        target: process.env["LOSOS_CLOUD_ORIGIN"] ?? "http://127.0.0.1:8095",
+        changeOrigin: false,
+      },
       // The first-run wizard's step 1 reads /setup/state.json — the box's name
       // and its certificate fingerprint — and on the appliance that file is
       // served by nginx from disk rather than by lososd (modules/setup.nix),
@@ -152,17 +166,6 @@ export default defineConfig({
       // this entry the dev origin falls through to the SPA's index.html, the
       // document parses as HTML, and step 1 reports the box as too old to have
       // a setup route at all.
-      // LosOS Cloud's API: `losos-cloud serve --listen 127.0.0.1:8095
-      // --trust-header` and a header-setting proxy, or a box.
-      "/kb/api": {
-        target: process.env["LOSOS_CLOUD_ORIGIN"] ?? "http://127.0.0.1:8095",
-        changeOrigin: true,
-      },
-      "/cloud/api": {
-        target: process.env["LOSOS_CLOUD_ORIGIN"] ?? "http://127.0.0.1:8095",
-        changeOrigin: true,
-        headers: { "X-Losos-Cloud-User": process.env["LOSOS_CLOUD_USER"] ?? "owner" },
-      },
       "/setup": {
         target: process.env["LOSOS_API_ORIGIN"] ?? "http://127.0.0.1:8082",
         changeOrigin: true,

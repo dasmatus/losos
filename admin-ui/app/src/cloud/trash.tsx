@@ -49,7 +49,7 @@ export function TrashView() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex min-h-9 flex-wrap items-center gap-3">
-        <h1 className="text-[15px] font-semibold tracking-tight">{t("cloud.nav.trash")}</h1>
+        <h1 className="text-[19px] leading-tight font-semibold tracking-tight">{t("cloud.nav.trash")}</h1>
         {items !== null && items.length > 0 && (
           <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setEmptying(true)}>
             {t("cloud.trash.empty")}
