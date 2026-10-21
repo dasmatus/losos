@@ -6,7 +6,7 @@
 #
 #   nodes.laptop = { imports = [ (import ./screens { inherit pkgs; }).browser ]; … };
 #   laptop.succeed("losos-capture --base https://192.168.1.1 --plan /etc/plan.json --out /tmp/shots …")
-#   laptop.copy_from_vm("/tmp/shots", "")
+#   laptop.copy_from_machine("/tmp/shots", "")
 { pkgs }:
 
 let
