@@ -432,10 +432,10 @@ fn md4(input: &[u8]) -> [u8; 16] {
     let f = |x: u32, y: u32, z: u32| (x & y) | (!x & z);
     let g = |x: u32, y: u32, z: u32| (x & y) | (x & z) | (y & z);
     let h = |x: u32, y: u32, z: u32| x ^ y ^ z;
-    for block in msg.chunks_exact(64) {
+    for block in msg.as_chunks::<64>().0 {
         let mut x = [0u32; 16];
-        for (i, w) in block.chunks_exact(4).enumerate() {
-            x[i] = u32::from_le_bytes([w[0], w[1], w[2], w[3]]);
+        for (i, w) in block.as_chunks::<4>().0.iter().enumerate() {
+            x[i] = u32::from_le_bytes(*w);
         }
         let [mut a, mut b, mut c, mut d] = s;
         for &i in &[0usize, 4, 8, 12] {

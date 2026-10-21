@@ -268,11 +268,14 @@ pkgs.testers.nixosTest {
         before = curl(f"-u 'matus:{PASSWORD}' -X PROPFIND -H 'Depth: 0' '{DAV}'")
         root_etag = etag(before)
         laptop.succeed("head -c 2000000 /dev/urandom > /tmp/report.bin")
-        rc, out = smb(f"//{box_ip}/matus -c 'mkdir Reports; put /tmp/report.bin Reports\\report.bin'", "matus", PASSWORD)
+        # Nothing below SMB3, and the client refuses to go on unencrypted.
+        rc, out = smb(
+            f"//{box_ip}/matus --client-protection=encrypt --option='client min protocol=SMB3'"
+            " -c 'mkdir Reports; put /tmp/report.bin Reports\\report.bin'",
+            "matus",
+            PASSWORD,
+        )
         assert rc == 0, out
-        status = box.succeed("smbstatus --json")
-        print(status)
-        assert "SMB3" in status, status
         box.succeed("test $(stat -c %U /var/lib/losos-cloud/notshared/files/Reports/report.bin) = losos-cloud")
         # Picked up by LosOS Cloud: a row, a file id, and a new ETag up the chain.
         props = laptop.wait_until_succeeds(
