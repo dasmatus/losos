@@ -294,6 +294,9 @@ export function AskAiDialog({
       <DialogFooter>
         {run.state === "asking" ? (
           <>
+            <Button variant="ghost" size="sm" className="mr-auto" onClick={() => void go(t("together.ai.summary"))} data-action="summarise">
+              {t("together.ai.summarise")}
+            </Button>
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
               {t("together.cancel")}
             </Button>

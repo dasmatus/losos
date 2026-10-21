@@ -11,6 +11,7 @@ import { applyStoredTheme } from "@/lib/theme";
 import "sonner/dist/styles.css";
 import "@/styles/index.css";
 import { CloudRoot } from "./app";
+import { CloudTogether } from "./together";
 // Notes first: a Markdown file's name opens it as a note.
 import "./notes/opener";
 import "./collab/opener";
@@ -24,5 +25,6 @@ if (container === null) throw new Error("#cloud is missing from cloud/index.html
 createRoot(container).render(
   <StrictMode>
     <CloudRoot />
+    <CloudTogether />
   </StrictMode>,
 );
