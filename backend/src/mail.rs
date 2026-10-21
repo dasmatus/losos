@@ -380,7 +380,9 @@ pub fn valid_address(addr: &str) -> bool {
         && !domain.starts_with('.')
         && !domain.ends_with('.')
         && !domain.contains("..")
-        && addr.chars().all(|c| c.is_ascii_graphic() || !c.is_ascii())
+        && addr
+            .chars()
+            .all(|c| c.is_ascii_graphic() || (!c.is_control() && !c.is_whitespace()))
         && !addr.contains(['<', '>', ',', ';', '"', '(', ')', '[', ']', '\\'])
         && !domain.contains('@')
 }
@@ -787,6 +789,31 @@ pub fn message_calls(account: &str, id: &str) -> Vec<Value> {
             "update": { id: { "keywords/$seen": true } },
         }, "s"]),
     ]
+}
+
+/// Read only the mailbox membership needed to decide how to delete a message.
+pub fn delete_check_calls(account: &str, id: &str) -> Vec<Value> {
+    vec![json!(["Email/get", {
+        "accountId": account,
+        "ids": [id],
+        "properties": ["mailboxIds"],
+    }, "g"])]
+}
+
+pub fn parse_delete_mailbox_ids(resp: &Value) -> Result<Vec<String>, Refused> {
+    let m = answer(resp, "Email/get", "g")?
+        .get("list")
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .ok_or_else(|| Refused {
+            status: 404,
+            message: "no such message".into(),
+        })?;
+    let ids = m
+        .get("mailboxIds")
+        .and_then(Value::as_object)
+        .ok_or_else(|| odd("Email/get mailboxIds"))?;
+    Ok(ids.keys().cloned().collect())
 }
 
 /// The text of the parts `key` lists, from `bodyValues`.
@@ -1303,10 +1330,11 @@ impl Mail {
     /// Move to the bin, or, from the bin, delete for good.
     pub fn delete(&self, person: &crate::people::Person, id: &str) -> Result<(), Refused> {
         check_id(id)?;
-        let opened = self.message(person, id)?;
+        let (_, resp) = self.jmap(person, |a| delete_check_calls(a, id))?;
+        let mailbox_ids = parse_delete_mailbox_ids(&resp)?;
         let boxes = self.mailboxes(person)?;
         let trash = with_role(&boxes, "trash").ok_or_else(|| odd("no Deleted Items"))?;
-        let (_, resp) = if opened.mailbox_ids.iter().any(|m| m == trash) {
+        let (_, resp) = if mailbox_ids.iter().any(|m| m == trash) {
             self.jmap(person, |a| destroy_calls(a, id))?
         } else {
             let change = Change {
@@ -1475,6 +1503,9 @@ mod tests {
             "eva@x.org.",
             "a b@x.org",
             "eva@x.org\r\nBcc: all@x.org",
+            "a\u{2028}@x.org",
+            "eva@\u{2029}x.org",
+            "a\u{00a0}@x.org",
             "<eva@x.org>",
             "eva@x.org,bob@y.org",
             "a@b@c.org",
@@ -1771,6 +1802,34 @@ mod tests {
         assert_eq!(
             calls[0][1]["update"]["m1"],
             json!({ "keywords/$seen": null, "keywords/$flagged": true, "mailboxIds": { "b": true } })
+        );
+    }
+
+    #[test]
+    fn deleting_checks_only_mailbox_membership_without_marking_read() {
+        let calls = delete_check_calls("c", "m1");
+        assert_eq!(
+            calls,
+            vec![json!(["Email/get", {
+                "accountId": "c",
+                "ids": ["m1"],
+                "properties": ["mailboxIds"],
+            }, "g"])]
+        );
+        assert_eq!(
+            parse_delete_mailbox_ids(&json!({ "methodResponses": [
+                ["Email/get", { "list": [{ "mailboxIds": { "inbox": true, "trash": true } }] }, "g"]
+            ]}))
+            .unwrap(),
+            ["inbox", "trash"]
+        );
+        assert_eq!(
+            parse_delete_mailbox_ids(&json!({ "methodResponses": [
+                ["Email/get", { "list": [] }, "g"]
+            ]}))
+            .unwrap_err()
+            .status,
+            404
         );
     }
 
