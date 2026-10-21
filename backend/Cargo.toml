@@ -78,14 +78,22 @@ walkdir = "2"
 # (src/people.rs): argon2id in PHC form, the format Authelia reads. Already
 # in the lock file through the access crate.
 argon2 = "0.5"
+# Live editing in LosOS cloud (src/cloud/collab/): yrs is the Rust port of
+# Yjs, the CRDT the editor runs in the browser, and speaks its binary
+# format and sync protocol. similar diffs a file written outside the editor
+# into line edits.
 yrs = "0.28"
 similar = { version = "3", default-features = false, features = ["std", "text"] }
+# The mesh link between boxes (src/cloud/mesh/): WebSockets on both sides,
+# actix-ws where the box answers and tokio-tungstenite where it dials, over
+# rustls with ring (the crypto crate already here) and the system's roots.
 actix-ws = "0.4"
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
-base64 = "0.22"
-futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 rustls-native-certs = "0.8"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+# Already in the lock file through the access crate.
+base64 = "0.22"
 
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its
