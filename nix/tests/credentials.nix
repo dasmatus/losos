@@ -677,7 +677,7 @@ pkgs.testers.nixosTest {
             code, text = api("POST", "/api/credentials/authelia-session/rotate", cookie)
             assert code == 200, (code, text)
             fresh = decrypt(box, "authelia-session")
-            assert re.fullmatch(r"[0-9a-f]{64}", fresh) and fresh != SESSION, fresh
+            assert re.fullmatch(r"[0-9a-f]{128}", fresh) and fresh != SESSION, fresh
             assert fresh not in text
             box.wait_until_succeeds(
                 f"test \"$(systemctl show -P InvocationID authelia-losos.service)\" != '{before_id}'"
