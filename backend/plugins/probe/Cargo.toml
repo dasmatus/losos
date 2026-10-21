@@ -1,0 +1,18 @@
+[package]
+name = "losos-plugin-probe"
+description = "A lososd plugin that pokes at every import, for lososd's own tests. Never shipped"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+losos-plugin.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
