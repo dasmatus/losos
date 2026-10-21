@@ -148,7 +148,9 @@ pkgs.testers.nixosTest {
     box.wait_for_unit("losos-cloud.service")
     box.wait_for_unit("samba-smbd.service")
     box.wait_for_unit("samba-wsdd.service")
+    box.wait_for_unit("network-addresses-eth1.service")
     box_ip = box.succeed("ip -4 -o addr show eth1 | awk '{print $4}' | cut -d/ -f1").strip()
+    laptop.wait_for_unit("network-addresses-eth1.service")
     laptop_ip = laptop.succeed("ip -4 -o addr show eth1 | awk '{print $4}' | cut -d/ -f1").strip()
 
     cert = box.succeed("cat /var/lib/losos-tls/cert.pem")
