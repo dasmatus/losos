@@ -1,0 +1,375 @@
+// The contract between lososd and the plugins that do its work.
+//
+// lososd is a small host: it owns the loopback listener, the D-Bus name, who
+// a caller is (the spare key, LosOS Login's Remote-User, a managing edge)
+// and which section of backend/sections.json a route sits in. Everything
+// else is a plugin: a WebAssembly component, loaded only from the read-only
+// directory the NixOS module names, that answers the routes its manifest
+// lists and reaches the box only through the imports below.
+//
+// Every import is checked against the plugin's manifest (<name>.json beside
+// <name>.wasm) before the host acts on it: a file outside the manifest's
+// roots, a program it does not list, a URL outside its endpoints or a unit
+// without its prefix is `denied`, whatever the plugin asks. A plugin has no
+// WASI, so it has no other way out.
+//
+// One call is one fresh instance. Nothing in a plugin's memory outlives the
+// call; what must is a file, an entry in `cache`, or a job.
+package losos:plugin@0.1.0;
+
+interface types {
+  /// Header names are lower case; values are the bytes as received, which
+  /// for every header lososd passes on is ASCII.
+  type headers = list<tuple<string, string>>;
+
+  /// A person LosOS Login signed in, as the people file has them at the
+  /// moment of the call.
+  record person {
+    /// The sign-in name.
+    name: string,
+    display-name: string,
+    /// Every group, `losos-admins` and the `losos-<section>` ones included.
+    groups: list<string>,
+    /// In `losos-admins`.
+    admin: bool,
+  }
+
+  /// Who the host says made the call. The host has already decided the
+  /// caller may reach the route; a plugin narrows further if it must
+  /// (a person's own account, say), never widens.
+  variant principal {
+    /// A public route (sections.json `public`), or nginx on an `internal`
+    /// one: nobody signed in.
+    anonymous,
+    /// The admin token, the spare key. Opens every section.
+    spare,
+    /// Someone LosOS Login signed in, or a terminal call made with their
+    /// token.
+    person(person),
+    /// The company edge the owner let manage this box.
+    edge,
+    /// lososd itself: a D-Bus method, a timer, a job, the daemon starting.
+    host,
+  }
+
+  record caller {
+    principal: principal,
+    /// The client's address as nginx saw it, or the peer's.
+    remote: string,
+    /// The route's section in sections.json.
+    section: string,
+  }
+
+  record request {
+    /// Upper case: GET, POST, PUT, DELETE.
+    method: string,
+    /// The path as requested, without the query and still percent-encoded;
+    /// `params` holds its segments decoded.
+    path: string,
+    /// The manifest route that matched, e.g. `/api/look/widgets/{id}`.
+    route: string,
+    /// The `{name}` segments of `route`, decoded.
+    params: list<tuple<string, string>>,
+    /// The raw query string, without the `?`. Empty when there is none.
+    query: string,
+    /// The request's headers minus `authorization` and `cookie`, which the
+    /// host has already spent.
+    headers: headers,
+    /// The whole body, at most the route's `maxBody` bytes.
+    body: list<u8>,
+    caller: caller,
+  }
+
+  record response {
+    status: u16,
+    headers: headers,
+    body: list<u8>,
+  }
+
+  /// Why a host call did not do what was asked.
+  variant error {
+    /// Outside what the plugin's manifest grants. The words say which rule.
+    denied(string),
+    /// The file, unit, lock or key is not there.
+    not-found,
+    /// It was tried and failed; the words are for the journal, not a page.
+    failed(string),
+    /// The call's deadline, or the operation's own, passed first.
+    timed-out,
+  }
+}
+
+/// Lines in the journal, under the plugin's name.
+interface log {
+  enum level { trace, debug, info, warn, error }
+  log: func(level: level, message: string);
+}
+
+/// Time. A plugin has no clock of its own.
+interface clock {
+  /// Seconds since the Unix epoch.
+  now: func() -> u64;
+  /// Milliseconds since the Unix epoch.
+  now-ms: func() -> u64;
+  /// Milliseconds on a clock that never goes back, for measuring.
+  monotonic-ms: func() -> u64;
+  /// Block this call for `ms` milliseconds, within its deadline.
+  sleep-ms: func(ms: u32);
+}
+
+/// The kernel's random numbers.
+interface random {
+  /// `len` bytes from getrandom(2). At most 64 KiB per call.
+  bytes: func(len: u32) -> list<u8>;
+}
+
+/// The manifest's `config` table, after the host filled in `${VAR}` and
+/// `${VAR:-default}` from its own environment. This is where a plugin
+/// learns its paths, so a test can move them.
+interface config {
+  get: func(key: string) -> option<string>;
+}
+
+/// Files under the manifest's `files` roots. Paths are absolute and
+/// normalised (no `.`, `..` or `//`); a path that leaves its root through a
+/// symlink is denied.
+interface files {
+  use types.{error};
+
+  enum kind { file, dir, symlink, other }
+
+  record metadata {
+    kind: kind,
+    size: u64,
+    /// The permission bits, e.g. 0o600.
+    mode: u32,
+    uid: u32,
+    gid: u32,
+    /// Seconds since the Unix epoch.
+    modified: u64,
+  }
+
+  record entry {
+    name: string,
+    kind: kind,
+  }
+
+  record write-options {
+    /// The new file's permission bits. 0o644 when absent.
+    mode: option<u32>,
+    /// Hand the file to this uid (and its primary group). Only where the
+    /// root grants `chown`.
+    owner: option<u32>,
+    /// Create missing parent directories (0o755, root's).
+    create-dirs: bool,
+  }
+
+  /// The whole file. At most 64 MiB.
+  read: func(path: string) -> result<list<u8>, error>;
+  /// At most `max` bytes from the end of the file.
+  read-tail: func(path: string, max: u32) -> result<list<u8>, error>;
+  /// Replace the file atomically: a temporary beside it, fsync, rename.
+  write: func(path: string, data: list<u8>, options: write-options) -> result<_, error>;
+  /// Add to the end of the file, creating it (0o600) when missing.
+  append: func(path: string, data: list<u8>) -> result<_, error>;
+  /// A file or an empty directory. `not-found` when already gone.
+  remove: func(path: string) -> result<_, error>;
+  /// A directory and everything in it. `not-found` when already gone.
+  remove-tree: func(path: string) -> result<_, error>;
+  rename: func(src: string, dst: string) -> result<_, error>;
+  /// With its parents, 0o755 unless `mode` says otherwise. Fine when it
+  /// is there.
+  create-dir: func(path: string, mode: option<u32>) -> result<_, error>;
+  read-dir: func(dir: string) -> result<list<entry>, error>;
+  /// Without following a final symlink.
+  stat: func(path: string) -> result<metadata, error>;
+}
+
+/// Programs the manifest's `exec` list names, run to completion with a clean
+/// environment (PATH and what `env` adds). Never a shell.
+interface exec {
+  use types.{error};
+
+  record command {
+    /// A name from the manifest's `exec` list, resolved against lososd's
+    /// PATH, or an absolute path the list names.
+    program: string,
+    args: list<string>,
+    env: list<tuple<string, string>>,
+    stdin: option<list<u8>>,
+    /// A directory under one of the plugin's `files` roots.
+    cwd: option<string>,
+    /// Killed after this long. 60 s when absent, never past the call's own
+    /// deadline.
+    timeout-ms: option<u32>,
+    /// Run as this uid, where the manifest's `exec` entry allows it.
+    uid: option<u32>,
+  }
+
+  record output {
+    /// The exit code, or -1 when a signal ended it.
+    status: s32,
+    /// At most 16 MiB each; the rest is cut.
+    stdout: list<u8>,
+    stderr: list<u8>,
+  }
+
+  run: func(command: command) -> result<output, error>;
+}
+
+/// Transient systemd units: work that outlives a call, like a rebuild or a
+/// backup. The unit's name must start with the manifest's `units.prefix`,
+/// and its program must be on `units.programs`.
+interface units {
+  use types.{error};
+
+  record spec {
+    /// The whole unit name without `.service`, e.g. `losos-backup-1234`.
+    name: string,
+    /// Program and arguments. The program is checked like `exec`'s.
+    argv: list<string>,
+    /// `--property=` settings, e.g. `ProtectHome=yes`. Exec*, User=,
+    /// Group= and DynamicUser= are the host's business and refused.
+    properties: list<string>,
+    env: list<tuple<string, string>>,
+    /// Where stdout and stderr go: a file under a `files` root the plugin
+    /// may write.
+    log: option<string>,
+  }
+
+  enum unit-state {
+    /// Starting, running or stopping.
+    running,
+    succeeded,
+    failed,
+    /// No such unit: never started, or garbage-collected after it ended.
+    absent,
+  }
+
+  start: func(spec: spec) -> result<_, error>;
+  state: func(name: string) -> result<unit-state, error>;
+  stop: func(name: string) -> result<_, error>;
+}
+
+/// HTTP to the manifest's `http` endpoints, and nothing else. An endpoint is
+/// an origin (`http://127.0.0.1:11434`, `https://registry.example`) or a
+/// Unix socket (`unix:/run/losos-search/cloud.sock`); a URL is allowed when
+/// it starts with one. Redirects are not followed.
+interface http {
+  use types.{error, headers};
+
+  record outgoing {
+    method: string,
+    /// For a socket endpoint: `unix:/path/to.sock` followed by the request
+    /// path, e.g. `unix:/run/x.sock/search?q=a`.
+    url: string,
+    headers: headers,
+    body: list<u8>,
+    /// For the whole exchange, body included. 30 s when absent, never past
+    /// the call's own deadline.
+    timeout-ms: option<u32>,
+  }
+
+  /// A body read as it arrives, for answers that stream.
+  resource body {
+    /// Up to `max` more bytes; `none` at the end.
+    read: func(max: u32) -> result<option<list<u8>>, error>;
+  }
+
+  record streamed {
+    status: u16,
+    headers: headers,
+    body: body,
+  }
+
+  record incoming {
+    status: u16,
+    headers: headers,
+    body: list<u8>,
+  }
+
+  /// The whole answer, its body at most `max-body` bytes (the rest is an
+  /// error, not a silent cut).
+  fetch: func(request: outgoing, max-body: u64) -> result<incoming, error>;
+  /// The answer's head, and its body as a stream.
+  send: func(request: outgoing) -> result<streamed, error>;
+}
+
+/// Named locks the manifest's `locks` list allows, shared by every plugin
+/// that names them: `state` is state.json's.
+interface lock {
+  use types.{error};
+
+  /// Held until dropped, or until the call ends.
+  resource guard {}
+
+  /// Wait at most `timeout-ms` (10 s when absent) for the lock.
+  acquire: func(name: string, timeout-ms: option<u32>) -> result<guard, error>;
+}
+
+/// A little memory that outlives a call, this plugin's own, in lososd's
+/// memory: gone at the next restart. Up to 16 MiB per plugin; past that the
+/// oldest entries go first.
+interface cache {
+  get: func(key: string) -> option<list<u8>>;
+  /// Kept at most `ttl-secs` seconds; 0 keeps it until evicted.
+  set: func(key: string, value: list<u8>, ttl-secs: u32);
+  remove: func(key: string);
+}
+
+/// Work that runs after the call answers, in a fresh instance of the same
+/// plugin on a host thread, under the manifest's `limits.jobSecs`.
+interface jobs {
+  use types.{error};
+
+  /// Call this plugin's `background.run(kind, input)`. At most
+  /// `limits.jobs` of the plugin's jobs run at once; past that `failed`.
+  spawn: func(kind: string, input: list<u8>) -> result<_, error>;
+}
+
+/// Calls to the routes of lososd itself, as a given principal: the terminal
+/// replays a call this way. Only for a manifest with `dispatch: true`.
+interface dispatch {
+  use types.{request, response, error};
+
+  /// The host routes `request` as if it had arrived, `caller` included, and
+  /// checks its section as it would have then.
+  call: func(request: request) -> result<response, error>;
+}
+
+/// What a plugin answers.
+interface handler {
+  use types.{request, response};
+
+  /// One request to a route the manifest lists. A trap is a 500 whose
+  /// detail goes to the journal.
+  handle: func(request: request) -> response;
+}
+
+/// What a plugin does when nobody is asking.
+interface background {
+  /// A timer from the manifest's `timers` fired, or `start` once when
+  /// lososd starts. One tick of a timer at a time; a tick still running
+  /// when the next is due skips that one.
+  tick: func(timer: string);
+  /// A job this plugin spawned.
+  run: func(kind: string, input: list<u8>);
+}
+
+world plugin {
+  import log;
+  import clock;
+  import random;
+  import config;
+  import files;
+  import exec;
+  import units;
+  import http;
+  import lock;
+  import cache;
+  import jobs;
+  import dispatch;
+
+  export handler;
+  export background;
+}

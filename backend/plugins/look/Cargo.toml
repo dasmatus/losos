@@ -1,0 +1,21 @@
+[package]
+name = "losos-plugin-look"
+description = "lososd plugin: the owner's look, a background picture and the widgets they wrote by hand"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+losos-plugin.workspace = true
+losos-widget.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true
