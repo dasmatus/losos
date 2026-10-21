@@ -346,6 +346,7 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
       ? t("shell.me.spareKeyTip")
       : `${t("shell.me.signedIn", { name: me.name ?? name })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`;
     person = { label: name, tip };
+    if (!me.spareKey) person.accountLink = <Link to="/settings/account" />;
   }
   return (
     <AppBar

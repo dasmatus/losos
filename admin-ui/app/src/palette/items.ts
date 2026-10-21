@@ -11,6 +11,7 @@ import {
   Sun03Icon,
 } from "@hugeicons/core-free-icons";
 import { canUse, signOut } from "@/lib/api";
+import { signOutKeys } from "@/lib/shortcuts";
 import { CATALOGUE, recallAvailability, type AppDefinition } from "@/lib/apps";
 import { HANDBOOK_BASE } from "@/lib/handbook";
 import { LOCALE_NAMES, LOCALES, getLocaleChoice, setLocale, t, template, type MessageKey } from "@/lib/i18n";
@@ -54,6 +55,8 @@ export interface Item {
   target: Target;
   /** What its right-click menu pins to the sidebar (components/pin-menu.tsx). */
   pin?: Pin;
+  /** The keyboard shortcut that does the same, shown at the right. */
+  keys?: readonly string[];
 }
 
 /** Lower-case and strip diacritics: "Úložisko" -> "ulozisko". */
@@ -231,6 +234,7 @@ export function actionItems(): Item[] {
       icon: Logout01Icon,
       words: `${template("shell.signOut", undefined, "en")} log out lock leave`,
       target: { kind: "run", run: signOut },
+      keys: signOutKeys(),
     },
   );
   return items;

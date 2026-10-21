@@ -525,7 +525,7 @@ await check('a person signed in at the box sign-in page gets the app without a k
   const { page } = await open({
     person: { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage', 'backup'] },
   });
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   await page.getByText('Sign in to this box').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null, 'a cookie session stored a key');
   const who = page.getByTestId('signed-in-as');
@@ -539,7 +539,7 @@ await check('a person in one section sees that section and not the administrator
     path: '/settings/backup',
     person: { name: 'eva', displayName: 'Eva', groups: ['losos-backup'], admin: false, spareKey: false, sections: ['backup'] },
   });
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   const sections = nav(page);
   await sections.getByRole('link', { name: 'Backup' }).waitFor();
   for (const hidden of ['Storage', 'Mesh', 'Advanced', 'Security', 'Reset', 'Lab']) {
@@ -563,7 +563,7 @@ await check('a wrong spare key is refused and the prompt stays up', async () => 
   assert.ok(/was not accepted/i.test(text), `no refusal shown:\n${text}`);
   assert.equal(await page.getByRole('dialog').locator('a[data-help]').getAttribute('href'), '/handbook/troubleshooting/forgot-password/');
   assert.equal(
-    await page.getByRole('button', { name: 'Sign out' }).count(),
+    await page.getByTestId('signed-in-as').count(),
     0,
     'the app unlocked on a wrong key',
   );
@@ -576,7 +576,7 @@ await check('the right spare key opens the app and is kept for the tab', async (
   await page.getByRole('button', { name: /Use the spare admin key instead/ }).click();
   await page.locator('#admin-key').fill(TOKEN);
   await page.getByRole('button', { name: 'Unlock' }).click();
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   await page.getByText('Sign in to this box').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), TOKEN);
   assert.equal(portal.length, 0, 'the key path must not go through the sign-in page');
@@ -601,7 +601,7 @@ await check('a box with nobody to sign in as makes its first administrator with 
   await page.locator('#first-password').fill(PASSWORD);
   await page.locator('#admin-key').fill(TOKEN);
   await page.getByRole('button', { name: 'Make it' }).click();
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   assert.equal(made.length, 1, 'expected one claim');
   assert.equal(made[0].auth, `Bearer ${TOKEN}`, 'the spare key did not go with it');
   assert.deepEqual(made[0].body, { name: 'matus', password: PASSWORD }, 'the name was not lower-cased or the body is wrong');
@@ -611,7 +611,24 @@ await check('a box with nobody to sign in as makes its first administrator with 
 
 await check('signing out returns to the prompt and forgets the token', async () => {
   const { page } = await open({ stored: true });
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByTestId('signed-in-as').click();
+  await page.getByRole('menuitem', { name: /Sign out/ }).click();
+  await page.getByText('Sign in to this box').waitFor();
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
+  await page.close();
+});
+
+await check('the person menu holds Your account and Sign out, and Alt+Shift+Q signs out too', async () => {
+  const { page } = await open({ stored: true });
+  await page.getByTestId('signed-in-as').click();
+  const menu = page.locator('[data-slot=person-menu]');
+  await menu.waitFor();
+  assert.equal(await menu.getByRole('menuitem', { name: /Sign out/ }).count(), 1, 'Sign out is not in the menu');
+  assert.match(await menu.getByRole('menuitem', { name: /Sign out/ }).innerText(), /Alt\s*Shift\s*Q/, 'the menu does not show the keys');
+  assert.equal(await page.getByRole('button', { name: 'Sign out' }).count(), 0, 'Sign out is still a button in the bar');
+  await page.keyboard.press('Escape');
+  await menu.waitFor({ state: 'hidden' });
+  await page.keyboard.press('Alt+Shift+KeyQ');
   await page.getByText('Sign in to this box').waitFor();
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
   await page.close();

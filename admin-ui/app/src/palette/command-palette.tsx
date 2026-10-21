@@ -18,6 +18,7 @@ import { useLocale, useT } from "@/lib/i18n-react";
 import { getPinsState, getServerPinsState, subscribePins, viewPin } from "@/lib/pins";
 import { getTheme, subscribeTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { actionItems, appItems, pageItems, pinItems, rank, type GroupId, type Item, type Target } from "./items";
 import {
   cloudTextHref,
@@ -424,16 +425,9 @@ function Option({
             )
           )}
         </span>
+        {item.keys !== undefined && <KbdGroup keys={item.keys} className="shrink-0" />}
       </div>
     </PinMenu>
-  );
-}
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="inline-flex min-w-5 items-center justify-center rounded-[4px] border border-line bg-sunk px-1 font-sans text-[11px] leading-[18px] text-muted">
-      {children}
-    </kbd>
   );
 }
 
