@@ -178,7 +178,7 @@ fn invalid(what: &str) -> std::io::Error {
 
 /// Parse an HTTP/1.1 answer: status, headers, then a body by length, by
 /// chunks, or to the end of the stream.
-fn read_response(mut r: impl BufRead) -> std::io::Result<Inner> {
+pub(crate) fn read_response(mut r: impl BufRead) -> std::io::Result<Inner> {
     let mut line = String::new();
     r.read_line(&mut line)?;
     let status: u16 = line
