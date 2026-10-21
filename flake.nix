@@ -449,6 +449,9 @@
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # Notes on a kitchen garden vault, and the folder published as a
+        # knowledge base, on and off the mesh (nix/tests/notes.nix).
+        losos-notes = import ./nix/tests/notes.nix { inherit pkgs; };
         # Two boxes sharing a note and editing it together, apart and
         # together again (nix/tests/mesh-collab.nix).
         losos-mesh-collab = import ./nix/tests/mesh-collab.nix { inherit pkgs; };
