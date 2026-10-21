@@ -5,8 +5,9 @@ long as what it bought runs. The edge then releases it to the seller and the
 treasury recorded at payment, refunds it to the buyer, or splits it between
 the two when the seller stopped delivering partway. The edge's key can do
 nothing else, and if the edge never answers, the buyer takes the deposit
-back after its deadline. Written with [pinocchio](https://github.com/anza-xyz/pinocchio),
-no Anchor, about 40 KB built.
+back after its deadline. It also keeps prepaid balances that the edge
+draws on as the buyer uses something, through rate-capped taps. Written with [pinocchio](https://github.com/anza-xyz/pinocchio),
+no Anchor, about 65 KB built.
 
 ## Accounts
 
@@ -15,10 +16,15 @@ no Anchor, about 40 KB built.
 | Config  | `["config", treasury, mint]` | the mint, the treasury, the releaser |
 | Deposit | `["deposit", config, nonce]` | payer, seller, order, gross, fee, deadline, paid at |
 | Vault   | `["vault", deposit]` | the USDC, in a token account the deposit owns |
+| Balance | `["balance", config, buyer]` | config, buyer, asked amount, not before |
+| Vault   | `["vault", balance]` | the buyer's prepaid USDC, in a token account the balance owns |
+| Tap     | `["tap", config, tap id]` | config, buyer, seller, tap id, rate, fee bps, settled at, closed at |
 
 The nonce is 32 random bytes the wallet picks for each payment. The order is
-the keccak-256 of the edge's order id, the invoice's `order_id_hash`. Every
-integer is little-endian; `src/state.rs` has the byte layouts.
+the keccak-256 of the edge's order id, the invoice's `order_id_hash`. The
+tap id is 32 bytes the edge picks for each tap and hands to the wallet; the
+program only uses it as a seed. Every integer is little-endian;
+`src/state.rs` has the byte layouts.
 
 ## Instructions
 
@@ -30,6 +36,30 @@ integer is little-endian; `src/state.rs` has the byte layouts.
 | 3 | `refund` | releaser, or the payer after the deadline | Everything back to the payer; closes both. |
 | 4 | `settle(back)` | releaser | `back` to the payer, the rest released with the fee scaled down. |
 | 5 | `set_releaser(releaser)` | treasury | Names another releaser. |
+| 6 | `top_up(amount)` | buyer | Opens the buyer's balance and its vault on first use, moves `amount` in. |
+| 7 | `open_tap(tap_id, rate, fee_bps)` | buyer | Opens one tap against the buyer's balance, billable from an hour before now; several fit in one transaction. |
+| 8 | `close_tap` | buyer, or releaser | Stops the tap's billing at now, once. |
+| 9 | `settle_tap(amount)` | releaser | Bills `amount` from the balance: the fee to the treasury, the rest to the tap's seller. |
+| 10 | `ask_withdrawal(amount)` | buyer | Asks to take `amount` out after 48 hours, replacing any earlier ask. |
+| 11 | `withdraw` | buyer | After the notice, pays the smaller of the ask and the balance to the buyer. |
+
+Each instruction is its tag byte, then the data below. Signers are marked
+(s), writable accounts (w).
+
+| Tag | Data | Accounts, in order |
+| --- | ---- | ------------------ |
+| 0 | `releaser: 32` | treasury (s, w), config (w), mint, system program |
+| 1 | `nonce: 32, order: 32, gross: u64, fee: u64, deadline: i64` | payer (s, w), payer's token account (w), config, deposit (w), vault (w), seller, mint, token program, system program |
+| 2 | none | releaser (s), config, deposit (w), vault (w), seller's token account (w), treasury's token account (w), payer (w), mint, token program |
+| 3 | none | releaser or payer (s), config, deposit (w), vault (w), payer's token account (w), payer (w), mint, token program |
+| 4 | `refund: u64` | releaser (s), config, deposit (w), vault (w), payer's token account (w), seller's token account (w), treasury's token account (w), payer (w), mint, token program |
+| 5 | `next: 32` | treasury (s), config (w) |
+| 6 | `amount: u64` | buyer (s, w), buyer's token account (w), config, balance (w), vault (w), mint, token program, system program |
+| 7 | `tap_id: 32, rate: u64, fee_bps: u16` | buyer (s, w), config, balance, tap (w), seller, system program |
+| 8 | none | buyer or releaser (s), config, tap (w), buyer (w) |
+| 9 | `amount: u64` | releaser (s), config, tap (w), balance, vault (w), seller's token account (w), treasury's token account (w), buyer (w), mint, token program |
+| 10 | `amount: u64` | buyer (s), config, balance (w) |
+| 11 | none | buyer (s), config, balance (w), vault (w), buyer's token account (w), mint, token program |
 
 The rules are the EVM contract's: a fee of at most half the gross, a deadline
 from one hour to 35 days after payment, a seller that is not the treasury,
@@ -39,6 +69,49 @@ the seller and treasury the deposit names, and a refund only the payer's.
 Closing a deposit gives its rent back to the payer, and any tokens sent to a
 vault by plain transfer go to the treasury on a release or split and to the
 payer on a refund, so nothing can keep a deposit open.
+
+## Balances and taps
+
+A tap is the buyer's consent for the releaser to bill one seller, at up to
+`rate` base units of USDC an hour, with `fee_bps` of each bill going to the
+treasury. A new tap starts one hour into its billing (`HEADSTART`):
+`settled_at` is set to an hour before it opened, so the first hour of use
+can be billed as soon as the tap is open. A `settle_tap` of `amount` is
+taken only when:
+
+- `amount` is at most `rate × min(end − settled_at, 7 days) / 3600`,
+  rounded down, where `end` is the time the tap closed, or now while it is
+  open;
+- `end` is later than `settled_at`, so the same second is never billed twice;
+- `amount` is not more than the balance holds, and not 0 on an open tap.
+
+The settle then moves `settled_at` to `end`, so cap that went unused is not
+carried over, and a settle that comes more than a week after the last one
+bills at most a week of the time between. The fee is `amount × fee_bps / 10000`, rounded down,
+and `fee_bps` is at most 5000. The seller may not be the treasury, the
+config, the balance, its vault or the tap.
+
+The buyer or the releaser closes a tap at any time. After that the releaser
+can bill it only up to the moment it closed. Once a closed tap is settled up
+to its close, its account is closed and its rent goes back to the buyer. A
+tap closed in the same second as its last settle has nothing left to bill
+and is closed at once. A fresh tap closed at once still has its hour of
+headstart to bill; a settle of 0 on a closed tap finishes one that used
+nothing.
+
+A withdrawal is asked for, and paid 48 hours later, to the buyer's own token
+account: the smaller of the amount asked and what the balance still holds.
+A new ask replaces the old one and waits again. The releaser can keep
+settling during the notice, which is how it bills the last of what was used.
+A withdrawal never needs the edge, so an edge that stops answering costs the
+buyer only the notice.
+
+A stolen edge key can therefore bill only at the rates the buyer agreed to,
+and only to the sellers the buyer named. Over a tap's whole life it can take
+at most the rate times the time since the tap opened plus one hour, and never
+more than a week of it in one settle. Lamports sent ahead to a balance, vault or tap address do not block
+it: the program tops the account up to its rent and takes it over. Tokens
+sent to a balance's vault by plain transfer count as the buyer's balance.
 
 The program keeps no id of its own, so the same build serves any address it
 is deployed to.

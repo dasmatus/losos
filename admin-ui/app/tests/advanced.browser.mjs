@@ -49,15 +49,21 @@ const OWNED = {
   'hardening.usbguard': 'security',
 };
 /* Lines of overrides.nix another pane draws its own editor for: each app's
- * box-wide settings and its federation switch, on the Apps pane
+ * box-wide settings and its federation switch, on the Apps pane, and the
+ * memory this box lends to AI models, on the Market pane
  * (lib/option-value.ts, ON_PANE). The Advanced row shows the value and links
- * there, to the app's fold. */
+ * there, to the app's fold on the Apps pane. */
 const ON_PANE = Object.fromEntries(
-  DOC.options
-    .filter((option) => /^(nextcloud|forgejo)\.(site\.|federation\.enable$)/.test(option.name))
-    .map((option) => [option.name, 'apps']),
+  DOC.options.flatMap((option) =>
+    /^(nextcloud|forgejo)\.(site\.|federation\.enable$)/.test(option.name)
+      ? [[option.name, 'apps']]
+      : /^inference\.lend\.(enable|memoryMiB)$/.test(option.name)
+        ? [[option.name, 'market']]
+        : [],
+  ),
 );
-const fold = (name) => (name.startsWith('nextcloud.') ? 'cloud' : 'git');
+const fold = (name) => (name.startsWith('nextcloud.') ? 'cloud' : name.startsWith('forgejo.') ? 'git' : null);
+const ON_APPS = Object.keys(ON_PANE).filter((name) => ON_PANE[name] === 'apps');
 const KINDS = new Set(['bool', 'str', 'int', 'float', 'enum', 'list', 'nullable', 'opaque']);
 
 const SETTINGS = {
@@ -197,7 +203,8 @@ await check('every option in the document is drawn, with an editor kind the pane
     } else if (option.name in ON_PANE) {
       assert.equal(controls, 0, `losos.${option.name} has a second editor beside the ${ON_PANE[option.name]} pane's`);
       const href = await r.getByRole('link').getAttribute('href');
-      assert.ok(href.endsWith(`/${ON_PANE[option.name]}#${fold(option.name)}`), `losos.${option.name} links to ${href}`);
+      const hash = fold(option.name) === null ? '' : `#${fold(option.name)}`;
+      assert.ok(href.endsWith(`/${ON_PANE[option.name]}${hash}`), `losos.${option.name} links to ${href}`);
     } else {
       assert.ok(controls >= 1, `losos.${option.name} (${option.editor.kind}) has no editor`);
     }
@@ -459,7 +466,7 @@ await check('History on a box with LosOS Git off says so and still lists the com
 });
 
 await check('the Apps pane draws every box-wide setting of both apps, and Apply writes their lines', async () => {
-  assert.equal(Object.keys(ON_PANE).length, 15, `expected 9 LosOS cloud and 6 LosOS Git settings, the document has ${Object.keys(ON_PANE).length}`);
+  assert.equal(ON_APPS.length, 15, `expected 9 LosOS cloud and 6 LosOS Git settings, the document has ${ON_APPS.length}`);
   const { page, applies, errors } = await open({ path: '/apps', overrides: { 'nextcloud.site.trashDays': '30' } });
   // Each app's settings are folded away until its fold is opened.
   await main(page).getByTestId('accordion-cloud').waitFor();
@@ -468,7 +475,7 @@ await check('the Apps pane draws every box-wide setting of both apps, and Apply 
   await main(page).getByTestId('accordion-git').getByRole('button').first().click();
   await main(page).getByTestId('site-cloud').waitFor();
   await main(page).getByTestId('site-git').waitFor();
-  for (const name of Object.keys(ON_PANE)) {
+  for (const name of ON_APPS) {
     assert.equal(await row(page, name).count(), 1, `losos.${name} has no row on the Apps pane`);
     assert.ok((await row(page, name).locator('input, select').count()) >= 1, `losos.${name} has no control on the Apps pane`);
   }
@@ -515,6 +522,54 @@ await check('the Apps pane draws every box-wide setting of both apps, and Apply 
   assert.ok(!lines.some((line) => line.includes('defaultPrivate')), 'a default the box had unset was written');
   assert.equal(lines.length, 16 + 5);
   await noViolations(page);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('the Market pane lends memory to AI models with two lines of overrides.nix, and only with the edge proxy on', async () => {
+  let { page, applies, errors } = await open({ path: '/settings/market' });
+  const lend = main(page).getByTestId('lend-memory');
+  await lend.waitFor();
+  // Lending reaches the box only through the edge's tunnel.
+  assert.equal(await row(page, 'inference.lend.enable').locator('input').isDisabled(), true, 'lending can be turned on with the proxy off');
+  await lend.getByText('Turn on “Reachable from outside your home” in Network first.', { exact: false }).waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+
+  ({ page, applies, errors } = await open({ path: '/settings/market', settings: { ...SETTINGS, proxyEnable: true } }));
+  await main(page).getByTestId('lend-memory').waitFor();
+  await flip(row(page, 'inference.lend.enable'));
+  const amount = page.locator('[data-option="inference.lend.memoryMiB"]');
+  assert.equal(await amount.inputValue(), '1', 'the default 1024 MiB is not shown as 1 GiB');
+  await amount.fill('300');
+  await main(page).getByText('Lend a whole number of GiB, from 1 to 256.').waitFor();
+  await amount.fill('24');
+  await main(page).getByText('2 changes not applied yet').waitFor();
+  await applyButton(page).click();
+  await page.waitForTimeout(200);
+  assert.equal(applies.length, 1);
+  const lines = nixLines(applies[0]);
+  assert.ok(lines.includes('  losos.inference.lend.enable = true;'), lines.join('\n'));
+  assert.ok(lines.includes('  losos.inference.lend.memoryMiB = 24576;'), lines.join('\n'));
+  await noViolations(page);
+  assert.deepEqual(errors, []);
+  await page.close();
+
+  // A box that already lends shows its amount, and turning it off drops
+  // both lines back to the defaults.
+  ({ page, applies, errors } = await open({
+    path: '/settings/market',
+    overrides: { 'inference.lend.enable': 'true', 'inference.lend.memoryMiB': '8192' },
+  }));
+  await main(page).getByTestId('lend-memory').waitFor();
+  assert.equal(await page.locator('[data-option="inference.lend.memoryMiB"]').inputValue(), '8');
+  assert.equal(await row(page, 'inference.lend.enable').locator('input').isDisabled(), false, 'lending cannot be turned off with the proxy off');
+  await flip(row(page, 'inference.lend.enable'));
+  await applyButton(page).click();
+  await page.waitForTimeout(200);
+  assert.equal(applies.length, 1);
+  assert.ok(!nixLines(applies[0]).some((line) => line.includes('inference.lend.enable')), 'turning lending off kept its line');
+  assert.ok(nixLines(applies[0]).includes('  losos.inference.lend.memoryMiB = 8192;'), 'the amount was dropped');
   assert.deepEqual(errors, []);
   await page.close();
 });
