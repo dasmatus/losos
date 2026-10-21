@@ -364,13 +364,38 @@ contract LososEscrowTest is Test {
         _openAs(BUYER, id, SELLER, rate, feeBps);
     }
 
-    function _settle(bytes32 id, uint256 amount) internal {
-        vm.prank(EDGE);
-        escrow.settleTap(id, amount);
+    /// The key BUYER's tap `id` is kept under. Worked out here rather than
+    /// asked of the escrow, so it does not use up a prank or an expected
+    /// revert; `test_tap_key_is_the_buyer_and_the_id` checks they agree.
+    function _k(bytes32 id) internal pure returns (bytes32) {
+        return _key(BUYER, id);
     }
 
+    function _key(address buyer, bytes32 id) internal pure returns (bytes32) {
+        return keccak256(abi.encode(buyer, id));
+    }
+
+    function test_tap_key_is_the_buyer_and_the_id() public view {
+        assertEq(escrow.tapKey(BUYER, TAP), _k(TAP));
+        assertTrue(escrow.tapKey(BUYER2, TAP) != _k(TAP));
+    }
+
+    function _settle(bytes32 id, uint256 amount) internal {
+        _settleAt(_k(id), amount);
+    }
+
+    function _settleAt(bytes32 key, uint256 amount) internal {
+        vm.prank(EDGE);
+        escrow.settleTap(key, amount);
+    }
+
+    /// BUYER's tap `id`.
     function _tap(bytes32 id) internal view returns (LososEscrow.Tap memory t) {
-        (t.buyer, t.seller, t.rate, t.feeBps, t.settledAt, t.closedAt) = escrow.taps(id);
+        return _tapAt(_k(id));
+    }
+
+    function _tapAt(bytes32 key) internal view returns (LososEscrow.Tap memory t) {
+        (t.buyer, t.seller, t.rate, t.feeBps, t.settledAt, t.closedAt) = escrow.taps(key);
     }
 
     function _withdrawal(address buyer) internal view returns (uint128 amount, uint64 notBefore) {
@@ -441,9 +466,9 @@ contract LososEscrowTest is Test {
         rates[1] = 200;
         vm.warp(1_800_000_000);
         vm.expectEmit(true, true, true, true, address(escrow));
-        emit LososEscrow.TapOpened(ids[0], BUYER, SELLER, 100, 400);
+        emit LososEscrow.TapOpened(_k(ids[0]), BUYER, SELLER, 100, 400);
         vm.expectEmit(true, true, true, true, address(escrow));
-        emit LososEscrow.TapOpened(ids[1], BUYER, SELLER2, 200, 400);
+        emit LososEscrow.TapOpened(_k(ids[1]), BUYER, SELLER2, 200, 400);
         vm.prank(BUYER);
         escrow.openTaps(ids, sellers, rates, 400);
         LososEscrow.Tap memory a = _tap(ids[0]);
@@ -487,14 +512,15 @@ contract LososEscrowTest is Test {
 
     function test_a_tap_id_opens_once() public {
         _open(TAP, RATE, 400);
-        // Not again by the same buyer, nor by anyone else to take it over.
+        // Not again by the same buyer.
         vm.expectRevert(LososEscrow.TapExists.selector);
         this.openAs(BUYER, TAP, SELLER2);
-        vm.expectRevert(LososEscrow.TapExists.selector);
+        // Another wallet opening the same id gets a tap of its own.
         this.openAs(STRANGER, TAP, STRANGER);
+        assertEq(_tapAt(escrow.tapKey(STRANGER, TAP)).buyer, STRANGER);
         // Nor after it closed.
         vm.prank(BUYER);
-        escrow.closeTap(TAP);
+        escrow.closeTap(_k(TAP));
         vm.expectRevert(LososEscrow.TapExists.selector);
         this.openAs(BUYER, TAP, SELLER);
         LososEscrow.Tap memory t = _tap(TAP);
@@ -507,6 +533,23 @@ contract LososEscrowTest is Test {
         vm.expectRevert(LososEscrow.TapExists.selector);
         escrow.openTaps(ids, sellers, rates, 400);
         assertEq(_tap(ids[0]).buyer, address(0));
+    }
+
+    function test_a_wallet_that_copies_a_quoted_id_first_blocks_nothing() public {
+        // The copier has no balance and opens the buyer's id before them.
+        this.openAs(STRANGER, TAP, STRANGER);
+        _topUp(BUYER, 5_000_000);
+        _open(TAP, RATE, 400);
+        LososEscrow.Tap memory t = _tap(TAP);
+        assertEq(t.buyer, BUYER);
+        assertEq(t.seller, SELLER);
+        _settle(TAP, RATE);
+        assertEq(escrow.balances(BUYER), 5_000_000 - RATE);
+        assertEq(token.balanceOf(SELLER), RATE - RATE * 400 / 10000);
+        // The copy bills nothing: it has no balance behind it.
+        vm.prank(EDGE);
+        vm.expectRevert(LososEscrow.OverBalance.selector);
+        escrow.settleTap(_key(STRANGER, TAP), 1);
     }
 
     /// External so a test can expect the revert of a call made through it.
@@ -547,7 +590,7 @@ contract LososEscrowTest is Test {
         _open(TAP, RATE, 400);
         vm.warp(block.timestamp + 1 hours);
         vm.expectEmit(true, true, false, true, address(escrow));
-        emit LososEscrow.TapSettled(TAP, SELLER, 1_000_000, 40_000, uint64(block.timestamp));
+        emit LososEscrow.TapSettled(_k(TAP), SELLER, 1_000_000, 40_000, uint64(block.timestamp));
         _settle(TAP, 1_000_000);
         assertEq(token.balanceOf(TREASURY), 40_000);
         assertEq(token.balanceOf(SELLER), 960_000);
@@ -600,7 +643,7 @@ contract LososEscrowTest is Test {
         for (uint256 i = 0; i < others.length; i++) {
             vm.prank(others[i]);
             vm.expectRevert(LososEscrow.NotReleaser.selector);
-            escrow.settleTap(TAP, 1);
+            escrow.settleTap(_k(TAP), 1);
         }
         assertEq(escrow.balances(BUYER), 5_000_000);
     }
@@ -612,10 +655,10 @@ contract LososEscrowTest is Test {
         // The hour of headstart and ten seconds, at one a second.
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverCap.selector);
-        escrow.settleTap(TAP, 3611);
+        escrow.settleTap(_k(TAP), 3611);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverCap.selector);
-        escrow.settleTap(TAP, type(uint256).max);
+        escrow.settleTap(_k(TAP), type(uint256).max);
         _settle(TAP, 3610);
         assertEq(escrow.balances(BUYER), 5_000_000 - 3610);
     }
@@ -628,7 +671,7 @@ contract LososEscrowTest is Test {
         vm.warp(block.timestamp + 1);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverCap.selector);
-        escrow.settleTap(TAP, 1);
+        escrow.settleTap(_k(TAP), 1);
         vm.warp(block.timestamp + 3);
         _settle(TAP, 1);
     }
@@ -639,7 +682,7 @@ contract LososEscrowTest is Test {
         vm.warp(block.timestamp + 30 days);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverCap.selector);
-        escrow.settleTap(TAP, 1);
+        escrow.settleTap(_k(TAP), 1);
     }
 
     function test_unused_cap_is_not_carried_over() public {
@@ -651,7 +694,7 @@ contract LososEscrowTest is Test {
         // What the first settle left unbilled is gone.
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverCap.selector);
-        escrow.settleTap(TAP, RATE + 1);
+        escrow.settleTap(_k(TAP), RATE + 1);
         _settle(TAP, RATE);
         assertEq(escrow.balances(BUYER), 5_000_000 - RATE / 2 - RATE);
     }
@@ -663,17 +706,17 @@ contract LososEscrowTest is Test {
         _settle(TAP, 1);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.TooEarly.selector);
-        escrow.settleTap(TAP, 1);
+        escrow.settleTap(_k(TAP), 1);
         vm.warp(block.timestamp + 1 hours);
         _settle(TAP, 1);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.TooEarly.selector);
-        escrow.settleTap(TAP, 1);
+        escrow.settleTap(_k(TAP), 1);
         vm.warp(block.timestamp + 1 seconds);
         // One second at one USDC an hour is 277 base units.
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverCap.selector);
-        escrow.settleTap(TAP, 278);
+        escrow.settleTap(_k(TAP), 278);
         _settle(TAP, 277);
     }
 
@@ -683,12 +726,12 @@ contract LososEscrowTest is Test {
         vm.warp(block.timestamp + 1 hours);
         uint64 closedAt = uint64(block.timestamp);
         vm.prank(BUYER);
-        escrow.closeTap(TAP);
+        escrow.closeTap(_k(TAP));
         vm.warp(block.timestamp + 10 days);
         // The hour it was open and the hour of headstart, no more.
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverCap.selector);
-        escrow.settleTap(TAP, 2 * RATE + 1);
+        escrow.settleTap(_k(TAP), 2 * RATE + 1);
         _settle(TAP, RATE / 4);
         LososEscrow.Tap memory t = _tap(TAP);
         assertEq(t.settledAt, closedAt);
@@ -697,7 +740,7 @@ contract LososEscrowTest is Test {
         vm.warp(block.timestamp + 10 days);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.TapIsClosed.selector);
-        escrow.settleTap(TAP, 1);
+        escrow.settleTap(_k(TAP), 1);
         assertEq(escrow.balances(BUYER), 5_000_000 - RATE / 4);
     }
 
@@ -707,29 +750,29 @@ contract LososEscrowTest is Test {
         // No time has passed, and the hour of headstart is billable.
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverCap.selector);
-        escrow.settleTap(TAP, RATE + 1);
+        escrow.settleTap(_k(TAP), RATE + 1);
         _settle(TAP, RATE);
         assertEq(_tap(TAP).settledAt, block.timestamp);
         assertEq(token.balanceOf(SELLER), 960_000);
         assertEq(token.balanceOf(TREASURY), 40_000);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.TooEarly.selector);
-        escrow.settleTap(TAP, 1);
+        escrow.settleTap(_k(TAP), 1);
     }
 
     function test_a_tap_closed_in_the_second_it_opened_bills_only_the_headstart() public {
         _topUp(BUYER, 5_000_000);
         _open(TAP, RATE, 400);
         vm.prank(BUYER);
-        escrow.closeTap(TAP);
+        escrow.closeTap(_k(TAP));
         vm.warp(block.timestamp + 1 days);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverCap.selector);
-        escrow.settleTap(TAP, RATE + 1);
+        escrow.settleTap(_k(TAP), RATE + 1);
         _settle(TAP, RATE);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.TapIsClosed.selector);
-        escrow.settleTap(TAP, 1);
+        escrow.settleTap(_k(TAP), 1);
         assertEq(escrow.balances(BUYER), 5_000_000 - RATE);
     }
 
@@ -740,17 +783,17 @@ contract LososEscrowTest is Test {
         uint256 week = uint256(1_000) * 7 * 24;
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverCap.selector);
-        escrow.settleTap(TAP, week + 1);
+        escrow.settleTap(_k(TAP), week + 1);
         _settle(TAP, week);
         // The months before the last week are gone, not owed.
         assertEq(_tap(TAP).settledAt, block.timestamp);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.TooEarly.selector);
-        escrow.settleTap(TAP, 1);
+        escrow.settleTap(_k(TAP), 1);
         vm.warp(block.timestamp + 60 days);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverCap.selector);
-        escrow.settleTap(TAP, week + 1);
+        escrow.settleTap(_k(TAP), week + 1);
         _settle(TAP, week);
         assertEq(escrow.balances(BUYER), 10_000_000 - 2 * week);
     }
@@ -760,16 +803,16 @@ contract LososEscrowTest is Test {
         _open(TAP, 1_000, 400);
         vm.warp(block.timestamp + 60 days);
         vm.prank(BUYER);
-        escrow.closeTap(TAP);
+        escrow.closeTap(_k(TAP));
         vm.warp(block.timestamp + 60 days);
         uint256 week = uint256(1_000) * 7 * 24;
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverCap.selector);
-        escrow.settleTap(TAP, week + 1);
+        escrow.settleTap(_k(TAP), week + 1);
         _settle(TAP, week);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.TapIsClosed.selector);
-        escrow.settleTap(TAP, 1);
+        escrow.settleTap(_k(TAP), 1);
     }
 
     function test_the_edge_cannot_settle_more_than_the_balance() public {
@@ -778,7 +821,7 @@ contract LososEscrowTest is Test {
         vm.warp(block.timestamp + 1 hours);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverBalance.selector);
-        escrow.settleTap(TAP, 500_001);
+        escrow.settleTap(_k(TAP), 500_001);
         // A failed settle moves the tap's clock no further.
         assertEq(_tap(TAP).settledAt, block.timestamp - 2 hours);
         _settle(TAP, 500_000);
@@ -788,7 +831,7 @@ contract LososEscrowTest is Test {
         vm.warp(block.timestamp + 1 hours);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverBalance.selector);
-        escrow.settleTap(TAP, 1);
+        escrow.settleTap(_k(TAP), 1);
     }
 
     function test_a_tap_bills_only_its_own_buyers_balance_and_never_deposits() public {
@@ -801,7 +844,7 @@ contract LososEscrowTest is Test {
         // neither is this tap's to draw.
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.OverBalance.selector);
-        escrow.settleTap(TAP, 101);
+        escrow.settleTap(_k(TAP), 101);
         assertEq(escrow.balances(BUYER2), 5_000_000);
         assertEq(escrow.held(), 7_000_100);
     }
@@ -819,10 +862,10 @@ contract LososEscrowTest is Test {
         vm.warp(block.timestamp + 1 hours);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.NoTap.selector);
-        escrow.settleTap(keccak256("tap_nope"), 1);
+        escrow.settleTap(_k(keccak256("tap_nope")), 1);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.ZeroAmount.selector);
-        escrow.settleTap(TAP, 0);
+        escrow.settleTap(_k(TAP), 0);
     }
 
     function test_the_buyer_or_the_edge_closes_a_tap_once() public {
@@ -833,30 +876,30 @@ contract LososEscrowTest is Test {
         for (uint256 i = 0; i < others.length; i++) {
             vm.prank(others[i]);
             vm.expectRevert(LososEscrow.NotReleaser.selector);
-            escrow.closeTap(TAP);
+            escrow.closeTap(_k(TAP));
         }
         vm.warp(block.timestamp + 5 minutes);
         vm.expectEmit(true, true, false, true, address(escrow));
-        emit LososEscrow.TapClosed(TAP, BUYER, uint64(block.timestamp));
+        emit LososEscrow.TapClosed(_k(TAP), BUYER, uint64(block.timestamp));
         vm.prank(BUYER);
-        escrow.closeTap(TAP);
+        escrow.closeTap(_k(TAP));
         assertEq(_tap(TAP).closedAt, block.timestamp);
         vm.expectEmit(true, true, false, true, address(escrow));
-        emit LososEscrow.TapClosed(other, BUYER, uint64(block.timestamp));
+        emit LososEscrow.TapClosed(_k(other), BUYER, uint64(block.timestamp));
         vm.prank(EDGE);
-        escrow.closeTap(other);
+        escrow.closeTap(_k(other));
         vm.warp(block.timestamp + 1 hours);
         vm.prank(BUYER);
         vm.expectRevert(LososEscrow.TapIsClosed.selector);
-        escrow.closeTap(TAP);
+        escrow.closeTap(_k(TAP));
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.TapIsClosed.selector);
-        escrow.closeTap(other);
+        escrow.closeTap(_k(other));
         // Closing again did not move the close later.
         assertEq(_tap(TAP).closedAt, block.timestamp - 1 hours);
         vm.prank(BUYER);
         vm.expectRevert(LososEscrow.NoTap.selector);
-        escrow.closeTap(keccak256("tap_nope"));
+        escrow.closeTap(_k(keccak256("tap_nope")));
     }
 
     function test_another_buyer_cannot_close_someone_elses_tap() public {
@@ -864,7 +907,7 @@ contract LososEscrowTest is Test {
         _fundBuyer2();
         vm.prank(BUYER2);
         vm.expectRevert(LososEscrow.NotReleaser.selector);
-        escrow.closeTap(TAP);
+        escrow.closeTap(_k(TAP));
         assertEq(_tap(TAP).closedAt, 0);
     }
 
@@ -946,7 +989,7 @@ contract LososEscrowTest is Test {
         // The edge bills the last slice while the notice runs.
         _settle(TAP, 300_000);
         vm.prank(BUYER);
-        escrow.closeTap(TAP);
+        escrow.closeTap(_k(TAP));
         vm.warp(block.timestamp + 24 hours);
         vm.expectEmit(true, false, false, true, address(escrow));
         emit LososEscrow.Withdrawn(BUYER, 700_000);
@@ -1028,12 +1071,12 @@ contract LososEscrowTest is Test {
         escrow.setReleaser(next);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.NotReleaser.selector);
-        escrow.settleTap(TAP, 1);
+        escrow.settleTap(_k(TAP), 1);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.NotReleaser.selector);
-        escrow.closeTap(TAP);
+        escrow.closeTap(_k(TAP));
         vm.prank(next);
-        escrow.settleTap(TAP, RATE);
+        escrow.settleTap(_k(TAP), RATE);
         assertEq(token.balanceOf(SELLER), 960_000);
     }
 
@@ -1097,11 +1140,11 @@ contract LososEscrowTest is Test {
             } else if (op == 3) {
                 bytes32 id = keccak256(abi.encode("tap_fuzz", i));
                 _openAs(b, id, x & 1 == 0 ? SELLER : SELLER2, uint128(x * 100), uint16(x % 5001));
-                tapIds[tapCount++] = id;
+                tapIds[tapCount++] = escrow.tapKey(b, id);
             } else if (op == 4 || op == 5) {
                 if (tapCount == 0) continue;
-                bytes32 id = tapIds[x % tapCount];
-                LososEscrow.Tap memory t = _tap(id);
+                bytes32 key = tapIds[x % tapCount];
+                LososEscrow.Tap memory t = _tapAt(key);
                 uint64 end = t.closedAt != 0 ? t.closedAt : uint64(block.timestamp);
                 if (end <= t.settledAt) continue;
                 uint256 elapsed = end - t.settledAt;
@@ -1111,14 +1154,14 @@ contract LososEscrowTest is Test {
                 if (amount > balance) amount = balance;
                 if (op == 5) amount = amount / 2;
                 if (amount == 0) continue;
-                _settle(id, amount);
+                _settleAt(key, amount);
             } else if (op == 6) {
                 if (tapCount == 0) continue;
-                bytes32 id = tapIds[x % tapCount];
-                LososEscrow.Tap memory t = _tap(id);
+                bytes32 key = tapIds[x % tapCount];
+                LososEscrow.Tap memory t = _tapAt(key);
                 if (t.closedAt != 0) continue;
                 vm.prank(x & 1 == 0 ? t.buyer : EDGE);
-                escrow.closeTap(id);
+                escrow.closeTap(key);
             } else if (op == 7) {
                 vm.prank(b);
                 escrow.askWithdrawal(x * 700 + 1);

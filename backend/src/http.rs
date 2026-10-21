@@ -2394,7 +2394,8 @@ async fn post_market_taps(api: web::Data<Api>, req: HttpRequest, body: web::Byte
     .await
 }
 
-/// `POST /api/market/taps/confirm` `{meter}` — the wallet opened the taps.
+/// `POST /api/market/taps/confirm` `{meter, wallet}` — `wallet` opened the
+/// taps.
 async fn post_market_taps_confirm(
     api: web::Data<Api>,
     req: HttpRequest,
@@ -2403,6 +2404,7 @@ async fn post_market_taps_confirm(
     post_market(api, req, body, "/api/market/taps/confirm", |d| {
         Some(crate::market::Op::TapConfirm {
             meter: field_str(d, "meter")?,
+            wallet: field_str(d, "wallet")?,
         })
     })
     .await

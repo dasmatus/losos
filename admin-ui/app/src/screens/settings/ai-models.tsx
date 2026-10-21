@@ -66,6 +66,16 @@ const LIVE: ReadonlySet<LlmMeter["state"]> = new Set(["quoted", "open", "ending"
  *  back, so a confirmation that failed is retried rather than paid again. */
 const PENDING = "losos-llm-meter";
 
+/** The wallet that opened `meter`'s taps on this tab, if it did. */
+function pendingWallet(meter: string): string | null {
+  try {
+    const p = JSON.parse(sessionStorage.getItem(PENDING) ?? "null") as { meter?: unknown; wallet?: unknown } | null;
+    return p !== null && p.meter === meter && typeof p.wallet === "string" ? p.wallet : null;
+  } catch {
+    return null;
+  }
+}
+
 /** How long a confirmation waits for the chain to show every tap. */
 const CONFIRM_WAIT_MS = 90_000;
 const NOT_YET = /every tap yet/;
@@ -400,12 +410,14 @@ function ReadyModels({
   const nameOf = (id: string) => data.models.find((m) => m.id === id)?.name ?? id;
   const wallets = data.wallets.filter((w) => w.network === data.network);
 
-  /** Read the taps back until the edge has seen every one. */
-  const confirm = async (meter: string) => {
+  /** Read the taps back until the edge has seen every one. The escrow
+   *  keeps them under the wallet that opened them, so the edge is told
+   *  which one. */
+  const confirm = async (meter: string, wallet: string) => {
     const giveUpAt = Date.now() + CONFIRM_WAIT_MS;
     for (;;) {
       try {
-        const reply = await postTapConfirm(meter);
+        const reply = await postTapConfirm(meter, wallet);
         sessionStorage.removeItem(PENDING);
         return reply.state;
       } catch (error) {
@@ -437,10 +449,15 @@ function ReadyModels({
         toast.dismiss("llm-start");
         throw error;
       }
-      sessionStorage.setItem(PENDING, quote.meter);
+      const wallet = signerAddress(signer);
+      try {
+        sessionStorage.setItem(PENDING, JSON.stringify({ meter: quote.meter, wallet }));
+      } catch {
+        // Only "Check again" after a reload needs it.
+      }
       toast.status(t("panes.market.ai.step.confirm"), undefined, { id: "llm-start", duration: Infinity });
       try {
-        await confirm(quote.meter);
+        await confirm(quote.meter, wallet);
       } finally {
         toast.dismiss("llm-start");
       }
@@ -459,7 +476,13 @@ function ReadyModels({
 
   const checkAgain = (meter: LlmMeter) =>
     run(`check:${meter.id}`, async () => {
-      if ((await confirm(meter.id)) === "open") {
+      let wallet = pendingWallet(meter.id) ?? payer.address;
+      if (wallet === null) {
+        const signer = await payer.sign();
+        if (signer === null) return;
+        wallet = signerAddress(signer);
+      }
+      if ((await confirm(meter.id, wallet)) === "open") {
         toast.success(t("panes.market.ai.startedTitle", { model: nameOf(meter.model) }), t("panes.market.ai.startedBody", { limit: formatUsd(meter.spendPerHour) }));
       }
     });

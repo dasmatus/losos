@@ -253,10 +253,11 @@ export function escrowBalanceAddress(program: string, config: string, buyer: str
   return findProgramAddress([enc("balance"), pubkey(config), pubkey(buyer)], program);
 }
 
-/** `["tap", config, tap id]`. */
-export function escrowTapAddress(program: string, config: string, tapId: Uint8Array): string {
+/** `["tap", config, buyer, tap id]`: the buyer is in the seeds, so the same
+ *  id from another wallet is another tap. */
+export function escrowTapAddress(program: string, config: string, buyer: string, tapId: Uint8Array): string {
   if (tapId.length !== 32) throw new Error("tap id");
-  return findProgramAddress([enc("tap"), pubkey(config), tapId], program);
+  return findProgramAddress([enc("tap"), pubkey(config), pubkey(buyer), tapId], program);
 }
 
 /** Where the balance's USDC is: the token account `["vault", balance]`. */
@@ -332,7 +333,7 @@ export function escrowTapsMessage(p: EscrowTaps): Uint8Array {
     view.setUint16(41, p.feeBps, true);
     ixs.push({
       program: p.program,
-      accounts: [buyer, r(config), r(balance), w(escrowTapAddress(p.program, config, id)), r(tap.seller), r(SYSTEM_PROGRAM)],
+      accounts: [buyer, r(config), r(balance), w(escrowTapAddress(p.program, config, p.payer, id)), r(tap.seller), r(SYSTEM_PROGRAM)],
       data,
     });
   }

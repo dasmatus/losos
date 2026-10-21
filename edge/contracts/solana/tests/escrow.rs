@@ -937,8 +937,17 @@ impl Edge {
         (balance, vault)
     }
 
+    /// The payer's tap `id`.
     fn tap_of(&self, id: &[u8; 32]) -> Address {
-        Address::find_program_address(&[TAP_SEED, self.config.as_ref(), id], &self.program).0
+        self.tap_by(&self.payer.pubkey(), id)
+    }
+
+    fn tap_by(&self, buyer: &Address, id: &[u8; 32]) -> Address {
+        Address::find_program_address(
+            &[TAP_SEED, self.config.as_ref(), buyer.as_ref(), id],
+            &self.program,
+        )
+        .0
     }
 
     /// Another buyer, with SOL and 100 USDC of its own.
@@ -1000,7 +1009,7 @@ impl Edge {
                 AccountMeta::new(*buyer, true),
                 AccountMeta::new_readonly(self.config, false),
                 AccountMeta::new_readonly(o.balance.unwrap_or(self.balance_of(buyer).0), false),
-                AccountMeta::new(o.tap.unwrap_or(self.tap_of(&o.id)), false),
+                AccountMeta::new(o.tap.unwrap_or(self.tap_by(buyer, &o.id)), false),
                 AccountMeta::new_readonly(o.seller.unwrap_or(self.seller.pubkey()), false),
                 AccountMeta::new_readonly(SYSTEM, false),
             ],
@@ -1052,7 +1061,7 @@ impl Edge {
             accounts: vec![
                 AccountMeta::new_readonly(*by, true),
                 AccountMeta::new_readonly(self.config, false),
-                AccountMeta::new(s.tap.unwrap_or(self.tap_of(id)), false),
+                AccountMeta::new(s.tap.unwrap_or(self.tap_by(&buyer, id)), false),
                 AccountMeta::new_readonly(s.balance.unwrap_or(balance), false),
                 AccountMeta::new(s.vault.unwrap_or(vault), false),
                 AccountMeta::new(s.seller_token.unwrap_or(ata(&self.seller.pubkey())), false),
@@ -1130,8 +1139,12 @@ impl Edge {
     }
 
     fn tap(&self, id: &[u8; 32]) -> Option<Tap> {
+        self.tap_for(&self.payer.pubkey(), id)
+    }
+
+    fn tap_for(&self, buyer: &Address, id: &[u8; 32]) -> Option<Tap> {
         self.svm
-            .get_account(&self.tap_of(id))
+            .get_account(&self.tap_by(buyer, id))
             .filter(|a| a.owner == self.program && !a.data.is_empty())
             .and_then(|a| Tap::read(&a.data))
     }
@@ -1700,6 +1713,7 @@ fn a_settle_pays_only_the_taps_seller_and_the_treasury() {
             SettleTo {
                 buyer: Some(thief.pubkey()),
                 balance_of: Some(e.payer.pubkey()),
+                tap: Some(e.tap_of(&id)),
                 ..SettleTo::default()
             },
             code(EscrowError::WrongAccount),
@@ -1880,8 +1894,14 @@ fn a_tap_must_fit_the_rules() {
     )
     .unwrap();
     assert_eq!(custom(e.open_tap(&payer, &o)), code(EscrowError::TapExists));
-    assert_eq!(custom(e.open_tap(&other, &o)), code(EscrowError::TapExists));
     assert_eq!(e.tap(&o.id).unwrap().fee_bps, 5000);
+    // The same id from another wallet is that wallet's own tap.
+    e.open_tap(&other, &o).unwrap();
+    assert_eq!(
+        e.tap_for(&other.pubkey(), &o.id).unwrap().buyer,
+        other.pubkey()
+    );
+    assert_eq!(e.tap(&o.id).unwrap().buyer, payer.pubkey());
     // Several taps open in one transaction, for a group.
     let group: Vec<Instruction> = (2..5)
         .map(|n| e.open_tap_ix(&payer.pubkey(), &Open::new(n)))
@@ -2058,4 +2078,24 @@ fn a_tap_fits_one_transaction_with_room_to_spare() {
         "{}",
         meta.compute_units_consumed
     );
+}
+
+#[test]
+fn a_wallet_that_copies_a_quoted_id_first_blocks_nothing() {
+    let mut e = Edge::new();
+    let payer = e.payer();
+    let copier = e.buyer();
+    e.top_up(&copier, 1).unwrap();
+    let o = Open::new(7);
+    // The copier opens the buyer's quoted id before the buyer does.
+    e.open_tap(&copier, &o).unwrap();
+    e.top_up(&payer, 30_000_000).unwrap();
+    e.open_tap(&payer, &o).unwrap();
+    let t = e.tap(&o.id).unwrap();
+    assert_eq!(t.buyer, payer.pubkey());
+    assert_eq!(t.seller, e.seller.pubkey());
+    e.at(NOW + HOUR);
+    e.settle_tap(&o.id, RATE).unwrap();
+    assert_eq!(e.prepaid(&payer.pubkey()), 30_000_000 - RATE);
+    assert_eq!(e.prepaid(&copier.pubkey()), 1);
 }

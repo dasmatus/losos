@@ -1181,9 +1181,9 @@ export function postTapQuote(
   return postJson<TapQuote>("/api/market/taps", { model, network, spendPerHour }, options);
 }
 
-/** POST /api/market/taps/confirm — the wallet opened the meter's taps. */
-export function postTapConfirm(meter: string, options: RequestOptions = {}): Promise<{ meter: string; state: MeterState }> {
-  return postJson("/api/market/taps/confirm", { meter }, options);
+/** POST /api/market/taps/confirm — `wallet` opened the meter's taps. */
+export function postTapConfirm(meter: string, wallet: string, options: RequestOptions = {}): Promise<{ meter: string; state: MeterState }> {
+  return postJson("/api/market/taps/confirm", { meter, wallet }, options);
 }
 
 /** POST /api/market/taps/stop — stop a meter; the edge closes its taps. */

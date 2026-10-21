@@ -101,8 +101,9 @@ contract LososEscrow {
     mapping(address => uint256) public balances;
     /// Each buyer's pending withdrawal, at most one.
     mapping(address => Withdrawal) public withdrawals;
-    /// Taps by id, keccak256 of the edge's tap id. A tap is never deleted, so
-    /// an id cannot be opened twice.
+    /// Taps by key, `tapKey(buyer, id)`: the same id opened by two wallets is
+    /// two taps, so nobody can take a buyer's quoted ids first. A tap is
+    /// never deleted, so a key cannot be opened twice.
     mapping(bytes32 => Tap) public taps;
 
     event Held(
@@ -124,9 +125,9 @@ contract LososEscrow {
     event ReleaserChanged(address indexed previous, address indexed next);
     event Rescued(address indexed token, address indexed to, uint256 amount);
     event ToppedUp(address indexed buyer, uint256 amount, uint256 balance);
-    event TapOpened(bytes32 indexed tapId, address indexed buyer, address indexed seller, uint256 rate, uint16 feeBps);
-    event TapClosed(bytes32 indexed tapId, address indexed buyer, uint64 closedAt);
-    event TapSettled(bytes32 indexed tapId, address indexed seller, uint256 amount, uint256 fee, uint64 settledAt);
+    event TapOpened(bytes32 indexed tapKey, address indexed buyer, address indexed seller, uint256 rate, uint16 feeBps);
+    event TapClosed(bytes32 indexed tapKey, address indexed buyer, uint64 closedAt);
+    event TapSettled(bytes32 indexed tapKey, address indexed seller, uint256 amount, uint256 fee, uint64 settledAt);
     event WithdrawalAsked(address indexed buyer, uint256 amount, uint64 notBefore);
     event Withdrawn(address indexed buyer, uint256 amount);
 
@@ -261,8 +262,14 @@ contract LososEscrow {
         emit ToppedUp(msg.sender, amount, balance);
     }
 
+    /// The key `taps` keeps `buyer`'s tap `id` under.
+    function tapKey(address buyer, bytes32 id) public pure returns (bytes32) {
+        return keccak256(abi.encode(buyer, id));
+    }
+
     /// Open one tap per seller, all with the same fee, billed from the
-    /// caller's balance. `ids[i]` is keccak256 of the edge's tap id and
+    /// caller's balance. `ids[i]` is keccak256 of the edge's tap id, kept
+    /// under `tapKey(msg.sender, ids[i])`, and
     /// `rates[i]` the most the edge may bill `sellers[i]` per hour. Billing
     /// counts from `HEADSTART` before now, so the first hour can be billed at
     /// once.
@@ -276,22 +283,23 @@ contract LososEscrow {
         uint64 start = uint64(block.timestamp) - HEADSTART;
         for (uint256 i = 0; i < n; i++) {
             if (sellers[i] == address(0)) revert ZeroSeller();
-            if (taps[ids[i]].buyer != address(0)) revert TapExists();
-            taps[ids[i]] = Tap(msg.sender, sellers[i], rates[i], feeBps, start, 0);
-            emit TapOpened(ids[i], msg.sender, sellers[i], rates[i], feeBps);
+            bytes32 key = tapKey(msg.sender, ids[i]);
+            if (taps[key].buyer != address(0)) revert TapExists();
+            taps[key] = Tap(msg.sender, sellers[i], rates[i], feeBps, start, 0);
+            emit TapOpened(key, msg.sender, sellers[i], rates[i], feeBps);
         }
     }
 
     /// Stop a tap. The buyer or the edge may close it, once. The edge can
     /// still bill it afterwards, but only for the time before it closed.
-    function closeTap(bytes32 id) external {
-        Tap storage t = taps[id];
+    function closeTap(bytes32 key) external {
+        Tap storage t = taps[key];
         if (t.buyer == address(0)) revert NoTap();
         if (msg.sender != t.buyer && msg.sender != releaser) revert NotReleaser();
         if (t.closedAt != 0) revert TapIsClosed();
         uint64 closedAt = uint64(block.timestamp);
         t.closedAt = closedAt;
-        emit TapClosed(id, t.buyer, closedAt);
+        emit TapClosed(key, t.buyer, closedAt);
     }
 
     /// The edge bills `amount` of metered use through a tap: the fee to the
@@ -301,9 +309,9 @@ contract LososEscrow {
     /// close and at most `MAX_ACCRUAL`. Billing then restarts from that
     /// point, so cap left unused is not carried over. Over its whole life a
     /// tap pays out at most its rate times (time open + 1 hour).
-    function settleTap(bytes32 id, uint256 amount) external {
+    function settleTap(bytes32 key, uint256 amount) external {
         if (msg.sender != releaser) revert NotReleaser();
-        Tap storage t = taps[id];
+        Tap storage t = taps[key];
         if (t.buyer == address(0)) revert NoTap();
         if (amount == 0) revert ZeroAmount();
         uint64 end = t.closedAt != 0 ? t.closedAt : uint64(block.timestamp);
@@ -322,7 +330,7 @@ contract LososEscrow {
         uint256 fee = amount * t.feeBps / 10000;
         _send(treasury, fee);
         _send(t.seller, amount - fee);
-        emit TapSettled(id, t.seller, amount, fee, end);
+        emit TapSettled(key, t.seller, amount, fee, end);
     }
 
     /// Ask to take `amount` of the caller's balance back after `NOTICE`.

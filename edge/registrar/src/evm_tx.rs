@@ -470,9 +470,15 @@ mod tests {
         let rpc = meta["rpc"].as_str().unwrap();
         let escrow = meta["escrow"].as_str().unwrap();
         let rate = meta["rate"].as_u64().unwrap();
-        let tap = stablecoin::order_id_hash(meta["tap"].as_str().unwrap());
         let releaser = Releaser::from_hex(meta["releaser_key"].as_str().unwrap()).unwrap();
         let buyer = stablecoin::address_bytes(meta["buyer"].as_str().unwrap()).unwrap();
+        // The escrow's own `tapKey`, read back by the script, is what the
+        // edge works out.
+        let tap = stablecoin::tap_key(buyer, meta["tap"].as_str().unwrap());
+        assert_eq!(
+            format!("0x{}", crate::identity::to_hex(&tap)),
+            meta["tap_key"].as_str().unwrap()
+        );
         let seller = stablecoin::address_bytes(meta["seller"].as_str().unwrap()).unwrap();
         let word = |a: [u8; 20]| {
             let mut w = [0u8; 32];

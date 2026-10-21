@@ -293,10 +293,11 @@ pub enum Op {
         network: Option<String>,
         spend_per_hour: u64,
     },
-    /// The wallet opened the meter's taps; the edge reads them back from the
-    /// chain and opens the meter.
+    /// `wallet` opened the meter's taps; the edge reads them back from the
+    /// chain, where they are kept under that wallet, and opens the meter.
     TapConfirm {
         meter: String,
+        wallet: String,
     },
     /// Stop a meter. The edge closes its taps itself; no wallet is needed.
     TapStop {
@@ -579,7 +580,16 @@ impl Op {
                     Ok(())
                 }
             }
-            Op::TapConfirm { meter } | Op::TapStop { meter } => {
+            Op::TapConfirm { meter, wallet } => {
+                if !valid_meter(meter) {
+                    Err("meter is not valid")
+                } else if eth_address(wallet) || base58(wallet, 32) {
+                    Ok(())
+                } else {
+                    Err("wallet is not a wallet address")
+                }
+            }
+            Op::TapStop { meter } => {
                 if valid_meter(meter) {
                     Ok(())
                 } else {
@@ -877,7 +887,8 @@ impl Op {
                 }
                 doc
             }
-            Op::TapConfirm { meter } | Op::TapStop { meter } => json!({ "meter": meter }),
+            Op::TapConfirm { meter, wallet } => json!({ "meter": meter, "wallet": wallet }),
+            Op::TapStop { meter } => json!({ "meter": meter }),
             Op::LlmChat(ask) => ask.body(),
             Op::VmOrder {
                 listing_id,
@@ -1439,6 +1450,7 @@ mod tests {
     }
 
     const METER: &str = "mtr_0a1b2c3d4e5f60718293a4b5";
+    const WALLET: &str = "0x00000000000000000000000000000000000000b1";
 
     #[test]
     fn the_ai_routes_match_the_registrar() {
@@ -1455,7 +1467,8 @@ mod tests {
         let meter = METER.to_string();
         assert_eq!(
             Op::TapConfirm {
-                meter: meter.clone()
+                meter: meter.clone(),
+                wallet: WALLET.to_string(),
             }
             .route(),
             ("POST", "/market/taps/confirm")
@@ -1558,6 +1571,30 @@ mod tests {
             meter: m.to_string(),
         };
         assert!(stop(METER).validate().is_ok());
+        let confirm = |wallet: &str| Op::TapConfirm {
+            meter: METER.to_string(),
+            wallet: wallet.to_string(),
+        };
+        assert!(confirm(WALLET).validate().is_ok());
+        assert!(confirm("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
+            .validate()
+            .is_ok());
+        for bad in [
+            "",
+            "0x12",
+            "wallet",
+            "0xZZ00000000000000000000000000000000000000",
+        ] {
+            assert_eq!(
+                confirm(bad).validate(),
+                Err("wallet is not a wallet address"),
+                "{bad:?}"
+            );
+        }
+        let sent: Value =
+            serde_json::from_str(&confirm(WALLET).body("appliance-1", "tok").unwrap()).unwrap();
+        assert_eq!(sent["meter"], METER);
+        assert_eq!(sent["wallet"], WALLET);
         for bad in [
             "",
             "mtr_",
@@ -1569,7 +1606,8 @@ mod tests {
         ] {
             assert!(stop(bad).validate().is_err(), "{bad:?}");
             assert!(Op::TapConfirm {
-                meter: bad.to_string()
+                meter: bad.to_string(),
+                wallet: WALLET.to_string(),
             }
             .validate()
             .is_err());
@@ -1631,7 +1669,8 @@ mod tests {
         assert_eq!(Op::Account.timeout_secs(), 25);
         assert!(
             Op::TapConfirm {
-                meter: METER.to_string()
+                meter: METER.to_string(),
+                wallet: WALLET.to_string(),
             }
             .timeout_secs()
                 > 20

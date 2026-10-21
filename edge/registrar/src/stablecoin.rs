@@ -374,6 +374,17 @@ pub fn order_id_hash(order_id: &str) -> [u8; 32] {
     keccak256(order_id.as_bytes())
 }
 
+/// The key `LososEscrow` keeps `buyer`'s tap `tap` under:
+/// `keccak256(abi.encode(buyer, keccak256(tap)))`, as its `tapKey` works it
+/// out. The wallet passes only `keccak256(tap)`; the buyer is whoever sends
+/// `openTaps`, so the same id from another wallet is another tap.
+#[must_use]
+pub fn tap_key(buyer: [u8; 20], tap: &str) -> [u8; 32] {
+    let mut data = crate::evm_tx::address_word(buyer).to_vec();
+    data.extend_from_slice(&order_id_hash(tap));
+    keccak256(&data)
+}
+
 #[must_use]
 pub fn order_id_hash_hex(order_id: &str) -> String {
     format!("0x{}", to_hex(&order_id_hash(order_id)))

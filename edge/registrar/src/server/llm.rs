@@ -127,14 +127,23 @@ pub(super) struct MeterReq {
     meter: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub(super) struct ConfirmReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    meter: String,
+    /// The wallet that opened the taps: the escrow keeps them under it.
+    wallet: String,
+}
+
 pub(super) async fn confirm(
     State(st): State<AppState>,
-    Json(req): Json<MeterReq>,
+    Json(req): Json<ConfirmReq>,
 ) -> Result<Json<Value>, ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
     inference_of(&st)?;
     let state = market
-        .tap_confirm(&req.auth.appliance_id, &req.meter)
+        .tap_confirm(&req.auth.appliance_id, &req.meter, &req.wallet)
         .await?;
     Ok(Json(
         serde_json::json!({ "meter": req.meter, "state": state }),

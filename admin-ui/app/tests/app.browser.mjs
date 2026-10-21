@@ -187,7 +187,10 @@ async function open({
       return json(route, 200, { content: 'Mostly water, then ice.', finishReason: 'stop', tokensIn: 42, tokensOut: 7, costE6: '31500000', billedE6: '10261500000' });
     }
     if (path === '/api/market/taps/stop') return json(route, 200, { meter: body.meter, state: 'ending' });
-    if (path === '/api/market/taps/confirm') return json(route, 200, { meter: body.meter, state: 'open' });
+    if (path === '/api/market/taps/confirm') {
+      if (typeof body.wallet !== 'string' || body.wallet.length === 0) return json(route, 400, { error: 'wallet is not a wallet address' });
+      return json(route, 200, { meter: body.meter, state: 'open' });
+    }
     return json(route, 409, { error: 'not in this test' });
   });
   // The machines relay: `vms` is GET /api/vms's document; every action and
@@ -2240,6 +2243,24 @@ await check('AI models: Stop needs no wallet and a chat answer says what it cost
   await page.getByTestId('ai-meters').getByRole('button', { name: 'Stop' }).click();
   await page.getByText('The edge closes the taps; nothing more is billed.').waitFor();
   assert.deepEqual(llmPosts[2], ['/api/market/taps/stop', { meter: AI_METER.id }]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('AI models: Check again tells the edge which wallet opened the taps', async () => {
+  const quoted = { ...LLM, meters: [{ ...AI_METER, state: 'quoted', wallet: undefined }] };
+  const { page, errors, llmPosts } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: quoted });
+  const meters = page.getByTestId('ai-meters');
+  await meters.waitFor();
+  // The tab that opened the taps remembers the wallet that did.
+  await page.evaluate(([meter, wallet]) => sessionStorage.setItem('losos-llm-meter', JSON.stringify({ meter, wallet })), [AI_METER.id, AI_WALLET]);
+  await meters.getByRole('button', { name: 'Check again' }).click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="ai-meters"] button[disabled]') === null);
+  for (let i = 0; i < 50 && !llmPosts.some(([path]) => path === '/api/market/taps/confirm'); i++) await page.waitForTimeout(100);
+  assert.deepEqual(
+    llmPosts.filter(([path]) => path === '/api/market/taps/confirm'),
+    [['/api/market/taps/confirm', { meter: AI_METER.id, wallet: AI_WALLET }]],
+  );
   assert.deepEqual(errors, []);
   await page.close();
 });

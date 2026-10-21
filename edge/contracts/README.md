@@ -109,9 +109,13 @@ calls `topUp(amount)` to move USDC onto their balance, one balance per buyer.
 To use listings the buyer calls `openTaps(ids, sellers, rates, feeBps)`,
 which opens up to 16 taps in one call. A tap names one seller, the most the
 edge may bill per hour (`rate`, in USDC base units) and the fee, at most
-half. The tap id is keccak256 of the edge's tap id and can be opened once.
+half. The id the buyer passes is keccak256 of the edge's tap id. The contract
+keeps the tap under `tapKey(buyer, id)`, `keccak256(abi.encode(buyer, id))`,
+so a key opens once, and another wallet that sends the same ids first only
+opens taps of its own. The Solana program does the same with the buyer in the
+tap account's seeds, `["tap", config, buyer, id]`.
 
-The edge meters what the buyer used and calls `settleTap(tap, amount)` from
+The edge meters what the buyer used and calls `settleTap(key, amount)` from
 time to time. The contract takes `amount` from the buyer's balance, sends the
 fee (rounded down) to `treasury` and the rest to the tap's seller, and
 refuses an amount over the balance or over the tap's rate for the time since
@@ -122,7 +126,7 @@ not carried over. So a stolen edge key can take, from one tap, at most its
 rate times the time since it opened plus one hour, never more than a week of
 it at once, and only to the seller the buyer named.
 
-The buyer or the edge can close a tap with `closeTap`, once. The edge can
+The buyer or the edge can close a tap with `closeTap(key)`, once. The edge can
 still bill a closed tap for the time before it closed. To take money back the
 buyer calls `askWithdrawal(amount)`, which replaces any earlier ask, waits 48
 hours so the edge can bill the last slice, then calls `withdraw` and gets the

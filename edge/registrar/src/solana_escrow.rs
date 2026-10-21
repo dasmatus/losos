@@ -156,8 +156,13 @@ pub fn balance_address(program: &[u8; 32], config: &[u8; 32], buyer: &[u8; 32]) 
 
 /// `["tap", config, tap id]`.
 #[must_use]
-pub fn tap_address(program: &[u8; 32], config: &[u8; 32], tap_id: &[u8; 32]) -> [u8; 32] {
-    find_program_address(&[b"tap", config, tap_id], program).0
+pub fn tap_address(
+    program: &[u8; 32],
+    config: &[u8; 32],
+    buyer: &[u8; 32],
+    tap_id: &[u8; 32],
+) -> [u8; 32] {
+    find_program_address(&[b"tap", config, buyer, tap_id], program).0
 }
 
 /// The 32 bytes a tap is known by on Solana: the SHA-256 of the edge's tap
@@ -457,13 +462,14 @@ pub async fn tap_state(
     rpc_url: &str,
     program: &str,
     config: &[u8; 32],
+    buyer: &[u8; 32],
     tap_id: [u8; 32],
 ) -> Result<Option<ChainTap>, MarketError> {
     let p = key(program).ok_or(MarketError::Unconfigured)?;
-    let address = base58_encode(&tap_address(&p, config, &tap_id));
+    let address = base58_encode(&tap_address(&p, config, buyer, &tap_id));
     match account(rpc_url, &address).await? {
         Some((owner, data)) if owner == program => Ok(TapData::read(&data)
-            .filter(|t| t.config == *config && t.id == tap_id)
+            .filter(|t| t.config == *config && t.id == tap_id && t.buyer == *buyer)
             .map(|t| t.chain())),
         _ => Ok(None),
     }
@@ -822,7 +828,7 @@ pub fn tap_transaction(
     let me = releaser.address();
     let p = parties;
     let config = config_address(&p.program, &p.treasury, &p.mint);
-    let tap = tap_address(&p.program, &config, &p.tap_id);
+    let tap = tap_address(&p.program, &config, &p.buyer, &p.tap_id);
     let signer = Meta {
         key: me,
         signer: true,
@@ -1343,14 +1349,14 @@ mod tests {
     #[test]
     fn tap_addresses_match_the_runtime() {
         // `solana find-program-derived-address LosEscrow1… string:tap
-        // pubkey:<config> hex:04…04` and `string:balance pubkey:<config>
-        // pubkey:<buyer>`.
+        // pubkey:<config> pubkey:<buyer> hex:04…04` and `string:balance
+        // pubkey:<config> pubkey:<buyer>`.
         let program = key("LosEscrow1111111111111111111111111111111111").unwrap();
         let config = key("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM").unwrap();
         let buyer = key("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v").unwrap();
         assert_eq!(
-            base58_encode(&tap_address(&program, &config, &[4; 32])),
-            "G9CdbL4qdgvEVgELDpCq2aZRmqA8JAPx9j2cXSTG6ueh"
+            base58_encode(&tap_address(&program, &config, &buyer, &[4; 32])),
+            "5Gbz1iYxjC5fegQqLZ7y5XxoR49y17gDhNQGjqzXWkWY"
         );
         assert_eq!(
             base58_encode(&balance_address(&program, &config, &buyer)),
@@ -1466,7 +1472,11 @@ mod tests {
             vec![
                 (releaser.address(), true, true),
                 (config, false, false),
-                (tap_address(&p.program, &config, &p.tap_id), false, true),
+                (
+                    tap_address(&p.program, &config, &p.buyer, &p.tap_id),
+                    false,
+                    true
+                ),
                 (balance, false, false),
                 (vault_address(&p.program, &balance), false, true),
                 (ata(&p.seller), false, true),
@@ -1496,7 +1506,11 @@ mod tests {
             vec![
                 (releaser.address(), true, true),
                 (config, false, false),
-                (tap_address(&p.program, &config, &p.tap_id), false, true),
+                (
+                    tap_address(&p.program, &config, &p.buyer, &p.tap_id),
+                    false,
+                    true
+                ),
                 (p.buyer, false, true),
             ]
         );

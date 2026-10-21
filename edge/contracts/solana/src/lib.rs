@@ -687,8 +687,17 @@ fn open_tap(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> 
     if tap.owned_by(program_id) {
         return Err(EscrowError::TapExists.into());
     }
-    let (want, bump) =
-        Address::find_program_address(&[TAP_SEED, config.address().as_ref(), &id], program_id);
+    // The buyer is in the seeds, so the same id opened by another wallet is
+    // another tap: nobody can take a buyer's quoted ids first.
+    let (want, bump) = Address::find_program_address(
+        &[
+            TAP_SEED,
+            config.address().as_ref(),
+            buyer.address().as_ref(),
+            &id,
+        ],
+        program_id,
+    );
     if tap.address() != &want {
         return Err(EscrowError::WrongAccount.into());
     }
@@ -696,6 +705,7 @@ fn open_tap(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> 
     let seeds = [
         Seed::from(TAP_SEED),
         Seed::from(config.address().as_ref()),
+        Seed::from(buyer.address().as_ref()),
         Seed::from(&id),
         Seed::from(&bump_seed),
     ];

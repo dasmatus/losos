@@ -28,18 +28,28 @@ pub type ChainFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, MarketError>
 /// What the market needs of the escrow for taps. [`EscrowChain`] talks to
 /// the configured chains; tests use an escrow kept in memory.
 pub trait TapChain: Send + Sync {
-    /// The 32 bytes the escrow keeps tap `tap` under on `network`.
+    /// The 32 bytes the wallet passes for tap `tap` on `network`. The
+    /// escrow keeps the tap under these and the wallet that opened it, so
+    /// every call that reads or moves a tap names the wallet too.
     fn tap_key(&self, network: &str, tap: &str) -> Option<[u8; 32]>;
     /// A payout address as the escrow's 32-byte key.
     fn payee_key(&self, network: &str, address: &str) -> Option<[u8; 32]>;
     /// A 32-byte key written the way `network` writes addresses.
     fn wallet_name(&self, network: &str, key: &[u8; 32]) -> String;
-    fn read_tap<'a>(&'a self, network: &'a str, tap: &'a str) -> ChainFuture<'a, Option<ChainTap>>;
+    /// `wallet`'s tap `tap`, if the escrow has it.
+    fn read_tap<'a>(
+        &'a self,
+        network: &'a str,
+        wallet: &'a str,
+        tap: &'a str,
+    ) -> ChainFuture<'a, Option<ChainTap>>;
     fn read_wallet<'a>(&'a self, network: &'a str, wallet: &'a str) -> ChainFuture<'a, WalletView>;
-    /// Send a settle of `amount` and return its transaction.
+    /// Send a settle of `amount` on `wallet`'s tap and return its
+    /// transaction.
     fn settle<'a>(
         &'a self,
         network: &'a str,
+        wallet: &'a str,
         tap: &'a str,
         amount: u64,
         replace: bool,
@@ -47,6 +57,7 @@ pub trait TapChain: Send + Sync {
     fn close<'a>(
         &'a self,
         network: &'a str,
+        wallet: &'a str,
         tap: &'a str,
         replace: bool,
     ) -> ChainFuture<'a, String>;
@@ -107,6 +118,7 @@ impl EscrowChain {
     async fn solana_step(
         &self,
         network: &str,
+        wallet: &str,
         tap: &str,
         step: crate::solana_escrow::TapStep,
     ) -> Result<String, MarketError> {
@@ -115,8 +127,10 @@ impl EscrowChain {
         let url = Self::url(chain).await?;
         let (program, config, treasury, mint) = Self::solana_parts(chain)?;
         let id = tap_id_bytes(tap);
+        let buyer = crate::solana_escrow::key(wallet)
+            .ok_or(MarketError::Invalid("not a wallet address"))?;
         let pay = chain.pay.as_deref().unwrap_or_default();
-        let seen = tap_state(&url, pay, &config, id)
+        let seen = tap_state(&url, pay, &config, &buyer, id)
             .await?
             .ok_or(MarketError::Conflict("the escrow has no such tap"))?;
         let parties = TapParties::new(program, mint, treasury, id, &seen);
@@ -174,22 +188,32 @@ impl TapChain for EscrowChain {
         }
     }
 
-    fn read_tap<'a>(&'a self, network: &'a str, tap: &'a str) -> ChainFuture<'a, Option<ChainTap>> {
+    fn read_tap<'a>(
+        &'a self,
+        network: &'a str,
+        wallet: &'a str,
+        tap: &'a str,
+    ) -> ChainFuture<'a, Option<ChainTap>> {
         Box::pin(async move {
             let chain = self.chain(network)?;
             let url = Self::url(chain).await?;
             let pay = chain.pay.as_deref().unwrap_or_default();
             match chain.network.family {
                 Family::Evm => {
-                    crate::stablecoin::tap_state(&url, pay, crate::stablecoin::order_id_hash(tap))
+                    let w = crate::stablecoin::address_bytes(wallet)
+                        .ok_or(MarketError::Invalid("not a wallet address"))?;
+                    crate::stablecoin::tap_state(&url, pay, crate::stablecoin::tap_key(w, tap))
                         .await
                 }
                 Family::Solana => {
                     let (_, config, _, _) = Self::solana_parts(chain)?;
+                    let w = crate::solana_escrow::key(wallet)
+                        .ok_or(MarketError::Invalid("not a wallet address"))?;
                     crate::solana_escrow::tap_state(
                         &url,
                         pay,
                         &config,
+                        &w,
                         crate::solana_escrow::tap_id_bytes(tap),
                     )
                     .await
@@ -222,6 +246,7 @@ impl TapChain for EscrowChain {
     fn settle<'a>(
         &'a self,
         network: &'a str,
+        wallet: &'a str,
         tap: &'a str,
         amount: u64,
         replace: bool,
@@ -229,15 +254,17 @@ impl TapChain for EscrowChain {
         Box::pin(async move {
             match self.family(network).ok_or(MarketError::Unconfigured)? {
                 Family::Evm => {
-                    let data = crate::evm_tx::settle_tap_data(
-                        crate::stablecoin::order_id_hash(tap),
-                        amount,
-                    );
+                    let data = crate::evm_tx::settle_tap_data(evm_tap_key(wallet, tap)?, amount);
                     self.evm_send(network, data, replace).await
                 }
                 Family::Solana => {
-                    self.solana_step(network, tap, crate::solana_escrow::TapStep::Settle(amount))
-                        .await
+                    self.solana_step(
+                        network,
+                        wallet,
+                        tap,
+                        crate::solana_escrow::TapStep::Settle(amount),
+                    )
+                    .await
                 }
             }
         })
@@ -246,22 +273,36 @@ impl TapChain for EscrowChain {
     fn close<'a>(
         &'a self,
         network: &'a str,
+        wallet: &'a str,
         tap: &'a str,
         replace: bool,
     ) -> ChainFuture<'a, String> {
         Box::pin(async move {
             match self.family(network).ok_or(MarketError::Unconfigured)? {
                 Family::Evm => {
-                    let data = crate::evm_tx::close_tap_data(crate::stablecoin::order_id_hash(tap));
+                    let data = crate::evm_tx::close_tap_data(evm_tap_key(wallet, tap)?);
                     self.evm_send(network, data, replace).await
                 }
                 Family::Solana => {
-                    self.solana_step(network, tap, crate::solana_escrow::TapStep::Close)
+                    self.solana_step(network, wallet, tap, crate::solana_escrow::TapStep::Close)
                         .await
                 }
             }
         })
     }
+}
+
+/// The wallet whose taps the meter of `tap` runs on, once confirmed.
+fn wallet_of<'a>(state: &'a meter::Taps, tap: &str) -> Option<&'a str> {
+    let meter = state.taps.get(tap)?.meter.as_str();
+    state.meters.get(meter)?.wallet.as_deref()
+}
+
+/// The key `LososEscrow` keeps `wallet`'s tap `tap` under.
+fn evm_tap_key(wallet: &str, tap: &str) -> Result<[u8; 32], MarketError> {
+    crate::stablecoin::address_bytes(wallet)
+        .map(|w| crate::stablecoin::tap_key(w, tap))
+        .ok_or(MarketError::Invalid("not a wallet address"))
 }
 
 /// How long a wallet's balance read from the chain is trusted. It can only
@@ -685,22 +726,32 @@ impl Market {
     }
 
     /// The buyer's wallet says it opened the meter's taps: read them back
-    /// and open the meter if every one is as quoted.
+    /// under that wallet and open the meter if every one is as quoted. The
+    /// escrow keeps a tap under its id and the wallet that opened it, so a
+    /// wallet that copied the ids first holds taps of its own and changes
+    /// nothing here.
     ///
     /// # Errors
-    /// A tap is missing or differs from the quote.
+    /// A tap is missing or differs from the quote, or `wallet` is not an
+    /// address on the meter's network.
     pub async fn tap_confirm(
         &self,
         buyer: &str,
         meter_id: &str,
+        wallet: &str,
     ) -> Result<MeterState, MarketError> {
         let m = Self::own_meter(&*self.state.lock().await, buyer, meter_id)?;
         if m.state != MeterState::Quoted {
             return Ok(m.state);
         }
+        let wallet_key = self
+            .tap_chain()
+            .payee_key(&m.network, wallet)
+            .ok_or(MarketError::Invalid("not a wallet address on this network"))?;
+        let wallet = self.tap_chain().wallet_name(&m.network, &wallet_key);
         let mut seen = BTreeMap::new();
         for t in &m.taps {
-            if let Some(chain_tap) = self.tap_chain().read_tap(&m.network, t).await? {
+            if let Some(chain_tap) = self.tap_chain().read_tap(&m.network, &wallet, t).await? {
                 seen.insert(t.clone(), chain_tap);
             }
         }
@@ -961,7 +1012,10 @@ impl Market {
             if !following && !due_check {
                 continue;
             }
-            match chain.read_tap(&tap.network, &tap.id).await {
+            let Some(wallet) = wallet_of(&snapshot, &tap.id) else {
+                continue;
+            };
+            match chain.read_tap(&tap.network, wallet, &tap.id).await {
                 Ok(t) => {
                     if let Ok(mut c) = self.taps_live.checked.lock() {
                         c.insert(tap.id.clone(), now);
@@ -1097,7 +1151,13 @@ impl Market {
                 .collect();
             for d in meter::due(&work, now, network, every, at, &by_wallet) {
                 let replace = stale_settles.contains(&d.tap);
-                match chain.settle(network, &d.tap, d.amount, replace).await {
+                let Some(wallet) = wallet_of(&work, &d.tap) else {
+                    continue;
+                };
+                match chain
+                    .settle(network, wallet, &d.tap, d.amount, replace)
+                    .await
+                {
                     Ok(tx) => {
                         tracing::info!(target: Action::Market.target(), "tap {}: settling {} as {tx}", d.tap, d.amount);
                         sent.push((
@@ -1121,7 +1181,10 @@ impl Market {
                 .filter(|t| !answering.contains(t))
             {
                 let replace = stale_closes.contains(&tap);
-                match chain.close(network, &tap, replace).await {
+                let Some(wallet) = wallet_of(&work, &tap) else {
+                    continue;
+                };
+                match chain.close(network, wallet, &tap, replace).await {
                     Ok(tx) => {
                         tracing::info!(target: Action::Market.target(), "tap {tap}: closing as {tx}");
                         sent.push((
@@ -1183,10 +1246,11 @@ mod tests {
         format!("0x{:040x}", 0xa0 + u32::from(n))
     }
 
-    /// An escrow kept in memory, with the contract's rules.
+    /// An escrow kept in memory, with the contract's rules: a tap is kept
+    /// under the wallet that opened it and its id.
     #[derive(Default)]
     struct MemoryEscrow {
-        taps: StdMutex<BTreeMap<String, ChainTap>>,
+        taps: StdMutex<BTreeMap<([u8; 32], String), ChainTap>>,
         balances: StdMutex<BTreeMap<[u8; 32], u64>>,
         asks: StdMutex<BTreeMap<[u8; 32], (u64, u64)>>,
         /// Paid out: seller keys and the treasury (all ones).
@@ -1236,7 +1300,7 @@ mod tests {
                     closed_at: None,
                 };
                 tweak(n, &mut ct);
-                taps.insert(t.id.clone(), ct);
+                taps.insert((ct.buyer, t.id.clone()), ct);
             }
         }
         fn backdate(&self, secs: u64) {
@@ -1249,7 +1313,7 @@ mod tests {
         }
         fn buyer_close(&self, tap: &str) {
             let mut taps = self.taps.lock().unwrap();
-            let t = taps.get_mut(tap).unwrap();
+            let t = taps.get_mut(&(key(WALLET), tap.to_string())).unwrap();
             t.closed_at = Some(now_secs().max(t.settled_at));
         }
     }
@@ -1264,8 +1328,18 @@ mod tests {
         fn wallet_name(&self, _: &str, key: &[u8; 32]) -> String {
             format!("0x{}", crate::identity::to_hex(&key[12..]))
         }
-        fn read_tap<'a>(&'a self, _: &'a str, tap: &'a str) -> ChainFuture<'a, Option<ChainTap>> {
-            let t = self.taps.lock().unwrap().get(tap).copied();
+        fn read_tap<'a>(
+            &'a self,
+            _: &'a str,
+            wallet: &'a str,
+            tap: &'a str,
+        ) -> ChainFuture<'a, Option<ChainTap>> {
+            let t = self
+                .taps
+                .lock()
+                .unwrap()
+                .get(&(key(wallet), tap.to_string()))
+                .copied();
             Box::pin(async move { Ok(t) })
         }
         fn read_wallet<'a>(&'a self, _: &'a str, wallet: &'a str) -> ChainFuture<'a, WalletView> {
@@ -1283,6 +1357,7 @@ mod tests {
         fn settle<'a>(
             &'a self,
             _: &'a str,
+            wallet: &'a str,
             tap: &'a str,
             amount: u64,
             _: bool,
@@ -1294,7 +1369,7 @@ mod tests {
             };
             let now = now_secs();
             let mut taps = self.taps.lock().unwrap();
-            let result = match taps.get_mut(tap) {
+            let result = match taps.get_mut(&(key(wallet), tap.to_string())) {
                 None => refuse("no tap"),
                 Some(t) => {
                     let end = t.closed_at.unwrap_or(now);
@@ -1324,10 +1399,16 @@ mod tests {
             };
             Box::pin(async move { result })
         }
-        fn close<'a>(&'a self, _: &'a str, tap: &'a str, _: bool) -> ChainFuture<'a, String> {
+        fn close<'a>(
+            &'a self,
+            _: &'a str,
+            wallet: &'a str,
+            tap: &'a str,
+            _: bool,
+        ) -> ChainFuture<'a, String> {
             let now = now_secs();
             let mut taps = self.taps.lock().unwrap();
-            let result = match taps.get_mut(tap) {
+            let result = match taps.get_mut(&(key(wallet), tap.to_string())) {
                 Some(t) if t.closed_at.is_none() => {
                     t.closed_at = Some(now.max(t.settled_at));
                     Ok(format!("0xclose{tap}"))
@@ -1593,7 +1674,10 @@ mod tests {
             self.chain.top_up(WALLET, balance);
             self.chain.open(WALLET, &q, |_, _| {});
             assert_eq!(
-                self.market.tap_confirm(BUYER, &q.meter).await.unwrap(),
+                self.market
+                    .tap_confirm(BUYER, &q.meter, WALLET)
+                    .await
+                    .unwrap(),
                 MeterState::Open
             );
             self.groups_pass().await;
@@ -1789,23 +1873,61 @@ mod tests {
         for tweak in cases {
             let q = w.quote(1_000_000).await.unwrap();
             w.chain.open(WALLET, &q, tweak);
-            assert!(w.market.tap_confirm(BUYER, &q.meter).await.is_err());
+            assert!(w.market.tap_confirm(BUYER, &q.meter, WALLET).await.is_err());
             assert_eq!(w.taps().await.meters[&q.meter].state, MeterState::Quoted);
             w.market.tap_stop(BUYER, &q.meter).await.unwrap();
         }
         let q = w.quote(1_000_000).await.unwrap();
         w.chain.open(WALLET, &q, |_, _| {});
-        w.chain.taps.lock().unwrap().remove(&q.taps[0].id);
-        assert!(w.market.tap_confirm(BUYER, &q.meter).await.is_err());
+        w.chain
+            .taps
+            .lock()
+            .unwrap()
+            .remove(&(key(WALLET), q.taps[0].id.clone()));
+        assert!(w.market.tap_confirm(BUYER, &q.meter, WALLET).await.is_err());
         // Nobody else can confirm, stop or use the buyer's meter.
         assert!(matches!(
-            w.market.tap_confirm("other", &q.meter).await,
+            w.market.tap_confirm("other", &q.meter, WALLET).await,
             Err(MarketError::NotFound)
         ));
         assert!(matches!(
             w.market.tap_stop("other", &q.meter).await,
             Err(MarketError::NotFound)
         ));
+    }
+
+    #[tokio::test]
+    async fn a_wallet_that_copies_the_quoted_taps_first_changes_nothing() {
+        let w = world().await;
+        let q = w.quote(1_000_000).await.unwrap();
+        // Someone who saw the quote's ids opens them first, with no balance.
+        w.chain.open(THIEF, &q, |_, _| {});
+        // Only the wallet that opened them can confirm them.
+        assert!(w.market.tap_confirm(BUYER, &q.meter, WALLET).await.is_err());
+        assert!(matches!(
+            w.market.tap_confirm(BUYER, &q.meter, "not-a-wallet").await,
+            Err(MarketError::Invalid(_))
+        ));
+        w.chain.top_up(WALLET, 5_000_000);
+        w.chain.open(WALLET, &q, |_, _| {});
+        assert_eq!(
+            w.market
+                .tap_confirm(BUYER, &q.meter, &WALLET.to_uppercase().replace("0X", "0x"))
+                .await
+                .unwrap(),
+            MeterState::Open
+        );
+        assert_eq!(
+            w.taps().await.meters[&q.meter].wallet.as_deref(),
+            Some(WALLET)
+        );
+        w.groups_pass().await;
+        w.ask(&q.meter, "a story", 100).await.unwrap();
+        w.later(25 * HOUR).await;
+        w.market.taps_pass().await;
+        assert!(w.chain.refused.lock().unwrap().is_empty());
+        assert_eq!(w.chain.balance(WALLET), 5_000_000 - 209);
+        assert_eq!(w.chain.balance(THIEF), 0);
     }
 
     #[tokio::test]

@@ -1838,9 +1838,9 @@
       },
       "POST /api/market/taps/confirm": {
         "auth": true,
-        "in": "{\"meter\": \"mtr_<hex>\"}",
+        "in": "{\"meter\": \"mtr_<hex>\", \"wallet\": \"0x<40 hex> | <base58>\"}",
         "out": "{\"available\": true, \"meter\", \"state\"}",
-        "note": "The wallet opened the meter's taps (registrar POST /market/taps/confirm): the edge reads each one back from the chain, which can take 20 s, and opens the meter when all are as quoted. Audited."
+        "note": "`wallet` opened the meter's taps (registrar POST /market/taps/confirm): the edge reads each one back from the chain, where the escrow keeps it under that wallet, which can take 20 s, and opens the meter when all are as quoted. Audited."
       },
       "POST /api/market/taps/stop": {
         "auth": true,

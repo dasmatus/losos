@@ -241,8 +241,11 @@ function parseMessage(msg) {
 await check('balance and tap addresses match the edge', () => {
   // edge/registrar/src/solana_escrow.rs, `tap_addresses_match_the_runtime`.
   const config = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM';
-  assert.equal(sol.escrowTapAddress(ESCROW, config, new Uint8Array(32).fill(4)), 'G9CdbL4qdgvEVgELDpCq2aZRmqA8JAPx9j2cXSTG6ueh');
-  assert.equal(sol.escrowBalanceAddress(ESCROW, config, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'), '4p1yaXiRqaKiAUnnaeZStCXtG4krcWCnTnddBvDdXTHx');
+  const owner = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+  assert.equal(sol.escrowTapAddress(ESCROW, config, owner, new Uint8Array(32).fill(4)), '5Gbz1iYxjC5fegQqLZ7y5XxoR49y17gDhNQGjqzXWkWY');
+  // Another wallet's tap of the same id is another account.
+  assert.notEqual(sol.escrowTapAddress(ESCROW, config, config, new Uint8Array(32).fill(4)), '5Gbz1iYxjC5fegQqLZ7y5XxoR49y17gDhNQGjqzXWkWY');
+  assert.equal(sol.escrowBalanceAddress(ESCROW, config, owner), '4p1yaXiRqaKiAUnnaeZStCXtG4krcWCnTnddBvDdXTHx');
 });
 
 function escrowTaps(taps, topUp = 4_000_000n) {
@@ -286,7 +289,7 @@ await check('taps layout: top_up, then one open_tap per box with its id, rate an
     const tap = p.taps[i];
     const id = Buffer.from(tap.key.slice(2), 'hex');
     assert.equal(ix.program, ESCROW);
-    assert.deepEqual(ix.accounts, [buyer.address, config, balance, sol.escrowTapAddress(ESCROW, config, new Uint8Array(id)), tap.seller, sol.SYSTEM_PROGRAM]);
+    assert.deepEqual(ix.accounts, [buyer.address, config, balance, sol.escrowTapAddress(ESCROW, config, buyer.address, new Uint8Array(id)), tap.seller, sol.SYSTEM_PROGRAM]);
     assert.equal(ix.data.length, 43);
     assert.equal(ix.data[0], 7);
     assert.deepEqual(Buffer.from(ix.data.subarray(1, 33)), id);
