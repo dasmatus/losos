@@ -240,6 +240,9 @@ const context = await browser.newContext({
   locale: "en-US",
   timezoneId: "Europe/Bratislava",
   reducedMotion: "reduce",
+  // The sign-in below goes through Node's TLS, which the pin above does not
+  // reach; the box's certificate is the self-signed one either way.
+  ignoreHTTPSErrors: true,
 });
 const page = await context.newPage();
 page.setDefaultTimeout(180_000);
