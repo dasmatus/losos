@@ -283,6 +283,8 @@ async function reviewer(s, base, reviewed) {
     if (reviewed) {
       const review = p.locator('[data-event="review"]').first();
       await review.getByText("Pull request overview").waitFor();
+      // The table of files, drawn as a table.
+      await review.locator("table").getByText("prune.sh").waitFor();
       await p.locator("[data-checks]").getByText("LosOS Reviewer").waitFor();
       await review.scrollIntoViewIfNeeded();
       Object.assign(targets, { review, checks: p.locator("[data-checks]") });
@@ -299,7 +301,7 @@ async function reviewer(s, base, reviewed) {
     const lineTargets = {};
     if (reviewed) {
       const thread = p.locator("[data-thread]").first();
-      await thread.getByText('"$TARGET/$d"', { exact: false }).first().waitFor();
+      await thread.locator("[data-suggestion]").getByText('"$TARGET/$d"', { exact: false }).waitFor();
       await thread.scrollIntoViewIfNeeded();
       lineTargets.thread = thread;
     }

@@ -323,6 +323,7 @@ fn a_repository_that_asks_for_it_gets_a_review_from_the_box() {
         review["user"]["is_bot"], true,
         "the pages mark it as the bot"
     );
+    assert_eq!(review["user"]["full_name"], "LosOS Reviewer");
     let body = review["body"].as_str().unwrap();
     assert!(body.starts_with("## Pull request overview"), "{body}");
     assert!(

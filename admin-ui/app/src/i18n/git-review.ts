@@ -25,6 +25,11 @@ export default defineMessages({
     sk: "Potrebuje model zariadenia. Najprv v nastaveniach zapnite Vytvoriť s AI.",
     de: "Braucht das Code-Modell der Box. Schalte zuerst Mit KI bauen in den Einstellungen ein.",
   },
+  "git.markdown.suggestion": {
+    en: "Suggested change",
+    sk: "Navrhovaná zmena",
+    de: "Vorgeschlagene Änderung",
+  },
   "gitReview.turnedOn": { en: "AI review is on", sk: "Kontrola s AI je zapnutá", de: "KI-Review ist an" },
   "gitReview.turnedOff": { en: "AI review is off", sk: "Kontrola s AI je vypnutá", de: "KI-Review ist aus" },
   "gitReview.failed": {
