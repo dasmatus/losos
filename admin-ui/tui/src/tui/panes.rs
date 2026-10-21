@@ -946,16 +946,14 @@ fn apps(ctx: &Ctx<'_>) -> PaneModel {
             sections.push(
                 Section::new("modes")
                     .title(t("panes.apps.onThisBox"))
-                    .rows(vec![
-                        Row::new("files-mode", t("panes.apps.files.title"))
-                            .detail(t("panes.apps.files.detail"))
-                            .control(Control::Choice {
-                                value: draft.nextcloud_mode.clone(),
-                                options,
-                                disabled: false,
-                                key: SettingKey::NextcloudMode,
-                            }),
-                    ])
+                    .rows(vec![Row::new("files-mode", t("panes.apps.files.title"))
+                        .detail(t("panes.apps.files.detail"))
+                        .control(Control::Choice {
+                            value: draft.nextcloud_mode.clone(),
+                            options,
+                            disabled: false,
+                            key: SettingKey::NextcloudMode,
+                        })])
                     .caption(tr!(
                         "panes.apps.modeCaption",
                         kept = mode_label("container"),
