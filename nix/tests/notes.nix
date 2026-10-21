@@ -22,8 +22,7 @@
 #     knowledge base, refuses to publish one and serves none, and the
 #     pictures' "before" column is taken there.
 #
-# As in nix/tests/cloud.nix, lososd runs in native mode with a stub
-# `nextcloud-occ`, and nix/cluster.nix is not imported: `cluster.enable`
+# nix/cluster.nix is not imported: `cluster.enable`
 # is the gate's half, with no edge to join. The admin UI is built without
 # LosOS Lab, as in nix/tests/mesh-collab.nix.
 { pkgs }:
@@ -32,27 +31,21 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  noLab = ui: ui.overrideAttrs {
-    preBuild = "";
-    buildPhase = ''
-      runHook preBuild
-      cat > vite.nolab.config.ts <<'EOF'
-      import config from "./vite.config";
-      delete (config.build!.rolldownOptions!.input as Record<string, string>)["lab"];
-      export default config;
-      EOF
-      node_modules/.bin/vite build --config vite.nolab.config.ts
-      runHook postBuild
-    '';
-  };
-
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
+  noLab =
+    ui:
+    ui.overrideAttrs {
+      preBuild = "";
+      buildPhase = ''
+        runHook preBuild
+        cat > vite.nolab.config.ts <<'EOF'
+        import config from "./vite.config";
+        delete (config.build!.rolldownOptions!.input as Record<string, string>)["lab"];
+        export default config;
+        EOF
+        node_modules/.bin/vite build --config vite.nolab.config.ts
+        runHook postBuild
+      '';
+    };
 
   vault = ../../admin-ui/app/tests/fixtures/vault;
 
@@ -149,16 +142,13 @@ pkgs.testers.nixosTest {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
         admin.ui = noLab lososPkgs.losos-admin-ui;
-        nextcloud.mode = "native";
         cloud.enable = true;
-        forgejo.enable = false;
+        git.enable = false;
         mdns.enable = true;
         # Sharing and in a mesh: knowledge bases on.
         sharingMyStorage = true;
         cluster.enable = true;
       };
-      systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
       # The same box once it stops sharing: knowledge bases off.
       specialisation.offMesh.configuration.losos.sharingMyStorage = lib.mkForce false;
       environment.systemPackages = [

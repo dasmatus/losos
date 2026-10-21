@@ -38,11 +38,8 @@ versiegelt den Schlüssel anschließend mit `systemd-cryptenroll` im TPM. Beim
 Start fragt die initrd den Chip nach dem Schlüssel und öffnet das Volume.
 Die Boot-Partition enthält kein Geheimnis.
 
-Die Box versiegelt außerdem zwei kleinere Geheimnisse im Chip:
+Die Box versiegelt außerdem ein kleineres Geheimnis im Chip:
 
-- Die Geheimnisse, die die Box für sich selbst erzeugt, etwa das erste
-  Admin-Passwort von Nextcloud (`modules/keyring.nix`, über
-  `systemd-creds`).
 - Den Schlüssel, der das Speicherverzeichnis des Mesh verschlüsselt
   (`modules/fscrypt.nix`).
 
@@ -70,13 +67,12 @@ Das hat zwei Folgen.
    Fall hängt der Leser die ESP ein, kopiert den Schlüssel aus der initrd und
    öffnet das Volume. Dafür braucht es
    gewöhnliche Linux-Werkzeuge und ein paar Minuten. Offengelegt werden die
-   Dateien des Besitzers in LosOS cloud, die Repositories in LosOS Git, der
+   Dateien des Besitzers in LosOS Cloud, die Repositories in LosOS Git, der
    Admin-Schlüssel und der Rest von `/persist`.
-2. Die eigenen Geheimnisse der Box verlieren ihren Chip. Der Keyring fällt
-   auf den Host-Schlüssel von `systemd-creds` zurück, der Speicherschlüssel
-   des Mesh auf eine einfache Datei unter `/var/secrets/losos-shared-key`.
-   Beide liegen auf demselben Volume wie die Daten, die sie schützen. Eine
-   Kopie von `/persist`, die die Box verlässt, nimmt die Schlüssel mit, und
+2. Der Speicherschlüssel des Mesh verliert seinen Chip und fällt auf eine
+   einfache Datei unter `/var/secrets/losos-shared-key` zurück, auf demselben
+   Volume wie die Daten, die er schützt. Eine Kopie von `/persist`, die die
+   Box verlässt, nimmt den Schlüssel mit, und
    ein Fehler, der einen Dienst beliebige Dateien als root lesen lässt, liest
    beide Hälften.
 

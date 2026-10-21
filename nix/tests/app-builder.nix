@@ -64,21 +64,6 @@ let
     _: { preBuild = labStubs; } // pkgs.lib.optionalAttrs (uiSource != null) { src = uiSource; }
   );
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   # /etc/nixos as the installer leaves it, so the configuration sync that
   # makes the owner's account on LosOS Git has a repository to publish.
   configTree = pkgs.writeShellScript "losos-config-tree" ''
@@ -129,7 +114,6 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/git.nix
           ../../modules/config-repo.nix
         ];
@@ -142,8 +126,6 @@ pkgs.testers.nixosTest {
           # The look (and with it the widget editor) is a plugin.
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = adminUi;
-          nextcloud.mode = "container";
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
           # Each saved app goes to a private repository of its own there.
           git.enable = true;
           configRepo.enable = true;
@@ -159,13 +141,11 @@ pkgs.testers.nixosTest {
         # The laptop's Chromium runs under TCG here; give its try time.
         systemd.services.lososd.environment.LOSOS_BUILDER_TRY_SECS = "180";
         systemd.services.lososd.path = lib.mkForce [
-          stubOcc
           pkgs.coreutils
           pkgs.curl
           pkgs.gitMinimal
         ];
         systemd.services.lososd.environment = {
-          LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
           # What modules/builder.nix sets, pointed at the stand-in.
           LOSOS_BUILDER_URL = "http://127.0.0.1:11434";
           LOSOS_BUILDER_MODEL = model;

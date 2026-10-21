@@ -34,7 +34,6 @@ pub mod boxid;
 pub mod builder;
 pub mod catalogue;
 pub mod cloud;
-pub mod cloud_apps;
 pub mod cloud_share;
 pub mod companion;
 pub mod compose;

@@ -12,7 +12,7 @@ môžete napísať dvoma spôsobmi a nie sú rovnako spoľahlivé.
 
 Banner na obrazovke zariadenia ukazuje `http://192.168.x.y`, adresu, ktorú
 zariadeniu pridelil váš router. Odpovedá na nej každá stránka: admin
-stránky na `/`, LosOS cloud na `/nextcloud`, LosOS Git na `/git/` a táto
+stránky na `/`, LosOS Cloud na `/cloud/`, LosOS Git na `/git/` a táto
 príručka na `/handbook/`. Keď sa adresa zmení, zariadenie banner prekreslí.
 
 ![Banner pod lososom na obrazovke zariadenia, s adresou, ktorú zadáte do prehliadača, a názvom zariadenia .local.](@site/docs/img/tty1-banner.png)
@@ -68,6 +68,6 @@ zadať ručne.
 Predvolene nikde. Zariadenie je dostupné iba z lokálnej siete. Nasadenie
 s [oficiálnym edge](../types/official-edge) mu dá verejnú adresu cez tunel.
 Aj vtedy zostávajú admin stránky iba pre LAN a cez tunel idú von iba LosOS
-cloud a LosOS Git.
+Cloud a LosOS Git.
 
 ![Nastavenia, Sieť: názov, Šifrovať pripojenie a Dostupné aj mimo domova, prepínač, ktorý otvorí tunel k edge.](@site/docs/img/settings-network-sk.png)

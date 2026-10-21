@@ -146,7 +146,7 @@ in
         This is what makes the appliance a *secure context* in a browser, which
         two things need: WebAuthn refuses to run outside one, so passkeys are
         impossible without it; and it is what stops the admin token and every
-        Nextcloud login crossing the LAN in clear text, which
+        LosOS Cloud login crossing the LAN in clear text, which
         docs/security-model.md currently lists as an accepted limitation.
 
         The certificate is not trusted by anything until the owner installs it,
@@ -219,12 +219,11 @@ in
         key all three are signed with. Set it to `[ ]` to use cache.nixos.org
         alone.
 
-        This exists because of one number. `losos.nextcloud.mode` defaults to
-        `container`, so the install closure contains `losos-image-nextcloud` —
-        a 2.3 GiB content closure over 244 store paths — and `losos-ctl install`
-        runs a bare `nixos-install` with no substituter flags. Without a cache
-        that serves it, a fresh install *builds* that image on a repurposed
-        mini-PC.
+        This exists because `losos-ctl install` runs a bare `nixos-install`
+        with no substituter flags, and the install closure carries the
+        workload images and the LosOS packages, none of which cache.nixos.org
+        has. Without a cache that serves them, a fresh install *builds* them
+        on a repurposed mini-PC.
 
         The installer medium matters as much as the installed system: a
         substituter the target only learns about after it is installed does not
@@ -339,9 +338,9 @@ in
         (security.allowSimultaneousMultithreading = false). Closes the
         cross-thread side channels no software mitigation fully covers, and
         roughly halves the core count of the mini-PC this runs on. Off by
-        default because the box transcodes video for Nextcloud and may run mesh
-        compute for strangers; turn it on if that second one worries you more
-        than the first.
+        default because the box makes previews for LosOS Cloud and may run
+        mesh compute for strangers; turn it on if that second one worries you
+        more than the first.
       '';
     };
 
@@ -496,7 +495,8 @@ in
     # docs/superpowers/specs/2026-09-09-k3s-mesh-design.md.
     #
     #   LOCAL  services.k3s, role=server, /var/lib/rancher/k3s — runs THIS
-    #          box's Nextcloud. Always on while it is in "container" mode. It has no off-box dependency, so the appliance
+    #          box's `shared` apps from the catalogue, while the box shares
+    #          and is in a mesh. It has no off-box dependency, so the appliance
     #          boots and serves its own data with the edge unreachable.
     #   MESH   services.rke2, role=agent, /var/lib/rancher/rke2 — joins the
     #          edge's cluster for Longhorn storage and mesh compute. Gated on
@@ -513,7 +513,7 @@ in
         Join the edge's mesh cluster as an rke2 agent, contributing storage
         (Longhorn) and, when losos.cluster.shareCompute is on, compute. Off by
         default: joining makes mesh workloads — but never this box's own
-        LosOS cloud and LosOS Git — depend on the edge being reachable.
+        cloud, Git and apps — depend on the edge being reachable.
       '';
     };
 
@@ -567,8 +567,9 @@ in
         my compute when I sleep"), and only while the box is actually idle.
         Outside the window, or while the box is busy, the edge holds a
         NoSchedule taint on this box's mesh node, so mesh work is repelled.
-        This box's OWN LosOS cloud and LosOS Git are unaffected in either
-        case: they never run on the mesh.
+        This box's OWN cloud, Git and apps are unaffected in either case:
+        they live on the box and in the local cluster, which has no taint
+        and no scheduler.
       '';
     };
 
@@ -592,8 +593,8 @@ in
         and apps in the LosOS app format, each running as `notshared` or
         `shared`, without root, with its files in that user's data folder.
         A `notshared` app runs on rootless Podman as that user; a `shared`
-        one runs in this box's own cluster, so only while Nextcloud
-        runs in the box's own container mode.
+        one runs in this box's own cluster, so only while the box shares
+        and is in a mesh (lososInternal.sharedSide).
       '';
     };
 
@@ -739,8 +740,8 @@ in
     # pods can run with imagePullPolicy: Never and nothing is fetched from a
     # container registry at runtime.
     #
-    # The images themselves are NOT built on the appliance: a Nextcloud image is
-    # ~2.6 GiB, and system.autoUpgrade would rebuild it at 03:00 on a mini-PC
+    # The images themselves are NOT built on the appliance: an image is
+    # hundreds of MiB, and system.autoUpgrade would rebuild it at 03:00 on a mini-PC
     # with a tmpfs root, three hours before the unconditional 00:07 reboot.
     # They come from this project's own Nix binary cache instead. That is a
     # deliberate, documented relaxation: nothing is pulled from a *container*
@@ -752,53 +753,6 @@ in
       description = "Pause (sandbox) image for the local cluster's pods.";
     };
 
-    workloads.nextcloudImage = lib.mkOption {
-      type = lib.types.nullOr lib.types.package;
-      default = null;
-      internal = true;
-      description = "OCI image running the Nextcloud stack in container mode.";
-    };
-
-    # ── The keyring (modules/keyring.nix) ───────────────────────────────────
-    # Seals the secrets this box mints for itself with systemd-creds, so a copy
-    # of /persist that leaves the machine carries ciphertext instead of the
-    # Nextcloud admin password in plaintext. Not GNOME keyring and nothing
-    # shaped like it: there is no session bus, no desktop and nobody to type a
-    # passphrase, so an agent holding an unlocked store in RAM would have
-    # nothing to be unlocked by.
-    keyring.enable = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = ''
-        Seal this box's self-minted secrets with systemd-creds instead of
-        leaving them readable on disk. Covers a /persist copy that leaves the
-        box and a file-read bug in a service that can reach /var/secrets; it
-        deliberately does not cover root on the running box, because boot has
-        to work with nobody present. See modules/keyring.nix for the full list
-        of what it does and does not defend against.
-      '';
-    };
-
-    keyring.store = lib.mkOption {
-      type = lib.types.str;
-      default = "/var/secrets";
-      description = ''
-        Directory holding the sealed blobs (`<name>.cred`). Must NOT be under
-        /run: these have to survive a reboot, and the module asserts it.
-      '';
-    };
-
-    keyring.runtimeDir = lib.mkOption {
-      type = lib.types.str;
-      default = "/run/losos-keyring";
-      description = ''
-        Where a secret is unsealed to for the moment a service needs it. Must
-        be under /run, and the module asserts it — this is a systemd
-        RuntimeDirectory, which is tmpfs, and that is the whole point: the
-        plaintext never reaches the disk and does not outlive the boot.
-      '';
-    };
-
     # ── The shared data domain (fscrypt) ────────────────────────────────────
     shared.fscrypt.enable = lib.mkOption {
       type = lib.types.bool;
@@ -808,7 +762,7 @@ in
         while losos.sharingMyStorage is on. This is defence in depth on top of
         the LUKS volume, not a replacement for it: LUKS protects a powered-off
         box, fscrypt keeps the shared domain opaque to the RUNNING system — a
-        compromised Nextcloud pod, any other service, or root — whenever
+        compromised app pod, any other service, or root — whenever
         sharing is off.
 
         Requires an fscrypt-capable filesystem; modules/disko.nix formats
@@ -895,11 +849,12 @@ in
       default = false;
       description = ''
         Run LosOS Cloud: the owner's and every person's files at /cloud/,
-        over WebDAV for file managers, and to the Nextcloud desktop and
-        phone apps, which sync with it as they would with Nextcloud. People
-        sign in with LosOS Login; each computer or phone gets a password of
-        its own. It runs beside the LosOS cloud pod, with its own files.
-        On by default on an installed box (modules/defaults.nix).
+        with calendars, contacts and boards, over WebDAV, CalDAV and CardDAV
+        for file managers and calendar apps, and to the Nextcloud desktop and
+        phone apps, which sync with it as they would with a Nextcloud server.
+        People sign in with LosOS Login; each computer or phone gets a
+        password of its own. On by default on an installed box
+        (modules/defaults.nix).
       '';
     };
 
@@ -926,7 +881,8 @@ in
 
     cloud.mesh.name = lib.mkOption {
       type = lib.types.str;
-      default = if config.losos.proxy.enable then config.losos.proxy.hostname else "${config.losos.hostName}.local";
+      default =
+        if config.losos.proxy.enable then config.losos.proxy.hostname else "${config.losos.hostName}.local";
       defaultText = lib.literalExpression ''if config.losos.proxy.enable then config.losos.proxy.hostname else "''${config.losos.hostName}.local"'';
       description = ''
         The name other boxes reach this one by, the part after the @ in
@@ -953,7 +909,7 @@ in
       default = true;
       description = ''
         Let the search on the admin pages find text inside the owner's
-        files: an index of the files in LosOS cloud, brought up to date
+        files: an index of the files in LosOS Cloud, brought up to date
         every two minutes, and a search of the default branch of every
         repository in LosOS Git. The index is a copy of the files' text and
         never leaves the box; turning this off stops the updates, and a
@@ -1085,36 +1041,9 @@ in
         contribution, and a domain left unlocked while nothing is shared is a
         standing liability on a box with no shell to lock it from.
 
-        It is also the gate for federation: LosOS cloud talks to other
-        servers only while this is on (losos.nextcloud.federation.enable).
-
         This used to read "expose local storage to the Tahoe-LAFS grid as a
         storage server". Tahoe-LAFS is gone; the option name is unchanged
         because persisted state files and the admin SPA carry it.
-      '';
-    };
-
-    # ── Deployment mode switches ──────────────────────────────────────────
-    nextcloud.mode = lib.mkOption {
-      type = lib.types.enum [
-        "native"
-        "container"
-      ];
-      default = "container";
-      description = ''
-        "native" — run Nextcloud as a native NixOS service (services.nextcloud)
-        on the host.
-        "container" — run the same stack as a static pod in this box's own
-        local k3s cluster (modules/cluster.nix runs the cluster,
-        modules/workloads.nix writes the manifest and the config the pod
-        mounts), fronted by Nginx path routing (modules/containers.nix). This
-        is the default deployment.
-
-        The value is still spelled "container" even though it no longer means a
-        systemd-nspawn container on a private veth: that is the user-facing
-        wording in the settings SPA, and there is no installed base worth
-        breaking to rename it. modules/nextcloud-common.nix holds the truth
-        both modes share, so the two cannot drift.
       '';
     };
 
@@ -1232,152 +1161,12 @@ in
       description = "The branch of losos.configRepo.upstream.url the box follows.";
     };
 
-    nextcloud.hostName = lib.mkOption {
-      type = lib.types.str;
-      default = "localhost";
-      description = "Hostname Nextcloud is served on (set to your domain for remote access).";
-    };
-
-    nextcloud.adminpassFile = lib.mkOption {
-      type = secretPath;
-      default = "/var/secrets/nextcloud-admin-pass";
-      description = ''
-        Path to the file holding the Nextcloud admin password. Generated with
-        mode 0600 on first boot by the losos-nextcloud-adminpass oneshot in
-        modules/nextcloud-common.nix if absent; persisted via /var. Must be a
-        runtime path: a store path is world-readable and gets warned about.
-      '';
-    };
-
-    # Nextcloud's side of federation: Federated Cloud Sharing (files shared
-    # with accounts on other Nextcloud servers, user@host addresses), the
-    # trusted-servers app (`federation`), calendar federation, and the OCM
-    # discovery and share endpoints other servers call. Gated on
-    # losos.sharingMyStorage like LosOS Git's (lososInternal.federation).
-    # Off, the front vhost answers 404 for those endpoints and Nextcloud's
-    # own switches are set to no on every start (nix/images.nix in
-    # container mode, modules/services.nix natively), so neither an inbound
-    # share nor an outbound one can be made.
-    nextcloud.federation.enable = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = ''
-        Let LosOS cloud share files and calendars with accounts on other
-        Nextcloud servers (Federated Cloud Sharing), and answer the
-        discovery and share addresses those servers call. Other servers
-        reach the box at the address it is served on, so through an edge
-        this is the internet and on a LAN-only box it is the LAN.
-
-        Takes effect only while losos.sharingMyStorage is on. With disk
-        sharing off the shared data pool is locked and LosOS cloud does not
-        federate, whatever this says.
-      '';
-    };
-
-    # ── The two apps' box-wide settings ─────────────────────────────────────
-    # What an administrator would otherwise change in Nextcloud's
-    # Administration settings and LosOS Git's site settings, kept here so
-    # it goes through Apply, the history and LosOS Git like every other
-    # setting. The admin UI draws them on the Apps pane.
-    #
-    # Each app is told on every start, and its own admin page cannot change
-    # them in between: LosOS Git takes them as flags (modules/git.nix) and
-    # has no page for them, and the front vhost refuses Nextcloud's
-    # app-config writes for the keys modules/nextcloud-stack.nix lists
-    # (`site.locked`), so the two places cannot drift. Per-account settings
-    # stay in the apps.
-    nextcloud.site.defaultLanguage = lib.mkOption {
-      type = lib.types.nullOr (
-        lib.types.enum [
-          "en"
-          "en_GB"
-          "sk"
-          "cs"
-          "de"
-          "de_DE"
-          "fr"
-          "es"
-          "it"
-          "nl"
-          "pl"
-          "hu"
-          "uk"
-        ]
-      );
-      default = null;
-      description = ''
-        The language LosOS cloud speaks to an account that has not picked
-        one, and on its sign-in page. Null follows the browser. "de" is
-        German with "du", "de_DE" with "Sie". Each account can still choose
-        its own under Personal info.
-      '';
-    };
-
-    nextcloud.site.phoneRegion = lib.mkOption {
-      type = lib.types.nullOr (lib.types.strMatching "[A-Z]{2}");
-      default = null;
-      example = "SK";
-      description = ''
-        The country (ISO 3166-1 code, such as SK or DE) a phone number
-        without a country code is read as, in profiles and contacts. Null
-        leaves it unset, and LosOS cloud's admin overview asks for it.
-      '';
-    };
-
-    nextcloud.site.trashDays = lib.mkOption {
-      type = lib.types.nullOr (lib.types.ints.between 1 3650);
-      default = null;
-      description = ''
-        Days a deleted file stays in the trash before it is gone for good.
-        Null lets LosOS cloud decide: at least 30 days, and sooner only when
-        the disk runs short.
-      '';
-    };
-
-    nextcloud.site.versionDays = lib.mkOption {
-      type = lib.types.nullOr (lib.types.ints.between 1 3650);
-      default = null;
-      description = ''
-        Days older versions of a file are kept. Null lets LosOS cloud decide:
-        it thins old versions out over time and drops them when the disk
-        runs short.
-      '';
-    };
-
-    nextcloud.site.defaultQuotaGB = lib.mkOption {
-      type = lib.types.nullOr (lib.types.ints.between 1 1000000);
-      default = null;
-      description = ''
-        How much space, in GB, a new account may fill unless it is given its
-        own limit. Null is no limit. The limit of each account is still set
-        under Accounts in LosOS cloud.
-      '';
-    };
-
-    nextcloud.site.publicLinks = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = ''
-        Let accounts share a file or folder through a public link, which
-        anyone who has the link can open. Off, only accounts on this box can
-        be shared with.
-      '';
-    };
-
-    nextcloud.site.linkPassword = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = "Every public link must carry a password.";
-    };
-
-    nextcloud.site.linkExpiryDays = lib.mkOption {
-      type = lib.types.nullOr (lib.types.ints.between 1 3650);
-      default = null;
-      description = ''
-        Public links stop working this many days after they are made, and no
-        one can set a later date. Null lets a link live until it is removed.
-      '';
-    };
+    # ── LosOS Git's box-wide settings ───────────────────────────────────────
+    # What an administrator would otherwise change in a Git host's site
+    # administration, kept here so it goes through Apply, the history and
+    # LosOS Git like every other setting. The admin UI draws them on the Apps
+    # pane. LosOS Git takes them as flags on every start (modules/git.nix) and
+    # has no page for them, so the two places cannot drift.
 
     git.site.requireSignIn = lib.mkOption {
       type = lib.types.bool;
@@ -1414,49 +1203,36 @@ in
       '';
     };
 
-    nextcloud.https = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = "Serve Nextcloud over HTTPS (requires a certificate / domain in production).";
+    # ── Retired settings ────────────────────────────────────────────────────
+    # Nextcloud is gone, and with it the keyring, whose one secret was
+    # Nextcloud's admin password. Every box installed before has lines for
+    # them in its own modules/overrides.nix (`losos.nextcloud.mode` is in
+    # every copy), and that file stays on the box when it follows main. These
+    # take whatever such a file says and ignore it, so the 03:00 rebuild does
+    # not stop on "option does not exist"; lososd leaves the lines out the
+    # next time it writes the file (RETIRED in backend/src/overrides.rs).
+    nextcloud = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = { };
+      internal = true;
+      visible = false;
+      description = "Retired with Nextcloud. Accepted from an older overrides.nix and ignored.";
+    };
+    keyring = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = { };
+      internal = true;
+      visible = false;
+      description = "Retired with Nextcloud's admin password. Accepted and ignored.";
     };
 
-    # Host loopback port the in-container Nextcloud publishes (port 80) on,
-    # via containers.nextcloud.extraFlags = [ "--port=127.0.0.1:<port>:80" ]
-    # (nspawn's own publish flag, not the NixOS forwardPorts option). Nginx
-    # proxies /nextcloud to the container IP directly; this port is retained
-    # for direct local access.
-    nextcloud.apachePort = lib.mkOption {
-      type = lib.types.port;
-      default = 11000;
-      description = ''
-        Loopback port the Nextcloud pod's httpd listens on when
-        losos.nextcloud.mode == "container". The pod is hostNetwork (the local
-        cluster runs no CNI), so it binds 127.0.0.1 on the host itself and
-        Nginx proxies /nextcloud straight there — there is no container address
-        left to forward from.
-
-        Both ends read this one option: modules/workloads.nix renders the
-        Listen directive the pod mounts, modules/containers.nix writes the
-        matching proxy_pass, so they cannot drift. It stays rendered config
-        rather than an image layer because the settings SPA can retune it, and
-        a ~2.6 GiB image cannot be rebuilt on a mini-PC at 03:00.
-      '';
-    };
-
-    # ── GPU hardware acceleration for the Nextcloud container ──────────────
+    # ── GPU hardware acceleration ──────────────────────────────────────────
     gpu.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
       description = ''
-        Enable host graphics (VA-API/Mesa) and hand /dev/dri to the Nextcloud
-        pod for GPU acceleration; modules/workloads.nix adds the hostPath
-        volume when this is on.
-
-        Under systemd-nspawn this also carried `DeviceAllow = char-drm rw` on
-        the container's unit, and a pod has no equivalent short of
-        `privileged: true` or a device plugin — so the mount alone may not be
-        sufficient. If VA-API comes back "permission denied" inside the pod,
-        that missing cgroup device rule is why, not this option.
+        Enable host graphics (VA-API/Mesa) for the services on the box that
+        can use them (modules/configuration.nix).
       '';
     };
 
@@ -2937,7 +2713,7 @@ in
         Serve the page a company's admins look after their boxes from, at
         `/manage/` on the registrar: every box this edge routes, and for each
         box whose owner let this edge manage it (the switch on the box's Mesh
-        page), its LosOS cloud, LosOS Git and app settings. The page signs in
+        page), its LosOS Cloud, LosOS Git and app settings. The page signs in
         with a key the registrar makes on its first start, in
         /var/lib/losos-registrar/manage-key; `losos-edge manage-key` on the
         gateway's console prints it. Boxes refuse to be managed by an
@@ -3186,41 +2962,19 @@ in
   # an escape hatch is a switch someone eventually sets for the wrong reason,
   # and the point is to make the mistake visible on every rebuild, not to
   # invent a supported way of doing it.
-  # ── Federation, as it actually runs ─────────────────────────────────────
-  # The one place the per-service switch meets the sharing gate, so the
-  # modules that act on it (services.nix, workloads.nix, containers.nix,
-  # nix/images.nix through the rendered config) cannot disagree about
-  # whether a box federates. Read-only: set losos.<service>.federation.enable
-  # or losos.sharingMyStorage instead.
-  options.lososInternal.federation = {
-    nextcloud = lib.mkOption {
-      type = lib.types.bool;
-      internal = true;
-      readOnly = true;
-      default = config.losos.nextcloud.federation.enable && config.losos.sharingMyStorage;
-      description = "LosOS cloud federates: losos.nextcloud.federation.enable and losos.sharingMyStorage.";
-    };
-  };
 
   # ── Sign-in to the two apps with LosOS Login, as it actually runs ───────
   # LosOS Login runs (losos.identity.enable, with the admin pages it sits in
-  # front of) and the app runs as a pod behind the front vhost, the only
-  # shape where nginx is the one way in (modules/app-sign-in.nix). Read by
-  # modules/identity.nix for the routes and modules/workloads.nix for the
-  # apps' own settings, so the two cannot disagree. Read-only.
+  # front of) and the app runs behind the front vhost, on a socket only nginx
+  # may open (modules/app-sign-in.nix). Read by modules/identity.nix for the
+  # routes and by modules/cloud.nix for its own settings, so the two cannot
+  # disagree. Read-only.
   options.lososInternal.appSignIn =
     let
       identity =
         config.losos.identity.enable && config.losos.admin.enable && config.losos.admin.ui != null;
     in
     {
-      nextcloud = lib.mkOption {
-        type = lib.types.bool;
-        internal = true;
-        readOnly = true;
-        default = identity && config.losos.nextcloud.mode == "container";
-        description = "LosOS cloud signs people in with LosOS Login.";
-      };
       git = lib.mkOption {
         type = lib.types.bool;
         internal = true;
@@ -3292,7 +3046,6 @@ in
   config.warnings =
     let
       secrets = {
-        "losos.nextcloud.adminpassFile" = config.losos.nextcloud.adminpassFile;
         "losos.admin.tokenFile" = config.losos.admin.tokenFile;
         "losos.proxy.tokenFile" = config.losos.proxy.tokenFile;
         "losos.proxy.bootstrapTokenFile" = config.losos.proxy.bootstrapTokenFile;

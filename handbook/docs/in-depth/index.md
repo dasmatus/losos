@@ -13,7 +13,7 @@ The rest of this handbook is for the owner of a box. This chapter is for the
 people who build LosOS, run an edge or cut a release: how the pieces fit
 together, why each one sits where it does, and how to change them.
 
-LosOS is a NixOS appliance for a mini-PC. It runs Nextcloud for your own files
+LosOS is a NixOS appliance for a mini-PC. It runs LosOS Cloud for your own files
 and can lend spare disk and CPU to a mesh of other LosOS boxes. There is no SSH
 and no login shell. You administer it from a web page, and it upgrades itself.
 

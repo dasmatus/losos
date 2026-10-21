@@ -28,6 +28,10 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     hex(ring::digest::digest(&ring::digest::SHA256, bytes).as_ref())
 }
 
+pub fn sha512_hex(bytes: &[u8]) -> String {
+    hex(ring::digest::digest(&ring::digest::SHA512, bytes).as_ref())
+}
+
 pub fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
     let mut s = String::with_capacity(bytes.len() * 2);

@@ -11,7 +11,7 @@ ich miesto:
 
 | Ponechané                  | Obsahuje                                                              |
 | -------------------------- | --------------------------------------------------------------------- |
-| `/home/notshared`          | Dáta LosOS cloud: vaše súbory, fotky, databázu                        |
+| `/home/notshared`          | Dáta LosOS Cloud: vaše súbory, fotky, databázu                        |
 | `/home/shared`             | Miesto požičané mesh sieti, šifrované zvlášť a nečitateľné, kým je zdieľanie vypnuté |
 | `/var`                     | Dáta LosOS Git, stav a tajomstvá zariadenia, stav oboch clustrov, logy |
 | `/nix`                     | Samotný systém, každá verzia ponechaná pre bootovacie menu            |
@@ -41,7 +41,7 @@ Záznamy pod `/var` majú strop, takže disk zaplniť nemôžu:
 
 - Systémový žurnál zaberá najviac 512 MB a nič staršie ako mesiac.
   Veľkosť nastavuje `losos.logs.journalMaxUse` na paneli Rozšírené.
-- LosOS cloud, LosOS Git a každá aplikácia si nechávajú najviac tri súbory
+- LosOS Cloud, LosOS Git a každá aplikácia si nechávajú najviac tri súbory
   záznamov po 10 MB na kontajner.
 - Prístupový záznam webového servera začína nový súbor každý týždeň, alebo
   skôr pri 20 MB, a nechá si osem starých.

@@ -7,8 +7,8 @@
  *
  * Resolution order: the owner's explicit pick (localStorage), then the first
  * browser language we carry, then English. "auto" is a real choice, as it is
- * for the theme: Nextcloud follows the browser's Accept-Language too, so
- * leaving the picker on auto keeps the two in step.
+ * for the theme: LosOS Cloud and LosOS Git both follow the browser's
+ * Accept-Language too, so leaving the picker on auto keeps all three in step.
  *
  * Messages live in src/i18n/, one module per area, with all three languages
  * side by side under each key. The catalogue type demands every language for

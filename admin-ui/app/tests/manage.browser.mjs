@@ -31,7 +31,7 @@ const BOXES = [
   { id: 'reception', hostname: 'reception', seenAgoSecs: 300, managed: false },
 ];
 const DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json', 'utf8'));
-const SITE_NAMES = /^(nextcloud\.(site\.|federation\.enable$)|git\.site\.)/;
+const SITE_NAMES = /^(cloud\.trashDays|git\.site\..+)$/;
 const SITE = {
   available: true,
   version: DOC.version,
@@ -166,7 +166,7 @@ await check("a box's settings change through the edge's relay, only the lines na
   assert.ok(calls.every((c) => c.path.startsWith('/manage/api/')), JSON.stringify(calls));
 
   const trash = page.getByLabel('Empty the trash after');
-  await trash.fill('30');
+  await trash.fill('14');
   await trash.blur();
   await page.getByLabel('A new repository starts out').selectOption('public');
   await page.getByRole('button', { name: 'Apply' }).click();
@@ -174,7 +174,7 @@ await check("a box's settings change through the edge's relay, only the lines na
   assert.deepEqual(posts, [
     {
       path: '/api/site',
-      body: { set: { 'git.site.defaultPrivate': '"public"', 'nextcloud.site.trashDays': '30' } },
+      body: { set: { 'git.site.defaultPrivate': '"public"', 'cloud.trashDays': '14' } },
     },
   ]);
   assert.deepEqual(errors, []);
@@ -234,11 +234,8 @@ await check('a deep link reloads, and the page adds no policy violation', async 
 const SECTIONS = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab', 'access'];
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   hostName: 'office-box',
-  https: false,
   gpuEnable: false,
-  apachePort: 80,
   proxyEnable: true,
   clusterEnable: false,
   shareCompute: false,

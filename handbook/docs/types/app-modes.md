@@ -1,56 +1,39 @@
 ---
-title: App modes
+title: Where the apps run
 sidebar_position: 5
 ---
 
-# App modes
+# Where the apps run
 
-LosOS cloud runs in one of two modes. You see the same app at the same
-address either way, and the Apps pane shows which mode it is in. LosOS Git
-has no modes: it is a service of the box itself, like the admin pages.
+LosOS Cloud and LosOS Git are services of the box itself, like the admin
+pages. Each runs as its own system service with its own data directory, and
+neither needs a cluster. You see them at the same addresses on every box.
 
-| Mode            | What runs where                                                                                           | Default |
-| --------------- | --------------------------------------------------------------------------------------------------------- | ------- |
-| **Workload**    | The app runs in a container inside the box's own small Kubernetes cluster (k3s), from an image built with the system. | yes     |
-| **Native**      | The app runs directly on the box as a system service.                                                       | no      |
+Apps you install from the Apps pane run in one of two places, picked by who
+they run as:
 
-## Why workload is the default
-
-- The app's image is built and tested together with the system, so an update
-  brings a known-good pair.
-- The box already runs a cluster for the mesh, and its own apps use the same
-  machinery. Their cluster has no network plugin. The pods share the box's
-  network, which is why they answer on loopback.
-- Each app sees its own data directory and nothing else.
-
-## Why native exists
-
-Native is the older shape. It stays because the same Nextcloud
-configuration feeds both modes, so the two cannot drift apart. You set the
-mode in Nix, not in the admin pages, and switching needs a rebuild.
+| Runs as         | Where it runs                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| **notshared**   | Rootless Podman, as you. No cluster is needed.                                                   |
+| **shared**      | The box's own small Kubernetes cluster (k3s), which runs only while the box shares its disk with a mesh. |
 
 ## Two clusters, on purpose
 
-The box's own apps live in its own cluster. The [mesh](official-edge) is a
-different cluster, and the edge runs it. LosOS never places the box's apps
-in the mesh cluster. A cluster member cannot start while its server is
-unreachable, and the box restarts every night at 00:07, so an edge outage
-over midnight would take your own files offline.
+The box's own shared apps live in its own cluster. The
+[mesh](official-edge) is a different cluster, and the edge runs it. LosOS
+never places the box's apps in the mesh cluster. A cluster member cannot
+start while its server is unreachable, and the box restarts every night at
+00:07, so an edge outage over midnight would take those apps offline.
 
-![Inside a box: the box's own cluster runs LosOS cloud, the mesh agent belongs to a different cluster whose server is the edge.](../img/box-architecture.svg)
+![Inside a box: the box's own cluster runs the apps installed as shared, the mesh agent belongs to a different cluster whose server is the edge.](../img/box-architecture.svg)
 
 ## Where the apps are
 
-![The Apps pane: LosOS cloud with its mode, LosOS Git, an installed app, and Find more below.](../img/apps.png)
+![The Apps pane: LosOS Cloud, LosOS Git, an installed app, and Find more below.](../img/apps.png)
 
 | App          | Address             | Note                                                                                      |
 | ------------ | ------------------- | ----------------------------------------------------------------------------------------- |
-| LosOS cloud  | `/nextcloud`        | Trusts the box's name and the address each request arrived on, never a wildcard.          |
+| LosOS Cloud  | `/cloud/`           | The desktop and phone apps take the box's address without a path.                         |
 | LosOS Git    | `/git/`             | Turn it off in the Apps pane if you do not want it.                                       |
 | Admin pages  | `/`                 | LAN only.                                                                                 |
 | Handbook     | `/handbook/`        | LAN only.                                                                                 |
-
-:::note[App tiles go through index.php]
-The admin pages' app tiles open LosOS cloud's apps through `index.php`
-(`/nextcloud/index.php/apps/<app>/`), which every configuration answers.
-:::

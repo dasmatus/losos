@@ -18,7 +18,7 @@ nekopíruje nikam inam. Disk má dve časti:
 
 ![Panel Úložisko na zariadení, ktoré si disk nechává pre seba: použité miesto, voľné miesto a rezerva, s tlačidlom Použiť rezervu.](@site/docs/img/storage-sk.png)
 
-- **použité miesto**, ktoré zaberá LosOS cloud, LosOS Git a systém;
+- **použité miesto**, ktoré zaberá LosOS Cloud, LosOS Git a systém;
 - **rezerva**, časť, ktorú inštalátor odložil bokom. Panel Úložisko ju môže
   kedykoľvek zabrať, pozrite si [zväčšenie disku](../manual/disk-growth).
 

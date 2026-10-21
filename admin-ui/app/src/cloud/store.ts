@@ -44,7 +44,11 @@ const me = store<Me | null>(null);
 
 async function loadMe(): Promise<void> {
   try {
-    me.set(await cloud.me());
+    const who = await cloud.me();
+    me.set(who);
+    // Read by the setup wizard's last step, which shows this page in a
+    // frame and moves on once someone is signed in to it.
+    document.documentElement.dataset["user"] = who.login;
   } catch {
     // The views say what failed; the bar keeps the last figures.
   }

@@ -93,8 +93,8 @@ Repozitár obsahuje konfiguráciu pre
 [quickemu](https://github.com/quickemu-project/quickemu), `docs/vm/losos.conf`.
 Dá VM 4 jadrá, 8 GiB pamäte a 64 GiB disk, firmvér UEFI s vypnutým Secure
 Boot a emulovaný TPM, takže inštalátor zapečatí kľúč disku rovnako ako na
-mini-PC. Čísla sú nad minimom, pretože zariadenie spúšťa LosOS cloud vo
-vlastnom clustri a každú noc sa nanovo zostavuje na ten istý disk.
+mini-PC. Čísla sú nad minimom, pretože zariadenie spúšťa LosOS Cloud a LosOS
+Git a každú noc sa nanovo zostavuje na ten istý disk.
 
 1. Nainštalujte quickemu a `swtpm`.
 2. Stiahnite inštalačné ISO z vydania a uložte ho ako

@@ -91,7 +91,8 @@ The repository carries a [quickemu](https://github.com/quickemu-project/quickemu
 configuration, `docs/vm/losos.conf`. It gives the VM 4 cores, 8 GiB of memory and
 a 64 GiB disk, UEFI firmware with Secure Boot off, and an emulated TPM, so the
 installer seals the disk key the way it does on a mini-PC. The numbers are
-above the minimum because the box runs LosOS cloud in its own cluster and rebuilds itself every night onto the same disk.
+above the minimum because the box runs LosOS Cloud and LosOS Git and
+rebuilds itself every night onto the same disk.
 
 1. Install quickemu and `swtpm`.
 2. Download the installer ISO from a release and save it as
