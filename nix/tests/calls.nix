@@ -285,6 +285,8 @@ pkgs.testers.nixosTest {
           pkgs.systemd
         ];
         systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+        # ICE and DTLS in the log, for a call that does not connect.
+        systemd.services.losos-calls.environment.RUST_LOG = "info,str0m=debug";
         environment.systemPackages = [
           pkgs.jq
           pkgs.curl
@@ -548,13 +550,25 @@ pkgs.testers.nixosTest {
                             ups[peer] = up
                             sel.register(up, selectors.EVENT_READ, (up, peer))
                         up.send(data)
+                        SHIM[peer] = SHIM.get(peer, (0, 0))
+                        SHIM[peer] = (SHIM[peer][0] + 1, SHIM[peer][1])
                     else:
                         sock, peer = key.data
                         front.sendto(sock.recv(65535), peer)
+                        SHIM[peer] = (SHIM[peer][0], SHIM[peer][1] + 1)
                 except OSError:
                     pass
 
+    SHIM: dict[tuple[str, int], tuple[int, int]] = {}
     threading.Thread(target=media_shim, daemon=True).start()
+
+    def media_report():
+        print("media shim, packets to the box and back per browser socket:",
+              {str(k): v for k, v in SHIM.items()})
+        for m in [box] + ([EDGE] if EDGE else []):
+            print(m.execute("iptables -w -t nat -vnL PREROUTING; ss -uanp | grep -E '78|79'; "
+                            "grep -E 'udp.*(78|79)[0-9]{2}' /proc/net/nf_conntrack | head -n 20")[1])
+        print(box.execute("journalctl -u losos-calls --no-pager | grep -iE 'ice|dtls|candidate|stun' | tail -n 60")[1])
 
     pw = sync_playwright().start()
     # One browser per person, each with their own camera.
@@ -690,6 +704,13 @@ pkgs.testers.nixosTest {
     def live(page, others, frames=60):
         """The call view shows `others` other people, and frames from them
         are arriving and opening."""
+        try:
+            seen(page, others, frames)
+        except Exception:
+            media_report()
+            raise
+
+    def seen(page, others, frames):
         view = page.locator("[data-call-view]")
         view.wait_for()
         until_js(page,
