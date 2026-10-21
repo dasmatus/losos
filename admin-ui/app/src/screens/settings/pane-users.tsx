@@ -1,6 +1,7 @@
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { UserMultipleIcon } from "@hugeicons/core-free-icons";
+import { PersonAvatar } from "@/components/person";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -210,6 +211,7 @@ function PeopleSection({
           return (
             <StackRow key={person.name} data-testid="users-person" data-person={person.name} className="gap-1.5">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <PersonAvatar person={person} size="md" data-testid="users-avatar" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm leading-snug text-ink">{person.displayName}</p>
                   <p className="truncate text-[12.5px] leading-snug text-muted">
@@ -279,6 +281,24 @@ function PeopleSection({
                   <Button size="sm" variant="secondary" disabled={disabled} onClick={() => setRemoving(person)}>
                     {t("users.action.remove")}
                   </Button>
+                </div>
+              )}
+              {!you && (person.picture != null || person.banner != null) && (
+                <div className="flex flex-wrap justify-end gap-2 pt-0.5">
+                  {(["picture", "banner"] as const)
+                    .filter((kind) => person[kind] != null)
+                    .map((kind) => (
+                      <Button
+                        key={kind}
+                        size="sm"
+                        variant="ghost"
+                        disabled={disabled}
+                        data-testid={`users-take-down-${kind}`}
+                        onClick={() => void people.takeDown(person.name, kind)}
+                      >
+                        {t(`profile.users.takeDown.${kind}`)}
+                      </Button>
+                    ))}
                 </div>
               )}
             </StackRow>
