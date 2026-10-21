@@ -111,7 +111,7 @@ impl Index {
                 continue;
             };
             let Some(rel) = rel.to_str() else { continue };
-            // Nextcloud's half-finished uploads.
+            // Half-finished uploads.
             if rel.ends_with(".part") {
                 continue;
             }

@@ -42,7 +42,7 @@ kdekoľvek mimo textového poľa. Nájde:
 - súbory a priečinky v LosOS Cloud, podľa mena
 - repozitáre v LosOS Git
 - text vnútri súborov, keď napíšete tri písmená: vo vašich súboroch v LosOS
-  cloud a na hlavnej vetve každého repozitára v LosOS Git
+  Cloud a na hlavnej vetve každého repozitára v LosOS Git
 - vaše pripnuté položky
 - aplikácie na inštaláciu z Artifact Hub; keď jednu vyberiete, otvorí sa
   panel Aplikácie s jej inštalačným dialógom
@@ -131,7 +131,7 @@ prihlásite, ukazuje tie isté pripnuté položky.
 
 :::note[Ako zariadenie vypisuje vaše súbory]
 Zariadenie vypisuje vaše súbory s heslom aplikácie, o ktoré požiada LosOS
-cloud, keď sa nastaví heslo vlastníka, a to urobí sprievodca. Heslo
+Cloud, keď sa nastaví heslo vlastníka, a to urobí sprievodca. Heslo
 aplikácie sa v nastaveniach zabezpečenia LosOS Cloud zobrazí ako „LosOS
 admin page“. Keď ho tam zrušíte, výpis aj vyhľadávanie súborov sa zastavia,
 kým sa heslo vlastníka nenastaví znova, a to cestou s náhradným kľúčom na

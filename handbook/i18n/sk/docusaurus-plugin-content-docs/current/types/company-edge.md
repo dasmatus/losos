@@ -75,7 +75,7 @@ Stručne:
 ## Správa zariadení z edge \{#managing-the-boxes-from-the-edge}
 
 Ľudia, ktorí spravujú firemný edge, môžu na jednej stránke edge meniť LosOS
-cloud, LosOS Git a aplikácie na jeho zariadeniach. Či to edge smie, rozhoduje
+Cloud, LosOS Git a aplikácie na jeho zariadeniach. Či to edge smie, rozhoduje
 vlastník každého zariadenia.
 
 1. Na zariadení otvorte Nastavenia, potom Mesh, a zapnite **Nechať firemný

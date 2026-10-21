@@ -4,11 +4,10 @@
 # substituter the target only learns about once it is installed does nothing for
 # the install itself, which is where the time actually goes:
 #
-#   losos.nextcloud.mode defaults to "container", so the install closure
-#   contains losos-image-nextcloud — a 2.3 GiB content closure over 244 store
-#   paths — and losos-ctl install runs a bare `nixos-install` with no
-#   substituter flags. With nothing serving that path, a fresh install *builds*
-#   the image on a repurposed mini-PC.
+#   the install closure carries the LosOS packages and the workload images,
+#   which cache.nixos.org cannot serve, and losos-ctl install runs a bare
+#   `nixos-install` with no substituter flags. With nothing serving them, a
+#   fresh install *builds* them on a repurposed mini-PC.
 #
 # Until this file existed, eight files in this repo discussed "our own binary
 # cache" and not one configured a substituter. `substituters`, `nixConfig`,
@@ -35,22 +34,8 @@
 # The third is a static copy of the same paths on the GitHub Pages site (https://losos.dasmat.us/proxy, written by
 # .github/scripts/pages-cache.sh and deployed with the handbook), signed with
 # the same key, for when the proxy on Vercel does not answer. It carries only
-# the newest main build and no Nextcloud image, and its Priority of 45 puts it
-# after both the proxy and cache.nixos.org.
-#
-# The Nextcloud image is the exception, and it is the one that matters most
-# here — it is the 2.3 GiB closure named above. It is NOT built on every push:
-# that job would fetch roughly 3.5x what the others do inside a 10-minute cap,
-# and nobody has measured whether it fits. It has its own manual job
-# (`image-nextcloud`, workflow_dispatch) that builds it, pushes it and prints
-# its own timing. The image only changes when modules/nextcloud-stack.nix or
-# nix/images.nix does, so running it by hand after those change is enough to
-# keep the cache honest.
-#
-# If that job is never run, this substituter simply does not have the image and
-# the appliance builds it — the behaviour from before the cache existed, not a
-# new failure. But it is the difference between a cache that saves the install
-# and one that saves everything except the expensive part.
+# the newest main build, and its Priority of 45 puts it after both the proxy
+# and cache.nixos.org.
 {
   lib,
   config,

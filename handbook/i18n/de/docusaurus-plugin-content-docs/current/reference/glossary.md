@@ -31,8 +31,9 @@ eine Box in deinem LAN findet.
 **Keyfile-Modus.** Der Entsperrmodus der Festplatte für Rechner ohne TPM.
 Der Schlüssel liegt auf der Boot-Partition.
 
-**LosOS Cloud.** Nextcloud in den Farben der Box: Dateien, Fotos, Kalender,
-Kontakte, Notizen, Aufgaben.
+**LosOS Cloud.** Der eigene Dateidienst der Box: Dateien, Fotos, Kalender,
+Kontakte und Boards, mit dem sich die Nextcloud-Apps für Computer und
+Telefon synchronisieren.
 
 **LosOS Git.** Forgejo in den Farben der Box: Repositories.
 
@@ -55,7 +56,7 @@ Update um 03:00 sind Neubauten.
 hat. Du kannst sie im Bereich Speicher beanspruchen.
 
 **Ersatz-Admin-Schlüssel.** Der Schlüssel mit 64 Zeichen, den der Assistent
-einmal anzeigt, um die Admin-Seiten zu entsperren, wenn LosOS Cloud das
+einmal anzeigt, um die Admin-Seiten zu entsperren, wenn LosOS Login das
 Passwort nicht prüfen kann.
 
 **TPM.** Der Sicherheitschip in der Firmware des Rechners, der im

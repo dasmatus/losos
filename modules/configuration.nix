@@ -73,7 +73,7 @@
   };
 
   # A small, sensible base package set. Service-specific packages
-  # (nextcloud, the cluster tooling) are pulled in by their modules.
+  # (the cluster tooling, LosOS Cloud) are pulled in by their modules.
   environment.systemPackages = with pkgs; [
     curl
     git
@@ -108,11 +108,11 @@
     gid = 1001;
   };
 
-  # `notshared` — owns this box's private Nextcloud instance. Reached via the
-  # Nextcloud web UI only; no Linux login (no password, no SSH).
+  # `notshared` — the owner's account: their files in LosOS Cloud carry this
+  # name, and their apps run as it. No Linux login (no password, no SSH).
   users.users."notshared" = {
     uid = 1000;
-    description = "Internal (default) — private Nextcloud on this box";
+    description = "Internal (default) — the owner's private data on this box";
     isNormalUser = true;
     group = "notshared";
     homeMode = "700"; # owner only; shared cannot enter, let alone read
@@ -134,39 +134,28 @@
   };
 
   # ── Service accounts for the workload pods ────────────────────────────────
-  # systemd-nspawn is gone. Nextcloud and Forgejo run as pods
+  # systemd-nspawn is gone. Forgejo runs as a pod
   # in this box's own local k3s cluster (modules/workloads.nix), and because
   # that cluster runs no CNI the pods are `hostNetwork` — they share the host's
   # network *and* user namespace. So `runAsUser` in a pod spec is a real uid on
-  # this machine, not a container-local fiction, and these two accounts have to
+  # this machine, not a container-local fiction, and the account has to
   # exist for reasons that are not cosmetic:
   #
   #   * PostgreSQL peer auth over /run/postgresql compares the *kernel's* uid of
   #     the connecting process and maps it to a role through getpwuid. With no
-  #     passwd entry for 1002 the lookup fails, so the Nextcloud pod cannot
+  #     passwd entry for 1003 the lookup fails, so the Forgejo pod cannot
   #     authenticate even once the database exists — and it fails as a pod
   #     crash-loop on a box with no shell, not as a rebuild error.
   #   * The tmpfiles rules in modules/workloads.nix chown the state directories
-  #     to these ids. Without accounts the directories end up owned by bare
+  #     to this id. Without the account the directories end up owned by bare
   #     numbers, which works but makes the box unreadable to anyone debugging it.
   #
-  # modules/workloads.nix hardcodes the same two numbers and says so in its own
-  # comment; keep the pair in step. They are pinned rather than allocated
-  # because a dynamically assigned uid would differ per box and could not be
-  # written into a pod spec at eval time.
-  users.groups.nextcloud.gid = 1002;
-  users.users.nextcloud = {
-    uid = 1002;
-    group = "nextcloud";
-    isSystemUser = true;
-    description = "Nextcloud workload";
-    # Redis' socket is 0660 root:redis-nextcloud. A pod does not inherit the
-    # host user's supplementary groups — only what its spec asks for via
-    # supplementalGroups — so this membership is what makes the *native* path
-    # work; the pod path gets there through the fixed gid below.
-    extraGroups = [ "redis-nextcloud" ];
-  };
-
+  # modules/workloads.nix hardcodes the same number and says so in its own
+  # comment; keep the two in step. It is pinned rather than allocated because
+  # a dynamically assigned uid would differ per box and could not be written
+  # into a pod spec at eval time. 1002 was Nextcloud's and stays unused: the
+  # files a box's Nextcloud left behind carry it until LosOS Cloud takes them
+  # in (modules/cloud.nix).
   users.groups.forgejo.gid = 1003;
   users.users.forgejo = {
     uid = 1003;
@@ -175,19 +164,9 @@
     description = "Forgejo workload";
   };
 
-  # The Redis group needs a *fixed* gid, and this is the only place it can get
-  # one. modules/workloads.nix reads it back out of
-  # `config.users.groups."redis-nextcloud".gid` to build the pod's
-  # supplementalGroups; left dynamic that read yields null, the group is
-  # dropped from the spec, and Nextcloud fails to reach the cache with EACCES on
-  # /run/redis-nextcloud/redis.sock. The alternative — widening unixSocketPerm —
-  # would open the cache to every uid on the box, which is worse.
-  users.groups."redis-nextcloud".gid = 1004;
-
-  # ── GPU / graphics (host side of container GPU acceleration) ─────────────
-  # Enables /dev/dri + Mesa and the VA-API drivers the Nextcloud container uses
-  # for hardware video decode/encode (recognize, Talk transcoding, previews).
-  # intel-media-driver covers Intel iGPUs (typical mini-PC), mesa-va-drivers
+  # ── GPU / graphics ────────────────────────────────────────────────────────
+  # Enables /dev/dri + Mesa and the VA-API drivers for hardware video decode
+  # and encode. intel-media-driver covers Intel iGPUs (typical mini-PC), mesa-va-drivers
   # covers AMD/Radeon — both coexist; drop the one that doesn't match the box.
   hardware.graphics = lib.mkIf config.losos.gpu.enable {
     enable = true;
@@ -195,8 +174,7 @@
     # copy of Mesa and the VA-API drivers into /run/opengl-driver-32, and the
     # only things that can load them are 32-bit userspace binaries: Steam, Wine,
     # old proprietary games. This appliance has no desktop and no 32-bit
-    # anything. Its one GPU consumer is Nextcloud's hardware transcode, which
-    # runs 64-bit inside the workload.
+    # anything.
     #
     # So the 32-bit half was unreachable by construction, and it is not small:
     # a closure attribution of the install system put the graphics stack at

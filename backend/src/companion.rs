@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn another_clients_token_an_old_one_or_an_inactive_one_is_nobody() {
-        assert_eq!(judge(&active("nextcloud"), 1_500), None);
+        assert_eq!(judge(&active("forgejo"), 1_500), None);
         assert_eq!(judge(&active("losos-companion"), 2_000), None);
         assert_eq!(judge(&json!({ "active": false }), 1_500), None);
         let mut odd = active("losos-companion");

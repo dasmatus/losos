@@ -10,7 +10,7 @@
         "local",
         "mesh"
       ],
-      "description": "local = private Nextcloud (sharingMyStorage=false); mesh = contributes storage to the Longhorn pool on the edge's rke2 cluster (sharingMyStorage=true). This used to mean the Tahoe-LAFS grid; Tahoe is gone, but the two spellings are unchanged because persisted state files and the admin SPA carry them."
+      "description": "local = private LosOS Cloud (sharingMyStorage=false); mesh = contributes storage to the Longhorn pool on the edge's rke2 cluster (sharingMyStorage=true). This used to mean the Tahoe-LAFS grid; Tahoe is gone, but the two spellings are unchanged because persisted state files and the admin SPA carry them."
     },
     "rebuildState": {
       "type": "string",
@@ -69,15 +69,12 @@
     "settingsResponse": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The user-tunable losos.* options parsed out of modules/overrides.nix (line-based). Returned by `settings`; consumed by the admin UI for first paint. Legacy overrides using `losos.aio.apachePort` or mode \"aio\" are accepted on the read side and reported back in the new spelling.",
+      "description": "The user-tunable losos.* options parsed out of modules/overrides.nix (line-based). Returned by `settings`; consumed by the admin UI for first paint. Lines for options LosOS no longer has (`losos.nextcloud.*`, `losos.keyring.*`, `losos.aio.*`) are ignored when read and dropped on the next apply.",
       "required": [
         "sharingMyStorage",
-        "nextcloudMode",
         "forgejoMode",
         "hostName",
-        "https",
         "gpuEnable",
-        "apachePort",
         "proxyEnable",
         "clusterEnable",
         "shareCompute",
@@ -92,13 +89,6 @@
         "sharingMyStorage": {
           "type": "boolean"
         },
-        "nextcloudMode": {
-          "type": "string",
-          "enum": [
-            "native",
-            "container"
-          ]
-        },
         "forgejoMode": {
           "type": "string",
           "enum": [
@@ -110,17 +100,8 @@
           "type": "string",
           "description": "System hostname; systemd-resolved publishes <hostName>.local over mDNS, and Nginx routes /<service> paths on it."
         },
-        "https": {
-          "type": "boolean"
-        },
         "gpuEnable": {
           "type": "boolean"
-        },
-        "apachePort": {
-          "type": "integer",
-          "minimum": 1024,
-          "maximum": 65535,
-          "description": "losos.nextcloud.apachePort."
         },
         "proxyEnable": {
           "type": "boolean",
@@ -279,29 +260,16 @@
       "additionalProperties": false,
       "required": [
         "user",
-        "mode",
-        "changed",
-        "message"
+        "changed"
       ],
       "properties": {
         "user": {
           "type": "string",
-          "description": "The account whose password was replaced, echoed back so a client knows which one changed. The password itself is never echoed, in any field, on any path — and is never read back out either: this command replaces the install-time password from modules/nextcloud-common.nix rather than revealing it, because surfacing that one would turn a root-only 0600 file into an API-readable secret and save the owner nothing."
-        },
-        "mode": {
-          "enum": [
-            "container",
-            "native"
-          ],
-          "description": "Which route actually ran, taken from the located target rather than from $LOSOS_NEXTCLOUD_MODE so the two cannot disagree. Container mode stages the password in a file and runs `crictl exec` against the workload pod; native mode passes OC_PASS in the child environment of the host's nextcloud-occ wrapper. Present because the two fail in different places and a support answer needs to know which was taken."
+          "description": "The account whose password was replaced, echoed back so a client knows which one changed. The password itself is never echoed, in any field, on any path."
         },
         "changed": {
           "type": "boolean",
-          "description": "Whether occ exited 0. Trustworthy here, unlike growResponse.grew: core/Command/User/ResetPassword.php returns 1 on every failure branch and 0 only after setPassword succeeded, so there is no succeed-while-doing-nothing path. A failure is an error reply (500 / org.losos1.Error.Failed), never `changed: false`."
-        },
-        "message": {
-          "type": "string",
-          "description": "occ's last non-empty stdout line, capped — normally \"Successfully reset password for <user>\". \"password updated\" when occ said nothing."
+          "description": "Whether the owner's password in the people file (backend/src/people.rs) was replaced. False only when the box has no owner yet, so there is nobody to change it for. A refusal is an error reply (400 / org.losos1.Error.Failed), never `changed: false`."
         }
       }
     },
@@ -370,14 +338,14 @@
       "properties": {
         "available": {
           "type": "boolean",
-          "description": "False \u2014 with at most `reason` beside it \u2014 when the edge runs no market, this box was not cleared for it, the box has no master proxy configured, or no official edge is in reach. That is the normal state of most appliances, so it is a 200 and not an error."
+          "description": "False — with at most `reason` beside it — when the edge runs no market, this box was not cleared for it, the box has no master proxy configured, or no official edge is in reach. That is the normal state of most appliances, so it is a 200 and not an error."
         },
         "reason": {
           "type": "string",
           "enum": [
             "noOfficialEdge"
           ],
-          "description": "Present only with `available: false`, and only when the cause is one the owner can see on the Mesh pane: `noOfficialEdge` \u2014 the edges in reach are none that LosOS runs (edgeResponse.official is false), so trading is off while storage sharing through them keeps working."
+          "description": "Present only with `available: false`, and only when the cause is one the owner can see on the Mesh pane: `noOfficialEdge` — the edges in reach are none that LosOS runs (edgeResponse.official is false), so trading is off while storage sharing through them keeps working."
         },
         "listings": {
           "type": "array",
@@ -831,7 +799,7 @@
       "properties": {
         "available": {
           "type": "boolean",
-          "description": "False on a box with no cluster of its own (LosOS Cloud and LosOS Git both native, or losos.apps.enable off). Then `reason` is noCluster and `apps` is empty."
+          "description": "False on a box with no cluster of its own (LosOS Git native, or losos.apps.enable off). Then `reason` is noCluster and `apps` is empty."
         },
         "reason": {
           "type": "string",
@@ -1259,7 +1227,7 @@
                   "string",
                   "null"
                 ],
-                "description": "The raw Nix literal overrides.nix currently assigns the option, or null when the file leaves it at its default. The two legacy spellings (`aio.apachePort`, `cfd.enable`) are joined onto the options they became."
+                "description": "The raw Nix literal overrides.nix currently assigns the option, or null when the file leaves it at its default. The legacy `cfd.enable` is joined onto `proxy.enable`, the option it became."
               }
             }
           }
@@ -1521,7 +1489,7 @@
       }
     },
     "edge": {
-      "description": "`losos-ctl edge` \u2014 what lososd found when it last looked for an edge proxy. The daemon scans every 20 s: a DNS-SD browse for `_losos-edge._tcp` on the LAN through systemd-resolved's Varlink API (`io.systemd.Resolve.BrowseServices`, then `ResolveService` per instance; the edge advertises the service with a `url=` TXT record, losos.edge.lan.advertise), plus the configured registrar URL; every candidate's /health is probed and only the ones that answer are listed. stdout: edgeResponse.",
+      "description": "`losos-ctl edge` — what lososd found when it last looked for an edge proxy. The daemon scans every 20 s: a DNS-SD browse for `_losos-edge._tcp` on the LAN through systemd-resolved's Varlink API (`io.systemd.Resolve.BrowseServices`, then `ResolveService` per instance; the edge advertises the service with a `url=` TXT record, losos.edge.lan.advertise), plus the configured registrar URL; every candidate's /health is probed and only the ones that answer are listed. stdout: edgeResponse.",
       "stdout": {
         "$ref": "#/$defs/edgeResponse"
       }
@@ -1555,7 +1523,7 @@
       }
     },
     "set-password": {
-      "description": "`losos-ctl set-password [--user <name>]` — replace the Nextcloud admin password, read from **stdin**. Stdin and not a flag because /proc/<pid>/cmdline is world-readable and nothing in modules/ sets hidepid, so `--password <value>` would publish the appliance's admin credentials to every process on the box. Exactly one trailing newline is stripped, nothing else: a password may end in a space. The password never reaches an argv on any path — in native mode it travels as OC_PASS in the child environment of `nextcloud-occ user:resetpassword <user> --password-from-env` (/proc/<pid>/environ is mode 0400 owner-only); in container mode it is staged at /var/lib/nextcloud/.losos-setpass (0600, chowned to uid 1002, removed on success and on failure alike) and read by /bin/losos-nextcloud-occ-setpass inside the pod, because `crictl exec` has no environment flag. Rejected server-side, before any effect: a password under 12 characters, without a lower-case letter, an upper-case letter, a digit and a symbol (Unicode-aware: Ž and ß count as letters; a symbol is anything that is neither a letter, a digit nor whitespace), over 256 bytes, or containing a control character (a newline would be silently truncated by the in-image wrapper's `$(cat …)`), and a user name that is not [A-Za-z0-9._@-] or that starts with '-' (`occ user:resetpassword --version --password-from-env` parses and changes nothing). Non-zero exit + stderr on any of those, on a pod that is running but has not finished `occ maintenance:install`, and on zero or more than one matching container — it refuses to guess rather than resetting a password in the wrong one.",
+      "description": "`losos-ctl set-password [--user <name>]` — replace the owner's LosOS Login password, read from **stdin**. Stdin and not a flag because /proc/<pid>/cmdline is world-readable and nothing in modules/ sets hidepid, so `--password <value>` would publish the box's admin credentials to every process on it. Exactly one trailing newline is stripped, nothing else: a password may end in a space. The password goes to the people file (backend/src/people.rs, argon2id) and, when LosOS Git keeps the owner's account, to Forgejo's admin API over loopback, never an argv. Rejected server-side, before any effect: a password under 12 characters, without a lower-case letter, an upper-case letter, a digit and a symbol (Unicode-aware: Ž and ß count as letters; a symbol is anything that is neither a letter, a digit nor whitespace), over 256 bytes, or containing a control character, and a user name that is not [A-Za-z0-9._@-] or that starts with '-'. Non-zero exit and stderr on any of those.",
       "stdin": {
         "type": "string",
         "description": "The new password. One trailing newline is stripped."
@@ -1759,7 +1727,7 @@
         "auth": true,
         "in": "{\"name\":\"...\",\"password\":\"...\"}",
         "out": "{\"name\": \"...\", \"changed\": true}",
-        "note": "Set a new password for someone who forgot theirs. 409 for the owner, who changes their own through POST /api/set-password so their LosOS Cloud password follows. Administrators only."
+        "note": "Set a new password for someone who forgot theirs. 409 for the owner, who changes their own through POST /api/set-password so their LosOS Git password follows. Administrators only."
       },
       "POST /api/people/remove": {
         "auth": true,
@@ -1803,14 +1771,14 @@
       "POST /api/devices/cloud": {
         "auth": true,
         "in": "{\"password\":\"...\",\"device\":\"...\"}",
-        "out": "{\"user\":\"notshared\",\"appPassword\":\"...\",\"path\":\"/nextcloud/remote.php/dav/files/notshared/\"}",
-        "note": "A LosOS Cloud app password of one computer's own, for `losos cloud setup` (backend/src/devices.rs). Nextcloud makes one only for the real password, so the owner's password rides along and goes to $LOSOS_NEXTCLOUD_LOGIN_URL's GET /ocs/v2.php/core/getapppassword in a Basic header over loopback, never an argv. `device` (1-48 letters, digits, spaces, dots, dashes, underscores) names the app password `LosOS on <device>` in the owner's security settings. 403 with wrongPassword:true on a wrong password (not 401: the caller's token is good); 429 when Nextcloud is throttling; 503 when it cannot be asked; 400 for a body of the wrong shape. HTTP-only; reached by the terminal client as a sealed call."
+        "out": "{\"user\":\"notshared\",\"appPassword\":\"...\",\"path\":\"/remote.php/dav/files/notshared/\"}",
+        "note": "A LosOS Cloud app password of one computer's own, for `losos cloud setup` (backend/src/devices.rs). lososd checks the owner's password against the people file first, throttled per address like the spare key, then asks LosOS Cloud over its socket (/run/losos-cloud/http.sock) to mint one for the owner, never an argv. `device` (1-48 letters, digits, spaces, dots, dashes, underscores) names the app password `LosOS on <device>` in the owner's devices list. 403 with wrongPassword:true on a wrong password (not 401: the caller's token is good); 429 when the address has tried too many; 503 when LosOS Cloud cannot be asked; 400 for a body of the wrong shape. HTTP-only; reached by the terminal client as a sealed call."
       },
       "POST /api/devices/git": {
         "auth": true,
         "in": "{\"password\":\"...\",\"device\":\"...\"}",
         "out": "{\"user\":\"notshared\",\"token\":\"...\",\"path\":\"/forgejo/\"}",
-        "note": "A LosOS Git access token of one computer's own, for `losos git setup` (backend/src/devices.rs). Forgejo makes tokens only under Basic auth with the account's password, so LosOS Cloud judges the password first, LosOS Git is given it as at a sign-in, and then, as the owner over loopback, a token named `LosOS on <device>` of the same name is deleted and a new one created with scopes write:repository and read:user. 403 with wrongPassword:true on a wrong password; 409 with gitOff:true when LosOS Git is off on this box; 429 when LosOS Cloud is throttling; 503 when either cannot be asked. HTTP-only; reached by the terminal client as a sealed call."
+        "note": "A LosOS Git access token of one computer's own, for `losos git setup` (backend/src/devices.rs). Forgejo makes tokens only under Basic auth with the account's password, so lososd checks the password against the people file first, LosOS Git is given it as at a sign-in, and then, as the owner over loopback, a token named `LosOS on <device>` of the same name is deleted and a new one created with scopes write:repository and read:user. 403 with wrongPassword:true on a wrong password; 409 with gitOff:true when LosOS Git is off on this box; 429 when the address has tried too many; 503 when either cannot be asked. HTTP-only; reached by the terminal client as a sealed call."
       },
       "GET /api/apps/search": {
         "auth": true,
@@ -1852,41 +1820,6 @@
         "in": "{\"release\": \"<name>\"}",
         "out": "appRecord",
         "note": "Uninstall, in a `losos-app-<release>` unit. Answers with the record in phase removing; the job deletes it once Helm is done. The app's folders under /home/<runAs>/data/apps/<release> stay. 409 while a job for it is running, 400 for an unknown name. Audited."
-      },
-      "GET /api/cloud/apps": {
-        "auth": true,
-        "out": "{\"available\": true, \"store\": bool, \"apps\": [{\"id\", \"name\", \"summary\": string|null, \"version\": string|null, \"kind\": \"core|bundled|store\", \"enabled\": bool, \"locked\": null | {\"by\": \"nextcloud\"} | {\"by\": \"losos\", \"reason\": \"signIn|sharing|look|wizard\"}}]} | {\"available\": false, \"store\": bool, \"reason\": string}",
-        "note": "Every app LosOS Cloud has (backend/src/cloud_apps.rs), from `losos-nextcloud-apps list` run in the pod or natively (modules/nextcloud-stack.nix, appsTool). `locked` names why the page may not change an app. LosOS Cloud not answering yet is 200 with available:false and the reason, deliberately NOT 404, which the SPA reads as an older box. `store` is whether the app store search is offered. HTTP-only, following /api/apps/search."
-      },
-      "GET /api/cloud/apps/search": {
-        "auth": true,
-        "in": "query string: q (2 to 128 characters)",
-        "out": "{\"results\": [{\"id\", \"name\", \"summary\": string|null, \"version\": string|null, \"homepage\", \"featured\": bool}]}",
-        "note": "The app store's best matches for this Nextcloud version (LOSOS_NEXTCLOUD_VERSION), at most 20. lososd downloads the store's index (apps.nextcloud.com/api/v1/platform/<version>/apps.json) at most every six hours and keeps a stale copy when a refresh fails. 400 for a bad q, 409 where the store is off, 502 when the store cannot be reached."
-      },
-      "POST /api/cloud/apps/install": {
-        "auth": true,
-        "in": "{\"id\": \"<app id>\"}",
-        "out": "the GET /api/cloud/apps response, after the change",
-        "note": "Add an app from the app store (`occ app:install`). 409 when it is already in LosOS Cloud. Each of the four verbs refuses the apps LosOS sets itself and the ones Nextcloud keeps on with 400, answers 409 while LosOS Cloud is not running, and 502 with occ's message when the change fails. Audited."
-      },
-      "POST /api/cloud/apps/enable": {
-        "auth": true,
-        "in": "{\"id\": \"<app id>\"}",
-        "out": "the GET /api/cloud/apps response, after the change",
-        "note": "Turn an app on and take it off the off-list (/var/lib/nextcloud/.losos-apps-off). Same refusals as install. Audited."
-      },
-      "POST /api/cloud/apps/disable": {
-        "auth": true,
-        "in": "{\"id\": \"<app id>\"}",
-        "out": "the GET /api/cloud/apps response, after the change",
-        "note": "Turn an app off and add it to the off-list, which every start of LosOS Cloud honours, so it stays off. Same refusals as install. Audited."
-      },
-      "POST /api/cloud/apps/remove": {
-        "auth": true,
-        "in": "{\"id\": \"<app id>\"}",
-        "out": "the GET /api/cloud/apps response, after the change",
-        "note": "Remove an app added from the store (`occ app:remove --keep-data`): its code leaves the box, its data stays. 400 for any app not under store-apps, which would come back on the next start. Same refusals as install. Audited."
       },
       "GET /api/market": {
         "auth": true,
@@ -2015,38 +1948,38 @@
         "note": "Delete one of this box's images from the edge. Audited."
       },
       "GET /api/lab/order": {
-      "auth": true,
-      "out": "{\"enabled\": false} | {\"enabled\": true, \"available\": false, \"reason\": \"noOfficialEdge|notSold\"} | {\"enabled\": true, \"available\": true, \"catalogue\": {\"currency\", \"countries\", \"items\": [{\"sku\", \"name\", \"detail\", \"unit_amount\"}]}}",
-      "note": "losos.lab.ordering.enable. A 200 in every case."
-    },
-    "POST /api/lab/order": {
-      "auth": true,
-      "in": "{\"items\": [{\"sku\": \"box\", \"quantity\": 1}]}",
-      "out": "{\"available\": true, \"order_id\", \"checkout_url\", \"amount\", \"currency\"}",
-      "note": "409 while losos.lab.ordering.enable is off. Audited."
-    },
+        "auth": true,
+        "out": "{\"enabled\": false} | {\"enabled\": true, \"available\": false, \"reason\": \"noOfficialEdge|notSold\"} | {\"enabled\": true, \"available\": true, \"catalogue\": {\"currency\", \"countries\", \"items\": [{\"sku\", \"name\", \"detail\", \"unit_amount\"}]}}",
+        "note": "losos.lab.ordering.enable. A 200 in every case."
+      },
+      "POST /api/lab/order": {
+        "auth": true,
+        "in": "{\"items\": [{\"sku\": \"box\", \"quantity\": 1}]}",
+        "out": "{\"available\": true, \"order_id\", \"checkout_url\", \"amount\", \"currency\"}",
+        "note": "409 while losos.lab.ordering.enable is off. Audited."
+      },
       "GET /api/lab/hello": {
-      "auth": true,
-      "out": "labHelloResponse",
-      "note": "LosOS Lab's libvirt helper (`losos-registrar lab`, losos.lab.libvirt.enable), relayed to its GET /lab/v1/hello with the admin token (backend/src/lab.rs). Off or not running is 200 with available:false and a reason, deliberately NOT 404."
-    },
-    "POST /api/lab/guests": {
-      "auth": true,
-      "in": "{\"id\": \"d3\", \"name\": \"box1\", \"role\": \"box|edge-local|edge-official|router|switch|ap\", \"cmdline\": \"console=ttyS0 ...\", \"macs\": [\"52:54:00:..\"]}",
-      "out": "{\"guest\": \"d3-a1b2c3\", \"domain\": \"losos-lab-d3-a1b2c3\", \"ticket\": \"<32 hex>\", \"nics\": 1, \"domainType\": \"kvm|qemu\", \"label\": \"...\"}",
-      "note": "Start one Lab guest as a transient libvirt domain. Relayed as is; the helper checks every field and answers 201, 400, 409 (full), 502 (libvirt refused) or 503 (no libvirt, or an image missing). 503 here too when no helper runs. The guest's console and NICs are WebSockets at /api/lab/ws/<guest>/console and /api/lab/ws/<guest>/nic/<n>, which nginx proxies to the helper directly; they authenticate with `ticket.<ticket>` as a WebSocket subprotocol. Audited."
-    },
-    "DELETE /api/lab/guests/{key}": {
-      "auth": true,
-      "out": "204, or the helper's {error}",
-      "note": "Destroy one Lab guest. Audited."
-    },
-    "POST /api/lab/virt-ticket": {
-      "auth": true,
-      "out": "{\"ticket\": \"<32 hex>\", \"expiresIn\": 30, \"uri\": \"qemu:///system\"}",
-      "note": "A single-use ticket, good for 30 seconds, for the WebSocket at /api/lab/virt, which nginx proxies straight to the helper's GET /lab/v1/virt: a byte relay to libvirt's unix socket with no parsing, sent `ticket.<ticket>` as a subprotocol beside `losos-lab`. Whoever holds the socket has libvirt at the helper's uid (root-equivalent under qemu:///system), hence the admin token here. 503 when no helper runs or the URI has no local socket. Audited."
-    },
-    "GET /api/domains": {
+        "auth": true,
+        "out": "labHelloResponse",
+        "note": "LosOS Lab's libvirt helper (`losos-registrar lab`, losos.lab.libvirt.enable), relayed to its GET /lab/v1/hello with the admin token (backend/src/lab.rs). Off or not running is 200 with available:false and a reason, deliberately NOT 404."
+      },
+      "POST /api/lab/guests": {
+        "auth": true,
+        "in": "{\"id\": \"d3\", \"name\": \"box1\", \"role\": \"box|edge-local|edge-official|router|switch|ap\", \"cmdline\": \"console=ttyS0 ...\", \"macs\": [\"52:54:00:..\"]}",
+        "out": "{\"guest\": \"d3-a1b2c3\", \"domain\": \"losos-lab-d3-a1b2c3\", \"ticket\": \"<32 hex>\", \"nics\": 1, \"domainType\": \"kvm|qemu\", \"label\": \"...\"}",
+        "note": "Start one Lab guest as a transient libvirt domain. Relayed as is; the helper checks every field and answers 201, 400, 409 (full), 502 (libvirt refused) or 503 (no libvirt, or an image missing). 503 here too when no helper runs. The guest's console and NICs are WebSockets at /api/lab/ws/<guest>/console and /api/lab/ws/<guest>/nic/<n>, which nginx proxies to the helper directly; they authenticate with `ticket.<ticket>` as a WebSocket subprotocol. Audited."
+      },
+      "DELETE /api/lab/guests/{key}": {
+        "auth": true,
+        "out": "204, or the helper's {error}",
+        "note": "Destroy one Lab guest. Audited."
+      },
+      "POST /api/lab/virt-ticket": {
+        "auth": true,
+        "out": "{\"ticket\": \"<32 hex>\", \"expiresIn\": 30, \"uri\": \"qemu:///system\"}",
+        "note": "A single-use ticket, good for 30 seconds, for the WebSocket at /api/lab/virt, which nginx proxies straight to the helper's GET /lab/v1/virt: a byte relay to libvirt's unix socket with no parsing, sent `ticket.<ticket>` as a subprotocol beside `losos-lab`. Whoever holds the socket has libvirt at the helper's uid (root-equivalent under qemu:///system), hence the admin token here. 503 when no helper runs or the URI has no local socket. Audited."
+      },
+      "GET /api/domains": {
         "auth": true,
         "out": "domainsResponse",
         "note": "This box's custom domains on an official edge, relayed to the registrar's POST /domains/list like the market (backend/src/market.rs `Op::Domains`). Asked only of an official edge. Not-offered is 200 with available:false."
@@ -2160,7 +2093,7 @@
         "auth": true,
         "in": "query string: path=/<folder> (default /), or q=<text> (1-100 characters) to search names anywhere",
         "out": "{\"available\": true, \"path\": \"/...\", \"query\": \"...\"|null, \"entries\": [{\"name\", \"path\", \"id\", \"folder\", \"size\"|null}], \"more\": bool} or {\"available\": false, \"reason\": \"signIn\"|\"notUp\", \"path\", \"query\", \"entries\": []}",
-        "note": "One folder of the owner's LosOS Cloud, folders first then by name, at most 500 entries (`more` when there were more); with q, the files and folders whose name holds the text, at most 50. Asked over WebDAV on loopback with an app password lososd obtains from LosOS Cloud when the owner sets their password (the claim or a password change), kept 0600 at /var/lib/losos/cloud-key and shown in LosOS Cloud's security settings as \"LosOS admin page\". `signIn` until there is one, and again once it is revoked. 400 for a path or query that is not one, or a folder that is gone."
+        "note": "One folder of the owner's LosOS Cloud, folders first then by name, at most 500 entries (`more` when there were more); with q, the files and folders whose name holds the text, at most 50. Asked over LosOS Cloud's socket (/run/losos-cloud/http.sock), which only root and nginx can open, naming the owner. 400 for a path or query that is not one, or a folder that is gone; 503 while LosOS Cloud is not answering."
       },
       "GET /api/git/repos": {
         "auth": true,
@@ -2171,7 +2104,7 @@
       "GET /api/site": {
         "auth": true,
         "out": "optionsResponse",
-        "note": "The settings of LosOS Cloud and LosOS Git only (backend/src/site.rs): GET /api/options cut down to losos.nextcloud.site.*, losos.forgejo.site.* and the two federation switches, with `stray` empty. Section apps, so a company edge the owner lets manage the box reaches it too."
+        "note": "The settings of LosOS Cloud and LosOS Git only (backend/src/site.rs): GET /api/options cut down to losos.cloud.trashDays, losos.forgejo.site.* and the federation switch, with `stray` empty. Section apps, so a company edge the owner lets manage the box reaches it too."
       },
       "POST /api/site": {
         "auth": true,

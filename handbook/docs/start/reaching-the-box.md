@@ -12,7 +12,7 @@ write that address, and they are not equally reliable.
 
 The banner on the box's screen shows `http://192.168.x.y`, the address your
 router gave the box. Every page answers on it: the admin pages at `/`, LosOS
-cloud at `/nextcloud`, LosOS Git at `/forgejo/`, this handbook at
+Cloud at `/cloud/`, LosOS Git at `/forgejo/`, this handbook at
 `/handbook/`. The box redraws the banner when the address changes.
 
 ![The banner under the salmon on the box's screen, with the address to type into a browser and the box's .local name.](../img/tty1-banner.png)
@@ -66,6 +66,6 @@ such permission, so there the page shows how to type the address instead.
 By default, nowhere. A box is reachable from the local network only. The
 [official edge](../types/official-edge) setup gives it a public address
 through a tunnel. Even then the admin pages stay LAN-only, and only LosOS
-cloud and LosOS Git go out through the tunnel.
+Cloud and LosOS Git go out through the tunnel.
 
 ![Settings, Network: the name, Encrypt the connection, and Reachable from outside your home, the switch that opens the tunnel to an edge.](../img/settings-network.png)

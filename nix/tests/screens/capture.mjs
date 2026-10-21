@@ -133,9 +133,20 @@ async function strip(variant, width, shot, name, storageState) {
       await step(page, s, { force: true });
     }
     await page.waitForTimeout(1500);
-    const ids = [...started];
+    // One at a time: an animation a later one replaced (a hover's, say) is
+    // gone, and the protocol refuses the whole list for one missing id.
+    let ids = [...started];
     for (const ms of shot.strip) {
-      if (ids.length > 0) await cdp.send('Animation.seekAnimations', { animations: ids, currentTime: ms });
+      const live = [];
+      for (const id of ids) {
+        try {
+          await cdp.send('Animation.seekAnimations', { animations: [id], currentTime: ms });
+          live.push(id);
+        } catch {
+          // Finished or cancelled since.
+        }
+      }
+      ids = live;
       const path = join(args.out, `${name}-${String(ms).padStart(3, '0')}ms.png`);
       await page.screenshot({ path, timeout: 180000 });
     }
