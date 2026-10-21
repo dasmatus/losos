@@ -18,6 +18,7 @@ pub mod dispatch;
 pub mod expr;
 pub mod glob;
 pub mod net;
+pub mod runner;
 pub mod workflow;
 
 pub use dispatch::MAX_ARCHIVE_BYTES;
