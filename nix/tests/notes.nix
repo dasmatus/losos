@@ -22,8 +22,7 @@
 #     knowledge base, refuses to publish one and serves none, and the
 #     pictures' "before" column is taken there.
 #
-# As in nix/tests/cloud.nix, lososd runs in native mode with a stub
-# `nextcloud-occ`, and nix/cluster.nix is not imported: `cluster.enable`
+# nix/cluster.nix is not imported: `cluster.enable`
 # is the gate's half, with no edge to join. The admin UI is built without
 # LosOS Diagrams, as in nix/tests/mesh-collab.nix.
 { pkgs }:
@@ -46,14 +45,6 @@ let
       runHook postBuild
     '';
   };
-
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
 
   vault = ../../admin-ui/app/tests/fixtures/vault;
 
@@ -150,7 +141,6 @@ pkgs.testers.nixosTest {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
         admin.ui = noLab lososPkgs.losos-admin-ui;
-        nextcloud.mode = "native";
         cloud.enable = true;
         forgejo.enable = false;
         mdns.enable = true;
@@ -158,8 +148,6 @@ pkgs.testers.nixosTest {
         sharingMyStorage = true;
         cluster.enable = true;
       };
-      systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
       # The same box once it stops sharing: knowledge bases off.
       specialisation.offMesh.configuration.losos.sharingMyStorage = lib.mkForce false;
       environment.systemPackages = [

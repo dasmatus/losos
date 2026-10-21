@@ -154,7 +154,7 @@ Prístupové tokeny, trh, Diagramy a všetko, čo maže dáta, zostáva v správ
 stránkach.
 :::
 
-## LosOS cloud a LosOS Git z tohto počítača \{#use-losos-cloud-and-losos-git-from-this-computer}
+## LosOS Cloud a LosOS Git z tohto počítača \{#use-losos-cloud-and-losos-git-from-this-computer}
 
 ```sh
 losos cloud setup
@@ -162,11 +162,11 @@ losos git setup
 ```
 
 Každý z príkazov si vypýta vaše heslo LosOS, to, ktorým sa prihlasujete do
-LosOS cloud, a nastaví počítač, na ktorom ho spustíte. Panel **Tento
+LosOS Cloud, a nastaví počítač, na ktorom ho spustíte. Panel **Tento
 počítač** v zobrazení na celú obrazovku urobí to isté jedným klávesom.
 
 `cloud setup` si od zariadenia vypýta heslo aplikácie iba pre tento počítač
-a uloží ho do kľúčenky tam, kde ho hľadá správca súborov. LosOS cloud sa
+a uloží ho do kľúčenky tam, kde ho hľadá správca súborov. LosOS Cloud sa
 potom objaví v bočnom paneli správcu súborov (GNOME Files a ďalší správcovia
 súborov, ktorí čítajú záložky GTK) a po otvorení ukáže vaše súbory bez
 pýtania hesla. Správca súborov sa pri prvom pripojení raz opýta, či prijať
@@ -185,7 +185,7 @@ toho certifikátu, rovnakou kontrolou, akú robí `losos`.
 
 Obe sú pomenované podľa počítača, napríklad „LosOS on laptop“. `--device`
 zvolí iné meno. Ak chcete počítaču prístup odobrať, vymažte jeho položku v
-časti **Zabezpečenie** v nastaveniach LosOS cloud alebo v časti
+časti **Zabezpečenie** v nastaveniach LosOS Cloud alebo v časti
 **Aplikácie** v nastaveniach LosOS Git. Opätovné spustenie nastavenia
 nahradí heslo alebo token toho počítača.
 

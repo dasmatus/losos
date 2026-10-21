@@ -57,7 +57,7 @@ každý z adresy vlastného projektu.
 **Obraz LosOS je ukážkový disk, nie zariadenie.** Je to ten istý
 `losos-disk-qcow2`, ktorý vydanie zverejňuje, bez šifrovania disku a bez
 bezstavového koreňa (pozri `nix/disk-images.nix`). Štartuje cez UEFI a
-potrebuje 4 GiB pamäte, pretože spúšťa dva klastre a LosOS cloud. Úloha vydania
+potrebuje 4 GiB pamäte, pretože spúšťa dva klastre a LosOS Cloud. Úloha vydania
 ho zverejní ako `ghcr.io/<owner>/<repo>-demo-containerdisk:<tag>` a posunie
 jeho značku `stable`, na ktorú sa katalóg odvoláva.
 :::

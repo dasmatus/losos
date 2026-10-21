@@ -39,10 +39,10 @@ field. It finds:
 
 - the sections and settings panes, by name or by a word such as "gpu" or
   "hostname", in the language on screen or in English
-- the apps in LosOS cloud, and LosOS Git
-- files and folders in LosOS cloud, by name
+- the apps in LosOS Cloud, and LosOS Git
+- files and folders in LosOS Cloud, by name
 - repositories in LosOS Git
-- text inside files, once you type three letters: in your LosOS cloud files,
+- text inside files, once you type three letters: in your LosOS Cloud files,
   and on the main branch of every repository in LosOS Git
 - your pins
 - apps to install from Artifact Hub; picking one opens the Apps pane with
@@ -55,12 +55,12 @@ Escape closes the list. Files and repositories open in their own app, and
 Ctrl+Enter or Cmd+Enter opens one in a new tab.
 
 :::note[File search needs the box's app password]
-File search uses an app password the box gets from LosOS cloud when the
+File search uses an app password the box gets from LosOS Cloud when the
 owner's password is set, which the wizard does. Without it, the list says so
 in place of the files; see [How the box lists your files](#pins) below.
 :::
 
-To search inside your LosOS cloud files, the box keeps an index of their
+To search inside your LosOS Cloud files, the box keeps an index of their
 text. It checks for new and changed files every two minutes and reads only
 those. It reads plain text and code, Markdown, CSV, JSON and HTML,
 OpenDocument files, Word, Excel and PowerPoint files in their current
@@ -75,7 +75,7 @@ directly.
 
 Pin the apps, files and repositories you open most, and they sit under
 **Pinned** in the sidebar. A pin opens in its own app: a file or folder in
-LosOS cloud, a repository on LosOS Git, an app on the Overview, or an app
+LosOS Cloud, a repository on LosOS Git, an app on the Overview, or an app
 you installed from the search on its own port. The box keeps the list, so
 every browser you sign in from shows the same pins.
 
@@ -84,7 +84,7 @@ every browser you sign in from shows the same pins.
 - On the Apps page, **Pin** sits beside each installed app.
 - The pencil beside **Pinned** opens the full list. There you move a pin up
   or down, unpin it, and pin from three tabs: **Apps**, **Files**, which
-  walks the folders of LosOS cloud, and **Repositories**.
+  walks the folders of LosOS Cloud, and **Repositories**.
 - Point at a pin in the sidebar and click the crossed-out pin to unpin it.
   The [search](#search) finds pins too.
 - Right-click a file, folder or repository in the search, an app tile on
@@ -93,12 +93,12 @@ every browser you sign in from shows the same pins.
 
 ![The Overview with six pins under Pinned in the sidebar, and the pinned Calendar and Notes tiles marked.](../img/pins-overview.png)
 
-![The pins list with its Files tab open on the Documents folder of LosOS cloud.](../img/pins-dialog.png)
+![The pins list with its Files tab open on the Documents folder of LosOS Cloud.](../img/pins-dialog.png)
 
 :::note[How the box lists your files]
-The box lists your files with an app password it asks LosOS cloud for when
+The box lists your files with an app password it asks LosOS Cloud for when
 the owner's password is set, which the wizard does. The app password shows
-up in LosOS cloud's security settings as "LosOS admin page". Revoking it
+up in LosOS Cloud's security settings as "LosOS admin page". Revoking it
 there stops the listing, and file search, until the owner's password is set
 again, through the spare-key route in
 [Forgot the password](../troubleshooting/forgot-password#you-have-the-spare-admin-key). The sidebar holds 24 pins.
@@ -159,7 +159,7 @@ same. See [Sign-in and the spare key](sign-in-and-spare-key).
 ## What the admin pages cannot do
 
 There is no file browser, no terminal and no log viewer. Your files live in
-LosOS cloud; the **Files** tab of the pins list shows folders only so you can
+LosOS Cloud; the **Files** tab of the pins list shows folders only so you can
 pin from them. The box has no shell, so neither do the pages. The box reports
 on itself through the Overview, the Storage pane and the About pane. When
 those are not enough, [When something goes wrong](../troubleshooting) says

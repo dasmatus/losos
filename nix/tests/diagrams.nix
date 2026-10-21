@@ -48,6 +48,7 @@ let
   common = import ./diagrams-common.nix { inherit pkgs shipped; };
   inherit (common) ui launch;
 
+  # main's Nextcloud claim, for the Before box only: it asked occ.
   stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
     case "$1" in
       status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
@@ -174,7 +175,7 @@ let
             }
             { press = "Escape"; }
             { press = "Control+s"; }
-            { waitText = "Saved launch in LosOS Cloud (Diagrams/launch.canvas)."; }
+            { waitText = "Changes go to LosOS Cloud as you make them (Diagrams/launch.canvas)."; }
           ];
         }
         {
@@ -234,6 +235,44 @@ let
               }
               { press = "Escape"; }
               (card "Release notes")
+            ];
+        }
+        {
+          name = "mention-picker";
+          path = "/diagrams/?canvas=svg";
+          steps =
+            ready
+            ++ fresh
+            ++ [
+              { click.selector = "[data-testid=tray-items] [data-card=text]"; }
+              { click.selector = "[data-testid=diagram-wrap]"; }
+              {
+                fill = {
+                  label = "Card text, in Markdown";
+                  value = "Plan in @la";
+                };
+              }
+              { waitFor.selector = "[data-testid=mention-option][data-kind=file]"; }
+            ];
+        }
+        {
+          name = "mentions";
+          path = "/diagrams/?canvas=svg";
+          steps =
+            ready
+            ++ fresh
+            ++ [
+              { click.selector = "[data-testid=tray-items] [data-card=text]"; }
+              { click.selector = "[data-testid=diagram-wrap]"; }
+              {
+                fill = {
+                  label = "Card text, in Markdown";
+                  value = "## Launch\n\n@matus films it, the plan is in [@launch.canvas](/diagrams?file=Diagrams%2Flaunch.canvas)";
+                };
+              }
+              { press = "Escape"; }
+              { waitFor.selector = "[data-testid=mention-chip][data-kind=person]"; }
+              { waitFor.selector = "[data-testid=mention-chip][data-kind=file]"; }
             ];
         }
         {
@@ -322,12 +361,13 @@ pkgs.testers.nixosTest {
         backend.package = lososPkgs.losos-ctl;
         backend.plugins = lososPkgs.losos-plugins;
         admin.ui = ui;
-        nextcloud.mode = "native";
         forgejo.enable = false;
       }
-      // lib.optionalAttrs after { cloud.enable = true; };
-      systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+      // (if after then { cloud.enable = true; } else { nextcloud.mode = "native"; });
+      systemd.services.lososd = lib.mkIf (!after) {
+        path = lib.mkBefore [ stubOcc ];
+        environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+      };
       environment.systemPackages = [
         pkgs.jq
         pkgs.curl

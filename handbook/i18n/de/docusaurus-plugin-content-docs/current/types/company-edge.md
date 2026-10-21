@@ -82,7 +82,7 @@ Kurz gesagt:
 
 ## Die Boxen von der Edge aus verwalten \{#managing-the-boxes-from-the-edge}
 
-Wer die Edge der Firma betreut, kann LosOS cloud, LosOS Git und die Apps
+Wer die Edge der Firma betreut, kann LosOS Cloud, LosOS Git und die Apps
 ihrer Boxen auf einer Seite der Edge ändern. Ob diese Edge das darf,
 entscheidet der Besitzer jeder Box.
 
@@ -103,11 +103,11 @@ entscheidet der Besitzer jeder Box.
    `http://<edge>.local:8443/manage/`, und melden Sie sich mit dem Schlüssel
    an. Die Seite listet die Boxen, die die Edge weiterleitet, und öffnet die,
    deren Besitzer den Schalter eingeschaltet hat.
-4. Die Seite einer Box hat die Einstellungen von LosOS cloud und LosOS Git
+4. Die Seite einer Box hat die Einstellungen von LosOS Cloud und LosOS Git
    aus dem Bereich Apps der Box, ihre installierten Apps und die App-Suche.
    Eine Änderung baut die Box neu, wie eine Änderung auf der Box selbst.
 
-![Die Seite einer Box auf der Firmen-Edge: Einstellungen von LosOS cloud und LosOS Git, die installierten Apps und die App-Suche.](@site/docs/img/edge-manage-box-de.png)
+![Die Seite einer Box auf der Firmen-Edge: Einstellungen von LosOS Cloud und LosOS Git, die installierten Apps und die App-Suche.](@site/docs/img/edge-manage-box-de.png)
 
 Die Edge sieht keine Dateien, legt keine Personen an, ändert keine
 Passwörter und rührt Speicher, Sicherungen, Netzwerk und den Schalter selbst

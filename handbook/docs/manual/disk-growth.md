@@ -44,7 +44,7 @@ because the installer wipes everything.
 ## Running out of room
 
 The Overview shows **Almost full** and then **Out of room**. A full disk
-stops LosOS cloud from accepting uploads. Worse, it can stop the nightly
+stops LosOS Cloud from accepting uploads. Worse, it can stop the nightly
 rebuild. [Out of room](../troubleshooting/out-of-room) has the steps.
 
 ![The Overview on a box that is almost full: the Files tile and the storage card warn.](../img/overview-almost-full.png)

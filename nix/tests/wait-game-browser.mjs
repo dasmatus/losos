@@ -2,11 +2,10 @@
  * offers, on a booted box, and photograph it.
  *
  *   node wait-game-browser.mjs '{"origin": "http://127.0.0.1:18081",
- *     "mode": "wizard" | "rebuild", "token": "…", "out": "/…/shots",
+ *     "mode": "rebuild", "token": "…", "out": "/…/shots",
  *     "sync": "/…/sync"}'
  *
- * The box's waits are real: lososd's claim state while LosOS cloud is not
- * installed, and a rebuild unit lososd started. Only the test script can
+ * The box's wait is real: a rebuild unit lososd started. Only the test script can
  * end them, so when this side has seen what it needs it writes a file
  * named for the step into `sync` and waits for the page to see the wait
  * end. It prints one JSON line last, what it found, for the script to
@@ -120,28 +119,7 @@ async function collect(page, errors, where) {
   if (errors.length > 0) fail(`${where}: the page threw: ${errors.join('; ')}`);
 }
 
-if (plan.mode === 'wizard') {
-  /* An unclaimed box whose LosOS cloud is still installing: step 2 waits. */
-  const { context, page, errors } = await newPage();
-  await page.goto(`${plan.origin}/`, { waitUntil: 'load' });
-  await page.getByRole('button', { name: /^Continue$/ }).click();
-  await offer(page).waitFor();
-  found.wizardWaiting = await page.locator('input[name="new-password"]').isDisabled();
-  await page.screenshot({ path: `${plan.out}/wizard-offer.png` });
-  await offer(page).click();
-  await game(page).waitFor();
-  await switchTo(page, 'upstream');
-  await PLAY.upstream(page, 3);
-  found.games.upstream = await score(page);
-  await page.screenshot({ path: `${plan.out}/wizard-game.png` });
-  ask('installed');
-  await page.getByTestId('game-ready').waitFor({ timeout: 180000 });
-  await page.locator('input[name="new-password"]:not([disabled])').waitFor();
-  found.wizardReady = true;
-  await page.screenshot({ path: `${plan.out}/wizard-ready.png` });
-  await collect(page, errors, 'wizard');
-  await context.close();
-} else {
+{
   /* A claimed box: Apply starts a real rebuild, which runs until the
    * script lets it finish. */
   {

@@ -380,9 +380,9 @@ impl Install for IoInstall {
     ///
     /// `--unlock-key-file` authenticates with the keyfile the volume was just
     /// formatted with, so nothing is typed. `--tpm2-pcrs=` (empty) binds the
-    /// token to no PCRs, on purpose and for the same reason modules/keyring.nix
-    /// gives: this box updates its firmware, bootloader and kernel unattended
-    /// and has no shell to recover from, so a token bound to PCR 0 or 7 would
+    /// token to no PCRs, on purpose: this box updates its firmware,
+    /// bootloader and kernel unattended and has no shell to recover from,
+    /// so a token bound to PCR 0 or 7 would
     /// lock the owner out on the first firmware update. What the chip buys
     /// without PCRs is that the disk alone (pulled, cloned, imaged) is
     /// unreadable; a thief who takes the whole box keeps the chip and is

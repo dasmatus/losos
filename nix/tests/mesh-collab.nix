@@ -27,9 +27,7 @@
 # admin UI as it was before this feature: the boxes switch to it at the end
 # for the "before" pictures. The flake check runs without it.
 #
-# LosOS cloud's pod is not here: lososd runs in native mode with a stub
-# `nextcloud-occ`, which is all the claim asks of it (as in
-# nix/tests/cloud.nix). The admin UI is built without LosOS Diagrams, whose
+# The admin UI is built without LosOS Diagrams, whose
 # WebAssembly takes longer to build than this whole test runs and is not
 # part of anything tested here; the shipped package builds it.
 {
@@ -82,14 +80,6 @@ let
         EOF
       '';
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-
   shots = pkgs.writeShellScriptBin "mesh-collab-shots" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}/index.mjs
     # Signing in goes through Node's TLS, not Chromium's: the boxes'
@@ -115,15 +105,12 @@ let
         hostName = name;
         backend.package = lososPkgs.losos-ctl;
         admin.ui = adminUi;
-        nextcloud.mode = "native";
         forgejo.enable = false;
         cloud.enable = true;
         # What a box in a mesh has on by default.
         cloud.mesh.enable = true;
       };
       networking.extraHosts = hosts nodes;
-      systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
       specialisation = lib.mkIf (beforeUi != null) {
         before.configuration.losos.admin.ui = lib.mkForce (noLab beforeUi);
       };

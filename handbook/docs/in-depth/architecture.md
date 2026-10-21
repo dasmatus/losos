@@ -47,9 +47,11 @@ for the wire format.
 
 ## Workloads
 
-Nextcloud and Forgejo run in the box's own k3s cluster
-(`losos.<svc>.mode = "container"`) or natively on the host. The pods use
-`hostNetwork`. nginx is the only service on public ports and routes by path.
+LosOS Cloud (`modules/cloud.nix`, `backend/src/cloud/`) is a service of its
+own on the host, listening on a Unix socket only nginx may open. Forgejo
+runs in the box's own k3s cluster (`losos.forgejo.mode = "container"`) or
+natively on the host; its pod uses `hostNetwork`. nginx is the only service
+on public ports and routes by path.
 
 ## Repository layout
 
@@ -57,7 +59,7 @@ Nextcloud and Forgejo run in the box's own k3s cluster
 admin-ui/app/            the admin SPA
 admin-ui/tui/            losos, the terminal client (Rust)
 admin-ui/lab/            LosOS Diagrams' core and canvas (Rust, WebAssembly)
-admin-ui/themes/         LosOS cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
+admin-ui/themes/         LosOS Cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
 admin-ui/design-system/  dev-only tokens and React wrapper; not shipped
 backend/                 lososd + losos-ctl (Rust)
 edge/registrar/          the edge registrar (Rust)
@@ -87,8 +89,7 @@ well-meant change there breaks.
   `options.nix`, `disko.nix` and `installer.nix`.
 - `install` is the system installed on disk. It imports everything:
   `options`, `configuration`, `impermanence`, `disko`, `boot`, `services`,
-  `nextcloud-common`, `containers`, `daemon`, `overrides`, `updates`,
-  `defaults`. The flake passes `specialArgs.self = self` so `defaults.nix`
+  `cloud`, `containers`, `daemon`, `overrides`, `updates`, `defaults`. The flake passes `specialArgs.self = self` so `defaults.nix`
   can reach `self.packages.${system}.{losos-ctl,losos-admin-ui}` and wire in
   the control plane and the admin UI.
 
@@ -109,7 +110,7 @@ generates at `/etc/keys/persist-keyfile`. Unlock is TPM2 by default
 the initrd carries no secret and the keyfile stays only inside `/persist` as
 the recovery slot, which `losos-ctl grow` authenticates with. There is no PCR
 binding, on purpose. The box updates itself unattended and has no shell to
-recover a lockout from, the same call `keyring.nix` makes.
+recover a lockout from.
 
 Where the installer medium sees no `/dev/tpmrm0`, or with `losos-ctl install
 --no-tpm`, the box is in keyfile mode. `install-target.nix` sets
@@ -127,7 +128,7 @@ them, and both rebuild paths (`updates.nix`, `supervisor.rs`) pass
 `--impure` for that. See the auto-upgrade paragraph below.
 
 **Two isolated data domains, no shell** (`configuration.nix`). `notshared`
-(uid 1000) owns Nextcloud. `shared` (uid 1001) owns the storage contributed
+(uid 1000) is the owner's account in LosOS Cloud. `shared` (uid 1001) owns the storage contributed
 to the mesh. Both homes are mode `700`, each with its own primary group, so
 neither user can read the other's files. `isNormalUser` without an explicit
 `group` puts both in `users`, and a `750` home then grants that group r-x.
@@ -251,14 +252,13 @@ matter here. `overrides.rs`'s `parse_line` cuts a value at the first `#`
 `upgradeFlakeUri`. And a list is one `[ "a" "b" ]` line, strings only.
 
 **Workloads and the single front door** (`modules/containers.nix`,
-`modules/workloads.nix`, `modules/cluster.nix`,
-`modules/nextcloud-common.nix`). systemd-nspawn is gone. When `losos.<svc>.mode == "container"`, Nextcloud and Forgejo
-run as Kubernetes workloads in the box's own local k3s cluster. The shared
-Nextcloud configuration still lives in `nextcloud-common.nix`, so the native
-and workload modes cannot drift apart. nginx is the only process holding
+`modules/workloads.nix`, `modules/cluster.nix`, `modules/cloud.nix`).
+systemd-nspawn is gone. When `losos.forgejo.mode == "container"`, Forgejo
+runs as a Kubernetes workload in the box's own local k3s cluster. LosOS
+Cloud runs on the host as its own user. nginx is the only process holding
 public ports. It routes by path on the appliance's mDNS name
-(`<hostName>.local:80/nextcloud`, `:80/forgejo`) and serves the admin SPA on
-the same `:80` vhost. Apps an owner installs as `notshared`, and the box's
+(`<hostName>.local/cloud/` and the addresses the Nextcloud apps call,
+`/forgejo/`) and serves the admin SPA on the same vhost. Apps an owner installs as `notshared`, and the box's
 own apps, run on rootless Podman with Podman Compose instead
 (`modules/apps.nix`, [App format](app-format.md)), so a box that shares
 nothing needs no cluster for them.
@@ -272,23 +272,21 @@ because the source *root* of `losos-admin-ui` is `admin-ui/app`. That is a
 stronger guarantee than the `design-system` name filter it replaced, which a
 rename would have broken.
 
-**One look across the homepage, Nextcloud and Forgejo** (`admin-ui/themes/`).
-`tokens.css` is plain CSS on purpose. Both apps' themes ship it byte for byte
-as `losos-tokens.css` and map their own variables onto it, so a colour
-changed there moves all three.
+**One look across the admin pages, LosOS Cloud and Forgejo**
+(`admin-ui/themes/`). LosOS Cloud is a page of the admin UI's own build
+(`admin-ui/app/cloud/`), so it uses the same components and `tokens.css`.
+`tokens.css` is plain CSS on purpose: Forgejo's theme and LosOS Login's ship
+it byte for byte as `losos-tokens.css` and map their own variables onto it,
+so a colour changed there moves all of them.
 
-Nextcloud gets a *theme folder*: `nextcloud-stack.nix` copies `themes/losos/`
-into the package, and the config sets `theme = "losos"`. Nextcloud resolves
-themes against its real server root, so it never finds a symlink beside the
-package. Forgejo gets `theme-losos-{auto,light,dark}.css` in
+Forgejo gets `theme-losos-{auto,light,dark}.css` in
 `$FORGEJO_CUSTOM/public/assets/css/`, linked by tmpfiles natively and copied
 by the image's entrypoint, with `DEFAULT_THEME = losos-auto`. Forgejo stamps
 that on accounts at creation, so an existing account keeps its old theme
 until its owner switches.
 
-Owners see the two apps as **LosOS cloud** and **LosOS Git**. The theme
-folder's `defaults.php` names Nextcloud and Forgejo's `APP_NAME` names
-Forgejo. Both get logos drawn from `admin-ui/themes/brand/`. `marks.py` wraps
+Owners see the two apps as **LosOS Cloud** and **LosOS Git**. Forgejo's
+`APP_NAME` names it. Both get logos drawn from `admin-ui/themes/brand/`. `marks.py` wraps
 `salmon.png`, a live coho salmon cut out of a NOAA Fisheries photo, into the
 SVGs and copies it to the SPA and the handbook. The build renders every PNG
 and the `.ico` from those. On 31 October, by the viewer's own date, the admin
@@ -299,14 +297,8 @@ back in. The rest of the
 upstream branding goes by config (no skeleton files, no help or sign-up
 links, no "Powered by") and two Forgejo template overrides.
 
-Two details are easy to miss. Nextcloud's header filter inverts any logo it
-takes for its own white one, so `server.css` sets
-`--image-logoheader-custom`. And the theming app reads a few `core/img/`
-files by absolute path, so `nextcloud-stack.nix` overwrites those in the
-package. That is why the image sets `integrity.check.disabled`, as
-`services.nextcloud` already does. `admin-ui/themes/default.nix` is plain
-data that all three callers import, for the same reason `nextcloud-stack.nix`
-is. The workload pods use `hostNetwork`, since the local cluster runs no CNI,
+`admin-ui/themes/default.nix` is plain data that every caller imports. The
+workload pods use `hostNetwork`, since the local cluster runs no CNI,
 so they answer on loopback. The gotcha in `.claude/CLAUDE.md` about the `lanOnly`
 guard explains what that costs.
 
@@ -339,7 +331,7 @@ exactly the origins in `losos.setup.finderOrigins` (an nginx map, asserted by
 **The `losos.*` option namespace** (`options.nix`). All project-specific
 knobs live under `options.losos`, with defaults in `defaults.nix`:
 `targetDrive`, `tpm.enable`, `sharingMyStorage`, `forgejo.enable`,
-`nextcloud.*`, `cluster.*` (mesh join, compute window), `shared.fscrypt.*`,
+`cloud.*`, `cluster.*` (mesh join, compute window), `shared.fscrypt.*`,
 `upgradeFlakeUri`, `backend.package`,
 `admin.{enable,port,apiPort,tokenFile,ui}`, `proxy.*` (the appliance side of
 the master proxy) and `edge.*` (the VPS side, consumed through the
@@ -413,7 +405,7 @@ volume with `/nix`, so a log that grows without end ends as a nightly rebuild
 with no room to build. journald keeps at most `losos.logs.journalMaxUse`
 (512 MB) and a month. The kubelet of each cluster keeps three files of
 10 MiB per container (`containerLogMaxSize`, `containerLogMaxFiles`), which
-covers LosOS cloud, LosOS Git and the apps, since they log to stdout.
+covers LosOS Cloud, LosOS Git and the apps, since they log to stdout.
 logrotate rotates lososd's `audit.log` and `rebuild.log` at 10 MB and adds a
 20 MB bound to the nginx rule nixpkgs ships. A tmpfiles rule deletes Nix
 build logs older than 30 days, which the garbage collector leaves behind.

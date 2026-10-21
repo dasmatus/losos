@@ -25,14 +25,6 @@ let
     shipped = lososPkgs.losos-admin-ui;
   };
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-
   together = pkgs.writeShellScriptBin "diagrams-together" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}/index.mjs
     export NODE_EXTRA_CA_CERTS=''${NODE_EXTRA_CA_CERTS:-/etc/losos-boxes.pem}
@@ -57,14 +49,11 @@ let
         backend.package = lososPkgs.losos-ctl;
         backend.plugins = lososPkgs.losos-plugins;
         admin.ui = common.ui;
-        nextcloud.mode = "native";
         forgejo.enable = false;
         cloud.enable = true;
         cloud.mesh.enable = true;
       };
       networking.extraHosts = hosts nodes;
-      systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
       environment.systemPackages = [
         pkgs.jq
         pkgs.curl

@@ -48,9 +48,11 @@ a formát komunikácie v [`backend/schema.json`](https://github.com/dasmatus/los
 
 ## Pracovné záťaže {#workloads}
 
-Nextcloud a Forgejo bežia vo vlastnom k3s klastri zariadenia
-(`losos.<svc>.mode = "container"`) alebo natívne na hostiteľovi. Pody
-používajú `hostNetwork`. nginx je jediná služba na verejných portoch a
+LosOS Cloud (`modules/cloud.nix`, `backend/src/cloud/`) je samostatná služba
+na hostiteľovi, ktorá počúva na Unix sockete, ktorý smie otvoriť iba nginx.
+Forgejo beží vo vlastnom k3s klastri zariadenia
+(`losos.forgejo.mode = "container"`) alebo natívne na hostiteľovi; jeho pod
+používa `hostNetwork`. nginx je jediná služba na verejných portoch a
 smeruje podľa cesty.
 
 ## Rozloženie repozitára {#repository-layout}
@@ -59,7 +61,7 @@ smeruje podľa cesty.
 admin-ui/app/            the admin SPA
 admin-ui/tui/            losos, the terminal client (Rust)
 admin-ui/lab/            LosOS Diagrams' core and canvas (Rust, WebAssembly)
-admin-ui/themes/         LosOS cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
+admin-ui/themes/         LosOS Cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
 admin-ui/design-system/  dev-only tokens and React wrapper; not shipped
 backend/                 lososd + losos-ctl (Rust)
 edge/registrar/          the edge registrar (Rust)
@@ -89,8 +91,7 @@ pokazí dobre mienená zmena.
   iba `options.nix`, `disko.nix` a `installer.nix`.
 - `install` je systém nainštalovaný na disku. Importuje všetko:
   `options`, `configuration`, `impermanence`, `disko`, `boot`, `services`,
-  `nextcloud-common`, `containers`, `daemon`, `overrides`, `updates`,
-  `defaults`. Flake odovzdáva `specialArgs.self = self`, aby `defaults.nix`
+  `cloud`, `containers`, `daemon`, `overrides`, `updates`, `defaults`. Flake odovzdáva `specialArgs.self = self`, aby `defaults.nix`
   dosiahol na `self.packages.${system}.{losos-ctl,losos-admin-ui}` a zapojil
   riadiacu vrstvu a administračné UI.
 
@@ -111,7 +112,7 @@ TPM2 (`losos.tpm.enable = true`). Hneď po `disko` inštalátor spustí
 initrd nenesie žiadne tajomstvo a kľúčový súbor zostáva iba vnútri `/persist`
 ako záchranný slot, ktorým sa overuje `losos-ctl grow`. Väzba na PCR zámerne
 neexistuje. Zariadenie sa aktualizuje samo bez obsluhy a nemá shell, z ktorého by sa
-dalo zotaviť zo zablokovania; rovnaké rozhodnutie robí `keyring.nix`.
+dalo zotaviť zo zablokovania.
 
 Ak inštalačné médium nevidí `/dev/tpmrm0`, alebo s `losos-ctl install
 --no-tpm`, je zariadenie v režime kľúčového súboru. `install-target.nix` nastaví
@@ -129,7 +130,7 @@ prečítať, a obe cesty prestavby (`updates.nix`, `supervisor.rs`) kvôli tomu
 odovzdávajú `--impure`. Pozrite odsek o automatickom upgrade nižšie.
 
 **Dve izolované dátové domény, žiadny shell** (`configuration.nix`). `notshared`
-(uid 1000) vlastní Nextcloud. `shared` (uid 1001) vlastní úložisko poskytnuté
+(uid 1000) je účet vlastníka v LosOS Cloud. `shared` (uid 1001) vlastní úložisko poskytnuté
 do mesh. Oba domovské adresáre majú režim `700`, každý s vlastnou primárnou
 skupinou, takže žiadny z používateľov nemôže čítať súbory toho druhého.
 `isNormalUser` bez explicitnej `group` dá oboch do `users` a domovský adresár
@@ -259,14 +260,13 @@ kedysi ju odrezával aj v nich, čo pokazilo predvolené `upgradeFlakeUri`. A
 zoznam je jeden riadok `[ "a" "b" ]`, iba reťazce.
 
 **Pracovné záťaže a jediné predné dvere** (`modules/containers.nix`,
-`modules/workloads.nix`, `modules/cluster.nix`,
-`modules/nextcloud-common.nix`). systemd-nspawn je preč. Keď `losos.<svc>.mode == "container"`, Nextcloud a Forgejo bežia ako
-Kubernetes záťaže vo vlastnom lokálnom k3s klastri zariadenia. Zdieľaná
-konfigurácia Nextcloudu stále žije v `nextcloud-common.nix`, takže natívny a
-kontajnerový režim sa nemôžu rozísť. nginx je jediný proces, ktorý drží
-verejné porty. Smeruje podľa cesty na mDNS mene zariadenia
-(`<hostName>.local:80/nextcloud`, `:80/forgejo`) a na tom istom vhoste `:80`
-servíruje administračnú SPA. Aplikácie, ktoré vlastník nainštaluje ako
+`modules/workloads.nix`, `modules/cluster.nix`, `modules/cloud.nix`).
+systemd-nspawn je preč. Keď `losos.forgejo.mode == "container"`, Forgejo beží
+ako Kubernetes záťaž vo vlastnom lokálnom k3s klastri zariadenia. LosOS Cloud
+beží na hostiteľovi pod vlastným používateľom. nginx je jediný proces, ktorý
+drží verejné porty. Smeruje podľa cesty na mDNS mene zariadenia
+(`<hostName>.local/cloud/` a adresy, ktoré volajú aplikácie Nextcloud,
+`/forgejo/`) a na tom istom vhoste servíruje administračnú SPA.servíruje administračnú SPA. Aplikácie, ktoré vlastník nainštaluje ako
 `notshared`, a vlastné aplikácie zariadenia naopak bežia na Podmane bez
 roota cez Podman Compose (`modules/apps.nix`,
 [Formát aplikácií](app-format.md)), takže zariadenie, ktoré nič nezdieľa,
@@ -281,23 +281,21 @@ kľúče témy Tailwind v4. Dizajnový systém zostáva mimo Nix closure, preto�
 než filter podľa názvu `design-system`, ktorý nahradil a ktorý by
 premenovanie pokazilo.
 
-**Jeden vzhľad pre domovskú stránku, Nextcloud a Forgejo** (`admin-ui/themes/`).
-`tokens.css` je zámerne čisté CSS. Témy oboch aplikácií ho dodávajú bajt po
-bajte ako `losos-tokens.css` a mapujú naň vlastné premenné, takže farba
-zmenená tam pohne všetkými tromi.
+**Jeden vzhľad pre administračné stránky, LosOS Cloud a Forgejo**
+(`admin-ui/themes/`). LosOS Cloud je stránka vlastného zostavenia
+administračného rozhrania (`admin-ui/app/cloud/`), takže používa tie isté
+komponenty aj `tokens.css`. `tokens.css` je zámerne čisté CSS: téma Forgejo a
+téma LosOS Login ho dodávajú bajt po bajte ako `losos-tokens.css` a mapujú naň
+vlastné premenné, takže farba zmenená tam pohne všetkými.
 
-Nextcloud dostane *priečinok témy*: `nextcloud-stack.nix` skopíruje
-`themes/losos/` do balíka a konfigurácia nastaví `theme = "losos"`. Nextcloud
-hľadá témy voči svojmu skutočnému koreňu servera, takže symbolický odkaz
-vedľa balíka nikdy nenájde. Forgejo dostane `theme-losos-{auto,light,dark}.css`
+Forgejo dostane `theme-losos-{auto,light,dark}.css`
 v `$FORGEJO_CUSTOM/public/assets/css/`, natívne prepojené cez tmpfiles a
 skopírované vstupným bodom obrazu, s `DEFAULT_THEME = losos-auto`. Forgejo to
 vtlačí účtom pri ich vytvorení, takže existujúci účet si ponechá starú tému,
 kým ju jeho vlastník neprepne.
 
-Vlastníci vidia tieto dve aplikácie ako **LosOS cloud** a **LosOS Git**.
-`defaults.php` v priečinku témy pomenúva Nextcloud a `APP_NAME` vo Forgejo
-pomenúva Forgejo. Obe dostanú logá nakreslené z `admin-ui/themes/brand/`.
+Vlastníci vidia tieto dve aplikácie ako **LosOS Cloud** a **LosOS Git**.
+`APP_NAME` vo Forgejo pomenúva Forgejo. Obe dostanú logá nakreslené z `admin-ui/themes/brand/`.
 `marks.py` zabalí `salmon.png`, živého lososa kisuča vystrihnutého z
 fotografie NOAA Fisheries, do SVG a skopíruje ho do SPA a príručky. Zostavenie
 z nich vyrenderuje každé PNG aj `.ico`. 31. októbra, podľa vlastného dátumu
@@ -309,13 +307,7 @@ značky upstreamu sa rieši konfiguráciou (žiadne súbory skeleton, žiadne
 odkazy na pomoc ani registráciu, žiadne „Powered by“) a dvoma prepísanými
 šablónami Forgejo.
 
-Dva detaily sa ľahko prehliadnu. Filter hlavičky Nextcloudu invertuje každé
-logo, ktoré považuje za svoje vlastné biele, preto `server.css` nastavuje
-`--image-logoheader-custom`. A aplikácia theming číta niekoľko súborov
-`core/img/` podľa absolútnej cesty, preto ich `nextcloud-stack.nix` v balíku
-prepíše. Preto obraz nastavuje `integrity.check.disabled`, rovnako ako to už
-robí `services.nextcloud`. `admin-ui/themes/default.nix` sú čisté dáta, ktoré
-importujú všetci traja volajúci, z rovnakého dôvodu ako `nextcloud-stack.nix`.
+`admin-ui/themes/default.nix` sú čisté dáta, ktoré importuje každý volajúci.
 Pody záťaží používajú `hostNetwork`, keďže lokálny klaster nemá žiadne CNI,
 takže odpovedajú na loopbacku. Čo to stojí, vysvetľuje záludnosť o strážcovi
 `lanOnly` v `.claude/CLAUDE.md`.
@@ -349,7 +341,7 @@ presne originy v `losos.setup.finderOrigins` (nginx map, overený v
 **Menný priestor volieb `losos.*`** (`options.nix`). Všetky nastavenia
 špecifické pre projekt sú pod `options.losos`, s predvolenými hodnotami v
 `defaults.nix`: `targetDrive`, `tpm.enable`, `sharingMyStorage`,
-`forgejo.enable`, `nextcloud.*`, `cluster.*` (pripojenie k mesh, výpočtové
+`forgejo.enable`, `cloud.*`, `cluster.*` (pripojenie k mesh, výpočtové
 okno), `shared.fscrypt.*`, `upgradeFlakeUri`, `backend.package`,
 `admin.{enable,port,apiPort,tokenFile,ui}`, `proxy.*` (strana zariadenia v
 master proxy) a `edge.*` (strana VPS, používaná cez výstup flaku
@@ -421,7 +413,7 @@ rovnakom zväzku ako `/nix`, takže záznam, ktorý rastie bez konca, skončí
 nočnou prestavbou, ktorá nemá kde zostavovať. Žurnál má strop
 `losos.logs.journalMaxUse` (512 MB) a mesiac. Kubelet každého klastra si
 nechá tri súbory po 10 MiB na kontajner (`containerLogMaxSize`,
-`containerLogMaxFiles`), čo pokrýva LosOS cloud, LosOS Git aj aplikácie,
+`containerLogMaxFiles`), čo pokrýva LosOS Cloud, LosOS Git aj aplikácie,
 lebo zapisujú na stdout. logrotate otáča `audit.log` a `rebuild.log` démona
 lososd pri 10 MB a pravidlu pre nginx, ktoré dodáva nixpkgs, pridáva hranicu
 20 MB. Pravidlo tmpfiles maže záznamy zostavení Nixu staršie ako 30 dní,
