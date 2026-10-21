@@ -999,7 +999,7 @@ export function LendSection({
   const amountErrorId = React.useId();
   const enable = extraSlot(form, LEND_ENABLE);
   const memory = extraSlot(form, LEND_MEMORY);
-  const savedMib = Number(memory?.raw ?? "4096");
+  const savedMib = Number(memory?.raw ?? "1024");
   const [amount, setAmount] = React.useState<string | null>(null);
   const [problem, setProblem] = React.useState<string | null>(null);
   if (enable === null || memory === null) return null;

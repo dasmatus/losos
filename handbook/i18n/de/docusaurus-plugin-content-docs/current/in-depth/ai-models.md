@@ -26,7 +26,7 @@ erreicht und dem Käufer antwortet.
 
 Das Verleihen hat einen eigenen Schalter, `losos.inference.lend.enable`.
 Wie viel Arbeitsspeicher die Box verleiht, legt
-`losos.inference.lend.memoryMiB` fest, standardmäßig 4096 MiB, und mit wie
+`losos.inference.lend.memoryMiB` fest, standardmäßig 1024 MiB, und mit wie
 vielen Prozessor-Threads sie rechnet, `losos.inference.lend.threads`. Ohne
 eine Thread-Zahl nimmt sie die Hälfte der Threads der Box. Im Markt-Bereich
 ist es der Schalter **Speicher an KI-Modelle verleihen** unter **Freier

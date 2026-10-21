@@ -540,7 +540,7 @@ await check('the Market pane lends memory to AI models with two lines of overrid
   await main(page).getByTestId('lend-memory').waitFor();
   await flip(row(page, 'inference.lend.enable'));
   const amount = page.locator('[data-option="inference.lend.memoryMiB"]');
-  assert.equal(await amount.inputValue(), '4', 'the default 4096 MiB is not shown as 4 GiB');
+  assert.equal(await amount.inputValue(), '1', 'the default 1024 MiB is not shown as 1 GiB');
   await amount.fill('300');
   await main(page).getByText('Lend a whole number of GiB, from 1 to 256.').waitFor();
   await amount.fill('24');

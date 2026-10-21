@@ -24,7 +24,7 @@ kupujúcemu.
 
 Požičiavanie má vlastný prepínač `losos.inference.lend.enable`. Koľko pamäte
 zariadenie požičia, určuje `losos.inference.lend.memoryMiB`, predvolene
-4096 MiB, a s koľkými vláknami procesora počíta, určuje
+1024 MiB, a s koľkými vláknami procesora počíta, určuje
 `losos.inference.lend.threads`. Bez počtu vlákien použije polovicu vlákien
 zariadenia. Na paneli Trh je to prepínač **Požičiavať pamäť modelom AI** v
 časti **Voľná pamäť**, s množstvom v GiB.

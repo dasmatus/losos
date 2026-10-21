@@ -22,7 +22,7 @@ reaches every box's share through that box's tunnel and answers the buyer.
 ## Lending memory
 
 Lending is its own switch, `losos.inference.lend.enable`, with
-`losos.inference.lend.memoryMiB` for how much memory the box lends, 4096 MiB
+`losos.inference.lend.memoryMiB` for how much memory the box lends, 1024 MiB
 by default, and `losos.inference.lend.threads` for how many processor
 threads it computes with. Without a thread count it takes half of the box's.
 On the Market pane the switch is **Lend memory to AI models**, under
