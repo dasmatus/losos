@@ -698,18 +698,19 @@ await check('every sidebar entry, folded or not, lands on its own address', asyn
   await page.close();
 });
 
-/* Lab is a page of its own that nginx serves at /lab/ (admin-ui/lab/), not
- * a route of this app, so its entry must be a plain link that loads the
- * page. A router link would draw this app's "nothing here" at /lab/. */
-await check('the Lab entry is a plain link that loads /lab/', async () => {
+/* Diagrams is a page of its own that nginx serves at /diagrams/
+ * (admin-ui/app/diagrams/), not a route of this app, so its entry must be a
+ * plain link that loads the page. A router link would draw this app's
+ * "nothing here" at /diagrams/. */
+await check('the Diagrams entry is a plain link that loads /diagrams/', async () => {
   const { page } = await open({ stored: true });
-  const lab = nav(page).getByRole('link', { name: 'Lab', exact: true });
-  assert.equal(await lab.getAttribute('href'), '/lab/');
+  const entry = nav(page).getByRole('link', { name: 'Diagrams', exact: true });
+  assert.equal(await entry.getAttribute('href'), '/diagrams/');
   const [request] = await Promise.all([
-    page.waitForRequest((r) => r.isNavigationRequest() && r.url() === origin + '/lab/'),
-    lab.click(),
+    page.waitForRequest((r) => r.isNavigationRequest() && r.url() === origin + '/diagrams/'),
+    entry.click(),
   ]);
-  assert.ok(request, 'clicking Lab loaded no page');
+  assert.ok(request, 'clicking Diagrams loaded no page');
   await page.close();
 });
 

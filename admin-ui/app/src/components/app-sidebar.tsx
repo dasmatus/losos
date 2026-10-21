@@ -6,7 +6,7 @@ import {
   HardDriveIcon,
   Home01Icon,
   LayoutGridIcon,
-  NetworkIcon,
+  FlowchartIcon,
   PencilEdit02Icon,
   PinOffIcon,
   Search01Icon,
@@ -55,7 +55,7 @@ import { pinKey, viewPin, type PinView } from "@/lib/pins";
  *   Mesh                ▾   (the link opens Mesh; the chevron folds)
  *     Market                selling storage and compute, and disk sharing
  *     Machines              virtual machines on the mesh
- *   Lab                     (LosOS Lab at /lab/, a page of its own)
+ *   Diagrams                (LosOS Diagrams at /diagrams/, a page of its own)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
  *
@@ -85,7 +85,7 @@ interface LinkEntry {
   icon: IconSvgElement;
   /** The settings pane behind it, for matching and for "is this current". */
   pane?: SettingsPaneId;
-  /** A page outside this app (the lab at /lab/): a plain link that loads it,
+  /** A page outside this app (LosOS Diagrams at /diagrams/): a plain link that loads it,
    * not a router link that would draw this app's 404 at that address. */
   external?: boolean;
   children?: readonly Entry[];
@@ -130,9 +130,9 @@ const TREE: readonly Entry[] = [
   {
     kind: "link",
     key: "lab",
-    to: "/lab/",
+    to: "/diagrams/",
     label: "shell.nav.lab",
-    icon: NetworkIcon,
+    icon: FlowchartIcon,
     external: true,
   },
   {

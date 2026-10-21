@@ -1,7 +1,9 @@
-/* LosOS Lab: boot (the core, the engine probe, "This box", the last setup),
- * the frame loop, the keyboard, and the workbench layout: the top bar, the
- * canvas with the traffic panel under it, the inspector docked right (a
- * sheet on a phone) and the parts tray along the bottom. */
+/* LosOS Diagrams: boot (the core, the engine probe, "This box", the last
+ * diagram, LosOS Cloud and the machines), the frame loop, the keyboard, and
+ * the workbench layout: the top bar, the canvas (with the traffic panel
+ * under it in the network views), the inspector docked right (a sheet on a
+ * phone) and the tray along the bottom. A `?file=` address opens that
+ * diagram from LosOS Cloud. */
 
 import * as React from "react";
 import { Confirmations } from "@/components/ui/toaster";
@@ -13,6 +15,9 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Actions, actions, setActions } from "./actions";
 import { Canvas } from "./canvas";
+import { probeCloud } from "./canvas/cloud";
+import { DiagramInspector } from "./canvas/inspector";
+import { watchMachines } from "./canvas/machines";
 import { Core, CoreError } from "./core";
 import { Engine } from "./engine";
 import { setEngine } from "./engine-hook";
@@ -73,8 +78,11 @@ async function bootOnce(step: (s: SplashStep) => void): Promise<void> {
   ]);
   const box = BOX_COPY ? readThisBox() : Promise.resolve(null);
   const ordering = BOX_COPY ? readOrdering() : Promise.resolve(null);
-  await Promise.allSettled([probe, box, ordering]);
+  const cloud = probeCloud();
+  await Promise.allSettled([probe, box, ordering, cloud]);
   s.ordering = await ordering;
+  s.cloud = await cloud;
+  watchMachines(s);
 
   const last = readLast();
   if (last !== null) {
@@ -86,6 +94,11 @@ async function bootOnce(step: (s: SplashStep) => void): Promise<void> {
   let loaded = false;
   if (thisBox && "settings" in thisBox) loaded = a.loadThisBox(thisBox.settings, thisBox.edge);
   if (!loaded) a.pick("two-sites");
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get("view");
+  if (view === "canvas" || view === "logical" || view === "physical") a.setView(view);
+  const wanted = params.get("file");
+  if (wanted && s.cloud) await a.openCloud(wanted);
   if (thisBox && "error" in thisBox) {
     s.thisBoxProblem = thisBox.error;
     s.emit("model");
@@ -144,6 +157,13 @@ function Workbench() {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as Element | null;
       if (el?.closest?.("input, textarea, select, [contenteditable], .lab-term, .xterm, [role=dialog]")) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void actions().saveQuick();
+        return;
+      }
+      // The diagram keeps its own keys (canvas/diagram.tsx).
+      if (store().ui.view === "canvas") return;
       if (e.key === "Escape") actions().cancelTool();
       if ((e.key === "Delete" || e.key === "Backspace") && store().ui.sel) {
         actions().removeSelection();
@@ -173,26 +193,26 @@ function Workbench() {
       <TopBar phone={phone} onDetails={() => s.setUi({ sheet: true })} />
       <main className="relative grid min-h-0 min-w-0 grid-cols-1 grid-rows-[minmax(0,1fr)_auto] [grid-area:work]">
         <Canvas />
-        <section
-          aria-label={t("lab.sim.label")}
-          className={cn("flex min-h-0 flex-col border-t border-line bg-surface", s.ui.folded ? "h-auto" : "h-[210px]")}
-        >
-          <SimBar />
-          <EventList />
-        </section>
+        {s.ui.view !== "canvas" && (
+          <section
+            aria-label={t("lab.sim.label")}
+            className={cn("flex min-h-0 flex-col border-t border-line bg-surface", s.ui.folded ? "h-auto" : "h-[210px]")}
+          >
+            <SimBar />
+            <EventList />
+          </section>
+        )}
       </main>
       {phone ? (
         <Sheet open={s.ui.sheet} onOpenChange={(open) => s.setUi({ sheet: open })}>
           <SheetContent side="right" closeLabel={t("lab.sheet.close")} className="w-full max-w-[440px] gap-0 bg-surface p-0 pt-10" data-testid="inspector-sheet">
             <SheetTitle className="sr-only">{t("lab.sheet.title")}</SheetTitle>
-            <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-              <Inspector />
-            </div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-auto">{s.ui.view === "canvas" ? <DiagramInspector /> : <Inspector />}</div>
           </SheetContent>
         </Sheet>
       ) : (
         <aside aria-label={t("lab.inspector.label")} className="flex min-h-0 min-w-0 flex-col border-l border-line bg-surface [grid-area:side]">
-          <Inspector />
+          {s.ui.view === "canvas" ? <DiagramInspector /> : <Inspector />}
         </aside>
       )}
       <Tray />
@@ -237,7 +257,8 @@ export function LabRoot() {
     <TooltipProvider>
       {ready && <Workbench />}
       {!removed && <Splash step={step} gone={gone} error={error} />}
-      <Confirmations />
+      {/* below the toolbar, which reaches the right edge on a wide screen */}
+      <Confirmations className="top-16 max-sm:top-16" />
     </TooltipProvider>
   );
 }

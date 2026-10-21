@@ -343,7 +343,7 @@ let
   # One map per header: value on the admin surface, empty (header omitted) on
   # the two proxied service routes, the handbook's and the lab's own values
   # (or the admin value, for the headers they share) under /handbook/ and
-  # /lab/, and the widget frame's own value (or nothing) under
+  # /diagrams/, and the widget frame's own value (or nothing) under
   # /widget-frame/.
   adminHeaderMap = variable: value: handbookValue: labValue: frameValue: ''
     map $uri ${variable} {
@@ -351,7 +351,7 @@ let
         ~^/nextcloud     "";
         ~^/forgejo       "";
         ~^/handbook/     "${handbookValue}";
-        ~^/lab/          "${labValue}";
+        ~^/diagrams/     "${labValue}";
         ~^/widget-frame/ "${frameValue}";
     }
   '';
@@ -542,15 +542,19 @@ in
           "/manage/".return = "404";
         }
         (lib.mkIf labEnabled {
-          # LosOS Lab: lab/index.html in the admin UI's bundle, on real paths
-          # under /lab/ like the SPA is on /, so every deep link and reload
-          # gets the page. Its scripts and the core's .wasm are in the
-          # shared /assets/. LAN-only like the rest of the admin surface; the
-          # header map above gives this prefix its own CSP.
-          "/lab/" = {
-            tryFiles = "$uri /lab/index.html";
+          # LosOS Diagrams: diagrams/index.html in the admin UI's bundle, on
+          # real paths under /diagrams/ like the SPA is on /, so every deep
+          # link and reload gets the page. Its scripts and the core's .wasm
+          # are in the shared /assets/. LAN-only like the rest of the admin
+          # surface; the header map above gives this prefix its own CSP.
+          "/diagrams/" = {
+            tryFiles = "$uri /diagrams/index.html";
             extraConfig = lanOnly;
           };
+          # The page's old address, from before it was LosOS Diagrams. A
+          # return runs before the access phase, so no guard here: the
+          # redirect says nothing, and /diagrams/ keeps its own.
+          "/lab/".return = "301 /diagrams/$is_args$args";
         })
         (lib.mkIf labLibvirt {
           # The Lab guests' serial consoles and network cards, as WebSockets

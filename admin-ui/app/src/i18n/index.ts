@@ -12,6 +12,7 @@ import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import home from "./home";
 import install from "./install";
+import diagrams from "./diagrams";
 import lab from "./lab";
 import look from "./look";
 import machines from "./machines";
@@ -48,6 +49,7 @@ export const MESSAGES = {
   ...account,
   ...profile,
   ...lab,
+  ...diagrams,
   ...tour,
   ...palette,
   ...pins,

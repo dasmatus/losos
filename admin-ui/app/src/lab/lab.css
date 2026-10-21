@@ -575,3 +575,622 @@ body.lab-body {
 @media (prefers-reduced-motion: reduce) {
   .lab-splash .sp-bar b { animation: none; width: 100%; }
 }
+
+/* ── LosOS Diagrams: the canvas view (canvas/diagram.tsx) ──────────────────
+ * The six JSON Canvas presets, Obsidian's order (red, orange, yellow, green,
+ * cyan, purple), each the house hue nearest it or one turned from a house
+ * token in oklch, so they keep the palette's weight in light and dark. A
+ * card's or an arrow's colour arrives as --dg-card / --dg-edge, set through
+ * React's style prop (CSSOM, allowed by style-src 'self'). */
+:root {
+  --dg-c1: var(--crit);
+  --dg-c2: oklch(from var(--warn) l c 55);
+  --dg-c3: oklch(from var(--warn) calc(l + 0.08) c 90);
+  --dg-c4: var(--ok);
+  --dg-c5: var(--accent);
+  --dg-c6: oklch(from var(--accent) l c 300);
+}
+
+.dg-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--ground);
+  cursor: default;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+.dg-canvas.tool-place {
+  cursor: crosshair;
+}
+.dg-canvas.tool-hand {
+  cursor: grab;
+}
+.dg-dot {
+  fill: var(--line);
+}
+
+/* cards */
+.dg-node .dg-shape {
+  fill: var(--surface);
+  stroke: var(--line);
+  stroke-width: 2;
+}
+.dg-node .dg-shape-inner {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 2;
+}
+.dg-node.colored .dg-shape {
+  fill: color-mix(in oklch, var(--dg-card) 12%, var(--surface));
+  stroke: var(--dg-card);
+}
+.dg-node.colored .dg-shape-inner {
+  stroke: var(--dg-card);
+}
+.dg-node.border-dashed .dg-shape {
+  stroke-dasharray: 8 6;
+}
+.dg-node.border-dotted .dg-shape {
+  stroke-dasharray: 1.5 5;
+  stroke-linecap: round;
+}
+.dg-node.border-invisible .dg-shape,
+.dg-node.border-invisible .dg-shape-inner {
+  stroke: transparent;
+}
+.dg-node:hover .dg-shape {
+  stroke: color-mix(in oklch, var(--accent) 55%, var(--line));
+}
+.dg-node.colored:hover .dg-shape {
+  stroke: var(--dg-card);
+}
+.dg-sel-box {
+  fill: none;
+  stroke: var(--accent);
+  pointer-events: none;
+}
+
+.dg-body {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  padding: 10px 14px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  user-select: none;
+}
+.dg-body.centred {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0;
+  text-align: center;
+}
+.dg-body.align-center {
+  text-align: center;
+}
+.dg-body.align-right {
+  text-align: right;
+}
+.dg-body.device {
+  padding: 0;
+}
+
+/* Markdown in a card */
+.dg-md > :first-child {
+  margin-top: 0;
+}
+.dg-md > :last-child {
+  margin-bottom: 0;
+}
+.dg-md p,
+.dg-md ul,
+.dg-md ol,
+.dg-md pre,
+.dg-md blockquote {
+  margin: 0 0 0.5em;
+}
+.dg-md h1,
+.dg-md h2,
+.dg-md h3,
+.dg-md h4,
+.dg-md h5,
+.dg-md h6 {
+  margin: 0.2em 0 0.35em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.dg-md h1 {
+  font-size: 1.6em;
+}
+.dg-md h2 {
+  font-size: 1.35em;
+}
+.dg-md h3 {
+  font-size: 1.15em;
+}
+.dg-md h4,
+.dg-md h5,
+.dg-md h6 {
+  font-size: 1em;
+}
+.dg-md ul,
+.dg-md ol {
+  padding-left: 1.3em;
+}
+.dg-md ul {
+  list-style: disc;
+}
+.dg-md ol {
+  list-style: decimal;
+}
+.dg-md li.dg-d1 {
+  margin-left: 1.1em;
+}
+.dg-md li.dg-d2 {
+  margin-left: 2.2em;
+}
+.dg-md li.dg-d3 {
+  margin-left: 3.3em;
+}
+.dg-md li.dg-task {
+  list-style: none;
+  margin-left: -1.3em;
+}
+.dg-md li.dg-task input {
+  margin: 0 0.45em 0 0;
+  vertical-align: -0.1em;
+  accent-color: var(--accent);
+}
+.dg-md li[data-done] {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.dg-md code {
+  border-radius: 4px;
+  background: var(--sunk);
+  padding: 0.05em 0.3em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.9em;
+}
+.dg-md pre {
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--sunk);
+  padding: 0.5em 0.7em;
+  white-space: pre-wrap;
+}
+.dg-md pre code {
+  background: none;
+  padding: 0;
+}
+.dg-md blockquote {
+  border-left: 3px solid var(--line);
+  padding-left: 0.7em;
+  color: var(--muted);
+}
+.dg-md blockquote.dg-callout {
+  border-left-color: var(--accent);
+  border-radius: 0 6px 6px 0;
+  background: var(--accent-wash);
+  padding: 0.4em 0.7em;
+  color: var(--ink);
+}
+.dg-md blockquote[data-callout="warning"],
+.dg-md blockquote[data-callout="caution"] {
+  border-left-color: var(--warn);
+  background: color-mix(in oklch, var(--warn) 12%, var(--surface));
+}
+.dg-md blockquote[data-callout="danger"],
+.dg-md blockquote[data-callout="error"],
+.dg-md blockquote[data-callout="bug"] {
+  border-left-color: var(--crit);
+  background: color-mix(in oklch, var(--crit) 12%, var(--surface));
+}
+.dg-md blockquote[data-callout="success"],
+.dg-md blockquote[data-callout="tip"],
+.dg-md blockquote[data-callout="done"] {
+  border-left-color: var(--ok);
+  background: color-mix(in oklch, var(--ok) 12%, var(--surface));
+}
+.dg-md .dg-callout-title {
+  margin-bottom: 0.25em;
+  font-weight: 600;
+}
+.dg-md hr {
+  margin: 0.6em 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.dg-md mark {
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--dg-c3) 35%, transparent);
+  color: inherit;
+  padding: 0 0.15em;
+}
+.dg-md a,
+.dg-link a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dg-md .dg-wiki {
+  color: var(--accent);
+  border-bottom: 1px dashed currentColor;
+}
+
+/* typing into a card */
+.dg-editor {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 0;
+  color: var(--ink);
+  font: inherit;
+  outline: none;
+  user-select: text;
+}
+.dg-editor-line {
+  height: 28px;
+  border: 1px solid var(--accent);
+  padding: 0 8px;
+  font-size: 14px;
+}
+.dg-editor-line.centred {
+  text-align: center;
+}
+
+/* devices, machines, links, files */
+.dg-device {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 6px 10px;
+  box-sizing: border-box;
+}
+.dg-device[data-off] .dg-device-icon {
+  opacity: 0.45;
+}
+.dg-device-icon {
+  width: 48px;
+  height: 48px;
+  flex: none;
+}
+.dg-device-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.dg-device-text b {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dg-device-text span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.dg-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px !important;
+}
+.dg-badge {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--faint);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.dg-badge.tone-ok {
+  background: var(--ok);
+}
+.dg-badge.tone-warn {
+  background: var(--warn);
+}
+.dg-badge.tone-crit {
+  background: var(--crit);
+}
+.dg-badge.tone-accent {
+  background: var(--accent);
+}
+.dg-vm {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+  padding: 0 4px;
+  color: var(--surface);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+}
+.dg-machine {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dg-machine-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dg-machine-icon,
+.dg-link svg,
+.dg-file svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dg-machine-image,
+.dg-machine-line {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.dg-replicas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+}
+.dg-replicas li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dg-replicas i,
+.dg-tray-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.dg-replicas i.tone-ok {
+  background: var(--ok);
+}
+.dg-replicas i.tone-warn {
+  background: var(--warn);
+}
+.dg-replicas i.tone-crit {
+  background: var(--crit);
+}
+.dg-link,
+.dg-file {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.dg-link > div,
+.dg-file > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.dg-link span,
+.dg-file span,
+.dg-link a {
+  overflow: hidden;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dg-file span {
+  color: var(--muted);
+}
+.dg-file-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.dg-body:has(.dg-file-img) {
+  padding: 0;
+}
+
+/* groups */
+.dg-group-box {
+  fill: color-mix(in oklch, var(--ink) 3%, transparent);
+  stroke: var(--line);
+  stroke-width: 2;
+}
+.dg-group.colored .dg-group-box {
+  fill: color-mix(in oklch, var(--dg-card) 7%, transparent);
+  stroke: var(--dg-card);
+}
+.dg-group-label {
+  fill: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: default;
+}
+
+/* arrows */
+.dg-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+}
+.dg-edge-line {
+  fill: none;
+  stroke: var(--faint);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.dg-edge.colored .dg-edge-line {
+  stroke: var(--dg-edge);
+}
+.dg-head {
+  fill: var(--faint);
+  stroke: var(--faint);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.dg-head.open {
+  fill: var(--ground);
+}
+.dg-edge.colored .dg-head {
+  fill: var(--dg-edge);
+  stroke: var(--dg-edge);
+}
+.dg-edge.colored .dg-head.open {
+  fill: var(--ground);
+}
+.dg-edge.cable .dg-edge-line {
+  stroke: var(--lab-copper);
+  stroke-width: 3;
+}
+.dg-edge.cable-fiber .dg-edge-line {
+  stroke: var(--lab-fiber);
+}
+.dg-edge.cable-wifi .dg-edge-line {
+  stroke: var(--lab-wifi);
+}
+.dg-edge.cable-wan .dg-edge-line {
+  stroke: var(--lab-wan);
+}
+.dg-edge.cable.state-down .dg-edge-line {
+  stroke: var(--faint);
+  stroke-dasharray: 6 6;
+}
+.dg-edge:hover .dg-edge-line {
+  stroke-width: 3.5;
+}
+.dg-edge.sel .dg-edge-line {
+  stroke: var(--accent);
+  stroke-width: 3.5;
+}
+.dg-edge.sel .dg-head {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+.dg-edge-label {
+  fill: var(--ink);
+  font-size: 13px;
+  paint-order: stroke;
+  stroke: var(--ground);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+.dg-edge-label.ports {
+  fill: var(--muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+}
+
+/* handles, the wire being drawn, the rubber band */
+.dg-handle {
+  fill: var(--surface);
+  stroke: var(--accent);
+  cursor: crosshair;
+}
+.dg-handle:hover {
+  fill: var(--accent);
+}
+.dg-resize {
+  fill: var(--surface);
+  stroke: var(--accent);
+}
+.dg-resize.nw,
+.dg-resize.se {
+  cursor: nwse-resize;
+}
+.dg-resize.ne,
+.dg-resize.sw {
+  cursor: nesw-resize;
+}
+.dg-wire {
+  fill: none;
+  stroke: var(--accent);
+  stroke-dasharray: 6 5;
+  pointer-events: none;
+}
+.dg-marquee {
+  fill: color-mix(in oklch, var(--accent) 10%, transparent);
+  stroke: var(--accent);
+  pointer-events: none;
+}
+
+/* the inspector's colour swatches */
+.dg-swatch {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--dg-card, var(--surface));
+  box-shadow: 0 0 0 1px var(--line);
+  cursor: pointer;
+  padding: 0;
+}
+.dg-swatch.none {
+  background: linear-gradient(135deg, var(--surface) 45%, var(--crit) 45% 55%, var(--surface) 55%);
+}
+.dg-swatch.custom {
+  appearance: none;
+  background: conic-gradient(var(--dg-c1), var(--dg-c3), var(--dg-c4), var(--dg-c5), var(--dg-c6), var(--dg-c1));
+}
+.dg-swatch.custom::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.dg-swatch.custom::-webkit-color-swatch {
+  border: 0;
+  opacity: 0;
+}
+.dg-swatch[aria-checked="true"] {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.dg-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* the tray's previews */
+.dg-tray-shape {
+  fill: var(--surface);
+  stroke: var(--muted);
+  stroke-width: 1.6;
+}
+.dg-tray-shape.inner {
+  fill: none;
+}
+.dg-tray-shape.group {
+  fill: color-mix(in oklch, var(--ink) 4%, transparent);
+}
+.dg-tray-shape.note {
+  fill: color-mix(in oklch, var(--dg-c3) 18%, var(--surface));
+  stroke: var(--dg-c3);
+}
+.dg-tray-ink {
+  fill: none;
+  stroke: var(--faint);
+  stroke-width: 2;
+  stroke-linecap: round;
+}

@@ -480,20 +480,23 @@ pkgs.testers.nixosTest {
         assert code(noadmin, "http://appliance/handbook/no-such-page/") == "404", \
             "an unknown handbook path falls through to something other than 404"
 
-    with subtest("/lab/ is served LAN-only under its own CSP"):
-        # LosOS Lab is the admin UI's second page (admin-ui/app/lab/), on
-        # real paths under /lab/ with its scripts and the Rust core's .wasm
+    with subtest("/diagrams/ is served LAN-only under its own CSP"):
+        # LosOS Diagrams is the admin UI's second page (admin-ui/app/diagrams/),
+        # on real paths under /diagrams/ with its scripts and the Rust core's .wasm
         # in the shared /assets/. Its arm adds 'wasm-unsafe-eval' and
         # nothing else the admin arm refuses: script stays 'self', because
-        # the lab reads the admin token from sessionStorage to draw this box.
-        assert code(noadmin, "http://appliance/lab/") == "200", \
-            "the lab does not answer from the LAN"
-        page = noadmin.succeed("curl -s http://appliance/lab/settings-of-a-deep-link")
-        assert "<title>LosOS Lab</title>" in page and "/assets/" in page, \
-            "a deep lab path does not get the lab page"
-        assert code(appliance, "http://127.0.0.1/lab/") == "403", \
-            "the lab is served to loopback, i.e. through the tunnel"
-        lab = headers(noadmin, "http://appliance/lab/")
+        # the page reads the admin token from sessionStorage to draw this box.
+        assert code(noadmin, "http://appliance/diagrams/") == "200", \
+            "the diagrams page does not answer from the LAN"
+        page = noadmin.succeed("curl -s http://appliance/diagrams/settings-of-a-deep-link")
+        assert "<title>LosOS Diagrams</title>" in page and "/assets/" in page, \
+            "a deep diagrams path does not get the page"
+        assert code(appliance, "http://127.0.0.1/diagrams/") == "403", \
+            "the diagrams page is served to loopback, i.e. through the tunnel"
+        # The old address moves on, query and all.
+        moved = noadmin.succeed("curl -s -o /dev/null -w '%{http_code} %{redirect_url}' 'http://appliance/lab/?canvas=svg'")
+        assert moved == "301 http://appliance/diagrams/?canvas=svg", f"/lab/ does not move to /diagrams/: {moved}"
+        lab = headers(noadmin, "http://appliance/diagrams/")
         lcsp = lab["content-security-policy"]
         assert "script-src 'self' 'wasm-unsafe-eval';" in lcsp, f"lab CSP: script beyond its files and its wasm: {lcsp}"
         assert "unsafe-inline" not in lcsp and "unsafe-eval'" not in lcsp.replace("'wasm-unsafe-eval'", ""), \
