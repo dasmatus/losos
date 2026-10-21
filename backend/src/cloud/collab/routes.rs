@@ -5,10 +5,9 @@
 //! file on this box (`?file=<id>`) or a file in a share from another box
 //! (`?share=<id>&file=<id on that box>`).
 
-use std::future::{ready, Ready};
 use std::sync::Arc;
 
-use actix_web::{web, FromRequest, HttpRequest, HttpResponse, Scope};
+use actix_web::{web, HttpRequest, HttpResponse, Scope};
 use actix_ws::AggregatedMessage;
 use serde::Deserialize;
 use serde_json::json;
@@ -16,29 +15,7 @@ use serde_json::json;
 use super::hub::{Doc, DocKey};
 use super::room::{Access, MAX_MESSAGE};
 use super::store::{FileId, Perm};
-use crate::cloud::mesh::{Mesh, MeshError};
-
-/// The person signed in, as nginx names them to LosOS cloud on its socket
-/// (`X-Losos-Cloud-User`, set from LosOS Login and trusted only there).
-pub struct Person(pub String);
-
-impl FromRequest for Person {
-    type Error = actix_web::Error;
-    type Future = Ready<Result<Self, Self::Error>>;
-
-    fn from_request(req: &HttpRequest, _: &mut actix_web::dev::Payload) -> Self::Future {
-        let login = req
-            .headers()
-            .get("x-losos-cloud-user")
-            .and_then(|v| v.to_str().ok())
-            .filter(|s| !s.is_empty() && !s.contains('@'))
-            .map(str::to_string);
-        ready(match login {
-            Some(l) => Ok(Person(l)),
-            None => Err(actix_web::error::ErrorUnauthorized("sign in")),
-        })
-    }
-}
+use crate::cloud::mesh::{Mesh, MeshError, Person};
 
 #[derive(Deserialize)]
 pub struct Which {
@@ -54,10 +31,9 @@ pub fn error(e: &MeshError) -> HttpResponse {
             HttpResponse::NotFound().json(body)
         }
         MeshError::Forbidden => HttpResponse::Forbidden().json(body),
-        MeshError::BadAddress
-        | MeshError::UnknownPerson
-        | MeshError::Open(_)
-        | MeshError::TooLarge => HttpResponse::UnprocessableEntity().json(body),
+        MeshError::BadAddress | MeshError::Open(_) | MeshError::TooLarge => {
+            HttpResponse::UnprocessableEntity().json(body)
+        }
         MeshError::Unreachable(_) | MeshError::Timeout | MeshError::Closed => {
             HttpResponse::BadGateway().json(body)
         }
@@ -68,13 +44,13 @@ pub fn error(e: &MeshError) -> HttpResponse {
 /// Open the document `who` asked for, with what they may do in it.
 async fn open(
     mesh: &Arc<Mesh>,
-    who: &str,
+    who: &Person,
     w: &Which,
 ) -> Result<(Arc<Doc>, Access, serde_json::Value), MeshError> {
     match &w.share {
         None => {
             let store = mesh.hub.store().clone();
-            let (file, login) = (w.file, who.to_string());
+            let (file, login) = (w.file, who.login.clone());
             let (info, perm) = web::block(move || (store.stat(file), store.access(&login, file)))
                 .await
                 .map_err(|_| MeshError::Store)?;
@@ -96,20 +72,21 @@ async fn open(
                 "box": mesh.name,
                 "perm": perm,
                 "remote": false,
+                "me": me(mesh, who),
             });
             Ok((doc, access, meta))
         }
         Some(share) => {
             let s = mesh
-                .incoming(who)
+                .incoming(&who.public)
                 .into_iter()
                 .find(|s| &s.id == share)
                 .ok_or(MeshError::NotFound)?;
-            let (doc, access) = mesh.open_copy(who, share, w.file).await?;
+            let (doc, access) = mesh.open_copy(&who.public, share, w.file).await?;
             // In a shared folder the name is the file's own, read through
             // the link; a single shared file is named by the share.
             let name = if s.folder {
-                mesh.list_name(who, share, w.file)
+                mesh.list_name(&who.public, share, w.file)
                     .await
                     .unwrap_or_else(|| s.name.clone())
             } else {
@@ -122,14 +99,21 @@ async fn open(
                 "box": s.remote,
                 "perm": s.perm,
                 "remote": true,
+                "me": me(mesh, who),
             });
             Ok((doc, access, meta))
         }
     }
 }
 
+/// Who the page is, for the others in the document: the name beside their
+/// cursor, and the address that says which box they are on.
+fn me(mesh: &Mesh, who: &Person) -> serde_json::Value {
+    json!({ "name": who.name, "address": format!("{}@{}", who.public, mesh.name) })
+}
+
 async fn doc(mesh: web::Data<Arc<Mesh>>, who: Person, w: web::Query<Which>) -> HttpResponse {
-    match open(&mesh, &who.0, &w).await {
+    match open(&mesh, &who, &w).await {
         Ok((_, _, meta)) => HttpResponse::Ok().json(meta),
         Err(e) => error(&e),
     }
@@ -142,7 +126,7 @@ async fn ws(
     who: Person,
     w: web::Query<Which>,
 ) -> HttpResponse {
-    let (doc, access, _) = match open(&mesh, &who.0, &w).await {
+    let (doc, access, _) = match open(&mesh, &who, &w).await {
         Ok(x) => x,
         Err(e) => return error(&e),
     };

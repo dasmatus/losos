@@ -59,6 +59,9 @@ pub struct Cloud {
     pub locks: dav::Locks,
     pub config: Config,
     changes: broadcast::Sender<Changed>,
+    /// Sharing with people on other boxes and editing together, once
+    /// [`mesh::start`] has run.
+    pub mesh: std::sync::OnceLock<std::sync::Arc<mesh::Mesh>>,
 }
 
 impl Cloud {
@@ -74,6 +77,7 @@ impl Cloud {
             locks: dav::Locks::default(),
             config,
             changes,
+            mesh: std::sync::OnceLock::new(),
         })
     }
 

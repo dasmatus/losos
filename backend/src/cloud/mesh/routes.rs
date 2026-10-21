@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use actix_web::{web, HttpRequest, HttpResponse, Scope};
+use actix_web::{web, FromRequest, HttpRequest, HttpResponse, Scope};
 use actix_ws::AggregatedMessage;
 use serde::Deserialize;
 use serde_json::json;
@@ -16,9 +16,69 @@ use tokio::sync::mpsc;
 
 use super::dial::MAX_FRAME;
 use super::link::Frame;
-use super::{Mesh, MeshError};
-use crate::cloud::collab::routes::{error, Person};
+use super::{Mesh, MeshError, Person};
+use crate::cloud::auth::{Via, Who};
+use crate::cloud::collab::routes::error;
 use crate::cloud::collab::store::{FileId, Perm};
+use crate::cloud::store::valid_owner;
+
+/// The person's LosOS Login name, which nginx sends beside the cloud login
+/// (`X-Losos-Cloud-User`). The two differ for the box's owner, whose files
+/// are `notshared`'s, and an address on the mesh carries the first.
+pub const LOGIN_HEADER: &str = "x-losos-cloud-login";
+
+/// A page on another site asking with the person's session: any request,
+/// a WebSocket's opening GET included, whose `Origin` is not this host.
+fn foreign_origin(req: &HttpRequest) -> bool {
+    let Some(origin) = req.headers().get("origin").and_then(|v| v.to_str().ok()) else {
+        return false;
+    };
+    let host = req
+        .headers()
+        .get("host")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    let origin_host = origin.split_once("://").map_or(origin, |(_, h)| h);
+    origin == "null" || !origin_host.trim_end_matches('/').eq_ignore_ascii_case(host)
+}
+
+impl FromRequest for Person {
+    type Error = actix_web::Error;
+    type Future = std::future::Ready<Result<Self, Self::Error>>;
+
+    fn from_request(req: &HttpRequest, payload: &mut actix_web::dev::Payload) -> Self::Future {
+        let who = match Who::from_request(req, payload).into_inner() {
+            Ok(w) => w,
+            Err(e) => return std::future::ready(Err(e)),
+        };
+        if foreign_origin(req) {
+            return std::future::ready(Err(actix_web::error::ErrorForbidden(
+                "a request from another site",
+            )));
+        }
+        // Only nginx names the LosOS Login name, as it names the person.
+        let public = match who.via {
+            Via::Header => req
+                .headers()
+                .get(LOGIN_HEADER)
+                .and_then(|v| v.to_str().ok())
+                .filter(|l| valid_owner(l) && !l.contains('@'))
+                .map(str::to_string),
+            Via::AppPassword(_) => None,
+        }
+        .unwrap_or_else(|| who.login.clone());
+        let name = if who.name.trim().is_empty() {
+            public.clone()
+        } else {
+            who.name.trim().chars().take(120).collect()
+        };
+        std::future::ready(Ok(Person {
+            login: who.login,
+            public,
+            name,
+        }))
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,8 +105,12 @@ struct FolderQuery {
     folder: Option<FileId>,
 }
 
-async fn this_box(mesh: web::Data<Arc<Mesh>>, _who: Person) -> HttpResponse {
-    HttpResponse::Ok().json(json!({ "name": mesh.name, "key": mesh.identity.public() }))
+async fn this_box(mesh: web::Data<Arc<Mesh>>, who: Person) -> HttpResponse {
+    HttpResponse::Ok().json(json!({
+        "name": mesh.name,
+        "key": mesh.identity.public(),
+        "me": format!("{}@{}", who.public, mesh.name),
+    }))
 }
 
 async fn create(
@@ -55,7 +119,7 @@ async fn create(
     body: web::Json<NewShare>,
 ) -> HttpResponse {
     let to = body.to.trim().to_ascii_lowercase();
-    match mesh.share(&who.0, body.file_id, &to, body.perm) {
+    match mesh.share(&who, body.file_id, &to, body.perm) {
         Ok(s) => HttpResponse::Created().json(s),
         Err(e) => error(&e),
     }
@@ -66,7 +130,7 @@ async fn list_out(
     who: Person,
     q: web::Query<ShareQuery>,
 ) -> HttpResponse {
-    let all = mesh.outgoing(&who.0);
+    let all = mesh.outgoing(&who.login);
     let shown: Vec<_> = all
         .into_iter()
         .filter(|s| q.file_id.is_none_or(|f| s.file_id == f))
@@ -80,32 +144,32 @@ async fn change(
     id: web::Path<String>,
     body: web::Json<PermBody>,
 ) -> HttpResponse {
-    match mesh.set_perm(&who.0, &id, body.perm) {
+    match mesh.set_perm(&who.login, &id, body.perm) {
         Ok(()) => HttpResponse::NoContent().finish(),
         Err(e) => error(&e),
     }
 }
 
 async fn remove(mesh: web::Data<Arc<Mesh>>, who: Person, id: web::Path<String>) -> HttpResponse {
-    match mesh.unshare(&who.0, &id) {
+    match mesh.unshare(&who.login, &id) {
         Ok(()) => HttpResponse::NoContent().finish(),
         Err(e) => error(&e),
     }
 }
 
 async fn incoming(mesh: web::Data<Arc<Mesh>>, who: Person) -> HttpResponse {
-    HttpResponse::Ok().json(mesh.incoming(&who.0))
+    HttpResponse::Ok().json(mesh.incoming(&who.public))
 }
 
 async fn accept(mesh: web::Data<Arc<Mesh>>, who: Person, id: web::Path<String>) -> HttpResponse {
-    match mesh.answer(&who.0, &id, true).await {
+    match mesh.answer(&who.public, &id, true).await {
         Ok(s) => HttpResponse::Ok().json(s),
         Err(e) => error(&e),
     }
 }
 
 async fn decline(mesh: web::Data<Arc<Mesh>>, who: Person, id: web::Path<String>) -> HttpResponse {
-    match mesh.answer(&who.0, &id, false).await {
+    match mesh.answer(&who.public, &id, false).await {
         Ok(s) => HttpResponse::Ok().json(s),
         Err(e) => error(&e),
     }
@@ -117,7 +181,7 @@ async fn folder(
     id: web::Path<String>,
     q: web::Query<FolderQuery>,
 ) -> HttpResponse {
-    match mesh.list(&who.0, &id, q.folder).await {
+    match mesh.list(&who.public, &id, q.folder).await {
         Ok(items) => HttpResponse::Ok().json(items),
         Err(e) => error(&e),
     }
@@ -129,7 +193,7 @@ async fn download(
     path: web::Path<(String, FileId)>,
 ) -> HttpResponse {
     let (id, file) = path.into_inner();
-    match mesh.read(&who.0, &id, file).await {
+    match mesh.read(&who.public, &id, file).await {
         Ok((name, bytes)) => {
             let safe: String = name
                 .chars()
