@@ -171,16 +171,30 @@ let
           > $out/edge.cert.json
       '';
   identityKey = "/var/secrets/losos-edge-identity.key";
-  # The driver's browsers send to the forwarded port on their own loopback;
-  # it arrives at the forwarding machine's user-mode address.
-  forwarded = [
-    {
-      from = "host";
-      proto = "udp";
-      host.port = mediaPort;
-      guest.port = mediaPort;
-    }
-  ];
+  # The driver's browsers send to the media port on their own loopback; it
+  # arrives at the forwarding machine's user-mode address. QEMU's user-mode
+  # network sends every reply from a guest UDP port to whoever wrote to it
+  # last, so two browsers on one forwarded port take each other's packets.
+  # Each browser's socket therefore gets a forwarded port of its own (the
+  # driver's shim hands them out), each lands on a guest port of its own,
+  # and the forwarding machine turns those into the media port with DNAT,
+  # whose replies go back out of the guest port they came in on.
+  peerPorts = 12;
+  shimBase = 17882;
+  peerBase = mediaPort + 100;
+  forwarded = map (i: {
+    from = "host";
+    proto = "udp";
+    host.port = shimBase + i;
+    guest.port = peerBase + i;
+  }) (lib.range 0 (peerPorts - 1));
+  peerNat = {
+    networking.firewall.extraCommands = ''
+      iptables -w -t nat -A PREROUTING -p udp \
+        --dport ${toString peerBase}:${toString (peerBase + peerPorts - 1)} \
+        -j DNAT --to-destination :${toString mediaPort}
+    '';
+  };
 in
 
 pkgs.testers.nixosTest {
@@ -204,6 +218,7 @@ pkgs.testers.nixosTest {
       { lib, ... }:
       {
         imports = [
+          (if throughEdge then { } else peerNat)
           ../../modules/options.nix
           ../../modules/containers.nix
           ../../modules/tls.nix
@@ -334,6 +349,7 @@ pkgs.testers.nixosTest {
           ../../modules/options.nix
           ../../modules/edge.nix
           secretFiles
+          peerNat
         ];
         systemd.tmpfiles.rules = [ "C ${identityKey} 0600 root root - ${identityFixture}/edge.key" ];
         _module.args.self = {
@@ -378,6 +394,7 @@ pkgs.testers.nixosTest {
     import struct
     import subprocess
     import tarfile
+    import threading
     import time
     import urllib.parse
 
@@ -504,6 +521,40 @@ pkgs.testers.nixosTest {
     os.environ.setdefault("HOME", os.environ.get("TMPDIR", "/tmp"))
     from playwright.sync_api import sync_playwright
 
+    def media_shim():
+        """Each browser socket that writes to the media port gets a forwarded
+        port of its own (peerPorts in the Nix above), and the replies on it
+        go back to that socket."""
+        import selectors
+        import socket
+        front = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        front.bind(("127.0.0.1", ${toString mediaPort}))
+        sel = selectors.DefaultSelector()
+        sel.register(front, selectors.EVENT_READ, None)
+        free = list(range(${toString shimBase}, ${toString (shimBase + peerPorts)}))
+        ups = {}
+        while True:
+            for key, _ in sel.select():
+                try:
+                    if key.data is None:
+                        data, peer = front.recvfrom(65535)
+                        up = ups.get(peer)
+                        if up is None:
+                            if not free:
+                                print(f"media shim: no port left for {peer}")
+                                continue
+                            up = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                            up.connect(("127.0.0.1", free.pop(0)))
+                            ups[peer] = up
+                            sel.register(up, selectors.EVENT_READ, peer)
+                        up.send(data)
+                    else:
+                        front.sendto(key.fileobj.recv(65535), key.data)
+                except OSError:
+                    pass
+
+    threading.Thread(target=media_shim, daemon=True).start()
+
     pw = sync_playwright().start()
     # One browser per person, each with their own camera.
     CAMERAS = {
@@ -613,10 +664,19 @@ pkgs.testers.nixosTest {
             raise
         return page
 
+    def until_js(page, expression, arg=None, timeout=90000):
+        """page.wait_for_function, by hand: Playwright polls that through
+        eval, which the chat page's CSP refuses, and page.evaluate not."""
+        deadline = time.time() + timeout / 1000
+        while not (page.evaluate(expression) if arg is None else page.evaluate(expression, arg)):
+            if time.time() > deadline:
+                raise TimeoutError(f"timed out after {timeout} ms: {expression}")
+            time.sleep(0.25)
+
     def settle(page):
         page.evaluate("document.fonts.ready")
         page.evaluate("document.documentElement.style.caretColor = 'transparent'")
-        page.wait_for_function("!document.querySelector('.animate-spin')", timeout=30000)
+        until_js(page, "!document.querySelector('.animate-spin')", timeout=30000)
         time.sleep(1)
 
     def shot(page, name):
@@ -631,16 +691,16 @@ pkgs.testers.nixosTest {
         are arriving and opening."""
         view = page.locator("[data-call-view]")
         view.wait_for()
-        page.wait_for_function(
+        until_js(page,
             f"document.querySelectorAll('[data-call-view] [data-pid]').length === {others + 1}",
             timeout=90000,
         )
-        page.wait_for_function(
+        until_js(page,
             f"Number(document.querySelector('[data-e2ee]')?.dataset.opened ?? 0) > {frames}",
             timeout=120000,
         )
         # A remote picture is playing, not only arriving.
-        page.wait_for_function(
+        until_js(page,
             "[...document.querySelectorAll('[data-call-view] video')]"
             ".filter(v => !v.muted && v.videoWidth > 0 && v.currentTime > 1).length >= " + str(others),
             timeout=90000,
@@ -750,7 +810,7 @@ pkgs.testers.nixosTest {
         matus_at_eva = their_tile(her)
         # Black by default: the corners of Matus's picture at Eva are dark,
         # and there is a picture.
-        her.wait_for_function(
+        until_js(her,
             "(pid) => document.querySelector('[data-call-view] [data-pid=\"' + pid + '\"] video')?.videoWidth > 0",
             arg=matus_at_eva)
         deadline = time.time() + 60
@@ -774,7 +834,7 @@ pkgs.testers.nixosTest {
 
     with subtest("a shared screen goes in the middle, the people beside it"):
         owner.get_by_role("button", name="Share your screen").click()
-        her.wait_for_function(
+        until_js(her,
             "!!document.querySelector('[data-call-view]')?.dataset.sharing"
             " && document.querySelector('[data-share] video')?.videoWidth > 0",
             timeout=120000,
@@ -789,7 +849,7 @@ pkgs.testers.nixosTest {
         assert opened(her) > before + 50, (opened(her), before)
         assert her.locator("[data-e2ee]").get_attribute("data-refused") == "0"
         owner.get_by_role("button", name="Stop sharing").click()
-        her.wait_for_function("!document.querySelector('[data-call-view]')?.dataset.sharing",
+        until_js(her, "!document.querySelector('[data-call-view]')?.dataset.sharing",
                               timeout=60000)
 
     with subtest("podcast mode streams the call to an RTMP address, and both see it is live"):
@@ -872,7 +932,7 @@ pkgs.testers.nixosTest {
             # Two others for the guest, and the guest for each of them.
             live(guest, 2)
             for page in (owner, her):
-                page.wait_for_function(
+                until_js(page,
                     "document.querySelectorAll('[data-call-view] [data-pid]').length === 3", timeout=90000)
                 page.get_by_text("Jack (guest)").first.wait_for()
             shot(guest, "guest-call")
@@ -883,7 +943,7 @@ pkgs.testers.nixosTest {
             guest.get_by_role("button", name="Leave the call").click()
             guest.locator("[data-guest-over]").wait_for()
             for page in (owner, her):
-                page.wait_for_function(
+                until_js(page,
                     "document.querySelectorAll('[data-call-view] [data-pid]').length === 2", timeout=60000)
             guest_ctx.close()
 
@@ -959,7 +1019,7 @@ pkgs.testers.nixosTest {
         jan.get_by_role("button", name="Leave the call").click()
         jan.locator("[data-call-view]").wait_for(state="detached")
         for page in (owner, her):
-            page.wait_for_function(
+            until_js(page,
                 "document.querySelectorAll('[data-call-view] [data-pid]').length === 2", timeout=60000)
         # After the leave the others rotate to a key Jan never had, and
         # still open each other's frames.
