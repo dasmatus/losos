@@ -148,7 +148,9 @@ and is never served or built by nix.
   /api/apps/compose`, the box's own `losos.apps.builtin`) run on rootless
   Podman Compose as `notshared`, `losos-podman-app@<name>`, no cluster
   needed; `compose.rs` turns `helm template` output into Compose and
-  refuses privileges. `shared` apps are Helm releases in the box's own k3s,
+  refuses privileges. Each one's Compose file is committed, as `notshared`,
+  to that user's own Git repo `/var/lib/losos-podman/notshared/apps`, apart
+  from `/etc/nixos`. `shared` apps are Helm releases in the box's own k3s,
   only where that cluster runs. `losos-app-<name>` transient units do the
   work; the `losos-shape` rules (`losos-app-shape`) put every pod on the
   host network without root, turn claims into folders in that user's data

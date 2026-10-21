@@ -30,6 +30,12 @@
 #   losos-podman-app@ one unit per `notshared` app: `podman-compose up -d` as
 #                     `notshared` on start, `down` on stop. The job restarts
 #                     it; losos-podman-apps starts every one at boot.
+#   the apps repo     a Git repository owned by `notshared`, apart from the
+#                     box's configuration in /etc/nixos: one folder per
+#                     installed `notshared` app with its Compose file (and
+#                     the files it ships, or for a chart the Compose file
+#                     the box made of it), one commit per install, update
+#                     and removal. The job writes it as `notshared`.
 #   the forwards      nginx includes one file per installed app from
 #                     forwardDir, forwarding a port of losos.apps.ports to
 #                     the app, LAN only. The job writes the file and reloads
@@ -74,6 +80,7 @@ let
   owner = config.users.users.notshared;
   podmanRoot = "/var/lib/losos-podman";
   podmanHome = "${podmanRoot}/notshared";
+  appsRepo = "${podmanHome}/apps";
   runtimeDir = "/run/user/${toString owner.uid}";
   podmanPkg = config.virtualisation.podman.package;
 
@@ -141,14 +148,20 @@ let
     runtimeInputs = [
       podmanPkg
       pkgs.podman-compose
+      pkgs.findutils
     ];
     text = ''
       release=''${1:?the name of the app}
       project="${podmanHome}/projects/$release"
       if [[ -e "$project/compose.json" ]]; then
         cd "$project"
-        podman-compose --project-name "losos-$release" --file compose.json down
+        podman-compose --project-name "losos-$release" --file compose.json down || true
       fi
+      # `down` reads the Compose file as it is now. After an update that
+      # dropped or renamed a service, or a start that failed halfway, some
+      # of the project's containers are not in it: take them by label.
+      podman ps --all --quiet --filter "label=io.podman.compose.project=losos-$release" \
+        | xargs --no-run-if-empty podman rm --force --time 10
     '';
   };
 
@@ -267,6 +280,9 @@ let
       pkgs.yq-go
       pkgs.coreutils
       pkgs.gnused
+      pkgs.gnutar
+      pkgs.gitMinimal
+      pkgs.util-linux
       config.systemd.package
       pkg
     ];
@@ -309,6 +325,45 @@ let
       kind=$(jq -r '.kind // "chart"' "$record")
       project="${podmanRoot}/$run_as/projects/$release"
       unit="losos-podman-app@$release.service"
+
+      # The apps repo, written as `notshared` so that root never follows a
+      # path the user could have laid. Root reads the app's source (root's
+      # alone) and hands it over as a tar stream.
+      as_owner() {
+        runuser -u notshared -- env HOME=${podmanHome} GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null "$@"
+      }
+      repo_git() {
+        as_owner git -C ${appsRepo} -c user.name=LosOS -c user.email=apps@losos.local "$@"
+      }
+      # Commit what changed under the app's folder, if anything did. Called
+      # where errexit is off, so every step says when it fails.
+      repo_commit() {
+        repo_git add --all -- "$release" || return 1
+        if ! repo_git diff --cached --quiet; then
+          repo_git commit --quiet --message "$1" || return 1
+        fi
+      }
+      # The app's folder as it now runs: its Compose file and its files, or
+      # for a chart the Compose file made of it.
+      repo_store() {
+        local verb=Install
+        if [[ ! -d ${appsRepo}/.git ]]; then
+          as_owner mkdir -p ${appsRepo} || return 1
+          repo_git init --quiet --initial-branch=main || return 1
+        fi
+        if [[ -e ${appsRepo}/$release ]]; then
+          verb=Update
+        fi
+        as_owner rm -rf "${appsRepo}/$release" || return 1
+        as_owner mkdir "${appsRepo}/$release" || return 1
+        if [[ "$kind" == compose ]]; then
+          tar -C "$dir/source" -cf - compose.yaml files \
+            | as_owner tar -C "${appsRepo}/$release" -xf - || return 1
+        else
+          as_owner cp "$project/compose.json" "${appsRepo}/$release/compose.json" || return 1
+        fi
+        repo_commit "$verb $release"
+      }
 
       # The forward for the app's port, once it runs. A reload tests the
       # configuration first and keeps the old one if it fails; the file is
@@ -356,6 +411,24 @@ let
       rm -f "$report"
       shape_args=(--release="$release" --run-as="$run_as" --reserved="${reservedArg}"
         --taken="$taken" --report="$report")
+
+      # Before notshared apps ran on Podman they were Helm releases in the
+      # box's own cluster, under the same name. Installing or removing one
+      # takes the old release away first, so two copies never share a port.
+      leave_cluster() {
+        ${
+          if localCluster then
+            ''
+              if [[ -r ${kubeconfig} ]] && helm status "$release" --namespace "$ns" > /dev/null 2>&1; then
+                echo "losos-apps: taking the cluster's copy of $release away"
+                helm uninstall "$release" --namespace "$ns" --wait=watcher --timeout 5m 2>> "$dir/helm.err" || return 1
+                kubectl delete namespace "$ns" --ignore-not-found --wait=false || true
+              fi
+            ''
+          else
+            ":"
+        }
+      }
 
       chart_ref() {
         repo=$(jq -r '.chart.repo' "$record")
@@ -406,6 +479,10 @@ let
             set_phase failed "''${message:-The app could not be made ready.}"
             exit 1
           fi
+          if ! leave_cluster; then
+            set_phase failed "The cluster's copy of the app could not be taken away: $(last_words "$dir/helm.err")"
+            exit 1
+          fi
           echo "losos-apps: starting $release"
           if ! systemctl restart "$unit"; then
             journalctl --unit "$unit" --lines 20 --output cat >&2 || true
@@ -414,6 +491,9 @@ let
           fi
           port=$(jq '.port // null' "$report")
           open_port "$port"
+          if ! repo_store; then
+            echo "losos-apps: $release runs, but its Compose file is not in the apps repo" >&2
+          fi
           set_phase running "" "$port"
           echo "losos-apps: $release is running"
           ;;
@@ -443,13 +523,18 @@ let
 
         remove:notshared)
           echo "losos-apps: removing $release"
-          if ! systemctl stop "$unit"; then
+          : > "$dir/helm.err"
+          if ! systemctl stop "$unit" || ! leave_cluster; then
             set_phase failed "The app did not stop. Try again."
             exit 1
           fi
           rm -rf "$project"
           rm -f "$forward"
           reload_nginx || true
+          if [[ -d ${appsRepo}/$release ]]; then
+            as_owner rm -rf "${appsRepo}/$release"
+            repo_commit "Remove $release" || true
+          fi
           # The record goes; the app's files stay in the user's data domain.
           rm -rf "$dir"
           echo "losos-apps: $release removed"
@@ -572,7 +657,9 @@ in
           User = "notshared";
           Group = "notshared";
           ExecStart = "${lib.getExe podmanUp} %i";
-          ExecStop = "${lib.getExe podmanDown} %i";
+          # Post, not ExecStop: it runs after a failed start too, which can
+          # leave half a project running.
+          ExecStopPost = "${lib.getExe podmanDown} %i";
           # The first start pulls the images.
           TimeoutStartSec = "30min";
           TimeoutStopSec = "5min";
@@ -600,7 +687,21 @@ in
           for record in ${stateDir}/*/app.json; do
             [[ -e "$record" ]] || continue
             if jq -e '.runAs == "notshared" and .phase == "running"' "$record" > /dev/null; then
-              systemctl start --no-block "losos-podman-app@$(jq -r .release "$record").service"
+              release=$(jq -r .release "$record")
+              if [[ -e "${podmanHome}/projects/$release/compose.json" ]]; then
+                systemctl start --no-block "losos-podman-app@$release.service"
+              elif ${lib.boolToString enabled}; then
+                # Installed while notshared apps were Helm releases: the
+                # job makes it a Podman project and takes the old one away,
+                # as lososd would run it.
+                systemd-run --no-block --unit "losos-app-$release" \
+                  --description "losos app install $release" \
+                  --property CollectMode=inactive-or-failed \
+                  --property "StandardOutput=append:${stateDir}/$release/job.log" \
+                  --property "StandardError=append:${stateDir}/$release/job.log" \
+                  --setenv LOSOS_APPS_DIR=${stateDir} \
+                  ${lib.getExe appsJob} install "$release"
+              fi
             fi
           done
         '';

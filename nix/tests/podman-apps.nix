@@ -22,7 +22,10 @@
 #      and a variable;
 #   6. nothing an app runs can reach lososd's API;
 #   7. after a reboot every app is back, data and all;
-#   8. removing an app stops it and closes its port, and its data stays.
+#   8. every installed notshared app's Compose file is in notshared's own
+#      Git repo, a commit per install, and nowhere a refused app's;
+#   9. removing an app stops it and closes its port, its data stays, and
+#      its folder leaves the repo in a commit of its own.
 #
 # The front door is the real one (modules/containers.nix) with the real
 # admin UI, so `nix/demo/record.sh losos-podman-apps` photographs the Apps
@@ -316,6 +319,12 @@ pkgs.testers.nixosTest {
     def apps():
         return {a["release"]: a for a in json.loads(box.succeed(f"{api}/api/apps"))["apps"]}
 
+    def repo(cmd):
+        return box.succeed(
+          "runuser -u notshared -- env HOME=/var/lib/losos-podman/notshared "
+          f"${pkgs.gitMinimal}/bin/git -C /var/lib/losos-podman/notshared/apps {cmd}"
+        )
+
     def wait_phase(release, phase, timeout=1200):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -400,13 +409,26 @@ pkgs.testers.nixosTest {
           page("hello", 18096),
         ])
 
+    with subtest("the apps' Compose files are in notshared's own Git repo"):
+        assert box.succeed("stat -c %U /var/lib/losos-podman/notshared/apps/.git").strip() == "notshared"
+        assert box.succeed("find /var/lib/losos-podman/notshared/apps ! -user notshared | wc -l").strip() == "0"
+        assert repo("log --format=%s").split("\n")[:2] == ["Install hello", "Install notes"], repo("log --format=%s")
+        tracked = repo("ls-files").split()
+        assert "notes/compose.yaml" in tracked and "hello/compose.json" in tracked, tracked
+        assert any(f.startswith("notes/files/") for f in tracked), tracked
+        assert not any(f.startswith("greedy/") for f in tracked), tracked
+        sent = json.loads(box.succeed("cat ${bodies}/notes.json"))["compose"]
+        assert repo("show HEAD~1:notes/compose.yaml") == sent, "the stored file is not the one sent"
+        repo("diff --quiet HEAD")
+
+    podman = (
+      "runuser -u notshared -- env XDG_RUNTIME_DIR=/run/user/1000 "
+      "CONTAINERS_STORAGE_CONF=$(systemctl show -p Environment losos-podman-app@notes.service "
+      "| grep -o 'CONTAINERS_STORAGE_CONF=[^ ]*' | cut -d= -f2) podman"
+    )
+
     with subtest("nothing an app runs reaches lososd"):
-        box.fail(
-          "runuser -u notshared -- env XDG_RUNTIME_DIR=/run/user/1000 "
-          "CONTAINERS_STORAGE_CONF=$(systemctl show -p Environment losos-podman-app@notes.service "
-          "| grep -o 'CONTAINERS_STORAGE_CONF=[^ ]*' | cut -d= -f2) "
-          "podman exec losos-notes_writer_1 wget -qO- -T 5 http://127.0.0.1:8082/api/health"
-        )
+        box.fail(f"{podman} exec losos-notes_writer_1 wget -qO- -T 5 http://127.0.0.1:8082/api/health")
 
     with subtest("after a reboot every app is back"):
         box.shutdown()
@@ -423,6 +445,12 @@ pkgs.testers.nixosTest {
         record("reboot", "After a reboot every app is back.", [pane("apps-after-reboot", "text=Notes")])
 
     with subtest("removing an app stops it, closes its port and keeps its data"):
+        # A container of the project the Compose file no longer names, as an
+        # update that renamed a service leaves behind. Removal takes it too.
+        box.succeed(
+          f"{podman} run --detach --name losos-notes_old_1 --network host "
+          "--label io.podman.compose.project=losos-notes localhost/losos-hello:1 sleep 3600"
+        )
         out = box.succeed(
           f"{api}/api/apps/remove -X POST -H 'Content-Type: application/json' "
           "--data '{\"release\": \"notes\"}' -w '\\n%{http_code}'"
@@ -434,6 +462,10 @@ pkgs.testers.nixosTest {
         laptop.fail(f"curl -fsS -m 5 http://box:{notes_front}/")
         box.succeed("test -s /home/notshared/data/apps/notes/data/uid")
         box.fail("test -e /var/lib/losos-podman/notshared/projects/notes")
+        assert box.succeed(f"{podman} ps --all --quiet --filter label=io.podman.compose.project=losos-notes").strip() == ""
+        assert repo("log -1 --format=%s").strip() == "Remove notes"
+        tracked = repo("ls-files").split()
+        assert not any(f.startswith("notes/") for f in tracked) and "hello/compose.json" in tracked, tracked
         record("removed", "Notes removed: stopped, port closed, data kept.", [pane("apps-removed", "text=hello-chart")])
   '';
 }

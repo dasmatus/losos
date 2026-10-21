@@ -149,6 +149,7 @@ socket only nginx can open, outside this format.
 | What | Where |
 |---|---|
 | The app's record and the files as sent | `/var/lib/losos/apps/<app>/` (root only) |
+| The apps repo: each app's Compose file and files, one commit per install, update and removal | `/var/lib/losos-podman/notshared/apps/<app>/` (a Git repository of `notshared`'s own) |
 | The project Podman Compose runs | `/var/lib/losos-podman/notshared/projects/<app>/compose.json` |
 | The image store | `/var/lib/losos-podman/notshared/storage` |
 | The app's data | `/home/notshared/data/apps/<app>/` |
@@ -158,3 +159,10 @@ socket only nginx can open, outside this format.
 The rules are `backend/src/compose.rs`; the units are `modules/apps.nix`;
 `nix/tests/podman-apps.nix` boots a box with no cluster and runs one app of
 each kind on it.
+
+The apps repo is apart from the box's configuration in `/etc/nixos`, and
+`notshared` owns it, so the history of what the owner ran stays on their own
+side of the box. A chart is kept there as the Compose file the box made of
+it. The box's own apps are not in it: they are part of the configuration.
+An app's files can carry its passwords, so nobody but `notshared` (and
+root) can read the repo.

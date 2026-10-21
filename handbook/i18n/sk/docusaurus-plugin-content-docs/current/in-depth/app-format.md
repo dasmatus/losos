@@ -154,6 +154,7 @@ formátu.
 | Čo | Kde |
 |---|---|
 | Záznam aplikácie a súbory, ako prišli | `/var/lib/losos/apps/<app>/` (iba root) |
+| Repozitár aplikácií: súbor Compose a súbory každej aplikácie, jeden commit na inštaláciu, aktualizáciu a odstránenie | `/var/lib/losos-podman/notshared/apps/<app>/` (vlastný Git repozitár používateľa `notshared`) |
 | Projekt, ktorý spúšťa Podman Compose | `/var/lib/losos-podman/notshared/projects/<app>/compose.json` |
 | Úložisko obrazov | `/var/lib/losos-podman/notshared/storage` |
 | Dáta aplikácie | `/home/notshared/data/apps/<app>/` |
@@ -163,3 +164,10 @@ formátu.
 Pravidlá sú v `backend/src/compose.rs`, jednotky v `modules/apps.nix` a
 `nix/tests/podman-apps.nix` spustí zariadenie bez klastra a pustí na ňom
 jednu aplikáciu každého druhu.
+
+Repozitár aplikácií je oddelený od konfigurácie zariadenia v `/etc/nixos` a
+patrí používateľovi `notshared`, takže história toho, čo vlastník spúšťal,
+zostáva na jeho strane zariadenia. Chart je v ňom uložený ako súbor Compose,
+ktorý z neho zariadenie urobilo. Vlastné aplikácie zariadenia v ňom nie sú:
+patria do konfigurácie. Súbory aplikácie môžu obsahovať jej heslá, preto
+repozitár nemôže čítať nikto okrem `notshared` (a roota).

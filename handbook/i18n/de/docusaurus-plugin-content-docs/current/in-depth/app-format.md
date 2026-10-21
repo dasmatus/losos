@@ -155,6 +155,7 @@ außerhalb dieses Formats.
 | Was | Wo |
 |---|---|
 | Der Eintrag der App und die Dateien, wie sie kamen | `/var/lib/losos/apps/<app>/` (nur root) |
+| Das App-Repository: Compose-Datei und Dateien jeder App, ein Commit pro Installation, Aktualisierung und Entfernung | `/var/lib/losos-podman/notshared/apps/<app>/` (ein eigenes Git-Repository von `notshared`) |
 | Das Projekt, das Podman Compose ausführt | `/var/lib/losos-podman/notshared/projects/<app>/compose.json` |
 | Der Image-Speicher | `/var/lib/losos-podman/notshared/storage` |
 | Die Daten der App | `/home/notshared/data/apps/<app>/` |
@@ -164,3 +165,11 @@ außerhalb dieses Formats.
 Die Regeln stehen in `backend/src/compose.rs`, die Units in
 `modules/apps.nix`, und `nix/tests/podman-apps.nix` startet eine Box ohne
 Cluster und führt darauf eine App jeder Art aus.
+
+Das App-Repository ist von der Konfiguration der Box in `/etc/nixos`
+getrennt und gehört `notshared`, damit die Geschichte dessen, was der
+Besitzer ausgeführt hat, auf seiner Seite der Box bleibt. Ein Chart liegt
+dort als die Compose-Datei, die die Box daraus gemacht hat. Die eigenen Apps
+der Box sind nicht darin: Sie gehören zur Konfiguration. Die Dateien einer
+App können ihre Passwörter enthalten, deshalb kann niemand außer
+`notshared` (und root) das Repository lesen.
