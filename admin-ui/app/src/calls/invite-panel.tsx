@@ -34,7 +34,7 @@ export function InvitePanel(p: InvitePanelProps) {
       role="dialog"
       aria-label={t("calls.invite")}
       data-invite-panel=""
-      className="absolute inset-x-3 top-16 z-10 mx-auto flex max-w-xl flex-col gap-4 rounded-card border border-line bg-surface p-4 shadow-lg sm:inset-x-6"
+      className="absolute inset-x-3 top-16 z-10 mx-auto flex max-w-xl flex-col gap-4 rounded-card border border-line bg-surface p-4 shadow-pop sm:inset-x-6"
     >
       <header className="flex items-start justify-between gap-3">
         <div>

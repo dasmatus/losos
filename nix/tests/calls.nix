@@ -375,6 +375,7 @@ pkgs.testers.nixosTest {
     import json
     import os
     import re
+    import shlex
     import struct
     import subprocess
     import tarfile
@@ -564,8 +565,15 @@ pkgs.testers.nixosTest {
         seen = []
 
         def on_response(r) -> None:
-            if r.status >= 400:
-                seen.append(f"{r.status} {r.request.method} {r.url}")
+            if r.status >= 400 or "/api/chat/session" in r.url:
+                line = f"{r.status} {r.request.method} {r.url}"
+                if len(seen) < 6 or "/api/chat/session" in r.url:
+                    try:
+                        body = r.text()
+                        line += " " + re.sub(r'"(accessToken|access_token)": *"[^"]+"', r'"\\1":"…"', body)[:300]
+                    except Exception as e:
+                        line += f" (no body: {e})"
+                seen.append(line)
 
         def on_failed(r) -> None:
             seen.append(f"failed {r.method} {r.url}: {r.failure}")
@@ -583,8 +591,18 @@ pkgs.testers.nixosTest {
             page.get_by_role("heading", name="LosOS chat").wait_for()
         except Exception:
             print(f"{name} sees {page.url}:\n{page.inner_text('body')[:3000]}\n{problems}")
-            print("\n".join(seen[-60:]))
+            print("\n".join(seen[:8] + ["…"] + seen[-20:]))
+            jar = context.cookies()
+            print("cookies:", [(c["name"], c["domain"], c["path"], len(c["value"])) for c in jar])
+            cookie = "; ".join(f"{c['name']}={c['value']}" for c in jar)
+            q = shlex.quote(f"Cookie: {cookie}")
+            print(laptop.execute(f"curl -sk -i https://{HOST}/_matrix/client/versions -H {q} | head -n 12")[1])
+            asked = (f"-H {q} -H 'X-Original-URL: https://{HOST}/_matrix/client/versions' "
+                     "-H 'X-Original-Method: GET' -H 'X-Forwarded-For: 192.168.1.2'")
+            print(box.execute(f"curl -s -i http://127.0.0.1:8082/internal/chat/authz {asked} | head -n 8")[1])
+            print(box.execute(f"curl -s -i http://127.0.0.1:9091/auth/api/authz/auth-request {asked} | head -n 12")[1])
             print(box.execute("journalctl -u lososd -u dendrite -u authelia-losos --since -4min --no-pager | tail -n 120")[1])
+            print(box.execute("systemctl status dendrite --no-pager | head -n 5; ls -la /var/lib/losos-chat* 2>&1 | head")[1])
             raise
         return page
 

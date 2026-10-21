@@ -124,7 +124,7 @@ function LiveProbe({ screen, onChange }: { screen: Screen; onChange(pid: number,
 function Stage({ screen }: { screen: Screen }) {
   const t = useT();
   return (
-    <div data-share={screen.pid} className="relative grid min-h-0 min-w-0 flex-1 place-items-center overflow-hidden rounded-card border border-line bg-black">
+    <div data-share={screen.pid} className="relative grid min-h-0 min-w-0 flex-1 place-items-center overflow-hidden rounded-card border border-line bg-sunk">
       <video
         ref={(el) => {
           if (el && el.srcObject !== screen.stream) el.srcObject = screen.stream;
@@ -217,7 +217,7 @@ export function CallView(p: CallViewProps) {
       aria-label={p.title}
       data-call-view=""
       data-sharing={share?.pid ?? ""}
-      className="fixed inset-0 z-50 flex flex-col gap-3 bg-canvas p-3 sm:p-4"
+      className="fixed inset-0 z-50 flex flex-col gap-3 bg-ground p-3 sm:p-4"
     >
       {p.screens
         .filter((s) => !s.self)
@@ -339,7 +339,7 @@ export function RingingCard(p: RingingProps) {
       role="alertdialog"
       aria-live="assertive"
       data-ringing=""
-      className="fixed right-4 bottom-4 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-card border border-line bg-surface p-4 shadow-lg"
+      className="fixed right-4 bottom-4 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-card border border-line bg-surface p-4 shadow-pop"
     >
       <div className="flex items-center gap-3">
         {p.avatar ?? <Initials name={p.caller} />}

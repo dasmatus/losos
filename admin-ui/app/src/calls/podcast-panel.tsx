@@ -41,7 +41,7 @@ function Preview({ canvas }: { canvas: HTMLCanvasElement }) {
       if (canvas.parentElement === host) host.removeChild(canvas);
     };
   }, [canvas]);
-  return <div ref={ref} data-podcast-preview="" className="overflow-hidden rounded-control border border-line bg-black" />;
+  return <div ref={ref} data-podcast-preview="" className="overflow-hidden rounded-control border border-line bg-sunk" />;
 }
 
 export function PodcastPanel(p: PodcastPanelProps) {
@@ -62,7 +62,7 @@ export function PodcastPanel(p: PodcastPanelProps) {
       role="dialog"
       aria-label={t("calls.podcast")}
       data-podcast-panel=""
-      className="absolute inset-x-3 top-16 bottom-24 z-10 mx-auto flex max-w-3xl flex-col gap-4 overflow-auto rounded-card border border-line bg-surface p-4 shadow-lg sm:inset-x-6"
+      className="absolute inset-x-3 top-16 bottom-24 z-10 mx-auto flex max-w-3xl flex-col gap-4 overflow-auto rounded-card border border-line bg-surface p-4 shadow-pop sm:inset-x-6"
     >
       <header className="flex items-start justify-between gap-3">
         <div>

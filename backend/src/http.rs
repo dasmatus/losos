@@ -3607,13 +3607,16 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .default_service(web::route().to(not_found))
         })
         // Most handlers do their work in place (files, Dendrite, Authelia,
-        // argon2), so a worker is busy for as long as one call takes. With
-        // actix's default of one worker per core, a two-core box opening
-        // chat had both busy making Matrix accounts while every other
-        // request waited past actix's request timeout and got a 408,
-        // nginx's auth_request for chat included. Enough workers that a
-        // page's burst of requests is not queued behind one slow call.
+        // argon2), so a worker is busy for as long as one call takes, and
+        // the other connections it holds wait unread. actix answers a
+        // connection whose request head it has not read within 5 s with a
+        // 408, so a busy two-core box opening chat answered most of the
+        // page's burst, nginx's auth_request for chat included, with 408s.
+        // Only nginx on loopback talks to this server, so a slow head means
+        // a busy worker, never a slow client: more workers, and a timeout
+        // that waits for them.
         .workers(HTTP_WORKERS)
+        .client_request_timeout(std::time::Duration::from_secs(120))
         .bind(("127.0.0.1", port))
         .with_context(|| format!("binding 127.0.0.1:{port}"))?;
         tracing::info!(port, "admin API listening on loopback");

@@ -149,8 +149,9 @@ and is never served or built by nix.
   `POST /calls/guest-link`; the box serves `/calls/guest/` (its own Vite
   build, `vite.guest.config.ts`) and `/calls/guest/ws` without LosOS Login,
   and the link's `#` secret, which no server sees, keys an ECDH pair per
-  guest (`calls/guests.ts`). lososd runs `HTTP_WORKERS` (8) because its
-  handlers block; one per core 408'd chat on a two-core box.
+  guest (`calls/guests.ts`). lososd runs `HTTP_WORKERS` (8) and a 120 s
+  `client_request_timeout` because its handlers block; one worker per core
+  and the 5 s default 408'd chat on a two-core box.
 - LosOS Lab, the setup visualizer at `/lab/` (sidebar entry Lab): the
   admin UI's second Vite page (`admin-ui/app/lab/`, `src/lab/`) over a Rust
   core in WebAssembly (`admin-ui/lab/core`, `losos-lab-core`, contract in
