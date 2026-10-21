@@ -199,7 +199,7 @@ pkgs.testers.nixosTest {
             " && git -c user.name=Matus -c user.email=m@x commit -qam 'More notes'"
             " && git push -q origin main"
         )
-        assert box.succeed(f"git -C {REPOS}/matus/notes.git log -1 --format=%s main").strip() == "More notes"
+        assert box.succeed(f"git -c safe.directory='*' -C {REPOS}/matus/notes.git log -1 --format=%s main").strip() == "More notes"
 
     with subtest("lososd publishes /etc/nixos to the owner's private repository"):
         doc = lososd("POST", "/api/config/sync")
@@ -208,7 +208,7 @@ pkgs.testers.nixosTest {
         code, repo = forge("GET", "/repos/notshared/losos-config")
         assert code == 200 and repo["private"] is True, (code, repo)
         local = box.succeed("git -C /etc/nixos rev-parse HEAD").strip()
-        remote = box.succeed(f"git -C {REPOS}/notshared/losos-config.git rev-parse main").strip()
+        remote = box.succeed(f"git -c safe.directory='*' -C {REPOS}/notshared/losos-config.git rev-parse main").strip()
         assert local == remote, (local, remote)
         # A second pass has nothing to do.
         assert lososd("POST", "/api/config/sync")["sync"]["detail"] == "LosOS Git has this box's configuration."
