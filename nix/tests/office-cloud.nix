@@ -149,8 +149,12 @@ pkgs.testers.nixosTest {
         assert code("http://127.0.0.1:8093/cloud/api/files") == "404"
         assert code("-H 'X-Losos-Cloud-User: matus' http://127.0.0.1:8093/remote.php/dav/files/matus/") == "404"
         mattbox.fail("ss -ltn | grep ':8093' | grep -v 127.0.0.1")
-        # The front door routes no WOPI.
-        assert code(f"-k 'https://mattbox.local/wopi/files/{fid}?access_token={token}'") == "404"
+        # The front door routes no WOPI: /wopi/ falls through to the admin page.
+        front = mattbox.succeed(
+            "curl -ks --resolve mattbox.local:443:192.168.1.1"
+            f" 'https://mattbox.local/wopi/files/{fid}?access_token={token}'"
+        )
+        assert "BaseFileName" not in front, front[:300]
 
     with subtest("coolwsd edits and saves the document in Matus's cloud"):
         mattbox.succeed(
