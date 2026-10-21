@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon, UserCircleIcon } from "@hugeicons/core-free-icons";
 import { AppSidebar } from "@/components/app-sidebar";
+import { MeshNotice } from "@/components/mesh-notice";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PersonAvatar } from "@/components/person";
 import { Badge } from "@/components/ui/badge";
@@ -291,6 +292,7 @@ function Shell() {
       >
         <AppSidebar />
         <main className="min-w-0 flex-1">
+          {signedIn && !held && <MeshNotice />}
           <React.Suspense fallback={<ScreenFallback />}>
           {held ? (
             <Settings pane="account" />
