@@ -99,16 +99,33 @@ const joinedUsers = (room: Room): string[] =>
 /* The sender keys, as Olm to-device messages. A key goes only to a device
  * the SFU put in the call AND whose person is in the room, and a key is
  * taken only when Olm says which device sent it. */
+/** Whether `room` can hold a call. Call keys go to the members' devices
+ *  over Olm, and the crypto keeps device lists only for the members of
+ *  encrypted rooms: in any other room a key would go to nobody. */
+export function callable(room: Room): boolean {
+  return room.hasEncryptionStateEvent();
+}
+
+/* How long a key waits for a device that signed in moments ago to reach
+ * the device list, which follows a sync behind. */
+const DEVICE_WAIT_MS = 20_000;
+
 function olmKeys(client: MatrixClient, roomId: string): KeyChannel {
   return {
     async send(to, msg) {
       const room = client.getRoom(roomId);
       const inRoom = new Set(room === null ? [] : joinedUsers(room));
       const devices = to.filter((d) => inRoom.has(d.user)).map((d) => ({ userId: d.user, deviceId: d.device }));
-      if (devices.length === 0) return;
-      // Fetches device lists the client does not track yet (someone it
-      // shares no encrypted room with).
-      await client.getCrypto()?.getUserDeviceInfo([...new Set(devices.map((d) => d.userId))], true);
+      const crypto = client.getCrypto();
+      if (devices.length === 0 || crypto === undefined) return;
+      const users = [...new Set(devices.map((d) => d.userId))];
+      // Someone who has just signed in on a new device joins the call
+      // before that device is in the list; give the list a few syncs.
+      for (const until = Date.now() + DEVICE_WAIT_MS; Date.now() < until; ) {
+        const known = await crypto.getUserDeviceInfo(users);
+        if (devices.every((d) => known.get(d.userId)?.has(d.deviceId) === true)) break;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
       await client.encryptAndSendToDevice(KEY_EVENT, devices, msg as unknown as ToDevicePayload);
     },
     subscribe(handler) {

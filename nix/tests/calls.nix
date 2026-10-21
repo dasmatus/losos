@@ -1167,7 +1167,11 @@ pkgs.testers.nixosTest {
         code, body = call("/_matrix/client/v3/createRoom", cookies["matus"], method="POST",
                           token=tokens["matus"],
                           data={"name": "Holiday", "preset": "private_chat",
-                                "invite": [f"@eva:{HOST}", f"@jan:{HOST}"]})
+                                "invite": [f"@eva:{HOST}", f"@jan:{HOST}"],
+                                # Calls are only for encrypted rooms: their
+                                # keys go to devices the crypto tracks.
+                                "initial_state": [{"type": "m.room.encryption", "state_key": "",
+                                                   "content": {"algorithm": "m.megolm.v1.aes-sha2"}}]})
         assert code == 200, (code, body)
         room = urllib.parse.quote(json.loads(body)["room_id"])
         for n in ("eva", "jan"):

@@ -36,7 +36,7 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { PaneHeader } from "@/screens/settings/rows";
 import { Avatar } from "./avatar";
-import { useCalls } from "./calls";
+import { callable, useCalls } from "./calls";
 import { chatDocument } from "./document";
 import { Composer } from "./composer";
 import { failed, ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, openDirect, RoomSettingsDialog, StartChatDialog } from "./dialogs";
@@ -347,7 +347,7 @@ function ChatHome({ signed }: { signed: Signed }) {
     const linkedRoom = client.getRoom(want.room);
     if (linkedRoom === null) return;
     ring.current = null;
-    if (calls.active === null) calls.start(linkedRoom, want.video);
+    if (calls.active === null && callable(linkedRoom)) calls.start(linkedRoom, want.video);
   });
 
   const room = current !== null ? (client.getRoom(current) ?? null) : null;
@@ -600,7 +600,7 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
           </div>
           {membership === KnownMembership.Join && (
             <>
-              {calls.available && (
+              {calls.available && callable(room) && (
                 <>
                   <Button variant="ghost" size="icon-sm" aria-label={t("chat.call.voice")} title={t("chat.call.voice")} disabled={calls.active !== null} onClick={() => calls.start(room, false)}>
                     <HugeiconsIcon icon={Call02Icon} className="size-4" />
