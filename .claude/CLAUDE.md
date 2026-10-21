@@ -148,6 +148,18 @@ and is never served or built by nix.
   on the host network as `notshared` or `shared` without root, turns claims
   into folders in that user's data domain and refuses a chart that needs
   more; nginx forwards a port of `losos.apps.ports` to it, LAN only.
+- `chat.nix` + `backend/src/chat.rs` + `admin-ui/app/src/chat/` (LosOS
+  chat, `/chat/`, the admin UI's third Vite page): Dendrite as `shared` in
+  `/home/shared/data/chat`, only while `lososInternal.sharedSide`
+  (`sharingMyStorage` and `cluster.enable`, the gate mail shares); off, nginx
+  sends `/chat/` home and `/_matrix/` 404s. No Matrix passwords: lososd is an
+  application service over every user and the only way in
+  (`/api/chat/session`), and nginx asks `/internal/chat/authz` before every
+  client and media request (LosOS Login cookie plus a token of that same
+  person). Dendrite has no thread list; lososd answers it through
+  `losos-chat-threads` as `shared`. The client is matrix-js-sdk with its Rust
+  crypto under the Lab's CSP arm. `nix/tests/chat.nix` boots it and drives
+  two browsers (`chat-browser.mjs`); its output holds the screenshots.
 - `search.nix` + `backend/src/textsearch/` (`losos-search`): text inside
   files for the palette. A timer pass keeps an SQLite FTS5 index of the
   owner's cloud files in `/var/lib/losos-search` as `nextcloud` (only what

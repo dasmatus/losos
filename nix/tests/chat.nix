@@ -20,8 +20,9 @@
 #     encrypted conversation, a reply, a reaction, a thread, a picture and an
 #     edit, and a recovery key that lets a second device read the past.
 #
-# The browser is Chromium under Playwright in the test driver, talking to the
-# box through a SOCKS proxy on the laptop, so the address bar says
+# The browser is Chromium under Playwright in the test driver
+# (nix/tests/chat-browser.mjs), talking to the box through a SOCKS proxy on
+# the laptop, so the address bar says
 # https://mattbox.local/ and LosOS Login's cookie is the box's own. Every
 # screenshot lands in the test's output: `nix build
 # .#checks.x86_64-linux.losos-chat` and look in result/shots/. The launch
@@ -77,6 +78,23 @@ let
       imageTag = "test";
     };
 
+  # The playwright the admin UI pins (to nixpkgs' playwright-driver, which
+  # nix/tests/admin-ui.nix asserts), from the same lock file and hash.
+  playwright =
+    (pkgs.buildNpmPackage {
+      pname = "losos-chat-test-playwright";
+      version = "0.1.0";
+      src = ../../admin-ui/app;
+      inherit (lososPkgs.losos-admin-ui) npmDepsHash;
+      npmFlags = [ "--ignore-scripts" ];
+      env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+      dontNpmBuild = true;
+      installPhase = ''
+        mkdir -p $out/node_modules
+        cp -r node_modules/playwright node_modules/playwright-core $out/node_modules/
+      '';
+    })
+    + "/node_modules/playwright";
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
@@ -92,8 +110,6 @@ in
 
 pkgs.testers.nixosTest {
   name = "losos-chat";
-
-  extraPythonPackages = p: [ p.playwright ];
 
   nodes = {
     box =
@@ -186,6 +202,7 @@ pkgs.testers.nixosTest {
     import json
     import os
     import re
+    import subprocess
     import time
     import urllib.parse
 
@@ -195,8 +212,7 @@ pkgs.testers.nixosTest {
     PEOPLE = "/var/lib/losos-identity/users.yml"
     OUT = os.environ.get("out", os.getcwd())
     SHOTS = f"{OUT}/shots"
-    os.makedirs(f"{SHOTS}/film", exist_ok=True)
-    os.makedirs(f"{SHOTS}/pr", exist_ok=True)
+    os.makedirs(SHOTS, exist_ok=True)
 
     start_all()
     box.wait_for_unit("lososd.service")
@@ -399,70 +415,28 @@ pkgs.testers.nixosTest {
         )
         assert whoami(petra, token)[0] in (401, 403)
 
-    # The browser. Everything below drives the chat page as a person would.
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "${browsers}"
-    os.environ["PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS"] = "true"
-    os.environ["FONTCONFIG_FILE"] = "${fonts}"
-    os.environ.setdefault("HOME", os.environ.get("TMPDIR", "/tmp"))
-    from playwright.sync_api import sync_playwright
+    # The browser: nix/tests/chat-browser.mjs, run here in the driver.
+    browser_env = {
+        **os.environ,
+        "HOME": os.environ.get("TMPDIR", "/tmp"),
+        "CHAT_PLAYWRIGHT": "${playwright}",
+        "PLAYWRIGHT_BROWSERS_PATH": "${browsers}",
+        "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS": "true",
+        "FONTCONFIG_FILE": "${fonts}",
+        "CHAT_HOST": HOST,
+        "CHAT_PICTURE": "${picture}",
+        "CHAT_MATUS_PASSWORD": PASSWORD,
+        "CHAT_EVA_PASSWORD": EVA_PASSWORD,
+    }
 
-    pw = sync_playwright().start()
-    browser = pw.chromium.launch(
-        chromium_sandbox=False,
-        proxy={"server": "socks5://127.0.0.1:1080"},
-        args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
-    )
-    problems = []
-    steps = []
-
-    def person(name, password, pages=None):
-        context = browser.new_context(
-            viewport={"width": 1280, "height": 900},
-            device_scale_factor=2,
-            color_scheme="dark",
-            locale="en-US",
-            timezone_id="Europe/Bratislava",
-            reduced_motion="reduce",
-            ignore_https_errors=True,
-            accept_downloads=True,
+    def browser(phase):
+        done = subprocess.run(
+            ["${pkgs.nodejs}/bin/node", "${./chat-browser.mjs}", phase, SHOTS],
+            env=browser_env, capture_output=True, text=True, timeout=1800,
         )
-        page = context.new_page()
-        page.set_default_timeout(60000)
-        page.on("pageerror", lambda err: problems.append(f"{name}: {err}"))
-        page.on("console", lambda msg: msg.type == "error" and "Content Security Policy" in msg.text
-                and "inline style" not in msg.text and problems.append(f"{name}: {msg.text}"))
-        answer = context.request.post(
-            f"https://{HOST}/auth/api/firstfactor",
-            data=json.dumps({"username": name, "password": password}),
-            headers={"Content-Type": "application/json"},
-        )
-        assert answer.ok, (name, answer.status, answer.text())
-        return page
-
-    def settle(page):
-        page.evaluate("document.fonts.ready")
-        page.evaluate("document.documentElement.style.caretColor = 'transparent'")
-        # No spinner, no toast on its way in or out.
-        page.wait_for_function("!document.querySelector('.animate-spin')", timeout=30000)
-        time.sleep(1)
-
-    def box_of(locator):
-        b = locator.bounding_box()
-        return {k: round(v) for k, v in b.items()} if b else None
-
-    def film(page, slug, url, title, action="none", targets=None):
-        """One state of the launch film: a PNG and its line in manifest.json."""
-        settle(page)
-        name = f"{len(steps) + 1:02d}-{slug}.png"
-        page.screenshot(path=f"{SHOTS}/film/{name}")
-        steps.append({"file": name, "url": url, "title": title, "action": action,
-                      "targets": {k: box_of(v) for k, v in (targets or {}).items()}})
-
-    def shot(page, name):
-        settle(page)
-        page.screenshot(path=f"{SHOTS}/pr/{name}.png")
-
-    sidebar_chat = lambda page: page.get_by_role("link", name="Chat", exact=True)
+        print(done.stdout)
+        print(done.stderr)
+        assert done.returncode == 0, f"the chat page, {phase}: {done.stderr[-2000:]}"
 
     with subtest("with sharing off there is no chat anywhere"):
         switch("unshared")
@@ -477,129 +451,13 @@ pkgs.testers.nixosTest {
         assert code == 404, code
         loc = curl(f"-o /dev/null -w '%{{redirect_url}}' https://{HOST}/chat/")
         assert loc == f"https://{HOST}/", loc
-        owner = person("matus", PASSWORD)
-        owner.goto(f"https://{HOST}/")
-        owner.get_by_role("link", name="Overview", exact=True).wait_for()
-        time.sleep(3)
-        assert sidebar_chat(owner).count() == 0
-        film(owner, "sharing-off", f"{HOST}/", "the admin pages with sharing off: no Chat")
-        shot(owner, "sidebar-before")
-        owner.context.close()
+        browser("off")
 
-    with subtest("sharing on brings Chat into the sidebar"):
+    with subtest("with sharing on, two people use the chat page"):
         switch(None)
         box.wait_for_unit("dendrite.service")
-        box.wait_until_succeeds(f"curl -sf http://127.0.0.1:8008/_matrix/client/versions")
-        owner = person("matus", PASSWORD)
-        owner.goto(f"https://{HOST}/")
-        sidebar_chat(owner).wait_for()
-        film(owner, "sharing-on", f"{HOST}/", "the admin pages with sharing on: Chat in the sidebar",
-             action="click", targets={"chat": sidebar_chat(owner)})
-        shot(owner, "sidebar-after")
-        sidebar_chat(owner).click()
-        owner.wait_for_url(f"https://{HOST}/chat/**")
-        owner.get_by_role("heading", name="LosOS chat").wait_for()
-
-    with subtest("secure messages: a recovery key on the first device"):
-        owner.get_by_role("button", name="Set up secure messages").click()
-        owner.get_by_role("button", name="Make my recovery key").click()
-        key = owner.get_by_test_id("recovery-key").text_content().strip()
-        assert len(key.split()) >= 10, key
-        shot(owner, "recovery-key")
-        with owner.expect_download():
-            owner.get_by_role("button", name="Download").click()
-        owner.get_by_role("button", name="I saved it").click()
-        owner.get_by_role("button", name="Set up secure messages").wait_for(state="detached")
-
-    with subtest("Matus writes to Eva, end to end encrypted"):
-        her = person("eva", EVA_PASSWORD)
-        her.goto(f"https://{HOST}/chat/")
-        her.get_by_role("heading", name="LosOS chat").wait_for()
-        owner.get_by_role("button", name="Message someone").first.click()
-        owner.get_by_role("textbox", name="Name or @name:server").fill("eva")
-        owner.get_by_role("dialog").get_by_role("button", name=re.compile("Eva")).first.click()
-        composer = owner.get_by_role("textbox", name="Message Eva")
-        composer.wait_for()
-        for text in ["Hi Eva, chat is up on the box.", "It's end to end encrypted, and nobody needs a chat password."]:
-            composer.fill(text)
-            owner.keyboard.press("Enter")
-            owner.get_by_role("log").get_by_text(text).wait_for()
-        her.get_by_role("button", name=re.compile("Matus")).first.click()
-        her.get_by_role("button", name="Join", exact=True).click()
-        her.get_by_role("log").get_by_text("Hi Eva, chat is up on the box.").wait_for()
-        reply = her.get_by_role("textbox", name="Message Matus")
-        reply.fill("Nice. Can we plan the holiday here?")
-        her.keyboard.press("Enter")
-        owner.get_by_role("log").get_by_text("Nice. Can we plan the holiday here?").wait_for()
-        film(owner, "room-with-eva", f"{HOST}/chat/", "a conversation with Eva",
-             action="type", targets={"composer": composer})
-        shot(owner, "conversation")
-        shot(her, "conversation-eva")
-
-    with subtest("Matus types a reply, word by word"):
-        words = "Yes, I'll make a room for it tonight.".split(" ")
-        typed = ""
-        composer.click()
-        for i, word in enumerate(words):
-            typed = word if i == 0 else f"{typed} {word}"
-            composer.fill(typed)
-            film(owner, f"typing-{i + 1}", f"{HOST}/chat/", f"typing: {typed}",
-                 action="type", targets={"composer": composer})
-        owner.keyboard.press("Enter")
-        owner.get_by_role("log").get_by_text(typed).wait_for()
-        her.get_by_role("log").get_by_text(typed).wait_for()
-        film(owner, "sent", f"{HOST}/chat/", "the reply sent")
-
-    with subtest("a reaction, a thread, a picture and an edit"):
-        mine = her.get_by_role("log").get_by_text("Hi Eva, chat is up on the box.", exact=True)
-        mine.hover()
-        her.get_by_role("button", name="React", exact=True).click()
-        her.get_by_role("menuitem", name="👍").click()
-        owner.get_by_role("log").get_by_role("button", name=re.compile("👍")).wait_for()
-        hers = owner.get_by_role("log").get_by_text("Nice. Can we plan the holiday here?")
-        hers.hover()
-        owner.get_by_role("button", name="Reply in a thread").first.click()
-        owner.get_by_role("textbox", name="Reply in the thread").fill("Somewhere with a lake.")
-        owner.keyboard.press("Enter")
-        owner.get_by_label("Thread messages").get_by_text("Somewhere with a lake.").wait_for()
-        owner.get_by_label("Thread messages").get_by_text("Sending…").wait_for(state="detached")
-        shot(owner, "thread")
-        her.get_by_role("log").get_by_role("button", name=re.compile("1 reply")).wait_for()
-        her.get_by_role("button", name="Threads", exact=True).click()
-        her.get_by_label("Threads in this room").get_by_text("Somewhere with a lake.").wait_for()
-        shot(her, "thread-list")
-        her.get_by_role("button", name="Close threads").click()
-        owner.get_by_role("main").locator("input[type=file]").first.set_input_files("${picture}")
-        her.get_by_role("log").locator("img[src^='blob:']").last.wait_for()
-        mine = owner.get_by_role("log").get_by_text("Hi Eva, chat is up on the box.", exact=True)
-        mine.hover()
-        owner.get_by_role("button", name="Edit", exact=True).first.click()
-        owner.get_by_role("textbox", name="Message Eva").fill("Hi Eva, chat is up on mattbox.")
-        owner.keyboard.press("Enter")
-        her.get_by_role("log").get_by_text("Hi Eva, chat is up on mattbox.").wait_for()
-        her.get_by_role("log").get_by_text("(edited)").wait_for()
-        time.sleep(2)
-        shot(her, "picture-and-edit")
-
-    with subtest("a second device reads the past with the recovery key"):
-        laptop_two = person("matus", PASSWORD)
-        laptop_two.goto(f"https://{HOST}/chat/")
-        laptop_two.get_by_role("heading", name="LosOS chat").wait_for()
-        laptop_two.get_by_role("button", name=re.compile("Eva")).first.click()
-        laptop_two.get_by_role("log").get_by_text(re.compile("no key for this message")).first.wait_for()
-        laptop_two.get_by_role("button", name="Unlock this device to read encrypted messages").click()
-        laptop_two.get_by_role("textbox", name="Recovery key").fill(key)
-        laptop_two.get_by_role("button", name="Unlock", exact=True).click()
-        laptop_two.get_by_role("log").get_by_text("Hi Eva, chat is up on mattbox.").wait_for()
-        shot(laptop_two, "second-device")
-
-    with subtest("the page broke no rule of its policy"):
-        assert problems == [], problems
-
-    with open(f"{SHOTS}/film/manifest.json", "w") as f:
-        json.dump({"feature": "chat", "viewport": {"width": 1280, "height": 900}, "dpr": 2,
-                   "test": "losos-chat", "steps": steps}, f, indent=2)
-    browser.close()
-    pw.stop()
+        box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
+        assert json.loads(call("/api/me", matus)[1])["shared"] == ["chat"]
+        browser("on")
   '';
 }
