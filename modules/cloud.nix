@@ -71,6 +71,19 @@ let
     proxy_set_header X-Losos-Cloud-Login $losos_user;
   '';
 
+  # What the service is told about the request, by hand rather than by
+  # recommendedProxySettings: behind the edge the request arrives as http
+  # from loopback, and the scheme the apps are given back in sign-in and
+  # poll addresses must be the browser's, `$losos_proto`
+  # (modules/identity.nix), not nginx's own `$scheme`.
+  forwarded = ''
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $losos_proto;
+    proxy_set_header X-Forwarded-Host $host;
+  '';
+
   # Uploads of any size, streamed, and sync runs that take all day.
   files = ''
     client_max_body_size 0;
@@ -178,9 +191,11 @@ in
       # answers 401 otherwise, never a redirect a script cannot follow.
       "/cloud/api/" = {
         proxyPass = upstream;
+        recommendedProxySettings = false;
         # The live editor's y-sync socket is /cloud/api/collab/ws.
         proxyWebsockets = true;
         extraConfig = ''
+          ${forwarded}
           ${passSignIn "/internal/losos-app-authz"}
           ${files}
         '';
@@ -197,7 +212,11 @@ in
       # name the request brought along with the empty one.
       "/kb/api/" = {
         proxyPass = upstream;
-        extraConfig = passSignIn "/internal/losos-app-authz";
+        recommendedProxySettings = false;
+        extraConfig = ''
+          ${forwarded}
+          ${passSignIn "/internal/losos-app-authz"}
+        '';
       };
       # Other boxes. No person and no LAN guard: the handshake signs both
       # ends with the boxes' keys before anything else is read.
@@ -218,7 +237,9 @@ in
       # the service as it came. Regex, so it wins over the `/` prefix.
       "~ ^/(?:status\\.php|remote\\.php|public\\.php|index\\.php|ocs/v[12]\\.php)(?:/|$)" = {
         proxyPass = upstream;
+        recommendedProxySettings = false;
         extraConfig = ''
+          ${forwarded}
           ${passSignIn "/internal/losos-cloud-share"}
           proxy_set_header Authorization $losos_share_authorization;
           ${files}

@@ -65,14 +65,14 @@ export default defineMessages({
   "cloud.folder.emptyBody": {
     en: "Drop files here, or upload them from your computer.",
     sk: "Pretiahnite sem súbory alebo ich nahrajte z počítača.",
-    de: "Ziehen Sie Dateien hierher oder laden Sie sie vom Computer hoch.",
+    de: "Zieh Dateien hierher oder lade sie vom Computer hoch.",
   },
   "cloud.folder.missing": {
     en: "This folder is not there any more.",
     sk: "Tento priečinok už neexistuje.",
     de: "Diesen Ordner gibt es nicht mehr.",
   },
-  "cloud.folder.home": { en: "Go to your files", sk: "Prejsť na súbory", de: "Zu Ihren Dateien" },
+  "cloud.folder.home": { en: "Go to your files", sk: "Prejsť na súbory", de: "Zu deinen Dateien" },
   "cloud.name.label": { en: "Name", sk: "Názov", de: "Name" },
 
   // ── Uploads ───────────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ export default defineMessages({
   "cloud.delete.where": {
     en: "Trash in the sidebar brings it back.",
     sk: "Kôš v bočnom paneli ho vráti späť.",
-    de: "Über den Papierkorb in der Seitenleiste holen Sie es zurück.",
+    de: "Über den Papierkorb in der Seitenleiste holst du es zurück.",
   },
   "cloud.delete.failed": { en: "Not everything was deleted", sk: "Nie všetko sa odstránilo", de: "Nicht alles wurde gelöscht" },
 
@@ -169,13 +169,13 @@ export default defineMessages({
   "cloud.recent.emptyBody": {
     en: "Files you add or change show up here, newest first.",
     sk: "Súbory, ktoré pridáte alebo zmeníte, sa tu zobrazia od najnovších.",
-    de: "Dateien, die Sie hinzufügen oder ändern, erscheinen hier, die neuesten zuerst.",
+    de: "Dateien, die du hinzufügst oder änderst, erscheinen hier, die neuesten zuerst.",
   },
   "cloud.favorites.emptyTitle": { en: "No favorites yet", sk: "Zatiaľ žiadne obľúbené", de: "Noch keine Favoriten" },
   "cloud.favorites.emptyBody": {
     en: "Star a file or folder in its row and it stays here.",
     sk: "Označte súbor alebo priečinok hviezdičkou v jeho riadku a zostane tu.",
-    de: "Markieren Sie eine Datei oder einen Ordner in seiner Zeile mit dem Stern, dann bleibt er hier.",
+    de: "Markiere eine Datei oder einen Ordner in seiner Zeile mit dem Stern, dann bleibt er hier.",
   },
   "cloud.photos.emptyTitle": { en: "No photos yet", sk: "Zatiaľ žiadne fotky", de: "Noch keine Fotos" },
   "cloud.photos.emptyBody": {
@@ -225,7 +225,7 @@ export default defineMessages({
   "cloud.devices.addBody": {
     en: "Install the Nextcloud app on the computer or phone and give it this server address. It opens a page here to sign in.",
     sk: "Nainštalujte do počítača alebo telefónu aplikáciu Nextcloud a zadajte jej túto adresu servera. Na prihlásenie otvorí stránku tu.",
-    de: "Installieren Sie die Nextcloud-App auf dem Computer oder Handy und geben Sie diese Serveradresse an. Zum Anmelden öffnet sie hier eine Seite.",
+    de: "Installiere die Nextcloud-App auf dem Computer oder Handy und gib diese Serveradresse an. Zum Anmelden öffnet sie hier eine Seite.",
   },
   "cloud.devices.server": { en: "Server address", sk: "Adresa servera", de: "Serveradresse" },
   "cloud.devices.webdav": { en: "WebDAV address, for a file manager", sk: "Adresa WebDAV pre správcu súborov", de: "WebDAV-Adresse für einen Dateimanager" },
@@ -259,7 +259,7 @@ export default defineMessages({
   "cloud.connect.note": {
     en: "It gets a password of its own, which Devices can take back at any time.",
     sk: "Dostane vlastné heslo, ktoré mu môžete kedykoľvek odobrať v časti Zariadenia.",
-    de: "Sie bekommt ein eigenes Passwort, das Sie unter Geräte jederzeit zurücknehmen können.",
+    de: "Sie bekommt ein eigenes Passwort, das du unter Geräte jederzeit zurücknehmen kannst.",
   },
   "cloud.connect.allow": { en: "Allow", sk: "Povoliť", de: "Erlauben" },
   "cloud.connect.deny": { en: "Not now", sk: "Teraz nie", de: "Jetzt nicht" },
@@ -267,7 +267,7 @@ export default defineMessages({
   "cloud.connect.doneBody": {
     en: "Go back to the app; it carries on by itself. This tab can be closed.",
     sk: "Vráťte sa do aplikácie, pokračuje sama. Túto kartu môžete zavrieť.",
-    de: "Kehren Sie zur App zurück, sie macht von selbst weiter. Dieser Tab kann geschlossen werden.",
+    de: "Kehr zur App zurück, sie macht von selbst weiter. Dieser Tab kann geschlossen werden.",
   },
   "cloud.connect.declinedTitle": { en: "Not connected", sk: "Nepripojené", de: "Nicht verbunden" },
   "cloud.connect.declinedBody": {
@@ -279,7 +279,7 @@ export default defineMessages({
   "cloud.connect.goneBody": {
     en: "Start the sign-in again from the app.",
     sk: "Spustite prihlásenie v aplikácii znova.",
-    de: "Starten Sie die Anmeldung in der App erneut.",
+    de: "Starte die Anmeldung in der App erneut.",
   },
   "cloud.connect.errorTitle": { en: "Something went wrong", sk: "Niečo sa pokazilo", de: "Etwas ist schiefgelaufen" },
 
@@ -313,7 +313,7 @@ export default defineMessages({
   "cloud.error.network": {
     en: "The box did not answer. Check the connection.",
     sk: "Zariadenie neodpovedá. Skontrolujte pripojenie.",
-    de: "Die Box antwortet nicht. Prüfen Sie die Verbindung.",
+    de: "Die Box antwortet nicht. Prüf die Verbindung.",
   },
   "cloud.error.other": { en: "The box said: {message}", sk: "Zariadenie odpovedalo: {message}", de: "Die Box meldete: {message}" },
 });
