@@ -14,7 +14,7 @@
 
 import assert from 'node:assert';
 import { readFile } from 'node:fs/promises';
-import { launch, runner, serve } from './harness.mjs';
+import { launch, runner, serve, shellRoutes } from './harness.mjs';
 import { yroom } from './yroom.mjs';
 
 const TOKEN = 'c'.repeat(64);
@@ -31,7 +31,7 @@ const EDGE = { path: 'none', edges: [] };
 async function open({
   viewport = { width: 1440, height: 900 },
   locale = 'en-US',
-  signedIn = false,
+  signedIn = true,
   scheme = 'light',
   routes = null,
   query = '',
@@ -47,18 +47,23 @@ async function open({
   });
   if (signedIn) await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   const authed = (route) => route.request().headers()['authorization'] === `Bearer ${TOKEN}`;
-  await page.route('**/api/**', (route) => json(route, 401, { error: 'unauthorized' }));
+  await shellRoutes(page);
   await page.route('**/api/settings', (route) => (authed(route) ? json(route, 200, SETTINGS) : json(route, 401, {})));
   await page.route('**/api/edge', (route) => (authed(route) ? json(route, 200, EDGE) : json(route, 401, {})));
-  await page.route('**/api/vms', (route) => (authed(route) ? json(route, 200, { available: false, reason: 'notSharing' }) : json(route, 401, {})));
+  await page.route('**/api/vms', (route) => json(route, 200, { available: false, reason: 'notSharing' }));
   // No LosOS Cloud unless a check stands one up.
   await page.route('**/cloud/api/**', (route) => json(route, 401, { error: 'signIn', code: 'signIn' }));
   if (routes) await routes(page, authed);
   await page.goto(origin + '/diagrams/?canvas=svg' + query);
   await page.getByTestId('lab').waitFor({ timeout: 15000 });
   await page.getByTestId('lab-splash').waitFor({ state: 'detached', timeout: 15000 });
+  /* Sonner's refused copy of its own stylesheet is logged at load, as on
+   * every admin page (tests/app.browser.mjs); its rules come from the
+   * bundle. Nothing after that may add a violation. */
+  const atLoad = await page.evaluate(() => window.__violations);
+  assert.ok(atLoad.length <= 2 && atLoad.every((v) => v === 'style-src-elem inline'), `CSP violations at load: ${atLoad.join(', ')}`);
   const clean = async () => {
-    const violations = await page.evaluate(() => window.__violations);
+    const violations = (await page.evaluate(() => window.__violations)).slice(atLoad.length);
     assert.deepStrictEqual(violations, [], `CSP violations: ${violations.join(', ')}`);
     assert.deepStrictEqual(errors, [], `page errors: ${errors.join(' | ')}`);
   };
@@ -90,10 +95,10 @@ async function download(page, testid) {
 await check('opens on the diagram under its CSP, the network drawn as cards', async () => {
   const { page, clean } = await open();
   await page.getByTestId('diagram').waitFor();
-  assert.strictEqual(await page.getByTestId('view-canvas').getAttribute('aria-checked'), 'true');
+  assert.strictEqual(await page.getByTestId('view-canvas').getAttribute('aria-current'), 'page');
   assert.match(await page.title(), /LosOS Diagrams/);
-  assert.ok((await page.locator('[data-testid=diagram] .dg-node.device').count()) >= 5, 'the setup is on the canvas');
-  assert.ok((await edges(page).count()) >= 4, 'its cables are arrows');
+  assert.ok((await page.locator('[data-testid=diagram] .dg-node.device').count()) >= 3, 'this box is on the canvas');
+  assert.ok((await edges(page).count()) >= 3, 'its cables are arrows');
   await clean();
   await page.close();
 });
@@ -101,7 +106,7 @@ await check('opens on the diagram under its CSP, the network drawn as cards', as
 await check('a double-click writes a card, and its Markdown is drawn, one newline a line break', async () => {
   const { page, clean } = await open();
   await fresh(page);
-  const p = await at(page, 400, 300);
+  const p = await at(page, 300, 260);
   await page.mouse.dblclick(p.x, p.y);
   const editor = page.getByRole('textbox', { name: 'Card text' });
   await editor.waitFor();
@@ -123,12 +128,12 @@ await check('cards from the tray, an arrow between them, undo and redo', async (
   const { page, clean } = await open();
   await fresh(page);
   await page.locator('[data-testid=tray-items] [data-card=diamond]').click();
-  let p = await at(page, 300, 300);
+  let p = await at(page, 130, 260);
   await page.mouse.click(p.x, p.y);
   await page.keyboard.type('Ready?');
   await page.keyboard.press('Escape');
   await page.locator('[data-testid=tray-items] [data-card=pill]').click();
-  p = await at(page, 700, 300);
+  p = await at(page, 400, 260);
   await page.mouse.click(p.x, p.y);
   await page.keyboard.type('Ship it');
   await page.keyboard.press('Escape');
@@ -278,12 +283,12 @@ await check('LosOS Cloud: a diagram opens from ?file=, saves back on its version
 
   // a new card, then Ctrl+S writes it back over the version it read
   await page.locator('[data-testid=tray-items] [data-card=text]').click();
-  const p = await at(page, 300, 650);
+  const p = await at(page, 260, 420);
   await page.mouse.click(p.x, p.y);
   await page.keyboard.type('Added on the box');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+s');
-  await page.getByText('Saved plan in LosOS Cloud (Diagrams/plan.canvas).').waitFor();
+  await page.getByText('Saved plan in LosOS Cloud (Diagrams/plan.canvas).', { exact: true }).waitFor();
   assert.deepStrictEqual(cloud.puts[0], { path: 'Diagrams/plan.canvas', ifMatch: 'v1', ifNew: null });
   const written = JSON.parse(cloud.files.get('Diagrams/plan.canvas').text);
   assert.ok(written.nodes.some((n) => n.text === 'Added on the box'));
@@ -350,13 +355,13 @@ await check('edited together: two people on one file see each other, their chang
     await page.keyboard.press('Escape');
   };
   // One writes, the other sees it; the file follows.
-  await write(a.page, 260, 600, 'From Matus');
+  await write(a.page, 80, 450, 'From Matus');
   await card(b.page, 'From Matus').waitFor();
   assert.ok(JSON.parse(cloud.files.get('Diagrams/plan.canvas').text).nodes.some((n) => n.text === 'From Matus'));
 
   // Eva's pointer and selection, in her colour, on Matus's canvas.
   await card(b.page, 'Inbox').click();
-  const p = await at(b.page, 700, 500);
+  const p = await at(b.page, 400, 400);
   await b.page.mouse.move(p.x, p.y);
   const eva = a.page.locator('[data-testid=peers] [data-peer="eva@mattbox.local"]');
   await eva.getByText('Eva').waitFor();
@@ -366,8 +371,8 @@ await check('edited together: two people on one file see each other, their chang
   // Both change the file at the same moment: Eva's messages are held
   // until both cards are down, then everything is let through.
   room.hold('eva');
-  await write(a.page, 520, 600, 'Card A');
-  await write(b.page, 820, 600, 'Card B');
+  await write(a.page, 230, 450, 'Card A');
+  await write(b.page, 400, 450, 'Card B');
   room.release('eva');
   for (const { page } of [a, b]) {
     await card(page, 'Card A').waitFor();
@@ -419,7 +424,7 @@ await check('a diagram shared from another box opens in its room; a view-only sh
   await page.getByTestId('live-people').getByText('View only').waitFor();
 
   await page.locator('[data-testid=tray-items] [data-card=text]').click();
-  const p = await at(page, 300, 650);
+  const p = await at(page, 260, 420);
   await page.mouse.click(p.x, p.y);
   await page.getByText('You can view this diagram but not change it.', { exact: true }).waitFor();
   assert.strictEqual(room.text(), before, 'the room kept its text');
@@ -452,7 +457,7 @@ await check('Machines: an ordered machine is a live card, a planned one links to
   await fresh(page);
   await page.getByRole('button', { name: 'Machines', exact: true }).click();
   await page.locator('[data-testid=tray-items] [data-machine=ord_1]').click();
-  let p = await at(page, 350, 300);
+  let p = await at(page, 130, 260);
   await page.mouse.click(p.x, p.y);
   const replicas = page.getByTestId('machine-replicas');
   await replicas.waitFor();
@@ -461,7 +466,7 @@ await check('Machines: an ordered machine is a live card, a planned one links to
   assert.match(await page.locator('[data-testid=diagram] .dg-node.machine').first().textContent(), /web/);
 
   await page.locator('[data-testid=tray-items] [data-machine-image=nixos-26]').click();
-  p = await at(page, 750, 300);
+  p = await at(page, 400, 260);
   await page.mouse.click(p.x, p.y);
   const order = page.getByTestId('machine-order');
   await order.waitFor();
@@ -470,16 +475,14 @@ await check('Machines: an ordered machine is a live card, a planned one links to
   await page.close();
 });
 
-await check('Machines: a box that does not share says why, and so does a signed-out page', async () => {
-  for (const signedIn of [true, false]) {
-    const { page, clean } = await open({ signedIn });
-    await page.getByRole('button', { name: 'Machines', exact: true }).click();
-    const why = page.getByTestId('machines-unavailable');
-    await why.waitFor();
-    assert.match(await why.innerText(), signedIn ? /shar/i : /sign in/i);
-    await clean();
-    await page.close();
-  }
+await check('Machines: a box that does not share says why', async () => {
+  const { page, clean } = await open();
+  await page.getByRole('button', { name: 'Machines', exact: true }).click();
+  const why = page.getByTestId('machines-unavailable');
+  await why.waitFor();
+  assert.match(await why.innerText(), /shar/i);
+  await clean();
+  await page.close();
 });
 
 await check('the chrome speaks Slovak and German', async () => {

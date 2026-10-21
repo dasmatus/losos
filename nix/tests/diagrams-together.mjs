@@ -58,7 +58,11 @@ async function window(browser, who, box) {
   const page = await context.newPage();
   page.on("pageerror", (e) => problems.push(`${box}: ${e}`));
   page.on("console", (m) => {
-    if (m.type() === "error" && m.text().startsWith("policy refused")) problems.push(`${box}: ${m.text()}`);
+    // The toast stylesheet every admin and Cloud page tries to add at load,
+    // which style-src 'self' refuses and the bundle carries anyway, is the
+    // baseline the browser tests allow too; anything else fails the run.
+    if (m.type() === "error" && m.text().startsWith("policy refused") && m.text() !== "policy refused style-src-elem: inline")
+      problems.push(`${box}: ${m.text()}`);
   });
   const r = await page.request.post(`${who.base}/auth/api/firstfactor`, {
     data: { username: who.name, password: who.password, keepMeLoggedIn: false, targetURL: `${who.base}/diagrams/` },
@@ -120,7 +124,7 @@ try {
 
   // Eva writes a card; Matus sees it come.
   await e.page.locator("[data-testid=tray-items] [data-card=text]").click();
-  let p = await at(e.page, 560, 600);
+  let p = await at(e.page, 420, 440);
   await e.page.mouse.click(p.x, p.y);
   await e.page.keyboard.type("The van is booked for Friday");
   await e.page.keyboard.press("Escape");

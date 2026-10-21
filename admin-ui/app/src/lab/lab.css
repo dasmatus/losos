@@ -103,20 +103,6 @@
 [data-proto="lososd"] { --lab-pk: var(--lab-p-lososd); }
 .lab-proto { background: var(--lab-pk); }
 
-html,
-body,
-#lab {
-  height: 100%;
-}
-body.lab-body {
-  overflow: hidden;
-}
-@media (max-width: 900px) {
-  body.lab-body {
-    overflow: auto;
-  }
-}
-
 /* ── The canvas ─────────────────────────────────────────── */
 .lab-canvas {
   width: 100%;

@@ -128,7 +128,7 @@ export function pageItems(): Item[] {
     title: t("shell.nav.lab"),
     icon: FlowchartIcon,
     words: `${template("shell.nav.lab", undefined, "en")} lab canvas obsidian flowchart whiteboard mind map simulator topology network map machines`,
-    target: { kind: "href", href: "/diagrams/" },
+    target: { kind: "route", to: "/diagrams" },
   });
   return items;
 }

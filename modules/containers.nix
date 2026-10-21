@@ -233,11 +233,21 @@ let
   # for the dashboard's cross-origin probe of the Tahoe web UI, and Tahoe-LAFS
   # is gone — with it the :3456 vhost, the probe, and any reason for this page
   # to talk to a second origin.
+  #
+  # script-src carries 'wasm-unsafe-eval' for LosOS Diagrams, a screen of
+  # this page at /diagrams whose core is Rust compiled to WebAssembly
+  # (admin-ui/lab/core). It lets the page compile WebAssembly and nothing
+  # more: eval() and new Function() stay refused, and compiling a module
+  # takes script that is already running, which this policy still allows
+  # only from 'self'. It was a policy of its own while Diagrams was a page
+  # of its own; as a screen it is reached by the router without a page load,
+  # so the admin document needs it. img-src's blob: is the pictures and
+  # setup files Diagrams hands out.
   adminCsp = lib.concatStringsSep "; " [
     "default-src 'none'"
-    "script-src 'self'"
+    "script-src 'self' 'wasm-unsafe-eval'"
     "style-src 'self'"
-    "img-src 'self' data:"
+    "img-src 'self' data: blob:"
     "font-src 'self'"
     "connect-src 'self'"
     # The first-run wizard embeds /nextcloud so the handover from "choose a
@@ -281,27 +291,6 @@ let
     "script-src 'self' 'unsafe-inline'"
     "style-src 'self' 'unsafe-inline'"
     "img-src 'self' data:"
-    "font-src 'self'"
-    "connect-src 'self'"
-    "frame-ancestors 'none'"
-    "base-uri 'none'"
-    "form-action 'none'"
-  ];
-
-  # LosOS Lab's policy: the admin policy plus 'wasm-unsafe-eval', which is
-  # what lets the page compile its WebAssembly (the Lab's Rust core,
-  # admin-ui/lab/core) and nothing more: eval() and new Function() stay
-  # refused. Kept off the admin pages, which run no WebAssembly. Style is
-  # 'self' like the admin page's: the canvas places things with React style
-  # props, which are CSSOM writes the policy allows. blob: images are the
-  # setup files and screenshots the Lab hands out. No remote origin: the
-  # box's copy has no qemu-wasm engine, fetches nothing but /api/ and its
-  # own files, and its guests, when there are any, come through /api/lab.
-  labCsp = lib.concatStringsSep "; " [
-    "default-src 'none'"
-    "script-src 'self' 'wasm-unsafe-eval'"
-    "style-src 'self'"
-    "img-src 'self' data: blob:"
     "font-src 'self'"
     "connect-src 'self'"
     "frame-ancestors 'none'"
@@ -366,17 +355,16 @@ let
   ];
 
   # One map per header: value on the admin surface, empty (header omitted) on
-  # the two proxied service routes, the handbook's and the lab's own values
-  # (or the admin value, for the headers they share) under /handbook/ and
-  # /diagrams/, the widget frame's own value (or nothing) under
-  # /widget-frame/, and a mail message's under its HTML route.
-  adminHeaderMap = variable: value: handbookValue: labValue: frameValue: mailValue: ''
+  # the two proxied service routes, the handbook's own value (or the admin
+  # value, for the headers they share) under /handbook/, the widget frame's
+  # own value (or nothing) under /widget-frame/, and a mail message's under
+  # its HTML route.
+  adminHeaderMap = variable: value: handbookValue: frameValue: mailValue: ''
     map $uri ${variable} {
         default          "${value}";
         ~^/nextcloud     "";
         ~^/forgejo       "";
         ~^/handbook/     "${handbookValue}";
-        ~^/diagrams/     "${labValue}";
         ~^/widget-frame/ "${frameValue}";
         ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";
     }
@@ -388,7 +376,6 @@ let
       variable = "$losos_csp";
       value = adminCsp;
       handbookValue = handbookCsp;
-      labValue = labCsp;
       frameValue = widgetFrameCsp;
       mailValue = mailFrameCsp;
     }
@@ -415,7 +402,7 @@ let
 
   adminHeaderMaps = lib.concatMapStrings (
     h:
-    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) h.frameValue (
+    adminHeaderMap h.variable h.value (h.handbookValue or h.value) h.frameValue (
       h.mailValue or h.value
     )
   ) adminHeaders;
@@ -586,19 +573,20 @@ in
           "/manage/".return = "404";
         }
         (lib.mkIf labEnabled {
-          # LosOS Diagrams: diagrams/index.html in the admin UI's bundle, on
-          # real paths under /diagrams/ like the SPA is on /, so every deep
-          # link and reload gets the page. Its scripts and the core's .wasm
-          # are in the shared /assets/. LAN-only like the rest of the admin
-          # surface; the header map above gives this prefix its own CSP.
-          "/diagrams/" = {
-            tryFiles = "$uri /diagrams/index.html";
-            extraConfig = lanOnly;
-          };
-          # The page's old address, from before it was LosOS Diagrams. A
-          # return runs before the access phase, so no guard here: the
-          # redirect says nothing, and /diagrams/ keeps its own.
+          # LosOS Diagrams is a screen of the SPA at /diagrams, reached
+          # through `/`'s fallback like every pane; its scripts and the
+          # core's .wasm are in /assets/. This is the page's old address,
+          # from before it was LosOS Diagrams. A return runs before the
+          # access phase, so no guard here: the redirect says nothing, and
+          # /diagrams/ keeps `/`'s.
           "/lab/".return = "301 /diagrams/$is_args$args";
+        })
+        (lib.mkIf (adminEnabled && !labEnabled) {
+          # With Diagrams off (losos.admin.lab) there is no screen to fall
+          # back to: both spellings answer 404, as Mail's do off the shared
+          # side.
+          "= /diagrams".return = "404";
+          "/diagrams/".return = "404";
         })
         (lib.mkIf (adminEnabled && !mailEnabled) {
           # LosOS Mail is a screen of the SPA at /mail, reached through `/`'s
@@ -613,7 +601,7 @@ in
           # the prefix match. Same LAN-only guard. The page's own origin is
           # what the helper checks the Origin header against, so the Host
           # goes through as the browser sent it, port included. `connect-src
-          # 'self'` in labCsp covers ws:// and wss:// to the same host.
+          # 'self'` in adminCsp covers ws:// and wss:// to the same host.
           "/api/lab/ws/" = {
             proxyPass = "http://127.0.0.1:${toString config.losos.lab.libvirt.port}/lab/v1/guests/";
             proxyWebsockets = true;

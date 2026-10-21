@@ -412,11 +412,11 @@ pkgs.testers.nixosTest {
         cookie = sign_in("matus", PASSWORD)
 
     if AFTER:
-        with subtest("/lab/ moves to /diagrams/, and /diagrams/ is the page"):
+        with subtest("/lab/ moves to /diagrams/, and /diagrams/ is the admin page"):
             moved = curl(f"-o /dev/null -w '%{{http_code}} %{{redirect_url}}' 'https://{BOX}/lab/?canvas=svg'")
             assert moved == f"301 https://{BOX}/diagrams/?canvas=svg", moved
             page = curl(f"-f https://{BOX}/diagrams/")
-            assert "<title>LosOS Diagrams</title>" in page, page[:300]
+            assert '<div id="root">' in page, page[:300]
             policy = curl(f"-D - -o /dev/null https://{BOX}/diagrams/")
             assert "wasm-unsafe-eval" in policy, policy
 
