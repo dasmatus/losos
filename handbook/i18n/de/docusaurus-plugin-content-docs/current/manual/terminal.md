@@ -169,7 +169,7 @@ losos git setup
 ```
 
 Beide fragen nach deinem LosOS-Passwort, dem, mit dem du dich bei LosOS
-cloud anmeldest, und richten den Rechner ein, auf dem du sie ausführst. Der
+Cloud anmeldest, und richten den Rechner ein, auf dem du sie ausführst. Der
 Bereich **Dieser Computer** der Vollbildansicht macht dasselbe mit einer
 Taste.
 

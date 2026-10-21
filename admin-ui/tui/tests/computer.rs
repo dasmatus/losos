@@ -23,7 +23,7 @@ fn device_handler(seen: Arc<Mutex<Vec<Value>>>) -> Box<common::Handler> {
         match (method, path) {
             ("POST", "/api/devices/cloud") if right => (
                 200,
-                json!({ "user": "notshared", "appPassword": "AbCd-EfGh-1234", "path": "/nextcloud/remote.php/dav/files/notshared/" }),
+                json!({ "user": "notshared", "appPassword": "AbCd-EfGh-1234", "path": "/remote.php/dav/files/notshared/" }),
             ),
             ("POST", "/api/devices/git") if right => (
                 200,
@@ -111,8 +111,7 @@ fn cloud_setup_puts_the_files_in_the_file_manager_with_no_password_to_type() {
     let r = s.client.run(&["cloud", "setup"], PASSWORD);
     assert_eq!(r.code, 0, "{}", r.err);
     let port = url::Url::parse(&s.host.url).unwrap().port().unwrap();
-    let location =
-        format!("davs://notshared@127.0.0.1:{port}/nextcloud/remote.php/dav/files/notshared/");
+    let location = format!("davs://notshared@127.0.0.1:{port}/remote.php/dav/files/notshared/");
     assert!(r.out.contains("as work pc"), "{}", r.out);
     assert!(r.out.contains(&location), "{}", r.out);
     assert!(r.out.contains("certificate"), "{}", r.out);

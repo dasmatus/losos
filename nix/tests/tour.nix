@@ -35,8 +35,6 @@
 # sign-in the admin UI keeps in the browser after the wizard, and nothing in
 # this test is about LosOS Login. Build with AI's model is not part of this
 # box, only its option: the step is about what the option document says.
-# LosOS Cloud is a stand-in, as in nix/tests/setup.nix: the claim asks it
-# one question.
 { pkgs }:
 
 let
@@ -68,14 +66,6 @@ let
     '';
   });
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
@@ -93,7 +83,7 @@ pkgs.testers.nixosTest {
   name = "losos-tour";
 
   nodes.box =
-    { config, ... }:
+    _:
     {
       imports = [
         ../../modules/options.nix
@@ -108,26 +98,10 @@ pkgs.testers.nixosTest {
         backend.package = lososPkgs.losos-ctl;
         admin.ui = ui;
         identity.enable = false;
-        nextcloud.mode = "container";
         forgejo.enable = false;
       };
 
-      # LosOS Cloud's stand-in on the port the front vhost proxies to.
-      services.nginx.virtualHosts."stub-nextcloud" = {
-        listen = [
-          {
-            addr = "127.0.0.1";
-            port = config.losos.nextcloud.apachePort;
-          }
-        ];
-        locations."/".extraConfig = ''return 200 "stub-nextcloud\n";'';
-      };
-
-      systemd.services.lososd.path = lib.mkForce [
-        stubOcc
-        pkgs.coreutils
-      ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+      systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
       environment.systemPackages = [
         pkgs.curl
         pkgs.jq

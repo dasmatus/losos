@@ -40,8 +40,8 @@ use crate::vault::HostRecord;
 const SERVICE: &str = "losos";
 /// The schema GVfs, and libsecret's compatibility API with it, look up.
 const NETWORK_SCHEMA: &str = "org.gnome.keyring.NetworkPassword";
-/// What Nextcloud calls its WebDAV realm when the probe gets no answer.
-const DEFAULT_REALM: &str = "Nextcloud";
+/// LosOS Cloud's WebDAV realm, for when the probe gets no answer.
+const DEFAULT_REALM: &str = "LosOS Cloud";
 /// What the bookmark is called in the file manager.
 const BOOKMARK_NAME: &str = "LosOS Cloud";
 /// The longest computer name the box takes (backend/src/devices.rs).
@@ -561,12 +561,8 @@ mod tests {
     fn the_files_address_follows_the_box_address() {
         let https = url::Url::parse("https://box.local").unwrap();
         assert_eq!(
-            dav_location(
-                &https,
-                "notshared",
-                "/nextcloud/remote.php/dav/files/notshared/"
-            ),
-            "davs://notshared@box.local/nextcloud/remote.php/dav/files/notshared/"
+            dav_location(&https, "notshared", "/remote.php/dav/files/notshared/"),
+            "davs://notshared@box.local/remote.php/dav/files/notshared/"
         );
         let http = url::Url::parse("http://192.168.1.4:8080").unwrap();
         assert_eq!(
@@ -583,7 +579,7 @@ mod tests {
             realm(r#"Basic realm="LosOS Cloud", charset="UTF-8""#).as_deref(),
             Some("LosOS Cloud")
         );
-        assert_eq!(realm("Basic realm=Nextcloud").as_deref(), Some("Nextcloud"));
+        assert_eq!(realm("Basic realm=Plain").as_deref(), Some("Plain"));
         assert_eq!(realm("Bearer"), None);
     }
 

@@ -122,7 +122,7 @@ made from the box's identity but does not reveal it. To add a domain:
 3. Wait. The edge looks the records up itself every half minute and marks
    each one **✓ seen** as it finds it. When both are right the domain turns
    **Live**, the edge fetches a certificate for it, and LosOS Cloud answers at
-   `https://<your domain>/nextcloud`.
+   `https://<your domain>/cloud/`.
 
 :::note[Domains with nothing in front of them]
 A domain with nothing in front of it, such as `novak-family.eu` itself,

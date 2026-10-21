@@ -443,16 +443,13 @@ await check('a reload after the claim comes back to step 2 with the spare key, n
   await page.close();
 });
 
-/* On a fresh box the Nextcloud pod is still running `occ maintenance:install`
- * when the owner reaches step 2, and the claim used to fail into "command
- * failed; see the lososd journal". lososd now says `ready: false` with a
- * reason, and the step must wait on that rather than let the owner submit into
- * it. */
+/* When lososd says `ready: false` with a reason, step 2 waits on it rather
+ * than let the owner submit into a box that cannot take a password yet. */
 await check('step 2 waits with the reason on screen while the box is not ready, and never submits', async () => {
   const { page, errors } = await open({
     claimed: false,
     ready: false,
-    waitingFor: 'Nextcloud is still installing itself. This happens once, on the first boot, and takes a few minutes.',
+    waitingFor: 'LosOS Login is still starting. This happens once, on the first boot, and takes a minute.',
   });
   const requests = [];
   page.on('request', (req) => requests.push({ method: req.method(), url: new URL(req.url()).pathname }));
@@ -460,7 +457,7 @@ await check('step 2 waits with the reason on screen while the box is not ready, 
   await page.waitForTimeout(400);
   const text = await page.locator('body').innerText();
   assert.ok(/finish starting/i.test(text), `no waiting panel while not ready:\n${text}`);
-  assert.ok(/still installing itself/.test(text), 'lososd\'s reason is not shown to the owner');
+  assert.ok(/LosOS Login is still starting/.test(text), 'lososd\'s reason is not shown to the owner');
   assert.ok(await page.locator('input[name="new-password"]').isDisabled(), 'the password field is enabled while the box cannot take one');
   assert.ok(await page.getByRole('button', { name: /^Set the password$/ }).isDisabled(), 'the submit is enabled while the box cannot take a password');
   assert.ok(!requests.some((r) => r.method === 'POST' && r.url === '/api/setup/claim'), 'a claim was sent while not ready');
@@ -478,7 +475,7 @@ await check('step 2 opens on its own once the box reports ready, then claims', a
   const { page, errors } = await open({
     claimed: false,
     ready: () => installed,
-    waitingFor: 'Nextcloud is still installing itself.',
+    waitingFor: 'LosOS Login is still starting.',
   });
   await page.getByRole('button', { name: /^Continue$/ }).click();
   await page.waitForTimeout(300);
@@ -500,7 +497,7 @@ await check('step 2 opens on its own once the box reports ready, then claims', a
 });
 
 /* The race: the last poll said ready, the submit landed a moment after the
- * pod went into maintenance. lososd answers 503 with the reason; the step
+ * box stopped being ready. lososd answers 503 with the reason; the step
  * must read that as "not yet", not as a failure that stops the wizard. */
 /* On a busy box the first GET /api/setup/claim can take twelve seconds, and
  * until it answered step 2's form used to be open, with no panel, as if the
@@ -540,7 +537,7 @@ await check('a 503 from the claim itself sends step 2 back to waiting', async ()
       status: 503,
       contentType: 'application/json',
       headers: { 'Retry-After': '10' },
-      body: JSON.stringify({ error: 'Nextcloud is in maintenance mode right now.', ready: false, waitingFor: 'Nextcloud is in maintenance mode right now.' }),
+      body: JSON.stringify({ error: 'LosOS Login is restarting right now.', ready: false, waitingFor: 'LosOS Login is restarting right now.' }),
     });
   });
   await page.getByRole('button', { name: /^Continue$/ }).click();
@@ -551,7 +548,7 @@ await check('a 503 from the claim itself sends step 2 back to waiting', async ()
   await page.waitForTimeout(400);
   const text = await page.locator('body').innerText();
   assert.ok(/not ready for the password yet/i.test(text), `the 503 is not explained:\n${text}`);
-  assert.ok(/maintenance mode/.test(text), 'lososd\'s reason from the 503 is not shown');
+  assert.ok(/restarting right now/.test(text), 'lososd\'s reason from the 503 is not shown');
   assert.ok(await page.getByRole('button', { name: /^Set the password$/ }).isDisabled(), 'the submit stayed enabled after a 503');
   assert.ok(!/stopped accepting|see the lososd journal/i.test(text), 'the 503 reads as a hard failure');
   await page.close();
@@ -630,31 +627,8 @@ await check('a 409 from the claim is shown and not asked again', async () => {
   await page.close();
 });
 
-/* Step 3 on a new box: the frame is opened a minute or two before the files
- * app's web server is up, so what it shows is nginx's "502 Bad Gateway" page.
- * The old watcher read "/nextcloud, not the login page" as a session and said
- * "You are signed in" over an error page nothing ever reloaded. The step now
- * reloads the frame until the files app answers, and counts only a page the
- * app stamps with a user as signed in. The frame also stays hidden, loading in
- * the background behind a quiet panel, until it holds a page of the app. */
-await check('step 3 hides the frame and keeps reloading it until the files app answers, and signs in only on a real session', async () => {
-  const { page } = await open({ claimed: false, ready: true });
-  let hits = 0;
-  await page.route('**/nextcloud/', async (route) => {
-    hits += 1;
-    if (hits <= 2) {
-      return route.fulfill({ status: 502, contentType: 'text/html', body: '<html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center><hr><center>nginx</center></body></html>' });
-    }
-    if (hits === 3) {
-      // The login page: the app's token on <head>, no user.
-      return route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok"><title>Login</title></head><body><form><input id="user"><input id="password" type="password"><button id="go" type="button" onclick="location.href=\'/nextcloud/apps/files/\'">Log in</button></form></body></html>' });
-    }
-    return route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok"><title>Files</title></head><body>should not be asked again</body></html>' });
-  });
-  await page.route('**/nextcloud/apps/files/', (route) =>
-    route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok" data-user="notshared"><title>Files</title></head><body><div id="app-content">files</div></body></html>' }),
-  );
-  // Through steps 1 and 2.
+/* Steps 1 and 2, up to the Continue that opens step 3. */
+async function throughStepTwo(page) {
   await page.getByRole('button', { name: /^Continue$/ }).click();
   await page.locator('input[name="username"]').fill('matus');
   await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
@@ -662,52 +636,72 @@ await check('step 3 hides the frame and keeps reloading it until the files app a
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.getByText('notshared').first().waitFor({ timeout: 5000 });
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 5000 });
+}
 
-  // On the 502: not signed in, the frame is not on screen (the error page
-  // loads behind a panel that says the app is starting), the new-tab link
-  // that would open the same error page is withheld, and the frame reloads.
-  await page.waitForTimeout(1500);
+/* Step 3 on a new box: the owner signs in to LosOS Cloud in a tab of its own
+ * (LosOS Login and LosOS Cloud both refuse to be framed), and the step asks
+ * /cloud/api/me who this browser is until the answer is a person. While
+ * LosOS Cloud is still starting nginx answers 502, which is not a session
+ * and keeps the button shut; a 401 is a running app nobody is signed in to. */
+await check('step 3 waits for LosOS Cloud to start, then for a real session, and opens it in a tab of its own', async () => {
+  const { page } = await open({ claimed: false, ready: true });
+  let hits = 0;
+  let signedIn = false;
+  await page.route('**/cloud/api/me', (route) => {
+    hits += 1;
+    if (hits <= 2) return route.fulfill({ status: 502, contentType: 'text/html', body: '<html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>' });
+    if (!signedIn) return route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"signed out"}' });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ login: 'notshared', name: 'Matus' }) });
+  });
+  await throughStepTwo(page);
+
+  // On the 502: the starting note, the button shut, no session.
+  const link = page.getByRole('link', { name: 'Open LosOS Cloud' });
+  await page.getByText('Your files are still starting').waitFor({ timeout: 5000 });
+  assert.equal(await link.getAttribute('aria-disabled'), 'true', 'the button opened onto an error page');
   let text = await page.locator('body').innerText();
   assert.ok(!/You are signed in/.test(text), `an nginx error page counted as a session:\n${text}`);
-  assert.ok(/still starting/.test(text), `the starting note is missing:\n${text}`);
-  assert.ok(!(await page.locator('iframe').first().isVisible()), 'the frame showed the nginx error page');
-  assert.ok(!(await page.getByRole('link', { name: /new tab/ }).isVisible()), 'the new-tab link was offered onto an error page');
-  await page.waitForFunction(() => {
-    const f = document.querySelector('iframe');
-    return !!f && !!f.contentDocument && !!f.contentDocument.querySelector('#user');
-  }, null, { timeout: 20_000 });
-  assert.ok(hits >= 3, `the frame was not reloaded until the app answered (hits=${hits})`);
-  // The login page itself is not a session either; the note is gone and the
-  // frame is now on screen, with the new-tab link beside it.
-  await page.waitForTimeout(1200);
+
+  // LosOS Cloud answers 401: the note goes, the button opens /cloud/ in a new tab.
+  await page.getByText('Your files are still starting').waitFor({ state: 'detached', timeout: 10_000 });
+  assert.equal(await link.getAttribute('aria-disabled'), 'false');
+  assert.equal(await link.getAttribute('href'), '/cloud/');
+  assert.equal(await link.getAttribute('target'), '_blank');
+  await page.getByText('Waiting for you to sign in').first().waitFor();
+  await page.waitForTimeout(2500);
   text = await page.locator('body').innerText();
-  assert.ok(!/You are signed in/.test(text), 'the login page counted as a session');
-  assert.ok(!/still starting/.test(text), 'the starting note stayed after the app answered');
-  assert.ok(await page.locator('iframe').first().isVisible(), 'the frame stayed hidden after the app answered');
-  assert.ok(await page.getByRole('link', { name: /new tab/ }).isVisible(), 'the new-tab link is missing once the app answered');
+  assert.ok(!/You are signed in/.test(text), 'a signed-out answer counted as a session');
   assert.ok(await page.getByRole('button', { name: /^Finish/ }).isDisabled(), 'Finish enabled before any sign-in');
-  // "Sign in" inside the frame: the app renders a page stamped with the user.
-  await page.frameLocator('iframe').first().locator('#go').click();
-  // Twice on the page once it happens: the step's callout and the toast.
+  assert.equal(await page.locator('iframe').count(), 0, 'step 3 framed a page that refuses to be framed');
+
+  // The owner signs in in the other tab: the next answer is a person.
+  signedIn = true;
   await page.getByRole('region', { name: 'Sign in' }).getByText('You are signed in').waitFor({ timeout: 10_000 });
   await page.locator('[data-toast]').getByText('You are signed in').waitFor();
   assert.ok(!(await page.getByRole('button', { name: /^Finish/ }).isDisabled()), 'Finish still disabled after signing in');
+  // It stops asking once it knows.
+  const asked = hits;
+  await page.waitForTimeout(4500);
+  assert.equal(hits, asked, 'step 3 kept asking after the sign-in');
+  await page.close();
+});
+
+await check('step 3 can be told by hand, for a browser that keeps the two tabs apart', async () => {
+  const { page } = await open({ claimed: false, ready: true });
+  await page.route('**/cloud/api/me', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: '{}' }));
+  await throughStepTwo(page);
+  await page.getByRole('button', { name: 'I have signed in' }).click();
+  await page.getByRole('region', { name: 'Sign in' }).getByText('You are signed in').waitFor({ timeout: 5000 });
+  assert.ok(!(await page.getByRole('button', { name: /^Finish/ }).isDisabled()));
   await page.close();
 });
 
 await check('Finish hands the owner to the app with the tour open, and the tour waits for them through a reload', async () => {
   const { page, errors } = await open({ claimed: false, ready: true });
-  await page.route('**/nextcloud/', (route) =>
-    route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok" data-user="notshared"><title>Files</title></head><body>files</body></html>' }),
+  await page.route('**/cloud/api/me', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ login: 'notshared', name: 'Matus' }) }),
   );
-  await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('input[name="username"]').fill('matus');
-  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
-  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
-  await page.getByRole('button', { name: /^Set the password$/ }).click();
-  await page.getByText('notshared').first().waitFor({ timeout: 5000 });
-  await page.getByRole('button', { name: /^Continue$/ }).click();
+  await throughStepTwo(page);
   const done = page.getByRole('button', { name: /^Finish/ });
   await page.waitForFunction(() => {
     const b = [...document.querySelectorAll('button')].find((x) => /^Finish/.test(x.textContent ?? ''));
@@ -722,47 +716,6 @@ await check('Finish hands the owner to the app with the tour open, and the tour 
   await tour.getByRole('button', { name: 'Skip the tour' }).click();
   await tour.waitFor({ state: 'detached', timeout: 3000 });
   assert.deepEqual(errors, []);
-  await page.close();
-});
-
-await check('step 3 lets a slow first answer from the files app arrive instead of cancelling it with the next reload', async () => {
-  const { page } = await open({ claimed: false, ready: true });
-  // One nginx error page, then the app answers, but slowly: the first request
-  // after the claim can take longer than the reload period on a busy box
-  // (Apache was up, yet the step used to sit on "still starting" for minutes,
-  // because every 5 s the frame was told to load /nextcloud again while the
-  // previous load was still waiting for its first byte, and a navigation that
-  // never commits never replaces the error page the watcher keeps reading).
-  let hits = 0;
-  await page.route('**/nextcloud/', async (route) => {
-    hits += 1;
-    if (hits === 1) {
-      return route.fulfill({ status: 502, contentType: 'text/html', body: '<html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center><hr><center>nginx</center></body></html>' });
-    }
-    await new Promise((r) => setTimeout(r, 7000));
-    try {
-      await route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok"><title>Login</title></head><body><form><input id="user"><input id="password" type="password"></form></body></html>' });
-    } catch {
-      /* The browser gave up on this load before it was answered. */
-    }
-  });
-  await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('input[name="username"]').fill('matus');
-  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
-  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
-  await page.getByRole('button', { name: /^Set the password$/ }).click();
-  await page.getByText('notshared').first().waitFor({ timeout: 5000 });
-  await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 5000 });
-  await page.waitForFunction(() => {
-    const f = document.querySelector('iframe');
-    return !!f && !!f.contentDocument && !!f.contentDocument.querySelector('#user');
-  }, null, { timeout: 25_000 });
-  assert.ok(hits <= 3, `the slow answer was cancelled by further reloads (hits=${hits})`);
-  await page.waitForTimeout(1200);
-  const text = await page.locator('body').innerText();
-  assert.ok(!/still starting/.test(text), 'the starting note stayed after the app answered');
-  assert.ok(await page.locator('iframe').first().isVisible(), 'the frame stayed hidden after the app answered');
   await page.close();
 });
 

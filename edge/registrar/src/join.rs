@@ -8,7 +8,7 @@
 //!
 //! **The retry is bounded, unlike `announce`'s.** The announce loop runs
 //! forever because the appliance stays useful while the edge is unreachable:
-//! Nextcloud keeps serving on the LAN, only the public route is missing. Here
+//! LosOS Cloud keeps serving on the LAN, only the public route is missing. Here
 //! the unit is a `Requires=` dependency of the rke2 agent, so retrying forever
 //! means `rke2-agent.service` sits in `activating` indefinitely — on a box with
 //! no SSH and no shell logins, where nobody will ever see it. Giving up after

@@ -18,10 +18,11 @@ sidebar_position: 1
 | `/setup/state.json`           | Name, Adresse, HTTPS, Fingerabdruck des Zertifikats | nur das lokale Netzwerk             |
 | `/setup/losos-ca.crt`         | Das Zertifikat der Box                              | nur das lokale Netzwerk             |
 | `/setup/trust.sh`, `/setup/trust.ps1` | Die einzeiligen Installer für das Zertifikat | nur das lokale Netzwerk           |
-| `/nextcloud`                  | LosOS Cloud                                         | jeder, auch über eine Edge          |
+| `/cloud/`                     | LosOS Cloud                                         | jeder, auch über eine Edge          |
+| `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/` | Was die Nextcloud-Apps, Kalender-Apps und Dateimanager aufrufen | jeder, auch über eine Edge |
+| `/nextcloud/`                 | Dasselbe, unter der Adresse, die das Nextcloud der Box hatte | jeder, auch über eine Edge |
 | `/forgejo/`                   | LosOS Git                                           | jeder, auch über eine Edge          |
 | `/.well-known/nodeinfo`, `/.well-known/webfinger` | Die Föderations-Erkennung von LosOS Git, solange die Föderation an ist und die Festplatte geteilt wird | jeder, auch über eine Edge |
-| `/nextcloud/ocm-provider/`, `/nextcloud/ocm/…` und die anderen Föderationsadressen unter `/nextcloud` | Die Föderation von LosOS Cloud, solange die Föderation an ist und die Festplatte geteilt wird; sonst **404** | jeder, auch über eine Edge |
 
 :::note[Was das lokale Netzwerk heißt]
 „Nur das lokale Netzwerk“ heißt: eine Quelladresse in einem privaten Bereich

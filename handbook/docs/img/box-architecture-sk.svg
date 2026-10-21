@@ -22,7 +22,7 @@
 
   <rect x="40" y="146" width="920" height="72" rx="8" fill="#e2eff1" stroke="#0e6e7d"/>
   <text x="500" y="172" text-anchor="middle" font-weight="650">nginx, jediné vstupné dvere</text>
-  <text x="500" y="196" text-anchor="middle" font-size="13" fill="#37444f">/ admin stránky (iba LAN)   ·   /api → lososd   ·   /nextcloud LosOS Cloud   ·   /forgejo/ LosOS Git   ·   /handbook/ (iba LAN)</text>
+  <text x="500" y="196" text-anchor="middle" font-size="13" fill="#37444f">/ admin stránky (iba LAN)   ·   /api → lososd   ·   /cloud/ LosOS Cloud   ·   /forgejo/ LosOS Git   ·   /handbook/ (iba LAN)</text>
 
   <g stroke="#5c6a77" stroke-width="1.5">
     <line x1="185" y1="220" x2="185" y2="250" marker-end="url(#ar)"/>
@@ -40,8 +40,8 @@
 
   <rect x="355" y="252" width="290" height="160" rx="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="1.5"/>
   <text x="371" y="278" font-weight="650">k3s: vlastný klaster zariadenia</text>
-  <text x="371" y="304" font-size="13">LosOS Cloud (Nextcloud)</text>
-  <text x="371" y="326" font-size="13">LosOS Git (Forgejo)</text>
+  <text x="371" y="304" font-size="13">LosOS Git (Forgejo)</text>
+  <text x="371" y="326" font-size="13">aplikácie inštalované ako shared</text>
   <text x="371" y="348" font-size="13">pody v sieti hostiteľa</text>
   <text x="371" y="370" font-size="13">beží ďalej, aj keď je edge</text>
   <text x="371" y="390" font-size="13">nedostupný</text>
