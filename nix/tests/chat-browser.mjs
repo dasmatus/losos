@@ -190,9 +190,22 @@ async function on() {
   await film(owner, "sent", `${HOST}/chat/`, "the reply sent");
 
   // A reaction, a thread, a picture and an edit.
-  await eva.getByRole("log").getByText("Hi Eva, chat is up on the box.", { exact: true }).hover();
-  await eva.getByRole("button", { name: "React", exact: true }).click();
-  await eva.getByRole("menuitem", { name: "👍" }).click();
+  // Eva reacts from the message's right-click menu, which offers what
+  // the hover toolbar does.
+  await eva.getByRole("log").getByText("Hi Eva, chat is up on the box.", { exact: true }).click({ button: "right" });
+  const menu = eva.locator('[data-slot="context-menu"]').first();
+  await menu.waitFor();
+  if ((await menu.getAttribute("aria-label")) !== "Message from Matus") throw new Error(`menu named ${await menu.getAttribute("aria-label")}`);
+  const items = (await menu.locator('[role^="menuitem"]').allInnerTexts()).map((s) => s.trim().split("\n")[0]);
+  if (JSON.stringify(items.slice(0, 4)) !== JSON.stringify(["Reply", "Reply in a thread", "React", "Copy"]) || items.includes("Edit")) {
+    throw new Error(`message menu: ${JSON.stringify(items)}`);
+  }
+  await menu.getByRole("menuitem", { name: "React" }).hover();
+  const reactions = eva.locator('[data-slot="context-menu"][aria-label="React"]');
+  await reactions.waitFor();
+  await film(eva, "message-menu", `${HOST}/chat/`, "a message's right-click menu: reply, thread, react, copy", "click", { react: menu.getByRole("menuitem", { name: "React" }) });
+  await shot(eva, "message-menu");
+  await reactions.getByRole("menuitem", { name: "👍" }).click();
   await owner.getByRole("log").getByRole("button", { name: /👍/ }).waitFor();
   await owner.getByRole("log").getByText("Nice. Can we plan the holiday here?").hover();
   await owner.getByRole("button", { name: "Reply in a thread" }).first().click();

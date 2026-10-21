@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowTurnBackwardIcon,
   Comment01Icon,
+  Copy01Icon,
   Delete02Icon,
   PencilEdit01Icon,
   SmileIcon,
@@ -21,6 +22,8 @@ import {
   RoomMemberEvent,
 } from "matrix-js-sdk";
 import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/toast";
+import { contextMenu, copyText, type MenuBuilder } from "@/lib/context-menu";
 import { getLocale, INTL_TAG } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
@@ -141,22 +144,83 @@ function ReactionBar({ client, room, item }: { client: MatrixClient; room: Room;
   );
 }
 
-function Toolbar({ client, room, item, actions, me }: { client: MatrixClient; room: Room; item: Message; actions: RowActions; me: string }) {
-  const t = useT();
-  const [picking, setPicking] = React.useState(false);
+/** What can be done to one message, shared by its hover toolbar and its
+ *  right-click menu, so the two never offer different things. */
+function useMoves(client: MatrixClient, room: Room, item: Message, me: string) {
   const ev = item.event;
   const mine = ev.getSender() === me;
   const canRedact = mine || room.currentState.hasSufficientPowerLevelFor("redact", room.getMember(me)?.powerLevel ?? 0);
   const isText = typeof item.content["msgtype"] === "string" && ["m.text", "m.emote", "m.notice"].includes(item.content["msgtype"] as string);
-  if (ev.isRedacted() || ev.status !== null) return null;
+  const live = !ev.isRedacted() && ev.status === null;
   const react = (key: string): void => {
-    setPicking(false);
     const already = item.reactions.find((r) => r.key === key)?.mine;
     if (already !== null && already !== undefined) return;
     void client.sendEvent(room.roomId, EventType.Reaction, {
       "m.relates_to": { rel_type: RelationType.Annotation, event_id: ev.getId() ?? "", key },
     });
   };
+  const remove = (confirmText: string): void => {
+    if (window.confirm(confirmText)) void client.redactEvent(room.roomId, ev.getId() ?? "");
+  };
+  return { ev, mine, canRedact, isText, live, react, remove };
+}
+
+function messageMenu(
+  t: ReturnType<typeof useT>,
+  moves: ReturnType<typeof useMoves>,
+  actions: RowActions,
+  sender: string,
+): MenuBuilder {
+  const { ev, mine, canRedact, isText, live, react, remove } = moves;
+  return () => {
+    if (!live) return null;
+    const text = isText ? plainBody(ev.getContent()) : "";
+    const copied = async (): Promise<void> => {
+      if (await copyText(text)) toast.done(t("menu.copied"));
+      else toast.error(t("menu.copyFailed"), undefined, { help: "index" });
+    };
+    return {
+      label: t("chat.message.menu", { name: sender }),
+      sections: [
+        [
+          { id: "reply", label: t("chat.message.reply"), icon: ArrowTurnBackwardIcon, onSelect: () => actions.onReply(ev) },
+          {
+            id: "thread",
+            label: t("chat.thread.reply"),
+            icon: Comment01Icon,
+            hidden: actions.onThread === null,
+            onSelect: () => actions.onThread?.(ev.getId() ?? ""),
+          },
+          {
+            kind: "submenu",
+            id: "react",
+            label: t("chat.reaction.add"),
+            icon: SmileIcon,
+            items: QUICK_REACTIONS.map((key) => ({ id: `react-${key}`, label: key, onSelect: () => react(key) })),
+          },
+          { id: "copy", label: t("menu.copy"), icon: Copy01Icon, hidden: text === "", onSelect: () => void copied() },
+        ],
+        [
+          { id: "edit", label: t("chat.message.edit"), icon: PencilEdit01Icon, hidden: !(mine && isText), onSelect: () => actions.onEdit(ev) },
+          {
+            id: "delete",
+            label: t("chat.message.delete"),
+            icon: Delete02Icon,
+            danger: true,
+            hidden: !canRedact,
+            onSelect: () => remove(t("chat.message.deleteConfirm")),
+          },
+        ],
+      ],
+    };
+  };
+}
+
+function Toolbar({ moves, actions }: { moves: ReturnType<typeof useMoves>; actions: RowActions }) {
+  const t = useT();
+  const [picking, setPicking] = React.useState(false);
+  const { ev, mine, canRedact, isText, live, react, remove } = moves;
+  if (!live) return null;
   return (
     <div
       className={cn(
@@ -167,7 +231,16 @@ function Toolbar({ client, room, item, actions, me }: { client: MatrixClient; ro
       {picking ? (
         <div role="menu" aria-label={t("chat.reaction.pick")} className="flex items-center gap-0.5">
           {QUICK_REACTIONS.map((key) => (
-            <button key={key} type="button" role="menuitem" className="rounded-control px-1.5 py-1 text-base hover:bg-sunk" onClick={() => react(key)}>
+            <button
+              key={key}
+              type="button"
+              role="menuitem"
+              className="rounded-control px-1.5 py-1 text-base hover:bg-sunk"
+              onClick={() => {
+                setPicking(false);
+                react(key);
+              }}
+            >
               {key}
             </button>
           ))}
@@ -181,9 +254,9 @@ function Toolbar({ client, room, item, actions, me }: { client: MatrixClient; ro
         <HugeiconsIcon icon={ArrowTurnBackwardIcon} className="size-4" />
       </Button>
       {actions.onThread !== null && (
-        <Button variant="ghost" size="icon-sm"
-         
-         
+        <Button
+          variant="ghost"
+          size="icon-sm"
           aria-label={t("chat.thread.reply")}
           title={t("chat.thread.reply")}
           onClick={() => actions.onThread?.(ev.getId() ?? "")}
@@ -197,14 +270,13 @@ function Toolbar({ client, room, item, actions, me }: { client: MatrixClient; ro
         </Button>
       )}
       {canRedact && (
-        <Button variant="ghost" size="icon-sm"
-         
-          className={cn("hover:text-crit")}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="hover:text-crit"
           aria-label={t("chat.message.delete")}
           title={t("chat.message.delete")}
-          onClick={() => {
-            if (window.confirm(t("chat.message.deleteConfirm"))) void client.redactEvent(room.roomId, ev.getId() ?? "");
-          }}
+          onClick={() => remove(t("chat.message.deleteConfirm"))}
         >
           <HugeiconsIcon icon={Delete02Icon} className="size-4" />
         </Button>
@@ -247,8 +319,10 @@ export function MessageRow({ client, room, item, grouped, me, actions, seenBy }:
   const sender = ev.getSender() ?? "";
   const member = room.getMember(sender);
   const name = shownName(member?.name ?? sender);
+  const moves = useMoves(client, room, item, me);
   return (
     <div
+      ref={contextMenu(messageMenu(t, moves, actions, name))}
       className={cn("group relative flex gap-3 px-4 hover:bg-sunk/60 focus-within:bg-sunk/60", grouped ? "py-0.5" : "pt-3 pb-0.5")}
       data-event-id={ev.getId()}
     >
@@ -287,7 +361,7 @@ export function MessageRow({ client, room, item, grouped, me, actions, seenBy }:
           </div>
         )}
       </div>
-      <Toolbar client={client} room={room} item={item} actions={actions} me={me} />
+      <Toolbar moves={moves} actions={actions} />
     </div>
   );
 }

@@ -82,6 +82,7 @@ export default defineMessages({
   "chat.invite.decline": { en: "Decline", sk: "Odmietnuť", de: "Ablehnen" },
 
   // ── messages ──
+  "chat.message.menu": { en: "Message from {name}", sk: "Správa od {name}", de: "Nachricht von {name}" },
   "chat.message.reply": { en: "Reply", sk: "Odpovedať", de: "Antworten" },
   "chat.message.edit": { en: "Edit", sk: "Upraviť", de: "Bearbeiten" },
   "chat.message.edited": { en: "(edited)", sk: "(upravené)", de: "(bearbeitet)" },
