@@ -869,8 +869,28 @@ const SHOTS = [
   /* The first-run tour, one shot per step, over the overview it opens on.
    * Under reduced motion each scene shows its composed still, so the
    * pictures do not depend on timing. `tour` is the first step again, in
-   * every language, for the first-run page. */
-  ...[1, 2, 3, 4, 5, 6].flatMap((step) =>
+   * every language, for the first-run page. This box shares nothing, so
+   * its tour has eleven steps; `tour-chat` is the twelfth, which a box that
+   * shares its storage in a mesh gets. */
+  {
+    name: 'tour-chat',
+    path: '/',
+    state: { mode: 'mesh', sharing: true },
+    settings: { ...JOINED, sharingMyStorage: true },
+    reducedMotion: 'reduce',
+    act: async (page, t) => {
+      await page.evaluate(() => window.localStorage.setItem('losos-tour', 'pending'));
+      await page.reload({ waitUntil: 'networkidle' });
+      const tour = page.getByTestId('tour');
+      await tour.waitFor();
+      await tour.getByRole('heading', { name: t('tour.overview.title') }).waitFor();
+      await tour.getByRole('button', { name: t('tour.step', { n: 9 }) }).click();
+      await tour.getByRole('heading', { name: t('tour.chat.title') }).waitFor();
+      await settle(page, 700);
+      await hideToasts(page);
+    },
+  },
+  ...Array.from({ length: 11 }, (_, i) => i + 1).flatMap((step) =>
     [['', 'light'], ['-dark', 'dark'], ...(step === 1 ? [['-phone', 'light'], ['', 'light', 'tour']] : [])].map(([suffix, theme, name]) => ({
       name: name ?? `tour-${step}${suffix}`,
       path: '/',

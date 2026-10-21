@@ -103,14 +103,19 @@ Sprievodca otvorí LosOS cloud priamo na stránke a vy sa prihlásite svojím
 sprievodca prenesie na prehľad admin stránok. Odtiaľto pokračujte stránkou
 [Admin stránky](../manual/admin-pages).
 
-Pri prvom otvorení sa nad prehľadom spustí krátka prehliadka. Má šesť
-krokov a každý ukazuje malý pohyblivý obrázok stránky s položkou bočného
-panela, kde daná funkcia je. Kroky prechádzajú aplikácie, pridávanie
-ďalších, úložisko, požičiavanie zariadenia v noci, nočnú aktualizáciu a to,
-kde prehliadku znova nájdete. **Preskočiť prehliadku** ju zavrie a v tom
-prehliadači sa už sama neotvorí. **Spustiť prehliadku** v časti Nastavenia,
-O zariadení ju vráti.
+Pri prvom otvorení sa nad prehľadom spustí krátka prehliadka. Každý krok
+ukazuje malý pohyblivý obrázok stránky s položkou bočného panela, kde daná
+funkcia je. Kroky prechádzajú aplikácie LosOS cloud, úlohy z LosOS Git na
+Tabuli, spoločné písanie dokumentu s niekým na inom zariadení, pridávanie
+aplikácií, vytvorenie aplikácie opisom pre AI na zariadení, úložisko,
+požičiavanie zariadenia v noci, platby na názov zariadenia a za modely AI
+podľa tokenov, vašu fotku a banner, nočnú aktualizáciu a to, kde prehliadku
+znova nájdete. To je jedenásť krokov. Zariadenie, ktoré zdieľa úložisko v
+mesh, má dvanásty krok o chate, pošte a šifrovaných hovoroch, ktoré bežia
+len vtedy. **Preskočiť prehliadku** ju zavrie a v tom prehliadači sa už
+sama neotvorí. **Spustiť prehliadku** v časti Nastavenia, O zariadení ju
+vráti.
 
-![Prvý krok prehliadky nad prehľadom: obrázok stránky s otvorenou aplikáciou Súbory, „1 z 6“ a tlačidlá Preskočiť prehliadku a Ďalej.](@site/docs/img/tour-sk.png)
+![Prvý krok prehliadky nad prehľadom: obrázok stránky so šiestimi aplikáciami LosOS cloud, „1 z 11“ a tlačidlá Preskočiť prehliadku a Ďalej.](@site/docs/img/tour-sk.png)
 
 ![Krok 3: Ste prihlásení. To bol posledný krok.](@site/docs/img/wizard-step3-sign-in-sk.png)

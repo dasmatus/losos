@@ -113,15 +113,20 @@ festgelegt hast. Dann bringt dich der Assistent zur Übersicht der
 Admin-Seiten. Ab hier geht es weiter unter [Die
 Admin-Seiten](../manual/admin-pages).
 
-Beim ersten Mal öffnet sich über der Übersicht eine kurze Tour. Sie hat sechs
-Schritte, und jeder zeigt ein kleines bewegtes Bild der Seite mit dem
-Eintrag in der Seitenleiste, unter dem die jeweilige Funktion liegt. Die
-Schritte behandeln die Apps, das Hinzufügen weiterer Apps, den Speicher, das
-Verleihen der Box in der Nacht, das nächtliche Update und wo du die Tour
-wiederfindest. **Tour überspringen** schließt sie, und dieser Browser öffnet
-sie nicht mehr von selbst. **Tour starten** unter Einstellungen, Über holt
-sie zurück.
+Beim ersten Mal öffnet sich über der Übersicht eine kurze Tour. Jeder
+Schritt zeigt ein kleines bewegtes Bild der Seite mit dem Eintrag in der
+Seitenleiste, unter dem die jeweilige Funktion liegt. Die Schritte behandeln
+die Apps von LosOS cloud, Issues aus LosOS Git auf dem Board, das
+gemeinsame Schreiben eines Dokuments mit jemandem auf einer anderen Box, das
+Hinzufügen von Apps, das Bauen einer App, indem du sie der KI auf der Box
+beschreibst, den Speicher, das Verleihen der Box in der Nacht, das Bezahlen
+über den Namen der Box und für KI-Modelle pro Token, dein Profilbild und
+Banner, das nächtliche Update und wo du die Tour wiederfindest. Das sind elf
+Schritte. Eine Box, die ihren Speicher in einem Mesh teilt, bekommt einen
+zwölften für Chat, E-Mail und verschlüsselte Anrufe, die nur dann laufen.
+**Tour überspringen** schließt sie, und dieser Browser öffnet sie nicht
+mehr von selbst. **Tour starten** unter Einstellungen, Über holt sie zurück.
 
-![Der erste Schritt der Tour über der Übersicht: ein Bild der Seite mit geöffneter Dateien-App, „1 von 6“ sowie Tour überspringen und Weiter.](@site/docs/img/tour-de.png)
+![Der erste Schritt der Tour über der Übersicht: ein Bild der Seite mit den sechs Apps von LosOS cloud, „1 von 11“ sowie Tour überspringen und Weiter.](@site/docs/img/tour-de.png)
 
 ![Schritt 3: Du bist angemeldet. Das war der letzte Schritt.](@site/docs/img/wizard-step3-sign-in-de.png)

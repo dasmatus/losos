@@ -2,7 +2,8 @@ import { defineMessages } from "./define";
 
 /* The first-run tour (src/tour/), shown once after setup and again from
  * the About pane. One title and one sentence per step: the scene above
- * them does the showing. */
+ * them does the showing. The chat step is drawn only on a box that shares
+ * its storage in a mesh. */
 export default defineMessages({
   "tour.count": { en: "{n} of {total}", sk: "{n} z {total}", de: "{n} von {total}" },
   "tour.skip": { en: "Skip the tour", sk: "Preskočiť prehliadku", de: "Tour überspringen" },
@@ -17,15 +18,33 @@ export default defineMessages({
     de: "Deine Apps, auf deiner Box",
   },
   "tour.overview.body": {
-    en: "LosOS cloud and LosOS Git run here, and the Overview opens every app they bring.",
-    sk: "LosOS cloud a LosOS Git bežia tu a v Prehľade otvoríte každú aplikáciu, ktorú prinášajú.",
-    de: "LosOS cloud und LosOS Git laufen hier, und die Übersicht öffnet jede App, die sie mitbringen.",
+    en: "LosOS cloud brings Files, Calendar, Contacts, Tasks, Notes and a Board, all on the Overview.",
+    sk: "LosOS cloud prináša Súbory, Kalendár, Kontakty, Úlohy, Poznámky a Tabuľu, všetko v Prehľade.",
+    de: "LosOS cloud bringt Dateien, Kalender, Kontakte, Aufgaben, Notizen und ein Board mit, alle in der Übersicht.",
+  },
+  "tour.board.title": { en: "Issues land on the Board", sk: "Úlohy z Gitu na Tabuli", de: "Issues landen auf dem Board" },
+  "tour.board.body": {
+    en: "An issue in LosOS Git becomes a card, and the commit that closes it moves the card to Done.",
+    sk: "Úloha v LosOS Git sa stane kartičkou a commit, ktorý ju uzavrie, presunie kartičku do Hotovo.",
+    de: "Ein Issue in LosOS Git wird zur Karte, und der Commit, der es schließt, schiebt die Karte nach Erledigt.",
+  },
+  "tour.together.title": { en: "Write together, box to box", sk: "Píšte spolu, zo zariadenia na zariadenie", de: "Gemeinsam schreiben, von Box zu Box" },
+  "tour.together.body": {
+    en: "Open a document in Files and edit it with someone on another box. Each of you sees the other type.",
+    sk: "Otvorte dokument v Súboroch a upravujte ho s niekým na inom zariadení. Každý vidí, ako ten druhý píše.",
+    de: "Öffne ein Dokument in Dateien und bearbeite es mit jemandem auf einer anderen Box. Ihr seht einander tippen.",
   },
   "tour.apps.title": { en: "Add more apps", sk: "Pridajte ďalšie aplikácie", de: "Weitere Apps hinzufügen" },
   "tour.apps.body": {
     en: "Search under Apps and install what you find. It runs on this box, next to your files.",
     sk: "Vyhľadajte ich v časti Aplikácie a nainštalujte. Pobežia na tomto zariadení, vedľa vašich súborov.",
     de: "Such unter Apps und installiere, was du findest. Es läuft auf dieser Box, neben deinen Dateien.",
+  },
+  "tour.builder.title": { en: "Describe an app, get an app", sk: "Opíšte aplikáciu a dostanete ju", de: "Beschreib eine App, und du bekommst sie" },
+  "tour.builder.body": {
+    en: "Say what you need under Apps. The AI on this box writes it, checks it and fixes what it finds.",
+    sk: "V časti Aplikácie napíšte, čo potrebujete. AI na tomto zariadení ju napíše, skontroluje a opraví, čo nájde.",
+    de: "Sag unter Apps, was du brauchst. Die KI auf dieser Box schreibt sie, prüft sie und behebt, was sie findet.",
   },
   "tour.storage.title": { en: "See where the space goes", sk: "Pozrite sa, kam ide miesto", de: "Sieh, wohin der Platz geht" },
   "tour.storage.body": {
@@ -38,6 +57,24 @@ export default defineMessages({
     en: "Under Mesh, choose the night hours this box helps other boxes. The rest of the day it is yours.",
     sk: "V časti Mesh vyberte nočné hodiny, keď toto zariadenie pomáha iným. Zvyšok dňa patrí vám.",
     de: "Unter Mesh wählst du die Nachtstunden, in denen diese Box anderen hilft. Der Rest des Tages gehört dir.",
+  },
+  "tour.paid.title": { en: "Get paid for what you lend", sk: "Zarobte na tom, čo požičiavate", de: "Werde für das bezahlt, was du verleihst" },
+  "tour.paid.body": {
+    en: "People can pay this box by its name, and AI models that run across boxes are paid by the token.",
+    sk: "Ľudia môžu tomuto zariadeniu platiť na jeho názov a modely AI, ktoré bežia na viacerých zariadeniach, sa platia za každý token.",
+    de: "Man kann diese Box über ihren Namen bezahlen, und KI-Modelle, die über mehrere Boxen laufen, werden pro Token bezahlt.",
+  },
+  "tour.chat.title": { en: "Chat, mail and calls", sk: "Chat, pošta a hovory", de: "Chat, E-Mail und Anrufe" },
+  "tour.chat.body": {
+    en: "While this box shares its storage in the mesh, it has chat, mail and encrypted calls. Type @ to send a file.",
+    sk: "Kým toto zariadenie zdieľa úložisko v mesh, má chat, poštu a šifrované hovory. Napíšte @ a pošlite súbor.",
+    de: "Solange diese Box ihren Speicher im Mesh teilt, hat sie Chat, E-Mail und verschlüsselte Anrufe. Tipp @, um eine Datei zu senden.",
+  },
+  "tour.profile.title": { en: "Put a face to your name", sk: "Pridajte k menu tvár", de: "Gib deinem Namen ein Gesicht" },
+  "tour.profile.body": {
+    en: "Add a picture and a banner under Your account. People on this box see them next to your name.",
+    sk: "V časti Váš účet pridajte fotku a banner. Ľudia na tomto zariadení ich uvidia pri vašom mene.",
+    de: "Füge unter Dein Konto ein Bild und ein Banner hinzu. Leute auf dieser Box sehen sie neben deinem Namen.",
   },
   "tour.history.title": { en: "It updates itself at night", sk: "V noci sa aktualizuje sama", de: "Nachts aktualisiert sie sich selbst" },
   "tour.history.body": {
@@ -55,4 +92,74 @@ export default defineMessages({
   /* Words inside the scenes that no other screen already has. */
   "tour.scene.documents": { en: "Documents", sk: "Dokumenty", de: "Dokumente" },
   "tour.scene.lending": { en: "Lending", sk: "Požičiava", de: "Verleiht" },
+  "tour.scene.board": { en: "Board", sk: "Tabuľa", de: "Board" },
+  "tour.scene.todo": { en: "To do", sk: "Treba urobiť", de: "Zu tun" },
+  "tour.scene.doing": { en: "Doing", sk: "Robí sa", de: "In Arbeit" },
+  "tour.scene.done": { en: "Done", sk: "Hotovo", de: "Erledigt" },
+  "tour.scene.issue": { en: "Fix the sign-in link", sk: "Opraviť prihlásenie", de: "Anmeldelink reparieren" },
+  "tour.scene.cardAbout": { en: "Write the about page", sk: "Napísať stránku o nás", de: "Über-uns-Seite schreiben" },
+  "tour.scene.cardLogo": { en: "New logo", sk: "Nové logo", de: "Neues Logo" },
+  "tour.scene.cardDomain": { en: "Pick a domain", sk: "Vybrať doménu", de: "Domain wählen" },
+  "tour.scene.docName": { en: "Plan.docx", sk: "Plán.docx", de: "Plan.docx" },
+  "tour.scene.docHeading": { en: "The trip in May", sk: "Výlet v máji", de: "Die Reise im Mai" },
+  "tour.scene.typedMine": { en: "We leave on Friday at eight.", sk: "Odchádzame v piatok o ôsmej.", de: "Wir fahren Freitag um acht." },
+  "tour.scene.typedHers": { en: "I will book the train.", sk: "Vlak zarezervujem ja.", de: "Ich buche den Zug." },
+  "tour.scene.live": { en: "Live", sk: "Naživo", de: "Live" },
+  "tour.scene.builder": { en: "Build an app", sk: "Vytvoriť aplikáciu", de: "App bauen" },
+  "tour.scene.builderOnBox": {
+    en: "The AI runs on this box",
+    sk: "AI beží na tomto zariadení",
+    de: "Die KI läuft auf dieser Box",
+  },
+  "tour.scene.prompt": {
+    en: "A to-do list for the band",
+    sk: "Zoznam úloh pre kapelu",
+    de: "Eine To-do-Liste für die Band",
+  },
+  "tour.scene.build": { en: "Build", sk: "Vytvoriť", de: "Bauen" },
+  "tour.scene.stepWrite": { en: "Wrote {file}", sk: "Napísal {file}", de: "{file} geschrieben" },
+  "tour.scene.stepCheck": { en: "Checked it: one problem", sk: "Skontroloval: jeden problém", de: "Geprüft: ein Problem" },
+  "tour.scene.stepFix": { en: "Fixed it", sk: "Opravil ho", de: "Behoben" },
+  "tour.scene.appTitle": { en: "Band to-dos", sk: "Úlohy kapely", de: "Band-To-dos" },
+  "tour.scene.todo1": { en: "Book the hall", sk: "Zarezervovať sálu", de: "Saal buchen" },
+  "tour.scene.todo2": { en: "Print the posters", sk: "Vytlačiť plagáty", de: "Plakate drucken" },
+  "tour.scene.todo3": { en: "Tune the guitars", sk: "Naladiť gitary", de: "Gitarren stimmen" },
+  "tour.scene.builderCaption": {
+    en: "The app runs in your browser, closed off from the rest of this page.",
+    sk: "Aplikácia beží vo vašom prehliadači, oddelená od zvyšku tejto stránky.",
+    de: "Die App läuft in deinem Browser, abgeschottet vom Rest dieser Seite.",
+  },
+  "tour.scene.aiModels": { en: "AI models", sk: "Modely AI", de: "KI-Modelle" },
+  "tour.scene.price": {
+    en: "{in} in, {out} out per million tokens",
+    sk: "{in} za vstup, {out} za výstup na milión tokenov",
+    de: "{in} rein, {out} raus pro Million Tokens",
+  },
+  "tour.scene.onBoxes": { en: "On {count} boxes", sk: "Na {count} zariadeniach", de: "Auf {count} Boxen" },
+  "tour.scene.tokens": {
+    en: { one: "{count} token", other: "{count} tokens" },
+    sk: { one: "{count} token", few: "{count} tokeny", many: "{count} tokenu", other: "{count} tokenov" },
+    de: { one: "{count} Token", other: "{count} Tokens" },
+  },
+  "tour.scene.paidByTheToken": { en: "Paid by the token", sk: "Platí sa za token", de: "Pro Token bezahlt" },
+  "tour.scene.byName": { en: "Paid by name", sk: "Platby na názov", de: "Bezahlt per Name" },
+  "tour.scene.balance": { en: "Balance", sk: "Zostatok", de: "Guthaben" },
+  "tour.scene.received": { en: "Payment received", sk: "Platba prijatá", de: "Zahlung erhalten" },
+  "tour.scene.toName": { en: "Sent to {name}", sk: "Poslaná na {name}", de: "Gesendet an {name}" },
+  "tour.scene.chat": { en: "Chat", sk: "Chat", de: "Chat" },
+  "tour.scene.mail": { en: "Mail", sk: "Pošta", de: "E-Mail" },
+  "tour.scene.roomBand": { en: "Band", sk: "Kapela", de: "Band" },
+  "tour.scene.asked": { en: "Can you send me the budget?", sk: "Pošleš mi rozpočet?", de: "Schickst du mir das Budget?" },
+  "tour.scene.draft": { en: "Here it is", sk: "Tu je", de: "Hier ist es" },
+  "tour.scene.fileName": { en: "Budget.xlsx", sk: "Rozpočet.xlsx", de: "Budget.xlsx" },
+  "tour.scene.fileKind": { en: "LosOS cloud", sk: "LosOS cloud", de: "LosOS cloud" },
+  "tour.scene.send": { en: "Send", sk: "Poslať", de: "Senden" },
+  "tour.scene.sealed": { en: "End-to-end encrypted", sk: "Šifrované end-to-end", de: "Ende-zu-Ende-verschlüsselt" },
+  "tour.scene.changeBanner": { en: "Change banner", sk: "Zmeniť banner", de: "Banner ändern" },
+  "tour.scene.changePicture": { en: "Change picture", sk: "Zmeniť fotku", de: "Bild ändern" },
+  "tour.scene.profileCaption": {
+    en: "Your picture and banner show wherever your name does on this box.",
+    sk: "Vaša fotka a banner sa zobrazia všade, kde je na tomto zariadení vaše meno.",
+    de: "Dein Bild und Banner erscheinen überall, wo dein Name auf dieser Box steht.",
+  },
 });
