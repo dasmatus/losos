@@ -294,15 +294,26 @@ await signIn(page, base, name, password);
 // beyond that.
 const baseline = new Set();
 const listen = (sink) => {
+  // A failed request is named by its address; Chromium's own console line
+  // for it ("Failed to load resource") says only the status.
   const onConsole = (m) => {
-    if (m.type() === "error") sink(m.text());
+    if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) sink(m.text());
   };
   const onError = (e) => sink(String(e));
+  // The pages ask for the repository's AI review, which a LosOS Git
+  // without LosOS Reviewer does not serve: its 404 is that answer.
+  const onResponse = (r) => {
+    const path = new URL(r.url()).pathname;
+    if (r.status() === 404 && path.endsWith("/ai-review")) return;
+    if (r.status() >= 400) sink(`${r.status()} ${r.request().method()} ${path}`);
+  };
   page.on("console", onConsole);
   page.on("pageerror", onError);
+  page.on("response", onResponse);
   return () => {
     page.off("console", onConsole);
     page.off("pageerror", onError);
+    page.off("response", onResponse);
   };
 };
 const stop = listen((text) => baseline.add(text));
