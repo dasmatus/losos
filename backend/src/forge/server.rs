@@ -22,6 +22,8 @@ pub struct State {
     pub git: Git,
     /// SHA-256 of the admin token.
     pub admin_hash: String,
+    /// LosOS Reviewer's model and its worker's bell.
+    pub reviewer: super::reviewer::worker::Handle,
 }
 
 /// Which listener a request came in on.
@@ -38,6 +40,9 @@ pub struct Listen {
     pub socket: Option<PathBuf>,
     /// `127.0.0.1:3000`, tokens only.
     pub tcp: Option<String>,
+    /// `/run/losos-git-peers/internal.sock`, for services on the box
+    /// (`super::internal`). Its directory is the gate.
+    pub internal: Option<PathBuf>,
 }
 
 fn header<'a>(req: &'a HttpRequest, name: &str) -> Option<std::borrow::Cow<'a, str>> {
@@ -276,7 +281,9 @@ pub fn run(config: Config, listen: Listen) -> anyhow::Result<()> {
         config,
         store,
         git,
+        reviewer: super::reviewer::worker::Handle::from_env(),
     });
+    super::reviewer::worker::start(state.clone())?;
     let adopted = adopt_repositories(&state)?;
     if adopted > 0 {
         tracing::info!(adopted, "repositories taken in from disk");
@@ -311,6 +318,23 @@ pub fn run(config: Config, listen: Listen) -> anyhow::Result<()> {
             })
             .bind(&addr)?;
             tracing::info!(address = addr.as_str(), "listening for tokens");
+            servers.push(server.run());
+        }
+        if let Some(path) = listen.internal {
+            let _ = std::fs::remove_file(&path);
+            let data = state.clone();
+            let server = HttpServer::new(move || {
+                App::new()
+                    .app_data(data.clone())
+                    .app_data(web::JsonConfig::default().limit(64 * 1024))
+                    .configure(super::internal::routes)
+            })
+            .bind_uds(&path)?;
+            // Anyone who can enter the directory may connect: modules/git.nix
+            // makes it 0750 for losos-git and the losos-git-peers group.
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666))?;
+            tracing::info!(socket = %path.display(), "listening for services on the box");
             servers.push(server.run());
         }
         if servers.is_empty() {

@@ -10,7 +10,9 @@
 //! status (the Checks box).
 
 use super::super::db::{NewLineComment, ReviewState, Side, Store};
+use super::super::events::Event;
 use super::super::server::State;
+use super::super::statuses::{self, NewStatus};
 use super::jobs::{Job, Reason};
 use super::{model, patch, review};
 use std::sync::{Condvar, Mutex};
@@ -68,9 +70,26 @@ impl Handle {
 }
 
 /// A pull request was opened, reopened, pushed to, closed or merged.
-pub fn pull_request_event(state: &State, action: &str, repo_id: i64, issue_id: i64, head: &str) {
+fn on_event(state: &State, event: &Event) {
+    let Event::PullRequest {
+        action,
+        owner,
+        repo,
+        pr,
+        ..
+    } = event
+    else {
+        return;
+    };
     let result = (|| -> anyhow::Result<()> {
-        match action {
+        let Some(repo) = state.store.repo(owner, repo)? else {
+            return Ok(());
+        };
+        let Some(issue) = state.store.issue(repo.id, pr.number)? else {
+            return Ok(());
+        };
+        let (repo_id, issue_id, head) = (repo.id, issue.id, pr.head_sha.as_str());
+        match action.as_str() {
             "closed" | "merged" => {
                 state.store.drop_reviews(issue_id)?;
                 return Ok(());
@@ -78,6 +97,7 @@ pub fn pull_request_event(state: &State, action: &str, repo_id: i64, issue_id: i
             _ if !state.reviewer.available() || !state.store.ai_review(repo_id)? => {
                 return Ok(())
             }
+            _ if !statuses::is_sha(head) => return Ok(()),
             "opened" | "reopened" => {
                 state
                     .store
@@ -122,9 +142,16 @@ pub fn review_requested(state: &State, repo_id: i64, issue_id: i64, head: &str, 
     }
 }
 
-/// Start the worker thread. What was running when the process stopped is
-/// queued again first.
-pub fn spawn(state: actix_web::web::Data<State>) -> std::io::Result<std::thread::JoinHandle<()>> {
+/// Listen for pull request events and start the worker thread, on a box
+/// with a code model. What was running when the process stopped is queued
+/// again first.
+pub fn start(state: actix_web::web::Data<State>) -> std::io::Result<()> {
+    if !state.reviewer.available() {
+        tracing::info!("no code model on this box (Build with AI is off): LosOS Reviewer is off");
+        return Ok(());
+    }
+    let listening = state.clone();
+    super::super::events::subscribe(Box::new(move |e| on_event(&listening, e)));
     std::thread::Builder::new()
         .name("reviewer".into())
         .spawn(move || {
@@ -150,20 +177,20 @@ pub fn spawn(state: actix_web::web::Data<State>) -> std::io::Result<std::thread:
                     }
                 }
             }
-        })
+        })?;
+    Ok(())
 }
 
 /// Do one review. Returns how long to rest when it had to be put back.
 fn work(state: &State, job: &Job) -> Option<Duration> {
     let status = |s: &str, description: &str| {
-        if let Err(e) = state.store.set_status(
-            job.repo_id,
-            &job.head,
-            STATUS_CONTEXT,
-            s,
-            description,
-            &format!("#review-{}", job.id),
-        ) {
+        let status = NewStatus {
+            state: s.to_string(),
+            context: STATUS_CONTEXT.to_string(),
+            description: description.to_string(),
+            target_url: String::new(),
+        };
+        if let Err(e) = statuses::set(&state.store, job.repo_id, &job.head, &status, BOT_LOGIN) {
             tracing::debug!(error = ?e, "the reviewer could not write its status");
         }
     };
@@ -265,7 +292,7 @@ fn review_job(
             && store.ai_review(repo.id).unwrap_or(false);
         if going {
             status(
-                "pending",
+                "running",
                 &format!(
                     "Reviewing: {done} of {total} {} done",
                     if total == 1 { "file" } else { "files" }

@@ -676,3 +676,364 @@ fn a_forgejo_export_is_imported_and_served() {
     );
     assert_eq!(status, 404);
 }
+
+/// A second person on the box, with a token, made the way lososd does.
+fn person_token(s: &Server, login: &str) -> String {
+    let admin = format!("token {}", s.admin);
+    let (status, body) = http(
+        s.port,
+        "PUT",
+        &format!("/api/v1/admin/users/{login}"),
+        Some(&admin),
+        Some(&format!(
+            r#"{{"full_name":"{login}","email":"{login}@example.org"}}"#
+        )),
+    );
+    assert_eq!(status, 200, "{body}");
+    let (status, body) = http(
+        s.port,
+        "POST",
+        &format!("/api/v1/admin/users/{login}/tokens"),
+        Some(&admin),
+        Some(r#"{"name":"laptop","scopes":["all"],"replace":true}"#),
+    );
+    assert_eq!(status, 201, "{body}");
+    json(&body)["token"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn a_pull_request_from_a_marked_worktree_is_reviewed_and_merged() {
+    let dir = scratch("review");
+    let s = start(&dir, &[]);
+    let owner = format!("token {}", owner_token(&s, r#""all""#, "all"));
+    let jana_token = person_token(&s, "jana");
+    let jana = format!("token {jana_token}");
+    let api = |method: &str, path: &str, auth: &str, body: Option<&str>| {
+        let (status, text) = http(
+            s.port,
+            method,
+            &format!("/api/v1/repos/notshared/app{path}"),
+            Some(auth),
+            body,
+        );
+        let doc = if text.trim().is_empty() {
+            serde_json::Value::Null
+        } else {
+            json(&text)
+        };
+        (status, doc)
+    };
+
+    let (status, body) = http(
+        s.port,
+        "POST",
+        "/api/v1/user/repos",
+        Some(&owner),
+        Some(r#"{"name":"app","private":true,"auto_init":true}"#),
+    );
+    assert_eq!(status, 201, "{body}");
+    let (status, _) = api(
+        "PUT",
+        "/collaborators/jana",
+        &owner,
+        Some(r#"{"permission":"write"}"#),
+    );
+    assert!(status == 204 || status == 200, "{status}");
+
+    // Jana works in a worktree her pushes name.
+    let url = format!(
+        "http://jana:{jana_token}@127.0.0.1:{}/notshared/app.git",
+        s.port
+    );
+    ok(git(&dir, &["clone", "-q", &url, "jana"]));
+    let main = dir.join("jana");
+    ok(git(
+        &main,
+        &["worktree", "add", "-q", "-b", "fix-backup", "../wt"],
+    ));
+    let wt = dir.join("wt");
+    ok(git(&main, &["config", "extensions.worktreeConfig", "true"]));
+    ok(git(
+        &wt,
+        &[
+            "config",
+            "--worktree",
+            "push.pushOption",
+            "worktree=backup fix",
+        ],
+    ));
+    ok(git(
+        &wt,
+        &[
+            "config",
+            "--worktree",
+            "--add",
+            "push.pushOption",
+            "computer=laptop",
+        ],
+    ));
+    std::fs::write(
+        wt.join("README.md"),
+        "# app\n\nBack up every night.\nKeep a week.\n",
+    )
+    .unwrap();
+    ok(git(&wt, &["commit", "-qam", "Back up every night"]));
+    ok(git(&wt, &["push", "-q", "-u", "origin", "fix-backup"]));
+
+    let (status, list) = api("GET", "/worktrees", &owner, None);
+    assert_eq!(status, 200);
+    assert_eq!(list[0]["name"], "backup fix");
+    assert_eq!(list[0]["computer"], "laptop");
+    assert_eq!(list[0]["branch"], "fix-backup");
+    assert_eq!(list[0]["owner"]["login"], "jana");
+
+    // She opens a pull request; the same one twice is refused.
+    let new_pr = r#"{"title":"Back up every night","body":"Fixes the backup.","head":"fix-backup","base":"main"}"#;
+    let (status, pr) = api("POST", "/pulls", &jana, Some(new_pr));
+    assert_eq!(status, 201, "{pr}");
+    let n = pr["number"].as_i64().unwrap();
+    assert_eq!(pr["mergeable"], true);
+    assert_eq!(pr["ahead_by"], 1);
+    assert_eq!(pr["worktree"]["name"], "backup fix");
+    let (status, _) = api("POST", "/pulls", &jana, Some(new_pr));
+    assert_eq!(status, 409);
+
+    let (status, files) = api("GET", &format!("/pulls/{n}/files"), &owner, None);
+    assert_eq!(status, 200);
+    assert_eq!(files[0]["filename"], "README.md");
+    assert_eq!(files[0]["additions"], 3);
+    assert!(files[0]["patch"].as_str().unwrap().starts_with("@@ "));
+    let (_, commits) = api("GET", &format!("/pulls/{n}/commits"), &owner, None);
+    assert_eq!(commits[0]["subject"], "Back up every night");
+
+    // Jana asks the owner; she cannot approve her own.
+    let (status, doc) = api(
+        "POST",
+        &format!("/pulls/{n}/requested_reviewers"),
+        &jana,
+        Some(r#"{"reviewers":["notshared"]}"#),
+    );
+    assert_eq!(status, 200, "{doc}");
+    assert_eq!(doc["reviewers"][0]["state"], "requested");
+    let (status, _) = api(
+        "POST",
+        &format!("/pulls/{n}/reviews"),
+        &jana,
+        Some(r#"{"event":"APPROVE"}"#),
+    );
+    assert_eq!(status, 422);
+
+    // The owner asks for a change on line 4, which is in the diff, and not
+    // on line 40, which is not.
+    let (status, _) = api(
+        "POST",
+        &format!("/pulls/{n}/reviews"),
+        &owner,
+        Some(
+            r#"{"event":"REQUEST_CHANGES","comments":[{"path":"README.md","line":40,"body":"?"}]}"#,
+        ),
+    );
+    assert_eq!(status, 422);
+    let (status, review) = api(
+        "POST",
+        &format!("/pulls/{n}/reviews"),
+        &owner,
+        Some(
+            r#"{"event":"REQUEST_CHANGES","body":"Almost.","comments":[{"path":"README.md","line":4,"body":"Keep two weeks."}]}"#,
+        ),
+    );
+    assert_eq!(status, 201, "{review}");
+    let (_, doc) = api("GET", &format!("/pulls/{n}"), &owner, None);
+    assert_eq!(doc["reviewers"][0]["login"], "notshared");
+    assert_eq!(doc["reviewers"][0]["state"], "changes_requested");
+
+    let (_, lines) = api("GET", &format!("/pulls/{n}/comments"), &jana, None);
+    let first = lines[0]["id"].as_i64().unwrap();
+    assert_eq!(lines[0]["line"], 4);
+    assert_eq!(lines[0]["side"], "new");
+    let (status, reply) = api(
+        "POST",
+        &format!("/pulls/{n}/comments"),
+        &jana,
+        Some(&format!(r#"{{"in_reply_to":{first},"body":"Done."}}"#)),
+    );
+    assert_eq!(status, 201, "{reply}");
+    assert_eq!(reply["in_reply_to"], first);
+    let (status, resolved) = api(
+        "PATCH",
+        &format!("/pulls/comments/{first}"),
+        &jana,
+        Some(r#"{"resolved":true}"#),
+    );
+    assert_eq!(status, 200, "{resolved}");
+    assert_eq!(resolved["resolved"], true);
+    assert_eq!(resolved["resolved_by"]["login"], "jana");
+
+    // She pushes the fix; a review of the old head is refused, of the new
+    // one taken.
+    let old_head = doc["head"]["sha"].as_str().unwrap().to_string();
+    std::fs::write(
+        wt.join("README.md"),
+        "# app\n\nBack up every night.\nKeep two weeks.\n",
+    )
+    .unwrap();
+    ok(git(&wt, &["commit", "-qam", "Keep two weeks"]));
+    ok(git(&wt, &["push", "-q"]));
+    let (status, _) = api(
+        "POST",
+        &format!("/pulls/{n}/reviews"),
+        &owner,
+        Some(&format!(
+            r#"{{"event":"APPROVE","commit_id":"{old_head}"}}"#
+        )),
+    );
+    assert_eq!(status, 409);
+    let (_, doc) = api("GET", &format!("/pulls/{n}"), &owner, None);
+    let new_head = doc["head"]["sha"].as_str().unwrap().to_string();
+    assert_ne!(new_head, old_head);
+    let (status, _) = api(
+        "POST",
+        &format!("/pulls/{n}/reviews"),
+        &owner,
+        Some(&format!(
+            r#"{{"event":"APPROVE","body":"Thanks.","commit_id":"{new_head}"}}"#
+        )),
+    );
+    assert_eq!(status, 201);
+    let (_, doc) = api("GET", &format!("/pulls/{n}"), &owner, None);
+    assert_eq!(doc["reviewers"][0]["state"], "approved");
+    let (_, list) = api("GET", "/worktrees", &owner, None);
+    assert_eq!(list[0]["head"], new_head.as_str());
+
+    // A conversation comment, then the merge: a merge commit on main with
+    // both parents, the branch gone.
+    let (status, _) = api(
+        "POST",
+        &format!("/issues/{n}/comments"),
+        &owner,
+        Some(r#"{"body":"Merging."}"#),
+    );
+    assert_eq!(status, 201);
+    let (status, merged) = api(
+        "POST",
+        &format!("/pulls/{n}/merge"),
+        &owner,
+        Some(&format!(
+            r#"{{"style":"merge","head_commit_id":"{new_head}","delete_branch":true}}"#
+        )),
+    );
+    assert_eq!(status, 200, "{merged}");
+    assert_eq!(merged["merged"], true);
+    assert_eq!(merged["state"], "closed");
+    assert_eq!(merged["merged_by"]["login"], "notshared");
+    let bare = s.state.join("repositories/notshared/app.git");
+    let parents = ok(git(&bare, &["log", "-1", "--format=%P", "main"]));
+    assert_eq!(parents.split_whitespace().count(), 2);
+    assert!(parents.contains(&new_head));
+    assert!(!git(
+        &bare,
+        &["rev-parse", "--verify", "-q", "refs/heads/fix-backup"]
+    )
+    .status
+    .success());
+    // The merged pull request still shows its diff.
+    let (_, files) = api("GET", &format!("/pulls/{n}/files"), &owner, None);
+    assert_eq!(files[0]["filename"], "README.md");
+    let (status, _) = api("POST", &format!("/pulls/{n}/merge"), &owner, Some("{}"));
+    assert_eq!(status, 409);
+
+    // Two branches that change the same line: the second cannot merge.
+    ok(git(&main, &["pull", "-q", "origin", "main"]));
+    for (branch, text) in [("left", "Keep a month.\n"), ("right", "Keep a year.\n")] {
+        ok(git(&main, &["checkout", "-q", "-b", branch, "main"]));
+        let readme = std::fs::read_to_string(main.join("README.md")).unwrap();
+        std::fs::write(
+            main.join("README.md"),
+            readme.replace("Keep two weeks.\n", text),
+        )
+        .unwrap();
+        ok(git(&main, &["commit", "-qam", text.trim()]));
+        ok(git(&main, &["push", "-q", "origin", branch]));
+    }
+    let (_, left) = api(
+        "POST",
+        "/pulls",
+        &jana,
+        Some(r#"{"title":"A month","head":"left","base":"main"}"#),
+    );
+    let (_, right) = api(
+        "POST",
+        "/pulls",
+        &jana,
+        Some(r#"{"title":"A year","head":"right","base":"main"}"#),
+    );
+    let (status, _) = api(
+        "POST",
+        &format!("/pulls/{}/merge", left["number"]),
+        &owner,
+        Some(r#"{"style":"squash"}"#),
+    );
+    assert_eq!(status, 200);
+    let squashed = ok(git(&bare, &["log", "-1", "--format=%P%n%s", "main"]));
+    assert_eq!(
+        squashed.lines().next().unwrap().split_whitespace().count(),
+        1
+    );
+    assert!(squashed.contains("A month (#"));
+    let (_, doc) = api("GET", &format!("/pulls/{}", right["number"]), &owner, None);
+    assert_eq!(doc["mergeable"], false);
+    assert_eq!(doc["conflicts"][0], "README.md");
+    let (status, _) = api(
+        "POST",
+        &format!("/pulls/{}/merge", right["number"]),
+        &owner,
+        Some("{}"),
+    );
+    assert_eq!(status, 409);
+    let (status, _) = api(
+        "POST",
+        &format!("/pulls/{}/merge", right["number"]),
+        &owner,
+        Some(r#"{"style":"fast-forward"}"#),
+    );
+    assert_eq!(status, 422);
+
+    // A merge made on a computer and pushed marks its pull request merged.
+    ok(git(&main, &["checkout", "-q", "-b", "small", "main"]));
+    std::fs::write(main.join("NOTES.md"), "notes\n").unwrap();
+    ok(git(&main, &["add", "NOTES.md"]));
+    ok(git(&main, &["commit", "-qm", "Notes"]));
+    ok(git(&main, &["push", "-q", "origin", "small"]));
+    let (_, small) = api(
+        "POST",
+        "/pulls",
+        &jana,
+        Some(r#"{"title":"Notes","head":"small","base":"main"}"#),
+    );
+    ok(git(&main, &["fetch", "-q", "origin"]));
+    ok(git(&main, &["checkout", "-q", "-B", "main", "origin/main"]));
+    ok(git(&main, &["merge", "-q", "--no-edit", "small"]));
+    ok(git(&main, &["push", "-q", "origin", "main"]));
+    let (_, doc) = api("GET", &format!("/pulls/{}", small["number"]), &owner, None);
+    assert_eq!(doc["merged"], true);
+
+    // The code as the pages read it.
+    let (status, tree) = api("GET", "/contents", &owner, None);
+    assert_eq!(status, 200);
+    let names: Vec<&str> = tree["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["NOTES.md", "README.md"]);
+    let (_, readme) = api("GET", "/readme", &owner, None);
+    assert!(readme["text"].as_str().unwrap().contains("Keep a month."));
+    let (status, _) = api("GET", "/contents/missing.txt", &owner, None);
+    assert_eq!(status, 404);
+    let (_, branches) = api("GET", "/branches", &owner, None);
+    assert_eq!(branches[0]["name"], "main");
+    assert_eq!(branches[0]["default"], true);
+    let (_, log) = api("GET", "/commits?limit=2", &owner, None);
+    assert_eq!(log.as_array().unwrap().len(), 2);
+}

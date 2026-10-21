@@ -43,6 +43,9 @@ let
   # ever sees either, so they are not options.
   socket = "/run/losos-git/http.sock";
   port = 3000;
+  # The internal socket's directory: losos-git and the losos-git-peers
+  # group (Mesh CI's user) may enter it, nobody else.
+  peersDir = "/run/losos-git-peers";
   # uid and gid Forgejo had, so its repositories keep their owner.
   id = 1003;
 
@@ -212,6 +215,8 @@ in
 {
   config = lib.mkIf on {
     users.groups.losos-git.gid = id;
+    users.groups.losos-git-peers = { };
+    systemd.tmpfiles.rules = [ "d ${peersDir} 0750 losos-git losos-git-peers - -" ];
     users.users.losos-git = {
       uid = id;
       group = "losos-git";
@@ -268,6 +273,14 @@ in
             "127.0.0.1:${toString port}"
             "--git"
             "${git}/bin/git"
+            # Services on the box (Mesh CI) read commits and write checks
+            # here; the directory, made below, is the gate.
+            "--internal-socket"
+            "${peersDir}/internal.sock"
+            # Pushes and pull requests, for Mesh CI (modules/ci.nix). On a
+            # box without it the socket is missing and nothing is sent.
+            "--events-socket"
+            "/run/losos-ci-events/events.sock"
           ]
           ++ lib.optional cfg.site.requireSignIn "--require-sign-in"
           ++ lib.optional (cfg.site.defaultPrivate == "public") "--public-by-default"
@@ -280,6 +293,7 @@ in
         RuntimeDirectory = "losos-git";
         # nginx (in the group) has to reach the socket inside.
         RuntimeDirectoryMode = "0750";
+        ReadWritePaths = [ peersDir ];
         UMask = "0077";
 
         NoNewPrivileges = true;
