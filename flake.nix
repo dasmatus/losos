@@ -319,6 +319,9 @@
             # LosOS chat: Dendrite as the shared user while the box shares
             # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
             ./modules/chat.nix
+            # Calls from chat rooms and DMs: the SFU, as the shared user, which
+            # forwards only frames the browsers encrypted (backend/src/calls/).
+            ./modules/calls.nix
             # Backups to the owner's S3 bucket, restoring them, and the
             # boot-time wipe of an erase (backend/src/{backup,erase}.rs).
             ./modules/backup.nix

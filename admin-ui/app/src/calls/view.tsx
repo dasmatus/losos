@@ -129,6 +129,10 @@ export function CallView(p: CallViewProps) {
               render={
                 <span
                   data-e2ee=""
+                  /* The worker's counts, read by the call checks. */
+                  data-sealed={p.stats?.sealed ?? 0}
+                  data-opened={p.stats?.opened ?? 0}
+                  data-refused={p.stats?.refused ?? 0}
                   className="inline-flex items-center gap-1.5 rounded-control border border-line bg-surface px-2.5 py-1 text-[13px] text-ink"
                 />
               }
