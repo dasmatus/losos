@@ -866,6 +866,9 @@ async fn post_person_remove(
                 if let Err(e) = api.login.forget(&name) {
                     tracing::warn!(error = ?e, "a removed person's password date stayed");
                 }
+                if let Err(e) = api.profiles.forget(&name) {
+                    tracing::warn!(error = ?e, "a removed person's profile stayed");
+                }
                 // Every chat device they had, signed out (`crate::chat`).
                 match api.chat.close(&name) {
                     Ok(()) | Err(crate::chat::ChatError::Off) => {}
@@ -1554,35 +1557,66 @@ fn chat_refused(e: &crate::chat::ChatError) -> HttpResponse {
 
 /// `GET /api/chat`: whether the box runs chat, and its server name.
 async fn get_chat(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/chat", false, || {
-        if !api.chat.live() {
-            return chat_refused(&crate::chat::ChatError::Off);
+    let mut asked = false;
+    let refused = guarded(&api, &req, "/api/chat", false, || {
+        asked = true;
+        HttpResponse::Ok().finish()
+    });
+    if !asked {
+        return refused;
+    }
+    if !api.chat.live() {
+        return chat_refused(&crate::chat::ChatError::Off);
+    }
+    // Every call below waits on the homeserver: off the server's workers, or
+    // a slow answer holds up every request on the same worker, nginx's
+    // /internal/chat/authz included.
+    let api = api.clone();
+    match web::block(move || api.chat.view()).await {
+        Ok(view) => HttpResponse::Ok().json(view),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// The person LosOS Login signed in, for the chat routes; the refusal
+/// otherwise (chat is a person's, never the spare key's or the edge's).
+fn chat_person(
+    api: &web::Data<Api>,
+    req: &HttpRequest,
+    route: &str,
+    writes: bool,
+) -> Result<crate::people::Person, Box<HttpResponse>> {
+    let mut person = None;
+    let refused = guarded_as(api, req, route, writes, |who| match who.person() {
+        Some(p) => {
+            person = Some(p.clone());
+            HttpResponse::Ok().finish()
         }
-        HttpResponse::Ok().json(api.chat.view())
-    })
+        None => chat_refused(&crate::chat::ChatError::NotForYou(
+            "sign in with LosOS Login to use chat".to_string(),
+        )),
+    });
+    person.ok_or_else(|| Box::new(refused))
 }
 
 /// `GET /api/chat/people`: everyone on the box chat can reach, each with
 /// an account made, for "Message someone" and invites. A person only.
 async fn get_chat_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded_as(&api, &req, "/api/chat/people", false, |who| {
-        if who.person().is_none() {
-            return chat_refused(&crate::chat::ChatError::NotForYou(
-                "sign in with LosOS Login to use chat".to_string(),
-            ));
-        }
-        let everyone = match api.people.list() {
-            Ok(list) => list,
-            Err(e) => {
-                return HttpResponse::InternalServerError()
-                    .json(serde_json::json!({ "error": e.to_string() }))
-            }
-        };
-        match api.chat.people(&everyone) {
-            Ok(list) => HttpResponse::Ok().json(serde_json::json!({ "people": list })),
-            Err(e) => chat_refused(&e),
-        }
+    if let Err(refused) = chat_person(&api, &req, "/api/chat/people", false) {
+        return *refused;
+    }
+    let api = api.clone();
+    let answer = web::block(move || {
+        let everyone = api.people.list().map_err(|e| e.to_string())?;
+        Ok::<_, String>(api.chat.people(&everyone))
     })
+    .await;
+    match answer {
+        Ok(Ok(Ok(list))) => HttpResponse::Ok().json(serde_json::json!({ "people": list })),
+        Ok(Ok(Err(e))) => chat_refused(&e),
+        Ok(Err(e)) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e })),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
 }
 
 /// `POST /api/chat/session` `{"device"?: "...", "deviceName"?: "..."}`:
@@ -1593,29 +1627,35 @@ async fn post_chat_session(
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    guarded_as(&api, &req, "/api/chat/session", true, |who| {
-        let Some(person) = who.person() else {
-            return chat_refused(&crate::chat::ChatError::NotForYou(
-                "sign in with LosOS Login to use chat".to_string(),
-            ));
-        };
-        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
-        let field = |k: &str| doc.get(k).and_then(serde_json::Value::as_str);
-        match api
-            .chat
-            .session(person, field("device"), field("deviceName"))
-        {
-            Ok(s) => HttpResponse::Ok()
-                .insert_header(("Cache-Control", "no-store"))
-                .json(serde_json::json!({
-                    "userId": s.user_id,
-                    "accessToken": s.access_token,
-                    "deviceId": s.device_id,
-                    "homeserver": "/",
-                })),
-            Err(e) => chat_refused(&e),
-        }
+    let person = match chat_person(&api, &req, "/api/chat/session", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let field = |k: &str| {
+        doc.get(k)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+    };
+    let (device, device_name) = (field("device"), field("deviceName"));
+    let api = api.clone();
+    let made = web::block(move || {
+        api.chat
+            .session(&person, device.as_deref(), device_name.as_deref())
     })
+    .await;
+    match made {
+        Ok(Ok(s)) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(serde_json::json!({
+                "userId": s.user_id,
+                "accessToken": s.access_token,
+                "deviceId": s.device_id,
+                "homeserver": "/",
+            })),
+        Ok(Err(e)) => chat_refused(&e),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
 }
 
 /// Threads for the admin API; see where the server is built.

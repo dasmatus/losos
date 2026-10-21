@@ -7,6 +7,7 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { sendFile } from "./media";
 import { plainBody, sendContent } from "./model";
+import { Button } from "@/components/ui/button";
 
 const MENTION = /@[a-z0-9._=/+-]+:[a-z0-9.-]+(?::\d+)?/gi;
 
@@ -165,7 +166,6 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
   const banner =
     editing !== null ? t("chat.composer.editing") : replyTo !== null ? t("chat.composer.replyingTo", { name: room.getMember(replyTo.getSender() ?? "")?.name ?? replyTo.getSender() ?? "" }) : null;
 
-  const tool = "rounded-control p-2 text-muted hover:bg-sunk hover:text-ink disabled:opacity-45";
   return (
     <div
       className="border-t border-line bg-surface px-3 pt-2 pb-3"
@@ -198,9 +198,9 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
             event.currentTarget.value = "";
           }}
         />
-        <button type="button" className={tool} aria-label={t("chat.composer.attach")} title={t("chat.composer.attach")} onClick={() => files.current?.click()} disabled={editing !== null}>
-          <HugeiconsIcon icon={Attachment01Icon} className="size-5" />
-        </button>
+        <Button variant="ghost" size="icon-sm" aria-label={t("chat.composer.attach")} title={t("chat.composer.attach")} onClick={() => files.current?.click()} disabled={editing !== null}>
+          <HugeiconsIcon icon={Attachment01Icon} className="size-4" />
+        </Button>
         <textarea
           ref={area}
           rows={1}
@@ -232,19 +232,19 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
           }}
         />
         {text.trim() === "" && editing === null ? (
-          <button
-            type="button"
-            className={cn(tool, recording !== null && "bg-crit text-surface hover:bg-crit hover:text-surface")}
+          <Button variant="ghost" size="icon-sm"
+           
+            className={cn(recording !== null && "bg-crit text-surface hover:bg-crit hover:text-surface")}
             aria-label={recording !== null ? t("chat.composer.stopRecording") : t("chat.composer.record")}
             title={recording !== null ? t("chat.composer.stopRecording") : t("chat.composer.record")}
             onClick={() => void record()}
           >
-            <HugeiconsIcon icon={Mic01Icon} className="size-5" />
-          </button>
+            <HugeiconsIcon icon={Mic01Icon} className="size-4" />
+          </Button>
         ) : (
-          <button type="button" className={cn(tool, "text-accent")} aria-label={t("chat.composer.send")} title={t("chat.composer.send")} onClick={() => void send()}>
-            <HugeiconsIcon icon={SentIcon} className="size-5" />
-          </button>
+          <Button variant="ghost" size="icon-sm" className={cn("text-accent")} aria-label={t("chat.composer.send")} title={t("chat.composer.send")} onClick={() => void send()}>
+            <HugeiconsIcon icon={SentIcon} className="size-4" />
+          </Button>
         )}
       </div>
     </div>

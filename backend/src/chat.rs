@@ -45,7 +45,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
@@ -222,6 +222,65 @@ struct Inner {
     owners: Mutex<HashMap<[u8; 32], (String, Instant)>>,
     /// Sign-in names whose account is made, with the display name it has.
     accounts: Mutex<HashMap<String, String>>,
+    /// LosOS Login's answers being fetched now.
+    asking: Flights,
+}
+
+/// LosOS Login's answer about a person, as [`LoginGate::ask`] gives it.
+type Answer = Option<(String, Vec<String>)>;
+
+/// The questions to LosOS Login in flight, by cookie and address. A page
+/// sends many requests at once, each of which nginx checks; the ones that
+/// arrive while LosOS Login is being asked about the same cookie wait for
+/// that answer instead of asking again. Nothing is kept once it is given,
+/// so a sign-out still ends chat at the next request. Chat's paths share one
+/// rule in LosOS Login (`modules/identity.nix`), so the path is not part of
+/// the key.
+#[derive(Default)]
+struct Flights(Mutex<HashMap<String, Arc<Flight>>>);
+
+#[derive(Default)]
+struct Flight {
+    /// `Err(())` when the first asker's question failed.
+    answer: Mutex<Option<Result<Answer, ()>>>,
+    done: Condvar,
+}
+
+impl Flights {
+    fn ask(&self, gate: &dyn LoginGate, asked: &Asked) -> Result<Answer, ChatError> {
+        let key = format!(
+            "{}\n{}",
+            asked.cookie.as_deref().unwrap_or(""),
+            asked.forwarded_for
+        );
+        let (flight, first) = {
+            let mut all = lock(&self.0);
+            match all.get(&key) {
+                Some(f) => (f.clone(), false),
+                None => {
+                    let f = Arc::new(Flight::default());
+                    all.insert(key.clone(), f.clone());
+                    (f, true)
+                }
+            }
+        };
+        if first {
+            let answer = gate.ask(asked);
+            *lock(&flight.answer) = Some(answer.as_ref().map(Clone::clone).map_err(|_| ()));
+            lock(&self.0).remove(&key);
+            flight.done.notify_all();
+            return answer;
+        }
+        let slot = lock(&flight.answer);
+        let (slot, _) = flight
+            .done
+            .wait_timeout_while(slot, Duration::from_secs(30), |a| a.is_none())
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match slot.as_ref() {
+            Some(Ok(answer)) => Ok(answer.clone()),
+            _ => Err(ChatError::NotUp),
+        }
+    }
 }
 
 impl Chat {
@@ -258,6 +317,7 @@ impl Chat {
                 threads,
                 owners: Mutex::new(HashMap::new()),
                 accounts: Mutex::new(HashMap::new()),
+                asking: Flights::default(),
             }),
         }
     }
@@ -496,18 +556,20 @@ impl Chat {
         token: Option<&str>,
     ) -> Result<Verdict, ChatError> {
         let inner = self.inner()?;
+        let url = &asked.original_url;
         if asked.cookie.as_deref().is_none_or(str::is_empty) {
-            tracing::debug!(url = %asked.original_url, "a chat request without a sign-in cookie");
+            tracing::info!(%url, "chat: no LosOS Login cookie");
             return Ok(Verdict::SignIn);
         }
-        let Some((name, groups)) = inner.gate.ask(asked)? else {
+        let Some((name, groups)) = inner.asking.ask(inner.gate.as_ref(), asked)? else {
+            tracing::info!(%url, "chat: LosOS Login does not know the cookie");
             return Ok(Verdict::SignIn);
         };
         // Still on the box: LosOS Login reads the people file on every
         // request, and so does this.
         let person = people.get(&name).ok().flatten();
         let Some(person) = person else {
-            tracing::debug!(%name, "a chat request from someone not in the people file");
+            tracing::info!(%url, %name, "chat: no such person");
             return Ok(Verdict::SignIn);
         };
         if person
@@ -523,10 +585,13 @@ impl Chat {
         };
         match inner.owner_of(token)? {
             Some(owner) if owner == self.user_id(&person.name)? => Ok(Verdict::Allow),
+            Some(owner) => {
+                tracing::info!(%url, %owner, name = %person.name, "chat: someone else's token");
+                Ok(Verdict::Refuse)
+            }
             // A token the homeserver does not know: let the homeserver say
             // so, in its own words, so the page signs the device in again.
             None => Ok(Verdict::Allow),
-            Some(_) => Ok(Verdict::Refuse),
         }
     }
 
@@ -1114,6 +1179,41 @@ mod tests {
         }
     }
 
+    /// A LosOS Login that takes its time and counts the questions.
+    struct Slow(std::sync::atomic::AtomicUsize);
+    impl LoginGate for Slow {
+        fn ask(&self, _: &Asked) -> Result<Option<(String, Vec<String>)>, ChatError> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(300));
+            Ok(Some(("eva".into(), vec![])))
+        }
+    }
+
+    #[test]
+    fn requests_at_once_share_one_question_and_none_is_kept() {
+        let gate = Slow(std::sync::atomic::AtomicUsize::new(0));
+        let flights = Flights::default();
+        let mut cookie = asked();
+        cookie.cookie = Some("authelia_session=a".into());
+        std::thread::scope(|s| {
+            let answers: Vec<_> = (0..8)
+                .map(|_| s.spawn(|| flights.ask(&gate, &cookie).unwrap()))
+                .collect();
+            for a in answers {
+                assert_eq!(a.join().unwrap(), Some(("eva".into(), vec![])));
+            }
+        });
+        assert_eq!(gate.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+        // The next request asks again: a sign-out in between counts.
+        flights.ask(&gate, &cookie).unwrap();
+        assert_eq!(gate.0.load(std::sync::atomic::Ordering::SeqCst), 2);
+        // Another cookie is another question.
+        let mut other = cookie.clone();
+        other.cookie = Some("authelia_session=b".into());
+        flights.ask(&gate, &other).unwrap();
+        assert_eq!(gate.0.load(std::sync::atomic::Ordering::SeqCst), 3);
+    }
+
     struct Rig {
         chat: Chat,
         hs: Arc<Fake>,
@@ -1185,7 +1285,10 @@ mod tests {
         } else {
             &[]
         };
-        let secret = crate::setup::Secret::new("Correct-Horse-Battery-9");
+        // A fresh password per run: these tests never sign in with it.
+        let random = crate::io_backend::random_bytes::<12>().expect("random bytes");
+        let hex: String = random.iter().map(|b| format!("{b:02x}")).collect();
+        let secret = crate::setup::Secret::new(&format!("Pw-{hex}-9"));
         people
             .add(name, name, "", &secret, groups)
             .expect("person added");

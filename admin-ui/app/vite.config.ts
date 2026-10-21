@@ -155,8 +155,8 @@ export default defineConfig({
     sourcemap: false,
     // The appliance has no external hosts and no CDN: one origin, one bundle.
     modulePreload: { polyfill: false },
-    // Four pages: the admin SPA at /, LosOS Lab at /lab/ (nginx serves
-    // dist/lab/index.html there under the Lab's own CSP), LosOS chat at
+    // Five pages: the admin SPA at /, LosOS Lab at /lab/ (nginx serves
+    // dist/lab/index.html there under the Lab's own CSP), LosOS Chat at
     // /chat/ (its own CSP too, for the crypto's WebAssembly; modules/chat.nix),
     // a company edge's manage page, which the edge serves at /manage/ from
     // this same dist/ (edge/registrar/src/server/manage.rs), and LosOS Cloud

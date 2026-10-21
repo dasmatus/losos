@@ -3293,7 +3293,7 @@ in
       && config.losos.identity.enable
       && config.losos.admin.enable
       && config.losos.admin.ui != null;
-    description = "LosOS chat runs: losos.chat.enable, the shared user's apps (lososInternal.sharedSide) and LosOS Login.";
+    description = "LosOS Chat runs: losos.chat.enable, the shared user's apps (lososInternal.sharedSide) and LosOS Login.";
   };
 
   # ── LosOS Mail, as it actually runs ─────────────────────────────────────

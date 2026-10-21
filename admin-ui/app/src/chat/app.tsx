@@ -4,8 +4,6 @@ import {
   ArrowLeft01Icon,
   Call02Icon,
   Comment01Icon,
-  DashboardSquare01Icon,
-  Logout01Icon,
   Notification01Icon,
   Settings01Icon,
   SquareLock01Icon,
@@ -24,20 +22,23 @@ import {
   SyncState,
 } from "matrix-js-sdk";
 import { CryptoEvent, type VerificationRequest } from "matrix-js-sdk/lib/crypto-api";
+import { AppBar, type AppBarPerson } from "@/components/app-bar";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { loadMe, useMe } from "@/lib/api";
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
-import { logoFor } from "@/lib/logo";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { CallsProvider, useCalls } from "./calls";
 import { Composer } from "./composer";
 import { ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, RoomSettingsDialog, StartChatDialog } from "./dialogs";
-import { directPartner, directRooms, plainBody, ROOM_EVENTS, unread, useEmitted } from "./model";
+import { directPartner, directRooms, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
 import { RoomList, SpaceRail } from "./room-list";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
-import { ChatRefused, goSignIn, onSignedOut, type Refusal, type Signed, signIn, signOut, start } from "./session";
+import { ChatRefused, goSignIn, onSignedOut, type Refusal, type Signed, signedHere, signIn, signOutHere, start } from "./session";
 import { RoomTimeline, type RowActions } from "./timeline";
 import { ThreadPanel } from "./thread-panel";
 
@@ -68,15 +69,31 @@ export function ChatRoot() {
   const t = useT();
   const [boot, setBoot] = React.useState<Boot>({ state: "loading" });
   const [attempt, setAttempt] = React.useState(0);
+  // When each recent device was signed out, so a homeserver that refuses
+  // every new device too does not get asked for one again and again.
+  const signedOut = React.useRef<number[]>([]);
 
   React.useEffect(() => {
     let live = true;
     setBoot({ state: "loading" });
     (async () => {
       const signed = await signIn();
-      onSignedOut(signed.client, () => setAttempt((n) => n + 1));
+      onSignedOut(signed.client, () => {
+        const now = Date.now();
+        const recent = [...signedOut.current.filter((at) => now - at < 60_000), now];
+        signedOut.current = recent;
+        if (recent.length >= 3) {
+          signedOut.current = [];
+          if (live) setBoot({ state: "refused", why: "broken", message: t("chat.boot.refusedAgain") });
+          return;
+        }
+        setAttempt((n) => n + 1);
+      });
       await start(signed.client);
-      if (live) setBoot({ state: "ready", signed });
+      if (live) {
+        signedHere(signed);
+        setBoot({ state: "ready", signed });
+      }
     })().catch((error: unknown) => {
       if (!live) return;
       const why: Refusal = error instanceof ChatRefused ? error.why : "broken";
@@ -93,6 +110,7 @@ export function ChatRoot() {
     });
     return () => {
       live = false;
+      signedHere(null);
     };
   }, [attempt]);
 
@@ -114,26 +132,62 @@ export function ChatRoot() {
     );
   }
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-3 p-6 text-center">
-      <img src={logoFor().url} alt="" className="size-12" />
-      {boot.state === "loading" || (boot.state === "refused" && boot.why === "starting") ? (
-        <p className="flex items-center gap-2 text-[14px] text-muted">
-          <Spinner size={16} />
-          {boot.state === "loading" ? t("chat.boot.loading") : t("chat.boot.starting")}
-        </p>
-      ) : boot.why === "notForYou" ? (
-        <>
-          <p className="max-w-sm text-[14px]">{t("chat.boot.notForYou")}</p>
-          <Button onClick={goSignIn}>{t("chat.boot.signIn")}</Button>
-        </>
-      ) : (
-        <>
-          <p className="max-w-sm text-[14px]">{t("chat.boot.broken")}</p>
-          <p className="max-w-sm text-[12.5px] text-muted">{boot.message}</p>
-          <Button onClick={() => setAttempt((n) => n + 1)}>{t("chat.boot.retry")}</Button>
-        </>
-      )}
+    <div className="flex h-dvh flex-col bg-ground text-ink">
+      <ChatBar />
+      <main className="flex flex-1 items-center justify-center p-6">
+        {boot.state === "loading" || (boot.state === "refused" && boot.why === "starting") ? (
+          <p className="flex items-center gap-2 text-[13.5px] text-muted">
+            <Spinner size={16} />
+            {boot.state === "loading" ? t("chat.boot.loading") : t("chat.boot.starting")}
+          </p>
+        ) : (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <HugeiconsIcon icon={Comment01Icon} strokeWidth={1.5} aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>{t(boot.why === "notForYou" ? "chat.boot.notForYouTitle" : "chat.boot.broken")}</EmptyTitle>
+              {boot.why === "notForYou" && <EmptyDescription>{t("chat.boot.notForYou")}</EmptyDescription>}
+            </EmptyHeader>
+            {boot.why !== "notForYou" && (
+              <Alert variant="crit" className="text-left">
+                <AlertDescription>{boot.message}</AlertDescription>
+              </Alert>
+            )}
+            <EmptyContent>
+              {boot.why === "notForYou" ? (
+                <Button onClick={goSignIn}>{t("chat.boot.signIn")}</Button>
+              ) : (
+                <Button onClick={() => setAttempt((n) => n + 1)}>{t("chat.boot.retry")}</Button>
+              )}
+            </EmptyContent>
+          </Empty>
+        )}
+      </main>
     </div>
+  );
+}
+
+/** The web UI's top bar (components/app-bar.tsx) at full width, as over every
+ *  app laid out in panes: the box's logo, LosOS Chat, chat's own buttons,
+ *  then the language, the theme, who is signed in and Sign out. */
+function ChatBar({ children }: { children?: React.ReactNode }) {
+  const t = useT();
+  const me = useMe();
+  React.useEffect(() => {
+    void loadMe().catch(() => undefined);
+  }, []);
+  const person: AppBarPerson | null =
+    me === null || me.spareKey
+      ? null
+      : {
+          label: me.displayName ?? me.name ?? "",
+          tip: `${t("shell.me.signedIn", { name: me.name ?? "" })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`,
+        };
+  return (
+    <AppBar width="full" name={t("chat.title")} nameLink={<a href="/chat/" />} person={person} onSignOut={signOutHere}>
+      {children}
+    </AppBar>
   );
 }
 
@@ -148,7 +202,7 @@ function useNotifications(client: MatrixClient, current: string | null): void {
       if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
       if (client.getPushActionsForEvent(ev)?.notify !== true) return;
       const body = plainBody(ev.getContent()) || t("chat.reply.attachment");
-      const note = new Notification(room.name, { body: `${ev.sender?.name ?? ""}: ${body}`, tag: room.roomId });
+      const note = new Notification(roomName(room), { body: `${ev.sender?.name ?? ""}: ${body}`, tag: room.roomId });
       note.onclick = () => {
         window.focus();
         window.location.hash = `#/room/${encodeURIComponent(room.roomId)}`;
@@ -206,38 +260,34 @@ function ChatShell({ signed }: { signed: Signed }) {
   }, [client]);
 
   const room = current !== null ? (client.getRoom(current) ?? null) : null;
-  const tool = "rounded-control p-1.5 text-muted hover:bg-sunk hover:text-ink";
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-ground text-ink">
+    <div className="flex h-dvh flex-col bg-ground text-ink">
+      <ChatBar>
+        <div className="flex-1" />
+        <Button variant="ghost" size="icon-sm" className="relative" aria-label={t("chat.security.title")} title={t("chat.security.title")} onClick={() => setDialog("security")}>
+          <HugeiconsIcon icon={SquareLock01Icon} className="size-4" />
+          {trust !== "ready" && trust !== "loading" && <span className="absolute top-1 right-1 size-2 rounded-full bg-warn" />}
+        </Button>
+        {notify === "default" && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("chat.notify.ask")}
+            title={t("chat.notify.ask")}
+            onClick={() => void Notification.requestPermission().then(setNotify)}
+          >
+            <HugeiconsIcon icon={Notification01Icon} className="size-4" />
+          </Button>
+        )}
+      </ChatBar>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className={cn("hidden sm:flex", room !== null && "max-sm:hidden")}>
         <SpaceRail client={client} space={space} onSpace={setSpace} onNewSpace={() => setDialog("space")} />
       </div>
       <aside className={cn("flex w-full min-w-0 flex-col border-r border-line bg-surface sm:w-72 sm:shrink-0", room !== null && "max-sm:hidden")} aria-label={t("chat.list.label")}>
-        <header className="flex h-14 items-center gap-2 border-b border-line px-3">
-          <img src={logoFor().url} alt="" className="size-7" />
-          <h1 className="flex-1 text-[15px] font-semibold tracking-tight">{t("chat.title")}</h1>
-          <button type="button" className={cn(tool, "relative")} aria-label={t("chat.security.title")} title={t("chat.security.title")} onClick={() => setDialog("security")}>
-            <HugeiconsIcon icon={SquareLock01Icon} className="size-4" />
-            {trust !== "ready" && trust !== "loading" && <span className="absolute top-1 right-1 size-2 rounded-full bg-warn" />}
-          </button>
-          {notify === "default" && (
-            <button
-              type="button"
-              className={tool}
-              aria-label={t("chat.notify.ask")}
-              title={t("chat.notify.ask")}
-              onClick={() => void Notification.requestPermission().then(setNotify)}
-            >
-              <HugeiconsIcon icon={Notification01Icon} className="size-4" />
-            </button>
-          )}
-          <a className={tool} href="/" aria-label={t("chat.toAdmin")} title={t("chat.toAdmin")}>
-            <HugeiconsIcon icon={DashboardSquare01Icon} className="size-4" />
-          </a>
-          <button type="button" className={tool} aria-label={t("chat.signOut")} title={t("chat.signOut")} onClick={() => void signOut(signed)}>
-            <HugeiconsIcon icon={Logout01Icon} className="size-4" />
-          </button>
+        <header className="flex h-12 items-center border-b border-line px-3">
+          <h1 className="text-[15px] font-semibold tracking-tight">{t("chat.list.label")}</h1>
         </header>
         {trust !== "ready" && trust !== "loading" && (
           <button type="button" onClick={() => setDialog("security")} className="flex items-center gap-2 border-b border-line bg-accent-wash px-3 py-2 text-left text-[12.5px] text-accent">
@@ -270,20 +320,27 @@ function ChatShell({ signed }: { signed: Signed }) {
       {room !== null ? (
         <RoomView key={room.roomId} signed={signed} room={room} onBack={() => setCurrent(null)} onDialog={setDialog} />
       ) : (
-        <main className="hidden flex-1 flex-col items-center justify-center gap-3 p-6 text-center sm:flex">
-          <HugeiconsIcon icon={Comment01Icon} className="size-10 text-faint" />
-          <p className="text-[15px] font-semibold">{t("chat.empty.title")}</p>
-          <p className="max-w-sm text-[13.5px] text-muted">{t("chat.empty.lead")}</p>
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => setDialog("chat")}>
-              {t("chat.list.newChat")}
-            </Button>
-            <Button variant="secondary" onClick={() => setDialog("room")}>
-              {t("chat.list.newRoom")}
-            </Button>
-          </div>
+        <main className="hidden flex-1 items-center justify-center p-6 sm:flex">
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <HugeiconsIcon icon={Comment01Icon} strokeWidth={1.5} aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>{t("chat.empty.title")}</EmptyTitle>
+              <EmptyDescription>{t("chat.empty.lead")}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent className="flex-row justify-center">
+              <Button variant="secondary" onClick={() => setDialog("chat")}>
+                {t("chat.list.newChat")}
+              </Button>
+              <Button variant="secondary" onClick={() => setDialog("room")}>
+                {t("chat.list.newRoom")}
+              </Button>
+            </EmptyContent>
+          </Empty>
         </main>
       )}
+      </div>
 
       <NewRoomDialog client={client} open={dialog === "room"} onOpenChange={(o) => setDialog(o ? "room" : null)} space={space} onCreated={setCurrent} />
       <NewRoomDialog
@@ -351,11 +408,15 @@ function InvitedView({ client, room }: { client: MatrixClient; room: Room }) {
     }
   };
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-      <Avatar client={client} id={room.roomId} name={room.name} mxc={room.getMxcAvatarUrl()} size={64} />
-      <p className="text-[15px] font-semibold">{room.name}</p>
-      <p className="text-[13.5px] text-muted">{t("chat.invite.youWere", { name: room.getMember(inviter)?.name ?? inviter })}</p>
-      <div className="flex gap-2">
+    <Empty className="flex-1">
+      <EmptyHeader>
+        <EmptyMedia>
+          <Avatar client={client} id={room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={64} />
+        </EmptyMedia>
+        <EmptyTitle>{roomName(room)}</EmptyTitle>
+        <EmptyDescription>{t("chat.invite.youWere", { name: room.getMember(inviter)?.name ?? inviter })}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent className="flex-row justify-center">
         <Button variant="ghost" disabled={busy} onClick={() => void client.leave(room.roomId)}>
           {t("chat.invite.decline")}
         </Button>
@@ -363,8 +424,8 @@ function InvitedView({ client, room }: { client: MatrixClient; room: Room }) {
           {busy && <Spinner size={14} />}
           {t("chat.invite.accept")}
         </Button>
-      </div>
-    </div>
+      </EmptyContent>
+    </Empty>
   );
 }
 
@@ -395,19 +456,18 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
     onThread: (root) => setPanel({ root }),
     onOpenImage: setImage,
   };
-  const tool = "rounded-control p-2 text-muted hover:bg-sunk hover:text-ink disabled:opacity-45";
 
   return (
     <>
-      <main className={cn("flex min-w-0 flex-1 flex-col", panel !== null && "max-lg:hidden")} aria-label={room.name}>
+      <main className={cn("flex min-w-0 flex-1 flex-col", panel !== null && "max-lg:hidden")} aria-label={roomName(room)}>
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-2 sm:px-4">
-          <button type="button" className={cn(tool, "sm:hidden")} aria-label={t("chat.back")} onClick={onBack}>
-            <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" />
-          </button>
-          <Avatar client={client} id={partner ?? room.roomId} name={room.name} mxc={room.getMxcAvatarUrl()} size={32} />
+          <Button variant="ghost" size="icon-sm" className={cn("sm:hidden")} aria-label={t("chat.back")} onClick={onBack}>
+            <HugeiconsIcon icon={ArrowLeft01Icon} className="size-4" />
+          </Button>
+          <Avatar client={client} id={partner ?? room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={32} />
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-1.5 truncate text-[14.5px] font-semibold">
-              {room.name}
+              {roomName(room)}
               {encrypted && (
                 <span title={t("chat.room.encrypted")} aria-label={t("chat.room.encrypted")}>
                   <HugeiconsIcon icon={SquareLock01Icon} className="size-3.5 text-ok" />
@@ -420,30 +480,30 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
             <>
               {calls.available && (
                 <>
-                  <button type="button" className={tool} aria-label={t("chat.call.voice")} title={t("chat.call.voice")} disabled={calls.active !== null} onClick={() => calls.start(room, false)}>
-                    <HugeiconsIcon icon={Call02Icon} className="size-5" />
-                  </button>
-                  <button type="button" className={tool} aria-label={t("chat.call.video")} title={t("chat.call.video")} disabled={calls.active !== null} onClick={() => calls.start(room, true)}>
-                    <HugeiconsIcon icon={Video01Icon} className="size-5" />
-                  </button>
+                  <Button variant="ghost" size="icon-sm" aria-label={t("chat.call.voice")} title={t("chat.call.voice")} disabled={calls.active !== null} onClick={() => calls.start(room, false)}>
+                    <HugeiconsIcon icon={Call02Icon} className="size-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon-sm" aria-label={t("chat.call.video")} title={t("chat.call.video")} disabled={calls.active !== null} onClick={() => calls.start(room, true)}>
+                    <HugeiconsIcon icon={Video01Icon} className="size-4" />
+                  </Button>
                 </>
               )}
-              <button
-                type="button"
-                className={cn(tool, panel !== null && "bg-accent-wash text-accent")}
+              <Button variant="ghost" size="icon-sm"
+               
+                className={cn(panel !== null && "bg-accent-wash text-accent")}
                 aria-label={t("chat.thread.title")}
                 title={t("chat.thread.title")}
                 aria-pressed={panel !== null}
                 onClick={() => setPanel(panel === null ? { root: null } : null)}
               >
-                <HugeiconsIcon icon={Comment01Icon} className="size-5" />
-              </button>
-              <button type="button" className={cn(tool, "max-sm:hidden")} aria-label={t("chat.settings.invite")} title={t("chat.settings.invite")} onClick={() => onDialog("invite")}>
-                <HugeiconsIcon icon={UserAdd01Icon} className="size-5" />
-              </button>
-              <button type="button" className={tool} aria-label={t("chat.settings.open")} title={t("chat.settings.open")} onClick={() => onDialog("settings")}>
-                <HugeiconsIcon icon={Settings01Icon} className="size-5" />
-              </button>
+                <HugeiconsIcon icon={Comment01Icon} className="size-4" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" className={cn("max-sm:hidden")} aria-label={t("chat.settings.invite")} title={t("chat.settings.invite")} onClick={() => onDialog("invite")}>
+                <HugeiconsIcon icon={UserAdd01Icon} className="size-4" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" aria-label={t("chat.settings.open")} title={t("chat.settings.open")} onClick={() => onDialog("settings")}>
+                <HugeiconsIcon icon={Settings01Icon} className="size-4" />
+              </Button>
             </>
           )}
         </header>
@@ -461,7 +521,7 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
                 setReplyTo(null);
                 setEditing(null);
               }}
-              placeholder={t("chat.composer.placeholder", { room: room.name })}
+              placeholder={t("chat.composer.placeholder", { room: roomName(room) })}
             />
           </>
         )}

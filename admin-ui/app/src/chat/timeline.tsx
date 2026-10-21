@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { callEnded, callEvent, useCalls } from "./calls";
 import { MessageBody } from "./message-body";
-import { buildItems, continues, type Item, type Message, plainBody, useEmitted } from "./model";
+import { buildItems, continues, type Item, type Message, memberName, plainBody, shownName, useEmitted } from "./model";
 
 export const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮", "😢", "🙏", "👀"] as const;
 
@@ -96,7 +96,7 @@ function ReplyQuote({ client, room, id }: { client: MatrixClient; room: Room; id
         : quoted.isRedacted()
           ? t("chat.message.deleted")
           : plainBody(quoted.getContent()) || t("chat.reply.attachment");
-  const who = quoted !== null && quoted !== "missing" ? (room.getMember(quoted.getSender() ?? "")?.name ?? quoted.getSender()) : null;
+  const who = quoted !== null && quoted !== "missing" ? (memberName(room, quoted.getSender() ?? "")) : null;
   return (
     <div className="mb-1 max-w-md border-l-2 border-accent pl-2 text-[12.5px] leading-snug text-muted">
       {who !== null && <span className="font-medium text-ink">{who} </span>}
@@ -120,7 +120,7 @@ function ReactionBar({ client, room, item }: { client: MatrixClient; room: Room;
   return (
     <div className="mt-1 flex flex-wrap gap-1">
       {item.reactions.map((reaction) => {
-        const names = reaction.senders.map((id) => room.getMember(id)?.name ?? id).join(", ");
+        const names = reaction.senders.map((id) => memberName(room, id)).join(", ");
         return (
           <button
             key={reaction.key}
@@ -150,7 +150,6 @@ function Toolbar({ client, room, item, actions, me }: { client: MatrixClient; ro
   const canRedact = mine || room.currentState.hasSufficientPowerLevelFor("redact", room.getMember(me)?.powerLevel ?? 0);
   const isText = typeof item.content["msgtype"] === "string" && ["m.text", "m.emote", "m.notice"].includes(item.content["msgtype"] as string);
   if (ev.isRedacted() || ev.status !== null) return null;
-  const tool = "rounded-control p-1.5 text-muted hover:bg-sunk hover:text-ink";
   const react = (key: string): void => {
     setPicking(false);
     const already = item.reactions.find((r) => r.key === key)?.mine;
@@ -175,33 +174,33 @@ function Toolbar({ client, room, item, actions, me }: { client: MatrixClient; ro
           ))}
         </div>
       ) : (
-        <button type="button" className={tool} aria-label={t("chat.reaction.add")} title={t("chat.reaction.add")} onClick={() => setPicking(true)}>
+        <Button variant="ghost" size="icon-sm" aria-label={t("chat.reaction.add")} title={t("chat.reaction.add")} onClick={() => setPicking(true)}>
           <HugeiconsIcon icon={SmileIcon} className="size-4" />
-        </button>
+        </Button>
       )}
-      <button type="button" className={tool} aria-label={t("chat.message.reply")} title={t("chat.message.reply")} onClick={() => actions.onReply(ev)}>
+      <Button variant="ghost" size="icon-sm" aria-label={t("chat.message.reply")} title={t("chat.message.reply")} onClick={() => actions.onReply(ev)}>
         <HugeiconsIcon icon={ArrowTurnBackwardIcon} className="size-4" />
-      </button>
+      </Button>
       {actions.onThread !== null && (
-        <button
-          type="button"
-          className={tool}
+        <Button variant="ghost" size="icon-sm"
+         
+         
           aria-label={t("chat.thread.reply")}
           title={t("chat.thread.reply")}
           onClick={() => actions.onThread?.(ev.getId() ?? "")}
         >
           <HugeiconsIcon icon={Comment01Icon} className="size-4" />
-        </button>
+        </Button>
       )}
       {mine && isText && (
-        <button type="button" className={tool} aria-label={t("chat.message.edit")} title={t("chat.message.edit")} onClick={() => actions.onEdit(ev)}>
+        <Button variant="ghost" size="icon-sm" aria-label={t("chat.message.edit")} title={t("chat.message.edit")} onClick={() => actions.onEdit(ev)}>
           <HugeiconsIcon icon={PencilEdit01Icon} className="size-4" />
-        </button>
+        </Button>
       )}
       {canRedact && (
-        <button
-          type="button"
-          className={cn(tool, "hover:text-crit")}
+        <Button variant="ghost" size="icon-sm"
+         
+          className={cn("hover:text-crit")}
           aria-label={t("chat.message.delete")}
           title={t("chat.message.delete")}
           onClick={() => {
@@ -209,7 +208,7 @@ function Toolbar({ client, room, item, actions, me }: { client: MatrixClient; ro
           }}
         >
           <HugeiconsIcon icon={Delete02Icon} className="size-4" />
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -248,7 +247,7 @@ export function MessageRow({ client, room, item, grouped, me, actions, seenBy }:
   const ev = item.event;
   const sender = ev.getSender() ?? "";
   const member = room.getMember(sender);
-  const name = member?.name ?? sender;
+  const name = shownName(member?.name ?? sender);
   return (
     <div
       className={cn("group relative flex gap-3 px-4 hover:bg-sunk/60 focus-within:bg-sunk/60", grouped ? "py-0.5" : "pt-3 pb-0.5")}
@@ -282,9 +281,9 @@ export function MessageRow({ client, room, item, grouped, me, actions, seenBy }:
         )}
         <SendState client={client} room={room} event={ev} />
         {seenBy.length > 0 && (
-          <div className="mt-1 flex items-center justify-end gap-0.5" title={t("chat.receipt.seen", { names: seenBy.map((id) => room.getMember(id)?.name ?? id).join(", ") })}>
+          <div className="mt-1 flex items-center justify-end gap-0.5" title={t("chat.receipt.seen", { names: seenBy.map((id) => memberName(room, id)).join(", ") })}>
             {seenBy.slice(0, 5).map((id) => (
-              <Avatar key={id} client={client} id={id} name={room.getMember(id)?.name ?? id} mxc={room.getMember(id)?.getMxcAvatarUrl()} size={16} className="size-4 text-[9px]" />
+              <Avatar key={id} client={client} id={id} name={memberName(room, id)} mxc={room.getMember(id)?.getMxcAvatarUrl()} size={16} className="size-4 text-[9px]" />
             ))}
           </div>
         )}
@@ -316,21 +315,21 @@ function CallNotice({ room, event, who }: { room: Room; event: MatrixEvent; who:
 
 function NoticeRow({ room, event }: { room: Room; event: MatrixEvent }) {
   const t = useT();
-  const who = room.getMember(event.getSender() ?? "")?.name ?? event.getSender() ?? "";
+  const who = memberName(room, event.getSender() ?? "");
   const content = event.getContent();
   if (event.getType() === "org.losos.call") return <CallNotice room={room} event={event} who={who} />;
   let text: string | null = null;
   switch (event.getType()) {
     case EventType.RoomMember: {
-      const target = (content["displayname"] as string | undefined) ?? event.getStateKey() ?? "";
+      const target = (content["displayname"] as string | undefined) ?? shownName(event.getStateKey() ?? "");
       const before = event.getPrevContent()["membership"];
       const membership = content["membership"];
       if (membership === "join" && before === "join") text = null;
       else if (membership === "join") text = t("chat.notice.joined", { who: target });
       else if (membership === "invite") text = t("chat.notice.invited", { who, target });
       else if (membership === "leave" && event.getStateKey() === event.getSender()) text = t("chat.notice.left", { who: target || who });
-      else if (membership === "leave") text = t("chat.notice.removed", { who, target: event.getStateKey() ?? "" });
-      else if (membership === "ban") text = t("chat.notice.banned", { who, target: event.getStateKey() ?? "" });
+      else if (membership === "leave") text = t("chat.notice.removed", { who, target: shownName(event.getStateKey() ?? "") });
+      else if (membership === "ban") text = t("chat.notice.banned", { who, target: shownName(event.getStateKey() ?? "") });
       break;
     }
     case EventType.RoomName:

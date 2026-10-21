@@ -3,10 +3,11 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Add01Icon, Home01Icon, Search01Icon, UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import { KnownMembership, type MatrixClient, type Room } from "matrix-js-sdk";
 import { Button } from "@/components/ui/button";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
-import { directPartner, directRooms, isSpace, lastActive, plainBody, ROOM_EVENTS, spaceChildren, unread, useEmitted } from "./model";
+import { directPartner, directRooms, isSpace, lastActive, memberName, plainBody, ROOM_EVENTS, roomName, spaceChildren, unread, useEmitted } from "./model";
 
 export interface RoomListProps {
   client: MatrixClient;
@@ -32,7 +33,7 @@ function RoomRow({ client, room, current, onOpen, invite }: { client: MatrixClie
   const t = useT();
   const counts = unread(room);
   const active = room.roomId === current;
-  const line = invite === true ? t("chat.list.invitedBy", { name: room.getMember(client.getSafeUserId())?.events.member?.sender?.name ?? "" }) : preview(room);
+  const line = invite === true ? t("chat.list.invitedBy", { name: memberName(room, room.getMember(client.getSafeUserId())?.events.member?.getSender() ?? "") }) : preview(room);
   return (
     <li>
       <button
@@ -44,9 +45,9 @@ function RoomRow({ client, room, current, onOpen, invite }: { client: MatrixClie
           active ? "bg-accent-wash text-accent" : "text-ink hover:bg-sunk",
         )}
       >
-        <Avatar client={client} id={room.roomId} name={room.name} mxc={room.getMxcAvatarUrl()} size={32} />
+        <Avatar client={client} id={room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={32} />
         <span className="min-w-0 flex-1">
-          <span className={cn("block truncate text-[13.5px]", counts.total > 0 ? "font-semibold" : "font-medium")}>{room.name}</span>
+          <span className={cn("block truncate text-[13.5px]", counts.total > 0 ? "font-semibold" : "font-medium")}>{roomName(room)}</span>
           {line !== "" && <span className="block truncate text-[12px] text-muted">{line}</span>}
         </span>
         {counts.total > 0 && (
@@ -94,12 +95,12 @@ export function SpaceRail({ client, space, onSpace, onNewSpace }: Pick<RoomListP
           key={room.roomId}
           type="button"
           className={cn(item(space === room.roomId), "p-0")}
-          aria-label={room.name}
-          title={room.name}
+          aria-label={roomName(room)}
+          title={roomName(room)}
           aria-pressed={space === room.roomId}
           onClick={() => onSpace(room.roomId)}
         >
-          <Avatar client={client} id={room.roomId} name={room.name} mxc={room.getMxcAvatarUrl()} size={32} className="rounded-control" />
+          <Avatar client={client} id={room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={32} className="rounded-control" />
         </button>
       ))}
       <button type="button" className={item(false)} aria-label={t("chat.spaces.new")} title={t("chat.spaces.new")} onClick={onNewSpace}>
@@ -124,7 +125,7 @@ export function RoomList({ client, current, space, onOpen, onNewRoom, onNewChat,
     const wanted = filter.trim().toLowerCase();
     const shown = all
       .filter((room) => inSpace === null || inSpace.has(room.roomId))
-      .filter((room) => wanted === "" || room.name.toLowerCase().includes(wanted))
+      .filter((room) => wanted === "" || roomName(room).toLowerCase().includes(wanted))
       .sort((a, b) => lastActive(b) - lastActive(a));
     return {
       invites: shown.filter((room) => room.getMyMembership() === KnownMembership.Invite),
@@ -136,25 +137,27 @@ export function RoomList({ client, current, space, onOpen, onNewRoom, onNewChat,
   }, [client, space, filter, tick]);
 
   const plus = (label: string, onClick: () => void, icon = Add01Icon) => (
-    <button type="button" className="rounded-control p-1 text-muted hover:bg-sunk hover:text-ink" aria-label={label} title={label} onClick={onClick}>
+    <Button variant="ghost" size="icon-sm" aria-label={label} title={label} onClick={onClick}>
       <HugeiconsIcon icon={icon} className="size-4" />
-    </button>
+    </Button>
   );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-3 pt-3 pb-2">
         {spaceName !== null && <p className="mb-2 truncate px-1 text-[15px] font-semibold">{spaceName}</p>}
-        <label className="flex h-8 items-center gap-2 rounded-control border border-line bg-ground px-2 focus-within:border-accent">
-          <HugeiconsIcon icon={Search01Icon} className="size-4 text-faint" />
-          <input
+        <InputGroup className="h-8">
+          <InputGroupAddon>
+            <HugeiconsIcon icon={Search01Icon} className="size-4" aria-hidden="true" />
+          </InputGroupAddon>
+          <InputGroupInput
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             placeholder={t("chat.list.filter")}
             aria-label={t("chat.list.filter")}
-            className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-faint"
+            className="text-[13px]"
           />
-        </label>
+        </InputGroup>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {invites.length > 0 && (

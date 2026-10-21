@@ -159,6 +159,14 @@ const TREE: readonly Entry[] = [
     shared: "chat",
   },
   {
+    kind: "link",
+    key: "mail",
+    to: "/mail",
+    label: "shell.nav.mail",
+    icon: Mail01Icon,
+    shared: "mail",
+  },
+  {
     kind: "fold",
     key: "settings",
     label: "shell.nav.settings",
@@ -179,6 +187,8 @@ const TREE: readonly Entry[] = [
 function allowed(entry: LinkEntry): boolean {
   if (entry.pane !== undefined) return paneOpen(entry.pane);
   if (entry.key === "lab") return canUse("lab");
+  // Shared-side: there only while the box shares its storage, which lososd
+  // says in /api/me's `shared`. With sharing off the page does not exist.
   if (entry.shared !== undefined) return sharedApp(entry.shared);
   return true;
 }

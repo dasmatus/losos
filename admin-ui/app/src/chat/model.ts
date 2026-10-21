@@ -225,8 +225,12 @@ export function buildItems(events: readonly MatrixEvent[], me: string, inThread:
     }
   }
 
+  // In the order they were sent. A homeserver can hand someone who joined
+  // late the messages from before their join after the ones since; on one
+  // box every message is stamped by the same clock.
+  const ordered = [...events].sort((a, b) => a.getTs() - b.getTs());
   const items: Item[] = [];
-  for (const ev of events) {
+  for (const ev of ordered) {
     const type = ev.getType();
     const relation = relationOf(ev);
     if (relation?.rel_type === "m.replace" || type === EventType.Reaction || type === EventType.RoomRedaction) continue;
@@ -271,10 +275,25 @@ export function plainBody(content: Record<string, unknown>): string {
   return typeof body === "string" ? body : "";
 }
 
-/** A room or person's initial, for an avatar with no picture. */
-export function initial(name: string): string {
-  const letter = [...name.replace(/^[@#!]/, "")][0];
-  return (letter ?? "?").toUpperCase();
+/* The names LosOS Login has for everyone on this box, by Matrix ID. The
+ * homeserver puts no name on an invite, so a direct chat with someone who
+ * has not joined yet would otherwise be called by their ID. */
+export const boxNames = new Map<string, string>();
+
+/** A Matrix ID as the person's name when they are on this box. */
+export function shownName(name: string): string {
+  return boxNames.get(name) ?? name;
+}
+
+/** A room's name, with a person's ID turned into their name. */
+export function roomName(room: Room): string {
+  return shownName(room.name);
+}
+
+/** A member's name in a room, with the same fallback. */
+export function memberName(room: Room, id: string): string {
+  const name = room.getMember(id)?.name ?? id;
+  return shownName(name);
 }
 
 /** A colour index (0..7) from a user or room ID, the same on every page. */

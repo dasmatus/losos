@@ -9,6 +9,7 @@ import {
   VerifierEvent,
 } from "matrix-js-sdk/lib/crypto-api";
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/ui/field";
 import { Dialog, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
@@ -212,7 +213,7 @@ function Unlock({ client, keys, onDone, onVerify }: { client: MatrixClient; keys
             autoComplete="off"
             spellCheck={false}
           />
-          {wrong && <p className="text-[12.5px] text-crit">{t("chat.security.wrongKey")}</p>}
+          {wrong && <FieldError>{t("chat.security.wrongKey")}</FieldError>}
           <Button type="submit" disabled={busy || text.trim() === ""}>
             {busy && <Spinner size={14} />}
             {t("chat.security.useKey")}

@@ -4,10 +4,8 @@ import { defineMessages } from "./define";
  * write and what the homeserver names (room names, Matrix IDs, the
  * verification emoji's names) stays as it comes. */
 export default defineMessages({
-  "chat.title": { en: "LosOS chat", sk: "LosOS chat", de: "LosOS Chat" },
+  "chat.title": { en: "LosOS Chat", sk: "LosOS Chat", de: "LosOS Chat" },
   "chat.back": { en: "Back to the list", sk: "Späť na zoznam", de: "Zurück zur Liste" },
-  "chat.toAdmin": { en: "Admin pages", sk: "Stránky správy", de: "Verwaltungsseiten" },
-  "chat.signOut": { en: "Sign out", sk: "Odhlásiť sa", de: "Abmelden" },
   "chat.offline": {
     en: "The box is not answering. Chat reconnects by itself.",
     sk: "Box neodpovedá. Chat sa pripojí znova sám.",
@@ -21,6 +19,11 @@ export default defineMessages({
     sk: "Chat sa na boxe spúšťa. Stránka to skúsi znova sama.",
     de: "Der Chat startet gerade auf der Box. Diese Seite versucht es von selbst erneut.",
   },
+  "chat.boot.notForYouTitle": {
+    en: "Chat needs a sign-in",
+    sk: "Chat potrebuje prihlásenie",
+    de: "Der Chat braucht eine Anmeldung",
+  },
   "chat.boot.notForYou": {
     en: "Chat is for people who sign in with LosOS Login. The spare key opens the admin pages only.",
     sk: "Chat je pre ľudí prihlásených cez LosOS Login. Náhradný kľúč otvára iba stránky správy.",
@@ -31,6 +34,11 @@ export default defineMessages({
     en: "Chat did not open.",
     sk: "Chat sa neotvoril.",
     de: "Der Chat hat sich nicht geöffnet.",
+  },
+  "chat.boot.refusedAgain": {
+    en: "The box signed this browser out of chat several times in a row.",
+    sk: "Zariadenie odhlásilo tento prehliadač z chatu niekoľkokrát za sebou.",
+    de: "Das Gerät hat diesen Browser mehrmals hintereinander vom Chat abgemeldet.",
   },
   "chat.boot.retry": { en: "Try again", sk: "Skúsiť znova", de: "Erneut versuchen" },
 
@@ -58,7 +66,7 @@ export default defineMessages({
   "chat.empty.lead": {
     en: "Write to someone on this box, or start a room for a group. Messages between people are end-to-end encrypted.",
     sk: "Napíšte niekomu na tomto boxe alebo založte miestnosť pre skupinu. Správy medzi ľuďmi sú šifrované end-to-end.",
-    de: "Schreiben Sie jemandem auf dieser Box oder eröffnen Sie einen Raum für eine Gruppe. Nachrichten zwischen Personen sind Ende-zu-Ende-verschlüsselt.",
+    de: "Schreib jemandem auf dieser Box oder eröffne einen Raum für eine Gruppe. Nachrichten zwischen Personen sind Ende-zu-Ende-verschlüsselt.",
   },
 
   // ── a room ──
@@ -69,7 +77,7 @@ export default defineMessages({
   "chat.typing.one": { en: "{name} is typing…", sk: "{name} píše…", de: "{name} schreibt…" },
   "chat.typing.many": { en: "{names} are typing…", sk: "{names} píšu…", de: "{names} schreiben…" },
   "chat.receipt.seen": { en: "Seen by {names}", sk: "Videli: {names}", de: "Gesehen von {names}" },
-  "chat.invite.youWere": { en: "{name} invited you.", sk: "{name} vás pozýva.", de: "{name} hat Sie eingeladen." },
+  "chat.invite.youWere": { en: "{name} invited you.", sk: "{name} vás pozýva.", de: "{name} hat dich eingeladen." },
   "chat.invite.accept": { en: "Join", sk: "Pripojiť sa", de: "Beitreten" },
   "chat.invite.decline": { en: "Decline", sk: "Odmietnuť", de: "Ablehnen" },
 
@@ -88,7 +96,7 @@ export default defineMessages({
   "chat.message.undecryptable": {
     en: "This device has no key for this message. Use your recovery key in Secure messages to read it.",
     sk: "Toto zariadenie nemá kľúč k tejto správe. Na jej prečítanie použite kľúč na obnovenie v časti Zabezpečené správy.",
-    de: "Dieses Gerät hat keinen Schlüssel für diese Nachricht. Verwenden Sie Ihren Wiederherstellungsschlüssel unter Sichere Nachrichten, um sie zu lesen.",
+    de: "Dieses Gerät hat keinen Schlüssel für diese Nachricht. Verwende deinen Wiederherstellungsschlüssel unter Sichere Nachrichten, um sie zu lesen.",
   },
   "chat.message.sending": { en: "Sending…", sk: "Odosiela sa…", de: "Wird gesendet…" },
   "chat.message.notSent": { en: "Not sent.", sk: "Neodoslané.", de: "Nicht gesendet." },
@@ -135,7 +143,7 @@ export default defineMessages({
     sk: "Prehliadač chatu nesprístupnil mikrofón.",
     de: "Der Browser hat dem Chat kein Mikrofon freigegeben.",
   },
-  "chat.composer.editing": { en: "Editing your message", sk: "Upravujete svoju správu", de: "Sie bearbeiten Ihre Nachricht" },
+  "chat.composer.editing": { en: "Editing your message", sk: "Upravujete svoju správu", de: "Du bearbeitest deine Nachricht" },
   "chat.composer.replyingTo": { en: "Replying to {name}", sk: "Odpoveď pre {name}", de: "Antwort an {name}" },
   "chat.composer.cancel": { en: "Cancel", sk: "Zrušiť", de: "Abbrechen" },
   "chat.composer.uploading": {
@@ -162,7 +170,7 @@ export default defineMessages({
   "chat.thread.none": {
     en: "No threads here yet. Point at a message and pick Reply in a thread to start one.",
     sk: "Zatiaľ tu nie sú vlákna. Ukážte na správu a vyberte Odpovedať vo vlákne.",
-    de: "Hier gibt es noch keine Threads. Zeigen Sie auf eine Nachricht und wählen Sie Im Thread antworten.",
+    de: "Hier gibt es noch keine Threads. Zeig auf eine Nachricht und wähle Im Thread antworten.",
   },
   "chat.thread.listFailed": { en: "The list of threads did not load.", sk: "Zoznam vlákien sa nenačítal.", de: "Die Liste der Threads wurde nicht geladen." },
   "chat.thread.placeholder": { en: "Reply in the thread", sk: "Odpovedať vo vlákne", de: "Im Thread antworten" },
@@ -201,7 +209,7 @@ export default defineMessages({
   "chat.newRoom.lead": {
     en: "A room is a conversation for a group. You can invite people once it is made.",
     sk: "Miestnosť je konverzácia pre skupinu. Ľudí pozvete, keď bude vytvorená.",
-    de: "Ein Raum ist eine Unterhaltung für eine Gruppe. Personen laden Sie ein, sobald er erstellt ist.",
+    de: "Ein Raum ist eine Unterhaltung für eine Gruppe. Personen lädst du ein, sobald er erstellt ist.",
   },
   "chat.newSpace.title": { en: "New space", sk: "Nový priestor", de: "Neuer Bereich" },
   "chat.newSpace.lead": {
@@ -217,7 +225,7 @@ export default defineMessages({
     sk: "Uvedená medzi miestnosťami boxu.",
     de: "In der Liste der Räume der Box aufgeführt.",
   },
-  "chat.newRoom.publicOff": { en: "Only people you invite.", sk: "Iba ľudia, ktorých pozvete.", de: "Nur Personen, die Sie einladen." },
+  "chat.newRoom.publicOff": { en: "Only people you invite.", sk: "Iba ľudia, ktorých pozvete.", de: "Nur Personen, die du einlädst." },
   "chat.newRoom.encrypted": { en: "End-to-end encryption", sk: "Šifrovanie end-to-end", de: "Ende-zu-Ende-Verschlüsselung" },
   "chat.newRoom.encryptedHint": {
     en: "Only the people in the room can read it, not the box. It cannot be turned off later.",
@@ -228,7 +236,7 @@ export default defineMessages({
   "chat.start.lead": {
     en: "Pick a person on this box, or type a full Matrix address.",
     sk: "Vyberte človeka na tomto boxe alebo napíšte celú adresu Matrix.",
-    de: "Wählen Sie eine Person auf dieser Box oder geben Sie eine vollständige Matrix-Adresse ein.",
+    de: "Wähle eine Person auf dieser Box oder gib eine vollständige Matrix-Adresse ein.",
   },
   "chat.people.search": { en: "Name or @name:server", sk: "Meno alebo @meno:server", de: "Name oder @name:server" },
   "chat.people.none": { en: "Nobody found.", sk: "Nikto sa nenašiel.", de: "Niemand gefunden." },
@@ -239,7 +247,7 @@ export default defineMessages({
   "chat.join.lead": {
     en: "Join a listed room, or type a room's address.",
     sk: "Pripojte sa k uvedenej miestnosti alebo napíšte adresu miestnosti.",
-    de: "Treten Sie einem aufgeführten Raum bei oder geben Sie die Adresse eines Raums ein.",
+    de: "Tritt einem aufgeführten Raum bei oder gib die Adresse eines Raums ein.",
   },
   "chat.join.address": { en: "Room address", sk: "Adresa miestnosti", de: "Adresse des Raums" },
   "chat.join.go": { en: "Join", sk: "Pripojiť sa", de: "Beitreten" },
@@ -294,48 +302,48 @@ export default defineMessages({
   "chat.security.newLead": {
     en: "Set up encryption once, on your first device, so your other devices can read your messages too.",
     sk: "Šifrovanie nastavte raz, na prvom zariadení, aby vaše správy mohli čítať aj ostatné zariadenia.",
-    de: "Richten Sie die Verschlüsselung einmal auf Ihrem ersten Gerät ein, damit auch Ihre anderen Geräte Ihre Nachrichten lesen können.",
+    de: "Richte die Verschlüsselung einmal auf deinem ersten Gerät ein, damit auch deine anderen Geräte deine Nachrichten lesen können.",
   },
   "chat.security.unverifiedLead": {
     en: "This device is new. Unlock it with your recovery key, or confirm it from a device you already use.",
     sk: "Toto zariadenie je nové. Odomknite ho kľúčom na obnovenie alebo ho potvrďte zo zariadenia, ktoré už používate.",
-    de: "Dieses Gerät ist neu. Entsperren Sie es mit Ihrem Wiederherstellungsschlüssel oder bestätigen Sie es von einem Gerät, das Sie bereits nutzen.",
+    de: "Dieses Gerät ist neu. Entsperre es mit deinem Wiederherstellungsschlüssel oder bestätige es von einem Gerät, das du bereits nutzt.",
   },
   "chat.security.readyLead": {
     en: "This device can read your encrypted messages. Your devices:",
     sk: "Toto zariadenie vie čítať vaše šifrované správy. Vaše zariadenia:",
-    de: "Dieses Gerät kann Ihre verschlüsselten Nachrichten lesen. Ihre Geräte:",
+    de: "Dieses Gerät kann deine verschlüsselten Nachrichten lesen. Deine Geräte:",
   },
   "chat.security.bannerNew": { en: "Set up secure messages", sk: "Nastaviť zabezpečené správy", de: "Sichere Nachrichten einrichten" },
   "chat.security.bannerUnverified": {
     en: "Unlock this device to read encrypted messages",
     sk: "Odomknite toto zariadenie na čítanie šifrovaných správ",
-    de: "Entsperren Sie dieses Gerät, um verschlüsselte Nachrichten zu lesen",
+    de: "Entsperre dieses Gerät, um verschlüsselte Nachrichten zu lesen",
   },
   "chat.security.setupLead": {
     en: "Chat makes a recovery key for you. It unlocks your messages on a new device and after you sign out.",
     sk: "Chat vám vytvorí kľúč na obnovenie. Odomkne vaše správy na novom zariadení aj po odhlásení.",
-    de: "Der Chat erstellt einen Wiederherstellungsschlüssel für Sie. Er entsperrt Ihre Nachrichten auf einem neuen Gerät und nach dem Abmelden.",
+    de: "Der Chat erstellt einen Wiederherstellungsschlüssel für dich. Er entsperrt deine Nachrichten auf einem neuen Gerät und nach dem Abmelden.",
   },
   "chat.security.setupHow": {
     en: "The box keeps your keys encrypted with it and cannot read them. Without the recovery key, old encrypted messages are lost on a new device.",
     sk: "Box uchováva vaše kľúče zašifrované týmto kľúčom a nevie ich čítať. Bez kľúča na obnovenie sú staré šifrované správy na novom zariadení stratené.",
-    de: "Die Box bewahrt Ihre Schlüssel damit verschlüsselt auf und kann sie nicht lesen. Ohne den Wiederherstellungsschlüssel sind alte verschlüsselte Nachrichten auf einem neuen Gerät verloren.",
+    de: "Die Box bewahrt deine Schlüssel damit verschlüsselt auf und kann sie nicht lesen. Ohne den Wiederherstellungsschlüssel sind alte verschlüsselte Nachrichten auf einem neuen Gerät verloren.",
   },
   "chat.security.setupGo": { en: "Make my recovery key", sk: "Vytvoriť kľúč na obnovenie", de: "Wiederherstellungsschlüssel erstellen" },
   "chat.security.setupFailed": { en: "Secure messages were not set up", sk: "Zabezpečené správy sa nenastavili", de: "Sichere Nachrichten wurden nicht eingerichtet" },
   "chat.security.keyLead": {
     en: "This is your recovery key. Keep it somewhere safe, apart from this computer. Chat does not show it again.",
     sk: "Toto je váš kľúč na obnovenie. Uložte ho na bezpečné miesto mimo tohto počítača. Chat ho už znova neukáže.",
-    de: "Das ist Ihr Wiederherstellungsschlüssel. Bewahren Sie ihn sicher auf, getrennt von diesem Computer. Der Chat zeigt ihn nicht noch einmal.",
+    de: "Das ist dein Wiederherstellungsschlüssel. Bewahre ihn sicher auf, getrennt von diesem Computer. Der Chat zeigt ihn nicht noch einmal.",
   },
   "chat.security.copy": { en: "Copy", sk: "Kopírovať", de: "Kopieren" },
   "chat.security.copied": { en: "Copied", sk: "Skopírované", de: "Kopiert" },
   "chat.security.download": { en: "Download", sk: "Stiahnuť", de: "Herunterladen" },
   "chat.security.keySaved": { en: "I saved it", sk: "Uložil(a) som ho", de: "Ich habe ihn gespeichert" },
-  "chat.security.unlockLead": { en: "Type your recovery key.", sk: "Napíšte svoj kľúč na obnovenie.", de: "Geben Sie Ihren Wiederherstellungsschlüssel ein." },
+  "chat.security.unlockLead": { en: "Type your recovery key.", sk: "Napíšte svoj kľúč na obnovenie.", de: "Gib deinen Wiederherstellungsschlüssel ein." },
   "chat.security.keyField": { en: "Recovery key", sk: "Kľúč na obnovenie", de: "Wiederherstellungsschlüssel" },
-  "chat.security.wrongKey": { en: "That is not your recovery key.", sk: "To nie je váš kľúč na obnovenie.", de: "Das ist nicht Ihr Wiederherstellungsschlüssel." },
+  "chat.security.wrongKey": { en: "That is not your recovery key.", sk: "To nie je váš kľúč na obnovenie.", de: "Das ist nicht dein Wiederherstellungsschlüssel." },
   "chat.security.useKey": { en: "Unlock", sk: "Odomknúť", de: "Entsperren" },
   "chat.security.unlocked": { en: "This device is unlocked", sk: "Toto zariadenie je odomknuté", de: "Dieses Gerät ist entsperrt" },
   "chat.security.unlockFailed": { en: "The device was not unlocked", sk: "Zariadenie sa neodomklo", de: "Das Gerät wurde nicht entsperrt" },
@@ -350,7 +358,7 @@ export default defineMessages({
   "chat.verify.incoming": {
     en: "Your device {device} wants to confirm this one.",
     sk: "Vaše zariadenie {device} chce potvrdiť toto.",
-    de: "Ihr Gerät {device} möchte dieses bestätigen.",
+    de: "Dein Gerät {device} möchte dieses bestätigen.",
   },
   "chat.verify.accept": { en: "Continue", sk: "Pokračovať", de: "Weiter" },
   "chat.verify.decline": { en: "Not now", sk: "Teraz nie", de: "Nicht jetzt" },
@@ -358,13 +366,13 @@ export default defineMessages({
   "chat.verify.ready": {
     en: "Both devices are ready. Compare emoji to finish.",
     sk: "Obe zariadenia sú pripravené. Dokončite porovnaním emoji.",
-    de: "Beide Geräte sind bereit. Vergleichen Sie Emoji, um abzuschließen.",
+    de: "Beide Geräte sind bereit. Vergleiche die Emoji, um abzuschließen.",
   },
   "chat.verify.emoji": { en: "Compare emoji", sk: "Porovnať emoji", de: "Emoji vergleichen" },
   "chat.verify.compare": {
     en: "Check that the other device shows the same emoji in the same order.",
     sk: "Skontrolujte, že druhé zariadenie ukazuje rovnaké emoji v rovnakom poradí.",
-    de: "Prüfen Sie, ob das andere Gerät dieselben Emoji in derselben Reihenfolge zeigt.",
+    de: "Prüfe, ob das andere Gerät dieselben Emoji in derselben Reihenfolge zeigt.",
   },
   "chat.verify.match": { en: "They match", sk: "Zhodujú sa", de: "Sie stimmen überein" },
   "chat.verify.mismatch": { en: "They differ", sk: "Líšia sa", de: "Sie unterscheiden sich" },

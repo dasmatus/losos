@@ -316,10 +316,15 @@ export async function signInPageReady(signal?: AbortSignal): Promise<boolean> {
 export function signOut(): void {
   const session = me !== null && !me.spareKey;
   dropToken();
-  if (session) {
-    const home = `https://${window.location.host}/`;
-    window.location.assign(`https://${window.location.host}/auth/logout?rd=${encodeURIComponent(home)}`);
-  }
+  if (session) signOutTo("/");
+}
+
+/** End the LosOS Login session and come back to `path` on this box, which
+ *  then asks for a sign-in again. Every app's Sign out button goes here, so
+ *  signing out of one app signs the person out of all of them. */
+export function signOutTo(path: string): void {
+  const back = `https://${window.location.host}${path}`;
+  window.location.assign(`https://${window.location.host}/auth/logout?rd=${encodeURIComponent(back)}`);
 }
 
 /* A 401 on a stored token is the session ending, and every screen has to

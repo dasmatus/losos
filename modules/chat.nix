@@ -260,8 +260,9 @@ let
     error_page 401 = @losos-chat-sign-in;
     ${toDendrite}
   '';
-  # A JSON answer nginx writes itself. add_header here drops the server's
-  # own headers, so all of them are repeated.
+  # An add_header at location level drops every one the server sets, so the
+  # few answers nginx writes itself repeat them all (identity.nix's
+  # pageHeaders, without a style to allow).
   noStore = ''
     add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'" always;
     add_header Cache-Control "no-store" always;

@@ -16,6 +16,7 @@ import { InvitePanel } from "@/calls/invite-panel";
 import { newSecret } from "@/calls/guests";
 import { CallControl, CallView, RingingCard, type Screen, type Tile } from "@/calls/view";
 import { Avatar } from "./avatar";
+import { roomName } from "./model";
 
 /* Voice and video calls, started from a room or a DM.
  *
@@ -555,7 +556,7 @@ function CallScreen({
 
   return (
     <CallView
-      title={room?.name ?? ""}
+      title={room ? roomName(room) : ""}
       tiles={tiles}
       screens={shown}
       status={state === "connecting" ? "connecting" : others.current === 0 ? "waiting" : "live"}
