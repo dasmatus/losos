@@ -259,8 +259,8 @@ export function canUse(section: string): boolean {
 }
 
 /** Whether a shared-side app (GET /api/me's `shared`) is live for whoever
- *  is signed in. False until /api/me has said so: such an entry appears,
- *  never disappears. */
+ *  is signed in. False until /api/me has said so, and follows its latest
+ *  response. */
 export function sharedApp(name: string): boolean {
   return me?.shared?.includes(name) === true;
 }
