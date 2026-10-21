@@ -166,6 +166,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend/access/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --manifest-path backend/plugins/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path edge/registrar/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path edge/vercel/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path admin-ui/lab/core/Cargo.toml --all-targets -- -D warnings
@@ -184,6 +185,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml --check
             cargo fmt --manifest-path backend/access/Cargo.toml --check
+            cargo fmt --all --manifest-path backend/plugins/Cargo.toml --check
             cargo fmt --manifest-path edge/registrar/Cargo.toml --check
             cargo fmt --manifest-path edge/vercel/Cargo.toml --check
             cargo fmt --manifest-path admin-ui/lab/core/Cargo.toml --check
@@ -199,7 +201,7 @@ jobs:
         run: nix develop .#ci -c bash -euo pipefail -c 'sccache --show-stats; ccache --show-stats'
 
   clippy-wasm:
-    name: "rust: clippy the Lab canvas for wasm32"
+    name: "rust: clippy lososd's plugins and the Lab canvas for wasm32"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Mirrors devenv.nix's `lint-wasm`. admin-ui/lab/render takes Bevy only
@@ -217,6 +219,9 @@ jobs:
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - run: |
           nix develop .#ci -c bash -euo pipefail -c '
+            echo "── backend/plugins (wasm32)"
+            cargo clippy --manifest-path backend/plugins/Cargo.toml \
+              --target wasm32-unknown-unknown --all-targets -- -D warnings
             for backend in webgl2 webgpu; do
               echo "── admin-ui/lab/render ($backend, wasm32)"
               cargo clippy --manifest-path admin-ui/lab/render/Cargo.toml \
@@ -278,6 +283,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
             cargo test --manifest-path backend/access/Cargo.toml
+            cargo test --manifest-path backend/plugins/Cargo.toml
             cargo test --manifest-path edge/registrar/Cargo.toml
             cargo test --manifest-path edge/vercel/Cargo.toml
             cargo test --manifest-path admin-ui/lab/core/Cargo.toml
@@ -862,6 +868,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml
             cargo fmt --manifest-path backend/access/Cargo.toml
+            cargo fmt --all --manifest-path backend/plugins/Cargo.toml
             cargo fmt --manifest-path edge/registrar/Cargo.toml
             cargo fmt --manifest-path edge/vercel/Cargo.toml
             cargo fmt --manifest-path admin-ui/lab/core/Cargo.toml

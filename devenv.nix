@@ -21,6 +21,10 @@ let
     # depend on by path. Its own workspace, so `cargo fmt` of either parent
     # does not reach it.
     "backend/access"
+    # lososd's plugins (backend/plugins/README.md): the SDK, the plugins and
+    # their logic, natively here; `lint-wasm` lints the wasm32 build, and
+    # backend's tests/plugins.rs builds them for wasm32 to run the daemon.
+    "backend/plugins"
     "edge/registrar"
     # The Vercel host for the registrar (edge/vercel/README.md). Not built by
     # nix — Vercel builds it — but linted and tested with the other two.
@@ -47,6 +51,9 @@ let
   # `test-solana-escrow`'s, not test-rust's.
   linted = crates ++ [ "edge/contracts/solana" ];
   forEachLinted = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') linted;
+  # `cargo fmt` on a virtual workspace (backend/plugins has no package at its
+  # root) finds no targets without --all.
+  fmtAll = c: lib.optionalString (c == "backend/plugins") " --all";
 
   # mold as the linker, ccache in front of gcc, sccache in front of rustc:
   # the stdenv nix/packages.nix builds the crates with and flake.nix's
@@ -188,6 +195,11 @@ in
   packages =
     fast.packages
     ++ (with pkgs; [
+      # The wasm32 linker and the component wrapper for lososd's plugins
+      # (backend/plugins/README.md), as nix/packages.nix builds them.
+      lld
+      wasm-tools
+
       # Nix tooling the git hooks below call.
       nixfmt-rfc-style
       deadnix
@@ -223,7 +235,7 @@ in
       name = "rustfmt (both crates)";
       entry = "${pkgs.writeShellScript "rustfmt-both" ''
         set -e
-        ${forEachLinted (c: "cargo fmt --manifest-path ${c}/Cargo.toml --check")}
+        ${forEachLinted (c: "cargo fmt${fmtAll c} --manifest-path ${c}/Cargo.toml --check")}
       ''}";
       files = "\\.rs$";
       pass_filenames = false;
@@ -272,12 +284,12 @@ in
   # NIX_TOOLBOX_STORE is unset, and the alias would otherwise shadow the real
   # binary inside these scripts.
 
-  scripts.fmt.exec = forEachLinted (c: "cargo fmt --manifest-path ${c}/Cargo.toml");
+  scripts.fmt.exec = forEachLinted (c: "cargo fmt${fmtAll c} --manifest-path ${c}/Cargo.toml");
   scripts.fmt.description = "Format both Rust crates.";
 
   scripts.lint.exec = ''
     set -e
-    ${forEachLinted (c: "cargo fmt --manifest-path ${c}/Cargo.toml --check")}
+    ${forEachLinted (c: "cargo fmt${fmtAll c} --manifest-path ${c}/Cargo.toml --check")}
     ${forEachLinted (c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings")}
   '';
   scripts.lint.description = "rustfmt --check + clippy -D warnings, every crate.";
@@ -287,6 +299,9 @@ in
   # share none of it. CI's `clippy-wasm` job runs the same loop.
   scripts.lint-wasm.exec = ''
     set -e
+    echo "── backend/plugins (wasm32)"
+    cargo clippy --manifest-path backend/plugins/Cargo.toml \
+      --target wasm32-unknown-unknown --all-targets -- -D warnings
     for backend in webgl2 webgpu; do
       echo "── admin-ui/lab/render ($backend, wasm32)"
       cargo clippy --manifest-path admin-ui/lab/render/Cargo.toml \
@@ -295,7 +310,7 @@ in
       cargo clean --manifest-path admin-ui/lab/render/Cargo.toml
     done
   '';
-  scripts.lint-wasm.description = "clippy -D warnings on the Lab canvas's WebGL2 and WebGPU builds.";
+  scripts.lint-wasm.description = "clippy -D warnings on lososd's plugins and the Lab canvas's WebGL2 and WebGPU builds, all wasm32.";
 
   # The registrar's Bitcoin and Monero orders run against real regtest
   # nodes (edge/registrar/tests/{bitcoin,monero}.rs); CI's test job
