@@ -62,7 +62,7 @@ pkgs.rustPlatform.buildRustPackage {
     pm sign $out/pm/plugins/losos-ci.wasm \
       --key $TMPDIR/signing.key --trust-dir $out/pm/trusted
     # The plugin loads under its own configuration, as the runner will run it.
-    XDG_CONFIG_HOME=$out RUST_LOG=warn pm plugins | grep -q losos-ci
+    XDG_CONFIG_HOME=$out RUST_LOG=warn pm plugins | grep losos-ci >/dev/null
     runHook postInstall
   '';
   passthru.baseImageName = "localhost/${baseImage.imageName}:${baseImage.imageTag}";
