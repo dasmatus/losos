@@ -428,6 +428,7 @@
         losos-edge-market = import ./nix/tests/market-vm.nix { inherit pkgs; };
         losos-edge-dns = import ./nix/tests/edge-dns.nix { inherit pkgs; };
         losos-box-wallet-name = import ./nix/tests/box-wallet-name.nix { inherit pkgs; };
+        losos-binance-onramp = import ./nix/tests/binance-onramp.nix { inherit pkgs; };
         losos-ds-render = import ./nix/tests/design-system.nix { inherit pkgs; };
         losos-front-vhost = import ./nix/tests/front-vhost.nix { inherit pkgs; };
         losos-impermanence = import ./nix/tests/impermanence.nix { inherit pkgs impermanence; };
@@ -437,6 +438,9 @@
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
         losos-tour = import ./nix/tests/tour.nix { inherit pkgs; };
+        # The game a long wait offers, played during a real wizard wait and a
+        # real rebuild, with the pull request's pictures (nix/tests/wait-game.nix).
+        losos-wait-game = import ./nix/tests/wait-game.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
@@ -489,6 +493,10 @@
         # `shared`, its memory cap, the lend file, the loopback owner rule
         # and the `:llm` tunnel service (nix/tests/inference-lend.nix).
         losos-inference-lend = import ./nix/tests/inference-lend.nix { inherit pkgs; };
+        # The whole pay-as-you-go story on a local chain: two lending boxes,
+        # a USDC escrow, a quote, a paid chat, the settle split, and the
+        # refusals (nix/tests/inference-payg.nix).
+        losos-inference-payg = import ./nix/tests/inference-payg.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
         # The real Forgejo with losos.forgejo.federation on, asked what another
         # server would ask, in both deployment modes; then off, and gone

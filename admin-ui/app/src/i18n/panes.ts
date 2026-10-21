@@ -2286,9 +2286,9 @@ export default defineMessages({
     de: "USDC mit Euro kaufen",
   },
   "panes.market.onramp.detail": {
-    en: "Through Onramp.money, by bank transfer. The USDC arrives on Base at {address}.",
-    sk: "Cez Onramp.money, bankovým prevodom. USDC príde na sieti Base na {address}.",
-    de: "Über Onramp.money, per Banküberweisung. Die USDC kommen auf Base bei {address} an.",
+    en: "At Binance, with your Binance account. The USDC arrives on Base at {address}.",
+    sk: "Na Binance, s vaším účtom Binance. USDC príde na sieti Base na {address}.",
+    de: "Bei Binance, mit deinem Binance-Konto. Die USDC kommen auf Base bei {address} an.",
   },
   "panes.market.onramp.buy": {
     en: "Buy",
@@ -2296,29 +2296,64 @@ export default defineMessages({
     de: "Kaufen",
   },
   "panes.market.onramp.notice": {
-    en: "Onramp.money sells the USDC, not LosOS. You pay them in euros by SEPA transfer or Open Banking, they check who you are, and they show their rate and fee before you pay. Their page gets only the address and the amount from here.",
-    sk: "USDC predáva Onramp.money, nie LosOS. Platíte im v eurách prevodom SEPA alebo cez Open Banking, overia vašu totožnosť a pred platbou ukážu kurz a poplatok. Ich stránka odtiaľto dostane len adresu a sumu.",
-    de: "Die USDC verkauft Onramp.money, nicht LosOS. Du bezahlst sie in Euro per SEPA-Überweisung oder Open Banking, sie prüfen deine Identität und zeigen Kurs und Gebühr, bevor du zahlst. Ihre Seite bekommt von hier nur die Adresse und den Betrag.",
+    en: "Binance sells the USDC, not LosOS. You sign in to Binance, Binance checks who you are, and it shows its rate and fee before you pay. LosOS sends Binance only this wallet's address and the amount, and never sees your identity or payment details.",
+    sk: "USDC predáva Binance, nie LosOS. Prihlásite sa do Binance, Binance overí vašu totožnosť a pred platbou ukáže kurz a poplatok. LosOS pošle Binance len adresu tejto peňaženky a sumu a vašu totožnosť ani platobné údaje nikdy nevidí.",
+    de: "Die USDC verkauft Binance, nicht LosOS. Du meldest dich bei Binance an, Binance prüft deine Identität und zeigt Kurs und Gebühr, bevor du zahlst. LosOS schickt Binance nur die Adresse dieser Wallet und den Betrag und sieht deine Identität und Zahlungsdaten nie.",
   },
-  "panes.market.onramp.terms": {
-    en: "Terms and Conditions",
-    sk: "Obchodné podmienky",
-    de: "Geschäftsbedingungen",
+  "panes.market.onramp.region": {
+    en: "Binance decides which countries it sells to and may refuse a purchase from yours.",
+    sk: "Binance rozhoduje, v ktorých krajinách predáva, a nákup z vašej krajiny môže odmietnuť.",
+    de: "Binance entscheidet, in welche Länder es verkauft, und kann einen Kauf aus deinem Land ablehnen.",
   },
-  "panes.market.onramp.privacy": {
-    en: "Privacy Policy",
-    sk: "Zásady ochrany súkromia",
-    de: "Datenschutzerklärung",
+  "panes.market.onramp.readFirst": {
+    en: "Read Binance's documents first. Each one opens in a new tab.",
+    sk: "Najprv si prečítajte dokumenty Binance. Každý sa otvorí na novej karte.",
+    de: "Lies zuerst die Dokumente von Binance. Jedes öffnet sich in einem neuen Tab.",
   },
-  "panes.market.onramp.risk": {
-    en: "Risk disclosure",
+  "panes.market.onramp.documents": {
+    en: "Binance's documents",
+    sk: "Dokumenty Binance",
+    de: "Dokumente von Binance",
+  },
+  "panes.market.onramp.doc.terms": {
+    en: "Terms of Use",
+    sk: "Podmienky používania",
+    de: "Nutzungsbedingungen",
+  },
+  "panes.market.onramp.doc.product": {
+    en: "Product Terms",
+    sk: "Podmienky produktov",
+    de: "Produktbedingungen",
+  },
+  "panes.market.onramp.doc.privacy": {
+    en: "Privacy Notice",
+    sk: "Oznámenie o ochrane súkromia",
+    de: "Datenschutzhinweis",
+  },
+  "panes.market.onramp.doc.risk": {
+    en: "Risk Warning",
     sk: "Upozornenie na riziká",
-    de: "Risikohinweis",
+    de: "Risikowarnung",
+  },
+  "panes.market.onramp.docOpened": {
+    en: "Opened",
+    sk: "Otvorené",
+    de: "Geöffnet",
+  },
+  "panes.market.onramp.docNotOpened": {
+    en: "Not opened",
+    sk: "Neotvorené",
+    de: "Nicht geöffnet",
   },
   "panes.market.onramp.accept": {
-    en: "I have read Onramp.money's terms and accept them for this purchase.",
-    sk: "Prečítal som si podmienky Onramp.money a pre tento nákup ich prijímam.",
-    de: "Ich habe die Bedingungen von Onramp.money gelesen und akzeptiere sie für diesen Kauf.",
+    en: "I have read Binance's Terms of Use, Product Terms, Privacy Notice and Risk Warning, and accept them for this purchase.",
+    sk: "Poznám Podmienky používania, Podmienky produktov, Oznámenie o ochrane súkromia a Upozornenie na riziká Binance a pre tento nákup ich prijímam.",
+    de: "Ich habe die Nutzungsbedingungen, Produktbedingungen, den Datenschutzhinweis und die Risikowarnung von Binance gelesen und akzeptiere sie für diesen Kauf.",
+  },
+  "panes.market.onramp.openEach": {
+    en: "Open each document above to accept them.",
+    sk: "Ak ich chcete prijať, otvorte každý dokument vyššie.",
+    de: "Öffne jedes Dokument oben, um sie zu akzeptieren.",
   },
   "panes.market.onramp.amount": {
     en: "Amount in euros",
@@ -2331,9 +2366,9 @@ export default defineMessages({
     de: "EUR",
   },
   "panes.market.onramp.continue": {
-    en: "Continue to Onramp.money",
-    sk: "Pokračovať na Onramp.money",
-    de: "Weiter zu Onramp.money",
+    en: "Create the order",
+    sk: "Vytvoriť objednávku",
+    de: "Bestellung anlegen",
   },
   "panes.market.onramp.cancel": {
     en: "Cancel",
@@ -2341,39 +2376,64 @@ export default defineMessages({
     de: "Abbrechen",
   },
   "panes.market.onramp.range": {
-    en: "Onramp.money takes {min} to {max} euros per order.",
-    sk: "Onramp.money prijme od {min} do {max} eur na objednávku.",
-    de: "Onramp.money nimmt {min} bis {max} Euro pro Bestellung.",
+    en: "Enter {min} to {max} euros. Binance shows its own limits for your payment method.",
+    sk: "Zadajte {min} až {max} eur. Binance ukáže vlastné limity pre váš spôsob platby.",
+    de: "Gib {min} bis {max} Euro ein. Binance zeigt die eigenen Grenzen für deine Zahlungsart.",
   },
-  "panes.market.onramp.waiting": {
-    en: "Waiting for {euros} euros of USDC to reach this wallet on Base. A bank transfer can take a day or two; while this page is open it checks every 20 seconds.",
-    sk: "Čaká sa, kým USDC za {euros} eur príde do tejto peňaženky na sieti Base. Bankový prevod môže trvať deň či dva; kým je táto stránka otvorená, kontroluje to každých 20 sekúnd.",
-    de: "Warte, bis USDC für {euros} Euro auf Base in dieser Wallet ankommen. Eine Überweisung kann ein, zwei Tage dauern; solange diese Seite offen ist, prüft sie alle 20 Sekunden.",
+  "panes.market.onramp.checking": {
+    en: "Checking the order at Binance…",
+    sk: "Kontroluje sa objednávka na Binance…",
+    de: "Bestellung bei Binance wird geprüft…",
   },
-  "panes.market.onramp.waitingOrder": {
-    en: "Onramp.money is still processing order {order}. Waiting for {euros} euros of USDC to reach this wallet on Base.",
-    sk: "Onramp.money ešte spracúva objednávku {order}. Čaká sa, kým USDC za {euros} eur príde do tejto peňaženky na sieti Base.",
-    de: "Onramp.money bearbeitet Bestellung {order} noch. Warte, bis USDC für {euros} Euro auf Base in dieser Wallet ankommen.",
+  "panes.market.onramp.stage.open": {
+    en: "Your order for {euros} euros is ready. Open Binance to sign in and pay.",
+    sk: "Objednávka za {euros} eur je pripravená. Otvorte Binance, prihláste sa a zaplaťte.",
+    de: "Deine Bestellung über {euros} Euro ist bereit. Öffne Binance, melde dich an und bezahle.",
   },
-  "panes.market.onramp.paidOrder": {
-    en: "Onramp.money order {order} is paid. Waiting for {euros} euros of USDC to reach this wallet on Base.",
-    sk: "Objednávka {order} na Onramp.money je zaplatená. Čaká sa, kým USDC za {euros} eur príde do tejto peňaženky na sieti Base.",
-    de: "Bestellung {order} bei Onramp.money ist bezahlt. Warte, bis USDC für {euros} Euro auf Base in dieser Wallet ankommen.",
+  "panes.market.onramp.stage.paying": {
+    en: "Binance is taking your payment of {euros} euros.",
+    sk: "Binance prijíma vašu platbu {euros} eur.",
+    de: "Binance nimmt deine Zahlung über {euros} Euro entgegen.",
+  },
+  "panes.market.onramp.stage.sending": {
+    en: "Bought. Binance is sending {usdc} USDC to this wallet on Base.",
+    sk: "Kúpené. Binance posiela {usdc} USDC do tejto peňaženky na sieti Base.",
+    de: "Gekauft. Binance schickt {usdc} USDC auf Base an diese Wallet.",
+  },
+  "panes.market.onramp.stage.done": {
+    en: "Binance sent {usdc} USDC to this wallet on Base.",
+    sk: "Binance poslal {usdc} USDC do tejto peňaženky na sieti Base.",
+    de: "Binance hat {usdc} USDC auf Base an diese Wallet geschickt.",
+  },
+  "panes.market.onramp.stage.kept": {
+    en: "Binance bought the USDC but did not send it here. It is in your Binance account.",
+    sk: "Binance USDC kúpil, ale neposlal ich sem. Sú na vašom účte Binance.",
+    de: "Binance hat die USDC gekauft, aber nicht hierher geschickt. Sie liegen in deinem Binance-Konto.",
+  },
+  "panes.market.onramp.stage.failed": {
+    en: "Binance did not complete the purchase. Nothing was bought.",
+    sk: "Binance nákup nedokončil. Nič sa nekúpilo.",
+    de: "Binance hat den Kauf nicht abgeschlossen. Es wurde nichts gekauft.",
+  },
+  "panes.market.onramp.openBinance": {
+    en: "Open Binance",
+    sk: "Otvoriť Binance",
+    de: "Binance öffnen",
+  },
+  "panes.market.onramp.viewTransaction": {
+    en: "View the transaction",
+    sk: "Zobraziť transakciu",
+    de: "Transaktion ansehen",
   },
   "panes.market.onramp.stop": {
-    en: "Stop waiting",
-    sk: "Prestať čakať",
-    de: "Nicht mehr warten",
+    en: "Stop following",
+    sk: "Prestať sledovať",
+    de: "Nicht mehr verfolgen",
   },
-  "panes.market.onramp.arrived": {
-    en: "{amount} USDC arrived on Base.",
-    sk: "Na sieti Base prišlo {amount} USDC.",
-    de: "{amount} USDC sind auf Base angekommen.",
-  },
-  "panes.market.onramp.viewTransfers": {
-    en: "View transfers",
-    sk: "Zobraziť prevody",
-    de: "Transfers ansehen",
+  "panes.market.onramp.dismiss": {
+    en: "Done",
+    sk: "Hotovo",
+    de: "Fertig",
   },
   "panes.market.usdc.sendTitle": {
     en: "Send USDC",

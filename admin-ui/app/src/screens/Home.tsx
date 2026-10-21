@@ -1,5 +1,6 @@
 import * as React from "react";
 import { AppGrid } from "@/components/AppGrid";
+import { useWaitGame } from "@/components/play-while-waiting";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { HelpLink } from "@/components/ui/help-link";
 import { StatusDot, type DotState } from "@/components/ui/badge";
@@ -117,6 +118,8 @@ export function Home({
    * has joined one. Without this the strip said "lent to the mesh" on a box
    * whose About pane said "On the mesh: not joined". */
   const lending: Lending = !sharing ? "off" : settings?.clusterEnable ? "lent" : "waiting";
+  const building = status !== null && status.state === "building";
+  const game = useWaitGame(building);
 
   return (
     <div className="flex flex-col gap-4">
@@ -127,7 +130,8 @@ export function Home({
         showThemeSwitch={showThemeSwitch}
       />
 
-      {status !== null && status.state === "building" && <ApplyingChange status={status} />}
+      {building && <ApplyingChange status={status} offer={game.offer} />}
+      {game.panel}
 
       <Card className="overflow-hidden">
         <CardContent className="pt-5">
@@ -229,13 +233,14 @@ function browserHostName(): string {
 /* lososd reports 0 for the whole of a rebuild and 100 on success, so this is
  * the indeterminate band in practice — which is honest: the box knows a
  * rebuild is running and does not know how far along it is. */
-function ApplyingChange({ status }: { status: StatusResponse }) {
+function ApplyingChange({ status, offer }: { status: StatusResponse; offer: React.ReactNode }) {
   const t = useT();
   return (
     <Alert className="animate-rise border-line bg-surface shadow-card">
       <AlertTitle className="flex items-center gap-2">
         <StatusDot state="pending" />
-        {t("home.applying.title")}
+        <span className="flex-1">{t("home.applying.title")}</span>
+        {offer}
       </AlertTitle>
       <AlertDescription>
         {status.message !== "" && (

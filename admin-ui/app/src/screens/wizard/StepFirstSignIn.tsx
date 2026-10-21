@@ -17,6 +17,7 @@ import {
   Login01Icon,
 } from "@hugeicons/core-free-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { useWaitGame } from "@/components/play-while-waiting";
 import { Spinner } from "@/components/ui/progress";
 import { toast } from "@/components/ui/toast";
 import { Rich, useT } from "@/lib/i18n-react";
@@ -62,6 +63,8 @@ export interface StepFirstSignInProps {
 export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSignInProps) {
   const t = useT();
   const [state, setState] = React.useState<CloudState>("asking");
+  // LosOS Cloud starting is the one long wait here.
+  const game = useWaitGame(!signedIn && state === "starting");
 
   React.useEffect(() => {
     if (signedIn) return;
@@ -116,6 +119,11 @@ export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSign
           </AlertDescription>
         </Alert>
       )}
+      {/* The game is not part of the status: a live region would read out
+          every point scored. It stays open once the wait is over, until it
+          is closed. */}
+      {game.offer}
+      {game.panel !== null && <div className="w-full max-w-[560px]">{game.panel}</div>}
 
       {!signedIn && (
         <div className="flex flex-wrap items-center gap-2.5">

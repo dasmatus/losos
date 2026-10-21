@@ -32,7 +32,7 @@ import { useT } from "@/lib/i18n-react";
 import { toLiteral } from "@/lib/option-value";
 import { cn } from "@/lib/utils";
 import { parseUsdc, shortAddress } from "@/wallet/chains";
-import { openPhrase, savedAddresses } from "@/wallet/hot";
+import { openPhrase, savedAddresses, WALLET_CHANGED } from "@/wallet/hot";
 import { solanaKeyFromPhrase } from "@/wallet/solana";
 import { solanaInjected } from "@/wallet/solana-pay";
 import { askBack, escrowBalance, injectedEvm, signerAddress, startTaps, takeBack, type TapSigner } from "@/wallet/taps";
@@ -216,9 +216,14 @@ function usePayer(family: UsdcChain["family"] | null): Payer {
   const [connected, setConnected] = React.useState<{ evm?: string; sol?: string }>({});
 
   React.useEffect(() => {
-    void savedAddresses()
-      .then(setSaved)
-      .catch(() => setSaved(null));
+    // Again whenever the USDC wallet section below saves or forgets one.
+    const read = () =>
+      void savedAddresses()
+        .then(setSaved)
+        .catch(() => setSaved(null));
+    read();
+    window.addEventListener(WALLET_CHANGED, read);
+    return () => window.removeEventListener(WALLET_CHANGED, read);
   }, []);
 
   const local = saved !== null && (family === "solana" ? saved.sol !== undefined : saved.evm !== undefined);
