@@ -437,6 +437,9 @@
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        # The banner a box off the mesh shows over every page, both states
+        # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
+        losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         losos-admin-ui = import ./nix/tests/admin-ui.nix {

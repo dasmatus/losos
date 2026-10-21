@@ -2174,7 +2174,9 @@ await check('a box that does not share its disk sees the Machines pane greyed, w
   await notice.getByText('Machines are for boxes that share their disk').waitFor();
   const share = notice.getByRole('link', { name: 'Share the disk' });
   assert.equal(await share.getAttribute('href'), '/settings/market');
-  assert.equal(await page.locator('main').getByRole('button').count(), 0, 'the greyed pane offers a button');
+  // The mesh banner's own Dismiss is the shell's, not the pane's.
+  const buttons = page.locator('main').getByRole('button').and(page.locator(':not([data-mesh-dismiss])'));
+  assert.equal(await buttons.count(), 0, 'the greyed pane offers a button');
   assert.deepEqual(vmPosts, []);
   assert.deepEqual(errors, []);
   await page.close();
@@ -2285,6 +2287,84 @@ await check('a hosting box offers replicas at a price per replica-month', async 
   await page.getByText('You receive 50% of every machine sale and LosOS keeps 50%.', { exact: false }).waitFor();
   assert.deepEqual(errors, []);
   await page.close();
+});
+
+/* The banner while the box is not on a mesh (components/mesh-notice.tsx):
+ * it reads the saved settings, names no feature, links to the switch, and
+ * stays dismissed in this browser until the box joins. */
+const SHARED = { ...JOINABLE, sharingMyStorage: true, clusterEnable: true };
+
+await check('a box off the mesh shows the banner on every page, with the way to join', async () => {
+  const { page, errors } = await open({ stored: true, settings: { ...SETTINGS, sharingMyStorage: true } });
+  const notice = page.locator('[data-notice="mesh"]');
+  await notice.waitFor();
+  assert.equal(await notice.getAttribute('data-mesh'), 'notJoined');
+  assert.equal(await notice.getAttribute('role'), 'status');
+  assert.match(await notice.innerText(), /Some features may not be available/);
+  assert.doesNotMatch(await notice.innerText(), /chat|mail|call/i, 'the banner names a feature');
+  await notice.getByRole('link', { name: 'Join a mesh', exact: true }).click();
+  await page.waitForURL('**/mesh');
+  // On the Mesh pane the switch is right there: the banner stays, the link goes.
+  await page.getByRole('switch', { name: 'Join the mesh', exact: true }).waitFor();
+  await notice.waitFor();
+  assert.equal(await notice.getByRole('link').count(), 0);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a box on a mesh that keeps its storage to itself points at the sharing switch', async () => {
+  const { page } = await open({ stored: true, settings: { ...SHARED, sharingMyStorage: false } });
+  const notice = page.locator('[data-notice="mesh"]');
+  await notice.waitFor();
+  assert.equal(await notice.getAttribute('data-mesh'), 'notSharing');
+  assert.equal(await notice.getByRole('link', { name: 'Share storage', exact: true }).getAttribute('href'), '/settings/market');
+  await page.close();
+});
+
+await check('a box that shares and has joined shows no banner', async () => {
+  const { page } = await open({ stored: true, settings: SHARED });
+  await page.getByRole('heading', { name: 'mattbox' }).first().waitFor().catch(() => {});
+  await page.waitForLoadState('networkidle');
+  assert.equal(await page.locator('[data-notice="mesh"]').count(), 0);
+  await page.close();
+});
+
+await check('the banner stays dismissed across reloads, goes when the box joins, and comes back if it leaves', async () => {
+  let current = SETTINGS;
+  const { page } = await open({ stored: true });
+  await page.route('**/api/settings', (route) => json(route, 200, current));
+  await page.reload({ waitUntil: 'networkidle' });
+  const notice = page.locator('[data-notice="mesh"]');
+  await notice.waitFor();
+  await notice.getByRole('button', { name: 'Dismiss', exact: true }).click();
+  await notice.waitFor({ state: 'detached' });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByRole('link', { name: 'Overview' }).first().waitFor();
+  assert.equal(await notice.count(), 0, 'the dismissal did not survive a reload');
+  // The box joins; a page change reads the settings again.
+  current = SHARED;
+  await page.getByRole('link', { name: 'Mesh' }).first().click();
+  await page.waitForURL('**/mesh');
+  await page.waitForFunction(() => window.localStorage.getItem('losos-mesh-notice') === null);
+  // ...and leaves: the banner is back without being asked.
+  current = SETTINGS;
+  await page.getByRole('link', { name: 'Overview' }).first().click();
+  await notice.waitFor();
+  await page.close();
+});
+
+await check('the banner fits a phone in both themes', async () => {
+  for (const scheme of ['light', 'dark']) {
+    const { page, errors } = await open({ stored: true, viewport: { width: 375, height: 800 } });
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.locator('[data-notice="mesh"]').waitFor();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    assert.ok(overflow <= 0, `${scheme}: page is ${overflow}px wider than the viewport`);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
 });
 
 await check('a phone-width viewport does not scroll the page sideways', async () => {
