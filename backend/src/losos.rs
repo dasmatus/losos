@@ -216,7 +216,6 @@ pub trait Losos {
     /// Delete one app's data. Not an error when there is none.
     fn remove_app_data(&mut self, id: &str) -> anyhow::Result<()>;
 
-
     // ── The pin picker ──────────────────────────────────────────────────
     // `crate::pins`: the app password lososd lists the owner's LosOS cloud
     // folders with. The pins themselves are the pins plugin's.
