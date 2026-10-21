@@ -22,9 +22,6 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const nameId = React.useId();
   const nameErrorId = React.useId();
-  const httpsId = React.useId();
-  const portId = React.useId();
-  const portErrorId = React.useId();
   const proxyId = React.useId();
   const windowsId = React.useId();
   // Drawn only on a box whose option document declares it.
@@ -34,7 +31,6 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
   const disabled = form.locked || !form.ready;
   const name = draft?.hostName ?? "";
   const nameProblem = form.problems.hostName;
-  const portProblem = form.problems.apachePort;
 
   return (
     <>
@@ -75,42 +71,14 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
         <GroupTitle>{t("panes.network.reaching")}</GroupTitle>
         <Group>
           <SwitchRow
-            id={httpsId}
-            title={t("panes.network.encrypt")}
-            description={t("panes.network.encryptDetail")}
-            checked={draft?.https ?? false}
-            disabled={disabled}
-            onCheckedChange={(next) => form.set("https", next)}
-          />
-          <SwitchRow
             id={proxyId}
             title={t("panes.network.outside")}
             checked={draft?.proxyEnable ?? false}
             disabled={disabled}
             onCheckedChange={(next) => form.set("proxyEnable", next)}
+            last
           />
-          <Row last>
-            <RowText htmlFor={portId} title={t("panes.network.port")} />
-            <Input
-              id={portId}
-              type="number"
-              inputMode="numeric"
-              min={1024}
-              max={65535}
-              step={1}
-              disabled={disabled}
-              className="numeric w-[7.5rem]"
-              value={Number.isFinite(draft?.apachePort) ? String(draft?.apachePort) : ""}
-              aria-invalid={portProblem !== null}
-              aria-describedby={portProblem === null ? undefined : portErrorId}
-              onChange={(event) => form.set("apachePort", Number.parseInt(event.target.value, 10))}
-            />
-          </Row>
         </Group>
-
-        <FieldError id={portErrorId} className="px-1.5 pt-2">
-          {portProblem}
-        </FieldError>
 
         <GroupCaption>{t("panes.network.reachCaption")}</GroupCaption>
       </PaneSection>

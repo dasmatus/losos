@@ -71,7 +71,7 @@ beschreibt jeden Schalter und was er kostet.
   Besitz. Die Details stehen unter [Secure Boot und signierte
   Medien](../start/secure-boot).
 
-- **Ein Origin.** Die Admin-Seiten, LosOS cloud und LosOS Git teilen sich
+- **Ein Origin.** Die Admin-Seiten, LosOS Cloud und LosOS Git teilen sich
   eine Adresse. Eine Cross-Site-Scripting-Lücke in einer der Apps könnte den
   Admin-Schlüssel aus einem Tab lesen, der ihn hat. Die Abwehr sind die
   strenge Content-Security-Policy der Admin-Seiten, der Nur-LAN-Schutz und

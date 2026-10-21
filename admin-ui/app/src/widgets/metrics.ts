@@ -424,7 +424,9 @@ function meshMetric(settings: SettingsResponse): MeshMetric {
 function boxSettingsMetric(settings: SettingsResponse): BoxSettingsMetric {
   return {
     hostName: settings.hostName,
-    https: settings.https,
+    // Widgets made before the setting went still read it: whether this
+    // page reached the box over https.
+    https: window.location.protocol === "https:",
     mode: settings.sharingMyStorage ? "mesh" : "local",
     gpu: settings.gpuEnable,
     proxy: settings.proxyEnable,

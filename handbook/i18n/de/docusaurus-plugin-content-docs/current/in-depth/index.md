@@ -14,7 +14,7 @@ Kapitel ist für die Leute, die LosOS bauen, eine Edge betreiben oder ein
 Release erstellen: wie die Teile zusammenspielen, warum jedes dort sitzt, wo
 es sitzt, und wie man sie ändert.
 
-LosOS ist eine NixOS-Appliance für einen Mini-PC. Sie betreibt Nextcloud für
+LosOS ist eine NixOS-Appliance für einen Mini-PC. Sie betreibt LosOS Cloud für
 deine eigenen Dateien und kann freien Speicherplatz und CPU-Leistung an ein
 Mesh anderer LosOS-Boxen verleihen. Es gibt kein SSH und keine Login-Shell.
 Du verwaltest die Box über eine Webseite, und sie aktualisiert sich selbst.

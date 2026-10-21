@@ -7,7 +7,7 @@ sidebar_position: 1
 
 ## Auf der Box \{#on-the-box}
 
-![Im Inneren einer Box: nginx hält die Ports 80 und 443 und leitet nach Pfad an die Admin-Seiten, die Steuer-API, LosOS cloud, LosOS Git und dieses Handbuch weiter.](@site/docs/img/box-architecture-de.svg)
+![Im Inneren einer Box: nginx hält die Ports 80 und 443 und leitet nach Pfad an die Admin-Seiten, die Steuer-API, LosOS Cloud, LosOS Git und dieses Handbuch weiter.](@site/docs/img/box-architecture-de.svg)
 
 | Pfad                          | Was                                                 | Wer es öffnen darf                  |
 | ----------------------------- | --------------------------------------------------- | ----------------------------------- |
@@ -18,10 +18,11 @@ sidebar_position: 1
 | `/setup/state.json`           | Name, Adresse, HTTPS, Fingerabdruck des Zertifikats | nur das lokale Netzwerk             |
 | `/setup/losos-ca.crt`         | Das Zertifikat der Box                              | nur das lokale Netzwerk             |
 | `/setup/trust.sh`, `/setup/trust.ps1` | Die einzeiligen Installer für das Zertifikat | nur das lokale Netzwerk           |
-| `/nextcloud`                  | LosOS cloud                                         | jeder, auch über eine Edge          |
+| `/cloud/`                     | LosOS Cloud                                         | jeder, auch über eine Edge          |
+| `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/` | Was die Nextcloud-Apps, Kalender-Apps und Dateimanager aufrufen | jeder, auch über eine Edge |
+| `/nextcloud/`                 | Dasselbe, unter der Adresse, die das Nextcloud der Box hatte | jeder, auch über eine Edge |
 | `/forgejo/`                   | LosOS Git                                           | jeder, auch über eine Edge          |
 | `/.well-known/nodeinfo`, `/.well-known/webfinger` | Die Föderations-Erkennung von LosOS Git, solange die Föderation an ist und die Festplatte geteilt wird | jeder, auch über eine Edge |
-| `/nextcloud/ocm-provider/`, `/nextcloud/ocm/…` und die anderen Föderationsadressen unter `/nextcloud` | Die Föderation von LosOS cloud, solange die Föderation an ist und die Festplatte geteilt wird; sonst **404** | jeder, auch über eine Edge |
 
 :::note[Was das lokale Netzwerk heißt]
 „Nur das lokale Netzwerk“ heißt: eine Quelladresse in einem privaten Bereich
@@ -55,7 +56,7 @@ keinen eingehenden Port öffnest.
 | Name                        | Was                                                      |
 | --------------------------- | -------------------------------------------------------- |
 | `<name>.local`              | Die Box, in ihrem eigenen Netzwerk, über mDNS            |
-| `<name>.<edge domain>`      | Die Box über ihre Edge, für LosOS cloud und LosOS Git    |
+| `<name>.<edge domain>`      | Die Box über ihre Edge, für LosOS Cloud und LosOS Git    |
 | `losos-edge.dasmat.us`      | Die Steuerebene der LosOS-Edge und die Seite „Find my box“ |
 | `proxy.losos.dasmat.us`     | Der Binär-Cache, aus dem sich die Box aktualisiert       |
 | `losos-cache-proxy.vercel.app` | Derselbe Cache unter Vercels eigenem Namen            |

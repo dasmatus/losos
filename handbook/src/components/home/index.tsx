@@ -114,7 +114,7 @@ export function Screen(): ReactNode {
         alt={translate({
           id: 'losos.home.screen.alt',
           message:
-            'The admin pages of a box: the app tiles for LosOS cloud and LosOS Git, the storage card and a board of widgets.',
+            'The admin pages of a box: the app tiles for LosOS Cloud and LosOS Git, the storage card and a board of widgets.',
         })}
         width={1600}
         height={1125}

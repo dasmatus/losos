@@ -36,7 +36,7 @@ virtuelle Maschinen.
 ## 3. Wie die Apps laufen \{#3-how-the-apps-run}
 
 [App-Modi](/types/app-modes.md) erklärt die beiden Modi. Standardmäßig laufen
-LosOS cloud und LosOS Git als Workloads im eigenen kleinen Kubernetes-Cluster
+LosOS Cloud und LosOS Git als Workloads im eigenen kleinen Kubernetes-Cluster
 der Box. Sie können auch nativ auf dem Host laufen. Du siehst in beiden Fällen
 dieselben Apps.
 
@@ -56,6 +56,6 @@ Widgets, die in einer Sandbox laufen.
 
 ## Und die drei Namen \{#and-the-three-names}
 
-Egal welche Art, dir begegnen drei Namen. LosOS cloud enthält Dateien, Fotos
+Egal welche Art, dir begegnen drei Namen. LosOS Cloud enthält Dateien, Fotos
 und Kalender. LosOS Git enthält Repositorys. Mit den Admin-Seiten steuerst du
 die Box selbst. Das [Glossar](/reference/glossary.md) erklärt den Rest.

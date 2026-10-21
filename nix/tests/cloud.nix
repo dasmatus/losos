@@ -21,22 +21,11 @@
 #     request and the launch film (nix/tests/cloud-shots.mjs), then the same
 #     addresses on the box without LosOS Cloud, for the "before" column.
 #
-# LosOS cloud's pod is not here: lososd runs in native mode with a stub
-# `nextcloud-occ`, which is all the claim asks of it (nix/tests/identity.nix
-# does the same).
 { pkgs }:
 
 let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
-
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
 
   python = pkgs.python3.withPackages (ps: [
     ps.requests
@@ -76,19 +65,22 @@ pkgs.testers.nixosTest {
         ../../modules/daemon.nix
         ../../modules/identity.nix
         ../../modules/cloud.nix
+        # The option document, so the Apps pane draws LosOS Cloud's fold
+        # for the pictures.
+        ../../modules/config-repo.nix
       ];
       networking.hostName = "mattbox";
       losos = {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
+        # The look and the pins, which the admin home asks for.
+        backend.plugins = lososPkgs.losos-plugins;
         admin.ui = lososPkgs.losos-admin-ui;
-        nextcloud.mode = "native";
         cloud.enable = true;
         forgejo.enable = false;
+        configRepo.enable = false;
         mdns.enable = true;
       };
-      systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
       # The same box before LosOS Cloud, for the pictures' "before" column.
       specialisation.before.configuration.losos.cloud.enable = lib.mkForce false;
       environment.systemPackages = [
@@ -140,7 +132,12 @@ pkgs.testers.nixosTest {
     PASSWORD = "Correct-Horse-Battery-9"
     EVA = "Eva-Long-Password-3"
 
-    start_all()
+    # One after the other: two VMs booting at once under TCG can miss the
+    # driver's wait for a shell.
+    box.start()
+    box.succeed("true")
+    laptop.start()
+    laptop.succeed("true")
     box.wait_for_unit("nginx.service")
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("losos-cloud.service")

@@ -165,16 +165,6 @@ export default defineMessages({
     sk: "Na tomto zariadení",
     de: "Auf dieser Box",
   },
-  "panes.apps.files.title": {
-    en: "Files",
-    sk: "Súbory",
-    de: "Dateien",
-  },
-  "panes.apps.files.detail": {
-    en: "Your documents, photos and calendars.",
-    sk: "Vaše dokumenty, fotky a kalendáre.",
-    de: "Deine Dokumente, Fotos und Kalender.",
-  },
   "panes.apps.code.title": {
     en: "Code",
     sk: "Kód",
@@ -191,100 +181,25 @@ export default defineMessages({
     de: "Mit {kept} läuft eine App abgeschottet vom Rest der Box, sodass ein Problem in ihr auch in ihr bleibt. Diese Einstellung lässt du am besten so. Mit {native} läuft sie neben allem anderen. Sie startet schneller, und so hat diese Box früher gearbeitet. Eine Änderung startet die App neu, während sich die Box neu aufbaut.",
   },
   // ── Apps: each app's box-wide settings (site-settings.tsx) ───────────
-  "panes.apps.site.language": {
-    en: "Language",
-    sk: "Jazyk",
-    de: "Sprache",
-  },
-  "panes.apps.site.languageDetail": {
-    en: "Of the sign-in page, and of every account that has not picked its own.",
-    sk: "Prihlasovacej stránky a každého účtu, ktorý si nevybral vlastný.",
-    de: "Der Anmeldeseite und jedes Kontos, das keine eigene gewählt hat.",
-  },
-  "panes.apps.site.languageBrowser": {
-    en: "The browser's language",
-    sk: "Jazyk prehliadača",
-    de: "Sprache des Browsers",
-  },
-  "panes.apps.site.phone": {
-    en: "Phone numbers without a country code",
-    sk: "Telefónne čísla bez predvoľby krajiny",
-    de: "Telefonnummern ohne Ländervorwahl",
-  },
-  "panes.apps.site.phoneDetail": {
-    en: "Read as numbers in this country.",
-    sk: "Čítajú sa ako čísla v tejto krajine.",
-    de: "Werden als Nummern dieses Landes gelesen.",
-  },
-  "panes.apps.site.phoneInvalid": {
-    en: "Two capital letters, such as SK or DE.",
-    sk: "Dve veľké písmená, napríklad SK alebo CZ.",
-    de: "Zwei Großbuchstaben, zum Beispiel DE oder AT.",
-  },
-  "panes.apps.site.links": {
-    en: "Share with a public link",
-    sk: "Zdieľanie verejným odkazom",
-    de: "Mit öffentlichem Link teilen",
-  },
-  "panes.apps.site.linksDetail": {
-    en: "Anyone who has the link can open what it points to.",
-    sk: "Ktokoľvek, kto má odkaz, otvorí to, na čo ukazuje.",
-    de: "Wer den Link hat, kann öffnen, worauf er zeigt.",
-  },
-  "panes.apps.site.password": {
-    en: "Every link needs a password",
-    sk: "Každý odkaz potrebuje heslo",
-    de: "Jeder Link braucht ein Passwort",
-  },
-  "panes.apps.site.expiry": {
-    en: "Links stop working after",
-    sk: "Odkazy prestanú fungovať po",
-    de: "Links funktionieren nicht mehr nach",
-  },
-  "panes.apps.site.quota": {
-    en: "Space for a new account",
-    sk: "Miesto pre nový účet",
-    de: "Speicher für ein neues Konto",
-  },
   "panes.apps.site.trash": {
     en: "Empty the trash after",
     sk: "Vysypať kôš po",
     de: "Papierkorb leeren nach",
-  },
-  "panes.apps.site.versions": {
-    en: "Delete old versions after",
-    sk: "Mazať staré verzie po",
-    de: "Alte Versionen löschen nach",
   },
   "panes.apps.site.days": {
     en: "days",
     sk: "dňoch",
     de: "Tagen",
   },
-  "panes.apps.site.never": {
-    en: "Never",
-    sk: "Nikdy",
-    de: "Nie",
-  },
-  "panes.apps.site.noLimit": {
-    en: "No limit",
-    sk: "Bez limitu",
-    de: "Kein Limit",
-  },
-  "panes.apps.site.noRegion": {
-    en: "None",
-    sk: "Žiadna",
-    de: "Keine",
-  },
-  "panes.apps.site.automatic": {
-    en: "Automatic",
-    sk: "Automaticky",
-    de: "Automatisch",
+  "panes.apps.site.trashDefault": {
+    en: "30 by default",
+    sk: "Predvolene 30",
+    de: "Standardmäßig 30",
   },
   "panes.apps.site.cloudCaption": {
-    en: "These hold for every account in LosOS cloud. The box sets them each time the app starts. What each account sets for itself stays in LosOS cloud. An empty field leaves the choice to LosOS cloud.",
-    sk: "Tieto nastavenia platia pre každý účet v LosOS cloud. Zariadenie ich nastaví pri každom spustení aplikácie. Čo si každý účet nastaví sám pre seba, zostáva v LosOS cloud. Prázdne pole nechá voľbu na LosOS cloud.",
-    de: "Diese gelten für jedes Konto in LosOS cloud. Die Box setzt sie bei jedem Start der App. Was jedes Konto für sich selbst einstellt, bleibt in LosOS cloud. Ein leeres Feld überlässt die Wahl LosOS cloud.",
+    en: "This holds for every account in LosOS Cloud. An empty field keeps a deleted file for 30 days.",
+    sk: "Toto platí pre každý účet v LosOS Cloud. Prázdne pole nechá zmazaný súbor 30 dní.",
+    de: "Das gilt für jedes Konto in LosOS Cloud. Ein leeres Feld behält eine gelöschte Datei 30 Tage.",
   },
   "panes.apps.site.signIn": {
     en: "Only signed-in accounts see anything",
@@ -693,30 +608,15 @@ export default defineMessages({
     sk: "Prístup",
     de: "Erreichbarkeit",
   },
-  "panes.network.encrypt": {
-    en: "Encrypt the connection",
-    sk: "Šifrovať pripojenie",
-    de: "Verbindung verschlüsseln",
-  },
-  "panes.network.encryptDetail": {
-    en: "Your browser will want a certificate it trusts.",
-    sk: "Váš prehliadač bude chcieť certifikát, ktorému dôveruje.",
-    de: "Dein Browser will dann ein Zertifikat, dem er vertraut.",
-  },
   "panes.network.outside": {
     en: "Reachable from outside your home",
     sk: "Dostupné aj mimo domova",
     de: "Auch von außerhalb erreichbar",
   },
-  "panes.network.port": {
-    en: "Port the files app listens on",
-    sk: "Port aplikácie na súbory",
-    de: "Port der Dateien-App",
-  },
   "panes.network.reachCaption": {
-    en: "With \"reachable from outside\" on, this box opens a way out to a small relay so you can get at it from anywhere. Nothing on your router needs opening. The port is an inside detail. The files app answers on it behind the front door, and there is no reason to change it unless something else on this box already wants that number.",
-    sk: "Keď je zapnuté „dostupné mimo domova“, zariadenie si otvorí cestu von k malému sprostredkovateľovi, aby ste sa k nemu dostali odkiaľkoľvek. Na routeri netreba nič otvárať. Port je vnútorný detail. Aplikácia na súbory na ňom odpovedá za vstupnými dverami a netreba ho meniť, pokiaľ to isté číslo nechce niečo iné na tomto zariadení.",
-    de: "Mit „von außerhalb erreichbar“ öffnet diese Box einen Weg nach draußen zu einem kleinen Relay, sodass du von überall an sie herankommst. An deinem Router muss nichts geöffnet werden. Der Port ist ein internes Detail. Die Dateien-App antwortet darauf hinter der Haustür, und es gibt keinen Grund, ihn zu ändern, außer etwas anderes auf dieser Box will dieselbe Nummer.",
+    en: "With \"reachable from outside\" on, this box opens a way out to a small relay so you can get at it from anywhere. Nothing on your router needs opening.",
+    sk: "Keď je zapnuté „dostupné mimo domova“, zariadenie si otvorí cestu von k malému sprostredkovateľovi, aby ste sa k nemu dostali odkiaľkoľvek. Na routeri netreba nič otvárať.",
+    de: "Mit „von außerhalb erreichbar“ öffnet diese Box einen Weg nach draußen zu einem kleinen Relay, sodass du von überall an sie herankommst. An deinem Router muss nichts geöffnet werden.",
   },
   "panes.network.windows.title": {
     en: "Windows, Mac and Linux",

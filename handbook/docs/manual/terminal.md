@@ -148,20 +148,20 @@ Access tokens, the market, the Lab and anything that wipes data stay in
 the admin pages.
 :::
 
-## Use LosOS cloud and LosOS Git from this computer
+## Use LosOS Cloud and LosOS Git from this computer
 
 ```sh
 losos cloud setup
 losos git setup
 ```
 
-Each asks for your LosOS password, the one you sign in to LosOS cloud
+Each asks for your LosOS password, the one you sign in to LosOS Cloud
 with, and sets up the computer you run it on. The **This computer** pane
 of the full-screen view does the same with one key.
 
 `cloud setup` asks the box for an app password for this computer alone
 and keeps it in the keychain where the file manager looks for it. LosOS
-cloud then appears in the file manager's sidebar (GNOME Files and other
+Cloud then appears in the file manager's sidebar (GNOME Files and other
 file managers that read GTK bookmarks), and opening it shows your files
 without asking for a password. The file manager asks once to accept the
 box's own certificate when it first connects.
@@ -179,7 +179,7 @@ certificate's key, the same check `losos` makes.
 
 Both are named after the computer, as in "LosOS on laptop". `--device`
 picks another name. To take a computer's access away, delete its entry
-under **Security** in LosOS cloud's settings, or under **Applications** in
+under **Security** in LosOS Cloud's settings, or under **Applications** in
 LosOS Git's. Running a setup again replaces that computer's password or
 token.
 
