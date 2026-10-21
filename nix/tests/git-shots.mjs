@@ -227,7 +227,9 @@ async function finish(s, base) {
   const box = p.locator('[data-merge-box="open"]');
   await box.getByText("Ready to merge").waitFor();
   await box.locator("button", { hasText: "Squash" }).click();
-  await box.getByText("Delete fix-backup afterwards").click();
+  // On by default: make sure of it rather than click it, which would turn it off.
+  const drop = box.getByRole("switch", { name: "Delete fix-backup afterwards" });
+  if (!(await drop.isChecked())) await drop.click();
   await box.scrollIntoViewIfNeeded();
   await s.take("merge", "approved, checks green: squash and delete the branch", { kind: "click", target: "merge" }, {
     box,

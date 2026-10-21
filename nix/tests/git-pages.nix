@@ -346,7 +346,7 @@ pkgs.testers.nixosTest {
     with subtest("the owner reads the code and reviews the pull request"):
         git_shots("browse", "after", "--test", "losos-git-pages")
         reviews = ok("GET", f"/repos/{REPO}/pulls/1/reviews")
-        assert [r["state"] for r in reviews] == ["APPROVED"], reviews
+        assert [r["state"] for r in reviews] == ["approved"], reviews
         assert reviews[0]["user"]["login"] == "notshared", reviews
         notes = ok("GET", f"/repos/{REPO}/pulls/1/comments")
         assert len(notes) == 1 and notes[0]["path"] == "backup.sh", notes
