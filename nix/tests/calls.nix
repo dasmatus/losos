@@ -215,7 +215,7 @@ pkgs.testers.nixosTest {
 
   nodes = {
     box =
-      { lib, ... }:
+      { config, lib, ... }:
       {
         imports = [
           (if throughEdge then { } else peerNat)
@@ -286,7 +286,9 @@ pkgs.testers.nixosTest {
         ];
         systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         # ICE and DTLS in the log, for a call that does not connect.
-        systemd.services.losos-calls.environment.RUST_LOG = "info,str0m=debug";
+        systemd.services.losos-calls = lib.mkIf config.losos.calls.enable {
+          environment.RUST_LOG = "info,str0m=debug";
+        };
         environment.systemPackages = [
           pkgs.jq
           pkgs.curl
