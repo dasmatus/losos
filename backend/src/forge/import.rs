@@ -16,6 +16,7 @@
 //! remembers its Forgejo id (`forgejo_ids`), so running it again changes
 //! nothing that is already there.
 
+use anyhow::Context;
 use super::db::Store;
 use super::{names, repo_path};
 use rusqlite::{params, OptionalExtension, Transaction};
@@ -283,6 +284,11 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
             ));
             continue;
         }
+        // Forgejo's hooks call a `forgejo` binary that is gone, and would
+        // refuse every push.
+        let dir = repo_path(&repos_root, &owner_login, &name);
+        super::server::clear_hooks(&dir)
+            .with_context(|| format!("clearing Forgejo's hooks in {}", dir.display()))?;
         repo_owner.insert(id, owner_f);
         let branch = match text(row, "default_branch") {
             b if b.is_empty() => "main".to_string(),
@@ -715,6 +721,12 @@ mod tests {
         let from = assert_fs::TempDir::new().unwrap();
         std::fs::create_dir_all(state.path().join("repositories/matus/notes.git")).unwrap();
         std::fs::create_dir_all(state.path().join("repositories/team/site.git")).unwrap();
+        // What Forgejo leaves in every repository's hooks.
+        let hooks = state.path().join("repositories/matus/notes.git/hooks");
+        std::fs::create_dir_all(hooks.join("pre-receive.d")).unwrap();
+        std::fs::write(hooks.join("pre-receive"), "#!/usr/bin/env bash\n").unwrap();
+        std::fs::write(hooks.join("pre-receive.d/gitea"), "#!/usr/bin/env bash\n").unwrap();
+        std::fs::write(hooks.join("update.sample"), "").unwrap();
         let f = from.path();
         // Postgres's shapes: booleans as booleans.
         write(f, "user", json!([
@@ -797,6 +809,12 @@ mod tests {
 
         let notes = store.repo("matus", "notes").unwrap().unwrap();
         assert!(notes.private && notes.description == "My notes");
+        let hooks = state.path().join("repositories/matus/notes.git/hooks");
+        let left: Vec<_> = std::fs::read_dir(&hooks)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(left, vec!["update.sample"], "Forgejo's hooks are gone");
         let site = store.repo("team", "site").unwrap().unwrap();
         assert_eq!(site.default_branch, "trunk");
         assert!(store.repo("matus", "gone").unwrap().is_none(), "no Git data, no record");
