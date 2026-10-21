@@ -71,16 +71,16 @@ Großbuchstaben, einer Ziffer und einem Sonderzeichen wie `-` oder `!`. Der
 Assistent hakt jede Regel ab, während du tippst. Du wirst der erste
 Administrator der Box und meldest dich an den Admin-Seiten mit diesem Namen
 und Passwort bei LosOS Login an, der Anmeldeseite der Box unter
-`https://<box>/auth/`. Dasselbe Passwort öffnet LosOS cloud und LosOS Git.
+`https://<box>/auth/`. Dasselbe Passwort öffnet LosOS Cloud und LosOS Git.
 
 <img src={require("@site/docs/img/wizard-step2-password-de.png").default} alt="Schritt 2 mit eingetipptem Anmeldenamen und Passwort: Jede der vier Passwortregeln wird abgehakt, sobald sie erfüllt ist." width="520" />
 
-Der Schritt wartet, bis LosOS cloud seinen eigenen ersten Start beendet hat,
+Der Schritt wartet, bis LosOS Cloud seinen eigenen ersten Start beendet hat,
 was auf einer frischen Box ein paar Minuten dauert. Solange zeigt die Seite
 „Warten, bis diese Box fertig gestartet ist“ und den Grund. Sie macht von
 selbst weiter.
 
-<img src={require("@site/docs/img/wizard-step2-waiting-de.png").default} alt="Schritt 2, während LosOS cloud sich noch installiert: Die Seite sagt, worauf sie wartet, und macht von selbst weiter." width="520" />
+<img src={require("@site/docs/img/wizard-step2-waiting-de.png").default} alt="Schritt 2, während LosOS Cloud sich noch installiert: Die Seite sagt, worauf sie wartet, und macht von selbst weiter." width="520" />
 
 :::warning[Der Ersatzschlüssel erscheint nur einmal]
 Sobald das Passwort gesetzt ist, zeigt die Seite einmal den
@@ -96,19 +96,19 @@ beide nehmen das Passwort, das du gerade festgelegt hast:
 
 - **Dein Name bei LosOS Login**: dein neuer Anmeldename. Er öffnet die
   Admin-Seiten.
-- **Dein Konto in LosOS cloud**: das Konto, das du in Schritt 3 und in den
+- **Dein Konto in LosOS Cloud**: das Konto, das du in Schritt 3 und in den
   Apps für Computer und Handy eingibst.
 
-<img src={require("@site/docs/img/wizard-step2-spare-key-de.png").default} alt="Schritt 2 nach dem Setzen des Passworts: dein Name bei LosOS Login, dein Konto in LosOS cloud und der einmal angezeigte Ersatz-Admin-Schlüssel mit Schlüssel kopieren und Drucken." width="520" />
+<img src={require("@site/docs/img/wizard-step2-spare-key-de.png").default} alt="Schritt 2 nach dem Setzen des Passworts: dein Name bei LosOS Login, dein Konto in LosOS Cloud und der einmal angezeigte Ersatz-Admin-Schlüssel mit Schlüssel kopieren und Drucken." width="520" />
 
-Einen **Passkey** für LosOS cloud, mit dem sich ein Handy oder Laptop bei
+Einen **Passkey** für LosOS Cloud, mit dem sich ein Handy oder Laptop bei
 deinen Dateien anmeldet, ohne das Passwort zu tippen, kannst du später in den
-Sicherheitseinstellungen von LosOS cloud hinzufügen.
+Sicherheitseinstellungen von LosOS Cloud hinzufügen.
 
 ## Schritt 3: Anmelden \{#step-3-sign-in}
 
-Der Assistent öffnet LosOS cloud innerhalb der Seite, und du meldest dich
-mit deinem Konto in LosOS cloud und dem Passwort an, das du gerade
+Der Assistent öffnet LosOS Cloud innerhalb der Seite, und du meldest dich
+mit deinem Konto in LosOS Cloud und dem Passwort an, das du gerade
 festgelegt hast. Dann bringt dich der Assistent zur Übersicht der
 Admin-Seiten. Ab hier geht es weiter unter [Die
 Admin-Seiten](../manual/admin-pages).
@@ -116,7 +116,7 @@ Admin-Seiten](../manual/admin-pages).
 Beim ersten Mal öffnet sich über der Übersicht eine kurze Tour. Jeder
 Schritt zeigt ein kleines bewegtes Bild der Seite mit dem Eintrag in der
 Seitenleiste, unter dem die jeweilige Funktion liegt. Jede Box hat sechs
-Schritte: die Apps von LosOS cloud, weitere Apps hinzufügen, den Speicher,
+Schritte: die Apps von LosOS Cloud, weitere Apps hinzufügen, den Speicher,
 das Verleihen der Box in der Nacht, das nächtliche Update und wo du die Tour
 wiederfindest. Die Tour fragt die Box, was sie sonst noch hat, und fügt für
 jedes einen Schritt hinzu: Office, Arbeitsspeicher für KI-Modelle verleihen,
@@ -126,6 +126,6 @@ ohne all das zeigt die sechs Schritte.
 **Tour überspringen** schließt sie, und dieser Browser öffnet sie nicht
 mehr von selbst. **Tour starten** unter Einstellungen, Über holt sie zurück.
 
-![Der erste Schritt der Tour über der Übersicht: ein Bild der Seite mit den sechs Apps von LosOS cloud, „1 von 6“ sowie Tour überspringen und Weiter.](@site/docs/img/tour-de.png)
+![Der erste Schritt der Tour über der Übersicht: ein Bild der Seite mit den sechs Apps von LosOS Cloud, „1 von 6“ sowie Tour überspringen und Weiter.](@site/docs/img/tour-de.png)
 
 ![Schritt 3: Du bist angemeldet. Das war der letzte Schritt.](@site/docs/img/wizard-step3-sign-in-de.png)

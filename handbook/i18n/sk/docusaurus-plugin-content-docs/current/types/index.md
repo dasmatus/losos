@@ -35,7 +35,7 @@ virtuálne stroje.
 ## 3. Ako bežia aplikácie \{#3-how-the-apps-run}
 
 Dva režimy vysvetľuje stránka [Režimy aplikácií](/types/app-modes.md).
-Predvolene bežia LosOS cloud a LosOS Git ako záťaže vo vlastnom malom
+Predvolene bežia LosOS Cloud a LosOS Git ako záťaže vo vlastnom malom
 Kubernetes klastri zariadenia. Môžu bežať aj natívne priamo na hostiteľovi.
 V oboch prípadoch vidíte tie isté aplikácie.
 
@@ -55,6 +55,6 @@ v sandboxe.
 
 ## A tri názvy \{#and-the-three-names}
 
-Nech je typ akýkoľvek, stretnete sa s tromi názvami. LosOS cloud uchováva
+Nech je typ akýkoľvek, stretnete sa s tromi názvami. LosOS Cloud uchováva
 súbory, fotky a kalendáre. LosOS Git uchováva repozitáre. Admin stránky
 spravujú samotné zariadenie. Ostatné nájdete v [slovníku pojmov](/reference/glossary.md).

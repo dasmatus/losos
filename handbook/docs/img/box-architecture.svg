@@ -22,7 +22,7 @@
 
   <rect x="40" y="146" width="920" height="72" rx="8" fill="#e2eff1" stroke="#0e6e7d"/>
   <text x="500" y="172" text-anchor="middle" font-weight="650">nginx, the one front door</text>
-  <text x="500" y="196" text-anchor="middle" font-size="13" fill="#37444f">/ admin pages (LAN only)   ·   /api → lososd   ·   /nextcloud LosOS cloud   ·   /forgejo/ LosOS Git   ·   /handbook/ (LAN only)</text>
+  <text x="500" y="196" text-anchor="middle" font-size="13" fill="#37444f">/ admin pages (LAN only)   ·   /api → lososd   ·   /cloud/ LosOS Cloud   ·   /forgejo/ LosOS Git   ·   /handbook/ (LAN only)</text>
 
   <g stroke="#5c6a77" stroke-width="1.5">
     <line x1="185" y1="220" x2="185" y2="250" marker-end="url(#ar)"/>
@@ -40,8 +40,8 @@
 
   <rect x="355" y="252" width="290" height="160" rx="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="1.5"/>
   <text x="371" y="278" font-weight="650">k3s: the box's own cluster</text>
-  <text x="371" y="304" font-size="13">LosOS cloud (Nextcloud)</text>
-  <text x="371" y="326" font-size="13">LosOS Git (Forgejo)</text>
+  <text x="371" y="304" font-size="13">LosOS Git (Forgejo)</text>
+  <text x="371" y="326" font-size="13">apps installed as shared</text>
   <text x="371" y="348" font-size="13">pods on the host's network</text>
   <text x="371" y="370" font-size="13">keeps running when the edge</text>
   <text x="371" y="390" font-size="13">is down</text>

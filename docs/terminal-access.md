@@ -228,12 +228,12 @@ POST /api/devices/git    {"password", "device"}  -> {"user", "token", "path"}
 ```
 
 The owner's password goes along because nothing less makes either one.
-Nextcloud mints an app password only for the real password, and Forgejo
+LosOS Cloud mints an app password only for the real password, and Forgejo
 creates an access token only under Basic auth with the account's password;
 its API refuses an administrator's token, `Sudo` and a token used as a
 password for that route. lososd sends both requests over loopback with the
 password in a Basic header, never in an argv or a file, as the sign-in
-does (`backend/src/devices.rs`). For Git, LosOS cloud judges the password
+does (`backend/src/devices.rs`). For Git, LosOS Cloud judges the password
 first and LosOS Git is given it before Forgejo is asked. A token named
 `LosOS on <device>` from an earlier setup is deleted first, since Forgejo
 refuses a second token of one name. Its scopes are `write:repository` and
@@ -241,7 +241,7 @@ refuses a second token of one name. Its scopes are `write:repository` and
 
 A wrong password is 403 with `wrongPassword: true`, not 401, so a client
 does not mistake it for a bad token. 409 with `gitOff: true` means the box
-runs no LosOS Git, 429 that Nextcloud is throttling, 503 that one of the
+runs no LosOS Git, 429 that LosOS Cloud is throttling, 503 that one of the
 two cannot be asked yet.
 
 On the computer, `git setup` writes git's global configuration for

@@ -2,8 +2,9 @@
 # of them.
 #
 #   LOCAL  services.k3s, role = server, state in /var/lib/rancher/k3s, unit
-#          k3s.service. Runs *this box's* Nextcloud and Forgejo as static pods
-#          (modules/workloads.nix) whenever losos.<svc>.mode == "container".
+#          k3s.service. Runs *this box's* Forgejo as a static pod
+#          (modules/workloads.nix) whenever losos.forgejo.mode == "container",
+#          and the apps installed from the catalogue (modules/apps.nix).
 #          It has no off-box dependency of any kind.
 #   MESH   services.rke2, role = agent, state in /var/lib/rancher/rke2, unit
 #          rke2-agent.service. Joins the edge VPS's cluster for Longhorn and
@@ -14,8 +15,8 @@
 # while its server is unreachable — it fetches node config and certificates
 # from the server on every start — and modules/updates.nix reboots this box
 # unconditionally at 00:07 with Persistent = true. Put the box's own services
-# in the edge's cluster and any edge outage spanning midnight takes Nextcloud
-# and Forgejo down on every joined appliance, and keeps them down for the rest
+# in the edge's cluster and any edge outage spanning midnight takes Git and
+# the apps down on every joined appliance, and keeps them down for the rest
 # of the outage, on a box with no SSH and no shell to notice it from.
 #
 # The mesh instance is rke2 rather than a second k3s because nixpkgs builds
@@ -137,8 +138,7 @@
 #
 # The assertions below still carry the eval-time half of the visible-failure
 # duty: nothing on the appliance creates /var/secrets/losos-proxy-token (unlike
-# the admin token, which lososd mints, and the Nextcloud adminpass, which
-# nextcloud-common generates), so flipping the mesh toggle on a box that never
+# the admin token, which lososd mints), so flipping the mesh toggle on a box that never
 # set up the master proxy fails the rebuild instead of failing at 03:00 on a
 # box nobody can log into.
 #
@@ -155,13 +155,11 @@
 let
   cfg = config.losos.cluster;
 
-  # The LOCAL cluster exists to run this box's own workloads, so it follows the
-  # two mode switches and nothing else. losos.forgejo.enable is consulted here
+  # The LOCAL cluster exists to run this box's own workloads, so it follows
+  # Forgejo's mode switch and nothing else. losos.forgejo.enable is consulted here
   # as well as the mode, exactly as modules/containers.nix does — enable = false
   # must not leave a git host running.
-  localEnabled =
-    config.losos.nextcloud.mode == "container"
-    || (config.losos.forgejo.mode == "container" && config.losos.forgejo.enable);
+  localEnabled = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
 
   meshEnabled = cfg.enable;
 
@@ -197,7 +195,6 @@ let
   # pod on the box gets a sandbox at all.
   workloadImages = lib.filter (img: img != null) [
     pauseImage
-    config.losos.workloads.nextcloudImage
     config.losos.workloads.forgejoImage
   ];
 
@@ -312,7 +309,7 @@ in
         {
           assertion = pauseImage != null;
           message = ''
-            losos.workloads.pauseImage is null but Nextcloud or Forgejo is in
+            losos.workloads.pauseImage is null but Forgejo is in
             "container" mode. Without it the native containerd keeps its own
             default sandbox image (a registry.k8s.io/pause reference), which
             this box neither preloads nor can fetch — every pod would fail to
@@ -413,7 +410,7 @@ in
         # over in the rendered script:
         #
         #   grep -Fxq   the ref is matched whole and literally. A substring
-        #               match would let losos.local/nextcloud:<old tag> satisfy
+        #               match would let losos.local/forgejo:<old tag> satisfy
         #               the test for a new one, and the box would go on running
         #               the previous image with nothing to suggest why. This is
         #               also what makes the unit idempotent and cheap: on every
@@ -481,8 +478,7 @@ in
         # embedded containerd's airgap importer reads — and there is no
         # embedded containerd here. losos-workload-images.service above does
         # the job instead. The images themselves are still substituted from
-        # this project's own Nix binary cache; a 2.6 GiB Nextcloud image cannot
-        # be rebuilt at 03:00 on a mini-PC with a tmpfs root, and nothing is
+        # this project's own Nix binary cache; an image cannot be rebuilt at 03:00 on a mini-PC with a tmpfs root, and nothing is
         # ever fetched from a container registry either way.
 
         extraFlags = [
@@ -545,12 +541,10 @@ in
       #     with the same tmpfiles pass that symlinks the manifests into it, on
       #     the same condition. A second rule for one path only earns a
       #     "Duplicate line for path" from systemd-tmpfiles on every boot.
-      #   * k3s.service's ordering against postgresql, redis-nextcloud,
-      #     losos-nextcloud-adminpass and losos-fscrypt-shared. Those exist
-      #     because the pods hostPath-mount those services' sockets and files,
-      #     so they belong to the module that writes the mounts, and it carries
-      #     them (scoped per workload, which matters: a Forgejo-only box must
-      #     not Require a Nextcloud secret). The containerd and image-import
+      #   * k3s.service's ordering against postgresql and
+      #     losos-fscrypt-shared. Those exist because the pods hostPath-mount
+      #     those services' sockets and files, so they belong to the module
+      #     that writes the mounts, and it carries them. The containerd and image-import
       #     ordering just above is this file's, because the runtime is this
       #     file's choice; the module system merges the two `after` lists.
       #
@@ -776,9 +770,8 @@ in
         script = ''
           set -eu
 
-          # modules/nextcloud-common.nix already tmpfiles /var/secrets into
-          # existence, but this unit creates its own directory so it stays
-          # correct on a box where Nextcloud is off. A second tmpfiles entry
+          # This unit creates its own directory, so it does not depend on
+          # another module having made /var/secrets. A tmpfiles entry
           # for the same path would make systemd-tmpfiles log a duplicate-line
           # warning on every boot, which is why this is here and not a rule.
           install -d -m 0700 ${lib.escapeShellArg meshTokenDir}
@@ -851,10 +844,10 @@ in
       # edge carries the same rule in modules/edge.nix.
       systemd.tmpfiles.rules = [ "L+ /usr/local/sbin - - - - /run/current-system/sw/bin" ];
 
-      # rke2's CIS sysctls set vm.overcommit_memory to the integer 1 and the
-      # Nextcloud stack's redis sets it to the string "1". Same value, but the
-      # option is unique, so without this a box that joins the mesh does not
-      # build.
+      # rke2's CIS sysctls set vm.overcommit_memory to the integer 1, and a
+      # redis anywhere in the configuration sets it to the string "1". Same
+      # value, but the option is unique, so this keeps a box that joins the
+      # mesh building either way.
       boot.kernel.sysctl."vm.overcommit_memory" = lib.mkForce 1;
     })
 

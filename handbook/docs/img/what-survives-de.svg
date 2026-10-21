@@ -36,7 +36,7 @@
   <rect x="580" y="40" width="380" height="380" rx="10" fill="#0e6e7d"/>
   <text x="598" y="70" font-weight="650" fill="#ffffff">/persist   verschlüsselt, vom TPM entsperrt</text>
   <text x="598" y="92" fill="#e2eff1" font-size="13">jedes Verzeichnis wird per Bind-Mount zurückgeholt</text>
-  <text x="598" y="137" font-size="13" fill="#ffffff">LosOS cloud: deine Dateien, Fotos, Datenbank</text>
+  <text x="598" y="137" font-size="13" fill="#ffffff">LosOS Cloud: deine Dateien, Fotos, Datenbank</text>
   <text x="598" y="167" font-size="13" fill="#ffffff">ans Mesh verliehener Platz, getrennt verschlüsselt</text>
   <text x="598" y="197" font-size="13" fill="#ffffff">LosOS Git, Zustand der Box, beide Cluster, Logs</text>
   <text x="598" y="227" font-size="13" fill="#ffffff">das System selbst, jede Version im Bootmenü</text>

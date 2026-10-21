@@ -100,17 +100,35 @@ impl Control {
         reply(&self.backend, cmd_grow)
     }
 
-    /// Replace the Nextcloud admin password.
+    /// Replace the owner's password: the one LosOS Login checks, and their
+    /// LosOS Git account's.
     ///
     /// The password is a method argument rather than a command-line one on
     /// purpose: a D-Bus message body is delivered to this process and nowhere
     /// else, while `/proc/<pid>/cmdline` is world-readable. The facade CLI
     /// keeps that property by reading the password from stdin.
     ///
-    /// Like `grow`, this is synchronous and rebuilds nothing: it is one short
-    /// `occ` invocation, so there is no job id to hand back.
+    /// Like `grow`, this is synchronous and rebuilds nothing, so there is no
+    /// job id to hand back.
     fn set_password(&self, user: &str, password: &str) -> fdo::Result<String> {
-        reply(&self.backend, |b| cmd_set_password(b, user, password))
+        reply(&self.backend, |b| {
+            use crate::losos::Losos;
+            let mut out = cmd_set_password(b, user, password)?;
+            let owner = if user == crate::setup::DEFAULT_ADMIN_USER {
+                b.load_state()?.owner
+            } else {
+                None
+            };
+            match owner {
+                Some(owner) => {
+                    let secret = crate::setup::validate_password(password)
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    crate::people::People::from_env().set_password(&owner, &secret)?;
+                }
+                None => out["changed"] = serde_json::Value::Bool(false),
+            }
+            Ok(out)
+        })
     }
 
     /// The appliance recovery code, minted on the first call.

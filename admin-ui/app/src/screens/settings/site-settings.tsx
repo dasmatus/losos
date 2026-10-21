@@ -10,12 +10,12 @@ import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, SwitchRow }
 import type { SettingsForm } from "./use-settings-form";
 import { draftOn } from "./pane-advanced";
 
-/* The box-wide settings of LosOS cloud and LosOS Git, on the Apps pane,
+/* The box-wide settings of LosOS Cloud and LosOS Git, on the Apps pane,
  * each inside that app's accordion.
  *
- * What an administrator would otherwise change in Nextcloud's
- * Administration settings and Forgejo's Site administration. Each row is
- * one `losos.<app>.site.*` option (modules/options.nix), edited as a line of
+ * What an administrator would otherwise change in an app's own admin
+ * pages: `losos.cloud.trashDays` for LosOS Cloud and the
+ * `losos.forgejo.site.*` options for LosOS Git (modules/options.nix), edited as a line of
  * overrides.nix through form.extra, exactly as the Advanced pane edits it:
  * the same draft, the same Apply, the same gate in lososd, the same commit
  * in the box's history. The Advanced pane shows these rows with a link back
@@ -30,24 +30,6 @@ import { draftOn } from "./pane-advanced";
  * only restates a default.
  */
 
-/* The languages LosOS cloud can be set to here, by the name each one uses
- * for itself. The same list as the option's enum. */
-const LANGUAGES: readonly (readonly [string, string])[] = [
-  ["en", "English"],
-  ["en_GB", "English (UK)"],
-  ["sk", "Slovenčina"],
-  ["cs", "Čeština"],
-  ["de", "Deutsch (du)"],
-  ["de_DE", "Deutsch (Sie)"],
-  ["fr", "Français"],
-  ["es", "Español"],
-  ["it", "Italiano"],
-  ["nl", "Nederlands"],
-  ["pl", "Polski"],
-  ["hu", "Magyar"],
-  ["uk", "Українська"],
-];
-
 const LANDING: readonly (readonly [string, MessageKey])[] = [
   ["home", "panes.apps.site.landing.home"],
   ["explore", "panes.apps.site.landing.explore"],
@@ -60,8 +42,6 @@ const PRIVATE: readonly (readonly [string, MessageKey])[] = [
   ["private", "panes.apps.site.private.private"],
   ["public", "panes.apps.site.private.public"],
 ];
-
-const PHONE_REGION = /^[A-Z]{2}$/;
 
 /** One option's row state: the literal the draft holds, else the default's. */
 interface Slot {
@@ -98,12 +78,11 @@ function slotFor(form: SiteForm, name: string): Slot | null {
 /** Whether the box declares any of `app`'s settings, so the pane can leave
  *  out an accordion that would hold nothing. */
 export function hasSiteSettings(form: SiteForm, app: "cloud" | "git"): boolean {
-  const svc = app === "cloud" ? "nextcloud" : "forgejo";
-  return (
-    form.options?.options.some(
-      (o) => !o.readOnly && (o.name.startsWith(`${svc}.site.`) || o.name === `${svc}.federation.enable`),
-    ) ?? false
-  );
+  const own = (name: string) =>
+    app === "cloud"
+      ? name === "cloud.trashDays"
+      : name.startsWith("forgejo.site.") || name === "forgejo.federation.enable";
+  return form.options?.options.some((o) => !o.readOnly && own(o.name)) ?? false;
 }
 
 /* One app's settings, under the title the accordion it sits in leaves room
@@ -119,9 +98,8 @@ export function SiteSettings({
   title?: string;
 }) {
   const t = useT();
-  const cloudFederation = slotFor(form, "nextcloud.federation.enable");
   const gitFederation = slotFor(form, "forgejo.federation.enable");
-  /* Both switches act only while the box shares its disk (`needs` in the
+  /* The switch acts only while the box shares its disk (`needs` in the
    * option document): greyed with the reason while sharing is off, as on the
    * Advanced pane, and open again once it is on. */
   const needsLine = (slot: Slot | null) =>
@@ -129,14 +107,7 @@ export function SiteSettings({
       ? t("cloudApps.federation.needsSharing")
       : undefined;
   const cloud = {
-    language: slotFor(form, "nextcloud.site.defaultLanguage"),
-    phone: slotFor(form, "nextcloud.site.phoneRegion"),
-    links: slotFor(form, "nextcloud.site.publicLinks"),
-    password: slotFor(form, "nextcloud.site.linkPassword"),
-    expiry: slotFor(form, "nextcloud.site.linkExpiryDays"),
-    quota: slotFor(form, "nextcloud.site.defaultQuotaGB"),
-    trash: slotFor(form, "nextcloud.site.trashDays"),
-    versions: slotFor(form, "nextcloud.site.versionDays"),
+    trash: slotFor(form, "cloud.trashDays"),
   };
   const git = {
     signIn: slotFor(form, "forgejo.site.requireSignIn"),
@@ -146,14 +117,7 @@ export function SiteSettings({
     push: slotFor(form, "forgejo.site.pushCreate"),
   };
   const ids = {
-    language: React.useId(),
-    phone: React.useId(),
-    links: React.useId(),
-    password: React.useId(),
-    expiry: React.useId(),
-    quota: React.useId(),
     trash: React.useId(),
-    versions: React.useId(),
     signIn: React.useId(),
     landing: React.useId(),
     private: React.useId(),
@@ -161,10 +125,9 @@ export function SiteSettings({
     push: React.useId(),
   };
 
-  const linksOff = cloud.links !== null && cloud.links.raw === "false";
-  const cloudRows = cloudFederation !== null || Object.values(cloud).some((slot) => slot !== null);
+  const cloudRows = cloud.trash !== null;
   const gitRows = gitFederation !== null || Object.values(git).some((slot) => slot !== null);
-  const federationIds = { cloud: React.useId(), git: React.useId() };
+  const federationIds = { git: React.useId() };
 
   return (
     <>
@@ -172,79 +135,13 @@ export function SiteSettings({
         <PaneSection data-testid="site-cloud">
           <GroupTitle>{title ?? t("cloudApps.settings.title")}</GroupTitle>
           <Group>
-            {cloudFederation !== null && (
-              <BoolRow
-                id={federationIds.cloud}
-                slot={cloudFederation}
-                title={t("cloudApps.federation.cloud")}
-                description={needsLine(cloudFederation) ?? t("cloudApps.federation.cloudDetail")}
-                off={needsLine(cloudFederation) !== undefined}
-              />
-            )}
-            {cloud.language !== null && (
-              <SelectRow
-                id={ids.language}
-                slot={cloud.language}
-                title={t("panes.apps.site.language")}
-                detail={t("panes.apps.site.languageDetail")}
-                choices={[
-                  ["", t("panes.apps.site.languageBrowser")],
-                  ...LANGUAGES,
-                ]}
-                nullable
-              />
-            )}
-            {cloud.phone !== null && (
-              <PhoneRegionRow
-                id={ids.phone}
-                slot={cloud.phone}
-                title={t("panes.apps.site.phone")}
-                detail={t("panes.apps.site.phoneDetail")}
-                invalid={t("panes.apps.site.phoneInvalid")}
-                empty={t("panes.apps.site.noRegion")}
-              />
-            )}
-            {cloud.links !== null && (
-              <BoolRow id={ids.links} slot={cloud.links} title={t("panes.apps.site.links")} description={t("panes.apps.site.linksDetail")} />
-            )}
-            {cloud.password !== null && (
-              <BoolRow id={ids.password} slot={cloud.password} title={t("panes.apps.site.password")} off={linksOff} />
-            )}
-            {cloud.expiry !== null && (
-              <NumberRow
-                id={ids.expiry}
-                slot={cloud.expiry}
-                title={t("panes.apps.site.expiry")}
-                unit={t("panes.apps.site.days")}
-                empty={t("panes.apps.site.never")}
-                off={linksOff}
-              />
-            )}
-            {cloud.quota !== null && (
-              <NumberRow
-                id={ids.quota}
-                slot={cloud.quota}
-                title={t("panes.apps.site.quota")}
-                unit="GB"
-                empty={t("panes.apps.site.noLimit")}
-              />
-            )}
             {cloud.trash !== null && (
               <NumberRow
                 id={ids.trash}
                 slot={cloud.trash}
                 title={t("panes.apps.site.trash")}
                 unit={t("panes.apps.site.days")}
-                empty={t("panes.apps.site.automatic")}
-              />
-            )}
-            {cloud.versions !== null && (
-              <NumberRow
-                id={ids.versions}
-                slot={cloud.versions}
-                title={t("panes.apps.site.versions")}
-                unit={t("panes.apps.site.days")}
-                empty={t("panes.apps.site.automatic")}
+                empty={t("panes.apps.site.trashDefault")}
                 last
               />
             )}
@@ -393,7 +290,7 @@ function NumberRow({
   slot: Slot;
   title: string;
   unit: string;
-  /** What an empty field means: "Never", "No limit". */
+  /** What an empty field means: "Never", "No limit", "30 by default". */
   empty: string;
   off?: boolean;
   last?: boolean;
@@ -407,7 +304,10 @@ function NumberRow({
   const commit = () => {
     const trimmed = text.trim();
     if (trimmed === shown) return;
-    slot.set(trimmed.length === 0 ? "null" : trimmed);
+    // An empty field is null where the option takes one, else the default:
+    // no line at all.
+    if (trimmed.length === 0) slot.set(slot.option.editor.kind === "nullable" ? "null" : null);
+    else slot.set(trimmed);
   };
 
   return (
@@ -442,63 +342,3 @@ function NumberRow({
   );
 }
 
-/* Two capital letters or nothing. The option's type is a pattern Nix checks
- * when the box rebuilds and lososd's gate does not, so a value that does
- * not fit is held here, with a line saying why, and never reaches the
- * draft. */
-function PhoneRegionRow({
-  id,
-  slot,
-  title,
-  detail,
-  invalid,
-  empty,
-}: {
-  id: string;
-  slot: Slot;
-  title: string;
-  detail: string;
-  invalid: string;
-  empty: string;
-}) {
-  const errorId = React.useId();
-  const shown = slot.raw === null || slot.raw === "null" ? "" : (nixUnquote(slot.raw) ?? "");
-  const [text, setText] = React.useState(shown);
-  React.useEffect(() => setText(shown), [shown]);
-  const bad = text.length > 0 && !PHONE_REGION.test(text);
-
-  const commit = () => {
-    if (text === shown || bad) return;
-    slot.set(text.length === 0 ? "null" : nixString(text));
-  };
-
-  return (
-    <Row data-option={slot.option.name} className="max-sm:flex-col max-sm:items-stretch">
-      <RowText htmlFor={id} title={title} detail={detail} />
-      <div className="flex shrink-0 flex-col items-end gap-1 max-sm:items-stretch">
-        <Input
-          id={id}
-          value={text}
-          placeholder={empty}
-          maxLength={2}
-          autoComplete="off"
-          autoCapitalize="characters"
-          spellCheck={false}
-          disabled={slot.disabled}
-          aria-invalid={bad}
-          aria-describedby={bad ? errorId : undefined}
-          className="numeric w-[5rem] text-center uppercase placeholder:normal-case"
-          onChange={(event) => setText(event.target.value.toUpperCase())}
-          onBlur={commit}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              commit();
-            }
-          }}
-        />
-        <FieldError id={errorId}>{bad ? invalid : null}</FieldError>
-      </div>
-    </Row>
-  );
-}

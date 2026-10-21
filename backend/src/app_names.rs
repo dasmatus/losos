@@ -1,13 +1,12 @@
-//! Each person's name and address from LosOS Login, in LosOS cloud and
-//! LosOS Git.
+//! Each person's name and address from LosOS Login, in LosOS Git.
 //!
 //! Both apps make a person's account at their first sign-in through LosOS
 //! Login (`modules/app-sign-in.nix`), with the name nginx passes on. LosOS
-//! cloud takes the name and address again at every later sign-in; LosOS Git
+//! Cloud takes the name and address again with every request; LosOS Git
 //! never does, and the owner's LosOS Git account, which this daemon makes
 //! before anyone signs in (`crate::config_repo`), never had them. So this
-//! daemon sets both apps itself: for everyone when it starts, and for one
-//! person when they change their details on their own account.
+//! daemon sets them in LosOS Git itself: for everyone when it starts, and
+//! for one person when they change their details on their own account.
 //!
 //! An app that is not up yet is asked again later; an account an app has
 //! not made yet is left to that first sign-in.
@@ -57,34 +56,6 @@ pub enum Outcome {
     Off,
 }
 
-/// Give `who` their name and address in LosOS cloud. `Err` when LosOS cloud
-/// could not be asked, which is worth asking again.
-pub fn nextcloud<L: Losos>(l: &mut L, who: &Profile) -> anyhow::Result<Outcome> {
-    let mode = l.nextcloud_mode()?;
-    let target = l.nextcloud_target(mode)?;
-    let native = target == crate::setup::Target::Native;
-    let steps = crate::setup::plan_person(&target, &who.account, &who.name, &who.email);
-    for (i, step) in steps.iter().enumerate() {
-        let out = l.nextcloud_run(step)?;
-        if out.code == 0 {
-            continue;
-        }
-        if (native && i == 0) || (!native && out.code == crate::setup::NO_ACCOUNT) {
-            return Ok(Outcome::NoAccount);
-        }
-        let why = out
-            .stderr
-            .lines()
-            .chain(out.stdout.lines())
-            .find(|l| !l.trim().is_empty())
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        anyhow::bail!("occ exited {} for {}: {why}", out.code, who.account);
-    }
-    Ok(Outcome::Set)
-}
-
 /// Give `who` their name and address in LosOS Git. `Err` when LosOS Git
 /// could not be asked, or refused.
 pub fn forgejo<L: Losos>(l: &mut L, who: &Profile) -> anyhow::Result<Outcome> {
@@ -106,19 +77,15 @@ pub fn forgejo<L: Losos>(l: &mut L, who: &Profile) -> anyhow::Result<Outcome> {
     }
 }
 
-/// Both apps, for one person. True when nothing is left to do for them.
+/// One person. True when nothing is left to do for them.
 pub fn sync<L: Losos>(l: &mut L, who: &Profile) -> bool {
-    let mut settled = true;
-    for (app, outcome) in [
-        ("LosOS cloud", nextcloud(l, who)),
-        ("LosOS Git", forgejo(l, who)),
-    ] {
-        if let Err(e) = outcome {
-            tracing::info!(app, account = %who.account, error = %e, "a name waits for its app");
-            settled = false;
+    match forgejo(l, who) {
+        Ok(_) => true,
+        Err(e) => {
+            tracing::info!(app = "LosOS Git", account = %who.account, error = %e, "a name waits for its app");
+            false
         }
     }
-    settled
 }
 
 #[cfg(test)]
@@ -150,18 +117,12 @@ mod tests {
     }
 
     #[test]
-    fn the_name_goes_to_both_apps_and_never_as_an_option() {
+    fn the_name_goes_to_losos_git() {
         let mut l = crate::fake::FakeLosos::new();
         l.forgejo_routes
             .insert("PATCH /api/v1/admin/users/eva".into(), (200, "{}".into()));
         let who = profile(&listed("eva", "--help", &[]));
         assert!(sync(&mut l, &who));
-        assert!(!l.nextcloud_runs.is_empty());
-        for step in &l.nextcloud_runs {
-            let dashes = step.iter().position(|a| a == "--").expect("options end");
-            let name = step.iter().position(|a| a == "--help");
-            assert!(name.is_none_or(|n| n > dashes), "{step:?}");
-        }
         assert!(l
             .forgejo_calls
             .iter()
@@ -171,13 +132,11 @@ mod tests {
     #[test]
     fn a_missing_account_waits_for_the_first_sign_in_and_a_down_app_is_retried() {
         let mut l = crate::fake::FakeLosos::new();
-        l.nextcloud_run_exit = crate::setup::NO_ACCOUNT;
         l.forgejo_routes.insert(
             "PATCH /api/v1/admin/users/eva".into(),
             (404, r#"{"message":"user does not exist"}"#.into()),
         );
         let who = profile(&listed("eva", "Eva", &[]));
-        assert_eq!(nextcloud(&mut l, &who).unwrap(), Outcome::NoAccount);
         assert_eq!(forgejo(&mut l, &who).unwrap(), Outcome::NoAccount);
         assert!(sync(&mut l, &who));
         // The fake LosOS Git answers nothing else: not up, so asked again.
