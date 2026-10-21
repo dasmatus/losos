@@ -627,7 +627,7 @@ impl Losos for FakeLosos {
         let (method, path) = op.route();
         match self.market_routes.get(&format!("{method} {path}")) {
             None => Ok(crate::market::Outcome::Unavailable),
-            Some((status, body)) => crate::market::classify(*status, body),
+            Some((status, body)) => op.classify(*status, body),
         }
     }
 

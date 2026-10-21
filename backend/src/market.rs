@@ -163,7 +163,7 @@ impl Config {
 }
 
 /// One thing the owner can ask the market to do.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Op {
     /// What can be bought. Anonymous.
     Browse,
@@ -279,6 +279,160 @@ pub enum Op {
     VmRemove {
         upload_id: String,
     },
+    /// The AI models the edge runs on lent memory, priced for buyers paying
+    /// on `network`, with this box's meters, escrow balances and lending
+    /// (`edge/registrar/src/server/llm.rs`).
+    LlmModels {
+        network: Option<String>,
+    },
+    /// Quote a meter for `model`: one tap per lending box, which the wallet
+    /// then opens in the escrow. `spend_per_hour` is the most the meter may
+    /// bill in an hour, USDC base units.
+    TapQuote {
+        model: String,
+        network: Option<String>,
+        spend_per_hour: u64,
+    },
+    /// The wallet opened the meter's taps; the edge reads them back from the
+    /// chain and opens the meter.
+    TapConfirm {
+        meter: String,
+    },
+    /// Stop a meter. The edge closes its taps itself; no wallet is needed.
+    TapStop {
+        meter: String,
+    },
+    /// One request to a running model, billed per token on `meter`.
+    LlmChat(ChatAsk),
+}
+
+/// A buyer's request to a model, as it leaves the box. The edge checks it
+/// again against the model's context length (`crate::inference::chat_ask`
+/// there); these are its limits that do not depend on the model.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChatAsk {
+    pub meter: String,
+    /// `(role, content)`.
+    pub messages: Vec<(String, String)>,
+    pub max_tokens: Option<u64>,
+    pub temperature: Option<f64>,
+    pub top_p: Option<f64>,
+    pub stop: Vec<String>,
+}
+
+/// The edge's limits on one request to a model.
+pub const MAX_CHAT_MESSAGES: usize = 256;
+pub const MAX_PROMPT_BYTES: usize = 256 * 1024;
+const MAX_STOP_STRINGS: usize = 4;
+const MAX_STOP_LEN: usize = 64;
+/// No model has a context this long; the edge holds a request to its own.
+const MAX_ANSWER_TOKENS: u64 = 1 << 20;
+/// The edge's bounds on a meter's hourly limit (`MIN_SPEND_PER_HOUR` and
+/// `MAX_SPEND_PER_HOUR` in edge/registrar/src/meter.rs): a cent to a
+/// hundred dollars, in USDC base units.
+pub const MIN_SPEND_PER_HOUR: u64 = 10_000;
+pub const MAX_SPEND_PER_HOUR: u64 = 100_000_000;
+
+/// How long the box waits for most registrar answers. Above the registrar's
+/// own budget for the routes that wait on Stripe (`STRIPE_ROUTE_TIMEOUT` in
+/// edge/registrar/src/server.rs, 22 s: four gate calls of 5 s plus
+/// persistence), so a slow but successful onboarding is not dropped here
+/// after the account was already made.
+const TIMEOUT_SECS: u64 = 25;
+/// A confirm reads every tap back from the chain, which the edge allows
+/// about 20 s for.
+const CONFIRM_TIMEOUT_SECS: u64 = 45;
+/// An answer from a large model split across boxes can take many minutes;
+/// the edge gives up after 16 (`ANSWER_SECS` plus a minute in
+/// edge/registrar/src/server/llm.rs), so the box waits a little longer and
+/// hears the edge's own reason rather than its own timeout.
+pub const CHAT_TIMEOUT_SECS: u64 = 17 * 60;
+/// A listing page is small; a registrar that sends more is wrong.
+const MAX_REPLY_BYTES: usize = 1024 * 1024;
+/// A model's answer is bounded by the edge's 4 MiB read of the head's reply.
+const MAX_CHAT_REPLY_BYTES: usize = 5 * 1024 * 1024;
+
+/// A model id in the edge's catalogue: `[a-z0-9-]`, 1 to 64 characters.
+fn valid_model(id: &str) -> bool {
+    (1..=64).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// A meter id the edge made: `mtr_` and lowercase hex.
+fn valid_meter(id: &str) -> bool {
+    id.strip_prefix("mtr_").is_some_and(|hex| {
+        !hex.is_empty()
+            && hex.len() <= 48
+            && hex
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    })
+}
+
+fn valid_network(network: Option<&str>) -> bool {
+    network.is_none_or(network_key)
+}
+
+impl ChatAsk {
+    fn validate(&self) -> Result<(), &'static str> {
+        let unit =
+            |v: Option<f64>, hi: f64| v.is_none_or(|x| x.is_finite() && (0.0..=hi).contains(&x));
+        if !valid_meter(&self.meter) {
+            Err("meter is not valid")
+        } else if self.messages.is_empty() || self.messages.len() > MAX_CHAT_MESSAGES {
+            Err("send one to 256 messages")
+        } else if self
+            .messages
+            .iter()
+            .any(|(role, _)| !matches!(role.as_str(), "system" | "user" | "assistant"))
+        {
+            Err("a message's role is system, user or assistant")
+        } else if self.messages.iter().map(|(_, c)| c.len()).sum::<usize>() > MAX_PROMPT_BYTES {
+            Err("the messages are too long")
+        } else if self
+            .max_tokens
+            .is_some_and(|n| n == 0 || n > MAX_ANSWER_TOKENS)
+        {
+            Err("maxTokens is from one to the model's context length")
+        } else if !unit(self.temperature, 2.0) || !unit(self.top_p, 1.0) {
+            Err("a sampling setting is out of range")
+        } else if self.stop.len() > MAX_STOP_STRINGS
+            || self
+                .stop
+                .iter()
+                .any(|s| s.is_empty() || s.len() > MAX_STOP_LEN)
+        {
+            Err("at most four stop strings, each short")
+        } else {
+            Ok(())
+        }
+    }
+
+    fn body(&self) -> Value {
+        let mut doc = json!({
+            "meter": self.meter,
+            "messages": self
+                .messages
+                .iter()
+                .map(|(role, content)| json!({ "role": role, "content": content }))
+                .collect::<Vec<_>>(),
+        });
+        if let Some(n) = self.max_tokens {
+            doc["maxTokens"] = json!(n);
+        }
+        if let Some(t) = self.temperature {
+            doc["temperature"] = json!(t);
+        }
+        if let Some(p) = self.top_p {
+            doc["topP"] = json!(p);
+        }
+        if !self.stop.is_empty() {
+            doc["stop"] = json!(self.stop);
+        }
+        doc
+    }
 }
 
 /// Most replicas in one machine order; the edge's own limit.
@@ -403,6 +557,36 @@ impl Op {
                     Ok(())
                 }
             }
+            Op::LlmModels { network } => {
+                if valid_network(network.as_deref()) {
+                    Ok(())
+                } else {
+                    Err("network is not a network name")
+                }
+            }
+            Op::TapQuote {
+                model,
+                network,
+                spend_per_hour,
+            } => {
+                if !valid_model(model) {
+                    Err("model is not a model id")
+                } else if !valid_network(network.as_deref()) {
+                    Err("network is not a network name")
+                } else if !(MIN_SPEND_PER_HOUR..=MAX_SPEND_PER_HOUR).contains(spend_per_hour) {
+                    Err("allow between one cent and a hundred dollars per hour")
+                } else {
+                    Ok(())
+                }
+            }
+            Op::TapConfirm { meter } | Op::TapStop { meter } => {
+                if valid_meter(meter) {
+                    Ok(())
+                } else {
+                    Err("meter is not valid")
+                }
+            }
+            Op::LlmChat(ask) => ask.validate(),
             Op::VmTicket { name, .. } => {
                 if valid_display_name(name) {
                     Ok(())
@@ -610,7 +794,62 @@ impl Op {
             Op::VmOrder { .. } => ("POST", "/market/orders"),
             Op::VmTicket { .. } => ("POST", "/market/vm-images/ticket"),
             Op::VmRemove { .. } => ("POST", "/market/vm-images/remove"),
+            Op::LlmModels { .. } => ("POST", "/market/llm/models"),
+            Op::TapQuote { .. } => ("POST", "/market/taps"),
+            Op::TapConfirm { .. } => ("POST", "/market/taps/confirm"),
+            Op::TapStop { .. } => ("POST", "/market/taps/stop"),
+            Op::LlmChat(_) => ("POST", "/market/llm/chat"),
         }
+    }
+
+    /// Whether this is one of the pay-as-you-go AI routes, whose 503 means
+    /// "not right now" (a model loading, a box restarting) rather than "no
+    /// market here".
+    #[must_use]
+    pub fn is_llm(&self) -> bool {
+        matches!(
+            self,
+            Op::LlmModels { .. }
+                | Op::TapQuote { .. }
+                | Op::TapConfirm { .. }
+                | Op::TapStop { .. }
+                | Op::LlmChat(_)
+        )
+    }
+
+    /// How long the box waits for the registrar's answer, seconds.
+    #[must_use]
+    pub fn timeout_secs(&self) -> u64 {
+        match self {
+            Op::LlmChat(_) => CHAT_TIMEOUT_SECS,
+            Op::TapConfirm { .. } => CONFIRM_TIMEOUT_SECS,
+            _ => TIMEOUT_SECS,
+        }
+    }
+
+    /// The most the box reads of the registrar's answer.
+    #[must_use]
+    pub fn max_reply_bytes(&self) -> usize {
+        match self {
+            Op::LlmChat(_) => MAX_CHAT_REPLY_BYTES,
+            _ => MAX_REPLY_BYTES,
+        }
+    }
+
+    /// Read the registrar's answer to this operation; see [`classify`].
+    ///
+    /// # Errors
+    /// As [`classify`]. On an AI route a 503 that names a reason, such as a
+    /// model still loading on its boxes, is a [`Refused`] the owner can wait
+    /// out, not the market being absent.
+    pub fn classify(&self, status: u16, body: &str) -> anyhow::Result<Outcome> {
+        if status == 503 && self.is_llm() {
+            let message = public_message(body);
+            if message != UNCONFIGURED && message != "the market refused the request" {
+                return Err(Refused { status, message }.into());
+            }
+        }
+        classify(status, body)
     }
 
     /// The JSON body, credentials included, or `None` for the anonymous GET.
@@ -623,6 +862,23 @@ impl Op {
         let extra = match self {
             Op::Browse | Op::Hardware | Op::VmImages => return None,
             Op::VmStatus => json!({}),
+            Op::LlmModels { network } => match network {
+                Some(n) => json!({ "network": n }),
+                None => json!({}),
+            },
+            Op::TapQuote {
+                model,
+                network,
+                spend_per_hour,
+            } => {
+                let mut doc = json!({ "model": model, "spendPerHour": spend_per_hour });
+                if let Some(n) = network {
+                    doc["network"] = json!(n);
+                }
+                doc
+            }
+            Op::TapConfirm { meter } | Op::TapStop { meter } => json!({ "meter": meter }),
+            Op::LlmChat(ask) => ask.body(),
             Op::VmOrder {
                 listing_id,
                 quantity,
@@ -725,11 +981,18 @@ impl Op {
     }
 }
 
+/// The registrar's sentence for an edge that runs no market, or no models
+/// (`MarketError::Unconfigured` in edge/registrar/src/market.rs).
+const UNCONFIGURED: &str = "market not configured on this edge";
+
 /// An answer the owner can act on, passed through to the browser.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct Refused {
-    /// 400 or 409; never 404, which the SPA reads as "route not served".
+    /// 400 or 409; 402 or 429 from the AI routes (the balance or the hourly
+    /// limit cannot cover a request, a request already runs on the meter),
+    /// and 503 while a model loads. Never 404, which the SPA reads as
+    /// "route not served".
     pub status: u16,
     pub message: String,
 }
@@ -760,8 +1023,11 @@ pub fn classify(status: u16, body: &str) -> anyhow::Result<Outcome> {
         }
         // 503: the edge runs no market. 403: it does, but not for this box.
         403 | 503 => Ok(Outcome::Unavailable),
-        400 | 404 | 409 | 422 => Err(Refused {
-            status: if status == 409 { 409 } else { 400 },
+        400 | 402 | 404 | 409 | 422 | 429 => Err(Refused {
+            status: match status {
+                402 | 409 | 429 => status,
+                _ => 400,
+            },
             message: public_message(body),
         }
         .into()),
@@ -1156,6 +1422,264 @@ mod tests {
         };
         assert!(pay("ord_1", "btc").validate().is_ok());
         assert!(pay("../x", "btc").validate().is_err());
+    }
+
+    fn ask(meter: &str, messages: &[(&str, &str)]) -> ChatAsk {
+        ChatAsk {
+            meter: meter.to_string(),
+            messages: messages
+                .iter()
+                .map(|(r, c)| ((*r).to_string(), (*c).to_string()))
+                .collect(),
+            max_tokens: None,
+            temperature: None,
+            top_p: None,
+            stop: Vec::new(),
+        }
+    }
+
+    const METER: &str = "mtr_0a1b2c3d4e5f60718293a4b5";
+
+    #[test]
+    fn the_ai_routes_match_the_registrar() {
+        let quote = Op::TapQuote {
+            model: "llama-70b".to_string(),
+            network: Some("base".to_string()),
+            spend_per_hour: 500_000,
+        };
+        assert_eq!(
+            Op::LlmModels { network: None }.route(),
+            ("POST", "/market/llm/models")
+        );
+        assert_eq!(quote.route(), ("POST", "/market/taps"));
+        let meter = METER.to_string();
+        assert_eq!(
+            Op::TapConfirm {
+                meter: meter.clone()
+            }
+            .route(),
+            ("POST", "/market/taps/confirm")
+        );
+        assert_eq!(Op::TapStop { meter }.route(), ("POST", "/market/taps/stop"));
+        assert_eq!(
+            Op::LlmChat(ask(METER, &[("user", "hi")])).route(),
+            ("POST", "/market/llm/chat")
+        );
+    }
+
+    #[test]
+    fn ai_bodies_carry_the_credentials_in_snake_case_and_the_rest_as_the_edge_names_it() {
+        let quote = Op::TapQuote {
+            model: "llama-70b".to_string(),
+            network: Some("solana".to_string()),
+            spend_per_hour: 500_000,
+        };
+        let doc: Value = serde_json::from_str(&quote.body("box", "tok").unwrap()).unwrap();
+        assert_eq!(
+            doc,
+            json!({ "appliance_id": "box", "token": "tok", "model": "llama-70b",
+                    "network": "solana", "spendPerHour": 500_000 })
+        );
+        let doc: Value =
+            serde_json::from_str(&Op::LlmModels { network: None }.body("box", "tok").unwrap())
+                .unwrap();
+        assert_eq!(doc, json!({ "appliance_id": "box", "token": "tok" }));
+        let doc: Value = serde_json::from_str(
+            &Op::TapStop {
+                meter: METER.to_string(),
+            }
+            .body("box", "tok")
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(doc["meter"], METER);
+
+        let mut full = ask(METER, &[("system", "Be brief."), ("user", "Hello")]);
+        full.max_tokens = Some(64);
+        full.temperature = Some(0.5);
+        full.top_p = Some(0.9);
+        full.stop = vec!["\n\n".to_string()];
+        let doc: Value =
+            serde_json::from_str(&Op::LlmChat(full).body("box", "tok").unwrap()).unwrap();
+        assert_eq!(
+            doc,
+            json!({ "appliance_id": "box", "token": "tok", "meter": METER,
+                    "messages": [{ "role": "system", "content": "Be brief." },
+                                 { "role": "user", "content": "Hello" }],
+                    "maxTokens": 64, "temperature": 0.5, "topP": 0.9, "stop": ["\n\n"] })
+        );
+        // Unset settings stay unset, so the edge's defaults apply.
+        let doc: Value = serde_json::from_str(
+            &Op::LlmChat(ask(METER, &[("user", "hi")]))
+                .body("box", "tok")
+                .unwrap(),
+        )
+        .unwrap();
+        for key in ["maxTokens", "temperature", "topP", "stop"] {
+            assert!(doc.get(key).is_none(), "{key}");
+        }
+    }
+
+    #[test]
+    fn a_quote_names_a_model_and_an_hourly_limit_the_edge_takes() {
+        let quote = |model: &str, network: Option<&str>, spend| Op::TapQuote {
+            model: model.to_string(),
+            network: network.map(str::to_string),
+            spend_per_hour: spend,
+        };
+        assert!(quote("llama-70b", None, 500_000).validate().is_ok());
+        assert!(quote("qwen3-235b", Some("base"), MIN_SPEND_PER_HOUR)
+            .validate()
+            .is_ok());
+        assert!(quote("m", Some("solana"), MAX_SPEND_PER_HOUR)
+            .validate()
+            .is_ok());
+        for bad in ["", "Llama", "llama_70b", "../x", "a b", &"a".repeat(65)] {
+            assert_eq!(
+                quote(bad, None, 500_000).validate(),
+                Err("model is not a model id"),
+                "{bad:?}"
+            );
+        }
+        assert!(quote("m", None, MIN_SPEND_PER_HOUR - 1).validate().is_err());
+        assert!(quote("m", None, MAX_SPEND_PER_HOUR + 1).validate().is_err());
+        assert!(quote("m", Some("../x"), 500_000).validate().is_err());
+        assert!(Op::LlmModels {
+            network: Some("Base".to_string())
+        }
+        .validate()
+        .is_err());
+        assert!(Op::LlmModels { network: None }.validate().is_ok());
+    }
+
+    #[test]
+    fn a_meter_is_one_the_edge_made() {
+        let stop = |m: &str| Op::TapStop {
+            meter: m.to_string(),
+        };
+        assert!(stop(METER).validate().is_ok());
+        for bad in [
+            "",
+            "mtr_",
+            "ord_ab12",
+            "mtr_AB12",
+            "mtr_../x",
+            "mtr_ab 12",
+            &format!("mtr_{}", "a".repeat(49)),
+        ] {
+            assert!(stop(bad).validate().is_err(), "{bad:?}");
+            assert!(Op::TapConfirm {
+                meter: bad.to_string()
+            }
+            .validate()
+            .is_err());
+            assert!(Op::LlmChat(ask(bad, &[("user", "hi")])).validate().is_err());
+        }
+    }
+
+    #[test]
+    fn a_chat_is_held_to_the_edges_limits_before_it_leaves() {
+        let ok = |a: ChatAsk| Op::LlmChat(a).validate();
+        assert!(ok(ask(
+            METER,
+            &[("system", "s"), ("user", "u"), ("assistant", "a")]
+        ))
+        .is_ok());
+        assert_eq!(ok(ask(METER, &[])), Err("send one to 256 messages"));
+        let many: Vec<(&str, &str)> = vec![("user", "x"); MAX_CHAT_MESSAGES + 1];
+        assert!(ok(ask(METER, &many)).is_err());
+        let most: Vec<(&str, &str)> = vec![("user", "x"); MAX_CHAT_MESSAGES];
+        assert!(ok(ask(METER, &most)).is_ok());
+        assert_eq!(
+            ok(ask(METER, &[("tool", "x")])),
+            Err("a message's role is system, user or assistant")
+        );
+        let long = "x".repeat(MAX_PROMPT_BYTES / 2 + 1);
+        assert_eq!(
+            ok(ask(METER, &[("user", &long), ("user", &long)])),
+            Err("the messages are too long")
+        );
+        let exact = "x".repeat(MAX_PROMPT_BYTES);
+        assert!(ok(ask(METER, &[("user", &exact)])).is_ok());
+
+        let with = |f: &dyn Fn(&mut ChatAsk)| {
+            let mut a = ask(METER, &[("user", "hi")]);
+            f(&mut a);
+            ok(a)
+        };
+        assert!(with(&|a| a.max_tokens = Some(1)).is_ok());
+        assert!(with(&|a| a.max_tokens = Some(0)).is_err());
+        assert!(with(&|a| a.max_tokens = Some(MAX_ANSWER_TOKENS + 1)).is_err());
+        assert!(with(&|a| a.temperature = Some(2.0)).is_ok());
+        assert!(with(&|a| a.temperature = Some(2.1)).is_err());
+        assert!(with(&|a| a.temperature = Some(-0.1)).is_err());
+        assert!(with(&|a| a.temperature = Some(f64::NAN)).is_err());
+        assert!(with(&|a| a.top_p = Some(1.0)).is_ok());
+        assert!(with(&|a| a.top_p = Some(1.5)).is_err());
+        assert!(with(&|a| a.stop = vec!["a".to_string(); 4]).is_ok());
+        assert!(with(&|a| a.stop = vec!["a".to_string(); 5]).is_err());
+        assert!(with(&|a| a.stop = vec![String::new()]).is_err());
+        assert!(with(&|a| a.stop = vec!["a".repeat(65)]).is_err());
+    }
+
+    #[test]
+    fn a_model_answer_waits_minutes_and_everything_else_seconds() {
+        let chat = Op::LlmChat(ask(METER, &[("user", "hi")]));
+        // Longer than the edge's own 16 minutes, so its reason arrives.
+        assert!(chat.timeout_secs() > 16 * 60);
+        assert!(chat.max_reply_bytes() > 4 * 1024 * 1024);
+        assert_eq!(Op::Account.timeout_secs(), 25);
+        assert!(
+            Op::TapConfirm {
+                meter: METER.to_string()
+            }
+            .timeout_secs()
+                > 20
+        );
+        assert_eq!(Op::Account.max_reply_bytes(), 1024 * 1024);
+    }
+
+    #[test]
+    fn the_ai_refusals_reach_the_owner_with_their_status() {
+        let chat = Op::LlmChat(ask(METER, &[("user", "hi")]));
+        let refused = |op: &Op, status, body: &str| {
+            let e = op.classify(status, body).unwrap_err();
+            let r = e.downcast_ref::<Refused>().expect("a refusal").clone();
+            (r.status, r.message)
+        };
+        assert_eq!(
+            refused(&chat, 402, "the balance cannot cover this request"),
+            (402, "the balance cannot cover this request".to_string())
+        );
+        assert_eq!(
+            refused(&chat, 429, "a request is already running on this meter"),
+            (
+                429,
+                "a request is already running on this meter".to_string()
+            )
+        );
+        // A model loading is "not yet", not "no market here".
+        assert_eq!(
+            refused(&chat, 503, "the model is still loading on its boxes"),
+            (503, "the model is still loading on its boxes".to_string())
+        );
+        assert_eq!(refused(&chat, 409, "this meter is not open").0, 409);
+        // An edge with no models, or no market, is still unavailable.
+        let models = Op::LlmModels { network: None };
+        assert_eq!(
+            models
+                .classify(503, "market not configured on this edge")
+                .unwrap(),
+            Outcome::Unavailable
+        );
+        assert_eq!(models.classify(403, "").unwrap(), Outcome::Unavailable);
+        // The other routes keep reading a 503 as no market.
+        assert_eq!(
+            Op::Account
+                .classify(503, "the model is still loading")
+                .unwrap(),
+            Outcome::Unavailable
+        );
     }
 
     #[test]

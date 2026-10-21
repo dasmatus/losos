@@ -531,6 +531,18 @@ in
               proxy_send_timeout 6h;
             '';
           };
+          # An answer from a model split across boxes takes minutes; lososd
+          # gives the edge 17 of them.
+          "= /api/market/llm/chat" = {
+            proxyPass = "http://127.0.0.1:${toString adminApiPort}";
+            extraConfig = ''
+              ${lanOnly}
+              proxy_set_header X-Real-IP $remote_addr;
+              ${notTheEdge}
+              proxy_read_timeout 1200s;
+              proxy_send_timeout 1200s;
+            '';
+          };
         })
         {
           # A company edge's manage page (manage/index.html, src/manage/)

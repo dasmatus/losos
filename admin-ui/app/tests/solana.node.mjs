@@ -216,6 +216,127 @@ await check('escrow pay refuses a fee over the gross or a short nonce', () => {
   assert.throws(() => sol.escrowPayMessage({ ...escrowPay(), orderIdHash: '0x12' }), /order id hash/);
 });
 
+/* A compiled message read back: keys and instructions with their account
+ * keys and data. Every count here is under 128, one byte of compact-u16. */
+function parseMessage(msg) {
+  const header = [...msg.subarray(0, 3)];
+  const n = msg[3];
+  const keys = Array.from({ length: n }, (_, i) => base58.encode(msg.subarray(4 + 32 * i, 36 + 32 * i)));
+  let at = 4 + 32 * n + 32;
+  const count = msg[at++];
+  const ixs = [];
+  for (let k = 0; k < count; k++) {
+    const program = keys[msg[at++]];
+    const m = msg[at++];
+    const accounts = [...msg.subarray(at, at + m)].map((x) => keys[x]);
+    at += m;
+    const len = msg[at++];
+    ixs.push({ program, accounts, data: msg.subarray(at, at + len) });
+    at += len;
+  }
+  assert.equal(at, msg.length, 'trailing bytes');
+  return { header, keys, ixs };
+}
+
+await check('balance and tap addresses match the edge', () => {
+  // edge/registrar/src/solana_escrow.rs, `tap_addresses_match_the_runtime`.
+  const config = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM';
+  assert.equal(sol.escrowTapAddress(ESCROW, config, new Uint8Array(32).fill(4)), 'G9CdbL4qdgvEVgELDpCq2aZRmqA8JAPx9j2cXSTG6ueh');
+  assert.equal(sol.escrowBalanceAddress(ESCROW, config, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'), '4p1yaXiRqaKiAUnnaeZStCXtG4krcWCnTnddBvDdXTHx');
+});
+
+function escrowTaps(taps, topUp = 4_000_000n) {
+  return {
+    payer: buyer.address,
+    program: ESCROW,
+    mint: USDC_DEVNET,
+    treasury: freshOwner(),
+    topUp,
+    feeBps: 400,
+    taps: Array.from({ length: taps }, (_, i) => ({ key: memo(), seller: freshOwner(), rate: BigInt(100_000 + i) })),
+    recentBlockhash: sol.formatBase58(new Uint8Array(32).fill(9)),
+  };
+}
+
+await check('taps layout: top_up, then one open_tap per box with its id, rate and fee, in one packet', () => {
+  const p = escrowTaps(sol.TAPS_PER_TRANSACTION);
+  const msg = sol.escrowTapsMessage(p);
+  const { header, keys, ixs } = parseMessage(msg);
+  assert.deepEqual(header.slice(0, 2), [1, 0], 'the buyer signs alone');
+  assert.equal(keys[0], buyer.address);
+  const config = sol.escrowConfigAddress(ESCROW, p.treasury, p.mint);
+  const balance = sol.escrowBalanceAddress(ESCROW, config, p.payer);
+  assert.equal(ixs.length, 1 + p.taps.length);
+  const [top, ...opens] = ixs;
+  assert.equal(top.program, ESCROW);
+  assert.deepEqual(top.accounts, [
+    buyer.address,
+    sol.associatedTokenAddress(buyer.address, p.mint),
+    config,
+    balance,
+    sol.escrowVaultAddress(ESCROW, balance),
+    p.mint,
+    sol.TOKEN_PROGRAM,
+    sol.SYSTEM_PROGRAM,
+  ]);
+  assert.equal(top.data.length, 9);
+  assert.equal(top.data[0], 6);
+  assert.equal(new DataView(top.data.buffer, top.data.byteOffset).getBigUint64(1, true), p.topUp);
+  opens.forEach((ix, i) => {
+    const tap = p.taps[i];
+    const id = Buffer.from(tap.key.slice(2), 'hex');
+    assert.equal(ix.program, ESCROW);
+    assert.deepEqual(ix.accounts, [buyer.address, config, balance, sol.escrowTapAddress(ESCROW, config, new Uint8Array(id)), tap.seller, sol.SYSTEM_PROGRAM]);
+    assert.equal(ix.data.length, 43);
+    assert.equal(ix.data[0], 7);
+    assert.deepEqual(Buffer.from(ix.data.subarray(1, 33)), id);
+    const view = new DataView(ix.data.buffer, ix.data.byteOffset);
+    assert.equal(view.getBigUint64(33, true), tap.rate);
+    assert.equal(view.getUint16(41, true), 400);
+  });
+  // The balance is only read by open_tap, and written by top_up.
+  const writable = keys.length - header[2];
+  assert.ok(keys.indexOf(balance) < writable, 'the balance is not writable');
+  const { wire } = sol.signTransaction(buyer, msg);
+  assert.ok(base64.decode(wire).length <= 1232, `${base64.decode(wire).length} bytes is over a packet`);
+});
+
+await check('taps without a top-up open the taps alone; too many, none or a zero rate is refused', () => {
+  const { ixs } = parseMessage(sol.escrowTapsMessage(escrowTaps(2, 0n)));
+  assert.deepEqual(ixs.map((ix) => ix.data[0]), [7, 7]);
+  assert.throws(() => sol.escrowTapsMessage(escrowTaps(sol.TAPS_PER_TRANSACTION + 1)), /taps/);
+  assert.throws(() => sol.escrowTapsMessage(escrowTaps(0)), /taps/);
+  const zero = escrowTaps(1);
+  zero.taps[0].rate = 0n;
+  assert.throws(() => sol.escrowTapsMessage(zero), /rate/);
+});
+
+await check('ask_withdrawal and withdraw: the buyer, the config and the balance, then the vault back to the buyer', () => {
+  const w = { payer: buyer.address, program: ESCROW, mint: USDC_DEVNET, treasury: freshOwner(), recentBlockhash: sol.formatBase58(new Uint8Array(32).fill(9)) };
+  const config = sol.escrowConfigAddress(ESCROW, w.treasury, w.mint);
+  const balance = sol.escrowBalanceAddress(ESCROW, config, w.payer);
+  const ask = parseMessage(sol.escrowAskMessage({ ...w, amount: 2_500_000n }));
+  assert.equal(ask.ixs.length, 1);
+  assert.deepEqual(ask.ixs[0].accounts, [buyer.address, config, balance]);
+  assert.equal(ask.ixs[0].data[0], 10);
+  assert.equal(new DataView(ask.ixs[0].data.buffer, ask.ixs[0].data.byteOffset).getBigUint64(1, true), 2_500_000n);
+  assert.throws(() => sol.escrowAskMessage({ ...w, amount: 0n }), /amount/);
+  const take = parseMessage(sol.escrowWithdrawMessage(w));
+  assert.equal(take.ixs.length, 2, 'the token account is opened first if it is gone');
+  assert.equal(take.ixs[0].program, sol.ATA_PROGRAM);
+  assert.equal(take.ixs[1].program, ESCROW);
+  assert.deepEqual(take.ixs[1].accounts, [
+    buyer.address,
+    config,
+    balance,
+    sol.escrowVaultAddress(ESCROW, balance),
+    sol.associatedTokenAddress(buyer.address, w.mint),
+    w.mint,
+    sol.TOKEN_PROGRAM,
+  ]);
+  assert.deepEqual([...take.ixs[1].data], [11]);
+});
+
 const RPC = process.env.LOSOS_SOLANA_RPC;
 if (RPC === undefined || RPC === '') {
   console.log('  skip live payment (LOSOS_SOLANA_RPC is not set)');
