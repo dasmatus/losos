@@ -806,9 +806,7 @@ let
   # Payments wait in an escrow (LososEscrow on EVM, losos-escrow on Solana)
   # until the registrar releases them with this key. A Solana network with no
   # `pay` is a direct transfer and needs none.
-  releaserOn =
-    usdcOn
-    && lib.any (n: n.pay != null) (lib.attrValues usdcNetworks);
+  releaserOn = usdcOn && lib.any (n: n.pay != null) (lib.attrValues usdcNetworks);
   usdcServeArgs =
     lib.optionals usdcOn (
       lib.concatLists (
@@ -1143,8 +1141,7 @@ in
             if lib.hasPrefix "solana" name then
               builtins.match "[1-9A-HJ-NP-Za-km-z]{32,44}" n.treasury != null
               && (
-                n.pay == null
-                || (builtins.match "[1-9A-HJ-NP-Za-km-z]{32,44}" n.pay != null && n.pay != n.treasury)
+                n.pay == null || (builtins.match "[1-9A-HJ-NP-Za-km-z]{32,44}" n.pay != null && n.pay != n.treasury)
               )
             else
               n.pay != null

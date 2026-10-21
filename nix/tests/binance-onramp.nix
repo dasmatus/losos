@@ -93,151 +93,154 @@ let
       '';
 
   # Binance Connect and the Base RPC, in stand-in, on the edge's loopback.
-  standIns = pkgs.writers.writePython3 "losos-binance-stand-in" {
-    libraries = [ pkgs.python3Packages.cryptography ];
-    flakeIgnore = [ "E501" ];
-  } ''
-    import base64
-    import json
-    import ssl
-    import threading
-    import time
-    import urllib.error
-    import urllib.request
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+  standIns =
+    pkgs.writers.writePython3 "losos-binance-stand-in"
+      {
+        libraries = [ pkgs.python3Packages.cryptography ];
+        flakeIgnore = [ "E501" ];
+      }
+      ''
+        import base64
+        import json
+        import ssl
+        import threading
+        import time
+        import urllib.error
+        import urllib.request
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-    from cryptography.exceptions import InvalidSignature
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.exceptions import InvalidSignature
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding
 
-    FIX = "${fixture}"
-    CLIENT = "${clientId}"
-    TOKEN = "${accessToken}"
-    PRE_ORDER = "/papi/v1/ramp/connect/buy/pre-order"
-    ORDER = "/papi/v1/ramp/connect/order"
-    TX = "0x" + "ab" * 32
-
-
-    def key(name, private):
-        data = open(f"{FIX}/{name}", "rb").read()
-        if private:
-            return serialization.load_pem_private_key(data, None)
-        return serialization.load_pem_public_key(data)
+        FIX = "${fixture}"
+        CLIENT = "${clientId}"
+        TOKEN = "${accessToken}"
+        PRE_ORDER = "/papi/v1/ramp/connect/buy/pre-order"
+        ORDER = "/papi/v1/ramp/connect/order"
+        TX = "0x" + "ab" * 32
 
 
-    PARTNER = key("partner.pub.pem", False)
-    SIGNERS = {"binance": key("binance.pem", True), "forger": key("forger.pem", True)}
-    ORDERS, CALLS = {}, []
-    BALANCE = [0]
+        def key(name, private):
+            data = open(f"{FIX}/{name}", "rb").read()
+            if private:
+                return serialization.load_pem_private_key(data, None)
+            return serialization.load_pem_public_key(data)
 
 
-    class Handler(BaseHTTPRequestHandler):
-        def reply(self, doc, code=200):
-            data = json.dumps(doc).encode()
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-
-        def body(self):
-            return self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        PARTNER = key("partner.pub.pem", False)
+        SIGNERS = {"binance": key("binance.pem", True), "forger": key("forger.pem", True)}
+        ORDERS, CALLS = {}, []
+        BALANCE = [0]
 
 
-    class Binance(Handler):
-        def do_GET(self):
-            self.reply({"calls": CALLS, "orders": ORDERS})
+        class Handler(BaseHTTPRequestHandler):
+            def reply(self, doc, code=200):
+                data = json.dumps(doc).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
 
-        def signed(self, body):
-            h = self.headers
-            if h.get("X-Tesla-ClientId") != CLIENT or h.get("X-Tesla-SignAccessToken") != TOKEN:
-                return False
-            ts = h.get("X-Tesla-Timestamp", "")
-            if not ts.isdigit() or abs(time.time() * 1000 - int(ts)) > 60_000:
-                return False
+            def body(self):
+                return self.rfile.read(int(self.headers.get("Content-Length", 0)))
+
+
+        class Binance(Handler):
+            def do_GET(self):
+                self.reply({"calls": CALLS, "orders": ORDERS})
+
+            def signed(self, body):
+                h = self.headers
+                if h.get("X-Tesla-ClientId") != CLIENT or h.get("X-Tesla-SignAccessToken") != TOKEN:
+                    return False
+                ts = h.get("X-Tesla-Timestamp", "")
+                if not ts.isdigit() or abs(time.time() * 1000 - int(ts)) > 60_000:
+                    return False
+                try:
+                    PARTNER.verify(base64.b64decode(h.get("X-Tesla-Signature", "")),
+                                   body + ts.encode(), padding.PKCS1v15(), hashes.SHA256())
+                except (InvalidSignature, ValueError):
+                    return False
+                return True
+
+            def do_POST(self):
+                body = self.body()
+                if self.path == "/test/complete":
+                    return self.reply(complete(**json.loads(body)))
+                ok = self.signed(body)
+                doc = json.loads(body)
+                CALLS.append({"path": self.path, "signed": ok, "body": doc})
+                if not ok:
+                    return self.reply({"success": False, "code": "100001", "message": "signature does not verify"})
+                oid = doc.get("externalOrderId", "")
+                if self.path == PRE_ORDER:
+                    ORDERS[oid] = {"externalOrderId": oid, "status": 0,
+                                   "fiatAmount": doc["requestedAmount"],
+                                   "withdrawWalletAddress": doc["address"]}
+                    return self.reply({"success": True, "data": {
+                        "link": f"https://app.binance.com/en/pre-connect?orderId={oid}",
+                        "linkExpireTime": int(time.time() * 1000) + 3_600_000}})
+                if self.path == ORDER and oid in ORDERS:
+                    return self.reply({"success": True, "data": ORDERS[oid]})
+                self.reply({"success": False, "code": "404", "message": "no such order"})
+
+
+        def complete(order, signer):
+            """Binance takes the payment, withdraws 24.61 USDC and says so."""
+            event = dict(ORDERS[order], webhookEventType="connect_order_event",
+                         status=20, cryptoAmount="24.61", withdrawTxHash=TX)
+            body = json.dumps(event).encode()
+            ts = str(int(time.time() * 1000))
+            sig = SIGNERS[signer].sign(body + ts.encode(), padding.PKCS1v15(), hashes.SHA256())
+            request = urllib.request.Request(
+                "https://${edgeName}:8444/market/onramp/webhook", data=body, method="POST",
+                headers={"Content-Type": "application/json",
+                         "X-BN-Connect-For": CLIENT, "X-BN-Connect-Timestamp": ts,
+                         "X-BN-Connect-Signature": base64.b64encode(sig).decode()})
+            context = ssl.create_default_context(cafile=f"{FIX}/ca.pem")
             try:
-                PARTNER.verify(base64.b64decode(h.get("X-Tesla-Signature", "")),
-                               body + ts.encode(), padding.PKCS1v15(), hashes.SHA256())
-            except (InvalidSignature, ValueError):
-                return False
-            return True
-
-        def do_POST(self):
-            body = self.body()
-            if self.path == "/test/complete":
-                return self.reply(complete(**json.loads(body)))
-            ok = self.signed(body)
-            doc = json.loads(body)
-            CALLS.append({"path": self.path, "signed": ok, "body": doc})
-            if not ok:
-                return self.reply({"success": False, "code": "100001", "message": "signature does not verify"})
-            oid = doc.get("externalOrderId", "")
-            if self.path == PRE_ORDER:
-                ORDERS[oid] = {"externalOrderId": oid, "status": 0,
-                               "fiatAmount": doc["requestedAmount"],
-                               "withdrawWalletAddress": doc["address"]}
-                return self.reply({"success": True, "data": {
-                    "link": f"https://app.binance.com/en/pre-connect?orderId={oid}",
-                    "linkExpireTime": int(time.time() * 1000) + 3_600_000}})
-            if self.path == ORDER and oid in ORDERS:
-                return self.reply({"success": True, "data": ORDERS[oid]})
-            self.reply({"success": False, "code": "404", "message": "no such order"})
+                with urllib.request.urlopen(request, context=context) as r:
+                    code, answer = r.status, r.read().decode()
+            except urllib.error.HTTPError as e:
+                code, answer = e.code, e.read().decode()
+            if signer == "binance":
+                ORDERS[order].update(event)
+                BALANCE[0] += 24_610_000
+            return {"status": code, "answer": answer}
 
 
-    def complete(order, signer):
-        """Binance takes the payment, withdraws 24.61 USDC and says so."""
-        event = dict(ORDERS[order], webhookEventType="connect_order_event",
-                     status=20, cryptoAmount="24.61", withdrawTxHash=TX)
-        body = json.dumps(event).encode()
-        ts = str(int(time.time() * 1000))
-        sig = SIGNERS[signer].sign(body + ts.encode(), padding.PKCS1v15(), hashes.SHA256())
-        request = urllib.request.Request(
-            "https://${edgeName}:8444/market/onramp/webhook", data=body, method="POST",
-            headers={"Content-Type": "application/json",
-                     "X-BN-Connect-For": CLIENT, "X-BN-Connect-Timestamp": ts,
-                     "X-BN-Connect-Signature": base64.b64encode(sig).decode()})
-        context = ssl.create_default_context(cafile=f"{FIX}/ca.pem")
-        try:
-            with urllib.request.urlopen(request, context=context) as r:
-                code, answer = r.status, r.read().decode()
-        except urllib.error.HTTPError as e:
-            code, answer = e.code, e.read().decode()
-        if signer == "binance":
-            ORDERS[order].update(event)
-            BALANCE[0] += 24_610_000
-        return {"status": code, "answer": answer}
+        class Rpc(Handler):
+            """Base mainnet for the wallet: its chain, gas and USDC balance."""
+
+            def do_POST(self):
+                call = json.loads(self.body())
+                method = call.get("method")
+                word = "0x" + "0" * 64
+                result = {
+                    "eth_chainId": "0x2105",
+                    "eth_blockNumber": "0x1000",
+                    "eth_gasPrice": "0x3b9aca00",
+                    "eth_getBalance": "0x0",
+                    "eth_getCode": "0x",
+                    "eth_getTransactionCount": "0x0",
+                    "eth_feeHistory": {"oldestBlock": "0xff7", "baseFeePerGas": ["0x3b9aca00"] * 11,
+                                       "gasUsedRatio": [0.5] * 10, "reward": [["0x0"]] * 10},
+                }.get(method)
+                if method == "eth_call":
+                    data = call["params"][0].get("data", "")
+                    result = "0x%064x" % BALANCE[0] if data.startswith("0x70a08231") else word
+                if result is None:
+                    return self.reply({"jsonrpc": "2.0", "id": call.get("id"),
+                                       "error": {"code": -32601, "message": "not here"}})
+                self.reply({"jsonrpc": "2.0", "id": call.get("id"), "result": result})
 
 
-    class Rpc(Handler):
-        """Base mainnet for the wallet: its chain, gas and USDC balance."""
-
-        def do_POST(self):
-            call = json.loads(self.body())
-            method = call.get("method")
-            word = "0x" + "0" * 64
-            result = {
-                "eth_chainId": "0x2105",
-                "eth_blockNumber": "0x1000",
-                "eth_gasPrice": "0x3b9aca00",
-                "eth_getBalance": "0x0",
-                "eth_getCode": "0x",
-                "eth_getTransactionCount": "0x0",
-                "eth_feeHistory": {"oldestBlock": "0xff7", "baseFeePerGas": ["0x3b9aca00"] * 11,
-                                   "gasUsedRatio": [0.5] * 10, "reward": [["0x0"]] * 10},
-            }.get(method)
-            if method == "eth_call":
-                data = call["params"][0].get("data", "")
-                result = "0x%064x" % BALANCE[0] if data.startswith("0x70a08231") else word
-            if result is None:
-                return self.reply({"jsonrpc": "2.0", "id": call.get("id"),
-                                   "error": {"code": -32601, "message": "not here"}})
-            self.reply({"jsonrpc": "2.0", "id": call.get("id"), "result": result})
-
-
-    rpc = ThreadingHTTPServer(("127.0.0.1", 8545), Rpc)
-    threading.Thread(target=rpc.serve_forever, daemon=True).start()
-    ThreadingHTTPServer(("127.0.0.1", 9100), Binance).serve_forever()
-  '';
+        rpc = ThreadingHTTPServer(("127.0.0.1", 8545), Rpc)
+        threading.Thread(target=rpc.serve_forever, daemon=True).start()
+        ThreadingHTTPServer(("127.0.0.1", 9100), Binance).serve_forever()
+      '';
 
   standIn =
     name:
