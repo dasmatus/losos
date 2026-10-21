@@ -240,6 +240,18 @@ fn merge_env(into: &mut Map<String, Value>, extra: Map<String, Value>) {
     }
 }
 
+/// A Compose document whose strings Compose takes as they are. podman-compose
+/// fills in `$NAME` from its own environment, so an action's `$PWD` became
+/// the runner's folder and a secret holding `$` lost part of itself.
+fn literal(v: Value) -> Value {
+    match v {
+        Value::String(s) => Value::String(s.replace('$', "$$")),
+        Value::Array(a) => Value::Array(a.into_iter().map(literal).collect()),
+        Value::Object(o) => Value::Object(o.into_iter().map(|(k, v)| (k, literal(v))).collect()),
+        v => v,
+    }
+}
+
 /// `'s'`, for sh.
 fn quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
@@ -355,7 +367,7 @@ impl Pm {
             actions: 0,
             pending: None,
         };
-        let compose = me.job_compose(image, container, services, log);
+        let compose = literal(me.job_compose(image, container, services, log));
         let file = me.files.join(format!("{}.yml", me.name));
         std::fs::write(&file, serde_json::to_vec_pretty(&compose)?)?;
         let mut up = me.tool.container(&["up"]);
@@ -756,11 +768,11 @@ impl Sandbox for Pm {
             "logging".into(),
             json!({ "driver": "k8s-file", "options": { "path": log_file } }),
         );
-        let compose = json!({
+        let compose = literal(json!({
             "name": container,
             "x-podman": { "in_pod": false },
             "services": { "action": svc },
-        });
+        }));
         let file = self.files.join(format!("{container}.action.yml"));
         std::fs::write(&file, serde_json::to_vec_pretty(&compose)?)?;
 
@@ -934,6 +946,19 @@ fn archives(dir: &Path) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compose_takes_dollars_as_they_are() {
+        let v = literal(json!({
+            "services": { "action": {
+                "command": ["-c", "echo in $PWD"],
+                "environment": { "TOKEN": "a$b", "N": 3 },
+            }},
+        }));
+        assert_eq!(v["services"]["action"]["command"][1], "echo in $$PWD");
+        assert_eq!(v["services"]["action"]["environment"]["TOKEN"], "a$$b");
+        assert_eq!(v["services"]["action"]["environment"]["N"], 3);
+    }
     use std::collections::BTreeMap;
 
     fn pm(root: &Path) -> Pm {
