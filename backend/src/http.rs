@@ -3621,28 +3621,10 @@ async fn plugin_route(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -
     )
 }
 
-// ── The sidebar's pins ────────────────────────────────────────────────────
-// What the owner pinned to the sidebar, and the two lists the picker pins
-// from, LosOS cloud's files and LosOS Git's repositories (`crate::pins`).
-// HTTP-only like the look.
-
-/// `GET /api/pins`.
-async fn get_pins(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/pins", false, || {
-        run(&api, crate::pins::cmd_pins)
-    })
-}
-
-/// `PUT /api/pins` — the whole list, in order.
-async fn put_pins(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
-    guarded(&api, &req, "/api/pins", true, || {
-        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
-        match crate::pins::parse_pins(&doc) {
-            Ok(pins) => run(&api, |b| crate::pins::cmd_put_pins(b, &pins)),
-            Err(e) => error_response(e),
-        }
-    })
-}
+// ── The pin picker ────────────────────────────────────────────────────────
+// The two lists the sidebar's picker pins from, LosOS cloud's files and
+// LosOS Git's repositories (`crate::pins`). The pins themselves are the
+// pins plugin's (`plugins/pins/`).
 
 /// `GET /api/cloud/files?path=/...` — one folder of LosOS cloud, or with
 /// `q=...` the files and folders anywhere whose name holds the text. The
@@ -4332,8 +4314,6 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/site", web::post().to(post_site))
                 .route("/api/config", web::get().to(get_config))
                 .route("/api/config/sync", web::post().to(post_config_sync))
-                .route("/api/pins", web::get().to(get_pins))
-                .route("/api/pins", web::put().to(put_pins))
                 .route("/api/cloud/files", web::get().to(get_cloud_files))
                 .route("/api/git/repos", web::get().to(get_git_repos))
                 // The web UI's side of terminal access (crate::access):

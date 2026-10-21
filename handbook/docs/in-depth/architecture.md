@@ -167,8 +167,8 @@ and a deadline, so a plugin that loops or panics costs one 500 and nothing
 else. lososd loads plugins only from `losos.backend.plugins`, a directory in
 the Nix store (`.#losos-plugins`), and refuses to start if the directory or
 any file in it is outside the store, writable or not root's, or on a
-read-write mount. The look (background picture and widgets) is the first
-plugin; `nix/tests/plugins.nix` boots it.
+read-write mount. The look (background picture and widgets) and the
+sidebar's pins are plugins so far; `nix/tests/plugins.nix` boots them.
 
 `losos-ctl` is a thin facade CLI. It keeps the old subcommands and JSON
 output (`state`, `change --mode`, `status`, `settings`, `apply` (stdin),

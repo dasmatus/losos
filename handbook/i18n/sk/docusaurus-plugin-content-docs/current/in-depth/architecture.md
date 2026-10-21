@@ -170,8 +170,8 @@ stojí jednu odpoveď 500 a nič viac. lososd načítava pluginy len z
 `losos.backend.plugins`, adresára v úložisku Nix (`.#losos-plugins`), a
 odmietne sa spustiť, ak je adresár alebo ktorýkoľvek súbor v ňom mimo
 úložiska, zapisovateľný, nepatrí rootovi alebo leží na pripojení na čítanie
-aj zápis. Vzhľad (obrázok pozadia a widgety) je prvý plugin;
-`nix/tests/plugins.nix` ho bootuje.
+aj zápis. Zatiaľ sú pluginmi vzhľad (obrázok pozadia a widgety) a
+pripnuté položky bočného panela; `nix/tests/plugins.nix` ich bootuje.
 
 `losos-ctl` je tenké fasádne CLI. Zachováva staré podpríkazy a JSON výstup
 (`state`, `change --mode`, `status`, `settings`, `apply` (stdin),
