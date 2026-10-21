@@ -13,6 +13,7 @@ host's imports.
 | `sdk/` | `losos-plugin`, the Rust side of the contract as plain functions. |
 | `widget/` | `losos-widget`, hand-written widget files, shared by the look plugin and lososd's builder. |
 | `look/` | The look: background picture and hand-written widgets (`/api/look*`). |
+| `pins/` | What the owner pinned to the sidebar (`/api/pins`). |
 | `probe/` | A test plugin that tries every import and misbehaves on request. Never shipped. |
 | `../src/plugin/` | The host: loading, trust, manifests, the imports, limits. |
 

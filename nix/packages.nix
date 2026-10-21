@@ -279,7 +279,7 @@ let
       inherit pname;
       version = "0.1.0";
       src = lib.cleanSource ./../backend/plugins;
-      cargoHash = "sha256-VxDfZSbTviD/jZmA+NCD0jvQdZMKuefs4724oojTb4Y=";
+      cargoHash = "sha256-fcpiT9khX0BTrd7/p3t/cvzSv7tEpkv55eRK6oQW0OY=";
       nativeBuildInputs = [
         pkgs.wasm-tools
         pkgs.lld
