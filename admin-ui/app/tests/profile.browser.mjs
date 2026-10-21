@@ -325,7 +325,8 @@ await check('colour, pronouns and the line are previewed, then sent in one reque
   await page.getByTestId('profile-save').click();
   await page.locator('[data-testid="profile-save"][disabled]').waitFor();
   assert.deepEqual(sent.at(-1).body, { pronouns: 'she/her', about: 'Keeps the family photos in order.', accent: 'rose' });
-  assert.equal(await page.getByTestId('signed-in-avatar').getAttribute('data-accent'), 'rose');
+  // The top bar follows once the box's /api/me answers again, after the save.
+  await page.locator('[data-testid=signed-in-avatar][data-accent=rose]').waitFor();
   await context.close();
 });
 
