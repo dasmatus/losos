@@ -314,7 +314,7 @@ await check('a file that is not a picture lososd takes is refused before it is s
   const { page, writes } = await open({ path: '/settings/look' });
   await page.getByRole('radiogroup', { name: 'Background' }).waitFor();
   await page.getByTestId('background-file').setInputFiles({ name: 'wall.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg/>') });
-  await page.getByText(/not a picture this box takes/).waitFor();
+  await page.getByText(/not a picture this box takes/).first().waitFor();
   assert.deepEqual(writes, []);
   await page.close();
 });
