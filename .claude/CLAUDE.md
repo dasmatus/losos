@@ -34,13 +34,14 @@ npm run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
 ```
 
-Nine Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
+Ten Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
 (the terminal envelope, its own workspace, a path dependency of lososd, the
-registrar and the client), `edge/registrar/`, `edge/vercel/` (outside the
+registrar and the client), `backend/plugins` (lososd's WebAssembly plugins,
+their SDK and WIT, its own workspace, linted for the host and wasm32), `edge/registrar/`, `edge/vercel/` (outside the
 flake), the terminal client `admin-ui/tui`, and the Lab's `admin-ui/lab/core`,
 `admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32), and
 the Solana escrow program `edge/contracts/solana` (`cargo build-sbf`, outside
-the flake). All nine must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
+the flake). All ten must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
 hooks, `lint` and CI each check it. Bevy is a wasm32-only dependency of
 `render`, so `lint-wasm` and CI's `clippy-wasm` lint its WebGL2 and WebGPU
 builds too, one after the other. `nix develop` is a toolchain-only shell for people without devenv.
@@ -81,6 +82,17 @@ and is never served or built by nix.
   D-Bus; `losos-ctl install` is local. Commands are written against the
   `Losos` trait (`io_backend` real, `fake` in memory); the installer's plan
   is data, so step order is unit-tested. Wire contract: `backend/schema.json`.
+- `backend/plugins/` + `backend/src/plugin/`: lososd's work moves into
+  WebAssembly components (Wasmtime, contract `backend/plugins/wit/plugin.wit`,
+  SDK `losos-plugin`), built for wasm32-unknown-unknown and wrapped by
+  `wasm-tools component new` (`.#losos-plugins`). No WASI: every file,
+  program, unit and HTTP call is a host import checked against the plugin's
+  manifest. lososd loads them only from `losos.backend.plugins` in the
+  read-only store and refuses to start on anything else. New lososd routes
+  go in a plugin, each with its `sections.json` line; sign-in, sections and
+  D-Bus stay in the host. The look is the first; `nix/tests/plugins.nix`
+  boots it with a browser that takes the PR's screenshots
+  (`nix/tests/screens/`, reusable by any VM test).
 - `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
   is the front nginx vhost's root (`try_files … /index.html`), `/api/*` is
   proxied to lososd. Palette in `src/styles/tokens.css`.
@@ -171,12 +183,20 @@ and is never served or built by nix.
   Nextcloud and Forgejo run as hostNetwork pods in the box's own k3s server;
   `services.rke2` (agent) joins the edge's mesh. Nginx is the only public
   listener: `<host>.local/nextcloud`, `/forgejo`, admin SPA on `/`.
-- `apps.nix` + `backend/src/apps.rs`: Helm charts from the Apps pane's
-  search, installed into the box's own k3s by `losos-app-<name>` transient
-  units. The `losos-shape` post-renderer (`losos-app-shape`) puts every pod
-  on the host network as `notshared` or `shared` without root, turns claims
-  into folders in that user's data domain and refuses a chart that needs
-  more; nginx forwards a port of `losos.apps.ports` to it, LAN only.
+- `apps.nix` + `backend/src/apps.rs` + `backend/src/compose.rs`: the run-as
+  user picks the runtime. `notshared` apps (a chart from the Apps pane's
+  search, a Compose file in the LosOS app format from `POST
+  /api/apps/compose`, the box's own `losos.apps.builtin`) run on rootless
+  Podman Compose as `notshared`, `losos-podman-app@<name>`, no cluster
+  needed; `compose.rs` turns `helm template` output into Compose and
+  refuses privileges. Each one's Compose file is committed, as `notshared`,
+  to that user's own Git repo `/var/lib/losos-podman/notshared/apps`, apart
+  from `/etc/nixos`. `shared` apps are Helm releases in the box's own k3s,
+  only where that cluster runs. `losos-app-<name>` transient units do the
+  work; the `losos-shape` rules (`losos-app-shape`) put every pod on the
+  host network without root, turn claims into folders in that user's data
+  domain and refuse a chart that needs more; nginx forwards a port of
+  `losos.apps.ports` to it, LAN only. `nix/tests/podman-apps.nix` boots it.
 - `search.nix` + `backend/src/textsearch/` (`losos-search`): text inside
   files for the palette. A timer pass keeps an SQLite FTS5 index of the
   owner's cloud files in `/var/lib/losos-search` as `nextcloud` (only what
@@ -577,7 +597,7 @@ quotes (it used to cut inside them, which mangled the default
 
 **Workloads and the single front door** (`modules/containers.nix` +
 `modules/workloads.nix` + `modules/cluster.nix` + `modules/nextcloud-common.nix`):
-rootless Podman is gone, and so is systemd-nspawn. Nextcloud and Forgejo run as
+systemd-nspawn is gone. Nextcloud and Forgejo run as
 **Kubernetes workloads in the box's own local k3s cluster** when their
 `losos.<svc>.mode == "container"`; the shared Nextcloud truth still lives in
 `nextcloud-common.nix` so host-native and workload mode can't drift. Nginx is

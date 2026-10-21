@@ -568,7 +568,29 @@
         },
         "domains": {
           "type": "array",
-          "description": "This box's claims, each {domain, status: live|waiting, txt_name, txt_value (null until eligible), txt_found, points_here, problem: null|stripeAccount|txtMissing|txtWrong|notPointing|takenElsewhere|lookupFailed, checked_at, verified_at}."
+          "description": "This box's claims, each {domain, status: live|waiting, txt_name, txt_value (null until eligible), txt_found, points_here, problem: null|stripeAccount|txtMissing|txtWrong|notPointing|takenElsewhere|lookupFailed, checked_at, verified_at, wallet: null|found|unsigned|cname|other|missing}. `wallet` is what the edge last saw of the wallet record at the domain itself, while a wallet is bound."
+        },
+        "box": {
+          "type": "string",
+          "description": "This box's id on the edge, as the wallet binding message names it."
+        },
+        "zone": {
+          "type": "string",
+          "description": "The edge's DNS zone, as the wallet binding message names it."
+        },
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "This box's names in the edge's zone: its hostname when that lies inside the zone, and `target` once eligible. They carry the wallet record while a wallet is bound."
+        },
+        "wallet": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "The wallet bound to this box's names: {address, bound_at, record, published, published_at}, where `record` is the TXT value (`ENS1 dnsname.ens.eth 0x…`) the edge publishes at `names` and the owner may add at a domain of their own, and `published` maps each name to what public DNS showed of it when the edge last looked (`found`, `unsigned`, `other`, `missing`; a name not looked up yet is absent), at `published_at`. Null when none is bound."
         }
       },
       "description": "The edge's view of this box's custom domains (edge/registrar/src/domains.rs), plus `available`. The same document answers GET, add and remove."
@@ -1956,6 +1978,12 @@
         "out": "domainsResponse",
         "note": "Give a domain up; its route and certificate go at the next reconcile. Audited."
       },
+      "POST /api/domains/wallet": {
+        "auth": true,
+        "in": "{\"address\": \"0x…\", \"signature\": \"0x…\"} or {}",
+        "out": "domainsResponse",
+        "note": "Bind the box's wallet to its names: the edge checks the signature (personal_sign of \"LosOS box name v1\\nzone: <zone>\\nbox: <box>\\naddress: <address>\\n\") and publishes the ENS record at `names` in its DNSSEC-signed zone, so wallets that send to ENS names pay the box by name. {} takes it off. 400 for a bad address or a signature from another wallet. Audited."
+      },
       "GET /api/backup": {
         "auth": true,
         "out": "backupResponse",
@@ -1987,7 +2015,7 @@
         "auth": true,
         "in": "{\"backup\": true | false}",
         "out": "{\"erase\": <the erase>}",
-        "note": "Start erasing the box (backend/src/erase.rs): an optional backup, a countdown of `losos.reset.graceMinutes`, then the edge is left (custom domains removed, active listings closed, `/deregister`), the settings are put back, and the box restarts; `losos-factory-wipe.service` deletes the data early in the next boot. 400 for a backup with no bucket; 409 while anything else runs. Audited."
+        "note": "Start erasing the box (backend/src/erase.rs): an optional backup, a countdown of `losos.reset.graceMinutes`, then the edge is left (custom domains removed, a wallet bound to the box's names unbound, active listings closed, `/deregister`), the settings are put back, and the box restarts; `losos-factory-wipe.service` deletes the data early in the next boot. 400 for a backup with no bucket; 409 while anything else runs. Audited."
       },
       "POST /api/erase/cancel": {
         "auth": true,

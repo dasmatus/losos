@@ -155,6 +155,20 @@ the unit and records done or failed. It re-attaches after a daemon restart,
 which happens because `nixos-rebuild switch` restarts lososd itself in the
 middle of a rebuild.
 
+lososd's work is moving into plugins (`backend/plugins/`). A plugin is a
+WebAssembly component that answers the API routes its manifest lists, run by
+Wasmtime inside lososd. It has no WASI: files, programs, systemd units, HTTP,
+locks and timers are host calls, and lososd checks each one against the
+plugin's manifest, so a plugin reaches only the paths, programs and
+endpoints it declares. Sign-in, the sections in `backend/sections.json` and
+D-Bus stay in lososd. Each call runs in a fresh instance with a memory cap
+and a deadline, so a plugin that loops or panics costs one 500 and nothing
+else. lososd loads plugins only from `losos.backend.plugins`, a directory in
+the Nix store (`.#losos-plugins`), and refuses to start if the directory or
+any file in it is outside the store, writable or not root's, or on a
+read-write mount. The look (background picture and widgets) is the first
+plugin; `nix/tests/plugins.nix` boots it.
+
 `losos-ctl` is a thin facade CLI. It keeps the old subcommands and JSON
 output (`state`, `change --mode`, `status`, `settings`, `apply` (stdin),
 `factory-reset`; `--json` is a no-op) and relays each call to lososd over
@@ -238,14 +252,16 @@ matter here. `overrides.rs`'s `parse_line` cuts a value at the first `#`
 
 **Workloads and the single front door** (`modules/containers.nix`,
 `modules/workloads.nix`, `modules/cluster.nix`,
-`modules/nextcloud-common.nix`). Rootless Podman is gone, and so is
-systemd-nspawn. When `losos.<svc>.mode == "container"`, Nextcloud and Forgejo
+`modules/nextcloud-common.nix`). systemd-nspawn is gone. When `losos.<svc>.mode == "container"`, Nextcloud and Forgejo
 run as Kubernetes workloads in the box's own local k3s cluster. The shared
 Nextcloud configuration still lives in `nextcloud-common.nix`, so the native
 and workload modes cannot drift apart. nginx is the only process holding
 public ports. It routes by path on the appliance's mDNS name
 (`<hostName>.local:80/nextcloud`, `:80/forgejo`) and serves the admin SPA on
-the same `:80` vhost.
+the same `:80` vhost. Apps an owner installs as `notshared`, and the box's
+own apps, run on rootless Podman with Podman Compose instead
+(`modules/apps.nix`, [App format](app-format.md)), so a box that shares
+nothing needs no cluster for them.
 
 `admin-ui/design-system/` (`tokens.css` and `losos.css`, plus a `react/`
 wrapper package for claude.ai/design) is dev-machine-only and no longer

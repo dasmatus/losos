@@ -548,11 +548,66 @@ in
       type = lib.types.bool;
       default = true;
       description = ''
-        Let the owner install apps found in the catalogue search (Helm
-        charts) into this box's own cluster, each running as `notshared` or
+        Let the owner install apps: charts found in the catalogue search
+        and apps in the LosOS app format, each running as `notshared` or
         `shared`, without root, with its files in that user's data folder.
-        Only on a box that runs its own cluster, which it does while
-        Nextcloud or Forgejo runs in the box's own container mode.
+        A `notshared` app runs on rootless Podman as that user; a `shared`
+        one runs in this box's own cluster, so only while Nextcloud or
+        Forgejo runs in the box's own container mode.
+      '';
+    };
+
+    apps.builtin = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            compose = lib.mkOption {
+              type = lib.types.attrs;
+              description = ''
+                The app's Compose file as Nix, in the LosOS app format
+                (handbook/docs/in-depth/app-format.md). `x-losos.port` is
+                the port its page listens on, and `x-losos.images` the image
+                archives the box loads before it starts the app.
+              '';
+            };
+            files = lib.mkOption {
+              type = lib.types.nullOr lib.types.path;
+              default = null;
+              description = "A folder of files the app ships, mounted by `./` paths in the Compose file.";
+            };
+            path = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              example = "/kanban/";
+              description = ''
+                Where the front door serves the app, with a slash at each
+                end, proxied to `x-losos.port` with that prefix stripped.
+                Null serves it nowhere.
+              '';
+            };
+            locationConfig = lib.mkOption {
+              type = lib.types.lines;
+              default = "";
+              description = "More nginx configuration for that location (sign-in headers, limits).";
+            };
+            lanOnly = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = ''
+                Serve the path to the LAN only, under the guard the admin
+                routes carry. False serves it wherever the front door is
+                reached, the tunnel included.
+              '';
+            };
+          };
+        }
+      );
+      default = { };
+      visible = false;
+      description = ''
+        The box's own apps, run as `notshared` on rootless Podman like an
+        installed app and started at every boot. Declared by the modules
+        that ship them, never from the Advanced pane.
       '';
     };
 
@@ -1375,6 +1430,20 @@ in
       '';
     };
 
+    # lososd's plugins (backend/plugins/README.md): the store path lososd
+    # loads its WebAssembly plugins from, `.#losos-plugins` by default. lososd
+    # refuses a directory outside the read-only store.
+    backend.plugins = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        The directory of lososd plugins, each a WebAssembly component
+        (`<name>.wasm`) beside its manifest (`<name>.json`). lososd loads
+        them only from the read-only Nix store. When null, lososd serves no
+        plugin routes, and the panes they back (the look) answer 404.
+      '';
+    };
+
     # ── Sign-in (modules/identity.nix) ───────────────────────────────────
     identity.enable = lib.mkOption {
       type = lib.types.bool;
@@ -1970,9 +2039,7 @@ in
           {
             options = {
               pay = lib.mkOption {
-                type = lib.types.nullOr (
-                  lib.types.strMatching "0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}"
-                );
+                type = lib.types.nullOr (lib.types.strMatching "0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}");
                 default = null;
                 description = ''
                   The escrow payments wait in until each slot ends. Public. On
@@ -2632,6 +2699,19 @@ in
         DNS-over-HTTPS endpoint (JSON API) the registrar looks an owner's
         TXT and CNAME records up with. A public resolver sees the domain
         names being checked; point this at your own if that matters.
+      '';
+    };
+
+    edge.dns.dnssec.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Sign the zone with DNSSEC (Knot's automatic signing, ECDSA P-256,
+        keys in /var/lib/knot). A box that binds its wallet to its names
+        gets an ENS record at each of them, and ENS reads a DNS name only
+        from a signed zone. Signing does nothing for resolvers until the
+        parent zone publishes the zone's DS record, which
+        `keymgr <zone> ds` prints on the edge.
       '';
     };
 

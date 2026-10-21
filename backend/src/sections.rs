@@ -125,6 +125,24 @@ mod tests {
             };
             served.insert(format!("{method} {path}"));
         }
+        // And every route a shipped plugin's manifest declares. The probe
+        // is a test plugin that never ships; its routes are admin only.
+        let plugins = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        for entry in std::fs::read_dir(&plugins).unwrap().flatten() {
+            let manifest = entry.path().join("manifest.json");
+            if entry.file_name() == "probe" || !manifest.exists() {
+                continue;
+            }
+            let doc: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+            for r in doc["routes"].as_array().into_iter().flatten() {
+                served.insert(format!(
+                    "{} {}",
+                    r["method"].as_str().unwrap(),
+                    r["path"].as_str().unwrap()
+                ));
+            }
+        }
         assert!(served.len() > 50, "found only {served:?}");
         let listed: std::collections::BTreeSet<String> = table().routes.keys().cloned().collect();
         let missing: Vec<_> = served.difference(&listed).collect();
