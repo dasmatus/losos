@@ -1330,6 +1330,16 @@ async fn the_relay_picks_the_network_and_names_need_an_endpoint() {
         .post("/market/rpc", call(json!("ens"), "eth_chainId"))
         .await;
     assert_eq!(status, 503);
+    // Nor does the offchain step of a name lookup go anywhere without one.
+    let (status, _) = edge
+        .post("/market/rpc", call(json!("ens"), "ens_ccipRead"))
+        .await;
+    assert_eq!(status, 503);
+    // And it is not a payment network's method.
+    let (status, _) = edge
+        .post("/market/rpc", call(json!("base-sepolia"), "ens_ccipRead"))
+        .await;
+    assert_eq!(status, 400);
     edge.shutdown().await;
 }
 
