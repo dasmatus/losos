@@ -11,10 +11,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
-import { cn } from "@/lib/utils";
 import { CloudError, isAbort } from "../api";
 import { mesh, type Outgoing, type Perm } from "../collab/api";
-import { initials, accentFor, STRONG, WASH } from "../collab/people";
+import { PersonAvatar } from "@/components/person";
+import { accentFor, nameOf } from "../collab/people";
 
 /* Share a file or folder with someone on another box: their address
  * (name@box), what they may do, and the people it is shared with so far,
@@ -203,16 +203,11 @@ export function MeshShareDialog({
             ) : (
               <ul className="flex flex-col divide-y divide-hair rounded-control border border-line" data-mesh-shares>
                 {shares.map((s) => {
-                  const accent = accentFor(s.recipient);
                   const state = STATE[s.state];
+                  const name = nameOf(s.recipient);
                   return (
                     <li key={s.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5" data-share={s.recipient}>
-                      <span
-                        aria-hidden="true"
-                        className={cn("grid size-8 shrink-0 place-items-center rounded-full text-[12px] font-semibold", WASH[accent], STRONG[accent])}
-                      >
-                        {initials(s.recipient.split("@")[0] ?? "?")}
-                      </span>
+                      <PersonAvatar aria-hidden="true" size="sm" person={{ name, displayName: name, accent: accentFor(name) }} />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate text-[13.5px] font-medium">{s.recipient}</span>
                         <span className="flex text-[12px]">

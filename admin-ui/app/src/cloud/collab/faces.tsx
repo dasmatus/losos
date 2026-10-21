@@ -1,11 +1,11 @@
 import { useT } from "@/lib/i18n-react";
-import { cn } from "@/lib/utils";
+import { PersonAvatar } from "@/components/person";
 import type { Presence } from "./editor";
-import { initials, RING, STRONG, WASH } from "./people";
+import { boxOf, nameOf } from "./people";
 
-/* Who has the file open: a face per person, ringed in the colour their
- * cursor has in the text, the way they appear beside each other on every
- * box. The same person in two tabs is one face. */
+/* Who has the file open: each person's picture, or their initials, ringed
+ * in the colour their cursor has in the text (components/person.tsx). The
+ * same person in two tabs is one face. */
 
 const SHOWN = 5;
 
@@ -23,22 +23,17 @@ export function Faces({ people, me }: { people: readonly Presence[]; me: string 
         {shown.map(({ user }) => {
           const you = user.address === me;
           const label = you ? t("collab.you", { name: user.name }) : user.name;
+          // A picture is a URL on its person's own box, so only someone on
+          // this box shows theirs; the rest show initials on their colour.
+          const picture = boxOf(user.address) === boxOf(me) ? (user.picture ?? null) : null;
           return (
-            <li key={user.address}>
-              <span
-                title={`${label}\n${user.address}`}
-                className={cn(
-                  "grid size-8 place-items-center rounded-full text-[12px] font-semibold select-none",
-                  "border-2 border-surface ring-2",
-                  WASH[user.accent],
-                  STRONG[user.accent],
-                  RING[user.accent],
-                )}
-                data-face={user.address}
-              >
-                <span aria-hidden="true">{initials(user.name)}</span>
-                <span className="sr-only">{label}</span>
-              </span>
+            <li key={user.address} title={`${label}\n${user.address}`} data-face={user.address}>
+              <PersonAvatar
+                person={{ name: nameOf(user.address), displayName: user.name, accent: user.accent, picture }}
+                size="sm"
+                className="border-2 border-surface ring-2 ring-person"
+              />
+              <span className="sr-only">{label}</span>
             </li>
           );
         })}

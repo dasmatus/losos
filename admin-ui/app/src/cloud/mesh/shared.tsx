@@ -9,10 +9,10 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
-import { cn } from "@/lib/utils";
 import { CloudError, isAbort } from "../api";
 import { editable, editHref, mesh, type Incoming, type RemoteEntry } from "../collab/api";
-import { accentFor, initials, STRONG, WASH } from "../collab/people";
+import { PersonAvatar } from "@/components/person";
+import { accentFor, nameOf } from "../collab/people";
 import { formatBytes, formatWhen, iconFor } from "../format";
 import { meshError } from "./share-dialog";
 
@@ -40,14 +40,13 @@ function mimeOf(name: string): string {
 }
 
 function Owner({ s }: { s: Incoming }) {
-  const accent = accentFor(s.ownerRemote);
+  const name = nameOf(s.ownerRemote);
   return (
-    <span
+    <PersonAvatar
       aria-hidden="true"
-      className={cn("grid size-9 shrink-0 place-items-center rounded-full text-[12.5px] font-semibold", WASH[accent], STRONG[accent])}
-    >
-      {initials(s.ownerName || s.ownerRemote)}
-    </span>
+      className="size-9 text-[12.5px]"
+      person={{ name, displayName: s.ownerName || name, accent: accentFor(name) }}
+    />
   );
 }
 

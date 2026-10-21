@@ -12,7 +12,7 @@ import { Annotation, RangeSet, type Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import * as Y from "yjs";
 import type { Awareness } from "y-protocols/awareness";
-import { ACCENTS, accentFor, type Accent } from "./people";
+import { ACCENTS, accentFor, nameOf, type Accent } from "./people";
 
 /** What each editor says about itself in awareness. */
 export interface PresenceUser {
@@ -20,6 +20,9 @@ export interface PresenceUser {
   /** `eva@kitchenbox.local`. */
   address: string;
   accent: Accent;
+  /** Their profile picture, a URL on their own box: only people on the
+   *  same box can show it. */
+  picture?: string | null;
 }
 
 interface Cursor {
@@ -36,7 +39,7 @@ const remoteChanged = Annotation.define<null>();
 
 function accentOf(user: PresenceUser | undefined): Accent {
   const a = user?.accent;
-  return a !== undefined && (ACCENTS as readonly string[]).includes(a) ? a : accentFor(user?.address ?? "");
+  return a !== undefined && (ACCENTS as readonly string[]).includes(a) ? a : accentFor(nameOf(user?.address ?? ""));
 }
 
 class Caret extends WidgetType {
