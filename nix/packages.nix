@@ -48,10 +48,10 @@
 #                because that is how they reach a binary cache: the appliance
 #                substitutes them, it never builds them (see the header of
 #                nix/images.nix).
-#   losos-lab-core — LosOS Lab's core in Rust (admin-ui/lab/core/), built
-#                for wasm32 and run through wasm-bindgen. The Lab itself is
-#                the admin UI's second page (admin-ui/app/lab/), served at
-#                /lab/, and imports this package.
+#   losos-lab-core — LosOS Diagrams' core in Rust (admin-ui/lab/core/),
+#                built for wasm32 and run through wasm-bindgen. The page is
+#                the admin UI's second page (admin-ui/app/diagrams/), served
+#                at /diagrams/, and imports this package.
 #   losos-lab-render is the Lab's canvas, built from admin-ui/lab/render/.
 #                Bevy draws the two views as a 3D scene in one wasm module
 #                with the core, through wasm-bindgen and then wasm-opt. It
@@ -270,13 +270,16 @@ let
   lososPlugins =
     {
       pname ? "losos-plugins",
-      names ? [ "look" ],
+      names ? [
+        "look"
+        "pins"
+      ],
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname;
       version = "0.1.0";
       src = lib.cleanSource ./../backend/plugins;
-      cargoHash = "sha256-VxDfZSbTviD/jZmA+NCD0jvQdZMKuefs4724oojTb4Y=";
+      cargoHash = "sha256-R9zOwoQRcWl7YGRUZVzPCtGNAVjuY9MPSvegXEd9OY8=";
       nativeBuildInputs = [
         pkgs.wasm-tools
         pkgs.lld
@@ -407,6 +410,7 @@ images
     pname = "losos-plugins-probe";
     names = [
       "look"
+      "pins"
       "probe"
     ];
   };
@@ -417,7 +421,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-wOyPFwVnbVL/Z6LvkCd+8SLevaNXBU4qJ+tfJSasrPw=";
+    cargoHash = "sha256-0u3Nms+S1DBWPYcPYLUMffd9mfJJYNcIbCXRhyUZpOU=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in

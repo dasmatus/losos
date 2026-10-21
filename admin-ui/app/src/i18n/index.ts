@@ -11,10 +11,12 @@ import apps from "./apps";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import home from "./home";
+import inference from "./inference";
 import install from "./install";
 import diagrams from "./diagrams";
 import lab from "./lab";
 import look from "./look";
+import mail from "./mail";
 import machines from "./machines";
 import manage from "./manage";
 import palette from "./palette";
@@ -36,6 +38,7 @@ export const MESSAGES = {
   ...wizard,
   ...settings,
   ...panes,
+  ...inference,
   ...widgets,
   ...apps,
   ...cloudApps,
@@ -54,6 +57,7 @@ export const MESSAGES = {
   ...palette,
   ...pins,
   ...manage,
+  ...mail,
 };
 
 export type MessageKey = keyof typeof MESSAGES;
