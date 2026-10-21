@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FieldError } from "@/components/ui/field";
 import type { ProfileImage } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
 
@@ -175,9 +176,9 @@ export function ProfileCropDialog({
       </DialogHeader>
       <DialogBody className="flex flex-col items-center gap-4">
         {failed ? (
-          <p className="text-sm text-crit" role="alert" data-testid="profile-crop-failed">
+          <FieldError className="self-stretch" data-testid="profile-crop-failed">
             {t("profile.crop.unreadable")}
-          </p>
+          </FieldError>
         ) : (
           <canvas
             ref={canvasRef}

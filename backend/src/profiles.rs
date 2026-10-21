@@ -402,13 +402,19 @@ impl Profiles {
         self.dir.join("profiles.json")
     }
 
-    /// One file per version: a new picture is written beside the old one,
-    /// so the old URL never answers with the new bytes.
-    fn image_path(&self, name: &str, kind: Kind, version: u64) -> anyhow::Result<PathBuf> {
-        // A name from the people file is always one of these; anything else
-        // is refused before it can be a path.
-        crate::people::validate_name(name).map_err(|e| anyhow::anyhow!(e))?;
-        Ok(self.dir.join(format!("{name}.{}.{version}", kind.as_str())))
+    /// A name from the people file is always one of these; anything else
+    /// is refused before the store is touched.
+    fn check_name(name: &str) -> anyhow::Result<()> {
+        crate::people::validate_name(name)
+            .map(|_| ())
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+
+    /// One file per version, named by the version alone: a new picture is
+    /// written beside the old one, so the old URL never answers with the new
+    /// bytes, and nothing a caller sends becomes part of a path.
+    fn image_path(&self, kind: Kind, version: u64) -> PathBuf {
+        self.dir.join(format!("{version}.{}", kind.as_str()))
     }
 
     fn remove_file(&self, path: &Path) {
@@ -511,7 +517,7 @@ impl Profiles {
     /// [`normalize`].
     #[cfg(test)]
     pub fn put_image(&self, name: &str, kind: Kind, bytes: &[u8]) -> anyhow::Result<Profile> {
-        self.image_path(name, kind, 0)?;
+        Profiles::check_name(name)?;
         let picture = normalize(kind, bytes)?;
         self.put_normalized(name, kind, picture, || Ok(true))
     }
@@ -527,7 +533,7 @@ impl Profiles {
         (content_type, encoded): (&'static str, Vec<u8>),
         listed: impl FnOnce() -> anyhow::Result<bool>,
     ) -> anyhow::Result<Profile> {
-        self.image_path(name, kind, 0)?;
+        Profiles::check_name(name)?;
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         if !listed()? {
             return Err(crate::people::Refused::Unknown(name.to_string()).into());
@@ -539,7 +545,7 @@ impl Profiles {
         // The new file first, then the document that names it, then the old
         // file: a crash anywhere leaves a file nothing names, never a name
         // with no file or the old URL on the new bytes.
-        let path = self.image_path(name, kind, version)?;
+        let path = self.image_path(kind, version);
         self.write_file(&path, &encoded)?;
         let old = profile.slot(kind).replace(Stored {
             version,
@@ -551,14 +557,14 @@ impl Profiles {
             return Err(e);
         }
         if let Some(old) = old {
-            self.remove_file(&self.image_path(name, kind, old.version)?);
+            self.remove_file(&self.image_path(kind, old.version));
         }
         Ok(out)
     }
 
     /// Take `name`'s picture of `kind` away. Doing it twice is not an error.
     pub fn remove_image(&self, name: &str, kind: Kind) -> anyhow::Result<Profile> {
-        self.image_path(name, kind, 0)?;
+        Profiles::check_name(name)?;
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         self.remove_locked(name, kind)
     }
@@ -573,7 +579,7 @@ impl Profiles {
         };
         let out = profile.clone();
         self.write(&doc)?;
-        self.remove_file(&self.image_path(name, kind, old.version)?);
+        self.remove_file(&self.image_path(kind, old.version));
         Ok(out)
     }
 
@@ -586,7 +592,7 @@ impl Profiles {
         kind: Kind,
         version: u64,
     ) -> anyhow::Result<Option<(String, Vec<u8>)>> {
-        let path = self.image_path(name, kind, version)?;
+        Profiles::check_name(name)?;
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         let Some(stored) = self
             .read()?
@@ -597,7 +603,7 @@ impl Profiles {
         else {
             return Ok(None);
         };
-        match std::fs::read(&path) {
+        match std::fs::read(self.image_path(kind, stored.version)) {
             Ok(bytes) => Ok(Some((stored.content_type, bytes))),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
@@ -608,7 +614,7 @@ impl Profiles {
     /// Call it after the person is gone from the people file: it waits for
     /// a change already under way, and every later one is refused.
     pub fn forget(&self, name: &str) -> anyhow::Result<()> {
-        self.image_path(name, Kind::Picture, 0)?;
+        Profiles::check_name(name)?;
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         for kind in [Kind::Picture, Kind::Banner] {
             self.remove_locked(name, kind)?;
@@ -977,12 +983,12 @@ mod tests {
             .is_none());
         assert_eq!(
             files(&dir),
-            [format!("eva.banner.{v2}"), format!("eva.picture.{v4}")]
+            [format!("{v2}.banner"), format!("{v4}.picture")]
         );
         // Removing twice is fine, and someone with no profile has nothing.
         profiles.remove_image("eva", Kind::Picture).unwrap();
         profiles.remove_image("eva", Kind::Picture).unwrap();
-        assert_eq!(files(&dir), [format!("eva.banner.{v2}")]);
+        assert_eq!(files(&dir), [format!("{v2}.banner")]);
         assert!(profiles
             .read_image("oma", Kind::Banner, 1)
             .unwrap()
@@ -1082,14 +1088,10 @@ mod tests {
         );
         profiles.put_image("eva", Kind::Picture, &png).unwrap();
         profiles.put_image("eva", Kind::Banner, &png).unwrap();
-        profiles.put_image("oma", Kind::Picture, &png).unwrap();
+        let oma = profiles.put_image("oma", Kind::Picture, &png).unwrap();
         profiles.forget("eva").unwrap();
-        let left = files(&dir);
-        assert!(!left.iter().any(|f| f.starts_with("eva")), "{left:?}");
-        assert!(
-            left.iter().any(|f| f.starts_with("oma.picture.")),
-            "{left:?}"
-        );
+        let oma = oma.picture.unwrap().version;
+        assert_eq!(files(&dir), [format!("{oma}.picture")]);
         assert!(!profiles.all().unwrap().contains_key("eva"));
     }
 }
