@@ -65,7 +65,7 @@ fn main() -> anyhow::Result<()> {
             pdftotext,
         } => {
             if !root.is_dir() {
-                // Nextcloud makes the folder on the owner's first sign-in.
+                // LosOS Cloud makes the folder on the owner's first sign-in.
                 tracing::info!(root = %root.display(), "no files yet");
                 return Ok(());
             }

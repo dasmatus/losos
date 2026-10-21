@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use super::form::{Form, Rebuild, SettingKey, SettingValue, Settings};
+use super::form::{Form, Rebuild, SettingValue, Settings};
 use super::model::{
     layout, Confirm, ConfirmSpec, Control, EditTarget, Job, Line, PaneModel, Prepare, Tone,
 };
@@ -686,11 +686,6 @@ impl App {
 
     fn submit(&mut self, target: EditTarget, value: String) {
         match target {
-            EditTarget::Setting(SettingKey::ApachePort) => {
-                let port = value.trim().parse::<i64>().ok();
-                self.form
-                    .set(SettingKey::ApachePort, SettingValue::Port(port));
-            }
             EditTarget::Setting(key) => self
                 .form
                 .set(key, SettingValue::Text(value.trim().to_string())),

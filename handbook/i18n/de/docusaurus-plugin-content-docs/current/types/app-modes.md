@@ -1,60 +1,41 @@
 ---
-title: App-Modi
+title: Wo die Apps laufen
 sidebar_position: 5
 ---
 
-# App-Modi
+# Wo die Apps laufen
 
-LosOS cloud läuft in einem von zwei Modi. Du siehst in beiden Fällen
-dieselbe App unter derselben Adresse, und der Bereich Apps zeigt, in
-welchem Modus sie läuft. LosOS Git hat keine Modi: Es ist ein Dienst der
-Box selbst, wie die Admin-Seiten.
+LosOS Cloud und LosOS Git sind Dienste der Box selbst, wie die Admin-Seiten.
+Jeder läuft als eigener Systemdienst mit eigenem Datenverzeichnis, und
+keiner braucht einen Cluster. Du findest sie auf jeder Box unter denselben
+Adressen.
 
-| Modus           | Was wo läuft                                                                                              | Standard |
-| --------------- | --------------------------------------------------------------------------------------------------------- | -------- |
-| **Workload**    | Die App läuft in einem Container im eigenen kleinen Kubernetes-Cluster der Box (k3s), aus einem Image, das mit dem System gebaut wird. | ja       |
-| **Nativ**       | Die App läuft direkt auf der Box als Systemdienst.                                                         | nein     |
+Apps, die du im Bereich Apps installierst, laufen an einem von zwei Orten,
+je nachdem, als wer sie laufen:
 
-## Warum Workload der Standard ist \{#why-workload-is-the-default}
-
-- Das Image der App wird zusammen mit dem System gebaut und getestet, ein
-  Update bringt also ein Paar, das nachweislich zusammen funktioniert.
-- Die Box betreibt für das Mesh ohnehin schon einen Cluster, und ihre eigenen
-  Apps nutzen dieselbe Technik. Ihr Cluster hat kein Netzwerk-Plugin. Die
-  Pods teilen sich das Netzwerk der Box, deshalb antworten sie auf Loopback.
-- Jede App sieht ihr eigenes Datenverzeichnis und sonst nichts.
-
-## Warum es Nativ gibt \{#why-native-exists}
-
-Nativ ist die ältere Form. Sie bleibt, weil dieselbe Nextcloud-Konfiguration
-beide Modi speist, sodass die beiden nicht auseinanderlaufen können. Den
-Modus legst du in Nix fest, nicht auf den Admin-Seiten, und ein Wechsel
-braucht einen Neubau.
+| Läuft als       | Wo sie läuft                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| **notshared**   | Rootless Podman, als du. Ein Cluster ist nicht nötig.                                            |
+| **shared**      | Der eigene kleine Kubernetes-Cluster der Box (k3s), der nur läuft, solange die Box ihre Festplatte mit einem Mesh teilt. |
 
 ## Zwei Cluster, mit Absicht \{#two-clusters-on-purpose}
 
-Die eigenen Apps der Box leben in ihrem eigenen Cluster. Das
+Die geteilten Apps der Box leben in ihrem eigenen Cluster. Das
 [Mesh](official-edge) ist ein anderer Cluster, und die Edge betreibt ihn.
 LosOS legt die Apps der Box nie in den Cluster des Mesh. Ein Mitglied eines
 Clusters kann nicht starten, solange sein Server nicht erreichbar ist, und
 die Box startet jede Nacht um 00:07 neu. Ein Ausfall der Edge über
-Mitternacht würde deine eigenen Dateien also vom Netz nehmen.
+Mitternacht würde diese Apps also vom Netz nehmen.
 
-![Das Innere einer Box: Der eigene Cluster der Box betreibt LosOS cloud, der Mesh-Agent gehört zu einem anderen Cluster, dessen Server die Edge ist.](@site/docs/img/box-architecture-de.svg)
+![Das Innere einer Box: Der eigene Cluster der Box betreibt die als shared installierten Apps, der Mesh-Agent gehört zu einem anderen Cluster, dessen Server die Edge ist.](@site/docs/img/box-architecture-de.svg)
 
 ## Wo die Apps sind \{#where-the-apps-are}
 
-![Der Bereich Apps: LosOS cloud mit ihrem Modus, LosOS Git, eine installierte App und darunter Mehr finden.](@site/docs/img/apps-de.png)
+![Der Bereich Apps: LosOS Cloud, LosOS Git, eine installierte App und darunter Mehr finden.](@site/docs/img/apps-de.png)
 
 | App          | Adresse             | Hinweis                                                                                   |
 | ------------ | ------------------- | ----------------------------------------------------------------------------------------- |
-| LosOS cloud  | `/nextcloud`        | Vertraut dem Namen der Box und der Adresse, auf der eine Anfrage ankam, nie einem Platzhalter. |
+| LosOS Cloud  | `/cloud/`           | Die Apps für Computer und Telefon bekommen die Adresse der Box ohne Pfad.                 |
 | LosOS Git    | `/git/`             | Schalte es im Bereich Apps ab, wenn du es nicht willst.                                   |
 | Admin-Seiten | `/`                 | Nur im LAN.                                                                               |
 | Handbuch     | `/handbook/`        | Nur im LAN.                                                                               |
-
-:::note[App-Kacheln gehen über index.php]
-Die App-Kacheln der Admin-Seiten öffnen die Apps von LosOS cloud über
-`index.php` (`/nextcloud/index.php/apps/<app>/`), worauf jede Konfiguration
-antwortet.
-:::

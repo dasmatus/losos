@@ -9,7 +9,7 @@ mdx:
 
 Eine Firmen-Edge hat unter `/manage/` eine Webseite für die Leute, die sie
 betreuen. Sie listet die Boxen, die die Edge weiterleitet, und ändert auf
-jeder Box, deren Besitzer es erlaubt, die Einstellungen von LosOS cloud und
+jeder Box, deren Besitzer es erlaubt, die Einstellungen von LosOS Cloud und
 LosOS Git und installiert oder entfernt Apps. Die offiziellen LosOS-Edges
 haben diese Seite nicht, und eine Box lehnt es ab, von einer verwaltet zu
 werden.
@@ -66,12 +66,12 @@ die keine Heartbeats mehr schickt, fällt aus der Liste.
 
 ## Die Seite einer Box
 
-![Die Seite einer Box: Einstellungen von LosOS cloud und LosOS Git, die installierten Apps und die App-Suche.](@site/docs/img/edge-manage-box-de.png)
+![Die Seite einer Box: Einstellungen von LosOS Cloud und LosOS Git, die installierten Apps und die App-Suche.](@site/docs/img/edge-manage-box-de.png)
 
 Die Seite einer Box hat drei Teile, dieselben wie der Bereich Apps auf der
 Box selbst:
 
-- **Einstellungen von LosOS cloud und LosOS Git.** Standardsprache,
+- **Einstellungen von LosOS Cloud und LosOS Git.** Standardsprache,
   Telefonregion, wie lange gelöschte Dateien und alte Versionen bleiben, das
   Standardkontingent, öffentliche Links mit Passwort und Ablauf, und bei
   LosOS Git Anmeldung, Privatsphäre und Push. Die Föderation von LosOS cloud
@@ -97,7 +97,7 @@ liest, an nichts sonst.
 
 Die Edge kann deshalb nicht:
 
-- Dateien von jemandem öffnen, weder in LosOS cloud, LosOS Git noch sonstwo;
+- Dateien von jemandem öffnen, weder in LosOS Cloud, LosOS Git noch sonstwo;
 - Personen anlegen, ändern oder entfernen oder Passwörter zurücksetzen;
 - Speicher, Sicherungen, Netzwerk, Teilen oder Updates ändern;
 - den Schalter einschalten oder ihn an lassen, wenn der Besitzer ihn

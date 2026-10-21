@@ -48,6 +48,8 @@ let
   excluded = {
     edge = "declared for the edge VPS (nixosModules.edge); nothing on the appliance reads it";
     mdns = "set by modules/configuration.nix and modules/edge.nix; with it off nothing on the LAN finds the box";
+    nextcloud = "retired with Nextcloud; accepted from an older overrides.nix and ignored";
+    keyring = "retired with Nextcloud's admin password, its only secret; accepted and ignored";
   };
 
   # Options another file on the box sets at normal priority: a line in
@@ -78,8 +80,6 @@ let
     "cluster"
     "hardening.enable"
     "hostName"
-    "keyring"
-    "nextcloud.mode"
     "shared.fscrypt"
     "storage"
     "tls"
@@ -94,10 +94,8 @@ let
   # Options that take effect only while another (a bool) is on. The pane
   # greys the row and says so while that one is off in the draft. The value
   # still saves; it just does nothing until the gate opens. Each pair is
-  # enforced in the modules, not here (lososInternal.federation in
-  # modules/options.nix for the first).
+  # enforced in the modules, not here (modules/cluster.nix for the first).
   needs = {
-    "nextcloud.federation.enable" = "sharingMyStorage";
     "vms.host" = "sharingMyStorage";
     "inference.lend.enable" = "proxy.enable";
   };

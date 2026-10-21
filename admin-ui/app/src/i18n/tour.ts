@@ -104,7 +104,6 @@ export default defineMessages({
   /* Words inside the scenes that no other screen already has. */
   "tour.scene.documents": { en: "Documents", sk: "Dokumenty", de: "Dokumente" },
   "tour.scene.lending": { en: "Lending", sk: "Požičiava", de: "Verleiht" },
-  "tour.scene.board": { en: "Board", sk: "Tabuľa", de: "Board" },
   "tour.scene.docName": { en: "Plan.docx", sk: "Plán.docx", de: "Plan.docx" },
   "tour.scene.docHeading": { en: "The trip in May", sk: "Výlet v máji", de: "Die Reise im Mai" },
   "tour.scene.typedMine": { en: "We leave on Friday at eight.", sk: "Odchádzame v piatok o ôsmej.", de: "Wir fahren Freitag um acht." },

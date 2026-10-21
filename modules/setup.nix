@@ -45,7 +45,7 @@
 #   * Master-proxy traffic reaches this vhost from 127.0.0.1 (rathole's
 #     local_addr), so anything *not* guarded here is on the public internet the
 #     moment losos.proxy.enable is on. "Guarded" is therefore the default a new
-#     route has to argue its way out of. /nextcloud and /git/ argued their
+#     route has to argue its way out of. /cloud/ and /git/ argued their
 #     way out — carrying them is what the tunnel is for.
 #   * This route cannot. The certificate is valid for <hostName>.local,
 #     localhost and 127.0.0.1 and nothing else, so it is of no use to anyone
@@ -60,7 +60,7 @@
 # identity to the internet is noticed by nobody.
 #
 # These routes do NOT follow losos.admin.enable, and that is deliberate. The
-# certificate is what makes /nextcloud usable over :443, and Nextcloud is not
+# certificate is what makes /cloud/ usable over :443, and LosOS Cloud is not
 # part of the admin plane — a box with the dashboard switched off still serves
 # HTTPS, and cutting the only sanctioned way to fetch its certificate would
 # leave that HTTPS permanently untrusted, with no shell to work around it. What
@@ -138,7 +138,7 @@ let
   # scope would replace the inherited set, so the header is added at server
   # level with a value that is empty — and therefore omitted — everywhere it
   # does not apply. The value depends on origin *and* path together, so a
-  # matching Origin on any other route (the SPA, the certificate, /nextcloud)
+  # matching Origin on any other route (the SPA, the certificate, /cloud/)
   # still gets nothing. A browser only sends Origin on cross-origin requests,
   # so the wizard's own same-origin read is unaffected.
   #
@@ -264,8 +264,8 @@ in
   # Deliberately only what is true *without* one: the box's name, and the
   # certificate that has to be trusted before anything else in the wizard can
   # happen over HTTPS. Everything that depends on lososd's own state — whether
-  # setup was completed, whether the Nextcloud admin password has ever been
-  # set, whether a recovery code has been minted — belongs to `GET /api/setup`,
+  # setup was completed, whether the owner's password has ever been set,
+  # whether a recovery code has been minted — belongs to `GET /api/setup`,
   # which is Bearer-authed. Two documents because they answer to two different
   # authorities, not because anyone wanted two.
   systemd.services.losos-setup-state = {

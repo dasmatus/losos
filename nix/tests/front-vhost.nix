@@ -4,17 +4,17 @@
 # world can reach, and both of its access rules have already been wrong once:
 #
 #   * the whole vhost was gated on losos.admin.enable, so turning the dashboard
-#     off silently took /nextcloud and the Git route down with it. Only the admin
+#     off silently took the Git route down with it. Only the admin
 #     locations follow that flag now.
 #   * `lanOnly` allowed 10.0.0.0/8, which *contained* the nspawn subnet the two
 #     services used to live on (10.231.1.2 / 10.231.2.2) — so a compromised
-#     Nextcloud or Forgejo could talk to the root-equivalent admin API. The fix
+#     app could talk to the root-equivalent admin API. The fix
 #     was `deny 10.231.0.0/16` as the first rule, and this test proved it by
 #     curling the admin routes *from* that source address.
 #
 # The subnet and that deny rule are both gone, and this test must not pretend
-# otherwise. `mode == "container"` now means a hostNetwork pod in the box's own
-# k3s cluster (modules/workloads.nix): the pods share the host's network
+# otherwise. The box's own pods are hostNetwork pods in its own k3s cluster
+# (modules/cluster.nix): they share the host's network
 # namespace, so nginx sees them as 127.0.0.1 or as the box's own LAN address,
 # and there is no pod CIDR left to reject. containers.nix deleted the rule and
 # forbids re-adding one, because a deny that cannot match reads like protection.
@@ -43,11 +43,11 @@
 #                             only as client-side routes and are answered by
 #                             the SPA fallback.
 #
-# plus: /nextcloud and /git/ are *not* LAN-guarded (that is how tunnel
-# traffic arrives, from loopback); the four security headers ride on both the
-# LAN 200s and the loopback 403s (`always`), are omitted on /nextcloud and
-# kept on /git/; and with losos.admin.enable = false the service routes and
-# :80 stay up.
+# plus: /git/ is *not* LAN-guarded (that is how tunnel traffic arrives, from
+# loopback); the four security headers ride on both the LAN 200s and the
+# loopback 403s (`always`) and are kept on /git/; and with
+# losos.admin.enable = false the service route and :80 stay up. LosOS Cloud's
+# routes come from modules/cloud.nix and are covered by nix/tests/cloud.nix.
 #
 # Two nodes, both real appliances, each acting as the other's LAN client:
 #   appliance — losos.admin.enable = true  (192.168.1.1)
@@ -55,9 +55,9 @@
 #
 # Nothing heavy is built: no k3s, no kubelet, no workload pod. The routes under
 # test are nginx's, and a hostNetwork pod is nothing but a process listening on
-# the host's loopback, and LosOS Git is a process on a Unix socket, so extra
-# nginx server blocks on the port and the socket the front vhost proxies to
-# are a faithful stand-in rather than a simplification.
+# the host's loopback, and LosOS Git is a process on a Unix socket, so an
+# extra nginx server block on the socket the front vhost proxies to is a
+# faithful stand-in rather than a simplification.
 # Booting the real stacks would cost hours and would not exercise a single line
 # of routing.
 { pkgs }:
@@ -65,35 +65,13 @@
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  # Stand-ins for the two apps and for lososd's loopback API, on exactly
-  # the addresses modules/containers.nix proxies to. Separate ports, so none
-  # of them collides with the front vhost's 0.0.0.0:80 default_server.
-  #
-  # The two tunable ports are read from the same options containers.nix reads,
-  # and the appliance below sets a *non-default* apachePort on purpose: if
-  # anyone ever bakes the 11000 literal into the proxy_pass, this test fails
-  # instead of passing by coincidence. LosOS Git's socket is a literal on
-  # both sides (modules/git.nix).
+  # Stand-ins for LosOS Git and for lososd's loopback API, on exactly the
+  # addresses modules/containers.nix proxies to. LosOS Git's socket is a
+  # literal on both sides (modules/git.nix).
   stubBackends =
     { config, ... }:
     {
       services.nginx.virtualHosts = {
-        "stub-nextcloud" = {
-          listen = [
-            {
-              addr = "127.0.0.1";
-              port = config.losos.nextcloud.apachePort;
-            }
-          ];
-          # Echoes the header the real /nextcloud location sets from
-          # $server_addr, so the test below can prove it arrives: the pod's
-          # trusted_domains reads it to accept the box's own IP address.
-          locations."/".extraConfig =
-            ''return 200 "stub-nextcloud own-address=$http_x_losos_server_addr\n";'';
-          # Apache's directory redirect, as the pod sends it: absolute and
-          # http, whatever scheme the browser used.
-          locations."= /nextcloud/dir".extraConfig = "return 301 http://$http_host/nextcloud/dir/;";
-        };
         "stub-git" = {
           listen = [ { addr = "unix:/run/losos-git/http.sock"; } ];
           # Echoes the path it received, so the test below can prove the
@@ -123,21 +101,13 @@ let
 
     losos = {
       hostName = "mattbox";
-      # "container" is what puts /nextcloud in the vhost and git.enable /git/;
-      # the apps themselves are stubbed above, so neither modules/cluster.nix,
-      # modules/workloads.nix nor modules/git.nix is imported.
-      nextcloud.mode = "container";
-      # Deliberately not the 11000 default — see stubBackends.
-      nextcloud.apachePort = 11007;
+      # git.enable is what puts /git/ in the vhost; LosOS Git itself is
+      # stubbed above, so modules/git.nix is not imported.
       git.enable = true;
       # LosOS Login is not imported (its maps live in modules/identity.nix):
       # the routes here are the ones without it. nix/tests/identity.nix and
       # nix/tests/app-sign-in.nix boot the signed-in side.
       identity.enable = false;
-      # Federation runs only while the box shares its disk
-      # (lososInternal.federation), so the federation subtests start with
-      # sharing on and end by switching into a specialisation with it off.
-      sharingMyStorage = true;
       # No lososd: /api/ is answered by the stub above. The escape hatch only
       # works because modules/defaults.nix wires the real package with
       # lib.mkDefault — at normal priority this was a conflict, not an opt-out.
@@ -160,11 +130,6 @@ pkgs.testers.nixosTest {
       losos.admin.enable = true;
       losos.admin.ui = lososPkgs.losos-admin-ui;
       losos.admin.handbook = lososPkgs.losos-handbook;
-      # Disk sharing off: the shared data pool locked, so LosOS cloud does
-      # not federate. Switched into by the last subtest; only nginx changes.
-      specialisation.unshared.configuration = {
-        losos.sharingMyStorage = pkgs.lib.mkForce false;
-      };
     };
 
     # Same box with the dashboard switched off. losos.admin.ui stays null,
@@ -198,7 +163,7 @@ pkgs.testers.nixosTest {
     ADMIN = ["/", "/settings", "/settings/network", "/theme-boot.js", "/api/health"]
     # Not guarded, by design: this is the only traffic the master-proxy tunnel
     # is allowed to carry, and it arrives from loopback.
-    SERVICE = ["/nextcloud", "/git/"]
+    SERVICE = ["/git/"]
 
     # The appliance's own LAN address (node 1 on vlan 1), spelled out rather
     # than reached through its name. On the appliance itself the name is
@@ -208,56 +173,6 @@ pkgs.testers.nixosTest {
     # this file exists to tell apart. From the other node the name resolves only
     # to the LAN address, so the cross-node subtests keep using it.
     LAN = "192.168.1.1"
-
-    # LosOS cloud's federation addresses (modules/nextcloud-stack.nix,
-    # `federation`), plus the spellings nginx normalises before it matches a
-    # location: letter case, a doubled slash, an escaped letter.
-    NC_FEDERATION = [
-        "/nextcloud/ocm-provider/",
-        "/nextcloud/index.php/ocm-provider/",
-        "/nextcloud/ocs-provider/",
-        "/nextcloud/ocm/shares",
-        "/nextcloud/index.php/ocm/shares",
-        "/nextcloud/index.php/.well-known/ocm",
-        "/nextcloud/ocs/v2.php/cloud/shares/7/accept",
-        "/nextcloud/ocs/v1.php/cloud/shares/7/unshare",
-        "/nextcloud/ocs/v2.php/apps/federation/api/v1/shared-secret",
-        "/nextcloud/index.php/apps/federation/trusted-servers",
-        "/nextcloud/index.php/apps/federatedfilesharing/createFederatedShare",
-        "/nextcloud/OCM-Provider/",
-        "/nextcloud//ocm-provider/",
-        "/nextcloud/oc%6D-provider/",
-    ]
-    # What the owner and their apps use, which must keep working with
-    # federation off: ordinary link and user shares included.
-    NC_EVERYDAY = [
-        "/nextcloud/",
-        "/nextcloud/index.php/apps/files/",
-        "/nextcloud/ocs/v2.php/apps/files_sharing/api/v1/shares",
-        "/nextcloud/remote.php/dav/files/notshared/",
-    ]
-    # The provisioning-API address Nextcloud's admin pages write an app
-    # setting through, for keys LosOS sets on every start
-    # (modules/nextcloud-stack.nix, `site.locked`), in the spellings nginx
-    # normalises; and the same API for keys LosOS leaves to Nextcloud.
-    NC_CONFIG = "/nextcloud/ocs/v2.php/apps/provisioning_api/api/v1/config/apps"
-    NC_LOCKED = [
-        f"{NC_CONFIG}/core/shareapi_allow_links",
-        f"{NC_CONFIG}/core/shareapi_enforce_links_password",
-        f"{NC_CONFIG}/files/default_quota",
-        f"{NC_CONFIG}/files_sharing/outgoing_server2server_share_enabled",
-        f"{NC_CONFIG}/dav/enableCalendarFederation",
-        "/nextcloud/ocs/v1.php/apps/provisioning_api/api/v1/config/apps/core/shareapi_allow_links",
-        f"{NC_CONFIG}/core/SHAREAPI_ALLOW_LINKS",
-        f"{NC_CONFIG}//core/shareapi_allow_links/",
-        f"{NC_CONFIG}/core/sharea%70i_allow_links",
-    ]
-    NC_UNLOCKED = [
-        f"{NC_CONFIG}/core/shareapi_allow_resharing",
-        f"{NC_CONFIG}/core/shareapi_allow_links_extra",
-        f"{NC_CONFIG}/theming/name",
-        f"{NC_CONFIG}",
-    ]
 
     def code(node, url, source=None):
         src = f"--interface {source} " if source else ""
@@ -343,20 +258,6 @@ pkgs.testers.nixosTest {
             assert got == "200", f"loopback {path}: expected 200, got {got}"
             got = code(noadmin, f"http://appliance{path}")
             assert got == "200", f"LAN {path}: expected 200, got {got}"
-        # Proof the two proxy_pass targets are the loopback ports the workload
-        # pods bind, not some address left over from the nspawn layout.
-        assert "stub-nextcloud" in appliance.succeed("curl -s http://127.0.0.1/nextcloud")
-        # The address the request arrived on travels to the pod as
-        # X-Losos-Server-Addr, and a client cannot supply it: nginx replaces
-        # the header, so the loopback probe sees 127.0.0.1 whatever it sent.
-        own = appliance.succeed(
-            "curl -s -H 'X-Losos-Server-Addr: evil.example' http://127.0.0.1/nextcloud"
-        )
-        assert "own-address=127.0.0.1" in own, f"server address not forwarded: {own!r}"
-        # The libvirt case: the owner types the box's LAN IP (no mDNS there),
-        # and that very address is what the pod is told to trust.
-        lan = noadmin.succeed(f"curl -s http://{LAN}/nextcloud")
-        assert f"own-address={LAN}" in lan, f"LAN address not forwarded: {lan!r}"
         # LosOS Git gets git's calls and its API without the /git prefix,
         # and the pages come from the admin UI's bundle, deep links too.
         got = appliance.succeed("curl -s 'http://127.0.0.1/git/notshared/x.git/info/refs?service=git-upload-pack'")
@@ -368,14 +269,6 @@ pkgs.testers.nixosTest {
         for page in ("/git/", "/git/notshared/x/pulls/1/files"):
             got = appliance.succeed(f"curl -s http://127.0.0.1{page}")
             assert '<div id="git">' in got, f"{page}: not LosOS Git's page: {got[:200]!r}"
-        # The pod's absolute http redirect reaches the browser as a path, so
-        # a page opened over https stays on https (the wizard's frame is
-        # refused by the admin CSP otherwise).
-        moved = appliance.succeed(
-            "curl -s -o /dev/null -w '%header{location}' -H 'Host: mattbox.local' http://127.0.0.1/nextcloud/dir"
-        ).strip()
-        assert moved == "/nextcloud/dir/", f"absolute redirect passed through: {moved!r}"
-
     with subtest("nothing under /.well-known/ leaves the admin SPA"):
         # The LAN-only `/` location answers every one of them.
         got = code(appliance, "http://127.0.0.1/.well-known/nodeinfo")
@@ -384,29 +277,6 @@ pkgs.testers.nixosTest {
         assert got == "403", f"loopback /.well-known/openid-configuration: expected 403, got {got}"
         got = code(noadmin, "http://appliance/.well-known/openid-configuration")
         assert got == "200", f"LAN /.well-known/openid-configuration: expected 200 (the SPA), got {got}"
-
-    with subtest("with disk sharing on, LosOS cloud's federation addresses reach the pod"):
-        for path in NC_FEDERATION + NC_EVERYDAY:
-            got = appliance.succeed(f"curl -s 'http://127.0.0.1{path}'")
-            assert got.startswith("stub-nextcloud"), f"sharing on, {path}: {got!r}"
-
-    with subtest("Nextcloud's admin pages cannot write the settings LosOS keeps"):
-        # 403 from nginx whatever the method, from the tunnel's loopback and
-        # from the LAN, and the request never reaches the pod. Every other
-        # key, and the API itself, still does.
-        for path in NC_LOCKED:
-            for method in ["POST", "DELETE", "GET"]:
-                got = appliance.succeed(
-                    f"curl -s -X {method} -d value=no -o /tmp/body -w '%{{http_code}}' 'http://127.0.0.1{path}'; echo; cat /tmp/body"
-                )
-                status, body = got.split("\n", 1)
-                assert status == "403" and "stub-nextcloud" not in body, \
-                    f"loopback {method} {path}: {status} {body!r}"
-            got = code(noadmin, f"-X POST -d value=no 'http://appliance{path}'")
-            assert got == "403", f"LAN POST {path}: expected 403, got {got}"
-        for path in NC_UNLOCKED:
-            got = appliance.succeed(f"curl -s -X POST -d value=no 'http://127.0.0.1{path}'")
-            assert got.startswith("stub-nextcloud"), f"{path} no longer reaches the pod: {got!r}"
 
     with subtest("security headers ride on admin responses, including the 403s"):
         want = {
@@ -432,19 +302,19 @@ pkgs.testers.nixosTest {
         assert "connect-src 'self';" in csp, f"connect-src is not plain 'self': {csp}"
         assert ":3456" not in csp, f"CSP still grants the retired Tahoe WUI: {csp}"
 
-        # frame-src 'self' — the setup wizard embeds /nextcloud, and without
-        # this the iframe is blocked. Under CSP3 frame-src falls back to
+        # frame-src 'self': the board embeds /widget-frame/, and without this
+        # the iframe is blocked. Under CSP3 frame-src falls back to
         # child-src and then to default-src, which is 'none' here, so the grant
         # has to be explicit; there is no "inherit" that would let it through.
         #
         # It is exactly 'self' and nothing wider. The admin page has no business
         # framing any other origin, and this appliance publishes only two
         # routes besides the admin surface.
-        assert "frame-src 'self'" in csp, f"the wizard cannot embed Nextcloud: {csp}"
+        assert "frame-src 'self'" in csp, f"the board cannot embed its widget frame: {csp}"
         assert "frame-src *" not in csp and "frame-src 'unsafe" not in csp, \
             f"frame-src is wider than 'self': {csp}"
         # X-Frame-Options governs who may frame US, not whom we may frame, so
-        # embedding Nextcloud must not have loosened it. Asserted here because
+        # embedding the widget frame must not have loosened it. Asserted here because
         # confusing the two directions is the obvious way to "fix" a blocked
         # iframe and it would expose the admin plane to clickjacking instead.
         assert headers(noadmin, "http://appliance/")["x-frame-options"] == "DENY", \
@@ -531,12 +401,7 @@ pkgs.testers.nixosTest {
         got = code(appliance, "http://127.0.0.1/widget-frame/")
         assert got == "403", f"loopback /widget-frame/: expected 403, got {got}"
 
-    with subtest("the admin CSP is left off LosOS cloud and kept on LosOS Git"):
-        # Nextcloud ships its own CSP and needs inline script; the map's
-        # ~^/nextcloud arm exists to omit these.
-        hdrs = headers(appliance, "http://127.0.0.1/nextcloud")
-        for name in ("content-security-policy", "x-frame-options"):
-            assert name not in hdrs, f"/nextcloud: {name} should be omitted, got {hdrs[name]!r}"
+    with subtest("the admin CSP is kept on LosOS Git"):
         # LosOS Git's pages are built like the admin pages and keep their rules.
         hdrs = headers(appliance, "http://127.0.0.1/git/")
         got = hdrs.get("content-security-policy", "")
@@ -565,32 +430,5 @@ pkgs.testers.nixosTest {
         # appears nowhere except the document this test is checking for.
         body = appliance.succeed("curl -s http://noadmin/")
         assert '<div id="root">' not in body, f"noadmin / still serving the admin SPA: {body!r}"
-
-    with subtest("with disk sharing off, LosOS cloud does not federate"):
-        # The specialisation sets losos.sharingMyStorage = false and nothing
-        # else; `test` reloads nginx with the new vhost.
-        appliance.succeed(
-            "/run/booted-system/specialisation/unshared/bin/switch-to-configuration test"
-        )
-        appliance.wait_for_unit("nginx.service")
-        appliance.wait_for_open_port(80)
-        # LosOS cloud: every federation address is a 404 from nginx, from the
-        # tunnel's loopback and from the LAN alike, and never reaches the pod.
-        for path in NC_FEDERATION:
-            got = appliance.succeed(
-                f"curl -s -o /tmp/body -w '%{{http_code}}' 'http://127.0.0.1{path}'; echo; cat /tmp/body"
-            )
-            status, body = got.split("\n", 1)
-            assert status == "404" and "stub-nextcloud" not in body, \
-                f"sharing off, loopback {path}: {status} {body!r}"
-            got = code(noadmin, f"'http://appliance{path}'")
-            assert got == "404", f"sharing off, LAN {path}: expected 404, got {got}"
-        # Everything else under /nextcloud is untouched.
-        for path in NC_EVERYDAY:
-            got = appliance.succeed(f"curl -s 'http://127.0.0.1{path}'")
-            assert got.startswith("stub-nextcloud"), f"sharing off, {path} no longer reaches the pod: {got!r}"
-        # LosOS Git does not federate yet; its routes are untouched.
-        assert '<div id="git">' in appliance.succeed("curl -s http://127.0.0.1/git/")
-        assert "stub-git" in appliance.succeed("curl -s http://127.0.0.1/git/api/v1/version")
   '';
 }

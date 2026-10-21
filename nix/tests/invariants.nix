@@ -22,8 +22,6 @@
   pkgs,
   lib,
   config,
-  # on -> the install configuration with losos.sharingMyStorage forced to `on`.
-  sharing,
   # The install configuration as a box that joined the mesh: the tunnel on,
   # a name of its own, losos.cluster.enable on.
   mesh,
@@ -32,15 +30,7 @@
 let
   must = cond: msg: if cond then true else throw "nix/tests/invariants.nix: ${msg}";
 
-  # Federation runs only while the box shares its disk (modules/options.nix,
-  # lososInternal.federation). Asserted on both sides, with the per-service
-  # switches at their defaults (on), because each half fails quietly: a gate
-  # that never opens looks like a server nobody federates with, and one that
-  # never closes publishes the box to every server that asks.
-  shared = sharing true;
-  unshared = sharing false;
   frontRoutes = c: builtins.attrNames c.services.nginx.virtualHosts."losos-front".locations;
-  ncRefused = c: builtins.filter (lib.hasInfix "ocm-provider") (frontRoutes c);
 
   gc = config.nix.gc;
   loader = config.boot.loader;
@@ -81,7 +71,7 @@ assert must
   )
   "lososPersistentSources does not pre-create the persisted directories by numeric id (a home as its owner with its homeMode, a plain directory as root 0755)";
 assert must (lib.elem "https://proxy.losos.dasmat.us" config.nix.settings.extra-substituters)
-  "the LosOS cache proxy is not among nix.settings.extra-substituters (${toString config.nix.settings.extra-substituters}): a fresh install then builds the 2.3 GiB Nextcloud image on the box instead of downloading it";
+  "the LosOS cache proxy is not among nix.settings.extra-substituters (${toString config.nix.settings.extra-substituters}): a fresh install then builds LosOS's own packages on the box instead of downloading them";
 assert must (lib.elem "https://losos-cache-proxy.vercel.app" config.nix.settings.extra-substituters)
   "the cache proxy's vercel.app name is not among nix.settings.extra-substituters (${toString config.nix.settings.extra-substituters}): a box whose resolver cannot see the custom domain then builds LosOS's own packages itself";
 assert must (lib.elem "https://losos.dasmat.us/proxy" config.nix.settings.extra-substituters)
@@ -92,16 +82,6 @@ assert must (lib.elem config.system.build.nixos-rebuild config.systemd.services.
   "nixos-rebuild is not on lososd's unit path: systemd-run resolves the rebuild command against the caller's PATH, so every Apply, storage-mode change and factory reset fails before the rebuild unit exists";
 assert must ((config.systemd.services.lososd.serviceConfig.ProcSubset or "all") != "pid")
   "lososd runs with ProcSubset=pid: that hides /proc/devices and /proc/mounts, lvm2's vgs exits 4 without them, and every `losos-ctl grow` (the Storage pane's Use reserve) fails at its first step";
-assert must shared.lososInternal.federation.nextcloud
-  "with losos.sharingMyStorage on and the federation switch at its default, lososInternal.federation.nextcloud is off";
-assert must (
-  ncRefused shared == [ ]
-) "with disk sharing on, the front vhost still refuses LosOS cloud's federation addresses";
-assert must (!unshared.lososInternal.federation.nextcloud)
-  "with losos.sharingMyStorage off, lososInternal.federation still says LosOS cloud federates: the shared data pool is locked and nothing may talk to other servers";
-assert must (
-  ncRefused unshared != [ ]
-) "with disk sharing off, the front vhost no longer refuses LosOS cloud's federation addresses";
 assert must (lib.elem "/git/" (frontRoutes config) && config.systemd.services ? losos-git)
   "LosOS Git is not on the box: no /git/ route on the front vhost or no losos-git.service, so the configuration repository has nowhere to go and the nightly update stops following main";
 assert must (lib.elem "r /var/lib/losos/k3s-static-pods/forgejo.yaml" config.systemd.tmpfiles.rules)

@@ -363,8 +363,11 @@ in
   '';
   scripts.test-tui.description = "Build the static losos and drive it in a pseudo-terminal.";
 
-  scripts.check-flake.exec = "command nix flake check --no-build -L";
-  scripts.check-flake.description = "Evaluate every flake output (builds nothing).";
+  # What `nix flake check --no-build` checks, one `nix eval` per derivation, so
+  # the peak memory is one VM test's evaluation rather than all of them at
+  # once (nix/check-flake.sh says why). CI's eval job runs the same script.
+  scripts.check-flake.exec = ''bash "$DEVENV_ROOT/nix/check-flake.sh" "$@"'';
+  scripts.check-flake.description = "Evaluate every flake output, one at a time (builds nothing).";
 
   # devenv runs standalone (see flake.nix), so there are two lock files:
   # flake.lock pins the nixpkgs that BUILDS the appliance, devenv.lock pins the
@@ -425,17 +428,12 @@ in
   '';
   scripts.build-pkgs.description = "Build every flake package except the images and media.";
 
-  # The two images the LOCAL k3s cluster runs as static pods
-  # (nix/images.nix, wired to losos.workloads.* in modules/defaults.nix).
+  # The image the LOCAL k3s cluster builds its pods on (nix/images.nix,
+  # wired to losos.workloads.pauseImage in modules/defaults.nix).
   #
-  # Opt-in, and deliberately not part of `devenv test`, because of what they
-  # cost: measured on a dev machine, the Nextcloud image's content closure is
-  # 2.3 GiB across 244 store paths (nextcloud34 with ~30 apps, php-with-
-  # extensions, apacheHttpd). The tarball itself is smaller than that suggests,
-  # 606 MiB, against pause's 51 MiB — so what costs you here is realising the
-  # closure, not writing the layers. From a warm store the two build in well under two minutes; from a cold one you
-  # are fetching 2.3 GiB first, which is precisely the "multi-gigabyte closure"
-  # the enterTest block below promises not to spend on you unasked.
+  # Opt-in, and deliberately not part of `devenv test`: pause's tarball is
+  # 51 MiB, small, but realising it is still a build the enterTest block below
+  # promises not to start unasked.
   #
   # It has to be gated *somewhere*, though, and until CI grows a job for it
   # this is the only place. The appliance never builds these: it substitutes
@@ -445,10 +443,9 @@ in
   # `nix flake check --no-build` evaluates these derivations, and evaluation
   # cannot see an entrypoint that fails shellcheck (writeShellApplication runs
   # it at build time) or a buildEnv whose paths collide. Run this before
-  # pushing anything that touches nix/images.nix or
-  # modules/nextcloud-stack.nix.
+  # pushing anything that touches nix/images.nix.
   scripts.build-images.exec = buildMatching "losos-image-";
-  scripts.build-images.description = "Build the OCI images the local cluster runs (gigabytes; opt-in).";
+  scripts.build-images.description = "Build the OCI image the local cluster runs (opt-in).";
 
   # The two bootable media (nix/disk-images.nix), built off the same
   # `install` system the ISO installs:

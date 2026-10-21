@@ -19,7 +19,7 @@ woandershin. Die Festplatte hat zwei Teile:
 
 ![Der Bereich Speicher auf einer Box, die ihre Festplatte für sich behält: belegter Platz, freier Platz und die Reserve, mit Reserve nutzen.](@site/docs/img/storage-de.png)
 
-- der **belegte Platz** von LosOS cloud, LosOS Git und dem System;
+- der **belegte Platz** von LosOS Cloud, LosOS Git und dem System;
 - die **Reserve**, der Teil, den der Installer zurückgehalten hat. Der
   Bereich Speicher kann ihn jederzeit belegen; siehe
   [Festplatte vergrößern](../manual/disk-growth).
