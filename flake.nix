@@ -441,6 +441,7 @@
           # libvirt client; the bundle under test copies them in the way the
           # shipped one does.
           inherit (self.packages.${system}.losos-admin-ui) labCorePkg labVirtPkg labRenderPkg;
+          callsPackage = self.packages.${system}.losos-ctl;
         };
         # Not a VM: the option document of the install configuration
         # (nix/options-doc.nix via modules/config-repo.nix), forced here so

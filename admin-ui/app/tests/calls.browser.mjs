@@ -7,7 +7,8 @@
  *   LOSOS_CALLS_BIN=../../backend/target/debug/losos-calls node tests/calls.browser.mjs
  *
  * LOSOS_CALLS_ADDRESS is the address the SFU offers media on (default: the
- * first non-loopback IPv4 address); LOSOS_CHROMIUM a chromium binary.
+ * first non-loopback IPv4 address, else loopback, which Chromium also
+ * takes); LOSOS_CHROMIUM a chromium binary.
  */
 
 import assert from 'node:assert/strict';
@@ -18,7 +19,7 @@ import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
-import { chromium } from 'playwright';
+import { launch } from './harness.mjs';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const BIN = process.env.LOSOS_CALLS_BIN ?? here('../../../backend/target/debug/losos-calls');
@@ -94,8 +95,7 @@ for (let i = 0; ; i++) {
   await new Promise((r) => setTimeout(r, 100));
 }
 
-const browser = await chromium.launch({
-  executablePath: process.env.LOSOS_CHROMIUM ?? '/opt/pw-browsers/chromium',
+const browser = await launch({
   args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'],
 });
 let failed = false;
