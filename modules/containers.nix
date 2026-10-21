@@ -363,6 +363,10 @@ let
     "font-src 'self' data: https: http:"
     "media-src data: blob: https: http:"
     "connect-src https: http:"
+    "frame-ancestors 'self'"
+    "base-uri 'none'"
+    "form-action 'none'"
+  ];
 
   # ── A message's HTML ──────────────────────────────────────────────────
   # LosOS Mail shows an HTML message in `<iframe sandbox>` from lososd's
