@@ -845,6 +845,14 @@ pkgs.testers.nixosTest {
             seen(page, others, frames)
         except Exception:
             media_report()
+            print("this page's call:", page.evaluate("""() => ({
+              tiles: [...document.querySelectorAll('[data-call-view] [data-pid]')].map((e) => e.getAttribute('data-pid')),
+              videos: [...document.querySelectorAll('[data-call-view] video')].map((v) => ({
+                muted: v.muted, width: v.videoWidth, time: v.currentTime, ready: v.readyState })),
+              e2ee: { ...(document.querySelector('[data-e2ee]')?.dataset ?? {}) },
+            })"""))
+            for who, lines in responses.items():
+                print(f"{who}'s console and failures:", *[l for l in lines if l.startswith(("console", "failed"))][-12:], sep="\n  ")
             raise
 
     def seen(page, others, frames):
