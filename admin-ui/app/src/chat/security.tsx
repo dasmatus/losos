@@ -319,6 +319,16 @@ export interface SecurityDialogProps {
 
 export function SecurityDialog({ client, keys, trust, open, onOpenChange, onChanged, onVerify }: SecurityDialogProps) {
   const t = useT();
+  // What the dialog opened for stays on screen until it closes: setting up
+  // makes this device ready halfway through, and the recovery key must not
+  // give way to the device list before the person has saved it.
+  const [shown, setShown] = React.useState<Trust>(trust);
+  const wasOpen = React.useRef(false);
+  React.useEffect(() => {
+    if (open && (!wasOpen.current || shown === "loading")) setShown(trust);
+    wasOpen.current = open;
+  }, [open, trust, shown]);
+  const view = wasOpen.current && shown !== "loading" ? shown : trust;
   const done = (): void => {
     onChanged();
     onOpenChange(false);
@@ -328,11 +338,11 @@ export function SecurityDialog({ client, keys, trust, open, onOpenChange, onChan
       <DialogHeader>
         <DialogTitle id="chat-security">{t("chat.security.title")}</DialogTitle>
         <DialogDescription>
-          {trust === "ready" ? t("chat.security.readyLead") : trust === "new" ? t("chat.security.newLead") : t("chat.security.unverifiedLead")}
+          {view === "ready" ? t("chat.security.readyLead") : view === "new" ? t("chat.security.newLead") : t("chat.security.unverifiedLead")}
         </DialogDescription>
       </DialogHeader>
-      {open && trust === "new" && <SetUp client={client} onDone={done} />}
-      {open && trust === "unverified" && (
+      {open && view === "new" && <SetUp client={client} onDone={done} />}
+      {open && view === "unverified" && (
         <Unlock
           client={client}
           keys={keys}
@@ -343,7 +353,7 @@ export function SecurityDialog({ client, keys, trust, open, onOpenChange, onChan
           }}
         />
       )}
-      {open && trust === "ready" && (
+      {open && view === "ready" && (
         <DialogBody>
           <Devices
             client={client}
@@ -354,7 +364,7 @@ export function SecurityDialog({ client, keys, trust, open, onOpenChange, onChan
           />
         </DialogBody>
       )}
-      {open && trust === "loading" && (
+      {open && view === "loading" && (
         <DialogBody className="flex justify-center">
           <Spinner size={18} />
         </DialogBody>

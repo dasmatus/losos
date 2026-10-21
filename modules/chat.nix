@@ -267,264 +267,276 @@ let
   '';
 in
 {
-  config = lib.mkIf live (
-    lib.mkMerge [
-      {
-        assertions = [
-          {
-            assertion = pkg != null;
-            message = "losos.chat needs lososd (losos.backend.package): it signs everyone in.";
-          }
-          {
-            assertion = federation -> !lib.hasSuffix ".local" serverName;
-            message = ''
-              losos.chat.federation.enable needs a losos.chat.serverName other
-              servers can reach; ${serverName} is a name of this LAN only.
-            '';
-          }
-        ];
-
-        systemd.services.losos-chat-setup = {
-          description = "Prepare LosOS chat: the homeserver's keys and lososd's application service";
-          wantedBy = [ "multi-user.target" ];
-          before = [ "dendrite.service" ];
-          after = [ "losos-fscrypt-shared.service" ];
-          wants = [ "losos-fscrypt-shared.service" ];
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            ExecStart = lib.getExe setup;
-          };
-        };
-
-        systemd.services.dendrite = {
-          description = "LosOS chat (Dendrite Matrix homeserver), as the shared user";
-          wantedBy = [ "multi-user.target" ];
-          after = [
-            "network.target"
-            "losos-chat-setup.service"
-            "losos-fscrypt-shared.service"
+  config = lib.mkMerge [
+    # Off: the page is still in the admin UI's bundle, so nginx sends
+    # /chat/ home rather than serve a page with nothing behind it, and
+    # answers the homeserver's paths with a plain 404.
+    (lib.mkIf (!live && config.losos.admin.enable && config.losos.admin.ui != null) {
+      services.nginx.virtualHosts."losos-front".locations = {
+        "/chat/".return = "302 /";
+        # Not the admin UI's index.html under a homeserver's paths.
+        "/_matrix/".return = "404";
+      };
+    })
+    (lib.mkIf live (
+      lib.mkMerge [
+        {
+          assertions = [
+            {
+              assertion = pkg != null;
+              message = "losos.chat needs lososd (losos.backend.package): it signs everyone in.";
+            }
+            {
+              assertion = federation -> !lib.hasSuffix ".local" serverName;
+              message = ''
+                losos.chat.federation.enable needs a losos.chat.serverName other
+                servers can reach; ${serverName} is a name of this LAN only.
+              '';
+            }
           ];
-          requires = [ "losos-chat-setup.service" ];
-          wants = [ "losos-fscrypt-shared.service" ];
-          serviceConfig = {
-            Type = "simple";
-            User = "shared";
-            Group = "shared";
-            WorkingDirectory = stateDir;
-            RuntimeDirectory = "dendrite";
-            RuntimeDirectoryMode = "0700";
-            LoadCredential = [
-              "matrix_key:${secretsDir}/matrix_key.pem"
-              "appservice:${secretsDir}/appservice.yaml"
-            ];
-            ExecStartPre = "${pkgs.envsubst}/bin/envsubst -i ${configFile} -o /run/dendrite/dendrite.yaml";
-            ExecStart = lib.escapeShellArgs [
-              (lib.getExe dendrite)
-              "--config"
-              "/run/dendrite/dendrite.yaml"
-              "--http-bind-address"
-              "127.0.0.1:${toString port}"
-            ];
-            Restart = "on-failure";
-            RestartSec = "5s";
-            LimitNOFILE = 65535;
-            MemoryMax = "1G";
-            # Its own folder of the shared domain, and nothing else of /home.
-            ProtectHome = "tmpfs";
-            BindPaths = [ stateDir ];
-            ProtectSystem = "strict";
-            PrivateTmp = true;
-            PrivateDevices = true;
-            NoNewPrivileges = true;
-            CapabilityBoundingSet = "";
-            ProtectKernelTunables = true;
-            ProtectKernelModules = true;
-            ProtectKernelLogs = true;
-            ProtectControlGroups = true;
-            ProtectClock = true;
-            ProtectHostname = true;
-            ProtectProc = "invisible";
-            RestrictNamespaces = true;
-            RestrictRealtime = true;
-            RestrictSUIDSGID = true;
-            LockPersonality = true;
-            RestrictAddressFamilies = [
-              "AF_INET"
-              "AF_INET6"
-              "AF_UNIX"
-            ];
-            SystemCallArchitectures = "native";
-            SystemCallFilter = [
-              "@system-service"
-              "~@privileged"
-            ];
-            UMask = "0077";
-          };
-        };
 
-        # The thread list, one question per connection (see the header).
-        systemd.sockets.losos-chat-threads = {
-          description = "Thread lists of LosOS chat";
-          wantedBy = [ "sockets.target" ];
-          socketConfig = {
-            ListenStream = threadsSocket;
-            Accept = true;
-            SocketMode = "0600";
-            MaxConnections = 16;
+          systemd.services.losos-chat-setup = {
+            description = "Prepare LosOS chat: the homeserver's keys and lososd's application service";
+            wantedBy = [ "multi-user.target" ];
+            before = [ "dendrite.service" ];
+            after = [ "losos-fscrypt-shared.service" ];
+            wants = [ "losos-fscrypt-shared.service" ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              ExecStart = lib.getExe setup;
+            };
           };
-        };
-        systemd.services."losos-chat-threads@" = {
-          description = "One thread list of LosOS chat";
-          serviceConfig = {
-            User = "shared";
-            Group = "shared";
-            ExecStart = "${pkg}/bin/losos-chat-threads --db ${stateDir}/syncserver.db";
-            StandardInput = "socket";
-            StandardOutput = "socket";
-            StandardError = "journal";
-            RuntimeMaxSec = "15s";
-            LogLevelMax = "notice";
-            # Read-write: SQLite keeps its reader locks beside the file.
-            ProtectHome = "tmpfs";
-            BindPaths = [ "-${stateDir}" ];
-            PrivateNetwork = true;
-            RestrictAddressFamilies = [ "AF_UNIX" ];
-            ProtectSystem = "strict";
-            PrivateTmp = true;
-            PrivateDevices = true;
-            NoNewPrivileges = true;
-            CapabilityBoundingSet = "";
-            ProtectKernelTunables = true;
-            ProtectKernelModules = true;
-            ProtectControlGroups = true;
-            ProtectProc = "invisible";
-            ProcSubset = "pid";
-            LockPersonality = true;
-            MemoryDenyWriteExecute = true;
-            SystemCallArchitectures = "native";
-            SystemCallFilter = [
-              "@system-service"
-              "~@privileged"
+
+          systemd.services.dendrite = {
+            description = "LosOS chat (Dendrite Matrix homeserver), as the shared user";
+            wantedBy = [ "multi-user.target" ];
+            after = [
+              "network.target"
+              "losos-chat-setup.service"
+              "losos-fscrypt-shared.service"
             ];
-            MemoryMax = "64M";
+            requires = [ "losos-chat-setup.service" ];
+            wants = [ "losos-fscrypt-shared.service" ];
+            serviceConfig = {
+              Type = "simple";
+              User = "shared";
+              Group = "shared";
+              WorkingDirectory = stateDir;
+              RuntimeDirectory = "dendrite";
+              RuntimeDirectoryMode = "0700";
+              LoadCredential = [
+                "matrix_key:${secretsDir}/matrix_key.pem"
+                "appservice:${secretsDir}/appservice.yaml"
+              ];
+              ExecStartPre = "${pkgs.envsubst}/bin/envsubst -i ${configFile} -o /run/dendrite/dendrite.yaml";
+              ExecStart = lib.escapeShellArgs [
+                (lib.getExe dendrite)
+                "--config"
+                "/run/dendrite/dendrite.yaml"
+                "--http-bind-address"
+                "127.0.0.1:${toString port}"
+              ];
+              Restart = "on-failure";
+              RestartSec = "5s";
+              LimitNOFILE = 65535;
+              MemoryMax = "1G";
+              # Its own folder of the shared domain, and nothing else of /home.
+              ProtectHome = "tmpfs";
+              BindPaths = [ stateDir ];
+              ProtectSystem = "strict";
+              PrivateTmp = true;
+              PrivateDevices = true;
+              NoNewPrivileges = true;
+              CapabilityBoundingSet = "";
+              ProtectKernelTunables = true;
+              ProtectKernelModules = true;
+              ProtectKernelLogs = true;
+              ProtectControlGroups = true;
+              ProtectClock = true;
+              ProtectHostname = true;
+              ProtectProc = "invisible";
+              RestrictNamespaces = true;
+              RestrictRealtime = true;
+              RestrictSUIDSGID = true;
+              LockPersonality = true;
+              RestrictAddressFamilies = [
+                "AF_INET"
+                "AF_INET6"
+                "AF_UNIX"
+              ];
+              SystemCallArchitectures = "native";
+              SystemCallFilter = [
+                "@system-service"
+                "~@privileged"
+              ];
+              UMask = "0077";
+            };
           };
-        };
 
-        systemd.services.lososd = {
-          environment = {
-            LOSOS_CHAT_HOMESERVER = "127.0.0.1:${toString port}";
-            LOSOS_CHAT_SERVER_NAME = serverName;
-            LOSOS_CHAT_AS_TOKEN_FILE = asTokenFile;
-            LOSOS_CHAT_THREADS_SOCKET = threadsSocket;
-            LOSOS_CHAT_LOGIN = "127.0.0.1:${toString identityPort}";
-            LOSOS_CHAT_FEDERATION = if federation then "1" else "0";
+          # The thread list, one question per connection (see the header).
+          systemd.sockets.losos-chat-threads = {
+            description = "Thread lists of LosOS chat";
+            wantedBy = [ "sockets.target" ];
+            socketConfig = {
+              ListenStream = threadsSocket;
+              Accept = true;
+              SocketMode = "0600";
+              MaxConnections = 16;
+            };
           };
-          after = [ "losos-chat-setup.service" ];
-          wants = [ "losos-chat-setup.service" ];
-        };
+          systemd.services."losos-chat-threads@" = {
+            description = "One thread list of LosOS chat";
+            serviceConfig = {
+              User = "shared";
+              Group = "shared";
+              ExecStart = "${pkg}/bin/losos-chat-threads --db ${stateDir}/syncserver.db";
+              StandardInput = "socket";
+              StandardOutput = "socket";
+              StandardError = "journal";
+              RuntimeMaxSec = "15s";
+              LogLevelMax = "notice";
+              # Read-write: SQLite keeps its reader locks beside the file.
+              ProtectHome = "tmpfs";
+              BindPaths = [ "-${stateDir}" ];
+              PrivateNetwork = true;
+              RestrictAddressFamilies = [ "AF_UNIX" ];
+              ProtectSystem = "strict";
+              PrivateTmp = true;
+              PrivateDevices = true;
+              NoNewPrivileges = true;
+              CapabilityBoundingSet = "";
+              ProtectKernelTunables = true;
+              ProtectKernelModules = true;
+              ProtectControlGroups = true;
+              ProtectProc = "invisible";
+              ProcSubset = "pid";
+              LockPersonality = true;
+              MemoryDenyWriteExecute = true;
+              SystemCallArchitectures = "native";
+              SystemCallFilter = [
+                "@system-service"
+                "~@privileged"
+              ];
+              MemoryMax = "64M";
+            };
+          };
 
-        networking.firewall = lib.mkIf config.networking.firewall.enable {
-          extraCommands = ''
-            iptables -w -D ${loopbackRule} 2>/dev/null || true
-            iptables -w -I ${loopbackRule}
-          '';
-          extraStopCommands = ''
-            iptables -w -D ${loopbackRule} 2>/dev/null || true
-          '';
-        };
+          systemd.services.lososd = {
+            environment = {
+              LOSOS_CHAT_HOMESERVER = "127.0.0.1:${toString port}";
+              LOSOS_CHAT_SERVER_NAME = serverName;
+              LOSOS_CHAT_AS_TOKEN_FILE = asTokenFile;
+              LOSOS_CHAT_THREADS_SOCKET = threadsSocket;
+              LOSOS_CHAT_LOGIN = "127.0.0.1:${toString identityPort}";
+              LOSOS_CHAT_FEDERATION = if federation then "1" else "0";
+            };
+            after = [ "losos-chat-setup.service" ];
+            wants = [ "losos-chat-setup.service" ];
+          };
 
-        services.nginx.virtualHosts."losos-front".locations = {
-          # The chat page: chat/index.html in the admin UI's bundle, on real
-          # paths under /chat/ as the Lab is under /lab/, under its own CSP
-          # (modules/containers.nix, chatCsp).
-          "/chat/" = {
-            tryFiles = "$uri /chat/index.html";
-            extraConfig = lanOnly;
-          };
-          "/_matrix/client/" = {
-            proxyPass = "http://127.0.0.1:${toString port}";
-            recommendedProxySettings = false;
-            extraConfig = gated;
-          };
-          "/_matrix/media/" = {
-            proxyPass = "http://127.0.0.1:${toString port}";
-            recommendedProxySettings = false;
-            extraConfig = ''
-              ${gated}
-              client_max_body_size ${toString cfg.maxUploadMiB}m;
-              proxy_request_buffering off;
+          networking.firewall = lib.mkIf config.networking.firewall.enable {
+            extraCommands = ''
+              iptables -w -D ${loopbackRule} 2>/dev/null || true
+              iptables -w -I ${loopbackRule}
+            '';
+            extraStopCommands = ''
+              iptables -w -D ${loopbackRule} 2>/dev/null || true
             '';
           };
-          # The thread list Dendrite lacks, answered by lososd.
-          "~ ^/_matrix/client/v1/rooms/([^/]+)/threads$" = {
-            recommendedProxySettings = false;
-            extraConfig = ''
-              ${lanOnly}
-              auth_request /internal/losos-chat-authz;
-              error_page 401 = @losos-chat-sign-in;
-              rewrite ^/_matrix/client/v1/rooms/([^/]+)/threads$ /internal/chat/threads/$1 break;
-              proxy_pass http://127.0.0.1:${toString config.losos.admin.apiPort};
-              proxy_set_header Remote-User "";
-              proxy_set_header Remote-Groups "";
-              proxy_set_header X-Losos-As "";
-              proxy_set_header X-Losos-Via-Edge "";
-              proxy_set_header X-Losos-Edge "";
+
+          services.nginx.virtualHosts."losos-front".locations = {
+            # The chat page: chat/index.html in the admin UI's bundle, on real
+            # paths under /chat/ as the Lab is under /lab/, under its own CSP
+            # (modules/containers.nix, chatCsp).
+            "/chat/" = {
+              tryFiles = "$uri /chat/index.html";
+              extraConfig = lanOnly;
+            };
+            "/_matrix/client/" = {
+              proxyPass = "http://127.0.0.1:${toString port}";
+              recommendedProxySettings = false;
+              extraConfig = gated;
+            };
+            "/_matrix/media/" = {
+              proxyPass = "http://127.0.0.1:${toString port}";
+              recommendedProxySettings = false;
+              extraConfig = ''
+                ${gated}
+                client_max_body_size ${toString cfg.maxUploadMiB}m;
+                proxy_request_buffering off;
+              '';
+            };
+            # The thread list Dendrite lacks, answered by lososd.
+            "~ ^/_matrix/client/v1/rooms/([^/]+)/threads$" = {
+              recommendedProxySettings = false;
+              extraConfig = ''
+                ${lanOnly}
+                auth_request /internal/losos-chat-authz;
+                error_page 401 = @losos-chat-sign-in;
+                rewrite ^/_matrix/client/v1/rooms/([^/]+)/threads$ /internal/chat/threads/$1 break;
+                proxy_pass http://127.0.0.1:${toString config.losos.admin.apiPort};
+                proxy_set_header Remote-User "";
+                proxy_set_header Remote-Groups "";
+                proxy_set_header X-Losos-As "";
+                proxy_set_header X-Losos-Via-Edge "";
+                proxy_set_header X-Losos-Edge "";
+              '';
+            };
+            "= /internal/losos-chat-authz" = {
+              proxyPass = "http://127.0.0.1:${toString config.losos.admin.apiPort}/internal/chat/authz";
+              recommendedProxySettings = false;
+              extraConfig = ''
+                internal;
+                proxy_pass_request_body off;
+                proxy_set_header Content-Length "";
+                proxy_set_header X-Original-Method $request_method;
+                proxy_set_header X-Original-URL https://$host$request_uri;
+                proxy_set_header X-Forwarded-For $remote_addr;
+                proxy_set_header Remote-User "";
+                proxy_set_header Remote-Groups "";
+                proxy_set_header X-Losos-As "";
+                proxy_set_header X-Losos-Via-Edge "";
+                proxy_set_header X-Losos-Edge "";
+              '';
+            };
+            # Signed out of LosOS Login: a Matrix error a client understands
+            # (the token is fine, the sign-in is not), and where to sign in.
+            "@losos-chat-sign-in".extraConfig = ''
+              default_type application/json;
+              add_header Cache-Control "no-store" always;
+              return 401 '${
+                builtins.toJSON {
+                  errcode = "M_UNKNOWN_TOKEN";
+                  error = "Sign in with LosOS Login to use chat.";
+                  soft_logout = true;
+                  losos_sign_in = "/auth/";
+                }
+              }';
             '';
-          };
-          "= /internal/losos-chat-authz" = {
-            proxyPass = "http://127.0.0.1:${toString config.losos.admin.apiPort}/internal/chat/authz";
-            recommendedProxySettings = false;
-            extraConfig = ''
-              internal;
-              proxy_pass_request_body off;
-              proxy_set_header Content-Length "";
-              proxy_set_header X-Original-Method $request_method;
-              proxy_set_header X-Original-URL https://$host$request_uri;
-              proxy_set_header X-Forwarded-For $remote_addr;
-              proxy_set_header Remote-User "";
-              proxy_set_header Remote-Groups "";
-              proxy_set_header X-Losos-As "";
-              proxy_set_header X-Losos-Via-Edge "";
-              proxy_set_header X-Losos-Edge "";
+            "= /.well-known/matrix/client".extraConfig = ''
+              add_header Access-Control-Allow-Origin "*" always;
+              ${json { "m.homeserver".base_url = "https://${serverName}"; }}
             '';
+          }
+          // lib.optionalAttrs federation {
+            "= /.well-known/matrix/server".extraConfig = json { "m.server" = "${serverName}:443"; };
+            "/_matrix/federation/" = {
+              proxyPass = "http://127.0.0.1:${toString port}";
+              recommendedProxySettings = false;
+              extraConfig = ''
+                ${toDendrite}
+                client_max_body_size ${toString cfg.maxUploadMiB}m;
+              '';
+            };
+            "/_matrix/key/" = {
+              proxyPass = "http://127.0.0.1:${toString port}";
+              recommendedProxySettings = false;
+              extraConfig = toDendrite;
+            };
           };
-          # Signed out of LosOS Login: a Matrix error a client understands
-          # (the token is fine, the sign-in is not), and where to sign in.
-          "@losos-chat-sign-in".extraConfig = ''
-            default_type application/json;
-            add_header Cache-Control "no-store" always;
-            return 401 '${
-              builtins.toJSON {
-                errcode = "M_UNKNOWN_TOKEN";
-                error = "Sign in with LosOS Login to use chat.";
-                soft_logout = true;
-                losos_sign_in = "/auth/";
-              }
-            }';
-          '';
-          "= /.well-known/matrix/client".extraConfig = ''
-            add_header Access-Control-Allow-Origin "*" always;
-            ${json { "m.homeserver".base_url = "https://${serverName}"; }}
-          '';
         }
-        // lib.optionalAttrs federation {
-          "= /.well-known/matrix/server".extraConfig = json { "m.server" = "${serverName}:443"; };
-          "/_matrix/federation/" = {
-            proxyPass = "http://127.0.0.1:${toString port}";
-            recommendedProxySettings = false;
-            extraConfig = ''
-              ${toDendrite}
-              client_max_body_size ${toString cfg.maxUploadMiB}m;
-            '';
-          };
-          "/_matrix/key/" = {
-            proxyPass = "http://127.0.0.1:${toString port}";
-            recommendedProxySettings = false;
-            extraConfig = toDendrite;
-          };
-        };
-      }
-    ]
-  );
+      ]
+    ))
+  ];
 }
