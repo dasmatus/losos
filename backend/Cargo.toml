@@ -122,5 +122,9 @@ name = "losos-search"
 path = "src/bin/losos-search.rs"
 
 [[bin]]
+name = "losos-chat-threads"
+path = "src/bin/losos-chat-threads.rs"
+
+[[bin]]
 name = "losos-calls"
 path = "src/bin/losos-calls.rs"

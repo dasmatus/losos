@@ -305,6 +305,27 @@ let
     "form-action 'none'"
   ];
 
+  # LosOS chat's policy (modules/chat.nix, admin-ui/app/chat/): the Lab's,
+  # for the same reason. The chat page compiles its end-to-end encryption
+  # from WebAssembly (matrix-js-sdk's Rust crypto), so it needs
+  # 'wasm-unsafe-eval' and nothing more. blob: for the pictures, voice
+  # messages and videos it decrypts or downloads (an authenticated download
+  # is a fetch with a header, shown from a blob: URL) and for the camera and
+  # microphone of a call. connect-src 'self': the homeserver is this origin's
+  # /_matrix/. Kept apart from the admin policy, which runs no WebAssembly.
+  chatCsp = lib.concatStringsSep "; " [
+    "default-src 'none'"
+    "script-src 'self' 'wasm-unsafe-eval'"
+    "style-src 'self'"
+    "img-src 'self' data: blob:"
+    "media-src 'self' blob:"
+    "font-src 'self'"
+    "connect-src 'self'"
+    "frame-ancestors 'none'"
+    "base-uri 'none'"
+    "form-action 'none'"
+  ];
+
   # ── The widget frame ──────────────────────────────────────────────────
   # Widgets the owner writes by hand (backend/src/look.rs) are HTML with
   # their own script, and the admin CSP above refuses inline script for
@@ -342,16 +363,17 @@ let
 
   # One map per header: value on the admin surface, empty (header omitted) on
   # the two proxied service routes, the handbook's and the lab's own values
-  # (or the admin value, for the headers they share) under /handbook/ and
-  # /lab/, and the widget frame's own value (or nothing) under
+  # (or the admin value, for the headers they share) under /handbook/,
+  # /lab/ and /chat/, and the widget frame's own value (or nothing) under
   # /widget-frame/.
-  adminHeaderMap = variable: value: handbookValue: labValue: frameValue: ''
+  adminHeaderMap = variable: value: handbookValue: labValue: chatValue: frameValue: ''
     map $uri ${variable} {
         default          "${value}";
         ~^/nextcloud     "";
         ~^/forgejo       "";
         ~^/handbook/     "${handbookValue}";
         ~^/lab/          "${labValue}";
+        ~^/chat/         "${chatValue}";
         ~^/widget-frame/ "${frameValue}";
     }
   '';
@@ -363,6 +385,7 @@ let
       value = adminCsp;
       handbookValue = handbookCsp;
       labValue = labCsp;
+      chatValue = chatCsp;
       frameValue = widgetFrameCsp;
     }
     {
@@ -387,7 +410,9 @@ let
 
   adminHeaderMaps = lib.concatMapStrings (
     h:
-    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) h.frameValue
+    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) (
+      h.chatValue or h.value
+    ) h.frameValue
   ) adminHeaders;
 
   # `always` so the headers ride on the 403s the lanOnly guard emits too.

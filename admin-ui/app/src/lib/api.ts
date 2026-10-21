@@ -206,6 +206,10 @@ export interface Me {
   /** What LosOS Login's rules hold this person to their own account for
    *  (backend/src/login.rs). Empty or missing: nothing. */
   locked?: LoginReason[];
+  /** The apps that run as the box's shared user, and so only while the box
+   *  shares its storage ("chat"). The sidebar draws an entry for each one
+   *  listed and nothing for the rest. Missing for the spare key. */
+  shared?: string[];
 }
 
 /** Why a rule holds someone to their own account. */
@@ -263,6 +267,12 @@ export function heldBy(): LoginReason[] {
  *  False until /api/me has said so. */
 export function runsOwnSignIn(): boolean {
   return me?.standalone === true;
+}
+
+/** Whether `app` runs on this box now for whoever is signed in (GET
+ *  /api/me's `shared`). False until /api/me has said so. */
+export function sharedApp(app: string): boolean {
+  return me?.shared?.includes(app) === true;
 }
 
 /** For components: who is signed in, re-read when that changes. */

@@ -9,6 +9,7 @@ import account from "./account";
 import advanced from "./advanced";
 import apps from "./apps";
 import calls from "./calls";
+import chat from "./chat";
 import cloudApps from "./cloud-apps";
 import home from "./home";
 import install from "./install";
@@ -50,6 +51,7 @@ export const MESSAGES = {
   ...pins,
   ...calls,
   ...manage,
+  ...chat,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

@@ -1,0 +1,188 @@
+import * as React from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Add01Icon, Home01Icon, Search01Icon, UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
+import { KnownMembership, type MatrixClient, type Room } from "matrix-js-sdk";
+import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n-react";
+import { cn } from "@/lib/utils";
+import { Avatar } from "./avatar";
+import { directPartner, directRooms, isSpace, lastActive, plainBody, ROOM_EVENTS, spaceChildren, unread, useEmitted } from "./model";
+
+export interface RoomListProps {
+  client: MatrixClient;
+  current: string | null;
+  space: string | null;
+  onSpace: (spaceId: string | null) => void;
+  onOpen: (roomId: string) => void;
+  onNewRoom: () => void;
+  onNewChat: () => void;
+  onJoin: () => void;
+  onNewSpace: () => void;
+}
+
+function preview(room: Room): string {
+  const last = [...room.getLiveTimeline().getEvents()].reverse().find((ev) => ev.getType() === "m.room.message" || ev.getType() === "m.room.encrypted");
+  if (last === undefined) return "";
+  const body = last.isRedacted() ? "" : plainBody(last.getContent());
+  const who = last.getSender() === room.client.getUserId() ? "" : `${room.getMember(last.getSender() ?? "")?.name ?? ""}: `;
+  return body === "" ? "" : `${who}${body}`;
+}
+
+function RoomRow({ client, room, current, onOpen, invite }: { client: MatrixClient; room: Room; current: string | null; onOpen: (id: string) => void; invite?: boolean }) {
+  const t = useT();
+  const counts = unread(room);
+  const active = room.roomId === current;
+  const line = invite === true ? t("chat.list.invitedBy", { name: room.getMember(client.getSafeUserId())?.events.member?.sender?.name ?? "" }) : preview(room);
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => onOpen(room.roomId)}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-left",
+          active ? "bg-accent-wash text-accent" : "text-ink hover:bg-sunk",
+        )}
+      >
+        <Avatar client={client} id={room.roomId} name={room.name} mxc={room.getMxcAvatarUrl()} size={32} />
+        <span className="min-w-0 flex-1">
+          <span className={cn("block truncate text-[13.5px]", counts.total > 0 ? "font-semibold" : "font-medium")}>{room.name}</span>
+          {line !== "" && <span className="block truncate text-[12px] text-muted">{line}</span>}
+        </span>
+        {counts.total > 0 && (
+          <span
+            className={cn(
+              "min-w-5 rounded-full px-1.5 text-center text-[11px] leading-5 font-semibold tabular-nums",
+              counts.highlight > 0 ? "bg-crit text-surface" : "bg-accent text-surface",
+            )}
+            aria-label={t("chat.list.unread", { count: counts.total })}
+          >
+            {counts.total}
+          </span>
+        )}
+      </button>
+    </li>
+  );
+}
+
+function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <section className="mt-3 first:mt-1">
+      <div className="flex items-center justify-between px-2 pb-1">
+        <h2 className="text-[11.5px] font-semibold tracking-wide text-faint uppercase">{title}</h2>
+        {action}
+      </div>
+      <ul className="flex flex-col gap-0.5">{children}</ul>
+    </section>
+  );
+}
+
+/** Spaces, as a column of icons beside the list. */
+export function SpaceRail({ client, space, onSpace, onNewSpace }: Pick<RoomListProps, "client" | "space" | "onSpace" | "onNewSpace">) {
+  const t = useT();
+  useEmitted(client, ROOM_EVENTS);
+  const spaces = client.getRooms().filter((room) => isSpace(room) && room.getMyMembership() === KnownMembership.Join);
+  const item = (selected: boolean): string =>
+    cn("flex size-10 items-center justify-center rounded-card border", selected ? "border-accent bg-accent-wash text-accent" : "border-transparent text-muted hover:bg-sunk hover:text-ink");
+  return (
+    <nav aria-label={t("chat.spaces.label")} className="flex w-14 shrink-0 flex-col items-center gap-1.5 border-r border-line bg-sunk py-3">
+      <button type="button" className={item(space === null)} aria-label={t("chat.spaces.all")} title={t("chat.spaces.all")} aria-pressed={space === null} onClick={() => onSpace(null)}>
+        <HugeiconsIcon icon={Home01Icon} className="size-5" />
+      </button>
+      {spaces.map((room) => (
+        <button
+          key={room.roomId}
+          type="button"
+          className={cn(item(space === room.roomId), "p-0")}
+          aria-label={room.name}
+          title={room.name}
+          aria-pressed={space === room.roomId}
+          onClick={() => onSpace(room.roomId)}
+        >
+          <Avatar client={client} id={room.roomId} name={room.name} mxc={room.getMxcAvatarUrl()} size={32} className="rounded-control" />
+        </button>
+      ))}
+      <button type="button" className={item(false)} aria-label={t("chat.spaces.new")} title={t("chat.spaces.new")} onClick={onNewSpace}>
+        <HugeiconsIcon icon={Add01Icon} className="size-5" />
+      </button>
+    </nav>
+  );
+}
+
+/** Invites, people and rooms, newest first; narrowed to a space when one
+ *  is picked, and by what is typed in the filter. */
+export function RoomList({ client, current, space, onOpen, onNewRoom, onNewChat, onJoin }: RoomListProps) {
+  const t = useT();
+  const tick = useEmitted(client, ROOM_EVENTS);
+  const [filter, setFilter] = React.useState("");
+
+  const { invites, people, rooms, spaceName } = React.useMemo(() => {
+    const direct = directRooms(client);
+    const all = client.getRooms().filter((room) => !isSpace(room));
+    const spaceRoom = space === null ? null : client.getRoom(space);
+    const inSpace = space === null ? null : new Set(spaceRoom === null ? [] : spaceChildren(spaceRoom));
+    const wanted = filter.trim().toLowerCase();
+    const shown = all
+      .filter((room) => inSpace === null || inSpace.has(room.roomId))
+      .filter((room) => wanted === "" || room.name.toLowerCase().includes(wanted))
+      .sort((a, b) => lastActive(b) - lastActive(a));
+    return {
+      invites: shown.filter((room) => room.getMyMembership() === KnownMembership.Invite),
+      people: shown.filter((room) => room.getMyMembership() === KnownMembership.Join && directPartner(client, room, direct) !== null),
+      rooms: shown.filter((room) => room.getMyMembership() === KnownMembership.Join && directPartner(client, room, direct) === null),
+      spaceName: space === null ? null : (client.getRoom(space)?.name ?? null),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, space, filter, tick]);
+
+  const plus = (label: string, onClick: () => void, icon = Add01Icon) => (
+    <button type="button" className="rounded-control p-1 text-muted hover:bg-sunk hover:text-ink" aria-label={label} title={label} onClick={onClick}>
+      <HugeiconsIcon icon={icon} className="size-4" />
+    </button>
+  );
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="px-3 pt-3 pb-2">
+        {spaceName !== null && <p className="mb-2 truncate px-1 text-[15px] font-semibold">{spaceName}</p>}
+        <label className="flex h-8 items-center gap-2 rounded-control border border-line bg-ground px-2 focus-within:border-accent">
+          <HugeiconsIcon icon={Search01Icon} className="size-4 text-faint" />
+          <input
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder={t("chat.list.filter")}
+            aria-label={t("chat.list.filter")}
+            className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-faint"
+          />
+        </label>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+        {invites.length > 0 && (
+          <Section title={t("chat.list.invites")}>
+            {invites.map((room) => (
+              <RoomRow key={room.roomId} client={client} room={room} current={current} onOpen={onOpen} invite />
+            ))}
+          </Section>
+        )}
+        <Section title={t("chat.list.people")} action={plus(t("chat.list.newChat"), onNewChat, UserAdd01Icon)}>
+          {people.map((room) => (
+            <RoomRow key={room.roomId} client={client} room={room} current={current} onOpen={onOpen} />
+          ))}
+          {people.length === 0 && <li className="px-2 py-1 text-[12.5px] text-faint">{t("chat.list.noPeople")}</li>}
+        </Section>
+        <Section title={t("chat.list.rooms")} action={plus(t("chat.list.newRoom"), onNewRoom)}>
+          {rooms.map((room) => (
+            <RoomRow key={room.roomId} client={client} room={room} current={current} onOpen={onOpen} />
+          ))}
+          {rooms.length === 0 && <li className="px-2 py-1 text-[12.5px] text-faint">{t("chat.list.noRooms")}</li>}
+        </Section>
+        <div className="mt-4 px-2">
+          <Button variant="secondary" size="sm" className="w-full" onClick={onJoin}>
+            <HugeiconsIcon icon={UserGroupIcon} className="size-4" />
+            {t("chat.list.join")}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

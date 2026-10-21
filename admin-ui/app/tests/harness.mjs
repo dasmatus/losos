@@ -70,6 +70,22 @@ export const LAB_CSP = [
   "form-action 'none'",
 ].join('; ');
 
+/* LosOS chat's policy (/chat/, modules/containers.nix `chatCsp`): the Lab's
+ * 'wasm-unsafe-eval' for the end-to-end crypto, and blob: for decrypted
+ * pictures and voice messages. Mirror nginx's /chat/ arm here. */
+export const CHAT_CSP = [
+  "default-src 'none'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "style-src 'self'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
+
 /* A company edge's manage page (/manage/, served by the edge itself:
  * PAGE_CSP in edge/registrar/src/server/manage.rs). Mirror it here. */
 export const MANAGE_CSP = [
@@ -99,7 +115,9 @@ export async function serve({ csp = false } = {}) {
           ? LAB_CSP
           : file.startsWith('/manage/') || file === 'manage/index.html'
             ? MANAGE_CSP
-            : ADMIN_CSP;
+            : file.startsWith('/chat/') || file === 'chat/index.html'
+              ? CHAT_CSP
+              : ADMIN_CSP;
       res.writeHead(200, {
         'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
         ...(csp ? { 'Content-Security-Policy': policy } : {}),
@@ -109,13 +127,15 @@ export async function serve({ csp = false } = {}) {
     // A directory gets its index, as nginx's `index` directive gives it.
     const file = rel === '/' ? 'index.html' : rel.endsWith('/') ? rel + 'index.html' : rel;
     // /lab/ is its own page with its own fallback, as its nginx location is,
-    // and so is the edge's /manage/.
+    // and so are /chat/ and the edge's /manage/.
     const fallback =
       rel.startsWith('/lab/') || rel === '/lab'
         ? 'lab/index.html'
         : rel.startsWith('/manage/') || rel === '/manage'
           ? 'manage/index.html'
-          : 'index.html';
+          : rel.startsWith('/chat/') || rel === '/chat'
+            ? 'chat/index.html'
+            : 'index.html';
     send(file).catch(() =>
       send(fallback).catch(() => {
         res.writeHead(404);
