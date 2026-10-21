@@ -97,6 +97,9 @@
             pkgs.rustc
             pkgs.clippy
             pkgs.rustfmt
+            # The wasm32 linker for lososd's plugins (backend/plugins), which
+            # backend's tests/plugins.rs builds.
+            pkgs.lld
           ];
           # mold as the linker, ccache and sccache in front of the compilers
           # — the same stdenv nix/packages.nix builds the crates with, so
@@ -326,6 +329,9 @@
             # Text inside the owner's files for the admin pages' search
             # (backend/src/textsearch/): the cloud index and the Git search.
             ./modules/search.nix
+            # LosOS Cloud (backend/src/cloud/): files at /cloud/ and to the
+            # Nextcloud desktop and phone apps.
+            ./modules/cloud.nix
             # Office documents in the browser: Collabora Online and its WOPI
             # host (backend/src/office/).
             ./modules/office.nix
@@ -421,8 +427,12 @@
         losos-edge-manage = import ./nix/tests/edge-manage.nix { inherit pkgs; };
         losos-edge-federation = import ./nix/tests/edge-federation.nix { inherit pkgs; };
         losos-edge-lan-two-boxes = import ./nix/demo/edge-lan/two-boxes.nix { inherit pkgs; };
+        # Two boxes and an edge gateway between them, the light mode of the
+        # demo nix/demo/box-edge-box/bootstrap.sh sets up.
+        losos-box-edge-box = import ./nix/demo/box-edge-box/demo.nix { inherit pkgs; };
         losos-edge-market = import ./nix/tests/market-vm.nix { inherit pkgs; };
         losos-edge-dns = import ./nix/tests/edge-dns.nix { inherit pkgs; };
+        losos-box-wallet-name = import ./nix/tests/box-wallet-name.nix { inherit pkgs; };
         losos-ds-render = import ./nix/tests/design-system.nix { inherit pkgs; };
         losos-front-vhost = import ./nix/tests/front-vhost.nix { inherit pkgs; };
         losos-impermanence = import ./nix/tests/impermanence.nix { inherit pkgs impermanence; };
@@ -431,9 +441,21 @@
         losos-resize = import ./nix/tests/resize.nix { inherit pkgs; };
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
+        losos-tour = import ./nix/tests/tour.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
+        losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
+        losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
+        losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        # The banner a box off the mesh shows over every page, both states
+        # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
+        losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
+        losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # Apps run as notshared on rootless Podman, with no cluster: the
+        # box's own, one in the LosOS app format and a chart from the
+        # search (nix/tests/podman-apps.nix).
+        losos-podman-apps = import ./nix/tests/podman-apps.nix { inherit pkgs; };
         losos-admin-ui = import ./nix/tests/admin-ui.nix {
           inherit pkgs;
           # The real option document, so the Advanced pane is drawn from

@@ -32,6 +32,9 @@ let
   # with no shell to investigate from.
   ncMode = config.losos.nextcloud.mode;
   ncContainer = ncMode == "container";
+  # Native mode with the nixpkgs app actually on: its occ and web root exist
+  # only then (a VM test with a stub occ runs native mode without it).
+  ncNative = !ncContainer && config.services.nextcloud.enable;
   nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
 
   # modules/cluster.nix's `localCriSocket`, which is a `let` binding there and
@@ -198,6 +201,11 @@ in
       // {
         LOSOS_LUKS_KEYFILE = "/etc/keys/persist-keyfile";
       }
+      # The plugins lososd loads (backend/plugins/README.md), a store path:
+      # lososd refuses one anywhere else. Unset, it serves no plugin routes.
+      // lib.optionalAttrs (config.losos.backend.plugins != null) {
+        LOSOS_PLUGIN_DIR = "${config.losos.backend.plugins}";
+      }
       // lib.optionalAttrs config.losos.lab.ordering.enable {
         LOSOS_LAB_ORDERING = "1";
       }
@@ -286,10 +294,10 @@ in
       # this attribute pulls a whole second Nextcloud closure into a system
       # that does not run one. `lib.optional false` does not force its
       # argument, so the attribute is not even evaluated there.
-      ++ lib.optional (!ncContainer) config.services.nextcloud.occ
+      ++ lib.optional ncNative config.services.nextcloud.occ
       # The Apps pane's LosOS cloud apps (backend/src/cloud_apps.rs). In
       # container mode the same command is in the pod and reached by crictl.
-      ++ lib.optional (!ncContainer) (
+      ++ lib.optional ncNative (
         nc.appsTool {
           occ = "${config.services.nextcloud.occ}/bin/nextcloud-occ";
           webroot = config.services.nextcloud.finalPackage;

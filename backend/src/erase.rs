@@ -97,8 +97,8 @@ pub struct Outside {
     pub listings_closed: u32,
     /// Taken off the edge's registry.
     pub left_edge: bool,
-    /// Steps the edge did not confirm, by name (`domains`, `listings`,
-    /// `registry`). The erase goes on regardless: the box is going away, and
+    /// Steps the edge did not confirm, by name (`domains`, `wallet`,
+    /// `listings`, `registry`). The erase goes on regardless: the box is going away, and
     /// the owner sees what is left to tidy by hand.
     #[serde(default)]
     pub problems: Vec<String>,
@@ -464,6 +464,18 @@ fn leave_edge<L: Losos>(l: &mut L) -> Outside {
                     _ => push_once(&mut out.problems, "domains"),
                 }
             }
+            // The edge keeps publishing a bound wallet at the box's names
+            // after the box deregisters, so the names would go on paying the
+            // old owner.
+            if view["wallet"].is_object() {
+                let unbind = Op::DomainWallet {
+                    address: None,
+                    signature: None,
+                };
+                if !matches!(l.market_request(&unbind), Ok(Outcome::Reply(_))) {
+                    push_once(&mut out.problems, "wallet");
+                }
+            }
         }
         Ok(Outcome::Unavailable) => {}
         Err(_) => push_once(&mut out.problems, "domains"),
@@ -826,11 +838,13 @@ mod tests {
             "POST /domains/list".into(),
             (
                 200,
-                r#"{"eligible":true,"domains":[{"domain":"cloud.example.org"},{"domain":"git.example.org"}]}"#.into(),
+                r#"{"eligible":true,"domains":[{"domain":"cloud.example.org"},{"domain":"git.example.org"}],"wallet":{"address":"0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"}}"#.into(),
             ),
         );
         f.market_routes
             .insert("POST /domains/remove".into(), (200, "{}".into()));
+        f.market_routes
+            .insert("POST /domains/wallet".into(), (200, "{}".into()));
         f.market_routes.insert(
             "POST /market/account".into(),
             (
@@ -859,6 +873,13 @@ mod tests {
         assert_eq!(e.outside.domains_removed, 2);
         assert_eq!(e.outside.listings_closed, 1, "only the open listing");
         assert!(e.outside.problems.is_empty());
+        // The box's names stop paying its wallet before it leaves.
+        let unbind = Op::DomainWallet {
+            address: None,
+            signature: None,
+        };
+        let at = |op: &Op| f.market_ops.iter().position(|o| o == op).unwrap();
+        assert!(at(&unbind) < at(&Op::Deregister));
         // Deregistering comes last, after everything else that names this
         // box on the edge.
         assert_eq!(f.market_ops.last(), Some(&Op::Deregister));
@@ -881,6 +902,42 @@ mod tests {
             .unwrap_err()
             .downcast_ref::<Busy>()
             .is_some());
+    }
+
+    #[test]
+    fn a_wallet_the_edge_will_not_unbind_is_noted() {
+        let mut f = with_bucket();
+        edge_with_one_of_everything(&mut f);
+        f.market_routes
+            .insert("POST /domains/wallet".into(), (502, String::new()));
+        cmd_erase(&mut f, false).unwrap();
+        f.clock += 900;
+        tick(&mut f).unwrap();
+        let e = f.state.erase.clone().unwrap();
+        assert_eq!(e.phase, Phase::Resetting);
+        assert_eq!(e.outside.problems, vec!["wallet"]);
+        assert!(e.outside.left_edge);
+    }
+
+    #[test]
+    fn no_wallet_bound_means_no_unbind() {
+        let mut f = with_bucket();
+        edge_with_one_of_everything(&mut f);
+        f.market_routes.insert(
+            "POST /domains/list".into(),
+            (
+                200,
+                r#"{"eligible":true,"domains":[],"wallet":null}"#.into(),
+            ),
+        );
+        cmd_erase(&mut f, false).unwrap();
+        f.clock += 900;
+        tick(&mut f).unwrap();
+        assert!(!f
+            .market_ops
+            .iter()
+            .any(|o| matches!(o, Op::DomainWallet { .. })));
+        assert!(f.state.erase.clone().unwrap().outside.problems.is_empty());
     }
 
     #[test]
