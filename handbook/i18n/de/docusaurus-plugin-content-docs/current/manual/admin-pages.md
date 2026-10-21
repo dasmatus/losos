@@ -89,7 +89,7 @@ und die Pfeiltasten bewegen sich darin.
 - **Eine App-Kachel oder ein angehefteter Eintrag**: in neuem Tab öffnen,
   anheften oder lösen.
 - **Eine Datei oder ein Ordner in LosOS Cloud**: öffnen, herunterladen,
-  umbenennen, verschieben, kopieren, frühere Versionen, Stern, Link
+  umbenennen, verschieben, kopieren, frühere Versionen, Stern, teilen, Link
   kopieren, löschen. Sind mehrere Dateien markiert, wirkt das Menü auf alle.
   Die Fläche um die Liste bietet einen neuen Ordner und das Hochladen, eine
   Datei im Papierkorb das Wiederherstellen oder endgültige Löschen.

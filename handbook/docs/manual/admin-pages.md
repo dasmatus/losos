@@ -84,7 +84,7 @@ whatever has the focus, and the arrow keys move through it.
 - **A link**: open it in a new tab, or copy its address.
 - **An app tile or a pin**: open it in a new tab, pin it or unpin it.
 - **A file or folder in LosOS Cloud**: open, download, rename, move, copy,
-  earlier versions, star, copy its link, delete. With several files ticked,
+  earlier versions, star, share, copy its link, delete. With several files ticked,
   the menu works on all of them. The space around the list offers a new
   folder and uploads, and a file in the trash offers restore or delete for
   good.

@@ -10,6 +10,7 @@ import {
   Link01Icon,
   LinkSquare02Icon,
   PencilEdit02Icon,
+  Share08Icon,
   StarIcon,
   StarOffIcon,
 } from "@hugeicons/core-free-icons";
@@ -26,6 +27,7 @@ import { useT } from "@/lib/i18n-react";
 import { cloud, contentUrl, joinPath, parentOf, type Entry } from "./api";
 import { MoveDialog, NameDialog, VersionsDialog, failed } from "./dialogs";
 import { entryHref } from "./entries";
+import { MeshShareDialog } from "./mesh/share-dialog";
 import { folderActionsFor, openersFor, type FolderAction } from "./openers";
 import { bump } from "./store";
 
@@ -64,6 +66,7 @@ export function useEntryMenu({
   const [renaming, setRenaming] = React.useState<Entry | null>(null);
   const [moving, setMoving] = React.useState<{ mode: "move" | "copy"; entries: readonly Entry[] } | null>(null);
   const [versions, setVersions] = React.useState<Entry | null>(null);
+  const [sharing, setSharing] = React.useState<Entry | null>(null);
   const [folderDialog, setFolderDialog] = React.useState<{ action: FolderAction; folder: Entry } | null>(null);
 
   const remove = React.useCallback(
@@ -189,6 +192,12 @@ export function useEntryMenu({
                 void cloud.favorite(one.path, !one.favorite).then(bump, (err: unknown) => failed(t("cloud.favorite.add"), err)),
             },
             {
+              id: "share",
+              label: `${t("collab.share")}…`,
+              icon: Share08Icon,
+              onSelect: () => setSharing(one),
+            },
+            {
               id: "copy-link",
               label: t("menu.copyLink"),
               icon: Link01Icon,
@@ -243,6 +252,9 @@ export function useEntryMenu({
         onOpenChange={(open) => !open && setMoving(null)}
       />
       <VersionsDialog entry={versions} onOpenChange={(open) => !open && setVersions(null)} />
+      {sharing !== null && (
+        <MeshShareDialog open onOpenChange={(open) => !open && setSharing(null)} fileId={sharing.id} name={sharing.name} />
+      )}
       {folderDialog?.action.Dialog !== undefined && (
         <folderDialog.action.Dialog folder={folderDialog.folder} open onOpenChange={(open) => !open && setFolderDialog(null)} />
       )}

@@ -85,7 +85,7 @@ kláves Menu pre to, čo má práve fokus, a šípky sa ňou pohybujú.
 - **Dlaždica aplikácie alebo pripnutá položka**: otvoriť na novej karte,
   pripnúť alebo odopnúť.
 - **Súbor alebo priečinok v LosOS Cloud**: otvoriť, stiahnuť, premenovať,
-  presunúť, skopírovať, staršie verzie, hviezdička, skopírovať odkaz,
+  presunúť, skopírovať, staršie verzie, hviezdička, zdieľať, skopírovať odkaz,
   vymazať. Keď je zaškrtnutých viac súborov, ponuka pracuje so všetkými.
   Miesto okolo zoznamu ponúka nový priečinok a nahrávanie, súbor v koši
   obnovenie alebo vymazanie natrvalo.
