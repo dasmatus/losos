@@ -305,8 +305,14 @@ in
       };
       # newuidmap and newgidmap are setuid wrappers; podman finds conmon,
       # crun and pasta through its own wrapper.
+      #
+      # pm's build jail runs a recipe's programs by their resolved path, and
+      # nixpkgs' coreutils is one binary behind symlinks that reads its name
+      # from argv[0]: `install -d` would reach it as `coreutils -d`. A
+      # coreutils of separate programs, ahead of the one systemd adds.
       path = [
         "/run/wrappers"
+        (pkgs.coreutils.override { singleBinary = false; })
         podmanPkg
         pkgs.podman-compose
         pkgs.curl
