@@ -162,6 +162,19 @@ in
             units = [ "losos-registrar.service" ];
           };
         }
+        # The Binance partner's RSA key, PEM line by line, and its token.
+        // lib.optionalAttrs cfg.market.usdc.binance.enable {
+          binance-connect-key = {
+            sealed = lib.mkDefault cfg.market.usdc.binance.keySealed;
+            pattern = lib.mkDefault "-----(BEGIN|END) (RSA )?PRIVATE KEY-----|[A-Za-z0-9+/=]+";
+            units = [ "losos-registrar.service" ];
+          };
+          binance-connect-token = {
+            sealed = lib.mkDefault cfg.market.usdc.binance.tokenSealed;
+            pattern = lib.mkDefault "[[:graph:]]+";
+            units = [ "losos-registrar.service" ];
+          };
+        }
         // lib.optionalAttrs (cfg.market.usdc.ensRpcUrlSealed != null) {
           ens-rpc = {
             sealed = lib.mkDefault cfg.market.usdc.ensRpcUrlSealed;

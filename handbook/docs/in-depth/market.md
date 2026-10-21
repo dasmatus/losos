@@ -506,30 +506,38 @@ None of it has value.
 
 ### Buying USDC with euros
 
-A wallet with an address on Base can buy USDC there with euros through
-[Onramp.money](https://onramp.money). The Market pane shows the row only for
-an edge that settles on Base mainnet: Onramp.money sells nothing a test edge
-takes.
+A wallet with an address on Base can buy USDC there with euros at
+[Binance](https://www.binance.com), with your own Binance account. The Market
+pane shows the row only when the edge is a Binance Connect partner and settles
+on Base mainnet. Binance sells USDC on Base only, so Bitcoin and Monero are
+still paid from a wallet of your own.
 
-1. Choose Buy. The pane says that Onramp.money, not LosOS, sells the USDC,
-   and links its Terms and Conditions, Privacy Policy and Risk disclosure.
-   Tick the box to accept them, then enter an amount from 5 to 100,000
-   euros. The browser remembers the acceptance for those terms and asks
-   again when they change.
-2. Continue opens Onramp.money's page in a new tab, with the amount, USDC on
-   Base and the wallet's address filled in. The box sends nothing else, and
-   there is no account or key on the box's side. Onramp.money checks who you
-   are, shows its rate and fee, and takes the euros by SEPA transfer or Open
-   Banking.
-3. When it is done, Onramp.money sends the tab back to the Market pane with
-   its order number, and the pane shows it.
-4. The pane reads the wallet's USDC on Base every 20 seconds while it is
-   open and says when the USDC has arrived, with a link to the transfers on
-   the explorer. A bank transfer can take a day or two. The pane stops
-   waiting after five days, or when you choose Stop waiting.
+1. Choose Buy. The pane says that Binance, not LosOS, sells the USDC, and
+   lists Binance's Terms of Use, Product Terms, Privacy Notice and Risk
+   Warning. Each one opens in a new tab, and the box to accept them stays
+   locked until you have opened all four. Then enter an amount from 1 to
+   100,000 euros. The browser keeps which version of the terms you accepted
+   and when.
+2. Create the order. The box sends the edge the amount and the wallet's
+   address and nothing else. The edge signs the order with its partner key,
+   and Binance answers with a link to its checkout.
+3. Open Binance. You sign in there, Binance checks who you are, shows its
+   rate and fee, and takes the payment. LosOS never sees your identity or
+   payment details.
+4. While the pane is open it asks the edge about the order every 15 seconds,
+   and it picks the order up again after a reload for up to seven days. It
+   says when Binance is taking the payment, when it is sending the USDC, and
+   when the USDC has been sent, with a link to the transaction on Basescan.
+   If Binance keeps the USDC in your Binance account instead, or the
+   purchase does not go through, the pane says that too.
 
-The purchase is between you and Onramp.money: a refund or a dispute goes to
-them, not to the edge.
+Binance decides which countries it sells to. At the time of writing
+(October 2026) Binance has no licence under the EU's MiCA regulation and
+does not take new purchases from EU residents, so a buyer in the EU is
+refused on Binance's page.
+
+The purchase is between you and Binance: a refund or a dispute goes to
+Binance, not to the edge.
 
 ### ENS names and sending USDC
 
