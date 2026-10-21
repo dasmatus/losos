@@ -102,13 +102,17 @@ LosOS cloud account and the password you just set. Then the wizard takes you
 to the admin pages' overview. From here on, see [The admin
 pages](../manual/admin-pages).
 
-The first time, a short tour opens over the overview. It has six steps, and
-each shows a small moving picture of the page with the sidebar entry where
-that feature lives. The steps cover the apps, adding more, storage, lending
-the box at night, the nightly update and where to find the tour again.
-**Skip the tour** closes it, and that browser does not open it by itself
-again. **Take the tour** under Settings, About brings it back.
+The first time, a short tour opens over the overview. Each step shows a
+small moving picture of the page, with the sidebar entry where that feature
+lives. Every box has six steps: LosOS cloud's apps, adding more, storage,
+lending the box at night, the nightly update and where to find the tour
+again. The tour asks the box what else it has and adds a step for each:
+Office, lending memory to AI models, a name to be paid at, chat and calls
+(only while the box shares its storage in a mesh), Build with AI and
+profile pictures. A box with none of these sees the six steps.
+**Skip the tour** closes it, and that browser does not open it by
+itself again. **Take the tour** under Settings, About brings it back.
 
-![The tour's first step over the overview: a picture of the page with the Files app open, "1 of 6", and Skip the tour and Next.](../img/tour.png)
+![The tour's first step over the overview: a picture of the page with LosOS cloud's six apps, "1 of 6", and Skip the tour and Next.](../img/tour.png)
 
 ![Step 3: You are signed in. That was the last step.](../img/wizard-step3-sign-in.png)

@@ -161,6 +161,7 @@ let
     }
     map $uri $losos_app_back {
       ~^/git/ /git/;
+      ~^/cloud/ $request_uri;
       default /nextcloud/login;
     }
     map "$losos_groups|$losos_user" $losos_app_user {
@@ -182,7 +183,7 @@ let
 
   signIn = import ./app-sign-in.nix { inherit lib; };
   appSignIn = config.lososInternal.appSignIn;
-  anyAppSignIn = appSignIn.nextcloud || appSignIn.git;
+  anyAppSignIn = appSignIn.nextcloud || appSignIn.git || appSignIn.cloud;
   nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
 
   # Ask Authelia about the request nginx is handling, as the /api/
@@ -352,7 +353,7 @@ in
             {
               domain_regex = ".*";
               subject = [ "group:losos-locked" ];
-              resources = [ "^/(nextcloud|git)([/?].*)?$" ];
+              resources = [ "^/(nextcloud|git|cloud)([/?].*)?$" ];
               policy = "deny";
             }
             {

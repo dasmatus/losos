@@ -5,7 +5,7 @@
 # stub (lososd in native mode with an `occ` that says "installed"), as in
 # nix/tests/identity.nix. A client VM claims the box as Matus, signs in
 # through LosOS Login and drives Playwright's Chromium at
-# https://mattbox.local (nix/tests/screens.mjs).
+# https://mattbox.local (nix/tests/shoot.mjs).
 #
 # What to shoot is read when the driver runs, not when it is built, so one
 # build serves every plan:
@@ -15,7 +15,7 @@
 #     --no-interactive --output_directory out
 #
 # The PNGs and manifest.json land in out/shots/. Without a plan it takes the
-# overview. The plan's format is at the top of screens.mjs.
+# overview. The plan's format is at the top of shoot.mjs.
 #
 # It evaluates on a tree without LosOS Git too (the module is imported when
 # it exists), so the same file takes the Before shots on an older commit.
@@ -50,7 +50,7 @@ let
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}
     export PLAYWRIGHT_BROWSERS_PATH=${browsers}
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.nodejs}/bin/node ${./screens.mjs} "$@"
+    exec ${pkgs.nodejs}/bin/node ${./shoot.mjs} "$@"
   '';
 
   defaultPlan = builtins.toJSON {

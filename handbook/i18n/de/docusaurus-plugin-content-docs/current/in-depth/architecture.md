@@ -272,15 +272,18 @@ verstümmelte. Und eine Liste ist eine Zeile `[ "a" "b" ]`, nur Strings.
 
 **Workloads und die einzige Eingangstür** (`modules/containers.nix`,
 `modules/workloads.nix`, `modules/cluster.nix`,
-`modules/nextcloud-common.nix`). Rootless Podman ist weg, und
-systemd-nspawn auch. Bei `losos.nextcloud.mode == "container"` läuft
-Nextcloud als Kubernetes-Workload im eigenen lokalen k3s-Cluster der Box.
+`modules/nextcloud-common.nix`). systemd-nspawn ist weg. Bei
+`losos.nextcloud.mode == "container"` läuft Nextcloud als Kubernetes-Workload
+im eigenen lokalen k3s-Cluster der Box.
 Die gemeinsame Nextcloud-Konfiguration liegt weiterhin in
 `nextcloud-common.nix`, sodass nativer und Workload-Modus nicht
 auseinanderlaufen können. nginx ist der einzige Prozess, der öffentliche
 Ports belegt. Er routet nach Pfad auf dem mDNS-Namen der Appliance
 (`<hostName>.local:80/nextcloud`, `:80/git/`) und liefert die Admin-SPA
-auf demselben `:80`-vhost aus.
+auf demselben `:80`-vhost aus. Apps, die ein Besitzer als `notshared`
+installiert, und die eigenen Apps der Box laufen dagegen auf Podman ohne
+root mit Podman Compose (`modules/apps.nix`, [App-Format](app-format.md)),
+sodass eine Box, die nichts teilt, für sie keinen Cluster braucht.
 
 **LosOS Git** (`modules/git.nix`, `backend/src/forge/`, das Binary
 `losos-git` aus dem Crate von lososd). Der Git-Server der Box, unter einem

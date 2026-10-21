@@ -175,12 +175,20 @@ and is never served or built by nix.
   Forgejo box to LosOS Git and checks every record. The old
   `losos.forgejo.*` names stay as hidden aliases (`lib.doRename`,
   `options.rs` `ALIASES`). `nix/tests/git.nix` boots it with a laptop.
-- `apps.nix` + `backend/src/apps.rs`: Helm charts from the Apps pane's
-  search, installed into the box's own k3s by `losos-app-<name>` transient
-  units. The `losos-shape` post-renderer (`losos-app-shape`) puts every pod
-  on the host network as `notshared` or `shared` without root, turns claims
-  into folders in that user's data domain and refuses a chart that needs
-  more; nginx forwards a port of `losos.apps.ports` to it, LAN only.
+- `apps.nix` + `backend/src/apps.rs` + `backend/src/compose.rs`: the run-as
+  user picks the runtime. `notshared` apps (a chart from the Apps pane's
+  search, a Compose file in the LosOS app format from `POST
+  /api/apps/compose`, the box's own `losos.apps.builtin`) run on rootless
+  Podman Compose as `notshared`, `losos-podman-app@<name>`, no cluster
+  needed; `compose.rs` turns `helm template` output into Compose and
+  refuses privileges. Each one's Compose file is committed, as `notshared`,
+  to that user's own Git repo `/var/lib/losos-podman/notshared/apps`, apart
+  from `/etc/nixos`. `shared` apps are Helm releases in the box's own k3s,
+  only where that cluster runs. `losos-app-<name>` transient units do the
+  work; the `losos-shape` rules (`losos-app-shape`) put every pod on the
+  host network without root, turn claims into folders in that user's data
+  domain and refuse a chart that needs more; nginx forwards a port of
+  `losos.apps.ports` to it, LAN only. `nix/tests/podman-apps.nix` boots it.
 - `search.nix` + `backend/src/textsearch/` (`losos-search`): text inside
   files for the palette. A timer pass keeps an SQLite FTS5 index of the
   owner's cloud files in `/var/lib/losos-search` as `nextcloud` (only what
@@ -581,7 +589,7 @@ quotes (it used to cut inside them, which mangled the default
 
 **Workloads and the single front door** (`modules/containers.nix` +
 `modules/workloads.nix` + `modules/cluster.nix` + `modules/nextcloud-common.nix`):
-rootless Podman is gone, and so is systemd-nspawn. Nextcloud runs as a
+systemd-nspawn is gone. Nextcloud runs as a
 **Kubernetes workload in the box's own local k3s cluster** when
 `losos.nextcloud.mode == "container"`; LosOS Git is a plain systemd service
 (`modules/git.nix`); the shared Nextcloud truth still lives in

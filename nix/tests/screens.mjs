@@ -1,145 +1,165 @@
-// Takes screenshots of a booted box for nix/tests/screens.nix.
-//
-// Runs on the client VM with Playwright's Chromium (playwright-core from
-// nixpkgs, passed as PLAYWRIGHT_CORE). Reads a plan (JSON) and writes one PNG
-// per shot plus manifest.json into the output folder:
-//
-//   {
-//     "viewport": {"width": 1280, "height": 900}, "dpr": 2,
-//     "colorScheme": "dark", "locale": "en-US", "timezone": "Europe/Bratislava",
-//     "shots": [
-//       {"file": "01-apps.png", "path": "/settings/apps",
-//        "waitFor": "text=Apps", "title": "the Apps pane",
-//        "steps": [{"kind": "click", "target": "[data-testid=accordion-git] button"}],
-//        "targets": {"tile": "text=LosOS Git"}}
-//     ]
-//   }
-//
-// `steps` run before the shot (click, type, press, hover, scroll, wait);
-// `targets` are measured on the finished page and land in the manifest as
-// CSS px boxes, for a film that points at them.
-import { readFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
+/* Screenshots of a booted box, taken from a client VM in a NixOS test.
+ *
+ * A test puts this file and its own script on a client VM with Chromium and
+ * playwright-core (the version admin-ui/app's lock file pins) and runs the
+ * script against the box's nginx. Each shot is a full-viewport PNG plus a
+ * step in `manifest.json`: what is on screen, the address bar's text, what
+ * happens next and where on the page it happens, so the PNGs can go into a
+ * pull request or be cut into a film.
+ *
+ *     import { Shots } from './screens.mjs';
+ *     const shots = new Shots('/tmp/shots/dark', { feature: 'profiles',
+ *       test: 'losos-profile-screens', base: 'https://mattbox.local', scheme: 'dark' });
+ *     const page = await shots.open();
+ *     await shots.signIn(page, 'matus', 'Correct-Horse-Battery-9');
+ *     await page.goto(shots.url('/settings/account'));
+ *     await shots.take(page, 'account', 'Your account', {
+ *       action: { kind: 'click', target: 'choose' },
+ *       targets: { choose: page.getByTestId('profile-picture-choose') },
+ *     });
+ *     await shots.finish();
+ *
+ * Settings are the ones the PNGs are compared at: 1280 x 900 CSS pixels at
+ * twice the density, en-US, Europe/Bratislava, reduced motion, the given
+ * colour scheme. The caret is hidden and nothing is taken while a spinner,
+ * skeleton or toast is on screen. Waits poll locators: page.waitForFunction
+ * compiles its predicate in the page, and the admin page's CSP refuses it. */
 
-const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.PLAYWRIGHT_CORE);
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { chromium } from 'playwright-core';
 
-const [planFile, outDir, origin, user, password] = process.argv.slice(2);
-const plan = JSON.parse(readFileSync(planFile, "utf8"));
-const HIDE = "*, *::before, *::after { caret-color: transparent !important; }";
+export const VIEWPORT = { width: 1280, height: 900 };
+export const DPR = 2;
+// Hides the caret, and the scrollbars a headless window draws.
+const QUIET = `
+* { caret-color: transparent !important; }
+::-webkit-scrollbar { display: none; }
+`;
+const BUSY = '[data-slot=spinner], [data-slot=skeleton], [data-sonner-toast], [role=status][data-state=open]';
+const TOASTS = '[data-sonner-toast], li[role=status]';
 
-async function settle(page) {
-  await page.waitForLoadState("networkidle");
-  await page.evaluate(() => document.fonts.ready.then(() => true));
-  // Spinners and skeletons announce themselves; wait them out.
-  await page.waitForFunction(
-    () => !document.querySelector("[role=status][aria-busy=true], .animate-spin, [data-skeleton]"),
-    null,
-    { timeout: 60_000 },
-  );
-  await page.waitForTimeout(500);
-}
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function runStep(page, step) {
-  const at = () => page.locator(step.target).first();
-  switch (step.kind) {
-    case "click":
-      await at().click();
-      break;
-    case "type":
-      await at().fill(step.text);
-      break;
-    case "press":
-      await page.keyboard.press(step.key);
-      break;
-    case "hover":
-      await at().hover();
-      break;
-    case "scroll":
-      await at().scrollIntoViewIfNeeded();
-      break;
-    case "wait":
-      await at().waitFor({ timeout: 60_000 });
-      break;
-    default:
-      throw new Error(`unknown step kind ${step.kind}`);
+export class Shots {
+  constructor(out, { feature, test, base, scheme = 'dark', commit = '', host = null }) {
+    this.out = out;
+    this.feature = feature;
+    this.test = test;
+    this.base = base.replace(/\/+$/, '');
+    this.scheme = scheme;
+    this.commit = commit || process.env.LOSOS_COMMIT || '';
+    this.host = host ?? this.base.split('://').pop();
+    this.steps = [];
+    mkdirSync(out, { recursive: true });
   }
-  await settle(page);
-}
 
-const viewport = plan.viewport ?? { width: 1280, height: 900 };
-const dpr = plan.dpr ?? 2;
-const manifest = { viewport, dpr, steps: [] };
-const browser = await chromium.launch();
-const context = await browser.newContext({
-  viewport,
-  deviceScaleFactor: dpr,
-  colorScheme: plan.colorScheme ?? "dark",
-  locale: plan.locale ?? "en-US",
-  timezoneId: plan.timezone ?? "Europe/Bratislava",
-  reducedMotion: "reduce",
-  ignoreHTTPSErrors: true,
-});
-if (user) {
-  // LosOS Login's own first-factor call: the session cookie lands in this
-  // context, as it would after the sign-in page.
-  const r = await context.request.post(`${origin}/auth/api/firstfactor`, {
-    data: { username: user, password },
-  });
-  if (!r.ok()) throw new Error(`sign-in refused: ${r.status()} ${await r.text()}`);
-}
-const page = await context.newPage();
-const failed = [];
-page.on("response", (r) => {
-  if (r.status() >= 500) failed.push(`${r.status()} ${r.url()}`);
-});
-const missed = [];
-for (const shot of plan.shots) {
-  try {
-    await take(shot);
-  } catch (e) {
-    // One shot that cannot be taken does not cost the others.
-    console.log(`missed ${shot.file}: ${e.message.split("\n")[0]}`);
-    missed.push(shot.file);
+  url(path) {
+    return this.base + path;
   }
-}
-await browser.close();
-writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
-if (missed.length) {
-  console.log(`missed: ${missed.join(", ")}`);
-  process.exit(1);
-}
 
-async function take(shot) {
-  await page.goto(`${origin}${shot.path}`);
-  // A constructed sheet, since the admin page's CSP refuses <style>.
-  await page.evaluate((css) => {
-    const sheet = new CSSStyleSheet();
-    sheet.replaceSync(css);
-    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
-  }, HIDE);
-  await settle(page);
-  if (shot.waitFor) {
-    await page.locator(shot.waitFor).first().waitFor({ timeout: 60_000 });
-    await settle(page);
+  async open() {
+    this.browser = await chromium.launch({
+      executablePath: process.env.LOSOS_CHROMIUM,
+      args: ['--disable-gpu', '--font-render-hinting=none'],
+    });
+    this.context = await this.browser.newContext({
+      viewport: VIEWPORT,
+      deviceScaleFactor: DPR,
+      colorScheme: this.scheme,
+      locale: 'en-US',
+      timezoneId: 'Europe/Bratislava',
+      reducedMotion: 'reduce',
+      ignoreHTTPSErrors: true,
+    });
+    // Under TCG a page takes its time.
+    this.context.setDefaultTimeout(120_000);
+    return this.context.newPage();
   }
-  for (const step of shot.steps ?? []) await runStep(page, step);
-  if (failed.length) {
-    console.log(`warning: ${shot.file}: the box answered ${failed.join(", ")}`);
-    failed.length = 0;
+
+  /* Sign in at LosOS Login the way its page does; the cookie stays in the
+   * browser for every page after. */
+  async signIn(page, name, password) {
+    const answer = await page.request.post(this.url('/auth/api/firstfactor'), {
+      data: { username: name, password },
+    });
+    if (!answer.ok()) throw new Error(`LosOS Login refused ${name}: ${answer.status()} ${await answer.text()}`);
   }
-  const targets = {};
-  for (const [name, sel] of Object.entries(shot.targets ?? {})) {
-    const box = await page.locator(sel).first().boundingBox();
-    if (box) targets[name] = Object.fromEntries(Object.entries(box).map(([k, v]) => [k, Math.round(v)]));
+
+  /* Wait until the page has nothing left to load or animate. */
+  async settle(page, extra = 300) {
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => document.fonts.ready.then(() => true));
+    // A constructed sheet rather than a <style> element, which the CSP refuses.
+    await page.evaluate((css) => {
+      if (window.__quiet) return;
+      window.__quiet = new CSSStyleSheet();
+      window.__quiet.replaceSync(css);
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, window.__quiet];
+    }, QUIET);
+    const deadline = Date.now() + 60_000;
+    for (;;) {
+      // Visible ones only: a closed <dialog> keeps its spinner in the DOM.
+      const busy = await page.locator(BUSY).filter({ visible: true }).count();
+      const loading = await page.evaluate(() => [...document.images].some((i) => !i.complete));
+      if (busy === 0 && !loading) break;
+      if (Date.now() > deadline) {
+        const still = await page.evaluate(
+          (busy) => [
+            ...[...document.querySelectorAll(busy)]
+              .filter((e) => e.checkVisibility())
+              .map((e) => e.parentElement.outerHTML.slice(0, 400)),
+            ...[...document.images].filter((i) => !i.complete).map((i) => `loading ${i.src}`),
+          ],
+          BUSY,
+        );
+        throw new Error(`the page never settled at ${page.url()}:\n${still.join('\n')}`);
+      }
+      await sleep(250);
+    }
+    await sleep(extra);
   }
-  await page.screenshot({ path: `${outDir}/${shot.file}` });
-  manifest.steps.push({
-    file: shot.file,
-    url: shot.url ?? shot.path,
-    title: shot.title ?? "",
-    action: shot.action ?? { kind: "none" },
-    targets,
-  });
-  console.log(`shot ${shot.file}`);
+
+  /* A toast fades out by itself; wait for it rather than shoot it. */
+  async toastsGone(page) {
+    const toasts = page.locator(TOASTS);
+    const deadline = Date.now() + 60_000;
+    while ((await toasts.filter({ visible: true }).count()) > 0) {
+      if (Date.now() > deadline) throw new Error('a toast never went away');
+      await sleep(250);
+    }
+  }
+
+  static async box(locator) {
+    const b = await locator.boundingBox();
+    if (b === null) throw new Error(`${locator} is not on screen`);
+    return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) };
+  }
+
+  /* One full-viewport PNG, numbered in order, and its manifest step. */
+  async take(page, slug, title, { action = null, targets = {}, settle = true } = {}) {
+    if (settle) await this.settle(page);
+    const file = `${String(this.steps.length + 1).padStart(2, '0')}-${slug}.png`;
+    await page.screenshot({ path: join(this.out, file) });
+    const { pathname, search } = new URL(page.url());
+    const boxes = {};
+    for (const [key, locator] of Object.entries(targets)) boxes[key] = await Shots.box(locator);
+    this.steps.push({ file, url: this.host + pathname + search, title, action: action ?? { kind: 'none' }, targets: boxes });
+    return file;
+  }
+
+  async finish() {
+    const manifest = {
+      feature: this.feature,
+      viewport: VIEWPORT,
+      dpr: DPR,
+      scheme: this.scheme,
+      commit: this.commit,
+      test: this.test,
+      steps: this.steps,
+    };
+    writeFileSync(join(this.out, 'manifest.json'), JSON.stringify(manifest, null, 2));
+    await this.context?.close();
+    await this.browser?.close();
+  }
 }

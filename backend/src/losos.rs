@@ -166,6 +166,14 @@ pub trait Losos {
     /// Every installed app's record, by name.
     fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>>;
     fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()>;
+    /// A Compose app's file and the files beside it, where the job reads
+    /// them (`<apps dir>/<release>/source/`), replacing what was there.
+    fn save_app_source(
+        &mut self,
+        release: &str,
+        compose: &str,
+        files: &[(String, String)],
+    ) -> anyhow::Result<()>;
     /// Start the job that installs or removes `release`, from its record.
     fn start_app_job(&mut self, release: &str, action: crate::apps::Action) -> anyhow::Result<()>;
     /// Whether a job for `release` is running.
@@ -1125,11 +1133,14 @@ pub fn cmd_domains<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     }
 }
 
-/// Add or remove a custom domain. The reply is the edge's whole view, so the
-/// page redraws from one answer.
+/// Add or remove a custom domain, or bind the box's wallet to its names.
+/// The reply is the edge's whole view, so the page redraws from one answer.
 pub fn cmd_domain_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Result<Value> {
     use crate::market::{Op, Outcome, Refused};
-    if !matches!(op, Op::DomainAdd { .. } | Op::DomainRemove { .. }) {
+    if !matches!(
+        op,
+        Op::DomainAdd { .. } | Op::DomainRemove { .. } | Op::DomainWallet { .. }
+    ) {
         anyhow::bail!("not a domain operation");
     }
     crate::edge::check_market_gate(&l.edge_status()?)?;
@@ -2113,6 +2124,14 @@ mod tests {
             }
             fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>> {
                 self.0.load_app_records()
+            }
+            fn save_app_source(
+                &mut self,
+                release: &str,
+                compose: &str,
+                files: &[(String, String)],
+            ) -> anyhow::Result<()> {
+                self.0.save_app_source(release, compose, files)
             }
             fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()> {
                 self.0.save_app_record(record)

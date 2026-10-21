@@ -31,6 +31,8 @@ directories listed in `modules/impermanence.nix` survive, on an encrypted
 - [Market](market.md). Selling the disk and CPU a box already shares.
 - [Virtual machines](virtual-machines.md). Renting machines on the mesh and
   hosting other boxes' machines.
+- [App format](app-format.md). One Compose file per app, run as notshared on
+  rootless Podman: what the box does to it and how to install one.
 - [Widget builder](widget-builder.md). A language model on the box writes a
   widget from a description.
 - [Master proxy](master-proxy.md). Reaching the box from the internet without

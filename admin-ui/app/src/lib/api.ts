@@ -192,6 +192,11 @@ export interface Me {
   /** The sign-in name, or null for the spare key. */
   name: string | null;
   displayName: string | null;
+  /** Their profile picture (`/api/profiles/<name>/picture?v=N`), null for
+   *  none, missing for the spare key or an older lososd. */
+  picture?: string | null;
+  /** Their colour, one of ACCENTS. */
+  accent?: Accent;
   groups: string[];
   /** In losos-admins, or the spare key: every pane is theirs. */
   admin: boolean;
@@ -1029,7 +1034,7 @@ export function postMarketCoinPay(
 
 export interface RpcReply {
   result?: unknown;
-  error?: { code?: number; message?: string };
+  error?: { code?: number; message?: string; data?: unknown };
 }
 
 /** POST /api/market/rpc — one allowlisted chain call to `network`, or to
@@ -1309,8 +1314,16 @@ export type AppPhase = "installing" | "running" | "failed" | "removing";
 
 export interface InstalledApp {
   release: string;
-  chart: AppSource;
+  /** A chart from the search, or an app in the LosOS app format (a Compose
+   *  file, from the AI builder or sent by the owner). */
+  kind: "chart" | "compose";
+  /** Null for a compose app. */
+  chart: AppSource | null;
+  /** What a compose app is called on the page, when it says. */
+  title: string | null;
   runAs: AppRunAs;
+  /** What runs it, which follows from runAs. The page never shows it. */
+  runtime: "podman" | "kube";
   /** What the property form changed when it was last installed. */
   values: Record<string, unknown>;
   valuesYaml: string | null;
@@ -1325,7 +1338,7 @@ export interface InstalledApp {
 }
 
 export type AppsResponse =
-  | { available: false; reason: "noCluster"; apps: [] }
+  | { available: false; reason: "off"; apps: [] }
   | { available: true; sharedAvailable: boolean; apps: InstalledApp[] };
 
 /** GET /api/apps */
@@ -1463,6 +1476,23 @@ export type DomainProblem =
   | "takenElsewhere"
   | "lookupFailed";
 
+/** What the edge last saw of the wallet record at an owner's domain. */
+export type DomainWalletSeen = "found" | "unsigned" | "cname" | "other" | "missing";
+
+/** The wallet bound to this box's names on the edge. */
+export interface BoundWallet {
+  address: string;
+  bound_at: number;
+  /** The TXT value (`ENS1 …`) at the box's names, and for the owner's own
+   *  domains. */
+  record: string;
+  /** What public DNS showed of each of the box's names when the edge last
+   *  looked: `found` means a buyer's wallet finds it. A name not looked up
+   *  yet is absent, and so is the map on an edge that predates the check. */
+  published?: Record<string, DomainWalletSeen>;
+  published_at?: number | null;
+}
+
 export interface CustomDomain {
   domain: string;
   status: "live" | "waiting";
@@ -1475,6 +1505,10 @@ export interface CustomDomain {
   problem: DomainProblem | null;
   checked_at: number | null;
   verified_at: number | null;
+  /** The wallet record at the domain itself, while a wallet is bound:
+   *  `found` means ENS resolves the domain to the wallet. Absent from an
+   *  edge that predates wallets. */
+  wallet?: DomainWalletSeen | null;
 }
 
 export type DomainsResponse =
@@ -1489,6 +1523,15 @@ export type DomainsResponse =
       addresses: string[];
       max_domains: number;
       domains: CustomDomain[];
+      /** This box's id on the edge and the edge's zone, which the wallet
+       *  binding message names (`walletMessage`). This and the three below
+       *  are absent from an edge that predates wallets. */
+      box?: string;
+      zone?: string;
+      /** This box's names in the edge's zone; they carry the wallet record
+       *  while one is bound. */
+      names?: string[];
+      wallet?: BoundWallet | null;
     };
 
 /** GET /api/domains — this box's domains on the edge. */
@@ -1516,6 +1559,20 @@ export function postDomainRemove(
     method: "POST",
     contentType: "application/json",
     body: JSON.stringify({ domain }),
+  });
+}
+
+/** POST /api/domains/wallet — publish the wallet at the box's names, with
+ *  its signature of `walletMessage`; no address takes it off. */
+export function postDomainWallet(
+  binding: { address: string; signature: string } | null,
+  options: RequestOptions = {},
+): Promise<DomainsResponse> {
+  return call<DomainsResponse>("/api/domains/wallet", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(binding ?? {}),
   });
 }
 
@@ -1776,6 +1833,11 @@ export interface PersonEntry {
   passwordSetAt?: number;
   /** What the rules hold them to their own account for. */
   locked?: LoginReason[];
+  /** Their profile picture, banner and colour (`GET /api/profiles` has
+   *  the rest). */
+  picture?: string | null;
+  banner?: string | null;
+  accent?: Accent;
 }
 
 export interface PeopleResponse {
@@ -1891,6 +1953,81 @@ export function postAccount(
  *  them, behind their password. 403 `wrongPassword`, 404 `noCode`. */
 export function postAccountCode(password: string, options: RequestOptions = {}): Promise<{ code: string }> {
   return postJson("/api/account/code", { password }, options);
+}
+
+// ── Profiles ──────────────────────────────────────────────────────────────
+
+/* A person's picture, banner, colour, pronouns and a line about them
+ * (backend/src/profiles.rs, docs/profiles.md). Everyone signed in reads
+ * everyone's; a person changes only their own. lososd crops, scales and
+ * re-encodes every picture, so what comes back has no camera tags. */
+
+/** The colours a profile can have, in the order the picker shows them. */
+export const ACCENTS = ["teal", "blue", "violet", "rose", "amber", "green"] as const;
+export type Accent = (typeof ACCENTS)[number];
+
+export interface Profile {
+  name: string;
+  displayName: string;
+  pronouns: string;
+  about: string;
+  accent: Accent;
+  /** False while the colour is the one their name gives them. */
+  accentChosen: boolean;
+  /** `/api/profiles/<name>/picture?v=N`, or null. */
+  picture: string | null;
+  /** `/api/profiles/<name>/banner?v=N`, or null. */
+  banner: string | null;
+}
+
+export type ProfileImage = "picture" | "banner";
+
+/** The most characters lososd keeps in each line (profiles.rs). */
+export const MAX_PRONOUNS_CHARS = 40;
+export const MAX_ABOUT_CHARS = 160;
+
+/** GET /api/profiles — everyone LosOS Login lets in. */
+export function getProfiles(options: RequestOptions = {}): Promise<{ people: Profile[] }> {
+  return call<{ people: Profile[] }>("/api/profiles", options);
+}
+
+/** GET /api/profiles/{name}. */
+export function getProfile(name: string, options: RequestOptions = {}): Promise<Profile> {
+  return call<Profile>(`/api/profiles/${encodeURIComponent(name)}`, options);
+}
+
+/** POST /api/account/profile — the caller's own words and colour. Absent
+ *  fields stay; `accent: null` goes back to the colour of their name. */
+export function postAccountProfile(
+  details: { pronouns?: string; about?: string; accent?: Accent | null },
+  options: RequestOptions = {},
+): Promise<Profile> {
+  return postJson("/api/account/profile", details, options);
+}
+
+/** PUT /api/account/{picture,banner} — the bytes; lososd reads the type
+ *  off them. */
+export function putAccountImage(kind: ProfileImage, file: Blob, options: RequestOptions = {}): Promise<Profile> {
+  return call<Profile>(`/api/account/${kind}`, {
+    ...options,
+    method: "PUT",
+    contentType: file.type.length > 0 ? file.type : "application/octet-stream",
+    body: file,
+  });
+}
+
+/** DELETE /api/account/{picture,banner}. */
+export function deleteAccountImage(kind: ProfileImage, options: RequestOptions = {}): Promise<Profile> {
+  return call<Profile>(`/api/account/${kind}`, { ...options, method: "DELETE" });
+}
+
+/** POST /api/people/profile/clear — an administrator takes a picture down. */
+export function clearPersonImage(
+  name: string,
+  kind: ProfileImage,
+  options: RequestOptions = {},
+): Promise<{ name: string; kind: ProfileImage; cleared: boolean }> {
+  return postJson("/api/people/profile/clear", { name, kind }, options);
 }
 
 /** LosOS Login's own page for adding an authenticator app or a passkey. */

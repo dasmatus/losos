@@ -556,8 +556,9 @@ werden, sodass er auch ohne offenen Tab weiterläuft:
 2. ein Countdown von `losos.reset.graceMinutes` (standardmäßig 15). Abbrechen
    stoppt ihn, und weder auf der Box noch außerhalb hat sich bisher etwas
    geändert;
-3. Verlassen der Edge: Die eigenen Domains der Box werden entfernt, ihre
-   aktiven Angebote auf dem Marktplatz geschlossen, und sie wird aus der
+3. Verlassen der Edge: Die eigenen Domains der Box werden entfernt, eine an
+   ihre Namen gebundene Wallet wird gelöst, ihre aktiven Angebote auf dem
+   Marktplatz geschlossen, und sie wird aus der
    Registry ausgetragen (`POST /deregister`). Jeder Schritt wird versucht,
    auch wenn der vorherige fehlschlug, und der Bericht nennt die, die die
    Edge nicht bestätigt hat;

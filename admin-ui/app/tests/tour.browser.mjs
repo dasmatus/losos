@@ -1,5 +1,8 @@
-/* The first-run tour (src/tour/): six steps in a dialog, each a looping
- * picture drawn as SVG from a frame number, over one sentence.
+/* The first-run tour (src/tour/): a step per thing the box does, in a
+ * dialog, each a looping picture drawn as SVG from a frame number, over one
+ * sentence. Six steps on every box, and one more for each feature the box
+ * reports (src/tour/features.ts): Office, lending memory to AI models, a
+ * name to be paid at, chat, Build with AI and profiles, twelve in all.
  *
  * What is checked: it opens over the app when this browser has it pending
  * (the wizard's Finish sets that; wizard.browser.mjs follows that path), the
@@ -45,9 +48,38 @@ const SETTINGS = {
 const json = (route, status, body) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
+/* What a box with every feature answers, one answer per feature. */
+const ME = { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: [], standalone: true };
+const option = (name, current) => ({ name, group: name.split('.')[0], editor: { kind: 'bool' }, nixType: 'boolean', description: '', default: false, defaultText: null, current, danger: false, fixed: null, readOnly: false, set: null });
+const options = (...rows) => ({ available: true, version: 1, options: rows, stray: [], excluded: {} });
+const DOMAINS = { available: true, eligible: true, reason: null, target: null, addresses: [], max_domains: 3, domains: [], names: ['mattbox.boxes.losos.dasmat.us'], wallet: null };
+const FULL = {
+  me: { ...ME, shared: ['chat'], picture: null },
+  options: options(option('office.enable', true), option('inference.lend.enable', false), option('builder.enable', true)),
+  domains: DOMAINS,
+};
+const STOCK = ['Your apps, on your box', 'Add more apps', 'See where the space goes', 'Lend it while you sleep', 'It updates itself at night', 'Find this tour again'];
+const ALL = [
+  'Your apps, on your box',
+  'Write together',
+  'Add more apps',
+  'See where the space goes',
+  'Lend it while you sleep',
+  'Lend memory to AI models',
+  'Chat and calls',
+  "Get paid at this box's name",
+  'Describe a widget, get a widget',
+  'Put a face to your name',
+  'It updates itself at night',
+  'Find this tour again',
+];
+
 /* A claimed box, signed in. `tour` is what this browser remembers about the
- * tour: "pending" after the wizard, "seen" once closed, null for nothing. */
-async function openApp({ path = '/', tour = 'pending', reducedMotion = 'no-preference', locale = 'en-US' } = {}) {
+ * tour: "pending" after the wizard, "seen" once closed, null for nothing.
+ * `box` is what the box answers on /api/me, /api/options and /api/domains;
+ * nothing there is a box that predates every feature. `optionsDelay` holds
+ * the options answer back. */
+async function openApp({ path = '/', tour = 'pending', reducedMotion = 'no-preference', locale = 'en-US', settings = SETTINGS, box = {}, optionsDelay = 0 } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale, reducedMotion });
   const page = await context.newPage();
   const errors = [];
@@ -56,7 +88,15 @@ async function openApp({ path = '/', tour = 'pending', reducedMotion = 'no-prefe
   await page.route('**/api/**', (route) => json(route, 200, {}));
   await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
   await page.route('**/api/state', (route) => json(route, 200, { mode: 'local', sharing: false }));
-  await page.route('**/api/settings', (route) => json(route, 200, SETTINGS));
+  await page.route('**/api/settings', (route) => json(route, 200, settings));
+  if (box.me !== undefined) await page.route('**/api/me', (route) => json(route, 200, box.me));
+  if (box.domains !== undefined) await page.route('**/api/domains', (route) => json(route, 200, box.domains));
+  if (box.options !== undefined) {
+    await page.route('**/api/options', async (route) => {
+      if (optionsDelay > 0) await new Promise((resolve) => setTimeout(resolve, optionsDelay));
+      await json(route, 200, box.options).catch(() => {});
+    });
+  }
   await page.route('**/api/status', (route) => json(route, 200, { state: 'idle', progress: 0, message: '' }));
   await page.addInitScript(
     ({ token, tour }) => {
@@ -73,7 +113,8 @@ async function openApp({ path = '/', tour = 'pending', reducedMotion = 'no-prefe
     },
     { token: TOKEN, tour },
   );
-  await page.goto(origin + path, { waitUntil: 'networkidle' });
+  // A late answer would hold networkidle until it arrives, which is the moment under test.
+  await page.goto(origin + path, { waitUntil: optionsDelay > 0 ? 'load' : 'networkidle' });
   return { page, context, errors };
 }
 
@@ -93,31 +134,41 @@ const picture = (page) => tour(page).locator('svg').first().evaluate((svg) => sv
 
 console.log('admin-ui tour checks');
 
-await check('a pending tour opens over the app at step 1, and every step reads in order', async () => {
-  const baseline = await violationsAtLoad('/');
-  const { page, context, errors } = await openApp();
-  await tour(page).waitFor({ timeout: 5000 });
-  const titles = [
-    'Your apps, on your box',
-    'Add more apps',
-    'See where the space goes',
-    'Lend it while you sleep',
-    'It updates itself at night',
-    'Find this tour again',
-  ];
+/* Walk every step with Next, checking each title and the count. */
+async function walk(page, titles) {
   for (const [i, title] of titles.entries()) {
-    await tour(page).getByRole('heading', { name: title }).waitFor({ timeout: 3000 });
-    assert.ok(await tour(page).getByText(`${i + 1} of 6`).isVisible(), `no "${i + 1} of 6" on ${title}`);
+    await tour(page).getByRole('heading', { name: title, exact: true }).waitFor({ timeout: 3000 });
+    assert.ok(await tour(page).getByText(`${i + 1} of ${titles.length}`).isVisible(), `no "${i + 1} of ${titles.length}" on ${title}`);
     // Let the scene play a little, so every scene's drawing runs under the policy.
     await page.waitForTimeout(400);
     if (i < titles.length - 1) await tour(page).getByRole('button', { name: 'Next' }).click();
   }
+}
+
+await check('a pending tour opens over the app at step 1, and a box with no extra features has the six steps', async () => {
+  const baseline = await violationsAtLoad('/');
+  const { page, context, errors } = await openApp();
+  await tour(page).waitFor({ timeout: 5000 });
+  await walk(page, STOCK);
   // The last step has Done and no Skip.
   assert.ok(await tour(page).getByRole('button', { name: 'Done' }).isVisible(), 'no Done on the last step');
   assert.equal(await tour(page).getByRole('button', { name: 'Skip the tour' }).count(), 0, 'Skip on the last step');
   await tour(page).getByRole('button', { name: 'Done' }).click();
   await tour(page).waitFor({ state: 'detached', timeout: 3000 });
   assert.equal(await stored(page), 'seen');
+  assert.deepEqual(await violations(page), baseline, 'the tour added CSP violations');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('a box with every feature has twelve steps, in the sidebar\'s order', async () => {
+  const baseline = await violationsAtLoad('/');
+  const { page, context, errors } = await openApp({ box: FULL });
+  await tour(page).waitFor({ timeout: 5000 });
+  await tour(page).getByText('1 of 12').waitFor({ timeout: 5000 });
+  await walk(page, ALL);
+  await tour(page).getByRole('button', { name: 'Done' }).click();
+  await tour(page).waitFor({ state: 'detached', timeout: 3000 });
   assert.deepEqual(await violations(page), baseline, 'the tour added CSP violations');
   assert.deepEqual(errors, []);
   await context.close();
@@ -130,6 +181,75 @@ await check('Next holds the focus, so Enter walks the tour', async () => {
   assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Next');
   await page.keyboard.press('Enter');
   await tour(page).getByRole('heading', { name: 'Add more apps' }).waitFor({ timeout: 3000 });
+  await context.close();
+});
+
+/* The miniature's sidebar labels: the text inside the picture. */
+const pictureText = (page) => tour(page).locator('svg').first().evaluate((svg) => svg.textContent);
+const titlesOf = async (page) => {
+  const total = Number((await tour(page).getByText(/^1 of \d+$/).innerText()).split(' of ')[1]);
+  const seen = [];
+  for (let i = 1; i <= total; i++) {
+    await tour(page).getByRole('button', { name: `Go to step ${i}`, exact: true }).click();
+    seen.push(await tour(page).getByRole('heading').innerText());
+  }
+  return seen;
+};
+
+await check('each step is there only when the box reports its feature', async () => {
+  const cases = [
+    ['Write together', { options: options(option('office.enable', true)) }],
+    ['Lend memory to AI models', { options: options(option('inference.lend.enable', false)) }],
+    ["Get paid at this box's name", { domains: DOMAINS }],
+    ['Chat and calls', { me: { ...ME, shared: ['chat'] } }],
+    ['Describe a widget, get a widget', { options: options(option('builder.enable', true)) }],
+    ['Put a face to your name', { me: { ...ME, picture: '/api/profiles/matus/picture?v=1' } }],
+  ];
+  for (const [title, box] of cases) {
+    const { page, context, errors } = await openApp({ box });
+    await tour(page).waitFor({ timeout: 5000 });
+    await tour(page).getByText('1 of 7').waitFor({ timeout: 5000 });
+    const titles = await titlesOf(page);
+    assert.deepEqual(titles, ALL.filter((t) => STOCK.includes(t) || t === title), `${title}: ${titles.join(' | ')}`);
+    assert.equal(/Chat/.test(await pictureText(page)), title === 'Chat and calls', `${title}: Chat in the picture's sidebar`);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+});
+
+await check('a feature the box has but has not turned on, or this person cannot open, is not a step', async () => {
+  const cases = [
+    ['Office off', { options: options(option('office.enable', false)) }],
+    ['Build with AI off', { options: options(option('builder.enable', false)) }],
+    ['no options document', { options: { available: false } }],
+    ['no names on the edge', { domains: { ...DOMAINS, names: [] } }],
+    ['an edge without wallets', { domains: { ...DOMAINS, names: undefined } }],
+    ['no official edge', { domains: { available: false, reason: 'noOfficialEdge' } }],
+    ['no shared apps', { me: { ...ME, shared: [] } }],
+    ['the spare key has no Your account', { me: { ...ME, name: null, displayName: null, spareKey: true, picture: null } }],
+    ['a box whose sign-in runs elsewhere has no Your account', { me: { ...ME, standalone: false, picture: null } }],
+    ['Market is not this person\'s', { me: { ...ME, admin: false, sections: ['storage'] }, options: options(option('inference.lend.enable', true)) }],
+  ];
+  for (const [name, box] of cases) {
+    const { page, context } = await openApp({ box });
+    await tour(page).waitFor({ timeout: 5000 });
+    await page.waitForTimeout(400);
+    assert.ok(await tour(page).getByText(`1 of ${STOCK.length}`).isVisible(), `${name}: not 1 of ${STOCK.length}`);
+    await context.close();
+  }
+});
+
+await check('an answer that comes late adds its step without moving the owner', async () => {
+  const { page, context } = await openApp({ box: { options: options(option('office.enable', true)) }, optionsDelay: 2500 });
+  await tour(page).waitFor({ timeout: 5000 });
+  await tour(page).getByRole('button', { name: 'Go to step 2', exact: true }).click();
+  await tour(page).getByRole('heading', { name: 'Add more apps' }).waitFor({ timeout: 3000 });
+  await tour(page).getByText('2 of 6').waitFor({ timeout: 1000 });
+  // Office answers: its step goes in before this one, and this one stays on screen.
+  await tour(page).getByText('3 of 7').waitFor({ timeout: 5000 });
+  assert.ok(await tour(page).getByRole('heading', { name: 'Add more apps' }).isVisible());
+  await tour(page).getByRole('button', { name: 'Back' }).click();
+  await tour(page).getByRole('heading', { name: 'Write together' }).waitFor({ timeout: 3000 });
   await context.close();
 });
 
@@ -147,9 +267,9 @@ await check('the tour is wider than the other dialogs, and still fits a phone', 
 await check('Back, the step dots and the arrow keys move between steps', async () => {
   const { page, context } = await openApp();
   await tour(page).waitFor({ timeout: 5000 });
-  await tour(page).getByRole('button', { name: 'Go to step 4' }).click();
+  await tour(page).getByRole('button', { name: 'Go to step 4', exact: true }).click();
   await tour(page).getByRole('heading', { name: 'Lend it while you sleep' }).waitFor();
-  assert.equal(await tour(page).getByRole('button', { name: 'Go to step 4' }).getAttribute('aria-current'), 'step');
+  assert.equal(await tour(page).getByRole('button', { name: 'Go to step 4', exact: true }).getAttribute('aria-current'), 'step');
   await tour(page).getByRole('button', { name: 'Back' }).click();
   await tour(page).getByRole('heading', { name: 'See where the space goes' }).waitFor();
   await page.keyboard.press('ArrowRight');
@@ -158,7 +278,7 @@ await check('Back, the step dots and the arrow keys move between steps', async (
   await page.keyboard.press('ArrowLeft');
   await tour(page).getByRole('heading', { name: 'Add more apps' }).waitFor();
   // Step 1 has no Back.
-  await tour(page).getByRole('button', { name: 'Go to step 1' }).click();
+  await tour(page).getByRole('button', { name: 'Go to step 1', exact: true }).click();
   assert.equal(await tour(page).getByRole('button', { name: 'Back' }).count(), 0, 'Back on step 1');
   await context.close();
 });
