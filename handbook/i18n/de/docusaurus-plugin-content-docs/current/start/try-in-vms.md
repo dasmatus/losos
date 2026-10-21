@@ -15,9 +15,9 @@ curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-ed
 
 Außer [Nix](https://nixos.org/download) muss vorher nichts installiert
 sein. Fehlt Nix, gibt das Skript die Zeile aus, die es installiert, und
-hört auf. Nichts braucht root, nichts wird außerhalb von `/nix` und dem
-Demo-Ordner (`~/.local/share/losos-demo`) installiert, und die VMs sind nur
-über `127.0.0.1` erreichbar.
+hört auf. Nichts braucht root (außer `--host-mdns`, siehe unten), nichts
+wird außerhalb von `/nix` und dem Demo-Ordner (`~/.local/share/losos-demo`)
+installiert, und nur dieser Rechner erreicht die VMs.
 
 ## Was das Skript tut \{#what-the-script-does}
 
@@ -42,9 +42,10 @@ Rechner tragen kann:
 
 ## Was Sie sehen \{#what-you-see}
 
-1. Zwei Boxen und keine Edge. Jede sucht eine und findet nichts. Gebeten,
-   ihre Platte zu teilen, lehnt jede ab, weil es keine Edge gibt, über die
-   sie teilen könnte.
+1. Zwei Boxen und keine Edge. Jede findet die andere im Netz unter ihrem
+   `.local`-Namen, über mDNS, ohne dass etwas eingerichtet wird. Jede sucht
+   eine Edge und findet keine. Gebeten, ihre Platte zu teilen, lehnt jede
+   ab, weil es keine Edge gibt, über die sie teilen könnte.
 2. Die Edge wird eingeschaltet. Beide Boxen finden sie im Netz von selbst.
 3. Die Edge veröffentlicht beide Boxen unter ihren öffentlichen Namen, mit
    je einem Tunnel.
@@ -61,6 +62,25 @@ Rechner tragen kann:
 Um es jemandem Schritt für Schritt zu zeigen, fügen Sie `--pause` hinzu. Die
 leichte Demo wartet dann bei jedem Schritt und gibt aus, wo im Browser die
 Mesh-Seite jeder Box und die Seite der Edge zu öffnen sind.
+
+## Die Boxen beim Namen öffnen \{#open-the-boxes-by-name}
+
+Die VMs antworten über mDNS für `boxa.local`, `boxb.local` und
+`edge.local`, aber nur in ihrem eigenen Netz. Das Skript prüft, ob dieser
+Rechner einen mDNS-Responder hat (Avahi, oder systemd-resolved mit
+eingeschaltetem mDNS) und ob Programme ihn nach `.local`-Namen fragen
+(nss-mdns oder nss-resolve). Ist beides da, fügen Sie `--host-mdns` hinzu:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-edge-box/bootstrap.sh | sh -s -- --host-mdns
+```
+
+Es legt ein Netzwerkgerät an, `vde-tap77`, das diesen Rechner ins Netz der
+VMs bringt. Nur dieser Schritt fragt nach `sudo`. Der Responder hier hört
+dann die VMs, und ein Browser öffnet `http://boxa.local/` wie eine Box in
+einem echten Netz. `bash ~/.local/share/losos-demo/stage2.sh host-mdns-off`
+entfernt das Gerät. Löst ein Name nicht auf, verwirft die Firewall
+vielleicht UDP-Port 5353 auf diesem Gerät.
 
 ## Was anders ist als im echten Einsatz \{#how-it-differs-from-a-real-setup}
 

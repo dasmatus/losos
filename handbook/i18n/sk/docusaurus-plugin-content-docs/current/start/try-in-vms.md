@@ -15,9 +15,9 @@ curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-ed
 
 Okrem [Nixu](https://nixos.org/download) netreba nič inštalovať vopred. Ak
 Nix chýba, skript vypíše riadok, ktorý ho nainštaluje, a skončí. Nič
-nepotrebuje root, nič sa neinštaluje mimo `/nix` a priečinka ukážky
-(`~/.local/share/losos-demo`) a k virtuálnym strojom sa dostanete len cez
-`127.0.0.1`.
+nepotrebuje root (okrem `--host-mdns`, nižšie), nič sa neinštaluje mimo
+`/nix` a priečinka ukážky (`~/.local/share/losos-demo`) a k virtuálnym
+strojom sa dostane len tento počítač.
 
 ## Čo skript robí \{#what-the-script-does}
 
@@ -41,9 +41,10 @@ Ukážka má dve veľkosti a skript vyberie väčšiu, ktorú počítač unesie:
 
 ## Čo uvidíte \{#what-you-see}
 
-1. Dve zariadenia a žiadny edge. Každé ho hľadá a nič nenájde. Keď ho
-   požiadate, aby zdieľalo svoj disk, odmietne, lebo nie je edge, cez ktorý
-   by zdieľalo.
+1. Dve zariadenia a žiadny edge. Každé nájde to druhé na sieti pod jeho
+   názvom `.local`, cez mDNS, bez akéhokoľvek nastavovania. Každé hľadá
+   edge a žiadny nenájde. Keď ho požiadate, aby zdieľalo svoj disk,
+   odmietne, lebo nie je edge, cez ktorý by zdieľalo.
 2. Edge sa zapne. Obe zariadenia ho na sieti nájdu samy.
 3. Edge zverejní obe zariadenia pod ich verejnými názvami, každé jedným
    tunelom.
@@ -59,6 +60,25 @@ Ukážka má dve veľkosti a skript vyberie väčšiu, ktorú počítač unesie:
 Ak to chcete niekomu ukázať krok po kroku, pridajte `--pause`. Ľahká ukážka
 potom pri každom kroku počká a vypíše, kde v prehliadači otvoriť stránku
 Mesh každého zariadenia a stránku edge.
+
+## Otvorte zariadenia podľa názvu \{#open-the-boxes-by-name}
+
+Virtuálne stroje odpovedajú cez mDNS za `boxa.local`, `boxb.local` a
+`edge.local`, ale len na svojej vlastnej sieti. Skript zistí, či má tento
+počítač mDNS responder (Avahi alebo systemd-resolved so zapnutým mDNS) a
+či sa ho programy pýtajú na názvy `.local` (nss-mdns alebo nss-resolve). Ak
+je oboje, pridajte `--host-mdns`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-edge-box/bootstrap.sh | sh -s -- --host-mdns
+```
+
+Vytvorí jedno sieťové zariadenie, `vde-tap77`, ktoré pripojí tento počítač
+na sieť virtuálnych strojov. Len tento krok pýta `sudo`. Responder tu potom
+počuje virtuálne stroje a prehliadač otvorí `http://boxa.local/` ako
+zariadenie na skutočnej sieti. `bash ~/.local/share/losos-demo/stage2.sh
+host-mdns-off` zariadenie odstráni. Ak sa názov nenájde, firewall možno
+zahadzuje UDP port 5353 na tomto zariadení.
 
 ## Čím sa líši od skutočného nasadenia \{#how-it-differs-from-a-real-setup}
 

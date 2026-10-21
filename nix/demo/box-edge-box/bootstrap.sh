@@ -9,7 +9,7 @@
 # Stage two builds or fetches everything through Nix and starts three VMs on
 # one private network: box A, an edge between them, box B. Nothing is
 # installed on this machine outside the Nix store and the demo folder, and
-# nothing needs root.
+# nothing needs root except --host-mdns's one network device.
 #
 # Two sizes:
 #   full   two boxes installed from the LosOS installer ISO and an edge VM.
@@ -22,13 +22,18 @@
 #   --full | --light   pick the size instead of letting the checks pick
 #   --pause            stop at each step of the light demo until Enter, so
 #                      the admin pages can be opened and looked at
+#   --host-mdns        put this machine on the VMs' network too, so its own
+#                      mDNS responder finds boxa.local, boxb.local and
+#                      edge.local and a browser here opens them by name.
+#                      Makes one network device, which asks for sudo once.
 #   --write-only       write stage two and stop
 #   --dir DIR          where stage two and the VMs live
 #                      (default ~/.local/share/losos-demo)
 #   --ref REF          the LosOS flake to use (default github:dasmatus/losos)
 #
 # The same settings as environment variables: LOSOS_DEMO_MODE,
-# LOSOS_DEMO_DIR, LOSOS_FLAKE, and LOSOS_NIX_ARGS for extra `nix` arguments.
+# LOSOS_DEMO_DIR, LOSOS_FLAKE, LOSOS_DEMO_HOST_MDNS=1, and LOSOS_NIX_ARGS for
+# extra `nix` arguments.
 set -eu
 
 mode="${LOSOS_DEMO_MODE:-auto}"
@@ -37,6 +42,7 @@ flake="${LOSOS_FLAKE:-github:dasmatus/losos}"
 nix_args="${LOSOS_NIX_ARGS:-}"
 pause=0
 write_only=0
+host_mdns="${LOSOS_DEMO_HOST_MDNS:-0}"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'losos-demo: %s\n' "$*" >&2; exit 1; }
@@ -46,10 +52,11 @@ while [ $# -gt 0 ]; do
     --full) mode=full ;;
     --light) mode=light ;;
     --pause) pause=1 ;;
+    --host-mdns) host_mdns=1 ;;
     --write-only) write_only=1 ;;
     --dir) [ $# -ge 2 ] || die "--dir needs a folder"; dir=$2; shift ;;
     --ref) [ $# -ge 2 ] || die "--ref needs a flake reference"; flake=$2; shift ;;
-    -h|--help) sed -n '2,35p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,40p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option $1 (try --help)" ;;
   esac
   shift
@@ -106,6 +113,27 @@ else
   row Nix "not installed" "needed"
 fi
 command -v bash >/dev/null 2>&1 || die "stage two is a bash script; install bash"
+
+# mDNS here: a responder on the network (Avahi, or systemd-resolved with
+# MulticastDNS on), and programs asking it for .local names (nss-mdns, or
+# resolved's nss-resolve, in the hosts line of nsswitch.conf). The VMs answer
+# for their own names, but only on their own network; --host-mdns joins
+# this machine to it.
+mdns_host=""
+if ps -e -o comm= 2>/dev/null | grep -qx avahi-daemon; then
+  mdns_host=avahi
+elif command -v resolvectl >/dev/null 2>&1 && resolvectl status 2>/dev/null | grep -q '+mDNS'; then
+  mdns_host=resolved
+fi
+mdns_nss=0
+grep -Eq '^hosts:.*[[:space:]](mdns[46]?(_minimal)?|resolve)([[:space:]]|$)' /etc/nsswitch.conf 2>/dev/null && mdns_nss=1
+case $mdns_host:$mdns_nss in
+  avahi:1) row mDNS "avahi-daemon, nss-mdns" ok ;;
+  resolved:1) row mDNS "systemd-resolved" ok ;;
+  avahi:0) row mDNS "avahi-daemon, no nss-mdns" "programs here do not ask it for .local names" ;;
+  resolved:0) row mDNS "systemd-resolved, no nss-resolve" "programs here do not ask it for .local names" ;;
+  *) row mDNS "none" "the boxes' .local names stay inside the VMs' network" ;;
+esac
 say ""
 
 if [ -z "$nix" ]; then
@@ -141,6 +169,15 @@ case $mode in
     [ $light_ok = 1 ] || say "Light demo asked for on a machine below its needs. Carrying on." ;;
   *) die "LOSOS_DEMO_MODE is full, light or auto, not $mode" ;;
 esac
+
+if [ "$host_mdns" = 1 ] && [ -z "$mdns_host" ]; then
+  say "--host-mdns needs an mDNS responder here: install Avahi and nss-mdns, or turn"
+  say "on MulticastDNS in systemd-resolved. Carrying on without it."
+  host_mdns=0
+elif [ "$host_mdns" = 0 ] && [ -n "$mdns_host" ] && [ "$mdns_nss" = 1 ]; then
+  say "To open the boxes as http://boxa.local/ from this machine, add --host-mdns"
+  say "(it asks for sudo once, to make one network device)."
+fi
 
 # Memory per installed box: 8 GiB where there is room, else 4, which is
 # enough for the walk through.
@@ -178,6 +215,7 @@ stage2="$dir/stage2.sh"
 #   bash $stage2 build      only build
 #   bash $stage2 demo       only run the demo
 #   bash $stage2 down       stop the VMs (full demo; keeps the disks)
+#   bash $stage2 host-mdns-off   remove the network device --host-mdns made
 #   bash $stage2 clean      stop and delete everything in $dir
 #
 # The choices bootstrap.sh made; edit them here.
@@ -189,6 +227,8 @@ nix_args='$nix_args'
 kvm=$kvm
 box_mem=$box_mem
 pause=$pause
+host_mdns=$host_mdns
+mdns_host=$mdns_host
 EOF
   cat <<'EOF'
 
@@ -197,6 +237,59 @@ nixf() { "$nix" --extra-experimental-features 'nix-command flakes' $nix_args "$@
 log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 mkdir -p "$dir"
+
+# ── This machine on the VMs' network (--host-mdns) ─────────────────────────
+# One tap device, vde-tap77, with an address of its own on the VMs' network,
+# so this machine's mDNS responder hears the VMs and answers boxa.local,
+# boxb.local and edge.local for the browser here. Making it is the only step
+# that needs root, and it belongs to you afterwards. The light demo's test
+# driver plugs a tap of that name (vlan 77) into its network itself; the
+# full demo plugs it into run.sh's switch.
+tap=vde-tap77
+as_root() { if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi; }
+ip_cmd() { command -v ip || echo "$(nixf build --no-link --print-out-paths 'nixpkgs#iproute2^out' 2>/dev/null)/bin/ip"; }
+host_mdns_up() {
+  [ "$host_mdns" = 1 ] || return 0
+  local ip addr
+  ip=$(ip_cmd)
+  if [ "$mode" = light ]; then addr=192.168.77.254/24; else addr=10.77.0.254/24; fi
+  if ! "$ip" -o -4 addr show dev "$tap" 2>/dev/null | grep -q "inet $addr "; then
+    log "making $tap at ${addr%/*} for this machine's mDNS (sudo may ask for your password)"
+    as_root sh -c "'$ip' link show $tap >/dev/null 2>&1 || '$ip' tuntap add dev $tap mode tap user $(id -u)
+      '$ip' addr flush dev $tap && '$ip' addr add $addr dev $tap && '$ip' link set $tap up"
+  fi
+}
+host_mdns_link() { # resolved keeps mDNS per link: switch it on once the tap is plugged in
+  [ "$host_mdns" = 1 ] && [ "$mdns_host" = resolved ] || return 0
+  local _
+  for _ in $(seq 120); do
+    [ "$(cat "/sys/class/net/$tap/carrier" 2>/dev/null)" = 1 ] && break
+    sleep 1
+  done
+  as_root resolvectl mdns "$tap" yes || log "could not switch mDNS on for $tap; run: sudo resolvectl mdns $tap yes"
+}
+host_mdns_plug() { # full: plug the tap into run.sh's switch, and keep it there
+  [ "$host_mdns" = 1 ] || return 0
+  if [ -s "$dir/state/plug2tap.pid" ] && kill -0 "$(cat "$dir/state/plug2tap.pid")" 2>/dev/null; then return; fi
+  setsid nohup "$nix" --extra-experimental-features 'nix-command flakes' $nix_args shell nixpkgs#vde2 \
+    -c vde_plug2tap -s "$dir/state/lan.sock" "$tap" >"$dir/state/plug2tap.log" 2>&1 </dev/null &
+  echo $! >"$dir/state/plug2tap.pid"
+  host_mdns_link
+}
+host_mdns_report() { # what this machine's own resolver makes of the names
+  [ "$host_mdns" = 1 ] || return 0
+  local n a
+  for n in "$@"; do
+    a=$(getent ahostsv4 "$n.local" 2>/dev/null | awk '{print $1; exit}')
+    if [ -n "$a" ]; then log "this machine finds $n.local at $a by mDNS: http://$n.local/"
+    else log "this machine does not find $n.local: is nss-mdns or nss-resolve in nsswitch.conf, and UDP 5353 open on $tap?"
+    fi
+  done
+}
+host_mdns_off() {
+  if [ -s "$dir/state/plug2tap.pid" ]; then kill "$(cat "$dir/state/plug2tap.pid")" 2>/dev/null || true; rm -f "$dir/state/plug2tap.pid"; fi
+  if [ -e "/sys/class/net/$tap" ]; then as_root "$(ip_cmd)" link del "$tap" && log "removed $tap"; fi
+}
 
 # ── Light: three small VMs in one test run ─────────────────────────────────
 # nix/demo/box-edge-box/demo.nix in the LosOS tree. The test driver brings
@@ -218,7 +311,11 @@ light_pauser() { # reads the demo's steps as they happen and waits for Enter
         line=$(sed -n "${seen}p" "$rec/timeline.jsonl")
         caption=$(printf '%s' "$line" | sed -n 's/.*"caption": "\([^"]*\)".*/\1/p')
         printf '\n\033[1m%s\033[0m\n' "$caption" >/dev/tty
-        printf '  Box A: http://127.0.0.1:18081/mesh   Box B: http://127.0.0.1:18082/mesh\n' >/dev/tty
+        if [ "$host_mdns" = 1 ]; then
+          printf '  Box A: http://boxa.local/mesh   Box B: http://boxb.local/mesh\n' >/dev/tty
+        else
+          printf '  Box A: http://127.0.0.1:18081/mesh   Box B: http://127.0.0.1:18082/mesh\n' >/dev/tty
+        fi
         printf '  Sign in on each with "Use the spare key" and the key in %s/rec/boxa.token or boxb.token.\n' "$dir" >/dev/tty
         [ -s "$rec/edge.key" ] && printf '  The edge: http://127.0.0.1:18443/manage/ with the key in %s/rec/edge.key\n' "$dir" >/dev/tty
         printf '  Press Enter for the next step. ' >/dev/tty
@@ -235,6 +332,7 @@ light_demo() {
   light_build
   local out="$dir/out" rec="$dir/rec" logf="$dir/demo.log"
   rm -rf "$out" "$rec"; mkdir -p "$out" "$rec"
+  host_mdns_up
   log "starting box A, box B and the edge ($([ "$kvm" = 1 ] && echo 'a few minutes' || echo 'about 15 minutes without KVM'))"
   log "the full log goes to $logf"
   local pausing=0
@@ -247,7 +345,13 @@ light_demo() {
   local pid=$!
   [ $pausing = 1 ] && light_pauser "$rec" "$pid" &
   # The narration: one line per step of the demo, as it passes.
-  tail --pid="$pid" -n +1 -F "$logf" 2>/dev/null | grep --line-buffered -E '^=== |^box[ab] asked' &
+  tail --pid="$pid" -n +1 -F "$logf" 2>/dev/null | grep --line-buffered -E '^=== |^box[ab] asked|found [a-z]+\.local' &
+  if [ "$host_mdns" = 1 ]; then
+    host_mdns_link &
+    # Once the edge is up, ask this machine's resolver for all three names.
+    (until grep -q '^=== 2:' "$logf" 2>/dev/null; do kill -0 "$pid" 2>/dev/null || exit 0; sleep 2; done
+     host_mdns_report boxa boxb edge) &
+  fi
   local rc=0
   wait "$pid" || rc=$?
   sleep 2
@@ -283,9 +387,12 @@ full_build() {
 }
 full_demo() {
   full_build
+  host_mdns_up
   full_run up
+  host_mdns_plug
   full_run walk
   full_run publish
+  host_mdns_report boxa boxb edge
   log "the boxes keep running: box A http://127.0.0.1:8080/  box B http://127.0.0.1:8081/ (the password is printed above)"
   log "stop them with: bash $0 down"
 }
@@ -297,11 +404,13 @@ case $mode:$cmd in
   light:down) log "the light demo stops its VMs when it ends" ;;
   full:build) full_build ;;
   full:demo|full:run) full_demo ;;
-  full:down) full_run down ;;
+  full:down) host_mdns_off; full_run down ;;
+  *:host-mdns-off) host_mdns_off ;;
   *:clean)
+    host_mdns_off
     [ "$mode" = full ] && [ -d "$dir/src" ] && full_run clean || true
     rm -rf "$dir"; log "deleted $dir" ;;
-  *) die "usage: bash $0 [build|demo|down|clean]" ;;
+  *) die "usage: bash $0 [build|demo|down|host-mdns-off|clean]" ;;
 esac
 EOF
 } >"$stage2"

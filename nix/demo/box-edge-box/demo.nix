@@ -14,8 +14,9 @@
 #                      enrolment, the manage page. It starts switched off.
 #
 # The demo, in order:
-#   1. no edge anywhere: each box looks, finds nothing, refuses to share its
-#      disk, and the other box cannot reach it by its public name;
+#   1. no edge anywhere: each box finds the other by mDNS (its .local name
+#      and its _losos._tcp advert) but no edge, refuses to share its disk,
+#      and the other box cannot reach it by its public name;
 #   2. the edge is switched on: both boxes find it on the LAN by mDNS;
 #   3. it enrols both on first contact and publishes them: two tunnels;
 #   4. box A reaches box B through the edge by B's public name, and back;
@@ -40,6 +41,13 @@
 
 let
   lososPkgs = import ../../packages.nix { inherit pkgs; };
+
+  # The VMs' network: 192.168.77.0/24, boxa .1, boxb .2, edge .3. Number 77
+  # rather than the default 1 keeps it off the 192.168.1.0/24 so many home
+  # networks use, because bootstrap.sh --host-mdns puts the host on it at
+  # .254: the test driver plugs a tap named vde-tap77 into this network
+  # when one exists.
+  vlans = [ 77 ];
 
   # Where the cloud pod would answer (losos.nextcloud.apachePort's default),
   # and what the stand-in says there.
@@ -71,7 +79,16 @@ let
         hostName = name;
         backend.package = lososPkgs.losos-ctl;
         admin.ui = lososPkgs.losos-admin-ui;
-        mdns.enable = true;
+        # `<name>.local` and the `_losos._tcp` advert a real box announces
+        # (modules/configuration.nix, which these VMs leave out).
+        mdns = {
+          enable = true;
+          services.losos = ''
+            Name=%H
+            Type=_losos._tcp
+            Port=80
+          '';
+        };
         # LosOS Login (modules/identity.nix) is not in these VMs; the admin
         # pages are opened with the box's spare key, as its sign-in allows.
         identity.enable = false;
@@ -97,6 +114,7 @@ let
       virtualisation = {
         memorySize = 1024;
         cores = 2;
+        inherit vlans;
       };
     };
 in
@@ -134,6 +152,7 @@ pkgs.testers.nixosTest {
         virtualisation = {
           memorySize = 1024;
           cores = 2;
+          inherit vlans;
         };
       };
   };
@@ -207,13 +226,21 @@ pkgs.testers.nixosTest {
             assert back == "200", f"{name}: change back to local answered {back}: {body2!r}"
         return code, body
 
+    def mdns_ipv4(frm, name):
+        # Over the wire by mDNS only: no /etc/hosts, no DNS, no cache.
+        got = boxes[frm].wait_until_succeeds(
+            f"resolvectl query -4 -p mdns --synthesize=no --cache=no {name}.local"
+        )
+        assert "protocol mDNS/IPv4" in got, got
+        return got.split()[1]
+
     def through_edge(frm, to, path):
         # The way a browser on box `frm`'s side reaches box `to` by its public
         # name: the name points at the edge (the company's DNS does that on a
         # real site) and the edge's Traefik routes it down `to`'s tunnel.
         # Traefik has no certificate for a name this network cannot prove,
         # so it presents its own; -k for that, and only for that.
-        ip = boxes[frm].succeed("getent ahostsv4 edge | awk '{print $1; exit}'").strip()
+        ip = mdns_ipv4(frm, "edge")
         return boxes[frm].succeed(
             f"curl -sk --max-time 10 -o /tmp/through -w '%{{http_code}}' "
             f"--resolve {to}.losos.cfd:443:{ip} https://{to}.losos.cfd{path}; echo; cat /tmp/through || true"
@@ -249,10 +276,16 @@ pkgs.testers.nixosTest {
         # No tunnel runs on a box with no edge in reach.
         m.wait_until_succeeds("test -e /run/losos/edge-none")
         m.wait_until_succeeds("test \"$(systemctl is-active losos-rathole-client.service)\" = inactive")
-        # The neighbour's own pages answer on the LAN; its public name does not.
-        m.succeed(f"curl -fsS http://{other[name]}/ | grep -q '<div id=\"root\">'")
+        # Each finds the other by mDNS: its .local name and its _losos._tcp
+        # advert, as LosOS Desktop lists boxes.
+        print(f"{name} found {other[name]}.local by mDNS at {mdns_ipv4(name, other[name])}")
+        advert = m.wait_until_succeeds(f"resolvectl service {other[name]} _losos._tcp local")
+        assert f"{other[name]}.local:80" in advert, advert
+        # The neighbour's own pages answer on the LAN at that name; its
+        # public name does not.
+        m.succeed(f"curl -fsS http://{other[name]}.local/ | grep -q '<div id=\"root\">'")
         m.fail(f"curl -fsS --max-time 5 https://{other[name]}.losos.cfd/")
-    event("1", "Two boxes, no edge anywhere: each looked and found nothing, sharing is refused (409), and neither can reach the other by its public name.")
+    event("1", "Two boxes, no edge anywhere: each finds the other by mDNS (boxa.local, boxb.local) but no edge, sharing is refused (409), and neither can reach the other by its public name.")
 
     # ── 2. The edge is switched on and found ─────────────────────────────
     edge.start()
@@ -269,6 +302,10 @@ pkgs.testers.nixosTest {
     for name in boxes:
         d = edge_doc(name)
         assert d["path"]["source"] == "lan" and d["path"]["url"] == "http://edge.local:8443", d
+        # The road it took: the edge's DNS-SD advert and its .local name.
+        advert = boxes[name].wait_until_succeeds("resolvectl service 'losos edge on edge' _losos-edge._tcp local")
+        assert "url=http://edge.local:8443" in advert, advert
+        print(f"{name} found edge.local by mDNS at {mdns_ipv4(name, 'edge')}")
         # A company edge: nobody signed it, so sharing yes, market no.
         assert d["official"] is False, d
     print(edge.succeed("losos-edge status"))
@@ -327,7 +364,7 @@ pkgs.testers.nixosTest {
         m.wait_until_succeeds("test \"$(systemctl is-active losos-rathole-client.service)\" = inactive")
         code, body = sharing(name)
         assert code == "409", (name, code, body)
-        m.succeed(f"curl -fsS http://{other[name]}/ | grep -q '<div id=\"root\">'")
+        m.succeed(f"curl -fsS http://{other[name]}.local/ | grep -q '<div id=\"root\">'")
     event("7", f"The edge is switched off: both boxes noticed within {gone_in} s, stopped their tunnels and refuse sharing again. Each still serves its own LAN.", seconds=gone_in)
   '';
 }
