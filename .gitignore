@@ -43,6 +43,8 @@ ds-bundle/
 
 # The two-VM LAN demo keeps its disks and sockets here (nix/demo/edge-lan/run.sh).
 nix/demo/edge-lan/state/
+# The light box, edge, box demo's pictures and driver (nix/demo/box-edge-box/record.sh).
+nix/demo/box-edge-box/recording/
 
 # quickemu's VM directory for docs/vm/losos.conf: the installer ISO, the disk,
 # the firmware variables and the TPM state.

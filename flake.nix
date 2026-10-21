@@ -421,6 +421,9 @@
         losos-edge-manage = import ./nix/tests/edge-manage.nix { inherit pkgs; };
         losos-edge-federation = import ./nix/tests/edge-federation.nix { inherit pkgs; };
         losos-edge-lan-two-boxes = import ./nix/demo/edge-lan/two-boxes.nix { inherit pkgs; };
+        # Two boxes and an edge gateway between them, the light mode of the
+        # demo nix/demo/box-edge-box/bootstrap.sh sets up.
+        losos-box-edge-box = import ./nix/demo/box-edge-box/demo.nix { inherit pkgs; };
         losos-edge-market = import ./nix/tests/market-vm.nix { inherit pkgs; };
         losos-edge-dns = import ./nix/tests/edge-dns.nix { inherit pkgs; };
         losos-box-wallet-name = import ./nix/tests/box-wallet-name.nix { inherit pkgs; };
