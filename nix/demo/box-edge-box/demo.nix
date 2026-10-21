@@ -33,7 +33,9 @@
 #
 # With LOSOS_RECORD_DIR set on the host, the script pauses at each step
 # until a recorder has photographed the admin pages (two-boxes.nix in
-# nix/demo/edge-lan/ does the same); without it the hooks only print.
+# nix/demo/edge-lan/ does the same); without it the hooks only print. A step
+# goes on by itself after LOSOS_RECORD_WAIT seconds (180), or never with 0,
+# which is how --pause waits for the presenter.
 { pkgs }:
 
 let
@@ -144,6 +146,7 @@ pkgs.testers.nixosTest {
 
     # ── Recording hooks (see the header) ─────────────────────────────────
     rec = os.environ.get("LOSOS_RECORD_DIR")
+    wait = int(os.environ.get("LOSOS_RECORD_WAIT", "180"))
     seq = 0
 
     def note(path, text):
@@ -160,11 +163,13 @@ pkgs.testers.nixosTest {
         with open(os.path.join(rec, "timeline.jsonl"), "a") as f:
             f.write(json.dumps({"n": seq, "step": step, "caption": caption, "t": time.time(), **extra}) + "\n")
         ack = os.path.join(rec, f"ack-{seq}")
-        for _ in range(180):
-            if os.path.exists(ack):
+        waited = 0
+        while not os.path.exists(ack):
+            if 0 < wait <= waited:
+                print(f"recorder did not acknowledge step {seq}; carrying on")
                 return
             time.sleep(1)
-        print(f"recorder did not acknowledge step {seq}; carrying on")
+            waited += 1
 
     boxes = {"boxa": boxa, "boxb": boxb}
     other = {"boxa": "boxb", "boxb": "boxa"}

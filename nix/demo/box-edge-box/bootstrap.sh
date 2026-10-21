@@ -85,6 +85,8 @@ avail_gib=$((avail_kb / 1048576))
 row memory "$mem_gib GiB, $avail_gib GiB free" ""
 
 mkdir -p "$dir"
+# Absolute, so stage two finds it from any folder, and from inside $dir/out.
+dir=$(cd "$dir" && pwd -P)
 disk_gb=$(df -Pk "$dir" | awk 'NR == 2 {print int($4 / 1000000)}')
 # The Nix store fills up too, and it may be on another disk.
 store_gb=$disk_gb
@@ -150,7 +152,10 @@ box_mem=4096
 nixf() { "$nix" --extra-experimental-features 'nix-command flakes' $nix_args "$@"; }
 say "Looking up $flake ..."
 meta=$(nixf flake metadata --json "$flake") || die "could not read the flake $flake"
-rev=$(printf '%s' "$meta" | sed -n 's/.*"locked":{[^}]*"rev":"\([0-9a-f]\{40\}\)".*/\1/p' | head -1)
+# The flake's own revision is the top-level locked.rev; every input has a
+# locked.rev of its own further down, so read it as JSON, with Nix.
+rev=$(LOSOS_META="$meta" nixf eval --raw --impure \
+  --expr '(builtins.fromJSON (builtins.getEnv "LOSOS_META")).locked.rev or ""') || rev=""
 case $flake in
   github:*)
     if [ -n "$rev" ]; then
@@ -196,8 +201,9 @@ mkdir -p "$dir"
 # ── Light: three small VMs in one test run ─────────────────────────────────
 # nix/demo/box-edge-box/demo.nix in the LosOS tree. The test driver brings
 # its own QEMU and uses KVM when there is one.
+# Every build goes through Nix, which hands back what it already has for this
+# revision at once and builds anew when $flake has changed.
 light_build() {
-  if [ -x "$dir/driver/bin/nixos-test-driver" ]; then log "already built: $dir/driver"; return; fi
   log "building the three VMs (the first time compiles LosOS's control plane: tens of minutes)"
   nixf build -L -o "$dir/driver" "$flake#checks.x86_64-linux.losos-box-edge-box.driver"
 }
@@ -235,7 +241,7 @@ light_demo() {
   [ "$pause" = 1 ] && [ -e /dev/tty ] && pausing=1
   (
     cd "$out"
-    [ $pausing = 1 ] && export LOSOS_RECORD_DIR="$rec"
+    [ $pausing = 1 ] && export LOSOS_RECORD_DIR="$rec" LOSOS_RECORD_WAIT=0
     exec "$dir/driver/bin/nixos-test-driver" --no-interactive -o "$out" >"$logf" 2>&1
   ) &
   local pid=$!
@@ -257,7 +263,6 @@ light_demo() {
 # nix/demo/edge-lan/run.sh in the LosOS tree does the work; this fetches
 # that tree at the pinned revision and runs it with the state kept here.
 full_src() {
-  if [ -d "$dir/src/nix/demo/edge-lan" ]; then return; fi
   log "fetching the LosOS tree"
   local path
   path=$(nixf flake prefetch --json "$flake" | sed -n 's/.*"storePath":"\([^"]*\)".*/\1/p')
@@ -265,12 +270,15 @@ full_src() {
   ln -sfn "$path" "$dir/src"
 }
 full_run() {
-  full_src
-  LOSOS_FLAKE="$flake" LOSOS_DEMO_STATE="$dir/state" LOSOS_BOX_MEM="$box_mem" \
+  [ -d "$dir/src/nix/demo/edge-lan" ] || full_src
+  # run.sh calls plain `nix`: give it this one, with flakes on.
+  PATH="$(dirname "$nix"):$PATH" \
+    NIX_CONFIG="extra-experimental-features = nix-command flakes${NIX_CONFIG:+$'\n'$NIX_CONFIG}" \
+    LOSOS_FLAKE="$flake" LOSOS_DEMO_STATE="$dir/state" LOSOS_BOX_MEM="$box_mem" \
     LOSOS_NIX_ARGS="$nix_args" bash "$dir/src/nix/demo/edge-lan/run.sh" "$@"
 }
 full_build() {
-  if [ -e "$dir/state/losos.iso" ] && [ -e "$dir/state/edge-vm" ]; then log "already built"; return; fi
+  full_src
   full_run build
 }
 full_demo() {

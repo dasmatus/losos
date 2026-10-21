@@ -23,6 +23,7 @@ out="${1:-$here/recording}"
 nix_args=(${LOSOS_NIX_ARGS:-})
 
 mkdir -p "$out"
+out="$(cd "$out" && pwd)" # the driver runs from inside it
 rm -f "$out"/ack-* "$out"/timeline.jsonl "$out"/shots.jsonl "$out"/vm-finished "$out"/*.token "$out"/*.port "$out"/*.key
 log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 
