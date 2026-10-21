@@ -34,6 +34,7 @@ import {
   Archive02Icon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
+import { PersonAvatar, type PersonLike } from "@/components/person";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -55,6 +56,7 @@ import {
   getMail,
   getMailMessage,
   getMailMessages,
+  getProfiles,
   loadMe,
   mailAttachmentUrl,
   mailHtmlUrl,
@@ -124,6 +126,35 @@ function Failed({ text, onRetry, className }: { text: string; onRetry?: () => vo
         )}
       </AlertDescription>
     </Alert>
+  );
+}
+
+/* Whom an address draws as: a person on the box with their picture and
+ * colour (GET /api/profiles), anyone else by their initials. */
+type Faces = (address: MailAddress) => PersonLike;
+
+function useFaces(home: MailHome): Faces {
+  const [byAddress, setByAddress] = React.useState<ReadonlyMap<string, PersonLike>>(new Map());
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void getProfiles({ signal: controller.signal })
+      .then(({ people }) => {
+        const byName = new Map(people.map((p) => [p.name, p]));
+        const next = new Map<string, PersonLike>();
+        for (const p of home.people) {
+          const profile = byName.get(p.name);
+          if (profile !== undefined) next.set(p.address.toLowerCase(), profile);
+        }
+        setByAddress(next);
+      })
+      .catch(() => {
+        /* initials, then */
+      });
+    return () => controller.abort();
+  }, [home.people]);
+  return React.useCallback(
+    (a: MailAddress) => byAddress.get(a.email.toLowerCase()) ?? { name: a.email, displayName: a.name ?? a.email },
+    [byAddress],
   );
 }
 
@@ -350,6 +381,7 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
     setDraft({ to: [], cc: [], subject: withPrefix(t("mail.compose.fwd"), m.subject), text: quoted(m, locale, t) });
   };
 
+  const faces = useFaces(home);
   const trash = home.mailboxes.find((f) => f.role === "trash");
   const archive = home.mailboxes.find((f) => f.role === "archive");
 
@@ -469,6 +501,7 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
                 {page.messages.map((m) => (
                   <MessageRow
                     key={m.id}
+                    faces={faces}
                     message={m}
                     sent={folder?.role === "sent" || folder?.role === "drafts"}
                     current={m.id === openId}
@@ -509,6 +542,7 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
           ) : (
             <Reader
               message={open}
+              faces={faces}
               locale={locale}
               folders={home.mailboxes}
               onBack={() => setColumn("list")}
@@ -559,12 +593,14 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
 
 function MessageRow({
   message: m,
+  faces,
   sent,
   current,
   locale,
   onOpen,
 }: {
   message: MailSummary;
+  faces: Faces;
   sent: boolean;
   current: boolean;
   locale: string;
@@ -579,10 +615,16 @@ function MessageRow({
         onClick={onOpen}
         aria-current={current ? "true" : undefined}
         className={cn(
-          "flex w-full flex-col gap-0.5 border-b border-hair px-3 py-2.5 text-left",
+          "flex w-full items-start gap-3 border-b border-hair px-3 py-2.5 text-left",
           current ? "bg-accent-wash" : "hover:bg-sunk",
         )}
       >
+        {people[0] !== undefined ? (
+          <PersonAvatar person={faces(people[0])} size="sm" className="mt-0.5" />
+        ) : (
+          <span className="size-8 shrink-0" />
+        )}
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-center gap-2">
           <span
             aria-label={m.seen ? undefined : t("mail.unread")}
@@ -605,6 +647,7 @@ function MessageRow({
           {m.subject || t("mail.noSubject")}
         </span>
         <span className="line-clamp-1 pl-4 text-[13px] text-muted">{m.preview}</span>
+        </span>
       </button>
     </li>
   );
@@ -612,6 +655,7 @@ function MessageRow({
 
 function Reader({
   message: m,
+  faces,
   locale,
   folders,
   onBack,
@@ -624,6 +668,7 @@ function Reader({
   onDelete,
 }: {
   message: MailMessage;
+  faces: Faces;
   locale: string;
   folders: readonly MailFolder[];
   onBack: () => void;
@@ -692,9 +737,12 @@ function Reader({
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="flex flex-col gap-1 px-5 pt-4 pb-3">
           <h2 className="text-[17px] leading-tight font-semibold tracking-tight break-words">{m.subject || t("mail.noSubject")}</h2>
-          <p className="text-sm break-words">
-            <span className="text-muted">{t("mail.from")} </span>
-            {m.from.map(full).join(", ")}
+          <p className="flex items-center gap-2 pt-1 text-sm break-words">
+            {m.from[0] !== undefined && <PersonAvatar person={faces(m.from[0])} size="sm" />}
+            <span className="min-w-0">
+              <span className="text-muted">{t("mail.from")} </span>
+              {m.from.map(full).join(", ")}
+            </span>
           </p>
           {m.to.length > 0 && (
             <p className="text-sm break-words">
