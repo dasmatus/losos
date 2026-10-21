@@ -317,7 +317,7 @@ pkgs.testers.nixosTest {
             f"--out /tmp/screens --user matus --password '{PASSWORD}'",
             timeout=1800,
         )
-        laptop.copy_from_vm("/tmp/screens", "")
+        laptop.copy_from_machine("/tmp/screens", "")
         code, body = api("/api/look", cookie)
         assert json.loads(body)["background"] == {"kind": "shipped", "name": "tide"}, body
   '';

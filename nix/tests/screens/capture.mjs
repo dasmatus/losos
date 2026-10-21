@@ -6,7 +6,7 @@
 //   losos-capture --base https://192.168.1.1 --plan /tmp/plan.json \
 //       --out /tmp/shots [--user NAME --password WORD]
 //
-// then `copy_from_vm("/tmp/shots", "")` puts the PNGs in the test's output.
+// then `copy_from_machine("/tmp/shots", "")` puts the PNGs in the test's output.
 // With a user, the browser signs in to LosOS Login first, the way the
 // sign-in page does, so every shot is the admin UI as that person sees it.
 //
