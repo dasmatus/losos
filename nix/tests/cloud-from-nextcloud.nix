@@ -230,7 +230,7 @@ pkgs.testers.nixosTest {
     with subtest("the pictures: Nextcloud as the owner left it"):
         # The welcome slides would cover the first picture.
         box.succeed(f"{occ} app:disable firstrunwizard || true")
-        box.succeed(f"cloud-move-shots nextcloud /tmp/shots/before notshared '${adminPass}'")
+        box.succeed("cloud-move-shots nextcloud /tmp/shots/before notshared '${adminPass}'")
         box.copy_from_machine("/tmp/shots/before", "shots")
 
     with subtest("the nightly switch: Nextcloud and Postgres go, LosOS Cloud comes"):
