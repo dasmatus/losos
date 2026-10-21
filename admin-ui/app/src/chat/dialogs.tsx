@@ -18,7 +18,7 @@ import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
-import { directPartner, directRooms, isSpace, localpart, maySend } from "./model";
+import { directPartner, directRooms, isSpace, localpart, maySend, roomName } from "./model";
 import { boxPeople } from "./session";
 
 const ENCRYPTION = { type: EventType.RoomEncryption, state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" as const } };
@@ -280,7 +280,7 @@ export function InviteDialog({ client, room, open, onOpenChange }: { client: Mat
   return (
     <Dialog open={open} onOpenChange={onOpenChange} labelledBy="chat-invite">
       <DialogHeader>
-        <DialogTitle id="chat-invite">{t("chat.invite.title", { room: room.name })}</DialogTitle>
+        <DialogTitle id="chat-invite">{t("chat.invite.title", { room: roomName(room) })}</DialogTitle>
       </DialogHeader>
       <DialogBody>
         {open && (
@@ -441,7 +441,7 @@ export function RoomSettingsDialog({ client, room, open, onOpenChange, onLeft, o
   return (
     <Dialog open={open} onOpenChange={onOpenChange} labelledBy="chat-settings" dialogClassName="w-[min(34rem,calc(100vw-2rem))]">
       <DialogHeader>
-        <DialogTitle id="chat-settings">{t("chat.settings.title", { room: room.name })}</DialogTitle>
+        <DialogTitle id="chat-settings">{t("chat.settings.title", { room: roomName(room) })}</DialogTitle>
         <DialogDescription className="font-mono text-[12px] break-all">{room.getCanonicalAlias() ?? room.roomId}</DialogDescription>
       </DialogHeader>
       <DialogBody className="flex flex-col gap-3">
@@ -533,7 +533,7 @@ export function RoomSettingsDialog({ client, room, open, onOpenChange, onLeft, o
           className="hover:text-crit"
           disabled={busy}
           onClick={() => {
-            if (!window.confirm(t("chat.settings.leaveConfirm", { room: room.name }))) return;
+            if (!window.confirm(t("chat.settings.leaveConfirm", { room: roomName(room) }))) return;
             run(async () => {
               await client.leave(room.roomId);
               await client.forget(room.roomId).catch(() => undefined);

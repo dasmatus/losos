@@ -21,6 +21,7 @@ import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
+import { roomName } from "./model";
 
 /* Voice and video calls. Two people in a room is a 1:1 call (m.call.*,
  * peer to peer over WebRTC); more is a group call, the SDK's full-mesh one,
@@ -229,9 +230,9 @@ function CallView({ client, active, onEnd }: { client: MatrixClient; active: Act
   const waiting = active.kind === "one" && state !== CallState.Connected;
 
   return (
-    <div role="dialog" aria-label={t("chat.call.label", { room: room?.name ?? "" })} className="fixed inset-0 z-40 flex flex-col bg-ground/95 p-4">
+    <div role="dialog" aria-label={t("chat.call.label", { room: room ? roomName(room) : "" })} className="fixed inset-0 z-40 flex flex-col bg-ground/95 p-4">
       <p className="pb-3 text-center text-[14px] font-semibold">
-        {room?.name}
+        {room ? roomName(room) : null}
         {waiting && <span className="font-normal text-muted"> · {state === CallState.Ringing || state === CallState.InviteSent ? t("chat.call.ringing") : t("chat.call.connecting")}</span>}
       </p>
       <div className={cn("grid min-h-0 flex-1 content-center gap-3", feeds.length <= 1 ? "grid-cols-1" : feeds.length <= 4 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2 lg:grid-cols-3")}>

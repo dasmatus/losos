@@ -7,7 +7,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
-import { directPartner, directRooms, isSpace, lastActive, plainBody, ROOM_EVENTS, spaceChildren, unread, useEmitted } from "./model";
+import { directPartner, directRooms, isSpace, lastActive, plainBody, ROOM_EVENTS, roomName, spaceChildren, unread, useEmitted } from "./model";
 
 export interface RoomListProps {
   client: MatrixClient;
@@ -45,9 +45,9 @@ function RoomRow({ client, room, current, onOpen, invite }: { client: MatrixClie
           active ? "bg-accent-wash text-accent" : "text-ink hover:bg-sunk",
         )}
       >
-        <Avatar client={client} id={room.roomId} name={room.name} mxc={room.getMxcAvatarUrl()} size={32} />
+        <Avatar client={client} id={room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={32} />
         <span className="min-w-0 flex-1">
-          <span className={cn("block truncate text-[13.5px]", counts.total > 0 ? "font-semibold" : "font-medium")}>{room.name}</span>
+          <span className={cn("block truncate text-[13.5px]", counts.total > 0 ? "font-semibold" : "font-medium")}>{roomName(room)}</span>
           {line !== "" && <span className="block truncate text-[12px] text-muted">{line}</span>}
         </span>
         {counts.total > 0 && (
@@ -95,12 +95,12 @@ export function SpaceRail({ client, space, onSpace, onNewSpace }: Pick<RoomListP
           key={room.roomId}
           type="button"
           className={cn(item(space === room.roomId), "p-0")}
-          aria-label={room.name}
-          title={room.name}
+          aria-label={roomName(room)}
+          title={roomName(room)}
           aria-pressed={space === room.roomId}
           onClick={() => onSpace(room.roomId)}
         >
-          <Avatar client={client} id={room.roomId} name={room.name} mxc={room.getMxcAvatarUrl()} size={32} className="rounded-control" />
+          <Avatar client={client} id={room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={32} className="rounded-control" />
         </button>
       ))}
       <button type="button" className={item(false)} aria-label={t("chat.spaces.new")} title={t("chat.spaces.new")} onClick={onNewSpace}>
@@ -125,7 +125,7 @@ export function RoomList({ client, current, space, onOpen, onNewRoom, onNewChat,
     const wanted = filter.trim().toLowerCase();
     const shown = all
       .filter((room) => inSpace === null || inSpace.has(room.roomId))
-      .filter((room) => wanted === "" || room.name.toLowerCase().includes(wanted))
+      .filter((room) => wanted === "" || roomName(room).toLowerCase().includes(wanted))
       .sort((a, b) => lastActive(b) - lastActive(a));
     return {
       invites: shown.filter((room) => room.getMyMembership() === KnownMembership.Invite),

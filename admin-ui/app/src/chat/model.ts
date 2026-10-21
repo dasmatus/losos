@@ -269,6 +269,27 @@ export function plainBody(content: Record<string, unknown>): string {
   return typeof body === "string" ? body : "";
 }
 
+/* The names LosOS Login has for everyone on this box, by Matrix ID. The
+ * homeserver puts no name on an invite, so a direct chat with someone who
+ * has not joined yet would otherwise be called by their ID. */
+export const boxNames = new Map<string, string>();
+
+/** A Matrix ID as the person's name when they are on this box. */
+export function shownName(name: string): string {
+  return boxNames.get(name) ?? name;
+}
+
+/** A room's name, with a person's ID turned into their name. */
+export function roomName(room: Room): string {
+  return shownName(room.name);
+}
+
+/** A member's name in a room, with the same fallback. */
+export function memberName(room: Room, id: string): string {
+  const name = room.getMember(id)?.name ?? id;
+  return shownName(name);
+}
+
 /** A colour index (0..7) from a user or room ID, the same on every page. */
 export function hue(id: string): number {
   let sum = 0;

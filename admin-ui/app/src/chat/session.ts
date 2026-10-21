@@ -22,6 +22,7 @@ import {
 } from "matrix-js-sdk";
 import { decodeRecoveryKey } from "matrix-js-sdk/lib/crypto-api";
 import { signInUrl, signOutTo } from "@/lib/api";
+import { boxNames } from "./model";
 
 export interface ChatView {
   available: boolean;
@@ -224,6 +225,12 @@ export async function signIn(): Promise<Signed> {
       cacheSecretStorageKey: (keyId, _info, key) => keys.set(keyId, key),
     },
   });
+  // Everyone's name on this box, for people the homeserver names only by ID.
+  await boxPeople()
+    .then((people) => {
+      for (const p of people) boxNames.set(p.userId, p.displayName);
+    })
+    .catch(() => undefined);
   await client.initRustCrypto({
     useIndexedDB: true,
     cryptoDatabasePrefix: cryptoPrefix(session.userId, session.deviceId),

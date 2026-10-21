@@ -35,7 +35,7 @@ import { Avatar } from "./avatar";
 import { CallsProvider, useCalls } from "./calls";
 import { Composer } from "./composer";
 import { ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, RoomSettingsDialog, StartChatDialog } from "./dialogs";
-import { directPartner, directRooms, plainBody, ROOM_EVENTS, unread, useEmitted } from "./model";
+import { directPartner, directRooms, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
 import { RoomList, SpaceRail } from "./room-list";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
 import { ChatRefused, goSignIn, onSignedOut, type Refusal, type Signed, signedHere, signIn, signOutHere, start } from "./session";
@@ -202,7 +202,7 @@ function useNotifications(client: MatrixClient, current: string | null): void {
       if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
       if (client.getPushActionsForEvent(ev)?.notify !== true) return;
       const body = plainBody(ev.getContent()) || t("chat.reply.attachment");
-      const note = new Notification(room.name, { body: `${ev.sender?.name ?? ""}: ${body}`, tag: room.roomId });
+      const note = new Notification(roomName(room), { body: `${ev.sender?.name ?? ""}: ${body}`, tag: room.roomId });
       note.onclick = () => {
         window.focus();
         window.location.hash = `#/room/${encodeURIComponent(room.roomId)}`;
@@ -411,9 +411,9 @@ function InvitedView({ client, room }: { client: MatrixClient; room: Room }) {
     <Empty className="flex-1">
       <EmptyHeader>
         <EmptyMedia>
-          <Avatar client={client} id={room.roomId} name={room.name} mxc={room.getMxcAvatarUrl()} size={64} />
+          <Avatar client={client} id={room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={64} />
         </EmptyMedia>
-        <EmptyTitle>{room.name}</EmptyTitle>
+        <EmptyTitle>{roomName(room)}</EmptyTitle>
         <EmptyDescription>{t("chat.invite.youWere", { name: room.getMember(inviter)?.name ?? inviter })}</EmptyDescription>
       </EmptyHeader>
       <EmptyContent className="flex-row justify-center">
@@ -459,15 +459,15 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
 
   return (
     <>
-      <main className={cn("flex min-w-0 flex-1 flex-col", panel !== null && "max-lg:hidden")} aria-label={room.name}>
+      <main className={cn("flex min-w-0 flex-1 flex-col", panel !== null && "max-lg:hidden")} aria-label={roomName(room)}>
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-2 sm:px-4">
           <Button variant="ghost" size="icon-sm" className={cn("sm:hidden")} aria-label={t("chat.back")} onClick={onBack}>
             <HugeiconsIcon icon={ArrowLeft01Icon} className="size-4" />
           </Button>
-          <Avatar client={client} id={partner ?? room.roomId} name={room.name} mxc={room.getMxcAvatarUrl()} size={32} />
+          <Avatar client={client} id={partner ?? room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={32} />
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-1.5 truncate text-[14.5px] font-semibold">
-              {room.name}
+              {roomName(room)}
               {encrypted && (
                 <span title={t("chat.room.encrypted")} aria-label={t("chat.room.encrypted")}>
                   <HugeiconsIcon icon={SquareLock01Icon} className="size-3.5 text-ok" />
@@ -517,7 +517,7 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
                 setReplyTo(null);
                 setEditing(null);
               }}
-              placeholder={t("chat.composer.placeholder", { room: room.name })}
+              placeholder={t("chat.composer.placeholder", { room: roomName(room) })}
             />
           </>
         )}

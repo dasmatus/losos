@@ -6,7 +6,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useT } from "@/lib/i18n-react";
 import { Avatar } from "./avatar";
 import { Composer } from "./composer";
-import { buildItems, plainBody, threadRootOf, useEmitted } from "./model";
+import { buildItems, memberName, plainBody, threadRootOf, useEmitted } from "./model";
 import { ItemList, type RowActions, TIMELINE_EVENTS, useStickToBottom } from "./timeline";
 import { Button } from "@/components/ui/button";
 
@@ -71,7 +71,7 @@ function ThreadList({ client, room, onOpen }: { client: MatrixClient; room: Room
     <ul className="flex flex-col gap-1 p-2">
       {threads.map(({ root, count, latest }) => {
         const sender = root.getSender() ?? "";
-        const name = room.getMember(sender)?.name ?? sender;
+        const name = memberName(room, sender);
         return (
           <li key={root.getId()}>
             <button type="button" onClick={() => onOpen(root.getId() ?? "")} className="flex w-full gap-2.5 rounded-control p-2 text-left hover:bg-sunk">
