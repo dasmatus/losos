@@ -1,11 +1,13 @@
 //! `losos-git` — LosOS Git, the box's own Git server.
 //!
-//! `serve`, run by `losos-git.service`, and `import-forgejo`, run once by
+//! `serve`, run by `losos-git.service`, `import-forgejo`, run once by
 //! `losos-git-forgejo-import.service` on a box that ran Forgejo
-//! (`modules/git.nix`).
+//! (`modules/git.nix`), and `review-diff`, which reviews a diff the way the
+//! reviewer reviews a pull request and prints the review.
 //! Everything it does is described in [`losos_ctl::forge`].
 
 use clap::{Parser, Subcommand};
+use losos_ctl::forge::reviewer::{model, patch, review};
 use losos_ctl::forge::{db::Store, import, server, Config};
 use std::path::PathBuf;
 
@@ -56,6 +58,40 @@ enum Cmd {
         #[arg(long)]
         from: PathBuf,
     },
+    /// Review the `git diff` on stdin with the box's code model, as LosOS
+    /// Reviewer would review a pull request, and print the review. The
+    /// model is the one in `LOSOS_REVIEWER_URL` and `LOSOS_REVIEWER_MODEL`.
+    ReviewDiff {
+        /// The pull request's title.
+        #[arg(long, default_value = "")]
+        title: String,
+        /// Also print every question and answer, as JSON lines, here.
+        #[arg(long)]
+        record: Option<PathBuf>,
+    },
+}
+
+/// The model, writing down what it was asked and what it said.
+struct Recording {
+    config: model::Config,
+    log: Option<std::sync::Mutex<std::fs::File>>,
+}
+
+impl review::Ask for Recording {
+    fn ask(&self, system: &str, user: &str, max_tokens: u32) -> anyhow::Result<String> {
+        let started = std::time::Instant::now();
+        let reply = model::ask(&self.config, system, user, max_tokens, false)?;
+        if let Some(log) = &self.log {
+            use std::io::Write;
+            let line = serde_json::json!({
+                "system": system, "user": user, "answer": reply.text,
+                "promptTokens": reply.prompt_tokens, "answerTokens": reply.answer_tokens,
+                "seconds": started.elapsed().as_secs_f64(),
+            });
+            writeln!(log.lock().unwrap_or_else(|p| p.into_inner()), "{line}")?;
+        }
+        Ok(reply.text)
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -84,6 +120,29 @@ fn main() -> anyhow::Result<()> {
                 println!("not imported: {line}");
             }
             println!("imported: {}", serde_json::to_string(&report.imported)?);
+            Ok(())
+        }
+        Cmd::ReviewDiff { title, record } => {
+            let config = model::Config::from_env().ok_or_else(|| {
+                anyhow::anyhow!("set LOSOS_REVIEWER_URL and LOSOS_REVIEWER_MODEL")
+            })?;
+            let mut diff = String::new();
+            std::io::Read::read_to_string(&mut std::io::stdin(), &mut diff)?;
+            let ask = Recording {
+                log: record
+                    .map(|p| std::fs::File::create(p).map(std::sync::Mutex::new))
+                    .transpose()?,
+                config: config.clone(),
+            };
+            let out = review::run(&ask, &title, &patch::files(&diff), &mut |done, total| {
+                eprintln!("reviewed {done} of {total} files");
+                true
+            })?;
+            println!("{}\n", out.body(&config.model));
+            for c in &out.comments {
+                let from = if c.from_check { "check" } else { "model" };
+                println!("--- {}:{} ({from})\n{}\n", c.path, c.line, c.body);
+            }
             Ok(())
         }
         Cmd::Serve {

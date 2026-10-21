@@ -36,6 +36,7 @@ pub mod db;
 pub mod gitcmd;
 pub mod import;
 pub mod names;
+pub mod reviewer;
 pub mod server;
 pub mod transport;
 

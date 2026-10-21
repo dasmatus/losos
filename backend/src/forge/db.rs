@@ -125,6 +125,9 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (kind, forgejo_id)
     );
     ",
+    // 3: AI review, the repository setting and the queue
+    // (`reviewer::jobs`).
+    super::reviewer::jobs::MIGRATION,
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
