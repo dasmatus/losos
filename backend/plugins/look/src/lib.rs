@@ -46,12 +46,12 @@ impl Store for FileStore {
 
     fn save_look(&mut self, look: &Look) -> anyhow::Result<()> {
         let bytes = serde_json::to_vec(look)?;
-        fs::write(&self.look, &bytes, fs::WriteOptions::public())?;
+        fs::write(&self.look, &bytes, fs::WriteOptions::secret())?;
         Ok(())
     }
 
     fn write_background(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
-        fs::write(&self.background, bytes, fs::WriteOptions::public())?;
+        fs::write(&self.background, bytes, fs::WriteOptions::secret())?;
         Ok(())
     }
 

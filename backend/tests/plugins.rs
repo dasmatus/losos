@@ -357,6 +357,14 @@ fn the_look_is_served_by_its_plugin() {
         std::fs::read(d.dir.path().join("state/background.img")).unwrap(),
         PNG
     );
+    // Only root reads them, as the backup's restore puts them back.
+    for f in ["state/look.json", "state/background.img"] {
+        let mode = std::fs::metadata(d.dir.path().join(f))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "{f}");
+    }
 
     // Choosing nothing drops the upload.
     let a = d.admin("DELETE", "/api/look/background", Value::Null);
