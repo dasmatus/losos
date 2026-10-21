@@ -65,8 +65,8 @@ export async function payEscrow(
 }
 
 /** Top up the buyer's balance and open a quote's taps: one transaction per
- *  `TAPS_PER_TRANSACTION` taps, the top-up in the first. The signatures, in
- *  order. */
+ *  `TAPS_PER_TRANSACTION` taps, the top-up in the first, each confirmed
+ *  before the next is sent. The signatures, in order. */
 export async function openTaps(
   network: string,
   signer: SolanaSigner,
@@ -76,9 +76,13 @@ export async function openTaps(
   for (let at = 0; at < p.taps.length; at += TAPS_PER_TRANSACTION) {
     const taps = p.taps.slice(at, at + TAPS_PER_TRANSACTION);
     const topUp = at === 0 ? p.topUp : 0n;
-    out.push(await send(network, signer, (payer, recentBlockhash) =>
+    const signature = await send(network, signer, (payer, recentBlockhash) =>
       escrowTapsMessage({ ...p, taps, topUp, payer, recentBlockhash }),
-    ));
+    );
+    // The first transaction opens the balance the next ones draw on, and a
+    // later one is simulated against the chain as it is: wait for each.
+    await waitConfirmed(network, signature);
+    out.push(signature);
   }
   return out;
 }

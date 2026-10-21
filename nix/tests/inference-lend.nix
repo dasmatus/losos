@@ -8,7 +8,7 @@
 #   3. MemoryMax is the lent memory plus the server's overhead;
 #   4. on loopback only root (rathole's client) may connect to the RPC port:
 #      `notshared` and `shared` are refused;
-#   5. the rathole client carries `<appliance id>-llm` to the RPC port with
+#   5. the rathole client carries `<appliance id>.llm` to the RPC port with
 #      the box's own token, and announce is handed the lend file.
 #
 # The registrar is a stand-in that only sleeps: announce's flag is asserted
@@ -120,8 +120,8 @@ pkgs.testers.nixosTest {
     box.wait_until_succeeds("test -s /run/losos-rathole/client.toml")
     client = box.succeed("cat /run/losos-rathole/client.toml")
     print(client)
-    assert '[client.services."lendbox-llm"]' in client, client
-    llm = client.split('[client.services."lendbox-llm"]', 1)[1]
+    assert '[client.services."lendbox.llm"]' in client, client
+    llm = client.split('[client.services."lendbox.llm"]', 1)[1]
     assert 'token = "test-proxy-token-0123456789abcdef"' in llm, llm
     assert 'local_addr = "127.0.0.1:50052"' in llm, llm
     announce = box.succeed("systemctl show -p ExecStart --value losos-registrar-announce.service")

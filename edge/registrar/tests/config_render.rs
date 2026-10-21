@@ -265,17 +265,29 @@ fn a_lending_box_gets_a_second_tunnel_service_on_its_llm_port() {
     let mut lender = tenant("box-a", "a.example.org", 20001, "tok-a");
     lender.llm_port = Some(23001);
     let other = tenant("box-b", "b.example.org", 20002, "tok-b");
-    let files = desired_config(&[lender, other], &opts());
+    // A tenant whose id ends the way an older service name did.
+    let lookalike = tenant("box-a-llm", "c.example.org", 20003, "tok-c");
+    let files = desired_config(&[lender, other, lookalike], &opts());
     let toml = &files.rathole_toml;
     assert!(
         toml.contains(
-            "[server.services.box-a-llm]\ntoken = \"tok-a\"\nbind_addr = \"127.0.0.1:23001\"\n"
+            "[server.services.\"box-a.llm\"]\ntoken = \"tok-a\"\nbind_addr = \"127.0.0.1:23001\"\n"
         ),
         "{toml}"
     );
-    assert!(!toml.contains("box-b-llm"), "{toml}");
+    assert!(!toml.contains("box-b.llm"), "{toml}");
+    assert_eq!(
+        toml.matches("[server.services.box-a-llm]").count(),
+        1,
+        "{toml}"
+    );
+    let tables: Vec<&str> = toml.lines().filter(|l| l.starts_with('[')).collect();
+    let mut unique = tables.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    assert_eq!(tables.len(), unique.len(), "{toml}");
     // The model port never becomes a web route.
     let yaml = files.traefik_yaml.unwrap();
     assert!(!yaml.contains("23001"), "{yaml}");
-    assert!(!yaml.contains("box-a-llm"), "{yaml}");
+    assert!(!yaml.contains("box-a.llm"), "{yaml}");
 }

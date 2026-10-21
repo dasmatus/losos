@@ -471,9 +471,9 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
     let inference = match &opts.inference {
         None => None,
         Some(i) => {
-            if market.is_none() {
+            if opts.market.as_ref().and_then(|m| m.usdc.as_ref()).is_none() {
                 return Err(miette!(
-                    "--inference-models needs the market: models are paid for through it"
+                    "--inference-models needs the market with USDC (--market-usdc): models are paid for through it"
                 ));
             }
             let state_file = Path::new(&opts.registry_path).with_file_name("inference.json");

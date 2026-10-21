@@ -20,8 +20,12 @@ use crate::market::{MarketError, TapQuote};
 /// Chat requests answered at once across the edge. A head answers one at a
 /// time anyway; this bounds the waiting.
 const MAX_CHATS: usize = 32;
-/// A chat body: the prompt limit and some room for the JSON around it.
-const MAX_CHAT_BYTES: usize = crate::inference::MAX_PROMPT_BYTES + 64 * 1024;
+/// A chat body. The prompt limit counts decoded text, and JSON writes a
+/// control character as six bytes (`\u0000`), so a prompt at the limit can
+/// take six times as much on the wire; the rest is room for the messages'
+/// envelopes. `modules/edge-inference.nix` gives the route the same cap in
+/// Traefik, and the box's nginx (`modules/containers.nix`) too.
+const MAX_CHAT_BYTES: usize = 8 * crate::inference::MAX_PROMPT_BYTES;
 
 pub(super) fn chats() -> Arc<Semaphore> {
     Arc::new(Semaphore::new(MAX_CHATS))

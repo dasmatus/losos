@@ -185,7 +185,6 @@ export async function startTaps(chain: UsdcChain, s: TapSigner, quote: TapQuote,
       feeBps: quote.feeBps,
       taps: quote.taps.map((t) => ({ key: t.key, seller: t.seller, rate: BigInt(t.rate) })),
     });
-    for (const signature of sent) await waitConfirmed(chain.network, signature);
     return sent;
   }
   const { client, account, chain: viemChain } = await evmWallet(s, chain.network);

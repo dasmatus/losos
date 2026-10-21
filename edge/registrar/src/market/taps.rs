@@ -891,6 +891,20 @@ impl Market {
         }
     }
 
+    /// The taps of meters with a request running now.
+    fn answering_taps(&self, taps: &meter::Taps) -> BTreeSet<String> {
+        let busy = self
+            .taps_live
+            .busy
+            .lock()
+            .map(|b| b.clone())
+            .unwrap_or_default();
+        busy.iter()
+            .filter_map(|m| taps.meters.get(m))
+            .flat_map(|m| m.taps.iter().cloned())
+            .collect()
+    }
+
     /// Follow the taps once: record settles and closes the escrow shows,
     /// notice taps a wallet closed, close the taps of ended meters, settle
     /// what is due, and finish meters with nothing left to bill.
@@ -918,7 +932,16 @@ impl Market {
         let mut seen: Vec<(String, Option<ChainTap>)> = Vec::new();
         let mut stale_settles: Vec<String> = Vec::new();
         let mut stale_closes: Vec<String> = Vec::new();
-        for tap in snapshot.taps.values().filter(|t| t.opened && !t.done) {
+        // A meter answering a request keeps its taps as they are until the
+        // answer is billed: nothing of it is marked finished or closed
+        // under the request, so a stop during an answer cannot leave the
+        // answer unpaid.
+        let answering = self.answering_taps(&snapshot);
+        for tap in snapshot
+            .taps
+            .values()
+            .filter(|t| t.opened && !t.done && !answering.contains(&t.id))
+        {
             let resend = match usdc.chain(&tap.network).map(|c| c.network.family) {
                 Some(Family::Solana) => SOLANA_RESEND_SECS,
                 _ => meter::RESEND_SECS,
@@ -1092,7 +1115,11 @@ impl Market {
                     }
                 }
             }
-            for tap in meter::to_close(&work, network) {
+            let answering = self.answering_taps(&work);
+            for tap in meter::to_close(&work, network)
+                .into_iter()
+                .filter(|t| !answering.contains(t))
+            {
                 let replace = stale_closes.contains(&tap);
                 match chain.close(network, &tap, replace).await {
                     Ok(tx) => {
@@ -1320,7 +1347,10 @@ mod tests {
         /// Prompt tokens reported over what the tokenizer counted.
         extra_in: u64,
         fail: bool,
+        /// Before every answer to the head's routes.
         delay: Duration,
+        /// Before an answer to a chat only.
+        answer_delay: Duration,
     }
 
     struct FakeHeads {
@@ -1338,6 +1368,7 @@ mod tests {
                     extra_in: 0,
                     fail: false,
                     delay: Duration::ZERO,
+                    answer_delay: Duration::ZERO,
                 }),
                 started: StdMutex::new(Vec::new()),
                 stopped: StdMutex::new(Vec::new()),
@@ -1371,6 +1402,9 @@ mod tests {
             let s = self.script.lock().unwrap().clone();
             Box::pin(async move {
                 tokio::time::sleep(s.delay).await;
+                if path == "/v1/chat/completions" {
+                    tokio::time::sleep(s.answer_delay).await;
+                }
                 let body: Value = body.map_or(Value::Null, |b| serde_json::from_slice(&b).unwrap());
                 let reply = match path {
                     "/health" if s.healthy => json!({"status": "ok"}),
@@ -1692,6 +1726,44 @@ mod tests {
             .values()
             .all(|t| t.closed_at.is_some()));
         assert_eq!(w.chain.balance(WALLET), 5_000_000 - 108);
+        assert!(w.chain.refused.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_answer_running_when_the_buyer_stops_is_still_paid() {
+        let w = Arc::new(world().await);
+        let meter = w.open(1_000_000, 5_000_000).await;
+        w.ask(&meter, "hello", 50).await.unwrap();
+        w.later(HOUR).await;
+        w.heads.set(|s| s.answer_delay = Duration::from_millis(600));
+        let (answer, ()) = tokio::join!(w.ask(&meter, "a long story", 50), async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            w.market.tap_stop(BUYER, &meter).await.unwrap();
+            // The settle pass runs under the answer and must leave its taps.
+            for _ in 0..3 {
+                w.market.taps_pass().await;
+                w.later(30).await;
+            }
+        });
+        answer.unwrap();
+        for _ in 0..4 {
+            w.market.taps_pass().await;
+            w.later(30).await;
+        }
+        let t = w.taps().await;
+        assert_eq!(t.meters[&meter].requests, 2);
+        assert_eq!(t.meters[&meter].state, MeterState::Ended);
+        for id in &t.meters[&meter].taps {
+            let tap = &t.taps[id];
+            assert!(
+                tap.accrued_e6.saturating_sub(tap.paid.saturating_mul(E6)) < E6,
+                "tap {id} left {} unpaid",
+                tap.accrued_e6 - tap.paid * E6
+            );
+        }
+        let paid: u64 = t.taps.values().map(|t| t.paid).sum();
+        assert!(paid > 108, "{paid}");
+        assert_eq!(w.chain.balance(WALLET), 5_000_000 - paid);
         assert!(w.chain.refused.lock().unwrap().is_empty());
     }
 

@@ -954,7 +954,11 @@ pub async fn wallet_view(
     let small = |b: &[u8], i| word_u128(b, i).and_then(|v| u64::try_from(v).ok());
     Ok(crate::meter::WalletView {
         balance: small(&balance, 0).ok_or_else(bad)?,
-        asked: small(&ask, 0).ok_or_else(bad)?,
+        // The escrow keeps an ask as asked, up to 2^128 - 1, and pays out
+        // at most the balance; more than u64 holds reads as all of it.
+        asked: word_u128(&ask, 0)
+            .map(|v| u64::try_from(v).unwrap_or(u64::MAX))
+            .ok_or_else(bad)?,
         not_before: small(&ask, 1).ok_or_else(bad)?,
     })
 }

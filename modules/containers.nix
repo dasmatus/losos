@@ -539,6 +539,8 @@ in
               ${lanOnly}
               proxy_set_header X-Real-IP $remote_addr;
               ${notTheEdge}
+              # The edge's cap (MAX_CHAT_BYTES in edge/registrar/src/server/llm.rs).
+              client_max_body_size 2m;
               proxy_read_timeout 1200s;
               proxy_send_timeout 1200s;
             '';

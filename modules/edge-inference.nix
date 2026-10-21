@@ -2,7 +2,7 @@
 #
 # Boxes lend memory (losos.inference.lend, modules/inference-lend.nix): each
 # runs a llama.cpp RPC server on its own loopback, and its rathole client
-# carries it to this edge as the service `<appliance id>-llm`, which the
+# carries it to this edge as the service `<appliance id>.llm`, which the
 # registrar binds on 127.0.0.1 at a port of `portRange`. The registrar groups
 # lending boxes until a model of the catalogue fits, and for each group runs
 # one head: llama-server over the group's RPC ports, listening on a UNIX
@@ -76,10 +76,39 @@ let
   ];
 
   ids = map (m: m.id) cfg.models;
+
+  # A chat body is larger than the 256 KiB `register-buffer` allows
+  # (modules/edge.nix): the prompt limit counts decoded text, and JSON can
+  # write a byte as six. This router takes the one path ahead of `register`
+  # (the longer rule wins) with the registrar's own cap, MAX_CHAT_BYTES in
+  # edge/registrar/src/server/llm.rs, and keeps the per-client limit.
+  registerDomain = "register.${edge.publicDomain}";
+  chatYml = (pkgs.formats.yaml { }).generate "losos-register-llm-chat.yml" {
+    http.middlewares.register-llm-chat-buffer.buffering.maxRequestBodyBytes = 8 * 256 * 1024;
+    http.routers.register-llm-chat = {
+      rule = "Host(`${registerDomain}`) && Path(`/market/llm/chat`)";
+      service = "register";
+      middlewares = [
+        "register-per-client"
+        "register-llm-chat-buffer"
+      ];
+      entryPoints = [ "websecure" ];
+      tls = {
+        certResolver = "le";
+        domains = [ { main = registerDomain; } ];
+      };
+    };
+  };
 in
 {
   config = lib.mkIf (edge.enable && cfg.enable) {
     assertions = [
+      {
+        # The registrar refuses --inference-models without a USDC market and
+        # would not start at all, tunnels and registration included.
+        assertion = edge.market.enable && edge.market.usdc.enable;
+        message = "losos.edge.inference needs losos.edge.market.enable and losos.edge.market.usdc.enable: buyers pay for models in USDC.";
+      }
       {
         assertion = cfg.portRange.from <= cfg.portRange.to;
         message = "losos.edge.inference.portRange: `from` is above `to`.";
@@ -112,6 +141,7 @@ in
     systemd.tmpfiles.rules = [
       "d ${envDir} 0755 root root - -"
       "d ${socketDir} 0750 losos-llm losos-llm - -"
+      "L+ /etc/traefik/dynamic/register-llm-chat.yml - - - - ${chatYml}"
     ];
 
     networking.firewall = lib.mkIf config.networking.firewall.enable {
