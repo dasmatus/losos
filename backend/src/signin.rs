@@ -59,9 +59,7 @@ pub fn parse_login_url(url: &str) -> Result<LoginEndpoint, String> {
         None => (rest, "/"),
     };
     if authority.is_empty() || !authority.contains(':') {
-        return Err(format!(
-            "a loopback URL must name host:port (got {url:?})"
-        ));
+        return Err(format!("a loopback URL must name host:port (got {url:?})"));
     }
     Ok(LoginEndpoint {
         addr: authority.to_string(),

@@ -202,8 +202,8 @@ pkgs.testers.nixosTest {
         box.wait_for_unit("losos-cloud.service")
         box.succeed("! systemctl is-active postgresql.service")
         box.succeed("! systemctl is-active phpfpm-nextcloud.service")
-        log = box.succeed("journalctl -u losos-cloud-from-nextcloud --no-pager")
-        print(log)
+        journal = box.succeed("journalctl -u losos-cloud-from-nextcloud --no-pager")
+        print(journal)
         report = json.loads(box.succeed("cat /var/lib/losos-cloud/from-nextcloud.json"))
         me, eva = report["people"]["notshared"], report["people"]["eva"]
         assert me["calendars"] == 2 and me["events"] == 2 and me["tasks"] == 1, me

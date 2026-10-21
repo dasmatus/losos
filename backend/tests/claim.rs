@@ -55,8 +55,14 @@ fn a_claim_takes_the_box_and_hands_back_the_token() {
 #[test]
 fn a_password_the_rules_refuse_leaves_the_box_claimable() {
     let mut l = FakeLosos::default();
-    let err = cmd_claim(&mut l, "notshared", "short", TOKEN, &mut Receipts::default())
-        .unwrap_err();
+    let err = cmd_claim(
+        &mut l,
+        "notshared",
+        "short",
+        TOKEN,
+        &mut Receipts::default(),
+    )
+    .unwrap_err();
     assert!(err.to_string().contains("at least"), "{err}");
     assert!(!l.load_state().unwrap().claimed);
 }

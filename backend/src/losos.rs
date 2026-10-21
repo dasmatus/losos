@@ -622,7 +622,10 @@ pub fn cmd_device_cloud<L: Losos>(
     }
     let user = crate::setup::DEFAULT_ADMIN_USER;
     let name = crate::devices::credential_name(&device);
-    let minted = match l.cloud_request(&CloudRequest::MintKey { user, device: &name }) {
+    let minted = match l.cloud_request(&CloudRequest::MintKey {
+        user,
+        device: &name,
+    }) {
         Ok((status, body)) => interpret_app_password(status, &String::from_utf8_lossy(&body)),
         Err(e) => {
             tracing::info!(error = ?e, "the app password request could not reach LosOS Cloud");
@@ -2964,10 +2967,8 @@ mod tests {
                 json!({ "name": k, "group": "general", "editor": editor, "nixType": "x" })
             })
             .collect();
-        options.push(
-            json!({ "name": "cloud.trashDays", "group": "cloud",
-            "editor": { "kind": "int", "min": 1 }, "nixType": "int" }),
-        );
+        options.push(json!({ "name": "cloud.trashDays", "group": "cloud",
+            "editor": { "kind": "int", "min": 1 }, "nixType": "int" }));
         options.push(
             json!({ "name": "forgejo.site.landingPage", "group": "forgejo",
             "editor": { "kind": "enum", "values": ["home", "explore"] }, "nixType": "enum" }),
@@ -2988,10 +2989,7 @@ mod tests {
             .iter()
             .map(|o| o["name"].as_str().unwrap())
             .collect();
-        assert_eq!(
-            names,
-            ["cloud.trashDays", "forgejo.site.landingPage"]
-        );
+        assert_eq!(names, ["cloud.trashDays", "forgejo.site.landingPage"]);
 
         let out = cmd_site_set(
             &mut f,
@@ -3021,10 +3019,7 @@ mod tests {
             ("hostName", Some("\"evil\"")),
             ("sharingMyStorage", Some("false")),
             ("cloud.trashDays", Some("0")),
-            (
-                "cloud.trashDays",
-                Some("30;\n  losos.hostName = \"x\""),
-            ),
+            ("cloud.trashDays", Some("30;\n  losos.hostName = \"x\"")),
         ] {
             let e = cmd_site_set(&mut f, &[(name.into(), raw.map(str::to_string))]).unwrap_err();
             assert!(

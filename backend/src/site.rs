@@ -194,12 +194,7 @@ mod tests {
         assert!(check(&d, "cloud.trashDays", Some("30")).is_ok());
         assert!(check(&d, "cloud.trashDays", None).is_ok());
         assert!(check(&d, "cloud.trashDays", Some("0")).is_err());
-        assert!(check(
-            &d,
-            "cloud.trashDays",
-            Some("30; losos.hostName = \"x\"")
-        )
-        .is_err());
+        assert!(check(&d, "cloud.trashDays", Some("30; losos.hostName = \"x\"")).is_err());
         assert!(check(&d, "forgejo.site.landingPage", Some("\"explore\"")).is_ok());
         assert!(check(
             &d,
@@ -226,10 +221,7 @@ mod tests {
             &[("cloud.trashDays".into(), Some("30".into()))],
         )
         .unwrap();
-        assert_eq!(
-            lookup_nix("cloud.trashDays", &one).as_deref(),
-            Some("30")
-        );
+        assert_eq!(lookup_nix("cloud.trashDays", &one).as_deref(), Some("30"));
         assert_eq!(lookup_nix("hostName", &one).as_deref(), Some("\"mattbox\""));
         assert!(one.trim_end().ends_with('}'));
         assert_eq!(
@@ -237,15 +229,8 @@ mod tests {
             crate::overrides::assignments(DEFAULT_OVERRIDES_NIX).len() + 1
         );
 
-        let two = patch(
-            &one,
-            &[("cloud.trashDays".into(), Some("60".into()))],
-        )
-        .unwrap();
-        assert_eq!(
-            lookup_nix("cloud.trashDays", &two).as_deref(),
-            Some("60")
-        );
+        let two = patch(&one, &[("cloud.trashDays".into(), Some("60".into()))]).unwrap();
+        assert_eq!(lookup_nix("cloud.trashDays", &two).as_deref(), Some("60"));
         assert_eq!(two.matches("trashDays").count(), 1);
 
         let back = patch(&two, &[("cloud.trashDays".into(), None)]).unwrap();
@@ -254,13 +239,8 @@ mod tests {
 
     #[test]
     fn a_shared_line_is_refused_not_half_rewritten() {
-        let body =
-            "{ ... }:\n{\n  losos.hostName = \"a\"; losos.cloud.trashDays = 5;\n}\n";
-        assert!(patch(
-            body,
-            &[("cloud.trashDays".into(), Some("9".into()))]
-        )
-        .is_err());
+        let body = "{ ... }:\n{\n  losos.hostName = \"a\"; losos.cloud.trashDays = 5;\n}\n";
+        assert!(patch(body, &[("cloud.trashDays".into(), Some("9".into()))]).is_err());
         assert!(patch(body, &[("cloud.trashDays".into(), None)]).is_err());
     }
 }
