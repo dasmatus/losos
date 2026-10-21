@@ -69,7 +69,9 @@ class Shots {
   async take(p, slug, title, action = { kind: "none" }, targets = {}) {
     await this.settle(p);
     const file = `${String(this.steps.length + 1).padStart(2, "0")}-${slug}.png`;
-    await p.screenshot({ path: join(this.out, file) });
+    // A frame at 2x on an emulated machine can take minutes, a dialog above
+    // the page most of all.
+    await p.screenshot({ path: join(this.out, file), timeout: 300_000 });
     const found = {};
     for (const [key, loc] of Object.entries(targets)) {
       const b = await loc.boundingBox().catch(() => null);
@@ -315,6 +317,9 @@ const look = {
 const page = await (await browser.newContext(look)).newPage();
 // A reader of the published site: another browser, never signed in.
 const anon = await (await browser.newContext(look)).newPage();
+// Every wait has room for an emulated machine.
+page.setDefaultTimeout(120_000);
+anon.setDefaultTimeout(120_000);
 await signIn(page, base, name, password);
 
 // What the admin page logs on a plain load (Sonner's refused stylesheet):
