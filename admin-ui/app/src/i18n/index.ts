@@ -11,6 +11,7 @@ import apps from "./apps";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import home from "./home";
+import inference from "./inference";
 import install from "./install";
 import lab from "./lab";
 import look from "./look";
@@ -36,6 +37,7 @@ export const MESSAGES = {
   ...wizard,
   ...settings,
   ...panes,
+  ...inference,
   ...widgets,
   ...apps,
   ...cloudApps,

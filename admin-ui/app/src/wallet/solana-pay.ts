@@ -5,10 +5,17 @@
 import { base58 } from "@scure/base";
 import { solanaRpc } from "./chains";
 import {
+  escrowAskMessage,
   escrowPayMessage,
+  escrowTapsMessage,
+  escrowWithdrawMessage,
   signTransaction,
+  TAPS_PER_TRANSACTION,
   usdcTransferMessage,
   type EscrowPay,
+  type EscrowTap,
+  type EscrowTaps,
+  type EscrowWithdrawal,
   type SolanaKey,
   type UsdcTransfer,
 } from "./solana";
@@ -55,6 +62,39 @@ export async function payEscrow(
   return send(network, signer, (payer, recentBlockhash) =>
     escrowPayMessage({ ...pay, payer, recentBlockhash, nonce }),
   );
+}
+
+/** Top up the buyer's balance and open a quote's taps: one transaction per
+ *  `TAPS_PER_TRANSACTION` taps, the top-up in the first, each confirmed
+ *  before the next is sent. The signatures, in order. */
+export async function openTaps(
+  network: string,
+  signer: SolanaSigner,
+  p: Omit<EscrowTaps, "payer" | "recentBlockhash" | "taps"> & { taps: EscrowTap[] },
+): Promise<string[]> {
+  const out: string[] = [];
+  for (let at = 0; at < p.taps.length; at += TAPS_PER_TRANSACTION) {
+    const taps = p.taps.slice(at, at + TAPS_PER_TRANSACTION);
+    const topUp = at === 0 ? p.topUp : 0n;
+    const signature = await send(network, signer, (payer, recentBlockhash) =>
+      escrowTapsMessage({ ...p, taps, topUp, payer, recentBlockhash }),
+    );
+    // The first transaction opens the balance the next ones draw on, and a
+    // later one is simulated against the chain as it is: wait for each.
+    await waitConfirmed(network, signature);
+    out.push(signature);
+  }
+  return out;
+}
+
+/** Ask to take `amount` out of the balance after the notice. */
+export function askWithdrawal(network: string, signer: SolanaSigner, p: Omit<EscrowWithdrawal, "payer" | "recentBlockhash">, amount: bigint): Promise<string> {
+  return send(network, signer, (payer, recentBlockhash) => escrowAskMessage({ ...p, payer, recentBlockhash, amount }));
+}
+
+/** Take the asked amount out, once the notice is over. */
+export function withdraw(network: string, signer: SolanaSigner, p: Omit<EscrowWithdrawal, "payer" | "recentBlockhash">): Promise<string> {
+  return send(network, signer, (payer, recentBlockhash) => escrowWithdrawMessage({ ...p, payer, recentBlockhash }));
 }
 
 async function send(

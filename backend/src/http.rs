@@ -2717,6 +2717,173 @@ async fn post_market_rpc(api: web::Data<Api>, req: HttpRequest, body: web::Bytes
     .await
 }
 
+// ── AI models on lent memory ──────────────────────────────────────────────
+// Pay as you go through the edge (`edge/registrar/src/server/llm.rs`): the
+// pane quotes a meter, the owner's wallet opens its taps in the escrow, and
+// each answer is billed per token. Field names are the edge's own.
+
+/// `POST /api/market/llm/models` `{network?}` — the models, this box's
+/// meters, balances and lending, or `{"available": false}`.
+async fn post_market_llm_models(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/market/llm/models", false, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let network = field_str(&doc, "network");
+        run(&api, |b| crate::losos::cmd_llm_models(b, network))
+    })
+}
+
+/// A whole number of USDC base units, as a JSON number or decimal text.
+fn field_units(doc: &serde_json::Value, key: &str) -> Option<u64> {
+    let v = doc.get(key)?;
+    v.as_u64()
+        .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+}
+
+/// `POST /api/market/taps` `{model, network?, spendPerHour}` — quote a meter.
+async fn post_market_taps(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    post_market(api, req, body, "/api/market/taps", |d| {
+        Some(crate::market::Op::TapQuote {
+            model: field_str(d, "model")?,
+            network: field_str(d, "network"),
+            spend_per_hour: field_units(d, "spendPerHour")?,
+        })
+    })
+    .await
+}
+
+/// `POST /api/market/taps/confirm` `{meter, wallet}` — `wallet` opened the
+/// taps.
+async fn post_market_taps_confirm(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/taps/confirm", |d| {
+        Some(crate::market::Op::TapConfirm {
+            meter: field_str(d, "meter")?,
+            wallet: field_str(d, "wallet")?,
+        })
+    })
+    .await
+}
+
+/// `POST /api/market/taps/stop` `{meter, wallet?}` — stop a meter.
+async fn post_market_taps_stop(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/taps/stop", |d| {
+        let wallet = match d.get("wallet") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(w) => Some(w.as_str()?.to_string()),
+        };
+        Some(crate::market::Op::TapStop {
+            meter: field_str(d, "meter")?,
+            wallet,
+        })
+    })
+    .await
+}
+
+/// The chat body as the page sends it, or `None` when a field is missing or
+/// of the wrong kind. The limits are checked by `ChatAsk::validate`.
+fn chat_ask(doc: &serde_json::Value) -> Option<crate::market::ChatAsk> {
+    let messages = doc
+        .get("messages")?
+        .as_array()?
+        .iter()
+        .map(|m| Some((field_str(m, "role")?, field_str(m, "content")?)))
+        .collect::<Option<Vec<_>>>()?;
+    let number = |key: &str| match doc.get(key) {
+        None | Some(serde_json::Value::Null) => Some(None),
+        Some(v) => v.as_f64().map(Some),
+    };
+    let stop = match doc.get("stop") {
+        None | Some(serde_json::Value::Null) => Vec::new(),
+        Some(serde_json::Value::String(s)) => vec![s.clone()],
+        Some(serde_json::Value::Array(a)) => a
+            .iter()
+            .map(|s| s.as_str().map(str::to_string))
+            .collect::<Option<Vec<_>>>()?,
+        Some(_) => return None,
+    };
+    let max_tokens = match doc.get("maxTokens") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(v) => Some(v.as_u64()?),
+    };
+    Some(crate::market::ChatAsk {
+        meter: field_str(doc, "meter")?,
+        messages,
+        max_tokens,
+        temperature: number("temperature")?,
+        top_p: number("topP")?,
+        stop,
+    })
+}
+
+/// `POST /api/market/llm/chat` — one request to a running model, billed on
+/// its meter: `{meter, messages: [{role, content}], maxTokens?,
+/// temperature?, topP?, stop?}`.
+///
+/// An answer can take a quarter of an hour, so this runs off the HTTP worker
+/// and without the state lock every other command takes: it touches no
+/// state of the box, and holding the lock would stall the whole API while a
+/// model thinks. The audit record is written when the answer is back.
+async fn post_market_llm_chat(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    const ROUTE: &str = "/api/market/llm/chat";
+    let mut who: Option<String> = None;
+    let gate = guarded_as(&api, &req, ROUTE, false, |p| {
+        who = Some(p.audit_name().to_string());
+        HttpResponse::Ok().finish()
+    });
+    let Some(who) = who else {
+        return gate;
+    };
+    let remote = remote_addr(&req);
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let resp = match chat_ask(&doc) {
+        None => err(
+            StatusCode::BAD_REQUEST,
+            "the request body is missing a required field",
+        ),
+        Some(ask) => {
+            let worker = api.clone();
+            let answer = web::block(move || {
+                let mut backend = worker.backend.clone();
+                crate::losos::cmd_market_op(&mut backend, &crate::market::Op::LlmChat(ask))
+            })
+            .await;
+            match answer {
+                Ok(Ok(v)) => HttpResponse::Ok().json(v),
+                Ok(Err(e)) => error_response(e),
+                Err(e) => {
+                    tracing::error!(error = %e, "the model request did not finish");
+                    err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+                }
+            }
+        }
+    };
+    let status = resp.status();
+    let outcome = if status.is_success() {
+        "ok"
+    } else if status.is_client_error() {
+        "rejected"
+    } else {
+        "error"
+    };
+    api.audit.record_as(ROUTE, outcome, &remote, Some(&who));
+    resp
+}
+
 // ── The widget builder ────────────────────────────────────────────────────
 // A model on this box writes a widget from the owner's description
 // (`crate::builder`). It has its own lock: a build takes minutes and must
@@ -4086,6 +4253,20 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                     web::post().to(post_market_coin_pay),
                 )
                 .route("/api/market/rpc", web::post().to(post_market_rpc))
+                .route(
+                    "/api/market/llm/models",
+                    web::post().to(post_market_llm_models),
+                )
+                .route("/api/market/llm/chat", web::post().to(post_market_llm_chat))
+                .route("/api/market/taps", web::post().to(post_market_taps))
+                .route(
+                    "/api/market/taps/confirm",
+                    web::post().to(post_market_taps_confirm),
+                )
+                .route(
+                    "/api/market/taps/stop",
+                    web::post().to(post_market_taps_stop),
+                )
                 .route("/api/builder", web::get().to(get_builder))
                 .route("/api/builder/builds", web::post().to(post_builder_start))
                 .route("/api/builder/builds/{id}", web::get().to(get_builder_build))
@@ -4160,6 +4341,55 @@ mod tests {
     use super::*;
 
     const JSON: Option<&str> = Some("application/json");
+
+    #[test]
+    fn a_chat_body_is_read_field_by_field_and_a_wrong_kind_is_missing() {
+        let doc = serde_json::json!({
+            "meter": "mtr_ab",
+            "messages": [{ "role": "user", "content": "hi" }],
+            "maxTokens": 32,
+            "temperature": 0.2,
+            "stop": "END",
+        });
+        let ask = chat_ask(&doc).expect("a chat");
+        assert_eq!(ask.meter, "mtr_ab");
+        assert_eq!(ask.messages, vec![("user".to_string(), "hi".to_string())]);
+        assert_eq!(ask.max_tokens, Some(32));
+        assert_eq!(ask.temperature, Some(0.2));
+        assert_eq!(ask.top_p, None);
+        assert_eq!(ask.stop, vec!["END".to_string()]);
+        for bad in [
+            serde_json::json!({ "messages": [] }),
+            serde_json::json!({ "meter": "mtr_ab", "messages": "hi" }),
+            serde_json::json!({ "meter": "mtr_ab", "messages": [{ "role": "user" }] }),
+            serde_json::json!({ "meter": "mtr_ab", "messages": [], "maxTokens": -1 }),
+            serde_json::json!({ "meter": "mtr_ab", "messages": [], "temperature": "hot" }),
+            serde_json::json!({ "meter": "mtr_ab", "messages": [], "stop": [1] }),
+        ] {
+            assert!(chat_ask(&bad).is_none(), "{bad}");
+        }
+        assert_eq!(
+            field_units(
+                &serde_json::json!({ "spendPerHour": "250000" }),
+                "spendPerHour"
+            ),
+            Some(250_000)
+        );
+        assert_eq!(
+            field_units(
+                &serde_json::json!({ "spendPerHour": 250_000 }),
+                "spendPerHour"
+            ),
+            Some(250_000)
+        );
+        assert_eq!(
+            field_units(
+                &serde_json::json!({ "spendPerHour": "2.5" }),
+                "spendPerHour"
+            ),
+            None
+        );
+    }
 
     #[test]
     fn claim_from_the_box_own_page_passes() {

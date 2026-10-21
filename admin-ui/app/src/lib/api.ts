@@ -1066,6 +1066,164 @@ export function postMarketRpc(
   });
 }
 
+// ── AI models on lent memory ──────────────────────────────────────────────
+
+/* Large models run split across the memory boxes lend, paid per token
+ * through the edge (edge/registrar/src/server/llm.rs, relayed by lososd's
+ * market relay). Amounts are USDC base units (millionths of a dollar) as
+ * decimal text, except `billedE6`, which has six more decimals, and a
+ * wallet's balance, asked and notBefore, which are numbers. */
+
+export type ModelGroupState = "loading" | "ready" | "down";
+export type MeterState = "quoted" | "open" | "ending" | "ended" | "lapsed";
+
+export interface LlmModel {
+  id: string;
+  name: string;
+  /** Memory the boxes running it must lend together, MiB. */
+  needMib: number;
+  /** Context length, tokens. */
+  context: number;
+  /** Base units per million prompt tokens. */
+  priceIn: string;
+  /** Base units per million answer tokens. */
+  priceOut: string;
+  licence: string;
+  /** Memory the boxes lending now offer together, MiB. */
+  lentMib: number;
+  group?: ModelGroupState;
+  boxes?: number;
+}
+
+export interface LlmMeter {
+  id: string;
+  model: string;
+  network: string;
+  state: MeterState;
+  /** Why it ended, in the edge's words. */
+  reason?: string;
+  wallet?: string;
+  spendPerHour: string;
+  boxes: number;
+  group?: ModelGroupState;
+  requests: number;
+  tokensIn: number;
+  tokensOut: number;
+  billedE6: string;
+  paid: string;
+  createdAt: number;
+}
+
+export interface LlmWallet {
+  network: string;
+  wallet: string;
+  balance: number;
+  asked: number;
+  /** Unix seconds the ask can be taken from; 0 without one. */
+  notBefore: number;
+  /** The balance less what is used and not yet settled. */
+  available: string;
+  runwaySecs?: number;
+  /** The runway is under a day. */
+  low: boolean;
+}
+
+export interface LlmLending {
+  paid: string;
+  owed: string;
+  model?: string;
+  group?: ModelGroupState;
+  lentMib?: number;
+}
+
+export type LlmResponse =
+  | { available: false; reason?: "noOfficialEdge" }
+  | {
+      available: true;
+      network: string;
+      feeBps: number;
+      models: LlmModel[];
+      meters: LlmMeter[];
+      wallets: LlmWallet[];
+      lending: LlmLending;
+      noticeSecs: number;
+      minSpendPerHour: string;
+      maxSpendPerHour: string;
+    };
+
+export interface TapQuote {
+  meter: string;
+  model: string;
+  network: string;
+  chain: { network: string; name: string; family: ChainFamily; chain_id: number | null; usdc: string; pay: string | null; treasury: string };
+  feeBps: number;
+  spendPerHour: string;
+  /** One per lending box: `key` is the 32-byte id the wallet opens it
+   *  under, `seller` the box's payout address, `rate` base units an hour. */
+  taps: { id: string; key: string; seller: string; rate: string }[];
+  /** Unix seconds: the taps must be open by then. */
+  openBefore: number;
+}
+
+export interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface ChatAnswer {
+  content: string;
+  finishReason: string;
+  tokensIn: number;
+  tokensOut: number;
+  /** What this answer cost, millionths of a base unit. */
+  costE6: string;
+  /** The meter's total so far, millionths of a base unit. */
+  billedE6: string;
+}
+
+/** POST /api/market/llm/models — the models, this box's meters, balances
+ *  and lending, or `{ available: false }`. */
+export function postLlmModels(network: string | null, options: RequestOptions = {}): Promise<LlmResponse> {
+  return postJson<LlmResponse>("/api/market/llm/models", network === null ? {} : { network }, options);
+}
+
+/** POST /api/market/taps — quote a meter for `model`. */
+export function postTapQuote(
+  model: string,
+  network: string,
+  spendPerHour: string,
+  options: RequestOptions = {},
+): Promise<TapQuote> {
+  return postJson<TapQuote>("/api/market/taps", { model, network, spendPerHour }, options);
+}
+
+/** POST /api/market/taps/confirm — `wallet` opened the meter's taps. */
+export function postTapConfirm(meter: string, wallet: string, options: RequestOptions = {}): Promise<{ meter: string; state: MeterState }> {
+  return postJson("/api/market/taps/confirm", { meter, wallet }, options);
+}
+
+/** POST /api/market/taps/stop — stop a meter; the edge closes its taps.
+ *  `wallet` began opening a quote's taps and stopped partway: the edge
+ *  closes the ones it opened and keeps its balance in view. */
+export function postTapStop(
+  meter: string,
+  wallet?: string,
+  options: RequestOptions = {},
+): Promise<{ meter: string; state: MeterState }> {
+  return postJson("/api/market/taps/stop", wallet === undefined ? { meter } : { meter, wallet }, options);
+}
+
+/** POST /api/market/llm/chat — one request to a running model. Minutes,
+ *  not seconds, on a large model. */
+export function postLlmChat(
+  meter: string,
+  messages: ChatMessage[],
+  maxTokens: number,
+  options: RequestOptions = {},
+): Promise<ChatAnswer> {
+  return postJson<ChatAnswer>("/api/market/llm/chat", { meter, messages, maxTokens }, options);
+}
+
 // ── Widget builder ────────────────────────────────────────────────────────
 
 /* A language model on this box writes a widget from the owner's description

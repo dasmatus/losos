@@ -149,6 +149,9 @@ impl ApiError {
                 MarketError::Conflict(_) => StatusCode::CONFLICT,
                 MarketError::Stripe(_) => StatusCode::BAD_GATEWAY,
                 MarketError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
+                MarketError::PaymentRequired(_) => StatusCode::PAYMENT_REQUIRED,
+                MarketError::Busy(_) => StatusCode::TOO_MANY_REQUESTS,
+                MarketError::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             },
             ApiError::Domains(e) => match e {
                 DomainError::Unconfigured => StatusCode::SERVICE_UNAVAILABLE,
@@ -192,6 +195,9 @@ impl ApiError {
                 | MarketError::Invalid(_)
                 | MarketError::NotFound
                 | MarketError::Conflict(_)
+                | MarketError::PaymentRequired(_)
+                | MarketError::Busy(_)
+                | MarketError::Unavailable(_)
                 | MarketError::BadSignature => Cow::Owned(e.to_string()),
                 // The payload names the Stripe endpoint and its error text.
                 MarketError::Stripe(_) => {
