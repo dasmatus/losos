@@ -439,7 +439,7 @@ mod tests {
         fn request(&self, method: &str, path: &str, _body: Value) -> Result<Answer> {
             self.asked.lock().unwrap().push(format!("{method} {path}"));
             let (status, body) = match path {
-                "/api/me" => (200, json!({ "user": "matus", "role": "admin" })),
+                "/api/me" => (200, json!({ "name": "matus", "admin": true })),
                 p if p.starts_with("/api/git/text") => {
                     (200, json!({ "available": false, "reason": "noGit" }))
                 }
@@ -522,7 +522,7 @@ mod tests {
 
         assert_eq!(answers[2]["id"], "three");
         assert_eq!(answers[2]["result"]["isError"], false);
-        assert_eq!(answers[2]["result"]["structuredContent"]["user"], "matus");
+        assert_eq!(answers[2]["result"]["structuredContent"]["name"], "matus");
         assert!(answers[2]["result"]["content"][0]["text"]
             .as_str()
             .unwrap()

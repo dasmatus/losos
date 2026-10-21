@@ -123,6 +123,14 @@ pub enum AgentsCommand {
     /// is in none of them yet.
     #[command(hide = true)]
     Hint,
+    /// One call as the companion makes it, to see what it can reach.
+    #[command(hide = true)]
+    Call {
+        #[arg(value_name = "METHOD")]
+        method: String,
+        #[arg(value_name = "PATH")]
+        path: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]

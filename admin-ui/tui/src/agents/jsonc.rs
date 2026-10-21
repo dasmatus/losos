@@ -363,10 +363,62 @@ pub fn remove(text: &str, path: &[&str], name: &str) -> Result<Option<String>, U
     let Some(i) = object.members.iter().position(|m| m.key == name) else {
         return Ok(None);
     };
+    let mut out = drop_member(text, object, i);
+    // A container left with nothing in it, not even a comment, goes too,
+    // so a file the companion added a container to reads as it did.
+    for depth in (1..=path.len()).rev() {
+        let root = parse(&out)?;
+        let (chain, reached) = find(&root, &path[..depth])?;
+        let object = chain[depth];
+        if reached != depth
+            || !object.members.is_empty()
+            || !out[object.start + 1..object.end - 1].trim().is_empty()
+        {
+            break;
+        }
+        let parent = chain[depth - 1];
+        let at = parent
+            .members
+            .iter()
+            .position(|m| m.key == path[depth - 1])
+            .expect("found above");
+        out = drop_member(&out, parent, at);
+    }
+    Ok(Some(out))
+}
+
+/// `text` without the `i`th member of `object`, and the comma that went
+/// with it; whatever else is in the object stays.
+fn drop_member(text: &str, object: &Node, i: usize) -> String {
     let members = &object.members;
     let mut out = text.to_string();
     if members.len() == 1 {
-        out.replace_range(object.start + 1..object.end - 1, "");
+        let from = members[0].key_start;
+        let mut to = members[0].value.end;
+        let rest = &text[to..object.end - 1];
+        if let Some(off) = rest.find(|c: char| !c.is_whitespace()) {
+            if rest[off..].starts_with(',') {
+                to += off + 1;
+            }
+        }
+        let left = format!(
+            "{}{}",
+            &text[object.start + 1..from],
+            &text[to..object.end - 1]
+        );
+        if left.trim().is_empty() {
+            out.replace_range(object.start + 1..object.end - 1, "");
+        } else {
+            let start = line_start(text, from);
+            // A member on lines of its own takes its line break with it.
+            if start != from {
+                let line_end = text[to..].find('\n').map_or(text.len(), |n| to + n);
+                if text[to..line_end].trim().is_empty() && line_end < text.len() {
+                    to = line_end + 1;
+                }
+            }
+            out.replace_range(start..to, "");
+        }
     } else if i + 1 < members.len() {
         // Up to the next member's key: this member and the comma after it.
         let from = line_start(text, members[i].key_start);
@@ -376,7 +428,7 @@ pub fn remove(text: &str, path: &[&str], name: &str) -> Result<Option<String>, U
         // The last one: from the end of the one before, taking its comma.
         out.replace_range(members[i - 1].value.end..members[i].value.end, "");
     }
-    Ok(Some(out))
+    out
 }
 
 /// Where the line that holds `at` starts, when only blanks come before
@@ -491,10 +543,19 @@ mod tests {
             remove(text, &["s"], "losos").unwrap().unwrap(),
             "{\n  \"s\": {\n    \"a\": 1\n  }\n}\n"
         );
+        // The only member: the container it leaves empty goes with it,
+        // unless something of the owner's is still in there.
         let text = "{\"s\": {\"losos\": 2}}";
+        assert_eq!(remove(text, &["s"], "losos").unwrap().unwrap(), "{}");
+        let text = "{\n  \"x\": 1,\n  \"s\": {\n    \"losos\": 2\n  }\n}\n";
         assert_eq!(
             remove(text, &["s"], "losos").unwrap().unwrap(),
-            "{\"s\": {}}"
+            "{\n  \"x\": 1\n}\n"
+        );
+        let text = "{\n  \"s\": {\n    // mine\n    \"losos\": 2,\n  }\n}\n";
+        assert_eq!(
+            remove(text, &["s"], "losos").unwrap().unwrap(),
+            "{\n  \"s\": {\n    // mine\n  }\n}\n"
         );
         assert_eq!(remove(text, &["s"], "other").unwrap(), None);
         assert_eq!(remove(text, &["t"], "losos").unwrap(), None);

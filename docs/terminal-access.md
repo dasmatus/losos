@@ -33,7 +33,9 @@ losos_pat_<id: 8 hex>_<secret: 40 hex>
 
 The box stores `{id, name, fingerprint, scope, created, expires, lastUsed,
 sha256, owner}` in `/var/lib/losos/access/tokens.json` (mode 0600, under `/var`, so
-it survives the nightly reboot). `scope` is `read` (GET only) or `full`.
+it survives the nightly reboot). `scope` is `read` (GET only), `full`, or
+`agent` (GET only, and only the routes in `losos_access::AGENT_ROUTES`; see
+"The AI agent companion" below).
 `expires` is a Unix time or `null`. At most 32 tokens.
 
 ## Keys
@@ -71,14 +73,17 @@ The message's literal data is UTF-8 JSON:
   "path": "/api/state",
   "ts": 1760000000,
   "nonce": "<32 hex>",
-  "body": null
+  "body": null,
+  "delegation": "<armoured, only from a companion key>"
 }
 ```
 
 The server, in this order:
 
 1. decrypts with the host key (400 if it is not a message for this host);
-2. checks the signature against the seeded keys (401 if none made it);
+2. checks the signature against the seeded keys (401 if none made it), or,
+   for a request carrying `delegation`, checks that delegation and the
+   signature by the companion key it names (below);
 3. checks `host` is its own fingerprint (400), `ts` is within 300 s of its
    clock (401), and `nonce` has not been seen in the last 600 s (409);
 4. checks the token: known, not expired, bound to the key that signed, and
@@ -113,6 +118,44 @@ The client checks the signature against the pinned host key and that
 request. `body` is the inner answer's JSON, or a string when it was not
 JSON.
 
+## The AI agent companion
+
+`losos mcp` is an MCP server an AI tool starts on its own, so it cannot
+ask for the owner's passphrase. It signs with a key of its own instead,
+and carries the owner's word for that key.
+
+`losos agents install` makes the key (`HostKey::generate`, Ed25519 with a
+Curve25519 subkey, no passphrase) and has the owner's key sign, once, a
+**delegation**: an OpenPGP message, signed and not encrypted, whose literal
+data is
+
+```json
+{ "v": 1, "kind": "losos-companion", "key": "<the companion's armoured public key>",
+  "host": "<this box's key fingerprint>", "token": "<token id, 8 hex>", "created": 1760000000 }
+```
+
+The client sends it as `delegation` in every request the companion key
+signs. The server accepts such a request only when:
+
+- the delegation is signed by a seeded key, has `v` 1 and that `kind`, and
+  names this host (400 otherwise, 401 when no seeded key signed it);
+- the request itself is signed by the key the delegation names (401);
+- the token is the one the delegation names and has the `agent` scope, and
+  is bound to the seeded key that signed the delegation (403 "a companion
+  key works only with the AI agents token it was made for");
+- the path is one of `AGENT_ROUTES` with method GET (403):
+  `/api/me`, `/api/status`, `/api/cloud/files`, `/api/cloud/text`,
+  `/api/git/repos`, `/api/git/text`.
+
+A request signed by a seeded key must not carry a delegation (400). An
+`agent` token is refused without a delegation too (403 "an AI agents token
+works only for the LosOS companion"), so it never works with
+the owner's own key either. The answer is sealed to the companion key. An
+edge (`losos-registrar`) refuses delegations and makes no `agent` tokens.
+
+The server's tool table (`admin-ui/tui/src/agents/mcp.rs`) holds a test
+that every tool reads a route in `AGENT_ROUTES` and every route has a tool.
+
 ## The web UI's side
 
 All three are in the `access` section: an administrator, a person in
@@ -125,7 +168,7 @@ GET  /api/access
 200 {"hostKey": {"fingerprint"}, "keys": [{"fingerprint", "userIds", "created"}],
      "tokens": [{"id", "name", "fingerprint", "scope", "created", "expires", "lastUsed", "owner"?}]}
 
-POST /api/access/tokens   {"name", "fingerprint", "scope": "read"|"full", "expiresInDays": 30|90|365|null}
+POST /api/access/tokens   {"name", "fingerprint", "scope": "read"|"full"|"agent", "expiresInDays": 30|90|365|null}
 200 {"token": "losos_pat_…", "record": {…}}
 400 {"error"}             a name that is empty or over 64 characters, a key that was not seeded, a bad scope
 409 {"error"}             32 tokens already
@@ -146,6 +189,7 @@ KeePassXC all work. Every item carries `service=losos` and a `kind`:
 | `gpg-key` | `fingerprint` | the armoured secret key, as exported (still under its passphrase if it had one) |
 | `host` | `url` | JSON: `{"url", "kind": "box"\|"edge", "fingerprint", "publicKey", "token", "keyFingerprint", "tlsPin"?}` |
 | `cloud` | `url` | JSON: `{"url", "user", "secret", "location"}`, the LosOS cloud app password of `losos cloud setup` |
+| `companion` | `url` | JSON: `{"url", "hostFingerprint", "hostPublicKey", "tlsPin"?, "token", "key", "delegation"}`, the companion's own secret key (no passphrase), its AI agents token and the owner's delegation for it |
 | `git` | `url`, `protocol`, `server` | the same, with the LosOS Git token of `losos git setup`; `server` is the host as git's credential protocol names it |
 
 `losos cloud setup` also stores the app password under GVfs's own schema,

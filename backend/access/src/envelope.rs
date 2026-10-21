@@ -114,6 +114,8 @@ pub enum Refusal {
     Path,
     #[error("a companion key works only with the AI agents token it was made for")]
     NotForAgents,
+    #[error("an AI agents token works only for the LosOS companion; put it in your AI tools with `losos agents install`")]
+    CompanionOnly,
 }
 
 impl Refusal {
@@ -122,7 +124,7 @@ impl Refusal {
         match self {
             Refusal::NotForThisHost | Refusal::Malformed(_) | Refusal::WrongHost => 400,
             Refusal::Unsigned | Refusal::Stale | Refusal::Token => 401,
-            Refusal::Scope | Refusal::Path | Refusal::NotForAgents => 403,
+            Refusal::Scope | Refusal::Path | Refusal::NotForAgents | Refusal::CompanionOnly => 403,
             Refusal::Replayed => 409,
         }
     }

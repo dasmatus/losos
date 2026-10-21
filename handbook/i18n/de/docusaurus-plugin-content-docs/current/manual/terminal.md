@@ -95,6 +95,8 @@ zeigt:
 
 Gib dem neuen Token einen Namen, wähle den Schlüssel, zu dem es gehört,
 wähle **Nur lesen** oder **Voller Zugriff** und bestimme, wann es abläuft.
+Die dritte Art, **KI-Agenten**, ist für den Begleiter in deinen
+KI-Werkzeugen; siehe [KI-Werkzeuge auf deinem Computer](ai-agents).
 **Token erstellen** zeigt es einmal an. Kopiere es dann. Die Box behält nur
 einen Hash und kann es nicht noch einmal zeigen.
 

@@ -211,6 +211,26 @@ await check('a new token goes out as the contract says and is shown once', async
   await context.close();
 });
 
+await check('an AI agents token says how to put the companion in the AI tools', async () => {
+  const { page, context, errors, posts } = await open();
+  const form = page.getByTestId('access-form');
+  await form.getByLabel('Name').fill('AI tools');
+  await form.getByLabel('Access').selectOption('agent');
+  assert.ok((await form.innerText()).includes('Reads files in LosOS Cloud and repositories in LosOS Git, and nothing else.'));
+  await form.getByRole('button', { name: 'Create token' }).click();
+  await page.getByTestId('access-created').waitFor({ timeout: 3000 });
+  assert.equal(posts[0].body.scope, 'agent');
+  assert.equal(
+    await page.getByTestId('access-created-command').innerText(),
+    `losos agents install --host ${origin}`,
+  );
+  const row = page.getByTestId('access-token').filter({ hasText: 'AI tools' });
+  await row.waitFor();
+  assert.ok((await row.innerText()).includes('AI agents'), await row.innerText());
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await check('a refusal from the box shows beside the form', async () => {
   const { page, context } = await open({ refuse: { status: 409, error: 'this box already holds 32 tokens' } });
   const form = page.getByTestId('access-form');

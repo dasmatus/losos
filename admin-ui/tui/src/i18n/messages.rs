@@ -1339,22 +1339,22 @@ messages! {
     },
     "tui.help.cmd.agentsList" => {
         en: "List the AI tools found and whether the LosOS companion is in them",
-        sk: "Vypísať nájdené nástroje AI a či je v nich sprievodca LosOS",
+        sk: "Vypísať nájdené nástroje AI a či je v nich pomocník LosOS",
         de: "Die gefundenen KI-Werkzeuge auflisten und ob der LosOS-Begleiter in ihnen ist",
     },
     "tui.help.cmd.agentsInstall" => {
         en: "Put the LosOS companion in the AI tools, asking about each one",
-        sk: "Pridať sprievodcu LosOS do nástrojov AI, pri každom sa spýta",
+        sk: "Pridať pomocníka LosOS do nástrojov AI, pri každom sa spýta",
         de: "Den LosOS-Begleiter in die KI-Werkzeuge einbauen, mit einer Frage zu jedem",
     },
     "tui.help.cmd.agentsRemove" => {
         en: "Take the LosOS companion out of the AI tools again",
-        sk: "Odstrániť sprievodcu LosOS z nástrojov AI",
+        sk: "Odstrániť pomocníka LosOS z nástrojov AI",
         de: "Den LosOS-Begleiter wieder aus den KI-Werkzeugen entfernen",
     },
     "tui.help.cmd.mcp" => {
         en: "Serve the companion's read-only tools over MCP on stdin and stdout, as an AI tool starts it",
-        sk: "Poskytovať nástroje sprievodcu len na čítanie cez MCP na stdin a stdout, ako ho spúšťa nástroj AI",
+        sk: "Poskytovať nástroje pomocníka len na čítanie cez MCP na stdin a stdout, ako ho spúšťa nástroj AI",
         de: "Die lesenden Werkzeuge des Begleiters per MCP auf stdin und stdout anbieten, so wie ein KI-Werkzeug ihn startet",
     },
     "tui.help.arg.tools" => {
@@ -1404,7 +1404,7 @@ messages! {
     },
     "tui.agents.stateIn" => {
         en: "companion in",
-        sk: "sprievodca pridaný",
+        sk: "pomocník pridaný",
         de: "Begleiter drin",
     },
     "tui.agents.stateOut" => {
@@ -1419,7 +1419,7 @@ messages! {
     },
     "tui.agents.companionFor" => {
         en: "The companion reads {url}.",
-        sk: "Sprievodca číta {url}.",
+        sk: "Pomocník číta {url}.",
         de: "Der Begleiter liest {url}.",
     },
     "tui.agents.installHint" => {
@@ -1444,7 +1444,7 @@ messages! {
     },
     "tui.agents.notBox" => {
         en: "{url} is an edge. The companion reads a box.",
-        sk: "{url} je edge. Sprievodca číta zariadenie.",
+        sk: "{url} je edge. Pomocník číta zariadenie.",
         de: "{url} ist eine Edge. Der Begleiter liest eine Box.",
     },
     "tui.agents.skipNoProgram" => {
@@ -1454,17 +1454,17 @@ messages! {
     },
     "tui.agents.ask" => {
         en: "Put the LosOS companion in {tool}?",
-        sk: "Pridať sprievodcu LosOS do {tool}?",
+        sk: "Pridať pomocníka LosOS do {tool}?",
         de: "Den LosOS-Begleiter in {tool} einbauen?",
     },
     "tui.agents.askAgain" => {
         en: "The LosOS companion is in {tool} already. Put it in again?",
-        sk: "Sprievodca LosOS už je v {tool}. Pridať ho znova?",
+        sk: "Pomocník LosOS už je v {tool}. Pridať ho znova?",
         de: "Der LosOS-Begleiter ist schon in {tool}. Erneut einbauen?",
     },
     "tui.agents.askRemove" => {
         en: "Take the LosOS companion out of {tool}?",
-        sk: "Odstrániť sprievodcu LosOS z {tool}?",
+        sk: "Odstrániť pomocníka LosOS z {tool}?",
         de: "Den LosOS-Begleiter aus {tool} entfernen?",
     },
     "tui.agents.nothingChanged" => {
@@ -1474,12 +1474,12 @@ messages! {
     },
     "tui.agents.reusing" => {
         en: "Using the companion's key and token for {url} that this computer already keeps.",
-        sk: "Používa sa kľúč a token sprievodcu pre {url}, ktoré už tento počítač má.",
+        sk: "Používa sa kľúč a token pomocníka pre {url}, ktoré už tento počítač má.",
         de: "Schlüssel und Token des Begleiters für {url}, die dieser Computer schon hat, werden verwendet.",
     },
     "tui.agents.needToken" => {
         en: "The companion needs a token of its own for {url}. In the web UI, open Settings, Access tokens, and make one with the AI agents scope.",
-        sk: "Sprievodca potrebuje vlastný token pre {url}. Vo webovom rozhraní otvorte Nastavenia, Prístupové tokeny, a vytvorte token s rozsahom Agenti AI.",
+        sk: "Pomocník potrebuje vlastný token pre {url}. Vo webovom rozhraní otvorte Nastavenia, Prístupové tokeny, a vytvorte token s rozsahom Agenti AI.",
         de: "Der Begleiter braucht ein eigenes Token für {url}. Öffne in der Weboberfläche Einstellungen, Zugriffstokens, und erstelle eines mit dem Bereich KI-Agenten.",
     },
     "tui.agents.tokenPrompt" => {
@@ -1494,27 +1494,27 @@ messages! {
     },
     "tui.agents.tokenRefused" => {
         en: "The box refused the companion: {detail}",
-        sk: "Zariadenie sprievodcu odmietlo: {detail}",
+        sk: "Zariadenie pomocníka odmietlo: {detail}",
         de: "Die Box hat den Begleiter abgelehnt: {detail}",
     },
     "tui.agents.tokenHelp" => {
         en: "Make the token with the AI agents scope. A read or full token does not work for the companion, on purpose.",
-        sk: "Vytvorte token s rozsahom Agenti AI. Token na čítanie ani úplný token pre sprievodcu zámerne nefunguje.",
+        sk: "Vytvorte token s rozsahom Agenti AI. Token na čítanie ani úplný token pre pomocníka zámerne nefunguje.",
         de: "Erstelle das Token mit dem Bereich KI-Agenten. Ein Lese- oder Vollzugriffstoken funktioniert für den Begleiter absichtlich nicht.",
     },
     "tui.agents.keychainLabel" => {
         en: "LosOS companion for {url}",
-        sk: "Sprievodca LosOS pre {url}",
+        sk: "Pomocník LosOS pre {url}",
         de: "LosOS-Begleiter für {url}",
     },
     "tui.agents.installed" => {
         en: "The LosOS companion is in {tool}.",
-        sk: "Sprievodca LosOS je v {tool}.",
+        sk: "Pomocník LosOS je v {tool}.",
         de: "Der LosOS-Begleiter ist in {tool}.",
     },
     "tui.agents.removed" => {
         en: "The LosOS companion is out of {tool}.",
-        sk: "Sprievodca LosOS je odstránený z {tool}.",
+        sk: "Pomocník LosOS je odstránený z {tool}.",
         de: "Der LosOS-Begleiter ist aus {tool} entfernt.",
     },
     "tui.agents.backedUp" => {
@@ -1524,7 +1524,7 @@ messages! {
     },
     "tui.agents.restart" => {
         en: "Restart a tool that was open so it starts the companion.",
-        sk: "Nástroj, ktorý bol otvorený, reštartujte, aby spustil sprievodcu.",
+        sk: "Nástroj, ktorý bol otvorený, reštartujte, aby spustil pomocníka.",
         de: "Starte ein Werkzeug, das offen war, neu, damit es den Begleiter startet.",
     },
     "tui.agents.removeHint" => {
@@ -1534,7 +1534,7 @@ messages! {
     },
     "tui.agents.forgot" => {
         en: "This computer no longer keeps the companion's key and token for {url}.",
-        sk: "Tento počítač už nemá kľúč ani token sprievodcu pre {url}.",
+        sk: "Tento počítač už nemá kľúč ani token pomocníka pre {url}.",
         de: "Dieser Computer hat Schlüssel und Token des Begleiters für {url} nicht mehr.",
     },
     "tui.agents.revoke" => {
@@ -1544,7 +1544,7 @@ messages! {
     },
     "tui.agents.noCompanion" => {
         en: "This computer keeps no LosOS companion for {url}.",
-        sk: "Tento počítač nemá sprievodcu LosOS pre {url}.",
+        sk: "Tento počítač nemá pomocníka LosOS pre {url}.",
         de: "Dieser Computer hat keinen LosOS-Begleiter für {url}.",
     },
     "tui.agents.noCompanionHelp" => {
@@ -1559,7 +1559,7 @@ messages! {
     },
     "tui.agents.noProgram" => {
         en: "{tool} takes the companion through its own {program} program, which is not on PATH.",
-        sk: "{tool} pridáva sprievodcu vlastným programom {program}, ktorý nie je v PATH.",
+        sk: "{tool} pridáva pomocníka vlastným programom {program}, ktorý nie je v PATH.",
         de: "{tool} baut den Begleiter mit seinem eigenen Programm {program} ein, das nicht im PATH ist.",
     },
     "tui.agents.couldNotRun" => {
@@ -1571,6 +1571,11 @@ messages! {
         en: "{command} ended with exit status {code}: {detail}",
         sk: "{command} skončil s návratovým kódom {code}: {detail}",
         de: "{command} endete mit dem Status {code}: {detail}",
+    },
+    "tui.agents.toolTimedOut" => {
+        en: "{command} did not finish in {seconds} seconds and was stopped.",
+        sk: "{command} neskončil do {seconds} sekúnd a bol zastavený.",
+        de: "{command} war nach {seconds} Sekunden nicht fertig und wurde beendet.",
     },
     "tui.agents.couldNotWrite" => {
         en: "{path} could not be written: {detail}",

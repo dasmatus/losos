@@ -64,6 +64,7 @@ export const MAX_TOKENS = 32;
 const SCOPES: { id: AccessScope; label: MessageKey; detail: MessageKey }[] = [
   { id: "read", label: "access.scope.read", detail: "access.form.readDetail" },
   { id: "full", label: "access.scope.full", detail: "access.form.fullDetail" },
+  { id: "agent", label: "access.scope.agent", detail: "access.form.agentDetail" },
 ];
 
 const EXPIRIES: { id: string; days: AccessExpiry; label: MessageKey }[] = [
@@ -248,7 +249,7 @@ function TokensSection({
                   <p className="min-w-0 flex-1 truncate text-sm text-ink">{token.name}</p>
                   {expired && <Badge variant="warn">{t("access.tokens.expired")}</Badge>}
                   <Badge variant={token.scope === "full" ? "local" : "neutral"}>
-                    {t(token.scope === "full" ? "access.scope.full" : "access.scope.read")}
+                    {t(SCOPES.find((s) => s.id === token.scope)?.label ?? "access.scope.read")}
                   </Badge>
                   <Button
                     size="sm"
@@ -352,7 +353,7 @@ function NewTokenSection({
     expiry: "90",
   });
   const [error, setError] = React.useState<string | null>(null);
-  const [created, setCreated] = React.useState<string | null>(null);
+  const [created, setCreated] = React.useState<{ token: string; scope: AccessScope } | null>(null);
 
   const noKeys = view.keys.length === 0;
   const full = view.tokens.length >= MAX_TOKENS;
@@ -377,7 +378,7 @@ function NewTokenSection({
       expiresInDays: expiry === undefined ? 90 : expiry.days,
     });
     if (outcome.ok) {
-      setCreated(outcome.token);
+      setCreated({ token: outcome.token, scope: draft.scope });
       setDraft((d) => ({ ...d, name: "" }));
     } else if (outcome.message.length > 0) {
       setError(outcome.message);
@@ -393,7 +394,9 @@ function NewTokenSection({
   return (
     <PaneSection data-testid="access-form">
       <GroupTitle>{t("access.form.title")}</GroupTitle>
-      {created !== null && <CreatedToken token={created} onDone={() => setCreated(null)} />}
+      {created !== null && (
+        <CreatedToken token={created.token} scope={created.scope} onDone={() => setCreated(null)} />
+      )}
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -509,10 +512,13 @@ function FieldRow({
 }
 
 /* The one time the secret is on screen. */
-function CreatedToken({ token, onDone }: { token: string; onDone: () => void }) {
+function CreatedToken({ token, scope, onDone }: { token: string; scope: AccessScope; onDone: () => void }) {
   const t = useT();
   const tokenRef = React.useRef<HTMLElement>(null);
-  const command = `losos login ${pageOrigin()}`;
+  // An AI agents token is for the companion, which the client sets up once
+  // it is signed in to this box with a token of the other two kinds.
+  const agent = scope === "agent";
+  const command = agent ? `losos agents install --host ${pageOrigin()}` : `losos login ${pageOrigin()}`;
 
   const copy = async () => {
     if (await copyText(token, tokenRef.current)) toast.done(t("access.created.copied"));
@@ -538,7 +544,7 @@ function CreatedToken({ token, onDone }: { token: string; onDone: () => void }) 
             {t("access.created.copy")}
           </Button>
         </div>
-        <p>{t("access.created.use")}</p>
+        <p>{t(agent ? "access.created.useAgent" : "access.created.use")}</p>
         <code
           data-testid="access-created-command"
           className="numeric rounded-control border border-line bg-surface px-2.5 py-1.5 text-[13px] break-all text-ink select-all"

@@ -67,11 +67,14 @@ pub enum Method {
     /// A plugin from a marketplace folder in Codex's format.
     CodexMarketplace,
     /// An extension folder with its manifest, for `<program> extensions
-    /// install`; `home` is the tool's own folder.
+    /// install`; `home` is the tool's own folder. `trust` is the tool's
+    /// list of trusted folders, where the companion's folder goes first
+    /// when the tool asks before it installs from a folder it does not trust.
     Extension {
         manifest: &'static str,
         home: Place,
         skip_settings: bool,
+        trust: Option<Place>,
     },
     /// One entry in a JSON settings file: the first of `files` that exists,
     /// else the first; the entry goes in the object at `container`.
@@ -127,6 +130,7 @@ pub const TOOLS: &[Tool] = &[
             manifest: "gemini-extension.json",
             home: Place::Home(".gemini"),
             skip_settings: true,
+            trust: Some(Place::Home(".gemini/trustedFolders.json")),
         },
     },
     Tool {
@@ -139,6 +143,7 @@ pub const TOOLS: &[Tool] = &[
             manifest: "qwen-extension.json",
             home: Place::Home(".qwen"),
             skip_settings: false,
+            trust: None,
         },
     },
     Tool {
@@ -381,9 +386,21 @@ impl Desk {
     }
 
     /// Run `program` with `args` in `cwd`; the exit code and what it said.
+    /// A tool that has not finished in [`TOOL_TIMEOUT`] is stopped, so a
+    /// tool waiting on a network it cannot reach never holds the command.
     fn run(&self, program: &Path, args: &[&str], cwd: &Path) -> Result<(i32, String)> {
         tracing::debug!(program = %program.display(), ?args, "agent tool");
-        let output = Command::new(program)
+        let could_not = |e: std::io::Error| {
+            Problem::new(
+                "losos::agents",
+                tr!(
+                    "tui.agents.couldNotRun",
+                    program = program.display().to_string(),
+                    detail = e.to_string()
+                ),
+            )
+        };
+        let mut child = Command::new(program)
             .args(args)
             .current_dir(cwd)
             .env_clear()
@@ -391,23 +408,47 @@ impl Desk {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .output()
-            .map_err(|e| {
-                Problem::new(
-                    "losos::agents",
-                    tr!(
-                        "tui.agents.couldNotRun",
-                        program = program.display().to_string(),
-                        detail = e.to_string()
-                    ),
-                )
-            })?;
+            .spawn()
+            .map_err(could_not)?;
+        let drain = |pipe: Option<Box<dyn std::io::Read + Send>>| {
+            std::thread::spawn(move || {
+                let mut text = Vec::new();
+                if let Some(mut pipe) = pipe {
+                    let _ = pipe.read_to_end(&mut text);
+                }
+                String::from_utf8_lossy(&text).into_owned()
+            })
+        };
+        let out = drain(child.stdout.take().map(|p| Box::new(p) as _));
+        let err = drain(child.stderr.take().map(|p| Box::new(p) as _));
+        let deadline = std::time::Instant::now() + TOOL_TIMEOUT;
+        let status = loop {
+            if let Some(status) = child.try_wait().map_err(could_not)? {
+                break Some(status);
+            }
+            if std::time::Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
         let said = format!(
             "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
+            out.join().unwrap_or_default(),
+            err.join().unwrap_or_default()
         );
-        Ok((output.status.code().unwrap_or(1), said))
+        match status {
+            Some(status) => Ok((status.code().unwrap_or(1), said)),
+            None => Err(Problem::new(
+                "losos::agents",
+                tr!(
+                    "tui.agents.toolTimedOut",
+                    command = format!("{} {}", file_name(program), args.join(" ")),
+                    seconds = TOOL_TIMEOUT.as_secs()
+                ),
+            )),
+        }
     }
 
     /// Run it and fail with what it said when it fails.
@@ -416,9 +457,7 @@ impl Desk {
         if code == 0 {
             return Ok(());
         }
-        let name = program
-            .file_name()
-            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        let name = file_name(program);
         let said: String = said
             .trim()
             .lines()
@@ -437,6 +476,15 @@ impl Desk {
             ),
         ))
     }
+}
+
+/// How long a tool's own command may take.
+const TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
+fn file_name(program: &Path) -> String {
+    program
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
 }
 
 /// A tool found on this computer.
@@ -791,6 +839,7 @@ pub fn install(desk: &Desk, found: &Found, launch: &Launch) -> Result<Done> {
             manifest,
             home,
             skip_settings,
+            trust,
         } => {
             let program = need_program()?;
             let root = desk.companion_dir()?.join(tool.id);
@@ -798,8 +847,20 @@ pub fn install(desk: &Desk, found: &Found, launch: &Launch) -> Result<Done> {
             let installed = desk.path(home)?.join("extensions").join(NAME);
             let _ = desk.run(&program, &["extensions", "uninstall", NAME], &root);
             let dir = root.display().to_string();
-            // The yes to this tool is the consent the tool asks for. It runs
-            // in the extension's own folder, so that is the one it trusts.
+            // The yes to this tool is the consent the tool asks for, and the
+            // trust it asks for in the folder it installs from: the
+            // companion's own folder, and nothing else.
+            if let Some(trust) = trust {
+                let file = desk.path(trust)?;
+                let text = read_or_empty(&file)?;
+                let new = jsonc::upsert(&text, &[], &trusted(&root), &Value::from(TRUST_FOLDER))
+                    .map_err(|e| read_problem(&file, &e.0))?;
+                if new != text {
+                    back_up(desk, tool, &file, &mut done)?;
+                    write(&file, &new)?;
+                    done.changed.push(file);
+                }
+            }
             let mut args = vec!["extensions", "install", "--consent"];
             if skip_settings {
                 args.push("--skip-settings");
@@ -843,6 +904,25 @@ pub fn install(desk: &Desk, found: &Found, launch: &Launch) -> Result<Done> {
     Ok(done)
 }
 
+/// What a trusted-folders list says of a folder the tool may load.
+const TRUST_FOLDER: &str = "TRUST_FOLDER";
+
+/// The folder as the tool writes it in its list: with links resolved.
+fn trusted(root: &Path) -> String {
+    std::fs::canonicalize(root)
+        .unwrap_or_else(|_| root.to_path_buf())
+        .display()
+        .to_string()
+}
+
+fn read_or_empty(file: &Path) -> Result<String> {
+    match std::fs::read_to_string(file) {
+        Ok(text) => Ok(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(read_problem(file, &e.to_string())),
+    }
+}
+
 fn read_problem(path: &Path, detail: &str) -> Problem {
     Problem::new(
         "losos::agents",
@@ -883,11 +963,27 @@ pub fn remove(desk: &Desk, found: &Found) -> Result<Done> {
                 done.changed.push(settings);
             }
         }
-        Method::Extension { home, .. } => {
+        Method::Extension { home, trust, .. } => {
             if let Some(program) = &found.program {
                 desk.must(program, &["extensions", "uninstall", NAME], &cwd)?;
                 done.changed
                     .push(desk.path(home)?.join("extensions").join(NAME));
+            }
+            if let Some(trust) = trust {
+                let file = desk.path(trust)?;
+                let text = read_or_empty(&file)?;
+                if let Some(new) = jsonc::remove(&text, &[], &trusted(&root))
+                    .map_err(|e| read_problem(&file, &e.0))?
+                {
+                    back_up(desk, tool, &file, &mut done)?;
+                    // A list the companion started, and left empty, goes.
+                    if jsonc::read(&new).is_ok_and(|v| v == json!({})) {
+                        std::fs::remove_file(&file).map_err(|e| write_problem(&file, &e))?;
+                    } else {
+                        write(&file, &new)?;
+                    }
+                    done.changed.push(file);
+                }
             }
         }
         Method::Json {

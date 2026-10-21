@@ -86,7 +86,9 @@ Open **Settings → Access tokens** in the admin pages. The pane shows:
 - **Tokens**, the ones already made, with when each was last used.
 
 Give the new token a name, pick the key it belongs to, choose **Read only**
-or **Full access**, and pick when it expires. **Create token** shows it
+or **Full access**, and pick when it expires. The third kind, **AI agents**,
+is for the companion in your AI tools; see
+[AI tools on your computer](ai-agents). **Create token** shows it
 once. Copy it then. The box keeps only a hash and cannot show it again.
 
 A token works only in a request signed by the key it was made for, so a

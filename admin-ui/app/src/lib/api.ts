@@ -1905,7 +1905,7 @@ export function postEraseCancel(options: RequestOptions = {}): Promise<unknown> 
  * it. The box keeps the SHA-256 alone. */
 
 /** `read` allows GET only; `full` allows every method. */
-export type AccessScope = "read" | "full";
+export type AccessScope = "read" | "full" | "agent";
 
 /** A public key seeded at install (`losos.access.gpgKeys`). */
 export interface AccessKey {

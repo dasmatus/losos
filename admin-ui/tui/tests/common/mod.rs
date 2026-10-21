@@ -29,6 +29,9 @@ pub struct Mock {
     pub ring: Arc<Mutex<String>>,
     /// Every call that opened: method, path, body.
     pub calls: Arc<Mutex<Vec<(String, String, Value)>>>,
+    /// For each of those calls, the seeded key that vouched for a
+    /// companion key, when a companion signed it.
+    pub vouched: Arc<Mutex<Vec<Option<String>>>>,
 }
 
 impl Mock {
@@ -109,13 +112,15 @@ fn serve(
     ));
     let ring = Arc::new(Mutex::new(seeded.to_string()));
     let calls = Arc::new(Mutex::new(Vec::new()));
+    let vouched = Arc::new(Mutex::new(Vec::new()));
     let (key_path, call_path) = if edge {
         ("/operator/host-key", "/operator/call")
     } else {
         ("/api/access/host-key", "/api/access/call")
     };
     {
-        let (host, ring, calls) = (host.clone(), ring.clone(), calls.clone());
+        let (host, ring, calls, vouched) =
+            (host.clone(), ring.clone(), calls.clone(), vouched.clone());
         std::thread::spawn(move || {
             let replay = Replay::default();
             for mut request in server.incoming_requests() {
@@ -162,6 +167,12 @@ fn serve(
                                 r.path.clone(),
                                 r.body.clone(),
                             ));
+                            vouched.lock().unwrap().push(
+                                opened
+                                    .delegated
+                                    .as_ref()
+                                    .map(|d| d.owner.fingerprint.clone()),
+                            );
                             let (status, answer) = handler(&r.method, &r.path, &r.body);
                             let sealed =
                                 seal(&host, &opened.signer, &r.nonce, status, answer).unwrap();
@@ -189,6 +200,7 @@ fn serve(
         host,
         ring,
         calls,
+        vouched,
     }
 }
 

@@ -99,8 +99,9 @@ impl Access {
 }
 
 /// The checks after the envelope opened: the token, its scope, the path.
-/// An AI agents token reaches only `losos_access::AGENT_ROUTES`, and a
-/// companion key (a request with a delegation) works only with one.
+/// An AI agents token reaches only `losos_access::AGENT_ROUTES` and only
+/// from a companion key (a request with a delegation), which works only
+/// with the one token it names.
 /// Answers the token, whose id goes on the audit line and whose owner the
 /// call runs as.
 pub fn authorize(
@@ -124,9 +125,19 @@ pub fn authorize(
             }
             token
         }
-        None => ready
-            .tokens
-            .authenticate(&r.token, &opened.signer.fingerprint, &r.method, now)?,
+        // An AI agents token is the companion's alone: the owner's own key
+        // has tokens of its own, and a copy of this one is no use without
+        // the companion's key.
+        None => {
+            let token =
+                ready
+                    .tokens
+                    .authenticate(&r.token, &opened.signer.fingerprint, &r.method, now)?;
+            if token.scope == losos_access::Scope::Agent {
+                return Err(Refusal::CompanionOnly);
+            }
+            token
+        }
     };
     if !losos_access::path_allowed(&r.path, &ALLOWED, &FORBIDDEN) {
         return Err(Refusal::Path);
@@ -477,21 +488,32 @@ mod tests {
     #[test]
     fn an_agent_token_reads_files_and_repositories_and_nothing_else() {
         let (ready, owner) = ready("agent");
-        let (agent, _) = token(&ready, &owner, losos_access::Scope::Agent);
+        let (agent, id) = token(&ready, &owner, losos_access::Scope::Agent);
         for path in ["/api/cloud/files?path=/", "/api/git/text?q=main", "/api/me"] {
-            let o = opened(&ready, &owner, &agent, "GET", path);
+            let o = from_companion(&ready, &owner, &agent, &id, "GET", path);
             assert!(authorize(&ready, &o, 1000).is_ok(), "{path}");
         }
         for path in ["/api/state", "/api/backup", "/api/people", "/api/access"] {
-            let o = opened(&ready, &owner, &agent, "GET", path);
+            let o = from_companion(&ready, &owner, &agent, &id, "GET", path);
             assert_eq!(
                 authorize(&ready, &o, 1000).unwrap_err(),
                 Refusal::Path,
                 "{path}"
             );
         }
-        let o = opened(&ready, &owner, &agent, "POST", "/api/cloud/files");
+        let o = from_companion(&ready, &owner, &agent, &id, "POST", "/api/cloud/files");
         assert_eq!(authorize(&ready, &o, 1000).unwrap_err(), Refusal::Scope);
+    }
+
+    #[test]
+    fn an_agent_token_does_nothing_signed_by_the_owners_own_key() {
+        let (ready, owner) = ready("agent-owner");
+        let (agent, _) = token(&ready, &owner, losos_access::Scope::Agent);
+        let o = opened(&ready, &owner, &agent, "GET", "/api/me");
+        assert_eq!(
+            authorize(&ready, &o, 1000).unwrap_err(),
+            Refusal::CompanionOnly
+        );
     }
 
     #[test]

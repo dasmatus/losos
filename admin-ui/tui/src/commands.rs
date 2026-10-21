@@ -186,6 +186,9 @@ fn dispatch(cli: Cli, io: &mut Io) -> Result<u8> {
             command: Some(AgentsCommand::Hint),
         }) => agents_hint(io),
         Some(Command::Agents {
+            command: Some(AgentsCommand::Call { method, path }),
+        }) => agents_call(io, host.as_deref(), &method, &path),
+        Some(Command::Agents {
             command: None | Some(AgentsCommand::List),
         }) => agents_list(io),
         command => {
@@ -224,7 +227,13 @@ fn dispatch(cli: Cli, io: &mut Io) -> Result<u8> {
                     | Command::Edge { .. }
                     | Command::Mcp
                     | Command::Agents {
-                        command: None | Some(AgentsCommand::List | AgentsCommand::Hint),
+                        command:
+                            None
+                            | Some(
+                                AgentsCommand::List
+                                | AgentsCommand::Hint
+                                | AgentsCommand::Call { .. },
+                            ),
                     },
                 ) => unreachable!("handled above"),
             }
@@ -1483,28 +1492,69 @@ fn agents_remove(io: &mut Io, named: &[String], yes: bool) -> Result<u8> {
     Ok(u8::from(failed > 0))
 }
 
+/// The companion kept for `host`, or the only one kept.
+fn kept_companion(keychain: &dyn Keychain, host: Option<&str>) -> Result<Companion> {
+    let wanted = host.map(parse_url).transpose()?;
+    let all = companion::list(keychain)?;
+    let chosen = match &wanted {
+        Some(url) => all.into_iter().find(|c| &c.url == url),
+        None if all.len() == 1 => all.into_iter().next(),
+        None => None,
+    };
+    chosen.ok_or_else(|| {
+        Problem::new(
+            "losos::agents",
+            tr!(
+                "tui.agents.noCompanion",
+                url = wanted.as_deref().unwrap_or("?")
+            ),
+        )
+        .help(tr!("tui.agents.noCompanionHelp"))
+    })
+}
+
+/// `losos agents call`: one call signed by the companion's key, as
+/// `losos call` makes one with the owner's.
+fn agents_call(io: &mut Io, host: Option<&str>, method: &str, path: &str) -> Result<u8> {
+    let session = kept_companion(io.keychain.as_ref(), host)?.session()?;
+    let answer = session.request(method, path, Value::Null)?;
+    let _ = writeln!(io.err, "{}", answer.status);
+    io.line(show(&answer.body));
+    Ok(if answer.ok() { 0 } else { 1 })
+}
+
+/// Where the session bus is when nothing says: `$XDG_RUNTIME_DIR/bus`, or
+/// `/run/user/<uid>/bus`, where systemd puts it.
+fn session_bus(env: &HashMap<String, String>) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    let dir = match env.get("XDG_RUNTIME_DIR").filter(|d| !d.is_empty()) {
+        Some(dir) => std::path::PathBuf::from(dir),
+        None => {
+            let uid = std::fs::metadata("/proc/self").ok()?.uid();
+            std::path::PathBuf::from(format!("/run/user/{uid}"))
+        }
+    };
+    let bus = dir.join("bus");
+    bus.exists().then(|| format!("unix:path={}", bus.display()))
+}
+
 /// `losos mcp`: serve the companion's tools on stdin and stdout.
 fn mcp(io: &mut Io, host: Option<&str>) -> Result<u8> {
+    // An AI tool may start the server with a few variables only (Codex
+    // passes HOME, PATH and little else), and none of them says where the
+    // session bus is, which the keychain is reached over. It is where
+    // systemd puts it, then. Nothing else runs yet to see the change.
+    if io.var("DBUS_SESSION_BUS_ADDRESS").is_none() {
+        if let Some(bus) = session_bus(&io.env) {
+            tracing::debug!(%bus, "no session bus in the environment");
+            std::env::set_var("DBUS_SESSION_BUS_ADDRESS", &bus);
+            io.env.insert("DBUS_SESSION_BUS_ADDRESS".into(), bus);
+        }
+    }
     let keychain = io.keychain.clone();
-    let wanted = host.map(parse_url).transpose();
+    let host = host.map(str::to_string);
     let connect = move || -> Result<Box<dyn Transport>> {
-        let wanted = wanted.clone()?;
-        let all = companion::list(keychain.as_ref())?;
-        let chosen = match &wanted {
-            Some(url) => all.into_iter().find(|c| &c.url == url),
-            None if all.len() == 1 => all.into_iter().next(),
-            None => None,
-        };
-        let companion = chosen.ok_or_else(|| {
-            Problem::new(
-                "losos::agents",
-                tr!(
-                    "tui.agents.noCompanion",
-                    url = wanted.as_deref().unwrap_or("?")
-                ),
-            )
-            .help(tr!("tui.agents.noCompanionHelp"))
-        })?;
+        let companion = kept_companion(keychain.as_ref(), host.as_deref())?;
         Ok(Box::new(companion.session()?))
     };
     let mut server = agents::mcp::Server::new(Box::new(connect));
