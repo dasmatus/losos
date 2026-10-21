@@ -115,6 +115,9 @@ async function window(browser, who, box, problems, strict) {
     timezoneId: "Europe/Bratislava",
     reducedMotion: "reduce",
   });
+  // An emulated laptop loading the whole bundle takes longer than
+  // Playwright's 30 s default for a page load.
+  context.setDefaultNavigationTimeout(WAIT);
   // A refusal by the page's policy shows up here even when nothing logs it.
   await context.addInitScript(() => {
     document.addEventListener("securitypolicyviolation", (e) => {
