@@ -126,7 +126,12 @@ pkgs.testers.nixosTest {
     PASSWORD = "Correct-Horse-Battery-9"
     EVA = "Eva-Long-Password-3"
 
-    start_all()
+    # One after the other: two VMs booting at once under TCG can miss the
+    # driver's wait for a shell.
+    box.start()
+    box.succeed("true")
+    laptop.start()
+    laptop.succeed("true")
     box.wait_for_unit("nginx.service")
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("losos-cloud.service")
