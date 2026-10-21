@@ -1,31 +1,25 @@
 //! The two lists the sidebar's pin picker offers, each one searchable so
 //! the page can look things up by name. The pins themselves, and what makes
 //! one, are the pins plugin's (`plugins/pins/`); what the picker offers is
-//! still lososd's, because it speaks to LosOS cloud and LosOS Git with keys
-//! only lososd holds.
+//! still lososd's, because it speaks to LosOS Cloud and LosOS Git in ways
+//! only lososd may.
 //!
-//! - a folder of LosOS cloud, or the files whose name matches, from
+//! - a folder of LosOS Cloud, or the files whose name matches, from
 //!   anywhere in it;
 //! - the owner's repositories on LosOS Git.
 //!
 //! - **LosOS Git** is asked as the bot administrator lososd already talks
 //!   to it as (`crate::config_repo`), for the owner's repositories,
 //!   private ones included.
-//! - **LosOS cloud** is asked over WebDAV with an *app password* of the
-//!   owner's (Nextcloud's "devices & sessions" kind). lososd has no other
-//!   key to the owner's files and keeps no copy of their password, so it
-//!   asks LosOS cloud for one the moment it holds the password anyway: a
-//!   sign-in with it, or the first password at setup. The app password is
-//!   kept at `$LOSOS_STATE_DIR/cloud-key`, mode 0600, and shows up in the
-//!   owner's LosOS cloud security settings as "LosOS admin page", where they
-//!   can revoke it. A revoked or missing one makes the folder list say
-//!   "sign in with your password once", nothing worse.
+//! - **LosOS Cloud** is asked over WebDAV on its socket, naming the owner
+//!   in the sign-in header the way nginx does for a signed-in person
+//!   (`modules/cloud.nix`): root can open the socket, and nothing else but
+//!   nginx can.
 //!
 //! Everything here is pure: the request bytes, the WebDAV answer, the
 //! chunked body. The socket is [`crate::losos::Losos::cloud_request`].
 
 use crate::losos::Losos;
-use crate::setup::Secret;
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -34,11 +28,11 @@ use serde_json::{json, Value};
 pub const MAX_ENTRIES: usize = 500;
 /// Most repositories one listing returns (Forgejo's page size).
 pub const MAX_REPOS: usize = 50;
-/// Most results one search of LosOS cloud returns.
+/// Most results one search of LosOS Cloud returns.
 pub const MAX_HITS: usize = 50;
 /// Longest search text, in characters.
 pub const MAX_QUERY_CHARS: usize = 100;
-/// The name LosOS cloud shows for the app password in its security settings.
+/// The client name lososd gives LosOS Cloud.
 pub const KEY_CLIENT: &str = "LosOS admin page";
 
 /// A request the owner can fix by sending a different one; the HTTP layer
@@ -51,13 +45,13 @@ fn invalid<T>(message: impl Into<String>) -> anyhow::Result<T> {
     Err(anyhow::Error::new(Invalid(message.into())))
 }
 
-/// A path inside LosOS cloud: from the top (`/`), no empty, `.` or `..`
+/// A path inside LosOS Cloud: from the top (`/`), no empty, `.` or `..`
 /// part, nothing that is not printable.
 pub fn validate_path(path: &str) -> anyhow::Result<()> {
     if losos_names::cloud_path(path) {
         Ok(())
     } else {
-        invalid("That is not a folder in LosOS cloud.")
+        invalid("That is not a folder in LosOS Cloud.")
     }
 }
 
@@ -143,78 +137,23 @@ pub fn parse_repos(doc: &Value) -> Vec<Value> {
     rows
 }
 
-// ── LosOS cloud: a folder ─────────────────────────────────────────────────
+// ── LosOS Cloud: a folder ─────────────────────────────────────────────────
 
-/// The app password lososd lists the owner's files with.
-#[derive(Debug, Clone)]
-pub struct CloudKey {
-    pub user: String,
-    pub key: Secret,
-}
-
-impl CloudKey {
-    /// The file's text: the user on the first line, the key on the second.
-    pub fn encode(&self) -> String {
-        format!("{}\n{}\n", self.user, self.key.expose())
-    }
-
-    pub fn decode(text: &str) -> Option<CloudKey> {
-        let mut lines = text.lines();
-        let user = lines.next()?.trim();
-        let key = lines.next()?.trim();
-        if user.is_empty() || key.is_empty() {
-            return None;
-        }
-        Some(CloudKey {
-            user: user.to_string(),
-            key: Secret::new(key),
-        })
-    }
-}
-
-/// One request to LosOS cloud.
+/// One request to LosOS Cloud, as the person it names.
 #[derive(Debug)]
 pub enum CloudRequest<'a> {
-    /// Trade the owner's password for an app password.
-    MintKey { user: &'a str, password: &'a Secret },
+    /// A new app password for `user`'s computer named `device`.
+    MintKey { user: &'a str, device: &'a str },
     /// One folder, one level deep.
-    List { key: &'a CloudKey, path: &'a str },
+    List { user: &'a str, path: &'a str },
     /// Files and folders anywhere whose name holds `query`.
-    Search { key: &'a CloudKey, query: &'a str },
-    /// Sign `user` in through LosOS Login's headers, as nginx does for a
-    /// browser, so LosOS cloud makes their account if it has none yet
-    /// (`crate::cloud_share`).
+    Search { user: &'a str, query: &'a str },
+    /// Sign `user` in once, so LosOS Cloud makes their account if it has
+    /// none yet (`crate::cloud_share`).
     Arrive {
         user: &'a str,
         display_name: &'a str,
     },
-}
-
-/// Where LosOS cloud answers on loopback: the socket, the `Host` header and
-/// the path its web root is at (`/nextcloud` for the workload, empty for
-/// the native vhost). Derived from the sign-in probe's URL, so the two can
-/// never disagree.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CloudEndpoint {
-    pub addr: String,
-    pub host: String,
-    pub root: String,
-}
-
-impl CloudEndpoint {
-    pub fn from_login(endpoint: &crate::signin::LoginEndpoint, host: &str) -> CloudEndpoint {
-        let root = endpoint
-            .path
-            .strip_suffix("/ocs/v2.php/cloud/user")
-            .unwrap_or("")
-            .trim_end_matches('/')
-            .to_string();
-        CloudEndpoint {
-            addr: endpoint.addr.clone(),
-            host: host.to_string(),
-            root,
-        }
-    }
 }
 
 const PROPFIND_BODY: &str = concat!(
@@ -225,31 +164,28 @@ const PROPFIND_BODY: &str = concat!(
 );
 
 /// The bytes of one request. HTTP/1.1 with `Connection: close`, so the
-/// answer ends where the socket does.
-pub fn request_bytes(endpoint: &CloudEndpoint, request: &CloudRequest<'_>) -> Vec<u8> {
-    let host: String = endpoint.host.chars().filter(|c| !c.is_control()).collect();
+/// answer ends where the socket does. Every request names its person in
+/// the sign-in header (`modules/app-sign-in.nix`), with anything that could
+/// end the line removed.
+pub fn request_bytes(request: &CloudRequest<'_>) -> Vec<u8> {
+    let clean = |v: &str| v.chars().filter(|c| !c.is_control()).collect::<String>();
+    let person = |user: &str| format!("X-Losos-Cloud-User: {}\r\n", clean(user));
     let mut out = String::new();
     match request {
-        CloudRequest::MintKey { user, password } => {
-            out.push_str(&format!(
-                "GET {}/ocs/v2.php/core/getapppassword HTTP/1.1\r\n",
-                endpoint.root
-            ));
-            out.push_str(&format!("Host: {host}\r\n"));
-            out.push_str(&basic(user, password.expose()));
+        CloudRequest::MintKey { user, device } => {
+            out.push_str("GET /ocs/v2.php/core/getapppassword HTTP/1.1\r\n");
+            out.push_str("Host: localhost\r\n");
+            out.push_str(&person(user));
             out.push_str("OCS-APIRequest: true\r\n");
             out.push_str("Accept: application/json\r\n");
-            // LosOS cloud names the app password after the client.
-            out.push_str(&format!("User-Agent: {KEY_CLIENT}\r\n"));
+            // LosOS Cloud names the app password after the client.
+            out.push_str(&format!("User-Agent: {}\r\n", clean(device)));
             out.push_str("Connection: close\r\n\r\n");
         }
-        CloudRequest::List { key, path } => {
-            out.push_str(&format!(
-                "PROPFIND {} HTTP/1.1\r\n",
-                dav_path(&endpoint.root, &key.user, path)
-            ));
-            out.push_str(&format!("Host: {host}\r\n"));
-            out.push_str(&basic(&key.user, key.key.expose()));
+        CloudRequest::List { user, path } => {
+            out.push_str(&format!("PROPFIND {} HTTP/1.1\r\n", dav_path(user, path)));
+            out.push_str("Host: localhost\r\n");
+            out.push_str(&person(user));
             out.push_str("Depth: 1\r\n");
             out.push_str("Content-Type: application/xml; charset=utf-8\r\n");
             out.push_str(&format!("Content-Length: {}\r\n", PROPFIND_BODY.len()));
@@ -257,14 +193,11 @@ pub fn request_bytes(endpoint: &CloudEndpoint, request: &CloudRequest<'_>) -> Ve
             out.push_str("Connection: close\r\n\r\n");
             out.push_str(PROPFIND_BODY);
         }
-        CloudRequest::Search { key, query } => {
-            let body = search_body(&key.user, query);
-            out.push_str(&format!(
-                "SEARCH {}/remote.php/dav/ HTTP/1.1\r\n",
-                endpoint.root
-            ));
-            out.push_str(&format!("Host: {host}\r\n"));
-            out.push_str(&basic(&key.user, key.key.expose()));
+        CloudRequest::Search { user, query } => {
+            let body = search_body(user, query);
+            out.push_str("SEARCH /remote.php/dav/ HTTP/1.1\r\n");
+            out.push_str("Host: localhost\r\n");
+            out.push_str(&person(user));
             out.push_str("Content-Type: text/xml; charset=utf-8\r\n");
             out.push_str(&format!("Content-Length: {}\r\n", body.len()));
             out.push_str(&format!("User-Agent: {KEY_CLIENT}\r\n"));
@@ -272,14 +205,11 @@ pub fn request_bytes(endpoint: &CloudEndpoint, request: &CloudRequest<'_>) -> Ve
             out.push_str(&body);
         }
         CloudRequest::Arrive { user, display_name } => {
-            let clean = |v: &str| v.chars().filter(|c| !c.is_control()).collect::<String>();
-            out.push_str(&format!(
-                "GET {}/index.php/apps/user_saml/saml/login HTTP/1.1\r\n",
-                endpoint.root
-            ));
-            out.push_str(&format!("Host: {host}\r\n"));
-            out.push_str(&format!("X-Losos-Cloud-User: {}\r\n", clean(user)));
+            out.push_str("GET /ocs/v2.php/cloud/user HTTP/1.1\r\n");
+            out.push_str("Host: localhost\r\n");
+            out.push_str(&person(user));
             out.push_str(&format!("X-Losos-Cloud-Name: {}\r\n", clean(display_name)));
+            out.push_str("OCS-APIRequest: true\r\n");
             out.push_str(&format!("User-Agent: {KEY_CLIENT}\r\n"));
             out.push_str("Connection: close\r\n\r\n");
         }
@@ -287,7 +217,7 @@ pub fn request_bytes(endpoint: &CloudEndpoint, request: &CloudRequest<'_>) -> Ve
     out.into_bytes()
 }
 
-/// A WebDAV SEARCH (RFC 5323, as LosOS cloud speaks it) for names that
+/// A WebDAV SEARCH (RFC 5323, as LosOS Cloud speaks it) for names that
 /// hold `query`, anywhere under the owner's files. `%` is the wildcard, so
 /// one typed in the text is dropped rather than matched as one.
 fn search_body(user: &str, query: &str) -> String {
@@ -320,16 +250,9 @@ fn xml_escape(text: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-fn basic(user: &str, password: &str) -> String {
-    format!(
-        "Authorization: Basic {}\r\n",
-        crate::signin::base64(format!("{user}:{password}").as_bytes())
-    )
-}
-
-/// `<root>/remote.php/dav/files/<user>/<path>`, each part percent-encoded.
-pub fn dav_path(root: &str, user: &str, path: &str) -> String {
-    let mut out = format!("{root}/remote.php/dav/files/{}", encode_part(user));
+/// `/remote.php/dav/files/<user>/<path>`, each part percent-encoded.
+pub fn dav_path(user: &str, path: &str) -> String {
+    let mut out = format!("/remote.php/dav/files/{}", encode_part(user));
     for part in path.split('/').filter(|p| !p.is_empty()) {
         out.push('/');
         out.push_str(&encode_part(part));
@@ -412,18 +335,11 @@ fn dechunk(mut body: &[u8]) -> Option<Vec<u8>> {
     }
 }
 
-/// The app password out of `getapppassword`'s OCS answer.
-pub fn parse_minted(body: &[u8]) -> Option<String> {
-    let doc: Value = serde_json::from_slice(body).ok()?;
-    let key = doc.pointer("/ocs/data/apppassword")?.as_str()?;
-    (!key.is_empty() && !key.chars().any(char::is_control)).then(|| key.to_string())
-}
-
 /// One row of a folder.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Entry {
     pub name: String,
-    /// From the top of LosOS cloud, `/Documents/plan.pdf`.
+    /// From the top of LosOS Cloud, `/Documents/plan.pdf`.
     pub path: String,
     pub id: u64,
     pub folder: bool,
@@ -506,42 +422,6 @@ pub fn parse_multistatus(xml: &str, user: &str, path: &str) -> Vec<Entry> {
     rows
 }
 
-/// Ask LosOS cloud for an app password with the owner's password, unless
-/// lososd holds one already. Best effort, like the LosOS Git password sync
-/// beside it: a sign-in LosOS cloud accepted is never refused for this.
-pub fn keep_cloud_key<L: Losos>(l: &mut L, user: &str, password: &Secret) {
-    match l.load_cloud_key() {
-        Ok(Some(key)) if key.user == user => return,
-        Ok(_) => {}
-        Err(e) => {
-            tracing::warn!(error = ?e, "could not read the LosOS cloud key");
-            return;
-        }
-    }
-    let answer = l.cloud_request(&CloudRequest::MintKey { user, password });
-    let minted = match answer {
-        Ok((200, body)) => parse_minted(&body),
-        Ok((status, _)) => {
-            tracing::info!(status, "LosOS cloud did not hand out an app password");
-            None
-        }
-        Err(e) => {
-            tracing::info!(error = ?e, "LosOS cloud could not be asked for an app password");
-            None
-        }
-    };
-    if let Some(key) = minted {
-        let key = CloudKey {
-            user: user.to_string(),
-            key: Secret::new(&key),
-        };
-        match l.save_cloud_key(Some(&key)) {
-            Ok(()) => tracing::info!(user, "kept an app password for listing LosOS cloud"),
-            Err(e) => tracing::warn!(error = ?e, "could not keep the LosOS cloud key"),
-        }
-    }
-}
-
 /// `GET /api/cloud/files?path=/...`: one folder. With `q=...` instead, the
 /// files and folders anywhere whose name holds the text (`path` is then
 /// `/`, where the results are relative to).
@@ -562,27 +442,22 @@ pub fn cmd_cloud_files<L: Losos>(
             "entries": [],
         }))
     };
-    let Some(key) = l.load_cloud_key()? else {
-        return unavailable("signIn");
-    };
+    let user = crate::setup::DEFAULT_ADMIN_USER;
     let request = match &query {
-        Some(q) => CloudRequest::Search {
-            key: &key,
-            query: q,
-        },
-        None => CloudRequest::List { key: &key, path },
+        Some(q) => CloudRequest::Search { user, query: q },
+        None => CloudRequest::List { user, path },
     };
     let (status, body) = match l.cloud_request(&request) {
         Ok(answer) => answer,
         Err(e) => {
-            tracing::info!(error = ?e, "LosOS cloud could not be asked for a folder");
+            tracing::info!(error = ?e, "LosOS Cloud could not be asked for a folder");
             return unavailable("notUp");
         }
     };
     match status {
         207 => {
             let text = String::from_utf8_lossy(&body);
-            let mut entries = parse_multistatus(&text, &key.user, path);
+            let mut entries = parse_multistatus(&text, user, path);
             let more = entries.len() > MAX_ENTRIES;
             entries.truncate(MAX_ENTRIES);
             Ok(json!({
@@ -593,13 +468,7 @@ pub fn cmd_cloud_files<L: Losos>(
                 "more": more,
             }))
         }
-        // Revoked in LosOS cloud's security settings, or the account is new:
-        // forget it, and the next sign-in with the password asks for another.
-        401 => {
-            l.save_cloud_key(None)?;
-            unavailable("signIn")
-        }
-        404 => invalid("That folder is not in LosOS cloud any more."),
+        404 => invalid("That folder is not in LosOS Cloud any more."),
         _ => unavailable("notUp"),
     }
 }
@@ -610,43 +479,17 @@ mod tests {
     use crate::fake::FakeLosos;
 
     #[test]
-    fn the_cloud_endpoint_follows_the_sign_in_probe() {
-        let login =
-            crate::signin::parse_login_url("http://127.0.0.1:8080/nextcloud/ocs/v2.php/cloud/user")
-                .unwrap();
-        let e = CloudEndpoint::from_login(&login, "localhost");
-        assert_eq!(e.root, "/nextcloud");
-        let native =
-            crate::signin::parse_login_url("http://127.0.0.1:80/ocs/v2.php/cloud/user").unwrap();
-        assert_eq!(CloudEndpoint::from_login(&native, "box.local").root, "");
-    }
-
-    #[test]
-    fn a_listing_is_one_propfind_with_the_app_password() {
-        let e = CloudEndpoint {
-            addr: "127.0.0.1:8080".into(),
-            host: "localhost".into(),
-            root: "/nextcloud".into(),
-        };
-        let key = CloudKey {
-            user: "notshared".into(),
-            key: Secret::new("k"),
-        };
-        let bytes = request_bytes(
-            &e,
-            &CloudRequest::List {
-                key: &key,
-                path: "/My Files/ü",
-            },
-        );
+    fn a_listing_is_one_propfind_as_the_owner() {
+        let bytes = request_bytes(&CloudRequest::List {
+            user: "notshared",
+            path: "/My Files/ü",
+        });
         let text = String::from_utf8(bytes).unwrap();
         assert!(text.starts_with(
-            "PROPFIND /nextcloud/remote.php/dav/files/notshared/My%20Files/%C3%BC/ HTTP/1.1\r\n"
+            "PROPFIND /remote.php/dav/files/notshared/My%20Files/%C3%BC/ HTTP/1.1\r\n"
         ));
-        assert!(text.contains(&format!(
-            "Authorization: Basic {}\r\n",
-            crate::signin::base64(b"notshared:k")
-        )));
+        assert!(text.contains("X-Losos-Cloud-User: notshared\r\n"));
+        assert!(!text.contains("Authorization"));
         assert!(text.contains("Depth: 1\r\n"));
         assert!(text.ends_with("</d:propfind>"));
         let len = PROPFIND_BODY.len();
@@ -654,27 +497,16 @@ mod tests {
     }
 
     #[test]
-    fn minting_trades_the_password_for_a_named_app_password() {
-        let e = CloudEndpoint {
-            addr: "127.0.0.1:80".into(),
-            host: "box.local".into(),
-            root: String::new(),
-        };
-        let pw = Secret::new("Correct-Horse-1");
-        let text = String::from_utf8(request_bytes(
-            &e,
-            &CloudRequest::MintKey {
-                user: "notshared",
-                password: &pw,
-            },
-        ))
+    fn minting_names_the_app_password_after_the_computer() {
+        let text = String::from_utf8(request_bytes(&CloudRequest::MintKey {
+            user: "notshared",
+            device: "LosOS terminal on laptop\r\nX-Evil: 1",
+        }))
         .unwrap();
         assert!(text.starts_with("GET /ocs/v2.php/core/getapppassword HTTP/1.1\r\n"));
         assert!(text.contains("OCS-APIRequest: true\r\n"));
-        assert!(text.contains(&format!("User-Agent: {KEY_CLIENT}\r\n")));
-        let body = br#"{"ocs":{"meta":{"status":"ok"},"data":{"apppassword":"abc-def"}}}"#;
-        assert_eq!(parse_minted(body).as_deref(), Some("abc-def"));
-        assert_eq!(parse_minted(b"{}"), None);
+        assert!(text.contains("User-Agent: LosOS terminal on laptopX-Evil: 1\r\n"));
+        assert!(!text.contains("\r\nX-Evil"));
     }
 
     #[test]
@@ -689,13 +521,13 @@ mod tests {
 
     const MULTISTATUS: &str = r#"<?xml version="1.0"?>
 <d:multistatus xmlns:d="DAV:" xmlns:s="http://sabredav.org/ns" xmlns:oc="http://owncloud.org/ns">
- <d:response><d:href>/nextcloud/remote.php/dav/files/notshared/Documents/</d:href>
+ <d:response><d:href>/remote.php/dav/files/notshared/Documents/</d:href>
   <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype><oc:fileid>10</oc:fileid><oc:size>300</oc:size></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
- <d:response><d:href>/nextcloud/remote.php/dav/files/notshared/Documents/zeta.pdf</d:href>
+ <d:response><d:href>/remote.php/dav/files/notshared/Documents/zeta.pdf</d:href>
   <d:propstat><d:prop><d:resourcetype/><oc:fileid>12</oc:fileid><oc:size>100</oc:size></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
- <d:response><d:href>/nextcloud/remote.php/dav/files/notshared/Documents/Tax%20%26%20bills/</d:href>
+ <d:response><d:href>/remote.php/dav/files/notshared/Documents/Tax%20%26%20bills/</d:href>
   <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype><oc:fileid>11</oc:fileid><oc:size>200</oc:size></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
- <d:response><d:href>/nextcloud/remote.php/dav/files/notshared/Documents/alpha.md</d:href>
+ <d:response><d:href>/remote.php/dav/files/notshared/Documents/alpha.md</d:href>
   <d:propstat><d:prop><d:resourcetype/><oc:fileid>13</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
   <d:propstat><d:prop><oc:size/></d:prop><d:status>HTTP/1.1 404 Not Found</d:status></d:propstat></d:response>
 </d:multistatus>"#;
@@ -713,46 +545,28 @@ mod tests {
     }
 
     #[test]
-    fn the_folder_list_needs_a_key_and_forgets_a_revoked_one() {
+    fn a_folder_is_listed_as_the_owner_and_a_cloud_that_is_down_says_so() {
         let mut f = FakeLosos::new();
-        assert_eq!(
-            cmd_cloud_files(&mut f, "/", None).unwrap()["reason"],
-            "signIn"
-        );
-
-        // A sign-in with the password mints one; a second keeps it.
-        f.cloud_answers.push_back((
-            200,
-            br#"{"ocs":{"data":{"apppassword":"minted"}}}"#.to_vec(),
-        ));
-        keep_cloud_key(&mut f, "notshared", &Secret::new("pw"));
-        keep_cloud_key(&mut f, "notshared", &Secret::new("pw"));
-        assert_eq!(f.cloud_calls, ["mint notshared"]);
-
         f.cloud_answers
             .push_back((207, MULTISTATUS.as_bytes().to_vec()));
         let out = cmd_cloud_files(&mut f, "/Documents", None).unwrap();
         assert_eq!(out["available"], true);
         assert_eq!(out["entries"].as_array().unwrap().len(), 3);
-        assert_eq!(f.cloud_calls[1], "list notshared:minted /Documents");
+        assert_eq!(f.cloud_calls, ["list notshared /Documents"]);
 
-        f.cloud_answers.push_back((401, Vec::new()));
+        // Nothing queued: the fake is not answering.
         assert_eq!(
             cmd_cloud_files(&mut f, "/", None).unwrap()["reason"],
-            "signIn"
+            "notUp"
         );
-        assert!(f.cloud_key.is_none());
-
+        f.cloud_answers.push_back((404, Vec::new()));
+        assert!(cmd_cloud_files(&mut f, "/Gone", None).is_err());
         assert!(cmd_cloud_files(&mut f, "/../x", None).is_err());
     }
 
     #[test]
     fn a_search_asks_for_names_anywhere_and_reads_like_a_folder() {
         let mut f = FakeLosos::new();
-        f.cloud_key = Some(CloudKey {
-            user: "notshared".into(),
-            key: Secret::new("k"),
-        });
         f.cloud_answers
             .push_back((207, MULTISTATUS.as_bytes().to_vec()));
         let out = cmd_cloud_files(&mut f, "/ignored", Some(" tax ")).unwrap();
@@ -770,24 +584,12 @@ mod tests {
 
     #[test]
     fn the_search_body_escapes_the_text_and_drops_wildcards() {
-        let e = CloudEndpoint {
-            addr: "127.0.0.1:8080".into(),
-            host: "localhost".into(),
-            root: "/nextcloud".into(),
-        };
-        let key = CloudKey {
-            user: "notshared".into(),
-            key: Secret::new("k"),
-        };
-        let text = String::from_utf8(request_bytes(
-            &e,
-            &CloudRequest::Search {
-                key: &key,
-                query: "a<b>%&",
-            },
-        ))
+        let text = String::from_utf8(request_bytes(&CloudRequest::Search {
+            user: "notshared",
+            query: "a<b>%&",
+        }))
         .unwrap();
-        assert!(text.starts_with("SEARCH /nextcloud/remote.php/dav/ HTTP/1.1\r\n"));
+        assert!(text.starts_with("SEARCH /remote.php/dav/ HTTP/1.1\r\n"));
         assert!(text.contains("<d:literal>%a&lt;b&gt;&amp;%</d:literal>"));
         assert!(text.contains("<d:href>/files/notshared</d:href>"));
         let body = text.split("\r\n\r\n").nth(1).unwrap();

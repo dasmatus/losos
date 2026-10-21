@@ -42,21 +42,6 @@ let
       config.allowUnfreePredicate = p: lib.getName p == "claude-code";
     }).claude-code;
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   # A small MCP client: starts one server as a tool would, from the
   # command and arguments the tool was given, and makes a few calls.
   probe = pkgs.writeText "mcp-probe.py" ''
@@ -150,15 +135,11 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = lososPkgs.losos-admin-ui;
-          nextcloud.mode = "container";
           forgejo.enable = false;
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
         };
         systemd.services.lososd.path = lib.mkForce [
-          stubOcc
           pkgs.coreutils
         ];
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         # An hour is long to wait for in a test: the companion's access
         # token lives 90 seconds here, so the test sees it refreshed.
         services.authelia.instances.losos.settings.identity_providers.oidc.lifespans.custom.companion.access_token =

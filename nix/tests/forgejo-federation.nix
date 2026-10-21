@@ -58,11 +58,6 @@ pkgs.testers.nixosTest {
         imports = [
           ../../modules/options.nix
           ../../modules/services.nix
-          # services.nix names lososInternal.nextcloudStack inside a mkIf; the
-          # module system still has to see the option declared to distribute
-          # that mkIf over services.nextcloud.*, so the declaring module comes
-          # along. Nothing of Nextcloud runs: the mode below keeps it off.
-          ../../modules/nextcloud-common.nix
         ];
 
         losos = {
@@ -71,9 +66,6 @@ pkgs.testers.nixosTest {
           forgejo.mode = "native";
           # Federation runs only while the box shares its disk.
           sharingMyStorage = true;
-          # Keeps services.nix from enabling the native Nextcloud stack; only
-          # Forgejo is under test. The Nextcloud pod is not run here either.
-          nextcloud.mode = "container";
         };
 
         # The other half of the gate, switched into from the test script:
@@ -113,9 +105,6 @@ pkgs.testers.nixosTest {
           forgejo.enable = true;
           forgejo.mode = "container";
           sharingMyStorage = true;
-          # No Nextcloud pod: nothing here needs it, and its manifest would
-          # want the real image.
-          nextcloud.mode = "native";
           # Any derivation with the two attributes imageRef reads. The
           # kubelet is not running, so the reference is never pulled; what
           # matters is the manifest and the config directory it points at.

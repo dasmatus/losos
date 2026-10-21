@@ -370,10 +370,10 @@
     "description": "The tooltip on the logo on 31 October, when it is a plate of salmon"
   },
   "losos.home.feature.cloud.title": {
-    "message": "LosOS cloud"
+    "message": "LosOS Cloud"
   },
   "losos.home.feature.cloud.body": {
-    "message": "Ihre Dateien, Fotos, Kalender, Kontakte, Notizen und Aufgaben, mit Apps für Computer und Telefon. Gebaut auf Nextcloud."
+    "message": "Deine Dateien, Fotos, Kalender, Kontakte und Boards, im Browser und in den Desktop- und Handy-Apps von Nextcloud."
   },
   "losos.home.feature.git.title": {
     "message": "LosOS Git"
@@ -397,7 +397,7 @@
     "message": "Ein Passwort, keine Shell"
   },
   "losos.home.feature.password.body": {
-    "message": "Es gibt keine Anmeldekonsole und kein SSH. Sie bedienen die Box im Webbrowser, und das Passwort für LosOS cloud öffnet auch die Verwaltung."
+    "message": "Es gibt keine Anmeldekonsole und kein SSH. Du bedienst die Box im Webbrowser, und ein Passwort, das du beim Einrichten der Box setzt, öffnet die Verwaltung, LosOS Cloud und LosOS Git."
   },
   "losos.home.feature.lan.title": {
     "message": "Läuft auch ohne Internet"
@@ -451,7 +451,7 @@
     "message": "Freie Software unter der AGPL. Läuft auf 64-Bit-Rechnern mit Intel oder AMD."
   },
   "losos.home.screen.alt": {
-    "message": "Die Verwaltung einer Box: die App-Kacheln für LosOS cloud und LosOS Git, die Speicherkarte und eine Tafel mit Widgets."
+    "message": "Die Verwaltung einer Box: die App-Kacheln für LosOS Cloud und LosOS Git, die Speicherkarte und eine Tafel mit Widgets."
   },
   "losos.home.screen.caption": {
     "message": "Die Verwaltung, in der Sie die Box einrichten und pflegen."
@@ -593,10 +593,10 @@
     "message": "Bald"
   },
   "losos.companies.box.cloud.title": {
-    "message": "LosOS cloud"
+    "message": "LosOS Cloud"
   },
   "losos.companies.box.cloud.body": {
-    "message": "Dateien, Fotos, Kalender, Kontakte, Notizen, Aufgaben, Deck, Forms, Tables und mehr, mit Apps für Computer und Telefon. Jede Kollegin und jeder Kollege bekommt ein Konto. Gebaut auf Nextcloud."
+    "message": "Dateien, Fotos, Kalender, Kontakte und Boards, im Browser und in den Desktop- und Handy-Apps von Nextcloud. Jede Kollegin und jeder Kollege bekommt ein Konto."
   },
   "losos.companies.box.git.title": {
     "message": "LosOS Git"
@@ -647,7 +647,7 @@
     "message": "Kopien gehen in einen S3-kompatiblen Bucket Ihrer Wahl, bei einem Anbieter in der EU oder in Ihrem eigenen Netz, verschlüsselt mit Ihrem Wiederherstellungscode, bevor sie die Box verlassen."
   },
   "losos.companies.eu.nextcloud": {
-    "message": "Die Grundlage von LosOS cloud. Entwickelt von der Nextcloud GmbH in Stuttgart."
+    "message": "LosOS Cloud spricht sein Protokoll, deshalb synchronisieren seine Desktop- und Handy-Apps mit der Box. Entwickelt von der Nextcloud GmbH in Stuttgart."
   },
   "losos.companies.eu.forgejo": {
     "message": "Die Grundlage von LosOS Git. Ein Gemeinschaftsprojekt unter dem Dach von Codeberg e.V., einem gemeinnützigen Verein in Berlin."
@@ -656,7 +656,7 @@
     "message": "Das System, aus dem sich jede Box baut. Betreut von der NixOS Foundation in den Niederlanden."
   },
   "losos.companies.where.files.what": {
-    "message": "Dateien, Fotos, Kalender und Kontakte in LosOS cloud"
+    "message": "Dateien, Fotos, Kalender und Kontakte in LosOS Cloud"
   },
   "losos.companies.where.files.where": {
     "message": "Auf der Box, auf ihrem verschlüsselten Laufwerk"
@@ -851,13 +851,13 @@
     "message": "Gebaut auf Software aus Deutschland und den Niederlanden"
   },
   "losos.companies.eu.languages": {
-    "message": "Die Verwaltung und dieses Handbuch gibt es auf Englisch, Slowakisch und Deutsch. LosOS cloud und LosOS Git folgen der Browsersprache jeder Person und können noch viele mehr."
+    "message": "Die Verwaltung und dieses Handbuch gibt es auf Englisch, Slowakisch und Deutsch. LosOS Cloud und LosOS Git folgen der Browsersprache jeder Person und können noch viele mehr."
   },
   "losos.companies.cost.title": {
     "message": "Keine Gebühr pro Nutzer"
   },
   "losos.companies.cost.body": {
-    "message": "LosOS, Nextcloud und Forgejo sind freie Software. Ihre vierzigste Einstellung kostet ein Benutzerkonto, kein Abonnement. Sie zahlen einmal für die Hardware und dann für den Strom, und ein Büro-Mini-PC reicht dafür."
+    "message": "LosOS und Forgejo sind freie Software. Ihre vierzigste Einstellung kostet ein Benutzerkonto, kein Abonnement. Sie zahlen einmal für die Hardware und dann für den Strom, und ein Büro-Mini-PC reicht dafür."
   },
   "losos.companies.soon.intro": {
     "message": "LosOS ist eine Vorabversion, noch ohne Supportvertrag und ohne Zertifizierung. Das sind die Teile, die noch entstehen."

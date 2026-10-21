@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const ADA: &str = "authelia_at_ada.companion";
-const OTHER_CLIENT: &str = "authelia_at_ada.nextcloud";
+const OTHER_CLIENT: &str = "authelia_at_ada.forgejo";
 const REVOKED: &str = "authelia_at_ada.revoked";
 
 /// A stand-in LosOS Login: answers each introspection from the table and
@@ -50,7 +50,7 @@ fn login() -> (String, Arc<Mutex<Vec<String>>>) {
             let answer = if body.contains(&format!("token={ADA}&")) {
                 json!({ "active": true, "client_id": "losos-companion", "exp": exp, "username": "ada" })
             } else if body.contains(&format!("token={OTHER_CLIENT}&")) {
-                json!({ "active": true, "client_id": "nextcloud", "exp": exp, "username": "ada" })
+                json!({ "active": true, "client_id": "forgejo", "exp": exp, "username": "ada" })
             } else {
                 json!({ "active": false })
             }

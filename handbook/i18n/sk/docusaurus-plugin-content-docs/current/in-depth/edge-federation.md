@@ -150,7 +150,7 @@ token) vytvorí pri prvom štarte, keď súbory chýbajú. Rovnaké je aj jeho
 verejné meno:
 `losos.proxy.hostname` vlastníka musí byť jeden label pod zónou lokality
 (`mattbox.acme.losos.cfd`), aby ho relay prijal, a je to zároveň meno,
-ktorému dôveruje Nextcloud. Zariadenie, ktoré sa vráti k oficiálnemu edge, si cez
+na ktoré odpovedajú aplikácie zariadenia. Zariadenie, ktoré sa vráti k oficiálnemu edge, si cez
 svoj priamy riadok tenanta ponechá rovnaké meno. Relay marketu nepotrebuje
 žiadny ďalší prepínač: je podmienený odpoveďou *oficiálneho* edge a keď
 žiadny nie je v dosahu, už hlási `available: false`.

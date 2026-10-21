@@ -34,24 +34,22 @@
 { pkgs }:
 
 let
-  # The Nextcloud pod's stand-in, on the loopback port modules/containers.nix
-  # proxies /nextcloud to. A hostNetwork pod is nothing but a process listening
+  # LosOS Git's pod stand-in, on the loopback port modules/containers.nix
+  # proxies /forgejo/ to. A hostNetwork pod is nothing but a process listening
   # on the host's loopback, so an nginx server block is a faithful one, and it
   # is here only so the "the vhost still has containers.nix' routes" subtest
   # asserts a 200 rather than a 502.
-  stubNextcloud =
-    { config, ... }:
-    {
-      services.nginx.virtualHosts."stub-nextcloud" = {
-        listen = [
-          {
-            addr = "127.0.0.1";
-            port = config.losos.nextcloud.apachePort;
-          }
-        ];
-        locations."/".extraConfig = ''return 200 "stub-nextcloud\n";'';
-      };
+  stubGit = {
+    services.nginx.virtualHosts."stub-git" = {
+      listen = [
+        {
+          addr = "127.0.0.1";
+          port = 3000;
+        }
+      ];
+      locations."/".extraConfig = ''return 200 "stub-git\n";'';
     };
+  };
 in
 
 pkgs.testers.nixosTest {
@@ -67,7 +65,7 @@ pkgs.testers.nixosTest {
         ../../modules/containers.nix
         ../../modules/tls.nix
         ../../modules/setup.nix
-        stubNextcloud
+        stubGit
       ];
 
       losos = {
@@ -75,13 +73,9 @@ pkgs.testers.nixosTest {
         # See the file header: not a gate on the setup routes, and off here so
         # the admin UI package stays out of this closure.
         admin.enable = false;
-        nextcloud.mode = "container";
-        # Deliberately not the 11000 default, so a hard-coded port anywhere in
-        # the proxy path fails this test instead of passing by coincidence.
-        nextcloud.apachePort = 11007;
-        # Nothing here requests /forgejo/, and off means no route proxying to a
-        # port nothing listens on.
-        forgejo.enable = false;
+        # Only the front vhost's route to it; the pod is the stand-in above.
+        forgejo.enable = true;
+        forgejo.mode = "container";
       };
 
       # For the script's own inspection of the certificate. The generator gets
@@ -266,7 +260,7 @@ pkgs.testers.nixosTest {
         # page on the edge host reads this document from a public origin, under
         # Chrome's Local Network Access permission. The header must name that
         # origin exactly on this one route and be absent everywhere else — a
-        # wildcard, or the header on the SPA or /nextcloud, would let any page
+        # wildcard, or the header on the SPA or /forgejo/, would let any page
         # the owner has open take inventory of the LAN.
         FINDER = "https://losos-edge.dasmat.us"
         def cors(path, origin):
@@ -276,7 +270,7 @@ pkgs.testers.nixosTest {
         assert cors(STATE_URL, "https://evil.example") is None
         assert cors(STATE_URL, "http://losos-edge.dasmat.us") is None, "scheme is part of the origin"
         assert cors(CERT_URL, FINDER) is None, "the certificate is not for other origins"
-        assert cors("/nextcloud/", FINDER) is None, "the service route gets no CORS header"
+        assert cors("/forgejo/", FINDER) is None, "the service route gets no CORS header"
         # And allowing the read did not cost the route its security headers.
         h = headers(STATE_URL, f"-H 'Origin: {FINDER}'")
         assert "default-src 'none'" in h.get("content-security-policy", ""), h
@@ -359,9 +353,9 @@ pkgs.testers.nixosTest {
         # modules/setup.nix merges into the same attribute path rather than
         # declaring a vhost of its own; this is the assertion that the merge did
         # not displace what was already there.
-        got = code("http://127.0.0.1/nextcloud")
-        assert got == "200", f"/nextcloud went missing: {got}"
-        assert "stub-nextcloud" in appliance.succeed("curl -s http://127.0.0.1/nextcloud")
+        got = code("http://127.0.0.1/forgejo/")
+        assert got == "200", f"/forgejo/ went missing: {got}"
+        assert "stub-git" in appliance.succeed("curl -s http://127.0.0.1/forgejo/")
 
     with subtest("republishing changes nothing"):
         # The unit runs on every boot. It must be a function of the certificate

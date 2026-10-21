@@ -80,7 +80,7 @@ was du sammeln solltest, bevor du fragst.
 - [Passwort vergessen](/troubleshooting/forgot-password.md)
 - [Hängt an der Passphrase-Abfrage](/troubleshooting/stuck-at-passphrase.md)
 - [Der Assistent wartet und wartet](/troubleshooting/wizard-waits.md)
-- [Eine App-Kachel liefert 404 oder „nicht vertrauenswürdige Domain“](/troubleshooting/app-tile-404.md)
+- [Eine App-Kachel liefert 404](/troubleshooting/app-tile-404.md)
 - [Anwenden schlägt fehl](/troubleshooting/apply-fails.md)
 - [Kein Platz mehr](/troubleshooting/out-of-room.md)
 - [Keine Edge gefunden](/troubleshooting/edge-not-found.md)
