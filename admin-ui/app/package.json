@@ -13,7 +13,7 @@
     "lab:core": "node scripts/lab-core.mjs core",
     "lab:virt": "node scripts/lab-core.mjs virt",
     "lab:render": "node scripts/lab-core.mjs render",
-    "test:browser": "node tests/solana.node.mjs && node tests/fees.node.mjs && node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs && node tests/look.browser.mjs && node tests/advanced.browser.mjs && node tests/lab.browser.mjs && node tests/apps.browser.mjs && node tests/pins.browser.mjs && node tests/tour.browser.mjs && node tests/access.browser.mjs && node tests/users.browser.mjs && node tests/account.browser.mjs && node tests/profile.browser.mjs && node tests/manage.browser.mjs && node tests/mail.browser.mjs && node tests/git.browser.mjs && node tests/palette.browser.mjs"
+    "test:browser": "node tests/solana.node.mjs && node tests/fees.node.mjs && node tests/ens.node.mjs && node tests/games.node.mjs && node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs && node tests/look.browser.mjs && node tests/advanced.browser.mjs && node tests/lab.browser.mjs && node tests/apps.browser.mjs && node tests/pins.browser.mjs && node tests/tour.browser.mjs && node tests/access.browser.mjs && node tests/users.browser.mjs && node tests/account.browser.mjs && node tests/profile.browser.mjs && node tests/manage.browser.mjs && node tests/mail.browser.mjs && node tests/git.browser.mjs && node tests/palette.browser.mjs && node tests/notes.browser.mjs && node tests/games.browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
@@ -23,6 +23,7 @@
     "@codemirror/lang-html": "6.4.12",
     "@codemirror/lang-javascript": "6.2.5",
     "@codemirror/lang-json": "6.0.2",
+    "@codemirror/lang-markdown": "6.5.2",
     "@codemirror/language": "6.13.1",
     "@codemirror/state": "6.7.6",
     "@codemirror/view": "6.43.14",
@@ -36,6 +37,12 @@
     "@scure/bip39": "2.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "d3-force": "3.0.0",
+    "dompurify": "3.4.16",
+    "highlight.js": "11.11.1",
+    "katex": "0.18.10",
+    "markdown-it": "14.3.2",
+    "markdown-it-footnote": "4.0.0",
     "qr": "0.7.2",
     "react": "^19.2.0",
     "react-aria-components": "1.22.1",
@@ -43,10 +50,18 @@
     "react-router-dom": "^7.18.4",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
-    "viem": "^2.57.5"
+    "viem": "^2.57.5",
+    "y-codemirror.next": "0.3.6",
+    "y-protocols": "1.0.7",
+    "y-websocket": "3.1.0",
+    "yaml": "2.9.1",
+    "yjs": "13.6.33"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.16",
+    "@types/d3-force": "3.0.10",
+    "@types/markdown-it": "14.2.0",
+    "@types/markdown-it-footnote": "3.0.4",
     "@types/node": "^26.6.5",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.5",

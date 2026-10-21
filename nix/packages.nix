@@ -352,7 +352,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-Y+e3YOa5T6FFvSha3LfKIDYyXWSM+ajoOP1dnB24Y5s=";
+    npmDepsHash = "sha256-m/MViODZIEhu9fz662JpUWEmJ8Lt9K/TbNFVK1WcK6M=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -445,7 +445,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-PFbiLR9AEmby7lEtmrVZS97JaMWgcFuSeDB4Y6vXEvo=";
+    cargoHash = "sha256-+Oqap8omPFnbQ0lIzb7eFdu5wsBAQnkknWPNhdO1TQ8=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -471,7 +471,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-y3tVIsw2GrOljn+NOAk+ZUADbcP7uxZocx9TFvnwdww=";
+    cargoHash = "sha256-/8x0VXwOtWciHb73EyTKCX6YJY9E368RWjdYQJfFJDI=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -496,7 +496,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-y3tVIsw2GrOljn+NOAk+ZUADbcP7uxZocx9TFvnwdww=";
+    cargoHash = "sha256-/8x0VXwOtWciHb73EyTKCX6YJY9E368RWjdYQJfFJDI=";
     doCheck = false;
   };
 

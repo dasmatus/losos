@@ -90,6 +90,20 @@ argon2 = "0.6"
 # among them) is ever stored. PNG, JPEG, GIF and WebP in; PNG and JPEG out.
 # The `image` dependency itself is declared once, below with LosOS Cloud's
 # thumbnails, whose decoders are a superset of these.
+# Live editing in LosOS cloud (src/cloud/collab/): yrs is the Rust port of
+# Yjs, the CRDT the editor runs in the browser, and speaks its binary
+# format and sync protocol. similar diffs a file written outside the editor
+# into line edits.
+yrs = "0.28"
+similar = { version = "3", default-features = false, features = ["std", "text"] }
+# The mesh link between boxes (src/cloud/mesh/): WebSockets on both sides,
+# actix-ws where the box answers and tokio-tungstenite where it dials, over
+# rustls with ring (the crypto crate already here) and the system's roots.
+actix-ws = "0.4"
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-native-certs = "0.8"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 
 # LosOS Cloud (src/cloud/, the losos-cloud binary): WebDAV bodies are XML,
 # read with namespaces resolved, and downloads go through actix-files for
@@ -102,11 +116,13 @@ tempfile = "3"
 httpdate = "1"
 percent-encoding = "2"
 base64 = "0.22"
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
 url = "2"
 mime = "0.3"
 # Thumbnails of pictures (src/cloud/preview.rs), turned the way the camera
-# held them. Decoders only for the formats phones and cameras write.
+# held them, and profile pictures and banners (src/profiles.rs): decoded,
+# turned upright, cropped, scaled and encoded again, so no camera tag (a
+# photo's position among them) is ever stored. Decoders only for the formats
+# phones and cameras write.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 
 # The plugin runtime (src/plugin/): lososd's areas are WebAssembly
@@ -137,6 +153,8 @@ assert_fs = "1"
 # tests/plugins.rs builds the plugins for wasm32 and wraps them as
 # components the way `wasm-tools component new` does in nix/packages.nix.
 wit-component = "0.262"
+# Paused time, for the mesh link's heartbeat test.
+tokio = { version = "1", features = ["test-util"] }
 
 # Crate-wide lint policy, matching edge/registrar/Cargo.toml.
 [lints.rust]
