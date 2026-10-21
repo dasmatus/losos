@@ -17,6 +17,7 @@ pub mod db;
 pub mod dial;
 pub mod identity;
 pub mod link;
+pub mod routes;
 #[cfg(test)]
 mod tests;
 
@@ -138,6 +139,8 @@ pub enum Op {
     },
     /// Recipient's box: a file's bytes.
     Read { share: String, file: FileId },
+    /// Recipient's box: a file's name and size.
+    Stat { share: String, file: FileId },
 }
 
 /// Who lives on this box, as far as the mesh needs to know.
@@ -162,6 +165,9 @@ pub struct Mesh {
     people: Arc<dyn People>,
     dial: DialFn,
     links: Mutex<HashMap<String, Arc<Link>>>,
+    /// Every live link, also a second one to a box both dialled at once:
+    /// a document may be carried on either.
+    every: Mutex<Vec<std::sync::Weak<Link>>>,
     dialing: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     keepers: Mutex<HashSet<String>>,
     /// How often [`Mesh::run`] retries what did not get through.
@@ -193,6 +199,7 @@ impl Mesh {
             people,
             dial,
             links: Mutex::new(HashMap::new()),
+            every: Mutex::new(Vec::new()),
             dialing: Mutex::new(HashMap::new()),
             keepers: Mutex::new(HashSet::new()),
             retry: Duration::from_secs(15),
@@ -225,6 +232,7 @@ impl Mesh {
         link::client_handshake(self, name, &mut wire).await?;
         let l = Link::start(self, name.to_string(), wire);
         lock(&self.links).insert(name.to_string(), l.clone());
+        self.remember(&l);
         tracing::info!(peer = name, "mesh: linked (dialled)");
         Ok(l)
     }
@@ -233,6 +241,7 @@ impl Mesh {
     pub async fn accept(self: &Arc<Self>, mut wire: Wire) -> Result<Arc<Link>, MeshError> {
         let peer = link::server_handshake(self, &mut wire).await?;
         let l = Link::start(self, peer.clone(), wire);
+        self.remember(&l);
         let mut links = lock(&self.links);
         if links.get(&peer).is_none_or(|x| x.is_closed()) {
             links.insert(peer.clone(), l.clone());
@@ -240,6 +249,21 @@ impl Mesh {
         drop(links);
         tracing::info!(peer = %peer, "mesh: linked (answered)");
         Ok(l)
+    }
+
+    fn remember(&self, l: &Arc<Link>) {
+        let mut every = lock(&self.every);
+        every.retain(|w| w.upgrade().is_some_and(|l| !l.is_closed()));
+        every.push(Arc::downgrade(l));
+    }
+
+    /// Every open link to `remote`.
+    fn links_to(&self, remote: &str) -> Vec<Arc<Link>> {
+        lock(&self.every)
+            .iter()
+            .filter_map(std::sync::Weak::upgrade)
+            .filter(|l| l.peer == remote && !l.is_closed())
+            .collect()
     }
 
     /// A box's key, by reaching it at its name.
@@ -347,7 +371,7 @@ impl Mesh {
             .filter(|s| s.owner == owner)
             .ok_or(MeshError::NotFound)?;
         self.db.remove_outgoing(id).map_err(store_err)?;
-        if let Some(l) = self.open_link(&s.remote) {
+        for l in self.links_to(&s.remote) {
             l.detach_share(id);
         }
         let me = self.clone();
@@ -376,10 +400,9 @@ impl Mesh {
         } else {
             Access::Read
         };
-        if let Some(l) = self.open_link(&s.remote) {
-            let prefix = format!("{id}/");
+        for l in self.links_to(&s.remote) {
             // Every document of this share the other box has open.
-            for f in self.files_open_by(&l, &prefix) {
+            for f in self.files_open_by(&l, id) {
                 l.set_access(&f, access);
             }
         }
@@ -393,10 +416,10 @@ impl Mesh {
         Ok(())
     }
 
-    fn files_open_by(&self, l: &Arc<Link>, prefix: &str) -> Vec<String> {
-        // The link knows its documents; names are "share/file".
-        let s = self.db.outgoing(prefix.trim_end_matches('/'));
-        let Some(s) = s else { return Vec::new() };
+    fn files_open_by(&self, l: &Arc<Link>, share: &str) -> Vec<String> {
+        let Some(s) = self.db.outgoing(share) else {
+            return Vec::new();
+        };
         let mut out = Vec::new();
         let mut candidates = vec![s.file_id];
         if s.folder {
@@ -531,6 +554,25 @@ impl Mesh {
             })
             .await?;
         serde_json::from_value(v).map_err(|_| MeshError::Protocol)
+    }
+
+    /// A file's name in a share sent to `login`, if the owner's box answers.
+    pub async fn list_name(
+        self: &Arc<Self>,
+        login: &str,
+        id: &str,
+        file: FileId,
+    ) -> Option<String> {
+        let s = self.incoming_of(login, id).ok()?;
+        let l = self.link(&s.remote).await.ok()?;
+        let v = l
+            .request(Op::Stat {
+                share: id.into(),
+                file,
+            })
+            .await
+            .ok()?;
+        v["name"].as_str().map(str::to_string)
     }
 
     /// A shared file's name and bytes.
@@ -776,6 +818,20 @@ impl Mesh {
                     i.owner = String::new();
                 }
                 Ok(serde_json::to_value(items).map_err(store_err)?)
+            }
+            Op::Stat { share, file } => {
+                let s = self.usable(&share, peer)?;
+                if !self.within(&s, file) {
+                    return Err(MeshError::NotFound);
+                }
+                let mut info = self
+                    .hub
+                    .store()
+                    .stat(file)
+                    .map_err(store_err)?
+                    .ok_or(MeshError::NotFound)?;
+                info.owner = String::new();
+                Ok(serde_json::to_value(info).map_err(store_err)?)
             }
             Op::Read { share, file } => {
                 let s = self.usable(&share, peer)?;
