@@ -148,6 +148,12 @@ export function chatHref(matrixId: string, call?: "voice" | "video"): string {
   return `/chat/?${params.toString()}`;
 }
 
+/** A card in LosOS Contacts: a contact by its ID, or someone on this box by
+ *  their sign-in name. */
+export function contactHref(card: { id: string } | { person: string }): string {
+  return "id" in card ? `/contacts?id=${encodeURIComponent(card.id)}` : `/contacts?person=${encodeURIComponent(card.person)}`;
+}
+
 export function mailHref(address: string): string {
   return `/mail?${new URLSearchParams({ to: address }).toString()}`;
 }
@@ -260,6 +266,24 @@ function Book({ contacts, onContacts }: { contacts: Contact[]; onContacts: (cont
       setListError(message(error));
     }
   }, [onContacts]);
+
+  // /contacts?id=<contact> or ?person=<sign-in name> opens that card (a
+  // sender's name in Mail, a person in Chat). Read once, then dropped.
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+    const person = params.get("person");
+    if (id === null && person === null) return;
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+    if (id !== null) {
+      setView("all");
+      setOpenKey(`contact:${id}`);
+    } else if (person !== null) {
+      setView("box");
+      setOpenKey(`box:${person}`);
+    }
+    setColumn("person");
+  }, []);
 
   // The people on this box: everyone the box's own suggestions name.
   React.useEffect(() => {

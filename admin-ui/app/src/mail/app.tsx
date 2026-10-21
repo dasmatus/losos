@@ -300,9 +300,12 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
   // /mail?to=<address> (a contact's Mail button) opens a message to them.
   // The query goes once handled, so a reload does not open it again.
   React.useEffect(() => {
-    const to = new URLSearchParams(window.location.search).get("to");
-    if (to === null || to.trim() === "") return;
-    setDraft({ to: [to.trim()], cc: [], subject: "", text: "" });
+    const to = new URLSearchParams(window.location.search)
+      .getAll("to")
+      .map((a) => a.trim())
+      .filter((a) => a !== "");
+    if (to.length === 0) return;
+    setDraft({ to, cc: [], subject: "", text: "" });
     window.history.replaceState(window.history.state, "", window.location.pathname);
   }, []);
 
