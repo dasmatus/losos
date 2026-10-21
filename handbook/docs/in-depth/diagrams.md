@@ -32,6 +32,12 @@ as the simulator draws it.
   callouts, code, links, `**bold**`, `*italic*`, `~~struck~~` and
   `==marked==`. Double-click a card to edit it; Escape or a click outside
   ends the edit.
+- **@ tags.** Type `@` in a card for a list of the people on the box and
+  the files in your LosOS Cloud. A person goes in as their sign-in name,
+  `@eva`, and the card shows it with their picture. A file goes in as a
+  link, `[@plan.canvas](/diagrams?file=…)`, that opens a diagram in
+  Diagrams and any other file in its folder in LosOS Cloud. Obsidian reads
+  both as plain text and a link.
 - **Arrows.** Drag from one of the four handles on a card's sides onto
   another card, or onto empty canvas for a new card there. An arrow takes a
   label, a route (straight, square or around the cards), a dotted or dashed

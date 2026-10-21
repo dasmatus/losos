@@ -18,6 +18,7 @@
  * set through React's style prop (CSSOM). */
 
 import * as React from "react";
+import { useMentions } from "@/components/mention-picker";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import type { CanvasEdge, CanvasNode, Side } from "../core";
@@ -205,6 +206,9 @@ function Editor({ n, onDone }: { n: CanvasNode; onDone: (text: string) => void }
     onDone(text);
   };
   const t = useT();
+  // Typing @ offers people and files (components/mention-picker.tsx).
+  const area = React.useRef<HTMLTextAreaElement>(null);
+  const mentions = useMentions(area, setText);
   return n.type === "link" ? (
     <input
       className="dg-editor dg-editor-line"
@@ -219,19 +223,32 @@ function Editor({ n, onDone }: { n: CanvasNode; onDone: (text: string) => void }
       }}
     />
   ) : (
-    <textarea
-      className="dg-editor"
-      autoFocus
-      value={text}
-      aria-label={t("dg.edit.text")}
-      onFocus={(e) => e.currentTarget.setSelectionRange(text.length, text.length)}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={finish}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) finish();
-      }}
-    />
+    <>
+      <textarea
+        ref={area}
+        className="dg-editor"
+        autoFocus
+        value={text}
+        aria-label={t("dg.edit.text")}
+        aria-autocomplete="list"
+        onFocus={(e) => e.currentTarget.setSelectionRange(text.length, text.length)}
+        onChange={(e) => {
+          setText(e.target.value);
+          mentions.sync();
+        }}
+        onSelect={mentions.sync}
+        onBlur={finish}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (mentions.onKeyDown(e)) {
+            e.preventDefault();
+            return;
+          }
+          if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) finish();
+        }}
+      />
+      {mentions.picker}
+    </>
   );
 }
 

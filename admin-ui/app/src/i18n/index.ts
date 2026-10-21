@@ -19,6 +19,7 @@ import diagrams from "./diagrams";
 import lab from "./lab";
 import look from "./look";
 import mail from "./mail";
+import mention from "./mention";
 import machines from "./machines";
 import manage from "./manage";
 import notes from "./notes";
@@ -63,6 +64,7 @@ export const MESSAGES = {
   ...pins,
   ...manage,
   ...mail,
+  ...mention,
   ...games,
 };
 
