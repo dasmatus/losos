@@ -13,12 +13,15 @@ Zeichenfläche. Seine Dateien sind JSON Canvas, das Format von Obsidian
 Canvas, sodass eine `.canvas`-Datei zwischen beiden wandert, ohne etwas zu
 verlieren. Es kennt auch LosOS. Ein Netzwerk, das du zeichnest, hat seinen
 eigenen Verkehr, und eine Karte kann für eine Maschine stehen, die du im
-Mesh bestellt hast. Jede Box liefert es unter `/diagrams/` aus, in der
-Seitenleiste der Administration unter **Diagramme**, und wie die übrigen
-Administrationsseiten antwortet es nur im lokalen Netz. Die alte Adresse
-`/lab/` leitet zur neuen weiter.
+Mesh bestellt hast. Es ist ein Bildschirm der Administrationsoberfläche
+unter `/diagrams`, in der Seitenleiste unter **Diagramme**, aufgebaut wie
+LosOS Mail: die Überschrift mit **Neues Diagramm** daneben, eine Reihe
+Schaltflächen für die Ansichten mit der Aufbauauswahl am Ende und eine Karte
+mit den Werkzeugen, der Zeichenfläche, der Ablage und dem Inspektor. Wie die
+übrige Administrationsoberfläche antwortet es nur im lokalen Netz. Die alte
+Adresse `/lab/` leitet zur neuen weiter.
 
-Die obere Leiste wechselt zwischen drei Ansichten eines Dokuments:
+Die Reihe unter der Überschrift wechselt zwischen drei Ansichten eines Dokuments:
 **Diagramm**, die Zeichenfläche, und **Logisch** und **Physisch**, das
 Netzwerk darin, wie der Simulator es zeichnet.
 
@@ -57,7 +60,7 @@ Netzwerk darin, wie der Simulator es zeichnet.
   Computer, und beide bearbeiten ein Diagramm. LosOS Cloud hält es im
   selben Live-Raum wie eine Textdatei und schreibt jede Änderung einen
   Moment später in die Datei, es gibt also nichts zu speichern. In der
-  oberen Leiste sind die Gesichter aller, die es offen haben, und Zeiger,
+  Werkzeugreihe über der Zeichenfläche sind die Gesichter aller, die es offen haben, und Zeiger,
   Name und Auswahl jeder Person erscheinen auf der Zeichenfläche der
   anderen in ihrer Farbe. Rückgängig nimmt deine eigenen Änderungen zurück,
   nicht die von anderen. Teile eine `.canvas`-Datei mit jemandem auf einer
@@ -134,21 +137,24 @@ Nutzung auf; und die Administrationsrouten lehnen Loopback ab.
 
 | | Auf der Box (`/diagrams/`) | Gehostet |
 | --- | --- | --- |
-| Gebaut von | `nix build .#losos-admin-ui` (Diagramme ist seine zweite Seite) | `admin-ui/lab/engine/build.sh` in `lab.yml` |
+| Gebaut von | `nix build .#losos-admin-ui` (Diagramme ist ein Bildschirm davon) | `admin-ui/lab/engine/build.sh` in `lab.yml` |
 | Konsolen | simuliert, oder echte Gäste unter libvirt, wenn die Box den Helfer ausführt | echte x86_64-Gäste unter libvirt auf deinem Rechner, sonst qemu-wasm |
 | Braucht | nichts außer der Box | einen Cross-Origin-isolierten Host (COOP + COEP) |
 
-Diagramme ist Teil der Administrationsoberfläche: `admin-ui/app/diagrams/index.html`
-ist eine zweite Vite-Seite neben den Administrationsseiten, gebaut aus
-denselben Komponenten, derselben Palette, denselben Icons und Sprachen, und
-wird unter `/diagrams/` ausgeliefert. Alles, was nicht Zeichnen ist, läuft in
+Diagramme ist Teil der Administrationsoberfläche: `src/lab/app.tsx` ist der
+Bildschirm unter `/diagrams`, ein eigener Teil des Codes, der beim ersten
+Öffnen geladen wird, gebaut aus denselben Komponenten, derselben Palette,
+denselben Icons und Sprachen wie jeder Bereich. Alles, was nicht Zeichnen ist, läuft in
 WebAssembly: Modell, Simulator, Uhr, Konsolen und Seiten sind ein Rust-Crate,
 `admin-ui/lab/core` (`losos-lab-core`), das nix vor dem eigentlichen Build
-der Administrationsoberfläche für wasm32 baut. Die Seite läuft unter einer
-eigenen Content Security Policy: der der Administrationsseite plus
-`'wasm-unsafe-eval'`, damit der Browser den Kern kompilieren darf.
+der Administrationsoberfläche für wasm32 baut. Die Content Security Policy
+der Administrationsseite enthält `'wasm-unsafe-eval'`, damit der Browser den
+Kern kompilieren darf; eine Seite darf damit WebAssembly kompilieren und
+nichts weiter, und Skripte kommen weiterhin nur aus den eigenen Dateien der
+Box.
 
-Die gehostete Kopie ist dieselbe Seite, gebaut mit `VITE_LAB_HOSTED=1`, plus
+Die gehostete Kopie ist derselbe Bildschirm auf einer eigenen Seite
+(`admin-ui/app/diagrams/index.html`, nur mit `VITE_LAB_HOSTED=1` gebaut), plus
 [qemu-wasm](https://github.com/ktock/qemu-wasm): QEMU nach WebAssembly
 kompiliert, sodass jede Konsole ein echter Linux-Gast im Browser-Tab ist.
 Boxen und Edges booten ein busybox als Ersatz für LosOS, und die
@@ -215,7 +221,7 @@ erlaubt, den Kern zu kompilieren.
 Um eine Zeichenfläche zu wählen, häng `?canvas=svg`, `?canvas=webgpu`
 oder `?canvas=webgl2` an die Adresse an. Der Local-Storage-Schlüssel
 `losos-lab-canvas` nimmt dieselben Werte an und behält die Wahl in diesem
-Browser. Das Engine-Abzeichen in der oberen Leiste nennt die Zeichenfläche
+Browser. Das Engine-Abzeichen in der Werkzeugreihe nennt die Zeichenfläche
 in seinem Tooltip.
 :::
 
@@ -297,7 +303,7 @@ So nutzt du ihn neben virt-manager auf deinem eigenen PC:
    `127.0.0.1` berührt. Die Seite merkt sich die Wahl; `?libvirt=0` vergisst
    sie.
 
-Das Abzeichen in der oberen Leiste zeigt dann "KVM via libvirt" (oder "QEMU
+Das Abzeichen in der Werkzeugreihe zeigt dann "KVM via libvirt" (oder "QEMU
 via libvirt (no KVM)" auf einem Rechner ohne KVM), und jede Konsole sagt,
 was ihren Gast ausführt: libvirt oder "QEMU in this tab". Läuft der Helfer
 nicht oder lehnt libvirt einen Gast ab, bootet dieser Gast wie bisher unter

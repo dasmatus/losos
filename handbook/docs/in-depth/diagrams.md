@@ -12,13 +12,16 @@ and network drawings, written as cards on a canvas. Its files are JSON
 Canvas, the format Obsidian Canvas uses, so a `.canvas` file moves between
 the two without losing anything. It also knows LosOS. A network you draw
 runs its own traffic, and a card can stand for a machine you ordered on the
-mesh. Every box serves it at `/diagrams/`, under **Diagrams** in the admin
-sidebar, and like the rest of the admin pages it answers only on the local
+mesh. It is a screen of the admin UI at `/diagrams`, under **Diagrams** in
+the sidebar, laid out the way LosOS Mail is: the heading with **New
+diagram** beside it, a row of buttons for the views with the setup picker at
+its end, and one card holding the tools, the canvas, the tray and the
+inspector. Like the rest of the admin UI it answers only on the local
 network. The old address, `/lab/`, sends you on to the new one.
 
-The top bar switches between three views of one document: **Diagram**, the
-canvas, and **Logical** and **Physical**, the network in it as the
-simulator draws it.
+The row under the heading switches between three views of one document:
+**Diagram**, the canvas, and **Logical** and **Physical**, the network in it
+as the simulator draws it.
 
 ## The diagram
 
@@ -50,7 +53,7 @@ simulator draws it.
   same file in another tab or on another computer and both edit one
   diagram. LosOS Cloud keeps it in the same live room as a text file and
   writes every change to the file a moment later, so there is nothing to
-  save. The faces of everyone who has it open are in the top bar, and each
+  save. The faces of everyone who has it open are in the tool row above the canvas, and each
   person's pointer, name and selection show on the others' canvas in that
   person's colour. Undo takes back your own changes, not someone else's.
   Share a `.canvas` file with someone on another box and it opens in
@@ -117,20 +120,23 @@ takes unknown boxes on first use; and the admin routes refuse loopback.
 
 | | On the box (`/diagrams/`) | Hosted |
 | --- | --- | --- |
-| Built by | `nix build .#losos-admin-ui` (Diagrams is its second page) | `admin-ui/lab/engine/build.sh` in `lab.yml` |
+| Built by | `nix build .#losos-admin-ui` (Diagrams is a screen of it) | `admin-ui/lab/engine/build.sh` in `lab.yml` |
 | Consoles | simulated, or real guests under libvirt when the box runs the helper | real x86_64 guests under libvirt on your computer, else qemu-wasm |
 | Needs | nothing beyond the box | a cross-origin isolated host (COOP + COEP) |
 
-Diagrams is part of the admin UI: `admin-ui/app/diagrams/index.html` is a second
-Vite page beside the admin pages, built from the same components, palette,
-icons and languages, and served at `/diagrams/`. Everything that is not drawing
+Diagrams is part of the admin UI: `src/lab/app.tsx` is the screen at
+`/diagrams`, its own chunk, fetched the first time someone opens it, and
+built from the same components, palette, icons and languages as every pane.
+Everything that is not drawing
 runs in WebAssembly: the model, the simulator, the clock, the consoles and
 the pages are a Rust crate, `admin-ui/lab/core` (`losos-lab-core`), which
-nix builds for wasm32 before the admin UI's own build. The page runs under
-a content security policy of its own: the admin page's, plus
-`'wasm-unsafe-eval'` so the browser may compile the core.
+nix builds for wasm32 before the admin UI's own build. The admin page's
+content security policy carries `'wasm-unsafe-eval'` so the browser may
+compile the core; that lets a page compile WebAssembly and nothing more, and
+script still comes only from the box's own files.
 
-The hosted copy is the same page built with `VITE_LAB_HOSTED=1`, plus
+The hosted copy is the same screen on a page of its own
+(`admin-ui/app/diagrams/index.html`, built only with `VITE_LAB_HOSTED=1`), plus
 [qemu-wasm](https://github.com/ktock/qemu-wasm): QEMU compiled to
 WebAssembly, so every console is a real Linux guest in the browser tab.
 Boxes and edges boot a busybox stand-in for LosOS, and the network gear
@@ -190,7 +196,7 @@ because `'wasm-unsafe-eval'` already lets the browser compile the core.
 :::tip[Pick the canvas yourself]
 To pick a canvas, add `?canvas=svg`, `?canvas=webgpu` or `?canvas=webgl2` to
 the address. The local storage key `losos-lab-canvas` takes the same values
-and keeps the choice in that browser. The engine badge in the top bar names
+and keeps the choice in that browser. The engine badge in the tool row names
 the canvas in its tooltip.
 :::
 
@@ -264,7 +270,7 @@ To use it next to virt-manager on your own PC:
    network access the moment it touches `127.0.0.1`. The page remembers the
    choice; `?libvirt=0` forgets it.
 
-The badge in the top bar then says "KVM via libvirt" (or "QEMU via libvirt
+The badge in the tool row then says "KVM via libvirt" (or "QEMU via libvirt
 (no KVM)" on a computer without it), and each console says what runs its
 guest: libvirt, or "QEMU in this tab". If the helper is not running, or
 libvirt refuses a guest, that guest boots under qemu-wasm as before, and the

@@ -143,10 +143,12 @@ and is never served or built by nix.
   (`backend/src/devices.rs`); `losos git credential` is git's helper.
 - LosOS Diagrams at `/diagrams/` (sidebar entry Diagrams; `/lab/` 301s
   there; internal names stay `lab`: the section, `/api/lab/*`, the crates,
-  `src/lab/`): the admin UI's second Vite page (`admin-ui/app/diagrams/`,
-  `src/lab/`) over a Rust core in WebAssembly (`admin-ui/lab/core`,
-  `losos-lab-core`, contract in its README), under its own CSP arm (the
-  admin one plus `'wasm-unsafe-eval'`). Its default view is a JSON Canvas
+  `src/lab/`): a screen of the admin SPA at `/diagrams`, laid out like Mail
+  (`src/lab/app.tsx`, a lazy chunk; the shell widens on that route) over a
+  Rust core in WebAssembly (`admin-ui/lab/core`, `losos-lab-core`, contract
+  in its README). The admin CSP carries `'wasm-unsafe-eval'` for it; the
+  hosted copy alone builds `admin-ui/app/diagrams/index.html`
+  (`VITE_LAB_HOSTED=1`). Its default view is a JSON Canvas
   1.0 editor (`core/src/canvas/`, `src/lab/canvas/`): files are `.canvas`
   with Advanced Canvas `styleAttributes`, unknown keys kept on save;
   devices are cards with `losos.device`, cables edges with `losos.link`,

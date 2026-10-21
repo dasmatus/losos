@@ -1,18 +1,30 @@
 /* LosOS Diagrams: boot (the core, the engine probe, "This box", the last
  * diagram, LosOS Cloud and the machines), the frame loop, the keyboard, and
- * the workbench layout: the top bar, the canvas (with the traffic panel
- * under it in the network views), the inspector docked right (a sheet on a
- * phone) and the tray along the bottom. A `?file=` address opens that
- * diagram from LosOS Cloud. */
+ * the layout. On the box it is a screen of the admin UI at /diagrams, inside
+ * its top bar and sidebar the way LosOS Mail is: the heading with a button
+ * for a new diagram, the three views as a row of buttons with the setup
+ * picker at its end, and one card holding the tools, the canvas (with the
+ * traffic panel under it in the network views), the tray along its bottom
+ * and the inspector on its right (a sheet on a narrower screen). The hosted
+ * copy (main.tsx) is the same screen on a page of its own. A `?file=`
+ * address opens that diagram from LosOS Cloud.
+ *
+ * Boot runs once per page. Leaving the screen and coming back finds the
+ * core, the engine and the open diagram as they were; the consoles keep
+ * running in between. */
 
 import * as React from "react";
+import { Card } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { Confirmations } from "@/components/ui/toaster";
+import { PaneHeader } from "@/screens/settings/rows";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { confirm, dismissConfirmation } from "@/components/ui/use-toast";
 import { t as translate } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
+import "./lab.css";
 import { Actions, actions, setActions } from "./actions";
 import { Canvas } from "./canvas";
 import { probeCloud } from "./canvas/cloud";
@@ -33,7 +45,7 @@ import { Splash, type SplashStep } from "./splash";
 import { LabStore, setStore, store, useLab } from "./store";
 import { readOrdering } from "./order";
 import { readThisBox } from "./thisbox";
-import { TopBar } from "./topbar";
+import { NewDiagramButton, SetupPicker, Toolbar, useSummary, ViewTabs } from "./toolbar";
 import { EventList, SimBar } from "./traffic";
 import { Tray } from "./tray";
 
@@ -139,8 +151,7 @@ async function bootOnce(step: (s: SplashStep) => void): Promise<void> {
   });
 }
 
-function usePhone(): boolean {
-  const query = "(max-width: 900px)";
+function useMedia(query: string): boolean {
   return React.useSyncExternalStore(
     (fn) => {
       const m = window.matchMedia(query);
@@ -151,11 +162,14 @@ function usePhone(): boolean {
   );
 }
 
+/** The card's inside: tools, canvas, tray and inspector. */
 function Workbench() {
   const s = useLab();
   const t = useT();
-  const phone = usePhone();
-  s.phone = phone;
+  // The inspector sits beside the canvas once the card is wide enough for
+  // both; below that it is a sheet, and a tap on a card opens it.
+  const side = useMedia("(min-width: 1280px)");
+  s.phone = !side;
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -178,91 +192,172 @@ function Workbench() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const cols =
-    s.ui.wide === "console"
-      ? "min-[901px]:grid-cols-[minmax(0,1fr)_min(560px,44vw)]"
-      : s.ui.wide === "desk"
-        ? "min-[901px]:grid-cols-[minmax(0,1fr)_min(860px,62vw)]"
-        : "min-[901px]:grid-cols-[minmax(0,1fr)_380px]";
+  const width = s.ui.wide === "console" ? "w-[min(34rem,55%)]" : s.ui.wide === "desk" ? "w-[min(46rem,75%)]" : "w-80";
+  const inspector = s.ui.view === "canvas" ? <DiagramInspector /> : <Inspector />;
 
   return (
-    <div
-      className={cn(
-        "grid min-h-full grid-cols-1 grid-rows-[auto_62vh_auto] [grid-template-areas:'top'_'work'_'tray']",
-        "min-[901px]:h-full min-[901px]:grid-rows-[auto_1fr_auto] min-[901px]:[grid-template-areas:'top_top'_'work_side'_'tray_side']",
-        cols,
-      )}
-      data-testid="lab"
-    >
-      <TopBar phone={phone} onDetails={() => s.setUi({ sheet: true })} />
-      <main className="relative grid min-h-0 min-w-0 grid-cols-1 grid-rows-[minmax(0,1fr)_auto] [grid-area:work]">
-        <Canvas />
-        {s.ui.view !== "canvas" && (
-          <section
-            aria-label={t("lab.sim.label")}
-            className={cn("flex min-h-0 flex-col border-t border-line bg-surface", s.ui.folded ? "h-auto" : "h-[210px]")}
-          >
-            <SimBar />
-            <EventList />
-          </section>
+    <>
+      <Toolbar details={side ? undefined : () => s.setUi({ sheet: true })} />
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="relative grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)]">
+            <Canvas />
+          </div>
+          {s.ui.view !== "canvas" && (
+            <section
+              aria-label={t("lab.sim.label")}
+              className={cn("flex min-h-0 flex-col border-t border-line bg-surface", s.ui.folded ? "h-auto" : "h-[190px]")}
+            >
+              <SimBar />
+              <EventList />
+            </section>
+          )}
+          <Tray />
+        </div>
+        {side && (
+          <aside aria-label={t("lab.inspector.label")} className={cn("flex min-h-0 shrink-0 flex-col overflow-y-auto border-l border-line bg-surface", width)}>
+            {inspector}
+          </aside>
         )}
-      </main>
-      {phone ? (
+      </div>
+      {!side && (
         <Sheet open={s.ui.sheet} onOpenChange={(open) => s.setUi({ sheet: open })}>
           <SheetContent side="right" closeLabel={t("lab.sheet.close")} className="w-full max-w-[440px] gap-0 bg-surface p-0 pt-10" data-testid="inspector-sheet">
             <SheetTitle className="sr-only">{t("lab.sheet.title")}</SheetTitle>
-            <div className="flex min-h-0 flex-1 flex-col overflow-auto">{s.ui.view === "canvas" ? <DiagramInspector /> : <Inspector />}</div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-auto">{inspector}</div>
           </SheetContent>
         </Sheet>
-      ) : (
-        <aside aria-label={t("lab.inspector.label")} className="flex min-h-0 min-w-0 flex-col border-l border-line bg-surface [grid-area:side]">
-          {s.ui.view === "canvas" ? <DiagramInspector /> : <Inspector />}
-        </aside>
       )}
-      <Tray />
+    </>
+  );
+}
+
+type Boot = { ready: boolean; step: SplashStep; error?: string };
+
+/* The boot's progress, for whichever screen is showing. */
+let progress: Boot = { ready: false, step: "canvas" };
+const watchers = new Set<() => void>();
+function setProgress(p: Partial<Boot>): void {
+  progress = { ...progress, ...p };
+  for (const fn of watchers) fn();
+}
+function startBoot(): void {
+  boot((step) => setProgress({ step })).then(
+    () => setProgress({ ready: true }),
+    (e: unknown) => {
+      console.error(e);
+      setProgress({
+        step: "failed",
+        error: e instanceof CoreError ? translate("lab.splash.coreBroken", { detail: e.message }) : translate("lab.splash.failed", { detail: String(e) }),
+      });
+    },
+  );
+}
+function useBoot(): Boot {
+  React.useEffect(startBoot, []);
+  return React.useSyncExternalStore(
+    (fn) => {
+      watchers.add(fn);
+      return () => watchers.delete(fn);
+    },
+    () => progress,
+  );
+}
+
+function Heading() {
+  const t = useT();
+  const summary = useSummary();
+  return (
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <PaneHeader title={t("dg.title")} summary={summary} />
+      </div>
+      <NewDiagramButton />
     </div>
   );
 }
 
-export function LabRoot() {
-  const [step, setStep] = React.useState<SplashStep>("canvas");
-  const [ready, setReady] = React.useState(false);
-  const [gone, setGone] = React.useState(false);
-  const [removed, setRemoved] = React.useState(false);
-  const [error, setError] = React.useState<string>();
+/** While the core loads: the card with what it is doing, or why it stopped. */
+function Loading({ step, error }: { step: SplashStep; error?: string }) {
+  const t = useT();
+  const msg = step === "failed" ? error : step === "qemu" ? t("lab.splash.qemu") : t("dg.loading");
+  return (
+    <div role="status" className="m-auto flex max-w-md flex-col items-center gap-3 p-8 text-center text-[13px] text-muted" data-testid="lab-splash">
+      {step !== "failed" && <Spinner />}
+      <span className={cn(step === "failed" && "text-crit")}>{msg}</span>
+    </div>
+  );
+}
 
-  React.useEffect(() => {
-    const shown = performance.now();
-    let cancelled = false;
-    boot(setStep).then(
-      () => {
-        if (cancelled) return;
-        setReady(true);
-        window.setTimeout(
-          () => {
-            setGone(true);
-            window.setTimeout(() => setRemoved(true), 500);
-          },
-          Math.max(0, SPLASH_MIN_MS - (performance.now() - shown)),
-        );
-      },
-      (e: unknown) => {
-        console.error(e);
-        setStep("failed");
-        setError(e instanceof CoreError ? translate("lab.splash.coreBroken", { detail: e.message }) : translate("lab.splash.failed", { detail: String(e) }));
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+/** The screen: heading, views and picker, the card. */
+function Screen({ boot: b }: { boot: Boot }) {
+  const t = useT();
   return (
     <TooltipProvider>
-      {ready && <Workbench />}
-      {!removed && <Splash step={step} gone={gone} error={error} />}
-      {/* below the toolbar, which reaches the right edge on a wide screen */}
-      <Confirmations className="top-16 max-sm:top-16" />
+      <div className="flex flex-col" data-testid="lab">
+        {b.ready ? (
+          <>
+            <Heading />
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <ViewTabs />
+              <SetupPicker className="w-full sm:ml-auto sm:w-64" />
+            </div>
+          </>
+        ) : (
+          <PaneHeader title={t("dg.title")} summary={t("dg.summary.local")} />
+        )}
+        <Card className="flex h-[min(54rem,calc(100dvh-15rem))] min-h-[30rem] flex-col overflow-hidden">
+          {b.ready ? <Workbench /> : <Loading step={b.step} error={b.error} />}
+        </Card>
+      </div>
     </TooltipProvider>
+  );
+}
+
+/** /diagrams in the admin UI (App.tsx), inside its top bar and sidebar. */
+export default function DiagramsScreen() {
+  const b = useBoot();
+  React.useEffect(() => {
+    const before = document.title;
+    document.title = "LosOS Diagrams";
+    return () => {
+      document.title = before;
+    };
+  }, []);
+  return <Screen boot={b} />;
+}
+
+/** The hosted copy's page (main.tsx): the same screen under a plain header,
+ *  with the splash over it while qemu-wasm loads. */
+export function LabRoot() {
+  const b = useBoot();
+  const [shown] = React.useState(() => performance.now());
+  const [gone, setGone] = React.useState(false);
+  const [removed, setRemoved] = React.useState(false);
+  React.useEffect(() => {
+    if (!b.ready) return;
+    const out = window.setTimeout(
+      () => {
+        setGone(true);
+        window.setTimeout(() => setRemoved(true), 500);
+      },
+      Math.max(0, SPLASH_MIN_MS - (performance.now() - shown)),
+    );
+    return () => window.clearTimeout(out);
+  }, [b.ready, shown]);
+  return (
+    <>
+      <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
+        <div className="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-3 text-[17px] font-semibold sm:px-6">
+          <img src={logoUrl} alt="" width={26} height={26} className="size-[26px]" />
+          LosOS Diagrams
+        </div>
+      </header>
+      <main className="mx-auto w-full max-w-6xl px-4 pt-5 pb-12 sm:px-6">
+        <Screen boot={b} />
+      </main>
+      {!removed && <Splash step={b.step} gone={gone} error={b.error} />}
+      <Confirmations className="top-16 max-sm:top-16" />
+    </>
   );
 }

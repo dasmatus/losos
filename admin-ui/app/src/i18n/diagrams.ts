@@ -6,6 +6,23 @@ import { defineMessages } from "./define";
 export default defineMessages({
   // ── views and the top bar ──
   "dg.view.canvas": { en: "Diagram", sk: "Diagram", de: "Diagramm" },
+  "dg.title": { en: "Diagrams", sk: "Diagramy", de: "Diagramme" },
+  "dg.summary.local": {
+    en: "Cards, arrows and the devices of a network on one canvas. Files are .canvas, as in Obsidian.",
+    sk: "Karty, šípky a zariadenia siete na jednom plátne. Súbory sú .canvas ako v Obsidiane.",
+    de: "Karten, Pfeile und die Geräte eines Netzwerks auf einer Fläche. Dateien sind .canvas wie in Obsidian.",
+  },
+  "dg.summary.cloud": {
+    en: "{path} in LosOS Cloud. Everyone who has it open edits it with you.",
+    sk: "{path} v LosOS Cloud. Každý, kto ho má otvorený, ho upravuje s vami.",
+    de: "{path} in LosOS Cloud. Alle, die es geöffnet haben, bearbeiten es mit dir.",
+  },
+  "dg.summary.shared": {
+    en: "{name}, shared by {owner} on {box}.",
+    sk: "{name}, zdieľa {owner} na {box}.",
+    de: "{name}, geteilt von {owner} auf {box}.",
+  },
+  "dg.loading": { en: "Loading the diagram…", sk: "Načítava sa diagram…", de: "Das Diagramm wird geladen…" },
   "dg.cloud.opener": { en: "Open in LosOS Diagrams", sk: "Otvoriť v LosOS Diagrams", de: "In LosOS Diagrams öffnen" },
   "dg.file.menu": { en: "File", sk: "Súbor", de: "Datei" },
   "dg.file.new": { en: "New diagram", sk: "Nový diagram", de: "Neues Diagramm" },

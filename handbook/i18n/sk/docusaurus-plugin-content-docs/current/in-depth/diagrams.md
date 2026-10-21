@@ -12,12 +12,14 @@ mapy, tabule a nákresy sietí, písané ako karty na plátne. Jeho súbory sú
 JSON Canvas, formát, ktorý používa Obsidian Canvas, takže súbor `.canvas`
 prejde medzi nimi bez straty. Pozná aj LosOS. Sieť, ktorú nakreslíte, má
 vlastnú prevádzku a karta môže zastupovať stroj, ktorý ste si objednali v
-sieti mesh. Každé zariadenie ho podáva na `/diagrams/`, v bočnom paneli
-administrácie pod položkou **Diagramy**, a ako ostatné administračné
-stránky odpovedá iba v lokálnej sieti. Stará adresa `/lab/` vás pošle na
-novú.
+sieti mesh. Je to obrazovka administračného rozhrania na `/diagrams`, v
+bočnom paneli pod položkou **Diagramy**, rozložená ako LosOS Mail: nadpis s
+tlačidlom **Nový diagram** vedľa neho, rad tlačidiel pre pohľady s výberom
+zostavy na jeho konci a jedna karta s nástrojmi, plátnom, zásobníkom a
+inšpektorom. Ako zvyšok administračného rozhrania odpovedá iba v lokálnej
+sieti. Stará adresa `/lab/` vás pošle na novú.
 
-Horný panel prepína medzi tromi pohľadmi na jeden dokument: **Diagram**,
+Rad pod nadpisom prepína medzi tromi pohľadmi na jeden dokument: **Diagram**,
 teda plátno, a **Logický** a **Fyzický**, teda sieť v ňom tak, ako ju
 kreslí simulátor.
 
@@ -50,7 +52,7 @@ kreslí simulátor.
 - **Úpravy spolu.** Diagram otvorený z LosOS Cloud je živý: otvorte ten istý
   súbor na inej karte alebo inom počítači a obaja upravujete jeden diagram.
   LosOS Cloud ho drží v tej istej živej miestnosti ako textový súbor a každú
-  zmenu o chvíľu zapíše do súboru, takže nie je čo ukladať. V hornej lište
+  zmenu o chvíľu zapíše do súboru, takže nie je čo ukladať. V rade nástrojov nad plátnom
   sú tváre všetkých, ktorí ho majú otvorený, a ukazovateľ, meno a výber
   každého sa ostatným zobrazujú na plátne v jeho farbe. Späť vráti vaše
   vlastné zmeny, nie cudzie. Zdieľajte súbor `.canvas` s niekým na inom
@@ -121,20 +123,23 @@ loopback.
 
 | | Na zariadení (`/diagrams/`) | Hostovaná |
 | --- | --- | --- |
-| Zostavuje ju | `nix build .#losos-admin-ui` (Diagramy sú jeho druhá stránka) | `admin-ui/lab/engine/build.sh` v `lab.yml` |
+| Zostavuje ju | `nix build .#losos-admin-ui` (Diagramy sú jeho obrazovka) | `admin-ui/lab/engine/build.sh` v `lab.yml` |
 | Konzoly | simulované, alebo skutočné hosty pod libvirt, keď zariadenie spúšťa pomocníka | skutočné x86_64 hosty pod libvirt na vašom počítači, inak qemu-wasm |
 | Potrebuje | nič okrem zariadenia | cross-origin izolovaný hostiteľ (COOP + COEP) |
 
-Diagramy sú súčasťou administračného rozhrania: `admin-ui/app/diagrams/index.html` je
-druhá stránka Vite vedľa administračných stránok, postavená z tých istých
-komponentov, palety, ikon a jazykov, a podávaná na `/diagrams/`. Všetko, čo nie je
+Diagramy sú súčasťou administračného rozhrania: `src/lab/app.tsx` je
+obrazovka na `/diagrams`, vlastný kúsok kódu, ktorý sa stiahne, keď ju
+niekto prvýkrát otvorí, postavená z tých istých komponentov, palety, ikon a
+jazykov ako každý panel. Všetko, čo nie je
 kreslenie, beží vo WebAssembly: model, simulátor, hodiny, konzoly a stránky
 sú Rust crate `admin-ui/lab/core` (`losos-lab-core`), ktorý nix zostaví pre
-wasm32 ešte pred vlastným zostavením administračného rozhrania. Stránka beží
-pod vlastnou content security policy: tou z administračnej stránky plus
-`'wasm-unsafe-eval'`, aby prehliadač smel skompilovať jadro.
+wasm32 ešte pred vlastným zostavením administračného rozhrania. Content
+security policy administračnej stránky obsahuje `'wasm-unsafe-eval'`, aby
+prehliadač smel skompilovať jadro; stránka smie skompilovať WebAssembly a
+nič viac, a skripty stále prichádzajú iba z vlastných súborov zariadenia.
 
-Hostovaná kópia je tá istá stránka zostavená s `VITE_LAB_HOSTED=1`, plus
+Hostovaná kópia je tá istá obrazovka na vlastnej stránke
+(`admin-ui/app/diagrams/index.html`, zostavenej iba s `VITE_LAB_HOSTED=1`), plus
 [qemu-wasm](https://github.com/ktock/qemu-wasm): QEMU skompilované do
 WebAssembly, takže každá konzola je skutočný linuxový host v karte
 prehliadača. Zariadenia a edge bootujú busybox ako náhradu za LosOS a sieťové
@@ -195,8 +200,8 @@ pretože `'wasm-unsafe-eval'` už prehliadaču dovoľuje skompilovať jadro.
 :::tip[Plátno si vyberte sami]
 Ak chcete plátno vybrať, pridajte k adrese `?canvas=svg`, `?canvas=webgpu`
 alebo `?canvas=webgl2`. Kľúč lokálneho úložiska `losos-lab-canvas` berie tie
-isté hodnoty a uchová voľbu v danom prehliadači. Odznak enginu v hornej
-lište uvádza plátno vo svojom tooltipe.
+isté hodnoty a uchová voľbu v danom prehliadači. Odznak enginu v rade
+nástrojov uvádza plátno vo svojom tooltipe.
 :::
 
 ## Hosty pod libvirt {#guests-under-libvirt}
@@ -270,7 +275,7 @@ Ako ho použiť vedľa virt-managera na vlastnom PC:
    lokálnej sieti v okamihu, keď sa dotkne `127.0.0.1`. Stránka si voľbu
    zapamätá; `?libvirt=0` ju zabudne.
 
-Odznak v hornej lište potom hovorí "KVM via libvirt" (alebo "QEMU via
+Odznak v rade nástrojov potom hovorí "KVM via libvirt" (alebo "QEMU via
 libvirt (no KVM)" na počítači bez neho) a každá konzola uvádza, čo spúšťa
 jej host: libvirt, alebo "QEMU in this tab". Ak pomocník nebeží alebo
 libvirt host odmietne, ten host nabootuje pod qemu-wasm ako predtým a stránka to
