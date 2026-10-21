@@ -256,7 +256,7 @@ pkgs.testers.nixosTest {
     with subtest("Matus has a profile picture; Eva keeps the colour her name gives"):
         code, body = call(
             mattbox, "PUT", "/api/account/picture", sign_in(mattbox),
-            extra=f"-H 'Content-Type: image/png' --data-binary @${picture}",
+            extra="-H 'Content-Type: image/png' --data-binary @${picture}",
         )
         assert code == 200, (code, body)
         assert json.loads(body)["picture"].startswith("/api/profiles/matus/picture?v="), body
