@@ -195,21 +195,6 @@ pub trait Losos {
     /// `routes.rs`). Root-only: it lets a local edge route this box's
     /// custom domains for a few hours.
     fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()>;
-    // ── The owner's look ────────────────────────────────────────────────
-    // A background picture and the widgets written by hand
-    // (`crate::look`). Appliance state beside `state.json`, never a
-    // rebuild; the commands are pure over these five effects.
-    /// The look document, or [`crate::look::Look::default`] when there is
-    /// none yet or it does not parse — lenient the way `load_state` is.
-    fn load_look(&mut self) -> anyhow::Result<crate::look::Look>;
-    fn save_look(&mut self, look: &crate::look::Look) -> anyhow::Result<()>;
-    /// Keep the uploaded picture's bytes beside the document.
-    fn write_background(&mut self, bytes: &[u8]) -> anyhow::Result<()>;
-    /// The uploaded picture, or `None` when there is none on disk.
-    fn read_background(&mut self) -> anyhow::Result<Option<Vec<u8>>>;
-    /// Delete the uploaded picture. Not an error when there is none.
-    fn remove_background(&mut self) -> anyhow::Result<()>;
-
     // ── The sidebar's pins ──────────────────────────────────────────────
     // `crate::pins`: the list beside `state.json`, and the app password
     // lososd lists the owner's LosOS cloud folders with.
@@ -2311,21 +2296,6 @@ mod tests {
             }
             fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()> {
                 self.0.write_relay_pass(pass)
-            }
-            fn load_look(&mut self) -> anyhow::Result<crate::look::Look> {
-                self.0.load_look()
-            }
-            fn save_look(&mut self, look: &crate::look::Look) -> anyhow::Result<()> {
-                self.0.save_look(look)
-            }
-            fn write_background(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
-                self.0.write_background(bytes)
-            }
-            fn read_background(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
-                self.0.read_background()
-            }
-            fn remove_background(&mut self) -> anyhow::Result<()> {
-                self.0.remove_background()
             }
             fn read_options_doc(&mut self) -> anyhow::Result<Option<crate::options::OptionsDoc>> {
                 self.0.read_options_doc()

@@ -1988,7 +1988,7 @@
         "auth": true,
         "in": "{\"backup\": true | false}",
         "out": "{\"erase\": <the erase>}",
-        "note": "Start erasing the box (backend/src/erase.rs): an optional backup, a countdown of `losos.reset.graceMinutes`, then the edge is left (custom domains removed, active listings closed, `/deregister`), the settings are put back, and the box restarts; `losos-factory-wipe.service` deletes the data early in the next boot. 400 for a backup with no bucket; 409 while anything else runs. Audited."
+        "note": "Start erasing the box (backend/src/erase.rs): an optional backup, a countdown of `losos.reset.graceMinutes`, then the edge is left (custom domains removed, a wallet bound to the box's names unbound, active listings closed, `/deregister`), the settings are put back, and the box restarts; `losos-factory-wipe.service` deletes the data early in the next boot. 400 for a backup with no bucket; 409 while anything else runs. Audited."
       },
       "POST /api/erase/cancel": {
         "auth": true,

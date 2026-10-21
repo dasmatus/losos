@@ -166,6 +166,22 @@ als transiente `systemd-run`-Units (`losos-rebuild-<job>`). Ein
 Nach einem Neustart des Daemons hängt er sich wieder an; der kommt vor, weil
 `nixos-rebuild switch` lososd mitten im Rebuild selbst neu startet.
 
+Die Arbeit von lososd wandert in Plugins (`backend/plugins/`). Ein Plugin
+ist eine WebAssembly-Komponente, die die API-Routen aus ihrem Manifest
+beantwortet und von Wasmtime in lososd ausgeführt wird. Sie hat kein WASI:
+Dateien, Programme, systemd-Units, HTTP, Sperren und Timer sind Aufrufe an
+den Host, und lososd prüft jeden gegen das Manifest des Plugins, sodass ein
+Plugin nur die Pfade, Programme und Endpunkte erreicht, die es deklariert.
+Anmeldung, die Bereiche in `backend/sections.json` und D-Bus bleiben in
+lososd. Jeder Aufruf läuft in einer frischen Instanz mit Speichergrenze und
+Frist, sodass ein Plugin, das hängt oder abstürzt, eine 500 kostet und sonst
+nichts. lososd lädt Plugins nur aus `losos.backend.plugins`, einem
+Verzeichnis im Nix-Store (`.#losos-plugins`), und startet nicht, wenn das
+Verzeichnis oder eine Datei darin außerhalb des Stores liegt, beschreibbar
+ist, nicht root gehört oder auf einem beschreibbaren Mount liegt. Das
+Aussehen (Hintergrundbild und Widgets) ist das erste Plugin;
+`nix/tests/plugins.nix` bootet es.
+
 `losos-ctl` ist eine schlanke Fassaden-CLI. Sie behält die alten
 Unterbefehle und die JSON-Ausgabe bei (`state`, `change --mode`, `status`,
 `settings`, `apply` (stdin), `factory-reset`; `--json` bewirkt nichts) und

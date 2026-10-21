@@ -49,6 +49,10 @@ let
   zone = "boxes.losos.dasmat.us";
   password = "Correct-Horse-Battery-9";
 
+  # The store keeps the fixture for as long as its inputs do not change, so
+  # its certificates are valid for a century, not a month after first build.
+  validDays = "36500";
+
   # The root, the edge's identity certificate naming the URL the box uses,
   # and a TLS certificate for that name from a CA the box trusts.
   fixture =
@@ -65,16 +69,16 @@ let
         losos-registrar identity keygen --out $out/edge.key > $out/edge.pub
         losos-registrar identity sign \
           --root-key $out/root.key --public-key "$(cat $out/edge.pub)" \
-          --name "losos test edge" --url ${registrarUrl} --days 30 \
+          --name "losos test edge" --url ${registrarUrl} --days ${validDays} \
           > $out/edge.cert.json
 
-        openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj "/CN=test CA" \
+        openssl req -x509 -newkey rsa:2048 -nodes -days ${validDays} -subj "/CN=test CA" \
           -keyout $out/ca.key -out $out/ca.pem
         openssl req -newkey rsa:2048 -nodes -subj "/CN=${edgeName}" \
           -keyout $out/tls.key -out tls.csr
         printf 'subjectAltName=DNS:${edgeName}\n' > ext
         openssl x509 -req -in tls.csr -CA $out/ca.pem -CAkey $out/ca.key \
-          -CAcreateserial -days 30 -extfile ext -out $out/tls.pem
+          -CAcreateserial -days ${validDays} -extfile ext -out $out/tls.pem
       '';
 
   # Any derivation with the two attributes imageRef reads: no cluster runs
