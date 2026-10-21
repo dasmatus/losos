@@ -26,7 +26,9 @@ src/
   facade.rs       the zbus client the CLI uses
   installer.rs    the installer's pure planner
   installer_io.rs the installer's effects, and its entry point
+  plugin/         the WebAssembly plugin host (plugins/README.md)
   bin/            the two binaries
+plugins/          lososd's plugins, their SDK and the WIT contract
 ```
 
 The `cmd_*` handlers in `losos.rs` (state, change, status, settings, apply,
