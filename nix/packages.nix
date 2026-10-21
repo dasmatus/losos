@@ -260,6 +260,48 @@ let
     cargoRoot = "admin-ui/tui";
     buildAndTestSubdir = "admin-ui/tui";
   };
+
+  # lososd's plugins (backend/plugins/README.md): every crate of that
+  # workspace but the test-only probe, built for wasm32 and wrapped as a
+  # component, each beside its manifest. lososd loads this directory and
+  # nothing else (losos.backend.plugins). Plain rustPlatform like the Lab's
+  # crates: rustc links wasm32 with rust-lld, not mold. `names` lets a test
+  # build a set with the probe in it.
+  lososPlugins =
+    {
+      pname ? "losos-plugins",
+      names ? [ "look" ],
+    }:
+    pkgs.rustPlatform.buildRustPackage {
+      inherit pname;
+      version = "0.1.0";
+      src = lib.cleanSource ./../backend/plugins;
+      cargoHash = "sha256-VxDfZSbTviD/jZmA+NCD0jvQdZMKuefs4724oojTb4Y=";
+      nativeBuildInputs = [
+        pkgs.wasm-tools
+        pkgs.lld
+      ];
+      buildPhase = ''
+        runHook preBuild
+        cargo build --release --offline --target wasm32-unknown-unknown \
+          ${lib.concatMapStringsSep " " (n: "-p losos-plugin-${n}") names}
+        runHook postBuild
+      '';
+      doCheck = false;
+      installPhase = ''
+        runHook preInstall
+        mkdir -p $out
+        ${lib.concatMapStringsSep "\n" (n: ''
+          wasm-tools component new \
+            target/wasm32-unknown-unknown/release/losos_plugin_${n}.wasm \
+            -o $out/${n}.wasm
+          wasm-tools validate --features component-model $out/${n}.wasm
+          cp ${n}/manifest.json $out/${n}.json
+        '') names}
+        runHook postInstall
+      '';
+    };
+
 in
 images
 // {
@@ -358,13 +400,24 @@ images
   # read on their own.
   losos-themes = (import ./../admin-ui/themes { inherit pkgs; }).package;
 
+  losos-plugins = lososPlugins { };
+  # The same with the probe, a plugin that tries every import, for
+  # nix/tests/plugins.nix. Never on a box.
+  losos-plugins-probe = lososPlugins {
+    pname = "losos-plugins-probe";
+    names = [
+      "look"
+      "probe"
+    ];
+  };
+
   losos-ctl = buildRustPackage {
     pname = "losos-ctl";
     version = "0.1.0";
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-HpTcRcjBlCxRFWhuer9KvbXK9FatVgcF1TVZbaFFXpc=";
+    cargoHash = "sha256-n2cWZEHA+IhR8ZQg6y2oj8BM3vpHYXbfTQ9avioBgjM=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -390,7 +443,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-EfF0hy0C/KO7Vi0ZZiYsesSVaAGKCema9fRJMCvB2v8=";
+    cargoHash = "sha256-LRVdd/wx4gVR3dvIJRMFpp2JYIfAax9sdLLAiFi3+6E=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -415,7 +468,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-EfF0hy0C/KO7Vi0ZZiYsesSVaAGKCema9fRJMCvB2v8=";
+    cargoHash = "sha256-LRVdd/wx4gVR3dvIJRMFpp2JYIfAax9sdLLAiFi3+6E=";
     doCheck = false;
   };
 

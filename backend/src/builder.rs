@@ -1,7 +1,7 @@
 //! The widget builder: a language model on this box writes a widget from the
 //! owner's description.
 //!
-//! A hand-written widget (`crate::look`) is HTML, style and script that the
+//! A hand-written widget (`losos_widget`, stored by the look plugin) is HTML, style and script that the
 //! admin page draws in a sandboxed frame. Writing one takes some knowledge of
 //! that frame, so the builder lets the owner describe the widget in a sentence
 //! and has a model write it. The result is text and nothing more: it lands in
@@ -48,7 +48,7 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use crate::look::{is_file_name, validate_files, WidgetFile, ENTRY_FILE, MAX_FILES};
+use losos_widget::{is_file_name, validate_files, WidgetFile, ENTRY_FILE, MAX_FILES};
 
 /// What the model is told before every request.
 pub const PROMPT: &str = include_str!("builder-prompt.md");
@@ -247,7 +247,7 @@ pub fn parse_request(doc: &Value) -> Result<Request, Refused> {
         None | Some(Value::Null) => None,
         Some(Value::String(s)) if s.trim().is_empty() => None,
         Some(Value::String(s)) => Some(vec![WidgetFile::entry(s)]),
-        Some(files) => match crate::look::parse_files(files) {
+        Some(files) => match losos_widget::parse_files(files) {
             Some(files) => Some(files),
             None => return refuse(400, "the widget to change is not a list of files"),
         },
