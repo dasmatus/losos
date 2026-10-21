@@ -316,6 +316,9 @@
             ./modules/keyring.nix
             ./modules/daemon.nix
             ./modules/identity.nix
+            # LosOS chat: Dendrite as the shared user while the box shares
+            # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
+            ./modules/chat.nix
             # Backups to the owner's S3 bucket, restoring them, and the
             # boot-time wipe of an erase (backend/src/{backup,erase}.rs).
             ./modules/backup.nix

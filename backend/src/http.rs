@@ -1224,6 +1224,29 @@ async fn get_chat(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     })
 }
 
+/// `GET /api/chat/people`: everyone on the box chat can reach, each with
+/// an account made, for "Message someone" and invites. A person only.
+async fn get_chat_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/chat/people", false, |who| {
+        if who.person().is_none() {
+            return chat_refused(&crate::chat::ChatError::NotForYou(
+                "sign in with LosOS Login to use chat".to_string(),
+            ));
+        }
+        let everyone = match api.people.list() {
+            Ok(list) => list,
+            Err(e) => {
+                return HttpResponse::InternalServerError()
+                    .json(serde_json::json!({ "error": e.to_string() }))
+            }
+        };
+        match api.chat.people(&everyone) {
+            Ok(list) => HttpResponse::Ok().json(serde_json::json!({ "people": list })),
+            Err(e) => chat_refused(&e),
+        }
+    })
+}
+
 /// `POST /api/chat/session` `{"device"?: "...", "deviceName"?: "..."}`:
 /// a device signed in to chat for the person LosOS Login signed in. Never
 /// for the spare key or the edge: chat is a person's.
@@ -3573,6 +3596,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/internal/cloud-share", web::get().to(get_cloud_share))
                 .route("/api/chat", web::get().to(get_chat))
                 .route("/api/chat/session", web::post().to(post_chat_session))
+                .route("/api/chat/people", web::get().to(get_chat_people))
                 .route("/internal/chat/authz", web::get().to(get_chat_authz))
                 .route(
                     "/internal/chat/threads/{room}",

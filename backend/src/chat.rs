@@ -220,6 +220,8 @@ struct Inner {
     threads: Box<dyn ThreadSource>,
     /// Token hash to (user ID, when it was learned).
     owners: Mutex<HashMap<[u8; 32], (String, Instant)>>,
+    /// Sign-in names whose account is made, with the display name it has.
+    accounts: Mutex<HashMap<String, String>>,
 }
 
 impl Chat {
@@ -255,6 +257,7 @@ impl Chat {
                 gate,
                 threads,
                 owners: Mutex::new(HashMap::new()),
+                accounts: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -293,6 +296,89 @@ impl Chat {
         })
     }
 
+    /// Make `name`'s account if it is not there yet, and keep its display
+    /// name the one LosOS Login has. Remembered per name and display name,
+    /// so a page load asks the homeserver nothing it already said.
+    fn account(&self, token: &str, name: &str, display_name: &str) -> Result<String, ChatError> {
+        let inner = self.inner()?;
+        let hs = &*inner.homeserver;
+        let user_id = self.user_id(name)?;
+        let wanted = if display_name.trim().is_empty() {
+            name
+        } else {
+            display_name.trim()
+        };
+        if lock(&inner.accounts).get(name).is_some_and(|d| d == wanted) {
+            return Ok(user_id);
+        }
+
+        let made = hs.call(
+            "POST",
+            "/_matrix/client/v3/register",
+            token,
+            Some(&json!({
+                "type": "m.login.application_service",
+                "username": name,
+                "inhibit_login": true,
+            })),
+        )?;
+        match (made.status, made.errcode().as_str()) {
+            (200, _) | (400, "M_USER_IN_USE") => {}
+            (status, _) => {
+                return Err(ChatError::Homeserver {
+                    status,
+                    errcode: made.errcode(),
+                })
+            }
+        }
+
+        // Set only when it differs: each change is an event in every room.
+        let as_user = format!("user_id={}", encode(&user_id));
+        let profile = format!(
+            "/_matrix/client/v3/profile/{}/displayname",
+            encode(&user_id)
+        );
+        let now = hs.call("GET", &format!("{profile}?{as_user}"), token, None)?;
+        let current = now.body.get("displayname").and_then(Value::as_str);
+        if current != Some(wanted) {
+            let set = hs.call(
+                "PUT",
+                &format!("{profile}?{as_user}"),
+                token,
+                Some(&json!({ "displayname": wanted })),
+            )?;
+            if set.status != 200 {
+                tracing::warn!(status = set.status, user = %user_id, "chat display name not set");
+                return Ok(user_id);
+            }
+        }
+        lock(&inner.accounts).insert(name.to_string(), wanted.to_string());
+        Ok(user_id)
+    }
+
+    /// `GET /api/chat/people`: everyone on the box who can use chat, each
+    /// with an account made, so a person can be found and invited before
+    /// they ever opened chat. The homeserver's own directory lists only
+    /// people who already share a room.
+    pub fn people(&self, everyone: &[crate::people::Listed]) -> Result<Vec<Value>, ChatError> {
+        let inner = self.inner()?;
+        let token = inner.as_token()?;
+        let mut out = Vec::new();
+        for person in everyone {
+            if person.disabled || person.groups.iter().any(|g| g == crate::people::LOCKED) {
+                continue;
+            }
+            let user_id = self.account(&token, &person.name, &person.display_name)?;
+            let shown = if person.display_name.trim().is_empty() {
+                person.name.clone()
+            } else {
+                person.display_name.trim().to_string()
+            };
+            out.push(json!({ "userId": user_id, "displayName": shown }));
+        }
+        Ok(out)
+    }
+
     /// `POST /api/chat/session`: make the person's account if it is not
     /// there yet, and sign a device in for them. `device` is the device the
     /// page had, to keep; `device_name` what the page calls itself.
@@ -310,53 +396,7 @@ impl Chat {
         }
         let token = inner.as_token()?;
         let hs = &*inner.homeserver;
-        let user_id = self.user_id(&person.name)?;
-
-        let made = hs.call(
-            "POST",
-            "/_matrix/client/v3/register",
-            &token,
-            Some(&json!({
-                "type": "m.login.application_service",
-                "username": person.name,
-                "inhibit_login": true,
-            })),
-        )?;
-        match (made.status, made.errcode().as_str()) {
-            (200, _) | (400, "M_USER_IN_USE") => {}
-            (status, _) => {
-                return Err(ChatError::Homeserver {
-                    status,
-                    errcode: made.errcode(),
-                })
-            }
-        }
-
-        // The display name the person has in LosOS Login, kept in step. Set
-        // only when it differs: each change is an event in every room.
-        let wanted = if person.display_name.trim().is_empty() {
-            person.name.as_str()
-        } else {
-            person.display_name.trim()
-        };
-        let as_user = format!("user_id={}", encode(&user_id));
-        let profile = format!(
-            "/_matrix/client/v3/profile/{}/displayname",
-            encode(&user_id)
-        );
-        let now = hs.call("GET", &format!("{profile}?{as_user}"), &token, None)?;
-        let current = now.body.get("displayname").and_then(Value::as_str);
-        if current != Some(wanted) {
-            let set = hs.call(
-                "PUT",
-                &format!("{profile}?{as_user}"),
-                &token,
-                Some(&json!({ "displayname": wanted })),
-            )?;
-            if set.status != 200 {
-                tracing::warn!(status = set.status, user = %user_id, "chat display name not set");
-            }
-        }
+        let user_id = self.account(&token, &person.name, &person.display_name)?;
 
         let mut login = json!({
             "type": "m.login.application_service",
@@ -425,7 +465,9 @@ impl Chat {
             .and_then(Value::as_str)
             .filter(|_| login.status == 200)
         else {
-            // No such account: never used chat.
+            // Refused: nothing to sign out. (Dendrite signs in even a name
+            // that never used chat; logout/all below then ends that device
+            // too, so either way nothing is left signed in.)
             return Ok(());
         };
         let out = hs.call(
@@ -441,6 +483,7 @@ impl Chat {
             });
         }
         lock(&inner.owners).clear();
+        lock(&inner.accounts).remove(name);
         Ok(())
     }
 
@@ -744,9 +787,12 @@ pub fn read_threads(db: &std::path::Path, ask: &ThreadsAsk) -> anyhow::Result<Ve
     Ok(rows)
 }
 
-/// A device ID a page may ask for again: what Dendrite makes, and no more.
+/// A device ID a page may ask for again: what Dendrite makes (URL-safe
+/// base64, `6ZsB-2Hy`), and no more.
 fn valid_device_id(d: &str) -> bool {
-    (1..=32).contains(&d.len()) && d.bytes().all(|b| b.is_ascii_alphanumeric())
+    (1..=32).contains(&d.len())
+        && d.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 fn clean_device_name(n: &str) -> String {
@@ -1188,6 +1234,25 @@ mod tests {
                 .filter(|c| c.starts_with("PUT "))
                 .count();
         assert_eq!(puts, 1);
+    }
+
+    #[test]
+    fn everyone_on_the_box_gets_an_account_once_and_the_held_are_left_out() {
+        let r = rig();
+        add(&r.people, "matus");
+        add(&r.people, "eva");
+        add(&r.people, "jan");
+        let mut marks = std::collections::BTreeMap::new();
+        marks.insert("jan".to_string(), vec![crate::people::LOCKED]);
+        r.people.set_marks(&marks).unwrap();
+        let listed = r.chat.people(&r.people.list().unwrap()).unwrap();
+        let ids: Vec<&str> = listed.iter().filter_map(|p| p["userId"].as_str()).collect();
+        assert_eq!(ids, ["@eva:mattbox.local", "@matus:mattbox.local"]);
+        assert_eq!(r.hs.state.lock().unwrap().accounts["eva"], "eva");
+        // A second look asks the homeserver nothing new.
+        let before = r.hs.state.lock().unwrap().calls.len();
+        r.chat.people(&r.people.list().unwrap()).unwrap();
+        assert_eq!(r.hs.state.lock().unwrap().calls.len(), before);
     }
 
     #[test]

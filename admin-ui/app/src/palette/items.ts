@@ -1,5 +1,6 @@
 import type { IconSvgElement } from "@hugeicons/react";
 import {
+  BubbleChatIcon,
   BookOpen01Icon,
   ComputerIcon,
   Home01Icon,
@@ -10,7 +11,7 @@ import {
   RoadLocation01Icon,
   Sun03Icon,
 } from "@hugeicons/core-free-icons";
-import { canUse, signOut } from "@/lib/api";
+import { canUse, sharedApp, signOut } from "@/lib/api";
 import { CATALOGUE, recallAvailability, type AppDefinition } from "@/lib/apps";
 import { HANDBOOK_BASE } from "@/lib/handbook";
 import { LOCALE_NAMES, LOCALES, getLocaleChoice, setLocale, t, template, type MessageKey } from "@/lib/i18n";
@@ -129,6 +130,14 @@ export function pageItems(): Item[] {
     icon: NetworkIcon,
     words: `${template("shell.nav.lab", undefined, "en")} simulator topology diagram network map`,
     target: { kind: "href", href: "/lab/" },
+  });
+  if (sharedApp("chat")) items.push({
+    id: "page-chat",
+    group: "pages",
+    title: t("shell.nav.chat"),
+    icon: BubbleChatIcon,
+    words: `${template("shell.nav.chat", undefined, "en")} matrix messages talk call room`,
+    target: { kind: "href", href: "/chat/" },
   });
   return items;
 }

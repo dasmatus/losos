@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   ArrowRight01Icon,
+  BubbleChatIcon,
   HardDriveIcon,
   Home01Icon,
   LayoutGridIcon,
@@ -37,7 +38,7 @@ import { paneFromPath, paneHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { SHORTCUT_ARIA, openPalette, shortcutLabel } from "@/palette/store";
 import { paneById, paneOpen, type SettingsPaneId } from "@/screens/settings/panes";
-import { canUse, heldBy, useMe } from "@/lib/api";
+import { canUse, heldBy, sharedApp, useMe } from "@/lib/api";
 import { openInNewTab, PinMenu } from "@/components/pin-menu";
 import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
 import { pinKey, viewPin, type PinView } from "@/lib/pins";
@@ -88,6 +89,9 @@ interface LinkEntry {
   /** A page outside this app (the lab at /lab/): a plain link that loads it,
    * not a router link that would draw this app's 404 at that address. */
   external?: boolean;
+  /** An app that runs as the shared user (GET /api/me's `shared`): drawn
+   * only while the box shares its storage and the app is up. */
+  shared?: string;
   children?: readonly Entry[];
 }
 
@@ -136,6 +140,15 @@ const TREE: readonly Entry[] = [
     external: true,
   },
   {
+    kind: "link",
+    key: "chat",
+    to: "/chat/",
+    label: "shell.nav.chat",
+    icon: BubbleChatIcon,
+    external: true,
+    shared: "chat",
+  },
+  {
     kind: "fold",
     key: "settings",
     label: "shell.nav.settings",
@@ -156,6 +169,7 @@ const TREE: readonly Entry[] = [
 function allowed(entry: LinkEntry): boolean {
   if (entry.pane !== undefined) return paneOpen(entry.pane);
   if (entry.key === "lab") return canUse("lab");
+  if (entry.shared !== undefined) return sharedApp(entry.shared);
   return true;
 }
 

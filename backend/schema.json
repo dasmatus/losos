@@ -1637,7 +1637,12 @@
       "GET /api/chat": {
         "auth": true,
         "out": "{\"available\": bool, \"reason\": \"up\"|\"starting\", \"serverName\": \"...\", \"federation\": bool}",
-        "note": "LosOS chat (backend/src/chat.rs, modules/chat.nix): whether the homeserver answers, and the part after the colon in every user ID. 404 {\"error\"} when chat is not live on this box: it is off, or the box does not share its storage."
+        "note": "LosOS chat (backend/src/chat.rs, modules/chat.nix): whether the homeserver answers, and the part after the colon in every user ID. 404 {\"error\"} when chat is not live on this box: it is off, or the box does not both share its storage and belong to a mesh."
+      },
+      "GET /api/chat/people": {
+        "auth": true,
+        "out": "{\"people\": [{\"userId\": \"@<name>:<serverName>\", \"displayName\": \"...\"}]}",
+        "note": "Everyone in LosOS Login who may chat, so the page can offer them before they have ever signed in: Dendrite's user directory lists only people who share a room. Makes each one's account through the application service on first sight, keeping the display name in step; a disabled person or one a rule of LosOS Login holds is left out. 403 for the spare key and the edge; 503 while the homeserver starts; 404 when chat is not live."
       },
       "POST /api/chat/session": {
         "auth": true,

@@ -25,6 +25,7 @@
     "POST /api/set-password": "signed-in",
     "GET /api/chat": "signed-in",
     "POST /api/chat/session": "signed-in",
+    "GET /api/chat/people": "signed-in",
 
     "GET /api/storage": "storage",
     "POST /api/grow": "storage",

@@ -1371,6 +1371,56 @@ in
       description = "Loopback port Authelia listens on. nginx serves it at /auth/.";
     };
 
+    # ── LosOS chat (modules/chat.nix, backend/src/chat.rs) ─────────────────
+    chat.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Run LosOS chat: a Matrix homeserver on the box and the chat page at
+        /chat/, where everyone with a LosOS Login account can talk in rooms
+        and direct messages, with end-to-end encryption, files, reactions,
+        threads and voice and video calls on the box's network. Chat runs
+        as the shared user and keeps everything in the shared data domain,
+        so it is there only while the box shares its storage. Signing in to
+        chat is always through LosOS Login; there are no chat passwords.
+      '';
+    };
+
+    chat.serverName = lib.mkOption {
+      type = lib.types.strMatching "[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+";
+      default = "${config.losos.hostName}.local";
+      defaultText = lib.literalExpression ''"''${config.losos.hostName}.local"'';
+      description = ''
+        The part after the colon in everyone's chat address,
+        @name:server-name. Set it once, before people start chatting: the
+        addresses and rooms made under one name do not move to another.
+        Federation needs a name other servers can reach, such as a domain
+        of your own that your edge routes to this box.
+      '';
+    };
+
+    chat.federation.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let people here talk with people on other Matrix servers, and let
+        those servers reach this one. Needs a chat server name other
+        servers can reach (not a .local name).
+      '';
+    };
+
+    chat.port = lib.mkOption {
+      type = lib.types.port;
+      default = 8008;
+      description = "Loopback port the homeserver listens on. nginx serves it at /_matrix/.";
+    };
+
+    chat.maxUploadMiB = lib.mkOption {
+      type = lib.types.ints.between 1 4096;
+      default = 100;
+      description = "The largest file one person can send in chat, in MiB.";
+    };
+
     # ── Standalone admin endpoint (lososd HTTP API + static admin UI) ──────
     admin.enable = lib.mkOption {
       type = lib.types.bool;
@@ -2883,6 +2933,34 @@ in
         description = "LosOS Git signs people in with LosOS Login.";
       };
     };
+
+  # Whether this box runs chat, as it actually runs: the switch and the
+  # sharing gate together. Chat belongs to the shared user and keeps its
+  # data in the shared domain (modules/chat.nix). Read-only.
+  # Whether the shared user's apps (chat, mail) run: the box shares its
+  # storage AND has joined a mesh, the same state in which the Overview
+  # counts storage as lent. Sharing switched on alone, still waiting for a
+  # mesh, is not enough. One definition, read by every shared app.
+  options.lososInternal.sharedSide = lib.mkOption {
+    type = lib.types.bool;
+    internal = true;
+    readOnly = true;
+    default = config.losos.sharingMyStorage && config.losos.cluster.enable;
+    description = "The shared user's apps run: losos.sharingMyStorage and losos.cluster.enable.";
+  };
+
+  options.lososInternal.chat = lib.mkOption {
+    type = lib.types.bool;
+    internal = true;
+    readOnly = true;
+    default =
+      config.losos.chat.enable
+      && config.lososInternal.sharedSide
+      && config.losos.identity.enable
+      && config.losos.admin.enable
+      && config.losos.admin.ui != null;
+    description = "LosOS chat runs: losos.chat.enable, the shared user's apps (lososInternal.sharedSide) and LosOS Login.";
+  };
 
   # Whether this box hosts machines, as it actually runs: the switch and
   # the sharing gate together, read by modules/cluster.nix for the join.
