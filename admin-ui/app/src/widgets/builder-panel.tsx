@@ -70,7 +70,8 @@ type KindText =
   | "doneNote"
   | "done"
   | "stopped"
-  | "atLimit";
+  | "atLimit"
+  | "local";
 
 const KIND_TEXT: Record<BuildKind, Record<KindText, MessageKey>> = {
   widget: {
@@ -86,6 +87,7 @@ const KIND_TEXT: Record<BuildKind, Record<KindText, MessageKey>> = {
     done: "look.builder.done",
     stopped: "look.builder.stopped",
     atLimit: "look.builder.atLimit",
+    local: "look.builder.local",
   },
   app: {
     intro: "userApps.builder.intro",
@@ -100,6 +102,7 @@ const KIND_TEXT: Record<BuildKind, Record<KindText, MessageKey>> = {
     done: "userApps.builder.done",
     stopped: "userApps.builder.stopped",
     atLimit: "userApps.builder.atLimit",
+    local: "userApps.builder.local",
   },
 };
 
@@ -345,7 +348,7 @@ export function BuilderPanel(props: BuilderPanelProps) {
     <div data-testid="builder-panel" className="flex flex-col gap-4">
       <p className="text-[13px] leading-relaxed text-muted">{t(text.intro)}</p>
       <p className="rounded-card border border-line bg-sunk p-3.5 text-[13px] leading-relaxed text-muted" data-testid="builder-local">
-        {t("look.builder.local", { model: view.model })}
+        {t(text.local, { model: view.model })}
       </p>
 
       <Label htmlFor={promptId} className="flex flex-col gap-1.5">

@@ -124,9 +124,9 @@ export default defineMessages({
     de: "Beschreibe das Widget, und die KI schreibt es. Es landet im Editor, wo du es lesen, in der Vorschau ausprobieren und vor dem Speichern ändern kannst.",
   },
   "look.builder.local": {
-    en: "The AI is {model}, running on this box. What you write here stays on the box, and building is free. A widget takes a few minutes to write. The model is small and makes mistakes, so try the widget in the preview before you save it.",
-    sk: "AI je {model} a beží na tomto zariadení. Čo sem napíšete, zostáva na zariadení, a tvorba je zadarmo. Napísanie widgetu trvá niekoľko minút. Model je malý a robí chyby, preto widget pred uložením vyskúšajte v náhľade.",
-    de: "Die KI ist {model} und läuft auf dieser Box. Was du hier schreibst, bleibt auf der Box, und das Bauen ist kostenlos. Ein Widget zu schreiben dauert ein paar Minuten. Das Modell ist klein und macht Fehler, probiere das Widget daher vor dem Speichern in der Vorschau aus.",
+    en: "The AI is {model}, running on this box. What you write here stays on the box, and building is free. A widget takes a minute or two to write. The model is small and makes mistakes, so try the widget in the preview before you save it.",
+    sk: "AI je {model} a beží na tomto zariadení. Čo sem napíšete, zostáva na zariadení, a tvorba je zadarmo. Napísanie widgetu trvá minútu či dve. Model je malý a robí chyby, preto widget pred uložením vyskúšajte v náhľade.",
+    de: "Die KI ist {model} und läuft auf dieser Box. Was du hier schreibst, bleibt auf der Box, und das Bauen ist kostenlos. Ein Widget zu schreiben dauert ein, zwei Minuten. Das Modell ist klein und macht Fehler, probiere das Widget daher vor dem Speichern in der Vorschau aus.",
   },
   "look.builder.loading": { en: "Asking the box…", sk: "Pýtam sa zariadenia…", de: "Box wird gefragt …" },
   "look.builder.loadFailed": {

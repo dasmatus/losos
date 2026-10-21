@@ -143,6 +143,11 @@ export default defineMessages({
   },
 
   // ── The app builder (widgets/builder-panel.tsx, kind "app") ─────────────
+  "userApps.builder.local": {
+    en: "The AI is {model}, running on this box. What you write here stays on the box, and building is free. An app takes a few minutes, while the box checks it, tries it and has the AI fix what it finds. The model is small and makes mistakes, so try the app in the preview before you save it.",
+    sk: "AI je {model} a beží na tomto zariadení. Čo sem napíšete, zostáva na zariadení, a tvorba je zadarmo. Aplikácia trvá niekoľko minút, kým ju zariadenie skontroluje, vyskúša a nechá AI opraviť, čo nájde. Model je malý a robí chyby, preto aplikáciu pred uložením vyskúšajte v náhľade.",
+    de: "Die KI ist {model} und läuft auf dieser Box. Was du hier schreibst, bleibt auf der Box, und das Bauen ist kostenlos. Eine App dauert ein paar Minuten, während die Box sie prüft, ausprobiert und die KI korrigieren lässt, was sie findet. Das Modell ist klein und macht Fehler, probiere die App daher vor dem Speichern in der Vorschau aus.",
+  },
   "userApps.builder.intro": {
     en: "Describe the app and the AI writes it. Try it in the preview, change what you like, then save it.",
     sk: "Opíšte aplikáciu a AI ju napíše. Vyskúšajte ju v náhľade, upravte, čo chcete, a potom ju uložte.",
