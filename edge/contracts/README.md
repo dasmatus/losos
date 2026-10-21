@@ -58,11 +58,15 @@ with a password. The box never sees it.
 ## Tests
 
 ```sh
-# Local transactions, then a real pay() on anvil, checked by the registrar.
+# Local transactions, then a real pay() on anvil, checked by the registrar,
+# then a tap topped up, settled by the edge key within its cap and closed.
 # If https://sepolia.base.org answers, the same payment runs against Circle's
 # Base Sepolia USDC on a fork.
 ./test-payment.sh
 ```
+
+`devenv`'s `test-evm-escrow` runs it with Foundry from nixpkgs, as CI's
+`evm-escrow` job does.
 
 The Base Sepolia fork uses forge-std (`forge install foundry-rs/forge-std`
 from this directory). The script installs it if it is missing. It deals
@@ -97,6 +101,38 @@ makes two deposits.
 `rescue` moves tokens that arrived by plain transfer instead of `pay`, and for
 USDC only the balance above what open deposits are owed. Keep `treasury` on a
 hardware wallet or a multisig, never on a server.
+
+## Balances and taps
+
+The same contract also holds prepaid balances for pay-as-you-go. A buyer
+calls `topUp(amount)` to move USDC onto their balance, one balance per buyer.
+To use listings the buyer calls `openTaps(ids, sellers, rates, feeBps)`,
+which opens up to 16 taps in one call. A tap names one seller, the most the
+edge may bill per hour (`rate`, in USDC base units) and the fee, at most
+half. The id the buyer passes is keccak256 of the edge's tap id. The contract
+keeps the tap under `tapKey(buyer, id)`, `keccak256(abi.encode(buyer, id))`,
+so a key opens once, and another wallet that sends the same ids first only
+opens taps of its own. The Solana program does the same with the buyer in the
+tap account's seeds, `["tap", config, buyer, id]`.
+
+The edge meters what the buyer used and calls `settleTap(key, amount)` from
+time to time. The contract takes `amount` from the buyer's balance, sends the
+fee (rounded down) to `treasury` and the rest to the tap's seller, and
+refuses an amount over the balance or over the tap's rate for the time since
+its last settle. A new tap starts one hour into that time, so the first hour
+of use can be billed as soon as the tap opens. The time counts up to the
+tap's close, and at most 7 days of it in one settle, and cap left unused is
+not carried over. So a stolen edge key can take, from one tap, at most its
+rate times the time since it opened plus one hour, never more than a week of
+it at once, and only to the seller the buyer named.
+
+The buyer or the edge can close a tap with `closeTap(key)`, once. The edge can
+still bill a closed tap for the time before it closed. To take money back the
+buyer calls `askWithdrawal(amount)`, which replaces any earlier ask, waits 48
+hours so the edge can bill the last slice, then calls `withdraw` and gets the
+amount asked for, or what is left of the balance if that is less. Withdrawing
+never needs the edge. Balances count towards `held`, so `rescue` cannot move
+them.
 
 Deploy it from a fresh key whose first transaction on every chain is this
 deployment. A contract's address depends only on the deployer and its nonce,
