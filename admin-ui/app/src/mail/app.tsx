@@ -13,6 +13,7 @@
 import * as React from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
+  Alert01Icon,
   ArrowLeft01Icon,
   Attachment01Icon,
   Delete02Icon,
@@ -33,10 +34,12 @@ import {
   Archive02Icon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -103,6 +106,25 @@ type Column = "list" | "message";
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/* A request that failed, said in the page's alert, with the one button that
+ * tries it again. */
+function Failed({ text, onRetry, className }: { text: string; onRetry?: () => void; className?: string }) {
+  const t = useT();
+  return (
+    <Alert variant="crit" role="alert" className={className}>
+      <HugeiconsIcon icon={Alert01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+      <AlertDescription>
+        <p>{text}</p>
+        {onRetry !== undefined && (
+          <Button size="sm" variant="secondary" className="mt-2" onClick={onRetry}>
+            {t("mail.retry")}
+          </Button>
+        )}
+      </AlertDescription>
+    </Alert>
+  );
 }
 
 function folderName(folder: MailFolder, t: ReturnType<typeof useT>): string {
@@ -426,7 +448,7 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
             {page?.total != null && <span className="text-[13px] text-muted tabular-nums">{page.total}</span>}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {listError !== null && <p className="p-4 text-sm text-crit">{listError}</p>}
+            {listError !== null && <Failed className="m-3" text={listError} onRetry={() => void refreshList()} />}
             {page === null && listError === null && (
               <div className="grid place-items-center p-8">
                 <Spinner />
@@ -481,8 +503,8 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
               </EmptyHeader>
             </Empty>
           ) : open === null ? (
-            <div className="m-auto p-10">
-              {openError !== null ? <p className="text-sm text-crit">{openError}</p> : <Spinner />}
+            <div className="m-auto p-6">
+              {openError !== null ? <Failed text={openError} onRetry={() => void openMessage(openId)} /> : <Spinner />}
             </div>
           ) : (
             <Reader
@@ -715,13 +737,17 @@ function Reader({
           </ul>
         )}
         {html ? (
-          <iframe
-            title={t("mail.htmlTitle")}
-            src={mailHtmlUrl(m.id)}
-            sandbox="allow-popups allow-popups-to-escape-sandbox"
-            referrerPolicy="no-referrer"
-            className="min-h-80 w-full flex-1 border-t border-hair bg-white"
-          />
+          // White, as senders lay their HTML out for it, and inset like a card
+          // so it does not read as a hole in the dark theme.
+          <div className="mx-5 mb-5 flex min-h-80 flex-1 overflow-hidden rounded-card border border-line">
+            <iframe
+              title={t("mail.htmlTitle")}
+              src={mailHtmlUrl(m.id)}
+              sandbox="allow-popups allow-popups-to-escape-sandbox"
+              referrerPolicy="no-referrer"
+              className="w-full flex-1 bg-white"
+            />
+          </div>
         ) : (
           <pre className="border-t border-hair px-5 py-4 font-sans text-sm leading-relaxed break-words whitespace-pre-wrap">
             {m.text !== "" ? m.text : m.preview}
@@ -791,9 +817,9 @@ function Composer({
         </DialogHeader>
         <DialogBody className="flex flex-col gap-3">
           <p className="text-[13px] text-muted">{t("mail.compose.from", { address: from })}</p>
-          <label className="flex flex-col gap-1 text-sm">
+          <Field>
             <span className="flex items-center justify-between">
-              {t("mail.to")}
+              <FieldLabel htmlFor="mail-to">{t("mail.to")}</FieldLabel>
               {!showCc && (
                 <Button type="button" variant="link" size="xs" className="px-0" onClick={() => setShowCc(true)}>
                   {t("mail.compose.addCc")}
@@ -801,6 +827,7 @@ function Composer({
               )}
             </span>
             <Input
+              id="mail-to"
               value={to}
               onChange={(event) => setTo(event.target.value)}
               list="mail-people"
@@ -809,12 +836,12 @@ function Composer({
               placeholder={people[0]?.address ?? ""}
               required
             />
-          </label>
+          </Field>
           {showCc && (
-            <label className="flex flex-col gap-1 text-sm">
-              {t("mail.cc")}
-              <Input value={cc} onChange={(event) => setCc(event.target.value)} list="mail-people" autoComplete="off" />
-            </label>
+            <Field>
+              <FieldLabel htmlFor="mail-cc">{t("mail.cc")}</FieldLabel>
+              <Input id="mail-cc" value={cc} onChange={(event) => setCc(event.target.value)} list="mail-people" autoComplete="off" />
+            </Field>
           )}
           <datalist id="mail-people">
             {people.map((p) => (
@@ -823,26 +850,25 @@ function Composer({
               </option>
             ))}
           </datalist>
-          <label className="flex flex-col gap-1 text-sm">
-            {t("mail.compose.subject")}
-            <Input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={900} />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="sr-only">{t("mail.compose.body")}</span>
+          <Field>
+            <FieldLabel htmlFor="mail-subject">{t("mail.compose.subject")}</FieldLabel>
+            <Input id="mail-subject" value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={900} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="mail-body" className="sr-only">
+              {t("mail.compose.body")}
+            </FieldLabel>
             <Textarea
+              id="mail-body"
               value={text}
               onChange={(event) => setText(event.target.value)}
               rows={12}
               autoFocus={initial.to.length > 0}
               className="min-h-56 font-sans"
             />
-          </label>
+          </Field>
           <p className="text-[12px] text-muted">{t("mail.compose.local")}</p>
-          {problem !== null && (
-            <p role="alert" className="text-sm text-crit">
-              {problem}
-            </p>
-          )}
+          {problem !== null && <Failed text={problem} />}
         </DialogBody>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={sending}>

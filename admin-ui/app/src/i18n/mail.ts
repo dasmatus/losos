@@ -8,7 +8,7 @@ export default defineMessages({
   "mail.summary": {
     en: "Your address is {address}. Mail goes between the people on this box.",
     sk: "Vaša adresa je {address}. Pošta chodí medzi ľuďmi na tomto boxe.",
-    de: "Ihre Adresse ist {address}. Mail geht zwischen den Personen auf dieser Box.",
+    de: "Deine Adresse ist {address}. Mail geht zwischen den Personen auf dieser Box.",
   },
   "mail.missing": {
     en: "There is no mail on this box. Mail runs only while the box shares its storage with a mesh it has joined.",
@@ -20,7 +20,7 @@ export default defineMessages({
   "mail.signIn.text": {
     en: "Sign in with your own account to read your mail. The spare key has no mailbox.",
     sk: "Prihláste sa vlastným účtom, aby ste si prečítali poštu. Náhradný kľúč nemá schránku.",
-    de: "Melden Sie sich mit Ihrem eigenen Konto an, um Ihre Mail zu lesen. Der Ersatzschlüssel hat kein Postfach.",
+    de: "Melde dich mit deinem eigenen Konto an, um deine Mail zu lesen. Der Ersatzschlüssel hat kein Postfach.",
   },
   "mail.signIn.button": { en: "Sign in", sk: "Prihlásiť sa", de: "Anmelden" },
 
@@ -48,7 +48,7 @@ export default defineMessages({
   "mail.toPrefix": { en: "To:", sk: "Komu:", de: "An:" },
 
   // ── the reader ──
-  "mail.pick": { en: "Pick a message to read it.", sk: "Vyberte správu, ktorú chcete čítať.", de: "Wählen Sie eine Nachricht zum Lesen." },
+  "mail.pick": { en: "Pick a message to read it.", sk: "Vyberte správu, ktorú chcete čítať.", de: "Wähle eine Nachricht zum Lesen." },
   "mail.back": { en: "Back to the list", sk: "Späť na zoznam", de: "Zurück zur Liste" },
   "mail.from": { en: "From", sk: "Od", de: "Von" },
   "mail.to": { en: "To", sk: "Komu", de: "An" },
