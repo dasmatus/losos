@@ -443,6 +443,99 @@ mod tests {
         );
     }
 
+    async fn mined(rpc: &str, hash: &str) -> serde_json::Value {
+        // anvil answers eth_sendRawTransaction before it has mined the
+        // block, so the receipt can be a moment behind, as on a real chain.
+        let mut receipt = stablecoin::fetch_receipt(rpc, hash).await;
+        for _ in 0..50 {
+            if receipt.is_ok() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            receipt = stablecoin::fetch_receipt(rpc, hash).await;
+        }
+        receipt.unwrap()
+    }
+
+    /// `LOSOS_ANVIL_TAPS`, written by `edge/contracts/test-payment.sh`: a
+    /// wallet topped up and opened one tap; the edge key settles it within
+    /// the head start, is refused past the cap, and closes it.
+    #[tokio::test]
+    async fn an_anvil_tap_is_settled_within_its_cap_and_closed() {
+        let Ok(path) = std::env::var("LOSOS_ANVIL_TAPS") else {
+            return;
+        };
+        let meta: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("taps file")).unwrap();
+        let rpc = meta["rpc"].as_str().unwrap();
+        let escrow = meta["escrow"].as_str().unwrap();
+        let rate = meta["rate"].as_u64().unwrap();
+        let tap = stablecoin::order_id_hash(meta["tap"].as_str().unwrap());
+        let releaser = Releaser::from_hex(meta["releaser_key"].as_str().unwrap()).unwrap();
+        let buyer = stablecoin::address_bytes(meta["buyer"].as_str().unwrap()).unwrap();
+        let seller = stablecoin::address_bytes(meta["seller"].as_str().unwrap()).unwrap();
+        let word = |a: [u8; 20]| {
+            let mut w = [0u8; 32];
+            w[12..].copy_from_slice(&a);
+            w
+        };
+        let to = stablecoin::address_bytes(escrow).unwrap();
+
+        let open = stablecoin::tap_state(rpc, escrow, tap)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(open.buyer, word(buyer));
+        assert_eq!(open.seller, word(seller));
+        assert_eq!(open.rate, rate);
+        assert_eq!(open.fee_bps, 400);
+        assert_eq!(open.closed_at, None);
+        let before = stablecoin::wallet_view(rpc, escrow, buyer).await.unwrap();
+        assert_eq!(before.balance, meta["topped_up"].as_u64().unwrap());
+
+        // The head start: an hour at the rate is billable the moment the
+        // tap opens.
+        let hash = send(rpc, 31337, &releaser, to, settle_tap_data(tap, rate), false)
+            .await
+            .unwrap();
+        assert_eq!(mined(rpc, &hash).await["status"], "0x1");
+        let settled = stablecoin::tap_state(rpc, escrow, tap)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(settled.settled_at > open.settled_at);
+        let after = stablecoin::wallet_view(rpc, escrow, buyer).await.unwrap();
+        assert_eq!(after.balance, before.balance - rate);
+
+        // The cap moved with it: another hour's worth a moment later is
+        // refused at the estimate, so nothing is sent.
+        assert!(
+            send(rpc, 31337, &releaser, to, settle_tap_data(tap, rate), false)
+                .await
+                .is_err()
+        );
+        // So is a settle of nothing.
+        assert!(
+            send(rpc, 31337, &releaser, to, settle_tap_data(tap, 0), false)
+                .await
+                .is_err()
+        );
+
+        let hash = send(rpc, 31337, &releaser, to, close_tap_data(tap), false)
+            .await
+            .unwrap();
+        assert_eq!(mined(rpc, &hash).await["status"], "0x1");
+        let closed = stablecoin::tap_state(rpc, escrow, tap)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(closed.closed_at.is_some());
+        // Closed once.
+        assert!(send(rpc, 31337, &releaser, to, close_tap_data(tap), false)
+            .await
+            .is_err());
+    }
+
     #[test]
     fn the_key_names_its_address_and_never_prints_itself() {
         let r = Releaser::from_hex(KEY).unwrap();
