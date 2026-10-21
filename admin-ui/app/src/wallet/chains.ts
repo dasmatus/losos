@@ -5,8 +5,10 @@
 import {
   createPublicClient,
   custom,
+  RpcRequestError,
   type Address,
   type Chain,
+  type Hex,
   type PublicClient,
 } from "viem";
 import {
@@ -95,7 +97,16 @@ export function relay(network: string) {
       if (method === "eth_fillTransaction")
         throw Object.assign(new Error("the method eth_fillTransaction does not exist"), { code: -32601 });
       const body = await postMarketRpc(network, method, (params as unknown[] | undefined) ?? []);
-      if (body.error) throw Object.assign(new Error(body.error.message ?? "chain"), { code: body.error.code });
+      // As viem's own HTTP transport reports it: with the revert data, which
+      // for an ENS lookup's offchain step (EIP-3668) names the gateway, and
+      // as a node's answer, so a revert is not retried as if the edge had
+      // stumbled.
+      if (body.error)
+        throw new RpcRequestError({
+          body: { method, params },
+          error: { code: body.error.code ?? -1, message: body.error.message ?? "chain", data: body.error.data },
+          url: "/api/market/rpc",
+        });
       return body.result;
     },
   });
@@ -183,13 +194,25 @@ export async function balanceOn(chain: UsdcChain, owner: string): Promise<Balanc
   }
 }
 
+/** The one offchain gateway a lookup may use: ENS's own, which answers
+ *  for every DNS name (a box's name on the edge, an owner's domain) with
+ *  DNSSEC proofs the resolver contract checks. The edge asks it; the admin
+ *  CSP keeps the page itself on this box. */
+export const ENS_DNS_GATEWAY = "https://dnssec-oracle.ens.domains/";
+
+/** The offchain step of a lookup (EIP-3668), through the edge's relay. */
+export async function ensGateway({ data, sender, urls }: { data: Hex; sender: Address; urls: readonly string[] }): Promise<Hex> {
+  if (!urls.includes(ENS_DNS_GATEWAY)) throw new Error("this name is served by a gateway this box does not reach");
+  const body = await postMarketRpc("ens", "ens_ccipRead", [sender, data]);
+  if (body.error) throw new Error(body.error.message ?? "gateway");
+  return body.result as Hex;
+}
+
 function ensClient(test: boolean): PublicClient {
   return createPublicClient({
     chain: test ? sepolia : mainnet,
     transport: relay("ens"),
-    // Offchain names would send the page to a gateway the admin CSP refuses;
-    // names held on chain resolve without one.
-    ccipRead: false,
+    ccipRead: { request: ensGateway },
   }) as PublicClient;
 }
 
@@ -205,7 +228,10 @@ export async function ensName(test: boolean, address: string): Promise<string | 
 /** The address an ENS name points at, or null when it points nowhere. */
 export async function ensAddress(test: boolean, name: string): Promise<string | null> {
   try {
-    return await ensClient(test).getEnsAddress({ name: normalize(name) });
+    // Ethereum's coin type rather than the bare addr(): ENS's newer DNS
+    // resolver, which an owner's own domain may name, answers with a bare
+    // 20 bytes, and viem reads those only for a coin type.
+    return await ensClient(test).getEnsAddress({ name: normalize(name), coinType: 60n });
   } catch {
     return null;
   }

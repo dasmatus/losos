@@ -13,7 +13,7 @@
 
 import * as React from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { HardDriveIcon, Home01Icon, LayoutGridIcon, Settings01Icon, Share08Icon } from "@hugeicons/core-free-icons";
+import { BubbleChatIcon, HardDriveIcon, Home01Icon, LayoutGridIcon, Settings01Icon, Share08Icon } from "@hugeicons/core-free-icons";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { logoFor } from "@/lib/logo";
@@ -26,16 +26,30 @@ export const VIEW_H = 360;
 export const CONTENT = { x: 166, y: 42, w: 460, h: 304 } as const;
 
 /** The sidebar entries the miniature draws, in the real sidebar's order. */
-export type MiniEntry = "overview" | "apps" | "storage" | "mesh" | "settings" | "history" | "about";
+export type MiniEntry =
+  | "overview"
+  | "apps"
+  | "storage"
+  | "mesh"
+  | "market"
+  | "chat"
+  | "settings"
+  | "network"
+  | "look"
+  | "account"
+  | "history"
+  | "about";
 
 interface EntryDef {
   id: MiniEntry;
   label: MessageKey;
   icon: IconSvgElement;
-  /** Under Settings, as the real fold shows it when open. */
+  /** Under the entry above it, as the real sidebar shows it when open. */
   sub?: boolean;
   /** Settings is a fold: a chevron, never the current entry. */
   fold?: boolean;
+  /** Only on a box with chat (the real sidebar draws Chat only then). */
+  chat?: boolean;
 }
 
 const ENTRIES: readonly EntryDef[] = [
@@ -43,7 +57,12 @@ const ENTRIES: readonly EntryDef[] = [
   { id: "apps", label: "shell.nav.apps", icon: LayoutGridIcon },
   { id: "storage", label: "shell.nav.storage", icon: HardDriveIcon },
   { id: "mesh", label: "shell.nav.mesh", icon: Share08Icon },
+  { id: "market", label: paneById("market").labelKey, icon: paneById("market").icon, sub: true },
+  { id: "chat", label: "tour.scene.chat", icon: BubbleChatIcon, chat: true },
   { id: "settings", label: "shell.nav.settings", icon: Settings01Icon, fold: true },
+  { id: "network", label: paneById("network").labelKey, icon: paneById("network").icon, sub: true },
+  { id: "look", label: paneById("look").labelKey, icon: paneById("look").icon, sub: true },
+  { id: "account", label: paneById("account").labelKey, icon: paneById("account").icon, sub: true },
   { id: "history", label: paneById("history").labelKey, icon: paneById("history").icon, sub: true },
   { id: "about", label: paneById("about").labelKey, icon: paneById("about").icon, sub: true },
 ];
@@ -51,10 +70,26 @@ const ENTRIES: readonly EntryDef[] = [
 const ROW_Y = 74;
 const ROW_H = 21;
 
-function pillFor(id: MiniEntry): { x: number; y: number; w: number } {
-  const index = Math.max(0, ENTRIES.findIndex((entry) => entry.id === id));
-  const sub = ENTRIES[index]?.sub === true;
+function entriesFor(chat: boolean): readonly EntryDef[] {
+  return ENTRIES.filter((entry) => chat || entry.chat !== true);
+}
+
+function pillFor(entries: readonly EntryDef[], id: MiniEntry): { x: number; y: number; w: number } {
+  const index = Math.max(0, entries.findIndex((entry) => entry.id === id));
+  const sub = entries[index]?.sub === true;
   return { x: sub ? 32 : 20, y: ROW_Y + index * ROW_H, w: sub ? 108 : 120 };
+}
+
+/** Each run of sub-entries, as the rows its guide line spans. */
+function subRuns(entries: readonly EntryDef[]): { from: number; to: number }[] {
+  const runs: { from: number; to: number }[] = [];
+  entries.forEach((entry, i) => {
+    if (entry.sub !== true) return;
+    const last = runs.at(-1);
+    if (last !== undefined && last.to === i) last.to = i + 1;
+    else runs.push({ from: i, to: i + 1 });
+  });
+  return runs;
 }
 
 /** An SVG-safe id: useId's output can carry characters url(#…) does not take. */
@@ -107,25 +142,28 @@ export interface MiniPageProps {
   from: MiniEntry;
   /** Frames since the step changed; the pill and the content settle over the first 36. */
   arrival: number;
+  /** The box has chat, so the sidebar has Chat. */
+  chat?: boolean;
   children: React.ReactNode;
 }
 
 export const ARRIVAL = 36;
 
-export function MiniPage({ entry, from, arrival, children }: MiniPageProps) {
+export function MiniPage({ entry, from, arrival, chat = false, children }: MiniPageProps) {
   const t = useT();
   const clip = useSvgId("tour-pill");
   const logo = logoFor();
 
-  const a = pillFor(from);
-  const b = pillFor(entry);
+  const entries = entriesFor(chat);
+  const a = pillFor(entries, from);
+  const b = pillFor(entries, entry);
   const move = prog(arrival, 0, 30, E.glide);
   const pill = { x: mix(a.x, b.x, move), y: mix(a.y, b.y, move), w: mix(a.w, b.w, move) };
   // The content arrives as the pill lands: a short rise in from the right.
   const enter = prog(arrival, 6, ARRIVAL, E.out);
   const shift = mix(10, 0, enter);
 
-  const rows = ENTRIES.map((def, index) => {
+  const rows = entries.map((def, index) => {
     const y = ROW_Y + index * ROW_H;
     const left = def.sub === true ? 40 : 28;
     return { def, y, left };
@@ -174,19 +212,22 @@ export function MiniPage({ entry, from, arrival, children }: MiniPageProps) {
       </text>
 
       {/* The sidebar, with its search button. */}
-      <rect x="14.5" y="42.5" width="132" height={ROW_Y + ENTRIES.length * ROW_H - 36} rx="8" className="fill-sunk stroke-line" />
+      <rect x="14.5" y="42.5" width="132" height={ROW_Y + entries.length * ROW_H - 36} rx="8" className="fill-sunk stroke-line" />
       <g className="stroke-muted" fill="none" strokeWidth="1.2" strokeLinecap="round">
         <circle cx="129.5" cy="57.5" r="3.5" />
         <line x1="132.2" y1="60.2" x2="134.8" y2="62.8" />
       </g>
-      <line
-        x1="34.5"
-        y1={ROW_Y + 5 * ROW_H}
-        x2="34.5"
-        y2={ROW_Y + 7 * ROW_H - 3}
-        className="stroke-line"
-        strokeWidth="1"
-      />
+      {subRuns(entries).map((run) => (
+        <line
+          key={run.from}
+          x1="34.5"
+          y1={ROW_Y + run.from * ROW_H}
+          x2="34.5"
+          y2={ROW_Y + run.to * ROW_H - 3}
+          className="stroke-line"
+          strokeWidth="1"
+        />
+      ))}
 
       {labels(false)}
       <rect x={pill.x} y={pill.y + 1} width={pill.w} height={ROW_H - 2} rx="5" className="fill-accent" />

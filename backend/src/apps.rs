@@ -143,6 +143,37 @@ impl RunAs {
     pub fn data_root(self, release: &str) -> String {
         format!("{}/{release}", self.apps_root())
     }
+
+    /// What runs the app (`crate::compose`): Podman for the private side,
+    /// the box's own cluster for the side the mesh touches.
+    pub fn runtime(self) -> Runtime {
+        match self {
+            RunAs::Notshared => Runtime::Podman,
+            RunAs::Shared => Runtime::Kube,
+        }
+    }
+}
+
+/// What runs an installed app. Follows from [`RunAs`]; never stored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Runtime {
+    /// A rootless Podman Compose project of the app's user.
+    Podman,
+    /// A Helm release in the box's own k3s cluster.
+    Kube,
+}
+
+/// Where an installed app came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AppKind {
+    /// A Helm chart the catalogue search found.
+    #[default]
+    Chart,
+    /// A Compose file in the LosOS app format (`crate::compose`): made by
+    /// the AI builder, pasted by the owner, or one of the box's own.
+    Compose,
 }
 
 // ── The chart ─────────────────────────────────────────────────────────────
@@ -371,7 +402,14 @@ impl Phase {
 #[serde(rename_all = "camelCase")]
 pub struct Record {
     pub release: String,
-    pub chart: ChartRef,
+    #[serde(default)]
+    pub kind: AppKind,
+    /// The chart, for a [`AppKind::Chart`] app.
+    #[serde(default)]
+    pub chart: Option<ChartRef>,
+    /// The name the page shows for a [`AppKind::Compose`] app.
+    #[serde(default)]
+    pub title: Option<String>,
     pub run_as: RunAs,
     #[serde(default)]
     pub values: Value,
@@ -394,6 +432,21 @@ pub struct Record {
 pub struct Config {
     /// The range nginx forwards from, inclusive.
     pub ports: (u16, u16),
+    /// Whether this box runs its own cluster, which a `shared` app needs.
+    pub kube: bool,
+    /// Names the box's own apps already have (`losos.apps.builtin`).
+    pub builtin: Vec<String>,
+}
+
+impl Config {
+    fn check_name(&self, release: &str) -> anyhow::Result<()> {
+        if self.builtin.iter().any(|b| b == release) {
+            return conflict(format!(
+                "{release} is the name of one of the box's own apps. Choose a different name."
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Read `$LOSOS_APPS_PORTS` (`30000-30099`).
@@ -448,7 +501,7 @@ pub struct Shaped {
 #[error("{0}")]
 pub struct Refusal(pub String);
 
-fn refuse<T>(message: impl Into<String>) -> Result<T, Refusal> {
+pub(crate) fn refuse<T>(message: impl Into<String>) -> Result<T, Refusal> {
     Err(Refusal(message.into()))
 }
 
@@ -477,7 +530,7 @@ const DROPPED_KINDS: &[&str] = &[
 /// belong to. A kind outside this list and [`DROPPED_KINDS`] refuses the
 /// install: a webhook, a cluster-wide object or a volume of its own could
 /// all reach past the rules this module keeps.
-fn kept_kind(api_version: &str, kind: &str) -> Option<&'static [&'static str]> {
+pub(crate) fn kept_kind(api_version: &str, kind: &str) -> Option<&'static [&'static str]> {
     let group = api_version.split_once('/').map_or("", |(g, _)| g);
     match (group, kind) {
         ("", "Pod") => Some(&["spec"]),
@@ -490,7 +543,10 @@ fn kept_kind(api_version: &str, kind: &str) -> Option<&'static [&'static str]> {
     }
 }
 
-fn get_path_mut<'a>(doc: &'a mut Value, path: &[&str]) -> Option<&'a mut Map<String, Value>> {
+pub(crate) fn get_path_mut<'a>(
+    doc: &'a mut Value,
+    path: &[&str],
+) -> Option<&'a mut Map<String, Value>> {
     let mut at = doc;
     for key in path {
         at = at.get_mut(*key)?;
@@ -647,7 +703,7 @@ pub fn shape(docs: Vec<Value>, ctx: &ShapeCtx) -> Result<Shaped, Refusal> {
     })
 }
 
-fn check_port(port: u16, ctx: &ShapeCtx) -> Result<(), Refusal> {
+pub(crate) fn check_port(port: u16, ctx: &ShapeCtx) -> Result<(), Refusal> {
     if port < FIRST_UNPRIVILEGED_PORT {
         return refuse(format!(
             "This app listens on port {port}. Apps here run without root and can only use \
@@ -932,7 +988,10 @@ fn effective<L: Losos>(l: &mut L, mut r: Record) -> Record {
 fn record_json(r: &Record) -> Value {
     json!({
         "release": r.release,
+        "kind": r.kind,
         "chart": r.chart,
+        "title": r.title,
+        "runtime": r.run_as.runtime(),
         "runAs": r.run_as,
         "values": r.values,
         "valuesYaml": r.values_yaml,
@@ -946,10 +1005,10 @@ fn record_json(r: &Record) -> Value {
 
 /// `GET /api/apps`: what is installed, and whether anything can be.
 pub fn cmd_apps<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
-    if l.apps_config().is_none() {
-        return Ok(json!({ "available": false, "reason": "noCluster", "apps": [] }));
-    }
-    let shared = l.load_state()?.sharing;
+    let Some(config) = l.apps_config() else {
+        return Ok(json!({ "available": false, "reason": "off", "apps": [] }));
+    };
+    let shared = l.load_state()?.sharing && config.kube;
     let mut apps = Vec::new();
     for r in l.load_app_records()? {
         let r = effective(l, r);
@@ -980,6 +1039,13 @@ pub fn cmd_app_install<L: Losos>(l: &mut L, req: &InstallRequest) -> anyhow::Res
     let Some(config) = l.apps_config() else {
         return conflict("This box runs no apps of its own, so it cannot install one.");
     };
+    config.check_name(&req.release)?;
+    if req.run_as == RunAs::Shared && !config.kube {
+        return conflict(
+            "An app can run as shared only while LosOS cloud or LosOS Git is kept separate. \
+             Choose notshared.",
+        );
+    }
     if req.run_as == RunAs::Shared && !l.load_state()?.sharing {
         return conflict(
             "An app can run as shared only while this box shares its disk. \
@@ -988,7 +1054,11 @@ pub fn cmd_app_install<L: Losos>(l: &mut L, req: &InstallRequest) -> anyhow::Res
     }
     let records = l.load_app_records()?;
     if let Some(old) = records.iter().find(|r| r.release == req.release) {
-        if old.chart.name != req.chart.name || old.chart.repo != req.chart.repo {
+        let same = old
+            .chart
+            .as_ref()
+            .is_some_and(|c| c.name == req.chart.name && c.repo == req.chart.repo);
+        if !same {
             return conflict(format!(
                 "Another app is already called {}. Choose a different name.",
                 req.release
@@ -1014,7 +1084,9 @@ pub fn cmd_app_install<L: Losos>(l: &mut L, req: &InstallRequest) -> anyhow::Res
     };
     let record = Record {
         release: req.release.clone(),
-        chart: req.chart.clone(),
+        kind: AppKind::Chart,
+        chart: Some(req.chart.clone()),
+        title: None,
         run_as: req.run_as,
         values: req.values.clone(),
         values_yaml: req.values_yaml.clone(),
@@ -1032,12 +1104,173 @@ pub fn cmd_app_install<L: Losos>(l: &mut L, req: &InstallRequest) -> anyhow::Res
     Ok(record_json(&record))
 }
 
+/// The most a Compose app may send: its compose file, every file beside it,
+/// and how many files that may be.
+pub const MAX_COMPOSE_BYTES: usize = 256 * 1024;
+pub const MAX_APP_FILES_BYTES: usize = 4 * 1024 * 1024;
+pub const MAX_APP_FILES: usize = 500;
+
+/// `POST /api/apps/compose`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ComposeRequest {
+    pub release: String,
+    pub title: Option<String>,
+    /// The compose file as written, YAML or JSON.
+    pub compose: String,
+    /// The files beside it, by path relative to it.
+    pub files: Vec<(String, String)>,
+}
+
+/// A file an app ships: relative, plain names, no `..`, nothing hidden at
+/// the top that the box keeps for itself.
+fn is_app_path(p: &str) -> bool {
+    !p.is_empty()
+        && p.len() <= 255
+        && !p.starts_with('/')
+        && p.split('/').all(|part| {
+            !part.is_empty()
+                && part != "."
+                && part != ".."
+                && part
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+' | '@'))
+        })
+}
+
+impl ComposeRequest {
+    pub fn parse(body: &Value) -> anyhow::Result<Self> {
+        let release = body
+            .get("release")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_string();
+        validate_release(&release)?;
+        let title = match body.get("title") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(t)) if t.trim().is_empty() => None,
+            Some(Value::String(t)) if t.chars().count() <= 80 && !t.contains(['\n', '\0']) => {
+                Some(t.trim().to_string())
+            }
+            Some(_) => return invalid("The title must be one line of at most 80 characters."),
+        };
+        let compose = match body.get("compose") {
+            Some(Value::String(c)) if c.trim().is_empty() => {
+                return invalid("The compose file is empty.")
+            }
+            Some(Value::String(c)) if c.len() > MAX_COMPOSE_BYTES => {
+                return invalid("The compose file is too large.")
+            }
+            Some(Value::String(c)) if c.contains('\0') => {
+                return invalid("The compose file has a NUL byte in it.")
+            }
+            Some(Value::String(c)) => c.clone(),
+            Some(v @ Value::Object(_)) => serde_json::to_string(v)?,
+            _ => return invalid("Send the compose file as text."),
+        };
+        let mut files = Vec::new();
+        let mut total = 0;
+        match body.get("files") {
+            None | Some(Value::Null) => {}
+            Some(Value::Object(map)) => {
+                if map.len() > MAX_APP_FILES {
+                    return invalid(format!("An app can ship at most {MAX_APP_FILES} files."));
+                }
+                for (path, text) in map {
+                    if !is_app_path(path) {
+                        return invalid(format!(
+                            "The file name {path} is not one the box accepts."
+                        ));
+                    }
+                    let Some(text) = text.as_str() else {
+                        return invalid(format!("The file {path} must be text."));
+                    };
+                    total += text.len();
+                    if total > MAX_APP_FILES_BYTES {
+                        return invalid("The app's files are too large together.");
+                    }
+                    files.push((path.clone(), text.to_string()));
+                }
+            }
+            Some(_) => return invalid("The files must be a map of names to text."),
+        }
+        // A file and a folder of the same name cannot both exist.
+        for (path, _) in &files {
+            if files
+                .iter()
+                .any(|(other, _)| other.starts_with(&format!("{path}/")))
+            {
+                return invalid(format!("{path} is both a file and a folder."));
+            }
+        }
+        Ok(ComposeRequest {
+            release,
+            title,
+            compose,
+            files,
+        })
+    }
+}
+
+/// `POST /api/apps/compose`: install an app from a Compose file, or change
+/// one installed that way under the same name. It runs as `notshared`, on
+/// Podman (`crate::compose`); the job checks the file and says what it
+/// refused.
+pub fn cmd_app_compose<L: Losos>(l: &mut L, req: &ComposeRequest) -> anyhow::Result<Value> {
+    let Some(config) = l.apps_config() else {
+        return conflict("This box runs no apps of its own, so it cannot install one.");
+    };
+    config.check_name(&req.release)?;
+    let records = l.load_app_records()?;
+    if let Some(old) = records.iter().find(|r| r.release == req.release) {
+        if old.kind != AppKind::Compose {
+            return conflict(format!(
+                "Another app is already called {}. Choose a different name.",
+                req.release
+            ));
+        }
+        if l.app_job_active(&req.release) {
+            return conflict(format!(
+                "{} is still being changed. Wait for it to finish.",
+                req.release
+            ));
+        }
+    }
+    let Some(front_port) = allocate_port(config.ports, &records, &req.release) else {
+        return conflict("This box has no room for another app. Remove one first.");
+    };
+    let record = Record {
+        release: req.release.clone(),
+        kind: AppKind::Compose,
+        chart: None,
+        title: req.title.clone(),
+        run_as: RunAs::Notshared,
+        values: json!({}),
+        values_yaml: None,
+        front_port,
+        app_port: records
+            .iter()
+            .find(|r| r.release == req.release)
+            .and_then(|r| r.app_port),
+        phase: Phase::Installing,
+        message: None,
+        updated_at: l.now(),
+    };
+    l.save_app_source(&req.release, &req.compose, &req.files)?;
+    l.save_app_record(&record)?;
+    l.start_app_job(&record.release, Action::Install)?;
+    Ok(record_json(&record))
+}
+
 /// `POST /api/apps/remove`: take an app off the box. Its files stay in the
 /// user's data domain, so installing it again under the same name finds them.
 pub fn cmd_app_remove<L: Losos>(l: &mut L, release: &str) -> anyhow::Result<Value> {
     validate_release(release)?;
-    if l.apps_config().is_none() {
+    let Some(config) = l.apps_config() else {
         return conflict("This box runs no apps of its own.");
+    };
+    if config.builtin.iter().any(|b| b == release) {
+        return conflict(format!("{release} is one of the box's own apps and stays."));
     }
     let Some(mut record) = l
         .load_app_records()?
@@ -1392,11 +1625,13 @@ mod tests {
     fn front_ports_are_kept_on_update_and_allocated_lowest_first() {
         let rec = |release: &str, front_port| Record {
             release: release.into(),
-            chart: ChartRef {
+            kind: AppKind::Chart,
+            chart: Some(ChartRef {
                 repo: "https://x.example".into(),
                 name: "x".into(),
                 version: "1".into(),
-            },
+            }),
+            title: None,
             run_as: RunAs::Notshared,
             values: json!({}),
             values_yaml: None,
@@ -1482,14 +1717,14 @@ mod tests {
     }
 
     #[test]
-    fn a_box_with_no_cluster_says_so_and_installs_nothing() {
+    fn a_box_with_apps_turned_off_says_so_and_installs_nothing() {
         let mut f = crate::fake::FakeLosos {
             apps: None,
             ..Default::default()
         };
         assert_eq!(
             cmd_apps(&mut f).unwrap(),
-            json!({ "available": false, "reason": "noCluster", "apps": [] })
+            json!({ "available": false, "reason": "off", "apps": [] })
         );
         let req = InstallRequest::parse(&install_body("notshared")).unwrap();
         assert!(cmd_app_install(&mut f, &req).is_err());
@@ -1537,5 +1772,117 @@ mod tests {
             Some(&("jellyfin".to_string(), Action::Remove))
         );
         assert!(cmd_app_remove(&mut f, "nothing").is_err());
+    }
+
+    fn compose_body() -> Value {
+        json!({
+            "release": "board",
+            "title": "Board",
+            "compose": "services:\n  web:\n    image: board:1\n",
+            "files": { "site/index.html": "<h1>hi</h1>", "app.env": "A=1" },
+        })
+    }
+
+    #[test]
+    fn a_compose_app_is_recorded_as_notshared_on_podman_and_its_files_saved() {
+        let mut f = crate::fake::FakeLosos::default();
+        let req = ComposeRequest::parse(&compose_body()).unwrap();
+        let out = cmd_app_compose(&mut f, &req).unwrap();
+        assert_eq!(out["kind"], "compose");
+        assert_eq!(out["runAs"], "notshared");
+        assert_eq!(out["runtime"], "podman");
+        assert_eq!(out["title"], "Board");
+        assert_eq!(out["chart"], Value::Null);
+        assert_eq!(out["phase"], "installing");
+        assert_eq!(out["frontPort"], 30000);
+        let (compose, files) = &f.app_sources["board"];
+        assert!(compose.contains("image: board:1"));
+        assert_eq!(files.len(), 2);
+        assert_eq!(f.app_jobs, vec![("board".to_string(), Action::Install)]);
+
+        // A change while the job runs waits; after it, it goes through and
+        // keeps the port.
+        assert!(cmd_app_compose(&mut f, &req).is_err());
+        f.app_jobs_active.clear();
+        let again = cmd_app_compose(&mut f, &req).unwrap();
+        assert_eq!(again["frontPort"], 30000);
+    }
+
+    #[test]
+    fn a_compose_app_cannot_take_a_charts_name_or_a_builtin_one() {
+        let mut f = crate::fake::FakeLosos::default();
+        let mut body = install_body("notshared");
+        body["release"] = json!("board");
+        cmd_app_install(&mut f, &InstallRequest::parse(&body).unwrap()).unwrap();
+        f.app_jobs_active.clear();
+        let e =
+            cmd_app_compose(&mut f, &ComposeRequest::parse(&compose_body()).unwrap()).unwrap_err();
+        assert!(e.to_string().contains("Another app"), "{e}");
+
+        let mut f = crate::fake::FakeLosos::default();
+        f.apps.as_mut().unwrap().builtin = vec!["board".into()];
+        let e =
+            cmd_app_compose(&mut f, &ComposeRequest::parse(&compose_body()).unwrap()).unwrap_err();
+        assert!(e.to_string().contains("box's own apps"), "{e}");
+        let e = cmd_app_remove(&mut f, "board").unwrap_err();
+        assert!(e.to_string().contains("stays"), "{e}");
+    }
+
+    #[test]
+    fn a_compose_request_refuses_what_it_cannot_write() {
+        for (patch, why) in [
+            (json!({ "compose": "" }), "empty"),
+            (json!({ "compose": 3 }), "as text"),
+            (
+                json!({ "files": { "../x": "a" } }),
+                "not one the box accepts",
+            ),
+            (
+                json!({ "files": { "/etc/x": "a" } }),
+                "not one the box accepts",
+            ),
+            (
+                json!({ "files": { "a": "x", "a/b": "y" } }),
+                "both a file and a folder",
+            ),
+            (json!({ "files": { "a": 1 } }), "must be text"),
+            (json!({ "title": "a\nb" }), "one line"),
+            (json!({ "release": "Board" }), ""),
+        ] {
+            let mut body = compose_body();
+            for (k, v) in patch.as_object().unwrap() {
+                body[k] = v.clone();
+            }
+            let e = ComposeRequest::parse(&body).unwrap_err();
+            assert!(e.to_string().contains(why), "{why}: {e}");
+        }
+        let mut body = compose_body();
+        body["compose"] = json!({ "services": { "web": { "image": "x" } } });
+        assert!(ComposeRequest::parse(&body)
+            .unwrap()
+            .compose
+            .contains("\"image\":\"x\""));
+    }
+
+    #[test]
+    fn shared_needs_the_boxs_own_cluster_and_the_page_is_told() {
+        let mut f = crate::fake::FakeLosos::default();
+        f.state.sharing = true;
+        assert_eq!(cmd_apps(&mut f).unwrap()["sharedAvailable"], true);
+        f.apps.as_mut().unwrap().kube = false;
+        assert_eq!(cmd_apps(&mut f).unwrap()["sharedAvailable"], false);
+        let e = cmd_app_install(
+            &mut f,
+            &InstallRequest::parse(&install_body("shared")).unwrap(),
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("kept separate"), "{e}");
+        // notshared needs no cluster at all.
+        let out = cmd_app_install(
+            &mut f,
+            &InstallRequest::parse(&install_body("notshared")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(out["runtime"], "podman");
     }
 }
