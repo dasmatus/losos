@@ -337,11 +337,15 @@ async fn rpc(
     });
 
     // git's answer out as it is written, then the bookkeeping of a push.
+    let pusher = server::caller(&req, &state)
+        .ok()
+        .and_then(|c| c.user().map(|u| u.login.clone()))
+        .unwrap_or_default();
     let state = state.into_inner();
     let after_push = before.map(|before| {
         let state = state.clone();
         let dir = dir.clone();
-        move || pushed(&state, &repo, &dir, &before)
+        move || pushed(&state, &repo, &dir, &before, &pusher)
     });
     let body = Answer {
         stdout,
@@ -401,7 +405,13 @@ impl Answer {
 /// empty repository whose default branch it did not create makes the
 /// branch it did push the default, as a clone would otherwise check out
 /// nothing.
-pub fn pushed(state: &State, repo: &Repo, dir: &std::path::Path, before: &[super::gitcmd::Ref]) {
+pub fn pushed(
+    state: &State,
+    repo: &Repo,
+    dir: &std::path::Path,
+    before: &[super::gitcmd::Ref],
+    pusher: &str,
+) {
     let after = match state.git.refs(dir) {
         Ok(r) => r,
         Err(e) => {
@@ -435,6 +445,8 @@ pub fn pushed(state: &State, repo: &Repo, dir: &std::path::Path, before: &[super
         refs = changes.len(),
         "push"
     );
+    // Mesh CI and anything else listening (`super::events`).
+    super::events::pushed(repo, pusher, &changes);
 }
 
 #[cfg(test)]

@@ -125,6 +125,8 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (kind, forgejo_id)
     );
     ",
+    // 3: commit statuses (`super::statuses`).
+    super::statuses::MIGRATION,
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

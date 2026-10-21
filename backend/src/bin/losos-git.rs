@@ -47,6 +47,13 @@ enum Cmd {
         /// Where the pages are below the box's address.
         #[arg(long, default_value = "/git/")]
         base_path: String,
+        /// The Unix socket for services on the box (Mesh CI): a commit's
+        /// files, and checks on commits. Its directory is the gate.
+        #[arg(long)]
+        internal_socket: Option<PathBuf>,
+        /// Tell this socket about pushes and pull requests (Mesh CI's).
+        #[arg(long)]
+        events_socket: Vec<PathBuf>,
     },
     /// Carry Forgejo's records into LosOS Git from the export in `--from`
     /// (`<from>/tables/*.json`), and write `<from>/import.json`.
@@ -95,7 +102,13 @@ fn main() -> anyhow::Result<()> {
             public_by_default,
             push_create,
             base_path,
-        } => server::run(
+            internal_socket,
+            events_socket,
+        } => {
+            for path in events_socket {
+                losos_ctl::forge::events::deliver_to(path);
+            }
+            server::run(
             Config {
                 state_dir,
                 git,
@@ -107,7 +120,9 @@ fn main() -> anyhow::Result<()> {
             server::Listen {
                 socket,
                 tcp: listen,
+                internal: internal_socket,
             },
-        ),
+        )
+        }
     }
 }
