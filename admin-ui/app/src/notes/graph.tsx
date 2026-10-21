@@ -143,7 +143,9 @@ export function GraphView({ nodes, edges, current, onOpen, label, className, lab
       .force("y", forceY<Node>(0).strength(0.05))
       .force(
         "collide",
-        forceCollide<Node>((n) => n.r + 3),
+        // Room for the name under the dot too, so two names do not run
+        // into each other.
+        forceCollide<Node>((n) => Math.max(n.r + 3, Math.min(44, n.label.length * 2.8))),
       )
       .stop();
     // Settle before the first frame: the picture does not swim in.

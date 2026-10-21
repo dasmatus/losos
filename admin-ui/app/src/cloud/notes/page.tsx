@@ -465,6 +465,20 @@ export function NotesPage() {
   );
 }
 
+/** One of the graph's switches, its name beside the track: the Switch is
+ * the track alone, and an outside label reaches its input by `id`. */
+function GraphFlag({ name, label, on, onChange }: { name: string; label: string; on: boolean; onChange: (on: boolean) => void }) {
+  const id = React.useId();
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Switch id={id} size="sm" isSelected={on} onChange={onChange} data-graph-option={name} />
+      <label htmlFor={id} className="cursor-pointer text-[13px] whitespace-nowrap text-ink">
+        {label}
+      </label>
+    </span>
+  );
+}
+
 const NO_RESOLVER = { note: () => null, file: () => null, href: () => "#" };
 
 function VaultPane({
@@ -642,9 +656,7 @@ function VaultGraph({ vault, onOpen }: { vault: Vault; onOpen: (path: string) =>
   const [options, setOptions] = React.useState<GraphOptions>(DEFAULT_GRAPH);
   const graph = React.useMemo(() => vault.graph(options), [vault, options]);
   const flag = (key: "tags" | "attachments" | "missing" | "orphans", label: string) => (
-    <Switch size="sm" isSelected={options[key]} onChange={(on) => setOptions((o) => ({ ...o, [key]: on }))} data-graph-option={key}>
-      <span className="text-[13px] text-ink">{label}</span>
-    </Switch>
+    <GraphFlag key={key} name={key} label={label} on={options[key]} onChange={(on) => setOptions((o) => ({ ...o, [key]: on }))} />
   );
   return (
     <div className="flex flex-col gap-4" data-vault-graph>

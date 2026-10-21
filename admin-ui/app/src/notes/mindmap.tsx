@@ -67,6 +67,12 @@ export function outline(title: string, body: string): MindNode {
     parent.children.push(node);
     items.push({ indent, node });
   }
+  // A note that opens with its own name as a heading would show the name
+  // twice in a row: the heading is the middle then.
+  const only = root.children[0];
+  if (root.children.length === 1 && only !== undefined && only.anchor !== null && only.text.toLowerCase() === title.trim().toLowerCase()) {
+    return only;
+  }
   return root;
 }
 
