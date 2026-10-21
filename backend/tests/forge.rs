@@ -846,6 +846,8 @@ fn a_pull_request_from_a_marked_worktree_is_reviewed_and_merged() {
     let (_, doc) = api("GET", &format!("/pulls/{n}"), &owner, None);
     assert_eq!(doc["reviewers"][0]["login"], "notshared");
     assert_eq!(doc["reviewers"][0]["state"], "changes_requested");
+    // A person who answered is still marked as one, as a requested one is.
+    assert_eq!(doc["reviewers"][0]["is_bot"], false);
 
     let (_, lines) = api("GET", &format!("/pulls/{n}/comments"), &jana, None);
     let first = lines[0]["id"].as_i64().unwrap();
