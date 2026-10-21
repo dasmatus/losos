@@ -244,9 +244,9 @@ let
     };
     systemd.tmpfiles.rules = [
       "d /var/lib/reg 0700 root root -"
-      "f /var/lib/reg/boxa.token 0600 root root - token-of-boxa"
-      "f /var/lib/reg/boxb.token 0600 root root - token-of-boxb"
-      "f /var/lib/reg/bootstrap 0600 root root - bootstrap-token-0123456789"
+      "f /var/lib/reg/boxa.token 0600 root root - token-of-boxa-0123456789abcdef01234567"
+      "f /var/lib/reg/boxb.token 0600 root root - token-of-boxb-0123456789abcdef01234567"
+      "f /var/lib/reg/bootstrap 0600 root root - bootstrap-token-0123456789abcdef0123456789"
     ];
     # The registrar as modules/edge.nix starts it, less what this test does
     # not need: no Traefik, no tunnel, no mesh server.
@@ -349,7 +349,7 @@ let
       };
       systemd.tmpfiles.rules = [
         "d /var/secrets 0700 root root -"
-        "f /var/secrets/edge-token 0600 root root - token-of-${id}"
+        "f /var/secrets/edge-token 0600 root root - token-of-${id}-0123456789abcdef01234567"
       ];
       # The test's service image, in the runner's own Podman storage.
       systemd.services.lci-test-image = {
