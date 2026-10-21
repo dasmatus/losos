@@ -157,8 +157,11 @@ ktorý napísal vydavateľ, ako používateľ, ktorého ste vybrali, bez
 administrátorských práv. Kým tam nestlačíte **Inštalovať**, zariadenie nič
 nedostane.
 
-Zariadenie potom nainštaluje chart do vlastného klastra a upraví ho tak, aby
-bežal rovnako ako LosOS cloud a LosOS Git.
+Čo aplikáciu spúšťa, závisí od používateľa. Aplikácia `notshared` beží
+na Podmane bez roota, priamo ako `notshared`, a nepotrebuje žiadny klaster.
+Aplikácia `shared` beží vo vlastnom klastri zariadenia, pretože to je časť
+zariadenia, ktorej sa dotýka sieť. V oboch prípadoch zariadenie chart
+upraví tak, aby bežal rovnako ako LosOS cloud a LosOS Git.
 
 - Každá časť aplikácie beží ako vybraný používateľ, nikdy ako root, bez
   ďalších oprávnení a bez prístupu ku klastru.
@@ -170,9 +173,11 @@ bežal rovnako ako LosOS cloud a LosOS Git.
 :::note[Charty, ktoré zariadenie odmietne]
 Chart, ktorý potrebuje viac, zariadenie odmietne a povie prečo. Typickými
 dôvodmi sú administrátorské práva, port pod 1024, port, ktorý už používa
-iná aplikácia, alebo systémový priečinok. Aplikácia zložená z viacerých
-služieb, ktoré sa navzájom volajú menom, sa nemusí spustiť, pretože vlastný
-klaster zariadenia nemá vnútornú sieť.
+iná aplikácia, alebo systémový priečinok. Služby aplikácie `notshared` sa
+navzájom nájdu menom priamo na zariadení, takže musia počúvať na rôznych
+portoch. Aplikácia `shared` zložená z viacerých služieb, ktoré sa navzájom
+volajú menom, sa nemusí spustiť, pretože vlastný klaster zariadenia nemá
+vnútornú sieť. Plánovaná úloha (CronJob) beží iba ako `shared`.
 :::
 
 **Nainštalované aplikácie**, nad vyhľadávaním, vypisuje každú aplikáciu s jej
@@ -182,12 +187,22 @@ aplikácie. **Odstrániť** sa najprv opýta a potom aplikáciu zo zariadenia
 odstráni. Jej priečinok s dátami zostane, takže inštalácia pod tým istým
 názvom dáta znova nájde.
 
-:::note[Inštalácia potrebuje režim záťaže]
-Vyhľadávanie ponúka inštaláciu iba vtedy, keď sú Súbory alebo Kód nastavené
-na **Oddelene**, čo je [režim záťaže](../types/app-modes). Iba vtedy beží
-vlastný klaster zariadenia. Inštalovanie vypnete nastavením
+:::note[Beh ako shared potrebuje režim záťaže]
+Aplikácia `notshared` sa nainštaluje na každom zariadení. `shared` potrebuje
+vlastný klaster zariadenia, ktorý beží iba vtedy, keď sú Súbory alebo Kód
+nastavené na **Oddelene** ([režim záťaže](../types/app-modes)), a
+zariadenie musí zdieľať svoj disk. Inštalovanie vypnete nastavením
 `losos.apps.enable` na false na paneli **Rozšírené**.
 :::
+
+## Aplikácie vytvorené pre zariadenie \{#apps-made-for-the-box}
+
+Aplikácie môžu prísť aj ako súbor Compose vo
+[formáte aplikácií LosOS](../in-depth/app-format), ktorý napíšete vy alebo
+ktorý za vás pošle nejaký program. Bežia ako
+`notshared`, v **Nainštalovaných aplikáciách** majú riadok „vytvorená pre
+toto zariadenie“ a majú **Otvoriť** a **Odstrániť**, ale nie **Zmeniť**,
+pretože nemajú vlastnosti.
 
 ## Dôveryhodné adresy \{#trusted-addresses}
 
