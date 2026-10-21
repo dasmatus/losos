@@ -435,6 +435,12 @@ html.has-bg .losos-shell {
   background-attachment: fixed;
 }
 
+/* A long press opens the page's own menu (components/context-menu.tsx), so
+ * iOS keeps its link and picture callout out of the way. */
+.losos-shell :where(a, img) {
+  -webkit-touch-callout: none;
+}
+
 /* ── A person's colour ────────────────────────────────────────────────────
  * `data-accent="<name>"` on an element picks one pair of the person tokens
  * in tokens.css for everything inside it (components/person.tsx). An
