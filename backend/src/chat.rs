@@ -108,7 +108,7 @@ impl Reply {
             .map(|(_, v)| v.as_str())
     }
 
-    fn errcode(&self) -> String {
+    pub(crate) fn errcode(&self) -> String {
         self.body
             .get("errcode")
             .and_then(Value::as_str)
@@ -545,6 +545,32 @@ impl Chat {
         lock(&inner.owners).clear();
         lock(&inner.accounts).remove(name);
         Ok(())
+    }
+
+    /// One call to the client API as `person`, through the application
+    /// service (`user_id=` on the query), for the parts of the box that keep
+    /// a person's things in Matrix without a page of theirs holding a
+    /// device: LosOS Contacts (`crate::contacts`). Only ever for the person
+    /// the request was signed in as; their account is made first if chat
+    /// never saw them. `path` is already encoded and may carry a query.
+    pub(crate) fn as_person(
+        &self,
+        person: &crate::people::Person,
+        method: &str,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<Reply, ChatError> {
+        let inner = self.inner()?;
+        if person.groups.iter().any(|g| g == crate::people::LOCKED) {
+            return Err(ChatError::NotForYou(
+                "finish what LosOS Login asks of your account first".to_string(),
+            ));
+        }
+        let token = inner.as_token()?;
+        let user_id = self.account(&token, &person.name, &person.display_name)?;
+        let joiner = if path.contains('?') { '&' } else { '?' };
+        let path = format!("{path}{joiner}user_id={}", encode(&user_id));
+        inner.homeserver.call(method, &path, &token, body)
     }
 
     /// `/internal/chat/authz`: may this request reach the homeserver?

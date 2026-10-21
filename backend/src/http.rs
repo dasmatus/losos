@@ -64,6 +64,8 @@ struct Api {
     share: crate::cloud_share::Share,
     /// LosOS Chat's homeserver, as far as lososd runs it (`crate::chat`).
     chat: crate::chat::Chat,
+    /// LosOS Contacts, kept in chat's homeserver (`crate::contacts`).
+    contacts: crate::contacts::Contacts,
     /// LosOS Mail (`crate::mail`).
     mail: crate::mail::Mail,
     /// Each person's picture, banner and the rest of their profile
@@ -537,6 +539,8 @@ fn shared_apps(api: &Api) -> Vec<&'static str> {
     }
     if api.chat.live() {
         apps.push("chat");
+        // LosOS Contacts keeps each book in chat's homeserver.
+        apps.push("contacts");
     }
     apps
 }
@@ -1729,6 +1733,358 @@ async fn get_chat_threads(
         }
         Err(_) => HttpResponse::ServiceUnavailable().finish(),
     }
+}
+
+// ── LosOS Contacts (crate::contacts) ─────────────────────────────────────
+//
+// Each person's address book, kept in Matrix on chat's homeserver, so it
+// exists only where chat does and answers 404 otherwise. Every route is
+// `signed-in` in sections.json: whoever LosOS Login signed in reads their
+// own book, and the spare key and the edge have none.
+
+/// A refusal from Contacts, as `{"error": ...}` at its own status.
+fn contacts_refused(e: &crate::contacts::ContactsError) -> HttpResponse {
+    let status = StatusCode::from_u16(e.status()).unwrap_or(StatusCode::BAD_GATEWAY);
+    if status.is_server_error() {
+        tracing::warn!(error = %e, "contacts");
+    }
+    HttpResponse::build(status).json(serde_json::json!({
+        "available": !e.is_off(),
+        "error": e.to_string(),
+    }))
+}
+
+/// The person a Contacts call is made as, or the refusal: Contacts off
+/// (chat off), or a caller who is nobody's book.
+fn contacts_person(
+    api: &web::Data<Api>,
+    req: &HttpRequest,
+    route: &str,
+    writes: bool,
+) -> Result<crate::people::Person, Box<HttpResponse>> {
+    let mut person = None;
+    let refused = guarded_as(api, req, route, writes, |who| {
+        if !api.chat.live() {
+            return contacts_refused(&crate::contacts::ContactsError::Chat(
+                crate::chat::ChatError::Off,
+            ));
+        }
+        match who.person() {
+            Some(p) => {
+                person = Some(p.clone());
+                HttpResponse::Ok().finish()
+            }
+            None => contacts_refused(&crate::contacts::ContactsError::Chat(
+                crate::chat::ChatError::NotForYou(
+                    "sign in with LosOS Login to use your contacts".to_string(),
+                ),
+            )),
+        }
+    });
+    person.ok_or_else(|| Box::new(refused))
+}
+
+/// Run a Contacts call off the request thread and answer with its JSON.
+async fn contacts_answer<T: serde::Serialize + Send + 'static>(
+    api: web::Data<Api>,
+    f: impl FnOnce(&Api) -> Result<T, crate::contacts::ContactsError> + Send + 'static,
+) -> HttpResponse {
+    match web::block(move || f(&api)).await {
+        Ok(Ok(v)) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(v),
+        Ok(Err(e)) => contacts_refused(&e),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// `GET /api/contacts`: the person's book, by name.
+async fn get_contacts(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let person = match contacts_person(&api, &req, "/api/contacts", false) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    contacts_answer(api, move |api| {
+        let list = api.contacts.list(&api.chat, &person)?;
+        Ok(serde_json::json!({ "available": true, "contacts": list }))
+    })
+    .await
+}
+
+/// A contact from a request body: the fields of `crate::vcard::Contact`.
+fn contact_body(body: &[u8]) -> Result<crate::vcard::Contact, Box<HttpResponse>> {
+    serde_json::from_slice(body).map_err(|_| {
+        Box::new(err(
+            StatusCode::BAD_REQUEST,
+            "body must be a contact as JSON: {\"name\": \"...\", ...}",
+        ))
+    })
+}
+
+/// `POST /api/contacts`: a new contact. The photo is a second call.
+async fn post_contact(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    let person = match contacts_person(&api, &req, "/api/contacts", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let contact = match contact_body(&body) {
+        Ok(c) => c,
+        Err(bad) => return *bad,
+    };
+    contacts_answer(api, move |api| {
+        api.contacts.save(
+            &api.chat,
+            &person,
+            None,
+            contact,
+            crate::contacts::Photo::Keep,
+        )
+    })
+    .await
+}
+
+/// `GET /api/contacts/{id}`: one contact.
+async fn get_contact(api: web::Data<Api>, req: HttpRequest, id: web::Path<String>) -> HttpResponse {
+    let person = match contacts_person(&api, &req, "/api/contacts/{id}", false) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let id = id.into_inner();
+    contacts_answer(api, move |api| api.contacts.get(&api.chat, &person, &id)).await
+}
+
+/// `PUT /api/contacts/{id}`: the contact's fields, replaced. Its photo
+/// stays.
+async fn put_contact(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+    body: web::Bytes,
+) -> HttpResponse {
+    let person = match contacts_person(&api, &req, "/api/contacts/{id}", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let contact = match contact_body(&body) {
+        Ok(c) => c,
+        Err(bad) => return *bad,
+    };
+    let id = id.into_inner();
+    contacts_answer(api, move |api| {
+        api.contacts.save(
+            &api.chat,
+            &person,
+            Some(&id),
+            contact,
+            crate::contacts::Photo::Keep,
+        )
+    })
+    .await
+}
+
+/// `DELETE /api/contacts/{id}`.
+async fn delete_contact(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    let person = match contacts_person(&api, &req, "/api/contacts/{id}", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let id = id.into_inner();
+    contacts_answer(api, move |api| {
+        api.contacts
+            .remove(&api.chat, &person, &id)
+            .map(|()| serde_json::json!({ "removed": id }))
+    })
+    .await
+}
+
+/// `GET /api/contacts/{id}/photo?v=N`: the photo, JPEG. Cached by the
+/// version the list gave, which changes with every save.
+async fn get_contact_photo(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    let person = match contacts_person(&api, &req, "/api/contacts/{id}/photo", false) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let id = id.into_inner();
+    let api = api.clone();
+    match web::block(move || api.contacts.photo(&api.chat, &person, &id)).await {
+        Ok(Ok(jpeg)) => HttpResponse::Ok()
+            .content_type("image/jpeg")
+            .insert_header(("Cache-Control", "private, max-age=31536000, immutable"))
+            .insert_header(("X-Content-Type-Options", "nosniff"))
+            .body(jpeg),
+        Ok(Err(e)) => contacts_refused(&e),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// `PUT /api/contacts/{id}/photo` with the picture as the body (PNG,
+/// JPEG, GIF, WebP): scaled, cropped square and stored in the contact.
+async fn put_contact_photo(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+    body: web::Bytes,
+) -> HttpResponse {
+    let person = match contacts_person(&api, &req, "/api/contacts/{id}/photo", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    if body.len() > crate::contacts::MAX_PHOTO_BYTES {
+        return err(StatusCode::PAYLOAD_TOO_LARGE, "the photo is too large");
+    }
+    let jobs = api.clone();
+    let Ok(_slot) = jobs.image_jobs.acquire().await else {
+        return HttpResponse::ServiceUnavailable().finish();
+    };
+    let id = id.into_inner();
+    contacts_answer(api, move |api| {
+        let old = api.contacts.get(&api.chat, &person, &id)?;
+        api.contacts.save(
+            &api.chat,
+            &person,
+            Some(&id),
+            old.contact,
+            crate::contacts::Photo::Set(body.to_vec()),
+        )
+    })
+    .await
+}
+
+/// `DELETE /api/contacts/{id}/photo`.
+async fn delete_contact_photo(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    let person = match contacts_person(&api, &req, "/api/contacts/{id}/photo", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let id = id.into_inner();
+    contacts_answer(api, move |api| {
+        let old = api.contacts.get(&api.chat, &person, &id)?;
+        api.contacts.save(
+            &api.chat,
+            &person,
+            Some(&id),
+            old.contact,
+            crate::contacts::Photo::Remove,
+        )
+    })
+    .await
+}
+
+/// `POST /api/contacts/import` with a vCard file (3.0, 4.0 or 2.1, one
+/// card or many) as the body: what was added, updated and skipped.
+async fn post_contacts_import(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let person = match contacts_person(&api, &req, "/api/contacts/import", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let jobs = api.clone();
+    let Ok(_slot) = jobs.image_jobs.acquire().await else {
+        return HttpResponse::ServiceUnavailable().finish();
+    };
+    contacts_answer(api, move |api| {
+        api.contacts.import(&api.chat, &person, &body)
+    })
+    .await
+}
+
+/// `GET /api/contacts/export?version=3.0|4.0&ids=a,b`: the book, or the
+/// contacts named, as one vCard file to download. 3.0 unless asked.
+async fn get_contacts_export(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let person = match contacts_person(&api, &req, "/api/contacts/export", false) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let q = query_map(&req);
+    let version = match q.get("version").map(String::as_str) {
+        Some("4.0" | "4") => crate::vcard::Version::V4,
+        _ => crate::vcard::Version::V3,
+    };
+    let ids: Option<Vec<String>> = q
+        .get("ids")
+        .filter(|s| !s.is_empty())
+        .map(|s| s.split(',').map(str::to_string).collect());
+    let api = api.clone();
+    let made = web::block(move || {
+        api.contacts
+            .export(&api.chat, &person, ids.as_deref(), version)
+    })
+    .await;
+    match made {
+        Ok(Ok(file)) => HttpResponse::Ok()
+            .content_type("text/vcard; charset=utf-8")
+            .insert_header((
+                "Content-Disposition",
+                "attachment; filename=\"contacts.vcf\"",
+            ))
+            .insert_header(("Cache-Control", "no-store"))
+            .body(file),
+        Ok(Err(e)) => contacts_refused(&e),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// Everyone on this box chat can reach, as people pickers offer them.
+fn contacts_neighbours(api: &Api) -> Vec<crate::contacts::Neighbour> {
+    let Ok(everyone) = api.people.list() else {
+        return Vec::new();
+    };
+    everyone
+        .into_iter()
+        .filter(|p| !p.disabled && !p.groups.iter().any(|g| g == crate::people::LOCKED))
+        .filter_map(|p| {
+            let matrix_id = api.chat.user_id(&p.name).ok()?;
+            let shown = crate::profiles::render(&p, &api.profiles.get(&p.name).unwrap_or_default());
+            Some(crate::contacts::Neighbour {
+                email: api.mail.address(&p.name),
+                picture: shown["picture"].as_str().map(str::to_string),
+                matrix_id,
+                display_name: p.display_name,
+                name: p.name,
+            })
+        })
+        .collect()
+}
+
+/// `GET /api/contacts/suggest?q=&want=any|email|matrix|mesh&limit=8`: the
+/// people a picker offers, the caller's contacts and the people on this
+/// box, best match first. `{"available": true, "contacts": [...]}`; 404
+/// with `available: false` where the box runs no chat.
+async fn get_contacts_suggest(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let person = match contacts_person(&api, &req, "/api/contacts/suggest", false) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let q = query_map(&req);
+    let text = q.get("q").cloned().unwrap_or_default();
+    let want = crate::contacts::Want::parse(q.get("want").map_or("", String::as_str));
+    let limit = q
+        .get("limit")
+        .and_then(|l| l.parse::<usize>().ok())
+        .unwrap_or(8);
+    contacts_answer(api, move |api| {
+        let neighbours = contacts_neighbours(api);
+        let found = api
+            .contacts
+            .suggest(&api.chat, &person, &neighbours, &text, want, limit)?;
+        Ok(serde_json::json!({ "available": true, "contacts": found }))
+    })
+    .await
 }
 
 async fn health() -> HttpResponse {
@@ -4299,6 +4655,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             login,
             share: crate::cloud_share::Share::default(),
             chat: crate::chat::Chat::from_env(),
+            contacts: crate::contacts::Contacts::default(),
             mail: crate::mail::Mail::from_env(),
             profiles: crate::profiles::Profiles::from_env(),
             image_jobs: tokio::sync::Semaphore::new(IMAGE_JOBS),
@@ -4310,6 +4667,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             .plugins
             .max_body()
             .max(crate::profiles::MAX_UPLOAD_BYTES)
+            .max(crate::contacts::MAX_FILE_BYTES)
             .max(1024 * 1024);
         owner_in_owner_group(&api);
         start_login_marks(api.clone());
@@ -4517,6 +4875,20 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/chat", web::get().to(get_chat))
                 .route("/api/chat/session", web::post().to(post_chat_session))
                 .route("/api/chat/people", web::get().to(get_chat_people))
+                .route("/api/contacts", web::get().to(get_contacts))
+                .route("/api/contacts", web::post().to(post_contact))
+                .route("/api/contacts/import", web::post().to(post_contacts_import))
+                .route("/api/contacts/export", web::get().to(get_contacts_export))
+                .route("/api/contacts/suggest", web::get().to(get_contacts_suggest))
+                .route("/api/contacts/{id}", web::get().to(get_contact))
+                .route("/api/contacts/{id}", web::put().to(put_contact))
+                .route("/api/contacts/{id}", web::delete().to(delete_contact))
+                .route("/api/contacts/{id}/photo", web::get().to(get_contact_photo))
+                .route("/api/contacts/{id}/photo", web::put().to(put_contact_photo))
+                .route(
+                    "/api/contacts/{id}/photo",
+                    web::delete().to(delete_contact_photo),
+                )
                 .route("/internal/chat/authz", web::get().to(get_chat_authz))
                 .route(
                     "/internal/chat/threads/{room}",
