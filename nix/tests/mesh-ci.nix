@@ -122,7 +122,7 @@ let
 
   # A service and a container action, loaded into the shared user's
   # Podman on both boxes: nothing is pulled in a VM test. It answers
-  # "pong" on port 7000 and says it is ready with a file.
+  # "pong" on port 7000 and says it is ready with a file, once it listens.
   svcImage = pkgs.dockerTools.buildImage {
     name = "lci-test-svc";
     tag = "1";
@@ -141,9 +141,15 @@ let
       echo pong > srv/index.html
     '';
     config.Cmd = [
-      "/bin/sh"
+      "python3"
       "-c"
-      "touch /tmp/ready; exec python3 -m http.server 7000 --directory /srv"
+      (lib.concatStringsSep "; " [
+        "import functools, http.server, pathlib"
+        "h = functools.partial(http.server.SimpleHTTPRequestHandler, directory='/srv')"
+        "s = http.server.ThreadingHTTPServer(('', 7000), h)"
+        "pathlib.Path('/tmp/ready').touch()"
+        "s.serve_forever()"
+      ])
     ];
   };
 
@@ -493,10 +499,8 @@ let
         for name, m in [("boxa", boxa), ("boxb", boxb)]:
             print(f"── {name} ──")
             print(m.execute("journalctl -b --no-pager -o cat -u losos-ci -u losos-ci-runner | tail -n 150")[1])
-            print(m.execute("runuser -u shared -- env XDG_RUNTIME_DIR=/run/user/1001"
-                            " CONTAINERS_STORAGE_CONF=$(systemctl show -p Environment losos-ci-runner"
-                            " | tr ' ' '\\n' | sed -n 's/^CONTAINERS_STORAGE_CONF=//p')"
-                            " podman ps --all")[1])
+            print(m.execute("runuser -u shared -- env $(systemctl show -p Environment --value"
+                            " losos-ci-runner) podman ps --all 2>&1")[1])
         print(edge.execute("journalctl -b --no-pager -o cat -u registrar | grep -i ci | tail -n 80")[1])
 
     def run_done(b, run_id, timeout=3000):

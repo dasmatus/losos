@@ -22,8 +22,9 @@ pub struct Claimed {
     pub archive: Vec<u8>,
 }
 
-/// What the edge queues: the registrar's `JobSpec`.
+/// What the edge queues: the registrar's `JobSpec`, field for field.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EdgeSpec {
     pub name: String,
     pub payload: Value,
@@ -460,5 +461,34 @@ impl Forge for Git {
             );
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The registrar's `JobSpec` (edge/registrar/src/ci.rs) is camelCase and
+    /// refuses a job without `timeoutSecs`.
+    #[test]
+    fn a_job_goes_to_the_edge_in_the_registrar_s_names() {
+        let spec = EdgeSpec {
+            name: "CI / test".into(),
+            payload: json!({}),
+            timeout_secs: 600,
+            repo: "matus/site".into(),
+            commit: "a".repeat(40),
+        };
+        let v = serde_json::to_value(&spec).unwrap();
+        assert_eq!(v["timeoutSecs"], 600);
+        assert!(v.get("timeout_secs").is_none());
+        let claimed: Claimed = serde_json::from_value(json!({
+            "id": "j1",
+            "origin": "boxa",
+            "job": v,
+            "archive": "",
+        }))
+        .unwrap();
+        assert_eq!(claimed.job.timeout_secs, 600);
     }
 }
