@@ -188,9 +188,9 @@ pkgs.testers.nixosTest {
         # The store keeps only what was made again, owner-only, one file
         # per version.
         version = url.rsplit("=", 1)[1]
-        stored = box.succeed(f"stat -c '%a %U' {STORE}/eva.picture.{version}").strip()
+        stored = box.succeed(f"stat -c '%a %U' {STORE}/{version}.picture").strip()
         assert stored == "600 root", stored
-        box.fail(f"grep -q 'LosOS test camera' {STORE}/eva.picture.{version}")
+        box.fail(f"grep -q 'LosOS test camera' {STORE}/{version}.picture")
         # A version it never gave out is not found, so no cache keeps one.
         assert api(f"/api/profiles/eva/picture?v={int(version) + 100}", matus)[0] == 404
         assert api("/api/profiles/eva/picture", matus)[0] == 404
@@ -240,7 +240,7 @@ pkgs.testers.nixosTest {
         p = json.loads(api("/api/profiles/eva", eva)[1])
         assert p["picture"] is None and p["banner"] == banner_url and p["pronouns"] == "she/her", p
         assert api(url, matus)[0] == 404
-        box.fail(f"ls {STORE} | grep -q '^eva\\.picture'")
+        box.fail(f"ls {STORE} | grep -q '\\.picture$'")
         # A new picture never takes the old URL, and replacing it again
         # leaves one file and a 404 on the one before.
         code, body = api("/api/account/picture", eva, method="PUT", upload="/tmp/phone.jpg")
@@ -251,7 +251,7 @@ pkgs.testers.nixosTest {
         url = json.loads(body)["picture"]
         assert url != replaced and api(replaced, matus)[0] == 404
         assert api(url, matus)[0] == 200
-        assert box.succeed(f"ls {STORE} | grep -c '^eva\\.picture'").strip() == "1"
+        assert box.succeed(f"ls {STORE} | grep '\\.picture$'").split() == [f"{url.rsplit('=', 1)[1]}.picture"]
 
     with subtest("profiles outlive a restart of lososd"):
         box.systemctl("restart lososd.service")
@@ -264,7 +264,8 @@ pkgs.testers.nixosTest {
     with subtest("a person taken off the box takes their profile along"):
         code, body = api("/api/people/remove", matus, method="POST", data={"name": "eva"})
         assert code == 200, (code, body)
-        box.fail(f"ls {STORE} | grep -q '^eva'")
+        # Matus never set a picture, so the store keeps none at all.
+        assert box.succeed(f"ls {STORE}").split() == ["profiles.json"], box.succeed(f"ls {STORE}")
         assert "eva" not in box.succeed(f"cat {STORE}/profiles.json")
         assert api(url, matus)[0] == 404
         names = [p["name"] for p in json.loads(api("/api/profiles", matus)[1])["people"]]
