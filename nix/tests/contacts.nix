@@ -507,8 +507,9 @@ pkgs.testers.nixosTest {
             found = ok("/api/contacts/suggest?q=matus&want=matrix", eva)["contacts"]
             assert ("box", "Matus", "@matus:mattbox.local") in [
                 (s["source"], s["name"], s.get("matrixId")) for s in found], found
+            # A word that starts with it first: Kováčová before Nováková.
             found = ok("/api/contacts/suggest?q=kov&want=email", matus)["contacts"]
-            assert [s["name"] for s in found] == ["Jana Kováčová"], found
+            assert [s["name"] for s in found] == ["Jana Kováčová", "Eva Nováková"], found
             assert found[0]["emails"] == ["jana@pekaren.example"], found
             found = ok("/api/contacts/suggest?q=jana&want=mesh", matus)["contacts"]
             assert found[0]["meshAddress"] == "jana@kitchenbox.local", found
