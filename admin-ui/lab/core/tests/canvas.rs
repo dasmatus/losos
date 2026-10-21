@@ -190,8 +190,8 @@ fn the_logical_view_and_the_canvas_move_together() {
         .into_iter()
         .find(|c| c["dev"] == json!(dev))
         .unwrap_or(Value::Null);
-    assert_eq!(moved["x"], json!(150 - 64));
-    assert_eq!(moved["y"], json!(150 - 48));
+    assert_eq!(moved["x"], json!(150 - 88));
+    assert_eq!(moved["y"], json!(150 - 36));
 }
 
 fn card_dev_x(card: &Value) -> f64 {

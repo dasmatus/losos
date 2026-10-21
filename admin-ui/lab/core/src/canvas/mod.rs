@@ -30,8 +30,8 @@ use std::collections::{HashMap, HashSet};
 /// Canvas units per unit of the logical view.
 pub const SCALE: f64 = 1.5;
 /// A device card's size when it first lands on the canvas.
-pub const DEVICE_W: f64 = 128.0;
-pub const DEVICE_H: f64 = 96.0;
+pub const DEVICE_W: f64 = 176.0;
+pub const DEVICE_H: f64 = 72.0;
 /// Undo steps kept.
 const HISTORY: usize = 100;
 /// Nodes and edges a document may hold.

@@ -66,7 +66,7 @@ fn labelled(mut v: Value, label: &str) -> Value {
 
 fn device(id: &str, cx: i64, cy: i64, kind: &str, name: &str) -> Value {
     json!({
-        "id": id, "type": "text", "x": cx - 64, "y": cy - 48, "width": 128, "height": 96,
+        "id": id, "type": "text", "x": cx - 88, "y": cy - 36, "width": 176, "height": 72,
         "text": format!("**{name}**"),
         "losos": { "device": { "type": kind, "name": name } },
     })
