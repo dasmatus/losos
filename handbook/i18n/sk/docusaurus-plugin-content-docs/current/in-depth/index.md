@@ -35,6 +35,9 @@ oddiele `/persist`.
   a hosťovanie strojov iných zariadení.
 - [Modely AI](/in-depth/ai-models.md). Požičiavanie pamäte modelom rozdeleným
   medzi zariadenia a platba za ich odpovede po tokenoch.
+- [Formát aplikácií](/in-depth/app-format.md). Jeden súbor Compose na
+  aplikáciu, spustený ako notshared na Podmane bez roota: čo s ním zariadenie
+  urobí a ako ho nainštalovať.
 - [Tvorca widgetov](/in-depth/widget-builder.md). Jazykový model na zariadení
   napíše widget podľa opisu.
 - [Master proxy](/in-depth/master-proxy.md). Prístup k zariadeniu z internetu bez

@@ -110,7 +110,9 @@ stránke [Zabudnuté heslo](../troubleshooting/forgot-password#you-have-the-spar
 ## Prehliadka \{#the-tour}
 
 Keď sa na tieto stránky po nastavení dostanete prvýkrát, nad Prehľadom sa
-otvorí prehliadka so šiestimi krátkymi krokmi. **Spustiť prehliadku** v
+otvorí krátka prehliadka: šesť krokov na každom zariadení a jeden navyše za
+každú funkciu, ktorú toto zariadenie má ([Prvé spustenie](../start/first-run)
+ich vymenúva). **Spustiť prehliadku** v
 Nastaveniach, O zariadení ju otvorí znova. Ak máte v systéme nastavené
 „obmedziť pohyb“, každý krok namiesto animácie ukáže statický obrázok.
 
