@@ -27,7 +27,7 @@
 # admin UI as it was before this feature: the boxes switch to it at the end
 # for the "before" pictures. The flake check runs without it.
 #
-# LosOS cloud's pod is not here: lososd runs in native mode with a stub
+# LosOS Cloud's pod is not here: lososd runs in native mode with a stub
 # `nextcloud-occ`, which is all the claim asks of it (as in
 # nix/tests/cloud.nix). The admin UI is built without LosOS Lab, whose
 # WebAssembly takes longer to build than this whole test runs and is not
