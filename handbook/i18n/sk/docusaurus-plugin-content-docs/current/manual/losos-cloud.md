@@ -27,7 +27,9 @@ vlastníka.
 - **Fotky** ukazujú všetky obrázky, najnovší mesiac navrchu. Kliknutím
   obrázok zväčšíte a šípkami prechádzate ďalšie.
 - **Kôš** drží vymazané súbory 30 dní alebo tak dlho, ako určí panel
-  **Aplikácie**. Súbor z neho obnovíte alebo ho vymažete natrvalo.
+  **Aplikácie**. Súbor z neho obnovíte alebo ho vymažete natrvalo. Čo
+  vymažete cez [sieťové zdieľanie](files-on-your-computer#the-network-share),
+  doň nepríde.
 - **Zariadenia** zobrazujú počítače a telefóny, ktoré sa synchronizujú, a
   vedia ktorékoľvek odhlásiť.
 - Vyhľadávanie hore nájde súbory podľa mena.
