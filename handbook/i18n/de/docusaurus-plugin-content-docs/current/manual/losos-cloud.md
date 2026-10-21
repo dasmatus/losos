@@ -9,8 +9,8 @@ slug: /manual/losos-cloud
 LosOS Cloud ist der eigene Dateidienst der Box: deine Dateien im Browser,
 ein Netzwerkordner für den Dateimanager und ein Server, mit dem sich die
 Nextcloud-Apps für Computer und Telefon synchronisieren. Er läuft auf der
-Box neben LosOS Cloud, das er App für App übernimmt; vorerst haben beide
-getrennte Dateien.
+Box neben dem Nextcloud-Dienst unter `/nextcloud/`, den er App für App
+übernimmt; vorerst haben beide getrennte Dateien.
 
 Öffne ihn unter `https://<name>.local/cloud/`. `<name>` ist der Name der
 Box, wie er auf ihrem Bildschirm steht. Du meldest dich mit LosOS Login an,

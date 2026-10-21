@@ -9,8 +9,8 @@ slug: /manual/losos-cloud
 LosOS Cloud je vlastná súborová služba zariadenia: vaše súbory v
 prehliadači, sieťový priečinok pre správcu súborov a server, s ktorým sa
 synchronizujú aplikácie Nextcloud pre počítač a telefón. Beží na zariadení
-popri LosOS Cloud, ktorý postupne preberá aplikáciu po aplikácii; zatiaľ má
-každý z nich vlastné súbory.
+popri službe Nextcloud na `/nextcloud/`, ktorú postupne preberá aplikáciu
+po aplikácii; zatiaľ má každá z nich vlastné súbory.
 
 Otvorte ho na `https://<name>.local/cloud/`. `<name>` je meno zariadenia,
 také ako na jeho obrazovke. Prihlásite sa cez LosOS Login a každý, kto sa

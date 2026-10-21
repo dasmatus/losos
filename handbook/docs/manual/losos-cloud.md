@@ -8,8 +8,9 @@ slug: /manual/losos-cloud
 
 LosOS Cloud is the box's own file service: your files in a browser, a
 network folder for the file manager, and a server the Nextcloud desktop and
-phone apps sync with. It runs on the box beside LosOS Cloud, which it is
-taking over app by app; for now the two keep separate files.
+phone apps sync with. It runs on the box beside the Nextcloud service at
+`/nextcloud/`, which it is taking over app by app; for now the two keep
+separate files.
 
 Open it at `https://<name>.local/cloud/`. `<name>` is the box's name, as on
 the box's screen. You sign in with LosOS Login, and everyone who can sign in

@@ -271,7 +271,7 @@ pkgs.testers.nixosTest {
         print(found)
         fields = found.splitlines()[0].split(";")
         name, host, port, txt = fields[3], fields[6], fields[8], fields[9]
-        assert name == r"LosOS\032cloud\032on\032mattbox", name
+        assert name == r"LosOS\032Cloud\032on\032mattbox", name
         assert host == HOST and port == "443", fields
         m = re.search(r'"path=([^"]+)"', txt)
         assert m, txt
