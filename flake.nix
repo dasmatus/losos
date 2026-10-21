@@ -456,6 +456,9 @@
         # LosOS Diagrams on a box with LosOS Cloud: the /lab/ move, a .canvas
         # file opened and saved back, and the pull request's pictures.
         losos-diagrams = import ./nix/tests/diagrams.nix { inherit pkgs; };
+        # Two people on two boxes drawing in one shared diagram at once
+        # (nix/tests/diagrams-together.nix).
+        losos-diagrams-together = import ./nix/tests/diagrams-together.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         losos-mail = import ./nix/tests/mail.nix { inherit pkgs; };

@@ -132,6 +132,8 @@ function DocumentPanel({ s }: { s: LabStore }) {
           {t("dg.doc.inCloud")} <code className="font-mono text-[12px] text-ink">{s.cloudFile.path}</code>
         </p>
       )}
+      {s.live?.from && <p className="mb-2 text-muted">{t("dg.live.from", { owner: s.live.from.owner, box: s.live.from.box })}</p>}
+      {s.live && !s.live.readOnly && <p className="mb-2 text-muted">{t("dg.live.together")}</p>}
       <Sect>{t("dg.doc.how")}</Sect>
       <ul className="m-0 list-disc space-y-1 pl-[18px] text-muted">
         <li>{t("dg.help.add")}</li>

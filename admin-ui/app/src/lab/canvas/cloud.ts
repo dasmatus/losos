@@ -10,6 +10,7 @@
 import { BOX_COPY } from "../shape";
 
 export interface CloudEntry {
+  id: number;
   path: string;
   name: string;
   dir: boolean;
@@ -73,7 +74,7 @@ export async function listFolder(path: string): Promise<CloudEntry[]> {
     .sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1));
 }
 
-export async function readFile(path: string): Promise<{ text: string; etag: string }> {
+export async function readFile(path: string): Promise<{ text: string; etag: string; id?: number }> {
   let res: Response;
   try {
     res = await fetch(`${BASE}/files/content?path=${q(path)}`, { credentials: "same-origin", cache: "no-store" });
@@ -82,9 +83,14 @@ export async function readFile(path: string): Promise<{ text: string; etag: stri
   }
   if (!res.ok) throw new CloudFail(res.status, res.status === 401 ? "signIn" : res.status === 404 ? "notFound" : "internal");
   const text = await res.text();
-  let etag = (res.headers.get("ETag") ?? "").replace(/^W\//, "").replace(/"/g, "");
-  if (!etag) etag = (await listFolder(parentOf(path))).find((e) => e.path === path)?.etag ?? "";
-  return { text, etag };
+  // The folder's listing has the file's number, which its live-editing
+  // room goes by; a box without one opens the file all the same.
+  const entry = await listFolder(parentOf(path)).then(
+    (all) => all.find((e) => e.path === path),
+    () => undefined,
+  );
+  const etag = (res.headers.get("ETag") ?? "").replace(/^W\//, "").replace(/"/g, "") || (entry?.etag ?? "");
+  return { text, etag, ...(entry ? { id: entry.id } : {}) };
 }
 
 /** Writes the diagram. `etag`: the version this tab read (refused when the
@@ -105,4 +111,33 @@ export function parentOf(path: string): string {
 
 export function joinPath(folder: string, name: string): string {
   return folder ? `${folder}/${name}` : name;
+}
+
+/** What the live-editing room says about a file (backend/src/cloud/collab/routes.rs). */
+export interface RoomInfo {
+  name: string;
+  /** Whose file it is: their name, and for a file on another box their address. */
+  owner: string;
+  ownerAddress?: string;
+  /** The box that holds the file. */
+  box: string;
+  perm: "read" | "edit" | "none";
+  /** The file is on another box, shared with the person here. */
+  remote: boolean;
+  me: { name: string; address: string };
+}
+
+/** The room of file `id` (on another box: in share `share`), or null where
+ *  this box edits files alone. */
+export async function roomInfo(id: number, share?: string): Promise<RoomInfo | null> {
+  try {
+    return await call<RoomInfo>(`/collab/doc?${share === undefined ? "" : `share=${q(share)}&`}file=${id}`);
+  } catch {
+    return null;
+  }
+}
+
+/** The room's WebSocket, without the file. */
+export function roomServer(): string {
+  return `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}${BASE}/collab`;
 }

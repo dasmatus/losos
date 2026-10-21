@@ -24,6 +24,7 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { actions } from "./actions";
 import { CloudDialog } from "./canvas/cloud-dialog";
+import { LivePeople } from "./canvas/people";
 import { useEngine } from "./engine-hook";
 import { logoUrl } from "./icons";
 import { OrderDialog } from "./order-dialog";
@@ -71,7 +72,7 @@ export function TopBar({ phone, onDetails }: { phone: boolean; onDetails: () => 
         : t("lab.canvas.svg");
   const badge = (
     <span
-      className="inline-flex max-w-full min-w-0 items-center gap-1.5 truncate rounded-full border border-line bg-sunk px-2.5 py-1 text-[12px] text-muted"
+      className="inline-flex max-w-full min-w-0 items-center gap-1.5 truncate text-[12px] text-muted"
       data-testid="engine-badge"
     >
       <StatusDot state={engine.available ? "ok" : "warn"} />
@@ -156,10 +157,10 @@ export function TopBar({ phone, onDetails }: { phone: boolean; onDetails: () => 
       </DropdownMenu>
       <CloudDialog mode={cloudMode} onClose={() => setCloudMode(null)} />
       <ButtonGroup aria-label={t("dg.history")} className="shrink-0">
-        <Button variant="secondary" size="icon-sm" aria-label={t("dg.undo")} title={t("dg.undo")} disabled={!s.canvas.canUndo} onClick={() => a.canvas.undo()} data-testid="undo">
+        <Button variant="secondary" size="icon-sm" aria-label={t("dg.undo")} title={t("dg.undo")} disabled={s.live ? !s.live.canUndo : !s.canvas.canUndo} onClick={() => a.canvas.undo()} data-testid="undo">
           <HugeiconsIcon icon={ArrowTurnBackwardIcon} size={15} strokeWidth={1.8} color="currentColor" />
         </Button>
-        <Button variant="secondary" size="icon-sm" aria-label={t("dg.redo")} title={t("dg.redo")} disabled={!s.canvas.canRedo} onClick={() => a.canvas.redo()} data-testid="redo">
+        <Button variant="secondary" size="icon-sm" aria-label={t("dg.redo")} title={t("dg.redo")} disabled={s.live ? !s.live.canRedo : !s.canvas.canRedo} onClick={() => a.canvas.redo()} data-testid="redo">
           <HugeiconsIcon icon={ArrowTurnForwardIcon} size={15} strokeWidth={1.8} color="currentColor" />
         </Button>
       </ButtonGroup>
@@ -211,6 +212,7 @@ export function TopBar({ phone, onDetails }: { phone: boolean; onDetails: () => 
         </ToggleGroup>
       )}
       <span className="hidden flex-1 min-[901px]:block" />
+      <LivePeople />
       {s.ordering?.enabled && (
         <>
           <Button variant="secondary" size="sm" title={t("lab.order.buttonTip")} onClick={() => setOrdering(true)} data-testid="order-open">
@@ -223,7 +225,7 @@ export function TopBar({ phone, onDetails }: { phone: boolean; onDetails: () => 
       <Tooltip>
         <TooltipTrigger
           render={<span tabIndex={0} />}
-          className="min-w-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          className="min-w-0 rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
           aria-label={engine.available ? `${t("lab.engine.emulated")}: ${emulatedTip(engine.kinds)}` : `${t("lab.engine.simulated")}: ${engine.probe.reason}`}
         >
           {badge}

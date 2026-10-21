@@ -76,7 +76,7 @@ export function CloudDialog({ mode, onClose }: { mode: "open" | "save" | null; o
     const r = await actions().saveCloud(path, over ? over.etag : undefined);
     setBusy(false);
     if (r === "saved") onClose();
-    else if (r === "changed") setReplace(there ?? { path, name: file, dir: false, size: 0, mtime: 0, etag: "*" });
+    else if (r === "changed") setReplace(there ?? { id: 0, path, name: file, dir: false, size: 0, mtime: 0, etag: "*" });
   };
 
   const crumbs = folder ? folder.split("/") : [];

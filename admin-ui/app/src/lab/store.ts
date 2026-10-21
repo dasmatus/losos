@@ -22,6 +22,7 @@ import {
   type TickResult,
 } from "./core";
 import type { MachinesView } from "./canvas/machines";
+import type { LiveView } from "./canvas/shared";
 import type { Ordering } from "./order";
 import type { GpuState } from "./render";
 import { type Cam, fitCam, fitCanvas, Scene, type View, zoomCam } from "./scene";
@@ -102,7 +103,8 @@ export interface DeskState {
   notes: string;
 }
 
-type Channel = "model" | "frame" | "events" | "cam";
+/** `people`: who else has the diagram open, their pointers and selections. */
+type Channel = "model" | "frame" | "events" | "cam" | "people";
 
 export type ConsoleSink = (lines: string[], done: boolean) => void;
 
@@ -147,7 +149,9 @@ export class LabStore {
   /** Whether LosOS Cloud answers on this box for the person on the page. */
   cloud = false;
   /** The LosOS Cloud file this diagram was opened from or saved to. */
-  cloudFile: { path: string; etag: string } | null = null;
+  cloudFile: { path: string; etag: string; id?: number } | null = null;
+  /** The diagram as several people edit it (canvas/shared.ts), while it is. */
+  live: LiveView | null = null;
   /** The box's machines on the mesh, for the canvas's machine cards. */
   machines: MachinesView = { state: "off" };
   /** The text of the file opened in this tab, so the picker can go back to it. */
@@ -167,12 +171,13 @@ export class LabStore {
   /** Called after every snapshot; the engine reconciles its guests there. */
   onRefresh: () => void = () => {};
 
-  private version: Record<Channel, number> = { model: 0, frame: 0, events: 0, cam: 0 };
+  private version: Record<Channel, number> = { model: 0, frame: 0, events: 0, cam: 0, people: 0 };
   private listeners: Record<Channel, Set<() => void>> = {
     model: new Set(),
     frame: new Set(),
     events: new Set(),
     cam: new Set(),
+    people: new Set(),
   };
   /** The snapshot with its lookups; rebuilt on every refresh. */
   scene: Scene;
