@@ -431,8 +431,9 @@ export function NotesPage() {
     );
   }
 
+  // While editing, the note drawn beside its text takes the side's place.
   const side =
-    tag === null && view !== "graph" && note !== undefined && path !== null ? (
+    tag === null && view !== "graph" && view !== "edit" && note !== undefined && path !== null ? (
       <NoteSide
         vault={vault}
         path={path}
@@ -737,7 +738,7 @@ function NoteEditor({
         </Badge>
         <span className="text-[12.5px] text-muted">{t("notes.edit.hint")}</span>
       </div>
-      <div className="grid gap-4 2xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2">
         <CollabEditor
           file={file}
           me={me}
@@ -750,7 +751,7 @@ function NoteEditor({
           extensions={extensions}
           className="min-h-[55dvh]"
         />
-        <div className="max-2xl:hidden rounded-card border border-hair bg-surface px-7 py-5" aria-label={t("notes.edit.preview")} data-note-preview>
+        <div className="max-xl:hidden rounded-card border border-hair bg-surface px-7 py-5" aria-label={t("notes.edit.preview")} data-note-preview>
           {preview}
         </div>
       </div>
