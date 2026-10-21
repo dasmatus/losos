@@ -88,7 +88,9 @@ pub struct JobSpec {
 impl JobSpec {
     /// Why this job is refused, or `None`.
     pub fn fault(&self) -> Option<&'static str> {
-        let payload = serde_json::to_vec(&self.payload).map(|v| v.len()).unwrap_or(usize::MAX);
+        let payload = serde_json::to_vec(&self.payload)
+            .map(|v| v.len())
+            .unwrap_or(usize::MAX);
         if self.name.trim().is_empty() || self.name.len() > 200 || self.name.contains('\n') {
             Some("a job's name is one line of at most 200 characters")
         } else if !self.payload.is_object() || payload > MAX_PAYLOAD_BYTES {
@@ -153,6 +155,7 @@ struct Job {
     started_at: Option<u64>,
     finished_at: Option<u64>,
     exit_code: Option<i32>,
+    outputs: Option<serde_json::Map<String, serde_json::Value>>,
     log: String,
     cut: bool,
     cancel: bool,
@@ -187,6 +190,9 @@ pub struct JobView {
     pub started_at: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<u64>,
+    /// The job's outputs (`jobs.<id>.outputs`), once it is over.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outputs: Option<serde_json::Map<String, serde_json::Value>>,
     /// The log from the offset asked for.
     pub log: String,
     /// Where the log ends now: the offset to ask from next time.
@@ -206,7 +212,13 @@ pub struct Report {
     pub state: Option<JobState>,
     #[serde(default)]
     pub exit_code: Option<i32>,
+    /// The job's outputs, with the end.
+    #[serde(default)]
+    pub outputs: Option<serde_json::Map<String, serde_json::Value>>,
 }
+
+/// The largest set of outputs one job may hand on, serialised.
+pub const MAX_OUTPUTS_BYTES: usize = 64 * 1024;
 
 /// The queue.
 pub struct Ci {
@@ -291,21 +303,27 @@ impl Ci {
             return Err(CiError::Invalid(why));
         }
         if archive.len() > MAX_ARCHIVE_BYTES {
-            return Err(CiError::Invalid("the commit's archive is larger than 24 MiB"));
+            return Err(CiError::Invalid(
+                "the commit's archive is larger than 24 MiB",
+            ));
         }
         let id = self.new_id();
         {
             let mut jobs = self.jobs.lock().await;
             self.sweep(&mut jobs);
             if jobs.len() >= MAX_JOBS {
-                return Err(CiError::Full("the edge holds as many jobs as it can; try again later"));
+                return Err(CiError::Full(
+                    "the edge holds as many jobs as it can; try again later",
+                ));
             }
             let open = jobs
                 .values()
                 .filter(|j| j.origin == origin && !j.state.finished())
                 .count();
             if open >= MAX_OPEN_PER_BOX {
-                return Err(CiError::Full("this box has 64 jobs waiting or running already"));
+                return Err(CiError::Full(
+                    "this box has 64 jobs waiting or running already",
+                ));
             }
             // Written under the lock, so a claim never sees a job whose
             // archive is not there yet.
@@ -325,6 +343,7 @@ impl Ci {
                     started_at: None,
                     finished_at: None,
                     exit_code: None,
+                    outputs: None,
                     log: String::new(),
                     cut: false,
                     cancel: false,
@@ -336,7 +355,12 @@ impl Ci {
     }
 
     /// The oldest job `runner` may take now.
-    fn pick(jobs: &HashMap<String, Job>, runner: &str, foreign: bool, now: Instant) -> Option<String> {
+    fn pick(
+        jobs: &HashMap<String, Job>,
+        runner: &str,
+        foreign: bool,
+        now: Instant,
+    ) -> Option<String> {
         jobs.iter()
             .filter(|(_, j)| j.state == JobState::Queued)
             .filter(|(_, j)| {
@@ -384,8 +408,13 @@ impl Ci {
                 let archive = match tokio::fs::read(self.archive_path(&id)).await {
                     Ok(a) => a,
                     Err(e) => {
-                        self.finish(&id, JobState::Error, None, "The edge lost this job's archive.")
-                            .await;
+                        self.finish(
+                            &id,
+                            JobState::Error,
+                            None,
+                            "The edge lost this job's archive.",
+                        )
+                        .await;
                         return Err(e.into());
                     }
                 };
@@ -434,10 +463,21 @@ impl Ci {
         let cancel = job.cancel;
         if let Some(state) = report.state {
             if !state.finished() {
-                return Err(CiError::Invalid("a job ends in success, failure, error or cancelled"));
+                return Err(CiError::Invalid(
+                    "a job ends in success, failure, error or cancelled",
+                ));
+            }
+            if let Some(outputs) = &report.outputs {
+                let size = serde_json::to_vec(outputs)
+                    .map(|v| v.len())
+                    .unwrap_or(usize::MAX);
+                if size > MAX_OUTPUTS_BYTES {
+                    return Err(CiError::Invalid("a job's outputs are at most 64 KiB"));
+                }
             }
             job.state = state;
             job.exit_code = report.exit_code;
+            job.outputs = report.outputs;
             job.finished_at = Some(unix_now());
             drop(jobs);
             let _ = tokio::fs::remove_file(self.archive_path(id)).await;
@@ -453,39 +493,43 @@ impl Ci {
         wanted
             .iter()
             .take(256)
-            .map(|(id, from)| match jobs.get(id).filter(|j| j.origin == origin) {
-                None => JobView {
-                    id: id.clone(),
-                    state: "lost".into(),
-                    runner: None,
-                    exit_code: None,
-                    created_at: 0,
-                    started_at: None,
-                    finished_at: None,
-                    log: String::new(),
-                    log_len: 0,
-                },
-                Some(j) => {
-                    let mut from = (*from).min(j.log.len());
-                    while !j.log.is_char_boundary(from) {
-                        from -= 1;
-                    }
-                    JobView {
+            .map(
+                |(id, from)| match jobs.get(id).filter(|j| j.origin == origin) {
+                    None => JobView {
                         id: id.clone(),
-                        state: serde_json::to_value(j.state)
-                            .ok()
-                            .and_then(|v| v.as_str().map(str::to_string))
-                            .unwrap_or_default(),
-                        runner: j.runner.clone(),
-                        exit_code: j.exit_code,
-                        created_at: j.created_at,
-                        started_at: j.started_at,
-                        finished_at: j.finished_at,
-                        log: j.log[from..].to_string(),
-                        log_len: j.log.len(),
+                        state: "lost".into(),
+                        runner: None,
+                        exit_code: None,
+                        outputs: None,
+                        created_at: 0,
+                        started_at: None,
+                        finished_at: None,
+                        log: String::new(),
+                        log_len: 0,
+                    },
+                    Some(j) => {
+                        let mut from = (*from).min(j.log.len());
+                        while !j.log.is_char_boundary(from) {
+                            from -= 1;
+                        }
+                        JobView {
+                            id: id.clone(),
+                            state: serde_json::to_value(j.state)
+                                .ok()
+                                .and_then(|v| v.as_str().map(str::to_string))
+                                .unwrap_or_default(),
+                            runner: j.runner.clone(),
+                            exit_code: j.exit_code,
+                            outputs: j.outputs.clone(),
+                            created_at: j.created_at,
+                            started_at: j.started_at,
+                            finished_at: j.finished_at,
+                            log: j.log[from..].to_string(),
+                            log_len: j.log.len(),
+                        }
                     }
-                }
-            })
+                },
+            )
             .collect()
     }
 
@@ -542,7 +586,11 @@ impl Ci {
                     job.runner = Some(who);
                 }
                 JobState::Queued if now.duration_since(job.created) > KEEP_QUEUED => {
-                    append(&mut job.log, &mut job.cut, "[No box took this job in a day.]\n");
+                    append(
+                        &mut job.log,
+                        &mut job.cut,
+                        "[No box took this job in a day.]\n",
+                    );
                     job.state = JobState::Error;
                     job.finished_at = Some(unix_now());
                     gone.push((id.clone(), false));
@@ -598,20 +646,42 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn another_box_gets_the_job_first() {
         let (ci, _d) = queue().await;
-        let id = ci.submit("boxa", spec("build"), b"tar".to_vec()).await.unwrap();
+        let id = ci
+            .submit("boxa", spec("build"), b"tar".to_vec())
+            .await
+            .unwrap();
         // The box that sent it waits out the grace.
-        assert!(ci.claim("boxa", true, Duration::ZERO).await.unwrap().is_none());
+        assert!(ci
+            .claim("boxa", true, Duration::ZERO)
+            .await
+            .unwrap()
+            .is_none());
         // A box that lends takes it at once, with the archive.
-        let got = ci.claim("boxb", true, Duration::ZERO).await.unwrap().unwrap();
+        let got = ci
+            .claim("boxb", true, Duration::ZERO)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(got.id, id);
         assert_eq!(got.origin, "boxa");
         assert_eq!(got.archive, b"tar");
         // A box that does not lend now never sees it.
-        let id2 = ci.submit("boxa", spec("test"), b"t".to_vec()).await.unwrap();
-        assert!(ci.claim("boxc", false, Duration::ZERO).await.unwrap().is_none());
+        let id2 = ci
+            .submit("boxa", spec("test"), b"t".to_vec())
+            .await
+            .unwrap();
+        assert!(ci
+            .claim("boxc", false, Duration::ZERO)
+            .await
+            .unwrap()
+            .is_none());
         // After the grace the sender's own runner may take it.
         tokio::time::advance(ORIGIN_GRACE).await;
-        let own = ci.claim("boxa", false, Duration::ZERO).await.unwrap().unwrap();
+        let own = ci
+            .claim("boxa", false, Duration::ZERO)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(own.id, id2);
     }
 
@@ -633,11 +703,20 @@ mod tests {
     async fn the_log_and_the_end_reach_the_sender() {
         let (ci, _d) = queue().await;
         let id = ci.submit("boxa", spec("build"), vec![1]).await.unwrap();
-        ci.claim("boxb", true, Duration::ZERO).await.unwrap().unwrap();
-        let report = |log: &str, state| Report {
+        ci.claim("boxb", true, Duration::ZERO)
+            .await
+            .unwrap()
+            .unwrap();
+        let report = |log: &str, state: Option<JobState>| Report {
             log: log.into(),
             state,
             exit_code: state.map(|_| 0),
+            outputs: state.map(|_| {
+                serde_json::json!({ "size": "12" })
+                    .as_object()
+                    .unwrap()
+                    .clone()
+            }),
         };
         assert!(!ci.update("boxb", &id, report("one\n", None)).await.unwrap());
         // Another box cannot report on it: it is told to stop.
@@ -654,6 +733,7 @@ mod tests {
         assert_eq!(v[0].log, "two\n");
         assert_eq!(v[0].log_len, 8);
         assert_eq!(v[0].exit_code, Some(0));
+        assert_eq!(v[0].outputs.as_ref().unwrap()["size"], "12");
         // Only the sender sees it.
         assert_eq!(ci.jobs("boxc", &[(id.clone(), 0)]).await[0].state, "lost");
     }
@@ -662,15 +742,26 @@ mod tests {
     async fn a_quiet_box_loses_the_job_to_another() {
         let (ci, _d) = queue().await;
         let id = ci.submit("boxa", spec("build"), vec![1]).await.unwrap();
-        ci.claim("boxb", true, Duration::ZERO).await.unwrap().unwrap();
+        ci.claim("boxb", true, Duration::ZERO)
+            .await
+            .unwrap()
+            .unwrap();
         tokio::time::advance(LEASE + Duration::from_secs(1)).await;
-        let again = ci.claim("boxc", true, Duration::ZERO).await.unwrap().unwrap();
+        let again = ci
+            .claim("boxc", true, Duration::ZERO)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(again.id, id);
         // The first box's late word stops it.
         assert!(ci.update("boxb", &id, Report::default()).await.unwrap());
         tokio::time::advance(LEASE + Duration::from_secs(1)).await;
         // Two boxes went quiet: it fails.
-        assert!(ci.claim("boxd", true, Duration::ZERO).await.unwrap().is_none());
+        assert!(ci
+            .claim("boxd", true, Duration::ZERO)
+            .await
+            .unwrap()
+            .is_none());
         let v = ci.jobs("boxa", &[(id, 0)]).await;
         assert_eq!(v[0].state, "error");
         assert!(v[0].log.contains("no box finished the job"));
@@ -681,12 +772,25 @@ mod tests {
         let (ci, _d) = queue().await;
         let queued = ci.submit("boxa", spec("a"), vec![1]).await.unwrap();
         ci.cancel("boxa", &queued).await.unwrap();
-        assert!(ci.claim("boxb", true, Duration::ZERO).await.unwrap().is_none());
+        assert!(ci
+            .claim("boxb", true, Duration::ZERO)
+            .await
+            .unwrap()
+            .is_none());
         let running = ci.submit("boxa", spec("b"), vec![1]).await.unwrap();
-        ci.claim("boxb", true, Duration::ZERO).await.unwrap().unwrap();
-        assert!(matches!(ci.cancel("boxc", &running).await, Err(CiError::NotFound)));
+        ci.claim("boxb", true, Duration::ZERO)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            ci.cancel("boxc", &running).await,
+            Err(CiError::NotFound)
+        ));
         ci.cancel("boxa", &running).await.unwrap();
-        assert!(ci.update("boxb", &running, Report::default()).await.unwrap());
+        assert!(ci
+            .update("boxb", &running, Report::default())
+            .await
+            .unwrap());
     }
 
     #[tokio::test(start_paused = true)]
@@ -694,21 +798,36 @@ mod tests {
         let (ci, _d) = queue().await;
         let mut bad = spec("x");
         bad.payload = serde_json::json!("steps");
-        assert!(matches!(ci.submit("boxa", bad, vec![]).await, Err(CiError::Invalid(_))));
+        assert!(matches!(
+            ci.submit("boxa", bad, vec![]).await,
+            Err(CiError::Invalid(_))
+        ));
         let mut bad = spec("x");
         bad.payload = serde_json::json!({ "run": "x".repeat(MAX_PAYLOAD_BYTES) });
-        assert!(matches!(ci.submit("boxa", bad, vec![]).await, Err(CiError::Invalid(_))));
+        assert!(matches!(
+            ci.submit("boxa", bad, vec![]).await,
+            Err(CiError::Invalid(_))
+        ));
         let mut bad = spec("x");
         bad.commit = "main".into();
-        assert!(matches!(ci.submit("boxa", bad, vec![]).await, Err(CiError::Invalid(_))));
         assert!(matches!(
-            ci.submit("boxa", spec("x"), vec![0; MAX_ARCHIVE_BYTES + 1]).await,
+            ci.submit("boxa", bad, vec![]).await,
+            Err(CiError::Invalid(_))
+        ));
+        assert!(matches!(
+            ci.submit("boxa", spec("x"), vec![0; MAX_ARCHIVE_BYTES + 1])
+                .await,
             Err(CiError::Invalid(_))
         ));
         for i in 0..MAX_OPEN_PER_BOX {
-            ci.submit("boxa", spec(&format!("j{i}")), vec![]).await.unwrap();
+            ci.submit("boxa", spec(&format!("j{i}")), vec![])
+                .await
+                .unwrap();
         }
-        assert!(matches!(ci.submit("boxa", spec("y"), vec![]).await, Err(CiError::Full(_))));
+        assert!(matches!(
+            ci.submit("boxa", spec("y"), vec![]).await,
+            Err(CiError::Full(_))
+        ));
         // Another box is not held to boxa's count.
         ci.submit("boxb", spec("y"), vec![]).await.unwrap();
     }

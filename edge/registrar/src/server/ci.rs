@@ -116,7 +116,11 @@ async fn claim(State(st): State<AppState>, Json(req): Json<ClaimReq>) -> Respons
         return busy();
     };
     match ci
-        .claim(&req.auth.appliance_id, req.foreign, Duration::from_secs(req.wait))
+        .claim(
+            &req.auth.appliance_id,
+            req.foreign,
+            Duration::from_secs(req.wait),
+        )
         .await
     {
         Ok(Some(c)) => {

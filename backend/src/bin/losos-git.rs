@@ -109,20 +109,20 @@ fn main() -> anyhow::Result<()> {
                 losos_ctl::forge::events::deliver_to(path);
             }
             server::run(
-            Config {
-                state_dir,
-                git,
-                require_sign_in,
-                default_private: !public_by_default,
-                push_create,
-                base_path,
-            },
-            server::Listen {
-                socket,
-                tcp: listen,
-                internal: internal_socket,
-            },
-        )
+                Config {
+                    state_dir,
+                    git,
+                    require_sign_in,
+                    default_private: !public_by_default,
+                    push_create,
+                    base_path,
+                },
+                server::Listen {
+                    socket,
+                    tcp: listen,
+                    internal: internal_socket,
+                },
+            )
         }
     }
 }
