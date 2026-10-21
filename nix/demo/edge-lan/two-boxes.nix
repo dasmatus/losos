@@ -77,6 +77,9 @@ let
         hostName = name;
         backend.package = lososPkgs.losos-ctl;
         admin.ui = lososPkgs.losos-admin-ui;
+        # LosOS Login (modules/identity.nix) is not in these VMs; the admin
+        # pages are opened with the box's spare key, as its sign-in allows.
+        identity.enable = false;
         # The unsigned second edge: see the header.
         proxy.registrarUrl = "http://edge.local:8444";
         proxy.officialRootKeyFile = "${identityFixture}/root.pub";
