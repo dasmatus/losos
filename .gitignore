@@ -51,3 +51,4 @@ nix/demo/box-edge-box/recording/
 # quickemu's VM directory for docs/vm/losos.conf: the installer ISO, the disk,
 # the firmware variables and the TPM state.
 docs/vm/losos/
+__pycache__/
