@@ -9,26 +9,28 @@ slug: /manual/contacts
 LosOS Contacts is an address book for each person on the box. **Contacts**
 in the sidebar opens it at `/contacts`. Your book is yours alone. Other
 people on the box, administrators included, cannot read it through the
-admin pages or through chat.
+admin pages or through LosOS Cloud.
 
 ## When Contacts is there
 
-Contacts keeps each book on the box's chat server, so it is there exactly
-when [Chat](chat) is: while the box shares its storage with a mesh it has
-joined. With sharing off there is no **Contacts** in the sidebar and
-`/contacts` does not open. The books stay on the disk, and come back as they
-were once the box shares again.
+Contacts keeps your contacts in [LosOS Cloud](losos-cloud), so it is there
+on every box that runs LosOS Cloud, whether or not the box shares its
+storage. [Mail](mail) and [Chat](chat) run only while the box shares with a
+mesh it has joined. With sharing off, a person's page has no **Mail**,
+**Chat**, **Call** or **Video** button, and the book itself stays as it is.
 
 The spare key opens the admin pages but has no address book, so Contacts
 asks you to sign in with your own account.
 
 ## Where the book is kept
 
-Each book is a private room on the box's chat server, made for you the
-first time you open Contacts. Each contact is one entry in that room, with
-its photo scaled to a small square picture. The room never leaves the box.
-It is marked as not shared with other chat servers, nobody else is invited,
-and Chat leaves it out of your conversations.
+Your contacts are the address books of your LosOS Cloud account, one vCard
+per contact. Contacts lists the people in every address book you have,
+including one a phone or Thunderbird made. A contact you add here goes into
+your first book, **Contacts**. When you edit a contact, Contacts changes the
+fields it shows and keeps the rest of the card as your phone wrote it, such
+as groups, ringtones and related names. Photos stay in the card, and the
+page shows them as a small square picture.
 
 ## The book
 
@@ -55,7 +57,7 @@ A person's page has a button for each way to reach them:
 - **Call** and **Video** open that conversation and start a
   [call](calls).
 
-Chat, Call and Video need the contact's chat address, such as
+Chat, Call and Video are there when the box runs Chat, and need the contact's chat address, such as
 `@eva:mattbox.local`. Everyone on this box has one; for a contact, put it in
 **Chat (Matrix ID)**.
 
@@ -84,8 +86,11 @@ the name together with the first email address or phone number.
 every phone reads) or 4.0. A person's page and the right-click menu also
 export one contact on its own.
 
-## What Contacts does not do yet
+## On your phone and computer
 
-Contacts has no CardDAV, so a phone or a desktop address book cannot sync
-with it directly. Moving contacts between them is an export on one side and
-an import on the other.
+Phones and desktop address books sync with the same address books over
+CardDAV. Set them up as in
+[Calendars and contacts](losos-cloud#calendars-and-contacts). A contact you
+add on the phone shows up in Contacts, and one you change in Contacts
+reaches the phone on its next sync. Import and export are still there for a
+one-off move from somewhere else.

@@ -62,7 +62,7 @@ import { contextMenu } from "@/lib/context-menu";
  *   Lab                     (LosOS Lab at /lab/, a page of its own)
  *   Mail                    (LosOS Mail at /mail, only on the shared side)
  *   Chat                    (LosOS Chat at /chat/, the same)
- *   Contacts                (LosOS Contacts at /contacts, the same)
+ *   Contacts                (LosOS Contacts at /contacts, wherever LosOS Cloud runs)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
  *
@@ -95,8 +95,9 @@ interface LinkEntry {
   /** A page outside this app (the lab at /lab/): a plain link that loads it,
    * not a router link that would draw this app's 404 at that address. */
   external?: boolean;
-  /** An app that runs as the shared user (GET /api/me's `shared`): drawn
-   * only while the box shares its storage and the app is up. */
+  /** An app GET /api/me lists in `shared` while it is up: mail and chat
+   * only while the box shares its storage, contacts wherever LosOS Cloud
+   * runs. */
   shared?: string;
   children?: readonly Entry[];
 }
@@ -191,8 +192,8 @@ const TREE: readonly Entry[] = [
 function allowed(entry: LinkEntry): boolean {
   if (entry.pane !== undefined) return paneOpen(entry.pane);
   if (entry.key === "lab") return canUse("lab");
-  // Shared-side: there only while the box shares its storage, which lososd
-  // says in /api/me's `shared`. With sharing off the page does not exist.
+  // There only while lososd lists the app in /api/me's `shared`: mail and
+  // chat while the box shares its storage, contacts with LosOS Cloud.
   if (entry.shared !== undefined) return sharedApp(entry.shared);
   return true;
 }

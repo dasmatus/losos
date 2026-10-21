@@ -9,28 +9,30 @@ slug: /manual/contacts
 LosOS Contacts ist ein Adressbuch für jede Person auf der Box. **Kontakte**
 in der Seitenleiste öffnet es unter `/contacts`. Dein Adressbuch gehört nur
 dir. Die anderen Personen auf der Box, auch Administratoren, können es
-weder über die Verwaltungsseiten noch über den Chat lesen.
+weder über die Verwaltungsseiten noch über LosOS Cloud lesen.
 
 ## Wann es Kontakte gibt \{#when-contacts-is-there}
 
-Kontakte bewahrt jedes Adressbuch auf dem Chat-Server der Box auf, also gibt
-es Kontakte genau dann, wenn es den [Chat](chat) gibt: solange die Box ihren
-Speicher mit einem Mesh teilt, dem sie beigetreten ist. Ist das Teilen aus,
-steht **Kontakte** nicht in der Seitenleiste und `/contacts` öffnet sich
-nicht. Die Adressbücher bleiben auf der Festplatte und sind wieder da, wie
-sie waren, sobald die Box wieder teilt.
+Kontakte bewahrt deine Kontakte in [LosOS Cloud](losos-cloud) auf, also gibt
+es Kontakte auf jeder Box, auf der LosOS Cloud läuft, ob die Box ihren
+Speicher teilt oder nicht. [Mail](mail) und [Chat](chat) laufen nur,
+solange die Box mit einem Mesh teilt, dem sie beigetreten ist. Ist das
+Teilen aus, hat die Seite einer Person keinen Knopf **Mail**, **Chat**,
+**Anruf** oder **Video**, und das Adressbuch bleibt, wie es ist.
 
 Der Ersatzschlüssel öffnet die Verwaltungsseiten, hat aber kein Adressbuch.
 Kontakte bittet dich deshalb, dich mit deinem eigenen Konto anzumelden.
 
 ## Wo das Adressbuch liegt \{#where-the-book-is-kept}
 
-Jedes Adressbuch ist ein privater Raum auf dem Chat-Server der Box, der
-entsteht, wenn du Kontakte zum ersten Mal öffnest. Jeder Kontakt ist ein
-Eintrag in diesem Raum, sein Foto wird auf ein kleines quadratisches Bild
-verkleinert. Der Raum verlässt die Box nie. Er ist als nicht geteilt mit
-anderen Chat-Servern markiert, niemand sonst ist eingeladen, und der Chat
-zeigt ihn nicht unter deinen Unterhaltungen.
+Deine Kontakte sind die Adressbücher deines Kontos in LosOS Cloud, eine
+vCard pro Kontakt. Kontakte zeigt die Personen aus all deinen
+Adressbüchern, auch aus einem, das ein Handy oder Thunderbird angelegt hat.
+Ein Kontakt, den du hier hinzufügst, kommt in dein erstes Adressbuch,
+**Contacts**. Wenn du einen Kontakt bearbeitest, ändert Kontakte die Felder,
+die es zeigt, und lässt den Rest der Karte so, wie dein Handy ihn
+geschrieben hat, etwa Gruppen, Klingeltöne und Verwandte. Fotos bleiben in
+der Karte, und die Seite zeigt sie als kleines quadratisches Bild.
 
 ## Das Adressbuch \{#the-book}
 
@@ -59,7 +61,7 @@ Die Seite einer Person hat einen Knopf für jeden Weg, sie zu erreichen:
 - **Anruf** und **Video** öffnen diese Unterhaltung und starten einen
   [Anruf](calls).
 
-Chat, Anruf und Video brauchen die Chat-Adresse des Kontakts, zum Beispiel
+Chat, Anruf und Video gibt es, wenn auf der Box der Chat läuft, und sie brauchen die Chat-Adresse des Kontakts, zum Beispiel
 `@eva:mattbox.local`. Alle auf dieser Box haben eine; bei einem Kontakt
 trägst du sie unter **Chat (Matrix-ID)** ein.
 
@@ -90,8 +92,11 @@ ersten E-Mail-Adresse oder Telefonnummer.
 in vCard 3.0 (das jedes Handy liest) oder 4.0. Die Seite einer Person und
 das Rechtsklick-Menü exportieren auch einen einzelnen Kontakt.
 
-## Was Kontakte noch nicht kann \{#what-contacts-does-not-do-yet}
+## Auf dem Handy und dem Computer \{#on-your-phone-and-computer}
 
-Kontakte hat kein CardDAV, ein Handy oder ein Adressbuch auf dem Computer
-kann sich also nicht direkt damit abgleichen. Kontakte bringst du mit einem
-Export auf der einen und einem Import auf der anderen Seite hinüber.
+Handys und Adressbücher auf dem Computer gleichen sich über CardDAV mit
+denselben Adressbüchern ab. Richte sie ein wie unter
+[Kalender und Kontakte](losos-cloud#calendars-and-contacts). Ein Kontakt,
+den du auf dem Handy hinzufügst, erscheint in Kontakte, und eine Änderung in
+Kontakte kommt beim nächsten Abgleich aufs Handy. Import und Export bleiben
+für einen einmaligen Umzug von woanders.

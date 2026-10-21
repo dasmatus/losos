@@ -1,20 +1,22 @@
-# nixos-test-vms config for LosOS Contacts (backend/src/contacts.rs,
-# backend/src/vcard.rs, admin-ui/app/src/contacts/).
+# nixos-test-vms config for LosOS Contacts (backend/src/cloud/contacts.rs,
+# backend/src/contacts.rs, backend/src/vcard.rs, admin-ui/app/src/contacts/).
 #
-# The box runs LosOS Login, lososd, nginx, Dendrite and Stalwart as they
-# ship; a laptop on the LAN carries the browser's traffic, as in
-# nix/tests/chat.nix. What only a booted box can show:
+# The box runs LosOS Login, lososd, nginx, LosOS Cloud, Dendrite and
+# Stalwart as they ship; a laptop on the LAN carries the browser's traffic,
+# as in nix/tests/chat.nix. What only a booted box can show:
 #
-#   * each person's book is a room of their own on the box's homeserver,
-#     created by lososd as that person, typed org.losos.contacts and never
-#     federated; nobody else can read it, and the spare key has no book;
+#   * the book is the person's LosOS Cloud address books: what the Contacts
+#     page writes, a phone reads over CardDAV, and what a phone writes, the
+#     page shows, every book of it; an edit on the page keeps the lines the
+#     page does not read; nobody else reads the book, and the spare key has
+#     none;
 #   * .vcf files in vCard 3.0 (with a photo), 4.0 and 2.1 come in, a second
 #     import of the same file updates rather than doubles, and an export
 #     reads back into another person's book with the same contacts;
 #   * the people pickers (GET /api/contacts/suggest) offer the person's
 #     contacts and the people on this box;
-#   * Contacts is there only where chat is: with sharing off, /api/contacts*
-#     and /contacts answer 404 and /api/me's `shared` leaves it out;
+#   * Contacts is there wherever LosOS Cloud is: with sharing off the book
+#     and the page stay, and only the Mail, Chat, Call and Video buttons go;
 #   * the pages: the book, a person's page, the editor with the picker, an
 #     import, the right-click menu, Mail's To field and Chat's
 #     "Message someone" offering contacts, and a contact's Chat button
@@ -67,13 +69,6 @@ let
     // lib.optionalAttrs before { src = beforeSrc; }
   );
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
   standIn =
     name:
     pkgs.hello
@@ -175,6 +170,50 @@ let
       ""
     ]
   );
+
+  # A card a phone writes over CardDAV, with lines the Contacts page does
+  # not read: they stay when the page edits the card.
+  phoneCard = pkgs.writeText "marek.vcf" (
+    lib.concatStringsSep "\r\n" [
+      "BEGIN:VCARD"
+      "VERSION:3.0"
+      "PRODID:-//Apple Inc.//iPhone OS 26.0//EN"
+      "UID:9c1d7e52-phone-marek"
+      "N:Horný;Marek;;;"
+      "FN:Marek Horný"
+      "EMAIL;TYPE=INTERNET;TYPE=HOME:marek@horny.example"
+      "CATEGORIES:Family"
+      "X-PHONE-RINGTONE:marimba"
+      "item2.X-ABRELATEDNAMES:Mama"
+      "item2.X-ABLabel:_$!<Mother>!$_"
+      "END:VCARD"
+      ""
+    ]
+  );
+
+  # A second address book, as a phone or Thunderbird makes one.
+  workBook = pkgs.writeText "mkcol.xml" ''
+    <?xml version="1.0" encoding="utf-8"?>
+    <d:mkcol xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+      <d:set><d:prop>
+        <d:resourcetype><d:collection/><card:addressbook/></d:resourcetype>
+        <d:displayname>Work</d:displayname>
+      </d:prop></d:set>
+    </d:mkcol>
+  '';
+  workCard = pkgs.writeText "silvia.vcf" (
+    lib.concatStringsSep "\r\n" [
+      "BEGIN:VCARD"
+      "VERSION:4.0"
+      "UID:urn:uuid:5a0e3c1f-work-silvia"
+      "FN:Silvia Malinová"
+      "N:Malinová;Silvia;;;"
+      "EMAIL;TYPE=work:silvia@firma.example"
+      "ORG:Firma s.r.o."
+      "END:VCARD"
+      ""
+    ]
+  );
 in
 
 pkgs.testers.nixosTest {
@@ -193,17 +232,18 @@ pkgs.testers.nixosTest {
           ../../modules/workloads.nix
           ../../modules/chat.nix
           ../../modules/mail.nix
+          ../../modules/cloud.nix
         ];
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = ui;
-          nextcloud.mode = "container";
           forgejo.enable = true;
           forgejo.mode = "container";
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
           workloads.forgejoImage = standIn "losos-forgejo-stand-in";
-          # The shared user's side of the box: chat's gate, and Contacts'.
+          # LosOS Cloud keeps the book.
+          cloud.enable = true;
+          # The shared user's side of the box: chat's gate, and mail's.
           sharingMyStorage = true;
           cluster.enable = true;
           shared.fscrypt.enable = false;
@@ -220,11 +260,7 @@ pkgs.testers.nixosTest {
         users.groups.shared.gid = 1001;
         systemd.tmpfiles.rules = [ "d /home/shared/data 0700 shared shared -" ];
 
-        systemd.services.lososd.path = lib.mkForce [
-          stubOcc
-          pkgs.coreutils
-        ];
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+        systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
         environment.systemPackages = [
           pkgs.jq
           pkgs.curl
@@ -261,6 +297,9 @@ pkgs.testers.nixosTest {
           "contacts/three.vcf".source = threeCards;
           "contacts/four.vcf".source = fourCards;
           "contacts/old.vcf".source = oldCard;
+          "contacts/marek.vcf".source = phoneCard;
+          "contacts/mkcol.xml".source = workBook;
+          "contacts/silvia.vcf".source = workCard;
         };
         environment.systemPackages = [
           pkgs.curl
@@ -276,7 +315,6 @@ pkgs.testers.nixosTest {
     import re
     import subprocess
     import time
-    import urllib.parse
 
     BEFORE = ${if before then "True" else "False"}
     HOST = "mattbox.local"
@@ -292,6 +330,7 @@ pkgs.testers.nixosTest {
     box.wait_for_unit("nginx.service")
     box.wait_for_unit("dendrite.service")
     box.wait_for_unit("losos-mail.service")
+    box.wait_for_unit("losos-cloud.service")
     box.wait_for_open_port(443)
     box.wait_for_open_port(8008)
     laptop.wait_for_unit("socks.service")
@@ -384,22 +423,36 @@ pkgs.testers.nixosTest {
         with subtest("the admin pages before Contacts"):
             browser("before")
     else:
+        C = "/cloud/api/contacts"
+        DAV = f"https://{HOST}/remote.php/dav/addressbooks/users"
+
+        def dav(who, method, path, extra=""):
+            out = curl(f"-u '{who}' -X {method} -w '\\n%{{http_code}}' {extra} '{DAV}/{path}'")
+            body, code = out.rsplit("\n", 1)
+            return int(code), body
+
+        OWNER = f"matus:{PASSWORD}"
+
         with subtest("a book is empty until something is put in it, and is only the person's"):
-            assert ok("/api/contacts", matus) == {"available": True, "contacts": []}
+            assert ok(C, matus) == {"contacts": []}
             assert "contacts" in ok("/api/me", matus)["shared"]
             # The spare key is not a person, and has no book.
-            code, body = call("/api/contacts", extra=f"-H 'Authorization: Bearer {spare}'")
-            assert code == 403, (code, body)
-            code, body = call("/api/contacts")
+            code, body = call(C, extra=f"-H 'Authorization: Bearer {spare}'")
+            assert code in (401, 403), (code, body)
+            code, body = call(C)
+            assert code == 401, (code, body)
+            # A made-up person header is not believed.
+            code, body = call(C, extra="-H 'X-Losos-Cloud-User: notshared' -H 'Remote-User: matus'")
             assert code == 401, (code, body)
 
         with subtest("a vCard 3.0 file with a photo comes in, and a second import updates it"):
-            report = upload("/api/contacts/import", matus, "/etc/contacts/three.vcf")
+            report = upload(f"{C}/import", matus, "/etc/contacts/three.vcf")
             assert report == {"added": 3, "updated": 0, "skipped": 0, "photosDropped": 0, "leftOut": 0}, report
-            book = ok("/api/contacts", matus)
+            book = ok(C, matus)
             assert names(book) == ["Eva Nováková", "Jana Kováčová", "Tomáš Bielik"], book
             by = {c["name"]: c for c in book["contacts"]}
             eva_card, jana, tomas = by["Eva Nováková"], by["Jana Kováčová"], by["Tomáš Bielik"]
+            assert eva_card["book"] == "Contacts", eva_card
             assert eva_card["matrix"] == "@eva:mattbox.local", eva_card
             assert eva_card["mesh"] == "eva@mattbox.local", eva_card
             assert jana["org"] == "Pekáreň u Jany" and jana["title"] == "Majiteľka", jana
@@ -415,14 +468,14 @@ pkgs.testers.nixosTest {
             assert head == "200 image/jpeg", head
             assert laptop.succeed("head -c 3 /tmp/photo.jpg | od -An -tx1").split() == ["ff", "d8", "ff"]
             # The same file again: nothing doubles.
-            again = upload("/api/contacts/import", matus, "/etc/contacts/three.vcf")
+            again = upload(f"{C}/import", matus, "/etc/contacts/three.vcf")
             assert again["added"] == 0 and again["updated"] == 3, again
-            assert len(ok("/api/contacts", matus)["contacts"]) == 3
+            assert len(ok(C, matus)["contacts"]) == 3
 
         with subtest("vCard 4.0 and 2.1 come in too"):
-            assert upload("/api/contacts/import", matus, "/etc/contacts/four.vcf")["added"] == 1
-            assert upload("/api/contacts/import", matus, "/etc/contacts/old.vcf")["added"] == 1
-            by = {c["name"]: c for c in ok("/api/contacts", matus)["contacts"]}
+            assert upload(f"{C}/import", matus, "/etc/contacts/four.vcf")["added"] == 1
+            assert upload(f"{C}/import", matus, "/etc/contacts/old.vcf")["added"] == 1
+            by = {c["name"]: c for c in ok(C, matus)["contacts"]}
             zuzana, ondrej = by["Zuzana Horváthová"], by["Ondrej Rak"]
             assert zuzana["uid"] == "urn:uuid:4fbe8971-0bc3-424c-9c26-36c3e1eff6b1", zuzana
             assert zuzana["matrix"] == "@zuzana:kitchenbox.local", zuzana
@@ -430,69 +483,91 @@ pkgs.testers.nixosTest {
             assert ondrej["note"] == "Sused zo štvrtého poschodia", ondrej
             assert ondrej["phones"][0]["value"] == "+421903777888", ondrej
             # The 2.1 card is in the browser's import later; take it out again.
-            assert call(f"/api/contacts/{ondrej['id']}", matus, method="DELETE")[0] == 200
-            assert "Ondrej Rak" not in names(ok("/api/contacts", matus))
+            assert call(f"{C}/{ondrej['id']}", matus, method="DELETE")[0] == 200
+            assert "Ondrej Rak" not in names(ok(C, matus))
 
         with subtest("one contact is added, edited and given a photo by hand"):
-            made = ok("/api/contacts", matus, method="POST",
+            made = ok(C, matus, method="POST",
                       data={"name": "Peter Dlhý", "emails": [{"value": "peter@dlhy.example", "label": "home"}]})
             pid = made["id"]
-            assert re.fullmatch(r"[0-9a-f]{32}", pid), made
+            assert re.fullmatch(r"[0-9]+", pid), made
             made["phones"] = [{"value": "+421 948 000 111", "label": "mobile"}]
-            edited = ok(f"/api/contacts/{pid}", matus, method="PUT", data=made)
+            edited = ok(f"{C}/{pid}", matus, method="PUT", data=made)
             assert edited["phones"][0]["value"] == "+421 948 000 111", edited
-            pic = ok(f"/api/contacts/{pid}/photo", matus, method="PUT",
+            pic = ok(f"{C}/{pid}/photo", matus, method="PUT",
                      extra="-H 'Content-Type: image/png' --data-binary @${../../admin-ui/themes/brand/salmon.png}")
             assert pic.get("photo"), pic
-            assert ok(f"/api/contacts/{pid}", matus)["phones"] == edited["phones"]
-            assert call(f"/api/contacts/{pid}", matus, method="DELETE")[0] == 200
-            code, _ = call(f"/api/contacts/{pid}", matus)
+            assert ok(f"{C}/{pid}", matus)["phones"] == edited["phones"]
+            assert call(f"{C}/{pid}", matus, method="DELETE")[0] == 200
+            code, _ = call(f"{C}/{pid}", matus)
             assert code == 404, code
 
-        with subtest("the book is a private, unfederated room of Matus's own"):
-            m = ok("/api/chat/session", matus, method="POST", data={})
-            e = ok("/api/chat/session", eva, method="POST", data={})
-            uid = urllib.parse.quote(m["userId"])
-            pointer = ok(f"/_matrix/client/v3/user/{uid}/account_data/org.losos.contacts",
-                         matus, token=m["accessToken"])
-            room = urllib.parse.quote(pointer["room_id"])
-            create = ok(f"/_matrix/client/v3/rooms/{room}/state/m.room.create", matus, token=m["accessToken"])
-            assert create["type"] == "org.losos.contacts" and create["m.federate"] is False, create
-            members = ok(f"/_matrix/client/v3/rooms/{room}/joined_members", matus, token=m["accessToken"])
-            assert list(members["joined"]) == [m["userId"]], members
-            state = ok(f"/_matrix/client/v3/rooms/{room}/state", matus, token=m["accessToken"])
-            kept = [ev for ev in state if ev["type"] == "org.losos.contact" and ev["content"]]
-            assert len(kept) == 4, [ev["state_key"] for ev in kept]
-            # Eva cannot read it, or join it.
-            code, body = call(f"/_matrix/client/v3/rooms/{room}/state", eva, token=e["accessToken"])
-            assert code == 403, (code, body)
-            code, body = call(f"/_matrix/client/v3/rooms/{room}/join", eva, method="POST",
-                              token=e["accessToken"], data={})
-            assert code == 403, (code, body)
-            # Eva's own book is empty, and none of Matus's ids are hers.
-            assert ok("/api/contacts", eva)["contacts"] == []
-            code, _ = call(f"/api/contacts/{kept[0]['state_key']}", eva)
+        with subtest("the book is LosOS Cloud's address books, the ones a phone syncs"):
+            # What the page put in, a phone reads over CardDAV.
+            code, body = dav(OWNER, "PROPFIND", "notshared/contacts/", "-H 'Depth: 1'")
+            assert code == 207, (code, body[:400])
+            assert body.count(".vcf</d:href>") == 4, body
+            # What a phone writes, the page shows.
+            code, body = dav(OWNER, "PUT", "notshared/contacts/marek.vcf",
+                             "-H 'If-None-Match: *' -H 'Content-Type: text/vcard' --data-binary @/etc/contacts/marek.vcf")
+            assert code == 201, (code, body)
+            by = {c["name"]: c for c in ok(C, matus)["contacts"]}
+            marek = by["Marek Horný"]
+            assert marek["emails"][0]["value"] == "marek@horny.example", marek
+            # An edit on the page keeps the lines only the phone reads.
+            marek["phones"] = [{"value": "+421 907 555 444", "label": "mobile"}]
+            assert ok(f"{C}/{marek['id']}", matus, method="PUT", data=marek)["phones"][0]["value"] == "+421 907 555 444"
+            code, card = dav(OWNER, "GET", "notshared/contacts/marek.vcf")
+            assert code == 200, (code, card)
+            for line in ("UID:9c1d7e52-phone-marek", "CATEGORIES:Family", "X-PHONE-RINGTONE:marimba",
+                         "item2.X-ABRELATEDNAMES:Mama", "item2.X-ABLabel:_$!<Mother>!$_",
+                         "+421 907 555 444", "FN:Marek Horný"):
+                assert line in card, (line, card)
+            # A second book, made by the phone, is part of the same list.
+            code, body = dav(OWNER, "MKCOL", "notshared/work/",
+                             "-H 'Content-Type: application/xml' --data-binary @/etc/contacts/mkcol.xml")
+            assert code == 201, (code, body)
+            code, body = dav(OWNER, "PUT", "notshared/work/silvia.vcf",
+                             "-H 'Content-Type: text/vcard' --data-binary @/etc/contacts/silvia.vcf")
+            assert code == 201, (code, body)
+            by = {c["name"]: c for c in ok(C, matus)["contacts"]}
+            assert by["Silvia Malinová"]["book"] == "Work", by["Silvia Malinová"]
+            assert by["Silvia Malinová"]["org"] == "Firma s.r.o.", by["Silvia Malinová"]
+            # A delete on the page is gone from the phone's next sync.
+            assert call(f"{C}/{marek['id']}", matus, method="DELETE")[0] == 200
+            code, _ = dav(OWNER, "GET", "notshared/contacts/marek.vcf", "-o /dev/null")
+            assert code == 404, code
+            # Eva reads none of it, over CardDAV or the API.
+            code, _ = dav(f"eva:{EVA_PASSWORD}", "PROPFIND", "notshared/contacts/", "-H 'Depth: 1'")
+            assert code in (403, 404), code
+            assert ok(C, eva)["contacts"] == []
+            code, _ = call(f"{C}/{by['Silvia Malinová']['id']}", eva)
             assert code == 404, code
 
         with subtest("an export reads back into another person's book"):
+            count = len(ok(C, matus)["contacts"])
+            assert count == 5, count
             for version in ("3.0", "4.0"):
                 laptop.succeed(f"curl -skf -H 'Cookie: {matus}' -o /tmp/out-{version}.vcf "
-                               f"'https://{HOST}/api/contacts/export?version={version}'")
+                               f"'https://{HOST}{C}/export?version={version}'")
                 text = laptop.succeed(f"cat /tmp/out-{version}.vcf")
-                assert text.count("BEGIN:VCARD") == 4 and f"VERSION:{version}" in text, text[:400]
+                assert text.count("BEGIN:VCARD") == count and f"VERSION:{version}" in text, text[:400]
                 assert all(len(l.encode()) <= 75 for l in text.split("\r\n")), "a line is not folded"
-            report = upload("/api/contacts/import", eva, "/tmp/out-4.0.vcf")
-            assert report["added"] == 4, report
-            assert names(ok("/api/contacts", eva)) == names(ok("/api/contacts", matus))
-            mine = {c["name"]: c for c in ok("/api/contacts", matus)["contacts"]}
-            hers = {c["name"]: c for c in ok("/api/contacts", eva)["contacts"]}
+            report = upload(f"{C}/import", eva, "/tmp/out-4.0.vcf")
+            assert report["added"] == count, report
+            assert names(ok(C, eva)) == names(ok(C, matus))
+            mine = {c["name"]: c for c in ok(C, matus)["contacts"]}
+            hers = {c["name"]: c for c in ok(C, eva)["contacts"]}
             for name in mine:
                 for field in ("emails", "phones", "matrix", "mesh", "org", "birthday", "note"):
                     assert mine[name].get(field) == hers[name].get(field), (name, field, mine[name], hers[name])
             assert hers["Eva Nováková"].get("photo"), hers["Eva Nováková"]
+            # Eva's land in her own book, over CardDAV too.
+            code, body = dav(f"eva:{EVA_PASSWORD}", "PROPFIND", "eva/contacts/", "-H 'Depth: 1'")
+            assert code == 207 and body.count(".vcf</d:href>") == count, (code, body[:400])
             # One contact on its own.
             one = laptop.succeed(f"curl -skf -H 'Cookie: {matus}' "
-                                 f"'https://{HOST}/api/contacts/export?ids={mine['Jana Kováčová']['id']}'")
+                                 f"'https://{HOST}{C}/export?ids={mine['Jana Kováčová']['id']}'")
             assert one.count("BEGIN:VCARD") == 1 and "FN:Jana Kováčová" in one, one
 
         with subtest("the pickers offer contacts and the people on this box"):
@@ -513,32 +588,32 @@ pkgs.testers.nixosTest {
             assert found[0]["emails"] == ["jana@pekaren.example"], found
             found = ok("/api/contacts/suggest?q=jana&want=mesh", matus)["contacts"]
             assert found[0]["meshAddress"] == "jana@kitchenbox.local", found
-            # Accents are not needed to find someone.
+            # Accents are not needed to find someone, in any book.
             found = ok("/api/contacts/suggest?q=tomas&want=any", matus)["contacts"]
             assert found[0]["name"] == "Tomáš Bielik", found
+            found = ok("/api/contacts/suggest?q=silvia&want=email", matus)["contacts"]
+            assert found[0]["emails"] == ["silvia@firma.example"], found
 
-        with subtest("with sharing off there are no contacts"):
+        with subtest("with sharing off the book stays, without chat and mail"):
             switch("unshared")
             box.wait_until_fails("systemctl is-active dendrite.service")
-            for path in ("/api/contacts", "/api/contacts/suggest?q=e", "/api/contacts/export"):
-                code, body = call(path, matus)
-                assert code == 404, (path, code, body)
-            code, body = call("/api/contacts", matus)
-            assert json.loads(body)["available"] is False, body
-            assert "contacts" not in ok("/api/me", matus)["shared"]
-            for path in ("/contacts", "/contacts/"):
-                code = curl(f"-o /dev/null -w '%{{http_code}}' -H 'Cookie: {matus}' https://{HOST}{path}")
-                assert code == "404", (path, code)
+            assert len(ok(C, matus)["contacts"]) == 5
+            assert "contacts" in ok("/api/me", matus)["shared"]
+            assert "chat" not in ok("/api/me", matus)["shared"]
+            # The pickers still offer the book and the box, with no Matrix IDs.
+            found = ok("/api/contacts/suggest?q=&want=box", matus)["contacts"]
+            assert [(s["source"], s["name"], s.get("matrixId")) for s in found] == [("box", "Eva", None)], found
+            code = curl(f"-o /dev/null -w '%{{http_code}}' -H 'Cookie: {matus}' https://{HOST}/contacts")
+            assert code == "200", code
             browser("off")
 
-        with subtest("with sharing on again the book is still there, and the pages use it"):
+        with subtest("with sharing on again the pages use the book in Mail and Chat"):
             switch(None)
             box.wait_for_unit("dendrite.service")
             box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
-            assert len(ok("/api/contacts", matus)["contacts"]) == 4
             browser("on")
             # The browser imported the 2.1 card and added one contact.
-            assert "Ondrej Rak" in names(ok("/api/contacts", matus))
-            assert "Lucia Malá" in names(ok("/api/contacts", matus))
+            assert "Ondrej Rak" in names(ok(C, matus))
+            assert "Lucia Malá" in names(ok(C, matus))
   '';
 }

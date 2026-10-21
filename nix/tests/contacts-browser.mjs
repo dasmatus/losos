@@ -2,7 +2,7 @@
 // and the pictures of it.
 //
 //   node contacts-browser.mjs before <out>  the admin pages before Contacts
-//   node contacts-browser.mjs off    <out>  the admin pages with sharing off
+//   node contacts-browser.mjs off    <out>  the book with sharing off
 //   node contacts-browser.mjs on     <out>  the book and the apps that use it
 //
 // As in nix/tests/chat-browser.mjs the box is reached through a SOCKS proxy
@@ -101,12 +101,27 @@ async function before() {
 }
 
 async function off() {
+  // Without the shared side Contacts stays, LosOS Cloud keeps the book;
+  // only the ways to reach someone through chat and mail are gone.
   const owner = await person("matus", process.env.CONTACTS_MATUS_PASSWORD);
   await owner.goto(`${ORIGIN}/`);
-  await owner.getByRole("link", { name: "Overview", exact: true }).waitFor();
-  await owner.waitForTimeout(3000);
-  if ((await contactsLink(owner).count()) !== 0) throw new Error("Contacts is in the sidebar with sharing off");
+  await contactsLink(owner).waitFor();
+  if ((await owner.getByRole("link", { name: "Chat", exact: true }).count()) !== 0) {
+    throw new Error("Chat is in the sidebar with sharing off");
+  }
   await shot(owner, "sidebar-sharing-off");
+  await contactsLink(owner).click();
+  const list = owner.getByRole("region", { name: "Your contacts" });
+  await list.getByRole("button", { name: /Eva Nováková/ }).click();
+  const page = owner.getByRole("article");
+  await page.getByRole("heading", { name: "Eva Nováková" }).waitFor();
+  await page.getByText("eva@mattbox.home.arpa").first().waitFor();
+  for (const action of ["Mail", "Chat", "Call", "Video"]) {
+    if ((await page.getByRole("button", { name: action, exact: true }).count()) !== 0) {
+      throw new Error(`a contact has a ${action} button with sharing off`);
+    }
+  }
+  await shot(owner, "contacts-sharing-off");
 }
 
 async function on() {
@@ -214,11 +229,6 @@ async function on() {
   await owner.getByRole("textbox", { name: "Message Eva" }).waitFor();
   if (owner.url().includes("with=")) throw new Error(`the link stayed in the address bar: ${owner.url()}`);
   await shot(owner, "chat-from-contact");
-
-  // The contacts room is not a conversation.
-  if ((await owner.getByRole("button", { name: /^Contacts/ }).count()) !== 0) {
-    throw new Error("the contacts room is in the room list");
-  }
 }
 
 try {

@@ -9,27 +9,29 @@ slug: /manual/contacts
 LosOS Contacts je adresár pre každého človeka na zariadení. Položka
 **Kontakty** v bočnom paneli ho otvorí na adrese `/contacts`. Váš adresár
 patrí len vám. Ostatní ľudia na zariadení, ani správcovia, ho nedokážu
-prečítať cez administráciu ani cez chat.
+prečítať cez administráciu ani cez LosOS Cloud.
 
 ## Kedy sú Kontakty k dispozícii \{#when-contacts-is-there}
 
-Kontakty uchovávajú každý adresár na chatovom serveri zariadenia, takže sú
-k dispozícii presne vtedy ako [Chat](chat): kým zariadenie zdieľa svoje
-úložisko so sieťou, do ktorej sa pripojilo. Keď je zdieľanie vypnuté,
-v bočnom paneli nie sú **Kontakty** a `/contacts` sa neotvorí. Adresáre
-zostávajú na disku a vrátia sa nezmenené, keď zariadenie znova zdieľa.
+Kontakty uchovávajú vaše kontakty v [LosOS Cloud](losos-cloud), takže sú
+k dispozícii na každom zariadení, na ktorom beží LosOS Cloud, či zariadenie
+zdieľa svoje úložisko, alebo nie. [Pošta](mail) a [Chat](chat) bežia len
+vtedy, keď zariadenie zdieľa so sieťou, do ktorej sa pripojilo. Keď je
+zdieľanie vypnuté, stránka človeka nemá tlačidlá **Pošta**, **Chat**,
+**Hovor** ani **Video** a adresár zostáva taký, aký je.
 
 Náhradný kľúč otvorí administráciu, ale nemá adresár, preto vás Kontakty
 požiadajú o prihlásenie vlastným účtom.
 
 ## Kde je adresár uložený \{#where-the-book-is-kept}
 
-Každý adresár je súkromná miestnosť na chatovom serveri zariadenia, ktorá
-vznikne pri prvom otvorení Kontaktov. Každý kontakt je jeden záznam v tejto
-miestnosti a jeho fotka sa zmenší na malý štvorcový obrázok. Miestnosť
-nikdy neopustí zariadenie. Je označená ako nezdieľaná s inými chatovými
-servermi, nikto iný do nej nie je pozvaný a Chat ju medzi vašimi
-konverzáciami nezobrazuje.
+Vaše kontakty sú adresáre vášho účtu v LosOS Cloud, jeden vCard na každý
+kontakt. Kontakty zobrazia ľudí zo všetkých vašich adresárov, aj z toho,
+ktorý vytvoril telefón alebo Thunderbird. Kontakt, ktorý pridáte tu, sa
+uloží do vášho prvého adresára **Contacts**. Keď kontakt upravíte, Kontakty
+zmenia polia, ktoré zobrazujú, a zvyšok karty nechajú tak, ako ho zapísal
+telefón, napríklad skupiny, zvonenia a príbuzných. Fotky zostávajú v karte
+a stránka ich zobrazí ako malý štvorcový obrázok.
 
 ## Adresár \{#the-book}
 
@@ -57,7 +59,7 @@ Stránka človeka má tlačidlo pre každý spôsob, ako ho zastihnúť:
 - **Hovor** a **Video** otvoria túto konverzáciu a začnú
   [hovor](calls).
 
-Chat, Hovor a Video potrebujú adresu kontaktu v chate, napríklad
+Chat, Hovor a Video sa zobrazia, keď na zariadení beží Chat, a potrebujú adresu kontaktu v chate, napríklad
 `@eva:mattbox.local`. Každý na tomto zariadení ju má; pri kontakte ju
 zadajte do poľa **Chat (Matrix ID)**.
 
@@ -86,8 +88,11 @@ inak meno spolu s prvou e-mailovou adresou alebo telefónnym číslom.
 (ktorý prečíta každý telefón) alebo 4.0. Stránka človeka a ponuka pravého
 tlačidla exportujú aj jeden kontakt samostatne.
 
-## Čo Kontakty zatiaľ nevedia \{#what-contacts-does-not-do-yet}
+## V telefóne a v počítači \{#on-your-phone-and-computer}
 
-Kontakty nemajú CardDAV, takže telefón ani adresár v počítači sa s nimi
-nedokážu priamo synchronizovať. Kontakty medzi nimi presuniete exportom na
-jednej strane a importom na druhej.
+Telefóny a adresáre v počítači sa s tými istými adresármi synchronizujú cez
+CardDAV. Nastavte ich podľa časti
+[Kalendáre a kontakty](losos-cloud#calendars-and-contacts). Kontakt, ktorý
+pridáte v telefóne, sa objaví v Kontaktoch, a zmena v Kontaktoch sa do
+telefónu dostane pri jeho ďalšej synchronizácii. Import a export zostávajú
+na jednorazový presun odinakiaľ.
