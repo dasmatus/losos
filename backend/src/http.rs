@@ -525,13 +525,17 @@ fn guarded_at(
 }
 
 /// The apps on the shared side that are live on this box now, by name:
-/// mail and chat run only while the box shares its storage, and the admin
+/// mail, chat and Mesh CI run only while the box shares its storage, and the admin
 /// UI draws their entries only when they are listed here. The spare key
 /// and an edge are nobody, so they get none.
 fn shared_apps(api: &Api) -> Vec<&'static str> {
     let mut apps = Vec::new();
     if api.mail.open().is_some() {
         apps.push("mail");
+    }
+    // modules/ci.nix names the socket only while Mesh CI runs.
+    if std::env::var_os("LOSOS_CI_SOCKET").is_some() {
+        apps.push("ci");
     }
     apps
 }

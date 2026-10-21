@@ -273,6 +273,7 @@ let
       names ? [
         "look"
         "pins"
+        "ci"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {

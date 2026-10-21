@@ -136,18 +136,27 @@ pub struct EdgeConfig {
     /// The configured registrar, when the path file is not there yet.
     pub registrar_url: String,
     pub appliance_id: String,
-    pub token_file: PathBuf,
+    /// The box's proxy token, as a systemd credential. `None` on a box
+    /// with no edge configured: everything runs at home.
+    pub token_file: Option<PathBuf>,
 }
 
 impl EdgeConfig {
+    fn token(&self) -> Option<String> {
+        let path = self.token_file.as_ref()?;
+        let token = std::fs::read_to_string(path).ok()?;
+        let token = token.trim();
+        (!token.is_empty()).then(|| token.to_string())
+    }
+
     /// From `LOSOS_CI_*`, set by modules/ci.nix. The token is a systemd
     /// credential, so only this service reads it.
     pub fn from_env() -> Option<EdgeConfig> {
         let var = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
-        let token_file = match std::env::var_os("CREDENTIALS_DIRECTORY") {
-            Some(dir) => PathBuf::from(dir).join("edge-token"),
-            None => PathBuf::from(var("LOSOS_CI_TOKEN_FILE")?),
-        };
+        let token_file = std::env::var_os("CREDENTIALS_DIRECTORY")
+            .map(|dir| PathBuf::from(dir).join("edge-token"))
+            .filter(|p| p.exists())
+            .or_else(|| var("LOSOS_CI_TOKEN_FILE").map(PathBuf::from));
         Some(EdgeConfig {
             path_file: var("LOSOS_EDGE_PATH_FILE")
                 .unwrap_or_else(|| "/run/losos/edge-path.env".into())
@@ -163,7 +172,7 @@ impl EdgeConfig {
 
     /// The registrar to call now, or `None` with no edge in reach.
     pub fn url(&self) -> Option<String> {
-        if self.none_file.exists() {
+        if self.none_file.exists() || self.token().is_none() {
             return None;
         }
         let from_path = std::fs::read_to_string(&self.path_file)
@@ -191,10 +200,9 @@ impl Edge {
     /// stdin, so the token is never in an argument vector.
     fn post(&self, path: &str, mut body: Value, timeout: u32) -> anyhow::Result<(u16, Vec<u8>)> {
         let url = self.config.url().context("no edge in reach")?;
-        let token = std::fs::read_to_string(&self.config.token_file)
-            .with_context(|| format!("reading {}", self.config.token_file.display()))?;
+        let token = self.config.token().context("this box has no edge token")?;
         body["appliance_id"] = json!(self.config.appliance_id);
-        body["token"] = json!(token.trim());
+        body["token"] = json!(token);
         let body = serde_json::to_vec(&body)?;
         let mut child = Command::new("curl")
             .args(["--silent", "--show-error", "--max-redirs", "0"])

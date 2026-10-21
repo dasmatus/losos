@@ -23,7 +23,7 @@ use std::sync::Arc;
 type Shared = web::Data<Arc<Ci>>;
 
 fn say(status: StatusCode, message: &str) -> HttpResponse {
-    HttpResponse::build(status).json(json!({ "message": message }))
+    HttpResponse::build(status).json(json!({ "error": message }))
 }
 
 fn failed(e: anyhow::Error) -> HttpResponse {
