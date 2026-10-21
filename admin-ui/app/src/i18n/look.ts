@@ -121,12 +121,12 @@ export default defineMessages({
   "look.builder.intro": {
     en: "Describe the widget and the AI writes it. It lands in the editor, where you can read it, try it in the preview and change it before you save.",
     sk: "Opíšte widget a AI ho napíše. Objaví sa v editore, kde si ho môžete prečítať, vyskúšať v náhľade a upraviť ešte pred uložením.",
-    de: "Beschreiben Sie das Widget, und die KI schreibt es. Es landet im Editor, wo Sie es lesen, in der Vorschau ausprobieren und vor dem Speichern ändern können.",
+    de: "Beschreibe das Widget, und die KI schreibt es. Es landet im Editor, wo du es lesen, in der Vorschau ausprobieren und vor dem Speichern ändern kannst.",
   },
   "look.builder.local": {
     en: "The AI is {model}, running on this box. What you write here stays on the box, and building is free. A widget takes a few minutes to write. The model is small and makes mistakes, so try the widget in the preview before you save it.",
     sk: "AI je {model} a beží na tomto zariadení. Čo sem napíšete, zostáva na zariadení, a tvorba je zadarmo. Napísanie widgetu trvá niekoľko minút. Model je malý a robí chyby, preto widget pred uložením vyskúšajte v náhľade.",
-    de: "Die KI ist {model} und läuft auf dieser Box. Was Sie hier schreiben, bleibt auf der Box, und das Bauen ist kostenlos. Ein Widget zu schreiben dauert ein paar Minuten. Das Modell ist klein und macht Fehler, probieren Sie das Widget daher vor dem Speichern in der Vorschau aus.",
+    de: "Die KI ist {model} und läuft auf dieser Box. Was du hier schreibst, bleibt auf der Box, und das Bauen ist kostenlos. Ein Widget zu schreiben dauert ein paar Minuten. Das Modell ist klein und macht Fehler, probiere das Widget daher vor dem Speichern in der Vorschau aus.",
   },
   "look.builder.loading": { en: "Asking the box…", sk: "Pýtam sa zariadenia…", de: "Box wird gefragt …" },
   "look.builder.loadFailed": {
@@ -143,7 +143,7 @@ export default defineMessages({
   "look.builder.starting": {
     en: "The AI on this box is starting. Try again in a minute.",
     sk: "AI na tomto zariadení sa spúšťa. Skúste to znova o minútu.",
-    de: "Die KI auf dieser Box startet. Versuchen Sie es in einer Minute erneut.",
+    de: "Die KI auf dieser Box startet. Versuche es in einer Minute erneut.",
   },
   "look.builder.downloading": {
     en: "This box is still downloading the AI model ({model}, about 1 GB). It needs to be online for that, and it downloads it only once.",
@@ -178,12 +178,12 @@ export default defineMessages({
   "look.builder.reading": {
     en: "The AI is reading your request. It carries on if you close this window.",
     sk: "AI číta vašu požiadavku. Pokračuje aj vtedy, keď toto okno zavriete.",
-    de: "Die KI liest Ihre Anfrage. Sie macht weiter, wenn Sie dieses Fenster schließen.",
+    de: "Die KI liest deine Anfrage. Sie macht weiter, wenn du dieses Fenster schließt.",
   },
   "look.builder.writing": {
     en: "The AI is writing the widget: {lines} lines so far. It carries on if you close this window.",
     sk: "AI píše widget: zatiaľ {lines} riadkov. Pokračuje aj vtedy, keď toto okno zavriete.",
-    de: "Die KI schreibt das Widget: bisher {lines} Zeilen. Sie macht weiter, wenn Sie dieses Fenster schließen.",
+    de: "Die KI schreibt das Widget: bisher {lines} Zeilen. Sie macht weiter, wenn du dieses Fenster schließt.",
   },
   "look.builder.steps": {
     en: "What the AI did",
@@ -258,7 +258,7 @@ export default defineMessages({
   "look.builder.problem.prompt": {
     en: "Describe the widget first.",
     sk: "Najprv widget opíšte.",
-    de: "Beschreiben Sie zuerst das Widget.",
+    de: "Beschreibe zuerst das Widget.",
   },
   "look.builder.problem.promptLong": {
     en: "Keep the description under {max} characters.",
@@ -273,7 +273,7 @@ export default defineMessages({
   "look.builder.doneNote": {
     en: "It is in the editor. Try it in the preview before you save it.",
     sk: "Je v editore. Pred uložením ho vyskúšajte v náhľade.",
-    de: "Es ist im Editor. Probieren Sie es vor dem Speichern in der Vorschau aus.",
+    de: "Es ist im Editor. Probiere es vor dem Speichern in der Vorschau aus.",
   },
   "look.builder.done": {
     en: "Written and put in the editor.",
@@ -293,17 +293,17 @@ export default defineMessages({
   "look.builder.fault.noWidget": {
     en: "The AI answered without writing a widget. Try describing it differently.",
     sk: "AI odpovedala bez widgetu. Skúste ho opísať inak.",
-    de: "Die KI hat ohne Widget geantwortet. Beschreiben Sie es anders.",
+    de: "Die KI hat ohne Widget geantwortet. Beschreibe es anders.",
   },
   "look.builder.fault.unusable": {
     en: "The AI wrote files a widget cannot have. Try again, or describe it differently.",
     sk: "AI napísala súbory, aké widget mať nemôže. Skúste to znova alebo ho opíšte inak.",
-    de: "Die KI hat Dateien geschrieben, die ein Widget nicht haben kann. Versuchen Sie es erneut oder beschreiben Sie es anders.",
+    de: "Die KI hat Dateien geschrieben, die ein Widget nicht haben kann. Versuche es erneut oder beschreibe es anders.",
   },
   "look.builder.fault.upstream": {
     en: "The AI on this box did not answer. Try again in a minute.",
     sk: "AI na tomto zariadení neodpovedala. Skúste to znova o minútu.",
-    de: "Die KI auf dieser Box hat nicht geantwortet. Versuchen Sie es in einer Minute erneut.",
+    de: "Die KI auf dieser Box hat nicht geantwortet. Versuche es in einer Minute erneut.",
   },
   "look.builder.fault.memory": {
     en: "This box has too little free memory for the AI right now. It needs about 1.5 GiB while it writes.",

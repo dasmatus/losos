@@ -198,11 +198,11 @@ dann läuft der eigene Cluster der Box. Um das Installieren abzuschalten,
 setze `losos.apps.enable` im Bereich **Erweitert** auf false.
 :::
 
-## Ihre Apps \{#your-apps}
+## Deine Apps \{#your-apps}
 
 Kleine eigene Apps, eine Einkaufsliste, ein Putzplan, eine Leseliste,
 die du beschreibst und die KI auf der Box schreibt
-([Mit KI bauen](../in-depth/widget-builder)). Sie stehen unter **Ihre Apps**
+([Mit KI bauen](../in-depth/widget-builder)). Sie stehen unter **Deine Apps**
 auf der Seite Apps. **App erstellen** öffnet den Editor: Beschreibe die App
 im Tab **Mit KI bauen** oder schreibe ihren Code im Tab **Code**. Die
 Vorschau daneben ist die echte App, du kannst sie also vor dem Speichern

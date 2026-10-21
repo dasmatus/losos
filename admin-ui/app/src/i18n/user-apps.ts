@@ -6,30 +6,32 @@ import { defineMessages } from "./define";
  * sentences (the model, the licence, the faults) are under look.builder. */
 export default defineMessages({
   // ── The list on the Apps pane ───────────────────────────────────────────
-  "userApps.title": { en: "Your apps", sk: "Vaše aplikácie", de: "Ihre Apps" },
+  "userApps.title": { en: "Your apps", sk: "Vaše aplikácie", de: "Deine Apps" },
   "userApps.caption": {
     en: "Apps you describe and the AI on this box writes. Each one runs on its own page and keeps its data on the box.",
     sk: "Aplikácie, ktoré opíšete a AI na tomto zariadení napíše. Každá beží na vlastnej stránke a údaje si ukladá na zariadení.",
-    de: "Apps, die Sie beschreiben und die KI auf dieser Box schreibt. Jede läuft auf einer eigenen Seite und speichert ihre Daten auf der Box.",
+    de: "Apps, die du beschreibst und die KI auf dieser Box schreibt. Jede läuft auf einer eigenen Seite und speichert ihre Daten auf der Box.",
   },
+  "userApps.emptyTitle": { en: "No apps yet", sk: "Zatiaľ žiadne aplikácie", de: "Noch keine Apps" },
   "userApps.empty": {
-    en: "No apps yet. Describe one, for example a shopping list or a chore chart, and the AI writes it.",
-    sk: "Zatiaľ žiadne aplikácie. Opíšte nejakú, napríklad nákupný zoznam alebo rozpis domácich prác, a AI ju napíše.",
-    de: "Noch keine Apps. Beschreiben Sie eine, zum Beispiel eine Einkaufsliste oder einen Ämterplan, und die KI schreibt sie.",
+    en: "Describe one, for example a shopping list or a chore chart, and the AI writes it.",
+    sk: "Opíšte nejakú, napríklad nákupný zoznam alebo rozpis domácich prác, a AI ju napíše.",
+    de: "Beschreibe eine, zum Beispiel eine Einkaufsliste oder einen Putzplan, und die KI schreibt sie.",
   },
   "userApps.make": { en: "Make an app", sk: "Vytvoriť aplikáciu", de: "App erstellen" },
   "userApps.open": { en: "Open", sk: "Otvoriť", de: "Öffnen" },
   "userApps.change": { en: "Change", sk: "Upraviť", de: "Ändern" },
   "userApps.delete": { en: "Delete", sk: "Odstrániť", de: "Löschen" },
+  "userApps.retry": { en: "Try again", sk: "Skúsiť znova", de: "Erneut versuchen" },
   "userApps.listFailed": {
     en: "Could not read your apps from the box.",
     sk: "Vaše aplikácie sa zo zariadenia nepodarilo načítať.",
-    de: "Ihre Apps konnten nicht von der Box gelesen werden.",
+    de: "Deine Apps konnten nicht von der Box gelesen werden.",
   },
   "userApps.full": {
     en: "This box keeps at most {max} apps. Delete one to make another.",
     sk: "Toto zariadenie uchová najviac {max} aplikácií. Ak chcete vytvoriť ďalšiu, jednu odstráňte.",
-    de: "Diese Box behält höchstens {max} Apps. Löschen Sie eine, um eine weitere zu erstellen.",
+    de: "Diese Box behält höchstens {max} Apps. Lösche eine, um eine weitere zu erstellen.",
   },
   "userApps.deleteTitle": {
     en: "Delete {name}?",
@@ -50,7 +52,7 @@ export default defineMessages({
   },
 
   // ── An app's own page ───────────────────────────────────────────────────
-  "userApps.back": { en: "Your apps", sk: "Vaše aplikácie", de: "Ihre Apps" },
+  "userApps.back": { en: "Your apps", sk: "Vaše aplikácie", de: "Deine Apps" },
   "userApps.loading": { en: "Opening the app…", sk: "Otváram aplikáciu…", de: "App wird geöffnet …" },
   "userApps.notFound": {
     en: "There is no such app on this box. It may have been deleted.",
@@ -99,7 +101,7 @@ export default defineMessages({
   "userApps.editor.previewNote": {
     en: "The preview forgets what you enter in it. The saved app keeps its data on the box.",
     sk: "Náhľad zabudne, čo doň zadáte. Uložená aplikácia si údaje uchová na zariadení.",
-    de: "Die Vorschau vergisst, was Sie darin eingeben. Die gespeicherte App behält ihre Daten auf der Box.",
+    de: "Die Vorschau vergisst, was du darin eingibst. Die gespeicherte App behält ihre Daten auf der Box.",
   },
   "userApps.editor.problems": {
     en: "The box found mistakes in the code",
@@ -122,7 +124,7 @@ export default defineMessages({
   "userApps.editor.savedNote": {
     en: "It is under Your apps on the Apps page.",
     sk: "Nájdete ju v časti Vaše aplikácie na stránke Aplikácie.",
-    de: "Sie steht unter Ihre Apps auf der Seite Apps.",
+    de: "Sie steht unter Deine Apps auf der Seite Apps.",
   },
   "userApps.editor.notSaved": {
     en: "The app was not saved.",
@@ -132,19 +134,19 @@ export default defineMessages({
   "userApps.editor.needName": {
     en: "Give the app a name.",
     sk: "Pomenujte aplikáciu.",
-    de: "Geben Sie der App einen Namen.",
+    de: "Gib der App einen Namen.",
   },
   "userApps.editor.needCode": {
     en: "Build the app with the AI, or write its code, before you save it.",
     sk: "Pred uložením aplikáciu vytvorte s AI alebo napíšte jej kód.",
-    de: "Bauen Sie die App mit der KI oder schreiben Sie ihren Code, bevor Sie sie speichern.",
+    de: "Bau die App mit der KI oder schreib ihren Code, bevor du sie speicherst.",
   },
 
   // ── The app builder (widgets/builder-panel.tsx, kind "app") ─────────────
   "userApps.builder.intro": {
     en: "Describe the app and the AI writes it. Try it in the preview, change what you like, then save it.",
     sk: "Opíšte aplikáciu a AI ju napíše. Vyskúšajte ju v náhľade, upravte, čo chcete, a potom ju uložte.",
-    de: "Beschreiben Sie die App, und die KI schreibt sie. Probieren Sie sie in der Vorschau aus, ändern Sie, was Sie möchten, und speichern Sie sie dann.",
+    de: "Beschreibe die App, und die KI schreibt sie. Probiere sie in der Vorschau aus, ändere, was du möchtest, und speichere sie dann.",
   },
   "userApps.builder.field.prompt": {
     en: "What should the app do?",
@@ -164,7 +166,7 @@ export default defineMessages({
   "userApps.builder.writing": {
     en: "The AI is writing the app: {lines} lines so far. It carries on if you leave this page.",
     sk: "AI píše aplikáciu: zatiaľ {lines} riadkov. Pokračuje aj vtedy, keď túto stránku opustíte.",
-    de: "Die KI schreibt die App: bisher {lines} Zeilen. Sie macht weiter, wenn Sie diese Seite verlassen.",
+    de: "Die KI schreibt die App: bisher {lines} Zeilen. Sie macht weiter, wenn du diese Seite verlässt.",
   },
   "userApps.builder.fixing": {
     en: "The box found a mistake in the app and the AI is fixing it: {lines} lines so far.",
@@ -174,7 +176,7 @@ export default defineMessages({
   "userApps.builder.problem.prompt": {
     en: "Describe the app first.",
     sk: "Najprv aplikáciu opíšte.",
-    de: "Beschreiben Sie zuerst die App.",
+    de: "Beschreibe zuerst die App.",
   },
   "userApps.builder.doneTitle": {
     en: "The app is written",
@@ -184,7 +186,7 @@ export default defineMessages({
   "userApps.builder.doneNote": {
     en: "Try it in the preview before you save it.",
     sk: "Pred uložením ju vyskúšajte v náhľade.",
-    de: "Probieren Sie sie vor dem Speichern in der Vorschau aus.",
+    de: "Probiere sie vor dem Speichern in der Vorschau aus.",
   },
   "userApps.builder.done": {
     en: "Written and put in the preview.",
@@ -204,6 +206,6 @@ export default defineMessages({
   "userApps.builder.fault.noApp": {
     en: "The AI answered without writing an app. Try describing it differently.",
     sk: "AI odpovedala bez aplikácie. Skúste ju opísať inak.",
-    de: "Die KI hat ohne App geantwortet. Beschreiben Sie sie anders.",
+    de: "Die KI hat ohne App geantwortet. Beschreibe sie anders.",
   },
 });

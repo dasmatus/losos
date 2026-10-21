@@ -112,7 +112,7 @@ export function AppScreen() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <BackLink />
-          <h1 className="mt-1.5 truncate text-[19px] leading-tight font-semibold text-ink">{app.name}</h1>
+          <h1 className="mt-1.5 truncate text-[19px] leading-tight font-semibold tracking-tight text-ink">{app.name}</h1>
           {app.summary !== null && app.summary !== "" && (
             <p className="mt-0.5 text-[12.5px] text-muted">{app.summary}</p>
           )}
@@ -304,7 +304,7 @@ function AppEditor({ app }: { app?: UserApp }) {
     <div className="flex flex-col gap-4" data-testid="app-editor">
       <div>
         <BackLink />
-        <h1 id={titleId} className="mt-1.5 text-[19px] leading-tight font-semibold text-ink">
+        <h1 id={titleId} className="mt-1.5 text-[19px] leading-tight font-semibold tracking-tight text-ink">
           {title}
         </h1>
       </div>

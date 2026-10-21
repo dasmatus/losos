@@ -12,14 +12,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert01Icon, PlusSignIcon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogBody,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { deleteUserApp, getUserApps, type UserAppSummary, type UserAppsResponse } from "@/lib/api";
@@ -67,68 +61,81 @@ export function YourApps({ active, disabled }: { active: boolean; disabled: bool
           {t("userApps.make")}
         </Button>
       </div>
-      <Group>
-        {listed.state === "loading" && (
-          <StackRow last>
-            <Spinner label={t("userApps.loading")} className="text-muted" />
-          </StackRow>
-        )}
-        {listed.state === "failed" && (
-          <StackRow last>
-            <Alert variant="crit">
-              <HugeiconsIcon icon={Alert01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-              <AlertDescription>
-                <p>{t("userApps.listFailed")}</p>
-              </AlertDescription>
-            </Alert>
-          </StackRow>
-        )}
-        {listed.state === "ready" && apps.length === 0 && (
-          <StackRow last>
-            <p className="flex items-start gap-2.5 text-[13px] leading-relaxed text-muted" data-testid="your-apps-empty">
-              <HugeiconsIcon
-                icon={SparklesIcon}
-                size={16}
-                strokeWidth={1.5}
-                color="currentColor"
-                className="mt-0.5 shrink-0 text-accent"
-                aria-hidden="true"
-              />
-              {t("userApps.empty")}
-            </p>
-          </StackRow>
-        )}
-        {apps.map((app, index) => (
-          <StackRow key={app.id} last={index === apps.length - 1} data-testid="your-app">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <Link
-                  to={`/apps/${app.id}`}
-                  className="text-sm font-medium leading-snug text-ink hover:text-accent"
-                >
-                  {app.name}
-                </Link>
-                {app.summary !== null && app.summary !== "" && (
-                  <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{app.summary}</p>
-                )}
+      {listed.state === "ready" && apps.length === 0 && (
+        <Empty className="bg-surface" data-testid="your-apps-empty">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <HugeiconsIcon icon={SparklesIcon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>{t("userApps.emptyTitle")}</EmptyTitle>
+            <EmptyDescription>{t("userApps.empty")}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
+      {!(listed.state === "ready" && apps.length === 0) && (
+        <Group>
+          {listed.state === "loading" && (
+            <StackRow last>
+              <Spinner label={t("userApps.loading")} className="text-muted" />
+            </StackRow>
+          )}
+          {listed.state === "failed" && (
+            <StackRow last>
+              <Alert variant="crit">
+                <HugeiconsIcon icon={Alert01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+                <AlertDescription>
+                  <p>{t("userApps.listFailed")}</p>
+                  <Button
+                    size="xs"
+                    variant="secondary"
+                    className="mt-2"
+                    onClick={() => {
+                      setListed({ state: "loading" });
+                      void load();
+                    }}
+                  >
+                    {t("userApps.retry")}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            </StackRow>
+          )}
+          {apps.map((app, index) => (
+            <StackRow key={app.id} last={index === apps.length - 1} data-testid="your-app">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <Link to={`/apps/${app.id}`} className="text-sm font-medium leading-snug text-ink hover:text-accent">
+                    {app.name}
+                  </Link>
+                  {app.summary !== null && app.summary !== "" && (
+                    <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{app.summary}</p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Button size="sm" variant="secondary" onClick={() => navigate(`/apps/${app.id}`)}>
+                    {t("userApps.open")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={disabled}
+                    onClick={() => navigate(`/apps/${app.id}/edit`)}
+                  >
+                    {t("userApps.change")}
+                  </Button>
+                  <Button size="sm" variant="ghost" disabled={disabled} onClick={() => setDeleting(app)}>
+                    {t("userApps.delete")}
+                  </Button>
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <Button size="sm" variant="secondary" onClick={() => navigate(`/apps/${app.id}`)}>
-                  {t("userApps.open")}
-                </Button>
-                <Button size="sm" variant="ghost" disabled={disabled} onClick={() => navigate(`/apps/${app.id}/edit`)}>
-                  {t("userApps.change")}
-                </Button>
-                <Button size="sm" variant="ghost" disabled={disabled} onClick={() => setDeleting(app)}>
-                  {t("userApps.delete")}
-                </Button>
-              </div>
-            </div>
-          </StackRow>
-        ))}
-      </Group>
+            </StackRow>
+          ))}
+        </Group>
+      )}
       <GroupCaption className={cn(full && "text-warn")}>
-        {full && listed.state === "ready" ? t("userApps.full", { max: listed.list.limits.apps }) : t("userApps.caption")}
+        {full && listed.state === "ready"
+          ? t("userApps.full", { max: listed.list.limits.apps })
+          : t("userApps.caption")}
       </GroupCaption>
       <DeleteDialog
         app={deleting}

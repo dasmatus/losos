@@ -13,7 +13,7 @@ bauen**:
 
 - der Widget-Editor (**Widget hinzufügen**, dann **Eins schreiben**), neben
   **Schreiben**;
-- **Ihre Apps** auf der Seite Apps, unter **App erstellen**.
+- **Deine Apps** auf der Seite Apps, unter **App erstellen**.
 
 Was das Modell schreibt, landet im Editor und in der Vorschau, wo du es lesen,
 benutzen und ändern kannst. Nichts wird gespeichert, bevor du auf Speichern
