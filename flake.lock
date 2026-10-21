@@ -78,11 +78,30 @@
         "type": "github"
       }
     },
+    "pm": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792338495,
+        "narHash": "sha256-9BhdpjiifwotgDDY1CxNn711ClGP0k+aT7lSdlrd3jM=",
+        "ref": "master",
+        "rev": "30abe308587967a71ee9142915d735d784430a9e",
+        "revCount": 214,
+        "type": "git",
+        "url": "https://github.com/losos-project/pm"
+      },
+      "original": {
+        "ref": "master",
+        "rev": "30abe308587967a71ee9142915d735d784430a9e",
+        "type": "git",
+        "url": "https://github.com/losos-project/pm"
+      }
+    },
     "root": {
       "inputs": {
         "disko": "disko",
         "impermanence": "impermanence",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "pm": "pm"
       }
     }
   },
