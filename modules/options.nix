@@ -1381,7 +1381,8 @@ in
         and direct messages, with end-to-end encryption, files, reactions,
         threads and voice and video calls on the box's network. Chat runs
         as the shared user and keeps everything in the shared data domain,
-        so it is there only while the box shares its storage. Signing in to
+        so it is there only while the box shares its storage in a mesh it
+        has joined. Signing in to
         chat is always through LosOS Login; there are no chat passwords.
       '';
     };

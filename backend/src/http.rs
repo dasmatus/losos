@@ -506,12 +506,9 @@ fn guarded_as(
     resp
 }
 
-/// `GET /api/me`: who is signed in, and which sections they can use. The
-/// admin UI shows the panes these open and hides the rest.
 /// The shared-side apps live on this box now, for `GET /api/me`: they run
-/// as the `shared` user, only while the box shares its storage, and the
-/// page draws their entries only when they are named here. A person's
-/// alone; the spare key and the edge get none.
+/// as the `shared` user, only while the box shares its storage in a mesh,
+/// and the page draws their entries only when they are named here.
 fn shared_apps(api: &Api) -> Vec<&'static str> {
     let mut apps = Vec::new();
     if api.chat.live() {
@@ -520,6 +517,8 @@ fn shared_apps(api: &Api) -> Vec<&'static str> {
     apps
 }
 
+/// `GET /api/me`: who is signed in, and which sections they can use. The
+/// admin UI shows the panes these open and hides the rest.
 async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded_as(&api, &req, "/api/me", false, |who| {
         let all = || {
