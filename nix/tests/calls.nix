@@ -1223,10 +1223,13 @@ pkgs.testers.nixosTest {
             live(page, 2, frames=0)
 
     with subtest("hanging up ends the call for the room"):
-        for page in (jan, her, owner):
+        for page in (jan, her):
             page.get_by_role("button", name="Leave the call").click()
             page.locator("[data-call-view]").wait_for(state="detached")
-        owner.get_by_role("log").get_by_text("The call ended").last.wait_for()
+        # Left alone, Matus is out of the call too, and the SFU told his
+        # page it was the last one there, so it tells the room.
+        owner.locator("[data-call-view]").wait_for(state="detached", timeout=60000)
+        owner.get_by_role("log").get_by_text("The call ended").last.wait_for(timeout=60000)
         jan.locator("[data-call-notice] button").wait_for(state="detached", timeout=30000)
 
     with subtest("a call link from another app opens the direct chat and rings"):

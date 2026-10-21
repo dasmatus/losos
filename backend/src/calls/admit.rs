@@ -406,6 +406,13 @@ impl Calls {
         }
     }
 
+    /// Whether anyone of the room, not only guests, is in call `id`.
+    pub fn has_people(&self, id: &CallId) -> bool {
+        self.calls
+            .get(id)
+            .is_some_and(|c| c.members.values().any(|m| !m.is_guest()))
+    }
+
     /// `pid` left. Returns the call it was in, if any.
     pub fn leave(&mut self, pid: ParticipantId, now: Instant) -> Option<CallId> {
         let (id, call) = self
@@ -759,8 +766,10 @@ mod tests {
         // With the room's people gone the guest is stranded, and the link
         // lets nobody else in.
         assert!(calls.stranded_guests(&cid(1)).is_empty());
+        assert!(calls.has_people(&cid(1)));
         calls.leave(1, t0);
         assert_eq!(calls.stranded_guests(&cid(1)), vec![3]);
+        assert!(!calls.has_people(&cid(1)));
         calls.leave(3, t0);
         assert_eq!(
             calls.admit_guest(&cid(1), 4, "i1", "Ana", t0).err(),

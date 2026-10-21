@@ -13,7 +13,13 @@
 //!   screen {on}                      ──►   (a share starts or stops)
 //!   relay {to, body}                 ──►
 //!                                    ◄──   relay {from, body}  (guest key agreement)
+//!   leave                            ──►
+//!                                    ◄──   left {last}  (then the SFU closes the socket)
 //! ```
+//!
+//! `last` says whether nobody of the room is left in the call. The page
+//! that hears `true` tells the room the call ended; two people who hang up
+//! at once cannot both think the other one is still there.
 //!
 //! A guest's socket is `/calls/guest/ws` and starts with
 //! `guest {call, invite, name}` instead of `join`; the rest is the same.
@@ -103,6 +109,10 @@ pub enum ServerMsg {
     Error {
         code: String,
     },
+    /// The answer to `leave`.
+    Left {
+        last: bool,
+    },
 }
 
 /// The body of `POST /calls/api/invites`: a member asks for a guest link.
@@ -180,6 +190,8 @@ mod tests {
             s,
             r#"{"type":"members","members":[{"pid":4,"user":"@e:b","device":"E","screen":true}],"live":null}"#
         );
+        let s = serde_json::to_string(&ServerMsg::Left { last: true }).unwrap();
+        assert_eq!(s, r#"{"type":"left","last":true}"#);
         assert_eq!(stream_id(12), "p12");
         assert_eq!(screen_stream_id(12), "p12-screen");
     }

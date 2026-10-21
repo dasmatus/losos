@@ -68,8 +68,11 @@ pub enum Command {
         pid: ParticipantId,
         sdp: String,
     },
+    /// `pid` left; `reply` hears whether nobody of the room is left in
+    /// its call.
     Leave {
         pid: ParticipantId,
+        reply: Option<oneshot::Sender<bool>>,
     },
     /// `pid` started (`on`) or stopped sharing their screen.
     Screen {
@@ -332,11 +335,15 @@ impl Sfu {
                     c.answer(&sdp);
                 }
             }
-            Command::Leave { pid } => {
-                if let Some(c) = self.client(pid) {
+            Command::Leave { pid, reply } => {
+                let call = self.client(pid).map(|c| {
                     c.rtc.disconnect();
-                }
+                    c.call.clone()
+                });
                 self.reap();
+                if let Some(reply) = reply {
+                    let _ = reply.send(call.is_none_or(|id| !self.calls.has_people(&id)));
+                }
             }
             Command::Screen { pid, on } => {
                 let Some(c) = self.client(pid) else {

@@ -290,10 +290,12 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
   const join = React.useCallback((roomId: string, call: string, video: boolean) => enter(roomId, video, async () => call), [enter]);
 
   const end = React.useCallback(
-    (last: boolean) => {
+    (last: boolean | Promise<boolean>) => {
       if (active === null) return;
       active.local.stop();
-      if (last) void announce(client, active.roomId, active.call, active.video, "ended").catch(() => undefined);
+      void Promise.resolve(last)
+        .then((was) => (was ? announce(client, active.roomId, active.call, active.video, "ended") : undefined))
+        .catch(() => undefined);
       setActive(null);
     },
     [active, client],
@@ -331,7 +333,9 @@ function CallScreen({
 }: {
   client: MatrixClient;
   active: Active & { local: LocalMedia };
-  onEnd: (last: boolean) => void;
+  /* `last`: whether this page was the last of the room's people in the
+   * call, and so tells the room it ended. */
+  onEnd: (last: boolean | Promise<boolean>) => void;
   onFail: (error: unknown) => void;
 }) {
   const t = useT();
@@ -418,7 +422,7 @@ function CallScreen({
       stop(error);
     }
     return () => {
-      if (!finished.current) session.current?.leave();
+      if (!finished.current) void session.current?.leave();
       session.current = null;
     };
   }, [client, active.call, active.roomId, media, warnBackground]);
@@ -429,8 +433,10 @@ function CallScreen({
     if (finished.current) return;
     finished.current = true;
     podcast?.dispose();
-    session.current?.leave();
-    onEnd(others.current === 0);
+    // The SFU says who hung up last: two people who leave at once each
+    // still see the other in their own list.
+    const guess = others.current === 0;
+    onEnd(session.current?.leave().then((said) => said ?? guess) ?? guess);
   };
   const leaveRef = React.useRef(leave);
   leaveRef.current = leave;

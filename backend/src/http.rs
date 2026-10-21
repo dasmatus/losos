@@ -1736,7 +1736,6 @@ async fn post_chat_session(
     }
 }
 
-
 /// `GET /internal/chat/authz`: nginx's question before every request to the
 /// homeserver's client and media APIs. 200 goes on, 401 is "sign in with
 /// LosOS Login", 403 is "not yours". nginx alone asks it (`modules/chat.nix`).
