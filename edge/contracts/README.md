@@ -58,11 +58,15 @@ with a password. The box never sees it.
 ## Tests
 
 ```sh
-# Local transactions, then a real pay() on anvil, checked by the registrar.
+# Local transactions, then a real pay() on anvil, checked by the registrar,
+# then a tap topped up, settled by the edge key within its cap and closed.
 # If https://sepolia.base.org answers, the same payment runs against Circle's
 # Base Sepolia USDC on a fork.
 ./test-payment.sh
 ```
+
+`devenv`'s `test-evm-escrow` runs it with Foundry from nixpkgs, as CI's
+`evm-escrow` job does.
 
 The Base Sepolia fork uses forge-std (`forge install foundry-rs/forge-std`
 from this directory). The script installs it if it is missing. It deals
