@@ -11,26 +11,32 @@
 #
 # The model is a stand-in (app-builder/ollama-stand-in.py): the VM has no
 # network to pull Qwen2.5-Coder from, and the real model under TCG would
-# take hours. It replays, at the real model's pace on a two-core box, an
-# answer Qwen2.5-Coder 1.5B wrote for the same request through lososd's own
-# builder (app-builder/chore-chart.md). Everything after the answer is real:
-# lososd parses it, checks and compiles the JSX with oxc, keeps the app and
-# its data; nginx serves /app-frame/ under its own policy; the app runs in
-# the sandboxed frame and writes through the page to lososd.
+# take hours. It replays, at the real model's pace on a two-core box, the
+# three answers Qwen2.5-Coder 1.5B wrote for the same request through
+# lososd's own builder and a real page: the app (app-builder/chore-chart.md),
+# whose choice of child starts empty, so the try keeps nothing; its fix
+# (chore-chart-fix-1.md), which reads the list of children before the line
+# that makes it, so the check stops it; and the fix of that
+# (chore-chart-fix-2.md). Everything around the answers is real: lososd runs
+# the loop, checks and compiles the JSX with oxc, asks the page to try each
+# version and words what it found; the laptop's Chromium tries the app in the
+# preview; nginx serves /app-frame/ under its own policy; the saved app runs
+# in the sandboxed frame and writes through the page to lososd.
 #
 # What it asserts beyond "the screens were taken without an error": lososd
-# asked for the configured model with the app prompt and the typed request;
+# asked for the configured model with the app prompt and the typed request,
+# then twice more with what the try and the check found, in words;
 # the saved app is on the box with its compiled script; what was typed into
 # the app on its own page is in the app's data file; and the app frame's
 # runtime and policy are what the page got.
 #
 #   nix build .#checks.x86_64-linux.losos-app-builder
 #
-# `ui` swaps the admin pages (the pull request's Before column is this run
-# with main's pages and `mode = "before"`).
+# `uiSource` swaps the admin pages' source (the pull request's Before
+# column is this run with main's admin-ui/app and `mode = "before"`).
 {
   pkgs,
-  ui ? null,
+  uiSource ? null,
   mode ? "after",
   model ? "qwen2.5-coder:1.5b",
 }:
@@ -54,8 +60,9 @@ let
     stub src/lab/render-pkg/webgl2/losos_lab_render
     stub src/lab/render-pkg/webgpu/losos_lab_render
   '';
-  adminUi =
-    if ui != null then ui else lososPkgs.losos-admin-ui.overrideAttrs (_: { preBuild = labStubs; });
+  adminUi = lososPkgs.losos-admin-ui.overrideAttrs (
+    _: { preBuild = labStubs; } // pkgs.lib.optionalAttrs (uiSource != null) { src = uiSource; }
+  );
 
   stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
     case "$1" in
@@ -125,6 +132,8 @@ pkgs.testers.nixosTest {
           workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
           workloads.forgejoImage = standIn "losos-forgejo-stand-in";
         };
+        # The laptop's Chromium runs under TCG here; give its try time.
+        systemd.services.lososd.environment.LOSOS_BUILDER_TRY_SECS = "180";
         systemd.services.lososd.path = lib.mkForce [
           stubOcc
           pkgs.coreutils
@@ -148,7 +157,8 @@ pkgs.testers.nixosTest {
             promptRate
             writeRate
             "${./app-builder/chore-chart.md}"
-            "${./app-builder/chore-chart-fixed.md}"
+            "${./app-builder/chore-chart-fix-1.md}"
+            "${./app-builder/chore-chart-fix-2.md}"
           ];
         };
         environment.systemPackages = [ pkgs.jq ];
@@ -229,6 +239,24 @@ pkgs.testers.nixosTest {
             assert first["messages"][0]["role"] == "system", first["messages"][0]
             assert "small apps for LosOS" in first["messages"][0]["content"]
             assert first["messages"][-1]["content"].startswith("A chore chart for the kids"), first["messages"][-1]
+
+        with subtest("the try and the check sent the model back, each with what it found"):
+            assert len(asked) == 3, [m["messages"][-1]["content"][:120] for m in asked]
+            tried = asked[1]["messages"][-1]["content"]
+            assert 'With "Child" left at its first choice, pressing "Add" keeps nothing' in tried, tried
+            assert tried.endswith("It is still the app for: A chore chart for the kids"), tried
+            checked = asked[2]["messages"][-1]["content"]
+            assert "Line 4: children is used before line 5, which makes it" in checked, checked
+            TOKEN = box.succeed("cat /var/secrets/losos-admin-token").strip()
+            builds = json.loads(box.succeed(f"curl -sf -H 'Authorization: Bearer {TOKEN}' 127.0.0.1:8082/api/builder"))
+            build = json.loads(box.succeed(
+                f"curl -sf -H 'Authorization: Bearer {TOKEN}' 127.0.0.1:8082/api/builder/builds/{builds['builds'][0]['id']}"
+            ))
+            kinds = [step["kind"] for step in build["steps"]]
+            assert kinds == ["write", "check", "try", "fix", "check", "fix", "check", "try"], kinds
+            last = build["steps"][-1]
+            assert not last["skipped"] and last["problems"] == [], last
+            assert build["status"] == "done" and build["problems"] == [], build
 
         with subtest("the saved app and what was typed into it are on the box"):
             apps = json.loads(box.succeed("cat /var/lib/losos/user-apps.json"))
