@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 import type { IconSvgElement } from "@hugeicons/react";
 import type { MessageKey } from "@/lib/i18n";
 import type { Entry } from "./api";
@@ -25,4 +26,36 @@ export function registerOpener(opener: Opener): void {
 
 export function openersFor(entry: Entry): readonly Opener[] {
   return entry.dir ? [] : openers.filter((o) => o.accepts(entry));
+}
+
+/* What can be done with a folder besides opening it: open it in Notes,
+ * publish it as a knowledge base. A right click on a folder's row lists
+ * them, as does the selection bar when one folder is picked. Each part of
+ * LosOS that works on folders adds itself here, like the openers. */
+
+export interface FolderDialogProps {
+  folder: Entry;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export interface FolderAction {
+  id: string;
+  label: (folder: Entry) => MessageKey;
+  icon: IconSvgElement;
+  /** Whether it is offered for this folder now. */
+  offers?: (folder: Entry) => boolean;
+  /** Where it goes in the web app, or else the dialog it opens. */
+  href?: (folder: Entry) => string;
+  Dialog?: ComponentType<FolderDialogProps>;
+}
+
+const folderActions: FolderAction[] = [];
+
+export function registerFolderAction(action: FolderAction): void {
+  if (!folderActions.some((a) => a.id === action.id)) folderActions.push(action);
+}
+
+export function folderActionsFor(entry: Entry): readonly FolderAction[] {
+  return entry.dir ? folderActions.filter((a) => a.offers?.(entry) ?? true) : [];
 }
