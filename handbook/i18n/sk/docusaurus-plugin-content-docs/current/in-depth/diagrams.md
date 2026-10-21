@@ -10,7 +10,7 @@ mdx:
 LosOS Diagrams je editor diagramov: vývojové diagramy, plány, myšlienkové
 mapy, tabule a nákresy sietí, písané ako karty na plátne. Jeho súbory sú
 JSON Canvas, formát, ktorý používa Obsidian Canvas, takže súbor `.canvas`
-prejde medzi nimi bez straty. Pozná aj LosOS: sieť, ktorú nakreslíte, má
+prejde medzi nimi bez straty. Pozná aj LosOS. Sieť, ktorú nakreslíte, má
 vlastnú prevádzku a karta môže zastupovať stroj, ktorý ste si objednali v
 sieti mesh. Každé zariadenie ho podáva na `/diagrams/`, v bočnom paneli
 administrácie pod položkou **Diagramy**, a ako ostatné administračné
@@ -57,8 +57,8 @@ kreslí simulátor.
 Tvary, okraje, zarovnanie textu, štýly čiar a hroty šípok sa zapisujú ako
 `styleAttributes` s menami, ktoré používa doplnok Advanced Canvas pre
 Obsidian. Kľúče, ktoré Diagramy nepoznajú, v dokumente, na karte alebo na
-šípke, zostanú pri ďalšom uložení tak, ako boli. Súbory sieťového
-simulátora spred premenovania na Diagramy (`.llf`) sa stále otvoria.
+šípke, zostanú pri ďalšom uložení tak, ako boli. Staršie súbory `.llf`
+zo sieťového simulátora sa stále otvoria.
 
 ## Sieť {#the-network}
 

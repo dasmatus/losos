@@ -11,7 +11,7 @@ LosOS Diagrams ist ein Diagrammeditor: Flussdiagramme, Pläne, Mindmaps,
 Boards und Netzwerkzeichnungen, geschrieben als Karten auf einer
 Zeichenfläche. Seine Dateien sind JSON Canvas, das Format von Obsidian
 Canvas, sodass eine `.canvas`-Datei zwischen beiden wandert, ohne etwas zu
-verlieren. Es kennt auch LosOS: Ein Netzwerk, das du zeichnest, hat seinen
+verlieren. Es kennt auch LosOS. Ein Netzwerk, das du zeichnest, hat seinen
 eigenen Verkehr, und eine Karte kann für eine Maschine stehen, die du im
 Mesh bestellt hast. Jede Box liefert es unter `/diagrams/` aus, in der
 Seitenleiste der Administration unter **Diagramme**, und wie die übrigen
@@ -64,8 +64,8 @@ Formen, Rahmen, Textausrichtung, Linienarten und Pfeilspitzen werden als
 `styleAttributes` mit den Namen geschrieben, die das Plugin Advanced Canvas
 für Obsidian verwendet. Schlüssel, die Diagramme nicht kennt, am Dokument,
 an einer Karte oder an einem Pfeil, bleiben beim nächsten Speichern, wie
-sie waren. Dateien des Netzwerksimulators von vor der Umbenennung in
-Diagramme (`.llf`) öffnen sich weiterhin.
+sie waren. Ältere `.llf`-Dateien
+des Netzwerksimulators öffnen sich weiterhin.
 
 ## Das Netzwerk {#the-network}
 
