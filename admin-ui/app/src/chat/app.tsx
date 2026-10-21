@@ -42,7 +42,7 @@ import { ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, RoomSettingsDialo
 import { directPartner, directRooms, isSpace, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
 import { RoomList } from "./room-list";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
-import { ChatRefused, goSignIn, onSignedOut, type Refusal, type Signed, signIn, start } from "./session";
+import { ChatRefused, goSignIn, type Refusal, type Signed, session, signedNow, signedOutListeners } from "./session";
 import { RoomTimeline, type RowActions } from "./timeline";
 import { ThreadPanel } from "./thread-panel";
 
@@ -64,34 +64,6 @@ function loadedHere(): boolean {
   const entry = performance.getEntriesByType("navigation")[0];
   const url = entry !== undefined ? entry.name : window.location.href;
   return new URL(url, window.location.href).pathname.startsWith("/chat/");
-}
-
-/* One session per page load. Leaving the screen for another admin page
- * keeps the client syncing, so coming back is instant and two clients never
- * share one device's crypto store. A homeserver that signs the device out
- * clears it, and the screen, if it is on screen, signs in again. */
-let pending: Promise<Signed> | null = null;
-let ready: Signed | null = null;
-const signedOutListeners = new Set<() => void>();
-
-function session(): Promise<Signed> {
-  if (pending !== null) return pending;
-  const attempt: Promise<Signed> = (async () => {
-    const signed = await signIn();
-    onSignedOut(signed.client, () => {
-      if (ready === signed) ready = null;
-      if (pending === attempt) pending = null;
-      for (const listener of signedOutListeners) listener();
-    });
-    await start(signed.client);
-    ready = signed;
-    return signed;
-  })();
-  pending = attempt;
-  attempt.catch(() => {
-    if (pending === attempt) pending = null;
-  });
-  return attempt;
 }
 
 /* The room on screen lives in the address's hash (#/room/!id:server), so a
@@ -119,7 +91,10 @@ export default function ChatScreen() {
   const t = useT();
   const navigate = useNavigate();
   const here = loadedHere();
-  const [boot, setBoot] = React.useState<Boot>(() => (ready !== null ? { state: "ready", signed: ready } : { state: "loading" }));
+  const [boot, setBoot] = React.useState<Boot>(() => {
+    const now = signedNow();
+    return now !== null ? { state: "ready", signed: now } : { state: "loading" };
+  });
   const [attempt, setAttempt] = React.useState(0);
   // When each recent device was signed out, so a homeserver that refuses
   // every new device too does not get asked for one again and again.
@@ -150,7 +125,7 @@ export default function ChatScreen() {
   React.useEffect(() => {
     if (!here) return;
     let live = true;
-    if (ready === null) setBoot({ state: "loading" });
+    if (signedNow() === null) setBoot({ state: "loading" });
     session()
       .then((signed) => {
         if (live) setBoot({ state: "ready", signed });

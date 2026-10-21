@@ -279,3 +279,39 @@ export async function boxPeople(): Promise<BoxPerson[]> {
 export function goSignIn(): void {
   window.location.assign(signInUrl());
 }
+
+/* One session per page load, for the chat screen (app.tsx) and anything
+ * else on the page that needs the client. Leaving the screen for another
+ * admin page keeps the client syncing, so coming back is instant and two clients never
+ * share one device's crypto store. A homeserver that signs the device out
+ * clears it, and the screen, if it is on screen, signs in again. */
+let pending: Promise<Signed> | null = null;
+let ready: Signed | null = null;
+export const signedOutListeners = new Set<() => void>();
+
+/** Signs this page in to chat once and starts the client; later calls get
+ *  the same session. */
+export function session(): Promise<Signed> {
+  if (pending !== null) return pending;
+  const attempt: Promise<Signed> = (async () => {
+    const signed = await signIn();
+    onSignedOut(signed.client, () => {
+      if (ready === signed) ready = null;
+      if (pending === attempt) pending = null;
+      for (const listener of signedOutListeners) listener();
+    });
+    await start(signed.client);
+    ready = signed;
+    return signed;
+  })();
+  pending = attempt;
+  attempt.catch(() => {
+    if (pending === attempt) pending = null;
+  });
+  return attempt;
+}
+
+/** The session, once it is up; null before and after. */
+export function signedNow(): Signed | null {
+  return ready;
+}
