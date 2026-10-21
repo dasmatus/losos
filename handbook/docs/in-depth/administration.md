@@ -500,8 +500,9 @@ drives it in phases kept in `state.json`, so it carries on with no tab open:
 1. an optional backup. If it fails, the erase stops and nothing changes;
 2. a countdown of `losos.reset.graceMinutes` (15 by default). Cancel stops
    it, and nothing on the box or outside it has changed yet;
-3. leaving the edge: the box's custom domains are removed, its active market
-   listings closed, and it is taken off the registry (`POST /deregister`).
+3. leaving the edge: the box's custom domains are removed, a wallet bound to
+   its names is unbound, its active market listings are closed, and it is
+   taken off the registry (`POST /deregister`).
    Each step is tried even when the one before failed, and the report names
    the ones the edge did not confirm;
 4. the default settings are committed and rebuilt, then lososd leaves a
