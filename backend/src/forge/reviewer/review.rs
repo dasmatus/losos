@@ -510,7 +510,7 @@ mod tests {
         let diff = "diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -10,3 +10,5 @@\n fn a() {\n-    let x = 1;\n+    let sql = format!(\"SELECT * FROM t WHERE a = '{a}'\");\n+    let rows = stmt.query_map([], |r| r.get(0))?;\n     done();\n+    Ok(())\ndiff --git a/Cargo.lock b/Cargo.lock\n--- a/Cargo.lock\n+++ b/Cargo.lock\n@@ -1 +1 @@\n-a\n+b\n";
         let model = Recorded {
             answers: RefCell::new(vec![
-                "L12: `stmt.query_map([], |r| r.get(0))` runs the query with no parameters; pass `params![a]`.",
+                "L11: `format!(\"SELECT * FROM t WHERE a = '{a}'\")` puts a into the SQL text.\nL12: `stmt.query_map([], |r| r.get(0))` runs the query with no parameters; pass `params![a]`.",
                 "Builds a query for rows of t that match a.",
             ]),
             asked: RefCell::new(Vec::new()),
@@ -533,9 +533,9 @@ mod tests {
         assert!(!out.files[1].reviewed);
         let asked = model.asked.borrow();
         assert_eq!(asked.len(), 2, "one file: no overview question");
-        assert!(asked[0]
-            .1
-            .contains("already commented on line 11; leave it out"));
+        // The question does not name the lines a check took (that silenced
+        // the 7B model); the model's own L11 finding is dropped instead.
+        assert!(!asked[0].1.contains("already commented"));
         assert!(asked[0].1.contains("   12 +     let rows"));
         let body = out.body("qwen2.5-coder:1.5b", false);
         assert!(body.contains("looked at 1 of 2 changed files and left 2 comments"));
