@@ -349,9 +349,12 @@ pkgs.testers.nixosTest {
         # A clean set of files for the pictures, as a person would have them.
         for path in ["owner-dir", "owner-app-dir", "owner-name-dir", "big.bin", "from-box.txt", "owner-app.bin"]:
             dav("notshared", owner_app, "DELETE", path)
-        dav("notshared", owner_app, "DELETE", "Documents/old%20notes.txt")
+        # The trash holds what this test deleted; empty it for ordinary files.
+        curl(f"-f -X POST -u 'notshared:{owner_app}' {BASE}/cloud/api/trash/empty")
         laptop.succeed(f"cloud-seed {BASE} notshared '{owner_app}' {CA}")
-        dav("notshared", owner_app, "DELETE", "Documents/old%20notes.txt")
+        for path in ["Documents/old%20notes.txt", "Documents/budget%20draft.ods", "Photos/IMG_2043%20(2).jpg"]:
+            _, status = dav("notshared", owner_app, "DELETE", path)
+            assert status == "204", (path, status)
         dav("notshared", owner_app, "PROPPATCH", "Documents/budget.ods",
             "-H 'Content-Type: application/xml' --data '<d:propertyupdate xmlns:d=\"DAV:\" xmlns:oc=\"http://owncloud.org/ns\"><d:set><d:prop><oc:favorite>1</oc:favorite></d:prop></d:set></d:propertyupdate>'")
         # A sign-in the desktop client has started, for the connect page.

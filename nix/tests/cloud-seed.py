@@ -26,7 +26,7 @@ from PIL import Image, ImageDraw, ImageFilter
 DAY = 86_400
 
 
-def picture(seed: int, width: int = 1600, height: int = 1067) -> bytes:
+def picture(seed: int, width: int = 4032, height: int = 3024) -> bytes:
     """A landscape: a sky gradient, a sun, layered hills, sometimes a lake."""
     rnd = random.Random(seed)
     skies = [
@@ -67,13 +67,23 @@ def picture(seed: int, width: int = 1600, height: int = 1067) -> bytes:
             f = (y - lake) / (height - lake)
             draw.line([(0, y), (width, y)], fill=(int(60 + 40 * f), int(110 + 30 * f), int(160 + 20 * f)))
     img = img.filter(ImageFilter.GaussianBlur(1.2))
+    # A camera's grain, so the file weighs what a phone's picture does.
+    grain = Image.effect_noise((width, height), 24).convert("RGB")
+    img = Image.blend(img, grain, 0.1)
     out = io.BytesIO()
-    img.save(out, "JPEG", quality=86)
+    img.save(out, "JPEG", quality=92)
     return out.getvalue()
 
 
-def document(title: str, lines: list[str]) -> bytes:
-    return ("\n".join([title, "=" * len(title), "", *lines, ""])).encode()
+def document(title: str, lines: list[str], size: int = 0) -> bytes:
+    """A text document, filled out to about `size` bytes with numbered
+    lines, so its size reads like the real kind of file."""
+    body = "\n".join([title, "=" * len(title), "", *lines, ""])
+    n = 1
+    while len(body) < size:
+        body += f"{n:05d}  {lines[n % len(lines)]}\n"
+        n += 1
+    return body.encode()
 
 
 def tree(now: float) -> list[tuple[str, bytes | None, float]]:
@@ -82,22 +92,25 @@ def tree(now: float) -> list[tuple[str, bytes | None, float]]:
     for folder in ["Documents", "Documents/Receipts", "Holiday 2026", "Photos", "Projects", "Projects/Garden shed", "Music"]:
         files.append((folder, None, now))
     files += [
-        ("Documents/budget.ods", document("Budget 2026", ["Rent 650", "Food 320", "Travel 120"]), now - 2 * 3600),
-        ("Documents/Offer for the kitchen.pdf", document("Kitchen offer", ["Cabinets, worktop, fitting: 4 180 EUR"]), now - 1 * DAY),
-        ("Documents/notes.md", document("Notes", ["- Call the plumber on Monday", "- Renew the car insurance"]), now - 3 * DAY),
-        ("Documents/old notes.txt", document("Old notes", ["- Pick up the bike from the repair shop"]), now - 90 * DAY),
-        ("Documents/CV Matus.docx", document("Curriculum vitae", ["Matus", "Systems engineering"]), now - 40 * DAY),
-        ("Documents/Receipts/hardware store.pdf", document("Receipt", ["Screws, hinges, varnish: 38.90 EUR"]), now - 12 * DAY),
-        ("Documents/Receipts/laptop.pdf", document("Receipt", ["Laptop repair: 89 EUR"]), now - 70 * DAY),
-        ("Projects/Garden shed/plan.txt", document("Garden shed", ["2.4 x 1.8 m, larch cladding", "Roof: EPDM"]), now - 5 * DAY),
+        ("Documents/budget.ods", document("Budget 2026", ["Rent 650", "Food 320", "Travel 120"], 21_400), now - 2 * 3600),
+        ("Documents/Offer for the kitchen.pdf", document("Kitchen offer", ["Cabinets, worktop, fitting: 4 180 EUR"], 212_000), now - 1 * DAY),
+        ("Documents/notes.md", document("Notes", ["- Call the plumber on Monday", "- Renew the car insurance"], 1_900), now - 3 * DAY),
+        ("Documents/old notes.txt", document("Old notes", ["- Pick up the bike from the repair shop"], 3_100), now - 90 * DAY),
+        ("Documents/budget draft.ods", document("Budget 2026 (draft)", ["Rent 650", "Food 300"], 18_900), now - 30 * DAY),
+        ("Documents/CV Matus.docx", document("Curriculum vitae", ["Matus", "Systems engineering"], 41_800), now - 40 * DAY),
+        ("Documents/Receipts/hardware store.pdf", document("Receipt", ["Screws, hinges, varnish: 38.90 EUR"], 64_500), now - 12 * DAY),
+        ("Documents/Receipts/laptop.pdf", document("Receipt", ["Laptop repair: 89 EUR"], 88_200), now - 70 * DAY),
+        ("Projects/Garden shed/plan.txt", document("Garden shed", ["2.4 x 1.8 m, larch cladding", "Roof: EPDM"], 4_600), now - 5 * DAY),
         ("Projects/Garden shed/materials.csv", b"item,count\nposts,6\nboards,48\nscrews,400\n", now - 5 * DAY),
-        ("Projects/Fix the backup script.md", document("Fix the backup script", ["Keep 14 days, not 7."]), now - 6 * 3600),
+        ("Projects/Fix the backup script.md", document("Fix the backup script", ["Keep 14 days, not 7."], 2_300), now - 6 * 3600),
         ("Music/playlist.m3u", b"#EXTM3U\n", now - 90 * DAY),
     ]
     for i in range(6):
         files.append((f"Holiday 2026/day {i + 1}.jpg", picture(i), now - (60 - i) * DAY))
     for i in range(8):
         files.append((f"Photos/IMG_{2041 + i}.jpg", picture(10 + i), now - (8 + 15 * i) * DAY))
+    # A second copy of one picture, the kind of file a person deletes.
+    files.append(("Photos/IMG_2043 (2).jpg", picture(12), now - 38 * DAY))
     return files
 
 
