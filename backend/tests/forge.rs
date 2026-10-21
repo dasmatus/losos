@@ -30,29 +30,45 @@ fn free_port() -> u16 {
         .port()
 }
 
+/// Start `losos-git` on a free port. The tests run in parallel, so another
+/// test's server can take the port between `free_port` and the bind: ours
+/// then exits, the port still answers, and it is someone else's. A server
+/// that is gone once the port answers is started again on another port.
 fn start(dir: &Path, extra: &[&str]) -> Server {
-    let port = free_port();
     let state = dir.join("state");
-    let child = Command::new(env!("CARGO_BIN_EXE_losos-git"))
-        .args(["serve", "--state-dir"])
-        .arg(&state)
-        .args(["--listen", &format!("127.0.0.1:{port}")])
-        .args(extra)
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while TcpStream::connect(("127.0.0.1", port)).is_err() {
-        assert!(Instant::now() < deadline, "losos-git did not start");
-        std::thread::sleep(Duration::from_millis(50));
+    for _ in 0..5 {
+        let port = free_port();
+        let mut child = Command::new(env!("CARGO_BIN_EXE_losos-git"))
+            .args(["serve", "--state-dir"])
+            .arg(&state)
+            .args(["--listen", &format!("127.0.0.1:{port}")])
+            .args(extra)
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut exited = false;
+        while TcpStream::connect(("127.0.0.1", port)).is_err() {
+            if child.try_wait().unwrap().is_some() {
+                exited = true;
+                break;
+            }
+            assert!(Instant::now() < deadline, "losos-git did not start");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        if exited || child.try_wait().unwrap().is_some() {
+            continue;
+        }
+        let admin = std::fs::read_to_string(state.join("admin-token")).unwrap();
+        return Server {
+            child,
+            port,
+            state,
+            admin: admin.trim().to_string(),
+        };
     }
-    let admin = std::fs::read_to_string(state.join("admin-token")).unwrap();
-    Server {
-        child,
-        port,
-        state,
-        admin: admin.trim().to_string(),
-    }
+    panic!("losos-git did not start on any of five ports");
 }
 
 /// One HTTP/1.0 request; status and body.
@@ -846,6 +862,8 @@ fn a_pull_request_from_a_marked_worktree_is_reviewed_and_merged() {
     let (_, doc) = api("GET", &format!("/pulls/{n}"), &owner, None);
     assert_eq!(doc["reviewers"][0]["login"], "notshared");
     assert_eq!(doc["reviewers"][0]["state"], "changes_requested");
+    // A person who answered is still marked as one, as a requested one is.
+    assert_eq!(doc["reviewers"][0]["is_bot"], false);
 
     let (_, lines) = api("GET", &format!("/pulls/{n}/comments"), &jana, None);
     let first = lines[0]["id"].as_i64().unwrap();

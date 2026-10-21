@@ -46,6 +46,11 @@ struct Api {
     backend: IoLosos,
     token: String,
     throttle: Throttle,
+    /// Wrong owner passwords per address, for the routes that take one
+    /// from a caller who already signed in. Apart from `throttle`, which a
+    /// signed-in request clears, so a guess is cleared only by the right
+    /// password.
+    password_throttle: Throttle,
     audit: Audit,
     /// The last claim answered, so a reply lost to a proxy timeout can be
     /// given again to the same password (`crate::receipt`).
@@ -2082,10 +2087,21 @@ fn post_device_inner(api: &Api, kind: &str, client: &str, body: &[u8]) -> HttpRe
             let Ok(secret) = crate::signin::validate_candidate(password) else {
                 return err(StatusCode::BAD_REQUEST, SHAPE);
             };
+            if let Err(wait) = api.password_throttle.check(client, Instant::now()) {
+                let mut resp = err(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "too many wrong passwords; slow down",
+                );
+                resp.headers_mut().insert(
+                    actix_web::http::header::RETRY_AFTER,
+                    retry_after_secs(wait).to_string().parse().expect("digits"),
+                );
+                return resp;
+            }
             match owner_password_ok(api, &secret) {
-                Ok(true) => {}
+                Ok(true) => api.password_throttle.record_success(client),
                 Ok(false) => {
-                    api.throttle.record_failure(client, Instant::now());
+                    api.password_throttle.record_failure(client, Instant::now());
                     tracing::info!(kind, "device credential refused: wrong password");
                     return HttpResponse::build(StatusCode::FORBIDDEN).json(serde_json::json!({
                         "error": crate::signin::WrongPassword.to_string(),
@@ -4114,6 +4130,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             backend,
             token,
             throttle: Throttle::default(),
+            password_throttle: Throttle::default(),
             audit: Audit,
             claims: std::sync::Mutex::new(crate::receipt::Receipts::default()),
             access: crate::access::Access::from_env(),

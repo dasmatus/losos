@@ -5,8 +5,9 @@
  * its README, a pull request's conversation (reviewers with the AI
  * reviewer's progress, checks, the merge box), a line comment added to a
  * review that asks for changes, a reply and a resolve, a squash merge, the
- * AI review switch in the settings, the worktrees, a comment whose Markdown carries script, German, and the phone
- * layout. nix/tests/git-review.nix runs the same pages against a real box. */
+ * AI review switch in the settings, the worktrees, a comment whose Markdown
+ * carries script, German, and the phone layout. nix/tests/git-pages.nix
+ * runs the same pages against a real box. */
 
 import assert from 'node:assert';
 import { launch, runner, serve } from './harness.mjs';
