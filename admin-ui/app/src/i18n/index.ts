@@ -13,6 +13,7 @@ import home from "./home";
 import install from "./install";
 import lab from "./lab";
 import look from "./look";
+import mail from "./mail";
 import machines from "./machines";
 import manage from "./manage";
 import palette from "./palette";
@@ -48,6 +49,7 @@ export const MESSAGES = {
   ...palette,
   ...pins,
   ...manage,
+  ...mail,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

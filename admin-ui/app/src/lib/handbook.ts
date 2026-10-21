@@ -37,6 +37,7 @@ export const HANDBOOK_ENTRIES = {
   "look-and-widgets": "manual/look-and-widgets/",
   "backup-and-erase": "manual/backup-and-erase/",
   terminal: "manual/terminal/",
+  mail: "manual/mail/",
   "custom-domain": "types/official-edge/",
   "edge-manages-box": "types/company-edge/",
   tpm: "reference/tpm/",

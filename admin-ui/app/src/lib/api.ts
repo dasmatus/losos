@@ -206,6 +206,10 @@ export interface Me {
   /** What LosOS Login's rules hold this person to their own account for
    *  (backend/src/login.rs). Empty or missing: nothing. */
   locked?: LoginReason[];
+  /** The apps on the shared side live on this box now ("mail", "chat"):
+   *  they run only while the box shares its storage, and their menu
+   *  entries are drawn only when listed here. */
+  shared?: string[];
 }
 
 /** Why a rule holds someone to their own account. */
@@ -252,6 +256,13 @@ export async function loadMe(options: RequestOptions = {}): Promise<Me | null> {
 export function canUse(section: string): boolean {
   if (me === null) return true;
   return me.admin || me.sections.includes(section);
+}
+
+/** Whether a shared-side app (GET /api/me's `shared`) is live for whoever
+ *  is signed in. False until /api/me has said so: such an entry appears,
+ *  never disappears. */
+export function sharedApp(name: string): boolean {
+  return me?.shared?.includes(name) === true;
 }
 
 /** What holds the signed-in person to their own account, if anything. */
@@ -2569,4 +2580,143 @@ export type GitReposResponse =
 export function getGitRepos(query: string | null = null, options: RequestOptions = {}): Promise<GitReposResponse> {
   const search = query === null ? "" : `?${new URLSearchParams({ q: query }).toString()}`;
   return call<GitReposResponse>(`/api/git/repos${search}`, options);
+}
+
+/* ── LosOS Mail ────────────────────────────────────────────────────────────
+ * backend/src/mail.rs. Every call is made as the person LosOS Login signed
+ * in; the spare key has no mailbox (409). With sharing off there is no mail
+ * on the box and every route is a 404. */
+
+export type MailRole = "inbox" | "drafts" | "sent" | "archive" | "junk" | "trash";
+
+export interface MailFolder {
+  id: string;
+  name: string;
+  role: MailRole | null;
+  total: number;
+  unread: number;
+}
+
+export interface MailAddress {
+  name: string | null;
+  email: string;
+}
+
+export interface MailSummary {
+  id: string;
+  threadId: string;
+  subject: string;
+  from: MailAddress[];
+  to: MailAddress[];
+  receivedAt: string;
+  preview: string;
+  seen: boolean;
+  flagged: boolean;
+  hasAttachment: boolean;
+}
+
+export interface MailAttachment {
+  blobId: string;
+  name: string;
+  type: string;
+  size: number;
+}
+
+export interface MailMessage extends MailSummary {
+  cc: MailAddress[];
+  replyTo: MailAddress[];
+  mailboxIds: string[];
+  text: string;
+  hasHtml: boolean;
+  attachments: MailAttachment[];
+}
+
+export interface MailNeighbour {
+  name: string;
+  displayName: string;
+  address: string;
+}
+
+export interface MailHome {
+  address: string;
+  name: string;
+  mailboxes: MailFolder[];
+  people: MailNeighbour[];
+}
+
+export interface MailPage {
+  messages: MailSummary[];
+  position: number;
+  total: number | null;
+}
+
+export interface MailDraft {
+  to: string[];
+  cc: string[];
+  subject: string;
+  text: string;
+  inReplyTo?: string;
+}
+
+export interface MailChange {
+  seen?: boolean;
+  flagged?: boolean;
+  mailbox?: string;
+}
+
+/** GET /api/mail — the address, the folders and the people on this box. */
+export function getMail(options: RequestOptions = {}): Promise<MailHome> {
+  return call<MailHome>("/api/mail", options);
+}
+
+/** GET /api/mail/messages — a page of a folder, newest first. */
+export function getMailMessages(
+  mailbox: string,
+  query = "",
+  position = 0,
+  options: RequestOptions = {},
+): Promise<MailPage> {
+  const params = new URLSearchParams({ mailbox, position: String(position) });
+  if (query.trim() !== "") params.set("q", query.trim());
+  return call<MailPage>(`/api/mail/messages?${params.toString()}`, options);
+}
+
+/** GET /api/mail/messages/{id} — open a message; it is marked read. */
+export function getMailMessage(id: string, options: RequestOptions = {}): Promise<MailMessage> {
+  return call<MailMessage>(`/api/mail/messages/${encodeURIComponent(id)}`, options);
+}
+
+/** Where the message's HTML is served, for the sandboxed frame. */
+export function mailHtmlUrl(id: string): string {
+  return apiPath(`/api/mail/messages/${encodeURIComponent(id)}/html`);
+}
+
+/** Where an attachment downloads from. */
+export function mailAttachmentUrl(attachment: MailAttachment): string {
+  return apiPath(
+    `/api/mail/attachments/${encodeURIComponent(attachment.blobId)}?name=${encodeURIComponent(attachment.name)}`,
+  );
+}
+
+/** POST /api/mail/messages/{id} — read or unread, flag, move. */
+export function changeMailMessage(id: string, change: MailChange): Promise<{ ok: true }> {
+  return call<{ ok: true }>(`/api/mail/messages/${encodeURIComponent(id)}`, {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(change),
+  });
+}
+
+/** DELETE /api/mail/messages/{id} — to the bin, or from the bin for good. */
+export function deleteMailMessage(id: string): Promise<{ ok: true }> {
+  return call<{ ok: true }>(`/api/mail/messages/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** POST /api/mail/send. */
+export function sendMail(draft: MailDraft): Promise<{ ok: true }> {
+  return call<{ ok: true }>("/api/mail/send", {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(draft),
+  });
 }

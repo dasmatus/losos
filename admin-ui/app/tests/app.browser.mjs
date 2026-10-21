@@ -552,6 +552,18 @@ await check('a person in one section sees that section and not the administrator
   await page.close();
 });
 
+await check('Mail is in the sidebar only while /api/me lists it among the shared apps', async () => {
+  const matus = { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage', 'backup'] };
+  for (const [shared, want] of [[['mail'], 1], [[], 0], [undefined, 0]]) {
+    const { page } = await open({ person: { ...matus, ...(shared !== undefined ? { shared } : {}) } });
+    await page.getByRole('button', { name: 'Sign out' }).waitFor();
+    const mail = nav(page).getByRole('link', { name: 'Mail', exact: true });
+    assert.equal(await mail.count(), want, `Mail links with shared=${JSON.stringify(shared)}`);
+    if (want === 1) assert.equal(await mail.getAttribute('href'), '/mail/', 'Mail is not its own page');
+    await page.close();
+  }
+});
+
 await check('a wrong spare key is refused and the prompt stays up', async () => {
   const { page } = await openGate();
   await page.getByRole('button', { name: /Use the spare admin key instead/ }).click();

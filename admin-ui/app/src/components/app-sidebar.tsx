@@ -6,6 +6,7 @@ import {
   HardDriveIcon,
   Home01Icon,
   LayoutGridIcon,
+  Mail01Icon,
   NetworkIcon,
   PencilEdit02Icon,
   PinOffIcon,
@@ -37,7 +38,7 @@ import { paneFromPath, paneHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { SHORTCUT_ARIA, openPalette, shortcutLabel } from "@/palette/store";
 import { paneById, paneOpen, type SettingsPaneId } from "@/screens/settings/panes";
-import { canUse, heldBy, useMe } from "@/lib/api";
+import { canUse, heldBy, sharedApp, useMe } from "@/lib/api";
 import { openInNewTab, PinMenu } from "@/components/pin-menu";
 import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
 import { pinKey, viewPin, type PinView } from "@/lib/pins";
@@ -56,6 +57,7 @@ import { pinKey, viewPin, type PinView } from "@/lib/pins";
  *     Market                selling storage and compute, and disk sharing
  *     Machines              virtual machines on the mesh
  *   Lab                     (LosOS Lab at /lab/, a page of its own)
+ *   Mail                    (LosOS Mail at /mail/, only while sharing)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
  *
@@ -136,6 +138,14 @@ const TREE: readonly Entry[] = [
     external: true,
   },
   {
+    kind: "link",
+    key: "mail",
+    to: "/mail/",
+    label: "shell.nav.mail",
+    icon: Mail01Icon,
+    external: true,
+  },
+  {
     kind: "fold",
     key: "settings",
     label: "shell.nav.settings",
@@ -156,6 +166,9 @@ const TREE: readonly Entry[] = [
 function allowed(entry: LinkEntry): boolean {
   if (entry.pane !== undefined) return paneOpen(entry.pane);
   if (entry.key === "lab") return canUse("lab");
+  // Shared-side: there only while the box shares its storage, which lososd
+  // says in /api/me's `shared`. With sharing off the page does not exist.
+  if (entry.key === "mail") return sharedApp("mail");
   return true;
 }
 

@@ -330,6 +330,8 @@
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
             ./modules/lab.nix
+            # LosOS Mail: Stalwart as the shared user, only while sharing.
+            ./modules/mail.nix
             # The option document and the configuration repository on LosOS
             # Git (modules/config-repo.nix, backend/src/{options,config_repo}.rs).
             ./modules/config-repo.nix
@@ -431,6 +433,11 @@
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
+        losos-mail = import ./nix/tests/mail.nix { inherit pkgs; };
+        losos-mail-screens = import ./nix/tests/mail.nix {
+          inherit pkgs;
+          screens = true;
+        };
         losos-admin-ui = import ./nix/tests/admin-ui.nix {
           inherit pkgs;
           # The real option document, so the Advanced pane is drawn from
