@@ -101,7 +101,8 @@ pub struct Outcome {
 
 impl Outcome {
     /// The review's own text: the overview, then a table of the files.
-    pub fn body(&self, model: &str) -> String {
+    /// `since_last`: only the commits since the last review were looked at.
+    pub fn body(&self, model: &str, since_last: bool) -> String {
         let reviewed = self.files.iter().filter(|f| f.reviewed).count();
         let mut out = String::from("## Pull request overview\n\n");
         if !self.overview.is_empty() {
@@ -113,6 +114,9 @@ impl Outcome {
             1 => "left 1 comment".to_string(),
             n => format!("left {n} comments"),
         };
+        if since_last {
+            out.push_str("These are the commits pushed since the last review.\n\n");
+        }
         out.push_str(&format!(
             "LosOS Reviewer looked at {reviewed} of {} changed {} and {comments}.\n\n",
             self.files.len(),
@@ -259,22 +263,16 @@ fn lead_body(lead: &Lead) -> String {
     }
 }
 
-/// The question about one piece.
-pub fn piece_question(title: &str, path: &str, piece: &Piece, flagged: &[Lead]) -> String {
-    let mut q = format!(
+/// The question about one piece. It does not say what the checks found:
+/// told that a line already has a comment, 7B answered LGTM for the whole
+/// piece, bugs on other lines included. A finding on a line a check took
+/// is dropped afterwards instead.
+pub fn piece_question(title: &str, path: &str, piece: &Piece) -> String {
+    format!(
         "Pull request: {title}\nFile: {path} ({})\n\n{}",
         patch::language(path),
         piece.render()
-    );
-    if !flagged.is_empty() {
-        let lines: Vec<String> = flagged.iter().map(|l| l.line.to_string()).collect();
-        q.push_str(&format!(
-            "\n\nThe box already commented on line {}; leave {} out.",
-            lines.join(", "),
-            if lines.len() == 1 { "it" } else { "them" }
-        ));
-    }
-    q
+    )
 }
 
 /// The model's one-sentence description, tidied; `None` when it wrote
@@ -377,7 +375,7 @@ pub fn run(
                     from_check: true,
                 });
             }
-            let answer = ask.ask(FIND, &piece_question(title, path, piece, &leads), 300)?;
+            let answer = ask.ask(FIND, &piece_question(title, path, piece), 300)?;
             for f in checked(parse_findings(&answer), piece) {
                 if here.iter().any(|c| c.line == f.line) {
                     continue;
@@ -396,7 +394,7 @@ pub fn run(
         comments.extend(here);
 
         let first = &pieces[0];
-        let said = ask.ask(DESCRIBE, &piece_question(title, path, first, &[]), 60)?;
+        let said = ask.ask(DESCRIBE, &piece_question(title, path, first), 60)?;
         rows[*row].description = clean_sentence(&said, 160)
             .unwrap_or_else(|| format!("Changes {} lines.", count_changes(pieces)));
         stopped = !progress(done + 1, total);
@@ -539,7 +537,7 @@ mod tests {
             .1
             .contains("already commented on line 11; leave it out"));
         assert!(asked[0].1.contains("   12 +     let rows"));
-        let body = out.body("qwen2.5-coder:1.5b");
+        let body = out.body("qwen2.5-coder:1.5b", false);
         assert!(body.contains("looked at 1 of 2 changed files and left 2 comments"));
         assert!(body.contains("| `src/a.rs` | Builds a query for rows of t that match a. |"));
         assert!(body.contains("The code did not leave it."));

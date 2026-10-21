@@ -332,6 +332,26 @@ impl Store {
         Ok(())
     }
 
+    /// Back in the queue, at its old place: the model was not ready.
+    pub fn put_back_review(&self, job_id: i64) -> anyhow::Result<()> {
+        self.conn().execute(
+            "UPDATE review_jobs SET state = 'queued', started = NULL
+             WHERE id = ?1 AND state = 'reviewing'",
+            [job_id],
+        )?;
+        Ok(())
+    }
+
+    /// The number a pull request has in its repository.
+    pub fn issue_number(&self, issue_id: i64) -> anyhow::Result<Option<i64>> {
+        Ok(self
+            .conn()
+            .query_row("SELECT number FROM issues WHERE id = ?1", [issue_id], |r| {
+                r.get(0)
+            })
+            .optional()?)
+    }
+
     pub fn fail_review_job(&self, job_id: i64, error: &str) -> anyhow::Result<()> {
         self.conn().execute(
             "UPDATE review_jobs SET state = 'failed', error = ?2, finished = ?3

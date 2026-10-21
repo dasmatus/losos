@@ -138,7 +138,7 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("reviewed {done} of {total} files");
                 true
             })?;
-            println!("{}\n", out.body(&config.model));
+            println!("{}\n", out.body(&config.model, false));
             for c in &out.comments {
                 let from = if c.from_check { "check" } else { "model" };
                 println!("--- {}:{} ({from})\n{}\n", c.path, c.line, c.body);
