@@ -1065,7 +1065,7 @@ pkgs.testers.nixosTest {
         owner.get_by_role("button", name="Invite a guest").click()
         if EDGE is None:
             # No edge, no link: a box on its own makes none.
-            owner.get_by_text("not connected to one").wait_for(timeout=60000)
+            owner.get_by_text("not connected to one").first.wait_for(timeout=60000)
             shot(owner, "invite-no-edge")
         else:
             panel = owner.locator("[data-invite-panel]")
