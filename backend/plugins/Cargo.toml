@@ -1,0 +1,37 @@
+# lososd's plugins: one WebAssembly component per area, and the SDK they are
+# written against (`sdk/`, the `losos-plugin` crate). Built for
+# wasm32-unknown-unknown and wrapped as components by `wasm-tools component
+# new` (nix/packages.nix's losos-plugins); the contract is wit/plugin.wit
+# and docs/plugins.md says how a plugin is laid out.
+#
+# Its own workspace, like backend/access: backend/ is a package, not a
+# workspace root, and these crates never link into lososd.
+[workspace]
+resolver = "2"
+members = ["sdk", "widget", "look", "probe"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
+license = "AGPL-3.0-or-later"
+
+[workspace.dependencies]
+losos-plugin = { path = "sdk" }
+losos-widget = { path = "widget" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+anyhow = "1"
+thiserror = "2"
+
+[workspace.lints.rust]
+unreachable_pub = "warn"
+
+[profile.release]
+# Small modules load faster and the host keeps one compiled copy each.
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"
