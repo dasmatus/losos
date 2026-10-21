@@ -352,6 +352,18 @@ async fn rpc(
         let _ = stdin.shutdown().await;
     });
 
+    // No answer before git has one. git reads the whole request before it
+    // writes a byte, and nginx stops sending a request body once the
+    // upstream has answered: a status line sent early leaves a large push
+    // waiting forever for the rest of its pack.
+    let mut stdout = stdout;
+    let mut first = vec![0u8; 64 * 1024];
+    let n = match stdout.read(&mut first).await {
+        Ok(n) => n,
+        Err(e) => return internal(e),
+    };
+    first.truncate(n);
+
     // git's answer out as it is written, then the bookkeeping of a push.
     let state = state.into_inner();
     let after_push = before.map(|before| {
@@ -362,12 +374,16 @@ async fn rpc(
             pushed(&state, &repo, &dir, &before, pusher.as_ref(), &preamble)
         }
     });
-    let body = Answer {
+    let rest = Answer {
         stdout,
         child: Some(child),
         after: after_push.map(|f| Box::new(f) as Box<dyn FnOnce() + Send>),
     }
     .into_stream();
+    let head = futures_util::stream::iter(
+        (!first.is_empty()).then(|| Ok::<_, std::io::Error>(web::Bytes::from(first))),
+    );
+    let body = head.chain(rest);
     HttpResponse::Ok()
         .content_type(format!("application/x-git-{}-result", service.command()))
         .insert_header(("Cache-Control", "no-cache, max-age=0, must-revalidate"))

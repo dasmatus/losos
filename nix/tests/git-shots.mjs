@@ -294,15 +294,22 @@ await signIn(page, base, name, password);
 // beyond that.
 const baseline = new Set();
 const listen = (sink) => {
+  // A failed request is named by its address; Chromium's own console line
+  // for it ("Failed to load resource") says only the status.
   const onConsole = (m) => {
-    if (m.type() === "error") sink(m.text());
+    if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) sink(m.text());
   };
   const onError = (e) => sink(String(e));
+  const onResponse = (r) => {
+    if (r.status() >= 400) sink(`${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`);
+  };
   page.on("console", onConsole);
   page.on("pageerror", onError);
+  page.on("response", onResponse);
   return () => {
     page.off("console", onConsole);
     page.off("pageerror", onError);
+    page.off("response", onResponse);
   };
 };
 const stop = listen((text) => baseline.add(text));
