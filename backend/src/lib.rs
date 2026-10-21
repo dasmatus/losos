@@ -55,6 +55,7 @@ pub mod io_backend;
 pub mod lab;
 pub mod login;
 pub mod losos;
+pub mod mail;
 pub mod market;
 pub mod model;
 pub mod monero_key;

@@ -104,11 +104,6 @@ impl Paths {
         self.state_dir.join("forgejo-auth")
     }
 
-    /// The sidebar's pins (`crate::pins`).
-    pub fn pins_file(&self) -> PathBuf {
-        self.state_dir.join("pins.json")
-    }
-
     /// The LosOS cloud app password the pin picker lists folders with.
     pub fn cloud_key_file(&self) -> PathBuf {
         self.state_dir.join("cloud-key")
@@ -875,13 +870,10 @@ fn curl_market(
     config: &crate::market::Config,
     op: &crate::market::Op,
 ) -> anyhow::Result<(u16, String)> {
-    /// A listing page is small; a registrar that sends more is wrong.
-    const MAX_BYTES: usize = 1024 * 1024;
-    /// Above the registrar's own budget for the routes that wait on Stripe
-    /// (`STRIPE_ROUTE_TIMEOUT` in edge/registrar/src/server.rs, 22 s:
-    /// four gate calls of 5 s plus persistence), so a slow but successful
-    /// onboarding is not dropped here after the account was already made.
-    const TIMEOUT_SECS: &str = "25";
+    // A listing page is small, and most routes answer in seconds; an answer
+    // from an AI model is longer and slower (`Op::max_reply_bytes`,
+    // `Op::timeout_secs`, which say why).
+    let max_bytes = op.max_reply_bytes();
 
     let (method, path) = op.route();
     let token = std::fs::read_to_string(&config.token_file)
@@ -898,8 +890,8 @@ fn curl_market(
             "--max-redirs",
             "0",
         ])
-        .args(["--max-time", TIMEOUT_SECS])
-        .args(["--max-filesize", &MAX_BYTES.to_string()])
+        .args(["--max-time", &op.timeout_secs().to_string()])
+        .args(["--max-filesize", &max_bytes.to_string()])
         .args(["--header", "Accept: application/json"])
         .args(["--write-out", "\n%{http_code}"])
         .args(["--request", method]);
@@ -930,8 +922,8 @@ fn curl_market(
             String::from_utf8_lossy(&out.stderr).trim()
         );
     }
-    if out.stdout.len() > MAX_BYTES + 8 {
-        anyhow::bail!("the registrar returned more than {MAX_BYTES} bytes");
+    if out.stdout.len() > max_bytes + 8 {
+        anyhow::bail!("the registrar returned more than {max_bytes} bytes");
     }
     let text = String::from_utf8(out.stdout).context("the registrar returned non-UTF-8")?;
     let (body, code) = text
@@ -1674,17 +1666,6 @@ impl Losos for IoLosos {
         Ok(supervisor::log_tail(&self.paths.rebuild_log()))
     }
 
-    fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
-        Ok(read_if_present(self.paths.pins_file(), "reading the pins")?
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default())
-    }
-
-    fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()> {
-        let bytes = serde_json::to_vec(pins).context("encoding the pins")?;
-        atomic_write(&self.paths.pins_file(), &bytes)
-    }
-
     fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>> {
         Ok(
             read_if_present(self.paths.cloud_key_file(), "reading the LosOS cloud key")?
@@ -2343,7 +2324,7 @@ impl Losos for IoLosos {
             return Ok(crate::market::Outcome::Unavailable);
         };
         let (status, body) = curl_market(&config, op)?;
-        crate::market::classify(status, &body)
+        op.classify(status, &body)
     }
 
     fn read_options_doc(&mut self) -> anyhow::Result<Option<crate::options::OptionsDoc>> {

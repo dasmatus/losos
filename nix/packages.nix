@@ -270,13 +270,16 @@ let
   lososPlugins =
     {
       pname ? "losos-plugins",
-      names ? [ "look" ],
+      names ? [
+        "look"
+        "pins"
+      ],
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname;
       version = "0.1.0";
       src = lib.cleanSource ./../backend/plugins;
-      cargoHash = "sha256-VxDfZSbTviD/jZmA+NCD0jvQdZMKuefs4724oojTb4Y=";
+      cargoHash = "sha256-R9zOwoQRcWl7YGRUZVzPCtGNAVjuY9MPSvegXEd9OY8=";
       nativeBuildInputs = [
         pkgs.wasm-tools
         pkgs.lld
@@ -414,6 +417,7 @@ images
     pname = "losos-plugins-probe";
     names = [
       "look"
+      "pins"
       "probe"
     ];
   };
@@ -424,7 +428,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-0jYGHsFTa5Mz2KsNp4LbQNe3nPbC9/JnyACogkgeOhk=";
+    cargoHash = "sha256-U0i2q9Gj9AfzsY/R9Gk0HWjKh34QhGLYxPfGMhdNndg=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in

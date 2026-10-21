@@ -951,6 +951,7 @@ let
     ++ accessArgs
     ++ manageArgs
     ++ callsRelayArgs
+    ++ inferenceArgs
   );
 
   # Call media for this edge's boxes (losos.edge.calls.relay,
@@ -977,6 +978,21 @@ let
       from = lib.toInt (lib.elemAt parts 0);
       to = lib.toInt (lib.elemAt parts 1);
     };
+
+  # Models split across boxes (losos.edge.inference,
+  # modules/edge-inference.nix): the catalogue, the loopback ports the
+  # lending boxes' RPC tunnels are bound on, and where the registrar writes
+  # each head's environment and finds its socket.
+  inferenceArgs = lib.optionals cfg.inference.enable [
+    "--inference-models"
+    "/etc/losos/inference-models.json"
+    "--llm-port-range"
+    "${toString cfg.inference.portRange.from}-${toString cfg.inference.portRange.to}"
+    "--llm-env-dir"
+    "/run/losos-llm-env"
+    "--llm-socket-dir"
+    "/run/losos-llm-heads"
+  ];
 
   # The page boxes are managed from (losos.edge.manage, server/manage.rs in
   # the registrar). The key is made by the registrar on its first start.
@@ -1032,6 +1048,12 @@ in
     );
 
     assertions = [
+      {
+        # A lending box's second tunnel service is `<id>:llm`
+        # (edge/registrar/src/config.rs); a colon in an id could take it.
+        assertion = lib.all (id: !lib.hasInfix ":" id) (lib.attrNames cfg.tenants);
+        message = "losos.edge.tenants: an appliance id may not contain a colon.";
+      }
       {
         assertion = (cfg.identity.keyFile == null) == (cfg.identity.certFile == null);
         message = ''

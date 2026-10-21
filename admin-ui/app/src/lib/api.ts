@@ -211,9 +211,9 @@ export interface Me {
   /** What LosOS Login's rules hold this person to their own account for
    *  (backend/src/login.rs). Empty or missing: nothing. */
   locked?: LoginReason[];
-  /** The apps that run as the box's shared user, and so only while the box
-   *  shares its storage ("chat"). The sidebar draws an entry for each one
-   *  listed and nothing for the rest. Missing for the spare key. */
+  /** The apps on the shared side live on this box now ("mail", "chat"):
+   *  they run only while the box shares its storage, and their menu
+   *  entries are drawn only when listed here. */
   shared?: string[];
 }
 
@@ -263,6 +263,13 @@ export function canUse(section: string): boolean {
   return me.admin || me.sections.includes(section);
 }
 
+/** Whether a shared-side app (GET /api/me's `shared`) is live for whoever
+ *  is signed in. False until /api/me has said so, and follows its latest
+ *  response. */
+export function sharedApp(name: string): boolean {
+  return me?.shared?.includes(name) === true;
+}
+
 /** What holds the signed-in person to their own account, if anything. */
 export function heldBy(): LoginReason[] {
   return me?.locked ?? [];
@@ -272,12 +279,6 @@ export function heldBy(): LoginReason[] {
  *  False until /api/me has said so. */
 export function runsOwnSignIn(): boolean {
   return me?.standalone === true;
-}
-
-/** Whether `app` runs on this box now for whoever is signed in (GET
- *  /api/me's `shared`). False until /api/me has said so. */
-export function sharedApp(app: string): boolean {
-  return me?.shared?.includes(app) === true;
 }
 
 /** For components: who is signed in, re-read when that changes. */
@@ -1063,6 +1064,164 @@ export function postMarketRpc(
     contentType: "application/json",
     body: JSON.stringify({ network, method, params }),
   });
+}
+
+// ── AI models on lent memory ──────────────────────────────────────────────
+
+/* Large models run split across the memory boxes lend, paid per token
+ * through the edge (edge/registrar/src/server/llm.rs, relayed by lososd's
+ * market relay). Amounts are USDC base units (millionths of a dollar) as
+ * decimal text, except `billedE6`, which has six more decimals, and a
+ * wallet's balance, asked and notBefore, which are numbers. */
+
+export type ModelGroupState = "loading" | "ready" | "down";
+export type MeterState = "quoted" | "open" | "ending" | "ended" | "lapsed";
+
+export interface LlmModel {
+  id: string;
+  name: string;
+  /** Memory the boxes running it must lend together, MiB. */
+  needMib: number;
+  /** Context length, tokens. */
+  context: number;
+  /** Base units per million prompt tokens. */
+  priceIn: string;
+  /** Base units per million answer tokens. */
+  priceOut: string;
+  licence: string;
+  /** Memory the boxes lending now offer together, MiB. */
+  lentMib: number;
+  group?: ModelGroupState;
+  boxes?: number;
+}
+
+export interface LlmMeter {
+  id: string;
+  model: string;
+  network: string;
+  state: MeterState;
+  /** Why it ended, in the edge's words. */
+  reason?: string;
+  wallet?: string;
+  spendPerHour: string;
+  boxes: number;
+  group?: ModelGroupState;
+  requests: number;
+  tokensIn: number;
+  tokensOut: number;
+  billedE6: string;
+  paid: string;
+  createdAt: number;
+}
+
+export interface LlmWallet {
+  network: string;
+  wallet: string;
+  balance: number;
+  asked: number;
+  /** Unix seconds the ask can be taken from; 0 without one. */
+  notBefore: number;
+  /** The balance less what is used and not yet settled. */
+  available: string;
+  runwaySecs?: number;
+  /** The runway is under a day. */
+  low: boolean;
+}
+
+export interface LlmLending {
+  paid: string;
+  owed: string;
+  model?: string;
+  group?: ModelGroupState;
+  lentMib?: number;
+}
+
+export type LlmResponse =
+  | { available: false; reason?: "noOfficialEdge" }
+  | {
+      available: true;
+      network: string;
+      feeBps: number;
+      models: LlmModel[];
+      meters: LlmMeter[];
+      wallets: LlmWallet[];
+      lending: LlmLending;
+      noticeSecs: number;
+      minSpendPerHour: string;
+      maxSpendPerHour: string;
+    };
+
+export interface TapQuote {
+  meter: string;
+  model: string;
+  network: string;
+  chain: { network: string; name: string; family: ChainFamily; chain_id: number | null; usdc: string; pay: string | null; treasury: string };
+  feeBps: number;
+  spendPerHour: string;
+  /** One per lending box: `key` is the 32-byte id the wallet opens it
+   *  under, `seller` the box's payout address, `rate` base units an hour. */
+  taps: { id: string; key: string; seller: string; rate: string }[];
+  /** Unix seconds: the taps must be open by then. */
+  openBefore: number;
+}
+
+export interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface ChatAnswer {
+  content: string;
+  finishReason: string;
+  tokensIn: number;
+  tokensOut: number;
+  /** What this answer cost, millionths of a base unit. */
+  costE6: string;
+  /** The meter's total so far, millionths of a base unit. */
+  billedE6: string;
+}
+
+/** POST /api/market/llm/models — the models, this box's meters, balances
+ *  and lending, or `{ available: false }`. */
+export function postLlmModels(network: string | null, options: RequestOptions = {}): Promise<LlmResponse> {
+  return postJson<LlmResponse>("/api/market/llm/models", network === null ? {} : { network }, options);
+}
+
+/** POST /api/market/taps — quote a meter for `model`. */
+export function postTapQuote(
+  model: string,
+  network: string,
+  spendPerHour: string,
+  options: RequestOptions = {},
+): Promise<TapQuote> {
+  return postJson<TapQuote>("/api/market/taps", { model, network, spendPerHour }, options);
+}
+
+/** POST /api/market/taps/confirm — `wallet` opened the meter's taps. */
+export function postTapConfirm(meter: string, wallet: string, options: RequestOptions = {}): Promise<{ meter: string; state: MeterState }> {
+  return postJson("/api/market/taps/confirm", { meter, wallet }, options);
+}
+
+/** POST /api/market/taps/stop — stop a meter; the edge closes its taps.
+ *  `wallet` began opening a quote's taps and stopped partway: the edge
+ *  closes the ones it opened and keeps its balance in view. */
+export function postTapStop(
+  meter: string,
+  wallet?: string,
+  options: RequestOptions = {},
+): Promise<{ meter: string; state: MeterState }> {
+  return postJson("/api/market/taps/stop", wallet === undefined ? { meter } : { meter, wallet }, options);
+}
+
+/** POST /api/market/llm/chat — one request to a running model. Minutes,
+ *  not seconds, on a large model. */
+export function postLlmChat(
+  meter: string,
+  messages: ChatMessage[],
+  maxTokens: number,
+  options: RequestOptions = {},
+): Promise<ChatAnswer> {
+  return postJson<ChatAnswer>("/api/market/llm/chat", { meter, messages, maxTokens }, options);
 }
 
 // ── Widget builder ────────────────────────────────────────────────────────
@@ -2716,4 +2875,143 @@ export type GitReposResponse =
 export function getGitRepos(query: string | null = null, options: RequestOptions = {}): Promise<GitReposResponse> {
   const search = query === null ? "" : `?${new URLSearchParams({ q: query }).toString()}`;
   return call<GitReposResponse>(`/api/git/repos${search}`, options);
+}
+
+/* ── LosOS Mail ────────────────────────────────────────────────────────────
+ * backend/src/mail.rs. Every call is made as the person LosOS Login signed
+ * in; the spare key has no mailbox (409). With sharing off there is no mail
+ * on the box and every route is a 404. */
+
+export type MailRole = "inbox" | "drafts" | "sent" | "archive" | "junk" | "trash";
+
+export interface MailFolder {
+  id: string;
+  name: string;
+  role: MailRole | null;
+  total: number;
+  unread: number;
+}
+
+export interface MailAddress {
+  name: string | null;
+  email: string;
+}
+
+export interface MailSummary {
+  id: string;
+  threadId: string;
+  subject: string;
+  from: MailAddress[];
+  to: MailAddress[];
+  receivedAt: string;
+  preview: string;
+  seen: boolean;
+  flagged: boolean;
+  hasAttachment: boolean;
+}
+
+export interface MailAttachment {
+  blobId: string;
+  name: string;
+  type: string;
+  size: number;
+}
+
+export interface MailMessage extends MailSummary {
+  cc: MailAddress[];
+  replyTo: MailAddress[];
+  mailboxIds: string[];
+  text: string;
+  hasHtml: boolean;
+  attachments: MailAttachment[];
+}
+
+export interface MailNeighbour {
+  name: string;
+  displayName: string;
+  address: string;
+}
+
+export interface MailHome {
+  address: string;
+  name: string;
+  mailboxes: MailFolder[];
+  people: MailNeighbour[];
+}
+
+export interface MailPage {
+  messages: MailSummary[];
+  position: number;
+  total: number | null;
+}
+
+export interface MailDraft {
+  to: string[];
+  cc: string[];
+  subject: string;
+  text: string;
+  inReplyTo?: string;
+}
+
+export interface MailChange {
+  seen?: boolean;
+  flagged?: boolean;
+  mailbox?: string;
+}
+
+/** GET /api/mail — the address, the folders and the people on this box. */
+export function getMail(options: RequestOptions = {}): Promise<MailHome> {
+  return call<MailHome>("/api/mail", options);
+}
+
+/** GET /api/mail/messages — a page of a folder, newest first. */
+export function getMailMessages(
+  mailbox: string,
+  query = "",
+  position = 0,
+  options: RequestOptions = {},
+): Promise<MailPage> {
+  const params = new URLSearchParams({ mailbox, position: String(position) });
+  if (query.trim() !== "") params.set("q", query.trim());
+  return call<MailPage>(`/api/mail/messages?${params.toString()}`, options);
+}
+
+/** GET /api/mail/messages/{id} — open a message; it is marked read. */
+export function getMailMessage(id: string, options: RequestOptions = {}): Promise<MailMessage> {
+  return call<MailMessage>(`/api/mail/messages/${encodeURIComponent(id)}`, options);
+}
+
+/** Where the message's HTML is served, for the sandboxed frame. */
+export function mailHtmlUrl(id: string): string {
+  return apiPath(`/api/mail/messages/${encodeURIComponent(id)}/html`);
+}
+
+/** Where an attachment downloads from. */
+export function mailAttachmentUrl(attachment: MailAttachment): string {
+  return apiPath(
+    `/api/mail/attachments/${encodeURIComponent(attachment.blobId)}?name=${encodeURIComponent(attachment.name)}`,
+  );
+}
+
+/** POST /api/mail/messages/{id} — read or unread, flag, move. */
+export function changeMailMessage(id: string, change: MailChange): Promise<{ ok: true }> {
+  return call<{ ok: true }>(`/api/mail/messages/${encodeURIComponent(id)}`, {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(change),
+  });
+}
+
+/** DELETE /api/mail/messages/{id} — to the bin, or from the bin for good. */
+export function deleteMailMessage(id: string): Promise<{ ok: true }> {
+  return call<{ ok: true }>(`/api/mail/messages/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** POST /api/mail/send. */
+export function sendMail(draft: MailDraft): Promise<{ ok: true }> {
+  return call<{ ok: true }>("/api/mail/send", {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(draft),
+  });
 }

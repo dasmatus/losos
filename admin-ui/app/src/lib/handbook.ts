@@ -39,6 +39,7 @@ export const HANDBOOK_ENTRIES = {
   terminal: "manual/terminal/",
   chat: "manual/chat/",
   calls: "manual/calls/",
+  mail: "manual/mail/",
   "custom-domain": "types/official-edge/",
   "edge-manages-box": "types/company-edge/",
   tpm: "reference/tpm/",
