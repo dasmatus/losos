@@ -1213,6 +1213,18 @@ pkgs.testers.nixosTest {
         owner.get_by_role("log").get_by_text("The call ended").last.wait_for()
         jan.locator("[data-call-notice] button").wait_for(state="detached", timeout=30000)
 
+    with subtest("a call link from another app opens the direct chat and rings"):
+        # Contacts and Mail link a person as /chat/?with=<name>&call=voice.
+        owner.goto(f"https://{HOST}/chat/?with=eva&call=voice")
+        ring = her.locator("[data-ringing]")
+        ring.wait_for(timeout=60000)
+        assert "Matus" in ring.text_content(), ring.text_content()
+        owner.locator("[data-call-view]").wait_for()
+        assert "call=" not in owner.url and "with=" not in owner.url, owner.url
+        owner.get_by_role("button", name="Leave the call").click()
+        owner.locator("[data-call-view]").wait_for(state="detached")
+        ring.wait_for(state="detached", timeout=60000)
+
     with subtest("with sharing off there are no calls at all"):
         switch("unshared")
         box.wait_until_fails("systemctl is-active losos-calls.service")

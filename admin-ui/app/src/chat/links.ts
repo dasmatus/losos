@@ -24,3 +24,18 @@ export function withoutWith(href: string): string {
   url.searchParams.delete("with");
   return `${url.pathname}${url.search}${url.hash}`;
 }
+
+/** `&call=voice|video` beside `with` asks for a call in that direct chat:
+ *  true for video, false for voice, null when the link asks for none. */
+export function linkedCall(search: string): boolean | null {
+  const kind = new URLSearchParams(search).get("call");
+  return kind === "video" ? true : kind === "voice" ? false : null;
+}
+
+/** `path` (a path with its query and hash) without `call`, so a reload
+ *  does not ring the person again. */
+export function withoutCall(path: string): string {
+  const url = new URL(path, "http://box.invalid");
+  url.searchParams.delete("call");
+  return `${url.pathname}${url.search}${url.hash}`;
+}

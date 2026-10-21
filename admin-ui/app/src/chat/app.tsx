@@ -40,7 +40,7 @@ import { useCalls } from "./calls";
 import { chatDocument } from "./document";
 import { Composer } from "./composer";
 import { failed, ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, openDirect, RoomSettingsDialog, StartChatDialog } from "./dialogs";
-import { withoutWith, withUserId } from "./links";
+import { linkedCall, withoutCall, withoutWith, withUserId } from "./links";
 import { directPartner, directRooms, isSpace, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
 import { RoomList } from "./room-list";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
@@ -311,21 +311,38 @@ function ChatHome({ signed }: { signed: Signed }) {
   }, [client]);
 
   // `?with=<person>` from Contacts, Mail or Cloud opens the direct chat
-  // with that person, made if there is none yet.
+  // with that person, made if there is none yet, and `&call=voice|video`
+  // starts that call in it.
   const navigate = useNavigate();
+  const calls = useCalls();
   const linked = React.useRef(false);
+  const ring = React.useRef<{ room: string; video: boolean } | null>(null);
   React.useEffect(() => {
     if (linked.current) return;
     linked.current = true;
     const raw = new URLSearchParams(window.location.search).get("with");
     if (raw === null) return;
-    navigate(withoutWith(window.location.href), { replace: true });
+    const video = linkedCall(window.location.search);
+    navigate(withoutCall(withoutWith(window.location.href)), { replace: true });
     const userId = withUserId(raw, client.getDomain() ?? "");
     if (userId === null || userId === me) return;
     openDirect(client, userId)
-      .then(setCurrent)
+      .then((roomId) => {
+        if (video !== null) ring.current = { room: roomId, video };
+        setCurrent(roomId);
+      })
       .catch((error: unknown) => failed(t, error));
   }, [client, me, navigate, setCurrent, t]);
+  // Every render: a room just made reaches the client a sync later, and
+  // calls are available once their session is up.
+  React.useEffect(() => {
+    const want = ring.current;
+    if (want === null || !calls.available) return;
+    const linkedRoom = client.getRoom(want.room);
+    if (linkedRoom === null) return;
+    ring.current = null;
+    if (calls.active === null) calls.start(linkedRoom, want.video);
+  });
 
   const room = current !== null ? (client.getRoom(current) ?? null) : null;
   const spaceRoom = space !== null ? client.getRoom(space) : null;

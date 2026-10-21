@@ -15,7 +15,7 @@ const built = await esbuild.build({
   platform: 'node',
   write: false,
 });
-const { withUserId, withoutWith } = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`);
+const { withUserId, withoutWith, linkedCall, withoutCall } = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`);
 
 const server = 'mattbox.local';
 assert.equal(withUserId('eva', server), '@eva:mattbox.local');
@@ -33,5 +33,12 @@ assert.equal(withUserId('eva:mattbox.local', server), null);
 
 assert.equal(withoutWith('https://mattbox.local/chat/?with=eva'), '/chat/');
 assert.equal(withoutWith('https://mattbox.local/chat/?with=eva&call=video#/room/x'), '/chat/?call=video#/room/x');
+
+assert.equal(linkedCall('?with=eva&call=video'), true);
+assert.equal(linkedCall('?with=eva&call=voice'), false);
+assert.equal(linkedCall('?with=eva'), null);
+assert.equal(linkedCall('?with=eva&call=fax'), null);
+assert.equal(withoutCall('/chat/?call=video#/room/x'), '/chat/#/room/x');
+assert.equal(withoutCall('/chat/?x=1&call=voice'), '/chat/?x=1');
 
 console.log('chat links: ok');
