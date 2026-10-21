@@ -802,6 +802,27 @@ in
       '';
     };
 
+    cloud.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Run LosOS Cloud: the owner's and every person's files at /cloud/,
+        over WebDAV for file managers, and to the Nextcloud desktop and
+        phone apps, which sync with it as they would with Nextcloud. People
+        sign in with LosOS Login; each computer or phone gets a password of
+        its own. It runs beside the LosOS cloud pod, with its own files.
+      '';
+    };
+
+    cloud.trashDays = lib.mkOption {
+      type = lib.types.ints.between 1 365;
+      default = 30;
+      description = ''
+        How many days a deleted file stays in LosOS Cloud's trash before it
+        is deleted for good.
+      '';
+    };
+
     search.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -2881,6 +2902,13 @@ in
         readOnly = true;
         default = identity && config.losos.forgejo.enable && config.losos.forgejo.mode == "container";
         description = "LosOS Git signs people in with LosOS Login.";
+      };
+      cloud = lib.mkOption {
+        type = lib.types.bool;
+        internal = true;
+        readOnly = true;
+        default = identity && config.losos.cloud.enable && config.losos.backend.package != null;
+        description = "LosOS Cloud runs, and signs people in with LosOS Login.";
       };
     };
 
