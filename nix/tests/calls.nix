@@ -402,6 +402,26 @@ pkgs.testers.nixosTest {
     import time
     import urllib.parse
 
+    # The build sandbox has loopback only, and Chromium (since about 150)
+    # gathers no ICE candidates on a computer with no other interface: the
+    # browsers would never send the SFU a packet. So before any machine
+    # starts, the driver moves into a network namespace of its own with a
+    # veth pair beside loopback. The machines' forwarded ports, the shim
+    # below and the browsers all live in it; the VLANs are unix sockets.
+    def own_network():
+        uid, gid = os.getuid(), os.getgid()
+        os.unshare(os.CLONE_NEWUSER | os.CLONE_NEWNET)
+        for name, text in (("setgroups", "deny"), ("uid_map", f"{uid} {uid} 1"),
+                           ("gid_map", f"{gid} {gid} 1")):
+            with open(f"/proc/self/{name}", "w") as f:
+                f.write(text)
+        ip = "${pkgs.iproute2}/bin/ip"
+        for args in ("link set lo up", "link add v0 type veth peer name v1",
+                     "addr add 192.0.2.1/24 dev v0", "link set v0 up", "link set v1 up"):
+            subprocess.run(f"{ip} {args}", shell=True, check=True)
+
+    own_network()
+
     HOST = "mattbox.local"
     PASSWORDS = {
         "matus": "Correct-Horse-Battery-9",

@@ -143,7 +143,7 @@ const front = `127.0.0.1:${await listen(nginx)}`;
 const api = (name) => `http://${front}${name ? `/as/${name}` : ''}/calls/api`;
 
 const browser = await launch({
-  args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'],
+  args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection'],
 });
 let failed = false;
 const checks = [];
