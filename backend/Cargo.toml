@@ -77,7 +77,7 @@ walkdir = "2"
 # Password hashes for the people file Authelia signs people in against
 # (src/people.rs): argon2id in PHC form, the format Authelia reads. Already
 # in the lock file through the access crate.
-argon2 = "0.5"
+argon2 = "0.6"
 
 # Calls (src/calls/, the losos-calls binary): a forwarding SFU on str0m, a
 # sans-IO WebRTC stack, with its pure-Rust DTLS and SRTP so nothing links
