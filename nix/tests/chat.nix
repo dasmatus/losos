@@ -444,7 +444,8 @@ pkgs.testers.nixosTest {
         while run.poll() is None and time.monotonic() - began < 1800:
             print(box.execute(
                 "uptime; free -m | sed -n 2p; top -bn1 -o %CPU | sed -n 8,13p; "
-                "${pkgs.redis}/bin/redis-cli -s /run/redis-*/redis.sock info clients | grep connected_clients"
+                "${pkgs.redis}/bin/redis-cli -s /run/redis-*/redis.sock info clients | grep connected_clients; "
+                "curl -so /dev/null -w 'dendrite versions %{time_total}s\\n' http://127.0.0.1:8008/_matrix/client/versions"
             )[1])
             time.sleep(15)
         out, err = run.communicate(timeout=60)
@@ -452,7 +453,7 @@ pkgs.testers.nixosTest {
         print(done.stdout)
         print(done.stderr)
         if done.returncode != 0:
-            print(box.execute("journalctl -b --no-pager -o cat -n 300 -u lososd -u dendrite -u authelia-losos -u nginx")[1])
+            print(box.execute("journalctl -b --no-pager -o cat -n 1500 -u lososd -u dendrite -u authelia-losos -u nginx")[1])
         assert done.returncode == 0, f"the chat page, {phase}: {done.stderr[-2000:]}"
 
     with subtest("with sharing off there is no chat anywhere"):

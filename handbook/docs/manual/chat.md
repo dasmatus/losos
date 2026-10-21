@@ -6,7 +6,7 @@ slug: /manual/chat
 
 # Chat
 
-Chat is a messenger on the box for everyone with a LosOS Login account.
+LosOS Chat is a messenger on the box for everyone with a LosOS Login account.
 People write to each other in direct messages and in rooms, share pictures
 and files, reply in threads and react to messages. Direct messages and new
 rooms are end-to-end encrypted, so the box stores only what it cannot read.
@@ -55,8 +55,7 @@ Without the key or another device, a new device cannot read messages sent
 before it signed in. Nobody can recover them for you, and that includes the
 box's administrator.
 
-The lock button at the top of the chat list opens **Secure messages** at any
-time. It lists your devices, and you can verify or sign out each one.
+The lock button in the bar at the top opens **Secure messages** at any time. It lists your devices, and you can verify or sign out each one.
 
 ## Writing to people
 

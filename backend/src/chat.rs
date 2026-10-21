@@ -556,16 +556,20 @@ impl Chat {
         token: Option<&str>,
     ) -> Result<Verdict, ChatError> {
         let inner = self.inner()?;
+        let url = &asked.original_url;
         if asked.cookie.as_deref().is_none_or(str::is_empty) {
+            tracing::info!(%url, "chat: no LosOS Login cookie");
             return Ok(Verdict::SignIn);
         }
         let Some((name, groups)) = inner.asking.ask(inner.gate.as_ref(), asked)? else {
+            tracing::info!(%url, "chat: LosOS Login does not know the cookie");
             return Ok(Verdict::SignIn);
         };
         // Still on the box: LosOS Login reads the people file on every
         // request, and so does this.
         let person = people.get(&name).ok().flatten();
         let Some(person) = person else {
+            tracing::info!(%url, %name, "chat: no such person");
             return Ok(Verdict::SignIn);
         };
         if person
@@ -581,10 +585,13 @@ impl Chat {
         };
         match inner.owner_of(token)? {
             Some(owner) if owner == self.user_id(&person.name)? => Ok(Verdict::Allow),
+            Some(owner) => {
+                tracing::info!(%url, %owner, name = %person.name, "chat: someone else's token");
+                Ok(Verdict::Refuse)
+            }
             // A token the homeserver does not know: let the homeserver say
             // so, in its own words, so the page signs the device in again.
             None => Ok(Verdict::Allow),
-            Some(_) => Ok(Verdict::Refuse),
         }
     }
 

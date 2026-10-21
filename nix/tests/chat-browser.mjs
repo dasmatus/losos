@@ -37,6 +37,7 @@ const browser = await chromium.launch({
 });
 const problems = [];
 const network = [];
+const start = performance.now();
 
 /** A browser of its own for one person, signed in through LosOS Login. */
 async function person(name) {
@@ -54,11 +55,17 @@ async function person(name) {
   // The box runs under emulation in the test, so first loads are slow.
   page.setDefaultTimeout(120_000);
   page.on("pageerror", (error) => problems.push(`${name}: ${error.message}`));
-  // What the network did, printed when a step does not happen.
-  page.on("response", (r) => {
-    if (r.status() >= 400) network.push(`${name}: ${r.status()} ${r.request().method()} ${r.url()}`);
+  // What the network did, in <out>/network-<phase>.log, and its tail when
+  // a step does not happen.
+  const began = new Map();
+  const at = () => ((performance.now() - start) / 1000).toFixed(1).padStart(7);
+  page.on("request", (r) => began.set(r, performance.now()));
+  page.on("requestfinished", async (r) => {
+    const took = ((performance.now() - (began.get(r) ?? 0)) / 1000).toFixed(1);
+    const status = (await r.response().catch(() => null))?.status() ?? "-";
+    network.push(`${at()} ${name} ${status} ${took}s ${r.method()} ${r.url().replace(ORIGIN, "")}`);
   });
-  page.on("requestfailed", (r) => network.push(`${name}: failed ${r.method()} ${r.url()} ${r.failure()?.errorText}`));
+  page.on("requestfailed", (r) => network.push(`${at()} ${name} failed ${r.method()} ${r.url().replace(ORIGIN, "")} ${r.failure()?.errorText}`));
   // Any refusal of the page's policy, but sonner's two known inline styles.
   page.on("console", (msg) => {
     if (msg.type() === "error" && msg.text().includes("Content Security Policy") && !msg.text().includes("inline style")) {
@@ -225,10 +232,12 @@ try {
     for (const page of context.pages()) await page.screenshot({ path: `${out}/failed-${phase}-${i++}.png` }).catch(() => {});
   }
   console.error(problems.join("\n"));
-  console.error(network.slice(-80).join("\n"));
+  console.error(network.filter((l) => !/ 200 /.test(l)).slice(-60).join("\n"));
+  console.error(network.slice(-60).join("\n"));
   console.error(error);
   process.exitCode = 1;
 } finally {
+  writeFileSync(`${out}/network-${phase}.log`, network.join("\n") + "\n");
   writeFileSync(stepsFile, JSON.stringify(steps, null, 2));
   writeFileSync(
     `${out}/film/manifest.json`,

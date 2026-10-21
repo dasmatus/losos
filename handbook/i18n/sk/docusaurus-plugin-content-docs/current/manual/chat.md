@@ -6,7 +6,8 @@ slug: /manual/chat
 
 # Chat
 
-Chat je komunikátor na zariadení pre každého, kto má účet v LosOS Login.
+LosOS Chat je komunikátor na zariadení pre každého, kto má účet v LosOS
+Login.
 Ľudia si píšu priame správy aj v miestnostiach, posielajú si obrázky a
 súbory, odpovedajú vo vláknach a reagujú na správy. Priame správy a nové
 miestnosti sú šifrované od konca po koniec, takže zariadenie ukladá len to,
@@ -56,7 +57,7 @@ obnovenie, alebo nové zariadenie potvrďte z toho, ktoré už používate, tak,
 Bez kľúča a bez iného zariadenia nové zariadenie neprečíta správy poslané
 pred jeho prihlásením. Nikto vám ich neobnoví, ani správca zariadenia.
 
-Tlačidlo so zámkom nad zoznamom konverzácií kedykoľvek otvorí
+Tlačidlo so zámkom v hornej lište kedykoľvek otvorí
 **Zabezpečené správy**. Uvádza vaše zariadenia a každé z nich môžete overiť
 alebo odhlásiť.
 
