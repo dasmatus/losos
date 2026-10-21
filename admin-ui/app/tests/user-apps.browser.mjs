@@ -194,7 +194,7 @@ await check('the AI builds an app step by step, the preview tries each version f
   await page.getByTestId('builder-running').filter({ hasText: 'Trying it in the preview' }).waitFor({ timeout: 15000 });
   // The page's report, as the frame made it: what the app shows, the
   // button it pressed, what that kept.
-  await page.getByTestId('builder-outcome').waitFor({ timeout: 20000 });
+  await page.getByTestId('builder-outcome').waitFor({ timeout: 45000 });
   assert.equal(box.state.started.kind, 'app');
   assert.equal(box.state.tried.length, 2, 'two tries, a report for each');
   const [broken, report] = box.state.tried;

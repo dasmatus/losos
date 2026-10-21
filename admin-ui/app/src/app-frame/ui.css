@@ -2,7 +2,11 @@
  * elements styled to match, on the box's palette (../styles/tokens.css, the
  * same file the admin page, LosOS cloud and LosOS Git read). No utility
  * classes: an app's code cannot add to a stylesheet that was compiled before
- * it was written, so everything an app can name is styled here. */
+ * it was written, so everything an app can name is styled here.
+ *
+ * The sizes, radii, shadows and states are the admin page's own components'
+ * (src/components/ui/: button, input, card, badge, empty), written out, so an
+ * app looks like a pane. Change one there and change it here. */
 
 *,
 *::before,
@@ -67,16 +71,20 @@ hr {
   margin-bottom: 16px;
 }
 
+/* card.tsx: rounded-card border-line bg-surface shadow-card, px-5 pt-5,
+ * a 15px semibold title. */
 .lx-card {
   background: var(--surface);
+  color: var(--ink);
   border: 1px solid var(--line);
   border-radius: var(--card-radius);
   box-shadow: var(--elev-card);
-  padding: 16px;
+  padding: 20px;
 }
 
 .lx-card-title {
   font-size: 15px;
+  line-height: 1.25;
   font-weight: 600;
   margin-bottom: 12px;
 }
@@ -109,24 +117,47 @@ hr {
   font-size: 12.5px;
 }
 
+/* button.tsx: h-9 px-4 text-sm font-medium rounded-control, primary on
+ * the accent, hover 90 %, a pixel down when pressed, 45 % when disabled. */
 button,
 .lx-button {
   font: inherit;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
   border-radius: var(--control-radius);
   border: 1px solid transparent;
-  padding: 9px 14px;
+  padding: 0 16px;
   cursor: pointer;
   background: var(--accent);
   color: var(--surface);
   white-space: nowrap;
+  user-select: none;
+  flex-shrink: 0;
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    color 150ms,
+    opacity 150ms,
+    transform 150ms;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+button:active {
+  transform: translateY(1px);
 }
 
 button:disabled {
-  opacity: 0.5;
-  cursor: default;
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 button:focus-visible,
@@ -143,20 +174,27 @@ textarea:focus-visible {
   border-color: var(--line);
 }
 
+.lx-button-secondary:hover,
+.lx-button-ghost:hover {
+  opacity: 1;
+  background: var(--sunk);
+  color: var(--ink);
+}
+
 .lx-button-danger {
-  background: transparent;
-  color: var(--crit);
-  border-color: var(--line);
+  background: var(--crit);
+  color: var(--surface);
 }
 
 .lx-button-ghost {
   background: transparent;
-  color: var(--ink);
+  color: var(--muted);
 }
 
 .lx-button-small {
-  font-size: 12.5px;
-  padding: 6px 10px;
+  font-size: 13px;
+  height: 32px;
+  padding: 0 12px;
 }
 
 .lx-field {
@@ -173,6 +211,8 @@ textarea:focus-visible {
   color: var(--muted);
 }
 
+/* input.tsx: h-9 px-3 text-sm rounded-control border-line bg-surface, an
+ * accent border and ring on focus, sunk when disabled. */
 input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]),
 select,
 textarea,
@@ -183,13 +223,41 @@ textarea,
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--control-radius);
-  padding: 8px 10px;
+  height: 36px;
+  padding: 0 12px;
   width: 100%;
   min-width: 0;
+  transition:
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--faint);
+}
+
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]):focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  background: var(--sunk);
+  color: var(--faint);
 }
 
 textarea,
 .lx-textarea {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 12px;
   resize: vertical;
   line-height: 1.45;
 }
@@ -212,13 +280,17 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
+/* badge.tsx: rounded-full px-2.5 py-0.5, 12px medium on sunk. */
 .lx-badge {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   font-size: 12px;
+  line-height: 20px;
   font-weight: 500;
+  white-space: nowrap;
   border-radius: 999px;
-  padding: 2px 9px;
+  padding: 2px 10px;
   background: var(--sunk);
   color: var(--muted);
   width: fit-content;
@@ -303,10 +375,12 @@ td {
   font-variant-numeric: tabular-nums;
 }
 
+/* empty.tsx: a dashed rounded-card, centred and balanced. */
 .lx-empty {
   color: var(--muted);
   text-align: center;
-  padding: 20px 12px;
+  text-wrap: balance;
+  padding: 24px;
   border: 1px dashed var(--line);
   border-radius: var(--card-radius);
 }
