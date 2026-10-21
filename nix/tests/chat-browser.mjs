@@ -214,6 +214,10 @@ async function on() {
   await owner.getByLabel("Thread messages").getByText("Somewhere with a lake.").waitFor();
   await owner.getByLabel("Thread messages").getByText("Sending…").waitFor({ state: "detached" });
   await shot(owner, "thread");
+  // The thread takes the room's place in the card; closing it brings the
+  // room back.
+  await owner.getByRole("button", { name: "Close threads" }).click();
+  await owner.getByRole("log").getByText("Hi Eva, chat is up on the box.", { exact: true }).waitFor();
   await eva.getByRole("log").getByRole("button", { name: /1 reply/ }).waitFor();
   await eva.getByRole("button", { name: "Threads", exact: true }).click();
   await eva.getByLabel("Threads in this room").getByText("Somewhere with a lake.").waitFor();

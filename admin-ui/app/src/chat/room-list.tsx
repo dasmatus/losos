@@ -20,10 +20,16 @@ export interface RoomListProps {
   onJoin: () => void;
 }
 
-function preview(room: Room): string {
+const TEXT_TYPES = new Set(["m.text", "m.emote", "m.notice"]);
+
+/** The last message's line under the room's name. A picture, file or
+ *  voice message says so rather than showing its file name. */
+function preview(room: Room, attachment: string): string {
   const last = [...room.getLiveTimeline().getEvents()].reverse().find((ev) => ev.getType() === "m.room.message" || ev.getType() === "m.room.encrypted");
   if (last === undefined) return "";
-  const body = last.isRedacted() ? "" : plainBody(last.getContent());
+  const content = last.getContent();
+  const text = typeof content["msgtype"] !== "string" || TEXT_TYPES.has(content["msgtype"]);
+  const body = last.isRedacted() ? "" : text ? plainBody(content) : attachment;
   const who = last.getSender() === room.client.getUserId() ? "" : `${room.getMember(last.getSender() ?? "")?.name ?? ""}: `;
   return body === "" ? "" : `${who}${body}`;
 }
@@ -32,7 +38,7 @@ function RoomRow({ client, room, current, onOpen, invite }: { client: MatrixClie
   const t = useT();
   const counts = unread(room);
   const active = room.roomId === current;
-  const line = invite === true ? t("chat.list.invitedBy", { name: memberName(room, room.getMember(client.getSafeUserId())?.events.member?.getSender() ?? "") }) : preview(room);
+  const line = invite === true ? t("chat.list.invitedBy", { name: memberName(room, room.getMember(client.getSafeUserId())?.events.member?.getSender() ?? "") }) : preview(room, t("chat.reply.attachment"));
   return (
     <li>
       <button
