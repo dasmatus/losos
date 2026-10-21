@@ -21,15 +21,15 @@ mod envelope;
 mod keys;
 mod tokens;
 
-pub use client::{delegate, open_call, seal_call, AnswerError, Unlocked, UserKey, UserKeyError};
+pub use client::{open_call, seal_call, AnswerError, Unlocked, UserKey, UserKeyError};
 pub use envelope::{
-    open, open_answer, seal, seal_request, Answer, Delegated, Delegation, Opened, Refusal, Replay,
-    Request, DELEGATION_KIND, MAX_SKEW_SECS, REPLAY_SECS,
+    open, open_answer, seal, seal_request, Answer, Opened, Refusal, Replay, Request, MAX_SKEW_SECS,
+    REPLAY_SECS,
 };
 pub use keys::{HostKey, KeyError, Keyring, SeededKey};
 pub use tokens::{
-    agent_route, path_allowed, Scope, TokenError, TokenRecord, TokenView, Tokens, AGENT_ROUTES,
-    MAX_NAME_CHARS, MAX_TOKENS,
+    companion_route, path_allowed, Scope, TokenError, TokenRecord, TokenView, Tokens,
+    COMPANION_CLIENT_ID, COMPANION_ROUTES, MAX_NAME_CHARS, MAX_TOKENS,
 };
 
 /// A fingerprint as the contract writes it: upper-case hex, no spaces.

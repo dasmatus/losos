@@ -12,8 +12,9 @@ files in LosOS Cloud and your repositories in LosOS Git, so you can ask it
 about your own notes and code. It can only look. It cannot change, move or
 delete anything on the box.
 
-This runs on your computer, in the terminal client. The admin pages cannot
-look at your computer, so they only make the token the companion uses.
+This runs on your computer, in the terminal client, because the admin pages
+cannot look at your computer. The companion signs in with LosOS Login, the
+box's own sign-in, in your browser.
 
 ## Which tools
 
@@ -40,28 +41,39 @@ A tool is found by its program on your `PATH` or by its settings folder.
 losos agents
 ```
 
-## Before you start
-
-The terminal client must be connected to the box first (see
-[The terminal client](terminal)). Then make one more token, just
-for the companion: in **Settings → Access tokens**, choose **AI agents**
-under **Access**. A token of that kind can read files and repositories and
-nothing else, and it works only for the companion.
-
 ## Put the companion in
 
 ```sh
-losos agents install
+losos agents install --host https://mattbox.local
 ```
 
-It asks about each tool it found, one at a time. Nothing is changed in a
-tool you say no to. Then it asks for the AI agents token once.
+Use your box's address. If the terminal client is already connected to the
+box (see [The terminal client](terminal)), you can leave `--host` out.
 
-Name the tools to do only those, and add `--yes` to skip the questions:
+It asks about each tool it found, one at a time. Nothing is changed in a
+tool you say no to. Name the tools to do only those, and add `--yes` to
+skip the questions:
 
 ```sh
 losos agents install claude-code zed --yes
 ```
+
+If this computer has never connected to the box, the client shows the
+fingerprint of the box's certificate. Compare it with the one your browser
+shows for the box, and say yes if they match. From then on the companion
+talks only to a box with that certificate.
+
+Then the companion signs in. The client prints a link and a code:
+
+```text
+The companion signs in to https://mattbox.local with LosOS Login. Open this link in a browser, sign in and approve the LosOS companion:
+  https://mattbox.local/auth/consent/openid/device-authorization?user_code=WDJBMJHT
+The page shows the code WDJBMJHT. Waiting for the approval…
+```
+
+Open the link, sign in to LosOS Login as you always do, with your second
+step if you have one, check that the page shows the same code, and choose
+**Accept**. The terminal carries on by itself.
 
 Before it changes a settings file, the client copies it to
 `~/.local/share/losos/companion/backups/`. It changes only its own entry
@@ -89,15 +101,21 @@ the box gets their own files, not yours.
 
 ## How it stays safe
 
-The companion has a GPG key of its own, made on your computer. Your own key
-signs once, when you set it up, to say that this key may read this one box
-with this one token. The box accepts the companion's key only together with
-that AI agents token, and an AI agents token only for reading files,
-repositories and the box's status. So an AI tool never holds your own key,
-and what it can reach is far less than what you can.
+The companion never sees your password. You type it into LosOS Login in your
+browser, and LosOS Login gives the companion two tokens: one that opens the
+box for an hour, and one that gets a new pair when that runs out. If the
+companion goes 30 days without being used, it has to sign in again.
 
-The key and the token are kept in your desktop's keychain, the same place
-the terminal client keeps everything else.
+The box lets those tokens read files, repositories and the box's status, and
+nothing else, even when you are an administrator. The companion sends only
+reads, and the box refuses anything more. A person whose account is waiting
+for a second step or a new password cannot sign the companion in until that
+is done.
+
+The tokens are kept in your desktop's keychain, the same place the terminal
+client keeps everything else. They are never written into an AI tool's
+settings: each tool starts the companion, and the companion reads the
+keychain.
 
 ## Take it out again
 
@@ -107,5 +125,5 @@ losos agents remove
 
 It asks about each tool the companion is in and takes it out, and puts each
 settings file back as it was. Once the companion is in no tool, the client
-forgets its key and token. Revoke the AI agents token in **Settings →
-Access tokens** as well.
+signs it out: it hands both tokens back to LosOS Login and forgets them. The
+box stops taking them within a minute.

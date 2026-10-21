@@ -62,20 +62,12 @@ pub(super) async fn call(State(st): State<AppState>, body: Bytes) -> Response {
         tokio::task::spawn_blocking(move || {
             let now = losos_access::now_secs();
             let opened = losos_access::open(&op.host, &op.ring, &body, &op.replay, now)?;
-            // The AI agent companion is a box's (backend/src/access.rs): an
-            // edge takes no companion key and no AI agents token.
-            if opened.delegated.is_some() {
-                return Err(Refusal::Unsigned);
-            }
             let token = op.tokens.authenticate(
                 &opened.request.token,
                 &opened.signer.fingerprint,
                 &opened.request.method,
                 now,
             )?;
-            if token.scope == Scope::Agent {
-                return Err(Refusal::Path);
-            }
             Ok::<_, Refusal>((opened, token))
         })
         .await
@@ -346,9 +338,6 @@ pub(super) async fn create_token(
             )
         }
     };
-    if req.scope == Scope::Agent {
-        return plain(400, "an AI agents token is for a box; an edge has none");
-    }
     gated(&st, &headers, "token create", |op, login| {
         match op.tokens.create(
             &op.ring,

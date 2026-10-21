@@ -1472,35 +1472,90 @@ messages! {
         sk: "Nič sa nezmenilo.",
         de: "Nichts wurde geändert.",
     },
+    "tui.agents.certificate" => {
+        en: "{url} shows a certificate no public authority vouches for. Its SHA-256 fingerprint is {pin}. Compare it with the one your browser shows for the box.",
+        sk: "{url} ukazuje certifikát, za ktorý neručí žiadna verejná autorita. Jeho odtlačok SHA-256 je {pin}. Porovnajte ho s tým, ktorý pre zariadenie ukazuje váš prehliadač.",
+        de: "{url} zeigt ein Zertifikat, für das keine öffentliche Stelle bürgt. Sein SHA-256-Fingerabdruck ist {pin}. Vergleiche ihn mit dem, den dein Browser für die Box zeigt.",
+    },
+    "tui.agents.askCertificate" => {
+        en: "Do they match, and should the companion keep this certificate?",
+        sk: "Zhodujú sa a má si pomocník tento certifikát ponechať?",
+        de: "Stimmen sie überein, und soll der Begleiter dieses Zertifikat behalten?",
+    },
+    "tui.agents.certificateRefused" => {
+        en: "Nothing was changed: the certificate was not taken.",
+        sk: "Nič sa nezmenilo: certifikát nebol prijatý.",
+        de: "Nichts wurde geändert: Das Zertifikat wurde nicht angenommen.",
+    },
     "tui.agents.reusing" => {
-        en: "Using the companion's key and token for {url} that this computer already keeps.",
-        sk: "Používa sa kľúč a token pomocníka pre {url}, ktoré už tento počítač má.",
-        de: "Schlüssel und Token des Begleiters für {url}, die dieser Computer schon hat, werden verwendet.",
+        en: "This computer is signed in to {url} for the companion already.",
+        sk: "Tento počítač je už pre pomocníka prihlásený do {url}.",
+        de: "Dieser Computer ist für den Begleiter schon bei {url} angemeldet.",
     },
-    "tui.agents.needToken" => {
-        en: "The companion needs a token of its own for {url}. In the web UI, open Settings, Access tokens, and make one with the AI agents scope.",
-        sk: "Pomocník potrebuje vlastný token pre {url}. Vo webovom rozhraní otvorte Nastavenia, Prístupové tokeny, a vytvorte token s rozsahom Agenti AI.",
-        de: "Der Begleiter braucht ein eigenes Token für {url}. Öffne in der Weboberfläche Einstellungen, Zugriffstokens, und erstelle eines mit dem Bereich KI-Agenten.",
+    "tui.agents.signIn" => {
+        en: "The companion signs in to {url} with LosOS Login. Open this link in a browser, sign in and approve the LosOS companion:",
+        sk: "Pomocník sa do {url} prihlasuje cez LosOS Login. Otvorte tento odkaz v prehliadači, prihláste sa a schváľte pomocníka LosOS:",
+        de: "Der Begleiter meldet sich bei {url} mit LosOS Login an. Öffne diesen Link im Browser, melde dich an und erlaube den LosOS-Begleiter:",
     },
-    "tui.agents.tokenPrompt" => {
-        en: "AI agents token: ",
-        sk: "Token pre agentov AI: ",
-        de: "Token für KI-Agenten: ",
+    "tui.agents.signInCode" => {
+        en: "The page shows the code {code}. Waiting for the approval…",
+        sk: "Stránka ukazuje kód {code}. Čaká sa na schválenie…",
+        de: "Die Seite zeigt den Code {code}. Warte auf die Freigabe…",
     },
-    "tui.agents.badToken" => {
-        en: "That is not an access token. One looks like losos_pat_ followed by two groups of hex.",
-        sk: "To nie je prístupový token. Token vyzerá ako losos_pat_ a za ním dve skupiny šestnástkových znakov.",
-        de: "Das ist kein Zugriffstoken. Eines sieht aus wie losos_pat_, gefolgt von zwei Hex-Gruppen.",
+    "tui.agents.signedIn" => {
+        en: "Signed in. The companion reads {url} as you, and stays signed in while it is used at least once in 30 days.",
+        sk: "Prihlásené. Pomocník číta {url} ako vy a zostane prihlásený, kým sa použije aspoň raz za 30 dní.",
+        de: "Angemeldet. Der Begleiter liest {url} als du und bleibt angemeldet, solange er mindestens einmal in 30 Tagen benutzt wird.",
     },
-    "tui.agents.tokenRefused" => {
-        en: "The box refused the companion: {detail}",
-        sk: "Zariadenie pomocníka odmietlo: {detail}",
-        de: "Die Box hat den Begleiter abgelehnt: {detail}",
+    "tui.agents.loginUnreachable" => {
+        en: "LosOS Login on {url} did not answer: {detail}",
+        sk: "LosOS Login na {url} neodpovedal: {detail}",
+        de: "LosOS Login auf {url} hat nicht geantwortet: {detail}",
     },
-    "tui.agents.tokenHelp" => {
-        en: "Make the token with the AI agents scope. A read or full token does not work for the companion, on purpose.",
-        sk: "Vytvorte token s rozsahom Agenti AI. Token na čítanie ani úplný token pre pomocníka zámerne nefunguje.",
-        de: "Erstelle das Token mit dem Bereich KI-Agenten. Ein Lese- oder Vollzugriffstoken funktioniert für den Begleiter absichtlich nicht.",
+    "tui.agents.loginRefused" => {
+        en: "LosOS Login would not start the companion's sign-in (HTTP {status}).",
+        sk: "LosOS Login nezačal prihlásenie pomocníka (HTTP {status}).",
+        de: "LosOS Login hat die Anmeldung des Begleiters nicht begonnen (HTTP {status}).",
+    },
+    "tui.agents.loginRefusedHelp" => {
+        en: "A box that has not updated yet has no sign-in for the companion. Let it update tonight, then try again.",
+        sk: "Zariadenie, ktoré sa ešte neaktualizovalo, prihlásenie pre pomocníka nemá. Nechajte ho dnes v noci aktualizovať a skúste to znova.",
+        de: "Eine Box, die sich noch nicht aktualisiert hat, hat keine Anmeldung für den Begleiter. Lass sie heute Nacht aktualisieren und versuche es dann erneut.",
+    },
+    "tui.agents.loginNoRefresh" => {
+        en: "LosOS Login gave the companion no refresh token, so it would stop working after an hour.",
+        sk: "LosOS Login nedal pomocníkovi obnovovací token, takže by po hodine prestal fungovať.",
+        de: "LosOS Login hat dem Begleiter kein Aktualisierungstoken gegeben, er würde also nach einer Stunde aufhören.",
+    },
+    "tui.agents.loginDenied" => {
+        en: "The sign-in was denied in the browser. Nothing was changed.",
+        sk: "Prihlásenie bolo v prehliadači zamietnuté. Nič sa nezmenilo.",
+        de: "Die Anmeldung wurde im Browser abgelehnt. Nichts wurde geändert.",
+    },
+    "tui.agents.loginExpired" => {
+        en: "The code ran out before the sign-in was approved.",
+        sk: "Kód vypršal skôr, než bolo prihlásenie schválené.",
+        de: "Der Code ist abgelaufen, bevor die Anmeldung freigegeben wurde.",
+    },
+    "tui.agents.loginAgain" => {
+        en: "Run losos agents install again.",
+        sk: "Spustite znova losos agents install.",
+        de: "Führe losos agents install erneut aus.",
+    },
+    "tui.agents.loginFailed" => {
+        en: "LosOS Login refused the sign-in (HTTP {status}): {detail}",
+        sk: "LosOS Login prihlásenie odmietol (HTTP {status}): {detail}",
+        de: "LosOS Login hat die Anmeldung abgelehnt (HTTP {status}): {detail}",
+    },
+    "tui.agents.signedOut" => {
+        en: "The companion is no longer signed in to {url}.",
+        sk: "Pomocník už nie je prihlásený do {url}.",
+        de: "Der Begleiter ist nicht mehr bei {url} angemeldet.",
+    },
+    "tui.agents.readOnly" => {
+        en: "The companion only reads, so it sends no {method}.",
+        sk: "Pomocník iba číta, preto neposiela {method}.",
+        de: "Der Begleiter liest nur, also sendet er kein {method}.",
     },
     "tui.agents.keychainLabel" => {
         en: "LosOS companion for {url}",
@@ -1533,14 +1588,14 @@ messages! {
         de: "losos agents remove entfernt ihn wieder.",
     },
     "tui.agents.forgot" => {
-        en: "This computer no longer keeps the companion's key and token for {url}.",
-        sk: "Tento počítač už nemá kľúč ani token pomocníka pre {url}.",
-        de: "Dieser Computer hat Schlüssel und Token des Begleiters für {url} nicht mehr.",
+        en: "The companion is signed out of {url}, and this computer no longer keeps its sign-in.",
+        sk: "Pomocník je odhlásený z {url} a tento počítač už jeho prihlásenie nemá.",
+        de: "Der Begleiter ist von {url} abgemeldet, und dieser Computer hat seine Anmeldung nicht mehr.",
     },
-    "tui.agents.revoke" => {
-        en: "Revoke the AI agents token under Settings, Access tokens, too.",
-        sk: "Zrušte aj token pre agentov AI v časti Nastavenia, Prístupové tokeny.",
-        de: "Widerrufe auch das Token für KI-Agenten unter Einstellungen, Zugriffstokens.",
+    "tui.agents.forgotOffline" => {
+        en: "{url} did not answer, so its sign-in lasts until it runs out, at most 30 days. This computer no longer keeps it.",
+        sk: "{url} neodpovedal, takže prihlásenie platí, kým nevyprší, najviac 30 dní. Tento počítač ho už nemá.",
+        de: "{url} hat nicht geantwortet, die Anmeldung gilt also, bis sie abläuft, höchstens 30 Tage. Dieser Computer hat sie nicht mehr.",
     },
     "tui.agents.noCompanion" => {
         en: "This computer keeps no LosOS companion for {url}.",

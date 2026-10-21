@@ -60,7 +60,6 @@ export default defineMessages({
   // ── Tokens ──────────────────────────────────────────────────────────────
   "access.scope.read": { en: "Read only", sk: "Iba čítanie", de: "Nur lesen" },
   "access.scope.full": { en: "Full access", sk: "Plný prístup", de: "Voller Zugriff" },
-  "access.scope.agent": { en: "AI agents", sk: "Agenti AI", de: "KI-Agenten" },
   "access.tokens.title": { en: "Tokens", sk: "Tokeny", de: "Tokens" },
   "access.tokens.none": { en: "No tokens yet.", sk: "Zatiaľ žiadne tokeny.", de: "Noch keine Tokens." },
   "access.tokens.key": { en: "Key", sk: "Kľúč", de: "Schlüssel" },
@@ -109,11 +108,6 @@ export default defineMessages({
     en: "Can read, but cannot change anything.",
     sk: "Môže čítať, ale nič nezmení.",
     de: "Kann lesen, aber nichts ändern.",
-  },
-  "access.form.agentDetail": {
-    en: "For the LosOS companion in your AI tools. Reads files in LosOS Cloud and repositories in LosOS Git, and nothing else.",
-    sk: "Pre pomocníka LosOS vo vašich nástrojoch AI. Číta súbory v LosOS Cloud a repozitáre v LosOS Git a nič iné.",
-    de: "Für den LosOS-Begleiter in deinen KI-Werkzeugen. Liest Dateien in LosOS Cloud und Repositories in LosOS Git, sonst nichts.",
   },
   "access.form.fullDetail": {
     en: "Can change what this page can change, except tokens.",
@@ -165,11 +159,6 @@ export default defineMessages({
     en: "To use it, run this on your computer:",
     sk: "Ak ho chcete použiť, spustite na svojom počítači:",
     de: "Um es zu benutzen, führ das auf deinem Computer aus:",
-  },
-  "access.created.useAgent": {
-    en: "To put the LosOS companion in your AI tools, run this on your computer once losos is signed in to this box, and paste the token when it asks:",
-    sk: "Ak chcete pridať pomocníka LosOS do svojich nástrojov AI, spustite na svojom počítači tento príkaz, keď je losos prihlásený k tomuto zariadeniu, a keď si ho vypýta, vložte token:",
-    de: "Um den LosOS-Begleiter in deine KI-Werkzeuge einzubauen, führ das auf deinem Computer aus, sobald losos bei dieser Box angemeldet ist, und füg das Token ein, wenn es danach fragt:",
   },
   "access.created.done": { en: "Done", sk: "Hotovo", de: "Fertig" },
 });

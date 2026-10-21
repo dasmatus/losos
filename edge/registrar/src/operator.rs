@@ -348,9 +348,7 @@ mod tests {
                 ts: 0,
                 nonce: String::new(),
                 body,
-                delegation: None,
             },
-            delegated: None,
         }
     }
 

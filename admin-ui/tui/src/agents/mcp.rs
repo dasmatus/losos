@@ -1,7 +1,7 @@
 //! `losos mcp`: the companion as an MCP server on stdin and stdout, the way
 //! an AI tool starts one. Its tools only look: each is one GET to the box
-//! through the envelope, signed by the companion key, on a route an AI
-//! agents token reaches (`losos_access::AGENT_ROUTES`; the test at the end
+//! with the companion's LosOS Login token, on a route the box lets the
+//! companion read (`losos_access::COMPANION_ROUTES`; the test at the end
 //! keeps the two lists together).
 //!
 //! The wire is JSON-RPC 2.0, one message per line. The server answers
@@ -387,23 +387,24 @@ mod tests {
     use crate::problem::Problem;
 
     #[test]
-    fn every_tool_reads_a_route_an_agents_token_reaches() {
+    fn every_tool_reads_a_route_the_companion_reaches() {
         for t in MCP_TOOLS {
             assert!(
-                losos_access::AGENT_ROUTES.contains(&t.route),
-                "{} reads {}, which an AI agents token cannot",
+                losos_access::COMPANION_ROUTES.contains(&t.route),
+                "{} reads {}, which the box keeps from the companion",
                 t.name,
                 t.route
             );
-            assert!(losos_access::agent_route(
+            assert!(losos_access::companion_route(
+                "GET",
                 &t.path(&json!({ "query": "x" }))
                     .unwrap_or_else(|_| t.route.to_string())
             ));
         }
-        for route in losos_access::AGENT_ROUTES {
+        for route in losos_access::COMPANION_ROUTES {
             assert!(
                 MCP_TOOLS.iter().any(|t| t.route == *route),
-                "{route} is open to agents but no tool reads it"
+                "{route} is open to the companion but no tool reads it"
             );
         }
     }

@@ -112,8 +112,6 @@ pub struct Session {
     pub token: String,
     pub user: Unlocked,
     pub http: Http,
-    /// The owner's word for `user`, when `user` is a companion key.
-    pub delegation: Option<String>,
 }
 
 impl Session {
@@ -131,7 +129,6 @@ impl Session {
             token: record.token.clone(),
             user,
             http,
-            delegation: None,
         })
     }
 
@@ -152,7 +149,6 @@ impl Session {
             ts,
             nonce: nonce.to_string(),
             body,
-            delegation: self.delegation.clone(),
         };
         seal_call(&self.user, &self.host_key, &request)
             .map_err(|e| Problem::new("losos::seal", e.to_string()))

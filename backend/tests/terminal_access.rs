@@ -163,7 +163,6 @@ impl Client<'_> {
             ts: losos_access::now_secs(),
             nonce: n.clone(),
             body,
-            delegation: None,
         };
         (seal_request(self.key, &self.server, &req).unwrap(), n)
     }

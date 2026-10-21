@@ -12,9 +12,9 @@ LosOS Cloud a vaše repozitáre v LosOS Git, takže sa ho môžete pýtať na
 vlastné poznámky a kód. Môže sa iba pozerať. Na zariadení nič nezmení,
 nepresunie ani nezmaže.
 
-Beží to na vašom počítači, v terminálovom klientovi. Správcovské stránky
-do vášho počítača nevidia, preto iba vytvoria token, ktorý pomocník
-používa.
+Beží to na vašom počítači, v terminálovom klientovi, pretože správcovské
+stránky do vášho počítača nevidia. Pomocník sa prihlasuje cez LosOS Login,
+prihlásenie samotného zariadenia, vo vašom prehliadači.
 
 ## Ktoré nástroje
 
@@ -41,28 +41,40 @@ priečinka s nastaveniami. `losos agents` vypíše, čo našiel:
 losos agents
 ```
 
-## Skôr než začnete
-
-Terminálový klient už musí byť pripojený k zariadeniu (pozrite
-[Terminálový klient](terminal)). Potom vytvorte ešte jeden token, iba pre
-pomocníka: v **Nastavenia → Prístupové tokeny** zvoľte pod **Prístup**
-možnosť **Agenti AI**. Taký token vie čítať súbory a repozitáre, nič iné,
-a funguje iba pre pomocníka.
-
 ## Pridanie pomocníka
 
 ```sh
-losos agents install
+losos agents install --host https://mattbox.local
 ```
 
-Postupne sa opýta na každý nájdený nástroj. V nástroji, ku ktorému poviete
-nie, sa nič nezmení. Potom si raz vypýta token pre agentov AI.
+Použite adresu svojho zariadenia. Ak je terminálový klient k zariadeniu už
+pripojený (pozrite [Terminálový klient](terminal)), `--host` môžete
+vynechať.
 
-Ak vymenujete nástroje, vezme iba tie, a s `--yes` sa nebude pýtať:
+Postupne sa opýta na každý nájdený nástroj. V nástroji, ku ktorému poviete
+nie, sa nič nezmení. Ak vymenujete nástroje, vezme iba tie, a s `--yes` sa
+nebude pýtať:
 
 ```sh
 losos agents install claude-code zed --yes
 ```
+
+Ak sa tento počítač k zariadeniu ešte nikdy nepripájal, klient ukáže
+odtlačok certifikátu zariadenia. Porovnajte ho s tým, ktorý pre zariadenie
+ukazuje váš prehliadač, a ak sa zhodujú, povedzte áno. Odvtedy sa pomocník
+spojí iba so zariadením s týmto certifikátom.
+
+Potom sa pomocník prihlási. Klient vypíše odkaz a kód:
+
+```text
+Pomocník sa do https://mattbox.local prihlasuje cez LosOS Login. Otvorte tento odkaz v prehliadači, prihláste sa a schváľte pomocníka LosOS:
+  https://mattbox.local/auth/consent/openid/device-authorization?user_code=WDJBMJHT
+Stránka ukazuje kód WDJBMJHT. Čaká sa na schválenie…
+```
+
+Otvorte odkaz, prihláste sa do LosOS Login ako vždy, aj s druhým krokom,
+ak ho máte, skontrolujte, že stránka ukazuje ten istý kód, a zvoľte
+**Accept**. Terminál potom pokračuje sám.
 
 Skôr než klient zmení súbor s nastaveniami, skopíruje ho do
 `~/.local/share/losos/companion/backups/`. Zmení iba vlastný záznam a vaše
@@ -90,15 +102,19 @@ dostane svoje súbory, nie vaše.
 
 ## Prečo je to bezpečné
 
-Pomocník má vlastný kľúč GPG, vytvorený na vašom počítači. Váš vlastný
-kľúč raz, pri nastavení, podpíše, že tento kľúč smie čítať toto jedno
-zariadenie s týmto jedným tokenom. Zariadenie prijme kľúč pomocníka iba
-spolu s týmto tokenom pre agentov AI a token pre agentov AI iba na čítanie
-súborov, repozitárov a stavu zariadenia. Nástroj AI teda nikdy nedrží váš
-vlastný kľúč a dostane sa k oveľa menej než vy.
+Pomocník vaše heslo nikdy nevidí. Zadáte ho do LosOS Login vo svojom
+prehliadači a LosOS Login dá pomocníkovi dva tokeny: jeden otvára
+zariadenie na hodinu a druhý po jej uplynutí získa nový pár. Ak pomocník
+30 dní nikto nepoužije, musí sa prihlásiť znova.
 
-Kľúč aj token sú v kľúčenke vášho pracovného prostredia, tam, kde
-terminálový klient drží všetko ostatné.
+Zariadenie týmto tokenom dovolí čítať súbory, repozitáre a stav
+zariadenia, nič iné, ani keď ste správca. Pomocník posiela iba čítanie a
+zariadenie všetko ostatné odmietne. Človek, ktorého účet čaká na druhý krok
+alebo nové heslo, pomocníka neprihlási, kým to nedokončí.
+
+Tokeny sú v kľúčenke vášho pracovného prostredia, tam, kde terminálový
+klient drží všetko ostatné. Nikdy sa nezapíšu do nastavení nástroja AI:
+každý nástroj spustí pomocníka a pomocník číta kľúčenku.
 
 ## Odstránenie
 
@@ -108,5 +124,5 @@ losos agents remove
 
 Opýta sa na každý nástroj, v ktorom pomocník je, odstráni ho a každý súbor
 s nastaveniami vráti do pôvodného stavu. Keď už pomocník nie je v žiadnom
-nástroji, klient zabudne jeho kľúč aj token. Token pre agentov AI zrušte aj
-v **Nastavenia → Prístupové tokeny**.
+nástroji, klient ho odhlási: oba tokeny vráti LosOS Login a zabudne ich.
+Zariadenie ich prestane prijímať do minúty.

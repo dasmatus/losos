@@ -13,9 +13,9 @@ durchsehen, sodass du es nach deinen eigenen Notizen und deinem Code fragen
 kannst. Er kann nur schauen. Auf der Box ändert, verschiebt oder löscht er
 nichts.
 
-Das läuft auf deinem Computer, im Terminal-Client. Die Admin-Seiten sehen
-nicht in deinen Computer, deshalb erstellen sie nur das Token, das der
-Begleiter benutzt.
+Das läuft auf deinem Computer, im Terminal-Client, weil die Admin-Seiten
+nicht in deinen Computer sehen. Der Begleiter meldet sich mit LosOS Login
+an, der Anmeldung der Box selbst, in deinem Browser.
 
 ## Welche Werkzeuge
 
@@ -42,31 +42,41 @@ Einstellungsordner erkannt. `losos agents` listet, was gefunden wurde:
 losos agents
 ```
 
-## Bevor du anfängst
-
-Der Terminal-Client muss schon mit der Box verbunden sein (siehe
-[Der Terminal-Client](terminal)). Erstelle dann noch ein Token,
-nur für den Begleiter: Wähle in **Einstellungen → Zugriffstokens** unter
-**Zugriff** die Option **KI-Agenten**. Ein solches Token kann Dateien und
-Repositories lesen, sonst nichts, und es funktioniert nur für den
-Begleiter.
-
 ## Den Begleiter einbauen
 
 ```sh
-losos agents install
+losos agents install --host https://mattbox.local
 ```
 
-Es fragt nacheinander nach jedem gefundenen Werkzeug. In einem Werkzeug,
-zu dem du nein sagst, ändert sich nichts. Danach fragt es einmal nach dem
-Token für KI-Agenten.
+Nimm die Adresse deiner Box. Ist der Terminal-Client schon mit der Box
+verbunden (siehe [Der Terminal-Client](terminal)), kannst du `--host`
+weglassen.
 
-Nenn die Werkzeuge, um nur diese zu nehmen, und lass mit `--yes` die
-Fragen weg:
+Es fragt nacheinander nach jedem gefundenen Werkzeug. In einem Werkzeug,
+zu dem du nein sagst, ändert sich nichts. Nenn die Werkzeuge, um nur diese
+zu nehmen, und lass mit `--yes` die Fragen weg:
 
 ```sh
 losos agents install claude-code zed --yes
 ```
+
+War dieser Computer noch nie mit der Box verbunden, zeigt der Client den
+Fingerabdruck des Zertifikats der Box. Vergleiche ihn mit dem, den dein
+Browser für die Box zeigt, und sag ja, wenn sie übereinstimmen. Von da an
+spricht der Begleiter nur mit einer Box mit diesem Zertifikat.
+
+Dann meldet sich der Begleiter an. Der Client zeigt einen Link und einen
+Code:
+
+```text
+Der Begleiter meldet sich bei https://mattbox.local mit LosOS Login an. Öffne diesen Link im Browser, melde dich an und erlaube den LosOS-Begleiter:
+  https://mattbox.local/auth/consent/openid/device-authorization?user_code=WDJBMJHT
+Die Seite zeigt den Code WDJBMJHT. Warte auf die Freigabe…
+```
+
+Öffne den Link, melde dich bei LosOS Login an wie immer, mit deinem
+zweiten Schritt, wenn du einen hast, prüfe, dass die Seite denselben Code
+zeigt, und wähle **Accept**. Das Terminal macht danach von selbst weiter.
 
 Bevor der Client eine Einstellungsdatei ändert, kopiert er sie nach
 `~/.local/share/losos/companion/backups/`. Er ändert nur seinen eigenen
@@ -95,16 +105,21 @@ Box bekommt seine eigenen Dateien, nicht deine.
 
 ## Warum das sicher ist
 
-Der Begleiter hat einen eigenen GPG-Schlüssel, auf deinem Computer erzeugt.
-Dein eigener Schlüssel unterschreibt einmal, beim Einrichten, dass dieser
-Schlüssel diese eine Box mit diesem einen Token lesen darf. Die Box nimmt
-den Schlüssel des Begleiters nur zusammen mit diesem Token für KI-Agenten
-an, und ein Token für KI-Agenten nur zum Lesen von Dateien, Repositories
-und dem Zustand der Box. Ein KI-Werkzeug hat also nie deinen eigenen
-Schlüssel und erreicht viel weniger als du.
+Der Begleiter sieht dein Passwort nie. Du gibst es in deinem Browser bei
+LosOS Login ein, und LosOS Login gibt dem Begleiter zwei Tokens: eines
+öffnet die Box für eine Stunde, das andere holt danach ein neues Paar.
+Wird der Begleiter 30 Tage lang nicht benutzt, muss er sich neu anmelden.
 
-Schlüssel und Token liegen im Schlüsselbund deines Desktops, dort, wo der
-Terminal-Client auch alles andere aufbewahrt.
+Die Box lässt diese Tokens Dateien, Repositories und den Zustand der Box
+lesen, sonst nichts, auch wenn du Administrator bist. Der Begleiter sendet
+nur Lesezugriffe, und die Box lehnt alles andere ab. Wer bei seinem Konto
+noch einen zweiten Schritt oder ein neues Passwort einrichten muss, kann
+den Begleiter erst danach anmelden.
+
+Die Tokens liegen im Schlüsselbund deiner Arbeitsumgebung, dort, wo der
+Terminal-Client auch alles andere aufbewahrt. In die Einstellungen eines
+KI-Werkzeugs werden sie nie geschrieben: Jedes Werkzeug startet den
+Begleiter, und der Begleiter liest den Schlüsselbund.
 
 ## Wieder entfernen
 
@@ -112,8 +127,8 @@ Terminal-Client auch alles andere aufbewahrt.
 losos agents remove
 ```
 
-Es fragt nach jedem Werkzeug, in dem der Begleiter ist, nimmt ihn heraus
-und stellt jede Einstellungsdatei wieder her, wie sie war. Sobald der
-Begleiter in keinem Werkzeug mehr ist, vergisst der Client seinen Schlüssel
-und sein Token. Widerrufe das Token für KI-Agenten auch unter
-**Einstellungen → Zugriffstokens**.
+Es fragt nach jedem Werkzeug, in dem der Begleiter ist, entfernt ihn und
+setzt jede Einstellungsdatei zurück, wie sie war. Ist der Begleiter in
+keinem Werkzeug mehr, meldet der Client ihn ab: Er gibt beide Tokens an
+LosOS Login zurück und vergisst sie. Die Box nimmt sie spätestens nach
+einer Minute nicht mehr an.

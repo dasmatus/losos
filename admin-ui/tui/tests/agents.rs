@@ -1,16 +1,18 @@
 //! `losos agents` and `losos mcp` in a home folder of their own: each AI
 //! tool's settings in its own format, the tools that take the companion
 //! through a command of their own played by tests/fake-bin/agent-tool, and
-//! a box on loopback that answers the companion's calls.
+//! a box on loopback that signs the companion in the way LosOS Login does
+//! and answers its calls.
 
 mod common;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use common::{fake_bin, mock, owner, Client, Mock, Owner, TOKEN};
+use common::{fake_bin, mock, owner, Client, Mock, TOKEN};
 use losos::agents::companion;
-use losos::keychain::MemoryKeychain;
+use losos::envelope::Transport;
+use losos::keychain::{Keychain, MemoryKeychain};
 use serde_json::{json, Value};
 
 const SELF: &str = "/opt/losos/bin/losos";
@@ -40,7 +42,6 @@ const GEMINI_TRUST: &str = r#"{
 }"#;
 
 struct Desk {
-    me: Owner,
     host: Mock,
     keychain: Arc<MemoryKeychain>,
     client: Client,
@@ -104,6 +105,7 @@ fn desk(tools: &[&str]) -> Desk {
                 200,
                 json!({ "name": "matus", "displayName": "Matus", "admin": true }),
             ),
+            ("GET", "/api/status") => (200, json!({ "health": "ok" })),
             ("GET", p) if p.starts_with("/api/cloud/files") => (
                 200,
                 json!({ "path": "/", "entries": [{ "name": "Notes", "kind": "folder" }] }),
@@ -130,7 +132,6 @@ fn desk(tools: &[&str]) -> Desk {
     );
     assert_eq!(r.code, 0, "{}", r.err);
     Desk {
-        me,
         host,
         keychain,
         client,
@@ -180,10 +181,17 @@ fn install_puts_the_companion_in_each_tool_and_remove_takes_it_out_again() {
     std::fs::create_dir_all(d.path(".cursor")).unwrap();
     std::fs::create_dir_all(d.path(".config/Code")).unwrap();
 
-    let r = d
-        .client
-        .run(&["agents", "install", "--yes"], &format!("{TOKEN}\n"));
+    let r = d.client.run(&["agents", "install", "--yes"], "");
     assert_eq!(r.code, 0, "{}\n{}", r.out, r.err);
+    // The sign-in: a link with the code in it, and the code to compare.
+    let link = format!(
+        "{}/auth/consent/openid/device-authorization?user_code=WDJBMJHT",
+        d.host.url
+    );
+    assert!(r.out.contains(&link), "{}", r.out);
+    assert!(r.out.contains("shows the code WDJBMJHT"), "{}", r.out);
+    assert!(r.out.contains("Signed in."), "{}", r.out);
+    assert_eq!(d.host.login.lock().unwrap().polls, 2);
     for name in [
         "Claude Code",
         "Codex",
@@ -286,16 +294,14 @@ fn install_puts_the_companion_in_each_tool_and_remove_takes_it_out_again() {
     assert_eq!(trust[gemini_dir.display().to_string()], "TRUST_FOLDER");
     assert_eq!(trust["/home/me/work"], "TRUST_FOLDER");
 
-    // The companion's credential is in the keychain, and the box was asked
-    // once, as the companion, vouched for by the owner's key.
+    // The companion's sign-in is in the keychain: the tokens LosOS Login
+    // handed out, and nothing of the owner's.
     let kept = companion::list(d.keychain.as_ref()).unwrap();
     assert_eq!(kept.len(), 1);
     assert_eq!(kept[0].url, d.host.url);
-    let vouched = d.host.vouched.lock().unwrap().clone();
-    assert_eq!(
-        vouched.last().unwrap().as_deref(),
-        Some(d.me.key.fingerprint())
-    );
+    assert_eq!(kept[0].access_token, "authelia_at_1.sig");
+    assert_eq!(kept[0].refresh_token, "authelia_rt_1.sig");
+    assert!(!d.read(".config/zed/settings.json").contains("authelia_"));
 
     let listed = d.client.run(&["agents"], "");
     assert_eq!(
@@ -305,10 +311,12 @@ fn install_puts_the_companion_in_each_tool_and_remove_takes_it_out_again() {
         listed.out
     );
 
-    // A second install asks for no token: the companion is kept.
+    // A second install signs in no second time: the box still takes the
+    // kept sign-in.
     let again = d.client.run(&["agents", "install", "zed", "--yes"], "");
     assert_eq!(again.code, 0, "{}", again.err);
-    assert!(again.out.contains("already keeps"), "{}", again.out);
+    assert!(again.out.contains("already"), "{}", again.out);
+    assert_eq!(d.host.login.lock().unwrap().polls, 2);
 
     let r = d.client.run(&["agents", "remove", "--yes"], "");
     assert_eq!(r.code, 0, "{}\n{}", r.out, r.err);
@@ -330,9 +338,15 @@ fn install_puts_the_companion_in_each_tool_and_remove_takes_it_out_again() {
     ] {
         assert!(log.contains(line), "{line} missing:\n{log}");
     }
-    // With the companion in no tool, its key and token are forgotten.
+    // With the companion in no tool, it is signed out: both tokens are
+    // handed back to the box and the keychain forgets them.
     assert!(companion::list(d.keychain.as_ref()).unwrap().is_empty());
-    assert!(r.out.contains("Revoke the AI agents token"), "{}", r.out);
+    assert!(r.out.contains("signed out of"), "{}", r.out);
+    let login = d.host.login.lock().unwrap();
+    assert!(login.revoked.contains(&"authelia_rt_1.sig".to_string()));
+    assert!(login.revoked.contains(&"authelia_at_1.sig".to_string()));
+    assert!(login.access.is_empty() && login.refresh.is_none());
+    drop(login);
     let listed = d.client.run(&["agents"], "");
     assert!(!listed.out.contains("companion in"), "{}", listed.out);
 }
@@ -342,9 +356,7 @@ fn each_tool_is_asked_about_and_a_no_leaves_it_alone() {
     let d = desk(&["claude"]);
     d.write(".config/zed/settings.json", ZED);
     // Claude Code comes first in the list, then Zed.
-    let r = d
-        .client
-        .run(&["agents", "install"], &format!("y\nn\n{TOKEN}\n"));
+    let r = d.client.run(&["agents", "install"], "y\nn\n");
     assert_eq!(r.code, 0, "{}\n{}", r.out, r.err);
     assert!(
         r.err
@@ -361,13 +373,14 @@ fn each_tool_is_asked_about_and_a_no_leaves_it_alone() {
     assert!(!r.out.contains("is in Zed"), "{}", r.out);
     assert_eq!(d.read(".config/zed/settings.json"), ZED);
 
-    // No to everything: no token asked, nothing kept, nothing written.
+    // No to everything: no sign-in, nothing kept, nothing written.
     let d = desk(&["claude"]);
     d.write(".config/zed/settings.json", ZED);
     let r = d.client.run(&["agents", "install"], "n\n");
     assert_eq!(r.code, 0, "{}", r.err);
     assert!(r.out.contains("Nothing was changed."), "{}", r.out);
-    assert!(!r.out.contains("token"), "{}", r.out);
+    assert!(!r.out.contains("LosOS Login"), "{}", r.out);
+    assert_eq!(d.host.login.lock().unwrap().polls, 0);
     assert_eq!(d.log(), "");
     assert_eq!(d.read(".config/zed/settings.json"), ZED);
     assert!(companion::list(d.keychain.as_ref()).unwrap().is_empty());
@@ -380,9 +393,7 @@ fn a_losos_entry_someone_else_wrote_is_left_alone_and_a_failing_tool_is_reported
     d.write(".cursor/mcp.json", theirs);
     d.write(".config/zed/settings.json", ZED);
     d.client.set("FAKE_AGENT_FAIL", "codex");
-    let r = d
-        .client
-        .run(&["agents", "install", "--yes"], &format!("{TOKEN}\n"));
+    let r = d.client.run(&["agents", "install", "--yes"], "");
     assert_eq!(r.code, 1, "{}\n{}", r.out, r.err);
     assert!(r.err.contains("did not write"), "{}", r.err);
     assert!(r.err.contains("exit status 3"), "{}", r.err);
@@ -392,20 +403,22 @@ fn a_losos_entry_someone_else_wrote_is_left_alone_and_a_failing_tool_is_reported
 }
 
 #[test]
-fn a_named_tool_must_be_one_losos_knows_and_a_token_must_be_one() {
+fn a_named_tool_must_be_one_losos_knows_and_a_denied_sign_in_writes_nothing() {
     let d = desk(&[]);
     let r = d.client.run(&["agents", "install", "notepad"], "");
     assert_eq!(r.code, 1);
     assert!(r.err.contains("notepad"), "{}", r.err);
     assert!(r.err.contains("claude-code"), "{}", r.err);
-    // A named app is taken even where nothing gives it away; the token
-    // is checked before anything is written.
+    // A named app is taken even where nothing gives it away; the sign-in
+    // comes before anything is written.
+    d.host.login.lock().unwrap().deny = true;
     let r = d
         .client
-        .run(&["agents", "install", "windsurf", "--yes"], "not-a-token\n");
+        .run(&["agents", "install", "windsurf", "--yes"], "");
     assert_eq!(r.code, 1);
-    assert!(r.err.contains("not an access token"), "{}", r.err);
+    assert!(r.err.contains("denied in the browser"), "{}", r.err);
     assert!(!d.path(".codeium").exists());
+    assert!(companion::list(d.keychain.as_ref()).unwrap().is_empty());
 }
 
 fn mcp_session(client: &Client, host: &str, calls: &[Value]) -> Vec<Value> {
@@ -429,10 +442,7 @@ fn mcp_session(client: &Client, host: &str, calls: &[Value]) -> Vec<Value> {
 fn the_mcp_server_reads_the_box_as_the_companion() {
     let d = desk(&[]);
     d.write(".config/zed/settings.json", ZED);
-    let r = d.client.run(
-        &["agents", "install", "zed", "--yes"],
-        &format!("{TOKEN}\n"),
-    );
+    let r = d.client.run(&["agents", "install", "zed", "--yes"], "");
     assert_eq!(r.code, 0, "{}", r.err);
     let before = d.host.calls.lock().unwrap().len();
     let answers = mcp_session(
@@ -457,10 +467,75 @@ fn the_mcp_server_reads_the_box_as_the_companion() {
     let calls = d.host.calls.lock().unwrap()[before..].to_vec();
     let paths: Vec<&str> = calls.iter().map(|c| c.1.as_str()).collect();
     assert_eq!(paths, ["/api/me", "/api/cloud/files?path=%2F"]);
-    let vouched = d.host.vouched.lock().unwrap()[before..].to_vec();
-    assert!(vouched
+    assert!(d
+        .host
+        .login
+        .lock()
+        .unwrap()
+        .shown
         .iter()
-        .all(|v| v.as_deref() == Some(d.me.key.fingerprint())));
+        .all(|t| t == "authelia_at_1.sig"));
+
+    // An hour on, the box no longer takes the access token: the server
+    // refreshes once, keeps the new tokens and answers all the same.
+    d.host.login.lock().unwrap().expire();
+    let answers = mcp_session(
+        &d.client,
+        &d.host.url,
+        &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "box_status", "arguments": {} } })],
+    );
+    assert_eq!(answers[1]["result"]["isError"], false, "{}", answers[1]);
+    assert_eq!(d.host.login.lock().unwrap().refreshes, 1);
+    let kept = companion::get(d.keychain.as_ref(), &d.host.url)
+        .unwrap()
+        .unwrap();
+    assert_eq!(kept.access_token, "authelia_at_2.sig");
+    assert_eq!(kept.refresh_token, "authelia_rt_2.sig");
+
+    // It only reads: a write is never sent, and a route off its list is
+    // refused by the box.
+    let before = d.host.calls.lock().unwrap().len();
+    let r = d.client.run(&["agents", "call", "POST", "/api/apply"], "");
+    assert_eq!(r.code, 1);
+    assert!(r.err.contains("only reads"), "{}", r.err);
+    let r = d
+        .client
+        .run(&["agents", "call", "GET", "/api/settings"], "");
+    assert_eq!(r.code, 1, "{}", r.out);
+    assert!(r.err.starts_with("403"), "{}", r.err);
+    assert_eq!(d.host.calls.lock().unwrap().len(), before);
+}
+
+#[test]
+fn two_servers_share_one_sign_in_and_never_show_an_old_refresh_token() {
+    let d = desk(&[]);
+    d.write(".config/zed/settings.json", ZED);
+    let r = d.client.run(&["agents", "install", "zed", "--yes"], "");
+    assert_eq!(r.code, 0, "{}", r.err);
+    // Two AI tools, each with its own `losos mcp`, one keychain.
+    let lock = d.path(".local/share/losos/companion/refresh.lock");
+    let keychain: Arc<dyn Keychain + Send + Sync> = d.keychain.clone();
+    let link = || {
+        companion::Link::new(
+            keychain.clone(),
+            &d.host.url,
+            lock.clone(),
+            losos_access::now_secs,
+        )
+    };
+    let (a, b) = (link(), link());
+    assert!(a.get("/api/me").is_ok());
+    assert!(b.get("/api/me").is_ok());
+    d.host.login.lock().unwrap().expire();
+    // The first refreshes; the second finds the new tokens in the keychain
+    // rather than showing the refresh token the first one used up, which
+    // would end the sign-in for both.
+    assert!(a.get("/api/me").is_ok());
+    assert!(b.get("/api/status").is_ok());
+    let login = d.host.login.lock().unwrap();
+    assert_eq!(login.refreshes, 1);
+    assert_eq!(login.refresh.as_deref(), Some("authelia_rt_2.sig"));
 }
 
 #[test]
@@ -478,4 +553,71 @@ fn the_mcp_server_starts_with_no_companion_and_says_how_to_make_one() {
     let text = result["content"][0]["text"].as_str().unwrap();
     assert!(text.contains("losos agents install"), "{text}");
     assert!(d.host.calls.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_box_this_computer_never_logged_in_to_is_held_to_the_certificate_the_person_took() {
+    let cert = common::Cert::new();
+    let host = common::mock_tls(
+        false,
+        "",
+        Box::new(|_, _, _| (200, json!({ "name": "matus" }))),
+        &cert,
+    );
+    let keychain = Arc::new(MemoryKeychain::new());
+    let home = tempfile::tempdir().unwrap();
+    let mut client = Client::with(keychain.clone());
+    let at = |rel: &str| home.path().join(rel).display().to_string();
+    client
+        .set("HOME", &at(""))
+        .set("XDG_CONFIG_HOME", &at(".config"))
+        .set("XDG_DATA_HOME", &at(".local/share"))
+        .set("PATH", &bin(home.path(), &[]))
+        .set("LOSOS_SELF", SELF);
+    std::fs::create_dir_all(home.path().join(".config/zed")).unwrap();
+    std::fs::write(home.path().join(".config/zed/settings.json"), ZED).unwrap();
+    let shown: String = cert
+        .pin()
+        .to_uppercase()
+        .as_bytes()
+        .chunks(2)
+        .map(|p| std::str::from_utf8(p).unwrap())
+        .collect::<Vec<_>>()
+        .join(":");
+
+    // No: nothing is signed in, nothing is written.
+    let r = client.run(&["agents", "install", "zed", "--host", &host.url], "y\nn\n");
+    assert_eq!(r.code, 1, "{}\n{}", r.out, r.err);
+    assert!(r.out.contains(&shown), "{}", r.out);
+    assert!(r.err.contains("certificate was not taken"), "{}", r.err);
+    assert_eq!(host.login.lock().unwrap().polls, 0);
+    assert_eq!(
+        std::fs::read_to_string(home.path().join(".config/zed/settings.json")).unwrap(),
+        ZED
+    );
+
+    // Yes: the companion keeps that certificate and is refused any other.
+    let r = client.run(&["agents", "install", "zed", "--host", &host.url], "y\ny\n");
+    assert_eq!(r.code, 0, "{}\n{}", r.out, r.err);
+    let kept = companion::get(keychain.as_ref(), &host.url)
+        .unwrap()
+        .unwrap();
+    assert_eq!(kept.tls_pin.as_deref(), Some(cert.pin().as_str()));
+    let lock = home
+        .path()
+        .join(".local/share/losos/companion/refresh.lock");
+    let link = companion::Link::new(keychain.clone(), &host.url, lock, losos_access::now_secs);
+    assert!(link.get("/api/me").is_ok());
+    let mut other = kept.clone();
+    other.tls_pin = Some(common::Cert::new().pin());
+    companion::put(keychain.as_ref(), &other).unwrap();
+    let lock = home
+        .path()
+        .join(".local/share/losos/companion/refresh.lock");
+    let link = companion::Link::new(keychain.clone(), &host.url, lock, losos_access::now_secs);
+    let refused = link.get("/api/me").unwrap_err();
+    assert!(
+        format!("{refused:?}").contains("different TLS certificate"),
+        "{refused:?}"
+    );
 }

@@ -99,9 +99,6 @@ impl Access {
 }
 
 /// The checks after the envelope opened: the token, its scope, the path.
-/// An AI agents token reaches only `losos_access::AGENT_ROUTES` and only
-/// from a companion key (a request with a delegation), which works only
-/// with the one token it names.
 /// Answers the token, whose id goes on the audit line and whose owner the
 /// call runs as.
 pub fn authorize(
@@ -110,39 +107,10 @@ pub fn authorize(
     now: i64,
 ) -> Result<losos_access::TokenView, Refusal> {
     let r = &opened.request;
-    let token = match &opened.delegated {
-        // A companion key signs for the seeded key that vouched for it, with
-        // the one AI agents token that vouching names and no other.
-        Some(d) => {
-            let token =
-                ready
-                    .tokens
-                    .authenticate(&r.token, &d.owner.fingerprint, &r.method, now)?;
-            if token.scope != losos_access::Scope::Agent
-                || !token.id.eq_ignore_ascii_case(&d.token_id)
-            {
-                return Err(Refusal::NotForAgents);
-            }
-            token
-        }
-        // An AI agents token is the companion's alone: the owner's own key
-        // has tokens of its own, and a copy of this one is no use without
-        // the companion's key.
-        None => {
-            let token =
-                ready
-                    .tokens
-                    .authenticate(&r.token, &opened.signer.fingerprint, &r.method, now)?;
-            if token.scope == losos_access::Scope::Agent {
-                return Err(Refusal::CompanionOnly);
-            }
-            token
-        }
-    };
+    let token = ready
+        .tokens
+        .authenticate(&r.token, &opened.signer.fingerprint, &r.method, now)?;
     if !losos_access::path_allowed(&r.path, &ALLOWED, &FORBIDDEN) {
-        return Err(Refusal::Path);
-    }
-    if token.scope == losos_access::Scope::Agent && !losos_access::agent_route(&r.path) {
         return Err(Refusal::Path);
     }
     if !matches!(r.method.as_str(), "GET" | "POST" | "PUT" | "DELETE") {
@@ -210,7 +178,7 @@ fn invalid(what: &str) -> std::io::Error {
 
 /// Parse an HTTP/1.1 answer: status, headers, then a body by length, by
 /// chunks, or to the end of the stream.
-fn read_response(mut r: impl BufRead) -> std::io::Result<Inner> {
+pub(crate) fn read_response(mut r: impl BufRead) -> std::io::Result<Inner> {
     let mut line = String::new();
     r.read_line(&mut line)?;
     let status: u16 = line
@@ -347,7 +315,6 @@ mod tests {
             ts: 1000,
             nonce: format!("{:032x}", rand_nonce(path, method)),
             body: serde_json::Value::Null,
-            delegation: None,
         };
         let sealed =
             losos_access::seal_request(owner, &ready.host.as_seeded().unwrap(), &req).unwrap();
@@ -418,132 +385,5 @@ mod tests {
         assert!(authorize(&ready, &o, 1000).is_ok());
         let o = opened(&ready, &owner, &token, "POST", "/api/apply");
         assert_eq!(authorize(&ready, &o, 1000).unwrap_err(), Refusal::Scope);
-    }
-
-    fn token(ready: &Ready, owner: &HostKey, scope: losos_access::Scope) -> (String, String) {
-        let (token, view) = ready
-            .tokens
-            .create(
-                &ready.ring,
-                &format!("{scope:?}"),
-                owner.fingerprint(),
-                scope,
-                None,
-                None,
-                1000,
-            )
-            .unwrap();
-        (token, view.id)
-    }
-
-    /// A request from a companion key the owner vouched for, for `token_id`.
-    fn from_companion(
-        ready: &Ready,
-        owner: &HostKey,
-        token: &str,
-        token_id: &str,
-        method: &str,
-        path: &str,
-    ) -> Opened {
-        let owner = losos_access::UserKey::from_armored(&owner.armored_secret().unwrap())
-            .unwrap()
-            .unlock("")
-            .unwrap();
-        let made = HostKey::generate("LosOS companion").unwrap();
-        let companion = losos_access::UserKey::from_armored(&made.armored_secret().unwrap())
-            .unwrap()
-            .unlock("")
-            .unwrap();
-        let word = losos_access::delegate(
-            &owner,
-            made.armored_public(),
-            ready.host.fingerprint(),
-            token_id,
-            1000,
-        )
-        .unwrap();
-        let req = losos_access::Request {
-            v: 1,
-            host: ready.host.fingerprint().into(),
-            token: token.into(),
-            method: method.into(),
-            path: path.into(),
-            ts: 1000,
-            nonce: format!("{:032x}", rand_nonce(path, token)),
-            body: serde_json::Value::Null,
-            delegation: Some(word),
-        };
-        let sealed =
-            losos_access::seal_call(&companion, &ready.host.as_seeded().unwrap(), &req).unwrap();
-        losos_access::open(
-            &ready.host,
-            &ready.ring,
-            sealed.as_bytes(),
-            &ready.replay,
-            1000,
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn an_agent_token_reads_files_and_repositories_and_nothing_else() {
-        let (ready, owner) = ready("agent");
-        let (agent, id) = token(&ready, &owner, losos_access::Scope::Agent);
-        for path in ["/api/cloud/files?path=/", "/api/git/text?q=main", "/api/me"] {
-            let o = from_companion(&ready, &owner, &agent, &id, "GET", path);
-            assert!(authorize(&ready, &o, 1000).is_ok(), "{path}");
-        }
-        for path in ["/api/state", "/api/backup", "/api/people", "/api/access"] {
-            let o = from_companion(&ready, &owner, &agent, &id, "GET", path);
-            assert_eq!(
-                authorize(&ready, &o, 1000).unwrap_err(),
-                Refusal::Path,
-                "{path}"
-            );
-        }
-        let o = from_companion(&ready, &owner, &agent, &id, "POST", "/api/cloud/files");
-        assert_eq!(authorize(&ready, &o, 1000).unwrap_err(), Refusal::Scope);
-    }
-
-    #[test]
-    fn an_agent_token_does_nothing_signed_by_the_owners_own_key() {
-        let (ready, owner) = ready("agent-owner");
-        let (agent, _) = token(&ready, &owner, losos_access::Scope::Agent);
-        let o = opened(&ready, &owner, &agent, "GET", "/api/me");
-        assert_eq!(
-            authorize(&ready, &o, 1000).unwrap_err(),
-            Refusal::CompanionOnly
-        );
-    }
-
-    #[test]
-    fn a_companion_key_works_only_with_the_agent_token_it_names() {
-        let (ready, owner) = ready("companion");
-        let (agent, agent_id) = token(&ready, &owner, losos_access::Scope::Agent);
-        let o = from_companion(&ready, &owner, &agent, &agent_id, "GET", "/api/git/repos");
-        let t = authorize(&ready, &o, 1000).unwrap();
-        assert_eq!(t.id, agent_id);
-        let o = from_companion(&ready, &owner, &agent, &agent_id, "GET", "/api/state");
-        assert_eq!(authorize(&ready, &o, 1000).unwrap_err(), Refusal::Path);
-
-        // The owner's full token is no use to a companion key, even one
-        // the owner vouched for under that token's id.
-        let (full, full_id) = token(&ready, &owner, losos_access::Scope::Full);
-        let o = from_companion(&ready, &owner, &full, &full_id, "GET", "/api/me");
-        assert_eq!(
-            authorize(&ready, &o, 1000).unwrap_err(),
-            Refusal::NotForAgents
-        );
-        // Nor is a second agent token the delegation does not name.
-        let (other, _) = token(&ready, &owner, losos_access::Scope::Agent);
-        let o = from_companion(&ready, &owner, &other, &agent_id, "GET", "/api/me");
-        assert_eq!(
-            authorize(&ready, &o, 1000).unwrap_err(),
-            Refusal::NotForAgents
-        );
-        // And a revoked token ends the companion at once.
-        ready.tokens.revoke(&agent_id).unwrap();
-        let o = from_companion(&ready, &owner, &agent, &agent_id, "GET", "/api/me");
-        assert_eq!(authorize(&ready, &o, 1000).unwrap_err(), Refusal::Token);
     }
 }

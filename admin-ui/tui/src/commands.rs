@@ -1342,53 +1342,101 @@ fn agents_hint(io: &mut Io) -> Result<u8> {
     Ok(0)
 }
 
+/// The box the companion reads: its URL and the certificate it is held to.
+struct Target {
+    url: String,
+    tls_pin: Option<String>,
+}
+
+/// The box `--host` names, or the only one this computer is logged in to.
+/// The companion needs no login of the terminal client's own: a box it has
+/// none for is reached by its certificate, shown to the person and kept
+/// from then on, as `losos login` keeps it.
+fn companion_target(io: &mut Io, host: Option<&str>, yes: bool) -> Result<Target> {
+    let vault = io.vault();
+    let known = match host {
+        Some(wanted) => vault.get_host(&parse_url(wanted)?)?,
+        None => Some(pick_host(&vault, None, Some(HostKind::Box))?),
+    };
+    if let Some(record) = known {
+        if record.kind != HostKind::Box {
+            return Err(Problem::new(
+                "losos::host",
+                tr!("tui.agents.notBox", url = &record.url),
+            ));
+        }
+        return Ok(Target {
+            url: record.url,
+            tls_pin: record.tls_pin,
+        });
+    }
+    let url = parse_url(host.unwrap_or_default())?;
+    let http = Http::new(Trust::FirstUse);
+    http.get(&format!("{url}/auth/api/health"), "application/json")
+        .map_err(|e| unreachable(&url, e))?;
+    let tls_pin = http.taken_certificate();
+    if let Some(pin) = &tls_pin {
+        io.line(tr!(
+            "tui.agents.certificate",
+            url = &url,
+            pin = &colon_hex(pin)
+        ));
+        if !yes && !io.ask(&tr!("tui.agents.askCertificate"))? {
+            return Err(Problem::new(
+                "losos::host",
+                tr!("tui.agents.certificateRefused"),
+            ));
+        }
+    }
+    Ok(Target { url, tls_pin })
+}
+
+/// `ab12…` as a browser's certificate viewer shows it: `AB:12:…`.
+fn colon_hex(hex: &str) -> String {
+    hex.as_bytes()
+        .chunks(2)
+        .map(|pair| String::from_utf8_lossy(pair).to_uppercase())
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
 /// The companion for `host`: the one kept, when the box still takes it,
-/// else a new one made from an AI agents token and the owner's key.
-fn companion_for(io: &mut Io, host: &HostRecord) -> Result<Companion> {
+/// else a new sign-in to LosOS Login, approved in a browser.
+fn companion_for(io: &mut Io, host: &Target) -> Result<Companion> {
     if let Some(kept) = companion::get(io.keychain.as_ref(), &host.url)? {
-        if same_fingerprint(&kept.host_fingerprint, &host.fingerprint)
-            && kept.session().and_then(|s| s.get("/api/me")).is_ok()
-        {
+        if kept.tls_pin == host.tls_pin && link(io, &host.url)?.get("/api/me").is_ok() {
             io.line(tr!("tui.agents.reusing", url = &host.url));
             return Ok(kept);
         }
     }
-    io.line(tr!("tui.agents.needToken", url = &host.url));
-    let prompt = tr!("tui.agents.tokenPrompt");
-    let token = if io.stdin_tty {
-        read_hidden(&prompt, &mut io.err)?
-    } else {
-        let _ = writeln!(io.err, "{prompt}");
-        io.read_line()?
-    };
-    let token = token.trim().to_string();
-    if companion::token_id(&token).is_none() {
-        return Err(Problem::new("losos::token", tr!("tui.login.badToken")));
-    }
-    // The owner's key signs once, here; the companion never needs it again.
-    let owner = session_for(io, host)?;
-    let device = io.computer().device_name(None);
-    let made = companion::make(&owner.user, host, &token, &device, losos_access::now_secs())?;
-    let answer = made.session()?.request("GET", "/api/me", Value::Null)?;
-    if !answer.ok() {
-        return Err(Problem::new(
-            "losos::token",
-            tr!("tui.agents.tokenRefused", detail = answer.error_text()),
-        )
-        .help(tr!("tui.agents.tokenHelp")));
-    }
+    let http = companion::http_for(host.tls_pin.as_deref());
+    let code = companion::start(&http, &host.url)?;
+    io.line(tr!("tui.agents.signIn", url = &host.url));
+    io.line(format!("  {}", code.link()));
+    io.line(tr!("tui.agents.signInCode", code = &code.user_code));
+    let made = companion::finish(
+        &http,
+        &host.url,
+        host.tls_pin.as_deref(),
+        &code,
+        losos_access::now_secs,
+    )?;
     companion::put(io.keychain.as_ref(), &made)?;
+    io.line(tr!("tui.agents.signedIn", url = &host.url));
     Ok(made)
 }
 
+/// The calls the companion makes to `url`, with its kept sign-in.
+fn link(io: &Io, url: &str) -> Result<companion::Link> {
+    Ok(companion::Link::new(
+        io.keychain.clone(),
+        url,
+        io.desk().companion_dir()?.join("refresh.lock"),
+        losos_access::now_secs,
+    ))
+}
+
 fn agents_install(io: &mut Io, host: Option<&str>, named: &[String], yes: bool) -> Result<u8> {
-    let record = pick_host(&io.vault(), host, Some(HostKind::Box))?;
-    if record.kind != HostKind::Box {
-        return Err(Problem::new(
-            "losos::host",
-            tr!("tui.agents.notBox", url = &record.url),
-        ));
-    }
     let desk = io.desk();
     let found = pick_tools(&desk, named)?;
     if found.is_empty() {
@@ -1421,8 +1469,9 @@ fn agents_install(io: &mut Io, host: Option<&str>, named: &[String], yes: bool) 
         io.line(tr!("tui.agents.nothingChanged"));
         return Ok(0);
     }
-    companion_for(io, &record)?;
-    let launch = Launch::for_host(&io.own_path(), &record.url);
+    let target = companion_target(io, host, yes)?;
+    companion_for(io, &target)?;
+    let launch = Launch::for_host(&io.own_path(), &target.url);
     let mut failed = 0;
     for f in &chosen {
         match agents::install(&desk, f, &launch) {
@@ -1478,15 +1527,19 @@ fn agents_remove(io: &mut Io, named: &[String], yes: bool) -> Result<u8> {
     if removed == 0 && failed == 0 {
         io.line(tr!("tui.agents.nothingChanged"));
     }
-    // With the companion in no tool, its key and token have no use left.
+    // With the companion in no tool, its sign-in has no use left.
     if !agents::detect(&desk)?.iter().any(|f| f.installed) {
-        let kept = companion::list(io.keychain.as_ref())?;
-        for c in &kept {
+        for c in &companion::list(io.keychain.as_ref())? {
+            let ended = companion::sign_out(c);
             companion::forget(io.keychain.as_ref(), &c.url)?;
-            io.line(tr!("tui.agents.forgot", url = &c.url));
-        }
-        if !kept.is_empty() {
-            io.line(tr!("tui.agents.revoke"));
+            io.line(tr!(
+                if ended {
+                    "tui.agents.forgot"
+                } else {
+                    "tui.agents.forgotOffline"
+                },
+                url = &c.url
+            ));
         }
     }
     Ok(u8::from(failed > 0))
@@ -1513,11 +1566,11 @@ fn kept_companion(keychain: &dyn Keychain, host: Option<&str>) -> Result<Compani
     })
 }
 
-/// `losos agents call`: one call signed by the companion's key, as
-/// `losos call` makes one with the owner's.
+/// `losos agents call`: one call as the companion makes it, as `losos
+/// call` makes one with the owner's key.
 fn agents_call(io: &mut Io, host: Option<&str>, method: &str, path: &str) -> Result<u8> {
-    let session = kept_companion(io.keychain.as_ref(), host)?.session()?;
-    let answer = session.request(method, path, Value::Null)?;
+    let url = kept_companion(io.keychain.as_ref(), host)?.url;
+    let answer = link(io, &url)?.request(method, path, Value::Null)?;
     let _ = writeln!(io.err, "{}", answer.status);
     io.line(show(&answer.body));
     Ok(if answer.ok() { 0 } else { 1 })
@@ -1553,9 +1606,15 @@ fn mcp(io: &mut Io, host: Option<&str>) -> Result<u8> {
     }
     let keychain = io.keychain.clone();
     let host = host.map(str::to_string);
+    let lock = io.desk().companion_dir()?.join("refresh.lock");
     let connect = move || -> Result<Box<dyn Transport>> {
-        let companion = kept_companion(keychain.as_ref(), host.as_deref())?;
-        Ok(Box::new(companion.session()?))
+        let url = kept_companion(keychain.as_ref(), host.as_deref())?.url;
+        Ok(Box::new(companion::Link::new(
+            keychain.clone(),
+            &url,
+            lock.clone(),
+            losos_access::now_secs,
+        )))
     };
     let mut server = agents::mcp::Server::new(Box::new(connect));
     let input = io::BufReader::new(&mut io.stdin);

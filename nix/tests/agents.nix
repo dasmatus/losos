@@ -3,30 +3,32 @@
 #
 # A box with the real lososd, nginx, LosOS Login and the built admin UI,
 # and a laptop on the LAN with the real `losos` client, a desktop keychain
-# (gnome-keyring on the user's session bus) and real AI tools from nixpkgs:
-# Claude Code, Codex, Gemini CLI, Qwen Code and opencode, plus the settings
-# folders of Cursor, VS Code and Zed. It asserts:
+# (gnome-keyring on the user's session bus), a browser, and real AI tools
+# from nixpkgs: Claude Code, Codex, Gemini CLI, Qwen Code and opencode, plus
+# the settings folders of Cursor, VS Code and Zed. It asserts:
 #
 #   * `losos agents` finds the tools by their programs and their folders;
-#   * `losos agents install --yes` puts the companion in each, through the
-#     tool's own plugin or extension command where it has one, and each
-#     tool then starts `losos mcp` and lists it as connected;
+#   * `losos agents install --yes --host <box>`, on a computer that never
+#     ran `losos login`, shows the box's certificate, signs the companion
+#     in to LosOS Login with a device code, and the browser on the laptop
+#     signs in and approves it on LosOS Login's consent page;
+#   * it then puts the companion in each tool, through the tool's own
+#     plugin or extension command where it has one, and each tool starts
+#     `losos mcp` and lists it as connected;
 #   * the command line each tool was given, run as the tool runs it, answers
-#     MCP and reads the box as the owner, with the companion's own key;
-#   * the box holds that key to its token: an AI agents token reaches only
-#     its few read-only routes, does nothing signed by the owner's own key,
-#     and once revoked the companion is refused;
+#     MCP and reads the box as the owner, with the LosOS Login token;
+#   * the box holds that token to the companion's few read-only routes, for
+#     an administrator too, and the companion sends no write at all;
+#   * the companion refreshes its token when it runs out (an access token
+#     lives 90 seconds here) and keeps the new one;
 #   * Gemini CLI is told to trust the companion's folder and nothing else;
-#   * `losos agents remove --yes` puts every settings file back as it was
-#     and the keychain forgets the companion.
+#   * `losos agents remove --yes` puts every settings file back as it was,
+#     hands both tokens back to LosOS Login, which then refuses them, and
+#     the keychain forgets the companion.
 #
-# The laptop also photographs the Access tokens pane for the pull request
-# (screens/). With `shotsOnly`, only that part runs, so the same pictures
-# can be taken of an older admin UI.
-{
-  pkgs,
-  shotsOnly ? false,
-}:
+# The browser photographs LosOS Login's consent page and the page after it
+# for the pull request (screens/).
+{ pkgs }:
 
 let
   inherit (pkgs) lib;
@@ -54,71 +56,6 @@ let
       imageName = name;
       imageTag = "test";
     };
-
-  # The Access tokens pane: the form with the kind of token chosen, and the
-  # token it made. `scope` is the one picked; an older pane has no AI agents.
-  plan = pkgs.writeText "plan.json" (
-    builtins.toJSON {
-      width = 1280;
-      height = 800;
-      shots = [
-        {
-          name = "access-form";
-          path = "/settings/access";
-          fullPage = true;
-          waitFor = {
-            role = "button";
-            name = "Create token";
-          };
-          steps = [
-            {
-              fill = {
-                label = "Name";
-                value = "AI tools";
-              };
-            }
-          ]
-          ++ lib.optional (!shotsOnly) {
-            select = {
-              label = "Access";
-              value = "agent";
-            };
-          };
-        }
-        {
-          name = "access-created";
-          path = "/settings/access";
-          waitFor = {
-            role = "button";
-            name = "Create token";
-          };
-          steps = [
-            {
-              fill = {
-                label = "Name";
-                value = "AI tools";
-              };
-            }
-          ]
-          ++ lib.optional (!shotsOnly) {
-            select = {
-              label = "Access";
-              value = "agent";
-            };
-          }
-          ++ [
-            {
-              click = {
-                role = "button";
-                name = "Create token";
-              };
-            }
-            { waitText = "Token created"; }
-          ];
-        }
-      ];
-    }
-  );
 
   # A small MCP client: starts one server as a tool would, from the
   # command and arguments the tool was given, and makes a few calls.
@@ -195,7 +132,7 @@ let
 in
 
 pkgs.testers.nixosTest {
-  name = if shotsOnly then "losos-agents-screens" else "losos-agents";
+  name = "losos-agents";
 
   nodes = {
     box =
@@ -221,13 +158,11 @@ pkgs.testers.nixosTest {
           stubOcc
           pkgs.coreutils
         ];
-        systemd.services.lososd.environment = {
-          LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
-          # The owner's key is made on the laptop when the test runs, so it
-          # is seeded here then, the way the installer would have.
-          LOSOS_ACCESS_KEYS_FILE = lib.mkForce "/var/lib/losos-test/keys.asc";
-        };
-        systemd.tmpfiles.rules = [ "d /var/lib/losos-test 0755 root root -" ];
+        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+        # An hour is long to wait for in a test: the companion's access
+        # token lives 90 seconds here, so the test sees it refreshed.
+        services.authelia.instances.losos.settings.identity_providers.oidc.lifespans.custom.companion.access_token =
+          lib.mkForce "90s";
         environment.systemPackages = [ pkgs.jq ];
         virtualisation = {
           memorySize = 1536;
@@ -249,11 +184,8 @@ pkgs.testers.nixosTest {
         environment.systemPackages = [
           pkgs.curl
           pkgs.jq
-          pkgs.gnupg
           pkgs.libsecret
           pkgs.python3
-        ]
-        ++ lib.optionals (!shotsOnly) [
           lososPkgs.losos
           claudeCode
           pkgs.codex
@@ -261,7 +193,6 @@ pkgs.testers.nixosTest {
           pkgs.qwen-code
           pkgs.opencode
         ];
-        environment.etc."losos-test/plan.json".source = plan;
         environment.etc."losos-test/mcp-probe.py".source = probe;
         environment.etc."losos-test/zed-settings.json".source = zedSettings;
         environment.etc."losos-test/jsonc.py".source = jsoncRead;
@@ -277,10 +208,8 @@ pkgs.testers.nixosTest {
 
   testScript = ''
     import json
-    import re
     import shlex
 
-    SHOTS_ONLY = ${if shotsOnly then "True" else "False"}
     BOX = "192.168.1.1"
     URL = f"https://{BOX}"
     PASSWORD = "Correct-Horse-Battery-9"
@@ -296,13 +225,9 @@ pkgs.testers.nixosTest {
     def curl(args):
         return laptop.succeed(f"curl -sk {args}")
 
-    def api(path, cookie, method="GET", data=None):
-        args = f"-X {method} {URL}{path} -H 'Cookie: {cookie}'"
-        if data is not None:
-            args += f" -H 'Content-Type: application/json' -d '{json.dumps(data)}'"
-        out = curl(f"-w '\\n%{{http_code}}' {args}")
-        body, code = out.rsplit("\n", 1)
-        return int(code), body
+    def status(args):
+        """The HTTP status of one request from the laptop."""
+        return int(curl(f"-o /dev/null -w '%{{http_code}}' {args}"))
 
     def me(cmd, stdin=None, check=True, timeout=900):
         """A command as matus, on his session bus, as his terminal would run it."""
@@ -315,15 +240,11 @@ pkgs.testers.nixosTest {
             return laptop.succeed(full, timeout=timeout)
         return laptop.execute(full, timeout=timeout)
 
-    with subtest("the owner's key, seeded on the box"):
-        me("gpg --batch --passphrase ''' --quick-gen-key 'Matus <matus@example.org>' default default never")
-        owner_fpr = me("gpg --with-colons --fingerprint matus@example.org | awk -F: '/^fpr/ {print $10; exit}'").strip()
-        public = me("gpg --armor --export matus@example.org")
-        box.succeed(f"cat > /var/lib/losos-test/keys.asc <<'EOF'\n{public}\nEOF")
-        box.succeed("systemctl restart lososd.service")
-        box.wait_until_succeeds("curl -fs localhost:8082/api/health")
+    def kept():
+        """The companion's sign-in, as the keychain holds it."""
+        return json.loads(me(f"secret-tool lookup service losos kind companion url {URL}"))
 
-    with subtest("claim the box and sign in"):
+    with subtest("claim the box"):
         claim = json.dumps({"name": "matus", "password": PASSWORD})
         out = curl(
             f"-w '\\n%{{http_code}}' -X POST {URL}/api/setup/claim -H 'Host: {BOX}' "
@@ -336,171 +257,200 @@ pkgs.testers.nixosTest {
         box.wait_until_succeeds(f"grep -q \"domain: '{BOX}'\" /run/losos-identity/session.yml")
         box.wait_until_succeeds("systemctl is-active authelia-losos.service")
         box.wait_for_open_port(9091)
-        first = json.dumps({"username": "matus", "password": PASSWORD})
-        head = curl(
-            f"-D - -o /dev/null {URL}/auth/api/firstfactor "
-            f"-H 'Content-Type: application/json' -d '{first}'"
-        )
-        found = re.search(r"(?im)^set-cookie: (losos_session=[^;]+)", head)
-        assert found, head
-        cookie = found.group(1)
+        # A keychain on matus's session bus, unlocked, as a desktop has.
+        me("printf hunter2 | gnome-keyring-daemon --unlock --replace --daemonize --components=secrets")
+        me("printf v | secret-tool store --label=probe service losos-probe kind probe && secret-tool lookup service losos-probe kind probe")
 
-    with subtest("the Access tokens pane, photographed"):
+    with subtest("losos agents finds the tools by their programs and their folders"):
+        me("mkdir -p ~/.cursor ~/.config/Code ~/.config/zed ~/.config/opencode")
+        me("cp /etc/losos-test/zed-settings.json ~/.config/zed/settings.json && chmod 644 ~/.config/zed/settings.json")
+        me("mkdir -p ~/work ~/.gemini && cp /etc/losos-test/gemini-trust.json ~/.gemini/trustedFolders.json && chmod 644 ~/.gemini/trustedFolders.json")
+        listed = me("losos agents")
+        print(listed)
+        for name in ["Claude Code", "Codex", "Gemini CLI", "Qwen Code", "opencode", "Cursor", "VS Code", "Zed"]:
+            assert name in listed, f"{name} not found:\n{listed}"
+        assert "Windsurf" not in listed and "LM Studio" not in listed, listed
+
+    with subtest("the companion signs in to LosOS Login, approved in the browser"):
+        # This computer never ran losos login: no key, no access token.
+        me(f"setsid nohup losos agents install --yes --host {URL} >/tmp/agents-install.log 2>&1 &")
+        laptop.wait_until_succeeds("grep -q 'user_code=' /tmp/agents-install.log", timeout=300)
+        log = laptop.succeed("cat /tmp/agents-install.log")
+        print(log)
+        assert "SHA-256 fingerprint is" in log, log
+        link = next(w for w in log.split() if "user_code=" in w)
+        assert link.startswith(f"{URL}/auth/consent/openid/device-authorization?user_code="), link
+        code = link.rsplit("=", 1)[1]
+        assert f"shows the code {code}" in log, log
+        page = link[len(URL):]
+        plan = {
+            "width": 1280,
+            "height": 800,
+            "shots": [
+                {
+                    "name": "companion-consent",
+                    "path": page,
+                    "waitFor": {"text": "LosOS companion"},
+                    "settle": 3000,
+                },
+                {
+                    "name": "companion-approved",
+                    "path": page,
+                    "waitFor": {"text": "LosOS companion"},
+                    "steps": [
+                        {"click": {"selector": "button:has-text('Accept')"}},
+                        {"waitText": "Consent has been accepted and processed"},
+                    ],
+                },
+            ],
+        }
+        laptop.succeed(f"echo {shlex.quote(json.dumps(plan))} > /tmp/plan.json")
         laptop.succeed(
-            f"losos-capture --base {URL} --plan /etc/losos-test/plan.json "
+            f"losos-capture --base {URL} --plan /tmp/plan.json "
             f"--out /tmp/screens --user matus --password '{PASSWORD}'",
             timeout=1800,
         )
         laptop.copy_from_machine("/tmp/screens", "")
+        laptop.wait_until_succeeds("grep -q 'takes it out again' /tmp/agents-install.log", timeout=900)
+        out = laptop.succeed("cat /tmp/agents-install.log")
+        print(out)
+        assert "Signed in." in out, out
 
-    if not SHOTS_ONLY:
-        def token(scope, name):
-            code, body = api(
-                "/api/access/tokens", cookie, "POST",
-                {"name": name, "fingerprint": owner_fpr, "scope": scope, "expiresInDays": 90},
-            )
-            assert code == 200, (code, body)
-            made = json.loads(body)
-            assert made["record"]["scope"] == scope, made
-            return made["token"], made["record"]["id"]
+    with subtest("losos agents install puts the companion in every tool"):
+        for name in ["Claude Code", "Codex", "Gemini CLI", "Qwen Code", "opencode", "Cursor", "VS Code", "Zed"]:
+            assert f"The LosOS companion is in {name}." in out, f"{name}:\n{out}"
+        zed = me("cat ~/.config/zed/settings.json")
+        for kept_line in ["// Zed settings", "// the dark one", "/* the owner's own */", '"github"']:
+            assert kept_line in zed, zed
+        me("ls ~/.local/share/losos/companion/backups/zed/")
+        assert "companion in" in me("losos agents")
+        signed = kept()
+        assert signed["accessToken"].startswith("authelia_at_"), signed
+        assert signed["refreshToken"].startswith("authelia_rt_"), signed
+        assert signed.get("tlsPin"), signed
+        # No AI tool's settings hold a token.
+        assert me("grep -rl authelia_ ~/.config ~/.cursor ~/.gemini ~/.qwen ~/.local/share/losos || true").strip() == ""
 
-        with subtest("the terminal client signs in with a token of the owner's"):
-            full, _ = token("full", "laptop")
-            agent, agent_id = token("agent", "AI tools")
-            # A keychain on matus's session bus, unlocked, as a desktop has.
-            me("printf hunter2 | gnome-keyring-daemon --unlock --replace --daemonize --components=secrets")
-            me("printf v | secret-tool store --label=probe service losos-probe kind probe && secret-tool lookup service losos-probe kind probe")
-            served = json.loads(curl(f"{URL}/api/access/host-key"))
-            me("losos key import --gpg matus@example.org")
-            print(me(f"losos login {URL} --fingerprint {served['fingerprint']}", stdin=full))
-            assert json.loads(me("losos call GET /api/me"))["name"] == "matus"
+    with subtest("each tool starts the companion and sees it answer"):
+        # Gemini CLI starts MCP servers only in a folder the owner
+        # trusts; the companion's own folder is on its list, and the
+        # owner's entry stays.
+        trust = json.loads(me("cat ~/.gemini/trustedFolders.json"))
+        assert trust.get("/home/matus/work") == "TRUST_FOLDER", trust
+        assert "/home/matus/.local/share/losos/companion/gemini" in trust, trust
+        for program, says in [
+            ("claude mcp list", "Connected"),
+            ("gemini mcp list", "Connected"),
+            ("qwen mcp list", "Connected"),
+            ("opencode mcp list", "connected"),
+        ]:
+            code, listed = me(f"cd ~/work && timeout 180 {program} 2>&1", check=False)
+            print(f"{program}:\n{listed}")
+            line = next((l for l in listed.splitlines() if "losos" in l), "")
+            assert says in line, f"{program}: {listed}"
+        print(me("timeout 180 codex mcp list 2>&1 || true"))
 
-        with subtest("an AI agents token does nothing signed by the owner's own key"):
-            me(f"losos logout {URL}")
-            status, out = me(
-                f"losos login {URL} --fingerprint {served['fingerprint']} 2>&1 && losos call GET /api/me 2>&1",
-                stdin=agent, check=False,
-            )
-            assert status != 0 and "works only for the LosOS companion" in out, out
-            me(f"losos logout {URL} || true")
-            me(f"losos login {URL} --fingerprint {served['fingerprint']}", stdin=full)
+    def entries():
+        """The command each tool was given, from the file it reads."""
+        home = "/home/matus"
+        plugin = f"{home}/.local/share/losos/companion"
+        def read(path):
+            return json.loads(me(f"cat {path}"))
+        zed_entry = json.loads(me(
+            "python3 /etc/losos-test/jsonc.py ~/.config/zed/settings.json context_servers losos"
+        ))
+        found = {
+            "Claude Code": read(f"{plugin}/claude-code/plugins/losos/.mcp.json")["mcpServers"]["losos"],
+            "Codex": read(f"{plugin}/codex/plugins/losos/.mcp.json")["mcpServers"]["losos"],
+            "Gemini CLI": read(f"{home}/.gemini/extensions/losos/gemini-extension.json")["mcpServers"]["losos"],
+            "Qwen Code": read(f"{home}/.qwen/extensions/losos/qwen-extension.json")["mcpServers"]["losos"],
+            "Cursor": read(f"{home}/.cursor/mcp.json")["mcpServers"]["losos"],
+            "VS Code": read(f"{home}/.config/Code/User/mcp.json")["servers"]["losos"],
+            "Zed": zed_entry,
+        }
+        commands = {name: [e["command"], *e["args"]] for name, e in found.items()}
+        commands["opencode"] = read(f"{home}/.config/opencode/opencode.json")["mcp"]["losos"]["command"]
+        return commands
 
-        with subtest("losos agents finds the tools by their programs and their folders"):
-            me("mkdir -p ~/.cursor ~/.config/Code ~/.config/zed ~/.config/opencode")
-            me("cp /etc/losos-test/zed-settings.json ~/.config/zed/settings.json && chmod 644 ~/.config/zed/settings.json")
-            me("mkdir -p ~/work ~/.gemini && cp /etc/losos-test/gemini-trust.json ~/.gemini/trustedFolders.json && chmod 644 ~/.gemini/trustedFolders.json")
-            listed = me("losos agents")
-            print(listed)
-            for name in ["Claude Code", "Codex", "Gemini CLI", "Qwen Code", "opencode", "Cursor", "VS Code", "Zed"]:
-                assert name in listed, f"{name} not found:\n{listed}"
-            assert "Windsurf" not in listed and "LM Studio" not in listed, listed
+    def probe(command, calls, env=""):
+        got = me(
+            f"{env} python3 /etc/losos-test/mcp-probe.py "
+            f"{shlex.quote(json.dumps(command))} {shlex.quote(json.dumps(calls))}"
+        )
+        return json.loads(got)
 
-        with subtest("losos agents install puts the companion in every tool"):
-            out = me("losos agents install --yes 2>&1", stdin=agent)
-            print(out)
-            for name in ["Claude Code", "Codex", "Gemini CLI", "Qwen Code", "opencode", "Cursor", "VS Code", "Zed"]:
-                assert f"The LosOS companion is in {name}." in out, f"{name}:\n{out}"
-            zed = me("cat ~/.config/zed/settings.json")
-            for kept in ["// Zed settings", "// the dark one", "/* the owner's own */", '"github"']:
-                assert kept in zed, zed
-            me("ls ~/.local/share/losos/companion/backups/zed/")
-            assert "companion in" in me("losos agents")
-
-        with subtest("each tool starts the companion and sees it answer"):
-            # Gemini CLI starts MCP servers only in a folder the owner
-            # trusts; the companion's own folder is on its list, and the
-            # owner's entry stays.
-            trust = json.loads(me("cat ~/.gemini/trustedFolders.json"))
-            assert trust.get("/home/matus/work") == "TRUST_FOLDER", trust
-            assert "/home/matus/.local/share/losos/companion/gemini" in trust, trust
-            for program, says in [
-                ("claude mcp list", "Connected"),
-                ("gemini mcp list", "Connected"),
-                ("qwen mcp list", "Connected"),
-                ("opencode mcp list", "connected"),
-            ]:
-                status, out = me(f"cd ~/work && timeout 180 {program} 2>&1", check=False)
-                print(f"{program}:\n{out}")
-                line = next((l for l in out.splitlines() if "losos" in l), "")
-                assert says in line, f"{program}: {out}"
-            print(me("timeout 180 codex mcp list 2>&1 || true"))
-
-        def entries():
-            """The command each tool was given, from the file it reads."""
-            home = "/home/matus"
-            plugin = f"{home}/.local/share/losos/companion"
-            def read(path):
-                return json.loads(me(f"cat {path}"))
-            zed_entry = json.loads(me(
-                "python3 /etc/losos-test/jsonc.py ~/.config/zed/settings.json context_servers losos"
-            ))
-            out = {
-                "Claude Code": read(f"{plugin}/claude-code/plugins/losos/.mcp.json")["mcpServers"]["losos"],
-                "Codex": read(f"{plugin}/codex/plugins/losos/.mcp.json")["mcpServers"]["losos"],
-                "Gemini CLI": read(f"{home}/.gemini/extensions/losos/gemini-extension.json")["mcpServers"]["losos"],
-                "Qwen Code": read(f"{home}/.qwen/extensions/losos/qwen-extension.json")["mcpServers"]["losos"],
-                "Cursor": read(f"{home}/.cursor/mcp.json")["mcpServers"]["losos"],
-                "VS Code": read(f"{home}/.config/Code/User/mcp.json")["servers"]["losos"],
-                "Zed": zed_entry,
-            }
-            commands = {name: [e["command"], *e["args"]] for name, e in out.items()}
-            commands["opencode"] = read(f"{home}/.config/opencode/opencode.json")["mcp"]["losos"]["command"]
-            return commands
-
-        def probe(command, calls, env=""):
-            out = me(
-                f"{env} python3 /etc/losos-test/mcp-probe.py "
-                f"{shlex.quote(json.dumps(command))} {shlex.quote(json.dumps(calls))}"
-            )
-            return json.loads(out)
-
-        with subtest("the command every tool was given reads the box as the owner"):
-            commands = entries()
-            for name, command in commands.items():
-                assert command[1:] == ["mcp", "--host", URL], (name, command)
-                got = probe(command, [["whoami", {}]])
-                result = got["calls"][0]["result"]
-                assert result["isError"] is False, (name, got)
-                assert result["structuredContent"]["name"] == "matus", (name, result)
-            names = [t["name"] for t in got["tools"]["result"]["tools"]]
-            assert "cloud_search_text" in names and "git_search_code" in names, names
-            # Codex starts its servers with HOME, PATH and little else: the
-            # companion finds the session bus where systemd keeps it.
-            got = probe(commands["Codex"], [["box_status", {}]], env="env -i HOME=/home/matus PATH=$PATH")
-            assert got["calls"][0]["result"]["isError"] is False, got
-            # LosOS Cloud is not on this box: an answer the agent can explain.
-            got = probe(commands["Zed"], [["cloud_list_folder", {"path": "/"}]])
-            print(got["calls"][0])
-
-        with subtest("the companion's key reaches only the AI agents routes"):
-            for path in ["/api/me", "/api/status", "/api/git/repos"]:
-                status, out = me(f"losos agents call GET {path} 2>&1", check=False)
-                assert "403" not in out.splitlines()[0], (path, out)
-            for method, path in [("GET", "/api/state"), ("GET", "/api/settings"), ("POST", "/api/cloud/files"), ("GET", "/api/access")]:
-                status, out = me(f"losos agents call {method} {path} 2>&1", check=False)
-                assert status != 0, (method, path, out)
-                assert out.splitlines()[0].strip() in ("403", "401"), (method, path, out)
-
-        with subtest("a revoked token turns the companion away"):
-            code, body = api("/api/access/tokens/revoke", cookie, "POST", {"id": agent_id})
-            assert code == 200, (code, body)
-            got = probe(entries()["Cursor"], [["whoami", {}]])
+    with subtest("the command every tool was given reads the box as the owner"):
+        commands = entries()
+        for name, command in commands.items():
+            assert command[1:] == ["mcp", "--host", URL], (name, command)
+            got = probe(command, [["whoami", {}]])
             result = got["calls"][0]["result"]
-            assert result["isError"] is True, got
-            print(result["content"][0]["text"])
+            assert result["isError"] is False, (name, got)
+            assert result["structuredContent"]["name"] == "matus", (name, result)
+            assert result["structuredContent"]["companion"] is True, (name, result)
+            assert result["structuredContent"]["admin"] is False, (name, result)
+        names = [t["name"] for t in got["tools"]["result"]["tools"]]
+        assert "cloud_search_text" in names and "git_search_code" in names, names
+        # Codex starts its servers with HOME, PATH and little else: the
+        # companion finds the session bus where systemd keeps it.
+        got = probe(commands["Codex"], [["box_status", {}]], env="env -i HOME=/home/matus PATH=$PATH")
+        assert got["calls"][0]["result"]["isError"] is False, got
+        # LosOS Cloud is not on this box: an answer the agent can explain.
+        got = probe(commands["Zed"], [["cloud_list_folder", {"path": "/"}]])
+        print(got["calls"][0])
 
-        with subtest("losos agents remove puts everything back"):
-            out = me("losos agents remove --yes 2>&1")
-            print(out)
-            assert "Revoke the AI agents token" in out, out
-            me("cmp ~/.config/zed/settings.json /etc/losos-test/zed-settings.json")
-            me("cmp ~/.gemini/trustedFolders.json /etc/losos-test/gemini-trust.json")
-            me("test ! -e ~/.gemini/extensions/losos && test ! -e ~/.qwen/extensions/losos")
-            assert "losos" not in me("cat ~/.cursor/mcp.json"), me("cat ~/.cursor/mcp.json")
-            assert "companion in" not in me("losos agents")
-            status, _ = me("secret-tool search service losos kind companion 2>&1 | grep -q companion", check=False)
-            assert status != 0, "the companion is still in the keychain"
-            status, out = me("timeout 180 claude mcp list 2>&1", check=False)
-            assert "losos" not in out, out
+    with subtest("the box holds the companion's token to its read-only routes"):
+        for path in ["/api/me", "/api/status", "/api/git/repos"]:
+            code, said = me(f"losos agents call GET {path} 2>&1", check=False)
+            assert "403" not in said.splitlines()[0], (path, said)
+        for path in ["/api/state", "/api/settings", "/api/access", "/api/people"]:
+            code, said = me(f"losos agents call GET {path} 2>&1", check=False)
+            assert code != 0 and said.splitlines()[0].strip() == "403", (path, said)
+        code, said = me("losos agents call POST /api/cloud/files 2>&1", check=False)
+        assert code != 0 and "only reads" in said, said
+        # The box itself, asked with the token and no companion in between:
+        # the owner is an administrator, the companion is not.
+        bearer = f"-H 'Authorization: Bearer {kept()['accessToken']}'"
+        assert status(f"{bearer} {URL}/api/me") == 200
+        for method, path in [("POST", "/api/apply"), ("POST", "/api/factory-reset"), ("GET", "/api/settings"), ("POST", "/api/people")]:
+            got = status(f"-X {method} {bearer} -H 'Content-Type: application/json' -d '{{}}' {URL}{path}")
+            assert got == 403, (method, path, got)
+        assert status(f"-H 'Authorization: Bearer authelia_at_made.up' {URL}/api/me") == 401
+
+    with subtest("the companion refreshes its token when it runs out"):
+        before = kept()
+        # 90 seconds of life, refreshed in its last minute: wait past that.
+        laptop.sleep(45)
+        got = probe(entries()["Cursor"], [["whoami", {}]])
+        assert got["calls"][0]["result"]["isError"] is False, got
+        after = kept()
+        assert after["accessToken"] != before["accessToken"], (before, after)
+        assert after["refreshToken"] != before["refreshToken"], (before, after)
+
+    with subtest("losos agents remove puts everything back and signs the companion out"):
+        signed = kept()
+        out = me("losos agents remove --yes 2>&1")
+        print(out)
+        assert f"signed out of {URL}" in out, out
+        me("cmp ~/.config/zed/settings.json /etc/losos-test/zed-settings.json")
+        me("cmp ~/.gemini/trustedFolders.json /etc/losos-test/gemini-trust.json")
+        me("test ! -e ~/.gemini/extensions/losos && test ! -e ~/.qwen/extensions/losos")
+        assert "losos" not in me("cat ~/.cursor/mcp.json"), me("cat ~/.cursor/mcp.json")
+        assert "companion in" not in me("losos agents")
+        code, _ = me("secret-tool search service losos kind companion 2>&1 | grep -q companion", check=False)
+        assert code != 0, "the companion is still in the keychain"
+        code, listed = me("timeout 180 claude mcp list 2>&1", check=False)
+        assert "losos" not in listed, listed
+        # LosOS Login refuses the refresh token at once, and lososd the
+        # access token once its minute of trust is over.
+        refresh = curl(
+            f"-X POST {URL}/auth/api/oidc/token -d grant_type=refresh_token "
+            f"-d client_id=losos-companion -d refresh_token={signed['refreshToken']}"
+        )
+        assert "invalid_grant" in refresh, refresh
+        laptop.wait_until_succeeds(
+            f"test $(curl -sk -o /dev/null -w '%{{http_code}}' -H 'Authorization: Bearer {signed['accessToken']}' {URL}/api/me) = 401",
+            timeout=180,
+        )
   '';
 }

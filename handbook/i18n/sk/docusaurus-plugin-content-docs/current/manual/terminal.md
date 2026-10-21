@@ -90,9 +90,7 @@ ukazuje:
 - **Tokeny**, tie už vytvorené, s časom posledného použitia každého z nich.
 
 Pomenujte nový token, vyberte kľúč, ku ktorému patrí, zvoľte **Iba čítanie**
-alebo **Plný prístup** a vyberte, kedy vyprší. Tretí druh, **Agenti AI**, je
-pre pomocníka vo vašich nástrojoch AI; pozrite
-[Nástroje AI na vašom počítači](ai-agents). **Vytvoriť token** ho ukáže
+alebo **Plný prístup** a vyberte, kedy vyprší. **Vytvoriť token** ho ukáže
 raz. Vtedy si ho skopírujte. Zariadenie si drží iba jeho hash a znova ho
 ukázať nedokáže.
 
