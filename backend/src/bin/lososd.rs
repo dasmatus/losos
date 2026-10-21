@@ -15,7 +15,7 @@
 
 use anyhow::Context;
 use losos_ctl::io_backend::{IoLosos, Paths};
-use losos_ctl::{config_repo, dbus, http, supervisor};
+use losos_ctl::{config_repo, dbus, http, plugin, supervisor};
 
 fn main() -> std::process::ExitCode {
     tracing_subscriber::fmt()
@@ -62,6 +62,11 @@ fn run() -> anyhow::Result<()> {
     let _ = std::fs::remove_file(paths.retired_cloud_key_file());
     let backend = IoLosos::new(paths);
 
+    // Every plugin is compiled before the first request: a plugin that does
+    // not load stops the daemon here, where systemd sees it, rather than
+    // leaving a part of the admin API answering 404.
+    let plugins = plugin::Runtime::from_env()?;
+
     // The HTTP server needs an actix `System` (a current-thread runtime with a
     // LocalSet); zbus needs a general tokio runtime. Running both in one
     // runtime is the classic way to deadlock this pair, so each gets its own
@@ -73,11 +78,12 @@ fn run() -> anyhow::Result<()> {
     // healthy process, and `Restart=on-failure` never fired.
     let (http_outcome, http_failed) = tokio::sync::oneshot::channel::<anyhow::Result<()>>();
     let http_backend = backend.clone();
+    let http_plugins = plugins.clone();
     let _http_thread = std::thread::Builder::new()
         .name("lososd-http".into())
         .spawn(move || {
             // A closed receiver means the daemon is already on its way down.
-            let _ = http_outcome.send(http::serve(http_backend));
+            let _ = http_outcome.send(http::serve(http_backend, http_plugins));
         })?;
 
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -98,6 +104,7 @@ fn run() -> anyhow::Result<()> {
         };
 
         supervisor::start_supervisor(&backend);
+        plugins.start_timers();
         // Looks for an edge proxy (LAN DNS-SD + the configured URL) every
         // few seconds; what it finds gates storage sharing. See backend/src/edge.rs.
         losos_ctl::io_backend::start_edge_scanner(&backend);

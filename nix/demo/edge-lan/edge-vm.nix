@@ -5,7 +5,8 @@
 # `run-edge-vm` script. It has two NICs, in this order:
 #
 #   eth0  QEMU user networking — the way out to the internet (through the
-#         host), and `hostfwd` so the host can reach the registrar API.
+#         host), and `hostfwd` so the host can reach the registrar API and
+#         Traefik's :443, where the boxes it publishes answer.
 #   eth1  the demo LAN, a VDE switch socket named by $LOSOS_LAN_SOCK. The
 #         edge is 10.77.0.1 on it and hands out 10.77.0.100-200 by DHCP,
 #         answers DNS, and NATs the LAN out through eth0 — so a box on the
@@ -52,6 +53,9 @@ in
     };
     # The feature the demo is about.
     lan.advertise = true;
+    # A box that finds this edge is enrolled the first time it calls, as the
+    # edge gateway does, so `run.sh publish` needs no token handed out.
+    lan.openEnrolment = true;
   };
 
   systemd.tmpfiles.rules = [
@@ -123,7 +127,7 @@ in
     # interpolates these, so $LOSOS_LAN_SOCK and $LOSOS_EDGE_API_PORT are read
     # when the VM starts, not when it is built.
     qemu.networkingOptions = lib.mkForce [
-      "-netdev user,id=wan,hostfwd=tcp:127.0.0.1:\${LOSOS_EDGE_API_PORT:-8443}-:8443"
+      "-netdev user,id=wan,hostfwd=tcp:127.0.0.1:\${LOSOS_EDGE_API_PORT:-8443}-:8443,hostfwd=tcp:127.0.0.1:\${LOSOS_EDGE_HTTPS_PORT:-9443}-:443"
       "-device virtio-net-pci,netdev=wan,mac=52:54:00:ed:9e:00"
       "-netdev vde,id=lan,sock=\"\${LOSOS_LAN_SOCK:?set LOSOS_LAN_SOCK to the vde_switch socket}\""
       "-device virtio-net-pci,netdev=lan,mac=52:54:00:ed:9e:01"

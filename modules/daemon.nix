@@ -144,6 +144,11 @@ in
       // {
         LOSOS_LUKS_KEYFILE = "/etc/keys/persist-keyfile";
       }
+      # The plugins lososd loads (backend/plugins/README.md), a store path:
+      # lososd refuses one anywhere else. Unset, it serves no plugin routes.
+      // lib.optionalAttrs (config.losos.backend.plugins != null) {
+        LOSOS_PLUGIN_DIR = "${config.losos.backend.plugins}";
+      }
       // lib.optionalAttrs config.losos.lab.ordering.enable {
         LOSOS_LAB_ORDERING = "1";
       }

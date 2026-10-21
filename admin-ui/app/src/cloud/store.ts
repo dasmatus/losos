@@ -106,6 +106,8 @@ export function enqueue(folder: string, files: readonly { file: File; relative?:
   pump();
 }
 
+/** Folders made for the uploads in flight. Forgotten whenever the queue
+ * empties, so a folder deleted or moved since is made again next time. */
 const made = new Set<string>();
 
 /** Make the folders a dropped folder needs, parents first. */
@@ -128,6 +130,7 @@ async function ensureFolder(path: string): Promise<void> {
 function pump(): void {
   const all = uploads.get();
   const running = all.filter((u) => u.state === "sending").length;
+  if (running === 0 && !all.some((u) => u.state === "waiting")) made.clear();
   const ready = all.filter((u) => u.state === "waiting").slice(0, Math.max(0, PARALLEL - running));
   for (const u of ready) void send(u, true);
 }
@@ -136,6 +139,11 @@ async function send(u: Upload, ifNew: boolean): Promise<void> {
   patch(u.id, { state: "sending", sent: 0, error: undefined });
   try {
     await ensureFolder(u.folder);
+    // Cancelled, or cleared from the panel, while the folders were made.
+    if (uploads.get().find((x) => x.id === u.id)?.state !== "sending") {
+      pump();
+      return;
+    }
     const job = upload(joinPath(u.folder, u.name), u.file, {
       mtime: u.file.lastModified / 1000,
       ifNew,

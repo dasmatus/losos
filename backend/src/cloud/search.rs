@@ -77,22 +77,38 @@ fn value_is_numeric(n: &Name) -> bool {
 }
 
 /// SQL LIKE with `%` and `_`, case-insensitive like Nextcloud's.
+///
+/// The usual wildcard walk: on a mismatch it goes back to the last `%` and
+/// lets it take one more character, never further back, so a pattern of
+/// many `%` costs at most pattern times text steps rather than exponential
+/// time.
 fn like(pattern: &str, text: &str) -> bool {
-    fn rec(p: &[char], t: &[char]) -> bool {
-        match p.split_first() {
-            None => t.is_empty(),
-            Some(('%', rest)) => (0..=t.len()).any(|i| rec(rest, &t[i..])),
-            Some(('_', rest)) => !t.is_empty() && rec(rest, &t[1..]),
-            Some((c, rest)) => {
-                t.first()
-                    .is_some_and(|x| x.to_lowercase().eq(c.to_lowercase()))
-                    && rec(rest, &t[1..])
+    let p: Vec<char> = pattern.chars().flat_map(char::to_lowercase).collect();
+    let t: Vec<char> = text.chars().flat_map(char::to_lowercase).collect();
+    let (mut pi, mut ti) = (0, 0);
+    // The last `%` seen, and where in the text it started matching.
+    let mut star: Option<(usize, usize)> = None;
+    while ti < t.len() {
+        match p.get(pi) {
+            Some('%') => {
+                star = Some((pi, ti));
+                pi += 1;
             }
+            Some(&c) if c == '_' || c == t[ti] => {
+                pi += 1;
+                ti += 1;
+            }
+            _ => match star {
+                Some((sp, st)) => {
+                    pi = sp + 1;
+                    ti = st + 1;
+                    star = Some((sp, st + 1));
+                }
+                None => return false,
+            },
         }
     }
-    let p: Vec<char> = pattern.chars().collect();
-    let t: Vec<char> = text.chars().collect();
-    rec(&p, &t)
+    p[pi..].iter().all(|c| *c == '%')
 }
 
 fn prop_of(el: &Element) -> Option<Name> {
@@ -361,5 +377,18 @@ mod tests {
         assert!(like("a_c", "abc"));
         assert!(!like("a_c", "ac"));
         assert!(like("%", ""));
+        assert!(like("%ab%cd%", "xxabyycdzz"));
+        assert!(!like("%ab%cd", "xxabyycdzz"));
+        assert!(like("a%%b", "ab"));
+        assert!(!like("", "a"));
+    }
+
+    #[test]
+    fn many_wildcards_that_fail_are_not_slow() {
+        let pattern = format!("{}b", "%a".repeat(40));
+        let text = "a".repeat(200);
+        let started = std::time::Instant::now();
+        assert!(!like(&pattern, &text));
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
     }
 }

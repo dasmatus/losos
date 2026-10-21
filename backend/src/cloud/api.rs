@@ -19,6 +19,20 @@ pub fn error(status: StatusCode, code: &str, message: &str) -> HttpResponse {
     HttpResponse::build(status).json(json!({ "error": message, "code": code }))
 }
 
+/// 423 when a WebDAV client's lock covers one of `paths`: the web app's
+/// changes respect the desktop client's locks as WebDAV's own do.
+fn locked(cloud: &Cloud, login: &str, paths: &[&str]) -> Option<HttpResponse> {
+    paths
+        .iter()
+        .any(|p| cloud.locks.touches(login, p))
+        .then(|| {
+            error(
+                StatusCode::LOCKED,
+                "locked",
+                "another app has this file locked",
+            )
+        })
+}
 pub fn store_error(e: &StoreError) -> HttpResponse {
     let (status, code) = match e {
         StoreError::NotFound => (StatusCode::NOT_FOUND, "notFound"),
@@ -185,6 +199,10 @@ pub async fn handle(
                 (Ok(f), Ok(t)) => (f, t),
                 _ => return store_error(&StoreError::BadName),
             };
+            let touched: &[&str] = if *op == "move" { &[&from, &to] } else { &[&to] };
+            if let Some(r) = locked(cloud, login, touched) {
+                return r;
+            }
             let r = if *op == "move" {
                 store.rename(login, &from, &to, b.overwrite)
             } else {
@@ -200,6 +218,11 @@ pub async fn handle(
                 Ok(b) => b,
                 Err(r) => return r,
             };
+            let cleaned: Vec<String> = b.paths.iter().filter_map(|p| clean_path(p).ok()).collect();
+            let refs: Vec<&str> = cleaned.iter().map(String::as_str).collect();
+            if let Some(r) = locked(cloud, login, &refs) {
+                return r;
+            }
             let mut trashed = Vec::new();
             for p in &b.paths {
                 match clean_path(p).and_then(|p| store.delete(login, &p, None)) {
@@ -227,6 +250,9 @@ pub async fn handle(
             match store.stat(login, crate::cloud::store::parent_of(&path).unwrap_or("")) {
                 Ok(p) if p.dir => {}
                 _ => return store_error(&StoreError::Conflict),
+            }
+            if let Some(r) = locked(cloud, login, &[&path]) {
+                return r;
             }
             let expected = req
                 .headers()
@@ -331,6 +357,11 @@ pub async fn handle(
                 Ok(b) => b,
                 Err(r) => return r,
             };
+            if let Ok(e) = store.by_id(login, b.id) {
+                if let Some(r) = locked(cloud, login, &[&e.path]) {
+                    return r;
+                }
+            }
             match store.restore_version(login, b.id, b.mtime) {
                 Ok(e) => {
                     cloud.changed(login, &e);
@@ -388,6 +419,16 @@ pub async fn handle(
             Ok(None) => store_error(&StoreError::NotFound),
             Err(e) => store_error(&e),
         },
+        // Granted by a person signed in through LosOS Login, never by an
+        // app password: one device must not mint another behind the owner's
+        // back, which revoking the first would then leave working.
+        ("POST", ["connect", _]) if matches!(who.via, crate::cloud::auth::Via::AppPassword(_)) => {
+            error(
+                StatusCode::FORBIDDEN,
+                "appPassword",
+                "already an app password",
+            )
+        }
         ("POST", ["connect", token]) => match cloud.auth.grant_flow(store, token, who) {
             Ok(true) => ok(json!({ "granted": true })),
             Ok(false) => store_error(&StoreError::NotFound),

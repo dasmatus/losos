@@ -206,6 +206,18 @@ impl Locks {
             .any(|(_, l)| !if_header.contains(&l.token))
     }
 
+    /// Whether a WebDAV client holds a lock that a change to `path` would
+    /// cross: on it, on a folder above it that covers it, or on anything
+    /// inside it. For the web app's API, which carries no lock token, so
+    /// any such lock is someone else's.
+    pub fn touches(&self, owner: &str, path: &str) -> bool {
+        let mut held = self.held.lock().unwrap_or_else(|p| p.into_inner());
+        held.retain(|_, l| l.until > Instant::now());
+        held.iter().any(|((o, p), l)| {
+            o == owner && (p == path || is_within(p, path) || (l.infinite && is_within(path, p)))
+        })
+    }
+
     fn take(&self, owner: &str, path: &str, token: &str) -> bool {
         let mut held = self.held.lock().unwrap_or_else(|p| p.into_inner());
         let key = (owner.to_owned(), path.to_owned());

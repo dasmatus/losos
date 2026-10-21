@@ -1147,6 +1147,20 @@ in
       '';
     };
 
+    # lososd's plugins (backend/plugins/README.md): the store path lososd
+    # loads its WebAssembly plugins from, `.#losos-plugins` by default. lososd
+    # refuses a directory outside the read-only store.
+    backend.plugins = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        The directory of lososd plugins, each a WebAssembly component
+        (`<name>.wasm`) beside its manifest (`<name>.json`). lososd loads
+        them only from the read-only Nix store. When null, lososd serves no
+        plugin routes, and the panes they back (the look) answer 404.
+      '';
+    };
+
     # ── Sign-in (modules/identity.nix) ───────────────────────────────────
     identity.enable = lib.mkOption {
       type = lib.types.bool;
@@ -1655,9 +1669,7 @@ in
           {
             options = {
               pay = lib.mkOption {
-                type = lib.types.nullOr (
-                  lib.types.strMatching "0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}"
-                );
+                type = lib.types.nullOr (lib.types.strMatching "0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}");
                 default = null;
                 description = ''
                   The escrow payments wait in until each slot ends. Public. On
@@ -2317,6 +2329,19 @@ in
         DNS-over-HTTPS endpoint (JSON API) the registrar looks an owner's
         TXT and CNAME records up with. A public resolver sees the domain
         names being checked; point this at your own if that matters.
+      '';
+    };
+
+    edge.dns.dnssec.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Sign the zone with DNSSEC (Knot's automatic signing, ECDSA P-256,
+        keys in /var/lib/knot). A box that binds its wallet to its names
+        gets an ENS record at each of them, and ENS reads a DNS name only
+        from a signed zone. Signing does nothing for resolvers until the
+        parent zone publishes the zone's DS record, which
+        `keymgr <zone> ds` prints on the edge.
       '';
     };
 

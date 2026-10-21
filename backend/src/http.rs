@@ -64,6 +64,9 @@ struct Api {
     login: crate::login::Login,
     /// LosOS Login names on LosOS cloud's share (`crate::cloud_share`).
     share: crate::cloud_share::Share,
+    /// The plugins that answer every route not registered below
+    /// (`crate::plugin`).
+    plugins: crate::plugin::Runtime,
 }
 
 /// Who made a call.
@@ -149,10 +152,6 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
     if let Some(why) = e
         .downcast_ref::<crate::options::Rejected>()
         .map(ToString::to_string)
-        .or_else(|| {
-            e.downcast_ref::<crate::look::Invalid>()
-                .map(ToString::to_string)
-        })
         .or_else(|| {
             e.downcast_ref::<crate::apps::Invalid>()
                 .map(ToString::to_string)
@@ -408,6 +407,19 @@ fn guarded_as(
     mutating: bool,
     f: impl FnOnce(&Principal) -> HttpResponse,
 ) -> HttpResponse {
+    guarded_at(api, req, route, None, mutating, f)
+}
+
+/// [`guarded_as`] for a route actix did not match itself, a plugin's: the
+/// section is looked up under `pattern`, the manifest's route.
+fn guarded_at(
+    api: &Api,
+    req: &HttpRequest,
+    route: &str,
+    pattern: Option<&str>,
+    mutating: bool,
+    f: impl FnOnce(&Principal) -> HttpResponse,
+) -> HttpResponse {
     let remote = remote_addr(req);
     let audit = |outcome: &str, who: Option<&str>| {
         if mutating {
@@ -449,8 +461,9 @@ fn guarded_as(
     };
     api.throttle.record_success(&remote);
     let method = req.method().as_str();
-    let pattern = req
-        .match_pattern()
+    let pattern = pattern
+        .map(str::to_string)
+        .or_else(|| req.match_pattern())
         .unwrap_or_else(|| req.path().to_string());
     let section = crate::sections::section(method, &pattern);
     if let Principal::Person(person) = &who {
@@ -2561,101 +2574,175 @@ async fn post_domain_remove(
     .await
 }
 
-// ── The owner's look ──────────────────────────────────────────────────────
-// A background picture and the widgets written by hand (`crate::look`).
-// HTTP-only, like the market relay: a CLI for a wallpaper would be surface
-// with no caller. Every change is Bearer-authed and audited; the one read
-// that is not is the picture itself, for the reason given in look.rs.
-
-/// `GET /api/look` — the document the page paints from.
-async fn get_look(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/look", false, || {
-        run(&api, crate::look::cmd_look)
-    })
-}
-
-/// `POST /api/look` — the background by choice (none, or a shipped picture
-/// by name) and the veil over it. Each field optional, so one knob at a time.
-async fn post_look(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
-    guarded(&api, &req, "/api/look", true, || {
-        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
-        match crate::look::parse_patch(&doc) {
-            Some(patch) => run(&api, |b| crate::look::cmd_patch_look(b, &patch)),
-            None => err(
-                StatusCode::BAD_REQUEST,
-                r#"body must be JSON: {"background": {"kind": "none|shipped", "name": "..."}, "veil": 20-90}"#,
-            ),
-        }
-    })
-}
-
-/// `PUT /api/look/background` — the picture, raw. The type is read off the
-/// bytes, never off the request; the size cap is `PayloadConfig` below plus
-/// the command's own check, so an oversized body is refused before it is
-/// read in full.
-async fn put_background(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
-    guarded(&api, &req, "/api/look/background", true, || {
-        run(&api, |b| crate::look::cmd_upload_background(b, &body))
-    })
-}
-
-/// `DELETE /api/look/background` — back to the plain ground colour.
-async fn delete_background(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/look/background", true, || {
-        let patch = crate::look::LookPatch {
-            background: Some(crate::look::BackgroundChoice::None),
-            veil: None,
+/// `POST /api/domains/wallet` `{"address": "0x…", "signature": "0x…"}` —
+/// publish the box's wallet at its names on the edge, so wallets that send
+/// to ENS names pay it by name; `{}` takes it off.
+async fn post_domain_wallet(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/domains/wallet", true, || {
+        // `{}` unbinds, so anything that is not an object of strings is a
+        // 400 rather than read as one.
+        const SHAPE: &str =
+            r#"body must be JSON: {"address": "0x…", "signature": "0x…"} to bind, or {} to unbind"#;
+        let Ok(serde_json::Value::Object(doc)) = serde_json::from_slice(&body) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
         };
-        run(&api, |b| crate::look::cmd_patch_look(b, &patch))
+        let text = |key: &str| match doc.get(key) {
+            None => Ok(None),
+            Some(serde_json::Value::String(v)) => Ok(Some(v.trim().to_string())),
+            Some(_) => Err(()),
+        };
+        let (Ok(address), Ok(signature)) = (text("address"), text("signature")) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let op = crate::market::Op::DomainWallet {
+            address: address.map(|a| a.to_ascii_lowercase()),
+            signature,
+        };
+        run(&api, |b| crate::losos::cmd_domain_op(b, &op))
     })
 }
 
-/// `GET /api/look/background?v=N` — the uploaded picture, **without a
-/// token**. A CSS `background-image` cannot carry one (look.rs says why
-/// this is the accepted shape). Cached hard, because a replacement is a new
-/// `?v=` and therefore a new URL. 404 when the look has no upload.
-async fn get_background(api: web::Data<Api>) -> HttpResponse {
-    match api.backend.serialized(crate::look::cmd_read_background) {
-        Ok(Some((content_type, bytes))) => HttpResponse::Ok()
-            .content_type(content_type)
-            .insert_header(("Cache-Control", "private, max-age=31536000, immutable"))
-            .insert_header(("X-Content-Type-Options", "nosniff"))
-            .body(bytes),
-        Ok(None) => err(StatusCode::NOT_FOUND, "no picture"),
-        Err(e) => {
-            tracing::error!(error = ?e, "reading the background picture failed");
-            err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "command failed; see the lososd journal",
-            )
+// ── Plugins ───────────────────────────────────────────────────────────────
+// Every route not registered above is a plugin's (`crate::plugin`): the
+// manifest names it, this daemon authenticates the caller and checks the
+// section exactly as for its own routes, and the plugin answers.
+
+/// The section check for a call a plugin dispatches (`dispatch.call`),
+/// the same rule [`guarded_at`] holds an arriving call to.
+fn authorize_caller(
+    caller: &crate::plugin::bindings::losos::plugin::types::Caller,
+    method: &str,
+    route: &str,
+) -> Result<(), String> {
+    use crate::plugin::bindings::losos::plugin::types::Principal as P;
+    let section = crate::sections::section(method, route);
+    match &caller.principal {
+        P::Spare | P::Host => Ok(()),
+        P::Anonymous if section == "public" => Ok(()),
+        P::Anonymous => Err("unauthorized".to_string()),
+        P::Edge if crate::sections::edge_allows(method, section) => Ok(()),
+        P::Edge => Err("the edge may not use this part of the box".to_string()),
+        P::Person(p) => {
+            let person = crate::people::Person {
+                name: p.name.clone(),
+                display_name: p.display_name.clone(),
+                groups: p.groups.clone(),
+            };
+            let locked = person.groups.iter().any(|g| g == crate::people::LOCKED);
+            if locked && !matches!(section, "account" | "signed-in" | "public") {
+                return Err("finish what LosOS Login asks of your account first".to_string());
+            }
+            if !(locked && section == "account")
+                && !crate::sections::allows(&person, method, section)
+            {
+                return Err("your account cannot use this part of the box".to_string());
+            }
+            Ok(())
         }
     }
 }
 
-/// `POST /api/look/widgets` — add a widget written by hand, or replace the
-/// one whose id the body carries.
-async fn post_widget(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
-    guarded(&api, &req, "/api/look/widgets", true, || {
-        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
-        match crate::look::parse_draft(&doc) {
-            Some(draft) => run(&api, |b| crate::look::cmd_put_widget(b, &draft)),
-            None => err(
-                StatusCode::BAD_REQUEST,
-                r#"body must be JSON: {"id": "..." (optional), "name": "...", "span": "half|full", "source": "..."}"#,
-            ),
-        }
-    })
+/// The caller as a plugin sees it.
+fn plugin_caller(
+    who: Option<&Principal>,
+    remote: String,
+    section: &str,
+) -> crate::plugin::bindings::losos::plugin::types::Caller {
+    use crate::plugin::bindings::losos::plugin::types as t;
+    let principal = match who {
+        None => t::Principal::Anonymous,
+        Some(Principal::Spare) => t::Principal::Spare,
+        Some(Principal::Edge) => t::Principal::Edge,
+        Some(Principal::Person(p)) => t::Principal::Person(t::Person {
+            name: p.name.clone(),
+            display_name: p.display_name.clone(),
+            groups: p.groups.clone(),
+            admin: p.is_admin(),
+        }),
+    };
+    t::Caller {
+        principal,
+        remote,
+        section: section.to_string(),
+    }
 }
 
-/// `DELETE /api/look/widgets/{id}`.
-async fn delete_widget(
-    api: web::Data<Api>,
-    req: HttpRequest,
-    id: web::Path<String>,
-) -> HttpResponse {
-    guarded(&api, &req, "/api/look/widgets", true, || {
-        run(&api, |b| crate::look::cmd_delete_widget(b, &id))
-    })
+/// Headers a plugin never sees: the credentials this daemon already spent.
+fn passed_header(name: &str) -> bool {
+    !matches!(name, "authorization" | "cookie" | "x-losos-edge")
+}
+
+/// Headers of a plugin's answer that are the transport's business.
+fn kept_header(name: &str) -> bool {
+    !matches!(
+        name,
+        "content-length" | "transfer-encoding" | "connection" | "keep-alive" | "upgrade"
+    )
+}
+
+async fn plugin_route(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    let method = req.method().as_str().to_ascii_uppercase();
+    let Some(matched) = api.plugins.route(&method, req.path()) else {
+        return err(StatusCode::NOT_FOUND, "not found");
+    };
+    if body.len() > matched.route.max_body {
+        return err(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "the request body is too large",
+        );
+    }
+    let pattern = matched.route.path.clone();
+    let section = crate::sections::section(&method, &pattern);
+    let call = |who: Option<&Principal>| {
+        use crate::plugin::bindings::losos::plugin::types as t;
+        let request = t::Request {
+            method: method.clone(),
+            path: req.path().to_string(),
+            route: pattern.clone(),
+            params: matched.params.clone(),
+            query: req.query_string().to_string(),
+            headers: req
+                .headers()
+                .iter()
+                .filter(|(k, _)| passed_header(k.as_str()))
+                .map(|(k, v)| {
+                    (
+                        k.as_str().to_string(),
+                        String::from_utf8_lossy(v.as_bytes()).into_owned(),
+                    )
+                })
+                .collect(),
+            body: body.to_vec(),
+            caller: plugin_caller(who, remote_addr(&req), section),
+        };
+        let answer = api.plugins.handle(&matched.plugin, &request);
+        let mut resp = HttpResponse::build(
+            StatusCode::from_u16(answer.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        );
+        for (k, v) in &answer.headers {
+            if kept_header(&k.to_ascii_lowercase()) {
+                resp.insert_header((k.as_str(), v.as_str()));
+            }
+        }
+        resp.body(answer.body)
+    };
+    // nginx still asks LosOS Login about an unguarded route; this daemon
+    // does not, because the browser cannot send it a token there.
+    if matched.route.unguarded || section == "public" {
+        return call(None);
+    }
+    guarded_at(
+        &api,
+        &req,
+        &pattern,
+        Some(&pattern),
+        method != "GET",
+        |who| call(Some(who)),
+    )
 }
 
 // ── The sidebar's pins ────────────────────────────────────────────────────
@@ -3058,10 +3145,6 @@ fn call(api: &Api, remote: &str, body: &[u8]) -> Called {
     }
 }
 
-async fn not_found() -> HttpResponse {
-    err(StatusCode::NOT_FOUND, "not found")
-}
-
 /// Whether `candidate` is a token this daemon would have minted: exactly
 /// [`TOKEN_HEX_LEN`] lowercase hex characters.
 fn is_well_formed(candidate: &str) -> bool {
@@ -3160,7 +3243,7 @@ fn owner_in_owner_group(api: &Api) {
 /// Returns only on failure or on the server stopping, and the caller is
 /// expected to treat either as fatal: an admin API that failed to bind while
 /// the daemon stays up is invisible to systemd.
-pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
+pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Result<()> {
     let port = admin_port()?;
     let token_file =
         std::env::var("LOSOS_ADMIN_TOKEN_FILE").unwrap_or_else(|_| DEFAULT_TOKEN_FILE.to_string());
@@ -3182,21 +3265,21 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             people,
             login,
             share: crate::cloud_share::Share::default(),
+            plugins,
         });
+        api.plugins
+            .set_authorize(std::sync::Arc::new(authorize_caller));
+        let payload_cap = api.plugins.max_body().max(1024 * 1024);
         owner_in_owner_group(&api);
         start_login_marks(api.clone());
         sync_names_later(api.clone(), None);
         let server = HttpServer::new(move || {
             App::new()
                 .app_data(api.clone())
-                // actix reads at most 256 KiB into `web::Bytes` by default,
-                // which is plenty for every JSON body here and a quarter of
-                // a wallpaper. The cap is the picture limit plus room for a
-                // widget's JSON; look.rs refuses anything over its own
-                // limits with a sentence.
-                .app_data(web::PayloadConfig::new(
-                    crate::look::MAX_IMAGE_BYTES + 256 * 1024,
-                ))
+                // actix reads at most 256 KiB into `web::Bytes` by default.
+                // The cap is the largest `maxBody` a plugin route asks for;
+                // each route's own limit is checked in `plugin_route`.
+                .app_data(web::PayloadConfig::new(payload_cap))
                 .route("/api/health", web::get().to(health))
                 .route("/api/me", web::get().to(get_me))
                 .route("/api/state", web::get().to(get_state))
@@ -3288,19 +3371,12 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/domains", web::get().to(get_domains))
                 .route("/api/domains", web::post().to(post_domain_add))
                 .route("/api/domains/remove", web::post().to(post_domain_remove))
+                .route("/api/domains/wallet", web::post().to(post_domain_wallet))
                 .route("/api/options", web::get().to(get_options))
                 .route("/api/site", web::get().to(get_site))
                 .route("/api/site", web::post().to(post_site))
                 .route("/api/config", web::get().to(get_config))
                 .route("/api/config/sync", web::post().to(post_config_sync))
-                .route("/api/look", web::get().to(get_look))
-                .route("/api/look", web::post().to(post_look))
-                .route("/api/look/background", web::put().to(put_background))
-                .route("/api/look/background", web::delete().to(delete_background))
-                // The one read without a token: the wallpaper, see look.rs.
-                .route("/api/look/background", web::get().to(get_background))
-                .route("/api/look/widgets", web::post().to(post_widget))
-                .route("/api/look/widgets/{id}", web::delete().to(delete_widget))
                 .route("/api/pins", web::get().to(get_pins))
                 .route("/api/pins", web::put().to(put_pins))
                 .route("/api/cloud/files", web::get().to(get_cloud_files))
@@ -3326,7 +3402,8 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 // Asked by nginx alone, never proxied to a client
                 // (crate::cloud_share, modules/identity.nix).
                 .route("/internal/cloud-share", web::get().to(get_cloud_share))
-                .default_service(web::route().to(not_found))
+                // Everything else is a plugin's, or nobody's (crate::plugin).
+                .default_service(web::route().to(plugin_route))
         })
         .bind(("127.0.0.1", port))
         .with_context(|| format!("binding 127.0.0.1:{port}"))?;

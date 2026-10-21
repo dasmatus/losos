@@ -97,6 +97,9 @@
             pkgs.rustc
             pkgs.clippy
             pkgs.rustfmt
+            # The wasm32 linker for lososd's plugins (backend/plugins), which
+            # backend's tests/plugins.rs builds.
+            pkgs.lld
           ];
           # mold as the linker, ccache and sccache in front of the compilers
           # — the same stdenv nix/packages.nix builds the crates with, so
@@ -412,8 +415,12 @@
         losos-edge-manage = import ./nix/tests/edge-manage.nix { inherit pkgs; };
         losos-edge-federation = import ./nix/tests/edge-federation.nix { inherit pkgs; };
         losos-edge-lan-two-boxes = import ./nix/demo/edge-lan/two-boxes.nix { inherit pkgs; };
+        # Two boxes and an edge gateway between them, the light mode of the
+        # demo nix/demo/box-edge-box/bootstrap.sh sets up.
+        losos-box-edge-box = import ./nix/demo/box-edge-box/demo.nix { inherit pkgs; };
         losos-edge-market = import ./nix/tests/market-vm.nix { inherit pkgs; };
         losos-edge-dns = import ./nix/tests/edge-dns.nix { inherit pkgs; };
+        losos-box-wallet-name = import ./nix/tests/box-wallet-name.nix { inherit pkgs; };
         losos-ds-render = import ./nix/tests/design-system.nix { inherit pkgs; };
         losos-front-vhost = import ./nix/tests/front-vhost.nix { inherit pkgs; };
         losos-impermanence = import ./nix/tests/impermanence.nix { inherit pkgs impermanence; };
@@ -423,6 +430,7 @@
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
+        losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
