@@ -125,8 +125,8 @@ export function AppsPane({ form }: { form: SettingsForm }) {
         </GroupCaption>
       </PaneSection>
 
-      {/* LosOS cloud and LosOS Git, each folded in an accordion of its own:
-          LosOS cloud's apps and app store, then each app's settings for
+      {/* LosOS Cloud and LosOS Git, each folded in an accordion of its own:
+          LosOS Cloud's apps and app store, then each app's settings for
           everyone, the ones its own admin pages would otherwise hold. */}
       {(showCloud || showGit) && (
         <Accordion
@@ -143,7 +143,7 @@ export function AppsPane({ form }: { form: SettingsForm }) {
                     : t("cloudApps.cloud.detail", { count: cloudOn })
                 }
               >
-                LosOS cloud
+                LosOS Cloud
               </AccordionTrigger>
               <AccordionContent>
                 <CloudAppsSection apps={cloudApps} disabled={disabled} />

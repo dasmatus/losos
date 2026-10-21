@@ -6,15 +6,15 @@ slug: /manual/apps
 
 # The apps
 
-## LosOS cloud
+## LosOS Cloud
 
 Your files, photos, calendar, contacts, notes, tasks, music and the rest of
 the apps below, at `http://<address>/nextcloud`. It is Nextcloud with the box's colours and
-name. Sign in with the owner's password. LosOS cloud does everything
+name. Sign in with the owner's password. LosOS Cloud does everything
 Nextcloud does. The desktop client syncs a folder on your computer, the phone
 apps upload photos, and calendars and contacts sync over CalDAV and CardDAV.
 
-The Overview has a tile for each app in LosOS cloud's own menu, in the same
+The Overview has a tile for each app in LosOS Cloud's own menu, in the same
 order: Files, Dashboard, Photos, Activity, Contacts, Calendar, Notes,
 Bookmarks, Deck, Music, Collectives, Polls, Forms, Tables, Memories, News,
 Tasks and Maps. The box turns all of them on at every start, except the
@@ -23,11 +23,11 @@ the box runs no mail server for it to read. If you add Mail from the app
 store anyway, its tile appears on the Overview the next time the page loads. The links go through `index.php` on purpose,
 because every configuration answers that path.
 
-Family or colleagues get an account in LosOS cloud the first time they
+Family or colleagues get an account in LosOS Cloud the first time they
 open it, signed in with LosOS Login ([Signing in](sign-in-and-spare-key)).
-The owner's account is a standard one too, not LosOS cloud's administrator.
+The owner's account is a standard one too, not LosOS Cloud's administrator.
 Which apps run and the settings for everyone are on the **Apps** pane
-instead, in the LosOS cloud fold.
+instead, in the LosOS Cloud fold.
 
 ## LosOS Git
 
@@ -53,11 +53,11 @@ To take part, list the other servers whose stars count on a repository's
 **Federate with other Forgejo servers** in the LosOS Git fold of the
 **Apps** pane.
 
-LosOS cloud federates too: you can share files and calendars with people
+LosOS Cloud federates too: you can share files and calendars with people
 whose accounts are on other Nextcloud servers, by their `user@server`
 address. The owner of another box is `notshared@otherbox.local/nextcloud`.
-**Share with other Nextcloud servers** in the LosOS cloud fold turns that
-off. While it is on, LosOS cloud may reach names that end in `.local` and
+**Share with other Nextcloud servers** in the LosOS Cloud fold turns that
+off. While it is on, LosOS Cloud may reach names that end in `.local` and
 addresses on your local network, and accepts the certificate each box makes
 for itself, which Nextcloud refuses on its own. That is how it reaches
 other boxes on the same network.
@@ -72,7 +72,7 @@ the **Apps** pane greys both federation switches out.
 ## The Apps pane
 
 For each app the pane shows whether it is on, which
-[mode](../types/app-modes) it runs in, and a link. Under them, LosOS cloud
+[mode](../types/app-modes) it runs in, and a link. Under them, LosOS Cloud
 and LosOS Git each have a fold of their own, closed until you open it.
 Below that, **Find more**
 searches [Artifact Hub](https://artifacthub.io) for Helm charts. The box
@@ -81,14 +81,14 @@ published the chart. Nobody on the LosOS side has checked any of them.
 
 ![The Apps pane with one installed app above Find more, and search results from Artifact Hub, each with who published it and an Install or Change button.](../img/apps-find-more.png)
 
-## LosOS cloud's apps
+## LosOS Cloud's apps
 
-The LosOS cloud fold lists the apps inside LosOS cloud, each with a switch.
+The LosOS Cloud fold lists the apps inside LosOS Cloud, each with a switch.
 An app turned off is gone from every account, and what people made in it
 is kept for when it comes back. It stays off after the box restarts. The
-apps built into LosOS cloud wait behind a **Show** button, since you rarely
+apps built into LosOS Cloud wait behind a **Show** button, since you rarely
 need them; the filter finds them too. A few switches cannot move, and the
-row says why: LosOS cloud does not run without them, the box needs them
+row says why: LosOS Cloud does not run without them, the box needs them
 for signing in, or they follow disk sharing.
 
 **Add from the app store** searches Nextcloud's app store and adds an app
@@ -98,28 +98,28 @@ the LosOS side has checked these apps. An app added from the store has a
 box and keeps what accounts made in it, so adding it again finds that.
 The apps the box ships can be turned off but not removed.
 
-![The LosOS cloud fold: apps with switches, Deck from the app store with Remove, the sign-in app locked with its reason, and an app store search for Whiteboard with an Add button.](../img/apps-cloud.png)
+![The LosOS Cloud fold: apps with switches, Deck from the app store with Remove, the sign-in app locked with its reason, and an app store search for Whiteboard with an Add button.](../img/apps-cloud.png)
 
 ## Settings for everyone
 
-In the LosOS cloud and LosOS Git folds, the Apps pane has the settings that
+In the LosOS Cloud and LosOS Git folds, the Apps pane has the settings that
 hold for every account in each app. You would otherwise find them on each
 app's own administration pages. Each fold starts with the app's federation
 switch ([Federation](#federation)).
 
-For LosOS cloud: the language of the sign-in page and of accounts that have
+For LosOS Cloud: the language of the sign-in page and of accounts that have
 not picked one, the country a phone number without a country code belongs
 to, whether files can be shared by public link, whether every link needs a
 password, after how many days links stop working, how much space a new
 account gets, and how long the trash and old versions are kept. An empty
-field leaves the choice to LosOS cloud.
+field leaves the choice to LosOS Cloud.
 
 For LosOS Git: whether only signed-in accounts see anything, what a visitor
 sees first, whether a new repository starts private or public or like the
 account's last one, whether a new account's e-mail address is hidden, and
 whether pushing to a repository that does not exist yet creates it.
 
-![The Apps pane with the settings for everyone in LosOS cloud and LosOS Git.](../img/apps-site-settings.png)
+![The Apps pane with the settings for everyone in LosOS Cloud and LosOS Git.](../img/apps-site-settings.png)
 
 Press **Apply** to use them, like every other setting. The box sets them
 again each time the app starts, so a change made inside an app does not
@@ -197,8 +197,8 @@ and **Remove** but no **Change**, since they have no properties.
 
 ## Trusted addresses
 
-LosOS cloud answers on the box's name and on whichever address the request
-arrived at. The box passes that address along with each request. LosOS cloud
+LosOS Cloud answers on the box's name and on whichever address the request
+arrived at. The box passes that address along with each request. LosOS Cloud
 never answers on a wildcard. That is why a box reached by its IP address
 shows no "untrusted domain" page. If you ever see one, [Untrusted domain](../troubleshooting/app-tile-404#access-through-untrusted-domain)
 says why.

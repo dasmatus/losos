@@ -66,7 +66,7 @@ in
     extraApps = nc.apps;
     inherit (nc) appstoreEnable;
 
-    # LosOS cloud: the theme folder nextcloud-stack.nix builds into
+    # LosOS Cloud: the theme folder nextcloud-stack.nix builds into
     # `package` above (without `theme` it is present and never loaded), and
     # the keys that drop Nextcloud's welcome files and links out. Then the
     # owner's box-wide settings (losos.nextcloud.site.*); the module writes

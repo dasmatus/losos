@@ -34,7 +34,7 @@ import {
 
 const FEATURES: Feature[] = [
   {
-    title: <Translate id="losos.home.feature.cloud.title">LosOS cloud</Translate>,
+    title: <Translate id="losos.home.feature.cloud.title">LosOS Cloud</Translate>,
     body: (
       <Translate id="losos.home.feature.cloud.body">
         Your files, photos, calendar, contacts, notes and tasks, with desktop
@@ -83,7 +83,7 @@ const FEATURES: Feature[] = [
     body: (
       <Translate id="losos.home.feature.password.body">
         There is no login prompt and no SSH. You use the box from a web
-        browser, and the password you set for LosOS cloud also opens the admin
+        browser, and the password you set for LosOS Cloud also opens the admin
         pages.
       </Translate>
     ),

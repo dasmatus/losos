@@ -352,9 +352,9 @@ export default defineMessages({
 
   // ── StepSignIn.tsx ──────────────────────────────────────────────────────
   "wizard.signin.intro": {
-    en: "This box made itself a random password when it was installed and showed it to nobody, which is why nothing can sign in yet. Choose one now. It is the one password for everything here: LosOS cloud, the apps on your phone and computer, and these admin pages.",
-    sk: "Toto zariadenie si pri inštalácii vytvorilo náhodné heslo a nikomu ho neukázalo, preto sa zatiaľ nikto nemôže prihlásiť. Zvoľte si teraz vlastné. Je to jediné heslo na všetko: LosOS cloud, aplikácie v telefóne a počítači aj tieto správcovské stránky.",
-    de: "Diese Box hat sich bei der Installation ein zufälliges Passwort gegeben und es niemandem gezeigt, deshalb kann sich noch niemand anmelden. Wähl jetzt eins. Es ist das eine Passwort für alles hier: LosOS cloud, die Apps auf Handy und Computer und diese Admin-Seiten.",
+    en: "This box made itself a random password when it was installed and showed it to nobody, which is why nothing can sign in yet. Choose one now. It is the one password for everything here: LosOS Cloud, the apps on your phone and computer, and these admin pages.",
+    sk: "Toto zariadenie si pri inštalácii vytvorilo náhodné heslo a nikomu ho neukázalo, preto sa zatiaľ nikto nemôže prihlásiť. Zvoľte si teraz vlastné. Je to jediné heslo na všetko: LosOS Cloud, aplikácie v telefóne a počítači aj tieto správcovské stránky.",
+    de: "Diese Box hat sich bei der Installation ein zufälliges Passwort gegeben und es niemandem gezeigt, deshalb kann sich noch niemand anmelden. Wähl jetzt eins. Es ist das eine Passwort für alles hier: LosOS Cloud, die Apps auf Handy und Computer und diese Admin-Seiten.",
   },
   "wizard.signin.waiting.title": {
     en: "Waiting for this box to finish starting",
@@ -492,14 +492,14 @@ export default defineMessages({
     de: "Dein Name bei LosOS Login",
   },
   "wizard.signin.done.name": {
-    en: "Your LosOS cloud account",
-    sk: "Váš účet v LosOS cloud",
-    de: "Dein Konto in LosOS cloud",
+    en: "Your LosOS Cloud account",
+    sk: "Váš účet v LosOS Cloud",
+    de: "Dein Konto in LosOS Cloud",
   },
   "wizard.signin.done.body": {
-    en: "LosOS Login opens these admin pages. The LosOS cloud account is the one to type on the sign-in page at the end of the wizard, and in the desktop and phone apps. Both take the password you just set.",
-    sk: "LosOS Login otvára tieto správcovské stránky. Účet LosOS cloud zadáte na prihlasovacej stránke na konci sprievodcu a v aplikáciách pre počítač a telefón. Oba berú heslo, ktoré ste práve nastavili.",
-    de: "LosOS Login öffnet diese Admin-Seiten. Das Konto in LosOS cloud gibst du auf der Anmeldeseite am Ende der Einrichtung ein und in den Apps für Computer und Handy. Beide nehmen das Passwort, das du gerade festgelegt hast.",
+    en: "LosOS Login opens these admin pages. The LosOS Cloud account is the one to type on the sign-in page at the end of the wizard, and in the desktop and phone apps. Both take the password you just set.",
+    sk: "LosOS Login otvára tieto správcovské stránky. Účet LosOS Cloud zadáte na prihlasovacej stránke na konci sprievodcu a v aplikáciách pre počítač a telefón. Oba berú heslo, ktoré ste práve nastavili.",
+    de: "LosOS Login öffnet diese Admin-Seiten. Das Konto in LosOS Cloud gibst du auf der Anmeldeseite am Ende der Einrichtung ein und in den Apps für Computer und Handy. Beide nehmen das Passwort, das du gerade festgelegt hast.",
   },
   "wizard.signin.err.unauthorized": {
     en: "This box stopped accepting the admin key. Unlock the page again, then set the password.",

@@ -363,7 +363,7 @@ in
   '';
   scripts.test-tui.description = "Build the static losos and drive it in a pseudo-terminal.";
 
-  scripts.check-flake.exec = "command nix flake check --no-build -L";
+  scripts.check-flake.exec = ''"$DEVENV_ROOT/nix/check-flake.sh" "$DEVENV_ROOT"'';
   scripts.check-flake.description = "Evaluate every flake output (builds nothing).";
 
   # devenv runs standalone (see flake.nix), so there are two lock files:

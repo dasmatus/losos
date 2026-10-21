@@ -87,7 +87,7 @@ let
   # the native path sets through services.nextcloud.settings, rendered to
   # PHP. integrity.check.disabled matches what services.nextcloud sets on the
   # same package: nextcloud-stack.nix overwrites a few core/img/ files with
-  # LosOS cloud's, the store is read-only, and Nix checks it already.
+  # LosOS Cloud's, the store is read-only, and Nix checks it already.
   nextcloudImageConfig = pkgs.writeText "losos-image.config.php" ''
     <?php
     $CONFIG = [
@@ -274,7 +274,7 @@ let
     '';
   };
 
-  # A person's name and address from LosOS Login, kept in LosOS cloud
+  # A person's name and address from LosOS Login, kept in LosOS Cloud
   # (backend/src/app_names.rs). Same shape as the two above.
   #
   # Contract, depended on by backend/src/setup.rs (`IMAGE_OCC_PERSON`):
@@ -304,7 +304,7 @@ let
     '';
   };
 
-  # The owner's LosOS cloud apps, from the Apps pane: lososd execs
+  # The owner's LosOS Cloud apps, from the Apps pane: lososd execs
   # `/bin/losos-nextcloud-apps <verb> [id]` in this pod (backend/src/cloud_apps.rs).
   # The contract is in modules/nextcloud-stack.nix (`appsTool`); the prelude
   # is what the entrypoint's `occ` does before every call, which an external

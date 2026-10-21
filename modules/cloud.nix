@@ -177,7 +177,7 @@ in
       };
     };
 
-    # The share in a file manager's Network view, while the LosOS cloud pod
+    # The share in a file manager's Network view, while the LosOS Cloud pod
     # does not announce its own (modules/containers.nix).
     losos.mdns.services = lib.mkIf (config.losos.nextcloud.mode != "container") {
       losos-cloud =

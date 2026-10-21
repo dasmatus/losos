@@ -145,7 +145,7 @@ KeePassXC all work. Every item carries `service=losos` and a `kind`:
 |---|---|---|
 | `gpg-key` | `fingerprint` | the armoured secret key, as exported (still under its passphrase if it had one) |
 | `host` | `url` | JSON: `{"url", "kind": "box"\|"edge", "fingerprint", "publicKey", "token", "keyFingerprint", "tlsPin"?}` |
-| `cloud` | `url` | JSON: `{"url", "user", "secret", "location"}`, the LosOS cloud app password of `losos cloud setup` |
+| `cloud` | `url` | JSON: `{"url", "user", "secret", "location"}`, the LosOS Cloud app password of `losos cloud setup` |
 | `git` | `url`, `protocol`, `server` | the same, with the LosOS Git token of `losos git setup`; `server` is the host as git's credential protocol names it |
 
 `losos cloud setup` also stores the app password under GVfs's own schema,
@@ -169,7 +169,7 @@ different certificate stops the call with a warning, and `losos login` again
 pins the new one once the owner has checked it. An edge with a public
 certificate gets no pin.
 
-## This computer: LosOS cloud and LosOS Git
+## This computer: LosOS Cloud and LosOS Git
 
 `losos cloud setup` and `losos git setup` ask the box for a credential of
 the computer's own over a sealed call:
@@ -185,7 +185,7 @@ creates an access token only under Basic auth with the account's password;
 its API refuses an administrator's token, `Sudo` and a token used as a
 password for that route. lososd sends both requests over loopback with the
 password in a Basic header, never in an argv or a file, as the sign-in
-does (`backend/src/devices.rs`). For Git, LosOS cloud judges the password
+does (`backend/src/devices.rs`). For Git, LosOS Cloud judges the password
 first and LosOS Git is given it before Forgejo is asked. A token named
 `LosOS on <device>` from an earlier setup is deleted first, since Forgejo
 refuses a second token of one name. Its scopes are `write:repository` and
@@ -205,5 +205,5 @@ credential`, so only `losos` answers for the box, and
 `http.<url>.sslVerify false` and `http.<url>.pinnedPubkey
 sha256//<base64>` of the certificate's public key, read over the pinned
 connection, which is libcurl's form of the same pin. `cloud setup` adds
-`<davs location> LosOS cloud` to `$XDG_CONFIG_HOME/gtk-3.0/bookmarks` once.
+`<davs location> LosOS Cloud` to `$XDG_CONFIG_HOME/gtk-3.0/bookmarks` once.
 

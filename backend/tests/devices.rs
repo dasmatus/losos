@@ -102,7 +102,7 @@ fn the_git_token_is_made_as_the_owner_with_the_password() {
     assert_eq!(out["path"], "/forgejo/");
 
     // LosOS Git was given the password first, so a password changed inside
-    // LosOS cloud is the one Forgejo checks.
+    // LosOS Cloud is the one Forgejo checks.
     let synced = f
         .forgejo_calls
         .iter()

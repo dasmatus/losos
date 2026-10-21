@@ -134,7 +134,7 @@ fn text_in_cloud_files_and_git_repositories_reaches_the_palette() {
     let dir = TempDir::new().unwrap();
     let d = dir.path();
 
-    // LosOS cloud: two files, one of them matching, then an index pass.
+    // LosOS Cloud: two files, one of them matching, then an index pass.
     let files = d.join("files");
     std::fs::create_dir_all(files.join("Documents")).unwrap();
     std::fs::write(

@@ -15,6 +15,7 @@ import {
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { useTheme } from "@/components/ui/theme-toggle";
+import { popupMotion } from "@/components/ui/motion";
 import { toast } from "@/components/ui/toast";
 import {
   ariaKeys,
@@ -343,9 +344,7 @@ export function ContextMenuHost({
 
 const POPUP = cn(
   "max-h-(--available-height) min-w-52 overflow-y-auto rounded-card border border-line bg-surface p-1 text-ink shadow-md outline-none",
-  "origin-(--transform-origin) transition-[opacity,scale] duration-100 ease-out motion-reduce:transition-none",
-  "data-starting-style:scale-95 data-starting-style:opacity-0",
-  "data-ending-style:scale-95 data-ending-style:opacity-0",
+  popupMotion,
 );
 
 const ITEM = cn(

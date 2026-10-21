@@ -39,11 +39,11 @@ Doppelpunkt, den du irgendwo außerhalb eines Textfelds tippst. Sie findet:
 
 - die Bereiche und Einstellungsbereiche, nach Namen oder nach einem Wort wie
   „gpu“ oder „hostname“, in der Sprache auf dem Bildschirm oder auf Englisch
-- die Apps in LosOS cloud und LosOS Git
-- Dateien und Ordner in LosOS cloud, nach Namen
+- die Apps in LosOS Cloud und LosOS Git
+- Dateien und Ordner in LosOS Cloud, nach Namen
 - Repositorys in LosOS Git
 - Text in Dateien, sobald du drei Buchstaben tippst: in deinen Dateien in
-  LosOS cloud und im Hauptzweig jedes Repositorys in LosOS Git
+  LosOS Cloud und im Hauptzweig jedes Repositorys in LosOS Git
 - deine angehefteten Einträge
 - Apps zum Installieren aus Artifact Hub; wählst du eine, öffnet sich der
   Bereich Apps mit ihrem Installationsdialog
@@ -56,13 +56,13 @@ markierten Eintrag, und Escape schließt die Liste. Dateien und Repositorys
 Eintrag in einem neuen Tab.
 
 :::note[Die Dateisuche braucht das App-Passwort der Box]
-Die Dateisuche benutzt ein App-Passwort, das die Box von LosOS cloud
+Die Dateisuche benutzt ein App-Passwort, das die Box von LosOS Cloud
 bekommt, wenn das Passwort des Besitzers gesetzt wird, und das tut der
 Assistent. Fehlt es, sagt die Liste das anstelle der Dateien; siehe
 [Wie die Box deine Dateien auflistet](#pins) weiter unten.
 :::
 
-Damit du in deinen Dateien in LosOS cloud suchen kannst, führt die Box einen
+Damit du in deinen Dateien in LosOS Cloud suchen kannst, führt die Box einen
 Index ihres Texts. Sie prüft alle zwei Minuten auf neue und geänderte Dateien
 und liest nur diese. Sie liest reinen Text und Code, Markdown, CSV, JSON und
 HTML, OpenDocument-Dateien, Word-, Excel- und PowerPoint-Dateien in ihren
@@ -108,7 +108,7 @@ Eintrag für eine Funktion, die die Box nicht hat, fehlt, statt grau zu sein.
 Hefte die Apps, Dateien und Repositorys an, die du am häufigsten öffnest,
 und sie stehen unter **Angeheftet** in der Seitenleiste. Ein angehefteter
 Eintrag öffnet sich in seiner eigenen App: eine Datei oder ein Ordner in
-LosOS cloud, ein Repository in LosOS Git, eine App auf der Übersicht oder
+LosOS Cloud, ein Repository in LosOS Git, eine App auf der Übersicht oder
 eine App, die du über die Suche installiert hast, auf ihrem eigenen Port.
 Die Box speichert die Liste, sodass jeder Browser, mit dem du dich
 anmeldest, dieselben Einträge zeigt.
@@ -118,7 +118,7 @@ anmeldest, dieselben Einträge zeigt.
 - Auf der Seite Apps steht **Anheften** neben jeder installierten App.
 - Der Stift neben **Angeheftet** öffnet die ganze Liste. Dort schiebst du
   einen Eintrag nach oben oder unten, löst ihn und heftest aus drei Tabs an:
-  **Apps**, **Dateien**, das durch die Ordner von LosOS cloud führt, und
+  **Apps**, **Dateien**, das durch die Ordner von LosOS Cloud führt, und
   **Repositorys**.
 - Zeige in der Seitenleiste auf einen Eintrag und klicke auf die
   durchgestrichene Nadel, um ihn zu lösen. Die [Suche](#search) findet
@@ -131,13 +131,13 @@ anmeldest, dieselben Einträge zeigt.
 
 ![Die Übersicht mit sechs Einträgen unter Angeheftet in der Seitenleiste; die angehefteten Kacheln Kalender und Notizen sind markiert.](@site/docs/img/pins-overview-de.png)
 
-![Die Liste der angehefteten Einträge, mit dem Tab Dateien auf dem Ordner Documents von LosOS cloud geöffnet.](@site/docs/img/pins-dialog-de.png)
+![Die Liste der angehefteten Einträge, mit dem Tab Dateien auf dem Ordner Documents von LosOS Cloud geöffnet.](@site/docs/img/pins-dialog-de.png)
 
 :::note[Wie die Box deine Dateien auflistet]
 Die Box listet deine Dateien mit einem App-Passwort auf, das sie bei LosOS
 cloud anfordert, wenn das Passwort des Besitzers gesetzt wird, und das tut
 der Assistent. Das App-Passwort erscheint in den Sicherheitseinstellungen
-von LosOS cloud als „LosOS admin page“. Widerrufst du es dort, enden die
+von LosOS Cloud als „LosOS admin page“. Widerrufst du es dort, enden die
 Auflistung und die Dateisuche, bis das Passwort des Besitzers wieder gesetzt
 wird, über den Weg mit dem Ersatzschlüssel unter
 [Passwort vergessen](../troubleshooting/forgot-password#you-have-the-spare-admin-key). Die Seitenleiste fasst 24 angeheftete Einträge.
@@ -191,7 +191,7 @@ und der Ersatzschlüssel](sign-in-and-spare-key).
 ## Was die Admin-Seiten nicht können \{#what-the-admin-pages-cannot-do}
 
 Es gibt keinen Dateibrowser, kein Terminal und keine Log-Anzeige. Deine
-Dateien liegen in LosOS cloud; der Tab **Dateien** in der Liste der
+Dateien liegen in LosOS Cloud; der Tab **Dateien** in der Liste der
 angehefteten Einträge zeigt Ordner nur, damit du aus ihnen anheften kannst.
 Die Box hat keine Shell, also haben auch die Seiten keine. Über sich selbst
 berichtet die Box auf der Übersicht, im Bereich Speicher und im Bereich

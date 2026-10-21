@@ -1,4 +1,4 @@
-//! The settings of LosOS cloud and LosOS Git, on a route of their own.
+//! The settings of LosOS Cloud and LosOS Git, on a route of their own.
 //!
 //! `GET /api/site` and `POST /api/site` are the apps section's way to change
 //! what Nextcloud's Administration settings and Forgejo's Site administration
@@ -51,7 +51,7 @@ pub fn view(doc: &OptionsDoc, overrides: &str) -> Value {
 pub fn check(doc: &OptionsDoc, name: &str, raw: Option<&str>) -> Result<(), Rejected> {
     if !is_site(name) {
         return Err(Rejected(format!(
-            "losos.{name} is not a setting of LosOS cloud or LosOS Git"
+            "losos.{name} is not a setting of LosOS Cloud or LosOS Git"
         )));
     }
     let Some(opt) = doc.find(name) else {

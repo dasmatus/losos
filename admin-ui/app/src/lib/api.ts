@@ -316,10 +316,15 @@ export async function signInPageReady(signal?: AbortSignal): Promise<boolean> {
 export function signOut(): void {
   const session = me !== null && !me.spareKey;
   dropToken();
-  if (session) {
-    const home = `https://${window.location.host}/`;
-    window.location.assign(`https://${window.location.host}/auth/logout?rd=${encodeURIComponent(home)}`);
-  }
+  if (session) signOutTo("/");
+}
+
+/** End the LosOS Login session and come back to `path` on this box, which
+ *  then asks for a sign-in again. Every app's Sign out button goes here, so
+ *  signing out of one app signs the person out of all of them. */
+export function signOutTo(path: string): void {
+  const back = `https://${window.location.host}${path}`;
+  window.location.assign(`https://${window.location.host}/auth/logout?rd=${encodeURIComponent(back)}`);
 }
 
 /* A 401 on a stored token is the session ending, and every screen has to
@@ -582,7 +587,7 @@ export interface EdgeResponse {
   manage?: EdgeManage;
 }
 
-/** The switch that lets a company edge on this LAN manage LosOS cloud,
+/** The switch that lets a company edge on this LAN manage LosOS Cloud,
  *  LosOS Git and the apps (backend/src/edge.rs, "management"). */
 export interface EdgeManage {
   /** The edge in use that could manage the box, or null. */
@@ -1551,7 +1556,7 @@ export function postAppInstall(request: AppInstallRequest, options: RequestOptio
   });
 }
 
-// ── LosOS cloud's own apps ────────────────────────────────────────────────
+// ── LosOS Cloud's own apps ────────────────────────────────────────────────
 // backend/src/cloud_apps.rs. lososd runs Nextcloud's own app commands.
 
 /** Where an app lives: shipped with Nextcloud, shipped with LosOS, or added
@@ -1589,7 +1594,7 @@ export interface CloudStoreApp {
   featured: boolean;
 }
 
-/** GET /api/cloud/apps — every app LosOS cloud has. */
+/** GET /api/cloud/apps — every app LosOS Cloud has. */
 export function getCloudApps(options: RequestOptions = {}): Promise<CloudAppsResponse> {
   return call<CloudAppsResponse>("/api/cloud/apps", options);
 }
@@ -2684,7 +2689,7 @@ export function getOptions(options: RequestOptions = {}): Promise<OptionsRespons
   return call<OptionsResponse>("/api/options", options);
 }
 
-/** GET /api/site: the settings of LosOS cloud and LosOS Git only, in the
+/** GET /api/site: the settings of LosOS Cloud and LosOS Git only, in the
  *  shape of GET /api/options. Open to the apps section and to a company edge
  *  the owner lets manage the box. */
 export function getSite(options: RequestOptions = {}): Promise<OptionsResponse> {
@@ -2807,7 +2812,7 @@ export type Pin =
   | { kind: "tile"; app: string }
   /** An app installed from the Apps search, by release name. */
   | { kind: "app"; release: string }
-  /** A file or folder in LosOS cloud. */
+  /** A file or folder in LosOS Cloud. */
   | { kind: "file"; id: number; path: string; folder: boolean }
   /** A repository on LosOS Git. */
   | { kind: "repo"; owner: string; name: string };
@@ -2835,7 +2840,7 @@ export function putPins(pins: readonly Pin[], options: RequestOptions = {}): Pro
 
 export interface CloudEntry {
   name: string;
-  /** From the top of LosOS cloud: "/Documents/plan.pdf". */
+  /** From the top of LosOS Cloud: "/Documents/plan.pdf". */
   path: string;
   id: number;
   folder: boolean;
@@ -2845,10 +2850,10 @@ export interface CloudEntry {
 export type CloudFilesResponse =
   | { available: true; path: string; query: string | null; entries: CloudEntry[]; more: boolean }
   /** signIn: the box holds no key to the owner's files until they sign in
-   *  with their password once. notUp: LosOS cloud did not answer. */
+   *  with their password once. notUp: LosOS Cloud did not answer. */
   | { available: false; reason: "signIn" | "notUp"; path: string; query: string | null; entries: [] };
 
-/** GET /api/cloud/files — one folder of LosOS cloud, folders first; with a
+/** GET /api/cloud/files — one folder of LosOS Cloud, folders first; with a
  *  query, the files and folders anywhere whose name holds it. */
 export function getCloudFiles(
   where: { path: string } | { query: string },

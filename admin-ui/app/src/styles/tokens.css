@@ -88,7 +88,6 @@
     color-scheme: dark;
 
     --ground: #0a0e12;
-  --ground-rgb: 10, 14, 18;
     --ground-rgb: 10, 14, 18;
     --surface: #141b22;
     --surface-rgb: 20, 27, 34;
@@ -132,6 +131,7 @@
   color-scheme: dark;
 
   --ground: #0a0e12;
+  --ground-rgb: 10, 14, 18;
   --surface: #141b22;
   --surface-rgb: 20, 27, 34;
   --sunk: #10171d;

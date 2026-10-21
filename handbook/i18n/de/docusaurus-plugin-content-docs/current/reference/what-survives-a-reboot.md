@@ -11,7 +11,7 @@ hängt sie per Bind-Mount wieder an ihren Platz:
 
 | Behalten                   | Enthält                                                               |
 | -------------------------- | --------------------------------------------------------------------- |
-| `/home/notshared`          | Die Daten von LosOS cloud: deine Dateien, Fotos, Datenbank            |
+| `/home/notshared`          | Die Daten von LosOS Cloud: deine Dateien, Fotos, Datenbank            |
 | `/home/shared`             | Den an das Mesh verliehenen Platz, separat verschlüsselt und unlesbar, solange das Teilen aus ist |
 | `/var`                     | Die Daten von LosOS Git, Zustand und Geheimnisse der Box, den Zustand der beiden Cluster, Logs |
 | `/nix`                     | Das System selbst, jede Version, die für das Bootmenü aufbewahrt wird |
@@ -44,7 +44,7 @@ füllen:
 - Das Systemjournal belegt höchstens 512 MB und nichts, was älter als einen
   Monat ist. Die Größe stellt `losos.logs.journalMaxUse` im Bereich
   Erweitert ein.
-- LosOS cloud, LosOS Git und jede App behalten höchstens drei
+- LosOS Cloud, LosOS Git und jede App behalten höchstens drei
   Protokolldateien zu 10 MB pro Container.
 - Das Zugriffsprotokoll des Webservers beginnt jede Woche eine neue Datei,
   bei 20 MB auch früher, und behält acht alte.

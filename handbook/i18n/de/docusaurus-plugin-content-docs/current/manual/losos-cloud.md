@@ -9,8 +9,8 @@ slug: /manual/losos-cloud
 LosOS Cloud ist der eigene Dateidienst der Box: deine Dateien im Browser,
 ein Netzwerkordner für den Dateimanager und ein Server, mit dem sich die
 Nextcloud-Apps für Computer und Telefon synchronisieren. Er läuft auf der
-Box neben LosOS cloud, das er App für App übernimmt; vorerst haben beide
-getrennte Dateien.
+Box neben dem Nextcloud-Dienst unter `/nextcloud/`, den er App für App
+übernimmt; vorerst haben beide getrennte Dateien.
 
 Öffne ihn unter `https://<name>.local/cloud/`. `<name>` ist der Name der
 Box, wie er auf ihrem Bildschirm steht. Du meldest dich mit LosOS Login an,
@@ -61,7 +61,7 @@ https://<name>.local/remote.php/webdav/
 Im Netz der Box zeigen GNOME Files und Dolphin sie im Netzwerk als **LosOS
 Cloud on `<name>`**. Windows und macOS fügen sie über die Adresse hinzu,
 wie in [Dateien auf deinem Computer](files-on-your-computer), mit dieser
-Adresse statt der von LosOS cloud. Installiere vorher das Zertifikat der
+Adresse statt der von LosOS Cloud. Installiere vorher das Zertifikat der
 Box, wie im [ersten Start, Schritt 1](../start/first-run#step-1-trust-this-box).
 
 Im Netz der Box nimmt die Freigabe deinen Namen und dein Passwort für LosOS

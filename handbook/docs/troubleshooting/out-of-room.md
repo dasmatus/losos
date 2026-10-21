@@ -9,7 +9,7 @@ slug: /troubleshooting/out-of-room
 <div className="losos-symptom">
 
 **What you see:** the Overview says **Almost full** or **Out of room**;
-uploads to LosOS cloud fail; an Apply or the nightly update fails.
+uploads to LosOS Cloud fail; an Apply or the nightly update fails.
 
 </div>
 
@@ -29,7 +29,7 @@ act before **Out of room**.
 1. **Claim the reserve.** Storage pane → **Use the reserve**. The installer
    held back 10 % of the disk for this. Claiming it takes a minute and
    needs no restart. See [Disk growth](../manual/disk-growth).
-2. **Empty the trash in LosOS cloud.** Deleted files sit in "Deleted files"
+2. **Empty the trash in LosOS Cloud.** Deleted files sit in "Deleted files"
    for 30 days and still take room. Photos app thumbnails and old file
    versions, under "Versions" in a file's sidebar, add up too.
 3. **Wait a night.** The 04:30 clean-up deletes old system versions. If the

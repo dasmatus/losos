@@ -57,7 +57,7 @@ gedruckten Blatt ein. Die Admin-Seiten gehen auf.
 Mit dem Schlüssel kannst du außerdem ein neues Passwort für den Besitzer
 setzen, also für die Person, die die Box eingerichtet hat, über denselben
 Weg, den der Assistent benutzt hat. Er ändert das Anmeldepasswort des
-Besitzers und sein Passwort für LosOS cloud zusammen. In den Bereichen gibt
+Besitzers und sein Passwort für LosOS Cloud zusammen. In den Bereichen gibt
 es dafür noch keine Schaltfläche, also führst du einen Befehl auf einem
 Rechner im LAN aus. Ersetze den Schlüssel, die Adresse und das Passwort. Das
 neue Passwort muss die vier Regeln erfüllen:
@@ -68,9 +68,9 @@ curl -H "Authorization: Bearer <spare key>" -H "Content-Type: application/json" 
   http://<address>/api/set-password
 ```
 
-Die Antwort nennt das Konto in LosOS cloud, das zurückgesetzt wurde. Melde
+Die Antwort nennt das Konto in LosOS Cloud, das zurückgesetzt wurde. Melde
 dich bei LosOS Login mit deinem Anmeldenamen und dem neuen Passwort an;
-LosOS cloud und LosOS Git folgen.
+LosOS Cloud und LosOS Git folgen.
 
 ## Du hast keins von beiden \{#you-have-neither}
 

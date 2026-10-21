@@ -64,8 +64,8 @@ export interface SceneDef {
 
 /* ── 1. Overview: an app opens from its tile and folds back into it ─────── */
 
-/* LosOS cloud's six apps, as the Overview's tiles. The Board is the
- * catalogue's kanban app under the name LosOS cloud gives it. */
+/* LosOS Cloud's six apps, as the Overview's tiles. The Board is the
+ * catalogue's kanban app under the name LosOS Cloud gives it. */
 const OVERVIEW_APPS: readonly { id: AppId; name?: MessageKey }[] = [
   { id: "files" },
   { id: "calendar" },
@@ -261,7 +261,7 @@ function AppsScene({ frame: f }: SceneProps) {
   };
 
   const mine = [
-    { icon: CloudIcon, name: "LosOS cloud" },
+    { icon: CloudIcon, name: "LosOS Cloud" },
     { icon: GitBranchIcon, name: "LosOS Git" },
   ];
 

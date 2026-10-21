@@ -95,13 +95,13 @@ assert must ((config.systemd.services.lososd.serviceConfig.ProcSubset or "all") 
 assert must (shared.lososInternal.federation.forgejo && shared.lososInternal.federation.nextcloud)
   "with losos.sharingMyStorage on and both federation switches at their defaults, lososInternal.federation is not on for both services";
 assert must (lib.elem "= /.well-known/nodeinfo" (frontRoutes shared) && ncRefused shared == [ ])
-  "with disk sharing on, the front vhost lacks LosOS Git's /.well-known/nodeinfo route or still refuses LosOS cloud's federation addresses";
+  "with disk sharing on, the front vhost lacks LosOS Git's /.well-known/nodeinfo route or still refuses LosOS Cloud's federation addresses";
 assert must
   (!unshared.lososInternal.federation.forgejo && !unshared.lososInternal.federation.nextcloud)
   "with losos.sharingMyStorage off, lososInternal.federation still says a service federates: the shared data pool is locked and nothing may talk to other servers";
 assert must
   (!(lib.elem "= /.well-known/nodeinfo" (frontRoutes unshared)) && ncRefused unshared != [ ])
-  "with disk sharing off, the front vhost still routes /.well-known/nodeinfo to LosOS Git or no longer refuses LosOS cloud's federation addresses";
+  "with disk sharing off, the front vhost still routes /.well-known/nodeinfo to LosOS Git or no longer refuses LosOS Cloud's federation addresses";
 assert must (mesh.boot.kernel.sysctl."vm.overcommit_memory" == 1)
   "vm.overcommit_memory is not settled on a box that joins the mesh: rke2 and redis both define it, and a clash means a box with Join the mesh on does not build";
 assert must (lib.elem "node.longhorn.io/create-default-disk=true" mesh.services.rke2.nodeLabel)

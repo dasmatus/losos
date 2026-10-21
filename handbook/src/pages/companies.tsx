@@ -45,7 +45,7 @@ function useLocaleSvg(svgs: Record<string, Svg>): Svg {
 
 const IN_THE_BOX: Feature[] = [
   {
-    title: <Translate id="losos.companies.box.cloud.title">LosOS cloud</Translate>,
+    title: <Translate id="losos.companies.box.cloud.title">LosOS Cloud</Translate>,
     body: (
       <Translate id="losos.companies.box.cloud.body">
         Files, photos, calendar, contacts, notes, tasks, Deck, Forms, Tables
@@ -152,7 +152,7 @@ const EUROPEAN: Feature[] = [
     title: 'Nextcloud',
     body: (
       <Translate id="losos.companies.eu.nextcloud">
-        The base of LosOS cloud. Developed by Nextcloud GmbH in Stuttgart,
+        The base of LosOS Cloud. Developed by Nextcloud GmbH in Stuttgart,
         Germany.
       </Translate>
     ),
@@ -184,7 +184,7 @@ function WhereDataLives(): ReactNode {
   const rows: [ReactNode, ReactNode][] = [
     [
       <Translate id="losos.companies.where.files.what">
-        Files, photos, calendars and contacts in LosOS cloud
+        Files, photos, calendars and contacts in LosOS Cloud
       </Translate>,
       <Translate id="losos.companies.where.files.where">
         On the box, on its encrypted disk
@@ -612,7 +612,7 @@ export default function Companies(): ReactNode {
           <p className={styles.prose}>
             <Translate id="losos.companies.eu.languages">
               The admin pages and this handbook come in English, Slovak and
-              German. LosOS cloud and LosOS Git follow each person's browser
+              German. LosOS Cloud and LosOS Git follow each person's browser
               language and carry many more.
             </Translate>
           </p>

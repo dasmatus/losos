@@ -1,4 +1,4 @@
-/* Pins on the sidebar: apps, LosOS cloud files and LosOS Git repositories
+/* Pins on the sidebar: apps, LosOS Cloud files and LosOS Git repositories
  * the owner pins, kept on the box (backend/src/pins.rs).
  *
  * Same arrangement as the other files: the real dist/ bundle, the API
@@ -195,7 +195,7 @@ await check('an Overview tile pins its app, and says so once it is pinned', asyn
   await page.close();
 });
 
-await check('the dialog pins a file from a folder of LosOS cloud and a repository from LosOS Git', async () => {
+await check('the dialog pins a file from a folder of LosOS Cloud and a repository from LosOS Git', async () => {
   const { page, box } = await open({ pins: [{ kind: 'tile', app: 'calendar' }] });
   await pinned(page).getByRole('button', { name: 'Edit pins' }).click();
   const dialog = page.getByRole('dialog', { name: 'Pins' });
@@ -248,7 +248,7 @@ await check('the apps tab pins an app installed from the search', async () => {
   await page.close();
 });
 
-await check('without a key to LosOS cloud the files tab says how to get one', async () => {
+await check('without a key to LosOS Cloud the files tab says how to get one', async () => {
   const { page } = await open({ files: 'signIn' });
   await pinned(page).getByRole('button', { name: 'Edit pins' }).click();
   const dialog = page.getByRole('dialog', { name: 'Pins' });

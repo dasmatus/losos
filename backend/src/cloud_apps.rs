@@ -1,6 +1,6 @@
-//! LosOS cloud's own apps, managed from the admin UI's Apps pane.
+//! LosOS Cloud's own apps, managed from the admin UI's Apps pane.
 //!
-//! The owner sees every app LosOS cloud (Nextcloud) has, turns each one on or
+//! The owner sees every app LosOS Cloud (Nextcloud) has, turns each one on or
 //! off, adds apps from Nextcloud's app store and removes the ones added that
 //! way. The work is Nextcloud's own: every change is an `occ app:*` run by
 //! `losos-nextcloud-apps` (modules/nextcloud-stack.nix, `appsTool`), which is
@@ -21,7 +21,7 @@
 //! root (`offFile` in nextcloud-stack.nix) and start-up honours it.
 //!
 //! A few apps are LosOS's, not the owner's: sign-in with LosOS Login, the
-//! sharing switch, the LosOS cloud look, and the welcome wizard LosOS turns
+//! sharing switch, the LosOS Cloud look, and the welcome wizard LosOS turns
 //! off. They are listed with the reason and cannot be changed here
 //! ([`MANAGED`]), and neither can the ones Nextcloud itself will not run
 //! without (`alwaysEnabled` in core/shipped.json).
@@ -59,7 +59,7 @@ pub const MANAGED: &[(&str, Managed)] = &[
     ("provisioning_api", Managed::SignIn),
     // On only while the box shares its storage (lososInternal.federation).
     ("federation", Managed::Sharing),
-    // The LosOS cloud look (admin-ui/themes/).
+    // The LosOS Cloud look (admin-ui/themes/).
     ("theming", Managed::Look),
     // Off on every start: it would open inside the setup wizard.
     ("firstrunwizard", Managed::Wizard),
@@ -251,24 +251,24 @@ pub fn check(apps: &[CloudApp], verb: Verb, id: &str) -> anyhow::Result<bool> {
         let what = match why {
             Managed::SignIn => "signing in",
             Managed::Sharing => "the sharing switch",
-            Managed::Look => "the LosOS cloud look",
+            Managed::Look => "the LosOS Cloud look",
             Managed::Wizard => "the setup wizard",
         };
         return Err(Invalid(format!("LosOS keeps {id} as it is for {what}.")).into());
     }
     match (verb, app) {
         (Verb::Install, Some(_)) => {
-            Err(Conflict(format!("{id} is already in LosOS cloud.")).into())
+            Err(Conflict(format!("{id} is already in LosOS Cloud.")).into())
         }
         (Verb::Install, None) => Ok(true),
-        (_, None) => Err(Invalid(format!("LosOS cloud has no app called {id}.")).into()),
+        (_, None) => Err(Invalid(format!("LosOS Cloud has no app called {id}.")).into()),
         (_, Some(app)) if app.locked == Some(Locked::Nextcloud) => {
-            Err(Invalid(format!("LosOS cloud does not run without {}.", app.name)).into())
+            Err(Invalid(format!("LosOS Cloud does not run without {}.", app.name)).into())
         }
         (Verb::Enable, Some(app)) => Ok(!app.enabled),
         (Verb::Disable, Some(app)) => Ok(app.enabled),
         (Verb::Remove, Some(app)) if app.kind != Kind::Store => Err(Invalid(format!(
-            "{} came with LosOS cloud, so it can be turned off but not removed.",
+            "{} came with LosOS Cloud, so it can be turned off but not removed.",
             app.name
         ))
         .into()),
@@ -300,7 +300,7 @@ pub fn interpret(outcome: &OccOutcome, verb: Verb, id: &str) -> Result<(), Faile
     let combined = format!("{}\n{}", outcome.stdout, outcome.stderr);
     if combined.contains("not installed") && combined.contains("Nextcloud") {
         return Err(Failed(
-            "LosOS cloud is still installing itself; try again in a few minutes.".to_string(),
+            "LosOS Cloud is still installing itself; try again in a few minutes.".to_string(),
         ));
     }
     let detail = last_line(&outcome.stderr).or_else(|| last_line(&outcome.stdout));
@@ -311,8 +311,8 @@ pub fn interpret(outcome: &OccOutcome, verb: Verb, id: &str) -> Result<(), Faile
         Verb::Remove => "remove",
     };
     Err(Failed(match detail {
-        Some(d) => format!("LosOS cloud could not {what} {id}: {d}"),
-        None => format!("LosOS cloud could not {what} {id} (exit {}).", outcome.code),
+        Some(d) => format!("LosOS Cloud could not {what} {id}: {d}"),
+        None => format!("LosOS Cloud could not {what} {id} (exit {}).", outcome.code),
     }))
 }
 
@@ -479,14 +479,14 @@ pub fn search(index: &[StoreApp], query: &str) -> Vec<StoreApp> {
 
 // ── Commands ──────────────────────────────────────────────────────────────
 
-/// Find the running LosOS cloud, or say it is not running yet.
+/// Find the running LosOS Cloud, or say it is not running yet.
 fn locate<L: Losos>(l: &mut L) -> anyhow::Result<Target> {
     let mode = l.nextcloud_mode()?;
     l.nextcloud_target(mode).map_err(|e| {
         tracing::info!(error = %e, "cloud apps: Nextcloud not found");
         Conflict(match mode {
-            NcMode::Container => "LosOS cloud is not running yet.".to_string(),
-            NcMode::Native => "LosOS cloud cannot be reached.".to_string(),
+            NcMode::Container => "LosOS Cloud is not running yet.".to_string(),
+            NcMode::Native => "LosOS Cloud cannot be reached.".to_string(),
         })
         .into()
     })
@@ -499,12 +499,12 @@ fn list<L: Losos>(l: &mut L, target: &Target) -> anyhow::Result<Vec<CloudApp>> {
             .or_else(|| last_line(&out.stdout))
             .unwrap_or_else(|| format!("exit {}", out.code));
         tracing::warn!(detail = detail.as_str(), "losos-nextcloud-apps list failed");
-        return Err(Failed(format!("LosOS cloud did not list its apps: {detail}")).into());
+        return Err(Failed(format!("LosOS Cloud did not list its apps: {detail}")).into());
     }
     parse_list(&out.stdout)
 }
 
-/// `GET /api/cloud/apps`. A LosOS cloud that is not running, or not
+/// `GET /api/cloud/apps`. A LosOS Cloud that is not running, or not
 /// answering yet, is `available: false` with the reason, never an error:
 /// on a box in its first minutes that is the normal state.
 pub fn cmd_cloud_apps<L: Losos>(l: &mut L) -> anyhow::Result<serde_json::Value> {
@@ -541,7 +541,7 @@ pub fn cmd_cloud_app<L: Losos>(
 }
 
 /// `GET /api/cloud/apps/search?q=`: the app store's best matches. Whether
-/// each is already in LosOS cloud is the page's to tell from its list.
+/// each is already in LosOS Cloud is the page's to tell from its list.
 pub fn cmd_cloud_store_search<L: Losos>(
     l: &mut L,
     query: &str,
@@ -684,7 +684,7 @@ mod tests {
         assert!(refused(Verb::Remove, "deck").contains("turned off but not removed"));
         assert!(refused(Verb::Remove, "activity").contains("turned off but not removed"));
         assert!(refused(Verb::Enable, "nosuchapp").contains("no app called"));
-        assert!(refused(Verb::Install, "deck").contains("already in LosOS cloud"));
+        assert!(refused(Verb::Install, "deck").contains("already in LosOS Cloud"));
     }
 
     #[test]
@@ -697,7 +697,7 @@ mod tests {
         let e = interpret(&out, Verb::Install, "whiteboard").unwrap_err();
         assert_eq!(
             e.0,
-            "LosOS cloud could not add whiteboard: Could not download app whiteboard"
+            "LosOS Cloud could not add whiteboard: Could not download app whiteboard"
         );
         let quiet = OccOutcome {
             code: 7,
@@ -802,7 +802,7 @@ mod tests {
         f.nextcloud_container = None;
         let v = cmd_cloud_apps(&mut f).unwrap();
         assert_eq!(v["available"], false);
-        assert_eq!(v["reason"], "LosOS cloud is not running yet.");
+        assert_eq!(v["reason"], "LosOS Cloud is not running yet.");
         assert!(f.cloud_apps_ran.is_empty());
     }
 
@@ -850,7 +850,7 @@ mod tests {
         let e = cmd_cloud_app(&mut f, Verb::Install, "mail").unwrap_err();
         assert_eq!(
             e.downcast_ref::<Failed>().unwrap().0,
-            "LosOS cloud could not add mail: App store unreachable"
+            "LosOS Cloud could not add mail: App store unreachable"
         );
     }
 

@@ -1,4 +1,4 @@
-# What the LosOS cloud apps do to get an app password, for
+# What the LosOS Cloud apps do to get an app password, for
 # nix/tests/cloud-webdav.nix: the desktop client's Login Flow v2 and the
 # phone apps' Login Flow v1, with this script doing the browser's part. The
 # browser is not signed in to anything; it meets LosOS Login on the way, as

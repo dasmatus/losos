@@ -1,4 +1,4 @@
-# Signing in to LosOS cloud and LosOS Git with LosOS Login, as plain data.
+# Signing in to LosOS Cloud and LosOS Git with LosOS Login, as plain data.
 #
 # nginx asks LosOS Login (modules/identity.nix) who is calling and tells the
 # two apps in three request headers. Nextcloud reads them through user_saml
@@ -77,7 +77,7 @@ rec {
           --general-uid_mapping=${serverVar header.user} \
           --saml-attribute-mapping-displayName_mapping=${serverVar header.name} \
           --saml-attribute-mapping-email_mapping=${serverVar header.email} >/dev/null ||
-        echo "losos: could not switch on sign-in with LosOS Login; LosOS cloud keeps its own sign-in page." >&2
+        echo "losos: could not switch on sign-in with LosOS Login; LosOS Cloud keeps its own sign-in page." >&2
     else
       ${occ} app:disable user_saml >/dev/null 2>&1 || true
     fi

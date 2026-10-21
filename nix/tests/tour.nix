@@ -35,7 +35,7 @@
 # sign-in the admin UI keeps in the browser after the wizard, and nothing in
 # this test is about LosOS Login. Build with AI's model is not part of this
 # box, only its option: the step is about what the option document says.
-# LosOS cloud is a stand-in, as in nix/tests/setup.nix: the claim asks it
+# LosOS Cloud is a stand-in, as in nix/tests/setup.nix: the claim asks it
 # one question.
 { pkgs }:
 
@@ -112,7 +112,7 @@ pkgs.testers.nixosTest {
         forgejo.enable = false;
       };
 
-      # LosOS cloud's stand-in on the port the front vhost proxies to.
+      # LosOS Cloud's stand-in on the port the front vhost proxies to.
       services.nginx.virtualHosts."stub-nextcloud" = {
         listen = [
           {

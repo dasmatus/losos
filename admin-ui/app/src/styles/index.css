@@ -86,6 +86,13 @@
   --shadow-card: var(--elev-card);
   --shadow-pop: var(--elev-pop);
 
+  /* Motion has one curve in and a quicker one out: things arrive with a
+   * fast start and a soft landing, and leave faster than they came, so a
+   * closed menu is out of the way before the next click. `ease-snap` and
+   * `ease-exit` are Tailwind utilities from these two. */
+  --ease-snap: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
   --animate-fade-in: fade-in 180ms ease-out both;
   --animate-rise: rise 220ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
   --animate-pop: pop 160ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
@@ -335,10 +342,67 @@
     overflow: visible;
   }
 
+  /* In and out as transitions, not keyframes: a dialog closed halfway in
+   * turns round from where it is. `display` and `overlay` are discrete, so
+   * the closed dialog stays in the top layer for the fade out, and
+   * @starting-style is where an opening one comes from. */
+  dialog {
+    opacity: 0;
+    scale: 0.97;
+    transition:
+      opacity 120ms var(--ease-exit),
+      scale 120ms var(--ease-exit),
+      overlay 120ms allow-discrete,
+      display 120ms allow-discrete;
+  }
+
+  dialog[open] {
+    opacity: 1;
+    scale: 1;
+    transition-duration: 200ms;
+    transition-timing-function: var(--ease-snap);
+  }
+
+  @starting-style {
+    dialog[open] {
+      opacity: 0;
+      scale: 0.97;
+    }
+  }
+
   dialog::backdrop {
-    background-color: rgb(10 14 18 / 0.45);
+    background-color: rgb(10 14 18 / 0);
     backdrop-filter: blur(2px);
-    animation: fade-in 140ms ease-out both;
+    transition:
+      background-color 140ms ease-out,
+      overlay 140ms allow-discrete,
+      display 140ms allow-discrete;
+  }
+
+  dialog[open]::backdrop {
+    background-color: rgb(10 14 18 / 0.45);
+  }
+
+  @starting-style {
+    dialog[open]::backdrop {
+      background-color: rgb(10 14 18 / 0);
+    }
+  }
+
+  /* The hand says "this does something". Tailwind v4's preflight gives a
+   * button the arrow, which reads as plain text on a page with no other
+   * cue; everything a person can press gets the hand back. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="menuitemradio"],
+  [role="option"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="radio"],
+  [role="switch"],
+  summary,
+  label[for] {
+    cursor: pointer;
   }
 
   /* Scrollbars that belong to the palette rather than to the OS. */

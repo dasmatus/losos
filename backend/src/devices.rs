@@ -1,7 +1,7 @@
 //! `POST /api/devices/cloud` and `POST /api/devices/git` — credentials for
 //! one computer of the owner's.
 //!
-//! The terminal client sets up a computer to use LosOS cloud and LosOS Git
+//! The terminal client sets up a computer to use LosOS Cloud and LosOS Git
 //! without the owner copying anything: it asks the box for a credential of
 //! that computer's own, keeps it in the computer's keychain and points the
 //! file manager and git at it. The owner's password never leaves the call,
@@ -213,14 +213,14 @@ pub fn interpret_app_password(status: u16, body: &str) -> Minted {
             {
                 Some(p) => Minted::Credential(p.to_string()),
                 None => {
-                    Minted::Unavailable("LosOS cloud answered without an app password.".to_string())
+                    Minted::Unavailable("LosOS Cloud answered without an app password.".to_string())
                 }
             }
         }
         401 => Minted::Rejected,
         429 => Minted::Throttled,
         code => Minted::Unavailable(format!(
-            "LosOS cloud answered {code} instead of an app password. It may still be starting."
+            "LosOS Cloud answered {code} instead of an app password. It may still be starting."
         )),
     }
 }
@@ -240,11 +240,11 @@ pub fn interpret_token(status: u16, body: &str) -> Minted {
                 None => Minted::Unavailable("LosOS Git answered without a token.".to_string()),
             }
         }
-        // LosOS cloud has already judged the password by now, and LosOS Git
+        // LosOS Cloud has already judged the password by now, and LosOS Git
         // was just given it, so a refusal here means the two are not in step
         // yet, not that the owner typed it wrong.
         401 | 403 => Minted::Unavailable(
-            "LosOS Git did not take the password LosOS cloud accepted. Try again in a minute."
+            "LosOS Git did not take the password LosOS Cloud accepted. Try again in a minute."
                 .to_string(),
         ),
         429 => Minted::Throttled,
