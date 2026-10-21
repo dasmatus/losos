@@ -88,6 +88,19 @@ export const LAB_CSP = [
   "form-action 'none'",
 ].join('; ');
 
+/* A mail message's HTML (backend/src/http.rs MAIL_FRAME_CSP, the same
+ * text as nginx's mail arm in modules/containers.nix). Mirror it here. */
+export const MAIL_FRAME_CSP = [
+  'sandbox allow-popups allow-popups-to-escape-sandbox',
+  "default-src 'none'",
+  "style-src 'unsafe-inline'",
+  'img-src data:',
+  'font-src data:',
+  "frame-ancestors 'self'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
+
 /* A company edge's manage page (/manage/, served by the edge itself:
  * PAGE_CSP in edge/registrar/src/server/manage.rs). Mirror it here. */
 export const MANAGE_CSP = [

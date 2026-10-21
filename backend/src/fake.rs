@@ -150,9 +150,7 @@ pub struct FakeLosos {
     pub user_apps: crate::user_apps::UserApps,
     /// Stands in for `user-apps/<id>.json`, by app id.
     pub app_data: std::collections::BTreeMap<String, crate::user_apps::AppData>,
-    // ── The sidebar's pins ──────────────────────────────────────────────
-    /// Stands in for `pins.json`.
-    pub pins: crate::pins::Pins,
+    // ── The pin picker ──────────────────────────────────────────────────
     /// Stands in for the kept LosOS cloud app password.
     pub cloud_key: Option<crate::pins::CloudKey>,
     /// LosOS cloud's next answers, in order; empty is "not answering".
@@ -338,7 +336,6 @@ impl FakeLosos {
             edge_asked: 0,
             user_apps: crate::user_apps::UserApps::default(),
             app_data: std::collections::BTreeMap::new(),
-            pins: crate::pins::Pins::default(),
             cloud_key: None,
             cloud_answers: std::collections::VecDeque::new(),
             cloud_calls: Vec::new(),
@@ -642,7 +639,7 @@ impl Losos for FakeLosos {
         let (method, path) = op.route();
         match self.market_routes.get(&format!("{method} {path}")) {
             None => Ok(crate::market::Outcome::Unavailable),
-            Some((status, body)) => crate::market::classify(*status, body),
+            Some((status, body)) => op.classify(*status, body),
         }
     }
 
@@ -653,15 +650,6 @@ impl Losos for FakeLosos {
 
     fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()> {
         self.public_names = Some(names.to_vec());
-        Ok(())
-    }
-
-    fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
-        Ok(self.pins.clone())
-    }
-
-    fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()> {
-        self.pins = pins.clone();
         Ok(())
     }
 

@@ -34,6 +34,8 @@ erhalten, und zwar auf einer verschlüsselten Partition `/persist`.
   Box schon teilt.
 - [Virtuelle Maschinen](/in-depth/virtual-machines.md). Maschinen im Mesh mieten
   und Maschinen anderer Boxen hosten.
+- [KI-Modelle](/in-depth/ai-models.md). Arbeitsspeicher an Modelle verleihen,
+  die auf mehrere Boxen verteilt sind, und ihre Antworten pro Token bezahlen.
 - [App-Format](/in-depth/app-format.md). Eine Compose-Datei pro App, als
   notshared auf Podman ohne root ausgeführt: was die Box damit macht und wie
   man eine installiert.
