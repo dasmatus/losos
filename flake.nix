@@ -454,6 +454,7 @@
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        losos-agents = import ./nix/tests/agents.nix { inherit pkgs; };
         # The banner a box off the mesh shows over every page, both states
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
