@@ -379,6 +379,11 @@ pub fn check(source: &str) -> Checked {
             "Line {used}: {name} is used before line {made}, which makes it, so the app stops as it starts. Move line {made} above line {used}."
         ));
     }
+    for (line, name, member) in collection_used_as_list(&semantic, &stripped) {
+        problems.push(format!(
+            "Line {line}: {name} is a collection, not a list: its entries are {name}.items. Write {name}.items.{member} instead of {name}.{member}."
+        ));
+    }
     let scoping = semantic.into_scoping();
     let mut unknown: Vec<(usize, String)> = scoping
         .root_unresolved_references()
@@ -497,6 +502,54 @@ fn used_before_made(
     found
 }
 
+/// What a list has and a collection does not: `useCollection` gives an
+/// object with `items` and the writes, and a small model often sorts or maps
+/// the object itself, which stops the app as it starts.
+const LIST_MEMBERS: &[&str] = &[
+    "map", "filter", "sort", "find", "reduce", "forEach", "length", "slice", "some", "every", "includes",
+];
+
+/// A name made by `useCollection(...)` and then used like a list
+/// (`notes.map`), as (line, name, member), in line order, once per name.
+fn collection_used_as_list(semantic: &oxc::semantic::Semantic<'_>, source: &str) -> Vec<(usize, String, String)> {
+    use oxc::ast::ast::{BindingPattern, Expression};
+    use oxc::ast::AstKind;
+    let scoping = semantic.scoping();
+    let nodes = semantic.nodes();
+    let mut found = Vec::new();
+    for symbol in scoping.symbol_ids() {
+        let AstKind::VariableDeclarator(declarator) = nodes.kind(scoping.symbol_declaration(symbol)) else {
+            continue;
+        };
+        if !matches!(declarator.id, BindingPattern::BindingIdentifier(_)) {
+            continue;
+        }
+        let Some(Expression::CallExpression(call)) = &declarator.init else {
+            continue;
+        };
+        if !matches!(&call.callee, Expression::Identifier(id) if id.name == "useCollection") {
+            continue;
+        }
+        let misuse = scoping.get_resolved_references(symbol).find_map(|r| {
+            let at = nodes.get_node(r.node_id()).span();
+            match nodes.parent_kind(r.node_id()) {
+                AstKind::StaticMemberExpression(member)
+                    if member.object.span() == at
+                        && LIST_MEMBERS.contains(&member.property.name.as_str()) =>
+                {
+                    Some((at.start, member.property.name.to_string()))
+                }
+                _ => None,
+            }
+        });
+        if let Some((at, member)) = misuse {
+            found.push((line_of(source, at), scoping.symbol_name(symbol).to_string(), member));
+        }
+    }
+    found.sort();
+    found
+}
+
 /// The compiled app inside the bindings it was promised, mounted.
 fn wrap(body: &str, entry: &str) -> String {
     format!(
@@ -606,6 +659,20 @@ mod tests {
         // Read inside a handler written above it, the name is made by the
         // time the handler runs; and a function is there from the start.
         let fine = "function App() {\n  function add() { items.add({ n: count }); }\n  const items = useCollection(\"items\");\n  const count = total();\n  function total() { return 1; }\n  return <Page><Button onClick={add}>Add</Button></Page>;\n}";
+        assert_eq!(check(fine).problems, Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_collection_sorted_or_mapped_as_if_it_were_a_list_is_named() {
+        // The contacts app a small model wrote: the collection itself sorted.
+        let source = "function App() {\n  const contacts = useCollection(\"contacts\");\n  const sorted = contacts.sort((a, b) => a.name.localeCompare(b.name));\n  return <Page>{sorted.map(c => <Text key={c.id}>{c.name}</Text>)}</Page>;\n}";
+        let checked = check(source);
+        assert!(checked.code.is_some(), "it still compiles");
+        assert_eq!(
+            checked.problems,
+            ["Line 3: contacts is a collection, not a list: its entries are contacts.items. Write contacts.items.sort instead of contacts.sort."]
+        );
+        let fine = "function App() {\n  const notes = useCollection(\"notes\");\n  return <Page>{notes.items.map(n => <Text key={n.id}>{n.title}</Text>)}<Button onClick={() => notes.add({ title: 'x' })}>Add</Button></Page>;\n}";
         assert_eq!(check(fine).problems, Vec::<String>::new());
     }
 
