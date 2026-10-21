@@ -31,6 +31,8 @@ directories listed in `modules/impermanence.nix` survive, on an encrypted
 - [Market](market.md). Selling the disk and CPU a box already shares.
 - [Virtual machines](virtual-machines.md). Renting machines on the mesh and
   hosting other boxes' machines.
+- [AI models](ai-models.md). Lending memory to models split across boxes,
+  and paying for their answers by the token.
 - [Widget builder](widget-builder.md). A language model on the box writes a
   widget from a description.
 - [Master proxy](master-proxy.md). Reaching the box from the internet without
