@@ -363,8 +363,11 @@ in
   '';
   scripts.test-tui.description = "Build the static losos and drive it in a pseudo-terminal.";
 
-  scripts.check-flake.exec = "command nix flake check --no-build -L";
-  scripts.check-flake.description = "Evaluate every flake output (builds nothing).";
+  # What `nix flake check --no-build` checks, one `nix eval` per derivation, so
+  # the peak memory is one VM test's evaluation rather than all of them at
+  # once (nix/check-flake.sh says why). CI's eval job runs the same script.
+  scripts.check-flake.exec = ''bash "$DEVENV_ROOT/nix/check-flake.sh" "$@"'';
+  scripts.check-flake.description = "Evaluate every flake output, one at a time (builds nothing).";
 
   # devenv runs standalone (see flake.nix), so there are two lock files:
   # flake.lock pins the nixpkgs that BUILDS the appliance, devenv.lock pins the

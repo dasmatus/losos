@@ -379,11 +379,15 @@ jobs:
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Mirrors devenv.nix's `check-flake`. Evaluates every output — every VM
-      # test derivation, both nixosConfigurations and every package, the three
+      # test derivation, every nixosConfiguration and every package, the three
       # OCI images among them; builds nothing. Which is the limit of it: an
       # image whose entrypoint fails shellcheck evaluates perfectly happily,
-      # and only the images job below catches that.
-      - run: nix flake check --no-build -L
+      # and only the images job below catches that. It is what `nix flake
+      # check --no-build` checks, one `nix eval` per derivation: flake check
+      # holds every VM test's evaluation in one process, which outgrew the
+      # runner's memory and got the runner shut down mid-check with no error
+      # printed. nix/check-flake.sh says what it covers.
+      - run: bash nix/check-flake.sh
       # Mirrors devenv.nix's `check-eval`, and this is the gate the repo lacked
       # entirely: `flake check` only forces each nixosConfiguration's toplevel
       # *derivation*, so an option conflict, a type error or a failed assertion
