@@ -466,6 +466,9 @@
           screens = true;
         };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # The right-click menu on the admin page and in LosOS Cloud, with
+        # the pull request's pictures (nix/tests/context-menu.nix).
+        losos-context-menu = import ./nix/tests/context-menu.nix { inherit pkgs; };
         # Apps run as notshared on rootless Podman, with no cluster: the
         # box's own, one in the LosOS app format and a chart from the
         # search (nix/tests/podman-apps.nix).

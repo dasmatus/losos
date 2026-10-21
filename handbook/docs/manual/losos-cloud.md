@@ -28,6 +28,8 @@ gets their own files. The person who set up the box gets the owner's.
   good.
 - **Devices** lists the computers and phones that sync, and signs one out.
 - The search field at the top finds files by name.
+- Right-click a file, a folder or the space around them for what you can
+  do there; see [the right-click menu](admin-pages#the-right-click-menu).
 
 ## Desktop and phone apps
 

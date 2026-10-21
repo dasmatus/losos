@@ -1,7 +1,7 @@
 import * as React from "react";
 import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Compass01Icon } from "@hugeicons/core-free-icons";
+import { Compass01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { AppBar, type AppBarPerson } from "@/components/app-bar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MeshNotice } from "@/components/mesh-notice";
@@ -28,6 +28,7 @@ import { HelpLink } from "@/components/ui/help-link";
 import type { HandbookEntry } from "@/lib/handbook";
 import { Input, MonoInput } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { toast, Toaster } from "@/components/ui/toast";
 import {
@@ -214,6 +215,17 @@ function Shell() {
   const held = signedIn && (me?.locked?.length ?? 0) > 0;
   const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
   const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
+  const searchable = signedIn && !held;
+  const pageMenu = usePageMenu(() => [
+    {
+      id: "palette",
+      label: t("menu.palette"),
+      icon: Search01Icon,
+      keys: ["Mod", "Shift", "P"],
+      hidden: !searchable,
+      onSelect: () => openPalette(),
+    },
+  ]);
   // Once fetched, the palette stays mounted so it can close the way it opened.
   const [paletteLoaded, setPaletteLoaded] = React.useState(false);
   React.useEffect(() => {
@@ -283,6 +295,7 @@ function Shell() {
   return (
     <div className="losos-shell min-h-dvh text-ink">
       <TopBar signedIn={signedIn} />
+      <ContextMenuHost page={pageMenu} search={searchable ? (text) => openPalette(text) : undefined} />
 
       <SidebarProvider
         className={cn(

@@ -32,6 +32,9 @@ eingerichtet hat, bekommt die des Besitzers.
 - **Geräte** listet die Computer und Telefone, die synchronisieren, und
   meldet eins ab.
 - Das Suchfeld oben findet Dateien nach Namen.
+- Ein Rechtsklick auf eine Datei, einen Ordner oder die Fläche darum zeigt,
+  was du dort tun kannst; siehe
+  [das Rechtsklick-Menü](admin-pages#the-right-click-menu).
 
 ## Apps für Computer und Telefon \{#desktop-and-phone-apps}
 

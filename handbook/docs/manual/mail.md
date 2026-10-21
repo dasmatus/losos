@@ -49,6 +49,9 @@ Mail asks you to sign in with your own account.
   pictures from outside the box, so the sender cannot tell that you opened
   it. A message with no plain text opens in that frame straight away.
 - Attachments download to your computer. They never open inside the page.
+- Right-click a message in the list to reply, flag, archive or move it
+  without opening it; see
+  [the right-click menu](admin-pages#the-right-click-menu).
 
 ## What Mail does not do yet
 

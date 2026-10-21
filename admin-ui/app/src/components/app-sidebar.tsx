@@ -40,9 +40,10 @@ import { cn } from "@/lib/utils";
 import { SHORTCUT_ARIA, openPalette, shortcutLabel } from "@/palette/store";
 import { paneById, paneOpen, type SettingsPaneId } from "@/screens/settings/panes";
 import { canUse, heldBy, sharedApp, useMe } from "@/lib/api";
-import { openInNewTab, PinMenu } from "@/components/pin-menu";
+import { openInNewTab, usePinItems } from "@/components/pin-menu";
 import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
 import { pinKey, viewPin, type PinView } from "@/lib/pins";
+import { contextMenu } from "@/lib/context-menu";
 
 /* The one panel: every destination on this page in a single sidebar, in the
  * shape of shadcn's Sidebar ("collapses to icons"), inside the recessed box.
@@ -341,6 +342,7 @@ function PinnedSection({
   const t = useT();
   const { pins } = usePins();
   const { busy, save } = useSavePins();
+  const items = usePinItems();
   // On the rail an empty section is nothing to point at.
   if (views.length === 0 && rail) return null;
 
@@ -383,8 +385,10 @@ function PinnedSection({
             const active = view.inApp && pathname === view.href;
             const pin = pins.find((candidate) => pinKey(candidate) === view.key) ?? null;
             return (
-              <SidebarMenuItem key={view.key}>
-                <PinMenu pin={pin} name={name} newTab={() => openInNewTab(view.href)}>
+              <SidebarMenuItem
+                key={view.key}
+                ref={contextMenu(() => ({ label: name, sections: [[items.newTab(() => openInNewTab(view.href))], [items.pin(pin)]] }))}
+              >
                   <SidebarMenuButton
                     isActive={active}
                     tooltip={name}
@@ -403,7 +407,6 @@ function PinnedSection({
                     <Glyph icon={view.icon} active={active} />
                     <span className="group-data-[collapsible=icon]/sidebar:sr-only">{name}</span>
                   </SidebarMenuButton>
-                </PinMenu>
                 <SidebarMenuAction
                   aria-label={t("pins.unpin", { name })}
                   disabled={busy}

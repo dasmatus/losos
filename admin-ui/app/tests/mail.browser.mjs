@@ -211,8 +211,41 @@ await check('delete moves the message to the bin through lososd', async () => {
   const { page, calls, done } = await open();
   await page.getByRole('button', { name: /Autumn sale/ }).click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
-  await page.getByText('Moved to the bin').waitFor();
+  await page.getByText('Moved to the bin', { exact: true }).waitFor();
   assert.ok(calls.some((c) => c.DELETE === 'm2'), `no delete sent: ${JSON.stringify(calls)}`);
+  await done();
+});
+
+await check('a right click on a message offers what the reader does, without opening it', async () => {
+  LAKE.seen = false;
+  const { page, calls, done } = await open();
+  const lake = page.getByRole('button', { name: /Photos from the lake/ });
+  await lake.click({ button: 'right' });
+  const menu = page.locator('[data-slot="context-menu"]').first();
+  await menu.waitFor();
+  assert.equal(await menu.getAttribute('aria-label'), 'Photos from the lake');
+  const items = (await menu.locator('[role^="menuitem"]').allInnerTexts()).map((s) => s.trim());
+  assert.deepEqual(items, ['Open', 'Reply', 'Reply all', 'Forward', 'Mark as read', 'Flag', 'Archive', 'Move to', 'Delete']);
+  await menu.getByRole('menuitem', { name: 'Mark as read' }).click();
+  await page.getByText('Marked as read', { exact: true }).waitFor();
+  assert.ok(
+    calls.some((c) => c.POST === 'm1' && JSON.parse(c.body).seen === true),
+    `no change sent: ${JSON.stringify(calls)}`,
+  );
+  // The folders are a submenu; the list's own folder is not among them.
+  await page.getByRole('button', { name: /Autumn sale/ }).click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: 'Move to' }).hover();
+  const folders = page.locator('[data-slot="context-menu"][aria-label="Move to"]');
+  await folders.waitFor();
+  assert.ok(!(await folders.innerText()).includes('Inbox'));
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  // Reply from the menu fetches the whole message and quotes it.
+  await lake.click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: 'Reply', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.waitFor();
+  assert.equal(await dialog.locator('input').nth(1).inputValue(), 'Re: Photos from the lake');
   await done();
 });
 
