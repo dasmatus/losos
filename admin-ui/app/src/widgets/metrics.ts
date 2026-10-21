@@ -455,7 +455,7 @@ function boxStatusMetric(status: StatusResponse): BoxStatusMetric {
  * 404 or a redirect — means something is listening on that path; only a
  * transport failure or a 502 from Nginx means the app behind it is not up.
  *
- * HEAD rather than GET: Nextcloud's index is not small, and a dashboard tile
+ * HEAD rather than GET: an app's index is not always small, and a dashboard tile
  * refreshing on a timer should not be pulling it down every minute. */
 const PROBE_TIMEOUT_MS = 4000;
 
