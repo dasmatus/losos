@@ -78,6 +78,12 @@ pub fn ffmpeg_args(rtmp: &str) -> Vec<String> {
         "+genpts",
         "-thread_queue_size",
         "512",
+        // The page's WebM names its tracks in its header; a second of it is
+        // enough to start, where ffmpeg's default waits for 5 MB.
+        "-probesize",
+        "500000",
+        "-analyzeduration",
+        "1000000",
         "-i",
         "pipe:0",
         "-map",

@@ -1014,7 +1014,7 @@ pkgs.testers.nixosTest {
     with subtest("podcast mode streams the call to an RTMP address, and both see it is live"):
         laptop.succeed(
             "systemd-run --unit rtmp-sink ${pkgs.ffmpeg-headless}/bin/ffmpeg -v error -listen 1 "
-            "-i rtmp://0.0.0.0:${toString rtmpPort}/live/holiday-key -t 10 -c copy -y /tmp/podcast.flv"
+            "-i rtmp://0.0.0.0:${toString rtmpPort}/live/holiday-key -c copy -y /tmp/podcast.flv"
         )
         # Not wait_for_open_port: its probe would be the one connection
         # `-listen 1` takes, and ffmpeg would give up on its handshake.
@@ -1034,28 +1034,31 @@ pkgs.testers.nixosTest {
         owner.locator("[data-live]").wait_for()
         panel.get_by_role("button", name="End the stream").wait_for()
         shot(her, "podcast-live-eva")
-        # The RTMP server keeps ten seconds and stops.
+        # The box encodes H.264 under emulation here, far slower than real
+        # time, so the server keeps what arrives until the stream ends.
         try:
-            laptop.wait_until_fails("systemctl is-active rtmp-sink", timeout=180)
+            laptop.wait_until_succeeds("test $(stat -c %s /tmp/podcast.flv) -gt 100000", timeout=600)
         except Exception:
             print("page:", owner.evaluate(
                 "() => ({...document.querySelector('[data-podcast-preview] canvas')?.dataset})"))
             print(box.execute("for p in $(pgrep -f pipe:0); do ps -o pid,etime,args= -p $p; cat /proc/$p/io; done")[1])
             print(box.execute("journalctl -u losos-calls --no-pager | grep -iE 'ffmpeg|stream' | tail -20")[1])
             raise
-        probe = json.loads(laptop.succeed(
-            "${pkgs.ffmpeg-headless}/bin/ffprobe -v error -show_entries "
-            "stream=codec_name,width,height:format=duration -of json /tmp/podcast.flv"))
-        assert sorted(x["codec_name"] for x in probe["streams"]) == ["aac", "h264"], probe
-        assert float(probe["format"]["duration"]) >= 8, probe
-        laptop.succeed("${pkgs.ffmpeg-headless}/bin/ffmpeg -v error -ss 6 -i /tmp/podcast.flv "
-                       "-frames:v 1 -y /tmp/podcast.png")
-        laptop.copy_from_machine("/tmp/podcast.png", "")
-        os.replace(os.path.join(OUT, "podcast.png"), f"{SHOTS}/podcast-stream.png")
         # The address carries the stream key; the box never writes it down.
         box.fail("journalctl -u losos-calls | grep -q holiday-key")
         panel.get_by_role("button", name="End the stream").click()
         her.locator("[data-live]").wait_for(state="detached", timeout=60000)
+        laptop.wait_until_fails("systemctl is-active rtmp-sink", timeout=180)
+        probe = json.loads(laptop.succeed(
+            "${pkgs.ffmpeg-headless}/bin/ffprobe -v error -show_entries "
+            "stream=codec_name,width,height:format=duration -of json /tmp/podcast.flv"))
+        assert sorted(x["codec_name"] for x in probe["streams"]) == ["aac", "h264"], probe
+        duration = float(probe["format"]["duration"])
+        assert duration > 0.5, probe
+        laptop.succeed(f"${pkgs.ffmpeg-headless}/bin/ffmpeg -v error -ss {duration / 2:.2f} -i /tmp/podcast.flv "
+                       "-frames:v 1 -y /tmp/podcast.png")
+        laptop.copy_from_machine("/tmp/podcast.png", "")
+        os.replace(os.path.join(OUT, "podcast.png"), f"{SHOTS}/podcast-stream.png")
         panel.get_by_role("button", name="Close").click()
 
     with subtest("a guest link from the edge lets one guest into this call"):
