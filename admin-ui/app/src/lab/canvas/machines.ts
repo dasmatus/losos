@@ -60,6 +60,7 @@ async function read(): Promise<MachinesView> {
 export function watchMachines(s: LabStore): void {
   if (!BOX_COPY) return;
   s.machines = { state: "loading" };
+  let timer = 0;
   const tick = async () => {
     if (!document.hidden) {
       const next = await read();
@@ -67,10 +68,12 @@ export function watchMachines(s: LabStore): void {
         s.machines = next;
         s.emit("model");
       }
+      // Signed out stays signed out until the page is opened again.
+      if (next.state === "unavailable" && next.reason === "signedOut") window.clearInterval(timer);
     }
   };
   void tick();
-  window.setInterval(() => void tick(), EVERY_MS);
+  timer = window.setInterval(() => void tick(), EVERY_MS);
 }
 
 /** The machine a card stands for, from its `losos.machine`. */

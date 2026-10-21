@@ -6,6 +6,7 @@ import { defineMessages } from "./define";
 export default defineMessages({
   // ── views and the top bar ──
   "dg.view.canvas": { en: "Diagram", sk: "Diagram", de: "Diagramm" },
+  "dg.cloud.opener": { en: "Open in LosOS Diagrams", sk: "Otvoriť v LosOS Diagrams", de: "In LosOS Diagrams öffnen" },
   "dg.file.menu": { en: "File", sk: "Súbor", de: "Datei" },
   "dg.file.new": { en: "New diagram", sk: "Nový diagram", de: "Neues Diagramm" },
   "dg.file.open": { en: "Open a file…", sk: "Otvoriť súbor…", de: "Datei öffnen…" },
