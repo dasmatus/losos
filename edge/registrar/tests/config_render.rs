@@ -23,6 +23,7 @@ fn tenant(id: &str, hostname: &str, port: u16, token: &str) -> TenantView {
         hostname: hostname.to_string(),
         rathole_port: port,
         token: token.to_string(),
+        llm_port: None,
     }
 }
 
@@ -257,4 +258,44 @@ fn uplink_config_renders_the_relayed_services() {
         &[],
     );
     assert!(noise.contains("[client.transport]\ntype = \"noise\"\n\n[client.transport.noise]\nremote_public_key = \"AAAA\"\n"));
+}
+
+#[test]
+fn a_lending_box_gets_a_second_tunnel_service_on_its_llm_port() {
+    let mut lender = tenant("box-a", "a.example.org", 20001, "tok-a");
+    lender.llm_port = Some(23001);
+    let other = tenant("box-b", "b.example.org", 20002, "tok-b");
+    // Tenants whose ids end the way older service names did: a direct one,
+    // and a box called `llm` relayed by a spoke called `box-a`.
+    let lookalike = tenant("box-a-llm", "c.example.org", 20003, "tok-c");
+    let relayed = tenant("box-a.llm", "llm.box-a.example.org", 20004, "tok-d");
+    let files = desired_config(&[lender, other, lookalike, relayed], &opts());
+    let toml = &files.rathole_toml;
+    assert!(
+        toml.contains(
+            "[server.services.\"box-a:llm\"]\ntoken = \"tok-a\"\nbind_addr = \"127.0.0.1:23001\"\n"
+        ),
+        "{toml}"
+    );
+    assert!(!toml.contains("box-b:llm"), "{toml}");
+    assert_eq!(
+        toml.matches("[server.services.box-a-llm]").count(),
+        1,
+        "{toml}"
+    );
+    assert_eq!(
+        toml.matches("[server.services.\"box-a.llm\"]\ntoken = \"tok-d\"\n")
+            .count(),
+        1,
+        "{toml}"
+    );
+    let tables: Vec<&str> = toml.lines().filter(|l| l.starts_with('[')).collect();
+    let mut unique = tables.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    assert_eq!(tables.len(), unique.len(), "{toml}");
+    // The model port never becomes a web route.
+    let yaml = files.traefik_yaml.unwrap();
+    assert!(!yaml.contains("23001"), "{yaml}");
+    assert!(!yaml.contains("box-a:llm"), "{yaml}");
 }

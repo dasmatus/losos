@@ -39,10 +39,12 @@ fn components() -> &'static Vec<Built> {
             // The outer cargo's flags are for the host, not wasm32.
             .env_remove("RUSTFLAGS")
             .env_remove("CARGO_ENCODED_RUSTFLAGS")
+            // The modules are read from the workspace's own target below.
+            .env_remove("CARGO_TARGET_DIR")
             .status()
             .expect("cargo builds the plugins");
         assert!(status.success(), "building the plugins for wasm32 failed");
-        ["look", "probe"]
+        ["look", "pins", "probe"]
             .iter()
             .map(|name| {
                 let core = std::fs::read(
@@ -372,6 +374,58 @@ fn the_look_is_served_by_its_plugin() {
     assert!(!d.dir.path().join("state/background.img").exists());
     let a = d.call("GET", "/api/look/background", &[], b"");
     assert_eq!(a.status, 404);
+}
+
+#[test]
+fn the_pins_are_served_by_their_plugin() {
+    let d = Daemon::start();
+    let a = d.admin("GET", "/api/pins", Value::Null);
+    assert_eq!(a.status, 200);
+    assert_eq!(a.json(), json!({"pins": [], "limit": 24}));
+
+    let pins = json!({"pins": [
+        {"kind": "tile", "app": "files"},
+        {"kind": "repo", "owner": "notshared", "name": "site"},
+        {"kind": "file", "id": 42, "path": "/Documents/plan.pdf", "folder": false},
+    ]});
+    let a = d.admin("PUT", "/api/pins", pins.clone());
+    assert_eq!(a.status, 200);
+    assert_eq!(a.json()["pins"], pins["pins"]);
+    assert_eq!(
+        d.admin("GET", "/api/pins", Value::Null).json()["pins"],
+        pins["pins"]
+    );
+
+    // A refused list says why and leaves the kept one alone.
+    for bad in [
+        json!({"pins": [{"kind": "tile", "app": "files"}, {"kind": "tile", "app": "files"}]}),
+        json!({"pins": [{"kind": "repo", "owner": "a", "name": "b", "href": "https://x"}]}),
+        json!({"pins": [{"kind": "file", "id": 1, "path": "/a/../etc", "folder": true}]}),
+        json!("nonsense"),
+    ] {
+        let a = d.admin("PUT", "/api/pins", bad.clone());
+        assert_eq!(a.status, 400, "{bad}");
+        assert!(
+            a.json()["error"].as_str().is_some_and(|e| !e.is_empty()),
+            "{bad}"
+        );
+    }
+    assert_eq!(
+        d.admin("GET", "/api/pins", Value::Null).json()["pins"],
+        pins["pins"]
+    );
+
+    // Where the native list kept it, readable by root only.
+    let path = d.dir.path().join("state/pins.json");
+    let on_disk: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(on_disk["pins"], pins["pins"]);
+    let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o600);
+
+    // The sidebar is the administrators': sections.json says admin.
+    let a = d.person("ada", "GET", "/api/pins");
+    assert_eq!(a.status, 403);
+    assert_eq!(d.person("root", "GET", "/api/pins").status, 200);
 }
 
 #[test]
