@@ -208,4 +208,6 @@ export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
   "git.site.defaultPrivate": "apps",
   "git.site.pushCreate": "apps",
   "nextcloud.federation.enable": "apps",
+  "inference.lend.enable": "market",
+  "inference.lend.memoryMiB": "market",
 };

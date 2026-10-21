@@ -189,6 +189,19 @@ and is never served or built by nix.
   host network without root, turn claims into folders in that user's data
   domain and refuse a chart that needs more; nginx forwards a port of
   `losos.apps.ports` to it, LAN only. `nix/tests/podman-apps.nix` boots it.
+- `mail.nix` + `backend/src/mail.rs` (`losos.mail.*`): LosOS Mail. Stalwart
+  as `shared`, mailboxes in `/home/shared/data/mail`, loopback HTTP only (no
+  SMTP or IMAP listener), its own unit rather than nixpkgs' module because a
+  tmpfiles line inside the locked fscrypt domain fails at boot. lososd is the
+  only client, over JMAP as `<person>%losos` (master user) with a secret from
+  `losos-mail-secret`. All of it, `/mail` (a screen of the SPA, inside its
+  top bar and sidebar like every pane, `src/mail/`) and
+  `/api/mail*` exist only while `lososInternal.mail.live` (the shared side,
+  `lososInternal.sharedSide`: sharing on and `cluster.enable`);
+  otherwise `/mail`, `/mail/` and the API answer 404 and `/api/me`'s `shared` omits
+  `mail`, which hides the sidebar entry. Mail stays between people on the
+  box (`local_only`). `nix/tests/mail.nix` boots it; `losos-mail-screens`
+  is the same run with the real UI and Chromium, for screenshots.
 - `search.nix` + `backend/src/textsearch/` (`losos-search`): text inside
   files for the palette. A timer pass keeps an SQLite FTS5 index of the
   owner's cloud files in `/var/lib/losos-search` as `nextcloud` (only what
@@ -240,6 +253,17 @@ and is never served or built by nix.
   repeating answer is cut off) and gives the model one turn to fix what it
   found. The system prompt is `backend/src/builder-prompt.md`. No edge, no
   key, no charge.
+- `inference-lend.nix` (box, `losos.inference.lend.*`) + `edge-inference.nix`
+  (edge, `losos.edge.inference.*`) + `edge/registrar/src/{inference,meter}.rs`
+  + `market/taps.rs`: AI models split across boxes. A lending box runs
+  `ggml-rpc-server -d CPU` (the default device is BLAS, which crashes) as
+  `shared` on loopback, reached only by root through a second rathole
+  service `<id>:llm`. The registrar groups lenders until a model fits and
+  runs one `losos-llm-head@<group>` llama-server per group; it counts the
+  tokens itself and bills them through escrow taps (a USDC balance per
+  buyer, one rate-capped tap per seller, a one-hour head start, a 48 h
+  withdrawal notice). The Market pane is `ai-models.tsx`.
+  `nix/tests/inference-lend.nix` and `inference-payg.nix` boot it.
 - `updates.nix`: `system.autoUpgrade` at 03:00 from `losos.upgradeFlakeUri`
   (default `git+file:///etc/nixos#install`, set a `github:` URI to really
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot

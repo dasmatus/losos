@@ -59,6 +59,18 @@ struct HeartbeatReq<'a> {
     /// the box decides what the edge may do on every call it makes.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     managed: bool,
+    /// The memory this box lends to AI models now, MiB (`crate::inference`).
+    /// Left out when it lends none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    llm_mib: Option<u64>,
+}
+
+/// The MiB in the lend file, re-read every heartbeat: the file is there only
+/// while the box's RPC server runs, so a stopped server lends nothing on the
+/// next heartbeat.
+pub async fn read_lend(file: Option<&str>) -> Option<u64> {
+    let text = tokio::fs::read_to_string(file?).await.ok()?;
+    text.trim().parse::<u64>().ok().filter(|mib| *mib > 0)
 }
 
 /// The pass in `file`, re-read every time: lososd refreshes it every few
@@ -170,6 +182,7 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
                     Some(file) => tokio::fs::try_exists(file).await.unwrap_or(false),
                     None => false,
                 },
+                llm_mib: read_lend(opts.llm_lend_file.as_deref()).await,
             };
             match client.post(&heartbeat_url).json(&req).send().await {
                 Ok(r) if r.status().is_success() => {
