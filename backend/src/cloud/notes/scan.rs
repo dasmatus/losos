@@ -256,10 +256,7 @@ pub fn scan(text: &str) -> Scanned {
     for line in text[start..].lines() {
         let bare = line.trim_start();
         let lead = line.len() - bare.len();
-        let marker: String = bare
-            .chars()
-            .take_while(|&c| c == '`' || c == '~')
-            .collect();
+        let marker: String = bare.chars().take_while(|&c| c == '`' || c == '~').collect();
         if let Some(f) = &fence {
             if marker.len() >= f.len()
                 && marker.starts_with(&f[..1])
@@ -277,7 +274,9 @@ pub fn scan(text: &str) -> Scanned {
         }
         // Four spaces in and outside a list: indented code.
         if lead >= 4 && !bare.starts_with(['-', '*', '+']) && !comment {
-            let numbered = bare.split_once(". ").is_some_and(|(n, _)| n.chars().all(|c| c.is_ascii_digit()));
+            let numbered = bare
+                .split_once(". ")
+                .is_some_and(|(n, _)| n.chars().all(|c| c.is_ascii_digit()));
             if !numbered {
                 continue;
             }
@@ -300,7 +299,8 @@ pub fn scan(text: &str) -> Scanned {
         markdown_links_in(&shown, &mut out.links);
     }
     let mut seen = std::collections::HashSet::new();
-    out.tags.retain(|t| !t.is_empty() && seen.insert(t.to_lowercase()));
+    out.tags
+        .retain(|t| !t.is_empty() && seen.insert(t.to_lowercase()));
     out
 }
 
@@ -397,6 +397,9 @@ mod tests {
 
     #[test]
     fn tags_once_whatever_their_case() {
-        assert_eq!(scan("---\ntags: Work\n---\n#work #Other").tags, ["Work", "Other"]);
+        assert_eq!(
+            scan("---\ntags: Work\n---\n#work #Other").tags,
+            ["Work", "Other"]
+        );
     }
 }

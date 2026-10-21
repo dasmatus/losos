@@ -126,7 +126,10 @@ fn fold(c: char) -> Vec<char> {
     if c == 'ß' {
         return vec!['s', 's'];
     }
-    match FROM.chars().position(|f| f == c.to_lowercase().next().unwrap_or(c)) {
+    match FROM
+        .chars()
+        .position(|f| f == c.to_lowercase().next().unwrap_or(c))
+    {
         Some(i) => TO.chars().nth(i).into_iter().collect(),
         None => vec![c],
     }
@@ -136,7 +139,8 @@ fn fold(c: char) -> Vec<char> {
 fn valid_slug(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 52
-        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         && !s.starts_with('-')
 }
 
@@ -353,7 +357,11 @@ pub async fn api(
                 Err(r) => return r,
             };
             let Ok(b) = serde_json::from_slice::<NewSite>(&bytes) else {
-                return error(StatusCode::BAD_REQUEST, "badRequest", "path, title and audience");
+                return error(
+                    StatusCode::BAD_REQUEST,
+                    "badRequest",
+                    "path, title and audience",
+                );
             };
             let path = match crate::cloud::store::clean_path(&b.path) {
                 Ok(p) => p,
@@ -401,7 +409,12 @@ fn not_found() -> HttpResponse {
 
 /// The site's own calls, `/kb/api/<slug>/…`, for whoever it is open to.
 /// `who` is the person nginx names when they are signed in, else None.
-pub async fn public(req: &HttpRequest, cloud: &Cloud, who: Option<&Who>, path: &str) -> HttpResponse {
+pub async fn public(
+    req: &HttpRequest,
+    cloud: &Cloud,
+    who: Option<&Who>,
+    path: &str,
+) -> HttpResponse {
     if !cloud.config.knowledge_bases || !matches!(req.method().as_str(), "GET" | "HEAD") {
         return not_found();
     }
@@ -487,7 +500,9 @@ pub async fn public(req: &HttpRequest, cloud: &Cloud, who: Option<&Who>, path: &
     if call == "file" {
         headers.insert(
             actix_web::http::header::CONTENT_SECURITY_POLICY,
-            actix_web::http::header::HeaderValue::from_static("sandbox; default-src 'none'; img-src 'self'; media-src 'self'"),
+            actix_web::http::header::HeaderValue::from_static(
+                "sandbox; default-src 'none'; img-src 'self'; media-src 'self'",
+            ),
         );
     }
     r
@@ -520,7 +535,10 @@ mod tests {
                 cloud.store.mkdir_all(owner, parent).unwrap();
             }
         }
-        cloud.store.write_bytes(owner, path, text.as_bytes()).unwrap();
+        cloud
+            .store
+            .write_bytes(owner, path, text.as_bytes())
+            .unwrap();
     }
 
     #[test]
@@ -553,8 +571,18 @@ mod tests {
         // Nobody changes or stops another person's site.
         assert!(update(&cloud.store, "bob", a.id, Some("Mine"), None).is_err());
         assert!(remove(&cloud.store, "bob", a.id).is_err());
-        let a = update(&cloud.store, "ann", a.id, Some("Our garden"), Some(Audience::Box)).unwrap();
-        assert_eq!((a.title.as_str(), a.audience, a.slug.as_str()), ("Our garden", Audience::Box, "garden"));
+        let a = update(
+            &cloud.store,
+            "ann",
+            a.id,
+            Some("Our garden"),
+            Some(Audience::Box),
+        )
+        .unwrap();
+        assert_eq!(
+            (a.title.as_str(), a.audience, a.slug.as_str()),
+            ("Our garden", Audience::Box, "garden")
+        );
         assert_eq!(list(&cloud.store, "ann").unwrap().len(), 1);
         remove(&cloud.store, "ann", a.id).unwrap();
         assert!(list(&cloud.store, "ann").unwrap().is_empty());
@@ -566,17 +594,37 @@ mod tests {
         write(&cloud, "ann", "Garden/a.md", "x");
         let s = create(&cloud.store, "ann", "Garden", "Garden", Audience::Anyone).unwrap();
         cloud.store.rename("ann", "Garden", "Yard", false).unwrap();
-        assert_eq!(by_slug(&cloud.store, &s.slug).unwrap().unwrap().folder.as_deref(), Some("Yard"));
+        assert_eq!(
+            by_slug(&cloud.store, &s.slug)
+                .unwrap()
+                .unwrap()
+                .folder
+                .as_deref(),
+            Some("Yard")
+        );
         cloud.store.delete("ann", "Yard", None).unwrap();
-        assert_eq!(by_slug(&cloud.store, &s.slug).unwrap().unwrap().folder, None);
+        assert_eq!(
+            by_slug(&cloud.store, &s.slug).unwrap().unwrap().folder,
+            None
+        );
     }
 
     #[test]
     fn private_notes_and_dot_folders_stay_off_the_site() {
         let (_d, cloud) = cloud(true);
         write(&cloud, "ann", "Garden/Open.md", "# Open\n[[Secret]]");
-        write(&cloud, "ann", "Garden/Secret.md", "---\npublish: false\n---\nhidden");
-        write(&cloud, "ann", "Garden/Diary.md", "---\nprivate: true\n---\nhidden");
+        write(
+            &cloud,
+            "ann",
+            "Garden/Secret.md",
+            "---\npublish: false\n---\nhidden",
+        );
+        write(
+            &cloud,
+            "ann",
+            "Garden/Diary.md",
+            "---\nprivate: true\n---\nhidden",
+        );
         write(&cloud, "ann", "Garden/.obsidian/workspace.json", "{}");
         write(&cloud, "ann", "Garden/pic.png", "png");
         let s = create(&cloud.store, "ann", "Garden", "Garden", Audience::Anyone).unwrap();
@@ -596,7 +644,9 @@ mod tests {
             let path = req.path().to_owned();
             let r = public(&req, cloud, who, &path).await;
             let status = r.status().as_u16();
-            let body = actix_web::body::to_bytes(r.into_body()).await.unwrap_or_default();
+            let body = actix_web::body::to_bytes(r.into_body())
+                .await
+                .unwrap_or_default();
             (status, String::from_utf8_lossy(&body).into_owned())
         }
 
@@ -613,17 +663,38 @@ mod tests {
         async fn anyone_reads_a_public_site_but_never_a_private_note() {
             let (_d, cloud) = cloud(true);
             write(&cloud, "ann", "Garden/Open.md", "# Open");
-            write(&cloud, "ann", "Garden/Secret.md", "---\nprivate: true\n---\nsecret words");
+            write(
+                &cloud,
+                "ann",
+                "Garden/Secret.md",
+                "---\nprivate: true\n---\nsecret words",
+            );
             write(&cloud, "ann", "Garden/.obsidian/app.json", "{}");
             write(&cloud, "ann", "Elsewhere.md", "not published");
             create(&cloud.store, "ann", "Garden", "Garden", Audience::Anyone).unwrap();
             let (status, body) = get(&cloud, None, "/kb/api/garden/site").await;
             assert_eq!(status, 200, "{body}");
-            assert!(body.contains("Open.md") && !body.contains("Secret.md"), "{body}");
-            assert!(!body.contains("\"root\":\"Garden\""), "the folder's place stays private: {body}");
-            assert_eq!(get(&cloud, None, "/kb/api/garden/note?path=Open.md").await, (200, "# Open".into()));
-            for path in ["Secret.md", "../Elsewhere.md", ".obsidian/app.json", "%2E%2E/Elsewhere.md", "Missing.md"] {
-                let (status, body) = get(&cloud, None, &format!("/kb/api/garden/note?path={path}")).await;
+            assert!(
+                body.contains("Open.md") && !body.contains("Secret.md"),
+                "{body}"
+            );
+            assert!(
+                !body.contains("\"root\":\"Garden\""),
+                "the folder's place stays private: {body}"
+            );
+            assert_eq!(
+                get(&cloud, None, "/kb/api/garden/note?path=Open.md").await,
+                (200, "# Open".into())
+            );
+            for path in [
+                "Secret.md",
+                "../Elsewhere.md",
+                ".obsidian/app.json",
+                "%2E%2E/Elsewhere.md",
+                "Missing.md",
+            ] {
+                let (status, body) =
+                    get(&cloud, None, &format!("/kb/api/garden/note?path={path}")).await;
                 assert_eq!(status, 404, "{path}: {body}");
                 assert!(!body.contains("secret") && !body.contains("not published"));
             }
@@ -638,8 +709,16 @@ mod tests {
             write(&cloud, "ann", "Team/Plan.md", "plan");
             create(&cloud.store, "ann", "Team", "Team", Audience::Box).unwrap();
             assert_eq!(get(&cloud, None, "/kb/api/team/site").await.0, 401);
-            assert_eq!(get(&cloud, None, "/kb/api/team/note?path=Plan.md").await.0, 401);
-            assert_eq!(get(&cloud, Some(&eva()), "/kb/api/team/note?path=Plan.md").await.0, 200);
+            assert_eq!(
+                get(&cloud, None, "/kb/api/team/note?path=Plan.md").await.0,
+                401
+            );
+            assert_eq!(
+                get(&cloud, Some(&eva()), "/kb/api/team/note?path=Plan.md")
+                    .await
+                    .0,
+                200
+            );
         }
 
         #[actix_web::test]
@@ -655,7 +734,10 @@ mod tests {
                 ..cloud
             };
             assert_eq!(get(&cloud, None, "/kb/api/garden/site").await.0, 404);
-            assert_eq!(get(&cloud, Some(&eva()), "/kb/api/garden/site").await.0, 404);
+            assert_eq!(
+                get(&cloud, Some(&eva()), "/kb/api/garden/site").await.0,
+                404
+            );
         }
     }
 }
