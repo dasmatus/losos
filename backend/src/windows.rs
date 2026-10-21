@@ -248,7 +248,7 @@ impl Windows {
             let files = self.cloud.join(account.login()).join("files");
             self.ensure_files(&files, uid, gid)?;
             shares.push_str(&format!(
-                "\n[{}]\n  comment = LosOS Cloud\n  path = {}\n  valid users = {user}\n  read only = no\n  server smb encrypt = desired\n",
+                "\n[{}]\n  comment = LosOS Cloud\n  path = {}\n  valid users = +{user}\n  read only = no\n  server smb encrypt = desired\n",
                 Self::share_name(&account.name),
                 files.display()
             ));
@@ -262,7 +262,7 @@ impl Windows {
         changed |= self.replace(&self.dir.join("smbpasswd"), passwd.as_bytes(), 0o600)?;
         changed |= self.replace(&self.dir.join("users.map"), map.as_bytes(), 0o644)?;
         changed |= self.replace(&self.dir.join("shares.conf"), shares.as_bytes(), 0o644)?;
-        changed |= self.write_userdb(&ready, gid)?;
+        changed |= self.write_userdb(&ready)?;
         if changed {
             self.reload();
         }
@@ -286,20 +286,17 @@ impl Windows {
         Ok(())
     }
 
-    fn write_userdb(
-        &self,
-        ready: &[(&Account, &Learned)],
-        gid: u32,
-    ) -> anyhow::Result<bool> {
+    fn write_userdb(&self, ready: &[(&Account, &Learned)]) -> anyhow::Result<bool> {
         std::fs::create_dir_all(&self.userdb)?;
         let mut changed = false;
         let mut keep = Vec::new();
         for (i, (account, _)) in ready.iter().enumerate() {
             let user = format!("{ACCOUNT_PREFIX}{}", account.name);
+            let id = account_uid(i);
             let record = serde_json::json!({
                 "userName": user,
-                "uid": account_uid(i),
-                "gid": gid,
+                "uid": id,
+                "gid": id,
                 "realName": account.display_name,
                 "homeDirectory": "/var/empty",
                 "shell": "/run/current-system/sw/bin/nologin",
@@ -312,24 +309,39 @@ impl Windows {
                 &serde_json::to_vec(&record)?,
                 0o644,
             )?;
-            // A lookup by uid, which Samba makes at every sign-in, finds
-            // the record only through `<uid>.user`.
-            let by_uid = format!("{}.user", account_uid(i));
-            let link = self.userdb.join(&by_uid);
-            if std::fs::read_link(&link).ok().as_deref() != Some(Path::new(&file)) {
-                let _ = std::fs::remove_file(&link);
-                std::os::unix::fs::symlink(&file, &link)?;
-                changed = true;
+            // Each account has a group of its own, which is what the share
+            // names: Samba's share list matches a person by group, not by
+            // user name.
+            let group = format!("{user}.group");
+            changed |= self.replace(
+                &self.userdb.join(&group),
+                &serde_json::to_vec(&serde_json::json!({ "groupName": user, "gid": id }))?,
+                0o644,
+            )?;
+            // A lookup by number, which Samba makes at every sign-in, finds
+            // a record only through `<uid>.user` and `<gid>.group`.
+            for (target, link) in [
+                (&file, format!("{id}.user")),
+                (&group, format!("{id}.group")),
+            ] {
+                let path = self.userdb.join(&link);
+                if std::fs::read_link(&path).ok().as_deref() != Some(Path::new(target)) {
+                    let _ = std::fs::remove_file(&path);
+                    std::os::unix::fs::symlink(target, &path)?;
+                    changed = true;
+                }
+                keep.push(link);
             }
             keep.push(file);
-            keep.push(by_uid);
+            keep.push(group);
         }
         for entry in std::fs::read_dir(&self.userdb)?.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             let ours = name.starts_with(ACCOUNT_PREFIX)
                 || std::fs::read_link(entry.path())
                     .is_ok_and(|t| t.to_string_lossy().starts_with(ACCOUNT_PREFIX));
-            if ours && name.ends_with(".user") && !keep.contains(&name) {
+            let record = name.ends_with(".user") || name.ends_with(".group");
+            if ours && record && !keep.contains(&name) {
                 std::fs::remove_file(entry.path())?;
                 changed = true;
             }
@@ -380,7 +392,8 @@ impl Windows {
             return;
         };
         match std::process::Command::new(program)
-            .args(["smbd", "reload-config"])
+            // smbd and the helpers that list the shares.
+            .args(["all", "reload-config"])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -498,7 +511,8 @@ fn md4(input: &[u8]) -> [u8; 16] {
     out
 }
 
-/// The Unix id of the `i`th ready person's account. Each has its own: Samba
+/// The Unix uid and gid of the `i`th ready person's account. Each has its
+/// own: Samba
 /// turns a file owner's uid into a Windows SID through its password file,
 /// and two accounts on one uid made the cloud's files belong to whichever
 /// came first, so the other was refused their own folder. Files stay the
@@ -605,7 +619,10 @@ mod tests {
             shares.contains(&format!("path = {}", path.display())),
             "{shares}"
         );
-        assert!(shares.contains("valid users = losos-win-matus"), "{shares}");
+        assert!(
+            shares.contains("valid users = +losos-win-matus"),
+            "{shares}"
+        );
         assert!(shares.trim_end().ends_with("[global]"), "{shares}");
         assert!(path.is_dir(), "the files folder is made for a first-timer");
         let record: serde_json::Value =
@@ -616,6 +633,16 @@ mod tests {
         assert_eq!(
             std::fs::read_link(by_uid).unwrap(),
             Path::new("losos-win-matus.user")
+        );
+        // A group of its own, under the same number, for the share to name.
+        let group: serde_json::Value =
+            serde_json::from_str(&read(b.root.join("userdb/losos-win-matus.group"))).unwrap();
+        assert_eq!(group["groupName"], "losos-win-matus");
+        assert_eq!(group["gid"], record["gid"]);
+        assert_eq!(record["gid"], record["uid"]);
+        assert_eq!(
+            std::fs::read_link(b.root.join(format!("userdb/{}.group", group["gid"]))).unwrap(),
+            Path::new("losos-win-matus.group")
         );
 
         // Everyone else's share is under their own login.
@@ -667,7 +694,7 @@ mod tests {
         b.w.sync(&[]);
         assert!(!read(b.root.join("windows/learned.json")).contains("eva"));
         assert!(!b.root.join("userdb/losos-win-eva.user").exists());
-        // Its by-uid link went with it.
+        // Its group and both by-number links went with it.
         assert_eq!(std::fs::read_dir(b.root.join("userdb")).unwrap().count(), 0);
     }
 

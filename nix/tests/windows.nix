@@ -245,6 +245,7 @@ pkgs.testers.nixosTest {
         assert len(boxes) == 1, out
 
     with subtest("each person sees and opens only their own share"):
+        box.wait_for_unit("samba-dcerpcd.service")
         rc, out = smb(f"-L //{box_ip}", "matus", PASSWORD)
         assert rc == 0 and re.search(r"(?m)^\s+matus\s+Disk", out) and "eva" not in out, out
         rc, out = smb(f"-L //{box_ip}", "eva", EVA)
