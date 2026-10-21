@@ -30,6 +30,8 @@ export interface AppBarPerson {
   label: string;
   /** The longer line in the tooltip. */
   tip: string;
+  /** Their picture (PersonAvatar size xs); a person icon without one. */
+  avatar?: React.ReactNode;
 }
 
 export interface AppBarProps {
@@ -141,8 +143,12 @@ function SignedInAs({ person }: { person: AppBarPerson }) {
           />
         }
       >
-        <HugeiconsIcon icon={UserCircleIcon} size={18} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-        <span className="hidden max-w-[12rem] truncate sm:inline">{person.label}</span>
+        {person.avatar ?? (
+          <HugeiconsIcon icon={UserCircleIcon} size={18} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+        )}
+        <span data-testid="signed-in-name" className="hidden max-w-[12rem] truncate sm:inline">
+          {person.label}
+        </span>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="end" className="max-w-[22rem]">
         {person.tip}
