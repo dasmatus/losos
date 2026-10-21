@@ -40,16 +40,30 @@ viac než 2 GB.
 
 ## Otvorenie dokumentu \{#opening-a-document}
 
-Kliknite na názov dokumentu a otvorí sa na celú šírku stránky, pod hornou
-lištou zariadenia a lištou s cestou späť a názvom dokumentu. Editor sa
-riadi svetlou alebo tmavou témou zariadenia a preberá jeho farby; samotná
-stránka dokumentu si nechá vzhľad, s akým bola napísaná. Dokument, ktorý smiete iba čítať, sa
-otvorí so štítkom **Len na čítanie** a editor ho nedovolí zmeniť. Editor
-funguje na adrese https zariadenia, tej istej, ktorú používa LosOS Login;
-stránka otvorená cez http sa tam najprv sama presunie.
+V LosOS Cloud kliknite na názov dokumentu. Otvorí sa v LosOS Office na celú
+šírku stránky, pod hornou lištou zariadenia, na adrese `/cloud/office/`
+s číslom súboru, takže si ju môžete uložiť medzi záložky alebo poslať
+niekomu, kto súbor tiež smie otvoriť.
 
-Editor ukladá priebežne a aj keď odídete. **Súbor → Uložiť ako** uloží
-kópiu vedľa originálu v ktoromkoľvek z typov vyššie alebo ako PDF.
+Nad dokumentom sú dve lišty, nakreslené ako zvyšok LosOS. Na prvej je cesta
+späť, názov dokumentu a či sú vaše zmeny už uložené v zariadení, ľudia,
+ktorí sú v dokumente s vami, priblíženie, **Stiahnuť ako PDF** a
+**Uložiť**. Na druhej je to, po čom siahate najčastejšie: späť a znova,
+štýl odseku a veľkosť písma, tučné, kurzíva, podčiarknuté, zoznamy,
+zarovnanie, odkazy, tabuľky a komentáre. Tabuľka má namiesto toho formáty
+čísel, zoraďovanie a nové riadky a stĺpce, prezentácia nové snímky a
+**Prezentovať**. Všetko ostatné je v ponuke po kliknutí pravým tlačidlom v
+dokumente.
+
+Lišty sa riadia svetlou alebo tmavou témou zariadenia. Strany dokumentu
+zostávajú v oboch biele, tak ako sa vytlačia. Dokument, ktorý smiete iba
+čítať, sa otvorí so štítkom **Len na čítanie** a bez lišty formátovania.
+Editor funguje na adrese https zariadenia, tej istej, ktorú používa LosOS
+Login; stránka otvorená cez http sa tam najprv sama presunie.
+
+Editor ukladá priebežne a aj keď odídete, a **Uložiť** zapíše vaše zmeny
+hneď. V LosOS Cloud každé uloženie zachová predchádzajúci obsah ako verziu
+súboru a aplikácie na synchronizáciu vo vašich počítačoch si vezmú nový.
 
 ## Spoločná práca \{#working-together}
 
@@ -72,7 +86,7 @@ dokumentu dostanú len ľudia, ktorí ho smú otvoriť sami.
 ## Priečinok dokumentov \{#a-folder-of-documents}
 
 `losos.office.folder` určuje priečinok na zariadení, ktorého dokumenty
-LosOS Office upravuje sám, bez LosOS cloud. V bočnom paneli sa potom za
+LosOS Office upravuje sám, namiesto dokumentov v LosOS Cloud. V bočnom paneli sa potom za
 **Aplikácie** objaví **Dokumenty** pre každého, kto sa prihlási. Vypíše
 dokumenty v priečinku aj v priečinkoch v ňom a každý otvorí v editore. Ako
 ostatné stránky správy odpovedá iba vo vlastnej sieti zariadenia. Je

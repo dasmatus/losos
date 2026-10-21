@@ -39,17 +39,30 @@ one, more for a large one. The box never lets it take more than 2 GB.
 
 ## Opening a document
 
-Click a document's name and it opens across the whole width of the page,
-under the box's top bar and a bar with the way back and the document's
-name. The editor follows the box's light or dark theme and takes its
-colours; the page of the document itself keeps the look it was written
-with. A document you may only read opens with a **Read only** label, and
-the editor offers no way to change it. The editor
-works on the box's https address, the same one LosOS Login uses; a page
-opened over http moves itself there first.
+In LosOS Cloud, click a document's name. It opens in LosOS Office across
+the whole width of the page, under the box's top bar, at
+`/cloud/office/` followed by the file's number, so the address can be
+bookmarked or sent to someone who may open the file too.
 
-The editor saves as you work and when you leave. **File → Save as** saves a
-copy beside the original, in any of the types above or as a PDF.
+Two bars sit above the document, drawn like the rest of LosOS. The first
+has the way back, the document's name and whether your changes are saved
+on the box yet, the people who are in the document with you, the zoom,
+**Download as PDF** and **Save**. The second has what you reach for most:
+undo and redo, the paragraph style and the font size, bold, italic,
+underline, lists, alignment, links, tables and comments. A spreadsheet
+gets number formats, sorting and new rows and columns instead, and a
+presentation gets new slides and **Present**. Everything else is in the
+document's right-click menu.
+
+The bars follow the box's light or dark theme. The pages of a document stay
+white in both, as they print. A document you may only read opens with a
+**Read only** label and no formatting bar. The editor works on the box's
+https address, the same one LosOS Login uses; a page opened over http moves
+itself there first.
+
+The editor saves as you work and when you leave, and **Save** writes your
+changes at once. In LosOS Cloud each save keeps the earlier contents as a
+version of the file, and your computers' sync apps pick up the new one.
 
 ## Working together
 
@@ -71,7 +84,7 @@ may open the document themselves get into it.
 ## A folder of documents
 
 `losos.office.folder` names a folder on the box whose documents LosOS
-Office edits on its own, without LosOS cloud. **Documents** then appears in
+Office edits on its own, instead of LosOS Cloud's. **Documents** then appears in
 the sidebar, after **Apps**, for everyone who signs in. It lists the
 documents in the folder and in the folders inside it, and opens each one in
 the editor. Like the rest of the admin pages it answers on the box's own

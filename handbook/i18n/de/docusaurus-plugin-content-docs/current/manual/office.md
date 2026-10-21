@@ -42,19 +42,34 @@ es nie mehr als 2 GB nehmen.
 
 ## Ein Dokument öffnen \{#opening-a-document}
 
-Klick auf den Namen eines Dokuments, und es öffnet sich über die ganze
-Breite der Seite, unter der oberen Leiste der Box und einer Leiste mit dem
-Weg zurück und dem Namen des Dokuments. Der Editor folgt dem hellen oder
-dunklen Design der Box und übernimmt ihre Farben; die Seite des Dokuments
-selbst behält das Aussehen, mit dem sie geschrieben wurde. Ein
-Dokument, das du nur lesen darfst, öffnet sich mit dem Hinweis **Nur
-lesen**, und der Editor bietet keinen Weg, es zu ändern. Der Editor
-funktioniert unter der https-Adresse der Box, derselben, die LosOS Login
-nutzt; eine über http geöffnete Seite wechselt zuerst selbst dorthin.
+Klick in LosOS Cloud auf den Namen eines Dokuments. Es öffnet sich in LosOS
+Office über die ganze Breite der Seite, unter der oberen Leiste der Box,
+unter `/cloud/office/` mit der Nummer der Datei. Die Adresse kannst du dir
+also als Lesezeichen speichern oder jemandem schicken, der die Datei auch
+öffnen darf.
 
-Der Editor speichert während der Arbeit und wenn du gehst. **Datei →
-Speichern unter** legt eine Kopie neben dem Original ab, in einem der Typen
-oben oder als PDF.
+Über dem Dokument liegen zwei Leisten, gezeichnet wie der Rest von LosOS.
+Die erste hat den Weg zurück, den Namen des Dokuments und ob deine
+Änderungen schon auf der Box gespeichert sind, die Leute, die mit dir im
+Dokument sind, den Zoom, **Als PDF herunterladen** und **Speichern**. Die
+zweite hat das, wonach du am häufigsten greifst: Rückgängig und
+Wiederholen, Absatzvorlage und Schriftgröße, fett, kursiv, unterstrichen,
+Listen, Ausrichtung, Links, Tabellen und Kommentare. Eine Tabelle bekommt
+stattdessen Zahlenformate, Sortieren und neue Zeilen und Spalten, eine
+Präsentation neue Folien und **Präsentieren**. Alles andere steht im
+Rechtsklick-Menü des Dokuments.
+
+Die Leisten folgen dem hellen oder dunklen Design der Box. Die Seiten eines
+Dokuments bleiben in beiden weiß, so wie sie gedruckt werden. Ein Dokument,
+das du nur lesen darfst, öffnet sich mit dem Hinweis **Nur lesen** und ohne
+Formatleiste. Der Editor funktioniert unter der https-Adresse der Box,
+derselben, die LosOS Login nutzt; eine über http geöffnete Seite wechselt
+zuerst selbst dorthin.
+
+Der Editor speichert während der Arbeit und wenn du gehst, und
+**Speichern** schreibt deine Änderungen sofort. In LosOS Cloud behält jedes
+Speichern den vorigen Inhalt als Version der Datei, und die Sync-Apps auf
+deinen Computern holen sich den neuen.
 
 ## Gemeinsam arbeiten \{#working-together}
 
@@ -79,7 +94,7 @@ der Editor nicht an, also kommen nur Leute in das Dokument, die es selbst
 ## Ein Ordner mit Dokumenten \{#a-folder-of-documents}
 
 `losos.office.folder` nennt einen Ordner auf der Box, dessen Dokumente
-LosOS Office selbst bearbeitet, ohne LosOS cloud. In der Seitenleiste
+LosOS Office selbst bearbeitet, statt der Dokumente in LosOS Cloud. In der Seitenleiste
 erscheint dann nach **Apps** der Eintrag **Dokumente**, für alle, die sich
 anmelden. Er listet die Dokumente im Ordner und in den Ordnern darin auf
 und öffnet jedes im Editor. Wie die übrigen Verwaltungsseiten antwortet er
