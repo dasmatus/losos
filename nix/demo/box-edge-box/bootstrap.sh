@@ -25,7 +25,9 @@
 #   --host-mdns        put this machine on the VMs' network too, so its own
 #                      mDNS responder finds boxa.local, boxb.local and
 #                      edge.local and a browser here opens them by name.
-#                      Makes one network device, which asks for sudo once.
+#                      Makes one network device, the one step that needs
+#                      root: through sudo, doas or run0, whichever is here
+#                      (LOSOS_DEMO_SU names one).
 #   --write-only       write stage two and stop
 #   --dir DIR          where stage two and the VMs live
 #                      (default ~/.local/share/losos-demo)
@@ -127,6 +129,18 @@ elif command -v resolvectl >/dev/null 2>&1 && resolvectl status 2>/dev/null | gr
 fi
 mdns_nss=0
 grep -Eq '^hosts:.*[[:space:]](mdns[46]?(_minimal)?|resolve)([[:space:]]|$)' /etc/nsswitch.conf 2>/dev/null && mdns_nss=1
+# How --host-mdns's one step becomes root: it already is, or sudo, doas or
+# run0 (systemd 256 and later), the first one here.
+su_cmd="${LOSOS_DEMO_SU:-}"
+if [ -z "$su_cmd" ]; then
+  if [ "$(id -u)" = 0 ]; then
+    su_cmd=none
+  else
+    for c in sudo doas run0; do
+      if command -v "$c" >/dev/null 2>&1; then su_cmd=$c; break; fi
+    done
+  fi
+fi
 case $mdns_host:$mdns_nss in
   avahi:1) row mDNS "avahi-daemon, nss-mdns" ok ;;
   resolved:1) row mDNS "systemd-resolved" ok ;;
@@ -174,9 +188,13 @@ if [ "$host_mdns" = 1 ] && [ -z "$mdns_host" ]; then
   say "--host-mdns needs an mDNS responder here: install Avahi and nss-mdns, or turn"
   say "on MulticastDNS in systemd-resolved. Carrying on without it."
   host_mdns=0
-elif [ "$host_mdns" = 0 ] && [ -n "$mdns_host" ] && [ "$mdns_nss" = 1 ]; then
+elif [ "$host_mdns" = 1 ] && [ -z "$su_cmd" ]; then
+  say "--host-mdns makes one network device as root, through sudo, doas or run0,"
+  say "and none of them is here. Carrying on without it."
+  host_mdns=0
+elif [ "$host_mdns" = 0 ] && [ -n "$mdns_host" ] && [ "$mdns_nss" = 1 ] && [ -n "$su_cmd" ]; then
   say "To open the boxes as http://boxa.local/ from this machine, add --host-mdns"
-  say "(it asks for sudo once, to make one network device)."
+  [ "$su_cmd" = none ] || say "(it asks $su_cmd once, to make one network device)."
 fi
 
 # Memory per installed box: 8 GiB where there is room, else 4, which is
@@ -229,6 +247,7 @@ box_mem=$box_mem
 pause=$pause
 host_mdns=$host_mdns
 mdns_host=$mdns_host
+su_cmd=$su_cmd
 EOF
   cat <<'EOF'
 
@@ -246,7 +265,7 @@ mkdir -p "$dir"
 # driver plugs a tap of that name (vlan 77) into its network itself; the
 # full demo plugs it into run.sh's switch.
 tap=vde-tap77
-as_root() { if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi; }
+as_root() { if [ "$su_cmd" = none ]; then "$@"; else "$su_cmd" "$@"; fi; }
 ip_cmd() { command -v ip || echo "$(nixf build --no-link --print-out-paths 'nixpkgs#iproute2^out' 2>/dev/null)/bin/ip"; }
 host_mdns_up() {
   [ "$host_mdns" = 1 ] || return 0
@@ -254,7 +273,7 @@ host_mdns_up() {
   ip=$(ip_cmd)
   if [ "$mode" = light ]; then addr=192.168.77.254/24; else addr=10.77.0.254/24; fi
   if ! "$ip" -o -4 addr show dev "$tap" 2>/dev/null | grep -q "inet $addr "; then
-    log "making $tap at ${addr%/*} for this machine's mDNS (sudo may ask for your password)"
+    log "making $tap at ${addr%/*} for this machine's mDNS$([ "$su_cmd" = none ] || echo " ($su_cmd may ask for your password)")"
     as_root sh -c "'$ip' link show $tap >/dev/null 2>&1 || '$ip' tuntap add dev $tap mode tap user $(id -u)
       '$ip' addr flush dev $tap && '$ip' addr add $addr dev $tap && '$ip' link set $tap up"
   fi
@@ -266,7 +285,7 @@ host_mdns_link() { # resolved keeps mDNS per link: switch it on once the tap is 
     [ "$(cat "/sys/class/net/$tap/carrier" 2>/dev/null)" = 1 ] && break
     sleep 1
   done
-  as_root resolvectl mdns "$tap" yes || log "could not switch mDNS on for $tap; run: sudo resolvectl mdns $tap yes"
+  as_root resolvectl mdns "$tap" yes || log "could not switch mDNS on for $tap; run as root: resolvectl mdns $tap yes"
 }
 host_mdns_plug() { # full: plug the tap into run.sh's switch, and keep it there
   [ "$host_mdns" = 1 ] || return 0

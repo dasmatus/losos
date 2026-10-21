@@ -74,7 +74,8 @@ curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-ed
 ```
 
 It makes one network device, `vde-tap77`, which puts this computer on the
-VMs' network. That is the one step that asks for `sudo`. The responder here
+VMs' network. That is the one step that needs root, through `sudo`, `doas`
+or `run0`, whichever the computer has. The responder here
 then hears the VMs, and a browser opens `http://boxa.local/` like a box on
 a real network. `bash ~/.local/share/losos-demo/stage2.sh host-mdns-off`
 removes the device. If a name does not resolve, the firewall may be

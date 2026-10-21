@@ -22,7 +22,7 @@ be edited.
 Nix is the only thing the machine needs. QEMU, swtpm, VDE and every image
 come through it. Nothing runs as root, and the only ports the demo opens are
 forwards on `127.0.0.1`. The exception is `--host-mdns`, below, which makes one
-network device with `sudo`. Without Nix the script prints the installer line
+network device as root, through `sudo`, `doas` or `run0`. Without Nix the script prints the installer line
 and stops.
 
 | | full | light |
@@ -70,7 +70,8 @@ computer on the network.
 - Boxes in the light demo send a heartbeat every 5 seconds instead of 30, so
   the demo does not wait on it.
 - The VMs' `.local` names live on their own network. `--host-mdns` makes
-  one tap device, `vde-tap77` (the only step that needs `sudo`), at
+  one tap device, `vde-tap77` (the only step that needs root: `sudo`, `doas` or `run0`, the first one
+  found, or the one `LOSOS_DEMO_SU` names), at
   `192.168.77.254` (light) or `10.77.0.254` (full) on that network, so the
   host's own responder (Avahi or systemd-resolved, which stage one detects)
   hears the VMs and a browser opens `http://boxa.local/`. The light demo's

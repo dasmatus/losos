@@ -74,7 +74,8 @@ curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-ed
 ```
 
 Vytvorí jedno sieťové zariadenie, `vde-tap77`, ktoré pripojí tento počítač
-na sieť virtuálnych strojov. Len tento krok pýta `sudo`. Responder tu potom
+na sieť virtuálnych strojov. Len tento krok potrebuje root, cez `sudo`,
+`doas` alebo `run0`, podľa toho, čo počítač má. Responder tu potom
 počuje virtuálne stroje a prehliadač otvorí `http://boxa.local/` ako
 zariadenie na skutočnej sieti. `bash ~/.local/share/losos-demo/stage2.sh
 host-mdns-off` zariadenie odstráni. Ak sa názov nenájde, firewall možno

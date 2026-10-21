@@ -76,7 +76,8 @@ curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-ed
 ```
 
 Es legt ein Netzwerkgerät an, `vde-tap77`, das diesen Rechner ins Netz der
-VMs bringt. Nur dieser Schritt fragt nach `sudo`. Der Responder hier hört
+VMs bringt. Nur dieser Schritt braucht root, über `sudo`, `doas` oder
+`run0`, je nachdem, was der Rechner hat. Der Responder hier hört
 dann die VMs, und ein Browser öffnet `http://boxa.local/` wie eine Box in
 einem echten Netz. `bash ~/.local/share/losos-demo/stage2.sh host-mdns-off`
 entfernt das Gerät. Löst ein Name nicht auf, verwirft die Firewall
