@@ -2,6 +2,7 @@
 //! panes in a terminal, and a few commands for scripts, over the signed and
 //! encrypted envelope of docs/terminal-access.md.
 
+pub mod agents;
 pub mod cli;
 pub mod commands;
 pub mod computer;
