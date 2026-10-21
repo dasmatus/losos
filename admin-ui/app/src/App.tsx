@@ -4,6 +4,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon } from "@hugeicons/core-free-icons";
 import { AppBar, type AppBarPerson } from "@/components/app-bar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { MeshNotice } from "@/components/mesh-notice";
+import { PersonAvatar } from "@/components/person";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -287,6 +289,7 @@ function Shell() {
       >
         <AppSidebar />
         <main className="min-w-0 flex-1">
+          {signedIn && !held && <MeshNotice />}
           <React.Suspense fallback={<ScreenFallback />}>
           {held ? (
             <Settings pane="account" />
@@ -346,7 +349,16 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
       ? t("shell.me.spareKeyTip")
       : `${t("shell.me.signedIn", { name: me.name ?? name })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`;
     person = { label: name, tip };
-    if (!me.spareKey) person.accountLink = <Link to="/settings/account" />;
+    if (!me.spareKey && me.name) {
+      person.avatar = (
+        <PersonAvatar
+          size="xs"
+          data-testid="signed-in-avatar"
+          person={{ name: me.name, displayName: me.displayName ?? me.name, picture: me.picture, accent: me.accent }}
+        />
+      );
+      person.accountLink = <Link to="/settings/account" />;
+    }
   }
   return (
     <AppBar

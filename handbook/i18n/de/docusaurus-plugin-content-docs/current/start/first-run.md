@@ -113,15 +113,19 @@ festgelegt hast. Dann bringt dich der Assistent zur Übersicht der
 Admin-Seiten. Ab hier geht es weiter unter [Die
 Admin-Seiten](../manual/admin-pages).
 
-Beim ersten Mal öffnet sich über der Übersicht eine kurze Tour. Sie hat sechs
-Schritte, und jeder zeigt ein kleines bewegtes Bild der Seite mit dem
-Eintrag in der Seitenleiste, unter dem die jeweilige Funktion liegt. Die
-Schritte behandeln die Apps, das Hinzufügen weiterer Apps, den Speicher, das
-Verleihen der Box in der Nacht, das nächtliche Update und wo du die Tour
-wiederfindest. **Tour überspringen** schließt sie, und dieser Browser öffnet
-sie nicht mehr von selbst. **Tour starten** unter Einstellungen, Über holt
-sie zurück.
+Beim ersten Mal öffnet sich über der Übersicht eine kurze Tour. Jeder
+Schritt zeigt ein kleines bewegtes Bild der Seite mit dem Eintrag in der
+Seitenleiste, unter dem die jeweilige Funktion liegt. Jede Box hat sechs
+Schritte: die Apps von LosOS Cloud, weitere Apps hinzufügen, den Speicher,
+das Verleihen der Box in der Nacht, das nächtliche Update und wo du die Tour
+wiederfindest. Die Tour fragt die Box, was sie sonst noch hat, und fügt für
+jedes einen Schritt hinzu: Office, Arbeitsspeicher für KI-Modelle verleihen,
+einen Namen, über den man sie bezahlt, Chat und Anrufe (nur solange die Box
+ihren Speicher in einem Mesh teilt), Mit KI bauen und Profilbilder. Eine Box
+ohne all das zeigt die sechs Schritte.
+**Tour überspringen** schließt sie, und dieser Browser öffnet sie nicht
+mehr von selbst. **Tour starten** unter Einstellungen, Über holt sie zurück.
 
-![Der erste Schritt der Tour über der Übersicht: ein Bild der Seite mit geöffneter Dateien-App, „1 von 6“ sowie Tour überspringen und Weiter.](@site/docs/img/tour-de.png)
+![Der erste Schritt der Tour über der Übersicht: ein Bild der Seite mit den sechs Apps von LosOS Cloud, „1 von 6“ sowie Tour überspringen und Weiter.](@site/docs/img/tour-de.png)
 
 ![Schritt 3: Du bist angemeldet. Das war der letzte Schritt.](@site/docs/img/wizard-step3-sign-in-de.png)

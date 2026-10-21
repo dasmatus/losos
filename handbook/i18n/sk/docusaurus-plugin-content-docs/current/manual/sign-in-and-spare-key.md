@@ -135,9 +135,11 @@ Každý človek v zozname má tieto tlačidlá:
 - **Obnoviť dvojstupňové** mu odstráni overovaciu aplikáciu a prístupové
   kľúče, keď stratil telefón alebo kľúč. Prihlasuje sa potom iba heslom,
   kým si nepridá nové. Zobrazí sa iba pri tom, kto nejaké má.
+- **Odstrániť fotku** a **Odstrániť banner** stiahnu obrázok, ktorý by
+  ostatní nemali vidieť. Zobrazia sa iba pri tom, kto nejaký má.
 - **Odstrániť** mu hneď zastaví prihlasovanie do správcovských stránok aj do
-  oboch aplikácií. Jeho účty a súbory v LosOS Cloud a LosOS Git na zariadení
-  zostanú.
+  oboch aplikácií a zmaže jeho profil. Jeho účty a súbory v LosOS Cloud a
+  LosOS Git na zariadení zostanú.
 
 Váš vlastný riadok tlačidlá nemá. Riadok vlastníka má iba **Obnoviť
 dvojstupňové**, pre iného správcu. Vlastníka tu nikto nemôže odstrániť,
@@ -153,6 +155,14 @@ nemá.
 
 ![Váš účet: vaše údaje, heslo, dvojstupňové prihlásenie a jednorazový kód.](@site/docs/img/settings-account-sk.png)
 
+- **Profil**: fotka, banner, farba, vaše zámená a riadok o vás. Každý, kto
+  je prihlásený do zariadenia, ich vidí vedľa vášho mena: v hornej lište, v
+  table Používatelia a v aplikáciách zariadenia. Vyberte fotku alebo banner,
+  ťahaním a priblížením nastavte časť, ktorú chcete, a zvoľte **Použiť**.
+  Zariadenie obrázok znova oreže a uloží ako nový súbor, takže miesto a
+  fotoaparát, ktorým bola fotka nasnímaná, zostanú vo vašom zariadení. Vedľa
+  profilu je vždy aj vaše prihlasovacie meno, takže sa za vás fotkou nikto
+  nevydá.
 - **Vaše údaje**: celé meno a e-mailová adresa. LosOS Cloud aj LosOS Git
   ukazujú tie isté. Prihlasovacie meno môže zmeniť iba správca.
 - **Heslo**: kedy ste ho naposledy zmenili a kedy vyprší, ak má zariadenie

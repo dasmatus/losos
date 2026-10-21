@@ -35,8 +35,9 @@
 // page's width against the window's (a page wider than a phone scrolls
 // sideways) and the Content-Security-Policy violations the page raised.
 //
-// Steps, in order: `click` / `waitFor` ({role, name}, {text} or
-// {selector}), `fill` ({label, value}), `upload` ({selector, file}),
+// Steps, in order: `click` / `waitFor` / `gone` / `absent` ({role, name},
+// {text} or {selector}; `gone` waits for it to leave, `absent` fails if it
+// is there now), `fill` ({label, value}), `upload` ({selector, file}),
 // `press` (a key), `waitText` (exact text), `sleep` (milliseconds) and
 // `goto` (a path). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
@@ -80,6 +81,10 @@ function locate(page, what) {
 async function step(page, s) {
   if (s.click) await locate(page, s.click).click();
   else if (s.waitFor) await locate(page, s.waitFor).waitFor({ timeout: s.timeout ?? 60000 });
+  else if (s.gone) await locate(page, s.gone).waitFor({ state: 'detached', timeout: s.timeout ?? 60000 });
+  else if (s.absent) {
+    if ((await locate(page, s.absent).count()) > 0) throw new Error(`present: ${JSON.stringify(s.absent)}`);
+  }
   else if (s.fill) await page.getByLabel(s.fill.label, { exact: true }).fill(s.fill.value);
   else if (s.upload) await page.locator(s.upload.selector).setInputFiles(s.upload.file);
   else if (s.press) await page.keyboard.press(s.press);

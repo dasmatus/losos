@@ -166,11 +166,14 @@ herunterlädt und ausführt, den der Herausgeber geschrieben hat, als der von
 dir gewählte Benutzer und ohne Admin-Rechte. Die Box holt nichts, bis du
 dort **Installieren** drückst.
 
-Die Box installiert das Chart dann in ihren eigenen Cluster und ändert es
-so, dass es so läuft wie LosOS Cloud und LosOS Git.
+Was die App ausführt, hängt vom Benutzer ab. Eine `notshared`-App läuft
+auf Podman ohne root, als `notshared` selbst, und braucht keinen Cluster.
+Eine `shared`-App läuft im eigenen Cluster der Box, weil das der Teil der
+Box ist, den der Verbund berührt. In beiden Fällen ändert die Box das
+Chart so, dass es so läuft wie LosOS Cloud und LosOS Git.
 
 - Jeder Teil der App läuft als der gewählte Benutzer, nie als root, ohne
-  zusätzliche Rechte und ohne Zugriff auf den Cluster.
+  zusätzliche Rechte und ohne Zugriff auf einen Cluster.
 - Der Speicher, den das Chart anfordert, wird zu Ordnern unter
   `/home/<user>/data/apps/<name>`.
 - Die App bekommt einen eigenen Port aus `losos.apps.ports`, standardmäßig
@@ -179,9 +182,12 @@ so, dass es so läuft wie LosOS Cloud und LosOS Git.
 :::note[Charts, die die Box ablehnt]
 Ein Chart, das mehr braucht, lehnt die Box ab und sagt, warum. Typische
 Gründe sind Admin-Rechte, ein Port unter 1024, ein Port, den schon eine
-andere App benutzt, oder ein Ordner des Systems. Eine App aus mehreren
+andere App benutzt, oder ein Ordner des Systems. Die Dienste einer
+`notshared`-App finden einander über ihren Namen direkt auf der Box, also
+müssen sie auf verschiedenen Ports lauschen. Eine `shared`-App aus mehreren
 Diensten, die einander über ihren Namen aufrufen, startet vielleicht nicht,
-weil der eigene Cluster der Box kein internes Netz hat.
+weil der eigene Cluster der Box kein internes Netz hat. Ein geplanter Job
+(ein CronJob) läuft nur als `shared`.
 :::
 
 **Installierte Apps** über der Suche listet jede App mit ihrem Zustand.
@@ -191,12 +197,22 @@ weil der eigene Cluster der Box kein internes Netz hat.
 Datenordner bleibt, sodass eine Installation unter demselben Namen die Daten
 wiederfindet.
 
-:::note[Installieren nur im Workload-Modus]
-Die Suche bietet Installationen nur an, solange Dateien oder Code auf
-**Abgeschottet** steht, also im [Workload-Modus](../types/app-modes). Nur
-dann läuft der eigene Cluster der Box. Um das Installieren abzuschalten,
+:::note[Als shared nur im Workload-Modus]
+Eine `notshared`-App lässt sich auf jeder Box installieren. `shared`
+braucht den eigenen Cluster der Box, der nur läuft, solange Dateien oder
+Code auf **Abgeschottet** steht ([Workload-Modus](../types/app-modes)),
+und die Box muss ihre Festplatte teilen. Um das Installieren abzuschalten,
 setze `losos.apps.enable` im Bereich **Erweitert** auf false.
 :::
+
+## Apps, die für die Box gemacht sind \{#apps-made-for-the-box}
+
+Apps können auch als Compose-Datei im
+[LosOS-App-Format](../in-depth/app-format) kommen, eine, die du schreibst,
+oder eine, die ein Programm für dich schickt. Sie laufen als
+`notshared`, stehen unter **Installierte Apps** mit der Zeile „für diese
+Box gemacht“ und haben **Öffnen** und **Entfernen**, aber kein **Ändern**,
+weil sie keine Eigenschaften haben.
 
 ## Vertrauenswürdige Adressen \{#trusted-addresses}
 

@@ -45,6 +45,9 @@ const APPS = {
   apps: [
     {
       release: 'pihole',
+      kind: 'chart',
+      title: null,
+      runtime: 'podman',
       chart: { repo: 'https://mojo2600.github.io/pihole-kubernetes/', name: 'pihole', version: '2.27.0' },
       runAs: 'notshared',
       values: {},

@@ -261,11 +261,96 @@ diese Routen selbst, in `relay-routes.json` neben seiner Registry.
 [Edge-Föderation](/in-depth/edge-federation.md#custom-domains-behind-a-local-edge)
 enthält die Details und `losos.edge.dns.relayRoutes`.
 
+### Wallets unter Box-Namen {#wallets-at-box-names}
+
+Eine Box verknüpft ihre Wallet mit ihren Namen über `POST /domains/wallet`
+(`{address, signature}`, von lososd aus Einstellungen → Netzwerk
+weitergereicht). Die Signatur ist das `personal_sign` der Wallet über
+
+```
+LosOS box name v1
+zone: <zone>
+box: <box id>
+address: <0x address, lowercase>
+```
+
+sodass sie auf einer anderen Edge oder für eine andere Box nichts verknüpft.
+Der Registrar ermittelt den Signierer, speichert Adresse und Signatur in
+`domains.json` und schreibt unter jeden Namen der Box in der Zone, ihren
+Hostnamen und ihr Label, einen TXT-Eintrag:
+
+```
+mattbox IN TXT "ENS1 dnsname.ens.eth 0x…"
+```
+
+Das ist die gaslose DNS-Auflösung von ENS (ENSIP-17): Eine Wallet fragt ENS
+auf Ethereum Mainnet, das DNSSEC-Gateway von ENS holt den TXT-Eintrag, ein
+Contract prüft die Signaturen bis zur DNS-Wurzel, und `dnsname.ens.eth`, der
+erste DNS-Resolver von ENS, liefert die Adresse. Er liefert `addr`
+ABI-kodiert, so wie jede Wallet es dekodiert. Sein Nachfolger,
+`2.dnsname.ens.eth`, liest Schlüssel je Chain (`a[e8453]=…`), liefert aber
+nackte 20 Bytes, die weder die Standardsuche von viem noch ethers dekodieren,
+sodass die Wallet eines Käufers nichts fände. Die Wallet der Box hat auf jedem
+EVM-Netz dieselbe Adresse, also genügt die Antwort für Ethereum. `{}` trennt
+sie.
+
+Der Aufruf trägt das Token der Box, also kann nur die Box verknüpfen oder
+trennen, und lososd tut das nur für einen Administrator (der Abschnitt
+`network`). Die Signatur zeigt, dass die Wallet dem Namen dieser Box
+zugestimmt hat. Sie hält die Edge, die die Zone signiert, nicht davon ab,
+etwas anderes auszuliefern: Der Name ist so vertrauenswürdig wie die Edge.
+
+ENS liest nur eine signierte Zone, also signiert Knot diese
+(`losos.edge.dns.dnssec.enable`, standardmäßig an) mit seiner
+Standardrichtlinie, ECDSA P-256 mit Schlüsseln in `/var/lib/knot`. Resolver
+vertrauen den Signaturen, sobald die Elternzone den DS-Eintrag der Zone
+veröffentlicht, den `keymgr <zone> ds` auf der Edge ausgibt. Veröffentliche
+ihn neben den NS-Einträgen oben.
+
+Dass Knot antwortet, heißt noch nicht, dass eine Wallet den Namen findet.
+Solange eine Wallet verknüpft ist, fragt der Reconciler den
+DNS-over-HTTPS-Resolver (`losos.edge.dns.checkUrl`) nach dem TXT-Eintrag bei
+jedem Namen der Box, so wie das Gateway von ENS fragen würde, und meldet ihn
+je Name in `wallet.published`: `found`, sobald der Eintrag validiert (das
+AD-Bit des Resolvers), `unsigned`, solange die Elternzone keinen DS
+veröffentlicht, `missing`, solange sie die Zone nicht delegiert, `other`,
+solange ein Resolver noch einen älteren Eintrag hält. Ein noch nicht
+gefundener Name wird jede halbe Minute neu gesucht, ein gefundener stündlich.
+Der Bereich Netzwerk zeigt es neben jedem Namen.
+
+Die Wallet der Box löst Namen über dasselbe Relay auf wie ihre Lesezugriffe
+auf die Chain (`/api/market/rpc` mit `network: "ens"`). Die Suche nach einem
+DNS-Namen hat einen Schritt außerhalb der Chain (EIP-3668): Der Resolver
+bricht mit der URL des Gateways ab, die Seite schickt `ens_ccipRead` mit dem
+Absender und den Calldata, und die Edge schickt sie an
+`https://dnssec-oracle.ens.domains/`, das einzige Gateway, das sie fragt, und
+gibt die Antwort zurück, die der Contract prüft. Die CSP der Admin-Seite lässt
+sie weiterhin nur mit ihrer eigenen Box sprechen.
+
+Die eigene Domain eines Besitzers bekommt denselben Eintrag im Bereich
+angezeigt, um ihn direkt bei der Domain einzutragen. Solange eine Wallet
+verknüpft ist, sucht jede Prüfung auch TXT bei der Domain und meldet
+`wallet`: `found` (der Eintrag, wie die Edge ihn veröffentlicht, vom Resolver
+per DNSSEC validiert),
+`unsigned`, `cname` (ein CNAME trägt kein TXT, und ENS liest nur den exakten
+Namen), `other` oder `missing`. Darüber, ob die Domain geroutet wird,
+entscheidet das nie.
+
 :::note[Wie das getestet wird]
-`nix/tests/edge-dns.nix` (`losos-edge-dns`) bootet eine Edge und einen Client und
-fragt Knot über UDP und TCP ab. `edge/registrar/tests/domains.rs` spielt
-den Anspruchsablauf gegen einen echten Registrar und einen nachgebildeten
-DNS-over-HTTPS-Server durch.
+`nix/tests/edge-dns.nix` (`losos-edge-dns`) bootet eine Edge und einen Client,
+fragt Knot über UDP und TCP ab, verknüpft eine Wallet und validiert ihren
+signierten Eintrag mit `delv` ab dem DS der Zone.
+`nix/tests/box-wallet-name.nix` (`losos-box-wallet-name`) fügt eine Box mit
+LosOS Login und einen Laptop hinzu: Der Besitzer verknüpft die Wallet in
+Chromium im Bereich Netzwerk, über lososd, und der Eintrag besteht die
+Validierung. Ein Ersatz für das öffentliche DNS auf der Edge antwortet dann
+mit nichts, einem unsignierten und einem validierten Eintrag, während der
+Test die Zone delegiert und ihren DS veröffentlicht, und der Bereich folgt
+jedem Schritt. `edge/registrar/tests/domains.rs` spielt den Anspruchs- und den
+Wallet-Ablauf gegen einen echten Registrar und einen nachgebildeten
+DNS-over-HTTPS-Server durch. `admin-ui/app/tests/ens.node.mjs` spielt über
+das Relay die Suche nach einem DNS-Namen ab, aufgezeichnet von Ethereum
+Mainnet und dem Gateway von ENS.
 :::
 
 ## Demo-Betrieb auf Vercel {#demo-deployment-on-vercel}

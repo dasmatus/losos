@@ -145,9 +145,12 @@ Jede Person in der Liste hat diese Knöpfe:
   für jemanden, der Handy oder Schlüssel verloren hat. Die Person meldet
   sich dann nur mit dem Passwort an, bis sie neue hinzufügt. Den Knopf gibt
   es nur bei jemandem, der welche hat.
+- **Bild entfernen** und **Banner entfernen** nehmen ein Bild herunter,
+  das andere nicht sehen sollen. Die Knöpfe gibt es nur bei jemandem, der
+  eins hat.
 - **Entfernen** beendet sofort die Anmeldung an den Admin-Seiten und an
-  beiden Apps. Konten und Dateien in LosOS Cloud und LosOS Git bleiben auf
-  der Box.
+  beiden Apps und löscht das Profil. Konten und Dateien in LosOS Cloud und
+  LosOS Git bleiben auf der Box.
 
 Deine eigene Zeile hat keine Knöpfe. Die Zeile des Besitzers hat nur
 **Zwei-Faktor zurücksetzen**, für einen anderen Administrator. Den Besitzer
@@ -164,6 +167,14 @@ für den Ersatzschlüssel, der kein Konto hat.
 
 ![Dein Konto: deine Angaben, dein Passwort, die Zwei-Faktor-Anmeldung und der Einmalcode.](@site/docs/img/settings-account-de.png)
 
+- **Profil**: ein Bild, ein Banner, eine Farbe, deine Pronomen und eine
+  Zeile über dich. Alle, die an der Box angemeldet sind, sehen sie neben
+  deinem Namen: in der oberen Leiste, im Bereich Benutzer und in den Apps
+  der Box. Wähl ein Bild oder Banner, zieh und zoome auf den Teil, den du
+  willst, und wähl **Übernehmen**. Die Box schneidet das Bild erneut zu und
+  speichert es als neue Datei, sodass Ort und Kamera eines Fotos auf deinem
+  Gerät bleiben. Neben dem Profil steht immer dein Anmeldename, damit sich
+  niemand mit einem Bild als du ausgeben kann.
 - **Deine Angaben**: vollständiger Name und E-Mail-Adresse. LosOS Cloud und
   LosOS Git zeigen dieselben. Nur ein Administrator kann deinen
   Anmeldenamen ändern.

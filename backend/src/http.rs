@@ -62,6 +62,11 @@ struct Api {
     login: crate::login::Login,
     /// LosOS Login names on LosOS Cloud's share (`crate::cloud_share`).
     share: crate::cloud_share::Share,
+    /// Each person's picture, banner and the rest of their profile
+    /// (`crate::profiles`).
+    profiles: crate::profiles::Profiles,
+    /// Turns at decoding an upload (`IMAGE_JOBS`).
+    image_jobs: tokio::sync::Semaphore,
     /// The plugins that answer every route not registered below
     /// (`crate::plugin`).
     plugins: crate::plugin::Runtime,
@@ -552,9 +557,21 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 } else {
                     vec!["account"]
                 };
+                let shown = crate::profiles::render(
+                    &crate::people::Listed {
+                        name: p.name.clone(),
+                        display_name: p.display_name.clone(),
+                        email: String::new(),
+                        groups: Vec::new(),
+                        disabled: false,
+                    },
+                    &api.profiles.get(&p.name).unwrap_or_default(),
+                );
                 HttpResponse::Ok().json(serde_json::json!({
                     "name": p.name,
                     "displayName": p.display_name,
+                    "picture": shown["picture"],
+                    "accent": shown["accent"],
                     "groups": p.groups,
                     "admin": p.is_admin() && locked.is_empty(),
                     "spareKey": false,
@@ -644,6 +661,7 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
         };
         let rules = api.login.rules();
         let now = crate::login::now();
+        let profiles = api.profiles.all().unwrap_or_default();
         let people: Vec<serde_json::Value> = people
             .into_iter()
             .map(|p| {
@@ -652,6 +670,13 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 row["twoFactor"] = serde_json::json!(factors.any());
                 row["passwordSetAt"] = serde_json::json!(set_at);
                 row["locked"] = serde_json::json!(reasons);
+                let shown = crate::profiles::render(
+                    &p,
+                    &profiles.get(&p.name).cloned().unwrap_or_default(),
+                );
+                row["picture"] = shown["picture"].clone();
+                row["accent"] = shown["accent"].clone();
+                row["banner"] = shown["banner"].clone();
                 row
             })
             .collect();
@@ -820,6 +845,9 @@ async fn post_person_remove(
             Ok(()) => {
                 if let Err(e) = api.login.forget(&name) {
                     tracing::warn!(error = ?e, "a removed person's password date stayed");
+                }
+                if let Err(e) = api.profiles.forget(&name) {
+                    tracing::warn!(error = ?e, "a removed person's profile stayed");
                 }
                 HttpResponse::Ok().json(serde_json::json!({ "name": name, "removed": true }))
             }
@@ -1002,6 +1030,298 @@ async fn post_account(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -
                 "email": email.trim(),
                 }))
             }
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+// ── Profiles ──────────────────────────────────────────────────────────────
+
+/* Each person's picture, banner, colour, pronouns and a line about them
+ * (`crate::profiles`, contract in docs/profiles.md). Anyone signed in may
+ * read everyone's, which is what makes a picture useful beside a name; only
+ * the person changes their own, and an administrator may take a picture
+ * down. */
+
+/// Everyone the people file lists and LosOS Login lets in, by name.
+fn shown_people(api: &Api) -> anyhow::Result<Vec<serde_json::Value>> {
+    if !api.people.headers {
+        return Ok(Vec::new());
+    }
+    let profiles = api.profiles.all()?;
+    Ok(api
+        .people
+        .list()?
+        .into_iter()
+        .filter(|p| !p.disabled)
+        .map(|p| {
+            let profile = profiles.get(&p.name).cloned().unwrap_or_default();
+            crate::profiles::render(&p, &profile)
+        })
+        .collect())
+}
+
+/// `GET /api/profiles`: everyone's profile.
+async fn get_profiles(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/profiles", false, || {
+        match shown_people(&api) {
+            Ok(people) => HttpResponse::Ok().json(serde_json::json!({ "people": people })),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `GET /api/profiles/{name}`: one person's profile, 404 for nobody.
+async fn get_profile(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let name = path.into_inner();
+    guarded(&api, &req, "/api/profiles", false, || {
+        match shown_people(&api) {
+            Ok(people) => match people.into_iter().find(|p| p["name"] == name.as_str()) {
+                Some(p) => HttpResponse::Ok().json(p),
+                None => err(StatusCode::NOT_FOUND, &format!("{name} has no account")),
+            },
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `GET /api/profiles/{name}/{kind}?v=N`: the picture or the banner. Cached
+/// hard, because a new one is a new `?v=`; any other `?v=` is a 404, so a
+/// cache never keeps bytes under a URL that names others.
+async fn get_profile_image(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    let (name, kind) = path.into_inner();
+    let version =
+        web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+            .ok()
+            .and_then(|q| q.get("v").and_then(|v| v.parse::<u64>().ok()));
+    guarded(&api, &req, "/api/profiles", false, || {
+        let Some(kind) = crate::profiles::Kind::parse(&kind) else {
+            return err(
+                StatusCode::NOT_FOUND,
+                "a profile has a picture and a banner",
+            );
+        };
+        if crate::people::validate_name(&name).is_err() {
+            return err(StatusCode::NOT_FOUND, "no picture");
+        }
+        let listed = api
+            .people
+            .list()
+            .map(|all| all.into_iter().any(|p| p.name == name && !p.disabled));
+        if !matches!(listed, Ok(true)) {
+            return err(StatusCode::NOT_FOUND, "no picture");
+        }
+        let Some(version) = version else {
+            return err(StatusCode::NOT_FOUND, "no picture");
+        };
+        match api.profiles.read_image(&name, kind, version) {
+            Ok(Some((content_type, bytes))) => HttpResponse::Ok()
+                .content_type(content_type)
+                .insert_header(("Cache-Control", "private, max-age=31536000, immutable"))
+                .insert_header(("X-Content-Type-Options", "nosniff"))
+                .body(bytes),
+            Ok(None) => err(StatusCode::NOT_FOUND, "no picture"),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// The caller's own profile as every page shows it.
+fn own_profile(api: &Api, person: &crate::people::Person) -> HttpResponse {
+    let listed = match api.people.list() {
+        Ok(all) => all.into_iter().find(|p| p.name == person.name),
+        Err(e) => return error_response(e),
+    };
+    let Some(listed) = listed else {
+        return error_response(crate::people::Refused::Unknown(person.name.clone()).into());
+    };
+    match api.profiles.get(&person.name) {
+        Ok(profile) => HttpResponse::Ok().json(crate::profiles::render(&listed, &profile)),
+        Err(e) => error_response(e),
+    }
+}
+
+/// `POST /api/account/profile`: `{"pronouns", "about", "accent"}`, each
+/// optional, the caller's own.
+async fn post_account_profile(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/account/profile", true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let details = match crate::profiles::parse_details(&doc) {
+            Ok(d) => d,
+            Err(why) => return err(StatusCode::BAD_REQUEST, &why),
+        };
+        match api
+            .profiles
+            .set_details(&person.name, &details, || still_listed(&api, &person.name))
+        {
+            Ok(_) => own_profile(&api, person),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// Whether `name` is still in the people file, asked by the profile store
+/// under its lock so a change racing the person's removal is refused.
+fn still_listed(api: &Api, name: &str) -> anyhow::Result<bool> {
+    Ok(api.people.get(name)?.is_some())
+}
+
+fn own_image_route(kind: crate::profiles::Kind) -> &'static str {
+    match kind {
+        crate::profiles::Kind::Picture => "/api/account/picture",
+        crate::profiles::Kind::Banner => "/api/account/banner",
+    }
+}
+
+/// How many uploads are decoded and encoded at once. The work runs on the
+/// blocking pool, never on a worker that answers requests, and a few
+/// people uploading 8 MiB photos together wait their turn rather than take
+/// every core of a small box.
+const IMAGE_JOBS: usize = 2;
+
+/// `PUT /api/account/{picture,banner}`: the caller's own. The body is the
+/// picture's bytes; their type is read off the bytes.
+async fn put_own_image(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    kind: crate::profiles::Kind,
+    body: web::Bytes,
+) -> HttpResponse {
+    // The guard first, so nobody unsigned makes the box decode anything.
+    let mut caller = None;
+    let refused = guarded_as(&api, &req, own_image_route(kind), true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.headers {
+            return not_standalone();
+        }
+        caller = Some(person.clone());
+        HttpResponse::Ok().finish()
+    });
+    let Some(person) = caller else {
+        return refused;
+    };
+    let normalized = {
+        let Ok(_turn) = api.image_jobs.acquire().await else {
+            return err(StatusCode::SERVICE_UNAVAILABLE, "lososd is stopping");
+        };
+        match web::block(move || crate::profiles::normalize(kind, &body)).await {
+            Ok(done) => done,
+            Err(e) => return error_response(anyhow::anyhow!("decoding the picture: {e}")),
+        }
+    };
+    let stored = normalized.and_then(|picture| {
+        api.profiles
+            .put_normalized(&person.name, kind, picture, || {
+                still_listed(&api, &person.name)
+            })
+    });
+    match stored {
+        Ok(_) => own_profile(&api, &person),
+        Err(e) => error_response(e),
+    }
+}
+
+/// `DELETE /api/account/{picture,banner}`: the caller's own.
+fn delete_own_image(api: &Api, req: &HttpRequest, kind: crate::profiles::Kind) -> HttpResponse {
+    guarded_as(api, req, own_image_route(kind), true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.headers {
+            return not_standalone();
+        }
+        match api.profiles.remove_image(&person.name, kind) {
+            Ok(_) => own_profile(api, person),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+async fn put_account_picture(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    put_own_image(api, req, crate::profiles::Kind::Picture, body).await
+}
+
+async fn delete_account_picture(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    delete_own_image(&api, &req, crate::profiles::Kind::Picture)
+}
+
+async fn put_account_banner(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    put_own_image(api, req, crate::profiles::Kind::Banner, body).await
+}
+
+async fn delete_account_banner(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    delete_own_image(&api, &req, crate::profiles::Kind::Banner)
+}
+
+/// `POST /api/people/profile/clear`: `{"name", "kind": "picture|banner"}`.
+/// An administrator takes down a picture someone else put up. The rest of
+/// the profile stays theirs.
+async fn post_people_profile_clear(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"name": "...", "kind": "picture|banner"}"#;
+    guarded(&api, &req, "/api/people/profile/clear", true, || {
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let (Some(name), Some(kind)) = (
+            doc.get("name").and_then(|v| v.as_str()),
+            doc.get("kind")
+                .and_then(|v| v.as_str())
+                .and_then(crate::profiles::Kind::parse),
+        ) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        match api.people.list() {
+            Ok(all) if all.iter().any(|p| p.name == name) => {}
+            Ok(_) => {
+                return error_response(crate::people::Refused::Unknown(name.to_string()).into())
+            }
+            Err(e) => return error_response(e),
+        }
+        match api.profiles.remove_image(name, kind) {
+            Ok(_) => HttpResponse::Ok()
+                .json(serde_json::json!({ "name": name, "kind": kind.as_str(), "cleared": true })),
             Err(e) => error_response(e),
         }
     })
@@ -1938,6 +2258,19 @@ async fn post_app_install(api: web::Data<Api>, req: HttpRequest, body: web::Byte
     })
 }
 
+/// `POST /api/apps/compose` `{release, title?, compose, files?}` — install an
+/// app from a Compose file (the LosOS app format), or change one installed
+/// that way under the same name.
+async fn post_app_compose(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/apps/compose", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::apps::ComposeRequest::parse(&doc) {
+            Ok(request) => run(&api, |b| crate::apps::cmd_app_compose(b, &request)),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
 /// `POST /api/apps/remove` `{release}`.
 async fn post_app_remove(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
     guarded(&api, &req, "/api/apps/remove", true, || {
@@ -2647,6 +2980,38 @@ async fn post_domain_remove(
     .await
 }
 
+/// `POST /api/domains/wallet` `{"address": "0x…", "signature": "0x…"}` —
+/// publish the box's wallet at its names on the edge, so wallets that send
+/// to ENS names pay it by name; `{}` takes it off.
+async fn post_domain_wallet(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/domains/wallet", true, || {
+        // `{}` unbinds, so anything that is not an object of strings is a
+        // 400 rather than read as one.
+        const SHAPE: &str =
+            r#"body must be JSON: {"address": "0x…", "signature": "0x…"} to bind, or {} to unbind"#;
+        let Ok(serde_json::Value::Object(doc)) = serde_json::from_slice(&body) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let text = |key: &str| match doc.get(key) {
+            None => Ok(None),
+            Some(serde_json::Value::String(v)) => Ok(Some(v.trim().to_string())),
+            Some(_) => Err(()),
+        };
+        let (Ok(address), Ok(signature)) = (text("address"), text("signature")) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let op = crate::market::Op::DomainWallet {
+            address: address.map(|a| a.to_ascii_lowercase()),
+            signature,
+        };
+        run(&api, |b| crate::losos::cmd_domain_op(b, &op))
+    })
+}
+
 // ── Plugins ───────────────────────────────────────────────────────────────
 // Every route not registered above is a plugin's (`crate::plugin`): the
 // manifest names it, this daemon authenticates the caller and checks the
@@ -3305,11 +3670,17 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             people,
             login,
             share: crate::cloud_share::Share::default(),
+            profiles: crate::profiles::Profiles::from_env(),
+            image_jobs: tokio::sync::Semaphore::new(IMAGE_JOBS),
             plugins,
         });
         api.plugins
             .set_authorize(std::sync::Arc::new(authorize_caller));
-        let payload_cap = api.plugins.max_body().max(1024 * 1024);
+        let payload_cap = api
+            .plugins
+            .max_body()
+            .max(crate::profiles::MAX_UPLOAD_BYTES)
+            .max(1024 * 1024);
         owner_in_owner_group(&api);
         start_login_marks(api.clone());
         sync_names_later(api.clone(), None);
@@ -3317,8 +3688,10 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             App::new()
                 .app_data(api.clone())
                 // actix reads at most 256 KiB into `web::Bytes` by default.
-                // The cap is the largest `maxBody` a plugin route asks for;
-                // each route's own limit is checked in `plugin_route`.
+                // The cap is the largest `maxBody` a plugin route asks for,
+                // or a profile picture's; each plugin route's own limit is
+                // checked in `plugin_route`, and profiles.rs refuses a
+                // picture over its limit with a sentence.
                 .app_data(web::PayloadConfig::new(payload_cap))
                 .route("/api/health", web::get().to(health))
                 .route("/api/me", web::get().to(get_me))
@@ -3353,6 +3726,27 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/account", web::get().to(get_account))
                 .route("/api/account", web::post().to(post_account))
                 .route("/api/account/code", web::post().to(post_account_code))
+                .route("/api/account/profile", web::post().to(post_account_profile))
+                .route("/api/account/picture", web::put().to(put_account_picture))
+                .route(
+                    "/api/account/picture",
+                    web::delete().to(delete_account_picture),
+                )
+                .route("/api/account/banner", web::put().to(put_account_banner))
+                .route(
+                    "/api/account/banner",
+                    web::delete().to(delete_account_banner),
+                )
+                .route("/api/profiles", web::get().to(get_profiles))
+                .route("/api/profiles/{name}", web::get().to(get_profile))
+                .route(
+                    "/api/profiles/{name}/{kind}",
+                    web::get().to(get_profile_image),
+                )
+                .route(
+                    "/api/people/profile/clear",
+                    web::post().to(post_people_profile_clear),
+                )
                 .route("/api/recovery", web::get().to(get_recovery))
                 .route("/api/devices/{kind}", web::post().to(post_device))
                 .route("/api/apps/search", web::get().to(get_apps_search))
@@ -3361,6 +3755,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/apps", web::get().to(get_apps))
                 .route("/api/apps/chart", web::get().to(get_app_chart))
                 .route("/api/apps/install", web::post().to(post_app_install))
+                .route("/api/apps/compose", web::post().to(post_app_compose))
                 .route("/api/apps/remove", web::post().to(post_app_remove))
                 .route("/api/cloud/apps", web::get().to(get_cloud_apps))
                 .route(
@@ -3432,6 +3827,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/domains", web::get().to(get_domains))
                 .route("/api/domains", web::post().to(post_domain_add))
                 .route("/api/domains/remove", web::post().to(post_domain_remove))
+                .route("/api/domains/wallet", web::post().to(post_domain_wallet))
                 .route("/api/options", web::get().to(get_options))
                 .route("/api/site", web::get().to(get_site))
                 .route("/api/site", web::post().to(post_site))

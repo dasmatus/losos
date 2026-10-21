@@ -110,9 +110,20 @@ stránke [Zabudnuté heslo](../troubleshooting/forgot-password#you-have-the-spar
 ## Prehliadka \{#the-tour}
 
 Keď sa na tieto stránky po nastavení dostanete prvýkrát, nad Prehľadom sa
-otvorí prehliadka so šiestimi krátkymi krokmi. **Spustiť prehliadku** v
+otvorí krátka prehliadka: šesť krokov na každom zariadení a jeden navyše za
+každú funkciu, ktorú toto zariadenie má ([Prvé spustenie](../start/first-run)
+ich vymenúva). **Spustiť prehliadku** v
 Nastaveniach, O zariadení ju otvorí znova. Ak máte v systéme nastavené
 „obmedziť pohyb“, každý krok namiesto animácie ukáže statický obrázok.
+
+## Pruh o sieti mesh \{#the-mesh-banner}
+
+Niektoré funkcie bežia len na zariadení, ktoré zdieľa svoje úložisko a je
+pripojené k sieti mesh. Kým neplatí oboje, pruh nad každou stránkou hovorí,
+že niektoré funkcie nemusia byť dostupné, a odkazuje na **Mesh**, kde sa
+pripojíte, alebo na **Trh**, kde zapnete zdieľanie disku. **Zavrieť** ho v
+danom prehliadači skryje. Zmizne sám, keď sa zariadenie pripojí, a vráti
+sa, ak zariadenie sieť mesh opustí.
 
 ## Upozornenia \{#notifications}
 

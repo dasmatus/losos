@@ -5021,8 +5021,9 @@ impl Market {
     }
 
     /// Forward one allowlisted chain call to `network`, or to the ENS
-    /// endpoint for `"ens"`. The URL stays in the credential file; the
-    /// caller gets the JSON-RPC object and nothing else.
+    /// endpoint for `"ens"`, where [`crate::stablecoin::ENS_CCIP_METHOD`]
+    /// goes to ENS's DNS gateway instead. The URL stays in the credential
+    /// file; the caller gets the JSON-RPC object and nothing else.
     pub async fn forward_rpc(
         &self,
         network: Option<&str>,
@@ -5037,6 +5038,14 @@ impl Market {
                 .ens_rpc_file
                 .as_deref()
                 .ok_or(MarketError::Unconfigured)?;
+            if method == crate::stablecoin::ENS_CCIP_METHOD {
+                return crate::stablecoin::forward_ccip(
+                    crate::stablecoin::ENS_DNS_GATEWAY,
+                    params,
+                    id,
+                )
+                .await;
+            }
             let url = crate::stablecoin::read_rpc_url(std::path::Path::new(file)).await?;
             if method != "eth_chainId" {
                 self.check_ens_once(&url, usdc.test()).await?;
