@@ -449,6 +449,10 @@ pkgs.testers.nixosTest {
         box.wait_for_open_port(9091)
         box.wait_until_succeeds(f"grep -q \"domain: '{HOST}'\" /run/losos-identity/session.yml")
         matus = sign_in("matus")
+        # The claim names him by his sign-in name; he writes his own.
+        code, body = call("/api/account", matus, method="POST",
+                          data={"displayName": "Matus", "email": f"matus@{HOST}"})
+        assert code == 200, (code, body)
         for name in ("eva", "jan"):
             code, body = call("/api/people", matus, method="POST",
                               data={"name": name, "displayName": name.title(),
