@@ -46,6 +46,17 @@ simulator draws it.
   version it read, so if the file changed meanwhile, the save is refused
   and nothing is overwritten. Ctrl+S saves to wherever the diagram came
   from. The picture exports as SVG or PNG.
+- **Editing together.** A diagram opened from LosOS Cloud is live: open the
+  same file in another tab or on another computer and both edit one
+  diagram. LosOS Cloud keeps it in the same live room as a text file and
+  writes every change to the file a moment later, so there is nothing to
+  save. The faces of everyone who has it open are in the top bar, and each
+  person's pointer, name and selection show on the others' canvas in that
+  person's colour. Undo takes back your own changes, not someone else's.
+  Share a `.canvas` file with someone on another box and it opens in
+  Diagrams from their **Shared with you**, in the same room; a view-only
+  share shows the diagram and takes no change. When two people change the
+  file at the same moment, both changes are kept.
 - **Machines.** The tray's **Machines** lists the virtual machines this box
   ordered on the mesh. Put one down and its card shows each copy and what
   it is doing, read again every 20 seconds. A card can also plan a machine
@@ -368,8 +379,10 @@ LosOS Desktop, not the desktop itself.
   build without them, and building them takes about 13 minutes. `tests/lab.browser.mjs`
   checks the network views under the page's own policy, the relay path
   against a fake libvirt daemon, and `tests/diagrams.browser.mjs` the
-  diagram: cards, arrows, an Obsidian file, the pictures, LosOS Cloud and
-  the machine cards.
+  diagram: cards, arrows, an Obsidian file, the pictures, LosOS Cloud,
+  editing together and the machine cards. `nix/tests/diagrams-together.nix`
+  boots two boxes, shares a diagram from one to the other and has both
+  people draw in it.
 - The core's contract is `admin-ui/lab/core/README.md`. Its tests compare
   every built-in setup against the behaviour of the JavaScript simulator it
   replaced. The canvas, its file format and its undo are in
