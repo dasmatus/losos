@@ -3,7 +3,7 @@
 #
 # Mesh CI uses two things of it (modules/ci.nix): `pm container`, which the
 # runner starts and stops each job's containers through, with LosOS's own
-# plugin (backend/pm-plugin/) answering for them; and `pm build`, which
+# plugin (backend/plugins/pm-ci/) answering for them; and `pm build`, which
 # builds and signs the .rhai recipes a workflow names in pm's own jail.
 #
 # Three things a plain buildRustPackage does not do:
@@ -16,10 +16,8 @@
 #     without nixpkgs' wrapper, which would add the host's libc flags.
 #   * build.rs also builds one integration-test fixture for wasm32-wasip2, a
 #     target nixpkgs' rustc has no standard library for. The fixture is only
-#     for pm's own tests and is never embedded, so the cargo build.rs runs
-#     (it takes $CARGO, which cargo sets from the environment when it is set)
-#     answers that one build with an empty file and hands everything else to
-#     cargo.
+#     for pm's own tests and is never embedded, so a rustc wrapper builds it
+#     for wasm32-unknown-unknown instead.
 { pkgs, pmSrc }:
 
 let
@@ -50,22 +48,27 @@ let
     done
   '';
 
-  cargo = pkgs.writeShellScript "cargo" ''
-    wasip2=0 target_dir=
-    while [ $# -gt 0 ]; do
-      case $1 in
-        wasm32-wasip2) wasip2=1 ;;
-        --target-dir) target_dir=$2 ;;
+  # RUSTC_WRAPPER, which the nested cargo inherits: a compile for
+  # wasm32-wasip2 is done for wasm32-unknown-unknown instead, whose standard
+  # library nixpkgs' rustc has. Only the test fixture asks for wasip2, and
+  # nothing in pm reads it.
+  rustcWrapper = pkgs.writeShellScript "rustc-wasip2-as-unknown" ''
+    rustc=$1
+    shift
+    args=()
+    compile=0
+    for arg in "$@"; do
+      case $arg in
+        --crate-name) compile=1 ;;
       esac
-      args+=("$1")
-      shift
     done
-    if [ "$wasip2" = 1 ] && [ -n "$target_dir" ]; then
-      mkdir -p "$target_dir/wasm32-wasip2/release"
-      : > "$target_dir/wasm32-wasip2/release/wasi.wasm"
-      exit 0
-    fi
-    exec ${pkgs.cargo}/bin/cargo "''${args[@]}"
+    for arg in "$@"; do
+      if [ "$compile" = 1 ] && [ "$arg" = wasm32-wasip2 ]; then
+        arg=wasm32-unknown-unknown
+      fi
+      args+=("$arg")
+    done
+    exec "$rustc" "''${args[@]}"
   '';
 
   clang = pkgs.llvmPackages.clang-unwrapped;
@@ -84,7 +87,7 @@ pkgs.rustPlatform.buildRustPackage {
   ];
 
   env = {
-    CARGO = "${cargo}";
+    RUSTC_WRAPPER = "${rustcWrapper}";
     CC_wasm32_unknown_unknown = "${clang}/bin/clang";
     AR_wasm32_unknown_unknown = "${pkgs.llvmPackages.llvm}/bin/llvm-ar";
   };

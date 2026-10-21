@@ -204,11 +204,8 @@ fn ours(name: &str) -> Result<&str, String> {
 /// What a compose file is, by its name.
 pub fn compose_kind(file: &str) -> Result<Kind, String> {
     let name = file.rsplit('/').next().unwrap_or(file);
-    let refuse = || {
-        format!(
-            "{file} is not a Mesh CI compose file: this plugin answers for lci-….yml alone"
-        )
-    };
+    let refuse =
+        || format!("{file} is not a Mesh CI compose file: this plugin answers for lci-….yml alone");
     if !name.starts_with(PREFIX) {
         return Err(refuse());
     }

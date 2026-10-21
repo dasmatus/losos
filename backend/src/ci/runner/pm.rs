@@ -78,7 +78,11 @@ impl Tool {
         let Ok(names) = self.quiet(&["list"]) else {
             return;
         };
-        for name in names.lines().map(str::trim).filter(|n| n.starts_with("lci-")) {
+        for name in names
+            .lines()
+            .map(str::trim)
+            .filter(|n| n.starts_with("lci-"))
+        {
             let _ = self.quiet(&["remove", name]);
         }
     }
@@ -244,7 +248,8 @@ fn quote(s: &str) -> String {
 /// A name sh takes for a variable.
 fn is_var(k: &str) -> bool {
     let mut c = k.chars();
-    c.next().is_some_and(|f| f.is_ascii_alphabetic() || f == '_')
+    c.next()
+        .is_some_and(|f| f.is_ascii_alphabetic() || f == '_')
         && c.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
@@ -369,8 +374,9 @@ impl Pm {
         if let Some(services) = services.as_object() {
             me.wait_healthy(services, log)?;
         }
-        me.path = std::fs::read_to_string(me.agent.join("path"))
-            .unwrap_or_else(|_| "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into());
+        me.path = std::fs::read_to_string(me.agent.join("path")).unwrap_or_else(|_| {
+            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into()
+        });
         Ok(me)
     }
 
@@ -519,9 +525,7 @@ impl Pm {
                 checked = Instant::now();
                 let state = self.status(&job).unwrap_or_default();
                 if state.starts_with("exited") {
-                    anyhow::bail!(
-                        "the job's container stopped ({state}): its image needs /bin/sh"
-                    );
+                    anyhow::bail!("the job's container stopped ({state}): its image needs /bin/sh");
                 }
             }
             std::thread::sleep(Duration::from_millis(200));
@@ -821,7 +825,10 @@ impl Sandbox for Pm {
     ) -> anyhow::Result<String> {
         // Built by the compose file that runs it, so the image never
         // outlives the step.
-        let tag = format!("localhost/{}", self.container_name(&format!("a{}", self.actions + 1)));
+        let tag = format!(
+            "localhost/{}",
+            self.container_name(&format!("a{}", self.actions + 1))
+        );
         out(&format!("Building {tag} from {dockerfile}"));
         self.pending = Some((tag.clone(), context.to_path_buf(), dockerfile.to_string()));
         Ok(tag)
@@ -981,7 +988,10 @@ mod tests {
             &mut |l| said.push(l.to_string()),
         );
         assert_eq!(o["user"], "1000");
-        assert_eq!(o["healthcheck"]["test"], json!(["CMD-SHELL", "redis-cli ping"]));
+        assert_eq!(
+            o["healthcheck"]["test"],
+            json!(["CMD-SHELL", "redis-cli ping"])
+        );
         assert_eq!(o["healthcheck"]["interval"], "5s");
         assert_eq!(o["environment"]["A"], "b");
         assert_eq!(said.len(), 2, "{said:?}");
@@ -1010,7 +1020,10 @@ mod tests {
         assert_eq!(c["x-podman"]["in_pod"], false);
         let job = &c["services"]["job"];
         assert_eq!(job["container_name"], json!(format!("{name}-job")));
-        assert_eq!(job["entrypoint"], json!(["/bin/sh", "/github/losos-ci/agent.sh"]));
+        assert_eq!(
+            job["entrypoint"],
+            json!(["/bin/sh", "/github/losos-ci/agent.sh"])
+        );
         assert_eq!(job["environment"]["CI"], "true");
         assert_eq!(job["environment"]["HOME"], "/github/home");
         assert_eq!(job["extra_hosts"], json!(["postgres:127.0.0.1"]));
@@ -1037,7 +1050,11 @@ mod tests {
         ]
         .into_iter()
         .collect();
-        let argv = vec!["bash".to_string(), "-e".to_string(), "/x/step 1.sh".to_string()];
+        let argv = vec![
+            "bash".to_string(),
+            "-e".to_string(),
+            "/x/step 1.sh".to_string(),
+        ];
         let s = step_script(&Exec {
             argv: &argv,
             env: &env,
@@ -1075,7 +1092,9 @@ mod tests {
         let script = AGENT.replace("d=/github/losos-ci", &format!("d={}", d.display()));
         // `kill -1` would reach every process of the test's user; the agent
         // is pid 1 of its container only in a container.
-        let script = script.replace("kill -TERM -1", "kill -TERM \"$pid\"").replace("kill -KILL -1", "kill -KILL \"$pid\"");
+        let script = script
+            .replace("kill -TERM -1", "kill -TERM \"$pid\"")
+            .replace("kill -KILL -1", "kill -KILL \"$pid\"");
         std::fs::write(d.join("agent.sh"), script).unwrap();
         let mut agent = Command::new("sh").arg(d.join("agent.sh")).spawn().unwrap();
         std::fs::write(d.join("steps/1/run.sh"), "echo one; echo two >&2; exit 3\n").unwrap();
@@ -1088,15 +1107,24 @@ mod tests {
             }
         };
         wait(d.join("steps/1/code"));
-        assert_eq!(std::fs::read_to_string(d.join("steps/1/code")).unwrap(), "3");
-        assert_eq!(std::fs::read_to_string(d.join("steps/1/log")).unwrap(), "one\ntwo\n");
+        assert_eq!(
+            std::fs::read_to_string(d.join("steps/1/code")).unwrap(),
+            "3"
+        );
+        assert_eq!(
+            std::fs::read_to_string(d.join("steps/1/log")).unwrap(),
+            "one\ntwo\n"
+        );
         assert!(d.join("path").exists());
         std::fs::write(d.join("steps/2/run.sh"), "exec sleep 30\n").unwrap();
         std::fs::write(d.join("steps/2/ready"), "").unwrap();
         std::thread::sleep(Duration::from_millis(500));
         std::fs::write(d.join("steps/2/cancel"), "").unwrap();
         wait(d.join("steps/2/code"));
-        assert_ne!(std::fs::read_to_string(d.join("steps/2/code")).unwrap(), "0");
+        assert_ne!(
+            std::fs::read_to_string(d.join("steps/2/code")).unwrap(),
+            "0"
+        );
         std::fs::write(d.join("done"), "").unwrap();
         let t = Instant::now();
         while agent.try_wait().unwrap().is_none() {

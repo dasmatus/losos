@@ -216,6 +216,17 @@ and is never served or built by nix.
   changed is re-read); Git is `git grep` per query as `losos-git`. Both answer
   on Accept=yes sockets under `/run/losos-search` that only root (lososd's
   `/api/{cloud,git}/text`) can open. `nix/tests/search.nix` boots it.
+- `ci.nix` + `backend/src/ci/` (`losos-ci`, page at `/ci`): Mesh CI, the
+  GitHub Actions workflows of LosOS Git's repositories, only on a box that
+  shares and is in a mesh. `losos-ci serve` (user `losos-ci`) plans runs
+  and hands jobs to the edge's `/ci/*` queue; `losos-ci runner` (as
+  `shared`) takes them and starts each job's containers through pm
+  (`nix/pm.nix`, flake input `pm`, never patched) with Mesh CI's signed pm
+  plugin (`backend/plugins/pm-ci`, `nix/ci-pm-plugin.nix`), which answers
+  for `lci-*` containers alone. pm has no exec, so the job container runs
+  an agent that takes steps through a shared folder. `uses:
+  losos-project/pm` builds a signed recipe in pm's jail.
+  `nix/tests/mesh-ci.nix` boots an edge and two boxes.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
   `losos-tokens.css` into the Nextcloud theme folder and Authelia's
   sign-in page, so one colour change moves all three. `default.nix` is the data every
