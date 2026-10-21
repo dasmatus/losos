@@ -335,6 +335,33 @@ jobs:
             cargo test --manifest-path edge/registrar/Cargo.toml --test solana_escrow
           '
 
+  evm-escrow:
+    name: "evm: test the escrow and pay through it on a local chain"
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # devenv.nix's test-evm-escrow. Foundry's suite for LososEscrow, then
+    # edge/contracts/test-payment.sh on anvil: a deposit paid, matched and
+    # released by the registrar's own signer, a coin fee, and a tap topped
+    # up, settled within its cap and closed by the edge key.
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+        with:
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/sccache
+            ~/.cache/ccache
+          key: ${{ runner.os }}-evm-compiler-cache-${{ hashFiles('edge/registrar/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-evm-compiler-cache-
+      - name: forge suite and the anvil payment run
+        run: |
+          nix develop .#ci -c nix shell --inputs-from . nixpkgs#foundry nixpkgs#nodejs nixpkgs#jq \
+            -c bash edge/contracts/test-payment.sh
+
   eval:
     name: "nix: flake check + module merge + ISO derivation"
     runs-on: ubuntu-latest
