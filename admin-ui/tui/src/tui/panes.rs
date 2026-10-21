@@ -421,26 +421,7 @@ fn hour_strip(start_hhmm: &str, end_hhmm: &str, muted: bool) -> Vec<Vec<Span>> {
 /// The tiles of admin-ui/app/src/lib/apps.ts, in its order. Mail is left
 /// out: it is drawn only once a probe of the Files app found it, and that
 /// probe is not a route the envelope can reach.
-pub const FILES_APPS: [&str; 18] = [
-    "files",
-    "dashboard",
-    "photos",
-    "activity",
-    "contacts",
-    "calendar",
-    "notes",
-    "bookmarks",
-    "deck",
-    "music",
-    "collectives",
-    "polls",
-    "forms",
-    "tables",
-    "memories",
-    "news",
-    "tasks",
-    "maps",
-];
+pub const FILES_APPS: [&str; 2] = ["files", "photos"];
 
 fn app_grid(names: &[String], cols: usize) -> Vec<Vec<Span>> {
     const CELL: usize = 16;
@@ -505,22 +486,21 @@ fn overview(ctx: &Ctx<'_>, cols: usize) -> PaneModel {
         }
     }
 
-    // The apps, as the home screen's grid has them.
-    let files_here = saved.is_none_or(|s| s.nextcloud_mode == "container");
+    // The apps, as the home screen's grid has them: LosOS Cloud is always
+    // behind the front door, LosOS Git only in container mode.
     let code_here = saved.is_none_or(|s| s.forgejo_mode == "container");
-    let mut names: Vec<String> = Vec::new();
-    if files_here {
-        names.extend(FILES_APPS.iter().map(|id| t(&format!("apps.{id}.name"))));
-    }
+    let mut names: Vec<String> = FILES_APPS
+        .iter()
+        .map(|id| t(&format!("apps.{id}.name")))
+        .collect();
     if code_here {
         names.push(t("apps.code.name"));
     }
     names.push(t("apps.settings.name"));
-    let notice = match (files_here, code_here) {
-        (false, false) => t("apps.notice.both"),
-        (false, true) => t("apps.notice.files"),
-        (true, false) => t("apps.notice.code"),
-        (true, true) => String::new(),
+    let notice = if code_here {
+        String::new()
+    } else {
+        t("apps.notice.code")
     };
     let mut installed = Vec::new();
     if let Some(apps) = ctx.res.get("/api/apps").data() {
@@ -950,24 +930,14 @@ fn apps(ctx: &Ctx<'_>) -> PaneModel {
             sections.push(
                 Section::new("modes")
                     .title(t("panes.apps.onThisBox"))
-                    .rows(vec![
-                        Row::new("files-mode", t("panes.apps.files.title"))
-                            .detail(t("panes.apps.files.detail"))
-                            .control(Control::Choice {
-                                value: draft.nextcloud_mode.clone(),
-                                options: options.clone(),
-                                disabled: false,
-                                key: SettingKey::NextcloudMode,
-                            }),
-                        Row::new("code-mode", t("panes.apps.code.title"))
-                            .detail(t("panes.apps.code.detail"))
-                            .control(Control::Choice {
-                                value: draft.forgejo_mode.clone(),
-                                options,
-                                disabled: false,
-                                key: SettingKey::ForgejoMode,
-                            }),
-                    ])
+                    .rows(vec![Row::new("code-mode", t("panes.apps.code.title"))
+                        .detail(t("panes.apps.code.detail"))
+                        .control(Control::Choice {
+                            value: draft.forgejo_mode.clone(),
+                            options,
+                            disabled: false,
+                            key: SettingKey::ForgejoMode,
+                        })])
                     .caption(tr!(
                         "panes.apps.modeCaption",
                         kept = mode_label("container"),
@@ -1186,16 +1156,6 @@ fn network(ctx: &Ctx<'_>) -> PaneModel {
     if let Some(p) = problems.host_name {
         called = called.detail(p).tone(Tone::Crit);
     }
-    let mut port = Row::new("port", t("panes.network.port")).control(Control::Edit {
-        value: draft.apache_port.map(|p| p.to_string()).unwrap_or_default(),
-        prompt: t("panes.network.port"),
-        masked: false,
-        disabled: false,
-        target: EditTarget::Setting(SettingKey::ApachePort),
-    });
-    if let Some(p) = problems.apache_port {
-        port = port.detail(p).tone(Tone::Crit);
-    }
     base.with(vec![
         Section::new("name")
             .title(t("panes.network.name"))
@@ -1212,21 +1172,12 @@ fn network(ctx: &Ctx<'_>) -> PaneModel {
             .caption(t("panes.network.nameCaption")),
         Section::new("reach")
             .title(t("panes.network.reaching"))
-            .rows(vec![
-                Row::new("https", t("panes.network.encrypt"))
-                    .detail(t("panes.network.encryptDetail"))
-                    .control(Control::Toggle {
-                        on: draft.https,
-                        disabled: false,
-                        key: SettingKey::Https,
-                    }),
-                Row::new("outside", t("panes.network.outside")).control(Control::Toggle {
+            .rows(vec![Row::new("outside", t("panes.network.outside"))
+                .control(Control::Toggle {
                     on: draft.proxy_enable,
                     disabled: false,
                     key: SettingKey::ProxyEnable,
-                }),
-                port,
-            ])
+                })])
             .caption(t("panes.network.reachCaption")),
     ])
 }
@@ -1679,9 +1630,15 @@ fn about(ctx: &Ctx<'_>) -> PaneModel {
     }
     let saved = ctx.form.saved.as_ref().expect("form is ready");
     let url = &ctx.host.url;
+    // The scheme this client reached the box over, as the web page takes
+    // its own.
     let by_name = format!(
         "{}://{}.local",
-        if saved.https { "https" } else { "http" },
+        if url.starts_with("https://") {
+            "https"
+        } else {
+            "http"
+        },
         saved.host_name
     );
     let storage_key = if !saved.sharing_my_storage {

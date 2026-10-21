@@ -8,26 +8,12 @@ slug: /manual/apps
 
 ## LosOS Cloud
 
-Your files, photos, calendar, contacts, notes, tasks, music and the rest of
-the apps below, at `http://<address>/nextcloud`. It is Nextcloud with the box's colours and
-name. Sign in with the owner's password. LosOS Cloud does everything
-Nextcloud does. The desktop client syncs a folder on your computer, the phone
-apps upload photos, and calendars and contacts sync over CalDAV and CardDAV.
-
-The Overview has a tile for each app in LosOS Cloud's own menu, in the same
-order: Files, Dashboard, Photos, Activity, Contacts, Calendar, Notes,
-Bookmarks, Deck, Music, Collectives, Polls, Forms, Tables, Memories, News,
-Tasks and Maps. The box turns all of them on at every start, except the
-ones you turned off on the **Apps** pane. Mail is not among them, because
-the box runs no mail server for it to read. If you add Mail from the app
-store anyway, its tile appears on the Overview the next time the page loads. The links go through `index.php` on purpose,
-because every configuration answers that path.
-
-Family or colleagues get an account in LosOS Cloud the first time they
-open it, signed in with LosOS Login ([Signing in](sign-in-and-spare-key)).
-The owner's account is a standard one too, not LosOS Cloud's administrator.
-Which apps run and the settings for everyone are on the **Apps** pane
-instead, in the LosOS Cloud fold.
+Your files, photos, calendars, contacts and boards, at
+`https://<address>/cloud/`. Everyone who can sign in with LosOS Login
+([Signing in](sign-in-and-spare-key)) gets their own. The Nextcloud desktop
+client and phone apps sync with it, and calendar apps reach it over CalDAV
+and CardDAV. [LosOS Cloud](losos-cloud) has the details. On the Overview,
+the **Files** and **Photos** tiles open it.
 
 ## LosOS Git
 
@@ -53,20 +39,11 @@ To take part, list the other servers whose stars count on a repository's
 **Federate with other Forgejo servers** in the LosOS Git fold of the
 **Apps** pane.
 
-LosOS Cloud federates too: you can share files and calendars with people
-whose accounts are on other Nextcloud servers, by their `user@server`
-address. The owner of another box is `notshared@otherbox.local/nextcloud`.
-**Share with other Nextcloud servers** in the LosOS Cloud fold turns that
-off. While it is on, LosOS Cloud may reach names that end in `.local` and
-addresses on your local network, and accepts the certificate each box makes
-for itself, which Nextcloud refuses on its own. That is how it reaches
-other boxes on the same network.
-
 :::note[Federation needs disk sharing]
-Both kinds of federation work only while the box shares its disk
+Federation works only while the box shares its disk
 (`losos.sharingMyStorage`), because that is when the shared part of the
 disk is unlocked. With sharing off, the box talks to no other server, and
-the **Apps** pane greys both federation switches out.
+the **Apps** pane greys the federation switch out.
 :::
 
 ## The Apps pane
@@ -81,40 +58,16 @@ published the chart. Nobody on the LosOS side has checked any of them.
 
 ![The Apps pane with one installed app above Find more, and search results from Artifact Hub, each with who published it and an Install or Change button.](../img/apps-find-more.png)
 
-## LosOS Cloud's apps
-
-The LosOS Cloud fold lists the apps inside LosOS Cloud, each with a switch.
-An app turned off is gone from every account, and what people made in it
-is kept for when it comes back. It stays off after the box restarts. The
-apps built into LosOS Cloud wait behind a **Show** button, since you rarely
-need them; the filter finds them too. A few switches cannot move, and the
-row says why: LosOS Cloud does not run without them, the box needs them
-for signing in, or they follow disk sharing.
-
-**Add from the app store** searches Nextcloud's app store and adds an app
-with **Add**. The box does the search, so it needs the internet. Nobody on
-the LosOS side has checked these apps. An app added from the store has a
-**Remove** button, which asks first. Removing it takes its code off the
-box and keeps what accounts made in it, so adding it again finds that.
-The apps the box ships can be turned off but not removed.
-
-![The LosOS Cloud fold: apps with switches, Deck from the app store with Remove, the sign-in app locked with its reason, and an app store search for Whiteboard with an Add button.](../img/apps-cloud.png)
-
 ## Settings for everyone
 
 In the LosOS Cloud and LosOS Git folds, the Apps pane has the settings that
-hold for every account in each app. You would otherwise find them on each
-app's own administration pages. Each fold starts with the app's federation
-switch ([Federation](#federation)).
+hold for every account in each app.
 
-For LosOS Cloud: the language of the sign-in page and of accounts that have
-not picked one, the country a phone number without a country code belongs
-to, whether files can be shared by public link, whether every link needs a
-password, after how many days links stop working, how much space a new
-account gets, and how long the trash and old versions are kept. An empty
-field leaves the choice to LosOS Cloud.
+For LosOS Cloud: how many days the trash keeps a deleted file. An empty
+field keeps it for 30 days.
 
-For LosOS Git: whether only signed-in accounts see anything, what a visitor
+For LosOS Git, after its federation switch ([Federation](#federation)):
+whether only signed-in accounts see anything, what a visitor
 sees first, whether a new repository starts private or public or like the
 account's last one, whether a new account's e-mail address is hidden, and
 whether pushing to a repository that does not exist yet creates it.
@@ -154,7 +107,7 @@ What runs the app follows from the user. A `notshared` app runs on
 rootless Podman, as `notshared` itself, and needs no cluster. A `shared`
 app runs in the box's own cluster, because that is the side of the box the
 mesh touches. Either way the box changes the chart to run the way LosOS
-cloud and LosOS Git do.
+Git does.
 
 - Every part of the app runs as the chosen user, never as root, with no
   extra privileges and no access to a cluster.
@@ -181,7 +134,7 @@ under the same name finds the data again.
 
 :::note[Running as shared needs workload mode]
 A `notshared` app installs on any box. `shared` needs the box's own
-cluster, which runs only while Files or Code is set to **Kept separate**
+cluster, which runs only while Code is set to **Kept separate**
 ([workload mode](../types/app-modes)), and the box has to share its disk.
 To turn installing off, set `losos.apps.enable` to false on the
 **Advanced** pane.
@@ -194,11 +147,3 @@ Apps can also come as a Compose file in the
 sends for you. They run as `notshared`, show in
 **Installed apps** with the line "made for this box", and have **Open**
 and **Remove** but no **Change**, since they have no properties.
-
-## Trusted addresses
-
-LosOS Cloud answers on the box's name and on whichever address the request
-arrived at. The box passes that address along with each request. LosOS Cloud
-never answers on a wildcard. That is why a box reached by its IP address
-shows no "untrusted domain" page. If you ever see one, [Untrusted domain](../troubleshooting/app-tile-404#access-through-untrusted-domain)
-says why.

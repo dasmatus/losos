@@ -1,48 +1,94 @@
 #!/usr/bin/env bash
-# Evaluates every flake output, as `nix flake check --no-build` does, but a
-# few attributes per `nix eval` process. One process holds every module
-# system it has evaluated until it exits, and with the VM tests that passed
-# 13 GiB: GitHub's 16 GiB runners were killed partway through the checks.
+# check-flake: evaluate every flake output, as `nix flake check --no-build`
+# does, but one `nix eval` per derivation.
 #
-#   nix/check-flake.sh [flake] [-- extra nix flags]
+#   bash nix/check-flake.sh [nix flags…]
 #
-# CI's eval job and devenv.nix's `check-flake` run it. LOSOS_EVAL_BATCH sets
-# how many attributes one process evaluates (default 6).
+# `flake check` evaluates every output in one process and keeps all of it:
+# fifty-odd VM tests, each with its own NixOS evaluations of one to three
+# machines, plus every package and system. On a hosted runner that process
+# grew past the runner's memory and the runner was shut down mid-check
+# (around losos-keyring, losos-erase or losos-mesh-collab, wherever the
+# total crossed the line), with no evaluation error printed. A process per
+# derivation frees each evaluation when it ends, so the peak is a few of the
+# heaviest checks (about 1.5 GB each) rather than the sum (past 14 GB).
+# CHECK_FLAKE_JOBS evaluations run at once, the number of CPUs by default.
+#
+# Covered, matching what `flake check --no-build` checks for each kind:
+#   checks, packages, devShells  the drvPath of every attribute, every system
+#   nixosConfigurations          config.system.build.toplevel is a derivation
+#                                (check-eval forces its drvPath, the merge)
+#   nixosModules                 each one is a function or an attribute set
+# Any other top-level output fails the script until it is handled here, so a
+# new kind of output cannot go unchecked. Extra arguments go to every nix
+# call (e.g. --override-input).
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
-flake=${1:-.}
-shift || true
-[ "${1:-}" = "--" ] && shift
-extra=("$@")
-system=x86_64-linux
-batch=${LOSOS_EVAL_BATCH:-6}
+flake="git+file://$PWD"
+jobs=${CHECK_FLAKE_JOBS:-$(nproc)}
+logs=$(mktemp -d)
+trap 'rm -rf "$logs"' EXIT
 
+# The attribute names under an output path, one per line.
 names() {
-  nix eval --raw "${extra[@]}" "$flake#$1" \
-    --apply 'x: builtins.concatStringsSep "\n" (builtins.attrNames x)'
+  nix eval "$@" --raw --apply 'xs: builtins.concatStringsSep "\n" (builtins.attrNames xs)'
 }
 
-# Forces `<group>.<name><suffix>` for each name, $batch to a process.
-force() {
-  local group=$1 suffix=$2
-  local -a all chunk
-  mapfile -t all < <(names "$group")
-  local i
-  for ((i = 0; i < ${#all[@]}; i += batch)); do
-    chunk=("${all[@]:i:batch}")
-    local list=""
-    for n in "${chunk[@]}"; do list+=" \"$n\""; done
-    echo "evaluating $group:${list}" >&2
-    nix eval --raw "${extra[@]}" "$flake#$group" \
-      --apply "g: builtins.concatStringsSep \"\n\" (map (n: n + \" \" + g.\${n}$suffix) [$list ])"
-    echo
-  done
+# One evaluation, in its own process, in the background once fewer than
+# $jobs are running. A failure is recorded and the rest still run, so one
+# run names every broken output.
+check() {
+  local label=$1
+  shift
+  while [ "$(jobs -rp | wc -l)" -ge "$jobs" ]; do wait -n || true; done
+  echo "checking $label..."
+  (nix eval "$@" >/dev/null 2>"$logs/$label.log" || touch "$logs/$label.failed") &
 }
 
-force "checks.$system" ".drvPath"
-force "packages.$system" ".drvPath"
-force "devShells.$system" ".drvPath"
-force nixosConfigurations ".config.system.build.toplevel.drvPath"
-nix eval --raw "${extra[@]}" "$flake#nixosModules" \
-  --apply 'm: builtins.concatStringsSep " " (builtins.attrNames m)' >/dev/null
-echo "every output evaluated" >&2
+outputs=$(nix eval --impure --raw --expr \
+  "builtins.concatStringsSep \"\n\" (builtins.attrNames (builtins.getFlake \"$flake\").outputs)")
+
+for output in $outputs; do
+  case $output in
+    checks | packages | devShells)
+      for system in $(names "${@}" ".#$output"); do
+        for name in $(names "${@}" ".#$output.$system"); do
+          check "$output.$system.$name" "${@}" --raw ".#$output.$system.\"$name\".drvPath"
+        done
+      done
+      ;;
+    nixosConfigurations)
+      for name in $(names "${@}" ".#$output"); do
+        check "$output.$name" "${@}" ".#$output.\"$name\".config.system.build.toplevel" \
+          --apply 'd: if d.type or null == "derivation" then true else throw "toplevel is not a derivation"'
+      done
+      ;;
+    nixosModules)
+      for name in $(names "${@}" ".#$output"); do
+        check "$output.$name" "${@}" ".#$output.\"$name\"" \
+          --apply 'm: if builtins.isFunction m || builtins.isAttrs m then true else throw "not a module"'
+      done
+      ;;
+    *)
+      echo "no check for the output '$output'; add one to nix/check-flake.sh" >"$logs/$output.log"
+      touch "$logs/$output.failed"
+      ;;
+  esac
+done
+
+wait
+
+failed=0
+for marker in "$logs"/*.failed; do
+  [ -e "$marker" ] || continue
+  label=$(basename "$marker" .failed)
+  echo "check-flake: $label failed:" >&2
+  cat "$logs/$label.log" >&2
+  failed=$((failed + 1))
+done
+if [ "$failed" -gt 0 ]; then
+  echo "check-flake: $failed output(s) failed to evaluate" >&2
+  exit 1
+fi
+echo "check-flake: every output evaluated"

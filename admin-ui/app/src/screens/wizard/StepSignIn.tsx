@@ -1,29 +1,24 @@
 /* Step 2 — Choose how you sign in.
  *
- * This is the step the whole wizard exists for. modules/nextcloud-common.nix
- * generates the first admin password from /dev/urandom, writes it 0600 and
- * shows it to nobody; the appliance has no SSH and no shell login, so without
- * this step a fresh box cannot be signed into at all.
+ * This is the step the whole wizard exists for. A fresh box has no password
+ * at all, and the appliance has no SSH and no shell login, so without this
+ * step it cannot be signed into.
  *
  * On a fresh box this tab holds no admin token, and every /api route except
  * the claim refuses without one. So the first password goes through
  * `POST /api/setup/claim` (@/lib/api `claimBox`): public while the box is
  * unowned, never after, and it hands back the admin token so the rest of the
- * wizard (the sign-in frame) runs authenticated. The
+ * wizard runs authenticated. The
  * token-gated `/api/set-password` is only for a second attempt from the same
  * tab, once the claim has closed the window. The old code posted to
  * set-password first, got a 401 on every fresh box, and the wizard could not
  * get past this step; the browser test walks it now.
  *
- * The step also waits before it asks. On a fresh box the Nextcloud pod spends
- * its first minutes in `occ maintenance:install`, and a claim sent in that
- * window fails: it is occ that sets the password. `GET /api/setup/claim` now
- * carries `ready` and `waitingFor`, so the form stays disabled behind a
- * waiting panel that polls every few seconds and opens on its own, and a 503
- * from the claim itself (the race between the last poll and the submit) goes
- * back to waiting rather than reading as an error. Before that, an owner
- * who typed a good password in that window got a bare "command failed; see
- * the lososd journal".
+ * The step also waits before it asks, if lososd says the box is not ready
+ * for a claim yet: `GET /api/setup/claim` carries `ready` and `waitingFor`,
+ * so the form stays disabled behind a waiting panel that polls every few
+ * seconds and opens on its own, and a 503 from the claim itself goes back to
+ * waiting rather than reading as an error.
  *
  * A password is collected whatever else happens. The passkey is an addition,
  * never a substitute: the desktop and phone sync clients authenticate with a
@@ -622,8 +617,7 @@ function useReadiness(enabled: boolean): Readiness {
 }
 
 /* What the owner sees instead of a disabled form with no explanation. The
- * reason is lososd's own sentence when it gave one ("Nextcloud is still
- * installing itself…"), and the elapsed count ticks so a long wait visibly
+ * reason is lososd's own sentence when it gave one, and the elapsed count ticks so a long wait visibly
  * is one rather than a hung page. */
 function WaitingPanel({ state, offer }: { state: ReadinessState; offer: React.ReactNode }) {
   const t = useT();

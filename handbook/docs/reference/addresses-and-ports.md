@@ -18,10 +18,11 @@ sidebar_position: 1
 | `/setup/state.json`           | Name, address, HTTPS, certificate fingerprint       | the local network only              |
 | `/setup/losos-ca.crt`         | The box's certificate                               | the local network only              |
 | `/setup/trust.sh`, `/setup/trust.ps1` | The one-line certificate installers          | the local network only              |
-| `/nextcloud`                  | LosOS Cloud                                         | anyone, and through an edge         |
+| `/cloud/`                     | LosOS Cloud                                         | anyone, and through an edge         |
+| `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/` | What the Nextcloud apps, calendar apps and file managers call | anyone, and through an edge |
+| `/nextcloud/`                 | The same, at the address a box's Nextcloud used     | anyone, and through an edge         |
 | `/forgejo/`                   | LosOS Git                                           | anyone, and through an edge         |
 | `/.well-known/nodeinfo`, `/.well-known/webfinger` | LosOS Git's federation discovery, while federation is on and the disk is shared | anyone, and through an edge |
-| `/nextcloud/ocm-provider/`, `/nextcloud/ocm/…` and the other federation addresses under `/nextcloud` | LosOS Cloud's federation, while federation is on and the disk is shared; **404** otherwise | anyone, and through an edge |
 
 :::note[What the local network means]
 "The local network only" means a source address in a private range

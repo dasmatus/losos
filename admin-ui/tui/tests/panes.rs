@@ -136,7 +136,7 @@ fn expect(pane: PaneId) -> &'static [&'static str] {
         PaneId::Storage => &["466 GB", "Use reserve"],
         PaneId::Mesh => &["register.losos.dasmat.us", "23:00", "07:00"],
         PaneId::Apps => &["jellyfin", "vaultwarden", "Search for apps"],
-        PaneId::Network => &["mattbox.local", "11000"],
+        PaneId::Network => &["mattbox.local", "Reachable from outside your home"],
         PaneId::Security => &["Stricter memory handling", "Ignore USB devices"],
         PaneId::Advanced => &["losos.hostName", "losos.tpm.enable", "Set by the installer"],
         PaneId::History => &["matus/losos-config", "4f2a9c1"],

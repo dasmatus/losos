@@ -23,14 +23,6 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-
   python = pkgs.python3.withPackages (ps: [ ps.pillow ]);
   seed = pkgs.writeScriptBin "cloud-seed" ''
     #!${python}/bin/python3
@@ -70,13 +62,10 @@ pkgs.testers.nixosTest {
         # The sidebar pins the tile menu offers live in a plugin.
         backend.plugins = lososPkgs.losos-plugins;
         admin.ui = lososPkgs.losos-admin-ui;
-        nextcloud.mode = "native";
         cloud.enable = true;
         forgejo.enable = false;
         mdns.enable = true;
       };
-      systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
       specialisation = lib.optionalAttrs (beforeUi != null) {
         before.configuration.losos.admin.ui = lib.mkForce beforeUi;
       };

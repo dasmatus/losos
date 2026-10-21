@@ -38,7 +38,7 @@ opravuje, takže konajte skôr, než sa objaví **Nie je miesto**.
    Ak bolo zariadenie za posledné dva týždne nainštalované alebo veľa
    aktualizované, môže ísť o niekoľko gigabajtov.
 4. **Presuňte dáta preč** desktopovým klientom alebo stiahnutím z LosOS
-   cloud a potom ich tam zmažte.
+   Cloud a potom ich tam zmažte.
 5. **Zdieľajte menej.** Zariadenie, ktoré požičiava miesto do mesh (režim
    úložiska nastavený na zdieľaný), drží kópie pre iné zariadenia. Vypnutie
    zdieľania toto miesto vráti, len čo spoločný priestor znova rozloží svoje

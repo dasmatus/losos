@@ -631,19 +631,19 @@ export default defineMessages({
     de: "Du bist angemeldet",
   },
   "wizard.first.signedIn.body": {
-    en: "That was the last step. Finish below, or carry on in the window here. Nothing is waiting on you.",
-    sk: "To bol posledný krok. Dokončite nastavenie nižšie alebo pokračujte v okne tu. Nič na vás nečaká.",
-    de: "Das war der letzte Schritt. Schließ unten ab oder mach im Fenster hier weiter. Nichts wartet auf dich.",
+    en: "That was the last step. Finish below, or carry on in the other tab. Nothing is waiting on you.",
+    sk: "To bol posledný krok. Dokončite nastavenie nižšie alebo pokračujte na druhej karte. Nič na vás nečaká.",
+    de: "Das war der letzte Schritt. Schließ unten ab oder mach im anderen Tab weiter. Nichts wartet auf dich.",
   },
   "wizard.first.intro": {
-    en: "Sign in below with the name and password you set. This page notices when you are through and finishes on its own.",
-    sk: "Nižšie sa prihláste menom a heslom, ktoré ste nastavili. Táto stránka spozná, keď budete prihlásení, a dokončí sa sama.",
-    de: "Melde dich unten mit dem Namen und dem Passwort an, die du festgelegt hast. Diese Seite merkt, wenn du durch bist, und schließt von selbst ab.",
+    en: "Open LosOS Cloud and sign in with the name and password you set. This page notices when you are through and finishes on its own.",
+    sk: "Otvorte LosOS Cloud a prihláste sa menom a heslom, ktoré ste nastavili. Táto stránka spozná, keď budete prihlásení, a dokončí sa sama.",
+    de: "Öffne LosOS Cloud und melde dich mit dem Namen und dem Passwort an, die du festgelegt hast. Diese Seite merkt, wenn du durch bist, und schließt von selbst ab.",
   },
   "wizard.first.introNamed": {
-    en: "Sign in below with the name and password you set in step 2. The name is {name}. This page notices when you are through and finishes on its own.",
-    sk: "Nižšie sa prihláste menom a heslom, ktoré ste nastavili v kroku 2. Meno je {name}. Táto stránka spozná, keď budete prihlásení, a dokončí sa sama.",
-    de: "Melde dich unten mit dem Namen und dem Passwort an, die du in Schritt 2 festgelegt hast. Der Name ist {name}. Diese Seite merkt, wenn du durch bist, und schließt von selbst ab.",
+    en: "Open LosOS Cloud and sign in with the name and password you set in step 2. The name is {name}. This page notices when you are through and finishes on its own.",
+    sk: "Otvorte LosOS Cloud a prihláste sa menom a heslom, ktoré ste nastavili v kroku 2. Meno je {name}. Táto stránka spozná, keď budete prihlásení, a dokončí sa sama.",
+    de: "Öffne LosOS Cloud und melde dich mit dem Namen und dem Passwort an, die du in Schritt 2 festgelegt hast. Der Name ist {name}. Diese Seite merkt, wenn du durch bist, und schließt von selbst ab.",
   },
   "wizard.first.starting.title": {
     en: "Your files are still starting",
@@ -651,34 +651,19 @@ export default defineMessages({
     de: "Deine Dateien starten noch",
   },
   "wizard.first.starting.body": {
-    en: "The files app has not answered yet. This page keeps asking in the background and the sign-in form appears here on its own. On a new box this takes a few minutes.",
-    sk: "Aplikácia so súbormi ešte neodpovedá. Táto stránka sa pýta ďalej na pozadí a prihlasovací formulár sa tu objaví sám. Na novom zariadení to trvá pár minút.",
-    de: "Die Dateien-App antwortet noch nicht. Diese Seite fragt im Hintergrund weiter nach, und das Anmeldeformular erscheint hier von selbst. Auf einer neuen Box dauert das ein paar Minuten.",
+    en: "LosOS Cloud has not answered yet. This page keeps asking and the button opens once it does. On a new box this takes a minute.",
+    sk: "LosOS Cloud ešte neodpovedá. Táto stránka sa pýta ďalej a tlačidlo sa sprístupní, hneď ako odpovie. Na novom zariadení to trvá minútu.",
+    de: "LosOS Cloud antwortet noch nicht. Diese Seite fragt weiter nach, und der Button geht auf, sobald es antwortet. Auf einer neuen Box dauert das eine Minute.",
   },
-  "wizard.first.opening": {
-    en: "Opening the sign-in page…",
-    sk: "Otvára sa prihlasovacia stránka…",
-    de: "Die Anmeldeseite wird geöffnet …",
-  },
-  "wizard.first.lost.title": {
-    en: "Cannot follow along",
-    sk: "Nedá sa sledovať",
-    de: "Kann nicht mitverfolgen",
-  },
-  "wizard.first.lost.body": {
-    en: "The window below went somewhere this page cannot see. Sign in there, then say so with the button underneath.",
-    sk: "Okno nižšie prešlo niekam, kam táto stránka nevidí. Prihláste sa tam a potom to potvrďte tlačidlom pod ním.",
-    de: "Das Fenster unten ist irgendwohin gewechselt, wo diese Seite nicht hinsieht. Melde dich dort an und sag es dann mit dem Button darunter.",
-  },
-  "wizard.first.frameTitle": {
-    en: "Sign in to your files",
-    sk: "Prihlásenie k vašim súborom",
-    de: "Bei deinen Dateien anmelden",
+  "wizard.first.waiting": {
+    en: "Waiting for you to sign in",
+    sk: "Čaká sa na prihlásenie",
+    de: "Wartet auf deine Anmeldung",
   },
   "wizard.first.newTab": {
-    en: "Open in a new tab instead",
-    sk: "Otvoriť radšej na novej karte",
-    de: "Stattdessen in neuem Tab öffnen",
+    en: "Open LosOS Cloud",
+    sk: "Otvoriť LosOS Cloud",
+    de: "LosOS Cloud öffnen",
   },
   "wizard.first.manual": {
     en: "I have signed in",

@@ -31,7 +31,7 @@ Die Seite prüft alle paar Sekunden und macht von selbst weiter.
    wartet.
 2. **Nach fünfzehn Minuten** ziehst du den Stecker, um die Box neu zu
    starten, und öffnest den Assistenten wieder. Der erste Start von LosOS
-   cloud lässt sich neu anstoßen.
+   Cloud lässt sich neu anstoßen.
 3. **Eine Box, die auch nach einem Neustart nie so weit kommt**, hat selten
    ein Netzwerkproblem, denn sie lädt nichts herunter und alles liegt auf
    der Box. Meist ist die Festplatte voll oder die Installation

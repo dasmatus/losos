@@ -124,7 +124,7 @@ Názov vzniká z identity zariadenia, ale neprezrádza ju. Doménu pridáte takt
 3. Počkajte. Edge si záznamy každú pol minútu sám vyhľadá a každý, ktorý
    nájde, označí **✓ nájdené**. Keď sú oba správne, doména sa zmení na
    **Funguje**, edge pre ňu získa certifikát a LosOS Cloud odpovedá na
-   `https://<vaša doména>/nextcloud`.
+   `https://<vaša doména>/cloud/`.
 
 :::note[Doména, pred ktorou nič nie je]
 Doména, pred ktorou nič nie je, napríklad samotná `novak-family.eu`,

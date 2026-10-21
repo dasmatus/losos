@@ -25,21 +25,6 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   screens = import ./screens { inherit pkgs; };
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   # Every page of every app, in the order a person meets them.
   pages = [
     {
@@ -198,15 +183,11 @@ pkgs.testers.nixosTest {
           backend.package = lososPkgs.losos-ctl;
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = lososPkgs.losos-admin-ui;
-          nextcloud.mode = "container";
           forgejo.enable = false;
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
         };
         systemd.services.lososd.path = lib.mkForce [
-          stubOcc
           pkgs.coreutils
         ];
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         virtualisation = {
           memorySize = 1536;
           cores = 2;
