@@ -193,6 +193,11 @@ export interface Me {
   /** The sign-in name, or null for the spare key. */
   name: string | null;
   displayName: string | null;
+  /** Their profile picture (`/api/profiles/<name>/picture?v=N`), null for
+   *  none, missing for the spare key or an older lososd. */
+  picture?: string | null;
+  /** Their colour, one of ACCENTS. */
+  accent?: Accent;
   groups: string[];
   /** In losos-admins, or the spare key: every pane is theirs. */
   admin: boolean;
@@ -1839,6 +1844,11 @@ export interface PersonEntry {
   passwordSetAt?: number;
   /** What the rules hold them to their own account for. */
   locked?: LoginReason[];
+  /** Their profile picture, banner and colour (`GET /api/profiles` has
+   *  the rest). */
+  picture?: string | null;
+  banner?: string | null;
+  accent?: Accent;
 }
 
 export interface PeopleResponse {
@@ -1954,6 +1964,81 @@ export function postAccount(
  *  them, behind their password. 403 `wrongPassword`, 404 `noCode`. */
 export function postAccountCode(password: string, options: RequestOptions = {}): Promise<{ code: string }> {
   return postJson("/api/account/code", { password }, options);
+}
+
+// ── Profiles ──────────────────────────────────────────────────────────────
+
+/* A person's picture, banner, colour, pronouns and a line about them
+ * (backend/src/profiles.rs, docs/profiles.md). Everyone signed in reads
+ * everyone's; a person changes only their own. lososd crops, scales and
+ * re-encodes every picture, so what comes back has no camera tags. */
+
+/** The colours a profile can have, in the order the picker shows them. */
+export const ACCENTS = ["teal", "blue", "violet", "rose", "amber", "green"] as const;
+export type Accent = (typeof ACCENTS)[number];
+
+export interface Profile {
+  name: string;
+  displayName: string;
+  pronouns: string;
+  about: string;
+  accent: Accent;
+  /** False while the colour is the one their name gives them. */
+  accentChosen: boolean;
+  /** `/api/profiles/<name>/picture?v=N`, or null. */
+  picture: string | null;
+  /** `/api/profiles/<name>/banner?v=N`, or null. */
+  banner: string | null;
+}
+
+export type ProfileImage = "picture" | "banner";
+
+/** The most characters lososd keeps in each line (profiles.rs). */
+export const MAX_PRONOUNS_CHARS = 40;
+export const MAX_ABOUT_CHARS = 160;
+
+/** GET /api/profiles — everyone LosOS Login lets in. */
+export function getProfiles(options: RequestOptions = {}): Promise<{ people: Profile[] }> {
+  return call<{ people: Profile[] }>("/api/profiles", options);
+}
+
+/** GET /api/profiles/{name}. */
+export function getProfile(name: string, options: RequestOptions = {}): Promise<Profile> {
+  return call<Profile>(`/api/profiles/${encodeURIComponent(name)}`, options);
+}
+
+/** POST /api/account/profile — the caller's own words and colour. Absent
+ *  fields stay; `accent: null` goes back to the colour of their name. */
+export function postAccountProfile(
+  details: { pronouns?: string; about?: string; accent?: Accent | null },
+  options: RequestOptions = {},
+): Promise<Profile> {
+  return postJson("/api/account/profile", details, options);
+}
+
+/** PUT /api/account/{picture,banner} — the bytes; lososd reads the type
+ *  off them. */
+export function putAccountImage(kind: ProfileImage, file: Blob, options: RequestOptions = {}): Promise<Profile> {
+  return call<Profile>(`/api/account/${kind}`, {
+    ...options,
+    method: "PUT",
+    contentType: file.type.length > 0 ? file.type : "application/octet-stream",
+    body: file,
+  });
+}
+
+/** DELETE /api/account/{picture,banner}. */
+export function deleteAccountImage(kind: ProfileImage, options: RequestOptions = {}): Promise<Profile> {
+  return call<Profile>(`/api/account/${kind}`, { ...options, method: "DELETE" });
+}
+
+/** POST /api/people/profile/clear — an administrator takes a picture down. */
+export function clearPersonImage(
+  name: string,
+  kind: ProfileImage,
+  options: RequestOptions = {},
+): Promise<{ name: string; kind: ProfileImage; cleared: boolean }> {
+  return postJson("/api/people/profile/clear", { name, kind }, options);
 }
 
 /** LosOS Login's own page for adding an authenticator app or a passkey. */

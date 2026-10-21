@@ -10,6 +10,7 @@ import advanced from "./advanced";
 import apps from "./apps";
 import calls from "./calls";
 import chat from "./chat";
+import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import home from "./home";
 import install from "./install";
@@ -20,6 +21,7 @@ import manage from "./manage";
 import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
+import profile from "./profile";
 import settings from "./settings";
 import shell from "./shell";
 import tour from "./tour";
@@ -38,6 +40,7 @@ export const MESSAGES = {
   ...widgets,
   ...apps,
   ...cloudApps,
+  ...cloud,
   ...install,
   ...look,
   ...machines,
@@ -45,6 +48,7 @@ export const MESSAGES = {
   ...access,
   ...users,
   ...account,
+  ...profile,
   ...lab,
   ...tour,
   ...palette,

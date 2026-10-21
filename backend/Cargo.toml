@@ -82,6 +82,29 @@ walkdir = "2"
 # (src/people.rs): argon2id in PHC form, the format Authelia reads. Already
 # in the lock file through the access crate.
 argon2 = "0.6"
+# Profile pictures and banners (src/profiles.rs): decoded, turned upright,
+# cropped, scaled and encoded again, so no camera tag (a photo's position
+# among them) is ever stored. PNG, JPEG, GIF and WebP in; PNG and JPEG out.
+# The `image` dependency itself is declared once, below with LosOS Cloud's
+# thumbnails, whose decoders are a superset of these.
+
+# LosOS Cloud (src/cloud/, the losos-cloud binary): WebDAV bodies are XML,
+# read with namespaces resolved, and downloads go through actix-files for
+# ranges and conditional requests.
+quick-xml = "0.42"
+actix-files = "0.7"
+# Uploads land in a temporary file beside the owner's files and are renamed
+# into place; all three are already in the lock file.
+tempfile = "3"
+httpdate = "1"
+percent-encoding = "2"
+base64 = "0.22"
+futures-util = { version = "0.3", default-features = false }
+url = "2"
+mime = "0.3"
+# Thumbnails of pictures (src/cloud/preview.rs), turned the way the camera
+# held them. Decoders only for the formats phones and cameras write.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 
 # Calls (src/calls/, the losos-calls binary): a forwarding SFU on str0m, a
 # sans-IO WebRTC stack, with its pure-Rust DTLS and SRTP so nothing links
@@ -137,6 +160,10 @@ path = "src/bin/lososd.rs"
 [[bin]]
 name = "losos-app-shape"
 path = "src/bin/losos-app-shape.rs"
+
+[[bin]]
+name = "losos-cloud"
+path = "src/bin/losos-cloud.rs"
 
 [[bin]]
 name = "losos-search"
