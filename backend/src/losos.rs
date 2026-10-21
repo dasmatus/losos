@@ -203,13 +203,9 @@ pub trait Losos {
     /// `routes.rs`). Root-only: it lets a local edge route this box's
     /// custom domains for a few hours.
     fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()>;
-    // ── The sidebar's pins ──────────────────────────────────────────────
-    // `crate::pins`: the list beside `state.json`, and the app password
-    // lososd lists the owner's LosOS cloud folders with.
-    /// The pins, or an empty list when there is none yet or it does not
-    /// parse.
-    fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins>;
-    fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()>;
+    // ── The pin picker ──────────────────────────────────────────────────
+    // `crate::pins`: the app password lososd lists the owner's LosOS cloud
+    // folders with. The pins themselves are the pins plugin's.
     /// The kept LosOS cloud app password, `None` before the first sign-in
     /// with the password.
     fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>>;
@@ -1004,6 +1000,34 @@ pub fn cmd_market<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
         return Ok(json!({ "available": false }));
     };
     Ok(json!({ "available": true, "listings": listings, "account": account }))
+}
+
+/// The AI models the edge runs on lent memory, and this box's meters, escrow
+/// balances and lending: `POST /api/market/llm/models`.
+///
+/// A view, like [`cmd_market`]: an edge that runs no models, a box not
+/// cleared for the market, or no official edge in reach is
+/// `{"available": false}` rather than an error, so the pane can say so
+/// quietly.
+pub fn cmd_llm_models<L: Losos>(l: &mut L, network: Option<String>) -> anyhow::Result<Value> {
+    use crate::market::{Op, Outcome, Refused};
+    if crate::edge::check_market_gate(&l.edge_status()?).is_err() {
+        return Ok(json!({ "available": false, "reason": "noOfficialEdge" }));
+    }
+    let op = Op::LlmModels { network };
+    op.validate().map_err(|e| {
+        anyhow::Error::from(Refused {
+            status: 400,
+            message: e.to_string(),
+        })
+    })?;
+    let Outcome::Reply(mut reply) = l.market_request(&op)? else {
+        return Ok(json!({ "available": false }));
+    };
+    if let Some(obj) = reply.as_object_mut() {
+        obj.insert("available".to_string(), json!(true));
+    }
+    Ok(reply)
 }
 
 /// One market action, validated here as well as at the HTTP boundary so the
@@ -2353,12 +2377,6 @@ mod tests {
             ) -> anyhow::Result<(u16, String)> {
                 self.0.forgejo_request(op, s)
             }
-            fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
-                self.0.load_pins()
-            }
-            fn save_pins(&mut self, p: &crate::pins::Pins) -> anyhow::Result<()> {
-                self.0.save_pins(p)
-            }
             fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>> {
                 self.0.load_cloud_key()
             }
@@ -2684,6 +2702,84 @@ mod tests {
         assert_eq!(out["available"], true);
         assert_eq!(out["listings"][0]["id"], "lst_1");
         assert_eq!(out["account"]["seller_ready"], false);
+    }
+
+    #[test]
+    fn the_ai_models_are_a_quiet_view_when_the_edge_runs_none() {
+        // No registrar configured, or an edge that runs no models.
+        let mut f = FakeLosos::new();
+        assert_eq!(
+            cmd_llm_models(&mut f, None).unwrap(),
+            serde_json::json!({ "available": false })
+        );
+        f.market_routes.insert(
+            "POST /market/llm/models".to_string(),
+            (503, "market not configured on this edge".to_string()),
+        );
+        assert_eq!(
+            cmd_llm_models(&mut f, None).unwrap(),
+            serde_json::json!({ "available": false })
+        );
+        // Through an edge the root never vouched for, the registrar is not
+        // even asked.
+        let mut f = FakeLosos::new().with_company_edge();
+        assert_eq!(
+            cmd_llm_models(&mut f, None).unwrap(),
+            serde_json::json!({ "available": false, "reason": "noOfficialEdge" })
+        );
+        assert!(f.market_ops.is_empty());
+    }
+
+    #[test]
+    fn the_ai_models_carry_the_edges_answer_and_a_loading_model_is_a_refusal() {
+        use crate::market::{ChatAsk, Op, Refused};
+        let mut f = FakeLosos::new();
+        f.market_routes.insert(
+            "POST /market/llm/models".to_string(),
+            (
+                200,
+                r#"{"network":"base","models":[{"id":"llama-70b","needMib":45000}]}"#.to_string(),
+            ),
+        );
+        let out = cmd_llm_models(&mut f, Some("base".to_string())).unwrap();
+        assert_eq!(out["available"], true);
+        assert_eq!(out["models"][0]["needMib"], 45000);
+        assert_eq!(
+            f.market_ops,
+            vec![Op::LlmModels {
+                network: Some("base".to_string())
+            }]
+        );
+        assert!(cmd_llm_models(&mut f, Some("../x".to_string()))
+            .unwrap_err()
+            .downcast_ref::<Refused>()
+            .is_some());
+
+        f.market_routes.insert(
+            "POST /market/llm/chat".to_string(),
+            (503, "the model is still loading on its boxes".to_string()),
+        );
+        let chat = Op::LlmChat(ChatAsk {
+            meter: "mtr_00ff".to_string(),
+            messages: vec![("user".to_string(), "hi".to_string())],
+            max_tokens: None,
+            temperature: None,
+            top_p: None,
+            stop: Vec::new(),
+        });
+        let err = cmd_market_op(&mut f, &chat).unwrap_err();
+        let r = err.downcast_ref::<Refused>().expect("a refusal");
+        assert_eq!(r.status, 503);
+        f.market_routes.insert(
+            "POST /market/llm/chat".to_string(),
+            (
+                200,
+                r#"{"content":"Hello.","tokensIn":3,"tokensOut":2,"costE6":"91000"}"#.to_string(),
+            ),
+        );
+        let out = cmd_market_op(&mut f, &chat).unwrap();
+        assert_eq!(out["content"], "Hello.");
+        assert_eq!(out["available"], true);
     }
 
     #[test]

@@ -1,6 +1,6 @@
-# LosOS Lab's guests under libvirt on the box itself (losos.lab.libvirt.*).
+# LosOS Diagrams' guests under libvirt on the box itself (losos.lab.libvirt.*).
 #
-# The Lab at /lab/ draws a setup and, where it can, boots one small x86_64
+# LosOS Diagrams at /diagrams/ draws a network setup and, where it can, boots one small x86_64
 # guest per device. The copy the box serves has no qemu-wasm engine, so its
 # consoles are simulated, unless this module runs `losos-registrar lab`
 # (edge/registrar/src/lab/) next to libvirtd: then each guest is a
