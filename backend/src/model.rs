@@ -197,12 +197,9 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub sharing_my_storage: bool,
-    pub nextcloud_mode: String,
     pub forgejo_mode: String,
     pub host_name: String,
-    pub https: bool,
     pub gpu_enable: bool,
-    pub apache_port: i64,
     pub proxy_enable: bool,
     pub cluster_enable: bool,
     pub share_compute: bool,
@@ -249,12 +246,9 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             sharing_my_storage: true,
-            nextcloud_mode: "container".to_string(),
             forgejo_mode: "container".to_string(),
             host_name: "mattbox".to_string(),
-            https: false,
             gpu_enable: true,
-            apache_port: 11000,
             proxy_enable: false,
             cluster_enable: false,
             share_compute: false,
@@ -274,12 +268,9 @@ impl Settings {
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "sharingMyStorage": self.sharing_my_storage,
-            "nextcloudMode": self.nextcloud_mode,
             "forgejoMode": self.forgejo_mode,
             "hostName": self.host_name,
-            "https": self.https,
             "gpuEnable": self.gpu_enable,
-            "apachePort": self.apache_port,
             "proxyEnable": self.proxy_enable,
             "clusterEnable": self.cluster_enable,
             "shareCompute": self.share_compute,
@@ -333,12 +324,9 @@ mod tests {
         let out = Settings::default().to_json().to_string();
         for key in [
             "sharingMyStorage",
-            "nextcloudMode",
             "forgejoMode",
             "hostName",
-            "https",
             "gpuEnable",
-            "apachePort",
             "proxyEnable",
             "clusterEnable",
             "shareCompute",

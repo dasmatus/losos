@@ -1,6 +1,6 @@
 # The OCI images the LOCAL k3s cluster runs.
 #
-# Three of them: a sandbox (pause) image, Nextcloud and Forgejo. They are
+# Two of them: a sandbox (pause) image and Forgejo. They are
 # preloaded through the cluster's `images` option, which symlinks each tarball
 # into /var/lib/rancher/k3s/agent/images for the agent to import at start, so
 # the pods run with `imagePullPolicy: Never` and nothing is ever fetched from a
@@ -9,7 +9,7 @@
 # that cannot resolve instead of quietly reaching Docker Hub.
 #
 # What this does relax, and it must be said plainly rather than left implied:
-# the images are NOT built on the appliance. A Nextcloud image is ~2.6 GiB and
+# the images are NOT built on the appliance. An image is hundreds of MiB and
 # system.autoUpgrade rebuilds at 03:00 on a repurposed mini-PC with a tmpfs
 # root, three hours before an unconditional reboot. They come from this
 # project's own Nix binary cache instead. Nothing is pulled from a *container
@@ -17,13 +17,11 @@
 # that is unreachable at 03:00 means the rebuild fails and the previous
 # generation keeps running.
 #
-# None of these images know anything that varies per box. The port Nextcloud
-# listens on is tunable from the settings SPA, so it is not an image layer:
-# modules/workloads.nix renders listen.conf and losos.config.php in module
-# context and hostPath-mounts them at /etc/losos/nextcloud, which is the only
-# thing the entrypoint below reads for it. Same for Forgejo's ROOT_URL and
-# /etc/losos/forgejo/losos.ini. Changing a port changes the store path, changes
-# the manifest, and the kubelet restarts the pod — no image rebuild ever.
+# None of these images know anything that varies per box. Forgejo's ROOT_URL
+# and the owner's site settings are rendered by modules/workloads.nix in
+# module context and hostPath-mounted at /etc/losos/forgejo/losos.ini.
+# Changing one changes the store path, changes the manifest, and the kubelet
+# restarts the pod — no image rebuild ever.
 #
 # The pods run with hostNetwork (the local cluster has no CNI), which is why
 # every listener these images configure is bound explicitly to loopback by the
@@ -41,14 +39,8 @@
 let
   inherit (pkgs) lib;
 
-  # The one description of this appliance's Nextcloud, shared with the native
-  # path (modules/nextcloud-common.nix). See that file's header for why it is
-  # data in a third file rather than an option.
-  nc = import ../modules/nextcloud-stack.nix { inherit pkgs lib; };
-  signIn = import ../modules/app-sign-in.nix { inherit lib; };
-
   # Every image gets these. `/bin/sh` comes from bash and is what Forgejo's
-  # generated git hooks and Nextcloud's occ expect to exist; coreutils is there
+  # generated git hooks expect to exist; coreutils is there
   # for the entrypoints and for `crictl exec` on a box with no shell of its
   # own, which is the only way anyone will ever debug one of these pods.
   baseTools = [
@@ -57,7 +49,7 @@ let
   ];
 
   # dockerTools does not create /tmp or /usr/bin, and both are load-bearing:
-  # PHP puts session and upload temp files in /tmp, and Forgejo writes git
+  # programs put temp files in /tmp, and Forgejo writes git
   # hooks that start with `#!/usr/bin/env bash`. A missing /usr/bin/env is a
   # push that fails at the hook, long after anyone is still watching the
   # deployment.
@@ -66,426 +58,6 @@ let
     chmod 1777 tmp
     ln -s ${pkgs.coreutils}/bin/env usr/bin/env
   '';
-
-  # ── Nextcloud ─────────────────────────────────────────────────────────────
-
-  # The half of Nextcloud's configuration that belongs to the *image*: which
-  # app directories exist, which cache backends are compiled in, where the
-  # database socket is. It is a store path, symlinked into the config directory
-  # by the entrypoint, exactly as the nixpkgs module does with its
-  # override.config.php.
-  #
-  # It sorts before the losos.config.php modules/workloads.nix mounts ('-' is
-  # 0x2D, '.' is 0x2E), and Nextcloud applies *.config.php in name order, so
-  # the per-box file wins on any key both were ever to set.
-  #
-  # log_type = errorlog sends Nextcloud's log to stderr, which php-fpm forwards
-  # to the container log. The alternative is a nextcloud.log inside the data
-  # directory on a box with no shell to read it from.
-  #
-  # The branding keys (theme and the rest of nc.brandSettings) are the ones
-  # the native path sets through services.nextcloud.settings, rendered to
-  # PHP. integrity.check.disabled matches what services.nextcloud sets on the
-  # same package: nextcloud-stack.nix overwrites a few core/img/ files with
-  # LosOS cloud's, the store is read-only, and Nix checks it already.
-  nextcloudImageConfig = pkgs.writeText "losos-image.config.php" ''
-    <?php
-    $CONFIG = [
-      'apps_paths' => [
-        [ 'path' => '${nc.webroot}/apps', 'url' => '/apps', 'writable' => false ],
-        [ 'path' => '${nc.webroot}/nix-apps', 'url' => '/nix-apps', 'writable' => false ],
-        [ 'path' => '${nc.webroot}/store-apps', 'url' => '/store-apps', 'writable' => true ],
-      ],
-      'appstoreenabled' => ${lib.boolToString nc.appstoreEnable},
-      'datadirectory' => '${nc.dataDir}',
-      'dbtype' => '${nc.database.type}',
-      'dbname' => '${nc.database.name}',
-      'dbuser' => '${nc.database.user}',
-      'dbhost' => '${nc.database.socketDir}',
-      'memcache.local' => '\\OC\\Memcache\\APCu',
-      'memcache.distributed' => '\\OC\\Memcache\\Redis',
-      'memcache.locking' => '\\OC\\Memcache\\Redis',
-      'redis' => [
-        'host' => '${nc.redisSocket}',
-        'port' => 0,
-      ],
-      'log_type' => 'errorlog',
-      'integrity.check.disabled' => true,
-    ${
-      lib.concatStrings (
-        lib.mapAttrsToList (
-          k: v: "  '${k}' => ${if lib.isBool v then lib.boolToString v else "'${v}'"},\n"
-        ) nc.brandSettings
-      )
-    }];
-  '';
-
-  # Apache's runtime scratch: the pid file, the mutexes, the FastCGI socket.
-  # ServerRoot is a store path, so none of it can live there.
-  nextcloudRunDir = "/run/nextcloud";
-  nextcloudFpmSocket = "${nextcloudRunDir}/php-fpm.sock";
-
-  # The httpd.conf, in its own file so nix/tests/nextcloud-httpd.nix can start a
-  # real Apache on the same text against a fixture webroot. That file's header
-  # says why it is Apache and php-fpm, and carries the rewrite rules upstream's
-  # .htaccess would have.
-  nextcloudHttpdConf = import ./nextcloud-httpd.nix {
-    inherit pkgs;
-    inherit (nc) webroot;
-    listenConf = "/etc/losos/nextcloud/listen.conf";
-    runDir = nextcloudRunDir;
-    fpmSocket = nextcloudFpmSocket;
-  };
-
-  # One pool, no daemonizing, logs on stderr. `user`/`group` are deliberately
-  # absent: the pod's securityContext already runs this as the nextcloud uid,
-  # and php-fpm refuses to setuid when it is not root anyway.
-  nextcloudFpmConf = pkgs.writeText "php-fpm.conf" ''
-    [global]
-    error_log = /dev/stderr
-    daemonize = no
-    log_limit = 8192
-
-    [www]
-    listen = ${nextcloudFpmSocket}
-    listen.mode = 0660
-    pm = dynamic
-    pm.max_children = 32
-    pm.start_servers = 2
-    pm.min_spare_servers = 2
-    pm.max_spare_servers = 6
-    pm.max_requests = 500
-    ; Nextcloud reads its configuration directory from the environment, and
-    ; php-fpm scrubs the environment unless told otherwise.
-    clear_env = no
-    env[NEXTCLOUD_CONFIG_DIR] = ${nc.configDir}
-    catch_workers_output = yes
-    decorate_workers_output = no
-  '';
-
-  # Where lososd stages a new admin password for this pod to read.
-  #
-  # Must equal `setup::STAGED_SECRET` in backend/src/setup.rs — the daemon
-  # writes this path and this script reads it, and nothing checks that the two
-  # spellings agree. Inside nc.home because that is a read-write `Directory`
-  # hostPath both the host and the pod can reach (modules/workloads.nix);
-  # /var/secrets/nextcloud-admin-pass would not do, being a `type: File` bind
-  # mount of a single inode that a temp-and-rename would swap out from under.
-  stagedSecret = "${nc.home}/.losos-setpass";
-
-  # `losos-ctl set-password`'s other half, in container mode.
-  #
-  # It exists because `occ` is not a program on this image's PATH: the
-  # entrypoint below defines it as a shell function *after* a `cd` to the
-  # webroot and an `export NEXTCLOUD_CONFIG_DIR`, and a `crictl exec` from the
-  # host inherits none of that. So the setup that makes occ work is repeated
-  # here, in a real script the daemon can exec by name.
-  #
-  # And it takes the password by file rather than by argument or environment,
-  # which is the whole reason it is a separate wrapper at all: `crictl exec`
-  # has **no** flag for passing an environment variable (its `-e` is
-  # `--ignore-errors`, checked against cri-tools 1.36.0), and an argument would
-  # put the owner's password in /proc/<pid>/cmdline, which is world-readable.
-  # A 0600 file chowned to this pod's uid is the only channel left.
-  #
-  # Contract, depended on by backend/src/setup.rs and not verifiable from it:
-  #
-  #   losos-nextcloud-occ-setpass <user>
-  #     reads the password from stagedSecret, runs
-  #     `occ user:resetpassword <user> --password-from-env`, exits with occ's
-  #     status, and never writes the password anywhere.
-  nextcloudSetpass = pkgs.writeShellApplication {
-    name = "losos-nextcloud-occ-setpass";
-    runtimeInputs = [ pkgs.coreutils ];
-    text = ''
-      if [ "$#" -ne 1 ]; then
-        echo "usage: losos-nextcloud-occ-setpass <user>" >&2
-        exit 2
-      fi
-      user=$1
-
-      secret=${stagedSecret}
-      [ -r "$secret" ] || {
-        echo "losos-nextcloud-occ-setpass: $secret is missing or unreadable. lososd stages it 0600 and chowns it to this pod's uid immediately before running this script." >&2
-        exit 1
-      }
-
-      # `$(cat …)` strips trailing newlines, and lososd writes the file with
-      # none — so this round-trips the password exactly. It is also why
-      # setup::validate_password rejects control characters: an embedded
-      # newline would be silently truncated right here and the owner would be
-      # left with a password that is not the one they typed.
-      #
-      # Assigned and exported on separate lines so the assignment's exit status
-      # is the one `set -e` sees, not `export`'s.
-      OC_PASS=$(cat "$secret")
-      export OC_PASS
-      [ -n "$OC_PASS" ] || {
-        echo "losos-nextcloud-occ-setpass: $secret is empty; refusing to set a blank password." >&2
-        exit 1
-      }
-      # core/Command/User/ResetPassword.php reads
-      # `getenv('NC_PASS') ?: getenv('OC_PASS')`, so any inherited NC_PASS would
-      # silently win over the password the owner just typed.
-      unset NC_PASS
-
-      # What the entrypoint's `occ` shell function does before every call, and
-      # what an external exec does not inherit.
-      cd ${nc.webroot}
-      export NEXTCLOUD_CONFIG_DIR=${nc.configDir}
-
-      # --password-from-env, so the password is never an argv element here
-      # either. Run under `set -e`, a non-zero occ is already fatal; the
-      # explicit status keeps that true if anything is ever appended below.
-      status=0
-      ${nc.php}/bin/php occ user:resetpassword "$user" --password-from-env || status=$?
-      exit "$status"
-    '';
-  };
-
-  # The readiness probe behind `GET /api/setup/claim`'s `ready` flag.
-  #
-  # Same shape as the setpass wrapper, for the same reason: `occ` is a shell
-  # function of the entrypoint, not a program, and a `crictl exec` from the
-  # host has to repeat its setup. `--state Running` is true from the first
-  # line of the entrypoint, long before `maintenance:install` below has
-  # finished, so lososd asks occ itself whether the instance is installed and
-  # serving, and the first-run wizard waits on that answer instead of letting
-  # the owner submit into a failure.
-  #
-  # Contract, depended on by backend/src/setup.rs (`IMAGE_OCC_STATUS`):
-  #
-  #   losos-nextcloud-occ-status
-  #     runs `occ status --output=json` and exits with occ's status. Prints
-  #     `{"installed":…,"maintenance":…,"needsDbUpgrade":…,…}` on stdout.
-  nextcloudStatus = pkgs.writeShellApplication {
-    name = "losos-nextcloud-occ-status";
-    runtimeInputs = [ pkgs.coreutils ];
-    text = ''
-      if [ "$#" -ne 0 ]; then
-        echo "usage: losos-nextcloud-occ-status" >&2
-        exit 2
-      fi
-      cd ${nc.webroot}
-      export NEXTCLOUD_CONFIG_DIR=${nc.configDir}
-      status=0
-      ${nc.php}/bin/php occ status --output=json || status=$?
-      exit "$status"
-    '';
-  };
-
-  # A person's name and address from LosOS Login, kept in LosOS cloud
-  # (backend/src/app_names.rs). Same shape as the two above.
-  #
-  # Contract, depended on by backend/src/setup.rs (`IMAGE_OCC_PERSON`):
-  #
-  #   losos-nextcloud-occ-person <account> <name> <email>
-  #     sets the account's display name, and its address unless <email> is
-  #     empty, with `occ user:setting`; exits 3 when the account does not
-  #     exist yet, else with occ's status.
-  nextcloudPerson = pkgs.writeShellApplication {
-    name = "losos-nextcloud-occ-person";
-    runtimeInputs = [ pkgs.coreutils ];
-    text = ''
-      if [ "$#" -ne 3 ]; then
-        echo "usage: losos-nextcloud-occ-person <account> <name> <email>" >&2
-        exit 2
-      fi
-      cd ${nc.webroot}
-      export NEXTCLOUD_CONFIG_DIR=${nc.configDir}
-      # `--` ends occ's options, so a name that starts with a dash is a name.
-      if ! ${nc.php}/bin/php occ user:info -- "$1" >/dev/null 2>&1; then
-        exit 3
-      fi
-      ${nc.php}/bin/php occ user:setting -- "$1" settings display_name "$2"
-      if [ -n "$3" ]; then
-        ${nc.php}/bin/php occ user:setting -- "$1" settings email "$3"
-      fi
-    '';
-  };
-
-  # The owner's LosOS cloud apps, from the Apps pane: lososd execs
-  # `/bin/losos-nextcloud-apps <verb> [id]` in this pod (backend/src/cloud_apps.rs).
-  # The contract is in modules/nextcloud-stack.nix (`appsTool`); the prelude
-  # is what the entrypoint's `occ` does before every call, which an external
-  # exec does not inherit.
-  nextcloudApps = nc.appsTool {
-    occ = "${nc.php}/bin/php occ";
-    inherit (nc) webroot;
-    prelude = ''
-      cd ${nc.webroot}
-      export NEXTCLOUD_CONFIG_DIR=${nc.configDir}
-    '';
-  };
-
-  nextcloudEntrypoint = pkgs.writeShellApplication {
-    name = "losos-nextcloud";
-    runtimeInputs = [ pkgs.coreutils ];
-    text = ''
-      # PID 1 of the Nextcloud pod: bring the instance up to date, then run
-      # Apache and php-fpm until one of them dies.
-      #
-      # Everything this reads from outside the image is a hostPath mount and is
-      # checked before anything else runs, because the failure modes are
-      # otherwise silent on a box with no shell: a missing config file makes
-      # Apache exit with a line nobody reads, and a state directory owned by
-      # the wrong uid makes Nextcloud reinstall itself into an empty database.
-
-      umask 0027
-
-      conf_dir=/etc/losos/nextcloud
-      adminpass=/var/secrets/nextcloud-admin-pass
-
-      fail() {
-        echo "losos-nextcloud: $*" >&2
-        exit 1
-      }
-
-      for f in "$conf_dir/listen.conf" "$conf_dir/losos.config.php" "$adminpass"; do
-        [ -r "$f" ] || fail "$f is missing or unreadable. listen.conf and losos.config.php are rendered and mounted by modules/workloads.nix; the admin password is generated by losos-nextcloud-adminpass.service and mounted with hostPath type: File."
-      done
-      [ -s "$adminpass" ] || fail "$adminpass is empty — refusing to install Nextcloud with a blank admin password."
-
-      # Baked into the image owned by this uid (fakeRootCommands below), so
-      # this only ever confirms it; a pod with no capabilities cannot create
-      # it under a root-owned /run, which is how the first container builds
-      # crash-looped on `mkdir` here.
-      [ -d ${nextcloudRunDir} ] && [ -w ${nextcloudRunDir} ] ||
-        fail "${nextcloudRunDir} is missing or not writable by uid $(id -u); the image must create it owned by that uid (nix/images.nix, fakeRootCommands)."
-      chmod 0700 ${nextcloudRunDir}
-
-      # The state root is a hostPath. The pod runs as the nextcloud uid and has
-      # dropped every capability, so it cannot chown its way out of a directory
-      # the host created for somebody else.
-      [ -d ${nc.home} ] || fail "${nc.home} does not exist. It is a hostPath mount; the host creates it via systemd-tmpfiles."
-      [ -w ${nc.home} ] || fail "${nc.home} is not writable by uid $(id -u). The host must create it owned by the nextcloud uid — see the tmpfiles rules in modules/workloads.nix."
-
-      for d in ${nc.datadir} ${nc.configDir} ${nc.dataDir} ${nc.storeAppsDir}; do
-        mkdir -p "$d" || fail "cannot create $d"
-      done
-
-      # Both halves of the configuration, linked in the way the nixpkgs module
-      # links its override.config.php: a store path, replaced wholesale on
-      # every activation, never edited in place.
-      ln -sfn "$conf_dir/losos.config.php" ${nc.configDir}/losos.config.php
-      ln -sfn ${nextcloudImageConfig} ${nc.configDir}/losos-image.config.php
-
-      cd ${nc.webroot}
-      export NEXTCLOUD_CONFIG_DIR=${nc.configDir}
-      # Postgres roles are provisioned by the host (services.postgresql's
-      # ensureUsers), so the installer must not try to create one itself.
-      export NC_setup_create_db_user=false
-
-      occ() {
-        ${nc.php}/bin/php occ "$@"
-      }
-
-      if [ ! -s ${nc.configDir}/config.php ]; then
-        echo "losos-nextcloud: no config.php — installing"
-        # An empty --database-pass is correct: the connection is a peer-
-        # authenticated unix socket, which is why modules/configuration.nix
-        # pins the nextcloud uid.
-        occ maintenance:install \
-          --database "${nc.database.type}" \
-          --database-name "${nc.database.name}" \
-          --database-host "${nc.database.socketDir}" \
-          --database-user "${nc.database.user}" \
-          --database-pass "" \
-          --admin-user "${nc.adminUser}" \
-          --admin-pass "$(cat "$adminpass")" \
-          --data-dir "${nc.dataDir}"
-      fi
-
-      # Fatal on purpose: serving an application against a database it has not
-      # migrated yet corrupts data quietly.
-      occ upgrade
-
-      # Not fatal, equally on purpose: one app that went incompatible across a
-      # nixpkgs bump must not take the whole box's file sync offline. It is
-      # loud in the pod log and visible in the admin UI instead.
-      # Less the ones the owner turned off on the Apps pane (nc.offFile),
-      # which would otherwise be back on after every restart.
-      # shellcheck disable=SC2046
-      occ app:enable ${nc.withoutOff} ||
-        echo "losos-nextcloud: app:enable failed for at least one app; Nextcloud is still serving. Check the admin UI's app list." >&2
-
-      # Nextcloud's own "Welcome to Nextcloud" modal, off.
-      #
-      # It is never named in nc.apps, so it is easy to assume it is not here —
-      # but `firstrunwizard` is listed in core/shipped.json's `defaultEnabled`
-      # array (verified against nextcloud-34.0.2), which means
-      # `maintenance:install` above enables it without anyone asking.
-      #
-      # The LosOS first-run wizard embeds /nextcloud in an iframe and walks the
-      # owner through signing in. With this app on, their first sign-in pops
-      # Nextcloud's welcome modal *inside* that frame: two wizards on screen at
-      # once, one of them talking about a product the owner has not been told
-      # they are running.
-      #
-      # Not fatal, for the same reason as app:enable above.
-      occ app:disable firstrunwizard ||
-        echo "losos-nextcloud: could not disable firstrunwizard; expect its modal inside the setup wizard." >&2
-
-      # The owner's account, a standard one: LosOS keeps the settings and the
-      # apps on its Apps pane (modules/nextcloud-stack.nix, `demoteOwner`).
-      ${nc.demoteOwner "occ"}
-
-      # Federation, on or off as the host says (modules/workloads.nix renders
-      # the file from losos.nextcloud.federation.enable and the sharing gate;
-      # modules/nextcloud-stack.nix says what each value sets). Applied on
-      # every start because a changed value changes the manifest and so
-      # restarts this pod. A host config without the file predates the
-      # switch: Nextcloud is left as it is.
-      if [ -r "$conf_dir/federation" ]; then
-        ${nc.federation.occ "occ" ''"$(cat "$conf_dir/federation")"''}
-      else
-        echo "losos-nextcloud: $conf_dir/federation is missing; federation settings left unchanged." >&2
-      fi
-
-      # Sign-in with LosOS Login, on or off as the host says
-      # (modules/workloads.nix renders the file; modules/app-sign-in.nix
-      # says what each value sets). Missing on a host config that predates
-      # it: the app's own sign-in page, as before.
-      if [ -r "$conf_dir/sign-in" ]; then
-        ${signIn.nextcloud.occ "occ" ''"$(cat "$conf_dir/sign-in")"''}
-      else
-        occ app:disable user_saml >/dev/null 2>&1 || true
-      fi
-
-      # The owner's box-wide settings that live in Nextcloud's database
-      # (losos.nextcloud.site.*; modules/nextcloud-stack.nix, `site`), set
-      # on every start for the same reason. Missing on a host config that
-      # predates them, which leaves Nextcloud as it is.
-      if [ -r "$conf_dir/site" ]; then
-        ${nc.site.occ "occ" ''"$conf_dir/site"''}
-      else
-        echo "losos-nextcloud: $conf_dir/site is missing; box-wide settings left unchanged." >&2
-      fi
-
-      ${nc.php}/bin/php-fpm --nodaemonize --fpm-config ${nextcloudFpmConf} &
-
-      # Apache connects to the pool per request, so starting it first only
-      # costs a burst of 503s to whoever is watching the dashboard while the
-      # pod comes up. Waiting is cheap; ten seconds is far more than php-fpm
-      # needs and short enough that a pool which will never start still fails
-      # the pod quickly instead of hanging it.
-      for _ in $(seq 100); do
-        [ -S ${nextcloudFpmSocket} ] && break
-        sleep 0.1
-      done
-      [ -S ${nextcloudFpmSocket} ] || fail "php-fpm did not create ${nextcloudFpmSocket} within 10s; see its output above."
-
-      ${pkgs.apacheHttpd}/bin/httpd -f ${nextcloudHttpdConf} -DFOREGROUND &
-
-      # Neither of these returns in normal operation, so whichever one does has
-      # failed. Exiting takes the pod down with it and lets the kubelet restart
-      # it, which is the honest outcome: an Apache with no FastCGI backend
-      # serves 502s forever and looks alive to everything watching.
-      status=0
-      wait -n || status=$?
-      fail "php-fpm or httpd exited with status $status; restarting the pod."
-    '';
-  };
 
   # ── Forgejo ───────────────────────────────────────────────────────────────
 
@@ -646,27 +218,6 @@ let
     '';
   };
 
-  # What the Nextcloud image's /bin holds.
-  nextcloudRoot = pkgs.buildEnv {
-    name = "losos-image-nextcloud-root";
-    paths = baseTools ++ [
-      pkgs.tini
-      nextcloudEntrypoint
-      # Not on the Entrypoint — `losos-ctl set-password` execs it directly
-      # with `crictl exec`. It has to be in the image because that is the only
-      # place an exec into this pod can reach.
-      nextcloudSetpass
-      # Likewise: lososd execs it to learn whether Nextcloud is installed
-      # and serving before it lets the wizard set the first password.
-      nextcloudStatus
-      # And this one to list, add, turn on and off, and remove apps.
-      nextcloudApps
-      # And this one to give a person LosOS Login's name and address.
-      nextcloudPerson
-      nc.php
-    ];
-  };
-
   # ── Pause ─────────────────────────────────────────────────────────────────
 
   # The sandbox image every pod on the local cluster is built around: PID 1 of
@@ -694,47 +245,6 @@ in
       "/bin/sleep"
       "inf"
     ];
-  };
-
-  losos-image-nextcloud = pkgs.dockerTools.buildLayeredImage {
-    name = "losos.local/nextcloud";
-    # zstd rather than gzip: the agent decompresses every one of these at
-    # import time, on the appliance, and the mini-PC notices.
-    compressor = "zstd";
-    contents = nextcloudRoot;
-    # The image's /bin without the tarball around it, for
-    # nix/tests/cloud-webdav.nix, which runs the pod's entrypoint on the
-    # manifest's mounts with no kubelet (and no 2.6 GiB image to build).
-    passthru.root = nextcloudRoot;
-    extraCommands = commonLayout;
-    # Apache's runtime directory, owned by the uid the pod runs as. The pod
-    # drops every capability and runs as nc.uid, and the image's /run is
-    # root's, so the entrypoint's `mkdir -p /run/nextcloud` failed with
-    # "Permission denied" on every start and the pod sat in CrashLoopBackOff
-    # for as long as the box was up, and Nextcloud never answered.
-    # extraCommands runs unprivileged and cannot chown; this runs under
-    # fakeroot, so the ownership is recorded in the layer.
-    fakeRootCommands = ''
-      mkdir -p .${nextcloudRunDir}
-      chown ${toString nc.uid}:${toString nc.uid} .${nextcloudRunDir}
-      chmod 0700 .${nextcloudRunDir}
-    '';
-    config = {
-      # tini in process-group mode: it forwards the kubelet's SIGTERM to both
-      # Apache and php-fpm, which are siblings under the entrypoint rather than
-      # children of each other.
-      Entrypoint = [
-        "/bin/tini"
-        "-g"
-        "--"
-        "/bin/losos-nextcloud"
-      ];
-      Env = [
-        "PATH=/bin"
-        "LANG=C.UTF-8"
-      ];
-      WorkingDir = nc.home;
-    };
   };
 
   losos-image-forgejo = pkgs.dockerTools.buildLayeredImage {

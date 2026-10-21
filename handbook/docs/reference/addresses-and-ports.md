@@ -7,7 +7,7 @@ sidebar_position: 1
 
 ## On the box
 
-![Inside a box: nginx holds ports 80 and 443 and routes by path to the admin pages, the control API, LosOS cloud, LosOS Git and this handbook.](../img/box-architecture.svg)
+![Inside a box: nginx holds ports 80 and 443 and routes by path to the admin pages, the control API, LosOS Cloud, LosOS Git and this handbook.](../img/box-architecture.svg)
 
 | Path                          | What                                               | Who may open it                     |
 | ----------------------------- | -------------------------------------------------- | ----------------------------------- |
@@ -18,10 +18,11 @@ sidebar_position: 1
 | `/setup/state.json`           | Name, address, HTTPS, certificate fingerprint       | the local network only              |
 | `/setup/losos-ca.crt`         | The box's certificate                               | the local network only              |
 | `/setup/trust.sh`, `/setup/trust.ps1` | The one-line certificate installers          | the local network only              |
-| `/nextcloud`                  | LosOS cloud                                         | anyone, and through an edge         |
+| `/cloud/`                     | LosOS Cloud                                         | anyone, and through an edge         |
+| `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/` | What the Nextcloud apps, calendar apps and file managers call | anyone, and through an edge |
+| `/nextcloud/`                 | The same, at the address a box's Nextcloud used     | anyone, and through an edge         |
 | `/forgejo/`                   | LosOS Git                                           | anyone, and through an edge         |
 | `/.well-known/nodeinfo`, `/.well-known/webfinger` | LosOS Git's federation discovery, while federation is on and the disk is shared | anyone, and through an edge |
-| `/nextcloud/ocm-provider/`, `/nextcloud/ocm/…` and the other federation addresses under `/nextcloud` | LosOS cloud's federation, while federation is on and the disk is shared; **404** otherwise | anyone, and through an edge |
 
 :::note[What the local network means]
 "The local network only" means a source address in a private range
@@ -48,7 +49,7 @@ at home.
 | Name                        | What                                                     |
 | --------------------------- | -------------------------------------------------------- |
 | `<name>.local`              | The box, on its own network, over mDNS                   |
-| `<name>.<edge domain>`      | The box through its edge, for LosOS cloud and LosOS Git  |
+| `<name>.<edge domain>`      | The box through its edge, for LosOS Cloud and LosOS Git  |
 | `losos-edge.dasmat.us`      | The LosOS edge's control plane and the "find my box" page |
 | `proxy.losos.dasmat.us`     | The binary cache the box updates from                    |
 | `losos-cache-proxy.vercel.app` | The same cache under Vercel's own name                 |

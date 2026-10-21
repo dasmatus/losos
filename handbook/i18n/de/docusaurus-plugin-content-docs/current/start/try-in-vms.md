@@ -33,7 +33,7 @@ Rechner tragen kann:
 | | Voll | Leicht |
 | --- | --- | --- |
 | Braucht | KVM, 14 GiB Arbeitsspeicher, 60 GB freien Platz | 6 GiB Arbeitsspeicher, 15 GB freien Platz |
-| Die Boxen | vom Installations-ISO installiert, mit LosOS cloud | die Admin-Seiten und die Teile, die mit der Edge sprechen |
+| Die Boxen | vom Installations-ISO installiert, mit LosOS Cloud | die Admin-Seiten und die Teile, die mit der Edge sprechen |
 | Die Edge | eine Edge-VM, die auch der Router des Netzes ist | das [Edge-Gateway](../in-depth/edge-federation.md) |
 | Dauer | etwa eine halbe Stunde mit KVM | etwa 15 Minuten, mit oder ohne KVM, nach dem ersten Bauen |
 
@@ -92,5 +92,5 @@ vielleicht UDP-Port 5353 auf diesem Gerät.
   echten Netz tut das DNS.
 - Die Edge ist eine Firmen-Edge, keine offizielle, daher bleibt der Markt
   aus.
-- In der leichten Demo läuft LosOS cloud nicht. Ein kleiner Platzhalter
+- In der leichten Demo läuft LosOS Cloud nicht. Ein kleiner Platzhalter
   antwortet an seiner Stelle, hinter dem echten Webserver der Box.
