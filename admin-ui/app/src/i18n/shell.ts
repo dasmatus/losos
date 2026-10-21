@@ -234,6 +234,29 @@ export default defineMessages({
     de: "Der Schlüssel zur Festplatte liegt auf der unverschlüsselten Boot-Partition, weil kein Chip da ist, der ihn verwahrt. Wer die Festplatte in die Hände bekommt, kann damit deine Dateien lesen. Um den Schlüssel in einen Chip zu verlegen, schalte das TPM in der Firmware ein und installiere die Box neu.",
   },
   "ui.noTpm.link": { en: "What a TPM does", sk: "Čo robí TPM", de: "Was ein TPM tut" },
+  // The banner while the box is not on a mesh (components/mesh-notice.tsx).
+  "ui.mesh.title": {
+    en: "Some features may not be available",
+    sk: "Niektoré funkcie nemusia byť dostupné",
+    de: "Manche Funktionen sind vielleicht nicht verfügbar",
+  },
+  "ui.mesh.notJoined": {
+    en: "This box has not joined a mesh yet. Some features need one and stay off until it joins.",
+    sk: "Toto zariadenie sa ešte nepripojilo k sieti mesh. Niektoré funkcie ju potrebujú a zostanú vypnuté, kým sa nepripojí.",
+    de: "Diese Box ist noch keinem Mesh beigetreten. Manche Funktionen brauchen eines und bleiben aus, bis sie beitritt.",
+  },
+  "ui.mesh.notSharing": {
+    en: "This box is on a mesh but does not share its storage. Some features need that and stay off until it does.",
+    sk: "Toto zariadenie je v sieti mesh, ale nezdieľa svoje úložisko. Niektoré funkcie to potrebujú a zostanú vypnuté, kým ho nezačne zdieľať.",
+    de: "Diese Box ist in einem Mesh, teilt aber ihren Speicher nicht. Manche Funktionen brauchen das und bleiben aus, bis sie ihn teilt.",
+  },
+  "ui.mesh.askAdmin": {
+    en: "An administrator of this box can change that.",
+    sk: "Zmeniť to môže správca tohto zariadenia.",
+    de: "Eine Person, die diese Box verwaltet, kann das ändern.",
+  },
+  "ui.mesh.join": { en: "Join a mesh", sk: "Pripojiť sa k sieti mesh", de: "Einem Mesh beitreten" },
+  "ui.mesh.share": { en: "Share storage", sk: "Zdieľať úložisko", de: "Speicher teilen" },
   "ui.notifications": { en: "Notifications", sk: "Upozornenia", de: "Benachrichtigungen" },
   "ui.confirmations": { en: "Confirmations", sk: "Potvrdenia", de: "Bestätigungen" },
   "ui.theme.label": { en: "Appearance", sk: "Vzhľad", de: "Erscheinungsbild" },
