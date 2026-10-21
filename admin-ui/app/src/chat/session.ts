@@ -17,7 +17,10 @@ import {
   ClientEvent,
   createClient,
   HttpApiEvent,
+  KnownMembership,
   type MatrixClient,
+  type Room,
+  RoomStateEvent,
   SyncState,
 } from "matrix-js-sdk";
 import { decodeRecoveryKey } from "matrix-js-sdk/lib/crypto-api";
@@ -229,7 +232,43 @@ export async function signIn(): Promise<Signed> {
     useIndexedDB: true,
     cryptoDatabasePrefix: cryptoPrefix(session.userId, session.deviceId),
   });
+  nameInvited(client);
   return { client, view, name: me.name, displayName: me.displayName ?? me.name, keys };
+}
+
+/* Dendrite writes no display name into the invites a new room sends, so a
+ * direct room would be called by the other person's Matrix ID until they
+ * join. Fill an invited member's name from their profile, ask once per
+ * person, and let the room name itself again. */
+function nameInvited(client: MatrixClient): void {
+  const names = new Map<string, Promise<string | null>>();
+  const nameOf = (userId: string): Promise<string | null> => {
+    let name = names.get(userId);
+    if (name === undefined) {
+      name = client
+        .getProfileInfo(userId, "displayname")
+        .then((p) => (typeof p.displayname === "string" && p.displayname.trim() !== "" ? p.displayname : null))
+        .catch(() => null);
+      names.set(userId, name);
+    }
+    return name;
+  };
+  const fill = (room: Room): void => {
+    for (const member of room.getMembers()) {
+      if (member.membership !== KnownMembership.Invite || member.name !== member.userId) continue;
+      void nameOf(member.userId).then((name) => {
+        if (name === null || member.membership !== KnownMembership.Invite || member.name !== member.userId) return;
+        member.name = name;
+        member.rawDisplayName = name;
+        room.recalculate();
+      });
+    }
+  };
+  client.on(ClientEvent.Room, fill);
+  client.on(RoomStateEvent.Members, (_event, state) => {
+    const room = client.getRoom(state.roomId);
+    if (room !== null) fill(room);
+  });
 }
 
 /** Start syncing; resolves once the first sync has landed. */
