@@ -10,7 +10,19 @@
 //! * [`expr`]: the `${{ }}` expression language.
 //! * [`glob`]: the branch and tag filters.
 //! * [`workflow`]: parsing, triggers, the matrix and job planning.
+//! * [`db`]: runs and jobs. [`net`]: the edge and LosOS Git.
+//! * [`dispatch`]: from an event to runs, jobs and statuses.
 
+pub mod db;
+pub mod dispatch;
 pub mod expr;
 pub mod glob;
+pub mod net;
 pub mod workflow;
+
+pub use dispatch::MAX_ARCHIVE_BYTES;
+
+/// Whether `s` is a full commit id.
+pub fn is_sha(s: &str) -> bool {
+    s.len() == 40 && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
