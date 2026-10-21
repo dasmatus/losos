@@ -708,6 +708,7 @@ impl Edge {
             routes: None,
             operator: None,
             manage: None,
+            calls_relay: None,
         };
         if let Some(tweak) = tweak {
             tweak(&mut opts, &dir);

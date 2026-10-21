@@ -5,8 +5,9 @@
 //! listener on a socket only nginx can open. The rules are in
 //! [`losos_ctl::calls`].
 
+use anyhow::Context;
 use clap::Parser;
-use losos_ctl::calls::{openid, server, sfu, tap};
+use losos_ctl::calls::{openid, relay, server, sfu, tap};
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -36,6 +37,20 @@ struct Cli {
     /// The homeserver's federation listener, asked who an OpenID token is for.
     #[arg(long, default_value = "127.0.0.1:8008")]
     homeserver: SocketAddr,
+    /// Take media through the edge's relay at `HOST:PORT`, over QUIC, and
+    /// open no UDP port here (`modules/calls.nix` with `losos.proxy` on).
+    /// `--address` and `--udp-port` are then unused.
+    #[arg(long, requires_all = ["relay_cert", "relay_id", "relay_token_file"])]
+    relay: Option<String>,
+    /// SHA-256 of the relay's certificate, in hex, from `GET /calls/relay`.
+    #[arg(long, value_parser = relay::parse_sha256)]
+    relay_cert: Option<[u8; 32]>,
+    /// The appliance id this box registers with the edge under.
+    #[arg(long)]
+    relay_id: Option<String>,
+    /// The file holding the box's edge token.
+    #[arg(long)]
+    relay_token_file: Option<PathBuf>,
     /// Write every forwarded frame under this directory (tests only).
     #[arg(long)]
     tap: Option<PathBuf>,
@@ -78,12 +93,17 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     str0m::crypto::from_feature_flags().install_process_default();
 
-    let addresses = if cli.addresses.is_empty() {
+    let addresses = if cli.relay.is_some() {
+        Vec::new()
+    } else if cli.addresses.is_empty() {
         host_addresses()?.into_iter().map(|ip| (ip, ip)).collect()
     } else {
         cli.addresses.clone()
     };
-    anyhow::ensure!(!addresses.is_empty(), "no address to offer media on");
+    anyhow::ensure!(
+        cli.relay.is_some() || !addresses.is_empty(),
+        "no address to offer media on"
+    );
     let tap = cli.tap.clone().map(tap::Tap::new).transpose()?;
 
     let (commands, rx) = tokio::sync::mpsc::channel(256);
@@ -98,9 +118,41 @@ fn main() -> anyhow::Result<()> {
         tracing::info!("media on udp {addr}, offered as {offered}");
         sockets.push(sfu::Media { socket, offered });
     }
+    let relay = match (
+        &cli.relay,
+        cli.relay_cert,
+        &cli.relay_id,
+        &cli.relay_token_file,
+    ) {
+        (Some(addr), Some(cert_sha256), Some(id), Some(token_file)) => {
+            let token = std::fs::read_to_string(token_file)
+                .with_context(|| format!("reading {}", token_file.display()))?;
+            let (link, incoming) = rt.block_on(relay::connect(relay::Edge {
+                addr,
+                cert_sha256,
+                id,
+                token: token.trim(),
+            }))?;
+            for a in link.addresses() {
+                tracing::info!("media through the edge at {addr}, offered as {a}");
+            }
+            // The edge took this box's port with the connection; without it
+            // nothing can reach a call. Exit, and systemd starts over with
+            // whatever edge the box has then.
+            let watch = link.clone();
+            rt.spawn(async move {
+                let why = watch.closed().await;
+                tracing::error!("the edge relay closed: {why}");
+                std::process::exit(1);
+            });
+            Some((link, incoming))
+        }
+        _ => None,
+    };
     let config = sfu::Config {
         server_name: cli.server_name.clone(),
         sockets,
+        relay,
         tap,
     };
     std::thread::Builder::new()

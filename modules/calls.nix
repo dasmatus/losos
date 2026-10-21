@@ -16,11 +16,23 @@
 #
 # It runs as `shared`, which may open Dendrite's port (modules/chat.nix's
 # owner rule), keeps nothing on disk, and answers HTTP on a unix socket only
-# nginx can open. Media is UDP on losos.calls.udpPort, on the box's own
-# addresses.
+# nginx can open.
+#
+# Where the media goes depends on the edge. A box that tunnels through one
+# (losos.proxy.enable) opens no port for calls either: losos-calls keeps one
+# QUIC connection to the edge the tunnel uses, the edge gives it a UDP port
+# there, and the browsers are told the edge's addresses
+# (edge/registrar/src/calls_relay.rs). The edge's certificate is pinned by
+# the hash `GET /calls/relay` gives over the registrar URL the tunnel and
+# the announce already trust, and the box proves itself with the same token.
+# The unit follows the tunnel: lososd's restarts of losos-rathole-client
+# when it picks another edge reach it through PartOf, and it does not run
+# while lososd finds no edge. Without the proxy, media is UDP on
+# losos.calls.udpPort, on the box's own addresses.
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 
@@ -34,6 +46,42 @@ let
   runDir = "/run/losos-calls";
   socket = "${runDir}/http.sock";
   tap = config.lososInternal.callsTap;
+  proxy = config.losos.proxy;
+  throughEdge = proxy.enable;
+  edgePathEnv = "/run/losos/edge-path.env";
+  edgeNone = "/run/losos/edge-none";
+
+  common = [
+    "--listen"
+    "unix:${socket}"
+    "--server-name"
+    chat.serverName
+    "--homeserver"
+    "127.0.0.1:${toString chat.port}"
+  ]
+  ++ lib.optionals (tap != null) [
+    "--tap"
+    tap
+  ];
+
+  # Ask the edge lososd chose for its relay, then become losos-calls.
+  throughEdgeStart = pkgs.writeShellScript "losos-calls-through-edge" ''
+    set -eu
+    registrar="''${LOSOS_EDGE_PATH_URL:-${proxy.registrarUrl}}"
+    info="$(${pkgs.curl}/bin/curl -fsS --max-time 20 "$registrar/calls/relay")"
+    port="$(printf '%s' "$info" | ${pkgs.jq}/bin/jq -er .port)"
+    cert="$(printf '%s' "$info" | ${pkgs.jq}/bin/jq -er .certSha256)"
+    host="''${registrar#*://}"
+    host="''${host%%/*}"
+    case "$host" in
+      \[*) host="''${host%%]*}]" ;;
+      *) host="''${host%:*}" ;;
+    esac
+    exec ${pkg}/bin/losos-calls ${lib.escapeShellArgs common} \
+      --relay "$host:$port" --relay-cert "$cert" \
+      --relay-id ${lib.escapeShellArg proxy.applianceId} \
+      --relay-token-file "$CREDENTIALS_DIRECTORY/edge-token"
+  '';
 in
 {
   config = lib.mkIf live {
@@ -43,38 +91,44 @@ in
 
     systemd.services.losos-calls = {
       description = "LosOS calls (the SFU behind chat's calls), as the shared user";
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = [ "multi-user.target" ] ++ lib.optional throughEdge "losos-rathole-client.service";
+      partOf = lib.optional throughEdge "losos-rathole-client.service";
       after = [
         "network-online.target"
         "dendrite.service"
-      ];
+      ]
+      ++ lib.optional throughEdge "losos-rathole-client.service";
       wants = [ "network-online.target" ];
+      unitConfig = lib.optionalAttrs throughEdge {
+        ConditionPathExists = "!${edgeNone}";
+      };
       serviceConfig = {
         Type = "simple";
         User = "shared";
         Group = "losos-calls";
-        ExecStart = lib.escapeShellArgs (
-          [
-            "${pkg}/bin/losos-calls"
-            "--listen"
-            "unix:${socket}"
-            "--udp-port"
-            (toString cfg.udpPort)
-            "--server-name"
-            chat.serverName
-            "--homeserver"
-            "127.0.0.1:${toString chat.port}"
-          ]
-          ++ lib.concatMap (a: [
-            "--address"
-            a
-          ]) config.lososInternal.callsAddresses
-          ++ lib.optionals (tap != null) [
-            "--tap"
-            tap
-          ]
-        );
+        ExecStart =
+          if throughEdge then
+            throughEdgeStart
+          else
+            lib.escapeShellArgs (
+              [
+                "${pkg}/bin/losos-calls"
+                "--udp-port"
+                (toString cfg.udpPort)
+              ]
+              ++ common
+              ++ lib.concatMap (a: [
+                "--address"
+                a
+              ]) config.lososInternal.callsAddresses
+            );
         RuntimeDirectory = "losos-calls";
+      }
+      // lib.optionalAttrs throughEdge {
+        EnvironmentFile = "-${edgePathEnv}";
+        LoadCredential = "edge-token:${toString proxy.tokenFile}";
+      }
+      // {
         RuntimeDirectoryMode = "0750";
         Restart = "on-failure";
         RestartSec = "5s";
@@ -117,7 +171,7 @@ in
 
     systemd.tmpfiles.rules = lib.optional (tap != null) "d ${tap} 0700 shared losos-calls - -";
 
-    networking.firewall.allowedUDPPorts = [ cfg.udpPort ];
+    networking.firewall.allowedUDPPorts = lib.optional (!throughEdge) cfg.udpPort;
 
     services.nginx.virtualHosts."losos-front".locations = {
       # Creating a call and its signalling socket. LosOS Login first, with

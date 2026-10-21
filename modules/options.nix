@@ -818,8 +818,10 @@ in
       type = lib.types.port;
       default = 7882;
       description = ''
-        The UDP port call media arrives on. It is opened on the box's
-        firewall while calls are on.
+        The UDP port call media arrives on, on a box that tunnels through
+        no edge. It is opened on the box's firewall while calls are on. A
+        box with `losos.proxy.enable` opens no port: its media goes
+        through the edge over QUIC (`losos.edge.calls.relay`).
       '';
     };
 
@@ -1681,6 +1683,42 @@ in
       type = lib.types.str;
       default = "50000-50100";
       description = "lo-hi range the registrar allocates per-appliance rathole edge ports from.";
+    };
+
+    edge.calls.relay.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Carry call media for the boxes this edge serves. Each box keeps one
+        QUIC connection to the edge and gets a UDP port of its own, which
+        browsers in its calls send to; the edge passes the datagrams along
+        without being able to read them (they are DTLS-SRTP around frames
+        encrypted end to end). The edge sends from a box's port only to
+        addresses that sent to it.
+      '';
+    };
+
+    edge.calls.relay.port = lib.mkOption {
+      type = lib.types.port;
+      default = 7883;
+      description = "UDP port boxes reach the calls relay on (QUIC).";
+    };
+
+    edge.calls.relay.mediaPorts = lib.mkOption {
+      type = lib.types.str;
+      default = "40000-40999";
+      description = "lo-hi range of UDP ports the calls relay gives boxes, one each, for browsers to send call media to.";
+    };
+
+    edge.calls.relay.addresses = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "10.0.0.5=203.0.113.7" ];
+      description = ''
+        Addresses browsers reach the calls relay's media ports on, `IP`, or
+        `IP=PUBLIC` behind a 1:1 NAT that forwards the ports to IP. Empty:
+        every address of every interface that is up.
+      '';
     };
 
     edge.heartbeatTtl = lib.mkOption {

@@ -23,7 +23,17 @@
 # laptop, and the media through a UDP port forwarded to the box, which the
 # SFU offers as the address to send to (the same arrangement as a port
 # forwarded by a router). Screenshots land in result/shots/pr/.
-{ pkgs }:
+#
+# With `throughEdge` (the losos-calls-edge check) the box tunnels through an
+# edge, as a box in a mesh does, and opens no port for calls: losos-calls
+# keeps a QUIC connection to the edge's calls relay, and the forwarded port
+# is the edge's. The same script then shows that the box's firewall has no
+# media port, that the edge took the box's media on one, and that the
+# calls still work and the frames are still unreadable.
+{
+  pkgs,
+  throughEdge ? false,
+}:
 
 let
   inherit (pkgs) lib;
@@ -81,10 +91,33 @@ let
   };
   tap = "/var/lib/losos-calls-tap";
   mediaPort = 7882;
+
+  # The box's edge token, as nix/tests/edge-vm.nix provisions it.
+  proxyTokenValue = "test-proxy-token-0123456789abcdef";
+  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
+  proxyToken = "/var/secrets/losos-proxy-token";
+  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
+  secretFiles = {
+    systemd.tmpfiles.rules = [
+      "d /var/secrets 0700 root root - -"
+      "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
+      "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
+    ];
+  };
+  # The driver's browsers send to the forwarded port on their own loopback;
+  # it arrives at the forwarding machine's user-mode address.
+  forwarded = [
+    {
+      from = "host";
+      proto = "udp";
+      host.port = mediaPort;
+      guest.port = mediaPort;
+    }
+  ];
 in
 
 pkgs.testers.nixosTest {
-  name = "losos-calls";
+  name = if throughEdge then "losos-calls-edge" else "losos-calls";
 
   extraPythonPackages = p: [
     # Playwright for Python from a git checkout of its tag: the release
@@ -112,6 +145,8 @@ pkgs.testers.nixosTest {
           ../../modules/workloads.nix
           ../../modules/chat.nix
           ../../modules/calls.nix
+          ../../modules/proxy.nix
+          secretFiles
         ];
         losos = {
           hostName = "mattbox";
@@ -126,18 +161,30 @@ pkgs.testers.nixosTest {
           sharingMyStorage = true;
           cluster.enable = true;
           calls.udpPort = mediaPort;
+          proxy = lib.mkIf throughEdge {
+            enable = true;
+            edgeRatholeEndpoint = "edge:2333";
+            registrarUrl = "http://edge:8443";
+            hostname = "mattbox.losos.cfd";
+            applianceId = "mattbox";
+            tokenFile = proxyToken;
+            bootstrapTokenFile = bootstrapToken;
+            heartbeatInterval = "3s";
+            registrar.package = lososPkgs.losos-registrar;
+          };
         };
         lososInternal = {
           callsTap = tap;
-          # The driver's browsers send to the forwarded port on their own
-          # loopback; it arrives at the box's user-mode address.
-          callsAddresses = [ "10.0.2.15=127.0.0.1" ];
+          callsAddresses = lib.optional (!throughEdge) "10.0.2.15=127.0.0.1";
         };
         # The same box with calls switched off, and with sharing off; the
         # test switches to each and back (switch-to-configuration, as an
         # Apply would).
         specialisation.nocalls.configuration.losos.calls.enable = lib.mkForce false;
         specialisation.unshared.configuration.losos.sharingMyStorage = lib.mkForce false;
+
+        # lososd takes the box's name for the claim's Host check from here.
+        networking.hostName = lib.mkForce "mattbox";
 
         users.users.shared = {
           isNormalUser = true;
@@ -147,9 +194,11 @@ pkgs.testers.nixosTest {
         };
         users.groups.shared.gid = 1001;
 
+        # curl for the edge scan's /health probe.
         systemd.services.lososd.path = lib.mkForce [
           stubOcc
           pkgs.coreutils
+          pkgs.curl
         ];
         systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         environment.systemPackages = [
@@ -161,18 +210,13 @@ pkgs.testers.nixosTest {
           memorySize = 2048;
           cores = 2;
           vlans = [ 1 ];
-          forwardPorts = [
-            {
-              from = "host";
-              proto = "udp";
-              host.port = mediaPort;
-              guest.port = mediaPort;
-            }
-          ];
+          forwardPorts = lib.optionals (!throughEdge) forwarded;
         };
       };
 
     # A computer on the LAN whose SOCKS proxy carries the pages' traffic.
+    #
+    # (The edge, with throughEdge, is added below.)
     laptop =
       { nodes, ... }:
       {
@@ -197,6 +241,47 @@ pkgs.testers.nixosTest {
         environment.systemPackages = [ pkgs.curl ];
         virtualisation.vlans = [ 1 ];
       };
+  }
+  // lib.optionalAttrs throughEdge {
+    # The edge the box tunnels through, with its calls relay. Its media
+    # port is the one forwarded to the driver's browsers.
+    edge =
+      { ... }:
+      {
+        imports = [
+          ../../modules/options.nix
+          ../../modules/edge.nix
+          secretFiles
+        ];
+        _module.args.self = {
+          packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
+        };
+        losos.edge = {
+          enable = true;
+          acmeEmail = "test@losos.cfd";
+          registrarApiBind = "::";
+          registrarApiPort = 8443;
+          ratholeBindPort = 2333;
+          ratholePortRange = "50000-50010";
+          reconcileInterval = "2s";
+          bootstrapTokenFile = bootstrapToken;
+          tenants.mattbox = {
+            hostname = "mattbox.losos.cfd";
+            tokenFile = proxyToken;
+          };
+          calls.relay = {
+            mediaPorts = "${toString mediaPort}-${toString (mediaPort + 9)}";
+            addresses = [ "10.0.2.15=127.0.0.1" ];
+          };
+        };
+        environment.systemPackages = [ pkgs.iproute2 ];
+        virtualisation = {
+          memorySize = 1024;
+          cores = 2;
+          vlans = [ 1 ];
+          forwardPorts = forwarded;
+        };
+      };
   };
 
   testScript = ''
@@ -220,7 +305,12 @@ pkgs.testers.nixosTest {
     SHOTS = f"{OUT}/shots/pr"
     os.makedirs(SHOTS, exist_ok=True)
 
+    THROUGH_EDGE = ${if throughEdge then "True" else "False"}
+
     start_all()
+    if THROUGH_EDGE:
+        edge.wait_for_unit("losos-registrar.service")
+        box.wait_for_unit("losos-rathole-client.service")
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("nginx.service")
     box.wait_for_unit("dendrite.service")
@@ -282,7 +372,16 @@ pkgs.testers.nixosTest {
         assert box.succeed("ps -o user= -C losos-calls").split() == ["shared"]
         assert box.succeed("stat -c '%a %U %G' /run/losos-calls/http.sock").strip() == "660 shared losos-calls"
         box.fail("runuser -u nobody -- curl -sf --unix-socket /run/losos-calls/http.sock http://x/calls/api/health")
-        box.succeed("ss -uln | grep -q ':${toString mediaPort} '")
+        if THROUGH_EDGE:
+            # The box opens no port for calls; the edge took one for it,
+            # and holds it for the box's QUIC connection.
+            box.fail("ss -uln | grep -q ':${toString mediaPort} '")
+            box.fail("iptables-save | grep -q 'dport ${toString mediaPort}'")
+            edge.wait_until_succeeds("ss -uln | grep -q ':${toString mediaPort} '")
+            edge.wait_until_succeeds("journalctl -u losos-registrar | grep -q 'mattbox takes media'")
+            box.succeed("journalctl -u losos-calls | grep -q 'media through the edge'")
+        else:
+            box.succeed("ss -uln | grep -q ':${toString mediaPort} '")
         # Signed out, and with the spare key: no.
         assert call("/calls/api/health")[0] == 401
         assert call("/calls/api/health", extra=f"-H 'Authorization: Bearer {spare}'")[0] == 401
@@ -327,9 +426,16 @@ pkgs.testers.nixosTest {
         )
         page = context.new_page()
         page.set_default_timeout(90000)
-        page.on("pageerror", lambda err: problems.append(f"{name}: {err}"))
-        page.on("console", lambda msg: msg.type == "error" and "Content Security Policy" in msg.text
-                and "inline style" not in msg.text and problems.append(f"{name}: {msg.text}"))
+        def on_error(err) -> None:
+            problems.append(f"{name}: {err}")
+
+        def on_console(msg) -> None:
+            text = msg.text
+            if msg.type == "error" and "Content Security Policy" in text and "inline style" not in text:
+                problems.append(f"{name}: {text}")
+
+        page.on("pageerror", on_error)
+        page.on("console", on_console)
         answer = context.request.post(
             f"https://{HOST}/auth/api/firstfactor",
             data=json.dumps({"username": name, "password": PASSWORDS[name]}),
@@ -337,7 +443,11 @@ pkgs.testers.nixosTest {
         )
         assert answer.ok, (name, answer.status, answer.text())
         page.goto(f"https://{HOST}/chat/")
-        page.get_by_role("heading", name="LosOS chat").wait_for()
+        try:
+            page.get_by_role("heading", name="LosOS chat").wait_for()
+        except Exception:
+            print(f"{name} sees {page.url}:\n{page.inner_text('body')[:3000]}\n{problems}")
+            raise
         return page
 
     def settle(page):
@@ -381,7 +491,8 @@ pkgs.testers.nixosTest {
         switch("nocalls")
         box.wait_until_fails("systemctl is-active losos-calls.service")
         box.fail("systemctl cat losos-calls.service")
-        assert call("/calls/api/health", matus)[0] == 404
+        # Nothing answers but the admin page's index.html.
+        assert call("/calls/api/health", matus)[1] != "ok"
         box.fail("ss -uln | grep -q ':${toString mediaPort} '")
         owner = person("matus")
         her = person("eva")
@@ -433,7 +544,7 @@ pkgs.testers.nixosTest {
     with subtest("the SFU's copy of every frame is ciphertext"):
         box.succeed("ls ${tap}/video-*.ivf ${tap}/audio-*.bin")
         box.succeed("tar -C ${tap} -cf /tmp/tap.tar .")
-        box.copy_from_vm("/tmp/tap.tar", "")
+        box.copy_from_machine("/tmp/tap.tar", "")
         here = os.path.join(OUT, "tap.tar")
         tapdir = os.path.join(os.environ.get("TMPDIR", "/tmp"), "tap")
         os.makedirs(tapdir, exist_ok=True)
@@ -530,7 +641,8 @@ pkgs.testers.nixosTest {
         box.wait_until_fails("systemctl is-active losos-calls.service")
         box.fail("systemctl cat losos-calls.service")
         box.fail("ss -uln | grep -q ':${toString mediaPort} '")
-        assert call("/calls/api/health", matus)[0] == 404
+        # Nothing answers but the admin page's index.html.
+        assert call("/calls/api/health", matus)[1] != "ok"
 
     with subtest("the pages broke no rule of their policy"):
         assert problems == [], problems

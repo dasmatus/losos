@@ -13,6 +13,7 @@
 //! that m-line once the `Weak` is dead.
 
 use super::admit::{CallId, Calls, ParticipantId, Refusal, UserId};
+use super::relay;
 use super::tap::{Kind, Tap};
 use super::wire::{stream_id, MemberInfo, ServerMsg};
 use std::collections::VecDeque;
@@ -63,6 +64,9 @@ pub struct Config {
     pub server_name: String,
     /// The UDP sockets media arrives on.
     pub sockets: Vec<Media>,
+    /// Media through the edge instead (`relay`), with what the edge hands
+    /// down.
+    pub relay: Option<(relay::Link, mpsc::Receiver<relay::Incoming>)>,
     pub tap: Option<Tap>,
 }
 
@@ -74,10 +78,30 @@ pub struct Media {
     pub offered: SocketAddr,
 }
 
+/// Where str0m's answers from one offered address go out.
+#[derive(Clone)]
+enum Out {
+    Udp(Arc<UdpSocket>),
+    /// The edge's address with this index on the relay link.
+    Relay(relay::Link, u8),
+}
+
 #[derive(Clone)]
 struct Socket {
-    socket: Arc<UdpSocket>,
+    out: Out,
     offered: SocketAddr,
+}
+
+impl Socket {
+    /// A full send buffer drops the datagram, as the network would.
+    fn send(&self, packet: &[u8], to: SocketAddr) {
+        match &self.out {
+            Out::Udp(socket) => {
+                let _ = socket.try_send_to(packet, to);
+            }
+            Out::Relay(link, index) => link.send(*index, to, packet),
+        }
+    }
 }
 
 struct Datagram {
@@ -88,21 +112,50 @@ struct Datagram {
 
 /// Run the loop until every command sender is dropped.
 pub async fn run(config: Config, mut commands: mpsc::Receiver<Command>) {
-    let sockets: Vec<Socket> = config
+    let udp: Vec<(Arc<UdpSocket>, SocketAddr)> = config
         .sockets
         .into_iter()
-        .map(|m| Socket {
-            socket: Arc::new(m.socket),
-            offered: m.offered,
+        .map(|m| (Arc::new(m.socket), m.offered))
+        .collect();
+    let mut sockets: Vec<Socket> = udp
+        .iter()
+        .map(|(socket, offered)| Socket {
+            out: Out::Udp(socket.clone()),
+            offered: *offered,
         })
         .collect();
-    let addrs: Vec<SocketAddr> = sockets.iter().map(|s| s.offered).collect();
     let (dgram_tx, mut dgrams) = mpsc::channel::<Datagram>(4096);
-    for s in &sockets {
-        let socket = s.socket.clone();
+    if let Some((link, mut incoming)) = config.relay {
+        let offered = link.addresses().to_vec();
+        for (index, addr) in offered.iter().enumerate() {
+            sockets.push(Socket {
+                out: Out::Relay(link.clone(), index as u8),
+                offered: *addr,
+            });
+        }
+        let tx = dgram_tx.clone();
+        tokio::spawn(async move {
+            while let Some(i) = incoming.recv().await {
+                let Some(&destination) = offered.get(usize::from(i.index)) else {
+                    continue;
+                };
+                let d = Datagram {
+                    data: i.packet,
+                    source: i.peer,
+                    destination,
+                };
+                if tx.send(d).await.is_err() {
+                    return;
+                }
+            }
+        });
+    }
+    let addrs: Vec<SocketAddr> = sockets.iter().map(|s| s.offered).collect();
+    for (socket, offered) in &udp {
+        let socket = socket.clone();
         // str0m knows the offered address only, so that is where every
         // datagram on this socket says it arrived.
-        let destination = s.offered;
+        let destination = *offered;
         let tx = dgram_tx.clone();
         tokio::spawn(async move {
             let mut buf = vec![0u8; 2000];
@@ -585,9 +638,7 @@ impl Client {
                 Output::Timeout(t) => return t,
                 Output::Transmit(t) => {
                     if let Some(s) = sockets.iter().find(|s| s.offered == t.source) {
-                        // A full send buffer drops the datagram, as the
-                        // network would.
-                        let _ = s.socket.try_send_to(&t.contents, t.destination);
+                        s.send(&t.contents, t.destination);
                     }
                 }
                 Output::Event(e) => {

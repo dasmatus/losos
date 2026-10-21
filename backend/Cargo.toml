@@ -88,6 +88,10 @@ str0m = { version = "0.24", default-features = false, features = ["rust-crypto"]
 actix-ws = "0.4"
 # Which addresses the SFU offers as ICE host candidates.
 if-addrs = "0.15"
+# Media through the edge (src/calls/relay.rs): one QUIC connection the
+# edge hands the browsers' datagrams down, TLS 1.3 on ring like the rest.
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its

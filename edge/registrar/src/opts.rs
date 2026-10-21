@@ -225,6 +225,10 @@ pub struct ServeOpts {
     /// (`server::manage`). `None` unless `--manage-key-file` was given, and
     /// every `/manage*` route answers 404.
     pub manage: Option<ManageOpts>,
+    /// Call media for this edge's boxes (`crate::calls_relay`). `None`
+    /// unless `--calls-relay-listen` was given, and `GET /calls/relay`
+    /// answers 404.
+    pub calls_relay: Option<crate::calls_relay::CallsRelayOpts>,
 }
 
 /// `serve --manage-key-file FILE [--manage-ui DIR]`.
@@ -512,6 +516,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     key_file: file.to_string(),
                     ui_dir: arg(&rest, "--manage-ui").map(str::to_string),
                 }),
+                calls_relay: parse_calls_relay(&rest)?,
                 uplink: match arg(&rest, "--uplink-file") {
                     None => None,
                     Some(file) => Some(crate::relay::UplinkOpts {
@@ -1553,6 +1558,34 @@ fn parse_hhmm(s: &str) -> Result<&str> {
 /// later: port 0 is not bindable, and `hi < lo` makes `alloc_port`'s
 /// `(lo..=hi)` sweep empty, so the first appliance to register would be told
 /// the range is exhausted with no hint that the *range itself* is malformed.
+/// `serve --calls-relay-listen ADDR [--calls-relay-media-ports LO-HI]
+/// [--calls-relay-address IP[=OFFERED]]...`.
+fn parse_calls_relay(args: &[String]) -> Result<Option<crate::calls_relay::CallsRelayOpts>> {
+    let Some(listen) = arg(args, "--calls-relay-listen") else {
+        return Ok(None);
+    };
+    let listen = listen
+        .parse()
+        .map_err(|_| miette!("bad --calls-relay-listen {listen:?}; expected ip:port"))?;
+    let media_ports = parse_range(arg(args, "--calls-relay-media-ports").unwrap_or("40000-40999"))?;
+    let ip = |v: &str| {
+        v.parse::<std::net::IpAddr>()
+            .map_err(|_| miette!("bad --calls-relay-address {v:?}; expected IP or IP=OFFERED"))
+    };
+    let addresses = args_all(args, "--calls-relay-address")
+        .into_iter()
+        .map(|a| {
+            let (bind, offered) = a.split_once('=').unwrap_or((a, a));
+            Ok((ip(bind)?, ip(offered)?))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Some(crate::calls_relay::CallsRelayOpts {
+        listen,
+        media_ports,
+        addresses,
+    }))
+}
+
 fn parse_range(s: &str) -> Result<(u16, u16)> {
     let (lo, hi) = s
         .trim()

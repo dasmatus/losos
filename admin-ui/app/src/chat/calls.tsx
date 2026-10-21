@@ -170,8 +170,11 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
   React.useEffect(() => {
     let live = true;
     fetch("/calls/api/health", { credentials: "same-origin" })
-      .then((response) => {
-        if (live) setAvailable(response.ok && canEncrypt());
+      // Without calls the path falls through to the admin page's own
+      // index.html, which answers 200, so only the SFU's "ok" counts.
+      .then(async (response) => {
+        const ok = response.ok && (await response.text()) === "ok";
+        if (live) setAvailable(ok && canEncrypt());
       })
       .catch(() => undefined);
     return () => {

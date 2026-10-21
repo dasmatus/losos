@@ -248,6 +248,9 @@ struct AppState {
     /// The page boxes are managed from (`manage`); `None` without
     /// `--manage-key-file`.
     manage: manage::Shared,
+    /// Call media for this edge's boxes (`crate::calls_relay`); `None`
+    /// without `--calls-relay-listen`.
+    calls_relay: Option<Arc<crate::calls_relay::Relay>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -368,6 +371,19 @@ where
         .uplink
         .is_some()
         .then(|| tokio::spawn(uplink_loop(app.state.clone())));
+    // The calls relay authenticates a box exactly as /register does.
+    let calls = app.state.calls_relay.clone().map(|relay| {
+        let st = app.state.clone();
+        let auth: crate::calls_relay::Auth = Arc::new(move |id, token| {
+            let st = st.clone();
+            Box::pin(async move { authenticate(&st, &id, &token).await.is_ok() })
+        });
+        tokio::spawn(async move {
+            if let Err(e) = crate::calls_relay::run(relay, auth).await {
+                tracing::error!(target: Action::Serve.target(), "calls relay: {e:?}");
+            }
+        })
+    });
 
     // axum::serve returns when the listener errors or `shutdown` resolves.
     axum::serve(listener, app.router)
@@ -380,6 +396,10 @@ where
     // panic inside it surfaces instead of being silently detached.
     recon.abort();
     let _ = recon.await;
+    if let Some(calls) = calls {
+        calls.abort();
+        let _ = calls.await;
+    }
     if let Some(uplink) = uplink {
         uplink.abort();
         let _ = uplink.await;
@@ -522,6 +542,12 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
     };
 
     // The manage page's key, made on the first start like the terminal's.
+    // The certificate is made here so `GET /calls/relay` can name it before
+    // `serve` binds the relay.
+    let calls_relay = match &opts.calls_relay {
+        Some(c) => Some(Arc::new(crate::calls_relay::Relay::new(c.clone())?)),
+        None => None,
+    };
     let manage = match &opts.manage {
         None => None,
         Some(m) => Some(Arc::new(manage::Manage::load(m)?)),
@@ -570,6 +596,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         transfers: Arc::new(Semaphore::new(vm::MAX_TRANSFERS)),
         operator,
         manage,
+        calls_relay,
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -579,6 +606,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
     let router = Router::new()
         .route("/health", get(health))
         .route("/noise-public-key", get(noise_public_key))
+        .route("/calls/relay", get(calls_relay_info))
         .route("/identity", get(identity_route))
         // The identity's other half: the public key an operator signs, and
         // the push that installs the signed certificate. The push is the one
@@ -737,6 +765,17 @@ async fn noise_public_key(State(st): State<AppState>) -> Response {
     match tokio::fs::read_to_string(path).await {
         Ok(key) => key.trim().to_string().into_response(),
         Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// Where this edge takes call media for its boxes, and the hash of the
+/// relay's certificate for them to pin (`crate::calls_relay`). Public: a box
+/// asks before it connects, over the URL it registers with, and the token it
+/// then proves itself with never travels here. 404 when the relay is off.
+async fn calls_relay_info(State(st): State<AppState>) -> Response {
+    match &st.calls_relay {
+        Some(relay) => Json(relay.info()).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
     }
 }
 

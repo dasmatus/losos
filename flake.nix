@@ -439,6 +439,10 @@
         # Calls from chat: three people in real browsers through the box's
         # SFU, whose copy of every frame is ciphertext (nix/tests/calls.nix).
         losos-calls = import ./nix/tests/calls.nix { inherit pkgs; };
+        losos-calls-edge = import ./nix/tests/calls.nix {
+          inherit pkgs;
+          throughEdge = true;
+        };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         losos-admin-ui = import ./nix/tests/admin-ui.nix {
