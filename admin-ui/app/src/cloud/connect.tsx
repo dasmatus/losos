@@ -73,7 +73,7 @@ export function ConnectPage() {
       <span className={`grid size-12 place-items-center rounded-full bg-sunk ${tone}`}>
         <HugeiconsIcon icon={icon} size={24} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
       </span>
-      <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+      <h1 className="text-[19px] leading-tight font-semibold tracking-tight">{title}</h1>
       <div className="text-[13.5px] leading-relaxed text-muted">{body}</div>
       {actions !== undefined && <div className="flex w-full flex-col gap-2 pt-2">{actions}</div>}
     </div>
