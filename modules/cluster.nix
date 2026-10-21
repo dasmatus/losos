@@ -2,7 +2,7 @@
 # of them.
 #
 #   LOCAL  services.k3s, role = server, state in /var/lib/rancher/k3s, unit
-#          k3s.service. Runs *this box's* Nextcloud and Forgejo as static pods
+#          k3s.service. Runs *this box's* Nextcloud as a static pod
 #          (modules/workloads.nix) whenever losos.<svc>.mode == "container".
 #          It has no off-box dependency of any kind.
 #   MESH   services.rke2, role = agent, state in /var/lib/rancher/rke2, unit
@@ -15,7 +15,7 @@
 # from the server on every start — and modules/updates.nix reboots this box
 # unconditionally at 00:07 with Persistent = true. Put the box's own services
 # in the edge's cluster and any edge outage spanning midnight takes Nextcloud
-# and Forgejo down on every joined appliance, and keeps them down for the rest
+# down on every joined appliance, and keeps them down for the rest
 # of the outage, on a box with no SSH and no shell to notice it from.
 #
 # The mesh instance is rke2 rather than a second k3s because nixpkgs builds
@@ -155,13 +155,9 @@
 let
   cfg = config.losos.cluster;
 
-  # The LOCAL cluster exists to run this box's own workloads, so it follows the
-  # two mode switches and nothing else. losos.forgejo.enable is consulted here
-  # as well as the mode, exactly as modules/containers.nix does — enable = false
-  # must not leave a git host running.
-  localEnabled =
-    config.losos.nextcloud.mode == "container"
-    || (config.losos.forgejo.mode == "container" && config.losos.forgejo.enable);
+  # The LOCAL cluster exists to run this box's own workload, so it follows
+  # Nextcloud's mode switch and nothing else.
+  localEnabled = config.losos.nextcloud.mode == "container";
 
   meshEnabled = cfg.enable;
 
@@ -198,7 +194,6 @@ let
   workloadImages = lib.filter (img: img != null) [
     pauseImage
     config.losos.workloads.nextcloudImage
-    config.losos.workloads.forgejoImage
   ];
 
   # The same helper modules/workloads.nix uses to spell an image in a pod's
@@ -312,7 +307,7 @@ in
         {
           assertion = pauseImage != null;
           message = ''
-            losos.workloads.pauseImage is null but Nextcloud or Forgejo is in
+            losos.workloads.pauseImage is null but Nextcloud is in
             "container" mode. Without it the native containerd keeps its own
             default sandbox image (a registry.k8s.io/pause reference), which
             this box neither preloads nor can fetch — every pod would fail to
@@ -549,8 +544,7 @@ in
       #     losos-nextcloud-adminpass and losos-fscrypt-shared. Those exist
       #     because the pods hostPath-mount those services' sockets and files,
       #     so they belong to the module that writes the mounts, and it carries
-      #     them (scoped per workload, which matters: a Forgejo-only box must
-      #     not Require a Nextcloud secret). The containerd and image-import
+      #     them. The containerd and image-import
       #     ordering just above is this file's, because the runtime is this
       #     file's choice; the module system merges the two `after` lists.
       #

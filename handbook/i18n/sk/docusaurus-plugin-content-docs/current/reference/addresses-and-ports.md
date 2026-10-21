@@ -19,8 +19,7 @@ sidebar_position: 1
 | `/setup/losos-ca.crt`         | Certifikát zariadenia                               | iba lokálna sieť                    |
 | `/setup/trust.sh`, `/setup/trust.ps1` | Jednoriadkové inštalátory certifikátu       | iba lokálna sieť                    |
 | `/nextcloud`                  | LosOS cloud                                         | ktokoľvek, aj cez edge              |
-| `/forgejo/`                   | LosOS Git                                           | ktokoľvek, aj cez edge              |
-| `/.well-known/nodeinfo`, `/.well-known/webfinger` | Zisťovanie federácie LosOS Git, kým je federácia zapnutá a disk zdieľaný | ktokoľvek, aj cez edge |
+| `/git/`                       | LosOS Git                                           | ktokoľvek, aj cez edge              |
 | `/nextcloud/ocm-provider/`, `/nextcloud/ocm/…` a ďalšie adresy federácie pod `/nextcloud` | Federácia LosOS cloud, kým je federácia zapnutá a disk zdieľaný; inak **404** | ktokoľvek, aj cez edge |
 
 :::note[Čo znamená lokálna sieť]

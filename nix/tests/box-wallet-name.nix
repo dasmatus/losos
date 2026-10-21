@@ -259,7 +259,6 @@ pkgs.testers.nixosTest {
           admin.ui = lososPkgs.losos-admin-ui;
           nextcloud.mode = "container";
           workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
-          workloads.forgejoImage = standIn "losos-forgejo-stand-in";
           proxy = {
             enable = true;
             inherit registrarUrl;

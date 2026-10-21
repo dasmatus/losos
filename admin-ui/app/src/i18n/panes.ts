@@ -175,16 +175,6 @@ export default defineMessages({
     sk: "Vaše dokumenty, fotky a kalendáre.",
     de: "Deine Dokumente, Fotos und Kalender.",
   },
-  "panes.apps.code.title": {
-    en: "Code",
-    sk: "Kód",
-    de: "Code",
-  },
-  "panes.apps.code.detail": {
-    en: "Your repositories and their issues.",
-    sk: "Vaše repozitáre a ich úlohy.",
-    de: "Deine Repositorys und ihre Issues.",
-  },
   "panes.apps.modeCaption": {
     en: "{kept} runs an app walled off from the rest of the box, so a problem inside it stays inside it. That is the setting to leave alone. {native} runs it alongside everything else. It starts faster, and it is how this box worked before. Changing either restarts that app while this box rebuilds itself.",
     sk: "Voľba {kept} spúšťa aplikáciu oddelenú od zvyšku zariadenia, takže problém v nej zostane v nej. Toto nastavenie je najlepšie nechať tak. Voľba {native} ju spúšťa spolu so všetkým ostatným. Štartuje rýchlejšie a takto zariadenie fungovalo predtým. Zmena ktorejkoľvek z nich reštartuje danú aplikáciu, kým sa zariadenie znovu zostavuje.",
@@ -296,31 +286,6 @@ export default defineMessages({
     sk: "Aj verejné repozitáre.",
     de: "Auch öffentliche Repositorys.",
   },
-  "panes.apps.site.landing": {
-    en: "What a visitor sees first",
-    sk: "Čo návštevník uvidí najprv",
-    de: "Was Besucher zuerst sehen",
-  },
-  "panes.apps.site.landing.home": {
-    en: "The front page",
-    sk: "Úvodnú stránku",
-    de: "Die Startseite",
-  },
-  "panes.apps.site.landing.explore": {
-    en: "Public repositories",
-    sk: "Verejné repozitáre",
-    de: "Öffentliche Repositorys",
-  },
-  "panes.apps.site.landing.organizations": {
-    en: "Organisations",
-    sk: "Organizácie",
-    de: "Organisationen",
-  },
-  "panes.apps.site.landing.login": {
-    en: "The sign-in form",
-    sk: "Prihlasovací formulár",
-    de: "Das Anmeldeformular",
-  },
   "panes.apps.site.private": {
     en: "A new repository starts out",
     sk: "Nový repozitár je na začiatku",
@@ -341,25 +306,15 @@ export default defineMessages({
     sk: "Verejný",
     de: "Öffentlich",
   },
-  "panes.apps.site.email": {
-    en: "Hide a new account's e-mail address",
-    sk: "Skryť e-mailovú adresu nového účtu",
-    de: "E-Mail-Adresse neuer Konten verbergen",
-  },
-  "panes.apps.site.emailDetail": {
-    en: "Each account can show it later.",
-    sk: "Každý účet ju môže neskôr zobraziť.",
-    de: "Jedes Konto kann sie später zeigen.",
-  },
   "panes.apps.site.push": {
     en: "Create a repository by pushing to it",
     sk: "Vytvoriť repozitár odoslaním (push) doň",
     de: "Repository durch einen Push anlegen",
   },
   "panes.apps.site.gitCaption": {
-    en: "These hold for all of LosOS Git. Its Site administration shows them without a way to change them. What each account sets for itself stays in LosOS Git.",
-    sk: "Tieto nastavenia platia pre celý LosOS Git. Jeho správa stránky ich ukáže bez možnosti zmeny. Čo si každý účet nastaví sám pre seba, zostáva v LosOS Git.",
-    de: "Diese gelten für ganz LosOS Git. Die Website-Administration zeigt sie an, ohne sie ändern zu können. Was jedes Konto für sich selbst einstellt, bleibt in LosOS Git.",
+    en: "These hold for all of LosOS Git. What each account sets for itself stays in LosOS Git.",
+    sk: "Tieto nastavenia platia pre celý LosOS Git. Čo si každý účet nastaví sám pre seba, zostáva v LosOS Git.",
+    de: "Diese gelten für ganz LosOS Git. Was jedes Konto für sich selbst einstellt, bleibt in LosOS Git.",
   },
   "panes.apps.findMore": {
     en: "Find more",

@@ -14,7 +14,7 @@ import { draftOn } from "./pane-advanced";
  * each inside that app's accordion.
  *
  * What an administrator would otherwise change in Nextcloud's
- * Administration settings and Forgejo's Site administration. Each row is
+ * Administration settings and LosOS Git's site settings. Each row is
  * one `losos.<app>.site.*` option (modules/options.nix), edited as a line of
  * overrides.nix through form.extra, exactly as the Advanced pane edits it:
  * the same draft, the same Apply, the same gate in lososd, the same commit
@@ -46,13 +46,6 @@ const LANGUAGES: readonly (readonly [string, string])[] = [
   ["pl", "Polski"],
   ["hu", "Magyar"],
   ["uk", "Українська"],
-];
-
-const LANDING: readonly (readonly [string, MessageKey])[] = [
-  ["home", "panes.apps.site.landing.home"],
-  ["explore", "panes.apps.site.landing.explore"],
-  ["organizations", "panes.apps.site.landing.organizations"],
-  ["login", "panes.apps.site.landing.login"],
 ];
 
 const PRIVATE: readonly (readonly [string, MessageKey])[] = [
@@ -98,7 +91,7 @@ function slotFor(form: SiteForm, name: string): Slot | null {
 /** Whether the box declares any of `app`'s settings, so the pane can leave
  *  out an accordion that would hold nothing. */
 export function hasSiteSettings(form: SiteForm, app: "cloud" | "git"): boolean {
-  const svc = app === "cloud" ? "nextcloud" : "forgejo";
+  const svc = app === "cloud" ? "nextcloud" : "git";
   return (
     form.options?.options.some(
       (o) => !o.readOnly && (o.name.startsWith(`${svc}.site.`) || o.name === `${svc}.federation.enable`),
@@ -120,8 +113,7 @@ export function SiteSettings({
 }) {
   const t = useT();
   const cloudFederation = slotFor(form, "nextcloud.federation.enable");
-  const gitFederation = slotFor(form, "forgejo.federation.enable");
-  /* Both switches act only while the box shares its disk (`needs` in the
+  /* The switch acts only while the box shares its disk (`needs` in the
    * option document): greyed with the reason while sharing is off, as on the
    * Advanced pane, and open again once it is on. */
   const needsLine = (slot: Slot | null) =>
@@ -139,11 +131,9 @@ export function SiteSettings({
     versions: slotFor(form, "nextcloud.site.versionDays"),
   };
   const git = {
-    signIn: slotFor(form, "forgejo.site.requireSignIn"),
-    landing: slotFor(form, "forgejo.site.landingPage"),
-    private: slotFor(form, "forgejo.site.defaultPrivate"),
-    email: slotFor(form, "forgejo.site.keepEmailPrivate"),
-    push: slotFor(form, "forgejo.site.pushCreate"),
+    signIn: slotFor(form, "git.site.requireSignIn"),
+    private: slotFor(form, "git.site.defaultPrivate"),
+    push: slotFor(form, "git.site.pushCreate"),
   };
   const ids = {
     language: React.useId(),
@@ -155,16 +145,14 @@ export function SiteSettings({
     trash: React.useId(),
     versions: React.useId(),
     signIn: React.useId(),
-    landing: React.useId(),
     private: React.useId(),
-    email: React.useId(),
     push: React.useId(),
   };
 
   const linksOff = cloud.links !== null && cloud.links.raw === "false";
   const cloudRows = cloudFederation !== null || Object.values(cloud).some((slot) => slot !== null);
-  const gitRows = gitFederation !== null || Object.values(git).some((slot) => slot !== null);
-  const federationIds = { cloud: React.useId(), git: React.useId() };
+  const gitRows = Object.values(git).some((slot) => slot !== null);
+  const federationIds = { cloud: React.useId() };
 
   return (
     <>
@@ -257,29 +245,12 @@ export function SiteSettings({
         <PaneSection data-testid="site-git">
           <GroupTitle>{title ?? t("cloudApps.settings.title")}</GroupTitle>
           <Group>
-            {gitFederation !== null && (
-              <BoolRow
-                id={federationIds.git}
-                slot={gitFederation}
-                title={t("cloudApps.federation.git")}
-                description={needsLine(gitFederation) ?? t("cloudApps.federation.gitDetail")}
-                off={needsLine(gitFederation) !== undefined}
-              />
-            )}
             {git.signIn !== null && (
               <BoolRow
                 id={ids.signIn}
                 slot={git.signIn}
                 title={t("panes.apps.site.signIn")}
                 description={t("panes.apps.site.signInDetail")}
-              />
-            )}
-            {git.landing !== null && (
-              <SelectRow
-                id={ids.landing}
-                slot={git.landing}
-                title={t("panes.apps.site.landing")}
-                choices={LANDING.map(([value, key]) => [value, t(key)] as const)}
               />
             )}
             {git.private !== null && (
@@ -289,9 +260,6 @@ export function SiteSettings({
                 title={t("panes.apps.site.private")}
                 choices={PRIVATE.map(([value, key]) => [value, t(key)] as const)}
               />
-            )}
-            {git.email !== null && (
-              <BoolRow id={ids.email} slot={git.email} title={t("panes.apps.site.email")} description={t("panes.apps.site.emailDetail")} />
             )}
             {git.push !== null && (
               <BoolRow id={ids.push} slot={git.push} title={t("panes.apps.site.push")} last />

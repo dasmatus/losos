@@ -12,7 +12,7 @@ môžete napísať dvoma spôsobmi a nie sú rovnako spoľahlivé.
 
 Banner na obrazovke zariadenia ukazuje `http://192.168.x.y`, adresu, ktorú
 zariadeniu pridelil váš router. Odpovedá na nej každá stránka: admin
-stránky na `/`, LosOS cloud na `/nextcloud`, LosOS Git na `/forgejo/` a táto
+stránky na `/`, LosOS cloud na `/nextcloud`, LosOS Git na `/git/` a táto
 príručka na `/handbook/`. Keď sa adresa zmení, zariadenie banner prekreslí.
 
 ![Banner pod lososom na obrazovke zariadenia, s adresou, ktorú zadáte do prehliadača, a názvom zariadenia .local.](@site/docs/img/tty1-banner.png)

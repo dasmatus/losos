@@ -11,6 +11,7 @@ import apps from "./apps";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import collab from "./collab";
+import git from "./git";
 import home from "./home";
 import inference from "./inference";
 import install from "./install";
@@ -48,6 +49,7 @@ export const MESSAGES = {
   ...cloud,
   ...collab,
   ...notes,
+  ...git,
   ...install,
   ...look,
   ...machines,

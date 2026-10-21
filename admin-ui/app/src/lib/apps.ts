@@ -19,7 +19,7 @@
  * app already serves and reads the result.
  *
  *   Files -> GET /nextcloud/status.php   JSON, `installed: true` when real
- *   Code  -> GET /forgejo/               200 when the git host is answering
+ *   Code  -> GET /git/api/v1/version     200 when LosOS Git is answering
  *
  * Both are same-origin, so `connect-src 'self'` allows them and no token is
  * needed — which is the point: the homepage paints before the admin key is
@@ -33,9 +33,9 @@
  *
  * Served here, or served elsewhere
  * -------------------------------
- * modules/containers.nix routes `/nextcloud` and `/forgejo/` on the front
- * vhost only while the service is in the deployment mode that puts it behind
- * that vhost. In the other mode the Files app answers at the root of a name
+ * modules/containers.nix routes `/nextcloud` on the front vhost only while
+ * Nextcloud is in the deployment mode that puts it behind that vhost
+ * (`/git/` is always there while LosOS Git runs). In the other mode the Files app answers at the root of a name
  * this page cannot derive — `losos.nextcloud.hostName` is not in the settings
  * response — so there is no href worth writing. `filesServedHere: false` then
  * drops those tiles and sets a notice, because a tile is a promise that
@@ -138,7 +138,7 @@ export interface AppDefinition {
  * on this box. */
 export const FILES_BASE = "/nextcloud";
 /** Where the code host answers on this box's front door, when it does. */
-export const CODE_BASE = "/forgejo";
+export const CODE_BASE = "/git";
 
 /** Where the first-run wizard lives in this SPA. */
 export const SETUP_ROUTE = "/setup";
@@ -367,7 +367,6 @@ export interface AppFacts {
   /** False when this origin has no route to the app at all, whatever its
    *  state. Derive it with {@link servedHere}; default is true. */
   readonly filesServedHere?: boolean;
-  readonly codeServedHere?: boolean;
   /** Override where the apps answer. Defaults to {@link FILES_BASE}/{@link CODE_BASE}. */
   readonly filesBase?: string;
   readonly codeBase?: string;
@@ -454,7 +453,6 @@ function presenceOf(app: AppDefinition, facts: AppFacts): Presence {
       return files;
     }
     case "code":
-      if (facts.codeServedHere === false) return "hide";
       return resolve(facts.code, facts.measured === true);
     default: {
       const unreachable: never = provider;
@@ -470,12 +468,7 @@ function resolve(state: Availability, measured: boolean): Presence {
 }
 
 function noticeFor(facts: AppFacts): string | null {
-  const files = facts.filesServedHere === false;
-  const code = facts.codeServedHere === false;
-  if (files && code) return t("apps.notice.both");
-  if (files) return t("apps.notice.files");
-  if (code) return t("apps.notice.code");
-  return null;
+  return facts.filesServedHere === false ? t("apps.notice.files") : null;
 }
 
 /** The grid, derived. The only sanctioned way to decide what gets a tile.
@@ -636,10 +629,11 @@ export async function probeFiles(options: ProbeOptions = {}): Promise<Availabili
   return "present";
 }
 
-/** Is the code host there? Its front page answering is the whole test. */
+/** Is the code host there? LosOS Git's version answering, signed out, is
+ *  the whole test. */
 export async function probeCode(options: ProbeOptions = {}): Promise<Availability> {
   const base = options.codeBase ?? CODE_BASE;
-  const response = await probe(joinPath(base, "/"), options.signal);
+  const response = await probe(joinPath(base, "/api/v1/version"), options.signal);
   return response === null ? "unknown" : readStatus(response.status);
 }
 

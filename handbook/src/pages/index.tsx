@@ -48,7 +48,7 @@ const FEATURES: Feature[] = [
     body: (
       <Translate id="losos.home.feature.git.body">
         Your code repositories, on the same box and behind the same password.
-        Built on Forgejo.
+        The box's own Git server.
       </Translate>
     ),
     to: '/manual/apps',

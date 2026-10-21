@@ -84,7 +84,7 @@ pkgs.testers.nixosTest {
         admin.ui = lososPkgs.losos-admin-ui;
         nextcloud.mode = "native";
         cloud.enable = true;
-        forgejo.enable = false;
+        git.enable = false;
         mdns.enable = true;
       };
       systemd.services.lososd.path = lib.mkBefore [ stubOcc ];

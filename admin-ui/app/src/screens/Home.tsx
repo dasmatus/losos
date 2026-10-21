@@ -462,7 +462,6 @@ function buildFacts({
       ? {}
       : {
           filesServedHere: servedHere(settings.nextcloudMode),
-          codeServedHere: servedHere(settings.forgejoMode),
         }),
     details,
     attention,
@@ -656,11 +655,11 @@ function useAvailability(settings: SettingsResponse | null): {
    * let `filesServedHere` do the deciding. */
   React.useEffect(() => {
     if (settings === null) return;
-    if (servedHere(settings.nextcloudMode) && servedHere(settings.forgejoMode)) return;
+    if (servedHere(settings.nextcloudMode)) return;
     setSeen((previous) => ({
-      files: servedHere(settings.nextcloudMode) ? previous.files : "unknown",
-      code: servedHere(settings.forgejoMode) ? previous.code : "unknown",
-      mail: servedHere(settings.nextcloudMode) ? previous.mail : "unknown",
+      ...previous,
+      files: "unknown",
+      mail: "unknown",
     }));
   }, [settings]);
 

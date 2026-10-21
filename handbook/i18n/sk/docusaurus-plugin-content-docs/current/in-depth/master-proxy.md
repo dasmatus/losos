@@ -231,8 +231,7 @@ Na zariadení lososd udržiava aktívne domény v
 minúty a vždy, keď o to požiada panel Sieť. Pod Nextcloudu pripája tento
 adresár len na čítanie, pri každej požiadavke pridá názvy do
 `trusted_domains` a použije vlastnú doménu požiadavky pre `overwritehost`,
-ak je jednou z nich. Robí to iba režim kontajnera. LosOS Git si ponecháva
-svoj `ROOT_URL` s názvom edge.
+ak je jednou z nich. Robí to iba režim kontajnera.
 
 Zariadenie za lokálnym edge dostane svoje domény smerované tiež, cez ten lokálny
 edge, len čo sa za lokálny edge zaručilo relay passom a pripojilo sa k meshu

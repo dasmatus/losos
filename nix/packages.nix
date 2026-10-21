@@ -41,7 +41,7 @@
 #                losos-static is the same crate linked against musl for
 #                machines without a Nix store; CI publishes it beside
 #                install.sh. Both share one cargoHash.
-#   losos-image-{pause,nextcloud,forgejo} — the OCI images the local k3s
+#   losos-image-{pause,nextcloud} — the OCI images the local k3s
 #                cluster runs as static pods, defined in nix/images.nix and
 #                merged in below. modules/defaults.nix wires them to
 #                losos.workloads.*. They are exported as flake packages
@@ -396,9 +396,9 @@ images
     '';
   };
 
-  # The LosOS look for Nextcloud and Forgejo — the admin SPA's tokens.css plus
-  # each app's mapping onto it. Consumed by modules/nextcloud-stack.nix,
-  # modules/services.nix and images.nix through admin-ui/themes/default.nix,
+  # The LosOS look for Nextcloud — the admin SPA's tokens.css plus
+  # its mapping onto it. Consumed by modules/nextcloud-stack.nix
+  # and images.nix through admin-ui/themes/default.nix,
   # not through this attribute; it is exported so the files can be built and
   # read on their own.
   losos-themes = (import ./../admin-ui/themes { inherit pkgs; }).package;
@@ -421,7 +421,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-leVYvfm5iAKfrfE0zU8wAWMPN0VL9WeajVVLxMLVvi8=";
+    cargoHash = "sha256-drpXS13QEvQ+d9GpVHQLE+CCaEDmiN7Ljymn8e6g4jM=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in

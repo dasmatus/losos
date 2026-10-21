@@ -507,20 +507,16 @@ fn overview(ctx: &Ctx<'_>, cols: usize) -> PaneModel {
 
     // The apps, as the home screen's grid has them.
     let files_here = saved.is_none_or(|s| s.nextcloud_mode == "container");
-    let code_here = saved.is_none_or(|s| s.forgejo_mode == "container");
     let mut names: Vec<String> = Vec::new();
     if files_here {
         names.extend(FILES_APPS.iter().map(|id| t(&format!("apps.{id}.name"))));
     }
-    if code_here {
-        names.push(t("apps.code.name"));
-    }
+    names.push(t("apps.code.name"));
     names.push(t("apps.settings.name"));
-    let notice = match (files_here, code_here) {
-        (false, false) => t("apps.notice.both"),
-        (false, true) => t("apps.notice.files"),
-        (true, false) => t("apps.notice.code"),
-        (true, true) => String::new(),
+    let notice = if files_here {
+        String::new()
+    } else {
+        t("apps.notice.files")
     };
     let mut installed = Vec::new();
     if let Some(apps) = ctx.res.get("/api/apps").data() {
@@ -950,24 +946,14 @@ fn apps(ctx: &Ctx<'_>) -> PaneModel {
             sections.push(
                 Section::new("modes")
                     .title(t("panes.apps.onThisBox"))
-                    .rows(vec![
-                        Row::new("files-mode", t("panes.apps.files.title"))
-                            .detail(t("panes.apps.files.detail"))
-                            .control(Control::Choice {
-                                value: draft.nextcloud_mode.clone(),
-                                options: options.clone(),
-                                disabled: false,
-                                key: SettingKey::NextcloudMode,
-                            }),
-                        Row::new("code-mode", t("panes.apps.code.title"))
-                            .detail(t("panes.apps.code.detail"))
-                            .control(Control::Choice {
-                                value: draft.forgejo_mode.clone(),
-                                options,
-                                disabled: false,
-                                key: SettingKey::ForgejoMode,
-                            }),
-                    ])
+                    .rows(vec![Row::new("files-mode", t("panes.apps.files.title"))
+                        .detail(t("panes.apps.files.detail"))
+                        .control(Control::Choice {
+                            value: draft.nextcloud_mode.clone(),
+                            options,
+                            disabled: false,
+                            key: SettingKey::NextcloudMode,
+                        })])
                     .caption(tr!(
                         "panes.apps.modeCaption",
                         kept = mode_label("container"),

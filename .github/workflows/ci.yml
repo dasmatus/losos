@@ -548,14 +548,13 @@ jobs:
       # buildEnv whose paths collide.
       #
       # Measured on a dev machine: losos-image-pause is a 51 MiB tarball over a
-      # handful of paths, losos-image-forgejo a 585 MiB tarball over a 647 MiB /
-      # 126-path content closure.
-      - run: nix build .#losos-image-pause .#losos-image-forgejo -L
+      # handful of paths.
+      - run: nix build .#losos-image-pause -L
       - name: export images for the publisher
         if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
         run: |
-          nix copy --to "file://$PWD/images-cache" --no-check-sigs .#losos-image-pause .#losos-image-forgejo
-          nix path-info .#losos-image-pause .#losos-image-forgejo > images-cache/store-paths
+          nix copy --to "file://$PWD/images-cache" --no-check-sigs .#losos-image-pause
+          nix path-info .#losos-image-pause > images-cache/store-paths
       - uses: actions/upload-artifact@v7
         if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
         with:
@@ -605,7 +604,7 @@ jobs:
           xargs -r nix copy --from "file://$PWD/images-cache" --no-check-sigs < images-cache/store-paths
       - uses: ./.github/actions/proxy-push
         with:
-          installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-image-pause .#losos-image-forgejo"
+          installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-image-pause"
           signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
       # The same paths as a static file cache, for the copy the GitHub Pages
       # site serves at /proxy when the LosOS proxy does not answer. The
@@ -619,7 +618,7 @@ jobs:
         run: >-
           .github/scripts/pages-cache.sh pages-cache
           .#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook
-          .#losos-image-pause .#losos-image-forgejo
+          .#losos-image-pause
       - uses: actions/upload-artifact@v7
         if: github.ref == 'refs/heads/main'
         with:
@@ -793,8 +792,8 @@ jobs:
   #
   # On the retired Codeberg lane this was workflow_dispatch only, because of
   # the cap: the content closure is 2.3 GiB across 244 store paths
-  # (nextcloud34 with ~30 apps, php-with-extensions, apacheHttpd) against
-  # Forgejo's 647 MiB, so on a cold runner it fetches roughly 3.5x what the `images` job fetches, inside
+  # (nextcloud34 with ~30 apps, php-with-extensions, apacheHttpd), so on a
+  # cold runner it fetches far more than the `images` job does, inside
   # ten minutes. That objection does not survive the move: this job may take an
   # hour here.
   #

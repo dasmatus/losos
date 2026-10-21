@@ -2499,6 +2499,7 @@ dependencies = [
  "chrono",
  "clap",
  "curve25519-dalek 5.0.0",
+ "flate2",
  "futures-core",
  "futures-util",
  "httpdate",

@@ -1,0 +1,120 @@
+---
+title: LosOS Git
+sidebar_position: 4.6
+slug: /manual/losos-git
+---
+
+# LosOS Git
+
+LosOS Git is the box's own Git server. It keeps your repositories, takes
+pushes and clones over HTTPS, and has pages for reading code, opening pull
+requests and reviewing them.
+
+Open it at `https://<name>.local/git/`. `<name>` is the box's name, as on
+the box's screen. You sign in with LosOS Login. The person who set up the
+box is the owner, and their repositories are under `notshared`.
+
+## Repositories
+
+The first page lists your repositories and the ones shared with you.
+**New repository** makes one, private unless you switch that off. An
+empty repository shows the commands that push a first branch to it.
+
+A repository's pages are in the sidebar:
+
+- **Code** shows the files of a branch, with the README under them. Pick
+  another branch at the top, or open a file to read it with line numbers.
+  Markdown files are shown as text with formatting.
+- **Pull requests** lists the open and the closed ones.
+- **Commits** and **Branches** show the history. **Compare** on a branch
+  shows what it has that the default branch has not.
+- **Worktrees** lists the checkouts that push to the repository (see
+  below).
+- **Settings** renames the repository, changes its description and makes
+  it private or public. Only the repository's owner and its admins see it.
+
+## Clone and push
+
+The address of a repository is at the top of its pages, with a button that
+copies it:
+
+```sh
+git clone https://<name>.local/git/notshared/notes.git
+```
+
+git asks for a name and a token. `losos git setup`, from
+[the terminal client](terminal#use-losos-cloud-and-losos-git-from-this-computer),
+makes a token for one computer and hands it to git, so cloning and pushing
+then need no password.
+
+## Pull requests
+
+Push a branch, then press **Open a pull request** on the Code page or
+**Compare** on the Branches page. Pick the branch to merge into, give it a
+title and a description, and press **Open pull request**.
+
+A pull request has three tabs:
+
+- **Conversation** holds the description, the comments and the reviews in
+  order, and the box to merge it.
+- **Commits** lists the commits on the branch.
+- **Files changed** shows the changes, file by file.
+
+### Review
+
+On **Files changed**, point at a line and press **+** to comment on it.
+**Comment now** posts the comment straight away. **Add to review** keeps it
+with your review until you send it. When you are done, pick **Comment**,
+**Approve** or **Request changes**, write a summary if you like, and press
+**Send review**.
+The person who opened the pull request can only comment on their own.
+
+A comment on a line starts a thread. Reply under it, and press **Resolve**
+when it is settled; a resolved thread folds away and **Open again** brings
+it back. A thread whose line has changed since is shown as outdated.
+
+**Reviewers** on the right asks people for a review and shows where each
+one stands.
+
+### Checks
+
+When a tool reports on a branch's newest commit, for example a build or a
+test run, its result shows on the Conversation tab, above the merge box.
+
+### Merge
+
+The merge box offers three ways:
+
+- **Merge commit** keeps every commit and adds one that joins the branches.
+- **Squash** puts all of the branch's changes into one commit.
+- **Fast-forward** moves the base branch up to the branch, when the base
+  has nothing the branch lacks.
+
+**Delete `<branch>` afterwards** removes the branch once it is merged. The
+box refuses a merge that has conflicts; merge the base branch into yours,
+push, and try again. **Close without merging** sets a pull request aside, and **Reopen**
+brings it back.
+
+## Worktrees
+
+A worktree is one checkout of a repository on one computer, made with
+`git worktree add`. Give each one a name and say which computer it is on,
+and every push from it carries both:
+
+```sh
+git config extensions.worktreeConfig true
+git worktree add ../fix-backup -b fix-backup
+cd ../fix-backup
+git config --worktree push.pushOption "worktree=fix-backup"
+git config --worktree --add push.pushOption "computer=laptop"
+git push -u origin fix-backup
+```
+
+**Worktrees** then lists it with its branch, its last push and the pull
+request for that branch, if there is one. A pull request whose branch is
+pushed from a named worktree shows that worktree's name in its header.
+**Forget** takes a worktree off the list; its next push puts it back.
+
+## Settings
+
+`losos.git.enable` turns LosOS Git off. It is on the **Advanced** pane.

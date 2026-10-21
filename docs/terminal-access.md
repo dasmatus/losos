@@ -180,15 +180,14 @@ POST /api/devices/git    {"password", "device"}  -> {"user", "token", "path"}
 ```
 
 The owner's password goes along because nothing less makes either one.
-Nextcloud mints an app password only for the real password, and Forgejo
-creates an access token only under Basic auth with the account's password;
-its API refuses an administrator's token, `Sudo` and a token used as a
-password for that route. lososd sends both requests over loopback with the
-password in a Basic header, never in an argv or a file, as the sign-in
-does (`backend/src/devices.rs`). For Git, LosOS cloud judges the password
-first and LosOS Git is given it before Forgejo is asked. A token named
-`LosOS on <device>` from an earlier setup is deleted first, since Forgejo
-refuses a second token of one name. Its scopes are `write:repository` and
+Nextcloud mints an app password only for the real password, so lososd sends
+that request over loopback with the password in a Basic header, never in an
+argv or a file, as the sign-in does (`backend/src/devices.rs`). LosOS Git
+keeps no passwords: lososd checks the owner's against the people file, then
+asks LosOS Git as its administrator for a token
+(`POST /api/v1/admin/users/<owner>/tokens`). A token named
+`LosOS on <device>` from an earlier setup is replaced, so setting up the
+same computer twice leaves one token. Its scopes are `write:repository` and
 `read:user`.
 
 A wrong password is 403 with `wrongPassword: true`, not 401, so a client
@@ -197,7 +196,7 @@ runs no LosOS Git, 429 that Nextcloud is throttling, 503 that one of the
 two cannot be asked yet.
 
 On the computer, `git setup` writes git's global configuration for
-`<box>/forgejo`: an empty `credential.<url>.helper` and then `!<losos> git
+`<box>/git`: an empty `credential.<url>.helper` and then `!<losos> git
 credential`, so only `losos` answers for the box, and
 `credential.<url>.username`. `losos git credential get` reads git's
 `protocol` and `host` and answers from the `kind=git` item; `store` and

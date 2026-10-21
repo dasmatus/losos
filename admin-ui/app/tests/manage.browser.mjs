@@ -31,7 +31,7 @@ const BOXES = [
   { id: 'reception', hostname: 'reception', seenAgoSecs: 300, managed: false },
 ];
 const DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json', 'utf8'));
-const SITE_NAMES = /^(nextcloud|forgejo)\.(site\.|federation\.enable$)/;
+const SITE_NAMES = /^(nextcloud\.(site\.|federation\.enable$)|git\.site\.)/;
 const SITE = {
   available: true,
   version: DOC.version,
@@ -168,13 +168,13 @@ await check("a box's settings change through the edge's relay, only the lines na
   const trash = page.getByLabel('Empty the trash after');
   await trash.fill('30');
   await trash.blur();
-  await page.getByLabel('What a visitor sees first').selectOption('explore');
+  await page.getByLabel('A new repository starts out').selectOption('public');
   await page.getByRole('button', { name: 'Apply' }).click();
   await page.getByText('The box runs its new settings', { exact: true }).waitFor({ timeout: 15000 });
   assert.deepEqual(posts, [
     {
       path: '/api/site',
-      body: { set: { 'forgejo.site.landingPage': '"explore"', 'nextcloud.site.trashDays': '30' } },
+      body: { set: { 'git.site.defaultPrivate': '"public"', 'nextcloud.site.trashDays': '30' } },
     },
   ]);
   assert.deepEqual(errors, []);
@@ -235,7 +235,6 @@ const SECTIONS = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab
 const SETTINGS = {
   sharingMyStorage: false,
   nextcloudMode: 'container',
-  forgejoMode: 'container',
   hostName: 'office-box',
   https: false,
   gpuEnable: false,

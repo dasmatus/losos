@@ -87,7 +87,6 @@ let
       {
         losos.sharingMyStorage = true;
         losos.nextcloud.mode = "container";
-        losos.forgejo.mode = "container";
         losos.hostName = "kitchenbox";
         losos.nextcloud.https = false;
         losos.gpu.enable = true;
@@ -237,7 +236,7 @@ pkgs.testers.nixosTest {
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = ui;
           nextcloud.mode = "container";
-          forgejo.enable = false;
+          git.enable = false;
           workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
         };
         systemd.services.lososd.path = lib.mkForce [

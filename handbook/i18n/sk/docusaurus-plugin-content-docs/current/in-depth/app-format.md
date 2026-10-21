@@ -65,7 +65,7 @@ Každá služba beží:
 Služby sa navzájom nájdu menom: každý názov služby ukazuje na `127.0.0.1`.
 Keďže zdieľajú jednu sieť, musia počúvať na rôznych portoch, všetkých od
 1024 vyššie, a na žiadnom z portov, ktoré si zariadenie necháva pre seba
-(jeho webový server, administrátorské API na 8082, Forgejo na 3000,
+(jeho webový server, administrátorské API na 8082, LosOS Git na 3000,
 PostgreSQL na 5432, Redis na 6379, porty klastra, rozsah presmerovaní 30000
 až 30099).
 

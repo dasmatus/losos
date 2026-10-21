@@ -1,7 +1,7 @@
 //! The settings of LosOS cloud and LosOS Git, on a route of their own.
 //!
 //! `GET /api/site` and `POST /api/site` are the apps section's way to change
-//! what Nextcloud's Administration settings and Forgejo's Site administration
+//! what Nextcloud's Administration settings and LosOS Git's site settings
 //! would otherwise hold, without `POST /api/apply`, which writes any option
 //! and is admin only. A company edge the owner lets manage the box
 //! (`crate::edge::manageable`) reaches these two routes and nothing that
@@ -20,9 +20,8 @@ use crate::overrides::parse_line;
 /// ending in `.`), without the `losos.` prefix.
 pub const OPTIONS: &[&str] = &[
     "nextcloud.site.",
-    "forgejo.site.",
+    "git.site.",
     "nextcloud.federation.enable",
-    "forgejo.federation.enable",
 ];
 
 pub fn is_site(name: &str) -> bool {
@@ -148,13 +147,13 @@ mod tests {
             "options": [
                 { "name": "nextcloud.site.trashDays", "group": "nextcloud",
                   "editor": { "kind": "int", "min": 1, "max": 3650 }, "nixType": "int" },
-                { "name": "forgejo.site.landingPage", "group": "forgejo",
-                  "editor": { "kind": "enum", "values": ["home", "explore", "login"] }, "nixType": "enum" },
+                { "name": "git.site.defaultPrivate", "group": "git",
+                  "editor": { "kind": "enum", "values": ["last", "private", "public"] }, "nixType": "enum" },
                 { "name": "nextcloud.federation.enable", "group": "nextcloud",
                   "editor": { "kind": "bool" }, "nixType": "bool" },
                 { "name": "hostName", "group": "general",
                   "editor": { "kind": "str" }, "nixType": "str" },
-                { "name": "forgejo.site.fixedOne", "group": "forgejo",
+                { "name": "git.site.fixedOne", "group": "git",
                   "editor": { "kind": "bool" }, "nixType": "bool", "fixed": "installer" }
             ]
         }))
@@ -164,7 +163,7 @@ mod tests {
     #[test]
     fn only_the_two_apps_settings_are_site_settings() {
         assert!(is_site("nextcloud.site.trashDays"));
-        assert!(is_site("forgejo.site.landingPage"));
+        assert!(is_site("git.site.defaultPrivate"));
         assert!(is_site("nextcloud.federation.enable"));
         assert!(!is_site("nextcloud.site."));
         assert!(!is_site("nextcloud.siteX.a"));
@@ -200,23 +199,23 @@ mod tests {
             Some("30; losos.hostName = \"x\"")
         )
         .is_err());
-        assert!(check(&d, "forgejo.site.landingPage", Some("\"explore\"")).is_ok());
+        assert!(check(&d, "git.site.defaultPrivate", Some("\"public\"")).is_ok());
         assert!(check(
             &d,
-            "forgejo.site.landingPage",
-            Some("\"explore\"; losos.hostName = \"x\"")
+            "git.site.defaultPrivate",
+            Some("\"public\"; losos.hostName = \"x\"")
         )
         .is_err());
-        assert!(check(&d, "forgejo.site.landingPage", Some("\"exp\nlore\"")).is_err());
+        assert!(check(&d, "git.site.defaultPrivate", Some("\"pub\nlic\"")).is_err());
         assert!(check(
             &d,
-            "forgejo.site.landingPage",
+            "git.site.defaultPrivate",
             Some("\"${builtins.readFile \"/x\"}\"")
         )
         .is_err());
         assert!(check(&d, "hostName", Some("\"x\"")).is_err());
         assert!(check(&d, "nextcloud.site.notDeclared", Some("1")).is_err());
-        assert!(check(&d, "forgejo.site.fixedOne", Some("true")).is_err());
+        assert!(check(&d, "git.site.fixedOne", Some("true")).is_err());
     }
 
     #[test]

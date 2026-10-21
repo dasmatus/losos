@@ -89,7 +89,7 @@ pkgs.testers.nixosTest {
           backend.package = lososPkgs.losos-ctl;
           admin.ui = if screens then lososPkgs.losos-admin-ui else stubUi;
           nextcloud.mode = "container";
-          forgejo.enable = false;
+          git.enable = false;
           workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
           sharingMyStorage = true;
           # In a mesh, as far as the gate goes; modules/cluster.nix (rke2)

@@ -1,8 +1,7 @@
 # The coexistence gate: one host, two Kubernetes instances, two container
 # runtimes.
 #
-# modules/cluster.nix runs a k3s server (the LOCAL cluster, this box's Nextcloud
-# and Forgejo) and an rke2 agent (the MESH cluster, Longhorn and mesh compute)
+# modules/cluster.nix runs a k3s server (the LOCAL cluster, this box's Nextcloud) and an rke2 agent (the MESH cluster, Longhorn and mesh compute)
 # side by side on one appliance. That arrangement used to rest on an open
 # question, and this file used to be the thing that answered it. The question is
 # closed now, and the answer was the bad one:
@@ -77,7 +76,7 @@
 # nothing else in the suite covers it: with the edge VM gone, the appliance's
 # own workload keeps serving, and it comes back after a reboot taken while the
 # edge is still down. If that ever stops holding, every joined appliance loses
-# Nextcloud and Forgejo for the length of any edge outage spanning the 00:07
+# Nextcloud for the length of any edge outage spanning the 00:07
 # unconditional reboot (modules/updates.nix), silently, on a box with no shell.
 #
 # ── What this test does NOT cover ───────────────────────────────────────────
@@ -203,8 +202,8 @@ let
 
   yaml = pkgs.formats.yaml { };
 
-  # The probe pod mirrors the shape modules/workloads.nix gives Nextcloud and
-  # Forgejo, field for field where the field is load-bearing:
+  # The probe pod mirrors the shape modules/workloads.nix gives Nextcloud,
+  # field for field where the field is load-bearing:
   #
   #   hostNetwork          the local cluster runs no CNI, so this is the only
   #                        kind of pod it can schedule at all — and it is what

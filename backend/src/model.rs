@@ -198,7 +198,6 @@ where
 pub struct Settings {
     pub sharing_my_storage: bool,
     pub nextcloud_mode: String,
-    pub forgejo_mode: String,
     pub host_name: String,
     pub https: bool,
     pub gpu_enable: bool,
@@ -250,7 +249,6 @@ impl Default for Settings {
         Settings {
             sharing_my_storage: true,
             nextcloud_mode: "container".to_string(),
-            forgejo_mode: "container".to_string(),
             host_name: "mattbox".to_string(),
             https: false,
             gpu_enable: true,
@@ -275,7 +273,6 @@ impl Settings {
         serde_json::json!({
             "sharingMyStorage": self.sharing_my_storage,
             "nextcloudMode": self.nextcloud_mode,
-            "forgejoMode": self.forgejo_mode,
             "hostName": self.host_name,
             "https": self.https,
             "gpuEnable": self.gpu_enable,
@@ -334,7 +331,6 @@ mod tests {
         for key in [
             "sharingMyStorage",
             "nextcloudMode",
-            "forgejoMode",
             "hostName",
             "https",
             "gpuEnable",

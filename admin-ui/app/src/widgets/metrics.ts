@@ -477,12 +477,11 @@ async function reachable(path: string): Promise<boolean | null> {
 }
 
 async function appsMetric(settings: SettingsResponse): Promise<AppsMetric> {
-  const codeOn = settings.forgejoMode === "container" || settings.forgejoMode === "native";
   const setupDone = recallSetup() === "complete";
 
   const [filesUp, codeUp] = await Promise.all([
     setupDone ? reachable(FILES_BASE) : Promise.resolve(null),
-    setupDone && codeOn ? reachable(`${CODE_BASE}/`) : Promise.resolve(null),
+    setupDone ? reachable(`${CODE_BASE}/api/v1/version`) : Promise.resolve(null),
   ]);
 
   const apps: AppInfo[] = [
@@ -495,15 +494,13 @@ async function appsMetric(settings: SettingsResponse): Promise<AppsMetric> {
     },
   ];
 
-  if (codeOn) {
-    apps.push({
-      id: "code",
-      name: t("widgets.metrics.code"),
-      path: `${CODE_BASE}/`,
-      reachable: codeUp,
-      onMesh: false,
-    });
-  }
+  apps.push({
+    id: "code",
+    name: t("widgets.metrics.code"),
+    path: `${CODE_BASE}/`,
+    reachable: codeUp,
+    onMesh: false,
+  });
 
   return { apps, hostName: settings.hostName };
 }

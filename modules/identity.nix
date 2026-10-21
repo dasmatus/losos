@@ -117,22 +117,26 @@ let
   '';
   signInPages = pkgs.runCommand "losos-sign-in-pages" { } ''
     mkdir -p $out
-    cp ${pkgs.writeText "waiting.html" (
-      page "waiting" "LosOS Login is starting" ''
-        <h1>LosOS Login is starting</h1>
-        <p>The box has just started. This page tries again by itself in a few seconds.</p>
-        <p lang="sk">LosOS Login sa spúšťa. Stránka to o chvíľu skúsi znova sama.</p>
-        <p lang="de">LosOS Login startet. Die Seite versucht es gleich von selbst erneut.</p>
-      ''
-    )} $out/waiting.html
-    cp ${pkgs.writeText "held.html" (
-      page "held" "Finish your account first" ''
-        <h1>Finish your account first</h1>
-        <p>This box asks something of your account before you can use LosOS cloud and LosOS Git: a second step at sign-in, or a new password. Open <a href="/settings/account">Your account</a> in the box's admin pages, on the box's own network.</p>
-        <p lang="sk">Toto zariadenie od vášho účtu najprv niečo žiada: druhý krok pri prihlásení alebo nové heslo. Otvorte Váš účet na stránkach správy zariadenia, v jeho sieti.</p>
-        <p lang="de">Diese Box verlangt zuerst etwas von deinem Konto: einen zweiten Schritt bei der Anmeldung oder ein neues Passwort. Öffne Dein Konto auf den Verwaltungsseiten der Box, in ihrem eigenen Netz.</p>
-      ''
-    )} $out/held.html
+    cp ${
+      pkgs.writeText "waiting.html" (
+        page "waiting" "LosOS Login is starting" ''
+          <h1>LosOS Login is starting</h1>
+          <p>The box has just started. This page tries again by itself in a few seconds.</p>
+          <p lang="sk">LosOS Login sa spúšťa. Stránka to o chvíľu skúsi znova sama.</p>
+          <p lang="de">LosOS Login startet. Die Seite versucht es gleich von selbst erneut.</p>
+        ''
+      )
+    } $out/waiting.html
+    cp ${
+      pkgs.writeText "held.html" (
+        page "held" "Finish your account first" ''
+          <h1>Finish your account first</h1>
+          <p>This box asks something of your account before you can use LosOS cloud and LosOS Git: a second step at sign-in, or a new password. Open <a href="/settings/account">Your account</a> in the box's admin pages, on the box's own network.</p>
+          <p lang="sk">Toto zariadenie od vášho účtu najprv niečo žiada: druhý krok pri prihlásení alebo nové heslo. Otvorte Váš účet na stránkach správy zariadenia, v jeho sieti.</p>
+          <p lang="de">Diese Box verlangt zuerst etwas von deinem Konto: einen zweiten Schritt bei der Anmeldung oder ein neues Passwort. Öffne Dein Konto auf den Verwaltungsseiten der Box, in ihrem eigenen Netz.</p>
+        ''
+      )
+    } $out/held.html
   '';
   # For the two apps: where their sign-in page sends a person back to, and
   # the person's account in them, the owner's own for the person who
@@ -156,7 +160,7 @@ let
       default "";
     }
     map $uri $losos_app_back {
-      ~^/forgejo/ /forgejo/user/login;
+      ~^/git/ /git/;
       ~^/cloud/ $request_uri;
       default /nextcloud/login;
     }
@@ -179,7 +183,7 @@ let
 
   signIn = import ./app-sign-in.nix { inherit lib; };
   appSignIn = config.lososInternal.appSignIn;
-  anyAppSignIn = appSignIn.nextcloud || appSignIn.forgejo || appSignIn.cloud;
+  anyAppSignIn = appSignIn.nextcloud || appSignIn.git || appSignIn.cloud;
   nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
 
   # Ask Authelia about the request nginx is handling, as the /api/
@@ -208,10 +212,11 @@ let
       ++ lib.optional config.services.nginx.enable "-m owner ! --uid-owner ${config.services.nginx.user}"
       ++ [ "-j REJECT --reject-with tcp-reset" ]
     );
-  loopbackRules =
-    lib.optional appSignIn.nextcloud (loopbackRule config.losos.nextcloud.apachePort nc.uid)
-    # modules/workloads.nix: Forgejo's literal port and its pinned uid.
-    ++ lib.optional appSignIn.forgejo (loopbackRule 3000 1003);
+  # LosOS Git needs none: it believes the headers only on its Unix socket,
+  # which nginx alone may open (modules/git.nix).
+  loopbackRules = lib.optional appSignIn.nextcloud (
+    loopbackRule config.losos.nextcloud.apachePort nc.uid
+  );
 
   package = pkgs.authelia.override {
     authelia-web = themes.authelia.web pkgs.authelia.web;
@@ -348,7 +353,7 @@ in
             {
               domain_regex = ".*";
               subject = [ "group:losos-locked" ];
-              resources = [ "^/(nextcloud|forgejo|cloud)([/?].*)?$" ];
+              resources = [ "^/(nextcloud|git|cloud)([/?].*)?$" ];
               policy = "deny";
             }
             {

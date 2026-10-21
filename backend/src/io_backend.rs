@@ -111,8 +111,8 @@ impl Paths {
 
     /// The `Authorization` header curl reads for LosOS Git's API, written
     /// from the bot token before each request so it is in no argv.
-    pub fn forgejo_header_file(&self) -> PathBuf {
-        self.state_dir.join("forgejo-auth")
+    pub fn git_header_file(&self) -> PathBuf {
+        self.state_dir.join("git-auth")
     }
 
     /// The LosOS cloud app password the pin picker lists folders with.
@@ -957,17 +957,6 @@ fn first_line(stderr: &[u8]) -> String {
         .to_string()
 }
 
-/// One request to LosOS Git's REST API as the bot administrator, by `curl`.
-///
-/// The token goes into a 0600 file as a ready-made `Authorization` header
-/// and curl reads it with `--header @file`; the body — which carries a
-/// password for two of the operations — goes to curl on stdin. Neither is
-/// ever in an argument vector. Loopback and plain HTTP: the request never
-/// leaves the box (`modules/workloads.nix` binds Forgejo to 127.0.0.1).
-///
-/// A curl that could not connect is [`crate::config_repo::NotUp`], the
-/// normal state of a box whose Forgejo pod is still pulling. A reply, any
-/// reply, is handed back with its status for [`crate::config_repo::classify`].
 /// One HTTP/1.0 exchange with a server on this box's loopback: write the
 /// request bytes, read the answer to the end, split off the status. For the
 /// requests that carry the owner's password (`crate::devices`), which must
@@ -996,21 +985,33 @@ fn loopback_exchange(addr: &str, request: &[u8], read_secs: u64) -> anyhow::Resu
     crate::devices::split_response(&raw).context("the answer was not HTTP")
 }
 
-fn curl_forgejo(
+/// One request to LosOS Git's API as its administrator, by `curl`.
+///
+/// The token goes into a 0600 file as a ready-made `Authorization` header
+/// and curl reads it with `--header @file`, never in an argument vector; the
+/// body goes to curl on stdin. Loopback and plain HTTP: the request never
+/// leaves the box (`modules/git.nix` binds LosOS Git to 127.0.0.1).
+///
+/// A curl that could not connect is [`crate::config_repo::NotUp`], the
+/// normal state of a box whose LosOS Git is still starting. A reply, any
+/// reply, is handed back with its status for [`crate::config_repo::classify`].
+fn curl_git(
     paths: &Paths,
     repo: &crate::config_repo::RepoConfig,
-    op: &crate::config_repo::ForgejoOp,
-    secret: Option<&crate::setup::Secret>,
+    op: &crate::config_repo::GitOp,
 ) -> anyhow::Result<(u16, String)> {
     use crate::config_repo::NotUp;
     const MAX_BYTES: usize = 1024 * 1024;
 
     let token = read_bot_token(repo)?;
-    let header = format!("Authorization: token {token}\n");
-    atomic_write_secret(&paths.forgejo_header_file(), header.as_bytes())
+    let mut header = format!("Authorization: token {token}\n");
+    if let Some(person) = op.acting_as() {
+        header.push_str(&format!("X-Losos-As: {person}\n"));
+    }
+    atomic_write_secret(&paths.git_header_file(), header.as_bytes())
         .context("writing the LosOS Git header file")?;
     let (method, path) = op.route();
-    let body = op.body(secret)?;
+    let body = op.body();
 
     let mut cmd = std::process::Command::new("curl");
     cmd.args(["--silent", "--show-error"])
@@ -1018,14 +1019,14 @@ fn curl_forgejo(
         .args(["--max-filesize", &MAX_BYTES.to_string()])
         .args(["--header", "Accept: application/json"])
         .arg("--header")
-        .arg(format!("@{}", paths.forgejo_header_file().display()))
+        .arg(format!("@{}", paths.git_header_file().display()))
         .args(["--write-out", "\n%{http_code}"])
         .args(["--request", method]);
     if body.is_some() {
         cmd.args(["--header", "Content-Type: application/json"])
             .args(["--data-binary", "@-"]);
     }
-    cmd.arg(format!("{}{path}", repo.forgejo_url))
+    cmd.arg(format!("{}{path}", repo.git_url))
         .stdin(if body.is_some() {
             std::process::Stdio::piped()
         } else {
@@ -1060,8 +1061,8 @@ fn curl_forgejo(
     Ok((status, body.to_string()))
 }
 
-/// The bot administrator's access token, or [`crate::config_repo::NotUp`]
-/// when the Forgejo bootstrap has not written it yet.
+/// LosOS Git's admin token, or [`crate::config_repo::NotUp`] when
+/// `losos-git` has not written it yet.
 fn read_bot_token(repo: &crate::config_repo::RepoConfig) -> anyhow::Result<String> {
     match std::fs::read_to_string(&repo.token_file) {
         Ok(t) if !t.trim().is_empty() => Ok(t.trim().to_string()),
@@ -1105,15 +1106,15 @@ fn git(paths: &Paths, with_auth: bool, args: &[&str]) -> anyhow::Result<std::pro
         .env_remove("GIT_ASKPASS")
         .env_remove("SSH_ASKPASS");
     if with_auth {
-        if let Some(repo) = crate::config_repo::RepoConfig::from_env().filter(|r| r.via_forgejo()) {
+        if let Some(repo) = crate::config_repo::RepoConfig::from_env().filter(|r| r.via_server()) {
             let token = read_bot_token(&repo)?;
             let host = repo
-                .forgejo_url
+                .git_url
                 .split_once("://")
-                .map_or(repo.forgejo_url.as_str(), |(_, rest)| rest)
+                .map_or(repo.git_url.as_str(), |(_, rest)| rest)
                 .trim_end_matches('/');
             let scheme = repo
-                .forgejo_url
+                .git_url
                 .split_once("://")
                 .map_or("http", |(scheme, _)| scheme);
             let line = format!(
@@ -2504,40 +2505,10 @@ impl Losos for IoLosos {
             .collect())
     }
 
-    fn forgejo_request(
-        &mut self,
-        op: &crate::config_repo::ForgejoOp,
-        secret: Option<&crate::setup::Secret>,
-    ) -> anyhow::Result<(u16, String)> {
+    fn git_request(&mut self, op: &crate::config_repo::GitOp) -> anyhow::Result<(u16, String)> {
         let repo = crate::config_repo::RepoConfig::from_env()
             .context("LOSOS_CONFIG_REPO is not set; see modules/config-repo.nix")?;
-        curl_forgejo(&self.paths, &repo, op, secret)
-    }
-
-    fn forgejo_as_owner(
-        &mut self,
-        method: &str,
-        path: &str,
-        owner: &str,
-        secret: &crate::setup::Secret,
-        body: Option<&str>,
-    ) -> anyhow::Result<(u16, String)> {
-        use crate::config_repo::NotUp;
-        let repo = crate::config_repo::RepoConfig::from_env()
-            .context("LOSOS_CONFIG_REPO is not set; see modules/config-repo.nix")?;
-        let endpoint =
-            crate::signin::parse_login_url(&repo.forgejo_url).map_err(|e| anyhow::anyhow!(e))?;
-        // Not curl_forgejo: that one sends the bot's token from a file, and
-        // this request carries the owner's password, which no file or argv
-        // may hold.
-        let request =
-            crate::devices::forgejo_request(method, path, "localhost", owner, secret, body);
-        loopback_exchange(&endpoint.addr, &request, 20)
-            .map_err(|e| NotUp(format!("LosOS Git is not answering yet ({e:#})")).into())
-    }
-
-    fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret> {
-        Ok(crate::setup::Secret::new(&hex(&random_bytes::<24>()?)))
+        curl_git(&self.paths, &repo, op)
     }
 
     fn load_sync_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {

@@ -46,6 +46,11 @@ struct Api {
     backend: IoLosos,
     token: String,
     throttle: Throttle,
+    /// Wrong owner passwords per address, for the routes that take one
+    /// from a caller who already signed in. Apart from `throttle`, which a
+    /// signed-in request clears, so a guess is cleared only by the right
+    /// password.
+    password_throttle: Throttle,
     audit: Audit,
     /// The last claim answered, so a reply lost to a proxy timeout can be
     /// given again to the same password (`crate::receipt`).
@@ -2043,8 +2048,8 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
 /// one computer's own for LosOS cloud or LosOS Git (`crate::devices`).
 ///
 /// Bearer-gated like every other route, and on top of that the owner's
-/// password, which Nextcloud and Forgejo both insist on before they make a
-/// credential. A wrong password is a 403 with `wrongPassword`, not the 401
+/// password: Nextcloud insists on it before it makes an app password, and
+/// lososd checks it before it asks LosOS Git for a token. A wrong password is a 403 with `wrongPassword`, not the 401
 /// of a bad token: the caller holds a good token, and a client that reads
 /// 401 as "sign in again" would throw it away.
 async fn post_device(
@@ -2080,9 +2085,38 @@ fn post_device_inner(api: &Api, kind: &str, client: &str, body: &[u8]) -> HttpRe
         "cloud" => api
             .backend
             .serialized(|l| crate::losos::cmd_device_cloud(l, password, device, client)),
-        "git" => api
-            .backend
-            .serialized(|l| crate::losos::cmd_device_git(l, password, device, client)),
+        "git" => {
+            // LosOS Git keeps no passwords: the owner's is checked here,
+            // against the people file LosOS Login signs them in with.
+            let Ok(secret) = crate::signin::validate_candidate(password) else {
+                return err(StatusCode::BAD_REQUEST, SHAPE);
+            };
+            if let Err(wait) = api.password_throttle.check(client, Instant::now()) {
+                let mut resp = err(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "too many wrong passwords; slow down",
+                );
+                resp.headers_mut().insert(
+                    actix_web::http::header::RETRY_AFTER,
+                    retry_after_secs(wait).to_string().parse().expect("digits"),
+                );
+                return resp;
+            }
+            match owner_password_ok(api, &secret) {
+                Ok(true) => api.password_throttle.record_success(client),
+                Ok(false) => {
+                    api.password_throttle.record_failure(client, Instant::now());
+                    tracing::info!(kind, "device credential refused: wrong password");
+                    return HttpResponse::build(StatusCode::FORBIDDEN).json(serde_json::json!({
+                        "error": crate::signin::WrongPassword.to_string(),
+                        "wrongPassword": true,
+                    }));
+                }
+                Err(e) => return error_response(e),
+            }
+            api.backend
+                .serialized(|l| crate::losos::cmd_device_git(l, device))
+        }
         _ => return err(StatusCode::NOT_FOUND, "no such device credential"),
     };
     match result {
@@ -2101,6 +2135,19 @@ fn post_device_inner(api: &Api, kind: &str, client: &str, body: &[u8]) -> HttpRe
             }))
         }
         Err(e) => error_response(e),
+    }
+}
+
+/// Whether `secret` is the password of the person who claimed the box.
+fn owner_password_ok(api: &Api, secret: &crate::setup::Secret) -> anyhow::Result<bool> {
+    let owner = api
+        .people
+        .list()?
+        .into_iter()
+        .find(|p| !p.disabled && p.groups.iter().any(|g| g == crate::people::OWNER));
+    match owner {
+        Some(p) => api.people.check_password(&p.name, secret),
+        None => Ok(false),
     }
 }
 
@@ -3798,7 +3845,7 @@ async fn get_site(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 }
 
 /// `POST /api/site` — `{"set": {"nextcloud.site.trashDays": "30",
-/// "forgejo.site.landingPage": null}}`: each value a Nix literal, or null to
+/// "git.site.pushCreate": null}}`: each value a Nix literal, or null to
 /// go back to the default. Only those lines of `overrides.nix` change; the
 /// rest is an apply.
 async fn post_site(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
@@ -4237,6 +4284,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             backend,
             token,
             throttle: Throttle::default(),
+            password_throttle: Throttle::default(),
             audit: Audit,
             claims: std::sync::Mutex::new(crate::receipt::Receipts::default()),
             access: crate::access::Access::from_env(),

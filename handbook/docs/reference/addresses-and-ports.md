@@ -19,8 +19,7 @@ sidebar_position: 1
 | `/setup/losos-ca.crt`         | The box's certificate                               | the local network only              |
 | `/setup/trust.sh`, `/setup/trust.ps1` | The one-line certificate installers          | the local network only              |
 | `/nextcloud`                  | LosOS cloud                                         | anyone, and through an edge         |
-| `/forgejo/`                   | LosOS Git                                           | anyone, and through an edge         |
-| `/.well-known/nodeinfo`, `/.well-known/webfinger` | LosOS Git's federation discovery, while federation is on and the disk is shared | anyone, and through an edge |
+| `/git/`                       | LosOS Git                                           | anyone, and through an edge         |
 | `/nextcloud/ocm-provider/`, `/nextcloud/ocm/…` and the other federation addresses under `/nextcloud` | LosOS cloud's federation, while federation is on and the disk is shared; **404** otherwise | anyone, and through an edge |
 
 :::note[What the local network means]

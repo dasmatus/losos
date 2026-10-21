@@ -83,9 +83,9 @@ in
     # Only root and nginx may open a connection to the loopback API.
     #
     # lososd binds 127.0.0.1, which keeps the LAN out, but not this box: the
-    # Nextcloud and Forgejo pods are hostNetwork and share its loopback, as
-    # uid 1002 and 1003, and both are on the internet whenever the master
-    # proxy is. Going around nginx skips the lanOnly guard entirely, and
+    # Nextcloud pod is hostNetwork and shares its loopback as uid 1002, and
+    # LosOS Git runs as uid 1003; both are on the internet whenever the
+    # master proxy is. Going around nginx skips the lanOnly guard entirely, and
     # lososd trusts X-Real-IP from any loopback peer because it assumes that
     # peer is nginx. So a compromised pod could claim an unclaimed box (the
     # claim route hands back the admin token, which is root), lock the owner

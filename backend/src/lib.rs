@@ -43,6 +43,7 @@ pub mod edge;
 pub mod erase;
 pub mod facade;
 pub mod fake;
+pub mod forge;
 pub mod grow;
 pub mod guard;
 pub mod http;

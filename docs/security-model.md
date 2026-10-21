@@ -58,7 +58,7 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
   spare is then stale and only someone who can read the file has a key.
 - Comparison is constant-time.
 - The API listens on `127.0.0.1` only. nginx proxies `/api/` to it behind the
-  LAN-only guard. The hostNetwork Nextcloud and Forgejo pods share that
+  LAN-only guard. The hostNetwork Nextcloud pod and LosOS Git share that
   loopback, so an iptables owner match (`modules/daemon.nix`) resets any
   connection to the API port that is not made by root or nginx.
 - The LAN-only guard denies `10.42.0.0/16`, the mesh's pod network, before it
@@ -182,17 +182,17 @@ not address the limitations below.
 
 ## Known limitations
 
-### The admin UI shares an origin with Nextcloud and Forgejo
+### The admin UI shares an origin with Nextcloud and LosOS Git
 
 `<host>.local/` serves the admin UI and `/api/`. The same origin serves
-`/nextcloud` and `/forgejo/`, which host user content.
+`/nextcloud` and `/git/`, which host user content.
 
 `sessionStorage` is per origin, so a stored XSS in either application can
 read the admin token while a tab holds the spare key. A CSP on the admin
 pages does not help, and neither would an `HttpOnly` cookie: Authelia's
 session cookie rides on every request to the origin, so a script there can
-call `/api/` as whoever is signed in. **An XSS in Nextcloud or Forgejo is a
-full appliance compromise.**
+call `/api/` as whoever is signed in. **An XSS in Nextcloud or LosOS Git is
+a full appliance compromise.**
 
 The fix is a separate origin for the admin UI, such as a second mDNS name.
 That was declined in favour of a single URL. In place instead: a strict CSP,

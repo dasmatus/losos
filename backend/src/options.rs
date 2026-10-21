@@ -135,11 +135,18 @@ pub fn parse(text: &str) -> anyhow::Result<OptionsDoc> {
 }
 
 /// Keys an older `overrides.nix` may still spell the old way, and the option
-/// each one is today. [`crate::overrides::parse_settings`] honours the same
-/// two, so a file that reads back fine there must pass the gate here too.
+/// each one is today. [`crate::overrides::parse_settings`] honours the
+/// first two, so a file that reads back fine there must pass the gate here
+/// too. The `forgejo.` ones are LosOS Git's settings from before it replaced
+/// Forgejo (modules/options.nix keeps them evaluating); joined under the new
+/// name, the next Apply writes them that way.
 const ALIASES: &[(&str, &str)] = &[
     ("aio.apachePort", "nextcloud.apachePort"),
     ("cfd.enable", "proxy.enable"),
+    ("forgejo.enable", "git.enable"),
+    ("forgejo.site.requireSignIn", "git.site.requireSignIn"),
+    ("forgejo.site.defaultPrivate", "git.site.defaultPrivate"),
+    ("forgejo.site.pushCreate", "git.site.pushCreate"),
 ];
 
 fn canonical(key: &str) -> &str {
@@ -420,11 +427,11 @@ pub(crate) mod tests {
                  "default":true,"current":true,"danger":false,"fixed":null,"readOnly":false},
                 {"name":"hostName","group":"general","editor":{"kind":"str"},"nixType":"string",
                  "description":"The box's name.","default":"mattbox","current":"mattbox","danger":true,"fixed":null,"readOnly":false},
-                {"name":"forgejo.enable","group":"forgejo","editor":{"kind":"bool"},"nixType":"boolean",
+                {"name":"git.enable","group":"git","editor":{"kind":"bool"},"nixType":"boolean",
                  "default":true,"current":true,"danger":false,"fixed":null,"readOnly":false},
-                {"name":"forgejo.mode","group":"forgejo","editor":{"kind":"enum","values":["native","container"]},"nixType":"one of",
+                {"name":"nextcloud.mode","group":"nextcloud","editor":{"kind":"enum","values":["native","container"]},"nixType":"one of",
                  "default":"container","current":"container","danger":true,"fixed":null,"readOnly":false},
-                {"name":"forgejo.federation.enable","group":"forgejo","editor":{"kind":"bool"},"nixType":"boolean",
+                {"name":"nextcloud.federation.enable","group":"nextcloud","editor":{"kind":"bool"},"nixType":"boolean",
                  "default":true,"current":true,"danger":false,"fixed":null,"readOnly":false,"needs":"sharingMyStorage"},
                 {"name":"storage.fillPercent","group":"storage","editor":{"kind":"int","min":50,"max":100},"nixType":"integer",
                  "default":90,"current":90,"danger":true,"fixed":null,"readOnly":false},
@@ -473,7 +480,7 @@ pub(crate) mod tests {
                 })
             }
         );
-        let back = serde_json::to_value(&doc.find("forgejo.mode").unwrap().editor).unwrap();
+        let back = serde_json::to_value(&doc.find("nextcloud.mode").unwrap().editor).unwrap();
         assert_eq!(back, json!({"kind":"enum","values":["native","container"]}));
     }
 
@@ -492,11 +499,16 @@ pub(crate) mod tests {
         let opts = out["options"].as_array().unwrap();
         let by = |n: &str| opts.iter().find(|o| o["name"] == n).unwrap().clone();
         assert_eq!(by("hostName")["set"], "\"box2\"");
-        assert_eq!(by("forgejo.enable")["set"], Value::Null);
+        assert_eq!(by("git.enable")["set"], Value::Null);
         // The legacy spelling lands on the option it became.
         assert_eq!(by("nextcloud.apachePort")["set"], "12000");
         assert_eq!(out["stray"], json!([{"key": "ghost", "value": "1"}]));
         assert_eq!(out["available"], true);
+        let out = join(&doc, "{ ... }:\n{\n  losos.forgejo.enable = false;\n}\n");
+        let opts = out["options"].as_array().unwrap();
+        let git = opts.iter().find(|o| o["name"] == "git.enable").unwrap();
+        assert_eq!(git["set"], "false", "Forgejo's switch is LosOS Git's now");
+        assert_eq!(out["stray"], json!([]));
     }
 
     #[test]
@@ -505,15 +517,18 @@ pub(crate) mod tests {
         let out = join(&doc, "{ ... }:\n{\n}\n");
         let opts = out["options"].as_array().unwrap();
         let by = |n: &str| opts.iter().find(|o| o["name"] == n).unwrap().clone();
-        assert_eq!(by("forgejo.federation.enable")["needs"], "sharingMyStorage");
-        assert!(by("forgejo.enable").get("needs").is_none());
+        assert_eq!(
+            by("nextcloud.federation.enable")["needs"],
+            "sharingMyStorage"
+        );
+        assert!(by("git.enable").get("needs").is_none());
     }
 
     #[test]
     fn a_body_of_fitting_literals_passes() {
         let doc = sample();
-        let body = "{ ... }:\n{\n  losos.hostName = \"box2\";\n  losos.forgejo.enable = false;\n  \
-                    losos.forgejo.mode = \"native\";\n  losos.storage.fillPercent = 75;\n  \
+        let body = "{ ... }:\n{\n  losos.hostName = \"box2\";\n  losos.git.enable = false;\n  \
+                    losos.nextcloud.mode = \"native\";\n  losos.storage.fillPercent = 75;\n  \
                     losos.cluster.idleLoadThreshold = 0.5;\n  \
                     losos.cache.substituters = [ \"https://a\" \"https://b\" ];\n  \
                     losos.proxy.noisePublicKeyFile = null;\n  losos.cfd.enable = true;\n}\n";
@@ -548,7 +563,7 @@ pub(crate) mod tests {
     fn literals_of_the_wrong_kind_are_refused_with_the_rule() {
         let doc = sample();
         let cases = [
-            ("losos.forgejo.enable = \"yes\";", "must be true or false"),
+            ("losos.git.enable = \"yes\";", "must be true or false"),
             (
                 "losos.storage.fillPercent = 10;",
                 "must be between 50 and 100",
@@ -559,7 +574,7 @@ pub(crate) mod tests {
             ),
             ("losos.cluster.idleLoadThreshold = 1;", "must be a decimal"),
             (
-                "losos.forgejo.mode = \"podman\";",
+                "losos.nextcloud.mode = \"podman\";",
                 "must be one of native, container",
             ),
             ("losos.hostName = box;", "must be a double-quoted string"),
@@ -616,8 +631,8 @@ pub(crate) mod tests {
         let doc = sample();
         let cases: Vec<(&str, Value)> = vec![
             ("hostName", json!("box-2")),
-            ("forgejo.enable", json!(false)),
-            ("forgejo.mode", json!("native")),
+            ("git.enable", json!(false)),
+            ("nextcloud.mode", json!("native")),
             ("storage.fillPercent", json!(80)),
             ("cluster.idleLoadThreshold", json!(1.0)),
             ("cluster.idleLoadThreshold", json!(0.25)),

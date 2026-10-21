@@ -74,7 +74,7 @@ let
   # two the k3s/fscrypt rework broke. A local gate that quietly skips whatever
   # nobody remembered to add to it does not merely miss the regression: it
   # prints a row of green ticks over the top of it. Same for `build-pkgs` and
-  # the three OCI images. If you add a check or a package, this picks it up;
+  # the OCI images. If you add a check or a package, this picks it up;
   # do not "clarify" it back into a literal list.
   #
   # x86_64-linux is a literal because the flake exports exactly one system (see
@@ -425,16 +425,15 @@ in
   '';
   scripts.build-pkgs.description = "Build every flake package except the images and media.";
 
-  # The three images the LOCAL k3s cluster runs as static pods
+  # The two images the LOCAL k3s cluster runs as static pods
   # (nix/images.nix, wired to losos.workloads.* in modules/defaults.nix).
   #
   # Opt-in, and deliberately not part of `devenv test`, because of what they
   # cost: measured on a dev machine, the Nextcloud image's content closure is
   # 2.3 GiB across 244 store paths (nextcloud34 with ~30 apps, php-with-
   # extensions, apacheHttpd). The tarball itself is smaller than that suggests,
-  # 606 MiB, against Forgejo's 585 MiB over 126 paths and pause's 51 MiB — so
-  # what costs you here is realising the closure, not writing the layers. From
-  # a warm store the three build in well under two minutes; from a cold one you
+  # 606 MiB, against pause's 51 MiB — so what costs you here is realising the
+  # closure, not writing the layers. From a warm store the two build in well under two minutes; from a cold one you
   # are fetching 2.3 GiB first, which is precisely the "multi-gigabyte closure"
   # the enterTest block below promises not to spend on you unasked.
   #

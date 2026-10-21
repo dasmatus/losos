@@ -234,7 +234,7 @@ pub trait Losos {
     // ── The option document and the configuration repository ───────────
     // `crate::options` is the gate every Apply goes through; `crate::
     // config_repo` is the git history every change lands in. The git and
-    // Forgejo effects are one method each, named by what they do, so the
+    // LosOS Git effects are one method each, named by what they do, so the
     // sync in [`cmd_config_sync`] reads as the plan it is and the fake can
     // model a two-sided history in a few lines.
     /// The document `modules/config-repo.nix` wrote, or `None` when this
@@ -261,29 +261,10 @@ pub trait Losos {
     fn config_show(&mut self, rev: &str, path: &str) -> anyhow::Result<Option<String>>;
     /// The last `n` commits, newest first.
     fn config_log(&mut self, n: usize) -> anyhow::Result<Vec<crate::config_repo::LogEntry>>;
-    /// One request to LosOS Git's API as the bot administrator: status and
-    /// body. The password an operation carries travels in `secret`, never in
-    /// an argument vector. [`crate::config_repo::NotUp`] when LosOS Git
-    /// cannot be asked at all.
-    fn forgejo_request(
-        &mut self,
-        op: &crate::config_repo::ForgejoOp,
-        secret: Option<&crate::setup::Secret>,
-    ) -> anyhow::Result<(u16, String)>;
-    /// One request to LosOS Git's API as `owner`, with the owner's password
-    /// in a Basic header ([`crate::devices::forgejo_request`]): the only way
-    /// Forgejo lets an access token be made. [`crate::config_repo::NotUp`]
-    /// when LosOS Git cannot be asked at all.
-    fn forgejo_as_owner(
-        &mut self,
-        method: &str,
-        path: &str,
-        owner: &str,
-        secret: &crate::setup::Secret,
-        body: Option<&str>,
-    ) -> anyhow::Result<(u16, String)>;
-    /// A random password for an account nobody will type into.
-    fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret>;
+    /// One request to LosOS Git's API as its administrator: status and
+    /// body. [`crate::config_repo::NotUp`] when LosOS Git cannot be asked at
+    /// all.
+    fn git_request(&mut self, op: &crate::config_repo::GitOp) -> anyhow::Result<(u16, String)>;
     fn load_sync_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>>;
     fn save_sync_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()>;
     /// Where `/etc/nixos` follows the published tree from, `None` when it
@@ -655,7 +636,6 @@ pub fn cmd_set_password<L: Losos>(l: &mut L, user: &str, password: &str) -> anyh
     };
     let message = interpret_occ(&outcome).map_err(|e| anyhow::anyhow!(e))?;
     if outcome.code == 0 {
-        sync_owner_password(l, user, &secret);
         crate::pins::keep_cloud_key(l, user, &secret);
     }
 
@@ -868,49 +848,19 @@ pub fn cmd_device_cloud<L: Losos>(
 /// `POST /api/devices/git`: an access token for LosOS Git, for one of the
 /// owner's computers.
 ///
-/// LosOS cloud judges the password first, as at the sign-in, and LosOS Git
-/// is given the same one ([`sync_owner_password`]) before Forgejo is asked:
-/// Forgejo only mints a token under Basic auth with the account's own
-/// password, and a password changed inside LosOS cloud would not have
-/// reached it yet. A token of the same name, from an earlier setup of the
-/// same computer, is removed first, because Forgejo refuses a second token
-/// of one name and the old one is what this computer is replacing.
-pub fn cmd_device_git<L: Losos>(
-    l: &mut L,
-    password: &str,
-    device: &str,
-    client: &str,
-) -> anyhow::Result<Value> {
+/// The HTTP layer has checked the owner's password against the people file
+/// by now (LosOS Git keeps none). The token replaces one of the same name,
+/// from an earlier setup of the same computer: that is the token this
+/// computer is replacing.
+pub fn cmd_device_git<L: Losos>(l: &mut L, device: &str) -> anyhow::Result<Value> {
     use crate::devices::{
-        credential_name, interpret_token, token_create, token_delete_path, validate_device, GitOff,
-        Minted, GIT_PATH,
+        credential_name, interpret_token, validate_device, GitOff, Minted, GIT_PATH,
     };
-    use crate::signin::{LoginOutcome, Throttled, WrongPassword};
 
-    let secret = crate::signin::validate_candidate(password).map_err(|e| anyhow::anyhow!(e))?;
     let device = validate_device(device).map_err(|e| anyhow::anyhow!(e))?;
-    let Some(repo) = l.config_repo().filter(|r| r.via_forgejo()) else {
+    let Some(repo) = l.config_repo().filter(|r| r.via_server()) else {
         return Err(GitOff.into());
     };
-    let user = crate::setup::DEFAULT_ADMIN_USER;
-    match l.nextcloud_login(user, &secret, client) {
-        Ok(LoginOutcome::Accepted) => {}
-        Ok(LoginOutcome::Rejected) => return Err(WrongPassword.into()),
-        Ok(LoginOutcome::Throttled) => return Err(Throttled.into()),
-        Ok(LoginOutcome::Unavailable(why)) => return Err(crate::setup::NotReady(why).into()),
-        Err(e) => {
-            tracing::info!(error = ?e, "the password check could not reach LosOS cloud");
-            return Err(crate::setup::NotReady(
-                "LosOS cloud could not be reached, so the password could not be checked. \
-                 It may still be starting."
-                    .to_string(),
-            )
-            .into());
-        }
-    }
-    sync_owner_password(l, user, &secret);
-
-    let name = credential_name(&device);
     let not_up = |e: anyhow::Error| -> anyhow::Error {
         if e.downcast_ref::<crate::config_repo::NotUp>().is_some() {
             crate::setup::NotReady(e.to_string()).into()
@@ -918,21 +868,12 @@ pub fn cmd_device_git<L: Losos>(
             e
         }
     };
+    ensure_owner(l, &repo).map_err(not_up)?;
     let (status, body) = l
-        .forgejo_as_owner(
-            "DELETE",
-            &token_delete_path(&repo.owner, &name),
-            &repo.owner,
-            &secret,
-            None,
-        )
-        .map_err(not_up)?;
-    if !matches!(status, 204 | 404) {
-        return Err(mint_refusal(interpret_token(status, &body)));
-    }
-    let (path, request) = token_create(&repo.owner, &name);
-    let (status, body) = l
-        .forgejo_as_owner("POST", &path, &repo.owner, &secret, Some(&request))
+        .git_request(&crate::config_repo::GitOp::CreateToken {
+            login: repo.owner.clone(),
+            name: credential_name(&device),
+        })
         .map_err(not_up)?;
     match interpret_token(status, &body) {
         Minted::Credential(token) => {
@@ -1471,7 +1412,7 @@ pub fn cmd_config<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
             "name": r.name,
             "url": r.page_url(),
             "clone": r.remote(),
-            "viaForgejo": r.via_forgejo(),
+            "viaServer": r.via_server(),
         })),
         "head": head,
         "log": log,
@@ -1519,8 +1460,8 @@ fn sync_once<L: Losos>(l: &mut L) -> crate::config_repo::SyncReport {
 ///
 ///  1. anything uncommitted in `/etc/nixos` is committed, so the push below
 ///     carries it (and so a box the installer left with no commit gets one);
-///  2. on Forgejo, the owner's account and the private repository are made
-///     if missing (idempotent: "exists" counts as done);
+///  2. on LosOS Git, the owner's account and the private repository are
+///     made if missing (both calls are idempotent);
 ///  3. the remote branch is fetched and the plan decided;
 ///  4. ahead → push. Behind → the pushed `overrides.nix` goes through the
 ///     same two gates an Apply does, then the branch is fast-forwarded and a
@@ -1546,8 +1487,8 @@ fn try_sync<L: Losos>(
         ));
     };
 
-    if repo.via_forgejo() {
-        ensure_owner(l, repo, None)?;
+    if repo.via_server() {
+        ensure_owner(l, repo)?;
         ensure_repo(l, repo, &head.branch)?;
     }
 
@@ -1739,85 +1680,31 @@ fn try_follow<L: Losos>(
 
 fn ask<L: Losos>(
     l: &mut L,
-    op: &crate::config_repo::ForgejoOp,
-    secret: Option<&crate::setup::Secret>,
+    op: &crate::config_repo::GitOp,
 ) -> anyhow::Result<crate::config_repo::Answer> {
-    let (status, body) = l.forgejo_request(op, secret)?;
+    let (status, body) = l.git_request(op)?;
     Ok(crate::config_repo::classify(status, &body))
 }
 
-/// The owner's account on LosOS Git: made if missing (a site administrator,
-/// with `secret` or a minted password), and given `secret` as its password
-/// when one is passed.
-fn ensure_owner<L: Losos>(
-    l: &mut L,
-    repo: &crate::config_repo::RepoConfig,
-    secret: Option<&crate::setup::Secret>,
-) -> anyhow::Result<()> {
-    use crate::config_repo::{Answer, ForgejoOp};
+/// The owner's account on LosOS Git, made if missing, and an administrator.
+fn ensure_owner<L: Losos>(l: &mut L, repo: &crate::config_repo::RepoConfig) -> anyhow::Result<()> {
+    use crate::config_repo::{Answer, GitOp};
     let login = repo.owner.clone();
     match ask(
         l,
-        &ForgejoOp::GetUser {
+        &GitOp::EnsureUser {
             login: login.clone(),
+            full_name: String::new(),
+            email: String::new(),
+            admin: Some(true),
         },
-        None,
     )? {
-        Answer::Ok(_) | Answer::Exists => {
-            if let Some(secret) = secret {
-                match ask(
-                    l,
-                    &ForgejoOp::SetPassword {
-                        login: login.clone(),
-                    },
-                    Some(secret),
-                )? {
-                    Answer::Ok(_) => {}
-                    other => anyhow::bail!("LosOS Git did not take {login}'s password: {other:?}"),
-                }
-            }
-        }
-        Answer::Missing => {
-            let minted;
-            let password = match secret {
-                Some(s) => s,
-                None => {
-                    minted = l.mint_secret()?;
-                    &minted
-                }
-            };
-            match ask(
-                l,
-                &ForgejoOp::CreateUser {
-                    login: login.clone(),
-                },
-                Some(password),
-            )? {
-                Answer::Ok(_) | Answer::Exists => {}
-                Answer::Missing => anyhow::bail!("LosOS Git has no admin API at the expected path"),
-                Answer::Refused { status, message } => {
-                    anyhow::bail!("LosOS Git refused to create {login} ({status}): {message}")
-                }
-            }
-            if let Answer::Refused { status, message } = ask(
-                l,
-                &ForgejoOp::MakeAdmin {
-                    login: login.clone(),
-                },
-                None,
-            )? {
-                tracing::warn!(
-                    status,
-                    message,
-                    "{login} was created on LosOS Git but not made an administrator"
-                );
-            }
-        }
+        Answer::Ok(_) | Answer::Exists => Ok(()),
+        Answer::Missing => anyhow::bail!("LosOS Git has no admin API at the expected path"),
         Answer::Refused { status, message } => {
-            anyhow::bail!("LosOS Git refused to look up {login} ({status}): {message}")
+            anyhow::bail!("LosOS Git refused to make {login} ({status}): {message}")
         }
     }
-    Ok(())
 }
 
 /// The private configuration repository under the owner, made if missing.
@@ -1826,59 +1713,21 @@ fn ensure_repo<L: Losos>(
     repo: &crate::config_repo::RepoConfig,
     branch: &str,
 ) -> anyhow::Result<()> {
-    use crate::config_repo::{Answer, ForgejoOp};
+    use crate::config_repo::{Answer, GitOp};
     let (owner, name) = (repo.owner.clone(), repo.name.clone());
     match ask(
         l,
-        &ForgejoOp::GetRepo {
-            owner: owner.clone(),
-            name: name.clone(),
-        },
-        None,
-    )? {
-        Answer::Ok(_) | Answer::Exists => return Ok(()),
-        Answer::Missing => {}
-        Answer::Refused { status, message } => {
-            anyhow::bail!("LosOS Git refused to look up {owner}/{name} ({status}): {message}")
-        }
-    }
-    match ask(
-        l,
-        &ForgejoOp::CreateRepo {
+        &GitOp::EnsureRepo {
             owner: owner.clone(),
             name: name.clone(),
             branch: branch.to_string(),
         },
-        None,
     )? {
         Answer::Ok(_) | Answer::Exists => Ok(()),
         Answer::Missing => anyhow::bail!("LosOS Git has no admin API at the expected path"),
         Answer::Refused { status, message } => {
-            anyhow::bail!("LosOS Git refused to create {owner}/{name} ({status}): {message}")
+            anyhow::bail!("LosOS Git refused to make {owner}/{name} ({status}): {message}")
         }
-    }
-}
-
-/// Give the owner's LosOS Git account the password they just proved.
-///
-/// Called after a successful claim, set-password and sign-in. Best effort:
-/// LosOS Git may be starting, or off, and neither is a reason to refuse the
-/// thing that just succeeded. Only the configured owner's account is
-/// touched; a password set for any other Nextcloud user is none of LosOS
-/// Git's business.
-pub fn sync_owner_password<L: Losos>(l: &mut L, user: &str, secret: &crate::setup::Secret) {
-    let Some(repo) = l.config_repo() else {
-        return;
-    };
-    if !repo.via_forgejo() || repo.owner != user {
-        return;
-    }
-    match ensure_owner(l, &repo, Some(secret)) {
-        Ok(()) => tracing::info!(user, "LosOS Git password kept in step"),
-        Err(e) if e.downcast_ref::<crate::config_repo::NotUp>().is_some() => {
-            tracing::info!(reason = %e, "LosOS Git password not updated: not up yet")
-        }
-        Err(e) => tracing::warn!(error = ?e, "LosOS Git password could not be updated"),
     }
 }
 
@@ -2063,7 +1912,6 @@ mod tests {
         let out = cmd_settings(&mut f).unwrap();
         assert_eq!(out["sharingMyStorage"], true);
         assert_eq!(out["nextcloudMode"], "container");
-        assert_eq!(out["forgejoMode"], "container");
         assert_eq!(out["hostName"], "mattbox");
         assert_eq!(out["apachePort"], 11000);
         assert_eq!(out["proxyEnable"], false);
@@ -2402,12 +2250,11 @@ mod tests {
             ) -> anyhow::Result<Vec<crate::config_repo::LogEntry>> {
                 self.0.config_log(n)
             }
-            fn forgejo_request(
+            fn git_request(
                 &mut self,
-                op: &crate::config_repo::ForgejoOp,
-                s: Option<&crate::setup::Secret>,
+                op: &crate::config_repo::GitOp,
             ) -> anyhow::Result<(u16, String)> {
-                self.0.forgejo_request(op, s)
+                self.0.git_request(op)
             }
             fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>> {
                 self.0.load_cloud_key()
@@ -2420,19 +2267,6 @@ mod tests {
                 r: &crate::pins::CloudRequest<'_>,
             ) -> anyhow::Result<(u16, Vec<u8>)> {
                 self.0.cloud_request(r)
-            }
-            fn forgejo_as_owner(
-                &mut self,
-                m: &str,
-                p: &str,
-                o: &str,
-                s: &crate::setup::Secret,
-                b: Option<&str>,
-            ) -> anyhow::Result<(u16, String)> {
-                self.0.forgejo_as_owner(m, p, o, s, b)
-            }
-            fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret> {
-                self.0.mint_secret()
             }
             fn load_sync_report(
                 &mut self,
@@ -3407,10 +3241,8 @@ mod tests {
             json!({ "name": "nextcloud.site.trashDays", "group": "nextcloud",
             "editor": { "kind": "int", "min": 1 }, "nixType": "int" }),
         );
-        options.push(
-            json!({ "name": "forgejo.site.landingPage", "group": "forgejo",
-            "editor": { "kind": "enum", "values": ["home", "explore"] }, "nixType": "enum" }),
-        );
+        options.push(json!({ "name": "git.site.defaultPrivate", "group": "git",
+            "editor": { "kind": "enum", "values": ["last", "public"] }, "nixType": "enum" }));
         serde_json::from_value(json!({ "version": 1, "options": options })).unwrap()
     }
 
@@ -3429,17 +3261,14 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            ["nextcloud.site.trashDays", "forgejo.site.landingPage"]
+            ["nextcloud.site.trashDays", "git.site.defaultPrivate"]
         );
 
         let out = cmd_site_set(
             &mut f,
             &[
                 ("nextcloud.site.trashDays".into(), Some("30".into())),
-                (
-                    "forgejo.site.landingPage".into(),
-                    Some("\"explore\"".into()),
-                ),
+                ("git.site.defaultPrivate".into(), Some("\"public\"".into())),
             ],
         )
         .unwrap();
@@ -3534,18 +3363,18 @@ mod tests {
     #[test]
     fn apply_is_gated_by_the_option_document() {
         let mut f = with_doc(FakeLosos::new());
-        let err = cmd_apply(&mut f, "{ losos.forgejo.enable = \"yes\"; }").unwrap_err();
+        let err = cmd_apply(&mut f, "{ losos.git.enable = \"yes\"; }").unwrap_err();
         let rejected = err
             .downcast_ref::<crate::options::Rejected>()
             .expect("typed, so the HTTP layer answers 400");
-        assert_eq!(rejected.0, "losos.forgejo.enable must be true or false");
+        assert_eq!(rejected.0, "losos.git.enable must be true or false");
         assert!(!f.spawned, "a refused apply rebuilds nothing");
         assert_eq!(f.commits.len(), 1, "and commits nothing");
 
         let err = cmd_apply(&mut f, "{ losos.tpm.enable = false; }").unwrap_err();
         assert!(err.downcast_ref::<crate::options::Rejected>().is_some());
 
-        cmd_apply(&mut f, "{ losos.forgejo.enable = false; }").unwrap();
+        cmd_apply(&mut f, "{ losos.git.enable = false; }").unwrap();
         assert!(f.spawned);
     }
 
@@ -3562,11 +3391,11 @@ mod tests {
     #[test]
     fn options_joins_what_overrides_sets() {
         let mut f = with_doc(FakeLosos::new());
-        cmd_apply(&mut f, "{ losos.forgejo.enable = false; }").unwrap();
+        cmd_apply(&mut f, "{ losos.git.enable = false; }").unwrap();
         let out = cmd_options(&mut f).unwrap();
         assert_eq!(out["available"], true);
         let opts = out["options"].as_array().unwrap();
-        let fe = opts.iter().find(|o| o["name"] == "forgejo.enable").unwrap();
+        let fe = opts.iter().find(|o| o["name"] == "git.enable").unwrap();
         assert_eq!(fe["set"], "false");
         assert_eq!(fe["editor"]["kind"], "bool");
         let hn = opts.iter().find(|o| o["name"] == "hostName").unwrap();
@@ -3597,7 +3426,7 @@ mod tests {
             vec!["http://127.0.0.1:3000/notshared/losos-config.git"]
         );
         assert_eq!(f.remote_commits, vec![FakeLosos::sha(0)]);
-        assert_eq!(out["repository"]["url"], "/forgejo/notshared/losos-config");
+        assert_eq!(out["repository"]["url"], "/git/notshared/losos-config");
         assert_eq!(out["sync"]["remoteHead"], FakeLosos::sha(0));
         // In step: nothing to do.
         cmd_config_sync(&mut f).unwrap();
@@ -3632,7 +3461,7 @@ mod tests {
         let pushed = "f".repeat(40);
         f.remote_commits.push(pushed.clone());
         f.remote_overrides = Some(
-            "{ ... }:\n{\n  losos.sharingMyStorage = true;\n  losos.forgejo.enable = false;\n}\n"
+            "{ ... }:\n{\n  losos.sharingMyStorage = true;\n  losos.git.enable = false;\n}\n"
                 .to_string(),
         );
         let out = cmd_config_sync(&mut f).unwrap();
@@ -3654,7 +3483,7 @@ mod tests {
         assert!(f
             .read_overrides()
             .unwrap()
-            .contains("losos.forgejo.enable = false;"));
+            .contains("losos.git.enable = false;"));
         // Nothing was pushed back: the remote already has it.
         assert_eq!(f.pushed.len(), 1);
     }
@@ -3674,13 +3503,13 @@ mod tests {
         assert!(!f.spawned);
         assert_eq!(f.commits.last().unwrap().sha, before);
         // A value of the wrong type: the second gate.
-        f.remote_overrides = Some("{ losos.forgejo.enable = \"yes\"; }".to_string());
+        f.remote_overrides = Some("{ losos.git.enable = \"yes\"; }".to_string());
         let out = cmd_config_sync(&mut f).unwrap();
         assert_eq!(out["sync"]["state"], "refused");
         assert!(out["sync"]["detail"]
             .as_str()
             .unwrap()
-            .contains("losos.forgejo.enable must be true or false"));
+            .contains("losos.git.enable must be true or false"));
         // No overrides.nix at all in the pushed commit.
         f.remote_overrides = None;
         let out = cmd_config_sync(&mut f).unwrap();
@@ -3693,7 +3522,7 @@ mod tests {
         let mut f = with_doc(FakeLosos::new().with_config_repo());
         cmd_config_sync(&mut f).unwrap();
         f.remote_commits.push("d".repeat(40));
-        f.remote_overrides = Some("{ losos.forgejo.enable = false; }".to_string());
+        f.remote_overrides = Some("{ losos.git.enable = false; }".to_string());
         f.state.rebuild = Some(building("job-9", MSG_STARTED));
         let out = cmd_config_sync(&mut f).unwrap();
         assert_eq!(out["sync"]["state"], "waiting");
@@ -3824,58 +3653,25 @@ mod tests {
     }
 
     #[test]
-    fn sync_creates_the_owner_and_the_repository_when_missing() {
+    fn sync_makes_sure_of_the_owner_and_the_repository_first() {
         let mut f = FakeLosos::new().with_config_repo();
-        f.forgejo_routes.insert(
-            "GET /api/v1/users/notshared".into(),
-            (404, r#"{"message":"user does not exist"}"#.into()),
-        );
-        f.forgejo_routes.insert(
-            "POST /api/v1/admin/users".into(),
-            (201, r#"{"id": 2}"#.into()),
-        );
-        f.forgejo_routes.insert(
-            "GET /api/v1/repos/notshared/losos-config".into(),
-            (404, r#"{"message":"not found"}"#.into()),
-        );
-        f.forgejo_routes.insert(
-            "POST /api/v1/admin/users/notshared/repos".into(),
-            (201, r#"{"id": 1}"#.into()),
-        );
         let out = cmd_config_sync(&mut f).unwrap();
         assert_eq!(out["sync"]["state"], "ok", "{}", out["sync"]["detail"]);
-        let calls: Vec<&str> = f.forgejo_calls.iter().map(|(k, _)| k.as_str()).collect();
+        let calls: Vec<&str> = f.git_calls.iter().map(String::as_str).collect();
         assert_eq!(
             calls,
             vec![
-                "GET /api/v1/users/notshared",
-                "POST /api/v1/admin/users",
-                "PATCH /api/v1/admin/users/notshared",
-                "GET /api/v1/repos/notshared/losos-config",
-                "POST /api/v1/admin/users/notshared/repos",
+                "PUT /api/v1/admin/users/notshared",
+                "PUT /api/v1/admin/users/notshared/repos/losos-config",
             ]
         );
-        // The account was made with a minted password nobody will type, and
-        // nothing but the create carried one.
-        assert_eq!(
-            f.forgejo_calls[1].1.as_deref(),
-            Some("minted-fake-password-0123")
-        );
-        assert!(f.forgejo_calls.iter().filter(|(_, p)| p.is_some()).count() == 1);
         assert_eq!(f.pushed.len(), 1);
-        // "Exists" is as good as made: a repeat creates nothing twice.
-        f.forgejo_routes.insert(
-            "POST /api/v1/admin/users".into(),
-            (
-                422,
-                r#"{"message":"user already exists [name: notshared]"}"#.into(),
-            ),
-        );
-        f.forgejo_routes.insert(
-            "POST /api/v1/admin/users/notshared/repos".into(),
+        // Both calls are "ensure": a repeat asks again and makes nothing twice.
+        f.git_routes.insert(
+            "PUT /api/v1/admin/users/notshared/repos/losos-config".into(),
             (
                 409,
-                r#"{"message":"The repository with the same name already exists."}"#.into(),
+                r#"{"message":"There is already a repository."}"#.into(),
             ),
         );
         let out = cmd_config_sync(&mut f).unwrap();
@@ -3885,11 +3681,11 @@ mod tests {
     #[test]
     fn a_refusal_from_losos_git_is_reported_not_raised() {
         let mut f = FakeLosos::new().with_config_repo();
-        f.forgejo_routes.insert(
-            "GET /api/v1/users/notshared".into(),
+        f.git_routes.insert(
+            "PUT /api/v1/admin/users/notshared".into(),
             (
                 403,
-                r#"{"message":"token does not have at least one of required scope(s)"}"#.into(),
+                r#"{"message":"Only the box's administrator may do this."}"#.into(),
             ),
         );
         let out = cmd_config_sync(&mut f).unwrap();
@@ -3897,22 +3693,6 @@ mod tests {
         assert!(out["sync"]["detail"]
             .as_str()
             .unwrap()
-            .contains("required scope"));
-    }
-
-    #[test]
-    fn set_password_gives_losos_git_the_same_password() {
-        let mut f = FakeLosos::new().with_config_repo();
-        cmd_set_password(&mut f, "notshared", "Correct-Horse-Battery-9").unwrap();
-        let set = f
-            .forgejo_calls
-            .iter()
-            .find(|(k, _)| k == "PATCH /api/v1/admin/users/notshared")
-            .expect("the password was set");
-        assert_eq!(set.1.as_deref(), Some("Correct-Horse-Battery-9"));
-        // Another Nextcloud user is none of LosOS Git's business.
-        f.forgejo_calls.clear();
-        cmd_set_password(&mut f, "someone", "Correct-Horse-Battery-9").unwrap();
-        assert!(f.forgejo_calls.is_empty());
+            .contains("administrator"));
     }
 }

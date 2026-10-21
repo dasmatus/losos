@@ -5,47 +5,46 @@
 //! `modules/overrides.nix`. The installer makes it a git repository with one
 //! commit; from then on every Apply, storage switch and factory reset commits
 //! the change ([`crate::overrides::commit_message`] names the setting), and
-//! lososd keeps the repository in step with one on the box's own Forgejo,
-//! owned by the owner's account. The owner can read the history there, clone
-//! it, and push: a push that moves the branch ahead of the box is fetched,
-//! its `overrides.nix` put through the same gates an Apply goes through, and
-//! fast-forwarded into `/etc/nixos`, which then rebuilds.
+//! lososd keeps the repository in step with one on the box's own LosOS Git
+//! (`losos-git`, [`crate::forge`]), owned by the owner's account. The owner
+//! can read the history there, clone it, and push: a push that moves the
+//! branch ahead of the box is fetched, its `overrides.nix` put through the
+//! same gates an Apply goes through, and fast-forwarded into `/etc/nixos`,
+//! which then rebuilds.
 //!
 //! Nothing secret is in `/etc/nixos` — the LUKS keyfile is under `/etc/keys`,
 //! the tokens under `/var/secrets` — and the repository is created private
-//! anyway, because `/forgejo/` is published through the master-proxy tunnel
+//! anyway, because `/git/` is published through the master-proxy tunnel
 //! whenever the owner turns that on.
 //!
 //! This module is the pure half: the sync decision ([`plan_sync`]), the
-//! Forgejo API request shapes ([`ForgejoOp`]) and how their answers read
+//! LosOS Git API request shapes ([`GitOp`]) and how their answers read
 //! ([`classify`]), and the status document the History pane draws. The
 //! effects are [`crate::losos::Losos`] methods, so [`crate::losos::
-//! cmd_config_sync`] is tested against the fake with no git and no Forgejo.
+//! cmd_config_sync`] is tested against the fake with no git and no server.
 //!
-//! One account does the talking: `losos`, a site administrator the Forgejo
-//! bootstrap (`nix/forgejo-bootstrap.nix`) creates with a random password
-//! and an access token at `$LOSOS_FORGEJO_TOKEN_FILE`. lososd never reads the
-//! owner's Forgejo password back; it *sets* it, from the one password the
-//! owner proves at claim, set-password and sign-in time, so LosOS Git opens
-//! with the same password as everything else.
+//! lososd talks to LosOS Git as its administrator, with the token `losos-git`
+//! writes on its first start (`/var/lib/losos-git/admin-token`), over its
+//! loopback listener: the API calls below, and git's own fetch and push.
+//! LosOS Git holds no passwords; people sign in to it through LosOS Login,
+//! and computers with the tokens [`GitOp::CreateToken`] mints.
 
-use crate::setup::Secret;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// Where the flake the box rebuilds from lives.
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/nixos";
-/// Forgejo's loopback listener, the same in both modes (`modules/workloads.nix`
-/// and `services.forgejo` in `modules/services.nix`).
-pub const DEFAULT_FORGEJO_URL: &str = "http://127.0.0.1:3000";
-/// The bot account's access token, written by the Forgejo bootstrap.
-pub const DEFAULT_TOKEN_FILE: &str = "/var/lib/forgejo/.losos-token";
-/// The site-administrator account the bootstrap creates for lososd.
+/// LosOS Git's loopback listener for callers with a token (`modules/git.nix`).
+pub const DEFAULT_GIT_URL: &str = "http://127.0.0.1:3000";
+/// The admin token, written by `losos-git` on its first start.
+pub const DEFAULT_TOKEN_FILE: &str = "/var/lib/losos-git/admin-token";
+/// The user name lososd's pushes carry beside the admin token. Any name
+/// would do; this one reads well in a log.
 pub const BOT_USER: &str = "losos";
 /// The commit identity lososd signs its commits with.
 pub const COMMITTER_NAME: &str = "losos";
 pub const COMMITTER_EMAIL: &str = "lososd@localhost";
-/// What a fresh repository on Forgejo is described as.
+/// What a fresh repository on LosOS Git is described as.
 pub const REPO_DESCRIPTION: &str =
     "This box's NixOS configuration. LosOS commits every change here; push to this branch and the box picks it up.";
 
@@ -55,12 +54,12 @@ pub struct RepoConfig {
     /// `$LOSOS_CONFIG_REPO`, as `owner/name`.
     pub owner: String,
     pub name: String,
-    /// `$LOSOS_FORGEJO_URL`.
-    pub forgejo_url: String,
-    /// `$LOSOS_FORGEJO_TOKEN_FILE`.
+    /// `$LOSOS_GIT_URL`.
+    pub git_url: String,
+    /// `$LOSOS_GIT_TOKEN_FILE`.
     pub token_file: String,
-    /// `$LOSOS_CONFIG_REMOTE_URL`: a remote to use as it is, with no Forgejo
-    /// in front of it. The VM test points this at a bare repository on disk;
+    /// `$LOSOS_CONFIG_REMOTE_URL`: a remote to use as it is, with no LosOS
+    /// Git in front of it. The VM test points this at a bare repository on disk;
     /// an owner who wants their configuration mirrored elsewhere could too.
     pub remote_url: Option<String>,
 }
@@ -68,7 +67,7 @@ pub struct RepoConfig {
 impl RepoConfig {
     /// `None` when neither `$LOSOS_CONFIG_REPO` nor `$LOSOS_CONFIG_REMOTE_URL`
     /// is set: the feature is off (`losos.configRepo.enable = false`, or
-    /// Forgejo is off), and the daemon still commits locally.
+    /// LosOS Git is off), and the daemon still commits locally.
     pub fn from_env() -> Option<RepoConfig> {
         let remote_url = std::env::var("LOSOS_CONFIG_REMOTE_URL")
             .ok()
@@ -82,16 +81,16 @@ impl RepoConfig {
         Some(RepoConfig {
             owner,
             name,
-            forgejo_url: std::env::var("LOSOS_FORGEJO_URL")
-                .unwrap_or_else(|_| DEFAULT_FORGEJO_URL.to_string()),
-            token_file: std::env::var("LOSOS_FORGEJO_TOKEN_FILE")
+            git_url: std::env::var("LOSOS_GIT_URL").unwrap_or_else(|_| DEFAULT_GIT_URL.to_string()),
+            token_file: std::env::var("LOSOS_GIT_TOKEN_FILE")
                 .unwrap_or_else(|_| DEFAULT_TOKEN_FILE.to_string()),
             remote_url,
         })
     }
 
-    /// Whether Forgejo is in the picture at all, or the remote is used as is.
-    pub fn via_forgejo(&self) -> bool {
+    /// Whether LosOS Git is in the picture at all, or the remote is used as
+    /// is.
+    pub fn via_server(&self) -> bool {
         self.remote_url.is_none()
     }
 
@@ -100,163 +99,137 @@ impl RepoConfig {
     pub fn remote(&self) -> String {
         self.remote_url
             .clone()
-            .unwrap_or_else(|| format!("{}/{}/{}.git", self.forgejo_url, self.owner, self.name))
+            .unwrap_or_else(|| format!("{}/{}/{}.git", self.git_url, self.owner, self.name))
     }
 
     /// The repository's page on the box, relative to the front vhost.
     pub fn page_url(&self) -> String {
-        format!("/forgejo/{}/{}", self.owner, self.name)
+        format!("/git/{}/{}", self.owner, self.name)
     }
 }
 
-// ── Forgejo's API ───────────────────────────────────────────────────────────
+// ── LosOS Git's API ─────────────────────────────────────────────────────────
 
-/// One request to Forgejo's REST API, made as the bot administrator.
+/// One request to LosOS Git's API, made with the admin token
+/// (`backend/src/forge/api.rs`, the `/api/v1/admin/` routes).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ForgejoOp {
-    GetUser {
+pub enum GitOp {
+    /// Make sure an account exists, with this name and address when they
+    /// are given (an empty one leaves what is there), and an administrator
+    /// or not when `admin` says.
+    EnsureUser {
         login: String,
+        full_name: String,
+        email: String,
+        admin: Option<bool>,
     },
-    /// Create the owner's account. The password is the `Secret` handed to
-    /// [`ForgejoOp::body`], never a field, so it is in no `Debug` output.
-    CreateUser {
-        login: String,
-    },
-    /// Make an account a site administrator (the owner is; `losos` is too).
-    MakeAdmin {
-        login: String,
-    },
-    /// Replace an account's password with the `Secret` given to `body`.
-    SetPassword {
-        login: String,
-    },
-    GetRepo {
-        owner: String,
-        name: String,
-    },
-    /// Create a private repository under `owner`, as the administrator.
-    CreateRepo {
+    /// Make sure a private repository exists under `owner`.
+    EnsureRepo {
         owner: String,
         name: String,
         branch: String,
     },
-    /// The repositories an account owns, private ones included (the bot is
-    /// a site administrator). The sidebar's pin picker reads it.
-    ListRepos {
+    /// The repositories an account owns, private ones included. The
+    /// sidebar's pin picker reads it.
+    ListRepos { login: String },
+    /// The repositories `login` may read whose owner, name or description
+    /// holds `query`, newest first, at most `limit`. Asked as that person
+    /// (`X-Losos-As`), so LosOS Git applies their permissions, not the
+    /// administrator's.
+    SearchRepos {
         login: String,
+        query: String,
+        limit: u32,
     },
-    /// An account's full name and address, as LosOS Login has them
-    /// (`crate::app_names`). An empty address is left as it is.
-    SetProfile {
-        login: String,
-        full_name: String,
-        email: String,
-    },
+    /// A token for one of `login`'s computers, replacing one of the same
+    /// name: clone and push, and read who it belongs to.
+    CreateToken { login: String, name: String },
 }
 
-impl ForgejoOp {
-    /// Method and path under the Forgejo origin.
+impl GitOp {
+    /// Method and path under LosOS Git's origin.
     pub fn route(&self) -> (&'static str, String) {
         match self {
-            ForgejoOp::GetUser { login } => ("GET", format!("/api/v1/users/{login}")),
-            ForgejoOp::CreateUser { .. } => ("POST", "/api/v1/admin/users".to_string()),
-            ForgejoOp::MakeAdmin { login }
-            | ForgejoOp::SetPassword { login }
-            | ForgejoOp::SetProfile { login, .. } => {
-                ("PATCH", format!("/api/v1/admin/users/{login}"))
+            GitOp::EnsureUser { login, .. } => ("PUT", format!("/api/v1/admin/users/{login}")),
+            GitOp::EnsureRepo { owner, name, .. } => {
+                ("PUT", format!("/api/v1/admin/users/{owner}/repos/{name}"))
             }
-            ForgejoOp::GetRepo { owner, name } => ("GET", format!("/api/v1/repos/{owner}/{name}")),
-            ForgejoOp::CreateRepo { owner, .. } => {
-                ("POST", format!("/api/v1/admin/users/{owner}/repos"))
-            }
-            ForgejoOp::ListRepos { login } => (
+            GitOp::ListRepos { login } => ("GET", format!("/api/v1/users/{login}/repos")),
+            GitOp::SearchRepos { query, limit, .. } => (
                 "GET",
                 format!(
-                    "/api/v1/users/{login}/repos?limit={}",
-                    crate::pins::MAX_REPOS
+                    "/api/v1/repos/search?q={}&limit={limit}",
+                    crate::catalogue::percent_encode(query)
                 ),
             ),
+            GitOp::CreateToken { login, .. } => {
+                ("POST", format!("/api/v1/admin/users/{login}/tokens"))
+            }
         }
     }
 
-    /// The JSON body, or `None` for a read. `secret` is required by the two
-    /// operations that carry a password and ignored by the rest.
-    pub fn body(&self, secret: Option<&Secret>) -> anyhow::Result<Option<String>> {
+    /// The person LosOS Git should answer as, when not the administrator.
+    /// `None` also for a login that could not travel in a header.
+    pub fn acting_as(&self) -> Option<&str> {
+        match self {
+            GitOp::SearchRepos { login, .. }
+                if !login.is_empty()
+                    && login
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b)) =>
+            {
+                Some(login)
+            }
+            _ => None,
+        }
+    }
+
+    /// The JSON body, or `None` for a read.
+    pub fn body(&self) -> Option<String> {
         let doc = match self {
-            ForgejoOp::GetUser { .. } | ForgejoOp::GetRepo { .. } | ForgejoOp::ListRepos { .. } => {
-                return Ok(None)
-            }
-            ForgejoOp::CreateUser { login } => {
-                let secret =
-                    secret.ok_or_else(|| anyhow::anyhow!("creating a user needs a password"))?;
-                json!({
-                    "username": login,
-                    "email": format!("{login}@localhost"),
-                    "password": secret.expose(),
-                    "must_change_password": false,
-                    "send_notify": false,
-                    "visibility": "private",
-                })
-            }
-            // Forgejo's EditUserOption insists on login_name and source_id
-            // even when neither changes; 0 is the local authentication source.
-            ForgejoOp::MakeAdmin { login } => json!({
-                "login_name": login,
-                "source_id": 0,
-                "admin": true,
-            }),
-            ForgejoOp::SetPassword { login } => {
-                let secret =
-                    secret.ok_or_else(|| anyhow::anyhow!("setting a password needs one"))?;
-                json!({
-                    "login_name": login,
-                    "source_id": 0,
-                    "password": secret.expose(),
-                    "must_change_password": false,
-                })
-            }
-            ForgejoOp::SetProfile {
-                login,
+            GitOp::ListRepos { .. } | GitOp::SearchRepos { .. } => return None,
+            GitOp::EnsureUser {
                 full_name,
                 email,
+                admin,
+                ..
             } => {
-                let mut doc = json!({
-                    "login_name": login,
-                    "source_id": 0,
-                    "full_name": full_name,
-                });
-                if !email.is_empty() {
-                    doc["email"] = json!(email);
+                let mut doc = json!({ "full_name": full_name, "email": email });
+                if let Some(a) = admin {
+                    doc["admin"] = json!(a);
                 }
                 doc
             }
-            ForgejoOp::CreateRepo { name, branch, .. } => json!({
-                "name": name,
+            GitOp::EnsureRepo { branch, .. } => json!({
                 "private": true,
                 "default_branch": branch,
                 "description": REPO_DESCRIPTION,
-                "auto_init": false,
+            }),
+            GitOp::CreateToken { name, .. } => json!({
+                "name": name,
+                "scopes": crate::devices::GIT_SCOPES,
+                "replace": true,
             }),
         };
-        Ok(Some(doc.to_string()))
+        Some(doc.to_string())
     }
 }
 
-/// How Forgejo answered.
+/// How LosOS Git answered.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Answer {
     /// 2xx, with the body as JSON (or `Null` when it is not).
     Ok(Value),
     /// 404: no such user or repository.
     Missing,
-    /// 409, or the 422 Forgejo gives a user that already exists: the thing
-    /// is there, which for "ensure" is as good as having made it.
+    /// 409: the thing is there, which for "ensure" is as good as having
+    /// made it.
     Exists,
-    /// Anything else, with Forgejo's own sentence when it gave one.
+    /// Anything else, with LosOS Git's own sentence when it gave one.
     Refused { status: u16, message: String },
 }
 
-/// Read one Forgejo reply.
+/// Read one LosOS Git reply.
 pub fn classify(status: u16, body: &str) -> Answer {
     let doc: Value = serde_json::from_str(body).unwrap_or(Value::Null);
     let message = doc
@@ -268,7 +241,6 @@ pub fn classify(status: u16, body: &str) -> Answer {
         200..=299 => Answer::Ok(doc),
         404 => Answer::Missing,
         409 => Answer::Exists,
-        422 if message.contains("already exists") => Answer::Exists,
         _ => Answer::Refused {
             status,
             message: if message.is_empty() {
@@ -466,8 +438,8 @@ pub fn now() -> String {
 
 // ── The reconciler ──────────────────────────────────────────────────────────
 
-/// How long after start the first sync runs. Forgejo takes a while on a
-/// fresh box, and a daemon restarted by a rebuild has no reason to hurry.
+/// How long after start the first sync runs. LosOS Git may still be
+/// starting, and a daemon restarted by a rebuild has no reason to hurry.
 pub const FIRST_SYNC_AFTER: std::time::Duration = std::time::Duration::from_secs(20);
 /// The gap between syncs. A push from a clone is picked up within this.
 pub const SYNC_EVERY: std::time::Duration = std::time::Duration::from_secs(30);
@@ -568,45 +540,77 @@ mod tests {
     }
 
     #[test]
-    fn requests_carry_the_password_in_the_body_only() {
-        let secret = Secret::new("correct horse battery staple");
-        let op = ForgejoOp::CreateUser {
+    fn requests_are_the_admin_routes() {
+        let op = GitOp::EnsureUser {
             login: "notshared".into(),
-        };
-        assert_eq!(op.route(), ("POST", "/api/v1/admin/users".to_string()));
-        let body = op.body(Some(&secret)).unwrap().unwrap();
-        assert!(body.contains("\"password\":\"correct horse battery staple\""));
-        assert!(!format!("{op:?}").contains("horse"));
-        assert!(op.body(None).is_err());
-
-        let op = ForgejoOp::SetPassword {
-            login: "notshared".into(),
+            full_name: "Jana Novak".into(),
+            email: String::new(),
+            admin: Some(true),
         };
         assert_eq!(
             op.route(),
-            ("PATCH", "/api/v1/admin/users/notshared".to_string())
+            ("PUT", "/api/v1/admin/users/notshared".to_string())
         );
-        let body: Value = serde_json::from_str(&op.body(Some(&secret)).unwrap().unwrap()).unwrap();
-        assert_eq!(body["login_name"], "notshared");
-        assert_eq!(body["source_id"], 0);
-        assert_eq!(body["must_change_password"], false);
+        let body: Value = serde_json::from_str(&op.body().unwrap()).unwrap();
+        assert_eq!(body["admin"], true);
+        assert_eq!(body["full_name"], "Jana Novak");
+        let op = GitOp::EnsureUser {
+            login: "jana".into(),
+            full_name: String::new(),
+            email: String::new(),
+            admin: None,
+        };
+        let body: Value = serde_json::from_str(&op.body().unwrap()).unwrap();
+        assert!(
+            body.get("admin").is_none(),
+            "an unsaid admin flag is left as it is"
+        );
 
-        let op = ForgejoOp::CreateRepo {
+        let op = GitOp::EnsureRepo {
             owner: "notshared".into(),
             name: "losos-config".into(),
             branch: "main".into(),
         };
         assert_eq!(
             op.route(),
-            ("POST", "/api/v1/admin/users/notshared/repos".to_string())
+            (
+                "PUT",
+                "/api/v1/admin/users/notshared/repos/losos-config".to_string()
+            )
         );
-        let body: Value = serde_json::from_str(&op.body(None).unwrap().unwrap()).unwrap();
-        assert_eq!(body["private"], true, "the tunnel publishes /forgejo/");
+        let body: Value = serde_json::from_str(&op.body().unwrap()).unwrap();
+        assert_eq!(body["private"], true, "the tunnel publishes /git/");
         assert_eq!(body["default_branch"], "main");
-        assert!(ForgejoOp::GetUser { login: "x".into() }
-            .body(None)
-            .unwrap()
-            .is_none());
+
+        let op = GitOp::CreateToken {
+            login: "notshared".into(),
+            name: "LosOS on laptop".into(),
+        };
+        let body: Value = serde_json::from_str(&op.body().unwrap()).unwrap();
+        assert_eq!(body["replace"], true);
+        assert_eq!(body["scopes"], json!(crate::devices::GIT_SCOPES));
+        assert!(GitOp::ListRepos { login: "x".into() }.body().is_none());
+        let search = GitOp::SearchRepos {
+            login: "eva".into(),
+            query: "notes & todo".into(),
+            limit: 8,
+        };
+        assert_eq!(
+            search.route(),
+            (
+                "GET",
+                "/api/v1/repos/search?q=notes%20%26%20todo&limit=8".to_string()
+            )
+        );
+        assert!(search.body().is_none());
+        assert_eq!(search.acting_as(), Some("eva"));
+        let smuggled = GitOp::SearchRepos {
+            login: "eva\r\nX-Evil: 1".into(),
+            query: String::new(),
+            limit: 8,
+        };
+        assert_eq!(smuggled.acting_as(), None, "a header break never travels");
+        assert_eq!(GitOp::ListRepos { login: "x".into() }.acting_as(), None);
     }
 
     #[test]
@@ -621,13 +625,6 @@ mod tests {
             classify(
                 409,
                 r#"{"message":"The repository with the same name already exists."}"#
-            ),
-            Answer::Exists
-        );
-        assert_eq!(
-            classify(
-                422,
-                r#"{"message":"user already exists [name: notshared]"}"#
             ),
             Answer::Exists
         );
@@ -652,21 +649,21 @@ mod tests {
         let c = RepoConfig {
             owner: "notshared".into(),
             name: "losos-config".into(),
-            forgejo_url: "http://127.0.0.1:3000".into(),
-            token_file: "/var/lib/forgejo/.losos-token".into(),
+            git_url: "http://127.0.0.1:3000".into(),
+            token_file: "/var/lib/losos-git/admin-token".into(),
             remote_url: None,
         };
         assert_eq!(
             c.remote(),
             "http://127.0.0.1:3000/notshared/losos-config.git"
         );
-        assert_eq!(c.page_url(), "/forgejo/notshared/losos-config");
-        assert!(c.via_forgejo());
+        assert_eq!(c.page_url(), "/git/notshared/losos-config");
+        assert!(c.via_server());
         let seam = RepoConfig {
             remote_url: Some("/tmp/bare.git".into()),
             ..c
         };
         assert_eq!(seam.remote(), "/tmp/bare.git");
-        assert!(!seam.via_forgejo());
+        assert!(!seam.via_server());
     }
 }

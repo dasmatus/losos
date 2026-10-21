@@ -5,9 +5,10 @@ sidebar_position: 5
 
 # Režimy aplikácií
 
-LosOS cloud aj LosOS Git bežia každý v jednom z dvoch režimov. V oboch
-prípadoch vidíte tú istú aplikáciu na tej istej adrese a panel Aplikácie
-ukazuje, v ktorom režime je každá z nich.
+LosOS cloud beží v jednom z dvoch režimov. V oboch prípadoch vidíte tú
+istú aplikáciu na tej istej adrese a panel Aplikácie ukazuje, v ktorom
+režime je. LosOS Git režimy nemá: je to služba samotného zariadenia, tak
+ako admin stránky.
 
 | Režim           | Čo kde beží                                                                                               | Predvolený |
 | --------------- | --------------------------------------------------------------------------------------------------------- | ---------- |
@@ -38,16 +39,16 @@ mesh nikdy neumiestni. Člen klastra nedokáže naštartovať, kým je jeho serv
 nedostupný, a zariadenie sa každú noc o 00:07 reštartuje. Výpadok edge cez
 polnoc by tak odpojil vaše vlastné súbory.
 
-![Vnútri zariadenia: vlastný klaster zariadenia prevádzkuje LosOS cloud a LosOS Git, agent mesh patrí do iného klastra, ktorého serverom je edge.](@site/docs/img/box-architecture-sk.svg)
+![Vnútri zariadenia: vlastný klaster zariadenia prevádzkuje LosOS cloud, agent mesh patrí do iného klastra, ktorého serverom je edge.](@site/docs/img/box-architecture-sk.svg)
 
 ## Kde sú aplikácie \{#where-the-apps-are}
 
-![Panel Aplikácie: LosOS cloud a LosOS Git, každá so svojím režimom, jedna nainštalovaná aplikácia a pod nimi Nájsť ďalšie.](@site/docs/img/apps-sk.png)
+![Panel Aplikácie: LosOS cloud so svojím režimom, LosOS Git, jedna nainštalovaná aplikácia a pod nimi Nájsť ďalšie.](@site/docs/img/apps-sk.png)
 
 | Aplikácia    | Adresa              | Poznámka                                                                                  |
 | ------------ | ------------------- | ----------------------------------------------------------------------------------------- |
 | LosOS cloud  | `/nextcloud`        | Dôveruje názvu zariadenia a adrese, na ktorú prišla každá požiadavka, nikdy zástupnému znaku. |
-| LosOS Git    | `/forgejo/`         | Adresy na klonovanie používajú názov zariadenia. Ak ho nechcete, vypnite ho na paneli Aplikácie. |
+| LosOS Git    | `/git/`             | Ak ho nechcete, vypnite ho na paneli Aplikácie.                                           |
 | Admin stránky | `/`                | Iba LAN.                                                                                  |
 | Príručka     | `/handbook/`        | Iba LAN.                                                                                  |
 

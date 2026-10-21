@@ -49,10 +49,3 @@ Túto stránku uvidíte, keď:
 - ste sa IP adresou dostali k zariadeniu spred 6. októbra 2026. Dôveru pre
   každú požiadavku zvlášť pridal pull request #65. Do aktualizácie
   používajte `<name>.local`.
-
-## Odkazy v LosOS Git ukazujú nesprávne meno \{#losos-git-links-show-the-wrong-name}
-
-LosOS Git vypisuje URL na klonovanie s menom `.local` zariadenia, aj keď ste
-sa k nemu dostali cez adresu. Stránky fungujú v oboch prípadoch. Pri
-`git clone` dajte namiesto mena adresu, alebo pridajte meno do súboru hosts,
-ako opisuje stránka [Meno sa nedá preložiť](name-does-not-resolve).

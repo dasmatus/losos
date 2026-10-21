@@ -1,16 +1,17 @@
 /* LosOS design tokens — the one palette, shared by three front ends.
  *
- * The admin SPA imports this file from index.css, and the Nextcloud and
- * Forgejo themes in admin-ui/themes/ ship it verbatim beside their own
- * stylesheets (admin-ui/themes/default.nix copies this exact file into both).
- * So a colour changed here changes on the homepage, in Nextcloud and in
- * Forgejo together, which is the whole point: an owner who goes from the
- * box's homepage to their files to their git host should not be able to tell
- * where one app ends and the next begins.
+ * The admin SPA imports this file from index.css (LosOS Git's pages are the
+ * SPA's own), and the Nextcloud theme and LosOS Login in admin-ui/themes/
+ * ship it verbatim beside their own stylesheets (admin-ui/themes/default.nix
+ * copies this exact file). So a colour changed here changes on the homepage,
+ * in LosOS Git, in Nextcloud and on the sign-in page together, which is the
+ * whole point: an owner who goes from the box's homepage to their files to
+ * their repositories should not be able to tell where one app ends and the
+ * next begins.
  *
  * That shapes what may live here. Plain CSS custom properties and nothing
  * else: no Tailwind directive (`@theme`, `@utility`), because Nextcloud and
- * Forgejo load this file raw and do not run Tailwind; no rule that styles an
+ * LosOS Login load this file raw and do not run Tailwind; no rule that styles an
  * element, because this file is loaded into three pages whose markup it does
  * not own. The SPA's Tailwind mapping, base styles and motion stay in
  * index.css.
@@ -29,10 +30,7 @@
  * inert in the SPA, which never sets them:
  *
  *   admin SPA   <html data-theme="light|dark">     (lib/theme.ts)
- *   Forgejo     <html data-theme="losos-light|losos-dark">
- *               (the user's theme choice; "losos-auto" matches neither and
- *               follows the OS like the SPA's Auto)
- *   Nextcloud   <body data-theme-light> / <body data-theme-dark>
+  *   Nextcloud   <body data-theme-light> / <body data-theme-dark>
  *               (the user's Appearance setting; on <body>, not <html>, so
  *               these redeclare the palette on body and everything inside
  *               inherits it from there rather than from :root)

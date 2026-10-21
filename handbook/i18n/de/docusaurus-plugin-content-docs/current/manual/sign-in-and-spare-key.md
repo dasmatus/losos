@@ -83,11 +83,11 @@ Der Netzwerkordner von LosOS cloud nimmt im Netz der Box deinen Namen und
 dein Passwort von LosOS Login, über das Internet ein App-Passwort; siehe
 [Dateien auf deinem Computer](files-on-your-computer).
 
-**Abmelden** in LosOS cloud meldet dich auch bei LosOS Login ab. **Abmelden**
-in LosOS Git tut das nicht: Solange du bei LosOS Login angemeldet bist,
-meldet LosOS Git dich gleich wieder an. Melde dich bei LosOS Login ab (in den
-Admin-Seiten oder in LosOS cloud), um beide zu verlassen. Ein schon offener
-App-Tab bleibt angemeldet, bis du dich auch in dieser App abmeldest.
+**Abmelden** in LosOS cloud meldet dich auch bei LosOS Login ab. LosOS Git
+führt keine eigene Anmeldung: Es fragt auf jeder Seite LosOS Login, daher
+meldet dich die Abmeldung bei LosOS Login (in den Admin-Seiten oder in
+LosOS cloud) auch dort ab. Ein schon offener Tab von LosOS cloud bleibt
+angemeldet, bis du dich auch in LosOS cloud abmeldest.
 
 ## Wer was sieht \{#who-sees-what}
 

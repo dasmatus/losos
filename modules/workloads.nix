@@ -1,5 +1,5 @@
-# The local cluster's own workloads: Nextcloud and Forgejo, as Kubernetes
-# *static pods*.
+# The local cluster's own workload: Nextcloud, as a Kubernetes *static pod*.
+# (LosOS Git runs on the host, modules/git.nix.)
 #
 # `losos.<svc>.mode == "container"` used to mean a systemd-nspawn container on a
 # private veth; it now means a pod in this box's own k3s server.
@@ -32,8 +32,7 @@
 #
 # ── Why hostNetwork, and what it costs ───────────────────────────────────────
 # No CNI means no pod network, so every container shares the host's netns:
-#   * every listener binds 127.0.0.1 explicitly (listen.conf below, and
-#     Forgejo's HTTP_ADDR). Nginx stays the only thing holding a public port.
+#   * every listener binds 127.0.0.1 explicitly (listen.conf below). Nginx stays the only thing holding a public port.
 #   * dnsPolicy is Default — the host's /etc/resolv.conf.
 #     ClusterFirstWithHostNet would be wrong twice over: coredns is disabled and
 #     there is no kube-proxy to reach a ClusterIP with.
@@ -63,9 +62,7 @@
 
 let
   nextcloudWorkload = config.losos.nextcloud.mode == "container";
-  # losos.forgejo.enable is consulted in *both* modes; see modules/containers.nix.
-  forgejoWorkload = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
-  anyWorkload = nextcloudWorkload || forgejoWorkload;
+  anyWorkload = nextcloudWorkload;
 
   hostName = config.losos.hostName;
   proxied = config.losos.proxy.enable;
@@ -80,12 +77,10 @@ let
   gpu = config.losos.gpu.enable;
 
   nextcloudImage = config.losos.workloads.nextcloudImage;
-  forgejoImage = config.losos.workloads.forgejoImage;
 
-  # Durable state. Both are covered by impermanence's whole-/var bind mount, so
-  # nothing has to be added to modules/impermanence.nix for them.
+  # Durable state, covered by impermanence's whole-/var bind mount, so
+  # nothing has to be added to modules/impermanence.nix for it.
   nextcloudState = "/var/lib/nextcloud";
-  forgejoState = "/var/lib/forgejo";
 
   # Host sockets the pods reach their databases through. Postgres and Redis run
   # natively rather than in the pods: under hostNetwork an in-pod Postgres binds
@@ -102,9 +97,7 @@ let
   # nextcloud-stack.nix, which nix/images.nix reads too: the image bakes
   # /run/nextcloud owned by that uid, so the two must not drift.
   nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
-  signIn = import ./app-sign-in.nix { inherit lib; };
   nextcloudUid = nc.uid;
-  forgejoUid = 1003;
 
   # Redis' socket is mode 0660, group redis-nextcloud, and a container does not
   # inherit the *host* user's supplementary groups: only what the pod spec asks
@@ -119,7 +112,6 @@ let
   staticPodDir = "/var/lib/losos/k3s-static-pods";
 
   yaml = pkgs.formats.yaml { };
-  ini = pkgs.formats.ini { };
 
   # dockerTools images carry their own name/tag; the pods reference them by that
   # string with imagePullPolicy: Never, and losos-workload-images.service
@@ -302,89 +294,6 @@ let
     '';
   };
 
-  # ── Forgejo's rendered config ────────────────────────────────────────────
-  forgejoConf = confDir "losos-forgejo-conf" {
-    # The owner's box-wide settings (losos.forgejo.site.*,
-    # lososInternal.forgejoSite) under LosOS's own, as natively.
-    "losos.ini" = ini.generate "losos.ini" (
-      lib.recursiveUpdate
-        (lib.recursiveUpdate config.lososInternal.forgejoSite (
-          # Sign-in with LosOS Login (modules/app-sign-in.nix): nginx names
-          # the person, Forgejo signs them in. Under LosOS's own sections so
-          # nothing below can turn DISABLE_REGISTRATION off with it.
-          lib.optionalAttrs config.lososInternal.appSignIn.forgejo signIn.forgejo
-        ))
-        {
-          server = {
-            # Same reasoning as Nextcloud's Listen line: under hostNetwork an
-            # unqualified bind is a public one. The port is a literal on both ends
-            # (here and in modules/containers.nix) on purpose — nothing off-box ever
-            # sees it, so an option would be a knob with no reason to be turned.
-            HTTP_ADDR = "127.0.0.1";
-            HTTP_PORT = 3000;
-            # The front vhost strips the /forgejo prefix, so Forgejo has to be told
-            # it is served under a subpath or every link it generates is wrong.
-            # With losos.tls on (the default) the wizard moves the owner to
-            # https, so that is the address: an http ROOT_URL put Forgejo's
-            # "configured to be served on a different URL" banner on every page
-            # the owner opened, sign-in included. :80 still answers.
-            ROOT_URL =
-              if proxied then
-                "https://${proxyHostName}/forgejo/"
-              else if config.losos.tls.enable then
-                "https://${hostName}.local/forgejo/"
-              else
-                "http://${hostName}.local/forgejo/";
-          };
-          session = {
-            # Forgejo marks its session cookie Secure whenever ROOT_URL is
-            # https, and a browser drops a Secure cookie set over http. :80
-            # keeps serving for an owner who has not trusted the box's
-            # certificate yet, and sign-in there has to keep working.
-            COOKIE_SECURE = false;
-          };
-          service = {
-            # /forgejo/ is the one admin-free route published through the
-            # master-proxy tunnel, and Forgejo's default is open sign-up. Without
-            # this anyone on the internet could create an account and push to this
-            # box.
-            DISABLE_REGISTRATION = true;
-          };
-          security = {
-            # Close the first-run installer page. It is normally locked by
-            # completing the wizard, but a declarative deployment never runs it —
-            # leaving /forgejo/install reachable, and that page rewrites the
-            # database and admin credentials.
-            INSTALL_LOCK = true;
-          };
-          actions = {
-            # Actions is remote code execution by design and nothing on the box
-            # runs jobs: the on-box runner that existed for the official-edge
-            # key ceremony is gone (the ceremony runs on the operator's machine,
-            # `losos-registrar provision`, behind a GitHub sign-in). Enabled with
-            # nothing to run jobs, it would only expose the runner-registration
-            # API on an internet-reachable route. Same setting as native mode
-            # (modules/services.nix).
-            ENABLED = false;
-          };
-          federation = {
-            # ActivityPub: nodeinfo, one actor per account and repository,
-            # federated stars and follows (modules/options.nix says what the
-            # shipped Forgejo does with it). The front vhost adds the two
-            # /.well-known routes other servers discover the box by
-            # (modules/containers.nix); Forgejo serves everything else under
-            # ROOT_URL. Same two lines as native mode (modules/services.nix).
-            # On only while the box shares its disk (lososInternal.federation).
-            ENABLED = config.lososInternal.federation.forgejo;
-            # nodeinfo's `usage` block: account totals and activity counts of a
-            # household's box, published to anyone who asks. Off. Forgejo's own
-            # default is on.
-            SHARE_USER_STATISTICS = false;
-          };
-        }
-    );
-  };
-
   # ── The pod shape both workloads share ───────────────────────────────────
   # Kept in one place so the load-bearing fields (hostNetwork, dnsPolicy, the
   # dropped capabilities) cannot drift between the two manifests.
@@ -524,31 +433,6 @@ let
     )
   );
 
-  forgejoPod = staticPod (
-    {
-      name = "forgejo";
-      image = imageRef forgejoImage;
-      uid = forgejoUid;
-    }
-    // binds (
-      map bind [
-        {
-          name = "state";
-          path = forgejoState;
-        }
-        {
-          name = "conf";
-          path = "${forgejoConf}";
-          at = "/etc/losos/forgejo";
-          readOnly = true;
-        }
-        {
-          name = "pgsock";
-          path = pgSocketDir;
-        }
-      ]
-    )
-  );
 in
 {
   assertions = [
@@ -559,15 +443,6 @@ in
         which modules/defaults.nix wires to this flake's own image derivation
         (nix/images.nix). Either restore that wiring or set
         losos.nextcloud.mode = "native".
-      '';
-    }
-    {
-      assertion = forgejoWorkload -> forgejoImage != null;
-      message = ''
-        losos.forgejo.mode = "container" needs losos.workloads.forgejoImage,
-        which modules/defaults.nix wires to this flake's own image derivation
-        (nix/images.nix). Either restore that wiring, set
-        losos.forgejo.mode = "native", or set losos.forgejo.enable = false.
       '';
     }
   ];
@@ -621,15 +496,9 @@ in
       else
         [ "r ${staticPodDir}/nextcloud.yaml" ]
     )
-    ++ (
-      if forgejoWorkload then
-        [
-          "d ${forgejoState} 0750 ${toString forgejoUid} ${toString forgejoUid} -"
-          "L+ ${staticPodDir}/forgejo.yaml - - - - ${forgejoPod}"
-        ]
-      else
-        [ "r ${staticPodDir}/forgejo.yaml" ]
-    );
+    # The Forgejo pod an older generation ran: gone, so it does not hold
+    # port 3000, which LosOS Git listens on now (modules/git.nix).
+    ++ [ "r ${staticPodDir}/forgejo.yaml" ];
 
   systemd.services = lib.mkMerge [
     # ── What the kubelet needs before it starts these pods ─────────────────
@@ -653,8 +522,7 @@ in
           "redis-nextcloud.service"
         ];
         # Requires, not merely After: the adminpass file is mounted with
-        # hostPath type: File. Scoped to the Nextcloud path so a Forgejo-only
-        # box does not hold its whole cluster hostage to a Nextcloud secret.
+        # hostPath type: File.
         requires = lib.optional nextcloudWorkload "losos-nextcloud-adminpass.service";
       };
     })

@@ -24,7 +24,6 @@ const { check, finish } = runner();
 const SETTINGS = {
   sharingMyStorage: false,
   nextcloudMode: 'container',
-  forgejoMode: 'container',
   hostName: 'mattbox',
   https: false,
   gpuEnable: false,
@@ -329,7 +328,7 @@ async function open({
   // a missing one is Nextcloud's 404.
   if (cloud !== null) {
     await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true }));
-    await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
+    await page.route('**/git/api/v1/version', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
     await page.route('**/nextcloud/index.php/apps/mail/', (route) =>
       cloud.mail
         ? route.fulfill({ status: 303, headers: { location: '/nextcloud/index.php/login' } })
@@ -1140,7 +1139,7 @@ await check('the homepage has a tile for every app in LosOS cloud\'s menu, and M
     const want = [
       ...expected,
       ...(mail ? [['Mail', '/nextcloud/index.php/apps/mail/']] : []),
-      ['Code', '/forgejo/'],
+      ['Code', '/git/'],
       ['Settings', '/settings'],
     ];
     assert.deepEqual(await tiles(page), want);

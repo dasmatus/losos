@@ -18,7 +18,6 @@ const { check, finish } = runner();
 const SETTINGS = {
   sharingMyStorage: false,
   nextcloudMode: 'container',
-  forgejoMode: 'container',
   hostName: 'mattbox',
   https: false,
   gpuEnable: false,
@@ -143,7 +142,7 @@ async function open({
   );
   // The apps the Overview probes, answering as on a box that is set up.
   await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true }));
-  await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
+  await page.route('**/git/api/v1/version', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
   await page.route('**/nextcloud/index.php/apps/mail/', (route) =>
     route.fulfill({ status: 404, contentType: 'text/html', body: '' }),
   );
@@ -164,7 +163,7 @@ await check('the pins the box keeps sit under the sections, each opening in its 
   const href = (name) => group.getByRole('link', { name, exact: true }).getAttribute('href');
   assert.equal(await href('Calendar'), '/nextcloud/index.php/apps/calendar/');
   assert.equal(await href('plan.pdf'), '/nextcloud/index.php/f/42');
-  assert.equal(await href('site'), '/forgejo/notshared/site');
+  assert.equal(await href('site'), '/git/notshared/site');
   // An installed app opens on the port the box gave it, in a tab of its own.
   assert.equal(await href('jellyfin'), 'http://127.0.0.1:30001/');
   assert.equal(await group.getByRole('link', { name: 'jellyfin' }).getAttribute('target'), '_blank');

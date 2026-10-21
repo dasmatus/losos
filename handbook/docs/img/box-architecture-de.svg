@@ -22,7 +22,7 @@
 
   <rect x="40" y="146" width="920" height="72" rx="8" fill="#e2eff1" stroke="#0e6e7d"/>
   <text x="500" y="172" text-anchor="middle" font-weight="650">nginx, die einzige Eingangstür</text>
-  <text x="500" y="196" text-anchor="middle" font-size="13" fill="#37444f">/ Admin-Seiten (nur LAN)   ·   /api → lososd   ·   /nextcloud LosOS cloud   ·   /forgejo/ LosOS Git   ·   /handbook/ (nur LAN)</text>
+  <text x="500" y="196" text-anchor="middle" font-size="13" fill="#37444f">/ Admin-Seiten (nur LAN)   ·   /api → lososd   ·   /nextcloud LosOS cloud   ·   /git/ LosOS Git   ·   /handbook/ (nur LAN)</text>
 
   <g stroke="#5c6a77" stroke-width="1.5">
     <line x1="185" y1="220" x2="185" y2="250" marker-end="url(#ar)"/>
@@ -31,17 +31,17 @@
   <polyline points="930,252 930,232 975,232 975,92 850,92 850,84" fill="none" stroke="#5c6a77" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar)"/>
 
   <rect x="40" y="252" width="290" height="160" rx="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="1.5"/>
-  <text x="56" y="278" font-weight="650">lososd, der Root-Daemon</text>
-  <text x="56" y="304" font-size="13">Zustand und Einstellungen der Box</text>
-  <text x="56" y="326" font-size="13">eine D-Bus-Methode pro Vorgang</text>
-  <text x="56" y="348" font-size="13">eine JSON-API nur auf Loopback</text>
-  <text x="56" y="370" font-size="13">führt jeden Rebuild aus und findet</text>
-  <text x="56" y="390" font-size="13">ihn nach dem eigenen Neustart wieder</text>
+  <text x="56" y="278" font-weight="650">lososd und LosOS Git</text>
+  <text x="56" y="304" font-size="13">lososd: Zustand, Einstellungen</text>
+  <text x="56" y="326" font-size="13">und jeder Rebuild der Box, eine</text>
+  <text x="56" y="348" font-size="13">JSON-API nur auf Loopback</text>
+  <text x="56" y="370" font-size="13">LosOS Git: der eigene Git-Server</text>
+  <text x="56" y="390" font-size="13">der Box, hinter nginx</text>
 
   <rect x="355" y="252" width="290" height="160" rx="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="1.5"/>
   <text x="371" y="278" font-weight="650">k3s: der eigene Cluster der Box</text>
   <text x="371" y="304" font-size="13">LosOS cloud (Nextcloud)</text>
-  <text x="371" y="326" font-size="13">LosOS Git (Forgejo)</text>
+  <text x="371" y="326" font-size="13">und die Apps, die du installierst</text>
   <text x="371" y="348" font-size="13">Pods im Netzwerk des Hosts</text>
   <text x="371" y="370" font-size="13">läuft weiter, wenn der Edge</text>
   <text x="371" y="390" font-size="13">ausfällt</text>

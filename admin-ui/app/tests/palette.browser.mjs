@@ -22,7 +22,6 @@ const json = (route, status, body) =>
 const SETTINGS = {
   sharingMyStorage: false,
   nextcloudMode: 'container',
-  forgejoMode: 'container',
   hostName: 'mattbox',
   https: false,
   gpuEnable: false,
@@ -128,7 +127,7 @@ async function open({
       return json(r, 200, { ...answer, hits: hits.filter((h) => h.snippet.join('').toLowerCase().includes(q)) });
     });
   }
-  for (const app of ['nextcloud', 'forgejo']) {
+  for (const app of ['nextcloud', 'git']) {
     await page.route(`**/${app}/**`, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: `<title>${app}</title>` }));
   }
   await page.addInitScript((t) => {
@@ -258,7 +257,7 @@ await check('files in LosOS cloud and repositories in LosOS Git open in their ap
   await box(page).fill('tax-scr');
   await option(page, /^notshared\/tax-scripts/).waitFor();
   await page.keyboard.press('Enter');
-  await page.waitForURL(origin + '/forgejo/notshared/tax-scripts');
+  await page.waitForURL(origin + '/git/notshared/tax-scripts');
   await page.close();
 });
 
@@ -287,7 +286,7 @@ await check('text inside files: cloud first, then Git, with the match marked, ea
   await box(page).fill('tax_year');
   await option(page, /^sort\.py/).waitFor();
   await page.keyboard.press('Enter');
-  await page.waitForURL(origin + '/forgejo/notshared/tax-scripts/src/branch/main/src/sort.py#L12');
+  await page.waitForURL(origin + '/git/notshared/tax-scripts/src/branch/main/src/sort.py#L12');
   await page.close();
 });
 

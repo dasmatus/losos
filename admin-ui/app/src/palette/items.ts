@@ -152,7 +152,7 @@ export function appItems(): Item[] {
     detail: t(app.provider === "code" ? "palette.inGit" : "palette.inCloud"),
     icon: app.icon,
     words: `${template(app.name, undefined, "en")} ${both(app.note)}`,
-    target: { kind: "href", href: app.provider === "code" ? "/forgejo/" : `/nextcloud${app.path}` },
+    target: { kind: "href", href: app.provider === "code" ? "/git/" : `/nextcloud${app.path}` },
     pin: { kind: "tile", app: app.id },
   }));
 }

@@ -19,8 +19,7 @@ sidebar_position: 1
 | `/setup/losos-ca.crt`         | Das Zertifikat der Box                              | nur das lokale Netzwerk             |
 | `/setup/trust.sh`, `/setup/trust.ps1` | Die einzeiligen Installer für das Zertifikat | nur das lokale Netzwerk           |
 | `/nextcloud`                  | LosOS cloud                                         | jeder, auch über eine Edge          |
-| `/forgejo/`                   | LosOS Git                                           | jeder, auch über eine Edge          |
-| `/.well-known/nodeinfo`, `/.well-known/webfinger` | Die Föderations-Erkennung von LosOS Git, solange die Föderation an ist und die Festplatte geteilt wird | jeder, auch über eine Edge |
+| `/git/`                       | LosOS Git                                           | jeder, auch über eine Edge          |
 | `/nextcloud/ocm-provider/`, `/nextcloud/ocm/…` und die anderen Föderationsadressen unter `/nextcloud` | Die Föderation von LosOS cloud, solange die Föderation an ist und die Festplatte geteilt wird; sonst **404** | jeder, auch über eine Edge |
 
 :::note[Was das lokale Netzwerk heißt]

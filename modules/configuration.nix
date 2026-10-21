@@ -134,7 +134,7 @@
   };
 
   # ── Service accounts for the workload pods ────────────────────────────────
-  # systemd-nspawn is gone. Nextcloud and Forgejo run as pods
+  # systemd-nspawn is gone. Nextcloud runs as a pod
   # in this box's own local k3s cluster (modules/workloads.nix), and because
   # that cluster runs no CNI the pods are `hostNetwork` — they share the host's
   # network *and* user namespace. So `runAsUser` in a pod spec is a real uid on
@@ -167,13 +167,7 @@
     extraGroups = [ "redis-nextcloud" ];
   };
 
-  users.groups.forgejo.gid = 1003;
-  users.users.forgejo = {
-    uid = 1003;
-    group = "forgejo";
-    isSystemUser = true;
-    description = "Forgejo workload";
-  };
+  # 1003 was Forgejo's; LosOS Git's account has it now (modules/git.nix).
 
   # The Redis group needs a *fixed* gid, and this is the only place it can get
   # one. modules/workloads.nix reads it back out of

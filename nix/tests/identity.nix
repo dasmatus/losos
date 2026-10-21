@@ -33,12 +33,13 @@
 # of it. Booting Nextcloud would test Nextcloud.
 #
 # The front vhost, though, is in its container shape, with both apps'
-# routes, and on the two loopback ports a stand-in answers with the path
-# and headers it was sent. That is where signing in to LosOS cloud and LosOS
-# Git with LosOS Login (modules/app-sign-in.nix) is decided: who nginx names
+# routes. On LosOS cloud's loopback port a stand-in answers with the path
+# and headers it was sent; LosOS Git is the real one (modules/git.nix),
+# asked who it thinks is calling. That is where signing in to the two apps
+# with LosOS Login (modules/app-sign-in.nix) is decided: who nginx names
 # to each app, on which pages, and where it sends a person LosOS Login
-# does not know. nix/tests/app-sign-in.nix boots the two real apps on those
-# headers.
+# does not know. nix/tests/app-sign-in.nix boots the real Nextcloud on
+# those headers.
 { pkgs }:
 
 let
@@ -86,7 +87,7 @@ let
     };
   };
   # Any derivation with the two attributes imageRef reads: no cluster runs,
-  # so the image is never pulled (nix/tests/forgejo-federation.nix).
+  # so the image is never pulled.
   standIn =
     name:
     pkgs.hello
@@ -116,16 +117,15 @@ pkgs.testers.nixosTest {
           ../../modules/daemon.nix
           ../../modules/identity.nix
           ../../modules/workloads.nix
+          ../../modules/git.nix
         ];
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = stubUi;
           nextcloud.mode = "container";
-          forgejo.enable = true;
-          forgejo.mode = "container";
+          git.enable = true;
           workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
-          workloads.forgejoImage = standIn "losos-forgejo-stand-in";
         };
         systemd.services.lososd.path = lib.mkForce [
           stubOcc
@@ -138,7 +138,6 @@ pkgs.testers.nixosTest {
         services.authelia.instances.losos.settings.server.endpoints.rate_limits.session_elevation_start.enable =
           false;
         systemd.services.nextcloud-stand-in = echoService 11000;
-        systemd.services.forgejo-stand-in = echoService 3000;
         environment.systemPackages = [ pkgs.jq ];
         virtualisation = {
           memorySize = 1536;
@@ -147,15 +146,13 @@ pkgs.testers.nixosTest {
         };
       };
 
-    laptop =
-      { ... }:
-      {
-        environment.systemPackages = [
-          pkgs.curl
-          pkgs.jq
-        ];
-        virtualisation.vlans = [ 1 ];
-      };
+    laptop = _: {
+      environment.systemPackages = [
+        pkgs.curl
+        pkgs.jq
+      ];
+      virtualisation.vlans = [ 1 ];
+    };
   };
 
   testScript = ''
@@ -403,37 +400,50 @@ pkgs.testers.nixosTest {
             h.get("x-losos-cloud-email"),
         )
 
+    def git(cookie=None, extra="", answer=None):
+        """Who LosOS Git thinks is calling: its own account of the caller,
+        or Nones when it sees nobody (401). `answer` is (code, body) from
+        somewhere other than the LAN, e.g. the tunnel."""
+        if answer is None:
+            answer = app("/git/api/v1/user", cookie, extra)
+        code, sent = answer
+        if code == 401:
+            return (None, None, None)
+        assert code == 200, answer
+        if isinstance(sent, str):
+            sent = json.loads(sent)
+        return (sent["login"], sent["full_name"], sent["email"])
+
     with subtest("LosOS Git hears who LosOS Login vouches for, and nobody else"):
+        box.wait_for_unit("losos-git.service")
         # A fresh sign-in, after the restarts above.
         cookie = sign_in("matus", PASSWORD)
-        got = person(app("/forgejo/", cookie))
+        got = git(cookie)
         # The claim's address is <name>@<the box's hostname>.local.
         assert got[:2] == ("notshared", "matus") and got[2].startswith("matus@"), got
-        got = person(app("/forgejo/explore/repos", eva))
-        assert got == ("eva", "Eva", "eva@mattbox.local"), got
-        assert person(app("/forgejo/")) == (None, None, None)
+        assert git(eva) == ("eva", "Eva", "eva@mattbox.local"), git(eva)
+        assert git() == (None, None, None)
         forged = "-H 'X-Losos-Cloud-User: notshared' -H 'X-Losos-Cloud-Name: x'"
-        assert person(app("/forgejo/", extra=forged)) == (None, None, None)
-        assert person(app("/forgejo/", eva, extra=forged))[0] == "eva"
-        # git and the API bring credentials of their own.
-        assert person(app("/forgejo/x.git/info/refs", cookie, extra="-u matus:pw"))[0] is None
-        # The prefix is stripped, as before.
-        assert app("/forgejo/explore/repos", eva)[1]["path"] == "/explore/repos"
+        assert git(extra=forged) == (None, None, None)
+        assert git(eva, extra=forged)[0] == "eva"
+        # git brings credentials of its own: a password where a token
+        # belongs names nobody, and is refused rather than taken for the
+        # cookie's person.
+        code, _ = app("/git/notshared/x.git/info/refs?service=git-upload-pack",
+                      cookie, extra="-u matus:pw")
+        assert code == 401, code
 
     with subtest("each app's sign-in page goes to LosOS Login, or past it"):
         signin = f"https://{BOX}/auth/?rd=https://{BOX}"
         for page, back in [("/nextcloud/login", "/nextcloud/login"),
                            ("/nextcloud/index.php/login", "/nextcloud/login"),
-                           ("/nextcloud/apps/user_saml/saml/login", "/nextcloud/login"),
-                           ("/forgejo/user/login", "/forgejo/user/login")]:
+                           ("/nextcloud/apps/user_saml/saml/login", "/nextcloud/login")]:
             code, where = app(page)
             assert code == 302 and where == signin + back, (page, code, where)
         code, sent = app("/nextcloud/login?redirect_url=/nextcloud/apps/files/", cookie)
         assert person((code, sent))[0] == "notshared", sent
         assert sent["path"] == "/nextcloud/login?redirect_url=/nextcloud/apps/files/", sent
         assert person(app("/nextcloud/index.php/apps/user_saml/saml/login", eva))[0] == "eva"
-        code, sent = app("/forgejo/user/login?redirect_to=%2F", eva)
-        assert person((code, sent))[0] == "eva" and sent["path"] == "/user/login?redirect_to=%2F", sent
         # Every other Nextcloud page, WebDAV included, never hears a name.
         for page in ["/nextcloud/apps/files/", "/nextcloud/remote.php/dav/files/notshared/"]:
             assert person(app(page, cookie, extra=forged)) == (None, None, None), page
@@ -486,8 +496,7 @@ pkgs.testers.nixosTest {
         code, where = app("/nextcloud/login", extra="-d user=notshared -d direct=1")
         assert code == 302 and where.startswith(f"https://{BOX}/auth/"), (code, where)
         # Through the tunnel: LosOS Login, on the public name.
-        for page, back in [("/nextcloud/login", "/nextcloud/login"),
-                           ("/forgejo/user/login", "/forgejo/user/login")]:
+        for page, back in [("/nextcloud/login", "/nextcloud/login")]:
             code, where = tunnel(page, public)
             assert code == 302, (page, code, where)
             assert where == f"https://{public}/auth/?rd=https://{public}{back}", where
@@ -508,8 +517,7 @@ pkgs.testers.nixosTest {
         outside = m.group(1)
         code, sent = tunnel("/nextcloud/login", public, outside)
         assert code == 200 and sent["headers"].get("x-losos-cloud-user") == "eva", (code, sent)
-        code, sent = tunnel("/forgejo/", public, outside)
-        assert sent["headers"].get("x-losos-cloud-user") == "eva", sent
+        assert git(answer=tunnel("/git/api/v1/user", public, outside))[0] == "eva"
         # The admin pages stay on the LAN.
         assert tunnel("/api/state", public, outside)[0] == 403
         # LosOS Login down: a page that waits for it, nobody named.
@@ -518,20 +526,28 @@ pkgs.testers.nixosTest {
         assert code == 503, code
         page = laptop.succeed("cat /tmp/app")
         assert "LosOS Login is starting" in page and 'http-equiv="refresh"' in page, page
-        assert tunnel("/forgejo/user/login", public)[0] == 503
-        assert person(app("/forgejo/", cookie)) == (None, None, None)
+        assert git(cookie) == (None, None, None)
         box.systemctl("start authelia-losos.service losos-identity.path")
         box.wait_for_open_port(9091)
         laptop.wait_until_succeeds(f"curl -sf http://{BOX}/auth/api/health", timeout=60)
         cookie = sign_in("matus", PASSWORD)
         eva = sign_in("eva", "Eva-Long-Password-3")
-        assert person(app("/forgejo/", cookie))[0] == "notshared"
+        assert git(cookie)[0] == "notshared"
 
     with subtest("only root, nginx and the app itself reach the apps' ports"):
-        for port in [11000, 3000]:
-            box.succeed(f"curl -sf http://127.0.0.1:{port}/")
-            box.fail(f"runuser -u nobody -- curl -sf --max-time 5 http://127.0.0.1:{port}/")
-        box.succeed("runuser -u nginx -- curl -sf http://127.0.0.1:3000/")
+        box.succeed("curl -sf http://127.0.0.1:11000/")
+        box.fail("runuser -u nobody -- curl -sf --max-time 5 http://127.0.0.1:11000/")
+        # LosOS Git believes the headers only on its socket, which nginx
+        # alone may open; its loopback port takes tokens and nothing else.
+        me = "http://git/api/v1/user -H 'X-Losos-Cloud-User: notshared'"
+        sock = "--unix-socket /run/losos-git/http.sock"
+        box.succeed(f"runuser -u nginx -- curl -sf {sock} {me}")
+        box.fail(f"runuser -u nobody -- curl -s --max-time 5 {sock} {me}")
+        code = box.succeed(
+            "runuser -u nobody -- curl -s -o /dev/null -w '%{http_code}'"
+            " http://127.0.0.1:3000/api/v1/user -H 'X-Losos-Cloud-User: notshared'"
+        )
+        assert code == "401", code
 
     with subtest("a box claimed before losos-owner existed gets it on start"):
         mark = journal_mark()
@@ -594,7 +610,7 @@ pkgs.testers.nixosTest {
         ]
 
     with subtest("a removed person loses the admin pages and the apps at once"):
-        assert person(app("/forgejo/", eva))[0] == "eva"
+        assert git(eva)[0] == "eva"
         code, body = api("/api/people/remove", cookie, method="POST", data={"name": "eva"})
         assert code == 200, (code, body)
         assert "eva" not in json.loads(box.succeed(f"cat {PEOPLE}"))["users"]
@@ -604,7 +620,7 @@ pkgs.testers.nixosTest {
             assert json.loads(body)["noAccount"] is True, body
         # LosOS Login looks the person up on every request, so the old
         # cookie no longer names anyone to LosOS Git.
-        assert person(app("/forgejo/", eva)) == (None, None, None)
+        assert git(eva) == (None, None, None)
         body = json.dumps({"username": "eva", "password": "Eva-Reset-Password-55"})
         code = status(
             f"https://{BOX}/auth/api/firstfactor -H 'Content-Type: application/json' -d '{body}'"
@@ -799,10 +815,10 @@ pkgs.testers.nixosTest {
         assert json.loads(api("/api/account", oma)[1])["locked"] == ["twoFactor"]
         # LosOS Login names them to no app, and the apps' sign-in pages say
         # why.
-        eventually(lambda: person(app("/forgejo/", oma)) == (None, None, None))
+        eventually(lambda: git(oma) == (None, None, None))
         assert app("/nextcloud/login", oma)[0] == 403
         assert "Finish your account first" in laptop.succeed("cat /tmp/app")
-        assert person(app("/forgejo/", cookie))[0] == "notshared"
+        assert git(cookie)[0] == "notshared"
         listed = json.loads(api("/api/people", cookie)[1])
         assert listed["rules"] == {"twoFactor": True, "passwordDays": 0}, listed
         assert {p["name"]: p["locked"] for p in listed["people"]} == {
@@ -815,7 +831,7 @@ pkgs.testers.nixosTest {
         me = json.loads(api("/api/me", oma)[1])
         assert me["locked"] == [] and me["sections"] == ["account"], me
         assert api("/api/state", oma)[0] == 200
-        eventually(lambda: person(app("/forgejo/", oma))[:2] == ("oma", "Oma Horvathova"))
+        eventually(lambda: git(oma)[:2] == ("oma", "Oma Horvathova"))
 
     with subtest("an administrator resets a lost authenticator app"):
         code, _ = api("/api/people/two-factor/reset", oma, method="POST", data={"name": "oma"})

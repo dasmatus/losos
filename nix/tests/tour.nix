@@ -109,7 +109,7 @@ pkgs.testers.nixosTest {
         admin.ui = ui;
         identity.enable = false;
         nextcloud.mode = "container";
-        forgejo.enable = false;
+        git.enable = false;
       };
 
       # LosOS cloud's stand-in on the port the front vhost proxies to.

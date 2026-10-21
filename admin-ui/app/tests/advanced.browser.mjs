@@ -27,13 +27,12 @@ const DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/f
 assert.equal(DOC.version, 1, 'the option document is version 1');
 assert.ok(DOC.options.length > 40, `the document carries ${DOC.options.length} options; expected the whole losos.* tree`);
 
-/* The sixteen names lib/api.ts's buildOverridesNix always writes, and the
+/* The fifteen names lib/api.ts's buildOverridesNix always writes, and the
  * pane links to another pane for. Kept as a list here so the test does not
  * import the bundle it is testing. */
 const OWNED = {
   sharingMyStorage: 'market',
   'nextcloud.mode': 'apps',
-  'forgejo.mode': 'apps',
   hostName: 'network',
   'nextcloud.https': 'network',
   'gpu.enable': 'hardware',
@@ -55,7 +54,7 @@ const OWNED = {
  * there, to the app's fold on the Apps pane. */
 const ON_PANE = Object.fromEntries(
   DOC.options.flatMap((option) =>
-    /^(nextcloud|forgejo)\.(site\.|federation\.enable$)/.test(option.name)
+    /^(nextcloud\.(site\.|federation\.enable$)|git\.site\.)/.test(option.name)
       ? [[option.name, 'apps']]
       : /^inference\.lend\.(enable|memoryMiB)$/.test(option.name)
         ? [[option.name, 'market']]
@@ -69,7 +68,6 @@ const KINDS = new Set(['bool', 'str', 'int', 'float', 'enum', 'list', 'nullable'
 const SETTINGS = {
   sharingMyStorage: false,
   nextcloudMode: 'container',
-  forgejoMode: 'container',
   hostName: 'mattbox',
   https: false,
   gpuEnable: false,
@@ -90,9 +88,9 @@ const CONFIG = {
   repository: {
     owner: 'notshared',
     name: 'losos-config',
-    url: '/forgejo/notshared/losos-config',
+    url: '/git/notshared/losos-config',
     clone: 'http://127.0.0.1:3000/notshared/losos-config.git',
-    viaForgejo: true,
+    viaServer: true,
   },
   head: { sha: 'b'.repeat(40), branch: 'main' },
   log: [
@@ -219,7 +217,7 @@ await check('every option in the document is drawn, with an editor kind the pane
 });
 
 await check('federation is unavailable while disk sharing is off, and opens when it is on', async () => {
-  const FEDERATION = ['forgejo.federation.enable', 'nextcloud.federation.enable'];
+  const FEDERATION = ['nextcloud.federation.enable'];
   for (const name of FEDERATION) {
     assert.equal(DOC.options.find((o) => o.name === name)?.needs, 'sharingMyStorage', `losos.${name} does not name its gate`);
   }
@@ -237,7 +235,7 @@ await check('federation is unavailable while disk sharing is off, and opens when
 
   // On the Apps pane each switch is greyed with the reason while sharing is off.
   const apps = await open({ path: '/apps' });
-  for (const id of ['accordion-cloud', 'accordion-git']) await main(apps.page).getByTestId(id).getByRole('button').first().click();
+  for (const id of ['accordion-cloud']) await main(apps.page).getByTestId(id).getByRole('button').first().click();
   for (const name of FEDERATION) {
     const r = main(apps.page).locator(`[data-option="${name}"]`);
     await r.getByText('Runs only while the box shares its disk', { exact: false }).waitFor();
@@ -248,7 +246,7 @@ await check('federation is unavailable while disk sharing is off, and opens when
 
   // Disk sharing is switched on the Market pane; with it on, both open.
   const sharing = await open({ path: '/apps', settings: { ...SETTINGS, sharingMyStorage: true } });
-  for (const id of ['accordion-cloud', 'accordion-git']) await main(sharing.page).getByTestId(id).getByRole('button').first().click();
+  for (const id of ['accordion-cloud']) await main(sharing.page).getByTestId(id).getByRole('button').first().click();
   for (const name of FEDERATION) {
     const r = main(sharing.page).locator(`[data-option="${name}"]`);
     await r.waitFor();
@@ -269,7 +267,7 @@ await check('federation is unavailable while disk sharing is off, and opens when
   await de.page.close();
 });
 
-await check('a plain switch writes one more line after the sixteen, and Apply sends it', async () => {
+await check('a plain switch writes one more line after the fifteen, and Apply sends it', async () => {
   const { page, applies } = await open();
   const r = row(page, 'configRepo.enable');
   await flip(r);
@@ -279,9 +277,9 @@ await check('a plain switch writes one more line after the sixteen, and Apply se
   await page.waitForTimeout(200);
   assert.equal(applies.length, 1);
   const lines = nixLines(applies[0]);
-  assert.equal(lines.length, 17, `expected the sixteen lines plus one, got:\n${lines.join('\n')}`);
+  assert.equal(lines.length, 16, `expected the fifteen lines plus one, got:\n${lines.join('\n')}`);
   assert.ok(lines.includes('  losos.configRepo.enable = false;'), lines.join('\n'));
-  assert.ok(lines[0].startsWith('  losos.sharingMyStorage'), 'the sixteen come first');
+  assert.ok(lines[0].startsWith('  losos.sharingMyStorage'), 'the fifteen come first');
   await page.close();
 });
 
@@ -407,12 +405,12 @@ await check('search narrows the rows and says when nothing matches', async () =>
   await page.close();
 });
 
-await check('a box without the options route still applies its sixteen lines', async () => {
+await check('a box without the options route still applies its fifteen lines', async () => {
   const { page, applies, errors } = await open({ path: '/settings/network', optionsStatus: 404 });
   await main(page).getByText('Encrypt the connection', { exact: true }).click();
   await applyButton(page).click();
   await page.waitForTimeout(200);
-  assert.equal(nixLines(applies[0]).length, 16);
+  assert.equal(nixLines(applies[0]).length, 15);
   await page.goto(origin + '/settings/advanced', { waitUntil: 'networkidle' });
   await main(page).getByText('does not serve its option document yet').waitFor();
   assert.deepEqual(errors, []);
@@ -422,8 +420,8 @@ await check('a box without the options route still applies its sixteen lines', a
 await check('History shows the repository, the sync state and the commits, and Sync now posts', async () => {
   const { page, syncs, errors } = await open({ path: '/settings/history' });
   const link = main(page).getByTestId('history-repo-link');
-  assert.equal(await link.getAttribute('href'), '/forgejo/notshared/losos-config');
-  await main(page).getByText(`${origin}/forgejo/notshared/losos-config.git`).waitFor();
+  assert.equal(await link.getAttribute('href'), '/git/notshared/losos-config');
+  await main(page).getByText(`${origin}/git/notshared/losos-config.git`).waitFor();
   assert.equal(await main(page).getByTestId('history-sync-state').innerText(), 'In sync');
   await main(page).getByText('Change hostName, cluster.enable').waitFor();
   assert.equal(await page.locator('[data-commit]').count(), 2);
@@ -498,11 +496,11 @@ await check('the Apps pane draws every box-wide setting of both apps, and Apply 
   const trash = row(page, 'nextcloud.site.trashDays').getByRole('textbox');
   await trash.fill('');
   await trash.press('Enter');
-  await flip(row(page, 'forgejo.site.requireSignIn'));
-  await row(page, 'forgejo.site.landingPage').locator('select').selectOption('login');
+  await flip(row(page, 'git.site.requireSignIn'));
+  await flip(row(page, 'git.site.pushCreate'));
   // Picking the default adds no line; clearing a field above dropped one.
-  await row(page, 'forgejo.site.defaultPrivate').locator('select').selectOption('private');
-  await row(page, 'forgejo.site.defaultPrivate').locator('select').selectOption('last');
+  await row(page, 'git.site.defaultPrivate').locator('select').selectOption('private');
+  await row(page, 'git.site.defaultPrivate').locator('select').selectOption('last');
 
   await main(page).getByText('6 changes not applied yet').waitFor();
   await applyButton(page).click();
@@ -513,14 +511,14 @@ await check('the Apps pane draws every box-wide setting of both apps, and Apply 
     '  losos.nextcloud.site.defaultLanguage = "sk";',
     '  losos.nextcloud.site.phoneRegion = "SK";',
     '  losos.nextcloud.site.linkExpiryDays = 14;',
-    '  losos.forgejo.site.requireSignIn = true;',
-    '  losos.forgejo.site.landingPage = "login";',
+    '  losos.git.site.requireSignIn = true;',
+    '  losos.git.site.pushCreate = true;',
   ]) {
     assert.ok(lines.includes(line), `missing ${line.trim()} in:\n${lines.join('\n')}`);
   }
   assert.ok(!lines.some((line) => line.includes('trashDays')), 'clearing a field back to the default kept its line');
   assert.ok(!lines.some((line) => line.includes('defaultPrivate')), 'a default the box had unset was written');
-  assert.equal(lines.length, 16 + 5);
+  assert.equal(lines.length, 15 + 5);
   await noViolations(page);
   assert.deepEqual(errors, []);
   await page.close();
@@ -575,9 +573,9 @@ await check('the Market pane lends memory to AI models with two lines of overrid
 });
 
 await check('the Advanced pane links each box-wide setting to the Apps pane', async () => {
-  const { page } = await open({ overrides: { 'forgejo.site.landingPage': '"explore"' } });
-  const r = row(page, 'forgejo.site.landingPage');
-  await r.getByText('explore', { exact: true }).waitFor();
+  const { page } = await open({ overrides: { 'git.site.defaultPrivate': '"public"' } });
+  const r = row(page, 'git.site.defaultPrivate');
+  await r.getByText('public', { exact: true }).waitFor();
   await r.getByText('Set here').waitFor();
   const link = r.getByRole('link', { name: 'Change under Apps' });
   assert.equal(await link.getAttribute('href'), '/apps#git');

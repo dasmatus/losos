@@ -151,7 +151,6 @@ Verschwinden die Einträge, liefert sie die Domain nach drei fehlgeschlagenen
 Prüfungen in Folge nicht mehr aus, damit ein einzelner DNS-Aussetzer keine
 Website lahmlegt. Ist das Stripe-Konto nicht mehr bereit, hört sie sofort
 auf. In beiden Fällen sagt der Bereich, warum.
-LosOS Git baut seine Links weiterhin mit dem Edge-Namen der Box.
 
 Steht deine Box zu Hause hinter deiner eigenen Edge, funktionieren deine
 Domains trotzdem, solange die Box dem Mesh beigetreten ist. Die LosOS-Edge

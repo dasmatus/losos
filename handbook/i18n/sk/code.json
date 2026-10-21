@@ -379,7 +379,7 @@
     "message": "LosOS Git"
   },
   "losos.home.feature.git.body": {
-    "message": "Vaše repozitáre na tom istom boxe a za tým istým heslom. Postavené na Forgejo."
+    "message": "Vaše repozitáre na tom istom boxe a za tým istým heslom. Vlastný Git server boxu."
   },
   "losos.home.feature.self.title": {
     "message": "Každé ráno čistý systém"
@@ -602,7 +602,7 @@
     "message": "LosOS Git"
   },
   "losos.companies.box.git.body": {
-    "message": "Repozitáre, issues a pull requesty. Váš zdrojový kód prestane bývať na cudzích serveroch. Postavené na Forgejo."
+    "message": "Vaše repozitáre na vlastnom boxe. Váš zdrojový kód prestane bývať na cudzích serveroch."
   },
   "losos.companies.box.disk.title": {
     "message": "Disk, ktorý je po krádeži nanič"
@@ -648,9 +648,6 @@
   },
   "losos.companies.eu.nextcloud": {
     "message": "Základ LosOS cloud. Vyvíja ho Nextcloud GmbH v Stuttgarte v Nemecku."
-  },
-  "losos.companies.eu.forgejo": {
-    "message": "Základ LosOS Git. Komunitný projekt pod Codeberg e.V., neziskovou organizáciou v Berlíne."
   },
   "losos.companies.eu.nixos": {
     "message": "Systém, z ktorého sa každý box stavia. Stará sa oň NixOS Foundation v Holandsku."
@@ -857,7 +854,7 @@
     "message": "Žiadny poplatok za používateľa"
   },
   "losos.companies.cost.body": {
-    "message": "LosOS, Nextcloud aj Forgejo sú slobodný softvér. Váš štyridsiaty zamestnanec stojí jeden používateľský účet, nie predplatné. Raz zaplatíte za hardvér a potom za elektrinu, a kancelárske mini-PC na to stačí."
+    "message": "LosOS aj Nextcloud sú slobodný softvér. Váš štyridsiaty zamestnanec stojí jeden používateľský účet, nie predplatné. Raz zaplatíte za hardvér a potom za elektrinu, a kancelárske mini-PC na to stačí."
   },
   "losos.companies.soon.intro": {
     "message": "LosOS je predbežné vydanie, zatiaľ bez zmluvy o podpore a bez certifikácie. Toto sú časti, ktoré sa ešte stavajú."
