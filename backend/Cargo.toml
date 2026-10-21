@@ -40,7 +40,7 @@ tracing = "0.1"
 # poll(2) on stdin, so the installer ISO's firmware menu can time out without
 # leaving a reader thread on the terminal. A safe wrapper, because the crate
 # forbids unsafe code; already in the lock file through tempfile.
-rustix = { version = "1", features = ["event"] }
+rustix = { version = "1", features = ["event", "fs", "rand"] }
 
 # Ed25519 verification of an edge's identity (`edge.rs`): is the edge the box
 # found one LosOS runs, or a company's own? Verification only — the box never
@@ -57,6 +57,10 @@ futures-core = { version = "0.3", default-features = false }
 # client (src/access.rs). Shared with edge/registrar by path, so the box
 # and the edge speak one contract (docs/terminal-access.md).
 losos-access = { path = "access" }
+
+# What a hand-written widget may hold, shared with the look plugin so the
+# builder and the store refuse the same things in the same words.
+losos-widget = { path = "plugins/widget" }
 
 # The Monero key check (`monero_key.rs`): the key the owner pasted must be
 # the address's view key, never its spend key, before it goes to the edge.
@@ -79,16 +83,30 @@ walkdir = "2"
 # in the lock file through the access crate.
 argon2 = "0.5"
 
+# The plugin runtime (src/plugin/): lososd's areas are WebAssembly
+# components written against plugins/wit/plugin.wit, loaded from the
+# read-only directory the NixOS module names. Component model for typed
+# imports and exports, Cranelift to compile them once at start. No WASI:
+# a plugin reaches the box only through the host functions in
+# src/plugin/host.rs, each checked against its manifest.
+wasmtime = { version = "50", default-features = false, features = ["anyhow", "runtime", "cranelift", "component-model", "std", "parallel-compilation"] }
+
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its
 # output, and give it a throwaway filesystem.
 assert_cmd = "2"
 predicates = "3"
 assert_fs = "1"
+# tests/plugins.rs builds the plugins for wasm32 and wraps them as
+# components the way `wasm-tools component new` does in nix/packages.nix.
+wit-component = "0.262"
 
 # Crate-wide lint policy, matching edge/registrar/Cargo.toml.
 [lints.rust]
-unsafe_code = "forbid"
+# deny, not forbid: wasmtime's bindgen! emits `unsafe` blocks, and
+# src/plugin/bindings.rs is the one module allowed them. Everything else
+# still may not write one.
+unsafe_code = "deny"
 unreachable_pub = "warn"
 
 [lib]
