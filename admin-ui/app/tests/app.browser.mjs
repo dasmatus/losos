@@ -1884,7 +1884,10 @@ await check('an edge that predates wallets still draws the domains, without the 
   await page.close();
 });
 
-await check('the wallet made on this box signs the binding after its password', async () => {
+// A wallet saved before its address was kept beside the phrase has none
+// until it is unlocked, and is still the box's wallet.
+for (const keptAddress of [true, false]) {
+await check(`the wallet made on this box signs the binding after its password${keptAddress ? '' : ', saved without its address'}`, async () => {
   const { mnemonicToAccount } = await import('viem/accounts');
   const { verifyMessage } = await import('viem');
   const phrase = 'test test test test test test test test test test test junk';
@@ -1899,7 +1902,7 @@ await check('the wallet made on this box signs the binding after its password', 
   const { page, errors, domainPosts } = await open({ path: '/settings/network', stored: true, domains: bound });
   // Seal the phrase the way wallet/hot.ts does, then load the page again.
   await page.evaluate(
-    async ({ phrase, address }) => {
+    async ({ phrase, address, keptAddress }) => {
       const enc = new TextEncoder();
       const salt = crypto.getRandomValues(new Uint8Array(16));
       const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -1921,18 +1924,20 @@ await check('the wallet made on this box signs the binding after its password', 
       });
       await new Promise((resolve) => {
         const tx = db.transaction('key', 'readwrite');
-        tx.objectStore('key').put({ v: 1, salt: b64(salt), iv: b64(iv), ct: b64(ct), evm: address, made: true }, 'phrase');
+        const sealed = { v: 1, salt: b64(salt), iv: b64(iv), ct: b64(ct), made: true };
+        tx.objectStore('key').put(keptAddress ? { ...sealed, evm: address } : sealed, 'phrase');
         tx.oncomplete = resolve;
       });
       db.close();
     },
-    { phrase, address },
+    { phrase, address, keptAddress },
   );
   await page.reload({ waitUntil: 'networkidle' });
   const section = page.getByTestId('domain-wallet');
   await section.getByTestId('wallet-bind').click();
   const password = section.getByLabel('Password of the wallet on this box');
-  assert.match(await section.innerText(), new RegExp(`Signs as ${address.toLowerCase()}`));
+  if (keptAddress) assert.match(await section.innerText(), new RegExp(`Signs as ${address.toLowerCase()}`));
+  else assert.doesNotMatch(await section.innerText(), /Signs as/);
   await password.fill('wrong password');
   await section.getByRole('button', { name: 'Sign', exact: true }).click();
   await page.locator('[data-toast]').filter({ hasText: /password/i }).first().waitFor({ timeout: 10000 });
@@ -1951,6 +1956,25 @@ await check('the wallet made on this box signs the binding after its password', 
   assert.doesNotMatch(await rows.nth(0).innerText(), /ENS1/);
   assert.match(await rows.nth(1).innerText(), /is a CNAME, which can carry no other record/);
   assert.doesNotMatch(await rows.nth(1).innerText(), /ENS1/, 'a CNAME was offered a record it cannot carry');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+}
+
+await check('a binding whose names lapsed can still be taken off', async () => {
+  const address = '0x4a62000000000000000000000000000000000001';
+  const domains = {
+    ...DOMAINS_READY,
+    names: [],
+    wallet: { address, bound_at: 1791460000, record: ensRecord(address), published: {}, published_at: 1791460030 },
+  };
+  const { page, errors, domainPosts } = await open({ path: '/settings/network', stored: true, domains });
+  const section = page.getByTestId('domain-wallet');
+  assert.match(await section.innerText(), /No name to bind yet/);
+  await section.getByRole('button', { name: 'Unbind', exact: true }).click();
+  await section.getByRole('button', { name: 'Unbind', exact: true }).waitFor({ state: 'detached' });
+  assert.deepEqual(domainPosts.at(-1), ['/api/domains/wallet', {}]);
+  assert.match(await section.innerText(), /No name to bind yet/);
   assert.deepEqual(errors, []);
   await page.close();
 });

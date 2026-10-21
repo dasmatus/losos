@@ -69,15 +69,19 @@ export function DomainWallet({
 }) {
   const t = useT();
   const passwordId = React.useId();
-  // The wallet made on this box, from the address saved beside the sealed
-  // phrase, so it shows before the password is typed.
+  // Whether a wallet is saved on this box, and its address when it was saved
+  // beside the sealed phrase (older wallets have none until unlocked).
+  const [hasLocal, setHasLocal] = React.useState(false);
   const [local, setLocal] = React.useState<string | null>(null);
   const [asking, setAsking] = React.useState(false);
   const [password, setPassword] = React.useState("");
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
-    void savedAddresses().then((saved) => setLocal(saved?.evm?.toLowerCase() ?? null));
+    void savedAddresses().then((saved) => {
+      setHasLocal(saved !== null);
+      setLocal(saved?.evm?.toLowerCase() ?? null);
+    });
   }, []);
 
   const signLocal = async () => {
@@ -124,7 +128,7 @@ export function DomainWallet({
   };
 
   const start = () => {
-    if (local !== null) {
+    if (hasLocal) {
       setAsking(true);
       return;
     }
@@ -138,15 +142,22 @@ export function DomainWallet({
 
   const off = disabled || busy;
   let body: React.ReactNode;
-  if (names.length === 0) {
+  if (names.length === 0 && wallet === null) {
     body = (
       <Row last>
         <RowText title={t("panes.network.wallet.noNames")} detail={t("panes.network.wallet.noNamesDetail")} />
       </Row>
     );
   } else if (wallet !== null) {
+    // A binding outlives the names it was made for (a label lapses with its
+    // Stripe account), and the owner can still take it off.
     body = (
       <>
+        {names.length === 0 && (
+          <Row>
+            <RowText title={t("panes.network.wallet.noNames")} detail={t("panes.network.wallet.noNamesDetail")} />
+          </Row>
+        )}
         {names.map((name) => (
           <Row key={name} data-testid="wallet-name" data-published={wallet.published?.[name] ?? "checking"}>
             <RowText title={name} detail={publishedDetail(t, wallet, name)} />

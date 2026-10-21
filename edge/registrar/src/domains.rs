@@ -579,10 +579,12 @@ pub fn wallet_seen(
     if answers.iter().any(|(n, t, _)| *t == 5 && own(n)) {
         return WalletSeen::Cname;
     }
+    // ENS's resolver reads only a record's first character-string, so a
+    // record split across strings is judged by what that one says.
     let records: Vec<String> = answers
         .iter()
         .filter(|(n, t, _)| *t == 16 && own(n))
-        .map(|(_, _, data)| txt_text(data))
+        .filter_map(|(_, _, data)| txt_strings(data).into_iter().next())
         .filter(|r| r.starts_with("ENS1 "))
         .collect();
     // The whole record the edge publishes, resolver and every chain: one that
@@ -1154,23 +1156,34 @@ pub fn parse_doh_named(body: &Value) -> Result<NamedAnswers, String> {
 /// unquoted value is taken as is.
 #[must_use]
 pub fn txt_text(data: &str) -> String {
+    txt_strings(data).concat()
+}
+
+/// A TXT record's character-strings from its presentation form, each on its
+/// own: `"a" "b"` is `["a", "b"]`, an unquoted value is one string.
+#[must_use]
+pub fn txt_strings(data: &str) -> Vec<String> {
     let data = data.trim();
     if !data.starts_with('"') {
-        return data.to_string();
+        return vec![data.to_string()];
     }
-    let mut out = String::new();
+    let mut out = Vec::new();
+    let mut current = String::new();
     let mut in_quote = false;
     let mut escaped = false;
     for c in data.chars() {
         if escaped {
-            out.push(c);
+            current.push(c);
             escaped = false;
         } else if c == '\\' && in_quote {
             escaped = true;
         } else if c == '"' {
+            if in_quote {
+                out.push(std::mem::take(&mut current));
+            }
             in_quote = !in_quote;
         } else if in_quote {
-            out.push(c);
+            current.push(c);
         }
     }
     out
@@ -1388,6 +1401,11 @@ mod tests {
                 "{wrong}"
             );
         }
+        // ENS reads the first character-string only: the record split after
+        // the resolver names no address to it.
+        let (head, tail) = record.split_at("ENS1 dnsname.ens.eth ".len());
+        let split = (d.to_string(), 16, format!("\"{head}\" \"{tail}\""));
+        assert_eq!(wallet_seen(d, &[split], true, a), WalletSeen::Other);
         // A CNAME's target carrying the record is not the domain carrying it.
         let cname = [
             (
@@ -1759,6 +1777,9 @@ mod tests {
         assert_eq!(txt_text("\"losos-\" \"domain\""), "losos-domain");
         assert_eq!(txt_text("plain"), "plain");
         assert_eq!(txt_text("\"a\\\"b\""), "a\"b");
+        assert_eq!(txt_strings("\"losos-\" \"domain\""), ["losos-", "domain"]);
+        assert_eq!(txt_strings("\"\""), [""]);
+        assert_eq!(txt_strings("plain"), ["plain"]);
     }
 
     #[test]
