@@ -300,8 +300,12 @@ const listen = (sink) => {
     if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) sink(m.text());
   };
   const onError = (e) => sink(String(e));
+  // The pages ask for the repository's AI review, which a LosOS Git
+  // without LosOS Reviewer does not serve: its 404 is that answer.
   const onResponse = (r) => {
-    if (r.status() >= 400) sink(`${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`);
+    const path = new URL(r.url()).pathname;
+    if (r.status() === 404 && path.endsWith("/ai-review")) return;
+    if (r.status() >= 400) sink(`${r.status()} ${r.request().method()} ${path}`);
   };
   page.on("console", onConsole);
   page.on("pageerror", onError);
