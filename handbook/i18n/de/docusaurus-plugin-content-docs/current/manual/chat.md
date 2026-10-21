@@ -30,7 +30,9 @@ zurück, wenn du wieder teilst.
 ## Anmelden
 
 Öffne **Chat** in der Seitenleiste oder geh zu
-`https://<name>.local/chat/`. Chat verwendet deine Anmeldung bei LosOS Login.
+`https://<name>.local/chat/`. Chat ist eine der [Admin-Seiten](admin-pages), mit
+derselben oberen Leiste und Seitenleiste: links die Unterhaltungen, daneben
+die geöffnete. Er verwendet deine Anmeldung bei LosOS Login.
 Ein eigenes Chat-Passwort gibt es nicht.
 
 Wenn du dich bei LosOS Login abmeldest, meldet sich auch Chat ab. Wenn eine
@@ -74,15 +76,18 @@ einzelne überprüfen oder abmelden.
 - **Ein Raum:** Klick auf **Neuer Raum**, gib ihm einen Namen und wähle, ob
   er auf dem Gerät öffentlich ist oder nur auf Einladung. Personen lädst du
   über die Kopfzeile des Raums ein.
-- **Bereiche** fassen Räume zusammen. Einen neuen erstellst du mit der
-  Plus-Schaltfläche am linken Rand, Räume fügst du in den Einstellungen des
-  jeweiligen Raums hinzu.
+- **Bereiche** fassen Räume zusammen. Sie sind die Reihe von Schaltflächen
+  über den Unterhaltungen, neben der Suche; einen neuen erstellst du mit
+  **Neuer Bereich**, Räume fügst du in den Einstellungen des jeweiligen Raums
+  hinzu.
 - **Räume zum Beitreten finden** listet die öffentlichen Räume auf dem Gerät.
 
 ## In einer Unterhaltung
 
 Fahr mit dem Zeiger über eine Nachricht, um darauf zu reagieren, zu
-antworten, im Thread zu antworten, sie zu bearbeiten oder zu löschen. Die
+antworten, im Thread zu antworten, sie zu bearbeiten oder zu löschen. Ein
+Rechtsklick auf die Nachricht bietet dasselbe und dazu das Kopieren ihres
+Texts. Die
 Thread-Schaltfläche in der Kopfzeile des Raums listet seine Threads.
 
 Bilder, Videos und Dateien hängst du mit der Büroklammer an, durch Einfügen

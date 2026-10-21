@@ -27,8 +27,9 @@ storage and come back when you share again.
 
 ## Signing in
 
-Open **Chat** in the sidebar, or go to `https://<name>.local/chat/`. Chat
-uses your LosOS Login sign-in. There is no separate chat password.
+Open **Chat** in the sidebar, or go to `https://<name>.local/chat/`. Chat is
+one of the [admin pages](admin-pages), with the same top bar and sidebar, the conversations
+on the left and the open one beside them. It uses your LosOS Login sign-in. There is no separate chat password.
 
 When you sign out of LosOS Login, chat signs out too. When an administrator
 removes someone in **Settings** > **Users**, that person's chat devices are
@@ -64,14 +65,17 @@ The lock button in the bar at the top opens **Secure messages** at any time. It 
 - **A room:** click **New room**, give it a name, and choose whether it is
   public on the box or by invitation only. Invite people from the room's
   header.
-- **Spaces** group rooms. Make one with the plus button at the left edge and
-  add rooms to it in each room's settings.
+- **Spaces** group rooms. They are the row of buttons above the
+  conversations, beside the search; make one with **New space** and add rooms
+  to it in each room's settings.
 - **Find rooms to join** lists the public rooms on the box.
 
 ## In a conversation
 
 Hover over a message to react, reply, reply in a thread, edit or delete
-it. The thread button in the room's header lists the room's threads.
+it, or right-click it for the same and to copy its text
+([the right-click menu](admin-pages#the-right-click-menu)). The thread button
+in the room's header lists the room's threads.
 
 Attach pictures, videos and files with the paper clip, by pasting or by
 dragging them in. In an encrypted room they are encrypted before they leave
