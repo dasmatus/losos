@@ -122,6 +122,9 @@ pkgs.testers.nixosTest {
         systemd.services.lososd.path = lib.mkForce [
           stubOcc
           pkgs.coreutils
+          # The mail plugin's calls to Stalwart go through the host's curl,
+          # as on a real box (modules/daemon.nix).
+          pkgs.curl
         ];
         systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         services.authelia.instances.losos.settings.server.endpoints.rate_limits.session_elevation_start.enable =
@@ -588,7 +591,8 @@ pkgs.testers.nixosTest {
             ["Identity/get", {"accountId": paccount}, "i"],
         ], ("core", "mail", "submission"))
         drafts = next(b["id"] for b in boxes["list"] if b["role"] == "drafts")
-        made, submitted = jmap_as("peter", [
+        # onSuccessDestroyEmail adds an implicit Email/set answer at the end.
+        made, submitted, *_ = jmap_as("peter", [
             ["Email/set", {"accountId": paccount, "create": {"d": {
                 "mailboxIds": {drafts: True},
                 "keywords": {"$draft": True},
