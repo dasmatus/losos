@@ -77,11 +77,14 @@ let
           --name "losos test edge" --url ${registrarUrl} --days ${validDays} \
           > $out/edge.cert.json
 
+        # Python's TLS checks are strict: the CA carries its key usage, the
+        # leaf names its issuer's key.
         openssl req -x509 -newkey rsa:2048 -nodes -days ${validDays} -subj "/CN=test CA" \
+          -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" \
           -keyout $out/ca.key -out $out/ca.pem
         openssl req -newkey rsa:2048 -nodes -subj "/CN=${edgeName}" \
           -keyout $out/tls.key -out tls.csr
-        printf 'subjectAltName=DNS:${edgeName}\n' > ext
+        printf 'subjectAltName=DNS:${edgeName}\nauthorityKeyIdentifier=keyid,issuer\nsubjectKeyIdentifier=hash\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n' > ext
         openssl x509 -req -in tls.csr -CA $out/ca.pem -CAkey $out/ca.key \
           -CAcreateserial -days ${validDays} -extfile ext -out $out/tls.pem
 
@@ -283,6 +286,7 @@ pkgs.testers.nixosTest {
         imports = [
           ../../modules/options.nix
           ../../modules/edge.nix
+          ../../modules/edge-credentials.nix
         ];
         _module.args.self = {
           packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
