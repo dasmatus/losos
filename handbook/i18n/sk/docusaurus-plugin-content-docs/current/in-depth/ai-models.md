@@ -1,11 +1,11 @@
 ---
-title: AI modely
+title: Modely AI
 sidebar_position: 4.6
 mdx:
   format: md
 ---
 
-# AI modely
+# Modely AI
 
 Zariadenia v sieti mesh môžu požičať pamäť jazykovým modelom, ktoré sú na
 každé z nich samo príliš veľké. Edge spája požičiavajúce zariadenia do
@@ -26,7 +26,8 @@ Požičiavanie má vlastný prepínač `losos.inference.lend.enable`. Koľko pam
 zariadenie požičia, určuje `losos.inference.lend.memoryMiB`, predvolene
 4096 MiB, a s koľkými vláknami procesora počíta, určuje
 `losos.inference.lend.threads`. Bez počtu vlákien použije polovicu vlákien
-zariadenia.
+zariadenia. Na paneli Trh je to prepínač **Požičiavať pamäť modelom AI** v
+časti **Voľná pamäť**, s množstvom v GiB.
 
 - RPC server beží ako používateľ `shared`, ten istý ako úložisko mesh, a
   súbory vlastníka nikdy nevidí.

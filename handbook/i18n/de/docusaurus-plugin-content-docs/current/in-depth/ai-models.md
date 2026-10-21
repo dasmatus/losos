@@ -28,7 +28,9 @@ Das Verleihen hat einen eigenen Schalter, `losos.inference.lend.enable`.
 Wie viel Arbeitsspeicher die Box verleiht, legt
 `losos.inference.lend.memoryMiB` fest, standardmäßig 4096 MiB, und mit wie
 vielen Prozessor-Threads sie rechnet, `losos.inference.lend.threads`. Ohne
-eine Thread-Zahl nimmt sie die Hälfte der Threads der Box.
+eine Thread-Zahl nimmt sie die Hälfte der Threads der Box. Im Markt-Bereich
+ist es der Schalter **Speicher an KI-Modelle verleihen** unter **Freier
+Speicher**, mit der Menge in GiB.
 
 - Der RPC-Server läuft als Benutzer `shared`, derselbe Benutzer wie der
   Mesh-Speicher, und sieht die Dateien des Besitzers nie.

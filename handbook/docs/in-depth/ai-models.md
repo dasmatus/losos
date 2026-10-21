@@ -25,6 +25,8 @@ Lending is its own switch, `losos.inference.lend.enable`, with
 `losos.inference.lend.memoryMiB` for how much memory the box lends, 4096 MiB
 by default, and `losos.inference.lend.threads` for how many processor
 threads it computes with. Without a thread count it takes half of the box's.
+On the Market pane the switch is **Lend memory to AI models**, under
+**Spare memory**, with the amount in GiB.
 
 - The RPC server runs as the `shared` user, the same user as mesh storage,
   and never sees the owner's files.

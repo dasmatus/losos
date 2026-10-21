@@ -33,7 +33,7 @@ oddiele `/persist`.
 - [Trh](/in-depth/market.md). Predaj disku a CPU, ktoré zariadenie už poskytuje.
 - [Virtuálne stroje](/in-depth/virtual-machines.md). Prenájom strojov v mesh
   a hosťovanie strojov iných zariadení.
-- [AI modely](/in-depth/ai-models.md). Požičiavanie pamäte modelom rozdeleným
+- [Modely AI](/in-depth/ai-models.md). Požičiavanie pamäte modelom rozdeleným
   medzi zariadenia a platba za ich odpovede po tokenoch.
 - [Tvorca widgetov](/in-depth/widget-builder.md). Jazykový model na zariadení
   napíše widget podľa opisu.
