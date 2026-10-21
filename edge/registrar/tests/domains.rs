@@ -15,17 +15,20 @@ use axum::extract::{Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use common::{Edge, TenantSpec, DNS_ZONE, EDGE_IPV4, GOOD_TOKEN, OTHER_TOKEN};
-use losos_registrar::domains::{box_label, challenge_token};
+use k256::ecdsa::SigningKey;
+use losos_registrar::domains::{self, box_label, challenge_token, ens_record, wallet_message};
 use losos_registrar::identity;
 use serde_json::{json, Value};
+use sha3::{Digest, Keccak256};
 use tokio::sync::oneshot;
 
 const THIRD_TOKEN: &str = "1111222233334444555566667777888811112222333344445555666677778888";
 const MATT_UUID: &str = "0b1c2d3e-4f50-4617-8899-aabbccddeeff";
 const THIRD_UUID: &str = "11111111-2222-4333-8444-555555555555";
 
-/// `(name, type) → answers`, as the owner's DNS provider would publish them.
-type Records = Arc<Mutex<HashMap<(String, String), Vec<(u16, String)>>>>;
+/// `(name, type) → (answers, validated)`, as the owner's DNS provider would
+/// publish them and a validating resolver would see them.
+type Records = Arc<Mutex<HashMap<(String, String), (Vec<(u16, String)>, bool)>>>;
 
 struct Doh {
     url: String,
@@ -57,12 +60,21 @@ impl Doh {
     }
 
     fn set(&self, name: &str, rtype: &str, answers: &[(u16, &str)]) {
+        self.set_validated(name, rtype, answers, true);
+    }
+
+    /// `validated` false: the zone's signatures do not chain to the root
+    /// (no DS at the parent), so the resolver leaves the AD bit off.
+    fn set_validated(&self, name: &str, rtype: &str, answers: &[(u16, &str)], validated: bool) {
         self.records.lock().unwrap().insert(
             (name.to_string(), rtype.to_string()),
-            answers
-                .iter()
-                .map(|(t, d)| (*t, (*d).to_string()))
-                .collect(),
+            (
+                answers
+                    .iter()
+                    .map(|(t, d)| (*t, (*d).to_string()))
+                    .collect(),
+                validated,
+            ),
         );
     }
 }
@@ -84,8 +96,9 @@ async fn answer(
     let found = records.lock().unwrap().get(&(name.clone(), rtype)).cloned();
     match found {
         None => Json(json!({ "Status": 3 })),
-        Some(answers) => Json(json!({
+        Some((answers, validated)) => Json(json!({
             "Status": 0,
+            "AD": validated,
             "Answer": answers
                 .iter()
                 .map(|(t, d)| json!({ "name": name, "type": t, "TTL": 300, "data": d }))
@@ -746,5 +759,214 @@ async fn a_gateway_cannot_forge_a_relay_pass() {
         spoke.shutdown().await;
     }
     hub.shutdown().await;
+    let _ = std::fs::remove_dir_all(scratch);
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// A wallet's key and lowercase address.
+fn wallet(seed: u8) -> (SigningKey, String) {
+    let mut secret = [0u8; 32];
+    secret[31] = seed;
+    let key = SigningKey::from_bytes((&secret).into()).expect("key");
+    let point = key.verifying_key().to_sec1_point(false);
+    let digest: [u8; 32] = Keccak256::digest(&point.as_bytes()[1..]).into();
+    (key, format!("0x{}", hex(&digest[12..])))
+}
+
+/// What `personal_sign` in a wallet returns for `message`.
+fn personal_sign(key: &SigningKey, message: &str) -> String {
+    let mut data = format!("\x19Ethereum Signed Message:\n{}", message.len()).into_bytes();
+    data.extend_from_slice(message.as_bytes());
+    let digest: [u8; 32] = Keccak256::digest(&data).into();
+    let (signature, recid) = key.sign_prehash_recoverable(&digest);
+    format!(
+        "0x{}{:02x}",
+        hex(&signature.to_bytes()),
+        u8::from(recid) + 27
+    )
+}
+
+#[tokio::test]
+async fn a_bound_wallet_is_published_at_the_box_names_and_checked_at_its_domains() {
+    let doh = Doh::start().await;
+    let scratch = scratch("wallet");
+    let (key, cert) = official_identity(&scratch);
+    let edge = Edge::start_with_domains(
+        "dom-wallet",
+        &tenants(),
+        &market_state(),
+        Some((&key, &cert)),
+        &doh.url,
+    )
+    .await;
+    let (status, _) = edge
+        .register("mattbox", "mattbox.boxes.example.test", GOOD_TOKEN)
+        .await;
+    assert_eq!(status, 200);
+    let label = box_label(MATT_UUID);
+    let target = format!("{label}.{DNS_ZONE}");
+
+    // Before: the box's names, no wallet, and no TXT in the zone.
+    let v = list(&edge, "mattbox", GOOD_TOKEN).await;
+    assert_eq!(v["box"], "mattbox");
+    assert_eq!(v["zone"], DNS_ZONE);
+    assert_eq!(
+        v["names"],
+        json!(["mattbox.boxes.example.test", target.as_str()])
+    );
+    assert_eq!(v["wallet"], Value::Null);
+    assert!(
+        edge.wait_for(|| zone(&edge).contains(&format!("{label} IN A")))
+            .await
+    );
+    assert!(!zone(&edge).contains(" TXT "), "{}", zone(&edge));
+
+    let (wkey, address) = wallet(7);
+    let message = wallet_message(DNS_ZONE, "mattbox", &address);
+    let signature = personal_sign(&wkey, &message);
+    let bind = |address: &str, signature: &str| {
+        let mut body = auth("mattbox", GOOD_TOKEN);
+        body["address"] = json!(address);
+        body["signature"] = json!(signature);
+        body
+    };
+
+    // Refused: another wallet's signature, a signature for another box, an
+    // address alone, and another box's token.
+    let (other_key, _) = wallet(8);
+    for body in [
+        bind(&address, &personal_sign(&other_key, &message)),
+        bind(
+            &address,
+            &personal_sign(&wkey, &wallet_message(DNS_ZONE, "thirdbox", &address)),
+        ),
+        with(auth("mattbox", GOOD_TOKEN), "address", &address),
+    ] {
+        let (status, body) = edge.post("/domains/wallet", body).await;
+        assert_eq!(status, 400, "{body}");
+    }
+    let mut stolen = bind(&address, &signature);
+    stolen["token"] = json!(THIRD_TOKEN);
+    let (status, _) = edge.post("/domains/wallet", stolen).await;
+    assert_eq!(status, 401);
+    assert!(!zone(&edge).contains(" TXT "));
+
+    // Bound: the view says so, and both names carry the record.
+    let (status, body) = edge
+        .post(
+            "/domains/wallet",
+            bind(&address.to_uppercase().replacen("0X", "0x", 1), &signature),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    let v: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["wallet"]["address"], address.as_str());
+    let record = ens_record(&address);
+    assert_eq!(v["wallet"]["record"], record.as_str());
+    for owner in ["mattbox", label.as_str()] {
+        let line = format!("{owner} IN TXT \"{record}\"");
+        assert!(
+            edge.wait_for(|| zone(&edge).contains(&line)).await,
+            "{line}\n{}",
+            zone(&edge)
+        );
+    }
+    // Kept on disk with the signature that allowed it.
+    let stored = std::fs::read_to_string(edge.dir.join("domains.json")).unwrap();
+    assert!(
+        stored.contains(&address) && stored.contains(&signature[2..20]),
+        "{stored}"
+    );
+    // Only this box's names.
+    assert_eq!(
+        zone(&edge).matches(" IN TXT ").count(),
+        2,
+        "{}",
+        zone(&edge)
+    );
+
+    // Whether a buyer's wallet finds them is public DNS's say, not the
+    // zone's: nothing while the parent has not delegated the zone, then an
+    // unsigned answer, then a validated one.
+    let hostname = "mattbox.boxes.example.test";
+    let published = |v: &Value, name: &str| v["wallet"]["published"][name].clone();
+    let wait_published = |name: String, want: &'static str| {
+        let edge = &edge;
+        async move {
+            // A name not found yet is looked up again every half minute.
+            let mut v = Value::Null;
+            for _ in 0..(10 * (domains::PENDING_RECHECK_SECS + 10)) {
+                v = list(edge, "mattbox", GOOD_TOKEN).await;
+                if published(&v, &name) == want {
+                    return v;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            panic!("{name} never read {want}: {v}");
+        }
+    };
+    let v = wait_published(hostname.to_string(), "missing").await;
+    assert_eq!(published(&v, &target), "missing", "{v}");
+    assert!(v["wallet"]["published_at"].is_u64(), "{v}");
+    doh.set_validated(hostname, "TXT", &[(16, &format!("\"{record}\""))], false);
+    wait_published(hostname.to_string(), "unsigned").await;
+    doh.set(hostname, "TXT", &[(16, &format!("\"{record}\""))]);
+    doh.set(&target, "TXT", &[(16, &format!("\"{record}\""))]);
+    wait_published(hostname.to_string(), "found").await;
+    // Once found, rechecked hourly, not every pass.
+    let v = wait_published(target.clone(), "found").await;
+    let checked = v["wallet"]["published_at"].as_u64().unwrap();
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    let v = list(&edge, "mattbox", GOOD_TOKEN).await;
+    assert_eq!(v["wallet"]["published_at"].as_u64(), Some(checked), "{v}");
+
+    // An owner's domain: the record at the domain is looked up and reported.
+    let domain = "cloud.example.org";
+    let token = challenge_token(domain, MATT_UUID, "acct_test_1");
+    doh.set(
+        &format!("_losos-challenge.{domain}"),
+        "TXT",
+        &[(16, &format!("\"{token}\""))],
+    );
+    doh.set(domain, "A", &[(1, EDGE_IPV4)]);
+    doh.set(domain, "TXT", &[(16, &format!("\"{record}\""))]);
+    let (status, body) = edge
+        .post(
+            "/domains/add",
+            with(auth("mattbox", GOOD_TOKEN), "domain", domain),
+        )
+        .await;
+    assert_eq!(status, 201, "{body}");
+    let mut found = Value::Null;
+    for _ in 0..100 {
+        found = list(&edge, "mattbox", GOOD_TOKEN).await["domains"][0].clone();
+        if found["wallet"] == "found" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(found["wallet"], "found", "{found}");
+    assert_eq!(found["status"], "live", "{found}");
+
+    // Unbound: the records go, and the domains stop reporting.
+    let (status, body) = edge
+        .post("/domains/wallet", auth("mattbox", GOOD_TOKEN))
+        .await;
+    assert_eq!(status, 200, "{body}");
+    let v: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["wallet"], Value::Null);
+    assert_eq!(v["domains"][0]["wallet"], Value::Null);
+    assert!(
+        edge.wait_for(|| !zone(&edge).contains(" TXT ")).await,
+        "{}",
+        zone(&edge)
+    );
+    let stored = std::fs::read_to_string(edge.dir.join("domains.json")).unwrap();
+    assert!(!stored.contains(&address), "{stored}");
+    assert!(!stored.contains("published"), "{stored}");
+    edge.shutdown().await;
     let _ = std::fs::remove_dir_all(scratch);
 }

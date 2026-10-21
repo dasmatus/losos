@@ -1030,7 +1030,7 @@ export function postMarketCoinPay(
 
 export interface RpcReply {
   result?: unknown;
-  error?: { code?: number; message?: string };
+  error?: { code?: number; message?: string; data?: unknown };
 }
 
 /** POST /api/market/rpc — one allowlisted chain call to `network`, or to
@@ -1464,6 +1464,23 @@ export type DomainProblem =
   | "takenElsewhere"
   | "lookupFailed";
 
+/** What the edge last saw of the wallet record at an owner's domain. */
+export type DomainWalletSeen = "found" | "unsigned" | "cname" | "other" | "missing";
+
+/** The wallet bound to this box's names on the edge. */
+export interface BoundWallet {
+  address: string;
+  bound_at: number;
+  /** The TXT value (`ENS1 …`) at the box's names, and for the owner's own
+   *  domains. */
+  record: string;
+  /** What public DNS showed of each of the box's names when the edge last
+   *  looked: `found` means a buyer's wallet finds it. A name not looked up
+   *  yet is absent, and so is the map on an edge that predates the check. */
+  published?: Record<string, DomainWalletSeen>;
+  published_at?: number | null;
+}
+
 export interface CustomDomain {
   domain: string;
   status: "live" | "waiting";
@@ -1476,6 +1493,10 @@ export interface CustomDomain {
   problem: DomainProblem | null;
   checked_at: number | null;
   verified_at: number | null;
+  /** The wallet record at the domain itself, while a wallet is bound:
+   *  `found` means ENS resolves the domain to the wallet. Absent from an
+   *  edge that predates wallets. */
+  wallet?: DomainWalletSeen | null;
 }
 
 export type DomainsResponse =
@@ -1490,6 +1511,15 @@ export type DomainsResponse =
       addresses: string[];
       max_domains: number;
       domains: CustomDomain[];
+      /** This box's id on the edge and the edge's zone, which the wallet
+       *  binding message names (`walletMessage`). This and the three below
+       *  are absent from an edge that predates wallets. */
+      box?: string;
+      zone?: string;
+      /** This box's names in the edge's zone; they carry the wallet record
+       *  while one is bound. */
+      names?: string[];
+      wallet?: BoundWallet | null;
     };
 
 /** GET /api/domains — this box's domains on the edge. */
@@ -1517,6 +1547,20 @@ export function postDomainRemove(
     method: "POST",
     contentType: "application/json",
     body: JSON.stringify({ domain }),
+  });
+}
+
+/** POST /api/domains/wallet — publish the wallet at the box's names, with
+ *  its signature of `walletMessage`; no address takes it off. */
+export function postDomainWallet(
+  binding: { address: string; signature: string } | null,
+  options: RequestOptions = {},
+): Promise<DomainsResponse> {
+  return call<DomainsResponse>("/api/domains/wallet", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(binding ?? {}),
   });
 }
 
