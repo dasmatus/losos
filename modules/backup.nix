@@ -389,6 +389,10 @@ let
   wipeDirs = [
     "/persist/var/lib/nextcloud"
     "/persist/var/lib/losos-git"
+    # What LosOS Git's import leaves of Forgejo on an upgraded box
+    # (modules/git.nix keeps it). Without it the old owner's database and
+    # attachments outlive the reset, and the import runs again next boot.
+    "/persist/var/lib/forgejo"
     "/persist/var/lib/postgresql"
     "/persist/var/lib/redis-nextcloud"
     "/persist/var/lib/losos"
