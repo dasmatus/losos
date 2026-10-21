@@ -186,7 +186,7 @@ pkgs.testers.nixosTest {
             "${./app-builder/chore-chart-fix-2.md}"
           ];
         };
-        environment.systemPackages = [ pkgs.jq ];
+        environment.systemPackages = [ pkgs.jq pkgs.gitMinimal ];
         virtualisation = {
           memorySize = 2048;
           cores = 2;
