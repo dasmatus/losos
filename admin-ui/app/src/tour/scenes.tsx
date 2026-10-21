@@ -81,7 +81,7 @@ function Caption({ y, children }: { y: number; children: React.ReactNode }) {
 
 /* ── 1. Overview: an app opens from its tile and folds back into it ─────── */
 
-const OVERVIEW_APPS: readonly AppId[] = ["files", "photos", "calendar", "notes", "tasks", "code"];
+const OVERVIEW_APPS: readonly AppId[] = ["files", "photos", "code", "settings"];
 const TILE = { x: 24, y: 60, size: 44, step: 72 } as const;
 
 function OverviewScene({ frame: f }: SceneProps) {
@@ -113,7 +113,7 @@ function OverviewScene({ frame: f }: SceneProps) {
   const files: { icon: typeof Folder01Icon; name: string; size: string }[] = [
     { icon: Folder01Icon, name: t("tour.scene.documents"), size: "38 MB" },
     { icon: Folder01Icon, name: t("apps.photos.name"), size: "2.1 GB" },
-    { icon: File01Icon, name: `${t("apps.notes.name")}.md`, size: "64 KB" },
+    { icon: File01Icon, name: "README.md", size: "64 KB" },
   ];
 
   return (

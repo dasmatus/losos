@@ -520,12 +520,11 @@ pub(crate) mod tests {
                     losos.cluster.idleLoadThreshold = 0.5;\n  \
                     losos.cache.substituters = [ \"https://a\" \"https://b\" ];\n  \
                     losos.proxy.noisePublicKeyFile = null;\n  losos.cfd.enable = true;\n}\n";
-        // `cfd.enable` is an alias of proxy.enable, which the sample does not
-        // declare — so that line alone must be the one refused.
-        let err = check_body(&doc, body).unwrap_err();
+        // `cfd.enable` is checked as proxy.enable, the option it became.
+        assert_eq!(check_body(&doc, body), Ok(()));
+        let body = body.replace("losos.cfd.enable = true", "losos.cfd.enable = 1");
+        let err = check_body(&doc, &body).unwrap_err();
         assert!(err.0.contains("losos.cfd.enable"), "{err}");
-        let body = body.replace("  losos.cfd.enable = true;\n", "");
-        assert_eq!(check_body(&doc, &body), Ok(()));
     }
 
     #[test]

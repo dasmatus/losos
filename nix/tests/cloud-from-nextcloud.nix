@@ -69,6 +69,11 @@ pkgs.testers.nixosTest {
       extraAppsEnable = true;
     };
 
+    # The pod kept its config and data one level down, in data/config and
+    # data/data. nixpkgs creates only the two inner folders, so tmpfiles
+    # would make data/ itself root's and Nextcloud's setup would refuse it.
+    systemd.tmpfiles.rules = [ "d /var/lib/nextcloud/data 0750 nextcloud nextcloud -" ];
+
     # The next configuration, as the nightly rebuild brings it.
     specialisation.after.configuration = {
       services.nextcloud.enable = lib.mkForce false;
@@ -140,7 +145,11 @@ pkgs.testers.nixosTest {
         return json.loads(nc(user, method, f"/index.php/apps/deck/api/v1.0{path}", extra))
 
     box.start()
-    box.wait_for_unit("nextcloud-setup.service", timeout=900)
+    # nextcloud-setup is a oneshot that ends inactive; wait for the boot to
+    # settle, then read how it ended. Under TCG the install takes minutes.
+    box.wait_for_unit("multi-user.target", timeout=1500)
+    box.succeed("test \"$(systemctl show -P Result nextcloud-setup.service)\" = success")
+    box.fail("test \"$(systemctl show -P ExecMainExitTimestampMonotonic nextcloud-setup.service)\" = 0")
     box.wait_for_unit("phpfpm-nextcloud.service")
     box.wait_for_unit("nginx.service")
     occ = "nextcloud-occ"
@@ -171,7 +180,12 @@ pkgs.testers.nixosTest {
 
         cal = "/remote.php/dav/calendars/notshared"
         put_text(ADMIN, f"{cal}/personal/dentist.ics", EVENT, "text/calendar")
-        put_text(ADMIN, f"{cal}/personal/insurance.ics", TASK, "text/calendar")
+        # Nextcloud's own calendars take events only; the Tasks app keeps
+        # tasks in a calendar of their own.
+        nc(ADMIN, "MKCALENDAR", f"{cal}/tasks/",
+           "--data '<c:mkcalendar xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\"><d:set><d:prop><d:displayname>Tasks</d:displayname>"
+           "<c:supported-calendar-component-set><c:comp name=\"VTODO\"/></c:supported-calendar-component-set></d:prop></d:set></c:mkcalendar>'")
+        put_text(ADMIN, f"{cal}/tasks/insurance.ics", TASK, "text/calendar")
         nc(ADMIN, "MKCALENDAR", f"{cal}/work/",
            "--data '<c:mkcalendar xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\"><d:set><d:prop><d:displayname>Work</d:displayname></d:prop></d:set></c:mkcalendar>'")
         put_text(ADMIN, f"{cal}/work/standup.ics", WORK, "text/calendar")
@@ -231,13 +245,13 @@ pkgs.testers.nixosTest {
 
     with subtest("events, the task and the contact, exactly as they were sent"):
         assert cloud("notshared", "GET", "/remote.php/dav/calendars/notshared/personal/dentist.ics") == EVENT
-        assert cloud("notshared", "GET", "/remote.php/dav/calendars/notshared/personal/insurance.ics") == TASK
+        assert cloud("notshared", "GET", "/remote.php/dav/calendars/notshared/tasks/insurance.ics") == TASK
         assert cloud("notshared", "GET", "/remote.php/dav/calendars/notshared/work/standup.ics") == WORK
         assert cloud("eva", "GET", "/remote.php/dav/calendars/eva/personal/yoga.ics") == EVA_EVENT
         assert cloud("notshared", "GET", "/remote.php/dav/addressbooks/users/notshared/contacts/eva.vcf") == CARD
         cols = json.loads(cloud("notshared", "GET", "/cloud/api/collections"))["collections"]
         names = {c["name"] for c in cols}
-        assert "Work" in names, cols
+        assert {"Work", "Tasks"} <= names, cols
         assert not any(c["uri"] == "contact_birthdays" for c in cols), cols
 
     with subtest("the Deck board, with its columns, label, member, assignee and comment"):
