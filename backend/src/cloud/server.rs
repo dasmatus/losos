@@ -1,10 +1,11 @@
 //! One listener for every way into the cloud.
 //!
-//! nginx sends here `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/`
-//! and `/cloud/api/` (`modules/cloud.nix`). On the box the listener is a
-//! Unix socket only nginx may open, which is what makes the person nginx
-//! names in `X-Losos-Cloud-User` believable; a TCP listener (tests, a
-//! developer's machine) believes the header only when told to.
+//! nginx sends here `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/`,
+//! `/cloud/api/` and a knowledge base's `/kb/api/` (`modules/cloud.nix`).
+//! On the box the listener is a Unix socket only nginx may open, which is
+//! what makes the person nginx names in `X-Losos-Cloud-User` believable; a
+//! TCP listener (tests, a developer's machine) believes the header only
+//! when told to.
 
 use crate::cloud::auth::{Refusal, Who, EMAIL_HEADER, NAME_HEADER, USER_HEADER};
 use crate::cloud::{api, dav, nc, Cloud};
@@ -113,7 +114,46 @@ fn unauthorized(req: &HttpRequest, refusal: Refusal) -> HttpResponse {
     r
 }
 
+/// Where Nextcloud used to answer on the box. nginx strips it and says so in
+/// [`PREFIX_HEADER`], so an app set up against the old address keeps
+/// working: the hrefs it gets back carry the prefix it sent.
+pub const OLD_PREFIX: &str = "/nextcloud";
+pub const PREFIX_HEADER: &str = "x-losos-cloud-prefix";
+
 async fn handle(req: HttpRequest, body: web::Payload, state: web::Data<State>) -> HttpResponse {
+    let prefixed = state.trust_header && header_value(&req, PREFIX_HEADER) == Some(OLD_PREFIX);
+    let resp = route(req, body, state).await;
+    if prefixed {
+        with_old_prefix(resp).await
+    } else {
+        resp
+    }
+}
+
+/// Put the old prefix in front of every href of a multistatus.
+async fn with_old_prefix(resp: HttpResponse) -> HttpResponse {
+    let xml = resp
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("xml"));
+    if !xml {
+        return resp;
+    }
+    let (head, body) = resp.into_parts();
+    let Ok(bytes) = actix_web::body::to_bytes(body).await else {
+        return HttpResponse::InternalServerError().finish();
+    };
+    let text = String::from_utf8_lossy(&bytes).replace(
+        "<d:href>/remote.php/",
+        &format!("<d:href>{OLD_PREFIX}/remote.php/"),
+    );
+    let mut out = head.set_body(text);
+    out.headers_mut().remove(header::CONTENT_LENGTH);
+    out.map_into_boxed_body()
+}
+
+async fn route(req: HttpRequest, body: web::Payload, state: web::Data<State>) -> HttpResponse {
     let cloud = &*state.cloud;
     let path = req.path().to_owned();
     let method = req.method().as_str().to_owned();
@@ -177,6 +217,12 @@ async fn handle(req: HttpRequest, body: web::Payload, state: web::Data<State>) -
     }
     if let Some(r) = crate::cloud::share::public(&req, cloud, &method, &path) {
         return r;
+    }
+    // A knowledge base's site: open to anyone or to people signed in,
+    // which nginx says by naming them (modules/cloud.nix, /kb/api/).
+    if path.starts_with("/kb/api/") {
+        let who = identify(&state, &req).ok();
+        return crate::cloud::notes::kb::public(&req, cloud, who.as_ref(), &path).await;
     }
 
     let who = match identify(&state, &req) {

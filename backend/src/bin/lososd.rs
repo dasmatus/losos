@@ -56,7 +56,11 @@ fn run() -> anyhow::Result<()> {
     // One backend for the whole daemon. Every clone below shares its lock,
     // which is what serialises a bus `Change` against a `POST /api/change`
     // against a rebuild watcher recording an outcome.
-    let backend = IoLosos::new(Paths::from_env());
+    let paths = Paths::from_env();
+    // An older build kept a LosOS Cloud app password here for the pin
+    // picker; it asks LosOS Cloud over its socket now.
+    let _ = std::fs::remove_file(paths.retired_cloud_key_file());
+    let backend = IoLosos::new(paths);
 
     // Every plugin is compiled before the first request: a plugin that does
     // not load stops the daemon here, where systemd sees it, rather than

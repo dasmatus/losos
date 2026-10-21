@@ -18,7 +18,7 @@ import * as React from "react";
 
 // ── Wire types (backend/schema.json) ──────────────────────────────────────
 
-/** `local` = private Nextcloud; `mesh` = contributes storage to the pool. */
+/** `local` = private LosOS Cloud; `mesh` = contributes storage to the pool. */
 export type Mode = "local" | "mesh";
 
 /** Lifecycle of the last or current rebuild. */
@@ -35,12 +35,9 @@ export interface StateResponse {
 
 export interface SettingsResponse {
   sharingMyStorage: boolean;
-  nextcloudMode: ServiceMode;
   forgejoMode: ServiceMode;
   hostName: string;
-  https: boolean;
   gpuEnable: boolean;
-  apachePort: number;
   proxyEnable: boolean;
   clusterEnable: boolean;
   shareCompute: boolean;
@@ -140,7 +137,7 @@ export function isUnauthorized(error: unknown): boolean {
   return error instanceof ApiError && error.unauthorized;
 }
 
-/** The claim's "not yet": lososd answered 503 because Nextcloud is still
+/** The claim's "not yet": lososd answered 503 because the box is still
  *  starting. Nothing is wrong and nothing was changed; wait and ask again. */
 export function isNotReady(error: unknown): boolean {
   return error instanceof ApiError && error.status === 503;
@@ -467,9 +464,8 @@ export function getHealth(options: RequestOptions = {}): Promise<HealthResponse>
 export interface ClaimState {
   /** Whether an owner has ever set a password on this box. */
   claimed: boolean;
-  /** Whether the first password can be set *now*. False while Nextcloud is
-   *  still installing itself on a fresh box, which takes minutes; the wizard
-   *  polls until it flips. Absent from a lososd older than this field, which
+  /** Whether the first password can be set *now*. lososd answers true
+   *  whenever the box is unclaimed; the wizard still polls on false. Absent from a lososd older than this field, which
    *  the wizard reads as ready, so an old box is not waited on forever. */
   ready?: boolean;
   /** Why not yet, in a sentence for the owner, when `ready` is false. */
@@ -518,8 +514,8 @@ export function getClaimState(options: RequestOptions = {}): Promise<ClaimState>
  * with no SSH and no shell logins. Nothing prints it anywhere. Asking a new
  * owner to paste it was asking for something they had no way to obtain.
  *
- * Answers 503 with `{error, ready: false, waitingFor}` while Nextcloud cannot
- * take the password yet (first boot, still installing); the box stays
+ * Answers 503 with `{error, ready: false, waitingFor}` while the box cannot
+ * take the password yet; the box stays
  * claimable and the wizard goes back to waiting. See `isNotReady`. */
 export function claimBox(
   password: string,
@@ -887,6 +883,8 @@ export interface UsdcPublic {
   /** Dollar prices of the fee coins, micro-dollars per whole coin as text,
    *  when the edge has a fresh one. Ranks networks by what their fee costs. */
   prices?: { eth?: string; sol?: string };
+  /** Who sells USDC on Base for euros through this edge, when anyone does. */
+  onramp?: "binance";
 }
 
 /** What the buyer's wallet pays. Amounts are USDC base units, as decimal
@@ -1057,6 +1055,52 @@ export function postMarketCoinPay(
     method: "POST",
     contentType: "application/json",
     body: JSON.stringify({ order_id: orderId, coin }),
+  });
+}
+
+/** Where an order is, in the edge's words. */
+export type OnrampStage = "open" | "paying" | "sending" | "done" | "kept" | "failed";
+
+export interface OnrampOrder {
+  order_id: string;
+  /** Binance's checkout, on binance.com. */
+  link: string;
+  /** Unix milliseconds; 0 when Binance gave none. */
+  link_expires: number;
+  euros: string;
+  address: string;
+  network: "base";
+  stage: OnrampStage;
+  /** Binance's own status number. */
+  status: number;
+  /** USDC bought, as Binance writes it. */
+  usdc: string | null;
+  /** The withdrawal's transaction on Base. */
+  tx: string | null;
+}
+
+/** POST /api/market/onramp — a Binance order for `euros` of USDC on Base
+ *  to `address`, this box's wallet, with Binance's checkout link. */
+export function postMarketOnramp(
+  address: string,
+  euros: string,
+  options: RequestOptions = {},
+): Promise<OnrampOrder> {
+  return call<OnrampOrder>("/api/market/onramp", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ address, euros }),
+  });
+}
+
+/** POST /api/market/onramp/status — where one of this box's Binance orders is. */
+export function postMarketOnrampStatus(orderId: string, options: RequestOptions = {}): Promise<OnrampOrder> {
+  return call<OnrampOrder>("/api/market/onramp/status", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ order_id: orderId }),
   });
 }
 
@@ -1565,74 +1609,6 @@ export function postAppInstall(request: AppInstallRequest, options: RequestOptio
     contentType: "application/json",
     body: JSON.stringify(request),
   });
-}
-
-// ── LosOS Cloud's own apps ────────────────────────────────────────────────
-// backend/src/cloud_apps.rs. lososd runs Nextcloud's own app commands.
-
-/** Where an app lives: shipped with Nextcloud, shipped with LosOS, or added
- *  from the app store (the only kind that can be removed). */
-export type CloudAppKind = "core" | "bundled" | "store";
-
-/** Why LosOS keeps an app as it is. */
-export type CloudAppManaged = "signIn" | "sharing" | "look" | "wizard";
-
-export type CloudAppLocked = { by: "nextcloud" } | { by: "losos"; reason: CloudAppManaged };
-
-export interface CloudApp {
-  id: string;
-  name: string;
-  summary: string | null;
-  version: string | null;
-  kind: CloudAppKind;
-  enabled: boolean;
-  /** Set when the page may not change it. */
-  locked: CloudAppLocked | null;
-}
-
-export type CloudAppsResponse =
-  | { available: true; store: boolean; apps: CloudApp[] }
-  | { available: false; store: boolean; reason: string };
-
-export type CloudAppVerb = "install" | "enable" | "disable" | "remove";
-
-export interface CloudStoreApp {
-  id: string;
-  name: string;
-  summary: string | null;
-  version: string | null;
-  homepage: string;
-  featured: boolean;
-}
-
-/** GET /api/cloud/apps — every app LosOS Cloud has. */
-export function getCloudApps(options: RequestOptions = {}): Promise<CloudAppsResponse> {
-  return call<CloudAppsResponse>("/api/cloud/apps", options);
-}
-
-/** POST /api/cloud/apps/<verb> — answered with the list after the change. */
-export function postCloudApp(
-  verb: CloudAppVerb,
-  id: string,
-  options: RequestOptions = {},
-): Promise<CloudAppsResponse> {
-  return call<CloudAppsResponse>(`/api/cloud/apps/${verb}`, {
-    ...options,
-    method: "POST",
-    contentType: "application/json",
-    body: JSON.stringify({ id }),
-  });
-}
-
-/** GET /api/cloud/apps/search — the app store's best matches. */
-export function searchCloudStore(
-  query: string,
-  options: RequestOptions = {},
-): Promise<{ results: CloudStoreApp[] }> {
-  return call<{ results: CloudStoreApp[] }>(
-    `/api/cloud/apps/search?${new URLSearchParams({ q: query }).toString()}`,
-    options,
-  );
 }
 
 /** POST /api/apps/remove — its files stay in the user's data folder. */
@@ -2425,9 +2401,9 @@ export function buildOverridesNix(
   settings: SettingsResponse,
   /* Every other `losos.<name>` the file should carry, as Nix literals the
    * Advanced pane produced (lib/option-value.ts): one line each, after the
-   * sixteen above, sorted so the file is stable from one apply to the next
+   * thirteen above, sorted so the file is stable from one apply to the next
    * and the commit lososd makes shows only what changed. A name here that is
-   * one of the sixteen would be a second line for the same key; the first
+   * one of the thirteen would be a second line for the same key; the first
    * wins in lososd's parser, so the form's own value would silently win over
    * the Advanced pane's. The pane never hands one in (it edits those through
    * the form), and the filter below is the belt to that. */
@@ -2441,12 +2417,9 @@ export function buildOverridesNix(
     "{ ... }:",
     "{",
     `  losos.sharingMyStorage = ${nixBool(settings.sharingMyStorage)};`,
-    `  losos.nextcloud.mode = ${nixString(settings.nextcloudMode)};`,
     `  losos.forgejo.mode = ${nixString(settings.forgejoMode)};`,
     `  losos.hostName = ${nixString(settings.hostName)};`,
-    `  losos.nextcloud.https = ${nixBool(settings.https)};`,
     `  losos.gpu.enable = ${nixBool(settings.gpuEnable)};`,
-    `  losos.nextcloud.apachePort = ${settings.apachePort};`,
     `  losos.proxy.enable = ${nixBool(settings.proxyEnable)};`,
     `  losos.cluster.enable = ${nixBool(settings.clusterEnable)};`,
     `  losos.cluster.shareCompute = ${nixBool(settings.shareCompute)};`,
@@ -2462,15 +2435,12 @@ export function buildOverridesNix(
   ].join("\n");
 }
 
-/** The sixteen `losos.*` names the lines above always write. */
+/** The thirteen `losos.*` names the lines above always write. */
 export const OWNED_NAMES: ReadonlySet<string> = new Set([
   "sharingMyStorage",
-  "nextcloud.mode",
   "forgejo.mode",
   "hostName",
-  "nextcloud.https",
   "gpu.enable",
-  "nextcloud.apachePort",
   "proxy.enable",
   "cluster.enable",
   "cluster.shareCompute",
@@ -2493,7 +2463,7 @@ export function isValidTime(value: string): boolean {
 }
 
 /* An RFC 1123 label. The value becomes the system hostname, the mDNS name,
- * Nextcloud's trusted_domains and Forgejo's ROOT_URL. A space or a slash
+ * the address LosOS Cloud hands its apps and Forgejo's ROOT_URL. A space or a slash
  * fails evaluation; a leading hyphen or a 64th character gives a box that
  * boots unreachable — and there is no SSH and no shell login to fix it. */
 export const HOSTNAME_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
@@ -2659,7 +2629,7 @@ export type OptionValue =
   | { nix: string };
 
 export interface OptionDoc {
-  /** `losos.` is implied: "nextcloud.apachePort". */
+  /** `losos.` is implied: "cloud.trashDays". */
   name: string;
   /** The first segment of the name, or "general" for a top-level option. */
   group: string;

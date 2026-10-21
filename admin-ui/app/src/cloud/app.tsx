@@ -7,8 +7,10 @@ import {
   Folder01Icon,
   Image01Icon,
   LaptopPhoneSyncIcon,
+  NoteIcon,
   Search01Icon,
   StarIcon,
+  UserSharingIcon,
 } from "@hugeicons/core-free-icons";
 import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
 import { Button } from "@/components/ui/button";
@@ -34,11 +36,14 @@ import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { logoFor } from "@/lib/logo";
 import { cn } from "@/lib/utils";
+import { EditPage } from "./collab/page";
 import { ConnectPage } from "./connect";
 import { DevicesView } from "./devices";
 import { FilesView } from "./files";
 import { formatBytes } from "./format";
 import { ListView } from "./lists";
+import { SharedFolderView, SharedView } from "./mesh/shared";
+import { NotesOpen, NotesPage } from "./notes/page";
 import { PhotosView } from "./photos";
 import { useMe } from "./store";
 import { TrashView } from "./trash";
@@ -46,7 +51,8 @@ import { UploadsPanel } from "./uploads";
 
 /* LosOS Cloud at /cloud/: the person's files in the browser, beside the
  * desktop and phone apps that sync them. One sidebar of places (Files,
- * Recent, Favorites, Photos, Trash, Devices), a search in the top bar, and
+ * Notes, Recent, Favorites, Photos, Trash, Devices), a search in the top
+ * bar, and
  * the uploads in the corner. /cloud/connect/<token> is the page the apps
  * open to sign in, and draws without the sidebar. */
 
@@ -67,8 +73,10 @@ interface Place {
 
 const PLACES: readonly Place[] = [
   { to: "/files", label: "cloud.nav.files", icon: Folder01Icon },
+  { to: "/notes", label: "notes.title", icon: NoteIcon },
   { to: "/recent", label: "cloud.nav.recent", icon: Clock01Icon },
   { to: "/favorites", label: "cloud.nav.favorites", icon: StarIcon },
+  { to: "/shared", label: "mesh.shared.title", icon: UserSharingIcon },
   { to: "/photos", label: "cloud.nav.photos", icon: Image01Icon },
   { to: "/trash", label: "cloud.nav.trash", icon: Delete02Icon },
   { to: "/devices", label: "cloud.nav.devices", icon: LaptopPhoneSyncIcon },
@@ -77,11 +85,13 @@ const PLACES: readonly Place[] = [
 function Shell() {
   const { pathname } = useLocation();
   const connecting = pathname.startsWith("/connect/");
+  const editing = pathname.startsWith("/edit/");
+  const noting = pathname === "/notes" || pathname.startsWith("/notes/");
   const navigate = useNavigate();
   const pageMenu = usePageMenu();
   return (
     <div className="losos-shell min-h-dvh text-ink">
-      <TopBar search={!connecting} />
+      <TopBar search={!connecting && !editing && !noting} wide={noting} />
       <ContextMenuHost
         page={pageMenu}
         search={connecting ? undefined : (text) => navigate(`/search?q=${encodeURIComponent(text)}`)}
@@ -90,6 +100,22 @@ function Shell() {
         <Routes>
           <Route path="/connect/:token" element={<ConnectPage />} />
         </Routes>
+      ) : noting ? (
+        // A vault has panes of its own and wants the width.
+        <div className="px-4 pt-5 pb-12 sm:px-6">
+          <Routes>
+            <Route path="/notes" element={<NotesPage />} />
+            <Route path="/notes/open" element={<NotesOpen />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </div>
+      ) : editing ? (
+        // A document gets the width; the places are one link away.
+        <main className="px-4 pt-5 pb-12 sm:px-6">
+          <Routes>
+            <Route path="/edit/:file" element={<EditPage />} />
+          </Routes>
+        </main>
       ) : (
         <SidebarProvider className={cn("mx-auto flex w-full max-w-6xl px-4 pt-5 pb-12 sm:px-6", "max-md:flex-col max-md:gap-3 md:gap-6")}>
           <Places />
@@ -100,6 +126,8 @@ function Shell() {
               <Route path="/recent" element={<ListView kind="recent" />} />
               <Route path="/favorites" element={<ListView kind="favorites" />} />
               <Route path="/search" element={<ListView kind="search" />} />
+              <Route path="/shared" element={<SharedView />} />
+              <Route path="/shared/:share" element={<SharedFolderView />} />
               <Route path="/photos" element={<PhotosView />} />
               <Route path="/trash" element={<TrashView />} />
               <Route path="/devices" element={<DevicesView />} />
@@ -113,7 +141,7 @@ function Shell() {
   );
 }
 
-function TopBar({ search }: { search: boolean }) {
+function TopBar({ search, wide = false }: { search: boolean; wide?: boolean }) {
   const t = useT();
   const logo = logoFor();
   const me = useMe();
@@ -128,7 +156,7 @@ function TopBar({ search }: { search: boolean }) {
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
-      <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
+      <div className={cn("mx-auto flex w-full items-center gap-3 px-4 py-3 sm:px-6", wide ? "max-w-[96rem]" : "max-w-6xl")}>
         <Link to="/files" className="flex shrink-0 items-center gap-2.5 rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
           <img src={logo.url} alt="" width={32} height={32} className="size-8" />
           <span className="text-[15px] font-semibold tracking-tight max-sm:sr-only">{me?.product ?? "LosOS Cloud"}</span>

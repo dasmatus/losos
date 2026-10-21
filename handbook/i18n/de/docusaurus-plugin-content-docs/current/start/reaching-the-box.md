@@ -13,7 +13,7 @@ zuverlässig.
 
 Das Banner auf dem Bildschirm der Box zeigt `http://192.168.x.y`, die
 Adresse, die dein Router der Box gegeben hat. Jede Seite antwortet darunter:
-die Admin-Seiten unter `/`, LosOS Cloud unter `/nextcloud`, LosOS Git unter
+die Admin-Seiten unter `/`, LosOS Cloud unter `/cloud/`, LosOS Git unter
 `/forgejo/`, dieses Handbuch unter `/handbook/`. Die Box zeichnet das Banner
 neu, wenn sich die Adresse ändert.
 

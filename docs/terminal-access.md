@@ -147,6 +147,7 @@ KeePassXC all work. Every item carries `service=losos` and a `kind`:
 | `host` | `url` | JSON: `{"url", "kind": "box"\|"edge", "fingerprint", "publicKey", "token", "keyFingerprint", "tlsPin"?}` |
 | `cloud` | `url` | JSON: `{"url", "user", "secret", "location"}`, the LosOS Cloud app password of `losos cloud setup` |
 | `git` | `url`, `protocol`, `server` | the same, with the LosOS Git token of `losos git setup`; `server` is the host as git's credential protocol names it |
+| `companion` | `url` | JSON: `{"url", "tlsPin"?, "accessToken", "expiresAt", "refreshToken"}`, the AI agent companion's LosOS Login sign-in (below) |
 
 `losos cloud setup` also stores the app password under GVfs's own schema,
 so the file manager finds it before it would ask: `xdg:schema`
@@ -169,6 +170,51 @@ different certificate stops the call with a warning, and `losos login` again
 pins the new one once the owner has checked it. An edge with a public
 certificate gets no pin.
 
+## The AI agent companion
+
+`losos agents install` puts `losos mcp --host <url>` into the person's AI
+tools (handbook: AI tools on your computer). The companion uses no key and
+no access token of the person's. It signs in to LosOS Login with OAuth 2.0
+device authorization (RFC 8628) as the public client `losos-companion`
+(`modules/identity.nix`): a POST to `/auth/api/oidc/device-authorization`
+gives a link with the code in it, the person approves on LosOS Login's
+consent page after the usual sign-in (password, and the second factor of a
+person in `losos-two-factor`; `losos-locked` is denied), and the client
+polls `/auth/api/oidc/token` for an access token (an hour) and a refresh
+token (30 days from its last use, rotated at every refresh). Both go into
+the `companion` keychain item and nowhere else; no AI tool's settings hold
+them.
+
+`losos mcp` sends each read as `GET` with `Authorization: Bearer
+<access token>`, straight to the box's API over the pinned certificate (no
+envelope). nginx lets a Bearer request through its authz location, and
+lososd takes a token that is not the spare key only from loopback, only
+under LosOS Login, and only in its `authelia_at_` shape: it asks LosOS Login
+about it (`/auth/api/oidc/introspection` as the confidential client
+`lososd`, whose secret the identity setup unit makes; the request's own
+host, because the issuer is per host) and keeps the answer for at most a
+minute and never past the token's expiry. A live token issued to
+`losos-companion` is the person it names, as the principal `Companion`,
+which is never an administrator and reaches only `GET` on
+`losos_access::COMPANION_ROUTES` (`/api/me`, `/api/status`, the two cloud
+and the two Git routes); everything else is 403. `/api/me` says
+`"companion": true`.
+
+A refresh is made under a lock file in the companion's folder, after reading
+the keychain again, because LosOS Login ends the whole sign-in when a used
+refresh token is shown twice and several tools may each run a `losos mcp`.
+A 401 refreshes once and retries. `losos agents remove`, once the companion
+is in no tool, revokes both tokens at `/auth/api/oidc/revocation` and
+forgets the item.
+
+On a computer that never ran `losos login`, `--host` names the box and the
+client pins the certificate it is shown after the person compares its
+SHA-256 with the browser's. Otherwise the host record's pin is used.
+
+The AI tools' own MCP sign-in (OAuth for remote MCP servers) does not fit:
+the companion is a local stdio server, and the tools' OAuth is for HTTP
+servers that trust a public certificate.
+
 ## This computer: LosOS Cloud and LosOS Git
 
 `losos cloud setup` and `losos git setup` ask the box for a credential of
@@ -180,7 +226,7 @@ POST /api/devices/git    {"password", "device"}  -> {"user", "token", "path"}
 ```
 
 The owner's password goes along because nothing less makes either one.
-Nextcloud mints an app password only for the real password, and Forgejo
+LosOS Cloud mints an app password only for the real password, and Forgejo
 creates an access token only under Basic auth with the account's password;
 its API refuses an administrator's token, `Sudo` and a token used as a
 password for that route. lososd sends both requests over loopback with the
@@ -193,7 +239,7 @@ refuses a second token of one name. Its scopes are `write:repository` and
 
 A wrong password is 403 with `wrongPassword: true`, not 401, so a client
 does not mistake it for a bad token. 409 with `gitOff: true` means the box
-runs no LosOS Git, 429 that Nextcloud is throttling, 503 that one of the
+runs no LosOS Git, 429 that LosOS Cloud is throttling, 503 that one of the
 two cannot be asked yet.
 
 On the computer, `git setup` writes git's global configuration for

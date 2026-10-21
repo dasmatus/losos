@@ -3,7 +3,7 @@
 #
 #   losos-search-index   a timer-driven pass over the owner's LosOS Cloud
 #                        files that reads only what changed since the last
-#                        one into an SQLite full-text index, as `nextcloud`
+#                        one into an SQLite full-text index, as `losos-cloud`
 #   losos-search-cloud   one search of that index per connection
 #   losos-search-git     one `git grep` over the repositories' default
 #                        branches per connection, as `forgejo`
@@ -26,13 +26,13 @@
 let
   cfg = config.losos.search;
   pkg = config.losos.backend.package;
-  nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
   search = "${pkg}/bin/losos-search";
 
   stateDir = "/var/lib/losos-search";
   db = "${stateDir}/cloud.sqlite";
-  # The owner's files as Nextcloud keeps them, in either mode.
-  files = "${nc.dataDir}/${nc.adminUser}/files";
+  # The owner's files as LosOS Cloud keeps them (modules/cloud.nix).
+  files = "/var/lib/losos-cloud/notshared/files";
+  withCloud = config.losos.cloud.enable;
   repos = "/var/lib/forgejo/repositories";
   runDir = "/run/losos-search";
   cloudSocket = "${runDir}/cloud.sock";
@@ -87,13 +87,13 @@ in
 {
   config = lib.mkIf (cfg.enable && pkg != null) (
     lib.mkMerge [
-      {
+      (lib.mkIf withCloud {
         systemd.services.losos-search-index = {
           description = "Read new and changed files in LosOS Cloud into the search index";
           serviceConfig = sandbox // {
             Type = "oneshot";
-            User = "nextcloud";
-            Group = "nextcloud";
+            User = "losos-cloud";
+            Group = "losos-cloud";
             ExecStart = lib.escapeShellArgs [
               search
               "index"
@@ -139,8 +139,8 @@ in
             sandbox
             // perConnection
             // {
-              User = "nextcloud";
-              Group = "nextcloud";
+              User = "losos-cloud";
+              Group = "losos-cloud";
               ExecStart = "${search} cloud --db ${db}";
               # Read-write: SQLite keeps its reader locks next to the file.
               BindPaths = [ "-${stateDir}" ];
@@ -149,7 +149,7 @@ in
         };
 
         systemd.services.lososd.environment.LOSOS_SEARCH_CLOUD_SOCKET = cloudSocket;
-      }
+      })
 
       (lib.mkIf withGit {
         systemd.sockets.losos-search-git = {

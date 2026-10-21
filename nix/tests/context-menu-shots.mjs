@@ -166,7 +166,7 @@ async function desktop(scheme) {
   if (!before) {
     assert.equal(await menu(page).getAttribute("aria-label"), "budget.ods");
     const got = await texts(page);
-    for (const want of ["Open", "Download", "Rename… F2", "Move…", "Copy…", "Versions…", "Copy link", "Delete Del"]) {
+    for (const want of ["Open", "Download", "Rename… F2", "Move…", "Copy…", "Versions…", "Share…", "Copy link", "Delete Del"]) {
       assert.ok(got.includes(want), `${want} missing from ${JSON.stringify(got)}`);
     }
     // A right click picks the row it lands on.

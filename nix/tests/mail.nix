@@ -44,23 +44,6 @@
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  # Claiming the box asks LosOS Cloud to set the owner's password; the
-  # identity test answers the same way.
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   # Without screens the admin pages are not under test; one file stands in.
   stubUi = pkgs.runCommand "stub-admin-ui" { } ''
     mkdir -p $out
@@ -95,9 +78,7 @@ pkgs.testers.nixosTest {
           # The mail plugin answers the folder and filter routes.
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = if screens then lososPkgs.losos-admin-ui else stubUi;
-          nextcloud.mode = "container";
           forgejo.enable = false;
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
           sharingMyStorage = true;
           # In a mesh, as far as the gate goes; modules/cluster.nix (rke2)
           # is not imported, so nothing joins anything.
@@ -120,13 +101,11 @@ pkgs.testers.nixosTest {
         systemd.tmpfiles.rules = [ "d /home/shared/data 0700 shared shared -" ];
 
         systemd.services.lososd.path = lib.mkForce [
-          stubOcc
           pkgs.coreutils
           # The mail plugin's calls to Stalwart go through the host's curl,
           # as on a real box (modules/daemon.nix).
           pkgs.curl
         ];
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         services.authelia.instances.losos.settings.server.endpoints.rate_limits.session_elevation_start.enable =
           false;
         environment.systemPackages = [

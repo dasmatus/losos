@@ -21,7 +21,7 @@ const TYPES = {
 };
 
 /* The admin vhost's Content-Security-Policy (modules/containers.nix,
- * `adminCsp`), minus the frame-src line the wizard needs for /nextcloud.
+ * `adminCsp`), up to frame-src, which the board needs for /widget-frame/.
  * A check that passes `csp: true` to serve() gets its pages under it, so a
  * library that styles itself with an injected <style> element, or a
  * component that sets a style attribute, fails here before it fails on the
@@ -122,13 +122,10 @@ export async function serve({ csp = false } = {}) {
     // A directory gets its index, as nginx's `index` directive gives it.
     const file = rel === '/' ? 'index.html' : rel.endsWith('/') ? rel + 'index.html' : rel;
     // /lab/ is its own page with its own fallback, as its nginx location is,
-    // and so is the edge's /manage/.
-    const fallback =
-      rel.startsWith('/lab/') || rel === '/lab'
-        ? 'lab/index.html'
-        : rel.startsWith('/manage/') || rel === '/manage'
-          ? 'manage/index.html'
-          : 'index.html';
+    // and so are the edge's /manage/, LosOS Cloud's /cloud/ and a knowledge
+    // base's /kb/.
+    const page = ['lab', 'manage', 'cloud', 'kb'].find((p) => rel.startsWith(`/${p}/`) || rel === `/${p}`);
+    const fallback = page === undefined ? 'index.html' : `${page}/index.html`;
     send(file).catch(() =>
       send(fallback).catch(() => {
         res.writeHead(404);

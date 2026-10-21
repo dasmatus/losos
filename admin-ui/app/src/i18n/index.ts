@@ -10,6 +10,8 @@ import advanced from "./advanced";
 import apps from "./apps";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
+import collab from "./collab";
+import games from "./games";
 import home from "./home";
 import inference from "./inference";
 import install from "./install";
@@ -19,6 +21,7 @@ import mail from "./mail";
 import machines from "./machines";
 import manage from "./manage";
 import menu from "./menu";
+import notes from "./notes";
 import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
@@ -43,6 +46,8 @@ export const MESSAGES = {
   ...apps,
   ...cloudApps,
   ...cloud,
+  ...collab,
+  ...notes,
   ...install,
   ...look,
   ...machines,
@@ -58,6 +63,7 @@ export const MESSAGES = {
   ...manage,
   ...mail,
   ...menu,
+  ...games,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

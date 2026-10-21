@@ -31,12 +31,12 @@
 // `theme` is the choice made on the page's own theme toggle (Light or Dark),
 // as against `colorScheme`, the browser's, which Auto follows.
 //
-// A shot with `"clip": true` is also filmed: the same steps in a fresh
-// browser with motion allowed (stills take theirs under reduced motion, so
-// nothing is caught halfway), recorded to `<shot>.webm`. Animations run at
-// `clipRate` of their speed (default 0.1) through the DevTools protocol, so a
-// slow emulated machine still records every frame of a 150 ms transition;
-// play the file back at 1 / clipRate to see real time.
+// A shot with `"strip": [ms, ...]` also gets its motion frame by frame: the
+// same steps in a fresh browser with motion allowed (stills take theirs under
+// reduced motion, so nothing is caught halfway), with every animation frozen
+// at its start through the DevTools protocol, then moved to each time in the
+// list and photographed, `<shot>-<ms>ms.png`. A recording would lose the
+// frames a slow emulated machine never paints; a frozen animation waits.
 //
 // Every run also writes report.json beside the pictures: per picture, the
 // page's width against the window's (a page wider than a phone scrolls
@@ -44,7 +44,8 @@
 //
 // Steps, in order: `click` / `waitFor` / `gone` / `absent` ({role, name},
 // {text} or {selector}; `gone` waits for it to leave, `absent` fails if it
-// is there now), `fill` ({label, value}), `upload` ({selector, file}),
+// is there now), `fill` ({label, value}), `select` ({label, value}, an
+// option of a native select), `upload` ({selector, file}),
 // `press` (a key), `waitText` (exact text), `sleep` (milliseconds) and
 // `goto` (a path). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
@@ -85,14 +86,15 @@ function locate(page, what) {
   throw new Error(`cannot locate ${JSON.stringify(what)}`);
 }
 
-async function step(page, s) {
-  if (s.click) await locate(page, s.click).click();
+async function step(page, s, { force = false } = {}) {
+  if (s.click) await locate(page, s.click).click({ force });
   else if (s.waitFor) await locate(page, s.waitFor).waitFor({ timeout: s.timeout ?? 60000 });
   else if (s.gone) await locate(page, s.gone).waitFor({ state: 'detached', timeout: s.timeout ?? 60000 });
   else if (s.absent) {
     if ((await locate(page, s.absent).count()) > 0) throw new Error(`present: ${JSON.stringify(s.absent)}`);
   }
   else if (s.fill) await page.getByLabel(s.fill.label, { exact: true }).fill(s.fill.value);
+  else if (s.select) await page.getByLabel(s.select.label, { exact: true }).selectOption(s.select.value);
   else if (s.upload) await page.locator(s.upload.selector).setInputFiles(s.upload.file);
   else if (s.press) await page.keyboard.press(s.press);
   else if (s.waitText) await page.getByText(s.waitText, { exact: true }).first().waitFor({ timeout: 60000 });
@@ -101,18 +103,15 @@ async function step(page, s) {
   else throw new Error(`unknown step ${JSON.stringify(s)}`);
 }
 
-async function film(variant, width, shot, name, storageState) {
-  const height = variant.height ?? plan.height ?? 800;
-  const dir = join(args.out, `.video-${name}`);
+async function strip(variant, width, shot, name, storageState) {
   const context = await browser.newContext({
-    viewport: { width, height },
+    viewport: { width, height: variant.height ?? plan.height ?? 800 },
     ignoreHTTPSErrors: true,
     locale: variant.locale ?? plan.locale ?? 'en-US',
     colorScheme: variant.colorScheme ?? plan.colorScheme ?? 'light',
     reducedMotion: 'no-preference',
-    recordVideo: { dir, size: { width, height } },
     // The session and the page's storage of the context that took the
-    // stills, so the clip opens on the same signed-in page.
+    // stills, so the strip opens on the same signed-in page.
     storageState,
   });
   const page = await context.newPage();
@@ -122,26 +121,43 @@ async function film(variant, width, shot, name, storageState) {
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(1000);
     const cdp = await context.newCDPSession(page);
+    let started = [];
+    cdp.on('Animation.animationStarted', ({ animation }) => started.push(animation.id));
     await cdp.send('Animation.enable');
-    await cdp.send('Animation.setPlaybackRate', { playbackRate: plan.clipRate ?? 0.1 });
+    await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
+    // Only what the steps start: the page's own entrance has played.
+    started = [];
     for (const s of shot.steps ?? []) {
-      await step(page, s);
-      await page.waitForTimeout(shot.clipPause ?? 2500);
+      // The stills already waited for each control to be ready, and a frozen
+      // press would keep Playwright waiting for it to settle.
+      await step(page, s, { force: true });
     }
+    await page.waitForTimeout(1500);
+    // One at a time: an animation a later one replaced (a hover's, say) is
+    // gone, and the protocol refuses the whole list for one missing id.
+    let ids = [...started];
+    for (const ms of shot.strip) {
+      const live = [];
+      for (const id of ids) {
+        try {
+          await cdp.send('Animation.seekAnimations', { animations: [id], currentTime: ms });
+          live.push(id);
+        } catch {
+          // Finished or cancelled since.
+        }
+      }
+      ids = live;
+      const path = join(args.out, `${name}-${String(ms).padStart(3, '0')}ms.png`);
+      await page.screenshot({ path, timeout: 180000 });
+    }
+    console.log(`strip ${name}: ${ids.length} animations at ${shot.strip.join(', ')} ms`);
+    if (ids.length === 0) throw new Error(`${name}: the steps started no animation`);
   } catch (e) {
-    // What the camera saw instead, for the log and the pictures.
-    console.error(`filming ${name} at ${page.url()}: ${e.message}`);
-    await page.screenshot({ path: join(args.out, `${name}-film-failed.png`), timeout: 180000 }).catch(() => {});
-    await context.close();
+    console.error(`strip ${name} at ${page.url()}: ${e.message}`);
+    await page.screenshot({ path: join(args.out, `${name}-strip-failed.png`), timeout: 180000 }).catch(() => {});
     throw e;
-  }
-  const video = page.video();
-  await page.close();
-  await context.close();
-  if (video) {
-    const path = join(args.out, `${name}.webm`);
-    await video.saveAs(path);
-    console.log(`filmed ${path}`);
+  } finally {
+    await context.close();
   }
 }
 
@@ -213,9 +229,9 @@ try {
     }
     const storageState = await context.storageState();
     await context.close();
-    for (const shot of plan.shots.filter((s) => s.clip)) {
+    for (const shot of plan.shots.filter((s) => s.strip)) {
       const name = variant.suffix ? `${shot.name}-${variant.suffix}` : shot.name;
-      await film(variant, width, shot, name, storageState);
+      await strip(variant, width, shot, name, storageState);
     }
   }
 } finally {

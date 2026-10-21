@@ -165,16 +165,6 @@ export default defineMessages({
     sk: "Na tomto zariadení",
     de: "Auf dieser Box",
   },
-  "panes.apps.files.title": {
-    en: "Files",
-    sk: "Súbory",
-    de: "Dateien",
-  },
-  "panes.apps.files.detail": {
-    en: "Your documents, photos and calendars.",
-    sk: "Vaše dokumenty, fotky a kalendáre.",
-    de: "Deine Dokumente, Fotos und Kalender.",
-  },
   "panes.apps.code.title": {
     en: "Code",
     sk: "Kód",
@@ -191,100 +181,25 @@ export default defineMessages({
     de: "Mit {kept} läuft eine App abgeschottet vom Rest der Box, sodass ein Problem in ihr auch in ihr bleibt. Diese Einstellung lässt du am besten so. Mit {native} läuft sie neben allem anderen. Sie startet schneller, und so hat diese Box früher gearbeitet. Eine Änderung startet die App neu, während sich die Box neu aufbaut.",
   },
   // ── Apps: each app's box-wide settings (site-settings.tsx) ───────────
-  "panes.apps.site.language": {
-    en: "Language",
-    sk: "Jazyk",
-    de: "Sprache",
-  },
-  "panes.apps.site.languageDetail": {
-    en: "Of the sign-in page, and of every account that has not picked its own.",
-    sk: "Prihlasovacej stránky a každého účtu, ktorý si nevybral vlastný.",
-    de: "Der Anmeldeseite und jedes Kontos, das keine eigene gewählt hat.",
-  },
-  "panes.apps.site.languageBrowser": {
-    en: "The browser's language",
-    sk: "Jazyk prehliadača",
-    de: "Sprache des Browsers",
-  },
-  "panes.apps.site.phone": {
-    en: "Phone numbers without a country code",
-    sk: "Telefónne čísla bez predvoľby krajiny",
-    de: "Telefonnummern ohne Ländervorwahl",
-  },
-  "panes.apps.site.phoneDetail": {
-    en: "Read as numbers in this country.",
-    sk: "Čítajú sa ako čísla v tejto krajine.",
-    de: "Werden als Nummern dieses Landes gelesen.",
-  },
-  "panes.apps.site.phoneInvalid": {
-    en: "Two capital letters, such as SK or DE.",
-    sk: "Dve veľké písmená, napríklad SK alebo CZ.",
-    de: "Zwei Großbuchstaben, zum Beispiel DE oder AT.",
-  },
-  "panes.apps.site.links": {
-    en: "Share with a public link",
-    sk: "Zdieľanie verejným odkazom",
-    de: "Mit öffentlichem Link teilen",
-  },
-  "panes.apps.site.linksDetail": {
-    en: "Anyone who has the link can open what it points to.",
-    sk: "Ktokoľvek, kto má odkaz, otvorí to, na čo ukazuje.",
-    de: "Wer den Link hat, kann öffnen, worauf er zeigt.",
-  },
-  "panes.apps.site.password": {
-    en: "Every link needs a password",
-    sk: "Každý odkaz potrebuje heslo",
-    de: "Jeder Link braucht ein Passwort",
-  },
-  "panes.apps.site.expiry": {
-    en: "Links stop working after",
-    sk: "Odkazy prestanú fungovať po",
-    de: "Links funktionieren nicht mehr nach",
-  },
-  "panes.apps.site.quota": {
-    en: "Space for a new account",
-    sk: "Miesto pre nový účet",
-    de: "Speicher für ein neues Konto",
-  },
   "panes.apps.site.trash": {
     en: "Empty the trash after",
     sk: "Vysypať kôš po",
     de: "Papierkorb leeren nach",
-  },
-  "panes.apps.site.versions": {
-    en: "Delete old versions after",
-    sk: "Mazať staré verzie po",
-    de: "Alte Versionen löschen nach",
   },
   "panes.apps.site.days": {
     en: "days",
     sk: "dňoch",
     de: "Tagen",
   },
-  "panes.apps.site.never": {
-    en: "Never",
-    sk: "Nikdy",
-    de: "Nie",
-  },
-  "panes.apps.site.noLimit": {
-    en: "No limit",
-    sk: "Bez limitu",
-    de: "Kein Limit",
-  },
-  "panes.apps.site.noRegion": {
-    en: "None",
-    sk: "Žiadna",
-    de: "Keine",
-  },
-  "panes.apps.site.automatic": {
-    en: "Automatic",
-    sk: "Automaticky",
-    de: "Automatisch",
+  "panes.apps.site.trashDefault": {
+    en: "30 by default",
+    sk: "Predvolene 30",
+    de: "Standardmäßig 30",
   },
   "panes.apps.site.cloudCaption": {
-    en: "These hold for every account in LosOS Cloud. The box sets them each time the app starts. What each account sets for itself stays in LosOS Cloud. An empty field leaves the choice to LosOS Cloud.",
-    sk: "Tieto nastavenia platia pre každý účet v LosOS Cloud. Zariadenie ich nastaví pri každom spustení aplikácie. Čo si každý účet nastaví sám pre seba, zostáva v LosOS Cloud. Prázdne pole nechá voľbu na LosOS Cloud.",
-    de: "Diese gelten für jedes Konto in LosOS Cloud. Die Box setzt sie bei jedem Start der App. Was jedes Konto für sich selbst einstellt, bleibt in LosOS Cloud. Ein leeres Feld überlässt die Wahl LosOS Cloud.",
+    en: "This holds for every account in LosOS Cloud. An empty field keeps a deleted file for 30 days.",
+    sk: "Toto platí pre každý účet v LosOS Cloud. Prázdne pole nechá zmazaný súbor 30 dní.",
+    de: "Das gilt für jedes Konto in LosOS Cloud. Ein leeres Feld behält eine gelöschte Datei 30 Tage.",
   },
   "panes.apps.site.signIn": {
     en: "Only signed-in accounts see anything",
@@ -693,30 +608,15 @@ export default defineMessages({
     sk: "Prístup",
     de: "Erreichbarkeit",
   },
-  "panes.network.encrypt": {
-    en: "Encrypt the connection",
-    sk: "Šifrovať pripojenie",
-    de: "Verbindung verschlüsseln",
-  },
-  "panes.network.encryptDetail": {
-    en: "Your browser will want a certificate it trusts.",
-    sk: "Váš prehliadač bude chcieť certifikát, ktorému dôveruje.",
-    de: "Dein Browser will dann ein Zertifikat, dem er vertraut.",
-  },
   "panes.network.outside": {
     en: "Reachable from outside your home",
     sk: "Dostupné aj mimo domova",
     de: "Auch von außerhalb erreichbar",
   },
-  "panes.network.port": {
-    en: "Port the files app listens on",
-    sk: "Port aplikácie na súbory",
-    de: "Port der Dateien-App",
-  },
   "panes.network.reachCaption": {
-    en: "With \"reachable from outside\" on, this box opens a way out to a small relay so you can get at it from anywhere. Nothing on your router needs opening. The port is an inside detail. The files app answers on it behind the front door, and there is no reason to change it unless something else on this box already wants that number.",
-    sk: "Keď je zapnuté „dostupné mimo domova“, zariadenie si otvorí cestu von k malému sprostredkovateľovi, aby ste sa k nemu dostali odkiaľkoľvek. Na routeri netreba nič otvárať. Port je vnútorný detail. Aplikácia na súbory na ňom odpovedá za vstupnými dverami a netreba ho meniť, pokiaľ to isté číslo nechce niečo iné na tomto zariadení.",
-    de: "Mit „von außerhalb erreichbar“ öffnet diese Box einen Weg nach draußen zu einem kleinen Relay, sodass du von überall an sie herankommst. An deinem Router muss nichts geöffnet werden. Der Port ist ein internes Detail. Die Dateien-App antwortet darauf hinter der Haustür, und es gibt keinen Grund, ihn zu ändern, außer etwas anderes auf dieser Box will dieselbe Nummer.",
+    en: "With \"reachable from outside\" on, this box opens a way out to a small relay so you can get at it from anywhere. Nothing on your router needs opening.",
+    sk: "Keď je zapnuté „dostupné mimo domova“, zariadenie si otvorí cestu von k malému sprostredkovateľovi, aby ste sa k nemu dostali odkiaľkoľvek. Na routeri netreba nič otvárať.",
+    de: "Mit „von außerhalb erreichbar“ öffnet diese Box einen Weg nach draußen zu einem kleinen Relay, sodass du von überall an sie herankommst. An deinem Router muss nichts geöffnet werden.",
   },
   "panes.network.domains.title": {
     en: "Your own domain",
@@ -814,9 +714,9 @@ export default defineMessages({
     de: "Für eine Domain, vor der nichts steht, etwa example.org selbst, ist kein CNAME erlaubt. Nimm dort stattdessen A- oder AAAA-Einträge auf {addresses}.",
   },
   "panes.network.domains.caption": {
-    en: "Add the two records shown under a domain at the company you bought it from. The edge looks them up itself every half minute and switches the domain on as soon as both are right, with a certificate of its own. LosOS Cloud then answers on it from anywhere, at /nextcloud. The TXT value proves the domain is yours. It is made from this box's identity and its Stripe account without revealing either.",
-    sk: "Pridajte dva záznamy uvedené pod doménou u firmy, od ktorej ste ju kúpili. Okrajový server si ich každú pol minútu sám overí a doménu zapne, hneď ako sú oba správne, aj s vlastným certifikátom. LosOS Cloud potom na nej odpovedá odkiaľkoľvek, na adrese /nextcloud. Hodnota TXT dokazuje, že doména je vaša. Vzniká z identity tohto zariadenia a jeho účtu Stripe bez toho, aby jedno či druhé prezradila.",
-    de: "Trage die zwei Einträge unter einer Domain bei der Firma ein, bei der du sie gekauft hast. Der Edge prüft sie jede halbe Minute selbst und schaltet die Domain ein, sobald beide stimmen, mit eigenem Zertifikat. LosOS Cloud antwortet dann von überall darauf, unter /nextcloud. Der TXT-Wert beweist, dass die Domain dir gehört. Er entsteht aus der Identität dieser Box und ihrem Stripe-Konto, ohne eines davon preiszugeben.",
+    en: "Add the two records shown under a domain at the company you bought it from. The edge looks them up itself every half minute and switches the domain on as soon as both are right, with a certificate of its own. LosOS Cloud then answers on it from anywhere, at /cloud. The TXT value proves the domain is yours. It is made from this box's identity and its Stripe account without revealing either.",
+    sk: "Pridajte dva záznamy uvedené pod doménou u firmy, od ktorej ste ju kúpili. Okrajový server si ich každú pol minútu sám overí a doménu zapne, hneď ako sú oba správne, aj s vlastným certifikátom. LosOS Cloud potom na nej odpovedá odkiaľkoľvek, na adrese /cloud. Hodnota TXT dokazuje, že doména je vaša. Vzniká z identity tohto zariadenia a jeho účtu Stripe bez toho, aby jedno či druhé prezradila.",
+    de: "Trage die zwei Einträge unter einer Domain bei der Firma ein, bei der du sie gekauft hast. Der Edge prüft sie jede halbe Minute selbst und schaltet die Domain ein, sobald beide stimmen, mit eigenem Zertifikat. LosOS Cloud antwortet dann von überall darauf, unter /cloud. Der TXT-Wert beweist, dass die Domain dir gehört. Er entsteht aus der Identität dieser Box und ihrem Stripe-Konto, ohne eines davon preiszugeben.",
   },
   "panes.network.wallet.title": {
     en: "Paid by name",
@@ -2386,9 +2286,9 @@ export default defineMessages({
     de: "USDC mit Euro kaufen",
   },
   "panes.market.onramp.detail": {
-    en: "Through Onramp.money, by bank transfer. The USDC arrives on Base at {address}.",
-    sk: "Cez Onramp.money, bankovým prevodom. USDC príde na sieti Base na {address}.",
-    de: "Über Onramp.money, per Banküberweisung. Die USDC kommen auf Base bei {address} an.",
+    en: "At Binance, with your Binance account. The USDC arrives on Base at {address}.",
+    sk: "Na Binance, s vaším účtom Binance. USDC príde na sieti Base na {address}.",
+    de: "Bei Binance, mit deinem Binance-Konto. Die USDC kommen auf Base bei {address} an.",
   },
   "panes.market.onramp.buy": {
     en: "Buy",
@@ -2396,29 +2296,64 @@ export default defineMessages({
     de: "Kaufen",
   },
   "panes.market.onramp.notice": {
-    en: "Onramp.money sells the USDC, not LosOS. You pay them in euros by SEPA transfer or Open Banking, they check who you are, and they show their rate and fee before you pay. Their page gets only the address and the amount from here.",
-    sk: "USDC predáva Onramp.money, nie LosOS. Platíte im v eurách prevodom SEPA alebo cez Open Banking, overia vašu totožnosť a pred platbou ukážu kurz a poplatok. Ich stránka odtiaľto dostane len adresu a sumu.",
-    de: "Die USDC verkauft Onramp.money, nicht LosOS. Du bezahlst sie in Euro per SEPA-Überweisung oder Open Banking, sie prüfen deine Identität und zeigen Kurs und Gebühr, bevor du zahlst. Ihre Seite bekommt von hier nur die Adresse und den Betrag.",
+    en: "Binance sells the USDC, not LosOS. You sign in to Binance, Binance checks who you are, and it shows its rate and fee before you pay. LosOS sends Binance only this wallet's address and the amount, and never sees your identity or payment details.",
+    sk: "USDC predáva Binance, nie LosOS. Prihlásite sa do Binance, Binance overí vašu totožnosť a pred platbou ukáže kurz a poplatok. LosOS pošle Binance len adresu tejto peňaženky a sumu a vašu totožnosť ani platobné údaje nikdy nevidí.",
+    de: "Die USDC verkauft Binance, nicht LosOS. Du meldest dich bei Binance an, Binance prüft deine Identität und zeigt Kurs und Gebühr, bevor du zahlst. LosOS schickt Binance nur die Adresse dieser Wallet und den Betrag und sieht deine Identität und Zahlungsdaten nie.",
   },
-  "panes.market.onramp.terms": {
-    en: "Terms and Conditions",
-    sk: "Obchodné podmienky",
-    de: "Geschäftsbedingungen",
+  "panes.market.onramp.region": {
+    en: "Binance decides which countries it sells to and may refuse a purchase from yours.",
+    sk: "Binance rozhoduje, v ktorých krajinách predáva, a nákup z vašej krajiny môže odmietnuť.",
+    de: "Binance entscheidet, in welche Länder es verkauft, und kann einen Kauf aus deinem Land ablehnen.",
   },
-  "panes.market.onramp.privacy": {
-    en: "Privacy Policy",
-    sk: "Zásady ochrany súkromia",
-    de: "Datenschutzerklärung",
+  "panes.market.onramp.readFirst": {
+    en: "Read Binance's documents first. Each one opens in a new tab.",
+    sk: "Najprv si prečítajte dokumenty Binance. Každý sa otvorí na novej karte.",
+    de: "Lies zuerst die Dokumente von Binance. Jedes öffnet sich in einem neuen Tab.",
   },
-  "panes.market.onramp.risk": {
-    en: "Risk disclosure",
+  "panes.market.onramp.documents": {
+    en: "Binance's documents",
+    sk: "Dokumenty Binance",
+    de: "Dokumente von Binance",
+  },
+  "panes.market.onramp.doc.terms": {
+    en: "Terms of Use",
+    sk: "Podmienky používania",
+    de: "Nutzungsbedingungen",
+  },
+  "panes.market.onramp.doc.product": {
+    en: "Product Terms",
+    sk: "Podmienky produktov",
+    de: "Produktbedingungen",
+  },
+  "panes.market.onramp.doc.privacy": {
+    en: "Privacy Notice",
+    sk: "Oznámenie o ochrane súkromia",
+    de: "Datenschutzhinweis",
+  },
+  "panes.market.onramp.doc.risk": {
+    en: "Risk Warning",
     sk: "Upozornenie na riziká",
-    de: "Risikohinweis",
+    de: "Risikowarnung",
+  },
+  "panes.market.onramp.docOpened": {
+    en: "Opened",
+    sk: "Otvorené",
+    de: "Geöffnet",
+  },
+  "panes.market.onramp.docNotOpened": {
+    en: "Not opened",
+    sk: "Neotvorené",
+    de: "Nicht geöffnet",
   },
   "panes.market.onramp.accept": {
-    en: "I have read Onramp.money's terms and accept them for this purchase.",
-    sk: "Prečítal som si podmienky Onramp.money a pre tento nákup ich prijímam.",
-    de: "Ich habe die Bedingungen von Onramp.money gelesen und akzeptiere sie für diesen Kauf.",
+    en: "I have read Binance's Terms of Use, Product Terms, Privacy Notice and Risk Warning, and accept them for this purchase.",
+    sk: "Poznám Podmienky používania, Podmienky produktov, Oznámenie o ochrane súkromia a Upozornenie na riziká Binance a pre tento nákup ich prijímam.",
+    de: "Ich habe die Nutzungsbedingungen, Produktbedingungen, den Datenschutzhinweis und die Risikowarnung von Binance gelesen und akzeptiere sie für diesen Kauf.",
+  },
+  "panes.market.onramp.openEach": {
+    en: "Open each document above to accept them.",
+    sk: "Ak ich chcete prijať, otvorte každý dokument vyššie.",
+    de: "Öffne jedes Dokument oben, um sie zu akzeptieren.",
   },
   "panes.market.onramp.amount": {
     en: "Amount in euros",
@@ -2431,9 +2366,9 @@ export default defineMessages({
     de: "EUR",
   },
   "panes.market.onramp.continue": {
-    en: "Continue to Onramp.money",
-    sk: "Pokračovať na Onramp.money",
-    de: "Weiter zu Onramp.money",
+    en: "Create the order",
+    sk: "Vytvoriť objednávku",
+    de: "Bestellung anlegen",
   },
   "panes.market.onramp.cancel": {
     en: "Cancel",
@@ -2441,39 +2376,64 @@ export default defineMessages({
     de: "Abbrechen",
   },
   "panes.market.onramp.range": {
-    en: "Onramp.money takes {min} to {max} euros per order.",
-    sk: "Onramp.money prijme od {min} do {max} eur na objednávku.",
-    de: "Onramp.money nimmt {min} bis {max} Euro pro Bestellung.",
+    en: "Enter {min} to {max} euros. Binance shows its own limits for your payment method.",
+    sk: "Zadajte {min} až {max} eur. Binance ukáže vlastné limity pre váš spôsob platby.",
+    de: "Gib {min} bis {max} Euro ein. Binance zeigt die eigenen Grenzen für deine Zahlungsart.",
   },
-  "panes.market.onramp.waiting": {
-    en: "Waiting for {euros} euros of USDC to reach this wallet on Base. A bank transfer can take a day or two; while this page is open it checks every 20 seconds.",
-    sk: "Čaká sa, kým USDC za {euros} eur príde do tejto peňaženky na sieti Base. Bankový prevod môže trvať deň či dva; kým je táto stránka otvorená, kontroluje to každých 20 sekúnd.",
-    de: "Warte, bis USDC für {euros} Euro auf Base in dieser Wallet ankommen. Eine Überweisung kann ein, zwei Tage dauern; solange diese Seite offen ist, prüft sie alle 20 Sekunden.",
+  "panes.market.onramp.checking": {
+    en: "Checking the order at Binance…",
+    sk: "Kontroluje sa objednávka na Binance…",
+    de: "Bestellung bei Binance wird geprüft…",
   },
-  "panes.market.onramp.waitingOrder": {
-    en: "Onramp.money is still processing order {order}. Waiting for {euros} euros of USDC to reach this wallet on Base.",
-    sk: "Onramp.money ešte spracúva objednávku {order}. Čaká sa, kým USDC za {euros} eur príde do tejto peňaženky na sieti Base.",
-    de: "Onramp.money bearbeitet Bestellung {order} noch. Warte, bis USDC für {euros} Euro auf Base in dieser Wallet ankommen.",
+  "panes.market.onramp.stage.open": {
+    en: "Your order for {euros} euros is ready. Open Binance to sign in and pay.",
+    sk: "Objednávka za {euros} eur je pripravená. Otvorte Binance, prihláste sa a zaplaťte.",
+    de: "Deine Bestellung über {euros} Euro ist bereit. Öffne Binance, melde dich an und bezahle.",
   },
-  "panes.market.onramp.paidOrder": {
-    en: "Onramp.money order {order} is paid. Waiting for {euros} euros of USDC to reach this wallet on Base.",
-    sk: "Objednávka {order} na Onramp.money je zaplatená. Čaká sa, kým USDC za {euros} eur príde do tejto peňaženky na sieti Base.",
-    de: "Bestellung {order} bei Onramp.money ist bezahlt. Warte, bis USDC für {euros} Euro auf Base in dieser Wallet ankommen.",
+  "panes.market.onramp.stage.paying": {
+    en: "Binance is taking your payment of {euros} euros.",
+    sk: "Binance prijíma vašu platbu {euros} eur.",
+    de: "Binance nimmt deine Zahlung über {euros} Euro entgegen.",
+  },
+  "panes.market.onramp.stage.sending": {
+    en: "Bought. Binance is sending {usdc} USDC to this wallet on Base.",
+    sk: "Kúpené. Binance posiela {usdc} USDC do tejto peňaženky na sieti Base.",
+    de: "Gekauft. Binance schickt {usdc} USDC auf Base an diese Wallet.",
+  },
+  "panes.market.onramp.stage.done": {
+    en: "Binance sent {usdc} USDC to this wallet on Base.",
+    sk: "Binance poslal {usdc} USDC do tejto peňaženky na sieti Base.",
+    de: "Binance hat {usdc} USDC auf Base an diese Wallet geschickt.",
+  },
+  "panes.market.onramp.stage.kept": {
+    en: "Binance bought the USDC but did not send it here. It is in your Binance account.",
+    sk: "Binance USDC kúpil, ale neposlal ich sem. Sú na vašom účte Binance.",
+    de: "Binance hat die USDC gekauft, aber nicht hierher geschickt. Sie liegen in deinem Binance-Konto.",
+  },
+  "panes.market.onramp.stage.failed": {
+    en: "Binance did not complete the purchase. Nothing was bought.",
+    sk: "Binance nákup nedokončil. Nič sa nekúpilo.",
+    de: "Binance hat den Kauf nicht abgeschlossen. Es wurde nichts gekauft.",
+  },
+  "panes.market.onramp.openBinance": {
+    en: "Open Binance",
+    sk: "Otvoriť Binance",
+    de: "Binance öffnen",
+  },
+  "panes.market.onramp.viewTransaction": {
+    en: "View the transaction",
+    sk: "Zobraziť transakciu",
+    de: "Transaktion ansehen",
   },
   "panes.market.onramp.stop": {
-    en: "Stop waiting",
-    sk: "Prestať čakať",
-    de: "Nicht mehr warten",
+    en: "Stop following",
+    sk: "Prestať sledovať",
+    de: "Nicht mehr verfolgen",
   },
-  "panes.market.onramp.arrived": {
-    en: "{amount} USDC arrived on Base.",
-    sk: "Na sieti Base prišlo {amount} USDC.",
-    de: "{amount} USDC sind auf Base angekommen.",
-  },
-  "panes.market.onramp.viewTransfers": {
-    en: "View transfers",
-    sk: "Zobraziť prevody",
-    de: "Transfers ansehen",
+  "panes.market.onramp.dismiss": {
+    en: "Done",
+    sk: "Hotovo",
+    de: "Fertig",
   },
   "panes.market.usdc.sendTitle": {
     en: "Send USDC",

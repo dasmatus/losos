@@ -31,7 +31,7 @@ const BOXES = [
   { id: 'reception', hostname: 'reception', seenAgoSecs: 300, managed: false },
 ];
 const DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json', 'utf8'));
-const SITE_NAMES = /^(nextcloud|forgejo)\.(site\.|federation\.enable$)/;
+const SITE_NAMES = /^(cloud\.trashDays|forgejo\.(site\..+|federation\.enable))$/;
 const SITE = {
   available: true,
   version: DOC.version,
@@ -166,7 +166,7 @@ await check("a box's settings change through the edge's relay, only the lines na
   assert.ok(calls.every((c) => c.path.startsWith('/manage/api/')), JSON.stringify(calls));
 
   const trash = page.getByLabel('Empty the trash after');
-  await trash.fill('30');
+  await trash.fill('14');
   await trash.blur();
   await page.getByLabel('What a visitor sees first').selectOption('explore');
   await page.getByRole('button', { name: 'Apply' }).click();
@@ -174,7 +174,7 @@ await check("a box's settings change through the edge's relay, only the lines na
   assert.deepEqual(posts, [
     {
       path: '/api/site',
-      body: { set: { 'forgejo.site.landingPage': '"explore"', 'nextcloud.site.trashDays': '30' } },
+      body: { set: { 'forgejo.site.landingPage': '"explore"', 'cloud.trashDays': '14' } },
     },
   ]);
   assert.deepEqual(errors, []);
@@ -234,12 +234,9 @@ await check('a deep link reloads, and the page adds no policy violation', async 
 const SECTIONS = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab', 'access'];
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   forgejoMode: 'container',
   hostName: 'office-box',
-  https: false,
   gpuEnable: false,
-  apachePort: 80,
   proxyEnable: true,
   clusterEnable: false,
   shareCompute: false,
@@ -302,11 +299,12 @@ await check("the owner's switch lets the company edge in use manage the box, and
   await page.getByRole('switch', { name, exact: true }).waitFor();
   assert.equal(await page.getByRole('switch', { name, exact: true }).isChecked(), false);
   await toggle(page, name);
-  await page.getByText('Office edge can manage this box now').waitFor();
+  // The toast's live region repeats the line, prefixed; the row's own text is exact.
+  await page.getByText('Office edge can manage this box now', { exact: true }).first().waitFor();
   await page.getByText(/can change LosOS Cloud, LosOS Git and the apps here/).waitFor();
   assert.equal(await page.getByRole('switch', { name, exact: true }).isChecked(), true);
   await toggle(page, name);
-  await page.getByText('No edge manages this box now').waitFor();
+  await page.getByText('No edge manages this box now', { exact: true }).first().waitFor();
   assert.deepEqual(posts, [{ enabled: true }, { enabled: false }]);
   await context.close();
 });

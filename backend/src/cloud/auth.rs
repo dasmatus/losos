@@ -242,6 +242,78 @@ impl Auth {
     }
 
     fn check_app_password(&self, store: &Store, login: &str, password: &str) -> Option<i64> {
+        if let Some(id) = self.check_nextcloud_password(store, login, password) {
+            return Some(id);
+        }
+        self.check_own_password(store, login, password)
+    }
+
+    /// An app password Nextcloud gave out, brought over by the import: its
+    /// hash is Nextcloud's, SHA-512 of the password and the instance's
+    /// secret, so the apps keep syncing without signing in again.
+    fn check_nextcloud_password(&self, store: &Store, login: &str, password: &str) -> Option<i64> {
+        store
+            .with_db(|db| {
+                let secret: Option<String> = db
+                    .query_row(
+                        "SELECT value FROM meta WHERE key = 'nextcloud-secret'",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let Some(secret) = secret else {
+                    return Ok(None);
+                };
+                let hash = format!(
+                    "nc:{}",
+                    crate::cloud::util::sha512_hex(format!("{password}{secret}").as_bytes())
+                );
+                let id: Option<i64> = db
+                    .query_row(
+                        "SELECT id FROM app_passwords WHERE hash = ?1 AND login = ?2",
+                        params![hash, login],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                if let Some(id) = id {
+                    db.execute(
+                        "UPDATE app_passwords SET last_used = ?1 WHERE id = ?2 AND last_used < ?1 - 60",
+                        params![now(), id],
+                    )?;
+                }
+                Ok(id)
+            })
+            .ok()
+            .flatten()
+    }
+
+    /// Keep Nextcloud's app passwords working: its instance secret, and
+    /// each permanent token's hash as Nextcloud stored it.
+    pub fn adopt_nextcloud_passwords(
+        &self,
+        store: &Store,
+        secret: &str,
+        tokens: &[(String, String, String, i64)],
+    ) -> Result<usize, StoreError> {
+        store.with_db(|db| {
+            let tx = db.transaction()?;
+            tx.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('nextcloud-secret', ?1)",
+                params![secret],
+            )?;
+            let mut n = 0;
+            for (login, name, hash, last_used) in tokens {
+                n += tx.execute(
+                    "INSERT OR IGNORE INTO app_passwords (login, name, hash, created, last_used) VALUES (?1, ?2, ?3, ?4, ?4)",
+                    params![login, name, format!("nc:{hash}"), last_used],
+                )?;
+            }
+            tx.commit()?;
+            Ok(n)
+        })
+    }
+
+    fn check_own_password(&self, store: &Store, login: &str, password: &str) -> Option<i64> {
         // Nextcloud's own apps send the password with or without dashes in
         // some versions; only the letters and digits count.
         let cleaned: String = password

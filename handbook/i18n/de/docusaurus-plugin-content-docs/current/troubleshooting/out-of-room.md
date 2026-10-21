@@ -40,7 +40,7 @@ mehr** erscheint.
    Systemversionen. Wenn die Box in den letzten zwei Wochen installiert
    oder oft aktualisiert wurde, können das mehrere Gigabyte sein.
 4. **Lagere Daten aus**, mit dem Desktop-Client oder per Download aus LosOS
-   cloud, und lösch sie dann dort.
+   Cloud, und lösch sie dann dort.
 5. **Teile weniger.** Eine Box, die dem Mesh Platz leiht, mit dem
    Speichermodus auf geteilt, hält Kopien für andere Boxen. Schaltest du das
    Teilen aus, wird dieser Platz wieder frei, sobald der Pool die Daten neu

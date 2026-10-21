@@ -41,7 +41,7 @@
 #                losos-static is the same crate linked against musl for
 #                machines without a Nix store; CI publishes it beside
 #                install.sh. Both share one cargoHash.
-#   losos-image-{pause,nextcloud,forgejo} — the OCI images the local k3s
+#   losos-image-{pause,forgejo} — the OCI images the local k3s
 #                cluster runs as static pods, defined in nix/images.nix and
 #                merged in below. modules/defaults.nix wires them to
 #                losos.workloads.*. They are exported as flake packages
@@ -329,7 +329,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-Y+e3YOa5T6FFvSha3LfKIDYyXWSM+ajoOP1dnB24Y5s=";
+    npmDepsHash = "sha256-m/MViODZIEhu9fz662JpUWEmJ8Lt9K/TbNFVK1WcK6M=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -397,9 +397,9 @@ images
     '';
   };
 
-  # The LosOS look for Nextcloud and Forgejo — the admin SPA's tokens.css plus
-  # each app's mapping onto it. Consumed by modules/nextcloud-stack.nix,
-  # modules/services.nix and images.nix through admin-ui/themes/default.nix,
+  # The LosOS look for Forgejo and LosOS Login — the admin SPA's tokens.css
+  # plus each app's mapping onto it. Consumed by modules/services.nix,
+  # modules/identity.nix and images.nix through admin-ui/themes/default.nix,
   # not through this attribute; it is exported so the files can be built and
   # read on their own.
   losos-themes = (import ./../admin-ui/themes { inherit pkgs; }).package;
@@ -423,7 +423,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-0u3Nms+S1DBWPYcPYLUMffd9mfJJYNcIbCXRhyUZpOU=";
+    cargoHash = "sha256-t1rmxiH9GnvZx4tZbeewMmnVnHaFwxExe94xQY4KJWU=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -449,7 +449,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-LRVdd/wx4gVR3dvIJRMFpp2JYIfAax9sdLLAiFi3+6E=";
+    cargoHash = "sha256-go4JGCxK9vzYoKrRyteqG7JqvbuH5iui9scxTLUTrm8=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -474,7 +474,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-LRVdd/wx4gVR3dvIJRMFpp2JYIfAax9sdLLAiFi3+6E=";
+    cargoHash = "sha256-go4JGCxK9vzYoKrRyteqG7JqvbuH5iui9scxTLUTrm8=";
     doCheck = false;
   };
 

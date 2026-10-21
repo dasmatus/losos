@@ -18,7 +18,6 @@ without saying so.
 - the installer ISO, built on every push and then booted under OVMF and
   SeaBIOS by `nix/tests/iso-boot.py`. A boot passes when the installer sends a
   DNS query for `github.com`. On timeout, the job uploads a screenshot.
-- the Nextcloud image, weekly and on request only
 - `losos-registrar` for the dev machine, a static musl build pushed to GHCR
   on every push to main and every tag and served by the proxy (below)
 
@@ -159,7 +158,7 @@ It has three limits:
   its paths on the proxy alone.
 - A Pages site may be at most 1 GB, so the copy keeps under 800 MiB of NARs
   and drops the largest paths first. The job's step summary names what it
-  left out. The Nextcloud image, built weekly, is never in it.
+  left out.
 - Its `nix-cache-info` says `Priority: 45`, after the proxy (30) and
   cache.nixos.org (40), so nix tries it after both.
 
@@ -303,6 +302,49 @@ The registrar starts with any of these still unsealed (the unit falls back
 to a placeholder, which reads as "not configured"), so the terminal can
 reach it to seal them; until they are, the market answers 503 for USDC. Plain `http` is accepted only for a node
 on the edge's own loopback, such as `http://127.0.0.1:8545`.
+
+### Buying USDC with euros at Binance
+
+The wallet's euro purchase is Binance Connect's hosted on-ramp, and the edge
+is the Binance partner (`edge/registrar/src/onramp.rs`). It needs USDC on
+`base` (live) and a partner account, which Binance's Pay Onchain team opens
+on request. Binance has no sandbox; a new partner starts on Binance's QA
+environment. Binance asks for:
+
+- the partner's RSA public key. Make the pair on the operator's machine,
+  2048 bits or more: `openssl genpkey -algorithm RSA -pkeyopt
+  rsa_keygen_bits:2048 -out binance-connect.pem`, then `openssl pkey -in
+  binance-connect.pem -pubout`. The registrar signs with ring, which takes
+  no key under 2048 bits;
+- the edge's public IP addresses, for Binance's allowlist;
+- the notification URL, `https://register.<publicDomain>/market/onramp/webhook`;
+- an 80×80 PNG logo for its checkout.
+
+Binance answers with the API origin, a client id, a sign access token and
+its own public key for notifications. The first three and the key file are
+configuration; the private key and the token are sealed:
+
+```nix
+losos.edge.market.usdc.binance = {
+  enable = true;
+  apiUrl = "https://…";                          # from Binance
+  clientId = "…";                                # from Binance
+  webhookPublicKeyFile = ./binance-webhook.pub;  # Binance's key, PEM or base64
+};
+```
+
+```sh
+losos edge secret set binance-connect-key < binance-connect.pem
+losos edge secret set binance-connect-token
+```
+
+The key lands in `/var/secrets/losos-binance-connect-key.cred`
+(`keySealed`) and the token in `/var/secrets/losos-binance-connect-token.cred`
+(`tokenSealed`); delete the PEM from the operator's machine once Binance has
+the public half, or keep it offline. Until both are sealed the boxes are not
+offered the purchase and the routes answer 503. Orders live in
+`/var/lib/losos-registrar/onramp.json`, keyed by the 32-hex id the edge sends
+Binance as `externalOrderId`; a box can read only its own.
 
 ### Coins only, without cards
 
