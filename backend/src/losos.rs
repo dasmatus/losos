@@ -166,6 +166,14 @@ pub trait Losos {
     /// Every installed app's record, by name.
     fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>>;
     fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()>;
+    /// A Compose app's file and the files beside it, where the job reads
+    /// them (`<apps dir>/<release>/source/`), replacing what was there.
+    fn save_app_source(
+        &mut self,
+        release: &str,
+        compose: &str,
+        files: &[(String, String)],
+    ) -> anyhow::Result<()>;
     /// Start the job that installs or removes `release`, from its record.
     fn start_app_job(&mut self, release: &str, action: crate::apps::Action) -> anyhow::Result<()>;
     /// Whether a job for `release` is running.
@@ -2268,6 +2276,14 @@ mod tests {
             }
             fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>> {
                 self.0.load_app_records()
+            }
+            fn save_app_source(
+                &mut self,
+                release: &str,
+                compose: &str,
+                files: &[(String, String)],
+            ) -> anyhow::Result<()> {
+                self.0.save_app_source(release, compose, files)
             }
             fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()> {
                 self.0.save_app_record(record)

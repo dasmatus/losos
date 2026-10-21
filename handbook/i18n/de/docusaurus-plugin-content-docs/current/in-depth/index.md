@@ -34,6 +34,9 @@ erhalten, und zwar auf einer verschlüsselten Partition `/persist`.
   Box schon teilt.
 - [Virtuelle Maschinen](/in-depth/virtual-machines.md). Maschinen im Mesh mieten
   und Maschinen anderer Boxen hosten.
+- [App-Format](/in-depth/app-format.md). Eine Compose-Datei pro App, als
+  notshared auf Podman ohne root ausgeführt: was die Box damit macht und wie
+  man eine installiert.
 - [Widget-Baukasten](/in-depth/widget-builder.md). Ein Sprachmodell auf der Box
   schreibt ein Widget nach einer Beschreibung.
 - [Master-Proxy](/in-depth/master-proxy.md). Die Box aus dem Internet erreichen, ohne

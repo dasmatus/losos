@@ -12,10 +12,10 @@ export default defineMessages({
     sk: "Inštalovať {name}",
     de: "{name} installieren",
   },
-  "install.noCluster": {
-    en: "Apps from the search install only while Files or Code is set to Kept separate above.",
-    sk: "Aplikácie z vyhľadávania sa dajú inštalovať, len keď sú Súbory alebo Kód vyššie nastavené na Oddelene.",
-    de: "Apps aus der Suche lassen sich nur installieren, solange Dateien oder Code oben auf Abgeschottet steht.",
+  "install.off": {
+    en: "Installing apps is turned off on this box (losos.apps.enable on the Advanced pane).",
+    sk: "Inštalovanie aplikácií je na tomto zariadení vypnuté (losos.apps.enable na paneli Pokročilé).",
+    de: "Das Installieren von Apps ist auf dieser Box ausgeschaltet (losos.apps.enable im Bereich Erweitert).",
   },
 
   // ── The dialog: properties and user ─────────────────────────────────────
@@ -186,6 +186,11 @@ export default defineMessages({
     en: "Each app answers on its own port of this box, on your local network only. Removing one keeps its data folder.",
     sk: "Každá aplikácia odpovedá na vlastnom porte tohto zariadenia, len vo vašej lokálnej sieti. Odstránenie ponechá jej priečinok s dátami.",
     de: "Jede App antwortet auf einem eigenen Port dieser Box, nur in deinem lokalen Netz. Beim Entfernen bleibt ihr Datenordner erhalten.",
+  },
+  "install.madeHere": {
+    en: "{title}, made for this box, runs as {user}",
+    sk: "{title}, vytvorená pre toto zariadenie, beží ako {user}",
+    de: "{title}, für diese Box gemacht, läuft als {user}",
   },
   "install.runsAs": {
     en: "{chart} {version}, runs as {user}",
