@@ -20,6 +20,7 @@ pub mod extensions;
 pub mod import;
 pub mod mesh;
 pub mod nc;
+pub mod notes;
 pub mod preview;
 pub mod search;
 pub mod server;
@@ -38,6 +39,9 @@ pub struct Config {
     pub product: String,
     /// Days a deleted file stays in the trash bin.
     pub trash_days: i64,
+    /// Folders may be published as knowledge bases: the box shares and has
+    /// joined a mesh (`notes::kb`).
+    pub knowledge_bases: bool,
 }
 
 impl Default for Config {
@@ -45,6 +49,7 @@ impl Default for Config {
         Config {
             product: "LosOS Cloud".into(),
             trash_days: 30,
+            knowledge_bases: false,
         }
     }
 }
@@ -62,6 +67,8 @@ pub struct Cloud {
     pub auth: auth::Auth,
     pub locks: dav::Locks,
     pub config: Config,
+    /// What each note says about itself, read once per version.
+    pub notes: notes::Cache,
     changes: broadcast::Sender<Changed>,
     /// Sharing with people on other boxes and editing together, once
     /// [`mesh::start`] has run.
@@ -80,6 +87,7 @@ impl Cloud {
             auth,
             locks: dav::Locks::default(),
             config,
+            notes: notes::Cache::default(),
             changes,
             mesh: std::sync::OnceLock::new(),
         })

@@ -14,6 +14,7 @@ use actix_web::{web, HttpRequest, HttpResponse};
 
 pub fn init(store: &Store) -> Result<(), StoreError> {
     crate::cloud::share::init(store)?;
+    crate::cloud::notes::kb::init(store)?;
     Ok(())
 }
 
@@ -40,6 +41,9 @@ pub async fn api(
     segs: &[&str],
     body: web::Payload,
 ) -> HttpResponse {
-    let _ = (req, cloud, who, segs, body);
-    crate::cloud::api::error(StatusCode::NOT_FOUND, "notFound", "no such call")
+    match segs {
+        ["notes", rest @ ..] => crate::cloud::notes::api(req, cloud, who, rest, body).await,
+        ["kb", rest @ ..] => crate::cloud::notes::kb::api(req, cloud, who, rest, body).await,
+        _ => crate::cloud::api::error(StatusCode::NOT_FOUND, "notFound", "no such call"),
+    }
 }
