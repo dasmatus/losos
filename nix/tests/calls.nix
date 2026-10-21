@@ -546,10 +546,11 @@ pkgs.testers.nixosTest {
                             up = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                             up.connect(("127.0.0.1", free.pop(0)))
                             ups[peer] = up
-                            sel.register(up, selectors.EVENT_READ, peer)
+                            sel.register(up, selectors.EVENT_READ, (up, peer))
                         up.send(data)
                     else:
-                        front.sendto(key.fileobj.recv(65535), key.data)
+                        sock, peer = key.data
+                        front.sendto(sock.recv(65535), peer)
                 except OSError:
                     pass
 
