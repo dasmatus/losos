@@ -41,6 +41,10 @@ vlastníka.
 - Kliknite pravým tlačidlom na súbor, priečinok alebo miesto okolo nich a
   uvidíte, čo s nimi môžete urobiť; pozrite
   [ponuku pravého tlačidla](admin-pages#the-right-click-menu).
+- Ponuka pravého tlačidla na súbore ho podá aj ďalším aplikáciám: **Poslať
+  e-mailom** a **Poslať v chate**, kým má zariadenie Mail a Chat, a
+  **Opýtať sa AI na toto** pri textovom súbore na zariadení s jazykovým
+  modelom. AI beží na zariadení a číta len súbor, ktorý ste vybrali.
 
 ## Aplikácie pre počítač a telefón \{#desktop-and-phone-apps}
 
