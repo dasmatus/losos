@@ -47,7 +47,7 @@ Datei auch von ihrer Box verschwunden.
 
 ## Was du bekommst \{#what-you-receive}
 
-Was mit dir geteilt wurde, steht unter **Mit Ihnen geteilt**. Ein neues
+Was mit dir geteilt wurde, steht unter **Mit dir geteilt**. Ein neues
 Angebot wartet, bis du es **Annehmen** oder **Ablehnen** wählst. Danach:
 
 - eine Textdatei öffnet sich im Editor, zusammen mit ihrem Besitzer und
@@ -59,7 +59,7 @@ Angebot wartet, bis du es **Annehmen** oder **Ablehnen** wählst. Danach:
 Die Datei bleibt auf der Box ihres Besitzers. Deine Box behält eine Kopie
 einer Textdatei, die du bearbeitest, sodass du weiterschreiben kannst, wenn
 die andere Box nicht erreichbar ist. Der Editor sagt das dann, und **Mit
-Ihnen geteilt** zeigt, dass deine Änderungen warten. Sobald sich die Boxen
+dir geteilt** zeigt, dass deine Änderungen warten. Sobald sich die Boxen
 wieder erreichen, kommen die Änderungen beider Seiten zusammen, ohne dass
 eine Zeile verloren geht.
 
