@@ -263,7 +263,7 @@ fn serve(
                         )
                     } else if !losos_access::companion_route(&method, &path) {
                         (403, "application/json",
-                            json!({ "error": "the LosOS companion reads files, repositories and the box's health, nothing else" }).to_string())
+                            json!({ "error": "the LosOS companion reads files, repositories, mail and the box's health, nothing else" }).to_string())
                     } else {
                         calls
                             .lock()

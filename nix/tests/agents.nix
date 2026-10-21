@@ -275,13 +275,13 @@ pkgs.testers.nixosTest {
         # This computer never ran losos login: no key, no access token.
         me(f"setsid nohup losos agents install --yes --host {URL} >/tmp/agents-install.log 2>&1 &")
         laptop.wait_until_succeeds("grep -q 'user_code=' /tmp/agents-install.log", timeout=300)
-        log = laptop.succeed("cat /tmp/agents-install.log")
-        print(log)
-        assert "SHA-256 fingerprint is" in log, log
-        link = next(w for w in log.split() if "user_code=" in w)
+        printed = laptop.succeed("cat /tmp/agents-install.log")
+        print(printed)
+        assert "SHA-256 fingerprint is" in printed, printed
+        link = next(w for w in printed.split() if "user_code=" in w)
         assert link.startswith(f"{URL}/auth/consent/openid/device-authorization?user_code="), link
         code = link.rsplit("=", 1)[1]
-        assert f"shows the code {code}" in log, log
+        assert f"shows the code {code}" in printed, printed
         page = link[len(URL):]
         plan = {
             "width": 1280,
