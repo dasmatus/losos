@@ -147,6 +147,10 @@ pub struct FakeLosos {
     // ── The owner's look ────────────────────────────────────────────────
     /// Stands in for `look.json`.
     pub look: crate::look::Look,
+    /// Stands in for `user-apps.json`.
+    pub user_apps: crate::user_apps::UserApps,
+    /// Stands in for `user-apps/<id>.json`, by app id.
+    pub app_data: std::collections::BTreeMap<String, crate::user_apps::AppData>,
     /// Stands in for the uploaded picture's file; `None` is no file.
     pub background: Option<Vec<u8>>,
     // ── The sidebar's pins ──────────────────────────────────────────────
@@ -333,6 +337,8 @@ impl FakeLosos {
             ),
             edge_asked: 0,
             look: crate::look::Look::default(),
+            user_apps: crate::user_apps::UserApps::default(),
+            app_data: std::collections::BTreeMap::new(),
             background: None,
             pins: crate::pins::Pins::default(),
             cloud_key: None,
@@ -698,6 +704,29 @@ impl Losos for FakeLosos {
 
     fn remove_background(&mut self) -> anyhow::Result<()> {
         self.background = None;
+        Ok(())
+    }
+
+    fn load_user_apps(&mut self) -> anyhow::Result<crate::user_apps::UserApps> {
+        Ok(self.user_apps.clone())
+    }
+
+    fn save_user_apps(&mut self, apps: &crate::user_apps::UserApps) -> anyhow::Result<()> {
+        self.user_apps = apps.clone();
+        Ok(())
+    }
+
+    fn load_app_data(&mut self, id: &str) -> anyhow::Result<crate::user_apps::AppData> {
+        Ok(self.app_data.get(id).cloned().unwrap_or_default())
+    }
+
+    fn save_app_data(&mut self, id: &str, data: &crate::user_apps::AppData) -> anyhow::Result<()> {
+        self.app_data.insert(id.to_string(), data.clone());
+        Ok(())
+    }
+
+    fn remove_app_data(&mut self, id: &str) -> anyhow::Result<()> {
+        self.app_data.remove(id);
         Ok(())
     }
 

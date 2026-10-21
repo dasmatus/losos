@@ -191,14 +191,30 @@ and is never served or built by nix.
   every ALSA output once `losos-console` is up. A reboot leaves a marker so
   the nightly reboots stay quiet.
 - `builder.nix` + `backend/src/builder.rs` (install only,
-  `losos.builder.enable`): the admin UI's Build with AI tab. Ollama on
-  `127.0.0.1:11434` serves `losos.builder.model` (llama3.2:3b, pulled once
-  by `ollama-model-loader` into `/var/lib`); lososd streams one build at a
-  time from `/api/chat` and parses the files out of the answer, then
-  checks it (`problems`: unknown ids and `losos` members; `looped`: a
-  repeating answer is cut off) and gives the model one turn to fix what it
-  found. The system prompt is `backend/src/builder-prompt.md`. No edge, no
-  key, no charge.
+  `losos.builder.enable`): Build with AI, for widgets and for the owner's
+  own apps. Ollama on `127.0.0.1:11434` serves `losos.builder.model`
+  (qwen2.5-coder:1.5b, sized for a 4 GiB two-core box, pulled once by
+  `ollama-model-loader` into `/var/lib`); lososd streams one build at a
+  time from `/api/chat`, parses the answer (a fenced block plus `Name:` and
+  `Summary:` lines) and runs the loop: write, check (`jsx::check`, the
+  widget checks, an example from the prompt sent back), try, fix, up to
+  three fixes for an app and one for a widget, keeping the best answer.
+  The try runs in the owner's browser: the build sets `trial`, the page's
+  app frame fills every field, presses the first button and posts what was
+  kept to `/api/builder/builds/{id}/tried`; with no page within
+  `LOSOS_BUILDER_TRY_SECS` the step is skipped. The box drives the loop on
+  purpose: the 1.5B model cannot call tools. The prompts are chat turns with
+  examples: `backend/src/builder-{widget,app}-prompt.md`. No edge, no key,
+  no charge.
+- Your apps (`backend/src/{user_apps,jsx}.rs`, `admin-ui/app/src/apps/`,
+  `src/app-frame/`): an app is one React component in JSX that lososd
+  parses, checks for names that do not exist and compiles with oxc, then
+  keeps in `user-apps.json` with its data under `user-apps/<id>.json`.
+  It runs only in the browser, in `<iframe sandbox="allow-scripts
+  allow-forms" src="/app-frame/">` under nginx's `/app-frame/` CSP arm,
+  with the runtime (React, the 16 LosOS components, `useCollection`,
+  `useStored`, `losos`) as one classic script; data goes through
+  postMessage to `/api/user-apps/<id>/data`. No app code runs on the box.
 - `updates.nix`: `system.autoUpgrade` at 03:00 from `losos.upgradeFlakeUri`
   (default `git+file:///etc/nixos#install`, set a `github:` URI to really
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot

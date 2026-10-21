@@ -431,6 +431,10 @@
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
+        # Your apps: Chromium on a laptop asks the box for an app, watches it
+        # written, uses it and saves it, and keeps every screen
+        # (nix/tests/app-builder.nix).
+        losos-app-builder = import ./nix/tests/app-builder.nix { inherit pkgs; };
         losos-admin-ui = import ./nix/tests/admin-ui.nix {
           inherit pkgs;
           # The real option document, so the Advanced pane is drawn from

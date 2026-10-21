@@ -87,6 +87,17 @@ impl Paths {
         self.state_dir.join("look.json")
     }
 
+    /// The owner's own apps (`crate::user_apps`), beside the state.
+    pub fn user_apps_file(&self) -> PathBuf {
+        self.state_dir.join("user-apps.json")
+    }
+
+    /// One app's data. The id is checked (`user_apps::is_app_id`) before
+    /// it gets here, so it is a file name.
+    pub fn app_data_file(&self, id: &str) -> PathBuf {
+        self.state_dir.join("user-apps").join(format!("{id}.json"))
+    }
+
     /// The uploaded background picture, raw; its type is in the look.
     pub fn background_file(&self) -> PathBuf {
         self.state_dir.join("background.img")
@@ -1806,6 +1817,36 @@ impl Losos for IoLosos {
 
     fn remove_background(&mut self) -> anyhow::Result<()> {
         remove_if_present(&self.paths.background_file())
+    }
+
+    fn load_user_apps(&mut self) -> anyhow::Result<crate::user_apps::UserApps> {
+        Ok(
+            read_if_present(self.paths.user_apps_file(), "reading the apps")?
+                .and_then(|text| serde_json::from_str(&text).ok())
+                .unwrap_or_default(),
+        )
+    }
+
+    fn save_user_apps(&mut self, apps: &crate::user_apps::UserApps) -> anyhow::Result<()> {
+        let bytes = serde_json::to_vec(apps).context("encoding the apps")?;
+        atomic_write(&self.paths.user_apps_file(), &bytes)
+    }
+
+    fn load_app_data(&mut self, id: &str) -> anyhow::Result<crate::user_apps::AppData> {
+        Ok(
+            read_if_present(self.paths.app_data_file(id), "reading an app's data")?
+                .and_then(|text| serde_json::from_str(&text).ok())
+                .unwrap_or_default(),
+        )
+    }
+
+    fn save_app_data(&mut self, id: &str, data: &crate::user_apps::AppData) -> anyhow::Result<()> {
+        let bytes = serde_json::to_vec(data).context("encoding an app's data")?;
+        atomic_write(&self.paths.app_data_file(id), &bytes)
+    }
+
+    fn remove_app_data(&mut self, id: &str) -> anyhow::Result<()> {
+        remove_if_present(&self.paths.app_data_file(id))
     }
 
     // ── Online growth of /persist ───────────────────────────────────────

@@ -198,6 +198,24 @@ dann läuft der eigene Cluster der Box. Um das Installieren abzuschalten,
 setze `losos.apps.enable` im Bereich **Erweitert** auf false.
 :::
 
+## Ihre Apps \{#your-apps}
+
+Kleine eigene Apps, eine Einkaufsliste, ein Putzplan, eine Leseliste,
+die du beschreibst und die KI auf der Box schreibt
+([Mit KI bauen](../in-depth/widget-builder)). Sie stehen unter **Ihre Apps**
+auf der Seite Apps. **App erstellen** öffnet den Editor: Beschreibe die App
+im Tab **Mit KI bauen** oder schreibe ihren Code im Tab **Code**. Die
+Vorschau daneben ist die echte App, du kannst sie also vor dem Speichern
+benutzen. Was du dort eingibst, vergisst sie; die gespeicherte App behält
+ihre Daten auf der Box.
+
+Jede gespeicherte App hat eine eigene Seite. Eine App ist eine
+React-Komponente aus den LosOS-Komponenten, die die Box beim Speichern prüft
+und übersetzt. Sie läuft nur in deinem Browser, in einem abgeschotteten
+Rahmen ohne Zugriff auf die Box außer auf ihre eigenen Daten. **Ändern**
+öffnet sie wieder im Editor, und **Löschen** entfernt sie mit allem, was
+eingegeben wurde.
+
 ## Vertrauenswürdige Adressen \{#trusted-addresses}
 
 LosOS cloud antwortet auf den Namen der Box und auf die Adresse, an der die

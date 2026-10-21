@@ -340,12 +340,36 @@ let
     "form-action 'none'"
   ];
 
+  # ── The app frame ─────────────────────────────────────────────────────
+  # The owner's own apps (backend/src/user_apps.rs, src/apps/ in the SPA)
+  # run in `/app-frame/` under `<iframe sandbox="allow-scripts allow-forms">`,
+  # for the reasons the widget frame gives above. The difference is the
+  # script: the frame loads the box's own runtime (React and the LosOS
+  # components, /app-frame/runtime.js, so 'self') and the runtime adds the
+  # app, which lososd compiled from the owner's JSX, as an inline script.
+  # 'self' matches the frame's URL even though the sandbox gives the
+  # document an opaque origin. No 'unsafe-eval': nothing in an app needs it.
+  # `allow-forms` lets an app's <form> call its own submit handler;
+  # `form-action 'none'` keeps the form from going anywhere.
+  appFrameCsp = lib.concatStringsSep "; " [
+    "default-src 'none'"
+    "script-src 'self' 'unsafe-inline'"
+    "style-src 'self' 'unsafe-inline'"
+    "img-src data: blob: https: http:"
+    "font-src 'self' data: https: http:"
+    "media-src data: blob: https: http:"
+    "connect-src https: http:"
+    "frame-ancestors 'self'"
+    "base-uri 'none'"
+    "form-action 'none'"
+  ];
+
   # One map per header: value on the admin surface, empty (header omitted) on
   # the two proxied service routes, the handbook's and the lab's own values
   # (or the admin value, for the headers they share) under /handbook/ and
-  # /lab/, and the widget frame's own value (or nothing) under
-  # /widget-frame/.
-  adminHeaderMap = variable: value: handbookValue: labValue: frameValue: ''
+  # /lab/, and each frame's own value (or nothing) under /widget-frame/ and
+  # /app-frame/.
+  adminHeaderMap = variable: value: handbookValue: labValue: frameValue: appFrameValue: ''
     map $uri ${variable} {
         default          "${value}";
         ~^/nextcloud     "";
@@ -353,6 +377,7 @@ let
         ~^/handbook/     "${handbookValue}";
         ~^/lab/          "${labValue}";
         ~^/widget-frame/ "${frameValue}";
+        ~^/app-frame/    "${appFrameValue}";
     }
   '';
 
@@ -364,6 +389,7 @@ let
       handbookValue = handbookCsp;
       labValue = labCsp;
       frameValue = widgetFrameCsp;
+      appFrameValue = appFrameCsp;
     }
     {
       name = "X-Frame-Options";
@@ -387,7 +413,9 @@ let
 
   adminHeaderMaps = lib.concatMapStrings (
     h:
-    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) h.frameValue
+    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) h.frameValue (
+      h.appFrameValue or h.frameValue
+    )
   ) adminHeaders;
 
   # `always` so the headers ride on the 403s the lanOnly guard emits too.

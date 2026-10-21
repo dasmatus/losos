@@ -181,6 +181,22 @@ cluster runs only then. To turn installing off, set `losos.apps.enable` to
 false on the **Advanced** pane.
 :::
 
+## Your apps
+
+Small apps of your own, a shopping list, a chore chart, a reading list,
+that you describe and the AI on the box writes
+([Build with AI](../in-depth/widget-builder)). They are under **Your
+apps** on the Apps page. **Make an app** opens the editor: describe the app
+on the **Build with AI** tab, or write its code on the **Code** tab. The
+preview beside it is the real app, so you can use it before you save it.
+It forgets what you enter; the saved app keeps its data on the box.
+
+Each saved app has its own page. An app is one React component built from
+the LosOS components, which the box checks and compiles when you save. It
+runs only in your browser, in a sandboxed frame with no access to the box
+beyond its own data. **Change** opens it in the editor again, and
+**Delete** removes it with everything entered into it.
+
 ## Trusted addresses
 
 LosOS cloud answers on the box's name and on whichever address the request

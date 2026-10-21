@@ -210,6 +210,19 @@ pub trait Losos {
     /// Delete the uploaded picture. Not an error when there is none.
     fn remove_background(&mut self) -> anyhow::Result<()>;
 
+    // ── The owner's own apps ────────────────────────────────────────────
+    // `crate::user_apps`: the list of apps beside `state.json`, and each
+    // app's data in a document of its own.
+    /// The apps, or an empty list when there is none yet or it does not
+    /// parse.
+    fn load_user_apps(&mut self) -> anyhow::Result<crate::user_apps::UserApps>;
+    fn save_user_apps(&mut self, apps: &crate::user_apps::UserApps) -> anyhow::Result<()>;
+    /// One app's data, or nothing kept yet.
+    fn load_app_data(&mut self, id: &str) -> anyhow::Result<crate::user_apps::AppData>;
+    fn save_app_data(&mut self, id: &str, data: &crate::user_apps::AppData) -> anyhow::Result<()>;
+    /// Delete one app's data. Not an error when there is none.
+    fn remove_app_data(&mut self, id: &str) -> anyhow::Result<()>;
+
     // ── The sidebar's pins ──────────────────────────────────────────────
     // `crate::pins`: the list beside `state.json`, and the app password
     // lososd lists the owner's LosOS cloud folders with.
@@ -2323,6 +2336,25 @@ mod tests {
             }
             fn remove_background(&mut self) -> anyhow::Result<()> {
                 self.0.remove_background()
+            }
+            fn load_user_apps(&mut self) -> anyhow::Result<crate::user_apps::UserApps> {
+                self.0.load_user_apps()
+            }
+            fn save_user_apps(&mut self, a: &crate::user_apps::UserApps) -> anyhow::Result<()> {
+                self.0.save_user_apps(a)
+            }
+            fn load_app_data(&mut self, id: &str) -> anyhow::Result<crate::user_apps::AppData> {
+                self.0.load_app_data(id)
+            }
+            fn save_app_data(
+                &mut self,
+                id: &str,
+                d: &crate::user_apps::AppData,
+            ) -> anyhow::Result<()> {
+                self.0.save_app_data(id, d)
+            }
+            fn remove_app_data(&mut self, id: &str) -> anyhow::Result<()> {
+                self.0.remove_app_data(id)
             }
             fn read_options_doc(&mut self) -> anyhow::Result<Option<crate::options::OptionsDoc>> {
                 self.0.read_options_doc()

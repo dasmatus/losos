@@ -73,6 +73,64 @@ function themeBoot(): Plugin {
   };
 }
 
+/* The app frame's runtime (src/app-frame/runtime.tsx): React, the LosOS
+ * components and the bridge, bundled by esbuild into one classic script and
+ * its stylesheet at fixed names, /app-frame/runtime.js and runtime.css,
+ * which public/app-frame/index.html loads. Classic and unhashed for the
+ * reasons runtime.tsx gives: the frame is an opaque origin, where a module
+ * script would be fetched in CORS mode, and the page that loads it is a
+ * static file Vite's HTML pipeline does not rewrite. */
+const APP_FRAME_ENTRY = "src/app-frame/runtime.tsx";
+
+function appFrame(): Plugin {
+  let config: ResolvedConfig;
+
+  const compile = async (minify: boolean): Promise<{ js: string; css: string }> => {
+    const result = await esbuild({
+      absWorkingDir: config.root,
+      entryPoints: [APP_FRAME_ENTRY],
+      bundle: true,
+      format: "iife",
+      target: "es2020",
+      jsx: "automatic",
+      minify,
+      write: false,
+      outfile: "app-frame/runtime.js",
+      legalComments: "none",
+      define: { "process.env.NODE_ENV": JSON.stringify(minify ? "production" : "development") },
+    });
+    const pick = (ext: string) => result.outputFiles.find((f) => f.path.endsWith(ext))?.text ?? "";
+    return { js: pick(".js"), css: pick(".css") };
+  };
+
+  return {
+    name: "losos:app-frame",
+    configResolved(resolved) {
+      config = resolved;
+    },
+    configureServer(server) {
+      for (const [file, type] of [
+        ["runtime.js", "text/javascript"],
+        ["runtime.css", "text/css"],
+      ] as const) {
+        server.middlewares.use(`/app-frame/${file}`, (_req, res) => {
+          void compile(false).then((out) => {
+            res.setHeader("Content-Type", type);
+            res.setHeader("Cache-Control", "no-store");
+            res.end(file.endsWith(".js") ? out.js : out.css);
+          });
+        });
+      }
+    },
+    async buildStart() {
+      if (config.command !== "build") return;
+      const out = await compile(true);
+      this.emitFile({ type: "asset", fileName: "app-frame/runtime.js", source: out.js });
+      this.emitFile({ type: "asset", fileName: "app-frame/runtime.css", source: out.css });
+    },
+  };
+}
+
 /* LosOS Lab's splash can carry a two-panel meme: LOSOS_LAB_MEME names a
  * folder with no.jpg and yes.jpg, which are copied beside dist/lab/index.html
  * as meme-no.jpg and meme-yes.jpg, and __LAB_MEME__ tells the page they are
@@ -105,7 +163,7 @@ function labMeme(): Plugin {
 const root = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), themeBoot(), labMeme()],
+  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), labMeme()],
   // Served from the vhost root by nginx.
   base: "/",
   resolve: {

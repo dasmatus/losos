@@ -189,6 +189,22 @@ vlastný klaster zariadenia. Inštalovanie vypnete nastavením
 `losos.apps.enable` na false na paneli **Rozšírené**.
 :::
 
+## Vaše aplikácie \{#your-apps}
+
+Malé vlastné aplikácie, nákupný zoznam, rozpis domácich prác, zoznam kníh,
+ktoré opíšete a AI na zariadení napíše
+([Vytvoriť s AI](../in-depth/widget-builder)). Sú pod **Vaše aplikácie** na
+stránke Aplikácie. **Vytvoriť aplikáciu** otvorí editor: aplikáciu opíšte na
+karte **Vytvoriť s AI** alebo napíšte jej kód na karte **Kód**. Náhľad vedľa
+je skutočná aplikácia, takže ju môžete používať ešte pred uložením. Čo do
+nej zadáte, zabudne; uložená aplikácia si údaje drží na zariadení.
+
+Každá uložená aplikácia má vlastnú stránku. Aplikácia je jeden komponent
+React zložený z komponentov LosOS, ktorý zariadenie pri uložení skontroluje
+a preloží. Beží len vo vašom prehliadači, v sandboxovanom rámci bez prístupu
+k zariadeniu okrem vlastných údajov. **Upraviť** ju znova otvorí v editore a
+**Odstrániť** ju zmaže so všetkým, čo sa do nej zadalo.
+
 ## Dôveryhodné adresy \{#trusted-addresses}
 
 LosOS cloud odpovedá na meno zariadenia a na tú adresu, na ktorú prišla

@@ -1,0 +1,331 @@
+/* The LosOS components inside the app frame (ui.tsx), and plain HTML
+ * elements styled to match, on the box's palette (../styles/tokens.css, the
+ * same file the admin page, LosOS cloud and LosOS Git read). No utility
+ * classes: an app's code cannot add to a stylesheet that was compiled before
+ * it was written, so everything an app can name is styled here. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+ul,
+ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+li + li {
+  margin-top: 4px;
+}
+
+form {
+  margin: 0;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 4px 0;
+}
+
+.lx-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+}
+
+.lx-page-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 16px;
+}
+
+.lx-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+  box-shadow: var(--elev-card);
+  padding: 16px;
+}
+
+.lx-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.lx-heading {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lx-stack {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.lx-row {
+  display: flex;
+  min-width: 0;
+}
+
+.lx-text {
+  overflow-wrap: anywhere;
+}
+
+.lx-muted {
+  color: var(--muted);
+}
+
+.lx-small {
+  font-size: 12.5px;
+}
+
+button,
+.lx-button {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: var(--control-radius);
+  border: 1px solid transparent;
+  padding: 9px 14px;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--surface);
+  white-space: nowrap;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.lx-button-secondary {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.lx-button-danger {
+  background: transparent;
+  color: var(--crit);
+  border-color: var(--line);
+}
+
+.lx-button-ghost {
+  background: transparent;
+  color: var(--ink);
+}
+
+.lx-button-small {
+  font-size: 12.5px;
+  padding: 6px 10px;
+}
+
+.lx-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  flex: 1 1 160px;
+}
+
+.lx-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]),
+select,
+textarea,
+.lx-input {
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  padding: 8px 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+textarea,
+.lx-textarea {
+  resize: vertical;
+  line-height: 1.45;
+}
+
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  flex: none;
+}
+
+.lx-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lx-check label {
+  cursor: pointer;
+}
+
+.lx-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: var(--sunk);
+  color: var(--muted);
+  width: fit-content;
+}
+
+.lx-badge.lx-tone-ok {
+  color: var(--ok);
+}
+
+.lx-badge.lx-tone-warn {
+  color: var(--warn);
+}
+
+.lx-badge.lx-tone-crit {
+  color: var(--crit);
+}
+
+.lx-badge.lx-tone-accent {
+  color: var(--accent);
+  background: var(--accent-wash);
+}
+
+.lx-progress {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--sunk);
+  overflow: hidden;
+}
+
+.lx-progress-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.lx-progress-fill.lx-tone-ok {
+  background: var(--ok);
+}
+
+.lx-progress-fill.lx-tone-warn {
+  background: var(--warn);
+}
+
+.lx-progress-fill.lx-tone-crit {
+  background: var(--crit);
+}
+
+.lx-stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.lx-stat-label {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.lx-table-wrap {
+  overflow-x: auto;
+}
+
+table,
+.lx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--hair);
+  font-variant-numeric: tabular-nums;
+}
+
+.lx-empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 20px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--card-radius);
+}
+
+.lx-crash {
+  margin: 24px 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--crit);
+}
+
+.lx-crash code {
+  color: var(--muted);
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+}

@@ -66,6 +66,10 @@ import { cn } from "@/lib/utils";
 const Wizard = React.lazy(() => import("@/screens/Wizard"));
 const Home = React.lazy(() => import("@/screens/Home"));
 const Settings = React.lazy(() => import("@/screens/Settings"));
+const AppScreen = React.lazy(() => import("@/apps/screens").then((m) => ({ default: m.AppScreen })));
+const AppEditorScreen = React.lazy(() =>
+  import("@/apps/screens").then((m) => ({ default: m.AppEditorScreen })),
+);
 /* The first-run tour (src/tour/): its own chunk, fetched only when it opens,
  * which on most visits is never. */
 const Tour = React.lazy(() => import("@/tour/tour"));
@@ -312,6 +316,9 @@ function Shell() {
             <Route path="/mesh" element={<SettingsRoute pane="mesh" />} />
             <Route path="/machines" element={<SettingsRoute pane="machines" />} />
             <Route path="/apps" element={<SettingsRoute pane="apps" />} />
+            <Route path="/apps/new" element={<AppEditorScreen />} />
+            <Route path="/apps/:id" element={<AppScreen />} />
+            <Route path="/apps/:id/edit" element={<AppEditorScreen />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />

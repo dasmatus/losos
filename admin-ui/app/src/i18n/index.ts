@@ -21,6 +21,7 @@ import pins from "./pins";
 import settings from "./settings";
 import shell from "./shell";
 import tour from "./tour";
+import userApps from "./user-apps";
 import users from "./users";
 import widgets from "./widgets";
 import wizard from "./wizard";
@@ -35,6 +36,7 @@ export const MESSAGES = {
   ...panes,
   ...widgets,
   ...apps,
+  ...userApps,
   ...cloudApps,
   ...install,
   ...look,

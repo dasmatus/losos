@@ -78,6 +78,10 @@ walkdir = "2"
 # (src/people.rs): argon2id in PHC form, the format Authelia reads. Already
 # in the lock file through the access crate.
 argon2 = "0.5"
+# Apps the builder writes are JSX (src/jsx.rs): parsed for the mistakes a
+# small model makes, then compiled to a plain script for the app frame, once,
+# on the box.
+oxc = { version = "0.155", default-features = false, features = ["transformer", "codegen", "semantic"] }
 
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its

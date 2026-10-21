@@ -34,8 +34,9 @@ erhalten, und zwar auf einer verschlüsselten Partition `/persist`.
   Box schon teilt.
 - [Virtuelle Maschinen](/in-depth/virtual-machines.md). Maschinen im Mesh mieten
   und Maschinen anderer Boxen hosten.
-- [Widget-Baukasten](/in-depth/widget-builder.md). Ein Sprachmodell auf der Box
-  schreibt ein Widget nach einer Beschreibung.
+- [Mit KI bauen](/in-depth/widget-builder.md). Ein Sprachmodell auf der Box
+  schreibt ein Widget oder eine App nach einer Beschreibung, und die Box
+  prüft und probiert es aus.
 - [Master-Proxy](/in-depth/master-proxy.md). Die Box aus dem Internet erreichen, ohne
   einen Port zu öffnen.
 - [Edge-Föderation](/in-depth/edge-federation.md). Deine eigene Edge im LAN, weitergeleitet über die offiziellen.

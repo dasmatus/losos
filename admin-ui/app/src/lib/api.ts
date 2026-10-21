@@ -1050,18 +1050,20 @@ export function postMarketRpc(
   });
 }
 
-// ── Widget builder ────────────────────────────────────────────────────────
+// ── The builder ───────────────────────────────────────────────────────────
 
-/* A language model on this box writes a widget from the owner's description
- * (backend/src/builder.rs, Ollama on loopback). Nothing leaves the box and a
- * build costs nothing. A build takes minutes on the box's processor, so it
- * runs in the background and the page polls it. */
+/* A language model on this box writes a widget or an app from the owner's
+ * description (backend/src/builder.rs, Ollama on loopback). Nothing leaves
+ * the box and a build costs nothing. A build takes minutes on the box's
+ * processor, so it runs in the background and the page polls it. */
 
 export type BuildStatus = "running" | "done" | "failed" | "stopped";
-export type BuildFault = "noWidget" | "unusable" | "upstream" | "memory";
+export type BuildFault = "noWidget" | "noApp" | "unusable" | "upstream" | "memory";
+export type BuildKind = "widget" | "app";
 
 export interface BuildSummary {
   id: string;
+  kind: BuildKind;
   status: BuildStatus;
   prompt: string;
   revision: boolean;
@@ -1069,17 +1071,41 @@ export interface BuildSummary {
   finished_at: number | null;
   /** Lines of the answer written so far. */
   lines: number;
-  /** The box found a mistake in the first answer and the model is writing
-   *  a second one. */
+  /** The box found a mistake and the model is writing the code again. */
   fixing: boolean;
+  /** How many steps the build has taken. */
+  steps: number;
   fault: BuildFault | null;
   has_source: boolean;
 }
 
-export interface BuildView extends Omit<BuildSummary, "has_source"> {
+/** One step of a build: the model writes or fixes, the box checks the
+ *  code, the page tries the app. */
+export interface BuildStep {
+  kind: "write" | "check" | "try" | "fix";
+  running: boolean;
+  /** What it found wrong, as sentences. */
+  problems: string[];
+  /** For a try: what the app showed, a line per element. */
+  shown: string[];
+  /** For a try: no page was open to try the app in. */
+  skipped: boolean;
+  started_at: number;
+}
+
+export interface BuildView extends Omit<BuildSummary, "has_source" | "steps"> {
+  steps: BuildStep[];
+  /** An app the build asks the page to try in its preview now. */
+  trial: { id: string; code: string } | null;
   /** The answer ran into its length limit; the widget may be unfinished. */
   at_limit: boolean;
   files: WidgetFile[] | null;
+  /** The name the model gave an app. */
+  name: string | null;
+  /** An app compiled for the app frame, when it compiles. */
+  code: string | null;
+  /** What the box's checks still find wrong, as sentences. */
+  problems: string[];
   /** What the model says it made, in the page's language. */
   notes: string | null;
 }
@@ -1097,9 +1123,10 @@ export function getBuilder(options: RequestOptions = {}): Promise<BuilderRespons
   return call<BuilderResponse>("/api/builder", options);
 }
 
-/** POST /api/builder/builds — start a build; `base` is the widget to change. */
+/** POST /api/builder/builds — start a build; `base` is the widget to
+ *  change, or the source of the app to change. */
 export function postBuilderBuild(
-  request: { prompt: string; base?: WidgetFile[]; lang: string },
+  request: { prompt: string; kind?: BuildKind; base?: WidgetFile[] | string; lang: string },
   options: RequestOptions = {},
 ): Promise<BuildView> {
   return call<BuildView>("/api/builder/builds", {
@@ -1115,9 +1142,133 @@ export function getBuilderBuild(id: string, options: RequestOptions = {}): Promi
   return call<BuildView>(`/api/builder/builds/${encodeURIComponent(id)}`, options);
 }
 
+/** POST /api/builder/builds/{id}/tried — what the preview found when it
+ *  tried the app the build asked it to. */
+export function postBuilderTried(
+  id: string,
+  report: {
+    trial: string;
+    shown: string[];
+    pressed: string;
+    kept: string[];
+    chose: string[];
+    keptAfterChoosing: string[];
+    errors: string[];
+    threwOnPress: string[];
+  },
+  options: RequestOptions = {},
+): Promise<{ taken: boolean }> {
+  return call<{ taken: boolean }>(`/api/builder/builds/${encodeURIComponent(id)}/tried`, {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(report),
+  });
+}
+
 /** DELETE /api/builder/builds/{id} — stop a running build. */
 export function stopBuilderBuild(id: string, options: RequestOptions = {}): Promise<BuildView> {
   return call<BuildView>(`/api/builder/builds/${encodeURIComponent(id)}`, { ...options, method: "DELETE" });
+}
+
+// ── The owner's own apps ──────────────────────────────────────────────────
+
+/* Apps kept on the box (backend/src/user_apps.rs): a React component in JSX
+ * the box compiles, and the data it keeps. Making and changing one is the
+ * apps section's; opening one is anyone's who is signed in. */
+
+export interface UserAppSummary {
+  id: string;
+  name: string;
+  summary: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface UserApp extends UserAppSummary {
+  prompt: string | null;
+  /** The JSX the owner keeps. */
+  source: string;
+  /** The script the app frame runs. */
+  code: string;
+}
+
+export interface UserAppsResponse {
+  apps: UserAppSummary[];
+  limits: { apps: number; nameChars: number; sourceBytes: number; dataBytes: number };
+}
+
+export type AppItem = Record<string, unknown> & { id: string };
+export interface AppData {
+  collections: Record<string, AppItem[]>;
+  stored: Record<string, unknown>;
+}
+
+export type AppDataOp =
+  | { op: "add"; collection: string; value: Record<string, unknown> }
+  | { op: "update"; collection: string; id: string; value: Record<string, unknown> }
+  | { op: "remove"; collection: string; id: string }
+  | { op: "replace"; collection: string; items: Record<string, unknown>[] }
+  | { op: "set"; key: string; value: unknown };
+
+/** GET /api/user-apps. */
+export function getUserApps(options: RequestOptions = {}): Promise<UserAppsResponse> {
+  return call<UserAppsResponse>("/api/user-apps", options);
+}
+
+/** GET /api/user-apps/{id}. */
+export function getUserApp(id: string, options: RequestOptions = {}): Promise<{ app: UserApp }> {
+  return call<{ app: UserApp }>(`/api/user-apps/${encodeURIComponent(id)}`, options);
+}
+
+/** POST /api/user-apps — add an app, or a new version of the one `id` names. */
+export function saveUserApp(
+  draft: { id?: string; name: string; summary?: string | null; prompt?: string | null; source: string },
+  options: RequestOptions = {},
+): Promise<{ app: UserApp; problems: string[] }> {
+  return call<{ app: UserApp; problems: string[] }>("/api/user-apps", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(draft),
+  });
+}
+
+/** POST /api/user-apps/check — compile without saving. */
+export function checkUserApp(
+  source: string,
+  options: RequestOptions = {},
+): Promise<{ code: string | null; problems: string[] }> {
+  return call<{ code: string | null; problems: string[] }>("/api/user-apps/check", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ source }),
+  });
+}
+
+/** DELETE /api/user-apps/{id}. */
+export function deleteUserApp(id: string, options: RequestOptions = {}): Promise<{ deleted: boolean }> {
+  return call<{ deleted: boolean }>(`/api/user-apps/${encodeURIComponent(id)}`, { ...options, method: "DELETE" });
+}
+
+/** GET /api/user-apps/{id}/data. */
+export function getUserAppData(id: string, options: RequestOptions = {}): Promise<AppData> {
+  return call<AppData>(`/api/user-apps/${encodeURIComponent(id)}/data`, options);
+}
+
+/** POST /api/user-apps/{id}/data — one write. */
+export function writeUserAppData(
+  id: string,
+  op: AppDataOp,
+  options: RequestOptions = {},
+): Promise<Record<string, unknown>> {
+  return call<Record<string, unknown>>(`/api/user-apps/${encodeURIComponent(id)}/data`, {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(op),
+  });
 }
 
 // ── Virtual machines ──────────────────────────────────────────────────────
