@@ -302,11 +302,12 @@ await check("the owner's switch lets the company edge in use manage the box, and
   await page.getByRole('switch', { name, exact: true }).waitFor();
   assert.equal(await page.getByRole('switch', { name, exact: true }).isChecked(), false);
   await toggle(page, name);
-  await page.getByText('Office edge can manage this box now').waitFor();
+  // The toast's live region repeats the line, prefixed; the row's own text is exact.
+  await page.getByText('Office edge can manage this box now', { exact: true }).first().waitFor();
   await page.getByText(/can change LosOS Cloud, LosOS Git and the apps here/).waitFor();
   assert.equal(await page.getByRole('switch', { name, exact: true }).isChecked(), true);
   await toggle(page, name);
-  await page.getByText('No edge manages this box now').waitFor();
+  await page.getByText('No edge manages this box now', { exact: true }).first().waitFor();
   assert.deepEqual(posts, [{ enabled: true }, { enabled: false }]);
   await context.close();
 });
