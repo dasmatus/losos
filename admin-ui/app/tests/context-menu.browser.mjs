@@ -177,7 +177,7 @@ await check('at the window’s edge the menu turns back into the window', async 
   await done();
 });
 
-await check('a long press on a touch screen opens it once, and lifting the finger does not follow the link', async () => {
+await check('a long press on a touch screen opens it once, and lifting the finger, however late, does not follow the link', async () => {
   const { page, done } = await open({ viewport: { width: 390, height: 844 }, touch: true });
   const tile = page.getByRole('main').getByRole('listitem').getByRole('link').first();
   await tile.waitFor();
@@ -186,7 +186,8 @@ await check('a long press on a touch screen opens it once, and lifting the finge
   const cdp = await page.context().newCDPSession(page);
   const point = [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }];
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point });
-  await page.waitForTimeout(800);
+  // Held well past the press itself: the lift still belongs to the menu.
+  await page.waitForTimeout(1800);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await menu(page).waitFor();
   assert.equal(await page.locator('[data-slot="context-menu"]').count(), 1);

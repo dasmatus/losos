@@ -94,6 +94,8 @@ export function ContextMenuHost({
     let menuKeyAt = -Infinity;
     let touch: { x: number; y: number; target: Element; timer: number } | null = null;
     let pressedAt = -Infinity;
+    // The finger that opened the menu is still down, however long it stays.
+    let pressing = false;
 
     /** The sections for a click on `target`, or null to leave the browser's menu. */
     const resolve = (hit: MenuHit): { label: string; sections: MenuSection[] } | null => {
@@ -191,7 +193,7 @@ export function ContextMenuHost({
     const onContextMenu = (event: MouseEvent): void => {
       if (event.defaultPrevented || !(event.target instanceof Element)) return;
       // A long press already opened it; Android sends its own event after.
-      if (performance.now() - pressedAt < 1000) {
+      if (pressing || performance.now() - pressedAt < 1000) {
         event.preventDefault();
         return;
       }
@@ -214,6 +216,7 @@ export function ContextMenuHost({
 
     const onTouchStart = (event: TouchEvent): void => {
       cancelPress();
+      pressing = false;
       const first = event.touches[0];
       if (event.touches.length !== 1 || first === undefined || !(event.target instanceof Element)) return;
       if (takesText(event.target)) return;
@@ -228,6 +231,7 @@ export function ContextMenuHost({
           touch = null;
           if (show(target, x, y, false)) {
             pressedAt = performance.now();
+            pressing = true;
             navigator.vibrate?.(10);
           }
         }, LONG_PRESS_MS),
@@ -243,7 +247,13 @@ export function ContextMenuHost({
     const onTouchEnd = (event: TouchEvent): void => {
       cancelPress();
       // The finger that opened the menu lifts: that is not a tap on the row.
-      if (performance.now() - pressedAt < 1000) event.preventDefault();
+      if (pressing) event.preventDefault();
+      pressing = false;
+    };
+
+    const onTouchCancel = (): void => {
+      cancelPress();
+      pressing = false;
     };
 
     // The menu hangs at a point on the page; once the page moves, it goes.
@@ -257,7 +267,7 @@ export function ContextMenuHost({
     document.addEventListener("touchstart", onTouchStart, { passive: true });
     document.addEventListener("touchmove", onTouchMove, { passive: true });
     document.addEventListener("touchend", onTouchEnd, { passive: false });
-    document.addEventListener("touchcancel", cancelPress);
+    document.addEventListener("touchcancel", onTouchCancel);
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onScroll);
     return () => {
@@ -267,7 +277,7 @@ export function ContextMenuHost({
       document.removeEventListener("touchstart", onTouchStart);
       document.removeEventListener("touchmove", onTouchMove);
       document.removeEventListener("touchend", onTouchEnd);
-      document.removeEventListener("touchcancel", cancelPress);
+      document.removeEventListener("touchcancel", onTouchCancel);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);
     };
