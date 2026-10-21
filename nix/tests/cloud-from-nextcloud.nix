@@ -230,8 +230,9 @@ pkgs.testers.nixosTest {
     with subtest("the pictures: Nextcloud as the owner left it"):
         # The welcome slides would cover the first picture.
         box.succeed(f"{occ} app:disable firstrunwizard || true")
-        box.succeed("cloud-move-shots nextcloud /tmp/shots/before notshared '${adminPass}'")
+        status, _ = box.execute("cloud-move-shots nextcloud /tmp/shots/before notshared '${adminPass}' >&2")
         box.copy_from_machine("/tmp/shots/before", "shots")
+        assert status == 0, "the Nextcloud pictures failed; shots/before/failed.png shows where"
 
     with subtest("the nightly switch: Nextcloud and Postgres go, LosOS Cloud comes"):
         box.succeed("/run/current-system/specialisation/after/bin/switch-to-configuration test")
@@ -343,7 +344,8 @@ pkgs.testers.nixosTest {
         )
         box.wait_for_unit("authelia-losos.service")
         box.wait_for_open_port(9091)
-        box.succeed(f"cloud-move-shots cloud /tmp/shots/after matus 'Correct-Horse-Battery-9' {lan}")
+        status, _ = box.execute(f"cloud-move-shots cloud /tmp/shots/after matus 'Correct-Horse-Battery-9' {lan} >&2")
         box.copy_from_machine("/tmp/shots/after", "shots")
+        assert status == 0, "the LosOS Cloud pictures failed; shots/after/failed.png shows where"
   '';
 }

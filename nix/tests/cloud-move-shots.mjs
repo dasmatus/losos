@@ -54,43 +54,54 @@ async function take(file) {
   console.log(file);
 }
 
-if (which === "nextcloud") {
-  const base = "http://nextcloud.test";
-  await page.goto(`${base}/index.php/login`);
-  await page.locator("input[name=user]").fill(login);
-  await page.locator("input[name=password]").fill(password);
-  await page.keyboard.press("Enter");
-  await page.waitForURL((u) => !u.pathname.includes("/login"), { timeout: 120_000 });
-  await page.goto(`${base}/index.php/apps/files/`);
-  await page.locator('[data-cy-files-list-row-name="Documents"]').waitFor({ timeout: 120_000 });
-  await take("files.png");
-  await page.goto(`${base}/index.php/apps/files/trashbin`);
-  await page.getByText("old notes", { exact: false }).first().waitFor({ timeout: 120_000 });
-  await take("trash.png");
-} else {
-  const base = "https://mattbox.local";
-  await page.goto(`${base}/auth/`);
-  const status = await page.evaluate(
-    async ([username, password, targetURL]) => {
-      const r = await fetch("/auth/api/firstfactor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, keepMeLoggedIn: false, targetURL }),
-      });
-      return r.status;
-    },
-    [login, password, `${base}/cloud/`],
-  );
-  if (status !== 200) throw new Error(`sign-in refused: ${status}`);
-  await page.goto(`${base}/cloud/files`);
-  await page.getByRole("link", { name: "Documents", exact: true }).waitFor({ timeout: 120_000 });
-  await take("files.png");
-  await page.goto(`${base}/cloud/trash`);
-  await page.locator("[data-trash]").getByText("old notes", { exact: false }).first().waitFor({ timeout: 120_000 });
-  await take("trash.png");
+async function walk() {
+  if (which === "nextcloud") {
+    const base = "http://nextcloud.test";
+    await page.goto(`${base}/index.php/login`);
+    await page.locator("input[name=user]").fill(login);
+    await page.locator("input[name=password]").fill(password);
+    await page.keyboard.press("Enter");
+    await page.waitForURL((u) => !u.pathname.includes("/login"));
+    await page.goto(`${base}/index.php/apps/files/`);
+    await page.locator('[data-cy-files-list-row-name="Documents"]').waitFor();
+    await take("files.png");
+    await page.goto(`${base}/index.php/apps/files/trashbin`);
+    // A trashed file's row is named after the file plus when it was deleted.
+    await page.locator('[data-cy-files-list-row-name^="old notes"]').first().waitFor();
+    await take("trash.png");
+  } else {
+    const base = "https://mattbox.local";
+    await page.goto(`${base}/auth/`);
+    const status = await page.evaluate(
+      async ([username, password, targetURL]) => {
+        const r = await fetch("/auth/api/firstfactor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password, keepMeLoggedIn: false, targetURL }),
+        });
+        return r.status;
+      },
+      [login, password, `${base}/cloud/`],
+    );
+    if (status !== 200) throw new Error(`sign-in refused: ${status}`);
+    await page.goto(`${base}/cloud/files`);
+    await page.getByRole("link", { name: "Documents", exact: true }).waitFor();
+    await take("files.png");
+    await page.goto(`${base}/cloud/trash`);
+    await page.locator("[data-trash]").getByText("old notes", { exact: false }).first().waitFor();
+    await take("trash.png");
+  }
 }
 
-await browser.close();
+try {
+  await walk();
+} catch (e) {
+  // What the page showed when it gave up, beside the pictures it took.
+  await page.screenshot({ path: join(out, "failed.png") }).catch(() => {});
+  throw e;
+} finally {
+  await browser.close();
+}
 if (errors.length > 0) {
   console.error(`the page threw:\n${errors.join("\n")}`);
   process.exit(1);
