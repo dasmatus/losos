@@ -61,7 +61,7 @@ export function ListView({ kind }: { kind: ListKind }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="min-h-9 text-[15px] leading-9 font-semibold tracking-tight">
+      <h1 className="flex min-h-9 items-center text-[19px] leading-tight font-semibold tracking-tight">
         {kind === "search" ? t("cloud.search.for", { text }) : t(shape.title)}
       </h1>
       {picked.length > 0 && <SelectionBar entries={picked} folder="" onClear={() => setSelected(new Set())} />}
