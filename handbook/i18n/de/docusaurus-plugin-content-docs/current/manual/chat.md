@@ -95,6 +95,14 @@ oder durch Hineinziehen. In einem verschlüsselten Raum werden sie
 verschlüsselt, bevor sie deinen Browser verlassen. Das Mikrofon nimmt eine
 Sprachnachricht auf.
 
+Hat das Gerät LosOS Cloud, schickt die Wolken-Schaltfläche neben der
+Büroklammer Dateien direkt aus deiner Cloud. Eine Datei, die dir jemand
+schickt, hat auf ihrer Karte eine Wolken-Schaltfläche und im Rechtsklickmenü
+**In LosOS Cloud speichern**: Sie landet entschlüsselt im Ordner **Chat**
+deiner Cloud, und die Schaltfläche öffnet sie danach dort. Schickst du in
+LosOS Cloud eine Datei in den Chat, fragt der Chat, in welche Unterhaltung
+sie geht.
+
 Eine kleine Reihe von Gesichtern unter einer Nachricht zeigt, wer bis dorthin
 gelesen hat.
 

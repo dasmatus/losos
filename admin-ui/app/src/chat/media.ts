@@ -87,6 +87,17 @@ export function mediaUrl(client: MatrixClient, source: MediaSource, mime: string
 }
 
 async function fetchMedia(client: MatrixClient, source: MediaSource, mime: string, thumb?: number): Promise<string> {
+  return URL.createObjectURL(await fetchBlob(client, source, mime, thumb));
+}
+
+/** An event's file, decrypted, as `name`: what "Save to LosOS Cloud"
+ *  uploads. */
+export async function mediaFile(client: MatrixClient, source: MediaSource, mime: string, name: string): Promise<File> {
+  const blob = await fetchBlob(client, source, mime);
+  return new File([blob], name, { type: blob.type });
+}
+
+async function fetchBlob(client: MatrixClient, source: MediaSource, mime: string, thumb?: number): Promise<Blob> {
   const mxc = source.file?.url ?? source.url;
   if (mxc === undefined || !mxc.startsWith("mxc://")) throw new Error("no media");
   const sized = source.file === undefined && thumb !== undefined;
@@ -104,7 +115,7 @@ async function fetchMedia(client: MatrixClient, source: MediaSource, mime: strin
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   let bytes = await response.arrayBuffer();
   if (source.file !== undefined) bytes = await decryptAttachment(bytes, source.file);
-  return URL.createObjectURL(new Blob([bytes], { type: source.file !== undefined ? safeMime(mime) : (response.headers.get("Content-Type") ?? safeMime(mime)) }));
+  return new Blob([bytes], { type: source.file !== undefined ? safeMime(mime) : (response.headers.get("Content-Type") ?? safeMime(mime)) });
 }
 
 /* A decrypted blob carries the type the sender claimed. Only types a

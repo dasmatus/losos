@@ -10,7 +10,7 @@
  * the loop keeps time on a screen faster than its step; a lost focus lets
  * go of held keys; blocked storage keeps the visit's best; Merge and Pairs
  * read their boards out;
- * the wizard's wait for LosOS cloud offers it too; a phone gets the icon
+ * the wizard's wait for LosOS Cloud offers it too; a phone gets the icon
  * button and a game that fits; and none of it trips the appliance's
  * Content-Security-Policy.
  *
@@ -412,7 +412,7 @@ await check('on a phone the offer is an icon with its name, and the game fits th
   await context.close();
 });
 
-await check("the wizard's wait for LosOS cloud offers the game, and it gives way when the box is ready", async () => {
+await check("the wizard's wait for LosOS Cloud offers the game, and it gives way when the box is ready", async () => {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   const page = await context.newPage();
   const errors = [];

@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n-react";
 
 /* "Play while you wait": a small game offered during the box's long waits.
  *
- * A rebuild after Apply, LosOS cloud installing itself while the wizard
+ * A rebuild after Apply, LosOS Cloud installing itself while the wizard
  * waits for the first password, LosOS Login starting, an app installing:
  * each of those screens calls this hook with whether its wait is on, and
  * places the two things it returns. `offer` is a ghost button for the

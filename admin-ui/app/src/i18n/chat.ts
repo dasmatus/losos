@@ -395,4 +395,14 @@ export default defineMessages({
   "chat.verify.done": { en: "The device is verified.", sk: "Zariadenie je overené.", de: "Das Gerät ist verifiziert." },
   "chat.verify.cancelled": { en: "The check was stopped.", sk: "Overenie sa zastavilo.", de: "Die Prüfung wurde abgebrochen." },
   "chat.notify.ask": { en: "Show notifications", sk: "Zobrazovať upozornenia", de: "Benachrichtigungen anzeigen" },
+  "chat.composer.fromCloud": { en: "Attach from LosOS Cloud", sk: "Priložiť z LosOS Cloud", de: "Aus LosOS Cloud anhängen" },
+  "chat.share.lead": {
+    en: "Pick the conversation to send them to. The files stay in your LosOS Cloud too.",
+    sk: "Vyberte konverzáciu, do ktorej ich poslať. Súbory zostanú aj vo vašom LosOS Cloud.",
+    de: "Wähle das Gespräch, in das sie gehen. Die Dateien bleiben auch in deiner LosOS Cloud.",
+  },
+  "chat.share.sending": { en: "Sending…", sk: "Posiela sa…", de: "Wird gesendet…" },
+  "chat.share.failed": { en: "Could not send the files", sk: "Súbory sa nepodarilo poslať", de: "Die Dateien konnten nicht gesendet werden" },
+  "chat.media.openSaved": { en: "Open {name} from LosOS Cloud", sk: "Otvoriť {name} z LosOS Cloud", de: "{name} aus LosOS Cloud öffnen" },
+  "chat.media.save": { en: "Save {name} to LosOS Cloud", sk: "Uložiť {name} do LosOS Cloud", de: "{name} in LosOS Cloud speichern" },
 });

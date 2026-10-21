@@ -5,7 +5,7 @@
  *     "mode": "wizard" | "rebuild", "token": "…", "out": "/…/shots",
  *     "sync": "/…/sync"}'
  *
- * The box's waits are real: lososd's claim state while LosOS cloud is not
+ * The box's waits are real: lososd's claim state while LosOS Cloud is not
  * installed, and a rebuild unit lososd started. Only the test script can
  * end them, so when this side has seen what it needs it writes a file
  * named for the step into `sync` and waits for the page to see the wait
@@ -121,7 +121,7 @@ async function collect(page, errors, where) {
 }
 
 if (plan.mode === 'wizard') {
-  /* An unclaimed box whose LosOS cloud is still installing: step 2 waits. */
+  /* An unclaimed box whose LosOS Cloud is still installing: step 2 waits. */
   const { context, page, errors } = await newPage();
   await page.goto(`${plan.origin}/`, { waitUntil: 'load' });
   await page.getByRole('button', { name: /^Continue$/ }).click();

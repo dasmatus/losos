@@ -37,6 +37,7 @@ pub mod chat;
 pub mod cloud;
 pub mod cloud_apps;
 pub mod cloud_share;
+pub mod companion;
 pub mod compose;
 pub mod config_repo;
 pub mod dbus;
