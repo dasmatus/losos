@@ -291,6 +291,17 @@ pub enum Op {
     VmRemove {
         upload_id: String,
     },
+    /// Buy `euros` of USDC on Base at Binance, delivered to `address`, this
+    /// box's wallet (`edge/registrar/src/onramp.rs`). The answer carries
+    /// Binance's checkout link.
+    Onramp {
+        address: String,
+        euros: String,
+    },
+    /// Where one of this box's Binance orders is.
+    OnrampStatus {
+        order_id: String,
+    },
 }
 
 /// Most replicas in one machine order; the edge's own limit.
@@ -364,6 +375,18 @@ const COINS: &[&str] = &["btc", "xmr", "zec"];
 /// output descriptor. Printable, no spaces, bounded; the edge's node checks
 /// the rest. Anything naming a private key is refused here already, so one
 /// pasted by mistake never leaves the box.
+/// A euro amount: up to six digits, then at most two decimals. The edge
+/// checks the range.
+fn valid_euros(raw: &str) -> bool {
+    let (whole, cents) = raw.split_once('.').unwrap_or((raw, "0"));
+    (1..=6).contains(&whole.len())
+        && (1..=2).contains(&cents.len())
+        && whole
+            .bytes()
+            .chain(cents.bytes())
+            .all(|b| b.is_ascii_digit())
+}
+
 fn coin_key(key: &str) -> bool {
     !key.is_empty()
         && key.len() <= 1024
@@ -430,6 +453,26 @@ impl Op {
                     Ok(())
                 } else {
                     Err("upload_id is not valid")
+                }
+            }
+            Op::Onramp { address, euros } => {
+                if !eth_address(address) {
+                    Err("address is not an 0x address")
+                } else if !valid_euros(euros) {
+                    Err("euros is an amount such as 50 or 25.50")
+                } else {
+                    Ok(())
+                }
+            }
+            Op::OnrampStatus { order_id } => {
+                if order_id.len() == 32
+                    && order_id
+                        .bytes()
+                        .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+                {
+                    Ok(())
+                } else {
+                    Err("order_id is not valid")
                 }
             }
             Op::HardwareCheckout { items } => {
@@ -639,6 +682,8 @@ impl Op {
             Op::VmOrder { .. } => ("POST", "/market/orders"),
             Op::VmTicket { .. } => ("POST", "/market/vm-images/ticket"),
             Op::VmRemove { .. } => ("POST", "/market/vm-images/remove"),
+            Op::Onramp { .. } => ("POST", "/market/onramp"),
+            Op::OnrampStatus { .. } => ("POST", "/market/onramp/status"),
         }
     }
 
@@ -672,6 +717,8 @@ impl Op {
             }
             Op::VmTicket { name, efi } => json!({ "name": name.trim(), "efi": efi }),
             Op::VmRemove { upload_id } => json!({ "upload_id": upload_id }),
+            Op::Onramp { address, euros } => json!({ "address": address, "euros": euros }),
+            Op::OnrampStatus { order_id } => json!({ "order_id": order_id }),
             Op::HardwareCheckout { items } => json!({
                 "items": items
                     .iter()
@@ -794,7 +841,8 @@ pub fn classify(status: u16, body: &str) -> anyhow::Result<Outcome> {
         }
         // 503: the edge runs no market. 403: it does, but not for this box.
         403 | 503 => Ok(Outcome::Unavailable),
-        400 | 404 | 409 | 422 => Err(Refused {
+        // 429: the edge's daily cap on purchases, which the owner can wait out.
+        400 | 404 | 409 | 422 | 429 => Err(Refused {
             status: if status == 409 { 409 } else { 400 },
             message: public_message(body),
         }
@@ -844,6 +892,31 @@ pub fn stripe_hosted_url(url: &str) -> bool {
     };
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
     STRIPE_HOSTS.contains(&authority)
+}
+
+/// Whether a checkout link is Binance's: https on binance.com or one of its
+/// subdomains, no port, no userinfo. The edge checks the same; the box does
+/// not take the edge's word for where the owner's browser goes.
+#[must_use]
+pub fn binance_hosted_url(url: &str) -> bool {
+    if url
+        .chars()
+        .any(|c| c.is_control() || c.is_whitespace() || c == '\\')
+    {
+        return false;
+    }
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    !authority.contains(['@', ':'])
+        && (authority == "binance.com"
+            || authority.strip_suffix(".binance.com").is_some_and(|sub| {
+                !sub.is_empty()
+                    && sub
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
+            }))
 }
 
 #[cfg(test)]
@@ -1274,6 +1347,51 @@ mod tests {
         for status in [401, 500, 502] {
             let e = classify(status, "boom").unwrap_err();
             assert!(e.downcast_ref::<Refused>().is_none(), "{status}");
+        }
+    }
+
+    #[test]
+    fn a_purchase_names_a_wallet_and_euros_and_only_binance_pages_are_followed() {
+        let buy = |address: &str, euros: &str| Op::Onramp {
+            address: address.to_string(),
+            euros: euros.to_string(),
+        };
+        let wallet = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+        assert_eq!(buy(wallet, "50").route(), ("POST", "/market/onramp"));
+        assert!(buy(wallet, "50").validate().is_ok());
+        assert!(buy(wallet, "25.5").validate().is_ok());
+        assert!(buy(wallet, "1234567").validate().is_err());
+        assert!(buy(wallet, "25.").validate().is_err());
+        assert!(buy(wallet, "25,50").validate().is_err());
+        assert!(buy("0x1234", "50").validate().is_err());
+        let body: Value =
+            serde_json::from_str(&buy(wallet, "50").body("mattbox", "t").unwrap()).unwrap();
+        assert_eq!(body["euros"], "50");
+        assert_eq!(body["address"], wallet);
+        let status = Op::OnrampStatus {
+            order_id: "0123456789abcdef0123456789abcdef".into(),
+        };
+        assert!(status.validate().is_ok());
+        assert_eq!(status.route(), ("POST", "/market/onramp/status"));
+        assert!(Op::OnrampStatus {
+            order_id: "../x".into()
+        }
+        .validate()
+        .is_err());
+
+        assert!(binance_hosted_url(
+            "https://app.binance.com/uni-qr/qccnt?x=1"
+        ));
+        assert!(binance_hosted_url("https://binance.com/en"));
+        for bad in [
+            "http://app.binance.com/x",
+            "https://app.binance.com.evil.example/x",
+            "https://evilbinance.com/",
+            "https://app.binance.com@evil.example/",
+            "https://app.binance.com:444/",
+            "https://.binance.com/",
+        ] {
+            assert!(!binance_hosted_url(bad), "{bad}");
         }
     }
 

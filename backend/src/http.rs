@@ -2689,6 +2689,36 @@ async fn post_market_coin_pay(
     .await
 }
 
+/// `POST /api/market/onramp` — `{"address","euros"}`: a Binance order for
+/// USDC on Base to this box's wallet, with Binance's checkout link.
+async fn post_market_onramp(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/onramp", |d| {
+        Some(crate::market::Op::Onramp {
+            address: field_str(d, "address")?,
+            euros: field_str(d, "euros")?,
+        })
+    })
+    .await
+}
+
+/// `POST /api/market/onramp/status` — `{"order_id"}`: where that order is.
+async fn post_market_onramp_status(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/onramp/status", |d| {
+        Some(crate::market::Op::OnrampStatus {
+            order_id: field_str(d, "order_id")?,
+        })
+    })
+    .await
+}
+
 async fn post_market_rpc(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
     post_market(api, req, body, "/api/market/rpc", |d| {
         let method = field_str(d, "method")?;
@@ -3799,6 +3829,11 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                     web::post().to(post_market_coin_pay),
                 )
                 .route("/api/market/rpc", web::post().to(post_market_rpc))
+                .route("/api/market/onramp", web::post().to(post_market_onramp))
+                .route(
+                    "/api/market/onramp/status",
+                    web::post().to(post_market_onramp_status),
+                )
                 .route("/api/builder", web::get().to(get_builder))
                 .route("/api/builder/builds", web::post().to(post_builder_start))
                 .route("/api/builder/builds/{id}", web::get().to(get_builder_build))

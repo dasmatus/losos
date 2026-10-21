@@ -1007,3 +1007,64 @@ fn zcash_takes_mainnet_servers_of_two_operators_beside_usdc() {
     unknown.extend(["--market-zec-network", "devnet"]);
     assert!(parse(args(true, "usd", &unknown)).is_err());
 }
+
+const BINANCE_KEY: &str = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gunVTLw7onLRnrq0/IzW7yWR7QkrmBL7jTKEn5u+qKhbwKfBstIs+bMY2Zkp18gnTxKLxoS2tFczGkPLPgizskuemMghRniWaoLcyehkd3qqGElvW/VDL5AaWTg0nLVkjRo9z+40RQzuVaE8AkAFmxZzow3x+VJYKdjykkJ0iT9wCS0DRTXu269V264Vf/3jvredZiKRkgwlL9xNAwxXFg0x/XFw005UWVRIkdgcKWTjpBP2dPwVZ4WWC+9aGVd+Gyn1o0CLelf4rEjGoXbAAEgAqeGUxrcIlbjXfbcmwIDAQAB";
+
+const ONRAMP: &[&str] = &[
+    "--onramp-binance-api",
+    "https://api.example.binance.com",
+    "--onramp-binance-client-id",
+    "losos",
+    "--onramp-binance-key-file",
+    "/run/credentials/losos-registrar.service/binance-connect-key",
+    "--onramp-binance-token-file",
+    "/run/credentials/losos-registrar.service/binance-connect-token",
+    "--onramp-binance-webhook-key",
+    BINANCE_KEY,
+];
+
+const LIVE_BASE: &[&str] = &[
+    "--market-no-cards",
+    "--market-currency",
+    "usd",
+    "--market-usdc",
+    "network=base,rpc=/run/credentials/losos-registrar.service/usdc-rpc-base,pay=0x00000000000000000000000000000000000000aa,treasury=0x00000000000000000000000000000000000000bb",
+    "--market-usdc-releaser-file",
+    "/run/credentials/losos-registrar.service/usdc-releaser-key",
+];
+
+#[test]
+fn binances_onramp_parses_beside_usdc_on_base() {
+    let args: Vec<&str> = ONRAMP.iter().chain(LIVE_BASE).copied().collect();
+    let opts = serve_opts(&args).onramp.expect("onramp on");
+    assert_eq!(opts.api_url, "https://api.example.binance.com");
+    assert_eq!(opts.client_id, "losos");
+    assert!(opts.key_file.ends_with("/binance-connect-key"));
+    assert!(!opts.webhook_key.is_empty());
+    assert!(serve_opts(&[]).onramp.is_none());
+}
+
+#[test]
+fn binances_onramp_needs_usdc_on_base_mainnet_and_a_real_origin() {
+    // Without the market settling on Base there is nothing to deliver to.
+    assert!(parse(serve_args(ONRAMP)).is_err());
+    let test_net: Vec<&str> = ONRAMP
+        .iter()
+        .copied()
+        .chain([
+            "--market-no-cards",
+            "--market-currency",
+            "usd",
+            "--market-usdc",
+            "network=base-sepolia,rpc=/run/credentials/x/usdc-rpc,pay=0x00000000000000000000000000000000000000aa,treasury=0x00000000000000000000000000000000000000bb",
+            "--market-usdc-releaser-file",
+            "/run/credentials/x/usdc-releaser-key",
+        ])
+        .collect();
+    assert!(parse(serve_args(&test_net)).is_err());
+    // Plain http only to loopback; a flag without the API is a mistake.
+    let mut http: Vec<&str> = ONRAMP.iter().chain(LIVE_BASE).copied().collect();
+    http[1] = "http://api.example.com";
+    assert!(parse(serve_args(&http)).is_err());
+    assert!(parse(serve_args(&["--onramp-binance-client-id", "losos"])).is_err());
+}
