@@ -340,6 +340,8 @@
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
             ./modules/lab.nix
+            # LosOS Mail: Stalwart as the shared user, only while sharing.
+            ./modules/mail.nix
             # The option document and the configuration repository on LosOS
             # Git (modules/config-repo.nix, backend/src/{options,config_repo}.rs).
             ./modules/config-repo.nix
@@ -453,6 +455,11 @@
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
+        losos-mail = import ./nix/tests/mail.nix { inherit pkgs; };
+        losos-mail-screens = import ./nix/tests/mail.nix {
+          inherit pkgs;
+          screens = true;
+        };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
         # Apps run as notshared on rootless Podman, with no cluster: the
         # box's own, one in the LosOS app format and a chart from the

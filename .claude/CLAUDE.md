@@ -168,6 +168,19 @@ and is never served or built by nix.
   host network without root, turn claims into folders in that user's data
   domain and refuse a chart that needs more; nginx forwards a port of
   `losos.apps.ports` to it, LAN only. `nix/tests/podman-apps.nix` boots it.
+- `mail.nix` + `backend/src/mail.rs` (`losos.mail.*`): LosOS Mail. Stalwart
+  as `shared`, mailboxes in `/home/shared/data/mail`, loopback HTTP only (no
+  SMTP or IMAP listener), its own unit rather than nixpkgs' module because a
+  tmpfiles line inside the locked fscrypt domain fails at boot. lososd is the
+  only client, over JMAP as `<person>%losos` (master user) with a secret from
+  `losos-mail-secret`. All of it, `/mail` (a screen of the SPA, inside its
+  top bar and sidebar like every pane, `src/mail/`) and
+  `/api/mail*` exist only while `lososInternal.mail.live` (the shared side,
+  `lososInternal.sharedSide`: sharing on and `cluster.enable`);
+  otherwise `/mail`, `/mail/` and the API answer 404 and `/api/me`'s `shared` omits
+  `mail`, which hides the sidebar entry. Mail stays between people on the
+  box (`local_only`). `nix/tests/mail.nix` boots it; `losos-mail-screens`
+  is the same run with the real UI and Chromium, for screenshots.
 - `search.nix` + `backend/src/textsearch/` (`losos-search`): text inside
   files for the palette. A timer pass keeps an SQLite FTS5 index of the
   owner's cloud files in `/var/lib/losos-search` as `nextcloud` (only what

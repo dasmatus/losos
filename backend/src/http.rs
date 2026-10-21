@@ -62,6 +62,8 @@ struct Api {
     login: crate::login::Login,
     /// LosOS Login names on LosOS cloud's share (`crate::cloud_share`).
     share: crate::cloud_share::Share,
+    /// LosOS Mail (`crate::mail`).
+    mail: crate::mail::Mail,
     /// Each person's picture, banner and the rest of their profile
     /// (`crate::profiles`).
     profiles: crate::profiles::Profiles,
@@ -522,6 +524,18 @@ fn guarded_at(
     resp
 }
 
+/// The apps on the shared side that are live on this box now, by name:
+/// mail and chat run only while the box shares its storage, and the admin
+/// UI draws their entries only when they are listed here. The spare key
+/// and an edge are nobody, so they get none.
+fn shared_apps(api: &Api) -> Vec<&'static str> {
+    let mut apps = Vec::new();
+    if api.mail.open().is_some() {
+        apps.push("mail");
+    }
+    apps
+}
+
 /// `GET /api/me`: who is signed in, and which sections they can use. The
 /// admin UI shows the panes these open and hides the rest.
 async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
@@ -578,6 +592,7 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                     "sections": sections,
                     "standalone": api.people.headers,
                     "locked": locked,
+                    "shared": if locked.is_empty() { shared_apps(&api) } else { Vec::new() },
                 }))
             }
             Principal::Edge => HttpResponse::Ok().json(serde_json::json!({
@@ -2934,6 +2949,263 @@ async fn delete_builder_build(
     })
 }
 
+// ── LosOS Mail ────────────────────────────────────────────────────────────
+// A mailbox per person (`crate::mail`). Every route is `signed-in` in
+// sections.json: whoever LosOS Login signed in reads their own mail, and
+// only their own, because each call is made as them. The spare key and a
+// managing edge are nobody, so they have no mailbox.
+
+/// The policy a message's HTML is shown under, by lososd and by nginx's
+/// header map alike (`modules/containers.nix`, the `mailFrame` arm): a
+/// sandbox with no scripts and no same origin, inline style, and nothing
+/// loaded from anywhere, so a remote picture cannot tell the sender the
+/// message was read. Links open in a new tab, which is all
+/// `allow-popups` is for.
+pub const MAIL_FRAME_CSP: &str = "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
+
+fn mail_refused(r: &crate::mail::Refused) -> HttpResponse {
+    err(
+        StatusCode::from_u16(r.status).unwrap_or(StatusCode::BAD_GATEWAY),
+        &r.message,
+    )
+}
+
+/// The person a mail call is made as, or the answer for a caller who is
+/// nobody's mailbox: the spare key, an edge, or a person LosOS Login is
+/// holding to their own account.
+fn mail_person<'a>(
+    api: &Api,
+    who: &'a Principal,
+) -> Result<&'a crate::people::Person, Box<HttpResponse>> {
+    if api.mail.open().is_none() {
+        return Err(Box::new(err(
+            StatusCode::NOT_FOUND,
+            "there is no mail on this box",
+        )));
+    }
+    match who.person() {
+        Some(p) if p.groups.iter().any(|g| g == crate::people::LOCKED) => Err(Box::new(
+            HttpResponse::Forbidden().json(serde_json::json!({
+                "error": "finish what LosOS Login asks of your account first",
+                "locked": true,
+            })),
+        )),
+        Some(p) => Ok(p),
+        None => Err(Box::new(err(
+            StatusCode::CONFLICT,
+            "the spare key has no mailbox; sign in with LosOS Login to read mail",
+        ))),
+    }
+}
+
+/// `GET /api/mail` — the person's address, their folders, and the people
+/// on this box to write to. 404 when mail is not live here: off, or the box
+/// not sharing its storage, in which case the page does not exist either.
+async fn get_mail(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail", false, |who| {
+        let person = match mail_person(&api, who) {
+            Ok(p) => p,
+            Err(resp) => return *resp,
+        };
+        let people = api.people.list().unwrap_or_default();
+        match api.mail.mailboxes(person) {
+            Ok(mailboxes) => HttpResponse::Ok().json(serde_json::json!({
+                "address": api.mail.address(&person.name),
+                "name": person.display_name,
+                "mailboxes": mailboxes,
+                "people": api.mail.neighbours(&people),
+            })),
+            Err(r) => mail_refused(&r),
+        }
+    })
+}
+
+/// `GET /api/mail/messages?mailbox=<id>&q=<words>&position=<n>` — a page of
+/// a folder, newest first, optionally only what matches `q`.
+async fn get_mail_messages(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail/messages", false, |who| {
+        let person = match mail_person(&api, who) {
+            Ok(p) => p,
+            Err(resp) => return *resp,
+        };
+        let query =
+            web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+                .map(web::Query::into_inner)
+                .unwrap_or_default();
+        let Some(mailbox) = query.get("mailbox") else {
+            return err(StatusCode::BAD_REQUEST, "which folder?");
+        };
+        let position = query
+            .get("position")
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(0);
+        match api.mail.list(
+            person,
+            mailbox,
+            query.get("q").map(String::as_str),
+            position,
+        ) {
+            Ok(page) => HttpResponse::Ok().json(page),
+            Err(r) => mail_refused(&r),
+        }
+    })
+}
+
+/// `GET /api/mail/messages/{id}` — open a message, which marks it read.
+async fn get_mail_message(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(
+        &api,
+        &req,
+        "/api/mail/messages",
+        false,
+        |who| match mail_person(&api, who).map(|p| api.mail.message(p, &path)) {
+            Ok(Ok(m)) => HttpResponse::Ok().json(m),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        },
+    )
+}
+
+/// `GET /api/mail/messages/{id}/html` — the message's HTML, as a document
+/// of its own under [`MAIL_FRAME_CSP`], for the page's sandboxed frame.
+async fn get_mail_html(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(
+        &api,
+        &req,
+        "/api/mail/messages/html",
+        false,
+        |who| match mail_person(&api, who).map(|p| api.mail.html(p, &path)) {
+            Ok(Ok(html)) => HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .insert_header(("Content-Security-Policy", MAIL_FRAME_CSP))
+                .insert_header(("X-Content-Type-Options", "nosniff"))
+                .insert_header(("Referrer-Policy", "no-referrer"))
+                .insert_header(("Cache-Control", "private, no-store"))
+                .body(html),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        },
+    )
+}
+
+/// `POST /api/mail/messages/{id}` `{"seen"?, "flagged"?, "mailbox"?}`.
+async fn post_mail_message(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail/messages", true, |who| {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let done = mail_person(&api, who)
+            .map(|p| crate::mail::parse_change(&doc).and_then(|c| api.mail.change(p, &path, &c)));
+        match done {
+            Ok(Ok(())) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        }
+    })
+}
+
+/// `DELETE /api/mail/messages/{id}` — to the bin, or out of it for good.
+async fn delete_mail_message(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(
+        &api,
+        &req,
+        "/api/mail/messages",
+        true,
+        |who| match mail_person(&api, who).map(|p| api.mail.delete(p, &path)) {
+            Ok(Ok(())) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        },
+    )
+}
+
+/// `POST /api/mail/send` `{"to", "cc"?, "subject", "text", "inReplyTo"?}`.
+async fn post_mail_send(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail/send", true, |who| {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let done = mail_person(&api, who)
+            .map(|p| crate::mail::parse_draft(&doc).and_then(|d| api.mail.send(p, &d)));
+        match done {
+            Ok(Ok(())) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        }
+    })
+}
+
+/// `GET /api/mail/attachments/{blob}?name=<file name>` — an attachment, as
+/// a download. Never shown inline: a file from a stranger is not opened
+/// under this origin.
+async fn get_mail_attachment(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail/attachments", false, |who| {
+        let name =
+            web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+                .ok()
+                .and_then(|q| q.get("name").cloned())
+                .unwrap_or_else(|| "attachment".into());
+        // Only what cannot break the header or the file system.
+        let name: String = name
+            .chars()
+            .filter(|c| !c.is_control() && !matches!(c, '"' | '\\' | '/'))
+            .take(120)
+            .collect();
+        let name = if name.trim().is_empty() {
+            "attachment".to_string()
+        } else {
+            name
+        };
+        match mail_person(&api, who).map(|p| api.mail.download(p, &path)) {
+            Ok(Ok((_, bytes))) => HttpResponse::Ok()
+                .content_type("application/octet-stream")
+                .insert_header((
+                    "Content-Disposition",
+                    format!(
+                        "attachment; filename=\"{}\"; filename*=UTF-8''{}",
+                        name.replace(|c: char| !c.is_ascii(), "_"),
+                        percent(&name)
+                    ),
+                ))
+                .insert_header(("X-Content-Type-Options", "nosniff"))
+                .insert_header(("Cache-Control", "private, no-store"))
+                .body(bytes),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        }
+    })
+}
+
+/// RFC 5987 percent-encoding for a `filename*` parameter.
+fn percent(s: &str) -> String {
+    s.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
+                char::from(b).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
+}
+
 // ── Virtual machines ──────────────────────────────────────────────────────
 // The market's third kind (`edge/registrar/src/vms.rs`), on its own page
 // and its own routes, because every one of them is refused unless this box
@@ -3837,6 +4109,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             people,
             login,
             share: crate::cloud_share::Share::default(),
+            mail: crate::mail::Mail::from_env(),
             profiles: crate::profiles::Profiles::from_env(),
             image_jobs: tokio::sync::Semaphore::new(IMAGE_JOBS),
             plugins,
@@ -3861,6 +4134,20 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 // picture over its limit with a sentence.
                 .app_data(web::PayloadConfig::new(payload_cap))
                 .route("/api/health", web::get().to(health))
+                .route("/api/mail", web::get().to(get_mail))
+                .route("/api/mail/send", web::post().to(post_mail_send))
+                .route("/api/mail/messages", web::get().to(get_mail_messages))
+                .route("/api/mail/messages/{id}", web::get().to(get_mail_message))
+                .route("/api/mail/messages/{id}", web::post().to(post_mail_message))
+                .route(
+                    "/api/mail/messages/{id}",
+                    web::delete().to(delete_mail_message),
+                )
+                .route("/api/mail/messages/{id}/html", web::get().to(get_mail_html))
+                .route(
+                    "/api/mail/attachments/{blob}",
+                    web::get().to(get_mail_attachment),
+                )
                 .route("/api/me", web::get().to(get_me))
                 .route("/api/state", web::get().to(get_state))
                 .route("/api/settings", web::get().to(get_settings))

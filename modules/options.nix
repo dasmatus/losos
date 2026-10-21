@@ -1591,6 +1591,42 @@ in
       '';
     };
 
+    # ── LosOS Mail (modules/mail.nix) ─────────────────────────────────────────
+    mail.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        A mailbox for every person LosOS Login knows, read and written in
+        the Mail page at /mail/. The mail server, Stalwart, runs as the
+        shared user with its mailboxes in the shared data domain, so mail
+        exists only while the box's storage counts as shared, that is with
+        losos.sharingMyStorage on and the box in a mesh (losos.cluster.enable).
+        Otherwise there is no server, no page and no menu entry. For now mail goes
+        between the people on this box only.
+      '';
+    };
+
+    mail.domain = lib.mkOption {
+      type = lib.types.nullOr (lib.types.strMatching "[a-z0-9]([a-z0-9.-]*[a-z0-9])?");
+      default = null;
+      example = "mail.example.org";
+      description = ''
+        The domain of this box's addresses: a person signed in as `eva`
+        gets eva@<domain>. Null is `<hostName>.home.arpa`, the name RFC 8375
+        sets aside for home networks; mail servers need a domain under a
+        public suffix, and `.local` is not one.
+      '';
+    };
+
+    mail.port = lib.mkOption {
+      type = lib.types.port;
+      default = 8096;
+      description = ''
+        Loopback port of the mail server's HTTP listener, which lososd
+        alone talks to.
+      '';
+    };
+
     # ── LosOS Lab's guests under libvirt (modules/lab.nix) ───────────────────
     lab.libvirt.enable = lib.mkOption {
       type = lib.types.bool;
@@ -3121,6 +3157,48 @@ in
         description = "LosOS Cloud runs, and signs people in with LosOS Login.";
       };
     };
+
+  # ── The shared side ───────────────────────────────────────────────────
+  # The shared user's apps (mail, chat) exist only while the box's storage
+  # counts as shared: sharing on AND the box in a mesh. Sharing switched on
+  # without a mesh to share with is not enough. Read-only.
+  options.lososInternal.sharedSide = lib.mkOption {
+    type = lib.types.bool;
+    internal = true;
+    readOnly = true;
+    default = config.losos.sharingMyStorage && config.losos.cluster.enable;
+    description = "The shared side is live: losos.sharingMyStorage and losos.cluster.enable.";
+  };
+
+  # ── LosOS Mail, as it actually runs ─────────────────────────────────────
+  # Mail is on the shared side: the switch and lososInternal.sharedSide.
+  # modules/mail.nix (the server and lososd's environment) and
+  # modules/containers.nix (the /mail/ page) read this one value, so the
+  # page cannot outlive the server. Read-only.
+  options.lososInternal.mail = {
+    live = lib.mkOption {
+      type = lib.types.bool;
+      internal = true;
+      readOnly = true;
+      default =
+        config.losos.mail.enable
+        && config.lososInternal.sharedSide
+        && config.losos.admin.enable
+        && config.losos.admin.ui != null;
+      description = "LosOS Mail runs: losos.mail.enable, the shared side (lososInternal.sharedSide) and the admin pages.";
+    };
+    domain = lib.mkOption {
+      type = lib.types.str;
+      internal = true;
+      readOnly = true;
+      default =
+        if config.losos.mail.domain != null then
+          config.losos.mail.domain
+        else
+          "${lib.toLower config.losos.hostName}.home.arpa";
+      description = "The domain of this box's mail addresses.";
+    };
+  };
 
   # Whether this box hosts machines, as it actually runs: the switch and
   # the sharing gate together, read by modules/cluster.nix for the join.
