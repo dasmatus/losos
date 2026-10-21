@@ -637,6 +637,12 @@ pkgs.testers.nixosTest {
         page.screenshot(path=f"{OUT}/stuck-{who}.png")
         print(f"{who} sees {page.url}:\n{page.inner_text('body')[:2000]}\n{problems}")
         print("\n".join(responses[who][-30:]))
+        for user in ["matus", "eva"]:
+            print(user, box.execute(
+                f"curl -s 'http://127.0.0.1:8008/_matrix/client/v3/profile/%40{user}%3A{HOST}' "
+                f"-H \"Authorization: Bearer $(cat /var/secrets/losos-chat/as_token)\""
+            )[1])
+        print(box.execute("journalctl -u lososd --no-pager | grep -i 'chat\\|display' | tail -n 20")[1])
 
     def room_button(page, name):
         return page.get_by_role("button", name=re.compile(name)).first
