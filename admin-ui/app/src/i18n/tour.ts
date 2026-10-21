@@ -118,7 +118,7 @@ export default defineMessages({
   },
   "tour.scene.build": { en: "Build", sk: "Vytvoriť", de: "Bauen" },
   "tour.scene.stepWrite": { en: "Wrote {file}", sk: "Napísal {file}", de: "{file} geschrieben" },
-  "tour.scene.stepCheck": { en: "Checked it: one problem", sk: "Skontroloval: jeden problém", de: "Geprüft: ein Problem" },
+  "tour.scene.stepCheck": { en: "Found one problem", sk: "Našiel jeden problém", de: "Ein Problem gefunden" },
   "tour.scene.stepFix": { en: "Fixed it", sk: "Opravil ho", de: "Behoben" },
   "tour.scene.appTitle": { en: "Band to-dos", sk: "Úlohy kapely", de: "Band-To-dos" },
   "tour.scene.todo1": { en: "Book the hall", sk: "Zarezervovať sálu", de: "Saal buchen" },
