@@ -192,6 +192,23 @@ pkgs.testers.nixosTest {
     def curl(args):
         return laptop.succeed(f"curl -sk {args}")
 
+    def box_settings(sharing, mesh):
+        # What Apply would have written for this state: lososd's settings
+        # (and the pages that read them, like the mesh banner) come from
+        # overrides.nix, while the gate itself is the evaluated config.
+        lines = [
+            "{ ... }:",
+            "{",
+            f"  losos.sharingMyStorage = {str(sharing).lower()};",
+            f"  losos.cluster.enable = {str(mesh).lower()};",
+            "}",
+        ]
+        box.succeed(
+            "mkdir -p /etc/nixos/modules && printf '%s\\n' "
+            + " ".join("'" + l + "'" for l in lines)
+            + " > /etc/nixos/modules/overrides.nix"
+        )
+
     def mail_page():
         return [curl(f"-o /dev/null -w '%{{http_code}}' https://{BOX}{p}") for p in ["/mail", "/mail/"]]
 
@@ -234,6 +251,8 @@ pkgs.testers.nixosTest {
                 return found[0]
             time.sleep(2)
         raise AssertionError(f"{subject!r} never arrived in {mailbox}: {page}")
+
+    box_settings(True, True)
 
     with subtest("Stalwart runs as the shared user, on loopback only"):
         pid = box.succeed("systemctl show -p MainPID --value losos-mail.service").strip()
@@ -286,6 +305,10 @@ pkgs.testers.nixosTest {
         assert ok("/api/me", eva)["shared"] == ["mail"]
         # A screen of the admin pages: /mail falls through to their index.
         assert mail_page() == ["200", "200"]
+        # The saved settings agree with the gate, so no page (the mesh
+        # banner, the About pane) says this box is out of a mesh.
+        settings = ok("/api/settings", matus)
+        assert settings["sharingMyStorage"] and settings["clusterEnable"], settings
 
     with subtest("each person gets a mailbox on first use"):
         mhome = ok("/api/mail", matus)
@@ -454,6 +477,7 @@ pkgs.testers.nixosTest {
             print(laptop.succeed(f"MAIL_SCREENS_PASSWORD='{PASSWORD}' mail-screens {quoted}", timeout=3600))
 
     with subtest("sharing on but in no mesh is not the shared side"):
+        box_settings(True, False)
         box.succeed("/run/current-system/specialisation/alone/bin/switch-to-configuration test")
         box.wait_until_fails("systemctl is-active losos-mail.service", timeout=60)
         box.wait_for_unit("lososd.service")
@@ -462,12 +486,14 @@ pkgs.testers.nixosTest {
         code, _ = api("/api/mail", eva)
         assert code == 404, code
         assert mail_page() == ["404", "404"]
+        box_settings(True, True)
         box.succeed("/run/booted-system/bin/switch-to-configuration test")
         box.wait_for_unit("losos-mail.service")
         box.wait_for_open_port(8096)
         laptop.wait_until_succeeds(f"curl -sk -H 'Cookie: {eva}' https://{BOX}/api/me | jq -e '.shared == [\"mail\"]'", timeout=60)
 
     with subtest("with sharing off there is no mail at all"):
+        box_settings(False, True)
         box.succeed("/run/current-system/specialisation/closed/bin/switch-to-configuration test")
         box.wait_until_fails("systemctl is-active losos-mail.service", timeout=60)
         box.wait_for_unit("lososd.service")
@@ -484,6 +510,7 @@ pkgs.testers.nixosTest {
         screens("sidebar", "01", "sidebar-sharing-off", "the sidebar while the box does not share", "none")
 
     with subtest("with sharing back on, the mail is still there"):
+        box_settings(True, True)
         box.succeed("/run/booted-system/bin/switch-to-configuration test")
         box.wait_for_unit("losos-mail.service")
         box.wait_for_open_port(8096)
