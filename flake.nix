@@ -447,6 +447,9 @@
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
         losos-tour = import ./nix/tests/tour.nix { inherit pkgs; };
+        # The game a long wait offers, played during a real wizard wait and a
+        # real rebuild, with the pull request's pictures (nix/tests/wait-game.nix).
+        losos-wait-game = import ./nix/tests/wait-game.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
