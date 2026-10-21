@@ -355,13 +355,21 @@ fn reviewers_json(state: &State, pr: &Issue) -> anyhow::Result<Value> {
         }
     }
     let requested = state.store.review_requests(pr.id)?;
-    let mut list: Vec<Value> = latest
-        .iter()
-        .filter(|(login, _, _)| !requested.iter().any(|u| &u.login == login))
-        .map(|(login, s, commit)| {
-            json!({ "login": login, "state": s, "commit_id": commit, "requested": false })
-        })
-        .collect();
+    let mut list = Vec::new();
+    for (login, s, commit) in &latest {
+        if requested.iter().any(|u| &u.login == login) {
+            continue;
+        }
+        // A reviewer who answered is still a person or a program.
+        let is_bot = state.store.user(login)?.is_some_and(|u| u.is_bot);
+        list.push(json!({
+            "login": login,
+            "is_bot": is_bot,
+            "state": s,
+            "commit_id": commit,
+            "requested": false,
+        }));
+    }
     for u in &requested {
         let before = latest.iter().find(|(l, _, _)| l == &u.login);
         list.push(json!({

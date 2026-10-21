@@ -518,6 +518,9 @@
         # repository's round trip through lososd, clone and push through
         # nginx, and who it believes (nix/tests/git.nix).
         losos-git = import ./nix/tests/git.nix { inherit pkgs; };
+        # Its pages in Chromium: code, a pull request reviewed and merged, the
+        # worktrees (nix/tests/git-pages.nix).
+        losos-git-pages = import ./nix/tests/git-pages.nix { inherit pkgs; };
         # A Forgejo box's switch: everything it held, carried into LosOS Git.
         losos-git-forgejo = import ./nix/tests/git-forgejo.nix { inherit pkgs; };
         # Mesh CI: a push to LosOS Git runs its GitHub Actions workflows on
