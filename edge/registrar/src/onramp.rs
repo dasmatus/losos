@@ -122,7 +122,23 @@ pub fn api_url_ok(url: &str) -> bool {
 #[must_use]
 pub fn parse_public_key(text: &str) -> Option<Vec<u8>> {
     let der = crate::solana_escrow::base64_decode(&strip_pem(text))?;
-    Some(spki_rsa_key(&der).map_or(der.clone(), <[u8]>::to_vec))
+    let key = spki_rsa_key(&der).unwrap_or(&der);
+    rsa_public_key(key).then(|| key.to_vec())
+}
+
+/// A PKCS#1 RSAPublicKey: a SEQUENCE of the modulus, 1024 bits or more, and
+/// the exponent, with nothing after it.
+fn rsa_public_key(key: &[u8]) -> bool {
+    let Some((0x30, body, [])) = der(key) else {
+        return false;
+    };
+    let Some((0x02, modulus, rest)) = der(body) else {
+        return false;
+    };
+    let Some((0x02, exponent, [])) = der(rest) else {
+        return false;
+    };
+    modulus.len() >= 128 && !exponent.is_empty()
 }
 
 /// The base64 inside a PEM block, or the text itself, without whitespace.
@@ -364,6 +380,14 @@ impl Onramp {
             .map_err(|e| OnrampError::Store(format!("{}: {e}", self.opts.state_file)))
     }
 
+    /// Whether the partner's key and token are both sealed. The account view
+    /// offers the purchase only then, so a box never shows a row that can
+    /// only answer 503.
+    pub async fn configured(&self) -> bool {
+        Self::credential(&self.opts.key_file).await.is_ok()
+            && Self::credential(&self.opts.token_file).await.is_ok()
+    }
+
     async fn credential(path: &str) -> Result<String, OnrampError> {
         let text = tokio::fs::read_to_string(PathBuf::from(path))
             .await
@@ -382,7 +406,10 @@ impl Onramp {
         let token = Self::credential(&self.opts.token_file).await?;
         let der = crate::solana_escrow::base64_decode(&strip_pem(&key))
             .ok_or(OnrampError::Unconfigured)?;
-        let pair = RsaKeyPair::from_pkcs8(&der).map_err(|_| OnrampError::Unconfigured)?;
+        // PKCS#8 (`BEGIN PRIVATE KEY`) or PKCS#1 (`BEGIN RSA PRIVATE KEY`).
+        let pair = RsaKeyPair::from_pkcs8(&der)
+            .or_else(|_| RsaKeyPair::from_der(&der))
+            .map_err(|_| OnrampError::Unconfigured)?;
         let body = body.to_string();
         let timestamp = now_ms().to_string();
         let mut sig = vec![0; pair.public().modulus_len()];
@@ -659,6 +686,33 @@ fn decimal(s: &str) -> bool {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn the_purchase_is_offered_only_once_key_and_token_are_sealed() {
+        let dir = std::env::temp_dir().join(format!("losos-onramp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
+        let onramp = Onramp::open(OnrampOpts {
+            api_url: "https://api.example".into(),
+            client_id: "client".into(),
+            key_file: path("key"),
+            token_file: path("token"),
+            webhook_key: vec![],
+            state_file: path("onramp.json"),
+        })
+        .await
+        .unwrap();
+        // Missing files, then systemd's fallback word, then real values.
+        assert!(!onramp.configured().await);
+        std::fs::write(path("key"), "unsealed").unwrap();
+        std::fs::write(path("token"), "unsealed").unwrap();
+        assert!(!onramp.configured().await);
+        std::fs::write(path("key"), "-----BEGIN PRIVATE KEY-----\nAAAA\n").unwrap();
+        assert!(!onramp.configured().await, "the token is still unsealed");
+        std::fs::write(path("token"), "token\n").unwrap();
+        assert!(onramp.configured().await);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn amounts_are_euros_with_two_decimals_in_range() {
         assert_eq!(normalize_euros("50").as_deref(), Some("50"));
@@ -744,5 +798,14 @@ mod tests {
         ];
         assert_eq!(spki_rsa_key(&spki), Some(&[0x30, 0x00][..]));
         assert_eq!(spki_rsa_key(&[0x30, 0x05, 0x00]), None);
+        // An empty SEQUENCE is no key; a 1024-bit modulus and an exponent are.
+        assert!(!rsa_public_key(&[0x30, 0x00]));
+        let mut key = vec![0x30, 0x81, 0x87, 0x02, 0x81, 0x81, 0x00];
+        key.extend([0xc5; 128]);
+        key.extend([0x02, 0x01, 0x03]);
+        assert!(rsa_public_key(&key));
+        key.push(0x00);
+        assert!(!rsa_public_key(&key), "trailing bytes");
+        assert!(parse_public_key("not a key").is_none());
     }
 }

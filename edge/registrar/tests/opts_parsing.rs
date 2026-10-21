@@ -1010,18 +1010,28 @@ fn zcash_takes_mainnet_servers_of_two_operators_beside_usdc() {
 
 const BINANCE_KEY: &str = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gunVTLw7onLRnrq0/IzW7yWR7QkrmBL7jTKEn5u+qKhbwKfBstIs+bMY2Zkp18gnTxKLxoS2tFczGkPLPgizskuemMghRniWaoLcyehkd3qqGElvW/VDL5AaWTg0nLVkjRo9z+40RQzuVaE8AkAFmxZzow3x+VJYKdjykkJ0iT9wCS0DRTXu269V264Vf/3jvredZiKRkgwlL9xNAwxXFg0x/XFw005UWVRIkdgcKWTjpBP2dPwVZ4WWC+9aGVd+Gyn1o0CLelf4rEjGoXbAAEgAqeGUxrcIlbjXfbcmwIDAQAB";
 
-const ONRAMP: &[&str] = &[
-    "--onramp-binance-api",
-    "https://api.example.binance.com",
-    "--onramp-binance-client-id",
-    "losos",
-    "--onramp-binance-key-file",
-    "/run/credentials/losos-registrar.service/binance-connect-key",
-    "--onramp-binance-token-file",
-    "/run/credentials/losos-registrar.service/binance-connect-token",
-    "--onramp-binance-webhook-key",
-    BINANCE_KEY,
-];
+/// The onramp's flags, with Binance's key written to a file once.
+fn onramp() -> Vec<&'static str> {
+    static KEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let key = KEY.get_or_init(|| {
+        let path = std::env::temp_dir().join(format!("losos-binance-{}.pub", std::process::id()));
+        let pem = format!("-----BEGIN PUBLIC KEY-----\n{BINANCE_KEY}\n-----END PUBLIC KEY-----\n");
+        std::fs::write(&path, pem).unwrap();
+        path.to_string_lossy().into_owned()
+    });
+    vec![
+        "--onramp-binance-api",
+        "https://api.example.binance.com",
+        "--onramp-binance-client-id",
+        "losos",
+        "--onramp-binance-key-file",
+        "/run/credentials/losos-registrar.service/binance-connect-key",
+        "--onramp-binance-token-file",
+        "/run/credentials/losos-registrar.service/binance-connect-token",
+        "--onramp-binance-webhook-key-file",
+        key,
+    ]
+}
 
 const LIVE_BASE: &[&str] = &[
     "--market-no-cards",
@@ -1035,7 +1045,7 @@ const LIVE_BASE: &[&str] = &[
 
 #[test]
 fn binances_onramp_parses_beside_usdc_on_base() {
-    let args: Vec<&str> = ONRAMP.iter().chain(LIVE_BASE).copied().collect();
+    let args: Vec<&str> = onramp().iter().chain(LIVE_BASE).copied().collect();
     let opts = serve_opts(&args).onramp.expect("onramp on");
     assert_eq!(opts.api_url, "https://api.example.binance.com");
     assert_eq!(opts.client_id, "losos");
@@ -1047,8 +1057,8 @@ fn binances_onramp_parses_beside_usdc_on_base() {
 #[test]
 fn binances_onramp_needs_usdc_on_base_mainnet_and_a_real_origin() {
     // Without the market settling on Base there is nothing to deliver to.
-    assert!(parse(serve_args(ONRAMP)).is_err());
-    let test_net: Vec<&str> = ONRAMP
+    assert!(parse(serve_args(&onramp())).is_err());
+    let test_net: Vec<&str> = onramp()
         .iter()
         .copied()
         .chain([
@@ -1063,8 +1073,18 @@ fn binances_onramp_needs_usdc_on_base_mainnet_and_a_real_origin() {
         .collect();
     assert!(parse(serve_args(&test_net)).is_err());
     // Plain http only to loopback; a flag without the API is a mistake.
-    let mut http: Vec<&str> = ONRAMP.iter().chain(LIVE_BASE).copied().collect();
+    let mut http: Vec<&str> = onramp().iter().chain(LIVE_BASE).copied().collect();
     http[1] = "http://api.example.com";
     assert!(parse(serve_args(&http)).is_err());
     assert!(parse(serve_args(&["--onramp-binance-client-id", "losos"])).is_err());
+    // Binance's key must be there and be a key.
+    let mut missing: Vec<&str> = onramp().iter().chain(LIVE_BASE).copied().collect();
+    missing[9] = "/nonexistent/binance.pub";
+    assert!(parse(serve_args(&missing)).is_err());
+    let junk = std::env::temp_dir().join(format!("losos-binance-junk-{}", std::process::id()));
+    std::fs::write(&junk, "not a key\n").unwrap();
+    let junk = junk.to_string_lossy().into_owned();
+    let mut not_key = missing.clone();
+    not_key[9] = &junk;
+    assert!(parse(serve_args(&not_key)).is_err());
 }

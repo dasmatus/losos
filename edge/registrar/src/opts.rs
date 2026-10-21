@@ -858,7 +858,7 @@ fn parse_onramp(args: &[String]) -> Result<Option<crate::onramp::OnrampOpts>> {
             "--onramp-binance-client-id",
             "--onramp-binance-key-file",
             "--onramp-binance-token-file",
-            "--onramp-binance-webhook-key",
+            "--onramp-binance-webhook-key-file",
         ]
         .into_iter()
         .find(|f| arg(args, f).is_some())
@@ -884,9 +884,13 @@ fn parse_onramp(args: &[String]) -> Result<Option<crate::onramp::OnrampOpts>> {
         }
         Ok(path.to_string())
     };
-    let webhook_key =
-        crate::onramp::parse_public_key(req(args, "--onramp-binance-webhook-key")?)
-            .ok_or_else(|| miette!("--onramp-binance-webhook-key is not a base64 public key"))?;
+    // Binance's key for its notifications: public, PEM or one base64 line.
+    let key_path = req(args, "--onramp-binance-webhook-key-file")?;
+    let key_text = std::fs::read_to_string(key_path)
+        .map_err(|e| miette!("read --onramp-binance-webhook-key-file {key_path}: {e}"))?;
+    let webhook_key = crate::onramp::parse_public_key(&key_text).ok_or_else(|| {
+        miette!("--onramp-binance-webhook-key-file {key_path} holds no RSA public key")
+    })?;
     let live_base = parse_usdc(args, arg(args, "--market-currency").unwrap_or("eur"))
         .ok()
         .flatten()

@@ -1433,8 +1433,11 @@ async fn market_account(
     let market = market_tenant(&st, &req).await?;
     let sharing = sharing_of(&st).await?;
     let mut view = market.account(&req.appliance_id, &sharing).await?;
-    if let (Some(_), Some(usdc)) = (&st.onramp, view.usdc.as_mut()) {
-        if !usdc.test && usdc.chains.iter().any(|c| c.network == "base") {
+    if let (Some(onramp), Some(usdc)) = (&st.onramp, view.usdc.as_mut()) {
+        if !usdc.test
+            && usdc.chains.iter().any(|c| c.network == "base")
+            && onramp.configured().await
+        {
             usdc.onramp = Some("binance");
         }
     }

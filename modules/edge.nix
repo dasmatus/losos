@@ -825,7 +825,25 @@ let
     ++ lib.optionals ensOn [
       "--market-ens-rpc-file"
       "${credDir}/ens-rpc"
+    ]
+    ++ lib.optionals binanceOn [
+      "--onramp-binance-api"
+      binance.apiUrl
+      "--onramp-binance-client-id"
+      binance.clientId
+      "--onramp-binance-webhook-key-file"
+      (toString binance.webhookPublicKeyFile)
+      "--onramp-binance-key-file"
+      "${credDir}/binance-connect-key"
+      "--onramp-binance-token-file"
+      "${credDir}/binance-connect-token"
     ];
+  # Buying USDC with euros at Binance (losos.edge.market.usdc.binance,
+  # edge/registrar/src/onramp.rs). The partner key and token are credentials
+  # like the RPC URLs; the client id, API origin and Binance's webhook key
+  # are public.
+  binance = cfg.market.usdc.binance;
+  binanceOn = usdcOn && binance.enable;
 
   # Machines (losos.edge.vms, modules/edge-vms.nix): the shape of a replica,
   # where its disk is claimed from, and the origin CDI's importer fetches an
@@ -908,6 +926,10 @@ let
     ]
     ++ lib.optionals ensOn [
       "ens-rpc:${toString cfg.market.usdc.ensRpcUrlSealed}"
+    ]
+    ++ lib.optionals binanceOn [
+      "binance-connect-key:${toString binance.keySealed}"
+      "binance-connect-token:${toString binance.tokenSealed}"
     ];
 
   serveArgs = utils.escapeSystemdExecArgs (
@@ -1139,6 +1161,23 @@ in
         '';
       }
       {
+        assertion = binance.enable -> usdcOn && usdcNetworks ? base;
+        message = ''
+          losos.edge.market.usdc.binance.enable needs losos.edge.market.usdc
+          with the live `base` network: Binance sends the USDC on Base.
+        '';
+      }
+      {
+        assertion =
+          binance.enable
+          -> binance.apiUrl != null && binance.clientId != null && binance.webhookPublicKeyFile != null;
+        message = ''
+          losos.edge.market.usdc.binance.enable needs apiUrl, clientId and
+          webhookPublicKeyFile, the details Binance gives with the partner
+          account.
+        '';
+      }
+      {
         assertion = cfg.market.zcash.enable -> cfg.market.usdc.enable;
         message = ''
           losos.edge.market.zcash.enable requires losos.edge.market.usdc.enable:
@@ -1336,8 +1375,9 @@ in
       // lib.optionalAttrs (registrarCreds != [ ]) {
         # Plaintext only in this unit's credential directory, read per request.
         # `usdc-rpc-<network>` is a chain endpoint, `usdc-releaser-key` the
-        # escrow's key and `ens-rpc` the name lookups. None is a flag, so none
-        # shows up in the process list.
+        # escrow's key, `ens-rpc` the name lookups and `binance-connect-*`
+        # the Binance partner's key and token. None is a flag, so none shows
+        # up in the process list.
         LoadCredentialEncrypted = registrarCreds;
         # systemd fails the unit when an absolute blob is missing, and an
         # edge whose registrar never starts cannot have anything sealed
