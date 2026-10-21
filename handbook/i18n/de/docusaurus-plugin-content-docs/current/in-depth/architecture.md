@@ -178,9 +178,9 @@ Frist, sodass ein Plugin, das hängt oder abstürzt, eine 500 kostet und sonst
 nichts. lososd lädt Plugins nur aus `losos.backend.plugins`, einem
 Verzeichnis im Nix-Store (`.#losos-plugins`), und startet nicht, wenn das
 Verzeichnis oder eine Datei darin außerhalb des Stores liegt, beschreibbar
-ist, nicht root gehört oder auf einem beschreibbaren Mount liegt. Das
-Aussehen (Hintergrundbild und Widgets) ist das erste Plugin;
-`nix/tests/plugins.nix` bootet es.
+ist, nicht root gehört oder auf einem beschreibbaren Mount liegt. Bisher
+sind das Aussehen (Hintergrundbild und Widgets) und die angehefteten
+Einträge der Seitenleiste Plugins; `nix/tests/plugins.nix` bootet sie.
 
 `losos-ctl` ist eine schlanke Fassaden-CLI. Sie behält die alten
 Unterbefehle und die JSON-Ausgabe bei (`state`, `change --mode`, `status`,

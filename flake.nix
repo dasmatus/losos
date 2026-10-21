@@ -329,6 +329,10 @@
             # Text inside the owner's files for the admin pages' search
             # (backend/src/textsearch/): the cloud index and the Git search.
             ./modules/search.nix
+            # Memory lent to models split across boxes (losos.inference.lend,
+            # off by default): a llama.cpp RPC server the edge reaches through
+            # this box's tunnel.
+            ./modules/inference-lend.nix
             # LosOS Cloud (backend/src/cloud/): files at /cloud/ and to the
             # Nextcloud desktop and phone apps.
             ./modules/cloud.nix
@@ -339,6 +343,8 @@
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
             ./modules/lab.nix
+            # LosOS Mail: Stalwart as the shared user, only while sharing.
+            ./modules/mail.nix
             # The option document and the configuration repository on LosOS
             # Git (modules/config-repo.nix, backend/src/{options,config_repo}.rs).
             ./modules/config-repo.nix
@@ -397,6 +403,7 @@
           ./modules/edge.nix
           ./modules/edge-credentials.nix
           ./modules/edge-vms.nix
+          ./modules/edge-inference.nix
           ./modules/edge-gateway.nix
           ./modules/logs.nix
         ];
@@ -451,6 +458,11 @@
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
+        losos-mail = import ./nix/tests/mail.nix { inherit pkgs; };
+        losos-mail-screens = import ./nix/tests/mail.nix {
+          inherit pkgs;
+          screens = true;
+        };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
         # Apps run as notshared on rootless Podman, with no cluster: the
         # box's own, one in the LosOS app format and a chart from the
@@ -484,6 +496,10 @@
         # type, save, save as PDF, two people in one document, the token
         # rules and what nginx refuses (nix/tests/office.nix).
         losos-office = import ./nix/tests/office.nix { inherit pkgs; };
+        # The box half of models split across boxes: the RPC server as
+        # `shared`, its memory cap, the lend file, the loopback owner rule
+        # and the `:llm` tunnel service (nix/tests/inference-lend.nix).
+        losos-inference-lend = import ./nix/tests/inference-lend.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
         # The real Forgejo with losos.forgejo.federation on, asked what another
         # server would ask, in both deployment modes; then off, and gone
