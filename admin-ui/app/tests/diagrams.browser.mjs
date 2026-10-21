@@ -124,6 +124,86 @@ await check('a double-click writes a card, and its Markdown is drawn, one newlin
   await page.close();
 });
 
+await check('@ in a card offers people and files, and the card draws them as chips', async () => {
+  const PEOPLE = [
+    { name: 'eva', displayName: 'Eva Nováková', pronouns: '', about: '', accent: 'teal', accentChosen: false, picture: null, banner: null },
+    { name: 'matus', displayName: 'Matus', pronouns: '', about: '', accent: 'salmon', accentChosen: false, picture: null, banner: null },
+  ];
+  const ENTRIES = [
+    { id: 7, path: 'Plans/launch.canvas', name: 'launch.canvas', dir: false, size: 10, mtime: 1, etag: 'a', mime: 'application/json', favorite: false },
+    { id: 9, path: 'Plans/budget (draft).xlsx', name: 'budget (draft).xlsx', dir: false, size: 10, mtime: 1, etag: 'b', mime: 'application/vnd.ms-excel', favorite: false },
+  ];
+  const asked = [];
+  const { page, clean } = await open({
+    routes: async (page) => {
+      await page.route('**/api/profiles', (route) => json(route, 200, { people: PEOPLE }));
+      await page.route('**/cloud/api/files/search?*', (route) => {
+        const q = new URL(route.request().url()).searchParams.get('q');
+        asked.push(q);
+        json(route, 200, { entries: ENTRIES.filter((e) => e.name.includes(q)) });
+      });
+    },
+  });
+  await fresh(page);
+  const p = await at(page, 300, 260);
+  await page.mouse.dblclick(p.x, p.y);
+  const editor = page.getByRole('textbox', { name: 'Card text' });
+  await editor.waitFor();
+  await editor.pressSequentially('Ask @ev');
+  const picker = page.getByTestId('mention-picker');
+  await picker.getByRole('option', { name: /Eva Nováková/ }).waitFor();
+  assert.strictEqual(await picker.getByRole('group', { name: 'People' }).getByRole('option').count(), 1, 'only Eva matches "ev"');
+  await page.keyboard.press('Enter');
+  assert.strictEqual(await editor.inputValue(), 'Ask @eva ', 'Enter puts the sign-in name in, not a new line');
+  await editor.pressSequentially('about @budget');
+  await picker.getByRole('group', { name: 'Files' }).getByRole('option', { name: /budget \(draft\)\.xlsx/ }).click();
+  await editor.pressSequentially('and @launch');
+  await picker.getByRole('option', { name: /launch\.canvas/ }).waitFor();
+  await page.keyboard.press('Tab');
+  assert.strictEqual(
+    await editor.inputValue(),
+    'Ask @eva about [@budget (draft).xlsx](/cloud/files?fileid=9) and [@launch.canvas](/diagrams?file=Plans%2Flaunch.canvas) ',
+  );
+  assert.ok(asked.includes('budget'), 'files come from the Cloud search');
+  // Escape closes the list first and leaves the card open, then ends the edit.
+  await editor.pressSequentially('cc @nobody');
+  await picker.getByText('No people or files match').waitFor();
+  await page.keyboard.press('Escape');
+  await picker.waitFor({ state: 'detached' });
+  await editor.waitFor();
+  await editor.press('Control+a');
+  await editor.pressSequentially('@eva and @ghost, mail eva@mattbox.local');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  const body = page.locator('[data-testid=diagram] [data-node-body]').first();
+  const chips = body.getByTestId('mention-chip');
+  await chips.first().waitFor();
+  assert.strictEqual(await chips.count(), 1, 'only a person on the box is a chip; a mail address is not a tag');
+  assert.match(await chips.first().innerText(), /@eva$/, 'the chip names the sign-in name beside the face');
+  assert.strictEqual(await chips.first().getAttribute('title'), 'Eva Nováková');
+  assert.match(await body.innerText(), /@ghost, mail eva@mattbox\.local/);
+  await clean();
+  await page.close();
+});
+
+await check('a file tag opens where the file lives; a tag to anywhere else is plain text', async () => {
+  const { page, clean } = await open();
+  await fresh(page);
+  const p = await at(page, 300, 260);
+  await page.mouse.dblclick(p.x, p.y);
+  const editor = page.getByRole('textbox', { name: 'Card text' });
+  await editor.fill('[@budget.xlsx](/cloud/files?fileid=9) [@plan](/diagrams?file=a.canvas) [@evil](/api/factory-reset) [@far](https://example.com)');
+  await page.keyboard.press('Escape');
+  const body = page.locator('[data-testid=diagram] [data-node-body]').first();
+  const files = body.locator('[data-testid=mention-chip][data-kind=file]');
+  await files.first().waitFor();
+  assert.deepStrictEqual(await files.evaluateAll((els) => els.map((a) => a.getAttribute('href'))), ['/cloud/files?fileid=9', '/diagrams?file=a.canvas']);
+  assert.strictEqual(await body.locator('a[href="/api/factory-reset"]').count(), 0, 'a tag cannot point at the API');
+  assert.strictEqual(await body.locator('a[href="https://example.com"]').count(), 1, 'an outside link stays an ordinary link');
+  await clean();
+  await page.close();
+});
+
 await check('cards from the tray, an arrow between them, undo and redo', async () => {
   const { page, clean } = await open();
   await fresh(page);

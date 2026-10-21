@@ -35,6 +35,13 @@ Netzwerk darin, wie der Simulator es zeichnet.
   `**fett**`, `*kursiv*`, `~~durchgestrichen~~` und `==markiert==`. Ein
   Doppelklick auf eine Karte bearbeitet sie; Escape oder ein Klick daneben
   beendet die Bearbeitung.
+- **@-Markierungen.** Tippe `@` in eine Karte, und du bekommst eine Liste
+  der Personen auf der Box und der Dateien in deiner LosOS Cloud. Eine
+  Person kommt als ihr Anmeldename hinein, `@eva`, und die Karte zeigt sie
+  mit ihrem Bild. Eine Datei kommt als Link hinein,
+  `[@plan.canvas](/diagrams?file=…)`, der ein Diagramm in Diagrams öffnet
+  und jede andere Datei in ihrem Ordner in LosOS Cloud. Obsidian liest
+  beides als einfachen Text und Link.
 - **Pfeile.** Zieh von einem der vier Griffe an den Seiten einer Karte auf
   eine andere Karte, oder auf leere Fläche für eine neue Karte dort. Ein
   Pfeil hat eine Beschriftung, einen Verlauf (gerade, rechtwinklig oder um

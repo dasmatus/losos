@@ -1211,3 +1211,35 @@
   stroke-width: 2;
   stroke-linecap: round;
 }
+
+/* @ tags in a card (md-view.tsx): a person or a file as a chip */
+.dg-md .dg-at {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.3em;
+  vertical-align: bottom;
+  border-radius: 999px;
+  background: var(--accent-wash);
+  padding: 0 0.5em 0 0.15em;
+  color: var(--accent);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.dg-md a.dg-at:hover {
+  text-decoration: underline;
+}
+.dg-md .dg-at-face {
+  width: 1.25em;
+  height: 1.25em;
+  font-size: 0.55em;
+}
+.dg-md .dg-at-file {
+  width: 1em;
+  height: 1em;
+  margin-left: 0.2em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}

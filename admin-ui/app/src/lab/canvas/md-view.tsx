@@ -1,9 +1,26 @@
 /* A card's Markdown as React elements (the tree is markdown.ts's). Links
  * open in a new tab; a [[wiki link]] is drawn as one but goes nowhere,
- * since a diagram has no vault round it. Classes are in lab.css (.dg-md). */
+ * since a diagram has no vault round it. An @ tag is a chip: a person on
+ * this box with their picture, a file with its icon, opening where the
+ * file lives. A name nobody on the box has stays plain text. Classes are
+ * in lab.css (.dg-md). */
 
 import * as React from "react";
+import { PersonAvatar } from "@/components/person";
+import { usePeople } from "@/lib/mentions";
 import { type Block, type Inline, parse } from "./markdown";
+
+const People = React.createContext<ReadonlyMap<string, { name: string; displayName: string; picture: string | null }>>(new Map());
+
+function Person({ name }: { name: string }) {
+  const person = React.useContext(People).get(name);
+  if (person === undefined) return <>@{name}</>;
+  return (
+    <span className="dg-at" data-testid="mention-chip" data-kind="person" title={person.displayName.trim() || person.name}>
+      <PersonAvatar person={person} size="xs" className="dg-at-face" />@{person.name}
+    </span>
+  );
+}
 
 function Runs({ kids }: { kids: Inline[] }) {
   return (
@@ -49,6 +66,26 @@ function Runs({ kids }: { kids: Inline[] }) {
               <span key={i} className="dg-wiki" title={n.target}>
                 {n.label}
               </span>
+            );
+          case "at":
+            return <Person key={i} name={n.name} />;
+          case "file":
+            return (
+              <a
+                key={i}
+                href={n.href}
+                target="_blank"
+                rel="noreferrer noopener"
+                data-md-link
+                className="dg-at"
+                data-testid="mention-chip"
+                data-kind="file"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" className="dg-at-file">
+                  <path d="M6 3h8l4 4v14H6zM14 3v4h4" />
+                </svg>
+                {n.label}
+              </a>
             );
         }
       })}
@@ -116,9 +153,12 @@ function Blocks({ blocks }: { blocks: Block[] }) {
 
 export const Markdown = React.memo(function Markdown({ text }: { text: string }) {
   const blocks = React.useMemo(() => parse(text), [text]);
+  const people = usePeople();
   return (
-    <div className="dg-md">
-      <Blocks blocks={blocks} />
-    </div>
+    <People.Provider value={people}>
+      <div className="dg-md">
+        <Blocks blocks={blocks} />
+      </div>
+    </People.Provider>
   );
 });

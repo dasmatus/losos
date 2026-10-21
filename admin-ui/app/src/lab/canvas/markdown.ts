@@ -1,19 +1,24 @@
 /* The Markdown a card holds, as Obsidian writes it: headings, paragraphs,
  * lists with task boxes, quotes and callouts (`> [!note] Title`), code,
  * rules, and inline bold, italic, strike, ==highlight==, `code`, links,
- * bare addresses and [[wiki links]]. Parsed to a small tree that two
- * readers share: the card on the canvas (markdown.tsx) and the export,
- * which sets the same tree as SVG text.
+ * bare addresses and [[wiki links]], plus @ tags (lib/mentions.ts): `@eva`
+ * for a person and `[@plan.canvas](/diagrams?file=...)` for a file.
+ * Parsed to a small tree that two readers share: the card on the canvas
+ * (md-view.tsx) and the export, which sets the same tree as SVG text.
  *
  * Nothing here makes HTML from the card's words: the tree becomes React
  * elements or SVG text, so a card cannot carry markup or script. */
+
+import { isMentionHref } from "@/lib/mentions";
 
 export type Inline =
   | { k: "t"; text: string }
   | { k: "b" | "i" | "s" | "mark"; kids: Inline[] }
   | { k: "code"; text: string }
   | { k: "a"; href: string; kids: Inline[] }
-  | { k: "wiki"; target: string; label: string };
+  | { k: "wiki"; target: string; label: string }
+  | { k: "at"; name: string }
+  | { k: "file"; label: string; href: string };
 
 export interface Item {
   kids: Inline[];
@@ -38,6 +43,12 @@ export function safeHref(href: string): string | null {
 
 const INLINE: [RegExp, (m: RegExpExecArray) => Inline | null][] = [
   [/`([^`\n]+)`/y, (m) => ({ k: "code", text: m[1]! })],
+  [
+    /\[@([^\]\n]+)\]\((\/[^)\s]*)\)/y,
+    (m) => (isMentionHref(m[2]!) ? { k: "file", label: m[1]!.trim(), href: m[2]! } : null),
+  ],
+  // A sign-in name (backend/src/people.rs): not inside an address or a word.
+  [/(?<![\w@./-])@([a-z](?:[a-z0-9._-]*[a-z0-9])?)/y, (m) => ({ k: "at", name: m[1]! })],
   [/\[\[([^\]|\n]+)(?:\|([^\]\n]+))?\]\]/y, (m) => ({ k: "wiki", target: m[1]!.trim(), label: (m[2] ?? m[1]!).trim() })],
   [
     /\[([^\]\n]+)\]\(([^)\s]+)\)/y,
@@ -56,7 +67,7 @@ const INLINE: [RegExp, (m: RegExpExecArray) => Inline | null][] = [
 ];
 
 /** The characters an inline mark can start with. */
-const STARTS = new Set(["`", "[", "h", "*", "_", "~", "="]);
+const STARTS = new Set(["`", "[", "h", "*", "_", "~", "=", "@"]);
 
 export function inline(src: string): Inline[] {
   const out: Inline[] = [];
@@ -176,7 +187,17 @@ export function parse(src: string): Block[] {
 /** The words of an inline run, marks dropped. */
 export function plain(kids: Inline[]): string {
   return kids
-    .map((n) => (n.k === "t" || n.k === "code" ? n.text : n.k === "wiki" ? n.label : plain(n.kids)))
+    .map((n) =>
+      n.k === "t" || n.k === "code"
+        ? n.text
+        : n.k === "wiki"
+          ? n.label
+          : n.k === "at"
+            ? `@${n.name}`
+            : n.k === "file"
+              ? `@${n.label}`
+              : plain(n.kids),
+    )
     .join("");
 }
 

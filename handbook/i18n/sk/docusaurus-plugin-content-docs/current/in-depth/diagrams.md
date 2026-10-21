@@ -32,6 +32,12 @@ kreslí simulátor.
   a upozornenia, kód, odkazy, `**tučné**`, `*kurzíva*`, `~~prečiarknuté~~`
   a `==zvýraznené==`. Kartu upravíte dvojklikom; Escape alebo klik mimo
   úpravu ukončí.
+- **Značky @.** Napíšte do karty `@` a dostanete zoznam ľudí na boxe a
+  súborov vo vašom LosOS Cloud. Človek sa vloží ako jeho prihlasovacie
+  meno, `@eva`, a karta ho ukáže s jeho obrázkom. Súbor sa vloží ako odkaz,
+  `[@plan.canvas](/diagrams?file=…)`, ktorý otvorí diagram v Diagrams a
+  každý iný súbor v jeho priečinku v LosOS Cloud. Obsidian oboje prečíta
+  ako obyčajný text a odkaz.
 - **Šípky.** Potiahnite z jedného zo štyroch úchytov na bokoch karty na inú
   kartu, alebo na prázdne plátno, kde vznikne nová karta. Šípka môže mať
   popis, trasu (rovno, v pravých uhloch alebo okolo kariet), bodkovanú alebo
