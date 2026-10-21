@@ -23,6 +23,7 @@ use axum::http::StatusCode;
 use crate::action::Action;
 use crate::domains::DomainError;
 use crate::market::MarketError;
+use crate::onramp::OnrampError;
 
 /// Registry-layer failures: persistence IO, JSON parse, or the rathole port
 /// range being exhausted (no free port for a new tenant).
@@ -104,6 +105,9 @@ pub enum ApiError {
     /// A custom-domain route failed; see [`DomainError`].
     #[error(transparent)]
     Domains(#[from] DomainError),
+    /// Buying USDC at Binance failed; see [`OnrampError`].
+    #[error(transparent)]
+    Onramp(#[from] OnrampError),
     /// A filesystem operation backing a request failed (token/tenants read).
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -160,6 +164,15 @@ impl ApiError {
                 DomainError::NotFound => StatusCode::NOT_FOUND,
                 DomainError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
+            ApiError::Onramp(e) => match e {
+                OnrampError::Unconfigured => StatusCode::SERVICE_UNAVAILABLE,
+                OnrampError::Invalid(_) | OnrampError::BadSignature => StatusCode::BAD_REQUEST,
+                OnrampError::NotFound => StatusCode::NOT_FOUND,
+                OnrampError::Busy(_) => StatusCode::TOO_MANY_REQUESTS,
+                OnrampError::Declined(_) => StatusCode::CONFLICT,
+                OnrampError::Upstream(_) => StatusCode::BAD_GATEWAY,
+                OnrampError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            },
             ApiError::Io(_) | ApiError::Serde(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::Registry(_) | ApiError::MeshUnconfigured | ApiError::KubeApi(_) => {
                 StatusCode::SERVICE_UNAVAILABLE
@@ -209,6 +222,12 @@ impl ApiError {
                 DomainError::Store(_) => Cow::Borrowed("internal error"),
                 _ => Cow::Owned(e.to_string()),
             },
+            ApiError::Onramp(e) => match e {
+                // The payload names Binance's endpoint and status.
+                OnrampError::Upstream(_) => Cow::Borrowed("Binance unavailable; retry later"),
+                OnrampError::Store(_) => Cow::Borrowed("internal error"),
+                _ => Cow::Owned(e.to_string()),
+            },
             ApiError::Registry(_) => Cow::Borrowed("registry unavailable; retry later"),
             // Deliberately *not* `self.to_string()`: the payload carries the
             // apiserver URL and the status it returned, which tells an
@@ -236,6 +255,12 @@ impl axum::response::IntoResponse for ApiError {
             }
             ApiError::Market(_) => {
                 tracing::warn!(target: Action::Market.target(), "market request rejected: {self}");
+            }
+            ApiError::Onramp(OnrampError::Upstream(_) | OnrampError::Store(_)) => {
+                tracing::error!(target: Action::Market.target(), "onramp request failed: {self}");
+            }
+            ApiError::Onramp(_) => {
+                tracing::warn!(target: Action::Market.target(), "onramp request rejected: {self}");
             }
             ApiError::Domains(DomainError::Store(_)) => {
                 tracing::error!(target: Action::Domains.target(), "domain request failed: {self}");
