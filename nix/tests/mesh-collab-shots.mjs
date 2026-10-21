@@ -191,6 +191,19 @@ async function endOfText(w) {
   await w.page.keyboard.press("Control+End");
 }
 
+/**
+ * Starts a fresh line at the end of the text: a new one unless the last is
+ * empty already. Enter on a list item carries the "- " over, so whatever the
+ * editor put at the start of the line is selected and the typing replaces it.
+ */
+async function newLine(w) {
+  await endOfText(w);
+  const last = await editorOf(w.page).locator(".cm-line").last().innerText();
+  if (last.trim() === "") return;
+  await w.page.keyboard.press("Enter");
+  await w.page.keyboard.press("Shift+Home");
+}
+
 const phases = {
   async share(s, m, e, cfg) {
     const file = cfg.file;
@@ -260,8 +273,7 @@ const phases = {
     await s.take(m, "together", "Matus sees Eva arrive", { kind: "none" }, { faces: p.locator("[data-faces]") });
 
     // Eva writes a line, one picture per word in both windows.
-    await endOfText(e);
-    await q.keyboard.press("Enter");
+    await newLine(e);
     const words = cfg.evaSays.split(" ");
     let line = "";
     for (const [i, word] of words.entries()) {
@@ -273,9 +285,8 @@ const phases = {
       await s.take(e, `eva-types-${i + 1}`, `Eva types: ${line}`, { kind: "type", target: "editor" }, { editor: editorOf(q) });
       await s.take(m, `eva-types-${i + 1}`, `Matus watches: ${line}`, { kind: "type", target: "editor" }, { editor: editorOf(p) });
     }
-    // Matus answers on the line above hers; his caret is in her window.
-    await endOfText(m);
-    await p.keyboard.press("Enter");
+    // Matus adds a line under hers; his caret shows in her window.
+    await newLine(m);
     await p.keyboard.type(cfg.matusSays);
     await waitText(q, (t) => t.includes(cfg.matusSays), "Eva sees Matus's line");
     await s.take(m, "matus-types", "Matus adds a line", { kind: "none" }, { editor: editorOf(p) });
@@ -293,13 +304,11 @@ const phases = {
     await s.take(e, "apart", "kitchenbox cannot reach mattbox; Eva keeps writing in her copy", { kind: "type", target: "editor" }, {
       alert: e.page.locator("[data-apart]"),
     });
-    await endOfText(e);
-    await e.page.keyboard.press("Enter");
+    await newLine(e);
     await e.page.keyboard.type(cfg.evaApart);
     await s.take(e, "apart-typed", "a line written while apart", { kind: "none" }, { editor: editorOf(e.page) });
     await openOwn(m, cfg.file);
-    await endOfText(m);
-    await m.page.keyboard.press("Enter");
+    await newLine(m);
     await m.page.keyboard.type(cfg.matusApart);
     await s.take(m, "apart-typed", "Matus writes on mattbox meanwhile", { kind: "none" }, { editor: editorOf(m.page) });
     await e.page.goto(`${e.base}/cloud/shared`);
