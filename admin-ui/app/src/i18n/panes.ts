@@ -818,6 +818,166 @@ export default defineMessages({
     sk: "Pridajte dva záznamy uvedené pod doménou u firmy, od ktorej ste ju kúpili. Okrajový server si ich každú pol minútu sám overí a doménu zapne, hneď ako sú oba správne, aj s vlastným certifikátom. LosOS cloud potom na nej odpovedá odkiaľkoľvek, na adrese /nextcloud. Hodnota TXT dokazuje, že doména je vaša. Vzniká z identity tohto zariadenia a jeho účtu Stripe bez toho, aby jedno či druhé prezradila.",
     de: "Trage die zwei Einträge unter einer Domain bei der Firma ein, bei der du sie gekauft hast. Der Edge prüft sie jede halbe Minute selbst und schaltet die Domain ein, sobald beide stimmen, mit eigenem Zertifikat. LosOS cloud antwortet dann von überall darauf, unter /nextcloud. Der TXT-Wert beweist, dass die Domain dir gehört. Er entsteht aus der Identität dieser Box und ihrem Stripe-Konto, ohne eines davon preiszugeben.",
   },
+  "panes.network.wallet.title": {
+    en: "Paid by name",
+    sk: "Platby na názov",
+    de: "Bezahlt per Name",
+  },
+  "panes.network.wallet.noNames": {
+    en: "No name to bind yet",
+    sk: "Zatiaľ niet názvu na prepojenie",
+    de: "Noch kein Name zum Verknüpfen",
+  },
+  "panes.network.wallet.noNamesDetail": {
+    en: "The edge has no name for this box in its zone yet. It gives one once Stripe has checked this box's account.",
+    sk: "Okrajový server zatiaľ nemá v svojej zóne pre toto zariadenie názov. Pridelí ho, keď Stripe overí účet tohto zariadenia.",
+    de: "Der Edge hat in seiner Zone noch keinen Namen für diese Box. Er vergibt einen, sobald Stripe das Konto dieser Box geprüft hat.",
+  },
+  "panes.network.wallet.paysTo": {
+    en: "Wallets that send to ENS names pay this wallet",
+    sk: "Peňaženky, ktoré posielajú na názvy ENS, platia do tejto peňaženky",
+    de: "Wallets, die an ENS-Namen senden, zahlen an diese Wallet",
+  },
+  "panes.network.wallet.published.found": {
+    en: "Wallets find this name and pay this wallet",
+    sk: "Peňaženky tento názov nájdu a platia do tejto peňaženky",
+    de: "Wallets finden diesen Namen und zahlen an diese Wallet",
+  },
+  "panes.network.wallet.published.unsigned": {
+    en: "Wallets do not trust this name yet: the zone above the edge's has not vouched for its signatures",
+    sk: "Peňaženky tomuto názvu zatiaľ neveria: zóna nad zónou okrajového servera ešte neručí za jej podpisy",
+    de: "Wallets vertrauen diesem Namen noch nicht: Die Zone über der des Edge bürgt noch nicht für ihre Signaturen",
+  },
+  "panes.network.wallet.published.missing": {
+    en: "Wallets do not find this name yet: public DNS does not reach the edge's zone",
+    sk: "Peňaženky tento názov zatiaľ nenájdu: verejné DNS sa k zóne okrajového servera nedostane",
+    de: "Wallets finden diesen Namen noch nicht: Das öffentliche DNS erreicht die Zone des Edge nicht",
+  },
+  "panes.network.wallet.published.other": {
+    en: "Public DNS still shows an older record here. It catches up within minutes",
+    sk: "Verejné DNS tu ešte ukazuje starší záznam. Dobehne ho do niekoľkých minút",
+    de: "Das öffentliche DNS zeigt hier noch einen älteren Eintrag. Es holt in wenigen Minuten auf",
+  },
+  "panes.network.wallet.published.checking": {
+    en: "Checking whether wallets find this name",
+    sk: "Overuje sa, či peňaženky tento názov nájdu",
+    de: "Es wird geprüft, ob Wallets diesen Namen finden",
+  },
+  "panes.network.wallet.bound": {
+    en: "Bound to this box's wallet",
+    sk: "Prepojené s peňaženkou tohto zariadenia",
+    de: "Mit der Wallet dieser Box verknüpft",
+  },
+  "panes.network.wallet.boundDetail": {
+    en: "Signed by {address}. The address is public at these names.",
+    sk: "Podpísané adresou {address}. Pod týmito názvami je adresa verejná.",
+    de: "Signiert von {address}. Unter diesen Namen ist die Adresse öffentlich.",
+  },
+  "panes.network.wallet.unbind": {
+    en: "Unbind",
+    sk: "Zrušiť prepojenie",
+    de: "Trennen",
+  },
+  "panes.network.wallet.bind": {
+    en: "Let people pay this box by name",
+    sk: "Nechajte ľudí platiť tomuto zariadeniu na názov",
+    de: "Lass Leute diese Box per Name bezahlen",
+  },
+  "panes.network.wallet.bindDetail": {
+    en: "Wallets that send to ENS names, such as MetaMask, then pay {names} to this box's wallet. The wallet signs once, and its address becomes public.",
+    sk: "Peňaženky, ktoré posielajú na názvy ENS, napríklad MetaMask, potom platia na {names} do peňaženky tohto zariadenia. Peňaženka raz podpíše a jej adresa sa stane verejnou.",
+    de: "Wallets, die an ENS-Namen senden, etwa MetaMask, zahlen dann an {names} in die Wallet dieser Box. Die Wallet signiert einmal, und ihre Adresse wird öffentlich.",
+  },
+  "panes.network.wallet.bindButton": {
+    en: "Bind wallet",
+    sk: "Prepojiť peňaženku",
+    de: "Wallet verknüpfen",
+  },
+  "panes.network.wallet.password": {
+    en: "Password of the wallet on this box",
+    sk: "Heslo peňaženky na tomto zariadení",
+    de: "Passwort der Wallet auf dieser Box",
+  },
+  "panes.network.wallet.passwordDetail": {
+    en: "Signs as {address}.",
+    sk: "Podpíše ako {address}.",
+    de: "Signiert als {address}.",
+  },
+  "panes.network.wallet.sign": {
+    en: "Sign",
+    sk: "Podpísať",
+    de: "Signieren",
+  },
+  "panes.network.wallet.cancel": {
+    en: "Cancel",
+    sk: "Zrušiť",
+    de: "Abbrechen",
+  },
+  "panes.network.wallet.caption": {
+    en: "The edge publishes the wallet's address at each of these names as an ENS record, in a zone it signs with DNSSEC, and only after checking the wallet's signature. The address is the same on Ethereum, Base, Arbitrum and OP. To be paid at a domain of your own as well, add the TXT record shown under it; your DNS provider has to sign the domain with DNSSEC.",
+    sk: "Okrajový server zverejní adresu peňaženky pod každým z týchto názvov ako záznam ENS v zóne, ktorú podpisuje cez DNSSEC, a až po overení podpisu peňaženky. Adresa je rovnaká na sieťach Ethereum, Base, Arbitrum a OP. Ak chcete platby aj na vlastnú doménu, pridajte záznam TXT uvedený pod ňou; váš poskytovateľ DNS musí doménu podpisovať cez DNSSEC.",
+    de: "Der Edge veröffentlicht die Adresse der Wallet unter jedem dieser Namen als ENS-Eintrag, in einer Zone, die er mit DNSSEC signiert, und erst nachdem er die Signatur der Wallet geprüft hat. Die Adresse ist auf Ethereum, Base, Arbitrum und OP dieselbe. Willst du auch unter einer eigenen Domain bezahlt werden, trag den TXT-Eintrag darunter ein; dein DNS-Anbieter muss die Domain mit DNSSEC signieren.",
+  },
+  "panes.network.wallet.failedTitle": {
+    en: "Wallet not bound",
+    sk: "Peňaženka nie je prepojená",
+    de: "Wallet nicht verknüpft",
+  },
+  "panes.network.wallet.failed": {
+    en: "The wallet did not sign, or the edge refused. Try again in a moment.",
+    sk: "Peňaženka nepodpísala alebo okrajový server odmietol. Skúste to o chvíľu znova.",
+    de: "Die Wallet hat nicht signiert, oder der Edge hat abgelehnt. Versuch es gleich noch einmal.",
+  },
+  "panes.network.wallet.noWallet": {
+    en: "There is no wallet in this browser. Make or connect one on the Market pane first.",
+    sk: "V tomto prehliadači nie je žiadna peňaženka. Najprv ju vytvorte alebo pripojte na paneli Trh.",
+    de: "In diesem Browser gibt es keine Wallet. Leg zuerst im Bereich Markt eine an oder verbinde eine.",
+  },
+  "panes.network.wallet.boundTitle": {
+    en: "Wallet bound",
+    sk: "Peňaženka prepojená",
+    de: "Wallet verknüpft",
+  },
+  "panes.network.wallet.boundBody": {
+    en: "Wallets find it at this box's names within a few minutes.",
+    sk: "Peňaženky ju pod názvami tohto zariadenia nájdu do pár minút.",
+    de: "Wallets finden sie in ein paar Minuten unter den Namen dieser Box.",
+  },
+  "panes.network.wallet.unboundTitle": {
+    en: "Wallet unbound",
+    sk: "Prepojenie peňaženky zrušené",
+    de: "Wallet getrennt",
+  },
+  "panes.network.wallet.seen.pending": {
+    en: "The edge looks for this record at the domain on its next check.",
+    sk: "Okrajový server tento záznam pri doméne vyhľadá pri najbližšej kontrole.",
+    de: "Der Edge sucht diesen Eintrag bei der Domain bei der nächsten Prüfung.",
+  },
+  "panes.network.wallet.seen.unsigned": {
+    en: "The record is there, but the domain is not signed with DNSSEC, so wallets cannot read it. Turn DNSSEC on at your DNS provider.",
+    sk: "Záznam tam je, ale doména nie je podpísaná cez DNSSEC, takže ho peňaženky neprečítajú. Zapnite DNSSEC u svojho poskytovateľa DNS.",
+    de: "Der Eintrag ist da, aber die Domain ist nicht mit DNSSEC signiert, deshalb können Wallets ihn nicht lesen. Schalte DNSSEC bei deinem DNS-Anbieter ein.",
+  },
+  "panes.network.wallet.seen.cname": {
+    en: "This domain is a CNAME, which can carry no other record. Only a domain with A or AAAA records can be paid by name.",
+    sk: "Táto doména je CNAME, ktorý nemôže niesť iný záznam. Na názov sa dá platiť len doméne so záznamami A alebo AAAA.",
+    de: "Diese Domain ist ein CNAME, der keinen anderen Eintrag tragen kann. Nur eine Domain mit A- oder AAAA-Einträgen kann per Name bezahlt werden.",
+  },
+  "panes.network.wallet.seen.other": {
+    en: "A record at this domain names another wallet.",
+    sk: "Záznam pri tejto doméne uvádza inú peňaženku.",
+    de: "Ein Eintrag bei dieser Domain nennt eine andere Wallet.",
+  },
+  "panes.network.wallet.seen.missing": {
+    en: "To be paid at this domain too, add this TXT record at the domain itself.",
+    sk: "Ak chcete platby aj na túto doménu, pridajte tento záznam TXT priamo k doméne.",
+    de: "Um auch unter dieser Domain bezahlt zu werden, trag diesen TXT-Eintrag direkt bei der Domain ein.",
+  },
+  "panes.network.wallet.seen.found": {
+    en: "Wallets pay {domain} to this box's wallet.",
+    sk: "Peňaženky platia na {domain} do peňaženky tohto zariadenia.",
+    de: "Wallets zahlen an {domain} in die Wallet dieser Box.",
+  },
   "panes.network.domains.failedTitle": {
     en: "The edge refused",
     sk: "Okrajový server odmietol",

@@ -2647,6 +2647,38 @@ async fn post_domain_remove(
     .await
 }
 
+/// `POST /api/domains/wallet` `{"address": "0x…", "signature": "0x…"}` —
+/// publish the box's wallet at its names on the edge, so wallets that send
+/// to ENS names pay it by name; `{}` takes it off.
+async fn post_domain_wallet(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/domains/wallet", true, || {
+        // `{}` unbinds, so anything that is not an object of strings is a
+        // 400 rather than read as one.
+        const SHAPE: &str =
+            r#"body must be JSON: {"address": "0x…", "signature": "0x…"} to bind, or {} to unbind"#;
+        let Ok(serde_json::Value::Object(doc)) = serde_json::from_slice(&body) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let text = |key: &str| match doc.get(key) {
+            None => Ok(None),
+            Some(serde_json::Value::String(v)) => Ok(Some(v.trim().to_string())),
+            Some(_) => Err(()),
+        };
+        let (Ok(address), Ok(signature)) = (text("address"), text("signature")) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let op = crate::market::Op::DomainWallet {
+            address: address.map(|a| a.to_ascii_lowercase()),
+            signature,
+        };
+        run(&api, |b| crate::losos::cmd_domain_op(b, &op))
+    })
+}
+
 // ── Plugins ───────────────────────────────────────────────────────────────
 // Every route not registered above is a plugin's (`crate::plugin`): the
 // manifest names it, this daemon authenticates the caller and checks the
@@ -3432,6 +3464,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/domains", web::get().to(get_domains))
                 .route("/api/domains", web::post().to(post_domain_add))
                 .route("/api/domains/remove", web::post().to(post_domain_remove))
+                .route("/api/domains/wallet", web::post().to(post_domain_wallet))
                 .route("/api/options", web::get().to(get_options))
                 .route("/api/site", web::get().to(get_site))
                 .route("/api/site", web::post().to(post_site))

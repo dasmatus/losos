@@ -71,6 +71,7 @@
     "GET /api/domains": "network",
     "POST /api/domains": "network",
     "POST /api/domains/remove": "network",
+    "POST /api/domains/wallet": "network",
 
     "POST /api/look": "look",
     "PUT /api/look/background": "look",
