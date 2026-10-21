@@ -42,6 +42,7 @@ import { explorerTx, listNames } from "@/wallet/chains";
 import { invoicePayDetail, rememberInvoice, UsdcWallet } from "./usdc-wallet";
 import { COIN_NAMES } from "./coin-pay";
 import { EarningsSection, HoldNote, lockedSuffix, StopSelling } from "./holds";
+import { AiModelsSection, LendSection, useLlm } from "./ai-models";
 
 /* Sharing this box's disk, and buying and selling what the mesh shares.
  *
@@ -97,7 +98,19 @@ export function MarketPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const market = useMarket(!form.locked);
   const { state } = market;
-  const sharing = <SharingSection form={form} />;
+  // AI models are paid in USDC through the escrow, so only an edge that
+  // settles in USDC is asked for them.
+  const llm = useLlm(!form.locked && state.kind === "ready" && state.account.usdc != null);
+  const sharing = (
+    <>
+      <SharingSection form={form} />
+      <LendSection
+        form={form}
+        lending={llm.state.kind === "ready" ? llm.state.lending : null}
+        models={llm.state.kind === "ready" ? llm.state.models : []}
+      />
+    </>
+  );
 
   if (state.kind === "loading") {
     return (
@@ -252,6 +265,8 @@ export function MarketPane({ form }: { form: SettingsForm }) {
             : t("panes.market.payCaption")}
         </GroupCaption>
       </PaneSection>
+
+      {account.usdc && <AiModelsSection usdc={account.usdc} llm={llm} disabled={disabled} />}
 
       <SellSection market={market} disabled={disabled} />
       {account.payouts && account.payouts.held + account.payouts.ready + account.payouts.paying > 0 && (

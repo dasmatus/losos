@@ -329,6 +329,10 @@
             # Text inside the owner's files for the admin pages' search
             # (backend/src/textsearch/): the cloud index and the Git search.
             ./modules/search.nix
+            # Memory lent to models split across boxes (losos.inference.lend,
+            # off by default): a llama.cpp RPC server the edge reaches through
+            # this box's tunnel.
+            ./modules/inference-lend.nix
             # LosOS Cloud (backend/src/cloud/): files at /cloud/ and to the
             # Nextcloud desktop and phone apps.
             ./modules/cloud.nix
@@ -396,6 +400,7 @@
           ./modules/edge.nix
           ./modules/edge-credentials.nix
           ./modules/edge-vms.nix
+          ./modules/edge-inference.nix
           ./modules/edge-gateway.nix
           ./modules/logs.nix
         ];
@@ -484,6 +489,10 @@
         # its sandbox, PDFs, a changed file, the Git search and who may ask
         # (nix/tests/search.nix).
         losos-search = import ./nix/tests/search.nix { inherit pkgs; };
+        # The box half of models split across boxes: the RPC server as
+        # `shared`, its memory cap, the lend file, the loopback owner rule
+        # and the `:llm` tunnel service (nix/tests/inference-lend.nix).
+        losos-inference-lend = import ./nix/tests/inference-lend.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
         # The real Forgejo with losos.forgejo.federation on, asked what another
         # server would ask, in both deployment modes; then off, and gone
