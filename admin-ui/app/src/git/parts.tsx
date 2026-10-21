@@ -218,11 +218,13 @@ export function SwitchField({
   description,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string;
   description?: string;
   checked: boolean;
   onChange: (on: boolean) => void;
+  disabled?: boolean;
 }) {
   const id = React.useId();
   return (
@@ -233,7 +235,7 @@ export function SwitchField({
         </FieldLabel>
         {description !== undefined && <FieldDescription id={`${id}-d`}>{description}</FieldDescription>}
       </FieldContent>
-      <Switch id={id} aria-describedby={description !== undefined ? `${id}-d` : undefined} isSelected={checked} onChange={onChange} />
+      <Switch id={id} aria-describedby={description !== undefined ? `${id}-d` : undefined} isSelected={checked} isDisabled={disabled} onChange={onChange} />
     </Field>
   );
 }

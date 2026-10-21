@@ -6,11 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
+import { AiReviewSetting } from "./ai-review";
 import { git, type Repo } from "./api";
 import { explain, NotFound, RepoHeader, SwitchField, WithRepo } from "./parts";
 
 /* A repository's own settings, for the people who administer it: its
- * name, its description and who may see it. */
+ * name, its description, who may see it, and whether LosOS Reviewer
+ * reviews its pull requests. */
 
 export function SettingsView() {
   return <WithRepo>{(repo) => (repo.permissions.admin ? <Settings repo={repo} /> : <NotFound />)}</WithRepo>;
@@ -67,6 +69,7 @@ function Settings({ repo }: { repo: Repo }) {
           </Button>
         </div>
       </form>
+      <AiReviewSetting owner={repo.owner.login} repo={repo.name} />
     </div>
   );
 }

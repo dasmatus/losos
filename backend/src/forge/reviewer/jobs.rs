@@ -160,6 +160,13 @@ impl Store {
                  WHERE repo_id = ?1 AND state IN ('queued', 'reviewing')",
                 params![repo_id, super::super::now()],
             )?;
+            // Nothing waits on it any more, so it is no longer asked.
+            conn.execute(
+                "DELETE FROM review_requests
+                 WHERE user_id = (SELECT id FROM users WHERE login = ?2)
+                   AND issue_id IN (SELECT id FROM issues WHERE repo_id = ?1)",
+                params![repo_id, super::worker::BOT_LOGIN],
+            )?;
         }
         Ok(())
     }

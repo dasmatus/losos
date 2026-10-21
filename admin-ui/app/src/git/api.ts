@@ -220,7 +220,10 @@ export interface AiReview {
 export interface AiReviewSetting {
   enabled: boolean;
   available: boolean;
+  /** The box's code model, while Build with AI is on. */
+  model?: string | null;
   reviewer: { login: string; full_name: string };
+  canChange?: boolean;
 }
 
 export type MergeStyle = "merge" | "squash" | "fast-forward";
@@ -358,6 +361,7 @@ export const git = {
     call<Checks>("GET", `${repoPath(o, r)}/commits/${e(sha)}/statuses`, undefined, signal),
   aiReviewSetting: (o: string, r: string, signal?: AbortSignal) =>
     call<AiReviewSetting>("GET", `${repoPath(o, r)}/ai-review`, undefined, signal),
+  setAiReview: (o: string, r: string, enabled: boolean) => call<AiReviewSetting>("PUT", `${repoPath(o, r)}/ai-review`, { enabled }),
   aiReview: (o: string, r: string, n: number, signal?: AbortSignal) =>
     call<AiReview>("GET", `${repoPath(o, r)}/pulls/${n}/ai-review`, undefined, signal),
 };

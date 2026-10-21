@@ -92,6 +92,9 @@ fn on_event(state: &State, event: &Event) {
         match action.as_str() {
             "closed" | "merged" => {
                 state.store.drop_reviews(issue_id)?;
+                if let Some(bot) = state.store.user(BOT_LOGIN)? {
+                    state.store.drop_review_request(issue_id, bot.id)?;
+                }
                 return Ok(());
             }
             _ if !state.reviewer.available() || !state.store.ai_review(repo_id)? => return Ok(()),
@@ -113,6 +116,10 @@ fn on_event(state: &State, event: &Event) {
             }
             _ => return Ok(()),
         }
+        // It shows among the pull request's reviewers while it works, the
+        // way a person asked for a review does; posting the review clears it.
+        let bot = state.store.ensure_bot(BOT_LOGIN, BOT_NAME)?;
+        state.store.request_review(issue_id, bot.id, None)?;
         state.reviewer.wake();
         Ok(())
     })();

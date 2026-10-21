@@ -11,6 +11,7 @@ import apps from "./apps";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import git from "./git";
+import gitReview from "./git-review";
 import home from "./home";
 import inference from "./inference";
 import install from "./install";
@@ -44,6 +45,7 @@ export const MESSAGES = {
   ...cloudApps,
   ...cloud,
   ...git,
+  ...gitReview,
   ...install,
   ...look,
   ...machines,

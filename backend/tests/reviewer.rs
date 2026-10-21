@@ -383,6 +383,23 @@ fn a_repository_that_asks_for_it_gets_a_review_from_the_box() {
     assert_eq!(progress["filesTotal"], 2);
     assert_eq!(progress["comments"], 2);
 
+    // It was among the reviewers while it worked; the review answers that.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let (_, doc) = api("GET", &format!("/pulls/{n}"), &jana, None);
+        let bot = doc["reviewers"]
+            .as_array()
+            .and_then(|all| all.iter().find(|r| r["login"] == "losos-reviewer"))
+            .cloned()
+            .unwrap_or_default();
+        if bot["requested"] == false {
+            assert_eq!(bot["state"], "commented", "{doc}");
+            break;
+        }
+        assert!(Instant::now() < deadline, "still asked: {doc}");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
     // People answer and resolve its comments like anyone's.
     let first = lines[0]["id"].as_i64().unwrap();
     let (status, _) = api(

@@ -5,7 +5,7 @@
  * its README, a pull request's conversation (reviewers with the AI
  * reviewer's progress, checks, the merge box), a line comment added to a
  * review that asks for changes, a reply and a resolve, a squash merge, the
- * worktrees, a comment whose Markdown carries script, German, and the phone
+ * AI review switch in the settings, the worktrees, a comment whose Markdown carries script, German, and the phone
  * layout. nix/tests/git-review.nix runs the same pages against a real box. */
 
 import assert from 'node:assert';
@@ -132,7 +132,9 @@ async function open(path, { locale = 'en-US', viewport = { width: 1280, height: 
     if (p === '/user/repos') return json(route, 200, [REPO, { ...REPO, id: 8, name: 'site', private: false, description: '' }]);
     if (p === r) return json(route, 200, REPO);
     if (p === `${r}/collaborators`) return json(route, 200, [{ id: 2, login: 'eva', full_name: 'Eva', email: '', is_admin: false, is_bot: false, permission: 'write' }]);
-    if (p === `${r}/ai-review`) return json(route, 200, { enabled: true, available: true, reviewer: { login: 'losos-reviewer', full_name: 'LosOS Reviewer' } });
+    if (p === `${r}/ai-review` && method === 'PUT')
+      return json(route, 200, { enabled: req.postDataJSON().enabled, available: true, model: 'qwen2.5-coder:1.5b', reviewer: { login: 'losos-reviewer', full_name: 'LosOS Reviewer' }, canChange: true });
+    if (p === `${r}/ai-review`) return json(route, 200, { enabled: true, available: true, model: 'qwen2.5-coder:1.5b', reviewer: { login: 'losos-reviewer', full_name: 'LosOS Reviewer' }, canChange: true });
     if (p === `${r}/branches`)
       return json(route, 200, [
         { name: 'main', default: true, commit: { sha: BASE, subject: 'First notes', date: '2026-10-20T10:00:00Z', author: 'Matus' } },
@@ -307,6 +309,20 @@ await check('the worktrees and how to mark one', async () => {
   await page.locator('[data-worktree="garden"]').getByRole('link', { name: '#3' }).waitFor();
   await page.locator('[data-worktree="old-try"]').getByText('Branch deleted').waitFor();
   await page.locator('[data-worktree-howto]').getByText('push.pushOption "worktree=fix-backup"', { exact: false }).waitFor();
+  await settle();
+  await page.close();
+});
+
+await check('the AI review switch in the settings turns LosOS Reviewer off', async () => {
+  const { page, m, settle } = await open('/notshared/notes/settings');
+  const box = page.locator('[data-ai-review-setting="on"]');
+  await box.getByText('qwen2.5-coder:1.5b on this box comments on every pull request', { exact: false }).waitFor();
+  if (process.env.GIT_SHOTS) await page.screenshot({ path: `${process.env.GIT_SHOTS}/settings.png`, fullPage: true });
+  await box.getByRole('switch').click({ force: true });
+  await page.locator('[data-ai-review-setting="off"]').waitFor();
+  await page.getByText('AI review is off', { exact: true }).first().waitFor();
+  const put = m.calls.find((c) => c.method === 'PUT' && c.path.endsWith('/ai-review'));
+  assert.deepEqual(put.body, { enabled: false });
   await settle();
   await page.close();
 });
