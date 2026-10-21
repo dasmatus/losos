@@ -296,10 +296,16 @@ fn commit_json(c: &Commit) -> Value {
     })
 }
 
+/// LosOS Reviewer is the box's one bot account; its reviews and comments
+/// carry the mark the pages draw beside its name.
+fn is_bot(login: &str) -> bool {
+    login == super::reviewer::worker::BOT_LOGIN
+}
+
 fn review_json(r: &Review) -> Value {
     json!({
         "id": r.id,
-        "user": { "login": r.reviewer },
+        "user": { "login": r.reviewer, "is_bot": is_bot(&r.reviewer) },
         "state": r.state,
         "body": r.body,
         "commit_id": r.commit_id,
@@ -312,7 +318,7 @@ fn line_json(c: &LineComment) -> Value {
         "id": c.id,
         "review_id": c.review_id,
         "in_reply_to": c.reply_to,
-        "user": { "login": c.poster },
+        "user": { "login": c.poster, "is_bot": is_bot(&c.poster) },
         "path": c.path,
         "line": c.line,
         "side": c.side,

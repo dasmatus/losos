@@ -7,7 +7,7 @@
 // test's own requests in between; the same pictures serve the pull request
 // and the launch film. Run it again against any box:
 //
-//   node git-shots.mjs BASE NAME PASSWORD OUT PHASE [--commit SHA] [--test NAME] [--ca FILE]
+//   node git-shots.mjs BASE NAME PASSWORD OUT PHASE [--reviewed] [--commit SHA] [--test NAME] [--ca FILE]
 //
 // BASE is the box (https://mattbox.local), OUT a folder for NN-slug.png and
 // manifest.json (a later phase adds to the pictures an earlier one left).
@@ -18,10 +18,14 @@
 //            and the review sent with Approve;
 //   finish   the reply on that line resolved, the worktrees, the merge box,
 //            a squash merge that deletes the branch, the worktrees after;
-//   before   the same addresses on a box without the pages.
+//   before   the same addresses on a box without the pages;
+//   reviewer the repository's AI review setting, pull request #2 and its
+//            files, in the dark and the light theme; with --reviewed, the
+//            switch on, LosOS Reviewer's review, its check and its comment
+//            on a line.
 //
 // The repository is notshared/backup-tool with pull request #1 from the
-// branch fix-backup, as the test makes them. The browser trusts the box's
+// branch fix-backup and #2 from prune-copies, as the test makes them. The browser trusts the box's
 // certificate by its public key (--ca, default /etc/losos-box.pem).
 //
 // Playwright comes from PLAYWRIGHT_CORE (a path to playwright-core, as
@@ -252,16 +256,66 @@ async function before(s, base) {
   }
 }
 
+async function reviewer(s, base, reviewed) {
+  const p = s.page;
+  for (const scheme of ["dark", "light"]) {
+    await p.emulateMedia({ colorScheme: scheme });
+    const theme = scheme === "dark" ? "" : "-light";
+    const state = reviewed ? "on" : "off";
+    await p.goto(`${base}${REPO}/settings`);
+    const setting = p.locator(`[data-ai-review-setting="${state}"]`);
+    await setting.waitFor();
+    await setting.scrollIntoViewIfNeeded();
+    await s.take(`ai-review-setting${theme}`, `the repository's AI review, ${state} (${scheme})`, { kind: "none" }, { setting });
+
+    await p.goto(`${base}${REPO}/pulls/2`);
+    await p.locator("[data-pull-title]").waitFor();
+    const targets = { reviewers: p.locator("[data-reviewers]") };
+    if (reviewed) {
+      const review = p.locator('[data-event="review"]').first();
+      await review.getByText("Pull request overview").waitFor();
+      await p.locator("[data-checks]").getByText("LosOS Reviewer").waitFor();
+      await review.scrollIntoViewIfNeeded();
+      Object.assign(targets, { review, checks: p.locator("[data-checks]") });
+    }
+    await s.take(
+      `ai-review-pull${theme}`,
+      reviewed ? `LosOS Reviewer's review of the pull request (${scheme})` : `the pull request, nobody's review yet (${scheme})`,
+      { kind: "none" },
+      targets,
+    );
+
+    await p.goto(`${base}${REPO}/pulls/2/files`);
+    await p.locator('[data-file-diff="prune.sh"]').waitFor();
+    const lineTargets = {};
+    if (reviewed) {
+      const thread = p.locator("[data-thread]").first();
+      await thread.getByText('"$TARGET/$d"', { exact: false }).first().waitFor();
+      await thread.scrollIntoViewIfNeeded();
+      lineTargets.thread = thread;
+    }
+    await s.take(
+      `ai-review-files${theme}`,
+      reviewed ? `its comment on a line, with the fix (${scheme})` : `the changed files, no comments (${scheme})`,
+      { kind: "none" },
+      lineTargets,
+    );
+  }
+}
+
 function parse(argv) {
   const pos = [];
   const opts = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (["--commit", "--test", "--ca"].includes(a)) opts[a.slice(2)] = argv[++i];
+    else if (a === "--reviewed") opts.reviewed = true;
     else pos.push(a);
   }
-  if (pos.length < 5 || !["browse", "finish", "before"].includes(pos[4])) {
-    console.error("usage: git-shots.mjs BASE NAME PASSWORD OUT browse|finish|before [--commit SHA] [--test NAME] [--ca FILE]");
+  if (pos.length < 5 || !["browse", "finish", "before", "reviewer"].includes(pos[4])) {
+    console.error(
+      "usage: git-shots.mjs BASE NAME PASSWORD OUT browse|finish|before|reviewer [--reviewed] [--commit SHA] [--test NAME] [--ca FILE]",
+    );
     process.exit(2);
   }
   return { base: pos[0], name: pos[1], password: pos[2], out: pos[3], phase: pos[4], opts };
@@ -310,6 +364,7 @@ const s = new Shots(page, base, out, { commit: opts.commit ?? "", test: opts.tes
 try {
   if (phase === "browse") await browse(s, base);
   else if (phase === "finish") await finish(s, base);
+  else if (phase === "reviewer") await reviewer(s, base, opts.reviewed === true);
   else await before(s, base);
 } catch (e) {
   // The window as it was when a step gave up, for the test's output.

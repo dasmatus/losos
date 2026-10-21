@@ -319,6 +319,10 @@ fn a_repository_that_asks_for_it_gets_a_review_from_the_box() {
     let reviews = wait_done(1);
     let review = &reviews[0];
     assert_eq!(review["state"], "commented", "it never approves");
+    assert_eq!(
+        review["user"]["is_bot"], true,
+        "the pages mark it as the bot"
+    );
     let body = review["body"].as_str().unwrap();
     assert!(body.starts_with("## Pull request overview"), "{body}");
     assert!(
@@ -352,7 +356,9 @@ fn a_repository_that_asks_for_it_gets_a_review_from_the_box() {
         at,
         vec![("backup.py".to_string(), 4), ("backup.py".to_string(), 9)]
     );
-    assert!(lines.iter().all(|c| c["user"]["login"] == "losos-reviewer"));
+    assert!(lines
+        .iter()
+        .all(|c| c["user"]["login"] == "losos-reviewer" && c["user"]["is_bot"] == true));
     assert!(lines[0]["body"]
         .as_str()
         .unwrap()

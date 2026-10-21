@@ -19,8 +19,14 @@
 # a review and the review sent with Approve. Eva answers on the line, and
 # the owner resolves the thread, looks at the worktrees, squash-merges and
 # deletes the branch. After each step the test reads LosOS Git's API to see
-# that the page did what it showed. Last, the same addresses on the box
-# without the pages, for the pull request's "before" column.
+# that the page did what it showed.
+#
+# Then LosOS Reviewer: Eva opens #2, a pruning script, while the
+# repository's AI review is off, and the pages are pictured; the owner turns
+# it on and asks the bot, which reviews #2 with the stand-in for Ollama from
+# nix/tests/git-reviewer.nix, and the same pages are pictured again. Last,
+# the same addresses on the box without the pages, for the pull request's
+# "before" column.
 { pkgs }:
 
 let
@@ -33,6 +39,35 @@ let
       user:resetpassword) echo "Successfully reset password for $2" ;;
       *) echo "stub occ: $*" >&2; exit 1 ;;
     esac
+  '';
+
+  # LosOS Reviewer's model: Ollama replaced by the stand-in that replays
+  # what Qwen2.5-Coder 1.5B answered about the same prune.sh
+  # (git-reviewer/ollama-stand-in.py, recorded 2026-10-21). The comment
+  # comes from the box's own check; the model only describes the file.
+  model = "qwen2.5-coder:1.5b";
+  answers = pkgs.writeText "answers.json" (
+    builtins.toJSON [
+      {
+        kind = "find";
+        path = "prune.sh";
+        answer = "LGTM";
+      }
+      {
+        kind = "describe";
+        path = "prune.sh";
+        answer = "Adds a script to prune old data directories in the target folder.";
+      }
+    ]
+  );
+  pruneSh = pkgs.writeText "prune.sh" ''
+    #!/bin/sh
+    set -eu
+    TARGET="$1"
+    KEEP="''${2:-7}"
+    for d in $(ls -1 "$TARGET" | sort | head -n -"$KEEP"); do
+      rm -rf $TARGET/$d
+    done
   '';
 
   # Playwright from nixpkgs' playwright-driver (playwright-core), which the
@@ -72,6 +107,17 @@ pkgs.testers.nixosTest {
         nextcloud.mode = "native";
         git.enable = true;
         mdns.enable = true;
+        # What modules/git.nix reads to find the model; modules/builder.nix
+        # (the real Ollama) is not imported, the stand-in takes its port.
+        builder = {
+          enable = true;
+          inherit model;
+        };
+      };
+      systemd.services.ollama-stand-in = {
+        wantedBy = [ "multi-user.target" ];
+        before = [ "losos-git.service" ];
+        serviceConfig.ExecStart = "${pkgs.python3}/bin/python3 ${./git-reviewer/ollama-stand-in.py} 11434 ${model} ${answers} 45";
       };
       systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
       systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
@@ -314,6 +360,43 @@ pkgs.testers.nixosTest {
         assert laptop.succeed("git -C /tmp/main rev-list --count main").strip() == "3"
         laptop.succeed("grep -q 'for try in 1 2 3' /tmp/main/backup.sh")
         laptop.copy_from_machine("/tmp/shots/after", "shots")
+
+    with subtest("LosOS Reviewer: pull request #2 before and after AI review is on"):
+        laptop.succeed(
+            "cd /tmp/eva && git fetch -q origin && git checkout -q -b prune-copies origin/main",
+            "cp ${pruneSh} /tmp/eva/prune.sh && chmod +x /tmp/eva/prune.sh",
+        )
+        commit("/tmp/eva", EVA, "Prune old copies on the NAS")
+        laptop.succeed(f"cd /tmp/eva && git push -q {url(eva)} prune-copies")
+        pr = ok("POST", f"/repos/{REPO}/pulls", {
+            "title": "Prune old copies",
+            "body": "Keeps the newest seven copies on the NAS and deletes the rest.",
+            "head": "prune-copies",
+            "base": "main",
+        }, token=eva)
+        assert pr["number"] == 2, pr
+        setting = ok("GET", f"/repos/{REPO}/ai-review", token=owner)
+        assert setting["enabled"] is False and setting["available"], setting
+        assert setting["model"] == "${model}", setting
+        laptop.succeed(f"git-shots {BASE} matus '{PASSWORD}' /tmp/shots/reviewer-before reviewer --test losos-git-pages")
+        assert ok("GET", f"/repos/{REPO}/pulls/2/reviews") == []
+
+        ok("PUT", f"/repos/{REPO}/ai-review", {"enabled": True}, token=owner)
+        ok("POST", f"/repos/{REPO}/pulls/2/requested_reviewers", {"reviewers": ["losos-reviewer"]}, token=owner)
+        box.wait_until_succeeds(
+            f"curl -fsS -H 'Authorization: token {git_admin}'"
+            f" http://127.0.0.1:3000/api/v1/repos/{REPO}/pulls/2/reviews"
+            " | jq -e 'map(select(.user.login == \"losos-reviewer\" and .user.is_bot)) | length == 1'",
+            timeout=300,
+        )
+        lines = ok("GET", f"/repos/{REPO}/pulls/2/comments")
+        assert [(c["path"], c["line"]) for c in lines] == [("prune.sh", 6)], lines
+        assert '```suggestion\n  rm -rf "$TARGET/$d"\n```' in lines[0]["body"], lines[0]
+        laptop.succeed(
+            f"git-shots {BASE} matus '{PASSWORD}' /tmp/shots/reviewer-after reviewer --reviewed --test losos-git-pages"
+        )
+        laptop.copy_from_machine("/tmp/shots/reviewer-before", "shots")
+        laptop.copy_from_machine("/tmp/shots/reviewer-after", "shots")
 
     with subtest("the pictures: the same addresses before the pages"):
         box.succeed("/run/current-system/specialisation/before/bin/switch-to-configuration test")

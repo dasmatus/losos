@@ -76,6 +76,8 @@ export interface File {
 
 export interface Login {
   login: string;
+  /** Set on review and line comment authors: LosOS Reviewer, the box's bot. */
+  is_bot?: boolean;
 }
 
 export interface Issue {
