@@ -3095,8 +3095,9 @@ export interface ContactsImport {
 }
 
 /** GET /api/contacts — the caller's book, by name. 404 off the shared side. */
-export function getContacts(options: RequestOptions = {}): Promise<{ contacts: Contact[] }> {
-  return call<{ contacts: Contact[] }>("/api/contacts", options);
+export async function getContacts(options: RequestOptions = {}): Promise<{ contacts: Contact[] }> {
+  const answer = await call<{ contacts?: Contact[] }>("/api/contacts", options);
+  return { contacts: answer.contacts ?? [] };
 }
 
 /** POST /api/contacts or PUT /api/contacts/{id} — save a contact's fields. */
@@ -3152,8 +3153,8 @@ export async function suggestContacts(
 ): Promise<ContactSuggestion[]> {
   const params = new URLSearchParams({ q, want, limit: String(options.limit ?? 8) });
   try {
-    const answer = await call<{ contacts: ContactSuggestion[] }>(`/api/contacts/suggest?${params.toString()}`, options);
-    return answer.contacts;
+    const answer = await call<{ contacts?: ContactSuggestion[] }>(`/api/contacts/suggest?${params.toString()}`, options);
+    return answer.contacts ?? [];
   } catch (error) {
     if (error instanceof ApiError && (error.status === 404 || error.status === 403)) return [];
     throw error;
