@@ -90,6 +90,13 @@ async function open({ path = '/mail', me = ME, mail = 200, viewport = { width: 1
   await page.route('**/api/**', (route) => json(route, 200, {}));
   await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
   await page.route('**/api/me', (route) => (me ? json(route, 200, me) : json(route, 401, { error: 'unauthorized' })));
+  await page.route('**/api/profiles', (route) =>
+    json(route, 200, {
+      people: [
+        { name: 'eva', displayName: 'Eva', pronouns: '', about: '', accent: 'rose', accentChosen: true, picture: null, banner: null },
+      ],
+    }),
+  );
   await page.route('**/api/mail', (route) => {
     if (mail === 404) return json(route, 404, { error: 'there is no mail on this box' });
     if (mail === 409) return json(route, 409, { error: 'the spare key has no mailbox' });
@@ -152,6 +159,13 @@ await check('the inbox lists the mail, newest first, with the unread one marked'
   assert.match(await lake.innerText(), /Eva/);
   assert.ok((await lake.boundingBox()).y < (await sale.boundingBox()).y, 'the newer message is not first');
   assert.equal(await lake.getByLabel('Unread').count(), 1, 'the unread dot is missing');
+  // People on the box are drawn with their profile's colour, anyone else
+  // by initials alone.
+  const eva = lake.locator('[data-slot=avatar]');
+  await page.waitForFunction(() => document.querySelector('[data-slot=avatar][data-accent=rose]') !== null);
+  assert.equal(await eva.getAttribute('data-accent'), 'rose');
+  assert.equal((await eva.innerText()).trim(), 'E');
+  assert.equal(await sale.locator('[data-slot=avatar]').getAttribute('data-accent'), null);
   await page.getByRole('button', { name: /Sent/ }).first().waitFor();
   await page.getByRole('button', { name: /Bin/ }).first().waitFor();
   await done();
