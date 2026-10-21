@@ -44,6 +44,7 @@ import { formatBytes } from "./format";
 import { ListView } from "./lists";
 import { SharedFolderView, SharedView } from "./mesh/shared";
 import { NotesOpen, NotesPage } from "./notes/page";
+import { OpenFile } from "./open";
 import { PhotosView } from "./photos";
 import { useMe } from "./store";
 import { TrashView } from "./trash";
@@ -123,6 +124,7 @@ function Shell() {
             <Routes>
               <Route path="/" element={<Navigate to="/files" replace />} />
               <Route path="/files/*" element={<FilesView />} />
+              <Route path="/open/:file" element={<OpenFile />} />
               <Route path="/recent" element={<ListView kind="recent" />} />
               <Route path="/favorites" element={<ListView kind="favorites" />} />
               <Route path="/search" element={<ListView kind="search" />} />
