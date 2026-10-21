@@ -30,6 +30,9 @@ gets their own files. The person who set up the box gets the owner's.
 - Text files open in an editor several people can type in at once, and
   **Shared with you** holds what people on other boxes shared with you.
   See [Sharing and editing together](sharing-and-editing-together).
+- **Notes** reads a folder of Markdown notes the way Obsidian does, with
+  links, tags and a graph, and can publish one as a knowledge base. See
+  [Notes and knowledge bases](notes-and-knowledge-bases).
 
 ## Desktop and phone apps
 

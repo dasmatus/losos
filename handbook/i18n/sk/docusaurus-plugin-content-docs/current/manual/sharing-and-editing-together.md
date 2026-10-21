@@ -9,8 +9,9 @@ slug: /manual/sharing-and-editing-together
 V [LosOS Cloud](losos-cloud) sa textové súbory otvárajú v editore, do
 ktorého môže písať viac ľudí naraz. Každý vidí hore tváre ostatných, ich
 kurzory v ich vlastnej farbe s menom vedľa a pod textom, kto ho upravil
-naposledy. Takto sa otvára obyčajný text, Markdown a poznámky: `.md`,
-`.txt`, `.csv`, `.json`, `.yaml` a podobné.
+naposledy. Takto sa otvára obyčajný text: `.txt`, `.csv`, `.json`, `.yaml`
+a podobné. Súbor Markdown sa otvorí v
+[Poznámkach](notes-and-knowledge-bases) a ich **Upraviť** vás privedie sem.
 
 Na jednom zariadení to funguje pre každého, kto môže súbor otvoriť. Keď je
 zariadenie v sieti zariadení (mesh), môžete súbor alebo priečinok zdieľať aj
