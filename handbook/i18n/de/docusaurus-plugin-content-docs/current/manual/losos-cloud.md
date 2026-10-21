@@ -32,6 +32,10 @@ eingerichtet hat, bekommt die des Besitzers.
 - **Geräte** listet die Computer und Telefone, die synchronisieren, und
   meldet eins ab.
 - Das Suchfeld oben findet Dateien nach Namen.
+- Textdateien öffnen sich in einem Editor, in den mehrere Leute
+  gleichzeitig schreiben, und **Mit Ihnen geteilt** enthält, was Leute auf
+  anderen Boxen mit dir geteilt haben. Siehe
+  [Teilen und gemeinsam bearbeiten](sharing-and-editing-together).
 
 ## Apps für Computer und Telefon \{#desktop-and-phone-apps}
 

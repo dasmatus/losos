@@ -145,6 +145,11 @@ export default defineMessages({
     sk: "Súbory a priečinky, ktoré s vami zdieľajú ľudia na iných zariadeniach. Zostávajú na ich zariadení, vy ich otvárate a upravujete odtiaľto.",
     de: "Dateien und Ordner, die Menschen auf anderen Boxen mit Ihnen geteilt haben. Sie bleiben auf deren Box; Sie öffnen und bearbeiten sie von hier.",
   },
+  "mesh.shared.off": {
+    en: "Sharing with other boxes is off",
+    sk: "Zdieľanie s inými zariadeniami je vypnuté",
+    de: "Teilen mit anderen Boxen ist aus",
+  },
   "mesh.shared.empty.title": { en: "Nothing shared with you yet", sk: "Zatiaľ s vami nič nezdieľajú", de: "Noch nichts mit Ihnen geteilt" },
   "mesh.shared.empty.body": {
     en: "When someone on another box shares a file with {address}, it shows up here.",

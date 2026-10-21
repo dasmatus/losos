@@ -51,6 +51,12 @@ pub type Wire = (mpsc::Sender<Frame>, mpsc::Receiver<Frame>);
 /// How long a handshake step or a request may take.
 pub const STEP: Duration = Duration::from_secs(15);
 
+/// How often each side says it is still there, and how long a silent link
+/// stays open. A connection whose other end vanished (a cable pulled, a
+/// box asleep) never closes on its own: TCP would keep it for many minutes.
+pub const BEAT: Duration = Duration::from_secs(10);
+pub const SILENCE: Duration = Duration::from_secs(30);
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "t", rename_all = "lowercase")]
 enum Handshake {
@@ -271,6 +277,8 @@ enum Packet {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         err: Option<String>,
     },
+    /// Nothing to say, but still here.
+    Beat,
 }
 
 struct Attached {
@@ -337,7 +345,24 @@ impl Link {
             closed,
         });
         tokio::spawn(link.clone().read(Arc::downgrade(mesh), rx));
+        tokio::spawn(link.clone().beat());
         link
+    }
+
+    async fn beat(self: Arc<Self>) {
+        let Ok(text) = serde_json::to_string(&Packet::Beat) else {
+            return;
+        };
+        let mut closed = self.closed.subscribe();
+        loop {
+            tokio::select! {
+                _ = tokio::time::sleep(BEAT) => {}
+                _ = closed.changed() => return,
+            }
+            if self.is_closed() || self.out.send(Frame::Text(text.clone())).await.is_err() {
+                return;
+            }
+        }
     }
 
     pub fn is_closed(&self) -> bool {
@@ -471,7 +496,15 @@ impl Link {
     }
 
     async fn read(self: Arc<Self>, mesh: std::sync::Weak<Mesh>, mut rx: mpsc::Receiver<Frame>) {
-        while let Some(frame) = rx.recv().await {
+        loop {
+            let frame = match tokio::time::timeout(SILENCE, rx.recv()).await {
+                Ok(Some(frame)) => frame,
+                Ok(None) => break,
+                Err(_) => {
+                    tracing::info!(peer = %self.peer, "mesh: the other box went silent");
+                    break;
+                }
+            };
             match frame {
                 Frame::Binary(b) => {
                     let Some((name, payload)) = decode_doc_frame(&b) else {
@@ -497,6 +530,7 @@ impl Link {
                             });
                         }
                     }
+                    Ok(Packet::Beat) => {}
                     Ok(Packet::Req { id, op }) => {
                         let Some(mesh) = mesh.upgrade() else { break };
                         let link = self.clone();

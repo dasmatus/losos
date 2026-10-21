@@ -17,6 +17,14 @@
 # of their own per device, which the service checks itself, from the LAN
 # and through the tunnel alike.
 #
+# With losos.cloud.mesh.enable, people share with people on other boxes
+# and edit text together live (backend/src/cloud/mesh/, collab/): the box
+# answers other boxes at /mesh/v1/link, outside LosOS Login and the LAN
+# guard, because the link's handshake proves which box is calling. The
+# service then needs the network to dial them, but never loopback, where
+# lososd and the other local services listen. nix/tests/mesh-collab.nix
+# boots two boxes editing one file.
+#
 # Files live under /var/lib/losos-cloud/<login>/files, persisted with /var.
 # The owner is `notshared`, the account that holds their files in the LosOS
 # cloud pod too (modules/app-sign-in.nix), so `losos-cloud import` can move
@@ -30,6 +38,7 @@
 
 let
   cfg = config.losos.cloud;
+  mesh = cfg.mesh;
   enabled = config.lososInternal.appSignIn.cloud;
   pkg = config.losos.backend.package;
   signIn = import ./app-sign-in.nix { inherit lib; };
@@ -48,6 +57,7 @@ let
     proxy_set_header ${signIn.header.user} $losos_app_user;
     proxy_set_header ${signIn.header.name} $losos_person_name;
     proxy_set_header ${signIn.header.email} $losos_person_email;
+    proxy_set_header X-Losos-Cloud-Login $losos_user;
   '';
 
   # Uploads of any size, streamed, and sync runs that take all day.
@@ -82,7 +92,13 @@ in
           "serve"
           "--socket ${socket}"
           "--trash-days ${toString cfg.trashDays}"
-        ];
+          # People on the box edit text together either way; with the mesh
+          # they also share with, and edit with, people on other boxes.
+          "--box-name ${lib.escapeShellArg mesh.name}"
+        ]
+        + lib.optionalString mesh.enable (
+          " --mesh" + lib.optionalString mesh.selfSigned " --mesh-self-signed"
+        );
         User = "losos-cloud";
         Group = "losos-cloud";
         StateDirectory = "losos-cloud";
@@ -94,8 +110,20 @@ in
         UMask = "0077";
         NoNewPrivileges = true;
         CapabilityBoundingSet = "";
-        PrivateNetwork = true;
-        RestrictAddressFamilies = [ "AF_UNIX" ];
+        PrivateNetwork = !mesh.enable;
+        RestrictAddressFamilies = [
+          "AF_UNIX"
+        ]
+        ++ lib.optionals mesh.enable [
+          "AF_INET"
+          "AF_INET6"
+          "AF_NETLINK"
+        ];
+        IPAddressDeny = lib.mkIf mesh.enable [
+          "localhost"
+          "link-local"
+          "multicast"
+        ];
         PrivateTmp = true;
         PrivateDevices = true;
         ProtectSystem = "strict";
@@ -138,9 +166,21 @@ in
       # answers 401 otherwise, never a redirect a script cannot follow.
       "/cloud/api/" = {
         proxyPass = upstream;
+        # The live editor's y-sync socket is /cloud/api/collab/ws.
+        proxyWebsockets = true;
         extraConfig = ''
           ${passSignIn "/internal/losos-app-authz"}
           ${files}
+        '';
+      };
+      # Other boxes. No person and no LAN guard: the handshake signs both
+      # ends with the boxes' keys before anything else is read.
+      "/mesh/v1/" = lib.mkIf mesh.enable {
+        proxyPass = upstream;
+        proxyWebsockets = true;
+        extraConfig = ''
+          proxy_read_timeout 86400s;
+          proxy_send_timeout 86400s;
         '';
       };
       # The pre-paint theme script the page loads, outside the LAN guard

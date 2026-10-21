@@ -116,6 +116,8 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 assert_cmd = "2"
 predicates = "3"
 assert_fs = "1"
+# Paused time, for the mesh link's heartbeat test.
+tokio = { version = "1", features = ["test-util"] }
 
 # Crate-wide lint policy, matching edge/registrar/Cargo.toml.
 [lints.rust]

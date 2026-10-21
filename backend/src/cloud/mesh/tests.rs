@@ -29,6 +29,9 @@ fn p(login: &str) -> Person {
 struct Net {
     boxes: Mutex<HashMap<String, Weak<Mesh>>>,
     up: Mutex<Option<watch::Sender<bool>>>,
+    /// Frames are lost on the way while the connections stay open, as on
+    /// a cable to a box that went to sleep.
+    stalled: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Net {
@@ -50,6 +53,11 @@ impl Net {
             .as_ref()
             .unwrap()
             .send_replace(false);
+    }
+
+    fn stall(&self) {
+        self.stalled
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     fn plug(&self) {
@@ -85,10 +93,12 @@ impl Net {
         let (b_in_tx, b_in) = mpsc::channel::<Frame>(512);
         for (mut from, to) in [(a_out_rx, b_in_tx), (b_out_rx, a_in_tx)] {
             let mut up = self.plugged();
+            let stalled = self.stalled.clone();
             tokio::spawn(async move {
                 loop {
                     tokio::select! {
                         f = from.recv() => match f {
+                            Some(_) if stalled.load(std::sync::atomic::Ordering::SeqCst) => {}
                             Some(f) => if to.send(f).await.is_err() { return },
                             None => return,
                         },
@@ -199,6 +209,22 @@ async fn boxes_pin_each_others_keys() {
     })
     .await;
     assert_eq!(b.db.pinned("mattbox"), Some(a.identity.public()));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_link_that_goes_silent_is_closed() {
+    let net = Net::new();
+    let (a, _) = net.add("mattbox", vec!["matus"]);
+    let (b, _) = net.add("kitchenbox", vec!["eva"]);
+    a.link("kitchenbox").await.unwrap();
+    eventually("kitchenbox has the link", || b.reaches("mattbox")).await;
+    // Beats keep a quiet link open.
+    tokio::time::sleep(link::SILENCE * 2).await;
+    assert!(a.reaches("kitchenbox") && b.reaches("mattbox"));
+    net.stall();
+    tokio::time::sleep(link::SILENCE + link::BEAT).await;
+    eventually("mattbox drops the link", || !a.reaches("kitchenbox")).await;
+    eventually("kitchenbox drops the link", || !b.reaches("mattbox")).await;
 }
 
 #[tokio::test]

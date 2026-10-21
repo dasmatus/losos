@@ -10,7 +10,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
-import { isAbort } from "../api";
+import { CloudError, isAbort } from "../api";
 import { editable, editHref, mesh, type Incoming, type RemoteEntry } from "../collab/api";
 import { accentFor, initials, STRONG, WASH } from "../collab/people";
 import { formatBytes, formatWhen, iconFor } from "../format";
@@ -57,6 +57,7 @@ export function SharedView() {
   const [items, setItems] = React.useState<Incoming[] | null>(null);
   const [me, setMe] = React.useState<string>("");
   const [error, setError] = React.useState<string | null>(null);
+  const [off, setOff] = React.useState(false);
   const [tick, setTick] = React.useState(0);
 
   React.useEffect(() => {
@@ -69,7 +70,9 @@ export function SharedView() {
       (err: unknown) => {
         if (isAbort(err)) return;
         setItems([]);
-        setError(t(meshError(err) ?? "collab.error.notFound"));
+        // The box does not talk to other boxes.
+        if (err instanceof CloudError && err.status === 404) setOff(true);
+        else setError(t(meshError(err) ?? "collab.error.notFound"));
       },
     );
     mesh.box(controller.signal).then((b) => setMe(b.me), () => {});
@@ -78,9 +81,10 @@ export function SharedView() {
 
   // New offers arrive while the page is open.
   React.useEffect(() => {
+    if (off) return;
     const timer = window.setInterval(() => setTick((n) => n + 1), 5000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [off]);
 
   const answer = (s: Incoming, accept: boolean) => {
     (accept ? mesh.accept(s.id) : mesh.decline(s.id)).then(
@@ -122,8 +126,10 @@ export function SharedView() {
             <EmptyMedia variant="icon">
               <HugeiconsIcon icon={UserSharingIcon} size={22} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
             </EmptyMedia>
-            <EmptyTitle>{t("mesh.shared.empty.title")}</EmptyTitle>
-            <EmptyDescription>{t("mesh.shared.empty.body", { address: me || "name@box" })}</EmptyDescription>
+            <EmptyTitle>{t(off ? "mesh.shared.off" : "mesh.shared.empty.title")}</EmptyTitle>
+            <EmptyDescription>
+              {off ? t("mesh.share.off") : t("mesh.shared.empty.body", { address: me || "name@box" })}
+            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (

@@ -5,7 +5,7 @@
 //! data folder's files in. The rules are in [`losos_ctl::cloud`].
 
 use clap::{Parser, Subcommand};
-use losos_ctl::cloud::{self, Cloud, Config, server};
+use losos_ctl::cloud::{self, server, Cloud, Config};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -40,11 +40,15 @@ enum Cmd {
         product: String,
         #[arg(long, default_value_t = 30)]
         trash_days: i64,
-        /// Share with people on other boxes and edit together across
-        /// them, as the box other boxes reach at this name
-        /// (`<name>/mesh/v1/link`).
+        /// The name other boxes reach this one by
+        /// (`<name>/mesh/v1/link`), and the part after the @ in people's
+        /// addresses here.
+        #[arg(long, default_value = "localhost")]
+        box_name: String,
+        /// Share with people on other boxes and edit together across them.
+        /// Without it people on this box still edit text together.
         #[arg(long)]
-        mesh_name: Option<String>,
+        mesh: bool,
         /// Accept other boxes' certificates nothing vouches for. Who a box
         /// is rests on its key either way; see `cloud::mesh::dial`.
         #[arg(long)]
@@ -95,7 +99,8 @@ fn main() -> anyhow::Result<()> {
             workers,
             product,
             trash_days,
-            mesh_name,
+            box_name,
+            mesh,
             mesh_self_signed,
             mesh_peer,
         } => {
@@ -114,23 +119,22 @@ fn main() -> anyhow::Result<()> {
             // A dot first: no login starts with one, so no home can take the name.
             let mesh_dir = cli.root.join(".mesh");
             actix_web::rt::System::new().block_on(async move {
-                if let Some(name) = mesh_name {
-                    cloud::mesh::start(
-                        &cloud,
-                        cloud::mesh::Options {
-                            name,
-                            dir: mesh_dir,
-                            dialer: cloud::mesh::dial::Dialer {
-                                self_signed: mesh_self_signed,
-                                urls: mesh_peer
-                                    .iter()
-                                    .filter_map(|p| p.split_once('='))
-                                    .map(|(n, u)| (n.to_string(), u.to_string()))
-                                    .collect(),
-                            },
+                cloud::mesh::start(
+                    &cloud,
+                    cloud::mesh::Options {
+                        name: box_name,
+                        dir: mesh_dir,
+                        dialer: cloud::mesh::dial::Dialer {
+                            self_signed: mesh_self_signed,
+                            urls: mesh_peer
+                                .iter()
+                                .filter_map(|p| p.split_once('='))
+                                .map(|(n, u)| (n.to_string(), u.to_string()))
+                                .collect(),
                         },
-                    )?;
-                }
+                        networked: mesh,
+                    },
+                )?;
                 server::serve(
                     cloud,
                     server::Options {

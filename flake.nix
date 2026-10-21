@@ -435,6 +435,9 @@
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # Two boxes sharing a note and editing it together, apart and
+        # together again (nix/tests/mesh-collab.nix).
+        losos-mesh-collab = import ./nix/tests/mesh-collab.nix { inherit pkgs; };
         losos-admin-ui = import ./nix/tests/admin-ui.nix {
           inherit pkgs;
           # The real option document, so the Advanced pane is drawn from

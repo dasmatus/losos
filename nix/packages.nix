@@ -283,7 +283,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-Y+e3YOa5T6FFvSha3LfKIDYyXWSM+ajoOP1dnB24Y5s=";
+    npmDepsHash = "sha256-x1ayPh0djV9IyKroAiyjsZeHvpO/jSLMY2bIZwvI1OI=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -364,7 +364,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-jvISUA8l6z9xPKPkx8ZaHJ3qbZgEetZ9vqlShcie0KM=";
+    cargoHash = "sha256-4/yGghSLo3tdgt1gkvq2yYak4a7FE0JRu3FaaeM9jD8=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
