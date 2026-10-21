@@ -156,7 +156,10 @@ let
         esac
         rm -rf "$work/pg" "$work/sock"
         cp -a "$data" "$work/pg"
-        rm -f "$work/pg/postmaster.pid"
+        # NixOS links postgresql.conf (and may link pg_hba.conf) into the
+        # data folder from the store; replace the links, never write
+        # through them.
+        rm -f "$work/pg/postmaster.pid" "$work/pg/postgresql.conf" "$work/pg/pg_hba.conf"
         : > "$work/pg/postgresql.conf"
         printf 'local all all trust\n' > "$work/pg/pg_hba.conf"
         mkdir -p "$work/sock"
