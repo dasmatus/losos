@@ -266,6 +266,12 @@ checks the signatures up to the DNS root, and `2.dnsname.ens.eth`, ENS's
 ExtendedDNSResolver, answers the address for Ethereum (`a[60]`) and, by
 chain id, for Base, Arbitrum One and OP Mainnet. `{}` unbinds.
 
+The call carries the box's token, so only the box can bind or unbind, and
+lososd asks it only for an administrator (the `network` section). The
+signature shows the wallet agreed to this box's name. It cannot stop the
+edge, which signs the zone, from serving something else: the name is as
+trustworthy as the edge.
+
 ENS only reads a signed zone, so Knot signs this one
 (`losos.edge.dns.dnssec.enable`, on by default) with its default policy,
 ECDSA P-256 with keys in `/var/lib/knot`. Resolvers trust the signatures once
@@ -274,15 +280,18 @@ prints on the edge. Publish it next to the NS records above.
 
 An owner's own domain gets the same record shown in the pane, to add at the
 domain itself. While a wallet is bound, each check also looks up TXT at the
-domain and reports `wallet`: `found` (the record, DNSSEC-validated by the
-resolver), `unsigned`, `cname` (a CNAME can carry no TXT, and ENS reads only
+domain and reports `wallet`: `found` (the whole record as the edge publishes
+it, resolver and every chain, DNSSEC-validated by the resolver), `unsigned`, `cname` (a CNAME can carry no TXT, and ENS reads only
 the exact name), `other` or `missing`. It never decides whether the domain
 is routed.
 
 :::note[How this is tested]
 `nix/tests/edge-dns.nix` (`losos-edge-dns`) boots an edge and a client and asks
 Knot over UDP and TCP, binds a wallet and validates its signed record with
-`delv` from the zone's DS. `edge/registrar/tests/domains.rs` drives the claim
+`delv` from the zone's DS. `nix/tests/box-wallet-name.nix`
+(`losos-box-wallet-name`) adds a box with LosOS Login and a laptop: the owner
+binds the wallet in Chromium on the Network pane, through lososd, and the
+record validates. `edge/registrar/tests/domains.rs` drives the claim
 and wallet flows against a real registrar and a fake DNS-over-HTTPS server.
 :::
 

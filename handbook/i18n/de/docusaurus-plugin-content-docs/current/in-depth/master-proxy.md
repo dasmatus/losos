@@ -289,6 +289,12 @@ Contract prüft die Signaturen bis zur DNS-Wurzel, und `2.dnsname.ens.eth`,
 der ExtendedDNSResolver von ENS, liefert die Adresse für Ethereum (`a[60]`)
 und, nach Chain-ID, für Base, Arbitrum One und OP Mainnet. `{}` trennt sie.
 
+Der Aufruf trägt das Token der Box, also kann nur die Box verknüpfen oder
+trennen, und lososd tut das nur für einen Administrator (der Abschnitt
+`network`). Die Signatur zeigt, dass die Wallet dem Namen dieser Box
+zugestimmt hat. Sie hält die Edge, die die Zone signiert, nicht davon ab,
+etwas anderes auszuliefern: Der Name ist so vertrauenswürdig wie die Edge.
+
 ENS liest nur eine signierte Zone, also signiert Knot diese
 (`losos.edge.dns.dnssec.enable`, standardmäßig an) mit seiner
 Standardrichtlinie, ECDSA P-256 mit Schlüsseln in `/var/lib/knot`. Resolver
@@ -299,7 +305,8 @@ ihn neben den NS-Einträgen oben.
 Die eigene Domain eines Besitzers bekommt denselben Eintrag im Bereich
 angezeigt, um ihn direkt bei der Domain einzutragen. Solange eine Wallet
 verknüpft ist, sucht jede Prüfung auch TXT bei der Domain und meldet
-`wallet`: `found` (der Eintrag, vom Resolver per DNSSEC validiert),
+`wallet`: `found` (der ganze Eintrag, wie die Edge ihn veröffentlicht, Resolver und
+jede Chain, vom Resolver per DNSSEC validiert),
 `unsigned`, `cname` (ein CNAME trägt kein TXT, und ENS liest nur den exakten
 Namen), `other` oder `missing`. Darüber, ob die Domain geroutet wird,
 entscheidet das nie.
@@ -308,7 +315,10 @@ entscheidet das nie.
 `nix/tests/edge-dns.nix` (`losos-edge-dns`) bootet eine Edge und einen Client,
 fragt Knot über UDP und TCP ab, verknüpft eine Wallet und validiert ihren
 signierten Eintrag mit `delv` ab dem DS der Zone.
-`edge/registrar/tests/domains.rs` spielt den Anspruchs- und den
+`nix/tests/box-wallet-name.nix` (`losos-box-wallet-name`) fügt eine Box mit
+LosOS Login und einen Laptop hinzu: Der Besitzer verknüpft die Wallet in
+Chromium im Bereich Netzwerk, über lososd, und der Eintrag besteht die
+Validierung. `edge/registrar/tests/domains.rs` spielt den Anspruchs- und den
 Wallet-Ablauf gegen einen echten Registrar und einen nachgebildeten
 DNS-over-HTTPS-Server durch.
 :::

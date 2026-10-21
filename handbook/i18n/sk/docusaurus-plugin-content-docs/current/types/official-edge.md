@@ -157,9 +157,10 @@ Sekcia **Platby na názov** na paneli Sieť uvádza názvy zariadenia na edge.
 **Prepojiť peňaženku** požiada peňaženku o podpis jednej krátkej správy:
 peňaženka vytvorená na tomto zariadení si vypýta heslo, inak sa ozve
 peňaženka v rozšírení prehliadača. Edge podpis overí a potom zverejní adresu
-peňaženky pod každým názvom. Nezverejní adresu, ktorú neoveril, takže názov
-zariadenia nikto nenasmeruje na inú peňaženku. **Zrušiť prepojenie** adresu
-zase odoberie.
+peňaženky pod každým názvom. Zverejní len adresu, ktorej peňaženka podpísala
+správu pre toto zariadenie, a požiadať oň môže len toto zariadenie, za správcu,
+ktorý je v ňom prihlásený. Zónu drží edge, takže názov je taký dôveryhodný ako
+edge sám. **Zrušiť prepojenie** adresu zase odoberie.
 
 Po prepojení je adresa verejná ako každá adresa, ktorú niekomu dáte. Zóna
 edge je podpísaná cez DNSSEC, a vďaka tomu ENS záznamu dôveruje.

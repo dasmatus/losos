@@ -56,7 +56,10 @@
 //! DNSSEC gateway and checked on Ethereum mainnet) turns the name into that
 //! address, and a wallet that sends to ENS names sends to
 //! `mattbox.losos.cfd`. The edge publishes only an address whose signature
-//! it has checked, and stores the signature with it.
+//! it has checked, and stores the signature with it. The signature shows the
+//! wallet agreed; who may bind is the box, by its token (lososd asks for an
+//! administrator). The zone is the edge's, so the name is only as good as the
+//! edge that signs it.
 //!
 //! An owner's own domain lives in a zone the edge does not serve. The view
 //! gives the owner the same record to add at their DNS provider, and the
@@ -540,11 +543,16 @@ pub fn wallet_seen(
         .map(|(_, _, data)| txt_text(data))
         .filter(|r| r.starts_with("ENS1 "))
         .collect();
-    let want = format!("a[60]={address}");
-    if records
-        .iter()
-        .any(|r| r.split(' ').any(|w| w.eq_ignore_ascii_case(&want)))
-    {
+    // The whole record the edge publishes, resolver and every chain: one that
+    // names another resolver or sends any chain elsewhere does not pay this
+    // wallet everywhere the pane says it does.
+    let want = ens_record(address);
+    let same = |r: &str| {
+        r.split_whitespace()
+            .map(str::to_ascii_lowercase)
+            .eq(want.split_whitespace().map(str::to_ascii_lowercase))
+    };
+    if records.iter().any(|r| same(r)) {
         if validated {
             WalletSeen::Found
         } else {
@@ -1293,6 +1301,20 @@ mod tests {
             ),
             WalletSeen::Other
         );
+        // The right address on Ethereum is not enough: another resolver, a
+        // chain sent elsewhere or a chain left out does not pay this wallet.
+        let other = "0x1111111111111111111111111111111111111111";
+        for wrong in [
+            record.replace(ENS_RESOLVER, "nonexistent.invalid"),
+            record.replace(&format!("a[e8453]={a}"), &format!("a[e8453]={other}")),
+            format!("ENS1 {ENS_RESOLVER} a[60]={a}"),
+        ] {
+            assert_eq!(
+                wallet_seen(d, &[txt("example.org", &wrong)], true, a),
+                WalletSeen::Other,
+                "{wrong}"
+            );
+        }
         // A CNAME's target carrying the record is not the domain carrying it.
         let cname = [
             (

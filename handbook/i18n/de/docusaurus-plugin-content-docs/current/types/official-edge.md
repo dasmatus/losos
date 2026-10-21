@@ -173,9 +173,11 @@ Box auf der Edge. **Wallet verknüpfen** bittet die Wallet, eine kurze
 Nachricht zu signieren: Die auf dieser Box angelegte Wallet fragt nach ihrem
 Passwort, sonst meldet sich die Wallet-Erweiterung des Browsers. Die Edge
 prüft die Signatur und veröffentlicht dann die Adresse der Wallet unter jedem
-Namen. Eine Adresse, die sie nicht geprüft hat, veröffentlicht sie nicht, also
-kann niemand den Namen der Box auf eine andere Wallet zeigen lassen.
-**Trennen** nimmt die Adresse wieder weg.
+Namen. Sie veröffentlicht nur eine Adresse, deren Wallet für diese Box
+signiert hat, und darum bitten kann nur die Box, für jemanden, der dort als
+Administrator angemeldet ist. Die Zone liegt bei der Edge, also ist der Name
+so vertrauenswürdig wie die Edge selbst. **Trennen** nimmt die Adresse wieder
+weg.
 
 Ist sie verknüpft, ist die Adresse öffentlich wie jede Adresse, die du
 herausgibst. Die Zone der Edge ist mit DNSSEC signiert, und deshalb vertraut

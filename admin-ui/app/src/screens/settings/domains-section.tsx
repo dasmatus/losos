@@ -166,7 +166,7 @@ export function DomainsSection({ locked }: { locked: boolean }) {
         {body}
         <GroupCaption>{t("panes.network.domains.caption")}</GroupCaption>
       </PaneSection>
-      {state.kind === "ready" && (
+      {state.kind === "ready" && state.zone !== "" && (
         <DomainWallet
           box={state.box}
           zone={state.zone}
@@ -245,7 +245,7 @@ function DomainRow({
             </dl>
           )}
           <p className="text-[12.5px] leading-snug text-muted">
-            {t(domain.wallet === null ? "panes.network.wallet.seen.pending" : WALLET_SEEN[domain.wallet])}
+            {t(domain.wallet == null ? "panes.network.wallet.seen.pending" : WALLET_SEEN[domain.wallet])}
           </p>
         </>
       )}

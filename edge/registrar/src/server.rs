@@ -1853,7 +1853,8 @@ async fn check_domains(st: &AppState) {
         return;
     };
     let now = crate::market::now_secs();
-    let tenants = match st.tenants.load(&st.opts.tenants_file).await {
+    // Enrolled boxes too: they sign in like listed ones and may bind a wallet.
+    let tenants = match all_tenants(st).await {
         Ok(t) => t,
         Err(e) => {
             tracing::warn!(target: Action::Domains.target(), "not checking domains: {e}");
@@ -1915,15 +1916,30 @@ async fn check_domains(st: &AppState) {
                     .find(|c| c.domain == claim.domain && c.tenant == claim.tenant)
                 {
                     let was_live = slot.live();
+                    // The owner rebound (or unbound) while this lookup ran: what
+                    // it saw was checked against the old address. Keep the
+                    // routing verdict, drop the wallet one; the next pass
+                    // looks again for the new address.
+                    let current = next.wallets.get(&claim.tenant).map(|w| w.address.clone());
+                    let stale = current != *wallet;
+                    let mut observed = observed.clone();
+                    if stale {
+                        observed.wallet = None;
+                    }
+                    let checked_at = slot.checked_at;
                     *slot = domains::evaluate(
                         slot,
                         vouched.as_ref(),
-                        wallet.as_deref(),
+                        current.as_deref(),
                         &store.opts,
                         taken,
-                        observed,
+                        &observed,
                         now,
                     );
+                    if stale {
+                        // Still due, so the new address is looked up next pass.
+                        slot.checked_at = checked_at;
+                    }
                     if slot.live() != was_live {
                         tracing::info!(
                             target: Action::Domains.target(),

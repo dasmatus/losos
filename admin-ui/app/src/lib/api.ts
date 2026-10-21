@@ -1489,8 +1489,9 @@ export interface CustomDomain {
   checked_at: number | null;
   verified_at: number | null;
   /** The wallet record at the domain itself, while a wallet is bound:
-   *  `found` means ENS resolves the domain to the wallet. */
-  wallet: DomainWalletSeen | null;
+   *  `found` means ENS resolves the domain to the wallet. Absent from an
+   *  edge that predates wallets. */
+  wallet?: DomainWalletSeen | null;
 }
 
 export type DomainsResponse =
@@ -1506,13 +1507,14 @@ export type DomainsResponse =
       max_domains: number;
       domains: CustomDomain[];
       /** This box's id on the edge and the edge's zone, which the wallet
-       *  binding message names (`walletMessage`). */
-      box: string;
-      zone: string;
+       *  binding message names (`walletMessage`). This and the three below
+       *  are absent from an edge that predates wallets. */
+      box?: string;
+      zone?: string;
       /** This box's names in the edge's zone; they carry the wallet record
        *  while one is bound. */
-      names: string[];
-      wallet: BoundWallet | null;
+      names?: string[];
+      wallet?: BoundWallet | null;
     };
 
 /** GET /api/domains — this box's domains on the edge. */

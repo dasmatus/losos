@@ -2643,10 +2643,24 @@ async fn post_domain_wallet(
     body: web::Bytes,
 ) -> HttpResponse {
     guarded(&api, &req, "/api/domains/wallet", true, || {
-        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        // `{}` unbinds, so anything that is not an object of strings is a
+        // 400 rather than read as one.
+        const SHAPE: &str =
+            r#"body must be JSON: {"address": "0x…", "signature": "0x…"} to bind, or {} to unbind"#;
+        let Ok(serde_json::Value::Object(doc)) = serde_json::from_slice(&body) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let text = |key: &str| match doc.get(key) {
+            None => Ok(None),
+            Some(serde_json::Value::String(v)) => Ok(Some(v.trim().to_string())),
+            Some(_) => Err(()),
+        };
+        let (Ok(address), Ok(signature)) = (text("address"), text("signature")) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
         let op = crate::market::Op::DomainWallet {
-            address: field_str(&doc, "address").map(|a| a.trim().to_ascii_lowercase()),
-            signature: field_str(&doc, "signature").map(|s| s.trim().to_string()),
+            address: address.map(|a| a.to_ascii_lowercase()),
+            signature,
         };
         run(&api, |b| crate::losos::cmd_domain_op(b, &op))
     })

@@ -155,9 +155,10 @@ The section **Paid by name** on the Network pane lists the box's names on
 the edge. **Bind wallet** asks the wallet to sign one short message: the
 wallet made on this box asks for its password, otherwise the browser's wallet
 extension asks. The edge checks the signature and then publishes the
-wallet's address at each name. It publishes no address it has not checked,
-so nobody can point the box's name at another wallet. **Unbind** takes the
-address off again.
+wallet's address at each name. It publishes only an address whose wallet
+signed for this box, and only the box can ask, for an administrator signed in
+to it. The edge holds the zone, so the name is as trustworthy as the edge
+itself. **Unbind** takes the address off again.
 
 The address is public once it is bound, like any address you hand out. The
 edge's zone is signed with DNSSEC, which is what lets ENS trust the record.

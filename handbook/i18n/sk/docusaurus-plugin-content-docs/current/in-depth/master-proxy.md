@@ -268,6 +268,12 @@ podpisy až po koreň DNS a `2.dnsname.ens.eth`, ExtendedDNSResolver od ENS,
 vráti adresu pre Ethereum (`a[60]`) a podľa chain id pre Base, Arbitrum One a
 OP Mainnet. `{}` prepojenie zruší.
 
+Volanie nesie token zariadenia, takže prepojiť alebo zrušiť ho môže len
+zariadenie, a lososd oň požiada len za správcu (sekcia `network`). Podpis
+ukazuje, že peňaženka s názvom tohto zariadenia súhlasí. Nezabráni však edge,
+ktorý zónu podpisuje, aby podával niečo iné: názov je taký dôveryhodný ako
+edge.
+
 ENS číta len podpísanú zónu, takže Knot túto zónu podpisuje
 (`losos.edge.dns.dnssec.enable`, predvolene zapnuté) svojou predvolenou
 politikou, ECDSA P-256 s kľúčmi v `/var/lib/knot`. Resolvery podpisom
@@ -276,14 +282,17 @@ dôverujú, keď nadradená zóna zverejní záznam DS zóny, ktorý na edge vyp
 
 Vlastná doména majiteľa dostane ten istý záznam, ukázaný na paneli, na
 pridanie priamo k doméne. Kým je peňaženka prepojená, každá kontrola vyhľadá
-aj TXT pri doméne a hlási `wallet`: `found` (záznam, ktorý resolver overil
-cez DNSSEC), `unsigned`, `cname` (CNAME nenesie TXT a ENS číta len presný
+aj TXT pri doméne a hlási `wallet`: `found` (celý záznam tak, ako ho edge
+zverejňuje, resolver aj každá sieť, overený resolverom cez DNSSEC), `unsigned`, `cname` (CNAME nenesie TXT a ENS číta len presný
 názov), `other` alebo `missing`. Nikdy nerozhoduje o tom, či sa doména smeruje.
 
 :::note[Ako sa to testuje]
 `nix/tests/edge-dns.nix` (`losos-edge-dns`) spustí edge a klienta a pýta sa
 Knotu cez UDP aj TCP, prepojí peňaženku a jej podpísaný záznam overí cez
-`delv` od záznamu DS zóny. `edge/registrar/tests/domains.rs` prevedie tok
+`delv` od záznamu DS zóny. `nix/tests/box-wallet-name.nix`
+(`losos-box-wallet-name`) pridá zariadenie s LosOS Login a notebook: majiteľ
+prepojí peňaženku v Chromiu na paneli Sieť cez lososd a záznam prejde
+overením. `edge/registrar/tests/domains.rs` prevedie tok
 nárokov aj peňaženiek proti skutočnému registraru a falošnému serveru
 DNS-over-HTTPS.
 :::

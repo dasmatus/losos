@@ -1861,6 +1861,19 @@ await check('a browser extension wallet binds to the box names, and unbinds', as
   await page.close();
 });
 
+await check('an edge that predates wallets still draws the domains, without the wallet section', async () => {
+  const { box, zone, names, wallet, ...older } = DOMAINS_READY;
+  const domains = { ...older, domains: older.domains.map(({ wallet: _seen, ...d }) => d) };
+  const { page, errors } = await open({ path: '/settings/network', stored: true, domains });
+  const rows = page.getByTestId('custom-domains').getByTestId('custom-domain');
+  await rows.first().waitFor();
+  assert.equal(await rows.count(), 2);
+  assert.equal(await page.getByTestId('domain-wallet').count(), 0, 'the wallet section showed without a zone');
+  assert.doesNotMatch(await rows.nth(0).innerText(), /ENS1|Wallets pay/);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 await check('the wallet made on this box signs the binding after its password', async () => {
   const { mnemonicToAccount } = await import('viem/accounts');
   const { verifyMessage } = await import('viem');

@@ -15,8 +15,8 @@ import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, S
  * at each of them, and a wallet that sends to ENS names (MetaMask, Rainbow,
  * Coinbase Wallet, viem) turns `mattbox.losos.cfd` into this address on
  * Ethereum, Base, Arbitrum and OP. The edge publishes only an address whose
- * signature it checked, so nobody can point the box's name at another
- * wallet, the edge included.
+ * wallet signed for this box, and only at the box's request; it holds the
+ * zone, so the name is as trustworthy as the edge.
  *
  * The signature comes from the wallet made on this box, opened with its
  * password the way the Market pane opens it, or else from a browser

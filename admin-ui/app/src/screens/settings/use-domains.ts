@@ -63,11 +63,13 @@ function stateOf(reply: Awaited<ReturnType<typeof getDomains>>): DomainsState {
     target: reply.target,
     addresses: reply.addresses,
     maxDomains: reply.max_domains,
-    domains: reply.domains,
-    box: reply.box,
-    zone: reply.zone,
-    names: reply.names,
-    wallet: reply.wallet,
+    // An edge that predates wallets sends none of these: no names, nothing
+    // bound, and the pane leaves the section out.
+    domains: reply.domains.map((d) => ({ ...d, wallet: d.wallet ?? null })),
+    box: reply.box ?? "",
+    zone: reply.zone ?? "",
+    names: reply.names ?? [],
+    wallet: reply.wallet ?? null,
   };
 }
 
@@ -92,7 +94,11 @@ export function useDomains(enabled: boolean): DomainsData {
     return () => controller.abort();
   }, [enabled, tick]);
 
-  const waiting = state.kind === "ready" && state.domains.some((d) => d.status === "waiting");
+  // Ask again while a domain waits to go live, and while the edge has yet
+  // to look for a bound wallet's record at one (a bind clears what it saw).
+  const waiting =
+    state.kind === "ready" &&
+    state.domains.some((d) => d.status === "waiting" || (state.wallet !== null && d.wallet === null));
   React.useEffect(() => {
     if (!enabled || !waiting) return;
     const timer = window.setTimeout(refresh, DOMAINS_RECHECK_MS);
