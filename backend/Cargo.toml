@@ -91,14 +91,6 @@ argon2 = "0.6"
 # src/plugin/host.rs, each checked against its manifest.
 wasmtime = { version = "50", default-features = false, features = ["anyhow", "runtime", "cranelift", "component-model", "std", "parallel-compilation"] }
 
-# The plugin runtime (src/plugin/): lososd's areas are WebAssembly
-# components written against plugins/wit/plugin.wit, loaded from the
-# read-only directory the NixOS module names. Component model for typed
-# imports and exports, Cranelift to compile them once at start. No WASI:
-# a plugin reaches the box only through the host functions in
-# src/plugin/host.rs, each checked against its manifest.
-wasmtime = { version = "50", default-features = false, features = ["anyhow", "runtime", "cranelift", "component-model", "std", "parallel-compilation"] }
-
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its
 # output, and give it a throwaway filesystem.
