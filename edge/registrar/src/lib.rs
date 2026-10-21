@@ -59,6 +59,7 @@ mod fsutil;
 pub mod hardware;
 pub mod identity;
 pub mod idle;
+pub mod inference;
 pub mod join;
 pub mod lab;
 pub mod market;

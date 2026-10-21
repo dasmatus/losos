@@ -32,6 +32,12 @@ use serde::{Deserialize, Serialize};
 pub const NOTICE_SECS: u64 = 48 * 3600;
 /// The most time one settle may bill for. The escrow's `MAX_ACCRUAL`.
 pub const MAX_ACCRUAL_SECS: u64 = 7 * 24 * 3600;
+/// How far into its accrual a tap opens: the escrow sets a new tap's
+/// `settledAt` this long before the moment it opens, so a buyer can be served
+/// up to an hour's worth at once rather than nothing until time passes. The
+/// most a tap can ever bill is its rate times the time since it opened plus
+/// this. The escrow's `HEADSTART`.
+pub const HEADSTART_SECS: u64 = 3600;
 /// How long a quote waits for the wallet to open its taps.
 pub const QUOTE_SECS: u64 = 30 * 60;
 /// Millionths of a base unit per base unit.
@@ -81,6 +87,8 @@ pub enum EndReason {
     GroupLeft,
     /// The buyer's wallet closed a tap itself.
     TapClosed,
+    /// The boxes picked for the model could not load it or keep it running.
+    GroupFailed,
 }
 
 impl EndReason {
@@ -92,6 +100,9 @@ impl EndReason {
                 "A box that ran this model left its group. Start the model again to use another group."
             }
             Self::TapClosed => "The wallet closed one of its taps.",
+            Self::GroupFailed => {
+                "The boxes picked for this model could not run it. Start it again to use other boxes."
+            }
         }
     }
 }
@@ -184,6 +195,13 @@ pub struct Taps {
     pub meters: BTreeMap<String, Meter>,
     #[serde(default)]
     pub taps: BTreeMap<String, Tap>,
+}
+
+impl Taps {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.meters.is_empty() && self.taps.is_empty()
+    }
 }
 
 /// A tap as the escrow records it.
@@ -435,9 +453,7 @@ pub fn tap_room(tap: &Tap, now: u64) -> u64 {
         .min(MAX_ACCRUAL_SECS)
         .saturating_sub(CLOCK_MARGIN_SECS);
     let cap = u128::from(tap.rate) * u128::from(elapsed) * u128::from(E6) / 3600;
-    u64::try_from(cap)
-        .unwrap_or(u64::MAX)
-        .saturating_sub(owed)
+    u64::try_from(cap).unwrap_or(u64::MAX).saturating_sub(owed)
 }
 
 /// What the buyer's wallet still has on `network` once everything used and
@@ -463,12 +479,7 @@ pub fn funds(state: &Taps, wallet: &str, network: &str, view: &WalletView) -> u6
 ///
 /// # Errors
 /// Why nothing may be served.
-pub fn headroom(
-    state: &Taps,
-    meter_id: &str,
-    view: &WalletView,
-    now: u64,
-) -> Result<u64, Refusal> {
+pub fn headroom(state: &Taps, meter_id: &str, view: &WalletView, now: u64) -> Result<u64, Refusal> {
     let meter = state.meters.get(meter_id).ok_or(Refusal::Closed)?;
     if meter.state != MeterState::Open {
         return Err(Refusal::Closed);
@@ -570,9 +581,7 @@ pub fn due(
             continue;
         }
         let view = views.get(wallet).copied().unwrap_or_default();
-        let urgent = tap.closed_at.is_some()
-            || meter.state != MeterState::Open
-            || view.asked > 0;
+        let urgent = tap.closed_at.is_some() || meter.state != MeterState::Open || view.asked > 0;
         let old = now.saturating_sub(tap.settled_at) >= every;
         if !(urgent || old || (at > 0 && amount >= at)) {
             continue;
@@ -580,8 +589,8 @@ pub fn due(
         // The escrow's cap, with the edge's own margin.
         let end = tap.closed_at.unwrap_or(now).min(now);
         let elapsed = end.saturating_sub(tap.settled_at).min(MAX_ACCRUAL_SECS);
-        let cap = u64::try_from(u128::from(tap.rate) * u128::from(elapsed) / 3600)
-            .unwrap_or(u64::MAX);
+        let cap =
+            u64::try_from(u128::from(tap.rate) * u128::from(elapsed) / 3600).unwrap_or(u64::MAX);
         let used = spent.entry(wallet).or_default();
         let left = view.balance.saturating_sub(*used);
         let amount = amount.min(cap).min(left);
@@ -687,8 +696,7 @@ pub fn tidy(state: &mut Taps, now: u64) -> Vec<String> {
                 changed.push(m.id.clone());
             }
             MeterState::Ending
-                if m
-                    .taps
+                if m.taps
                     .iter()
                     .all(|id| state.taps.get(id).is_none_or(|t| t.done)) =>
             {
@@ -713,9 +721,10 @@ pub fn open_meter<'a>(state: &'a Taps, buyer: &str, model: &str) -> Option<&'a M
 /// Whether a group still has a meter that is waiting, open or settling.
 #[must_use]
 pub fn group_in_use(state: &Taps, group: &str) -> bool {
-    state.meters.values().any(|m| {
-        m.group == group && matches!(m.state, MeterState::Quoted | MeterState::Open)
-    })
+    state
+        .meters
+        .values()
+        .any(|m| m.group == group && matches!(m.state, MeterState::Quoted | MeterState::Open))
 }
 
 /// What a seller earned from taps: paid out, and used but not yet settled,
@@ -861,10 +870,7 @@ mod tests {
         }
         assert!(quote(&mut state, &spec(&p, 1_000_000), &mut ids).is_err());
         tidy(&mut state, NOW + QUOTE_SECS);
-        assert!(state
-            .meters
-            .values()
-            .all(|m| m.state == MeterState::Lapsed));
+        assert!(state.meters.values().all(|m| m.state == MeterState::Lapsed));
         quote(&mut state, &spec(&p, 1_000_000), &mut ids).unwrap();
     }
 
@@ -906,8 +912,10 @@ mod tests {
         assert_eq!(state.meters[&id].wallet.as_deref(), Some("0xw"));
         // Again is fine; a lapsed quote is not.
         confirm(&mut state, &id, &good, key_of, wallet, NOW).unwrap();
-        let id2 = quote(&mut state, &spec(&p, 1_000_000), |p: &str| Some(format!("{p}_x")))
-            .unwrap();
+        let id2 = quote(&mut state, &spec(&p, 1_000_000), |p: &str| {
+            Some(format!("{p}_x"))
+        })
+        .unwrap();
         tidy(&mut state, NOW + QUOTE_SECS);
         let late = chain_of(&state, &id2, 7);
         assert!(confirm(&mut state, &id2, &late, key_of, wallet, NOW).is_err());
@@ -939,14 +947,20 @@ mod tests {
         let room = headroom(&state, &id, &poor, NOW + HOUR).unwrap();
         assert_eq!(room, 10 * E6);
         bill(&mut state, &id, room, 1, 1);
-        assert_eq!(headroom(&state, &id, &poor, NOW + HOUR), Err(Refusal::Balance));
+        assert_eq!(
+            headroom(&state, &id, &poor, NOW + HOUR),
+            Err(Refusal::Balance)
+        );
         // An ask to withdraw takes the money out of reach at once.
         let asking = WalletView {
             balance: 1_000,
             asked: 1_000,
             not_before: NOW + NOTICE_SECS,
         };
-        assert_eq!(headroom(&state, &id, &asking, NOW + HOUR), Err(Refusal::Balance));
+        assert_eq!(
+            headroom(&state, &id, &asking, NOW + HOUR),
+            Err(Refusal::Balance)
+        );
     }
 
     #[test]
@@ -957,9 +971,15 @@ mod tests {
         assert_eq!(headroom(&state, &id, &rich(), NOW + 60), Err(Refusal::Rate));
         let room = headroom(&state, &id, &rich(), NOW + HOUR).unwrap();
         // About a dollar less the two minutes' margin.
-        assert!(room > 960_000 * E6 / 1_000 && room <= 1_000_000 * E6, "{room}");
+        assert!(
+            room > 960_000 * E6 / 1_000 && room <= 1_000_000 * E6,
+            "{room}"
+        );
         bill(&mut state, &id, room, 1, 1);
-        assert_eq!(headroom(&state, &id, &rich(), NOW + HOUR), Err(Refusal::Rate));
+        assert_eq!(
+            headroom(&state, &id, &rich(), NOW + HOUR),
+            Err(Refusal::Rate)
+        );
         // Time frees it up again.
         assert!(headroom(&state, &id, &rich(), NOW + 2 * HOUR).is_ok());
         // Never more than a week's worth, however long the tap was idle.
@@ -974,11 +994,17 @@ mod tests {
         let (mut state, id) = open(1_000_000);
         let first = state.meters[&id].taps[0].clone();
         closed(&mut state, &first, NOW + 10);
-        assert_eq!(headroom(&state, &id, &rich(), NOW + HOUR), Err(Refusal::Closed));
+        assert_eq!(
+            headroom(&state, &id, &rich(), NOW + HOUR),
+            Err(Refusal::Closed)
+        );
         assert_eq!(state.meters[&id].state, MeterState::Ending);
         let (mut state, id) = open(1_000_000);
         assert!(end(&mut state, &id, EndReason::Buyer));
-        assert_eq!(headroom(&state, &id, &rich(), NOW + HOUR), Err(Refusal::Closed));
+        assert_eq!(
+            headroom(&state, &id, &rich(), NOW + HOUR),
+            Err(Refusal::Closed)
+        );
         assert!(!end(&mut state, &id, EndReason::Buyer));
     }
 
@@ -988,10 +1014,25 @@ mod tests {
         let views = BTreeMap::from([("0xwallet".to_string(), rich())]);
         let at = NOW + HOUR;
         bill(&mut state, &id, 900_000 * E6, 1, 1);
-        assert!(due(&state, at, "base", EVM_SETTLE_EVERY_SECS, EVM_SETTLE_AT, &views).is_empty());
+        assert!(due(
+            &state,
+            at,
+            "base",
+            EVM_SETTLE_EVERY_SECS,
+            EVM_SETTLE_AT,
+            &views
+        )
+        .is_empty());
         bill(&mut state, &id, 300_000 * E6, 1, 1);
         // The first tap has half of 1.2 dollars; the others a quarter each.
-        let d = due(&state, at, "base", EVM_SETTLE_EVERY_SECS, EVM_SETTLE_AT, &views);
+        let d = due(
+            &state,
+            at,
+            "base",
+            EVM_SETTLE_EVERY_SECS,
+            EVM_SETTLE_AT,
+            &views,
+        );
         assert!(d.is_empty(), "{d:?}");
         let d = due(
             &state,
@@ -1031,17 +1072,35 @@ mod tests {
         bill(&mut state, &id, 3 * E6, 1, 1);
         let quiet = BTreeMap::from([("0xwallet".to_string(), rich())]);
         let at = NOW + HOUR;
-        assert!(due(&state, at, "base", EVM_SETTLE_EVERY_SECS, EVM_SETTLE_AT, &quiet).is_empty());
-        let asking = BTreeMap::from([(
-            "0xwallet".to_string(),
-            WalletView {
-                asked: 1,
-                ..rich()
-            },
-        )]);
-        assert!(!due(&state, at, "base", EVM_SETTLE_EVERY_SECS, EVM_SETTLE_AT, &asking).is_empty());
+        assert!(due(
+            &state,
+            at,
+            "base",
+            EVM_SETTLE_EVERY_SECS,
+            EVM_SETTLE_AT,
+            &quiet
+        )
+        .is_empty());
+        let asking = BTreeMap::from([("0xwallet".to_string(), WalletView { asked: 1, ..rich() })]);
+        assert!(!due(
+            &state,
+            at,
+            "base",
+            EVM_SETTLE_EVERY_SECS,
+            EVM_SETTLE_AT,
+            &asking
+        )
+        .is_empty());
         end(&mut state, &id, EndReason::Buyer);
-        assert!(!due(&state, at, "base", EVM_SETTLE_EVERY_SECS, EVM_SETTLE_AT, &quiet).is_empty());
+        assert!(!due(
+            &state,
+            at,
+            "base",
+            EVM_SETTLE_EVERY_SECS,
+            EVM_SETTLE_AT,
+            &quiet
+        )
+        .is_empty());
         assert_eq!(to_close(&state, "base").len(), 3);
     }
 
@@ -1093,7 +1152,7 @@ mod tests {
             closed(&mut state, t, NOW + 50);
         }
         // Nothing owed: done at once.
-        assert_eq!(tidy(&mut state, NOW + 60), [id.clone()]);
+        assert_eq!(tidy(&mut state, NOW + 60), std::slice::from_ref(&id));
         assert_eq!(state.meters[&id].state, MeterState::Ended);
         assert!(!group_in_use(&state, "grp_1"));
     }

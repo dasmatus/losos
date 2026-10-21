@@ -37,7 +37,7 @@ program only uses it as a seed. Every integer is little-endian;
 | 4 | `settle(back)` | releaser | `back` to the payer, the rest released with the fee scaled down. |
 | 5 | `set_releaser(releaser)` | treasury | Names another releaser. |
 | 6 | `top_up(amount)` | buyer | Opens the buyer's balance and its vault on first use, moves `amount` in. |
-| 7 | `open_tap(tap_id, rate, fee_bps)` | buyer | Opens one tap against the buyer's balance; several fit in one transaction. |
+| 7 | `open_tap(tap_id, rate, fee_bps)` | buyer | Opens one tap against the buyer's balance, billable from an hour before now; several fit in one transaction. |
 | 8 | `close_tap` | buyer, or releaser | Stops the tap's billing at now, once. |
 | 9 | `settle_tap(amount)` | releaser | Bills `amount` from the balance: the fee to the treasury, the rest to the tap's seller. |
 | 10 | `ask_withdrawal(amount)` | buyer | Asks to take `amount` out after 48 hours, replacing any earlier ask. |
@@ -70,11 +70,13 @@ Closing a deposit gives its rent back to the payer, and any tokens sent to a
 vault by plain transfer go to the treasury on a release or split and to the
 payer on a refund, so nothing can keep a deposit open.
 
-## Pay as you go
+## Balances and taps
 
 A tap is the buyer's consent for the releaser to bill one seller, at up to
 `rate` base units of USDC an hour, with `fee_bps` of each bill going to the
-treasury. It starts billing when it opens. A `settle_tap` of `amount` is
+treasury. A new tap starts one hour into its billing (`HEADSTART`):
+`settled_at` is set to an hour before it opened, so the first hour of use
+can be billed as soon as the tap is open. A `settle_tap` of `amount` is
 taken only when:
 
 - `amount` is at most `rate × min(end − settled_at, 7 days) / 3600`,
@@ -92,8 +94,10 @@ config, the balance, its vault or the tap.
 The buyer or the releaser closes a tap at any time. After that the releaser
 can bill it only up to the moment it closed. Once a closed tap is settled up
 to its close, its account is closed and its rent goes back to the buyer. A
-tap closed with nothing to bill is closed at once, and a settle of 0 on a
-closed tap finishes one that used nothing.
+tap closed in the same second as its last settle has nothing left to bill
+and is closed at once. A fresh tap closed at once still has its hour of
+headstart to bill; a settle of 0 on a closed tap finishes one that used
+nothing.
 
 A withdrawal is asked for, and paid 48 hours later, to the buyer's own token
 account: the smaller of the amount asked and what the balance still holds.
@@ -103,8 +107,9 @@ A withdrawal never needs the edge, so an edge that stops answering costs the
 buyer only the notice.
 
 A stolen edge key can therefore bill only at the rates the buyer agreed to,
-only to the sellers the buyer named, and never more than a week of any tap at
-a time. Lamports sent ahead to a balance, vault or tap address do not block
+and only to the sellers the buyer named. Over a tap's whole life it can take
+at most the rate times the time since the tap opened plus one hour, and never
+more than a week of it in one settle. Lamports sent ahead to a balance, vault or tap address do not block
 it: the program tops the account up to its rent and takes it over. Tokens
 sent to a balance's vault by plain transfer count as the buyer's balance.
 

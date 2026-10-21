@@ -32,8 +32,9 @@ contract LososEscrow {
 
     /// A buyer's authorisation for the edge to bill one seller, at most
     /// `rate` USDC base units per hour, with `feeBps` of each slice going to
-    /// the treasury. `settledAt` is the end of the time already billed;
-    /// `closedAt` is zero while the tap is open.
+    /// the treasury. `settledAt` is the end of the time already billed,
+    /// which starts `HEADSTART` before the tap opened; `closedAt` is zero
+    /// while the tap is open.
     struct Tap {
         address buyer;
         address seller;
@@ -80,8 +81,13 @@ contract LososEscrow {
     /// bill the last slice of every tap first.
     uint64 public constant NOTICE = 48 hours;
     /// The most time one `settleTap` can bill for, however long the edge
-    /// waited. A stolen edge key can take at most a week at each tap's rate.
+    /// waited. A stolen edge key can take at most a week at each tap's rate
+    /// in one settle.
     uint64 public constant MAX_ACCRUAL = 7 days;
+    /// A new tap starts one hour into its accrual, so the edge can bill the
+    /// first hour of use as soon as the tap is open. In all, a tap can be
+    /// billed at most its rate times the time since it opened plus this hour.
+    uint64 public constant HEADSTART = 1 hours;
     /// Taps one `openTaps` call may open, so a group of listings fits in one
     /// transaction and the loop stays bounded.
     uint256 public constant MAX_TAPS_PER_CALL = 16;
@@ -258,7 +264,8 @@ contract LososEscrow {
     /// Open one tap per seller, all with the same fee, billed from the
     /// caller's balance. `ids[i]` is keccak256 of the edge's tap id and
     /// `rates[i]` the most the edge may bill `sellers[i]` per hour. Billing
-    /// starts now.
+    /// counts from `HEADSTART` before now, so the first hour can be billed at
+    /// once.
     function openTaps(bytes32[] calldata ids, address[] calldata sellers, uint128[] calldata rates, uint16 feeBps)
         external
     {
@@ -266,11 +273,11 @@ contract LososEscrow {
         if (n == 0 || sellers.length != n || rates.length != n) revert BadTaps();
         if (n > MAX_TAPS_PER_CALL) revert TooManyTaps();
         if (feeBps > MAX_FEE_BPS) revert FeeTooHigh();
-        uint64 now_ = uint64(block.timestamp);
+        uint64 start = uint64(block.timestamp) - HEADSTART;
         for (uint256 i = 0; i < n; i++) {
             if (sellers[i] == address(0)) revert ZeroSeller();
             if (taps[ids[i]].buyer != address(0)) revert TapExists();
-            taps[ids[i]] = Tap(msg.sender, sellers[i], rates[i], feeBps, now_, 0);
+            taps[ids[i]] = Tap(msg.sender, sellers[i], rates[i], feeBps, start, 0);
             emit TapOpened(ids[i], msg.sender, sellers[i], rates[i], feeBps);
         }
     }
@@ -290,8 +297,10 @@ contract LososEscrow {
     /// The edge bills `amount` of metered use through a tap: the fee to the
     /// treasury, the rest to the tap's seller, both out of the buyer's
     /// balance. `amount` can be at most the tap's rate for the time since
-    /// the last settle, up to its close and at most `MAX_ACCRUAL`. Billing
-    /// then restarts from that point, so cap left unused is not carried over.
+    /// the last settle (or since `HEADSTART` before it opened), up to its
+    /// close and at most `MAX_ACCRUAL`. Billing then restarts from that
+    /// point, so cap left unused is not carried over. Over its whole life a
+    /// tap pays out at most its rate times (time open + 1 hour).
     function settleTap(bytes32 id, uint256 amount) external {
         if (msg.sender != releaser) revert NotReleaser();
         Tap storage t = taps[id];

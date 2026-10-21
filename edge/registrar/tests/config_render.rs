@@ -23,6 +23,7 @@ fn tenant(id: &str, hostname: &str, port: u16, token: &str) -> TenantView {
         hostname: hostname.to_string(),
         rathole_port: port,
         token: token.to_string(),
+        llm_port: None,
     }
 }
 
@@ -257,4 +258,24 @@ fn uplink_config_renders_the_relayed_services() {
         &[],
     );
     assert!(noise.contains("[client.transport]\ntype = \"noise\"\n\n[client.transport.noise]\nremote_public_key = \"AAAA\"\n"));
+}
+
+#[test]
+fn a_lending_box_gets_a_second_tunnel_service_on_its_llm_port() {
+    let mut lender = tenant("box-a", "a.example.org", 20001, "tok-a");
+    lender.llm_port = Some(23001);
+    let other = tenant("box-b", "b.example.org", 20002, "tok-b");
+    let files = desired_config(&[lender, other], &opts());
+    let toml = &files.rathole_toml;
+    assert!(
+        toml.contains(
+            "[server.services.box-a-llm]\ntoken = \"tok-a\"\nbind_addr = \"127.0.0.1:23001\"\n"
+        ),
+        "{toml}"
+    );
+    assert!(!toml.contains("box-b-llm"), "{toml}");
+    // The model port never becomes a web route.
+    let yaml = files.traefik_yaml.unwrap();
+    assert!(!yaml.contains("23001"), "{yaml}");
+    assert!(!yaml.contains("box-a-llm"), "{yaml}");
 }

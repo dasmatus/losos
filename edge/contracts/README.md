@@ -111,9 +111,12 @@ The edge meters what the buyer used and calls `settleTap(tap, amount)` from
 time to time. The contract takes `amount` from the buyer's balance, sends the
 fee (rounded down) to `treasury` and the rest to the tap's seller, and
 refuses an amount over the balance or over the tap's rate for the time since
-its last settle. That time counts up to the tap's close, and at most 7 days
-of it, so cap left unused is not carried over and a stolen edge key can take
-at most a week at the rate the buyer chose, to the seller the buyer named.
+its last settle. A new tap starts one hour into that time, so the first hour
+of use can be billed as soon as the tap opens. The time counts up to the
+tap's close, and at most 7 days of it in one settle, and cap left unused is
+not carried over. So a stolen edge key can take, from one tap, at most its
+rate times the time since it opened plus one hour, never more than a week of
+it at once, and only to the seller the buyer named.
 
 The buyer or the edge can close a tap with `closeTap`, once. The edge can
 still bill a closed tap for the time before it closed. To take money back the

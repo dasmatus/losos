@@ -20,7 +20,10 @@
 //! id]`). A tap names one seller, a fee and a rate: the most the releaser may
 //! bill per hour of the tap's life. The releaser settles a tap from time to
 //! time for what it metered, never more than the rate times the time since
-//! the last settle, counted up to seven days. The buyer can close a tap at any
+//! the last settle, counted up to seven days. A new tap starts one hour into
+//! that time, so the first hour can be billed as soon as it opens; over its
+//! whole life a tap pays out at most its rate times the time since it opened
+//! plus one hour. The buyer can close a tap at any
 //! time and withdraw the balance after asking 48 hours ahead, which leaves
 //! the edge time to settle the last of it and needs nothing from the edge.
 //!
@@ -73,6 +76,10 @@ pub const NOTICE: i64 = 48 * 60 * 60;
 /// it since the last settle is not billable.
 pub const MAX_ACCRUAL: i64 = 7 * 24 * 60 * 60;
 pub const HOUR: i64 = 60 * 60;
+/// A new tap's billing starts this long before it opened, so the edge can
+/// bill the first hour of use at once. In all, a tap can be billed at most
+/// its rate times (the time since it opened + 1 hour).
+pub const HEADSTART: i64 = 60 * 60;
 
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const DEPOSIT_SEED: &[u8] = b"deposit";
@@ -640,8 +647,8 @@ fn top_up(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> Pr
 }
 
 /// The buyer lets the releaser bill one seller from the balance at up to
-/// `rate` an hour, `fee_bps` of each settle to the treasury. Billing starts
-/// now.
+/// `rate` an hour, `fee_bps` of each settle to the treasury. Billing counts
+/// from `HEADSTART` before now, so the first hour can be settled at once.
 fn open_tap(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
     let [buyer, config, balance, tap, seller, system, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -700,7 +707,10 @@ fn open_tap(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> 
         seller: seller_key,
         id,
         rate,
-        settled_at: Clock::get()?.unix_timestamp,
+        settled_at: Clock::get()?
+            .unix_timestamp
+            .saturating_sub(HEADSTART)
+            .max(0),
         closed_at: None,
         fee_bps,
     }
@@ -744,8 +754,9 @@ fn close_tap(program_id: &Address, accounts: &mut [AccountView]) -> ProgramResul
 }
 
 /// The releaser bills `amount` of what it metered on a tap: at most the
-/// tap's rate times the time since the last settle (up to now, or up to
-/// when the tap closed), counting at most `MAX_ACCRUAL` of it. The fee
+/// tap's rate times the time since the last settle (or since `HEADSTART`
+/// before the tap opened), up to now or up to when the tap closed, counting
+/// at most `MAX_ACCRUAL` of it. The fee
 /// (`fee_bps` of the amount, rounded down) goes to the treasury and the rest
 /// to the tap's seller. Cap not used is not carried over. A closed tap
 /// settled up to its close is finished: its account is closed and its rent

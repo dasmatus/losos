@@ -13,8 +13,8 @@
 use litesvm::LiteSVM;
 use losos_escrow::state::{Balance, Config, Deposit, Tap};
 use losos_escrow::{
-    ix, EscrowError, BALANCE_SEED, CONFIG_SEED, DEPOSIT_SEED, MAX_ACCRUAL, NOTICE, TAP_SEED,
-    VAULT_SEED,
+    ix, EscrowError, BALANCE_SEED, CONFIG_SEED, DEPOSIT_SEED, HEADSTART, MAX_ACCRUAL, NOTICE,
+    TAP_SEED, VAULT_SEED,
 };
 use solana_account::Account;
 use solana_clock::Clock;
@@ -1338,18 +1338,20 @@ fn a_tap_bills_at_most_its_rate_and_pays_the_seller_and_the_treasury() {
     assert_eq!(t.seller.as_ref(), e.seller.pubkey().as_ref());
     assert_eq!(t.config.as_ref(), e.config.as_ref());
     assert_eq!((t.id, t.rate, t.fee_bps), (id, RATE, FEE_BPS));
-    assert_eq!((t.settled_at, t.closed_at), (NOW, None));
+    // Billing counts from an hour before the tap opened.
+    assert_eq!((t.settled_at, t.closed_at), (NOW - HEADSTART, None));
 
-    // An hour and a half at 1.00 an hour is 1.50, not a base unit more.
+    // An hour and a half at 1.00 an hour, plus the hour of headstart, is
+    // 2.50, not a base unit more.
     e.at(NOW + 90 * 60);
     assert_eq!(
-        custom(e.settle_tap(&id, 1_500_001)),
+        custom(e.settle_tap(&id, 2_500_001)),
         code(EscrowError::OverCap)
     );
-    e.settle_tap(&id, 1_500_000).unwrap();
-    assert_eq!(e.balance(&ata(&e.treasury.pubkey())), 60_000);
-    assert_eq!(e.balance(&ata(&e.seller.pubkey())), 1_440_000);
-    assert_eq!(e.prepaid(&e.payer.pubkey()), 30_000_000 - 1_500_000);
+    e.settle_tap(&id, 2_500_000).unwrap();
+    assert_eq!(e.balance(&ata(&e.treasury.pubkey())), 100_000);
+    assert_eq!(e.balance(&ata(&e.seller.pubkey())), 2_400_000);
+    assert_eq!(e.prepaid(&e.payer.pubkey()), 30_000_000 - 2_500_000);
     assert_eq!(e.tap(&id).unwrap().settled_at, NOW + 90 * 60);
     // The same second again bills nothing more, not even a unit.
     assert_eq!(custom(e.settle_tap(&id, 1)), code(EscrowError::TooEarly));
@@ -1360,16 +1362,16 @@ fn a_tap_bills_at_most_its_rate_and_pays_the_seller_and_the_treasury() {
     // The fee rounds down: 4 % of 999 is 39.96, so 39 and 960.
     e.at(NOW + 150 * 60);
     e.settle_tap(&id, 999).unwrap();
-    assert_eq!(e.balance(&ata(&e.treasury.pubkey())), 60_000 + 39);
-    assert_eq!(e.balance(&ata(&e.seller.pubkey())), 1_440_000 + 960);
+    assert_eq!(e.balance(&ata(&e.treasury.pubkey())), 100_000 + 39);
+    assert_eq!(e.balance(&ata(&e.seller.pubkey())), 2_400_000 + 960);
     // And 24 units carry no fee at all.
     e.at(NOW + 151 * 60);
     e.settle_tap(&id, 24).unwrap();
-    assert_eq!(e.balance(&ata(&e.treasury.pubkey())), 60_039);
-    assert_eq!(e.balance(&ata(&e.seller.pubkey())), 1_440_984);
+    assert_eq!(e.balance(&ata(&e.treasury.pubkey())), 100_039);
+    assert_eq!(e.balance(&ata(&e.seller.pubkey())), 2_400_984);
     assert_eq!(
         e.prepaid(&e.payer.pubkey()),
-        30_000_000 - 1_500_000 - 999 - 24
+        30_000_000 - 2_500_000 - 999 - 24
     );
     // A settle of nothing on an open tap is refused.
     e.at(NOW + 152 * 60);
@@ -1380,10 +1382,10 @@ fn a_tap_bills_at_most_its_rate_and_pays_the_seller_and_the_treasury() {
 fn cap_left_unused_is_not_carried_over() {
     let mut e = Edge::new();
     let id = e.tapped(1, 30_000_000);
-    // Ten hours pass and the edge bills one unit of them.
+    // Ten hours pass and the edge bills one unit of them and the headstart.
     e.at(NOW + 10 * HOUR);
     e.settle_tap(&id, 1).unwrap();
-    // One more hour: one hour's worth, not the nine left over.
+    // One more hour: one hour's worth, not the eleven left over.
     e.at(NOW + 11 * HOUR);
     assert_eq!(
         custom(e.settle_tap(&id, RATE + 1)),
@@ -1468,20 +1470,21 @@ fn a_closed_tap_bills_only_up_to_its_close_and_returns_its_rent() {
         custom(e.close_tap(&releaser, &id)),
         code(EscrowError::TapClosed)
     );
-    // Five hours later the edge can still bill the one hour before the close.
+    // Five hours later the edge can still bill the hour before the close,
+    // and the hour of headstart.
     e.at(NOW + 5 * HOUR);
     assert_eq!(
-        custom(e.settle_tap(&id, RATE + 1)),
+        custom(e.settle_tap(&id, 2 * RATE + 1)),
         code(EscrowError::OverCap)
     );
     let before = e.lamports(&payer.pubkey());
-    e.settle_tap(&id, RATE).unwrap();
+    e.settle_tap(&id, 2 * RATE).unwrap();
     // Settled up to its close, the tap is gone and the buyer has its rent.
     assert!(e.tap(&id).is_none());
     assert_eq!(e.lamports(&tap), 0);
     assert_eq!(e.lamports(&payer.pubkey()), before + rent);
-    assert_eq!(e.balance(&ata(&e.seller.pubkey())), 960_000);
-    assert_eq!(e.balance(&ata(&e.treasury.pubkey())), 40_000);
+    assert_eq!(e.balance(&ata(&e.seller.pubkey())), 1_920_000);
+    assert_eq!(e.balance(&ata(&e.treasury.pubkey())), 80_000);
     assert_eq!(custom(e.settle_tap(&id, 1)), code(EscrowError::NoTap));
     assert_eq!(custom(e.close_tap(&payer, &id)), code(EscrowError::NoTap));
 }
@@ -1508,9 +1511,10 @@ fn a_closed_tap_partly_settled_bills_only_the_rest_of_its_time() {
 #[test]
 fn a_closed_tap_with_nothing_owed_finishes_for_free() {
     let mut e = Edge::new();
-    // Closed in the second it opened: nothing to settle, gone at once.
+    // Settled up to the second it closes: nothing left, gone at once.
     let id = e.tapped(1, 30_000_000);
     let payer = e.payer();
+    e.settle_tap(&id, RATE).unwrap();
     let tap = e.tap_of(&id);
     let rent = e.lamports(&tap);
     let before = e.lamports(&payer.pubkey());
@@ -1525,8 +1529,49 @@ fn a_closed_tap_with_nothing_owed_finishes_for_free() {
     e.close_tap(&payer, &other.id).unwrap();
     e.settle_tap(&other.id, 0).unwrap();
     assert!(e.tap(&other.id).is_none());
-    assert_eq!(e.prepaid(&payer.pubkey()), 30_000_000);
-    assert_eq!(e.balance(&ata(&e.seller.pubkey())), 0);
+    assert_eq!(e.prepaid(&payer.pubkey()), 30_000_000 - RATE);
+    assert_eq!(e.balance(&ata(&e.seller.pubkey())), 960_000);
+}
+
+#[test]
+fn the_first_hour_can_be_billed_right_after_open() {
+    let mut e = Edge::new();
+    let payer = e.payer();
+    let id = e.tapped(1, 30_000_000);
+    // No time has passed, and the hour of headstart is billable.
+    assert_eq!(
+        custom(e.settle_tap(&id, RATE + 1)),
+        code(EscrowError::OverCap)
+    );
+    e.settle_tap(&id, RATE).unwrap();
+    assert_eq!(e.tap(&id).unwrap().settled_at, NOW);
+    assert_eq!(e.balance(&ata(&e.seller.pubkey())), 960_000);
+    assert_eq!(e.balance(&ata(&e.treasury.pubkey())), 40_000);
+    assert_eq!(custom(e.settle_tap(&id, 1)), code(EscrowError::TooEarly));
+
+    // Closed in the second it opened, a tap still owes its first hour.
+    let closed = Open::new(2);
+    e.open_tap(&payer, &closed).unwrap();
+    e.close_tap(&payer, &closed.id).unwrap();
+    let t = e.tap(&closed.id).unwrap();
+    assert_eq!((t.settled_at, t.closed_at), (NOW - HEADSTART, Some(NOW)));
+    let rent = e.lamports(&e.tap_of(&closed.id));
+    e.at(NOW + 24 * HOUR);
+    assert_eq!(
+        custom(e.settle_tap(&closed.id, RATE + 1)),
+        code(EscrowError::OverCap)
+    );
+    let before = e.lamports(&payer.pubkey());
+    e.settle_tap(&closed.id, RATE).unwrap();
+    assert!(e.tap(&closed.id).is_none());
+    assert_eq!(e.lamports(&payer.pubkey()), before + rent);
+    assert_eq!(e.prepaid(&payer.pubkey()), 30_000_000 - 2 * RATE);
+
+    // The headstart never reaches before the clock's zero.
+    e.at(100);
+    let early = Open::new(3);
+    e.open_tap(&payer, &early).unwrap();
+    assert_eq!(e.tap(&early.id).unwrap().settled_at, 0);
 }
 
 #[test]

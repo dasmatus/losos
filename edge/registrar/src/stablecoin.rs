@@ -889,6 +889,76 @@ pub async fn deposit_state(
     }
 }
 
+/// A tap as `LososEscrow.taps(bytes32)` answers it: `None` when the escrow
+/// has no such tap (a zero buyer).
+#[must_use]
+pub fn decode_tap(answer: &[u8]) -> Option<Option<crate::meter::ChainTap>> {
+    let word = |i: usize| answer.get(i * 32..i * 32 + 32);
+    let key = |i: usize| -> Option<[u8; 32]> {
+        let w = word(i)?;
+        if w[..12].iter().any(|b| *b != 0) {
+            return None;
+        }
+        let mut k = [0u8; 32];
+        k.copy_from_slice(w);
+        Some(k)
+    };
+    let small = |i: usize| -> Option<u64> { u64::try_from(word_u128(answer, i)?).ok() };
+    let buyer = key(0)?;
+    if buyer == [0u8; 32] {
+        return Some(None);
+    }
+    let closed_at = small(5)?;
+    Some(Some(crate::meter::ChainTap {
+        buyer,
+        seller: key(1)?,
+        rate: small(2)?,
+        fee_bps: u32::try_from(small(3)?).ok()?,
+        settled_at: small(4)?,
+        closed_at: (closed_at > 0).then_some(closed_at),
+    }))
+}
+
+async fn escrow_call(rpc_url: &str, escrow: &str, data: &[u8]) -> Result<Vec<u8>, MarketError> {
+    let data = format!("0x{}", to_hex(data));
+    let answer = call_result(
+        rpc_url,
+        Relay::Evm,
+        "eth_call",
+        json!([{ "to": escrow, "data": data }, "latest"]),
+    )
+    .await?;
+    decode_hex(answer.as_str().unwrap_or(""))
+        .ok_or(MarketError::Conflict("the chain endpoint did not answer"))
+}
+
+/// A tap as the escrow records it, `None` when it has none by that id.
+pub async fn tap_state(
+    rpc_url: &str,
+    escrow: &str,
+    tap: [u8; 32],
+) -> Result<Option<crate::meter::ChainTap>, MarketError> {
+    let bytes = escrow_call(rpc_url, escrow, &crate::evm_tx::taps_data(tap)).await?;
+    decode_tap(&bytes).ok_or(MarketError::Conflict("the chain endpoint did not answer"))
+}
+
+/// What the escrow holds for `wallet`, and what it asked to withdraw.
+pub async fn wallet_view(
+    rpc_url: &str,
+    escrow: &str,
+    wallet: [u8; 20],
+) -> Result<crate::meter::WalletView, MarketError> {
+    let bad = || MarketError::Conflict("the chain endpoint did not answer");
+    let balance = escrow_call(rpc_url, escrow, &crate::evm_tx::balances_data(wallet)).await?;
+    let ask = escrow_call(rpc_url, escrow, &crate::evm_tx::withdrawals_data(wallet)).await?;
+    let small = |b: &[u8], i| word_u128(b, i).and_then(|v| u64::try_from(v).ok());
+    Ok(crate::meter::WalletView {
+        balance: small(&balance, 0).ok_or_else(bad)?,
+        asked: small(&ask, 0).ok_or_else(bad)?,
+        not_before: small(&ask, 1).ok_or_else(bad)?,
+    })
+}
+
 /// Whether an ENS endpoint is on the chain names are looked up on for this
 /// mode. A Sepolia endpoint behind a live edge would resolve names to
 /// addresses nobody chose for mainnet.

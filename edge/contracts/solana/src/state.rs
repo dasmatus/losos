@@ -243,8 +243,8 @@ pub struct Tap {
     pub id: [u8; 32],
     /// Base units of the mint per hour, at most.
     pub rate: u64,
-    /// Unix seconds billed up to: the time the tap opened, then the end of
-    /// the last settle.
+    /// Unix seconds billed up to: one hour (`HEADSTART`) before the tap
+    /// opened, then the end of the last settle.
     pub settled_at: i64,
     /// Unix seconds the tap closed at, `None` while it is open.
     pub closed_at: Option<i64>,

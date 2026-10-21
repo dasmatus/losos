@@ -161,6 +161,54 @@ pub fn deposits_data(deposit: u64) -> Vec<u8> {
     call_data("deposits(uint256)", deposit)
 }
 
+/// `settleTap(bytes32,uint256)`: bill `amount` base units on a tap.
+#[must_use]
+pub fn settle_tap_data(tap: [u8; 32], amount: u64) -> Vec<u8> {
+    let mut data = word_call("settleTap(bytes32,uint256)", tap);
+    let mut word = [0u8; 32];
+    word[24..].copy_from_slice(&amount.to_be_bytes());
+    data.extend_from_slice(&word);
+    data
+}
+
+/// `closeTap(bytes32)`.
+#[must_use]
+pub fn close_tap_data(tap: [u8; 32]) -> Vec<u8> {
+    word_call("closeTap(bytes32)", tap)
+}
+
+/// `taps(bytes32)`: buyer, seller, rate, feeBps, settledAt, closedAt.
+#[must_use]
+pub fn taps_data(tap: [u8; 32]) -> Vec<u8> {
+    word_call("taps(bytes32)", tap)
+}
+
+/// `balances(address)`.
+#[must_use]
+pub fn balances_data(wallet: [u8; 20]) -> Vec<u8> {
+    word_call("balances(address)", address_word(wallet))
+}
+
+/// `withdrawals(address)`: amount, notBefore.
+#[must_use]
+pub fn withdrawals_data(wallet: [u8; 20]) -> Vec<u8> {
+    word_call("withdrawals(address)", address_word(wallet))
+}
+
+/// An address as an ABI word, and as the 32-byte key [`crate::meter`] keeps.
+#[must_use]
+pub fn address_word(address: [u8; 20]) -> [u8; 32] {
+    let mut word = [0u8; 32];
+    word[12..].copy_from_slice(&address);
+    word
+}
+
+fn word_call(signature: &str, word: [u8; 32]) -> Vec<u8> {
+    let mut data = stablecoin::keccak256(signature.as_bytes())[..4].to_vec();
+    data.extend_from_slice(&word);
+    data
+}
+
 fn call_data(signature: &str, deposit: u64) -> Vec<u8> {
     let mut data = stablecoin::keccak256(signature.as_bytes())[..4].to_vec();
     let mut word = [0u8; 32];
