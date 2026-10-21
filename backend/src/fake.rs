@@ -146,9 +146,7 @@ pub struct FakeLosos {
     /// How often the status was asked for: the gate must read it on every
     /// turn-on, and a read-only command must not.
     pub edge_asked: usize,
-    // ── The sidebar's pins ──────────────────────────────────────────────
-    /// Stands in for `pins.json`.
-    pub pins: crate::pins::Pins,
+    // ── The pin picker ──────────────────────────────────────────────────
     /// Stands in for the kept LosOS cloud app password.
     pub cloud_key: Option<crate::pins::CloudKey>,
     /// LosOS cloud's next answers, in order; empty is "not answering".
@@ -327,7 +325,6 @@ impl FakeLosos {
                 None,
             ),
             edge_asked: 0,
-            pins: crate::pins::Pins::default(),
             cloud_key: None,
             cloud_answers: std::collections::VecDeque::new(),
             cloud_calls: Vec::new(),
@@ -636,15 +633,6 @@ impl Losos for FakeLosos {
 
     fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()> {
         self.public_names = Some(names.to_vec());
-        Ok(())
-    }
-
-    fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
-        Ok(self.pins.clone())
-    }
-
-    fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()> {
-        self.pins = pins.clone();
         Ok(())
     }
 
