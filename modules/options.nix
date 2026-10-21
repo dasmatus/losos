@@ -832,6 +832,42 @@ in
       '';
     };
 
+    cloud.mesh.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = config.losos.sharingMyStorage || config.losos.cluster.enable;
+      defaultText = lib.literalExpression "config.losos.sharingMyStorage || config.losos.cluster.enable";
+      description = ''
+        Let people on this box share files and folders with people on other
+        boxes, and edit text, Markdown and notes together with them live.
+        The box answers other boxes at /mesh/v1/link and dials them there.
+        On by default once the box is in a mesh.
+      '';
+    };
+
+    cloud.mesh.name = lib.mkOption {
+      type = lib.types.str;
+      default = if config.losos.proxy.enable then config.losos.proxy.hostname else "${config.losos.hostName}.local";
+      defaultText = lib.literalExpression ''if config.losos.proxy.enable then config.losos.proxy.hostname else "''${config.losos.hostName}.local"'';
+      description = ''
+        The name other boxes reach this one by, the part after the @ in
+        people's addresses here (eva@kitchenbox.local). Other boxes keep
+        this box's key under this name, so changing it later makes every
+        share with this box start over.
+      '';
+    };
+
+    cloud.mesh.selfSigned = lib.mkOption {
+      type = lib.types.bool;
+      default = !config.losos.proxy.enable;
+      defaultText = lib.literalExpression "!config.losos.proxy.enable";
+      description = ''
+        Accept another box's self-signed certificate when dialling it. Who a
+        box is rests on its own key, checked in the link's handshake, either
+        way. Turn this off when every box answers on a name with a real
+        certificate.
+      '';
+    };
+
     search.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;

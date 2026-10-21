@@ -1,10 +1,11 @@
 //! One listener for every way into the cloud.
 //!
-//! nginx sends here `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/`
-//! and `/cloud/api/` (`modules/cloud.nix`). On the box the listener is a
-//! Unix socket only nginx may open, which is what makes the person nginx
-//! names in `X-Losos-Cloud-User` believable; a TCP listener (tests, a
-//! developer's machine) believes the header only when told to.
+//! nginx sends here `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/`,
+//! `/cloud/api/` and a knowledge base's `/kb/api/` (`modules/cloud.nix`).
+//! On the box the listener is a Unix socket only nginx may open, which is
+//! what makes the person nginx names in `X-Losos-Cloud-User` believable; a
+//! TCP listener (tests, a developer's machine) believes the header only
+//! when told to.
 
 use crate::cloud::auth::{Refusal, Who, EMAIL_HEADER, NAME_HEADER, USER_HEADER};
 use crate::cloud::{api, dav, nc, Cloud};
@@ -216,6 +217,12 @@ async fn route(req: HttpRequest, body: web::Payload, state: web::Data<State>) ->
     }
     if let Some(r) = crate::cloud::share::public(&req, cloud, &method, &path) {
         return r;
+    }
+    // A knowledge base's site: open to anyone or to people signed in,
+    // which nginx says by naming them (modules/cloud.nix, /kb/api/).
+    if path.starts_with("/kb/api/") {
+        let who = identify(&state, &req).ok();
+        return crate::cloud::notes::kb::public(&req, cloud, who.as_ref(), &path).await;
     }
 
     let who = match identify(&state, &req) {

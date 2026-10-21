@@ -14,13 +14,23 @@ use actix_web::{web, HttpRequest, HttpResponse};
 
 pub fn init(store: &Store) -> Result<(), StoreError> {
     crate::cloud::share::init(store)?;
+    crate::cloud::notes::kb::init(store)?;
     Ok(())
 }
 
 /// The scopes of the later parts, mounted ahead of the catch-all handler,
 /// so a path one of them claims is theirs.
 pub fn scopes(cfg: &mut web::ServiceConfig, cloud: &std::sync::Arc<Cloud>) {
-    let _ = (cfg, cloud);
+    // Editing together once `mesh::start` ran, and sharing across boxes
+    // when the box talks to other boxes.
+    if let Some(mesh) = cloud.mesh.get() {
+        cfg.app_data(web::Data::new(mesh.clone()))
+            .service(crate::cloud::collab::routes::scope());
+        if mesh.networked {
+            cfg.service(crate::cloud::mesh::routes::scope())
+                .service(crate::cloud::mesh::routes::link_scope());
+        }
+    }
 }
 
 /// A call under `/cloud/api/` the files API did not take.
@@ -31,9 +41,10 @@ pub async fn api(
     segs: &[&str],
     body: web::Payload,
 ) -> HttpResponse {
-    let _ = body;
     let store = &cloud.store;
     match (req.method().as_str(), segs) {
+        (_, ["notes", rest @ ..]) => crate::cloud::notes::api(req, cloud, who, rest, body).await,
+        (_, ["kb", rest @ ..]) => crate::cloud::notes::kb::api(req, cloud, who, rest, body).await,
         ("GET", ["boards"]) => match crate::cloud::boards::list(store, &who.login) {
             Ok(list) => HttpResponse::Ok().json(serde_json::json!({ "boards": list })),
             Err(e) => crate::cloud::api::store_error(&e),
