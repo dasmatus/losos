@@ -15,7 +15,7 @@ pays out.
 
 | Feature                | How                                                                                                        |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Remote access**      | `https://<your-name>.<edge domain>` reaches LosOS cloud and LosOS Git through an encrypted tunnel the box opens outwards. The box never publishes the admin pages; they stay LAN-only, even through the tunnel. |
+| **Remote access**      | `https://<your-name>.<edge domain>` reaches LosOS Cloud and LosOS Git through an encrypted tunnel the box opens outwards. The box never publishes the admin pages; they stay LAN-only, even through the tunnel. |
 | **The mesh**           | The box joins a Kubernetes cluster the edge runs. Its spare disk becomes part of a shared, replicated pool; its spare CPU runs other people's work inside the hours you allow, only while the box is idle. |
 | **The market**         | You get paid for the disk and CPU you share, and you can buy some from others. Buyers pay in USDC, Bitcoin or Monero, or by card through Stripe where the edge takes cards, and the edge keeps a 4 % fee. An edge can take coins only, without card payments, so no business account with a card processor is needed to run the market. The Market pane is under Mesh in the sidebar. |
 | **Find my box**        | The edge hosts the page that finds a box on your LAN from a browser.                                        |
@@ -121,8 +121,8 @@ made from the box's identity but does not reveal it. To add a domain:
    its Stripe account, and gives away none of them.
 3. Wait. The edge looks the records up itself every half minute and marks
    each one **✓ seen** as it finds it. When both are right the domain turns
-   **Live**, the edge fetches a certificate for it, and LosOS cloud answers at
-   `https://<your domain>/nextcloud`.
+   **Live**, the edge fetches a certificate for it, and LosOS Cloud answers at
+   `https://<your domain>/cloud/`.
 
 :::note[Domains with nothing in front of them]
 A domain with nothing in front of it, such as `novak-family.eu` itself,

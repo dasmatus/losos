@@ -40,7 +40,6 @@ let
   shared = sharing true;
   unshared = sharing false;
   frontRoutes = c: builtins.attrNames c.services.nginx.virtualHosts."losos-front".locations;
-  ncRefused = c: builtins.filter (lib.hasInfix "ocm-provider") (frontRoutes c);
 
   gc = config.nix.gc;
   loader = config.boot.loader;
@@ -81,7 +80,7 @@ assert must
   )
   "lososPersistentSources does not pre-create the persisted directories by numeric id (a home as its owner with its homeMode, a plain directory as root 0755)";
 assert must (lib.elem "https://proxy.losos.dasmat.us" config.nix.settings.extra-substituters)
-  "the LosOS cache proxy is not among nix.settings.extra-substituters (${toString config.nix.settings.extra-substituters}): a fresh install then builds the 2.3 GiB Nextcloud image on the box instead of downloading it";
+  "the LosOS cache proxy is not among nix.settings.extra-substituters (${toString config.nix.settings.extra-substituters}): a fresh install then builds LosOS's own packages on the box instead of downloading them";
 assert must (lib.elem "https://losos-cache-proxy.vercel.app" config.nix.settings.extra-substituters)
   "the cache proxy's vercel.app name is not among nix.settings.extra-substituters (${toString config.nix.settings.extra-substituters}): a box whose resolver cannot see the custom domain then builds LosOS's own packages itself";
 assert must (lib.elem "https://losos.dasmat.us/proxy" config.nix.settings.extra-substituters)
@@ -92,16 +91,14 @@ assert must (lib.elem config.system.build.nixos-rebuild config.systemd.services.
   "nixos-rebuild is not on lososd's unit path: systemd-run resolves the rebuild command against the caller's PATH, so every Apply, storage-mode change and factory reset fails before the rebuild unit exists";
 assert must ((config.systemd.services.lososd.serviceConfig.ProcSubset or "all") != "pid")
   "lososd runs with ProcSubset=pid: that hides /proc/devices and /proc/mounts, lvm2's vgs exits 4 without them, and every `losos-ctl grow` (the Storage pane's Use reserve) fails at its first step";
-assert must (shared.lososInternal.federation.forgejo && shared.lososInternal.federation.nextcloud)
-  "with losos.sharingMyStorage on and both federation switches at their defaults, lososInternal.federation is not on for both services";
-assert must (lib.elem "= /.well-known/nodeinfo" (frontRoutes shared) && ncRefused shared == [ ])
-  "with disk sharing on, the front vhost lacks LosOS Git's /.well-known/nodeinfo route or still refuses LosOS cloud's federation addresses";
-assert must
-  (!unshared.lososInternal.federation.forgejo && !unshared.lososInternal.federation.nextcloud)
-  "with losos.sharingMyStorage off, lososInternal.federation still says a service federates: the shared data pool is locked and nothing may talk to other servers";
-assert must
-  (!(lib.elem "= /.well-known/nodeinfo" (frontRoutes unshared)) && ncRefused unshared != [ ])
-  "with disk sharing off, the front vhost still routes /.well-known/nodeinfo to LosOS Git or no longer refuses LosOS cloud's federation addresses";
+assert must shared.lososInternal.federation.forgejo
+  "with losos.sharingMyStorage on and the federation switch at its default, lososInternal.federation.forgejo is off";
+assert must (lib.elem "= /.well-known/nodeinfo" (frontRoutes shared))
+  "with disk sharing on, the front vhost lacks LosOS Git's /.well-known/nodeinfo route";
+assert must (!unshared.lososInternal.federation.forgejo)
+  "with losos.sharingMyStorage off, lososInternal.federation.forgejo is still on: the shared data pool is locked and nothing may talk to other servers";
+assert must (!(lib.elem "= /.well-known/nodeinfo" (frontRoutes unshared)))
+  "with disk sharing off, the front vhost still routes /.well-known/nodeinfo to LosOS Git";
 assert must (mesh.boot.kernel.sysctl."vm.overcommit_memory" == 1)
   "vm.overcommit_memory is not settled on a box that joins the mesh: rke2 and redis both define it, and a clash means a box with Join the mesh on does not build";
 assert must (lib.elem "node.longhorn.io/create-default-disk=true" mesh.services.rke2.nodeLabel)

@@ -19,7 +19,7 @@
 #   * A browser secure context, which WebAuthn requires outright ("available
 #     only in secure contexts" — MDN). Passkeys are impossible without it.
 #   * An end to two limitations docs/security-model.md currently accepts: the
-#     admin token and every Nextcloud login crossing the LAN in clear text.
+#     admin token and every LosOS Cloud login crossing the LAN in clear text.
 #
 # What it does not buy: trust. Nothing believes this certificate until the owner
 # installs it, and that step belongs to the first-run wizard. :80 therefore

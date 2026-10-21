@@ -461,12 +461,10 @@ function buildFacts({
   return {
     files: availability.seen.files,
     code: availability.seen.code,
-    mail: availability.seen.mail,
     measured: availability.measured,
     ...(settings === null
       ? {}
       : {
-          filesServedHere: servedHere(settings.nextcloudMode),
           codeServedHere: servedHere(settings.forgejoMode),
         }),
     details,
@@ -641,7 +639,6 @@ function useAvailability(settings: SettingsResponse | null): {
         const next: Availabilities = {
           files: probed.files === "unknown" ? previous.files : probed.files,
           code: probed.code === "unknown" ? previous.code : probed.code,
-          mail: probed.mail === "unknown" ? previous.mail : probed.mail,
         };
         rememberAvailability(next);
         return next;
@@ -655,18 +652,13 @@ function useAvailability(settings: SettingsResponse | null): {
     };
   }, []);
 
-  /* An app served under this box's own name rather than from this page is not
-   * something the probe can see: there is no route here to ask. Forget what
-   * was remembered about it instead of leaving a stale "present" behind, and
-   * let `filesServedHere` do the deciding. */
+  /* LosOS Git served under this box's own name rather than from this page is
+   * not something the probe can see: there is no route here to ask. Forget
+   * what was remembered about it instead of leaving a stale "present"
+   * behind, and let `codeServedHere` do the deciding. */
   React.useEffect(() => {
-    if (settings === null) return;
-    if (servedHere(settings.nextcloudMode) && servedHere(settings.forgejoMode)) return;
-    setSeen((previous) => ({
-      files: servedHere(settings.nextcloudMode) ? previous.files : "unknown",
-      code: servedHere(settings.forgejoMode) ? previous.code : "unknown",
-      mail: servedHere(settings.nextcloudMode) ? previous.mail : "unknown",
-    }));
+    if (settings === null || servedHere(settings.forgejoMode)) return;
+    setSeen((previous) => ({ ...previous, code: "unknown" }));
   }, [settings]);
 
   return { seen, measured };

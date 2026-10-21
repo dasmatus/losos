@@ -21,8 +21,8 @@ vollständig.
 | Netzwerk  | Auch von außerhalb erreichbar | `losos.proxy.enable`                              | aus                     |
 | Netzwerk  | Adresse der Edge            | `losos.proxy.registrarUrl`                          | die LosOS-Edge          |
 | Apps      | LosOS Git                   | `losos.forgejo.enable`                              | an                      |
-| Apps      | Modus (nur lesbar)          | `losos.nextcloud.mode`, `losos.forgejo.mode`        | `container`             |
-| Apps      | LosOS cloud, Einstellungen für alle | `losos.nextcloud.site.*` | wie LosOS cloud ausgeliefert wird |
+| Apps      | Modus (nur lesbar)          | `losos.forgejo.mode`                                | `container`             |
+| Apps      | LosOS Cloud, Tage im Papierkorb | `losos.cloud.trashDays`                         | 30                      |
 | Apps      | LosOS Git, Einstellungen für alle | `losos.forgejo.site.*` | wie LosOS Git ausgeliefert wird |
 | Speicher  | Reserve nutzen              | führt `losos-ctl grow` aus, und die Reserve ist `losos.storage.fillPercent` | 90 % |
 | Mesh      | Dem Mesh beitreten          | `losos.cluster.enable`                              | aus                     |
@@ -44,7 +44,6 @@ vollständig.
 | Was der nächtliche Neubau baut       | `losos.upgradeFlakeUri`            | `git+file:///etc/nixos#install`, das eigene Repository der Box |
 | Die Härtungsbasis                    | `losos.hardening.enable`           | an                                         |
 | Föderation von LosOS Git (ActivityPub) | `losos.forgejo.federation.enable` | an, solange die Festplatte geteilt wird   |
-| Föderation von LosOS cloud           | `losos.nextcloud.federation.enable` | an, solange die Festplatte geteilt wird   |
 | Der Entsperrmodus der Festplatte     | `losos.tpm.enable`                 | was der Installer vorgefunden hat          |
 | UEFI oder BIOS                       | `losos.bios`                       | was der Installer vorgefunden hat          |
 | Die Festplatten                      | `losos.targetDrives`               | was der Installer vorgefunden hat          |

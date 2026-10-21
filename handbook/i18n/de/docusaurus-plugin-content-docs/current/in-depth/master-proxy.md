@@ -248,11 +248,11 @@ Die Ansprüche liegen in `/var/lib/losos-registrar/domains.json`.
 
 Auf der Box hält lososd die live geschalteten Domains in
 `/var/lib/losos-public-names/domains.json`. Die Datei wird alle zwei Minuten
-aktualisiert und immer dann, wenn der Bereich Netzwerk danach fragt. Der
-Nextcloud-Pod bindet dieses Verzeichnis schreibgeschützt ein, fügt die Namen
-pro Anfrage zu `trusted_domains` hinzu und verwendet die Domain einer Anfrage
-für `overwritehost`, wenn sie eine davon ist. Das tut nur der Container-Modus.
-LosOS Git behält seine `ROOT_URL` mit dem Edge-Namen.
+aktualisiert und immer dann, wenn der Bereich Netzwerk danach fragt. LosOS
+Login liest sie, um dem Cookie seiner Sitzung für jeden dieser Namen eine
+Domain zu geben (`modules/identity.nix`). LosOS Cloud antwortet auf jeden
+Namen, über den eine Anfrage kam, und braucht daher keine Liste. LosOS Git
+behält seine `ROOT_URL` mit dem Edge-Namen.
 
 Auch eine Box hinter einer lokalen Edge bekommt ihre Domains geroutet, über
 diese lokale Edge, sobald sie sich mit einem Relay-Pass für die lokale Edge

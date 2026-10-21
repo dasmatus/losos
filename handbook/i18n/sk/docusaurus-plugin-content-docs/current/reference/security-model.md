@@ -63,7 +63,7 @@ stojí.
   s vypnutým Secure Boot a jeho zavádzací reťazec chráni iba fyzický prístup.
   Podrobnosti sú v [Secure Boot a podpísané médiá](../start/secure-boot).
 
-- **Jeden origin.** Admin stránky, LosOS cloud a LosOS Git zdieľajú jednu
+- **Jeden origin.** Admin stránky, LosOS Cloud a LosOS Git zdieľajú jednu
   adresu. Diera typu cross-site scripting v ktorejkoľvek aplikácii by mohla
   prečítať admin kľúč z karty, ktorá ho má. Obranou je prísna politika
   content-security na admin stránkach, ochrana iba pre LAN a aktualizované

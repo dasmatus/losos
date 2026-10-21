@@ -13,7 +13,7 @@ zuverlässig.
 
 Das Banner auf dem Bildschirm der Box zeigt `http://192.168.x.y`, die
 Adresse, die dein Router der Box gegeben hat. Jede Seite antwortet darunter:
-die Admin-Seiten unter `/`, LosOS cloud unter `/nextcloud`, LosOS Git unter
+die Admin-Seiten unter `/`, LosOS Cloud unter `/cloud/`, LosOS Git unter
 `/forgejo/`, dieses Handbuch unter `/handbook/`. Die Box zeichnet das Banner
 neu, wenn sich die Adresse ändert.
 
@@ -73,7 +73,7 @@ Seite stattdessen, wie du die Adresse eintippst.
 Standardmäßig gar nicht. Eine Box ist nur aus dem lokalen Netzwerk
 erreichbar. Die Einrichtung mit [offizieller Edge](../types/official-edge)
 gibt ihr über einen Tunnel eine öffentliche Adresse. Selbst dann bleiben die
-Admin-Seiten nur im LAN erreichbar, und nur LosOS cloud und LosOS Git gehen
+Admin-Seiten nur im LAN erreichbar, und nur LosOS Cloud und LosOS Git gehen
 durch den Tunnel nach außen.
 
 ![Einstellungen, Netzwerk: der Name, Verbindung verschlüsseln und Auch von außerhalb erreichbar, der Schalter, der den Tunnel zu einer Edge öffnet.](@site/docs/img/settings-network-de.png)

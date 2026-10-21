@@ -57,7 +57,7 @@ FreeBSD, each from its project's own download address.
 **The LosOS image is the demo disk, not the appliance.** It is the same
 `losos-disk-qcow2` the release publishes, with no disk encryption and no
 stateless root (see `nix/disk-images.nix`). It boots with UEFI and asks for
-4 GiB of memory, since it runs two clusters and LosOS cloud. The release job
+4 GiB of memory, since it runs two clusters and LosOS Cloud. The release job
 pushes it as `ghcr.io/<owner>/<repo>-demo-containerdisk:<tag>` and moves its
 `stable` tag, which the catalogue names.
 :::

@@ -48,7 +48,7 @@ löscht alles.
 ## Wenn der Platz ausgeht \{#running-out-of-room}
 
 Die Übersicht zeigt **Fast voll** und dann **Kein Platz mehr**. Eine volle
-Festplatte hindert LosOS cloud daran, Uploads anzunehmen. Schlimmer noch, sie
+Festplatte hindert LosOS Cloud daran, Uploads anzunehmen. Schlimmer noch, sie
 kann den nächtlichen Neuaufbau verhindern. [Kein Platz
 mehr](../troubleshooting/out-of-room) beschreibt die Schritte.
 
