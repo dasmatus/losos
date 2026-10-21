@@ -2,6 +2,7 @@ import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowTurnBackwardIcon,
+  CloudUploadIcon,
   Comment01Icon,
   Copy01Icon,
   Delete02Icon,
@@ -30,7 +31,8 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { callEnded, callEvent, useCalls } from "./calls";
-import { MessageBody } from "./message-body";
+import { saveAttachment, useCloud } from "./cloud";
+import { carriesFile, fileNameOf, infoOf, MessageBody, sourceOf } from "./message-body";
 import { buildItems, continues, type Item, type Message, memberName, plainBody, shownName, useEmitted } from "./model";
 
 export const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮", "😢", "🙏", "👀"] as const;
@@ -163,7 +165,11 @@ function useMoves(client: MatrixClient, room: Room, item: Message, me: string) {
   const remove = (confirmText: string): void => {
     if (window.confirm(confirmText)) void client.redactEvent(room.roomId, ev.getId() ?? "");
   };
-  return { ev, mine, canRedact, isText, live, react, remove };
+  const cloud = useCloud();
+  const file = cloud && carriesFile(item.content);
+  const save = (t: ReturnType<typeof useT>): void =>
+    void saveAttachment(client, t, { eventId: ev.getId() ?? "", source: sourceOf(item.content), mime: infoOf(item.content).mimetype, name: fileNameOf(item.content) });
+  return { ev, mine, canRedact, isText, live, react, remove, file, save };
 }
 
 function messageMenu(
@@ -172,7 +178,7 @@ function messageMenu(
   actions: RowActions,
   sender: string,
 ): MenuBuilder {
-  const { ev, mine, canRedact, isText, live, react, remove } = moves;
+  const { ev, mine, canRedact, isText, live, react, remove, file, save } = moves;
   return () => {
     if (!live) return null;
     const text = isText ? plainBody(ev.getContent()) : "";
@@ -200,6 +206,7 @@ function messageMenu(
             items: QUICK_REACTIONS.map((key) => ({ id: `react-${key}`, label: key, onSelect: () => react(key) })),
           },
           { id: "copy", label: t("menu.copy"), icon: Copy01Icon, hidden: text === "", onSelect: () => void copied() },
+          { id: "save", label: t("together.save.action"), icon: CloudUploadIcon, hidden: !file, onSelect: () => save(t) },
         ],
         [
           { id: "edit", label: t("chat.message.edit"), icon: PencilEdit01Icon, hidden: !(mine && isText), onSelect: () => actions.onEdit(ev) },

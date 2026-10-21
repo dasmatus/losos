@@ -10,7 +10,10 @@
 //!     through to the sections their groups open (`crate::sections`);
 //!   * **the spare key**, `Authorization: Bearer <token>` with the file at
 //!     `$LOSOS_ADMIN_TOKEN_FILE`. It opens everything, and nginx lets it past
-//!     Authelia so the box can still be run when Authelia cannot.
+//!     Authelia so the box can still be run when Authelia cannot;
+//!   * **the LosOS companion** in someone's AI tools, `Authorization: Bearer`
+//!     with an access token LosOS Login issued to it (`crate::companion`).
+//!     It reads a few routes as the person who approved it, and nothing more.
 //!
 //! The public routes in `backend/sections.json` take neither: health, the
 //! first-run claim and its state read, and the terminal's two routes, whose
@@ -41,6 +44,17 @@ const TOKEN_BYTES: usize = 32;
 /// Length of the hex-encoded token, and the only length this daemon accepts.
 const TOKEN_HEX_LEN: usize = TOKEN_BYTES * 2;
 
+/// Most handlers run their command on the worker's own thread, under the
+/// state lock, so a slow command (crictl, vgs, a call to the edge) holds that
+/// worker. actix starts one worker per core, a single one on a small box, and
+/// answers 408 to any request whose head it has not read within five
+/// seconds. A pane fires a dozen reads at once, so one slow command turned
+/// the rest into 408s. More workers keep the reads from queueing behind it,
+/// and a longer head timeout keeps a queued one from failing: only nginx
+/// reaches this loopback port, and it gives up on slow clients itself.
+const HTTP_WORKERS: usize = 8;
+const HEAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// Shared handler state.
 struct Api {
     backend: IoLosos,
@@ -58,6 +72,8 @@ struct Api {
     builder: crate::builder::Builder,
     /// The people Authelia signs in (`crate::people`).
     people: crate::people::People,
+    /// LosOS Login's word on companion tokens (`crate::companion`).
+    companion: crate::companion::Companion,
     /// LosOS Login's rules and second factors (`crate::login`).
     login: crate::login::Login,
     /// LosOS Login names on LosOS Cloud's share (`crate::cloud_share`).
@@ -89,13 +105,17 @@ pub(crate) enum Principal {
     /// own tunnel (`crate::edge::manager_active`). It may use the sections
     /// `sections.json` lists under `edge`, and nothing admin.
     Edge,
+    /// The LosOS companion in someone's AI tools, as the person who signed
+    /// it in: GET on `losos_access::COMPANION_ROUTES` only, and within
+    /// those what the person may read.
+    Companion(crate::people::Person),
 }
 
 impl Principal {
     fn audit_name(&self) -> &str {
         match self {
             Principal::Spare => "spare-key",
-            Principal::Person(p) => &p.name,
+            Principal::Person(p) | Principal::Companion(p) => &p.name,
             Principal::Edge => "edge",
         }
     }
@@ -104,14 +124,14 @@ impl Principal {
         match self {
             Principal::Spare => true,
             Principal::Person(p) => p.is_admin(),
-            Principal::Edge => false,
+            Principal::Edge | Principal::Companion(_) => false,
         }
     }
 
     fn person(&self) -> Option<&crate::people::Person> {
         match self {
             Principal::Spare | Principal::Edge => None,
-            Principal::Person(p) => Some(p),
+            Principal::Person(p) | Principal::Companion(p) => Some(p),
         }
     }
 }
@@ -338,6 +358,23 @@ fn identify(api: &Api, req: &HttpRequest) -> Option<Principal> {
             None => Some(Principal::Spare),
         };
     }
+    if let Some(token) = header("authorization").and_then(bearer_credentials) {
+        // nginx passes a Bearer header on without asking Authelia; a token
+        // of LosOS Login's is checked with LosOS Login, at the address the
+        // request came to, which is where it was issued.
+        if !(from_loopback
+            && api.people.headers
+            && crate::companion::Companion::is_login_token(token))
+        {
+            return None;
+        }
+        let host = header("x-forwarded-host").or_else(|| header("host"))?;
+        let grant = api.companion.check(token, host)?;
+        return match lookup(&grant.person)? {
+            Principal::Person(p) => Some(Principal::Companion(p)),
+            _ => None,
+        };
+    }
     match header("remote-user") {
         Some(name) if from_loopback && api.people.headers => lookup(name),
         _ => None,
@@ -436,6 +473,40 @@ fn guarded_at(
     mutating: bool,
     f: impl FnOnce(&Principal) -> HttpResponse,
 ) -> HttpResponse {
+    let who = match gate_at(api, req, route, pattern, mutating) {
+        Ok(who) => who,
+        Err(refused) => return *refused,
+    };
+    let resp = f(&who);
+    if mutating {
+        audit_outcome(api, req, route, &resp, &who);
+    }
+    resp
+}
+
+/// Record a mutating call's outcome by its status.
+fn audit_outcome(api: &Api, req: &HttpRequest, route: &str, resp: &HttpResponse, who: &Principal) {
+    let status = resp.status();
+    let outcome = if status.is_success() {
+        "ok"
+    } else if status.is_client_error() {
+        "rejected"
+    } else {
+        "error"
+    };
+    api.audit
+        .record_as(route, outcome, &remote_addr(req), Some(who.audit_name()));
+}
+
+/// The checks of [`guarded_at`] before the handler runs: the caller, or the
+/// answer that refuses them, audited when `mutating`.
+fn gate_at(
+    api: &Api,
+    req: &HttpRequest,
+    route: &str,
+    pattern: Option<&str>,
+    mutating: bool,
+) -> Result<Principal, Box<HttpResponse>> {
     let remote = remote_addr(req);
     let audit = |outcome: &str, who: Option<&str>| {
         if mutating {
@@ -452,7 +523,7 @@ fn guarded_at(
             actix_web::http::header::RETRY_AFTER,
             retry_after_secs(wait).to_string().parse().expect("digits"),
         );
-        return resp;
+        return Err(Box::new(resp));
     }
     let Some(who) = identify(api, req) else {
         // Authelia let someone through whom the people file no longer
@@ -466,14 +537,16 @@ fn guarded_at(
                 .is_some_and(|v| !v.is_empty())
         {
             audit("no account", None);
-            return HttpResponse::Forbidden().json(serde_json::json!({
-                "error": "your account is not on this box any more",
-                "noAccount": true,
-            }));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "your account is not on this box any more",
+                    "noAccount": true,
+                }),
+            )));
         }
         api.throttle.record_failure(&remote, Instant::now());
         audit("unauthorized", None);
-        return err(StatusCode::UNAUTHORIZED, "unauthorized");
+        return Err(Box::new(err(StatusCode::UNAUTHORIZED, "unauthorized")));
     };
     api.throttle.record_success(&remote);
     let method = req.method().as_str();
@@ -482,7 +555,22 @@ fn guarded_at(
         .or_else(|| req.match_pattern())
         .unwrap_or_else(|| req.path().to_string());
     let section = crate::sections::section(method, &pattern);
-    if let Principal::Person(person) = &who {
+    if let Principal::Companion(person) = &who {
+        let asked = match req.query_string() {
+            "" => req.path().to_string(),
+            q => format!("{}?{q}", req.path()),
+        };
+        if !losos_access::companion_route(method, &asked) {
+            audit("forbidden", Some(&person.name));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "the LosOS companion reads files, repositories and the box's health, nothing else",
+                    "section": section,
+                }),
+            )));
+        }
+    }
+    if let Principal::Person(person) | Principal::Companion(person) = &who {
         // A rule of LosOS Login holds them to their own account until they
         // comply (`crate::login`): that, and what every signed-in page
         // reads, is all they reach.
@@ -490,42 +578,36 @@ fn guarded_at(
             && !matches!(section, "account" | "signed-in" | "public")
         {
             audit("locked", Some(&person.name));
-            return HttpResponse::Forbidden().json(serde_json::json!({
-                "error": "finish what LosOS Login asks of your account first",
-                "locked": true,
-                "section": section,
-            }));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "finish what LosOS Login asks of your account first",
+                    "locked": true,
+                    "section": section,
+                }),
+            )));
         }
         let locked_to_account =
             section == "account" && person.groups.iter().any(|g| g == crate::people::LOCKED);
         if !locked_to_account && !crate::sections::allows(person, method, section) {
             audit("forbidden", Some(&person.name));
-            return HttpResponse::Forbidden().json(serde_json::json!({
-                "error": "your account cannot use this part of the box",
-                "section": section,
-            }));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "your account cannot use this part of the box",
+                    "section": section,
+                }),
+            )));
         }
     }
     if matches!(who, Principal::Edge) && !crate::sections::edge_allows(method, section) {
         audit("forbidden", Some("edge"));
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "the edge may manage only LosOS Cloud, LosOS Git and the apps on this box",
-            "section": section,
-        }));
+        return Err(Box::new(HttpResponse::Forbidden().json(
+            serde_json::json!({
+                "error": "the edge may manage only LosOS Cloud, LosOS Git and the apps on this box",
+                "section": section,
+            }),
+        )));
     }
-    let resp = f(&who);
-    let status = resp.status();
-    audit(
-        if status.is_success() {
-            "ok"
-        } else if status.is_client_error() {
-            "rejected"
-        } else {
-            "error"
-        },
-        Some(who.audit_name()),
-    );
-    resp
+    Ok(who)
 }
 
 /// The apps on the shared side that are live on this box now, by name:
@@ -566,7 +648,7 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 "sections": all(),
                 "standalone": api.people.headers,
             })),
-            Principal::Person(p) => {
+            Principal::Person(p) | Principal::Companion(p) => {
                 // What holds them now, not at their last request: a page
                 // that has just added a passkey asks again to be let go.
                 let locked = if api.people.headers {
@@ -596,8 +678,9 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                     "picture": shown["picture"],
                     "accent": shown["accent"],
                     "groups": p.groups,
-                    "admin": p.is_admin() && locked.is_empty(),
+                    "admin": who.is_admin() && locked.is_empty(),
                     "spareKey": false,
+                    "companion": matches!(who, Principal::Companion(_)),
                     "sections": sections,
                     "standalone": api.people.headers,
                     "locked": locked,
@@ -1662,8 +1745,6 @@ async fn post_chat_session(
     }
 }
 
-/// Threads for the admin API; see where the server is built.
-const HTTP_WORKERS: usize = 8;
 
 /// `GET /internal/chat/authz`: nginx's question before every request to the
 /// homeserver's client and media APIs. 200 goes on, 401 is "sign in with
@@ -2506,6 +2587,7 @@ async fn post_set_password(
         Principal::Person(p) => post_own_password(&api, p, &body),
         Principal::Spare => post_set_password_inner(&api, &body),
         Principal::Edge => err(StatusCode::FORBIDDEN, "the edge has no password here"),
+        Principal::Companion(_) => err(StatusCode::FORBIDDEN, "the LosOS companion only reads"),
     })
 }
 
@@ -3094,9 +3176,38 @@ async fn post_lab_order(api: web::Data<Api>, req: HttpRequest, body: web::Bytes)
 /// `backend/src/market.rs`. Unavailable is a 200, not a 404, because the SPA
 /// latches a 404 as "this box does not serve the route" for the whole session.
 async fn get_market(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/market", false, || {
-        run(&api, crate::losos::cmd_market)
-    })
+    relayed(&api, &req, "/api/market", false, crate::losos::cmd_market).await
+}
+
+/// A call the box relays to its edge, run on a blocking thread and outside the
+/// state lock. It only reads the box's edge status and asks the edge, and the
+/// edge can take its time (a tap confirm reads the chain): held under the lock
+/// on a request thread, it kept every other call waiting until actix gave
+/// them a 408.
+async fn relayed(
+    api: &web::Data<Api>,
+    req: &HttpRequest,
+    route: &str,
+    mutating: bool,
+    work: impl FnOnce(&mut IoLosos) -> anyhow::Result<serde_json::Value> + Send + 'static,
+) -> HttpResponse {
+    let who = match gate_at(api, req, route, None, mutating) {
+        Ok(who) => who,
+        Err(refused) => return *refused,
+    };
+    let worker = api.clone();
+    let resp = match web::block(move || work(&mut worker.backend.clone())).await {
+        Ok(Ok(v)) => HttpResponse::Ok().json(v),
+        Ok(Err(e)) => error_response(e),
+        Err(e) => {
+            tracing::error!(error = %e, "the edge call did not finish");
+            err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+        }
+    };
+    if mutating {
+        audit_outcome(api, req, route, &resp, &who);
+    }
+    resp
 }
 
 /// The `POST /api/market/*` actions. The body is parsed by hand and the 400s
@@ -3108,16 +3219,21 @@ async fn post_market(
     route: &'static str,
     build: fn(&serde_json::Value) -> Option<crate::market::Op>,
 ) -> HttpResponse {
-    guarded(&api, &req, route, true, || {
-        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
-        match build(&doc) {
-            Some(op) => run(&api, |b| crate::losos::cmd_market_op(b, &op)),
-            None => err(
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    match build(&doc) {
+        Some(op) => {
+            relayed(&api, &req, route, true, move |b| {
+                crate::losos::cmd_market_op(b, &op)
+            })
+            .await
+        }
+        None => guarded(&api, &req, route, true, || {
+            err(
                 StatusCode::BAD_REQUEST,
                 "the request body is missing a required field",
-            ),
-        }
-    })
+            )
+        }),
+    }
 }
 
 fn field_u64(doc: &serde_json::Value, key: &str) -> Option<u64> {
@@ -3267,6 +3383,36 @@ async fn post_market_coin_pay(
     .await
 }
 
+/// `POST /api/market/onramp` — `{"address","euros"}`: a Binance order for
+/// USDC on Base to this box's wallet, with Binance's checkout link.
+async fn post_market_onramp(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/onramp", |d| {
+        Some(crate::market::Op::Onramp {
+            address: field_str(d, "address")?,
+            euros: field_str(d, "euros")?,
+        })
+    })
+    .await
+}
+
+/// `POST /api/market/onramp/status` — `{"order_id"}`: where that order is.
+async fn post_market_onramp_status(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/onramp/status", |d| {
+        Some(crate::market::Op::OnrampStatus {
+            order_id: field_str(d, "order_id")?,
+        })
+    })
+    .await
+}
+
 async fn post_market_rpc(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
     post_market(api, req, body, "/api/market/rpc", |d| {
         let method = field_str(d, "method")?;
@@ -3292,11 +3438,12 @@ async fn post_market_llm_models(
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    guarded(&api, &req, "/api/market/llm/models", false, || {
-        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
-        let network = field_str(&doc, "network");
-        run(&api, |b| crate::losos::cmd_llm_models(b, network))
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let network = field_str(&doc, "network");
+    relayed(&api, &req, "/api/market/llm/models", false, move |b| {
+        crate::losos::cmd_llm_models(b, network)
     })
+    .await
 }
 
 /// A whole number of USDC base units, as a JSON number or decimal text.
@@ -4065,6 +4212,10 @@ fn plugin_caller(
         None => t::Principal::Anonymous,
         Some(Principal::Spare) => t::Principal::Spare,
         Some(Principal::Edge) => t::Principal::Edge,
+        // No plugin route is a companion route (`guarded_at` refuses it
+        // before a plugin is asked), and a plugin's own calls would run
+        // with this caller: nobody, then.
+        Some(Principal::Companion(_)) => t::Principal::Anonymous,
         Some(Principal::Person(p)) => t::Principal::Person(t::Person {
             name: p.name.clone(),
             display_name: p.display_name.clone(),
@@ -4652,6 +4803,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             port,
             builder: crate::builder::Builder::from_env(),
             people,
+            companion: crate::companion::Companion::from_env(),
             login,
             share: crate::cloud_share::Share::default(),
             chat: crate::chat::Chat::from_env(),
@@ -4801,6 +4953,11 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                     web::post().to(post_market_coin_pay),
                 )
                 .route("/api/market/rpc", web::post().to(post_market_rpc))
+                .route("/api/market/onramp", web::post().to(post_market_onramp))
+                .route(
+                    "/api/market/onramp/status",
+                    web::post().to(post_market_onramp_status),
+                )
                 .route(
                     "/api/market/llm/models",
                     web::post().to(post_market_llm_models),
@@ -4897,17 +5054,8 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 // Everything else is a plugin's, or nobody's (crate::plugin).
                 .default_service(web::route().to(plugin_route))
         })
-        // Most handlers do their work in place (files, Dendrite, Authelia,
-        // argon2), so a worker is busy for as long as one call takes, and
-        // the other connections it holds wait unread. actix answers a
-        // connection whose request head it has not read within 5 s with a
-        // 408, so a busy two-core box opening chat answered most of the
-        // page's burst, nginx's auth_request for chat included, with 408s.
-        // Only nginx on loopback talks to this server, so a slow head means
-        // a busy worker, never a slow client: more workers, and a timeout
-        // that waits for them.
         .workers(HTTP_WORKERS)
-        .client_request_timeout(std::time::Duration::from_secs(120))
+        .client_request_timeout(HEAD_TIMEOUT)
         .bind(("127.0.0.1", port))
         .with_context(|| format!("binding 127.0.0.1:{port}"))?;
         tracing::info!(port, "admin API listening on loopback");

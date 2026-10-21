@@ -76,6 +76,7 @@ import { useLocale, useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
 import { contextMenu, type MenuBuilder } from "@/lib/context-menu";
 import { PeopleField } from "@/contacts/suggest";
+import { readMailIntent, withoutMailIntent } from "@/lib/intents";
 import { cn } from "@/lib/utils";
 
 /* How often the open folder and the counts are read again. */
@@ -297,16 +298,15 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
 
   const folder = home.mailboxes.find((f) => f.id === folderId) ?? inbox;
 
-  // /mail?to=<address> (a contact's Mail button) opens a message to them.
-  // The query goes once handled, so a reload does not open it again.
+  // /mail?to=…&cc=…&subject=…&body=… (lib/intents.ts: a contact's Mail
+  // button, another app's hand-over) opens the composer filled in. The
+  // query goes once handled, so a reload does not open it again.
   React.useEffect(() => {
-    const to = new URLSearchParams(window.location.search)
-      .getAll("to")
-      .map((a) => a.trim())
-      .filter((a) => a !== "");
-    if (to.length === 0) return;
-    setDraft({ to, cc: [], subject: "", text: "" });
-    window.history.replaceState(window.history.state, "", window.location.pathname);
+    const search = new URLSearchParams(window.location.search);
+    const intent = readMailIntent(search);
+    if (intent === null) return;
+    setDraft({ to: intent.to, cc: intent.cc, subject: intent.subject, text: intent.body });
+    window.history.replaceState(window.history.state, "", window.location.pathname + withoutMailIntent(search));
   }, []);
 
   const refreshHome = React.useCallback(async () => {

@@ -83,6 +83,13 @@ Attach pictures, videos and files with the paper clip, by pasting or by
 dragging them in. In an encrypted room they are encrypted before they leave
 your browser. The microphone records a voice message.
 
+With LosOS Cloud on the box, the cloud button next to the paper clip sends
+files straight from your Cloud. A file someone sends you has a cloud button
+on its card, and **Save to LosOS Cloud** in its right-click menu: it is
+saved, decrypted, in the **Chat** folder of your Cloud, and the button then
+opens it there. From LosOS Cloud, sending a file in chat asks which
+conversation it goes to.
+
 A small row of faces under a message shows who has read up to there.
 
 ## Other Matrix apps

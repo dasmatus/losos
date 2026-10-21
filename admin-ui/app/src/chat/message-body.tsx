@@ -1,9 +1,11 @@
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Download01Icon, File01Icon, SquareLock01Icon } from "@hugeicons/core-free-icons";
+import { CloudSavingDone01Icon, CloudUploadIcon, Download01Icon, File01Icon, SquareLock01Icon } from "@hugeicons/core-free-icons";
 import { EventType, type MatrixClient, type MatrixEvent } from "matrix-js-sdk";
 import { useT } from "@/lib/i18n-react";
+import { openFileHref } from "@/lib/intents";
 import { cn } from "@/lib/utils";
+import { saveAttachment, useCloud, useSaved } from "./cloud";
 import { download, mediaUrl, type MediaSource } from "./media";
 
 /* A message's body. Only the plain `body` is drawn, never `formatted_body`:
@@ -40,14 +42,14 @@ export function RichText({ text, me }: { text: string; me: string }) {
   return <>{parts}</>;
 }
 
-function sourceOf(content: Record<string, unknown>): MediaSource {
+export function sourceOf(content: Record<string, unknown>): MediaSource {
   const source: MediaSource = {};
   if (typeof content["url"] === "string") source.url = content["url"];
   if (typeof content["file"] === "object" && content["file"] !== null) source.file = content["file"] as MediaSource["file"];
   return source;
 }
 
-function infoOf(content: Record<string, unknown>): { mimetype: string; size?: number; w?: number; h?: number; duration?: number } {
+export function infoOf(content: Record<string, unknown>): { mimetype: string; size?: number; w?: number; h?: number; duration?: number } {
   const info = (typeof content["info"] === "object" && content["info"] !== null ? content["info"] : {}) as Record<string, unknown>;
   const mimetype = typeof info["mimetype"] === "string" ? info["mimetype"] : "application/octet-stream";
   const out: { mimetype: string; size?: number; w?: number; h?: number; duration?: number } = { mimetype };
@@ -117,10 +119,23 @@ function Playable({ client, content, video }: { client: MatrixClient; content: R
   );
 }
 
-function FileCard({ client, content }: { client: MatrixClient; content: Record<string, unknown> }) {
+/** The name a file was sent under. */
+export function fileNameOf(content: Record<string, unknown>): string {
+  return typeof content["filename"] === "string" ? content["filename"] : typeof content["body"] === "string" ? content["body"] : "file";
+}
+
+/** Whether a message carries a file (a picture, video, voice or any file). */
+export function carriesFile(content: Record<string, unknown>): boolean {
+  return ["m.image", "m.video", "m.audio", "m.file"].includes(content["msgtype"] as string) && (typeof content["url"] === "string" || typeof content["file"] === "object");
+}
+
+function FileCard({ client, event, content }: { client: MatrixClient; event: MatrixEvent; content: Record<string, unknown> }) {
   const t = useT();
   const info = infoOf(content);
-  const name = typeof content["filename"] === "string" ? content["filename"] : typeof content["body"] === "string" ? content["body"] : "file";
+  const name = fileNameOf(content);
+  const cloud = useCloud();
+  const eventId = event.getId() ?? "";
+  const kept = useSaved(eventId);
   const [busy, setBusy] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
   return (
@@ -145,6 +160,27 @@ function FileCard({ client, content }: { client: MatrixClient; content: Record<s
       >
         <HugeiconsIcon icon={Download01Icon} className="size-4" />
       </button>
+      {cloud && kept !== undefined && (
+        <a
+          href={openFileHref(kept.id)}
+          aria-label={t("chat.media.openSaved", { name })}
+          title={t("chat.media.openSaved", { name })}
+          className="rounded-control p-1.5 text-accent hover:bg-sunk"
+        >
+          <HugeiconsIcon icon={CloudSavingDone01Icon} className="size-4" />
+        </a>
+      )}
+      {cloud && kept === undefined && (
+        <button
+          type="button"
+          aria-label={t("chat.media.save", { name })}
+          title={t("chat.media.save", { name })}
+          className="rounded-control p-1.5 text-muted hover:bg-sunk hover:text-ink"
+          onClick={() => void saveAttachment(client, t, { eventId, source: sourceOf(content), mime: info.mimetype, name })}
+        >
+          <HugeiconsIcon icon={CloudUploadIcon} className="size-4" />
+        </button>
+      )}
     </div>
   );
 }
@@ -183,7 +219,7 @@ export function MessageBody({ client, event, content, me, onOpenImage }: BodyPro
     case "m.audio":
       return <Playable client={client} content={content} video={false} />;
     case "m.file":
-      return <FileCard client={client} content={content} />;
+      return <FileCard client={client} event={event} content={content} />;
     case "m.emote":
       return (
         <p className="text-[14.5px] leading-relaxed break-words whitespace-pre-wrap italic">

@@ -340,6 +340,7 @@ function CallScreen({
   const [invite, setInvite] = React.useState<{ link: string | null } | null>(null);
   const session = React.useRef<CallSession | null>(null);
   const others = React.useRef(0);
+  const [deserted, setDeserted] = React.useState(false);
   const finished = React.useRef(false);
   const callbacks = React.useRef({ onEnd, onFail });
   callbacks.current = { onEnd, onFail };
@@ -379,7 +380,11 @@ function CallScreen({
             if (next === "failed") stop(new CallError(reason ?? "failed"));
           },
           members: (list, you, liveBy) => {
+            const before = others.current;
             others.current = list.filter((m) => m.pid !== you).length;
+            // Once everyone else has hung up the call is over, as on a
+            // phone; whoever is left does not sit in it alone.
+            if (before > 0 && others.current === 0) setDeserted(true);
             setMembers({ list, you, live: liveBy });
             const keep = (current: Map<number, MediaStream>): Map<number, MediaStream> =>
               new Map([...current].filter(([pid]) => list.some((m) => m.pid === pid)));
@@ -404,11 +409,17 @@ function CallScreen({
   React.useEffect(() => () => podcast?.dispose(), [podcast]);
 
   const leave = (): void => {
+    if (finished.current) return;
     finished.current = true;
     podcast?.dispose();
     session.current?.leave();
     onEnd(others.current === 0);
   };
+  const leaveRef = React.useRef(leave);
+  leaveRef.current = leave;
+  React.useEffect(() => {
+    if (deserted) leaveRef.current();
+  }, [deserted]);
 
   const toggleMic = (): void => {
     media.setMuted(!micOff);

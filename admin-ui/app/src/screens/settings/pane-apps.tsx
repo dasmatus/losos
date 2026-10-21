@@ -32,6 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useWaitGame } from "@/components/play-while-waiting";
 import { Spinner } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { t as translate, type MessageKey } from "@/lib/i18n";
@@ -226,6 +227,9 @@ export function BoxApps({
     install.start(picked.app, picked.app.chart);
   });
 
+  // Pulling an app's images can take minutes: the wait offers a game.
+  const installing = useWaitGame(records.some((record) => record.phase === "installing"));
+
   return (
     <>
 
@@ -265,6 +269,12 @@ export function BoxApps({
             )}
           </Group>
           <GroupCaption>{t("install.installedCaption")}</GroupCaption>
+          {(installing.offer !== null || installing.panel !== null) && (
+            <div className="mt-3 flex flex-col items-end gap-3">
+              {installing.offer}
+              {installing.panel !== null && <div className="w-full">{installing.panel}</div>}
+            </div>
+          )}
         </PaneSection>
       )}
 

@@ -902,6 +902,42 @@ in
       '';
     };
 
+    cloud.mesh.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = config.losos.sharingMyStorage || config.losos.cluster.enable;
+      defaultText = lib.literalExpression "config.losos.sharingMyStorage || config.losos.cluster.enable";
+      description = ''
+        Let people on this box share files and folders with people on other
+        boxes, and edit text, Markdown and notes together with them live.
+        The box answers other boxes at /mesh/v1/link and dials them there.
+        On by default once the box is in a mesh.
+      '';
+    };
+
+    cloud.mesh.name = lib.mkOption {
+      type = lib.types.str;
+      default = if config.losos.proxy.enable then config.losos.proxy.hostname else "${config.losos.hostName}.local";
+      defaultText = lib.literalExpression ''if config.losos.proxy.enable then config.losos.proxy.hostname else "''${config.losos.hostName}.local"'';
+      description = ''
+        The name other boxes reach this one by, the part after the @ in
+        people's addresses here (eva@kitchenbox.local). Other boxes keep
+        this box's key under this name, so changing it later makes every
+        share with this box start over.
+      '';
+    };
+
+    cloud.mesh.selfSigned = lib.mkOption {
+      type = lib.types.bool;
+      default = !config.losos.proxy.enable;
+      defaultText = lib.literalExpression "!config.losos.proxy.enable";
+      description = ''
+        Accept another box's self-signed certificate when dialling it. Who a
+        box is rests on its own key, checked in the link's handshake, either
+        way. Turn this off when every box answers on a name with a real
+        certificate.
+      '';
+    };
+
     search.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -2233,6 +2269,63 @@ in
         to payout addresses and send USDC to a name. Lookups only; nothing is
         paid on it. `null` leaves names off.
       '';
+    };
+
+    edge.market.usdc.binance = {
+      enable = lib.mkEnableOption ''
+        buying USDC with euros at Binance from the box's wallet. The edge
+        signs each order with its Binance Connect partner key and hands the box
+        Binance's checkout; the buyer signs in to Binance, passes its identity
+        checks and pays there, and Binance withdraws the USDC on Base to the
+        box's wallet. Needs the live `base` network in
+        `losos.edge.market.usdc.networks` and a Binance Connect partner
+        account, whose details fill the options below
+      '';
+      apiUrl = lib.mkOption {
+        type = lib.types.nullOr (
+          lib.types.strMatching "https://[^/@[:space:]]+|http://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?"
+        );
+        default = null;
+        description = ''
+          The origin of Binance Connect's API that Binance gave with the
+          partner account, `https://` and no path. Public. Plain `http` is
+          accepted only on the edge's own loopback.
+        '';
+      };
+      clientId = lib.mkOption {
+        type = lib.types.nullOr (lib.types.strMatching "[[:graph:]]+");
+        default = null;
+        description = "The partner's client id from Binance. Public.";
+      };
+      webhookPublicKeyFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        example = lib.literalExpression "./binance-webhook.pub";
+        description = ''
+          A file with Binance's RSA public key for its order notifications,
+          PEM or one base64 line, as Binance gives it. Public, so it may sit
+          in the store. A notification it did not sign is refused.
+        '';
+      };
+      keySealed = lib.mkOption {
+        type = secretPath;
+        default = "/var/secrets/losos-binance-connect-key.cred";
+        description = ''
+          The partner's RSA private key, 2048 bits or more, PEM (PKCS#8 or
+          PKCS#1), **sealed** under the credential name
+          `binance-connect-key`. Binance holds only its public half. Seal it
+          with `losos edge secret set binance-connect-key`; until then a
+          purchase answers 503.
+        '';
+      };
+      tokenSealed = lib.mkOption {
+        type = secretPath;
+        default = "/var/secrets/losos-binance-connect-token.cred";
+        description = ''
+          The partner's sign access token from Binance, **sealed** under the
+          credential name `binance-connect-token`.
+        '';
+      };
     };
 
     edge.market.bitcoin.enable = lib.mkOption {

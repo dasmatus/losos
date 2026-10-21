@@ -32,7 +32,6 @@ import { Card } from "@/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
-import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { PaneHeader } from "@/screens/settings/rows";
@@ -40,7 +39,9 @@ import { Avatar } from "./avatar";
 import { useCalls } from "./calls";
 import { chatDocument } from "./document";
 import { Composer } from "./composer";
-import { ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, openDirect, RoomSettingsDialog, StartChatDialog } from "./dialogs";
+import { failed, ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, openDirect, RoomSettingsDialog, StartChatDialog } from "./dialogs";
+import { readShare, ShareDialog } from "./cloud";
+import { linkedCall, withoutCall, withoutLink, withUserId } from "./links";
 import { directPartner, directRooms, isSpace, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
 import { RoomList } from "./room-list";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
@@ -310,32 +311,44 @@ function ChatHome({ signed }: { signed: Signed }) {
     };
   }, [client]);
 
-  // /chat/?with=@name:server, and &call=voice|video: a contact's Chat, Call
-  // and Video buttons (src/contacts/app.tsx). The direct room is opened, or
-  // made, then the call starts once calls can. The query goes once read, so
-  // a reload does not start the call again.
+  // `?with=<person>` from Contacts, Mail or Cloud opens the direct chat
+  // with that person, made if there is none yet, and `&call=voice|video`
+  // starts that call in it; `?share=<path>` from LosOS Cloud asks which
+  // conversation gets the files.
+  const navigate = useNavigate();
   const calls = useCalls();
-  const [pendingCall, setPendingCall] = React.useState<{ roomId: string; video: boolean } | null>(null);
+  const linked = React.useRef(false);
+  const ring = React.useRef<{ room: string; video: boolean } | null>(null);
+  const [share, setShare] = React.useState<{ paths: string[]; text: string } | null>(null);
   React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const partner = params.get("with");
-    if (partner === null) return;
-    const call = params.get("call");
-    window.history.replaceState(window.history.state, "", window.location.pathname + window.location.hash);
-    if (!/^@[^:\s]+:\S+$/.test(partner) || partner === me) return;
-    openDirect(client, partner)
+    if (linked.current) return;
+    linked.current = true;
+    const search = new URLSearchParams(window.location.search);
+    const raw = search.get("with");
+    const shared = readShare(search);
+    if (raw === null && shared === null) return;
+    const video = linkedCall(window.location.search);
+    navigate(withoutCall(withoutLink(window.location.href)), { replace: true });
+    if (shared !== null) setShare(shared);
+    const userId = withUserId(raw, client.getDomain() ?? "");
+    if (userId === null || userId === me) return;
+    openDirect(client, userId)
       .then((roomId) => {
+        if (video !== null) ring.current = { room: roomId, video };
         setCurrent(roomId);
-        if (call === "voice" || call === "video") setPendingCall({ roomId, video: call === "video" });
       })
-      .catch((error: unknown) => toast.status(t("chat.start.failed"), error instanceof Error ? error.message : String(error)));
-  }, [client, me, setCurrent, t]);
-  const callRoom = pendingCall !== null ? client.getRoom(pendingCall.roomId) : null;
+      .catch((error: unknown) => failed(t, error));
+  }, [client, me, navigate, setCurrent, t]);
+  // Every render: a room just made reaches the client a sync later, and
+  // calls are available once their session is up.
   React.useEffect(() => {
-    if (pendingCall === null || callRoom === null || !calls.available) return;
-    setPendingCall(null);
-    calls.start(callRoom, pendingCall.video);
-  }, [pendingCall, callRoom, calls]);
+    const want = ring.current;
+    if (want === null || !calls.available) return;
+    const linkedRoom = client.getRoom(want.room);
+    if (linkedRoom === null) return;
+    ring.current = null;
+    if (calls.active === null) calls.start(linkedRoom, want.video);
+  });
 
   const room = current !== null ? (client.getRoom(current) ?? null) : null;
   const spaceRoom = space !== null ? client.getRoom(space) : null;
@@ -451,6 +464,15 @@ function ChatHome({ signed }: { signed: Signed }) {
         space={null}
         onCreated={(id) => {
           setSpace(id);
+        }}
+      />
+      <ShareDialog
+        client={client}
+        share={share}
+        onClose={() => setShare(null)}
+        onSent={(roomId) => {
+          setShare(null);
+          setCurrent(roomId);
         }}
       />
       <StartChatDialog client={client} open={dialog === "chat"} onOpenChange={(o) => setDialog(o ? "chat" : null)} onCreated={setCurrent} />

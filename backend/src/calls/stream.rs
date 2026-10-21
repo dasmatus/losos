@@ -28,6 +28,7 @@ use actix_ws::{AggregatedMessage, Session};
 use serde::Deserialize;
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
@@ -37,6 +38,9 @@ use tokio::sync::oneshot;
 /// fraction of this; the first chunk carries the WebM header too.
 pub const MAX_CHUNK: usize = 4 * 1024 * 1024;
 const HELLO_WITHIN: Duration = Duration::from_secs(15);
+/// How far ffmpeg may fall behind the page, about three minutes of the
+/// page's recording, before the stream is given up.
+const MAX_BACKLOG: usize = 64 * 1024 * 1024;
 /// ffmpeg gets this long to flush and close the RTMP connection.
 const FLUSH_WITHIN: Duration = Duration::from_secs(10);
 
@@ -250,6 +254,25 @@ async fn pipe(
     });
     say(session, serde_json::json!({ "type": "live" })).await;
 
+    // ffmpeg's stdin is written by a task of its own, so the socket is read
+    // as fast as it arrives: a stop from the page is never stuck behind a
+    // pipe ffmpeg is slow to drain.
+    let (chunks, mut queue) = tokio::sync::mpsc::unbounded_channel::<web::Bytes>();
+    let backlog = Arc::new(AtomicUsize::new(0));
+    let mut writer = {
+        let backlog = backlog.clone();
+        actix_web::rt::spawn(async move {
+            while let Some(chunk) = queue.recv().await {
+                stdin.write_all(&chunk).await?;
+                backlog.fetch_sub(chunk.len(), Ordering::Relaxed);
+            }
+            // End of input: ffmpeg writes what it has and closes the
+            // connection.
+            drop(stdin);
+            Ok::<_, std::io::Error>(())
+        })
+    };
+
     let error = loop {
         tokio::select! {
             status = child.wait() => {
@@ -261,9 +284,14 @@ async fn pipe(
                     Err(_) => Some("streamFailed"),
                 };
             }
+            _ = &mut writer => break Some("streamFailed"),
             msg = stream.recv() => match msg {
                 Some(Ok(AggregatedMessage::Binary(chunk))) => {
-                    if stdin.write_all(&chunk).await.is_err() {
+                    if backlog.fetch_add(chunk.len(), Ordering::Relaxed) + chunk.len() > MAX_BACKLOG {
+                        tracing::warn!("ffmpeg fell {MAX_BACKLOG} bytes behind the page");
+                        break Some("streamFailed");
+                    }
+                    if chunks.send(chunk).is_err() {
                         break Some("streamFailed");
                     }
                 }
@@ -282,12 +310,18 @@ async fn pipe(
             },
         }
     };
-    // End of input: ffmpeg writes what it has and closes the connection.
-    drop(stdin);
-    if tokio::time::timeout(FLUSH_WITHIN, child.wait())
-        .await
-        .is_err()
-    {
+    // ffmpeg gets what is queued and a while to send it; whatever is left
+    // after that is dropped, so the stream ends when the page said so.
+    drop(chunks);
+    let flushed = tokio::time::timeout(FLUSH_WITHIN, async {
+        if !writer.is_finished() {
+            let _ = (&mut writer).await;
+        }
+        child.wait().await
+    })
+    .await;
+    if flushed.is_err() {
+        writer.abort();
         let _ = child.kill().await;
     }
     error

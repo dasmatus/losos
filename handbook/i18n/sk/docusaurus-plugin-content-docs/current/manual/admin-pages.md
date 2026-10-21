@@ -85,7 +85,7 @@ kláves Menu pre to, čo má práve fokus, a šípky sa ňou pohybujú.
 - **Dlaždica aplikácie alebo pripnutá položka**: otvoriť na novej karte,
   pripnúť alebo odopnúť.
 - **Súbor alebo priečinok v LosOS Cloud**: otvoriť, stiahnuť, premenovať,
-  presunúť, skopírovať, staršie verzie, hviezdička, skopírovať odkaz,
+  presunúť, skopírovať, staršie verzie, hviezdička, zdieľať, skopírovať odkaz,
   vymazať. Keď je zaškrtnutých viac súborov, ponuka pracuje so všetkými.
   Miesto okolo zoznamu ponúka nový priečinok a nahrávanie, súbor v koši
   obnovenie alebo vymazanie natrvalo.
@@ -164,6 +164,19 @@ napríklad reset zariadenia alebo použitie rezervy, namiesto toho otvorí
 dialóg. Bezpečná voľba je v ňom prvá.
 
 ![Panel nastavení so zmenou, ktorá ešte nie je použitá: lišta dole s tlačidlami Zahodiť a Použiť.](@site/docs/img/settings-apply-bar-sk.png)
+
+## Hra počas čakania \{#a-game-while-you-wait}
+
+Niektoré veci trvajú minúty: použitie zmeny, prvé spustenie LosOS Cloud,
+štart LosOS Login, inštalácia aplikácie. Kým niektorá z nich beží, tlačidlo
+**Zahrajte si, kým čakáte** vedľa priebehu otvorí pod ním malú hru, náhodne
+jednu z piatich: Proti prúdu, Úhor, Spájanie, Tehličky a Dvojice. Priebeh
+zostáva nad hrou na obrazovke. Nič sa nezačne, kým nestlačíte kláves alebo
+neťuknete, hra nemá zvuk a pozastaví sa, keď prejdete na inú kartu. Keď
+čakanie skončí, hra sa zastaví a oznámi to a **Zavrieť hru** ju odloží. Ak
+máte v systéme zapnuté obmedzenie pohybu, ponúknu sa len Spájanie a Dvojice,
+lebo v nich sa medzi ťahmi nič nehýbe. Najlepšie skóre každej hry si
+pamätá tento prehliadač.
 
 ## Téma a jazyk \{#theme-and-language}
 

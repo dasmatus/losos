@@ -245,6 +245,63 @@ async function on() {
   await second.getByRole("button", { name: "Unlock", exact: true }).click();
   await second.getByRole("log").getByText("Hi Eva, chat is up on mattbox.").waitFor();
   await shot(second, "second-device");
+
+  // Contacts, Mail and Cloud link a person as /chat/?with=<sign-in name>:
+  // Eva's link to Matus opens the conversation they already have, not a
+  // new one, and the link's parameter is gone once it has been used.
+  const room = new URL(eva.url()).hash;
+  if (!room.startsWith("#/room/")) throw new Error(`Eva is not in a room: ${eva.url()}`);
+  await eva.goto(`${ORIGIN}/`);
+  await eva.goto(`${ORIGIN}/chat/?with=matus`);
+  await eva.getByRole("textbox", { name: "Message Matus" }).waitFor();
+  await eva.getByRole("log").getByText("Hi Eva, chat is up on mattbox.").waitFor();
+  const landed = new URL(eva.url());
+  if (landed.hash !== room || landed.searchParams.has("with")) throw new Error(`?with= landed on ${eva.url()}, wanted ${room}`);
+
+  // LosOS Cloud's share sheet links /chat/?share=<path>&text=…: Matus
+  // picks the conversation, the file goes as an encrypted message and the
+  // words wait in the composer.
+  const PLAN = "Holiday plan.md";
+  const planText = "# Holiday\n\n- Tatras in July\n- Book the cabin\n";
+  const put = await owner.evaluate(
+    async ([name, body]) => (await fetch(`/cloud/api/files/content?path=${encodeURIComponent(name)}`, { method: "PUT", body })).status,
+    [PLAN, planText],
+  );
+  if (put < 200 || put >= 300) throw new Error(`could not put ${PLAN} into LosOS Cloud: ${put}`);
+  await owner.goto(`${ORIGIN}/chat/?share=${encodeURIComponent(PLAN)}&text=${encodeURIComponent("The plan is in the file.")}`);
+  const sendTo = owner.getByRole("dialog", { name: "Send 1 file" });
+  await sendTo.getByRole("button", { name: /Eva/ }).first().waitFor();
+  await film(owner, "share-from-cloud", `${HOST}/chat/`, "a file shared from LosOS Cloud: pick the conversation", "click", { eva: sendTo.getByRole("button", { name: /Eva/ }).first() });
+  await shot(owner, "share-from-cloud");
+  await sendTo.getByRole("button", { name: /Eva/ }).first().click();
+  const draft = owner.getByRole("textbox", { name: "Message Eva" });
+  await owner.waitForFunction(() => document.querySelector('textarea[aria-label="Message Eva"]')?.value === "The plan is in the file.");
+  if (new URL(owner.url()).searchParams.has("share")) throw new Error(`the share link stayed: ${owner.url()}`);
+  await draft.press("Enter");
+  await eva.getByRole("log").getByText(PLAN).first().waitFor();
+  await eva.getByRole("log").getByText("The plan is in the file.").waitFor();
+
+  // Eva keeps the file: it lands in the Chat folder of her LosOS Cloud,
+  // decrypted, and the card turns into a link that opens it there.
+  await eva.getByRole("button", { name: `Save ${PLAN} to LosOS Cloud` }).last().click();
+  await eva.getByRole("link", { name: `Open ${PLAN} from LosOS Cloud` }).last().waitFor();
+  const kept = await eva.evaluate(async (name) => {
+    const list = await (await fetch("/cloud/api/files?path=Chat")).json();
+    const entry = list.entries.find((e) => e.name === name);
+    return entry === undefined ? null : await (await fetch(`/cloud/api/files/content?path=${encodeURIComponent(entry.path)}`)).text();
+  }, PLAN);
+  if (kept !== planText) throw new Error(`Eva's LosOS Cloud has ${JSON.stringify(kept)}, wanted the plan`);
+  await film(eva, "saved-to-cloud", `${HOST}/chat/`, "a file from chat kept in LosOS Cloud", "click", { open: eva.getByRole("link", { name: `Open ${PLAN} from LosOS Cloud` }).last() });
+  await shot(eva, "saved-to-cloud");
+
+  // And from the composer: Attach from LosOS Cloud.
+  await owner.getByRole("button", { name: "Attach from LosOS Cloud" }).click();
+  const picker = owner.locator("[data-slot=cloud-picker]");
+  await picker.locator(`[data-entry="${PLAN}"]`).click();
+  await film(owner, "attach-from-cloud", `${HOST}/chat/`, "attach from LosOS Cloud in the composer", "click", { send: picker.locator("[data-action=pick]") });
+  await shot(owner, "attach-from-cloud");
+  await picker.locator("[data-action=pick]").click();
+  await eva.waitForFunction((name) => [...document.querySelectorAll('[role="log"] p')].filter((p) => p.textContent === name).length >= 2, PLAN);
 }
 
 try {

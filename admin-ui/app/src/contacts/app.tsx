@@ -65,6 +65,7 @@ import {
   type ContactsImport,
 } from "@/lib/api";
 import { useLocale, useT } from "@/lib/i18n-react";
+import { chatWithHref, composeMailHref } from "@/lib/intents";
 import { contextMenu, type MenuBuilder, type MenuItem } from "@/lib/context-menu";
 import { cn } from "@/lib/utils";
 import { ContactEditor, labelText } from "./editor";
@@ -138,24 +139,6 @@ function matches(s: Someone, q: string): boolean {
 function letterOf(name: string): string {
   const first = folded(name).charAt(0).toUpperCase();
   return /[A-Z]/.test(first) ? first : "#";
-}
-
-/** Where a person is reached. A chat or a call is a real navigation: LosOS
- *  Chat is a document of its own at /chat/ under its own policy. */
-export function chatHref(matrixId: string, call?: "voice" | "video"): string {
-  const params = new URLSearchParams({ with: matrixId });
-  if (call !== undefined) params.set("call", call);
-  return `/chat/?${params.toString()}`;
-}
-
-/** A card in LosOS Contacts: a contact by its ID, or someone on this box by
- *  their sign-in name. */
-export function contactHref(card: { id: string } | { person: string }): string {
-  return "id" in card ? `/contacts?id=${encodeURIComponent(card.id)}` : `/contacts?person=${encodeURIComponent(card.person)}`;
-}
-
-export function mailHref(address: string): string {
-  return `/mail?${new URLSearchParams({ to: address }).toString()}`;
 }
 
 function download(url: string): void {
@@ -314,10 +297,12 @@ function Book({ contacts, onContacts }: { contacts: Contact[]; onContacts: (cont
     const email = emailsOf(s)[0];
     const matrix = matrixOf(s);
     return {
-      mail: email !== undefined && sharedApp("mail") ? () => navigate(mailHref(email)) : undefined,
-      chat: matrix !== null ? () => window.location.assign(chatHref(matrix)) : undefined,
-      call: matrix !== null ? () => window.location.assign(chatHref(matrix, "voice")) : undefined,
-      video: matrix !== null ? () => window.location.assign(chatHref(matrix, "video")) : undefined,
+      mail: email !== undefined && sharedApp("mail") ? () => navigate(composeMailHref({ to: [email] })) : undefined,
+      // A chat or a call is a real navigation: LosOS Chat is a document of
+      // its own at /chat/ under its own policy.
+      chat: matrix !== null ? () => window.location.assign(chatWithHref(matrix)) : undefined,
+      call: matrix !== null ? () => window.location.assign(chatWithHref(matrix, { call: "voice" })) : undefined,
+      video: matrix !== null ? () => window.location.assign(chatWithHref(matrix, { call: "video" })) : undefined,
     };
   };
 

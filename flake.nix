@@ -443,6 +443,7 @@
         losos-edge-market = import ./nix/tests/market-vm.nix { inherit pkgs; };
         losos-edge-dns = import ./nix/tests/edge-dns.nix { inherit pkgs; };
         losos-box-wallet-name = import ./nix/tests/box-wallet-name.nix { inherit pkgs; };
+        losos-binance-onramp = import ./nix/tests/binance-onramp.nix { inherit pkgs; };
         losos-ds-render = import ./nix/tests/design-system.nix { inherit pkgs; };
         losos-front-vhost = import ./nix/tests/front-vhost.nix { inherit pkgs; };
         losos-impermanence = import ./nix/tests/impermanence.nix { inherit pkgs impermanence; };
@@ -452,6 +453,9 @@
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
         losos-tour = import ./nix/tests/tour.nix { inherit pkgs; };
+        # The game a long wait offers, played during a real wizard wait and a
+        # real rebuild, with the pull request's pictures (nix/tests/wait-game.nix).
+        losos-wait-game = import ./nix/tests/wait-game.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
         losos-chat = import ./nix/tests/chat.nix { inherit pkgs; };
         # LosOS Contacts: books kept in Matrix, vCard in and out, and the
@@ -468,6 +472,7 @@
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
         losos-design = import ./nix/tests/design.nix { inherit pkgs; };
+        losos-agents = import ./nix/tests/agents.nix { inherit pkgs; };
         # The banner a box off the mesh shows over every page, both states
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
@@ -482,6 +487,12 @@
         # The right-click menu on the admin page and in LosOS Cloud, with
         # the pull request's pictures (nix/tests/context-menu.nix).
         losos-context-menu = import ./nix/tests/context-menu.nix { inherit pkgs; };
+        # Notes on a kitchen garden vault, and the folder published as a
+        # knowledge base, on and off the mesh (nix/tests/notes.nix).
+        losos-notes = import ./nix/tests/notes.nix { inherit pkgs; };
+        # Two boxes sharing a note and editing it together, apart and
+        # together again (nix/tests/mesh-collab.nix).
+        losos-mesh-collab = import ./nix/tests/mesh-collab.nix { inherit pkgs; };
         # Apps run as notshared on rootless Podman, with no cluster: the
         # box's own, one in the LosOS app format and a chart from the
         # search (nix/tests/podman-apps.nix).
@@ -515,6 +526,10 @@
         # `shared`, its memory cap, the lend file, the loopback owner rule
         # and the `:llm` tunnel service (nix/tests/inference-lend.nix).
         losos-inference-lend = import ./nix/tests/inference-lend.nix { inherit pkgs; };
+        # The whole pay-as-you-go story on a local chain: two lending boxes,
+        # a USDC escrow, a quote, a paid chat, the settle split, and the
+        # refusals (nix/tests/inference-payg.nix).
+        losos-inference-payg = import ./nix/tests/inference-payg.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
         # The real Forgejo with losos.forgejo.federation on, asked what another
         # server would ask, in both deployment modes; then off, and gone
