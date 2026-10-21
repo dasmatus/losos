@@ -449,7 +449,7 @@ pkgs.testers.nixosTest {
     def screens(*args):
         if SCREENS:
             quoted = " ".join("'" + a + "'" for a in args)
-            print(laptop.succeed(f"MAIL_SCREENS_PASSWORD='{PASSWORD}' mail-screens {quoted}"))
+            print(laptop.succeed(f"MAIL_SCREENS_PASSWORD='{PASSWORD}' mail-screens {quoted}", timeout=3600))
 
     with subtest("sharing on but in no mesh is not the shared side"):
         box.succeed("/run/current-system/specialisation/alone/bin/switch-to-configuration test")

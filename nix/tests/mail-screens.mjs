@@ -87,7 +87,9 @@ async function target(locator) {
 async function shot(page, file, title, action = { kind: 'none' }, targets = {}) {
   await settle(page);
   mkdirSync(OUT, { recursive: true });
-  await page.screenshot({ path: `${OUT}/${file}` });
+  // A modal's blurred backdrop at device scale 2 is slow to paint in a
+  // software-rendered VM, so the default 30 s is not always enough.
+  await page.screenshot({ path: `${OUT}/${file}`, timeout: 300_000 });
   const url = page.url().replace('https://', '').replace(':443', '');
   appendFileSync(`${OUT}/steps.jsonl`, JSON.stringify({ file, url, title, action, targets }) + '\n');
   console.log('shot', file);
