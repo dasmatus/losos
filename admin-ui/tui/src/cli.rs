@@ -97,6 +97,32 @@ pub enum Command {
         #[command(subcommand)]
         command: GitCommand,
     },
+    Agents {
+        #[command(subcommand)]
+        command: Option<AgentsCommand>,
+    },
+    Mcp,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AgentsCommand {
+    List,
+    Install {
+        #[arg(value_name = "TOOL")]
+        tools: Vec<String>,
+        #[arg(short, long)]
+        yes: bool,
+    },
+    Remove {
+        #[arg(value_name = "TOOL")]
+        tools: Vec<String>,
+        #[arg(short, long)]
+        yes: bool,
+    },
+    /// One line for the installer: the AI tools found, when the companion
+    /// is in none of them yet.
+    #[command(hide = true)]
+    Hint,
 }
 
 #[derive(Debug, Subcommand)]
@@ -204,6 +230,11 @@ const ABOUT: &[(&[&str], &str)] = &[
     (&["cloud", "setup"], "tui.help.cmd.cloudSetup"),
     (&["git"], "tui.help.cmd.git"),
     (&["git", "setup"], "tui.help.cmd.gitSetup"),
+    (&["agents"], "tui.help.cmd.agents"),
+    (&["agents", "list"], "tui.help.cmd.agentsList"),
+    (&["agents", "install"], "tui.help.cmd.agentsInstall"),
+    (&["agents", "remove"], "tui.help.cmd.agentsRemove"),
+    (&["mcp"], "tui.help.cmd.mcp"),
 ];
 
 /// Every argument's id and the catalogue key of its help.
@@ -229,6 +260,8 @@ const ARGS: &[(&str, &str)] = &[
     ("repo", "tui.help.opt.repo"),
     ("print", "tui.help.opt.print"),
     ("device", "tui.help.opt.device"),
+    ("tools", "tui.help.arg.tools"),
+    ("yes", "tui.help.opt.yes"),
 ];
 
 /// An argument whose help differs in one command from the table above.
@@ -420,6 +453,17 @@ mod tests {
                 command: GitCommand::Credential { .. }
             })
         ));
+        let cli = parse(&args(&["agents", "install", "codex", "zed", "--yes"])).unwrap();
+        assert!(
+            matches!(cli.command, Some(Command::Agents { command: Some(AgentsCommand::Install { ref tools, yes: true }) }) if tools == &["codex", "zed"])
+        );
+        let cli = parse(&args(&["agents"])).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Command::Agents { command: None })
+        ));
+        let cli = parse(&args(&["mcp", "--host", "box.local"])).unwrap();
+        assert!(matches!(cli.command, Some(Command::Mcp)));
         assert!(parse(&args(&["edge", "escrow", "releaser", "--new", "--replace"])).is_err());
         assert!(parse(&args(&["key", "import"])).is_err());
     }

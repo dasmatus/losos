@@ -15,7 +15,7 @@ use pgp::crypto::hash::HashAlgorithm;
 use pgp::crypto::sym::SymmetricKeyAlgorithm;
 use pgp::types::{KeyDetails, Password, SigningKey};
 
-use crate::envelope::{read_limited, Answer, Request};
+use crate::envelope::{read_limited, Answer, Delegation, Request, DELEGATION_KIND};
 use crate::keys::{encryption_subkeys, KeyError, SeededKey};
 
 /// Why a key cannot be the owner's key.
@@ -245,6 +245,37 @@ pub fn seal_call(
         .map_err(|e| KeyError::Pgp(format!("sealing: {e}")))
 }
 
+/// The owner's word for a companion key (`companion_public`, armoured):
+/// a [`Delegation`] for the server whose key fingerprint is `host` and the
+/// token whose id is `token_id`, signed by `owner` and not encrypted. The
+/// companion sends it with every request it signs.
+pub fn delegate(
+    owner: &Unlocked,
+    companion_public: &str,
+    host: &str,
+    token_id: &str,
+    now: i64,
+) -> Result<String, KeyError> {
+    let delegation = Delegation {
+        v: 1,
+        kind: DELEGATION_KIND.to_string(),
+        key: companion_public.to_string(),
+        host: host.to_ascii_uppercase(),
+        token: token_id.to_ascii_lowercase(),
+        created: now,
+    };
+    let bytes = serde_json::to_vec(&delegation).map_err(|e| KeyError::Pgp(e.to_string()))?;
+    let mut builder = MessageBuilder::from_bytes("", bytes);
+    builder.sign(
+        owner.key.signing_key(),
+        owner.password(),
+        HashAlgorithm::Sha256,
+    );
+    builder
+        .to_armored_string(rand::thread_rng(), ArmorOptions::default())
+        .map_err(|e| KeyError::Pgp(format!("signing the delegation: {e}")))
+}
+
 /// Why an answer was not believed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AnswerError {
@@ -291,7 +322,7 @@ pub fn open_call(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{open, seal, HostKey, Keyring, Replay};
+    use crate::{open, seal, HostKey, Keyring, Refusal, Replay};
 
     fn request(host: &str, now: i64) -> Request {
         Request {
@@ -303,6 +334,7 @@ mod tests {
             ts: now,
             nonce: "0123456789abcdef0123456789abcdef".into(),
             body: serde_json::Value::Null,
+            delegation: None,
         }
     }
 
@@ -398,6 +430,217 @@ mod tests {
                 .unwrap()
                 .status,
             204
+        );
+    }
+
+    /// The box, the owner's seeded key and a companion key the owner
+    /// vouches for, as `losos agents install` leaves them.
+    struct Companion {
+        host: HostKey,
+        ring: Keyring,
+        owner: Unlocked,
+        companion: Unlocked,
+        companion_public: String,
+        server: SeededKey,
+    }
+
+    fn companion() -> Companion {
+        let host = HostKey::generate("LosOS box test").unwrap();
+        let owner_key = HostKey::generate("Owner <owner@example.com>").unwrap();
+        let ring = Keyring::parse(owner_key.armored_public()).unwrap();
+        let owner = UserKey::from_armored(&owner_key.armored_secret().unwrap())
+            .unwrap()
+            .unlock("")
+            .unwrap();
+        let made = HostKey::generate("LosOS companion on laptop").unwrap();
+        let companion = UserKey::from_armored(&made.armored_secret().unwrap())
+            .unwrap()
+            .unlock("")
+            .unwrap();
+        Companion {
+            server: SeededKey::from_armored(host.armored_public()).unwrap(),
+            host,
+            ring,
+            owner,
+            companion,
+            companion_public: made.armored_public().to_string(),
+        }
+    }
+
+    fn delegated_request(c: &Companion, delegation: String, now: i64) -> Request {
+        let mut r = request(c.host.fingerprint(), now);
+        r.nonce = hex::encode(rand::random::<[u8; 16]>());
+        r.delegation = Some(delegation);
+        r
+    }
+
+    #[test]
+    fn a_companion_signs_for_its_owner_and_reads_its_answers() {
+        let c = companion();
+        let now = crate::now_secs();
+        let word = delegate(
+            &c.owner,
+            &c.companion_public,
+            c.host.fingerprint(),
+            "0A1B2C3D",
+            now,
+        )
+        .unwrap();
+        let sealed = seal_call(&c.companion, &c.server, &delegated_request(&c, word, now)).unwrap();
+        let opened = open(&c.host, &c.ring, sealed.as_bytes(), &Replay::default(), now).unwrap();
+        assert_eq!(opened.signer.fingerprint, c.companion.key().fingerprint());
+        let d = opened
+            .delegated
+            .expect("a companion's request is delegated");
+        assert_eq!(d.owner.fingerprint, c.owner.key().fingerprint());
+        assert_eq!(d.token_id, "0a1b2c3d");
+
+        let answer = seal(
+            &c.host,
+            &opened.signer,
+            &opened.request.nonce,
+            200,
+            serde_json::json!(1),
+        )
+        .unwrap();
+        assert_eq!(
+            open_call(&c.companion, &c.server, answer.as_bytes())
+                .unwrap()
+                .body,
+            serde_json::json!(1)
+        );
+        // Sealed to the companion, so the owner's own key cannot read it.
+        assert!(open_call(&c.owner, &c.server, answer.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn a_delegation_from_a_key_that_was_not_seeded_is_refused() {
+        let c = companion();
+        let now = crate::now_secs();
+        let stranger = UserKey::from_armored(
+            &HostKey::generate("Stranger")
+                .unwrap()
+                .armored_secret()
+                .unwrap(),
+        )
+        .unwrap()
+        .unlock("")
+        .unwrap();
+        let word = delegate(
+            &stranger,
+            &c.companion_public,
+            c.host.fingerprint(),
+            "0a1b2c3d",
+            now,
+        )
+        .unwrap();
+        let sealed = seal_call(&c.companion, &c.server, &delegated_request(&c, word, now)).unwrap();
+        assert_eq!(
+            open(&c.host, &c.ring, sealed.as_bytes(), &Replay::default(), now).unwrap_err(),
+            Refusal::Unsigned
+        );
+    }
+
+    #[test]
+    fn a_delegation_for_another_box_or_another_key_is_refused() {
+        let c = companion();
+        let now = crate::now_secs();
+        let elsewhere = HostKey::generate("Another box").unwrap();
+        let word = delegate(
+            &c.owner,
+            &c.companion_public,
+            elsewhere.fingerprint(),
+            "0a1b2c3d",
+            now,
+        )
+        .unwrap();
+        let sealed = seal_call(&c.companion, &c.server, &delegated_request(&c, word, now)).unwrap();
+        assert_eq!(
+            open(&c.host, &c.ring, sealed.as_bytes(), &Replay::default(), now).unwrap_err(),
+            Refusal::WrongHost
+        );
+
+        // A good delegation, but the request is signed by some other key.
+        let word = delegate(
+            &c.owner,
+            &c.companion_public,
+            c.host.fingerprint(),
+            "0a1b2c3d",
+            now,
+        )
+        .unwrap();
+        let thief = UserKey::from_armored(
+            &HostKey::generate("Thief")
+                .unwrap()
+                .armored_secret()
+                .unwrap(),
+        )
+        .unwrap()
+        .unlock("")
+        .unwrap();
+        let sealed = seal_call(&thief, &c.server, &delegated_request(&c, word, now)).unwrap();
+        assert_eq!(
+            open(&c.host, &c.ring, sealed.as_bytes(), &Replay::default(), now).unwrap_err(),
+            Refusal::Unsigned
+        );
+    }
+
+    #[test]
+    fn a_seeded_key_does_not_carry_a_delegation_and_noise_is_not_one() {
+        let c = companion();
+        let now = crate::now_secs();
+        let word = delegate(
+            &c.owner,
+            &c.companion_public,
+            c.host.fingerprint(),
+            "0a1b2c3d",
+            now,
+        )
+        .unwrap();
+        let sealed = seal_call(&c.owner, &c.server, &delegated_request(&c, word, now)).unwrap();
+        assert!(matches!(
+            open(&c.host, &c.ring, sealed.as_bytes(), &Replay::default(), now).unwrap_err(),
+            Refusal::Malformed(_)
+        ));
+        let sealed = seal_call(
+            &c.companion,
+            &c.server,
+            &delegated_request(&c, "not a delegation".into(), now),
+        )
+        .unwrap();
+        assert_eq!(
+            open(&c.host, &c.ring, sealed.as_bytes(), &Replay::default(), now).unwrap_err(),
+            Refusal::Unsigned
+        );
+    }
+
+    #[test]
+    fn a_key_under_a_passphrase_delegates_once_and_the_companion_needs_none() {
+        let host = HostKey::generate("LosOS box test").unwrap();
+        let owner = UserKey::from_armored(&protected("correct horse")).unwrap();
+        let ring = Keyring::parse(&owner.armored_public().unwrap()).unwrap();
+        let owner = owner.unlock("correct horse").unwrap();
+        let made = HostKey::generate("LosOS companion").unwrap();
+        let companion = UserKey::from_armored(&made.armored_secret().unwrap()).unwrap();
+        assert!(!companion.needs_passphrase());
+        let companion = companion.unlock("").unwrap();
+        let server = SeededKey::from_armored(host.armored_public()).unwrap();
+        let now = crate::now_secs();
+        let word = delegate(
+            &owner,
+            made.armored_public(),
+            host.fingerprint(),
+            "0a1b2c3d",
+            now,
+        )
+        .unwrap();
+        let mut r = request(host.fingerprint(), now);
+        r.delegation = Some(word);
+        let sealed = seal_call(&companion, &server, &r).unwrap();
+        let opened = open(&host, &ring, sealed.as_bytes(), &Replay::default(), now).unwrap();
+        assert_eq!(
+            opened.delegated.unwrap().owner.fingerprint,
+            owner.key().fingerprint()
         );
     }
 

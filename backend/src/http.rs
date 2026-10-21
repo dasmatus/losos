@@ -3764,7 +3764,7 @@ async fn post_access_token(
             Err(_) => {
                 return err(
                     StatusCode::BAD_REQUEST,
-                    r#"body must be JSON: {"name", "fingerprint", "scope": "read"|"full", "expiresInDays": number|null}"#,
+                    r#"body must be JSON: {"name", "fingerprint", "scope": "read"|"full"|"agent", "expiresInDays": number|null}"#,
                 )
             }
         };

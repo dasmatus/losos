@@ -28,15 +28,39 @@ pub enum Scope {
     Read,
     /// Everything a token may reach.
     Full,
+    /// For the AI agent companion (`losos mcp`): GET only, and only the
+    /// routes in [`AGENT_ROUTES`]. A companion key works with no other.
+    Agent,
 }
 
 impl Scope {
     pub fn allows(self, method: &str) -> bool {
         match self {
             Scope::Full => true,
-            Scope::Read => method.eq_ignore_ascii_case("GET"),
+            Scope::Read | Scope::Agent => method.eq_ignore_ascii_case("GET"),
         }
     }
+}
+
+/// Every route an [`Scope::Agent`] token reaches on a box, all of them
+/// reads: who the token acts as, the box's health, and the owner's files
+/// and repositories. Matched exactly, with any query string. A route an AI
+/// tool should reach is added here and to the companion's own tool table
+/// (`admin-ui/tui/src/agents/mcp.rs`), whose test holds the two together.
+pub const AGENT_ROUTES: &[&str] = &[
+    "/api/me",
+    "/api/status",
+    "/api/cloud/files",
+    "/api/cloud/text",
+    "/api/git/repos",
+    "/api/git/text",
+];
+
+/// Is `path` (with its query string) one of [`AGENT_ROUTES`]? The same
+/// shape checks as [`path_allowed`] come first.
+pub fn agent_route(path: &str) -> bool {
+    let route = path.split('?').next().unwrap_or(path);
+    path_allowed(path, &["/api/"], &[]) && AGENT_ROUTES.contains(&route)
 }
 
 /// One token as stored.
@@ -421,5 +445,22 @@ mod tests {
         assert!(!ok("/api//access"));
         assert!(!ok("/api/state #"));
         assert!(ok("/api/accessibility"));
+    }
+
+    #[test]
+    fn an_agent_token_reads_its_few_routes_and_nothing_else() {
+        assert!(Scope::Agent.allows("GET"));
+        assert!(!Scope::Agent.allows("POST"));
+        assert!(!Scope::Agent.allows("DELETE"));
+        assert!(agent_route("/api/cloud/files?path=/Documents"));
+        assert!(agent_route("/api/git/text?q=fn%20main"));
+        assert!(agent_route("/api/me"));
+        assert!(!agent_route("/api/state"));
+        assert!(!agent_route("/api/cloud/files/../../access/tokens"));
+        assert!(!agent_route("/api/cloud/filesx"));
+        assert!(!agent_route("/api/cloud/files/more"));
+        assert!(!agent_route("/api/access"));
+        assert!(!agent_route("/api/me #"));
+        assert_eq!(serde_json::to_string(&Scope::Agent).unwrap(), "\"agent\"");
     }
 }

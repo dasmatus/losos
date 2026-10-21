@@ -39,14 +39,55 @@ pub struct Request {
     pub nonce: String,
     #[serde(default)]
     pub body: serde_json::Value,
+    /// A request signed by a companion key carries the seeded key's word for
+    /// it: an armoured [`Delegation`], signed by that seeded key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delegation: Option<String>,
+}
+
+/// What the `kind` of a [`Delegation`] says.
+pub const DELEGATION_KIND: &str = "losos-companion";
+
+/// A seeded key's word that another key may sign for it, made once by the
+/// client when the owner sets up the AI agent companion (`losos agents
+/// install`) and sent with every request the companion signs. It names the
+/// one server and the one token it is good for, and the server lets the
+/// companion use no token but an [`Scope::Agent`](crate::Scope::Agent) one.
+/// So an AI tool can call the box with no passphrase typed, and the key it
+/// holds reaches what that token reaches and nothing more. Nothing is added
+/// to the server: only a holder of the seeded secret key can make one.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Delegation {
+    pub v: u32,
+    pub kind: String,
+    /// The companion's armoured public key.
+    pub key: String,
+    /// The server's key fingerprint, as in [`Request::host`].
+    pub host: String,
+    /// The id of the token the companion holds (`losos_pat_<id>_…`).
+    pub token: String,
+    pub created: i64,
+}
+
+/// The seeded key a companion signs for, when it does.
+#[derive(Debug, Clone)]
+pub struct Delegated {
+    /// The seeded key that made the delegation, which the token is bound to.
+    pub owner: SeededKey,
+    /// The token id the delegation names.
+    pub token_id: String,
 }
 
 /// A request that decrypted, verified and is fresh.
 #[derive(Debug)]
 pub struct Opened {
-    /// The seeded key that signed it.
+    /// The key that signed it, and that the answer is sealed to: a seeded
+    /// key, or the companion key of a [`Delegation`].
     pub signer: SeededKey,
     pub request: Request,
+    /// Set when the signer is a companion key; the caller checks the token
+    /// against [`Delegated::owner`] and refuses anything but an agent token.
+    pub delegated: Option<Delegated>,
 }
 
 /// Why a request was turned away before anyone it could be sealed to was
@@ -67,10 +108,12 @@ pub enum Refusal {
     Replayed,
     #[error("the access token is not valid for this key")]
     Token,
-    #[error("this token is read only")]
+    #[error("this token cannot change anything")]
     Scope,
     #[error("a terminal token cannot reach this path")]
     Path,
+    #[error("a companion key works only with the AI agents token it was made for")]
+    NotForAgents,
 }
 
 impl Refusal {
@@ -79,7 +122,7 @@ impl Refusal {
         match self {
             Refusal::NotForThisHost | Refusal::Malformed(_) | Refusal::WrongHost => 400,
             Refusal::Unsigned | Refusal::Stale | Refusal::Token => 401,
-            Refusal::Scope | Refusal::Path => 403,
+            Refusal::Scope | Refusal::Path | Refusal::NotForAgents => 403,
             Refusal::Replayed => 409,
         }
     }
@@ -144,15 +187,49 @@ pub fn open(
         return Err(Refusal::Unsigned);
     }
     let plaintext = read_limited(&mut msg)?;
-    let signer = ring
+    let seeded = ring
         .keys()
         .iter()
         .find(|k| k.verifiers().into_iter().any(|v| msg.verify(v).is_ok()))
-        .ok_or(Refusal::Unsigned)?
-        .clone();
+        .cloned();
 
-    let request: Request =
-        serde_json::from_slice(&plaintext).map_err(|e| Refusal::Malformed(e.to_string()))?;
+    let (signer, delegated, request) = match seeded {
+        Some(signer) => {
+            let request: Request = serde_json::from_slice(&plaintext)
+                .map_err(|e| Refusal::Malformed(e.to_string()))?;
+            if request.delegation.is_some() {
+                return Err(Refusal::Malformed(
+                    "a seeded key signs for itself, with no delegation".into(),
+                ));
+            }
+            (signer, None, request)
+        }
+        None => {
+            // Anyone else gets this far only with a seeded key's word for
+            // them; until it checks out the plaintext is nobody's.
+            let request: Request =
+                serde_json::from_slice(&plaintext).map_err(|_| Refusal::Unsigned)?;
+            let armored = request.delegation.as_deref().ok_or(Refusal::Unsigned)?;
+            let (owner, delegation) = open_delegation(ring, armored)?;
+            if !delegation.host.eq_ignore_ascii_case(host.fingerprint()) {
+                return Err(Refusal::WrongHost);
+            }
+            let companion =
+                SeededKey::from_armored(&delegation.key).map_err(|_| Refusal::Unsigned)?;
+            if !companion
+                .verifiers()
+                .into_iter()
+                .any(|v| msg.verify(v).is_ok())
+            {
+                return Err(Refusal::Unsigned);
+            }
+            let delegated = Delegated {
+                owner,
+                token_id: delegation.token,
+            };
+            (companion, Some(delegated), request)
+        }
+    };
     if request.v != 1 {
         return Err(Refusal::Malformed(format!("version {}", request.v)));
     }
@@ -168,7 +245,41 @@ pub fn open(
         ));
     }
     replay.admit(&request.nonce.to_ascii_lowercase(), now)?;
-    Ok(Opened { signer, request })
+    Ok(Opened {
+        signer,
+        request,
+        delegated,
+    })
+}
+
+/// Check a [`Delegation`]: signed, not encrypted, by a key in `ring`.
+fn open_delegation(ring: &Keyring, armored: &str) -> Result<(SeededKey, Delegation), Refusal> {
+    let (msg, _) = Message::from_armor(armored.as_bytes()).map_err(|_| Refusal::Unsigned)?;
+    if msg.is_encrypted() {
+        return Err(Refusal::Unsigned);
+    }
+    let mut msg = msg;
+    if msg.is_compressed() {
+        msg = msg.decompress().map_err(|_| Refusal::Unsigned)?;
+    }
+    if !msg.is_signed() {
+        return Err(Refusal::Unsigned);
+    }
+    let plaintext = read_limited(&mut msg)?;
+    let owner = ring
+        .keys()
+        .iter()
+        .find(|k| k.verifiers().into_iter().any(|v| msg.verify(v).is_ok()))
+        .ok_or(Refusal::Unsigned)?
+        .clone();
+    let delegation: Delegation = serde_json::from_slice(&plaintext)
+        .map_err(|e| Refusal::Malformed(format!("the delegation: {e}")))?;
+    if delegation.v != 1 || delegation.kind != DELEGATION_KIND {
+        return Err(Refusal::Malformed(
+            "the delegation is not a companion's".into(),
+        ));
+    }
+    Ok((owner, delegation))
 }
 
 /// The answer's plaintext.
@@ -294,6 +405,7 @@ mod tests {
             ts: now,
             nonce: nonce.into(),
             body: serde_json::Value::Null,
+            delegation: None,
         }
     }
 

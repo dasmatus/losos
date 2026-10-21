@@ -1331,4 +1331,260 @@ messages! {
         sk: "Prístup tohto počítača zrušíte vymazaním „LosOS on {device}“ v časti Aplikácie v nastaveniach LosOS Git.",
         de: "Um diesem Computer den Zugang zu nehmen, lösche „LosOS on {device}“ unter Anwendungen in den Einstellungen von LosOS Git.",
     },
+    // ── AI agent tools ──────────────────────────────────────────────────────
+    "tui.help.cmd.agents" => {
+        en: "Find the AI tools on this computer and give them your LosOS files",
+        sk: "Nájsť nástroje AI na tomto počítači a sprístupniť im vaše súbory v LosOS",
+        de: "Die KI-Werkzeuge auf diesem Computer finden und ihnen deine LosOS-Dateien geben",
+    },
+    "tui.help.cmd.agentsList" => {
+        en: "List the AI tools found and whether the LosOS companion is in them",
+        sk: "Vypísať nájdené nástroje AI a či je v nich sprievodca LosOS",
+        de: "Die gefundenen KI-Werkzeuge auflisten und ob der LosOS-Begleiter in ihnen ist",
+    },
+    "tui.help.cmd.agentsInstall" => {
+        en: "Put the LosOS companion in the AI tools, asking about each one",
+        sk: "Pridať sprievodcu LosOS do nástrojov AI, pri každom sa spýta",
+        de: "Den LosOS-Begleiter in die KI-Werkzeuge einbauen, mit einer Frage zu jedem",
+    },
+    "tui.help.cmd.agentsRemove" => {
+        en: "Take the LosOS companion out of the AI tools again",
+        sk: "Odstrániť sprievodcu LosOS z nástrojov AI",
+        de: "Den LosOS-Begleiter wieder aus den KI-Werkzeugen entfernen",
+    },
+    "tui.help.cmd.mcp" => {
+        en: "Serve the companion's read-only tools over MCP on stdin and stdout, as an AI tool starts it",
+        sk: "Poskytovať nástroje sprievodcu len na čítanie cez MCP na stdin a stdout, ako ho spúšťa nástroj AI",
+        de: "Die lesenden Werkzeuge des Begleiters per MCP auf stdin und stdout anbieten, so wie ein KI-Werkzeug ihn startet",
+    },
+    "tui.help.arg.tools" => {
+        en: "Which tools, by id (losos agents lists them); none means every one found",
+        sk: "Ktoré nástroje, podľa id (vypíše ich losos agents); bez neho všetky nájdené",
+        de: "Welche Werkzeuge, nach ID (losos agents listet sie); ohne alle gefundenen",
+    },
+    "tui.help.opt.yes" => {
+        en: "Do it for every tool without asking",
+        sk: "Urobiť to pre každý nástroj bez pýtania",
+        de: "Es für jedes Werkzeug ohne Nachfrage tun",
+    },
+    "tui.agents.yesNo" => {
+        en: "y/N",
+        sk: "a/N",
+        de: "j/N",
+    },
+    "tui.agents.yesWords" => {
+        en: "y,yes",
+        sk: "a,áno",
+        de: "j,ja",
+    },
+    "tui.agents.kindCli" => {
+        en: "terminal",
+        sk: "terminál",
+        de: "Terminal",
+    },
+    "tui.agents.kindApp" => {
+        en: "app",
+        sk: "aplikácia",
+        de: "App",
+    },
+    "tui.agents.found" => {
+        en: "AI tools on this computer:",
+        sk: "Nástroje AI na tomto počítači:",
+        de: "KI-Werkzeuge auf diesem Computer:",
+    },
+    "tui.agents.noneFound" => {
+        en: "No AI tool LosOS knows was found on this computer.",
+        sk: "Na tomto počítači sa nenašiel žiadny nástroj AI, ktorý LosOS pozná.",
+        de: "Auf diesem Computer wurde kein KI-Werkzeug gefunden, das LosOS kennt.",
+    },
+    "tui.agents.looksFor" => {
+        en: "LosOS looks for {tools}.",
+        sk: "LosOS hľadá {tools}.",
+        de: "LosOS sucht nach {tools}.",
+    },
+    "tui.agents.stateIn" => {
+        en: "companion in",
+        sk: "sprievodca pridaný",
+        de: "Begleiter drin",
+    },
+    "tui.agents.stateOut" => {
+        en: "not yet",
+        sk: "zatiaľ nie",
+        de: "noch nicht",
+    },
+    "tui.agents.stateNoProgram" => {
+        en: "needs the {program} program on PATH",
+        sk: "potrebuje program {program} v PATH",
+        de: "braucht das Programm {program} im PATH",
+    },
+    "tui.agents.companionFor" => {
+        en: "The companion reads {url}.",
+        sk: "Sprievodca číta {url}.",
+        de: "Der Begleiter liest {url}.",
+    },
+    "tui.agents.installHint" => {
+        en: "Run losos agents install to give them your files and repositories on your box.",
+        sk: "Spustite losos agents install a sprístupnite im súbory a repozitáre na vašom zariadení.",
+        de: "Führe losos agents install aus, um ihnen deine Dateien und Repositories auf deiner Box zu geben.",
+    },
+    "tui.agents.hint" => {
+        en: "AI tools found on this computer: {tools}. To let them read your LosOS files, run: losos agents install",
+        sk: "Na tomto počítači sú nástroje AI: {tools}. Aby mohli čítať vaše súbory v LosOS, spustite: losos agents install",
+        de: "KI-Werkzeuge auf diesem Computer: {tools}. Damit sie deine LosOS-Dateien lesen können, führe aus: losos agents install",
+    },
+    "tui.agents.unknownTool" => {
+        en: "LosOS does not know a tool called {tool}.",
+        sk: "LosOS nepozná nástroj s názvom {tool}.",
+        de: "LosOS kennt kein Werkzeug namens {tool}.",
+    },
+    "tui.agents.knownTools" => {
+        en: "The tools it knows: {tools}",
+        sk: "Nástroje, ktoré pozná: {tools}",
+        de: "Die Werkzeuge, die es kennt: {tools}",
+    },
+    "tui.agents.notBox" => {
+        en: "{url} is an edge. The companion reads a box.",
+        sk: "{url} je edge. Sprievodca číta zariadenie.",
+        de: "{url} ist eine Edge. Der Begleiter liest eine Box.",
+    },
+    "tui.agents.skipNoProgram" => {
+        en: "{tool} is skipped: its {program} program is not on PATH.",
+        sk: "{tool} sa preskakuje: jeho program {program} nie je v PATH.",
+        de: "{tool} wird übersprungen: sein Programm {program} ist nicht im PATH.",
+    },
+    "tui.agents.ask" => {
+        en: "Put the LosOS companion in {tool}?",
+        sk: "Pridať sprievodcu LosOS do {tool}?",
+        de: "Den LosOS-Begleiter in {tool} einbauen?",
+    },
+    "tui.agents.askAgain" => {
+        en: "The LosOS companion is in {tool} already. Put it in again?",
+        sk: "Sprievodca LosOS už je v {tool}. Pridať ho znova?",
+        de: "Der LosOS-Begleiter ist schon in {tool}. Erneut einbauen?",
+    },
+    "tui.agents.askRemove" => {
+        en: "Take the LosOS companion out of {tool}?",
+        sk: "Odstrániť sprievodcu LosOS z {tool}?",
+        de: "Den LosOS-Begleiter aus {tool} entfernen?",
+    },
+    "tui.agents.nothingChanged" => {
+        en: "Nothing was changed.",
+        sk: "Nič sa nezmenilo.",
+        de: "Nichts wurde geändert.",
+    },
+    "tui.agents.reusing" => {
+        en: "Using the companion's key and token for {url} that this computer already keeps.",
+        sk: "Používa sa kľúč a token sprievodcu pre {url}, ktoré už tento počítač má.",
+        de: "Schlüssel und Token des Begleiters für {url}, die dieser Computer schon hat, werden verwendet.",
+    },
+    "tui.agents.needToken" => {
+        en: "The companion needs a token of its own for {url}. In the web UI, open Settings, Access tokens, and make one with the AI agents scope.",
+        sk: "Sprievodca potrebuje vlastný token pre {url}. Vo webovom rozhraní otvorte Nastavenia, Prístupové tokeny, a vytvorte token s rozsahom Agenti AI.",
+        de: "Der Begleiter braucht ein eigenes Token für {url}. Öffne in der Weboberfläche Einstellungen, Zugriffstokens, und erstelle eines mit dem Bereich KI-Agenten.",
+    },
+    "tui.agents.tokenPrompt" => {
+        en: "AI agents token: ",
+        sk: "Token pre agentov AI: ",
+        de: "Token für KI-Agenten: ",
+    },
+    "tui.agents.badToken" => {
+        en: "That is not an access token. One looks like losos_pat_ followed by two groups of hex.",
+        sk: "To nie je prístupový token. Token vyzerá ako losos_pat_ a za ním dve skupiny šestnástkových znakov.",
+        de: "Das ist kein Zugriffstoken. Eines sieht aus wie losos_pat_, gefolgt von zwei Hex-Gruppen.",
+    },
+    "tui.agents.tokenRefused" => {
+        en: "The box refused the companion: {detail}",
+        sk: "Zariadenie sprievodcu odmietlo: {detail}",
+        de: "Die Box hat den Begleiter abgelehnt: {detail}",
+    },
+    "tui.agents.tokenHelp" => {
+        en: "Make the token with the AI agents scope. A read or full token does not work for the companion, on purpose.",
+        sk: "Vytvorte token s rozsahom Agenti AI. Token na čítanie ani úplný token pre sprievodcu zámerne nefunguje.",
+        de: "Erstelle das Token mit dem Bereich KI-Agenten. Ein Lese- oder Vollzugriffstoken funktioniert für den Begleiter absichtlich nicht.",
+    },
+    "tui.agents.keychainLabel" => {
+        en: "LosOS companion for {url}",
+        sk: "Sprievodca LosOS pre {url}",
+        de: "LosOS-Begleiter für {url}",
+    },
+    "tui.agents.installed" => {
+        en: "The LosOS companion is in {tool}.",
+        sk: "Sprievodca LosOS je v {tool}.",
+        de: "Der LosOS-Begleiter ist in {tool}.",
+    },
+    "tui.agents.removed" => {
+        en: "The LosOS companion is out of {tool}.",
+        sk: "Sprievodca LosOS je odstránený z {tool}.",
+        de: "Der LosOS-Begleiter ist aus {tool} entfernt.",
+    },
+    "tui.agents.backedUp" => {
+        en: "  The file as it was is kept at {path}",
+        sk: "  Pôvodný súbor je uložený v {path}",
+        de: "  Die Datei, wie sie war, liegt unter {path}",
+    },
+    "tui.agents.restart" => {
+        en: "Restart a tool that was open so it starts the companion.",
+        sk: "Nástroj, ktorý bol otvorený, reštartujte, aby spustil sprievodcu.",
+        de: "Starte ein Werkzeug, das offen war, neu, damit es den Begleiter startet.",
+    },
+    "tui.agents.removeHint" => {
+        en: "losos agents remove takes it out again.",
+        sk: "losos agents remove ho znova odstráni.",
+        de: "losos agents remove entfernt ihn wieder.",
+    },
+    "tui.agents.forgot" => {
+        en: "This computer no longer keeps the companion's key and token for {url}.",
+        sk: "Tento počítač už nemá kľúč ani token sprievodcu pre {url}.",
+        de: "Dieser Computer hat Schlüssel und Token des Begleiters für {url} nicht mehr.",
+    },
+    "tui.agents.revoke" => {
+        en: "Revoke the AI agents token under Settings, Access tokens, too.",
+        sk: "Zrušte aj token pre agentov AI v časti Nastavenia, Prístupové tokeny.",
+        de: "Widerrufe auch das Token für KI-Agenten unter Einstellungen, Zugriffstokens.",
+    },
+    "tui.agents.noCompanion" => {
+        en: "This computer keeps no LosOS companion for {url}.",
+        sk: "Tento počítač nemá sprievodcu LosOS pre {url}.",
+        de: "Dieser Computer hat keinen LosOS-Begleiter für {url}.",
+    },
+    "tui.agents.noCompanionHelp" => {
+        en: "Run losos agents install in a terminal to set it up.",
+        sk: "Nastavíte ho príkazom losos agents install v termináli.",
+        de: "Richte ihn mit losos agents install in einem Terminal ein.",
+    },
+    "tui.agents.noHome" => {
+        en: "HOME is not set, so the AI tools' settings cannot be found.",
+        sk: "HOME nie je nastavené, takže nastavenia nástrojov AI sa nedajú nájsť.",
+        de: "HOME ist nicht gesetzt, also sind die Einstellungen der KI-Werkzeuge nicht zu finden.",
+    },
+    "tui.agents.noProgram" => {
+        en: "{tool} takes the companion through its own {program} program, which is not on PATH.",
+        sk: "{tool} pridáva sprievodcu vlastným programom {program}, ktorý nie je v PATH.",
+        de: "{tool} baut den Begleiter mit seinem eigenen Programm {program} ein, das nicht im PATH ist.",
+    },
+    "tui.agents.couldNotRun" => {
+        en: "{program} could not be started: {detail}",
+        sk: "{program} sa nepodarilo spustiť: {detail}",
+        de: "{program} konnte nicht gestartet werden: {detail}",
+    },
+    "tui.agents.toolFailed" => {
+        en: "{command} ended with exit status {code}: {detail}",
+        sk: "{command} skončil s návratovým kódom {code}: {detail}",
+        de: "{command} endete mit dem Status {code}: {detail}",
+    },
+    "tui.agents.couldNotWrite" => {
+        en: "{path} could not be written: {detail}",
+        sk: "{path} sa nepodarilo zapísať: {detail}",
+        de: "{path} konnte nicht geschrieben werden: {detail}",
+    },
+    "tui.agents.couldNotRead" => {
+        en: "{path} could not be read, so it was left as it is: {detail}",
+        sk: "{path} sa nepodarilo prečítať, preto zostal bez zmeny: {detail}",
+        de: "{path} konnte nicht gelesen werden und bleibt deshalb unverändert: {detail}",
+    },
+    "tui.agents.notOurs" => {
+        en: "{tool} already has an MCP server called losos that LosOS did not write, in {path}. It was left as it is.",
+        sk: "{tool} už má MCP server s názvom losos, ktorý nezapísal LosOS, v {path}. Zostal bez zmeny.",
+        de: "{tool} hat in {path} schon einen MCP-Server namens losos, den nicht LosOS geschrieben hat. Er bleibt unverändert.",
+    },
 }
