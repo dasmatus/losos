@@ -119,6 +119,11 @@ let
       # works because modules/defaults.nix wires the real package with
       # lib.mkDefault — at normal priority this was a conflict, not an opt-out.
       backend.package = null;
+      # LosOS Login is modules/identity.nix, not imported here: its routes,
+      # and the sign-in headers it hands /forgejo/, are nix/tests/identity.nix
+      # and nix/tests/app-sign-in.nix. Left on, containers.nix would pass a
+      # header from a map nothing defines and nginx would refuse to start.
+      identity.enable = false;
     };
 
     virtualisation = {
