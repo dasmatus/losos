@@ -77,7 +77,7 @@ walkdir = "2"
 # Password hashes for the people file Authelia signs people in against
 # (src/people.rs): argon2id in PHC form, the format Authelia reads. Already
 # in the lock file through the access crate.
-argon2 = "0.5"
+argon2 = "0.6"
 # Live editing in LosOS cloud (src/cloud/collab/): yrs is the Rust port of
 # Yjs, the CRDT the editor runs in the browser, and speaks its binary
 # format and sync protocol. similar diffs a file written outside the editor
