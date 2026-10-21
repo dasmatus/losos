@@ -1,0 +1,17 @@
+[package]
+name = "losos-plugin"
+description = "Write a lososd plugin: the host's imports as plain Rust, and the export macro"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+wit-bindgen = { version = "0.63", default-features = false, features = ["macros", "realloc", "std"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
