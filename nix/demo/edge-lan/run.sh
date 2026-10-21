@@ -149,9 +149,9 @@ edge_up() {
     export LOSOS_LAN_SOCK="$state/lan.sock"
     export LOSOS_EDGE_API_PORT="$edge_api_port"
     export LOSOS_EDGE_HTTPS_PORT="$edge_https_port"
-    local extra=""
-    have_kvm || extra="-accel tcg,thread=multi"
-    export QEMU_OPTS="-qmp unix:$state/edge.qmp,server,nowait $extra"
+    # No -accel here: the run script already asks for accel=kvm:tcg, and
+    # QEMU refuses the two spellings together.
+    export QEMU_OPTS="-qmp unix:$state/edge.qmp,server,nowait"
     PATH="$(in_tools sh -c 'echo $PATH')" \
       nohup "$state/edge-vm/bin/run-edge-vm" </dev/null >"$state/edge.log" 2>&1 &
     echo $! >"$state/edge.pid"
@@ -417,7 +417,7 @@ cmd_join() {
 name_of() { printf "box\\$(printf %o $((96 + $1)))"; }
 
 through() { # through NAME PATH: status line and body of a request via the edge
-  in_tools curl -sk --max-time 15 -w '\n%{http_code}' \
+  in_tools curl --noproxy '*' -sk --max-time 15 -w '\n%{http_code}' \
     --resolve "$1.losos.cfd:$edge_https_port:127.0.0.1" "https://$1.losos.cfd:$edge_https_port$2"
 }
 
