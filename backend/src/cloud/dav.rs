@@ -157,14 +157,19 @@ fn strip<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
 
 /// The path part of a `Destination` header, which may be a full URL.
 pub fn destination_path(dest: &str) -> Option<&str> {
-    if let Some(i) = dest.find("://") {
+    let path = if let Some(i) = dest.find("://") {
         let after = &dest[i + 3..];
-        Some(after.find('/').map(|j| &after[j..]).unwrap_or("/"))
+        after.find('/').map(|j| &after[j..]).unwrap_or("/")
     } else if dest.starts_with('/') {
-        Some(dest)
+        dest
     } else {
-        None
-    }
+        return None;
+    };
+    // An app set up against Nextcloud's old address keeps sending it.
+    Some(match path.strip_prefix(crate::cloud::server::OLD_PREFIX) {
+        Some(rest) if rest.starts_with("/remote.php/") => rest,
+        _ => path,
+    })
 }
 
 /// A lock a client holds.

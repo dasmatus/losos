@@ -50,6 +50,107 @@ let
     proxy_set_header ${signIn.header.email} $losos_person_email;
   '';
 
+  # Where Nextcloud kept everything, on every box that ran it in either
+  # mode (it was modules/nextcloud-stack.nix's layout): the files under
+  # data/<login>/files, its config.php, and its database in the box's
+  # Postgres. The move below reads them once and leaves them in place.
+  ncData = "/var/lib/nextcloud/data/data";
+  ncConfig = "/var/lib/nextcloud/data/config/config.php";
+  marker = "${stateDir}/.from-nextcloud";
+  report = "${stateDir}/from-nextcloud.json";
+
+  # The Postgres Nextcloud's database was made with: what nixpkgs gives
+  # stateVersion 26.11. Checked against the data's PG_VERSION before use.
+  pg =
+    if config.services.postgresql.enable then
+      config.services.postgresql.package
+    else
+      pkgs.postgresql_18;
+
+  # The tables the move reads: every row of each, as JSON.
+  ncTables = [
+    "users"
+    "calendars"
+    "calendarobjects"
+    "calendarsubscriptions"
+    "addressbooks"
+    "cards"
+    "authtoken"
+    "files_trash"
+    "deck_boards"
+    "deck_stacks"
+    "deck_cards"
+    "deck_labels"
+    "deck_assigned_labels"
+    "deck_assigned_users"
+    "deck_board_acl"
+  ];
+
+  fromNextcloud = pkgs.writeShellScript "losos-cloud-from-nextcloud" ''
+    set -euo pipefail
+    work=$(mktemp -d /var/lib/losos-cloud-import.XXXXXX)
+    chmod 0711 "$work"
+    started=
+    cleanup() {
+      if [ -n "$started" ]; then
+        runuser -u postgres -- pg_ctl -D "$work/pg" -m fast -w stop >/dev/null || true
+      fi
+      rm -rf "$work"
+    }
+    trap cleanup EXIT
+    mkdir -p "$work/dump" ${stateDir}
+    chmod 0700 ${stateDir}
+
+    # Nextcloud's database: the running server if there is one, else a
+    # private copy of its data folder on a private socket. Never the
+    # original files, which stay as they are.
+    sock=
+    if [ -S /run/postgresql/.s.PGSQL.5432 ]; then
+      sock=/run/postgresql
+    else
+      for v in /var/lib/postgresql/*/PG_VERSION; do
+        [ -e "$v" ] || continue
+        data=$(dirname "$v")
+        major=$(cat "$v")
+        if [ "$major" != "${lib.versions.major pg.version}" ]; then
+          echo "losos-cloud: Nextcloud's database is Postgres $major, this box has ${pg.version}; not moving it" >&2
+          exit 1
+        fi
+        cp -a "$data" "$work/pg"
+        rm -f "$work/pg/postmaster.pid"
+        rm -f "$work/pg/postgresql.conf"
+        : > "$work/pg/postgresql.conf"
+        printf 'local all all trust\n' > "$work/pg/pg_hba.conf"
+        mkdir -p "$work/sock"
+        chown -R postgres "$work/pg" "$work/sock"
+        runuser -u postgres -- pg_ctl -D "$work/pg" -w -l "$work/pg.log" \
+          -o "-c listen_addresses= -c unix_socket_directories=$work/sock -c hba_file=$work/pg/pg_hba.conf" start
+        started=1
+        sock="$work/sock"
+        break
+      done
+    fi
+
+    if [ -n "$sock" ] && runuser -u postgres -- psql -h "$sock" -XAtq -l | cut -d'|' -f1 | grep -qx nextcloud; then
+      q() { runuser -u postgres -- psql -h "$sock" -d nextcloud -XAtq -v ON_ERROR_STOP=1 -c "$1"; }
+      for t in ${lib.concatStringsSep " " ncTables}; do
+        if [ "$(q "select to_regclass('oc_$t') is not null")" = t ]; then
+          q "select coalesce(json_agg(row_to_json(x)), '[]') from oc_$t x" > "$work/dump/$t.json"
+        fi
+      done
+      if [ "$(q "select to_regclass('oc_comments') is not null")" = t ]; then
+        q "select coalesce(json_agg(row_to_json(x)), '[]') from oc_comments x where object_type = 'deckCard'" > "$work/dump/comments.json"
+      fi
+    else
+      echo "losos-cloud: no Nextcloud database found; moving the files only" >&2
+    fi
+
+    ${pkg}/bin/losos-cloud --root ${stateDir} import \
+      --from ${ncData} --dump "$work/dump" --config ${ncConfig} --report ${report}
+    chown -R losos-cloud:losos-cloud ${stateDir}
+    touch ${marker}
+  '';
+
   # Uploads of any size, streamed, and sync runs that take all day.
   files = ''
     client_max_body_size 0;
@@ -69,6 +170,44 @@ in
     };
     # nginx opens the socket.
     users.users.${config.services.nginx.user}.extraGroups = [ "losos-cloud" ];
+
+    # Once, on the first boot without Nextcloud: everything it held comes
+    # into LosOS Cloud before LosOS Cloud starts. Should it fail, the cloud
+    # does not start on an empty folder, and the next boot or rebuild tries
+    # again; nothing of Nextcloud's is deleted either way.
+    systemd.services.losos-cloud-from-nextcloud = {
+      description = "Move Nextcloud's files, calendars, contacts and boards into LosOS Cloud";
+      requiredBy = [ "losos-cloud.service" ];
+      before = [ "losos-cloud.service" ];
+      after = [
+        "local-fs.target"
+        "postgresql.service"
+      ];
+      unitConfig.ConditionPathExists = [
+        ncData
+        "!${marker}"
+      ];
+      path = [
+        pg
+        pkgs.coreutils
+        pkgs.gnugrep
+        pkgs.util-linux
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = fromNextcloud;
+        UMask = "0077";
+      };
+    };
+    users.users.postgres = lib.mkIf (!config.services.postgresql.enable) {
+      isSystemUser = true;
+      group = "postgres";
+      uid = config.ids.uids.postgres;
+    };
+    users.groups.postgres = lib.mkIf (!config.services.postgresql.enable) {
+      gid = config.ids.gids.postgres;
+    };
 
     systemd.services.losos-cloud = {
       description = "LosOS Cloud";
@@ -143,6 +282,23 @@ in
           ${files}
         '';
       };
+      # Where Nextcloud answered: the desktop and phone apps set up against
+      # it keep their address. The prefix comes off here and the service
+      # puts it back on the hrefs it answers with.
+      "^~ /nextcloud/" = {
+        proxyPass = upstream;
+        extraConfig = ''
+          rewrite ^/nextcloud(/.*)$ $1 break;
+          ${passSignIn "/internal/losos-cloud-share"}
+          proxy_set_header Authorization $losos_share_authorization;
+          proxy_set_header X-Losos-Cloud-Prefix /nextcloud;
+          ${files}
+        '';
+      };
+      "= /nextcloud".return = "301 /cloud/";
+      # Calendar and contacts apps look here first (RFC 6764).
+      "= /.well-known/caldav".return = "301 /remote.php/dav/";
+      "= /.well-known/carddav".return = "301 /remote.php/dav/";
       # The pre-paint theme script the page loads, outside the LAN guard
       # of `/` for the same reason as /assets/ (modules/containers.nix).
       "= /theme-boot.js" = { };

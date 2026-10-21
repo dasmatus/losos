@@ -113,7 +113,46 @@ fn unauthorized(req: &HttpRequest, refusal: Refusal) -> HttpResponse {
     r
 }
 
+/// Where Nextcloud used to answer on the box. nginx strips it and says so in
+/// [`PREFIX_HEADER`], so an app set up against the old address keeps
+/// working: the hrefs it gets back carry the prefix it sent.
+pub const OLD_PREFIX: &str = "/nextcloud";
+pub const PREFIX_HEADER: &str = "x-losos-cloud-prefix";
+
 async fn handle(req: HttpRequest, body: web::Payload, state: web::Data<State>) -> HttpResponse {
+    let prefixed = state.trust_header && header_value(&req, PREFIX_HEADER) == Some(OLD_PREFIX);
+    let resp = route(req, body, state).await;
+    if prefixed {
+        with_old_prefix(resp).await
+    } else {
+        resp
+    }
+}
+
+/// Put the old prefix in front of every href of a multistatus.
+async fn with_old_prefix(resp: HttpResponse) -> HttpResponse {
+    let xml = resp
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("xml"));
+    if !xml {
+        return resp;
+    }
+    let (head, body) = resp.into_parts();
+    let Ok(bytes) = actix_web::body::to_bytes(body).await else {
+        return HttpResponse::InternalServerError().finish();
+    };
+    let text = String::from_utf8_lossy(&bytes).replace(
+        "<d:href>/remote.php/",
+        &format!("<d:href>{OLD_PREFIX}/remote.php/"),
+    );
+    let mut out = head.set_body(text);
+    out.headers_mut().remove(header::CONTENT_LENGTH);
+    out.map_into_boxed_body()
+}
+
+async fn route(req: HttpRequest, body: web::Payload, state: web::Data<State>) -> HttpResponse {
     let cloud = &*state.cloud;
     let path = req.path().to_owned();
     let method = req.method().as_str().to_owned();

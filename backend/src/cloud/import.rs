@@ -102,6 +102,7 @@ pub struct Moved {
     pub contacts: usize,
     pub boards: usize,
     pub cards: usize,
+    pub app_passwords: usize,
     /// What stayed behind, one line each, also in `From Nextcloud/Not moved.txt`.
     pub not_moved: Vec<String>,
 }
@@ -632,6 +633,54 @@ pub fn trash(
     Ok(out)
 }
 
+/// The `'secret' => '...'` of a Nextcloud `config.php`.
+pub fn config_secret(php: &str) -> Option<String> {
+    let at = php.find("'secret'")?;
+    let rest = &php[at + "'secret'".len()..];
+    let rest = rest.trim_start().strip_prefix("=>")?.trim_start();
+    let quote = rest.chars().next().filter(|c| *c == '\'' || *c == '"')?;
+    let value = &rest[1..];
+    let end = value.find(quote)?;
+    Some(value[..end].to_owned())
+}
+
+/// The app passwords Nextcloud gave the desktop and phone apps (permanent
+/// tokens), so they go on syncing with the same password. Their hash only
+/// works with the instance's secret, read from its `config.php`.
+pub fn passwords(
+    cloud: &Cloud,
+    dump: &Path,
+    config_php: &Path,
+) -> Result<BTreeMap<String, usize>, StoreError> {
+    let mut out = BTreeMap::new();
+    let Some(secret) = fs::read_to_string(config_php)
+        .ok()
+        .and_then(|p| config_secret(&p))
+    else {
+        return Ok(out);
+    };
+    let mut tokens = Vec::new();
+    for row in table(dump, "authtoken")? {
+        if i(&row, "type") != Some(1) || i(&row, "expires").unwrap_or(0) != 0 {
+            continue;
+        }
+        let login = s(&row, "login_name")
+            .filter(|l| valid_owner(l))
+            .or_else(|| s(&row, "uid").filter(|l| valid_owner(l)));
+        let (Some(login), Some(hash)) = (login, s(&row, "token")) else {
+            continue;
+        };
+        let name = s(&row, "name").unwrap_or_else(|| "Nextcloud app".into());
+        let last = i(&row, "last_activity").unwrap_or(0);
+        *out.entry(login.clone()).or_default() += 1;
+        tokens.push((login, name, hash, last));
+    }
+    cloud
+        .auth
+        .adopt_nextcloud_passwords(&cloud.store, &secret, &tokens)?;
+    Ok(out)
+}
+
 /// Write each person's `From Nextcloud/Not moved.txt`, when something was.
 pub fn write_notes(cloud: &Cloud, report: &Report) -> Result<(), StoreError> {
     for (login, moved) in &report.people {
@@ -882,5 +931,65 @@ mod tests {
         cloud.store.mkdir_all("notshared", "Documents").unwrap();
         let e = cloud.store.restore("notshared", t[1].id, None).unwrap();
         assert_eq!(e.path, "Documents/draft.odt");
+    }
+
+    #[test]
+    fn nextclouds_app_passwords_keep_working() {
+        let dump = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let secret = "s3cr3t+/=";
+        let token = "AbCdEfGhIj".repeat(7) + "Kl";
+        let user_made = "Abcde-Fghij-Klmno-Pqrst-Uvwxy";
+        let hash = |t: &str| crate::cloud::util::sha512_hex(format!("{t}{secret}").as_bytes());
+        fs::write(
+            dump.path().join("authtoken.json"),
+            serde_json::json!([
+                {"uid": "notshared", "login_name": "notshared", "name": "Pixel 8", "token": hash(&token), "type": 1, "expires": null, "last_activity": 1760000000},
+                {"uid": "notshared", "login_name": "notshared", "name": "Laptop", "token": hash(user_made), "type": 1},
+                {"uid": "notshared", "login_name": "notshared", "name": "Firefox session", "token": hash("session"), "type": 0}
+            ])
+            .to_string(),
+        )
+        .unwrap();
+        let php = dump.path().join("config.php");
+        fs::write(&php, format!("<?php\n$CONFIG = array (\n  'instanceid' => 'oc123',\n  'secret' => '{secret}',\n);\n")).unwrap();
+        assert_eq!(
+            config_secret(&fs::read_to_string(&php).unwrap()).as_deref(),
+            Some(secret)
+        );
+        let cloud = Cloud::open(root.path(), Config::default()).unwrap();
+        let n = passwords(&cloud, dump.path(), &php).unwrap();
+        assert_eq!(n["notshared"], 2);
+        let basic = |u: &str, p: &str| {
+            use base64::Engine;
+            format!(
+                "Basic {}",
+                base64::engine::general_purpose::STANDARD.encode(format!("{u}:{p}"))
+            )
+        };
+        let ok = |p: &str| {
+            cloud
+                .auth
+                .identify(&cloud.store, None, None, None, Some(&basic("notshared", p)))
+                .is_ok()
+        };
+        assert!(ok(&token));
+        assert!(ok(user_made));
+        assert!(!ok("session"), "a browser session is not an app password");
+        assert!(
+            cloud
+                .auth
+                .identify(&cloud.store, None, None, None, Some(&basic("eva", &token)))
+                .is_err(),
+            "only for its own login"
+        );
+        let names: Vec<String> = cloud
+            .auth
+            .app_passwords(&cloud.store, "notshared")
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        assert!(names.contains(&"Pixel 8".to_owned()));
     }
 }
