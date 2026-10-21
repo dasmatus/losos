@@ -26,10 +26,10 @@
 # the specialisation `before` serves them on the same box and data, for the
 # pull request's "before" pictures; the flake's check leaves it out.
 #
-# As in nix/tests/notes.nix, lososd runs in native mode with a stub
-# `nextcloud-occ`, nix/cluster.nix is not imported (`cluster.enable` is the
-# gate's half, with no edge to join), the admin UI is built without LosOS
-# Lab, and the shared domain's fscrypt key is off as in nix/tests/mail.nix.
+# As in nix/tests/notes.nix, nix/cluster.nix is not imported (`cluster.enable`
+# is the gate's half, with no edge to join) and the admin UI is built
+# without LosOS Lab; the shared domain's fscrypt key is off as in
+# nix/tests/mail.nix.
 {
   pkgs,
   beforeUi ? null,
@@ -54,14 +54,6 @@ let
         runHook postBuild
       '';
     };
-
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
 
   model = "llama3.2:3b";
   # What the stand-in answers, by a word in the material.
@@ -115,7 +107,6 @@ pkgs.testers.nixosTest {
         backend.package = lososPkgs.losos-ctl;
         backend.plugins = lososPkgs.losos-plugins;
         admin.ui = noLab lososPkgs.losos-admin-ui;
-        nextcloud.mode = "native";
         cloud.enable = true;
         forgejo.enable = false;
         mdns.enable = true;
@@ -142,9 +133,7 @@ pkgs.testers.nixosTest {
       };
       systemd.tmpfiles.rules = [ "d /home/shared/data 0700 shared shared -" ];
 
-      systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
       systemd.services.lososd.environment = {
-        LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         # What modules/builder.nix sets, pointed at the stand-in.
         LOSOS_BUILDER_URL = "http://127.0.0.1:11434";
         LOSOS_BUILDER_MODEL = model;
