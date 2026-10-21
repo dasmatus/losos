@@ -18,6 +18,7 @@ script is the demo and the rehearsal for a real site.
     nix/demo/edge-lan/run.sh up             # LAN, edge, install both boxes, boot, claim
     nix/demo/edge-lan/run.sh walk           # scenario A (edge off), then B, over the API
     nix/demo/edge-lan/run.sh edge off|on    # take the edge away, bring it back
+    nix/demo/edge-lan/run.sh publish        # name the boxes, turn their edge path on, reach them through the edge
     nix/demo/edge-lan/run.sh down           # stop (keeps the disks); `clean` wipes
 
 Open <http://127.0.0.1:8080/mesh> (box 1) and <http://127.0.0.1:8081/mesh>
@@ -94,6 +95,12 @@ option it turns on, `losos.edge.lan.advertise`, is the one a real site sets
   official ([Master proxy — Official edges](https://losos.dasmat.us/in-depth/master-proxy#official-edges)).
 - The VMs talk over slirp to the outside: the edge NATs the LAN to its
   own user-mode network, so a box without the edge really has no internet.
+- `publish` names the boxes `boxa` and `boxb` and turns their edge path on
+  in one Apply each; the edge enrols them on first contact
+  (`lan.openEnrolment`) and Traefik answers for `<box>.losos.cfd` on
+  <https://127.0.0.1:9443/>, with its own certificate, since there is no
+  public name to get one for. [../box-edge-box/](../box-edge-box/README.md)
+  runs `up`, `walk` and `publish` from one curl line.
 - The walk stops at the gate. `run.sh join N` performs a box's real join
   (the rebuild into mesh mode); the pooled-storage steps of the checklist
   (B3, B4) need the mesh wiring listed at its end, and cannot be shown
