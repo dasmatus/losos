@@ -172,6 +172,17 @@ async function after(s, base) {
   await link("Trash").click();
   await p.waitForSelector("[data-trash]");
   await s.take("trash", "deleted files, ready to come back", { kind: "none" }, { list: p.locator("[data-trash]") });
+  // The admin pages around it: the Overview's tile and the Apps pane's
+  // LosOS Cloud fold, which holds its one box-wide setting.
+  await p.goto(`${base}/`);
+  await p.getByRole("link", { name: "Files" }).first().waitFor();
+  await s.take("overview", "the admin home with LosOS Cloud's tiles");
+  await p.goto(`${base}/apps`);
+  const fold = p.getByTestId("accordion-cloud");
+  await fold.getByRole("button").first().click();
+  await p.getByTestId("site-cloud").waitFor();
+  await fold.scrollIntoViewIfNeeded();
+  await s.take("apps-cloud", "LosOS Cloud's fold on the Apps pane", { kind: "none" }, { fold });
 }
 
 /** The page the desktop client opens to sign in, before and after Allow. */
@@ -233,15 +244,22 @@ await signIn(page, base, name, password);
 // beyond that.
 const baseline = new Set();
 const listen = (sink) => {
+  // Chromium logs a failed request without its address; the response
+  // names it, so a 404 says which route the box did not serve.
   const onConsole = (m) => {
-    if (m.type() === "error") sink(m.text());
+    if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) sink(m.text());
   };
   const onError = (e) => sink(String(e));
+  const onResponse = (r) => {
+    if (r.status() >= 400) sink(`${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`);
+  };
   page.on("console", onConsole);
   page.on("pageerror", onError);
+  page.on("response", onResponse);
   return () => {
     page.off("console", onConsole);
     page.off("pageerror", onError);
+    page.off("response", onResponse);
   };
 };
 const stop = listen((text) => baseline.add(text));

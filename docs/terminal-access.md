@@ -226,19 +226,18 @@ POST /api/devices/git    {"password", "device"}  -> {"user", "token", "path"}
 ```
 
 The owner's password goes along because nothing less makes either one.
-Nextcloud mints an app password only for the real password, so lososd sends
-that request over loopback with the password in a Basic header, never in an
-argv or a file, as the sign-in does (`backend/src/devices.rs`). LosOS Git
-keeps no passwords: lososd checks the owner's against the people file, then
-asks LosOS Git as its administrator for a token
-(`POST /api/v1/admin/users/<owner>/tokens`). A token named
-`LosOS on <device>` from an earlier setup is replaced, so setting up the
-same computer twice leaves one token. Its scopes are `write:repository` and
+LosOS Cloud mints an app password only once lososd has checked the owner's
+password against the people file (`backend/src/devices.rs`). LosOS Git
+keeps no passwords either: after the same check lososd asks LosOS Git as
+its administrator for a token (`POST /api/v1/admin/users/<owner>/tokens`).
+A token named `LosOS on <device>` from an earlier setup is replaced, so
+setting up the same computer twice leaves one token. Its scopes are
+`write:repository` and
 `read:user`.
 
 A wrong password is 403 with `wrongPassword: true`, not 401, so a client
 does not mistake it for a bad token. 409 with `gitOff: true` means the box
-runs no LosOS Git, 429 that Nextcloud is throttling, 503 that one of the
+runs no LosOS Git, 429 that LosOS Cloud is throttling, 503 that one of the
 two cannot be asked yet.
 
 On the computer, `git setup` writes git's global configuration for

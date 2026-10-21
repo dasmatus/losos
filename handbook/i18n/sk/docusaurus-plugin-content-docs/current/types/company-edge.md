@@ -75,7 +75,7 @@ Stručne:
 ## Správa zariadení z edge \{#managing-the-boxes-from-the-edge}
 
 Ľudia, ktorí spravujú firemný edge, môžu na jednej stránke edge meniť LosOS
-cloud, LosOS Git a aplikácie na jeho zariadeniach. Či to edge smie, rozhoduje
+Cloud, LosOS Git a aplikácie na jeho zariadeniach. Či to edge smie, rozhoduje
 vlastník každého zariadenia.
 
 1. Na zariadení otvorte Nastavenia, potom Mesh, a zapnite **Nechať firemný
@@ -93,11 +93,11 @@ vlastník každého zariadenia.
    `http://<edge>.local:8443/manage/`, a prihláste sa kľúčom. Stránka ukáže
    zariadenia, ktoré edge smeruje, a otvorí tie, ktorých vlastník prepínač
    zapol.
-4. Stránka zariadenia má nastavenia LosOS cloud a LosOS Git z panela
+4. Stránka zariadenia má nastavenia LosOS Cloud a LosOS Git z panela
    Aplikácie na zariadení, nainštalované aplikácie a hľadanie aplikácií.
    Zmena zariadenie prebuduje rovnako ako zmena urobená priamo na ňom.
 
-![Stránka zariadenia na firemnom edge: nastavenia LosOS cloud a LosOS Git, nainštalované aplikácie a hľadanie aplikácií.](@site/docs/img/edge-manage-box-sk.png)
+![Stránka zariadenia na firemnom edge: nastavenia LosOS Cloud a LosOS Git, nainštalované aplikácie a hľadanie aplikácií.](@site/docs/img/edge-manage-box-sk.png)
 
 Edge nevidí ničie súbory, nepridáva ľudí, nemení heslá a nesiaha na
 úložisko, zálohy, sieť ani na samotný prepínač. Zariadenie kontroluje každé

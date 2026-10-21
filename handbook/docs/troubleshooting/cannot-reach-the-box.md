@@ -34,13 +34,13 @@ answers.
    login prompt instead of the banner is the one state the nightly restart
    repairs. Wait for 00:07, or pull the power.
 5. **Only one page is down.** `http://<address>/api/health` answers but
-   LosOS cloud does not. Either the app is still starting, which takes a few
+   LosOS Cloud does not. Either the app is still starting, which takes a few
    minutes after any restart, or see [An app tile gives 404](app-tile-404).
 
 ## From outside the LAN
 
 A box on its own is not reachable from outside, and that is not a fault. A
-box with an edge is reachable at its public name for LosOS cloud and LosOS
+box with an edge is reachable at its public name for LosOS Cloud and LosOS
 Git only. The box never publishes the admin pages. If the public name stops
 answering, the tunnel is down. On the LAN, the Mesh pane shows whether the
 box finds the edge, and [No edge found](edge-not-found) covers the case where

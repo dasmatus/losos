@@ -15,11 +15,8 @@ const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
 pub fn settings() -> Value {
     json!({
       "sharingMyStorage": false,
-      "nextcloudMode": "container",
       "hostName": "mattbox",
-      "https": true,
       "gpuEnable": false,
-      "apachePort": 11000,
       "proxyEnable": false,
       "clusterEnable": true,
       "shareCompute": true,
@@ -109,38 +106,22 @@ pub fn options() -> Value {
           "set": null
         },
         {
-          "name": "nextcloud.apachePort",
-          "group": "nextcloud",
+          "name": "cloud.trashDays",
+          "group": "cloud",
           "editor": {
             "kind": "int",
-            "min": 1024,
-            "max": 65535
+            "min": 1,
+            "max": 365
           },
-          "nixType": "16 bit unsigned integer",
-          "description": "The port the files app listens on behind the front door.",
-          "default": 11000,
-          "defaultText": "11000",
-          "current": 11000,
+          "nixType": "integer between 1 and 365 (both inclusive)",
+          "description": "How many days a deleted file stays in LosOS Cloud's trash before it is deleted for good.",
+          "default": 30,
+          "defaultText": "30",
+          "current": 14,
           "danger": false,
           "fixed": null,
           "readOnly": false,
-          "set": "11000"
-        },
-        {
-          "name": "nextcloud.defaultPhoneRegion",
-          "group": "nextcloud",
-          "editor": {
-            "kind": "str"
-          },
-          "nixType": "string",
-          "description": "The country phone numbers are read in when they have no prefix.",
-          "default": "SK",
-          "defaultText": "\"SK\"",
-          "current": "SK",
-          "danger": false,
-          "fixed": null,
-          "readOnly": false,
-          "set": null
+          "set": "14"
         },
         {
           "name": "updates.extraSubstituters",
@@ -467,7 +448,7 @@ pub fn box_route(method: &str, path: &str, body: &Value) -> (u16, Value) {
         ("POST", "/api/config/sync") => (200, config()),
         ("POST", "/api/devices/cloud") => (
             200,
-            json!({ "user": "notshared", "appPassword": "AbCd-EfGh-1234", "path": "/nextcloud/remote.php/dav/files/notshared/" }),
+            json!({ "user": "notshared", "appPassword": "AbCd-EfGh-1234", "path": "/remote.php/dav/files/notshared/" }),
         ),
         ("POST", "/api/devices/git") => (
             200,

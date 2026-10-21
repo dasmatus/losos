@@ -35,11 +35,8 @@ const { check, finish } = runner();
 
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   hostName: 'mattbox',
-  https: false,
   gpuEnable: false,
-  apachePort: 11000,
   proxyEnable: false,
   clusterEnable: false,
   shareCompute: false,
@@ -212,14 +209,14 @@ await check('a failed apply is an error confirmation carrying the box\'s last lo
   const { page } = await openApp({
     statuses: [
       { state: 'building', progress: 0, message: '', job: 'job-1' },
-      { state: 'failed', progress: 0, message: 'error: builder for /nix/store/…-nextcloud.drv failed', job: 'job-1' },
+      { state: 'failed', progress: 0, message: 'error: builder for /nix/store/…-losos-cloud.drv failed', job: 'job-1' },
     ],
   });
   await applyARename(page);
   const failed = toastWith(page, 'could not be applied');
   await failed.waitFor({ timeout: 10000 });
   assert.equal(await failed.getAttribute('data-tone'), 'error');
-  assert.match(await failed.innerText(), /nextcloud\.drv failed/);
+  assert.match(await failed.innerText(), /losos-cloud\.drv failed/);
   assert.equal(await failed.locator('a[data-help]').getAttribute('href'), '/handbook/troubleshooting/apply-fails/');
   assert.equal(await statuses(page).count(), 0, 'the "applying" status outlived its failure');
   // Still there when a success would long have gone.

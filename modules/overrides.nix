@@ -30,11 +30,8 @@ _:
 
 {
   losos.sharingMyStorage = true;
-  losos.nextcloud.mode = "container";
   losos.hostName = "mattbox";
-  losos.nextcloud.https = false;
   losos.gpu.enable = true;
-  losos.nextcloud.apachePort = 11000;
   losos.proxy.enable = false;
   losos.cluster.enable = false;
   losos.cluster.shareCompute = false;

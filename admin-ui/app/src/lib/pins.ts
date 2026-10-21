@@ -7,7 +7,7 @@
  *
  *   tile   an app tile of the Overview      its tile's address (lib/apps.ts)
  *   app    an app from the Apps search      the port the box opened for it
- *   file   a file or folder in LosOS cloud  /nextcloud/index.php/f/<id>
+ *   file   a file or folder in LosOS Cloud  /cloud/files?fileid=<id>
  *   repo   a repository on LosOS Git        /git/<owner>/<name>
  *
  * The store has the shape of lib/look.ts: loaded once a tab holds a token,
@@ -134,9 +134,9 @@ export function viewPin(pin: Pin, installed: readonly InstalledApp[] = []): PinV
         labelKey: null,
         detail: parentOf(pin.path),
         icon: pin.folder ? Folder01Icon : File01Icon,
-        // LosOS cloud's own internal link: it opens the file in Files, or
-        // the folder, wherever it has been moved to since.
-        href: `${FILES_BASE}/index.php/f/${String(pin.id)}`,
+        // LosOS Cloud's link by id: it opens the file's folder with the file
+        // marked, or the folder, wherever it has been moved to since.
+        href: `${FILES_BASE}/files?fileid=${String(pin.id)}`,
         inApp: false,
         newTab: false,
       };

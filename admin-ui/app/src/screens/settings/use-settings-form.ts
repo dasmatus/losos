@@ -10,7 +10,6 @@ import {
   isAbort,
   isUnauthorized,
   isValidHostName,
-  isValidPort,
   isValidTime,
   postApply,
   postFactoryReset,
@@ -48,7 +47,6 @@ const REBUILD_STATUS = "rebuild";
 /** What lososd falls back to, and what an unusable field is replaced with. */
 export const DEFAULTS = {
   hostName: "mattbox",
-  apachePort: 11000,
   windowStart: "23:00",
   windowEnd: "07:00",
 } as const;
@@ -78,7 +76,6 @@ export interface RebuildBanner {
 
 export interface FormProblems {
   hostName: string | null;
-  apachePort: string | null;
   computeWindow: string | null;
 }
 
@@ -92,16 +89,16 @@ export interface SettingsForm {
   draft: SettingsResponse | null;
   dirty: boolean;
   changedKeys: readonly (keyof SettingsResponse)[];
-  /* The rest of modules/overrides.nix: every `losos.<name>` line the fifteen
+  /* The rest of modules/overrides.nix: every `losos.<name>` line the twelve
    * keys above do not own, as Nix literals by name (lib/option-value.ts).
-   * The Advanced pane edits these; Apply writes them after the fifteen. A
+   * The Advanced pane edits these; Apply writes them after the twelve. A
    * name the box declares no option for (a stray) is carried too, so it is
    * shown rather than silently dropped, and `valid` stays false until it is
    * removed, because lososd's gate would refuse it. */
   extra: Readonly<Record<string, string>>;
   savedExtra: Readonly<Record<string, string>>;
   changedExtra: readonly string[];
-  /** Pending edits, the fifteen keys and the extras together. */
+  /** Pending edits, the twelve keys and the extras together. */
   changeCount: number;
   /** Every option this box declares, or null while loading. `available`
    *  false when the box serves no document (an older lososd). */
@@ -123,11 +120,8 @@ export interface SettingsForm {
 
 const KEYS = [
   "sharingMyStorage",
-  "nextcloudMode",
   "hostName",
-  "https",
   "gpuEnable",
-  "apachePort",
   "proxyEnable",
   "clusterEnable",
   "shareCompute",
@@ -156,7 +150,7 @@ function changedKeysOf(
   return KEYS.filter((key) => !sameValue(saved[key], draft[key]));
 }
 
-/* The overrides.nix lines the fifteen keys do not own, as the option
+/* The overrides.nix lines the twelve keys do not own, as the option
  * document reports them: each declared option's `set` literal, plus the
  * strays. Owned names are left out even when set — the form's own field
  * carries them, and buildOverridesNix filters them anyway. */
@@ -221,15 +215,13 @@ interface HeldBanner {
 type ProblemKeys = { [K in keyof FormProblems]: MessageKey | null };
 
 function problemsOf(draft: SettingsResponse | null): ProblemKeys {
-  if (draft === null) return { hostName: null, apachePort: null, computeWindow: null };
+  if (draft === null) return { hostName: null, computeWindow: null };
 
   const host = draft.hostName;
   let hostName: MessageKey | null = null;
   if (host.length === 0) hostName = "settings.form.hostEmpty";
   else if (host.length > 63) hostName = "settings.form.hostTooLong";
   else if (!isValidHostName(host)) hostName = "settings.form.hostChars";
-
-  const apachePort = isValidPort(draft.apachePort) ? null : "settings.form.port";
 
   /* Any order is legal — an end before the start wraps midnight, which is
    * the default 23:00 to 07:00 — so there is nothing to compare between the
@@ -240,19 +232,18 @@ function problemsOf(draft: SettingsResponse | null): ProblemKeys {
       ? null
       : "settings.form.window";
 
-  return { hostName, apachePort, computeWindow };
+  return { hostName, computeWindow };
 }
 
 /* Substitute the daemon's own defaults for anything unusable before the Nix
  * is generated. Apply is armed only while the form is valid, so in practice
  * nothing here fires — it is the guard that stops a future caller writing
- * `losos.nextcloud.apachePort = NaN;` into a file evaluated as root on the
+ * `losos.hostName = "";` into a file evaluated as root on the
  * next rebuild. */
 function sanitize(draft: SettingsResponse): SettingsResponse {
   return {
     ...draft,
     hostName: isValidHostName(draft.hostName) ? draft.hostName : DEFAULTS.hostName,
-    apachePort: isValidPort(draft.apachePort) ? draft.apachePort : DEFAULTS.apachePort,
     computeWindowStart: isValidTime(draft.computeWindowStart)
       ? draft.computeWindowStart
       : DEFAULTS.windowStart,
@@ -347,7 +338,7 @@ export function useSettingsForm(): SettingsForm {
      * needs it, and the extras it carries are part of the same draft. A box
      * without the route (an older lososd) still gets its settings — the
      * pane then says the document is not served, and Apply writes the
-     * fifteen lines as before. */
+     * twelve lines as before. */
     let doc: OptionsResponse | null = null;
     try {
       doc = await getOptions(request);
@@ -601,7 +592,6 @@ export function useSettingsForm(): SettingsForm {
   const extraMisfits = React.useMemo(() => extraProblemsOf(options, extra), [options, extra]);
   const valid =
     problemKeys.hostName === null &&
-    problemKeys.apachePort === null &&
     problemKeys.computeWindow === null &&
     Object.keys(extraMisfits).length === 0;
 
@@ -612,7 +602,6 @@ export function useSettingsForm(): SettingsForm {
     const resolve = (key: MessageKey | null): string | null => (key === null ? null : t(key));
     return {
       hostName: resolve(problemKeys.hostName),
-      apachePort: resolve(problemKeys.apachePort),
       computeWindow: resolve(problemKeys.computeWindow),
     };
   }, [problemKeys, locale]);

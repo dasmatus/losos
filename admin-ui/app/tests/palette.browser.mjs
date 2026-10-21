@@ -21,11 +21,8 @@ const json = (route, status, body) =>
 
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   hostName: 'mattbox',
-  https: false,
   gpuEnable: false,
-  apachePort: 80,
   proxyEnable: false,
   clusterEnable: false,
   shareCompute: false,
@@ -127,12 +124,16 @@ async function open({
       return json(r, 200, { ...answer, hits: hits.filter((h) => h.snippet.join('').toLowerCase().includes(q)) });
     });
   }
-  for (const app of ['nextcloud', 'git']) {
-    await page.route(`**/${app}/**`, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: `<title>${app}</title>` }));
+  // The two apps' own pages, so a jump there has somewhere to land. A regex,
+  // because `**/cloud/**` would also catch /api/cloud/files.
+  for (const app of ['cloud', 'git']) {
+    await page.route(new RegExp(`^[a-z]+://[^/]+/${app}(/|\\?|$)`), (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: `<title>${app}</title>` }),
+    );
   }
   await page.addInitScript((t) => {
     window.sessionStorage.setItem('losos-token', t);
-    window.localStorage.setItem('losos-apps-seen', JSON.stringify({ files: 'present', code: 'present', mail: 'absent' }));
+    window.localStorage.setItem('losos-apps-seen', JSON.stringify({ files: 'present', code: 'present' }));
   }, TOKEN);
   await page.goto(origin + path, { waitUntil: 'networkidle' });
   return { page, errors, csp, asked };
@@ -251,7 +252,7 @@ await check('files in LosOS cloud and repositories in LosOS Git open in their ap
   assert.match(await option(page, /^tax-return-2025\.pdf/).innerText(), /\/Documents\/Taxes 2025/);
   assert.ok(asked.some(([kind, q]) => kind === 'files' && q === 'tax'), 'the box was not asked for files');
   await option(page, /^tax-return-2025\.pdf/).click();
-  await page.waitForURL(origin + '/nextcloud/index.php/f/418');
+  await page.waitForURL(origin + '/cloud/files?fileid=418');
   await page.goto(origin + '/', { waitUntil: 'networkidle' });
   await page.keyboard.press('Control+Shift+P');
   await box(page).fill('tax-scr');
@@ -278,9 +279,7 @@ await check('text inside files: cloud first, then Git, with the match marked, ea
   assert.equal(await first.locator('mark').innerText(), 'tax');
   assert.match(await text.getByRole('option').last().innerText(), /notshared\/tax-scripts · line 12/);
   await first.click();
-  await page.waitForURL(
-    origin + '/nextcloud/index.php/apps/files/?dir=%2FDocuments&scrollto=Da%C5%88ov%C3%A9%20priznanie%202025.odt',
-  );
+  await page.waitForURL(origin + '/cloud/files/Documents');
   await page.goto(origin + '/', { waitUntil: 'networkidle' });
   await page.keyboard.press('Control+Shift+P');
   await box(page).fill('tax_year');
@@ -306,16 +305,16 @@ await check('the text group says the cloud index is still being read, and hides 
   await off.page.close();
 });
 
-await check('one letter does not search the files; the cloud apps are listed as apps', async () => {
+await check('one letter does not search the files; the cloud\'s pages are listed as apps', async () => {
   const { page, asked } = await open();
   await page.keyboard.press('Control+Shift+P');
-  await box(page).fill('c');
-  await option(page, /^Calendar/).waitFor();
+  await box(page).fill('p');
+  await option(page, /^Photos/).waitFor();
   await page.waitForTimeout(400);
   assert.equal(asked.filter(([kind]) => kind === 'files').length, 0, 'one letter searched the files');
-  await box(page).fill('calendar');
-  await option(page, /^Calendar/).click();
-  await page.waitForURL(origin + '/nextcloud/index.php/apps/calendar/');
+  await box(page).fill('photos');
+  await option(page, /^Photos/).click();
+  await page.waitForURL(origin + '/cloud/photos');
   await page.close();
 });
 
