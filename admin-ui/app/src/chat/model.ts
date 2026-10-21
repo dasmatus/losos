@@ -269,12 +269,6 @@ export function plainBody(content: Record<string, unknown>): string {
   return typeof body === "string" ? body : "";
 }
 
-/** A room or person's initial, for an avatar with no picture. */
-export function initial(name: string): string {
-  const letter = [...name.replace(/^[@#!]/, "")][0];
-  return (letter ?? "?").toUpperCase();
-}
-
 /** A colour index (0..7) from a user or room ID, the same on every page. */
 export function hue(id: string): number {
   let sum = 0;
