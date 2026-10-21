@@ -71,6 +71,9 @@ const Tour = React.lazy(() => import("@/tour/tour"));
 /* The command palette (src/palette/): its own chunk, fetched the first time
  * Ctrl/Cmd+Shift+P, a colon or the sidebar's search button opens it. */
 const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
+/* LosOS Mail (src/mail/): only on the shared side, so most boxes never
+ * fetch it. */
+const Mail = React.lazy(() => import("@/mail/app"));
 const WidgetBoard = React.lazy(() =>
   import("@/widgets/board").then((m) => ({ default: m.WidgetBoard })),
 );
@@ -312,6 +315,10 @@ function Shell() {
             <Route path="/mesh" element={<SettingsRoute pane="mesh" />} />
             <Route path="/machines" element={<SettingsRoute pane="machines" />} />
             <Route path="/apps" element={<SettingsRoute pane="apps" />} />
+            {/* nginx answers /mail with 404 off the shared side
+                (modules/containers.nix); the screen says so too if the box
+                leaves it while the page is open. */}
+            <Route path="/mail" element={<Mail />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />

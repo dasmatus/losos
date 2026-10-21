@@ -611,6 +611,7 @@ in
         "@losos-authz-down".extraConfig = "return 401;";
         "/api/".extraConfig = askAuthelia;
         "= /api/vms/images".extraConfig = askAuthelia;
+        "= /api/market/llm/chat".extraConfig = askAuthelia;
       }
       # The public routes, past Authelia. Exact matches beat the /api/ prefix.
       // lib.genAttrs (map (p: "= ${p}") publicPaths) (_: {

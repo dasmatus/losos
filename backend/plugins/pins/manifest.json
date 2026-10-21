@@ -1,0 +1,16 @@
+{
+  "name": "pins",
+  "description": "What the owner pinned to the admin page's sidebar.",
+  "routes": [
+    { "method": "GET", "path": "/api/pins" },
+    { "method": "PUT", "path": "/api/pins" }
+  ],
+  "files": [
+    { "path": "${LOSOS_STATE_DIR:-/var/lib/losos}/pins.json", "access": "rw" }
+  ],
+  "locks": ["pins"],
+  "limits": { "memoryMiB": 32, "timeoutSecs": 10 },
+  "config": {
+    "pinsFile": "${LOSOS_STATE_DIR:-/var/lib/losos}/pins.json"
+  }
+}

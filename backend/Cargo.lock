@@ -2238,6 +2238,7 @@ dependencies = [
  "httpdate",
  "image",
  "losos-access",
+ "losos-names",
  "losos-widget",
  "mime",
  "percent-encoding",
@@ -2260,6 +2261,10 @@ dependencies = [
  "zbus",
  "zip",
 ]
+
+[[package]]
+name = "losos-names"
+version = "0.1.0"
 
 [[package]]
 name = "losos-widget"
