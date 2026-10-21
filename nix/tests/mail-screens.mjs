@@ -123,7 +123,7 @@ async function mail(first) {
   const name = (slug) => `${String(n++).padStart(2, '0')}-${slug}.png`;
   const context = await browser();
   const page = await signedIn(context);
-  await page.goto(`${BASE}/mail/`);
+  await page.goto(`${BASE}/mail`);
   const row = page.getByRole('button', { name: /Photos from the lake/ });
   await row.waitFor({ timeout: 120_000 });
   await shot(page, name('inbox'), 'the inbox with mail from Eva and Peter', { kind: 'click', target: 'message' }, {

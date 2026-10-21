@@ -8,7 +8,7 @@ slug: /manual/mail
 
 LosOS Mail je poštový klient pre ľudí na zariadení. Každý, kto je
 prihlásený cez LosOS Login, má schránku a položka **Pošta** v bočnom paneli
-ju otvorí na adrese `/mail/`. Poštový server je Stalwart. Beží na zdieľanej
+ju otvorí na adrese `/mail`. Poštový server je Stalwart. Beží na zdieľanej
 strane zariadenia pod účtom `shared` a schránky uchováva v zdieľanom
 dátovom priečinku.
 
@@ -18,7 +18,7 @@ Pošta existuje, len kým zariadenie zdieľa svoje úložisko so sieťou, do
 ktorej sa pripojilo (pozri [režimy úložiska](../types/storage-modes)). Keď
 je zdieľanie vypnuté alebo zariadenie nie je v sieti:
 
-- v bočnom paneli nie je **Pošta** a `/mail/` sa neotvorí;
+- v bočnom paneli nie je **Pošta** a `/mail` sa neotvorí;
 - poštový server je zastavený;
 - schránky zostávajú na disku v zdieľanom priečinku, ktorý zariadenie počas
   vypnutého zdieľania nedokáže prečítať.

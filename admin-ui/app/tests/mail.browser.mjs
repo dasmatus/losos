@@ -1,5 +1,5 @@
-/* LosOS Mail (/mail/, the fourth page of this bundle) under the admin
- * page's policy, with lososd's /api/mail* stood in by page.route the way
+/* LosOS Mail (/mail, a screen of the admin SPA inside its top bar and
+ * sidebar) under the admin page's policy, with lososd's /api/mail* stood in by page.route the way
  * backend/src/mail.rs answers. Every page fails on a CSP violation or an
  * uncaught error. Walked once each: the inbox, opening a message (which
  * marks it read), a reply with the quote and threading id, search, a move
@@ -77,7 +77,7 @@ const SALE_HTML =
 
 /* The mail page with a stand-in lososd. `me` and `mail` choose what
  * /api/me and /api/mail answer; `calls` records what the page sent. */
-async function open({ path = '/mail/', me = ME, mail = 200, viewport = { width: 1280, height: 900 } } = {}) {
+async function open({ path = '/mail', me = ME, mail = 200, viewport = { width: 1280, height: 900 } } = {}) {
   const page = await browser.newPage({ viewport, locale: 'en-US' });
   const errors = [];
   const calls = [];
@@ -86,7 +86,9 @@ async function open({ path = '/mail/', me = ME, mail = 200, viewport = { width: 
     window.__violations = [];
     document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(e.violatedDirective));
   });
-  await page.route('**/api/**', (route) => json(route, 404, { error: 'not here' }));
+  // The rest of the shell (pins, the look, the claim) gets empty answers.
+  await page.route('**/api/**', (route) => json(route, 200, {}));
+  await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
   await page.route('**/api/me', (route) => (me ? json(route, 200, me) : json(route, 401, { error: 'unauthorized' })));
   await page.route('**/api/mail', (route) => {
     if (mail === 404) return json(route, 404, { error: 'there is no mail on this box' });
@@ -142,7 +144,10 @@ await check('the inbox lists the mail, newest first, with the unread one marked'
   const { page, done } = await open();
   const lake = page.getByRole('button', { name: /Photos from the lake/ });
   await lake.waitFor();
-  assert.equal(await page.title(), 'Mail');
+  // A screen of the admin pages: their sidebar, with Mail current.
+  await page.getByRole('heading', { level: 1, name: 'Mail' }).waitFor();
+  const nav = page.getByRole('link', { name: 'Mail', exact: true });
+  assert.equal(await nav.getAttribute('aria-current'), 'page', 'Mail is not current in the sidebar');
   const sale = page.getByRole('button', { name: /Autumn sale/ });
   assert.match(await lake.innerText(), /Eva/);
   assert.ok((await lake.boundingBox()).y < (await sale.boundingBox()).y, 'the newer message is not first');
@@ -199,6 +204,7 @@ await check('delete moves the message to the bin through lososd', async () => {
 
 await check('HTML mail is drawn in a sandboxed frame whose script never runs', async () => {
   const { page, done } = await open();
+  const title = await page.title();
   await page.getByRole('button', { name: /Autumn sale/ }).click();
   await page.getByRole('button', { name: 'Show formatting' }).click();
   const frame = page.locator('iframe');
@@ -207,7 +213,7 @@ await check('HTML mail is drawn in a sandboxed frame whose script never runs', a
   assert.equal(await frame.getAttribute('src'), '/api/mail/messages/m2/html');
   await page.frameLocator('iframe').locator('#hello').waitFor();
   await page.waitForTimeout(300);
-  assert.equal(await page.title(), 'Mail', 'the message script reached the page');
+  assert.equal(await page.title(), title, 'the message script reached the page');
   await page.getByRole('button', { name: 'Show plain text' }).click();
   await frame.waitFor({ state: 'detached' });
   await done();
@@ -223,7 +229,7 @@ await check('a box with no mail says so, and the spare key is asked to sign in',
   await done();
 });
 
-await check('on a phone the folders, the list and the message take turns', async () => {
+await check('on a phone the list and the message take turns', async () => {
   const { page, done } = await open({ viewport: { width: 390, height: 844 } });
   const lake = page.getByRole('button', { name: /Photos from the lake/ });
   await lake.click();

@@ -8,7 +8,7 @@ slug: /manual/mail
 
 LosOS Mail ist ein Mail-Programm für die Personen auf der Box. Wer über
 LosOS Login angemeldet ist, hat ein Postfach, und **Mail** in der
-Seitenleiste öffnet es unter `/mail/`. Der Mailserver ist Stalwart. Er läuft
+Seitenleiste öffnet es unter `/mail`. Der Mailserver ist Stalwart. Er läuft
 auf der geteilten Seite der Box, unter dem Konto `shared`, und legt die
 Postfächer im geteilten Datenverzeichnis ab.
 
@@ -18,7 +18,7 @@ Mail gibt es nur, solange die Box ihren Speicher mit einem Mesh teilt, dem
 sie beigetreten ist (siehe [Speichermodi](../types/storage-modes)). Bei
 ausgeschaltetem Teilen oder außerhalb eines Mesh:
 
-- steht **Mail** nicht in der Seitenleiste, und `/mail/` öffnet sich nicht;
+- steht **Mail** nicht in der Seitenleiste, und `/mail` öffnet sich nicht;
 - ist der Mailserver gestoppt;
 - bleiben die Postfächer auf der Platte, im geteilten Verzeichnis, das die
   Box nicht lesen kann, solange das Teilen aus ist.

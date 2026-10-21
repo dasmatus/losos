@@ -1,14 +1,19 @@
 import { defineMessages } from "./define";
 
-/* LosOS Mail (src/mail/), the mail page at /mail/. It exists only while the
- * box shares its storage, and its mail stays between the people on the box. */
+/* LosOS Mail (src/mail/), the mail screen at /mail. It exists only on the
+ * shared side (sharing on, in a mesh), and its mail stays between the people
+ * on the box. */
 export default defineMessages({
   "mail.title": { en: "Mail", sk: "Pošta", de: "Mail" },
-  "mail.toBox": { en: "Back to the box", sk: "Späť na box", de: "Zurück zur Box" },
+  "mail.summary": {
+    en: "Your address is {address}. Mail goes between the people on this box.",
+    sk: "Vaša adresa je {address}. Pošta chodí medzi ľuďmi na tomto boxe.",
+    de: "Ihre Adresse ist {address}. Mail geht zwischen den Personen auf dieser Box.",
+  },
   "mail.missing": {
-    en: "There is no mail on this box. Mail runs only while the box shares its storage.",
-    sk: "Na tomto boxe nie je pošta. Pošta beží, len kým box zdieľa svoje úložisko.",
-    de: "Auf dieser Box gibt es keine Mail. Mail läuft nur, solange die Box ihren Speicher teilt.",
+    en: "There is no mail on this box. Mail runs only while the box shares its storage with a mesh it has joined.",
+    sk: "Na tomto boxe nie je pošta. Pošta beží, len kým box zdieľa svoje úložisko so sieťou, ku ktorej sa pripojil.",
+    de: "Auf dieser Box gibt es keine Mail. Mail läuft nur, solange die Box ihren Speicher mit einem Mesh teilt, dem sie beigetreten ist.",
   },
   "mail.failed": { en: "Mail did not load: {detail}", sk: "Pošta sa nenačítala: {detail}", de: "Mail wurde nicht geladen: {detail}" },
   "mail.retry": { en: "Try again", sk: "Skúsiť znova", de: "Erneut versuchen" },

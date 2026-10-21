@@ -8,7 +8,7 @@ slug: /manual/mail
 
 LosOS Mail is a mail client for the people on the box. Each person signed in
 through LosOS Login has a mailbox, and **Mail** in the sidebar opens it at
-`/mail/`. The mail server is Stalwart. It runs on the shared side of the
+`/mail`. The mail server is Stalwart. It runs on the shared side of the
 box, under the `shared` account, and keeps the mailboxes in the shared data
 directory.
 
@@ -18,7 +18,7 @@ Mail exists only while the box shares its storage with a mesh it has
 joined (see [storage modes](../types/storage-modes)). With sharing off, or
 outside a mesh:
 
-- there is no **Mail** in the sidebar, and `/mail/` does not open;
+- there is no **Mail** in the sidebar, and `/mail` does not open;
 - the mail server is stopped;
 - the mailboxes stay on the disk, in the shared directory, which the box
   cannot read while sharing is off.

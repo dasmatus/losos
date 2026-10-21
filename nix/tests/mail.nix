@@ -6,7 +6,7 @@
 # unit as `shared`, mailboxes under /home/shared/data/mail), lososd with
 # backend/src/mail.rs, LosOS Login (modules/identity.nix) and the front
 # vhost (modules/containers.nix, modules/tls.nix). The admin pages are a
-# stub with a mail/index.html; tests/mail.browser.mjs covers the page.
+# stub index.html; tests/mail.browser.mjs covers the Mail screen.
 # The shared domain's fscrypt key is off here, because no VM test has the
 # TPM-less keyring set-up modules/fscrypt.nix expects; the directory is the
 # same one.
@@ -23,7 +23,7 @@
 #   * nothing but lososd reaches Stalwart: it listens on loopback only;
 #   * sharing on but no mesh (cluster.enable off) is not the shared side;
 #   * with sharing off (a specialisation, switched to live) Stalwart stops,
-#     /api/me lists nothing, /api/mail answers 404 and /mail/ is gone; with
+#     /api/me lists nothing, /api/mail answers 404 and /mail is gone; with
 #     sharing back on, Eva's mail is still there.
 #
 # `losos-mail-screens` is the same run with the real admin pages and
@@ -56,11 +56,10 @@ let
       imageTag = "test";
     };
 
-  # Without screens the admin pages are not under test; two files stand in.
+  # Without screens the admin pages are not under test; one file stands in.
   stubUi = pkgs.runCommand "stub-admin-ui" { } ''
-    mkdir -p $out/mail
+    mkdir -p $out
     echo "admin ui" > $out/index.html
-    echo '<div id="mail"></div>' > $out/mail/index.html
   '';
 
   shots = pkgs.writeShellScriptBin "mail-screens" ''
@@ -193,6 +192,9 @@ pkgs.testers.nixosTest {
     def curl(args):
         return laptop.succeed(f"curl -sk {args}")
 
+    def mail_page():
+        return [curl(f"-o /dev/null -w '%{{http_code}}' https://{BOX}{p}") for p in ["/mail", "/mail/"]]
+
     def api(path, cookie=None, method="GET", data=None, extra=""):
         args = f"-X {method} 'https://{BOX}{path}' {extra}"
         if cookie:
@@ -279,11 +281,11 @@ pkgs.testers.nixosTest {
         )
         eva = sign_in("eva", EVA_PASSWORD)
 
-    with subtest("Mail is listed among the shared apps, and its page is served"):
+    with subtest("Mail is listed among the shared apps, and its screen is served"):
         assert ok("/api/me", matus)["shared"] == ["mail"]
         assert ok("/api/me", eva)["shared"] == ["mail"]
-        assert 'id="mail"' in curl(f"https://{BOX}/mail/")
-        assert 'id="mail"' in curl(f"https://{BOX}/mail/inbox/deep/link")
+        # A screen of the admin pages: /mail falls through to their index.
+        assert mail_page() == ["200", "200"]
 
     with subtest("each person gets a mailbox on first use"):
         mhome = ok("/api/mail", matus)
@@ -459,7 +461,7 @@ pkgs.testers.nixosTest {
         assert ok("/api/me", eva)["shared"] == [], "shared should be empty without a mesh"
         code, _ = api("/api/mail", eva)
         assert code == 404, code
-        assert curl(f"-o /dev/null -w '%{{http_code}}' https://{BOX}/mail/") == "404"
+        assert mail_page() == ["404", "404"]
         box.succeed("/run/booted-system/bin/switch-to-configuration test")
         box.wait_for_unit("losos-mail.service")
         box.wait_for_open_port(8096)
@@ -476,7 +478,7 @@ pkgs.testers.nixosTest {
             assert code == 404, (path, code, body)
         code, _ = api("/api/mail/send", matus, method="POST", data={"to": [f"eva@{DOMAIN}"], "text": "x"})
         assert code == 404, code
-        assert curl(f"-o /dev/null -w '%{{http_code}}' https://{BOX}/mail/") == "404"
+        assert mail_page() == ["404", "404"]
         # The mailboxes stay where they were, in the shared domain.
         box.succeed("test -d /home/shared/data/mail/db")
         screens("sidebar", "01", "sidebar-sharing-off", "the sidebar while the box does not share", "none")
@@ -489,7 +491,7 @@ pkgs.testers.nixosTest {
         laptop.wait_until_succeeds(f"curl -sk -o /dev/null -w '%{{http_code}}' -H 'Cookie: {eva}' https://{BOX}/api/me | grep -q 200", timeout=60)
         assert ok("/api/me", eva)["shared"] == ["mail"]
         assert wait_for(eva, inbox, "Autumn sale")["id"] == sale["id"]
-        assert 'id="mail"' in curl(f"https://{BOX}/mail/")
+        assert mail_page() == ["200", "200"]
         screens("sidebar", "02", "sidebar-sharing-on", "the sidebar with sharing on: Mail is there", "mail")
 
     with subtest("Matus reads and answers his mail in the browser"):

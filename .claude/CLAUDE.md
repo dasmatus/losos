@@ -165,10 +165,11 @@ and is never served or built by nix.
   SMTP or IMAP listener), its own unit rather than nixpkgs' module because a
   tmpfiles line inside the locked fscrypt domain fails at boot. lososd is the
   only client, over JMAP as `<person>%losos` (master user) with a secret from
-  `losos-mail-secret`. All of it, `/mail/` (the SPA's fourth Vite page) and
+  `losos-mail-secret`. All of it, `/mail` (a screen of the SPA, inside its
+  top bar and sidebar like every pane, `src/mail/`) and
   `/api/mail*` exist only while `lososInternal.mail.live` (the shared side,
   `lososInternal.sharedSide`: sharing on and `cluster.enable`);
-  otherwise `/mail/` and the API answer 404 and `/api/me`'s `shared` omits
+  otherwise `/mail`, `/mail/` and the API answer 404 and `/api/me`'s `shared` omits
   `mail`, which hides the sidebar entry. Mail stays between people on the
   box (`local_only`). `nix/tests/mail.nix` boots it; `losos-mail-screens`
   is the same run with the real UI and Chromium, for screenshots.
