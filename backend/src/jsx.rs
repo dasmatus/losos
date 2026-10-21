@@ -506,19 +506,25 @@ fn used_before_made(
 /// object with `items` and the writes, and a small model often sorts or maps
 /// the object itself, which stops the app as it starts.
 const LIST_MEMBERS: &[&str] = &[
-    "map", "filter", "sort", "find", "reduce", "forEach", "length", "slice", "some", "every", "includes",
+    "map", "filter", "sort", "find", "reduce", "forEach", "length", "slice", "some", "every",
+    "includes",
 ];
 
 /// A name made by `useCollection(...)` and then used like a list
 /// (`notes.map`), as (line, name, member), in line order, once per name.
-fn collection_used_as_list(semantic: &oxc::semantic::Semantic<'_>, source: &str) -> Vec<(usize, String, String)> {
+fn collection_used_as_list(
+    semantic: &oxc::semantic::Semantic<'_>,
+    source: &str,
+) -> Vec<(usize, String, String)> {
     use oxc::ast::ast::{BindingPattern, Expression};
     use oxc::ast::AstKind;
     let scoping = semantic.scoping();
     let nodes = semantic.nodes();
     let mut found = Vec::new();
     for symbol in scoping.symbol_ids() {
-        let AstKind::VariableDeclarator(declarator) = nodes.kind(scoping.symbol_declaration(symbol)) else {
+        let AstKind::VariableDeclarator(declarator) =
+            nodes.kind(scoping.symbol_declaration(symbol))
+        else {
             continue;
         };
         if !matches!(declarator.id, BindingPattern::BindingIdentifier(_)) {
@@ -543,7 +549,11 @@ fn collection_used_as_list(semantic: &oxc::semantic::Semantic<'_>, source: &str)
             }
         });
         if let Some((at, member)) = misuse {
-            found.push((line_of(source, at), scoping.symbol_name(symbol).to_string(), member));
+            found.push((
+                line_of(source, at),
+                scoping.symbol_name(symbol).to_string(),
+                member,
+            ));
         }
     }
     found.sort();
