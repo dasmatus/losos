@@ -32,7 +32,7 @@ Ukážka má dve veľkosti a skript vyberie väčšiu, ktorú počítač unesie:
 | | Plná | Ľahká |
 | --- | --- | --- |
 | Potrebuje | KVM, 14 GiB pamäte, 60 GB voľného miesta | 6 GiB pamäte, 15 GB voľného miesta |
-| Zariadenia | nainštalované z inštalačného ISO, s LosOS cloud | admin stránky a časti, ktoré sa rozprávajú s edge |
+| Zariadenia | nainštalované z inštalačného ISO, s LosOS Cloud | admin stránky a časti, ktoré sa rozprávajú s edge |
 | Edge | virtuálny stroj s edge, ktorý je aj routerom siete | [edge gateway](../in-depth/edge-federation.md) |
 | Trvá | asi pol hodiny s KVM | asi 15 minút, s KVM aj bez, po prvom zostavení |
 
@@ -89,5 +89,5 @@ zahadzuje UDP port 5353 na tomto zariadení.
 - Verejné názvy zariadení nasmeruje na edge ukážka. V skutočnej sieti to
   robí DNS.
 - Edge je firemný, nie oficiálny, takže trh zostáva vypnutý.
-- V ľahkej ukážke LosOS cloud nebeží. Namiesto neho odpovedá malá náhrada,
+- V ľahkej ukážke LosOS Cloud nebeží. Namiesto neho odpovedá malá náhrada,
   za skutočným webovým serverom zariadenia.

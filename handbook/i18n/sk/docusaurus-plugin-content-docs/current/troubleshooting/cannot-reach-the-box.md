@@ -34,13 +34,13 @@ Na zariadení neodpovedá nič.
    monitora. Textová výzva na prihlásenie namiesto bannera je jediný stav,
    ktorý opraví nočný reštart. Počkajte do 00:07 alebo vytiahnite napájanie.
 5. **Nefunguje iba jedna stránka.** `http://<address>/api/health` odpovedá,
-   ale LosOS cloud nie. Buď sa aplikácia ešte spúšťa, čo po každom reštarte
+   ale LosOS Cloud nie. Buď sa aplikácia ešte spúšťa, čo po každom reštarte
    trvá pár minút, alebo pozrite [Dlaždica aplikácie vráti 404](app-tile-404).
 
 ## Mimo LAN \{#from-outside-the-lan}
 
 Samostatné zariadenie zvonku dostupné nie je a nie je to chyba. Zariadenie
-s edge je na svojom verejnom mene dostupné iba pre LosOS cloud a LosOS Git.
+s edge je na svojom verejnom mene dostupné iba pre LosOS Cloud a LosOS Git.
 Správcovské stránky zariadenie nikdy nezverejňuje. Ak verejné meno prestane
 odpovedať, tunel nefunguje. V LAN panel Mesh ukáže, či zariadenie edge
 nachádza, a prípad, keď ho nenachádza, rieši stránka

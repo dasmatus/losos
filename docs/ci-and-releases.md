@@ -18,7 +18,6 @@ without saying so.
 - the installer ISO, built on every push and then booted under OVMF and
   SeaBIOS by `nix/tests/iso-boot.py`. A boot passes when the installer sends a
   DNS query for `github.com`. On timeout, the job uploads a screenshot.
-- the Nextcloud image, weekly and on request only
 - `losos-registrar` for the dev machine, a static musl build pushed to GHCR
   on every push to main and every tag and served by the proxy (below)
 
@@ -159,7 +158,7 @@ It has three limits:
   its paths on the proxy alone.
 - A Pages site may be at most 1 GB, so the copy keeps under 800 MiB of NARs
   and drops the largest paths first. The job's step summary names what it
-  left out. The Nextcloud image, built weekly, is never in it.
+  left out.
 - Its `nix-cache-info` says `Priority: 45`, after the proxy (30) and
   cache.nixos.org (40), so nix tries it after both.
 

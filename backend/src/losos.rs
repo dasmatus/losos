@@ -566,8 +566,9 @@ pub fn cmd_claim_state<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
 /// ([`crate::receipt`]): a claimed box still answers, with the same reply,
 /// a caller who presents the password that claimed it within the grace
 /// window. That is for the reply that was lost in transit — the proxy timed
-/// out while occ was still running, and the admin key in the reply reached
-/// nobody — and it changes nothing: no occ runs, the state is not rewritten.
+/// out while the password was still being set, and the admin key in the
+/// reply reached nobody — and it changes nothing: no password is set, the
+/// state is not rewritten.
 pub fn cmd_claim<L: Losos>(
     l: &mut L,
     user: &str,
@@ -1609,8 +1610,8 @@ fn ensure_repo<L: Losos>(
 /// Called after a successful claim, set-password and sign-in. Best effort:
 /// LosOS Git may be starting, or off, and neither is a reason to refuse the
 /// thing that just succeeded. Only the configured owner's account is
-/// touched; a password set for any other Nextcloud user is none of LosOS
-/// Git's business.
+/// touched; a password set for any other person is none of LosOS Git's
+/// business.
 pub fn sync_owner_password<L: Losos>(l: &mut L, user: &str, secret: &crate::setup::Secret) {
     let Some(repo) = l.config_repo() else {
         return;
@@ -3482,7 +3483,7 @@ mod tests {
             .find(|(k, _)| k == "PATCH /api/v1/admin/users/notshared")
             .expect("the password was set");
         assert_eq!(set.1.as_deref(), Some("Correct-Horse-Battery-9"));
-        // Another Nextcloud user is none of LosOS Git's business.
+        // Another person is none of LosOS Git's business.
         f.forgejo_calls.clear();
         cmd_set_password(&mut f, "someone", "Correct-Horse-Battery-9").unwrap();
         assert!(f.forgejo_calls.is_empty());

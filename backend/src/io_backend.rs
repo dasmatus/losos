@@ -226,17 +226,6 @@ pub fn atomic_write_secret(path: &Path, content: &[u8]) -> anyhow::Result<()> {
     write_atomically(path, content, 0o600, 0o700, None)
 }
 
-/// [`atomic_write_secret`] for a file that must belong to `uid` (owner and
-/// group), owned from before it appears under its real name.
-///
-/// For the staged Nextcloud password, which lands in a directory the pod's
-/// uid can write to. The old sequence, write as root then `chown(path)`, let
-/// that uid swap the freshly renamed file for a symlink to the admin token in
-/// the gap and have root chown the token over to it.
-pub fn atomic_write_secret_owned(path: &Path, content: &[u8], uid: u32) -> anyhow::Result<()> {
-    write_atomically(path, content, 0o600, 0o700, Some(uid))
-}
-
 /// The real [`crate::recovery::CodeStore`]: one 0600 file plus `/dev/urandom`.
 ///
 /// Separate from [`IoLosos`] rather than folded into it because the recovery
@@ -288,8 +277,7 @@ fn curl_get(url: &str) -> anyhow::Result<String> {
     curl_get_bounded(url, 2 * 1024 * 1024, crate::catalogue::TIMEOUT_SECS)
 }
 
-/// [`curl_get`] with its two bounds given: the app store's list for one
-/// Nextcloud version is about 17 MB, where a catalogue search is kilobytes.
+/// [`curl_get`] with its two bounds given.
 fn curl_get_bounded(url: &str, max_bytes: usize, timeout_secs: u32) -> anyhow::Result<String> {
     let out = std::process::Command::new("curl")
         .args(["--silent", "--show-error", "--fail", "--location"])
@@ -797,11 +785,10 @@ pub fn start_edge_scanner(backend: &IoLosos) {
     }
 }
 
-/// Where the live custom domains go for LosOS cloud
-/// (`$LOSOS_PUBLIC_NAMES_FILE`). Its directory is world-readable on purpose
-/// and outside the daemon's 0700 state directory: the Nextcloud pod mounts it
-/// read-only (modules/workloads.nix) and its PHP config reads the file on
-/// every request. The names are public anyway; they are in public DNS.
+/// Where the live custom domains go (`$LOSOS_PUBLIC_NAMES_FILE`). Its
+/// directory is world-readable on purpose and outside the daemon's 0700
+/// state directory: LosOS Login reads it (modules/identity.nix). The names
+/// are public anyway; they are in public DNS.
 pub const DEFAULT_PUBLIC_NAMES_FILE: &str = "/var/lib/losos-public-names/domains.json";
 
 /// Where the relay pass goes for `losos-registrar announce --relay-pass-file`
@@ -2604,18 +2591,18 @@ mod tests {
     }
 
     #[test]
-    fn staged_secret_is_owned_through_the_fd_and_never_follows_a_symlink() {
+    fn an_owned_file_is_owned_through_the_fd_and_never_follows_a_symlink() {
         use std::os::unix::fs::MetadataExt;
         let dir = tmpdir().join("stage");
         std::fs::create_dir_all(&dir).unwrap();
         let victim = dir.join("victim");
         std::fs::write(&victim, b"untouched").unwrap();
         let staged = dir.join(".losos-setpass");
-        // What a hostile pod would plant: the staged name already pointing at
-        // a file it must not get.
+        // What whoever can write the directory would plant: the name already
+        // pointing at a file they must not get.
         std::os::unix::fs::symlink(&victim, &staged).unwrap();
         let uid = std::fs::metadata(&dir).unwrap().uid();
-        atomic_write_secret_owned(&staged, b"pw", uid).unwrap();
+        write_atomically(&staged, b"pw", 0o600, 0o700, Some(uid)).unwrap();
         let meta = std::fs::symlink_metadata(&staged).unwrap();
         assert!(
             meta.file_type().is_file(),

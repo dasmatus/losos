@@ -508,7 +508,7 @@ jobs:
         with:
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-      # The cheap two thirds of devenv.nix's `build-images`.
+      # What devenv.nix's `build-images` builds.
       #
       # These are the images modules/defaults.nix wires into losos.workloads.*,
       # and the appliance is *required* to substitute them: it never builds an

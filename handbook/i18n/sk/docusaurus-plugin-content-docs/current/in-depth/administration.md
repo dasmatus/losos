@@ -128,7 +128,7 @@ to trvá niekoľko minút, pretože pod Nextcloudu spustí
 `occ maintenance:install` skôr, než čokoľvek servíruje.
 
 `ready` sa prepne, keď sa táto inštalácia dokončí, čo je skôr, než LosOS
-cloud odpovie prehliadaču. Pod potom zapne svojich 26 aplikácií a až potom
+Cloud odpovie prehliadaču. Pod potom zapne svojich 26 aplikácií a až potom
 spustí Apache. Natívne merané na 4-jadrovom hostiteľovi (2026-10-07) trvá
 inštalácia asi 11 s, zapnutie aplikácií asi 13 s a prvá stránka odpovie 27 s
 po štarte podu. Krok prihlásenia v sprievodcovi počas tejto medzery ukazuje
@@ -146,7 +146,7 @@ argon2id, a LosOS Login jeho zmenu prevezme hneď. nginx sa LosOS Login pýta
 na každú požiadavku na `/api/` a meno človeka odovzdá lososd, ktorý otvorí
 časti, ktoré povoľujú jeho skupiny. Prvý človek je vždy správca. Vlastné
 heslo si človek zmení cez `POST /api/set-password` a vlastníkovi to zmení aj
-heslo do LosOS cloud. Všetkých ostatných pridáva, mení a odstraňuje správca
+heslo do LosOS Cloud. Všetkých ostatných pridáva, mení a odstraňuje správca
 na paneli Používatelia cez `GET` a `POST /api/people` a
 `POST /api/people/{access,password,remove}`. Panel je tam iba vtedy, keď
 zariadenie prihlasuje ľudí samo (`standalone` v `GET /api/me`). lososd
@@ -157,7 +157,7 @@ kliknutí. Prihlásenia sú vo vlastnom Redise LosOS Login, na sokete, ktorý
 otvorí iba on, takže reštart LosOS Login ani nočný reštart nikoho
 neodhlási.
 
-LosOS cloud a LosOS Git prihlasujú ľudí rovnako, keď bežia ako pody, čo je
+LosOS Cloud a LosOS Git prihlasujú ľudí rovnako, keď bežia ako pody, čo je
 predvolené. nginx sa na prihlasovacej stránke každej aplikácie spýta LosOS
 Login a pošle človeka ďalej v troch hlavičkách, `X-Losos-Cloud-User`,
 `-Name` a `-Email`, ktoré nastaví pri každej požiadavke na niektorú z
@@ -189,7 +189,7 @@ prihlásenie pre všetkých a heslá, ktoré po určitom počte dní vypršia. l
 označí súbor ľudí dvoma skupinami: `losos-two-factor` pre každého s druhým
 faktorom, ktorý si LosOS Login pýta pri každom prihlásení, a `losos-locked`
 pre každého, koho zachytí pravidlo. LosOS Login takého človeka nepustí do
-LosOS cloud ani LosOS Git a lososd mu odpovedá iba na jeho účet (`locked` v
+LosOS Cloud ani LosOS Git a lososd mu odpovedá iba na jeho účet (`locked` v
 `GET /api/me`). lososd odmietne pravidlo dvojstupňového prihlásenia, kým ho
 nastavujúci správca nemá druhý faktor, a náhradný kľúč nie je zadržaný
 nikdy. `POST /api/people/two-factor/reset` odstráni druhé faktory človeka.
@@ -299,7 +299,7 @@ Federácia beží iba vtedy, keď zariadenie zdieľa svoj disk. Obe voľby
 federácie nižšie sú spojené logickým AND s `losos.sharingMyStorage`,
 nastavením, ktoré odomyká zdieľaný dátový pool (`lososInternal.federation` v
 `modules/options.nix`). S vypnutým zdieľaním nekomunikuje ani LosOS Git, ani
-LosOS cloud s inými servermi, nech hovorí ich vlastná voľba čokoľvek. Panel
+LosOS Cloud s inými servermi, nech hovorí ich vlastná voľba čokoľvek. Panel
 Aplikácie oba prepínače zosivie aj s dôvodom a panel Rozšírené zobrazí oba
 riadky ako nedostupné a odkáže na ne.
 
@@ -322,7 +322,7 @@ LAN. `nix/tests/forgejo-federation.nix` spustí skutočný Forgejo a opýta sa h
 zapnutým a potom vypnutým zdieľaním.
 
 `losos.nextcloud.federation.enable` (predvolene zapnuté) je strana LosOS
-cloud: Federated Cloud Sharing (zdieľanie s účtami `user@host` na iných
+Cloud: Federated Cloud Sharing (zdieľanie s účtami `user@host` na iných
 serveroch Nextcloud), federácia kalendárov a aplikácia trusted-servers. Keď
 je vypnutá, stanú sa dve veci. Vlastné prepínače Nextcloudu sa nastavia pri
 každom štarte: `outgoing_server2server_share_enabled` a
@@ -340,7 +340,7 @@ ktoré sa vypnúť nedajú. `nix/tests/front-vhost.nix` kontroluje cesty oboch
 služieb so zapnutým aj vypnutým zdieľaním; `nix/tests/invariants.nix` kontroluje
 bránu pri evaluácii.
 
-Zapnutá federácia dá LosOS cloud aj `allow_local_remote_servers = true`
+Zapnutá federácia dá LosOS Cloud aj `allow_local_remote_servers = true`
 a `sharing.federation.allowSelfSignedCertificates = true`
 (`modules/nextcloud-stack.nix`, `federation.system`; natívne v
 `override.config.php` modulu, v pode v `losos.config.php`). `RemoteHostValidator`
@@ -360,7 +360,7 @@ a prečíta späť cez WebDAV.
 
 ### Nastavenia aplikácií pre celé zariadenie {#box-wide-app-settings}
 
-Panel Aplikácie nesie nastavenia, ktoré platia pre všetkých v LosOS cloud a
+Panel Aplikácie nesie nastavenia, ktoré platia pre všetkých v LosOS Cloud a
 LosOS Git, teda tie, ktoré si inak každá aplikácia drží na vlastných
 stránkach správy. Každé pole je voľba pod `losos.nextcloud.site.*` alebo
 `losos.forgejo.site.*`, takže ide cez Použiť, bránu, Históriu a repozitár
@@ -408,21 +408,21 @@ ukazuje bez možnosti zmeny. Oba režimy čítajú jednu množinu atribútov,
 :::note[Čo zostáva v aplikáciách]
 Všetko, čo si nastaví účet sám pre seba, zostáva v aplikácii. V LosOS Git
 zostáva účet vlastníka správcom Forgejo pre to, čo LosOS zatiaľ nepokrýva:
-nastavenia Forgejo uložené v databáze a zoznam účtov. V LosOS cloud nie je
+nastavenia Forgejo uložené v databáze a zoznam účtov. V LosOS Cloud nie je
 správcom žiadny účet (ďalšia časť), takže doručovanie pošty, úlohy na
 pozadí a vynútenie dvojfaktorového overenia majú hodnoty, ktoré nastaví
 zariadenie.
 :::
 
-### Aplikácie v LosOS cloud {#losos-clouds-apps}
+### Aplikácie v LosOS Cloud {#losos-clouds-apps}
 
-Sekcia LosOS cloud na paneli Aplikácie vypisuje každú aplikáciu, ktorú
+Sekcia LosOS Cloud na paneli Aplikácie vypisuje každú aplikáciu, ktorú
 Nextcloud má, každú s prepínačom, odstraňuje aplikácie pridané z obchodu a
 hľadá v obchode. lososd ju obsluhuje v sekcii `apps`:
 
 | Cesta | Čo robí |
 | --- | --- |
-| `GET /api/cloud/apps` | `{available, store, apps}`, alebo `{available: false, reason}`, kým LosOS cloud neodpovedá |
+| `GET /api/cloud/apps` | `{available, store, apps}`, alebo `{available: false, reason}`, kým LosOS Cloud neodpovedá |
 | `GET /api/cloud/apps/search?q=` | najlepšie zhody obchodu pre túto verziu Nextcloud |
 | `POST /api/cloud/apps/{install,enable,disable,remove}` | `{id}`; odpovie celým zoznamom po zmene |
 
@@ -450,7 +450,7 @@ ponechá najnovšie stabilné vydanie každej aplikácie.
 
 Účet vlastníka (`notshared`) sa pri každom štarte vyberie zo skupiny
 `admin` v Nextcloud (`demoteOwner`, keď ho inštalácia urobila prvým
-správcom), takže prihlásený vlastník nemôže vnútri LosOS cloud zmeniť, čo
+správcom), takže prihlásený vlastník nemôže vnútri LosOS Cloud zmeniť, čo
 nastavuje LosOS. Všetko, čo lososd od Nextcloud ako vlastník žiada (heslá
 aplikácií, WebDAV, `cloud/user`), funguje pre bežný účet. Vlastné stránky
 Aplikácie a Používatelia v Nextcloud sú preto nedostupné; ľudia dostanú

@@ -6,17 +6,17 @@ slug: /manual/files-on-your-computer
 
 # Dateien auf deinem Computer
 
-Deine Dateien in LosOS cloud sind auch ein Netzwerkordner. Jeder Computer im
+Deine Dateien in LosOS Cloud sind auch ein Netzwerkordner. Jeder Computer im
 Netz der Box öffnet ihn im Dateimanager, zieht Dateien hinein und heraus und
 öffnet sie an Ort und Stelle, ohne etwas zu installieren. Der Ordner ist die
-WebDAV-Freigabe von LosOS cloud unter dieser Adresse:
+WebDAV-Freigabe von LosOS Cloud unter dieser Adresse:
 
 ```text
 https://<name>.local/nextcloud/remote.php/webdav/
 ```
 
 `<name>` ist der Name der Box, wie er auf ihrem Bildschirm steht. Die
-Freigabe enthält dieselben Dateien wie Dateien in LosOS cloud.
+Freigabe enthält dieselben Dateien wie Dateien in LosOS Cloud.
 
 ## Bevor du anfängst \{#before-you-start}
 
@@ -30,12 +30,12 @@ kann, und fragt, ob er weitermachen soll. Windows verbindet sich gar nicht.
 Im Netz der Box gibst du den Anmeldenamen und das Passwort ein, die du bei
 LosOS Login verwendest. Wer die Box eingerichtet hat, bekommt die Dateien
 des Eigentümers. Alle anderen bekommen ihre eigenen, und beim ersten Öffnen
-der Freigabe legt LosOS cloud ihr Konto an.
+der Freigabe legt LosOS Cloud ihr Konto an.
 
 Über das Internet antwortet LosOS Login nicht, deshalb fragt die Freigabe
-dort nach einem App-Passwort. Du erstellst es in LosOS cloud unter
+dort nach einem App-Passwort. Du erstellst es in LosOS Cloud unter
 **Einstellungen** > **Sicherheit** > **Neues App-Passwort erstellen**. LosOS
-cloud zeigt dann den Namen und das Passwort an, die du eingibst. Ein
+Cloud zeigt dann den Namen und das Passwort an, die du eingibst. Ein
 App-Passwort funktioniert auch im Netz der Box und lässt sich einzeln
 widerrufen.
 
@@ -44,8 +44,8 @@ widerrufen.
 GNOME Dateien und KDE Dolphin finden die Box von selbst.
 
 - **GNOME Dateien:** Öffne **Andere Orte**. Klicke unter **Netzwerke** auf
-  **LosOS cloud on `<name>`** und gib Namen und Passwort ein.
-- **Dolphin:** Öffne in der Ortsleiste **Netzwerk** und dann **LosOS cloud
+  **LosOS Cloud on `<name>`** und gib Namen und Passwort ein.
+- **Dolphin:** Öffne in der Ortsleiste **Netzwerk** und dann **LosOS Cloud
   on `<name>`**.
 
 Um die Adresse selbst einzugeben, schreibe
@@ -100,7 +100,7 @@ bevorzugten Server.
 
 Die Freigabe ist dafür da, Dateien dort zu öffnen, wo sie liegen. Um eine
 Kopie eines Ordners synchron zu halten oder Fotos vom Handy hochzuladen,
-nimm die Apps von LosOS cloud (den Nextcloud-Desktop-Client und die
+nimm die Apps von LosOS Cloud (den Nextcloud-Desktop-Client und die
 Nextcloud-Apps fürs Handy). Gib ihnen die Adresse
 `https://<name>.local/nextcloud`. Zum Anmelden öffnen sie LosOS Login im
 Browser und behalten danach ein eigenes App-Passwort.

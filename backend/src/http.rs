@@ -1796,7 +1796,7 @@ async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
     let token = api.token.clone();
     let claims = api.clone();
     run(&api, move |l| {
-        // Held across the occ run on purpose: two claims racing each other
+        // Held across the claim on purpose: two claims racing each other
         // would otherwise both see an unclaimed box.
         let mut receipts = claims
             .claims

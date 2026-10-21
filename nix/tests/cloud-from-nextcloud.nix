@@ -207,7 +207,7 @@ pkgs.testers.nixosTest {
         nc(ADMIN, "POST", f"/ocs/v2.php/apps/deck/api/v1.0/cards/{card['id']}/comments?format=json",
            "-H 'OCS-APIRequest: true' -H 'Content-Type: application/json' -d '{\"message\": \"I will pick them up on Saturday\"}'")
 
-        app_password = box.succeed(f"{occ} user:auth-tokens:add --name 'Pixel 8' notshared").strip().splitlines()[-1].strip()
+        app_password = box.succeed(f"OC_PASS='${adminPass}' {occ} user:auth-tokens:add --password-from-env --name 'Pixel 8' notshared").strip().splitlines()[-1].strip()
         assert len(app_password) == 72, app_password
         nc(("notshared", app_password), "PROPFIND", f"{dav}/", "-H 'Depth: 0'")
 
