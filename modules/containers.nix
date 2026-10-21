@@ -44,6 +44,8 @@ let
   # LosOS Git (modules/git.nix) answers on a Unix socket only nginx may open.
   gitOn = config.losos.git.enable;
   gitSocket = "/run/losos-git/http.sock";
+  # LosOS Git's pages come from the admin UI's bundle.
+  gitPages = gitOn && adminEnabled;
 
   # The Nextcloud pod's httpd listens here. The port is runtime-tunable from
   # the settings SPA, which is exactly why it is not baked into the image:
@@ -409,9 +411,8 @@ let
 
   adminHeaderMaps = lib.concatMapStrings (
     h:
-    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) h.frameValue (
-      h.mailValue or h.value
-    )
+    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value
+    ) h.frameValue (h.mailValue or h.value)
   ) adminHeaders;
 
   # `always` so the headers ride on the 403s the lanOnly guard emits too.
@@ -498,13 +499,14 @@ in
           # theme-boot.js is deliberately NOT covered: it is the one unhashed
           # file in the bundle (admin-ui/app/vite.config.ts says why), so it
           # has to keep revalidating against its ETag.
-          # Not LAN-only while LosOS Cloud runs: its page at /cloud/
-          # (modules/cloud.nix) is reached through the tunnel too and loads
-          # the same bundle. The files are the app's code, the same on every
-          # box, and hold nothing of the owner's.
+          # Not LAN-only while LosOS Cloud or LosOS Git signs people in:
+          # their pages at /cloud/ (modules/cloud.nix) and /git/ are reached
+          # through the tunnel too and load the same bundle. The files are
+          # the app's code, the same on every box, and hold nothing of the
+          # owner's.
           "/assets/" = {
             extraConfig = ''
-              ${lib.optionalString (!config.lososInternal.appSignIn.cloud) lanOnly}
+              ${lib.optionalString (!(config.lososInternal.appSignIn.cloud || signInGit)) lanOnly}
               expires 1y;
             '';
           };
@@ -698,19 +700,13 @@ in
             '';
           };
         })
-        (lib.mkIf gitOn {
-          # LosOS Git: its pages, its API and git's smart HTTP, all on the
-          # Unix socket of modules/git.nix with the /git prefix taken off
-          # (the `/` after the socket path). Not LAN-guarded, like
-          # /nextcloud: through an edge it is how the owner clones from
-          # anywhere, and every repository is checked by LosOS Git itself.
-          # Pushes and clones of any size, streamed both ways, and the
-          # person LosOS Login names on every request (modules/app-sign-in.nix);
-          # a git client's own token in Authorization skips that question
-          # (`/internal/losos-app-authz`).
-          "/git/" = {
-            proxyPass = "http://unix:${gitSocket}:/";
-            extraConfig = ''
+        (lib.mkIf gitOn (
+          let
+            # Pushes and clones of any size, streamed both ways, and the
+            # person LosOS Login names on every request
+            # (modules/app-sign-in.nix); a git client's own token in
+            # Authorization skips that question (`/internal/losos-app-authz`).
+            toGit = ''
               ${if signInGit then signInMaybe else clearSignIn}
               client_max_body_size 0;
               proxy_request_buffering off;
@@ -719,8 +715,50 @@ in
               proxy_read_timeout 1h;
               proxy_send_timeout 1h;
             '';
-          };
-        })
+          in
+          {
+            # LosOS Git: its API and git's smart HTTP on the Unix socket of
+            # modules/git.nix with the /git prefix taken off, and its pages
+            # from the admin UI's bundle (admin-ui/app/git/). Not LAN-guarded,
+            # like /nextcloud: through an edge it is how the owner clones from
+            # anywhere, and every repository is checked by LosOS Git itself.
+            "/git/api/" = {
+              proxyPass = "http://unix:${gitSocket}:/api/";
+              extraConfig = toGit;
+            };
+            # What git asks for: /git/<owner>/<repo>[.git]/info/refs and the
+            # two service calls. Regex, so it wins over the pages' prefix.
+            "~ ^/git/[^/]+/[^/]+/(?:info/refs|git-upload-pack|git-receive-pack)$" = {
+              proxyPass = "http://unix:${gitSocket}";
+              extraConfig = ''
+                rewrite ^/git(/.*)$ $1 break;
+                ${toGit}
+              '';
+            };
+            # The pages: one document for every path, behind LosOS Login like
+            # LosOS Cloud's (modules/cloud.nix). Without the admin UI there
+            # are no pages, and the socket answers the rest as before.
+            "/git/" =
+              if gitPages then
+                {
+                  tryFiles = "$uri /git/index.html";
+                  extraConfig = lib.optionalString signInGit ''
+                    auth_request /internal/losos-app-sign-in;
+                    error_page 401 = @losos-app-sign-in;
+                    error_page 403 @losos-app-held;
+                    error_page 500 =503 @losos-app-waiting;
+                  '';
+                }
+              else
+                {
+                  proxyPass = "http://unix:${gitSocket}:/";
+                  extraConfig = toGit;
+                };
+          }
+          # The pre-paint theme script the pages load, outside the LAN guard
+          # of `/` for the same reason as /assets/ below.
+          // lib.optionalAttrs (gitPages && signInGit) { "= /theme-boot.js" = { }; }
+        ))
         (lib.mkIf (nextcloudWorkload && signInNextcloud) {
           # Nextcloud's sign-in page and user_saml's, which reads the
           # headers (modules/app-sign-in.nix): LosOS Login's instead (see

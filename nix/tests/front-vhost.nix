@@ -353,9 +353,17 @@ pkgs.testers.nixosTest {
         # and that very address is what the pod is told to trust.
         lan = noadmin.succeed(f"curl -s http://{LAN}/nextcloud")
         assert f"own-address={LAN}" in lan, f"LAN address not forwarded: {lan!r}"
-        # LosOS Git gets the path without its /git prefix.
-        got = appliance.succeed("curl -s http://127.0.0.1/git/notshared/x.git/info/refs")
-        assert got.startswith("stub-git /notshared/x.git/info/refs"), f"/git/ prefix not stripped: {got!r}"
+        # LosOS Git gets git's calls and its API without the /git prefix,
+        # and the pages come from the admin UI's bundle, deep links too.
+        got = appliance.succeed("curl -s 'http://127.0.0.1/git/notshared/x.git/info/refs?service=git-upload-pack'")
+        assert got.startswith("stub-git /notshared/x.git/info/refs?service=git-upload-pack"), f"/git/ prefix not stripped: {got!r}"
+        got = appliance.succeed("curl -s http://127.0.0.1/git/notshared/x/git-receive-pack -d x")
+        assert got.startswith("stub-git /notshared/x/git-receive-pack"), f"a push does not reach LosOS Git: {got!r}"
+        got = appliance.succeed("curl -s http://127.0.0.1/git/api/v1/user")
+        assert got.startswith("stub-git /api/v1/user"), f"/git/api/ prefix not stripped: {got!r}"
+        for page in ("/git/", "/git/notshared/x/pulls/1/files"):
+            got = appliance.succeed(f"curl -s http://127.0.0.1{page}")
+            assert '<div id="git">' in got, f"{page}: not LosOS Git's page: {got[:200]!r}"
         # The pod's absolute http redirect reaches the browser as a path, so
         # a page opened over https stays on https (the wizard's frame is
         # refused by the admin CSP otherwise).
@@ -577,7 +585,8 @@ pkgs.testers.nixosTest {
         for path in NC_EVERYDAY:
             got = appliance.succeed(f"curl -s 'http://127.0.0.1{path}'")
             assert got.startswith("stub-nextcloud"), f"sharing off, {path} no longer reaches the pod: {got!r}"
-        # LosOS Git does not federate yet; its route is untouched.
-        assert "stub-git" in appliance.succeed("curl -s http://127.0.0.1/git/")
+        # LosOS Git does not federate yet; its routes are untouched.
+        assert '<div id="git">' in appliance.succeed("curl -s http://127.0.0.1/git/")
+        assert "stub-git" in appliance.succeed("curl -s http://127.0.0.1/git/api/v1/version")
   '';
 }

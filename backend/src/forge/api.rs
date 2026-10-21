@@ -23,80 +23,83 @@ use serde_json::{json, Value};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api/v1")
-            .route("/version", web::get().to(version))
-            .route("/user", web::get().to(me))
-            .route("/user/repos", web::get().to(my_repos))
-            .route("/user/repos", web::post().to(create_my_repo))
-            .route("/user/tokens", web::get().to(my_tokens))
-            .route("/user/tokens", web::post().to(create_my_token))
-            .route("/user/tokens/{id}", web::delete().to(delete_my_token))
-            .route("/users/{login}", web::get().to(user))
-            .route("/users/{login}/repos", web::get().to(user_repos))
-            .route("/repos/search", web::get().to(search_repos))
-            .route("/repos/{owner}/{repo}", web::get().to(get_repo))
-            .route("/repos/{owner}/{repo}", web::patch().to(edit_repo))
-            .route("/repos/{owner}/{repo}", web::delete().to(delete_repo))
-            .route(
-                "/repos/{owner}/{repo}/collaborators",
-                web::get().to(collaborators),
-            )
-            .route(
-                "/repos/{owner}/{repo}/collaborators/{login}",
-                web::put().to(put_collaborator),
-            )
-            .route(
-                "/repos/{owner}/{repo}/collaborators/{login}",
-                web::delete().to(delete_collaborator),
-            )
-            .route("/repos/{owner}/{repo}/issues", web::get().to(list_issues))
-            .route("/repos/{owner}/{repo}/pulls", web::get().to(list_pulls))
-            .route(
-                "/repos/{owner}/{repo}/issues/{number}",
-                web::get().to(get_issue),
-            )
-            .route(
-                "/repos/{owner}/{repo}/issues/{number}/comments",
-                web::get().to(issue_comments),
-            )
-            .route("/repos/{owner}/{repo}/labels", web::get().to(repo_labels))
-            .route(
-                "/repos/{owner}/{repo}/commits/{sha}/statuses",
-                web::get().to(commit_statuses),
-            )
-            .route(
-                "/repos/{owner}/{repo}/statuses/{sha}",
-                web::post().to(create_status),
-            )
-            .route("/attachments/{uuid}", web::get().to(get_attachment))
-            .route("/admin/users", web::get().to(admin_users))
-            .route("/admin/users/{login}", web::put().to(admin_ensure_user))
-            .route(
-                "/admin/users/{login}/repos/{repo}",
-                web::put().to(admin_ensure_repo),
-            )
-            .route(
-                "/admin/users/{login}/tokens",
-                web::post().to(admin_create_token),
-            )
-            .route(
-                "/admin/users/{login}/tokens/{name}",
-                web::delete().to(admin_delete_token),
-            ),
-    );
+    let scope = web::scope("/api/v1")
+        .route("/version", web::get().to(version))
+        .route("/user", web::get().to(me))
+        .route("/user/repos", web::get().to(my_repos))
+        .route("/user/repos", web::post().to(create_my_repo))
+        .route("/user/tokens", web::get().to(my_tokens))
+        .route("/user/tokens", web::post().to(create_my_token))
+        .route("/user/tokens/{id}", web::delete().to(delete_my_token))
+        .route("/users/{login}", web::get().to(user))
+        .route("/users/{login}/repos", web::get().to(user_repos))
+        .route("/repos/search", web::get().to(search_repos))
+        .route("/repos/{owner}/{repo}", web::get().to(get_repo))
+        .route("/repos/{owner}/{repo}", web::patch().to(edit_repo))
+        .route("/repos/{owner}/{repo}", web::delete().to(delete_repo))
+        .route(
+            "/repos/{owner}/{repo}/collaborators",
+            web::get().to(collaborators),
+        )
+        .route(
+            "/repos/{owner}/{repo}/collaborators/{login}",
+            web::put().to(put_collaborator),
+        )
+        .route(
+            "/repos/{owner}/{repo}/collaborators/{login}",
+            web::delete().to(delete_collaborator),
+        )
+        .route("/repos/{owner}/{repo}/issues", web::get().to(list_issues))
+        .route("/repos/{owner}/{repo}/pulls", web::get().to(list_pulls))
+        .route(
+            "/repos/{owner}/{repo}/issues/{number}",
+            web::get().to(get_issue),
+        )
+        .route(
+            "/repos/{owner}/{repo}/issues/{number}/comments",
+            web::get().to(issue_comments),
+        )
+        .route("/repos/{owner}/{repo}/labels", web::get().to(repo_labels))
+        .route(
+            "/repos/{owner}/{repo}/commits/{sha}/statuses",
+            web::get().to(commit_statuses),
+        )
+        .route(
+            "/repos/{owner}/{repo}/statuses/{sha}",
+            web::post().to(create_status),
+        )
+        .route("/attachments/{uuid}", web::get().to(get_attachment))
+        .route("/admin/users", web::get().to(admin_users))
+        .route("/admin/users/{login}", web::put().to(admin_ensure_user))
+        .route(
+            "/admin/users/{login}/repos/{repo}",
+            web::put().to(admin_ensure_repo),
+        )
+        .route(
+            "/admin/users/{login}/tokens",
+            web::post().to(admin_create_token),
+        )
+        .route(
+            "/admin/users/{login}/tokens/{name}",
+            web::delete().to(admin_delete_token),
+        );
+    // Pull requests and review, the code, the worktrees: one scope, as a
+    // scope that matches the prefix answers 404 for the rest.
+    let scope = super::pulls::routes(scope);
+    let scope = super::code::routes(scope);
+    cfg.service(super::worktrees::routes(scope));
 }
 
 // ── Answers ─────────────────────────────────────────────────────────────────
 
-type Answer = Result<HttpResponse, Fail>;
+pub(super) type Answer = Result<HttpResponse, Fail>;
 
-fn need_person(c: &Caller) -> Result<&User, Fail> {
+pub(super) fn need_person(c: &Caller) -> Result<&User, Fail> {
     c.user()
         .ok_or_else(|| Fail::unauthorized("Sign in, or send a token."))
 }
 
-fn need_admin(c: &Caller) -> Result<(), Fail> {
+pub(super) fn need_admin(c: &Caller) -> Result<(), Fail> {
     if c.is_site_admin() {
         Ok(())
     } else {
@@ -104,7 +107,7 @@ fn need_admin(c: &Caller) -> Result<(), Fail> {
     }
 }
 
-fn need_scope(c: &Caller, family: &str, write: bool) -> Result<(), Fail> {
+pub(super) fn need_scope(c: &Caller, family: &str, write: bool) -> Result<(), Fail> {
     if c.allows(family, write) {
         Ok(())
     } else {
@@ -115,7 +118,7 @@ fn need_scope(c: &Caller, family: &str, write: bool) -> Result<(), Fail> {
     }
 }
 
-fn seen_by_nobody(state: &State, c: &Caller) -> Result<(), Fail> {
+pub(super) fn seen_by_nobody(state: &State, c: &Caller) -> Result<(), Fail> {
     if state.config.require_sign_in && c.user().is_none() && !c.is_site_admin() {
         Err(Fail::unauthorized("Sign in to use LosOS Git."))
     } else {
@@ -135,6 +138,7 @@ pub fn user_json(u: &User, viewer: &Caller) -> Value {
         "full_name": u.full_name,
         "email": if own { u.email.as_str() } else { "" },
         "is_admin": u.is_admin,
+        "is_bot": u.is_bot,
         "created": u.created,
     })
 }
@@ -255,7 +259,7 @@ pub fn create_repo(
 
 /// The repository a route names and what the caller may do there. Nobody
 /// learns that a private repository exists: it is "no such repository".
-fn find_repo(
+pub(super) fn find_repo(
     state: &State,
     caller: &Caller,
     owner: &str,
@@ -797,7 +801,7 @@ struct IssueQuery {
     kind: Option<String>,
 }
 
-fn issue_json(base: &str, repo: &Repo, i: &Issue, attachments: &[Attachment]) -> Value {
+pub(super) fn issue_json(base: &str, repo: &Repo, i: &Issue, attachments: &[Attachment]) -> Value {
     let kind = if i.is_pull { "pulls" } else { "issues" };
     let mut doc = json!({
         "number": i.number,
@@ -830,7 +834,7 @@ fn issue_json(base: &str, repo: &Repo, i: &Issue, attachments: &[Attachment]) ->
     doc
 }
 
-fn base(state: &State) -> String {
+pub(super) fn base(state: &State) -> String {
     state.config.base_path.trim_end_matches('/').to_string()
 }
 

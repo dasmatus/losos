@@ -128,7 +128,9 @@ export async function serve({ csp = false } = {}) {
         ? 'lab/index.html'
         : rel.startsWith('/manage/') || rel === '/manage'
           ? 'manage/index.html'
-          : 'index.html';
+          : rel.startsWith('/git/') || rel === '/git'
+            ? 'git/index.html'
+            : 'index.html';
     send(file).catch(() =>
       send(fallback).catch(() => {
         res.writeHead(404);

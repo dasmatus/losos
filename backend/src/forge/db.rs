@@ -127,6 +127,66 @@ const MIGRATIONS: &[&str] = &[
     ",
     // 3: commit statuses (`super::statuses`).
     super::statuses::MIGRATION,
+    // 4: code review. A review is one verdict on one commit of a pull
+    // request, with the line comments it was sent with; a reply to a line
+    // comment has no review of its own. Who was asked to review, so a
+    // review can be asked for again. Accounts that are programs (`is_bot`).
+    // Worktrees: which checkout on which computer a branch is pushed from,
+    // as the push said in its options (`git push -o worktree=...`).
+    "
+    ALTER TABLE users ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE issues ADD COLUMN head_sha TEXT;
+    ALTER TABLE issues ADD COLUMN base_sha TEXT;
+    ALTER TABLE issues ADD COLUMN merged_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE issues ADD COLUMN merged_at TEXT;
+    CREATE TABLE reviews (
+        id            INTEGER PRIMARY KEY,
+        issue_id      INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        reviewer_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reviewer_name TEXT NOT NULL DEFAULT '',
+        state         TEXT NOT NULL
+                      CHECK (state IN ('approved', 'changes_requested', 'commented')),
+        body          TEXT NOT NULL DEFAULT '',
+        commit_id     TEXT NOT NULL,
+        created       TEXT NOT NULL
+    );
+    CREATE INDEX reviews_issue ON reviews (issue_id);
+    CREATE TABLE review_comments (
+        id          INTEGER PRIMARY KEY,
+        issue_id    INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        review_id   INTEGER REFERENCES reviews(id) ON DELETE CASCADE,
+        reply_to    INTEGER REFERENCES review_comments(id) ON DELETE CASCADE,
+        poster_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        poster_name TEXT NOT NULL DEFAULT '',
+        path        TEXT NOT NULL,
+        line        INTEGER NOT NULL,
+        side        TEXT NOT NULL CHECK (side IN ('old', 'new')),
+        commit_id   TEXT NOT NULL,
+        body        TEXT NOT NULL,
+        resolved    INTEGER NOT NULL DEFAULT 0,
+        resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created     TEXT NOT NULL
+    );
+    CREATE INDEX review_comments_issue ON review_comments (issue_id);
+    CREATE TABLE review_requests (
+        issue_id     INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created      TEXT NOT NULL,
+        PRIMARY KEY (issue_id, user_id)
+    );
+    CREATE TABLE worktrees (
+        id       INTEGER PRIMARY KEY,
+        repo_id  INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+        user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        computer TEXT NOT NULL DEFAULT '',
+        name     TEXT NOT NULL,
+        branch   TEXT NOT NULL,
+        head     TEXT NOT NULL,
+        updated  TEXT NOT NULL,
+        UNIQUE (repo_id, user_id, computer, name)
+    );
+    ",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -137,6 +197,8 @@ pub struct User {
     pub email: String,
     pub is_admin: bool,
     pub created: String,
+    /// A program rather than a person (the code reviewer).
+    pub is_bot: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -215,6 +277,14 @@ pub struct Issue {
     pub created: String,
     pub updated: String,
     pub closed_at: Option<String>,
+    /// A pull request's head when it was merged or closed; while it is
+    /// open, the branch says.
+    pub head_sha: Option<String>,
+    /// And its base then, so the diff of a finished pull request stays the
+    /// one it had.
+    pub base_sha: Option<String>,
+    pub merged_by: Option<String>,
+    pub merged_at: Option<String>,
     pub labels: Vec<Label>,
     pub assignees: Vec<String>,
 }
@@ -264,7 +334,7 @@ pub struct Store {
     conn: Mutex<Connection>,
 }
 
-const USER_COLS: &str = "id, login, full_name, email, is_admin, created";
+const USER_COLS: &str = "id, login, full_name, email, is_admin, created, is_bot";
 const REPO_COLS: &str = "r.id, r.owner_id, u.login, r.name, r.description, r.private, \
      r.default_branch, r.fork_of, r.created, r.updated";
 
@@ -276,6 +346,7 @@ fn user_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
         email: row.get(3)?,
         is_admin: row.get(4)?,
         created: row.get(5)?,
+        is_bot: row.get(6)?,
     })
 }
 
@@ -313,7 +384,8 @@ fn token_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Token> {
 
 const ISSUE_COLS: &str = "i.id, i.repo_id, i.number, COALESCE(u.login, i.poster_name), i.title, \
      i.body, i.closed, i.is_pull, i.head_branch, i.base_branch, i.merged, i.merge_commit, \
-     i.created, i.updated, i.closed_at";
+     i.created, i.updated, i.closed_at, i.head_sha, i.base_sha, \
+     (SELECT m.login FROM users m WHERE m.id = i.merged_by), i.merged_at";
 
 fn issue_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Issue> {
     Ok(Issue {
@@ -332,6 +404,10 @@ fn issue_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Issue> {
         created: row.get(12)?,
         updated: row.get(13)?,
         closed_at: row.get(14)?,
+        head_sha: row.get(15)?,
+        base_sha: row.get(16)?,
+        merged_by: row.get(17)?,
+        merged_at: row.get(18)?,
         labels: Vec::new(),
         assignees: Vec::new(),
     })
@@ -775,12 +851,13 @@ impl Store {
     pub fn collaborators(&self, repo_id: i64) -> anyhow::Result<Vec<(User, Permission)>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT u.id, u.login, u.full_name, u.email, u.is_admin, u.created, c.permission
+            "SELECT u.id, u.login, u.full_name, u.email, u.is_admin, u.created, u.is_bot,
+                    c.permission
              FROM collaborators c JOIN users u ON u.id = c.user_id
              WHERE c.repo_id = ?1 ORDER BY u.lower_login",
         )?;
         let rows = stmt.query_map([repo_id], |row| {
-            let p: String = row.get(6)?;
+            let p: String = row.get(7)?;
             Ok((
                 user_row(row)?,
                 Permission::parse(&p).unwrap_or(Permission::Read),
@@ -886,6 +963,21 @@ impl Store {
         issue.map(|i| Store::fill_issue(&conn, i)).transpose()
     }
 
+    pub fn issue_by_id(&self, id: i64) -> anyhow::Result<Option<Issue>> {
+        let conn = self.conn();
+        let issue = conn
+            .query_row(
+                &format!(
+                    "SELECT {ISSUE_COLS} FROM issues i LEFT JOIN users u ON u.id = i.poster_id
+                     WHERE i.id = ?1"
+                ),
+                [id],
+                issue_row,
+            )
+            .optional()?;
+        issue.map(|i| Store::fill_issue(&conn, i)).transpose()
+    }
+
     pub fn comments(&self, issue_id: i64) -> anyhow::Result<Vec<Comment>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
@@ -963,6 +1055,531 @@ impl Store {
             })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
+    }
+}
+
+/// A reviewer's verdict.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewState {
+    Approved,
+    ChangesRequested,
+    Commented,
+}
+
+impl ReviewState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ReviewState::Approved => "approved",
+            ReviewState::ChangesRequested => "changes_requested",
+            ReviewState::Commented => "commented",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<ReviewState> {
+        match s {
+            "approved" => Some(ReviewState::Approved),
+            "changes_requested" => Some(ReviewState::ChangesRequested),
+            "commented" => Some(ReviewState::Commented),
+            _ => None,
+        }
+    }
+}
+
+/// Which side of a diff a line comment is on: the line as it was (`old`)
+/// or as the pull request has it (`new`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Side {
+    Old,
+    New,
+}
+
+impl Side {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Side::Old => "old",
+            Side::New => "new",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Side> {
+        match s {
+            "old" => Some(Side::Old),
+            "new" => Some(Side::New),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Review {
+    pub id: i64,
+    pub issue_id: i64,
+    pub reviewer: String,
+    pub state: ReviewState,
+    pub body: String,
+    pub commit_id: String,
+    pub created: String,
+}
+
+/// A comment on one line of a pull request's diff.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LineComment {
+    pub id: i64,
+    pub issue_id: i64,
+    pub review_id: Option<i64>,
+    /// The comment this one answers; the first of a thread answers none.
+    pub reply_to: Option<i64>,
+    pub poster: String,
+    pub path: String,
+    pub line: i64,
+    pub side: Side,
+    pub commit_id: String,
+    pub body: String,
+    pub resolved: bool,
+    pub resolved_by: Option<String>,
+    pub created: String,
+}
+
+/// A line comment as a review sends it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewLineComment {
+    pub path: String,
+    pub line: i64,
+    pub side: Side,
+    pub body: String,
+}
+
+/// One checkout of a repository on someone's computer, as its pushes name it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Worktree {
+    pub id: i64,
+    pub repo_id: i64,
+    pub owner: String,
+    pub computer: String,
+    pub name: String,
+    pub branch: String,
+    pub head: String,
+    pub updated: String,
+}
+
+const REVIEW_COLS: &str = "r.id, r.issue_id, COALESCE(u.login, r.reviewer_name), r.state, r.body, \
+     r.commit_id, r.created";
+
+fn review_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Review> {
+    let state: String = row.get(3)?;
+    Ok(Review {
+        id: row.get(0)?,
+        issue_id: row.get(1)?,
+        reviewer: row.get(2)?,
+        state: ReviewState::parse(&state).unwrap_or(ReviewState::Commented),
+        body: row.get(4)?,
+        commit_id: row.get(5)?,
+        created: row.get(6)?,
+    })
+}
+
+const LINE_COLS: &str =
+    "c.id, c.issue_id, c.review_id, c.reply_to, COALESCE(u.login, c.poster_name), \
+     c.path, c.line, c.side, c.commit_id, c.body, c.resolved, \
+     (SELECT b.login FROM users b WHERE b.id = c.resolved_by), c.created";
+
+fn line_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<LineComment> {
+    let side: String = row.get(7)?;
+    Ok(LineComment {
+        id: row.get(0)?,
+        issue_id: row.get(1)?,
+        review_id: row.get(2)?,
+        reply_to: row.get(3)?,
+        poster: row.get(4)?,
+        path: row.get(5)?,
+        line: row.get(6)?,
+        side: Side::parse(&side).unwrap_or(Side::New),
+        commit_id: row.get(8)?,
+        body: row.get(9)?,
+        resolved: row.get(10)?,
+        resolved_by: row.get(11)?,
+        created: row.get(12)?,
+    })
+}
+
+impl Store {
+    // ── Writing issues and pull requests ──────────────────────────────────
+
+    /// A new issue, or with `pull` (head, base) a pull request, numbered
+    /// after the repository's last one of either kind.
+    pub fn create_issue(
+        &self,
+        repo_id: i64,
+        poster_id: i64,
+        title: &str,
+        body: &str,
+        pull: Option<(&str, &str)>,
+    ) -> anyhow::Result<Issue> {
+        let number = {
+            let mut conn = self.conn();
+            let tx = conn.transaction()?;
+            let number: i64 = tx.query_row(
+                "SELECT COALESCE(MAX(number), 0) + 1 FROM issues WHERE repo_id = ?1",
+                [repo_id],
+                |r| r.get(0),
+            )?;
+            let now = super::now();
+            tx.execute(
+                "INSERT INTO issues (repo_id, number, poster_id, title, body, is_pull,
+                                     head_branch, base_branch, created, updated)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
+                params![
+                    repo_id,
+                    number,
+                    poster_id,
+                    title,
+                    body,
+                    pull.is_some(),
+                    pull.map(|p| p.0),
+                    pull.map(|p| p.1),
+                    now
+                ],
+            )?;
+            tx.commit()?;
+            number
+        };
+        self.issue(repo_id, number)?
+            .ok_or_else(|| anyhow::anyhow!("issue {number} vanished"))
+    }
+
+    /// A new title, description or base branch; `None` leaves each.
+    pub fn edit_issue(
+        &self,
+        issue_id: i64,
+        title: Option<&str>,
+        body: Option<&str>,
+        base: Option<&str>,
+    ) -> anyhow::Result<()> {
+        self.conn().execute(
+            "UPDATE issues SET title = COALESCE(?2, title), body = COALESCE(?3, body),
+                    base_branch = CASE WHEN is_pull THEN COALESCE(?4, base_branch)
+                                       ELSE base_branch END,
+                    updated = ?5
+             WHERE id = ?1",
+            params![issue_id, title, body, base, super::now()],
+        )?;
+        Ok(())
+    }
+
+    /// Close or reopen. A pull request keeps the head and base it was
+    /// closed at, `(head, base)`.
+    pub fn set_closed(
+        &self,
+        issue_id: i64,
+        closed: bool,
+        shas: Option<(&str, &str)>,
+    ) -> anyhow::Result<()> {
+        let now = super::now();
+        self.conn().execute(
+            "UPDATE issues SET closed = ?2, updated = ?3,
+                    closed_at = CASE WHEN ?2 THEN ?3 ELSE NULL END,
+                    head_sha = CASE WHEN ?2 THEN ?4 ELSE NULL END,
+                    base_sha = CASE WHEN ?2 THEN ?5 ELSE NULL END
+             WHERE id = ?1 AND merged = 0",
+            params![issue_id, closed, now, shas.map(|s| s.0), shas.map(|s| s.1)],
+        )?;
+        Ok(())
+    }
+
+    /// A pull request merged: by `by` through the pages, or by a push that
+    /// put its head into the base (`by` unknown).
+    pub fn mark_merged(
+        &self,
+        issue_id: i64,
+        merge_commit: &str,
+        head_sha: &str,
+        base_sha: &str,
+        by: Option<i64>,
+    ) -> anyhow::Result<()> {
+        let now = super::now();
+        self.conn().execute(
+            "UPDATE issues SET merged = 1, closed = 1, merge_commit = ?2, head_sha = ?3,
+                    base_sha = ?4, merged_by = ?5, merged_at = ?6, closed_at = ?6, updated = ?6
+             WHERE id = ?1 AND merged = 0",
+            params![issue_id, merge_commit, head_sha, base_sha, by, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn add_comment(
+        &self,
+        issue_id: i64,
+        poster_id: i64,
+        body: &str,
+    ) -> anyhow::Result<Comment> {
+        let id = {
+            let conn = self.conn();
+            let now = super::now();
+            conn.execute(
+                "INSERT INTO issue_comments (issue_id, poster_id, body, created, updated)
+                 VALUES (?1, ?2, ?3, ?4, ?4)",
+                params![issue_id, poster_id, body, now],
+            )?;
+            conn.execute(
+                "UPDATE issues SET updated = ?2 WHERE id = ?1",
+                params![issue_id, now],
+            )?;
+            conn.last_insert_rowid()
+        };
+        self.comments(issue_id)?
+            .into_iter()
+            .find(|c| c.id == id)
+            .ok_or_else(|| anyhow::anyhow!("comment {id} vanished"))
+    }
+
+    // ── Code review ───────────────────────────────────────────────────────
+
+    /// A review with its line comments, in one transaction. A review by
+    /// someone who was asked for one answers the request.
+    pub fn create_review(
+        &self,
+        issue_id: i64,
+        reviewer_id: i64,
+        state: ReviewState,
+        body: &str,
+        commit_id: &str,
+        comments: &[NewLineComment],
+    ) -> anyhow::Result<Review> {
+        let id = {
+            let mut conn = self.conn();
+            let tx = conn.transaction()?;
+            let now = super::now();
+            tx.execute(
+                "INSERT INTO reviews (issue_id, reviewer_id, state, body, commit_id, created)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![issue_id, reviewer_id, state.as_str(), body, commit_id, now],
+            )?;
+            let id = tx.last_insert_rowid();
+            for c in comments {
+                tx.execute(
+                    "INSERT INTO review_comments (issue_id, review_id, poster_id, path, line,
+                                                  side, commit_id, body, created)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    params![
+                        issue_id,
+                        id,
+                        reviewer_id,
+                        c.path,
+                        c.line,
+                        c.side.as_str(),
+                        commit_id,
+                        c.body,
+                        now
+                    ],
+                )?;
+            }
+            tx.execute(
+                "DELETE FROM review_requests WHERE issue_id = ?1 AND user_id = ?2",
+                params![issue_id, reviewer_id],
+            )?;
+            tx.execute(
+                "UPDATE issues SET updated = ?2 WHERE id = ?1",
+                params![issue_id, now],
+            )?;
+            tx.commit()?;
+            id
+        };
+        self.reviews(issue_id)?
+            .into_iter()
+            .find(|r| r.id == id)
+            .ok_or_else(|| anyhow::anyhow!("review {id} vanished"))
+    }
+
+    /// A pull request's reviews, oldest first.
+    pub fn reviews(&self, issue_id: i64) -> anyhow::Result<Vec<Review>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {REVIEW_COLS} FROM reviews r LEFT JOIN users u ON u.id = r.reviewer_id
+             WHERE r.issue_id = ?1 ORDER BY r.created, r.id"
+        ))?;
+        let rows = stmt.query_map([issue_id], review_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// A pull request's line comments, replies included, oldest first.
+    pub fn review_comments(&self, issue_id: i64) -> anyhow::Result<Vec<LineComment>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {LINE_COLS} FROM review_comments c LEFT JOIN users u ON u.id = c.poster_id
+             WHERE c.issue_id = ?1 ORDER BY c.created, c.id"
+        ))?;
+        let rows = stmt.query_map([issue_id], line_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn review_comment(&self, id: i64) -> anyhow::Result<Option<LineComment>> {
+        Ok(self
+            .conn()
+            .query_row(
+                &format!(
+                    "SELECT {LINE_COLS} FROM review_comments c
+                     LEFT JOIN users u ON u.id = c.poster_id WHERE c.id = ?1"
+                ),
+                [id],
+                line_row,
+            )
+            .optional()?)
+    }
+
+    /// An answer in the thread `reply_to` starts (or belongs to): same
+    /// file, line and commit, no review of its own.
+    pub fn reply_review_comment(
+        &self,
+        reply_to: i64,
+        poster_id: i64,
+        body: &str,
+    ) -> anyhow::Result<LineComment> {
+        let parent = self
+            .review_comment(reply_to)?
+            .ok_or_else(|| anyhow::anyhow!("no line comment {reply_to}"))?;
+        let root = parent.reply_to.unwrap_or(parent.id);
+        let id = {
+            let conn = self.conn();
+            conn.execute(
+                "INSERT INTO review_comments (issue_id, reply_to, poster_id, path, line, side,
+                                              commit_id, body, created)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    parent.issue_id,
+                    root,
+                    poster_id,
+                    parent.path,
+                    parent.line,
+                    parent.side.as_str(),
+                    parent.commit_id,
+                    body,
+                    super::now()
+                ],
+            )?;
+            conn.last_insert_rowid()
+        };
+        self.review_comment(id)?
+            .ok_or_else(|| anyhow::anyhow!("line comment {id} vanished"))
+    }
+
+    /// Mark a thread (named by any of its comments) resolved or open again.
+    pub fn set_resolved(
+        &self,
+        comment_id: i64,
+        by: Option<i64>,
+        resolved: bool,
+    ) -> anyhow::Result<()> {
+        let Some(c) = self.review_comment(comment_id)? else {
+            anyhow::bail!("no line comment {comment_id}");
+        };
+        let root = c.reply_to.unwrap_or(c.id);
+        self.conn().execute(
+            "UPDATE review_comments SET resolved = ?2,
+                    resolved_by = CASE WHEN ?2 THEN ?3 ELSE NULL END
+             WHERE id = ?1",
+            params![root, resolved, by],
+        )?;
+        Ok(())
+    }
+
+    /// Ask `user_id` to review; asking again renews the request.
+    pub fn request_review(
+        &self,
+        issue_id: i64,
+        user_id: i64,
+        requested_by: Option<i64>,
+    ) -> anyhow::Result<()> {
+        self.conn().execute(
+            "INSERT INTO review_requests (issue_id, user_id, requested_by, created)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (issue_id, user_id) DO UPDATE
+               SET requested_by = excluded.requested_by, created = excluded.created",
+            params![issue_id, user_id, requested_by, super::now()],
+        )?;
+        Ok(())
+    }
+
+    /// Who was asked to review and has not yet, oldest request first.
+    pub fn review_requests(&self, issue_id: i64) -> anyhow::Result<Vec<User>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT u.id, u.login, u.full_name, u.email, u.is_admin, u.created, u.is_bot
+             FROM review_requests q JOIN users u ON u.id = q.user_id
+             WHERE q.issue_id = ?1 ORDER BY q.created, u.lower_login",
+        )?;
+        let rows = stmt.query_map([issue_id], user_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn drop_review_request(&self, issue_id: i64, user_id: i64) -> anyhow::Result<bool> {
+        Ok(self.conn().execute(
+            "DELETE FROM review_requests WHERE issue_id = ?1 AND user_id = ?2",
+            params![issue_id, user_id],
+        )? > 0)
+    }
+
+    /// The account a program acts as, made if missing and marked a bot.
+    pub fn ensure_bot(&self, login: &str, full_name: &str) -> anyhow::Result<User> {
+        let user = self.ensure_user(login, full_name, "")?;
+        self.conn()
+            .execute("UPDATE users SET is_bot = 1 WHERE id = ?1", [user.id])?;
+        self.user_by_id(user.id)?
+            .ok_or_else(|| anyhow::anyhow!("the account {login} vanished"))
+    }
+
+    // ── Worktrees ─────────────────────────────────────────────────────────
+
+    /// What a push from one worktree said: which branch it is on now, at
+    /// which commit.
+    pub fn record_worktree(
+        &self,
+        repo_id: i64,
+        user_id: i64,
+        computer: &str,
+        name: &str,
+        branch: &str,
+        head: &str,
+    ) -> anyhow::Result<()> {
+        self.conn().execute(
+            "INSERT INTO worktrees (repo_id, user_id, computer, name, branch, head, updated)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT (repo_id, user_id, computer, name) DO UPDATE
+               SET branch = excluded.branch, head = excluded.head, updated = excluded.updated",
+            params![repo_id, user_id, computer, name, branch, head, super::now()],
+        )?;
+        Ok(())
+    }
+
+    /// A repository's worktrees, the latest push first.
+    pub fn worktrees(&self, repo_id: i64) -> anyhow::Result<Vec<Worktree>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT w.id, w.repo_id, u.login, w.computer, w.name, w.branch, w.head, w.updated
+             FROM worktrees w JOIN users u ON u.id = w.user_id
+             WHERE w.repo_id = ?1 ORDER BY w.updated DESC, w.id DESC",
+        )?;
+        let rows = stmt.query_map([repo_id], |r| {
+            Ok(Worktree {
+                id: r.get(0)?,
+                repo_id: r.get(1)?,
+                owner: r.get(2)?,
+                computer: r.get(3)?,
+                name: r.get(4)?,
+                branch: r.get(5)?,
+                head: r.get(6)?,
+                updated: r.get(7)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn delete_worktree(&self, repo_id: i64, id: i64) -> anyhow::Result<bool> {
+        Ok(self.conn().execute(
+            "DELETE FROM worktrees WHERE repo_id = ?1 AND id = ?2",
+            params![repo_id, id],
+        )? > 0)
     }
 }
 
