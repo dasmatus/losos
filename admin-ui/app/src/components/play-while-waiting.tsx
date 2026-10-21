@@ -33,9 +33,10 @@ import { useT } from "@/lib/i18n-react";
 
 const Arcade = React.lazy(() => import("@/games/arcade"));
 
-/** Start fetching the chunk before the press lands. */
+/** Start fetching the chunk before the press lands. A fetch that fails
+ *  here is said by the panel, if the owner presses Play at all. */
 function preload(): void {
-  void import("@/games/arcade");
+  import("@/games/arcade").catch(() => undefined);
 }
 
 export interface WaitGame {

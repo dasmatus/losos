@@ -10,7 +10,7 @@ import { Cabinet } from "./cabinet";
 import { eel } from "./eel";
 import { merge } from "./merge";
 import { pairs } from "./pairs";
-import type { GameId, GameSpec, Phase } from "./types";
+import type { BoardView, CardView, GameId, GameSpec, Phase, ShapeName } from "./types";
 import { upstream } from "./upstream";
 
 /* The game a long wait offers (components/play-while-waiting.tsx), in its
@@ -44,6 +44,54 @@ const HOW: Record<GameId, MessageKey> = {
   pairs: "games.how.pairs",
 };
 
+const SHAPE: Record<ShapeName, MessageKey> = {
+  disc: "games.shape.disc",
+  ring: "games.shape.ring",
+  square: "games.shape.square",
+  triangle: "games.shape.triangle",
+  diamond: "games.shape.diamond",
+  plus: "games.shape.plus",
+  star: "games.shape.star",
+  salmon: "games.shape.salmon",
+};
+
+type T = ReturnType<typeof useT>;
+
+/** A turn-based board in words, for the screen reader: Merge row by row,
+ *  Pairs as the card under the cursor, what is face up and how many pairs
+ *  are found. */
+export function describeBoard(t: T, view: BoardView): string {
+  if (view.kind === "tiles") {
+    const rows: string[] = [];
+    for (let row = 0; row * view.columns < view.values.length; row++) {
+      const tiles = view.values
+        .slice(row * view.columns, (row + 1) * view.columns)
+        .map((value) => (value === 0 ? t("games.board.empty") : String(value)));
+      rows.push(t("games.board.row", { row: row + 1, tiles: tiles.join(", ") }));
+    }
+    return rows.join(" ");
+  }
+  const card = (c: CardView) =>
+    c.state === "down"
+      ? t("games.card.down")
+      : c.state === "matched"
+        ? t("games.card.matched", { shape: t(SHAPE[c.shape]) })
+        : t(SHAPE[c.shape]);
+  const under = view.cards[view.cursor] ?? { state: "down" };
+  const parts = [
+    t("games.board.card", {
+      row: Math.floor(view.cursor / view.columns) + 1,
+      column: (view.cursor % view.columns) + 1,
+      card: card(under),
+    }),
+  ];
+  const up = view.cards.flatMap((c) => (c.state === "up" ? [t(SHAPE[c.shape])] : []));
+  if (up.length > 0) parts.push(t("games.board.up", { shapes: up.join(", ") }));
+  const found = view.cards.filter((c) => c.state === "matched").length / 2;
+  parts.push(t("games.board.found", { found, all: view.cards.length / 2 }));
+  return parts.join(" ");
+}
+
 function reducedMotion(): boolean {
   try {
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -74,7 +122,20 @@ function readBest(): Partial<Record<GameId, number>> {
   }
 }
 
+/* What this visit scored, which blocked storage would read back as
+ * nothing: a worse round must not take the best's place. */
+const visit: Partial<Record<GameId, number>> = {};
+
+function bestOf(spec: GameSpec): number | undefined {
+  const stored = readBest()[spec.id];
+  const seen = visit[spec.id];
+  if (typeof stored !== "number") return seen;
+  if (seen === undefined) return stored;
+  return better(spec, seen, stored) ? seen : stored;
+}
+
 function saveBest(id: GameId, value: number): void {
+  visit[id] = value;
   try {
     window.localStorage.setItem(BEST_KEY, JSON.stringify({ ...readBest(), [id]: value }));
   } catch {
@@ -133,9 +194,10 @@ function Screen({ spec, onAnother, onClose }: { spec: GameSpec; onAnother: () =>
   const cabinet = React.useRef<Cabinet | null>(null);
   const [phase, setPhase] = React.useState<Phase>(spec.turnBased ? "playing" : "idle");
   const [score, setScore] = React.useState(0);
-  const [best, setBest] = React.useState<number | undefined>(() => readBest()[spec.id]);
+  const [best, setBest] = React.useState<number | undefined>(() => bestOf(spec));
   const [paused, setPaused] = React.useState(false);
   const [final, setFinal] = React.useState<number | null>(null);
+  const [view, setView] = React.useState<BoardView | null>(null);
 
   React.useEffect(() => {
     const element = canvas.current;
@@ -148,13 +210,13 @@ function Screen({ spec, onAnother, onClose }: { spec: GameSpec; onAnother: () =>
       score: setScore,
       over: (value) => {
         setFinal(value);
-        const previous = readBest()[spec.id];
-        if (better(spec, value, previous)) {
+        if (better(spec, value, bestOf(spec))) {
           saveBest(spec.id, value);
           setBest(value);
         }
       },
       paused: setPaused,
+      view: setView,
     });
     cabinet.current = machine;
     // Focus, so the keyboard plays at once; the round still waits for a key.
@@ -230,6 +292,13 @@ function Screen({ spec, onAnother, onClose }: { spec: GameSpec; onAnother: () =>
       <p className="sr-only" aria-live="polite">
         {phase === "over" && overlay !== null ? overlay : ""}
       </p>
+      {/* A turn-based board after each move, since its canvas is only
+          pixels. The action games move too fast for words. */}
+      {view !== null && (
+        <p className="sr-only" aria-live="polite" data-testid="game-board">
+          {describeBoard(t, view)}
+        </p>
+      )}
     </section>
   );
 }

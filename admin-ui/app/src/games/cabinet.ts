@@ -1,5 +1,5 @@
 import { readPalette } from "./draw";
-import type { Direction, Game, GameSpec, Palette, Phase } from "./types";
+import type { BoardView, Direction, Game, GameSpec, Palette, Phase } from "./types";
 
 /* The machine a game runs in: the canvas, the frame loop and the input.
  *
@@ -28,6 +28,8 @@ export interface CabinetEvents {
   score(score: number): void;
   over(final: number): void;
   paused(paused: boolean): void;
+  /** A turn-based board changed (or was first drawn). */
+  view?(view: BoardView): void;
 }
 
 export class Cabinet {
@@ -65,11 +67,11 @@ export class Cabinet {
     this.listen(canvas, "pointerdown", (e) => this.onDown(e as PointerEvent));
     this.listen(canvas, "pointermove", (e) => this.onMove(e as PointerEvent));
     this.listen(canvas, "pointerup", (e) => this.onUp(e as PointerEvent));
-    this.listen(canvas, "pointercancel", () => {
-      this.press = null;
-      this.game.release?.();
-    });
+    this.listen(canvas, "pointercancel", () => this.letGo());
+    // A key or pointer that comes up elsewhere is never heard, so whatever
+    // is held lets go with the focus.
     this.listen(canvas, "blur", () => {
+      this.letGo();
       if (!spec.turnBased && this.game.phase === "playing") this.setPaused(true);
     });
     this.listen(document, "visibilitychange", () => {
@@ -128,6 +130,8 @@ export class Cabinet {
     const scale = this.canvas.width / this.spec.width;
     this.ctx.setTransform(scale, 0, 0, scale, 0, 0);
     this.game.draw(this.ctx, this.palette);
+    const view = this.game.view?.();
+    if (view !== undefined) this.events.view?.(view);
   }
 
   private listen(target: EventTarget, type: string, handler: (e: Event) => void) {
@@ -138,8 +142,15 @@ export class Cabinet {
   setPaused(paused: boolean) {
     if (this.paused === paused) return;
     this.paused = paused;
+    if (paused) this.letGo();
     this.events.paused(paused);
     if (!paused) this.kick();
+  }
+
+  /** Drop a pending press and every held key or button. */
+  private letGo() {
+    this.press = null;
+    this.game.release?.();
   }
 
   restart() {
@@ -151,14 +162,21 @@ export class Cabinet {
   /** After any input: report a phase change and start the loop if it is
    *  needed now. */
   private after() {
+    this.report();
+    this.kick();
+  }
+
+  private report() {
     if (this.game.phase !== this.phase) {
       this.phase = this.game.phase;
       this.events.phase(this.phase);
     }
     this.draw();
-    this.kick();
   }
 
+  /** Start the loop. Only a loop that was not running starts its clock and
+   *  its leftover time afresh: a frame shorter than STEP (a 144 Hz screen)
+   *  carries its time into the next one. */
   private kick() {
     if (this.frame !== null || this.paused || this.spec.turnBased) return;
     if (this.game.phase !== "playing") return;
@@ -176,7 +194,8 @@ export class Cabinet {
       this.game.step?.(STEP);
       this.carry -= STEP;
     }
-    this.after();
+    this.report();
+    if (!this.paused && this.game.phase === "playing") this.frame = requestAnimationFrame(this.tick);
   };
 
   /** True when the input only woke the game up. */

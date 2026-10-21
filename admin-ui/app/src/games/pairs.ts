@@ -1,5 +1,6 @@
 import { roundRect, salmon } from "./draw";
-import type { Direction, Game, GameHost, GameSpec, Palette, Phase } from "./types";
+import { SHAPE_NAMES } from "./types";
+import type { BoardView, CardView, Direction, Game, GameHost, GameSpec, Palette, Phase } from "./types";
 
 /* Pairs: sixteen cards face down, eight shapes twice. Turn two over; a
  * pair stays up, anything else turns back. The score is how many tries it
@@ -59,6 +60,20 @@ class Pairs implements Game {
   destroy() {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
+  }
+
+  view(): BoardView {
+    return {
+      kind: "cards",
+      columns: N,
+      cursor: this.cursor,
+      cards: this.cards.map((shape, i): CardView => {
+        const name = SHAPE_NAMES[shape] ?? "disc";
+        if (this.matched[i]) return { state: "matched", shape: name };
+        if (this.up.includes(i)) return { state: "up", shape: name };
+        return { state: "down" };
+      }),
+    };
   }
 
   private turnBack() {
