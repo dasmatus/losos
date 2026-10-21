@@ -28,29 +28,17 @@
 #     that run out, hold a person to their own account and out of the apps
 #     until they comply, and let them go the moment they do.
 #
-# LosOS Cloud is a stub: lososd runs in native mode with a `nextcloud-occ`
-# that says "installed" and takes any password, which is all the claim asks
-# of it. Booting Nextcloud would test Nextcloud.
-#
-# The front vhost, though, is in its container shape, with both apps'
-# routes, and on the two loopback ports a stand-in answers with the path
-# and headers it was sent. That is where signing in to LosOS Cloud and LosOS
-# Git with LosOS Login (modules/app-sign-in.nix) is decided: who nginx names
-# to each app, on which pages, and where it sends a person LosOS Login
-# does not know. nix/tests/app-sign-in.nix boots the two real apps on those
-# headers.
+# The front vhost is in its container shape, with LosOS Git's routes, and on
+# its loopback port a stand-in answers with the path and headers it was
+# sent. That is where signing in to LosOS Git with LosOS Login
+# (modules/app-sign-in.nix) is decided: who nginx names to it, on which
+# pages, and where it sends a person LosOS Login does not know.
+# nix/tests/app-sign-in.nix boots the real Forgejo on those headers, and
+# nix/tests/cloud.nix signs in to LosOS Cloud the same way.
 { pkgs }:
 
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
-
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
 
   # Each app's port answers with what it was sent.
   echo = pkgs.writeText "echo.py" ''
@@ -61,7 +49,7 @@ let
             if self.path.endswith("/logout"):
                 self.send_response(303)
                 host = self.headers["Host"]
-                self.send_header("Location", f"http://{host}/nextcloud/login?clear=1")
+                self.send_header("Location", f"http://{host}/forgejo/user/login")
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
@@ -121,23 +109,15 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = stubUi;
-          nextcloud.mode = "container";
           forgejo.enable = true;
           forgejo.mode = "container";
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
           workloads.forgejoImage = standIn "losos-forgejo-stand-in";
         };
-        systemd.services.lososd.path = lib.mkForce [
-          stubOcc
-          pkgs.coreutils
-        ];
-        # The stub above, not a pod.
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+        systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
         # The script asks for more one-time codes from one address than
         # LosOS Login allows in five minutes (three).
         services.authelia.instances.losos.settings.server.endpoints.rate_limits.session_elevation_start.enable =
           false;
-        systemd.services.nextcloud-stand-in = echoService 11000;
         systemd.services.forgejo-stand-in = echoService 3000;
         environment.systemPackages = [ pkgs.jq ];
         virtualisation = {
@@ -422,29 +402,10 @@ pkgs.testers.nixosTest {
 
     with subtest("each app's sign-in page goes to LosOS Login, or past it"):
         signin = f"https://{BOX}/auth/?rd=https://{BOX}"
-        for page, back in [("/nextcloud/login", "/nextcloud/login"),
-                           ("/nextcloud/index.php/login", "/nextcloud/login"),
-                           ("/nextcloud/apps/user_saml/saml/login", "/nextcloud/login"),
-                           ("/forgejo/user/login", "/forgejo/user/login")]:
-            code, where = app(page)
-            assert code == 302 and where == signin + back, (page, code, where)
-        code, sent = app("/nextcloud/login?redirect_url=/nextcloud/apps/files/", cookie)
-        assert person((code, sent))[0] == "notshared", sent
-        assert sent["path"] == "/nextcloud/login?redirect_url=/nextcloud/apps/files/", sent
-        assert person(app("/nextcloud/index.php/apps/user_saml/saml/login", eva))[0] == "eva"
+        code, where = app("/forgejo/user/login")
+        assert code == 302 and where == signin + "/forgejo/user/login", (code, where)
         code, sent = app("/forgejo/user/login?redirect_to=%2F", eva)
         assert person((code, sent))[0] == "eva" and sent["path"] == "/user/login?redirect_to=%2F", sent
-        # Every other Nextcloud page, WebDAV included, never hears a name.
-        for page in ["/nextcloud/apps/files/", "/nextcloud/remote.php/dav/files/notshared/"]:
-            assert person(app(page, cookie, extra=forged)) == (None, None, None), page
-
-    with subtest("logging out of LosOS Cloud logs out of LosOS Login too"):
-        code, where = app("/nextcloud/logout", eva)
-        assert code == 303, (code, where)
-        assert where == f"https://{BOX}/auth/logout?rd=https://{BOX}/nextcloud/login", where
-        # Signed out of LosOS Login already, or off the LAN: Nextcloud's own.
-        code, where = app("/nextcloud/index.php/logout")
-        assert where == f"https://{BOX}/nextcloud/login?clear=1", (code, where)
 
     def tunnel(path, host, cookie=None, proto="https", extra=""):
         """A request the way the edge's tunnel delivers it: plain http from
@@ -480,17 +441,10 @@ pkgs.testers.nixosTest {
         laptop.wait_until_succeeds(f"curl -sf http://{BOX}/auth/api/health", timeout=60)
         # The sessions are in LosOS Login's Redis, so the restart ended none.
         assert api("/api/state", cookie)[0] == 200
-        # Nextcloud's own form is gone, direct=1 or not.
-        code, where = app("/nextcloud/login?direct=1")
-        assert code == 302 and where.startswith(f"https://{BOX}/auth/?rd="), (code, where)
-        code, where = app("/nextcloud/login", extra="-d user=notshared -d direct=1")
-        assert code == 302 and where.startswith(f"https://{BOX}/auth/"), (code, where)
         # Through the tunnel: LosOS Login, on the public name.
-        for page, back in [("/nextcloud/login", "/nextcloud/login"),
-                           ("/forgejo/user/login", "/forgejo/user/login")]:
-            code, where = tunnel(page, public)
-            assert code == 302, (page, code, where)
-            assert where == f"https://{public}/auth/?rd=https://{public}{back}", where
+        code, where = tunnel("/forgejo/user/login", public)
+        assert code == 302, (code, where)
+        assert where == f"https://{public}/auth/?rd=https://{public}/forgejo/user/login", where
         # The portal answers there over the browser's https, with no loop;
         # plain http through the tunnel goes to https, and a LAN client
         # cannot claim https it does not have.
@@ -506,15 +460,13 @@ pkgs.testers.nixosTest {
         m = re.search(r"(?im)^set-cookie: (losos_session=[^;]+);.*domain={}".format(re.escape(public)), head)
         assert m, head
         outside = m.group(1)
-        code, sent = tunnel("/nextcloud/login", public, outside)
-        assert code == 200 and sent["headers"].get("x-losos-cloud-user") == "eva", (code, sent)
         code, sent = tunnel("/forgejo/", public, outside)
-        assert sent["headers"].get("x-losos-cloud-user") == "eva", sent
+        assert code == 200 and sent["headers"].get("x-losos-cloud-user") == "eva", (code, sent)
         # The admin pages stay on the LAN.
         assert tunnel("/api/state", public, outside)[0] == 403
         # LosOS Login down: a page that waits for it, nobody named.
         box.systemctl("stop losos-identity.path authelia-losos.service")
-        code, _ = app("/nextcloud/login", cookie)
+        code, _ = app("/forgejo/user/login", cookie)
         assert code == 503, code
         page = laptop.succeed("cat /tmp/app")
         assert "LosOS Login is starting" in page and 'http-equiv="refresh"' in page, page
@@ -528,9 +480,8 @@ pkgs.testers.nixosTest {
         assert person(app("/forgejo/", cookie))[0] == "notshared"
 
     with subtest("only root, nginx and the app itself reach the apps' ports"):
-        for port in [11000, 3000]:
-            box.succeed(f"curl -sf http://127.0.0.1:{port}/")
-            box.fail(f"runuser -u nobody -- curl -sf --max-time 5 http://127.0.0.1:{port}/")
+        box.succeed("curl -sf http://127.0.0.1:3000/")
+        box.fail("runuser -u nobody -- curl -sf --max-time 5 http://127.0.0.1:3000/")
         box.succeed("runuser -u nginx -- curl -sf http://127.0.0.1:3000/")
 
     with subtest("a box claimed before losos-owner existed gets it on start"):
@@ -553,8 +504,7 @@ pkgs.testers.nixosTest {
             "/api/set-password", eva, method="POST", data={"password": "Eva-New-Password-44"}
         )
         assert code == 200, (code, body)
-        # Eva does not own LosOS Cloud, so it was not touched.
-        assert json.loads(body)["cloud"] is None, body
+        assert json.loads(body) == {"name": "eva", "changed": True}, body
         reloaded_since(mark)
         eva = sign_in("eva", "Eva-New-Password-44")
         assert api("/api/me", eva)[0] == 200
@@ -800,7 +750,7 @@ pkgs.testers.nixosTest {
         # LosOS Login names them to no app, and the apps' sign-in pages say
         # why.
         eventually(lambda: person(app("/forgejo/", oma)) == (None, None, None))
-        assert app("/nextcloud/login", oma)[0] == 403
+        assert app("/forgejo/user/login", oma)[0] == 403
         assert "Finish your account first" in laptop.succeed("cat /tmp/app")
         assert person(app("/forgejo/", cookie))[0] == "notshared"
         listed = json.loads(api("/api/people", cookie)[1])

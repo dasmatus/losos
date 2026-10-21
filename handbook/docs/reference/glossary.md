@@ -28,8 +28,8 @@ from a Chrome browser.
 **Keyfile mode.** The disk unlock mode for machines without a TPM. The key
 sits on the boot partition.
 
-**LosOS Cloud.** Nextcloud, in the box's colours: files, photos, calendar,
-contacts, notes, tasks.
+**LosOS Cloud.** The box's own file service: files, photos, calendars,
+contacts and boards, which the Nextcloud desktop and phone apps sync with.
 
 **LosOS Git.** Forgejo, in the box's colours: repositories.
 
@@ -52,7 +52,7 @@ rebuilds.
 it from the Storage pane.
 
 **Spare admin key.** The 64-character key shown once in the wizard, for
-unlocking the admin pages when LosOS Cloud cannot check the password.
+unlocking the admin pages when LosOS Login cannot check the password.
 
 **TPM.** The security chip in the machine's firmware that holds the disk key
 in the default unlock mode.

@@ -79,18 +79,17 @@ enum Command {
     /// (losos.storage.fillPercent); when that is exhausted, add a disk with
     /// pvcreate and vgextend and run this again.
     Grow,
-    /// Replace the Nextcloud admin password, read from stdin.
+    /// Replace the owner's password, read from stdin: the one LosOS Login
+    /// checks and their LosOS Git account's.
     ///
-    /// Replaces it; there is no way to read the existing one out. The password
-    /// generated at install time by modules/nextcloud-common.nix is 0600 and
-    /// shown nowhere, which is exactly the problem this solves.
+    /// Replaces it; there is no way to read the existing one out.
     ///
     /// Stdin and not a flag: /proc/<pid>/cmdline is world-readable, so
     /// `--password hunter2` would publish it to every process on the box.
     ///
     ///   printf %s 'correct horse battery staple' | losos-ctl set-password
     SetPassword {
-        /// Account to reset. Defaults to the appliance's Nextcloud admin.
+        /// Account to reset. Defaults to the owner's.
         #[arg(long, default_value = losos_ctl::setup::DEFAULT_ADMIN_USER)]
         user: String,
     },

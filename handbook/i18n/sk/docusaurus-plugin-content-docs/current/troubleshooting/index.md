@@ -74,7 +74,7 @@ hovorí, čo zhromaždiť, skôr ako sa opýtate.
 - [Zabudnuté heslo](/troubleshooting/forgot-password.md)
 - [Zaseknuté pri výzve na heslo disku](/troubleshooting/stuck-at-passphrase.md)
 - [Sprievodca stále čaká](/troubleshooting/wizard-waits.md)
-- [Dlaždica aplikácie vráti 404 alebo „nedôveryhodnú doménu“](/troubleshooting/app-tile-404.md)
+- [Dlaždica aplikácie vráti 404](/troubleshooting/app-tile-404.md)
 - [Použitie zmien zlyhá](/troubleshooting/apply-fails.md)
 - [Nie je miesto](/troubleshooting/out-of-room.md)
 - [Nenašiel sa žiadny edge](/troubleshooting/edge-not-found.md)
