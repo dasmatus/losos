@@ -437,6 +437,7 @@
         losos-edge-market = import ./nix/tests/market-vm.nix { inherit pkgs; };
         losos-edge-dns = import ./nix/tests/edge-dns.nix { inherit pkgs; };
         losos-box-wallet-name = import ./nix/tests/box-wallet-name.nix { inherit pkgs; };
+        losos-binance-onramp = import ./nix/tests/binance-onramp.nix { inherit pkgs; };
         losos-ds-render = import ./nix/tests/design-system.nix { inherit pkgs; };
         losos-front-vhost = import ./nix/tests/front-vhost.nix { inherit pkgs; };
         losos-impermanence = import ./nix/tests/impermanence.nix { inherit pkgs impermanence; };

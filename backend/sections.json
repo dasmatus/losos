@@ -71,6 +71,8 @@
     "POST /api/market/coins/key": "market",
     "POST /api/market/coins/pay": "market",
     "POST /api/market/rpc": "market",
+    "POST /api/market/onramp": "market",
+    "POST /api/market/onramp/status": "market",
     "POST /api/market/llm/models": "market",
     "POST /api/market/llm/chat": "market",
     "POST /api/market/taps": "market",

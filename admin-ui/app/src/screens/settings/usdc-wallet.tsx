@@ -240,9 +240,9 @@ export function UsdcWallet({
     t("panes.market.usdc.or"),
   );
   const ens = usdc.ens_chain_id !== null;
-  // Euros buy USDC on Base mainnet only: Onramp.money delivers nowhere else,
-  // and a test edge's USDC is not the kind it sells.
-  const baseMainnet = usdc.test ? undefined : evmChains.find((c) => c.network === "base");
+  // Euros buy USDC at Binance through the edge, which offers it only while
+  // it settles on Base mainnet: Binance delivers there and nowhere else here.
+  const onramp = usdc.onramp === "binance" && !usdc.test && evmChains.some((c) => c.network === "base");
 
   React.useEffect(() => {
     const onPay = (ev: Event) => {
@@ -1119,14 +1119,8 @@ export function UsdcWallet({
             </Button>
           </Row>
         )}
-        {address && baseMainnet && (
-          <OnrampTopUp
-            address={address}
-            base={baseMainnet}
-            before={balances?.find((b) => b.network === baseMainnet.network)?.usdc ?? null}
-            disabled={disabled}
-            onArrived={() => void refreshBalances()}
-          />
+        {address && onramp && (
+          <OnrampTopUp address={address} disabled={disabled} onArrived={() => void refreshBalances()} />
         )}
         <Row last={invoice === null && !haveWallet && !otherOpen && coins.length === 0 && !showFees}>
           <RowText
