@@ -27,7 +27,8 @@
 // motion, Europe/Bratislava. Each picture waits for its page to settle:
 // no request in flight, fonts loaded, no spinner and no toast on screen.
 // A console error, a page error or a refusal by the page's security policy
-// fails the run, except in the before phase.
+// that a plain Files page does not also log fails the run, except in the
+// before phase.
 
 import { createHash, X509Certificate } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -121,16 +122,26 @@ async function window(browser, who, box, problems, strict) {
     });
   });
   const page = await context.newPage();
-  if (strict) {
-    page.on("console", (m) => {
-      if (m.type() === "error") problems.push(`${box}: ${m.text()}`);
-    });
-    page.on("pageerror", (e) => problems.push(`${box}: ${e}`));
-  }
   const r = await page.request.post(`${who.base}/auth/api/firstfactor`, {
     data: { username: who.name, password: who.password, keepMeLoggedIn: false, targetURL: `${who.base}/cloud/` },
   });
   if (!r.ok()) throw new Error(`${box}: sign-in refused: ${r.status()} ${await r.text()}`);
+  if (strict) {
+    // What a plain Files page logs is the baseline (the admin bundle's
+    // toast stylesheet, which style-src 'self' refuses, as
+    // tests/*.browser.mjs baseline it); sharing and editing may add nothing.
+    const baseline = new Set();
+    let sink = (text) => baseline.add(text);
+    page.on("console", (m) => {
+      if (m.type() === "error") sink(m.text());
+    });
+    page.on("pageerror", (e) => sink(String(e)));
+    await page.goto(`${who.base}/cloud/files`);
+    await page.waitForLoadState("networkidle");
+    sink = (text) => {
+      if (!baseline.has(text)) problems.push(`${box}: ${text}`);
+    };
+  }
   return { page, box, base: who.base, who };
 }
 
@@ -169,7 +180,9 @@ async function openOwn(w, file) {
   await w.page.goto(`${w.base}/cloud/files`);
   const row = w.page.locator(`[data-entry="${file}"]`);
   await row.waitFor({ timeout: WAIT });
-  await row.getByRole("link", { name: file, exact: true }).click();
+  // Files open their app in a new tab; the pictures keep one window each.
+  const href = await row.getByRole("link", { name: file, exact: true }).getAttribute("href");
+  await w.page.goto(new URL(href, w.base).href);
   await openEditor(w);
 }
 
@@ -370,6 +383,13 @@ const m = await window(browser, cfg.owner, hostOf(cfg.owner), problems, strict);
 const e = await window(browser, cfg.guest, hostOf(cfg.guest), problems, strict);
 try {
   await phases[phase](s, m, e, cfg);
+} catch (err) {
+  // What each window showed when it went wrong.
+  for (const w of [m, e]) {
+    console.error(`${w.box} was at ${w.page.url()}`);
+    await w.page.screenshot({ path: join(out, `failed-${phase}-${w.box}.png`) }).catch(() => {});
+  }
+  throw err;
 } finally {
   await browser.close();
 }

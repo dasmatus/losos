@@ -66,6 +66,9 @@ let
 
   shots = pkgs.writeShellScriptBin "mesh-collab-shots" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}/index.mjs
+    # Signing in goes through Node's TLS, not Chromium's: the boxes'
+    # certificates, which the test collects on the laptop.
+    export NODE_EXTRA_CA_CERTS=''${NODE_EXTRA_CA_CERTS:-/etc/losos-boxes.pem}
     exec ${pkgs.nodejs}/bin/node ${./mesh-collab-shots.mjs} "$@"
   '';
 
@@ -263,7 +266,10 @@ pkgs.testers.nixosTest {
         return mattbox.succeed("cat '/var/lib/losos-cloud/notshared/files/Summer trip.md'")
 
     def phase(name):
-        laptop.succeed(f"mesh-collab-shots {name} /tmp/shots.json {SHOTS}/after >&2")
+        status, _ = laptop.execute(f"mesh-collab-shots {name} /tmp/shots.json {SHOTS}/after >&2")
+        if status != 0:
+            laptop.copy_from_machine(f"{SHOTS}/after", "shots")
+            raise Exception(f"the {name} phase failed; its pictures are in shots/after")
 
     with subtest("Matus shares the note with Eva on kitchenbox and they write in it together"):
         phase("share")
@@ -306,13 +312,13 @@ pkgs.testers.nixosTest {
         phase("readonly")
         assert "Sneaky" not in on_disk()
 
-    laptop.copy_from_vm(f"{SHOTS}/after", "shots")
+    laptop.copy_from_machine(f"{SHOTS}/after", "shots")
 
     if BEFORE:
         with subtest("the pictures: the same addresses before"):
             for m in (mattbox, kitchenbox):
                 m.succeed("/run/current-system/specialisation/before/bin/switch-to-configuration test")
             laptop.succeed(f"mesh-collab-shots before /tmp/shots.json {SHOTS}/before >&2")
-            laptop.copy_from_vm(f"{SHOTS}/before", "shots")
+            laptop.copy_from_machine(f"{SHOTS}/before", "shots")
   '';
 }
