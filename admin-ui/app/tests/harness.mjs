@@ -122,15 +122,13 @@ export async function serve({ csp = false } = {}) {
     // A directory gets its index, as nginx's `index` directive gives it.
     const file = rel === '/' ? 'index.html' : rel.endsWith('/') ? rel + 'index.html' : rel;
     // /lab/ is its own page with its own fallback, as its nginx location is,
-    // and so are the edge's /manage/ and /mail/.
+    // and so is the edge's /manage/.
     const fallback =
       rel.startsWith('/lab/') || rel === '/lab'
         ? 'lab/index.html'
         : rel.startsWith('/manage/') || rel === '/manage'
           ? 'manage/index.html'
-          : rel.startsWith('/mail/') || rel === '/mail'
-            ? 'mail/index.html'
-            : 'index.html';
+          : 'index.html';
     send(file).catch(() =>
       send(fallback).catch(() => {
         res.writeHead(404);

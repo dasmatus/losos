@@ -1,7 +1,8 @@
-/* LosOS Mail: folders, a folder's messages, the open message, and a
- * composer, over lososd's /api/mail (backend/src/mail.rs). Three columns on
- * a wide screen; on a phone one at a time, folders, then messages, then the
- * message, with a way back at the top of each.
+/* LosOS Mail: a screen of the admin UI at /mail, inside its top bar and
+ * sidebar like every other pane, over lososd's /api/mail (backend/src/mail.rs).
+ * The folders are a row of buttons under the pane's heading; under them one
+ * card holds the folder's messages and the open message side by side on a
+ * wide screen, and one at a time on a phone, with a way back to the list.
  *
  * A message's HTML never enters this page. It is a document of its own at
  * /api/mail/messages/<id>/html, shown in an <iframe sandbox> without
@@ -32,12 +33,18 @@ import {
   Archive02Icon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
-import { toast, Toaster } from "@/components/ui/toast";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { toast } from "@/components/ui/toast";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { PaneHeader } from "@/screens/settings/rows";
 import {
   ApiError,
   changeMailMessage,
@@ -59,7 +66,6 @@ import {
   type MailRole,
   type MailSummary,
 } from "@/lib/api";
-import { logoFor } from "@/lib/logo";
 import { useLocale, useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -92,8 +98,8 @@ type Loading =
   | { kind: "failed"; message: string }
   | { kind: "ready"; home: MailHome };
 
-/* Which column a phone shows. */
-type Column = "folders" | "list" | "message";
+/* Which half of the card a phone shows. */
+type Column = "list" | "message";
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -148,7 +154,7 @@ function withPrefix(prefix: string, subject: string): string {
   return subject.toLowerCase().startsWith(prefix.toLowerCase()) ? subject : `${prefix} ${subject}`.trim();
 }
 
-export function MailRoot() {
+export default function MailScreen() {
   const t = useT();
   const [state, setState] = React.useState<Loading>({ kind: "loading" });
 
@@ -171,46 +177,40 @@ export function MailRoot() {
     void load();
   }, [load]);
 
-  React.useEffect(() => {
-    document.title = t("mail.title");
-  }, [t]);
-
+  if (state.kind === "ready") {
+    return <Mailbox home={state.home} onHome={(home) => setState({ kind: "ready", home })} />;
+  }
+  if (state.kind === "loading") {
+    return (
+      <div className="grid min-h-48 place-items-center text-muted">
+        <Spinner />
+      </div>
+    );
+  }
   return (
-    <TooltipProvider>
-      {state.kind === "ready" ? (
-        <Mailbox home={state.home} onHome={(home) => setState({ kind: "ready", home })} />
-      ) : (
-        <main className="grid min-h-dvh place-items-center bg-ground p-4 text-ink">
-          <div className="flex max-w-sm flex-col items-center gap-4 text-center">
-            <img src={logoFor().url} alt="" className="size-12" />
-            {state.kind === "loading" && <Spinner />}
-            {state.kind === "signIn" && (
-              <>
-                <p>{t("mail.signIn.text")}</p>
-                <Button onClick={() => window.location.assign(signInUrl())}>{t("mail.signIn.button")}</Button>
-              </>
-            )}
-            {state.kind === "missing" && (
-              <>
-                <p>{t("mail.missing")}</p>
-                <Button variant="secondary" onClick={() => window.location.assign("/")}>
-                  {t("mail.toBox")}
-                </Button>
-              </>
-            )}
-            {state.kind === "failed" && (
-              <>
-                <p>{t("mail.failed", { detail: state.message })}</p>
-                <Button variant="secondary" onClick={() => void load()}>
-                  {t("mail.retry")}
-                </Button>
-              </>
-            )}
-          </div>
-        </main>
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <HugeiconsIcon icon={Mail01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+        </EmptyMedia>
+        <EmptyTitle>{t("mail.title")}</EmptyTitle>
+        <EmptyDescription>
+          {state.kind === "signIn"
+            ? t("mail.signIn.text")
+            : state.kind === "missing"
+              ? t("mail.missing")
+              : t("mail.failed", { detail: state.message })}
+        </EmptyDescription>
+      </EmptyHeader>
+      {state.kind === "signIn" && (
+        <Button onClick={() => window.location.assign(signInUrl())}>{t("mail.signIn.button")}</Button>
       )}
-      <Toaster />
-    </TooltipProvider>
+      {state.kind === "failed" && (
+        <Button variant="secondary" onClick={() => void load()}>
+          {t("mail.retry")}
+        </Button>
+      )}
+    </Empty>
   );
 }
 
@@ -332,14 +332,59 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
   const archive = home.mailboxes.find((f) => f.role === "archive");
 
   return (
-    <div className="flex h-dvh flex-col bg-ground text-ink">
-      <header className="flex items-center gap-2 border-b border-line bg-surface px-3 py-2">
-        <a href="/" className="flex items-center gap-2 rounded-control px-1 py-1 hover:bg-sunk" title={t("mail.toBox")}>
-          <img src={logoFor().url} alt="" className="size-7" />
-          <span className="hidden font-medium sm:inline">{t("mail.title")}</span>
-        </a>
+    <TooltipProvider>
+    <div className="flex flex-col">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <PaneHeader title={t("mail.title")} summary={t("mail.summary", { address: home.address })} />
+        </div>
+        <Button onClick={() => setDraft({ to: [], cc: [], subject: "", text: "" })} className="shrink-0">
+          <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          {t("mail.compose.new")}
+        </Button>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {/* Folders: one row, each with its unread count. */}
+        <nav aria-label={t("mail.folders")} className="-mx-1 min-w-0 max-w-full overflow-x-auto px-1">
+          <ul className="flex gap-1">
+            {home.mailboxes.map((f) => {
+              const current = f.id === folderId;
+              return (
+                <li key={f.id} className="shrink-0">
+                  <Button
+                    variant={current ? "secondary" : "ghost"}
+                    size="sm"
+                    aria-current={current ? "page" : undefined}
+                    onClick={() => {
+                      setFolderId(f.id);
+                      setOpenId(null);
+                      setOpen(null);
+                      setColumn("list");
+                    }}
+                    className={cn("gap-1.5", current && "text-ink")}
+                  >
+                    <HugeiconsIcon
+                      icon={f.role !== null ? ROLE_ICON[f.role] : Folder01Icon}
+                      size={16}
+                      strokeWidth={1.5}
+                      color="currentColor"
+                      aria-hidden="true"
+                    />
+                    {folderName(f, t)}
+                    {f.unread > 0 && (
+                      <Badge variant="default" className="tabular-nums">
+                        {f.unread}
+                      </Badge>
+                    )}
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
         <form
-          className="relative ml-auto flex w-full max-w-md items-center"
+          className="w-full sm:ml-auto sm:w-64"
           role="search"
           onSubmit={(event) => {
             event.preventDefault();
@@ -347,82 +392,37 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
             setColumn("list");
           }}
         >
-          <HugeiconsIcon icon={Search01Icon} className="pointer-events-none absolute left-2.5 size-4 text-muted" />
-          <Input
-            type="search"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              if (event.target.value === "") setSearch("");
-            }}
-            placeholder={t("mail.search", { folder: folder !== undefined ? folderName(folder, t) : "" })}
-            aria-label={t("mail.searchLabel")}
-            className="pl-8"
-          />
+          <InputGroup>
+            <InputGroupAddon>
+              <HugeiconsIcon icon={Search01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            </InputGroupAddon>
+            <InputGroupInput
+              type="search"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                if (event.target.value === "") setSearch("");
+              }}
+              placeholder={t("mail.search", { folder: folder !== undefined ? folderName(folder, t) : "" })}
+              aria-label={t("mail.searchLabel")}
+            />
+          </InputGroup>
         </form>
-        <Button onClick={() => setDraft({ to: [], cc: [], subject: "", text: "" })} className="shrink-0">
-          <HugeiconsIcon icon={PencilEdit02Icon} className="size-4" />
-          <span className="hidden sm:inline">{t("mail.compose.new")}</span>
-        </Button>
-      </header>
+      </div>
 
-      <div className="flex min-h-0 flex-1">
-        {/* Folders */}
-        <nav
-          aria-label={t("mail.folders")}
-          className={cn(
-            "w-full shrink-0 overflow-y-auto border-r border-line bg-surface p-2 md:block md:w-56",
-            column === "folders" ? "block" : "hidden",
-          )}
-        >
-          <p className="truncate px-2 pt-1 pb-3 text-[13px] text-muted" title={home.address}>
-            {home.address}
-          </p>
-          <ul className="flex flex-col gap-0.5">
-            {home.mailboxes.map((f) => (
-              <li key={f.id}>
-                <button
-                  type="button"
-                  aria-current={f.id === folderId ? "page" : undefined}
-                  onClick={() => {
-                    setFolderId(f.id);
-                    setOpenId(null);
-                    setOpen(null);
-                    setColumn("list");
-                  }}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-left text-sm",
-                    f.id === folderId ? "bg-accent-wash text-accent" : "hover:bg-sunk",
-                  )}
-                >
-                  <HugeiconsIcon icon={f.role !== null ? ROLE_ICON[f.role] : Folder01Icon} className="size-4 shrink-0" />
-                  <span className="min-w-0 flex-1 truncate">{folderName(f, t)}</span>
-                  {f.unread > 0 && (
-                    <span className="rounded-full bg-accent px-1.5 text-[11px] font-medium text-surface tabular-nums">
-                      {f.unread}
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
+      <Card className="flex h-[min(46rem,calc(100dvh-15rem))] min-h-[26rem] overflow-hidden">
         {/* Messages */}
         <section
           aria-label={folder !== undefined ? folderName(folder, t) : undefined}
           className={cn(
-            "min-w-0 flex-1 flex-col border-r border-line md:flex md:max-w-sm lg:max-w-md",
+            "min-w-0 flex-1 flex-col md:flex md:w-72 md:flex-none md:border-r md:border-line lg:w-80",
             column === "list" ? "flex" : "hidden",
           )}
         >
-          <div className="flex items-center gap-2 border-b border-line px-3 py-2">
-            <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={() => setColumn("folders")} aria-label={t("mail.folders")}>
-              <HugeiconsIcon icon={ArrowLeft01Icon} className="size-4" />
-            </Button>
-            <h1 className="min-w-0 flex-1 truncate font-medium">
+          <div className="flex items-center gap-2 border-b border-hair px-4 py-2.5">
+            <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">
               {search !== "" ? t("mail.results", { query: search }) : folder !== undefined ? folderName(folder, t) : ""}
-            </h1>
+            </h2>
             {page?.total != null && <span className="text-[13px] text-muted tabular-nums">{page.total}</span>}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -433,10 +433,14 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
               </div>
             )}
             {page !== null && page.messages.length === 0 && (
-              <div className="flex flex-col items-center gap-2 p-10 text-center text-muted">
-                <HugeiconsIcon icon={Mail01Icon} className="size-8" />
-                <p>{search !== "" ? t("mail.noResults") : t("mail.empty")}</p>
-              </div>
+              <Empty className="m-3 border-0">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <HugeiconsIcon icon={Mail01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+                  </EmptyMedia>
+                  <EmptyDescription>{search !== "" ? t("mail.noResults") : t("mail.empty")}</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             )}
             {page !== null && (
               <ul>
@@ -464,14 +468,18 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
 
         {/* The open message */}
         <article
-          className={cn("min-w-0 flex-[2] flex-col bg-surface md:flex", column === "message" ? "flex" : "hidden")}
+          className={cn("min-w-0 flex-1 flex-col md:flex", column === "message" ? "flex" : "hidden")}
           aria-label={open?.subject}
         >
           {openId === null ? (
-            <div className="m-auto flex flex-col items-center gap-2 p-10 text-center text-muted">
-              <HugeiconsIcon icon={MailOpen01Icon} className="size-10" />
-              <p>{t("mail.pick")}</p>
-            </div>
+            <Empty className="m-4 border-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={MailOpen01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+                </EmptyMedia>
+                <EmptyDescription>{t("mail.pick")}</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : open === null ? (
             <div className="m-auto p-10">
               {openError !== null ? <p className="text-sm text-crit">{openError}</p> : <Spinner />}
@@ -507,8 +515,8 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
             />
           )}
         </article>
-      </div>
-
+      </Card>
+    </div>
       {draft !== null && (
         <Composer
           initial={draft}
@@ -523,7 +531,7 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
           }}
         />
       )}
-    </div>
+    </TooltipProvider>
   );
 }
 
@@ -612,48 +620,56 @@ function Reader({
   React.useEffect(() => setHtml(m.text.trim() === "" && m.hasHtml), [m.id, m.text, m.hasHtml]);
   const others = folders.filter((f) => !m.mailboxIds.includes(f.id) && f.role !== "drafts");
 
+  // Icon buttons name themselves in a tooltip, as the sidebar's rail does.
   const tool = (icon: IconSvgElement, label: string, onClick: () => void, pressed?: boolean) => (
-    <Button variant="ghost" size="icon-sm" onClick={onClick} aria-label={label} title={label} aria-pressed={pressed}>
-      <HugeiconsIcon icon={icon} className="size-4" />
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button variant="ghost" size="icon-sm" onClick={onClick} aria-label={label} aria-pressed={pressed} />
+        }
+      >
+        <HugeiconsIcon icon={icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
   );
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 py-2">
+      <div className="flex flex-wrap items-center gap-1 border-b border-hair px-3 py-2">
         <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={onBack} aria-label={t("mail.back")}>
-          <HugeiconsIcon icon={ArrowLeft01Icon} className="size-4" />
+          <HugeiconsIcon icon={ArrowLeft01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
         </Button>
         {tool(MailReply01Icon, t("mail.reply"), () => onReply(false))}
         {tool(MailReplyAllIcon, t("mail.replyAll"), () => onReply(true))}
         {tool(ArrowTurnForwardIcon, t("mail.forward"), onForward)}
-        <span className="mx-1 h-5 w-px bg-line" />
+        <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
         {tool(FavouriteIcon, m.flagged ? t("mail.unflag") : t("mail.flag"), onFlag, m.flagged)}
         {tool(Mail01Icon, t("mail.markUnread"), onUnread)}
         {onArchive !== undefined && tool(Archive02Icon, t("mail.archive"), onArchive)}
         {others.length > 0 && (
-          <select
+          <NativeSelect
             aria-label={t("mail.moveTo")}
             value=""
             onChange={(event) => {
               if (event.target.value !== "") onMove(event.target.value);
             }}
-            className="h-8 rounded-control border border-line bg-surface px-2 text-[13px] text-ink"
+            className="ml-1 [&_select]:h-8 [&_select]:text-[13px]"
           >
-            <option value="">{t("mail.moveTo")}</option>
+            <NativeSelectOption value="">{t("mail.moveTo")}</NativeSelectOption>
             {others.map((f) => (
-              <option key={f.id} value={f.id}>
+              <NativeSelectOption key={f.id} value={f.id}>
                 {folderName(f, t)}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         )}
         <span className="ml-auto" />
         {tool(Delete02Icon, t("mail.delete"), onDelete)}
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="flex flex-col gap-1 px-5 pt-4 pb-3">
-          <h2 className="text-lg font-medium break-words">{m.subject || t("mail.noSubject")}</h2>
+          <h2 className="text-[17px] leading-tight font-semibold tracking-tight break-words">{m.subject || t("mail.noSubject")}</h2>
           <p className="text-sm break-words">
             <span className="text-muted">{t("mail.from")} </span>
             {m.from.map(full).join(", ")}
@@ -704,10 +720,10 @@ function Reader({
             src={mailHtmlUrl(m.id)}
             sandbox="allow-popups allow-popups-to-escape-sandbox"
             referrerPolicy="no-referrer"
-            className="min-h-[60vh] w-full flex-1 border-t border-line bg-white"
+            className="min-h-80 w-full flex-1 border-t border-hair bg-white"
           />
         ) : (
-          <pre className="border-t border-line px-5 py-4 font-sans text-sm leading-relaxed break-words whitespace-pre-wrap">
+          <pre className="border-t border-hair px-5 py-4 font-sans text-sm leading-relaxed break-words whitespace-pre-wrap">
             {m.text !== "" ? m.text : m.preview}
           </pre>
         )}

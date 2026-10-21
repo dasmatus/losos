@@ -137,8 +137,8 @@ let
   # WebSockets skip lososd and go to the helper, which checks a per-guest
   # ticket only a token holder can get.
   labLibvirt = labEnabled && config.losos.lab.libvirt.enable;
-  # LosOS Mail's page (admin-ui/app/mail/), only while mail is live: on the
-  # shared side, so with sharing off there is no /mail/ at all
+  # LosOS Mail's screen (admin-ui/app/src/mail/), only while mail is live:
+  # on the shared side, so with sharing off there is no /mail at all
   # (modules/mail.nix).
   mailEnabled = adminEnabled && config.lososInternal.mail.live;
 
@@ -578,18 +578,11 @@ in
             extraConfig = lanOnly;
           };
         })
-        (lib.mkIf mailEnabled {
-          # LosOS Mail: mail/index.html in the admin UI's bundle, on real
-          # paths under /mail/ like the Lab. Same LAN-only guard and the
-          # admin CSP; its API is /api/mail/ under the /api/ location.
-          "/mail/" = {
-            tryFiles = "$uri /mail/index.html";
-            extraConfig = lanOnly;
-          };
-        })
         (lib.mkIf (adminEnabled && !mailEnabled) {
-          # The bundle carries mail/index.html either way, and `/`'s
-          # `$uri/` would serve it; with sharing off there is no mail page.
+          # LosOS Mail is a screen of the SPA at /mail, reached through `/`'s
+          # fallback while mail is live. Off the shared side there is no
+          # mail page: both spellings answer 404.
+          "= /mail".return = "404";
           "/mail/".return = "404";
         })
         (lib.mkIf labLibvirt {

@@ -57,7 +57,7 @@ import { pinKey, viewPin, type PinView } from "@/lib/pins";
  *     Market                selling storage and compute, and disk sharing
  *     Machines              virtual machines on the mesh
  *   Lab                     (LosOS Lab at /lab/, a page of its own)
- *   Mail                    (LosOS Mail at /mail/, only while sharing)
+ *   Mail                    (LosOS Mail at /mail, only on the shared side)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
  *
@@ -140,10 +140,9 @@ const TREE: readonly Entry[] = [
   {
     kind: "link",
     key: "mail",
-    to: "/mail/",
+    to: "/mail",
     label: "shell.nav.mail",
     icon: Mail01Icon,
-    external: true,
   },
   {
     kind: "fold",
