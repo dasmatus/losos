@@ -474,9 +474,13 @@ in
           # theme-boot.js is deliberately NOT covered: it is the one unhashed
           # file in the bundle (admin-ui/app/vite.config.ts says why), so it
           # has to keep revalidating against its ETag.
+          # Not LAN-only while LosOS Cloud runs: its page at /cloud/
+          # (modules/cloud.nix) is reached through the tunnel too and loads
+          # the same bundle. The files are the app's code, the same on every
+          # box, and hold nothing of the owner's.
           "/assets/" = {
             extraConfig = ''
-              ${lanOnly}
+              ${lib.optionalString (!config.lososInternal.appSignIn.cloud) lanOnly}
               expires 1y;
             '';
           };
