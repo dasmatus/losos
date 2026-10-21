@@ -90,8 +90,8 @@ and is never served or built by nix.
   manifest. lososd loads them only from `losos.backend.plugins` in the
   read-only store and refuses to start on anything else. New lososd routes
   go in a plugin, each with its `sections.json` line; sign-in, sections and
-  D-Bus stay in the host. The look is the first; `nix/tests/plugins.nix`
-  boots it with a browser that takes the PR's screenshots
+  D-Bus stay in the host. The look and the pins are plugins so far;
+  `nix/tests/plugins.nix` boots them with a browser that takes the PR's screenshots
   (`nix/tests/screens/`, reusable by any VM test).
 - `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
   is the front nginx vhost's root (`try_files … /index.html`), `/api/*` is
@@ -180,6 +180,19 @@ and is never served or built by nix.
   host network without root, turn claims into folders in that user's data
   domain and refuse a chart that needs more; nginx forwards a port of
   `losos.apps.ports` to it, LAN only. `nix/tests/podman-apps.nix` boots it.
+- `mail.nix` + `backend/src/mail.rs` (`losos.mail.*`): LosOS Mail. Stalwart
+  as `shared`, mailboxes in `/home/shared/data/mail`, loopback HTTP only (no
+  SMTP or IMAP listener), its own unit rather than nixpkgs' module because a
+  tmpfiles line inside the locked fscrypt domain fails at boot. lososd is the
+  only client, over JMAP as `<person>%losos` (master user) with a secret from
+  `losos-mail-secret`. All of it, `/mail` (a screen of the SPA, inside its
+  top bar and sidebar like every pane, `src/mail/`) and
+  `/api/mail*` exist only while `lososInternal.mail.live` (the shared side,
+  `lososInternal.sharedSide`: sharing on and `cluster.enable`);
+  otherwise `/mail`, `/mail/` and the API answer 404 and `/api/me`'s `shared` omits
+  `mail`, which hides the sidebar entry. Mail stays between people on the
+  box (`local_only`). `nix/tests/mail.nix` boots it; `losos-mail-screens`
+  is the same run with the real UI and Chromium, for screenshots.
 - `search.nix` + `backend/src/textsearch/` (`losos-search`): text inside
   files for the palette. A timer pass keeps an SQLite FTS5 index of the
   owner's cloud files in `/var/lib/losos-search` as `losos-cloud` (only what
@@ -232,6 +245,17 @@ and is never served or built by nix.
   repeating answer is cut off) and gives the model one turn to fix what it
   found. The system prompt is `backend/src/builder-prompt.md`. No edge, no
   key, no charge.
+- `inference-lend.nix` (box, `losos.inference.lend.*`) + `edge-inference.nix`
+  (edge, `losos.edge.inference.*`) + `edge/registrar/src/{inference,meter}.rs`
+  + `market/taps.rs`: AI models split across boxes. A lending box runs
+  `ggml-rpc-server -d CPU` (the default device is BLAS, which crashes) as
+  `shared` on loopback, reached only by root through a second rathole
+  service `<id>:llm`. The registrar groups lenders until a model fits and
+  runs one `losos-llm-head@<group>` llama-server per group; it counts the
+  tokens itself and bills them through escrow taps (a USDC balance per
+  buyer, one rate-capped tap per seller, a one-hour head start, a 48 h
+  withdrawal notice). The Market pane is `ai-models.tsx`.
+  `nix/tests/inference-lend.nix` and `inference-payg.nix` boot it.
 - `updates.nix`: `system.autoUpgrade` at 03:00 from `losos.upgradeFlakeUri`
   (default `git+file:///etc/nixos#install`, set a `github:` URI to really
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot
@@ -473,7 +497,7 @@ default (`losos.tpm.enable = true`): the installer runs `systemd-cryptenroll
 the initrd carries no secret and the keyfile stays only inside `/persist` as
 the recovery slot (`losos-ctl grow` authenticates with it). No PCR binding, on
 purpose: the box updates itself unattended with no shell to recover a lockout
-from (same call as `keyring.nix`). Where the installer medium sees no
+from. Where the installer medium sees no
 `/dev/tpmrm0`, or with `losos-ctl install --no-tpm`, the box is in keyfile
 mode: `tpm.enable = false` in `install-target.nix` and the keyfile injected
 into the initrd as `/crypto_keyfile.bin`, on the unencrypted ESP. The two

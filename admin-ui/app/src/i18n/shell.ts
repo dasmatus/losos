@@ -8,6 +8,7 @@ export default defineMessages({
   "shell.nav.mesh": { en: "Mesh", sk: "Mesh", de: "Mesh" },
   /* LosOS Lab, the setup visualizer at /lab/ (admin-ui/lab/). */
   "shell.nav.lab": { en: "Lab", sk: "Laboratórium", de: "Labor" },
+  "shell.nav.mail": { en: "Mail", sk: "Pošta", de: "Mail" },
   "shell.nav.settings": { en: "Settings", sk: "Nastavenia", de: "Einstellungen" },
   "shell.nav.label": { en: "Sections", sk: "Sekcie", de: "Bereiche" },
   "shell.nav.collapse": { en: "Collapse the sidebar", sk: "Zbaliť bočný panel", de: "Seitenleiste einklappen" },
@@ -167,9 +168,9 @@ export default defineMessages({
     de: "Bevor der Installer startet, prüft er sein eigenes Systemabbild gegen eine SHA-256-Summe auf seiner Kernel-Kommandozeile.",
   },
   "shell.facts.17": {
-    en: "LosOS cloud and LosOS Git run in a Kubernetes cluster of their own on this box, so they stay up when the mesh is away.",
-    sk: "LosOS cloud a LosOS Git bežia vo vlastnom klastri Kubernetes na tomto zariadení, takže fungujú, aj keď sieť nie je dostupná.",
-    de: "LosOS cloud und LosOS Git laufen in einem eigenen Kubernetes-Cluster auf dieser Box und bleiben erreichbar, wenn das Mesh weg ist.",
+    en: "LosOS Cloud runs on this box itself and LosOS Git in a Kubernetes cluster of its own here, so both stay up when the mesh is away.",
+    sk: "LosOS Cloud beží priamo na tomto zariadení a LosOS Git vo vlastnom klastri Kubernetes tu, takže oba fungujú, aj keď sieť nie je dostupná.",
+    de: "LosOS Cloud läuft direkt auf dieser Box und LosOS Git in einem eigenen Kubernetes-Cluster hier, deshalb bleiben beide erreichbar, wenn das Mesh weg ist.",
   },
   "shell.signIn.useSignIn": {
     en: "Sign in with your name instead",

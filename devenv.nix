@@ -341,6 +341,17 @@ in
   '';
   scripts.test-solana-escrow.description = "Build the Solana escrow program and test it and the registrar against it.";
 
+  # LososEscrow's Foundry suite, then edge/contracts/test-payment.sh on anvil:
+  # deposits, coin fees and taps paid and settled by the registrar's signer.
+  # It fetches forge-std, solc and the wallet's npm packages, so it is not in
+  # `devenv test`; CI's `evm-escrow` job runs it.
+  scripts.test-evm-escrow.exec = ''
+    set -eu
+    export PATH=${pkgs.foundry}/bin:${pkgs.nodejs}/bin:${pkgs.jq}/bin:$PATH
+    bash "$DEVENV_ROOT/edge/contracts/test-payment.sh"
+  '';
+  scripts.test-evm-escrow.description = "Test the EVM escrow and pay through it on a local chain.";
+
   # losos, the terminal client (admin-ui/tui/README.md), as CI's `tui` job
   # ships it: the static musl binary, then the pseudo-terminal test against
   # that very binary. The crate's own suite is in test-rust already.
@@ -502,6 +513,7 @@ in
     echo "  fmt · lint · test-rust        Rust"
     echo "  test-tui                      the static losos in a pseudo-terminal"
     echo "  test-solana-escrow            the Solana escrow program (needs Anza's tools)"
+    echo "  test-evm-escrow               the EVM escrow on a local chain (fetches tools)"
     echo "  lint-wasm                     clippy on the Lab canvas's wasm32 builds"
     echo "  check-flake · check-eval      Nix eval gates"
     echo "  build-pkgs · build-images     builds"

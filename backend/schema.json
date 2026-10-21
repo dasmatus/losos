@@ -1779,6 +1779,36 @@
         "out": "marketActionResponse",
         "note": "Count a USDC transfer from this box's EVM payout address to the edge's treasury against the platform fees owed on coin sales (registrar POST /market/fees/pay). The reply adds paid, credited and owed, in cents. The edge reads the receipt itself, waits for its confirmations (409 until then), counts a transaction once and never more than is owed; a surplus is kept. Solana is refused with 400. Audited."
       },
+      "POST /api/market/llm/models": {
+        "auth": true,
+        "in": "{\"network\"?: \"<network key>\"}",
+        "out": "{\"available\": false, \"reason\"?: \"noOfficialEdge\"} | {\"available\": true, \"network\", \"feeBps\", \"models\": [{\"id\", \"name\", \"needMib\", \"context\", \"priceIn\", \"priceOut\", \"licence\", \"lentMib\", \"group\"?: \"loading|ready|down\", \"boxes\"?}], \"meters\": [{\"id\", \"model\", \"network\", \"state\": \"quoted|open|ending|ended|lapsed\", \"reason\"?, \"wallet\"?, \"spendPerHour\", \"boxes\", \"group\"?, \"requests\", \"tokensIn\", \"tokensOut\", \"billedE6\", \"paid\", \"createdAt\"}], \"wallets\": [{\"network\", \"wallet\", \"balance\", \"asked\", \"notBefore\", \"available\", \"runwaySecs\"?, \"low\"}], \"lending\": {\"paid\", \"owed\", \"model\"?, \"group\"?, \"lentMib\"?}, \"noticeSecs\", \"minSpendPerHour\", \"maxSpendPerHour\"}",
+        "note": "AI models run on memory boxes lend, paid per token through the edge (registrar POST /market/llm/models, edge/registrar/src/server/llm.rs), relayed like the market. A view and not audited: an edge that runs no models, a box not cleared for the market or no official edge in reach is 200 with available:false. Prices are USDC base units per million tokens and amounts are base units, all as decimal text, except billedE6 (millionths of a base unit) and a wallet's balance, asked and notBefore (numbers). The edge picks its first network when none is named."
+      },
+      "POST /api/market/taps": {
+        "auth": true,
+        "in": "{\"model\": \"[a-z0-9-]{1,64}\", \"network\"?: \"<network key>\", \"spendPerHour\": <USDC base units, 10000 to 100000000, number or decimal text>}",
+        "out": "{\"available\": true, \"meter\", \"model\", \"network\", \"chain\": {\"network\", \"name\", \"family\": \"evm|solana\", \"chain_id\", \"usdc\", \"pay\", \"treasury\"}, \"feeBps\", \"spendPerHour\", \"taps\": [{\"id\", \"key\": \"0x<64 hex>\", \"seller\", \"rate\"}], \"openBefore\"}",
+        "note": "Quote a meter for one model (registrar POST /market/taps): one tap per lending box, which the owner's wallet opens in the escrow (LososEscrow.openTaps, or the losos-escrow program's open_tap) before openBefore, then confirms. 409 while the model already runs for this box, 503 with the reason while too few boxes lend memory for it. Audited."
+      },
+      "POST /api/market/taps/confirm": {
+        "auth": true,
+        "in": "{\"meter\": \"mtr_<hex>\", \"wallet\": \"0x<40 hex> | <base58>\"}",
+        "out": "{\"available\": true, \"meter\", \"state\"}",
+        "note": "`wallet` opened the meter's taps (registrar POST /market/taps/confirm): the edge reads each one back from the chain, where the escrow keeps it under that wallet, which can take 20 s, and opens the meter when all are as quoted. Audited."
+      },
+      "POST /api/market/taps/stop": {
+        "auth": true,
+        "in": "{\"meter\": \"mtr_<hex>\", \"wallet\"?: \"0x<40 hex> | <base58>\"}",
+        "out": "{\"available\": true, \"meter\", \"state\"}",
+        "note": "Stop a meter (registrar POST /market/taps/stop). The edge closes its taps and settles them one last time; the wallet signs nothing. `wallet` is the wallet that began opening a quoted meter's taps and failed partway: the edge reads them back from the chain, closes the ones it holds and keeps the wallet's balance in view. Audited."
+      },
+      "POST /api/market/llm/chat": {
+        "auth": true,
+        "in": "{\"meter\": \"mtr_<hex>\", \"messages\": [{\"role\": \"system|user|assistant\", \"content\"}] (1 to 256, 256 KiB of content in all), \"maxTokens\"?: <1 to the model's context>, \"temperature\"?: <0 to 2>, \"topP\"?: <0 to 1>, \"stop\"?: string | [string] (at most 4, each 1 to 64 bytes)}",
+        "out": "{\"available\": true, \"content\", \"finishReason\", \"tokensIn\", \"tokensOut\", \"costE6\", \"billedE6\"}",
+        "note": "One request to a running model, billed per token on the meter (registrar POST /market/llm/chat). An answer can take up to 16 minutes; lososd waits 17, off its HTTP worker and without its state lock. The boxes running the model can read the prompt and the answer. Refusals keep the edge's sentence: 402 when the balance or the hourly limit cannot cover the request, 429 while another request runs on the meter, 503 while the model loads or a box restarts, 409 when the meter is not open. A failed answer is not billed. Audited when the answer is back."
+      },
       "GET /api/builder": {
         "auth": true,
         "out": "{\"available\": false, \"reason\": \"off|starting|downloading\", \"model\"?} | {\"available\": true, \"model\", \"builds\": [buildSummary]}",

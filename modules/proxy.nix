@@ -38,6 +38,7 @@ let
   enabled = cfg.enable;
   registrar = cfg.registrar.package;
   rathole = cfg.rathole.package;
+  lend = config.losos.inference.lend.enable;
 
   # Runtime, 0700, root. Holds the generated client.toml (with secrets).
   confDir = "/run/losos-rathole";
@@ -86,6 +87,17 @@ let
       [client.services.${cfg.applianceId}]
       token = "$token"
       local_addr = "127.0.0.1:80"
+      EOF
+    ''
+    # The memory this box lends (modules/inference-lend.nix): the llama.cpp
+    # RPC server's port, under the name the edge gives it, with the box's own
+    # token.
+    + lib.optionalString lend ''
+          cat >> ${confDir}/client.toml <<EOF
+
+      [client.services."${cfg.applianceId}:llm"]
+      token = "$token"
+      local_addr = "127.0.0.1:50052"
       EOF
     ''
     + lib.optionalString (cfg.noisePublicKeyFile != null) ''
@@ -151,6 +163,11 @@ let
     "--managed-file"
     managedMarker
   ];
+
+  # What the box lends to models split across boxes, written by
+  # losos-llm-rpc while it runs (modules/inference-lend.nix). Read on every
+  # heartbeat; no file lends nothing.
+  lendArgs = lib.optionalString lend " --llm-lend-file /run/losos-llm/lend";
 in
 {
   config = lib.mkIf enabled {
@@ -251,7 +268,7 @@ in
       # to publish the route. Don't hard-depend (announce retries forever).
       serviceConfig = {
         EnvironmentFile = "-${pathEnv}";
-        ExecStart = "${registrar}/bin/losos-registrar ${announceArgs}";
+        ExecStart = "${registrar}/bin/losos-registrar ${announceArgs}${lendArgs}";
         Restart = "always";
         RestartSec = 5;
         PrivateTmp = true;

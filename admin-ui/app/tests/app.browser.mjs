@@ -64,6 +64,12 @@ async function open({
   viewport = { width: 1280, height: 900 },
   locale = 'en-US',
   market = { available: false },
+  // POST /api/market/llm/models's document: the AI models, meters and balances.
+  llm = { available: false },
+  // POST /api/market/taps's answer, the edge's quote for a model.
+  quote = null,
+  // [script, arg] run in the page before the app, such as a browser wallet.
+  init = null,
   vms = { available: false, reason: 'notSharing' },
   domains = { available: false },
   backup = BACKUP_EMPTY,
@@ -168,6 +174,26 @@ async function open({
     if (path === '/api/market/onboard') return json(route, 200, { available: true, ready: false, url: onboardUrl });
     if (path === '/api/market/orders') return json(route, 201, { available: true, checkout_url: checkoutUrl });
     return json(route, 201, { available: true });
+  });
+  // The AI models relay: the overview is read, every other call recorded and
+  // answered the way lososd relays the edge's answer.
+  const llmPosts = [];
+  await page.route(/\/api\/market\/(llm|taps)(\/|$)/, (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    const path = new URL(route.request().url()).pathname;
+    const body = route.request().postDataJSON();
+    if (path === '/api/market/llm/models') return json(route, 200, llm);
+    llmPosts.push([path, body]);
+    if (path === '/api/market/llm/chat') {
+      return json(route, 200, { content: 'Mostly water, then ice.', finishReason: 'stop', tokensIn: 42, tokensOut: 7, costE6: '31500000', billedE6: '10261500000' });
+    }
+    if (path === '/api/market/taps/stop') return json(route, 200, { meter: body.meter, state: 'ending' });
+    if (path === '/api/market/taps' && quote !== null) return json(route, 200, quote);
+    if (path === '/api/market/taps/confirm') {
+      if (typeof body.wallet !== 'string' || body.wallet.length === 0) return json(route, 400, { error: 'wallet is not a wallet address' });
+      return json(route, 200, { meter: body.meter, state: 'open' });
+    }
+    return json(route, 409, { error: 'not in this test' });
   });
   // The machines relay: `vms` is GET /api/vms's document; every action and
   // every image upload is recorded and answered the way lososd does.
@@ -293,6 +319,7 @@ async function open({
   if (stored) {
     await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   }
+  if (init !== null) await page.addInitScript(...init);
   // The apps the homepage probes, when a check wants them answering the way
   // a set-up box does: LosOS Cloud's status document and LosOS Git's page.
   if (cloud !== null) {
@@ -300,7 +327,7 @@ async function open({
     await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
   }
   await page.goto(origin + path, { waitUntil: 'networkidle' });
-  return { page, errors, marketPosts, vmPosts, applies, domainPosts, backupPosts };
+  return { page, errors, marketPosts, llmPosts, vmPosts, applies, domainPosts, backupPosts };
 }
 
 /* GET /api/backup: a box with no bucket yet, and one with a bucket, a last
@@ -576,6 +603,18 @@ await check('a person in one section sees that section and not the administrator
   assert.equal((await who.innerText()).trim(), 'Eva', 'the top bar does not name the person signed in');
   assert.match(await page.getByTestId('signed-in-as').getAttribute('aria-label'), /the panes your account was given/, 'a backup-only person is called an administrator');
   await page.close();
+});
+
+await check('Mail is in the sidebar only while /api/me lists it among the shared apps', async () => {
+  const matus = { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage', 'backup'] };
+  for (const [shared, want] of [[['mail'], 1], [[], 0], [undefined, 0]]) {
+    const { page } = await open({ person: { ...matus, ...(shared !== undefined ? { shared } : {}) } });
+    await page.getByRole('button', { name: 'Sign out' }).waitFor();
+    const mail = nav(page).getByRole('link', { name: 'Mail', exact: true });
+    assert.equal(await mail.count(), want, `Mail links with shared=${JSON.stringify(shared)}`);
+    if (want === 1) assert.equal(await mail.getAttribute('href'), '/mail', 'Mail is not a screen of the admin pages');
+    await page.close();
+  }
 });
 
 await check('a wrong spare key is refused and the prompt stays up', async () => {
@@ -2362,6 +2401,242 @@ await check('the Machines pane fits a phone too', async () => {
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
+  assert.ok(overflow <= 0, `page is ${overflow}px wider than the viewport`);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+/* AI models on a USDC edge on Base: three models, one running for this box
+ * with a balance under a day of runway. No wallet is saved in this browser. */
+const AI_WALLET = `0x${'4e'.repeat(20)}`;
+const AI_MARKET = {
+  ...MARKET,
+  account: {
+    ...MARKET.account,
+    currency: 'usd',
+    usdc: {
+      test: false,
+      chain_id: 8453,
+      solana: null,
+      ens_chain_id: null,
+      chains: [
+        { network: 'base', name: 'Base', family: 'evm', chain_id: 8453, usdc: `0x${'11'.repeat(20)}`, pay: `0x${'22'.repeat(20)}`, treasury: `0x${'33'.repeat(20)}` },
+      ],
+    },
+  },
+};
+const AI_METER = {
+  id: 'mtr_5c1e0a9b7d3f42e8a6b01c9d',
+  model: 'llama-3-3-70b',
+  network: 'base',
+  state: 'open',
+  wallet: AI_WALLET,
+  spendPerHour: '500000',
+  boxes: 4,
+  group: 'ready',
+  requests: 9,
+  tokensIn: 12400,
+  tokensOut: 3100,
+  billedE6: '10230000000',
+  paid: '0',
+  createdAt: 1791450000,
+};
+const LLM = {
+  available: true,
+  network: 'base',
+  feeBps: 400,
+  models: [
+    { id: 'llama-3-3-70b', name: 'Llama 3.3 70B', needMib: 46080, context: 8192, priceIn: '600000', priceOut: '900000', licence: 'Llama 3.3 Community', lentMib: 61440, group: 'ready', boxes: 4 },
+    { id: 'qwen3-32b', name: 'Qwen3 32B', needMib: 22528, context: 8192, priceIn: '300000', priceOut: '450000', licence: 'Apache-2.0', lentMib: 61440 },
+    { id: 'deepseek-r1', name: 'DeepSeek R1', needMib: 409600, context: 4096, priceIn: '2000000', priceOut: '4000000', licence: 'MIT', lentMib: 61440 },
+  ],
+  meters: [AI_METER],
+  wallets: [{ network: 'base', wallet: AI_WALLET, balance: 8000000, asked: 0, notBefore: 0, available: '7989770', runwaySecs: 57526, low: true }],
+  lending: { paid: '0', owed: '0' },
+  noticeSecs: 172800,
+  minSpendPerHour: '10000',
+  maxSpendPerHour: '100000000',
+};
+
+await check('AI models: the catalogue has prices and memory, says once who reads the prompts, and a running model shows its meter and balance', async () => {
+  const { page, errors, marketPosts, llmPosts } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM });
+  const section = page.getByTestId('ai-models');
+  await section.waitFor();
+  const llama = section.locator('[data-model="llama-3-3-70b"]');
+  assert.match(await llama.innerText(), /\$0\.60 in, \S*\$0\.90 out per million tokens/);
+  assert.match(await llama.innerText(), /Needs 45 GiB; boxes lend 60 GiB now/);
+  assert.match(await llama.innerText(), /Running on 4 boxes/);
+  // A model already running for this box has no Start; one that does not
+  // fit in what the boxes lend cannot be started.
+  assert.equal(await llama.getByRole('button', { name: 'Start' }).count(), 0);
+  assert.equal(await section.locator('[data-model="deepseek-r1"]').getByRole('button', { name: 'Start' }).isDisabled(), true);
+  assert.match(await section.locator('[data-model="deepseek-r1"]').innerText(), /Waiting for more memory/);
+  assert.equal(await page.getByText('The boxes running a model can read its prompts and answers.', { exact: false }).count(), 1);
+  const meters = page.getByTestId('ai-meters');
+  assert.match(await meters.innerText(), /Llama 3\.3 70B · Open/);
+  assert.match(await meters.innerText(), /\$0\.0102 spent on 15,500 tokens · at most \S*\$0\.50 an hour/);
+  const balance = page.getByTestId('ai-balance');
+  assert.match(await balance.innerText(), /Less than a day left at the limits you set: about 16 hours/);
+  assert.match(await balance.innerText(), /\$7\.99/);
+  await balance.getByRole('button', { name: 'Ask for it back' }).waitFor();
+  assert.match(await section.innerText(), /Set up the USDC wallet below first, or connect a browser wallet\./);
+  assert.deepEqual(marketPosts, []);
+  assert.deepEqual(llmPosts, []);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('AI models: Stop needs no wallet and a chat answer says what it cost', async () => {
+  const { page, errors, llmPosts } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM });
+  const chat = page.getByTestId('ai-chat');
+  await chat.waitFor();
+  await chat.getByPlaceholder('Ask something').fill('What is a comet made of?');
+  await chat.getByRole('button', { name: 'Send' }).click();
+  await chat.getByText('Mostly water, then ice.').waitFor();
+  // 42 tokens at $0.60 a million and 7 at $0.90: 31.5 millionths of a dollar.
+  assert.match(await chat.innerText(), /This answer cost \S*\$0\.000031: 42 tokens in, 7 out\./);
+  assert.deepEqual(llmPosts, [
+    ['/api/market/llm/chat', { meter: AI_METER.id, messages: [{ role: 'user', content: 'What is a comet made of?' }], maxTokens: 256 }],
+  ]);
+  // The next question carries the conversation so far.
+  await chat.getByPlaceholder('Ask something').fill('And its tail?');
+  await chat.getByRole('button', { name: 'Send' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="ai-chat"] p').length >= 6);
+  assert.deepEqual(llmPosts[1][1].messages, [
+    { role: 'user', content: 'What is a comet made of?' },
+    { role: 'assistant', content: 'Mostly water, then ice.' },
+    { role: 'user', content: 'And its tail?' },
+  ]);
+  await page.getByTestId('ai-meters').getByRole('button', { name: 'Stop' }).click();
+  await page.getByText('The edge closes the taps; nothing more is billed.', { exact: true }).waitFor();
+  assert.deepEqual(llmPosts[2], ['/api/market/taps/stop', { meter: AI_METER.id }]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('AI models: Check again tells the edge which wallet opened the taps', async () => {
+  const quoted = { ...LLM, meters: [{ ...AI_METER, state: 'quoted', wallet: undefined }] };
+  const { page, errors, llmPosts } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: quoted });
+  const meters = page.getByTestId('ai-meters');
+  await meters.waitFor();
+  // The tab that opened the taps remembers the wallet that did.
+  await page.evaluate(([meter, wallet]) => sessionStorage.setItem('losos-llm-meter', JSON.stringify({ meter, wallet })), [AI_METER.id, AI_WALLET]);
+  await meters.getByRole('button', { name: 'Check again' }).click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="ai-meters"] button[disabled]') === null);
+  for (let i = 0; i < 50 && !llmPosts.some(([path]) => path === '/api/market/taps/confirm'); i++) await page.waitForTimeout(100);
+  assert.deepEqual(
+    llmPosts.filter(([path]) => path === '/api/market/taps/confirm'),
+    [['/api/market/taps/confirm', { meter: AI_METER.id, wallet: AI_WALLET }]],
+  );
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('AI models: a wallet that gives up partway tells the edge which wallet it was', async () => {
+  const meter = 'mtr_0b7e4c2a9d1f36e85a4c07b2';
+  const quote = {
+    available: true,
+    meter,
+    model: 'qwen3-32b',
+    network: 'base',
+    chain: AI_MARKET.account.usdc.chains[0],
+    feeBps: 400,
+    spendPerHour: '500000',
+    taps: [
+      { id: 'tap-1', key: `0x${'a1'.repeat(32)}`, seller: `0x${'51'.repeat(20)}`, rate: '250000' },
+      { id: 'tap-2', key: `0x${'a2'.repeat(32)}`, seller: `0x${'52'.repeat(20)}`, rate: '250000' },
+    ],
+    openBefore: Math.floor(Date.now() / 1000) + 900,
+  };
+  // A browser wallet that connects, then refuses everything it is asked.
+  const init = (wallet) => {
+    window.ethereum = {
+      request: async ({ method }) => {
+        if (method === 'eth_requestAccounts') return [wallet];
+        throw Object.assign(new Error('User rejected the request.'), { code: 4001 });
+      },
+    };
+  };
+  const { page, llmPosts } = await open({
+    path: '/settings/market',
+    stored: true,
+    market: AI_MARKET,
+    llm: { ...LLM, meters: [], wallets: [] },
+    quote,
+    init: [init, AI_WALLET],
+  });
+  const qwen = page.locator('[data-model="qwen3-32b"]');
+  await qwen.waitFor();
+  await qwen.getByRole('button', { name: 'Start' }).click();
+  await qwen.getByRole('button', { name: 'Start' }).last().click();
+  for (let i = 0; i < 50 && !llmPosts.some(([path]) => path === '/api/market/taps/stop'); i++) await page.waitForTimeout(100);
+  assert.deepEqual(
+    llmPosts.filter(([path]) => path.startsWith('/api/market/taps/')),
+    [['/api/market/taps/stop', { meter, wallet: AI_WALLET }]],
+  );
+  await page.close();
+});
+
+await check('AI models: Start asks for an hourly limit and a top-up, refuses a limit out of range, and needs a wallet before it asks the edge', async () => {
+  const { page, errors, llmPosts } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM });
+  const qwen = page.locator('[data-model="qwen3-32b"]');
+  await qwen.waitFor();
+  await qwen.getByRole('button', { name: 'Start' }).click();
+  const limit = qwen.getByLabel('Most it may spend in an hour (USDC)');
+  assert.equal(await limit.inputValue(), '0.50');
+  // Eight hours at the limit; with no wallet chosen, nothing is known held.
+  assert.equal(await qwen.getByLabel('Add to your balance (USDC)').inputValue(), '4');
+  await limit.fill('500');
+  await qwen.getByRole('button', { name: 'Start' }).last().click();
+  await qwen.getByText('Allow between 0.01 and 100 USDC an hour.').waitFor();
+  await limit.fill('2');
+  assert.equal(await qwen.getByLabel('Add to your balance (USDC)').inputValue(), '16');
+  await qwen.getByRole('button', { name: 'Start' }).last().click();
+  await page.getByText('Set up the USDC wallet below first, or connect a browser wallet.').nth(1).waitFor();
+  assert.deepEqual(llmPosts, [], 'a quote was asked for with no wallet to pay it');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('AI models: a balance asked back says when it can be taken, then offers to take it', async () => {
+  const now = Date.UTC(2026, 9, 8, 9, 30);
+  const waiting = { ...LLM, meters: [], wallets: [{ ...LLM.wallets[0], asked: 8000000, notBefore: now / 1000 + 36 * 3600, runwaySecs: undefined, low: false }] };
+  let { page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: waiting, now });
+  let balance = page.getByTestId('ai-balance');
+  await balance.waitFor();
+  assert.match(await balance.innerText(), /\$8\.00 asked back; you can take it from 9 Oct 2026/);
+  assert.equal(await balance.getByRole('button').count(), 0);
+  assert.equal(await page.getByTestId('ai-chat').count(), 0, 'a chat with nothing running');
+  assert.deepEqual(errors, []);
+  await page.close();
+
+  const due = { ...waiting, wallets: [{ ...waiting.wallets[0], notBefore: now / 1000 - 60 }] };
+  ({ page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: due, now }));
+  balance = page.getByTestId('ai-balance');
+  await balance.waitFor();
+  assert.match(await balance.innerText(), /\$8\.00 can be taken back now/);
+  await balance.getByRole('button', { name: 'Take it back' }).waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('AI models: an edge that runs none says so, and a USDC-less market asks for none', async () => {
+  let { page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: { available: false } });
+  await page.getByTestId('ai-models').getByText('This edge runs no AI models.').waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+  ({ page, errors } = await open({ path: '/settings/market', stored: true, market: MARKET, llm: LLM }));
+  await page.getByRole('heading', { name: 'Market' }).first().waitFor().catch(() => undefined);
+  await page.waitForTimeout(300);
+  assert.equal(await page.getByTestId('ai-models').count(), 0);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('the Market pane with AI models fits a phone', async () => {
+  const { page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM, viewport: { width: 375, height: 800 } });
+  await page.getByTestId('ai-chat').waitFor();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   assert.ok(overflow <= 0, `page is ${overflow}px wider than the viewport`);
   assert.deepEqual(errors, []);
   await page.close();

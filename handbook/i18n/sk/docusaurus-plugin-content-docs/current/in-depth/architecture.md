@@ -112,7 +112,7 @@ TPM2 (`losos.tpm.enable = true`). Hneď po `disko` inštalátor spustí
 initrd nenesie žiadne tajomstvo a kľúčový súbor zostáva iba vnútri `/persist`
 ako záchranný slot, ktorým sa overuje `losos-ctl grow`. Väzba na PCR zámerne
 neexistuje. Zariadenie sa aktualizuje samo bez obsluhy a nemá shell, z ktorého by sa
-dalo zotaviť zo zablokovania; rovnaké rozhodnutie robí `fscrypt.nix` pre kľúč úložiska mesh.
+dalo zotaviť zo zablokovania.
 
 Ak inštalačné médium nevidí `/dev/tpmrm0`, alebo s `losos-ctl install
 --no-tpm`, je zariadenie v režime kľúčového súboru. `install-target.nix` nastaví
@@ -171,8 +171,8 @@ stojí jednu odpoveď 500 a nič viac. lososd načítava pluginy len z
 `losos.backend.plugins`, adresára v úložisku Nix (`.#losos-plugins`), a
 odmietne sa spustiť, ak je adresár alebo ktorýkoľvek súbor v ňom mimo
 úložiska, zapisovateľný, nepatrí rootovi alebo leží na pripojení na čítanie
-aj zápis. Vzhľad (obrázok pozadia a widgety) je prvý plugin;
-`nix/tests/plugins.nix` ho bootuje.
+aj zápis. Zatiaľ sú pluginmi vzhľad (obrázok pozadia a widgety) a
+pripnuté položky bočného panela; `nix/tests/plugins.nix` ich bootuje.
 
 `losos-ctl` je tenké fasádne CLI. Zachováva staré podpríkazy a JSON výstup
 (`state`, `change --mode`, `status`, `settings`, `apply` (stdin),

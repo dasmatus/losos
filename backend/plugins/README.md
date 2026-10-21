@@ -12,7 +12,9 @@ host's imports.
 | `wit/plugin.wit` | The contract: the request a plugin gets, the response it gives, every import. |
 | `sdk/` | `losos-plugin`, the Rust side of the contract as plain functions. |
 | `widget/` | `losos-widget`, hand-written widget files, shared by the look plugin and lososd's builder. |
+| `names/` | `losos-names`, the names lososd and the pins plugin both take: an app's release name, a LosOS Git owner or repository, a LosOS Cloud path. |
 | `look/` | The look: background picture and hand-written widgets (`/api/look*`). |
+| `pins/` | What the owner pinned to the sidebar (`/api/pins`). |
 | `probe/` | A test plugin that tries every import and misbehaves on request. Never shipped. |
 | `../src/plugin/` | The host: loading, trust, manifests, the imports, limits. |
 
@@ -65,7 +67,7 @@ entry in `cache` (lososd's memory, per plugin, gone at restart) or a job.
   "files": [
     { "path": "${LOSOS_STATE_DIR:-/var/lib/losos}/look.json", "access": "rw" }
   ],
-  "exec": ["git", { "program": "/run/current-system/sw/bin/nextcloud-occ", "uids": [1000] }],
+  "exec": ["git", { "program": "/run/current-system/sw/bin/losos-cloud", "uids": [1000] }],
   "units": { "prefix": "losos-backup-", "programs": ["restic"] },
   "http": ["http://127.0.0.1:11434", "unix:/run/losos-search/cloud.sock", "https://*"],
   "locks": ["state"],

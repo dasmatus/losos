@@ -107,6 +107,10 @@ let
   # WebSockets skip lososd and go to the helper, which checks a per-guest
   # ticket only a token holder can get.
   labLibvirt = labEnabled && config.losos.lab.libvirt.enable;
+  # LosOS Mail's screen (admin-ui/app/src/mail/), only while mail is live:
+  # on the shared side, so with sharing off there is no /mail at all
+  # (modules/mail.nix).
+  mailEnabled = adminEnabled && config.lososInternal.mail.live;
 
   # Access guard for the admin surface (the SPA, its assets, the setup routes,
   # the lososd API): local network only. Master-proxy traffic must never reach
@@ -298,18 +302,40 @@ let
     "form-action 'none'"
   ];
 
+  # ── A message's HTML ──────────────────────────────────────────────────
+  # LosOS Mail shows an HTML message in `<iframe sandbox>` from lososd's
+  # /api/mail/messages/<id>/html, never inside the Mail page. The document
+  # gets backend/src/http.rs's MAIL_FRAME_CSP, the same text as here: a CSP
+  # sandbox (no script, no same origin), inline style for the message's own
+  # look, and no load from anywhere, so a remote picture cannot tell its
+  # sender the message was opened. X-Frame-Options is dropped on that one
+  # path (DENY would refuse the Mail page too); `frame-ancestors 'self'`
+  # carries the rule. Anchored to the whole path, so no other /api/ route
+  # loses a header.
+  mailFrameCsp = lib.concatStringsSep "; " [
+    "sandbox allow-popups allow-popups-to-escape-sandbox"
+    "default-src 'none'"
+    "style-src 'unsafe-inline'"
+    "img-src data:"
+    "font-src data:"
+    "frame-ancestors 'self'"
+    "base-uri 'none'"
+    "form-action 'none'"
+  ];
+
   # One map per header: value on the admin surface, empty (header omitted) on
   # the proxied Git route, the handbook's and the lab's own values
   # (or the admin value, for the headers they share) under /handbook/ and
-  # /lab/, and the widget frame's own value (or nothing) under
-  # /widget-frame/.
-  adminHeaderMap = variable: value: handbookValue: labValue: frameValue: ''
+  # /lab/, the widget frame's own value (or nothing) under /widget-frame/,
+  # and a mail message's under its HTML route.
+  adminHeaderMap = variable: value: handbookValue: labValue: frameValue: mailValue: ''
     map $uri ${variable} {
         default          "${value}";
         ~^/forgejo       "";
         ~^/handbook/     "${handbookValue}";
         ~^/lab/          "${labValue}";
         ~^/widget-frame/ "${frameValue}";
+        ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";
     }
   '';
 
@@ -321,12 +347,14 @@ let
       handbookValue = handbookCsp;
       labValue = labCsp;
       frameValue = widgetFrameCsp;
+      mailValue = mailFrameCsp;
     }
     {
       name = "X-Frame-Options";
       variable = "$losos_frame_options";
       value = "DENY";
       frameValue = "";
+      mailValue = "";
     }
     {
       name = "X-Content-Type-Options";
@@ -344,7 +372,9 @@ let
 
   adminHeaderMaps = lib.concatMapStrings (
     h:
-    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) h.frameValue
+    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) h.frameValue (
+      h.mailValue or h.value
+    )
   ) adminHeaders;
 
   # `always` so the headers ride on the 403s the lanOnly guard emits too.
@@ -492,6 +522,20 @@ in
               proxy_send_timeout 6h;
             '';
           };
+          # An answer from a model split across boxes takes minutes; lososd
+          # gives the edge 17 of them.
+          "= /api/market/llm/chat" = {
+            proxyPass = "http://127.0.0.1:${toString adminApiPort}";
+            extraConfig = ''
+              ${lanOnly}
+              proxy_set_header X-Real-IP $remote_addr;
+              ${notTheEdge}
+              # The edge's cap (MAX_CHAT_BYTES in edge/registrar/src/server/llm.rs).
+              client_max_body_size 2m;
+              proxy_read_timeout 1200s;
+              proxy_send_timeout 1200s;
+            '';
+          };
         })
         {
           # A company edge's manage page (manage/index.html, src/manage/)
@@ -508,6 +552,13 @@ in
             tryFiles = "$uri /lab/index.html";
             extraConfig = lanOnly;
           };
+        })
+        (lib.mkIf (adminEnabled && !mailEnabled) {
+          # LosOS Mail is a screen of the SPA at /mail, reached through `/`'s
+          # fallback while mail is live. Off the shared side there is no
+          # mail page: both spellings answer 404.
+          "= /mail".return = "404";
+          "/mail/".return = "404";
         })
         (lib.mkIf labLibvirt {
           # The Lab guests' serial consoles and network cards, as WebSockets

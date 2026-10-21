@@ -78,6 +78,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
+name = "losos-names"
+version = "0.1.0"
+
+[[package]]
 name = "losos-plugin"
 version = "0.1.0"
 dependencies = [
@@ -94,6 +98,17 @@ dependencies = [
  "anyhow",
  "losos-plugin",
  "losos-widget",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "losos-plugin-pins"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "losos-names",
+ "losos-plugin",
  "serde",
  "serde_json",
 ]

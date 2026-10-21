@@ -270,6 +270,78 @@ const MARKET_SLOTS = {
   },
 };
 
+/* A box on an official edge that settles in USDC on Base and Solana and
+ * runs AI models on the memory boxes lend: one model running for this box
+ * for three hours, its balance under a day of runway, and this box lending
+ * 16 GiB to the group that serves it. */
+const USDC_MAINNET = {
+  test: false,
+  chain_id: 8453,
+  solana: 'solana',
+  ens_chain_id: null,
+  chains: [
+    {
+      network: 'base',
+      name: 'Base',
+      family: 'evm',
+      chain_id: 8453,
+      usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      pay: `0x${'7a'.repeat(20)}`,
+      treasury: `0x${'3c'.repeat(20)}`,
+    },
+    {
+      network: 'solana',
+      name: 'Solana',
+      family: 'solana',
+      chain_id: null,
+      usdc: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      pay: 'Esc7oWpF3x1QfXo4pYbJjLW1kY5nqH8TzCtqGm2RA9dV',
+      treasury: 'Trs9vH4dQ1mWb6KxJ3cNfR8sLpZ2gYtE5uAoXk7nB1q',
+    },
+  ],
+};
+const MARKET_AI = {
+  ...MARKET_OPEN,
+  account: { ...MARKET_OPEN.account, currency: 'usd', seller_onboarded: true, seller_ready: true, usdc: USDC_MAINNET },
+};
+const LLM_STARTED = NOW / 1000 - 3 * 3600;
+const LLM = {
+  available: true,
+  network: 'base',
+  feeBps: 400,
+  models: [
+    { id: 'llama-3-3-70b', name: 'Llama 3.3 70B', needMib: 46080, context: 8192, priceIn: '600000', priceOut: '900000', licence: 'Llama 3.3 Community', lentMib: 61440, group: 'ready', boxes: 4 },
+    { id: 'qwen3-32b', name: 'Qwen3 32B', needMib: 22528, context: 8192, priceIn: '300000', priceOut: '450000', licence: 'Apache-2.0', lentMib: 61440 },
+    { id: 'deepseek-r1', name: 'DeepSeek R1', needMib: 409600, context: 4096, priceIn: '2000000', priceOut: '4000000', licence: 'MIT', lentMib: 61440 },
+  ],
+  meters: [
+    {
+      id: 'mtr_5c1e0a9b7d3f42e8a6b01c9d',
+      model: 'llama-3-3-70b',
+      network: 'base',
+      state: 'open',
+      wallet: `0x${'4e'.repeat(20)}`,
+      spendPerHour: '500000',
+      boxes: 4,
+      group: 'ready',
+      requests: 9,
+      tokensIn: 12400,
+      tokensOut: 3100,
+      billedE6: '10230000000',
+      paid: '0',
+      createdAt: LLM_STARTED,
+    },
+  ],
+  wallets: [
+    { network: 'base', wallet: `0x${'4e'.repeat(20)}`, balance: 8000000, asked: 0, notBefore: 0, available: '7989770', runwaySecs: 57526, low: true },
+  ],
+  lending: { paid: '4210000', owed: '380000', model: 'llama-3-3-70b', group: 'ready', lentMib: 16384 },
+  noticeSecs: 172800,
+  minSpendPerHour: '10000',
+  maxSpendPerHour: '100000000',
+};
+const LENDING = { 'inference.lend.enable': 'true', 'inference.lend.memoryMiB': '16384' };
+
 const CONFIG = {
   enabled: true,
   repository: {
@@ -496,6 +568,7 @@ async function open({
   storage = STORAGE,
   look = LOOK_PLAIN,
   market = MARKET_OFF,
+  llm = { available: false },
   domains = DOMAINS_OFF,
   backup = BACKUP_SET,
   board = BOARD,
@@ -568,6 +641,7 @@ async function open({
   await page.route('**/api/edge', (route) => json(route, 200, edge));
   await page.route('**/api/storage', (route) => json(route, 200, storage));
   await page.route('**/api/market', (route) => json(route, 200, market));
+  await page.route('**/api/market/llm/models', (route) => json(route, 200, llm));
   await page.route('**/api/domains', (route) => json(route, 200, domains));
   await page.route('**/api/backup', (route) => json(route, 200, backup));
   await page.route('**/api/config', (route) => json(route, 200, CONFIG));
@@ -934,6 +1008,17 @@ const SHOTS = [
   { name: 'overview-de-dark', path: '/', lang: 'de', theme: 'dark' },
   { name: 'market-open', path: '/settings/market', edge: EDGE_OFFICIAL, market: MARKET_OPEN, settings: JOINED, langs: true },
   { name: 'market-slots', path: '/settings/market', edge: EDGE_OFFICIAL, market: MARKET_SLOTS, settings: JOINED, full: true },
+  { name: 'market-ai', path: '/settings/market', edge: EDGE_OFFICIAL, market: MARKET_AI, llm: LLM, settings: JOINED, overrides: LENDING, full: true },
+  {
+    name: 'market-lend',
+    path: '/settings/market',
+    edge: EDGE_OFFICIAL,
+    market: MARKET_AI,
+    llm: LLM,
+    settings: JOINED,
+    overrides: LENDING,
+    crop: { selector: '[data-testid="lend-memory"]', pad: 24 },
+  },
   // ── The wizard ───────────────────────────────────────────────────────
   { name: 'wizard-step1-trust', path: '/', claimed: false, signedIn: false, full: true, crop: 'column', langs: true },
   { name: 'wizard-step1-trust-phone', path: '/', claimed: false, signedIn: false, viewport: { width: 390, height: 844 } },
