@@ -831,7 +831,7 @@
       "properties": {
         "available": {
           "type": "boolean",
-          "description": "False on a box with no cluster of its own (LosOS cloud and LosOS Git both native, or losos.apps.enable off). Then `reason` is noCluster and `apps` is empty."
+          "description": "False on a box with no cluster of its own (LosOS Cloud and LosOS Git both native, or losos.apps.enable off). Then `reason` is noCluster and `apps` is empty."
         },
         "reason": {
           "type": "string",
@@ -972,7 +972,7 @@
             "managedBy",
             "active"
           ],
-          "description": "Whether a company edge may manage LosOS cloud, LosOS Git and the apps on this box (POST /api/edge/manage). Only an edge on the LAN that is not official can; official edges never manage boxes.",
+          "description": "Whether a company edge may manage LosOS Cloud, LosOS Git and the apps on this box (POST /api/edge/manage). Only an edge on the LAN that is not official can; official edges never manage boxes.",
           "properties": {
             "candidate": {
               "oneOf": [
@@ -1677,19 +1677,19 @@
         "auth": true,
         "in": "{\"name\":\"...\",\"password\":\"...\"}",
         "out": "{\"name\": \"...\", \"changed\": true}",
-        "note": "Set a new password for someone who forgot theirs. 409 for the owner, who changes their own through POST /api/set-password so their LosOS cloud password follows. Administrators only."
+        "note": "Set a new password for someone who forgot theirs. 409 for the owner, who changes their own through POST /api/set-password so their LosOS Cloud password follows. Administrators only."
       },
       "POST /api/people/remove": {
         "auth": true,
         "in": "{\"name\":\"...\"}",
         "out": "{\"name\": \"...\", \"removed\": true}",
-        "note": "Take someone out of the people file: their next request is a 403 with noAccount:true and they cannot sign in again. Their LosOS cloud and LosOS Git accounts and files stay. 404 for nobody by that name; 409 for the caller, the owner, or the last administrator. Administrators only."
+        "note": "Take someone out of the people file: their next request is a 403 with noAccount:true and they cannot sign in again. Their LosOS Cloud and LosOS Git accounts and files stay. 404 for nobody by that name; 409 for the caller, the owner, or the last administrator. Administrators only."
       },
       "POST /api/people/rules": {
         "auth": true,
         "in": "{\"twoFactor\": bool, \"passwordDays\": 0..1200}",
         "out": "{\"twoFactor\": bool, \"passwordDays\": n}",
-        "note": "LosOS Login's two rules (backend/src/login.rs): everyone needs an authenticator app or a passkey, and a password runs out passwordDays after it was set (0 never). Someone a rule holds reaches only their own account, and Authelia keeps them out of LosOS cloud and LosOS Git, until they comply. 409 with needsOwnFactor:true when a person turns twoFactor on without a second factor of their own. Administrators only."
+        "note": "LosOS Login's two rules (backend/src/login.rs): everyone needs an authenticator app or a passkey, and a password runs out passwordDays after it was set (0 never). Someone a rule holds reaches only their own account, and Authelia keeps them out of LosOS Cloud and LosOS Git, until they comply. 409 with needsOwnFactor:true when a person turns twoFactor on without a second factor of their own. Administrators only."
       },
       "POST /api/people/two-factor/reset": {
         "auth": true,
@@ -1706,7 +1706,7 @@
         "auth": true,
         "in": "{\"displayName\": \"...\", \"email\": \"...\"}",
         "out": "{\"name\": \"...\", \"displayName\": \"...\", \"email\": \"...\"}",
-        "note": "The caller's own name (1 to 100 characters, one line) and email address. LosOS cloud and LosOS Git get them too, in the background (backend/src/app_names.rs). 400 with the reason otherwise. Section account."
+        "note": "The caller's own name (1 to 100 characters, one line) and email address. LosOS Cloud and LosOS Git get them too, in the background (backend/src/app_names.rs). 400 with the reason otherwise. Section account."
       },
       "POST /api/account/code": {
         "auth": true,
@@ -1722,13 +1722,13 @@
         "auth": true,
         "in": "{\"password\":\"...\",\"device\":\"...\"}",
         "out": "{\"user\":\"notshared\",\"appPassword\":\"...\",\"path\":\"/nextcloud/remote.php/dav/files/notshared/\"}",
-        "note": "A LosOS cloud app password of one computer's own, for `losos cloud setup` (backend/src/devices.rs). Nextcloud makes one only for the real password, so the owner's password rides along and goes to $LOSOS_NEXTCLOUD_LOGIN_URL's GET /ocs/v2.php/core/getapppassword in a Basic header over loopback, never an argv. `device` (1-48 letters, digits, spaces, dots, dashes, underscores) names the app password `LosOS on <device>` in the owner's security settings. 403 with wrongPassword:true on a wrong password (not 401: the caller's token is good); 429 when Nextcloud is throttling; 503 when it cannot be asked; 400 for a body of the wrong shape. HTTP-only; reached by the terminal client as a sealed call."
+        "note": "A LosOS Cloud app password of one computer's own, for `losos cloud setup` (backend/src/devices.rs). Nextcloud makes one only for the real password, so the owner's password rides along and goes to $LOSOS_NEXTCLOUD_LOGIN_URL's GET /ocs/v2.php/core/getapppassword in a Basic header over loopback, never an argv. `device` (1-48 letters, digits, spaces, dots, dashes, underscores) names the app password `LosOS on <device>` in the owner's security settings. 403 with wrongPassword:true on a wrong password (not 401: the caller's token is good); 429 when Nextcloud is throttling; 503 when it cannot be asked; 400 for a body of the wrong shape. HTTP-only; reached by the terminal client as a sealed call."
       },
       "POST /api/devices/git": {
         "auth": true,
         "in": "{\"password\":\"...\",\"device\":\"...\"}",
         "out": "{\"user\":\"notshared\",\"token\":\"...\",\"path\":\"/forgejo/\"}",
-        "note": "A LosOS Git access token of one computer's own, for `losos git setup` (backend/src/devices.rs). Forgejo makes tokens only under Basic auth with the account's password, so LosOS cloud judges the password first, LosOS Git is given it as at a sign-in, and then, as the owner over loopback, a token named `LosOS on <device>` of the same name is deleted and a new one created with scopes write:repository and read:user. 403 with wrongPassword:true on a wrong password; 409 with gitOff:true when LosOS Git is off on this box; 429 when LosOS cloud is throttling; 503 when either cannot be asked. HTTP-only; reached by the terminal client as a sealed call."
+        "note": "A LosOS Git access token of one computer's own, for `losos git setup` (backend/src/devices.rs). Forgejo makes tokens only under Basic auth with the account's password, so LosOS Cloud judges the password first, LosOS Git is given it as at a sign-in, and then, as the owner over loopback, a token named `LosOS on <device>` of the same name is deleted and a new one created with scopes write:repository and read:user. 403 with wrongPassword:true on a wrong password; 409 with gitOff:true when LosOS Git is off on this box; 429 when LosOS Cloud is throttling; 503 when either cannot be asked. HTTP-only; reached by the terminal client as a sealed call."
       },
       "GET /api/apps/search": {
         "auth": true,
@@ -1740,7 +1740,7 @@
         "auth": true,
         "in": "query string: q=<search>, 1-128 characters with at least one letter or digit, no control characters; limit=1-20 (default 8)",
         "out": "{\"available\": false, \"reason\": \"off|notUp\"} | {\"available\": true, \"partial\": bool, \"hits\": [{\"path\", \"snippet\": [string]}]}",
-        "note": "Text inside the owner's files in LosOS cloud (backend/src/textsearch/, modules/search.nix). lososd relays to the socket-activated `losos-search cloud` on /run/losos-search/cloud.sock, which searches an SQLite FTS5 index the `losos-search-index` timer keeps current; every word must appear, each as a word prefix, accents ignored. `path` is from the owner's root without a leading slash; `snippet` alternates plain and matched runs, starting with a plain one. `partial` is true until the first pass over the files has finished. `off` is losos.search.enable = false; `notUp` is nothing listening on the socket. A bad `q` is 400, deliberately NOT 404, which the SPA latches. HTTP-only, following /api/apps/search."
+        "note": "Text inside the owner's files in LosOS Cloud (backend/src/textsearch/, modules/search.nix). lososd relays to the socket-activated `losos-search cloud` on /run/losos-search/cloud.sock, which searches an SQLite FTS5 index the `losos-search-index` timer keeps current; every word must appear, each as a word prefix, accents ignored. `path` is from the owner's root without a leading slash; `snippet` alternates plain and matched runs, starting with a plain one. `partial` is true until the first pass over the files has finished. `off` is losos.search.enable = false; `notUp` is nothing listening on the socket. A bad `q` is 400, deliberately NOT 404, which the SPA latches. HTTP-only, following /api/apps/search."
       },
       "GET /api/git/text": {
         "auth": true,
@@ -1774,7 +1774,7 @@
       "GET /api/cloud/apps": {
         "auth": true,
         "out": "{\"available\": true, \"store\": bool, \"apps\": [{\"id\", \"name\", \"summary\": string|null, \"version\": string|null, \"kind\": \"core|bundled|store\", \"enabled\": bool, \"locked\": null | {\"by\": \"nextcloud\"} | {\"by\": \"losos\", \"reason\": \"signIn|sharing|look|wizard\"}}]} | {\"available\": false, \"store\": bool, \"reason\": string}",
-        "note": "Every app LosOS cloud has (backend/src/cloud_apps.rs), from `losos-nextcloud-apps list` run in the pod or natively (modules/nextcloud-stack.nix, appsTool). `locked` names why the page may not change an app. LosOS cloud not answering yet is 200 with available:false and the reason, deliberately NOT 404, which the SPA reads as an older box. `store` is whether the app store search is offered. HTTP-only, following /api/apps/search."
+        "note": "Every app LosOS Cloud has (backend/src/cloud_apps.rs), from `losos-nextcloud-apps list` run in the pod or natively (modules/nextcloud-stack.nix, appsTool). `locked` names why the page may not change an app. LosOS Cloud not answering yet is 200 with available:false and the reason, deliberately NOT 404, which the SPA reads as an older box. `store` is whether the app store search is offered. HTTP-only, following /api/apps/search."
       },
       "GET /api/cloud/apps/search": {
         "auth": true,
@@ -1786,7 +1786,7 @@
         "auth": true,
         "in": "{\"id\": \"<app id>\"}",
         "out": "the GET /api/cloud/apps response, after the change",
-        "note": "Add an app from the app store (`occ app:install`). 409 when it is already in LosOS cloud. Each of the four verbs refuses the apps LosOS sets itself and the ones Nextcloud keeps on with 400, answers 409 while LosOS cloud is not running, and 502 with occ's message when the change fails. Audited."
+        "note": "Add an app from the app store (`occ app:install`). 409 when it is already in LosOS Cloud. Each of the four verbs refuses the apps LosOS sets itself and the ones Nextcloud keeps on with 400, answers 409 while LosOS Cloud is not running, and 502 with occ's message when the change fails. Audited."
       },
       "POST /api/cloud/apps/enable": {
         "auth": true,
@@ -1798,7 +1798,7 @@
         "auth": true,
         "in": "{\"id\": \"<app id>\"}",
         "out": "the GET /api/cloud/apps response, after the change",
-        "note": "Turn an app off and add it to the off-list, which every start of LosOS cloud honours, so it stays off. Same refusals as install. Audited."
+        "note": "Turn an app off and add it to the off-list, which every start of LosOS Cloud honours, so it stays off. Same refusals as install. Audited."
       },
       "POST /api/cloud/apps/remove": {
         "auth": true,
@@ -2066,7 +2066,7 @@
       "GET /api/pins": {
         "auth": true,
         "out": "{\"pins\": [<pin>], \"limit\": 24}",
-        "note": "What the owner pinned to the sidebar, in their order, kept on the box as /var/lib/losos/pins.json (backend/src/pins.rs). A pin is a reference, never an address: {\"kind\":\"tile\",\"app\":\"<an Overview tile id>\"}, {\"kind\":\"app\",\"release\":\"<an app installed from the search>\"}, {\"kind\":\"file\",\"id\":<LosOS cloud file id>,\"path\":\"/...\",\"folder\":bool} or {\"kind\":\"repo\",\"owner\":\"...\",\"name\":\"...\"}. The SPA decides where each opens, always on this box (admin-ui/app/src/lib/pins.ts)."
+        "note": "What the owner pinned to the sidebar, in their order, kept on the box as /var/lib/losos/pins.json (backend/src/pins.rs). A pin is a reference, never an address: {\"kind\":\"tile\",\"app\":\"<an Overview tile id>\"}, {\"kind\":\"app\",\"release\":\"<an app installed from the search>\"}, {\"kind\":\"file\",\"id\":<LosOS Cloud file id>,\"path\":\"/...\",\"folder\":bool} or {\"kind\":\"repo\",\"owner\":\"...\",\"name\":\"...\"}. The SPA decides where each opens, always on this box (admin-ui/app/src/lib/pins.ts)."
       },
       "PUT /api/pins": {
         "auth": true,
@@ -2078,7 +2078,7 @@
         "auth": true,
         "in": "query string: path=/<folder> (default /), or q=<text> (1-100 characters) to search names anywhere",
         "out": "{\"available\": true, \"path\": \"/...\", \"query\": \"...\"|null, \"entries\": [{\"name\", \"path\", \"id\", \"folder\", \"size\"|null}], \"more\": bool} or {\"available\": false, \"reason\": \"signIn\"|\"notUp\", \"path\", \"query\", \"entries\": []}",
-        "note": "One folder of the owner's LosOS cloud, folders first then by name, at most 500 entries (`more` when there were more); with q, the files and folders whose name holds the text, at most 50. Asked over WebDAV on loopback with an app password lososd obtains from LosOS cloud when the owner sets their password (the claim or a password change), kept 0600 at /var/lib/losos/cloud-key and shown in LosOS cloud's security settings as \"LosOS admin page\". `signIn` until there is one, and again once it is revoked. 400 for a path or query that is not one, or a folder that is gone."
+        "note": "One folder of the owner's LosOS Cloud, folders first then by name, at most 500 entries (`more` when there were more); with q, the files and folders whose name holds the text, at most 50. Asked over WebDAV on loopback with an app password lososd obtains from LosOS Cloud when the owner sets their password (the claim or a password change), kept 0600 at /var/lib/losos/cloud-key and shown in LosOS Cloud's security settings as \"LosOS admin page\". `signIn` until there is one, and again once it is revoked. 400 for a path or query that is not one, or a folder that is gone."
       },
       "GET /api/git/repos": {
         "auth": true,
@@ -2089,7 +2089,7 @@
       "GET /api/site": {
         "auth": true,
         "out": "optionsResponse",
-        "note": "The settings of LosOS cloud and LosOS Git only (backend/src/site.rs): GET /api/options cut down to losos.nextcloud.site.*, losos.forgejo.site.* and the two federation switches, with `stray` empty. Section apps, so a company edge the owner lets manage the box reaches it too."
+        "note": "The settings of LosOS Cloud and LosOS Git only (backend/src/site.rs): GET /api/options cut down to losos.nextcloud.site.*, losos.forgejo.site.* and the two federation switches, with `stray` empty. Section apps, so a company edge the owner lets manage the box reaches it too."
       },
       "POST /api/site": {
         "auth": true,
@@ -2101,7 +2101,7 @@
         "auth": true,
         "in": "{\"enabled\": bool}",
         "out": "{\"manage\": <GET /api/edge's manage>}",
-        "note": "The owner's switch that lets a company edge manage LosOS cloud, LosOS Git and the apps (backend/src/edge.rs, management). On binds it to the edge the box uses now, which must be on the LAN and not official (409 with notManageable:true otherwise); off forgets it. lososd publishes /run/losos/edge-managed for the announce unit's heartbeat. The edge's calls arrive through the box's own tunnel at nginx's losos-manage.invalid server, with X-Losos-Via-Edge and the box's proxy token in X-Losos-Edge, and lososd lets them through only while that edge is the one in use; they reach the sections backend/sections.json lists under `edge` and GETs of signed-in routes, never an admin route. Admin. Audited."
+        "note": "The owner's switch that lets a company edge manage LosOS Cloud, LosOS Git and the apps (backend/src/edge.rs, management). On binds it to the edge the box uses now, which must be on the LAN and not official (409 with notManageable:true otherwise); off forgets it. lososd publishes /run/losos/edge-managed for the announce unit's heartbeat. The edge's calls arrive through the box's own tunnel at nginx's losos-manage.invalid server, with X-Losos-Via-Edge and the box's proxy token in X-Losos-Edge, and lososd lets them through only while that edge is the one in use; they reach the sections backend/sections.json lists under `edge` and GETs of signed-in routes, never an admin route. Admin. Audited."
       },
       "GET /api/options": {
         "auth": true,

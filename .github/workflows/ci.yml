@@ -382,8 +382,10 @@ jobs:
       # test derivation, both nixosConfigurations and every package, the three
       # OCI images among them; builds nothing. Which is the limit of it: an
       # image whose entrypoint fails shellcheck evaluates perfectly happily,
-      # and only the images job below catches that.
-      - run: nix flake check --no-build -L
+      # and only the images job below catches that. A few attributes per
+      # process: `nix flake check --no-build` held every test's evaluation at
+      # once, passed 13 GiB and got the runner killed.
+      - run: nix/check-flake.sh .
       # Mirrors devenv.nix's `check-eval`, and this is the gate the repo lacked
       # entirely: `flake check` only forces each nixosConfiguration's toplevel
       # *derivation*, so an option conflict, a type error or a failed assertion

@@ -5,7 +5,7 @@ sidebar_position: 5
 
 # App-Modi
 
-LosOS cloud und LosOS Git laufen jeweils in einem von zwei Modi. Du siehst in
+LosOS Cloud und LosOS Git laufen jeweils in einem von zwei Modi. Du siehst in
 beiden Fällen dieselbe App unter derselben Adresse, und der Bereich Apps
 zeigt, in welchem Modus jede läuft.
 
@@ -39,21 +39,21 @@ Clusters kann nicht starten, solange sein Server nicht erreichbar ist, und
 die Box startet jede Nacht um 00:07 neu. Ein Ausfall der Edge über
 Mitternacht würde deine eigenen Dateien also vom Netz nehmen.
 
-![Das Innere einer Box: Der eigene Cluster der Box betreibt LosOS cloud und LosOS Git, der Mesh-Agent gehört zu einem anderen Cluster, dessen Server die Edge ist.](@site/docs/img/box-architecture-de.svg)
+![Das Innere einer Box: Der eigene Cluster der Box betreibt LosOS Cloud und LosOS Git, der Mesh-Agent gehört zu einem anderen Cluster, dessen Server die Edge ist.](@site/docs/img/box-architecture-de.svg)
 
 ## Wo die Apps sind \{#where-the-apps-are}
 
-![Der Bereich Apps: LosOS cloud und LosOS Git, jede mit ihrem Modus, eine installierte App und darunter Mehr finden.](@site/docs/img/apps-de.png)
+![Der Bereich Apps: LosOS Cloud und LosOS Git, jede mit ihrem Modus, eine installierte App und darunter Mehr finden.](@site/docs/img/apps-de.png)
 
 | App          | Adresse             | Hinweis                                                                                   |
 | ------------ | ------------------- | ----------------------------------------------------------------------------------------- |
-| LosOS cloud  | `/nextcloud`        | Vertraut dem Namen der Box und der Adresse, auf der eine Anfrage ankam, nie einem Platzhalter. |
+| LosOS Cloud  | `/nextcloud`        | Vertraut dem Namen der Box und der Adresse, auf der eine Anfrage ankam, nie einem Platzhalter. |
 | LosOS Git    | `/forgejo/`         | Clone-URLs verwenden den Namen der Box; schalte es im Bereich Apps ab, wenn du es nicht willst. |
 | Admin-Seiten | `/`                 | Nur im LAN.                                                                               |
 | Handbuch     | `/handbook/`        | Nur im LAN.                                                                               |
 
 :::note[App-Kacheln gehen über index.php]
-Die App-Kacheln der Admin-Seiten öffnen die Apps von LosOS cloud über
+Die App-Kacheln der Admin-Seiten öffnen die Apps von LosOS Cloud über
 `index.php` (`/nextcloud/index.php/apps/<app>/`), worauf jede Konfiguration
 antwortet.
 :::

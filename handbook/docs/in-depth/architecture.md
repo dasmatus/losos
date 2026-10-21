@@ -57,7 +57,7 @@ Nextcloud and Forgejo run in the box's own k3s cluster
 admin-ui/app/            the admin SPA
 admin-ui/tui/            losos, the terminal client (Rust)
 admin-ui/lab/            LosOS Lab's core and canvas (Rust, WebAssembly)
-admin-ui/themes/         LosOS cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
+admin-ui/themes/         LosOS Cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
 admin-ui/design-system/  dev-only tokens and React wrapper; not shipped
 backend/                 lososd + losos-ctl (Rust)
 edge/registrar/          the edge registrar (Rust)
@@ -286,7 +286,7 @@ by the image's entrypoint, with `DEFAULT_THEME = losos-auto`. Forgejo stamps
 that on accounts at creation, so an existing account keeps its old theme
 until its owner switches.
 
-Owners see the two apps as **LosOS cloud** and **LosOS Git**. The theme
+Owners see the two apps as **LosOS Cloud** and **LosOS Git**. The theme
 folder's `defaults.php` names Nextcloud and Forgejo's `APP_NAME` names
 Forgejo. Both get logos drawn from `admin-ui/themes/brand/`. `marks.py` wraps
 `salmon.png`, a live coho salmon cut out of a NOAA Fisheries photo, into the
@@ -413,7 +413,7 @@ volume with `/nix`, so a log that grows without end ends as a nightly rebuild
 with no room to build. journald keeps at most `losos.logs.journalMaxUse`
 (512 MB) and a month. The kubelet of each cluster keeps three files of
 10 MiB per container (`containerLogMaxSize`, `containerLogMaxFiles`), which
-covers LosOS cloud, LosOS Git and the apps, since they log to stdout.
+covers LosOS Cloud, LosOS Git and the apps, since they log to stdout.
 logrotate rotates lososd's `audit.log` and `rebuild.log` at 10 MB and adds a
 20 MB bound to the nginx rule nixpkgs ships. A tmpfiles rule deletes Nix
 build logs older than 30 days, which the garbage collector leaves behind.

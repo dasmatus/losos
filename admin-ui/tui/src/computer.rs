@@ -1,4 +1,4 @@
-//! Setting up this computer for LosOS cloud and LosOS Git: `losos cloud
+//! Setting up this computer for LosOS Cloud and LosOS Git: `losos cloud
 //! setup`, `losos git setup` and the This computer pane.
 //!
 //! The box makes a credential of this computer's own (`POST
@@ -6,12 +6,12 @@
 //! computer so the owner can revoke it on its own, and the client puts it
 //! where the desktop's own tools look:
 //!
-//! - LosOS cloud: the app password goes into the Secret Service twice, once
+//! - LosOS Cloud: the app password goes into the Secret Service twice, once
 //!   as this client's item and once in the shape GVfs looks up before it
 //!   asks for a password (`org.gnome.keyring.NetworkPassword`: user, server,
 //!   protocol `http`, the realm the server names, authtype `basic`, the port
 //!   with the scheme's default filled in). A bookmark in the GTK bookmarks
-//!   file puts LosOS cloud in the file manager's sidebar, and opening it
+//!   file puts LosOS Cloud in the file manager's sidebar, and opening it
 //!   mounts the files with no password typed.
 //! - LosOS Git: the token goes into the Secret Service, and git's global
 //!   configuration gets a credential helper for the box's address that is
@@ -43,7 +43,7 @@ const NETWORK_SCHEMA: &str = "org.gnome.keyring.NetworkPassword";
 /// What Nextcloud calls its WebDAV realm when the probe gets no answer.
 const DEFAULT_REALM: &str = "Nextcloud";
 /// What the bookmark is called in the file manager.
-const BOOKMARK_NAME: &str = "LosOS cloud";
+const BOOKMARK_NAME: &str = "LosOS Cloud";
 /// The longest computer name the box takes (backend/src/devices.rs).
 const MAX_DEVICE_CHARS: usize = 48;
 
@@ -95,7 +95,7 @@ impl Computer {
         self.env.get(name).cloned().filter(|v| !v.is_empty())
     }
 
-    /// The name this computer goes by in LosOS cloud's and LosOS Git's
+    /// The name this computer goes by in LosOS Cloud's and LosOS Git's
     /// lists: `--device`, else `$LOSOS_DEVICE`, else the hostname, made to
     /// fit the box's rule.
     pub fn device_name(&self, given: Option<&str>) -> String {
@@ -580,8 +580,8 @@ mod tests {
     #[test]
     fn realms_are_read_off_the_challenge() {
         assert_eq!(
-            realm(r#"Basic realm="LosOS cloud", charset="UTF-8""#).as_deref(),
-            Some("LosOS cloud")
+            realm(r#"Basic realm="LosOS Cloud", charset="UTF-8""#).as_deref(),
+            Some("LosOS Cloud")
         );
         assert_eq!(realm("Basic realm=Nextcloud").as_deref(), Some("Nextcloud"));
         assert_eq!(realm("Bearer"), None);
@@ -611,7 +611,7 @@ mod tests {
         add_bookmark(&file, "davs://u@box.local/p/").unwrap();
         assert_eq!(
             std::fs::read_to_string(&file).unwrap(),
-            "file:///home/me/Music\ndavs://u@box.local/p/ LosOS cloud\n"
+            "file:///home/me/Music\ndavs://u@box.local/p/ LosOS Cloud\n"
         );
     }
 }

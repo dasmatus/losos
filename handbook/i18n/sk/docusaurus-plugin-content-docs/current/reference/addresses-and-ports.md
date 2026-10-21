@@ -7,7 +7,7 @@ sidebar_position: 1
 
 ## Na zariadení \{#on-the-box}
 
-![Vnútri zariadenia: nginx drží porty 80 a 443 a podľa cesty smeruje na admin stránky, riadiace API, LosOS cloud, LosOS Git a túto príručku.](@site/docs/img/box-architecture-sk.svg)
+![Vnútri zariadenia: nginx drží porty 80 a 443 a podľa cesty smeruje na admin stránky, riadiace API, LosOS Cloud, LosOS Git a túto príručku.](@site/docs/img/box-architecture-sk.svg)
 
 | Cesta                         | Čo                                                  | Kto ju môže otvoriť                 |
 | ----------------------------- | --------------------------------------------------- | ----------------------------------- |
@@ -18,10 +18,10 @@ sidebar_position: 1
 | `/setup/state.json`           | Názov, adresa, HTTPS, odtlačok certifikátu          | iba lokálna sieť                    |
 | `/setup/losos-ca.crt`         | Certifikát zariadenia                               | iba lokálna sieť                    |
 | `/setup/trust.sh`, `/setup/trust.ps1` | Jednoriadkové inštalátory certifikátu       | iba lokálna sieť                    |
-| `/nextcloud`                  | LosOS cloud                                         | ktokoľvek, aj cez edge              |
+| `/nextcloud`                  | LosOS Cloud                                         | ktokoľvek, aj cez edge              |
 | `/forgejo/`                   | LosOS Git                                           | ktokoľvek, aj cez edge              |
 | `/.well-known/nodeinfo`, `/.well-known/webfinger` | Zisťovanie federácie LosOS Git, kým je federácia zapnutá a disk zdieľaný | ktokoľvek, aj cez edge |
-| `/nextcloud/ocm-provider/`, `/nextcloud/ocm/…` a ďalšie adresy federácie pod `/nextcloud` | Federácia LosOS cloud, kým je federácia zapnutá a disk zdieľaný; inak **404** | ktokoľvek, aj cez edge |
+| `/nextcloud/ocm-provider/`, `/nextcloud/ocm/…` a ďalšie adresy federácie pod `/nextcloud` | Federácia LosOS Cloud, kým je federácia zapnutá a disk zdieľaný; inak **404** | ktokoľvek, aj cez edge |
 
 :::note[Čo znamená lokálna sieť]
 „Iba lokálna sieť“ znamená zdrojovú adresu zo súkromného rozsahu
@@ -48,7 +48,7 @@ prichádzajúci port.
 | Názov                       | Čo                                                       |
 | --------------------------- | -------------------------------------------------------- |
 | `<name>.local`              | Zariadenie vo vlastnej sieti, cez mDNS                   |
-| `<name>.<edge domain>`      | Zariadenie cez svoj edge, pre LosOS cloud a LosOS Git    |
+| `<name>.<edge domain>`      | Zariadenie cez svoj edge, pre LosOS Cloud a LosOS Git    |
 | `losos-edge.dasmat.us`      | Riadiaca časť edge LosOS a stránka „find my box“         |
 | `proxy.losos.dasmat.us`     | Binárna cache, z ktorej sa zariadenie aktualizuje        |
 | `losos-cache-proxy.vercel.app` | Tá istá cache pod vlastným názvom Vercelu             |

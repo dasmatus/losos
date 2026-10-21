@@ -33,7 +33,7 @@ computer can carry:
 | | Full | Light |
 | --- | --- | --- |
 | Needs | KVM, 14 GiB of memory, 60 GB of free disk | 6 GiB of memory, 15 GB of free disk |
-| The boxes | installed from the installer ISO, with LosOS cloud | the admin pages and the parts that talk to the edge |
+| The boxes | installed from the installer ISO, with LosOS Cloud | the admin pages and the parts that talk to the edge |
 | The edge | an edge VM that is also the network's router | the [edge gateway](../in-depth/edge-federation.md) |
 | Takes | about half an hour with KVM | about 15 minutes, KVM or not, after the first build |
 
@@ -88,5 +88,5 @@ dropping UDP port 5353 on that device.
 - The boxes' public names are pointed at the edge by the demo. On a real
   network, DNS does that.
 - The edge is a company edge, not an official one, so the market stays off.
-- In the light demo LosOS cloud is not running. A small placeholder answers
+- In the light demo LosOS Cloud is not running. A small placeholder answers
   in its place, behind the box's real web server.

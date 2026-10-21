@@ -865,7 +865,7 @@ in
         over WebDAV for file managers, and to the Nextcloud desktop and
         phone apps, which sync with it as they would with Nextcloud. People
         sign in with LosOS Login; each computer or phone gets a password of
-        its own. It runs beside the LosOS cloud pod, with its own files.
+        its own. It runs beside the LosOS Cloud pod, with its own files.
         On by default on an installed box (modules/defaults.nix).
       '';
     };
@@ -884,7 +884,7 @@ in
       default = true;
       description = ''
         Let the search on the admin pages find text inside the owner's
-        files: an index of the files in LosOS cloud, brought up to date
+        files: an index of the files in LosOS Cloud, brought up to date
         every two minutes, and a search of the default branch of every
         repository in LosOS Git. The index is a copy of the files' text and
         never leaves the box; turning this off stops the updates, and a
@@ -997,7 +997,7 @@ in
         only by the edge through this box's tunnel; buyers pay the edge per
         token. It runs as the `shared` user, away from the owner's data, and
         cannot take more than `inference.lend.memoryMiB`: a request for more
-        stops the lending server, never LosOS cloud. Needs the edge proxy
+        stops the lending server, never LosOS Cloud. Needs the edge proxy
         (losos.proxy.enable).
       '';
     };
@@ -1009,7 +1009,7 @@ in
         The memory this box lends, in MiB. The edge never gives the box a
         larger share of a model than this, and the lending server is
         stopped if it grows past it. The default leaves a 4 GiB box room
-        for LosOS cloud and LosOS Git; raise it on a box with more.
+        for LosOS Cloud and LosOS Git; raise it on a box with more.
       '';
     };
 
@@ -1049,7 +1049,7 @@ in
         contribution, and a domain left unlocked while nothing is shared is a
         standing liability on a box with no shell to lock it from.
 
-        It is also the gate for federation: LosOS Git and LosOS cloud talk
+        It is also the gate for federation: LosOS Git and LosOS Cloud talk
         to other servers only while this is on
         (losos.forgejo.federation.enable, losos.nextcloud.federation.enable).
 
@@ -1247,14 +1247,14 @@ in
       type = lib.types.bool;
       default = true;
       description = ''
-        Let LosOS cloud share files and calendars with accounts on other
+        Let LosOS Cloud share files and calendars with accounts on other
         Nextcloud servers (Federated Cloud Sharing), and answer the
         discovery and share addresses those servers call. Other servers
         reach the box at the address it is served on, so through an edge
         this is the internet and on a LAN-only box it is the LAN.
 
         Takes effect only while losos.sharingMyStorage is on. With disk
-        sharing off the shared data pool is locked and LosOS cloud does not
+        sharing off the shared data pool is locked and LosOS Cloud does not
         federate, whatever this says.
       '';
     };
@@ -1292,7 +1292,7 @@ in
       );
       default = null;
       description = ''
-        The language LosOS cloud speaks to an account that has not picked
+        The language LosOS Cloud speaks to an account that has not picked
         one, and on its sign-in page. Null follows the browser. "de" is
         German with "du", "de_DE" with "Sie". Each account can still choose
         its own under Personal info.
@@ -1306,7 +1306,7 @@ in
       description = ''
         The country (ISO 3166-1 code, such as SK or DE) a phone number
         without a country code is read as, in profiles and contacts. Null
-        leaves it unset, and LosOS cloud's admin overview asks for it.
+        leaves it unset, and LosOS Cloud's admin overview asks for it.
       '';
     };
 
@@ -1315,7 +1315,7 @@ in
       default = null;
       description = ''
         Days a deleted file stays in the trash before it is gone for good.
-        Null lets LosOS cloud decide: at least 30 days, and sooner only when
+        Null lets LosOS Cloud decide: at least 30 days, and sooner only when
         the disk runs short.
       '';
     };
@@ -1324,7 +1324,7 @@ in
       type = lib.types.nullOr (lib.types.ints.between 1 3650);
       default = null;
       description = ''
-        Days older versions of a file are kept. Null lets LosOS cloud decide:
+        Days older versions of a file are kept. Null lets LosOS Cloud decide:
         it thins old versions out over time and drops them when the disk
         runs short.
       '';
@@ -1336,7 +1336,7 @@ in
       description = ''
         How much space, in GB, a new account may fill unless it is given its
         own limit. Null is no limit. The limit of each account is still set
-        under Accounts in LosOS cloud.
+        under Accounts in LosOS Cloud.
       '';
     };
 
@@ -2889,7 +2889,7 @@ in
         Serve the page a company's admins look after their boxes from, at
         `/manage/` on the registrar: every box this edge routes, and for each
         box whose owner let this edge manage it (the switch on the box's Mesh
-        page), its LosOS cloud, LosOS Git and app settings. The page signs in
+        page), its LosOS Cloud, LosOS Git and app settings. The page signs in
         with a key the registrar makes on its first start, in
         /var/lib/losos-registrar/manage-key; `losos-edge manage-key` on the
         gateway's console prints it. Boxes refuse to be managed by an
@@ -3157,7 +3157,7 @@ in
       internal = true;
       readOnly = true;
       default = config.losos.nextcloud.federation.enable && config.losos.sharingMyStorage;
-      description = "LosOS cloud federates: losos.nextcloud.federation.enable and losos.sharingMyStorage.";
+      description = "LosOS Cloud federates: losos.nextcloud.federation.enable and losos.sharingMyStorage.";
     };
   };
 
@@ -3178,7 +3178,7 @@ in
         internal = true;
         readOnly = true;
         default = identity && config.losos.nextcloud.mode == "container";
-        description = "LosOS cloud signs people in with LosOS Login.";
+        description = "LosOS Cloud signs people in with LosOS Login.";
       };
       forgejo = lib.mkOption {
         type = lib.types.bool;

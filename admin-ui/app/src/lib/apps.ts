@@ -2,7 +2,7 @@
  *
  * Every tile but Code and Settings is an app inside the Files app (LosOS
  * cloud), not a separate program, and none of them exists until that app is
- * up and set up. The catalogue lists the apps LosOS cloud enables on every
+ * up and set up. The catalogue lists the apps LosOS Cloud enables on every
  * start (`apps` in modules/nextcloud-stack.nix) plus the four it always has
  * (Files, Dashboard, Photos, Activity), in the order its own app menu shows
  * them, so the two menus agree. An app added there wants a tile here. A tile for an app that is not there
@@ -147,7 +147,7 @@ export const SETUP_ROUTE = "/setup";
 export const SETTINGS_ROUTE = "/settings";
 
 /* Display order, and it is deliberate: Files first because it is the box's
- * reason to exist, the apps it provides next in the order of LosOS cloud's
+ * reason to exist, the apps it provides next in the order of LosOS Cloud's
  * own menu, Mail after them because it is not shipped, the code host after
  * that, and Settings last because it is the one tile that is always present
  * and the only one the owner should never need. */
@@ -643,7 +643,7 @@ export async function probeCode(options: ProbeOptions = {}): Promise<Availabilit
   return response === null ? "unknown" : readStatus(response.status);
 }
 
-/* Is an app that LosOS cloud does not ship installed anyway?
+/* Is an app that LosOS Cloud does not ship installed anyway?
  *
  * Asked of the app's own page, signed out (`credentials: "omit"`). Nextcloud
  * loads the routes of enabled apps only, so a page that is not there is a

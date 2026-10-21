@@ -75,7 +75,7 @@ import { useOfficeFolder } from "@/lib/office-folder";
  * A folded entry opens by itself when the page is on one of its
  * sub-entries. The magnifier at the top opens the command palette
  * (src/palette/), as Ctrl/Cmd+Shift+P does, which finds every entry here and
- * also the pins, apps, files in LosOS cloud and repositories in LosOS Git.
+ * also the pins, apps, files in LosOS Cloud and repositories in LosOS Git.
  *
  * On a wide screen the trigger (or Ctrl/Cmd+B) narrows the panel to a rail of
  * icons, each naming itself in a tooltip; on a phone a row naming where you

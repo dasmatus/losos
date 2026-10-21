@@ -1,10 +1,10 @@
 import * as React from "react";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Compass01Icon, UserCircleIcon } from "@hugeicons/core-free-icons";
+import { Compass01Icon } from "@hugeicons/core-free-icons";
+import { AppBar, type AppBarPerson } from "@/components/app-bar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MeshNotice } from "@/components/mesh-notice";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PersonAvatar } from "@/components/person";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,9 +28,7 @@ import { HelpLink } from "@/components/ui/help-link";
 import type { HandbookEntry } from "@/lib/handbook";
 import { Input, MonoInput } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { LanguagePicker } from "@/components/ui/language-picker";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { toast, Toaster } from "@/components/ui/toast";
 import {
   getClaimState,
@@ -52,7 +50,6 @@ import { followPins } from "@/lib/pins";
 import { readProgress } from "@/screens/wizard/progress";
 import { isTourOpen, startTour, subscribeTour } from "@/tour/store";
 import { closePalette, isPaletteColon, isPaletteShortcut, openPalette, paletteState, subscribePalette } from "@/palette/store";
-import { logoFor } from "@/lib/logo";
 import { seededShuffle } from "@/lib/shuffle";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
@@ -370,92 +367,32 @@ function Shell() {
 
 function TopBar({ signedIn }: { signedIn: boolean }) {
   const t = useT();
-  const logo = logoFor();
-  return (
-    <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
-      <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
-        {/* The logo in place of the name, a live salmon (a plate of it on
-            Halloween; lib/logo.ts picks); its alt text is the name. A photo
-            needs a word of explanation, so the logo is a tooltip trigger
-            whose accessible name is that explanation (Base UI shows no
-            tooltip on touch). */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label={t(logo.tip)}
-                  className="inline-flex shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                />
-              }
-            >
-              <img src={logo.url} alt="LosOS" width={32} height={32} className="size-8" />
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="start" className="max-w-[22rem]">
-              {t(logo.tip)}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <Badge variant="outline" className="hidden sm:inline-flex">
-          {t("shell.thisBox")}
-        </Badge>
-        <div className="flex-1" />
-        <LanguagePicker />
-        <ThemeToggle />
-        {signedIn && <WhoIsSignedIn />}
-        {signedIn && (
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            {t("shell.signOut")}
-          </Button>
-        )}
-      </div>
-    </header>
-  );
-}
-
-/* Who this tab is signed in as, from GET /api/me: the person's name on
- * LosOS Login, or the spare key. The name hides on a phone, where the icon
- * stays and the tooltip says the rest. */
-function WhoIsSignedIn() {
-  const t = useT();
   const me = useMe();
-  if (me === null) return null;
-  const name = me.spareKey ? t("shell.me.spareKey") : (me.displayName ?? me.name ?? "");
-  const tip = me.spareKey
-    ? t("shell.me.spareKeyTip")
-    : `${t("shell.me.signedIn", { name: me.name ?? name })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`;
+  let person: AppBarPerson | null = null;
+  if (signedIn && me !== null) {
+    const name = me.spareKey ? t("shell.me.spareKey") : (me.displayName ?? me.name ?? "");
+    const tip = me.spareKey
+      ? t("shell.me.spareKeyTip")
+      : `${t("shell.me.signedIn", { name: me.name ?? name })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`;
+    person = { label: name, tip };
+    if (!me.spareKey && me.name) {
+      person.avatar = (
+        <PersonAvatar
+          size="xs"
+          data-testid="signed-in-avatar"
+          person={{ name: me.name, displayName: me.displayName ?? me.name, picture: me.picture, accent: me.accent }}
+        />
+      );
+      person.accountLink = <Link to="/settings/account" />;
+    }
+  }
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label={tip}
-              data-testid="signed-in-as"
-              className="inline-flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-            />
-          }
-        >
-          {me.spareKey || !me.name ? (
-            <HugeiconsIcon icon={UserCircleIcon} size={18} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-          ) : (
-            <PersonAvatar
-              size="xs"
-              data-testid="signed-in-avatar"
-              person={{ name: me.name, displayName: me.displayName ?? me.name, picture: me.picture, accent: me.accent }}
-            />
-          )}
-          <span data-testid="signed-in-name" className="hidden max-w-[12rem] truncate sm:inline">
-            {name}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" align="end" className="max-w-[22rem]">
-          {tip}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <AppBar
+      homeLink={<Link to="/" />}
+      badge={<Badge variant="outline">{t("shell.thisBox")}</Badge>}
+      person={person}
+      onSignOut={signedIn ? signOut : undefined}
+    />
   );
 }
 

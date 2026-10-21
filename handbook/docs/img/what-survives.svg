@@ -36,7 +36,7 @@
   <rect x="580" y="40" width="380" height="380" rx="10" fill="#0e6e7d"/>
   <text x="598" y="70" font-weight="650" fill="#ffffff">/persist   encrypted, unlocked by the TPM</text>
   <text x="598" y="92" fill="#e2eff1" font-size="13">each directory is bind-mounted back into place</text>
-  <text x="598" y="137" font-size="13" fill="#ffffff">LosOS cloud: your files, photos, database</text>
+  <text x="598" y="137" font-size="13" fill="#ffffff">LosOS Cloud: your files, photos, database</text>
   <text x="598" y="167" font-size="13" fill="#ffffff">room lent to the mesh, encrypted apart</text>
   <text x="598" y="197" font-size="13" fill="#ffffff">LosOS Git, the box's state, both clusters, logs</text>
   <text x="598" y="227" font-size="13" fill="#ffffff">the system itself, every version in the boot menu</text>

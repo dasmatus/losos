@@ -145,7 +145,7 @@ pub const IMAGE_OCC_STATUS: &str = "/bin/losos-nextcloud-occ-status";
 /// > exist yet.
 pub const IMAGE_OCC_PERSON: &str = "/bin/losos-nextcloud-occ-person";
 
-/// What the steps of [`plan_person`] exit with when LosOS cloud has no such
+/// What the steps of [`plan_person`] exit with when LosOS Cloud has no such
 /// account yet: it makes one, with the name, at the person's first sign-in.
 pub const NO_ACCOUNT: i32 = 3;
 
@@ -695,7 +695,7 @@ pub fn plan_status(target: &Target) -> Vec<String> {
     }
 }
 
-/// The calls that give `account` in LosOS cloud the `name` and `email`
+/// The calls that give `account` in LosOS Cloud the `name` and `email`
 /// LosOS Login has for its person, in order. Neither is a secret, so both
 /// travel as arguments; `--` ends occ's (and crictl's) options first, so a
 /// name that starts with a dash stays a name. Natively the first step asks

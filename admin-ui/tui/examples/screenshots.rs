@@ -294,7 +294,7 @@ fn main() {
             "computer",
             Box::new(|t| app_frame(HostKind::Box, PaneId::Computer, &[], t)),
         ),
-        // The password asked for, then LosOS cloud set up with it.
+        // The password asked for, then LosOS Cloud set up with it.
         (
             "computer-password",
             Box::new(|t| {

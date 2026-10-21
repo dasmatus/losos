@@ -28,13 +28,13 @@
 #     that run out, hold a person to their own account and out of the apps
 #     until they comply, and let them go the moment they do.
 #
-# LosOS cloud is a stub: lososd runs in native mode with a `nextcloud-occ`
+# LosOS Cloud is a stub: lososd runs in native mode with a `nextcloud-occ`
 # that says "installed" and takes any password, which is all the claim asks
 # of it. Booting Nextcloud would test Nextcloud.
 #
 # The front vhost, though, is in its container shape, with both apps'
 # routes, and on the two loopback ports a stand-in answers with the path
-# and headers it was sent. That is where signing in to LosOS cloud and LosOS
+# and headers it was sent. That is where signing in to LosOS Cloud and LosOS
 # Git with LosOS Login (modules/app-sign-in.nix) is decided: who nginx names
 # to each app, on which pages, and where it sends a person LosOS Login
 # does not know. nix/tests/app-sign-in.nix boots the two real apps on those
@@ -438,7 +438,7 @@ pkgs.testers.nixosTest {
         for page in ["/nextcloud/apps/files/", "/nextcloud/remote.php/dav/files/notshared/"]:
             assert person(app(page, cookie, extra=forged)) == (None, None, None), page
 
-    with subtest("logging out of LosOS cloud logs out of LosOS Login too"):
+    with subtest("logging out of LosOS Cloud logs out of LosOS Login too"):
         code, where = app("/nextcloud/logout", eva)
         assert code == 303, (code, where)
         assert where == f"https://{BOX}/auth/logout?rd=https://{BOX}/nextcloud/login", where
@@ -553,7 +553,7 @@ pkgs.testers.nixosTest {
             "/api/set-password", eva, method="POST", data={"password": "Eva-New-Password-44"}
         )
         assert code == 200, (code, body)
-        # Eva does not own LosOS cloud, so it was not touched.
+        # Eva does not own LosOS Cloud, so it was not touched.
         assert json.loads(body)["cloud"] is None, body
         reloaded_since(mark)
         eva = sign_in("eva", "Eva-New-Password-44")

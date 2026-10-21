@@ -40,9 +40,9 @@ export default defineMessages({
     de: "Dein Passwort ist abgelaufen. Wähle unten ein neues.",
   },
   "account.held.after": {
-    en: "Until then you reach only this page, and LosOS cloud and LosOS Git stay closed. The rest opens as soon as you are done.",
-    sk: "Dovtedy sa dostanete iba na túto stránku a LosOS cloud a LosOS Git zostanú zatvorené. Zvyšok sa otvorí hneď, ako budete hotoví.",
-    de: "Bis dahin erreichst du nur diese Seite, und LosOS cloud und LosOS Git bleiben zu. Der Rest öffnet sich, sobald du fertig bist.",
+    en: "Until then you reach only this page, and LosOS Cloud and LosOS Git stay closed. The rest opens as soon as you are done.",
+    sk: "Dovtedy sa dostanete iba na túto stránku a LosOS Cloud a LosOS Git zostanú zatvorené. Zvyšok sa otvorí hneď, ako budete hotoví.",
+    de: "Bis dahin erreichst du nur diese Seite, und LosOS Cloud und LosOS Git bleiben zu. Der Rest öffnet sich, sobald du fertig bist.",
   },
 
   // ── Details ──────────────────────────────────────────────────────────
@@ -61,9 +61,9 @@ export default defineMessages({
     de: "Deine Angaben sind gespeichert",
   },
   "account.details.caption": {
-    en: "LosOS cloud and LosOS Git show the same name and address. Only an administrator can change your sign-in name.",
-    sk: "LosOS cloud a LosOS Git zobrazujú to isté meno a adresu. Prihlasovacie meno môže zmeniť iba správca.",
-    de: "LosOS cloud und LosOS Git zeigen denselben Namen und dieselbe Adresse. Den Anmeldenamen kann nur ein Administrator ändern.",
+    en: "LosOS Cloud and LosOS Git show the same name and address. Only an administrator can change your sign-in name.",
+    sk: "LosOS Cloud a LosOS Git zobrazujú to isté meno a adresu. Prihlasovacie meno môže zmeniť iba správca.",
+    de: "LosOS Cloud und LosOS Git zeigen denselben Namen und dieselbe Adresse. Den Anmeldenamen kann nur ein Administrator ändern.",
   },
 
   // ── Password ─────────────────────────────────────────────────────────
@@ -88,9 +88,9 @@ export default defineMessages({
     de: "Dein Passwort ist geändert",
   },
   "account.password.caption": {
-    en: "The same password opens LosOS cloud and LosOS Git through LosOS Login.",
-    sk: "To isté heslo otvára cez LosOS Login aj LosOS cloud a LosOS Git.",
-    de: "Dasselbe Passwort öffnet über LosOS Login auch LosOS cloud und LosOS Git.",
+    en: "The same password opens LosOS Cloud and LosOS Git through LosOS Login.",
+    sk: "To isté heslo otvára cez LosOS Login aj LosOS Cloud a LosOS Git.",
+    de: "Dasselbe Passwort öffnet über LosOS Login auch LosOS Cloud und LosOS Git.",
   },
 
   // ── Two-factor sign-in ───────────────────────────────────────────────

@@ -375,7 +375,7 @@ await check('step 2 claims the box through the public claim route and keeps the 
 
 /* The key is released exactly once, in the claim reply. It is the spare now
  * — the password unlocks the admin pages — but the spare is still the only
- * way in while LosOS cloud is not running, and a wizard that stored it in
+ * way in while LosOS Cloud is not running, and a wizard that stored it in
  * session storage and showed it to nobody made that a permanent lockout. */
 await check('step 2 shows the spare admin key from the claim, since nothing else ever will', async () => {
   const { page, text } = await claimThroughStepTwo();

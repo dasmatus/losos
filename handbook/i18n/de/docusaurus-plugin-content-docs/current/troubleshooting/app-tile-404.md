@@ -14,7 +14,7 @@ cloud zeigt „Zugriff über eine nicht vertrauenswürdige Domain“.
 
 </div>
 
-![Der Bereich Apps mit LosOS cloud und LosOS Git; die App-Kacheln der Übersicht öffnen dieselben Apps.](@site/docs/img/apps-de.png)
+![Der Bereich Apps mit LosOS Cloud und LosOS Git; die App-Kacheln der Übersicht öffnen dieselben Apps.](@site/docs/img/apps-de.png)
 
 ## „Not Found“ von einer App-Kachel \{#not-found-from-an-app-tile}
 
@@ -23,22 +23,22 @@ Es gibt zwei Ursachen. Die Pull Requests #65 und #66 haben beide am
 mit:
 
 - Die Kacheln verlinkten auf die kurze Form `/nextcloud/apps/<app>/`, auf
-  die der Webserver von LosOS cloud im standardmäßigen
+  die der Webserver von LosOS Cloud im standardmäßigen
   [App-Modus](../types/app-modes) nicht antwortete. Die Kacheln gehen jetzt
   über `/nextcloud/index.php/apps/<app>/`, worauf jede Konfiguration
   antwortet.
-- Die App selbst ist in LosOS cloud nicht installiert oder deaktiviert.
-  Öffne LosOS cloud → Apps und aktiviere sie.
+- Die App selbst ist in LosOS Cloud nicht installiert oder deaktiviert.
+  Öffne LosOS Cloud → Apps und aktiviere sie.
 
 :::tip[Bis das Update da ist]
-Bis das Update da ist, öffnest du LosOS cloud über die Kachel **Dateien**
-oder unter `/nextcloud` und nimmst das eigene App-Menü von LosOS cloud.
+Bis das Update da ist, öffnest du LosOS Cloud über die Kachel **Dateien**
+oder unter `/nextcloud` und nimmst das eigene App-Menü von LosOS Cloud.
 Dessen Links funktionieren.
 :::
 
 ## „Zugriff über eine nicht vertrauenswürdige Domain“ \{#access-through-untrusted-domain}
 
-LosOS cloud antwortet nur auf Namen, denen es vertraut. Bei jeder Anfrage
+LosOS Cloud antwortet nur auf Namen, denen es vertraut. Bei jeder Anfrage
 teilt die Box ihm mit, über welche Adresse die Anfrage hereinkam, deshalb
 funktionieren sowohl `<name>.local` als auch die IP-Adresse. Einen
 Platzhalter gibt die Box ihm nie. Du siehst diese Seite, wenn:
@@ -47,7 +47,7 @@ Platzhalter gibt die Box ihm nie. Du siehst diese Seite, wenn:
   ein Alias deines Routers, ein Eintrag in der hosts-Datei unter einem
   anderen Namen oder eine Domain über eine Edge, von der die Box nichts
   weiß. Nimm `<name>.local` oder die Adresse.
-- du den Namen der Box gerade eben geändert hast und LosOS cloud noch nicht
+- du den Namen der Box gerade eben geändert hast und LosOS Cloud noch nicht
   neu gestartet ist. Warte, bis der Rebuild fertig ist.
 - du eine Box von vor dem 6. Oktober 2026 über die IP-Adresse erreicht
   hast. Pull Request #65 hat das Vertrauen pro Anfrage eingeführt. Nimm

@@ -18,7 +18,7 @@ anywhere else. The disk has two parts:
 
 ![The Storage pane on a box that keeps its disk to itself: room in use, free room and the reserve, with Use the reserve.](../img/storage.png)
 
-- the **room in use** by LosOS cloud, LosOS Git and the system;
+- the **room in use** by LosOS Cloud, LosOS Git and the system;
 - the **reserve**, the slice the installer held back. The Storage pane can
   claim it at any time; see [disk growth](../manual/disk-growth).
 

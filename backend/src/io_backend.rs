@@ -104,7 +104,7 @@ impl Paths {
         self.state_dir.join("forgejo-auth")
     }
 
-    /// The LosOS cloud app password the pin picker lists folders with.
+    /// The LosOS Cloud app password the pin picker lists folders with.
     pub fn cloud_key_file(&self) -> PathBuf {
         self.state_dir.join("cloud-key")
     }
@@ -797,7 +797,7 @@ pub fn start_edge_scanner(backend: &IoLosos) {
     }
 }
 
-/// Where the live custom domains go for LosOS cloud
+/// Where the live custom domains go for LosOS Cloud
 /// (`$LOSOS_PUBLIC_NAMES_FILE`). Its directory is world-readable on purpose
 /// and outside the daemon's 0700 state directory: the Nextcloud pod mounts it
 /// read-only (modules/workloads.nix) and its PHP config reads the file on
@@ -811,13 +811,13 @@ pub const DEFAULT_RELAY_PASS_FILE: &str = "/run/losos/relay-pass";
 
 /// How often the daemon asks the edge which custom domains are live, besides
 /// every time the owner opens or changes them. A domain the edge turns live
-/// on its own (the owner's DNS records appeared) reaches LosOS cloud within
+/// on its own (the owner's DNS records appeared) reaches LosOS Cloud within
 /// this, so it is short enough that an owner who just added the records is
 /// not left at "Untrusted domain" for long, and long enough to be one small
 /// request in a quiet hour.
 pub const DOMAIN_SYNC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(120);
 
-/// Keep the live custom domains fresh for LosOS cloud: ask the edge once now
+/// Keep the live custom domains fresh for LosOS Cloud: ask the edge once now
 /// and then every [`DOMAIN_SYNC_INTERVAL`]. Only an official edge is asked
 /// (the same gate as the Network pane), and an answer that does not come
 /// leaves the last one in place.
@@ -1668,7 +1668,7 @@ impl Losos for IoLosos {
 
     fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>> {
         Ok(
-            read_if_present(self.paths.cloud_key_file(), "reading the LosOS cloud key")?
+            read_if_present(self.paths.cloud_key_file(), "reading the LosOS Cloud key")?
                 .as_deref()
                 .and_then(crate::pins::CloudKey::decode),
         )
@@ -1719,18 +1719,18 @@ impl Losos for IoLosos {
             .next()
             .with_context(|| format!("{} names no address", endpoint.addr))?;
         let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(5))
-            .with_context(|| format!("connecting to LosOS cloud at {addr}"))?;
+            .with_context(|| format!("connecting to LosOS Cloud at {addr}"))?;
         stream.set_read_timeout(Some(Duration::from_secs(15)))?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
         stream
             .write_all(&bytes)
-            .context("sending the request to LosOS cloud")?;
+            .context("sending the request to LosOS Cloud")?;
         let mut raw = Vec::new();
         stream
             .take(MAX_BYTES as u64)
             .read_to_end(&mut raw)
-            .context("reading LosOS cloud's answer")?;
-        crate::pins::split_response(&raw).context("LosOS cloud's answer is not HTTP")
+            .context("reading LosOS Cloud's answer")?;
+        crate::pins::split_response(&raw).context("LosOS Cloud's answer is not HTTP")
     }
 
     // ── Online growth of /persist ───────────────────────────────────────
@@ -2054,14 +2054,14 @@ impl Losos for IoLosos {
             .next()
             .with_context(|| format!("{} names no address", endpoint.addr))?;
         let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(5))
-            .with_context(|| format!("connecting to LosOS cloud at {addr}"))?;
+            .with_context(|| format!("connecting to LosOS Cloud at {addr}"))?;
         // Nextcloud's brute-force protection answers a wrong password late on
         // purpose — up to 25 seconds — so the read waits longer than that.
         stream.set_read_timeout(Some(Duration::from_secs(40)))?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
         stream
             .write_all(&request)
-            .context("sending the sign-in probe to LosOS cloud")?;
+            .context("sending the sign-in probe to LosOS Cloud")?;
         // The status line is all that is read; the rest is drained only as
         // far as one buffer goes, and `Connection: close` ends the exchange.
         let mut buf = vec![0u8; 4096];
@@ -2076,7 +2076,7 @@ impl Losos for IoLosos {
                     }
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(e) => return Err(e).context("reading LosOS cloud's answer"),
+                Err(e) => return Err(e).context("reading LosOS Cloud's answer"),
             }
         }
         Ok(crate::signin::interpret_login(crate::signin::status_code(
@@ -2105,7 +2105,7 @@ impl Losos for IoLosos {
             crate::devices::app_password_request(&path, &host, user, secret, device, client);
         // Nextcloud answers a wrong password late on purpose, as at the
         // sign-in, so the read waits longer than its 25 seconds.
-        loopback_exchange(&endpoint.addr, &request, 40).context("asking LosOS cloud")
+        loopback_exchange(&endpoint.addr, &request, 40).context("asking LosOS Cloud")
     }
 
     fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {

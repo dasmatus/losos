@@ -131,7 +131,7 @@ export function MeshNotice() {
           <Link
             to={href}
             data-mesh-link={pane}
-            className="inline-flex w-fit items-center gap-1 text-[12.5px] font-medium text-accent underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            className="inline-flex w-fit items-center gap-1 text-[12.5px] font-medium text-accent underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {t(reading === "notJoined" ? "ui.mesh.join" : "ui.mesh.share")}
           </Link>

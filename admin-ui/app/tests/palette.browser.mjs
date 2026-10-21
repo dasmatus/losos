@@ -1,5 +1,5 @@
 /* The command palette (src/palette/): Ctrl/Cmd+Shift+P, a colon, or the
- * sidebar's search box, opens one list of pages, apps, files in LosOS cloud, repositories in
+ * sidebar's search box, opens one list of pages, apps, files in LosOS Cloud, repositories in
  * LosOS Git, apps to install and actions.
  *
  * The real dist/ bundle under the admin page's CSP, with lososd's routes
@@ -171,7 +171,7 @@ await check('Ctrl+Shift+P opens it with the input focused; Escape closes it and 
   await group(page, 'Pages').waitFor();
   await option(page, /^notshared\/losos-config/).waitFor();
   await group(page, 'Actions').waitFor();
-  assert.equal(await group(page, 'Files in LosOS cloud').count(), 0, 'files are listed before anything is typed');
+  assert.equal(await group(page, 'Files in LosOS Cloud').count(), 0, 'files are listed before anything is typed');
   await page.keyboard.press('Escape');
   await box(page).waitFor({ state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'BODY');
@@ -242,7 +242,7 @@ await check('a page matches in the language on screen and in English, with or wi
   await page.close();
 });
 
-await check('files in LosOS cloud and repositories in LosOS Git open in their app', async () => {
+await check('files in LosOS Cloud and repositories in LosOS Git open in their app', async () => {
   const { page, asked } = await open();
   await page.keyboard.press('Control+Shift+P');
   await box(page).fill('tax');
@@ -275,7 +275,7 @@ await check('text inside files: cloud first, then Git, with the match marked, ea
   const names = await text.getByRole('option').evaluateAll((els) => els.map((el) => el.querySelector('.font-medium')?.textContent));
   assert.deepEqual(names, ['Daňové priznanie 2025.odt', 'notes.md', 'sort.py']);
   const first = text.getByRole('option').first();
-  assert.match(await first.innerText(), /LosOS cloud · Documents/);
+  assert.match(await first.innerText(), /LosOS Cloud · Documents/);
   assert.equal(await first.locator('mark').innerText(), 'tax');
   assert.match(await text.getByRole('option').last().innerText(), /notshared\/tax-scripts · line 12/);
   await first.click();
@@ -295,7 +295,7 @@ await check('the text group says the cloud index is still being read, and hides 
   const { page } = await open({ cloudText: { available: true, partial: true }, gitText: { available: false, reason: 'off' } });
   await page.keyboard.press('Control+Shift+P');
   await box(page).fill('tax');
-  await page.getByText('LosOS cloud is still reading your files, so more may turn up.').waitFor();
+  await page.getByText('LosOS Cloud is still reading your files, so more may turn up.').waitFor();
   assert.equal(await group(page, 'Text in files').getByRole('option').count(), 2);
   await page.close();
   const off = await open({ cloudText: { available: false, reason: 'off' }, gitText: { available: false, reason: 'noGit' } });
@@ -335,7 +335,7 @@ await check('a box without the lookups shows no file or repository group, and as
   await page.waitForTimeout(500);
   await box(page).fill('taxes');
   await page.waitForTimeout(500);
-  assert.equal(await group(page, 'Files in LosOS cloud').count(), 0);
+  assert.equal(await group(page, 'Files in LosOS Cloud').count(), 0);
   assert.equal(await group(page, 'Repositories in LosOS Git').count(), 0);
   assert.equal(asked.filter(([kind]) => kind === 'files').length, 1, 'a 404 was asked again');
   assert.deepEqual(errors, []);

@@ -14,7 +14,7 @@ noch über einen Webbrowser.
 
 | Was du siehst          | Was es ist                                                                                                 |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **LosOS cloud**        | Deine Dateien, Fotos, Kalender, Kontakte, Notizen und Aufgaben. Basiert auf Nextcloud. Unter `/nextcloud`. |
+| **LosOS Cloud**        | Deine Dateien, Fotos, Kalender, Kontakte, Notizen und Aufgaben. Basiert auf Nextcloud. Unter `/nextcloud`. |
 | **LosOS Git**          | Deine Code-Repositories, standardmäßig an. Basiert auf Forgejo. Unter `/forgejo/`.                         |
 | **Die Admin-Seiten**   | Hier richtest du die Box ein und kümmerst dich um sie. Unter `/`, nur aus deinem lokalen Netzwerk erreichbar. |
 | **Das Mesh**           | Optional. Freier Speicherplatz und CPU-Leistung, an andere LosOS-Boxen verliehen und von ihnen geliehen.    |
@@ -22,7 +22,7 @@ noch über einen Webbrowser.
 
 ## Was sie von einem NAS unterscheidet \{#what-makes-it-different-from-a-nas}
 
-![Im Inneren einer Box: nginx ist die einzige Eingangstür; dahinter der Steuerdienst, der eigene Cluster der Box mit LosOS cloud und LosOS Git und der Mesh-Agent; darunter eine Systemfestplatte im RAM und ein verschlüsseltes Volume.](@site/docs/img/box-architecture-de.svg)
+![Im Inneren einer Box: nginx ist die einzige Eingangstür; dahinter der Steuerdienst, der eigene Cluster der Box mit LosOS Cloud und LosOS Git und der Mesh-Agent; darunter eine Systemfestplatte im RAM und ein verschlüsseltes Volume.](@site/docs/img/box-architecture-de.svg)
 
 - **Sie vergisst alles, was sie nicht braucht.** Die Box baut ihre
   Systemfestplatte bei jedem Start von Grund auf neu. Nur deine Daten, die
@@ -38,7 +38,7 @@ noch über einen Webbrowser.
   lesen, der sie ausbaut und an einen anderen Rechner anschließt.
 - **Eine eigene Anmeldung.** Jede Person meldet sich an den Admin-Seiten mit
   ihrem eigenen Namen und Passwort an, und das Passwort des Besitzers öffnet
-  auch LosOS cloud. Mit einem ausgedruckten Ersatzschlüssel kommst du an
+  auch LosOS Cloud. Mit einem ausgedruckten Ersatzschlüssel kommst du an
   einem Tag hinein, an dem LosOS Login, die Anmeldeseite der Box, nicht
   läuft.
 - **Sie kann verleihen, was sie nicht braucht.** Eine Box kann ihren freien
@@ -54,6 +54,6 @@ noch über einen Webbrowser.
   bringen, den niemand aufgeschrieben hat.
 - Kein Backup. Die Box ist eine Kopie. Bewahre von allem, was du nicht
   verlieren darfst, eine weitere Kopie auf. Die Desktop- und Handy-Clients
-  von LosOS cloud sind ein Weg dazu.
+  von LosOS Cloud sind ein Weg dazu.
 - Nicht fertig. Der Marktplatz, ein gemeinsamer Speicherpool über mehrere
   Boxen und ein signierter Installer kommen noch.

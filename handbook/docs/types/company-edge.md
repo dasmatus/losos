@@ -73,7 +73,7 @@ In short:
 
 ## Managing the boxes from the edge
 
-The people who run the company's edge can change LosOS cloud, LosOS Git and
+The people who run the company's edge can change LosOS Cloud, LosOS Git and
 the apps on its boxes from one page on the edge. Each box's owner decides
 whether that edge may.
 
@@ -92,11 +92,11 @@ whether that edge may.
    `http://<edge>.local:8443/manage/`, and sign in with the key. The page
    lists the boxes the edge routes and opens the ones whose owner turned the
    switch on.
-4. A box's page has the LosOS cloud and LosOS Git settings from the box's
+4. A box's page has the LosOS Cloud and LosOS Git settings from the box's
    Apps pane, its installed apps and the app search. A change rebuilds the
    box like a change made on the box.
 
-![A box's page on the company edge: LosOS cloud and LosOS Git settings, the installed apps and the app search.](../img/edge-manage-box.png)
+![A box's page on the company edge: LosOS Cloud and LosOS Git settings, the installed apps and the app search.](../img/edge-manage-box.png)
 
 The edge cannot see anyone's files, add people, change passwords, or touch
 storage, backups, the network or the switch itself. The box checks each call

@@ -164,7 +164,7 @@ await check('a document opens under the top bar, without the sidebar, in the Los
   assert.deepEqual(opened, [FILES[1].id]);
   assert.equal(new URL(page.url()).hash, `#file=${FILES[1].id}`);
   // The shell's top bar stays; the sidebar gives the editor its width.
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   assert.equal(await nav(page).count(), 0);
   await page.getByRole('heading', { level: 1, name: 'Trip plan.odt' }).waitFor();
   const box = await frame.boundingBox();

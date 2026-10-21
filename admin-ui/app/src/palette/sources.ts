@@ -15,7 +15,7 @@ import { authedGet, isRecord, nonEmptyString, notPresent } from "@/screens/setti
 
 export interface CloudFile {
   name: string;
-  /** Where it sits in LosOS cloud, from the owner's root. */
+  /** Where it sits in LosOS Cloud, from the owner's root. */
   path: string;
   /** Nextcloud's file id: /nextcloud/index.php/f/<id> opens it. */
   id: number;
@@ -29,7 +29,7 @@ export interface GitRepo {
   description: string | null;
 }
 
-/** A file in LosOS cloud whose text matched. */
+/** A file in LosOS Cloud whose text matched. */
 export interface CloudText {
   /** From the owner's root, without a leading slash. */
   path: string;
@@ -165,7 +165,7 @@ function segments(path: string): string {
   return path.split("/").filter((part) => part.length > 0).map(encodeURIComponent).join("/");
 }
 
-/* A cloud hit opens its folder in LosOS cloud's Files with the file
+/* A cloud hit opens its folder in LosOS Cloud's Files with the file
  * scrolled to: the index knows paths, and Nextcloud's /f/<id> wants the id
  * only Nextcloud's own database holds. */
 export function cloudTextHref(hit: CloudText): string {

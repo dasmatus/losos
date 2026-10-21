@@ -826,7 +826,7 @@ in
     };
   };
 
-  # ── LosOS cloud in a file manager's Network view ─────────────────────────
+  # ── LosOS Cloud in a file manager's Network view ─────────────────────────
   # The WebDAV share, announced over DNS-SD (modules/mdns.nix), which is how
   # GNOME Files, KDE Dolphin and other Linux file managers list shares on the
   # LAN: an entry named after the box that opens the owner's files as a
@@ -844,7 +844,7 @@ in
         tls = config.losos.tls.enable;
       in
       ''
-        Name=LosOS cloud on %H
+        Name=LosOS Cloud on %H
         Type=${if tls then "_webdavs._tcp" else "_webdav._tcp"}
         Port=${if tls then "443" else "80"}
         TxtText=path=/nextcloud/remote.php/webdav/

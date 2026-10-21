@@ -59,7 +59,7 @@ routet nach Pfad.
 admin-ui/app/            the admin SPA
 admin-ui/tui/            losos, the terminal client (Rust)
 admin-ui/lab/            LosOS Lab's core and canvas (Rust, WebAssembly)
-admin-ui/themes/         LosOS cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
+admin-ui/themes/         LosOS Cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
 admin-ui/design-system/  dev-only tokens and React wrapper; not shipped
 backend/                 lososd + losos-ctl (Rust)
 edge/registrar/          the edge registrar (Rust)
@@ -312,7 +312,7 @@ nativ per tmpfiles verlinkt und vom Entrypoint des Images kopiert, mit
 auf, sodass ein bestehendes Konto sein altes Theme behält, bis sein Besitzer
 umschaltet.
 
-Besitzer sehen die beiden Apps als **LosOS cloud** und **LosOS Git**.
+Besitzer sehen die beiden Apps als **LosOS Cloud** und **LosOS Git**.
 `defaults.php` im Theme-Ordner benennt Nextcloud, und `APP_NAME` von Forgejo
 benennt Forgejo. Beide bekommen Logos, die aus `admin-ui/themes/brand/`
 gezeichnet sind. `marks.py` verpackt `salmon.png`, einen lebenden
@@ -450,7 +450,7 @@ liegt auf demselben Volume wie `/nix`, ein Protokoll ohne Ende endet also als
 nächtlicher Neubau ohne Platz zum Bauen. Das Journal ist auf
 `losos.logs.journalMaxUse` (512 MB) und einen Monat begrenzt. Das Kubelet
 jedes Clusters behält drei Dateien zu 10 MiB pro Container
-(`containerLogMaxSize`, `containerLogMaxFiles`). Das deckt LosOS cloud,
+(`containerLogMaxSize`, `containerLogMaxFiles`). Das deckt LosOS Cloud,
 LosOS Git und die Apps ab, weil sie auf stdout protokollieren. logrotate
 rotiert `audit.log` und `rebuild.log` von lososd bei 10 MB und ergänzt die
 nginx-Regel, die nixpkgs mitbringt, um eine Grenze von 20 MB. Eine
