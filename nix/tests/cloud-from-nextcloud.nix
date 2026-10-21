@@ -190,9 +190,6 @@ pkgs.testers.nixosTest {
         # A deleted file, for the trash bin.
         nc(ADMIN, "DELETE", f"{dav}/Documents/old%20notes.txt")
         nc(EVA, "PUT", "/remote.php/dav/files/eva/hello.txt", "--data-binary @/tmp/budget.ods")
-        before = box.succeed(
-            "cd /var/lib/nextcloud/data/data/notshared/files && find . -type f | sort | xargs sha256sum"
-        )
 
         cal = "/remote.php/dav/calendars/notshared"
         put_text(ADMIN, f"{cal}/personal/dentist.ics", EVENT, "text/calendar")
@@ -236,6 +233,11 @@ pkgs.testers.nixosTest {
         assert status == 0, "the Nextcloud pictures failed; shots/before/failed.png shows where"
 
     with subtest("the nightly switch: Nextcloud and Postgres go, LosOS Cloud comes"):
+        # Taken last: signing in to Nextcloud's page for the pictures adds
+        # its sample files, which move like the rest.
+        before = box.succeed(
+            "cd /var/lib/nextcloud/data/data/notshared/files && find . -type f -print0 | sort -z | xargs -0 sha256sum"
+        )
         box.succeed("/run/current-system/specialisation/after/bin/switch-to-configuration test")
         box.wait_for_unit("losos-cloud.service")
         box.succeed("! systemctl is-active postgresql.service")
@@ -261,7 +263,7 @@ pkgs.testers.nixosTest {
 
     with subtest("every file came across byte for byte, and the trash with it"):
         after = box.succeed(
-            "cd /var/lib/losos-cloud/notshared/files && find . -type f | sort | xargs sha256sum"
+            "cd /var/lib/losos-cloud/notshared/files && find . -type f -print0 | sort -z | xargs -0 sha256sum"
         )
         assert before == after, (before, after)
         box.succeed("test -f /var/lib/losos-cloud/eva/files/hello.txt")
