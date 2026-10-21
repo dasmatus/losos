@@ -1,0 +1,464 @@
+/* A rendered note (markdown.ts, note-view.tsx), on the LosOS palette in
+ * both themes. Bundled, so the page's `style-src 'self'` allows it; the
+ * HTML it styles carries classes only, never a style attribute. */
+
+.note {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.note-body > :first-child {
+  margin-top: 0;
+}
+
+.note-body :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 1.6em 0 0.5em;
+  scroll-margin-top: 80px;
+}
+.note-body h1 {
+  font-size: 1.6em;
+}
+.note-body h2 {
+  font-size: 1.32em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--hair);
+}
+.note-body h3 {
+  font-size: 1.14em;
+}
+.note-body h4,
+.note-body h5,
+.note-body h6 {
+  font-size: 1em;
+}
+.note-body h6 {
+  color: var(--muted);
+}
+
+.note-body :is(p, ul, ol, pre, table, blockquote, .callout, .math-block, details) {
+  margin: 0 0 1em;
+}
+.note-body :is(ul, ol) {
+  padding-left: 1.5em;
+}
+.note-body ul {
+  list-style: disc;
+}
+.note-body ul ul {
+  list-style: circle;
+}
+.note-body ol {
+  list-style: decimal;
+}
+.note-body li {
+  margin: 0.15em 0;
+}
+.note-body li > :is(ul, ol) {
+  margin: 0.15em 0 0;
+}
+.note-body li > p {
+  margin: 0;
+}
+.note-body [id^="^"] {
+  scroll-margin-top: 80px;
+}
+.note-body :target,
+.note-body .is-flash {
+  background: var(--accent-wash);
+  border-radius: 4px;
+}
+
+.note-body ul.contains-task-list {
+  list-style: none;
+  padding-left: 0.4em;
+}
+.note-body li.task-list-item {
+  display: block;
+}
+.note-body li.task-list-item > ul {
+  padding-left: 1.6em;
+}
+.note-body .task-box {
+  width: 15px;
+  height: 15px;
+  margin: 0 0.45em 0 0;
+  vertical-align: -2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.note-body li[data-task="x"],
+.note-body li[data-task="X"] {
+  color: var(--muted);
+}
+.note-body li[data-task="x"] > p,
+.note-body li[data-task="X"] > p {
+  text-decoration: line-through;
+  text-decoration-color: var(--faint);
+}
+.note-body li[data-task="-"] {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+
+.note-body a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  text-underline-offset: 2px;
+}
+.note-body a:hover {
+  text-decoration-color: var(--accent);
+}
+.note-body a.wikilink {
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.note-body a.is-unresolved {
+  color: color-mix(in srgb, var(--accent) 60%, var(--faint));
+  border-bottom-style: dashed;
+}
+.note-body a.external::after {
+  content: "↗";
+  font-size: 0.75em;
+  margin-left: 0.15em;
+  color: var(--faint);
+}
+.note-body a.tag {
+  display: inline-block;
+  padding: 0 0.5em;
+  border-radius: 999px;
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-size: 0.86em;
+  line-height: 1.6;
+  text-decoration: none;
+}
+
+.note-body mark {
+  background: color-mix(in srgb, var(--warn) 28%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 0.12em;
+}
+.note-body del,
+.note-body s {
+  color: var(--muted);
+}
+.note-body hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 2em 0;
+}
+.note-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+.note-body :is(audio, video) {
+  max-width: 100%;
+}
+
+.note-body code {
+  font-family: var(--font-code);
+  font-size: 0.88em;
+  background: var(--sunk);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+}
+.note-body pre {
+  background: var(--sunk);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 0.9em 1.1em;
+  overflow-x: auto;
+  line-height: 1.55;
+}
+.note-body pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 0.86em;
+}
+
+.note-body blockquote {
+  border-left: 3px solid var(--line);
+  padding: 0.1em 0 0.1em 1em;
+  color: var(--muted);
+}
+
+.note-body table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.note-body :is(th, td) {
+  border: 1px solid var(--line);
+  padding: 0.4em 0.75em;
+  text-align: left;
+}
+.note-body th {
+  background: var(--sunk);
+  font-weight: 600;
+}
+.note-body td[align="center"],
+.note-body th[align="center"] {
+  text-align: center;
+}
+.note-body td[align="right"],
+.note-body th[align="right"] {
+  text-align: right;
+}
+
+.note-body .math-block {
+  overflow-x: auto;
+  text-align: center;
+}
+.note-body math {
+  font-size: 1.05em;
+}
+.note-body .math-error {
+  color: var(--crit);
+}
+
+/* Footnotes (markdown-it-footnote). */
+.note-body .footnotes {
+  font-size: 0.9em;
+  color: var(--muted);
+}
+.note-body .footnotes-sep {
+  margin: 2em 0 1em;
+}
+.note-body .footnote-ref a,
+.note-body .footnote-backref {
+  text-decoration: none;
+}
+
+/* Callouts and GitHub's alerts: a tint and a title in the kind's colour. */
+.note-body .callout {
+  --callout: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--callout) 30%, transparent);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--callout) 8%, var(--surface));
+  padding: 0.65em 1em;
+}
+.note-body .callout-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-weight: 600;
+  color: var(--callout);
+}
+.note-body summary.callout-title {
+  cursor: pointer;
+  list-style: none;
+}
+.note-body summary.callout-title::-webkit-details-marker {
+  display: none;
+}
+.note-body summary.callout-title::after {
+  content: "›";
+  margin-left: auto;
+  transition: transform 150ms;
+}
+.note-body details[open] > summary.callout-title::after {
+  transform: rotate(90deg);
+}
+.note-body .callout-icon {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--callout);
+  flex-shrink: 0;
+}
+.note-body .callout-content {
+  margin-top: 0.4em;
+  color: var(--ink);
+}
+.note-body .callout-content > :last-child {
+  margin-bottom: 0;
+}
+.note-body .callout:not(:has(.callout-content > *)) .callout-content {
+  display: none;
+}
+.note-body .callout:is([data-callout="info"], [data-callout="todo"], [data-callout="note"]) {
+  --callout: var(--person-blue);
+}
+.note-body .callout:is([data-callout="abstract"], [data-callout="summary"], [data-callout="tldr"]) {
+  --callout: var(--person-teal);
+}
+.note-body .callout:is([data-callout="tip"], [data-callout="hint"], [data-callout="important"]) {
+  --callout: var(--person-violet);
+}
+.note-body .callout:is([data-callout="success"], [data-callout="check"], [data-callout="done"]) {
+  --callout: var(--ok);
+}
+.note-body .callout:is([data-callout="question"], [data-callout="help"], [data-callout="faq"], [data-callout="warning"], [data-callout="caution"], [data-callout="attention"]) {
+  --callout: var(--warn);
+}
+.note-body .callout:is([data-callout="failure"], [data-callout="fail"], [data-callout="missing"], [data-callout="danger"], [data-callout="error"], [data-callout="bug"]) {
+  --callout: var(--crit);
+}
+.note-body .callout:is([data-callout="example"]) {
+  --callout: var(--person-rose);
+}
+.note-body .callout:is([data-callout="quote"], [data-callout="cite"]) {
+  --callout: var(--muted);
+}
+
+/* An embedded note: a frame around the other note's text. */
+.note-body .note-embed {
+  display: block;
+  border-left: 2px solid var(--accent);
+  padding: 0.2em 0 0.2em 1em;
+  margin: 0 0 1em;
+  color: var(--muted);
+  font-size: 0.95em;
+}
+.note-body .note-embed .embed-body {
+  color: var(--ink);
+}
+.note-body .embed-missing {
+  color: var(--faint);
+  font-style: italic;
+}
+
+.note-chip {
+  display: inline-block;
+  padding: 0 0.55em;
+  border-radius: 999px;
+  background: var(--sunk);
+  border: 1px solid var(--hair);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.note-properties {
+  display: grid;
+  grid-template-columns: minmax(6rem, max-content) 1fr;
+  gap: 0.35em 1.2em;
+  padding: 0.75em 1em;
+  margin: 0 0 1.5em;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: var(--sunk);
+  font-size: 13px;
+}
+.note-properties dt {
+  color: var(--muted);
+}
+.note-properties dd {
+  margin: 0;
+  min-width: 0;
+}
+.note-properties-raw {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  background: var(--sunk);
+  padding: 0.75em 1em;
+  border-radius: 8px;
+  margin: 0 0 1.5em;
+  white-space: pre-wrap;
+}
+
+/* Code colours: highlight.js classes on the palette. */
+.note-body .hljs-comment,
+.note-body .hljs-quote {
+  color: var(--faint);
+  font-style: italic;
+}
+.note-body :is(.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-type, .hljs-doctag) {
+  color: var(--person-violet);
+}
+.note-body :is(.hljs-string, .hljs-regexp, .hljs-addition, .hljs-symbol) {
+  color: var(--ok);
+}
+.note-body :is(.hljs-number, .hljs-literal, .hljs-variable, .hljs-template-variable, .hljs-attr) {
+  color: var(--person-amber);
+}
+.note-body :is(.hljs-title, .hljs-section, .hljs-name, .hljs-selector-id, .hljs-selector-class) {
+  color: var(--person-blue);
+}
+.note-body :is(.hljs-meta, .hljs-attribute, .hljs-tag) {
+  color: var(--person-teal);
+}
+.note-body .hljs-deletion {
+  color: var(--crit);
+}
+.note-body .hljs-emphasis {
+  font-style: italic;
+}
+.note-body .hljs-strong {
+  font-weight: 650;
+}
+
+/* The mind map (mindmap.tsx). */
+/* Drawn at its own size, and scaled down to fit a narrower column, so
+ * the twigs at the right edge stay in view. */
+.mindmap {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.mindmap .mm-link {
+  fill: none;
+  stroke-width: 1.6;
+}
+.mindmap .mm-under {
+  stroke-width: 1.6;
+}
+.mindmap .mm-root {
+  fill: var(--accent);
+}
+.mindmap .mm-pill {
+  fill: var(--surface);
+  stroke-width: 1.6;
+}
+.mindmap .mm-text {
+  fill: var(--ink);
+  font-size: 13px;
+}
+.mindmap .mm-text-root {
+  fill: var(--surface);
+  font-size: 15px;
+  font-weight: 600;
+}
+.mindmap .mm-text-top {
+  font-weight: 600;
+}
+.mindmap .mm-link-node {
+  cursor: pointer;
+  outline: none;
+}
+.mindmap .mm-link-node:hover .mm-text,
+.mindmap .mm-link-node:focus-visible .mm-text {
+  fill: var(--accent);
+}
+.mindmap .mm-link-node:focus-visible .mm-pill {
+  stroke-width: 2.5;
+}
+.mindmap .mm-b0 {
+  stroke: var(--person-blue);
+}
+.mindmap .mm-b1 {
+  stroke: var(--person-teal);
+}
+.mindmap .mm-b2 {
+  stroke: var(--person-violet);
+}
+.mindmap .mm-b3 {
+  stroke: var(--person-amber);
+}
+.mindmap .mm-b4 {
+  stroke: var(--person-rose);
+}
+.mindmap .mm-b5 {
+  stroke: var(--person-green);
+}
