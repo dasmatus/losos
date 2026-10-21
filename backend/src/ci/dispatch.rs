@@ -1015,18 +1015,24 @@ impl Ci {
         match kind {
             "mesh" => self.mesh.update(id, report),
             "box" => {
-                let id: i64 = id.parse()?;
-                let Some(job) = self.store.job(id)? else {
+                if id.is_empty() || !id.as_bytes().iter().all(|b| b.is_ascii_digit()) {
+                    anyhow::bail!("invalid job id");
+                }
+                let id_num: i64 = id.parse()?;
+                if id_num <= 0 || id_num.to_string() != id {
+                    anyhow::bail!("invalid job id");
+                }
+                let Some(job) = self.store.job(id_num)? else {
                     return Ok(true);
                 };
-                self.append_log(id, &report.log);
+                self.append_log(id_num, &report.log);
                 if let Some(state) = &report.state {
                     let state = match state.as_str() {
                         s @ ("success" | "failure" | "cancelled" | "error") => s,
                         _ => "error",
                     };
                     self.store.set_job_state(
-                        id,
+                        id_num,
                         state,
                         None,
                         report.exit_code,
@@ -1035,7 +1041,7 @@ impl Ci {
                     self.cancel
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
-                        .remove(&id);
+                        .remove(&id_num);
                     if let Err(e) = self.advance(job.run_id) {
                         tracing::warn!(target: "ci", "run {}: {e:#}", job.run_id);
                     }
@@ -1046,7 +1052,7 @@ impl Ci {
                         .cancel
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
-                        .contains(&id))
+                        .contains(&id_num))
             }
             _ => anyhow::bail!("unknown job kind {kind}"),
         }
