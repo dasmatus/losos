@@ -364,8 +364,8 @@ let
   # One map per header: value on the admin surface, empty (header omitted) on
   # the two proxied service routes, the handbook's and the lab's own values
   # (or the admin value, for the headers they share) under /handbook/,
-  # /lab/ and /chat/, and the widget frame's own value (or nothing) under
-  # /widget-frame/.
+  # /lab/ and /chat/ (and chat's for the guest call page, /calls/guest/),
+  # and the widget frame's own value (or nothing) under /widget-frame/.
   adminHeaderMap = variable: value: handbookValue: labValue: chatValue: frameValue: ''
     map $uri ${variable} {
         default          "${value}";
@@ -374,6 +374,7 @@ let
         ~^/handbook/     "${handbookValue}";
         ~^/lab/          "${labValue}";
         ~^/chat/         "${chatValue}";
+        ~^/calls/guest/  "${chatValue}";
         ~^/widget-frame/ "${frameValue}";
     }
   '';

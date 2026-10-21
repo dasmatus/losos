@@ -27,37 +27,44 @@ w.callState = state;
 w.startCall = async (opts: {
   socket: string;
   call: string;
-  token: string;
-  server: string;
-  me: Joined;
+  token?: string;
+  server?: string;
+  me?: Joined;
   dropKeys?: boolean;
   video?: boolean;
+  /* Join as a guest, with no key channel of its own. */
+  guest?: { invite: string; name: string; secret: string };
 }) => {
   const local = await navigator.mediaDevices.getUserMedia({ audio: true, video: opts.video !== false });
   const bus = new BroadcastChannel('losos-call-keys');
+  const me = opts.me ?? { user: '', device: '' };
   const session = new CallSession({
     socket: opts.socket,
     call: opts.call,
-    openid: { access_token: opts.token, matrix_server_name: opts.server },
-    device: opts.me.device,
+    ...(opts.guest
+      ? { guest: opts.guest }
+      : {
+          openid: { access_token: opts.token ?? '', matrix_server_name: opts.server ?? '' },
+          device: me.device,
+          keys: {
+            async send(to, msg) {
+              bus.postMessage({ from: me.user, to, msg });
+            },
+            subscribe(handler) {
+              const on = (ev: MessageEvent<{ from: string; to: Joined[]; msg: KeyMessage }>) => {
+                const { from, to, msg } = ev.data;
+                if (!to.some((t) => t.user === me.user && t.device === me.device)) return;
+                if (opts.dropKeys) return;
+                state.keysIn++;
+                handler({ user: from }, msg);
+              };
+              bus.addEventListener('message', on);
+              return () => bus.removeEventListener('message', on);
+            },
+          },
+        }),
     local,
     worker: () => new Worker('/e2ee-worker.js', { type: 'module' }),
-    keys: {
-      async send(to, msg) {
-        bus.postMessage({ from: opts.me.user, to, msg });
-      },
-      subscribe(handler) {
-        const on = (ev: MessageEvent<{ from: string; to: Joined[]; msg: KeyMessage }>) => {
-          const { from, to, msg } = ev.data;
-          if (!to.some((t) => t.user === opts.me.user && t.device === opts.me.device)) return;
-          if (opts.dropKeys) return;
-          state.keysIn++;
-          handler({ user: from }, msg);
-        };
-        bus.addEventListener('message', on);
-        return () => bus.removeEventListener('message', on);
-      },
-    },
     events: {
       state: (s, reason) => state.states.push(reason ? `${s}:${reason}` : s),
       members: (m, you, live) => {
@@ -126,6 +133,9 @@ w.share = async (colour: string) => {
 
 /* Podcast mode from this tab, to `rtmp`, with every member it receives in
  * the grid. */
+/* Hand this member an invite secret, as the invite button does. */
+w.addGuestSecret = (secret: string) => (w.session as CallSession).addGuestSecret(secret);
+
 w.goLive = (rtmp: string, title: string) => {
   const session = w.session as CallSession;
   const opts = w.callOpts as { socket: string; call: string; token: string; server: string };

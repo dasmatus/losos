@@ -1279,6 +1279,9 @@ async fn post_chat_session(
     })
 }
 
+/// Threads for the admin API; see where the server is built.
+const HTTP_WORKERS: usize = 8;
+
 /// `GET /internal/chat/authz`: nginx's question before every request to the
 /// homeserver's client and media APIs. 200 goes on, 401 is "sign in with
 /// LosOS Login", 403 is "not yours". nginx alone asks it (`modules/chat.nix`).
@@ -3603,6 +3606,14 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 )
                 .default_service(web::route().to(not_found))
         })
+        // Most handlers do their work in place (files, Dendrite, Authelia,
+        // argon2), so a worker is busy for as long as one call takes. With
+        // actix's default of one worker per core, a two-core box opening
+        // chat had both busy making Matrix accounts while every other
+        // request waited past actix's request timeout and got a 408,
+        // nginx's auth_request for chat included. Enough workers that a
+        // page's burst of requests is not queued behind one slow call.
+        .workers(HTTP_WORKERS)
         .bind(("127.0.0.1", port))
         .with_context(|| format!("binding 127.0.0.1:{port}"))?;
         tracing::info!(port, "admin API listening on loopback");

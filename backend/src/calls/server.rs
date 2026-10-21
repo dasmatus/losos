@@ -8,12 +8,16 @@
 //! * `POST /calls/api/calls` `{openid, room, invited, video}` → `{call}`
 //! * `GET /calls/api/ws`, a websocket speaking [`super::wire`].
 //! * `GET /calls/api/stream`, podcast mode's websocket ([`super::stream`]).
+//! * `POST /calls/api/invites` `{openid, call, pid}` → `{url}`: a guest
+//!   link, made by the box's official edge ([`super::guests`]).
+//! * `GET /calls/guest/ws`, a guest's websocket: no LosOS Login in front,
+//!   the invite is the way in. nginx serves it to the internet.
 //! * `GET /calls/api/health` → `ok`.
 
 use super::admit::{CallId, ParticipantId, Refusal};
 use super::openid::Resolve;
-use super::sfu::Command;
-use super::wire::{ClientMsg, CreateCall, ServerMsg};
+use super::sfu::{Command, Who};
+use super::wire::{ClientMsg, CreateCall, CreateInvite, ServerMsg};
 use actix_web::{web, HttpRequest, HttpResponse};
 use actix_ws::{AggregatedMessage, Session};
 use std::sync::Arc;
@@ -31,6 +35,8 @@ pub struct State {
     pub resolve: Arc<dyn Resolve>,
     /// The ffmpeg podcast mode streams through; none turns streaming off.
     pub ffmpeg: Option<std::path::PathBuf>,
+    /// The edge that makes guest links; none, and there are no guests.
+    pub edge: Option<Arc<super::guests::Edge>>,
 }
 
 pub fn routes(cfg: &mut web::ServiceConfig) {
@@ -40,8 +46,10 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
             .route("/health", web::get().to(|| async { "ok" }))
             .route("/calls", web::post().to(create))
             .route("/ws", web::get().to(ws))
-            .route("/stream", web::get().to(super::stream::ws)),
+            .route("/stream", web::get().to(super::stream::ws))
+            .route("/invites", web::post().to(invite)),
     );
+    cfg.service(web::scope("/calls/guest").route("/ws", web::get().to(guest_ws)));
 }
 
 fn refused(r: Refusal) -> HttpResponse {
@@ -49,11 +57,65 @@ fn refused(r: Refusal) -> HttpResponse {
         .json(serde_json::json!({ "error": r.code() }))
 }
 
-fn new_call_id() -> Option<CallId> {
+/// 128 random bits as lowercase hex: a call id, or an invite.
+fn random_hex() -> Option<String> {
     use ring::rand::SecureRandom;
     let mut b = [0u8; 16];
     ring::rand::SystemRandom::new().fill(&mut b).ok()?;
-    Some(CallId(b.iter().map(|x| format!("{x:02x}")).collect()))
+    Some(b.iter().map(|x| format!("{x:02x}")).collect())
+}
+
+fn new_call_id() -> Option<CallId> {
+    random_hex().map(CallId)
+}
+
+/// A guest link for a call: the SFU opens the call to the invite, then
+/// asks the edge for the link.
+async fn invite(state: web::Data<State>, body: web::Json<CreateInvite>) -> HttpResponse {
+    let body = body.into_inner();
+    let Some(edge) = state.edge.clone() else {
+        return refused(Refusal::NoEdge);
+    };
+    let call = match CallId::parse(&body.call) {
+        Ok(c) => c,
+        Err(r) => return refused(r),
+    };
+    let resolve = state.resolve.clone();
+    let token = body.openid.clone();
+    let user = match web::block(move || resolve.resolve(&token)).await {
+        Ok(Ok(u)) => u,
+        Ok(Err(r)) => return refused(r),
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+    };
+    let Some(invite) = random_hex() else {
+        return HttpResponse::InternalServerError().finish();
+    };
+    let (reply, answer) = oneshot::channel();
+    let cmd = Command::Invite {
+        call: call.clone(),
+        pid: body.pid,
+        user: user.clone(),
+        invite: invite.clone(),
+        reply,
+    };
+    if state.commands.send(cmd).await.is_err() {
+        return HttpResponse::ServiceUnavailable().finish();
+    }
+    match answer.await {
+        Ok(Ok(())) => {}
+        Ok(Err(r)) => return refused(r),
+        Err(_) => return HttpResponse::ServiceUnavailable().finish(),
+    }
+    match edge.link(&call.0, &invite).await {
+        Ok(url) => {
+            tracing::info!("{user} made a guest link for call {}", call.0);
+            HttpResponse::Ok().json(serde_json::json!({ "url": url }))
+        }
+        Err(e) => {
+            tracing::warn!("the edge made no guest link: {e}");
+            refused(Refusal::NoEdge)
+        }
+    }
 }
 
 async fn create(state: web::Data<State>, body: web::Json<CreateCall>) -> HttpResponse {
@@ -95,12 +157,29 @@ async fn ws(
     req: HttpRequest,
     body: web::Payload,
 ) -> actix_web::Result<HttpResponse> {
+    open(state, req, body, false)
+}
+
+async fn guest_ws(
+    state: web::Data<State>,
+    req: HttpRequest,
+    body: web::Payload,
+) -> actix_web::Result<HttpResponse> {
+    open(state, req, body, true)
+}
+
+fn open(
+    state: web::Data<State>,
+    req: HttpRequest,
+    body: web::Payload,
+    guest: bool,
+) -> actix_web::Result<HttpResponse> {
     let (response, session, stream) = actix_ws::handle(&req, body)?;
     let stream = stream
         .max_frame_size(MAX_MESSAGE)
         .aggregate_continuations()
         .max_continuation_size(MAX_MESSAGE);
-    actix_web::rt::spawn(signal(state.into_inner(), session, stream));
+    actix_web::rt::spawn(signal(state.into_inner(), session, stream, guest));
     Ok(response)
 }
 
@@ -131,11 +210,14 @@ async fn next_text(
     }
 }
 
-/// One page's signalling: a join, then SDP both ways until either side goes.
+/// One page's signalling: a join, then SDP both ways until either side
+/// goes. On a guest's socket the join is a `guest` message, and nothing
+/// else gets in.
 async fn signal(
     state: Arc<State>,
     mut session: Session,
     mut stream: actix_ws::AggregatedMessageStream,
+    guest: bool,
 ) {
     let error = |code: &str| ServerMsg::Error { code: code.into() };
     let first = tokio::time::timeout(JOIN_WITHIN, next_text(&mut stream, &mut session)).await;
@@ -143,28 +225,28 @@ async fn signal(
         let _ = session.close(None).await;
         return;
     };
-    let (call, openid, device) = match serde_json::from_str::<ClientMsg>(&first) {
-        Ok(ClientMsg::Join {
-            call,
-            openid,
-            device,
-        }) => (call, openid, device),
-        _ => {
-            send(&mut session, &error("joinFirst")).await;
-            let _ = session.close(None).await;
-            return;
-        }
-    };
     let joined = async {
-        let call = CallId::parse(&call)?;
-        let resolve = state.resolve.clone();
-        let user = web::block(move || resolve.resolve(&openid))
-            .await
-            .map_err(|_| Refusal::Unauthenticated)??;
-        Ok::<_, Refusal>((call, user))
+        match serde_json::from_str::<ClientMsg>(&first) {
+            Ok(ClientMsg::Join {
+                call,
+                openid,
+                device,
+            }) if !guest => {
+                let call = CallId::parse(&call)?;
+                let resolve = state.resolve.clone();
+                let user = web::block(move || resolve.resolve(&openid))
+                    .await
+                    .map_err(|_| Refusal::Unauthenticated)??;
+                Ok((call, Who::Member { user, device }))
+            }
+            Ok(ClientMsg::Guest { call, invite, name }) if guest => {
+                Ok((CallId::parse(&call)?, Who::Guest { invite, name }))
+            }
+            _ => Err(Refusal::NotInvited),
+        }
     }
     .await;
-    let (call, user) = match joined {
+    let (call, who) = match joined {
         Ok(x) => x,
         Err(r) => {
             send(&mut session, &error(r.code())).await;
@@ -173,12 +255,15 @@ async fn signal(
         }
     };
 
+    let who_name = match &who {
+        Who::Member { user, .. } => user.to_string(),
+        Who::Guest { name, .. } => format!("guest {name:?}"),
+    };
     let (out_tx, mut out_rx) = mpsc::unbounded_channel();
     let (reply, answer) = oneshot::channel();
     let cmd = Command::Join {
         call,
-        user: user.clone(),
-        device,
+        who,
         out: out_tx,
         reply,
     };
@@ -198,7 +283,7 @@ async fn signal(
             return;
         }
     };
-    tracing::info!("{user} joined as p{pid}");
+    tracing::info!("{who_name} joined as p{pid}");
 
     loop {
         tokio::select! {
@@ -216,8 +301,9 @@ async fn signal(
                 let cmd = match serde_json::from_str::<ClientMsg>(&text) {
                     Ok(ClientMsg::Offer { sdp }) => Command::Offer { pid, sdp },
                     Ok(ClientMsg::Answer { sdp }) => Command::Answer { pid, sdp },
+                    Ok(ClientMsg::Relay { to, body }) => Command::Relay { from: pid, to, body },
                     Ok(ClientMsg::Leave) => break,
-                    Ok(ClientMsg::Join { .. }) | Err(_) => {
+                    Ok(ClientMsg::Join { .. }) | Ok(ClientMsg::Guest { .. }) | Err(_) => {
                         send(&mut session, &error("badMessage")).await;
                         break;
                     }

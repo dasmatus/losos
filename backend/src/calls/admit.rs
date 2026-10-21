@@ -19,6 +19,12 @@ pub const MAX_CALLS: usize = 32;
 pub const MAX_MEMBERS: usize = 8;
 /// People a call may list as invited: a room's members.
 pub const MAX_INVITED: usize = 100;
+/// Guest links one call may have out at once.
+pub const MAX_INVITES: usize = 16;
+/// A guest link opens its call for this long after it was made.
+pub const INVITE_TTL: Duration = Duration::from_secs(12 * 3600);
+/// A guest's name, as the others see it.
+pub const MAX_GUEST_NAME: usize = 40;
 /// A call nobody joined is dropped after this.
 pub const UNJOINED_TTL: Duration = Duration::from_secs(120);
 /// A call everyone left is dropped after this, so a reload rejoins it.
@@ -84,11 +90,28 @@ pub type ParticipantId = u64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Member {
+    /// A person of the room; for a guest, a made-up id under
+    /// `guest.invalid` that no homeserver hands out.
     pub user: UserId,
     /// The Matrix device the browser says it is. Unchecked: it only tells
     /// the other members which device to send their media key to, and a
     /// wrong one just gets no key.
     pub device: String,
+    /// A guest who came in through a link, with the name they gave.
+    pub guest: Option<Guest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Guest {
+    pub name: String,
+    /// The invite they came in on: one guest at a time per link.
+    pub invite: String,
+}
+
+impl Member {
+    pub fn is_guest(&self) -> bool {
+        self.guest.is_some()
+    }
 }
 
 #[derive(Debug)]
@@ -103,6 +126,8 @@ pub struct Call {
     pub members: BTreeMap<ParticipantId, Member>,
     /// The member streaming the call out in podcast mode, if one is.
     pub live: Option<ParticipantId>,
+    /// Guest links into this call and when each stops working.
+    invites: BTreeMap<String, Instant>,
 }
 
 /// Why the SFU said no. The code goes to the browser as is.
@@ -124,6 +149,14 @@ pub enum Refusal {
     NotMember,
     /// Someone else in the call is already streaming it.
     AlreadyLive,
+    TooManyInvites,
+    /// A guest is already in the call on this link.
+    InviteInUse,
+    BadName,
+    /// Guests come in on a link and do nothing else.
+    GuestsCannot,
+    /// The box has no official edge to make a guest link with.
+    NoEdge,
 }
 
 impl Refusal {
@@ -141,6 +174,11 @@ impl Refusal {
             Refusal::Unauthenticated => "unauthenticated",
             Refusal::NotMember => "notMember",
             Refusal::AlreadyLive => "alreadyLive",
+            Refusal::TooManyInvites => "tooManyInvites",
+            Refusal::InviteInUse => "inviteInUse",
+            Refusal::BadName => "badName",
+            Refusal::GuestsCannot => "guestsCannot",
+            Refusal::NoEdge => "noEdge",
         }
     }
 
@@ -148,9 +186,17 @@ impl Refusal {
     pub fn status(self) -> u16 {
         match self {
             Refusal::Unauthenticated => 401,
-            Refusal::NotLocal | Refusal::NotInvited | Refusal::NotMember => 403,
+            Refusal::NotLocal
+            | Refusal::NotInvited
+            | Refusal::NotMember
+            | Refusal::GuestsCannot => 403,
             Refusal::NoSuchCall => 404,
-            Refusal::Full | Refusal::TooManyCalls | Refusal::AlreadyLive => 409,
+            Refusal::Full
+            | Refusal::TooManyCalls
+            | Refusal::AlreadyLive
+            | Refusal::TooManyInvites
+            | Refusal::InviteInUse
+            | Refusal::NoEdge => 409,
             _ => 400,
         }
     }
@@ -239,6 +285,7 @@ impl Calls {
                 emptied: None,
                 members: BTreeMap::new(),
                 live: None,
+                invites: BTreeMap::new(),
             },
         );
         Ok(())
@@ -270,9 +317,93 @@ impl Calls {
             Member {
                 user,
                 device: device.to_owned(),
+                guest: None,
             },
         );
         Ok(call)
+    }
+
+    /// Open call `id` to one guest at a time on `invite`, at the asking of
+    /// `pid`, who must be `user` in the call and no guest.
+    pub fn invite(
+        &mut self,
+        id: &CallId,
+        pid: ParticipantId,
+        user: &UserId,
+        invite: String,
+        now: Instant,
+    ) -> Result<(), Refusal> {
+        let call = self.calls.get_mut(id).ok_or(Refusal::NoSuchCall)?;
+        match call.members.get(&pid) {
+            Some(m) if m.is_guest() => return Err(Refusal::GuestsCannot),
+            Some(m) if &m.user == user => {}
+            _ => return Err(Refusal::NotMember),
+        }
+        call.invites.retain(|_, until| *until > now);
+        if call.invites.len() >= MAX_INVITES {
+            return Err(Refusal::TooManyInvites);
+        }
+        call.invites.insert(invite, now + INVITE_TTL);
+        Ok(())
+    }
+
+    /// Let a guest in as `pid` on `invite`, under `name`, or say why not.
+    pub fn admit_guest(
+        &mut self,
+        id: &CallId,
+        pid: ParticipantId,
+        invite: &str,
+        name: &str,
+        now: Instant,
+    ) -> Result<&Call, Refusal> {
+        self.reap(now);
+        let name = name.trim();
+        if name.is_empty()
+            || name.chars().count() > MAX_GUEST_NAME
+            || name.chars().any(|c| c.is_control())
+        {
+            return Err(Refusal::BadName);
+        }
+        let call = self.calls.get_mut(id).ok_or(Refusal::NoSuchCall)?;
+        if !call.invites.get(invite).is_some_and(|until| *until > now) {
+            return Err(Refusal::NotInvited);
+        }
+        // A link needs someone of the room in the call to let its guest in.
+        if !call.members.values().any(|m| !m.is_guest()) {
+            return Err(Refusal::NoSuchCall);
+        }
+        if call
+            .members
+            .values()
+            .any(|m| m.guest.as_ref().is_some_and(|g| g.invite == invite))
+        {
+            return Err(Refusal::InviteInUse);
+        }
+        if call.members.len() >= MAX_MEMBERS {
+            return Err(Refusal::Full);
+        }
+        call.members.insert(
+            pid,
+            Member {
+                user: UserId(format!("@guest-{pid}:guest.invalid")),
+                device: "guest".into(),
+                guest: Some(Guest {
+                    name: name.to_owned(),
+                    invite: invite.to_owned(),
+                }),
+            },
+        );
+        Ok(call)
+    }
+
+    /// The guests left in call `id` once none of its own people are.
+    pub fn stranded_guests(&self, id: &CallId) -> Vec<ParticipantId> {
+        match self.calls.get(id) {
+            Some(c) if c.members.values().all(Member::is_guest) => {
+                c.members.keys().copied().collect()
+            }
+            _ => Vec::new(),
+        }
     }
 
     /// `pid` left. Returns the call it was in, if any.
@@ -301,8 +432,10 @@ impl Calls {
         user: &UserId,
     ) -> Result<(), Refusal> {
         let call = self.calls.get_mut(id).ok_or(Refusal::NoSuchCall)?;
-        if call.members.get(&pid).map(|m| &m.user) != Some(user) {
-            return Err(Refusal::NotMember);
+        match call.members.get(&pid) {
+            Some(m) if m.is_guest() => return Err(Refusal::GuestsCannot),
+            Some(m) if &m.user == user => {}
+            _ => return Err(Refusal::NotMember),
         }
         match call.live {
             Some(other) if other != pid => Err(Refusal::AlreadyLive),
@@ -571,5 +704,98 @@ mod tests {
         // Leaving ends the member's stream.
         calls.leave(2, now);
         assert_eq!(calls.get(&cid(1)).unwrap().live, None);
+    }
+
+    #[test]
+    fn a_guest_comes_in_on_a_live_link_one_at_a_time() {
+        let mut calls = Calls::new("b");
+        let t0 = Instant::now();
+        calls
+            .create(cid(1), uid("@m:b"), ROOM, &[], true, t0)
+            .unwrap();
+        calls.admit(&cid(1), 1, uid("@m:b"), "D", t0).unwrap();
+        // Only a member of the call makes a link, as who they are.
+        assert_eq!(
+            calls.invite(&cid(1), 1, &uid("@eva:b"), "i1".into(), t0),
+            Err(Refusal::NotMember)
+        );
+        calls
+            .invite(&cid(1), 1, &uid("@m:b"), "i1".into(), t0)
+            .unwrap();
+
+        assert_eq!(
+            calls.admit_guest(&cid(1), 2, "nope", "Ana", t0).err(),
+            Some(Refusal::NotInvited)
+        );
+        for bad in ["", "   ", "a\nb", &"x".repeat(41)] {
+            assert_eq!(
+                calls.admit_guest(&cid(1), 2, "i1", bad, t0).err(),
+                Some(Refusal::BadName),
+                "{bad:?}"
+            );
+        }
+        let call = calls.admit_guest(&cid(1), 2, "i1", " Ana ", t0).unwrap();
+        let ana = &call.members[&2];
+        assert_eq!(ana.guest.as_ref().map(|g| g.name.as_str()), Some("Ana"));
+        assert_eq!(ana.user.server(), "guest.invalid");
+        // One guest per link at a time; back in once they left.
+        assert_eq!(
+            calls.admit_guest(&cid(1), 3, "i1", "Bob", t0).err(),
+            Some(Refusal::InviteInUse)
+        );
+        calls.leave(2, t0);
+        calls.admit_guest(&cid(1), 3, "i1", "Ana", t0).unwrap();
+
+        // A guest makes no links and streams nothing.
+        assert_eq!(
+            calls.invite(&cid(1), 3, &uid("@guest-3:guest.invalid"), "i2".into(), t0),
+            Err(Refusal::GuestsCannot)
+        );
+        assert_eq!(
+            calls.go_live(&cid(1), 3, &uid("@guest-3:guest.invalid")),
+            Err(Refusal::GuestsCannot)
+        );
+
+        // With the room's people gone the guest is stranded, and the link
+        // lets nobody else in.
+        assert!(calls.stranded_guests(&cid(1)).is_empty());
+        calls.leave(1, t0);
+        assert_eq!(calls.stranded_guests(&cid(1)), vec![3]);
+        calls.leave(3, t0);
+        assert_eq!(
+            calls.admit_guest(&cid(1), 4, "i1", "Ana", t0).err(),
+            Some(Refusal::NoSuchCall)
+        );
+    }
+
+    #[test]
+    fn guest_links_expire_and_are_capped() {
+        let mut calls = Calls::new("b");
+        let t0 = Instant::now();
+        calls
+            .create(cid(1), uid("@m:b"), ROOM, &[], true, t0)
+            .unwrap();
+        calls.admit(&cid(1), 1, uid("@m:b"), "D", t0).unwrap();
+        for n in 0..MAX_INVITES {
+            calls
+                .invite(&cid(1), 1, &uid("@m:b"), format!("i{n}"), t0)
+                .unwrap();
+        }
+        assert_eq!(
+            calls.invite(&cid(1), 1, &uid("@m:b"), "more".into(), t0),
+            Err(Refusal::TooManyInvites)
+        );
+        let later = t0 + INVITE_TTL + Duration::from_secs(1);
+        assert_eq!(
+            calls.admit_guest(&cid(1), 2, "i0", "Ana", later).err(),
+            Some(Refusal::NotInvited)
+        );
+        // Expired links make room for new ones.
+        calls
+            .invite(&cid(1), 1, &uid("@m:b"), "fresh".into(), later)
+            .unwrap();
+        calls
+            .admit_guest(&cid(1), 2, "fresh", "Ana", later)
+            .unwrap();
     }
 }

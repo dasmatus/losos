@@ -263,3 +263,107 @@ async fn a_reconnecting_box_replaces_its_old_connection() {
     // taken the next; either way, it has one.
     assert!(first["addresses"].is_array() && second["addresses"].is_array());
 }
+
+/// An identity key and a certificate for it, from a throwaway root: the
+/// guest link needs no more than "a certificate is installed".
+fn official_identity(dir: &std::path::Path) -> (String, String) {
+    use losos_registrar::identity;
+    let (root_pkcs8, _) = identity::keygen().unwrap();
+    let root = identity::load_key(&root_pkcs8).unwrap();
+    let (edge_pkcs8, edge_public) = identity::keygen().unwrap();
+    let key_file = dir.join("identity.key");
+    let cert_file = dir.join("identity.cert.json");
+    std::fs::write(&key_file, edge_pkcs8).unwrap();
+    let cert = identity::issue(
+        &root,
+        "test edge",
+        "https://register.example.test",
+        &edge_public,
+        4_000_000_000,
+    )
+    .unwrap();
+    std::fs::write(&cert_file, serde_json::to_vec(&cert).unwrap()).unwrap();
+    (
+        key_file.to_string_lossy().into_owned(),
+        cert_file.to_string_lossy().into_owned(),
+    )
+}
+
+const CALL: &str = "0123456789abcdef0123456789abcdef";
+const INVITE: &str = "fedcba9876543210fedcba9876543210";
+
+fn guest_link(id: &str, token: &str, call: &str, invite: &str) -> serde_json::Value {
+    serde_json::json!({ "appliance_id": id, "token": token, "call": call, "invite": invite })
+}
+
+#[tokio::test]
+async fn only_an_official_edge_makes_guest_links_and_only_on_the_boxs_own_name() {
+    let tenants = [
+        TenantSpec::new("mattbox", "mattbox.losos.cfd", GOOD_TOKEN),
+        TenantSpec::new("otherbox", "otherbox.losos.cfd", OTHER_TOKEN),
+    ];
+    // Not official: no link.
+    let plain = Edge::start_custom("guest-plain", &tenants, |_, _| {}).await;
+    let (status, body) = plain
+        .post(
+            "/calls/guest-link",
+            guest_link("mattbox", GOOD_TOKEN, CALL, INVITE),
+        )
+        .await;
+    assert_eq!(status, 403, "{body}");
+    assert!(body.contains("notOfficial"), "{body}");
+    plain.shutdown().await;
+
+    let scratch = std::env::temp_dir().join(format!("losos-guest-link-{}", std::process::id()));
+    std::fs::create_dir_all(&scratch).unwrap();
+    let (key, cert) = official_identity(&scratch);
+    let edge = Edge::start_custom("guest-official", &tenants, move |opts, _| {
+        opts.identity_key_file = Some(key);
+        opts.identity_cert_file = Some(cert);
+    })
+    .await;
+    let (status, body) = edge
+        .post(
+            "/calls/guest-link",
+            guest_link("mattbox", GOOD_TOKEN, CALL, INVITE),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    let url: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        url["url"],
+        format!("https://mattbox.losos.cfd/calls/guest/?call={CALL}&invite={INVITE}")
+    );
+    // Another box's token makes no link for this one, and a wrong token none.
+    let (status, _) = edge
+        .post(
+            "/calls/guest-link",
+            guest_link("mattbox", OTHER_TOKEN, CALL, INVITE),
+        )
+        .await;
+    assert_eq!(status, 401);
+    let (status, body) = edge
+        .post(
+            "/calls/guest-link",
+            guest_link("otherbox", OTHER_TOKEN, CALL, INVITE),
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert!(body.contains("https://otherbox.losos.cfd/"), "{body}");
+    // Only ids the box made: nothing that could bend the URL.
+    for (call, invite) in [
+        (CALL, "x/../../evil"),
+        ("not-hex", INVITE),
+        (CALL, "ABCDEF0123456789ABCDEF0123456789"),
+    ] {
+        let (status, _) = edge
+            .post(
+                "/calls/guest-link",
+                guest_link("mattbox", GOOD_TOKEN, call, invite),
+            )
+            .await;
+        assert_eq!(status, 400, "{call} {invite}");
+    }
+    edge.shutdown().await;
+    let _ = std::fs::remove_dir_all(&scratch);
+}

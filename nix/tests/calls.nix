@@ -60,6 +60,7 @@ let
     buildPhase = ''
       runHook preBuild
       npx vite build --config vite.calls-test.config.ts
+      npx vite build --config vite.guest.config.ts
       runHook postBuild
     '';
   });
@@ -89,6 +90,54 @@ let
       pkgs.noto-fonts-color-emoji
     ];
   };
+  # Each person's camera: a public-domain NASA portrait from the ISS
+  # (images.nasa.gov), cut to 4:3 and looped by Chromium's fake device. A
+  # real room behind a real person is what the black background is for.
+  camera =
+    {
+      id,
+      hash,
+      crop,
+    }:
+    pkgs.runCommand "camera-${id}.y4m"
+      {
+        photo = pkgs.fetchurl {
+          url = "https://images-assets.nasa.gov/image/${id}/${id}~medium.jpg";
+          inherit hash;
+        };
+      }
+      ''
+        ${pkgs.ffmpeg-headless}/bin/ffmpeg -v error -loop 1 -i $photo \
+          -vf "crop=${crop},scale=640:480,format=yuv420p" -t 2 -r 15 $out
+      '';
+  cameras = {
+    # Suni Williams.
+    matus = camera {
+      id = "iss072e189112";
+      hash = "sha256-g6EUB3cUWqDmjq1g1lu1k82zm1GrXI8dofGwVDGl6ME=";
+      crop = "1000:750:280:0";
+    };
+    # Josh Cassada.
+    eva = camera {
+      id = "iss068e017360";
+      hash = "sha256-h+9Sp48WRyB6woygLZJoUumNNdHkg0Qi8ue4d2tMNRs=";
+      crop = "640:480:267:160";
+    };
+    # Jack Hathaway.
+    jan = camera {
+      id = "iss074e0325621";
+      hash = "sha256-EqIdfpxmWQWdajlXOAmQ9kxDHDaiELe93C4E8sDG5uA=";
+      crop = "1137:853:143:0";
+    };
+  };
+  # The podcast's overlay: a transparent frame with a tag in one corner.
+  overlay = pkgs.runCommand "podcast-overlay.png" { } ''
+    ${pkgs.imagemagick}/bin/magick -size 1280x720 xc:none \
+      -fill '#e8603c' -draw 'roundrectangle 930,28 1252,84 12,12' \
+      -font ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf \
+      -fill white -pointsize 28 -annotate +952+67 'From mattbox' $out
+  '';
+  rtmpPort = 1935;
   tap = "/var/lib/losos-calls-tap";
   mediaPort = 7882;
 
@@ -104,6 +153,24 @@ let
       "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
     ];
   };
+  # The edge's identity, so it is an official edge and makes guest links:
+  # a root and one certificate, made at build time as nix/tests/edge-lan.nix
+  # does.
+  identityFixture =
+    pkgs.runCommand "losos-calls-edge-identity"
+      {
+        nativeBuildInputs = [ lososPkgs.losos-registrar ];
+      }
+      ''
+        mkdir -p $out
+        losos-registrar identity keygen --out $out/root.key > $out/root.pub
+        losos-registrar identity keygen --out $out/edge.key > $out/edge.pub
+        losos-registrar identity sign \
+          --root-key $out/root.key --public-key "$(cat $out/edge.pub)" \
+          --name "losos test edge" --url http://edge:8443 --days 30 \
+          > $out/edge.cert.json
+      '';
+  identityKey = "/var/secrets/losos-edge-identity.key";
   # The driver's browsers send to the forwarded port on their own loopback;
   # it arrives at the forwarding machine's user-mode address.
   forwarded = [
@@ -222,7 +289,13 @@ pkgs.testers.nixosTest {
     laptop =
       { nodes, ... }:
       {
-        networking.extraHosts = "${nodes.box.networking.primaryIPAddress} mattbox.local";
+        networking.extraHosts = ''
+          ${nodes.box.networking.primaryIPAddress} mattbox.local
+        ''
+        # A guest's link names the box's public name, which the edge serves.
+        + lib.optionalString throughEdge ''
+          ${nodes.edge.networking.primaryIPAddress} mattbox.losos.cfd
+        '';
         systemd.services.socks = {
           wantedBy = [ "multi-user.target" ];
           after = [ "network-online.target" ];
@@ -232,7 +305,10 @@ pkgs.testers.nixosTest {
             DynamicUser = true;
           };
         };
-        networking.firewall.allowedTCPPorts = [ 1080 ];
+        networking.firewall.allowedTCPPorts = [
+          1080
+          rtmpPort
+        ];
         virtualisation.forwardPorts = [
           {
             from = "host";
@@ -240,7 +316,11 @@ pkgs.testers.nixosTest {
             guest.port = 1080;
           }
         ];
-        environment.systemPackages = [ pkgs.curl ];
+        # The RTMP server podcast mode streams to, as YouTube's would be.
+        environment.systemPackages = [
+          pkgs.curl
+          pkgs.ffmpeg-headless
+        ];
         virtualisation.vlans = [ 1 ];
       };
   }
@@ -255,6 +335,7 @@ pkgs.testers.nixosTest {
           ../../modules/edge.nix
           secretFiles
         ];
+        systemd.tmpfiles.rules = [ "C ${identityKey} 0600 root root - ${identityFixture}/edge.key" ];
         _module.args.self = {
           packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
         };
@@ -270,6 +351,10 @@ pkgs.testers.nixosTest {
           tenants.mattbox = {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;
+          };
+          identity = {
+            keyFile = identityKey;
+            certFile = "${identityFixture}/edge.cert.json";
           };
           calls.relay = {
             mediaPorts = "${toString mediaPort}-${toString (mediaPort + 9)}";
@@ -407,19 +492,52 @@ pkgs.testers.nixosTest {
     from playwright.sync_api import sync_playwright
 
     pw = sync_playwright().start()
-    browser = pw.chromium.launch(
-        chromium_sandbox=False,
-        proxy={"server": "socks5://127.0.0.1:1080"},
-        args=[
-            "--use-fake-ui-for-media-stream",
-            "--use-fake-device-for-media-stream",
-            # The SFU's offered address is the driver's own loopback.
-            "--allow-loopback-in-peer-connection",
-        ],
-    )
+    # One browser per person, each with their own camera.
+    CAMERAS = {
+        "matus": "${cameras.matus}",
+        "eva": "${cameras.eva}",
+        "jan": "${cameras.jan}",
+    }
+    browsers = {
+        name: pw.chromium.launch(
+            chromium_sandbox=False,
+            proxy={"server": "socks5://127.0.0.1:1080"},
+            args=[
+                "--use-fake-ui-for-media-stream",
+                "--use-fake-device-for-media-stream",
+                f"--use-file-for-fake-video-capture={y4m}",
+                # The SFU's offered address is the driver's own loopback.
+                "--allow-loopback-in-peer-connection",
+            ],
+        )
+        for name, y4m in CAMERAS.items()
+    }
     problems = []
 
+    # The screen Matus shares: a headless browser has no desktop to pick,
+    # so the page's getDisplayMedia draws a slide on a canvas instead.
+    SLIDE = """
+    navigator.mediaDevices.getDisplayMedia = async () => {
+      const c = document.createElement('canvas');
+      c.width = 1280; c.height = 720;
+      const g = c.getContext('2d');
+      let t = 0;
+      const paint = () => {
+        g.fillStyle = '#f4efe6'; g.fillRect(0, 0, 1280, 720);
+        g.fillStyle = '#1d3557'; g.font = 'bold 68px DejaVu Sans';
+        g.fillText('Holiday plan', 90, 150);
+        g.font = '42px DejaVu Sans';
+        ['Fly to Split on 3 July', 'Ferry to Hvar, two nights', 'Home by train through Zagreb']
+          .forEach((line, i) => g.fillText('\\u2022  ' + line, 110, 280 + i * 90));
+        g.fillStyle = '#e8603c'; g.fillRect(90, 640, ((t++ % 50) / 50) * 1100, 14);
+      };
+      paint(); setInterval(paint, 100);
+      return c.captureStream(10);
+    };
+    """
+
     def person(name):
+        browser = browsers[name]
         context = browser.new_context(
             viewport={"width": 1280, "height": 860},
             device_scale_factor=2,
@@ -429,6 +547,8 @@ pkgs.testers.nixosTest {
             reduced_motion="reduce",
             ignore_https_errors=True,
         )
+        if name == "matus":
+            context.add_init_script(SLIDE)
         page = context.new_page()
         page.set_default_timeout(90000)
         def on_error(err) -> None:
@@ -442,8 +562,16 @@ pkgs.testers.nixosTest {
         page.on("pageerror", on_error)
         page.on("console", on_console)
         seen = []
-        page.on("response", lambda r: r.status >= 400 and seen.append(f"{r.status} {r.request.method} {r.url}"))
-        page.on("requestfailed", lambda r: seen.append(f"failed {r.method} {r.url}: {r.failure}"))
+
+        def on_response(r) -> None:
+            if r.status >= 400:
+                seen.append(f"{r.status} {r.request.method} {r.url}")
+
+        def on_failed(r) -> None:
+            seen.append(f"failed {r.method} {r.url}: {r.failure}")
+
+        page.on("response", on_response)
+        page.on("requestfailed", on_failed)
         answer = context.request.post(
             f"https://{HOST}/auth/api/firstfactor",
             data=json.dumps({"username": name, "password": PASSWORDS[name]}),
@@ -551,6 +679,172 @@ pkgs.testers.nixosTest {
         owner.get_by_text(re.compile(r"frames sent encrypted")).wait_for()
         shot(owner, "call-encrypted")
 
+    def their_tile(page):
+        """The pid of the first other person's tile on `page`."""
+        return page.evaluate(
+            "[...document.querySelectorAll('[data-call-view] [data-pid]')]"
+            ".find(t => !t.textContent.includes('You')).dataset.pid"
+        )
+
+    def corners(page, pid):
+        """How bright the corners of `pid`'s picture are on `page`, 0 to 255;
+        -1 while there is no picture."""
+        return page.evaluate(
+            """(pid) => {
+              const v = document.querySelector('[data-call-view] [data-pid="' + pid + '"] video');
+              if (!v || !v.videoWidth) return -1;
+              const c = document.createElement('canvas');
+              c.width = 64; c.height = 48;
+              const g = c.getContext('2d', { willReadFrequently: true });
+              g.drawImage(v, 0, 0, 64, 48);
+              const d = g.getImageData(0, 0, 64, 48).data;
+              const at = (x, y) => { const i = (y * 64 + x) * 4; return (d[i] + d[i + 1] + d[i + 2]) / 3; };
+              return Math.max(at(2, 2), at(61, 2), at(2, 45), at(61, 45));
+            }""",
+            pid,
+        )
+
+    with subtest("the room behind each person is black, cut out before encryption"):
+        matus_at_eva = their_tile(her)
+        # Black by default: the corners of Matus's picture at Eva are dark,
+        # and there is a picture.
+        her.wait_for_function(
+            "(pid) => document.querySelector('[data-call-view] [data-pid=\"' + pid + '\"] video')?.videoWidth > 0",
+            arg=matus_at_eva)
+        deadline = time.time() + 60
+        while corners(her, matus_at_eva) > 24 and time.time() < deadline:
+            time.sleep(1)
+        assert 0 <= corners(her, matus_at_eva) <= 24, corners(her, matus_at_eva)
+        shot(her, "background-black")
+        # Matus shows his room; Eva sees it.
+        owner.get_by_role("button", name="Show your room behind you").click()
+        deadline = time.time() + 60
+        while corners(her, matus_at_eva) < 60 and time.time() < deadline:
+            time.sleep(1)
+        assert corners(her, matus_at_eva) >= 60, corners(her, matus_at_eva)
+        shot(her, "background-room")
+        owner.get_by_role("button", name="Black out your background").click()
+        deadline = time.time() + 60
+        while corners(her, matus_at_eva) > 24 and time.time() < deadline:
+            time.sleep(1)
+        assert 0 <= corners(her, matus_at_eva) <= 24, corners(her, matus_at_eva)
+        assert her.locator("[data-e2ee]").get_attribute("data-refused") == "0"
+
+    with subtest("a shared screen goes in the middle, the people beside it"):
+        owner.get_by_role("button", name="Share your screen").click()
+        her.wait_for_function(
+            "!!document.querySelector('[data-call-view]')?.dataset.sharing"
+            " && document.querySelector('[data-share] video')?.videoWidth > 0",
+            timeout=120000,
+        )
+        assert her.locator("[data-call-strip] [data-pid]").count() == 2
+        her.get_by_text("Matus's screen").wait_for()
+        shot(her, "share-eva")
+        shot(owner, "share")
+        # The camera keeps coming beside the screen, and both open.
+        before = opened(her)
+        time.sleep(5)
+        assert opened(her) > before + 50, (opened(her), before)
+        assert her.locator("[data-e2ee]").get_attribute("data-refused") == "0"
+        owner.get_by_role("button", name="Stop sharing").click()
+        her.wait_for_function("!document.querySelector('[data-call-view]')?.dataset.sharing",
+                              timeout=60000)
+
+    with subtest("podcast mode streams the call to an RTMP address, and both see it is live"):
+        laptop.succeed(
+            "systemd-run --unit rtmp-sink ${pkgs.ffmpeg-headless}/bin/ffmpeg -v error -listen 1 "
+            "-i rtmp://0.0.0.0:${toString rtmpPort}/live/holiday-key -t 10 -c copy -y /tmp/podcast.flv"
+        )
+        laptop.wait_for_open_port(${toString rtmpPort})
+        owner.get_by_role("button", name="Podcast mode").click()
+        panel = owner.locator("[data-podcast-panel]")
+        panel.wait_for()
+        panel.get_by_label("RTMP address with stream key").fill(
+            "rtmp://laptop:${toString rtmpPort}/live/holiday-key")
+        panel.get_by_label("Title", exact=True).fill("Holiday plans")
+        panel.get_by_label("Subtitle").fill("Matus and Eva, live from mattbox")
+        panel.get_by_label("Overlay image (PNG)").set_input_files("${overlay}")
+        owner.wait_for_timeout(1500)
+        shot(owner, "podcast-panel")
+        panel.get_by_role("button", name="Go live").click()
+        her.locator("[data-live]").wait_for(timeout=60000)
+        owner.locator("[data-live]").wait_for()
+        panel.get_by_role("button", name="End the stream").wait_for()
+        shot(her, "podcast-live-eva")
+        # The RTMP server keeps ten seconds and stops.
+        laptop.wait_until_fails("systemctl is-active rtmp-sink", timeout=180)
+        probe = json.loads(laptop.succeed(
+            "${pkgs.ffmpeg-headless}/bin/ffprobe -v error -show_entries "
+            "stream=codec_name,width,height:format=duration -of json /tmp/podcast.flv"))
+        assert sorted(x["codec_name"] for x in probe["streams"]) == ["aac", "h264"], probe
+        assert float(probe["format"]["duration"]) >= 8, probe
+        laptop.succeed("${pkgs.ffmpeg-headless}/bin/ffmpeg -v error -ss 6 -i /tmp/podcast.flv "
+                       "-frames:v 1 -y /tmp/podcast.png")
+        laptop.copy_from_machine("/tmp/podcast.png", "")
+        os.replace(os.path.join(OUT, "podcast.png"), f"{SHOTS}/podcast-stream.png")
+        # The address carries the stream key; the box never writes it down.
+        box.fail("journalctl -u losos-calls | grep -q holiday-key")
+        panel.get_by_role("button", name="End the stream").click()
+        her.locator("[data-live]").wait_for(state="detached", timeout=60000)
+        panel.get_by_role("button", name="Close").click()
+
+    with subtest("a guest link from the edge lets one guest into this call"):
+        owner.get_by_role("button", name="Invite a guest").click()
+        if EDGE is None:
+            # No edge, no link: a box on its own makes none.
+            owner.get_by_text("not connected to one").wait_for(timeout=60000)
+            shot(owner, "invite-no-edge")
+        else:
+            panel = owner.locator("[data-invite-panel]")
+            field = panel.locator("[data-invite-link]")
+            field.wait_for(timeout=90000)
+            link = field.get_attribute("data-invite-link")
+            url = urllib.parse.urlsplit(link)
+            assert url.scheme == "https" and url.netloc == "mattbox.losos.cfd", link
+            assert url.path == "/calls/guest/", link
+            assert len(url.fragment) == 43, "the secret rides after #"
+            EDGE.succeed("journalctl -u losos-registrar | grep -q 'mattbox made a guest link'")
+            # Neither the edge nor the box ever saw the secret.
+            EDGE.fail(f"journalctl -u losos-registrar | grep -qF -- '{url.fragment}'")
+            box.fail(f"journalctl | grep -qF -- '{url.fragment}'")
+            shot(owner, "invite")
+            panel.get_by_role("button", name="Close").click()
+            # A stranger opens it from the internet: no LosOS Login, no LAN.
+            guest_ctx = browsers["jan"].new_context(
+                viewport={"width": 1280, "height": 860},
+                device_scale_factor=2,
+                color_scheme="dark",
+                locale="en-US",
+                ignore_https_errors=True,
+            )
+            guest = guest_ctx.new_page()
+            guest.set_default_timeout(90000)
+            def on_guest_error(err) -> None:
+                problems.append(f"guest: {err}")
+
+            guest.on("pageerror", on_guest_error)
+            guest.goto(link)
+            guest.get_by_label("Your name").fill("Jack")
+            shot(guest, "guest-join")
+            guest.get_by_role("button", name="Join the call").click()
+            # Two others for the guest, and the guest for each of them.
+            live(guest, 2)
+            for page in (owner, her):
+                page.wait_for_function(
+                    "document.querySelectorAll('[data-call-view] [data-pid]').length === 3", timeout=90000)
+                page.get_by_text("Jack (guest)").first.wait_for()
+            shot(guest, "guest-call")
+            shot(owner, "call-with-guest")
+            # The admin page and chat stay shut to the same browser.
+            assert guest_ctx.request.get("https://mattbox.losos.cfd/api/me").status in (401, 403)
+            assert guest_ctx.request.get("https://mattbox.losos.cfd/chat/").status == 403
+            guest.get_by_role("button", name="Leave the call").click()
+            guest.locator("[data-guest-over]").wait_for()
+            for page in (owner, her):
+                page.wait_for_function(
+                    "document.querySelectorAll('[data-call-view] [data-pid]').length === 2", timeout=60000)
+            guest_ctx.close()
+
     with subtest("the SFU's copy of every frame is ciphertext"):
         box.succeed("ls ${tap}/video-*.ivf ${tap}/audio-*.bin")
         box.succeed("tar -C ${tap} -cf /tmp/tap.tar .")
@@ -657,7 +951,8 @@ pkgs.testers.nixosTest {
     with subtest("the pages broke no rule of their policy"):
         assert problems == [], problems
 
-    browser.close()
+    for b in browsers.values():
+        b.close()
     pw.stop()
   '';
 }

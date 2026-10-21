@@ -10,7 +10,12 @@
 //!                                    ◄──   offer {sdp}  (someone's tracks)
 //!   answer {sdp}                     ──►
 //!                                    ◄──   members {members, live}  (on every join/leave/stream)
+//!   relay {to, body}                 ──►
+//!                                    ◄──   relay {from, body}  (guest key agreement)
 //! ```
+//!
+//! A guest's socket is `/calls/guest/ws` and starts with
+//! `guest {call, invite, name}` instead of `join`; the rest is the same.
 //!
 //! A member's tracks reach the others with the stream id `p<pid>`, so a
 //! page knows whose frames it is decrypting from `members`. The second
@@ -30,6 +35,19 @@ pub enum ClientMsg {
         openid: OpenIdToken,
         device: String,
     },
+    /// A guest's first message, on `/calls/guest/ws`.
+    Guest {
+        call: String,
+        invite: String,
+        name: String,
+    },
+    /// A message for one other participant, passed on as it is: how a
+    /// guest, who has no Olm, and the members agree on keys
+    /// (`admin-ui/app/src/calls/guests.ts`).
+    Relay {
+        to: ParticipantId,
+        body: serde_json::Value,
+    },
     Offer {
         sdp: String,
     },
@@ -45,6 +63,9 @@ pub struct MemberInfo {
     pub pid: ParticipantId,
     pub user: String,
     pub device: String,
+    /// A guest's name; absent for the room's own people.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guest: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -67,9 +88,22 @@ pub enum ServerMsg {
     Answer {
         sdp: String,
     },
+    Relay {
+        from: ParticipantId,
+        body: serde_json::Value,
+    },
     Error {
         code: String,
     },
+}
+
+/// The body of `POST /calls/api/invites`: a member asks for a guest link.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateInvite {
+    pub openid: OpenIdToken,
+    pub call: String,
+    pub pid: ParticipantId,
 }
 
 /// The body of `POST /calls/api/calls`.
@@ -113,6 +147,7 @@ mod tests {
             you: 3,
             video: true,
             members: vec![MemberInfo {
+                guest: None,
                 pid: 3,
                 user: "@m:b".into(),
                 device: "D".into(),

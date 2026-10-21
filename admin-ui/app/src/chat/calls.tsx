@@ -5,13 +5,15 @@ import type { ToDevicePayload } from "matrix-js-sdk/lib/models/ToDeviceMessage";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { LiveStreaming02Icon, PodcastIcon } from "@hugeicons/core-free-icons";
+import { LiveStreaming02Icon, PodcastIcon, UserAdd01Icon } from "@hugeicons/core-free-icons";
 import { Badge } from "@/components/ui/badge";
 import { CallSession, canEncrypt, type KeyChannel, type KeyMessage, type Member, type OpenIdToken } from "@/calls/session";
 import type { WorkerStats } from "@/calls/e2ee-protocol";
 import { LocalMedia, type Background } from "@/calls/local";
 import { Podcast, type PodcastSource } from "@/calls/podcast";
 import { PodcastPanel, type PodcastFields } from "@/calls/podcast-panel";
+import { InvitePanel } from "@/calls/invite-panel";
+import { newSecret } from "@/calls/guests";
 import { CallControl, CallView, RingingCard, type Screen, type Tile } from "@/calls/view";
 import { Avatar } from "./avatar";
 
@@ -341,6 +343,7 @@ function CallScreen({
   const [fields, setFields] = React.useState<PodcastFields>(EMPTY_FIELDS);
   const [streaming, setStreaming] = React.useState<"off" | "starting" | "live">("off");
   const [podcast, setPodcast] = React.useState<Podcast | null>(null);
+  const [invite, setInvite] = React.useState<{ link: string | null } | null>(null);
   const session = React.useRef<CallSession | null>(null);
   const others = React.useRef(0);
   const finished = React.useRef(false);
@@ -348,6 +351,7 @@ function CallScreen({
   callbacks.current = { onEnd, onFail };
 
   const nameOf = React.useCallback((user: string) => room?.getMember(user)?.name ?? user, [room]);
+  const memberName = (m: Member): string => (m.guest !== undefined ? t("calls.guestNamed", { name: m.guest }) : nameOf(m.user));
 
   // What podcast mode draws, read on every frame it draws.
   const drawn = React.useRef<{ people: PodcastSource[]; screen: { name: string; stream: MediaStream } | null; fields: PodcastFields }>({
@@ -503,10 +507,41 @@ function CallScreen({
       });
   };
 
+  /* A link from the edge with the call's guest secret after `#`. The
+   * secret is made here, once per call, and goes to the others over Olm
+   * before the link is shown. */
+  const makeInvite = (): void => {
+    const call = session.current;
+    if (call === null) return;
+    setPodcastOpen(false);
+    setInvite({ link: null });
+    openId(client)
+      .then(async (openid) => {
+        const response = await fetch("/calls/api/invites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ openid, call: active.call, pid: call.pid }),
+        });
+        const body = (await response.json().catch(() => ({}))) as { url?: string; error?: string };
+        if (!response.ok || typeof body.url !== "string") throw new CallError(body.error ?? `HTTP ${response.status}`);
+        const secret = call.guestSecret ?? newSecret();
+        await call.addGuestSecret(secret);
+        setInvite({ link: `${body.url}#${secret}` });
+      })
+      .catch((error: unknown) => {
+        setInvite(null);
+        const code = error instanceof Error ? error.message : "";
+        const detail =
+          code === "noEdge" ? t("calls.inviteNoEdge") : code === "tooManyInvites" ? t("calls.inviteTooMany") : code;
+        toast.error(t("calls.inviteFailed"), detail, { help: "calls" });
+      });
+  };
+
   const tiles: Tile[] = members.list.map((m) => {
     const self = m.pid === members.you;
-    const person = room?.getMember(m.user);
-    const name = nameOf(m.user);
+    const person = m.guest === undefined ? room?.getMember(m.user) : undefined;
+    const name = memberName(m);
     const stream = self ? media.stream : streams.get(m.pid);
     return {
       pid: m.pid,
@@ -521,7 +556,7 @@ function CallScreen({
   const shown: Screen[] = members.list.flatMap((m): Screen[] => {
     const self = m.pid === members.you;
     const stream = self ? ownScreen : (screens.get(m.pid) ?? null);
-    return stream === null ? [] : [{ pid: m.pid, name: nameOf(m.user), stream, self }];
+    return stream === null ? [] : [{ pid: m.pid, name: memberName(m), stream, self }];
   });
 
   drawn.current = {
@@ -560,8 +595,27 @@ function CallScreen({
           </Badge>
         ) : null
       }
-      actions={<CallControl label={t("calls.podcast")} pressed={podcastOpen} icon={PodcastIcon} onClick={openPodcast} />}
+      actions={
+        <>
+          <CallControl
+            label={t("calls.invite")}
+            pressed={invite !== null}
+            icon={UserAdd01Icon}
+            onClick={() => (invite !== null ? setInvite(null) : makeInvite())}
+          />
+          <CallControl
+            label={t("calls.podcast")}
+            pressed={podcastOpen}
+            icon={PodcastIcon}
+            onClick={() => {
+              setInvite(null);
+              openPodcast();
+            }}
+          />
+        </>
+      }
     >
+      {invite !== null ? <InvitePanel link={invite.link} onAnother={makeInvite} onClose={() => setInvite(null)} /> : null}
       {podcastOpen && podcast !== null ? (
         <PodcastPanel
           podcast={podcast}

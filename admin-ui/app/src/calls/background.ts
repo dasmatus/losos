@@ -14,7 +14,7 @@
 import type { ImageSegmenter } from "@mediapipe/tasks-vision";
 
 /* Where the vite build puts the segmenter's files (vite.config.ts). */
-const BASE = "/chat/calls-ml";
+const BASE = `${import.meta.env.BASE_URL}chat/calls-ml`;
 const FPS = 30;
 
 let loading: Promise<ImageSegmenter> | null = null;

@@ -40,19 +40,93 @@ letzte Person geht, zeigt die Zeitleiste, dass der Anruf beendet ist.
 ## Während eines Anrufs \{#during-a-call}
 
 Jede Person hat eine Kachel. Die Kachel zeigt ihre Kamera, oder ihr Bild,
-solange ihre Kamera aus ist. Die drei Knöpfe unten schalten dein Mikrofon
-und deine Kamera aus und ein und verlassen den Anruf. Die Kamera
-auszuschalten hält sie an, ihr Licht geht aus, und bis du sie wieder
-einschaltest, wird nichts gesendet.
+solange ihre Kamera aus ist. Die Knöpfe unten schalten dein Mikrofon und
+deine Kamera aus und ein, teilen deinen Bildschirm, wechseln deinen
+Hintergrund, laden einen Gast ein, öffnen den Podcast-Modus und verlassen
+den Anruf. Die Kamera auszuschalten hält sie an, ihr Licht geht aus, und
+bis du sie wieder einschaltest, wird nichts gesendet.
 
 Das Schild **Ende-zu-Ende-verschlüsselt** oben zeigt, wie viele Bilder dein
 Browser verschlüsselt gesendet und wie viele er empfangen und geöffnet hat.
+
+## Dein Hintergrund \{#your-background}
+
+Wenn deine Kamera an ist, ist der Raum hinter dir schwarz. Dein Browser
+findet dich in jedem Bild und schwärzt alles andere, bevor das Bild
+verschlüsselt wird, also bekommen weder die Box noch die anderen deinen
+Raum. Der Knopf **Raum hinter dir zeigen** sendet die Kamera, wie sie
+ist, und **Hintergrund schwärzen** schaltet das Schwarz wieder ein. Der
+Browser merkt sich deine Wahl für den nächsten Anruf.
+
+Kann der Browser den Hintergrund nicht schwärzen, sendet deine Kamera
+nichts statt deines Raums, und eine Meldung sagt das.
+
+## Den Bildschirm teilen \{#sharing-your-screen}
+
+**Bildschirm teilen** fragt deinen Browser, welchen Bildschirm, welches
+Fenster oder welchen Tab du teilen willst. Solange jemand teilt, füllt sein
+Bildschirm die Mitte des Anrufs, und die Leute rücken in einen Streifen
+daneben. **Teilen beenden** oder der Stopp-Knopf des Browsers beendet es.
+Der Bildschirm ist mit denselben Schlüsseln verschlüsselt wie die Kamera.
+
+## Podcast-Modus \{#podcast-mode}
+
+Der Podcast-Modus sendet den Anruf an eine RTMP-Adresse, etwa die, die dir
+YouTube oder Twitch mit einem Stream-Schlüssel gibt. **Podcast-Modus**
+öffnet ein Feld mit:
+
+- der RTMP-Adresse, die mit `rtmp://` oder `rtmps://` beginnt;
+- einem Titel und einem Untertitel, die unter das Bild gezeichnet werden;
+- einem Overlay, einem PNG, das obendrauf gezeichnet wird, für ein Logo
+  oder einen Rahmen.
+
+Der Stream zeigt die Leute als Raster, oder einen geteilten Bildschirm in
+der Mitte mit den Leuten daneben, wie der Anruf. **Live gehen** startet
+ihn und **Stream beenden** hält ihn an. Ein Anruf wird jeweils nur von
+einer Person gestreamt, und alle im Anruf sehen ein **Live**-Schild,
+solange der Stream läuft.
+
+Ein Livestream ist öffentlich, also ist er der eine Teil eines Anrufs, der
+nicht Ende-zu-Ende-verschlüsselt ist. Dein Browser setzt Bild und Ton aus
+dem Anruf zusammen, den er schon entschlüsselt hat, und schickt sie an
+deine Box, die sie an die RTMP-Adresse weitergibt. Der Stream-Schlüssel
+bleibt in deinem Browser und der Box und wird nie in die Protokolle der
+Box geschrieben.
+
+## Gäste \{#guests}
+
+Jemand ohne Konto auf der Box kann mit einem Gast-Link einem Anruf
+beitreten. **Gast einladen** erstellt den Link und zeigt ihn mit einem
+Knopf **Link kopieren**. Schick ihn der Person, die du einlädst. Sie öffnet
+ihn im Browser, gibt einen Namen an und tritt bei. Die anderen sehen sie
+als *Name (Gast)*.
+
+Ein Gast-Link:
+
+- öffnet nur diesen Anruf, für 12 Stunden;
+- lässt jeweils nur einen Gast herein;
+- gibt kein Konto, keinen Chat und keinen Zugang zu etwas anderem auf der
+  Box;
+- funktioniert für den Gast nicht mehr, sobald alle aus dem Raum gegangen
+  sind.
+
+Gast-Links kommen von einem offiziellen LosOS-Edge, auf dem öffentlichen
+Namen der Box, also kann eine Box ohne einen keine erstellen. Der Edge
+erstellt den Link, kann aber nicht mithören. Der Teil nach `#` ist ein
+Geheimnis, das dein Browser erzeugt, und ein Browser schickt diesen Teil
+nie an einen Server. Dein Browser gibt ihn den anderen im Anruf in den
+verschlüsselten Nachrichten des Chats. Der Browser des Gasts und der
+Browser jeder Person prüfen damit einander, einigen sich dann mit
+Schlüsseln, die nur für diesen Anruf entstehen, auf einen Schlüssel für die
+beiden und geben erst dann die Schlüssel des Anrufs weiter. Wer den Link
+ohne den Teil nach `#` hat, kommt in den Anruf, sieht und hört aber nichts.
 
 ## Was die Box sieht \{#what-the-box-sees}
 
 Die Box leitet jedes Bild an die anderen im Anruf weiter, ohne es zu
 öffnen. Sie weiß, wer wann in welchem Anruf ist, wie groß die Bilder sind
-und wie oft sie kommen. Bild und Ton hat sie nie.
+und wie oft sie kommen. Bild und Ton hat sie nie, außer einem
+Podcast-Stream, den ihr jemand zum Weitergeben schickt.
 
 Der Browser jeder Person macht für den Anruf einen eigenen Schlüssel. Die
 Browser geben sich ihre Schlüssel in den verschlüsselten Nachrichten des
@@ -87,8 +161,12 @@ Bild ohne Verschlüsselung.
 
 ## Wo Anrufe funktionieren \{#where-calls-work}
 
-Anrufe funktionieren zwischen Rechnern, die die Box in ihrem eigenen Netz
-erreichen. Die Box nimmt die Medien auf UDP-Port 7882 an
-(**Einstellungen → Erweitert → `losos.calls.udpPort`**), der in ihrer
-Firewall offen ist, solange Anrufe an sind. Anrufe von außerhalb dieses
-Netzes funktionieren noch nicht.
+Auf einer Box in ihrem eigenen Netz funktionieren Anrufe zwischen
+Rechnern, die die Box dort erreichen. Die Box nimmt die Medien auf UDP-Port
+7882 an (**Einstellungen → Erweitert → `losos.calls.udpPort`**), der in
+ihrer Firewall offen ist, solange Anrufe an sind.
+
+Auf einer Box, die über einen Edge geht, gehen auch die Medien über den
+Edge. Die Box hält eine QUIC-Verbindung zum Edge und öffnet selbst keinen
+Port, und Leute und Gäste senden ihre Medien an einen Port auf dem Edge.
+Die Bilder sind dort genauso verschlüsselt wie auf der Box.

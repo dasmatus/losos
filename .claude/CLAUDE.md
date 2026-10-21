@@ -137,7 +137,20 @@ and is never served or built by nix.
   stats go over a MessagePort from the frame path. `--address IP=OFFERED`
   offers a forwarded port's address; `nix/tests/calls.nix` reaches the SFU
   that way and reads its `--tap` (`lososInternal.callsTap`) to prove the
-  box holds only ciphertext.
+  box holds only ciphertext. Behind an edge (`losos.proxy.enable`) the SFU
+  keeps one QUIC link to the edge's relay (`calls/relay.rs`,
+  `edge/registrar/src/calls_relay.rs`) and opens no port. The screen is a
+  third transceiver (`p<pid>-screen`); the black background is MediaPipe's
+  selfie segmenter in the browser before the seal (`calls/background.ts`,
+  files under `/chat/calls-ml/`, model from `LOSOS_SEGMENTER_MODEL`).
+  Podcast mode composites on the host's canvas and sends WebM to
+  `/calls/api/stream`, which ffmpeg passes to RTMP: the one plaintext path,
+  marked public in the UI. Guests: only an official edge answers
+  `POST /calls/guest-link`; the box serves `/calls/guest/` (its own Vite
+  build, `vite.guest.config.ts`) and `/calls/guest/ws` without LosOS Login,
+  and the link's `#` secret, which no server sees, keys an ECDH pair per
+  guest (`calls/guests.ts`). lososd runs `HTTP_WORKERS` (8) because its
+  handlers block; one per core 408'd chat on a two-core box.
 - LosOS Lab, the setup visualizer at `/lab/` (sidebar entry Lab): the
   admin UI's second Vite page (`admin-ui/app/lab/`, `src/lab/`) over a Rust
   core in WebAssembly (`admin-ui/lab/core`, `losos-lab-core`, contract in

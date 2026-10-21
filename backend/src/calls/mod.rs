@@ -19,12 +19,16 @@
 //!   recording here; [`stream`] hands it to ffmpeg for an RTMP address.
 //!   That stream is public by choice, and the page says so.
 //!
+//! * Someone with no account comes in only on a guest link to one call,
+//!   which only the box's official edge makes ([`guests`]).
+//!
 //! Where the box tunnels through an edge, media goes through it too
 //! ([`relay`]), and the box opens no port for calls.
 //!
 //! The protocol is in `docs/calls.md` and [`wire`].
 
 pub mod admit;
+pub mod guests;
 pub mod openid;
 pub mod relay;
 pub mod server;

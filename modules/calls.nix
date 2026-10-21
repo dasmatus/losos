@@ -58,6 +58,9 @@ let
     chat.serverName
     "--homeserver"
     "127.0.0.1:${toString chat.port}"
+    # Podcast mode: a member's recording of the call, to an RTMP address.
+    "--ffmpeg"
+    "${pkgs.ffmpeg-headless}/bin/ffmpeg"
   ]
   ++ lib.optionals (tap != null) [
     "--tap"
@@ -80,7 +83,8 @@ let
     exec ${pkg}/bin/losos-calls ${lib.escapeShellArgs common} \
       --relay "$host:$port" --relay-cert "$cert" \
       --relay-id ${lib.escapeShellArg proxy.applianceId} \
-      --relay-token-file "$CREDENTIALS_DIRECTORY/edge-token"
+      --relay-token-file "$CREDENTIALS_DIRECTORY/edge-token" \
+      --registrar "$registrar" --curl ${pkgs.curl}/bin/curl
   '';
 in
 {
@@ -207,6 +211,30 @@ in
         '';
       };
       "@losos-calls-authz-down".extraConfig = "return 401;";
+    }
+    // lib.optionalAttrs (throughEdge && config.losos.admin.ui != null) {
+      # A guest's page and socket, the only part of calls that answers
+      # without LosOS Login and off the LAN: the edge carries the guest
+      # link's host to the box through the tunnel. The page is static, the
+      # socket admits a guest only with an invite for that one call
+      # (backend/src/calls/guests.rs), and nothing here reaches chat.
+      "/calls/guest/".tryFiles = "$uri /calls/guest/guest.html";
+      # The segmenter for the black background, from the chat page's copy.
+      "/calls/guest/chat/calls-ml/".alias = "${config.losos.admin.ui}/chat/calls-ml/";
+      "= /calls/guest/ws" = {
+        proxyPass = "http://unix:${socket}";
+        proxyWebsockets = true;
+        recommendedProxySettings = false;
+        extraConfig = ''
+          proxy_set_header Host $host;
+          proxy_set_header Remote-User "";
+          proxy_set_header Remote-Groups "";
+          proxy_set_header X-Losos-As "";
+          client_max_body_size 64k;
+          proxy_read_timeout 1h;
+          proxy_send_timeout 1h;
+        '';
+      };
     };
   };
 }

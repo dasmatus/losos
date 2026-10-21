@@ -40,19 +40,86 @@ zmeškal alebo z hovoru odišiel. Keď odíde posledný človek, časová os uk�
 ## Počas hovoru \{#during-a-call}
 
 Každý človek má svoju dlaždicu. Dlaždica ukazuje jeho kameru, alebo jeho
-obrázok, kým má kameru vypnutú. Tri tlačidlá dole vypínajú a zapínajú váš
-mikrofón a kameru a ukončia vašu účasť v hovore. Vypnutie kamery ju
+obrázok, kým má kameru vypnutú. Tlačidlá dole vypínajú a zapínajú váš
+mikrofón a kameru, zdieľajú obrazovku, prepínajú pozadie, pozývajú hosťa,
+otvárajú režim podcastu a ukončia vašu účasť v hovore. Vypnutie kamery ju
 zastaví, takže zhasne jej svetlo, a kým ju znova nezapnete, neposiela sa
 nič.
 
 Štítok **Šifrované end-to-end** hore ukazuje, koľko snímok váš prehliadač
 poslal zašifrovaných a koľko prijal a otvoril.
 
+## Vaše pozadie \{#your-background}
+
+Keď máte zapnutú kameru, miestnosť za vami je čierna. Prehliadač vás na
+každom snímku nájde a všetko ostatné začierni ešte predtým, ako snímok
+zašifruje, takže vašu miestnosť nedostane ani zariadenie, ani ostatní.
+Tlačidlo **Ukázať miestnosť za vami** posiela kameru tak, ako je, a
+**Zatemniť pozadie** čiernu znova zapne. Prehliadač si vašu voľbu
+zapamätá na ďalší hovor.
+
+Ak prehliadač pozadie začierniť nevie, kamera namiesto vašej miestnosti
+nepošle nič a ukáže sa o tom správa.
+
+## Zdieľanie obrazovky \{#sharing-your-screen}
+
+**Zdieľať obrazovku** sa prehliadača opýta, ktorú obrazovku, okno alebo
+kartu zdieľať. Kým niekto zdieľa, jeho obrazovka vyplní stred hovoru a
+ľudia sa presunú do pásu vedľa nej. **Prestať zdieľať** alebo tlačidlo
+zastavenia v samotnom prehliadači zdieľanie ukončí. Obrazovka je
+zašifrovaná tými istými kľúčmi ako kamera.
+
+## Režim podcastu \{#podcast-mode}
+
+Režim podcastu vysiela hovor na adresu RTMP, napríklad tú, ktorú vám s
+kľúčom streamu dá YouTube alebo Twitch. **Režim podcastu** otvorí panel s
+týmito poľami:
+
+- adresa RTMP, ktorá začína `rtmp://` alebo `rtmps://`;
+- názov a podnadpis, ktoré sa kreslia pod obraz;
+- prekrytie, obrázok PNG kreslený navrch, napríklad logo alebo rámik.
+
+Vysielanie ukazuje ľudí v mriežke, alebo zdieľanú obrazovku v strede a
+ľudí vedľa nej, rovnako ako hovor. **Začať vysielať** ho spustí a
+**Ukončiť vysielanie** zastaví. Hovor naraz vysiela len jeden človek a
+všetci v hovore vidia počas vysielania štítok **Naživo**.
+
+Živé vysielanie je verejné, takže je to jediná časť hovoru, ktorá nie je
+šifrovaná end-to-end. Váš prehliadač zloží obraz a zvuk z hovoru, ktorý už
+dešifroval, a pošle ich do zariadenia, ktoré ich odovzdá na adresu RTMP.
+Kľúč streamu zostáva vo vašom prehliadači a v zariadení a nikdy sa
+nezapíše do záznamov zariadenia.
+
+## Hostia \{#guests}
+
+Niekto bez účtu na zariadení sa môže pripojiť k jednému hovoru cez odkaz
+pre hosťa. **Pozvať hosťa** odkaz vytvorí a ukáže ho s tlačidlom
+**Kopírovať odkaz**. Pošlite ho osobe, ktorú pozývate. Otvorí ho v
+prehliadači, zadá meno a pripojí sa. Ostatní ju uvidia ako *meno (hosť)*.
+
+Odkaz pre hosťa:
+
+- otvorí len tento hovor, na 12 hodín;
+- pustí naraz len jedného hosťa;
+- nedáva účet, chat ani prístup k ničomu inému na zariadení;
+- pre hosťa prestane fungovať, keď z hovoru odídu všetci z miestnosti.
+
+Odkazy pre hostí vydáva oficiálny edge LosOS na verejnom mene zariadenia,
+takže zariadenie bez neho ich vytvoriť nevie. Edge odkaz vytvorí, ale
+hovor nepočuje. Časť za `#` je tajomstvo, ktoré vytvorí váš prehliadač, a
+prehliadač túto časť nikdy nepošle na server. Váš prehliadač ju dá
+ostatným v hovore v šifrovaných správach chatu. Prehliadač hosťa a
+prehliadač každého človeka si ňou navzájom overia, kto je kto, potom sa
+dohodnú na kľúči len pre dvojicu, s kľúčmi vytvorenými len pre tento
+hovor, a až potom si odovzdajú kľúče hovoru. Kto má odkaz bez časti za
+`#`, dostane sa do hovoru, ale nič nevidí ani nepočuje.
+
 ## Čo vidí zariadenie \{#what-the-box-sees}
 
 Zariadenie každý snímok posunie ostatným v hovore bez toho, aby ho otvorilo.
 Vie, kto je v ktorom hovore a kedy, aké veľké sú snímky a ako často
-prichádzajú. Obraz ani zvuk nikdy nemá.
+prichádzajú. Obraz ani zvuk nikdy nemá, okrem vysielania podcastu, ktoré
+mu niekto pošle, aby ho odovzdalo ďalej.
 
 Prehliadač každého človeka si pre hovor vytvorí vlastný kľúč. Prehliadače
 si kľúče odovzdávajú v šifrovaných správach chatu medzi zariadeniami, ktoré
@@ -82,8 +149,12 @@ nevie, neukáže tlačidlá na volanie a nikdy nepošle snímok bez šifrovania.
 
 ## Kde hovory fungujú \{#where-calls-work}
 
-Hovory fungujú medzi počítačmi, ktoré sa k zariadeniu dostanú v jeho
-vlastnej sieti. Zariadenie prijíma médiá na porte UDP 7882
+Na zariadení vo vlastnej sieti fungujú hovory medzi počítačmi, ktoré sa k
+nemu dostanú v tejto sieti. Zariadenie prijíma médiá na porte UDP 7882
 (**Nastavenia → Rozšírené → `losos.calls.udpPort`**), ktorý je na jeho
-firewalle otvorený, kým sú hovory zapnuté. Hovory zvonka tejto siete zatiaľ
-nefungujú.
+firewalle otvorený, kým sú hovory zapnuté.
+
+Na zariadení, ktoré ide cez edge, idú cez edge aj médiá. Zariadenie
+udržiava s edgeom jedno spojenie QUIC a samo neotvára žiadny port, a
+ľudia aj hostia posielajú médiá na port na edgei. Snímky sú tam rovnako
+zašifrované ako na zariadení.

@@ -9,6 +9,7 @@
 
 import { fromBase64, randomKey, SendKey, toBase64 } from './e2ee';
 import type { TransformOptions, WorkerIn, WorkerOut, WorkerStats } from './e2ee-protocol';
+import { GuestKeys, parseSecret, type RelayBody } from './guests';
 
 export interface OpenIdToken {
   access_token: string;
@@ -19,6 +20,8 @@ export interface Member {
   pid: number;
   user: string;
   device: string;
+  /* A guest's name; absent for the room's own people. */
+  guest?: string;
 }
 
 export interface Sender {
@@ -32,6 +35,9 @@ export interface KeyMessage {
   pid: number;
   index: number;
   key: string;
+  /* Invite secrets for the call's guests (guests.ts), member to member
+   * over Olm only. */
+  guests?: string[];
 }
 
 export interface KeyChannel {
@@ -55,13 +61,18 @@ export interface CallEvents {
 }
 
 export interface CallOptions {
-  /* `wss://<box>/calls/api/ws`. */
+  /* `wss://<box>/calls/api/ws`, or a guest's `/calls/guest/ws`. */
   socket: string;
   call: string;
-  openid: OpenIdToken;
-  device: string;
+  /* A member's OpenID token and device; a guest has neither. */
+  openid?: OpenIdToken;
+  device?: string;
+  /* A guest's side: the invite from the link, the name it gave and the
+   * secret from the link's fragment. */
+  guest?: { invite: string; name: string; secret: string };
   local: MediaStream;
-  keys: KeyChannel;
+  /* Olm, for members; a guest has none. */
+  keys?: KeyChannel;
   events: CallEvents;
   /* The e2ee worker; the page's own build by default. */
   worker?: () => Worker;
@@ -112,6 +123,11 @@ export class CallSession {
   private screenSender: RTCRtpSender | null = null;
   private screen = new MediaStream();
   private done = false;
+  private guests: GuestKeys;
+  private keys: KeyChannel;
+  /* A rotated key announced but not yet in use. */
+  private next: SendKey | null = null;
+  private earlyRelay = new Map<number, RelayBody[]>();
 
   constructor(private opts: CallOptions) {
     if (!canEncrypt()) throw new Error('noEncryption');
@@ -139,7 +155,10 @@ export class CallSession {
       if (s === 'connected') this.opts.events.state('connected');
       if (s === 'failed') this.fail('media');
     };
-    this.unsubscribe = this.opts.keys.subscribe((from, msg) => this.onKey(from, msg));
+    this.keys = opts.keys ?? { send: async () => undefined, subscribe: () => () => undefined };
+    this.guests = new GuestKeys(opts.call, (to, body) => this.signal({ type: 'relay', to, body }));
+    if (opts.guest) this.guests.addSecret(opts.guest.secret);
+    this.unsubscribe = this.keys.subscribe((from, msg) => this.onKey(from, msg));
     this.timers.push(setInterval(() => this.serial(() => this.ratchet()), RATCHET_EVERY_MS));
   }
 
@@ -162,8 +181,13 @@ export class CallSession {
     this.opts.events.state('connecting');
     const ws = new WebSocket(this.opts.socket);
     this.ws = ws;
+    const g = this.opts.guest;
     ws.onopen = () =>
-      this.signal({ type: 'join', call: this.opts.call, openid: this.opts.openid, device: this.opts.device });
+      this.signal(
+        g
+          ? { type: 'guest', call: this.opts.call, invite: g.invite, name: g.name }
+          : { type: 'join', call: this.opts.call, openid: this.opts.openid, device: this.opts.device },
+      );
     ws.onmessage = (ev) => {
       let m: { type: string; [k: string]: unknown };
       try {
@@ -203,10 +227,74 @@ export class CallSession {
         this.signal({ type: 'answer', sdp: answer.sdp });
         break;
       }
+      case 'relay':
+        if (typeof m.from === 'number' && typeof m.body === 'object' && m.body !== null) {
+          await this.onRelay(m.from, m.body as RelayBody);
+        }
+        break;
       case 'error':
         this.fail(String(m.code));
         break;
     }
+  }
+
+  /* Whether keys to and from `m` go through a guest pair, not Olm. */
+  private pairwise(m: Member): boolean {
+    return this.opts.guest !== undefined || m.guest !== undefined;
+  }
+
+  private async onRelay(from: number, body: RelayBody): Promise<void> {
+    const member = this.members.find((m) => m.pid === from);
+    if (!member) {
+      // A hello can overtake the member list, like a key.
+      const list = this.earlyRelay.get(from) ?? [];
+      if (list.length < 4) list.push(body);
+      this.earlyRelay.set(from, list);
+      return;
+    }
+    if (!this.pairwise(member)) return;
+    if (body.t === 'hello') {
+      if (await this.guests.onHello(this.you, from, body)) this.serial(() => this.sendPairKey(from));
+    } else if (body.t === 'key') {
+      const msg = (await this.guests.open(this.you, from, body)) as KeyMessage | null;
+      if (msg === null || typeof msg !== 'object' || msg.pid !== from) return;
+      this.onKey({ user: member.user, device: member.device }, { ...msg, guests: undefined });
+    }
+  }
+
+  /* The key in use, and one announced, to a peer whose pair key is new. */
+  private async sendPairKey(pid: number): Promise<void> {
+    for (const k of this.next ? [this.send, this.next] : [this.send]) {
+      const sealed = await this.guests.seal(this.you, pid, {
+        call: this.opts.call,
+        pid: this.you,
+        index: k.index,
+        key: toBase64(k.key),
+      });
+      if (sealed) this.signal({ type: 'relay', to: pid, body: sealed });
+    }
+  }
+
+  private greetAll(): void {
+    for (const m of this.others()) if (this.pairwise(m)) void this.guests.greet(this.you, m.pid);
+  }
+
+  /* An invite secret this page made or was handed: kept, sent to the other
+   * members over Olm, and used to greet the guests already here. */
+  async addGuestSecret(secret: string): Promise<void> {
+    if (this.opts.guest || !this.guests.addSecret(secret)) return;
+    this.greetAll();
+    await new Promise<void>((done) =>
+      this.serial(async () => {
+        await this.sendKey(this.others().filter((m) => !this.pairwise(m)));
+        done();
+      }),
+    );
+  }
+
+  /* The secret new invite links reuse, so a call has one. */
+  get guestSecret(): string | null {
+    return this.guests.knownSecrets()[0] ?? null;
   }
 
   /* The one offer this page makes: send-only audio, camera and screen, in
@@ -255,11 +343,17 @@ export class CallSession {
     this.opts.events.members(next, this.you, live);
     const joined = next.filter((m) => !before.has(m.pid) && m.pid !== this.you);
     const left = [...before.values()].filter((m) => !after.has(m.pid) && m.pid !== this.you);
-    for (const m of left) this.post({ type: 'dropSender', sender: `p${m.pid}` });
+    for (const m of left) {
+      this.post({ type: 'dropSender', sender: `p${m.pid}` });
+      this.guests.forget(m.pid);
+    }
     for (const m of joined) {
       for (const k of this.early.get(m.pid) ?? []) this.onKey(k.from, k.msg);
       this.early.delete(m.pid);
+      for (const b of this.earlyRelay.get(m.pid) ?? []) void this.onRelay(m.pid, b);
+      this.earlyRelay.delete(m.pid);
     }
+    this.greetAll();
     const firstList = before.size === 0;
     this.serial(async () => {
       if (left.length > 0) await this.rotate();
@@ -275,12 +369,33 @@ export class CallSession {
     return this.members.filter((m) => m.pid !== this.you);
   }
 
-  private async sendKey(to: Member[]): Promise<void> {
-    if (to.length === 0) return;
-    await this.opts.keys.send(
-      to.map((m) => ({ user: m.user, device: m.device })),
-      { call: this.opts.call, pid: this.you, index: this.send.index, key: toBase64(this.send.key) },
-    );
+  /* `k` to these members: over Olm to the room's own people, with the
+   * guests' invite secrets, and over its pair key to each guest that has
+   * one. A guest without a pair key yet gets the key in use once it has. */
+  private async sendKey(to: Member[], k: SendKey = this.send): Promise<void> {
+    const olm = to.filter((m) => !this.pairwise(m));
+    if (olm.length > 0) {
+      const guests = this.guests.knownSecrets();
+      await this.keys.send(
+        olm.map((m) => ({ user: m.user, device: m.device })),
+        {
+          call: this.opts.call,
+          pid: this.you,
+          index: k.index,
+          key: toBase64(k.key),
+          ...(guests.length > 0 ? { guests } : {}),
+        },
+      );
+    }
+    for (const m of to.filter((m) => this.pairwise(m))) {
+      const sealed = await this.guests.seal(this.you, m.pid, {
+        call: this.opts.call,
+        pid: this.you,
+        index: k.index,
+        key: toBase64(k.key),
+      });
+      if (sealed) this.signal({ type: 'relay', to: m.pid, body: sealed });
+    }
   }
 
   private async ratchet(): Promise<void> {
@@ -291,13 +406,12 @@ export class CallSession {
   /* A fresh key for the members who stayed, used once they have it. */
   private async rotate(): Promise<void> {
     const next = new SendKey(randomKey(), this.send.index + 1);
-    await this.opts.keys.send(
-      this.others().map((m) => ({ user: m.user, device: m.device })),
-      { call: this.opts.call, pid: this.you, index: next.index, key: toBase64(next.key) },
-    );
+    this.next = next;
+    await this.sendKey(this.others(), next);
     await new Promise((r) => setTimeout(r, ROTATE_AFTER_MS));
     this.send.key.fill(0);
     this.send = next;
+    this.next = null;
     this.post({ type: 'sendKey', key: next.key, index: next.index });
   }
 
@@ -323,6 +437,17 @@ export class CallSession {
     }
     if (key.length !== 32 || !Number.isInteger(msg.index)) return;
     this.post({ type: 'recvKey', sender: `p${msg.pid}`, key, index: msg.index });
+    // Secrets come only from the room's own people, over Olm.
+    if (!this.pairwise(member) && Array.isArray(msg.guests) && !this.opts.guest) {
+      let fresh = false;
+      for (const s of msg.guests.slice(0, 8)) if (parseSecret(s) && this.guests.addSecret(s)) fresh = true;
+      if (fresh) {
+        this.greetAll();
+        void this.guests.retry(this.you).then((opened) => {
+          for (const pid of opened) this.serial(() => this.sendPairKey(pid));
+        });
+      }
+    }
   }
 
   setMuted(kind: 'audio' | 'video', muted: boolean): void {

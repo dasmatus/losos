@@ -14,6 +14,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -75,15 +76,36 @@ const pages = createServer((req, res) => {
 });
 const pagePort = await listen(pages);
 
+// An edge that makes guest links, as an official one does, and keeps what
+// it was asked.
+const asked = [];
+const edge = createServer((req, res) => {
+  let body = '';
+  req.on('data', (c) => (body += c));
+  req.on('end', () => {
+    if (req.method !== 'POST' || req.url !== '/calls/guest-link') {
+      res.writeHead(404).end();
+      return;
+    }
+    const b = JSON.parse(body);
+    asked.push(b);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ url: `https://box.calls.test/calls/guest/?call=${b.call}&invite=${b.invite}` }));
+  });
+});
+const edgePort = await listen(edge);
+
 // The SFU, on a free port of its own.
 const probe = createServer();
 const sfuPort = await listen(probe);
 probe.close();
 const udpPort = 20000 + Math.floor(Math.random() * 20000);
 const tap = mkdtempSync(join(tmpdir(), 'losos-calls-tap-'));
+const relayToken = join(mkdtempSync(join(tmpdir(), 'losos-calls-edge-')), 'token');
+writeFileSync(relayToken, 'box-token\n');
 const sfu = spawn(
   BIN,
-  ['--listen', `127.0.0.1:${sfuPort}`, '--udp-port', String(udpPort), '--address', ADDRESS, '--server-name', SERVER, '--homeserver', `127.0.0.1:${hsPort}`, '--tap', tap, '--ffmpeg', process.env.LOSOS_FFMPEG ?? 'ffmpeg'],
+  ['--listen', `127.0.0.1:${sfuPort}`, '--udp-port', String(udpPort), '--address', ADDRESS, '--server-name', SERVER, '--homeserver', `127.0.0.1:${hsPort}`, '--tap', tap, '--ffmpeg', process.env.LOSOS_FFMPEG ?? 'ffmpeg', '--registrar', `http://127.0.0.1:${edgePort}`, '--relay-id', 'box-1', '--relay-token-file', relayToken],
   { stdio: ['ignore', 'inherit', 'inherit'] },
 );
 const base = `http://127.0.0.1:${sfuPort}/calls/api`;
@@ -139,6 +161,31 @@ const tab = async (token, user, device, extra = {}) => {
     { socket: `ws://127.0.0.1:${sfuPort}/calls/api/ws`, call, token, server: SERVER, me: { user, device }, ...extra },
   );
   return p;
+};
+const guestTab = async (invite, name, secret) => {
+  const p = await ctx.newPage();
+  p.on('pageerror', (e) => console.log(`[${name}] ${e}`));
+  await p.goto(`http://127.0.0.1:${pagePort}/`);
+  await p.waitForFunction(() => typeof window.startCall === 'function');
+  await p.evaluate((o) => window.startCall(o), {
+    socket: `ws://127.0.0.1:${sfuPort}/calls/guest/ws`,
+    call,
+    guest: { invite, name, secret },
+  });
+  return p;
+};
+const secret = () => randomBytes(32).toString('base64url');
+const makeInvite = async (token, p) => {
+  const r = await fetch(`${base}/invites`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      openid: { access_token: token, matrix_server_name: SERVER },
+      call,
+      pid: await p.evaluate(() => window.session.pid),
+    }),
+  });
+  return { status: r.status, body: await r.json().catch(() => ({})) };
 };
 const stats = (p) => p.evaluate(() => window.callState.stats);
 const members = (p) => p.evaluate(() => window.callState.members);
@@ -287,6 +334,79 @@ await check('someone who joins later sees everyone, on keys that open nothing ea
   await jan.close();
 });
 
+let zoe;
+let zoePid;
+const matusAt = await pidOf(eva, '@matus:calls.test');
+const evaAt = await pidOf(matus, '@eva:calls.test');
+await check('a guest link comes from the edge, and a guest holding its secret sees and is seen', async () => {
+  const made = await makeInvite('tok-matus', matus);
+  assert.equal(made.status, 200, JSON.stringify(made.body));
+  const url = new URL(made.body.url);
+  const invite = url.searchParams.get('invite');
+  assert.match(invite, /^[0-9a-f]{32}$/);
+  assert.equal(url.searchParams.get('call'), call);
+  const ask = asked.at(-1);
+  assert.deepEqual(ask, { appliance_id: 'box-1', token: 'box-token', call, invite }, 'the edge is asked for this call only');
+  // A stranger's token makes no link.
+  assert.equal((await makeInvite('tok-nobody', matus)).status, 401);
+  const s = secret();
+  // Matus keeps the secret and hands it to Eva over the key channel.
+  await matus.evaluate((s) => window.addGuestSecret(s), s);
+  zoe = await guestTab(invite, 'Zoe', s);
+  await until('zoe in the call', async () => (await members(zoe)).length === 3 && (await members(matus)).length === 3);
+  const listed = (await members(matus)).find((m) => m.guest === 'Zoe');
+  assert.ok(listed, 'the members see the guest by the name she gave');
+  zoePid = listed.pid;
+  const evaPid = await pidOf(zoe, '@eva:calls.test');
+  const matusPid = await pidOf(zoe, '@matus:calls.test');
+  await until(
+    'both cameras at zoe',
+    async () => (await distance(eva, zoe, evaPid)) < SAME && (await distance(matus, zoe, matusPid)) < SAME,
+    30000,
+  );
+  await until(
+    "zoe's camera at both",
+    async () => (await distance(zoe, eva, zoePid)) < SAME && (await distance(zoe, matus, zoePid)) < SAME,
+    30000,
+  );
+  assert.equal(await zoe.evaluate(() => window.callState.keysIn), 0, 'no key reached the guest over Olm');
+  // The same invite lets in one guest at a time.
+  const twin = await guestTab(invite, 'Zoe again', s);
+  await until('the twin refused', async () => (await twin.evaluate(() => window.callState.states)).some((x) => x.startsWith('failed:')));
+  assert.deepEqual((await twin.evaluate(() => window.callState.states)).at(-1), 'failed:inviteInUse');
+  await twin.close();
+});
+
+await check('a guest without the secret gets in through the box but sees and shows nothing', async () => {
+  const made = await makeInvite('tok-eva', eva);
+  assert.equal(made.status, 200);
+  const invite = new URL(made.body.url).searchParams.get('invite');
+  // A link with someone else's secret after the `#`: what the box and the
+  // edge could make on their own.
+  const mallory = await guestTab(invite, 'Mallory', secret());
+  await until('mallory in the call', async () => (await members(mallory)).length === 4);
+  const malloryPid = (await members(matus)).find((m) => m.guest === 'Mallory').pid;
+  const matusPid = await pidOf(mallory, '@matus:calls.test');
+  await new Promise((r) => setTimeout(r, 6000));
+  assert.ok((await distance(matus, mallory, matusPid)) >= SAME, "matus's picture stays sealed at mallory");
+  const st = await stats(mallory);
+  assert.equal(st?.opened ?? 0, 0, `mallory opened nothing: ${JSON.stringify(st)}`);
+  assert.ok((await distance(mallory, matus, malloryPid)) >= SAME, "mallory's picture does not open at matus");
+  await mallory.close();
+  await until('mallory gone', async () => (await members(matus)).length === 3);
+});
+
+await check('guests are sent away once the last of the room has left', async () => {
+  await eva.evaluate(() => window.session.leave());
+  await until('eva gone', async () => (await members(zoe)).length === 2);
+  // Zoe and Matus still see each other on the key rotated after Eva left.
+  const matusPid = await pidOf(zoe, '@matus:calls.test');
+  await until('matus at zoe after the rotation', async () => (await distance(matus, zoe, matusPid)) < SAME, 20000);
+  await matus.evaluate(() => window.session.leave());
+  await until('zoe sent away', async () => (await zoe.evaluate(() => window.callState.states)).some((x) => x.startsWith('failed:')));
+  assert.equal((await zoe.evaluate(() => window.callState.states)).at(-1), 'failed:ended');
+});
+
 const readIvf = (file) => {
   const raw = readFileSync(file);
   const frames = [];
@@ -301,13 +421,13 @@ const ffmpegErrors = (file) =>
   spawnSync('ffmpeg', ['-v', 'error', '-i', file, '-f', 'null', '-'])
     .stderr.toString()
     .split('\n')
-    .filter((l) => l.trim()).length;
+    // Two frames the tap stamped with the same millisecond are a muxer
+    // warning, not a frame the decoder could not read.
+    .filter((l) => l.trim() && !l.includes('non monotonically increasing dts')).length;
 
 let pids;
 await check("the SFU's tap holds frames no decoder can read", async () => {
-  pids = { matus: await pidOf(eva, '@matus:calls.test'), eva: await pidOf(matus, '@eva:calls.test') };
-  await matus.evaluate(() => window.session.leave());
-  await eva.evaluate(() => window.session.leave());
+  pids = { matus: matusAt, eva: evaAt };
   for (const pid of Object.values(pids)) {
     const file = join(tap, `video-p${pid}-1.ivf`);
     const frames = readIvf(file);
@@ -328,6 +448,10 @@ await check('the tapped frames are AES-GCM under keys only the members had', asy
     const frames = readIvf(file);
     let opened = 0;
     let beforeAnyone = 0;
+    // Once Eva left, Matus's next key went to the guest alone, over their
+    // pair key: the key channel never carried it.
+    let guestsOnly = 0;
+    const lastHeard = Math.max(...keys.map((k) => k.index));
     const plain = [];
     for (const f of frames) {
       const t = e2ee.readTrailer(f.data);
@@ -343,9 +467,14 @@ await check('the tapped frames are AES-GCM under keys only the members had', asy
       } else if (t.index < Math.min(...keys.map((k) => k.index))) {
         // Sent while alone in the call: that key never left the browser.
         beforeAnyone++;
+      } else if (t.index > lastHeard) {
+        guestsOnly++;
       }
     }
-    assert.ok(opened > 0.85 * (frames.length - beforeAnyone), `${who}: ${opened}/${frames.length} opened, ${beforeAnyone} before anyone`);
+    assert.ok(
+      opened > 0.85 * (frames.length - beforeAnyone - guestsOnly),
+      `${who}: ${opened}/${frames.length} opened, ${beforeAnyone} before anyone, ${guestsOnly} to guests only`,
+    );
     // The same frames, decrypted, are a clean VP8 stream.
     const head = readFileSync(file).subarray(0, 32);
     const body = plain.flatMap((p) => {
@@ -362,6 +491,7 @@ await check('the tapped frames are AES-GCM under keys only the members had', asy
 
 await browser.close();
 sfu.kill();
+edge.close();
 homeserver.close();
 pages.close();
 console.log(failed ? 'calls: FAILED' : `calls: ${checks.length} passed`);

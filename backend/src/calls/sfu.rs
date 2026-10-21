@@ -42,10 +42,23 @@ pub enum Command {
     },
     Join {
         call: CallId,
-        user: UserId,
-        device: String,
+        who: Who,
         out: mpsc::UnboundedSender<ServerMsg>,
         reply: Reply<ParticipantId>,
+    },
+    /// Pass `body` from `from` to `to`, if both are in one call.
+    Relay {
+        from: ParticipantId,
+        to: ParticipantId,
+        body: serde_json::Value,
+    },
+    /// `pid`, who is `user`, opens the call to a guest on `invite`.
+    Invite {
+        call: CallId,
+        pid: ParticipantId,
+        user: UserId,
+        invite: String,
+        reply: Reply<()>,
     },
     Offer {
         pid: ParticipantId,
@@ -66,6 +79,13 @@ pub enum Command {
         on: bool,
         reply: Reply<()>,
     },
+}
+
+/// Who is joining: a person of the room, or a guest on a link.
+#[derive(Debug)]
+pub enum Who {
+    Member { user: UserId, device: String },
+    Guest { invite: String, name: String },
 }
 
 pub struct Config {
@@ -239,13 +259,20 @@ impl Sfu {
             }
             Command::Join {
                 call,
-                user,
-                device,
+                who,
                 out,
                 reply,
             } => {
                 let pid = self.next_pid;
-                match self.calls.admit(&call, pid, user, &device, now) {
+                let admitted = match who {
+                    Who::Member { user, device } => {
+                        self.calls.admit(&call, pid, user, &device, now)
+                    }
+                    Who::Guest { invite, name } => {
+                        self.calls.admit_guest(&call, pid, &invite, &name, now)
+                    }
+                };
+                match admitted {
                     Ok(c) => {
                         self.next_pid += 1;
                         let video = c.video;
@@ -305,6 +332,28 @@ impl Sfu {
                 }
                 self.reap();
             }
+            Command::Relay { from, to, body } => {
+                let Some(call) = self
+                    .clients
+                    .iter()
+                    .find(|c| c.pid == from)
+                    .map(|c| c.call.clone())
+                else {
+                    return;
+                };
+                if let Some(c) = self.clients.iter().find(|c| c.pid == to && c.call == call) {
+                    let _ = c.out.send(ServerMsg::Relay { from, body });
+                }
+            }
+            Command::Invite {
+                call,
+                pid,
+                user,
+                invite,
+                reply,
+            } => {
+                let _ = reply.send(self.calls.invite(&call, pid, &user, invite, now));
+            }
             Command::Broadcast {
                 call,
                 pid,
@@ -357,6 +406,7 @@ impl Sfu {
                         pid: *pid,
                         user: m.user.to_string(),
                         device: m.device.clone(),
+                        guest: m.guest.as_ref().map(|g| g.name.clone()),
                     })
                     .collect()
             })
@@ -412,6 +462,18 @@ impl Sfu {
             }
         }
         for call in calls {
+            // A guest stays only while someone of the room is there.
+            let stranded = self.calls.stranded_guests(&call);
+            for c in self
+                .clients
+                .iter_mut()
+                .filter(|c| stranded.contains(&c.pid))
+            {
+                let _ = c.out.send(ServerMsg::Error {
+                    code: "ended".into(),
+                });
+                c.rtc.disconnect();
+            }
             self.announce(&call);
         }
     }

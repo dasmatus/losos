@@ -7,7 +7,7 @@
 
 use anyhow::Context;
 use clap::Parser;
-use losos_ctl::calls::{openid, relay, server, sfu, tap};
+use losos_ctl::calls::{guests, openid, relay, server, sfu, tap};
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -55,6 +55,13 @@ struct Cli {
     /// cannot go live.
     #[arg(long)]
     ffmpeg: Option<PathBuf>,
+    /// The registrar of the edge this box tunnels through: guest links
+    /// come from it (`--relay-id` and `--relay-token-file` say who asks).
+    #[arg(long, requires_all = ["relay_id", "relay_token_file"])]
+    registrar: Option<String>,
+    /// The curl the edge is asked with.
+    #[arg(long, default_value = "curl")]
+    curl: PathBuf,
     /// Write every forwarded frame under this directory (tests only).
     #[arg(long)]
     tap: Option<PathBuf>,
@@ -170,6 +177,15 @@ fn main() -> anyhow::Result<()> {
             server_name: cli.server_name.clone(),
         }),
         ffmpeg: cli.ffmpeg.clone(),
+        edge: match (&cli.registrar, &cli.relay_id, &cli.relay_token_file) {
+            (Some(registrar), Some(id), Some(token_file)) => Some(Arc::new(guests::Edge {
+                registrar: registrar.clone(),
+                id: id.clone(),
+                token_file: token_file.clone(),
+                curl: cli.curl.clone(),
+            })),
+            _ => None,
+        },
     };
     actix_web::rt::System::new().block_on(async move {
         let app = move || {

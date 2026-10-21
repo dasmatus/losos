@@ -607,6 +607,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/health", get(health))
         .route("/noise-public-key", get(noise_public_key))
         .route("/calls/relay", get(calls_relay_info))
+        .route("/calls/guest-link", post(calls_guest_link))
         .route("/identity", get(identity_route))
         // The identity's other half: the public key an operator signs, and
         // the push that installs the signed certificate. The push is the one
@@ -772,6 +773,58 @@ async fn noise_public_key(State(st): State<AppState>) -> Response {
 /// relay's certificate for them to pin (`crate::calls_relay`). Public: a box
 /// asks before it connects, over the URL it registers with, and the token it
 /// then proves itself with never travels here. 404 when the relay is off.
+/// Body of `POST /calls/guest-link`.
+#[derive(Debug, Deserialize)]
+struct GuestLinkReq {
+    appliance_id: String,
+    token: String,
+    call: String,
+    invite: String,
+}
+
+/// `POST /calls/guest-link` — the link a guest opens to join one call on a
+/// box behind this edge, with no account on the box. Only an official edge
+/// makes one, and only on the box's own hostname, so a link always names
+/// the box it leads to. The edge sees the call and the invite: enough to
+/// knock, not to hear. The secret that lets the guest and the members trust
+/// each other's keys is added in the inviting browser, after the `#`, and
+/// never reaches the edge or the box.
+async fn calls_guest_link(
+    State(st): State<AppState>,
+    Json(req): Json<GuestLinkReq>,
+) -> Result<Response, ApiError> {
+    let tenant = authenticate(&st, &req.appliance_id, &req.token).await?;
+    let official = st
+        .identity
+        .as_ref()
+        .and_then(|i| i.cert())
+        .is_some_and(|c| c.not_after > crate::market::now_secs());
+    if !official {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "notOfficial" })),
+        )
+            .into_response());
+    }
+    let hex32 =
+        |s: &str| s.len() == 32 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    if !hex32(&req.call) || !hex32(&req.invite) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "badInvite" })),
+        )
+            .into_response());
+    }
+    tracing::info!("calls: {} made a guest link", req.appliance_id);
+    Ok(Json(serde_json::json!({
+        "url": format!(
+            "https://{}/calls/guest/?call={}&invite={}",
+            tenant.hostname, req.call, req.invite
+        )
+    }))
+    .into_response())
+}
+
 async fn calls_relay_info(State(st): State<AppState>) -> Response {
     match &st.calls_relay {
         Some(relay) => Json(relay.info()).into_response(),
