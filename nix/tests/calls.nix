@@ -1016,7 +1016,9 @@ pkgs.testers.nixosTest {
             "systemd-run --unit rtmp-sink ${pkgs.ffmpeg-headless}/bin/ffmpeg -v error -listen 1 "
             "-i rtmp://0.0.0.0:${toString rtmpPort}/live/holiday-key -t 10 -c copy -y /tmp/podcast.flv"
         )
-        laptop.wait_for_open_port(${toString rtmpPort})
+        # Not wait_for_open_port: its probe would be the one connection
+        # `-listen 1` takes, and ffmpeg would give up on its handshake.
+        laptop.wait_until_succeeds("ss -tln | grep -q ':${toString rtmpPort} '")
         owner.get_by_role("button", name="Podcast mode").click()
         panel = owner.locator("[data-podcast-panel]")
         panel.wait_for()
