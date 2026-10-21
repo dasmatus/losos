@@ -80,16 +80,10 @@ in
           "hosts allow" = "172.16.0.0/12 192.168.0.0/16 10. EXCEPT 10.42.";
           "hosts deny" = "ALL";
 
-          # Every file as LosOS Cloud's own user, as private as the cloud
-          # keeps them.
-          "force user" = "losos-cloud";
-          "force group" = "losos-cloud";
-          "create mask" = "0600";
-          "force create mode" = "0600";
-          "directory mask" = "0700";
-          "force directory mode" = "0700";
-          "follow symlinks" = "no";
-          "wide links" = "no";
+          # Each share touches its files as LosOS Cloud's own user; that is
+          # set per share (backend/src/windows.rs), because here it would
+          # also be IPC$'s, and the share list would then see every person
+          # as that user.
           "unix extensions" = "no";
 
           "load printers" = "no";

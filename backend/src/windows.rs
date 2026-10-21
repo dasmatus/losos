@@ -248,7 +248,7 @@ impl Windows {
             let files = self.cloud.join(account.login()).join("files");
             self.ensure_files(&files, uid, gid)?;
             shares.push_str(&format!(
-                "\n[{}]\n  comment = LosOS Cloud\n  path = {}\n  valid users = +{user}\n  read only = no\n  server smb encrypt = desired\n",
+                "\n[{}]\n  comment = LosOS Cloud\n  path = {}\n  valid users = +{user}\n  read only = no\n  server smb encrypt = desired\n{SHARE_COMMON}",
                 Self::share_name(&account.name),
                 files.display()
             ));
@@ -510,6 +510,20 @@ fn md4(input: &[u8]) -> [u8; 16] {
     }
     out
 }
+
+/// What every share carries: every file as LosOS Cloud's own user, as
+/// private as the cloud keeps them, and nothing reached through a link.
+/// Per share, not in [global], where it would also make IPC$ (and with it
+/// the share list) see every person as that user.
+const SHARE_COMMON: &str = "  force user = losos-cloud
+  force group = losos-cloud
+  create mask = 0600
+  force create mode = 0600
+  directory mask = 0700
+  force directory mode = 0700
+  follow symlinks = no
+  wide links = no
+";
 
 /// The Unix uid and gid of the `i`th ready person's account. Each has its
 /// own: Samba
