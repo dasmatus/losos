@@ -1,10 +1,13 @@
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Attachment01Icon, Cancel01Icon, Mic01Icon, SentIcon } from "@hugeicons/core-free-icons";
+import { Attachment01Icon, Cancel01Icon, CloudIcon, Mic01Icon, SentIcon } from "@hugeicons/core-free-icons";
 import type { MatrixClient, MatrixEvent, Room } from "matrix-js-sdk";
+import { CloudPicker } from "@/components/cloud-picker";
 import { toast } from "@/components/ui/toast";
+import { readCloudFile } from "@/lib/cloud-files";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
+import { takeDraft, useCloud } from "./cloud";
 import { sendFile } from "./media";
 import { plainBody, sendContent } from "./model";
 import { Button } from "@/components/ui/button";
@@ -42,7 +45,10 @@ function relationFor(threadRoot: string | null, threadLatest: string | null, rep
 /** Type, attach and record a message. Enter sends, Shift+Enter breaks a line. */
 export function Composer({ client, room, threadRoot = null, threadLatest = null, replyTo, editing, onDone, placeholder }: ComposerProps) {
   const t = useT();
-  const [text, setText] = React.useState("");
+  // A share link from LosOS Cloud may leave words for this room's composer.
+  const [text, setText] = React.useState(() => (threadRoot === null ? takeDraft(room.roomId) : ""));
+  const cloud = useCloud();
+  const [picking, setPicking] = React.useState(false);
   const area = React.useRef<HTMLTextAreaElement>(null);
   const files = React.useRef<HTMLInputElement>(null);
   const typingSent = React.useRef(0);
@@ -201,6 +207,22 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
         <Button variant="ghost" size="icon-sm" aria-label={t("chat.composer.attach")} title={t("chat.composer.attach")} onClick={() => files.current?.click()} disabled={editing !== null}>
           <HugeiconsIcon icon={Attachment01Icon} className="size-4" />
         </Button>
+        {cloud && (
+          <Button variant="ghost" size="icon-sm" aria-label={t("chat.composer.fromCloud")} title={t("chat.composer.fromCloud")} onClick={() => setPicking(true)} disabled={editing !== null}>
+            <HugeiconsIcon icon={CloudIcon} className="size-4" />
+          </Button>
+        )}
+        <CloudPicker
+          open={picking}
+          onOpenChange={setPicking}
+          multiple
+          action={t("chat.composer.send")}
+          onPick={(entries) => {
+            Promise.all(entries.map((entry) => readCloudFile(entry.path)))
+              .then((list) => attach(list))
+              .catch((error: unknown) => toast.error(t("chat.share.failed"), error instanceof Error ? error.message : String(error), { help: "chat" }));
+          }}
+        />
         <textarea
           ref={area}
           rows={1}

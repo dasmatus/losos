@@ -39,7 +39,8 @@ import { Avatar } from "./avatar";
 import { CallsProvider, useCalls } from "./calls";
 import { Composer } from "./composer";
 import { failed, ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, openDirect, RoomSettingsDialog, StartChatDialog } from "./dialogs";
-import { withoutWith, withUserId } from "./links";
+import { readShare, ShareDialog } from "./cloud";
+import { withoutLink, withUserId } from "./links";
 import { directPartner, directRooms, isSpace, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
 import { RoomList } from "./room-list";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
@@ -318,15 +319,20 @@ function ChatHome({ signed }: { signed: Signed }) {
   }, [client]);
 
   // `?with=<person>` from Contacts, Mail or Cloud opens the direct chat
-  // with that person, made if there is none yet.
+  // with that person, made if there is none yet; `?share=<path>` from
+  // LosOS Cloud asks which conversation gets the files.
   const navigate = useNavigate();
   const linked = React.useRef(false);
+  const [share, setShare] = React.useState<{ paths: string[]; text: string } | null>(null);
   React.useEffect(() => {
     if (linked.current) return;
     linked.current = true;
-    const raw = new URLSearchParams(window.location.search).get("with");
-    if (raw === null) return;
-    navigate(withoutWith(window.location.href), { replace: true });
+    const search = new URLSearchParams(window.location.search);
+    const raw = search.get("with");
+    const shared = readShare(search);
+    if (raw === null && shared === null) return;
+    navigate(withoutLink(window.location.href), { replace: true });
+    if (shared !== null) setShare(shared);
     const userId = withUserId(raw, client.getDomain() ?? "");
     if (userId === null || userId === me) return;
     openDirect(client, userId)
@@ -448,6 +454,15 @@ function ChatHome({ signed }: { signed: Signed }) {
         space={null}
         onCreated={(id) => {
           setSpace(id);
+        }}
+      />
+      <ShareDialog
+        client={client}
+        share={share}
+        onClose={() => setShare(null)}
+        onSent={(roomId) => {
+          setShare(null);
+          setCurrent(roomId);
         }}
       />
       <StartChatDialog client={client} open={dialog === "chat"} onOpenChange={(o) => setDialog(o ? "chat" : null)} onCreated={setCurrent} />

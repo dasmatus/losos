@@ -15,7 +15,7 @@ const built = await esbuild.build({
   platform: 'node',
   write: false,
 });
-const { withUserId, withoutWith } = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`);
+const { withUserId, withoutLink } = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`);
 
 const server = 'mattbox.local';
 assert.equal(withUserId('eva', server), '@eva:mattbox.local');
@@ -31,7 +31,8 @@ assert.equal(withUserId('@:mattbox.local', server), null);
 assert.equal(withUserId('@eva:', server), null);
 assert.equal(withUserId('eva:mattbox.local', server), null);
 
-assert.equal(withoutWith('https://mattbox.local/chat/?with=eva'), '/chat/');
-assert.equal(withoutWith('https://mattbox.local/chat/?with=eva&call=video#/room/x'), '/chat/?call=video#/room/x');
+assert.equal(withoutLink('https://mattbox.local/chat/?with=eva'), '/chat/');
+assert.equal(withoutLink('https://mattbox.local/chat/?with=eva&call=video#/room/x'), '/chat/?call=video#/room/x');
+assert.equal(withoutLink('https://mattbox.local/chat/?share=Docs%2Fa.pdf&share=b.png&text=hi'), '/chat/');
 
 console.log('chat links: ok');
