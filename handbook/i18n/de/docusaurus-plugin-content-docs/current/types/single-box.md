@@ -11,7 +11,7 @@ diesem Netz erreichen ihn, sonst niemand.
 
 ## Was du bekommst \{#what-you-get}
 
-- LosOS cloud und LosOS Git unter der Adresse der Box, für alle im Netz, die
+- LosOS Cloud und LosOS Git unter der Adresse der Box, für alle im Netz, die
   ein Konto haben.
 - Die Admin-Seiten, entsperrt mit dem Passwort des Besitzers.
 - Nächtliche Selbstreparatur und Selbstaktualisierung, eine verschlüsselte

@@ -167,7 +167,7 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
   pane("apps", LayoutGridIcon, [
     "files",
     "code",
-    "nextcloud",
+    "cloud",
     "forgejo",
     "install",
     "search",

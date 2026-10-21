@@ -31,7 +31,7 @@
 # typed, on /run). None of them is ever an argument, so none is in `ps` or the
 # journal.
 #
-# WHY THE WIPE IS AT BOOT. On a running box Nextcloud, Forgejo, PostgreSQL,
+# WHY THE WIPE IS AT BOOT. On a running box LosOS Cloud, Forgejo, PostgreSQL,
 # both Kubernetes instances and lososd itself hold files open in exactly the
 # directories that have to go. Deleting them underneath live services leaves
 # half-written state behind for whatever restarts first. Early in the next
@@ -49,7 +49,7 @@ let
   enabled = config.losos.backend.package != null;
   fs = config.lososInternal.fscrypt;
   fscryptOn = config.losos.shared.fscrypt.enable;
-  ncContainer = config.losos.nextcloud.mode == "container";
+  k3s = config.services.k3s.enable;
   pg = config.services.postgresql.package;
 
   # The scripts' working directory: the job log, the last report, and the
@@ -68,13 +68,14 @@ let
   # Where everything lives. Absolute, because restic stores absolute paths
   # and a restore puts each one back where it came from.
   appDirs = [
-    "/var/lib/nextcloud"
+    "/var/lib/losos-cloud"
     "/var/lib/forgejo"
   ];
-  databases = [
-    "nextcloud"
-    "forgejo"
-  ];
+  databases = [ "forgejo" ];
+  # LosOS Cloud's database (modules/cloud.nix). SQLite in WAL mode: the live
+  # file is copied with SQLite's own backup into the staging folder, and the
+  # three files restic would read mid-write are left out of the copy.
+  cloudDb = "/var/lib/losos-cloud/cloud.db";
   proxyToken = toString config.losos.proxy.tokenFile;
 
   # Opening the fscrypt domain for the length of a copy, and closing it again
@@ -169,10 +170,11 @@ let
     pkgs.util-linux
     pkgs.systemd
     pkgs.rsync
+    pkgs.sqlite
     pg
   ]
   ++ lib.optional fscryptOn fs.package
-  ++ lib.optional ncContainer pkgs.cri-tools;
+  ++ lib.optional k3s pkgs.cri-tools;
 
   backupScript = pkgs.writeShellApplication {
     name = "losos-backup";
@@ -205,7 +207,15 @@ let
       rm -rf "$stage"
       mkdir -p "$stage/databases" "$stage/settings" "$stage/look" "$stage/identity"
 
+      if [ -f ${cloudDb} ]; then
+        echo "backup: copying LosOS Cloud's database"
+        sqlite3 ${cloudDb} ".backup '$stage/databases/cloud.db'"
+      fi
+
       if systemctl is-active --quiet postgresql.service; then
+        # One database is left on the list, so shellcheck sees a loop that
+        # runs once; it stays a loop for the next one.
+        # shellcheck disable=SC2043
         for db in ${lib.escapeShellArgs databases}; do
           if runuser -u postgres -- psql -tAc "select 1 from pg_database where datname = '$db'" | grep -cx 1 >/dev/null; then
             echo "backup: dumping the $db database"
@@ -244,7 +254,8 @@ let
 
       echo "backup: copying ''${#paths[@]} folders"
       summary=$(restic "''${s3opts[@]}" backup --json --quiet --tag losos \
-        --exclude '/var/lib/nextcloud/data/data/appdata_*/preview' \
+        --exclude '${cloudDb}' --exclude '${cloudDb}-wal' --exclude '${cloudDb}-shm' \
+        --exclude '/var/lib/losos-cloud/.previews' --exclude '/var/lib/losos-cloud/*/uploads' \
         "''${paths[@]}" | jq -c 'select(.message_type == "summary")')
       close_domain
       rm -rf "$stage"
@@ -278,17 +289,12 @@ let
       ${s3Fns}
       ${domainFns}
 
-      stopped=0
+      stopped=()
       start_apps() {
-        if [ "$stopped" = 1 ]; then
+        if [ "''${#stopped[@]}" -gt 0 ]; then
           echo "restore: starting the apps"
-          ${
-            if ncContainer then
-              "systemctl start k3s.service || true"
-            else
-              "systemctl start phpfpm-nextcloud.service nextcloud-cron.timer forgejo.service || true"
-          }
-          stopped=0
+          systemctl start "''${stopped[@]}" || true
+          stopped=()
         fi
       }
       cleanup() {
@@ -310,21 +316,18 @@ let
       staged="$out$dir/stage"
 
       echo "restore: stopping the apps"
-      stopped=1
-      ${
-        if ncContainer then
-          ''
-            # Stopping k3s leaves its pods running; stop them through the
-            # runtime so nothing writes while the files are swapped.
-            systemctl stop k3s.service || true
-            crictl --runtime-endpoint ${localCri} pods --quiet \
-              | xargs -r crictl --runtime-endpoint ${localCri} stopp || true
-          ''
-        else
-          ''
-            systemctl stop nextcloud-cron.timer phpfpm-nextcloud.service forgejo.service || true
-          ''
-      }
+      for unit in losos-cloud.service forgejo.service k3s.service; do
+        if systemctl is-active --quiet "$unit"; then
+          systemctl stop "$unit" || true
+          stopped+=("$unit")
+        fi
+      done
+      ${lib.optionalString k3s ''
+        # Stopping k3s leaves its pods running; stop them through the
+        # runtime so nothing writes while the files are swapped.
+        crictl --runtime-endpoint ${localCri} pods --quiet \
+          | xargs -r crictl --runtime-endpoint ${localCri} stopp || true
+      ''}
 
       for p in ${lib.escapeShellArgs appDirs}; do
         if [ -d "$out$p" ]; then
@@ -333,6 +336,12 @@ let
           rsync -aHAX --numeric-ids --delete "$out$p/" "$p/"
         fi
       done
+      if [ -f "$staged/databases/cloud.db" ]; then
+        echo "restore: putting back LosOS Cloud's database"
+        rm -f ${cloudDb}-wal ${cloudDb}-shm
+        install -m 0600 "$staged/databases/cloud.db" ${cloudDb}
+        chown --reference=/var/lib/losos-cloud ${cloudDb}
+      fi
 
       if systemctl is-active --quiet postgresql.service; then
         for dump in "$staged"/databases/*.pgdump; do
@@ -389,6 +398,8 @@ let
   # made, and the secrets they minted; not /nix, not /etc/nixos (the flake
   # the box builds from), not /etc/keys (what unlocks the disk).
   wipeDirs = [
+    "/persist/var/lib/losos-cloud"
+    # What a box's Nextcloud left behind once LosOS Cloud took its files in.
     "/persist/var/lib/nextcloud"
     "/persist/var/lib/forgejo"
     "/persist/var/lib/postgresql"

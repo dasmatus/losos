@@ -1,5 +1,5 @@
 {
-  description = "losos — stateless NixOS appliance: Nextcloud and Forgejo as k3s workloads, mesh storage and compute on rke2/Longhorn, auto-upgrade, midnight reboot, TPM-or-keyfile FDE";
+  description = "losos — stateless NixOS appliance: LosOS Cloud, Forgejo as a k3s workload, mesh storage and compute on rke2/Longhorn, auto-upgrade, midnight reboot, TPM-or-keyfile FDE";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -229,7 +229,7 @@
             ./modules/options.nix
             # Both systems import this. The installer medium needs the substituter
             # as much as the installed box does: the whole cost is realising
-            # the 2.3 GiB Nextcloud image during `nixos-install`.
+            # the workload images during `nixos-install`.
             ./modules/cache.nix
             ./modules/disko.nix
             ./modules/installer.nix
@@ -297,14 +297,12 @@
             # The model the widget builder asks, on loopback.
             ./modules/builder.nix
             ./modules/services.nix
-            ./modules/nextcloud-common.nix
             ./modules/containers.nix
             # The local k3s cluster + the mesh rke2 agent, and the workload
             # manifests the local cluster runs. These must be imported together
-            # with containers.nix: that file now proxies /nextcloud and
-            # /forgejo to loopback ports that only these two modules make
-            # anything listen on, so dropping either leaves the front door
-            # serving 502s.
+            # with containers.nix: that file proxies /forgejo to a loopback
+            # port that only these two modules make anything listen on, so
+            # dropping either leaves the front door serving 502s.
             ./modules/cluster.nix
             ./modules/workloads.nix
             # The fscrypt policy on the shared data domain, locked and unlocked
@@ -333,8 +331,8 @@
             # off by default): a llama.cpp RPC server the edge reaches through
             # this box's tunnel.
             ./modules/inference-lend.nix
-            # LosOS Cloud (backend/src/cloud/): files at /cloud/ and to the
-            # Nextcloud desktop and phone apps.
+            # LosOS Cloud (backend/src/cloud/): files, calendars, contacts and
+            # boards at /cloud/, and to the Nextcloud desktop and phone apps.
             ./modules/cloud.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
             # off by default): the `losos-registrar lab` helper lososd relays
@@ -454,17 +452,18 @@
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        losos-agents = import ./nix/tests/agents.nix { inherit pkgs; };
         # The banner a box off the mesh shows over every page, both states
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
-        losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         losos-mail = import ./nix/tests/mail.nix { inherit pkgs; };
         losos-mail-screens = import ./nix/tests/mail.nix {
           inherit pkgs;
           screens = true;
         };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        losos-cloud-from-nextcloud = import ./nix/tests/cloud-from-nextcloud.nix { inherit pkgs; };
         # Notes on a kitchen garden vault, and the folder published as a
         # knowledge base, on and off the mesh (nix/tests/notes.nix).
         losos-notes = import ./nix/tests/notes.nix { inherit pkgs; };
@@ -525,16 +524,6 @@
           iso = self.nixosConfigurations.iso;
           inherit (self.packages.${system}) losos-sign-iso;
         };
-        # Not a VM either: starts the Nextcloud pod's httpd and php-fpm in the
-        # build sandbox on the config text nix/images.nix bakes, against a
-        # fixture webroot, and asserts which entry point every URL shape
-        # reaches — the pretty /nextcloud/apps/<app>/ links the homepage
-        # tiles use included (nix/tests/nextcloud-httpd.nix).
-        losos-nextcloud-httpd = import ./nix/tests/nextcloud-httpd.nix { inherit pkgs; };
-        # LosOS cloud's apps managed from the Apps pane, the owner's account a
-        # standard one, and a federated share between two boxes
-        # (nix/tests/cloud-apps.nix).
-        losos-cloud-apps = import ./nix/tests/cloud-apps.nix { inherit pkgs; };
         # Not a VM: evaluates the install configuration and asserts on the
         # merged option values, so `nix flake check --no-build` turns red the
         # moment a load-bearing default drifts (nix/tests/invariants.nix).

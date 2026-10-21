@@ -10,9 +10,11 @@ use losos_access::{HostKey, SeededKey, Unlocked, UserKey};
 use miette::{GraphicalReportHandler, GraphicalTheme};
 use serde_json::{json, Value};
 
+use crate::agents::companion::{self, Companion};
+use crate::agents::{self, Desk, Found, Launch};
 use crate::cli::{
-    self, CiCommand, Cli, CloudCommand, Command, CredentialsCommand, EdgeCommand, EscrowCommand,
-    GitCommand, KeyCommand, SecretCommand,
+    self, AgentsCommand, CiCommand, Cli, CloudCommand, Command, CredentialsCommand, EdgeCommand,
+    EscrowCommand, GitCommand, KeyCommand, SecretCommand,
 };
 use crate::computer::{Computer, Service};
 use crate::envelope::{host_key_url, unreachable, Session, Transport};
@@ -177,6 +179,18 @@ fn dispatch(cli: Cli, io: &mut Io) -> Result<u8> {
             call(io, host.as_deref(), &method, &path, json.as_deref())
         }
         Some(Command::Edge { command }) => edge(io, host.as_deref(), command),
+        // An AI tool starts this; a missing keychain is a tool error, told
+        // to the agent, not a reason not to start.
+        Some(Command::Mcp) => mcp(io, host.as_deref()),
+        Some(Command::Agents {
+            command: Some(AgentsCommand::Hint),
+        }) => agents_hint(io),
+        Some(Command::Agents {
+            command: Some(AgentsCommand::Call { method, path }),
+        }) => agents_call(io, host.as_deref(), &method, &path),
+        Some(Command::Agents {
+            command: None | Some(AgentsCommand::List),
+        }) => agents_list(io),
         command => {
             io.keychain.probe()?;
             match command {
@@ -203,7 +217,26 @@ fn dispatch(cli: Cli, io: &mut Io) -> Result<u8> {
                     command: GitCommand::Credential { action },
                 }) => git_credential(io, &action),
                 Some(Command::Credentials { command }) => credentials(io, host.as_deref(), command),
-                Some(Command::Call { .. } | Command::Edge { .. }) => unreachable!("handled above"),
+                Some(Command::Agents {
+                    command: Some(AgentsCommand::Install { tools, yes }),
+                }) => agents_install(io, host.as_deref(), &tools, yes),
+                Some(Command::Agents {
+                    command: Some(AgentsCommand::Remove { tools, yes }),
+                }) => agents_remove(io, &tools, yes),
+                Some(
+                    Command::Call { .. }
+                    | Command::Edge { .. }
+                    | Command::Mcp
+                    | Command::Agents {
+                        command:
+                            None
+                            | Some(
+                                AgentsCommand::List
+                                | AgentsCommand::Hint
+                                | AgentsCommand::Call { .. },
+                            ),
+                    },
+                ) => unreachable!("handled above"),
             }
         }
     }
@@ -1274,6 +1307,446 @@ fn ci_setup(io: &mut Io, edge: &str, repo: &str, print: bool) -> Result<u8> {
         "tui.ci.rotate",
         fingerprint = group_fingerprint(&fingerprint)
     ));
+    Ok(0)
+}
+
+// ── AI agent tools ───────────────────────────────────────────────────────
+
+impl Io {
+    /// A yes or no on stderr, answered by one line on stdin. Anything but
+    /// a yes is a no, and so is the end of stdin.
+    fn ask(&mut self, question: &str) -> Result<bool> {
+        let _ = write!(self.err, "{question} [{}] ", tr!("tui.agents.yesNo"));
+        let _ = self.err.flush();
+        let line = self.read_line()?;
+        if !self.stdin_tty {
+            let _ = writeln!(self.err, "{line}");
+        }
+        let answer = line.trim().to_lowercase();
+        Ok(!answer.is_empty()
+            && (tr!("tui.agents.yesWords").split(',').any(|w| w == answer)
+                || answer == "y"
+                || answer == "yes"))
+    }
+
+    /// One line from stdin, a byte at a time so nothing after it is taken.
+    fn read_line(&mut self) -> Result<String> {
+        let mut bytes = Vec::new();
+        let mut one = [0u8; 1];
+        loop {
+            match self.stdin.read(&mut one) {
+                Ok(0) => break,
+                Ok(_) if one[0] == b'\n' => break,
+                Ok(_) => bytes.push(one[0]),
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(Problem::new("losos::stdin", e.to_string())),
+            }
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        Ok(text.trim_end_matches('\r').to_string())
+    }
+
+    fn desk(&self) -> Desk {
+        Desk {
+            env: self.env.clone(),
+        }
+    }
+
+    /// This program, by its full path, for the tools to start.
+    fn own_path(&self) -> String {
+        self.var("LOSOS_SELF").unwrap_or_else(|| {
+            std::env::current_exe()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| "losos".into())
+        })
+    }
+}
+
+fn kind_word(kind: agents::Kind) -> String {
+    tr!(match kind {
+        agents::Kind::Cli => "tui.agents.kindCli",
+        agents::Kind::App => "tui.agents.kindApp",
+    })
+}
+
+/// The tools named on the command line, or every one found.
+fn pick_tools(desk: &Desk, named: &[String]) -> Result<Vec<Found>> {
+    let found = agents::detect(desk)?;
+    if named.is_empty() {
+        return Ok(found);
+    }
+    let mut picked = Vec::new();
+    for name in named {
+        let Some(tool) = agents::tool(name) else {
+            return Err(
+                Problem::new("losos::agents", tr!("tui.agents.unknownTool", tool = name)).help(
+                    tr!(
+                        "tui.agents.knownTools",
+                        tools = agents::TOOLS
+                            .iter()
+                            .map(|t| t.id)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ),
+            );
+        };
+        if picked.iter().any(|f: &Found| f.tool.id == tool.id) {
+            continue;
+        }
+        // Named, it is taken even where it was not found: an app put
+        // somewhere LosOS does not look still reads its usual settings.
+        picked.push(match found.iter().find(|f| f.tool.id == tool.id) {
+            Some(f) => f.clone(),
+            None => Found {
+                tool,
+                program: tool.programs.iter().find_map(|p| desk.which(p)),
+                installed: false,
+            },
+        });
+    }
+    Ok(picked)
+}
+
+fn agents_list(io: &mut Io) -> Result<u8> {
+    let found = agents::detect(&io.desk())?;
+    if found.is_empty() {
+        io.line(tr!("tui.agents.noneFound"));
+        io.line(tr!(
+            "tui.agents.looksFor",
+            tools = agents::TOOLS
+                .iter()
+                .map(|t| t.name)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        return Ok(0);
+    }
+    io.line(tr!("tui.agents.found"));
+    let width = found.iter().map(|f| f.tool.name.len()).max().unwrap_or(0);
+    for f in &found {
+        let state = if f.installed {
+            tr!("tui.agents.stateIn")
+        } else if f.can_install() {
+            tr!("tui.agents.stateOut")
+        } else {
+            tr!(
+                "tui.agents.stateNoProgram",
+                program = f.tool.programs.first().copied().unwrap_or("")
+            )
+        };
+        io.line(format!(
+            "  {:<width$}  {:<14}  {:<8}  {state}",
+            f.tool.name,
+            f.tool.id,
+            kind_word(f.tool.kind),
+        ));
+    }
+    let companions = companion::list(io.keychain.as_ref()).unwrap_or_default();
+    for c in &companions {
+        io.line(tr!("tui.agents.companionFor", url = &c.url));
+    }
+    if found.iter().any(|f| !f.installed && f.can_install()) {
+        io.line(tr!("tui.agents.installHint"));
+    }
+    Ok(0)
+}
+
+fn agents_hint(io: &mut Io) -> Result<u8> {
+    let found = agents::detect(&io.desk())?;
+    if found.is_empty() || found.iter().any(|f| f.installed) {
+        return Ok(0);
+    }
+    io.line(tr!(
+        "tui.agents.hint",
+        tools = found
+            .iter()
+            .map(|f| f.tool.name)
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    Ok(0)
+}
+
+/// The box the companion reads: its URL and the certificate it is held to.
+struct Target {
+    url: String,
+    tls_pin: Option<String>,
+}
+
+/// The box `--host` names, or the only one this computer is logged in to.
+/// The companion needs no login of the terminal client's own: a box it has
+/// none for is reached by its certificate, shown to the person and kept
+/// from then on, as `losos login` keeps it.
+fn companion_target(io: &mut Io, host: Option<&str>, yes: bool) -> Result<Target> {
+    let vault = io.vault();
+    let known = match host {
+        Some(wanted) => vault.get_host(&parse_url(wanted)?)?,
+        None => Some(pick_host(&vault, None, Some(HostKind::Box))?),
+    };
+    if let Some(record) = known {
+        if record.kind != HostKind::Box {
+            return Err(Problem::new(
+                "losos::host",
+                tr!("tui.agents.notBox", url = &record.url),
+            ));
+        }
+        return Ok(Target {
+            url: record.url,
+            tls_pin: record.tls_pin,
+        });
+    }
+    let url = parse_url(host.unwrap_or_default())?;
+    let http = Http::new(Trust::FirstUse);
+    http.get(&format!("{url}/auth/api/health"), "application/json")
+        .map_err(|e| unreachable(&url, e))?;
+    let tls_pin = http.taken_certificate();
+    if let Some(pin) = &tls_pin {
+        io.line(tr!(
+            "tui.agents.certificate",
+            url = &url,
+            pin = &colon_hex(pin)
+        ));
+        if !yes && !io.ask(&tr!("tui.agents.askCertificate"))? {
+            return Err(Problem::new(
+                "losos::host",
+                tr!("tui.agents.certificateRefused"),
+            ));
+        }
+    }
+    Ok(Target { url, tls_pin })
+}
+
+/// `ab12…` as a browser's certificate viewer shows it: `AB:12:…`.
+fn colon_hex(hex: &str) -> String {
+    hex.as_bytes()
+        .chunks(2)
+        .map(|pair| String::from_utf8_lossy(pair).to_uppercase())
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+/// The companion for `host`: the one kept, when the box still takes it,
+/// else a new sign-in to LosOS Login, approved in a browser.
+fn companion_for(io: &mut Io, host: &Target) -> Result<Companion> {
+    if let Some(kept) = companion::get(io.keychain.as_ref(), &host.url)? {
+        if kept.tls_pin == host.tls_pin && link(io, &host.url)?.get("/api/me").is_ok() {
+            io.line(tr!("tui.agents.reusing", url = &host.url));
+            return Ok(kept);
+        }
+    }
+    let http = companion::http_for(host.tls_pin.as_deref());
+    let code = companion::start(&http, &host.url)?;
+    io.line(tr!("tui.agents.signIn", url = &host.url));
+    io.line(format!("  {}", code.link()));
+    io.line(tr!("tui.agents.signInCode", code = &code.user_code));
+    let made = companion::finish(
+        &http,
+        &host.url,
+        host.tls_pin.as_deref(),
+        &code,
+        losos_access::now_secs,
+    )?;
+    companion::put(io.keychain.as_ref(), &made)?;
+    io.line(tr!("tui.agents.signedIn", url = &host.url));
+    Ok(made)
+}
+
+/// The calls the companion makes to `url`, with its kept sign-in.
+fn link(io: &Io, url: &str) -> Result<companion::Link> {
+    Ok(companion::Link::new(
+        io.keychain.clone(),
+        url,
+        io.desk().companion_dir()?.join("refresh.lock"),
+        losos_access::now_secs,
+    ))
+}
+
+fn agents_install(io: &mut Io, host: Option<&str>, named: &[String], yes: bool) -> Result<u8> {
+    let desk = io.desk();
+    let found = pick_tools(&desk, named)?;
+    if found.is_empty() {
+        io.line(tr!("tui.agents.noneFound"));
+        return Ok(0);
+    }
+    let mut chosen = Vec::new();
+    for f in found {
+        if !f.can_install() {
+            io.line(tr!(
+                "tui.agents.skipNoProgram",
+                tool = f.tool.name,
+                program = f.tool.programs.first().copied().unwrap_or("")
+            ));
+            continue;
+        }
+        let question = tr!(
+            if f.installed {
+                "tui.agents.askAgain"
+            } else {
+                "tui.agents.ask"
+            },
+            tool = f.tool.name
+        );
+        if yes || io.ask(&question)? {
+            chosen.push(f);
+        }
+    }
+    if chosen.is_empty() {
+        io.line(tr!("tui.agents.nothingChanged"));
+        return Ok(0);
+    }
+    let target = companion_target(io, host, yes)?;
+    companion_for(io, &target)?;
+    let launch = Launch::for_host(&io.own_path(), &target.url);
+    let mut failed = 0;
+    for f in &chosen {
+        match agents::install(&desk, f, &launch) {
+            Ok(done) => {
+                io.line(tr!("tui.agents.installed", tool = f.tool.name));
+                for path in &done.backups {
+                    io.line(tr!(
+                        "tui.agents.backedUp",
+                        path = path.display().to_string()
+                    ));
+                }
+            }
+            Err(problem) => {
+                failed += 1;
+                report(io, &problem);
+            }
+        }
+    }
+    io.line(tr!("tui.agents.restart"));
+    io.line(tr!("tui.agents.removeHint"));
+    Ok(u8::from(failed > 0))
+}
+
+fn agents_remove(io: &mut Io, named: &[String], yes: bool) -> Result<u8> {
+    let desk = io.desk();
+    let found: Vec<Found> = pick_tools(&desk, named)?
+        .into_iter()
+        .filter(|f| f.installed || !named.is_empty())
+        .collect();
+    let mut failed = 0;
+    let mut removed = 0;
+    for f in &found {
+        if !yes && !io.ask(&tr!("tui.agents.askRemove", tool = f.tool.name))? {
+            continue;
+        }
+        match agents::remove(&desk, f) {
+            Ok(done) => {
+                removed += 1;
+                io.line(tr!("tui.agents.removed", tool = f.tool.name));
+                for path in &done.backups {
+                    io.line(tr!(
+                        "tui.agents.backedUp",
+                        path = path.display().to_string()
+                    ));
+                }
+            }
+            Err(problem) => {
+                failed += 1;
+                report(io, &problem);
+            }
+        }
+    }
+    if removed == 0 && failed == 0 {
+        io.line(tr!("tui.agents.nothingChanged"));
+    }
+    // With the companion in no tool, its sign-in has no use left.
+    if !agents::detect(&desk)?.iter().any(|f| f.installed) {
+        for c in &companion::list(io.keychain.as_ref())? {
+            let ended = companion::sign_out(c);
+            companion::forget(io.keychain.as_ref(), &c.url)?;
+            io.line(tr!(
+                if ended {
+                    "tui.agents.forgot"
+                } else {
+                    "tui.agents.forgotOffline"
+                },
+                url = &c.url
+            ));
+        }
+    }
+    Ok(u8::from(failed > 0))
+}
+
+/// The companion kept for `host`, or the only one kept.
+fn kept_companion(keychain: &dyn Keychain, host: Option<&str>) -> Result<Companion> {
+    let wanted = host.map(parse_url).transpose()?;
+    let all = companion::list(keychain)?;
+    let chosen = match &wanted {
+        Some(url) => all.into_iter().find(|c| &c.url == url),
+        None if all.len() == 1 => all.into_iter().next(),
+        None => None,
+    };
+    chosen.ok_or_else(|| {
+        Problem::new(
+            "losos::agents",
+            tr!(
+                "tui.agents.noCompanion",
+                url = wanted.as_deref().unwrap_or("?")
+            ),
+        )
+        .help(tr!("tui.agents.noCompanionHelp"))
+    })
+}
+
+/// `losos agents call`: one call as the companion makes it, as `losos
+/// call` makes one with the owner's key.
+fn agents_call(io: &mut Io, host: Option<&str>, method: &str, path: &str) -> Result<u8> {
+    let url = kept_companion(io.keychain.as_ref(), host)?.url;
+    let answer = link(io, &url)?.request(method, path, Value::Null)?;
+    let _ = writeln!(io.err, "{}", answer.status);
+    io.line(show(&answer.body));
+    Ok(if answer.ok() { 0 } else { 1 })
+}
+
+/// Where the session bus is when nothing says: `$XDG_RUNTIME_DIR/bus`, or
+/// `/run/user/<uid>/bus`, where systemd puts it.
+fn session_bus(env: &HashMap<String, String>) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    let dir = match env.get("XDG_RUNTIME_DIR").filter(|d| !d.is_empty()) {
+        Some(dir) => std::path::PathBuf::from(dir),
+        None => {
+            let uid = std::fs::metadata("/proc/self").ok()?.uid();
+            std::path::PathBuf::from(format!("/run/user/{uid}"))
+        }
+    };
+    let bus = dir.join("bus");
+    bus.exists().then(|| format!("unix:path={}", bus.display()))
+}
+
+/// `losos mcp`: serve the companion's tools on stdin and stdout.
+fn mcp(io: &mut Io, host: Option<&str>) -> Result<u8> {
+    // An AI tool may start the server with a few variables only (Codex
+    // passes HOME, PATH and little else), and none of them says where the
+    // session bus is, which the keychain is reached over. It is where
+    // systemd puts it, then. Nothing else runs yet to see the change.
+    if io.var("DBUS_SESSION_BUS_ADDRESS").is_none() {
+        if let Some(bus) = session_bus(&io.env) {
+            tracing::debug!(%bus, "no session bus in the environment");
+            std::env::set_var("DBUS_SESSION_BUS_ADDRESS", &bus);
+            io.env.insert("DBUS_SESSION_BUS_ADDRESS".into(), bus);
+        }
+    }
+    let keychain = io.keychain.clone();
+    let host = host.map(str::to_string);
+    let lock = io.desk().companion_dir()?.join("refresh.lock");
+    let connect = move || -> Result<Box<dyn Transport>> {
+        let url = kept_companion(keychain.as_ref(), host.as_deref())?.url;
+        Ok(Box::new(companion::Link::new(
+            keychain.clone(),
+            &url,
+            lock.clone(),
+            losos_access::now_secs,
+        )))
+    };
+    let mut server = agents::mcp::Server::new(Box::new(connect));
+    let input = io::BufReader::new(&mut io.stdin);
+    server
+        .serve(input, &mut io.out)
+        .map_err(|e| Problem::new("losos::mcp", e.to_string()))?;
     Ok(0)
 }
 

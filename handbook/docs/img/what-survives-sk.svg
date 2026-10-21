@@ -36,7 +36,7 @@
   <rect x="580" y="40" width="380" height="380" rx="10" fill="#0e6e7d"/>
   <text x="598" y="70" font-weight="650" fill="#ffffff">/persist   šifrovaný, odomyká ho TPM</text>
   <text x="598" y="92" fill="#e2eff1" font-size="13">každý adresár sa pripojí späť na svoje miesto</text>
-  <text x="598" y="137" font-size="13" fill="#ffffff">LosOS cloud: vaše súbory, fotky, databáza</text>
+  <text x="598" y="137" font-size="13" fill="#ffffff">LosOS Cloud: vaše súbory, fotky, databáza</text>
   <text x="598" y="167" font-size="13" fill="#ffffff">miesto požičané sieti mesh, šifrované zvlášť</text>
   <text x="598" y="197" font-size="13" fill="#ffffff">LosOS Git, stav zariadenia, oba klastre, logy</text>
   <text x="598" y="227" font-size="13" fill="#ffffff">samotný systém, každá verzia v ponuke štartu</text>

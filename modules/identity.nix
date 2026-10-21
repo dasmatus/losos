@@ -48,6 +48,17 @@
 #
 # The portal is Authelia's own web app built with the LosOS palette, logo
 # and name (admin-ui/themes/default.nix, `authelia`).
+#
+# LosOS Login is also the OAuth provider of one client, the LosOS companion
+# in people's AI tools (`losos agents install`, backend/src/companion.rs).
+# It signs in with the device code flow: the terminal shows a link and a
+# code, the person approves it here with their password, their second
+# factor when they have one, and a consent page, and the companion gets an
+# access token for an hour and a refresh token for 30 days. Its calls come
+# as `Authorization: Bearer authelia_at_…`, which nginx passes on like the
+# spare key, and lososd asks LosOS Login about each token (introspection,
+# as the confidential client `lososd`) and lets it read a few routes as
+# that person. The keys and both secrets are made here on first start.
 {
   config,
   lib,
@@ -73,11 +84,15 @@ let
   user = "authelia-losos";
   dir = "/var/lib/losos-identity";
   peopleFile = "${dir}/users.yml";
-  # Where an older build kept Authelia's three secrets as plaintext; the
-  # credential store adopts them from here (modules/credentials.nix).
-  legacySecrets = "/var/secrets/losos-identity";
+  # Where an older build kept Authelia's secrets as plaintext; the
+  # credential store adopts them from here (modules/credentials.nix). Only
+  # the digest of lososd's client secret stays: it is a hash, not a secret.
+  secretsDir = "/var/secrets/losos-identity";
   runDir = "/run/losos-identity";
   sessionFile = "${runDir}/session.yml";
+  # lososd's own OAuth client secret, and the hash LosOS Login checks it by.
+  lososdSecret = "${secretsDir}/oidc-lososd";
+  lososdDigest = "${secretsDir}/oidc-lososd.digest";
   # Where LosOS Login keeps its sessions: a Redis of its own, on a socket
   # only Authelia's group opens. Authelia's in-memory store keys a session
   # by a string that shares bytes with the request buffer, so the next
@@ -130,7 +145,7 @@ let
     cp ${pkgs.writeText "held.html" (
       page "held" "Finish your account first" ''
         <h1>Finish your account first</h1>
-        <p>This box asks something of your account before you can use LosOS cloud and LosOS Git: a second step at sign-in, or a new password. Open <a href="/settings/account">Your account</a> in the box's admin pages, on the box's own network.</p>
+        <p>This box asks something of your account before you can use LosOS Cloud and LosOS Git: a second step at sign-in, or a new password. Open <a href="/settings/account">Your account</a> in the box's admin pages, on the box's own network.</p>
         <p lang="sk">Toto zariadenie od vášho účtu najprv niečo žiada: druhý krok pri prihlásení alebo nové heslo. Otvorte Váš účet na stránkach správy zariadenia, v jeho sieti.</p>
         <p lang="de">Diese Box verlangt zuerst etwas von deinem Konto: einen zweiten Schritt bei der Anmeldung oder ein neues Passwort. Öffne Dein Konto auf den Verwaltungsseiten der Box, in ihrem eigenen Netz.</p>
       ''
@@ -141,7 +156,7 @@ let
   # claimed the box and their sign-in name for everyone else
   # (modules/app-sign-in.nix).
   appMaps = ''
-    # Where a request comes from, for LosOS cloud's share below: the LAN,
+    # Where a request comes from, for LosOS Cloud's share below: the LAN,
     # or anywhere else (the tunnel arrives from 127.0.0.1). The ranges are
     # lanOnly's (modules/lan-only.nix).
     geo $losos_lan {
@@ -151,7 +166,7 @@ let
       172.16.0.0/12 1;
       192.168.0.0/16 1;
     }
-    # LosOS cloud's share (`/internal/losos-cloud-share`): the client's
+    # LosOS Cloud's share (`/internal/losos-cloud-share`): the client's
     # own credentials go on unless lososd named the person they are for.
     map $losos_user $losos_share_authorization {
       "" $http_authorization;
@@ -159,8 +174,7 @@ let
     }
     map $uri $losos_app_back {
       ~^/forgejo/ /forgejo/user/login;
-      ~^/cloud/ $request_uri;
-      default /nextcloud/login;
+      default $request_uri;
     }
     map "$losos_groups|$losos_user" $losos_app_user {
       "~(^|,)\s*${signIn.ownerGroup}\s*(,|\|)" ${signIn.ownerAccount};
@@ -181,8 +195,7 @@ let
 
   signIn = import ./app-sign-in.nix { inherit lib; };
   appSignIn = config.lososInternal.appSignIn;
-  anyAppSignIn = appSignIn.nextcloud || appSignIn.forgejo || appSignIn.cloud;
-  nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
+  anyAppSignIn = appSignIn.forgejo || appSignIn.cloud;
 
   # Ask Authelia about the request nginx is handling, as the /api/
   # question below does.
@@ -197,7 +210,7 @@ let
   # Only these may open a connection to `port` on loopback: root, nginx and
   # the app's own uid. The same owner match as lososd's port
   # (modules/daemon.nix says why a match on OUTPUT and not a socket), here
-  # because both apps take the person from a header: a Helm app on the host
+  # because the app takes the person from a header: a Helm app on the host
   # network could otherwise name anyone it liked.
   loopbackRule =
     port: uid:
@@ -210,10 +223,8 @@ let
       ++ lib.optional config.services.nginx.enable "-m owner ! --uid-owner ${config.services.nginx.user}"
       ++ [ "-j REJECT --reject-with tcp-reset" ]
     );
-  loopbackRules =
-    lib.optional appSignIn.nextcloud (loopbackRule config.losos.nextcloud.apachePort nc.uid)
-    # modules/workloads.nix: Forgejo's literal port and its pinned uid.
-    ++ lib.optional appSignIn.forgejo (loopbackRule 3000 1003);
+  # modules/workloads.nix: Forgejo's literal port and its pinned uid.
+  loopbackRules = lib.optional appSignIn.forgejo (loopbackRule 3000 1003);
 
   package = pkgs.authelia.override {
     authelia-web = themes.authelia.web pkgs.authelia.web;
@@ -285,11 +296,11 @@ let
           echo "      default_redirection_url: 'https://$n/'"
         done
         # The admin pages answer on the LAN only, so from outside a sign-in
-        # with nowhere else to go lands in LosOS cloud.
+        # with nowhere else to go lands in LosOS Cloud.
         for n in $(printf '%s\n' "''${public[@]}" | sort -u); do
           echo "    - domain: '$n'"
           echo "      authelia_url: 'https://$n/auth'"
-          echo "      default_redirection_url: 'https://$n/nextcloud/'"
+          echo "      default_redirection_url: 'https://$n/cloud/'"
         done
       } > "$tmp"
       chgrp ${user} "$tmp"
@@ -314,16 +325,28 @@ in
     services.authelia.instances.losos = {
       enable = true;
       inherit package;
-      # The three secrets are credentials (below): systemd opens them into
-      # the unit's credential directory, and Authelia reads them from there
-      # through its `_FILE` variables.
+      # Every secret is a credential (below): systemd opens them into the
+      # unit's credential directory, and Authelia reads them from there
+      # through its `_FILE` variables and, for the signing key, a template.
       secrets.manual = true;
       environmentVariables = {
         AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE = "%d/authelia-jwt";
         AUTHELIA_SESSION_SECRET_FILE = "%d/authelia-session";
         AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE = "%d/authelia-storage";
+        AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET_FILE = "%d/authelia-oidc-hmac";
+        X_AUTHELIA_CONFIG_FILTERS = "template";
       };
-      settingsFiles = [ sessionFile ];
+      settingsFiles = [
+        sessionFile
+        # The signing key, from the credential directory. secrets.manual
+        # drops the module's own copy of this file.
+        (pkgs.writeText "oidc-jwks.yaml" ''
+          identity_providers:
+            oidc:
+              jwks:
+                - key: {{ mustEnv "CREDENTIALS_DIRECTORY" | printf "%s/authelia-oidc-jwks" | secret | mindent 10 "|" | msquote }}
+        '')
+      ];
       settings = {
         theme = "auto";
         server = {
@@ -337,7 +360,7 @@ in
           password_reset.disable = true;
           password_change.disable = true;
           # Look the person up on every request, not every five minutes: a
-          # person removed on the Users pane loses LosOS cloud and LosOS Git
+          # person removed on the Users pane loses LosOS Cloud and LosOS Git
           # at their next click, and a changed group reaches nginx at once.
           # The file backend keeps everyone in memory, so it costs nothing.
           refresh_interval = "always";
@@ -349,7 +372,7 @@ in
         # Everyone with an account may pass; lososd decides what each person
         # may do (backend/sections.json). Two marks lososd keeps in the people
         # file come first (backend/src/login.rs): a person a rule holds to
-        # their own account gets no LosOS cloud or LosOS Git, and a person
+        # their own account gets no LosOS Cloud or LosOS Git, and a person
         # with an authenticator app or a passkey is asked for it.
         access_control = {
           default_policy = "deny";
@@ -394,6 +417,66 @@ in
         };
         storage.local.path = "/var/lib/authelia-losos/db.sqlite3";
         notifier.filesystem.filename = "/var/lib/authelia-losos/notifications.txt";
+        # The LosOS companion (see the header). The client ids are
+        # losos_access::COMPANION_CLIENT_ID and backend/src/companion.rs.
+        identity_providers.oidc = {
+          lifespans.custom.companion = {
+            access_token = "1h";
+            refresh_token = "30d";
+          };
+          # The same two marks as access_control above: a person held to
+          # their own account gets no companion, and a person with a second
+          # factor approves it with that factor.
+          authorization_policies.losos = {
+            default_policy = "one_factor";
+            rules = [
+              {
+                policy = "deny";
+                subject = "group:losos-locked";
+              }
+              {
+                policy = "two_factor";
+                subject = "group:losos-two-factor";
+              }
+            ];
+          };
+          clients = [
+            {
+              client_id = "losos-companion";
+              client_name = "LosOS companion";
+              public = true;
+              token_endpoint_auth_method = "none";
+              authorization_policy = "losos";
+              lifespan = "companion";
+              consent_mode = "explicit";
+              grant_types = [
+                "urn:ietf:params:oauth:grant-type:device_code"
+                "refresh_token"
+              ];
+              response_types = [ ];
+              redirect_uris = [ ];
+              scopes = [
+                "openid"
+                "profile"
+                "offline_access"
+              ];
+            }
+            {
+              # Introspection only: lososd asks about the companion's tokens.
+              client_id = "lososd";
+              client_name = "lososd";
+              client_secret = ''{{ mustEnv "CREDENTIALS_DIRECTORY" | printf "%s/oidc-lososd-digest" | secret }}'';
+              public = false;
+              token_endpoint_auth_method = "client_secret_basic";
+              introspection_endpoint_auth_method = "client_secret_basic";
+              authorization_policy = "one_factor";
+              grant_types = [ "client_credentials" ];
+              response_types = [ ];
+              redirect_uris = [ ];
+              scopes = [ ];
+            }
+          ];
+        };
       };
     };
 
@@ -409,14 +492,50 @@ in
     systemd.services.losos-identity-setup = {
       description = "Prepare sign-in: the session domains";
       wantedBy = [ "multi-user.target" ];
-      before = [ "authelia-losos.service" ];
-      after = [ "network.target" ];
+      # lososd too: it reads the client secret this unit may make again.
+      before = [
+        "authelia-losos.service"
+        "lososd.service"
+      ];
+      after = [
+        "network.target"
+        "losos-credentials.service"
+      ];
+      wants = [ "losos-credentials.service" ];
       serviceConfig = {
         Type = "oneshot";
         UMask = "0077";
       };
-      path = [ pkgs.coreutils ];
+      path = [
+        pkgs.coreutils
+        pkgs.gnused
+        package
+      ];
       script = ''
+        install -d -m 0700 ${secretsDir}
+        # lososd's client secret is a credential, the digest LosOS Login
+        # checks it by a file beside the old secrets. They are made together,
+        # so the secret is never on a command line. Whenever the sealed
+        # secret is missing or newer than the digest (the store made or
+        # adopted it at boot), both are made again here and the secret is
+        # sealed in place; lososd, ordered after this unit, reads the new one.
+        blob=/etc/credstore.encrypted/oidc-lososd
+        if [ ! -s ${lososdDigest} ] || [ ! -s "$blob" ] || [ "$blob" -nt ${lososdDigest} ]; then
+          made=$(authelia crypto hash generate pbkdf2 --variant sha512 \
+            --random --random.length 64)
+          printf '%s' "$made" | sed -n 's/^Random Password: //p' | tr -d '\n' \
+            | systemd-creds --no-ask-password --with-key="$(cat /run/losos-credentials/key)" \
+              --tpm2-pcrs= --name=oidc-lososd encrypt - "$blob.new"
+          printf '%s' "$made" | sed -n 's/^Digest: //p' | tr -d '\n' > ${lososdDigest}.tmp
+          [ -s "$blob.new" ] && [ -s ${lososdDigest}.tmp ]
+          chmod 0600 "$blob.new"
+          mv -f "$blob.new" "$blob"
+          mv -f ${lososdDigest}.tmp ${lososdDigest}
+          if systemctl -q is-active lososd.service; then
+            systemctl --no-block try-restart lososd.service authelia-losos.service
+          fi
+        fi
+        fi
         # lososd writes the people file here; Authelia reads it.
         install -d -m 0750 -o root -g ${user} ${dir}
         ${lib.getExe renderSession}
@@ -449,7 +568,7 @@ in
         format = "hex-64";
         services = [ "authelia-losos" ];
         rotate = true;
-        legacy = [ "${legacySecrets}/jwt" ];
+        legacy = [ "${secretsDir}/jwt" ];
       };
       authelia-session = {
         app = "login";
@@ -457,7 +576,7 @@ in
         format = "hex-64";
         services = [ "authelia-losos" ];
         rotate = true;
-        legacy = [ "${legacySecrets}/session" ];
+        legacy = [ "${secretsDir}/session" ];
       };
       # Not rotatable from the pane: Authelia encrypts its database with it,
       # and a new key without `authelia storage encryption change-key` is a
@@ -467,7 +586,31 @@ in
         description = "Encrypts what LosOS Login stores: second factors and passkeys.";
         format = "hex-64";
         services = [ "authelia-losos" ];
-        legacy = [ "${legacySecrets}/storage" ];
+        legacy = [ "${secretsDir}/storage" ];
+      };
+      # Signs the companion's tokens; a new one would sign every companion
+      # out, so the pane leaves both alone.
+      authelia-oidc-hmac = {
+        app = "login";
+        description = "Signs the tokens LosOS Login gives the AI agent companion.";
+        format = "hex-64";
+        services = [ "authelia-losos" ];
+        legacy = [ "${secretsDir}/oidc-hmac" ];
+      };
+      authelia-oidc-jwks = {
+        app = "login";
+        description = "The private key LosOS Login signs its identity tokens with.";
+        format = "rsa-2048";
+        services = [ "authelia-losos" ];
+        legacy = [ "${secretsDir}/oidc-jwks.pem" ];
+      };
+      # Made again with its digest by losos-identity-setup above.
+      oidc-lososd = {
+        app = "login";
+        description = "lososd's own secret for asking LosOS Login about a companion token.";
+        format = "hex-64";
+        services = [ "lososd" ];
+        legacy = [ lososdSecret ];
       };
     };
 
@@ -478,6 +621,7 @@ in
       ];
       wants = [ "losos-identity-setup.service" ];
       requires = [ "redis-${sessionRedis}.service" ];
+      serviceConfig.LoadCredential = [ "oidc-lososd-digest:${lososdDigest}" ];
       # Not before the claim: see the header.
       unitConfig.ConditionPathExists = peopleFile;
     };
@@ -498,6 +642,9 @@ in
       LOSOS_IDENTITY = "authelia";
       LOSOS_AUTHELIA_DB = "/var/lib/authelia-losos/db.sqlite3";
       LOSOS_AUTHELIA_NOTES = "/var/lib/authelia-losos/notifications.txt";
+      # How lososd asks LosOS Login about a companion token.
+      LOSOS_LOGIN_ADDR = "127.0.0.1:${toString port}";
+      LOSOS_OIDC_SECRET_FILE = "%d/oidc-lososd";
     };
 
     # The scheme the person's browser used. The edge ends TLS and sends the
@@ -540,10 +687,10 @@ in
           '';
         };
         "@losos-app-nobody".extraConfig = "return 200;";
-        # Whose request to LosOS cloud's share this is (backend/src/cloud_share.rs):
+        # Whose request to LosOS Cloud's share this is (backend/src/cloud_share.rs):
         # lososd checks a LosOS Login name and password in the Basic header
         # and names the person, or names nobody and the request goes on as it
-        # came. Never a refusal, so app passwords and LosOS cloud's own
+        # came. Never a refusal, so app passwords and LosOS Cloud's own
         # accounts keep working, off the LAN and while lososd is down too.
         "= /internal/losos-cloud-share" = {
           proxyPass = "http://127.0.0.1:${toString apiPort}/internal/cloud-share";
@@ -620,8 +767,9 @@ in
           proxyPass = "http://127.0.0.1:${toString port}/auth/api/health";
         };
         # The question nginx asks before every /api/ request. A Bearer
-        # header is the spare key or a token lososd checks itself, so it
-        # skips Authelia and the box stays reachable when Authelia is down.
+        # header is the spare key, or a LosOS companion token that lososd
+        # asks LosOS Login about itself, so it skips this question and the
+        # box stays reachable with the spare key when Authelia is down.
         "= /internal/losos-authz" = {
           proxyPass = "http://127.0.0.1:${toString port}/auth/api/authz/auth-request";
           extraConfig = ''

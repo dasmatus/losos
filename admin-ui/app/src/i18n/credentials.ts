@@ -103,7 +103,6 @@ export default defineMessages({
   "credentials.app.login": { en: "LosOS Login", sk: "LosOS Login", de: "LosOS Login" },
   "credentials.app.mail": { en: "LosOS Mail", sk: "LosOS Mail", de: "LosOS Mail" },
   "credentials.app.backup": { en: "Backups", sk: "Zálohy", de: "Sicherungen" },
-  "credentials.app.cloud": { en: "LosOS Cloud", sk: "LosOS Cloud", de: "LosOS Cloud" },
 
   // ── Each credential ─────────────────────────────────────────────────────
   "credentials.name.adminToken.title": { en: "Spare key", sk: "Náhradný kľúč", de: "Ersatzschlüssel" },
@@ -184,19 +183,49 @@ export default defineMessages({
     sk: "Zmeňte ich v časti Záloha.",
     de: "Ändere sie im Bereich Sicherung.",
   },
-  "credentials.name.nextcloudAdminPass.title": {
-    en: "Administrator password",
-    sk: "Heslo správcu",
-    de: "Administratorpasswort",
+  "credentials.name.autheliaOidcHmac.title": {
+    en: "Companion tokens",
+    sk: "Tokeny pomocníka",
+    de: "Tokens des Begleiters",
   },
-  "credentials.name.nextcloudAdminPass.detail": {
-    en: "The password LosOS Cloud was installed with. Nobody signs in with it.",
-    sk: "Heslo, s ktorým bol LosOS Cloud nainštalovaný. Nikto sa ním neprihlasuje.",
-    de: "Das Passwort, mit dem LosOS Cloud installiert wurde. Niemand meldet sich damit an.",
+  "credentials.name.autheliaOidcHmac.detail": {
+    en: "Signs the tokens LosOS Login gives the AI agent companion. A new one would sign every companion out.",
+    sk: "Podpisuje tokeny, ktoré LosOS Login dáva pomocníkovi pre nástroje AI. Nový by odhlásil každého pomocníka.",
+    de: "Signiert die Tokens, die LosOS Login dem Begleiter für KI-Werkzeuge gibt. Ein neues würde jeden Begleiter abmelden.",
   },
-  "credentials.name.nextcloudAdminPass.rotate": {
-    en: "LosOS Cloud keeps the password it was installed with.",
-    sk: "LosOS Cloud si ponechá heslo, s ktorým bol nainštalovaný.",
-    de: "LosOS Cloud behält das Passwort, mit dem es installiert wurde.",
+  "credentials.name.autheliaOidcHmac.rotate": {
+    en: "Every AI agent companion is signed out.",
+    sk: "Každý pomocník pre nástroje AI sa odhlási.",
+    de: "Jeder Begleiter für KI-Werkzeuge wird abgemeldet.",
+  },
+  "credentials.name.autheliaOidcJwks.title": {
+    en: "Signing key",
+    sk: "Podpisový kľúč",
+    de: "Signaturschlüssel",
+  },
+  "credentials.name.autheliaOidcJwks.detail": {
+    en: "The private key LosOS Login signs who someone is with, for the companion.",
+    sk: "Súkromný kľúč, ktorým LosOS Login pre pomocníka podpisuje, kto kto je.",
+    de: "Der private Schlüssel, mit dem LosOS Login für den Begleiter signiert, wer jemand ist.",
+  },
+  "credentials.name.autheliaOidcJwks.rotate": {
+    en: "Every AI agent companion is signed out.",
+    sk: "Každý pomocník pre nástroje AI sa odhlási.",
+    de: "Jeder Begleiter für KI-Werkzeuge wird abgemeldet.",
+  },
+  "credentials.name.oidcLososd.title": {
+    en: "Admin pages' own key",
+    sk: "Vlastný kľúč stránok správy",
+    de: "Eigener Schlüssel der Verwaltung",
+  },
+  "credentials.name.oidcLososd.detail": {
+    en: "How the admin pages ask LosOS Login whether a companion's token is still good. Made again on its own when needed.",
+    sk: "Ním sa stránky správy pýtajú LosOS Login, či je token pomocníka ešte platný. V prípade potreby sa vytvorí znova sám.",
+    de: "Damit fragt die Verwaltung LosOS Login, ob das Token eines Begleiters noch gilt. Wird bei Bedarf von selbst neu erzeugt.",
+  },
+  "credentials.name.oidcLososd.rotate": {
+    en: "The admin pages restart.",
+    sk: "Stránky správy sa reštartujú.",
+    de: "Die Verwaltung startet neu.",
   },
 });

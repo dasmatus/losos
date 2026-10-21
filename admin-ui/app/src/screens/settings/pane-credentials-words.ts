@@ -15,7 +15,9 @@ const KNOWN = {
   "authelia-storage": "credentials.name.autheliaStorage",
   "mail-master": "credentials.name.mailMaster",
   "backup-bucket": "credentials.name.backupBucket",
-  "nextcloud-admin-pass": "credentials.name.nextcloudAdminPass",
+  "authelia-oidc-hmac": "credentials.name.autheliaOidcHmac",
+  "authelia-oidc-jwks": "credentials.name.autheliaOidcJwks",
+  "oidc-lososd": "credentials.name.oidcLososd",
 } as const satisfies Record<string, string>;
 
 type KnownName = keyof typeof KNOWN;
@@ -44,11 +46,10 @@ const APPS = {
   login: "credentials.app.login",
   mail: "credentials.app.mail",
   backup: "credentials.app.backup",
-  cloud: "credentials.app.cloud",
 } as const satisfies Record<string, MessageKey>;
 
 /** The order the groups come in: the box's own way in first. */
-export const APP_ORDER: readonly string[] = ["admin", "login", "mail", "cloud", "backup"];
+export const APP_ORDER: readonly string[] = ["admin", "login", "mail", "backup"];
 
 export function appTitle(app: string): string {
   return Object.prototype.hasOwnProperty.call(APPS, app)

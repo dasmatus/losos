@@ -35,11 +35,8 @@ Inštalátor vytvorí náhodný kľúč, naformátuje ním zväzok a potom kľú
 zapečatí do TPM pomocou `systemd-cryptenroll`. Pri štarte si initrd vypýta
 kľúč od čipu a otvorí zväzok. Bootovací oddiel nenesie žiadne tajomstvo.
 
-Zariadenie do čipu zapečatí aj dve menšie tajomstvá:
+Zariadenie do čipu zapečatí aj menšie tajomstvo:
 
-- Tajomstvá, ktoré si zariadenie vytvára samo, napríklad prvé
-  administrátorské heslo Nextcloudu (`modules/keyring.nix`, cez
-  `systemd-creds`).
 - Kľúč, ktorý šifruje adresár úložiska pre mesh (`modules/fscrypt.nix`).
 
 :::note[Záložná kópia kľúča]
@@ -63,12 +60,10 @@ Má to dva dôsledky.
    vymazania. V každom z týchto prípadov si ten, kto ho číta, pripojí ESP,
    skopíruje kľúč z initrd a otvorí zväzok. Stačia na to
    bežné linuxové nástroje a pár minút. Odhalí to súbory vlastníka
-   v LosOS cloud, repozitáre v LosOS Git, admin kľúč a zvyšok `/persist`.
-2. Vlastné tajomstvá zariadenia prídu o svoj čip. Keyring sa vráti
-   k hostiteľskému kľúču `systemd-creds` a kľúč úložiska pre mesh
-   k obyčajnému súboru na `/var/secrets/losos-shared-key`. Oba ležia na tom
-   istom zväzku ako dáta, ktoré chránia. Kópia `/persist`, ktorá opustí
-   zariadenie, si kľúče vezme so sebou, a chyba, ktorá službe dovolí čítať
+   v LosOS Cloud, repozitáre v LosOS Git, admin kľúč a zvyšok `/persist`.
+2. Kľúč úložiska pre mesh príde o svoj čip a vráti sa k obyčajnému súboru
+   na `/var/secrets/losos-shared-key`, na tom istom zväzku ako dáta, ktoré
+   chráni. Kópia `/persist`, ktorá opustí zariadenie, si kľúč vezme so sebou, a chyba, ktorá službe dovolí čítať
    ľubovoľný súbor ako root, prečíta obe polovice.
 
 Sieťová strana sa nemení. LAN guard, prihlasovanie, tunel, hardening

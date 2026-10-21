@@ -30,8 +30,9 @@ zariadenie vo vašej LAN.
 **Režim s keyfile.** Režim odomykania disku pre počítače bez TPM. Kľúč leží
 na bootovacom oddiele.
 
-**LosOS cloud.** Nextcloud vo farbách zariadenia: súbory, fotky, kalendár,
-kontakty, poznámky, úlohy.
+**LosOS Cloud.** Vlastná súborová služba zariadenia: súbory, fotky,
+kalendáre, kontakty a tabule, s ktorou sa synchronizujú aplikácie Nextcloud
+pre počítač a telefón.
 
 **LosOS Git.** Forgejo vo farbách zariadenia: repozitáre.
 
@@ -53,7 +54,7 @@ sú prestavby.
 zabrať z panela Úložisko.
 
 **Náhradný správcovský kľúč.** Kľúč so 64 znakmi, ktorý sprievodca ukáže
-raz, na odomknutie admin stránok, keď LosOS cloud nemôže overiť heslo.
+raz, na odomknutie admin stránok, keď LosOS Login nemôže overiť heslo.
 
 **TPM.** Bezpečnostný čip vo firmvéri počítača, ktorý v predvolenom režime
 odomykania drží kľúč disku.

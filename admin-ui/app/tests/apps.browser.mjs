@@ -24,12 +24,9 @@ if (SHOTS !== null) await mkdir(SHOTS, { recursive: true });
 
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   forgejoMode: 'container',
   hostName: 'mattbox',
-  https: false,
   gpuEnable: false,
-  apachePort: 80,
   proxyEnable: false,
   clusterEnable: false,
   shareCompute: false,
@@ -103,30 +100,10 @@ const CHART = {
 const json = (route, status, body) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
-/* LosOS cloud's own apps (GET /api/cloud/apps): two built in, one Nextcloud
- * keeps on, one LosOS keeps for signing in, two LosOS bundles and one added
- * from the store. */
-const CLOUD_APPS = [
-  { id: 'files', name: 'Files', summary: 'File management', version: '2.0.0', kind: 'core', enabled: true, locked: { by: 'nextcloud' } },
-  { id: 'activity', name: 'Activity', summary: 'What happened to your files', version: '3.0.0', kind: 'core', enabled: true, locked: null },
-  { id: 'calendar', name: 'Calendar', summary: 'A calendar for LosOS cloud', version: '5.0.0', kind: 'bundled', enabled: true, locked: null },
-  { id: 'contacts', name: 'Contacts', summary: 'An address book', version: '7.0.0', kind: 'bundled', enabled: false, locked: null },
-  { id: 'deck', name: 'Deck', summary: 'Kanban boards', version: '1.15.0', kind: 'store', enabled: true, locked: null },
-  { id: 'user_saml', name: 'SSO & SAML authentication', summary: null, version: '7.0.0', kind: 'bundled', enabled: true, locked: { by: 'losos', reason: 'signIn' } },
-];
-
-const CLOUD_STORE = [
-  { id: 'whiteboard', name: 'Whiteboard', summary: 'Draw together', version: '1.5.0', homepage: 'https://apps.nextcloud.com/apps/whiteboard', featured: true },
-  { id: 'deck', name: 'Deck', summary: 'Kanban boards', version: '1.15.0', homepage: 'https://apps.nextcloud.com/apps/deck', featured: true },
-];
-
 /* A signed-in box on the Apps pane. `apps` is GET /api/apps; installs and
- * removals are recorded in `writes` and change what the next GET answers.
- * `cloud` is LosOS cloud's app list, or null for a box that does not serve
- * the route (404); its changes are recorded in `writes` too. */
+ * removals are recorded in `writes` and change what the next GET answers. */
 async function open({
   apps = { available: true, sharedAvailable: false, apps: [] },
-  cloud = null,
   viewport = { width: 1280, height: 900 },
   locale = 'en-US',
   installRefusal = null,
@@ -191,32 +168,6 @@ async function open({
     };
     return json(route, 200, current.apps.find((a) => a.release === body.release));
   }));
-
-  let cloudNow = cloud === null ? null : structuredClone(cloud);
-  const cloudReply = () => ({ available: true, store: true, apps: cloudNow });
-  await page.route('**/api/cloud/apps', guard((route) =>
-    cloudNow === null ? json(route, 404, { error: 'not found' }) : json(route, 200, cloudReply()),
-  ));
-  await page.route('**/api/cloud/apps/search**', guard((route) => {
-    const q = new URL(route.request().url()).searchParams.get('q');
-    writes.push(['GET', '/api/cloud/apps/search', q]);
-    return json(route, 200, { results: CLOUD_STORE.filter((app) => app.name.toLowerCase().includes(q.toLowerCase())) });
-  }));
-  for (const verb of ['install', 'enable', 'disable', 'remove']) {
-    await page.route(`**/api/cloud/apps/${verb}`, guard((route) => {
-      const { id } = route.request().postDataJSON();
-      writes.push(['POST', `/api/cloud/apps/${verb}`, id]);
-      if (verb === 'install') {
-        const hit = CLOUD_STORE.find((app) => app.id === id);
-        cloudNow = [...cloudNow, { id, name: hit.name, summary: hit.summary, version: hit.version, kind: 'store', enabled: true, locked: null }];
-      } else if (verb === 'remove') {
-        cloudNow = cloudNow.filter((app) => app.id !== id);
-      } else {
-        cloudNow = cloudNow.map((app) => (app.id === id ? { ...app, enabled: verb === 'enable' } : app));
-      }
-      return json(route, 200, cloudReply());
-    }));
-  }
 
   await page.goto(origin + path, { waitUntil: 'networkidle' });
   // The shell's own load-time reports are app.browser.mjs's business; what
@@ -467,115 +418,12 @@ await check('the dialog speaks Slovak and German', async () => {
   }
 });
 
-const cloudFold = (page) => page.getByTestId('accordion-cloud');
-const cloudRow = (page, id) => page.locator(`[data-app="${id}"]`);
-
-await check('LosOS cloud\'s apps sit in a fold of their own; built-in apps wait behind a button', async () => {
-  const { page, errors } = await open({ cloud: CLOUD_APPS });
-  const trigger = cloudFold(page).getByRole('button', { name: /LosOS cloud/ });
-  // Five of the six are on, which the closed fold already says.
-  await trigger.getByText('5 apps on').waitFor();
-  assert.equal(await trigger.getAttribute('aria-expanded'), 'false');
-  assert.equal(await page.getByTestId('cloud-apps').isVisible(), false, 'the fold starts open');
-  await shot(page, 'cloud-fold-closed', page.locator('main'));
-  await trigger.click();
-  await page.getByTestId('cloud-apps').waitFor();
-  // Bundled and store apps show; the two built in are folded away.
-  for (const id of ['calendar', 'contacts', 'deck', 'user_saml']) assert.ok(await cloudRow(page, id).isVisible(), `${id} is hidden`);
-  for (const id of ['files', 'activity']) assert.equal(await cloudRow(page, id).count(), 0, `${id} shows before it is asked for`);
-  await page.getByRole('button', { name: 'Show the 2 apps built into LosOS cloud' }).click();
-  await cloudRow(page, 'files').waitFor();
-  // A locked app's switch is off limits and says why.
-  assert.ok(await cloudRow(page, 'files').getByRole('switch').isDisabled());
-  await cloudRow(page, 'files').getByText('LosOS cloud does not run without it.').waitFor();
-  assert.ok(await cloudRow(page, 'user_saml').getByRole('switch').isDisabled());
-  await cloudRow(page, 'user_saml').getByText('The box needs it for signing in.').waitFor();
-  assert.ok(!(await cloudRow(page, 'activity').getByRole('switch').isDisabled()));
-  // Only an app from the store can be removed.
-  assert.equal(await cloudRow(page, 'deck').getByRole('button', { name: 'Remove Deck' }).count(), 1);
-  assert.equal(await cloudRow(page, 'calendar').getByRole('button', { name: /Remove/ }).count(), 0);
-  await page.getByRole('button', { name: 'Hide the apps built into LosOS cloud' }).click();
-  await shot(page, 'cloud-fold-open', page.getByTestId('accordion-cloud'));
-  // The filter reaches into the built-in apps too.
-  await page.getByPlaceholder('Filter by name').fill('activ');
-  await cloudRow(page, 'activity').waitFor();
-  assert.equal(await page.locator('[data-app]').count(), 1);
-  await page.getByPlaceholder('Filter by name').fill('zzz');
-  await page.getByText('No app matches that.').waitFor();
-  await clean(page, errors);
-  await page.close();
-});
-
-await check('a switch turns an app off and on, and the fold\'s count follows the box', async () => {
-  const { page, errors, writes } = await open({ cloud: CLOUD_APPS, path: '/apps#cloud' });
-  // The hash opens the fold.
-  await page.getByTestId('cloud-apps').waitFor();
-  const calendar = cloudRow(page, 'calendar').getByRole('switch');
-  assert.ok(await calendar.isChecked());
-  await cloudRow(page, 'calendar').locator('[data-slot="switch"]').click();
-  await cloudFold(page).getByText('4 apps on').waitFor();
-  assert.ok(!(await calendar.isChecked()));
-  assert.deepEqual(writes.filter((w) => w[0] === 'POST'), [['POST', '/api/cloud/apps/disable', 'calendar']]);
-  await cloudRow(page, 'contacts').locator('[data-slot="switch"]').click();
-  await cloudFold(page).getByText('5 apps on').waitFor();
-  assert.deepEqual(writes.filter((w) => w[0] === 'POST').at(-1), ['POST', '/api/cloud/apps/enable', 'contacts']);
-  await clean(page, errors);
-  await page.close();
-});
-
-await check('the app store adds an app, and Remove asks first', async () => {
-  const { page, errors, writes } = await open({ cloud: CLOUD_APPS, path: '/apps#cloud' });
-  const store = page.getByTestId('cloud-store');
-  await store.getByPlaceholder('Search Nextcloud\'s app store').fill('o');
-  // One letter is not a search.
-  await page.waitForTimeout(500);
-  assert.equal(writes.filter((w) => w[1] === '/api/cloud/apps/search').length, 0);
-  await store.getByPlaceholder('Search Nextcloud\'s app store').fill('board');
-  await store.locator('[data-store-app="whiteboard"]').waitFor();
-  assert.deepEqual(writes.filter((w) => w[1] === '/api/cloud/apps/search').at(-1), ['GET', '/api/cloud/apps/search', 'board']);
-  // Deck is already in LosOS cloud: no button, a badge.
-  await store.getByPlaceholder('Search Nextcloud\'s app store').fill('deck');
-  await store.locator('[data-store-app="deck"]').getByText('In LosOS cloud').waitFor();
-  assert.equal(await store.locator('[data-store-app="deck"]').getByRole('button').count(), 0);
-  await store.getByPlaceholder('Search Nextcloud\'s app store').fill('whiteboard');
-  await store.getByRole('button', { name: 'Add Whiteboard to LosOS cloud' }).click();
-  await cloudRow(page, 'whiteboard').waitFor();
-  await store.locator('[data-store-app="whiteboard"]').getByText('In LosOS cloud').waitFor();
-  assert.deepEqual(writes.filter((w) => w[0] === 'POST').at(-1), ['POST', '/api/cloud/apps/install', 'whiteboard']);
-  await shot(page, 'cloud-store', store);
-
-  await cloudRow(page, 'deck').getByRole('button', { name: 'Remove Deck' }).click();
-  const dialog = page.locator('dialog[open]');
-  await dialog.getByRole('heading', { name: 'Remove Deck?' }).waitFor();
-  await dialog.getByRole('button', { name: 'Cancel' }).click();
-  await page.locator('dialog[open]').waitFor({ state: 'detached' });
-  assert.ok(!writes.some((w) => w[1] === '/api/cloud/apps/remove'), 'Cancel removed the app');
-  await cloudRow(page, 'deck').getByRole('button', { name: 'Remove Deck' }).click();
-  await page.locator('dialog[open]').getByRole('button', { name: 'Remove', exact: true }).click();
-  await cloudRow(page, 'deck').waitFor({ state: 'detached' });
-  assert.deepEqual(writes.filter((w) => w[0] === 'POST').at(-1), ['POST', '/api/cloud/apps/remove', 'deck']);
-  await clean(page, errors);
-  await page.close();
-});
-
-await check('an older box without the route draws no LosOS cloud fold', async () => {
+await check('a box that has not sent its option document draws no LosOS Cloud fold', async () => {
   const { page, errors } = await open();
   await page.getByPlaceholder('Search for an app').waitFor();
-  assert.equal(await cloudFold(page).count(), 0);
+  assert.equal(await page.getByTestId('accordion-cloud').count(), 0);
   await clean(page, errors);
   await page.close();
-});
-
-await check('the LosOS cloud fold speaks Slovak and German', async () => {
-  for (const locale of ['sk-SK', 'de-DE']) {
-    const { page, errors } = await open({ cloud: CLOUD_APPS, locale, path: '/apps#cloud' });
-    await page.getByTestId('cloud-apps').waitFor();
-    await cloudRow(page, 'deck').waitFor();
-    const text = await page.getByTestId('accordion-cloud').innerText();
-    assert.ok(!text.includes('Show the'), `${locale} shows English: ${text}`);
-    await clean(page, errors);
-    await page.close();
-  }
 });
 
 await browser.close();

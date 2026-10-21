@@ -706,7 +706,7 @@ function groupBy(options: readonly OptionDoc[]): [string, OptionDoc[]][] {
 /* The Apps pane keeps each app's settings in its own fold (pane-apps.tsx),
  * opened by the link's hash. */
 function appFold(name: string): string | undefined {
-  if (name.startsWith("nextcloud.")) return "cloud";
+  if (name.startsWith("cloud.")) return "cloud";
   if (name.startsWith("forgejo.")) return "git";
   return undefined;
 }

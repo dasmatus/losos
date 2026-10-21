@@ -151,8 +151,8 @@ pkgs.testers.nixosTest {
 
     # Everything the appliance must not lose. The paths are the ones the
     # modules actually use: lososd's state file and the token it mints
-    # (modules/daemon.nix), the two service state dirs the workload pods
-    # hostPath-mount (modules/workloads.nix), the Kubernetes node identity
+    # (modules/daemon.nix), LosOS Cloud's state (modules/cloud.nix) and the
+    # Forgejo pod's hostPath mount (modules/workloads.nix), the Kubernetes node identity
     # under /etc/rancher (modules/cluster.nix), and the two data homes.
     machine.succeed(
         "install -d -m 0755 /var/lib/losos",
@@ -162,8 +162,8 @@ pkgs.testers.nixosTest {
         # sealed credential; nothing here needs to open it.
         "head -c 64 /dev/urandom | base64 -w0 > /etc/credstore.encrypted/admin-token",
         "chmod 0600 /etc/credstore.encrypted/admin-token",
-        "install -d /var/lib/nextcloud /var/lib/forgejo",
-        "echo nextcloud-state > /var/lib/nextcloud/marker",
+        "install -d /var/lib/losos-cloud /var/lib/forgejo",
+        "echo cloud-state > /var/lib/losos-cloud/marker",
         "echo forgejo-state > /var/lib/forgejo/marker",
         "echo notshared-doc > /home/notshared/data/marker",
         "echo shared-doc > /home/shared/data/marker",
@@ -206,7 +206,7 @@ pkgs.testers.nixosTest {
 
     with subtest("the persisted set survives the reboot"):
         assert machine.succeed("cat /var/lib/losos/state.json").strip() == '{"mode":"local"}'
-        assert machine.succeed("cat /var/lib/nextcloud/marker").strip() == "nextcloud-state"
+        assert machine.succeed("cat /var/lib/losos-cloud/marker").strip() == "cloud-state"
         assert machine.succeed("cat /var/lib/forgejo/marker").strip() == "forgejo-state"
         assert machine.succeed("cat /home/notshared/data/marker").strip() == "notshared-doc"
         assert machine.succeed("cat /home/shared/data/marker").strip() == "shared-doc"

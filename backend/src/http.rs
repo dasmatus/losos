@@ -10,7 +10,10 @@
 //!     through to the sections their groups open (`crate::sections`);
 //!   * **the spare key**, `Authorization: Bearer <token>` with the file at
 //!     `$LOSOS_ADMIN_TOKEN_FILE`. It opens everything, and nginx lets it past
-//!     Authelia so the box can still be run when Authelia cannot.
+//!     Authelia so the box can still be run when Authelia cannot;
+//!   * **the LosOS companion** in someone's AI tools, `Authorization: Bearer`
+//!     with an access token LosOS Login issued to it (`crate::companion`).
+//!     It reads a few routes as the person who approved it, and nothing more.
 //!
 //! The public routes in `backend/sections.json` take neither: health, the
 //! first-run claim and its state read, and the terminal's two routes, whose
@@ -57,6 +60,8 @@ struct Api {
     backend: IoLosos,
     token: String,
     throttle: Throttle,
+    /// Wrong passwords at device setup, per address (`post_device`).
+    passwords: Throttle,
     audit: Audit,
     /// The last claim answered, so a reply lost to a proxy timeout can be
     /// given again to the same password (`crate::receipt`).
@@ -69,6 +74,8 @@ struct Api {
     builder: crate::builder::Builder,
     /// The people Authelia signs in (`crate::people`).
     people: crate::people::People,
+    /// LosOS Login's word on companion tokens (`crate::companion`).
+    companion: crate::companion::Companion,
     /// LosOS Login's rules and second factors (`crate::login`).
     login: crate::login::Login,
     /// LosOS Login names on LosOS cloud's share (`crate::cloud_share`).
@@ -98,13 +105,17 @@ pub(crate) enum Principal {
     /// own tunnel (`crate::edge::manager_active`). It may use the sections
     /// `sections.json` lists under `edge`, and nothing admin.
     Edge,
+    /// The LosOS companion in someone's AI tools, as the person who signed
+    /// it in: GET on `losos_access::COMPANION_ROUTES` only, and within
+    /// those what the person may read.
+    Companion(crate::people::Person),
 }
 
 impl Principal {
     fn audit_name(&self) -> &str {
         match self {
             Principal::Spare => "spare-key",
-            Principal::Person(p) => &p.name,
+            Principal::Person(p) | Principal::Companion(p) => &p.name,
             Principal::Edge => "edge",
         }
     }
@@ -113,14 +124,14 @@ impl Principal {
         match self {
             Principal::Spare => true,
             Principal::Person(p) => p.is_admin(),
-            Principal::Edge => false,
+            Principal::Edge | Principal::Companion(_) => false,
         }
     }
 
     fn person(&self) -> Option<&crate::people::Person> {
         match self {
             Principal::Spare | Principal::Edge => None,
-            Principal::Person(p) => Some(p),
+            Principal::Person(p) | Principal::Companion(p) => Some(p),
         }
     }
 }
@@ -202,18 +213,11 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
     {
         return err(StatusCode::CONFLICT, &why);
     }
-    // LosOS cloud turned an app change down, or could not make it: its own
-    // words, as a 502, because the box itself did what it was asked.
-    if let Some(why) = e.downcast_ref::<crate::cloud_apps::Failed>() {
-        tracing::warn!(reason = why.0.as_str(), "cloud app change failed");
-        return err(StatusCode::BAD_GATEWAY, &why.0);
-    }
-    // The first boot's one expected failure: Nextcloud is still installing
-    // itself, so the first password cannot be set *yet*. 503 with the
-    // reason and a Retry-After, so the wizard waits and says why, instead
-    // of the opaque 500 that once sent owners to re-image a working box.
+    // Something the request needs is still starting (LosOS Cloud, LosOS
+    // Git). 503 with the reason and a Retry-After, so the page waits and
+    // says why, instead of an opaque 500.
     if let Some(crate::setup::NotReady(why)) = e.downcast_ref() {
-        tracing::info!(reason = why.as_str(), "claim refused: not ready yet");
+        tracing::info!(reason = why.as_str(), "refused: not ready yet");
         return HttpResponse::build(StatusCode::SERVICE_UNAVAILABLE)
             .insert_header(("Retry-After", "10"))
             .json(serde_json::json!({ "error": why, "ready": false, "waitingFor": why }));
@@ -225,10 +229,10 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
         tracing::info!("sign-in refused: wrong password");
         return err(StatusCode::UNAUTHORIZED, &why.to_string());
     }
-    // LosOS cloud's own brute-force protection shut the door; the page
-    // says "wait" rather than "wrong".
+    // Too many wrong passwords from this address; the page says "wait"
+    // rather than "wrong".
     if let Some(why) = e.downcast_ref::<crate::signin::Throttled>() {
-        tracing::warn!("sign-in refused: LosOS cloud is throttling this address");
+        tracing::warn!("password refused: this address is waiting out its wrong guesses");
         let mut resp = err(StatusCode::TOO_MANY_REQUESTS, &why.to_string());
         resp.headers_mut().insert(
             actix_web::http::header::RETRY_AFTER,
@@ -345,6 +349,23 @@ fn identify(api: &Api, req: &HttpRequest) -> Option<Principal> {
         return match header("x-losos-as") {
             Some(name) => lookup(name),
             None => Some(Principal::Spare),
+        };
+    }
+    if let Some(token) = header("authorization").and_then(bearer_credentials) {
+        // nginx passes a Bearer header on without asking Authelia; a token
+        // of LosOS Login's is checked with LosOS Login, at the address the
+        // request came to, which is where it was issued.
+        if !(from_loopback
+            && api.people.headers
+            && crate::companion::Companion::is_login_token(token))
+        {
+            return None;
+        }
+        let host = header("x-forwarded-host").or_else(|| header("host"))?;
+        let grant = api.companion.check(token, host)?;
+        return match lookup(&grant.person)? {
+            Principal::Person(p) => Some(Principal::Companion(p)),
+            _ => None,
         };
     }
     match header("remote-user") {
@@ -527,7 +548,22 @@ fn gate_at(
         .or_else(|| req.match_pattern())
         .unwrap_or_else(|| req.path().to_string());
     let section = crate::sections::section(method, &pattern);
-    if let Principal::Person(person) = &who {
+    if let Principal::Companion(person) = &who {
+        let asked = match req.query_string() {
+            "" => req.path().to_string(),
+            q => format!("{}?{q}", req.path()),
+        };
+        if !losos_access::companion_route(method, &asked) {
+            audit("forbidden", Some(&person.name));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "the LosOS companion reads files, repositories and the box's health, nothing else",
+                    "section": section,
+                }),
+            )));
+        }
+    }
+    if let Principal::Person(person) | Principal::Companion(person) = &who {
         // A rule of LosOS Login holds them to their own account until they
         // comply (`crate::login`): that, and what every signed-in page
         // reads, is all they reach.
@@ -559,7 +595,7 @@ fn gate_at(
         audit("forbidden", Some("edge"));
         return Err(Box::new(HttpResponse::Forbidden().json(
             serde_json::json!({
-                "error": "the edge may manage only LosOS cloud, LosOS Git and the apps on this box",
+                "error": "the edge may manage only LosOS Cloud, LosOS Git and the apps on this box",
                 "section": section,
             }),
         )));
@@ -600,7 +636,7 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 "sections": all(),
                 "standalone": api.people.headers,
             })),
-            Principal::Person(p) => {
+            Principal::Person(p) | Principal::Companion(p) => {
                 // What holds them now, not at their last request: a page
                 // that has just added a passkey asks again to be let go.
                 let locked = if api.people.headers {
@@ -630,8 +666,9 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                     "picture": shown["picture"],
                     "accent": shown["accent"],
                     "groups": p.groups,
-                    "admin": p.is_admin() && locked.is_empty(),
+                    "admin": who.is_admin() && locked.is_empty(),
                     "spareKey": false,
+                    "companion": matches!(who, Principal::Companion(_)),
                     "sections": sections,
                     "standalone": api.people.headers,
                     "locked": locked,
@@ -1816,18 +1853,6 @@ async fn post_grow(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/grow", true, || run(&api, cmd_grow))
 }
 
-/// Replace the Nextcloud admin password.
-///
-/// The body is parsed by hand rather than through actix's JSON extractor, for
-/// the same reason `post_apply` takes raw bytes: the extractor's rejection
-/// handler renders the offending payload into its error, and this payload is a
-/// password.
-///
-/// The 400s below name the field that was wrong and never echo what was sent.
-/// The command's own errors go through [`run`], which keeps the context chain
-/// out of the response and puts it in the journal — where, by construction, it
-/// cannot carry the password either: it is not a field of any `OccAction` and
-/// never reaches an argv.
 /// `GET /api/setup/claim` — has this box got an owner yet? No token required.
 ///
 /// The page has to ask this before it can decide whether to show the wizard or
@@ -1925,7 +1950,7 @@ async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
     let token = api.token.clone();
     let claims = api.clone();
     run(&api, move |l| {
-        // Held across the occ run on purpose: two claims racing each other
+        // Held across the claim on purpose: two claims racing each other
         // would otherwise both see an unclaimed box.
         let mut receipts = claims
             .claims
@@ -2040,12 +2065,13 @@ async fn post_set_password(
         Principal::Person(p) => post_own_password(&api, p, &body),
         Principal::Spare => post_set_password_inner(&api, &body),
         Principal::Edge => err(StatusCode::FORBIDDEN, "the edge has no password here"),
+        Principal::Companion(_) => err(StatusCode::FORBIDDEN, "the LosOS companion only reads"),
     })
 }
 
-/// A person changing their own password. It is the one Authelia checks,
-/// and for the person who owns the box's LosOS cloud account (`State::
-/// owner`), that account's too, so one password keeps opening both.
+/// A person changing their own password: the one LosOS Login checks, and
+/// for the person who owns the box (`State::owner`), their LosOS Git
+/// account's too, so one password keeps opening both.
 fn post_own_password(api: &Api, person: &crate::people::Person, body: &[u8]) -> HttpResponse {
     const SHAPE: &str = r#"body must be JSON: {"password": "..."}"#;
     let Some(password) = serde_json::from_slice::<serde_json::Value>(body)
@@ -2075,19 +2101,13 @@ fn post_own_password(api: &Api, person: &crate::people::Person, body: &[u8]) -> 
     let name = person.name.clone();
     run(api, move |l| {
         use crate::losos::Losos;
-        let owner = l.load_state()?.owner;
-        let cloud = if owner.as_deref() == Some(name.as_str()) {
-            Some(cmd_set_password(
-                l,
-                crate::setup::DEFAULT_ADMIN_USER,
-                &password,
-            )?)
-        } else {
-            None
-        };
         api.people.set_password(&name, &secret)?;
         note_password(api, &name);
-        Ok(serde_json::json!({ "name": name, "changed": true, "cloud": cloud }))
+        // The owner's LosOS Git account keeps the same password.
+        if l.load_state()?.owner.as_deref() == Some(name.as_str()) {
+            cmd_set_password(l, crate::setup::DEFAULT_ADMIN_USER, &password)?;
+        }
+        Ok(serde_json::json!({ "name": name, "changed": true }))
     })
 }
 
@@ -2096,8 +2116,8 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
     let Ok(doc) = serde_json::from_slice::<serde_json::Value>(body) else {
         return err(StatusCode::BAD_REQUEST, SHAPE);
     };
-    // `user` is optional: the appliance installs exactly one Nextcloud admin,
-    // and the wizard should not have to know its name to reset it.
+    // `user` is optional: the box has one owner account, and the wizard
+    // should not have to know its name to reset it.
     let user = match doc.get("user") {
         None | Some(serde_json::Value::Null) => crate::setup::DEFAULT_ADMIN_USER.to_string(),
         Some(serde_json::Value::String(u)) => u.clone(),
@@ -2118,15 +2138,23 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
     let password = password.to_string();
     run(api, |b| {
         use crate::losos::Losos;
-        let out = cmd_set_password(b, &user, &password)?;
-        // The owner signs in to Authelia with the same password.
-        if user == crate::setup::DEFAULT_ADMIN_USER {
-            if let Some(owner) = b.load_state()?.owner {
+        let mut out = cmd_set_password(b, &user, &password)?;
+        // The owner signs in to LosOS Login with it. A box claimed before
+        // sign-in went through LosOS Login has no owner there yet; its
+        // first account is made by the claim with the spare key.
+        let owner = if user == crate::setup::DEFAULT_ADMIN_USER {
+            b.load_state()?.owner
+        } else {
+            None
+        };
+        match owner {
+            Some(owner) => {
                 let secret =
                     crate::setup::validate_password(&password).map_err(|e| anyhow::anyhow!(e))?;
                 api.people.set_password(&owner, &secret)?;
                 note_password(api, &owner);
             }
+            None => out["changed"] = serde_json::Value::Bool(false),
         }
         Ok(out)
     })
@@ -2136,8 +2164,8 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
 /// one computer's own for LosOS cloud or LosOS Git (`crate::devices`).
 ///
 /// Bearer-gated like every other route, and on top of that the owner's
-/// password, which Nextcloud and Forgejo both insist on before they make a
-/// credential. A wrong password is a 403 with `wrongPassword`, not the 401
+/// password, checked against LosOS Login's people file before either app
+/// is asked. A wrong password is a 403 with `wrongPassword`, not the 401
 /// of a bad token: the caller holds a good token, and a client that reads
 /// 401 as "sign in again" would throw it away.
 async fn post_device(
@@ -2169,14 +2197,32 @@ fn post_device_inner(api: &Api, kind: &str, client: &str, body: &[u8]) -> HttpRe
     if let Err(e) = crate::devices::validate_device(device) {
         return err(StatusCode::BAD_REQUEST, &e);
     }
+    if !matches!(kind, "cloud" | "git") {
+        return err(StatusCode::NOT_FOUND, "no such device credential");
+    }
+    // The owner's password, as LosOS Login knows it. Wrong guesses are
+    // counted per address, and past the budget nothing is checked until
+    // the address's window ends.
+    let now = std::time::Instant::now();
+    if api.passwords.check(client, now).is_err() {
+        return error_response(crate::signin::Throttled.into());
+    }
+    let password_ok = match owner_password_ok(api, password) {
+        Ok(ok) => ok,
+        Err(e) => return error_response(e),
+    };
+    if password_ok {
+        api.passwords.record_success(client);
+    } else {
+        api.passwords.record_failure(client, now);
+    }
     let result = match kind {
         "cloud" => api
             .backend
-            .serialized(|l| crate::losos::cmd_device_cloud(l, password, device, client)),
-        "git" => api
+            .serialized(|l| crate::losos::cmd_device_cloud(l, password_ok, device)),
+        _ => api
             .backend
-            .serialized(|l| crate::losos::cmd_device_git(l, password, device, client)),
-        _ => return err(StatusCode::NOT_FOUND, "no such device credential"),
+            .serialized(|l| crate::losos::cmd_device_git(l, password, password_ok, device)),
     };
     match result {
         Ok(v) => HttpResponse::Ok().json(v),
@@ -2195,6 +2241,23 @@ fn post_device_inner(api: &Api, kind: &str, client: &str, body: &[u8]) -> HttpRe
         }
         Err(e) => error_response(e),
     }
+}
+
+/// Whether `password` is the owner's, as LosOS Login's people file has it.
+/// A box claimed before sign-in went through LosOS Login has no owner
+/// there yet, and nothing to check against: not now, rather than wrong.
+fn owner_password_ok(api: &Api, password: &str) -> anyhow::Result<bool> {
+    use crate::losos::Losos;
+    let secret = crate::signin::validate_candidate(password).map_err(|e| anyhow::anyhow!(e))?;
+    let owner = api.backend.serialized(|l| l.load_state())?.owner;
+    let Some(owner) = owner else {
+        return Err(crate::setup::NotReady(
+            "Nobody signs in to this box yet. Make the first account on the Users pane with the spare key."
+                .to_string(),
+        )
+        .into());
+    };
+    api.people.check_password(&owner, &secret)
 }
 
 /// The appliance recovery code.
@@ -2395,99 +2458,6 @@ async fn post_app_remove(api: web::Data<Api>, req: HttpRequest, body: web::Bytes
             ),
         }
     })
-}
-
-// ── LosOS cloud's own apps ───────────────────────────────────────────────
-// `crate::cloud_apps` holds the rules. HTTP-only, like the chart installs.
-// None of these take the state lock: they run occ in LosOS cloud, which can
-// take as long as an app store download, and touch no state of lososd's.
-
-/// `GET /api/cloud/apps` — every app LosOS cloud has, and what may be done
-/// to each.
-async fn get_cloud_apps(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/cloud/apps", false, || {
-        let mut backend = api.backend.clone();
-        match crate::cloud_apps::cmd_cloud_apps(&mut backend) {
-            Ok(v) => HttpResponse::Ok().json(v),
-            Err(e) => error_response(e),
-        }
-    })
-}
-
-/// `GET /api/cloud/apps/search?q=` — the app store's best matches.
-async fn get_cloud_apps_search(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/cloud/apps/search", false, || {
-        let q =
-            web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
-                .map(web::Query::into_inner)
-                .unwrap_or_default();
-        let query = q.get("q").cloned().unwrap_or_default();
-        let mut backend = api.backend.clone();
-        match crate::cloud_apps::cmd_cloud_store_search(&mut backend, &query) {
-            Ok(v) => HttpResponse::Ok().json(v),
-            Err(e) => error_response(e),
-        }
-    })
-}
-
-/// `POST /api/cloud/apps/<verb>` `{id}` — answered with the list after it.
-fn post_cloud_app(
-    api: &Api,
-    req: &HttpRequest,
-    body: &web::Bytes,
-    verb: crate::cloud_apps::Verb,
-    route: &str,
-) -> HttpResponse {
-    guarded(api, req, route, true, || {
-        let doc = serde_json::from_slice::<serde_json::Value>(body).unwrap_or_default();
-        let Some(id) = field_str(&doc, "id") else {
-            return err(
-                StatusCode::BAD_REQUEST,
-                r#"body must be JSON: {"id": "<app id>"}"#,
-            );
-        };
-        let mut backend = api.backend.clone();
-        match crate::cloud_apps::cmd_cloud_app(&mut backend, verb, &id) {
-            Ok(v) => HttpResponse::Ok().json(v),
-            Err(e) => error_response(e),
-        }
-    })
-}
-
-async fn post_cloud_app_install(
-    api: web::Data<Api>,
-    req: HttpRequest,
-    body: web::Bytes,
-) -> HttpResponse {
-    use crate::cloud_apps::Verb;
-    post_cloud_app(&api, &req, &body, Verb::Install, "/api/cloud/apps/install")
-}
-
-async fn post_cloud_app_enable(
-    api: web::Data<Api>,
-    req: HttpRequest,
-    body: web::Bytes,
-) -> HttpResponse {
-    use crate::cloud_apps::Verb;
-    post_cloud_app(&api, &req, &body, Verb::Enable, "/api/cloud/apps/enable")
-}
-
-async fn post_cloud_app_disable(
-    api: web::Data<Api>,
-    req: HttpRequest,
-    body: web::Bytes,
-) -> HttpResponse {
-    use crate::cloud_apps::Verb;
-    post_cloud_app(&api, &req, &body, Verb::Disable, "/api/cloud/apps/disable")
-}
-
-async fn post_cloud_app_remove(
-    api: web::Data<Api>,
-    req: HttpRequest,
-    body: web::Bytes,
-) -> HttpResponse {
-    use crate::cloud_apps::Verb;
-    post_cloud_app(&api, &req, &body, Verb::Remove, "/api/cloud/apps/remove")
 }
 
 /// Where the Lab's libvirt helper listens, from `$LOSOS_LAB_URL`; `None`
@@ -3664,6 +3634,10 @@ fn plugin_caller(
         None => t::Principal::Anonymous,
         Some(Principal::Spare) => t::Principal::Spare,
         Some(Principal::Edge) => t::Principal::Edge,
+        // No plugin route is a companion route (`guarded_at` refuses it
+        // before a plugin is asked), and a plugin's own calls would run
+        // with this caller: nobody, then.
+        Some(Principal::Companion(_)) => t::Principal::Anonymous,
         Some(Principal::Person(p)) => t::Principal::Person(t::Person {
             name: p.name.clone(),
             display_name: p.display_name.clone(),
@@ -3805,7 +3779,7 @@ async fn get_site(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     })
 }
 
-/// `POST /api/site` — `{"set": {"nextcloud.site.trashDays": "30",
+/// `POST /api/site` — `{"set": {"cloud.trashDays": "30",
 /// "forgejo.site.landingPage": null}}`: each value a Nix literal, or null to
 /// go back to the default. Only those lines of `overrides.nix` change; the
 /// rest is an apply.
@@ -4246,12 +4220,14 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             backend,
             token,
             throttle: Throttle::default(),
+            passwords: Throttle::default(),
             audit: Audit,
             claims: std::sync::Mutex::new(crate::receipt::Receipts::default()),
             access: crate::access::Access::from_env(),
             port,
             builder: crate::builder::Builder::from_env(),
             people,
+            companion: crate::companion::Companion::from_env(),
             login,
             share: crate::cloud_share::Share::default(),
             mail: crate::mail::Mail::from_env(),
@@ -4362,27 +4338,6 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/apps/install", web::post().to(post_app_install))
                 .route("/api/apps/compose", web::post().to(post_app_compose))
                 .route("/api/apps/remove", web::post().to(post_app_remove))
-                .route("/api/cloud/apps", web::get().to(get_cloud_apps))
-                .route(
-                    "/api/cloud/apps/search",
-                    web::get().to(get_cloud_apps_search),
-                )
-                .route(
-                    "/api/cloud/apps/install",
-                    web::post().to(post_cloud_app_install),
-                )
-                .route(
-                    "/api/cloud/apps/enable",
-                    web::post().to(post_cloud_app_enable),
-                )
-                .route(
-                    "/api/cloud/apps/disable",
-                    web::post().to(post_cloud_app_disable),
-                )
-                .route(
-                    "/api/cloud/apps/remove",
-                    web::post().to(post_cloud_app_remove),
-                )
                 .route("/api/market", web::get().to(get_market))
                 .route("/api/market/onboard", web::post().to(post_market_onboard))
                 .route("/api/market/listings", web::post().to(post_market_listing))

@@ -86,6 +86,8 @@ let
     "hex-32" = "od -An -tx1 -N32 /dev/urandom | tr -d ' \\n'";
     "hex-64" = "od -An -tx1 -N64 /dev/urandom | tr -d ' \\n'";
     "base64-24" = "head -c 24 /dev/urandom | base64 | tr -d '\\n'";
+    # A PEM private key; made here only, so not one the pane makes new.
+    "rsa-2048" = "openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2> /dev/null";
   };
 
   # Best effort and no more: ext4 journals metadata and may put the new block
@@ -233,15 +235,9 @@ in
         message = "losos.credentials.entries.${e.name}: a credential name is lowercase letters, digits and dashes.";
       }) entries
       ++ map (e: {
-        assertion = e.rotate -> e.format != null;
+        assertion = e.rotate -> (e.format != null && e.format != "rsa-2048");
         message = "losos.credentials.entries.${e.name}: only a credential the box makes (`format` set) can be made new.";
       }) entries;
-
-      warnings = lib.optional (config.losos.keyring != { }) ''
-        losos.keyring is no longer read: every secret of the box is in the
-        credential store now, whatever it says (modules/credentials.nix).
-        Remove the losos.keyring line from overrides.nix.
-      '';
 
       environment.etc."losos/credentials.json".text = builtins.toJSON registry;
 
@@ -282,6 +278,7 @@ in
               path = [
                 config.systemd.package
                 pkgs.coreutils
+                pkgs.openssl
               ];
               # A secret that could not be sealed is logged and shown as not
               # set on the pane; its readers fail on their own, loudly, and

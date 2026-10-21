@@ -59,8 +59,8 @@ impl Key {
     }
 }
 
-/// How the box makes a value of its own. The same three the module's shell
-/// knows; a new value must have the shape the service expects.
+/// How the box makes a value of its own, as the module's shell does; a new
+/// value must have the shape the service expects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Format {
     /// 32 random bytes as 64 lowercase hex characters.
@@ -72,6 +72,9 @@ pub enum Format {
     /// 24 random bytes in standard base64.
     #[serde(rename = "base64-24")]
     Base64of24,
+    /// An RSA private key in PEM, which only the boot unit makes.
+    #[serde(rename = "rsa-2048")]
+    Rsa2048,
 }
 
 impl Format {
@@ -83,6 +86,7 @@ impl Format {
             Format::Hex64 => crate::io_backend::hex(&crate::io_backend::random_bytes::<64>()?),
             Format::Base64of24 => base64::engine::general_purpose::STANDARD
                 .encode(crate::io_backend::random_bytes::<24>()?),
+            Format::Rsa2048 => anyhow::bail!("an RSA key is made at boot only"),
         }
         .into_bytes())
     }

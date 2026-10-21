@@ -197,6 +197,16 @@ impl Http {
         self.send(self.agent.get(url).set("Accept", accept), None)
     }
 
+    /// A GET with a Bearer token: the companion's calls.
+    pub fn get_bearer(&self, url: &str, accept: &str, token: &str) -> Result<Response, HttpError> {
+        let request = self
+            .agent
+            .get(url)
+            .set("Accept", accept)
+            .set("Authorization", &format!("Bearer {token}"));
+        self.send(request, None)
+    }
+
     pub fn post(
         &self,
         url: &str,

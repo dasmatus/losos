@@ -54,16 +54,14 @@ let
   #
   # /var/secrets, not /var/lib/losos: this file is a secret the daemon mints
   # for itself, which is precisely what /var/secrets already holds (the admin
-  # token, the Nextcloud bootstrap password, the proxy and mesh tokens).
+  # token, the proxy and mesh tokens).
   # /var/lib/losos is the daemon's *working* state — state.json and the rebuild
   # log — and is wiped by a factory reset, which is the one event this code has
   # to outlive.
   #
   # No tmpfiles rule creates the directory. lososd writes through
   # atomic_write_secret, which creates any missing parent at 0700 before the
-  # 0600 file lands, and modules/nextcloud-common.nix already tmpfiles the same
-  # path — a second identical rule only earns a "Duplicate line for path"
-  # warning from systemd-tmpfiles at every boot.
+  # 0600 file lands, so a rule would only repeat what the daemon does.
   #
   # Durability comes from modules/impermanence.nix persisting the whole of
   # /var. Anything outside that list is tmpfs and would hand the owner a new

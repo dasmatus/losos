@@ -21,7 +21,7 @@
 #      without the token;
 #   4. the owner switches it on: the marker appears, the next heartbeat
 #      tells the edge, and the edge's calls reach lososd as the edge;
-#   5. through the edge, LosOS cloud and LosOS Git settings and the apps
+#   5. through the edge, LosOS Cloud and LosOS Git settings and the apps
 #      answer; the owner's routes (options, apply, backups, people, the
 #      switch itself, a new password) are 403;
 #   6. a settings change through the edge rewrites only the line it names
@@ -248,8 +248,8 @@ pkgs.testers.nixosTest {
     code, body = manage("GET", "/manage/api/boxes/office-box/api/site")
     assert code == "200", (code, body)
     names = [o["name"] for o in json.loads(body)["options"]]
-    assert "nextcloud.site.trashDays" in names and "forgejo.site.landingPage" in names, names
-    assert all(n.startswith(("nextcloud.site.", "forgejo.site.", "nextcloud.federation.", "forgejo.federation.")) for n in names), names
+    assert "cloud.trashDays" in names and "forgejo.site.landingPage" in names, names
+    assert all(n == "cloud.trashDays" or n.startswith(("forgejo.site.", "forgejo.federation.")) for n in names), names
     code, body = manage("GET", "/manage/api/boxes/office-box/api/apps")
     assert code == "200", (code, body)
     for method, path, data in [
@@ -270,11 +270,11 @@ pkgs.testers.nixosTest {
     code, body = manage("POST", "/manage/api/boxes/office-box/api/site", {"set": {"hostName": "\"evil\""}})
     assert code == "400", (code, body)
     assert overrides() == before
-    code, body = manage("POST", "/manage/api/boxes/office-box/api/site", {"set": {"nextcloud.site.trashDays": "45"}})
+    code, body = manage("POST", "/manage/api/boxes/office-box/api/site", {"set": {"cloud.trashDays": "45"}})
     assert code == "200", (code, body)
     assert json.loads(body)["job"], body
     after = overrides()
-    assert "losos.nextcloud.site.trashDays = 45;" in after, after
+    assert "losos.cloud.trashDays = 45;" in after, after
     assert 'losos.hostName = "mattbox";' in after, after
     assert "evil" not in after, after
 

@@ -77,21 +77,6 @@ let
     // lib.optionalAttrs (!after) { src = before; }
   );
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   # What a reader of `probe` saw: a digest, so the value itself is never
   # written anywhere but the unit's own credential directory.
   probeReader = pkgs.writeShellScript "cred-probe" ''
@@ -219,18 +204,14 @@ pkgs.testers.nixosTest {
           backend.package = lososPkgs.losos-ctl;
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = ui;
-          nextcloud.mode = "container";
           forgejo.enable = false;
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
         };
         # systemd-creds and systemctl on it as on a real box, where NixOS
         # appends systemd to every unit's path; mkForce drops that default.
         systemd.services.lososd.path = lib.mkForce [
-          stubOcc
           pkgs.coreutils
           config.systemd.package
         ];
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         # The backup scripts name its pg_dump; no database runs here.
         services.postgresql.package = pkgs.postgresql;
         environment.systemPackages = [ pkgs.jq ];
@@ -480,7 +461,28 @@ pkgs.testers.nixosTest {
             timeout=1800,
         )
 
+    BOX_MADE = (
+        "admin-token",
+        "authelia-jwt",
+        "authelia-session",
+        "authelia-storage",
+        "authelia-oidc-hmac",
+        "authelia-oidc-jwks",
+        "oidc-lososd",
+    )
+    DIGEST = "/var/secrets/losos-identity/oidc-lososd.digest"
+
+    def matches_digest():
+        out = box.succeed(
+            "${pkgs.authelia}/bin/authelia crypto hash validate "
+            f"--password \"$(systemd-creds decrypt --name=oidc-lososd {STORE}/oidc-lososd -)\" "
+            f"-- \"$(cat {DIGEST})\""
+        )
+        return "matches" in out
+
     TOKEN = secrets.token_hex(32)
+    HMAC = secrets.token_hex(64)
+    OLD_CLIENT = secrets.token_hex(32)
     JWT = secrets.token_hex(32)
     SESSION = secrets.token_hex(32)
     STORAGE = secrets.token_hex(32)
@@ -490,8 +492,12 @@ pkgs.testers.nixosTest {
         with subtest("a new box makes its own values, sealed to the TPM"):
             box.succeed("test -e /dev/tpmrm0")
             assert box.succeed(f"cat {RUN}/key").strip() == "tpm2"
-            for n in ("admin-token", "authelia-jwt", "authelia-session", "authelia-storage"):
+            for n in BOX_MADE:
                 box.succeed(f"test -s {STORE}/{n}")
+            assert decrypt(box, "authelia-oidc-jwks").startswith("-----BEGIN PRIVATE KEY-----")
+            # lososd's client secret and the digest LosOS Login checks it by
+            # are one pair.
+            assert matches_digest()
             # tpm2, not host+tpm2: there is no host key to have used.
             box.fail("test -e /var/lib/systemd/credential.secret")
             box.fail("test -e /var/secrets/losos-admin-token")
@@ -520,8 +526,17 @@ pkgs.testers.nixosTest {
                 ("/var/secrets/losos-identity/jwt", JWT),
                 ("/var/secrets/losos-identity/session", SESSION),
                 ("/var/secrets/losos-identity/storage", STORAGE),
+                ("/var/secrets/losos-identity/oidc-hmac", HMAC),
+                ("/var/secrets/losos-identity/oidc-lososd", OLD_CLIENT),
             ):
                 box.succeed(f"install -m 0600 /dev/null {path} && printf %s '{value}' > {path}")
+            box.succeed(
+                "${pkgs.openssl}/bin/openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 "
+                "-out /var/secrets/losos-identity/oidc-jwks.pem"
+            )
+            jwks = box.succeed("cat /var/secrets/losos-identity/oidc-jwks.pem")
+            JWKS_LINE = jwks.splitlines()[1]
+            old_digest = box.succeed(f"cat {DIGEST}")
             target = {
                 "endpoint": "https://s3.example.org",
                 "bucket": "boxes",
@@ -551,14 +566,24 @@ pkgs.testers.nixosTest {
                 ("authelia-jwt", JWT),
                 ("authelia-session", SESSION),
                 ("authelia-storage", STORAGE),
+                ("authelia-oidc-hmac", HMAC),
+                ("authelia-oidc-jwks", jwks),
             ):
                 assert decrypt(box, n) == value, f"{n} was not adopted"
                 box.succeed(f"test -e {RUN}/adopted/{n}")
+            # The client secret was adopted and then made again with its
+            # digest, so the pair still matches and the old one is gone.
+            assert decrypt(box, "oidc-lososd") != OLD_CLIENT
+            assert box.succeed(f"cat {DIGEST}") != old_digest
+            assert matches_digest()
             for f in (
                 "/var/secrets/losos-admin-token",
                 "/var/secrets/losos-identity/jwt",
                 "/var/secrets/losos-identity/session",
                 "/var/secrets/losos-identity/storage",
+                "/var/secrets/losos-identity/oidc-hmac",
+                "/var/secrets/losos-identity/oidc-jwks.pem",
+                "/var/secrets/losos-identity/oidc-lososd",
                 "/var/secrets/losos-backup.env",
             ):
                 box.fail(f"test -e {f}")
@@ -600,6 +625,9 @@ pkgs.testers.nixosTest {
             assert box.succeed(f"cat {d}/authelia-jwt") == JWT
             assert box.succeed(f"cat {d}/authelia-session") == SESSION
             assert box.succeed(f"cat {d}/authelia-storage") == STORAGE
+            assert box.succeed(f"cat {d}/authelia-oidc-hmac") == HMAC
+            assert box.succeed(f"cat {d}/authelia-oidc-jwks") == jwks
+            assert box.succeed(f"cat /run/credentials/lososd.service/oidc-lososd") == decrypt(box, "oidc-lososd")
             box.fail(f"runuser -u nobody -- cat {d}/authelia-session")
             box.fail("test -e /var/secrets/losos-identity/jwt")
 
@@ -608,13 +636,13 @@ pkgs.testers.nixosTest {
             assert code == 200, (code, text)
             view = json.loads(text)
             rows = {c["name"]: c for c in view["credentials"]}
-            for n in ("admin-token", "authelia-jwt", "authelia-session", "authelia-storage", "backup-bucket"):
+            for n in BOX_MADE + ("backup-bucket",):
                 assert rows[n]["set"], (n, rows[n])
             assert rows["admin-token"]["adopted"] and rows["admin-token"]["source"] == "box"
             assert rows["backup-bucket"]["source"] == "owner"
             assert rows["backup-bucket"]["pane"] == "/settings/backup"
             assert "authelia-losos" in rows["authelia-session"]["services"][0]
-            for v in (TOKEN, JWT, SESSION, STORAGE, BUCKET_SECRET):
+            for v in (TOKEN, JWT, SESSION, STORAGE, HMAC, JWKS_LINE, BUCKET_SECRET):
                 assert v not in text, "a value is in the list"
 
         with subtest("the bucket's keys the owner types are sealed, not written"):
@@ -636,7 +664,7 @@ pkgs.testers.nixosTest {
             assert NEW_SECRET not in text
             assert NEW_SECRET in decrypt(box, "backup-bucket")
             box.fail("test -e /var/secrets/losos-backup.env")
-            for v in (TOKEN, JWT, SESSION, STORAGE, BUCKET_SECRET, NEW_SECRET):
+            for v in (TOKEN, JWT, SESSION, STORAGE, HMAC, JWKS_LINE, OLD_CLIENT, BUCKET_SECRET, NEW_SECRET):
                 nowhere_on_disk(box, v, "/var /etc /root")
             code, text = api("GET", "/api/backup", cookie)
             assert code == 200 and NEW_SECRET not in text, (code, text)
@@ -662,7 +690,7 @@ pkgs.testers.nixosTest {
             assert code == 200
 
         with subtest("the ones a new value would break are refused"):
-            for n in ("admin-token", "authelia-storage", "backup-bucket"):
+            for n in ("admin-token", "authelia-storage", "authelia-oidc-jwks", "oidc-lososd", "backup-bucket"):
                 code, text = api("POST", f"/api/credentials/{n}/rotate", cookie)
                 assert code == 409, (n, code, text)
             assert decrypt(box, "admin-token") == TOKEN
@@ -676,7 +704,7 @@ pkgs.testers.nixosTest {
 
     if AFTER:
         with subtest("the values survive a power cycle unchanged"):
-            names = ("admin-token", "authelia-jwt", "authelia-session", "authelia-storage", "backup-bucket")
+            names = BOX_MADE + ("backup-bucket",)
             blobs = {n: sha(box, f"{STORE}/{n}") for n in names}
             box.shutdown()
             box.start()
@@ -686,6 +714,7 @@ pkgs.testers.nixosTest {
                 assert sha(box, f"{STORE}/{n}") == digest, f"{n} was sealed again"
             assert decrypt(box, "admin-token") == TOKEN
             assert decrypt(box, "authelia-session") == fresh
+            assert matches_digest()
             box.succeed(
                 f"curl -sf -H 'Authorization: Bearer {TOKEN}' http://127.0.0.1:8082/api/credentials"
             )

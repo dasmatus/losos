@@ -11,7 +11,7 @@ network can reach it, and nothing else can.
 
 ## What you get
 
-- LosOS cloud and LosOS Git at the box's address, for everyone on the
+- LosOS Cloud and LosOS Git at the box's address, for everyone on the
   network who has an account.
 - The admin pages, unlocked with the owner's password.
 - Nightly self-repair and self-update, an encrypted disk, the hardening

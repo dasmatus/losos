@@ -34,7 +34,7 @@ virtual machines.
 
 ## 3. How the apps run
 
-[App modes](./app-modes.md) explains the two modes. By default, LosOS cloud and LosOS
+[App modes](./app-modes.md) explains the two modes. By default, LosOS Cloud and LosOS
 Git run as workloads in the box's own small Kubernetes cluster. They can also
 run natively on the host. You see the same apps either way.
 
@@ -53,6 +53,6 @@ sandbox.
 
 ## And the three names
 
-Whatever the type, you meet three names. LosOS cloud holds files, photos
+Whatever the type, you meet three names. LosOS Cloud holds files, photos
 and calendars. LosOS Git holds repositories. The admin pages run the box
 itself. The [glossary](../reference/glossary.md) has the rest.
