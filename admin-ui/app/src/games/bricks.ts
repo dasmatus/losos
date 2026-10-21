@@ -83,6 +83,10 @@ class Bricks implements Game {
     this.held.delete(key.toLowerCase());
   }
 
+  release() {
+    this.held.clear();
+  }
+
   point(x: number) {
     this.paddle = Math.min(W - PADDLE_W / 2, Math.max(PADDLE_W / 2, x));
     // A ball waiting to be served rides on the paddle.

@@ -7,6 +7,9 @@
  * the score and the best are kept; a hidden tab and a lost focus pause an
  * action game; reduced motion offers only the two turn-based games; the end
  * of the wait stops the game and says so, and Close takes the line away;
+ * the loop keeps time on a screen faster than its step; a lost focus lets
+ * go of held keys; blocked storage keeps the visit's best; Merge and Pairs
+ * read their boards out;
  * the wizard's wait for LosOS cloud offers it too; a phone gets the icon
  * button and a game that fits; and none of it trips the appliance's
  * Content-Security-Policy.
@@ -51,6 +54,7 @@ async function openRebuild({
   viewport = { width: 1280, height: 900 },
   colorScheme = 'light',
   hasTouch = false,
+  init = null,
 } = {}) {
   const context = await browser.newContext({ viewport, locale: 'en-US', reducedMotion, colorScheme, hasTouch });
   const page = await context.newPage();
@@ -96,6 +100,7 @@ async function openRebuild({
       window.__violations.push(`${e.violatedDirective} ${e.blockedURI} ${e.sample}`),
     );
   }, TOKEN);
+  if (init !== null) await page.addInitScript(init);
   await page.goto(origin + '/settings/network', { waitUntil: 'networkidle' });
   await page.getByLabel('This box is called').fill('fishbox');
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
@@ -245,7 +250,11 @@ await check('a hidden tab and a lost focus pause an action game; a key goes on',
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  assert.equal(await attr(page, 'data-paused'), 'true', 'a hidden tab kept the game running');
+  // React draws the pause on its next render, not inside the event.
+  await page
+    .locator('[data-testid=game][data-paused=true]')
+    .waitFor({ timeout: 2000 })
+    .catch(async () => assert.fail(`a hidden tab kept the game running (phase ${await attr(page, 'data-phase')})`));
   const score = await scoreText(page);
   await page.waitForTimeout(600);
   assert.equal(await scoreText(page), score, 'the score moved while paused');
@@ -256,7 +265,91 @@ await check('a hidden tab and a lost focus pause an action game; a key goes on',
   await canvas(page).press('ArrowLeft');
   assert.equal(await attr(page, 'data-paused'), 'false', 'a key did not wake the game');
   await canvas(page).evaluate((c) => c.blur());
-  assert.equal(await attr(page, 'data-paused'), 'true', 'losing the focus kept the game running');
+  await page
+    .locator('[data-testid=game][data-paused=true]')
+    .waitFor({ timeout: 2000 })
+    .catch(() => assert.fail('losing the focus kept the game running'));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('an action game runs on a screen faster than its physics step', async () => {
+  // Frames every 6 ms, a 165 Hz screen: each one is shorter than 1/120 s.
+  const { page, context, errors } = await openRebuild({
+    init: () => {
+      window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 6);
+      window.cancelAnimationFrame = (id) => clearTimeout(id);
+    },
+  });
+  await offer(page).click();
+  await switchTo(page, 'upstream');
+  await canvas(page).press('Space');
+  await page.waitForTimeout(1200);
+  assert.ok(number(await scoreText(page)) > 0, 'the game stood still at 165 frames a second');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('a key let go while the game had lost the focus is let go in the game too', async () => {
+  const { page, context, errors } = await openRebuild();
+  await offer(page).click();
+  await switchTo(page, 'bricks');
+  await canvas(page).focus();
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(60);
+  await canvas(page).evaluate((c) => c.blur());
+  assert.equal(await attr(page, 'data-paused'), 'true');
+  await page.keyboard.up('ArrowRight');
+  await canvas(page).focus();
+  await page.keyboard.press('Space');
+  assert.equal(await attr(page, 'data-paused'), 'false', 'a key did not wake the game');
+  await page.waitForTimeout(60);
+  const still = await canvas(page).screenshot();
+  await page.waitForTimeout(250);
+  assert.ok(still.equals(await canvas(page).screenshot()), 'the paddle kept moving on a key nobody held');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('with the best scores refused by storage, a worse round keeps the best', async () => {
+  const { page, context, errors } = await openRebuild({
+    init: () => {
+      for (const name of ['getItem', 'setItem']) {
+        const real = Storage.prototype[name];
+        Storage.prototype[name] = function (key, ...rest) {
+          if (key === 'losos-games-best') throw new DOMException('blocked', 'SecurityError');
+          return real.call(this, key, ...rest);
+        };
+      }
+    },
+  });
+  await offer(page).click();
+  await switchTo(page, 'upstream');
+  const finals = [];
+  for (let round = 0; round < 3; round++) {
+    await canvas(page).press('Space');
+    await page.locator('[data-testid=game][data-phase=over]').waitFor({ timeout: 15000 });
+    finals.push(number(await scoreText(page)));
+  }
+  const best = Number(/Best (\d+)/.exec(await scoreText(page))?.[1]);
+  assert.equal(best, Math.max(...finals), `rounds ${finals.join(', ')} showed a best of ${best}`);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('Merge and Pairs read their board out after each move', async () => {
+  const { page, context, errors } = await openRebuild();
+  await offer(page).click();
+  await switchTo(page, 'merge');
+  const board = page.getByTestId('game-board');
+  assert.match(await board.textContent(), /^Row 1: .+\. Row 2: .+\. Row 3: .+\. Row 4: .+\.$/);
+  assert.match(await board.textContent(), /\b2\b|\b4\b/, 'the starting tiles were not read out');
+  assert.equal(await board.getAttribute('aria-live'), 'polite');
+  await switchTo(page, 'pairs');
+  await canvas(page).press('ArrowRight');
+  assert.match(await board.textContent(), /^Row 1, card 2: face down\. Pairs found: 0 of 8\.$/);
+  await canvas(page).press('Enter');
+  assert.match(await board.textContent(), /^Row 1, card 2: [a-z]+\. Face up: [a-z]+\. Pairs found: 0 of 8\.$/);
   assert.deepEqual(errors, []);
   await context.close();
 });

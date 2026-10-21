@@ -1,5 +1,5 @@
 import { mix, roundRect } from "./draw";
-import type { Direction, Game, GameHost, GameSpec, Palette, Phase } from "./types";
+import type { BoardView, Direction, Game, GameHost, GameSpec, Palette, Phase } from "./types";
 
 /* Merge: slide every tile on a four by four board one way; two equal tiles
  * that meet become one of twice the value, and a new 2 (sometimes a 4)
@@ -88,6 +88,10 @@ class Merge implements Game {
 
   constructor(private readonly host: GameHost) {
     this.reset();
+  }
+
+  view(): BoardView {
+    return { kind: "tiles", columns: N, values: [...this.board] };
   }
 
   private reset() {

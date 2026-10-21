@@ -27,6 +27,18 @@ export interface Palette {
 
 export type Phase = "idle" | "playing" | "over";
 
+/** Pairs' eight shapes, in the order the deck numbers them. */
+export const SHAPE_NAMES = ["disc", "ring", "square", "triangle", "diamond", "plus", "star", "salmon"] as const;
+export type ShapeName = (typeof SHAPE_NAMES)[number];
+
+export type CardView = { state: "down" } | { state: "up" | "matched"; shape: ShapeName };
+
+/** A turn-based board as data, which the arcade reads out to a screen
+ *  reader: the canvas alone is only pixels. */
+export type BoardView =
+  | { kind: "tiles"; columns: number; values: number[] }
+  | { kind: "cards"; columns: number; cursor: number; cards: CardView[] };
+
 export interface GameHost {
   /** The round's score changed. */
   score(value: number): void;
@@ -52,11 +64,14 @@ export interface Game {
   swipe?(direction: Direction): void;
   /** The pointer is over the canvas at this logical point. */
   point?(x: number, y: number): void;
-  /** The pointer or key that a tap or a jump started came up. */
+  /** The pointer or key that a tap or a jump started came up, or the game
+   *  lost the focus or paused: let go of everything held. */
   release?(): void;
   /** Advance by `dt` seconds. Only the action games have it. */
   step?(dt: number): void;
   draw(ctx: CanvasRenderingContext2D, palette: Palette): void;
+  /** The board as data. Only the turn-based games have it. */
+  view?(): BoardView;
   /** Drop any timer: the game is leaving the page. */
   destroy?(): void;
 }

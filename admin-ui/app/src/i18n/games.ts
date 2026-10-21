@@ -109,4 +109,28 @@ export default defineMessages({
     sk: "Otočte dve karty ťuknutím, alebo šípkami a medzerníkom. Nájdite všetky dvojice na čo najmenej pokusov.",
     de: "Dreh zwei Karten um, mit Tippen oder mit Pfeiltasten und Leertaste. Finde alle Paare mit möglichst wenigen Versuchen.",
   },
+  // ── Read out for a screen reader ────────────────────────────────────────
+  "games.board.row": { en: "Row {row}: {tiles}.", sk: "Riadok {row}: {tiles}.", de: "Reihe {row}: {tiles}." },
+  "games.board.empty": { en: "empty", sk: "prázdne", de: "leer" },
+  "games.board.card": {
+    en: "Row {row}, card {column}: {card}.",
+    sk: "Riadok {row}, karta {column}: {card}.",
+    de: "Reihe {row}, Karte {column}: {card}.",
+  },
+  "games.board.up": { en: "Face up: {shapes}.", sk: "Odkryté: {shapes}.", de: "Aufgedeckt: {shapes}." },
+  "games.board.found": {
+    en: "Pairs found: {found} of {all}.",
+    sk: "Nájdené dvojice: {found} z {all}.",
+    de: "Gefundene Paare: {found} von {all}.",
+  },
+  "games.card.down": { en: "face down", sk: "lícom nadol", de: "verdeckt" },
+  "games.card.matched": { en: "{shape}, paired", sk: "{shape}, nájdená dvojica", de: "{shape}, Paar gefunden" },
+  "games.shape.disc": { en: "disc", sk: "kruh", de: "Scheibe" },
+  "games.shape.ring": { en: "ring", sk: "krúžok", de: "Ring" },
+  "games.shape.square": { en: "square", sk: "štvorec", de: "Quadrat" },
+  "games.shape.triangle": { en: "triangle", sk: "trojuholník", de: "Dreieck" },
+  "games.shape.diamond": { en: "diamond", sk: "kosoštvorec", de: "Raute" },
+  "games.shape.plus": { en: "plus", sk: "plus", de: "Plus" },
+  "games.shape.star": { en: "star", sk: "hviezda", de: "Stern" },
+  "games.shape.salmon": { en: "salmon", sk: "losos", de: "Lachs" },
 });
