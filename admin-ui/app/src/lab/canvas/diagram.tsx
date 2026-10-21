@@ -427,6 +427,8 @@ export function DiagramCanvas() {
   const wrap = React.useRef<HTMLDivElement>(null);
   const svgRef = React.useRef<SVGSVGElement>(null);
   const gesture = React.useRef<Gesture | null>(null);
+  // The handles hide during a gesture; its end draws them back.
+  const [, gestureEnded] = React.useReducer((x: number) => x + 1, 0);
   const space = React.useRef(false);
   const pointer = React.useRef({ x: 0, y: 0, inside: false });
   const fitted = React.useRef(false);
@@ -594,6 +596,9 @@ export function DiagramCanvas() {
     if (ev.button !== 0) return;
     // An armed tool puts its card, template or device down where the click is.
     if (u.cardTool) {
+      // No mousedown after this: its focus would land on the canvas and
+      // close the editor the new card opens with.
+      ev.preventDefault();
       if (u.cardTool.kind === "template") ops.template(u.cardTool.key, w.x, w.y);
       else ops.addCard(u.cardTool, w.x, w.y);
       return;
@@ -745,6 +750,7 @@ export function DiagramCanvas() {
     const gs = gesture.current;
     gesture.current = null;
     if (!gs) return;
+    gestureEnded();
     switch (gs.kind) {
       case "pan":
         if (!gs.moved && !s.ui.hand && !space.current && ev.button !== 1) ops.clear();
