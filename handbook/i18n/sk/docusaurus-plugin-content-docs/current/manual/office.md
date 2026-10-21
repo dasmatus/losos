@@ -6,7 +6,7 @@ slug: /manual/office
 
 # Kancelárske dokumenty
 
-Office otvára textové dokumenty, tabuľky a prezentácie v prehliadači a
+LosOS Office otvára textové dokumenty, tabuľky a prezentácie v prehliadači a
 ukladá ich späť na zariadenie. Na jednom dokumente môže naraz pracovať
 viac ľudí a každý vidí, kde práve píšu ostatní. Editor je Collabora
 Online a beží priamo na zariadení. Dokumenty ho nikdy neopustia.
@@ -26,7 +26,7 @@ zachovajú formáty OpenDocument a novšie formáty Microsoftu.
 
 ## Zapnutie \{#turning-it-on}
 
-Na novom zariadení je Office vypnutý, pretože potrebuje pamäť, aj keď nikto
+Na novom zariadení je LosOS Office vypnutý, pretože potrebuje pamäť, aj keď nikto
 nemá otvorený žiadny dokument. Zapnete ho v **Nastavenia → Rozšírené**
 voľbou `losos.office.enable` a potom stlačte **Použiť**. Počítajte s asi
 550 MB bez otvoreného dokumentu. Každý otvorený dokument pridá ďalšiu pamäť:
@@ -35,8 +35,10 @@ viac než 2 GB.
 
 ## Otvorenie dokumentu \{#opening-a-document}
 
-Kliknite na názov dokumentu a otvorí sa na celú obrazovku, pod lištou s
-cestou späť a názvom dokumentu. Dokument, ktorý smiete iba čítať, sa
+Kliknite na názov dokumentu a otvorí sa na celú šírku stránky, pod hornou
+lištou zariadenia a lištou s cestou späť a názvom dokumentu. Editor sa
+riadi svetlou alebo tmavou témou zariadenia a preberá jeho farby; samotná
+stránka dokumentu si nechá vzhľad, s akým bola napísaná. Dokument, ktorý smiete iba čítať, sa
 otvorí so štítkom **Len na čítanie** a editor ho nedovolí zmeniť. Editor
 funguje na adrese https zariadenia, tej istej, ktorú používa LosOS Login;
 stránka otvorená cez http sa tam najprv sama presunie.
@@ -65,7 +67,9 @@ dokumentu dostanú len ľudia, ktorí ho smú otvoriť sami.
 ## Priečinok dokumentov \{#a-folder-of-documents}
 
 `losos.office.folder` určuje priečinok na zariadení, ktorého dokumenty
-Office upravuje sám, bez LosOS cloud. `https://<zariadenie>/office/` potom
-vypíše dokumenty v ňom aj v priečinkoch v ňom a každý otvorí v editore. Je
+LosOS Office upravuje sám, bez LosOS cloud. V bočnom paneli sa potom za
+**Aplikácie** objaví **Dokumenty** pre každého, kto sa prihlási. Vypíše
+dokumenty v priečinku aj v priečinkoch v ňom a každý otvorí v editore. Ako
+ostatné stránky správy odpovedá iba vo vlastnej sieti zariadenia. Je
 určený pre zariadenie, ktoré drží jeden priečinok dokumentov pre ľudí vo
 svojej sieti. Inak ho nechajte prázdny.

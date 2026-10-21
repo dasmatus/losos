@@ -6,7 +6,7 @@ slug: /manual/office
 
 # Office documents
 
-Office opens text documents, spreadsheets and presentations in the browser
+LosOS Office opens text documents, spreadsheets and presentations in the browser
 and saves them back on the box. Several people can work in one document at
 the same time, and each sees where the others are typing. The editor is
 Collabora Online, which runs on the box itself. Documents never leave it.
@@ -26,7 +26,7 @@ OpenDocument and the newer Microsoft formats keep the most.
 
 ## Turning it on
 
-Office is off on a new box, because it needs memory even when nobody has a
+LosOS Office is off on a new box, because it needs memory even when nobody has a
 document open. Turn it on under **Settings → Advanced** with
 `losos.office.enable`, then press **Apply**. Plan for about 550 MB with no
 document open. Each open document adds to that: a few dozen MB for a short
@@ -34,9 +34,12 @@ one, more for a large one. The box never lets it take more than 2 GB.
 
 ## Opening a document
 
-Click a document's name and it opens full screen, under a bar with the way
-back and the document's name. A document you may only read opens with a
-**Read only** label, and the editor offers no way to change it. The editor
+Click a document's name and it opens across the whole width of the page,
+under the box's top bar and a bar with the way back and the document's
+name. The editor follows the box's light or dark theme and takes its
+colours; the page of the document itself keeps the look it was written
+with. A document you may only read opens with a **Read only** label, and
+the editor offers no way to change it. The editor
 works on the box's https address, the same one LosOS Login uses; a page
 opened over http moves itself there first.
 
@@ -62,8 +65,10 @@ may open the document themselves get into it.
 
 ## A folder of documents
 
-`losos.office.folder` names a folder on the box whose documents Office
-edits on its own, without LosOS cloud. `https://<box>/office/` then lists
-the documents in it and in the folders inside it, and opens each one in the
-editor. It is meant for a box that keeps one folder of documents for
+`losos.office.folder` names a folder on the box whose documents LosOS
+Office edits on its own, without LosOS cloud. **Documents** then appears in
+the sidebar, after **Apps**, for everyone who signs in. It lists the
+documents in the folder and in the folders inside it, and opens each one in
+the editor. Like the rest of the admin pages it answers on the box's own
+network only. It is meant for a box that keeps one folder of documents for
 the people on its network. Leave it empty otherwise.

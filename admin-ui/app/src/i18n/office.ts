@@ -1,6 +1,6 @@
 import { defineMessages } from "./define";
 
-/* Office documents: the editor page (src/cloud/office/, src/office/). */
+/* Office documents: the editor (src/cloud/office/) and Documents (src/screens/Office.tsx). */
 export default defineMessages({
   "office.back": { en: "Back to files", sk: "Späť na súbory", de: "Zurück zu den Dateien" },
   "office.opening": { en: "Opening {name}", sk: "Otvára sa {name}", de: "{name} wird geöffnet" },
@@ -40,6 +40,11 @@ export default defineMessages({
   },
   "office.retry": { en: "Try again", sk: "Skúsiť znova", de: "Erneut versuchen" },
   "office.files.title": { en: "Documents", sk: "Dokumenty", de: "Dokumente" },
+  "office.files.summary": {
+    en: "The documents in this box's LosOS Office folder. Open one to edit it here, alone or with others.",
+    sk: "Dokumenty v priečinku LosOS Office na tomto zariadení. Otvorte dokument a upravujte ho tu, sami alebo s ďalšími.",
+    de: "Die Dokumente im LosOS-Office-Ordner dieser Box. Öffne eines, um es hier zu bearbeiten, allein oder mit anderen.",
+  },
   "office.files.loading": { en: "Loading the documents", sk: "Načítavajú sa dokumenty", de: "Die Dokumente werden geladen" },
   "office.files.name": { en: "Name", sk: "Názov", de: "Name" },
   "office.files.modified": { en: "Changed", sk: "Zmenené", de: "Geändert" },

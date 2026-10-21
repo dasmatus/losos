@@ -43,6 +43,8 @@ let
   socket = "${runDir}/http.sock";
   stateDir = "/var/lib/losos-office";
 
+  lanOnly = import ./lan-only.nix;
+
   toCoolwsd = ''
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $remote_addr;
@@ -58,8 +60,8 @@ in
           inherit (cfg) port;
           settings = {
             # TLS ends at nginx. With the box's https on, coolwsd writes https
-            # and wss addresses into its page, and the Office page moves
-            # itself to https before it opens the editor.
+            # and wss addresses into its page, and Documents moves itself to
+            # https before it opens the editor.
             ssl = {
               enable = false;
               termination = config.losos.tls.enable;
@@ -135,13 +137,6 @@ in
           "^~ /cool/adminws".return = "404";
           "^~ /cool/getMetrics".return = "404";
           "^~ /cool/convert-to".return = "404";
-          # The editor full screen (admin-ui/app/office/index.html): a
-          # document in the Office folder, or one another box shares. Not
-          # LAN-only, like the editor itself; the page holds nothing but
-          # what its address carries.
-          "/office/" = lib.mkIf (config.losos.admin.ui != null) {
-            tryFiles = "$uri /office/index.html";
-          };
           "= /hosting/capabilities" = {
             proxyPass = coolwsd;
             recommendedProxySettings = false;
@@ -213,40 +208,42 @@ in
 
         systemd.tmpfiles.rules = [ "d ${cfg.folder} 0750 losos-office losos-office -" ];
 
-        # The editor page's two calls, for the signed-in person. LosOS Login
-        # names them; without it nobody is named and the host answers 401.
-        services.nginx.virtualHosts."losos-front".locations =
-          {
-            "/office/api/" = {
-              proxyPass = "http://unix:${socket}";
-              recommendedProxySettings = false;
-              extraConfig = ''
-                proxy_set_header Host $host;
-                proxy_set_header X-Losos-Cloud-User "";
-                proxy_set_header X-Losos-Cloud-Name "";
-              ''
-              + lib.optionalString config.losos.identity.enable ''
-                auth_request /internal/losos-office-authz;
-                auth_request_set $losos_office_user $upstream_http_remote_user;
-                auth_request_set $losos_office_name $upstream_http_remote_name;
-                proxy_set_header X-Losos-Cloud-User $losos_office_user;
-                proxy_set_header X-Losos-Cloud-Name $losos_office_name;
-              '';
-            };
-          }
-          // lib.optionalAttrs config.losos.identity.enable {
-            "= /internal/losos-office-authz" = {
-              proxyPass = "http://127.0.0.1:${toString config.losos.identity.port}/auth/api/authz/auth-request";
-              extraConfig = ''
-                internal;
-                proxy_pass_request_body off;
-                proxy_set_header Content-Length "";
-                proxy_set_header X-Original-Method $request_method;
-                proxy_set_header X-Original-URL https://$host$request_uri;
-                proxy_set_header X-Forwarded-For $remote_addr;
-              '';
-            };
+        # Documents' two calls (admin-ui/app/src/screens/Office.tsx, which the
+        # admin app serves at /office/, LAN only like the rest of it), for
+        # the signed-in person. LosOS Login names them; without it nobody is
+        # named and the host answers 401.
+        services.nginx.virtualHosts."losos-front".locations = {
+          "/office/api/" = {
+            proxyPass = "http://unix:${socket}";
+            recommendedProxySettings = false;
+            extraConfig = ''
+              ${lanOnly}
+              proxy_set_header Host $host;
+              proxy_set_header X-Losos-Cloud-User "";
+              proxy_set_header X-Losos-Cloud-Name "";
+            ''
+            + lib.optionalString config.losos.identity.enable ''
+              auth_request /internal/losos-office-authz;
+              auth_request_set $losos_office_user $upstream_http_remote_user;
+              auth_request_set $losos_office_name $upstream_http_remote_name;
+              proxy_set_header X-Losos-Cloud-User $losos_office_user;
+              proxy_set_header X-Losos-Cloud-Name $losos_office_name;
+            '';
           };
+        }
+        // lib.optionalAttrs config.losos.identity.enable {
+          "= /internal/losos-office-authz" = {
+            proxyPass = "http://127.0.0.1:${toString config.losos.identity.port}/auth/api/authz/auth-request";
+            extraConfig = ''
+              internal;
+              proxy_pass_request_body off;
+              proxy_set_header Content-Length "";
+              proxy_set_header X-Original-Method $request_method;
+              proxy_set_header X-Original-URL https://$host$request_uri;
+              proxy_set_header X-Forwarded-For $remote_addr;
+            '';
+          };
+        };
       })
     ]
   );

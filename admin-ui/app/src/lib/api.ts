@@ -271,10 +271,11 @@ export function useMe(): Me | null {
 }
 
 /** The https address of this page, which Authelia sends the browser back to.
- *  Authelia works over https only; the box serves both. */
+ *  Authelia works over https only; the box serves both. The fragment goes
+ *  too: it names the open document in Documents. */
 function httpsHere(): string {
-  const { host, pathname, search } = window.location;
-  return `https://${host}${pathname}${search}`;
+  const { host, pathname, search, hash } = window.location;
+  return `https://${host}${pathname}${search}${hash}`;
 }
 
 /** Authelia's sign-in page, coming back here afterwards. */

@@ -11,21 +11,24 @@
 #   * two people in one document see each other and one save carries both
 #     edits (co-editing over the WOPI lock);
 #   * the editor page carries coolwsd's own frame-ancestors and none of the
-#     admin pages' headers, and the Office page frames it under the admin
-#     policy;
+#     admin pages' headers, and Documents frames it under the admin policy;
+#   * LosOS Login names the person on Documents' calls, and nobody else
+#     gets a session;
 #   * the WOPI routes refuse a missing, foreign or other file's token, and
 #     nginx routes neither /wopi/ nor coolwsd's discovery, admin, metrics
 #     and convert-to endpoints;
-#   * the whole thing in a browser: the laptop opens /office/, the document
-#     loads, letters typed land in the file on the box, and a second person
-#     shows up in the first one's editor. nix/tests/office-shots.py takes a
-#     picture of each step (for the pull request and the launch film), and
-#     the driver copies them out to office-shots/;
+#   * the whole thing in a browser, in the admin app: the laptop opens
+#     Documents from the sidebar, the document loads, letters typed land in
+#     the file on the box, a second person shows up in the first one's
+#     editor, and the plain http address goes through sign-in to the same
+#     document on https. nix/tests/office-shots.py takes a picture of each
+#     step (for the pull request and the launch film), and the driver
+#     copies them out to office-shots/;
 #   * how much memory coolwsd takes idle and with documents open.
 #
-# LosOS Login is off here. Who is asking is what nginx passes in
-# X-Losos-Cloud-User/-Name; the test sets those from two cookies the browser
-# sends, where Authelia's Remote-User would on a box.
+# Matus claims the box and adds Eva through lososd's own routes, and each
+# signs in at /auth/. LosOS cloud is a stub, as in nix/tests/identity.nix:
+# the claim only asks it to take the owner's password.
 { pkgs }:
 
 let
@@ -35,6 +38,13 @@ let
   python = pkgs.python3.withPackages (p: [ p.websocket-client ]);
   client = pkgs.writeShellScript "office-client" ''
     exec ${python}/bin/python3 ${./office-client.py} "$@"
+  '';
+  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
+    case "$1" in
+      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
+      user:resetpassword) echo "Successfully reset password for $2" ;;
+      *) echo "stub occ: $*" >&2; exit 1 ;;
+    esac
   '';
   shots = pkgs.writeShellScript "office-shots" ''
     exec ${python}/bin/python3 ${./office-shots.py} "$@"
@@ -80,6 +90,8 @@ pkgs.testers.nixosTest {
         ../../modules/options.nix
         ../../modules/containers.nix
         ../../modules/tls.nix
+        ../../modules/daemon.nix
+        ../../modules/identity.nix
         ../../modules/office.nix
       ];
       virtualisation.memorySize = 4096;
@@ -91,19 +103,18 @@ pkgs.testers.nixosTest {
         backend.package = lososPkgs.losos-ctl;
         admin.enable = true;
         admin.ui = lososPkgs.losos-admin-ui;
-        identity.enable = false;
         office = {
           enable = true;
           inherit folder;
         };
       };
 
-      # LosOS Login's part: name the person on the editor-session calls.
-      services.nginx.virtualHosts."losos-front".locations."/office/api/".extraConfig = lib.mkForce ''
-        proxy_set_header Host $host;
-        proxy_set_header X-Losos-Cloud-User $cookie_losos_person;
-        proxy_set_header X-Losos-Cloud-Name $cookie_losos_person_name;
-      '';
+      systemd.services.lososd.path = lib.mkForce [
+        stubOcc
+        pkgs.coreutils
+      ];
+      # The stub above, not a pod.
+      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
 
       # A TCG run is slow enough for a tab to count as idle or away; a box
       # keeps coolwsd's defaults.
@@ -174,6 +185,8 @@ pkgs.testers.nixosTest {
     shots = "SHOTS=/tmp/shots ${shots}"
     trip_plan = "${tripPlan}"
     box = "https://mattbox.local"
+    PASSWORD = "Correct-Horse-Battery-9"
+    EVA_PASSWORD = "Eva-Long-Password-3"
 
     def hexid(name):
         return name.encode().hex()
@@ -191,6 +204,26 @@ pkgs.testers.nixosTest {
         current = int(mattbox.succeed("systemctl show coolwsd -p MemoryCurrent --value").strip())
         print(f"coolwsd memory {label}: {current // (1024 * 1024)} MiB")
         return current
+
+    def sign_in(name, password):
+        """Sign in at /auth/ the way the portal does; the session cookie's value."""
+        body = json.dumps({"username": name, "password": password})
+        head = laptop.succeed(
+            f"curl -ks -D - -o /dev/null {box}/auth/api/firstfactor"
+            f" -H 'Content-Type: application/json' -d '{body}'"
+        )
+        m = re.search(r"(?im)^set-cookie: losos_session=([^;]+)", head)
+        assert m, f"no session cookie for {name}: {head}"
+        return m.group(1)
+
+    def api(path, cookie=None, data=None, extra=""):
+        args = f"-ks -w '\\n%{{http_code}}' {box}{path} {extra}"
+        if cookie:
+            args += f" -H 'Cookie: losos_session={cookie}'"
+        if data is not None:
+            args += f" -X POST -H 'Content-Type: application/json' -d '{json.dumps(data)}'"
+        body, code = laptop.succeed(f"curl {args}").rsplit("\n", 1)
+        return int(code), body
 
     def convert(src, name, fmt):
         mattbox.succeed(
@@ -340,6 +373,58 @@ pkgs.testers.nixosTest {
             "curl -sf --unix-socket /run/losos-office/http.sock http://box/office/api/files"
         )
 
+    with subtest("LosOS Login names the person on Documents' calls"):
+        code, body = api("/api/setup/claim", data={"name": "matus", "password": PASSWORD})
+        assert code == 200, (code, body)
+        mattbox.wait_for_unit("authelia-losos.service")
+        mattbox.wait_for_open_port(9091)
+        mattbox.wait_until_succeeds("grep -q \"domain: 'mattbox.local'\" /run/losos-identity/session.yml")
+        mattbox.wait_until_succeeds("curl -sf http://127.0.0.1:9091/auth/api/health")
+        # LosOS Login reads the people file again on its own after each
+        # change; signing Eva in before it has would count as failed attempts
+        # against her.
+        def changed(path, cookie, data):
+            mark = mattbox.succeed(
+                "journalctl -u authelia-losos -n 0 --show-cursor | sed -n 's/^-- cursor: //p'"
+            ).strip()
+            code, body = api(path, cookie, data)
+            assert code == 200, (path, code, body)
+            mattbox.wait_until_succeeds(
+                f"journalctl -u authelia-losos --after-cursor='{mark}' | grep -q 'Reloaded successfully'",
+                timeout=60,
+            )
+
+        matus = sign_in("matus", PASSWORD)
+        changed("/api/account", matus, {"displayName": "Matus", "email": "matus@mattbox.local"})
+        changed(
+            "/api/people",
+            matus,
+            {"name": "eva", "displayName": "Eva", "email": "eva@mattbox.local", "password": EVA_PASSWORD, "groups": []},
+        )
+        # Signed out, Documents' calls go nowhere, and a name the browser
+        # made up is dropped.
+        code, _ = api("/office/api/files")
+        assert code == 401, code
+        code, _ = api("/office/api/files", extra="-H 'X-Losos-Cloud-User: matus' -H 'Remote-User: matus'")
+        assert code == 401, code
+
+        # Signed in, each session's token carries that person's own name.
+        def named(person, password):
+            cookie = sign_in(person, password)
+            code, body = api("/office/api/open", cookie, {"fileId": hexid("Plan.docx")})
+            assert code == 200, (person, code, body)
+            token = json.loads(body)["accessToken"]
+            src = "http://127.0.0.1:8093/wopi/files/" + hexid("Plan.docx")
+            info = json.loads(mattbox.succeed(f"curl -sf '{src}?access_token={token}'"))
+            return cookie, info["UserFriendlyName"]
+
+        matus, shown = named("matus", PASSWORD)
+        assert shown == "Matus", shown
+        eva, shown = named("eva", EVA_PASSWORD)
+        assert shown == "Eva", shown
+        code, body = api("/office/api/files", eva)
+        assert code == 200 and "Plan.docx" in body, (code, body)
+
     with subtest("in a browser: open, type, save, and a second person joins"):
         # A folder that looks like someone's: the earlier subtests' files go.
         mattbox.succeed(
@@ -366,11 +451,14 @@ pkgs.testers.nixosTest {
         trip = f"{box}/office/#file={hexid('Trip plan.odt')}"
         trip_row = f"a[href='#file={hexid('Trip plan.odt')}']"
         budget_row = f"a[href='#file={hexid('Trip budget.ods')}']"
-        browse("open", "matus", "--person", "matus", "--name", "Matus", "--url", f"{box}/office/")
+        documents = "nav a[href='/office/']"
+        browse("open", "matus", "--name", "Matus", "--cookie", matus, "--url", f"{box}/apps")
+        browse("click", "matus", documents)
         browse("listed", "matus")
         browse(
-            "shot", "matus", "01-documents", "--title", "The documents on the box",
+            "shot", "matus", "01-documents", "--title", "The documents on the box, beside the rest of LosOS",
             "--action", "click:trip", "--target", f"trip={trip_row}", "--target", f"budget={budget_row}",
+            "--target", f"sidebar={documents}",
         )
         browse("click", "matus", trip_row)
         browse("loaded", "matus")
@@ -389,7 +477,7 @@ pkgs.testers.nixosTest {
         browse("shot", "matus", "04-saved", "--title", "Saved to the box", "--target", "save")
         has("Trip plan.odt", "Pack the tent")
 
-        browse("open", "eva", "--person", "eva", "--name", "Eva", "--url", trip)
+        browse("open", "eva", "--name", "Eva", "--cookie", eva, "--url", trip)
         browse("loaded", "eva")
         browse("click", "eva", "main iframe")
         # The end of the line under the heading.
@@ -402,17 +490,20 @@ pkgs.testers.nixosTest {
         has("Trip plan.odt", "We leave at 7.")
         has("Trip plan.odt", "Pack the tent")
 
-        browse("open", "budget", "--person", "matus", "--name", "Matus", "--url", f"{box}/office/#file={hexid('Trip budget.ods')}")
+        browse("open", "budget", "--name", "Matus", "--cookie", matus, "--url", f"{box}/office/#file={hexid('Trip budget.ods')}")
         browse("loaded", "budget")
         browse("shot", "budget", "07-budget", "--title", "A spreadsheet", "--target", "page")
         busy = memory("with three editors open")
 
-        # The editor works on https only; the page moves itself there.
+        # The session cookie is https only, so the plain address asks to sign
+        # in; LosOS Login knows the person and sends them back to the same
+        # document, on https, where the editor works.
         plain = f"http://mattbox.local/office/#file={hexid('Trip plan.odt')}"
-        browse("open", "plain", "--person", "matus", "--name", "Matus", "--url", plain)
+        browse("open", "plain", "--name", "Matus", "--cookie", matus, "--url", plain)
+        browse("signin", "plain")
+        where = browse("where", "plain", "https://mattbox.local/office/").strip()
+        assert where == f"https://mattbox.local/office/#file={hexid('Trip plan.odt')}", where
         browse("loaded", "plain")
-        where = browse("where", "plain").strip()
-        assert where.startswith("https://mattbox.local/office/#file="), where
         laptop.copy_from_machine("/tmp/shots", "office-shots")
 
     print(f"coolwsd memory: idle {idle // 2**20} MiB, with three editors open {busy // 2**20} MiB")

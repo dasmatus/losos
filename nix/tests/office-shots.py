@@ -6,22 +6,23 @@ reduced motion (the flags are in nix/tests/office.nix). Each call connects,
 does one thing in one tab and leaves; the tabs stay open in between, so the
 test script can check the box between two pictures.
 
-    office-shots.py open   TAB --person LOGIN --name NAME --url URL
+    office-shots.py open   TAB --name NAME --cookie VALUE --url URL
     office-shots.py listed TAB                    until the document list is up
     office-shots.py loaded TAB                    until the editor has the document
-    office-shots.py click  TAB SELECTOR
+    office-shots.py click  TAB SELECTOR           once it is there
     office-shots.py key    TAB KEY [KEY...]       ctrl+End, ArrowDown, Enter
     office-shots.py type   TAB TEXT --shot NN-slug --title T   one PNG a letter
     office-shots.py write  TAB TEXT               the same, no pictures
     office-shots.py saved  TAB                    ctrl+s, until the editor says so
     office-shots.py views  TAB N                  until N people are in it
-    office-shots.py where  TAB                    prints the tab's address
+    office-shots.py signin TAB                    the sign-in dialog's button
+    office-shots.py where  TAB URL-PREFIX         until the tab is there, prints it
     office-shots.py shot   TAB NN-slug --title T [--action KIND[:TARGET]]
                            [--target NAME | --target NAME=SELECTOR]...
 
 Each person gets a browser context of their own, so two tabs can be two
-people. Who a tab is travels in two cookies the test's nginx turns into the
-X-Losos-Cloud-User/-Name headers, where LosOS Login would on a box.
+people. Who a tab is is LosOS Login's session cookie, which the test script
+gets by signing that person in at /auth/ and hands to `open`.
 
 Pictures go to $SHOTS as NN-slug.png, each with a step in $SHOTS/manifest.json
 (see the film's capture spec): the address shown, a title, what happens next,
@@ -44,8 +45,10 @@ HOST = os.environ.get("SHOTS_HOST", "mattbox.local")
 
 # What a picture may point at, as (in the editor frame?, selector).
 TARGETS = {
-    "back": (False, "header button"),
-    "name": (False, "header h1"),
+    # The editor's own bar, the one right above its <main>; the shell's
+    # top bar is a <header> too.
+    "back": (False, "header:has(+ main) button"),
+    "name": (False, "header:has(+ main) h1"),
     "document": (False, "main iframe"),
     "save": (True, '[id^="save"].unotoolbutton'),
     "page": (True, "#document-container"),
@@ -144,13 +147,16 @@ def attach(name):
 
 
 def keep_still(tab):
+    # A constructed sheet: the admin page's style-src 'self' refuses a
+    # <style> element made at runtime, and allows this.
     css = json.dumps(STILL)
     tab.js(
         f"""(() => {{
           for (const d of [document, document.querySelector('main iframe')?.contentDocument]) {{
-            if (!d || d.getElementById('losos-still')) continue;
-            const s = d.createElement('style'); s.id = 'losos-still'; s.textContent = {css};
-            d.head.appendChild(s);
+            if (!d || d.losos_still) continue;
+            const s = new d.defaultView.CSSStyleSheet(); s.replaceSync({css});
+            d.adoptedStyleSheets = [...d.adoptedStyleSheets, s];
+            d.losos_still = true;
           }}
         }})()"""
     )
@@ -232,11 +238,11 @@ def shoot(tab, name, file, title, action="none", targets=()):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("command", choices=["open", "listed", "loaded", "click", "key", "type", "write", "saved", "views", "where", "shot"])
+    p.add_argument("command", choices=["open", "listed", "loaded", "click", "key", "type", "write", "saved", "views", "signin", "where", "shot"])
     p.add_argument("tab")
     p.add_argument("args", nargs="*")
-    p.add_argument("--person")
     p.add_argument("--name")
+    p.add_argument("--cookie")
     p.add_argument("--url")
     p.add_argument("--shot")
     p.add_argument("--title", default="")
@@ -250,8 +256,15 @@ def main():
             "Target.createBrowserContext", {"disposeOnDetach": False}
         )["browserContextId"]
         cookies = [
-            {"name": "losos_person", "value": a.person, "domain": HOST, "path": "/"},
-            {"name": "losos_person_name", "value": a.name, "domain": HOST, "path": "/"},
+            {
+                "name": "losos_session",
+                "value": a.cookie,
+                "domain": HOST,
+                "path": "/",
+                "secure": True,
+                "httpOnly": True,
+                "sameSite": "Lax",
+            }
         ]
         browser.call(
             "Storage.setCookies", {"cookies": cookies, "browserContextId": context}
@@ -291,10 +304,11 @@ def main():
     tab.call("Page.enable")
 
     if a.command == "listed":
-        tab.until("document.querySelector('main[aria-busy=\"false\"] table') !== null", "the list")
+        tab.until("document.querySelector('main [aria-busy=\"false\"] table') !== null", "the list")
         settle(tab)
     elif a.command == "click":
         (selector,) = a.args
+        tab.until(f"document.querySelector({json.dumps(selector)}) !== null", selector, 300)
         found = tab.js(
             f"(() => {{ const r = document.querySelector({json.dumps(selector)})?.getBoundingClientRect();"
             " return r ? [r.x + r.width / 2, r.y + r.height / 2] : null; })()"
@@ -347,8 +361,13 @@ def main():
             ),
             "the save",
         )
-        # and its status bar no longer says "Saving...".
-        tab.until(frame("!/Saving/.test(this.document.body.innerText)"), "the status bar")
+        # and, for the picture, its status bar no longer says "Saving...".
+        # In a shared document that line can stay up long after the file is
+        # written; the test checks the file on the box itself.
+        try:
+            tab.until(frame("!/Saving/.test(this.document.body.innerText)"), "the status bar", 120)
+        except SystemExit as e:
+            log(f"{e}; the save itself is done")
         settle(tab)
     elif a.command == "views":
         (count,) = a.args
@@ -358,7 +377,13 @@ def main():
             f"{count} people in the document",
         )
         settle(tab, 6)
+    elif a.command == "signin":
+        button = "dialog[open] button[type=submit]"
+        tab.until(f"document.querySelector({json.dumps(button)})?.disabled === false", "the sign-in dialog")
+        tab.js(f"document.querySelector({json.dumps(button)}).click()")
     elif a.command == "where":
+        (prefix,) = a.args
+        tab.until(f"location.href.startsWith({json.dumps(prefix)})", prefix, 300)
         print(tab.js("location.href"))
     elif a.command == "shot":
         settle(tab)

@@ -66,6 +66,9 @@ import { cn } from "@/lib/utils";
 const Wizard = React.lazy(() => import("@/screens/Wizard"));
 const Home = React.lazy(() => import("@/screens/Home"));
 const Settings = React.lazy(() => import("@/screens/Settings"));
+/* Documents (losos.office.folder) and the editor, on boxes that edit a
+ * folder of documents. */
+const Office = React.lazy(() => import("@/screens/Office"));
 /* The first-run tour (src/tour/): its own chunk, fetched only when it opens,
  * which on most visits is never. */
 const Tour = React.lazy(() => import("@/tour/tour"));
@@ -169,6 +172,7 @@ function useGate(): Gate {
 function Shell() {
   const gate = useGate();
   const t = useT();
+  const location = useLocation();
 
   /* The look — the wallpaper and the hand-written widgets — follows the
    * token: loaded on sign-in, dropped on sign-out. Once, for the page. */
@@ -278,10 +282,22 @@ function Shell() {
     );
   }
 
+  /* An open document takes the whole width under the top bar: the editor
+   * has toolbars and a sidebar of its own, and its own <main>. */
+  const editing =
+    signedIn && !held && location.pathname.startsWith("/office") && location.hash.length > 1;
+
   return (
-    <div className="losos-shell min-h-dvh text-ink">
+    <div className={cn("losos-shell min-h-dvh text-ink", editing && "flex h-dvh flex-col")}>
       <TopBar signedIn={signedIn} />
 
+      {editing ? (
+        <div className="min-h-0 flex-1">
+          <React.Suspense fallback={<ScreenFallback />}>
+            <Office hash={location.hash} />
+          </React.Suspense>
+        </div>
+      ) : (
       <SidebarProvider
         className={cn(
           "mx-auto flex w-full max-w-6xl px-4 pt-5 pb-12 sm:px-6",
@@ -312,6 +328,7 @@ function Shell() {
             <Route path="/mesh" element={<SettingsRoute pane="mesh" />} />
             <Route path="/machines" element={<SettingsRoute pane="machines" />} />
             <Route path="/apps" element={<SettingsRoute pane="apps" />} />
+            <Route path="/office" element={<Office hash={location.hash} />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />
@@ -320,6 +337,7 @@ function Shell() {
           </React.Suspense>
         </main>
       </SidebarProvider>
+      )}
 
       <SignInDialog open={!signedIn} />
       {signedIn && paletteLoaded && (

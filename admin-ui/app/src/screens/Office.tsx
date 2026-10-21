@@ -1,21 +1,28 @@
-/* The documents in the box's Office folder (losos.office.folder), for
- * /office/ with nothing after the #. Each row is a link to #file=<id>, which
- * the page opens in the editor; Back in the editor comes here again.
+/* Documents: the box's Office folder (losos.office.folder) at /office/, in
+ * the shell like every other pane, and a document from it full width under
+ * the top bar. The fragment says which:
  *
- * LosOS cloud lists its own files and opens the same editor from them; this
- * list is only for a box that edits a plain folder. */
+ *   /office/              the folder's documents
+ *   /office/#file=<id>    one of them in the editor
+ *
+ * LosOS cloud lists its own files and opens the same editor
+ * (src/cloud/office/editor.tsx) from them. */
 
-import { useEffect, useState } from "react";
+import * as React from "react";
+import { useNavigate } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  Alert01Icon,
   Doc01Icon,
   File01Icon,
   Pdf01Icon,
   Ppt01Icon,
   Xls01Icon,
 } from "@hugeicons/core-free-icons";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   Empty,
   EmptyDescription,
@@ -25,13 +32,35 @@ import {
 } from "@/components/ui/empty";
 import { SkeletonLine } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { OfficeEditor } from "@/cloud/office/editor";
+import { openOffice, OfficeFailure } from "@/cloud/office/api";
 import { formatBytes } from "@/lib/apps";
 import { INTL_TAG } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
-import { logoFor } from "@/lib/logo";
-import { OfficeFailure } from "@/cloud/office/api";
+import { PaneHeader } from "@/screens/settings/rows";
 
 export const FOLDER_API = "/office/api";
+
+/** The list with nothing after the #, else the editor. */
+export default function Office({ hash }: { hash: string }) {
+  const fragment = hash.replace(/^#/, "");
+  // A new document is a new editor, not the old one with another file.
+  if (fragment !== "") return <OfficeDocument key={fragment} fragment={fragment} />;
+  return <OfficeFiles />;
+}
+
+function OfficeDocument({ fragment }: { fragment: string }) {
+  const file = new URLSearchParams(fragment).get("file") ?? "";
+  const load = React.useCallback(
+    () => (file ? openOffice(file, FOLDER_API) : Promise.reject(new OfficeFailure("notFound"))),
+    [file],
+  );
+  const navigate = useNavigate();
+  const close = React.useCallback(() => navigate("/office/"), [navigate]);
+  return <OfficeEditor load={load} onClose={close} />;
+}
+
+// ── The folder ─────────────────────────────────────────────────────────────
 
 export interface FolderFile {
   id: string;
@@ -78,13 +107,13 @@ type State =
   | { kind: "failed"; error: OfficeFailure }
   | { kind: "ready"; files: FolderFile[] };
 
-export function OfficeFiles() {
+function OfficeFiles() {
   const t = useT();
   const locale = useLocale();
-  const [state, setState] = useState<State>({ kind: "loading" });
-  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = React.useState<State>({ kind: "loading" });
+  const [attempt, setAttempt] = React.useState(0);
 
-  useEffect(() => {
+  React.useEffect(() => {
     let live = true;
     setState({ kind: "loading" });
     listFolder().then(
@@ -102,39 +131,34 @@ export function OfficeFiles() {
     };
   }, [attempt]);
 
-  useEffect(() => {
-    document.title = `${t("office.files.title")} · LosOS`;
-  }, [t]);
-
   const when = new Intl.DateTimeFormat(INTL_TAG[locale], { dateStyle: "medium", timeStyle: "short" });
-  const logo = logoFor();
 
   return (
-    <div className="flex min-h-dvh flex-col bg-ground text-ink">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
-        <img src={logo.url} alt="" className="size-6" />
-        <h1 className="text-sm font-medium">{t("office.files.title")}</h1>
-      </header>
+    <div aria-busy={state.kind === "loading"}>
+      <PaneHeader title={t("office.files.title")} summary={t("office.files.summary")} />
 
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6" aria-busy={state.kind === "loading"}>
-        {state.kind === "loading" && (
-          <div className="flex flex-col gap-3" aria-label={t("office.files.loading")}>
-            <SkeletonLine />
-            <SkeletonLine />
-            <SkeletonLine />
-          </div>
-        )}
+      {state.kind === "loading" && (
+        <Card className="flex flex-col gap-3 p-5" aria-label={t("office.files.loading")}>
+          <SkeletonLine />
+          <SkeletonLine />
+          <SkeletonLine />
+        </Card>
+      )}
 
-        {state.kind === "failed" && (
-          <div className="flex flex-col items-center gap-4 py-16 text-center">
-            <p className="max-w-md text-sm text-muted">{t(`office.error.${state.error.reason}`)}</p>
-            <Button variant="secondary" onClick={() => setAttempt((n) => n + 1)}>
+      {state.kind === "failed" && (
+        <Alert variant="crit">
+          <HugeiconsIcon icon={Alert01Icon} strokeWidth={1.5} aria-hidden="true" />
+          <AlertDescription className="flex flex-wrap items-center gap-3">
+            <span>{t(`office.error.${state.error.reason}`)}</span>
+            <Button variant="secondary" size="sm" onClick={() => setAttempt((n) => n + 1)}>
               {t("office.retry")}
             </Button>
-          </div>
-        )}
+          </AlertDescription>
+        </Alert>
+      )}
 
-        {state.kind === "ready" && state.files.length === 0 && (
+      {state.kind === "ready" && state.files.length === 0 && (
+        <Card>
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -144,21 +168,23 @@ export function OfficeFiles() {
               <EmptyDescription>{t("office.files.empty.body")}</EmptyDescription>
             </EmptyHeader>
           </Empty>
-        )}
+        </Card>
+      )}
 
-        {state.kind === "ready" && state.files.length > 0 && (
+      {state.kind === "ready" && state.files.length > 0 && (
+        <Card className="overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t("office.files.name")}</TableHead>
+                <TableHead className="pl-5">{t("office.files.name")}</TableHead>
                 <TableHead className="max-sm:hidden">{t("office.files.modified")}</TableHead>
-                <TableHead className="text-right max-sm:hidden">{t("office.files.size")}</TableHead>
+                <TableHead className="pr-5 text-right max-sm:hidden">{t("office.files.size")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {state.files.map((f) => (
                 <TableRow key={f.id} className="relative">
-                  <TableCell>
+                  <TableCell className="pl-5">
                     <a
                       href={`#file=${f.id}`}
                       className="flex min-w-0 items-center gap-3 outline-none after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-accent/40"
@@ -180,15 +206,15 @@ export function OfficeFiles() {
                   <TableCell className="whitespace-nowrap text-muted max-sm:hidden">
                     {when.format(new Date(f.modified))}
                   </TableCell>
-                  <TableCell className="numeric whitespace-nowrap text-right text-muted max-sm:hidden">
+                  <TableCell className="numeric whitespace-nowrap pr-5 text-right text-muted max-sm:hidden">
                     {formatBytes(f.size)}
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        )}
-      </main>
+        </Card>
+      )}
     </div>
   );
 }

@@ -6,7 +6,7 @@ slug: /manual/office
 
 # Office-Dokumente
 
-Office öffnet Textdokumente, Tabellen und Präsentationen im Browser und
+LosOS Office öffnet Textdokumente, Tabellen und Präsentationen im Browser und
 speichert sie zurück auf die Box. Mehrere Personen können gleichzeitig in
 einem Dokument arbeiten, und jede sieht, wo die anderen gerade schreiben.
 Der Editor ist Collabora Online und läuft auf der Box selbst. Die Dokumente
@@ -28,7 +28,7 @@ Microsoft-Formate erhalten am meisten.
 
 ## Einschalten \{#turning-it-on}
 
-Auf einer neuen Box ist Office aus, weil es Speicher braucht, auch wenn
+Auf einer neuen Box ist LosOS Office aus, weil es Speicher braucht, auch wenn
 niemand ein Dokument offen hat. Schalte es unter **Einstellungen →
 Erweitert** mit `losos.office.enable` ein und drück dann **Anwenden**.
 Rechne mit etwa 550 MB ohne offenes Dokument. Jedes offene Dokument kommt
@@ -37,8 +37,11 @@ es nie mehr als 2 GB nehmen.
 
 ## Ein Dokument öffnen \{#opening-a-document}
 
-Klick auf den Namen eines Dokuments, und es öffnet sich bildschirmfüllend,
-unter einer Leiste mit dem Weg zurück und dem Namen des Dokuments. Ein
+Klick auf den Namen eines Dokuments, und es öffnet sich über die ganze
+Breite der Seite, unter der oberen Leiste der Box und einer Leiste mit dem
+Weg zurück und dem Namen des Dokuments. Der Editor folgt dem hellen oder
+dunklen Design der Box und übernimmt ihre Farben; die Seite des Dokuments
+selbst behält das Aussehen, mit dem sie geschrieben wurde. Ein
 Dokument, das du nur lesen darfst, öffnet sich mit dem Hinweis **Nur
 lesen**, und der Editor bietet keinen Weg, es zu ändern. Der Editor
 funktioniert unter der https-Adresse der Box, derselben, die LosOS Login
@@ -71,7 +74,9 @@ der Editor nicht an, also kommen nur Leute in das Dokument, die es selbst
 ## Ein Ordner mit Dokumenten \{#a-folder-of-documents}
 
 `losos.office.folder` nennt einen Ordner auf der Box, dessen Dokumente
-Office selbst bearbeitet, ohne LosOS cloud. `https://<box>/office/` listet
-dann die Dokumente darin und in den Ordnern darin auf und öffnet jedes im
-Editor. Das ist für eine Box gedacht, die einen Ordner mit Dokumenten für
+LosOS Office selbst bearbeitet, ohne LosOS cloud. In der Seitenleiste
+erscheint dann nach **Apps** der Eintrag **Dokumente**, für alle, die sich
+anmelden. Er listet die Dokumente im Ordner und in den Ordnern darin auf
+und öffnet jedes im Editor. Wie die übrigen Verwaltungsseiten antwortet er
+nur im eigenen Netz der Box. Das ist für eine Box gedacht, die einen Ordner mit Dokumenten für
 die Leute in ihrem Netz hält. Sonst lass ihn leer.

@@ -79,11 +79,12 @@ export function opensInOffice(name: string, types: readonly OfficeType[]): boole
   return types.some((t) => t.extension === ext);
 }
 
-/** The frame's address: the editor, the token, the interface language, and
- * a close button that posts `UI_Close` back to the page. The token travels
- * in the query because the page's policy allows no form posts; coolwsd
- * puts it in the document's WebSocket address anyway. */
-export function editorSrc(session: OfficeSession, locale: Locale): string {
+/** The frame's address: the editor, the token, the interface language, a
+ * close button that posts `UI_Close` back to the page, and the look
+ * (editorLook). The token travels in the query because the page's policy
+ * allows no form posts; coolwsd puts it in the document's WebSocket address
+ * anyway. */
+export function editorSrc(session: OfficeSession, locale: Locale, look = ""): string {
   const sep = session.url.includes("?") ? "&" : "?";
   const params = new URLSearchParams({
     access_token: session.accessToken,
@@ -91,7 +92,59 @@ export function editorSrc(session: OfficeSession, locale: Locale): string {
     lang: INTL_TAG[locale],
     closebutton: "1",
   });
+  if (look !== "") params.set("css_variables", look);
   return `${session.url}${sep}${params.toString()}`;
+}
+
+/* Collabora's own colour variables (browser/dist/color-palette*.css), each
+ * given the LosOS token (src/styles/tokens.css) that plays the same part:
+ * its toolbars, sidebar and dialogs take the box's surfaces, lines, text and
+ * accent. coolwsd lays them over its palette for the light and the dark
+ * look alike, so the page sends the values of the theme it is in.
+ *
+ * Colours only, and only as #hex: coolwsd drops any other value, so the
+ * editor keeps its own type and corners. The document itself, and the
+ * previews in the Styles gallery, are drawn by the office core and are not
+ * styled by any of this. */
+const LOOK: ReadonlyArray<readonly [string, string]> = [
+  ["--color-main-background", "--surface"],
+  ["--color-background-lighter", "--sunk"],
+  ["--color-background-dark", "--hair"],
+  ["--color-background-darker", "--ground"],
+  ["--color-background-hover", "--line"],
+  ["--color-canvas", "--ground"],
+  ["--color-main-text", "--ink"],
+  ["--color-text-dark", "--ink"],
+  ["--color-text-darker", "--muted"],
+  ["--color-text-lighter", "--muted"],
+  ["--color-primary", "--accent"],
+  ["--color-primary-dark", "--accent"],
+  ["--color-primary-darker", "--accent"],
+  ["--color-primary-lighter", "--accent-wash"],
+  ["--color-primary-text", "--ink"],
+  ["--color-border", "--line"],
+  ["--color-border-dark", "--line"],
+  ["--color-border-darker", "--muted"],
+  ["--color-border-lighter", "--hair"],
+  ["--color-toolbar-border", "--line"],
+  ["--color-btn-border", "--line"],
+  ["--color-hyperlink", "--accent"],
+  ["--color-error", "--crit"],
+  ["--color-warning", "--warn"],
+  ["--color-success", "--ok"],
+];
+
+/** coolwsd's `css_variables`: `--name=#hex;…`, the tokens' values as `root`
+ * has them now. A token the page does not define as #hex is left to
+ * Collabora. */
+export function editorLook(root: Element): string {
+  const style = getComputedStyle(root);
+  const out: string[] = [];
+  for (const [theirs, ours] of LOOK) {
+    const value = style.getPropertyValue(ours).trim();
+    if (/^#[0-9a-f]{3,8}$/i.test(value)) out.push(`${theirs}=${value}`);
+  }
+  return out.join(";");
 }
 
 /** Collabora keeps its light or dark look in this origin's localStorage, under
