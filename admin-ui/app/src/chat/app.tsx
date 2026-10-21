@@ -418,12 +418,16 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
           </div>
           {membership === KnownMembership.Join && (
             <>
-              <button type="button" className={tool} aria-label={t("chat.call.voice")} title={t("chat.call.voice")} disabled={calls.active !== null} onClick={() => calls.start(room, false)}>
-                <HugeiconsIcon icon={Call02Icon} className="size-5" />
-              </button>
-              <button type="button" className={tool} aria-label={t("chat.call.video")} title={t("chat.call.video")} disabled={calls.active !== null} onClick={() => calls.start(room, true)}>
-                <HugeiconsIcon icon={Video01Icon} className="size-5" />
-              </button>
+              {calls.available && (
+                <>
+                  <button type="button" className={tool} aria-label={t("chat.call.voice")} title={t("chat.call.voice")} disabled={calls.active !== null} onClick={() => calls.start(room, false)}>
+                    <HugeiconsIcon icon={Call02Icon} className="size-5" />
+                  </button>
+                  <button type="button" className={tool} aria-label={t("chat.call.video")} title={t("chat.call.video")} disabled={calls.active !== null} onClick={() => calls.start(room, true)}>
+                    <HugeiconsIcon icon={Video01Icon} className="size-5" />
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 className={cn(tool, panel !== null && "bg-accent-wash text-accent")}

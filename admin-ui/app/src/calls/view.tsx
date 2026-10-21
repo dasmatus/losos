@@ -4,15 +4,7 @@
 
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  CallEnd01Icon,
-  CallIcon,
-  CameraOff02Icon,
-  CameraVideoIcon,
-  LockKeyIcon,
-  Mic01Icon,
-  MicOff01Icon,
-} from "@hugeicons/core-free-icons";
+import { CallEnd01Icon, CallIcon, CameraOff02Icon, CameraVideoIcon, LockKeyIcon, Mic01Icon, MicOff01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useT } from "@/lib/i18n-react";
@@ -25,8 +17,11 @@ export interface Tile {
   /* Undefined until the first track arrives. */
   stream?: MediaStream;
   self?: boolean;
-  /* The camera is off, or no frame has been decrypted yet. */
+  /* This browser's own camera is off. A remote tile goes dark by itself
+   * while no picture comes in. */
   dark?: boolean;
+  /* Drawn while there is no picture; initials otherwise. */
+  avatar?: React.ReactNode;
 }
 
 function Video({ stream, muted, mirrored }: { stream: MediaStream; muted: boolean; mirrored?: boolean }) {
@@ -34,15 +29,7 @@ function Video({ stream, muted, mirrored }: { stream: MediaStream; muted: boolea
   React.useEffect(() => {
     if (ref.current && ref.current.srcObject !== stream) ref.current.srcObject = stream;
   }, [stream]);
-  return (
-    <video
-      ref={ref}
-      autoPlay
-      playsInline
-      muted={muted}
-      className={cn("size-full object-cover", mirrored && "-scale-x-100")}
-    />
-  );
+  return <video ref={ref} autoPlay playsInline muted={muted} className={cn("size-full object-cover", mirrored && "-scale-x-100")} />;
 }
 
 function Initials({ name }: { name: string }) {
@@ -53,27 +40,46 @@ function Initials({ name }: { name: string }) {
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase())
     .join("");
-  return (
-    <div className="grid size-20 place-items-center rounded-full bg-accent-wash text-2xl font-medium text-accent">
-      {letters || "?"}
-    </div>
-  );
+  return <div className="grid size-20 place-items-center rounded-full bg-accent-wash text-2xl font-medium text-accent">{letters || "?"}</div>;
+}
+
+/* Whether a received picture is coming in. A sender whose camera is off
+ * sends nothing, and the track goes quiet. */
+function useLive(stream: MediaStream | undefined): boolean {
+  const [live, setLive] = React.useState(false);
+  React.useEffect(() => {
+    const track = stream?.getVideoTracks()[0];
+    if (track === undefined) {
+      setLive(false);
+      return;
+    }
+    const read = (): void => setLive(!track.muted && track.readyState === "live");
+    read();
+    for (const name of ["mute", "unmute", "ended"]) track.addEventListener(name, read);
+    return () => {
+      for (const name of ["mute", "unmute", "ended"]) track.removeEventListener(name, read);
+    };
+  }, [stream]);
+  return live;
 }
 
 function CallTile({ tile }: { tile: Tile }) {
   const t = useT();
+  const live = useLive(tile.self ? undefined : tile.stream);
+  const picture = tile.stream !== undefined && !tile.dark && (tile.self || live);
   return (
-    <div
-      data-pid={tile.pid}
-      className="relative grid min-h-0 place-items-center overflow-hidden rounded-card border border-line bg-sunk"
-    >
-      {tile.stream && !tile.dark ? (
+    <div data-pid={tile.pid} className="relative grid min-h-0 place-items-center overflow-hidden rounded-card border border-line bg-sunk">
+      {picture && tile.stream ? (
         <Video stream={tile.stream} muted={!!tile.self} mirrored={tile.self} />
       ) : (
-        <Initials name={tile.name} />
+        (tile.avatar ?? <Initials name={tile.name} />)
       )}
       {/* Remote audio plays even while the picture is off. */}
-      {tile.stream && tile.dark && !tile.self ? <Video stream={tile.stream} muted={false} /> : null}
+      {tile.stream && !picture && !tile.self ? (
+        <div className="hidden">
+          <Video stream={tile.stream} muted={false} />
+        </div>
+      ) : null}
       <span className="absolute bottom-2 left-2 rounded-control bg-surface/85 px-2 py-0.5 text-[13px] text-ink">
         {tile.self ? t("calls.you") : tile.name}
       </span>
@@ -114,11 +120,7 @@ export function CallView(p: CallViewProps) {
         <div className="min-w-0">
           <h2 className="truncate text-base font-medium text-ink">{p.title}</h2>
           <p className="text-[13px] text-muted">
-            {p.status === "connecting"
-              ? t("calls.connecting")
-              : p.status === "waiting"
-                ? t("calls.waiting")
-                : t("calls.ongoing")}
+            {p.status === "connecting" ? t("calls.connecting") : p.status === "waiting" ? t("calls.waiting") : t("calls.ongoing")}
           </p>
         </div>
         <TooltipProvider>
@@ -138,7 +140,10 @@ export function CallView(p: CallViewProps) {
               <p>{t("calls.encryptedDetail")}</p>
               {p.stats ? (
                 <p className="mt-1 text-muted">
-                  {t("calls.frames", { sealed: p.stats.sealed, opened: p.stats.opened })}
+                  {t("calls.frames", {
+                    sealed: p.stats.sealed,
+                    opened: p.stats.opened,
+                  })}
                 </p>
               ) : null}
             </TooltipContent>
@@ -192,6 +197,7 @@ export function CallView(p: CallViewProps) {
 
 export interface RingingProps {
   caller: string;
+  avatar?: React.ReactNode;
   room?: string;
   video: boolean;
   onAccept(video: boolean): void;
@@ -208,10 +214,12 @@ export function RingingCard(p: RingingProps) {
       className="fixed right-4 bottom-4 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-card border border-line bg-surface p-4 shadow-lg"
     >
       <div className="flex items-center gap-3">
-        <Initials name={p.caller} />
+        {p.avatar ?? <Initials name={p.caller} />}
         <div className="min-w-0">
           <p className="font-medium text-ink">
-            {t(p.video ? "calls.incomingVideo" : "calls.incomingVoice", { name: p.caller })}
+            {t(p.video ? "calls.incomingVideo" : "calls.incomingVoice", {
+              name: p.caller,
+            })}
           </p>
           {p.room ? <p className="truncate text-[13px] text-muted">{t("calls.inRoom", { room: p.room })}</p> : null}
           <p className="mt-1 inline-flex items-center gap-1 text-[12px] text-muted">

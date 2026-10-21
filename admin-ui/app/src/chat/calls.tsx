@@ -1,42 +1,53 @@
 import * as React from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Call02Icon, CallEnd01Icon, Mic01Icon, MicOff01Icon, Video01Icon, VideoOffIcon } from "@hugeicons/core-free-icons";
-import {
-  CallEvent,
-  CallFeedEvent,
-  createNewMatrixCall,
-  type GroupCall,
-  GroupCallEvent,
-  GroupCallIntent,
-  GroupCallType,
-  KnownMembership,
-  type MatrixCall,
-  type MatrixClient,
-  type Room,
-} from "matrix-js-sdk";
-import { CallErrorCode, CallState } from "matrix-js-sdk/lib/webrtc/call";
-import type { CallFeed } from "matrix-js-sdk/lib/webrtc/callFeed";
-import { Button } from "@/components/ui/button";
+import { ClientEvent, type MatrixClient, type MatrixEvent, type Room, RoomEvent, KnownMembership } from "matrix-js-sdk";
+import type { ReceivedToDeviceMessage } from "matrix-js-sdk/lib/sync-accumulator";
+import type { ToDevicePayload } from "matrix-js-sdk/lib/models/ToDeviceMessage";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
-import { cn } from "@/lib/utils";
+import { CallSession, canEncrypt, type KeyChannel, type KeyMessage, type Member, type OpenIdToken } from "@/calls/session";
+import type { WorkerStats } from "@/calls/e2ee-protocol";
+import { CallView, RingingCard, type Tile } from "@/calls/view";
 import { Avatar } from "./avatar";
 
-/* Voice and video calls. Two people in a room is a 1:1 call (m.call.*,
- * peer to peer over WebRTC); more is a group call, the SDK's full-mesh one,
- * which needs nothing from the homeserver beyond room state and to-device
- * messages. On the box's own network the browsers reach each other
- * directly; calls across the internet need a TURN server, which a box does
- * not run. */
+/* Voice and video calls, started from a room or a DM.
+ *
+ * The media goes through the box's own SFU (losos-calls, backend/src/calls/),
+ * which forwards frames it cannot read: every frame is encrypted in the
+ * sender's browser (src/calls/e2ee.ts) with a key that only the people in
+ * the call hold. Those keys travel between devices as Olm-encrypted
+ * to-device messages, so the box carries them without being able to open
+ * them either. The room gets one `org.losos.call` event when a call starts
+ * and one when it ends, which is what rings the others and what the
+ * timeline draws with a Join button. */
 
-export type Active =
-  | { kind: "one"; call: MatrixCall; roomId: string }
-  | { kind: "group"; call: GroupCall; roomId: string };
+export const CALL_EVENT = "org.losos.call";
+const KEY_EVENT = "org.losos.call.key";
+/* A start older than this no longer rings. */
+const RING_FOR_MS = 60_000;
+const CALL_ID = /^[0-9a-f]{32}$/;
+
+export interface Active {
+  roomId: string;
+  call: string;
+  video: boolean;
+}
+
+export interface Ringing {
+  roomId: string;
+  call: string;
+  video: boolean;
+  sender: string;
+}
 
 interface CallsState {
+  /* The box runs calls: it shares its storage in a mesh it joined and has
+   * losos.calls.enable. Otherwise /calls/api/ does not exist, and nothing
+   * here draws a button. */
+  available: boolean;
   active: Active | null;
-  ringing: MatrixCall | null;
+  ringing: Ringing | null;
   start: (room: Room, video: boolean) => void;
+  join: (roomId: string, call: string, video: boolean) => void;
 }
 
 const CallsContext = React.createContext<CallsState | null>(null);
@@ -47,209 +58,376 @@ export function useCalls(): CallsState {
   return found;
 }
 
-const joined = (room: Room): number => room.getMembers().filter((m) => m.membership === KnownMembership.Join).length;
+/** What an `org.losos.call` event says, or null when it is not one. */
+export function callEvent(ev: MatrixEvent): { call: string; video: boolean; state: "started" | "ended" } | null {
+  if (ev.getType() !== CALL_EVENT) return null;
+  const content = ev.getContent();
+  const call = content["call_id"];
+  const state = content["state"];
+  if (typeof call !== "string" || !CALL_ID.test(call) || (state !== "started" && state !== "ended")) return null;
+  return { call, video: content["video"] === true, state };
+}
+
+/** Whether the room's live timeline already holds the end of `call`. */
+export function callEnded(room: Room, call: string): boolean {
+  return room
+    .getLiveTimeline()
+    .getEvents()
+    .some((ev) => {
+      const said = callEvent(ev);
+      return said?.call === call && said.state === "ended";
+    });
+}
+
+const joinedUsers = (room: Room): string[] =>
+  room
+    .getMembers()
+    .filter((m) => m.membership === KnownMembership.Join)
+    .map((m) => m.userId);
+
+/* The sender keys, as Olm to-device messages. A key goes only to a device
+ * the SFU put in the call AND whose person is in the room, and a key is
+ * taken only when Olm says which device sent it. */
+function olmKeys(client: MatrixClient, roomId: string): KeyChannel {
+  return {
+    async send(to, msg) {
+      const room = client.getRoom(roomId);
+      const inRoom = new Set(room === null ? [] : joinedUsers(room));
+      const devices = to.filter((d) => inRoom.has(d.user)).map((d) => ({ userId: d.user, deviceId: d.device }));
+      if (devices.length === 0) return;
+      // Fetches device lists the client does not track yet (someone it
+      // shares no encrypted room with).
+      await client.getCrypto()?.getUserDeviceInfo([...new Set(devices.map((d) => d.userId))], true);
+      await client.encryptAndSendToDevice(KEY_EVENT, devices, msg as unknown as ToDevicePayload);
+    },
+    subscribe(handler) {
+      const on = ({ message, encryptionInfo }: ReceivedToDeviceMessage): void => {
+        if (message.type !== KEY_EVENT || encryptionInfo === null) return;
+        const device = encryptionInfo.senderDevice;
+        if (device === undefined || encryptionInfo.sender !== message.sender) return;
+        handler({ user: encryptionInfo.sender, device }, message.content as unknown as KeyMessage);
+      };
+      client.on(ClientEvent.ReceivedToDeviceMessage, on);
+      return () => {
+        client.off(ClientEvent.ReceivedToDeviceMessage, on);
+      };
+    },
+  };
+}
+
+class CallError extends Error {}
+
+async function openMedia(video: boolean): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: true, video });
+  } catch {
+    throw new CallError("calls.noDevices");
+  }
+}
+
+async function openId(client: MatrixClient): Promise<OpenIdToken> {
+  const token = await client.getOpenIdToken();
+  return {
+    access_token: token.access_token,
+    matrix_server_name: token.matrix_server_name,
+  };
+}
+
+async function createCall(client: MatrixClient, room: Room, video: boolean): Promise<string> {
+  const response = await fetch("/calls/api/calls", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({
+      openid: await openId(client),
+      room: room.roomId,
+      invited: joinedUsers(room),
+      video,
+    }),
+  });
+  const body = (await response.json().catch(() => ({}))) as {
+    call?: string;
+    error?: string;
+  };
+  if (!response.ok || typeof body.call !== "string") throw new CallError(body.error ?? `HTTP ${response.status}`);
+  return body.call;
+}
+
+function announce(client: MatrixClient, roomId: string, call: string, video: boolean, state: "started" | "ended"): Promise<unknown> {
+  // The SDK types a custom event's content as never; this one is ours.
+  return client.sendEvent(roomId, CALL_EVENT as never, { call_id: call, video, state } as never);
+}
 
 export function CallsProvider({ client, children }: { client: MatrixClient; children: React.ReactNode }) {
   const t = useT();
-  const [active, setActive] = React.useState<Active | null>(null);
-  const [ringing, setRinging] = React.useState<MatrixCall | null>(null);
+  const [active, setActive] = React.useState<(Active & { local: MediaStream }) | null>(null);
+  const [ringing, setRinging] = React.useState<Ringing | null>(null);
+  const activeCall = React.useRef<string | null>(null);
+  activeCall.current = active?.call ?? null;
+  const me = client.getSafeUserId();
+  const [available, setAvailable] = React.useState(false);
 
   React.useEffect(() => {
-    const incoming = (call: MatrixCall): void => {
-      setRinging(call);
-      call.once(CallEvent.Hangup, () => setRinging((current) => (current === call ? null : current)));
-    };
-    // CallEventHandlerEvent.Incoming; the enum is not exported by name.
-    client.on("Call.incoming" as never, incoming as never);
+    let live = true;
+    fetch("/calls/api/health", { credentials: "same-origin" })
+      .then((response) => {
+        if (live) setAvailable(response.ok && canEncrypt());
+      })
+      .catch(() => undefined);
     return () => {
-      client.off("Call.incoming" as never, incoming as never);
+      live = false;
     };
-  }, [client]);
-
-  const endOne = React.useCallback((call: MatrixCall) => {
-    call.once(CallEvent.Hangup, () => setActive((current) => (current?.call === call ? null : current)));
   }, []);
 
-  const start = React.useCallback(
-    (room: Room, video: boolean) => {
-      (async () => {
-        if (joined(room) <= 2) {
-          const call = createNewMatrixCall(client, room.roomId);
-          if (call === null) throw new Error(t("chat.call.unsupported"));
-          endOne(call);
-          setActive({ kind: "one", call, roomId: room.roomId });
-          await (video ? call.placeVideoCall() : call.placeVoiceCall());
-        } else {
-          await client.waitUntilRoomReadyForGroupCalls(room.roomId);
-          const group =
-            client.getGroupCallForRoom(room.roomId) ??
-            (await client.createGroupCall(room.roomId, video ? GroupCallType.Video : GroupCallType.Voice, false, GroupCallIntent.Room));
-          await group.enter();
-          setActive({ kind: "group", call: group, roomId: room.roomId });
+  React.useEffect(() => {
+    if (!available) return;
+    const onTimeline = (
+      ev: MatrixEvent,
+      room: Room | undefined,
+      toStart: boolean | undefined,
+      _removed: boolean,
+      data: { liveEvent?: boolean },
+    ): void => {
+      if (toStart === true || data.liveEvent !== true || room === undefined) return;
+      void client.decryptEventIfNeeded(ev).then(() => {
+        const said = callEvent(ev);
+        if (said === null) return;
+        if (said.state === "ended") {
+          setRinging((current) => (current?.call === said.call ? null : current));
+          return;
         }
-      })().catch((error: unknown) => {
-        setActive(null);
-        toast.error(t("chat.call.failed"), error instanceof Error ? error.message : String(error), { help: "chat" });
+        if (ev.getSender() === me || Date.now() - ev.getTs() > RING_FOR_MS || activeCall.current === said.call) return;
+        setRinging({
+          roomId: room.roomId,
+          call: said.call,
+          video: said.video,
+          sender: ev.getSender() ?? "",
+        });
       });
+    };
+    client.on(RoomEvent.Timeline, onTimeline);
+    return () => {
+      client.off(RoomEvent.Timeline, onTimeline);
+    };
+  }, [available, client, me]);
+
+  // A call that was not answered stops ringing on its own.
+  React.useEffect(() => {
+    if (ringing === null) return;
+    const timer = setTimeout(() => setRinging((current) => (current === ringing ? null : current)), RING_FOR_MS);
+    return () => clearTimeout(timer);
+  }, [ringing]);
+
+  const failed = React.useCallback(
+    (error: unknown) => {
+      const key = error instanceof CallError ? error.message : "";
+      const detail =
+        key === "calls.noDevices" || key === "calls.noEncryption"
+          ? t(key)
+          : key === "noSuchCall"
+            ? t("calls.ended")
+            : error instanceof Error
+              ? error.message
+              : String(error);
+      toast.error(t("calls.failed"), detail, { help: "chat" });
     },
-    [client, endOne, t],
+    [t],
   );
 
-  const answer = (): void => {
-    if (ringing === null) return;
-    const call = ringing;
-    setRinging(null);
-    endOne(call);
-    setActive({ kind: "one", call, roomId: call.roomId });
-    call.answer().catch((error: unknown) => toast.error(t("chat.call.failed"), String(error), { help: "chat" }));
-  };
+  const enter = React.useCallback(
+    (roomId: string, video: boolean, make: (local: MediaStream) => Promise<string>) => {
+      if (activeCall.current !== null) return;
+      (async () => {
+        if (!canEncrypt()) throw new CallError("calls.noEncryption");
+        const local = await openMedia(video);
+        try {
+          const call = await make(local);
+          setRinging((current) => (current?.call === call ? null : current));
+          setActive({ roomId, call, video, local });
+        } catch (error) {
+          for (const track of local.getTracks()) track.stop();
+          throw error;
+        }
+      })().catch(failed);
+    },
+    [failed],
+  );
+
+  const start = React.useCallback(
+    (room: Room, video: boolean) =>
+      enter(room.roomId, video, async () => {
+        const call = await createCall(client, room, video);
+        await announce(client, room.roomId, call, video, "started");
+        return call;
+      }),
+    [client, enter],
+  );
+
+  const join = React.useCallback((roomId: string, call: string, video: boolean) => enter(roomId, video, async () => call), [enter]);
+
+  const end = React.useCallback(
+    (last: boolean) => {
+      if (active === null) return;
+      for (const track of active.local.getTracks()) track.stop();
+      if (last) void announce(client, active.roomId, active.call, active.video, "ended").catch(() => undefined);
+      setActive(null);
+    },
+    [active, client],
+  );
+
+  const ringingRoom = ringing === null ? null : client.getRoom(ringing.roomId);
+  const caller = ringing === null ? null : ringingRoom?.getMember(ringing.sender);
+  const callerName = caller?.name ?? ringing?.sender ?? "";
 
   return (
-    <CallsContext.Provider value={{ active, ringing, start }}>
+    <CallsContext.Provider value={{ available, active, ringing, start, join }}>
       {children}
       {ringing !== null && active === null && (
-        <Ringing
-          client={client}
-          call={ringing}
-          onAnswer={answer}
-          onDecline={() => {
-            ringing.reject();
-            setRinging(null);
-          }}
+        <RingingCard
+          caller={callerName}
+          avatar={<Avatar client={client} id={ringing.sender} name={callerName} mxc={caller?.getMxcAvatarUrl()} size={40} />}
+          {...(ringingRoom !== null && ringingRoom.getJoinedMemberCount() > 2 ? { room: ringingRoom.name } : {})}
+          video={ringing.video}
+          onAccept={(video) => join(ringing.roomId, ringing.call, video)}
+          onDecline={() => setRinging(null)}
         />
       )}
-      {active !== null && <CallView client={client} active={active} onEnd={() => setActive(null)} />}
+      {active !== null && <CallScreen key={active.call} client={client} active={active} onEnd={end} onFail={failed} />}
     </CallsContext.Provider>
   );
 }
 
-function Ringing({ client, call, onAnswer, onDecline }: { client: MatrixClient; call: MatrixCall; onAnswer: () => void; onDecline: () => void }) {
-  const t = useT();
-  const who = call.getOpponentMember();
-  const name = who?.name ?? t("chat.call.someone");
-  return (
-    <div role="alertdialog" aria-label={t("chat.call.incoming", { name })} className="fixed top-4 right-4 z-50 flex w-80 items-center gap-3 rounded-card border border-line bg-surface p-3 shadow-pop">
-      <Avatar client={client} id={who?.userId ?? call.roomId} name={name} mxc={who?.getMxcAvatarUrl()} size={40} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[13.5px] font-semibold">{name}</p>
-        <p className="text-[12.5px] text-muted">{call.type === "video" ? t("chat.call.incomingVideo") : t("chat.call.incomingVoice")}</p>
-      </div>
-      <Button size="icon-sm" variant="destructive" aria-label={t("chat.call.decline")} onClick={onDecline}>
-        <HugeiconsIcon icon={CallEnd01Icon} className="size-4" />
-      </Button>
-      <Button size="icon-sm" aria-label={t("chat.call.answer")} onClick={onAnswer}>
-        <HugeiconsIcon icon={Call02Icon} className="size-4" />
-      </Button>
-    </div>
-  );
-}
-
-function FeedTile({ client, roomId, feed }: { client: MatrixClient; roomId: string; feed: CallFeed }) {
-  const ref = React.useRef<HTMLVideoElement>(null);
-  const [, setTick] = React.useState(0);
-  React.useEffect(() => {
-    const el = ref.current;
-    const attach = (): void => {
-      if (el !== null && el.srcObject !== feed.stream) el.srcObject = feed.stream;
-      setTick((n) => n + 1);
-    };
-    attach();
-    feed.on(CallFeedEvent.NewStream, attach);
-    feed.on(CallFeedEvent.MuteStateChanged, attach);
-    return () => {
-      feed.off(CallFeedEvent.NewStream, attach);
-      feed.off(CallFeedEvent.MuteStateChanged, attach);
-    };
-  }, [feed]);
-  const member = client.getRoom(roomId)?.getMember(feed.userId);
-  const name = member?.name ?? feed.userId;
-  const videoOff = feed.isVideoMuted();
-  return (
-    <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-card bg-ink">
-      <video ref={ref} autoPlay playsInline muted={feed.isLocal()} className={cn("size-full object-cover", videoOff && "hidden", feed.isLocal() && "-scale-x-100")} />
-      {videoOff && <Avatar client={client} id={feed.userId} name={name} mxc={member?.getMxcAvatarUrl()} size={64} />}
-      <span className="absolute bottom-2 left-2 rounded bg-ink/70 px-1.5 py-0.5 text-[12px] text-surface">
-        {name}
-        {feed.isAudioMuted() ? " · 🔇" : ""}
-      </span>
-    </div>
-  );
-}
-
-function useFeeds(active: Active): CallFeed[] {
-  const [feeds, setFeeds] = React.useState<CallFeed[]>([]);
-  React.useEffect(() => {
-    if (active.kind === "one") {
-      const read = (): void => setFeeds([...active.call.getFeeds()].filter((feed) => feed.purpose === "m.usermedia" || feed.purpose === "m.screenshare"));
-      read();
-      active.call.on(CallEvent.FeedsChanged, read);
-      return () => {
-        active.call.off(CallEvent.FeedsChanged, read);
-      };
-    }
-    const group = active.call;
-    const read = (): void => setFeeds([...group.userMediaFeeds]);
-    read();
-    group.on(GroupCallEvent.UserMediaFeedsChanged, read);
-    return () => {
-      group.off(GroupCallEvent.UserMediaFeedsChanged, read);
-    };
-  }, [active]);
-  return feeds;
-}
-
-function CallView({ client, active, onEnd }: { client: MatrixClient; active: Active; onEnd: () => void }) {
-  const t = useT();
-  const feeds = useFeeds(active);
-  const [muted, setMuted] = React.useState(false);
-  const [videoOff, setVideoOff] = React.useState(false);
-  const [state, setState] = React.useState<string>(active.kind === "one" ? active.call.state : "connected");
-
-  React.useEffect(() => {
-    if (active.kind !== "one") return;
-    const read = (next: CallState): void => setState(next);
-    active.call.on(CallEvent.State, read);
-    return () => {
-      active.call.off(CallEvent.State, read);
-    };
-  }, [active]);
-
-  const hangUp = (): void => {
-    if (active.kind === "one") active.call.hangup(CallErrorCode.UserHangup, false);
-    else active.call.leave();
-    onEnd();
-  };
-  const toggleMic = (): void => {
-    void active.call.setMicrophoneMuted(!muted).then(() => setMuted(!muted));
-  };
-  const toggleVideo = (): void => {
-    void active.call.setLocalVideoMuted(!videoOff).then(() => setVideoOff(!videoOff));
-  };
+function CallScreen({
+  client,
+  active,
+  onEnd,
+  onFail,
+}: {
+  client: MatrixClient;
+  active: Active & { local: MediaStream };
+  onEnd: (last: boolean) => void;
+  onFail: (error: unknown) => void;
+}) {
   const room = client.getRoom(active.roomId);
-  const waiting = active.kind === "one" && state !== CallState.Connected;
+  const [state, setState] = React.useState<"connecting" | "connected">("connecting");
+  const [members, setMembers] = React.useState<{ list: Member[]; you: number }>({ list: [], you: -1 });
+  const [streams, setStreams] = React.useState<Map<number, MediaStream>>(new Map());
+  const [stats, setStats] = React.useState<WorkerStats | null>(null);
+  const [micOff, setMicOff] = React.useState(false);
+  const [cameraOff, setCameraOff] = React.useState(!active.video);
+  const session = React.useRef<CallSession | null>(null);
+  const others = React.useRef(0);
+  const finished = React.useRef(false);
+  const callbacks = React.useRef({ onEnd, onFail });
+  callbacks.current = { onEnd, onFail };
+
+  React.useEffect(() => {
+    let live = true;
+    const stop = (error: unknown): void => {
+      if (finished.current) return;
+      finished.current = true;
+      callbacks.current.onFail(error);
+      callbacks.current.onEnd(false);
+    };
+    // The token is fetched as the call opens rather than kept: it is good
+    // for a short while only, and a page left ringing can outlast it.
+    openId(client)
+      .then((openid) => {
+        if (!live) return;
+        const call = new CallSession({
+          socket: `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/calls/api/ws`,
+          call: active.call,
+          openid,
+          device: client.getDeviceId() ?? "",
+          local: active.local,
+          keys: olmKeys(client, active.roomId),
+          events: {
+            state: (next, reason) => {
+              if (next === "connected") setState("connected");
+              if (next === "failed") stop(new CallError(reason ?? "failed"));
+            },
+            members: (list, you) => {
+              others.current = list.filter((m) => m.pid !== you).length;
+              setMembers({ list, you });
+              setStreams((current) => new Map([...current].filter(([pid]) => list.some((m) => m.pid === pid))));
+            },
+            track: (pid, stream) => setStreams((current) => new Map(current).set(pid, stream)),
+            stats: setStats,
+          },
+        });
+        session.current = call;
+        call.start();
+      })
+      .catch(stop);
+    return () => {
+      live = false;
+      if (!finished.current) session.current?.leave();
+      session.current = null;
+    };
+  }, [client, active.call, active.local, active.roomId]);
+
+  const leave = (): void => {
+    finished.current = true;
+    session.current?.leave();
+    onEnd(others.current === 0);
+  };
+
+  const toggleMic = (): void => {
+    session.current?.setMuted("audio", !micOff);
+    setMicOff(!micOff);
+  };
+
+  // Off stops the camera, so its light goes out, and sends nothing; on
+  // asks for it again.
+  const toggleCamera = (): void => {
+    const local = active.local;
+    if (!cameraOff) {
+      for (const track of local.getVideoTracks()) {
+        track.stop();
+        local.removeTrack(track);
+      }
+      void session.current?.setVideoTrack(null);
+      setCameraOff(true);
+      return;
+    }
+    navigator.mediaDevices
+      .getUserMedia({ video: true })
+      .then(async (camera) => {
+        const [track] = camera.getVideoTracks();
+        if (track === undefined) return;
+        local.addTrack(track);
+        await session.current?.setVideoTrack(track);
+        setCameraOff(false);
+      })
+      .catch(() => onFail(new CallError("calls.noDevices")));
+  };
+
+  const tiles: Tile[] = members.list.map((m) => {
+    const self = m.pid === members.you;
+    const person = room?.getMember(m.user);
+    const name = person?.name ?? m.user;
+    const stream = self ? active.local : streams.get(m.pid);
+    return {
+      pid: m.pid,
+      name,
+      self,
+      dark: self && cameraOff,
+      avatar: <Avatar client={client} id={m.user} name={name} mxc={person?.getMxcAvatarUrl()} size={64} />,
+      ...(stream !== undefined ? { stream } : {}),
+    };
+  });
 
   return (
-    <div role="dialog" aria-label={t("chat.call.label", { room: room?.name ?? "" })} className="fixed inset-0 z-40 flex flex-col bg-ground/95 p-4">
-      <p className="pb-3 text-center text-[14px] font-semibold">
-        {room?.name}
-        {waiting && <span className="font-normal text-muted"> · {state === CallState.Ringing || state === CallState.InviteSent ? t("chat.call.ringing") : t("chat.call.connecting")}</span>}
-      </p>
-      <div className={cn("grid min-h-0 flex-1 content-center gap-3", feeds.length <= 1 ? "grid-cols-1" : feeds.length <= 4 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2 lg:grid-cols-3")}>
-        {feeds.map((feed) => (
-          <FeedTile key={`${feed.userId}:${feed.stream.id}`} client={client} roomId={active.roomId} feed={feed} />
-        ))}
-      </div>
-      <div className="flex justify-center gap-3 pt-4">
-        <Button size="icon" variant="secondary" aria-pressed={muted} aria-label={muted ? t("chat.call.unmute") : t("chat.call.mute")} onClick={toggleMic}>
-          <HugeiconsIcon icon={muted ? MicOff01Icon : Mic01Icon} className="size-5" />
-        </Button>
-        <Button size="icon" variant="secondary" aria-pressed={videoOff} aria-label={videoOff ? t("chat.call.cameraOn") : t("chat.call.cameraOff")} onClick={toggleVideo}>
-          <HugeiconsIcon icon={videoOff ? VideoOffIcon : Video01Icon} className="size-5" />
-        </Button>
-        <Button size="icon" variant="destructive" aria-label={t("chat.call.hangUp")} onClick={hangUp}>
-          <HugeiconsIcon icon={CallEnd01Icon} className="size-5" />
-        </Button>
-      </div>
-    </div>
+    <CallView
+      title={room?.name ?? ""}
+      tiles={tiles}
+      status={state === "connecting" ? "connecting" : others.current === 0 ? "waiting" : "live"}
+      micOff={micOff}
+      cameraOff={cameraOff}
+      stats={stats}
+      onMic={toggleMic}
+      onCamera={toggleCamera}
+      onLeave={leave}
+    />
   );
 }

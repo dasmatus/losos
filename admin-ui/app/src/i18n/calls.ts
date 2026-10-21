@@ -64,5 +64,4 @@ export default defineMessages({
   },
   "calls.ongoing": { en: "Call in progress", sk: "Prebieha hovor", de: "Laufender Anruf" },
   "calls.join": { en: "Join", sk: "Pripojiť sa", de: "Beitreten" },
-  "calls.started": { en: "{name} started a call", sk: "Hovor od {name}", de: "{name} hat einen Anruf gestartet" },
 });

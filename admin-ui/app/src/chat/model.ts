@@ -159,6 +159,8 @@ const NOTICE_TYPES = new Set<string>([
   EventType.RoomAvatar,
   EventType.CallInvite,
   EventType.CallHangup,
+  // A call's start and end (calls.tsx).
+  "org.losos.call",
 ]);
 
 const MESSAGE_TYPES = new Set<string>([EventType.RoomMessage, EventType.Sticker, EventType.RoomMessageEncrypted]);

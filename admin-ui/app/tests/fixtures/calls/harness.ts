@@ -49,7 +49,7 @@ w.startCall = async (opts: {
           if (!to.some((t) => t.user === opts.me.user && t.device === opts.me.device)) return;
           if (opts.dropKeys) return;
           state.keysIn++;
-          handler(from, msg);
+          handler({ user: from }, msg);
         };
         bus.addEventListener('message', on);
         return () => bus.removeEventListener('message', on);

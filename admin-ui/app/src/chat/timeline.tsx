@@ -20,11 +20,13 @@ import {
   RoomEvent,
   RoomMemberEvent,
 } from "matrix-js-sdk";
+import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { getLocale, INTL_TAG } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
+import { callEnded, callEvent, useCalls } from "./calls";
 import { MessageBody } from "./message-body";
 import { buildItems, continues, type Item, type Message, plainBody, useEmitted } from "./model";
 
@@ -292,10 +294,31 @@ export function MessageRow({ client, room, item, grouped, me, actions, seenBy }:
   );
 }
 
+/* A call's start, with Join while it lasts, and its end. */
+function CallNotice({ room, event, who }: { room: Room; event: MatrixEvent; who: string }) {
+  const t = useT();
+  const calls = useCalls();
+  const said = callEvent(event);
+  if (said === null) return null;
+  if (said.state === "ended") return <p className="px-4 py-1 pl-15 text-[12.5px] text-faint">{t("calls.ended")}</p>;
+  const open = calls.available && calls.active === null && !callEnded(room, said.call);
+  return (
+    <p className="flex items-center gap-2 px-4 py-1 pl-15 text-[12.5px] text-faint" data-call-notice={said.call}>
+      {t("chat.notice.called", { who })}
+      {open && (
+        <Button size="xs" variant="secondary" onClick={() => calls.join(room.roomId, said.call, said.video)}>
+          {t("calls.join")}
+        </Button>
+      )}
+    </p>
+  );
+}
+
 function NoticeRow({ room, event }: { room: Room; event: MatrixEvent }) {
   const t = useT();
   const who = room.getMember(event.getSender() ?? "")?.name ?? event.getSender() ?? "";
   const content = event.getContent();
+  if (event.getType() === "org.losos.call") return <CallNotice room={room} event={event} who={who} />;
   let text: string | null = null;
   switch (event.getType()) {
     case EventType.RoomMember: {

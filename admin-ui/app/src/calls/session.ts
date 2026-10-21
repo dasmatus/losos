@@ -21,6 +21,11 @@ export interface Member {
   device: string;
 }
 
+export interface Sender {
+  user: string;
+  device?: string;
+}
+
 /* A sender key, as one member hands it to another. */
 export interface KeyMessage {
   call: string;
@@ -32,9 +37,10 @@ export interface KeyMessage {
 export interface KeyChannel {
   /* Send `msg` to each of these devices, encrypted to that device only. */
   send(to: { user: string; device: string }[], msg: KeyMessage): Promise<void>;
-  /* Keys others sent this device. `from` is the Matrix id the transport
-   * authenticated, never a claim inside the message. */
-  subscribe(handler: (from: string, msg: KeyMessage) => void): () => void;
+  /* Keys others sent this device. `from` is the sender the transport
+   * authenticated (Olm: the user and device whose session it came over),
+   * never a claim inside the message. */
+  subscribe(handler: (from: Sender, msg: KeyMessage) => void): () => void;
 }
 
 export type CallState = 'connecting' | 'connected' | 'ended' | 'failed';
@@ -95,9 +101,10 @@ export class CallSession {
   private you = -1;
   private members: Member[] = [];
   private queue: Promise<void> = Promise.resolve();
-  private early = new Map<number, { from: string; msg: KeyMessage }[]>();
+  private early = new Map<number, { from: Sender; msg: KeyMessage }[]>();
   private timers: ReturnType<typeof setInterval>[] = [];
   private unsubscribe: () => void;
+  private videoSender: RTCRtpSender | null = null;
   private done = false;
 
   constructor(private opts: CallOptions) {
@@ -205,6 +212,7 @@ export class CallSession {
     const v = this.pc.addTransceiver(video ?? 'video', { direction: 'sendonly', streams: [this.opts.local] });
     this.attach(a.sender as Encodable, { op: 'seal', kind: 'audio' });
     this.attach(v.sender as Encodable, { op: 'seal', kind: 'video' });
+    this.videoSender = v.sender;
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
     this.signal({ type: 'offer', sdp: offer.sdp });
@@ -281,7 +289,7 @@ export class CallSession {
     this.post({ type: 'sendKey', key: next.key, index: next.index });
   }
 
-  private onKey(from: string, msg: KeyMessage): void {
+  private onKey(from: Sender, msg: KeyMessage): void {
     if (msg.call !== this.opts.call || typeof msg.pid !== 'number' || msg.pid === this.you) return;
     const member = this.members.find((m) => m.pid === msg.pid);
     if (!member) {
@@ -292,8 +300,9 @@ export class CallSession {
       return;
     }
     // The SFU says who is behind a pid; Olm says who sent the key. A key
-    // for someone else's pid is ignored.
-    if (member.user !== from) return;
+    // for someone else's pid, or from another of their devices, is ignored.
+    if (member.user !== from.user) return;
+    if (from.device !== undefined && from.device !== member.device) return;
     let key: Uint8Array;
     try {
       key = fromBase64(msg.key);
@@ -308,6 +317,13 @@ export class CallSession {
     for (const t of kind === 'audio' ? this.opts.local.getAudioTracks() : this.opts.local.getVideoTracks()) {
       t.enabled = !muted;
     }
+  }
+
+  /* Turn the camera on or off. Off sends nothing at all, so the others'
+   * receiving track goes quiet and their tile shows the avatar. The m-line
+   * stays, so no renegotiation is needed. */
+  async setVideoTrack(track: MediaStreamTrack | null): Promise<void> {
+    await this.videoSender?.replaceTrack(track);
   }
 
   private fail(reason: string): void {
