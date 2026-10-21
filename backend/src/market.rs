@@ -299,9 +299,12 @@ pub enum Op {
         meter: String,
         wallet: String,
     },
-    /// Stop a meter. The edge closes its taps itself; no wallet is needed.
+    /// Stop a meter. The edge closes its taps itself; the wallet signs
+    /// nothing. `wallet` names the wallet that began opening a quote's taps
+    /// and failed partway, so the edge closes the ones it opened.
     TapStop {
         meter: String,
+        wallet: Option<String>,
     },
     /// One request to a running model, billed per token on `meter`.
     LlmChat(ChatAsk),
@@ -589,11 +592,16 @@ impl Op {
                     Err("wallet is not a wallet address")
                 }
             }
-            Op::TapStop { meter } => {
-                if valid_meter(meter) {
+            Op::TapStop { meter, wallet } => {
+                if !valid_meter(meter) {
+                    Err("meter is not valid")
+                } else if wallet
+                    .as_deref()
+                    .is_none_or(|w| eth_address(w) || base58(w, 32))
+                {
                     Ok(())
                 } else {
-                    Err("meter is not valid")
+                    Err("wallet is not a wallet address")
                 }
             }
             Op::LlmChat(ask) => ask.validate(),
@@ -832,7 +840,10 @@ impl Op {
     pub fn timeout_secs(&self) -> u64 {
         match self {
             Op::LlmChat(_) => CHAT_TIMEOUT_SECS,
-            Op::TapConfirm { .. } => CONFIRM_TIMEOUT_SECS,
+            Op::TapConfirm { .. }
+            | Op::TapStop {
+                wallet: Some(_), ..
+            } => CONFIRM_TIMEOUT_SECS,
             _ => TIMEOUT_SECS,
         }
     }
@@ -888,7 +899,14 @@ impl Op {
                 doc
             }
             Op::TapConfirm { meter, wallet } => json!({ "meter": meter, "wallet": wallet }),
-            Op::TapStop { meter } => json!({ "meter": meter }),
+            Op::TapStop {
+                meter,
+                wallet: None,
+            } => json!({ "meter": meter }),
+            Op::TapStop {
+                meter,
+                wallet: Some(wallet),
+            } => json!({ "meter": meter, "wallet": wallet }),
             Op::LlmChat(ask) => ask.body(),
             Op::VmOrder {
                 listing_id,
@@ -1473,7 +1491,14 @@ mod tests {
             .route(),
             ("POST", "/market/taps/confirm")
         );
-        assert_eq!(Op::TapStop { meter }.route(), ("POST", "/market/taps/stop"));
+        assert_eq!(
+            Op::TapStop {
+                meter,
+                wallet: None
+            }
+            .route(),
+            ("POST", "/market/taps/stop")
+        );
         assert_eq!(
             Op::LlmChat(ask(METER, &[("user", "hi")])).route(),
             ("POST", "/market/llm/chat")
@@ -1500,12 +1525,26 @@ mod tests {
         let doc: Value = serde_json::from_str(
             &Op::TapStop {
                 meter: METER.to_string(),
+                wallet: None,
             }
             .body("box", "tok")
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(doc["meter"], METER);
+        assert_eq!(
+            doc,
+            json!({ "appliance_id": "box", "token": "tok", "meter": METER })
+        );
+        let doc: Value = serde_json::from_str(
+            &Op::TapStop {
+                meter: METER.to_string(),
+                wallet: Some(WALLET.to_string()),
+            }
+            .body("box", "tok")
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(doc["wallet"], WALLET);
 
         let mut full = ask(METER, &[("system", "Be brief."), ("user", "Hello")]);
         full.max_tokens = Some(64);
@@ -1569,8 +1608,18 @@ mod tests {
     fn a_meter_is_one_the_edge_made() {
         let stop = |m: &str| Op::TapStop {
             meter: m.to_string(),
+            wallet: None,
         };
         assert!(stop(METER).validate().is_ok());
+        let stop_with = |wallet: &str| Op::TapStop {
+            meter: METER.to_string(),
+            wallet: Some(wallet.to_string()),
+        };
+        assert!(stop_with(WALLET).validate().is_ok());
+        assert_eq!(
+            stop_with("wallet").validate(),
+            Err("wallet is not a wallet address")
+        );
         let confirm = |wallet: &str| Op::TapConfirm {
             meter: METER.to_string(),
             wallet: wallet.to_string(),

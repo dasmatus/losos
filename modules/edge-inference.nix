@@ -2,7 +2,7 @@
 #
 # Boxes lend memory (losos.inference.lend, modules/inference-lend.nix): each
 # runs a llama.cpp RPC server on its own loopback, and its rathole client
-# carries it to this edge as the service `<appliance id>.llm`, which the
+# carries it to this edge as the service `<appliance id>:llm`, which the
 # registrar binds on 127.0.0.1 at a port of `portRange`. The registrar groups
 # lending boxes until a model of the catalogue fits, and for each group runs
 # one head: llama-server over the group's RPC ports, listening on a UNIX

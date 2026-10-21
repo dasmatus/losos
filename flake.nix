@@ -466,7 +466,7 @@
         losos-search = import ./nix/tests/search.nix { inherit pkgs; };
         # The box half of models split across boxes: the RPC server as
         # `shared`, its memory cap, the lend file, the loopback owner rule
-        # and the `.llm` tunnel service (nix/tests/inference-lend.nix).
+        # and the `:llm` tunnel service (nix/tests/inference-lend.nix).
         losos-inference-lend = import ./nix/tests/inference-lend.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
         # The real Forgejo with losos.forgejo.federation on, asked what another

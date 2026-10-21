@@ -216,7 +216,7 @@ and is never served or built by nix.
   + `market/taps.rs`: AI models split across boxes. A lending box runs
   `ggml-rpc-server -d CPU` (the default device is BLAS, which crashes) as
   `shared` on loopback, reached only by root through a second rathole
-  service `<id>.llm`. The registrar groups lenders until a model fits and
+  service `<id>:llm`. The registrar groups lenders until a model fits and
   runs one `losos-llm-head@<group>` llama-server per group; it counts the
   tokens itself and bills them through escrow taps (a USDC balance per
   buyer, one rate-capped tap per seller, a one-hour head start, a 48 h

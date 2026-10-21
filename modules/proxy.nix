@@ -95,7 +95,7 @@ let
     + lib.optionalString lend ''
           cat >> ${confDir}/client.toml <<EOF
 
-      [client.services."${cfg.applianceId}.llm"]
+      [client.services."${cfg.applianceId}:llm"]
       token = "$token"
       local_addr = "127.0.0.1:50052"
       EOF

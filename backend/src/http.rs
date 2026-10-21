@@ -2423,15 +2423,20 @@ async fn post_market_taps_confirm(
     .await
 }
 
-/// `POST /api/market/taps/stop` `{meter}` — stop a meter.
+/// `POST /api/market/taps/stop` `{meter, wallet?}` — stop a meter.
 async fn post_market_taps_stop(
     api: web::Data<Api>,
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
     post_market(api, req, body, "/api/market/taps/stop", |d| {
+        let wallet = match d.get("wallet") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(w) => Some(w.as_str()?.to_string()),
+        };
         Some(crate::market::Op::TapStop {
             meter: field_str(d, "meter")?,
+            wallet,
         })
     })
     .await

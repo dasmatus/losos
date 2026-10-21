@@ -443,9 +443,11 @@ function ReadyModels({
           sent = true;
         });
       } catch (error) {
-        // Nothing reached the escrow: let the quote go, so the model can be
-        // started again at once rather than after the quote lapses.
-        if (!sent) await postTapStop(quote.meter).catch(() => undefined);
+        // The wallet stopped partway (a Solana quote goes out in batches):
+        // let the quote go, so the model can be started again at once. The
+        // edge closes any tap the wallet did open and keeps its balance in
+        // view.
+        if (!sent) await postTapStop(quote.meter, signerAddress(signer)).catch(() => undefined);
         toast.dismiss("llm-start");
         throw error;
       }

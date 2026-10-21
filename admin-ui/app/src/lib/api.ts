@@ -1186,9 +1186,15 @@ export function postTapConfirm(meter: string, wallet: string, options: RequestOp
   return postJson("/api/market/taps/confirm", { meter, wallet }, options);
 }
 
-/** POST /api/market/taps/stop — stop a meter; the edge closes its taps. */
-export function postTapStop(meter: string, options: RequestOptions = {}): Promise<{ meter: string; state: MeterState }> {
-  return postJson("/api/market/taps/stop", { meter }, options);
+/** POST /api/market/taps/stop — stop a meter; the edge closes its taps.
+ *  `wallet` began opening a quote's taps and stopped partway: the edge
+ *  closes the ones it opened and keeps its balance in view. */
+export function postTapStop(
+  meter: string,
+  wallet?: string,
+  options: RequestOptions = {},
+): Promise<{ meter: string; state: MeterState }> {
+  return postJson("/api/market/taps/stop", wallet === undefined ? { meter } : { meter, wallet }, options);
 }
 
 /** POST /api/market/llm/chat — one request to a running model. Minutes,

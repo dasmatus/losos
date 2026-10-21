@@ -2,7 +2,7 @@
 //!
 //! A box that lends memory runs llama.cpp's RPC server as its `shared` user
 //! (`losos.inference.lend`) and says how much it lends on every heartbeat.
-//! Its tunnel carries a second service, `<id>.llm`, that only the model
+//! Its tunnel carries a second service, `<id>:llm`, that only the model
 //! *head* on this edge reaches. For a model in the operator's catalogue
 //! (`--inference-models`), the edge picks boxes until their memory covers
 //! the model, starts one head for the group (`losos-llm-head@<group>`, a
@@ -106,7 +106,7 @@ pub fn parse_models(bytes: &[u8]) -> Result<Vec<Model>, String> {
 #[derive(Debug, Clone)]
 pub struct InferenceOpts {
     pub models_file: String,
-    /// The edge ports of the boxes' `.llm` services, one per tunnel port.
+    /// The edge ports of the boxes' `:llm` services, one per tunnel port.
     pub port_range: (u16, u16),
     /// Where the head units' environment files are written.
     pub env_dir: String,
@@ -119,7 +119,7 @@ pub struct InferenceOpts {
 pub struct Member {
     pub tenant: String,
     pub mib: u64,
-    /// The edge port of its `.llm` service.
+    /// The edge port of its `:llm` service.
     pub port: u16,
 }
 
@@ -504,7 +504,7 @@ impl Inference {
         self.models.iter().find(|m| m.id == id)
     }
 
-    /// The edge port of the `.llm` service of the box on tunnel port
+    /// The edge port of the `:llm` service of the box on tunnel port
     /// `rathole_port`.
     #[must_use]
     pub fn llm_port(&self, rathole_port: u16) -> Option<u16> {

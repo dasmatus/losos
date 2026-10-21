@@ -121,10 +121,13 @@ pub(super) async fn quote(
 }
 
 #[derive(Debug, Deserialize)]
-pub(super) struct MeterReq {
+pub(super) struct StopReq {
     #[serde(flatten)]
     auth: MarketAuth,
     meter: String,
+    /// The wallet that began opening a quote's taps and failed partway.
+    #[serde(default)]
+    wallet: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -152,11 +155,13 @@ pub(super) async fn confirm(
 
 pub(super) async fn stop(
     State(st): State<AppState>,
-    Json(req): Json<MeterReq>,
+    Json(req): Json<StopReq>,
 ) -> Result<Json<Value>, ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
     inference_of(&st)?;
-    let state = market.tap_stop(&req.auth.appliance_id, &req.meter).await?;
+    let state = market
+        .tap_stop(&req.auth.appliance_id, &req.meter, req.wallet.as_deref())
+        .await?;
     st.notify.notify_one();
     Ok(Json(
         serde_json::json!({ "meter": req.meter, "state": state }),

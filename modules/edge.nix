@@ -1023,6 +1023,12 @@ in
 
     assertions = [
       {
+        # A lending box's second tunnel service is `<id>:llm`
+        # (edge/registrar/src/config.rs); a colon in an id could take it.
+        assertion = lib.all (id: !lib.hasInfix ":" id) (lib.attrNames cfg.tenants);
+        message = "losos.edge.tenants: an appliance id may not contain a colon.";
+      }
+      {
         assertion = (cfg.identity.keyFile == null) == (cfg.identity.certFile == null);
         message = ''
           losos.edge.identity.keyFile and losos.edge.identity.certFile go

@@ -782,13 +782,42 @@ impl Market {
     /// The buyer stops a meter: no more requests, and its taps are closed and
     /// settled one last time by the next pass.
     ///
+    /// A quote stopped with the `wallet` that began opening it (the wallet
+    /// failed partway) is read back from the escrow first: the taps it opened
+    /// are closed like those of an open meter, and the wallet stays on the
+    /// meter so its balance stays in view.
+    ///
     /// # Errors
-    /// Not the buyer's meter.
-    pub async fn tap_stop(&self, buyer: &str, meter_id: &str) -> Result<MeterState, MarketError> {
+    /// Not the buyer's meter, or a `wallet` that is not an address there.
+    pub async fn tap_stop(
+        &self,
+        buyer: &str,
+        meter_id: &str,
+        wallet: Option<&str>,
+    ) -> Result<MeterState, MarketError> {
+        let m = Self::own_meter(&*self.state.lock().await, buyer, meter_id)?;
+        let mut opened = None;
+        if let (MeterState::Quoted, Some(wallet)) = (m.state, wallet) {
+            let key = self
+                .tap_chain()
+                .payee_key(&m.network, wallet)
+                .ok_or(MarketError::Invalid("not a wallet address on this network"))?;
+            let wallet = self.tap_chain().wallet_name(&m.network, &key);
+            let mut seen = BTreeMap::new();
+            for t in &m.taps {
+                if let Some(chain_tap) = self.tap_chain().read_tap(&m.network, &wallet, t).await? {
+                    seen.insert(t.clone(), chain_tap);
+                }
+            }
+            opened = Some((wallet, seen));
+        }
         let mut state = self.state.lock().await;
-        Self::own_meter(&state, buyer, meter_id)?;
         let mut next = state.clone();
-        if !meter::end(&mut next.taps, meter_id, EndReason::Buyer) {
+        let changed = match &opened {
+            Some((wallet, seen)) => meter::end_quoted(&mut next.taps, meter_id, seen, wallet),
+            None => false,
+        } || meter::end(&mut next.taps, meter_id, EndReason::Buyer);
+        if !changed {
             return Ok(next.taps.meters[meter_id].state);
         }
         let after = next.taps.meters[meter_id].state;
@@ -1789,7 +1818,7 @@ mod tests {
         w.ask(&meter, "hello", 50).await.unwrap();
         w.later(HOUR).await;
         assert_eq!(
-            w.market.tap_stop(BUYER, &meter).await.unwrap(),
+            w.market.tap_stop(BUYER, &meter, None).await.unwrap(),
             MeterState::Ending
         );
         assert!(matches!(
@@ -1822,7 +1851,7 @@ mod tests {
         w.heads.set(|s| s.answer_delay = Duration::from_millis(600));
         let (answer, ()) = tokio::join!(w.ask(&meter, "a long story", 50), async {
             tokio::time::sleep(Duration::from_millis(200)).await;
-            w.market.tap_stop(BUYER, &meter).await.unwrap();
+            w.market.tap_stop(BUYER, &meter, None).await.unwrap();
             // The settle pass runs under the answer and must leave its taps.
             for _ in 0..3 {
                 w.market.taps_pass().await;
@@ -1875,7 +1904,7 @@ mod tests {
             w.chain.open(WALLET, &q, tweak);
             assert!(w.market.tap_confirm(BUYER, &q.meter, WALLET).await.is_err());
             assert_eq!(w.taps().await.meters[&q.meter].state, MeterState::Quoted);
-            w.market.tap_stop(BUYER, &q.meter).await.unwrap();
+            w.market.tap_stop(BUYER, &q.meter, None).await.unwrap();
         }
         let q = w.quote(1_000_000).await.unwrap();
         w.chain.open(WALLET, &q, |_, _| {});
@@ -1891,9 +1920,73 @@ mod tests {
             Err(MarketError::NotFound)
         ));
         assert!(matches!(
-            w.market.tap_stop("other", &q.meter).await,
+            w.market.tap_stop("other", &q.meter, None).await,
             Err(MarketError::NotFound)
         ));
+    }
+
+    #[tokio::test]
+    async fn a_quote_the_wallet_opened_in_part_is_closed_and_its_wallet_kept() {
+        let w = world().await;
+        w.chain.top_up(WALLET, 1_000_000);
+        let q = w.quote(1_000_000).await.unwrap();
+        assert!(q.taps.len() > 1, "{q:?}");
+        // The top-up and the first batch landed; the wallet refused the rest.
+        w.chain.open(WALLET, &q, |_, _| {});
+        for t in &q.taps[1..] {
+            w.chain
+                .taps
+                .lock()
+                .unwrap()
+                .remove(&(key(WALLET), t.id.clone()));
+        }
+        assert!(matches!(
+            w.market
+                .tap_stop(BUYER, &q.meter, Some("not-a-wallet"))
+                .await,
+            Err(MarketError::Invalid(_))
+        ));
+        assert_eq!(
+            w.market
+                .tap_stop(BUYER, &q.meter, Some(WALLET))
+                .await
+                .unwrap(),
+            MeterState::Ending
+        );
+        let t = w.taps().await;
+        assert_eq!(t.meters[&q.meter].wallet.as_deref(), Some(WALLET));
+        assert!(t.taps[&q.taps[0].id].opened);
+        assert!(q.taps[1..].iter().all(|x| t.taps[&x.id].done));
+        for _ in 0..3 {
+            w.market.taps_pass().await;
+            w.later(30).await;
+        }
+        let first = w.chain.taps.lock().unwrap()[&(key(WALLET), q.taps[0].id.clone())];
+        assert!(first.closed_at.is_some(), "{first:?}");
+        assert_eq!(w.taps().await.meters[&q.meter].state, MeterState::Ended);
+        // The balance it topped up stays in the account view.
+        let view = w
+            .market
+            .llm_overview(&w.inference, &w.lenders, BUYER, None)
+            .await
+            .unwrap();
+        assert_eq!(view["wallets"][0]["wallet"], WALLET, "{view}");
+        assert_eq!(w.chain.balance(WALLET), 1_000_000);
+        assert!(w.chain.refused.lock().unwrap().is_empty());
+
+        // A quote the wallet opened none of lapses, and keeps the wallet too.
+        let q = w.quote(1_000_000).await.unwrap();
+        assert_eq!(
+            w.market
+                .tap_stop(BUYER, &q.meter, Some(WALLET))
+                .await
+                .unwrap(),
+            MeterState::Lapsed
+        );
+        assert_eq!(
+            w.taps().await.meters[&q.meter].wallet.as_deref(),
+            Some(WALLET)
+        );
     }
 
     #[tokio::test]
@@ -2121,7 +2214,7 @@ mod tests {
             w.quote(1_000_000).await,
             Err(MarketError::Conflict(_))
         ));
-        w.market.tap_stop(BUYER, &meter).await.unwrap();
+        w.market.tap_stop(BUYER, &meter, None).await.unwrap();
         for _ in 0..meter::MAX_QUOTED_PER_BUYER {
             w.quote(1_000_000).await.unwrap();
         }

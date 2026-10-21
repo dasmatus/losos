@@ -2486,8 +2486,9 @@ in
         lib.types.submodule {
           options = {
             id = lib.mkOption {
-              type = lib.types.strMatching "[a-z0-9-]+";
-              description = "The model's id in the catalogue and in the API.";
+              # As long as the registrar takes (inference::parse_models).
+              type = lib.types.strMatching "[a-z0-9-]{1,64}";
+              description = "The model's id in the catalogue and in the API, up to 64 characters.";
             };
             name = lib.mkOption {
               type = lib.types.str;
@@ -2508,11 +2509,11 @@ in
               description = "Context window of each head, in tokens.";
             };
             priceIn = lib.mkOption {
-              type = lib.types.ints.unsigned;
+              type = lib.types.ints.positive;
               description = "Price of a million prompt tokens, in USDC base units (millionths of a dollar).";
             };
             priceOut = lib.mkOption {
-              type = lib.types.ints.unsigned;
+              type = lib.types.ints.positive;
               description = "Price of a million generated tokens, in USDC base units (millionths of a dollar).";
             };
             licence = lib.mkOption {

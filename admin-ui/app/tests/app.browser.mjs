@@ -69,6 +69,10 @@ async function open({
   market = { available: false },
   // POST /api/market/llm/models's document: the AI models, meters and balances.
   llm = { available: false },
+  // POST /api/market/taps's answer, the edge's quote for a model.
+  quote = null,
+  // [script, arg] run in the page before the app, such as a browser wallet.
+  init = null,
   vms = { available: false, reason: 'notSharing' },
   domains = { available: false },
   backup = BACKUP_EMPTY,
@@ -187,6 +191,7 @@ async function open({
       return json(route, 200, { content: 'Mostly water, then ice.', finishReason: 'stop', tokensIn: 42, tokensOut: 7, costE6: '31500000', billedE6: '10261500000' });
     }
     if (path === '/api/market/taps/stop') return json(route, 200, { meter: body.meter, state: 'ending' });
+    if (path === '/api/market/taps' && quote !== null) return json(route, 200, quote);
     if (path === '/api/market/taps/confirm') {
       if (typeof body.wallet !== 'string' || body.wallet.length === 0) return json(route, 400, { error: 'wallet is not a wallet address' });
       return json(route, 200, { meter: body.meter, state: 'open' });
@@ -296,6 +301,7 @@ async function open({
   if (stored) {
     await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   }
+  if (init !== null) await page.addInitScript(...init);
   // The apps the homepage probes, when a check wants them answering the way
   // a set-up box does. `cloud.mail` says whether the owner installed Mail:
   // an installed app sends a visitor without a session to the sign-in page,
@@ -2262,6 +2268,51 @@ await check('AI models: Check again tells the edge which wallet opened the taps'
     [['/api/market/taps/confirm', { meter: AI_METER.id, wallet: AI_WALLET }]],
   );
   assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('AI models: a wallet that gives up partway tells the edge which wallet it was', async () => {
+  const meter = 'mtr_0b7e4c2a9d1f36e85a4c07b2';
+  const quote = {
+    available: true,
+    meter,
+    model: 'qwen3-32b',
+    network: 'base',
+    chain: AI_MARKET.account.usdc.chains[0],
+    feeBps: 400,
+    spendPerHour: '500000',
+    taps: [
+      { id: 'tap-1', key: `0x${'a1'.repeat(32)}`, seller: `0x${'51'.repeat(20)}`, rate: '250000' },
+      { id: 'tap-2', key: `0x${'a2'.repeat(32)}`, seller: `0x${'52'.repeat(20)}`, rate: '250000' },
+    ],
+    openBefore: Math.floor(Date.now() / 1000) + 900,
+  };
+  // A browser wallet that connects, then refuses everything it is asked.
+  const init = (wallet) => {
+    window.ethereum = {
+      request: async ({ method }) => {
+        if (method === 'eth_requestAccounts') return [wallet];
+        throw Object.assign(new Error('User rejected the request.'), { code: 4001 });
+      },
+    };
+  };
+  const { page, llmPosts } = await open({
+    path: '/settings/market',
+    stored: true,
+    market: AI_MARKET,
+    llm: { ...LLM, meters: [], wallets: [] },
+    quote,
+    init: [init, AI_WALLET],
+  });
+  const qwen = page.locator('[data-model="qwen3-32b"]');
+  await qwen.waitFor();
+  await qwen.getByRole('button', { name: 'Start' }).click();
+  await qwen.getByRole('button', { name: 'Start' }).last().click();
+  for (let i = 0; i < 50 && !llmPosts.some(([path]) => path === '/api/market/taps/stop'); i++) await page.waitForTimeout(100);
+  assert.deepEqual(
+    llmPosts.filter(([path]) => path.startsWith('/api/market/taps/')),
+    [['/api/market/taps/stop', { meter, wallet: AI_WALLET }]],
+  );
   await page.close();
 });
 

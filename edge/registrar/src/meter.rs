@@ -671,6 +671,52 @@ pub fn end(state: &mut Taps, meter_id: &str, reason: EndReason) -> bool {
     }
 }
 
+/// The buyer stops a quote its wallet opened only in part, for example a
+/// Solana quote whose later batch the wallet refused. `chain` is what the
+/// escrow holds of the quote's taps under `wallet`. The taps it holds are
+/// marked opened, so the edge closes them; the rest are done. The meter
+/// keeps the wallet either way, so the balance it topped up stays in view.
+/// Returns whether anything changed: false unless the meter is quoted.
+pub fn end_quoted(
+    state: &mut Taps,
+    meter_id: &str,
+    chain: &BTreeMap<String, ChainTap>,
+    wallet: &str,
+) -> bool {
+    let Some(m) = state.meters.get(meter_id) else {
+        return false;
+    };
+    if m.state != MeterState::Quoted {
+        return false;
+    }
+    let taps = m.taps.clone();
+    for id in &taps {
+        let Some(tap) = state.taps.get_mut(id) else {
+            continue;
+        };
+        match chain.get(id) {
+            Some(seen) => {
+                tap.opened = true;
+                tap.settled_at = seen.settled_at;
+                tap.closed_at = seen.closed_at;
+                finish_if_done(tap);
+            }
+            None => tap.done = true,
+        }
+    }
+    let Some(m) = state.meters.get_mut(meter_id) else {
+        return false;
+    };
+    m.state = if chain.is_empty() {
+        MeterState::Lapsed
+    } else {
+        MeterState::Ending
+    };
+    m.reason = Some(EndReason::Buyer);
+    m.wallet = Some(wallet.to_string());
+    true
+}
+
 /// Taps of ending meters still open on the chain, for the edge to close.
 #[must_use]
 pub fn to_close(state: &Taps, network: &str) -> Vec<String> {

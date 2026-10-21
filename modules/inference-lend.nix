@@ -4,7 +4,7 @@
 # model's layers and computes on them for a head that runs on the edge
 # (modules/edge-inference.nix). It listens on 127.0.0.1:50052 only. The edge
 # reaches it through this box's own rathole tunnel: the client carries a
-# second service, `<appliance id>.llm`, beside the box's main one
+# second service, `<appliance id>:llm`, beside the box's main one
 # (modules/proxy.nix), and the announce heartbeat tells the edge how much
 # memory the box lends by reading /run/losos-llm/lend.
 #
@@ -33,7 +33,7 @@
 let
   cfg = config.losos.inference.lend;
 
-  # modules/proxy.nix points the `.llm` tunnel service at the same port.
+  # modules/proxy.nix points the `:llm` tunnel service at the same port.
   port = 50052;
   stateDir = "losos-llm-rpc";
   lendFile = "/run/losos-llm/lend";

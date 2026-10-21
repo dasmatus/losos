@@ -31,9 +31,11 @@ pub struct TenantView {
     /// (not the registry) by reading the tenant's token file, so the on-disk
     /// token file stays the single source of truth and tokens auto-rotate.
     pub token: String,
-    /// The edge port of the box's second tunnel service, `<id>.llm`, when the
-    /// box lends memory to AI models (`crate::inference`). An appliance id
-    /// has no dot, so no tenant's own service can take that name. The service
+    /// The edge port of the box's second tunnel service, `<id>:llm`, when the
+    /// box lends memory to AI models (`crate::inference`). No tenant's own
+    /// service can take that name: `modules/edge.nix` refuses a tenant id
+    /// with a colon, a relayed box is `<spoke>.<label>` and an enrolled one a
+    /// DNS label, and neither label may hold one. The service
     /// forwards to the box's llama.cpp RPC server; only the model head on this
     /// edge connects to it. Populated by the reconciler like `token`.
     pub llm_port: Option<u16>,
@@ -297,7 +299,7 @@ pub fn desired_config_with_hosts(
         if let Some(port) = t.llm_port {
             toml.push_str(&format!(
                 "\n[server.services.{id}]\ntoken = \"{tok}\"\nbind_addr = \"127.0.0.1:{port}\"\n",
-                id = toml_key(&format!("{}.llm", t.id)),
+                id = toml_key(&format!("{}:llm", t.id)),
                 tok = toml_escape(&t.token),
             ));
         }

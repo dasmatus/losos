@@ -1844,9 +1844,9 @@
       },
       "POST /api/market/taps/stop": {
         "auth": true,
-        "in": "{\"meter\": \"mtr_<hex>\"}",
+        "in": "{\"meter\": \"mtr_<hex>\", \"wallet\"?: \"0x<40 hex> | <base58>\"}",
         "out": "{\"available\": true, \"meter\", \"state\"}",
-        "note": "Stop a meter (registrar POST /market/taps/stop). The edge closes its taps and settles them one last time; the wallet signs nothing. Audited."
+        "note": "Stop a meter (registrar POST /market/taps/stop). The edge closes its taps and settles them one last time; the wallet signs nothing. `wallet` is the wallet that began opening a quoted meter's taps and failed partway: the edge reads them back from the chain, closes the ones it holds and keeps the wallet's balance in view. Audited."
       },
       "POST /api/market/llm/chat": {
         "auth": true,
