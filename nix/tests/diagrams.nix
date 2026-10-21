@@ -20,8 +20,9 @@
 # Its two Bevy modules take longer to build than the test takes to run.
 #
 # `before`, a path to an earlier checkout of the repository, builds that
-# checkout's admin UI instead and only takes the pictures of the old Lab,
-# for the Before column:
+# checkout's admin UI and serves it with that checkout's modules (its nginx
+# knows the old paths), and only takes the pictures of the old Lab, for the
+# Before column:
 #
 #   nix build --impure --expr '(import ./nix/tests/diagrams.nix {
 #     pkgs = (builtins.getFlake (toString ./.)).inputs.nixpkgs.legacyPackages.x86_64-linux;
@@ -36,6 +37,7 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   screens = import ./screens { inherit pkgs; };
   after = before == null;
+  modules = if after then ../../modules else before + "/modules";
 
   shipped =
     if after then
@@ -218,6 +220,20 @@ let
     { waitFor.selector = "[data-testid=diagram-empty]"; }
   ];
   opened = "/diagrams/?canvas=svg&file=Diagrams%2Flaunch.canvas";
+  # The overview has heard from the box and listed its apps.
+  overviewLoaded = [
+    {
+      waitFor = {
+        role = "heading";
+        name = "mattbox";
+      };
+      timeout = 180000;
+    }
+    {
+      gone.text = "Looking for the apps on this box.";
+      timeout = 180000;
+    }
+  ];
 
   plan =
     name: attrs:
@@ -250,6 +266,7 @@ let
             role = "link";
             name = "Lab";
           };
+          steps = overviewLoaded;
         }
       ];
     };
@@ -272,6 +289,7 @@ let
             role = "link";
             name = "Diagrams";
           };
+          steps = overviewLoaded;
         }
         {
           name = "this-box";
@@ -443,13 +461,13 @@ pkgs.testers.nixosTest {
   nodes = {
     box = _: {
       imports = [
-        ../../modules/options.nix
-        ../../modules/containers.nix
-        ../../modules/tls.nix
-        ../../modules/daemon.nix
-        ../../modules/identity.nix
+        (modules + "/options.nix")
+        (modules + "/containers.nix")
+        (modules + "/tls.nix")
+        (modules + "/daemon.nix")
+        (modules + "/identity.nix")
       ]
-      ++ lib.optional after ../../modules/cloud.nix;
+      ++ lib.optional after (modules + "/cloud.nix");
       networking.hostName = "mattbox";
       losos = {
         hostName = "mattbox";
