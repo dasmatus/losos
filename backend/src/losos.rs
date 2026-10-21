@@ -1053,6 +1053,18 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
     if matches!(op, Op::Rpc { .. }) {
         return Ok(reply);
     }
+    // Binance's checkout is the one page an on-ramp order sends the owner
+    // to; nothing else in its answer is a page.
+    if matches!(op, Op::Onramp { .. } | Op::OnrampStatus { .. }) {
+        if reply
+            .get("link")
+            .and_then(Value::as_str)
+            .is_some_and(|link| !crate::market::binance_hosted_url(link))
+        {
+            anyhow::bail!("the registrar returned a link that is not a binance.com page");
+        }
+        return Ok(reply);
+    }
     for key in ["checkout_url", "url"] {
         if let Some(url) = reply.get(key).and_then(Value::as_str) {
             if !crate::market::stripe_hosted_url(url) {
@@ -2797,6 +2809,50 @@ mod tests {
             (201, r#"{"checkout_url":"javascript:alert(1)"}"#.to_string()),
         );
         assert!(cmd_market_op(&mut f, &order).is_err());
+    }
+
+    #[test]
+    fn a_binance_order_hands_on_binances_checkout_and_nothing_else() {
+        use crate::market::Op;
+        let buy = Op::Onramp {
+            address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266".to_string(),
+            euros: "50".to_string(),
+        };
+        let mut f = market_fake();
+        f.market_routes.insert(
+            "POST /market/onramp".to_string(),
+            (
+                201,
+                r#"{"order_id":"0123456789abcdef0123456789abcdef","link":"https://app.binance.com/uni-qr/qccnt?x=1","stage":"open"}"#
+                    .to_string(),
+            ),
+        );
+        let out = cmd_market_op(&mut f, &buy).unwrap();
+        assert_eq!(out["link"], "https://app.binance.com/uni-qr/qccnt?x=1");
+        assert_eq!(out["stage"], "open");
+
+        // An edge cannot send the owner's browser anywhere but binance.com.
+        for link in ["https://binance.com.evil.example/", "javascript:alert(1)"] {
+            f.market_routes.insert(
+                "POST /market/onramp".to_string(),
+                (201, format!(r#"{{"order_id":"x","link":"{link}"}}"#)),
+            );
+            assert!(cmd_market_op(&mut f, &buy).is_err(), "{link}");
+        }
+
+        // The edge's daily cap is the owner's to wait out, not a fault.
+        f.market_routes.insert(
+            "POST /market/onramp".to_string(),
+            (
+                429,
+                "this box started too many purchases today; try again tomorrow".to_string(),
+            ),
+        );
+        let refused = cmd_market_op(&mut f, &buy).unwrap_err();
+        assert!(
+            refused.downcast_ref::<crate::market::Refused>().is_some(),
+            "{refused}"
+        );
     }
 
     #[test]
