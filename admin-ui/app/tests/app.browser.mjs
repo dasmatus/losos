@@ -809,7 +809,7 @@ for (const { name, now, file, tip } of [
     assert.equal(await page.locator('header').getByText('LosOS', { exact: true }).count(), 0, 'the name is still drawn as text');
     // A photo needs a word of explanation: hovering the logo says what it
     // is, and the same words are the trigger's accessible name.
-    const trigger = page.locator('header').getByRole('button', { name: /Losos is Slovak for salmon/ });
+    const trigger = page.locator('header').getByRole('link', { name: /Losos is Slovak for salmon/ });
     await trigger.hover();
     await page.locator('[data-slot="tooltip-content"]').filter({ hasText: tip }).waitFor();
     await page.close();

@@ -109,7 +109,7 @@ export function AppBar({
               aria-label={t(logo.tip)}
               className="inline-flex shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
-              <img src={logo.url} alt="" width={32} height={32} className="size-8" />
+              <img src={logo.url} alt="LosOS" width={32} height={32} className="size-8" />
             </TooltipTrigger>
             <TooltipContent side="bottom" align="start" className="max-w-[22rem]">
               {t(logo.tip)}
