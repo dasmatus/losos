@@ -125,6 +125,8 @@ pkgs.testers.nixosTest {
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
+          # The look (and with it the widget editor) is a plugin.
+          backend.plugins = lososPkgs.losos-plugins;
           admin.ui = adminUi;
           nextcloud.mode = "container";
           forgejo.enable = true;
