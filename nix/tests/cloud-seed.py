@@ -85,6 +85,7 @@ def tree(now: float) -> list[tuple[str, bytes | None, float]]:
         ("Documents/budget.ods", document("Budget 2026", ["Rent 650", "Food 320", "Travel 120"]), now - 2 * 3600),
         ("Documents/Offer for the kitchen.pdf", document("Kitchen offer", ["Cabinets, worktop, fitting: 4 180 EUR"]), now - 1 * DAY),
         ("Documents/notes.md", document("Notes", ["- Call the plumber on Monday", "- Renew the car insurance"]), now - 3 * DAY),
+        ("Documents/old notes.txt", document("Old notes", ["- Pick up the bike from the repair shop"]), now - 90 * DAY),
         ("Documents/CV Matus.docx", document("Curriculum vitae", ["Matus", "Systems engineering"]), now - 40 * DAY),
         ("Documents/Receipts/hardware store.pdf", document("Receipt", ["Screws, hinges, varnish: 38.90 EUR"]), now - 12 * DAY),
         ("Documents/Receipts/laptop.pdf", document("Receipt", ["Laptop repair: 89 EUR"]), now - 70 * DAY),

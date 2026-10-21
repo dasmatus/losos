@@ -293,7 +293,8 @@ CREATE TABLE IF NOT EXISTS trash (
 CREATE INDEX IF NOT EXISTS trash_owner ON trash (owner);
 "#;
 
-const COLUMNS: &str = "f.id, f.owner, f.path, f.name, f.dir, f.size, f.mtime, f.etag, f.mime, f.checksum, \
+const COLUMNS: &str =
+    "f.id, f.owner, f.path, f.name, f.dir, f.size, f.mtime, f.etag, f.mime, f.checksum, \
      EXISTS(SELECT 1 FROM favorites v WHERE v.owner = f.owner AND v.file = f.id)";
 
 fn row_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<Entry> {
@@ -532,7 +533,9 @@ impl Store {
         let db = self.db.lock().unwrap_or_else(|p| p.into_inner());
         let pattern = format!(
             "%{}%",
-            q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+            q.replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_")
         );
         let mut stmt = db.prepare(&format!(
             "SELECT {COLUMNS} FROM files f WHERE f.owner = ?1 AND f.path != '' AND f.name LIKE ?2 ESCAPE '\\' ORDER BY f.mtime DESC LIMIT ?3"
@@ -569,7 +572,7 @@ impl Store {
                 out.push(r?);
             }
         }
-        out.sort_by(|a, b| b.mtime.cmp(&a.mtime));
+        out.sort_by_key(|e| std::cmp::Reverse(e.mtime));
         out.truncate(limit);
         Ok(out)
     }
@@ -686,6 +689,7 @@ impl Store {
     /// [`StoreError::Precondition`] if it moved), `if_none_match_any` is
     /// `If-None-Match: *` (refused if anything is there). `mtime` is the
     /// client's own, else now. The old content becomes a version.
+    #[allow(clippy::too_many_arguments)]
     pub fn commit_file(
         &self,
         owner: &str,
@@ -759,17 +763,26 @@ impl Store {
             return Ok(e);
         }
         let when = UNIX_EPOCH + std::time::Duration::from_secs(mtime.max(0) as u64);
-        if let Ok(f) = fs::File::options().write(true).open(self.disk_path(owner, path)) {
+        if let Ok(f) = fs::File::options()
+            .write(true)
+            .open(self.disk_path(owner, path))
+        {
             let _ = f.set_modified(when);
         } else if e.dir {
             if let Ok(f) = fs::File::open(self.disk_path(owner, path)) {
                 let _ = f.set_modified(when);
             }
         }
-        tx.execute("UPDATE files SET mtime = ?1 WHERE id = ?2", params![mtime, e.id])?;
+        tx.execute(
+            "UPDATE files SET mtime = ?1 WHERE id = ?2",
+            params![mtime, e.id],
+        )?;
         self.propagate(&tx, owner, path, now())?;
         // The folder's own mtime is what the client asked for, not now.
-        tx.execute("UPDATE files SET mtime = ?1 WHERE id = ?2", params![mtime, e.id])?;
+        tx.execute(
+            "UPDATE files SET mtime = ?1 WHERE id = ?2",
+            params![mtime, e.id],
+        )?;
         let e = get(&tx, owner, path)?.ok_or(StoreError::NotFound)?;
         tx.commit()?;
         Ok(e)
@@ -780,7 +793,15 @@ impl Store {
         let mut temp = self.temp_file(owner)?;
         temp.write_all(bytes)?;
         let sum = crate::cloud::util::sha1_hex(bytes);
-        self.commit_file(owner, path, temp, None, None, false, Some(format!("SHA1:{sum}")))
+        self.commit_file(
+            owner,
+            path,
+            temp,
+            None,
+            None,
+            false,
+            Some(format!("SHA1:{sum}")),
+        )
     }
 
     pub fn read_bytes(&self, owner: &str, path: &str) -> Result<Vec<u8>> {
@@ -846,7 +867,7 @@ impl Store {
                 });
             }
         }
-        out.sort_by(|a, b| b.mtime.cmp(&a.mtime));
+        out.sort_by_key(|e| std::cmp::Reverse(e.mtime));
         Ok(out)
     }
 
@@ -1020,8 +1041,11 @@ impl Store {
         } else if self.stat(owner, &target).is_ok() {
             return Err(StoreError::Exists);
         }
-        fs::rename(self.trash_disk_path(owner, &t), self.disk_path(owner, &target))
-            .map_err(map_io)?;
+        fs::rename(
+            self.trash_disk_path(owner, &t),
+            self.disk_path(owner, &target),
+        )
+        .map_err(map_io)?;
         {
             let db = self.db.lock().unwrap_or_else(|p| p.into_inner());
             db.execute(
@@ -1110,7 +1134,13 @@ impl Store {
         )?;
         tx.execute(
             "UPDATE files SET path = ?1, name = ?2, parent = ?3, mime = ?4 WHERE id = ?5",
-            params![to, name_of(to), parent.id, mime_for(name_of(to), e.dir), e.id],
+            params![
+                to,
+                name_of(to),
+                parent.id,
+                mime_for(name_of(to), e.dir),
+                e.id
+            ],
         )?;
         let t = now();
         if let Some(p) = parent_of(from) {
@@ -1258,11 +1288,7 @@ impl Store {
             Some(_) => {}
             None => {
                 let parent_id: Option<i64> = match parent_of(path) {
-                    Some(p) => Some(
-                        get(tx, owner, p)?
-                            .ok_or(StoreError::Conflict)?
-                            .id,
-                    ),
+                    Some(p) => Some(get(tx, owner, p)?.ok_or(StoreError::Conflict)?.id),
                     None => None,
                 };
                 let name = name_of(path);
@@ -1435,7 +1461,10 @@ mod tests {
         let dir = s.stat("alice", "from/dir").unwrap();
         let from_tag = s.stat("alice", "from").unwrap().etag;
         let to_tag = s.stat("alice", "to").unwrap().etag;
-        let moved = s.rename("alice", "from/dir", "to/dir2", false).unwrap().entry;
+        let moved = s
+            .rename("alice", "from/dir", "to/dir2", false)
+            .unwrap()
+            .entry;
         assert_eq!(moved.id, dir.id);
         assert_eq!(moved.etag, dir.etag, "the moved folder keeps its ETag");
         let f2 = s.stat("alice", "to/dir2/f.txt").unwrap();
@@ -1603,8 +1632,16 @@ mod tests {
                 t.write_all(format!("v{i}").as_bytes()).unwrap();
                 t
             };
-            s.commit_file("alice", "f.txt", temp, Some(1000 + i as i64), None, false, None)
-                .unwrap();
+            s.commit_file(
+                "alice",
+                "f.txt",
+                temp,
+                Some(1000 + i as i64),
+                None,
+                false,
+                None,
+            )
+            .unwrap();
         }
         let v = s.versions("alice", "f.txt").unwrap();
         assert_eq!(v.len(), VERSIONS_KEPT);

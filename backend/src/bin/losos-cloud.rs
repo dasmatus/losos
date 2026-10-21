@@ -10,7 +10,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Parser)]
-#[command(version, about = "LosOS Cloud: files, WebDAV and the Nextcloud app protocol")]
+#[command(
+    version,
+    about = "LosOS Cloud: files, WebDAV and the Nextcloud app protocol"
+)]
 struct Cli {
     /// Where the files and the database are.
     #[arg(long, default_value = "/var/lib/losos-cloud")]
@@ -80,7 +83,13 @@ fn main() -> anyhow::Result<()> {
             product,
             trash_days,
         } => {
-            let cloud = Arc::new(Cloud::open(&cli.root, Config { product, trash_days })?);
+            let cloud = Arc::new(Cloud::open(
+                &cli.root,
+                Config {
+                    product,
+                    trash_days,
+                },
+            )?);
             let listen = match (socket, listen) {
                 (Some(s), _) => server::Listen::Unix(s),
                 (None, Some(l)) => server::Listen::Tcp(l),

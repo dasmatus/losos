@@ -31,8 +31,6 @@ pub async fn api(
     segs: &[&str],
     body: web::Payload,
 ) -> HttpResponse {
-    let _ = (req, cloud, who, body);
-    match segs.first() {
-        _ => crate::cloud::api::error(StatusCode::NOT_FOUND, "notFound", "no such call"),
-    }
+    let _ = (req, cloud, who, segs, body);
+    crate::cloud::api::error(StatusCode::NOT_FOUND, "notFound", "no such call")
 }
