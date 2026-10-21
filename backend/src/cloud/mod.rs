@@ -17,6 +17,7 @@ pub mod auth;
 pub mod boards;
 pub mod caldav;
 pub mod collab;
+pub mod contacts;
 pub mod dav;
 pub mod extensions;
 pub mod import;

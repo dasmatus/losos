@@ -71,5 +71,6 @@ pub mod signin;
 pub mod site;
 pub mod supervisor;
 pub mod textsearch;
+pub mod vcard;
 pub mod vm_upload;
 pub mod zcash_key;
