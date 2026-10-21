@@ -117,7 +117,9 @@ wird, über den Weg mit dem Ersatzschlüssel unter
 ## Die Tour \{#the-tour}
 
 Wenn du diese Seiten nach der Einrichtung zum ersten Mal öffnest, startet
-über der Übersicht eine Tour aus sechs kurzen Schritten. **Tour starten**
+über der Übersicht eine kurze Tour: sechs Schritte auf jeder Box und einer
+mehr für jede Funktion, die diese Box hat ([Der erste Start](../start/first-run)
+zählt sie auf). **Tour starten**
 unter Einstellungen, Über öffnet sie erneut. Ist in deinem System „Bewegung
 reduzieren“ eingestellt, zeigt jeder Schritt ein Standbild statt eines
 bewegten.
