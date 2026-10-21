@@ -10,6 +10,15 @@
 //! deposit with the releaser key; the program closes both accounts then, so
 //! a deposit that no longer exists is one that finished.
 //!
+//! Pay as you go has two more accounts per buyer and tap: a balance at
+//! `["balance", config, buyer]`, whose USDC is in the token account
+//! `["vault", balance]`, and a tap at `["tap", config, tap id]` that names
+//! the seller, the rate and the fee the buyer agreed to. The wallet tops up
+//! and opens taps; the edge reads them back ([`tap_state`],
+//! [`wallet_view`]) and bills them with [`settle_tap`] and [`close_tap`].
+//! The program refuses any settle above the tap's rate for the time since
+//! the last one, so the edge's key can bill no faster than the buyer agreed.
+//!
 //! The releaser is an ed25519 key derived from the EVM releaser's secret
 //! ([`crate::evm_tx::Releaser::solana_seed`]), so one sealed credential
 //! covers both families and one rotation replaces both. Its address needs a
@@ -21,6 +30,7 @@ use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde_json::{json, Value};
 
 use crate::market::MarketError;
+use crate::meter::{ChainTap, WalletView};
 use crate::solana::{base58_decode, base58_encode};
 use crate::stablecoin::{call_result, Relay};
 
@@ -33,12 +43,20 @@ const PAY: u8 = 1;
 const RELEASE: u8 = 2;
 const REFUND: u8 = 3;
 const SETTLE: u8 = 4;
+// 6 top_up, 7 open_tap, 10 ask_withdrawal and 11 withdraw are the
+// wallet's; the edge sends only these two.
+const CLOSE_TAP: u8 = 8;
+const SETTLE_TAP: u8 = 9;
 
 const CONFIG_LEN: usize = 98;
 const DEPOSIT_LEN: usize = 196;
+const BALANCE_LEN: usize = 84;
+const TAP_LEN: usize = 158;
+const TOKEN_ACCOUNT_LEN: usize = 165;
 
-/// The releaser on Solana. It signs only the three escrow calls this module
-/// builds.
+/// The releaser on Solana. It signs only the escrow calls this module
+/// builds: release, refund and split for deposits, settle and close for
+/// taps.
 pub struct SolanaReleaser {
     pair: Ed25519KeyPair,
     address: [u8; 32],
@@ -129,6 +147,35 @@ pub fn vault_address(program: &[u8; 32], deposit: &[u8; 32]) -> [u8; 32] {
     find_program_address(&[b"vault", deposit], program).0
 }
 
+/// `["balance", config, buyer]`: a buyer's prepaid balance. Its vault is
+/// [`vault_address`] of it.
+#[must_use]
+pub fn balance_address(program: &[u8; 32], config: &[u8; 32], buyer: &[u8; 32]) -> [u8; 32] {
+    find_program_address(&[b"balance", config, buyer], program).0
+}
+
+/// `["tap", config, tap id]`.
+#[must_use]
+pub fn tap_address(
+    program: &[u8; 32],
+    config: &[u8; 32],
+    buyer: &[u8; 32],
+    tap_id: &[u8; 32],
+) -> [u8; 32] {
+    find_program_address(&[b"tap", config, buyer, tap_id], program).0
+}
+
+/// The 32 bytes a tap is known by on Solana: the SHA-256 of the edge's tap
+/// id. The program uses them only as a seed, so any 32 bytes would do; the
+/// wallet must use the same ones.
+#[must_use]
+pub fn tap_id_bytes(id: &str) -> [u8; 32] {
+    ring::digest::digest(&ring::digest::SHA256, id.as_bytes())
+        .as_ref()
+        .try_into()
+        .expect("32 bytes")
+}
+
 #[must_use]
 pub fn associated_token_address(owner: &[u8; 32], mint: &[u8; 32]) -> [u8; 32] {
     let token = key(TOKEN_PROGRAM).expect("constant");
@@ -182,6 +229,78 @@ impl DepositData {
             paid_at: le(data, 188) as i64,
         })
     }
+}
+
+/// A buyer's balance as the program wrote it (`losos_escrow::state::Balance`).
+/// The money itself is the vault's token amount.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BalanceData {
+    pub config: [u8; 32],
+    pub buyer: [u8; 32],
+    /// What the buyer asked to withdraw, 0 without an ask.
+    pub asked: u64,
+    /// Unix seconds the ask can be withdrawn from, 0 without an ask.
+    pub not_before: i64,
+}
+
+impl BalanceData {
+    #[must_use]
+    pub fn read(data: &[u8]) -> Option<Self> {
+        (data.len() == BALANCE_LEN && data[0] == 3).then(|| Self {
+            config: word(data, 4),
+            buyer: word(data, 36),
+            asked: le(data, 68),
+            not_before: le(data, 76) as i64,
+        })
+    }
+}
+
+/// A tap as the program wrote it (`losos_escrow::state::Tap`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TapData {
+    pub config: [u8; 32],
+    pub buyer: [u8; 32],
+    pub seller: [u8; 32],
+    pub id: [u8; 32],
+    /// Base units an hour, at most.
+    pub rate: u64,
+    pub settled_at: i64,
+    pub closed_at: Option<i64>,
+    pub fee_bps: u16,
+}
+
+impl TapData {
+    #[must_use]
+    pub fn read(data: &[u8]) -> Option<Self> {
+        (data.len() == TAP_LEN && data[0] == 4 && data[2] <= 1).then(|| Self {
+            config: word(data, 4),
+            buyer: word(data, 36),
+            seller: word(data, 68),
+            id: word(data, 100),
+            rate: le(data, 132),
+            settled_at: le(data, 140) as i64,
+            closed_at: (data[2] == 1).then(|| le(data, 148) as i64),
+            fee_bps: u16::from_le_bytes([data[156], data[157]]),
+        })
+    }
+
+    #[must_use]
+    pub fn chain(&self) -> ChainTap {
+        let secs = |t: i64| u64::try_from(t).unwrap_or(0);
+        ChainTap {
+            buyer: self.buyer,
+            seller: self.seller,
+            rate: self.rate,
+            fee_bps: u32::from(self.fee_bps),
+            settled_at: secs(self.settled_at),
+            closed_at: self.closed_at.map(secs),
+        }
+    }
+}
+
+/// The amount of a classic token account.
+fn token_amount(data: &[u8]) -> Option<u64> {
+    (data.len() == TOKEN_ACCOUNT_LEN).then(|| le(data, 64))
 }
 
 /// What one paid order's deposit must hold.
@@ -334,6 +453,55 @@ pub async fn read_deposit(
         Some((owner, data)) if owner == program => Ok(DepositData::read(&data)),
         _ => Ok(None),
     }
+}
+
+/// The tap `tap_id` under `config`, or `None` when it was never opened or
+/// has finished: the program closes a tap once it is closed and settled up
+/// to its close.
+pub async fn tap_state(
+    rpc_url: &str,
+    program: &str,
+    config: &[u8; 32],
+    buyer: &[u8; 32],
+    tap_id: [u8; 32],
+) -> Result<Option<ChainTap>, MarketError> {
+    let p = key(program).ok_or(MarketError::Unconfigured)?;
+    let address = base58_encode(&tap_address(&p, config, buyer, &tap_id));
+    match account(rpc_url, &address).await? {
+        Some((owner, data)) if owner == program => Ok(TapData::read(&data)
+            .filter(|t| t.config == *config && t.id == tap_id && t.buyer == *buyer)
+            .map(|t| t.chain())),
+        _ => Ok(None),
+    }
+}
+
+/// What `buyer` holds in the escrow under `config`: the vault's tokens and
+/// the open ask. All zeros when the buyer never topped up.
+pub async fn wallet_view(
+    rpc_url: &str,
+    program: &str,
+    config: &[u8; 32],
+    buyer: [u8; 32],
+) -> Result<WalletView, MarketError> {
+    let p = key(program).ok_or(MarketError::Unconfigured)?;
+    let balance = balance_address(&p, config, &buyer);
+    let b = match account(rpc_url, &base58_encode(&balance)).await? {
+        Some((owner, data)) if owner == program => BalanceData::read(&data),
+        _ => None,
+    };
+    let Some(b) = b.filter(|b| b.config == *config && b.buyer == buyer) else {
+        return Ok(WalletView::default());
+    };
+    let vault = base58_encode(&vault_address(&p, &balance));
+    let held = match account(rpc_url, &vault).await? {
+        Some((owner, data)) if owner == TOKEN_PROGRAM => token_amount(&data).unwrap_or(0),
+        _ => 0,
+    };
+    Ok(WalletView {
+        balance: held,
+        asked: b.asked,
+        not_before: u64::try_from(b.not_before).unwrap_or(0),
+    })
 }
 
 /// Check that the configured program has this edge's config: Circle's mint,
@@ -588,12 +756,118 @@ pub fn escrow_transaction(
         accounts,
         data,
     });
-    let message = compile(me, &ixs, blockhash);
+    signed(releaser, &ixs, blockhash)
+}
+
+/// `ixs` as one transaction the releaser pays for and signs: the base64
+/// wire form and the signature.
+fn signed(releaser: &SolanaReleaser, ixs: &[Ix], blockhash: &[u8; 32]) -> (String, String) {
+    let message = compile(releaser.address(), ixs, blockhash);
     let signature = releaser.sign(&message);
     let mut wire = shortvec(1);
     wire.extend_from_slice(&signature);
     wire.extend_from_slice(&message);
     (base64_encode(&wire), base58_encode(&signature))
+}
+
+/// What the edge does with a tap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TapStep {
+    /// Bill so many base units of what was metered since the last settle.
+    /// 0 is taken only on a closed tap, where it finishes one that owes
+    /// nothing.
+    Settle(u64),
+    /// Stop the tap's billing now.
+    Close,
+}
+
+/// Who a tap's money and rent may go to. The program checks each against
+/// the tap and the config, so they only have to be right, not trusted.
+#[derive(Debug, Clone)]
+pub struct TapParties {
+    pub program: [u8; 32],
+    pub mint: [u8; 32],
+    pub treasury: [u8; 32],
+    pub tap_id: [u8; 32],
+    /// The tap's buyer: whose balance pays, and who takes the tap's rent.
+    pub buyer: [u8; 32],
+    pub seller: [u8; 32],
+}
+
+impl TapParties {
+    /// The parties of `tap`, as [`tap_state`] read it.
+    #[must_use]
+    pub fn new(
+        program: [u8; 32],
+        mint: [u8; 32],
+        treasury: [u8; 32],
+        tap_id: [u8; 32],
+        tap: &ChainTap,
+    ) -> Self {
+        Self {
+            program,
+            mint,
+            treasury,
+            tap_id,
+            buyer: tap.buyer,
+            seller: tap.seller,
+        }
+    }
+}
+
+/// The one transaction the edge sends for a tap. A settle first creates
+/// the seller's and the treasury's USDC accounts if they are missing, as a
+/// release does. Signed; returns the base64 wire form and the signature.
+#[must_use]
+pub fn tap_transaction(
+    releaser: &SolanaReleaser,
+    parties: &TapParties,
+    step: TapStep,
+    blockhash: &[u8; 32],
+) -> (String, String) {
+    let me = releaser.address();
+    let p = parties;
+    let config = config_address(&p.program, &p.treasury, &p.mint);
+    let tap = tap_address(&p.program, &config, &p.buyer, &p.tap_id);
+    let signer = Meta {
+        key: me,
+        signer: true,
+        writable: true,
+    };
+    let mut ixs = Vec::new();
+    let (accounts, data) = match step {
+        TapStep::Settle(amount) => {
+            let token = key(TOKEN_PROGRAM).expect("constant");
+            let balance = balance_address(&p.program, &config, &p.buyer);
+            let ata = |owner: &[u8; 32]| associated_token_address(owner, &p.mint);
+            ixs.push(create_ata(me, p.seller, p.mint));
+            ixs.push(create_ata(me, p.treasury, p.mint));
+            let mut data = vec![SETTLE_TAP];
+            data.extend_from_slice(&amount.to_le_bytes());
+            (
+                vec![
+                    signer,
+                    r(config),
+                    w(tap),
+                    r(balance),
+                    w(vault_address(&p.program, &balance)),
+                    w(ata(&p.seller)),
+                    w(ata(&p.treasury)),
+                    w(p.buyer),
+                    r(p.mint),
+                    r(token),
+                ],
+                data,
+            )
+        }
+        TapStep::Close => (vec![signer, r(config), w(tap), w(p.buyer)], vec![CLOSE_TAP]),
+    };
+    ixs.push(Ix {
+        program: p.program,
+        accounts,
+        data,
+    });
+    signed(releaser, &ixs, blockhash)
 }
 
 /// A legacy message. The fee payer must be key 0, and the header only works
@@ -678,6 +952,45 @@ pub async fn send(
     parties: &Parties,
     step: Move,
 ) -> Result<String, MarketError> {
+    let blockhash = latest_blockhash(rpc_url).await?;
+    let (wire, signature) = escrow_transaction(releaser, parties, step, &blockhash);
+    submit(rpc_url, wire).await?;
+    Ok(signature)
+}
+
+/// Send `step` for the tap and return its signature.
+pub async fn send_tap(
+    rpc_url: &str,
+    releaser: &SolanaReleaser,
+    parties: &TapParties,
+    step: TapStep,
+) -> Result<String, MarketError> {
+    let blockhash = latest_blockhash(rpc_url).await?;
+    let (wire, signature) = tap_transaction(releaser, parties, step, &blockhash);
+    submit(rpc_url, wire).await?;
+    Ok(signature)
+}
+
+/// Bill `amount` base units on the tap and return the signature.
+pub async fn settle_tap(
+    rpc_url: &str,
+    releaser: &SolanaReleaser,
+    parties: &TapParties,
+    amount: u64,
+) -> Result<String, MarketError> {
+    send_tap(rpc_url, releaser, parties, TapStep::Settle(amount)).await
+}
+
+/// Close the tap and return the signature.
+pub async fn close_tap(
+    rpc_url: &str,
+    releaser: &SolanaReleaser,
+    parties: &TapParties,
+) -> Result<String, MarketError> {
+    send_tap(rpc_url, releaser, parties, TapStep::Close).await
+}
+
+async fn latest_blockhash(rpc_url: &str) -> Result<[u8; 32], MarketError> {
     let latest = call_result(
         rpc_url,
         Relay::Solana,
@@ -685,11 +998,13 @@ pub async fn send(
         json!([{ "commitment": "confirmed" }]),
     )
     .await?;
-    let blockhash = latest["value"]["blockhash"]
+    latest["value"]["blockhash"]
         .as_str()
         .and_then(key)
-        .ok_or(MarketError::Conflict("the chain endpoint did not answer"))?;
-    let (wire, signature) = escrow_transaction(releaser, parties, step, &blockhash);
+        .ok_or(MarketError::Conflict("the chain endpoint did not answer"))
+}
+
+async fn submit(rpc_url: &str, wire: String) -> Result<(), MarketError> {
     call_result(
         rpc_url,
         Relay::Solana,
@@ -697,7 +1012,7 @@ pub async fn send(
         json!([wire, { "encoding": "base64", "preflightCommitment": "confirmed" }]),
     )
     .await?;
-    Ok(signature)
+    Ok(())
 }
 
 /// How a transaction the edge sent stands.
@@ -961,6 +1276,247 @@ mod tests {
                 &json!({"err": {"InstructionError": [2, {"Custom": 8}]}, "confirmationStatus": "confirmed"})
             ),
             Landed::Failed
+        );
+    }
+
+    /// The program's own bytes for these accounts: the fixtures its
+    /// `the_layouts_the_edge_reads_are_pinned` test writes with
+    /// `losos_escrow::state`. Change both together.
+    const BALANCE_FIXTURE: &str = "03fefd0001010101010101010101010101010101010101010101010101010101010101010202020202020202020202020202020202020202020202020202020202020202c0cf6a000000000000754c6b00000000";
+    const TAP_CLOSED_FIXTURE: &str = "04ff0100010101010101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202020202020303030303030303030303030303030303030303030303030303030303030303040404040404040404040404040404040404040404040404040404040404040440420f000000000000d2496b0000000010e0496b000000009001";
+    const TAP_OPEN_FIXTURE: &str = "04ff0000010101010101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202020202020303030303030303030303030303030303030303030303030303030303030303040404040404040404040404040404040404040404040404040404040404040440420f000000000000d2496b0000000000000000000000009001";
+
+    fn hex(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn balances_and_taps_decode_as_the_program_writes_them() {
+        let b = BalanceData::read(&hex(BALANCE_FIXTURE)).unwrap();
+        assert_eq!(
+            b,
+            BalanceData {
+                config: [1; 32],
+                buyer: [2; 32],
+                asked: 7_000_000,
+                not_before: 1_800_172_800,
+            }
+        );
+        let closed = TapData::read(&hex(TAP_CLOSED_FIXTURE)).unwrap();
+        assert_eq!(
+            closed,
+            TapData {
+                config: [1; 32],
+                buyer: [2; 32],
+                seller: [3; 32],
+                id: [4; 32],
+                rate: 1_000_000,
+                settled_at: 1_800_000_000,
+                closed_at: Some(1_800_003_600),
+                fee_bps: 400,
+            }
+        );
+        assert_eq!(
+            closed.chain(),
+            ChainTap {
+                buyer: [2; 32],
+                seller: [3; 32],
+                rate: 1_000_000,
+                fee_bps: 400,
+                settled_at: 1_800_000_000,
+                closed_at: Some(1_800_003_600),
+            }
+        );
+        let open = TapData::read(&hex(TAP_OPEN_FIXTURE)).unwrap();
+        assert_eq!(open.closed_at, None);
+        assert_eq!(open.chain().closed_at, None);
+        // Not a balance or a tap: the wrong length, tag or closed flag.
+        assert_eq!(BalanceData::read(&hex(TAP_OPEN_FIXTURE)), None);
+        assert_eq!(TapData::read(&hex(BALANCE_FIXTURE)), None);
+        let mut data = hex(TAP_OPEN_FIXTURE);
+        data[2] = 2;
+        assert_eq!(TapData::read(&data), None);
+        assert_eq!(TapData::read(&data[..157]), None);
+        let mut token = vec![0u8; 165];
+        token[64..72].copy_from_slice(&42u64.to_le_bytes());
+        assert_eq!(token_amount(&token), Some(42));
+        assert_eq!(token_amount(&token[..164]), None);
+    }
+
+    #[test]
+    fn tap_addresses_match_the_runtime() {
+        // `solana find-program-derived-address LosEscrow1… string:tap
+        // pubkey:<config> pubkey:<buyer> hex:04…04` and `string:balance
+        // pubkey:<config> pubkey:<buyer>`.
+        let program = key("LosEscrow1111111111111111111111111111111111").unwrap();
+        let config = key("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM").unwrap();
+        let buyer = key("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v").unwrap();
+        assert_eq!(
+            base58_encode(&tap_address(&program, &config, &buyer, &[4; 32])),
+            "5Gbz1iYxjC5fegQqLZ7y5XxoR49y17gDhNQGjqzXWkWY"
+        );
+        assert_eq!(
+            base58_encode(&balance_address(&program, &config, &buyer)),
+            "4p1yaXiRqaKiAUnnaeZStCXtG4krcWCnTnddBvDdXTHx"
+        );
+        // SHA-256 of the edge's tap id.
+        let mut want = [0u8; 32];
+        want.copy_from_slice(&hex(
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        ));
+        assert_eq!(tap_id_bytes("abc"), want);
+        assert_ne!(tap_id_bytes("tap-1"), tap_id_bytes("tap-2"));
+    }
+
+    /// A legacy transaction taken apart: its keys with their signer and
+    /// writable flags, and each instruction as (program, accounts, data).
+    struct Decoded {
+        keys: Vec<([u8; 32], bool, bool)>,
+        ixs: Vec<([u8; 32], Vec<usize>, Vec<u8>)>,
+    }
+
+    fn decode(wire: &str, signer: &[u8; 32]) -> Decoded {
+        let wire = base64_decode(wire).unwrap();
+        assert_eq!(wire[0], 1, "one signature");
+        let (signature, message) = (&wire[1..65], &wire[65..]);
+        ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, signer)
+            .verify(message, signature)
+            .expect("signed by the releaser");
+        let (signers, ro_signers, ro) = (
+            usize::from(message[0]),
+            usize::from(message[1]),
+            usize::from(message[2]),
+        );
+        let n = usize::from(message[3]);
+        let mut at = 4;
+        let mut keys = Vec::new();
+        for i in 0..n {
+            let k = word(message, at);
+            at += 32;
+            let is_signer = i < signers;
+            let writable = if is_signer {
+                i < signers - ro_signers
+            } else {
+                i < n - ro
+            };
+            keys.push((k, is_signer, writable));
+        }
+        at += 32; // blockhash
+        let count = usize::from(message[at]);
+        at += 1;
+        let mut ixs = Vec::new();
+        for _ in 0..count {
+            let program = keys[usize::from(message[at])].0;
+            let len = usize::from(message[at + 1]);
+            let accounts = message[at + 2..at + 2 + len]
+                .iter()
+                .map(|i| usize::from(*i))
+                .collect();
+            at += 2 + len;
+            let dlen = usize::from(message[at]);
+            let data = message[at + 1..at + 1 + dlen].to_vec();
+            at += 1 + dlen;
+            ixs.push((program, accounts, data));
+        }
+        assert_eq!(at, message.len());
+        Decoded { keys, ixs }
+    }
+
+    fn tap_parties() -> TapParties {
+        TapParties::new(
+            key("LosEscrow1111111111111111111111111111111111").unwrap(),
+            key("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v").unwrap(),
+            [8; 32],
+            tap_id_bytes("tap-1"),
+            &ChainTap {
+                buyer: [2; 32],
+                seller: [3; 32],
+                rate: 1_000_000,
+                fee_bps: 400,
+                settled_at: 1_800_000_000,
+                closed_at: None,
+            },
+        )
+    }
+
+    #[test]
+    fn a_tap_settle_names_the_programs_accounts_in_order() {
+        let releaser = SolanaReleaser::from_seed(&[5; 32]);
+        let p = tap_parties();
+        let (wire, _) = tap_transaction(&releaser, &p, TapStep::Settle(1_500_000), &[9; 32]);
+        let d = decode(&wire, &releaser.address());
+        let config = config_address(&p.program, &p.treasury, &p.mint);
+        let balance = balance_address(&p.program, &config, &p.buyer);
+        let token = key(TOKEN_PROGRAM).unwrap();
+        let ata = |o: &[u8; 32]| associated_token_address(o, &p.mint);
+        // The seller's and the treasury's USDC accounts, then the settle.
+        assert_eq!(d.ixs.len(), 3);
+        let ata_program = key(ATA_PROGRAM).unwrap();
+        assert_eq!(d.ixs[0].0, ata_program);
+        assert_eq!(d.keys[d.ixs[0].1[1]].0, ata(&p.seller));
+        assert_eq!(d.ixs[1].0, ata_program);
+        assert_eq!(d.keys[d.ixs[1].1[1]].0, ata(&p.treasury));
+        let (program, accounts, data) = &d.ixs[2];
+        assert_eq!(*program, p.program);
+        let mut want = vec![SETTLE_TAP];
+        want.extend_from_slice(&1_500_000u64.to_le_bytes());
+        assert_eq!(*data, want);
+        assert_eq!(data[0], 9);
+        // (key, signer, writable), in the program's order.
+        let named: Vec<_> = accounts.iter().map(|i| d.keys[*i]).collect();
+        assert_eq!(
+            named,
+            vec![
+                (releaser.address(), true, true),
+                (config, false, false),
+                (
+                    tap_address(&p.program, &config, &p.buyer, &p.tap_id),
+                    false,
+                    true
+                ),
+                (balance, false, false),
+                (vault_address(&p.program, &balance), false, true),
+                (ata(&p.seller), false, true),
+                (ata(&p.treasury), false, true),
+                (p.buyer, false, true),
+                (p.mint, false, false),
+                (token, false, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_tap_close_names_the_tap_and_its_buyer() {
+        let releaser = SolanaReleaser::from_seed(&[5; 32]);
+        let p = tap_parties();
+        let (wire, signature) = tap_transaction(&releaser, &p, TapStep::Close, &[9; 32]);
+        let d = decode(&wire, &releaser.address());
+        let config = config_address(&p.program, &p.treasury, &p.mint);
+        assert_eq!(d.ixs.len(), 1);
+        let (program, accounts, data) = &d.ixs[0];
+        assert_eq!(*program, p.program);
+        assert_eq!(*data, vec![CLOSE_TAP]);
+        assert_eq!(data[0], 8);
+        let named: Vec<_> = accounts.iter().map(|i| d.keys[*i]).collect();
+        assert_eq!(
+            named,
+            vec![
+                (releaser.address(), true, true),
+                (config, false, false),
+                (
+                    tap_address(&p.program, &config, &p.buyer, &p.tap_id),
+                    false,
+                    true
+                ),
+                (p.buyer, false, true),
+            ]
+        );
+        assert_eq!(
+            base58_decode(&signature).unwrap(),
+            base64_decode(&wire).unwrap()[1..65].to_vec()
         );
     }
 
