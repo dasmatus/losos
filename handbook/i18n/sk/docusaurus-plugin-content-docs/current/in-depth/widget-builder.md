@@ -76,9 +76,9 @@ asi 5 GiB a trvá niekoľkonásobne dlhšie.
 
 ## Čo čakať {#what-to-expect}
 
-Tvorba beží na procesore zariadenia. Na dvojjadrovom mini-PC trvá aplikácia
-DURATION_APP_SK, widget DURATION_WIDGET_SK a každá oprava zhruba toľko
-isto. Karta ukazuje, koľko riadkov model zatiaľ napísal.
+Tvorba beží na procesore zariadenia. Na dvoch jadrách procesora trvá aplikácia asi
+dve minúty, widget o niečo viac než jednu a každá oprava zhruba toľko isto.
+Starší alebo vyťaženejší procesor môže potrebovať dvakrát toľko. Karta ukazuje, koľko riadkov model zatiaľ napísal.
 
 :::tip[Žiadajte jednu vec]
 Model je malý. Najlepšie zvláda jednu jasnú vec: nákupný zoznam, poznámky,

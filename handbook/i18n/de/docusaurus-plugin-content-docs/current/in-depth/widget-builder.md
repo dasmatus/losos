@@ -83,9 +83,10 @@ Schreiben etwa 5 GiB und dauert ein Mehrfaches.
 
 ## Was dich erwartet {#what-to-expect}
 
-Ein Bau läuft auf dem Prozessor der Box. Auf einem Mini-PC mit zwei Kernen
-dauert eine App DURATION_APP_DE, ein Widget DURATION_WIDGET_DE, und jede
-Korrektur etwa noch einmal so lange. Der Tab zeigt, wie viele Zeilen das
+Ein Bau läuft auf dem Prozessor der Box. Auf zwei Prozessorkernen dauert eine App
+etwa zwei Minuten, ein Widget etwas mehr als eine, und jede Korrektur etwa
+noch einmal so lange. Ein älterer oder ausgelasteter Prozessor kann doppelt
+so lange brauchen. Der Tab zeigt, wie viele Zeilen das
 Modell schon geschrieben hat.
 
 :::tip[Bitte um eine Sache]

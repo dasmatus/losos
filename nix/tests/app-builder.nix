@@ -79,11 +79,11 @@ let
       imageTag = "test";
     };
 
-  # Measured on two cores of a mini PC's class of processor (4 threads of
-  # the same machine halved): Qwen2.5-Coder 1.5B reads the prompt at about
-  # this many tokens a second and writes at about this many.
-  promptRate = "47";
-  writeRate = "9";
+  # Measured with two threads while a build kept the other cores busy:
+  # Qwen2.5-Coder 1.5B reads the prompt at about this many tokens a second
+  # and writes at about this many.
+  promptRate = "45";
+  writeRate = "7";
 
   # Playwright for Node from the admin pages' own lock file, the version
   # nix/tests/admin-ui.nix pins to nixpkgs' browsers.

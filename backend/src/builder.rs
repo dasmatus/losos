@@ -1,11 +1,12 @@
 //! The builder: a language model on this box writes a widget or an app from
 //! the owner's description.
 //!
-//! A hand-written widget (`losos_widget`, stored by the look plugin) is HTML, style and script that the
-//! admin page draws in a sandboxed frame; an app (`crate::user_apps`) is one
-//! React component in JSX that runs in a frame of its own and keeps its data
-//! on the box. Writing either takes some knowledge of the frame, so the
-//! builder lets the owner describe it in a sentence and has a model write it.
+//! A hand-written widget (`losos_widget`, stored by the look plugin) is HTML,
+//! style and script that the admin page draws in a sandboxed frame; an app
+//! (`crate::user_apps`) is one React component in JSX that runs in a frame
+//! of its own and keeps its data on the box. Writing either takes some
+//! knowledge of the frame, so the builder lets the owner describe it in a
+//! sentence and has a model write it.
 //! The result is text and nothing more: it lands in the same editor and the
 //! same frame as code typed by hand, with no privilege typed code lacks, and
 //! nothing is saved until the owner saves it.
@@ -90,8 +91,8 @@ pub const DEFAULT_MODEL: &str = "qwen2.5-coder:1.5b";
 /// prompt is about 2,300, an answer at most [`MAX_ANSWER_TOKENS`], and the
 /// rest is the request and the widget or app to change.
 pub const DEFAULT_CONTEXT: u32 = 12288;
-/// The longest answer, in tokens. A widget the model writes is 1,000 to
-/// 2,500; this stops a model that repeats itself.
+/// The longest answer, in tokens. A widget the model writes is about 250,
+/// an app 500 to 1,500; this stops a model that repeats itself.
 pub const MAX_ANSWER_TOKENS: u32 = 4096;
 /// Longest description, in characters.
 pub const MAX_PROMPT_CHARS: usize = 2000;

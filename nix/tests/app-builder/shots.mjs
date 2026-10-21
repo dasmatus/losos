@@ -209,6 +209,14 @@ if (MODE === 'before') {
   await app.getByRole('button', { name: 'Add' }).click();
   await app.getByText('Water the plants').first().waitFor();
   await shot(page, 'app-saved', 'the app on its own page, its data on the box');
+  // The same page in the light theme, then a pane the admin UI already had,
+  // in both themes, to set the app's buttons, fields and cards beside it.
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+  await shot(page, 'app-saved-light', 'the app on its own page, light theme');
+  await page.goto(`${BOX}/storage`);
+  await shot(page, 'storage-light', 'the Storage page beside it, light theme');
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await shot(page, 'storage', 'the Storage page beside it');
 
   await page.goto(`${BOX}/apps`);
   const row = page.getByTestId('your-app').first();

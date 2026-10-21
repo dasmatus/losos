@@ -77,8 +77,9 @@ writes and takes several times as long.
 
 ## What to expect
 
-A build runs on the box's processor. On a two-core mini-PC an app takes
-DURATION_APP, a widget DURATION_WIDGET, and each fix about as long again.
+A build runs on the box's processor. On two processor cores an app takes about
+two minutes, a widget a little over one, and each fix about as long again.
+An older or busier processor can take twice that.
 The tab shows how many lines the model has written so far.
 
 :::tip[Ask for one thing]
