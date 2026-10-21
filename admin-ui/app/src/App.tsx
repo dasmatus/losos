@@ -55,6 +55,7 @@ import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
+import { chatDocument } from "@/chat/document";
 
 /* Screens load on demand.
  *
@@ -75,6 +76,12 @@ const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 /* LosOS Mail (src/mail/): only on the shared side, so most boxes never
  * fetch it. */
 const Mail = React.lazy(() => import("@/mail/app"));
+/* LosOS Chat (src/chat/), the same: on the shared side only, and the only
+ * screen that brings matrix-js-sdk and its crypto. */
+const Chat = React.lazy(() => import("@/chat/app"));
+/* Calls outlive the chat screen, so the shell holds them, on a document
+ * loaded at /chat/ only: elsewhere matrix-js-sdk stays out of the page. */
+const CallsShell = React.lazy(() => import("@/chat/calls-shell"));
 const WidgetBoard = React.lazy(() =>
   import("@/widgets/board").then((m) => ({ default: m.WidgetBoard })),
 );
@@ -167,6 +174,10 @@ function useGate(): Gate {
   if (signedIn) return "open";
   if (claimed === null || (claimed && !asked)) return "unknown";
   return claimed ? "signin" : "setup";
+}
+
+function CallsHolder({ children }: { children: React.ReactNode }) {
+  return chatDocument() ? <CallsShell>{children}</CallsShell> : <>{children}</>;
 }
 
 function Shell() {
@@ -307,6 +318,7 @@ function Shell() {
         <main className="min-w-0 flex-1">
           {signedIn && !held && <MeshNotice />}
           <React.Suspense fallback={<ScreenFallback />}>
+          <CallsHolder>
           {held ? (
             <Settings pane="account" />
           ) : (
@@ -332,11 +344,15 @@ function Shell() {
                 (modules/containers.nix); the screen says so too if the box
                 leaves it while the page is open. */}
             <Route path="/mail" element={<Mail />} />
+            {/* nginx serves /chat/ only on the shared side, under chat's
+                own policy (modules/chat.nix); off it, /chat/ goes home. */}
+            <Route path="/chat/*" element={<Chat />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           )}
+          </CallsHolder>
           </React.Suspense>
         </main>
       </SidebarProvider>

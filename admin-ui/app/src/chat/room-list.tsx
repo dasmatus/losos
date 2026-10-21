@@ -1,9 +1,8 @@
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Add01Icon, Home01Icon, Search01Icon, UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
+import { Add01Icon, UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import { KnownMembership, type MatrixClient, type Room } from "matrix-js-sdk";
 import { Button } from "@/components/ui/button";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
@@ -13,12 +12,12 @@ export interface RoomListProps {
   client: MatrixClient;
   current: string | null;
   space: string | null;
-  onSpace: (spaceId: string | null) => void;
+  /** What is typed in the screen's search. */
+  filter: string;
   onOpen: (roomId: string) => void;
   onNewRoom: () => void;
   onNewChat: () => void;
   onJoin: () => void;
-  onNewSpace: () => void;
 }
 
 function preview(room: Room): string {
@@ -78,46 +77,13 @@ function Section({ title, children, action }: { title: string; children: React.R
   );
 }
 
-/** Spaces, as a column of icons beside the list. */
-export function SpaceRail({ client, space, onSpace, onNewSpace }: Pick<RoomListProps, "client" | "space" | "onSpace" | "onNewSpace">) {
-  const t = useT();
-  useEmitted(client, ROOM_EVENTS);
-  const spaces = client.getRooms().filter((room) => isSpace(room) && room.getMyMembership() === KnownMembership.Join);
-  const item = (selected: boolean): string =>
-    cn("flex size-10 items-center justify-center rounded-card border", selected ? "border-accent bg-accent-wash text-accent" : "border-transparent text-muted hover:bg-sunk hover:text-ink");
-  return (
-    <nav aria-label={t("chat.spaces.label")} className="flex w-14 shrink-0 flex-col items-center gap-1.5 border-r border-line bg-sunk py-3">
-      <button type="button" className={item(space === null)} aria-label={t("chat.spaces.all")} title={t("chat.spaces.all")} aria-pressed={space === null} onClick={() => onSpace(null)}>
-        <HugeiconsIcon icon={Home01Icon} className="size-5" />
-      </button>
-      {spaces.map((room) => (
-        <button
-          key={room.roomId}
-          type="button"
-          className={cn(item(space === room.roomId), "p-0")}
-          aria-label={roomName(room)}
-          title={roomName(room)}
-          aria-pressed={space === room.roomId}
-          onClick={() => onSpace(room.roomId)}
-        >
-          <Avatar client={client} id={room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={32} className="rounded-control" />
-        </button>
-      ))}
-      <button type="button" className={item(false)} aria-label={t("chat.spaces.new")} title={t("chat.spaces.new")} onClick={onNewSpace}>
-        <HugeiconsIcon icon={Add01Icon} className="size-5" />
-      </button>
-    </nav>
-  );
-}
-
 /** Invites, people and rooms, newest first; narrowed to a space when one
- *  is picked, and by what is typed in the filter. */
-export function RoomList({ client, current, space, onOpen, onNewRoom, onNewChat, onJoin }: RoomListProps) {
+ *  is picked, and by what is typed in the search. */
+export function RoomList({ client, current, space, filter, onOpen, onNewRoom, onNewChat, onJoin }: RoomListProps) {
   const t = useT();
   const tick = useEmitted(client, ROOM_EVENTS);
-  const [filter, setFilter] = React.useState("");
 
-  const { invites, people, rooms, spaceName } = React.useMemo(() => {
+  const { invites, people, rooms } = React.useMemo(() => {
     const direct = directRooms(client);
     const all = client.getRooms().filter((room) => !isSpace(room));
     const spaceRoom = space === null ? null : client.getRoom(space);
@@ -131,7 +97,6 @@ export function RoomList({ client, current, space, onOpen, onNewRoom, onNewChat,
       invites: shown.filter((room) => room.getMyMembership() === KnownMembership.Invite),
       people: shown.filter((room) => room.getMyMembership() === KnownMembership.Join && directPartner(client, room, direct) !== null),
       rooms: shown.filter((room) => room.getMyMembership() === KnownMembership.Join && directPartner(client, room, direct) === null),
-      spaceName: space === null ? null : (client.getRoom(space)?.name ?? null),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, space, filter, tick]);
@@ -144,22 +109,7 @@ export function RoomList({ client, current, space, onOpen, onNewRoom, onNewChat,
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="px-3 pt-3 pb-2">
-        {spaceName !== null && <p className="mb-2 truncate px-1 text-[15px] font-semibold">{spaceName}</p>}
-        <InputGroup className="h-8">
-          <InputGroupAddon>
-            <HugeiconsIcon icon={Search01Icon} className="size-4" aria-hidden="true" />
-          </InputGroupAddon>
-          <InputGroupInput
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder={t("chat.list.filter")}
-            aria-label={t("chat.list.filter")}
-            className="text-[13px]"
-          />
-        </InputGroup>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {invites.length > 0 && (
           <Section title={t("chat.list.invites")}>
             {invites.map((room) => (

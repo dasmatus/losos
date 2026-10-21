@@ -21,7 +21,7 @@ import {
   SyncState,
 } from "matrix-js-sdk";
 import { decodeRecoveryKey } from "matrix-js-sdk/lib/crypto-api";
-import { signInUrl, signOutTo } from "@/lib/api";
+import { signInUrl } from "@/lib/api";
 import { boxNames } from "./model";
 
 export interface ChatView {
@@ -263,36 +263,6 @@ export function onSignedOut(client: MatrixClient, then: () => void): void {
   });
 }
 
-/** Leave chat and LosOS Login together: the device goes, then its keys on
- *  this browser, then the LosOS Login session. */
-/** The chat this page is signed in to, for the top bar's sign-out. */
-let current: Signed | null = null;
-
-export function signedHere(signed: Signed | null): void {
-  current = signed;
-}
-
-/** The top bar's sign-out on the chat page: the device first, when there is
- *  one, then LosOS Login. */
-export function signOutHere(): void {
-  if (current !== null) void signOut(current);
-  else signOutTo("/chat/");
-}
-
-export async function signOut(signed: Signed): Promise<void> {
-  const { client, name } = signed;
-  const userId = client.getSafeUserId();
-  const deviceId = client.getDeviceId();
-  try {
-    await client.logout(true);
-  } catch {
-    /* already gone */
-  }
-  if (deviceId !== null) await dropCryptoStore(cryptoPrefix(userId, deviceId));
-  storeDevice(name, null);
-  signOutTo("/chat/");
-}
-
 export interface BoxPerson {
   userId: string;
   displayName: string;
@@ -308,4 +278,40 @@ export async function boxPeople(): Promise<BoxPerson[]> {
 /** LosOS Login's page, coming back to chat. */
 export function goSignIn(): void {
   window.location.assign(signInUrl());
+}
+
+/* One session per page load, for the chat screen (app.tsx) and anything
+ * else on the page that needs the client. Leaving the screen for another
+ * admin page keeps the client syncing, so coming back is instant and two clients never
+ * share one device's crypto store. A homeserver that signs the device out
+ * clears it, and the screen, if it is on screen, signs in again. */
+let pending: Promise<Signed> | null = null;
+let ready: Signed | null = null;
+export const signedOutListeners = new Set<() => void>();
+
+/** Signs this page in to chat once and starts the client; later calls get
+ *  the same session. */
+export function session(): Promise<Signed> {
+  if (pending !== null) return pending;
+  const attempt: Promise<Signed> = (async () => {
+    const signed = await signIn();
+    onSignedOut(signed.client, () => {
+      if (ready === signed) ready = null;
+      if (pending === attempt) pending = null;
+      for (const listener of signedOutListeners) listener();
+    });
+    await start(signed.client);
+    ready = signed;
+    return signed;
+  })();
+  pending = attempt;
+  attempt.catch(() => {
+    if (pending === attempt) pending = null;
+  });
+  return attempt;
+}
+
+/** The session, once it is up; null before and after. */
+export function signedNow(): Signed | null {
+  return ready;
 }

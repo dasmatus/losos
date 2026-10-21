@@ -30,7 +30,9 @@ zdieľanom úložisku a vrátia sa, keď zdieľanie znova zapnete.
 ## Prihlásenie
 
 Otvorte **Chat** na bočnom paneli alebo prejdite na
-`https://<name>.local/chat/`. Chat používa vaše prihlásenie do LosOS Login.
+`https://<name>.local/chat/`. Chat je jedna zo [správcovských stránok](admin-pages), s rovnakou
+hornou lištou a bočným panelom: konverzácie vľavo a otvorená vedľa nich.
+Používa vaše prihlásenie do LosOS Login.
 Samostatné heslo do chatu neexistuje.
 
 Keď sa odhlásite z LosOS Login, odhlási sa aj chat. Keď správca niekoho
@@ -68,14 +70,16 @@ alebo odhlásiť.
 - **Miestnosť:** kliknite na **Nová miestnosť**, pomenujte ju a vyberte, či
   je na zariadení verejná, alebo len na pozvanie. Ľudí pozvete z hlavičky
   miestnosti.
-- **Priestory** zoskupujú miestnosti. Nový vytvoríte tlačidlom plus na ľavom
-  okraji a miestnosti doň pridáte v nastaveniach každej miestnosti.
+- **Priestory** zoskupujú miestnosti. Sú to tlačidlá nad konverzáciami, vedľa
+  vyhľadávania; nový vytvoríte tlačidlom **Nový priestor** a miestnosti doň
+  pridáte v nastaveniach každej miestnosti.
 - **Nájsť miestnosti** uvádza verejné miestnosti na zariadení.
 
 ## V konverzácii
 
 Keď podržíte ukazovateľ nad správou, môžete na ňu reagovať, odpovedať,
-odpovedať vo vlákne, upraviť ju alebo zmazať. Tlačidlo vlákien v hlavičke
+odpovedať vo vlákne, upraviť ju alebo zmazať. To isté, a navyše kopírovanie
+textu, ponúka kliknutie pravým tlačidlom na správu. Tlačidlo vlákien v hlavičke
 miestnosti uvádza jej vlákna.
 
 Obrázky, videá a súbory priložíte kancelárskou sponkou, vložením zo

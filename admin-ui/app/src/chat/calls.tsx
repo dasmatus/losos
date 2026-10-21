@@ -61,10 +61,12 @@ interface CallsState {
 
 const CallsContext = React.createContext<CallsState | null>(null);
 
+/* Before chat's session is up there is no provider yet (calls-shell.tsx):
+ * no calls, and no buttons for them. */
+const NO_CALLS: CallsState = { available: false, active: null, ringing: null, start: () => {}, join: () => {} };
+
 export function useCalls(): CallsState {
-  const found = React.useContext(CallsContext);
-  if (found === null) throw new Error("useCalls outside CallsProvider");
-  return found;
+  return React.useContext(CallsContext) ?? NO_CALLS;
 }
 
 /** What an `org.losos.call` event says, or null when it is not one. */

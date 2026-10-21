@@ -807,7 +807,7 @@ pkgs.testers.nixosTest {
         assert answer.ok, (name, answer.status, answer.text())
         page.goto(f"https://{HOST}/chat/")
         try:
-            page.get_by_role("heading", name="LosOS chat").wait_for()
+            page.get_by_role("heading", name="Conversations").wait_for()
         except Exception:
             print(f"{name} sees {page.url}:\n{page.inner_text('body')[:3000]}\n{problems}")
             print("\n".join(seen[:8] + ["…"] + seen[-20:]))
@@ -912,7 +912,7 @@ pkgs.testers.nixosTest {
         box.wait_until_succeeds("test -S /run/losos-calls/http.sock")
         for page in (owner, her):
             page.reload()
-            page.get_by_role("heading", name="LosOS chat").wait_for()
+            page.get_by_role("heading", name="Conversations").wait_for()
         room_button(owner, "Eva").click()
         room_button(her, "Matus").click()
         owner.get_by_role("button", name="Video call").wait_for()
