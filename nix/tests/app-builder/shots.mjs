@@ -54,7 +54,8 @@ async function settle(page) {
 async function shot(page, slug, title, action = 'none', targets = {}, wait = true) {
   if (wait) await settle(page);
   const name = `${String(steps.length + 1).padStart(2, '0')}-${slug}.png`;
-  await page.screenshot({ path: join(OUT, name) });
+  // An emulated laptop at twice the density can take minutes on a busy host.
+  await page.screenshot({ path: join(OUT, name), timeout: 300_000 });
   const kept = {};
   for (const [k, v] of Object.entries(targets)) if (v) kept[k] = v;
   steps.push({
