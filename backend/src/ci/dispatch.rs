@@ -1025,7 +1025,9 @@ impl Ci {
                 let Some(job) = self.store.job(id_num)? else {
                     return Ok(true);
                 };
-                self.append_log(id_num, &report.log);
+                // The stored job's id: the log's path comes from the
+                // database, never from the request.
+                self.append_log(job.id, &report.log);
                 if let Some(state) = &report.state {
                     let state = match state.as_str() {
                         s @ ("success" | "failure" | "cancelled" | "error") => s,

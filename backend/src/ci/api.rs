@@ -286,7 +286,9 @@ async fn log(
         if !access(&ci, &who, &run.owner, &run.repo).0 {
             return Ok(None);
         }
-        let text = ci.read_log(id, from);
+        // The stored job's id, not the one in the address: the log's path
+        // is built only from what the database holds.
+        let text = ci.read_log(job.id, from);
         Ok(Some(json!({
             "state": job.state,
             "from": from,
