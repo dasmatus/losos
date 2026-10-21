@@ -7,6 +7,7 @@ import { Badge, StatusDot, type DotState } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
+import { getProfile, type Profile } from "@/lib/api";
 import { getLocale, type MessageKey } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
 import { CloudError, isAbort } from "../api";
@@ -14,7 +15,7 @@ import { MeshShareDialog } from "../mesh/share-dialog";
 import { collab, mesh, type DocMeta } from "./api";
 import { CollabEditor, type Connection, type Edited, type Presence } from "./editor";
 import { Faces } from "./faces";
-import { accentFor } from "./people";
+import { accentFor, nameOf } from "./people";
 
 /* /cloud/edit/<file>[?share=<id>]: a text file edited together.
  *
@@ -101,9 +102,27 @@ export function EditPage() {
     if (meta !== null) document.title = `${meta.name} · LosOS Cloud`;
   }, [meta]);
 
+  // This person's colour and picture from their profile on this box; until
+  // it answers, the colour their name gives.
+  const login = meta === null ? null : nameOf(meta.me.address);
+  const [profile, setProfile] = React.useState<Profile | null>(null);
+  React.useEffect(() => {
+    if (login === null) return;
+    const ac = new AbortController();
+    getProfile(login, { signal: ac.signal }).then(setProfile, () => {});
+    return () => ac.abort();
+  }, [login]);
+
   const me = React.useMemo(
-    () => (meta === null ? null : { ...meta.me, accent: accentFor(meta.me.address) }),
-    [meta?.me.name, meta?.me.address],
+    () =>
+      meta === null
+        ? null
+        : {
+            ...meta.me,
+            accent: profile?.accent ?? accentFor(nameOf(meta.me.address)),
+            picture: profile?.picture ?? null,
+          },
+    [meta?.me.name, meta?.me.address, profile?.accent, profile?.picture],
   );
 
   if (!Number.isSafeInteger(file) || error !== null) {
