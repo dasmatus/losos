@@ -158,6 +158,21 @@ Sledovacie vlákno jednotku dopytuje a zaznamená hotovo alebo zlyhanie. Po
 reštarte démona sa znova pripojí, a ten sa stáva, pretože `nixos-rebuild
 switch` reštartuje samotný lososd uprostred prestavby.
 
+Práca lososd sa presúva do pluginov (`backend/plugins/`). Plugin je
+komponent WebAssembly, ktorý odpovedá na cesty API uvedené v jeho manifeste
+a beží vo Wasmtime vnútri lososd. Nemá WASI: súbory, programy, jednotky
+systemd, HTTP, zámky a časovače sú volania hostiteľa a lososd každé overí
+voči manifestu pluginu, takže plugin dosiahne len cesty, programy a
+endpointy, ktoré deklaruje. Prihlásenie, sekcie v `backend/sections.json` a
+D-Bus zostávajú v lososd. Každé volanie beží v novej inštancii s limitom
+pamäte a časovým limitom, takže plugin, ktorý sa zacyklí alebo spanikári,
+stojí jednu odpoveď 500 a nič viac. lososd načítava pluginy len z
+`losos.backend.plugins`, adresára v úložisku Nix (`.#losos-plugins`), a
+odmietne sa spustiť, ak je adresár alebo ktorýkoľvek súbor v ňom mimo
+úložiska, zapisovateľný, nepatrí rootovi alebo leží na pripojení na čítanie
+aj zápis. Vzhľad (obrázok pozadia a widgety) je prvý plugin;
+`nix/tests/plugins.nix` ho bootuje.
+
 `losos-ctl` je tenké fasádne CLI. Zachováva staré podpríkazy a JSON výstup
 (`state`, `change --mode`, `status`, `settings`, `apply` (stdin),
 `factory-reset`; `--json` nerobí nič) a každé volanie posúva lososd cez

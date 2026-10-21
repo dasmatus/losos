@@ -82,16 +82,6 @@ impl Paths {
         self.state_dir.join("rebuild.log")
     }
 
-    /// The owner's look (`crate::look`), beside the state.
-    pub fn look_file(&self) -> PathBuf {
-        self.state_dir.join("look.json")
-    }
-
-    /// The uploaded background picture, raw; its type is in the look.
-    pub fn background_file(&self) -> PathBuf {
-        self.state_dir.join("background.img")
-    }
-
     /// How the last configuration sync went (`crate::config_repo`).
     pub fn sync_report_file(&self) -> PathBuf {
         self.state_dir.join("config-sync.json")
@@ -172,7 +162,7 @@ fn fill_temp(tmp: &Path, content: &[u8], mode: u32, owner: Option<u32>) -> std::
 
 /// Write `content` to `path` atomically, with `mode` on the resulting file and
 /// `dir_mode` on any parent directory this call has to create.
-fn write_atomically(
+pub(crate) fn write_atomically(
     path: &Path,
     content: &[u8],
     mode: u32,
@@ -1265,25 +1255,6 @@ pub fn read_state(path: &Path) -> State {
     }
 }
 
-/// The look document, leniently: absent or unreadable is the default, so a
-/// damaged file costs the owner their wallpaper and not the admin page.
-fn read_look(path: &Path) -> crate::look::Look {
-    match std::fs::read(path) {
-        Ok(bytes) => match serde_json::from_slice::<crate::look::Look>(&bytes) {
-            Ok(look) => look,
-            Err(e) => {
-                tracing::warn!(path = %path.display(), error = %e, "unreadable look file; using the plain look");
-                crate::look::Look::default()
-            }
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => crate::look::Look::default(),
-        Err(e) => {
-            tracing::warn!(path = %path.display(), error = %e, "look file unreadable; using the plain look");
-            crate::look::Look::default()
-        }
-    }
-}
-
 /// Persist the state atomically.
 pub fn write_state(path: &Path, s: &State) -> anyhow::Result<()> {
     let bytes = serde_json::to_vec(s).context("encoding state")?;
@@ -1703,20 +1674,6 @@ impl Losos for IoLosos {
         Ok(supervisor::log_tail(&self.paths.rebuild_log()))
     }
 
-    // ── The owner's look ────────────────────────────────────────────────
-    fn load_look(&mut self) -> anyhow::Result<crate::look::Look> {
-        Ok(read_look(&self.paths.look_file()))
-    }
-
-    fn save_look(&mut self, look: &crate::look::Look) -> anyhow::Result<()> {
-        let bytes = serde_json::to_vec(look).context("encoding the look")?;
-        atomic_write(&self.paths.look_file(), &bytes)
-    }
-
-    fn write_background(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
-        atomic_write(&self.paths.background_file(), bytes)
-    }
-
     fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
         Ok(read_if_present(self.paths.pins_file(), "reading the pins")?
             .and_then(|text| serde_json::from_str(&text).ok())
@@ -1793,19 +1750,6 @@ impl Losos for IoLosos {
             .read_to_end(&mut raw)
             .context("reading LosOS cloud's answer")?;
         crate::pins::split_response(&raw).context("LosOS cloud's answer is not HTTP")
-    }
-
-    fn read_background(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
-        let path = self.paths.background_file();
-        match std::fs::read(&path) {
-            Ok(bytes) => Ok(Some(bytes)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(anyhow::Error::new(e).context(format!("reading {}", path.display()))),
-        }
-    }
-
-    fn remove_background(&mut self) -> anyhow::Result<()> {
-        remove_if_present(&self.paths.background_file())
     }
 
     // ── Online growth of /persist ───────────────────────────────────────

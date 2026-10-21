@@ -1407,6 +1407,20 @@ in
       '';
     };
 
+    # lososd's plugins (backend/plugins/README.md): the store path lososd
+    # loads its WebAssembly plugins from, `.#losos-plugins` by default. lososd
+    # refuses a directory outside the read-only store.
+    backend.plugins = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        The directory of lososd plugins, each a WebAssembly component
+        (`<name>.wasm`) beside its manifest (`<name>.json`). lososd loads
+        them only from the read-only Nix store. When null, lososd serves no
+        plugin routes, and the panes they back (the look) answer 404.
+      '';
+    };
+
     # ── Sign-in (modules/identity.nix) ───────────────────────────────────
     identity.enable = lib.mkOption {
       type = lib.types.bool;
