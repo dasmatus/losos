@@ -278,8 +278,21 @@ Ort ist, an dem es der Person glaubt, die LosOS Login in den
 `X-Losos-Cloud-*`-Headern nennt, und auf `127.0.0.1:3000` nur für Tokens,
 wo lososd das Konfigurations-Repository führt und die Tokens der Rechner
 erstellt. Ein Token wird als sein SHA-256 gespeichert und trägt Scopes.
-Repositorys, die Forgejo auf einer Box hinterlassen hat, werden beim ersten
-Start verschoben und ohne ihre Hooks übernommen.
+Issues, Pull Requests, Kommentare, Labels und Anhänge liegen in derselben
+Datei und werden unter `/api/v1/repos/…` gelesen.
+
+Eine Box, auf der Forgejo lief, nimmt dessen Einträge mit. Bevor LosOS Git
+zum ersten Mal startet, verschiebt `losos-git-forgejo-import` die
+Repositorys ohne ihre Hooks, exportiert die Datenbank von Forgejo (aus
+Postgres, auf einer nativen Box aus SQLite), behält einen vollständigen
+Dump davon, und `losos-git import-forgejo` übernimmt Konten,
+Mitarbeitende, Zugriffstokens (die alten Werte funktionieren weiter),
+Labels, Issues, Pull Requests, Kommentare, Zuständige und Anhänge. Aus
+einer Organisation wird ein Konto mit demselben Namen. Was in LosOS Git
+keinen Platz hat (Meilensteine, Releases, Zeitleisteneinträge wie „hat das
+geschlossen“), wird im Bericht gezählt und genannt, nie stillschweigend
+verworfen. Nichts von Forgejo wird gelöscht, und ein fehlgeschlagener Lauf
+ändert nichts und wird beim nächsten Start erneut versucht.
 
 `admin-ui/design-system/` (`tokens.css` und `losos.css`, dazu ein
 Wrapper-Paket `react/` für claude.ai/design) ist nur für den

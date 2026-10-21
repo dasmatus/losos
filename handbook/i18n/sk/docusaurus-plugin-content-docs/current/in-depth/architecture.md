@@ -263,8 +263,19 @@ záznamy repozitárov sú jeden súbor SQLite a repozitáre sú holé pod
 miesto, kde verí človeku, ktorého LosOS Login pomenuje v hlavičkách
 `X-Losos-Cloud-*`, a na `127.0.0.1:3000` iba pre tokeny, kde lososd drží
 repozitár konfigurácie a vyrába tokeny počítačov. Token je uložený ako
-jeho SHA-256 a nesie rozsahy. Repozitáre, ktoré na zariadení nechal
-Forgejo, sa pri prvom štarte presunú a prevezmú bez svojich hookov.
+jeho SHA-256 a nesie rozsahy. Issues, pull requesty, komentáre, štítky a
+prílohy sú v tom istom súbore a číta ich `/api/v1/repos/…`.
+
+Zariadenie, na ktorom bežal Forgejo, si jeho záznamy prinesie. Pred prvým
+štartom LosOS Git presunie `losos-git-forgejo-import` repozitáre bez ich
+hookov, vyexportuje databázu Forgejo (z Postgresu, na natívnom zariadení zo
+SQLite), ponechá jej úplný dump a `losos-git import-forgejo` prevezme účty,
+spolupracovníkov, prístupové tokeny (staré hodnoty fungujú ďalej), štítky,
+issues, pull requesty, komentáre, priradených ľudí a prílohy. Z organizácie
+sa stane účet s rovnakým menom. Čo v LosOS Git nemá miesto (míľniky,
+vydania, záznamy časovej osi ako „zavrel to“), je spočítané a pomenované v
+správe, nikdy potichu zahodené. Nič z Forgejo sa nemaže a neúspešný beh
+nič nezmení a skúsi sa znova pri ďalšom štarte.
 
 `admin-ui/design-system/` (`tokens.css` a `losos.css`, plus obalový balík
 `react/` pre claude.ai/design) je iba pre vývojársky stroj a už sa vôbec

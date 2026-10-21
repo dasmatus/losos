@@ -1,10 +1,12 @@
 //! `losos-git` — LosOS Git, the box's own Git server.
 //!
-//! One subcommand, `serve`, run by `losos-git.service` (`modules/git.nix`).
+//! `serve`, run by `losos-git.service`, and `import-forgejo`, run once by
+//! `losos-git-forgejo-import.service` on a box that ran Forgejo
+//! (`modules/git.nix`).
 //! Everything it does is described in [`losos_ctl::forge`].
 
 use clap::{Parser, Subcommand};
-use losos_ctl::forge::{server, Config};
+use losos_ctl::forge::{db::Store, import, server, Config};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -46,6 +48,14 @@ enum Cmd {
         #[arg(long, default_value = "/git/")]
         base_path: String,
     },
+    /// Carry Forgejo's records into LosOS Git from the export in `--from`
+    /// (`<from>/tables/*.json`), and write `<from>/import.json`.
+    ImportForgejo {
+        #[arg(long, default_value = "/var/lib/losos-git")]
+        state_dir: PathBuf,
+        #[arg(long)]
+        from: PathBuf,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -59,6 +69,23 @@ fn main() -> anyhow::Result<()> {
         )
         .init();
     match Cli::parse().command {
+        Cmd::ImportForgejo { state_dir, from } => {
+            let store = Store::open(&state_dir.join("git.db"))?;
+            let report = import::import(&store, &state_dir, &from)?;
+            let text = serde_json::to_string_pretty(&serde_json::json!({
+                "complete": true,
+                "when": losos_ctl::forge::now(),
+                "forgejo": report.forgejo,
+                "imported": report.imported,
+                "notImported": report.not_imported,
+            }))?;
+            std::fs::write(from.join("import.json"), text + "\n")?;
+            for line in &report.not_imported {
+                println!("not imported: {line}");
+            }
+            println!("imported: {}", serde_json::to_string(&report.imported)?);
+            Ok(())
+        }
         Cmd::Serve {
             state_dir,
             socket,

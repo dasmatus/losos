@@ -150,8 +150,17 @@ and is never served or built by nix.
   accounts and SHA-256-hashed scoped tokens in SQLite. Two listeners: the
   unix socket nginx reaches (headers trusted) and `127.0.0.1:3000`
   (tokens only; lososd uses the admin token in
-  `/var/lib/losos-git/admin-token` with `X-Losos-As`). A box upgraded from
-  Forgejo has its repositories moved over once on first start. The old
+  `/var/lib/losos-git/admin-token` with `X-Losos-As`). Issues, PRs,
+  comments, labels and attachments are in the same SQLite (read-only API
+  for now). A box upgraded from Forgejo runs `losos-git-forgejo-import`
+  before LosOS Git: it moves the repositories, exports Forgejo's Postgres
+  (a private copy of the data dir when Postgres is off) or SQLite, keeps a
+  full dump, and `forge/import.rs` takes in accounts, tokens (Forgejo's
+  PBKDF2 hash and salt, so old values work), issues and the rest in one
+  transaction, idempotent through `forgejo_ids`. Anything not carried over
+  is named in `/var/lib/losos-git/forgejo/import.json`; nothing of
+  Forgejo's is deleted. `nix/tests/git-forgejo.nix` switches a real
+  Forgejo box to LosOS Git and checks every record. The old
   `losos.forgejo.*` names stay as hidden aliases (`lib.doRename`,
   `options.rs` `ALIASES`). `nix/tests/git.nix` boots it with a laptop.
 - `apps.nix` + `backend/src/apps.rs`: Helm charts from the Apps pane's

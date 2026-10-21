@@ -82,6 +82,9 @@ pkgs.testers.nixosTest {
         backend.package = lososPkgs.losos-ctl;
         admin.ui = stubUi;
         git.enable = true;
+        # No LosOS Login here (nix/tests/identity.nix boots it): nginx then
+        # clears the sign-in headers and every call carries a token.
+        identity.enable = false;
       };
       systemd.services.forgejo-leftovers = {
         wantedBy = [ "losos-git.service" ];
@@ -178,7 +181,9 @@ pkgs.testers.nixosTest {
         box.fail("test -e /var/lib/forgejo/repositories")
         box.succeed(f"test $(stat -c %U {REPOS}/matus/notes.git/HEAD) = losos-git")
         hooks = box.succeed(f"ls -A {REPOS}/matus/notes.git/hooks").split()
-        assert hooks == ["update.sample"], hooks
+        # git's own samples stay; Forgejo's scripts and its .d folders go.
+        assert "update.sample" in hooks, hooks
+        assert all(h.endswith(".sample") for h in hooks), hooks
         code, repo = forge("GET", "/repos/matus/notes")
         assert code == 200 and repo["default_branch"] == "main", (code, repo)
         # And it is served: the owner clones it through nginx.

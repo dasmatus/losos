@@ -12,7 +12,7 @@
 //! after lososd checked the owner's password itself.
 
 use super::auth::{self, Caller};
-use super::db::{Exists, Permission, Repo, User};
+use super::db::{Attachment, Exists, Issue, IssueFilter, Permission, Repo, User};
 use super::gitcmd::Signature;
 use super::server::{self, Fail, State};
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -50,6 +50,15 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
                 "/repos/{owner}/{repo}/collaborators/{login}",
                 web::delete().to(delete_collaborator),
             )
+            .route("/repos/{owner}/{repo}/issues", web::get().to(list_issues))
+            .route("/repos/{owner}/{repo}/pulls", web::get().to(list_pulls))
+            .route("/repos/{owner}/{repo}/issues/{number}", web::get().to(get_issue))
+            .route(
+                "/repos/{owner}/{repo}/issues/{number}/comments",
+                web::get().to(issue_comments),
+            )
+            .route("/repos/{owner}/{repo}/labels", web::get().to(repo_labels))
+            .route("/attachments/{uuid}", web::get().to(get_attachment))
             .route("/admin/users", web::get().to(admin_users))
             .route("/admin/users/{login}", web::put().to(admin_ensure_user))
             .route(
@@ -763,4 +772,203 @@ async fn admin_delete_token(
     } else {
         Err(Fail::not_found("token"))
     }
+}
+
+// ── Issues and pull requests ────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct IssueQuery {
+    /// `open` (the default), `closed` or `all`.
+    #[serde(default)]
+    state: Option<String>,
+    /// `issues`, `pulls`, or both when left out.
+    #[serde(default, rename = "type")]
+    kind: Option<String>,
+}
+
+fn issue_json(base: &str, repo: &Repo, i: &Issue, attachments: &[Attachment]) -> Value {
+    let kind = if i.is_pull { "pulls" } else { "issues" };
+    let mut doc = json!({
+        "number": i.number,
+        "title": i.title,
+        "body": i.body,
+        "user": { "login": i.poster },
+        "state": if i.closed { "closed" } else { "open" },
+        "labels": i.labels,
+        "assignees": i.assignees.iter().map(|a| json!({ "login": a })).collect::<Vec<_>>(),
+        "created_at": i.created,
+        "updated_at": i.updated,
+        "closed_at": i.closed_at,
+        "html_url": format!("{base}/{}/{}/{kind}/{}", repo.owner, repo.name, i.number),
+        "assets": attachments.iter().map(|a| json!({
+            "uuid": a.uuid,
+            "name": a.name,
+            "size": a.size,
+            "created_at": a.created,
+            "browser_download_url": format!("{base}/api/v1/attachments/{}", a.uuid),
+        })).collect::<Vec<_>>(),
+    });
+    if i.is_pull {
+        doc["pull_request"] = json!({
+            "head": i.head_branch,
+            "base": i.base_branch,
+            "merged": i.merged,
+            "merge_commit_sha": i.merge_commit,
+        });
+    }
+    doc
+}
+
+fn base(state: &State) -> String {
+    state.config.base_path.trim_end_matches('/').to_string()
+}
+
+async fn issues_of(
+    req: &HttpRequest,
+    path: &(String, String),
+    query: &IssueQuery,
+    state: &State,
+    pulls: Option<bool>,
+) -> Answer {
+    let c = server::caller(req, state)?;
+    seen_by_nobody(state, &c)?;
+    need_scope(&c, "issue", false)?;
+    let (repo, _) = find_repo(state, &c, &path.0, &path.1)?;
+    let closed = match query.state.as_deref() {
+        None | Some("open") => Some(false),
+        Some("closed") => Some(true),
+        Some("all") => None,
+        Some(other) => return Err(Fail::bad(format!("\"{other}\" is not open, closed or all."))),
+    };
+    let pulls = match (pulls, query.kind.as_deref()) {
+        (Some(p), _) => Some(p),
+        (None, None) => None,
+        (None, Some("issues")) => Some(false),
+        (None, Some("pulls")) => Some(true),
+        (None, Some(other)) => return Err(Fail::bad(format!("\"{other}\" is not issues or pulls."))),
+    };
+    let base = base(state);
+    let list: Vec<Value> = state
+        .store
+        .issues(repo.id, IssueFilter { closed, pulls })?
+        .iter()
+        .map(|i| issue_json(&base, &repo, i, &[]))
+        .collect();
+    Ok(HttpResponse::Ok().json(list))
+}
+
+async fn list_issues(
+    req: HttpRequest,
+    path: web::Path<(String, String)>,
+    query: web::Query<IssueQuery>,
+    state: web::Data<State>,
+) -> Answer {
+    issues_of(&req, &path, &query, &state, None).await
+}
+
+async fn list_pulls(
+    req: HttpRequest,
+    path: web::Path<(String, String)>,
+    query: web::Query<IssueQuery>,
+    state: web::Data<State>,
+) -> Answer {
+    issues_of(&req, &path, &query, &state, Some(true)).await
+}
+
+fn find_issue(
+    req: &HttpRequest,
+    state: &State,
+    owner: &str,
+    name: &str,
+    number: i64,
+) -> Result<(Repo, Issue), Fail> {
+    let c = server::caller(req, state)?;
+    seen_by_nobody(state, &c)?;
+    need_scope(&c, "issue", false)?;
+    let (repo, _) = find_repo(state, &c, owner, name)?;
+    let issue = state
+        .store
+        .issue(repo.id, number)?
+        .ok_or_else(|| Fail::not_found("issue"))?;
+    Ok((repo, issue))
+}
+
+async fn get_issue(
+    req: HttpRequest,
+    path: web::Path<(String, String, i64)>,
+    state: web::Data<State>,
+) -> Answer {
+    let (repo, issue) = find_issue(&req, &state, &path.0, &path.1, path.2)?;
+    let attachments = state.store.attachments(issue.id)?;
+    Ok(HttpResponse::Ok().json(issue_json(&base(&state), &repo, &issue, &attachments)))
+}
+
+async fn issue_comments(
+    req: HttpRequest,
+    path: web::Path<(String, String, i64)>,
+    state: web::Data<State>,
+) -> Answer {
+    let (_, issue) = find_issue(&req, &state, &path.0, &path.1, path.2)?;
+    let list: Vec<Value> = state
+        .store
+        .comments(issue.id)?
+        .iter()
+        .map(|c| {
+            json!({
+                "id": c.id,
+                "user": { "login": c.poster },
+                "body": c.body,
+                "created_at": c.created,
+                "updated_at": c.updated,
+            })
+        })
+        .collect();
+    Ok(HttpResponse::Ok().json(list))
+}
+
+async fn repo_labels(
+    req: HttpRequest,
+    path: web::Path<(String, String)>,
+    state: web::Data<State>,
+) -> Answer {
+    let c = server::caller(&req, &state)?;
+    seen_by_nobody(&state, &c)?;
+    need_scope(&c, "issue", false)?;
+    let (repo, _) = find_repo(&state, &c, &path.0, &path.1)?;
+    Ok(HttpResponse::Ok().json(state.store.labels(repo.id)?))
+}
+
+/// A file attached to an issue, to whoever may read the issue.
+async fn get_attachment(
+    req: HttpRequest,
+    path: web::Path<String>,
+    state: web::Data<State>,
+) -> Answer {
+    let c = server::caller(&req, &state)?;
+    seen_by_nobody(&state, &c)?;
+    need_scope(&c, "issue", false)?;
+    let uuid = path.into_inner();
+    if uuid.is_empty() || !uuid.chars().all(|ch| ch.is_ascii_hexdigit() || ch == '-') {
+        return Err(Fail::not_found("attachment"));
+    }
+    let (attachment, repo_id) = state
+        .store
+        .attachment(&uuid)?
+        .ok_or_else(|| Fail::not_found("attachment"))?;
+    let repo = state
+        .store
+        .repo_by_id(repo_id)?
+        .ok_or_else(|| Fail::not_found("attachment"))?;
+    // The same answer for a file one may not see as for one that is not there.
+    if c.permission(&state.store, &repo)? == Permission::None {
+        return Err(Fail::not_found("attachment"));
+    }
+    let bytes = std::fs::read(state.config.state_dir.join("attachments").join(&attachment.uuid))
+        .map_err(|_| Fail::not_found("attachment"))?;
+    let name = attachment.name.replace(['"', '\\', '\r', '\n'], "_");
+    Ok(HttpResponse::Ok()
+        .content_type("application/octet-stream")
+        .insert_header(("Content-Disposition", format!("attachment; filename=\"{name}\"")))
+        .insert_header(("X-Content-Type-Options", "nosniff"))
+        .body(bytes))
 }

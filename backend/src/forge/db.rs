@@ -56,6 +56,75 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (repo_id, user_id)
     );
     ",
+    // 2: issues and pull requests with their comments, labels, assignees
+    // and attachments, and what a Forgejo box brought along: its tokens
+    // keep working (`salt`: hashed Forgejo's way), and every imported row
+    // remembers its Forgejo id so a second import changes nothing.
+    "
+    ALTER TABLE tokens ADD COLUMN salt TEXT;
+    CREATE INDEX tokens_last_eight ON tokens (last_eight) WHERE salt IS NOT NULL;
+    CREATE TABLE issues (
+        id           INTEGER PRIMARY KEY,
+        repo_id      INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+        number       INTEGER NOT NULL,
+        poster_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        poster_name  TEXT NOT NULL DEFAULT '',
+        title        TEXT NOT NULL,
+        body         TEXT NOT NULL DEFAULT '',
+        closed       INTEGER NOT NULL DEFAULT 0,
+        is_pull      INTEGER NOT NULL DEFAULT 0,
+        head_branch  TEXT,
+        base_branch  TEXT,
+        merged       INTEGER NOT NULL DEFAULT 0,
+        merge_commit TEXT,
+        created      TEXT NOT NULL,
+        updated      TEXT NOT NULL,
+        closed_at    TEXT,
+        UNIQUE (repo_id, number)
+    );
+    CREATE TABLE issue_comments (
+        id          INTEGER PRIMARY KEY,
+        issue_id    INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        poster_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        poster_name TEXT NOT NULL DEFAULT '',
+        body        TEXT NOT NULL DEFAULT '',
+        created     TEXT NOT NULL,
+        updated     TEXT NOT NULL
+    );
+    CREATE TABLE labels (
+        id          INTEGER PRIMARY KEY,
+        repo_id     INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+        name        TEXT NOT NULL,
+        color       TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '',
+        UNIQUE (repo_id, name)
+    );
+    CREATE TABLE issue_labels (
+        issue_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        label_id INTEGER NOT NULL REFERENCES labels(id) ON DELETE CASCADE,
+        PRIMARY KEY (issue_id, label_id)
+    );
+    CREATE TABLE issue_assignees (
+        issue_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        PRIMARY KEY (issue_id, user_id)
+    );
+    CREATE TABLE attachments (
+        id         INTEGER PRIMARY KEY,
+        uuid       TEXT NOT NULL UNIQUE,
+        issue_id   INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        comment_id INTEGER REFERENCES issue_comments(id) ON DELETE CASCADE,
+        name       TEXT NOT NULL,
+        size       INTEGER NOT NULL DEFAULT 0,
+        created    TEXT NOT NULL
+    );
+    CREATE TABLE forgejo_ids (
+        kind       TEXT NOT NULL,
+        forgejo_id INTEGER NOT NULL,
+        local_id   INTEGER NOT NULL,
+        PRIMARY KEY (kind, forgejo_id)
+    );
+    ",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -124,6 +193,66 @@ impl Permission {
     }
 }
 
+/// An issue, or a pull request (`is_pull`), of one repository.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Issue {
+    pub id: i64,
+    pub repo_id: i64,
+    pub number: i64,
+    /// The account that opened it, or the name it had when that account is
+    /// gone.
+    pub poster: String,
+    pub title: String,
+    pub body: String,
+    pub closed: bool,
+    pub is_pull: bool,
+    pub head_branch: Option<String>,
+    pub base_branch: Option<String>,
+    pub merged: bool,
+    pub merge_commit: Option<String>,
+    pub created: String,
+    pub updated: String,
+    pub closed_at: Option<String>,
+    pub labels: Vec<Label>,
+    pub assignees: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Comment {
+    pub id: i64,
+    pub poster: String,
+    pub body: String,
+    pub created: String,
+    pub updated: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Label {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Attachment {
+    pub uuid: String,
+    pub issue_id: i64,
+    pub comment_id: Option<i64>,
+    pub name: String,
+    pub size: i64,
+    pub created: String,
+}
+
+/// Which issues a list asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IssueFilter {
+    /// `None`: open and closed.
+    pub closed: Option<bool>,
+    /// `None`: issues and pull requests.
+    pub pulls: Option<bool>,
+}
+
 /// Typed so the API can answer 409 rather than 500.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0} already exists")]
@@ -180,6 +309,32 @@ fn token_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Token> {
     })
 }
 
+const ISSUE_COLS: &str = "i.id, i.repo_id, i.number, COALESCE(u.login, i.poster_name), i.title, \
+     i.body, i.closed, i.is_pull, i.head_branch, i.base_branch, i.merged, i.merge_commit, \
+     i.created, i.updated, i.closed_at";
+
+fn issue_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Issue> {
+    Ok(Issue {
+        id: row.get(0)?,
+        repo_id: row.get(1)?,
+        number: row.get(2)?,
+        poster: row.get(3)?,
+        title: row.get(4)?,
+        body: row.get(5)?,
+        closed: row.get(6)?,
+        is_pull: row.get(7)?,
+        head_branch: row.get(8)?,
+        base_branch: row.get(9)?,
+        merged: row.get(10)?,
+        merge_commit: row.get(11)?,
+        created: row.get(12)?,
+        updated: row.get(13)?,
+        closed_at: row.get(14)?,
+        labels: Vec::new(),
+        assignees: Vec::new(),
+    })
+}
+
 fn unique_violation(e: &rusqlite::Error) -> bool {
     matches!(
         e,
@@ -193,6 +348,44 @@ fn unique_violation(e: &rusqlite::Error) -> bool {
 /// enough to keep a copy of the database from opening anything.
 pub fn token_hash(token: &str) -> String {
     hex(ring::digest::digest(&ring::digest::SHA256, token.as_bytes()).as_ref())
+}
+
+/// Forgejo's hash of a token: PBKDF2-HMAC-SHA256, 10 000 rounds, 50 bytes,
+/// hex. Tokens a Forgejo box made were imported with it and their salt, so
+/// the computers that hold them keep working.
+pub fn forgejo_token_hash(token: &str, salt: &str) -> String {
+    let mut out = [0u8; 50];
+    ring::pbkdf2::derive(
+        ring::pbkdf2::PBKDF2_HMAC_SHA256,
+        std::num::NonZeroU32::new(10_000).expect("non-zero"),
+        salt.as_bytes(),
+        token.as_bytes(),
+        &mut out,
+    );
+    hex(&out)
+}
+
+/// An imported Forgejo token whose value this is, if any. Found by its last
+/// eight characters first, so at most a few hashes are worked out.
+fn legacy_token(conn: &Connection, value: &str) -> anyhow::Result<Option<Token>> {
+    if value.len() < 8 || !value.is_char_boundary(value.len() - 8) {
+        return Ok(None);
+    }
+    let mut stmt = conn.prepare(
+        "SELECT id, user_id, name, last_eight, created, scopes, last_used, hash, salt
+         FROM tokens WHERE salt IS NOT NULL AND last_eight = ?1",
+    )?;
+    let rows = stmt.query_map([&value[value.len() - 8..]], |row| {
+        Ok((token_row(row)?, row.get::<_, String>(7)?, row.get::<_, String>(8)?))
+    })?;
+    for row in rows {
+        let (token, hash, salt) = row?;
+        // Comparing two hashes: how long it takes says nothing of the token.
+        if forgejo_token_hash(value, &salt) == hash {
+            return Ok(Some(token));
+        }
+    }
+    Ok(None)
 }
 
 pub fn hex(bytes: &[u8]) -> String {
@@ -236,7 +429,7 @@ impl Store {
         })
     }
 
-    fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
+    pub(crate) fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
         // A panic while the lock was held leaves a connection that is still
         // consistent (every write is a statement or a transaction).
         self.conn.lock().unwrap_or_else(|p| p.into_inner())
@@ -364,6 +557,10 @@ impl Store {
                 token_row,
             )
             .optional()?;
+        let token = match token {
+            Some(t) => Some(t),
+            None => legacy_token(&conn, value)?,
+        };
         let Some(token) = token else { return Ok(None) };
         conn.execute(
             "UPDATE tokens SET last_used = ?2 WHERE id = ?1",
@@ -622,6 +819,147 @@ impl Store {
     }
 }
 
+impl Store {
+    // ── Issues ────────────────────────────────────────────────────────────
+
+    /// The labels and assignees an issue row does not carry.
+    fn fill_issue(conn: &Connection, mut issue: Issue) -> anyhow::Result<Issue> {
+        let mut stmt = conn.prepare(
+            "SELECT l.id, l.name, l.color, l.description FROM issue_labels il
+             JOIN labels l ON l.id = il.label_id WHERE il.issue_id = ?1 ORDER BY l.name",
+        )?;
+        issue.labels = stmt
+            .query_map([issue.id], |r| {
+                Ok(Label {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    color: r.get(2)?,
+                    description: r.get(3)?,
+                })
+            })?
+            .collect::<Result<_, _>>()?;
+        let mut stmt = conn.prepare(
+            "SELECT u.login FROM issue_assignees a JOIN users u ON u.id = a.user_id
+             WHERE a.issue_id = ?1 ORDER BY u.lower_login",
+        )?;
+        issue.assignees = stmt
+            .query_map([issue.id], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        Ok(issue)
+    }
+
+    /// A repository's issues, newest first.
+    pub fn issues(&self, repo_id: i64, filter: IssueFilter) -> anyhow::Result<Vec<Issue>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {ISSUE_COLS} FROM issues i LEFT JOIN users u ON u.id = i.poster_id
+             WHERE i.repo_id = ?1 AND (?2 IS NULL OR i.closed = ?2)
+               AND (?3 IS NULL OR i.is_pull = ?3)
+             ORDER BY i.number DESC"
+        ))?;
+        let rows: Vec<Issue> = stmt
+            .query_map(params![repo_id, filter.closed, filter.pulls], issue_row)?
+            .collect::<Result<_, _>>()?;
+        rows.into_iter()
+            .map(|i| Store::fill_issue(&conn, i))
+            .collect()
+    }
+
+    pub fn issue(&self, repo_id: i64, number: i64) -> anyhow::Result<Option<Issue>> {
+        let conn = self.conn();
+        let issue = conn
+            .query_row(
+                &format!(
+                    "SELECT {ISSUE_COLS} FROM issues i LEFT JOIN users u ON u.id = i.poster_id
+                     WHERE i.repo_id = ?1 AND i.number = ?2"
+                ),
+                params![repo_id, number],
+                issue_row,
+            )
+            .optional()?;
+        issue.map(|i| Store::fill_issue(&conn, i)).transpose()
+    }
+
+    pub fn comments(&self, issue_id: i64) -> anyhow::Result<Vec<Comment>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT c.id, COALESCE(u.login, c.poster_name), c.body, c.created, c.updated
+             FROM issue_comments c LEFT JOIN users u ON u.id = c.poster_id
+             WHERE c.issue_id = ?1 ORDER BY c.created, c.id",
+        )?;
+        let rows = stmt.query_map([issue_id], |r| {
+            Ok(Comment {
+                id: r.get(0)?,
+                poster: r.get(1)?,
+                body: r.get(2)?,
+                created: r.get(3)?,
+                updated: r.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn labels(&self, repo_id: i64) -> anyhow::Result<Vec<Label>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, color, description FROM labels WHERE repo_id = ?1 ORDER BY name",
+        )?;
+        let rows = stmt.query_map([repo_id], |r| {
+            Ok(Label {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                color: r.get(2)?,
+                description: r.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// An attachment and the repository its issue is in.
+    pub fn attachment(&self, uuid: &str) -> anyhow::Result<Option<(Attachment, i64)>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT a.uuid, a.issue_id, a.comment_id, a.name, a.size, a.created, i.repo_id
+                 FROM attachments a JOIN issues i ON i.id = a.issue_id WHERE a.uuid = ?1",
+                [uuid],
+                |r| {
+                    Ok((
+                        Attachment {
+                            uuid: r.get(0)?,
+                            issue_id: r.get(1)?,
+                            comment_id: r.get(2)?,
+                            name: r.get(3)?,
+                            size: r.get(4)?,
+                            created: r.get(5)?,
+                        },
+                        r.get(6)?,
+                    ))
+                },
+            )
+            .optional()?)
+    }
+
+    pub fn attachments(&self, issue_id: i64) -> anyhow::Result<Vec<Attachment>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT uuid, issue_id, comment_id, name, size, created FROM attachments
+             WHERE issue_id = ?1 ORDER BY created, id",
+        )?;
+        let rows = stmt.query_map([issue_id], |r| {
+            Ok(Attachment {
+                uuid: r.get(0)?,
+                issue_id: r.get(1)?,
+                comment_id: r.get(2)?,
+                name: r.get(3)?,
+                size: r.get(4)?,
+                created: r.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -666,6 +1004,28 @@ mod tests {
         assert!(s.delete_token(u.id, "LosOS on laptop").unwrap());
         assert!(!s.delete_token(u.id, "LosOS on laptop").unwrap());
         assert!(s.token_owner(&value).unwrap().is_none());
+    }
+
+    #[test]
+    fn forgejo_tokens_open_with_their_old_value() {
+        let s = Store::in_memory().unwrap();
+        let u = s.ensure_user("matus", "", "").unwrap();
+        let value = "0123456789abcdef0123456789abcdef89abcdef";
+        let salt = "Xy3kQ9mW2p";
+        s.conn()
+            .execute(
+                "INSERT INTO tokens (user_id, name, hash, last_eight, scopes, created, salt)
+                 VALUES (?1, 'laptop', ?2, '89abcdef', 'write:repository', '2026-01-01T00:00:00Z', ?3)",
+                params![u.id, forgejo_token_hash(value, salt), salt],
+            )
+            .unwrap();
+        let (who, t) = s.token_owner(value).unwrap().unwrap();
+        assert_eq!((who.login.as_str(), t.name.as_str()), ("matus", "laptop"));
+        assert!(s
+            .token_owner("ffffffffffffffffffffffffffffffff89abcdef")
+            .unwrap()
+            .is_none());
+        assert!(s.token_owner("short").unwrap().is_none());
     }
 
     #[test]

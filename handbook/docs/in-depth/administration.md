@@ -292,6 +292,22 @@ of its own (`losos git setup`, [The terminal client](../manual/terminal)).
 lososd talks to LosOS Git on its loopback port with the admin token, acting
 as the owner with `X-Losos-As` where a call is the owner's.
 
+### Moving from Forgejo
+
+A box that ran Forgejo carries its records into LosOS Git by itself, on the
+first start after the update and before LosOS Git answers: repositories,
+accounts, collaborators, access tokens (the old values keep working for
+git and the API), labels, issues, pull requests, comments, assignees and
+attachments. An organisation becomes an account of the same name.
+
+The report is `/var/lib/losos-git/forgejo/import.json`. It counts what
+Forgejo had and what came over, table by table, and names what did not,
+such as milestones, releases and timeline entries. A full dump of
+Forgejo's database is kept beside it (`forgejo.sql`, or `forgejo.db` on a
+native box), and Forgejo's own folder and the Postgres data are left where
+they were. If the move fails, nothing changes and it is tried again on the
+next start; LosOS Git serves the repositories meanwhile.
+
 ### Federation
 
 Federation runs only while the box shares its disk.

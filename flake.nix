@@ -431,6 +431,8 @@
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
+        # Screenshots of a booted box; the plan is read when the driver runs.
+        losos-screens = import ./nix/tests/screens.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         losos-admin-ui = import ./nix/tests/admin-ui.nix {
@@ -462,6 +464,8 @@
         # repository's round trip through lososd, clone and push through
         # nginx, and who it believes (nix/tests/git.nix).
         losos-git = import ./nix/tests/git.nix { inherit pkgs; };
+        # A Forgejo box's switch: everything it held, carried into LosOS Git.
+        losos-git-forgejo = import ./nix/tests/git-forgejo.nix { inherit pkgs; };
         # The signed installer medium under OVMF's Secure Boot build: the
         # real ISO (plus the test backdoor) signed with a throwaway key the
         # sandbox makes, boots with that key enrolled beside Microsoft's and

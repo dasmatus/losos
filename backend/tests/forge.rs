@@ -441,3 +441,76 @@ fn repositories_on_disk_without_a_record_are_taken_in() {
     assert_eq!(doc["private"], true);
     assert_eq!(doc["default_branch"], "master");
 }
+
+#[test]
+fn a_forgejo_export_is_imported_and_served() {
+    let dir = scratch("import");
+    let repo = dir.join("state/repositories/matus/notes.git");
+    std::fs::create_dir_all(repo.parent().unwrap()).unwrap();
+    ok(git(&dir, &["init", "-q", "--bare", "-b", "main", repo.to_str().unwrap()]));
+    let from = dir.join("forgejo");
+    std::fs::create_dir_all(from.join("tables")).unwrap();
+    let token = "0123456789abcdef0123456789abcdef5678abcd";
+    let salt = "Q7rT1x";
+    let hash = losos_ctl::forge::db::forgejo_token_hash(token, salt);
+    let tables = [
+        ("user", r#"[{"id":1,"name":"matus","type":0,"is_admin":true,"email":"m@b.local"},
+                     {"id":2,"name":"eva","type":0}]"#.to_string()),
+        ("repository", r#"[{"id":3,"owner_id":1,"name":"notes","is_private":true,"default_branch":"main"}]"#.to_string()),
+        ("access_token", format!(
+            r#"[{{"id":4,"uid":1,"name":"laptop","token_hash":"{hash}","token_salt":"{salt}","token_last_eight":"5678abcd","scope":"write:repository,write:issue,read:user"}}]"#
+        )),
+        ("issue", r#"[{"id":5,"repo_id":3,"index":12,"poster_id":2,"name":"Fix the backup script","content":"Body","is_closed":false,"is_pull":false,"created_unix":1760000000}]"#.to_string()),
+        ("comment", r#"[{"id":6,"type":0,"poster_id":1,"issue_id":5,"content":"On it."}]"#.to_string()),
+        ("attachment", r#"[{"id":7,"uuid":"cafe0000-0000-4000-8000-000000000007","issue_id":5,"comment_id":0,"name":"log.txt","size":3}]"#.to_string()),
+    ];
+    for (t, body) in tables {
+        std::fs::write(from.join("tables").join(format!("{t}.json")), body).unwrap();
+    }
+    let att = from.join("attachments/c/a");
+    std::fs::create_dir_all(&att).unwrap();
+    std::fs::write(att.join("cafe0000-0000-4000-8000-000000000007"), "log").unwrap();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_losos-git"))
+        .args(["import-forgejo", "--state-dir"])
+        .arg(dir.join("state"))
+        .arg("--from")
+        .arg(&from)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let report = json(&std::fs::read_to_string(from.join("import.json")).unwrap());
+    assert_eq!(report["complete"], true);
+    assert_eq!(report["imported"]["issue"], 1);
+
+    let s = start(&dir, &[]);
+    let auth = format!("token {token}");
+    let (status, body) = http(s.port, "GET", "/api/v1/user", Some(&auth), None);
+    assert_eq!(status, 200, "Forgejo's token still opens the box: {body}");
+    assert_eq!(json(&body)["login"], "matus");
+    let (status, body) = http(s.port, "GET", "/api/v1/repos/matus/notes/issues/12", Some(&auth), None);
+    assert_eq!(status, 200, "{body}");
+    let issue = json(&body);
+    assert_eq!(issue["title"], "Fix the backup script");
+    assert_eq!(issue["user"]["login"], "eva");
+    assert_eq!(issue["state"], "open");
+    let (_, body) = http(s.port, "GET", "/api/v1/repos/matus/notes/issues/12/comments", Some(&auth), None);
+    assert_eq!(json(&body)[0]["body"], "On it.");
+    let (status, body) = http(
+        s.port,
+        "GET",
+        "/api/v1/attachments/cafe0000-0000-4000-8000-000000000007",
+        Some(&auth),
+        None,
+    );
+    assert_eq!((status, body.as_str()), (200, "log"));
+    // Nobody else sees a private repository's files.
+    let (status, _) = http(
+        s.port,
+        "GET",
+        "/api/v1/attachments/cafe0000-0000-4000-8000-000000000007",
+        None,
+        None,
+    );
+    assert_eq!(status, 404);
+}

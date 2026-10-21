@@ -257,8 +257,20 @@ on `/run/losos-git/http.sock`, which only nginx may open and the only place
 it believes the person LosOS Login names in the `X-Losos-Cloud-*` headers,
 and on `127.0.0.1:3000` for tokens only, where lososd keeps the
 configuration repository and makes computers' tokens. A token is stored as
-its SHA-256 and carries scopes. Repositories Forgejo left on a box are
-moved over on the first start and taken in without their hooks.
+its SHA-256 and carries scopes. Issues, pull requests, comments, labels
+and attachments live in the same file and are read at `/api/v1/repos/…`.
+
+A box that ran Forgejo brings its records along. Before LosOS Git first
+starts, `losos-git-forgejo-import` moves the repositories over without
+their hooks, exports Forgejo's database (from Postgres, or from SQLite on a
+native box), keeps a full dump of it, and `losos-git import-forgejo` takes
+in the accounts, collaborators, access tokens (the old values keep
+working), labels, issues, pull requests, comments, assignees and
+attachments. An organisation becomes an account of the same name. What has
+no place in LosOS Git (milestones, releases, timeline entries such as
+"closed this") is counted and named in the report, never dropped quietly.
+Nothing of Forgejo's is deleted, and a failed run changes nothing and is
+tried again on the next start.
 
 `admin-ui/design-system/` (`tokens.css` and `losos.css`, plus a `react/`
 wrapper package for claude.ai/design) is dev-machine-only and no longer

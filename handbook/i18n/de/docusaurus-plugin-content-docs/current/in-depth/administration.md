@@ -323,6 +323,24 @@ ein eigenes Token (`losos git setup`, [Der Terminal-Client](../manual/terminal))
 lososd spricht mit LosOS Git über dessen Loopback-Port mit dem Admin-Token
 und handelt mit `X-Losos-As` als Eigentümer, wo ein Aufruf dessen ist.
 
+### Umzug von Forgejo {#moving-from-forgejo}
+
+Eine Box, auf der Forgejo lief, bringt dessen Einträge selbst nach LosOS
+Git, beim ersten Start nach dem Update und bevor LosOS Git antwortet:
+Repositorys, Konten, Mitarbeitende, Zugriffstokens (die alten Werte
+funktionieren weiter für git und die API), Labels, Issues, Pull Requests,
+Kommentare, Zuständige und Anhänge. Aus einer Organisation wird ein Konto
+mit demselben Namen.
+
+Der Bericht ist `/var/lib/losos-git/forgejo/import.json`. Er zählt, was
+Forgejo hatte und was übernommen wurde, Tabelle für Tabelle, und nennt,
+was nicht übernommen wurde, etwa Meilensteine, Releases und
+Zeitleisteneinträge. Daneben bleibt ein vollständiger Dump der Datenbank
+von Forgejo (`forgejo.sql`, auf einer nativen Box `forgejo.db`), und der
+Ordner von Forgejo sowie die Postgres-Daten bleiben, wo sie waren. Schlägt
+der Umzug fehl, ändert sich nichts, und er wird beim nächsten Start erneut
+versucht; LosOS Git bedient die Repositorys solange.
+
 ### Föderation {#federation}
 
 Die Föderation läuft nur, solange die Box ihre Festplatte teilt.

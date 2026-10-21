@@ -298,6 +298,22 @@ token (`losos git setup`, [Terminálový klient](../manual/terminal)). lososd
 komunikuje s LosOS Git cez jeho port na loopbacku s admin tokenom a tam,
 kde ide o volanie vlastníka, koná za neho s `X-Losos-As`.
 
+### Prechod z Forgejo {#moving-from-forgejo}
+
+Zariadenie, na ktorom bežal Forgejo, prenesie jeho záznamy do LosOS Git
+samo, pri prvom štarte po aktualizácii a skôr, ako LosOS Git odpovie:
+repozitáre, účty, spolupracovníkov, prístupové tokeny (staré hodnoty
+fungujú ďalej pre git aj API), štítky, issues, pull requesty, komentáre,
+priradených ľudí a prílohy. Z organizácie sa stane účet s rovnakým menom.
+
+Správa je `/var/lib/losos-git/forgejo/import.json`. Počíta, čo mal Forgejo
+a čo prešlo, tabuľku po tabuľke, a pomenuje, čo neprešlo, napríklad
+míľniky, vydania a záznamy časovej osi. Vedľa nej zostáva úplný dump
+databázy Forgejo (`forgejo.sql`, na natívnom zariadení `forgejo.db`) a
+priečinok Forgejo aj dáta Postgresu zostávajú, kde boli. Ak sa prechod
+nepodarí, nič sa nezmení a skúsi sa znova pri ďalšom štarte; LosOS Git
+medzitým repozitáre obsluhuje.
+
 ### Federácia {#federation}
 
 Federácia beží iba vtedy, keď zariadenie zdieľa svoj disk.
