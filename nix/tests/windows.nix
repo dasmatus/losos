@@ -147,6 +147,7 @@ pkgs.testers.nixosTest {
     box.wait_for_unit("samba-smbd.service")
     box.wait_for_unit("samba-wsdd.service")
     box_ip = box.succeed("ip -4 -o addr show eth1 | awk '{print $4}' | cut -d/ -f1").strip()
+    laptop_ip = laptop.succeed("ip -4 -o addr show eth1 | awk '{print $4}' | cut -d/ -f1").strip()
 
     cert = box.succeed("cat /var/lib/losos-tls/cert.pem")
     laptop.succeed(f"cat > {CA} <<'EOF'\n{cert}EOF")
@@ -201,9 +202,9 @@ pkgs.testers.nixosTest {
         assert me == {"on": True, "ready": True, "share": "matus", "host": "mattbox"}, me
 
     with subtest("WS-Discovery: the probe File Explorer sends finds the box"):
-        laptop.succeed("wsdd --discovery --no-host --listen /tmp/wsdd.sock >/tmp/wsdd.log 2>&1 &")
+        laptop.succeed("wsdd --discovery --no-host --listen /run/wsdd.socket >/tmp/wsdd.log 2>&1 &")
         found = laptop.wait_until_succeeds(
-            "echo list | socat -t 5 - UNIX-CONNECT:/tmp/wsdd.sock | grep -i mattbox", timeout=120
+            "echo list | socat -t 5 - UNIX-CONNECT:/run/wsdd.socket | grep -i mattbox", timeout=120
         )
         print(found)
         assert box_ip in found, found
@@ -212,6 +213,8 @@ pkgs.testers.nixosTest {
             "python3 -c \"import socket,struct,os;"
             "q=struct.pack('>HHHHHH',0x1234,0,1,0,0,0)+bytes([7])+b'mattbox'+bytes([0])+struct.pack('>HH',1,1);"
             "s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);"
+            # Out of the test LAN's interface, not the VM's default route.
+            f"s.setsockopt(socket.IPPROTO_IP,socket.IP_MULTICAST_IF,socket.inet_aton('{laptop_ip}'));"
             "s.sendto(q,('224.0.0.252',5355));d,a=s.recvfrom(512);print(a[0],socket.inet_ntoa(d[-4:]))\"",
             timeout=60,
         )
@@ -226,12 +229,16 @@ pkgs.testers.nixosTest {
         assert laptop.succeed("avahi-browse -pt _webdavs._tcp; avahi-browse -pt _webdav._tcp").strip() == ""
 
     with subtest("GNOME's Network view lists the box exactly once"):
+        # gvfs merges what Avahi and wsdd find into network:///, the
+        # Network entry of Files' sidebar.
         out = laptop.succeed(
-            "XDG_DATA_DIRS=/run/current-system/sw/share"
-            " GSETTINGS_SCHEMA_DIR=${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}/glib-2.0/schemas"
-            " dbus-run-session -- sh -c 'sleep 15; gio list -a standard::display-name,standard::target-uri network:///'"
+            "timeout 300 dbus-run-session -- sh -c '"
+            "timeout 60 gio list network:/// >/dev/null 2>&1; sleep 20; "
+            "for d in dns-sd://local/ wsdd:/// network:///; do echo \"== $d\"; "
+            "timeout 60 gio list -a standard::display-name,standard::target-uri $d; done'"
         )
         print(out)
+        out = out.split("== network:///", 1)[1]
         boxes = [line for line in out.splitlines() if "mattbox" in line.lower()]
         assert len(boxes) == 1, out
 
@@ -243,9 +250,14 @@ pkgs.testers.nixosTest {
         rc, out = smb(f"//{box_ip}/matus -c ls", "eva", EVA)
         assert rc != 0, out
 
+    def etag(propfind):
+        m = re.search(r"<d:getetag>([^<]+)</d:getetag>", propfind)
+        assert m, propfind
+        return m.group(1)
+
     with subtest("SMB3, encrypted, and a file written over it lands in LosOS Cloud"):
         before = curl(f"-u 'matus:{PASSWORD}' -X PROPFIND -H 'Depth: 0' '{DAV}'")
-        root_etag = re.search(r"<d:getetag>([^<]+)</d:getetag>", before).group(1)
+        root_etag = etag(before)
         laptop.succeed("head -c 2000000 /dev/urandom > /tmp/report.bin")
         rc, out = smb(f"//{box_ip}/matus -c 'mkdir Reports; put /tmp/report.bin Reports\\report.bin'", "matus", PASSWORD)
         assert rc == 0, out
@@ -260,7 +272,7 @@ pkgs.testers.nixosTest {
             f"curl -sf --cacert {CA} -u 'matus:{PASSWORD}' -X PROPFIND -H 'Depth: 0' '{DAV}'",
             timeout=60,
         )
-        assert re.search(r"<d:getetag>([^<]+)</d:getetag>", props).group(1) != root_etag, props
+        assert etag(props) != root_etag, props
         laptop.succeed(
             f"curl -sf --cacert {CA} -u 'matus:{PASSWORD}' -o /tmp/report.back '{DAV}Reports/report.bin'"
             " && cmp /tmp/report.bin /tmp/report.back"

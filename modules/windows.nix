@@ -60,8 +60,8 @@ in
           "security" = "user";
           "passdb backend" = "smbpasswd:${dir}/smbpasswd";
           "username map" = "${dir}/users.map";
+          # The shares, written by lososd; the file ends back in [global].
           "include" = "${dir}/shares.conf";
-          "invalid users" = [ "root" ];
           "map to guest" = "Never";
           "restrict anonymous" = 2;
           # Only shares the person may open are listed to them.
@@ -76,7 +76,8 @@ in
           # The LAN, never loopback (anything on the box) and never the
           # mesh's pod network: the same rule as the admin pages'
           # (modules/lan-only.nix).
-          "hosts allow" = "10. EXCEPT 10.42. 172.16.0.0/12 192.168.0.0/16";
+          # EXCEPT takes everything after it, so it comes last.
+          "hosts allow" = "172.16.0.0/12 192.168.0.0/16 10. EXCEPT 10.42.";
           "hosts deny" = "ALL";
 
           # Every file as LosOS Cloud's own user, as private as the cloud
@@ -105,9 +106,16 @@ in
         enable = true;
         openFirewall = true;
         workgroup = "WORKGROUP";
+        # wsdd names the box in capitals by default. GNOME Files merges a
+        # WS-Discovery entry into the mDNS one below only when the two
+        # names match exactly, so both say the hostname as it is.
+        extraOptions = [
+          "--shortlog"
+          "--preserve-case"
+        ];
       };
 
-      # The name WS-Discovery hands Windows is bare (`LOSOS`), and Windows
+      # The name WS-Discovery hands Windows is bare (`losos`), and Windows
       # asks for it with LLMNR. modules/mdns.nix keeps LLMNR off otherwise.
       services.resolved.settings.Resolve.LLMNR = lib.mkForce true;
       networking.firewall.allowedTCPPorts = [

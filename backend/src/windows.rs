@@ -237,26 +237,32 @@ impl Windows {
         let mut map = String::new();
         let mut shares =
             String::from("# Written by lososd (backend/src/windows.rs) from the people file.\n");
-        for (account, l) in &ready {
+        for (i, (account, l)) in ready.iter().enumerate() {
             let user = format!("{ACCOUNT_PREFIX}{}", account.name);
+            let own = account_uid(i);
             passwd.push_str(&format!(
-                "{user}:{uid}:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX:{}:[U          ]:LCT-{now:08X}:\n",
+                "{user}:{own}:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX:{}:[U          ]:LCT-{now:08X}:\n",
                 l.nt
             ));
             map.push_str(&format!("{user} = {}\n", account.name));
             let files = self.cloud.join(account.login()).join("files");
             self.ensure_files(&files, uid, gid)?;
             shares.push_str(&format!(
-                "\n[{}]\n  comment = LosOS Cloud\n  path = {}\n  valid users = {user}\n  read only = no\n",
+                "\n[{}]\n  comment = LosOS Cloud\n  path = {}\n  valid users = {user}\n  read only = no\n  server smb encrypt = desired\n",
                 Self::share_name(&account.name),
                 files.display()
             ));
         }
+        // smb.conf includes this file from inside [global], and what follows
+        // the include would land in the last share. Going back to [global]
+        // keeps the rest of the settings global, but a share takes its
+        // defaults when it is read, so each share carries its own above.
+        shares.push_str("\n[global]\n");
         let mut changed = false;
         changed |= self.replace(&self.dir.join("smbpasswd"), passwd.as_bytes(), 0o600)?;
         changed |= self.replace(&self.dir.join("users.map"), map.as_bytes(), 0o644)?;
         changed |= self.replace(&self.dir.join("shares.conf"), shares.as_bytes(), 0o644)?;
-        changed |= self.write_userdb(&ready, uid, gid)?;
+        changed |= self.write_userdb(&ready, gid)?;
         if changed {
             self.reload();
         }
@@ -283,22 +289,21 @@ impl Windows {
     fn write_userdb(
         &self,
         ready: &[(&Account, &Learned)],
-        uid: u32,
         gid: u32,
     ) -> anyhow::Result<bool> {
         std::fs::create_dir_all(&self.userdb)?;
         let mut changed = false;
         let mut keep = Vec::new();
-        for (account, _) in ready {
+        for (i, (account, _)) in ready.iter().enumerate() {
             let user = format!("{ACCOUNT_PREFIX}{}", account.name);
             let record = serde_json::json!({
                 "userName": user,
-                "uid": uid,
+                "uid": account_uid(i),
                 "gid": gid,
                 "realName": account.display_name,
                 "homeDirectory": "/var/empty",
                 "shell": "/run/current-system/sw/bin/nologin",
-                "disposition": "system",
+                "disposition": "regular",
                 "locked": true,
             });
             let file = format!("{user}.user");
@@ -481,6 +486,17 @@ fn md4(input: &[u8]) -> [u8; 16] {
     out
 }
 
+/// The Unix id of the `i`th ready person's account. Each has its own: Samba
+/// turns a file owner's uid into a Windows SID through its password file,
+/// and two accounts on one uid made the cloud's files belong to whichever
+/// came first, so the other was refused their own folder. Files stay the
+/// cloud's (`force user`); the cloud's uid is in no Samba account at all.
+/// Below systemd-homed's range (60001 and up), above every account NixOS
+/// makes.
+fn account_uid(i: usize) -> u32 {
+    59000 + i as u32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -578,6 +594,7 @@ mod tests {
             "{shares}"
         );
         assert!(shares.contains("valid users = losos-win-matus"), "{shares}");
+        assert!(shares.trim_end().ends_with("[global]"), "{shares}");
         assert!(path.is_dir(), "the files folder is made for a first-timer");
         let record: serde_json::Value =
             serde_json::from_str(&read(b.root.join("userdb/losos-win-matus.user"))).unwrap();
@@ -590,7 +607,15 @@ mod tests {
             "path = {}",
             b.root.join("cloud/eva/files").display()
         )));
-        assert_eq!(read(b.root.join("windows/smbpasswd")).lines().count(), 2);
+        let passwd = read(b.root.join("windows/smbpasswd"));
+        assert_eq!(passwd.lines().count(), 2);
+        // One uid each, and neither is the cloud's, which owns the files.
+        let cloud_uid = std::fs::metadata(b.root.join("cloud")).unwrap().uid();
+        let uids: Vec<u32> = passwd
+            .lines()
+            .map(|l| l.split(':').nth(1).unwrap().parse().unwrap())
+            .collect();
+        assert!(uids[0] != uids[1] && !uids.contains(&cloud_uid), "{passwd}");
     }
 
     #[test]
