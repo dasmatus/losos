@@ -253,4 +253,8 @@ impl Lab {
     pub fn canvas_redo(&mut self) -> String {
         out(self.core.borrow_mut().canvas_redo())
     }
+    /// The diagram's file as several people edit it, whole again after a change.
+    pub fn canvas_sync(&mut self, text: &str) -> String {
+        out(self.core.borrow_mut().canvas_sync(text))
+    }
 }

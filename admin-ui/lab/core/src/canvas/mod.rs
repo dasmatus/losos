@@ -20,6 +20,7 @@
 
 pub mod file;
 pub mod geom;
+pub mod shared;
 pub mod templates;
 
 use crate::lab::LabCore;

@@ -481,4 +481,7 @@ export class Core {
     parse<Placed | Err>("canvas_insert_template", this.m("canvas_insert_template", key, lang, cx, cy));
   canvasUndo = () => parse<{ ok: true } | Err>("canvas_undo", this.m("canvas_undo"));
   canvasRedo = () => parse<{ ok: true } | Err>("canvas_redo", this.m("canvas_redo"));
+  /** The shared text of a diagram several people edit, read back whole.
+   *  `full`: the network changed and the world was built again. */
+  canvasSync = (text: string) => parse<{ full: boolean; skipped: number } | Err>("canvas_sync", this.m("canvas_sync", text));
 }

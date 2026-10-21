@@ -526,3 +526,63 @@ fn a_diagram_keeps_the_name_it_is_given() {
     m.import_setup(&text, "anything.canvas");
     assert_eq!(m.export_setup()["name"], "Office plan");
 }
+
+#[test]
+fn a_shared_text_reads_back_and_keeps_the_simulator_when_only_cards_change() {
+    let mut l = blank();
+    let r = l.canvas_add_device("box", 300.0, 300.0);
+    assert!(r.get("error").is_none(), "{r}");
+    let card = id(&r["node"]);
+    let dev = r["device"]["id"].as_str().unwrap_or_default().to_string();
+    let note = add(
+        &mut l,
+        json!({"type": "text", "x": 0, "y": 0, "width": 200, "height": 60, "text": "hello"}),
+    );
+    let mut doc = exported(&l);
+    let x0 = devices(&l)[0]["x"].as_f64().unwrap_or_default();
+
+    // Someone else writes on the note and drags the device's card.
+    for n in doc["nodes"].as_array_mut().unwrap() {
+        if n["id"] == note.as_str() {
+            n["text"] = json!("hello, both of you");
+        }
+        if n["id"] == card.as_str() {
+            n["x"] = json!(n["x"].as_f64().unwrap_or_default() + 150.0);
+        }
+    }
+    let r = l.canvas_sync(&serde_json::to_string_pretty(&doc).unwrap());
+    assert_eq!(r["full"], json!(false), "{r}");
+    let n = nodes(&l).into_iter().find(|n| id(n) == note).unwrap();
+    assert_eq!(n["text"], json!("hello, both of you"));
+    let d = &devices(&l)[0];
+    assert_eq!(id(d), dev, "the same device, not a new one");
+    assert!(
+        (d["x"].as_f64().unwrap_or_default() - (x0 + 100.0)).abs() < 1e-9,
+        "{d}"
+    );
+
+    // A change to the device itself rebuilds the world.
+    let mut doc = exported(&l);
+    for n in doc["nodes"].as_array_mut().unwrap() {
+        if n["id"] == card.as_str() {
+            n["losos"]["device"]["name"] = json!("kitchenbox");
+        }
+    }
+    let r = l.canvas_sync(&doc.to_string());
+    assert_eq!(r["full"], json!(true), "{r}");
+    assert_eq!(devices(&l)[0]["name"], json!("kitchenbox"));
+    assert_eq!(nodes(&l).len(), 2);
+
+    // Two edits merged as text can lose a comma; the file still reads.
+    let text = l.export_setup()["text"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let broken = text.replacen("},\n", "}\n", 1);
+    assert_ne!(broken, text);
+    let r = l.canvas_sync(&broken);
+    assert!(r.get("error").is_none(), "{r}");
+    assert_eq!(nodes(&l).len(), 2);
+
+    assert!(l.canvas_sync("not a canvas").get("error").is_some());
+}

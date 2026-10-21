@@ -98,7 +98,11 @@ async function bootOnce(step: (s: SplashStep) => void): Promise<void> {
   const view = params.get("view");
   if (view === "canvas" || view === "logical" || view === "physical") a.setView(view);
   const wanted = params.get("file");
-  if (wanted && s.cloud) await a.openCloud(wanted);
+  // A diagram someone on another box shared: it opens in its live room.
+  const share = params.get("share");
+  const shared = Number(params.get("fileId"));
+  if (share && Number.isSafeInteger(shared) && s.cloud) await a.openShared(share, shared);
+  else if (wanted && s.cloud) await a.openCloud(wanted);
   if (thisBox && "error" in thisBox) {
     s.thisBoxProblem = thisBox.error;
     s.emit("model");

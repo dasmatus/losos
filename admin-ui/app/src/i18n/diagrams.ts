@@ -317,6 +317,36 @@ export default defineMessages({
   "dg.cloud.full": { en: "LosOS Cloud is full.", sk: "LosOS Cloud je plný.", de: "LosOS Cloud ist voll." },
   "dg.cloud.failed": { en: "LosOS Cloud did not answer.", sk: "LosOS Cloud neodpovedal.", de: "LosOS Cloud hat nicht geantwortet." },
 
+  // ── edited together ──
+  "dg.live.together": {
+    en: "Everyone who opens this file edits it with you. Changes are saved as you make them.",
+    sk: "Každý, kto tento súbor otvorí, ho upravuje spolu s vami. Zmeny sa ukladajú priebežne.",
+    de: "Alle, die diese Datei öffnen, bearbeiten sie mit dir. Änderungen werden sofort gespeichert.",
+  },
+  "dg.live.saved": {
+    en: "Changes go to LosOS Cloud as you make them ({path}).",
+    sk: "Zmeny idú do LosOS Cloud priebežne ({path}).",
+    de: "Änderungen gehen sofort nach LosOS Cloud ({path}).",
+  },
+  "dg.live.viewOnly": {
+    en: "You can view this diagram but not change it.",
+    sk: "Tento diagram môžete prezerať, ale nie meniť.",
+    de: "Du kannst dieses Diagramm ansehen, aber nicht ändern.",
+  },
+  "dg.live.on": { en: "on {box}", sk: "na {box}", de: "auf {box}" },
+  "dg.live.from": {
+    en: "Shared by {owner}. The file stays on {box}.",
+    sk: "Zdieľa {owner}. Súbor zostáva na {box}.",
+    de: "Geteilt von {owner}. Die Datei bleibt auf {box}.",
+  },
+  "dg.live.viewOnlyShort": { en: "View only", sk: "Iba na čítanie", de: "Nur ansehen" },
+  "dg.live.connecting": { en: "Connecting…", sk: "Pripája sa…", de: "Verbindet…" },
+  "dg.live.offline": {
+    en: "Offline, changes wait",
+    sk: "Offline, zmeny počkajú",
+    de: "Offline, Änderungen warten",
+  },
+
   // ── toasts ──
   "dg.toast.nothingToExport": { en: "The diagram is empty.", sk: "Diagram je prázdny.", de: "Das Diagramm ist leer." },
   "dg.toast.pngFailed": {

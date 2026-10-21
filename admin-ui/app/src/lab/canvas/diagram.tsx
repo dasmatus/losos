@@ -31,6 +31,8 @@ import { firstLine } from "./markdown";
 import { machineOf, replicaTone } from "./machines";
 import { canvasOps } from "./ops-hook";
 import { centred, dash, head, outline, textBox } from "./shapes";
+import { PeerLayer } from "./people";
+import { live } from "./shared";
 
 const SIDES: Side[] = ["top", "right", "bottom", "left"];
 const MIN_K = 0.1;
@@ -691,6 +693,7 @@ export function DiagramCanvas() {
   const onMove = (ev: React.PointerEvent<SVGSVGElement>) => {
     const w = toWorld(ev);
     pointer.current = { x: w.x, y: w.y, inside: true };
+    live()?.point(w);
     const gs = gesture.current;
     if (!gs) return;
     switch (gs.kind) {
@@ -850,6 +853,7 @@ export function DiagramCanvas() {
         onPointerOver={onOver}
         onPointerLeave={() => {
           pointer.current.inside = false;
+          live()?.point(null);
           if (!gesture.current) setHover(null);
         }}
         onDoubleClick={onDouble}
@@ -933,6 +937,7 @@ export function DiagramCanvas() {
               <rect x={marquee.x1} y={marquee.y1} width={marquee.x2 - marquee.x1} height={marquee.y2 - marquee.y1} className="dg-marquee" strokeWidth={1 / k} />
             )}
           </g>
+          <PeerLayer k={k} />
         </g>
       </svg>
       {empty && (

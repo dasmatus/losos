@@ -10,6 +10,7 @@ import { getLocale, t } from "@/lib/i18n";
 import { type CanvasNode, type EdgePatch, type EdgeSpec, isErr, type NodePatch, type NodeSpec, type Side } from "../core";
 import type { Engine } from "../engine";
 import { type CanvasSel, type CardTool, type LabStore, NO_CSEL, type Tab } from "../store";
+import { live, setLive } from "./shared";
 
 /** The size a new card of each kind starts at. */
 const SIZE: Record<string, [number, number]> = {
@@ -331,6 +332,13 @@ export class CanvasOps {
 
   undo(): void {
     const s = this.s;
+    // Edited together: undo takes back this person's own changes only.
+    const l = live();
+    if (l) {
+      l.undoStep();
+      this.stopEditing();
+      return;
+    }
     const r = s.core.canvasUndo();
     if (isErr(r)) return;
     s.refresh();
@@ -340,6 +348,12 @@ export class CanvasOps {
 
   redo(): void {
     const s = this.s;
+    const l = live();
+    if (l) {
+      l.redoStep();
+      this.stopEditing();
+      return;
+    }
     const r = s.core.canvasRedo();
     if (isErr(r)) return;
     s.refresh();
@@ -350,6 +364,7 @@ export class CanvasOps {
   // ── the document ───────────────────────────────────────────────────────
   newDiagram(): void {
     const s = this.s;
+    setLive(null);
     this.engine.stopAll();
     s.core.canvasNew();
     s.openedText = null;
@@ -362,7 +377,8 @@ export class CanvasOps {
   rename(name: string): boolean {
     const s = this.s;
     const r = s.ok(s.core.renameDoc(name));
-    s.emit("model");
+    // A new snapshot, so a shared diagram sends the new name on.
+    s.refreshCanvas();
     return r !== null;
   }
 }

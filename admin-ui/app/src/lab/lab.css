@@ -1148,6 +1148,27 @@ body.lab-body {
   pointer-events: none;
 }
 
+/* Other people on a diagram edited together: --person is their colour
+ * (data-accent, styles/index.css). */
+.dg-peer-sel {
+  fill: none;
+  stroke: var(--person);
+  stroke-dasharray: 7 4;
+}
+.dg-peer-arrow {
+  fill: var(--person);
+  stroke: var(--surface);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+.dg-peer-tag {
+  fill: var(--person);
+}
+.dg-peer-name {
+  fill: var(--surface);
+  font: 500 11px var(--font-ui);
+}
+
 /* the inspector's colour swatches */
 .dg-swatch {
   width: 22px;

@@ -15,6 +15,7 @@
 import assert from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { launch, runner, serve } from './harness.mjs';
+import { yroom } from './yroom.mjs';
 
 const TOKEN = 'c'.repeat(64);
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -239,7 +240,8 @@ function fakeCloud() {
   ]);
   const puts = [];
   let n = 1;
-  const entry = (path) => ({ path, name: path.slice(path.lastIndexOf('/') + 1), dir: false, size: files.get(path).text.length, mtime: 0, etag: files.get(path).etag });
+  const ids = new Map([...files.keys()].map((p, i) => [p, 7 + i]));
+  const entry = (path) => ({ id: ids.get(path) ?? 99, path, name: path.slice(path.lastIndexOf('/') + 1), dir: false, size: files.get(path).text.length, mtime: 0, etag: files.get(path).etag });
   const routes = async (page) => {
     await page.route('**/cloud/api/me', (route) => json(route, 200, { login: 'matus', name: 'Matus' }));
     await page.route('**/cloud/api/files?*', (route) => {
@@ -318,6 +320,113 @@ await check('LosOS Cloud: the dialog lists folders and diagrams only, and a new 
   assert.ok(cloud.files.has('Diagrams/copy.canvas'));
   await clean();
   await page.close();
+});
+
+await check('edited together: two people on one file see each other, their changes merge, undo is each one\'s own', async () => {
+  const cloud = fakeCloud();
+  const room = yroom(cloud.files.get('Diagrams/plan.canvas').text);
+  // The box writes the room's text back to the file, as room.rs does.
+  room.doc.on('update', () => (cloud.files.get('Diagrams/plan.canvas').text = room.text()));
+  const person = (name, login) => async (page) => {
+    await cloud.routes(page);
+    await page.route('**/cloud/api/collab/doc?*', (route) =>
+      json(route, 200, { name: 'plan.canvas', owner: 'matus', box: 'mattbox.local', perm: 'edit', remote: false, me: { name, address: `${login}@mattbox.local` } }),
+    );
+    await page.routeWebSocket(/\/cloud\/api\/collab\/ws/, (ws) => room.connect(ws, login));
+  };
+  const query = '&file=' + encodeURIComponent('Diagrams/plan.canvas');
+  const a = await open({ routes: person('Matus', 'matus'), query });
+  const b = await open({ routes: person('Eva', 'eva'), query });
+  for (const { page } of [a, b]) {
+    await card(page, 'Inbox').waitFor();
+    await page.locator('[data-testid=live-people] [data-face]').nth(1).waitFor();
+  }
+
+  const write = async (page, x, y, words) => {
+    await page.locator('[data-testid=tray-items] [data-card=text]').click();
+    const p = await at(page, x, y);
+    await page.mouse.click(p.x, p.y);
+    await page.keyboard.type(words);
+    await page.keyboard.press('Escape');
+  };
+  // One writes, the other sees it; the file follows.
+  await write(a.page, 260, 600, 'From Matus');
+  await card(b.page, 'From Matus').waitFor();
+  assert.ok(JSON.parse(cloud.files.get('Diagrams/plan.canvas').text).nodes.some((n) => n.text === 'From Matus'));
+
+  // Eva's pointer and selection, in her colour, on Matus's canvas.
+  await card(b.page, 'Inbox').click();
+  const p = await at(b.page, 700, 500);
+  await b.page.mouse.move(p.x, p.y);
+  const eva = a.page.locator('[data-testid=peers] [data-peer="eva@mattbox.local"]');
+  await eva.getByText('Eva').waitFor();
+  await eva.locator('.dg-peer-sel').waitFor();
+  assert.ok(['teal', 'blue', 'violet', 'rose', 'amber', 'green'].includes(await eva.getAttribute('data-accent')));
+
+  // Both change the file at the same moment: Eva's messages are held
+  // until both cards are down, then everything is let through.
+  room.hold('eva');
+  await write(a.page, 520, 600, 'Card A');
+  await write(b.page, 820, 600, 'Card B');
+  room.release('eva');
+  for (const { page } of [a, b]) {
+    await card(page, 'Card A').waitFor();
+    await card(page, 'Card B').waitFor();
+  }
+  // The two copies settle on one file that parses.
+  await a.page.waitForTimeout(1200);
+  const doc = JSON.parse(room.text());
+  for (const words of ['From Matus', 'Card A', 'Card B', '## Inbox\nsort on Monday']) assert.ok(doc.nodes.some((n) => n.text === words), words);
+  assert.strictEqual(new Set(doc.nodes.map((n) => n.id)).size, doc.nodes.length);
+  assert.strictEqual(doc['x-plugin-doc'].version, 2, 'a key this page does not know stays');
+
+  // Undo takes back Matus's last card, not Eva's.
+  await a.page.getByTestId('undo').click();
+  await card(b.page, 'Card A').waitFor({ state: 'detached' });
+  assert.strictEqual(await card(a.page, 'Card A').count(), 0);
+  assert.strictEqual(await card(a.page, 'Card B').count(), 1);
+
+  // Saving says where the changes already went.
+  await a.page.keyboard.press('Control+s');
+  await a.page.getByText('Changes go to LosOS Cloud as you make them (Diagrams/plan.canvas).', { exact: true }).waitFor();
+  assert.strictEqual(cloud.puts.length, 0, 'nothing was PUT over the room');
+
+  for (const { page, clean } of [a, b]) {
+    await clean();
+    await page.close();
+  }
+  room.close();
+});
+
+await check('a diagram shared from another box opens in its room; a view-only share takes no change', async () => {
+  const room = yroom(JSON.stringify(OBSIDIAN, null, 2));
+  const before = room.text();
+  const routes = async (page) => {
+    await page.route('**/cloud/api/me', (route) => json(route, 200, { login: 'eva', name: 'Eva' }));
+    await page.route('**/cloud/api/collab/doc?*', (route) => {
+      const u = new URL(route.request().url()).searchParams;
+      assert.deepStrictEqual([u.get('share'), u.get('file')], ['sh_1', '7']);
+      return json(route, 200, {
+        name: 'plan.canvas', owner: 'Matus', ownerAddress: 'matus@mattbox.local', box: 'mattbox.local',
+        perm: 'read', remote: true, linked: true, me: { name: 'Eva', address: 'eva@kitchenbox.local' },
+      });
+    });
+    await page.routeWebSocket(/\/cloud\/api\/collab\/ws\?.*share=sh_1/, (ws) => room.connect(ws, 'eva'));
+  };
+  const { page, clean } = await open({ routes, query: '&share=sh_1&fileId=7' });
+  await card(page, 'Inbox').waitFor();
+  await page.getByText('Shared by Matus. The file stays on mattbox.local.').waitFor();
+  await page.getByTestId('live-people').getByText('View only').waitFor();
+
+  await page.locator('[data-testid=tray-items] [data-card=text]').click();
+  const p = await at(page, 300, 650);
+  await page.mouse.click(p.x, p.y);
+  await page.getByText('You can view this diagram but not change it.', { exact: true }).waitFor();
+  assert.strictEqual(room.text(), before, 'the room kept its text');
+  assert.strictEqual(await nodes(page).count(), 3, 'the card went again');
+  await clean();
+  await page.close();
+  room.close();
 });
 
 const VMS = {
