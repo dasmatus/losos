@@ -108,9 +108,7 @@ pub fn capabilities(cloud: &Cloud) -> Value {
 
 /// Wants JSON rather than OCS's default XML.
 fn wants_json(req: &HttpRequest) -> bool {
-    req.query_string()
-        .split('&')
-        .any(|p| p == "format=json")
+    req.query_string().split('&').any(|p| p == "format=json")
         || req
             .headers()
             .get("accept")
@@ -163,7 +161,9 @@ pub fn ocs(req: &HttpRequest, status: StatusCode, message: &str, data: Value) ->
 /// OCS's XML form of a JSON value: objects become elements, list items
 /// `<element>`.
 fn to_xml(name: &str, v: &Value, out: &mut String) {
-    let tag = if name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    let tag = if name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         && name.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
     {
         name
@@ -257,7 +257,10 @@ pub fn device_name(agent: &str) -> String {
     if lower.contains("nextcloud-ios") || lower.contains("iphone") || lower.contains("ipad") {
         return "Nextcloud on iPhone or iPad".to_owned();
     }
-    if lower.contains("mirall") || lower.contains("nextcloud-desktop") || lower.contains("nextcloudcmd") {
+    if lower.contains("mirall")
+        || lower.contains("nextcloud-desktop")
+        || lower.contains("nextcloudcmd")
+    {
         return match os {
             Some(os) => format!("Nextcloud desktop on {os}"),
             None => "Nextcloud desktop".to_owned(),
@@ -275,7 +278,12 @@ pub fn device_name(agent: &str) -> String {
 /// a request that already uses an app password, as Nextcloud does.
 pub fn get_app_password(req: &HttpRequest, cloud: &Cloud, who: &Who) -> HttpResponse {
     if matches!(who.via, Via::AppPassword(_)) {
-        return ocs(req, StatusCode::FORBIDDEN, "already an app password", Value::Null);
+        return ocs(
+            req,
+            StatusCode::FORBIDDEN,
+            "already an app password",
+            Value::Null,
+        );
     }
     let client = device_name(
         req.headers()
@@ -283,7 +291,10 @@ pub fn get_app_password(req: &HttpRequest, cloud: &Cloud, who: &Who) -> HttpResp
             .and_then(|v| v.to_str().ok())
             .unwrap_or(""),
     );
-    match cloud.auth.new_app_password(&cloud.store, &who.login, &client) {
+    match cloud
+        .auth
+        .new_app_password(&cloud.store, &who.login, &client)
+    {
         Ok((_, pw)) => ocs(req, StatusCode::OK, "", json!({ "apppassword": pw })),
         Err(_) => ocs(req, StatusCode::INTERNAL_SERVER_ERROR, "", Value::Null),
     }
@@ -378,7 +389,10 @@ mod tests {
             device_name("Mozilla/5.0 (Windows) mirall/3.16.0 (Nextcloud)"),
             "Nextcloud desktop on Windows"
         );
-        assert_eq!(device_name("Mozilla/5.0 (Android) Nextcloud-android/3.30.0"), "Nextcloud on Android");
+        assert_eq!(
+            device_name("Mozilla/5.0 (Android) Nextcloud-android/3.30.0"),
+            "Nextcloud on Android"
+        );
         assert_eq!(device_name(""), "A device");
         assert_eq!(device_name("curl/8.0"), "curl/8.0");
     }
@@ -386,7 +400,11 @@ mod tests {
     #[test]
     fn ocs_xml_turns_lists_into_elements() {
         let mut out = String::new();
-        to_xml("data", &json!({"a": [1, 2], "b": true, "c": "x<y"}), &mut out);
+        to_xml(
+            "data",
+            &json!({"a": [1, 2], "b": true, "c": "x<y"}),
+            &mut out,
+        );
         assert_eq!(
             out,
             "<data><a><element>1</element><element>2</element></a><b>1</b><c>x&lt;y</c></data>"

@@ -90,15 +90,27 @@ mod tests {
         fs::create_dir_all(data.path().join("appdata_oc123")).unwrap();
         let cloud = Cloud::open(root.path(), Config::default()).unwrap();
         cloud.store.ensure_home("notshared").unwrap();
-        cloud.store.write_bytes("notshared", "notes.txt", b"ours").unwrap();
+        cloud
+            .store
+            .write_bytes("notshared", "notes.txt", b"ours")
+            .unwrap();
         let r = nextcloud(&cloud, data.path()).unwrap();
         assert_eq!(r.len(), 1);
-        assert_eq!(cloud.store.read_bytes("notshared", "notes.txt").unwrap(), b"ours");
         assert_eq!(
-            cloud.store.read_bytes("notshared", "notes (from Nextcloud).txt").unwrap(),
+            cloud.store.read_bytes("notshared", "notes.txt").unwrap(),
+            b"ours"
+        );
+        assert_eq!(
+            cloud
+                .store
+                .read_bytes("notshared", "notes (from Nextcloud).txt")
+                .unwrap(),
             b"from nc"
         );
-        assert_eq!(cloud.store.stat("notshared", "Photos/a.jpg").unwrap().size, 4);
+        assert_eq!(
+            cloud.store.stat("notshared", "Photos/a.jpg").unwrap().size,
+            4
+        );
         assert!(!nc.join("Photos/a.jpg").exists(), "moved, not copied");
     }
 }

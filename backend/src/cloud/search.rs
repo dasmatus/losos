@@ -47,9 +47,10 @@ fn literal(n: &Name, text: &str) -> Value {
                 httpdate::parse_http_date(text)
                     .ok()
                     .or_else(|| {
-                        chrono::DateTime::parse_from_rfc3339(text)
-                            .ok()
-                            .map(|d| std::time::UNIX_EPOCH + std::time::Duration::from_secs(d.timestamp().max(0) as u64))
+                        chrono::DateTime::parse_from_rfc3339(text).ok().map(|d| {
+                            std::time::UNIX_EPOCH
+                                + std::time::Duration::from_secs(d.timestamp().max(0) as u64)
+                        })
                     })
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                     .map(|d| d.as_secs() as f64)
@@ -83,7 +84,8 @@ fn like(pattern: &str, text: &str) -> bool {
             Some(('%', rest)) => (0..=t.len()).any(|i| rec(rest, &t[i..])),
             Some(('_', rest)) => !t.is_empty() && rec(rest, &t[1..]),
             Some((c, rest)) => {
-                t.first().is_some_and(|x| x.to_lowercase().eq(c.to_lowercase()))
+                t.first()
+                    .is_some_and(|x| x.to_lowercase().eq(c.to_lowercase()))
                     && rec(rest, &t[1..])
             }
         }
@@ -94,7 +96,10 @@ fn like(pattern: &str, text: &str) -> bool {
 }
 
 fn prop_of(el: &Element) -> Option<Name> {
-    el.child(DAV, "prop")?.children.first().map(|c| c.name.clone())
+    el.child(DAV, "prop")?
+        .children
+        .first()
+        .map(|c| c.name.clone())
 }
 
 /// Does `e` match the condition `cond`?
@@ -123,7 +128,9 @@ fn matches(e: &Entry, cond: &Element) -> bool {
                     let l = literal(&n, &lit);
                     let ord = match (&v, &l) {
                         (Value::Num(a), Value::Num(b)) => a.partial_cmp(b),
-                        (Value::Text(a), Value::Text(b)) => Some(a.to_lowercase().cmp(&b.to_lowercase())),
+                        (Value::Text(a), Value::Text(b)) => {
+                            Some(a.to_lowercase().cmp(&b.to_lowercase()))
+                        }
                         _ => None,
                     };
                     let Some(ord) = ord else {
@@ -270,7 +277,10 @@ pub async fn handle(ctx: &Ctx<'_>, body: web::Payload) -> HttpResponse {
     };
     let hits = run(&q, entries);
     let t = match crate::cloud::dav::resolve(
-        &format!("/remote.php/dav/files/{}", crate::cloud::util::encode_path(&ctx.who.login)),
+        &format!(
+            "/remote.php/dav/files/{}",
+            crate::cloud::util::encode_path(&ctx.who.login)
+        ),
         &ctx.who.login,
     ) {
         Resolve::Ok(t) => t,

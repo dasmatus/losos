@@ -20,6 +20,9 @@ in
   # workload path in modules/workloads.nix and the native path in
   # modules/services.nix.
   losos.forgejo.enable = lib.mkDefault true;
+  # LosOS Cloud (modules/cloud.nix). Off in the bare option set, so a VM
+  # test that imports the identity routes without the service gets neither.
+  losos.cloud.enable = lib.mkDefault true;
 
   # The Rust control plane (lososd + the losos-ctl facade) and the static admin
   # SPA the front vhost serves, so the admin endpoint works out of the box.

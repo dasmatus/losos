@@ -78,7 +78,9 @@ async fn status_and_capabilities_answer_without_sign_in() {
     assert_eq!(v["ocs"]["data"]["capabilities"]["dav"]["chunking"], "1.0");
     let r = call_service(
         &app,
-        TestRequest::get().uri("/ocs/v2.php/cloud/capabilities").to_request(),
+        TestRequest::get()
+            .uri("/ocs/v2.php/cloud/capabilities")
+            .to_request(),
     )
     .await;
     let body = text(r).await;
@@ -89,11 +91,7 @@ async fn status_and_capabilities_answer_without_sign_in() {
 async fn webdav_needs_a_person() {
     let (_d, c) = cloud();
     let app = app!(c);
-    let r = call_service(
-        &app,
-        method("PROPFIND", "/remote.php/webdav/").to_request(),
-    )
-    .await;
+    let r = call_service(&app, method("PROPFIND", "/remote.php/webdav/").to_request()).await;
     assert_eq!(r.status(), 401);
     assert!(r.headers().contains_key("www-authenticate"));
     let r = call_service(
@@ -120,7 +118,10 @@ async fn put_propfind_get_and_the_root_etag() {
     .await;
     assert_eq!(r.status(), StatusCode::MULTI_STATUS);
     let before = text(r).await;
-    assert!(before.contains("<oc:permissions>RGCK</oc:permissions>"), "{before}");
+    assert!(
+        before.contains("<oc:permissions>RGCK</oc:permissions>"),
+        "{before}"
+    );
 
     let r = call_service(
         &app,
@@ -132,7 +133,10 @@ async fn put_propfind_get_and_the_root_etag() {
         &app,
         as_alice(method("PUT", "/remote.php/dav/files/alice/Docs/a%20b.txt"))
             .insert_header(("x-oc-mtime", "1700000000"))
-            .insert_header(("oc-checksum", "SHA1:a9993e364706816aba3e25717850c26c9cd0d89d"))
+            .insert_header((
+                "oc-checksum",
+                "SHA1:a9993e364706816aba3e25717850c26c9cd0d89d",
+            ))
             .set_payload("abc")
             .to_request(),
     )
@@ -152,15 +156,34 @@ async fn put_propfind_get_and_the_root_etag() {
     )
     .await;
     let after = text(r).await;
-    assert!(after.contains("<d:href>/remote.php/dav/files/alice/Docs/a%20b.txt</d:href>"), "{after}");
-    assert!(after.contains(&format!("<d:getetag>{}</d:getetag>", etag.replace('"', "&quot;"))));
+    assert!(
+        after.contains("<d:href>/remote.php/dav/files/alice/Docs/a%20b.txt</d:href>"),
+        "{after}"
+    );
+    assert!(after.contains(&format!(
+        "<d:getetag>{}</d:getetag>",
+        etag.replace('"', "&quot;")
+    )));
     assert!(after.contains("<oc:checksums><oc:checksum>SHA1:a9993e364706816aba3e25717850c26c9cd0d89d</oc:checksum></oc:checksums>"));
     assert!(after.contains("<oc:permissions>RGDNVW</oc:permissions>"));
-    assert!(after.contains(r#"<x:nope xmlns:x="urn:x"/>"#), "unknown props are 404s");
+    assert!(
+        after.contains(r#"<x:nope xmlns:x="urn:x"/>"#),
+        "unknown props are 404s"
+    );
     let root_etag = |s: &str| {
-        s.split("<d:getetag>").nth(1).unwrap().split("</d:getetag>").next().unwrap().to_owned()
+        s.split("<d:getetag>")
+            .nth(1)
+            .unwrap()
+            .split("</d:getetag>")
+            .next()
+            .unwrap()
+            .to_owned()
     };
-    assert_ne!(root_etag(&before), root_etag(&after), "the root's ETag moved");
+    assert_ne!(
+        root_etag(&before),
+        root_etag(&after),
+        "the root's ETag moved"
+    );
 
     let r = call_service(
         &app,
@@ -199,7 +222,10 @@ async fn a_bad_checksum_or_a_short_body_is_refused() {
     let r = call_service(
         &app,
         as_alice(method("PUT", "/remote.php/webdav/x.txt"))
-            .insert_header(("oc-checksum", "SHA1:0000000000000000000000000000000000000000"))
+            .insert_header((
+                "oc-checksum",
+                "SHA1:0000000000000000000000000000000000000000",
+            ))
             .set_payload("abc")
             .to_request(),
     )
@@ -261,12 +287,22 @@ async fn if_match_protects_a_concurrent_edit() {
 async fn move_copy_delete_and_the_trash_bin() {
     let (_d, c) = cloud();
     let app = app!(c);
-    for (m, p) in [("MKCOL", "/remote.php/webdav/A"), ("MKCOL", "/remote.php/webdav/B")] {
-        assert_eq!(call_service(&app, as_alice(method(m, p)).to_request()).await.status(), 201);
+    for (m, p) in [
+        ("MKCOL", "/remote.php/webdav/A"),
+        ("MKCOL", "/remote.php/webdav/B"),
+    ] {
+        assert_eq!(
+            call_service(&app, as_alice(method(m, p)).to_request())
+                .await
+                .status(),
+            201
+        );
     }
     call_service(
         &app,
-        as_alice(method("PUT", "/remote.php/webdav/A/f.txt")).set_payload("x").to_request(),
+        as_alice(method("PUT", "/remote.php/webdav/A/f.txt"))
+            .set_payload("x")
+            .to_request(),
     )
     .await;
     let id = c.store.stat("alice", "A/f.txt").unwrap().id;
@@ -320,15 +356,24 @@ async fn move_copy_delete_and_the_trash_bin() {
     )
     .await;
     let body = text(r).await;
-    assert!(body.contains("<nc:trashbin-original-location>A</nc:trashbin-original-location>"), "{body}");
+    assert!(
+        body.contains("<nc:trashbin-original-location>A</nc:trashbin-original-location>"),
+        "{body}"
+    );
     let stored = c.store.trash("alice").unwrap()[0].stored.clone();
     let r = call_service(
         &app,
         as_alice(method(
             "MOVE",
-            &format!("/remote.php/dav/trashbin/alice/trash/{}", losos_ctl::cloud::util::encode_path(&stored)),
+            &format!(
+                "/remote.php/dav/trashbin/alice/trash/{}",
+                losos_ctl::cloud::util::encode_path(&stored)
+            ),
         ))
-        .insert_header(("destination", format!("/remote.php/dav/trashbin/alice/restore/{stored}")))
+        .insert_header((
+            "destination",
+            format!("/remote.php/dav/trashbin/alice/restore/{stored}"),
+        ))
         .to_request(),
     )
     .await;
@@ -352,11 +397,14 @@ async fn chunked_upload_v2_joins_in_order() {
     for (n, part) in [("2", "world"), ("1", "hello "), ("10", "!")] {
         let r = call_service(
             &app,
-            as_alice(method("PUT", &format!("/remote.php/dav/uploads/alice/t123/{n}")))
-                .insert_header(("destination", dest))
-                .insert_header(("oc-total-length", "12"))
-                .set_payload(part)
-                .to_request(),
+            as_alice(method(
+                "PUT",
+                &format!("/remote.php/dav/uploads/alice/t123/{n}"),
+            ))
+            .insert_header(("destination", dest))
+            .insert_header(("oc-total-length", "12"))
+            .set_payload(part)
+            .to_request(),
         )
         .await;
         assert_eq!(r.status(), 201);
@@ -368,7 +416,9 @@ async fn chunked_upload_v2_joins_in_order() {
             .to_request(),
     )
     .await;
-    assert!(text(r).await.contains("/remote.php/dav/uploads/alice/t123/10"));
+    assert!(text(r)
+        .await
+        .contains("/remote.php/dav/uploads/alice/t123/10"));
     let r = call_service(
         &app,
         as_alice(method("MOVE", "/remote.php/dav/uploads/alice/t123/.file"))
@@ -380,7 +430,10 @@ async fn chunked_upload_v2_joins_in_order() {
     .await;
     assert_eq!(r.status(), 201, "{:?}", r.headers());
     assert!(r.headers().contains_key("oc-fileid"));
-    assert_eq!(c.store.read_bytes("alice", "big.bin").unwrap(), b"hello world!");
+    assert_eq!(
+        c.store.read_bytes("alice", "big.bin").unwrap(),
+        b"hello world!"
+    );
     assert_eq!(c.store.stat("alice", "big.bin").unwrap().mtime, 1600000000);
 }
 
@@ -394,7 +447,10 @@ async fn login_flow_v2_end_to_end() {
             .uri("/index.php/login/v2")
             .insert_header(("host", "box.local"))
             .insert_header(("x-forwarded-proto", "https"))
-            .insert_header(("user-agent", "Mozilla/5.0 (Linux) mirall/3.16.0 (Nextcloud)"))
+            .insert_header((
+                "user-agent",
+                "Mozilla/5.0 (Linux) mirall/3.16.0 (Nextcloud)",
+            ))
             .to_request(),
     )
     .await;
@@ -402,7 +458,10 @@ async fn login_flow_v2_end_to_end() {
     let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
     let login_url = v["login"].as_str().unwrap().to_owned();
     let poll = v["poll"]["token"].as_str().unwrap().to_owned();
-    assert_eq!(v["poll"]["endpoint"], "https://box.local/index.php/login/v2/poll");
+    assert_eq!(
+        v["poll"]["endpoint"],
+        "https://box.local/index.php/login/v2/poll"
+    );
     let token = login_url.rsplit('/').next().unwrap().to_owned();
 
     let poll_req = || {
@@ -431,7 +490,7 @@ async fn login_flow_v2_end_to_end() {
     )
     .await;
     let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
-    assert!(v["client"].as_str().unwrap().contains("mirall"));
+    assert_eq!(v["client"], "Nextcloud desktop on Linux");
     let r = call_service(
         &app,
         as_alice(TestRequest::post().uri(&format!("/cloud/api/connect/{token}")))
@@ -541,7 +600,11 @@ async fn the_web_apps_api() {
     )
     .await;
     assert_eq!(r.status(), 200);
-    let r = call_service(&app, as_alice(TestRequest::get().uri("/cloud/api/trash")).to_request()).await;
+    let r = call_service(
+        &app,
+        as_alice(TestRequest::get().uri("/cloud/api/trash")).to_request(),
+    )
+    .await;
     let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
     assert_eq!(v["entries"][0]["original"], "Photos/a.jpg");
     let r = call_service(
@@ -562,7 +625,6 @@ async fn the_header_is_ignored_unless_trusted() {
     )
     .await;
     assert_eq!(r.status(), 401);
-    let _ = HttpResponse::Ok();
 }
 
 #[actix_web::test]
@@ -583,7 +645,9 @@ async fn locks_create_and_guard_a_file() {
     assert!(c.store.stat("alice", "new.txt").is_ok());
     let r = call_service(
         &app,
-        as_alice(method("PUT", "/remote.php/webdav/new.txt")).set_payload("x").to_request(),
+        as_alice(method("PUT", "/remote.php/webdav/new.txt"))
+            .set_payload("x")
+            .to_request(),
     )
     .await;
     assert_eq!(r.status(), 423);
@@ -634,4 +698,168 @@ async fn search_finds_photos_for_the_phone_app() {
     let body = text(r).await;
     assert!(body.contains("a.jpg"));
     assert!(!body.contains("b.txt"));
+}
+
+#[actix_web::test]
+async fn login_flow_v1_hands_the_phone_app_a_password() {
+    let (_d, c) = cloud();
+    let app = app!(c);
+    // The address the phone app opens in its web view: the connect page.
+    let r = call_service(
+        &app,
+        TestRequest::get()
+            .uri("/index.php/login/flow")
+            .insert_header(("ocs-apirequest", "true"))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(r.status(), 302);
+    assert_eq!(h(&r, "location"), "/cloud/connect/v1");
+
+    let grant = |origin: &'static str| {
+        as_alice(TestRequest::post().uri("/cloud/api/connect-v1"))
+            .insert_header(("origin", origin))
+            .insert_header(("x-forwarded-proto", "https"))
+            .set_json(
+                serde_json::json!({ "client": "Mozilla/5.0 (Android) Nextcloud-android/3.30.0" }),
+            )
+            .to_request()
+    };
+    assert_eq!(
+        call_service(&app, grant("https://evil.example"))
+            .await
+            .status(),
+        403,
+        "another site cannot mint a password"
+    );
+    let r = call_service(&app, grant("https://box.local")).await;
+    assert_eq!(r.status(), 200);
+    let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
+    assert_eq!(v["server"], "https://box.local");
+    assert_eq!(v["login"], "alice");
+    let pw = v["appPassword"].as_str().unwrap().to_owned();
+
+    let r = call_service(
+        &app,
+        as_alice(TestRequest::get().uri("/cloud/api/devices")).to_request(),
+    )
+    .await;
+    let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
+    assert_eq!(v["devices"][0]["name"], "Nextcloud on Android");
+
+    // An app password cannot mint another one.
+    let r = call_service(
+        &app,
+        TestRequest::post()
+            .uri("/cloud/api/connect-v1")
+            .insert_header(("host", "box.local"))
+            .insert_header(("authorization", basic("alice", &pw)))
+            .set_json(serde_json::json!({ "client": "x" }))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(r.status(), 403);
+}
+
+#[actix_web::test]
+async fn an_extension_route_gets_the_same_person_or_the_same_401() {
+    use losos_ctl::cloud::auth::Who;
+    let (_d, c) = cloud();
+    let app = init_service(
+        App::new()
+            .configure(server::configure(c.clone(), true))
+            .route(
+                "/cloud/api/x/whoami",
+                actix_web::web::get()
+                    .to(|who: Who| async move { HttpResponse::Ok().body(who.login) }),
+            ),
+    )
+    .await;
+    let r = call_service(
+        &app,
+        as_alice(TestRequest::get().uri("/cloud/api/x/whoami")).to_request(),
+    )
+    .await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(text(r).await, "alice");
+    let r = call_service(
+        &app,
+        TestRequest::get().uri("/cloud/api/x/whoami").to_request(),
+    )
+    .await;
+    assert_eq!(r.status(), 401);
+    let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
+    assert_eq!(v["code"], "signIn");
+}
+
+#[actix_web::test]
+async fn name_search_is_per_person_newest_first_and_capped() {
+    let (_d, c) = cloud();
+    let app = app!(c);
+    for (who, name) in [
+        ("alice", "budget 2025.ods"),
+        ("alice", "budget 2026.ods"),
+        ("bob", "budget bob.ods"),
+    ] {
+        let r = call_service(
+            &app,
+            TestRequest::put()
+                .uri(&format!(
+                    "/cloud/api/files/content?path={}",
+                    name.replace(' ', "%20")
+                ))
+                .insert_header(("x-losos-cloud-user", who))
+                .insert_header(("host", "box.local"))
+                .set_payload("x")
+                .to_request(),
+        )
+        .await;
+        assert!(r.status().is_success(), "{name}: {}", r.status());
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+    }
+    let r = call_service(
+        &app,
+        as_alice(TestRequest::get().uri("/cloud/api/files/search?q=budget&limit=1")).to_request(),
+    )
+    .await;
+    let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
+    let names: Vec<&str> = v["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["budget 2026.ods"]);
+    let r = call_service(
+        &app,
+        as_alice(TestRequest::get().uri("/cloud/api/files/search?q=budget")).to_request(),
+    )
+    .await;
+    let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
+    assert_eq!(
+        v["entries"].as_array().unwrap().len(),
+        2,
+        "bob's file is bob's"
+    );
+}
+
+#[actix_web::test]
+async fn a_name_with_accents_reaches_the_person() {
+    let (_d, c) = cloud();
+    let app = app!(c);
+    let r = call_service(
+        &app,
+        TestRequest::get()
+            .uri("/cloud/api/me")
+            .insert_header(("x-losos-cloud-user", "eva"))
+            .insert_header((
+                "x-losos-cloud-name",
+                actix_web::http::header::HeaderValue::from_bytes("Eva Kováč".as_bytes()).unwrap(),
+            ))
+            .insert_header(("host", "box.local"))
+            .to_request(),
+    )
+    .await;
+    let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
+    assert_eq!(v["name"], "Eva Kováč");
 }

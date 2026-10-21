@@ -30,8 +30,12 @@ struct State {
     trust_header: bool,
 }
 
+/// A header as UTF-8. `to_str` would refuse any non-ASCII byte, and nginx
+/// passes a person's name ("Eva Kováč") as the UTF-8 it is.
 fn header_value<'a>(req: &'a HttpRequest, name: &str) -> Option<&'a str> {
-    req.headers().get(name).and_then(|v| v.to_str().ok())
+    req.headers()
+        .get(name)
+        .and_then(|v| std::str::from_utf8(v.as_bytes()).ok())
 }
 
 /// A browser request from another site, which must not act on the person's
@@ -80,7 +84,12 @@ fn unauthorized(req: &HttpRequest, refusal: Refusal) -> HttpResponse {
         _ => "sign in with your LosOS Login name and password, or an app password",
     };
     if path.starts_with("/ocs/") {
-        let mut r = nc::ocs(req, StatusCode::UNAUTHORIZED, message, serde_json::Value::Null);
+        let mut r = nc::ocs(
+            req,
+            StatusCode::UNAUTHORIZED,
+            message,
+            serde_json::Value::Null,
+        );
         r.headers_mut().insert(
             header::WWW_AUTHENTICATE,
             header::HeaderValue::from_static("Basic realm=\"LosOS Cloud\", charset=\"UTF-8\""),
@@ -109,7 +118,11 @@ async fn handle(req: HttpRequest, body: web::Payload, state: web::Data<State>) -
     let path = req.path().to_owned();
     let method = req.method().as_str().to_owned();
     if cross_site(&req) {
-        return api::error(StatusCode::FORBIDDEN, "crossSite", "a request from another site");
+        return api::error(
+            StatusCode::FORBIDDEN,
+            "crossSite",
+            "a request from another site",
+        );
     }
 
     // What answers without anyone signed in.
@@ -146,7 +159,11 @@ async fn handle(req: HttpRequest, body: web::Payload, state: web::Data<State>) -
             .finish();
     }
     // Nextcloud's own pages, as the apps link them: the web app instead.
-    if path == "/index.php/apps/files" || path.starts_with("/index.php/apps/files/") || path == "/index.php" || path == "/" {
+    if path == "/index.php/apps/files"
+        || path.starts_with("/index.php/apps/files/")
+        || path == "/index.php"
+        || path == "/"
+    {
         return HttpResponse::Found()
             .insert_header((header::LOCATION, "/cloud/"))
             .finish();
@@ -171,7 +188,10 @@ async fn handle(req: HttpRequest, body: web::Payload, state: web::Data<State>) -
         ("GET", "/ocs/v1.php/cloud/user" | "/ocs/v2.php/cloud/user") => {
             return nc::user(&req, cloud, &who)
         }
-        ("GET", p) if p.starts_with("/ocs/v1.php/cloud/users/") || p.starts_with("/ocs/v2.php/cloud/users/") => {
+        ("GET", p)
+            if p.starts_with("/ocs/v1.php/cloud/users/")
+                || p.starts_with("/ocs/v2.php/cloud/users/") =>
+        {
             let id = p.rsplit('/').next().unwrap_or_default();
             if id == who.login {
                 return nc::user(&req, cloud, &who);
@@ -187,7 +207,12 @@ async fn handle(req: HttpRequest, body: web::Payload, state: web::Data<State>) -
         _ => {}
     }
     // Thumbnails as the apps ask for them: `?fileId=&x=&y=`.
-    if method == "GET" && matches!(path.as_str(), "/index.php/core/preview" | "/index.php/core/preview.png") {
+    if method == "GET"
+        && matches!(
+            path.as_str(),
+            "/index.php/core/preview" | "/index.php/core/preview.png"
+        )
+    {
         let q = |k: &str| {
             req.query_string().split('&').find_map(|p| {
                 p.split_once('=')
@@ -220,7 +245,12 @@ async fn handle(req: HttpRequest, body: web::Payload, state: web::Data<State>) -
         if let Some(r) = crate::cloud::share::ocs(&req, cloud, &who, body).await {
             return r;
         }
-        return nc::ocs(&req, StatusCode::NOT_FOUND, "no such call", serde_json::Value::Null);
+        return nc::ocs(
+            &req,
+            StatusCode::NOT_FOUND,
+            "no such call",
+            serde_json::Value::Null,
+        );
     }
     HttpResponse::NotFound().finish()
 }
@@ -234,7 +264,11 @@ impl actix_web::FromRequest for Who {
     fn from_request(req: &HttpRequest, _: &mut actix_web::dev::Payload) -> Self::Future {
         let result = match req.app_data::<web::Data<State>>() {
             Some(state) => identify(state, req).map_err(|refusal| {
-                actix_web::error::InternalError::from_response("unauthorized", unauthorized(req, refusal)).into()
+                actix_web::error::InternalError::from_response(
+                    "unauthorized",
+                    unauthorized(req, refusal),
+                )
+                .into()
             }),
             None => Err(actix_web::error::ErrorInternalServerError("no cloud state")),
         };
@@ -272,10 +306,10 @@ pub async fn serve(cloud: Arc<Cloud>, opts: Options) -> std::io::Result<()> {
         });
     }
     let server = HttpServer::new(move || App::new().configure(routes.clone()))
-    .workers(opts.workers.max(1))
-    // Sync runs keep a connection for a long time.
-    .keep_alive(std::time::Duration::from_secs(75))
-    .client_request_timeout(std::time::Duration::from_secs(60));
+        .workers(opts.workers.max(1))
+        // Sync runs keep a connection for a long time.
+        .keep_alive(std::time::Duration::from_secs(75))
+        .client_request_timeout(std::time::Duration::from_secs(60));
     match opts.listen {
         Listen::Unix(path) => {
             let _ = std::fs::remove_file(&path);
