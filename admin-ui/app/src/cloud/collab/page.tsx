@@ -15,7 +15,7 @@ import { MeshShareDialog } from "../mesh/share-dialog";
 import { collab, mesh, type DocMeta } from "./api";
 import { CollabEditor, type Connection, type Edited, type Presence } from "./editor";
 import { Faces } from "./faces";
-import { accentFor, nameOf } from "./people";
+import { accentFor, boxOf, nameOf } from "./people";
 
 /* /cloud/edit/<file>[?share=<id>]: a text file edited together.
  *
@@ -41,10 +41,6 @@ function errorKey(err: unknown): MessageKey {
     }
   }
   return "collab.error.notFound";
-}
-
-function boxOf(address: string): string {
-  return address.slice(address.indexOf("@") + 1);
 }
 
 /** "just now", "3 minutes ago", in the reader's language. */

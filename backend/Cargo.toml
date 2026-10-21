@@ -61,6 +61,9 @@ losos-access = { path = "access" }
 # What a hand-written widget may hold, shared with the look plugin so the
 # builder and the store refuse the same things in the same words.
 losos-widget = { path = "plugins/widget" }
+# The names the pins plugin takes as well (release, Git owner and repository,
+# LosOS Cloud path), so the two cannot drift apart.
+losos-names = { path = "plugins/names" }
 
 # The Monero key check (`monero_key.rs`): the key the owner pasted must be
 # the address's view key, never its spend key, before it goes to the edge.

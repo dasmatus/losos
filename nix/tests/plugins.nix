@@ -39,7 +39,8 @@ let
     };
 
   # What the laptop photographs: the look pane as it comes, with a shipped
-  # picture chosen, and the home screen under that picture.
+  # picture chosen, and the home screen under that picture, its sidebar
+  # carrying the pins the test put there.
   plan = pkgs.writeText "plan.json" (
     builtins.toJSON {
       width = 1280;
@@ -196,9 +197,11 @@ pkgs.testers.nixosTest {
     with subtest("lososd loads the plugin package from the read-only store"):
         env = box.succeed("systemctl show lososd -p Environment --value")
         assert f"LOSOS_PLUGIN_DIR={PLUGINS}" in env, env
-        box.succeed(f"test -f {PLUGINS}/look.wasm -a -f {PLUGINS}/look.json")
+        for name in ["look", "pins"]:
+            box.succeed(f"test -f {PLUGINS}/{name}.wasm -a -f {PLUGINS}/{name}.json")
         box.succeed("findmnt -no OPTIONS /nix/store | tr , '\\n' | grep -qx ro")
         box.wait_until_succeeds("journalctl -u lososd | grep -q 'plugin loaded.*look'")
+        box.wait_until_succeeds("journalctl -u lososd | grep -q 'plugin loaded.*pins'")
 
     with subtest("claim the box and sign in"):
         code, body = api(
@@ -256,6 +259,23 @@ pkgs.testers.nixosTest {
             extra=f"-H 'Authorization: Bearer {spare}'",
         )
         assert code == 200 and json.loads(body)["veil"] == 60, (code, body)
+
+    with subtest("the pins are served by their plugin"):
+        code, body = api("/api/pins", cookie)
+        assert code == 200 and json.loads(body) == {"pins": [], "limit": 24}, (code, body)
+        pins = [
+            {"kind": "tile", "app": "files"},
+            {"kind": "tile", "app": "calendar"},
+            {"kind": "repo", "owner": "matus", "name": "site"},
+            {"kind": "file", "id": 42, "path": "/Documents/plan.pdf", "folder": False},
+        ]
+        code, body = api("/api/pins", cookie, "PUT", {"pins": pins})
+        assert code == 200 and json.loads(body)["pins"] == pins, (code, body)
+        code, body = api("/api/pins", cookie, "PUT", {"pins": pins + pins[:1]})
+        assert code == 400 and "pinned already" in body, (code, body)
+        # Where the list always was; the pictures below show it.
+        on_disk = json.loads(box.succeed("cat /var/lib/losos/pins.json"))
+        assert on_disk["pins"] == pins, on_disk
 
     with subtest("lososd will not start on plugins from anywhere but the store"):
         # A copy outside the store, sealed like a store path.
