@@ -1,4 +1,4 @@
-/* The tour's scenes: six short loops, each a pure function of its frame.
+/* The tour's scenes: short loops, each a pure function of its frame.
  *
  * Nothing here keeps state or reads the clock. A scene is handed a frame
  * between 0 and its `length` and draws that moment, so frame 0 is also the
@@ -25,68 +25,63 @@ import {
   MusicNote01Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
-import { INTL_TAG } from "@/lib/i18n";
+import { INTL_TAG, type MessageKey } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
 import { CATALOGUE, type AppId } from "@/lib/apps";
 import { logoFor } from "@/lib/logo";
 import { describeWindow } from "@/screens/settings/window";
 import { BAR, BEAT, E, clamp, fd, hitPulse, hold, lmix, mix, prog } from "./motion";
 import { Glyph, Hatch, useSvgId, type MiniEntry } from "./mini-page";
+import type { BoxFeatures, Feature } from "./features";
+import { BuilderScene, ChatScene, LendScene, NameScene, ProfileScene, TogetherScene } from "./more-scenes";
+import { Caption, Heading, W, wrap, type SceneProps } from "./parts";
 
-export interface SceneProps {
-  frame: number;
-}
+export type SceneId =
+  | "overview"
+  | "together"
+  | "apps"
+  | "storage"
+  | "mesh"
+  | "lend"
+  | "chat"
+  | "byName"
+  | "builder"
+  | "profile"
+  | "history"
+  | "about";
 
 export interface SceneDef {
-  id: "overview" | "apps" | "storage" | "mesh" | "history" | "about";
+  id: SceneId;
   entry: MiniEntry;
   /** Frames in one loop: whole bars. */
   length: number;
   /** The frame shown when motion is reduced. */
   still: number;
   Scene: (props: SceneProps) => React.ReactNode;
-}
-
-const W = 460;
-
-function Heading({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {
-  return (
-    <text x="0" y="14" fontSize="14" fontWeight="600" className={mono ? "fill-ink font-mono" : "fill-ink"}>
-      {children}
-    </text>
-  );
-}
-
-/** Lines of at most about `width` characters, broken at spaces: SVG text does not wrap. */
-function wrap(text: string, width: number): string[] {
-  const lines: string[] = [];
-  let line = "";
-  for (const word of text.split(" ")) {
-    if (line.length > 0 && line.length + 1 + word.length > width) {
-      lines.push(line);
-      line = word;
-    } else line = line.length > 0 ? `${line} ${word}` : word;
-  }
-  if (line.length > 0) lines.push(line);
-  return lines;
-}
-
-function Caption({ y, children }: { y: number; children: React.ReactNode }) {
-  return (
-    <text x="2" y={y} fontSize="9" className="fill-muted">
-      {children}
-    </text>
-  );
+  /** Only on a box that has this feature (features.ts). */
+  needs?: Feature;
 }
 
 /* ── 1. Overview: an app opens from its tile and folds back into it ─────── */
 
-const OVERVIEW_APPS: readonly AppId[] = ["files", "photos", "calendar", "notes", "tasks", "code"];
+/* LosOS cloud's six apps, as the Overview's tiles. The Board is the
+ * catalogue's kanban app under the name LosOS cloud gives it. */
+const OVERVIEW_APPS: readonly { id: AppId; name?: MessageKey }[] = [
+  { id: "files" },
+  { id: "calendar" },
+  { id: "contacts" },
+  { id: "tasks" },
+  { id: "notes" },
+  { id: "deck", name: "tour.scene.board" },
+];
 const TILE = { x: 24, y: 60, size: 44, step: 72 } as const;
 
 function OverviewScene({ frame: f }: SceneProps) {
   const t = useT();
-  const apps = OVERVIEW_APPS.map((id) => CATALOGUE.find((app) => app.id === id)).filter((app) => app !== undefined);
+  const apps = OVERVIEW_APPS.flatMap(({ id, name }) => {
+    const app = CATALOGUE.find((entry) => entry.id === id);
+    return app === undefined ? [] : [{ ...app, name: name ?? app.name }];
+  });
 
   // Beat 1 the focus lands on Files, beat 2 it is pressed, then the app
   // grows out of its tile to fill the card, holds, and folds back in.
@@ -679,6 +674,7 @@ function HistoryScene({ frame: f }: SceneProps) {
 
 function AboutScene({ frame: f }: SceneProps) {
   const t = useT();
+  const steps = React.useContext(TourLength);
   const logo = logoFor();
 
   // The Tour row is picked out on beat 1, pressed on beat 2, and the tour
@@ -776,13 +772,13 @@ function AboutScene({ frame: f }: SceneProps) {
             <rect x={to.x + 10.5} y={to.y + 10.5} width={to.w - 21} height="118" rx="5" className="fill-sunk stroke-line" />
             <image href={logo.url} x={to.x + to.w / 2 - 22} y={to.y + 47} width="44" height="44" />
             <text x={to.x + 12} y={to.y + 148} fontSize="8.5" className="fill-faint font-mono">
-              {t("tour.count", { n: "1", total: String(SCENES.length) })}
+              {t("tour.count", { n: "1", total: String(steps) })}
             </text>
             <text x={to.x + 12} y={to.y + 164} fontSize="11" fontWeight="600" className="fill-ink">
               {t("tour.overview.title")}
             </text>
             <line x1={to.x + 1} y1={to.y + 186.5} x2={to.x + to.w - 1} y2={to.y + 186.5} className="stroke-hair" />
-            {Array.from({ length: SCENES.length }, (_, i) => (
+            {Array.from({ length: steps }, (_, i) => (
               <circle key={i} cx={to.x + 16 + i * 9} cy={to.y + 209} r="2.6" className={i === 0 ? "fill-accent" : "fill-line"} />
             ))}
             <rect x={to.x + to.w - 66} y={to.y + 198} width="54" height="22" rx="5" className="fill-accent" />
@@ -796,18 +792,37 @@ function AboutScene({ frame: f }: SceneProps) {
   );
 }
 
+/* Every step, in the sidebar's order, so the teal entry only ever travels
+ * down it. Six are on every box. The rest each need a feature the box
+ * reports (features.ts), and each sits by the section it lives in: writing
+ * together opens from a document, lending under Market, the name under
+ * Network, Build with AI under Look, the profile under Your account and
+ * chat under its own entry. */
 export const SCENES: readonly SceneDef[] = [
-  { id: "overview", entry: "overview", length: 3 * BAR, still: 5 * BEAT, Scene: OverviewScene },
+  { id: "overview", entry: "overview", length: 3 * BAR, still: BEAT + 20, Scene: OverviewScene },
+  { id: "together", entry: "overview", length: 3 * BAR, still: 6 * BEAT, Scene: TogetherScene, needs: "office" },
   { id: "apps", entry: "apps", length: 3 * BAR, still: 7 * BEAT + 10, Scene: AppsScene },
   { id: "storage", entry: "storage", length: 3 * BAR, still: 4 * BEAT, Scene: StorageScene },
   { id: "mesh", entry: "mesh", length: 4 * BAR, still: 2 * BAR, Scene: MeshScene },
+  { id: "lend", entry: "market", length: 3 * BAR, still: 8 * BEAT, Scene: LendScene, needs: "lend" },
+  { id: "chat", entry: "chat", length: 3 * BAR, still: 7 * BEAT, Scene: ChatScene, needs: "chat" },
+  { id: "byName", entry: "network", length: 3 * BAR, still: 8 * BEAT, Scene: NameScene, needs: "byName" },
+  { id: "builder", entry: "look", length: 3 * BAR, still: 7 * BEAT, Scene: BuilderScene, needs: "builder" },
+  { id: "profile", entry: "account", length: 2 * BAR, still: 5 * BEAT, Scene: ProfileScene, needs: "profile" },
   { id: "history", entry: "history", length: 3 * BAR, still: 4 * BEAT + 10, Scene: HistoryScene },
   { id: "about", entry: "about", length: 2 * BAR, still: 4 * BEAT + 10, Scene: AboutScene },
 ];
 
+/** The steps this box gets: the six every box has, and each other one only where its feature is. */
+export function scenesFor(features: BoxFeatures): readonly SceneDef[] {
+  return SCENES.filter((scene) => scene.needs === undefined || features[scene.needs]);
+}
 
-/** The scene at `index`, clamped into the list. */
-export function sceneAt(index: number): SceneDef {
-  const first = SCENES[0] as SceneDef;
-  return SCENES[Math.min(SCENES.length - 1, Math.max(0, index))] ?? first;
+/** How many steps the tour on screen has, for the About scene's picture of the tour itself. */
+export const TourLength = React.createContext(SCENES.length);
+
+/** The scene at `index` of `scenes`, clamped into the list. */
+export function sceneAt(scenes: readonly SceneDef[], index: number): SceneDef {
+  const first = scenes[0] as SceneDef;
+  return scenes[Math.min(scenes.length - 1, Math.max(0, index))] ?? first;
 }

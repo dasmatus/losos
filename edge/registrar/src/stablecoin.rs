@@ -707,6 +707,86 @@ pub async fn forward_rpc(
         .map_err(|_| MarketError::Conflict("the chain endpoint did not answer JSON"))
 }
 
+/// The pseudo-method a wallet sends through the ENS relay when a lookup
+/// asks for an offchain answer (EIP-3668). Not a node method: the edge
+/// answers it from [`ENS_DNS_GATEWAY`].
+pub const ENS_CCIP_METHOD: &str = "ens_ccipRead";
+
+/// The one gateway the relay asks: ENS's own, which `OffchainDNSResolver`
+/// names for every DNS name (`mattbox.boxes.losos.dasmat.us` and an
+/// owner's domain alike). It answers with DNSSEC proofs the contract checks
+/// itself, so the gateway is not trusted with the answer.
+pub const ENS_DNS_GATEWAY: &str = "https://dnssec-oracle.ens.domains/";
+
+/// The calldata a resolver hands the gateway: a DNS name and a query, a few
+/// hundred bytes.
+const MAX_CCIP_DATA: usize = 16 * 1024;
+
+fn hex_bytes(s: &str, max: usize) -> bool {
+    s.strip_prefix("0x").is_some_and(|h| {
+        h.len() % 2 == 0 && h.len() <= max * 2 && h.bytes().all(|b| b.is_ascii_hexdigit())
+    })
+}
+
+/// Ask `gateway` for one offchain answer: `params` is `[sender, data]`, as
+/// the resolver's `OffchainLookup` revert gave them. The reply is shaped as a
+/// JSON-RPC object whose result is the gateway's `data`, so a wallet's
+/// transport reads it like any relayed call.
+///
+/// # Errors
+/// Params that are not an address and calldata, or a gateway that does not
+/// answer hex.
+pub async fn forward_ccip(gateway: &str, params: &Value, id: &Value) -> Result<Value, MarketError> {
+    let (Some(sender), Some(data)) = (
+        params.get(0).and_then(Value::as_str),
+        params.get(1).and_then(Value::as_str),
+    ) else {
+        return Err(MarketError::Invalid(
+            "an offchain lookup is a sender and its calldata",
+        ));
+    };
+    if params.as_array().map_or(0, Vec::len) != 2 || !hex_bytes(sender, 20) || sender.len() != 42 {
+        return Err(MarketError::Invalid("the sender is not an address"));
+    }
+    if !hex_bytes(data, MAX_CCIP_DATA) {
+        return Err(MarketError::Invalid("the lookup's calldata is not hex"));
+    }
+    let client = reqwest::Client::builder()
+        .timeout(RPC_TIMEOUT * 2)
+        .build()
+        .map_err(|_| MarketError::Unconfigured)?;
+    let mut response = client
+        .post(gateway)
+        .json(&json!({ "sender": sender.to_ascii_lowercase(), "data": data }))
+        .send()
+        .await
+        .map_err(|_| MarketError::Conflict("the name gateway did not answer"))?;
+    if !response.status().is_success() {
+        return Err(MarketError::Conflict("the name gateway refused the lookup"));
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| MarketError::Conflict("the name gateway did not answer"))?
+    {
+        if bytes.len() + chunk.len() > MAX_RPC_REPLY {
+            return Err(MarketError::Conflict("the name gateway answered too much"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let reply: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| MarketError::Conflict("the name gateway did not answer JSON"))?;
+    match reply.get("data").and_then(Value::as_str) {
+        Some(answer) if hex_bytes(answer, MAX_RPC_REPLY) => Ok(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": answer,
+        })),
+        _ => Err(MarketError::Conflict("the name gateway did not answer hex")),
+    }
+}
+
 /// The receipt object, or a conflict when it is not mined yet. Errors do not
 /// carry the RPC URL.
 pub async fn fetch_receipt(rpc_url: &str, tx: &str) -> Result<Value, MarketError> {
@@ -1258,7 +1338,7 @@ pub(crate) fn decode_hex(raw: &str) -> Option<Vec<u8>> {
 /// Sign `message` the way a wallet's `personal_sign` does. Tests only: the
 /// registrar never holds a key, so this is not available outside the suite.
 #[cfg(test)]
-fn sign_personal(secret: &[u8; 32], message: &[u8]) -> String {
+pub(crate) fn sign_personal(secret: &[u8; 32], message: &[u8]) -> String {
     let key = SigningKey::from_bytes(secret.into()).expect("key");
     let (signature, recid) = key.sign_prehash_recoverable(&personal_sign_hash(message));
     let mut bytes = [0u8; 65];
@@ -1280,6 +1360,80 @@ mod tests {
     fn address_of_key() -> String {
         let key = SigningKey::from_bytes((&key()).into()).unwrap();
         address_of(&VerifyingKey::from(&key))
+    }
+
+    /// A stand-in for ENS's gateway: it answers `0x` + the sender's last
+    /// byte twice, or with `reply` when one is given.
+    async fn gateway(reply: Option<Value>) -> String {
+        use axum::{routing::post, Json, Router};
+        let app = Router::new().route(
+            "/",
+            post(move |Json(body): Json<Value>| {
+                let reply = reply.clone();
+                async move {
+                    Json(reply.unwrap_or_else(|| {
+                        let sender = body["sender"].as_str().unwrap_or_default();
+                        let data = body["data"].as_str().unwrap_or_default();
+                        json!({ "data": format!("0x{}{}", &sender[40..], &data[2..]) })
+                    }))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        url
+    }
+
+    #[tokio::test]
+    async fn an_offchain_lookup_goes_to_the_gateway_and_back_as_rpc() {
+        let url = gateway(None).await;
+        let sender = "0xF142B308cF687d4358410a4cB885513b30A42025";
+        let reply = forward_ccip(&url, &json!([sender, "0xabcd"]), &json!(7))
+            .await
+            .unwrap();
+        // The gateway saw the sender in lowercase and the calldata as sent.
+        assert_eq!(
+            reply,
+            json!({ "jsonrpc": "2.0", "id": 7, "result": "0x25abcd" })
+        );
+    }
+
+    #[tokio::test]
+    async fn an_offchain_lookup_is_an_address_and_calldata() {
+        let url = gateway(None).await;
+        let sender = "0xf142b308cf687d4358410a4cb885513b30a42025";
+        for params in [
+            json!([]),
+            json!([sender]),
+            json!([sender, "0xab", "extra"]),
+            json!(["0x1234", "0xab"]),
+            json!([sender, "abcd"]),
+            json!([sender, "0xabc"]),
+            json!([sender, "0xzz"]),
+            json!([sender, format!("0x{}", "00".repeat(MAX_CCIP_DATA + 1))]),
+            json!({ "sender": sender, "data": "0x" }),
+        ] {
+            let err = forward_ccip(&url, &params, &json!(1)).await.unwrap_err();
+            assert!(matches!(err, MarketError::Invalid(_)), "{params}: {err:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_gateway_answer_that_is_not_hex_is_refused() {
+        let sender = "0xf142b308cf687d4358410a4cb885513b30a42025";
+        for reply in [json!({}), json!({ "data": "nope" }), json!({ "data": 5 })] {
+            let url = gateway(Some(reply.clone())).await;
+            let err = forward_ccip(&url, &json!([sender, "0x00"]), &json!(1))
+                .await
+                .unwrap_err();
+            assert!(matches!(err, MarketError::Conflict(_)), "{reply}: {err:?}");
+        }
+        // Nothing listening.
+        let err = forward_ccip("http://127.0.0.1:9/", &json!([sender, "0x00"]), &json!(1))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, MarketError::Conflict(_)));
     }
 
     /// The calls viem makes to send a transaction and wait for its receipt,

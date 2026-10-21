@@ -33,6 +33,8 @@ directories listed in `modules/impermanence.nix` survive, on an encrypted
   hosting other boxes' machines.
 - [AI models](ai-models.md). Lending memory to models split across boxes,
   and paying for their answers by the token.
+- [App format](app-format.md). One Compose file per app, run as notshared on
+  rootless Podman: what the box does to it and how to install one.
 - [Widget builder](widget-builder.md). A language model on the box writes a
   widget from a description.
 - [Master proxy](master-proxy.md). Reaching the box from the internet without
