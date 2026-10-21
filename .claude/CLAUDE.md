@@ -199,6 +199,17 @@ and is never served or built by nix.
   repeating answer is cut off) and gives the model one turn to fix what it
   found. The system prompt is `backend/src/builder-prompt.md`. No edge, no
   key, no charge.
+- `inference-lend.nix` (box, `losos.inference.lend.*`) + `edge-inference.nix`
+  (edge, `losos.edge.inference.*`) + `edge/registrar/src/{inference,meter}.rs`
+  + `market/taps.rs`: AI models split across boxes. A lending box runs
+  `ggml-rpc-server -d CPU` (the default device is BLAS, which crashes) as
+  `shared` on loopback, reached only by root through a second rathole
+  service `<id>-llm`. The registrar groups lenders until a model fits and
+  runs one `losos-llm-head@<group>` llama-server per group; it counts the
+  tokens itself and bills them through escrow taps (a USDC balance per
+  buyer, one rate-capped tap per seller, a one-hour head start, a 48 h
+  withdrawal notice). The Market pane is `ai-models.tsx`.
+  `nix/tests/inference-lend.nix` and `inference-payg.nix` boot it.
 - `updates.nix`: `system.autoUpgrade` at 03:00 from `losos.upgradeFlakeUri`
   (default `git+file:///etc/nixos#install`, set a `github:` URI to really
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot
