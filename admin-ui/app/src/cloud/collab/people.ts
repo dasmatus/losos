@@ -1,54 +1,30 @@
-/* A person's colour and initials, the same on every page that shows them.
- *
- * Six colours (tokens.css, `--person-<accent>`). Until someone picks one,
- * their name picks it, so the same person has the same colour in a row of
- * faces, beside their cursor and on every box that shows them. */
+/* A person's colour, the same on every page that shows them
+ * (docs/profiles.md): the one in their profile when their box can say, else
+ * the one their sign-in name gives, worked out the way lososd does, so a
+ * person from another box has the colour their own box shows. */
 
-export const ACCENTS = ["teal", "blue", "violet", "rose", "amber", "green"] as const;
-export type Accent = (typeof ACCENTS)[number];
+import { ACCENTS, type Accent } from "@/lib/api";
 
-/** The colour a name gives: FNV-1a over its UTF-16 units. */
+export { ACCENTS, type Accent };
+
+/** The colour a sign-in name gives: FNV-1a over its UTF-8 bytes, as
+ *  `Accent::of_name` in backend/src/profiles.rs. */
 export function accentFor(name: string): Accent {
   let h = 0x811c9dc5;
-  for (let i = 0; i < name.length; i++) {
-    h ^= name.charCodeAt(i);
+  for (const byte of new TextEncoder().encode(name)) {
+    h ^= byte;
     h = Math.imul(h, 0x01000193) >>> 0;
   }
   return ACCENTS[h % ACCENTS.length] ?? "teal";
 }
 
-/** The first letter of the first and last word. */
-export function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  const first = words[0]?.[0] ?? "?";
-  const last = words.length > 1 ? (words[words.length - 1]?.[0] ?? "") : "";
-  return (first + last).toUpperCase();
+/** The sign-in name in an address: `eva` in `eva@kitchenbox.local`. */
+export function nameOf(address: string): string {
+  const at = address.lastIndexOf("@");
+  return at < 0 ? address : address.slice(0, at);
 }
 
-/* Static class names, so Tailwind finds every one. */
-export const STRONG: Record<Accent, string> = {
-  teal: "text-[var(--person-teal)]",
-  blue: "text-[var(--person-blue)]",
-  violet: "text-[var(--person-violet)]",
-  rose: "text-[var(--person-rose)]",
-  amber: "text-[var(--person-amber)]",
-  green: "text-[var(--person-green)]",
-};
-
-export const WASH: Record<Accent, string> = {
-  teal: "bg-[var(--person-teal-wash)]",
-  blue: "bg-[var(--person-blue-wash)]",
-  violet: "bg-[var(--person-violet-wash)]",
-  rose: "bg-[var(--person-rose-wash)]",
-  amber: "bg-[var(--person-amber-wash)]",
-  green: "bg-[var(--person-green-wash)]",
-};
-
-export const RING: Record<Accent, string> = {
-  teal: "ring-[var(--person-teal)]",
-  blue: "ring-[var(--person-blue)]",
-  violet: "ring-[var(--person-violet)]",
-  rose: "ring-[var(--person-rose)]",
-  amber: "ring-[var(--person-amber)]",
-  green: "ring-[var(--person-green)]",
-};
+/** The box in an address: `kitchenbox.local` in `eva@kitchenbox.local`. */
+export function boxOf(address: string): string {
+  return address.slice(address.lastIndexOf("@") + 1);
+}

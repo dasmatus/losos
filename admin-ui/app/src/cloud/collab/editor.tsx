@@ -113,6 +113,7 @@ export function CollabEditor({
   meRef.current = me;
   const extra = React.useRef(extensions);
   extra.current = extensions;
+  const awarenessRef = React.useRef<WebsocketProvider["awareness"] | null>(null);
 
   React.useEffect(() => {
     const host = hostRef.current;
@@ -128,6 +129,7 @@ export function CollabEditor({
     });
     const awareness = provider.awareness;
     awareness.setLocalStateField("user", meRef.current);
+    awarenessRef.current = awareness;
 
     const status = ({ status }: { status: string }) => {
       if (status === "connected") return;
@@ -199,10 +201,17 @@ export function CollabEditor({
       view.destroy();
       doc.destroy();
       viewRef.current = null;
+      awarenessRef.current = null;
       delete host.dataset["ready"];
     };
     // The editor is for one file; the page keys it by file and share.
   }, [file, share, label, placeholderText]);
+
+  // A profile read after the editor opened: the others see the new colour
+  // and picture at once.
+  React.useEffect(() => {
+    awarenessRef.current?.setLocalStateField("user", me);
+  }, [me]);
 
   React.useEffect(() => {
     viewRef.current?.dispatch({
