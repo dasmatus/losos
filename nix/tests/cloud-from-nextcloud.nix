@@ -21,6 +21,19 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
   adminPass = "Nextcloud-Admin-Pass-1";
+  # Pictures of the move for the pull request: Nextcloud's pages before,
+  # LosOS Cloud's after, from a browser on the box itself.
+  shots = pkgs.writeShellScriptBin "cloud-move-shots" ''
+    export PLAYWRIGHT_CORE=${pkgs.playwright-driver}/index.mjs
+    export PLAYWRIGHT_BROWSERS_PATH=${
+      pkgs.playwright-driver.browsers.override {
+        withFirefox = false;
+        withWebkit = false;
+      }
+    }
+    export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
+    exec ${pkgs.nodejs}/bin/node ${./cloud-move-shots.mjs} "$@"
+  '';
 in
 
 pkgs.testers.nixosTest {
@@ -85,9 +98,12 @@ pkgs.testers.nixosTest {
       pkgs.jq
       pkgs.curl
       pkgs.nextcloud-client
+      shots
     ];
+    fonts.packages = [ pkgs.dejavu_fonts ];
     virtualisation = {
-      memorySize = 3072;
+      # Nextcloud, Postgres and Chromium at once.
+      memorySize = 4096;
       cores = 2;
       diskSize = 6144;
     };
@@ -211,6 +227,12 @@ pkgs.testers.nixosTest {
         assert len(app_password) == 72, app_password
         nc(("notshared", app_password), "PROPFIND", f"{dav}/", "-H 'Depth: 0'")
 
+    with subtest("the pictures: Nextcloud as the owner left it"):
+        # The welcome slides would cover the first picture.
+        box.succeed(f"{occ} app:disable firstrunwizard || true")
+        box.succeed(f"cloud-move-shots nextcloud /tmp/shots/before notshared '${adminPass}'")
+        box.copy_from_machine("/tmp/shots/before", "shots")
+
     with subtest("the nightly switch: Nextcloud and Postgres go, LosOS Cloud comes"):
         box.succeed("/run/current-system/specialisation/after/bin/switch-to-configuration test")
         box.wait_for_unit("losos-cloud.service")
@@ -304,5 +326,24 @@ pkgs.testers.nixosTest {
         )
         box.succeed("cmp /tmp/sync/Photos/IMG_2041.jpg /tmp/photo.jpg")
         box.succeed("test -f /tmp/sync/Notes/Shopping.md")
+
+    with subtest("the pictures: the same files and trash in LosOS Cloud"):
+        # The owner claims the box, and LosOS Login opens LosOS Cloud for
+        # them as `notshared`, the account Nextcloud's files moved into.
+        # From the box's LAN address: the admin routes refuse loopback.
+        lan = box.succeed("ip -4 -o addr show eth0 | awk '{print $4}' | cut -d/ -f1").strip()
+        box.wait_until_succeeds(
+            f"curl -sfk --resolve mattbox.local:443:{lan} https://mattbox.local/api/setup/claim | jq -e .ready",
+            timeout=600,
+        )
+        box.succeed(
+            f"curl -sfk --resolve mattbox.local:443:{lan} -X POST https://mattbox.local/api/setup/claim"
+            " -H 'Content-Type: application/json'"
+            " -d '{\"name\": \"matus\", \"password\": \"Correct-Horse-Battery-9\"}'"
+        )
+        box.wait_for_unit("authelia-losos.service")
+        box.wait_for_open_port(9091)
+        box.succeed(f"cloud-move-shots cloud /tmp/shots/after matus 'Correct-Horse-Battery-9' {lan}")
+        box.copy_from_machine("/tmp/shots/after", "shots")
   '';
 }
