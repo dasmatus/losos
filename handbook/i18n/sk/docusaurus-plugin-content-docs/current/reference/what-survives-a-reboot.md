@@ -17,6 +17,7 @@ ich miesto:
 | `/nix`                     | Samotný systém, každá verzia ponechaná pre bootovacie menu            |
 | `/etc/nixos`               | Vlastný opis zariadenia: jeho disky, režim firmvéru, režim odomykania, vaše nastavenia |
 | `/etc/keys`                | Záložná kópia kľúča disku                                             |
+| `/etc/credstore.encrypted` | Vlastné tajomstvá zariadenia, každé zapečatené preň ([Prihlasovacie údaje](credentials.md)) |
 | `/etc/ssh`                 | Kľúče hostiteľa, ktoré zariadenie identifikujú. SSH server nebeží.    |
 | `/etc/rancher`             | Heslo uzla pre členstvo v mesh sieti                                  |
 | `/etc/machine-id`          | Identita zariadenia                                                   |

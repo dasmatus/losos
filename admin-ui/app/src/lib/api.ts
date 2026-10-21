@@ -6,8 +6,9 @@
  * lososd binds 127.0.0.1:8082; the front Nginx vhost proxies /api/* to it, so
  * from the browser everything is same-origin and relative. Every route except
  * /api/health wants `Authorization: Bearer <token>`, where the token is 64
- * lowercase hex characters lososd minted into /var/secrets/losos-admin-token
- * on first start. The user reads it off the box and pastes it in.
+ * lowercase hex characters the box made at first boot and keeps sealed as its
+ * `admin-token` credential (modules/credentials.nix). The owner is shown it
+ * once, at the claim, and pastes it in.
  *
  * Token storage is sessionStorage under 'losos-token' — the same key the old
  * plain-JS admin pages used, so a token pasted before an upgrade still works

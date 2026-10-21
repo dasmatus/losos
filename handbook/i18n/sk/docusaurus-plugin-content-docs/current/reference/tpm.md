@@ -35,9 +35,12 @@ Inštalátor vytvorí náhodný kľúč, naformátuje ním zväzok a potom kľú
 zapečatí do TPM pomocou `systemd-cryptenroll`. Pri štarte si initrd vypýta
 kľúč od čipu a otvorí zväzok. Bootovací oddiel nenesie žiadne tajomstvo.
 
-Zariadenie do čipu zapečatí aj menšie tajomstvo:
+Zariadenie do čipu zapečatí aj menšie tajomstvá:
 
 - Kľúč, ktorý šifruje adresár úložiska pre mesh (`modules/fscrypt.nix`).
+- Každé tajomstvo vo svojom úložisku prihlasovacích údajov: náhradný kľúč,
+  kľúče LosOS Login a kľúče bucketu na zálohy (pozrite
+  [Prihlasovacie údaje](credentials.md)).
 
 :::note[Záložná kópia kľúča]
 Kópia diskového kľúča zostáva aj vnútri šifrovaného zväzku na

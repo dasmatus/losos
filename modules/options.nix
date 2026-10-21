@@ -966,7 +966,8 @@ in
 
     cloud.mesh.name = lib.mkOption {
       type = lib.types.str;
-      default = if config.losos.proxy.enable then config.losos.proxy.hostname else "${config.losos.hostName}.local";
+      default =
+        if config.losos.proxy.enable then config.losos.proxy.hostname else "${config.losos.hostName}.local";
       defaultText = lib.literalExpression ''if config.losos.proxy.enable then config.losos.proxy.hostname else "''${config.losos.hostName}.local"'';
       description = ''
         The name other boxes reach this one by, the part after the @ in
@@ -1454,8 +1455,10 @@ in
       type = secretPath;
       default = "/var/secrets/losos-admin-token";
       description = ''
-        Bearer token for the admin API; created randomly with mode 0600 by
-        lososd on first start if absent. Persisted via /var.
+        Where an older build kept the Bearer token for the admin API. The
+        token is now the `admin-token` credential (modules/credentials.nix):
+        made at first boot, sealed in /etc/credstore.encrypted, and adopted
+        from this file, which is then deleted, on a box that had one.
       '';
     };
 

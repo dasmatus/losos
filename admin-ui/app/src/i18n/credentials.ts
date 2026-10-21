@@ -76,7 +76,7 @@ export default defineMessages({
   // ── A new value ─────────────────────────────────────────────────────────
   "credentials.rotate.button": { en: "Make new", sk: "Vytvoriť nový", de: "Neu erzeugen" },
   "credentials.rotate.title": {
-    en: "Make a new {name}?",
+    en: "Make a new value for {name}?",
     sk: "Vytvoriť nový údaj: {name}?",
     de: "Neu erzeugen: {name}?",
   },
@@ -88,7 +88,7 @@ export default defineMessages({
   "credentials.rotate.keep": { en: "Keep it", sk: "Ponechať", de: "Behalten" },
   "credentials.rotate.confirm": { en: "Make a new one", sk: "Vytvoriť nový", de: "Neu erzeugen" },
   "credentials.rotated": {
-    en: "Made a new {name}.",
+    en: "Made a new value for {name}.",
     sk: "Vytvorený nový údaj: {name}.",
     de: "Neu erzeugt: {name}.",
   },

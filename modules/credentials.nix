@@ -216,10 +216,12 @@ let
   # Each secret in its own script: `set -e` is ignored inside anything on
   # the left of `||`, and one secret that fails must not leave the next one
   # unsealed.
-  ensureScript = e: pkgs.writeShellScript "losos-credential-${e.name}" ''
-    set -euo pipefail
-    ${ensure e}
-  '';
+  ensureScript =
+    e:
+    pkgs.writeShellScript "losos-credential-${e.name}" ''
+      set -euo pipefail
+      ${ensure e}
+    '';
 
   unit = u: if lib.hasInfix "." u then u else "${u}.service";
 
@@ -230,14 +232,15 @@ in
 {
   config = lib.mkMerge [
     {
-      assertions = map (e: {
-        assertion = builtins.match "[a-z0-9][a-z0-9-]*" e.name != null;
-        message = "losos.credentials.entries.${e.name}: a credential name is lowercase letters, digits and dashes.";
-      }) entries
-      ++ map (e: {
-        assertion = e.rotate -> (e.format != null && e.format != "rsa-2048");
-        message = "losos.credentials.entries.${e.name}: only a credential the box makes (`format` set) can be made new.";
-      }) entries;
+      assertions =
+        map (e: {
+          assertion = builtins.match "[a-z0-9][a-z0-9-]*" e.name != null;
+          message = "losos.credentials.entries.${e.name}: a credential name is lowercase letters, digits and dashes.";
+        }) entries
+        ++ map (e: {
+          assertion = e.rotate -> (e.format != null && e.format != "rsa-2048");
+          message = "losos.credentials.entries.${e.name}: only a credential the box makes (`format` set) can be made new.";
+        }) entries;
 
       environment.etc."losos/credentials.json".text = builtins.toJSON registry;
 

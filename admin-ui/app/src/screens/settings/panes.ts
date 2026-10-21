@@ -237,24 +237,6 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "lock down",
     "safe",
   ]),
-  /* Credentials right after Security: the protections an owner turns on,
-   * then the secrets the box keeps behind them. */
-  pane("credentials", LockPasswordIcon, [
-    "credential",
-    "credentials",
-    "secret",
-    "secrets",
-    "password",
-    "passwords",
-    "key",
-    "keys",
-    "token",
-    "tpm",
-    "sealed",
-    "encrypted",
-    "rotate",
-    "systemd-creds",
-  ]),
   /* Your account sits before Users: a person's own name, password and
    * second factors, then everyone's. Shown to a person signed in to a box
    * that signs people in itself, never to the spare key (`paneOpen`). */
@@ -317,6 +299,24 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "cli",
     "ssh",
     "losos",
+  ]),
+  /* Credentials right after Access tokens: the ways into the box, then the
+   * secrets the box keeps for itself. */
+  pane("credentials", LockPasswordIcon, [
+    "credential",
+    "credentials",
+    "secret",
+    "secrets",
+    "password",
+    "passwords",
+    "key",
+    "keys",
+    "token",
+    "tpm",
+    "sealed",
+    "encrypted",
+    "rotate",
+    "systemd-creds",
   ]),
   /* Advanced and History sit between Security and About: every option,
    * then the record of every change. Advanced carries the long tail an
