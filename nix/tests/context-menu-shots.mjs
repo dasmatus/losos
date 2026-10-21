@@ -176,19 +176,20 @@ async function desktop(scheme) {
   await close(page);
 
   if (!before && scheme === "light") {
-    // F2 renames and Delete deletes what is picked, as the menu says.
-    await page.reload();
-    await page.waitForSelector('[data-entry="old notes.txt"]');
-    await page.getByRole("checkbox", { name: "Select old notes.txt" }).check();
+    // F2 renames and Delete deletes what is picked, as the menu says. In a
+    // folder no picture shows, so every picture has the same files.
+    await page.goto(`${base}/cloud/files/Music`);
+    await page.waitForSelector('[data-entry="playlist.m3u"]');
+    await page.getByRole("checkbox", { name: "Select playlist.m3u" }).check();
     await page.keyboard.press("F2");
     const dialog = page.locator("dialog[open]");
     await dialog.waitFor();
-    await dialog.locator("input").fill("older notes.txt");
+    await dialog.locator("input").fill("old playlist.m3u");
     await dialog.locator("input").press("Enter");
-    await page.waitForSelector('[data-entry="older notes.txt"]');
-    await page.getByRole("checkbox", { name: "Select older notes.txt" }).check();
+    await page.waitForSelector('[data-entry="old playlist.m3u"]');
+    await page.getByRole("checkbox", { name: "Select old playlist.m3u" }).check();
     await page.keyboard.press("Delete");
-    await page.waitForSelector('[data-entry="older notes.txt"]', { state: "detached" });
+    await page.waitForSelector('[data-entry="old playlist.m3u"]', { state: "detached" });
   }
 
   await page.goto(`${base}/cloud/files`);

@@ -144,8 +144,8 @@ pkgs.testers.nixosTest {
         laptop.succeed(f"context-menu-shots {BASE} matus '{PASSWORD}' /tmp/shots/after --ca {CA}")
         laptop.copy_from_machine("/tmp/shots/after", "shots")
         # F2 renamed and Delete trashed a file through the page.
-        box.succeed("find /var/lib/losos-cloud -path '*trash*' -name 'older notes.txt*' | grep -q .")
-        box.fail("find /var/lib/losos-cloud -path '*files*' -name 'old notes.txt' | grep -q .")
+        box.succeed("find /var/lib/losos-cloud -path '*trash*' -name 'old playlist.m3u*' | grep -q .")
+        box.fail("find /var/lib/losos-cloud -path '*files*' -name '*playlist.m3u' | grep -q .")
   ''
   + lib.optionalString (beforeUi != null) ''
 
