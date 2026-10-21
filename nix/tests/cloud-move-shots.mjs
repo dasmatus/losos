@@ -39,6 +39,9 @@ const context = await browser.newContext({
   ignoreHTTPSErrors: true,
 });
 const page = await context.newPage();
+// Nextcloud's first page load under emulation takes minutes, not seconds.
+page.setDefaultTimeout(600_000);
+page.setDefaultNavigationTimeout(600_000);
 // LosOS Cloud's page may not throw; Nextcloud's is shown as it was.
 const errors = [];
 if (which === "cloud") page.on("pageerror", (e) => errors.push(String(e)));
@@ -47,7 +50,7 @@ async function take(file) {
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => document.fonts.ready.then(() => true));
   await page.waitForTimeout(800);
-  await page.screenshot({ path: join(out, file) });
+  await page.screenshot({ path: join(out, file), timeout: 600_000 });
   console.log(file);
 }
 
