@@ -19,15 +19,8 @@ use serde_json::{json, Value};
 
 /// How many pins the sidebar keeps. A sidebar of more is a second app grid.
 pub const MAX_PINS: usize = 24;
-/// Longest LosOS cloud path a pin takes, in bytes.
-pub const MAX_PATH_BYTES: usize = 1024;
 /// Longest catalogue id of a LosOS cloud app.
 pub const MAX_APP_ID_CHARS: usize = 24;
-/// Longest owner or repository name on LosOS Git (Forgejo's own limit).
-pub const MAX_REPO_PART_CHARS: usize = 100;
-/// Longest release name of an installed app, as lososd's `apps.rs` names
-/// them: the namespace prefix still has to fit a DNS label.
-pub const MAX_RELEASE_CHARS: usize = 40;
 
 /// One thing on the sidebar.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -118,7 +111,7 @@ pub fn validate_pin(pin: &Pin) -> anyhow::Result<()> {
             }
         }
         Pin::App { release } => {
-            if !release_name(release) {
+            if !losos_names::release(release) {
                 return invalid("That is not the name of an installed app.");
             }
         }
@@ -132,7 +125,7 @@ pub fn validate_pin(pin: &Pin) -> anyhow::Result<()> {
             }
         }
         Pin::Repo { owner, name } => {
-            if !repo_part(owner) || !repo_part(name) {
+            if !losos_names::repo_part(owner) || !losos_names::repo_part(name) {
                 return invalid("That is not a repository on LosOS Git.");
             }
         }
@@ -140,44 +133,10 @@ pub fn validate_pin(pin: &Pin) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// A release name as lososd's `apps::validate_release` takes it: small
-/// letters, digits and dashes, a letter first, no dash last.
-fn release_name(name: &str) -> bool {
-    !name.is_empty()
-        && name.len() <= MAX_RELEASE_CHARS
-        && name.starts_with(|c: char| c.is_ascii_lowercase())
-        && !name.ends_with('-')
-        && name
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-}
-
-fn repo_part(part: &str) -> bool {
-    !part.is_empty()
-        && part != "."
-        && part != ".."
-        && part.chars().count() <= MAX_REPO_PART_CHARS
-        && part
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-}
-
 /// A path inside LosOS cloud: from the top (`/`), no empty, `.` or `..`
 /// part, nothing that is not printable.
 pub fn validate_path(path: &str) -> anyhow::Result<()> {
-    if !path.starts_with('/') || path.len() > MAX_PATH_BYTES {
-        return invalid("That is not a folder in LosOS cloud.");
-    }
-    if path == "/" {
-        return Ok(());
-    }
-    let ok = path
-        .trim_end_matches('/')
-        .split('/')
-        .skip(1)
-        .all(|part| !part.is_empty() && part != "." && part != ".." && !part.contains(['\\']))
-        && !path.chars().any(char::is_control);
-    if ok {
+    if losos_names::cloud_path(path) {
         Ok(())
     } else {
         invalid("That is not a folder in LosOS cloud.")

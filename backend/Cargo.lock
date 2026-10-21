@@ -2106,6 +2106,7 @@ dependencies = [
  "curve25519-dalek 5.0.0",
  "futures-core",
  "losos-access",
+ "losos-names",
  "losos-widget",
  "predicates",
  "ring",
@@ -2123,6 +2124,10 @@ dependencies = [
  "zbus",
  "zip",
 ]
+
+[[package]]
+name = "losos-names"
+version = "0.1.0"
 
 [[package]]
 name = "losos-widget"

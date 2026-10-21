@@ -29,10 +29,6 @@ use crate::setup::Secret;
 use serde::Serialize;
 use serde_json::{json, Value};
 
-/// Longest LosOS cloud path a listing takes, in bytes.
-pub const MAX_PATH_BYTES: usize = 1024;
-/// Longest owner or repository name on LosOS Git (Forgejo's own limit).
-pub const MAX_REPO_PART_CHARS: usize = 100;
 /// Most entries one folder listing returns; the rest are left out and the
 /// answer says so.
 pub const MAX_ENTRIES: usize = 500;
@@ -55,32 +51,10 @@ fn invalid<T>(message: impl Into<String>) -> anyhow::Result<T> {
     Err(anyhow::Error::new(Invalid(message.into())))
 }
 
-fn repo_part(part: &str) -> bool {
-    !part.is_empty()
-        && part != "."
-        && part != ".."
-        && part.chars().count() <= MAX_REPO_PART_CHARS
-        && part
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-}
-
 /// A path inside LosOS cloud: from the top (`/`), no empty, `.` or `..`
 /// part, nothing that is not printable.
 pub fn validate_path(path: &str) -> anyhow::Result<()> {
-    if !path.starts_with('/') || path.len() > MAX_PATH_BYTES {
-        return invalid("That is not a folder in LosOS cloud.");
-    }
-    if path == "/" {
-        return Ok(());
-    }
-    let ok = path
-        .trim_end_matches('/')
-        .split('/')
-        .skip(1)
-        .all(|part| !part.is_empty() && part != "." && part != ".." && !part.contains(['\\']))
-        && !path.chars().any(char::is_control);
-    if ok {
+    if losos_names::cloud_path(path) {
         Ok(())
     } else {
         invalid("That is not a folder in LosOS cloud.")
@@ -153,7 +127,7 @@ pub fn parse_repos(doc: &Value) -> Vec<Value> {
         .filter_map(|r| {
             let name = r.get("name")?.as_str()?;
             let owner = r.get("owner")?.get("login")?.as_str()?;
-            if !repo_part(owner) || !repo_part(name) {
+            if !losos_names::repo_part(owner) || !losos_names::repo_part(name) {
                 return None;
             }
             Some(json!({

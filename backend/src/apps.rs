@@ -58,8 +58,9 @@ pub const NAMESPACE_PREFIX: &str = "losos-app-";
 pub const RELEASE_LABEL: &str = "losos.app/release";
 
 /// Longest app name. A DNS label is 63 characters and the namespace adds the
-/// prefix; Helm wants a release name of 53 at most.
-pub const MAX_RELEASE_CHARS: usize = 40;
+/// prefix; Helm wants a release name of 53 at most. The pins plugin takes the
+/// same names, so the rule lives in `losos-names`.
+pub use losos_names::MAX_RELEASE_CHARS;
 
 /// Largest values document from the property form, encoded.
 pub const MAX_VALUES_BYTES: usize = 64 * 1024;
@@ -239,14 +240,7 @@ pub struct ChartFiles {
 
 /// A release name: a DNS label, short enough for the namespace prefix.
 pub fn validate_release(name: &str) -> anyhow::Result<()> {
-    let ok = !name.is_empty()
-        && name.len() <= MAX_RELEASE_CHARS
-        && name.starts_with(|c: char| c.is_ascii_lowercase())
-        && !name.ends_with('-')
-        && name
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
-    if ok {
+    if losos_names::release(name) {
         Ok(())
     } else {
         invalid(format!(
