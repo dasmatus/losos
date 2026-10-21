@@ -950,7 +950,23 @@ let
     ++ uplinkArgs
     ++ accessArgs
     ++ manageArgs
+    ++ inferenceArgs
   );
+
+  # Models split across boxes (losos.edge.inference,
+  # modules/edge-inference.nix): the catalogue, the loopback ports the
+  # lending boxes' RPC tunnels are bound on, and where the registrar writes
+  # each head's environment and finds its socket.
+  inferenceArgs = lib.optionals cfg.inference.enable [
+    "--inference-models"
+    "/etc/losos/inference-models.json"
+    "--llm-port-range"
+    "${toString cfg.inference.portRange.from}-${toString cfg.inference.portRange.to}"
+    "--llm-env-dir"
+    "/run/losos-llm-env"
+    "--llm-socket-dir"
+    "/run/losos-llm-heads"
+  ];
 
   # The page boxes are managed from (losos.edge.manage, server/manage.rs in
   # the registrar). The key is made by the registrar on its first start.
