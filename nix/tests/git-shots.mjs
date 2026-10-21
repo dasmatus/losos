@@ -280,6 +280,10 @@ const context = await browser.newContext({
   reducedMotion: "reduce",
 });
 const page = await context.newPage();
+// An emulated laptop at 2x renders slowly: Playwright's 30 s default is
+// too short for a locator or a navigation under TCG.
+page.setDefaultTimeout(180_000);
+page.setDefaultNavigationTimeout(180_000);
 await signIn(page, base, name, password);
 // What the admin page itself logs on a plain load (sonner's stylesheet,
 // which the box's style-src 'self' refuses and the bundle carries instead,
