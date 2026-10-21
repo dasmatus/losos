@@ -105,7 +105,8 @@ try {
     await page.waitForTimeout(shot.settle ?? 500);
     if (errors.length > 0) throw new Error(`${shot.name}: the page threw: ${errors.join('; ')}`);
     const path = join(args.out, `${shot.name}.png`);
-    await page.screenshot({ path, fullPage: shot.fullPage ?? false });
+    // Under TCG a busy page can take more than Playwright's 30 s to paint.
+    await page.screenshot({ path, fullPage: shot.fullPage ?? false, timeout: 180000 });
     console.log(`captured ${path}`);
     await page.close();
   }
