@@ -90,13 +90,6 @@ let
       imageName = name;
       imageTag = "test";
     };
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
 
   # Public DNS as ENS's gateway sees it, in stand-in: a DNS-over-HTTPS JSON
   # endpoint on the edge that answers for the zone only once the parent has
@@ -256,8 +249,6 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = lososPkgs.losos-admin-ui;
-          nextcloud.mode = "container";
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
           workloads.forgejoImage = standIn "losos-forgejo-stand-in";
           proxy = {
             enable = true;
@@ -272,11 +263,9 @@ pkgs.testers.nixosTest {
         security.pki.certificateFiles = [ "${fixture}/ca.pem" ];
         networking.hosts.${nodes.edge.networking.primaryIPAddress} = [ edgeName ];
         systemd.services.lososd.path = lib.mkForce [
-          stubOcc
           pkgs.coreutils
           pkgs.curl
         ];
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         environment.systemPackages = [ pkgs.jq ];
         virtualisation = {
           memorySize = 1536;

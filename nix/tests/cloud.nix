@@ -21,22 +21,11 @@
 #     request and the launch film (nix/tests/cloud-shots.mjs), then the same
 #     addresses on the box without LosOS Cloud, for the "before" column.
 #
-# LosOS Cloud's pod is not here: lososd runs in native mode with a stub
-# `nextcloud-occ`, which is all the claim asks of it (nix/tests/identity.nix
-# does the same).
 { pkgs }:
 
 let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
-
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
 
   python = pkgs.python3.withPackages (ps: [
     ps.requests
@@ -82,13 +71,10 @@ pkgs.testers.nixosTest {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
         admin.ui = lososPkgs.losos-admin-ui;
-        nextcloud.mode = "native";
         cloud.enable = true;
         forgejo.enable = false;
         mdns.enable = true;
       };
-      systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
       # The same box before LosOS Cloud, for the pictures' "before" column.
       specialisation.before.configuration.losos.cloud.enable = lib.mkForce false;
       environment.systemPackages = [

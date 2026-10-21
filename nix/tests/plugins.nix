@@ -23,21 +23,6 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   screens = import ./screens { inherit pkgs; };
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   # What the laptop photographs: the look pane as it comes, with a shipped
   # picture chosen, and the home screen under that picture.
   plan = pkgs.writeText "plan.json" (
@@ -101,15 +86,9 @@ pkgs.testers.nixosTest {
           backend.package = lososPkgs.losos-ctl;
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = lososPkgs.losos-admin-ui;
-          nextcloud.mode = "container";
           forgejo.enable = false;
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
         };
-        systemd.services.lososd.path = lib.mkForce [
-          stubOcc
-          pkgs.coreutils
-        ];
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+        systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
         # A second package with the probe in it, for the refusals below. In
         # the store like the real one, and referenced so it is in the VM's.
         environment.etc."losos-test/probe-plugins".source = lososPkgs.losos-plugins-probe;
