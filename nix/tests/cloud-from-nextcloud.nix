@@ -220,11 +220,14 @@ pkgs.testers.nixosTest {
         print(journal)
         report = json.loads(box.succeed("cat /var/lib/losos-cloud/from-nextcloud.json"))
         me, eva = report["people"]["notshared"], report["people"]["eva"]
-        assert me["calendars"] == 2 and me["events"] == 2 and me["tasks"] == 1, me
-        assert me["contacts"] == 1 and me["boards"] == 1 and me["cards"] == 2, me
+        # Nextcloud seeds every new account with an example event and an
+        # example contact, and Deck gives its first user a welcome board of
+        # five cards. Those move too, so each count is ours plus theirs.
+        assert me["calendars"] == 3 and me["events"] == 3 and me["tasks"] == 1, me
+        assert me["contacts"] == 2 and me["boards"] == 2 and me["cards"] == 7, me
         assert me["trash"] == 1 and me["appPasswords"] == 1, me
         assert me["notMoved"] == [], me
-        assert eva["events"] == 1 and eva["files"] >= 1, eva
+        assert eva["events"] == 2 and eva["files"] >= 1, eva
 
     def cloud(user, method, path, extra=""):
         return box.succeed(
@@ -269,10 +272,11 @@ pkgs.testers.nixosTest {
         box.succeed("test -f /var/lib/nextcloud/data/config/config.php")
         box.succeed("ls /var/lib/postgresql/*/PG_VERSION")
         box.succeed("test ! -e /var/lib/nextcloud/data/data/notshared/files/Photos/IMG_2041.jpg")
+        first = json.loads(cloud("notshared", "GET", "/cloud/api/boards"))["boards"]
         box.succeed("systemctl restart losos-cloud-from-nextcloud losos-cloud")
         box.wait_for_unit("losos-cloud.service")
         boards = json.loads(cloud("notshared", "GET", "/cloud/api/boards"))["boards"]
-        assert len(boards) == 1, boards
+        assert len(boards) == len(first) == 2, (first, boards)
 
     with subtest("the phone's old address and app password keep working"):
         cert = "/var/lib/losos-tls/cert.pem"
