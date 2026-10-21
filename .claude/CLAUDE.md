@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Context
 
 `losos` is a stateless NixOS appliance for repurposed mini-PCs: tmpfs root,
-encrypted `/persist` bind-mounted back by impermanence, Nextcloud for the
+encrypted `/persist` bind-mounted back by impermanence, LosOS Cloud for the
 owner, spare disk and CPU lent to a mesh, no SSH and no shell. The owner
 reaches it only through web UIs and one admin endpoint, so a bad nightly
 upgrade has no one to notice it. Docs live in the handbook, `handbook/`,
@@ -71,7 +71,7 @@ and is never served or built by nix.
   initrd on the ESP. The installer writes `modules/install-target.nix` (the
   box's drives, firmware mode, unlock mode) onto the box; it is not in the
   tree, and `flake.nix` imports the live copy from `/etc/nixos` on rebuilds.
-- `configuration.nix`: `notshared` (uid 1000, Nextcloud) and `shared`
+- `configuration.nix`: `notshared` (uid 1000, the owner's apps and LosOS Cloud name) and `shared`
   (uid 1001, mesh storage), each with its own group and a `700` home, no
   passwords, `openssh` off.
 - `daemon.nix` + `backend/`: `lososd` is a root daemon owning
@@ -106,12 +106,14 @@ and is never served or built by nix.
   (`losos-<section>` groups, `losos-admins`, `losos-viewers`); a missing
   route is admin only. The claim makes the first person an administrator
   and puts them in `losos-owner`. `nix/tests/identity.nix` boots it.
-  LosOS cloud and LosOS Git (pods only) take the person from nginx in
-  `X-Losos-Cloud-*` headers (`modules/app-sign-in.nix`: user_saml in
-  environment-variable mode, Forgejo's reverse-proxy sign-in); the owner
-  maps to `notshared`. nginx sets the headers on every request to either
-  app, and an iptables owner rule keeps every other local uid off their
-  loopback ports; drop either and anything on the box can name anyone.
+  LosOS Cloud and LosOS Git take the person from nginx in
+  `X-Losos-Cloud-*` headers (`modules/app-sign-in.nix`: LosOS Cloud reads
+  them itself in `backend/src/cloud/auth.rs`, Forgejo through its
+  reverse-proxy sign-in); the owner maps to `notshared`. nginx sets the
+  headers on every request to either app; LosOS Cloud listens on a Unix
+  socket only nginx's group opens, and an iptables owner rule keeps every
+  other local uid off Forgejo's loopback port; drop either and anything on
+  the box can name anyone.
   `nix/tests/app-sign-in.nix` boots the two real apps on the headers.
 - Terminal access (`docs/terminal-access.md`, `docs/edge-terminal.md`):
   `losos`, a Rust client in `admin-ui/tui` (clap derive, miette reports,
@@ -150,10 +152,20 @@ and is never served or built by nix.
   SVG canvas first, then loads one module (`src/lab/render.ts`), replays the
   core's calls into that module's `Lab` and swaps `bevy-canvas.tsx` in;
   anything that fails leaves it on SVG. No Python in the Lab.
-- `containers.nix`, `workloads.nix`, `cluster.nix`, `nextcloud-common.nix`:
-  Nextcloud and Forgejo run as hostNetwork pods in the box's own k3s server;
-  `services.rke2` (agent) joins the edge's mesh. Nginx is the only public
-  listener: `<host>.local/nextcloud`, `/forgejo`, admin SPA on `/`.
+- `cloud.nix` + `backend/src/cloud/` (`losos-cloud`): LosOS Cloud, the
+  owner's files, photos, calendars, contacts and boards, in the browser at
+  `/cloud/` (`admin-ui/app/cloud/`) and to the Nextcloud desktop and phone
+  apps over the addresses they know (`/status.php`, `/remote.php/`,
+  `/ocs/`, `/index.php/`, and `/nextcloud/` for apps set up against the old
+  Nextcloud). SQLite plus files under `/var/lib/losos-cloud/<login>/files`,
+  a Unix socket only nginx opens. `losos-cloud-from-nextcloud` moves a box
+  that ran Nextcloud over once, files, calendars, contacts, boards, app
+  passwords and trash, and leaves Nextcloud's leftovers for the erase;
+  `nix/tests/cloud-from-nextcloud.nix` boots a real Nextcloud and checks it.
+- `containers.nix`, `workloads.nix`, `cluster.nix`: Forgejo runs as a
+  hostNetwork pod in the box's own k3s server; `services.rke2` (agent)
+  joins the edge's mesh. Nginx is the only public listener: `/cloud/`,
+  `/forgejo/`, admin SPA on `/`.
 - `apps.nix` + `backend/src/apps.rs` + `backend/src/compose.rs`: the run-as
   user picks the runtime. `notshared` apps (a chart from the Apps pane's
   search, a Compose file in the LosOS app format from `POST
@@ -170,14 +182,15 @@ and is never served or built by nix.
   `losos.apps.ports` to it, LAN only. `nix/tests/podman-apps.nix` boots it.
 - `search.nix` + `backend/src/textsearch/` (`losos-search`): text inside
   files for the palette. A timer pass keeps an SQLite FTS5 index of the
-  owner's cloud files in `/var/lib/losos-search` as `nextcloud` (only what
+  owner's cloud files in `/var/lib/losos-search` as `losos-cloud` (only what
   changed is re-read); Git is `git grep` per query as `forgejo`. Both answer
   on Accept=yes sockets under `/run/losos-search` that only root (lososd's
   `/api/{cloud,git}/text`) can open. `nix/tests/search.nix` boots it.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
-  `losos-tokens.css` into the Nextcloud theme folder and Forgejo's custom
-  CSS, so one colour change moves all three. `default.nix` is the data every
-  caller imports. Owners see LosOS cloud and LosOS Git.
+  `losos-tokens.css` into Forgejo's custom CSS and LosOS Login's page;
+  LosOS Cloud is part of the SPA's own build, so one colour change moves
+  all of them. `default.nix` is the data every caller imports. Owners see
+  LosOS Cloud and LosOS Git.
 - `hardening.nix` (install only): KSPP primitives, on by default, with
   `apparmor`, `malloc`, `nosmt`, `usbguard` opt-in. `nix/tests/hardening.nix`
   asserts both halves.
@@ -244,8 +257,8 @@ and is never served or built by nix.
 - `edge/registrar/src/{domains,zone}.rs` + `losos.edge.dns`: an official
   edge serves its own zone with Knot and routes an owner's domain once its
   TXT token and CNAME check out, only for a box with a ready Stripe account.
-  lososd writes the live names to `/var/lib/losos-public-names`, which the
-  Nextcloud pod reads for `trusted_domains`.
+  lososd writes the live names to `/var/lib/losos-public-names`, which
+  LosOS Login reads for its cookie domains.
 - `edge/registrar/src/routes.rs`: custom domains of mesh boxes behind a
   local edge. The official edge keeps the routes in the registrar's own
   state (`relay-routes.json` beside the registry, no etcd) and binds a box
@@ -310,10 +323,11 @@ and is never served or built by nix.
    `127.0.0.1` or the LAN address.
 9. `lanOnly` denies loopback on purpose: rathole's tunnel delivers from
    `127.0.0.1`. Test against lososd's `:8082` or with a LAN source address.
-10. Nextcloud trusts the box's own IP through the `X-Losos-Server-Addr`
-    header, IP literals only. Nextcloud's `*` matches `[-.a-zA-Z0-9]*`.
-11. App tiles link `/nextcloud/index.php/apps/<id>/`. The short form is an
-    Apache 404 unless the pod rewrites pretty URLs.
+10. LosOS Cloud listens on a Unix socket only nginx's group may open; that
+    is what makes `X-Losos-Cloud-User` believable. Never give it a TCP port.
+11. Keep `/status.php`, `/remote.php/`, `/ocs/`, `/index.php/`,
+    `/public.php/` and `/nextcloud/` routed to LosOS Cloud. Phones and
+    desktops set up against Nextcloud keep calling them.
 12. Sign-in is LosOS Login (Authelia) at `/auth/` over the people file
     lososd writes. Keep the spare-key Bearer bypass in the authz location
     and the spare-key path in the dialog. lososd trusts `Remote-User` only
@@ -373,7 +387,7 @@ and is never served or built by nix.
 |---|---|
 | "`allow 127.0.0.1` fixes the 403 in the VM test" | It opens the admin surface to the internet whenever the proxy tunnel is on. |
 | "Strict rp_filter is on every hardening checklist" | It drops the mDNS replies of an SSH-less box and Calico stops working. |
-| "One cluster is simpler" | Midnight reboots plus an edge outage take the owner's Nextcloud down. |
+| "One cluster is simpler" | Midnight reboots plus an edge outage take the owner's LosOS Git down. |
 | "Raw random bytes are a stronger key" | disko's command substitution drops NULs; the volume is formatted with one key and unlocked with another. |
 | "Pure evaluation is cleaner, drop `--impure`" | A `github:` upgrade flips a keyfile box to TPM, forgets its drives and resets every setting. |
 | "`nix build` passed" | It compiled. The suites run in `devenv test` and CI only. |
@@ -439,8 +453,8 @@ missing.
   `disko.nix` + `installer.nix`.
 - `install` — the target system installed on disk. Imports everything:
   `options`, `configuration`, `impermanence`, `disko`, `boot`, `services`,
-  `nextcloud-common`, `containers`, `daemon`, `overrides`, `updates`,
-  `defaults`. The flake passes `specialArgs.self = self` so `defaults.nix`
+  `cloud`, `containers`, `daemon`, `overrides`, `updates`, `defaults`. The
+  flake passes `specialArgs.self = self` so `defaults.nix`
   can reach `self.packages.${system}.{losos-ctl,losos-admin-ui}` to wire the
   control plane and the admin UI.
 
@@ -473,7 +487,7 @@ and both rebuild paths (`updates.nix`, `supervisor.rs`) pass `--impure` for
 that; see the auto-upgrade section.
 
 **Two isolated data domains, no shell** (`configuration.nix`): `notshared`
-(uid 1000) owns Nextcloud, `shared` (uid 1001) owns the contributed mesh
+(uid 1000) is the owner's account (their LosOS Cloud files carry the name), `shared` (uid 1001) owns the contributed mesh
 storage domain; both homes are
 mode `700`, each with its own primary group, so neither can read the other —
 `isNormalUser` without an explicit `group` puts both in `users`, and a `750`
@@ -567,14 +581,14 @@ quotes (it used to cut inside them, which mangled the default
 `upgradeFlakeUri`), and a list is one `[ "a" "b" ]` line, strings only.
 
 **Workloads and the single front door** (`modules/containers.nix` +
-`modules/workloads.nix` + `modules/cluster.nix` + `modules/nextcloud-common.nix`):
-systemd-nspawn is gone. Nextcloud and Forgejo run as
-**Kubernetes workloads in the box's own local k3s cluster** when their
-`losos.<svc>.mode == "container"`; the shared Nextcloud truth still lives in
-`nextcloud-common.nix` so host-native and workload mode can't drift. Nginx is
-the only thing holding public ports: path-based routing on the appliance's mDNS
-name (`<hostName>.local:80/nextcloud`, `:80/forgejo`) and the admin SPA on the
-same `:80` vhost. `admin-ui/design-system/` (`tokens.css` + `losos.css`, plus
+`modules/workloads.nix` + `modules/cluster.nix` + `modules/cloud.nix`):
+systemd-nspawn is gone, and so is Nextcloud. Forgejo runs as a
+**Kubernetes workload in the box's own local k3s cluster** when
+`losos.forgejo.mode == "container"`; LosOS Cloud is a host service of its
+own on a Unix socket. Nginx is the only thing holding public ports:
+path-based routing on the appliance's mDNS name (`/cloud/` plus the
+Nextcloud client addresses, `/forgejo/`) and the admin SPA on the same
+vhost. `admin-ui/design-system/` (`tokens.css` + `losos.css`, plus
 a `react/` wrapper package for claude.ai/design) is **dev-machine-only and no
 longer served at all** — the shipped SPA carries its own palette in
 `admin-ui/app/src/styles/tokens.css`, which `index.css` republishes as
@@ -583,20 +597,18 @@ because `losos-admin-ui`'s source *root* is `admin-ui/app`; that is a stronger
 guarantee than the `design-system` name filter it replaced, which would have
 stopped matching on a rename.
 
-**One look across the homepage, Nextcloud and Forgejo** (`admin-ui/themes/`):
-`tokens.css` is plain CSS on purpose, because both apps' themes ship it byte
-for byte (as `losos-tokens.css`) and map their own variables onto it — change
-a colour there and all three move together. Nextcloud gets a *theme folder*
-(`themes/losos/` copied into the package by `nextcloud-stack.nix`, plus
-`theme = "losos"` in config), because it resolves themes against its real
-server root and a symlink beside the package is never found. Forgejo gets
+**One look across the admin pages, LosOS Cloud and Forgejo** (`admin-ui/themes/`):
+LosOS Cloud is a page of the admin UI's own build (`admin-ui/app/cloud/`),
+so it shares the components and `tokens.css`. `tokens.css` is plain CSS on
+purpose, because Forgejo's theme and LosOS Login's ship it byte for byte (as
+`losos-tokens.css`) and map their own variables onto it — change a colour
+there and everything moves together. Forgejo gets
 `theme-losos-{auto,light,dark}.css` in `$FORGEJO_CUSTOM/public/assets/css/`
 (tmpfiles links natively, copied by the image's entrypoint) with
 `DEFAULT_THEME = losos-auto`, which Forgejo stamps on accounts at creation —
 an existing account keeps its old theme until its owner switches.
-Owners see the two apps as **LosOS cloud** and **LosOS Git**: the theme
-folder's `defaults.php` names Nextcloud, Forgejo's `APP_NAME` names it, and
-both get logos drawn from `admin-ui/themes/brand/` (`marks.py` wraps
+Owners see the two apps as **LosOS Cloud** and **LosOS Git**: Forgejo's
+`APP_NAME` names it, and both get logos drawn from `admin-ui/themes/brand/` (`marks.py` wraps
 `salmon.png`, a live coho salmon cut out of a NOAA Fisheries photo, into
 the SVGs and copies it to the SPA and the handbook; every PNG and the
 `.ico` is rendered from those at build time). `plate.png`, the plate of
@@ -607,14 +619,8 @@ records both sources. A new picture needs a licence that allows use in a
 logo, and Pixabay's does not. The old
 pixel-art fish was dropped over a copyright worry and does not go back in. The rest of the upstream marketing goes by config (no skeleton
 files, no help or sign-up links, no "Powered by") and two Forgejo template
-overrides. Two non-obvious bits: Nextcloud's header filter inverts any logo
-it thinks is its own white one, so `server.css` sets
-`--image-logoheader-custom`; and the theming app reads a few `core/img/`
-files by absolute path, so `nextcloud-stack.nix` overwrites those in the
-package, which is why the image sets `integrity.check.disabled` as
-`services.nextcloud` already does.
-`admin-ui/themes/default.nix` is plain data imported by all three callers, for
-the same reason `nextcloud-stack.nix` is. The workload pods are
+overrides.
+`admin-ui/themes/default.nix` is plain data every caller imports. The workload pods are
 `hostNetwork` (the local cluster runs no CNI), so they answer on loopback — see
 the gotcha about what that costs the `lanOnly` guard.
 
@@ -660,7 +666,7 @@ three-VM acceptance test; it is not run by CI.
 
 **The `losos.*` option namespace** (`options.nix`): all project-specific
 knobs (`targetDrive`, `tpm.enable`, `sharingMyStorage`, `forgejo.enable`,
-`nextcloud.*`, `cluster.*` (mesh join, compute window), `shared.fscrypt.*`,
+`cloud.*`, `cluster.*` (mesh join, compute window), `shared.fscrypt.*`,
 `upgradeFlakeUri`, `backend.package`,
 `admin.{enable,port,apiPort,tokenFile,ui}`, `proxy.*` (appliance side of the
 master proxy), `edge.*` (VPS side, consumed via the `nixosModules.edge` flake
@@ -811,23 +817,16 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   box while Authelia is down; keep that bypass and the dialog's spare-key
   path. `backend/sections.json` decides who may call what, for lososd and
   nginx alike; a route missing from it is admin only. `signin.rs` is left
-  only for LosOS cloud's login in device setup: Basic over loopback, never
-  `curl -u`, and `signin::validate_candidate` checks shape only.
-- **Nextcloud trusts the box's own IP address through one nginx header.**
-  The `/nextcloud` location sets `X-Losos-Server-Addr $server_addr`, and the
-  pod's `losos.config.php` appends that value to `trusted_domains` per
-  request, IP literals only. That is how a libvirt VM, which gets no mDNS
-  name, is reached at `http://192.168.122.x/nextcloud` without "Untrusted
-  domain". Don't replace it with a `192.168.*` wildcard: Nextcloud's `*`
-  matches `[-.a-zA-Z0-9]*`, so `192.168.attacker.example` would be trusted
-  too. `localhost` and `127.0.0.1` need nothing — Nextcloud trusts them
-  unconditionally.
-- **The admin UI's app tiles link through `index.php`.** Nextcloud answers
-  `/nextcloud/index.php/apps/<id>/` on every configuration, while the short
-  `/nextcloud/apps/<id>/` form only works when the pod's Apache rewrites
-  pretty URLs, and without that it was an Apache 404 straight from the
-  admin home. `admin-ui/app/src/lib/apps.ts` uses the long form for that
-  reason; don't "tidy" the tiles back to the short one.
+  for the shape check of a password one of the owner's computers offers
+  (`crate::devices`) and the LosOS Git requests: never `curl -u`, and
+  `signin::validate_candidate` checks shape only.
+- **LosOS Cloud keeps answering where Nextcloud did.** `modules/cloud.nix`
+  routes `/status.php`, `/remote.php/`, `/ocs/`, `/index.php/`,
+  `/public.php/` and the whole `/nextcloud/` prefix to the same socket, and
+  `/.well-known/{caldav,carddav}` redirect to `/remote.php/dav/`. A phone
+  set up against the old Nextcloud signs in again with its app password,
+  which the migration carried over. Dropping a route strands those
+  devices silently.
 - **Hand-written widgets run in `/widget-frame/`, never in the admin page.**
   The owner's HTML/script (`backend/src/look.rs`, `GET/POST /api/look*`)
   is drawn by `<iframe sandbox="allow-scripts" src="/widget-frame/">`
@@ -857,7 +856,7 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   `disable` and its agent node neither; rke2's `role` description says the same.
   Gate every server-only flag on the role.
 - **The two Kubernetes instances are different clusters on purpose.**
-  `services.k3s` (role `server`) runs *this box's* Nextcloud and Forgejo;
+  `services.k3s` (role `server`) runs *this box's* Forgejo and shared apps;
   `services.rke2` (role `agent`) joins the edge's mesh. An agent's kubelet cannot
   start while its server is unreachable, and `midnight-reboot.timer` fires
   unconditionally at 00:07 — so putting the box's own services in the edge's
