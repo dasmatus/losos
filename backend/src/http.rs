@@ -1925,6 +1925,19 @@ async fn post_app_install(api: web::Data<Api>, req: HttpRequest, body: web::Byte
     })
 }
 
+/// `POST /api/apps/compose` `{release, title?, compose, files?}` — install an
+/// app from a Compose file (the LosOS app format), or change one installed
+/// that way under the same name.
+async fn post_app_compose(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/apps/compose", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::apps::ComposeRequest::parse(&doc) {
+            Ok(request) => run(&api, |b| crate::apps::cmd_app_compose(b, &request)),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
 /// `POST /api/apps/remove` `{release}`.
 async fn post_app_remove(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
     guarded(&api, &req, "/api/apps/remove", true, || {
@@ -3310,6 +3323,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/apps", web::get().to(get_apps))
                 .route("/api/apps/chart", web::get().to(get_app_chart))
                 .route("/api/apps/install", web::post().to(post_app_install))
+                .route("/api/apps/compose", web::post().to(post_app_compose))
                 .route("/api/apps/remove", web::post().to(post_app_remove))
                 .route("/api/cloud/apps", web::get().to(get_cloud_apps))
                 .route(

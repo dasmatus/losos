@@ -47,6 +47,9 @@ const APPS = {
   apps: [
     {
       release: 'jellyfin',
+      kind: 'chart',
+      title: null,
+      runtime: 'podman',
       chart: { repo: 'jellyfin', name: 'jellyfin', version: '2.1.0' },
       runAs: 'notshared',
       values: {},

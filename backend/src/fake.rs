@@ -118,6 +118,8 @@ pub struct FakeLosos {
     /// What a chart fetch hands back; `None` is a chart that cannot be had.
     pub chart_files: Option<crate::apps::ChartFiles>,
     pub app_records: Vec<crate::apps::Record>,
+    /// What `save_app_source` was handed, by app.
+    pub app_sources: std::collections::BTreeMap<String, (String, Vec<(String, String)>)>,
     /// Every job started, in order.
     pub app_jobs: Vec<(String, crate::apps::Action)>,
     /// Apps whose job the fake reports as still running.
@@ -311,7 +313,10 @@ impl FakeLosos {
             cloud_store_body: Some("[]".to_string()),
             apps: Some(crate::apps::Config {
                 ports: (30000, 30099),
+                kube: true,
+                builtin: Vec::new(),
             }),
+            app_sources: std::collections::BTreeMap::new(),
             chart_files: None,
             app_records: Vec::new(),
             app_jobs: Vec::new(),
@@ -592,6 +597,17 @@ impl Losos for FakeLosos {
 
     fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>> {
         Ok(self.app_records.clone())
+    }
+
+    fn save_app_source(
+        &mut self,
+        release: &str,
+        compose: &str,
+        files: &[(String, String)],
+    ) -> anyhow::Result<()> {
+        self.app_sources
+            .insert(release.to_string(), (compose.to_string(), files.to_vec()));
+        Ok(())
     }
 
     fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()> {

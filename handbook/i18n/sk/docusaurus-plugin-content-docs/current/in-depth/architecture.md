@@ -245,14 +245,17 @@ zoznam je jeden riadok `[ "a" "b" ]`, iba reťazce.
 
 **Pracovné záťaže a jediné predné dvere** (`modules/containers.nix`,
 `modules/workloads.nix`, `modules/cluster.nix`,
-`modules/nextcloud-common.nix`). Rootless Podman je preč a systemd-nspawn
-tiež. Keď `losos.<svc>.mode == "container"`, Nextcloud a Forgejo bežia ako
+`modules/nextcloud-common.nix`). systemd-nspawn je preč. Keď `losos.<svc>.mode == "container"`, Nextcloud a Forgejo bežia ako
 Kubernetes záťaže vo vlastnom lokálnom k3s klastri zariadenia. Zdieľaná
 konfigurácia Nextcloudu stále žije v `nextcloud-common.nix`, takže natívny a
 kontajnerový režim sa nemôžu rozísť. nginx je jediný proces, ktorý drží
 verejné porty. Smeruje podľa cesty na mDNS mene zariadenia
 (`<hostName>.local:80/nextcloud`, `:80/forgejo`) a na tom istom vhoste `:80`
-servíruje administračnú SPA.
+servíruje administračnú SPA. Aplikácie, ktoré vlastník nainštaluje ako
+`notshared`, a vlastné aplikácie zariadenia naopak bežia na Podmane bez
+roota cez Podman Compose (`modules/apps.nix`,
+[Formát aplikácií](app-format.md)), takže zariadenie, ktoré nič nezdieľa,
+pre ne nepotrebuje klaster.
 
 `admin-ui/design-system/` (`tokens.css` a `losos.css`, plus obalový balík
 `react/` pre claude.ai/design) je iba pre vývojársky stroj a už sa vôbec

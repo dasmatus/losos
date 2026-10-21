@@ -1310,8 +1310,16 @@ export type AppPhase = "installing" | "running" | "failed" | "removing";
 
 export interface InstalledApp {
   release: string;
-  chart: AppSource;
+  /** A chart from the search, or an app in the LosOS app format (a Compose
+   *  file, from the AI builder or sent by the owner). */
+  kind: "chart" | "compose";
+  /** Null for a compose app. */
+  chart: AppSource | null;
+  /** What a compose app is called on the page, when it says. */
+  title: string | null;
   runAs: AppRunAs;
+  /** What runs it, which follows from runAs. The page never shows it. */
+  runtime: "podman" | "kube";
   /** What the property form changed when it was last installed. */
   values: Record<string, unknown>;
   valuesYaml: string | null;
@@ -1326,7 +1334,7 @@ export interface InstalledApp {
 }
 
 export type AppsResponse =
-  | { available: false; reason: "noCluster"; apps: [] }
+  | { available: false; reason: "off"; apps: [] }
   | { available: true; sharedAvailable: boolean; apps: InstalledApp[] };
 
 /** GET /api/apps */

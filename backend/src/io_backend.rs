@@ -2265,7 +2265,20 @@ impl Losos for IoLosos {
         // own cluster; without it there is nothing to install into.
         std::env::var_os("LOSOS_APPS_JOB")?;
         let ports = crate::apps::parse_port_range(&std::env::var("LOSOS_APPS_PORTS").ok()?)?;
-        Some(crate::apps::Config { ports })
+        // modules/apps.nix sets it only on a box that runs its own cluster.
+        let kube = std::env::var("LOSOS_APPS_KUBE").is_ok_and(|v| v == "1");
+        let builtin = std::env::var("LOSOS_APPS_BUILTIN")
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(str::to_string)
+            .collect();
+        Some(crate::apps::Config {
+            ports,
+            kube,
+            builtin,
+        })
     }
 
     fn chart_files(
@@ -2295,6 +2308,35 @@ impl Losos for IoLosos {
         }
         records.sort_by(|a, b| a.release.cmp(&b.release));
         Ok(records)
+    }
+
+    fn save_app_source(
+        &mut self,
+        release: &str,
+        compose: &str,
+        files: &[(String, String)],
+    ) -> anyhow::Result<()> {
+        // Written beside the record, root's alone like it: the files can
+        // carry the app's passwords. The job copies them into the app's
+        // project, owned by the app's user. Staged under a temporary name
+        // and swapped in whole, so a job never reads half of one install
+        // and half of the next.
+        let dir = apps_dir().join(release);
+        std::fs::create_dir_all(&dir).context("creating the app's directory")?;
+        let staged = dir.join("source.new");
+        if staged.exists() {
+            std::fs::remove_dir_all(&staged).context("clearing a staged source")?;
+        }
+        atomic_write_secret(&staged.join("compose.yaml"), compose.as_bytes())?;
+        for (path, text) in files {
+            atomic_write_secret(&staged.join("files").join(path), text.as_bytes())?;
+        }
+        let live = dir.join("source");
+        if live.exists() {
+            std::fs::remove_dir_all(&live).context("clearing the old source")?;
+        }
+        std::fs::rename(&staged, &live).context("putting the source in place")?;
+        Ok(())
     }
 
     fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()> {
