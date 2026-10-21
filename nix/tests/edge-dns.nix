@@ -20,7 +20,13 @@
 #      domain: the edge runs no market, so there is no Stripe account to
 #      vouch for it. It carries the box's relay pass, because the edge keeps
 #      a route table (losos.edge.dns.relayRoutes).
-#   4. The route table's wiring: the registrar made its relay pass key
+#   4. DNSSEC and the box's wallet: Knot signs the zone, the box binds a
+#      wallet with that wallet's signature (made here the way the admin page
+#      makes it, with viem, for a fixed test key), and the zone then carries
+#      the ENS record at the box's name, signed, and validated by `delv`
+#      against the zone's own DS as the trust anchor. A signature for another
+#      box is refused; unbinding takes the record away.
+#   5. The route table's wiring: the registrar made its relay pass key
 #      (0600); a spoke forwarding that pass on `/relay` is answered with no
 #      routes (the box is not in this edge's mesh), but the binding is kept
 #      in relay-routes.json (0600) beside the registry, and is still there
@@ -41,6 +47,12 @@ let
   bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   lososPkgs = import ../packages.nix { inherit pkgs; };
   registrar = "${lososPkgs.losos-registrar}/bin/losos-registrar";
+  # A test wallet (private key 0x0707…07) and its personal_sign of
+  # "LosOS box name v1\nzone: boxes.example.test\nbox: mattbox\naddress: <it>\n",
+  # as viem's signMessage makes it in the admin page.
+  walletAddress = "0x4a62316623ad457f02cdc5d997ded67a383ec569";
+  walletSignature = "0xf60bb8dd608847e9d8dcc4f85fc660e541f7b9050677dac6cf472873b4d01e622718b441f44b85d93219309bb09f4ab3a19894ef759bf155655b84c51c8370301c";
+  ensRecord = "ENS1 2.dnsname.ens.eth a[60]=${walletAddress} a[e8453]=${walletAddress} a[e42161]=${walletAddress} a[e10]=${walletAddress}";
 in
 
 pkgs.testers.nixosTest {
@@ -96,7 +108,11 @@ pkgs.testers.nixosTest {
       };
 
     client = _: {
-      environment.systemPackages = [ pkgs.knot-dns ];
+      environment.systemPackages = [
+        pkgs.knot-dns
+        # delv: a validating lookup against a trust anchor of our choosing.
+        pkgs.bind
+      ];
     };
   };
 
@@ -107,6 +123,7 @@ pkgs.testers.nixosTest {
     in
     ''
       import json
+      import re
 
       start_all()
       edge.wait_for_unit("knot.service")
@@ -160,8 +177,9 @@ pkgs.testers.nixosTest {
               "test \"$(kdig @${edgeIp} mattbox.boxes.example.test A +short)\" = '${edgeIp}'"
           )
           assert dig("mattbox.boxes.example.test", extra="+tcp") == "${edgeIp}"
+          # Knot signs the zone and bumps the serial when it does.
           soa = dig("boxes.example.test", "SOA")
-          assert soa.split()[2] == serial, (soa, serial)
+          assert int(soa.split()[2]) >= int(serial), (soa, serial)
           edge.succeed("systemctl show -p Result losos-dns-reload.service | grep -qx Result=success")
           edge.succeed("journalctl -u knot.service | grep -q 'boxes.example.test'")
 
@@ -174,6 +192,63 @@ pkgs.testers.nixosTest {
           assert view["addresses"] == ["${edgeIp}"], view
           assert view["relay_pass"].startswith("v1."), view
           print(json.dumps(view, indent=2))
+
+      with subtest("DNSSEC, and the box's wallet at its name"):
+          signed = client.succeed(
+              "kdig @${edgeIp} boxes.example.test SOA +dnssec +norec"
+          )
+          assert "RRSIG" in signed, signed
+          client.succeed("kdig @${edgeIp} boxes.example.test DNSKEY +short | grep -q '^257 3 13 '")
+          assert dig("mattbox.boxes.example.test", "TXT") == "", "a record before any wallet"
+
+          def wallet(body):
+              return edge.succeed(
+                  "curl -s -o /dev/stdout -w '\\n%{http_code}' -X POST "
+                  "-H 'content-type: application/json' "
+                  f"-d '{json.dumps(body)}' http://127.0.0.1:8443/domains/wallet"
+              ).rsplit("\n", 1)
+
+          me = {"appliance_id": "mattbox", "token": "${proxyTokenValue}"}
+          # A signature for another box binds nothing here.
+          body, code = wallet({**me, "appliance_id": "acme", "token": "${spokeTokenValue}",
+                               "address": "${walletAddress}", "signature": "${walletSignature}"})
+          assert code == "400", (code, body)
+          body, code = wallet({**me, "address": "${walletAddress}", "signature": "${walletSignature}"})
+          assert code == "200", (code, body)
+          view = json.loads(body)
+          assert view["wallet"]["address"] == "${walletAddress}", view
+          assert view["wallet"]["record"] == "${ensRecord}", view
+          assert view["names"] == ["mattbox.boxes.example.test"], view
+          client.wait_until_succeeds(
+              "kdig @${edgeIp} mattbox.boxes.example.test TXT +short | grep -qF '${ensRecord}'"
+          )
+          txt = client.succeed("kdig @${edgeIp} mattbox.boxes.example.test TXT +dnssec +norec")
+          print(txt)
+          assert re.search(r"RRSIG\s+TXT\s+13\s", txt), txt
+
+          # Validate it as a resolver would, from the zone's DS: the record
+          # ENS reads is the one the zone's key signed.
+          # keymgr prints `<zone>. DS <tag> 13 2 <digest>`: SHA-256 of the KSK.
+          ds = edge.succeed("keymgr boxes.example.test ds | grep -E ' DS [0-9]+ 13 2 '").split()
+          tag, alg, dtype, digest = ds[-4], ds[-3], ds[-2], ds[-1]
+          client.succeed(
+              "printf 'trust-anchors { boxes.example.test. static-ds %s %s %s \"%s\"; };' "
+              f"{tag} {alg} {dtype} {digest} > /tmp/anchor.conf"
+          )
+          valid = client.succeed(
+              "delv @${edgeIp} -a /tmp/anchor.conf +root=boxes.example.test "
+              "mattbox.boxes.example.test TXT 2>&1"
+          )
+          print(valid)
+          assert "fully validated" in valid, valid
+          assert "${ensRecord}" in valid, valid
+
+          body, code = wallet(me)
+          assert code == "200", (code, body)
+          assert json.loads(body)["wallet"] is None, body
+          client.wait_until_succeeds(
+              "test -z \"$(kdig @${edgeIp} mattbox.boxes.example.test TXT +short)\""
+          )
 
       with subtest("the route table: the pass key, /relay, and the table file"):
           edge.succeed("stat -c %a /var/lib/losos-registrar/relay-pass.key | grep -qx 600")

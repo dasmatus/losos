@@ -1173,7 +1173,7 @@ pub(crate) fn decode_hex(raw: &str) -> Option<Vec<u8>> {
 /// Sign `message` the way a wallet's `personal_sign` does. Tests only: the
 /// registrar never holds a key, so this is not available outside the suite.
 #[cfg(test)]
-fn sign_personal(secret: &[u8; 32], message: &[u8]) -> String {
+pub(crate) fn sign_personal(secret: &[u8; 32], message: &[u8]) -> String {
     let key = SigningKey::from_bytes(secret.into()).expect("key");
     let (signature, recid) = key.sign_prehash_recoverable(&personal_sign_hash(message));
     let mut bytes = [0u8; 65];

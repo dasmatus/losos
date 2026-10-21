@@ -145,6 +145,32 @@ edge a váš edge ju odovzdá zariadeniu. Vaše zariadenie oznámi edge LosOS, z
 ktorým domácim edge je, takže vašu doménu si nemôže privlastniť nikoho iného
 edge. Netreba na to nič nastavovať.
 
+## Platby na názov \{#paid-by-name}
+
+Zariadenie, ktoré má názov na edge LosOS, môže na tento názov prijímať
+platby. Kto má MetaMask, Rainbow alebo inú peňaženku, ktorá posiela na názvy
+ENS, napíše namiesto adresy `mattbox.boxes.losos.dasmat.us` a peniaze prídu
+do peňaženky zariadenia. Funguje to pre ETH aj tokeny ako USDC na sieťach
+Ethereum, Base, Arbitrum a OP.
+
+Sekcia **Platby na názov** na paneli Sieť uvádza názvy zariadenia na edge.
+**Prepojiť peňaženku** požiada peňaženku o podpis jednej krátkej správy:
+peňaženka vytvorená na tomto zariadení si vypýta heslo, inak sa ozve
+peňaženka v rozšírení prehliadača. Edge podpis overí a potom zverejní adresu
+peňaženky pod každým názvom. Nezverejní adresu, ktorú neoveril, takže názov
+zariadenia nikto nenasmeruje na inú peňaženku. **Zrušiť prepojenie** adresu
+zase odoberie.
+
+Po prepojení je adresa verejná ako každá adresa, ktorú niekomu dáte. Zóna
+edge je podpísaná cez DNSSEC, a vďaka tomu ENS záznamu dôveruje.
+
+Rovnaký záznam môže niesť aj vaša vlastná doména. Pod každou doménou panel
+ukazuje záznam **TXT**, ktorý začína `ENS1`; pridajte ho priamo k doméne.
+Platia dve podmienky. Váš poskytovateľ DNS musí doménu podpisovať cez
+DNSSEC a názov nesmie byť CNAME, pretože CNAME nenesie žiadny iný záznam.
+Doména so záznamami A a AAAA, napríklad samotná `novak-family.eu`, funguje.
+Panel ukazuje, čo z toho edge našiel.
+
 ## Dôležité nastavenia \{#settings-that-matter}
 
 | Panel      | Nastavenie                             | Čo robí                                                                 |

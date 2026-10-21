@@ -2634,6 +2634,24 @@ async fn post_domain_remove(
     .await
 }
 
+/// `POST /api/domains/wallet` `{"address": "0x…", "signature": "0x…"}` —
+/// publish the box's wallet at its names on the edge, so wallets that send
+/// to ENS names pay it by name; `{}` takes it off.
+async fn post_domain_wallet(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/domains/wallet", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let op = crate::market::Op::DomainWallet {
+            address: field_str(&doc, "address").map(|a| a.trim().to_ascii_lowercase()),
+            signature: field_str(&doc, "signature").map(|s| s.trim().to_string()),
+        };
+        run(&api, |b| crate::losos::cmd_domain_op(b, &op))
+    })
+}
+
 // ── The owner's look ──────────────────────────────────────────────────────
 // A background picture and the widgets written by hand (`crate::look`).
 // HTTP-only, like the market relay: a CLI for a wallpaper would be surface
@@ -3381,6 +3399,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/domains", web::get().to(get_domains))
                 .route("/api/domains", web::post().to(post_domain_add))
                 .route("/api/domains/remove", web::post().to(post_domain_remove))
+                .route("/api/domains/wallet", web::post().to(post_domain_wallet))
                 .route("/api/options", web::get().to(get_options))
                 .route("/api/site", web::get().to(get_site))
                 .route("/api/site", web::post().to(post_site))

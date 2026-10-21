@@ -160,6 +160,35 @@ weiter. Deine Box teilt der LosOS-Edge mit, hinter welcher Heim-Edge sie
 steht, sodass keine fremde Edge deine Domain beanspruchen kann. Dafür musst
 du nichts einrichten.
 
+## Per Name bezahlt \{#paid-by-name}
+
+Eine Box mit einem Namen auf der LosOS-Edge kann unter diesem Namen Zahlungen
+annehmen. Wer MetaMask, Rainbow oder eine andere Wallet nutzt, die an
+ENS-Namen sendet, tippt `mattbox.boxes.losos.dasmat.us` dort ein, wo eine
+Adresse hingehört, und das Geld landet in der Wallet der Box. Das gilt für ETH
+und Token wie USDC auf Ethereum, Base, Arbitrum und OP.
+
+Der Abschnitt **Bezahlt per Name** im Bereich Netzwerk listet die Namen der
+Box auf der Edge. **Wallet verknüpfen** bittet die Wallet, eine kurze
+Nachricht zu signieren: Die auf dieser Box angelegte Wallet fragt nach ihrem
+Passwort, sonst meldet sich die Wallet-Erweiterung des Browsers. Die Edge
+prüft die Signatur und veröffentlicht dann die Adresse der Wallet unter jedem
+Namen. Eine Adresse, die sie nicht geprüft hat, veröffentlicht sie nicht, also
+kann niemand den Namen der Box auf eine andere Wallet zeigen lassen.
+**Trennen** nimmt die Adresse wieder weg.
+
+Ist sie verknüpft, ist die Adresse öffentlich wie jede Adresse, die du
+herausgibst. Die Zone der Edge ist mit DNSSEC signiert, und deshalb vertraut
+ENS dem Eintrag.
+
+Auch eine eigene Domain kann denselben Eintrag tragen. Unter jeder Domain
+zeigt der Bereich einen **TXT**-Eintrag, der mit `ENS1` beginnt; trag ihn
+direkt bei der Domain ein. Zwei Bedingungen gelten. Dein DNS-Anbieter muss
+die Domain mit DNSSEC signieren, und der Name darf kein CNAME sein, weil ein
+CNAME keinen anderen Eintrag trägt. Eine Domain mit A- und AAAA-Einträgen,
+etwa `novak-family.eu` selbst, funktioniert. Der Bereich zeigt, was davon die
+Edge gefunden hat.
+
 ## Einstellungen, auf die es ankommt \{#settings-that-matter}
 
 | Bereich   | Einstellung                            | Was sie bewirkt                                                         |

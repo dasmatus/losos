@@ -238,10 +238,52 @@ this edge's mesh. The registrar keeps those routes itself, in
 federation](edge-federation.md#custom-domains-behind-a-local-edge) has the
 details and `losos.edge.dns.relayRoutes`.
 
+### Wallets at box names
+
+A box binds its wallet to its names with `POST /domains/wallet`
+(`{address, signature}`, relayed by lososd from Settings → Network). The
+signature is the wallet's `personal_sign` of
+
+```
+LosOS box name v1
+zone: <zone>
+box: <box id>
+address: <0x address, lowercase>
+```
+
+so it binds nothing on another edge or for another box. The registrar
+recovers the signer, keeps the address and the signature in `domains.json`,
+and writes one TXT record at each of the box's names in the zone, its
+hostname and its label:
+
+```
+mattbox IN TXT "ENS1 2.dnsname.ens.eth a[60]=0x… a[e8453]=0x… a[e42161]=0x… a[e10]=0x…"
+```
+
+That is ENS's gasless DNS resolution (ENSIP-17): a wallet asks ENS on
+Ethereum mainnet, ENS's DNSSEC gateway fetches the TXT record, a contract
+checks the signatures up to the DNS root, and `2.dnsname.ens.eth`, ENS's
+ExtendedDNSResolver, answers the address for Ethereum (`a[60]`) and, by
+chain id, for Base, Arbitrum One and OP Mainnet. `{}` unbinds.
+
+ENS only reads a signed zone, so Knot signs this one
+(`losos.edge.dns.dnssec.enable`, on by default) with its default policy,
+ECDSA P-256 with keys in `/var/lib/knot`. Resolvers trust the signatures once
+the parent zone publishes the zone's DS record, which `keymgr <zone> ds`
+prints on the edge. Publish it next to the NS records above.
+
+An owner's own domain gets the same record shown in the pane, to add at the
+domain itself. While a wallet is bound, each check also looks up TXT at the
+domain and reports `wallet`: `found` (the record, DNSSEC-validated by the
+resolver), `unsigned`, `cname` (a CNAME can carry no TXT, and ENS reads only
+the exact name), `other` or `missing`. It never decides whether the domain
+is routed.
+
 :::note[How this is tested]
 `nix/tests/edge-dns.nix` (`losos-edge-dns`) boots an edge and a client and asks
-Knot over UDP and TCP. `edge/registrar/tests/domains.rs` drives the claim
-flow against a real registrar and a fake DNS-over-HTTPS server.
+Knot over UDP and TCP, binds a wallet and validates its signed record with
+`delv` from the zone's DS. `edge/registrar/tests/domains.rs` drives the claim
+and wallet flows against a real registrar and a fake DNS-over-HTTPS server.
 :::
 
 ## Demo deployment on Vercel

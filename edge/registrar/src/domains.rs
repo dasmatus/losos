@@ -45,6 +45,23 @@
 //! (one DNS hiccup must not take a website down); a Stripe account that is no
 //! longer ready takes it offline at once, because that is local data and not
 //! a guess.
+//!
+//! # Paying a box by its name
+//!
+//! A box may bind its wallet to its names ([`bind_wallet`]): the owner signs
+//! [`wallet_message`] with the wallet, and the edge then publishes
+//! [`ens_record`] as a TXT record at every name it holds for that box in its
+//! own zone (the tenant hostname and the label). The zone is DNSSEC-signed,
+//! so ENS's gasless DNS resolution (ENSIP-17: the `ENS1` record, read by the
+//! DNSSEC gateway and checked on Ethereum mainnet) turns the name into that
+//! address, and a wallet that sends to ENS names sends to
+//! `mattbox.losos.cfd`. The edge publishes only an address whose signature
+//! it has checked, and stores the signature with it.
+//!
+//! An owner's own domain lives in a zone the edge does not serve. The view
+//! gives the owner the same record to add at their DNS provider, and the
+//! reconciler reports what it finds there ([`WalletSeen`]); that never
+//! decides whether the domain is routed.
 
 use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -87,6 +104,14 @@ pub const CHALLENGE_LABEL: &str = "_losos-challenge";
 pub const CHALLENGE_PREFIX: &str = "losos-domain-v1=";
 /// Default DNS-over-HTTPS endpoint (JSON API).
 pub const DEFAULT_DOH_URL: &str = "https://cloudflare-dns.com/dns-query";
+/// The ENS resolver a box name's `ENS1` record names: ENS's
+/// ExtendedDNSResolver, by the ENS name ENS points at the version that reads
+/// `a[...]=` records from the TXT record itself.
+pub const ENS_RESOLVER: &str = "2.dnsname.ens.eth";
+/// EVM chains, by chain id, a wallet may ask a name's address on besides
+/// Ethereum (`a[60]`): Base, Arbitrum One and OP Mainnet, the networks the
+/// market settles USDC on. ENSIP-11 keys them `a[e<chain id>]`.
+pub const ENS_CHAIN_IDS: [u64; 3] = [8453, 42161, 10];
 
 /// Everything `serve --dns-zone ...` was given.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,6 +168,54 @@ pub fn challenge_token(domain: &str, box_uuid: &str, account_id: &str) -> String
         "{CHALLENGE_PREFIX}{}",
         crate::identity::to_hex(&d.as_ref()[..16])
     )
+}
+
+/// What the box's wallet signs (`personal_sign`) to let the edge publish
+/// its address at the box's names. It names the edge's zone and the box, so
+/// a signature made for one edge or one box binds nothing elsewhere.
+#[must_use]
+pub fn wallet_message(zone: &str, tenant: &str, address: &str) -> String {
+    format!("LosOS box name v1\nzone: {zone}\nbox: {tenant}\naddress: {address}\n")
+}
+
+/// The TXT record that makes a name resolve to `address` in ENS: the same
+/// address on Ethereum and on every chain in [`ENS_CHAIN_IDS`]. One
+/// character-string, under the 255 bytes the resolver reads.
+#[must_use]
+pub fn ens_record(address: &str) -> String {
+    let mut out = format!("ENS1 {ENS_RESOLVER} a[60]={address}");
+    for id in ENS_CHAIN_IDS {
+        out.push_str(&format!(" a[e{id}]={address}"));
+    }
+    out
+}
+
+/// `fqdn`, lowercased and without a trailing dot, if it lies strictly inside
+/// `zone`.
+#[must_use]
+pub fn in_zone(fqdn: &str, zone: &str) -> Option<String> {
+    let fqdn = fqdn.trim().trim_end_matches('.').to_ascii_lowercase();
+    let rel = fqdn.strip_suffix(&format!(".{zone}"))?;
+    (!rel.is_empty()).then_some(fqdn)
+}
+
+/// The names the edge serves for a box in its own zone: its hostname, when
+/// that lies inside the zone, and its label once Stripe vouches for it.
+#[must_use]
+pub fn box_names(
+    opts: &DomainsOpts,
+    hostname: Option<&str>,
+    vouched: Option<&Vouched>,
+) -> Vec<String> {
+    let mut names: Vec<String> = hostname
+        .and_then(|h| in_zone(h, &opts.zone))
+        .into_iter()
+        .collect();
+    if let Some(v) = vouched {
+        names.push(opts.target_for(&v.box_uuid));
+    }
+    names.dedup();
+    names
 }
 
 /// Lowercase, strip one trailing dot, and check `s` is a hostname a stranger
@@ -223,6 +296,36 @@ pub enum Problem {
     LookupFailed,
 }
 
+/// What the last look at an owner's domain found of the box's wallet
+/// record (the domain itself, TXT).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WalletSeen {
+    /// The record names the bound address and the answer was
+    /// DNSSEC-validated: ENS resolves the domain to the wallet.
+    Found,
+    /// The record is there, but the resolver could not validate it: the
+    /// domain's zone is not signed, so ENS cannot read it.
+    Unsigned,
+    /// The domain is a CNAME, which can carry no other record. Only a name
+    /// with A/AAAA records (a zone apex) can be paid by name.
+    Cname,
+    /// An `ENS1` record for another address.
+    Other,
+    /// No `ENS1` record.
+    Missing,
+}
+
+/// A box's wallet, bound to its names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WalletBinding {
+    /// `0x` + 40 lowercase hex.
+    pub address: String,
+    /// The `personal_sign` of [`wallet_message`] that let the edge publish it.
+    pub signature: String,
+    pub bound_at: u64,
+}
+
 /// One box's claim on one domain.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Claim {
@@ -244,6 +347,10 @@ pub struct Claim {
     pub points_here: bool,
     #[serde(default)]
     pub problem: Option<Problem>,
+    /// The wallet record at the domain, looked up while the box has a
+    /// wallet bound; `None` otherwise.
+    #[serde(default)]
+    pub wallet: Option<WalletSeen>,
 }
 
 impl Claim {
@@ -270,6 +377,9 @@ impl Claim {
 pub struct DomainsState {
     #[serde(default)]
     pub claims: Vec<Claim>,
+    /// Bound wallets, by tenant.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub wallets: BTreeMap<String, WalletBinding>,
 }
 
 /// What the box's Stripe account looks like to the edge, reduced to the two
@@ -293,6 +403,10 @@ impl Vouched {
     }
 }
 
+/// DNS-over-HTTPS answers as `(owner name, type, data)`, and whether the
+/// resolver validated them with DNSSEC (the AD bit).
+pub type NamedAnswers = (Vec<(String, u16, String)>, bool);
+
 /// What one DNS-over-HTTPS round found for a claim.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Observed {
@@ -301,16 +415,22 @@ pub struct Observed {
     /// `(type, data)` answers for the domain's A and AAAA queries, CNAME
     /// steps included, or why a lookup failed.
     pub addrs: Result<Vec<(u16, String)>, String>,
+    /// TXT answers for the domain itself, as `(name, type, data)`, and
+    /// whether the resolver validated them (DNSSEC's AD bit). `None` when
+    /// the box has no wallet bound and nothing was asked.
+    pub wallet: Option<Result<NamedAnswers, String>>,
 }
 
 /// The pure half of a check: given what DNS said, the claim's next state.
 ///
 /// `vouched` is the box's Stripe data right now (`None`: not ready),
-/// `taken_elsewhere` whether another tenant has this domain live.
+/// `wallet` the address bound to the box's names, `taken_elsewhere` whether
+/// another tenant has this domain live.
 #[must_use]
 pub fn evaluate(
     claim: &Claim,
     vouched: Option<&Vouched>,
+    wallet: Option<&str>,
     opts: &DomainsOpts,
     taken_elsewhere: bool,
     observed: &Observed,
@@ -318,6 +438,14 @@ pub fn evaluate(
 ) -> Claim {
     let mut next = claim.clone();
     next.checked_at = Some(now);
+    // Reported, never routed on: a lookup that failed keeps the last word.
+    match (wallet, &observed.wallet) {
+        (Some(address), Some(Ok((answers, validated)))) => {
+            next.wallet = Some(wallet_seen(&claim.domain, answers, *validated, address));
+        }
+        (Some(_), Some(Err(_))) => {}
+        _ => next.wallet = None,
+    }
 
     let Some(v) = vouched else {
         // Local data, not a guess: offline at once.
@@ -388,6 +516,109 @@ pub fn evaluate(
     next
 }
 
+/// Read the TXT answers for `domain` for the wallet record of `address`.
+/// Only records owned by `domain` itself count: ENS takes the record of the
+/// exact name it was asked, and a CNAME's target is another name.
+#[must_use]
+pub fn wallet_seen(
+    domain: &str,
+    answers: &[(String, u16, String)],
+    validated: bool,
+    address: &str,
+) -> WalletSeen {
+    let own = |name: &str| {
+        name.trim()
+            .trim_end_matches('.')
+            .eq_ignore_ascii_case(domain)
+    };
+    if answers.iter().any(|(n, t, _)| *t == 5 && own(n)) {
+        return WalletSeen::Cname;
+    }
+    let records: Vec<String> = answers
+        .iter()
+        .filter(|(n, t, _)| *t == 16 && own(n))
+        .map(|(_, _, data)| txt_text(data))
+        .filter(|r| r.starts_with("ENS1 "))
+        .collect();
+    let want = format!("a[60]={address}");
+    if records
+        .iter()
+        .any(|r| r.split(' ').any(|w| w.eq_ignore_ascii_case(&want)))
+    {
+        if validated {
+            WalletSeen::Found
+        } else {
+            WalletSeen::Unsigned
+        }
+    } else if records.is_empty() {
+        WalletSeen::Missing
+    } else {
+        WalletSeen::Other
+    }
+}
+
+/// Bind `address` to `tenant`'s names once `signature` proves the wallet
+/// holds it. Pure; the caller persists.
+///
+/// # Errors
+/// [`DomainError::Invalid`] for an address that is not one, or a signature
+/// that is not that address's over [`wallet_message`].
+pub fn bind_wallet(
+    state: &DomainsState,
+    opts: &DomainsOpts,
+    tenant: &str,
+    address: &str,
+    signature: &str,
+    now: u64,
+) -> Result<DomainsState, DomainError> {
+    let address = crate::stablecoin::normalize_address(address).ok_or(DomainError::Invalid(
+        "the wallet address is not an 0x address",
+    ))?;
+    let message = wallet_message(&opts.zone, tenant, &address);
+    match crate::stablecoin::recover_address(message.as_bytes(), signature) {
+        Some(signer) if signer == address => {}
+        Some(_) => {
+            return Err(DomainError::Invalid(
+                "the signature is not from that wallet",
+            ))
+        }
+        None => return Err(DomainError::Invalid("the signature does not recover")),
+    }
+    let mut next = state.clone();
+    let keep = next
+        .wallets
+        .get(tenant)
+        .is_some_and(|w| w.address == address);
+    if !keep {
+        next.wallets.insert(
+            tenant.to_string(),
+            WalletBinding {
+                address,
+                signature: signature.trim().to_ascii_lowercase(),
+                bound_at: now,
+            },
+        );
+        // The domains' last word was about the old address.
+        for c in next.claims.iter_mut().filter(|c| c.tenant == tenant) {
+            c.wallet = None;
+            c.checked_at = None;
+        }
+    }
+    Ok(next)
+}
+
+/// Take `tenant`'s wallet off its names. Pure; nothing bound is not an
+/// error.
+#[must_use]
+pub fn unbind_wallet(state: &DomainsState, tenant: &str) -> DomainsState {
+    let mut next = state.clone();
+    next.wallets.remove(tenant);
+    for c in next.claims.iter_mut().filter(|c| c.tenant == tenant) {
+        c.wallet = None;
+    }
+    next
+}
+
 /// Whether DNS answers for the domain lead here: a CNAME step to the box's
 /// target name, or an address that is one of the edge's.
 #[must_use]
@@ -451,6 +682,17 @@ pub struct DomainView {
     pub problem: Option<Problem>,
     pub checked_at: Option<u64>,
     pub verified_at: Option<u64>,
+    /// The wallet record at the domain, while a wallet is bound.
+    pub wallet: Option<WalletSeen>,
+}
+
+/// The box's bound wallet as its owner sees it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct WalletView {
+    pub address: String,
+    pub bound_at: u64,
+    /// The TXT value at every name below and for the owner's own domains.
+    pub record: String,
 }
 
 /// `POST /domains/list`, and the answer to every change.
@@ -472,16 +714,27 @@ pub struct DomainsView {
     /// (`crate::routes`); set by the handler, never by [`view`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub relay_pass: Option<String>,
+    /// The box's id on this edge and the edge's zone: what
+    /// [`wallet_message`] names.
+    #[serde(rename = "box")]
+    pub box_id: String,
+    pub zone: String,
+    /// The names the edge serves for this box in its zone ([`box_names`]),
+    /// which carry the wallet record while one is bound.
+    pub names: Vec<String>,
+    pub wallet: Option<WalletView>,
 }
 
-/// Build a box's view. Pure.
+/// Build a box's view. `hostname` is the box's name on the edge. Pure.
 #[must_use]
 pub fn view(
     state: &DomainsState,
     tenant: &str,
+    hostname: Option<&str>,
     vouched: Option<&Vouched>,
     opts: &DomainsOpts,
 ) -> DomainsView {
+    let wallet = state.wallets.get(tenant);
     let addresses = opts
         .ipv4
         .iter()
@@ -506,6 +759,7 @@ pub fn view(
             },
             checked_at: c.checked_at,
             verified_at: c.verified_at,
+            wallet: wallet.and(c.wallet),
         })
         .collect();
     domains.sort_by(|a, b| a.domain.cmp(&b.domain));
@@ -517,6 +771,14 @@ pub fn view(
         max_domains: MAX_PER_TENANT,
         domains,
         relay_pass: None,
+        box_id: tenant.to_string(),
+        zone: opts.zone.clone(),
+        names: box_names(opts, hostname, vouched),
+        wallet: wallet.map(|w| WalletView {
+            address: w.address.clone(),
+            bound_at: w.bound_at,
+            record: ens_record(&w.address),
+        }),
     }
 }
 
@@ -568,6 +830,7 @@ pub fn add(
         txt_found: false,
         points_here: false,
         problem: None,
+        wallet: None,
     });
     Ok(next)
 }
@@ -591,15 +854,16 @@ pub fn remove(
     Ok(next)
 }
 
-/// Drop claims of tenants the operator removed, and waiting claims past
+/// Drop claims and wallets of tenants the operator removed, and waiting claims past
 /// [`PENDING_TTL_SECS`]. Pure; returns whether anything went.
 pub fn prune(state: &mut DomainsState, tenant_exists: impl Fn(&str) -> bool, now: u64) -> bool {
-    let before = state.claims.len();
+    let before = (state.claims.len(), state.wallets.len());
     state.claims.retain(|c| {
         tenant_exists(&c.tenant)
             && (c.live() || now.saturating_sub(c.created_at) < PENDING_TTL_SECS)
     });
-    state.claims.len() != before
+    state.wallets.retain(|t, _| tenant_exists(t));
+    (state.claims.len(), state.wallets.len()) != before
 }
 
 /// Live `(tenant, domain)` pairs, each domain once: if two tenants somehow
@@ -701,9 +965,19 @@ impl Doh {
     /// list, not an error: "no record" is an answer.
     ///
     /// # Errors
+    /// See [`Doh::query_named`].
+    pub async fn query(&self, name: &str, rtype: &str) -> Result<Vec<(u16, String)>, String> {
+        let (answers, _) = self.query_named(name, rtype).await?;
+        Ok(answers.into_iter().map(|(_, t, d)| (t, d)).collect())
+    }
+
+    /// `(name, type, data)` for every answer, and whether the resolver
+    /// validated them with DNSSEC (the AD bit).
+    ///
+    /// # Errors
     /// A transport failure, a non-200, a body that is not the JSON API, or a
     /// resolver status other than NOERROR/NXDOMAIN (SERVFAIL, REFUSED).
-    pub async fn query(&self, name: &str, rtype: &str) -> Result<Vec<(u16, String)>, String> {
+    pub async fn query_named(&self, name: &str, rtype: &str) -> Result<NamedAnswers, String> {
         let resp = self
             .client
             .get(&self.url)
@@ -719,11 +993,12 @@ impl Doh {
             .json()
             .await
             .map_err(|e| format!("DNS-over-HTTPS answer is not JSON: {e}"))?;
-        parse_doh(&body)
+        parse_doh_named(&body)
     }
 
-    /// Run the three lookups one claim needs.
-    pub async fn observe(&self, domain: &str) -> Observed {
+    /// Run the lookups one claim needs: three, and a fourth for the wallet
+    /// record while the box has a wallet bound.
+    pub async fn observe(&self, domain: &str, wallet: bool) -> Observed {
         let txt = self
             .query(&format!("{CHALLENGE_LABEL}.{domain}"), "TXT")
             .await
@@ -746,7 +1021,12 @@ impl Doh {
             (Err(_), Ok(b)) => Ok(b),
             (Err(e), Err(_)) => Err(e),
         };
-        Observed { txt, addrs }
+        let wallet = if wallet {
+            Some(self.query_named(domain, "TXT").await)
+        } else {
+            None
+        };
+        Observed { txt, addrs, wallet }
     }
 }
 
@@ -755,26 +1035,37 @@ impl Doh {
 /// # Errors
 /// See [`Doh::query`].
 pub fn parse_doh(body: &Value) -> Result<Vec<(u16, String)>, String> {
+    parse_doh_named(body).map(|(answers, _)| answers.into_iter().map(|(_, t, d)| (t, d)).collect())
+}
+
+/// Read a DNS JSON API body with each answer's owner name, and the AD bit.
+///
+/// # Errors
+/// See [`Doh::query_named`].
+pub fn parse_doh_named(body: &Value) -> Result<NamedAnswers, String> {
     match body.get("Status").and_then(Value::as_u64) {
         // NOERROR, NXDOMAIN
         Some(0 | 3) => {}
         Some(n) => return Err(format!("resolver status {n}")),
         None => return Err("DNS-over-HTTPS answer has no Status".to_string()),
     }
-    Ok(body
+    let answers = body
         .get("Answer")
         .and_then(Value::as_array)
         .map(|answers| {
             answers
                 .iter()
                 .filter_map(|a| {
+                    let name = a.get("name")?.as_str()?.to_string();
                     let t = u16::try_from(a.get("type")?.as_u64()?).ok()?;
                     let data = a.get("data")?.as_str()?.to_string();
-                    Some((t, data))
+                    Some((name, t, data))
                 })
                 .collect()
         })
-        .unwrap_or_default())
+        .unwrap_or_default();
+    let validated = body.get("AD").and_then(Value::as_bool) == Some(true);
+    Ok((answers, validated))
 }
 
 /// A TXT record's text from its presentation form: `"a" "b"` is `ab`, an
@@ -844,7 +1135,227 @@ mod tests {
                 (5, format!("{}.", o.target_for(UUID))),
                 (1, "203.0.113.7".to_string()),
             ]),
+            wallet: None,
         }
+    }
+
+    /// A wallet's key, its address and its signature of the binding.
+    fn wallet(tenant: &str) -> (String, String) {
+        let secret = [7u8; 32];
+        let key = k256::ecdsa::SigningKey::from_bytes((&secret).into()).unwrap();
+        let address = crate::stablecoin::address_of(key.verifying_key());
+        let message = wallet_message("boxes.losos.cfd", tenant, &address);
+        let signature = crate::stablecoin::sign_personal(&secret, message.as_bytes());
+        (address, signature)
+    }
+
+    #[test]
+    fn a_wallet_binds_only_with_its_own_signature_for_this_box_and_edge() {
+        let o = opts();
+        let (address, signature) = wallet("mattbox");
+        let s = bind_wallet(
+            &DomainsState::default(),
+            &o,
+            "mattbox",
+            &address.to_uppercase().replace("0X", "0x"),
+            &signature,
+            5,
+        )
+        .unwrap();
+        let w = &s.wallets["mattbox"];
+        assert_eq!(w.address, address);
+        assert_eq!(w.bound_at, 5);
+        // Binding the same address again keeps the first time.
+        let again = bind_wallet(&s, &o, "mattbox", &address, &signature, 9).unwrap();
+        assert_eq!(again.wallets["mattbox"].bound_at, 5);
+
+        // The same signature binds no other box, and no other edge's zone.
+        assert!(matches!(
+            bind_wallet(
+                &DomainsState::default(),
+                &o,
+                "otherbox",
+                &address,
+                &signature,
+                5
+            ),
+            Err(DomainError::Invalid(_))
+        ));
+        let elsewhere = DomainsOpts {
+            zone: "boxes.other.example".to_string(),
+            ..opts()
+        };
+        assert!(bind_wallet(
+            &DomainsState::default(),
+            &elsewhere,
+            "mattbox",
+            &address,
+            &signature,
+            5
+        )
+        .is_err());
+        // Nor another address, nor garbage.
+        assert!(bind_wallet(
+            &DomainsState::default(),
+            &o,
+            "mattbox",
+            "0x1111111111111111111111111111111111111111",
+            &signature,
+            5
+        )
+        .is_err());
+        assert!(bind_wallet(
+            &DomainsState::default(),
+            &o,
+            "mattbox",
+            "mattbox.eth",
+            &signature,
+            5
+        )
+        .is_err());
+        assert!(bind_wallet(&DomainsState::default(), &o, "mattbox", &address, "0x00", 5).is_err());
+
+        let gone = unbind_wallet(&s, "mattbox");
+        assert!(gone.wallets.is_empty());
+        assert_eq!(unbind_wallet(&gone, "mattbox"), gone);
+    }
+
+    #[test]
+    fn the_view_names_the_box_and_its_wallet() {
+        let o = opts();
+        let (address, signature) = wallet("mattbox");
+        let s = DomainsState::default();
+        let v = view(&s, "mattbox", Some("Mattbox.boxes.losos.cfd"), None, &o);
+        assert_eq!(v.box_id, "mattbox");
+        assert_eq!(v.zone, "boxes.losos.cfd");
+        assert_eq!(v.names, vec!["mattbox.boxes.losos.cfd".to_string()]);
+        assert_eq!(v.wallet, None);
+        // A hostname outside the zone is not the edge's to sign for; the
+        // label joins once Stripe vouches.
+        let v = view(
+            &s,
+            "mattbox",
+            Some("mattbox.losos.cfd"),
+            Some(&vouched()),
+            &o,
+        );
+        assert_eq!(v.names, vec![o.target_for(UUID)]);
+
+        let s = bind_wallet(&s, &o, "mattbox", &address, &signature, 5).unwrap();
+        let s = add(&s, "mattbox", "cloud.example.org", 6).unwrap();
+        let v = view(&s, "mattbox", None, None, &o);
+        let w = v.wallet.unwrap();
+        assert_eq!(w.address, address);
+        assert_eq!(w.record, ens_record(&address));
+        let json = serde_json::to_value(view(&s, "mattbox", None, None, &o)).unwrap();
+        assert_eq!(json["box"], "mattbox");
+        assert!(json.get("box_id").is_none());
+        // Another box sees none of it.
+        assert_eq!(view(&s, "otherbox", None, None, &o).wallet, None);
+        // Removed tenants lose their wallet with their claims.
+        let mut pruned = s.clone();
+        assert!(prune(&mut pruned, |t| t != "mattbox", 7));
+        assert!(pruned.wallets.is_empty() && pruned.claims.is_empty());
+    }
+
+    #[test]
+    fn the_wallet_record_at_an_owners_domain_is_read_as_ens_reads_it() {
+        let a = "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed";
+        let txt = |name: &str, text: &str| (name.to_string(), 16, format!("\"{text}\""));
+        let record = ens_record(a);
+        let d = "example.org";
+        assert_eq!(
+            wallet_seen(d, &[txt("example.org.", &record)], true, a),
+            WalletSeen::Found
+        );
+        assert_eq!(
+            wallet_seen(d, &[txt("Example.org", &record.to_uppercase())], true, a),
+            WalletSeen::Found
+        );
+        assert_eq!(
+            wallet_seen(d, &[txt("example.org", &record)], false, a),
+            WalletSeen::Unsigned
+        );
+        assert_eq!(
+            wallet_seen(d, &[txt("example.org", "v=spf1 -all")], true, a),
+            WalletSeen::Missing
+        );
+        assert_eq!(wallet_seen(d, &[], true, a), WalletSeen::Missing);
+        assert_eq!(
+            wallet_seen(
+                d,
+                &[txt(
+                    "example.org",
+                    &ens_record("0x1111111111111111111111111111111111111111")
+                )],
+                true,
+                a
+            ),
+            WalletSeen::Other
+        );
+        // A CNAME's target carrying the record is not the domain carrying it.
+        let cname = [
+            (
+                "example.org".to_string(),
+                5,
+                "abc.boxes.losos.cfd.".to_string(),
+            ),
+            txt("abc.boxes.losos.cfd", &record),
+        ];
+        assert_eq!(wallet_seen(d, &cname, true, a), WalletSeen::Cname);
+        assert_eq!(wallet_seen(d, &cname[1..], true, a), WalletSeen::Missing);
+    }
+
+    #[test]
+    fn a_domain_check_reports_the_wallet_record_without_routing_on_it() {
+        let o = opts();
+        let v = vouched();
+        let a = "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed";
+        let c = claim("cloud.example.org", "a");
+        let mut seen = good(&o, "cloud.example.org");
+        seen.wallet = Some(Ok((
+            vec![("cloud.example.org".to_string(), 16, ens_record(a))],
+            true,
+        )));
+        let live = evaluate(&c, Some(&v), Some(a), &o, false, &seen, 200);
+        assert!(live.live());
+        assert_eq!(live.wallet, Some(WalletSeen::Found));
+        // A failed lookup keeps the last word; no wallet clears it.
+        seen.wallet = Some(Err("timeout".into()));
+        assert_eq!(
+            evaluate(&live, Some(&v), Some(a), &o, false, &seen, 300).wallet,
+            Some(WalletSeen::Found)
+        );
+        seen.wallet = None;
+        assert_eq!(
+            evaluate(&live, Some(&v), None, &o, false, &seen, 300).wallet,
+            None
+        );
+        // The record missing never takes the domain down.
+        seen.wallet = Some(Ok((Vec::new(), true)));
+        let still = evaluate(&live, Some(&v), Some(a), &o, false, &seen, 400);
+        assert!(still.live());
+        assert_eq!(still.wallet, Some(WalletSeen::Missing));
+    }
+
+    #[test]
+    fn doh_answers_carry_their_names_and_the_ad_bit() {
+        let body = serde_json::json!({
+            "Status": 0, "AD": true,
+            "Answer": [{"name": "example.org.", "type": 16, "TTL": 300, "data": "\"ENS1 x\""}]
+        });
+        assert_eq!(
+            parse_doh_named(&body).unwrap(),
+            (
+                vec![("example.org.".to_string(), 16, "\"ENS1 x\"".to_string())],
+                true
+            )
+        );
+        assert!(
+            !parse_doh_named(&serde_json::json!({"Status": 3}))
+                .unwrap()
+                .1
+        );
     }
 
     #[test]
@@ -914,7 +1425,15 @@ mod tests {
         let c = claim("cloud.example.org", "mattbox");
         let v = vouched();
 
-        let live = evaluate(&c, Some(&v), &o, false, &good(&o, "cloud.example.org"), 200);
+        let live = evaluate(
+            &c,
+            Some(&v),
+            None,
+            &o,
+            false,
+            &good(&o, "cloud.example.org"),
+            200,
+        );
         assert_eq!(live.verified_at, Some(200));
         assert_eq!(live.problem, None);
         assert!(live.txt_found && live.points_here);
@@ -923,7 +1442,7 @@ mod tests {
             addrs: Ok(vec![(1, "198.51.100.1".to_string())]),
             ..good(&o, "cloud.example.org")
         };
-        let w = evaluate(&c, Some(&v), &o, false, &no_cname, 200);
+        let w = evaluate(&c, Some(&v), None, &o, false, &no_cname, 200);
         assert_eq!(w.verified_at, None);
         assert_eq!(w.problem, Some(Problem::NotPointing));
         assert!(w.txt_found);
@@ -932,7 +1451,7 @@ mod tests {
             txt: Ok(vec!["v=spf1 -all".to_string()]),
             ..good(&o, "cloud.example.org")
         };
-        let w = evaluate(&c, Some(&v), &o, false, &no_txt, 200);
+        let w = evaluate(&c, Some(&v), None, &o, false, &no_txt, 200);
         assert_eq!(w.problem, Some(Problem::TxtMissing));
 
         // Another box's token, or this box's for another domain, is wrong.
@@ -944,15 +1463,31 @@ mod tests {
             )]),
             ..good(&o, "cloud.example.org")
         };
-        let w = evaluate(&c, Some(&v), &o, false, &other, 200);
+        let w = evaluate(&c, Some(&v), None, &o, false, &other, 200);
         assert_eq!(w.problem, Some(Problem::TxtWrong));
         assert_eq!(w.verified_at, None);
 
-        let w = evaluate(&c, None, &o, false, &good(&o, "cloud.example.org"), 200);
+        let w = evaluate(
+            &c,
+            None,
+            None,
+            &o,
+            false,
+            &good(&o, "cloud.example.org"),
+            200,
+        );
         assert_eq!(w.problem, Some(Problem::StripeAccount));
         assert_eq!(w.verified_at, None);
 
-        let w = evaluate(&c, Some(&v), &o, true, &good(&o, "cloud.example.org"), 200);
+        let w = evaluate(
+            &c,
+            Some(&v),
+            None,
+            &o,
+            true,
+            &good(&o, "cloud.example.org"),
+            200,
+        );
         assert_eq!(w.problem, Some(Problem::TakenElsewhere));
     }
 
@@ -973,6 +1508,7 @@ mod tests {
         let c = evaluate(
             &claim("cloud.example.org", "mattbox"),
             Some(&v),
+            None,
             &o,
             false,
             &good(&o, "cloud.example.org"),
@@ -981,16 +1517,18 @@ mod tests {
         let gone = Observed {
             txt: Ok(vec![]),
             addrs: Err("timeout".into()),
+            wallet: None,
         };
-        let c1 = evaluate(&c, Some(&v), &o, false, &gone, 300);
+        let c1 = evaluate(&c, Some(&v), None, &o, false, &gone, 300);
         assert!(c1.live() && c1.failures == 1);
         assert_eq!(c1.problem, Some(Problem::LookupFailed));
-        let c2 = evaluate(&c1, Some(&v), &o, false, &gone, 400);
+        let c2 = evaluate(&c1, Some(&v), None, &o, false, &gone, 400);
         assert!(c2.live() && c2.failures == 2);
         // A good answer in between resets the count.
         let back = evaluate(
             &c2,
             Some(&v),
+            None,
             &o,
             false,
             &good(&o, "cloud.example.org"),
@@ -998,8 +1536,9 @@ mod tests {
         );
         assert!(back.live() && back.failures == 0);
         let c3 = evaluate(
-            &evaluate(&c2, Some(&v), &o, false, &gone, 500),
+            &evaluate(&c2, Some(&v), None, &o, false, &gone, 500),
             Some(&v),
+            None,
             &o,
             false,
             &gone,
@@ -1007,7 +1546,15 @@ mod tests {
         );
         assert!(!c3.live());
         // Stripe no longer vouching: offline at once, no grace.
-        let s = evaluate(&c, None, &o, false, &good(&o, "cloud.example.org"), 300);
+        let s = evaluate(
+            &c,
+            None,
+            None,
+            &o,
+            false,
+            &good(&o, "cloud.example.org"),
+            300,
+        );
         assert!(!s.live());
     }
 
@@ -1070,13 +1617,13 @@ mod tests {
     fn the_view_hides_the_token_until_stripe_vouches() {
         let o = opts();
         let s = add(&DomainsState::default(), "a", "x.example.org", 0).unwrap();
-        let v = view(&s, "a", None, &o);
+        let v = view(&s, "a", None, None, &o);
         assert!(!v.eligible);
         assert_eq!(v.reason, Some(Problem::StripeAccount));
         assert_eq!(v.target, None);
         assert_eq!(v.domains[0].txt_value, None);
         assert_eq!(v.domains[0].txt_name, "_losos-challenge.x.example.org");
-        let v = view(&s, "a", Some(&vouched()), &o);
+        let v = view(&s, "a", None, Some(&vouched()), &o);
         assert!(v.eligible);
         assert_eq!(v.target.as_deref(), Some(o.target_for(UUID).as_str()));
         assert_eq!(
@@ -1084,7 +1631,7 @@ mod tests {
             Some(challenge_token("x.example.org", UUID, "acct_1Abc").as_str())
         );
         assert_eq!(v.addresses, ["203.0.113.7", "2001:db8::7"]);
-        assert!(view(&s, "b", Some(&vouched()), &o).domains.is_empty());
+        assert!(view(&s, "b", None, Some(&vouched()), &o).domains.is_empty());
     }
 
     #[test]

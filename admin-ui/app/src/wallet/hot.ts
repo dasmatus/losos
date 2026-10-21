@@ -29,6 +29,12 @@ export function payoutMessage(chain: number | string, address: string): string {
   return `LosOS market payout v1\nchain: ${chain}\naddress: ${shown}\n`;
 }
 
+/** What the wallet signs to let the edge publish its address at the box's
+ *  names (edge/registrar/src/domains.rs, `wallet_message`). */
+export function walletMessage(zone: string, box: string, address: string): string {
+  return `LosOS box name v1\nzone: ${zone}\nbox: ${box}\naddress: ${address.toLowerCase()}\n`;
+}
+
 interface Sealed {
   v: 1;
   salt: string;

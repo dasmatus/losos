@@ -14,13 +14,16 @@
 //!   rather than leaning on a hand-made wildcard);
 //! * `<label>` for every box whose Stripe account vouches for it
 //!   ([`crate::domains::Vouched`]): the name an owner's custom domain points
-//!   at.
+//!   at;
+//! * at both names of a box that bound its wallet, a TXT record with
+//!   [`crate::domains::ens_record`], which ENS reads to resolve the name to
+//!   the wallet. Knot signs the zone (DNSSEC), and ENS needs that.
 //!
 //! Every name resolves to the edge, because the edge is where Traefik
 //! terminates TLS and the tunnel to the box begins. A box's own address
 //! never appears in public DNS.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use crate::domains::DomainsOpts;
@@ -33,6 +36,8 @@ pub const TTL: u32 = 300;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ZoneNames {
     pub names: BTreeSet<String>,
+    /// TXT records, by relative owner name; each name is in `names` too.
+    pub txt: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl ZoneNames {
@@ -48,6 +53,36 @@ impl ZoneNames {
         self.names.insert(rel.to_string());
         true
     }
+
+    /// Add `fqdn` with a TXT record holding `text` as one character-string;
+    /// returns whether it did. Text a master file cannot carry in one
+    /// string (over 255 bytes, not printable ASCII) is refused.
+    pub fn add_txt(&mut self, fqdn: &str, zone: &str, text: &str) -> bool {
+        if text.len() > 255 || !text.bytes().all(|b| (0x20..0x7f).contains(&b)) {
+            return false;
+        }
+        if !self.add_fqdn(fqdn, zone) {
+            return false;
+        }
+        let fqdn = fqdn.trim().trim_end_matches('.').to_ascii_lowercase();
+        let rel = fqdn[..fqdn.len() - zone.len() - 1].to_string();
+        self.txt.entry(rel).or_default().insert(text.to_string());
+        true
+    }
+}
+
+/// `text` as a quoted character-string of a master file.
+fn quoted(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        if c == '"' || c == '\\' {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('"');
+    out
 }
 
 /// A relative owner name a master file can carry unquoted.
@@ -98,6 +133,9 @@ pub fn render(opts: &DomainsOpts, names: &ZoneNames, serial: u32) -> String {
     owners.extend(names.names.iter().cloned());
     for owner in &owners {
         address_records(&mut out, owner, opts);
+        for text in names.txt.get(owner).into_iter().flatten() {
+            let _ = writeln!(out, "{owner} IN TXT {}", quoted(text));
+        }
     }
     out
 }
@@ -197,6 +235,34 @@ mod tests {
              ns1 IN AAAA 2001:db8::7\n"
         );
         assert_eq!(serial_of(&z), Some(1_700_000_000));
+    }
+
+    #[test]
+    fn a_bound_wallet_is_a_txt_record_at_the_name() {
+        let address = "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed";
+        let record = crate::domains::ens_record(address);
+        assert_eq!(
+            record,
+            "ENS1 2.dnsname.ens.eth \
+             a[60]=0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed \
+             a[e8453]=0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed \
+             a[e42161]=0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed \
+             a[e10]=0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"
+        );
+        assert!(record.len() <= 255, "{}", record.len());
+        let mut names = ZoneNames::default();
+        assert!(names.add_txt("Mattbox.boxes.losos.cfd.", "boxes.losos.cfd", &record));
+        assert!(!names.add_txt("mattbox.losos.cfd", "boxes.losos.cfd", &record));
+        assert!(!names.add_txt("x.boxes.losos.cfd", "boxes.losos.cfd", &"a".repeat(256)));
+        assert!(!names.add_txt("x.boxes.losos.cfd", "boxes.losos.cfd", "line\nbreak"));
+        assert!(names.add_txt("q.boxes.losos.cfd", "boxes.losos.cfd", "say \"hi\" \\o/"));
+        let z = render(&opts(), &names, 1);
+        assert!(
+            z.contains(&format!("\nmattbox IN A 203.0.113.7\nmattbox IN AAAA 2001:db8::7\nmattbox IN TXT \"{record}\"\n")),
+            "{z}"
+        );
+        assert!(z.contains("q IN TXT \"say \\\"hi\\\" \\\\o/\"\n"), "{z}");
+        assert!(!z.contains("\nx IN"), "{z}");
     }
 
     #[test]

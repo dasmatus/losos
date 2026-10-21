@@ -241,10 +241,51 @@ vedľa svojho registra. [Federácia
 edge](/in-depth/edge-federation.md#custom-domains-behind-a-local-edge) obsahuje
 podrobnosti a `losos.edge.dns.relayRoutes`.
 
+### Peňaženky pod názvami zariadení {#wallets-at-box-names}
+
+Zariadenie prepojí svoju peňaženku so svojimi názvami cez `POST /domains/wallet`
+(`{address, signature}`, lososd to prenáša z Nastavenia → Sieť). Podpis je
+`personal_sign` peňaženky nad správou
+
+```
+LosOS box name v1
+zone: <zone>
+box: <box id>
+address: <0x address, lowercase>
+```
+
+takže na inom edge ani pre iné zariadenie nič neprepojí. Registrar zistí
+podpisovateľa, uloží adresu aj podpis do `domains.json` a pod každý názov
+zariadenia v zóne, jeho hostname aj jeho štítok, zapíše jeden záznam TXT:
+
+```
+mattbox IN TXT "ENS1 2.dnsname.ens.eth a[60]=0x… a[e8453]=0x… a[e42161]=0x… a[e10]=0x…"
+```
+
+To je bezplatné DNS rozlíšenie ENS (ENSIP-17): peňaženka sa spýta ENS na
+Ethereum mainnet, brána DNSSEC od ENS stiahne záznam TXT, kontrakt overí
+podpisy až po koreň DNS a `2.dnsname.ens.eth`, ExtendedDNSResolver od ENS,
+vráti adresu pre Ethereum (`a[60]`) a podľa chain id pre Base, Arbitrum One a
+OP Mainnet. `{}` prepojenie zruší.
+
+ENS číta len podpísanú zónu, takže Knot túto zónu podpisuje
+(`losos.edge.dns.dnssec.enable`, predvolene zapnuté) svojou predvolenou
+politikou, ECDSA P-256 s kľúčmi v `/var/lib/knot`. Resolvery podpisom
+dôverujú, keď nadradená zóna zverejní záznam DS zóny, ktorý na edge vypíše
+`keymgr <zone> ds`. Zverejnite ho vedľa záznamov NS vyššie.
+
+Vlastná doména majiteľa dostane ten istý záznam, ukázaný na paneli, na
+pridanie priamo k doméne. Kým je peňaženka prepojená, každá kontrola vyhľadá
+aj TXT pri doméne a hlási `wallet`: `found` (záznam, ktorý resolver overil
+cez DNSSEC), `unsigned`, `cname` (CNAME nenesie TXT a ENS číta len presný
+názov), `other` alebo `missing`. Nikdy nerozhoduje o tom, či sa doména smeruje.
+
 :::note[Ako sa to testuje]
 `nix/tests/edge-dns.nix` (`losos-edge-dns`) spustí edge a klienta a pýta sa
-Knotu cez UDP aj TCP. `edge/registrar/tests/domains.rs` prevedie tok
-nárokov proti skutočnému registraru a falošnému serveru DNS-over-HTTPS.
+Knotu cez UDP aj TCP, prepojí peňaženku a jej podpísaný záznam overí cez
+`delv` od záznamu DS zóny. `edge/registrar/tests/domains.rs` prevedie tok
+nárokov aj peňaženiek proti skutočnému registraru a falošnému serveru
+DNS-over-HTTPS.
 :::
 
 ## Demo nasadenie na Verceli {#demo-deployment-on-vercel}

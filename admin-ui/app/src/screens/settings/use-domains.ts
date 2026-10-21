@@ -6,6 +6,8 @@ import {
   isUnauthorized,
   postDomainAdd,
   postDomainRemove,
+  postDomainWallet,
+  type BoundWallet,
   type CustomDomain,
 } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
@@ -37,6 +39,10 @@ export type DomainsState =
       addresses: string[];
       maxDomains: number;
       domains: CustomDomain[];
+      box: string;
+      zone: string;
+      names: string[];
+      wallet: BoundWallet | null;
     };
 
 export interface DomainsData {
@@ -45,6 +51,8 @@ export interface DomainsData {
   refresh: () => void;
   add: (domain: string) => Promise<boolean>;
   remove: (domain: string) => Promise<boolean>;
+  /** Bind the wallet that signed to the box's names, or unbind with null. */
+  bindWallet: (binding: { address: string; signature: string } | null) => Promise<boolean>;
 }
 
 function stateOf(reply: Awaited<ReturnType<typeof getDomains>>): DomainsState {
@@ -56,6 +64,10 @@ function stateOf(reply: Awaited<ReturnType<typeof getDomains>>): DomainsState {
     addresses: reply.addresses,
     maxDomains: reply.max_domains,
     domains: reply.domains,
+    box: reply.box,
+    zone: reply.zone,
+    names: reply.names,
+    wallet: reply.wallet,
   };
 }
 
@@ -127,6 +139,14 @@ export function useDomains(enabled: boolean): DomainsData {
       act(
         () => postDomainRemove(domain),
         () => toast.done(t("panes.network.domains.removedTitle", { domain })),
+      ),
+    bindWallet: (binding) =>
+      act(
+        () => postDomainWallet(binding),
+        () =>
+          binding === null
+            ? toast.done(t("panes.network.wallet.unboundTitle"))
+            : toast.success(t("panes.network.wallet.boundTitle"), t("panes.network.wallet.boundBody")),
       ),
   };
 }

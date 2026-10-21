@@ -3,10 +3,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/progress";
-import type { CustomDomain, DomainProblem } from "@/lib/api";
+import type { BoundWallet, CustomDomain, DomainProblem, DomainWalletSeen } from "@/lib/api";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow } from "./rows";
+import { DomainWallet } from "./domain-wallet";
 import { useDomains } from "./use-domains";
 
 /* A domain the owner already has, pointing at this box.
@@ -22,6 +23,15 @@ import { useDomains } from "./use-domains";
  *
  * The records are shown as text to copy into the owner's DNS provider, one
  * per line, in the order a provider's form asks for them. */
+
+/* What the wallet record at the owner's own domain says, when it is not
+ * simply there. `found` needs no words: the record line shows "seen". */
+const WALLET_SEEN: Record<Exclude<DomainWalletSeen, "found">, MessageKey> = {
+  unsigned: "panes.network.wallet.seen.unsigned",
+  cname: "panes.network.wallet.seen.cname",
+  other: "panes.network.wallet.seen.other",
+  missing: "panes.network.wallet.seen.missing",
+};
 
 const PROBLEM: Record<DomainProblem, MessageKey> = {
   stripeAccount: "panes.network.domains.problem.stripeAccount",
@@ -109,6 +119,7 @@ export function DomainsSection({ locked }: { locked: boolean }) {
             domain={domain}
             target={state.target ?? ""}
             addresses={state.addresses}
+            wallet={state.wallet}
             disabled={disabled}
             onRemove={() => void domains.remove(domain.domain)}
           />
@@ -149,11 +160,23 @@ export function DomainsSection({ locked }: { locked: boolean }) {
   }
 
   return (
-    <PaneSection data-testid="custom-domains">
-      <GroupTitle>{t("panes.network.domains.title")}</GroupTitle>
-      {body}
-      <GroupCaption>{t("panes.network.domains.caption")}</GroupCaption>
-    </PaneSection>
+    <>
+      <PaneSection data-testid="custom-domains">
+        <GroupTitle>{t("panes.network.domains.title")}</GroupTitle>
+        {body}
+        <GroupCaption>{t("panes.network.domains.caption")}</GroupCaption>
+      </PaneSection>
+      {state.kind === "ready" && (
+        <DomainWallet
+          box={state.box}
+          zone={state.zone}
+          names={state.names}
+          wallet={state.wallet}
+          disabled={locked || domains.busy}
+          bind={domains.bindWallet}
+        />
+      )}
+    </>
   );
 }
 
@@ -161,12 +184,15 @@ function DomainRow({
   domain,
   target,
   addresses,
+  wallet,
   disabled,
   onRemove,
 }: {
   domain: CustomDomain;
   target: string;
   addresses: string[];
+  /** The box's bound wallet: its record is offered for the domain too. */
+  wallet: BoundWallet | null;
   disabled: boolean;
   onRemove: () => void;
 }) {
@@ -200,6 +226,32 @@ function DomainRow({
       {!live && addresses.length > 0 && (
         <p className="text-[12.5px] leading-snug text-muted">
           {t("panes.network.domains.apex", { addresses: addresses.join(", ") })}
+        </p>
+      )}
+      {wallet !== null && domain.wallet !== "found" && (
+        <>
+          {/* A CNAME can carry no TXT record, so there is nothing to add. */}
+          {domain.wallet !== "cname" && (
+            <dl
+              className="numeric grid grid-cols-[auto_auto_1fr] gap-x-3 gap-y-1 text-[12.5px] leading-snug"
+              data-testid="domain-wallet-record"
+            >
+              <Record
+                mark={domain.wallet === "unsigned"}
+                name={domain.domain}
+                type="TXT"
+                value={`"${wallet.record}"`}
+              />
+            </dl>
+          )}
+          <p className="text-[12.5px] leading-snug text-muted">
+            {t(domain.wallet === null ? "panes.network.wallet.seen.pending" : WALLET_SEEN[domain.wallet])}
+          </p>
+        </>
+      )}
+      {wallet !== null && domain.wallet === "found" && (
+        <p className="text-[12.5px] leading-snug text-muted">
+          {t("panes.network.wallet.seen.found", { domain: domain.domain })}
         </p>
       )}
     </StackRow>

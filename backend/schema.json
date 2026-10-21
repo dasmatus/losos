@@ -568,7 +568,29 @@
         },
         "domains": {
           "type": "array",
-          "description": "This box's claims, each {domain, status: live|waiting, txt_name, txt_value (null until eligible), txt_found, points_here, problem: null|stripeAccount|txtMissing|txtWrong|notPointing|takenElsewhere|lookupFailed, checked_at, verified_at}."
+          "description": "This box's claims, each {domain, status: live|waiting, txt_name, txt_value (null until eligible), txt_found, points_here, problem: null|stripeAccount|txtMissing|txtWrong|notPointing|takenElsewhere|lookupFailed, checked_at, verified_at, wallet: null|found|unsigned|cname|other|missing}. `wallet` is what the edge last saw of the wallet record at the domain itself, while a wallet is bound."
+        },
+        "box": {
+          "type": "string",
+          "description": "This box's id on the edge, as the wallet binding message names it."
+        },
+        "zone": {
+          "type": "string",
+          "description": "The edge's DNS zone, as the wallet binding message names it."
+        },
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "This box's names in the edge's zone: its hostname when that lies inside the zone, and `target` once eligible. They carry the wallet record while a wallet is bound."
+        },
+        "wallet": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "The wallet bound to this box's names: {address, bound_at, record}, where `record` is the TXT value (`ENS1 2.dnsname.ens.eth a[60]=… a[e8453]=… a[e42161]=… a[e10]=…`) the edge publishes at `names` and the owner may add at a domain of their own. Null when none is bound."
         }
       },
       "description": "The edge's view of this box's custom domains (edge/registrar/src/domains.rs), plus `available`. The same document answers GET, add and remove."
@@ -1928,6 +1950,12 @@
         "in": "{\"domain\": \"cloud.example.org\"}",
         "out": "domainsResponse",
         "note": "Give a domain up; its route and certificate go at the next reconcile. Audited."
+      },
+      "POST /api/domains/wallet": {
+        "auth": true,
+        "in": "{\"address\": \"0x…\", \"signature\": \"0x…\"} or {}",
+        "out": "domainsResponse",
+        "note": "Bind the box's wallet to its names: the edge checks the signature (personal_sign of \"LosOS box name v1\\nzone: <zone>\\nbox: <box>\\naddress: <address>\\n\") and publishes the ENS record at `names` in its DNSSEC-signed zone, so wallets that send to ENS names pay the box by name. {} takes it off. 400 for a bad address or a signature from another wallet. Audited."
       },
       "GET /api/backup": {
         "auth": true,

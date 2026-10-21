@@ -143,6 +143,32 @@ your edge and your edge passes it to the box. Your box tells the LosOS edge
 which home edge it is behind, so nobody else's edge can claim your domain.
 There is nothing to set up for this.
 
+## Paid by name
+
+A box that has a name on the LosOS edge can take payments at that name.
+Someone with MetaMask, Rainbow or any wallet that sends to ENS names types
+`mattbox.boxes.losos.dasmat.us` where an address would go, and the money
+lands in the box's wallet. It works for ETH and tokens such as USDC on
+Ethereum, Base, Arbitrum and OP.
+
+The section **Paid by name** on the Network pane lists the box's names on
+the edge. **Bind wallet** asks the wallet to sign one short message: the
+wallet made on this box asks for its password, otherwise the browser's wallet
+extension asks. The edge checks the signature and then publishes the
+wallet's address at each name. It publishes no address it has not checked,
+so nobody can point the box's name at another wallet. **Unbind** takes the
+address off again.
+
+The address is public once it is bound, like any address you hand out. The
+edge's zone is signed with DNSSEC, which is what lets ENS trust the record.
+
+A domain of your own can carry the same record. Under each domain the pane
+shows a **TXT** record that starts with `ENS1`; add it at the domain itself.
+Two conditions apply. Your DNS provider has to sign the domain with DNSSEC,
+and the name cannot be a CNAME, because a CNAME carries no other record. A
+domain with A and AAAA records, such as `novak-family.eu` itself, works.
+The pane says which of these the edge found.
+
 ## Settings that matter
 
 | Pane     | Setting                                | What it does                                                            |

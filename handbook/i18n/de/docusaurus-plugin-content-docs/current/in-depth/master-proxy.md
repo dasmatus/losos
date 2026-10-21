@@ -261,10 +261,55 @@ diese Routen selbst, in `relay-routes.json` neben seiner Registry.
 [Edge-Föderation](/in-depth/edge-federation.md#custom-domains-behind-a-local-edge)
 enthält die Details und `losos.edge.dns.relayRoutes`.
 
+### Wallets unter Box-Namen {#wallets-at-box-names}
+
+Eine Box verknüpft ihre Wallet mit ihren Namen über `POST /domains/wallet`
+(`{address, signature}`, von lososd aus Einstellungen → Netzwerk
+weitergereicht). Die Signatur ist das `personal_sign` der Wallet über
+
+```
+LosOS box name v1
+zone: <zone>
+box: <box id>
+address: <0x address, lowercase>
+```
+
+sodass sie auf einer anderen Edge oder für eine andere Box nichts verknüpft.
+Der Registrar ermittelt den Signierer, speichert Adresse und Signatur in
+`domains.json` und schreibt unter jeden Namen der Box in der Zone, ihren
+Hostnamen und ihr Label, einen TXT-Eintrag:
+
+```
+mattbox IN TXT "ENS1 2.dnsname.ens.eth a[60]=0x… a[e8453]=0x… a[e42161]=0x… a[e10]=0x…"
+```
+
+Das ist die gaslose DNS-Auflösung von ENS (ENSIP-17): Eine Wallet fragt ENS
+auf Ethereum Mainnet, das DNSSEC-Gateway von ENS holt den TXT-Eintrag, ein
+Contract prüft die Signaturen bis zur DNS-Wurzel, und `2.dnsname.ens.eth`,
+der ExtendedDNSResolver von ENS, liefert die Adresse für Ethereum (`a[60]`)
+und, nach Chain-ID, für Base, Arbitrum One und OP Mainnet. `{}` trennt sie.
+
+ENS liest nur eine signierte Zone, also signiert Knot diese
+(`losos.edge.dns.dnssec.enable`, standardmäßig an) mit seiner
+Standardrichtlinie, ECDSA P-256 mit Schlüsseln in `/var/lib/knot`. Resolver
+vertrauen den Signaturen, sobald die Elternzone den DS-Eintrag der Zone
+veröffentlicht, den `keymgr <zone> ds` auf der Edge ausgibt. Veröffentliche
+ihn neben den NS-Einträgen oben.
+
+Die eigene Domain eines Besitzers bekommt denselben Eintrag im Bereich
+angezeigt, um ihn direkt bei der Domain einzutragen. Solange eine Wallet
+verknüpft ist, sucht jede Prüfung auch TXT bei der Domain und meldet
+`wallet`: `found` (der Eintrag, vom Resolver per DNSSEC validiert),
+`unsigned`, `cname` (ein CNAME trägt kein TXT, und ENS liest nur den exakten
+Namen), `other` oder `missing`. Darüber, ob die Domain geroutet wird,
+entscheidet das nie.
+
 :::note[Wie das getestet wird]
-`nix/tests/edge-dns.nix` (`losos-edge-dns`) bootet eine Edge und einen Client und
-fragt Knot über UDP und TCP ab. `edge/registrar/tests/domains.rs` spielt
-den Anspruchsablauf gegen einen echten Registrar und einen nachgebildeten
+`nix/tests/edge-dns.nix` (`losos-edge-dns`) bootet eine Edge und einen Client,
+fragt Knot über UDP und TCP ab, verknüpft eine Wallet und validiert ihren
+signierten Eintrag mit `delv` ab dem DS der Zone.
+`edge/registrar/tests/domains.rs` spielt den Anspruchs- und den
+Wallet-Ablauf gegen einen echten Registrar und einen nachgebildeten
 DNS-over-HTTPS-Server durch.
 :::
 
