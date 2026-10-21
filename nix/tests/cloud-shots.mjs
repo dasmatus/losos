@@ -172,6 +172,17 @@ async function after(s, base) {
   await link("Trash").click();
   await p.waitForSelector("[data-trash]");
   await s.take("trash", "deleted files, ready to come back", { kind: "none" }, { list: p.locator("[data-trash]") });
+  // The admin pages around it: the Overview's tile and the Apps pane's
+  // LosOS Cloud fold, which holds its one box-wide setting.
+  await p.goto(`${base}/`);
+  await p.getByRole("link", { name: "Files" }).first().waitFor();
+  await s.take("overview", "the admin home with LosOS Cloud's tiles");
+  await p.goto(`${base}/apps`);
+  const fold = p.getByTestId("accordion-cloud");
+  await fold.getByRole("button").first().click();
+  await p.getByTestId("site-cloud").waitFor();
+  await fold.scrollIntoViewIfNeeded();
+  await s.take("apps-cloud", "LosOS Cloud's fold on the Apps pane", { kind: "none" }, { fold });
 }
 
 /** The page the desktop client opens to sign in, before and after Allow. */
