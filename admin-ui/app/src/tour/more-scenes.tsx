@@ -253,7 +253,7 @@ export function LendScene({ frame: f }: SceneProps) {
           <g key={name}>
             <rect x={x + 0.5} y="100.5" width="96" height="24" rx="6" className="fill-sunk stroke-line" />
             <rect x={x + 1} y="101" width="95" height="23" rx="5.5" fill={`url(#${hatch})`} opacity={lit(i) * 0.9} />
-            <text x={x + 48.5} y="116" fontSize="9" textAnchor="middle" className={lit(i) > 0.5 ? "fill-white font-mono" : "fill-ink font-mono"}>
+            <text x={x + 48.5} y="116" fontSize="9" textAnchor="middle" className={lit(i) > 0.5 ? "fill-surface font-mono" : "fill-ink font-mono"}>
               {name}
             </text>
           </g>
@@ -472,19 +472,19 @@ export function ChatScene({ frame: f }: SceneProps) {
       {/* The call, over the conversation. */}
       {call > 0.001 && (
         <g opacity={call} transform={`translate(0 ${mix(10, 0, call)})`}>
-          <rect x={room.x + room.w - 180.5} y="140.5" width="168" height="96" rx="8" className="fill-black" opacity="0.85" />
+          <rect x={room.x + room.w - 180.5} y="140.5" width="168" height="96" rx="8" className="fill-ink" opacity="0.92" />
           <rect x={room.x + room.w - 174} y="147" width="76" height="62" rx="5" className="fill-warn" opacity="0.85" />
           <rect x={room.x + room.w - 94} y="147" width="76" height="62" rx="5" className="fill-accent" opacity="0.85" />
-          <text x={room.x + room.w - 136} y="184" fontSize="18" fontWeight="600" textAnchor="middle" className="fill-white">
+          <text x={room.x + room.w - 136} y="184" fontSize="18" fontWeight="600" textAnchor="middle" className="fill-surface">
             E
           </text>
-          <text x={room.x + room.w - 56} y="184" fontSize="18" fontWeight="600" textAnchor="middle" className="fill-white">
+          <text x={room.x + room.w - 56} y="184" fontSize="18" fontWeight="600" textAnchor="middle" className="fill-surface">
             M
           </text>
-          <g className="text-white">
+          <g className="text-surface">
             <Glyph icon={Video01Icon} x={room.x + room.w - 174} y={217} size={10} />
           </g>
-          <text x={room.x + room.w - 160} y="225" fontSize="8" className="fill-white">
+          <text x={room.x + room.w - 160} y="225" fontSize="8" className="fill-surface">
             {t("tour.scene.videoCall")}
           </text>
         </g>
