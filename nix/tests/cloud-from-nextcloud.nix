@@ -110,6 +110,7 @@ pkgs.testers.nixosTest {
   };
 
   testScript = ''
+    import base64
     import json
 
     NC = "http://127.0.0.1"
@@ -150,8 +151,8 @@ pkgs.testers.nixosTest {
         return body
 
     def put_text(user, path, text, ctype):
-        box.succeed(f"cat > /tmp/put <<'EOF'\n{text}EOF")
-        box.succeed("truncate -s -1 /tmp/put")
+        # Through base64, so the CRLFs and the last newline arrive as written.
+        box.succeed(f"echo {base64.b64encode(text.encode()).decode()} | base64 -d > /tmp/put")
         return nc(user, "PUT", path, f"-H 'Content-Type: {ctype}' --data-binary @/tmp/put")
 
     def deck(user, method, path, data=None):
@@ -233,6 +234,18 @@ pkgs.testers.nixosTest {
         assert status == 0, "the Nextcloud pictures failed; shots/before/failed.png shows where"
 
     with subtest("the nightly switch: Nextcloud and Postgres go, LosOS Cloud comes"):
+        # What Nextcloud itself serves for each entry, which LosOS Cloud
+        # must serve byte for byte after the move.
+        nc_served = {}
+        for who, path in [
+            (ADMIN, "calendars/notshared/personal/dentist.ics"),
+            (ADMIN, "calendars/notshared/tasks/insurance.ics"),
+            (ADMIN, "calendars/notshared/work/standup.ics"),
+            (EVA, "calendars/eva/personal/yoga.ics"),
+            (ADMIN, "addressbooks/users/notshared/contacts/eva.vcf"),
+        ]:
+            nc_served[(who[0], path)] = nc(who, "GET", f"/remote.php/dav/{path}")
+            assert "BEGIN:" in nc_served[(who[0], path)], (path, nc_served[(who[0], path)])
         # Taken last: signing in to Nextcloud's page for the pictures adds
         # its sample files, which move like the rest.
         before = box.succeed(
@@ -272,12 +285,10 @@ pkgs.testers.nixosTest {
         listing = cloud("notshared", "PROPFIND", "/remote.php/dav/files/notshared/Notes/", "-H 'Depth: 1'")
         assert "Shopping.md" in listing, listing
 
-    with subtest("events, the task and the contact, exactly as they were sent"):
-        assert cloud("notshared", "GET", "/remote.php/dav/calendars/notshared/personal/dentist.ics") == EVENT
-        assert cloud("notshared", "GET", "/remote.php/dav/calendars/notshared/tasks/insurance.ics") == TASK
-        assert cloud("notshared", "GET", "/remote.php/dav/calendars/notshared/work/standup.ics") == WORK
-        assert cloud("eva", "GET", "/remote.php/dav/calendars/eva/personal/yoga.ics") == EVA_EVENT
-        assert cloud("notshared", "GET", "/remote.php/dav/addressbooks/users/notshared/contacts/eva.vcf") == CARD
+    with subtest("events, the task and the contact, exactly as Nextcloud served them"):
+        for (login, path), served in nc_served.items():
+            got = cloud(login, "GET", f"/remote.php/dav/{path}")
+            assert got == served, (path, served, got)
         cols = json.loads(cloud("notshared", "GET", "/cloud/api/collections"))["collections"]
         names = {c["name"] for c in cols}
         assert {"Work", "Tasks"} <= names, cols
