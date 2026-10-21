@@ -312,6 +312,8 @@ pkgs.testers.nixosTest {
         first = json.loads(cloud("notshared", "GET", "/cloud/api/boards"))["boards"]
         box.succeed("systemctl restart losos-cloud-from-nextcloud losos-cloud")
         box.wait_for_unit("losos-cloud.service")
+        # Active is not listening yet: the service is a plain process.
+        box.wait_for_open_unix_socket("/run/losos-cloud/http.sock")
         boards = json.loads(cloud("notshared", "GET", "/cloud/api/boards"))["boards"]
         assert len(boards) == len(first) == 2, (first, boards)
 
