@@ -90,8 +90,8 @@ and is never served or built by nix.
   manifest. lososd loads them only from `losos.backend.plugins` in the
   read-only store and refuses to start on anything else. New lososd routes
   go in a plugin, each with its `sections.json` line; sign-in, sections and
-  D-Bus stay in the host. The look is the first; `nix/tests/plugins.nix`
-  boots it with a browser that takes the PR's screenshots
+  D-Bus stay in the host. The look and the pins are plugins so far;
+  `nix/tests/plugins.nix` boots them with a browser that takes the PR's screenshots
   (`nix/tests/screens/`, reusable by any VM test).
 - `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
   is the front nginx vhost's root (`try_files … /index.html`), `/api/*` is
