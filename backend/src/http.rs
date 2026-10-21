@@ -558,10 +558,12 @@ fn gate_at(
         };
         if !losos_access::companion_route(method, &asked) {
             audit("forbidden", Some(&person.name));
-            return HttpResponse::Forbidden().json(serde_json::json!({
-                "error": "the LosOS companion reads files, repositories and the box's health, nothing else",
-                "section": section,
-            }));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "the LosOS companion reads files, repositories and the box's health, nothing else",
+                    "section": section,
+                }),
+            )));
         }
     }
     if let Principal::Person(person) | Principal::Companion(person) = &who {
