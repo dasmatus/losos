@@ -62,6 +62,10 @@ const RPC_METHODS: &[&str] = &[
     "net_version",
 ];
 
+/// The registrar's `stablecoin::ENS_CCIP_METHOD`: an ENS lookup's offchain
+/// step (EIP-3668), relayed to ENS's DNS gateway by the edge.
+const ENS_CCIP_METHOD: &str = "ens_ccipRead";
+
 /// Solana methods the box will relay, the registrar's list
 /// (`edge/registrar/src/solana.rs`).
 const SOLANA_METHODS: &[&str] = &[
@@ -244,6 +248,14 @@ pub enum Op {
     },
     DomainRemove {
         domain: String,
+    },
+    /// Publish this box's wallet at its names in the edge's zone, with the
+    /// wallet's `personal_sign` of the binding message the edge checks
+    /// (`edge/registrar/src/domains.rs`, `wallet_message`); both `None`
+    /// takes it off.
+    DomainWallet {
+        address: Option<String>,
+        signature: Option<String>,
     },
     /// Take this box off the edge's registry (`/deregister`), so the edge
     /// stops routing to it. What a full erase does last, after the domains
@@ -434,6 +446,19 @@ impl Op {
                     Ok(())
                 }
             }
+            Op::DomainWallet { address, signature } => match (address, signature) {
+                (None, None) => Ok(()),
+                (Some(a), Some(sig)) => {
+                    if !eth_address(a) {
+                        Err("address is not an 0x address")
+                    } else if !eth_signature(sig) {
+                        Err("signature is not a wallet signature")
+                    } else {
+                        Ok(())
+                    }
+                }
+                _ => Err("send the address with its signature, or neither to unbind"),
+            },
             Op::DomainAdd { domain } | Op::DomainRemove { domain } => {
                 if valid_domain(domain) {
                     Ok(())
@@ -569,9 +594,12 @@ impl Op {
                 } else {
                     RPC_METHODS
                 };
+                // An offchain name lookup goes to ENS's gateway through the
+                // edge's ENS endpoint, never to a payment network.
+                let ccip = method == ENS_CCIP_METHOD && network.as_deref() == Some("ens");
                 if network.as_deref().is_some_and(|n| !network_key(n)) {
                     Err("network is not a network name")
-                } else if !methods.contains(&method.as_str()) {
+                } else if !ccip && !methods.contains(&method.as_str()) {
                     Err("that chain method is not forwarded")
                 } else if !params.starts_with('[') || params.len() > 8_000 {
                     Err("chain params must be a short array")
@@ -602,6 +630,7 @@ impl Op {
             Op::Domains => ("POST", "/domains/list"),
             Op::DomainAdd { .. } => ("POST", "/domains/add"),
             Op::DomainRemove { .. } => ("POST", "/domains/remove"),
+            Op::DomainWallet { .. } => ("POST", "/domains/wallet"),
             Op::Hardware => ("GET", "/market/hardware"),
             Op::HardwareCheckout { .. } => ("POST", "/market/hardware/checkout"),
             Op::Deregister => ("POST", "/deregister"),
@@ -651,6 +680,11 @@ impl Op {
             }),
             Op::Account | Op::Domains | Op::Deregister | Op::Release => json!({}),
             Op::DomainAdd { domain } | Op::DomainRemove { domain } => json!({ "domain": domain }),
+            Op::DomainWallet {
+                address: Some(address),
+                signature: Some(signature),
+            } => json!({ "address": address, "signature": signature }),
+            Op::DomainWallet { .. } => json!({}),
             Op::Onboard { box_uuid } => match box_uuid {
                 Some(u) => json!({ "box_uuid": u }),
                 None => json!({}),
@@ -884,6 +918,10 @@ mod tests {
             .validate()
             .is_err());
         assert!(rpc("eth_call", Some("ens")).validate().is_ok());
+        // The offchain step of a name lookup, for ENS only.
+        assert!(rpc("ens_ccipRead", Some("ens")).validate().is_ok());
+        assert!(rpc("ens_ccipRead", Some("base")).validate().is_err());
+        assert!(rpc("ens_ccipRead", None).validate().is_err());
         assert!(rpc("eth_call", Some("../x")).validate().is_err());
         let body = rpc("getSlot", Some("solana-devnet"))
             .body("appliance-1", "tok")
@@ -1003,6 +1041,43 @@ mod tests {
         }
         let long = format!("{}.org", "a".repeat(250));
         assert!(Op::DomainAdd { domain: long }.validate().is_err());
+    }
+
+    #[test]
+    fn a_wallet_binding_carries_address_and_signature_or_nothing() {
+        let address = format!("0x{}", "ab".repeat(20));
+        let signature = format!("0x{}", "cd".repeat(65));
+        let bind = Op::DomainWallet {
+            address: Some(address.clone()),
+            signature: Some(signature.clone()),
+        };
+        assert!(bind.validate().is_ok());
+        assert_eq!(bind.route(), ("POST", "/domains/wallet"));
+        let body: Value = serde_json::from_str(&bind.body("box", "tok").unwrap()).unwrap();
+        assert_eq!(
+            body,
+            json!({ "appliance_id": "box", "token": "tok", "address": address, "signature": signature })
+        );
+        let unbind = Op::DomainWallet {
+            address: None,
+            signature: None,
+        };
+        assert!(unbind.validate().is_ok());
+        let body: Value = serde_json::from_str(&unbind.body("box", "tok").unwrap()).unwrap();
+        assert_eq!(body, json!({ "appliance_id": "box", "token": "tok" }));
+        for (a, sig) in [
+            (Some(address.clone()), None),
+            (None, Some(signature.clone())),
+            (Some("mattbox.eth".to_string()), Some(signature.clone())),
+            (Some(address.clone()), Some("0x00".to_string())),
+        ] {
+            assert!(Op::DomainWallet {
+                address: a,
+                signature: sig
+            }
+            .validate()
+            .is_err());
+        }
     }
 
     #[test]
