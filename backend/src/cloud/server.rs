@@ -41,7 +41,7 @@ fn header_value<'a>(req: &'a HttpRequest, name: &str) -> Option<&'a str> {
 
 /// A browser request from another site, which must not act on the person's
 /// session: an unsafe method whose `Origin` is not this host.
-fn cross_site(req: &HttpRequest) -> bool {
+pub(crate) fn cross_site(req: &HttpRequest) -> bool {
     let safe = matches!(
         req.method().as_str(),
         "GET" | "HEAD" | "OPTIONS" | "PROPFIND" | "REPORT" | "SEARCH"

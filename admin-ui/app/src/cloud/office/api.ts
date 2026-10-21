@@ -68,7 +68,7 @@ export async function openOffice(fileId: string, base = CLOUD_OFFICE_API): Promi
 export async function officeTypes(base = CLOUD_OFFICE_API): Promise<OfficeType[]> {
   const res = await fetch(`${base}/extensions`, { credentials: "same-origin" });
   if (!res.ok) throw await failure(res);
-  return ((await res.json()) as { extensions: OfficeType[] }).extensions;
+  return ((await res.json()) as { extensions?: OfficeType[] }).extensions ?? [];
 }
 
 /** Whether `name` is a file Office opens, by its extension. */

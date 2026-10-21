@@ -508,6 +508,11 @@
         # type, save, save as PDF, two people in one document, the token
         # rules and what nginx refuses (nix/tests/office.nix).
         losos-office = import ./nix/tests/office.nix { inherit pkgs; };
+        # Office over LosOS Cloud's own files: discovery saved for a cloud
+        # with no network, coolwsd through nginx's loopback bridge to the
+        # cloud's socket, a save landing in the person's cloud
+        # (nix/tests/office-cloud.nix).
+        losos-office-cloud = import ./nix/tests/office-cloud.nix { inherit pkgs; };
         # The box half of models split across boxes: the RPC server as
         # `shared`, its memory cap, the lend file, the loopback owner rule
         # and the `:llm` tunnel service (nix/tests/inference-lend.nix).

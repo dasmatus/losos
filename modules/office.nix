@@ -38,6 +38,9 @@ let
   cfg = config.losos.office;
   pkg = config.losos.backend.package;
   standalone = cfg.folder != null && pkg != null;
+  # Without a folder of its own, Office edits LosOS Cloud's files: the cloud
+  # is the WOPI host (backend/src/cloud/office.rs).
+  inCloud = cfg.folder == null && pkg != null && config.lososInternal.appSignIn.cloud;
 
   coolwsd = "http://127.0.0.1:${toString cfg.port}";
   runDir = "/run/losos-office";
@@ -158,6 +161,69 @@ in
           };
         };
       }
+
+      (lib.mkIf inCloud {
+        # LosOS Cloud runs with no network (modules/cloud.nix), so it can
+        # neither ask coolwsd which types it opens nor take coolwsd's calls
+        # itself. Both go through files and sockets instead:
+        #
+        #   * coolwsd's discovery document is saved here once it is up, and
+        #     again whenever it restarts; the cloud reads the copy.
+        #   * nginx listens on the WOPI port, loopback only, and relays
+        #     /wopi/files/ and nothing else to the cloud's socket, with no
+        #     person named. The access token is the whole authentication on
+        #     that path, as it is on losos-office's own listener.
+        systemd.services.losos-office-discovery = {
+          description = "Collabora's discovery document, for LosOS Cloud";
+          wantedBy = [ "coolwsd.service" ];
+          after = [ "coolwsd.service" ];
+          partOf = [ "coolwsd.service" ];
+          path = [ pkgs.curl ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            DynamicUser = true;
+            RuntimeDirectory = "losos-office-discovery";
+            RuntimeDirectoryMode = "0755";
+            UMask = "0022";
+          };
+          script = ''
+            out=/run/losos-office-discovery/discovery.xml
+            for _ in $(seq 1 150); do
+              if curl -sf -o "$out.new" ${coolwsd}/hosting/discovery; then
+                mv "$out.new" "$out"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "coolwsd did not answer its discovery address" >&2
+            exit 1
+          '';
+        };
+
+        services.nginx.virtualHosts."losos-office-wopi" = {
+          listen = [
+            {
+              addr = "127.0.0.1";
+              port = cfg.wopiPort;
+            }
+          ];
+          locations."/".return = "404";
+          locations."/wopi/files/" = {
+            proxyPass = "http://unix:/run/losos-cloud/http.sock";
+            recommendedProxySettings = false;
+            extraConfig = ''
+              proxy_set_header Host 127.0.0.1;
+              proxy_set_header X-Losos-Cloud-User "";
+              proxy_set_header X-Losos-Cloud-Name "";
+              proxy_set_header X-Losos-Cloud-Email "";
+              client_max_body_size 1g;
+              proxy_request_buffering off;
+              proxy_read_timeout 600s;
+            '';
+          };
+        };
+      })
 
       (lib.mkIf standalone {
         users.users.losos-office = {

@@ -26,6 +26,16 @@ pub fn wopi_routes(wopi: Arc<Wopi>) -> impl FnOnce(&mut web::ServiceConfig) {
     }
 }
 
+/// The same routes as one scope, for a service that mounts them beside its
+/// own (LosOS Cloud, on the socket nginx bridges coolwsd to). The large
+/// body limit stays inside it.
+pub fn wopi_scope(wopi: Arc<Wopi>) -> actix_web::Scope {
+    web::scope("/wopi/files")
+        .app_data(web::Data::from(wopi))
+        .app_data(web::PayloadConfig::new(MAX_DOCUMENT))
+        .route("/{tail:.*}", web::route().to(wopi_handler))
+}
+
 async fn wopi_handler(req: HttpRequest, body: web::Bytes, wopi: web::Data<Wopi>) -> HttpResponse {
     let request = WopiRequest {
         method: req.method().as_str().to_string(),
@@ -108,19 +118,36 @@ async fn open_handler(
     let Some(person) = person(&req) else {
         return HttpResponse::Unauthorized().json(serde_json::json!({ "error": "signedOut" }));
     };
-    // The page's origin, for Collabora's messages back to it. A same-origin
-    // POST from a browser always names it.
-    let Some(origin) = req
-        .headers()
+    open_answer(
+        person,
+        page_origin(&req),
+        body.into_inner().file_id,
+        sessions.into_inner(),
+    )
+    .await
+}
+
+/// The page's origin, for Collabora's messages back to it. A same-origin
+/// POST from a browser always names it.
+pub fn page_origin(req: &HttpRequest) -> Option<String> {
+    req.headers()
         .get("Origin")
         .and_then(|v| v.to_str().ok())
         .filter(|o| o.starts_with("https://") || o.starts_with("http://"))
         .map(str::to_string)
-    else {
+}
+
+/// `POST …/open`'s answer for `person`, whoever named them: nginx here, the
+/// cloud's own sign-in in LosOS Cloud (`cloud::office`).
+pub async fn open_answer(
+    person: Person,
+    origin: Option<String>,
+    file_id: String,
+    sessions: Arc<Sessions>,
+) -> HttpResponse {
+    let Some(origin) = origin else {
         return HttpResponse::BadRequest().json(serde_json::json!({ "error": "noOrigin" }));
     };
-    let sessions = sessions.into_inner();
-    let file_id = body.into_inner().file_id;
     let answer = web::block(move || {
         let discovery = sessions.coolwsd.discovery()?;
         Ok::<_, std::io::Error>(open(
@@ -157,7 +184,11 @@ async fn extensions_handler(req: HttpRequest, sessions: web::Data<Sessions>) -> 
     if person(&req).is_none() {
         return HttpResponse::Unauthorized().json(serde_json::json!({ "error": "signedOut" }));
     }
-    let sessions = sessions.into_inner();
+    extensions_answer(sessions.into_inner()).await
+}
+
+/// `GET …/extensions`: the types Collabora opens, and whether it edits each.
+pub async fn extensions_answer(sessions: Arc<Sessions>) -> HttpResponse {
     match web::block(move || sessions.coolwsd.discovery()).await {
         Ok(Ok(discovery)) => {
             let list: Vec<_> = discovery

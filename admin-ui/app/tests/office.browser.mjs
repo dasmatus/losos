@@ -13,7 +13,8 @@
  * (pressed buttons, the style, saved or not, the zoom, the others in it);
  * a read-only document gets no formatting bar; Back returns to the list;
  * and none of it adds to the Content-Security-Policy violations a plain
- * load logs.
+ * load logs. In LosOS Cloud, a document's name opens it in Office at
+ * /cloud/office/<id> when the box runs Office, and only then.
  *
  * Same arrangement as the other files: the real dist/ bundle under the real
  * policy, the routes stubbed with page.route(). */
@@ -317,6 +318,77 @@ await check('Documents and the editor add nothing to the policy violations a pla
   await page.locator('main iframe').waitFor();
   await page.waitForTimeout(300);
   assert.deepEqual(await violations(page), BASELINE);
+  await context.close();
+});
+
+/* LosOS Cloud's web app with one Word file and one text file; `office` is
+ * whether the box runs Office (its extensions call answers or 404s). */
+async function openCloud(path, { office = true } = {}) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'en-US', colorScheme: 'dark' });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  const opened = [];
+  const entry = (id, name, mime) => ({ id, path: name, name, dir: false, size: 1, mtime: 1, etag: 'x', mime, favorite: false });
+  await page.route('**/cloud/api/**', (route) => {
+    const req = route.request();
+    const p = new URL(req.url()).pathname.slice('/cloud/api'.length);
+    if (p === '/me') return json(route, 200, { login: 'matus', name: 'Matus', email: '', used: 1e9, free: 9e9, product: 'LosOS Cloud' });
+    if (p === '/files') {
+      return json(route, 200, {
+        folder: { ...entry(1, '', ''), dir: true },
+        entries: [
+          entry(42, 'Trip plan.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+          entry(43, 'todo.txt', 'text/plain'),
+        ],
+      });
+    }
+    if (p === '/office/extensions') {
+      return office ? json(route, 200, { extensions: [{ extension: 'docx', edit: true }] }) : json(route, 404, { code: 'notFound' });
+    }
+    if (p === '/office/open') {
+      opened.push(JSON.parse(req.postData() ?? '{}').fileId);
+      return json(route, 200, {
+        url: '/browser/abc/cool.html?WOPISrc=http%3A%2F%2F127.0.0.1%3A8093%2Fwopi%2Ffiles%2F42',
+        accessToken: 'token-2',
+        accessTokenTtl: 1792616040000,
+        writable: true,
+        name: 'Trip plan.docx',
+        https: false,
+      });
+    }
+    return json(route, 200, {});
+  });
+  await page.route('**/browser/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: FAKE_COLLABORA }));
+  await page.goto(origin + path);
+  return { page, context, errors, opened };
+}
+
+await check('in LosOS Cloud a document opens in Office, under the cloud\'s top bar', async () => {
+  const { page, context, errors, opened } = await openCloud('/cloud/files');
+  const doc = page.getByRole('link', { name: 'Trip plan.docx' }).first();
+  await doc.waitFor();
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('a')].some((a) => a.getAttribute('href') === '/cloud/office/42'),
+  );
+  await page.goto(`${origin}/cloud/office/42`);
+  await page.getByRole('toolbar', { name: 'Formatting' }).waitFor();
+  await page.getByRole('heading', { level: 1, name: 'Trip plan.docx' }).waitFor();
+  assert.deepEqual(opened, ['42']);
+  const box = await page.locator('main iframe').boundingBox();
+  assert.ok(box.width >= 1270 && box.height > 600, JSON.stringify(box));
+  await page.getByRole('button', { name: 'Back to files' }).click();
+  await page.waitForURL(/\/cloud\/files/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('a box without Office leaves documents to the browser', async () => {
+  const { page, context } = await openCloud('/cloud/files', { office: false });
+  await page.getByRole('link', { name: 'Trip plan.docx' }).first().waitFor();
+  await page.waitForTimeout(300);
+  const hrefs = await page.locator('a').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+  assert.ok(!hrefs.some((h) => h?.startsWith('/cloud/office/')), hrefs.join(' '));
   await context.close();
 });
 

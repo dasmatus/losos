@@ -85,9 +85,16 @@ impl Discovery {
     }
 
     /// Fetch and parse the discovery document from a plain-http coolwsd on
-    /// loopback, e.g. `http://127.0.0.1:9980`.
+    /// loopback, e.g. `http://127.0.0.1:9980`, or read it from a file a
+    /// copy was saved to (an absolute path). LosOS Cloud has no network at
+    /// all, so the box saves coolwsd's answer where the cloud can read it
+    /// (modules/office.nix, `losos-office-discovery`).
     pub fn fetch(base: &str) -> std::io::Result<Self> {
-        let body = http_get(base, "/hosting/discovery")?;
+        let body = if base.starts_with('/') {
+            std::fs::read_to_string(base)?
+        } else {
+            http_get(base, "/hosting/discovery")?
+        };
         let found = Self::parse(&body);
         if found.actions.is_empty() {
             return Err(std::io::Error::other(
@@ -120,7 +127,8 @@ pub struct Coolwsd {
 impl Coolwsd {
     pub const REFRESH: Duration = Duration::from_secs(10 * 60);
 
-    /// `base` is coolwsd's plain-http address, e.g. `http://127.0.0.1:9980`.
+    /// `base` is coolwsd's plain-http address, e.g. `http://127.0.0.1:9980`,
+    /// or the path of a saved copy of its discovery document.
     pub fn new(base: &str) -> Self {
         Self {
             base: base.trim_end_matches('/').to_string(),
@@ -282,6 +290,16 @@ mod tests {
         assert_eq!(attribute(tag, "ext").as_deref(), Some("odt"));
         assert_eq!(attribute(tag, "src"), None);
         assert_eq!(attribute(tag, "name").as_deref(), Some("edit"));
+    }
+
+    #[test]
+    fn fetch_reads_a_saved_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("discovery.xml");
+        assert!(Discovery::fetch(path.to_str().unwrap()).is_err());
+        std::fs::write(&path, XML).unwrap();
+        let d = Discovery::fetch(path.to_str().unwrap()).unwrap();
+        assert!(d.action("docx").is_some());
     }
 
     #[test]
