@@ -242,6 +242,149 @@ export function escrowPayMessage(p: EscrowPay): Uint8Array {
   return compile(p.payer, [ix], p.recentBlockhash);
 }
 
+// ── Prepaid balances and taps (pay as you go for AI models) ──────────────
+// The program's tags 6, 7, 10 and 11 (edge/contracts/solana/README.md): a
+// buyer tops up a balance of their own, opens one tap per lending box
+// against it, and can take what is left out after a 48-hour notice. The edge
+// bills the taps and closes them; the wallet never has to.
+
+/** `["balance", config, buyer]`: the buyer's prepaid balance. */
+export function escrowBalanceAddress(program: string, config: string, buyer: string): string {
+  return findProgramAddress([enc("balance"), pubkey(config), pubkey(buyer)], program);
+}
+
+/** `["tap", config, buyer, tap id]`: the buyer is in the seeds, so the same
+ *  id from another wallet is another tap. */
+export function escrowTapAddress(program: string, config: string, buyer: string, tapId: Uint8Array): string {
+  if (tapId.length !== 32) throw new Error("tap id");
+  return findProgramAddress([enc("tap"), pubkey(config), pubkey(buyer), tapId], program);
+}
+
+/** Where the balance's USDC is: the token account `["vault", balance]`. */
+export function escrowBalanceVault(program: string, treasury: string, mint: string, buyer: string): string {
+  const config = escrowConfigAddress(program, treasury, mint);
+  return escrowVaultAddress(program, escrowBalanceAddress(program, config, buyer));
+}
+
+/** One tap of a quote: the 32-byte id the edge picked (`0x` hex), the
+ *  box's payout address, and base units an hour. */
+export interface EscrowTap {
+  key: string;
+  seller: string;
+  rate: bigint;
+}
+
+export interface EscrowTaps {
+  payer: string;
+  program: string;
+  mint: string;
+  treasury: string;
+  /** Moved into the balance first, in the same transaction; 0 for none. */
+  topUp: bigint;
+  taps: EscrowTap[];
+  feeBps: number;
+  recentBlockhash: string;
+}
+
+/** The most taps one transaction carries with a top-up, under Solana's
+ *  1232-byte packet. A quote of more is sent in several. */
+export const TAPS_PER_TRANSACTION = 6;
+
+function u64le(tag: number, value: bigint): Uint8Array {
+  const data = new Uint8Array(9);
+  data[0] = tag;
+  new DataView(data.buffer).setBigUint64(1, value, true);
+  return data;
+}
+
+/** `top_up` (if any) and an `open_tap` for each tap, in one transaction. */
+export function escrowTapsMessage(p: EscrowTaps): Uint8Array {
+  if (p.topUp < 0n) throw new Error("amount");
+  if (p.taps.length === 0 || p.taps.length > TAPS_PER_TRANSACTION) throw new Error("taps");
+  if (!Number.isInteger(p.feeBps) || p.feeBps < 0 || p.feeBps > 0xffff) throw new Error("fee");
+  const config = escrowConfigAddress(p.program, p.treasury, p.mint);
+  const balance = escrowBalanceAddress(p.program, config, p.payer);
+  const buyer: Meta = { key: p.payer, signer: true, writable: true };
+  const ixs: Instruction[] = [];
+  if (p.topUp > 0n) {
+    ixs.push({
+      program: p.program,
+      accounts: [
+        buyer,
+        w(associatedTokenAddress(p.payer, p.mint)),
+        r(config),
+        w(balance),
+        w(escrowVaultAddress(p.program, balance)),
+        r(p.mint),
+        r(TOKEN_PROGRAM),
+        r(SYSTEM_PROGRAM),
+      ],
+      data: u64le(6, p.topUp),
+    });
+  }
+  for (const tap of p.taps) {
+    if (tap.rate <= 0n) throw new Error("rate");
+    const id = hex32(tap.key);
+    const data = new Uint8Array(43);
+    data[0] = 7;
+    data.set(id, 1);
+    const view = new DataView(data.buffer);
+    view.setBigUint64(33, tap.rate, true);
+    view.setUint16(41, p.feeBps, true);
+    ixs.push({
+      program: p.program,
+      accounts: [buyer, r(config), r(balance), w(escrowTapAddress(p.program, config, p.payer, id)), r(tap.seller), r(SYSTEM_PROGRAM)],
+      data,
+    });
+  }
+  return compile(p.payer, ixs, p.recentBlockhash);
+}
+
+export interface EscrowWithdrawal {
+  payer: string;
+  program: string;
+  mint: string;
+  treasury: string;
+  recentBlockhash: string;
+}
+
+/** `ask_withdrawal(amount)`: take `amount` out after the notice. */
+export function escrowAskMessage(p: EscrowWithdrawal & { amount: bigint }): Uint8Array {
+  if (p.amount <= 0n) throw new Error("amount");
+  const config = escrowConfigAddress(p.program, p.treasury, p.mint);
+  const ix: Instruction = {
+    program: p.program,
+    accounts: [
+      { key: p.payer, signer: true, writable: false },
+      r(config),
+      w(escrowBalanceAddress(p.program, config, p.payer)),
+    ],
+    data: u64le(10, p.amount),
+  };
+  return compile(p.payer, [ix], p.recentBlockhash);
+}
+
+/** `withdraw`: after the notice, the ask (or what is left) back to the
+ *  buyer's own token account, which is opened first if it is gone. */
+export function escrowWithdrawMessage(p: EscrowWithdrawal): Uint8Array {
+  const config = escrowConfigAddress(p.program, p.treasury, p.mint);
+  const balance = escrowBalanceAddress(p.program, config, p.payer);
+  const ix: Instruction = {
+    program: p.program,
+    accounts: [
+      { key: p.payer, signer: true, writable: false },
+      r(config),
+      w(balance),
+      w(escrowVaultAddress(p.program, balance)),
+      w(associatedTokenAddress(p.payer, p.mint)),
+      r(p.mint),
+      r(TOKEN_PROGRAM),
+    ],
+    data: Uint8Array.of(11),
+  };
+  return compile(p.payer, [createAta(p.payer, p.payer, p.mint), ix], p.recentBlockhash);
+}
+
 // The fee payer must be key 0, and the header only works if keys are grouped
 // signer-writable, signer-readonly, writable, readonly.
 function compile(payer: string, ixs: Instruction[], blockhash: string): Uint8Array {
