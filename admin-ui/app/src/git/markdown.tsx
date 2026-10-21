@@ -1,21 +1,39 @@
 import * as React from "react";
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 
 /* A README, a pull request's description and a comment are Markdown. This
  * draws the common part of it (headings, paragraphs, lists, quotes, code,
- * links, emphasis) as React elements, never as HTML from the text, so a
+ * tables, links, emphasis) as React elements, never as HTML from the text, so a
  * comment cannot put markup or script on the page. Raw HTML in the text
  * stays text; a link goes only to http(s), mailto or a path on the box. */
 
 type Block =
   | { kind: "heading"; level: number; text: string }
-  | { kind: "code"; text: string }
+  | { kind: "code"; text: string; info: string }
+  | { kind: "table"; head: string[]; align: Align[]; rows: string[][] }
   | { kind: "list"; ordered: boolean; items: string[] }
   | { kind: "quote"; text: string }
   | { kind: "rule" }
   | { kind: "paragraph"; text: string };
 
+type Align = "left" | "center" | "right" | undefined;
+
 const BULLET = /^\s*[-*+]\s+(.*)$/u;
+const TABLE_RULE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/u;
+
+/** A table row's cells: the outer pipes dropped, split on pipes a backslash
+ * does not escape. */
+function cells(line: string): string[] {
+  const row = line.trim().replace(/^\|/u, "").replace(/(?<!\\)\|$/u, "");
+  return row.split(/(?<!\\)\|/u).map((c) => c.trim().replace(/\\\|/gu, "|"));
+}
+
+/** A table starts at a row with a pipe followed by its rule of dashes. */
+function tableAt(lines: string[], i: number): boolean {
+  const next = lines[i + 1];
+  return (lines[i] ?? "").includes("|") && next !== undefined && next.includes("-") && TABLE_RULE.test(next);
+}
 const NUMBERED = /^\s*\d+[.)]\s+(.*)$/u;
 
 function blocks(source: string): Block[] {
@@ -24,7 +42,7 @@ function blocks(source: string): Block[] {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i] ?? "";
-    const fence = /^\s*(```|~~~)/u.exec(line);
+    const fence = /^\s*(```|~~~)\s*([^\s`]*)/u.exec(line);
     if (fence !== null) {
       const body: string[] = [];
       i += 1;
@@ -33,7 +51,7 @@ function blocks(source: string): Block[] {
         i += 1;
       }
       i += 1;
-      out.push({ kind: "code", text: body.join("\n") });
+      out.push({ kind: "code", text: body.join("\n"), info: fence[2] ?? "" });
       continue;
     }
     if (line.trim() === "") {
@@ -60,6 +78,23 @@ function blocks(source: string): Block[] {
       out.push({ kind: "quote", text: body.join("\n") });
       continue;
     }
+    if (tableAt(lines, i)) {
+      const head = cells(line);
+      const align = cells(lines[i + 1] ?? "").map((c): Align => {
+        const left = c.startsWith(":");
+        const right = c.endsWith(":");
+        return left && right ? "center" : right ? "right" : left ? "left" : undefined;
+      });
+      const rows: string[][] = [];
+      i += 2;
+      while (i < lines.length && (lines[i] ?? "").includes("|") && (lines[i] ?? "").trim() !== "") {
+        const row = cells(lines[i] ?? "");
+        rows.push(head.map((_, c) => row[c] ?? ""));
+        i += 1;
+      }
+      out.push({ kind: "table", head, align, rows });
+      continue;
+    }
     const ordered = NUMBERED.test(line);
     if (ordered || BULLET.test(line)) {
       const pattern = ordered ? NUMBERED : BULLET;
@@ -78,7 +113,7 @@ function blocks(source: string): Block[] {
     const body: string[] = [];
     while (i < lines.length) {
       const l = lines[i] ?? "";
-      if (l.trim() === "" || /^(#{1,6}\s|\s*(```|~~~)|\s*>)/u.test(l) || BULLET.test(l) || NUMBERED.test(l)) break;
+      if (l.trim() === "" || /^(#{1,6}\s|\s*(```|~~~)|\s*>)/u.test(l) || BULLET.test(l) || NUMBERED.test(l) || tableAt(lines, i)) break;
       body.push(l);
       i += 1;
     }
@@ -146,6 +181,7 @@ function lines(text: string, key: string): React.ReactNode[] {
 const HEADING = ["text-[19px]", "text-[17px]", "text-[15px]", "text-[14px]", "text-[13.5px]", "text-[13px]"];
 
 export function Markdown({ source, className }: { source: string; className?: string }) {
+  const t = useT();
   const parsed = React.useMemo(() => blocks(source), [source]);
   return (
     <div className={cn("flex min-w-0 flex-col gap-3 text-[14px] leading-relaxed text-ink [overflow-wrap:anywhere]", className)} data-markdown>
@@ -161,10 +197,48 @@ export function Markdown({ source, className }: { source: string; className?: st
             );
           }
           case "code":
+            // A reviewer's ```suggestion block: the line it would put in.
+            if (b.info === "suggestion") {
+              return (
+                <figure key={key} className="overflow-hidden rounded-control border border-line" data-suggestion>
+                  <figcaption className="border-b border-line bg-sunk px-3 py-1.5 text-[12px] font-medium text-muted">{t("git.markdown.suggestion")}</figcaption>
+                  <pre className="overflow-x-auto bg-ok/10 px-3 py-2 font-mono text-[12.5px] leading-snug">
+                    <code>{b.text}</code>
+                  </pre>
+                </figure>
+              );
+            }
             return (
               <pre key={key} className="overflow-x-auto rounded-control border border-line bg-sunk px-3 py-2 font-mono text-[12.5px] leading-snug">
                 <code>{b.text}</code>
               </pre>
+            );
+          case "table":
+            return (
+              <div key={key} className="overflow-x-auto rounded-control border border-line">
+                <table className="w-full border-collapse text-[13px]">
+                  <thead className="bg-sunk">
+                    <tr>
+                      {b.head.map((h, c) => (
+                        <th key={`${key}-h${c}`} className="border-b border-line px-3 py-1.5 text-left font-semibold" style={{ textAlign: b.align[c] }}>
+                          {inline(h, `${key}-h${c}`)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {b.rows.map((row, r) => (
+                      <tr key={`${key}-r${r}`} className="border-t border-line first:border-t-0">
+                        {row.map((cell, c) => (
+                          <td key={`${key}-r${r}-${c}`} className="px-3 py-1.5 align-top" style={{ textAlign: b.align[c] }}>
+                            {inline(cell, `${key}-r${r}-${c}`)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             );
           case "list": {
             const Tag = b.ordered ? "ol" : "ul";

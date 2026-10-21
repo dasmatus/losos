@@ -297,7 +297,7 @@ function EventView({ event, pr, repo }: { event: Event; pr: Pull; repo: Repo }) 
     <div className="flex flex-col gap-2" data-event="review">
       <div className="flex flex-wrap items-center gap-2 px-1 text-[13px] text-muted">
         <HugeiconsIcon icon={v.icon} size={16} strokeWidth={1.5} color="currentColor" className={v.tone} aria-hidden="true" />
-        <Person login={review.user.login} bot={review.user.is_bot === true} />
+        <Person login={review.user.login} {...(review.user.full_name !== undefined ? { name: review.user.full_name } : {})} bot={review.user.is_bot === true} />
         <span>{t(v.key)}</span>
         {event.lines > 0 && (
           <Link to={files} className="text-accent hover:underline">
