@@ -197,6 +197,10 @@ pub struct ServeOpts {
     /// `--onramp-binance-api` was given, and every `/market/onramp*` route
     /// answers 503.
     pub onramp: Option<crate::onramp::OnrampOpts>,
+    /// AI models run across lending boxes (`crate::inference`), from
+    /// `--inference-models`. Needs the market: requests are paid through
+    /// its taps.
+    pub inference: Option<crate::inference::InferenceOpts>,
     /// This edge's identity (`crate::identity`): the 0600 key file (made on
     /// the first start if missing) and the certificate the LosOS root signed
     /// for it (installed by `POST /identity/cert`). Both or neither; with
@@ -310,6 +314,11 @@ pub struct AnnounceOpts {
     /// `--managed-file`: lososd's marker that the owner lets this edge
     /// manage the box (present means yes), re-read on every heartbeat.
     pub managed_file: Option<String>,
+    /// `--llm-lend-file`: the MiB this box lends to AI models, as decimal
+    /// text, present only while its llama.cpp RPC server runs
+    /// (`losos.inference.lend`). Re-read on every heartbeat; missing,
+    /// unreadable or not a number lends nothing.
+    pub llm_lend_file: Option<String>,
 }
 
 /// `join` options. Runs once per boot on the appliance, from
@@ -496,6 +505,21 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     .to_string(),
                 market: parse_market(&rest)?,
                 onramp: parse_onramp(&rest)?,
+                inference: match arg(&rest, "--inference-models") {
+                    None => None,
+                    Some(file) => Some(crate::inference::InferenceOpts {
+                        models_file: file.to_string(),
+                        port_range: parse_range(arg(&rest, "--llm-port-range").ok_or_else(
+                            || miette!("--inference-models needs --llm-port-range"),
+                        )?)?,
+                        env_dir: arg(&rest, "--llm-env-dir")
+                            .unwrap_or("/run/losos-llm-env")
+                            .to_string(),
+                        socket_dir: arg(&rest, "--llm-socket-dir")
+                            .unwrap_or("/run/losos-llm-heads")
+                            .to_string(),
+                    }),
+                },
                 identity_key_file: arg(&rest, "--identity-key-file").map(str::to_string),
                 identity_cert_file: arg(&rest, "--identity-cert-file").map(str::to_string),
                 github_api_url: arg(&rest, "--github-api-url")
@@ -601,6 +625,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             )?,
             relay_pass_file: arg(&rest, "--relay-pass-file").map(str::to_string),
             managed_file: arg(&rest, "--managed-file").map(str::to_string),
+            llm_lend_file: arg(&rest, "--llm-lend-file").map(str::to_string),
         })),
         "seed" => Ok(Mode::Seed(SeedOpts {
             rathole_config: req(&rest, "--rathole-config")?.to_string(),

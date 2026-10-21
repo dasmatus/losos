@@ -91,6 +91,7 @@ use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 use crate::zone::{self, ZoneNames};
 
+mod llm;
 mod manage;
 mod operator;
 mod vm;
@@ -145,7 +146,12 @@ const STRIPE_ROUTES: [&str; 3] = [
 /// they get more than [`REQUEST_TIMEOUT`] and still stay under the box's
 /// 25 s relay.
 const COIN_ROUTE_TIMEOUT: Duration = Duration::from_secs(20);
-const COIN_ROUTES: [&str; 2] = ["/market/coins/key", "/market/coins/pay"];
+const COIN_ROUTES: [&str; 3] = [
+    "/market/coins/key",
+    "/market/coins/pay",
+    // Reads every tap of a meter back from the chain.
+    "/market/taps/confirm",
+];
 
 /// Budget for `POST /identity/cert`, which asks GitHub who the pusher is
 /// before it looks at the list: one round trip to api.github.com, bounded
@@ -219,6 +225,11 @@ struct AppState {
     /// Binance's on-ramp (`crate::onramp`); `None` without
     /// `--onramp-binance-api`.
     onramp: Option<Arc<Onramp>>,
+    /// AI models across lending boxes; `None` without `--inference-models`.
+    inference: Option<Arc<crate::inference::Inference>>,
+    /// Chat requests in flight (`llm::MAX_CHATS`), which run outside
+    /// [`guard`].
+    chats: Arc<Semaphore>,
     /// This edge's identity key and, once pushed, its certificate
     /// (`crate::identity`); `None` (no `--identity-key-file`) makes every
     /// `/identity*` route a 404, i.e. an edge that cannot become official.
@@ -277,6 +288,9 @@ struct HeartbeatReq {
     /// unknown resolves that way.
     #[serde(default)]
     idle: Option<bool>,
+    /// The memory the box lends to AI models now, MiB. Absent is none.
+    #[serde(default)]
+    llm_mib: Option<u64>,
     /// As on [`RegisterReq`].
     #[serde(default)]
     relay_pass: Option<String>,
@@ -466,6 +480,24 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         None => None,
     };
 
+    let inference = match &opts.inference {
+        None => None,
+        Some(i) => {
+            if opts.market.as_ref().and_then(|m| m.usdc.as_ref()).is_none() {
+                return Err(miette!(
+                    "--inference-models needs the market with USDC (--market-usdc): models are paid for through it"
+                ));
+            }
+            let state_file = Path::new(&opts.registry_path).with_file_name("inference.json");
+            let heads = Arc::new(crate::inference::SystemdHeads::new(i));
+            Some(Arc::new(
+                crate::inference::Inference::open(i.clone(), opts.port_range, state_file, heads)
+                    .await
+                    .map_err(|e| miette!("open the model catalogue: {e}"))?,
+            ))
+        }
+    };
+
     // Opened before the API accepts: the key is made here on the first start
     // if the file is missing (the private half never travels), and the
     // certificate, if one has been pushed, is checked to be for that key.
@@ -566,6 +598,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         last_shed: Arc::new(std::sync::Mutex::new(None)),
         market,
         onramp,
+        inference,
+        chats: llm::chats(),
         identity,
         push_lock: Arc::new(Mutex::new(())),
         http: reqwest::Client::builder()
@@ -628,6 +662,12 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/market/fees/pay", post(market_fees_pay))
         .route("/market/rpc", post(market_rpc))
         .route("/market/account", post(market_account))
+        // Pay as you go for AI models (`llm`). The chat route is merged
+        // below, outside the guard.
+        .route("/market/llm/models", post(llm::overview))
+        .route("/market/taps", post(llm::quote))
+        .route("/market/taps/confirm", post(llm::confirm))
+        .route("/market/taps/stop", post(llm::stop))
         .route("/market/hardware", get(market_hardware))
         .route("/market/hardware/checkout", post(market_hardware_checkout))
         // Virtual machines (crate::vms): the catalogue is anonymous like the
@@ -682,7 +722,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .merge(vm::transfer_router(state.clone()))
         // The same for the manage page: an app install on a box outlasts
         // the API's budget (`manage`).
-        .merge(manage::router(state.clone()));
+        .merge(manage::router(state.clone()))
+        .merge(llm::chat_router(state.clone()));
 
     Ok(App { state, router })
 }
@@ -1057,6 +1098,9 @@ async fn heartbeat(
     // which heartbeat this was.
     st.reg
         .record_idle(&req.appliance_id, req.idle.unwrap_or(false))
+        .await;
+    st.reg
+        .record_llm(&req.appliance_id, req.llm_mib.unwrap_or(0))
         .await;
     if st.reg.heartbeat(&req.appliance_id).await {
         remember_pass(&st, &req.appliance_id, req.relay_pass.as_deref());
@@ -2293,6 +2337,20 @@ async fn fulfil_market(st: &AppState) {
         .max(300);
     market.slots_pass(&online, can_tell, max_gap).await;
     market.settle_escrow().await;
+    if let Some(inference) = &st.inference {
+        let lenders = llm::lenders_of(st).await;
+        let in_use = market.groups_in_use().await;
+        for b in inference.pass(&lenders, |g| in_use.contains(g)).await {
+            tracing::warn!(
+                target: Action::Market.target(),
+                "model group {} stopped: {}",
+                b.group,
+                b.reason.message(),
+            );
+            market.end_group(&b.group, b.reason).await;
+        }
+    }
+    market.taps_pass().await;
     market.settle_cards().await;
     vm::fulfil(st, market).await;
     let pending = market.pending_provisions().await;
@@ -3052,6 +3110,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             hostname: hostname.to_string(),
             rathole_port: v.rathole_port,
             token: token.to_string(),
+            llm_port: None,
         });
     }
     // The relayed half (crate::relay): a `<spoke>.<box>` tenant stays only
@@ -3118,6 +3177,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             hostname: r.hostname,
             rathole_port: r.rathole_port,
             token,
+            llm_port: None,
         });
     }
     for id in &stale {
@@ -3167,6 +3227,19 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     // for, every proved custom domain, and the zone file itself. Computed
     // before the Traefik file so both describe the same moment.
     let (extra_hosts, zone_names) = domain_hosts(st, &enriched, &tenants).await;
+    // A box lending memory to AI models gets its second tunnel service.
+    if let Some(inference) = &st.inference {
+        let lending: HashSet<String> = llm::lenders_of(st)
+            .await
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        for t in &mut enriched {
+            if lending.contains(&t.id) {
+                t.llm_port = inference.llm_port(t.rathole_port);
+            }
+        }
+    }
     let files = desired_config_with_hosts(&enriched, &opts, &extra_hosts);
 
     let traefik_path = Path::new(&st.opts.traefik_dir).join("losos.yml");
