@@ -15,6 +15,7 @@ import lab from "./lab";
 import look from "./look";
 import machines from "./machines";
 import manage from "./manage";
+import office from "./office";
 import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
@@ -48,6 +49,7 @@ export const MESSAGES = {
   ...palette,
   ...pins,
   ...manage,
+  ...office,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

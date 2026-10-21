@@ -326,6 +326,9 @@
             # Text inside the owner's files for the admin pages' search
             # (backend/src/textsearch/): the cloud index and the Git search.
             ./modules/search.nix
+            # Office documents in the browser: Collabora Online and its WOPI
+            # host (backend/src/office/).
+            ./modules/office.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
@@ -455,6 +458,10 @@
         # its sandbox, PDFs, a changed file, the Git search and who may ask
         # (nix/tests/search.nix).
         losos-search = import ./nix/tests/search.nix { inherit pkgs; };
+        # Collabora Online behind the front vhost over the folder host: open,
+        # type, save, save as PDF, two people in one document, the token
+        # rules and what nginx refuses (nix/tests/office.nix).
+        losos-office = import ./nix/tests/office.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
         # The real Forgejo with losos.forgejo.federation on, asked what another
         # server would ask, in both deployment modes; then off, and gone

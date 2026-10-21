@@ -110,3 +110,7 @@ path = "src/bin/losos-app-shape.rs"
 [[bin]]
 name = "losos-search"
 path = "src/bin/losos-search.rs"
+
+[[bin]]
+name = "losos-office"
+path = "src/bin/losos-office.rs"

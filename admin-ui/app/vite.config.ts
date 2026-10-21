@@ -119,7 +119,7 @@ export default defineConfig({
     sourcemap: false,
     // The appliance has no external hosts and no CDN: one origin, one bundle.
     modulePreload: { polyfill: false },
-    // Three pages: the admin SPA at /, LosOS Lab at /lab/ (nginx serves
+    // Four pages: the admin SPA at /, LosOS Lab at /lab/ (nginx serves
     // dist/lab/index.html there under the Lab's own CSP), and a company
     // edge's manage page, which the edge serves at /manage/ from this same
     // dist/ (edge/registrar/src/server/manage.rs). They share chunks.
@@ -128,6 +128,9 @@ export default defineConfig({
         main: join(root, "index.html"),
         lab: join(root, "lab/index.html"),
         manage: join(root, "manage/index.html"),
+        // Office documents full screen (src/office/): a box's Office folder,
+        // and documents other boxes share.
+        office: join(root, "office/index.html"),
       },
     },
   },

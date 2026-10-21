@@ -55,6 +55,7 @@ pub mod losos;
 pub mod market;
 pub mod model;
 pub mod monero_key;
+pub mod office;
 pub mod options;
 pub mod overrides;
 pub mod people;
