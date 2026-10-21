@@ -60,7 +60,7 @@ export function DevicesView() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="min-h-9 text-[15px] leading-9 font-semibold tracking-tight">{t("cloud.nav.devices")}</h1>
+      <h1 className="flex min-h-9 items-center text-[19px] leading-tight font-semibold tracking-tight">{t("cloud.nav.devices")}</h1>
 
       <section className="flex flex-col gap-4 rounded-card border border-line bg-surface p-5" aria-labelledby="cloud-connect-title">
         <div className="flex flex-col gap-1">

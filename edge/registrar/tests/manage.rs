@@ -2,7 +2,9 @@
 //! list, and a call relayed into a box that said its owner lets the edge
 //! manage it, with the box's own token and the name its nginx serves the
 //! edge on. The box is a stand-in on the port the registrar gave it, where
-//! the tunnel would land.
+//! the tunnel would land: the test binds a port the OS picks first and makes
+//! it the edge's whole range, since a fixed port in the ephemeral range can
+//! already be some other socket's.
 
 mod common;
 
@@ -20,7 +22,7 @@ const TOKEN: &str = "box-token-0123456789abcdef0123456789abcdef";
 /// body.
 type Seen = Arc<Mutex<Vec<(String, String, String, String, String)>>>;
 
-async fn fake_box(port: u16) -> Seen {
+async fn fake_box(listener: tokio::net::TcpListener) -> Seen {
     let seen: Seen = Arc::default();
     let log = seen.clone();
     let app = Router::new().fallback(any(
@@ -45,14 +47,11 @@ async fn fake_box(port: u16) -> Seen {
             }
         },
     ));
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
-        .await
-        .expect("the box's port is free");
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     seen
 }
 
-async fn start(ui: Option<String>) -> Edge {
+async fn start(ui: Option<String>, port_range: Option<(u16, u16)>) -> Edge {
     Edge::start_custom(
         "manage",
         &[TenantSpec::new(
@@ -61,6 +60,9 @@ async fn start(ui: Option<String>) -> Edge {
             TOKEN,
         )],
         move |opts, dir| {
+            if let Some(range) = port_range {
+                opts.port_range = range;
+            }
             opts.manage = Some(ManageOpts {
                 key_file: dir.path_str("manage-key"),
                 ui_dir: ui,
@@ -88,7 +90,9 @@ async fn get(edge: &Edge, path: &str, key: Option<&str>) -> (u16, String) {
 
 #[tokio::test]
 async fn a_managed_box_is_listed_and_its_calls_reach_it_with_its_token() {
-    let edge = start(None).await;
+    let box_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let box_port = box_listener.local_addr().unwrap().port();
+    let edge = start(None, Some((box_port, box_port))).await;
     let key = key(&edge);
     assert_eq!(key.len(), 64);
 
@@ -99,7 +103,8 @@ async fn a_managed_box_is_listed_and_its_calls_reach_it_with_its_token() {
     let port = serde_json::from_str::<serde_json::Value>(&body).unwrap()["rathole_port"]
         .as_u64()
         .unwrap() as u16;
-    let seen = fake_box(port).await;
+    assert_eq!(port, box_port);
+    let seen = fake_box(box_listener).await;
 
     // No key, a wrong key.
     assert_eq!(get(&edge, "/manage/api/boxes", None).await.0, 401);
@@ -209,7 +214,7 @@ async fn the_page_is_served_with_its_own_policy_and_deep_links_reload() {
     .unwrap();
     std::fs::write(ui.join("assets/page-abc.js"), "console.log(1)").unwrap();
     std::fs::write(ui.join("theme-boot.js"), "void 0").unwrap();
-    let edge = start(Some(ui.path_str(""))).await;
+    let edge = start(Some(ui.path_str("")), None).await;
 
     let resp = edge
         .client
