@@ -47,6 +47,16 @@ kreslí simulátor.
   uvádza verziu, ktorú prečítalo, takže ak sa súbor medzitým zmenil,
   uloženie sa odmietne a nič sa neprepíše. Ctrl+S uloží tam, odkiaľ diagram
   prišiel. Obrázok sa exportuje ako SVG alebo PNG.
+- **Úpravy spolu.** Diagram otvorený z LosOS Cloud je živý: otvorte ten istý
+  súbor na inej karte alebo inom počítači a obaja upravujete jeden diagram.
+  LosOS Cloud ho drží v tej istej živej miestnosti ako textový súbor a každú
+  zmenu o chvíľu zapíše do súboru, takže nie je čo ukladať. V hornej lište
+  sú tváre všetkých, ktorí ho majú otvorený, a ukazovateľ, meno a výber
+  každého sa ostatným zobrazujú na plátne v jeho farbe. Späť vráti vaše
+  vlastné zmeny, nie cudzie. Zdieľajte súbor `.canvas` s niekým na inom
+  zariadení a otvorí sa mu v Diagramoch z **Zdieľané s vami**, v tej istej
+  miestnosti; zdieľanie iba na čítanie diagram ukáže a zmenu neprijme. Keď
+  dvaja zmenia súbor v tej istej chvíli, zostanú obe zmeny.
 - **Stroje.** Položka **Stroje** v paneli uvádza virtuálne stroje, ktoré
   si toto zariadenie objednalo v sieti mesh. Položte jeden a jeho karta
   ukáže každú kópiu a čo práve robí, načítané znova každých 20 sekúnd.
@@ -374,7 +384,9 @@ LosOS Desktop, nie samotná plocha.
   ich zostavenie trvá asi 13 minút. `tests/lab.browser.mjs` kontroluje
   sieťové pohľady pod vlastnou politikou stránky, cestu cez relay proti
   falošnému démonovi libvirt, a `tests/diagrams.browser.mjs` diagram:
-  karty, šípky, súbor z Obsidianu, obrázky, LosOS Cloud a karty strojov.
+  karty, šípky, súbor z Obsidianu, obrázky, LosOS Cloud, úpravy spolu a
+  karty strojov. `nix/tests/diagrams-together.nix` spustí dve zariadenia,
+  zdieľa diagram z jedného na druhé a nechá oboch ľudí do neho kresliť.
 - Kontrakt jadra je `admin-ui/lab/core/README.md`. Jeho testy porovnávajú
   každú vstavanú zostavu so správaním JavaScriptového simulátora,
   ktorý nahradilo. Plátno, jeho formát súboru a jeho Späť sú v

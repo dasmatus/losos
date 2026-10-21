@@ -52,6 +52,19 @@ Netzwerk darin, wie der Simulator es zeichnet.
   Hat sich die Datei inzwischen geändert, wird das Speichern abgelehnt und
   nichts überschrieben. Strg+S speichert dorthin, woher das Diagramm kam.
   Das Bild lässt sich als SVG oder PNG exportieren.
+- **Gemeinsam bearbeiten.** Ein aus LosOS Cloud geöffnetes Diagramm ist
+  live: Öffne dieselbe Datei in einem anderen Tab oder auf einem anderen
+  Computer, und beide bearbeiten ein Diagramm. LosOS Cloud hält es im
+  selben Live-Raum wie eine Textdatei und schreibt jede Änderung einen
+  Moment später in die Datei, es gibt also nichts zu speichern. In der
+  oberen Leiste sind die Gesichter aller, die es offen haben, und Zeiger,
+  Name und Auswahl jeder Person erscheinen auf der Zeichenfläche der
+  anderen in ihrer Farbe. Rückgängig nimmt deine eigenen Änderungen zurück,
+  nicht die von anderen. Teile eine `.canvas`-Datei mit jemandem auf einer
+  anderen Box, und sie öffnet sich dort aus **Mit dir geteilt** in
+  Diagramme, im selben Raum; eine Freigabe nur zum Ansehen zeigt das
+  Diagramm und nimmt keine Änderung an. Ändern zwei Personen die Datei im
+  selben Moment, bleiben beide Änderungen erhalten.
 - **Maschinen.** **Maschinen** in der Leiste listet die virtuellen
   Maschinen, die diese Box im Mesh bestellt hat. Leg eine ab, und ihre
   Karte zeigt jede Kopie und was sie gerade tut, alle 20 Sekunden neu
@@ -408,8 +421,10 @@ ein Bild von LosOS Desktop, nicht der Desktop selbst.
   Build dauert etwa 13 Minuten. `tests/lab.browser.mjs` prüft die
   Netzwerkansichten unter der eigenen Policy der Seite, den Relay-Weg gegen
   einen gefälschten libvirt-Daemon, und `tests/diagrams.browser.mjs` das
-  Diagramm: Karten, Pfeile, eine Obsidian-Datei, die Bilder, LosOS Cloud und
-  die Maschinenkarten.
+  Diagramm: Karten, Pfeile, eine Obsidian-Datei, die Bilder, LosOS Cloud,
+  das gemeinsame Bearbeiten und die Maschinenkarten.
+  `nix/tests/diagrams-together.nix` startet zwei Boxen, teilt ein Diagramm
+  von einer zur anderen und lässt beide Personen darin zeichnen.
 - Der Vertrag des Kerns ist `admin-ui/lab/core/README.md`. Seine Tests
   vergleichen jedes eingebaute Setup mit dem Verhalten des
   JavaScript-Simulators, den er ersetzt hat. Die Zeichenfläche, ihr

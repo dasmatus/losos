@@ -153,6 +153,15 @@ class Lab {
                                            // lang: en | sk | de
   canvas_undo(): string;                   // {ok} | Err
   canvas_redo(): string;                   // {ok} | Err
+  canvas_sync(text: string): string;       // the whole file as several
+                                           // people edit it → {full, skipped}
+                                           // | Err; full: a device or cable
+                                           // changed and the world was built
+                                           // again, else only the canvas and
+                                           // the devices' places were read
+                                           // and the simulator kept running.
+                                           // A comma lost or doubled by a
+                                           // merge is put back first.
 }
 ```
 
