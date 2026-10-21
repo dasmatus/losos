@@ -66,6 +66,9 @@ pub struct UserApp {
     pub created_at: u64,
     #[serde(rename = "updatedAt")]
     pub updated_at: u64,
+    /// Its repository on LosOS Git and how that stands (`crate::app_repo`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<crate::app_repo::RepoState>,
 }
 
 /// Every app, in the order they were made.
@@ -286,33 +289,44 @@ pub fn cmd_check(source: &str) -> anyhow::Result<Value> {
     Ok(json!({ "code": checked.code, "problems": checked.problems }))
 }
 
+/// What a save or a pushed version must pass: a name, a size, and a source
+/// that compiles. The sentence is what the owner reads.
+fn validate(name: &str, source: &str) -> Result<crate::jsx::Checked, String> {
+    if name.is_empty() {
+        return Err("give the app a name".to_string());
+    }
+    if name.chars().count() > MAX_NAME_CHARS {
+        return Err(format!(
+            "the name is longer than {MAX_NAME_CHARS} characters"
+        ));
+    }
+    if name.chars().any(char::is_control) {
+        return Err("the name has a control character in it".to_string());
+    }
+    if source.len() > MAX_SOURCE_BYTES {
+        return Err(format!(
+            "the app is larger than {} KiB",
+            MAX_SOURCE_BYTES / 1024
+        ));
+    }
+    let checked = crate::jsx::check(source);
+    if checked.code.is_none() {
+        let first = checked.problems.first().cloned().unwrap_or_default();
+        return Err(format!("the app does not compile. {first}"));
+    }
+    Ok(checked)
+}
+
 /// `POST /api/user-apps`: add an app, or save a new version of the one the
 /// draft's id names. The source must compile; problems that would show only
 /// when it runs are saved with it and returned, so the owner sees them.
 pub fn cmd_put<L: Losos>(l: &mut L, draft: &Draft) -> anyhow::Result<Value> {
     let name = draft.name.trim();
-    if name.is_empty() {
-        return invalid("give the app a name");
-    }
-    if name.chars().count() > MAX_NAME_CHARS {
-        return invalid(format!(
-            "the name is longer than {MAX_NAME_CHARS} characters"
-        ));
-    }
-    if name.chars().any(char::is_control) {
-        return invalid("the name has a control character in it");
-    }
-    if draft.source.len() > MAX_SOURCE_BYTES {
-        return invalid(format!(
-            "the app is larger than {} KiB",
-            MAX_SOURCE_BYTES / 1024
-        ));
-    }
-    let checked = crate::jsx::check(&draft.source);
-    let Some(code) = checked.code else {
-        let first = checked.problems.first().cloned().unwrap_or_default();
-        return invalid(format!("the app does not compile. {first}"));
+    let checked = match validate(name, &draft.source) {
+        Ok(c) => c,
+        Err(sentence) => return invalid(sentence),
     };
+    let code = checked.code.clone().unwrap_or_default();
     let summary = draft
         .summary
         .as_deref()
@@ -354,6 +368,7 @@ pub fn cmd_put<L: Losos>(l: &mut L, draft: &Draft) -> anyhow::Result<Value> {
                 code,
                 created_at: now,
                 updated_at: now,
+                repo: None,
             };
             apps.next_id += 1;
             apps.apps.push(app.clone());
@@ -361,6 +376,13 @@ pub fn cmd_put<L: Losos>(l: &mut L, draft: &Draft) -> anyhow::Result<Value> {
         }
     };
     l.save_user_apps(&apps)?;
+    // The version goes into the app's repository now; LosOS Git gets it on
+    // the next sync, which the HTTP layer asks for at once. A commit that
+    // fails costs the history one step, not the save: the next sync commits
+    // whatever the app is then.
+    if let Err(e) = commit_save(l, &app, &checked.problems) {
+        tracing::warn!(app = %app.id, error = ?e, "could not commit the app's version");
+    }
     Ok(json!({ "app": app, "problems": checked.problems }))
 }
 
@@ -376,8 +398,236 @@ pub fn cmd_delete<L: Losos>(l: &mut L, id: &str) -> anyhow::Result<Value> {
     if deleted {
         l.save_user_apps(&apps)?;
         l.remove_app_data(id)?;
+        // The copy beside the list; the repository on LosOS Git is the
+        // owner's to delete (`crate::app_repo`).
+        l.app_repo_remove(id)?;
     }
     Ok(json!({ "deleted": deleted }))
+}
+
+// ── Each app's repository ──────────────────────────────────────────────────
+
+/// Commit a save to the app's repository: its first version gets the README.
+fn commit_save<L: Losos>(l: &mut L, app: &UserApp, problems: &[String]) -> anyhow::Result<()> {
+    let first = l.app_repo_head(&app.id)?.is_none();
+    let (subject, body) = crate::app_repo::save_message(app, first, problems);
+    let files = if first {
+        crate::app_repo::first_files(app)
+    } else {
+        crate::app_repo::files(app)
+    };
+    l.app_repo_commit(&app.id, &files, &subject, &body)?;
+    Ok(())
+}
+
+/// Keep every app's repository in step with LosOS Git (`crate::app_repo`):
+/// commit what each app is, push what LosOS Git lacks, and take a version a
+/// clone pushed once it passes the checks a save goes through. Run by the
+/// reconciler thread every half minute and right after a save.
+pub fn cmd_sync<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    let mut apps = l.load_user_apps()?;
+    let remote = l.config_repo().filter(|r| r.via_server());
+    let mut taken: Option<Vec<String>> = None;
+    let mut changed = false;
+    for app in &mut apps.apps {
+        let before = app.clone();
+        if let Err(e) = sync_one(l, app, remote.as_ref(), &mut taken) {
+            let name = app.repo.as_ref().and_then(|r| r.name.clone());
+            let detail = if let Some(not_up) = e.downcast_ref::<crate::config_repo::NotUp>() {
+                format!("{}. The box tries again in half a minute.", not_up.0)
+            } else {
+                tracing::warn!(app = %app.id, error = ?e, "could not sync the app's repository");
+                format!("The box could not sync it with LosOS Git: {e}")
+            };
+            app.repo = Some(crate::app_repo::RepoState::new(name, "local", detail));
+        }
+        changed |= *app != before;
+    }
+    if changed {
+        l.save_user_apps(&apps)?;
+    }
+    Ok(json!({
+        "apps": apps
+            .apps
+            .iter()
+            .map(|a| json!({ "id": a.id, "repo": a.repo.as_ref().map(crate::app_repo::RepoState::view) }))
+            .collect::<Vec<_>>(),
+    }))
+}
+
+fn sync_one<L: Losos>(
+    l: &mut L,
+    app: &mut UserApp,
+    remote: Option<&crate::config_repo::RepoConfig>,
+    taken: &mut Option<Vec<String>>,
+) -> anyhow::Result<()> {
+    use crate::app_repo::{Plan, RepoState};
+
+    // The box's own copy first: an app from before its repository, or one a
+    // failed commit left behind, gets its version now.
+    let first = l.app_repo_head(&app.id)?.is_none();
+    let (subject, body) = crate::app_repo::sync_message(app, first);
+    let files = if first {
+        crate::app_repo::first_files(app)
+    } else {
+        crate::app_repo::files(app)
+    };
+    l.app_repo_commit(&app.id, &files, &subject, &body)?;
+
+    let Some(remote) = remote else {
+        app.repo = Some(RepoState::new(
+            None,
+            "local",
+            "LosOS Git is off on this box, so the app's versions are kept on the box only.",
+        ));
+        return Ok(());
+    };
+    let name = match app.repo.as_ref().and_then(|r| r.name.clone()) {
+        Some(name) => name,
+        None => {
+            let full = make_repo(l, app, remote, taken)?;
+            app.repo = Some(RepoState::new(Some(full.clone()), "local", ""));
+            full
+        }
+    };
+    let url = format!("{}/{name}.git", remote.git_url.trim_end_matches('/'));
+    let local = l
+        .app_repo_head(&app.id)?
+        .ok_or_else(|| anyhow::anyhow!("the app's repository has no commit after one was made"))?;
+    let fetched = l.app_repo_fetch(&app.id, &url)?;
+    let (remote_ahead, local_ahead) = match fetched.as_deref() {
+        Some(r) if r != local => (
+            l.app_repo_is_ancestor(&app.id, &local, r)?,
+            l.app_repo_is_ancestor(&app.id, r, &local)?,
+        ),
+        _ => (false, false),
+    };
+    let was = app.repo.clone();
+    let state = match crate::app_repo::plan(&local, fetched.as_deref(), remote_ahead, local_ahead) {
+        // A refusal stays on the page until the next version lands.
+        Plan::Nothing => match was {
+            Some(r) if r.state == "refused" => r,
+            _ => RepoState::new(Some(name), "synced", ""),
+        },
+        Plan::Push => {
+            l.app_repo_push(&app.id, &url)?;
+            RepoState::new(Some(name), "synced", "")
+        }
+        Plan::Diverged => RepoState::new(
+            Some(name),
+            "diverged",
+            "The box and LosOS Git each have a version the other lacks. Pull, merge and push, and the box takes the merge.",
+        ),
+        Plan::Take(sha) => take(l, app, &sha, &url, name)?,
+    };
+    app.repo = Some(state);
+    Ok(())
+}
+
+/// Pick the repository's name and make it on LosOS Git, private.
+fn make_repo<L: Losos>(
+    l: &mut L,
+    app: &UserApp,
+    remote: &crate::config_repo::RepoConfig,
+    taken: &mut Option<Vec<String>>,
+) -> anyhow::Result<String> {
+    use crate::config_repo::{classify, Answer, GitOp, NotUp};
+
+    if taken.is_none() {
+        crate::losos::ensure_owner(l, remote)?;
+        let (status, body) = l.git_request(&GitOp::ListRepos {
+            login: remote.owner.clone(),
+        })?;
+        let names = match classify(status, &body) {
+            Answer::Ok(Value::Array(repos)) => repos
+                .iter()
+                .filter_map(|r| r.get("name").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect(),
+            Answer::Ok(_) => Vec::new(),
+            Answer::Missing => {
+                return Err(NotUp("The owner's account on LosOS Git is not made yet".into()).into())
+            }
+            Answer::Exists | Answer::Refused { .. } => {
+                anyhow::bail!("LosOS Git would not list the owner's repositories ({status})")
+            }
+        };
+        *taken = Some(names);
+    }
+    let names = taken.as_mut().expect("filled above");
+    let short = crate::app_repo::repo_name(&app.name, names);
+    let (status, body) = l.git_request(&GitOp::EnsureAppRepo {
+        owner: remote.owner.clone(),
+        name: short.clone(),
+    })?;
+    match classify(status, &body) {
+        Answer::Ok(_) | Answer::Exists => {}
+        Answer::Missing => {
+            return Err(NotUp("The owner's account on LosOS Git is not made yet".into()).into())
+        }
+        Answer::Refused { status, message } => {
+            anyhow::bail!("LosOS Git would not make the repository ({status}): {message}")
+        }
+    }
+    names.push(short.clone());
+    Ok(format!("{}/{short}", remote.owner))
+}
+
+/// A clone pushed ahead: check its version and run it, or put the app back
+/// in a commit of its own that says why, so the branch stays one line.
+fn take<L: Losos>(
+    l: &mut L,
+    app: &mut UserApp,
+    sha: &str,
+    url: &str,
+    name: String,
+) -> anyhow::Result<crate::app_repo::RepoState> {
+    use crate::app_repo::RepoState;
+
+    let source = l.app_repo_show(&app.id, sha, crate::app_repo::SOURCE_FILE)?;
+    let meta = l.app_repo_show(&app.id, sha, crate::app_repo::META_FILE)?;
+    let verdict = crate::app_repo::read_pushed(app, source, meta).and_then(|pushed| {
+        let trimmed = pushed.name.trim().to_string();
+        validate(&trimmed, &pushed.source).map(|checked| (pushed, trimmed, checked))
+    });
+    l.app_repo_set_head(&app.id, sha)?;
+    match verdict {
+        Ok((pushed, trimmed, checked)) => {
+            app.name = trimmed;
+            app.summary = pushed
+                .summary
+                .as_deref()
+                .and_then(crate::builder::clean_summary)
+                .map(|s| s.chars().take(MAX_SUMMARY_CHARS).collect());
+            app.prompt = pushed
+                .prompt
+                .map(|p| p.chars().take(crate::builder::MAX_PROMPT_CHARS).collect());
+            app.source = pushed.source;
+            app.code = checked.code.unwrap_or_default();
+            app.updated_at = l.now();
+            tracing::info!(app = %app.id, sha, "took a version pushed to the app's repository");
+            // The box writes losos-app.json its own way; when that differs
+            // from what was pushed, it says so in a commit and pushes it.
+            let (subject, body) = crate::app_repo::sync_message(app, false);
+            if l.app_repo_commit(&app.id, &crate::app_repo::files(app), &subject, &body)?
+                .is_some()
+            {
+                l.app_repo_push(&app.id, url)?;
+            }
+            Ok(RepoState::new(Some(name), "synced", ""))
+        }
+        Err(why) => {
+            let (subject, body) = crate::app_repo::refused_message(app, sha, &why);
+            l.app_repo_commit(&app.id, &crate::app_repo::files(app), &subject, &body)?;
+            l.app_repo_push(&app.id, url)?;
+            let short: String = sha.chars().take(7).collect();
+            Ok(RepoState::new(
+                Some(name),
+                "refused",
+                format!("The version pushed as {short} was not taken: {why}"),
+            ))
+        }
+    }
 }
 
 fn known<L: Losos>(l: &mut L, id: &str) -> anyhow::Result<bool> {
@@ -542,6 +792,228 @@ mod tests {
 
     fn message(e: &anyhow::Error) -> String {
         e.downcast_ref::<Invalid>().expect("an Invalid").0.clone()
+    }
+
+    /// A fake LosOS Git that has the owner, lists `existing` as theirs and
+    /// makes any app repository asked for.
+    fn with_git(existing: &[&str]) -> FakeLosos {
+        let mut l = FakeLosos::default().with_config_repo();
+        let repos: Vec<Value> = existing.iter().map(|n| json!({ "name": n })).collect();
+        l.git_routes.insert(
+            "GET /api/v1/users/notshared/repos".to_string(),
+            (200, Value::Array(repos).to_string()),
+        );
+        for name in ["app-notes", "app-notes-2", "app-chores"] {
+            l.git_routes.insert(
+                format!("PUT /api/v1/admin/users/notshared/repos/{name}"),
+                (201, format!(r#"{{"name": "{name}"}}"#)),
+            );
+        }
+        l
+    }
+
+    const URL: &str = "http://127.0.0.1:3000/notshared/app-notes-2.git";
+
+    fn head_files(l: &FakeLosos, id: &str) -> std::collections::BTreeMap<String, String> {
+        let head = &l.app_heads[id];
+        l.app_commits[head].files.clone()
+    }
+
+    #[test]
+    fn every_save_is_a_commit_and_the_first_one_has_the_readme() {
+        let mut l = FakeLosos::default();
+        cmd_put(&mut l, &draft("Notes", SOURCE)).unwrap();
+        let first = l.app_heads["u1"].clone();
+        let c = &l.app_commits[&first];
+        assert_eq!(c.subject, "Make Notes");
+        assert!(c.body.contains("> a notes app"), "{}", c.body);
+        assert_eq!(c.files["app.jsx"], SOURCE);
+        assert!(c.files["README.md"].starts_with("# Notes"));
+        let mut next = draft(
+            "Notes",
+            "function App() { return <Page title=\"Notes\" />; }",
+        );
+        next.id = Some("u1".into());
+        cmd_put(&mut l, &next).unwrap();
+        let second = &l.app_commits[&l.app_heads["u1"]];
+        assert_eq!(second.subject, "Change Notes");
+        assert_eq!(second.parent.as_deref(), Some(first.as_str()));
+        assert!(second.files.contains_key("README.md"), "the README is kept");
+        // Saving the same thing again makes no commit.
+        cmd_put(&mut l, &next).unwrap();
+        assert_eq!(l.app_commits.len(), 2);
+        cmd_delete(&mut l, "u1").unwrap();
+        assert!(!l.app_heads.contains_key("u1"));
+    }
+
+    #[test]
+    fn with_git_off_the_versions_stay_on_the_box() {
+        let mut l = FakeLosos::default();
+        cmd_put(&mut l, &draft("Notes", SOURCE)).unwrap();
+        let out = cmd_sync(&mut l).unwrap();
+        assert_eq!(out["apps"][0]["repo"]["state"], "local");
+        assert_eq!(out["apps"][0]["repo"]["url"], Value::Null);
+        assert!(l.app_pushes.is_empty());
+        assert!(l.git_calls.is_empty());
+    }
+
+    #[test]
+    fn a_saved_app_gets_a_private_repository_with_a_free_name_and_is_pushed() {
+        let mut l = with_git(&["losos-config", "app-notes"]);
+        cmd_put(&mut l, &draft("Notes", SOURCE)).unwrap();
+        let out = cmd_sync(&mut l).unwrap();
+        assert_eq!(out["apps"][0]["repo"]["state"], "synced", "{out}");
+        assert_eq!(out["apps"][0]["repo"]["name"], "notshared/app-notes-2");
+        assert_eq!(out["apps"][0]["repo"]["url"], "/git/notshared/app-notes-2");
+        assert!(l
+            .git_calls
+            .contains(&"PUT /api/v1/admin/users/notshared/repos/app-notes-2".to_string()));
+        assert_eq!(l.app_remotes[URL], l.app_heads["u1"]);
+        // Kept: the next sync neither lists nor makes anything, nor pushes.
+        let calls = l.git_calls.len();
+        cmd_sync(&mut l).unwrap();
+        assert_eq!(l.git_calls.len(), calls);
+        assert_eq!(l.app_pushes.len(), 1);
+        assert_eq!(l.user_apps.apps[0].repo.as_ref().unwrap().state, "synced");
+    }
+
+    #[test]
+    fn a_pushed_version_that_passes_the_checks_becomes_the_app() {
+        let mut l = with_git(&["app-notes"]);
+        cmd_put(&mut l, &draft("Notes", SOURCE)).unwrap();
+        cmd_sync(&mut l).unwrap();
+        let new_source = "function App() { return <Page title=\"Shopping\" />; }";
+        let meta = r#"{"name": "Shopping", "summary": "What to buy."}"#;
+        let pushed = l.push_from_clone(
+            URL,
+            &[
+                ("app.jsx", new_source.to_string()),
+                ("losos-app.json", meta.to_string()),
+                ("notes.md", "mine".to_string()),
+            ],
+        );
+        let out = cmd_sync(&mut l).unwrap();
+        assert_eq!(out["apps"][0]["repo"]["state"], "synced", "{out}");
+        let app = &l.user_apps.apps[0];
+        assert_eq!(app.name, "Shopping");
+        assert_eq!(app.summary.as_deref(), Some("What to buy."));
+        assert_eq!(app.source, new_source);
+        assert!(app.code.contains("Shopping"));
+        // The box rewrote losos-app.json its own way, on top of the push,
+        // and kept the owner's own file.
+        let head = l.app_heads["u1"].clone();
+        assert_eq!(
+            l.app_commits[&head].parent.as_deref(),
+            Some(pushed.as_str())
+        );
+        assert_eq!(
+            l.app_commits[&head].subject,
+            "Keep Shopping as the box has it"
+        );
+        assert_eq!(head_files(&l, "u1")["notes.md"], "mine");
+        assert_eq!(l.app_remotes[URL], head);
+        // The data is the app's still.
+        assert!(cmd_data(&mut l, "u1").unwrap().is_some());
+    }
+
+    #[test]
+    fn a_pushed_version_that_does_not_compile_is_answered_and_the_app_kept() {
+        let mut l = with_git(&["app-notes"]);
+        cmd_put(&mut l, &draft("Notes", SOURCE)).unwrap();
+        cmd_sync(&mut l).unwrap();
+        let pushed = l.push_from_clone(
+            URL,
+            &[("app.jsx", "function App() { return <p>; }".to_string())],
+        );
+        let out = cmd_sync(&mut l).unwrap();
+        assert_eq!(out["apps"][0]["repo"]["state"], "refused", "{out}");
+        let detail = out["apps"][0]["repo"]["detail"].as_str().unwrap();
+        assert!(
+            detail.contains(&pushed[..7]) && detail.contains("does not compile"),
+            "{detail}"
+        );
+        assert_eq!(
+            l.user_apps.apps[0].source, SOURCE,
+            "the app is kept as it was"
+        );
+        let head = l.app_heads["u1"].clone();
+        let answer = &l.app_commits[&head];
+        assert_eq!(answer.subject, "Keep Notes as it was");
+        assert_eq!(
+            answer.parent.as_deref(),
+            Some(pushed.as_str()),
+            "one line of history"
+        );
+        assert_eq!(answer.files["app.jsx"], SOURCE);
+        assert_eq!(l.app_remotes[URL], head, "the answer is pushed");
+        // The refusal stays on the page until a new version lands.
+        cmd_sync(&mut l).unwrap();
+        assert_eq!(l.user_apps.apps[0].repo.as_ref().unwrap().state, "refused");
+        let mut next = draft(
+            "Notes",
+            "function App() { return <Page title=\"Notes 2\" />; }",
+        );
+        next.id = Some("u1".into());
+        cmd_put(&mut l, &next).unwrap();
+        cmd_sync(&mut l).unwrap();
+        assert_eq!(l.user_apps.apps[0].repo.as_ref().unwrap().state, "synced");
+    }
+
+    #[test]
+    fn both_sides_moving_is_reported_and_nothing_touched() {
+        let mut l = with_git(&["app-notes"]);
+        cmd_put(&mut l, &draft("Notes", SOURCE)).unwrap();
+        cmd_sync(&mut l).unwrap();
+        let pushed = l.push_from_clone(URL, &[("notes.md", "x".to_string())]);
+        let mut next = draft(
+            "Notes",
+            "function App() { return <Page title=\"Mine\" />; }",
+        );
+        next.id = Some("u1".into());
+        cmd_put(&mut l, &next).unwrap();
+        let out = cmd_sync(&mut l).unwrap();
+        assert_eq!(out["apps"][0]["repo"]["state"], "diverged", "{out}");
+        assert_eq!(l.app_remotes[URL], pushed);
+        assert!(l.user_apps.apps[0].source.contains("Mine"));
+    }
+
+    #[test]
+    fn git_not_up_leaves_the_app_local_and_tries_again() {
+        let mut l = with_git(&["app-notes"]);
+        cmd_put(&mut l, &draft("Notes", SOURCE)).unwrap();
+        l.app_remote_down = true;
+        let out = cmd_sync(&mut l).unwrap();
+        assert_eq!(out["apps"][0]["repo"]["state"], "local");
+        assert_eq!(
+            out["apps"][0]["repo"]["name"], "notshared/app-notes-2",
+            "the name is kept"
+        );
+        assert!(out["apps"][0]["repo"]["detail"]
+            .as_str()
+            .unwrap()
+            .contains("tries again"));
+        l.app_remote_down = false;
+        let out = cmd_sync(&mut l).unwrap();
+        assert_eq!(out["apps"][0]["repo"]["state"], "synced");
+        assert_eq!(
+            l.git_calls
+                .iter()
+                .filter(|c| c.starts_with("PUT /api/v1/admin/users/notshared/repos/app-"))
+                .count(),
+            1,
+            "the repository is made once"
+        );
+    }
+
+    #[test]
+    fn an_app_from_before_its_repository_gets_its_first_commit_on_the_next_sync() {
+        let mut l = FakeLosos::default();
+        cmd_put(&mut l, &draft("Notes", SOURCE)).unwrap();
+        l.app_heads.clear();
+        cmd_sync(&mut l).unwrap();
+        let head = &l.app_commits[&l.app_heads["u1"]];
+        assert_eq!(head.subject, "Make Notes");
+        assert!(head.files.contains_key("README.md"));
     }
 
     #[test]

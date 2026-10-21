@@ -79,6 +79,18 @@ let
       imageTag = "test";
     };
 
+  # /etc/nixos as the installer leaves it, so the configuration sync that
+  # makes the owner's account on LosOS Git has a repository to publish.
+  configTree = pkgs.writeShellScript "losos-config-tree" ''
+    [ -e /etc/nixos/.git ] && exit 0
+    install -d /etc/nixos/modules
+    cp ${../../modules/overrides.nix} /etc/nixos/modules/overrides.nix
+    chmod 0644 /etc/nixos/modules/overrides.nix
+    ${pkgs.gitMinimal}/bin/git -C /etc/nixos init -q -b main
+    ${pkgs.gitMinimal}/bin/git -C /etc/nixos add -A
+    ${pkgs.gitMinimal}/bin/git -C /etc/nixos -c user.name=installer -c user.email=i@x commit -qm "Installed"
+  '';
+
   # Measured with two threads while a build kept the other cores busy:
   # Qwen2.5-Coder 1.5B reads the prompt at about this many tokens a second
   # and writes at about this many.
@@ -118,6 +130,8 @@ pkgs.testers.nixosTest {
           ../../modules/daemon.nix
           ../../modules/identity.nix
           ../../modules/workloads.nix
+          ../../modules/git.nix
+          ../../modules/config-repo.nix
         ];
         # configuration.nix is not imported; the claim checks Host against
         # the kernel's host name.
@@ -129,10 +143,18 @@ pkgs.testers.nixosTest {
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = adminUi;
           nextcloud.mode = "container";
-          forgejo.enable = true;
-          forgejo.mode = "container";
           workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
-          workloads.forgejoImage = standIn "losos-forgejo-stand-in";
+          # Each saved app goes to a private repository of its own there.
+          git.enable = true;
+          configRepo.enable = true;
+        };
+        systemd.services.config-tree = {
+          wantedBy = [ "lososd.service" ];
+          before = [ "lososd.service" ];
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = configTree;
+          };
         };
         # The laptop's Chromium runs under TCG here; give its try time.
         systemd.services.lososd.environment.LOSOS_BUILDER_TRY_SECS = "180";
@@ -140,6 +162,7 @@ pkgs.testers.nixosTest {
           stubOcc
           pkgs.coreutils
           pkgs.curl
+          pkgs.gitMinimal
         ];
         systemd.services.lososd.environment = {
           LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
@@ -269,5 +292,79 @@ pkgs.testers.nixosTest {
             data = json.loads(box.succeed("cat /var/lib/losos/user-apps/u1.json"))
             tasks = [c["task"] for c in data["collections"]["chores"]]
             assert tasks == ["Water the plants"], tasks
+
+        GIT_ADMIN = box.succeed("cat /var/lib/losos-git/admin-token").strip()
+        BARE = "/var/lib/losos-git/repositories/notshared/app-chores.git"
+
+        def remote_head():
+            return box.succeed(f"git -c safe.directory='*' --git-dir {BARE} rev-parse main").strip()
+
+        def app_now():
+            return json.loads(box.succeed(
+                f"curl -sf -H 'Authorization: Bearer {TOKEN}' 127.0.0.1:8082/api/user-apps/u1"
+            ))["app"]
+
+        with subtest("the saved app is in a private repository of its own on LosOS Git"):
+            repo = json.loads(box.succeed(
+                f"curl -sf -H 'Authorization: token {GIT_ADMIN}' 127.0.0.1:3000/api/v1/repos/notshared/app-chores"
+            ))
+            assert repo["private"] is True, repo
+            local = box.succeed("git --git-dir /var/lib/losos/user-apps/u1.git rev-parse main").strip()
+            assert remote_head() == local, (remote_head(), local)
+            subjects = box.succeed(f"git -c safe.directory='*' --git-dir {BARE} log --format=%s main").splitlines()
+            assert subjects == ["Make Chores"], subjects
+            body = box.succeed(f"git -c safe.directory='*' --git-dir {BARE} log -1 --format=%b main")
+            assert "> A chore chart for the kids" in body, body
+            files = box.succeed(f"git -c safe.directory='*' --git-dir {BARE} ls-tree --name-only main").split()
+            assert files == ["README.md", "app.jsx", "losos-app.json"], files
+            assert app_now()["repo"] == {"name": "notshared/app-chores", "state": "synced"}, app_now()["repo"]
+
+        with subtest("a change pushed from a clone on the laptop becomes the app"):
+            out = box.succeed(
+                f"curl -sf -X POST -H 'Authorization: token {GIT_ADMIN}' -H 'Content-Type: application/json' "
+                "-d '{\"name\": \"laptop\", \"scopes\": [\"write:repository\", \"read:user\"], \"replace\": true}' "
+                "127.0.0.1:3000/api/v1/admin/users/notshared/tokens"
+            )
+            git_token = json.loads(out)["token"]
+            git = "git -c http.sslVerify=false -c user.name=Matus -c user.email=matus@laptop"
+            laptop.succeed(
+                f"GIT_TERMINAL_PROMPT=0 {git} clone -q https://x:{git_token}@mattbox.local/git/notshared/app-chores.git /tmp/app"
+            )
+            laptop.succeed("grep -q 'title=\"Chores\"' /tmp/app/app.jsx")
+            laptop.succeed("sed -i 's/title=\"Chores\"/title=\"Chores at home\"/' /tmp/app/app.jsx")
+            laptop.succeed(f"cd /tmp/app && {git} commit -qam 'Call it Chores at home' && GIT_TERMINAL_PROMPT=0 {git} push -q origin main")
+            box.wait_until_succeeds(
+                f"curl -sf -H 'Authorization: Bearer {TOKEN}' 127.0.0.1:8082/api/user-apps/u1 "
+                "| jq -e '.app.source | contains(\"Chores at home\")'",
+                timeout=180,
+            )
+            taken = app_now()
+            assert "Chores at home" in taken["code"], taken["code"][-300:]
+            assert taken["repo"]["state"] == "synced", taken["repo"]
+            # The data stayed with the app.
+            data = json.loads(box.succeed("cat /var/lib/losos/user-apps/u1.json"))
+            assert [c["task"] for c in data["collections"]["chores"]] == ["Water the plants"], data
+            laptop.succeed(
+                "cd /tmp/run && "
+                f"BOX={BOX} OWNER=matus PASSWORD={PASSWORD} OUT=/tmp/shots-pushed MODE=pushed FIRST=31 "
+                "timeout 1200 node shots.mjs >&2"
+            )
+            laptop.copy_from_machine("/tmp/shots-pushed", "")
+
+        with subtest("a push that does not compile is answered in the history and the app kept"):
+            laptop.succeed("echo 'function App() { return <p>; }' > /tmp/app/app.jsx")
+            laptop.succeed(f"cd /tmp/app && {git} commit -qam 'Break it' && GIT_TERMINAL_PROMPT=0 {git} push -q origin main")
+            box.wait_until_succeeds(
+                f"curl -sf -H 'Authorization: Bearer {TOKEN}' 127.0.0.1:8082/api/user-apps/u1 "
+                "| jq -e '.app.repo.state == \"refused\"'",
+                timeout=180,
+            )
+            kept = app_now()
+            assert "Chores at home" in kept["source"], kept["source"][:300]
+            assert "does not compile" in kept["repo"]["detail"], kept["repo"]
+            laptop.succeed(f"cd /tmp/app && GIT_TERMINAL_PROMPT=0 {git} pull -q --ff-only")
+            subject = laptop.succeed("cd /tmp/app && git log -1 --format=%s").strip()
+            assert subject == "Keep Chores as it was", subject
+            laptop.succeed("grep -q 'Chores at home' /tmp/app/app.jsx")
   '';
 }

@@ -5,6 +5,9 @@
 //   BOX=https://mattbox.local OWNER=matus PASSWORD=... OUT=./shots \
 //     MODE=after node shots.mjs
 //
+// MODE=pushed, after a clone pushed a change to the app's repository, takes
+// the app's page with the change running.
+//
 // MODE=after walks Your apps: the empty list, the builder, the request typed
 // a word at a time, the box at work (real progress, one frame every few
 // seconds, each step the builder takes on screen), the finished app in the
@@ -34,6 +37,9 @@ const REQUEST = env.REQUEST ?? 'A chore chart for the kids';
 const BUILD_TIMEOUT = Number(env.BUILD_TIMEOUT ?? 1800);
 // At most this many frames of the box at work.
 const WORK_FRAMES = Number(env.WORK_FRAMES ?? 12);
+// The number of the first shot, for a run that picks up where another
+// stopped (MODE=pushed).
+const FIRST = Number(env.FIRST ?? 1);
 
 mkdirSync(OUT, { recursive: true });
 const steps = [];
@@ -53,7 +59,7 @@ async function settle(page) {
 
 async function shot(page, slug, title, action = 'none', targets = {}, wait = true) {
   if (wait) await settle(page);
-  const name = `${String(steps.length + 1).padStart(2, '0')}-${slug}.png`;
+  const name = `${String(steps.length + FIRST).padStart(2, '0')}-${slug}.png`;
   // An emulated laptop at twice the density can take minutes on a busy host.
   await page.screenshot({ path: join(OUT, name), timeout: 300_000 });
   const kept = {};
@@ -114,7 +120,12 @@ page.on('pageerror', (e) => errors.push(String(e)));
 
 await signIn(page, '/apps');
 
-if (MODE === 'before') {
+if (MODE === 'pushed') {
+  await page.goto(`${BOX}/apps/u1`);
+  const app = page.frameLocator('[data-testid=user-app] iframe');
+  await app.getByText(env.PUSHED_TITLE ?? 'Chores at home').first().waitFor({ timeout: 120_000 });
+  await shot(page, 'app-pushed', 'the app running the change pushed from a clone');
+} else if (MODE === 'before') {
   await shot(page, 'apps-pane', 'the Apps page');
   await widgetTab(page);
   await shot(page, 'widget-builder', 'Build with AI in the widget editor');
@@ -209,7 +220,24 @@ if (MODE === 'before') {
   await app.getByLabel('Child').selectOption({ index: 2 });
   await app.getByRole('button', { name: 'Add' }).click();
   await app.getByText('Water the plants').first().waitFor();
-  await shot(page, 'app-saved', 'the app on its own page, its data on the box');
+  // The box pushes the saved app to its repository on LosOS Git within
+  // seconds; the page links it once the app's record says so.
+  const source = page.getByTestId('user-app-repo');
+  for (let i = 0; i < 60 && !(await source.isVisible()); i++) {
+    await sleep(3000);
+    await page.reload();
+    await app.locator('h1').waitFor({ timeout: 60_000 });
+  }
+  await app.getByText('Water the plants').first().waitFor();
+  await shot(page, 'app-saved', 'the app on its own page, its data on the box', 'click', {
+    source: await box(source),
+  });
+  await source.click();
+  await page.waitForURL(`${BOX}/git/notshared/app-chores`, { timeout: 60_000 });
+  await page.getByText('app.jsx').first().waitFor({ timeout: 60_000 });
+  await shot(page, 'app-repo', "the app's private repository on LosOS Git");
+  await page.goto(`${BOX}/apps/u1`);
+  await app.getByText('Water the plants').first().waitFor({ timeout: 60_000 });
   // The same page in the light theme, then a pane the admin UI already had,
   // in both themes, to set the app's buttons, fields and cards beside it.
   await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });

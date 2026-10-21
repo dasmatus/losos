@@ -14,9 +14,9 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Alert02Icon, ArrowLeft01Icon, SparklesIcon } from "@hugeicons/core-free-icons";
+import { Alert02Icon, ArrowLeft01Icon, GitBranchIcon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CodeEditor } from "@/components/code-editor";
 import { FieldError, Input } from "@/components/ui/input";
@@ -32,6 +32,7 @@ import {
   saveUserApp,
   type BuildView,
   type UserApp,
+  type UserAppRepo,
 } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
@@ -117,10 +118,14 @@ export function AppScreen() {
             <p className="mt-0.5 text-[12.5px] text-muted">{app.summary}</p>
           )}
         </div>
-        <Button size="sm" variant="secondary" onClick={() => navigate(`/apps/${app.id}/edit`)}>
-          {t("userApps.change")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <RepoLink repo={app.repo} />
+          <Button size="sm" variant="secondary" onClick={() => navigate(`/apps/${app.id}/edit`)}>
+            {t("userApps.change")}
+          </Button>
+        </div>
       </div>
+      <RepoNote repo={app.repo} />
       {crash !== null && <CrashNote message={crash} />}
       <Card className="h-[max(32rem,calc(100dvh-13rem))] overflow-hidden">
         <AppFrame
@@ -132,6 +137,38 @@ export function AppScreen() {
         />
       </Card>
     </div>
+  );
+}
+
+/* The app's repository on LosOS Git (backend/src/app_repo.rs): a link once
+ * the box has made it. /git/ is a page of its own, so a plain link. */
+function RepoLink({ repo }: { repo: UserAppRepo | undefined }) {
+  const t = useT();
+  if (repo?.name === undefined) return null;
+  return (
+    <a
+      href={`/git/${repo.name}`}
+      className={buttonVariants({ variant: "ghost", size: "sm" })}
+      title={t("userApps.repo.title", { name: repo.name })}
+      data-testid="user-app-repo"
+    >
+      <HugeiconsIcon icon={GitBranchIcon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+      {t("userApps.repo.link")}
+    </a>
+  );
+}
+
+/* Said only when the owner has something to do: a push the checks turned
+ * down, or both sides changed. */
+function RepoNote({ repo }: { repo: UserAppRepo | undefined }) {
+  const t = useT();
+  if (repo === undefined || (repo.state !== "refused" && repo.state !== "diverged")) return null;
+  return (
+    <Alert variant="warn" role="status" data-testid="user-app-repo-note">
+      <HugeiconsIcon icon={Alert02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+      <AlertTitle>{t(repo.state === "refused" ? "userApps.repo.refused" : "userApps.repo.diverged")}</AlertTitle>
+      {repo.detail !== undefined && repo.detail !== "" && <AlertDescription>{repo.detail}</AlertDescription>}
+    </Alert>
   );
 }
 

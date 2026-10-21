@@ -21,6 +21,22 @@ export default defineMessages({
   "userApps.make": { en: "Make an app", sk: "Vytvoriť aplikáciu", de: "App erstellen" },
   "userApps.open": { en: "Open", sk: "Otvoriť", de: "Öffnen" },
   "userApps.change": { en: "Change", sk: "Upraviť", de: "Ändern" },
+  "userApps.repo.link": { en: "Source", sk: "Zdroj", de: "Quelle" },
+  "userApps.repo.title": {
+    en: "{name} on LosOS Git: clone it, change app.jsx and push",
+    sk: "{name} v LosOS Git: naklonujte ho, upravte app.jsx a pošlite zmenu",
+    de: "{name} in LosOS Git: klone es, ändere app.jsx und pushe",
+  },
+  "userApps.repo.refused": {
+    en: "Your last push was not taken",
+    sk: "Vašu poslednú zmenu box neprevzal",
+    de: "Dein letzter Push wurde nicht übernommen",
+  },
+  "userApps.repo.diverged": {
+    en: "The box and LosOS Git each have a change",
+    sk: "Box aj LosOS Git majú každý inú zmenu",
+    de: "Die Box und LosOS Git haben je eine andere Änderung",
+  },
   "userApps.delete": { en: "Delete", sk: "Odstrániť", de: "Löschen" },
   "userApps.retry": { en: "Try again", sk: "Skúsiť znova", de: "Erneut versuchen" },
   "userApps.listFailed": {

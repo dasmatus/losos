@@ -3705,7 +3705,13 @@ async fn post_user_app(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) 
     guarded(&api, &req, "/api/user-apps", true, || {
         let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
         match crate::user_apps::parse_draft(&doc) {
-            Some(draft) => run(&api, |b| crate::user_apps::cmd_put(b, &draft)),
+            Some(draft) => run(&api, |b| {
+                let saved = crate::user_apps::cmd_put(b, &draft);
+                if saved.is_ok() {
+                    crate::config_repo::nudge();
+                }
+                saved
+            }),
             None => err(
                 StatusCode::BAD_REQUEST,
                 r#"body must be JSON: {"id": "..." (optional), "name": "...", "source": "..."}"#,

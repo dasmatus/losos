@@ -1358,12 +1358,23 @@ export interface UserAppSummary {
   updatedAt: number;
 }
 
+/** An app's repository on LosOS Git (backend/src/app_repo.rs). */
+export interface UserAppRepo {
+  /** `owner/name`, once the box has made it. */
+  name?: string;
+  /** `synced`, `local`, `diverged` or `refused`. */
+  state: "synced" | "local" | "diverged" | "refused";
+  detail?: string;
+}
+
 export interface UserApp extends UserAppSummary {
   prompt: string | null;
   /** The JSX the owner keeps. */
   source: string;
   /** The script the app frame runs. */
   code: string;
+  /** Absent until the box's first sync after the app was saved. */
+  repo?: UserAppRepo;
 }
 
 export interface UserAppsResponse {

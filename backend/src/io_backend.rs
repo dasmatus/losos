@@ -93,6 +93,12 @@ impl Paths {
         self.state_dir.join("user-apps").join(format!("{id}.json"))
     }
 
+    /// One app's repository (`crate::app_repo`), bare, beside its data.
+    /// The id is checked like [`Paths::app_data_file`]'s.
+    pub fn app_repo_dir(&self, id: &str) -> PathBuf {
+        self.state_dir.join("user-apps").join(format!("{id}.git"))
+    }
+
     /// How the last configuration sync went (`crate::config_repo`).
     pub fn sync_report_file(&self) -> PathBuf {
         self.state_dir.join("config-sync.json")
@@ -1106,35 +1112,107 @@ fn git(paths: &Paths, with_auth: bool, args: &[&str]) -> anyhow::Result<std::pro
         .env_remove("GIT_ASKPASS")
         .env_remove("SSH_ASKPASS");
     if with_auth {
-        if let Some(repo) = crate::config_repo::RepoConfig::from_env().filter(|r| r.via_server()) {
-            let token = read_bot_token(&repo)?;
-            let host = repo
-                .git_url
-                .split_once("://")
-                .map_or(repo.git_url.as_str(), |(_, rest)| rest)
-                .trim_end_matches('/');
-            let scheme = repo
-                .git_url
-                .split_once("://")
-                .map_or("http", |(scheme, _)| scheme);
-            let line = format!(
-                "{scheme}://{}:{token}@{host}\n",
-                crate::config_repo::BOT_USER
-            );
-            let store = paths.git_credentials_file();
-            atomic_write_secret(&store, line.as_bytes())
-                .context("writing the LosOS Git credential store")?;
-            cmd.args([
-                "-c",
-                &format!("credential.helper=store --file={}", store.display()),
-            ]);
-        }
+        cmd.args(credential_args(paths)?);
     }
     cmd.args(args)
         .stdin(std::process::Stdio::null())
         .output()
         .context("running git (is it on lososd's unit path? see modules/daemon.nix)")
 }
+
+/// The `-c credential.helper=…` pair that lets git fetch from and push to
+/// LosOS Git with the bot token, writing the store it names. Nothing when
+/// the configuration repository is not on LosOS Git.
+fn credential_args(paths: &Paths) -> anyhow::Result<Vec<String>> {
+    let Some(repo) = crate::config_repo::RepoConfig::from_env().filter(|r| r.via_server()) else {
+        return Ok(Vec::new());
+    };
+    let token = read_bot_token(&repo)?;
+    let host = repo
+        .git_url
+        .split_once("://")
+        .map_or(repo.git_url.as_str(), |(_, rest)| rest)
+        .trim_end_matches('/');
+    let scheme = repo
+        .git_url
+        .split_once("://")
+        .map_or("http", |(scheme, _)| scheme);
+    let line = format!(
+        "{scheme}://{}:{token}@{host}\n",
+        crate::config_repo::BOT_USER
+    );
+    let store = paths.git_credentials_file();
+    atomic_write_secret(&store, line.as_bytes())
+        .context("writing the LosOS Git credential store")?;
+    Ok(vec![
+        "-c".to_string(),
+        format!("credential.helper=store --file={}", store.display()),
+    ])
+}
+
+/// `git` in one app's bare repository (`crate::app_repo`), with the same
+/// identity, `HOME` and prompt settings as [`git`], `input` on its stdin.
+fn app_git(
+    paths: &Paths,
+    id: &str,
+    with_auth: bool,
+    args: &[&str],
+    input: Option<&[u8]>,
+) -> anyhow::Result<std::process::Output> {
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("--git-dir")
+        .arg(paths.app_repo_dir(id))
+        .args([
+            "-c",
+            &format!("user.name={}", crate::config_repo::COMMITTER_NAME),
+        ])
+        .args([
+            "-c",
+            &format!("user.email={}", crate::config_repo::COMMITTER_EMAIL),
+        ])
+        .env("HOME", &paths.state_dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env_remove("GIT_ASKPASS")
+        .env_remove("SSH_ASKPASS")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_INDEX_FILE");
+    if with_auth {
+        cmd.args(credential_args(paths)?);
+    }
+    cmd.args(args)
+        .stdin(if input.is_some() {
+            std::process::Stdio::piped()
+        } else {
+            std::process::Stdio::null()
+        })
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .context("running git (is it on lososd's unit path? see modules/daemon.nix)")?;
+    if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+        stdin.write_all(input).context("writing to git")?;
+    }
+    child.wait_with_output().context("waiting for git")
+}
+
+/// [`app_git`] that must succeed; the first stderr line is the error.
+fn app_git_ok(
+    paths: &Paths,
+    id: &str,
+    with_auth: bool,
+    args: &[&str],
+    input: Option<&[u8]>,
+) -> anyhow::Result<String> {
+    let out = app_git(paths, id, with_auth, args, input)?;
+    if !out.status.success() {
+        anyhow::bail!("git {}: {}", args.join(" "), first_line(&out.stderr));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// The ref a fetch of an app's repository leaves the remote branch in.
+const APP_REMOTE_REF: &str = "refs/losos/remote";
 
 /// `git` against a scratch index instead of the repository's own, so a
 /// follow can assemble its tree without touching the working tree or what is
@@ -1773,6 +1851,202 @@ impl Losos for IoLosos {
 
     fn remove_app_data(&mut self, id: &str) -> anyhow::Result<()> {
         remove_if_present(&self.paths.app_data_file(id))
+    }
+
+    fn app_repo_head(&mut self, id: &str) -> anyhow::Result<Option<String>> {
+        if !self.paths.app_repo_dir(id).exists() {
+            return Ok(None);
+        }
+        let branch = format!("refs/heads/{}", crate::app_repo::BRANCH);
+        let out = app_git(
+            &self.paths,
+            id,
+            false,
+            &["rev-parse", "--verify", "-q", &branch],
+            None,
+        )?;
+        if !out.status.success() {
+            return Ok(None);
+        }
+        Ok(Some(
+            String::from_utf8_lossy(&out.stdout).trim().to_string(),
+        ))
+    }
+
+    fn app_repo_commit(
+        &mut self,
+        id: &str,
+        files: &[(&str, String)],
+        subject: &str,
+        body: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let dir = self.paths.app_repo_dir(id);
+        if !dir.exists() {
+            let parent = dir.parent().context("an app repository has a parent")?;
+            std::fs::create_dir_all(parent).context("making the apps directory")?;
+            let out = std::process::Command::new("git")
+                .args(["init", "-q", "--bare", "-b", crate::app_repo::BRANCH])
+                .arg(&dir)
+                .env("HOME", &self.paths.state_dir)
+                .stdin(std::process::Stdio::null())
+                .output()
+                .context("running git (is it on lososd's unit path? see modules/daemon.nix)")?;
+            if !out.status.success() {
+                anyhow::bail!("git init: {}", first_line(&out.stderr));
+            }
+        }
+        // The tree, written straight into the object store: a bare
+        // repository has no working tree to stage from. The head's other
+        // entries (files and folders the owner added) are kept as they are.
+        let head = self.app_repo_head(id)?;
+        let mut listing = String::new();
+        if let Some(head) = &head {
+            let entries = app_git_ok(&self.paths, id, false, &["ls-tree", "-z", head], None)?;
+            for entry in entries.split('\0').filter(|e| !e.is_empty()) {
+                let name = entry.split_once('\t').map_or("", |(_, n)| n);
+                if !files.iter().any(|(f, _)| *f == name) {
+                    listing.push_str(entry);
+                    listing.push('\0');
+                }
+            }
+        }
+        for (name, text) in files {
+            let blob = app_git_ok(
+                &self.paths,
+                id,
+                false,
+                &["hash-object", "-w", "--stdin"],
+                Some(text.as_bytes()),
+            )?;
+            listing.push_str(&format!("100644 blob {blob}\t{name}\0"));
+        }
+        let tree = app_git_ok(
+            &self.paths,
+            id,
+            false,
+            &["mktree", "-z"],
+            Some(listing.as_bytes()),
+        )?;
+        if let Some(head) = &head {
+            let head_tree = app_git_ok(
+                &self.paths,
+                id,
+                false,
+                &["rev-parse", &format!("{head}^{{tree}}")],
+                None,
+            )?;
+            if head_tree == tree {
+                return Ok(None);
+            }
+        }
+        let mut args = vec!["commit-tree", tree.as_str()];
+        if let Some(head) = &head {
+            args.extend(["-p", head.as_str()]);
+        }
+        args.extend(["-m", subject]);
+        if !body.is_empty() {
+            args.extend(["-m", body]);
+        }
+        let sha = app_git_ok(&self.paths, id, false, &args, None)?;
+        let branch = format!("refs/heads/{}", crate::app_repo::BRANCH);
+        let old = head.unwrap_or_default();
+        app_git_ok(
+            &self.paths,
+            id,
+            false,
+            &["update-ref", &branch, &sha, &old],
+            None,
+        )?;
+        tracing::info!(app = id, sha = %sha, subject, "committed an app's version");
+        Ok(Some(sha))
+    }
+
+    fn app_repo_fetch(&mut self, id: &str, url: &str) -> anyhow::Result<Option<String>> {
+        let branch = format!("refs/heads/{}", crate::app_repo::BRANCH);
+        let out = app_git(
+            &self.paths,
+            id,
+            true,
+            &["ls-remote", "--heads", url, &branch],
+            None,
+        )?;
+        if !out.status.success() {
+            return Err(crate::config_repo::NotUp(format!(
+                "LosOS Git could not be reached ({})",
+                first_line(&out.stderr)
+            ))
+            .into());
+        }
+        if String::from_utf8_lossy(&out.stdout).trim().is_empty() {
+            return Ok(None);
+        }
+        let refspec = format!("+{branch}:{APP_REMOTE_REF}");
+        app_git_ok(
+            &self.paths,
+            id,
+            true,
+            &["fetch", "-q", "--no-tags", url, &refspec],
+            None,
+        )?;
+        Ok(Some(app_git_ok(
+            &self.paths,
+            id,
+            false,
+            &["rev-parse", APP_REMOTE_REF],
+            None,
+        )?))
+    }
+
+    fn app_repo_is_ancestor(&mut self, id: &str, ancestor: &str, of: &str) -> anyhow::Result<bool> {
+        let out = app_git(
+            &self.paths,
+            id,
+            false,
+            &["merge-base", "--is-ancestor", ancestor, of],
+            None,
+        )?;
+        match out.status.code() {
+            Some(0) => Ok(true),
+            Some(1) => Ok(false),
+            _ => anyhow::bail!(
+                "git merge-base --is-ancestor {ancestor} {of}: {}",
+                first_line(&out.stderr)
+            ),
+        }
+    }
+
+    fn app_repo_show(&mut self, id: &str, rev: &str, path: &str) -> anyhow::Result<Option<String>> {
+        let spec = format!("{rev}:{path}");
+        let there = app_git(&self.paths, id, false, &["cat-file", "-e", &spec], None)?;
+        if !there.status.success() {
+            return Ok(None);
+        }
+        let out = app_git(&self.paths, id, false, &["cat-file", "blob", &spec], None)?;
+        if !out.status.success() {
+            anyhow::bail!("git cat-file blob {spec}: {}", first_line(&out.stderr));
+        }
+        Ok(Some(String::from_utf8_lossy(&out.stdout).into_owned()))
+    }
+
+    fn app_repo_set_head(&mut self, id: &str, sha: &str) -> anyhow::Result<()> {
+        let branch = format!("refs/heads/{}", crate::app_repo::BRANCH);
+        app_git_ok(&self.paths, id, false, &["update-ref", &branch, sha], None)?;
+        Ok(())
+    }
+
+    fn app_repo_push(&mut self, id: &str, url: &str) -> anyhow::Result<()> {
+        let branch = format!("refs/heads/{}", crate::app_repo::BRANCH);
+        let refspec = format!("{branch}:{branch}");
+        app_git_ok(&self.paths, id, true, &["push", "-q", url, &refspec], None)?;
+        Ok(())
+    }
+
+    fn app_repo_remove(&mut self, id: &str) -> anyhow::Result<()> {
+        match std::fs::remove_dir_all(self.paths.app_repo_dir(id)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(anyhow::Error::new(e).context("deleting an app's repository")),
+        }
     }
 
     // ── Online growth of /persist ───────────────────────────────────────

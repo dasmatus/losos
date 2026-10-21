@@ -215,6 +215,35 @@ pub trait Losos {
     fn save_app_data(&mut self, id: &str, data: &crate::user_apps::AppData) -> anyhow::Result<()>;
     /// Delete one app's data. Not an error when there is none.
     fn remove_app_data(&mut self, id: &str) -> anyhow::Result<()>;
+    // `crate::app_repo`: each app's versions in a bare repository of its
+    // own beside the list, kept in step with LosOS Git.
+    /// The commit the app's branch names, `None` before the first.
+    fn app_repo_head(&mut self, id: &str) -> anyhow::Result<Option<String>>;
+    /// Commit `files` (and nothing else) as the next version on the app's
+    /// branch, making the repository on first use. `None` when the head
+    /// already holds exactly these files.
+    fn app_repo_commit(
+        &mut self,
+        id: &str,
+        files: &[(&str, String)],
+        subject: &str,
+        body: &str,
+    ) -> anyhow::Result<Option<String>>;
+    /// Fetch the branch from `url`; its commit, or `None` when the remote
+    /// has no such branch yet. [`crate::config_repo::NotUp`] when the remote
+    /// cannot be reached.
+    fn app_repo_fetch(&mut self, id: &str, url: &str) -> anyhow::Result<Option<String>>;
+    /// Whether `ancestor` is `of` or an ancestor of it.
+    fn app_repo_is_ancestor(&mut self, id: &str, ancestor: &str, of: &str) -> anyhow::Result<bool>;
+    /// One file of a fetched commit, `None` when it has no such file.
+    fn app_repo_show(&mut self, id: &str, rev: &str, path: &str) -> anyhow::Result<Option<String>>;
+    /// Move the app's branch to a fetched commit.
+    fn app_repo_set_head(&mut self, id: &str, sha: &str) -> anyhow::Result<()>;
+    /// Push the app's branch to `url`.
+    fn app_repo_push(&mut self, id: &str, url: &str) -> anyhow::Result<()>;
+    /// Delete the app's repository beside the list. Not an error when there
+    /// is none.
+    fn app_repo_remove(&mut self, id: &str) -> anyhow::Result<()>;
 
     // ── The pin picker ──────────────────────────────────────────────────
     // `crate::pins`: the app password lososd lists the owner's LosOS cloud
@@ -1687,7 +1716,11 @@ fn ask<L: Losos>(
 }
 
 /// The owner's account on LosOS Git, made if missing, and an administrator.
-fn ensure_owner<L: Losos>(l: &mut L, repo: &crate::config_repo::RepoConfig) -> anyhow::Result<()> {
+/// The apps' repositories (`crate::user_apps::cmd_sync`) need it too.
+pub(crate) fn ensure_owner<L: Losos>(
+    l: &mut L,
+    repo: &crate::config_repo::RepoConfig,
+) -> anyhow::Result<()> {
     use crate::config_repo::{Answer, GitOp};
     let login = repo.owner.clone();
     match ask(
@@ -2216,6 +2249,41 @@ mod tests {
             }
             fn remove_app_data(&mut self, id: &str) -> anyhow::Result<()> {
                 self.0.remove_app_data(id)
+            }
+            fn app_repo_head(&mut self, id: &str) -> anyhow::Result<Option<String>> {
+                self.0.app_repo_head(id)
+            }
+            fn app_repo_commit(
+                &mut self,
+                id: &str,
+                f: &[(&str, String)],
+                s: &str,
+                b: &str,
+            ) -> anyhow::Result<Option<String>> {
+                self.0.app_repo_commit(id, f, s, b)
+            }
+            fn app_repo_fetch(&mut self, id: &str, u: &str) -> anyhow::Result<Option<String>> {
+                self.0.app_repo_fetch(id, u)
+            }
+            fn app_repo_is_ancestor(&mut self, id: &str, a: &str, o: &str) -> anyhow::Result<bool> {
+                self.0.app_repo_is_ancestor(id, a, o)
+            }
+            fn app_repo_show(
+                &mut self,
+                id: &str,
+                r: &str,
+                p: &str,
+            ) -> anyhow::Result<Option<String>> {
+                self.0.app_repo_show(id, r, p)
+            }
+            fn app_repo_set_head(&mut self, id: &str, sha: &str) -> anyhow::Result<()> {
+                self.0.app_repo_set_head(id, sha)
+            }
+            fn app_repo_push(&mut self, id: &str, u: &str) -> anyhow::Result<()> {
+                self.0.app_repo_push(id, u)
+            }
+            fn app_repo_remove(&mut self, id: &str) -> anyhow::Result<()> {
+                self.0.app_repo_remove(id)
             }
             fn read_options_doc(&mut self) -> anyhow::Result<Option<crate::options::OptionsDoc>> {
                 self.0.read_options_doc()

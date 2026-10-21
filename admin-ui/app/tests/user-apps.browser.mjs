@@ -114,7 +114,7 @@ function builder() {
   return { state, handle };
 }
 
-async function open(path = '/apps') {
+async function open(path = '/apps', repo = undefined) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -155,7 +155,7 @@ async function open(path = '/apps') {
     return json(route, 200, source === APP.source ? { code: APP.code, problems: [] } : { code: null, problems: ['It does not compile.'] });
   });
   await page.route('**/api/user-apps/u1', (route) =>
-    json(route, 200, { app: { id: 'u1', name: 'Shopping', summary: 'A list of things to buy.', prompt: 'a shopping list', source: APP.source, code: APP.code, createdAt: 1, updatedAt: 1 } }),
+    json(route, 200, { app: { id: 'u1', name: 'Shopping', summary: 'A list of things to buy.', prompt: 'a shopping list', source: APP.source, code: APP.code, createdAt: 1, updatedAt: 1, repo } }),
   );
   let n = 0;
   await page.route('**/api/user-apps/u1/data', (route) => {
@@ -239,6 +239,31 @@ await check('the AI builds an app step by step, the preview tries each version f
   assert.deepEqual(errors, []);
   assert.deepEqual(await violations(page), []);
   await page.close();
+});
+
+await check("an app's page links its repository, and says so when a push was not taken", async () => {
+  const synced = await open('/apps/u1', { name: 'notshared/app-shopping', state: 'synced' });
+  const link = synced.page.getByTestId('user-app-repo');
+  await link.waitFor();
+  assert.equal(await link.getAttribute('href'), '/git/notshared/app-shopping');
+  assert.equal((await link.textContent()).trim(), 'Source');
+  assert.equal(await synced.page.getByTestId('user-app-repo-note').count(), 0);
+  await synced.page.close();
+
+  const detail = 'The version pushed as 0123456 was not taken: the app does not compile.';
+  const refused = await open('/apps/u1', { name: 'notshared/app-shopping', state: 'refused', detail });
+  const note = refused.page.getByTestId('user-app-repo-note');
+  await note.getByText('Your last push was not taken').waitFor();
+  await note.getByText(detail).waitFor();
+  await refused.page.close();
+
+  // With LosOS Git off there is no link and nothing to say.
+  const local = await open('/apps/u1', { state: 'local', detail: 'LosOS Git is off on this box.' });
+  await local.page.getByTestId('user-app').waitFor();
+  assert.equal(await local.page.getByTestId('user-app-repo').count(), 0);
+  assert.equal(await local.page.getByTestId('user-app-repo-note').count(), 0);
+  assert.deepEqual(local.errors, []);
+  await local.page.close();
 });
 
 await finish();
