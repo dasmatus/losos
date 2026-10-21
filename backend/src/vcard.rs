@@ -1,4 +1,4 @@
-//! vCard files in and out of LosOS Contacts (`crate::contacts`).
+//! vCards in and out of LosOS Contacts (`crate::cloud::contacts`).
 //!
 //! [`parse`] reads what phones and address books write: vCard 4.0
 //! (RFC 6350), 3.0 (RFC 2426) and the 2.1 that older Android and Outlook
@@ -8,14 +8,15 @@
 //! `X-ABLabel` is kept as the label, 2.1's bare parameters (`TEL;CELL`) and
 //! quoted-printable values are understood, and a line it cannot read is
 //! skipped rather than failing the file. What comes out is
-//! [`Contact`]s, the shape the contacts room keeps.
+//! [`Contact`]s, the fields the Contacts page edits.
 //!
 //! [`write`] writes 4.0 or 3.0. 3.0 is what the export offers first: every
 //! phone imports it, while 4.0's `data:` photos and `tel:` values still
-//! trip some.
+//! trip some. [`rewrite`] writes one card over one a phone or desktop app
+//! stored, keeping the lines this module does not read.
 //!
 //! Every value is bounded ([`MAX_FIELD`], [`MAX_LIST`]), so a hostile file
-//! cannot grow one contact past what a Matrix state event holds.
+//! cannot grow one contact without end.
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
@@ -107,8 +108,8 @@ impl Address {
     }
 }
 
-/// One contact, as a card gave it and as the contacts room keeps it. The
-/// photo is not here: the importer scales it first ([`Card::photo`]).
+/// One contact, as a card gave it and as the Contacts page edits it. The
+/// photo is not here: it travels apart ([`Card::photo`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Contact {
@@ -936,6 +937,86 @@ pub fn write(contacts: &[Out<'_>], v: Version) -> String {
         }
     }
     out
+}
+
+/// Whether [`card`] reads this line into a [`Contact`] (or the card's
+/// frame), so that a rewrite writes it anew rather than keeping it.
+fn is_read(l: &Line) -> bool {
+    match l.name.as_str() {
+        "BEGIN" | "END" | "VERSION" | "PRODID" | "REV" | "KIND" | "FN" | "N" | "NICKNAME"
+        | "ORG" | "TITLE" | "EMAIL" | "TEL" | "ADR" | "LABEL" | "URL" | "X-LOSOS-MESH" | "BDAY"
+        | "NOTE" | "UID" | "PHOTO" => true,
+        "IMPP" | "X-MATRIX" => matrix_from_uri(&l.text()).is_some(),
+        _ => false,
+    }
+}
+
+/// One card for `o`, written over `original` (the card as a phone or a
+/// desktop address book stored it): every line [`parse`] reads is written
+/// anew from `o`, and every other line of `original`'s first card is kept
+/// as it was, so what the Contacts page has no field for (categories,
+/// phonetic names, other messengers, an anniversary) survives an edit made
+/// there. An Apple `X-ABLabel` goes with the line its group labelled.
+/// With `keep_photo` the original `PHOTO` line stays too and `o.photo` is
+/// not written; quoted-printable lines (2.1, which 3.0 and 4.0 forbid) are
+/// dropped.
+pub fn rewrite(original: &str, o: &Out<'_>, v: Version, keep_photo: bool) -> String {
+    let mut lines: Vec<(String, Line)> = Vec::new();
+    let mut depth = 0usize;
+    for raw in unfold(original.strip_prefix('\u{feff}').unwrap_or(original)) {
+        let Some(line) = Line::read(&raw) else {
+            continue;
+        };
+        let value = line.raw.trim().to_ascii_uppercase();
+        if line.name == "BEGIN" && value == "VCARD" {
+            depth += 1;
+        } else if line.name == "END" && value == "VCARD" {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                break;
+            }
+        } else if depth == 1 {
+            lines.push((raw, line));
+        }
+    }
+    let photo_kept = |l: &Line| keep_photo && l.name == "PHOTO";
+    let labelled: std::collections::HashSet<&str> = lines
+        .iter()
+        .filter(|(_, l)| !l.group.is_empty() && is_read(l) && !photo_kept(l))
+        .map(|(_, l)| l.group.as_str())
+        .collect();
+    let mut extra = String::new();
+    for (raw, l) in &lines {
+        let drop = (is_read(l) && !photo_kept(l))
+            || (l.name == "X-ABLABEL" && labelled.contains(l.group.as_str()))
+            || l.param("ENCODING")
+                .is_some_and(|e| e.eq_ignore_ascii_case("QUOTED-PRINTABLE"));
+        if !drop {
+            fold(raw, &mut extra);
+        }
+    }
+    let fresh = Out {
+        photo: if keep_photo { None } else { o.photo },
+        ..*o
+    };
+    let mut card = write(std::slice::from_ref(&fresh), v);
+    let end = card.len() - "END:VCARD\r\n".len();
+    card.insert_str(end, &extra);
+    card
+}
+
+/// The version a stored card is written in: 4.0 when it says so, 3.0
+/// for everything else (2.1 is not kept as it was).
+pub fn version_of(text: &str) -> Version {
+    let four = unfold(text).iter().any(|l| {
+        let l = l.trim().to_ascii_uppercase();
+        l == "VERSION:4.0"
+    });
+    if four {
+        Version::V4
+    } else {
+        Version::V3
+    }
 }
 
 #[cfg(test)]
