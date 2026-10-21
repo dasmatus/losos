@@ -51,6 +51,9 @@ schránku, takže Pošta vás požiada o prihlásenie vlastným účtom.
   že ste správu otvorili. Správa bez obyčajného textu sa v tomto rámci
   otvorí hneď.
 - Prílohy sa stiahnu do počítača. Nikdy sa neotvoria priamo na stránke.
+- Kliknite pravým tlačidlom na správu v zozname a odpovedzte na ňu,
+  označte, archivujte alebo presuňte ju bez otvorenia; pozrite
+  [ponuku pravého tlačidla](admin-pages#the-right-click-menu).
 
 ## Čo Pošta zatiaľ nerobí \{#what-mail-does-not-do-yet}
 

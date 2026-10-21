@@ -32,6 +32,9 @@ vlastníka.
 - **Zariadenia** zobrazujú počítače a telefóny, ktoré sa synchronizujú, a
   vedia ktorékoľvek odhlásiť.
 - Vyhľadávanie hore nájde súbory podľa mena.
+- Kliknite pravým tlačidlom na súbor, priečinok alebo miesto okolo nich a
+  uvidíte, čo s nimi môžete urobiť; pozrite
+  [ponuku pravého tlačidla](admin-pages#the-right-click-menu).
 
 ## Aplikácie pre počítač a telefón \{#desktop-and-phone-apps}
 

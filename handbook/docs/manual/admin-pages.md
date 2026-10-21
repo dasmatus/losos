@@ -71,6 +71,32 @@ files. The index stays on the box, a factory erase deletes it, and
 `losos.search.enable` on the Advanced pane turns it off. LosOS Git needs no index: each search reads the repositories
 directly.
 
+## The right-click menu
+
+Right-click on the admin pages, in LosOS Cloud or in Mail, and a menu lists
+what you can do with the thing under the pointer. On a touch screen, press
+and hold. From the keyboard, Shift+F10 or the Menu key opens it for
+whatever has the focus, and the arrow keys move through it.
+
+- **Empty space**: Back, Forward, Reload, the search, the light or dark
+  theme, and this handbook.
+- **Picked text**: Copy, and a search for the words.
+- **A link**: open it in a new tab, or copy its address.
+- **An app tile or a pin**: open it in a new tab, pin it or unpin it.
+- **A file or folder in LosOS Cloud**: open, download, rename, move, copy,
+  earlier versions, star, copy its link, delete. With several files ticked,
+  the menu works on all of them. The space around the list offers a new
+  folder and uploads, and a file in the trash offers restore or delete for
+  good.
+- **A message in Mail**: open, reply, reply all, forward, mark as read or
+  unread, flag, archive, move to another folder, delete.
+
+The keys shown beside an item work without the menu too. In LosOS Cloud,
+F2 renames the ticked file and Delete moves it to the trash (Cmd+Backspace
+on a Mac). Text fields keep the browser's own menu, for spelling and paste.
+The menu lists only what this box can do: an item for a feature the box
+does not have is left out, not greyed.
+
 ## Pins
 
 Pin the apps, files and repositories you open most, and they sit under
