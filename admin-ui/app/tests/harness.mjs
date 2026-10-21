@@ -53,10 +53,10 @@ export const WIDGET_FRAME_CSP = [
   "form-action 'none'",
 ].join('; ');
 
-/* LosOS Lab's policy (/lab/, a second page of the same bundle). It differs
+/* LosOS Diagrams' policy (/diagrams/, a second page of the same bundle). It differs
  * from the admin page's in 'wasm-unsafe-eval' (the simulator is a
  * WebAssembly module), blob: workers and images, and the closing
- * frame-ancestors/base-uri/form-action. Mirror nginx's /lab/ arm here. */
+ * frame-ancestors/base-uri/form-action. Mirror nginx's /diagrams/ arm here. */
 export const LAB_CSP = [
   "default-src 'none'",
   "script-src 'self' 'wasm-unsafe-eval'",
@@ -95,7 +95,7 @@ export async function serve({ csp = false } = {}) {
       const body = await readFile(join(DIST, file));
       const policy = file.startsWith('/widget-frame/')
         ? WIDGET_FRAME_CSP
-        : file.startsWith('/lab/') || file === 'lab/index.html'
+        : file.startsWith('/diagrams/') || file === 'diagrams/index.html'
           ? LAB_CSP
           : file.startsWith('/manage/') || file === 'manage/index.html'
             ? MANAGE_CSP
@@ -108,11 +108,11 @@ export async function serve({ csp = false } = {}) {
     };
     // A directory gets its index, as nginx's `index` directive gives it.
     const file = rel === '/' ? 'index.html' : rel.endsWith('/') ? rel + 'index.html' : rel;
-    // /lab/ is its own page with its own fallback, as its nginx location is,
+    // /diagrams/ is its own page with its own fallback, as its nginx location is,
     // and so is the edge's /manage/.
     const fallback =
-      rel.startsWith('/lab/') || rel === '/lab'
-        ? 'lab/index.html'
+      rel.startsWith('/diagrams/') || rel === '/diagrams'
+        ? 'diagrams/index.html'
         : rel.startsWith('/manage/') || rel === '/manage'
           ? 'manage/index.html'
           : 'index.html';
@@ -141,7 +141,10 @@ export function launch({ args = [] } = {}) {
 
 export function runner() {
   const failures = [];
+  // LOSOS_ONLY=<text> runs only the checks whose name contains it.
+  const only = process.env.LOSOS_ONLY;
   const check = async (name, fn) => {
+    if (only && !name.includes(only)) return;
     try {
       await fn();
       console.log(`  ok   ${name}`);

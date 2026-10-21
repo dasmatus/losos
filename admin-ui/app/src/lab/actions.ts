@@ -6,14 +6,22 @@
 import { t } from "@/lib/i18n";
 import { isErr, type HttpResult } from "./core";
 import type { Engine } from "./engine";
+import { CloudFail, readFile, writeFile } from "./canvas/cloud";
+import { exportPng, exportSvg } from "./canvas/export";
+import { CanvasOps } from "./canvas/ops";
 import { download, MAX_FILE, readLast, writeLast } from "./files";
-import { type LabStore, type Tab, type View } from "./store";
+import { type LabStore, type Tab, type Workspace } from "./store";
 
 export class Actions {
+  /** The diagram's own operations (canvas/ops.ts). */
+  readonly canvas: CanvasOps;
+
   constructor(
     readonly s: LabStore,
     readonly engine: Engine,
-  ) {}
+  ) {
+    this.canvas = new CanvasOps(s, engine);
+  }
 
   // ── setups ─────────────────────────────────────────────────────────────
   pick(key: string): void {
@@ -72,22 +80,102 @@ export class Actions {
       return;
     }
     const text = await file.text();
-    this.importText(text, file.name, true);
+    if (this.importText(text, file.name, true)) this.s.cloudFile = null;
   }
 
-  private importText(text: string, fileName: string, fresh: boolean): void {
+  private importText(text: string, fileName: string, fresh: boolean): boolean {
     const s = this.s;
     this.engine.stopAll();
     const r = s.core.importSetup(text, fileName);
     if (isErr(r)) {
       s.toast(r.error);
       s.emit("model");
-      return;
+      return false;
     }
     if (fresh) s.openedText = { text, fileName };
     this.setExtra("file", r.name);
     s.startedWorld(r.focus ?? null);
     s.toast(r.skipped ? t("lab.toast.openedSkipped", { name: r.name, count: r.skipped }) : t("lab.toast.opened", { name: r.name }));
+    return true;
+  }
+
+  // ── LosOS Cloud ────────────────────────────────────────────────────────
+  private cloudProblem(e: unknown): string {
+    if (e instanceof CloudFail) {
+      if (e.code === "signIn") return t("dg.cloud.signIn");
+      if (e.code === "notFound") return t("dg.cloud.notFound");
+      if (e.code === "full") return t("dg.cloud.full");
+    }
+    return t("dg.cloud.failed");
+  }
+
+  async openCloud(path: string): Promise<boolean> {
+    const s = this.s;
+    try {
+      const f = await readFile(path);
+      if (f.text.length > MAX_FILE) {
+        s.toast(t("lab.toast.tooBig"));
+        return false;
+      }
+      const name = path.slice(path.lastIndexOf("/") + 1);
+      if (!this.importText(f.text, name, true)) return false;
+      s.cloudFile = { path, etag: f.etag };
+      s.setUi({ view: "canvas" });
+      s.fit();
+      return true;
+    } catch (e) {
+      s.toast(this.cloudProblem(e));
+      return false;
+    }
+  }
+
+  /** Saves the diagram at `path` in LosOS Cloud. `etag`: overwrite that
+   *  version (a replace the person agreed to); by default the version this
+   *  tab read, or a new file. "changed": someone else saved it meanwhile. */
+  async saveCloud(path: string, etag?: string): Promise<"saved" | "changed" | "failed"> {
+    const s = this.s;
+    const doc = s.core.exportSetup();
+    const guard = etag ?? (s.cloudFile?.path === path ? s.cloudFile.etag || "*" : null);
+    try {
+      const e = await writeFile(path, doc.text, guard);
+      s.cloudFile = { path, etag: e.etag };
+      s.emit("model");
+      s.toast(t("dg.cloud.saved", { name: doc.name, path }));
+      return "saved";
+    } catch (e) {
+      if (e instanceof CloudFail && (e.status === 412 || e.code === "exists")) return "changed";
+      s.toast(this.cloudProblem(e));
+      return "failed";
+    }
+  }
+
+  /** Ctrl+S: back to LosOS Cloud when the diagram came from there, else a download. */
+  async saveQuick(): Promise<void> {
+    const s = this.s;
+    if (!s.cloudFile) {
+      await this.save();
+      return;
+    }
+    const r = await this.saveCloud(s.cloudFile.path);
+    if (r === "changed") s.toast(t("dg.cloud.changedElsewhere"));
+  }
+
+  // ── pictures ───────────────────────────────────────────────────────────
+  async exportPicture(kind: "svg" | "png"): Promise<void> {
+    const s = this.s;
+    const base = s.core.exportSetup().filename.replace(/\.canvas$/, "");
+    if (s.canvas.nodes.length === 0) {
+      s.toast(t("dg.toast.nothingToExport"));
+      return;
+    }
+    const svg = exportSvg(s);
+    const blob = kind === "svg" ? new Blob([svg], { type: "image/svg+xml" }) : await exportPng(svg);
+    if (!blob) {
+      s.toast(t("dg.toast.pngFailed"));
+      return;
+    }
+    const r = await download(`${base}.${kind}`, blob);
+    if (r === "unsupported") s.toast(t("lab.toast.cannotSave"));
   }
 
   /** keepLast(): every 2 s and on pagehide. */
@@ -97,9 +185,9 @@ export class Actions {
   }
 
   // ── view and tools ─────────────────────────────────────────────────────
-  setView(view: View): void {
+  setView(view: Workspace): void {
     const s = this.s;
-    s.setUi({ view });
+    s.setUi({ view, cardTool: null, editing: null });
     if (view === "physical") s.placePhysical();
     s.fit();
   }

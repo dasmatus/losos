@@ -1,7 +1,8 @@
-/* LosOS Lab (/lab/, the second page of this bundle) under its own policy.
+/* The network views of LosOS Diagrams (/diagrams/, the second page of this
+ * bundle) under its own policy.
  *
  * The real dist/ bundle and the real simulator (src/lab/core-pkg, built by
- * `npm run lab:core`), served with LAB_CSP the way nginx serves /lab/. Every
+ * `npm run lab:core`), served with LAB_CSP the way nginx serves /diagrams/. Every
  * page here fails on a CSP violation and on an uncaught error, so a library
  * that injects a <style> or a component that writes a style attribute turns
  * this red before it reaches a box. What a person does with the Lab is
@@ -66,6 +67,7 @@ async function open({
   scheme = 'light',
   routes = null,
   canvas = 'svg',
+  view = 'logical',
   on = browser,
 } = {}) {
   const page = await on.newPage({ viewport, locale, colorScheme: scheme, acceptDownloads: true });
@@ -82,10 +84,15 @@ async function open({
   await page.route('**/api/**', (route) => json(route, 401, { error: 'unauthorized' }));
   await page.route('**/api/settings', (route) => (authed(route) ? json(route, 200, SETTINGS) : json(route, 401, {})));
   await page.route('**/api/edge', (route) => (authed(route) ? json(route, 200, EDGE) : json(route, 401, {})));
+  // The machine cards read the Machines pane's list; a 401 there would drop the key.
+  await page.route('**/api/vms', (route) => (authed(route) ? json(route, 200, { available: false, reason: 'notSharing' }) : json(route, 401, {})));
   if (routes) await routes(page, authed);
   // The checks below read the SVG canvas's DOM, so they pin it; the GPU
   // canvas has a check of its own at the end.
-  await page.goto(origin + '/lab/' + (canvas ? `?canvas=${canvas}` : ''));
+  // The network checks start in the logical view; the diagram has its own
+  // checks in diagrams.browser.mjs.
+  const query = new URLSearchParams({ ...(canvas ? { canvas } : {}), ...(view ? { view } : {}) });
+  await page.goto(origin + '/diagrams/?' + query);
   await page.getByTestId('lab').waitFor({ timeout: 15000 });
   await page.getByTestId('lab-splash').waitFor({ state: 'detached', timeout: 15000 });
   const clean = async () => {
@@ -252,8 +259,9 @@ await check('Save, then Open the file: the same setup comes back', async () => {
   await page.mouse.click(wrap.x + 420, wrap.y + wrap.height - 90);
   await page.keyboard.press('Escape');
   const saved = await devices(page);
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Save' }).click()]);
-  assert.match(download.suggestedFilename(), /\.llf$/);
+  await page.getByTestId('file-menu').click();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('file-download').click()]);
+  assert.match(download.suggestedFilename(), /\.canvas$/);
   const text = await readFile(await download.path(), 'utf8');
   JSON.parse(text);
 

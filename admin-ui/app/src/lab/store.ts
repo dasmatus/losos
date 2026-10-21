@@ -21,6 +21,7 @@ import {
   type Snapshot,
   type TickResult,
 } from "./core";
+import type { MachinesView } from "./canvas/machines";
 import type { Ordering } from "./order";
 import type { GpuState } from "./render";
 import { type Cam, fitCam, fitCanvas, Scene, type View, zoomCam } from "./scene";
@@ -35,8 +36,11 @@ export type CardTool =
   | { kind: "text"; shape?: string }
   | { kind: "group" }
   | { kind: "link" }
-  | { kind: "file" }
-  | { kind: "machine"; order?: string; name?: string };
+  | { kind: "file"; file?: string }
+  /** A machine on the mesh: one ordered (`order`), or one planned from an image. */
+  | { kind: "machine"; order?: string; name?: string; image?: string; imageName?: string }
+  /** A template, centred where the click lands. */
+  | { kind: "template"; key: string };
 export interface CanvasSel {
   nodes: string[];
   edges: string[];
@@ -140,6 +144,12 @@ export class LabStore {
   thisBoxProblem: string | null = null;
   /** Whether this box lets the Lab order hardware, and what the edge sells. */
   ordering: Ordering | null = null;
+  /** Whether LosOS Cloud answers on this box for the person on the page. */
+  cloud = false;
+  /** The LosOS Cloud file this diagram was opened from or saved to. */
+  cloudFile: { path: string; etag: string } | null = null;
+  /** The box's machines on the mesh, for the canvas's machine cards. */
+  machines: MachinesView = { state: "off" };
   /** The text of the file opened in this tab, so the picker can go back to it. */
   openedText: { text: string; fileName: string } | null = null;
   linkBorn = new Map<string, number>();

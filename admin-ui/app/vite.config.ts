@@ -74,7 +74,7 @@ function themeBoot(): Plugin {
 }
 
 /* LosOS Lab's splash can carry a two-panel meme: LOSOS_LAB_MEME names a
- * folder with no.jpg and yes.jpg, which are copied beside dist/lab/index.html
+ * folder with no.jpg and yes.jpg, which are copied beside dist/diagrams/index.html
  * as meme-no.jpg and meme-yes.jpg, and __LAB_MEME__ tells the page they are
  * there. The repository carries no such folder (admin-ui/lab/build.py reads
  * the same variable for the old page). */
@@ -87,7 +87,7 @@ function labMeme(): Plugin {
     configureServer(server) {
       if (!dir) return;
       for (const [name, src] of Object.entries(files)) {
-        server.middlewares.use(`/lab/${name}`, (_req, res) => {
+        server.middlewares.use(`/diagrams/${name}`, (_req, res) => {
           res.setHeader("Content-Type", "image/jpeg");
           res.end(readFileSync(join(dir, src)));
         });
@@ -96,7 +96,7 @@ function labMeme(): Plugin {
     buildStart() {
       if (!dir) return;
       for (const [name, src] of Object.entries(files)) {
-        this.emitFile({ type: "asset", fileName: `lab/${name}`, source: readFileSync(join(dir, src)) });
+        this.emitFile({ type: "asset", fileName: `diagrams/${name}`, source: readFileSync(join(dir, src)) });
       }
     },
   };
@@ -119,15 +119,15 @@ export default defineConfig({
     sourcemap: false,
     // The appliance has no external hosts and no CDN: one origin, one bundle.
     modulePreload: { polyfill: false },
-    // Four pages: the admin SPA at /, LosOS Lab at /lab/ (nginx serves
-    // dist/lab/index.html there under the Lab's own CSP), a company edge's
+    // Four pages: the admin SPA at /, LosOS Diagrams at /diagrams/ (nginx serves
+    // dist/diagrams/index.html there under the Lab's own CSP), a company edge's
     // manage page, which the edge serves at /manage/ from this same dist/
     // (edge/registrar/src/server/manage.rs), and LosOS Cloud at /cloud/
     // (modules/cloud.nix). They share chunks.
     rolldownOptions: {
       input: {
         main: join(root, "index.html"),
-        lab: join(root, "lab/index.html"),
+        diagrams: join(root, "diagrams/index.html"),
         manage: join(root, "manage/index.html"),
         cloud: join(root, "cloud/index.html"),
       },

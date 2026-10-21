@@ -19,7 +19,9 @@ import { actions } from "./actions";
 import { useEngine } from "./engine-hook";
 import type { CanvasTool, LabCanvasProps, Palette } from "./lab-canvas";
 import { BevyCanvas } from "./bevy-canvas";
+import { DiagramCanvas } from "./canvas/diagram";
 import { gpuDrew, gpuFailed } from "./render";
+import { zoomCam } from "./scene";
 import { store, useLab } from "./store";
 import { SvgCanvas } from "./svg-canvas";
 
@@ -61,7 +63,7 @@ function Hint() {
   if (u.tool === "select") return null;
   let text = "";
   if (u.tool === "place" && u.placeType) {
-    text = t("lab.hint.place", { view: t(u.view === "logical" ? "lab.view.logical" : "lab.view.physical").toLowerCase(), type: s.catalog.types[u.placeType]?.label ?? u.placeType });
+    text = t("lab.hint.place", { view: t(u.view === "physical" ? "lab.view.physical" : "lab.view.logical").toLowerCase(), type: s.catalog.types[u.placeType]?.label ?? u.placeType });
   } else if (u.tool === "connect") {
     text = u.connectFrom
       ? t("lab.hint.connectTo", { name: s.name(u.connectFrom) })
@@ -135,7 +137,62 @@ function Legend() {
   );
 }
 
+/* The zoom buttons over any canvas. */
+function Zoom() {
+  const s = useLab();
+  const t = useT();
+  const zoomBy = (f: number) =>
+    s.ui.view === "canvas"
+      ? s.setCam(zoomCam(s.cams.canvas, s.viewport.width / 2, s.viewport.height / 2, f, 0.1, 4))
+      : s.zoomAt(s.viewport.width / 2, s.viewport.height / 2, f);
+  return (
+    <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
+      <Button variant="secondary" size="icon-sm" aria-label={t("lab.zoom.in")} onClick={() => zoomBy(1.2)}>
+        <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} color="currentColor" />
+      </Button>
+      <Button variant="secondary" size="icon-sm" aria-label={t("lab.zoom.out")} onClick={() => zoomBy(1 / 1.2)}>
+        <HugeiconsIcon icon={MinusSignIcon} size={16} strokeWidth={1.8} color="currentColor" />
+      </Button>
+      <Button variant="secondary" size="icon-sm" aria-label={t("lab.zoom.fit")} onClick={() => s.fit()}>
+        <HugeiconsIcon icon={ArrowExpand01Icon} size={15} strokeWidth={1.8} color="currentColor" />
+      </Button>
+    </div>
+  );
+}
+
+/* What the armed tool will do, over the diagram. */
+function DiagramHint() {
+  const s = useLab();
+  const t = useT();
+  const u = s.ui;
+  let text = "";
+  if (u.cardTool) text = u.cardTool.kind === "template" ? t("dg.hint.template") : t("dg.hint.card");
+  else if (u.tool === "place" && u.placeType) text = t("dg.hint.device", { type: s.catalog.types[u.placeType]?.label ?? u.placeType });
+  else if (u.tool === "connect")
+    text = u.linkKind === "arrow" ? t("dg.hint.arrow") : t("dg.hint.cable", { kind: s.catalog.linkKinds[u.linkKind ?? ""]?.label ?? u.linkKind ?? "" });
+  if (!text) return null;
+  return (
+    <div role="status" className="absolute top-3 left-4 z-10 max-w-[calc(100%-80px)] rounded-card border border-line bg-surface px-2.5 py-1.5 text-[12.5px] shadow-card">
+      {text}
+    </div>
+  );
+}
+
 export function Canvas() {
+  const s = useLab();
+  if (s.ui.view === "canvas") {
+    return (
+      <div className="relative min-h-0 overflow-hidden" data-canvas="diagram">
+        <DiagramCanvas />
+        <DiagramHint />
+        <Zoom />
+      </div>
+    );
+  }
+  return <NetworkCanvas />;
+}
+
+function NetworkCanvas() {
   const s = useLab();
   useLab("cam");
   useLab("frame");
@@ -160,14 +217,15 @@ export function Canvas() {
     [s.snap, engine.version],
   );
 
+  const view = u.view === "physical" ? "physical" : "logical";
   const props: LabCanvasProps = {
     snapshot: s.snap,
     catalog: s.catalog,
     packets: s.frame.packets,
-    view: u.view,
+    view,
     tool,
     selection: u.sel,
-    camera: s.cams[u.view],
+    camera: s.cams[view],
     theme,
     palette,
     running,
@@ -223,7 +281,6 @@ export function Canvas() {
   };
 
   const gpu = s.gpu;
-  const zoomBy = (f: number) => s.zoomAt(s.viewport.width / 2, s.viewport.height / 2, f);
   return (
     <div className="relative min-h-0 overflow-hidden" data-canvas={gpu.state === "gpu" ? (gpu.backend ?? "gpu") : "svg"}>
       {gpu.mod && gpu.lab && (gpu.state === "starting" || gpu.state === "gpu") && (
@@ -237,17 +294,7 @@ export function Canvas() {
       )}
       {gpu.state !== "gpu" && <SvgCanvas {...props} />}
       <Hint />
-      <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
-        <Button variant="secondary" size="icon-sm" aria-label={t("lab.zoom.in")} onClick={() => zoomBy(1.2)}>
-          <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} color="currentColor" />
-        </Button>
-        <Button variant="secondary" size="icon-sm" aria-label={t("lab.zoom.out")} onClick={() => zoomBy(1 / 1.2)}>
-          <HugeiconsIcon icon={MinusSignIcon} size={16} strokeWidth={1.8} color="currentColor" />
-        </Button>
-        <Button variant="secondary" size="icon-sm" aria-label={t("lab.zoom.fit")} onClick={() => s.fit()}>
-          <HugeiconsIcon icon={ArrowExpand01Icon} size={15} strokeWidth={1.8} color="currentColor" />
-        </Button>
-      </div>
+      <Zoom />
       <Legend />
     </div>
   );

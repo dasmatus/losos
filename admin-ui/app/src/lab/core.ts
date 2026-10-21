@@ -456,6 +456,7 @@ export class Core {
   // ── the canvas ──
   canvas = (): CanvasSnap => parse("canvas", this.lab.canvas());
   canvasNew = () => parse<{ ok: true }>("canvas_new", this.m("canvas_new"));
+  renameDoc = (name: string) => parse<{ name: string } | Err>("rename_doc", this.m("rename_doc", name));
   canvasAddNode = (spec: NodeSpec) => parse<{ node: CanvasNode } | Err>("canvas_add_node", this.m("canvas_add_node", JSON.stringify(spec)));
   canvasAddDevice = (type: string, cx: number, cy: number) =>
     parse<{ node: CanvasNode; device: Device } | Err>("canvas_add_device", this.m("canvas_add_device", type, cx, cy));
