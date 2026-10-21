@@ -78,6 +78,41 @@ function themeBoot(): Plugin {
  * as meme-no.jpg and meme-yes.jpg, and __LAB_MEME__ tells the page they are
  * there. The repository carries no such folder (admin-ui/lab/build.py reads
  * the same variable for the old page). */
+/* The black background behind a person on a call (src/calls/background.ts)
+ * runs MediaPipe's selfie segmenter on the device. Its WebAssembly comes
+ * from the npm package and its model from LOSOS_SEGMENTER_MODEL, which
+ * nix/packages.nix points at a fixed download; both land beside the chat
+ * page under chat/calls-ml/, so the page loads them from the box itself. A
+ * build without the model still builds, and a call then sends no picture
+ * with the black background on rather than the room. */
+function segmenterFiles(): Plugin {
+  const wasm = "node_modules/@mediapipe/tasks-vision/wasm";
+  const files = (): [string, string][] => {
+    const list: [string, string][] = [
+      ["vision_wasm_internal.js", join(wasm, "vision_wasm_internal.js")],
+      ["vision_wasm_internal.wasm", join(wasm, "vision_wasm_internal.wasm")],
+    ];
+    const model = process.env["LOSOS_SEGMENTER_MODEL"];
+    if (model) list.push(["selfie_segmenter.tflite", model]);
+    return list;
+  };
+  return {
+    name: "losos:segmenter-files",
+    configureServer(server) {
+      for (const [name, src] of files()) {
+        server.middlewares.use(`/chat/calls-ml/${name}`, (_req, res) => {
+          res.end(readFileSync(src));
+        });
+      }
+    },
+    buildStart() {
+      for (const [name, src] of files()) {
+        this.emitFile({ type: "asset", fileName: `chat/calls-ml/${name}`, source: readFileSync(src) });
+      }
+    },
+  };
+}
+
 function labMeme(): Plugin {
   const dir = process.env["LOSOS_LAB_MEME"] || "";
   const files = { "meme-no.jpg": "no.jpg", "meme-yes.jpg": "yes.jpg" } as const;
@@ -105,7 +140,7 @@ function labMeme(): Plugin {
 const root = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), themeBoot(), labMeme()],
+  plugins: [react(), tailwindcss(), themeBoot(), labMeme(), segmenterFiles()],
   // Served from the vhost root by nginx.
   base: "/",
   resolve: {

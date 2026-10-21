@@ -29,7 +29,7 @@ actix-web = { version = "4", default-features = false, features = ["macros"] }
 # "blocking-api" is what the facade CLI uses: a one-shot D-Bus call needs no
 # runtime. The daemon uses the async side on tokio.
 zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal", "net", "process", "io-util"] }
 
 # Job ids are "%Y%m%d%H%M%S-<pid>-<counter>"; the counter is what keeps two
 # jobs queued in the same second apart.

@@ -15,6 +15,10 @@
 //!   each other over Olm. The SFU forwards that ciphertext inside DTLS-SRTP
 //!   ([`sfu`]); [`tap`] writes it down so a test can prove it.
 //!
+//! * In podcast mode one member's browser composes the call and sends the
+//!   recording here; [`stream`] hands it to ffmpeg for an RTMP address.
+//!   That stream is public by choice, and the page says so.
+//!
 //! Where the box tunnels through an edge, media goes through it too
 //! ([`relay`]), and the box opens no port for calls.
 //!
@@ -25,5 +29,6 @@ pub mod openid;
 pub mod relay;
 pub mod server;
 pub mod sfu;
+pub mod stream;
 pub mod tap;
 pub mod wire;

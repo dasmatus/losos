@@ -283,7 +283,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-4z8LVaOKXIFOyygQGLDo0/xDs6prMzLegolBay6t08g=";
+    npmDepsHash = "sha256-urCrZxy0Z8IMKECC6RekUq87Cxzq3vJosgn8eENPOns=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -294,6 +294,13 @@ images
     # nothing else needs a script to run.
     npmFlags = [ "--ignore-scripts" ];
     env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+    # The person segmenter behind a call's black background
+    # (src/calls/background.ts): MediaPipe's selfie segmenter, Apache-2.0,
+    # a fixed version of the model, copied beside the chat page.
+    env.LOSOS_SEGMENTER_MODEL = "${pkgs.fetchurl {
+      url = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite";
+      hash = "sha256-GRrJUprlBu4L7vprLJRaFy2rnQfR6AKikKTkA4ImZYs=";
+    }}";
     # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core,
     # the GPU canvas and, for guests on the relay path, the libvirt client.
     preBuild = labCorePkg + labVirtPkg + labRenderPkg;

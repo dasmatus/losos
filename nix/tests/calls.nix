@@ -199,6 +199,8 @@ pkgs.testers.nixosTest {
           stubOcc
           pkgs.coreutils
           pkgs.curl
+          # lososd starts and stops the tunnel units with systemctl.
+          pkgs.systemd
         ];
         systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         environment.systemPackages = [
@@ -305,12 +307,15 @@ pkgs.testers.nixosTest {
     SHOTS = f"{OUT}/shots/pr"
     os.makedirs(SHOTS, exist_ok=True)
 
-    THROUGH_EDGE = ${if throughEdge then "True" else "False"}
+    # The edge node, with throughEdge; looked up so the script reads the
+    # same without one.
+    EDGE = globals().get("edge")
 
     start_all()
-    if THROUGH_EDGE:
-        edge.wait_for_unit("losos-registrar.service")
-        box.wait_for_unit("losos-rathole-client.service")
+    if EDGE is not None:
+        EDGE.wait_for_unit("losos-registrar.service")
+        # lososd starts the tunnel once its scan finds the edge.
+        box.wait_until_succeeds("systemctl is-active losos-rathole-client.service", timeout=300)
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("nginx.service")
     box.wait_for_unit("dendrite.service")
@@ -372,13 +377,13 @@ pkgs.testers.nixosTest {
         assert box.succeed("ps -o user= -C losos-calls").split() == ["shared"]
         assert box.succeed("stat -c '%a %U %G' /run/losos-calls/http.sock").strip() == "660 shared losos-calls"
         box.fail("runuser -u nobody -- curl -sf --unix-socket /run/losos-calls/http.sock http://x/calls/api/health")
-        if THROUGH_EDGE:
+        if EDGE is not None:
             # The box opens no port for calls; the edge took one for it,
             # and holds it for the box's QUIC connection.
             box.fail("ss -uln | grep -q ':${toString mediaPort} '")
             box.fail("iptables-save | grep -q 'dport ${toString mediaPort}'")
-            edge.wait_until_succeeds("ss -uln | grep -q ':${toString mediaPort} '")
-            edge.wait_until_succeeds("journalctl -u losos-registrar | grep -q 'mattbox takes media'")
+            EDGE.wait_until_succeeds("ss -uln | grep -q ':${toString mediaPort} '")
+            EDGE.wait_until_succeeds("journalctl -u losos-registrar | grep -q 'mattbox takes media'")
             box.succeed("journalctl -u losos-calls | grep -q 'media through the edge'")
         else:
             box.succeed("ss -uln | grep -q ':${toString mediaPort} '")
@@ -436,6 +441,9 @@ pkgs.testers.nixosTest {
 
         page.on("pageerror", on_error)
         page.on("console", on_console)
+        seen = []
+        page.on("response", lambda r: r.status >= 400 and seen.append(f"{r.status} {r.request.method} {r.url}"))
+        page.on("requestfailed", lambda r: seen.append(f"failed {r.method} {r.url}: {r.failure}"))
         answer = context.request.post(
             f"https://{HOST}/auth/api/firstfactor",
             data=json.dumps({"username": name, "password": PASSWORDS[name]}),
@@ -447,6 +455,8 @@ pkgs.testers.nixosTest {
             page.get_by_role("heading", name="LosOS chat").wait_for()
         except Exception:
             print(f"{name} sees {page.url}:\n{page.inner_text('body')[:3000]}\n{problems}")
+            print("\n".join(seen[-60:]))
+            print(box.execute("journalctl -u lososd -u dendrite -u authelia-losos --since -4min --no-pager | tail -n 120")[1])
             raise
         return page
 

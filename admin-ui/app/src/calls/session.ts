@@ -47,8 +47,10 @@ export type CallState = 'connecting' | 'connected' | 'ended' | 'failed';
 
 export interface CallEvents {
   state(state: CallState, reason?: string): void;
-  members(members: Member[], you: number): void;
-  track(pid: number, stream: MediaStream): void;
+  /* `live` is the member streaming the call in podcast mode, if one is. */
+  members(members: Member[], you: number, live: number | null): void;
+  /* A member's camera and microphone, or with `screen` their screen. */
+  track(pid: number, stream: MediaStream, screen: boolean): void;
   stats(stats: WorkerStats): void;
 }
 
@@ -82,9 +84,11 @@ export function canEncrypt(): boolean {
   return hasScriptTransform || hasEncodedStreams;
 }
 
-export const streamPid = (id: string): number | null => {
-  const m = /^p(\d+)$/.exec(id);
-  return m ? Number(m[1]) : null;
+/* `p<pid>` is a member's camera and microphone, `p<pid>-screen` their
+ * screen (backend/src/calls/wire.rs). */
+export const streamPid = (id: string): { pid: number; screen: boolean } | null => {
+  const m = /^p(\d+)(-screen)?$/.exec(id);
+  return m ? { pid: Number(m[1]), screen: m[2] !== undefined } : null;
 };
 
 type Encodable = Omit<RTCRtpSender | RTCRtpReceiver, 'transform'> & {
@@ -105,6 +109,8 @@ export class CallSession {
   private timers: ReturnType<typeof setInterval>[] = [];
   private unsubscribe: () => void;
   private videoSender: RTCRtpSender | null = null;
+  private screenSender: RTCRtpSender | null = null;
+  private screen = new MediaStream();
   private done = false;
 
   constructor(private opts: CallOptions) {
@@ -181,11 +187,11 @@ export class CallSession {
       case 'joined': {
         this.you = m.you as number;
         await this.offer();
-        this.onMembers(m.members as Member[]);
+        this.onMembers(m.members as Member[], null);
         break;
       }
       case 'members':
-        this.onMembers(m.members as Member[]);
+        this.onMembers(m.members as Member[], typeof m.live === 'number' ? m.live : null);
         break;
       case 'answer':
         await this.pc.setRemoteDescription({ type: 'answer', sdp: m.sdp as string });
@@ -203,16 +209,22 @@ export class CallSession {
     }
   }
 
-  /* The one offer this page makes: send-only audio and video. Muting
-   * toggles the track; the m-lines never change. */
+  /* The one offer this page makes: send-only audio, camera and screen, in
+   * that order (the SFU takes the second video m-line for the screen).
+   * Muting toggles the track and sharing replaces the screen's; the
+   * m-lines never change. The screen is sealed with the same video keys
+   * and the same frame counter as the camera, in the one worker. */
   private async offer(): Promise<void> {
     const [audio] = this.opts.local.getAudioTracks();
     const [video] = this.opts.local.getVideoTracks();
     const a = this.pc.addTransceiver(audio ?? 'audio', { direction: 'sendonly', streams: [this.opts.local] });
     const v = this.pc.addTransceiver(video ?? 'video', { direction: 'sendonly', streams: [this.opts.local] });
     this.attach(a.sender as Encodable, { op: 'seal', kind: 'audio' });
+    const s = this.pc.addTransceiver('video', { direction: 'sendonly', streams: [this.screen] });
     this.attach(v.sender as Encodable, { op: 'seal', kind: 'video' });
+    this.attach(s.sender as Encodable, { op: 'seal', kind: 'video' });
     this.videoSender = v.sender;
+    this.screenSender = s.sender;
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
     this.signal({ type: 'offer', sdp: offer.sdp });
@@ -220,14 +232,14 @@ export class CallSession {
 
   private onTrack(ev: RTCTrackEvent): void {
     const stream = ev.streams[0];
-    const pid = stream ? streamPid(stream.id) : null;
-    if (pid === null || !stream) return;
+    const from = stream ? streamPid(stream.id) : null;
+    if (from === null || !stream) return;
     this.attach(ev.receiver as Encodable, {
       op: 'open',
       kind: ev.track.kind === 'video' ? 'video' : 'audio',
-      sender: `p${pid}`,
+      sender: `p${from.pid}`,
     });
-    this.opts.events.track(pid, stream);
+    this.opts.events.track(from.pid, stream, from.screen);
   }
 
   /* Key changes run one after another: a join's ratchet and a leave's
@@ -236,11 +248,11 @@ export class CallSession {
     this.queue = this.queue.then(f).catch(() => undefined);
   }
 
-  private onMembers(next: Member[]): void {
+  private onMembers(next: Member[], live: number | null): void {
     const before = new Map(this.members.map((m) => [m.pid, m]));
     const after = new Map(next.map((m) => [m.pid, m]));
     this.members = next;
-    this.opts.events.members(next, this.you);
+    this.opts.events.members(next, this.you, live);
     const joined = next.filter((m) => !before.has(m.pid) && m.pid !== this.you);
     const left = [...before.values()].filter((m) => !after.has(m.pid) && m.pid !== this.you);
     for (const m of left) this.post({ type: 'dropSender', sender: `p${m.pid}` });
@@ -324,6 +336,16 @@ export class CallSession {
    * stays, so no renegotiation is needed. */
   async setVideoTrack(track: MediaStreamTrack | null): Promise<void> {
     await this.videoSender?.replaceTrack(track);
+  }
+
+  /* This page's participant id, once the SFU said it. */
+  get pid(): number {
+    return this.you;
+  }
+
+  /* Share a screen, or stop sharing with null. */
+  async setScreenTrack(track: MediaStreamTrack | null): Promise<void> {
+    await this.screenSender?.replaceTrack(track);
   }
 
   private fail(reason: string): void {

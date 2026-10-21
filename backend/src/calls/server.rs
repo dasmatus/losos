@@ -7,6 +7,7 @@
 //!
 //! * `POST /calls/api/calls` `{openid, room, invited, video}` → `{call}`
 //! * `GET /calls/api/ws`, a websocket speaking [`super::wire`].
+//! * `GET /calls/api/stream`, podcast mode's websocket ([`super::stream`]).
 //! * `GET /calls/api/health` → `ok`.
 
 use super::admit::{CallId, ParticipantId, Refusal};
@@ -28,6 +29,8 @@ const JOIN_WITHIN: Duration = Duration::from_secs(15);
 pub struct State {
     pub commands: mpsc::Sender<Command>,
     pub resolve: Arc<dyn Resolve>,
+    /// The ffmpeg podcast mode streams through; none turns streaming off.
+    pub ffmpeg: Option<std::path::PathBuf>,
 }
 
 pub fn routes(cfg: &mut web::ServiceConfig) {
@@ -36,7 +39,8 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
             .app_data(web::JsonConfig::default().limit(MAX_MESSAGE))
             .route("/health", web::get().to(|| async { "ok" }))
             .route("/calls", web::post().to(create))
-            .route("/ws", web::get().to(ws)),
+            .route("/ws", web::get().to(ws))
+            .route("/stream", web::get().to(super::stream::ws)),
     );
 }
 

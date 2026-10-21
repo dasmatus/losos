@@ -101,6 +101,8 @@ pub struct Call {
     /// When the last member left, if the call is empty after someone joined.
     emptied: Option<Instant>,
     pub members: BTreeMap<ParticipantId, Member>,
+    /// The member streaming the call out in podcast mode, if one is.
+    pub live: Option<ParticipantId>,
 }
 
 /// Why the SFU said no. The code goes to the browser as is.
@@ -118,6 +120,10 @@ pub enum Refusal {
     Full,
     /// The OpenID token did not check out.
     Unauthenticated,
+    /// The participant asking is not this person in this call.
+    NotMember,
+    /// Someone else in the call is already streaming it.
+    AlreadyLive,
 }
 
 impl Refusal {
@@ -133,6 +139,8 @@ impl Refusal {
             Refusal::NotInvited => "notInvited",
             Refusal::Full => "full",
             Refusal::Unauthenticated => "unauthenticated",
+            Refusal::NotMember => "notMember",
+            Refusal::AlreadyLive => "alreadyLive",
         }
     }
 
@@ -140,9 +148,9 @@ impl Refusal {
     pub fn status(self) -> u16 {
         match self {
             Refusal::Unauthenticated => 401,
-            Refusal::NotLocal | Refusal::NotInvited => 403,
+            Refusal::NotLocal | Refusal::NotInvited | Refusal::NotMember => 403,
             Refusal::NoSuchCall => 404,
-            Refusal::Full | Refusal::TooManyCalls => 409,
+            Refusal::Full | Refusal::TooManyCalls | Refusal::AlreadyLive => 409,
             _ => 400,
         }
     }
@@ -230,6 +238,7 @@ impl Calls {
                 created: now,
                 emptied: None,
                 members: BTreeMap::new(),
+                live: None,
             },
         );
         Ok(())
@@ -273,10 +282,46 @@ impl Calls {
             .iter_mut()
             .find(|(_, c)| c.members.contains_key(&pid))?;
         call.members.remove(&pid);
+        if call.live == Some(pid) {
+            call.live = None;
+        }
         if call.members.is_empty() {
             call.emptied = Some(now);
         }
         Some(id.clone())
+    }
+
+    /// Mark `pid`, who must be `user` in call `id`, as streaming the call.
+    /// One stream per call: a second member is refused until the first
+    /// stops.
+    pub fn go_live(
+        &mut self,
+        id: &CallId,
+        pid: ParticipantId,
+        user: &UserId,
+    ) -> Result<(), Refusal> {
+        let call = self.calls.get_mut(id).ok_or(Refusal::NoSuchCall)?;
+        if call.members.get(&pid).map(|m| &m.user) != Some(user) {
+            return Err(Refusal::NotMember);
+        }
+        match call.live {
+            Some(other) if other != pid => Err(Refusal::AlreadyLive),
+            _ => {
+                call.live = Some(pid);
+                Ok(())
+            }
+        }
+    }
+
+    /// `pid` stopped streaming. Returns whether the call was live by it.
+    pub fn end_live(&mut self, id: &CallId, pid: ParticipantId) -> bool {
+        match self.calls.get_mut(id) {
+            Some(call) if call.live == Some(pid) => {
+                call.live = None;
+                true
+            }
+            _ => false,
+        }
     }
 
     /// The call `pid` is in.
@@ -487,5 +532,44 @@ mod tests {
         calls.admit(&cid(1), 4, uid("@m:b"), "D", now).unwrap();
         assert_eq!(calls.call_of(4).map(|(id, _)| id.clone()), Some(cid(1)));
         assert!(calls.call_of(5).is_none());
+    }
+
+    #[test]
+    fn one_member_streams_a_call_at_a_time() {
+        let mut calls = Calls::new("b");
+        let now = Instant::now();
+        calls
+            .create(cid(1), uid("@m:b"), ROOM, &["@eva:b".into()], true, now)
+            .unwrap();
+        calls.admit(&cid(1), 1, uid("@m:b"), "D", now).unwrap();
+        calls.admit(&cid(1), 2, uid("@eva:b"), "D", now).unwrap();
+
+        // A participant is only who joined as it.
+        assert_eq!(
+            calls.go_live(&cid(1), 1, &uid("@eva:b")),
+            Err(Refusal::NotMember)
+        );
+        assert_eq!(
+            calls.go_live(&cid(1), 9, &uid("@m:b")),
+            Err(Refusal::NotMember)
+        );
+        assert_eq!(
+            calls.go_live(&cid(2), 1, &uid("@m:b")),
+            Err(Refusal::NoSuchCall)
+        );
+
+        calls.go_live(&cid(1), 1, &uid("@m:b")).unwrap();
+        calls.go_live(&cid(1), 1, &uid("@m:b")).unwrap();
+        assert_eq!(
+            calls.go_live(&cid(1), 2, &uid("@eva:b")),
+            Err(Refusal::AlreadyLive)
+        );
+        assert!(!calls.end_live(&cid(1), 2));
+        assert!(calls.end_live(&cid(1), 1));
+        calls.go_live(&cid(1), 2, &uid("@eva:b")).unwrap();
+
+        // Leaving ends the member's stream.
+        calls.leave(2, now);
+        assert_eq!(calls.get(&cid(1)).unwrap().live, None);
     }
 }

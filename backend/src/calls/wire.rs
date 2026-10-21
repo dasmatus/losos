@@ -5,15 +5,18 @@
 //!   page                                   SFU
 //!   join {call, openid, device}      ──►
 //!                                    ◄──   joined {you, video, members}
-//!   offer {sdp}  (sends audio+video) ──►
+//!   offer {sdp}  (audio, camera, screen) ──►
 //!                                    ◄──   answer {sdp}
 //!                                    ◄──   offer {sdp}  (someone's tracks)
 //!   answer {sdp}                     ──►
-//!                                    ◄──   members {members}  (on every join/leave)
+//!                                    ◄──   members {members, live}  (on every join/leave/stream)
 //! ```
 //!
 //! A member's tracks reach the others with the stream id `p<pid>`, so a
-//! page knows whose frames it is decrypting from `members`.
+//! page knows whose frames it is decrypting from `members`. The second
+//! video m-line a page offers is its screen, which goes out as
+//! `p<pid>-screen`: the screen is a track of its own, so the camera stays
+//! on while someone shares.
 
 use super::admit::ParticipantId;
 use super::openid::OpenIdToken;
@@ -54,6 +57,9 @@ pub enum ServerMsg {
     },
     Members {
         members: Vec<MemberInfo>,
+        /// Who streams the call out in podcast mode, if anyone: every page
+        /// shows that the call is public then.
+        live: Option<ParticipantId>,
     },
     Offer {
         sdp: String,
@@ -79,6 +85,11 @@ pub struct CreateCall {
 /// The stream id a member's tracks carry to the others.
 pub fn stream_id(pid: ParticipantId) -> String {
     format!("p{pid}")
+}
+
+/// The stream id of a member's screen.
+pub fn screen_stream_id(pid: ParticipantId) -> String {
+    format!("p{pid}-screen")
 }
 
 #[cfg(test)]
@@ -113,5 +124,6 @@ mod tests {
             r#"{"type":"joined","you":3,"video":true,"members":[{"pid":3,"user":"@m:b","device":"D"}]}"#
         );
         assert_eq!(stream_id(12), "p12");
+        assert_eq!(screen_stream_id(12), "p12-screen");
     }
 }

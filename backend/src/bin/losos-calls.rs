@@ -51,6 +51,10 @@ struct Cli {
     /// The file holding the box's edge token.
     #[arg(long)]
     relay_token_file: Option<PathBuf>,
+    /// The ffmpeg podcast mode streams through; without it the call page
+    /// cannot go live.
+    #[arg(long)]
+    ffmpeg: Option<PathBuf>,
     /// Write every forwarded frame under this directory (tests only).
     #[arg(long)]
     tap: Option<PathBuf>,
@@ -165,6 +169,7 @@ fn main() -> anyhow::Result<()> {
             addr: cli.homeserver,
             server_name: cli.server_name.clone(),
         }),
+        ffmpeg: cli.ffmpeg.clone(),
     };
     actix_web::rt::System::new().block_on(async move {
         let app = move || {

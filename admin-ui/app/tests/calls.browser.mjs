@@ -83,7 +83,7 @@ const udpPort = 20000 + Math.floor(Math.random() * 20000);
 const tap = mkdtempSync(join(tmpdir(), 'losos-calls-tap-'));
 const sfu = spawn(
   BIN,
-  ['--listen', `127.0.0.1:${sfuPort}`, '--udp-port', String(udpPort), '--address', ADDRESS, '--server-name', SERVER, '--homeserver', `127.0.0.1:${hsPort}`, '--tap', tap],
+  ['--listen', `127.0.0.1:${sfuPort}`, '--udp-port', String(udpPort), '--address', ADDRESS, '--server-name', SERVER, '--homeserver', `127.0.0.1:${hsPort}`, '--tap', tap, '--ffmpeg', process.env.LOSOS_FFMPEG ?? 'ffmpeg'],
   { stdio: ['ignore', 'inherit', 'inherit'] },
 );
 const base = `http://127.0.0.1:${sfuPort}/calls/api`;
@@ -183,6 +183,56 @@ await check('two people see each other through the SFU, decrypted', async () => 
   assert.ok(m.sealed > 50 && e.sealed > 50, JSON.stringify({ m, e }));
   assert.ok(m.opened > 20 && e.opened > 20, JSON.stringify({ m, e }));
   assert.equal(m.refused + e.refused, 0, 'no frame failed to authenticate');
+});
+
+await check('a shared screen reaches the others as a track of its own, beside the camera', async () => {
+  const matusPid = await pidOf(eva, '@matus:calls.test');
+  await matus.evaluate(() => window.share('#c0187a'));
+  const screenAt = async () => {
+    const [a, b] = [await picture(matus, 'local-screen'), await picture(eva, `p${matusPid}-screen`)];
+    if (!a || !b) return 255;
+    return a.reduce((s, x, i) => s + Math.abs(x - b[i]), 0) / a.length;
+  };
+  await until("matus's screen at eva", async () => (await screenAt()) < SAME, 30000);
+  // The camera keeps coming while the screen is shared.
+  await until("matus's camera still at eva", async () => (await distance(matus, eva, matusPid)) < SAME, 15000);
+  assert.equal((await stats(eva)).refused, 0, 'the screen opens with the same keys');
+});
+
+const rtmpPort = 20000 + Math.floor(Math.random() * 20000);
+await check('podcast mode streams the call to an RTMP address, and every member sees it is live', async () => {
+  const evaPid = await pidOf(matus, '@eva:calls.test');
+  const flv = join(tap, 'podcast.flv');
+  // An RTMP server that keeps six seconds of what it gets.
+  const server = spawn('ffmpeg', ['-v', 'error', '-listen', '1', '-i', `rtmp://127.0.0.1:${rtmpPort}/live/key-123`, '-t', '6', '-c', 'copy', '-y', flv], {
+    stdio: ['ignore', 'inherit', 'inherit'],
+  });
+  const exited = new Promise((ok) => server.on('exit', ok));
+  await new Promise((r) => setTimeout(r, 1000));
+  await eva.evaluate((url) => window.goLive(url, 'The LosOS podcast'), `rtmp://127.0.0.1:${rtmpPort}/live/key-123`);
+  await until('eva live', () => eva.evaluate(() => window.callState.podcast.includes('live')));
+  await until('matus sees eva live', () => matus.evaluate((pid) => window.callState.live === pid, evaPid));
+  // One stream per call.
+  await matus.evaluate((url) => window.goLive(url, 'second'), `rtmp://127.0.0.1:${rtmpPort + 1}/live/x`);
+  await until('a second stream is refused', () => matus.evaluate(() => window.callState.podcast.includes('ended:alreadyLive')));
+  await Promise.race([exited, new Promise((_, no) => setTimeout(() => no(new Error('the RTMP server got no six seconds')), 60000))]);
+  const probe = JSON.parse(
+    spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name,width,height:format=duration', '-of', 'json', flv]).stdout.toString(),
+  );
+  const codecs = probe.streams.map((x) => x.codec_name).sort();
+  assert.deepEqual(codecs, ['aac', 'h264'], JSON.stringify(probe));
+  assert.equal(probe.streams.find((x) => x.codec_name === 'h264').width, 1280);
+  assert.ok(Number(probe.format.duration) >= 5, JSON.stringify(probe.format));
+  await eva.evaluate(() => window.podcast.stop());
+  await until('live no more', () => matus.evaluate(() => window.callState.live === null));
+});
+
+await check('an address that is not RTMP is refused before ffmpeg runs', async () => {
+  await matus.evaluate(() => {
+    window.callState.podcast = [];
+    window.goLive('file:///etc/passwd', 'x');
+  });
+  await until('refused', () => matus.evaluate(() => window.callState.podcast.includes('ended:badAddress')));
 });
 
 await check('a stranger is turned away at the socket', async () => {

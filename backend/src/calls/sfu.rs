@@ -15,7 +15,7 @@
 use super::admit::{CallId, Calls, ParticipantId, Refusal, UserId};
 use super::relay;
 use super::tap::{Kind, Tap};
-use super::wire::{stream_id, MemberInfo, ServerMsg};
+use super::wire::{screen_stream_id, stream_id, MemberInfo, ServerMsg};
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::{Arc, Weak};
@@ -57,6 +57,14 @@ pub enum Command {
     },
     Leave {
         pid: ParticipantId,
+    },
+    /// `pid`, who is `user`, starts (`on`) or stops streaming the call.
+    Broadcast {
+        call: CallId,
+        pid: ParticipantId,
+        user: UserId,
+        on: bool,
+        reply: Reply<()>,
     },
 }
 
@@ -297,6 +305,29 @@ impl Sfu {
                 }
                 self.reap();
             }
+            Command::Broadcast {
+                call,
+                pid,
+                user,
+                on,
+                reply,
+            } => {
+                let r = if on {
+                    self.calls.go_live(&call, pid, &user)
+                } else {
+                    self.calls.end_live(&call, pid);
+                    Ok(())
+                };
+                if r.is_ok() {
+                    tracing::info!(
+                        "p{pid} {} streaming call {}",
+                        if on { "is" } else { "stopped" },
+                        call.0
+                    );
+                    self.announce(&call);
+                }
+                let _ = reply.send(r);
+            }
         }
     }
 
@@ -335,9 +366,11 @@ impl Sfu {
     /// Tell everyone in `call` who is in it now.
     fn announce(&self, call: &CallId) {
         let members = self.members(call);
+        let live = self.calls.get(call).and_then(|c| c.live);
         for c in self.clients.iter().filter(|c| &c.call == call) {
             let _ = c.out.send(ServerMsg::Members {
                 members: members.clone(),
+                live,
             });
         }
     }
@@ -454,6 +487,8 @@ struct TrackIn {
     origin: ParticipantId,
     mid: Mid,
     kind: MediaKind,
+    /// The member's screen, which reaches the others as `p<pid>-screen`.
+    screen: bool,
 }
 
 #[derive(Debug)]
@@ -592,10 +627,15 @@ impl Client {
             match t.state {
                 OutState::ToOpen => {
                     if let Some(track) = t.track.upgrade() {
+                        let stream = if track.screen {
+                            screen_stream_id(track.origin)
+                        } else {
+                            stream_id(track.origin)
+                        };
                         let mid = change.add_media(
                             track.kind,
                             Direction::SendOnly,
-                            Some(stream_id(track.origin)),
+                            Some(stream),
                             None,
                             None,
                         );
@@ -664,10 +704,15 @@ impl Client {
                 // Only what the page sends comes in; the SFU's own send-only
                 // m-lines are added through negotiate().
                 if m.direction == Direction::RecvOnly || m.direction == Direction::SendRecv {
+                    // A page offers audio, its camera, and then its screen:
+                    // the second video m-line is the screen.
+                    let screen = m.kind == MediaKind::Video
+                        && self.tracks_in.iter().any(|t| t.kind == MediaKind::Video);
                     let t = Arc::new(TrackIn {
                         origin: self.pid,
                         mid: m.mid,
                         kind: m.kind,
+                        screen,
                     });
                     let weak = Arc::downgrade(&t);
                     self.tracks_in.push(t);

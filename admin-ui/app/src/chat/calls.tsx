@@ -4,9 +4,15 @@ import type { ReceivedToDeviceMessage } from "matrix-js-sdk/lib/sync-accumulator
 import type { ToDevicePayload } from "matrix-js-sdk/lib/models/ToDeviceMessage";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { LiveStreaming02Icon, PodcastIcon } from "@hugeicons/core-free-icons";
+import { Badge } from "@/components/ui/badge";
 import { CallSession, canEncrypt, type KeyChannel, type KeyMessage, type Member, type OpenIdToken } from "@/calls/session";
 import type { WorkerStats } from "@/calls/e2ee-protocol";
-import { CallView, RingingCard, type Tile } from "@/calls/view";
+import { LocalMedia, type Background } from "@/calls/local";
+import { Podcast, type PodcastSource } from "@/calls/podcast";
+import { PodcastPanel, type PodcastFields } from "@/calls/podcast-panel";
+import { CallControl, CallView, RingingCard, type Screen, type Tile } from "@/calls/view";
 import { Avatar } from "./avatar";
 
 /* Voice and video calls, started from a room or a DM.
@@ -117,13 +123,15 @@ function olmKeys(client: MatrixClient, roomId: string): KeyChannel {
 
 class CallError extends Error {}
 
-async function openMedia(video: boolean): Promise<MediaStream> {
+async function openMedia(video: boolean): Promise<LocalMedia> {
   try {
-    return await navigator.mediaDevices.getUserMedia({ audio: true, video });
+    return await LocalMedia.open(video);
   } catch {
     throw new CallError("calls.noDevices");
   }
 }
+
+const socketUrl = (path: string): string => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${path}`;
 
 async function openId(client: MatrixClient): Promise<OpenIdToken> {
   const token = await client.getOpenIdToken();
@@ -160,7 +168,7 @@ function announce(client: MatrixClient, roomId: string, call: string, video: boo
 
 export function CallsProvider({ client, children }: { client: MatrixClient; children: React.ReactNode }) {
   const t = useT();
-  const [active, setActive] = React.useState<(Active & { local: MediaStream }) | null>(null);
+  const [active, setActive] = React.useState<(Active & { local: LocalMedia }) | null>(null);
   const [ringing, setRinging] = React.useState<Ringing | null>(null);
   const activeCall = React.useRef<string | null>(null);
   activeCall.current = active?.call ?? null;
@@ -238,17 +246,17 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
   );
 
   const enter = React.useCallback(
-    (roomId: string, video: boolean, make: (local: MediaStream) => Promise<string>) => {
+    (roomId: string, video: boolean, make: () => Promise<string>) => {
       if (activeCall.current !== null) return;
       (async () => {
         if (!canEncrypt()) throw new CallError("calls.noEncryption");
         const local = await openMedia(video);
         try {
-          const call = await make(local);
+          const call = await make();
           setRinging((current) => (current?.call === call ? null : current));
           setActive({ roomId, call, video, local });
         } catch (error) {
-          for (const track of local.getTracks()) track.stop();
+          local.stop();
           throw error;
         }
       })().catch(failed);
@@ -271,7 +279,7 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
   const end = React.useCallback(
     (last: boolean) => {
       if (active === null) return;
-      for (const track of active.local.getTracks()) track.stop();
+      active.local.stop();
       if (last) void announce(client, active.roomId, active.call, active.video, "ended").catch(() => undefined);
       setActive(null);
     },
@@ -300,6 +308,8 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
   );
 }
 
+const EMPTY_FIELDS: PodcastFields = { rtmp: "", title: "", subtitle: "", overlay: null };
+
 function CallScreen({
   client,
   active,
@@ -307,22 +317,48 @@ function CallScreen({
   onFail,
 }: {
   client: MatrixClient;
-  active: Active & { local: MediaStream };
+  active: Active & { local: LocalMedia };
   onEnd: (last: boolean) => void;
   onFail: (error: unknown) => void;
 }) {
+  const t = useT();
+  const media = active.local;
   const room = client.getRoom(active.roomId);
   const [state, setState] = React.useState<"connecting" | "connected">("connecting");
-  const [members, setMembers] = React.useState<{ list: Member[]; you: number }>({ list: [], you: -1 });
+  const [members, setMembers] = React.useState<{ list: Member[]; you: number; live: number | null }>({
+    list: [],
+    you: -1,
+    live: null,
+  });
   const [streams, setStreams] = React.useState<Map<number, MediaStream>>(new Map());
+  const [screens, setScreens] = React.useState<Map<number, MediaStream>>(new Map());
   const [stats, setStats] = React.useState<WorkerStats | null>(null);
   const [micOff, setMicOff] = React.useState(false);
-  const [cameraOff, setCameraOff] = React.useState(!active.video);
+  const [cameraOff, setCameraOff] = React.useState(!media.cameraOn);
+  const [background, setBackground] = React.useState<Background>(media.background);
+  const [ownScreen, setOwnScreen] = React.useState<MediaStream | null>(null);
+  const [podcastOpen, setPodcastOpen] = React.useState(false);
+  const [fields, setFields] = React.useState<PodcastFields>(EMPTY_FIELDS);
+  const [streaming, setStreaming] = React.useState<"off" | "starting" | "live">("off");
+  const [podcast, setPodcast] = React.useState<Podcast | null>(null);
   const session = React.useRef<CallSession | null>(null);
   const others = React.useRef(0);
   const finished = React.useRef(false);
   const callbacks = React.useRef({ onEnd, onFail });
   callbacks.current = { onEnd, onFail };
+
+  const nameOf = React.useCallback((user: string) => room?.getMember(user)?.name ?? user, [room]);
+
+  // What podcast mode draws, read on every frame it draws.
+  const drawn = React.useRef<{ people: PodcastSource[]; screen: { name: string; stream: MediaStream } | null; fields: PodcastFields }>({
+    people: [],
+    screen: null,
+    fields: EMPTY_FIELDS,
+  });
+
+  const warnBackground = React.useCallback(() => {
+    if (media.backgroundFailed) toast.error(t("calls.failed"), t("calls.backgroundFailed"), { help: "calls" });
+  }, [media, t]);
 
   React.useEffect(() => {
     let live = true;
@@ -332,29 +368,33 @@ function CallScreen({
       callbacks.current.onFail(error);
       callbacks.current.onEnd(false);
     };
+    warnBackground();
     // The token is fetched as the call opens rather than kept: it is good
     // for a short while only, and a page left ringing can outlast it.
     openId(client)
       .then((openid) => {
         if (!live) return;
         const call = new CallSession({
-          socket: `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/calls/api/ws`,
+          socket: socketUrl("/calls/api/ws"),
           call: active.call,
           openid,
           device: client.getDeviceId() ?? "",
-          local: active.local,
+          local: media.stream,
           keys: olmKeys(client, active.roomId),
           events: {
             state: (next, reason) => {
               if (next === "connected") setState("connected");
               if (next === "failed") stop(new CallError(reason ?? "failed"));
             },
-            members: (list, you) => {
+            members: (list, you, liveBy) => {
               others.current = list.filter((m) => m.pid !== you).length;
-              setMembers({ list, you });
-              setStreams((current) => new Map([...current].filter(([pid]) => list.some((m) => m.pid === pid))));
+              setMembers({ list, you, live: liveBy });
+              const keep = (current: Map<number, MediaStream>): Map<number, MediaStream> =>
+                new Map([...current].filter(([pid]) => list.some((m) => m.pid === pid)));
+              setStreams(keep);
+              setScreens(keep);
             },
-            track: (pid, stream) => setStreams((current) => new Map(current).set(pid, stream)),
+            track: (pid, stream, screen) => (screen ? setScreens : setStreams)((current) => new Map(current).set(pid, stream)),
             stats: setStats,
           },
         });
@@ -367,49 +407,107 @@ function CallScreen({
       if (!finished.current) session.current?.leave();
       session.current = null;
     };
-  }, [client, active.call, active.local, active.roomId]);
+  }, [client, active.call, active.roomId, media, warnBackground]);
+
+  React.useEffect(() => () => podcast?.dispose(), [podcast]);
 
   const leave = (): void => {
     finished.current = true;
+    podcast?.dispose();
     session.current?.leave();
     onEnd(others.current === 0);
   };
 
   const toggleMic = (): void => {
-    session.current?.setMuted("audio", !micOff);
+    media.setMuted(!micOff);
     setMicOff(!micOff);
   };
 
   // Off stops the camera, so its light goes out, and sends nothing; on
-  // asks for it again.
+  // asks for it again, through the chosen background.
   const toggleCamera = (): void => {
-    const local = active.local;
-    if (!cameraOff) {
-      for (const track of local.getVideoTracks()) {
-        track.stop();
-        local.removeTrack(track);
-      }
-      void session.current?.setVideoTrack(null);
-      setCameraOff(true);
-      return;
-    }
-    navigator.mediaDevices
-      .getUserMedia({ video: true })
-      .then(async (camera) => {
-        const [track] = camera.getVideoTracks();
-        if (track === undefined) return;
-        local.addTrack(track);
-        await session.current?.setVideoTrack(track);
-        setCameraOff(false);
+    media
+      .setCamera(cameraOff)
+      .then(async () => {
+        await session.current?.setVideoTrack(media.picture);
+        setCameraOff(!media.cameraOn);
+        warnBackground();
       })
       .catch(() => onFail(new CallError("calls.noDevices")));
+  };
+
+  const toggleBackground = (): void => {
+    const next: Background = background === "black" ? "real" : "black";
+    void media.setBackground(next).then(async () => {
+      await session.current?.setVideoTrack(media.picture);
+      setBackground(next);
+      warnBackground();
+    });
+  };
+
+  const stopSharing = React.useCallback((): void => {
+    media.stopSharing();
+    void session.current?.setScreenTrack(null);
+    setOwnScreen(null);
+  }, [media]);
+
+  const toggleShare = (): void => {
+    if (ownScreen !== null) {
+      stopSharing();
+      return;
+    }
+    media
+      .share(stopSharing)
+      .then(async (track) => {
+        await session.current?.setScreenTrack(track);
+        setOwnScreen(new MediaStream([track]));
+      })
+      // Closing the browser's picker is no failure.
+      .catch(() => undefined);
+  };
+
+  const openPodcast = (): void => {
+    if (podcastOpen) {
+      setPodcastOpen(false);
+      return;
+    }
+    if (podcast === null) {
+      setPodcast(
+        new Podcast(
+          () => drawn.current.people,
+          () => ({ ...drawn.current.fields, screen: drawn.current.screen }),
+          {
+            live: () => setStreaming("live"),
+            ended: (error) => {
+              setStreaming("off");
+              if (error !== undefined) toast.error(t("calls.liveFailed"), error, { help: "calls" });
+            },
+          },
+        ),
+      );
+    }
+    setPodcastOpen(true);
+  };
+
+  const goLive = (): void => {
+    const call = session.current;
+    if (podcast === null || call === null) return;
+    setStreaming("starting");
+    openId(client)
+      .then((openid) =>
+        podcast.start(socketUrl("/calls/api/stream"), { call: active.call, pid: call.pid, openid, rtmp: fields.rtmp }),
+      )
+      .catch((error: unknown) => {
+        setStreaming("off");
+        onFail(error);
+      });
   };
 
   const tiles: Tile[] = members.list.map((m) => {
     const self = m.pid === members.you;
     const person = room?.getMember(m.user);
-    const name = person?.name ?? m.user;
-    const stream = self ? active.local : streams.get(m.pid);
+    const name = nameOf(m.user);
+    const stream = self ? media.stream : streams.get(m.pid);
     return {
       pid: m.pid,
       name,
@@ -420,17 +518,62 @@ function CallScreen({
     };
   });
 
+  const shown: Screen[] = members.list.flatMap((m): Screen[] => {
+    const self = m.pid === members.you;
+    const stream = self ? ownScreen : (screens.get(m.pid) ?? null);
+    return stream === null ? [] : [{ pid: m.pid, name: nameOf(m.user), stream, self }];
+  });
+
+  drawn.current = {
+    people: tiles.map((tile) => ({ pid: tile.pid, name: tile.self ? nameOf(client.getSafeUserId()) : tile.name, ...(tile.stream ? { stream: tile.stream } : {}) })),
+    // The podcast shows a screen the way the call does: the one coming in.
+    screen: (() => {
+      const s = shown.find((x) => (x.self ? ownScreen !== null : !x.stream.getVideoTracks()[0]?.muted));
+      return s === undefined ? null : { name: s.name, stream: s.stream };
+    })(),
+    fields,
+  };
+
+  const liveBy = members.list.find((m) => m.pid === members.live);
+
   return (
     <CallView
       title={room?.name ?? ""}
       tiles={tiles}
+      screens={shown}
       status={state === "connecting" ? "connecting" : others.current === 0 ? "waiting" : "live"}
       micOff={micOff}
       cameraOff={cameraOff}
+      sharing={ownScreen !== null}
+      background={background}
       stats={stats}
       onMic={toggleMic}
       onCamera={toggleCamera}
+      onShare={toggleShare}
+      onBackground={toggleBackground}
       onLeave={leave}
-    />
+      badges={
+        liveBy !== undefined ? (
+          <Badge variant="crit" data-live={liveBy.pid} title={t("calls.liveBy", { name: nameOf(liveBy.user) })}>
+            <HugeiconsIcon icon={LiveStreaming02Icon} size={14} />
+            {t("calls.live")}
+          </Badge>
+        ) : null
+      }
+      actions={<CallControl label={t("calls.podcast")} pressed={podcastOpen} icon={PodcastIcon} onClick={openPodcast} />}
+    >
+      {podcastOpen && podcast !== null ? (
+        <PodcastPanel
+          podcast={podcast}
+          fields={fields}
+          live={streaming === "live"}
+          starting={streaming === "starting"}
+          onChange={setFields}
+          onGoLive={goLive}
+          onStop={() => podcast.stop()}
+          onClose={() => setPodcastOpen(false)}
+        />
+      ) : null}
+    </CallView>
   );
 }

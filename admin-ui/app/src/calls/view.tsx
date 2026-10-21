@@ -1,10 +1,22 @@
-/* What a call looks like: the full-screen view with a tile per member, and
- * the card that rings. Plain components with props; provider.tsx owns the
+/* What a call looks like: the full-screen view with a tile per member (or,
+ * while someone shares a screen, the screen in the middle and the members
+ * beside it), and the card that rings. Plain components with props; provider.tsx owns the
  * call and passes them what to draw. */
 
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { CallEnd01Icon, CallIcon, CameraOff02Icon, CameraVideoIcon, LockKeyIcon, Mic01Icon, MicOff01Icon } from "@hugeicons/core-free-icons";
+import {
+  BackgroundIcon,
+  CallEnd01Icon,
+  CallIcon,
+  CameraOff02Icon,
+  CameraVideoIcon,
+  ComputerRemoveIcon,
+  ComputerScreenShareIcon,
+  LockKeyIcon,
+  Mic01Icon,
+  MicOff01Icon,
+} from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useT } from "@/lib/i18n-react";
@@ -94,28 +106,124 @@ function grid(n: number): string {
   return "grid-cols-2 lg:grid-cols-3";
 }
 
+/* A member's screen, as the call carries it. */
+export interface Screen {
+  pid: number;
+  name: string;
+  stream: MediaStream;
+  self?: boolean;
+}
+
+/* Tells its parent when a screen's picture starts and stops coming in. */
+function LiveProbe({ screen, onChange }: { screen: Screen; onChange(pid: number, live: boolean): void }) {
+  const live = useLive(screen.stream);
+  React.useEffect(() => onChange(screen.pid, live), [screen.pid, live, onChange]);
+  return null;
+}
+
+function Stage({ screen }: { screen: Screen }) {
+  const t = useT();
+  return (
+    <div data-share={screen.pid} className="relative grid min-h-0 min-w-0 flex-1 place-items-center overflow-hidden rounded-card border border-line bg-black">
+      <video
+        ref={(el) => {
+          if (el && el.srcObject !== screen.stream) el.srcObject = screen.stream;
+        }}
+        autoPlay
+        playsInline
+        muted
+        className="size-full object-contain"
+      />
+      <span className="absolute bottom-2 left-2 rounded-control bg-surface/85 px-2 py-0.5 text-[13px] text-ink">
+        {screen.self ? t("calls.yourScreen") : t("calls.theirScreen", { name: screen.name })}
+      </span>
+    </div>
+  );
+}
+
 export interface CallViewProps {
   title: string;
   tiles: Tile[];
+  /* Everyone's screen tracks; the one coming in is drawn in the middle. */
+  screens: Screen[];
   status: "connecting" | "waiting" | "live";
   micOff: boolean;
   cameraOff: boolean;
+  sharing: boolean;
+  /* The background behind the person on this browser's camera. */
+  background: "black" | "real";
   stats: WorkerStats | null;
   onMic(): void;
   onCamera(): void;
+  onShare(): void;
+  onBackground(): void;
   onLeave(): void;
+  /* More controls, after the built-in ones. */
+  actions?: React.ReactNode;
+  /* Next to the encryption label, such as the live-stream badge. */
+  badges?: React.ReactNode;
+  /* Drawn over the call, such as a panel a control opened. */
+  children?: React.ReactNode;
 }
+
+function Control({
+  label,
+  pressed,
+  icon,
+  onClick,
+  destructive,
+}: {
+  label: string;
+  pressed?: boolean;
+  icon: React.ComponentProps<typeof HugeiconsIcon>["icon"];
+  onClick(): void;
+  destructive?: boolean;
+}) {
+  return (
+    <Button
+      variant={destructive ? "destructive" : "secondary"}
+      size="lg"
+      className="size-12 rounded-full p-0"
+      {...(pressed !== undefined ? { "aria-pressed": pressed } : {})}
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+    >
+      <HugeiconsIcon icon={icon} size={20} />
+    </Button>
+  );
+}
+
+export { Control as CallControl };
 
 export function CallView(p: CallViewProps) {
   const t = useT();
+  const [live, setLive] = React.useState<ReadonlySet<number>>(new Set());
+  const onLive = React.useCallback((pid: number, on: boolean) => {
+    setLive((current) => {
+      if (current.has(pid) === on) return current;
+      const next = new Set(current);
+      if (on) next.add(pid);
+      else next.delete(pid);
+      return next;
+    });
+  }, []);
+  const share = p.screens.find((s) => (s.self ? p.sharing : live.has(s.pid))) ?? null;
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={p.title}
       data-call-view=""
+      data-sharing={share?.pid ?? ""}
       className="fixed inset-0 z-50 flex flex-col gap-3 bg-canvas p-3 sm:p-4"
     >
+      {p.screens
+        .filter((s) => !s.self)
+        .map((s) => (
+          <LiveProbe key={s.pid} screen={s} onChange={onLive} />
+        ))}
       <header className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="truncate text-base font-medium text-ink">{p.title}</h2>
@@ -123,78 +231,94 @@ export function CallView(p: CallViewProps) {
             {p.status === "connecting" ? t("calls.connecting") : p.status === "waiting" ? t("calls.waiting") : t("calls.ongoing")}
           </p>
         </div>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <span
-                  data-e2ee=""
-                  /* The worker's counts, read by the call checks. */
-                  data-sealed={p.stats?.sealed ?? 0}
-                  data-opened={p.stats?.opened ?? 0}
-                  data-refused={p.stats?.refused ?? 0}
-                  className="inline-flex items-center gap-1.5 rounded-control border border-line bg-surface px-2.5 py-1 text-[13px] text-ink"
-                />
-              }
-            >
-              <HugeiconsIcon icon={LockKeyIcon} size={15} className="text-accent" />
-              {t("calls.encrypted")}
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p>{t("calls.encryptedDetail")}</p>
-              {p.stats ? (
-                <p className="mt-1 text-muted">
-                  {t("calls.frames", {
-                    sealed: p.stats.sealed,
-                    opened: p.stats.opened,
-                  })}
-                </p>
-              ) : null}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <div className="flex items-center gap-2">
+          {p.badges}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    data-e2ee=""
+                    /* The worker's counts, read by the call checks. */
+                    data-sealed={p.stats?.sealed ?? 0}
+                    data-opened={p.stats?.opened ?? 0}
+                    data-refused={p.stats?.refused ?? 0}
+                    className="inline-flex items-center gap-1.5 rounded-control border border-line bg-surface px-2.5 py-1 text-[13px] text-ink"
+                  />
+                }
+              >
+                <HugeiconsIcon icon={LockKeyIcon} size={15} className="text-accent" />
+                {t("calls.encrypted")}
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p>{t("calls.encryptedDetail")}</p>
+                {p.stats ? (
+                  <p className="mt-1 text-muted">
+                    {t("calls.frames", {
+                      sealed: p.stats.sealed,
+                      opened: p.stats.opened,
+                    })}
+                  </p>
+                ) : null}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </header>
 
-      <div className={cn("grid min-h-0 flex-1 auto-rows-fr gap-3", grid(p.tiles.length))}>
-        {p.tiles.map((tile) => (
-          <CallTile key={tile.pid} tile={tile} />
-        ))}
-      </div>
+      {share === null ? (
+        <div className={cn("grid min-h-0 flex-1 auto-rows-fr gap-3", grid(p.tiles.length))}>
+          {p.tiles.map((tile) => (
+            <CallTile key={tile.pid} tile={tile} />
+          ))}
+        </div>
+      ) : (
+        /* A screen in the middle, the people beside it: a column on a
+         * wide window, a row under it on a narrow one. */
+        <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+          <Stage screen={share} />
+          <aside
+            data-call-strip=""
+            className="flex shrink-0 gap-3 overflow-auto max-lg:h-32 lg:w-60 lg:flex-col"
+          >
+            {p.tiles.map((tile) => (
+              <div key={tile.pid} className="grid aspect-video shrink-0 max-lg:h-full lg:w-full">
+                <CallTile tile={tile} />
+              </div>
+            ))}
+          </aside>
+        </div>
+      )}
 
-      <footer className="flex items-center justify-center gap-3 pb-1">
-        <Button
-          variant="secondary"
-          size="lg"
-          className="size-12 rounded-full p-0"
-          aria-pressed={p.micOff}
-          aria-label={p.micOff ? t("calls.unmute") : t("calls.mute")}
-          title={p.micOff ? t("calls.unmute") : t("calls.mute")}
+      <footer className="flex flex-wrap items-center justify-center gap-3 pb-1">
+        <Control
+          label={p.micOff ? t("calls.unmute") : t("calls.mute")}
+          pressed={p.micOff}
+          icon={p.micOff ? MicOff01Icon : Mic01Icon}
           onClick={p.onMic}
-        >
-          <HugeiconsIcon icon={p.micOff ? MicOff01Icon : Mic01Icon} size={20} />
-        </Button>
-        <Button
-          variant="secondary"
-          size="lg"
-          className="size-12 rounded-full p-0"
-          aria-pressed={p.cameraOff}
-          aria-label={p.cameraOff ? t("calls.cameraOn") : t("calls.cameraOff")}
-          title={p.cameraOff ? t("calls.cameraOn") : t("calls.cameraOff")}
+        />
+        <Control
+          label={p.cameraOff ? t("calls.cameraOn") : t("calls.cameraOff")}
+          pressed={p.cameraOff}
+          icon={p.cameraOff ? CameraOff02Icon : CameraVideoIcon}
           onClick={p.onCamera}
-        >
-          <HugeiconsIcon icon={p.cameraOff ? CameraOff02Icon : CameraVideoIcon} size={20} />
-        </Button>
-        <Button
-          variant="destructive"
-          size="lg"
-          className="size-12 rounded-full p-0"
-          aria-label={t("calls.hangUp")}
-          title={t("calls.hangUp")}
-          onClick={p.onLeave}
-        >
-          <HugeiconsIcon icon={CallEnd01Icon} size={20} />
-        </Button>
+        />
+        <Control
+          label={p.background === "black" ? t("calls.backgroundShow") : t("calls.backgroundHide")}
+          pressed={p.background === "black"}
+          icon={BackgroundIcon}
+          onClick={p.onBackground}
+        />
+        <Control
+          label={p.sharing ? t("calls.shareStop") : t("calls.share")}
+          pressed={p.sharing}
+          icon={p.sharing ? ComputerRemoveIcon : ComputerScreenShareIcon}
+          onClick={p.onShare}
+        />
+        {p.actions}
+        <Control label={t("calls.hangUp")} icon={CallEnd01Icon} onClick={p.onLeave} destructive />
       </footer>
+      {p.children}
     </div>
   );
 }

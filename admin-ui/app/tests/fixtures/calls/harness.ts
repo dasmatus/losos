@@ -4,6 +4,7 @@
  * to it, which is what an SFU (or anyone between) is left with. */
 
 import { CallSession, type KeyMessage, type Member } from '../../../src/calls/session';
+import { Podcast } from '../../../src/calls/podcast';
 import type { WorkerStats } from '../../../src/calls/e2ee-protocol';
 
 interface Joined {
@@ -15,10 +16,12 @@ const w = window as unknown as Record<string, unknown>;
 const state: {
   members: Member[];
   you: number;
+  live: number | null;
   stats: WorkerStats | null;
   states: string[];
   keysIn: number;
-} = { members: [], you: -1, stats: null, states: [], keysIn: 0 };
+  podcast: string[];
+} = { members: [], you: -1, live: null, stats: null, states: [], keysIn: 0, podcast: [] };
 w.callState = state;
 
 w.startCall = async (opts: {
@@ -57,15 +60,18 @@ w.startCall = async (opts: {
     },
     events: {
       state: (s, reason) => state.states.push(reason ? `${s}:${reason}` : s),
-      members: (m, you) => {
+      members: (m, you, live) => {
         state.members = m;
         state.you = you;
+        state.live = live;
       },
-      track: (pid, stream) => {
-        let v = document.getElementById(`p${pid}`) as HTMLVideoElement | null;
+      track: (pid, stream, screen) => {
+        const id = screen ? `p${pid}-screen` : `p${pid}`;
+        streams.set(id, stream);
+        let v = document.getElementById(id) as HTMLVideoElement | null;
         if (!v) {
           v = document.createElement('video');
-          v.id = `p${pid}`;
+          v.id = id;
           v.autoplay = true;
           v.muted = true;
           v.playsInline = true;
@@ -78,12 +84,70 @@ w.startCall = async (opts: {
   });
   session.start();
   w.session = session;
+  w.local = local;
+  w.callOpts = opts;
   const mine = document.createElement('video');
   mine.id = 'local';
   mine.autoplay = true;
   mine.muted = true;
   mine.srcObject = local;
   document.body.append(mine);
+};
+
+const streams = new Map<string, MediaStream>();
+
+/* A screen to share: a canvas in one flat colour with a white bar that
+ * moves, so the encoder keeps sending frames. */
+w.share = async (colour: string) => {
+  const c = document.createElement('canvas');
+  c.width = 640;
+  c.height = 360;
+  const g = c.getContext('2d');
+  if (!g) throw new Error('no canvas');
+  let x = 0;
+  const paint = (): void => {
+    g.fillStyle = colour;
+    g.fillRect(0, 0, 640, 360);
+    g.fillStyle = '#fff';
+    g.fillRect(x, 0, 8, 360);
+    x = (x + 8) % 640;
+  };
+  paint();
+  setInterval(paint, 50);
+  const track = c.captureStream(20).getVideoTracks()[0];
+  const mine = document.createElement('video');
+  mine.id = 'local-screen';
+  mine.autoplay = true;
+  mine.muted = true;
+  mine.srcObject = new MediaStream(track ? [track] : []);
+  document.body.append(mine);
+  await (w.session as CallSession).setScreenTrack(track ?? null);
+};
+
+/* Podcast mode from this tab, to `rtmp`, with every member it receives in
+ * the grid. */
+w.goLive = (rtmp: string, title: string) => {
+  const session = w.session as CallSession;
+  const opts = w.callOpts as { socket: string; call: string; token: string; server: string };
+  const podcast = new Podcast(
+    () =>
+      state.members.map((m) => {
+        const stream = m.pid === state.you ? (w.local as MediaStream) : streams.get(`p${m.pid}`);
+        return { pid: m.pid, name: m.user, ...(stream ? { stream } : {}) };
+      }),
+    () => ({ title, subtitle: 'LosOS calls', overlay: null, screen: null }),
+    {
+      live: () => state.podcast.push('live'),
+      ended: (error) => state.podcast.push(error ? `ended:${error}` : 'ended'),
+    },
+  );
+  w.podcast = podcast;
+  podcast.start(opts.socket.replace(/\/ws$/, '/stream'), {
+    call: opts.call,
+    pid: session.pid,
+    openid: { access_token: opts.token, matrix_server_name: opts.server },
+    rtmp,
+  });
 };
 
 /* A remote (or the local, 'local') picture as 16x12 grey levels, for the
