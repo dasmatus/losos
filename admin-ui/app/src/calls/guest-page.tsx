@@ -242,7 +242,7 @@ function GuestCall({
   });
   const shown: Screen[] = members.list.flatMap((m): Screen[] => {
     const self = m.pid === members.you;
-    const stream = self ? ownScreen : (screens.get(m.pid) ?? null);
+    const stream = self ? ownScreen : m.screen === true ? (screens.get(m.pid) ?? null) : null;
     return stream === null ? [] : [{ pid: m.pid, name: named(m), stream, self }];
   });
   const others = members.list.filter((m) => m.pid !== members.you).length;

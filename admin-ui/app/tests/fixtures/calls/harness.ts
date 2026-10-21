@@ -128,6 +128,11 @@ w.share = async (colour: string) => {
   await (w.session as CallSession).setScreenTrack(track ?? null);
 };
 
+w.unshare = async () => {
+  document.getElementById('local-screen')?.remove();
+  await (w.session as CallSession).setScreenTrack(null);
+};
+
 /* Podcast mode from this tab, to `rtmp`, with every member it receives in
  * the grid. */
 /* Hand this member an invite secret, as the invite button does. */

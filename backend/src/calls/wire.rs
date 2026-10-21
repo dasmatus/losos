@@ -9,7 +9,8 @@
 //!                                    ◄──   answer {sdp}
 //!                                    ◄──   offer {sdp}  (someone's tracks)
 //!   answer {sdp}                     ──►
-//!                                    ◄──   members {members, live}  (on every join/leave/stream)
+//!                                    ◄──   members {members, live}  (on every join/leave/stream/share)
+//!   screen {on}                      ──►   (a share starts or stops)
 //!   relay {to, body}                 ──►
 //!                                    ◄──   relay {from, body}  (guest key agreement)
 //! ```
@@ -52,6 +53,12 @@ pub enum ClientMsg {
     Answer {
         sdp: String,
     },
+    /// The page started or stopped sharing its screen. The screen's track
+    /// only goes quiet when a share stops, which a receiver cannot tell
+    /// from a frozen picture, so the others learn it from `members`.
+    Screen {
+        on: bool,
+    },
     Leave,
 }
 
@@ -64,6 +71,9 @@ pub struct MemberInfo {
     /// A guest's name; absent for the room's own people.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guest: Option<String>,
+    /// Whether this member is sharing their screen now.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub screen: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -131,6 +141,8 @@ mod tests {
         let m: ClientMsg =
             serde_json::from_str(r#"{"type":"join","call":"c","device":"D"}"#).unwrap();
         assert!(matches!(m, ClientMsg::Join { ref device, .. } if device == "D"));
+        let m: ClientMsg = serde_json::from_str(r#"{"type":"screen","on":true}"#).unwrap();
+        assert!(matches!(m, ClientMsg::Screen { on: true }));
         let m: ClientMsg = serde_json::from_str(r#"{"type":"leave"}"#).unwrap();
         assert!(matches!(m, ClientMsg::Leave));
         assert!(
@@ -145,12 +157,28 @@ mod tests {
                 pid: 3,
                 user: "@m:b".into(),
                 device: "D".into(),
+                screen: false,
             }],
         })
         .unwrap();
         assert_eq!(
             s,
             r#"{"type":"joined","you":3,"video":true,"members":[{"pid":3,"user":"@m:b","device":"D"}]}"#
+        );
+        let s = serde_json::to_string(&ServerMsg::Members {
+            members: vec![MemberInfo {
+                guest: None,
+                pid: 4,
+                user: "@e:b".into(),
+                device: "E".into(),
+                screen: true,
+            }],
+            live: None,
+        })
+        .unwrap();
+        assert_eq!(
+            s,
+            r#"{"type":"members","members":[{"pid":4,"user":"@e:b","device":"E","screen":true}],"live":null}"#
         );
         assert_eq!(stream_id(12), "p12");
         assert_eq!(screen_stream_id(12), "p12-screen");

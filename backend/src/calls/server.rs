@@ -298,6 +298,7 @@ async fn signal(
                     Ok(ClientMsg::Offer { sdp }) => Command::Offer { pid, sdp },
                     Ok(ClientMsg::Answer { sdp }) => Command::Answer { pid, sdp },
                     Ok(ClientMsg::Relay { to, body }) => Command::Relay { from: pid, to, body },
+                    Ok(ClientMsg::Screen { on }) => Command::Screen { pid, on },
                     Ok(ClientMsg::Leave) => break,
                     Ok(ClientMsg::Join { .. }) | Ok(ClientMsg::Guest { .. }) | Err(_) => {
                         send(&mut session, &error("badMessage")).await;

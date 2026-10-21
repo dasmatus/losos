@@ -268,6 +268,10 @@ await check('a shared screen reaches the others as a track of its own, beside th
   // The camera keeps coming while the screen is shared.
   await until("matus's camera still at eva", async () => (await distance(matus, eva, matusPid)) < SAME, 15000);
   assert.equal((await stats(eva)).refused, 0, 'the screen opens with the same keys');
+  const sharing = async () => (await members(eva)).find((m) => m.pid === matusPid)?.screen === true;
+  assert.ok(await sharing(), 'the others are told matus is sharing');
+  await matus.evaluate(() => window.unshare());
+  await until('eva told the share stopped', async () => !(await sharing()), 15000);
 });
 
 const rtmpPort = 20000 + Math.floor(Math.random() * 20000);

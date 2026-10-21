@@ -18,6 +18,9 @@ export interface Member {
   device: string;
   /* A guest's name; absent for the room's own people. */
   guest?: string;
+  /* Sharing their screen now. A stopped share only leaves its track quiet,
+   * so the SFU passes on what the sharing page says. */
+  screen?: boolean;
 }
 
 export interface Sender {
@@ -467,6 +470,7 @@ export class CallSession {
   /* Share a screen, or stop sharing with null. */
   async setScreenTrack(track: MediaStreamTrack | null): Promise<void> {
     await this.screenSender?.replaceTrack(track);
+    this.signal({ type: 'screen', on: track !== null });
   }
 
   private fail(reason: string): void {

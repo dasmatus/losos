@@ -71,6 +71,11 @@ pub enum Command {
     Leave {
         pid: ParticipantId,
     },
+    /// `pid` started (`on`) or stopped sharing their screen.
+    Screen {
+        pid: ParticipantId,
+        on: bool,
+    },
     /// `pid`, who is `user`, starts (`on`) or stops streaming the call.
     Broadcast {
         call: CallId,
@@ -299,6 +304,7 @@ impl Sfu {
                             pending: None,
                             tracks_in: Vec::new(),
                             tracks_out: Vec::new(),
+                            screen: false,
                         };
                         let members = self.members(&call);
                         let _ = client.out.send(ServerMsg::Joined {
@@ -331,6 +337,16 @@ impl Sfu {
                     c.rtc.disconnect();
                 }
                 self.reap();
+            }
+            Command::Screen { pid, on } => {
+                let Some(c) = self.client(pid) else {
+                    return;
+                };
+                if c.screen != on {
+                    c.screen = on;
+                    let call = c.call.clone();
+                    self.announce(&call);
+                }
             }
             Command::Relay { from, to, body } => {
                 let Some(call) = self
@@ -407,6 +423,7 @@ impl Sfu {
                         user: m.user.to_string(),
                         device: m.device.clone(),
                         guest: m.guest.as_ref().map(|g| g.name.clone()),
+                        screen: self.clients.iter().any(|c| c.pid == *pid && c.screen),
                     })
                     .collect()
             })
@@ -607,6 +624,8 @@ struct Client {
     pending: Option<SdpPendingOffer>,
     tracks_in: Vec<Arc<TrackIn>>,
     tracks_out: Vec<TrackOut>,
+    /// The page says it is sharing its screen.
+    screen: bool,
 }
 
 impl Client {
