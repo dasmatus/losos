@@ -7,7 +7,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
-import { directPartner, directRooms, isSpace, lastActive, plainBody, ROOM_EVENTS, roomName, spaceChildren, unread, useEmitted } from "./model";
+import { directPartner, directRooms, isSpace, lastActive, memberName, plainBody, ROOM_EVENTS, roomName, spaceChildren, unread, useEmitted } from "./model";
 
 export interface RoomListProps {
   client: MatrixClient;
@@ -33,7 +33,7 @@ function RoomRow({ client, room, current, onOpen, invite }: { client: MatrixClie
   const t = useT();
   const counts = unread(room);
   const active = room.roomId === current;
-  const line = invite === true ? t("chat.list.invitedBy", { name: room.getMember(client.getSafeUserId())?.events.member?.sender?.name ?? "" }) : preview(room);
+  const line = invite === true ? t("chat.list.invitedBy", { name: memberName(room, room.getMember(client.getSafeUserId())?.events.member?.getSender() ?? "") }) : preview(room);
   return (
     <li>
       <button

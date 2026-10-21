@@ -276,6 +276,9 @@ pkgs.testers.nixosTest {
         box.wait_for_open_port(9091)
         box.wait_until_succeeds(f"grep -q \"domain: '{HOST}'\" /run/losos-identity/session.yml")
         matus = sign_in("matus", PASSWORD)
+        code, body = call("/api/account", matus, method="POST",
+                          data={"displayName": "Matus", "email": "matus@mattbox.local"})
+        assert code == 200, (code, body)
         code, body = call(
             "/api/people",
             matus,
