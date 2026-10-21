@@ -11,7 +11,7 @@
 //!
 //! ```text
 //!   page                                      SFU
-//!   {call, pid, openid, rtmp}           ──►
+//!   {call, pid, rtmp}                   ──►
 //!                                       ◄──   {"type":"live"}
 //!   WebM chunks, binary frames          ──►   ffmpeg stdin → rtmp
 //!                                       ◄──   {"type":"ended","error"?}
@@ -20,7 +20,7 @@
 //! The address carries the stream key, so it never goes into a log line:
 //! ffmpeg's own errors are logged with the address cut out.
 
-use super::admit::{CallId, Refusal};
+use super::admit::{CallId, Refusal, UserId};
 use super::server::State;
 use super::sfu::Command;
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -45,7 +45,6 @@ const FLUSH_WITHIN: Duration = Duration::from_secs(10);
 struct Hello {
     call: String,
     pid: u64,
-    openid: super::openid::OpenIdToken,
     rtmp: String,
 }
 
@@ -130,12 +129,13 @@ pub async fn ws(
     req: HttpRequest,
     body: web::Payload,
 ) -> actix_web::Result<HttpResponse> {
+    let user = state.resolve.resolve(super::person::remote_user(&req));
     let (response, session, stream) = actix_ws::handle(&req, body)?;
     let stream = stream
         .max_frame_size(MAX_CHUNK)
         .aggregate_continuations()
         .max_continuation_size(MAX_CHUNK);
-    actix_web::rt::spawn(serve(state.into_inner(), session, stream));
+    actix_web::rt::spawn(serve(state.into_inner(), session, stream, user));
     Ok(response)
 }
 
@@ -156,6 +156,7 @@ async fn serve(
     state: Arc<State>,
     mut session: Session,
     mut stream: actix_ws::AggregatedMessageStream,
+    user: Result<UserId, Refusal>,
 ) {
     let Some(ffmpeg) = state.ffmpeg.clone() else {
         return end(session, Some("noStreaming")).await;
@@ -173,12 +174,7 @@ async fn serve(
     }
     let checked = async {
         let call = CallId::parse(&hello.call)?;
-        let resolve = state.resolve.clone();
-        let openid = hello.openid.clone();
-        let user = web::block(move || resolve.resolve(&openid))
-            .await
-            .map_err(|_| Refusal::Unauthenticated)??;
-        Ok::<_, Refusal>((call, user))
+        Ok::<_, Refusal>((call, user?))
     }
     .await;
     let (call, user) = match checked {

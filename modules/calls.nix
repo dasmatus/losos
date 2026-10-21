@@ -10,13 +10,14 @@
 # The SFU forwards frames it cannot read. Every frame is encrypted in the
 # sender's browser (admin-ui/app/src/calls/e2ee.ts) with keys the members
 # hand each other over Olm, so the SFU, the box and the network see only
-# ciphertext. The SFU only decides who is in which call: a person proves who
-# they are with a Matrix OpenID token, which it checks with Dendrite on
-# loopback, and joins only a call their room was invited to.
+# ciphertext. The SFU only decides who is in which call: nginx asks LosOS
+# Login before every request and hands it the person as Remote-User, whose
+# Matrix id is @<name>:<server name>, and that person joins only a call
+# their room was invited to. Chat does not federate, and Dendrite answers
+# no Matrix OpenID check with federation off, so a token would add nothing.
 #
-# It runs as `shared`, which may open Dendrite's port (modules/chat.nix's
-# owner rule), keeps nothing on disk, and answers HTTP on a unix socket only
-# nginx can open.
+# It runs as `shared`, keeps nothing on disk, and answers HTTP on a unix
+# socket only nginx can open, so a Remote-User it reads is nginx's.
 #
 # Where the media goes depends on the edge. A box that tunnels through one
 # (losos.proxy.enable) opens no port for calls either: losos-calls keeps one
@@ -56,8 +57,6 @@ let
     "unix:${socket}"
     "--server-name"
     chat.serverName
-    "--homeserver"
-    "127.0.0.1:${toString chat.port}"
     # Podcast mode: a member's recording of the call, to an RTMP address.
     "--ffmpeg"
     "${pkgs.ffmpeg-headless}/bin/ffmpeg"
@@ -187,8 +186,12 @@ in
         extraConfig = ''
           ${lanOnly}
           auth_request /internal/losos-calls-authz;
+          # The person LosOS Login signed in, the only one the SFU takes
+          # (backend/src/calls/person.rs). Set on every request, so a
+          # client's own Remote-User never reaches it.
+          auth_request_set $losos_calls_user $upstream_http_remote_user;
           proxy_set_header Host $host;
-          proxy_set_header Remote-User "";
+          proxy_set_header Remote-User $losos_calls_user;
           proxy_set_header Remote-Groups "";
           proxy_set_header X-Losos-As "";
           client_max_body_size 64k;

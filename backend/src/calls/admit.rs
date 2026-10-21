@@ -143,7 +143,7 @@ pub enum Refusal {
     NoSuchCall,
     NotInvited,
     Full,
-    /// The OpenID token did not check out.
+    /// nginx named nobody LosOS Login signed in.
     Unauthenticated,
     /// The participant asking is not this person in this call.
     NotMember,

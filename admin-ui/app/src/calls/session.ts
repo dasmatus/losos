@@ -1,8 +1,9 @@
 /* One browser's side of a call: the signalling socket to the box's SFU, the
  * peer connection, the e2ee worker, and the key schedule.
  *
- * Nothing here knows Matrix. Who this browser is comes in as an OpenID
- * token and a device id, and the keys go out through a KeyChannel, which
+ * Nothing here knows Matrix. Who this browser is, nginx tells the SFU from
+ * LosOS Login; the page adds its device id, and the keys go out through a
+ * KeyChannel, which
  * the chat page implements over Olm to-device messages (matrix-keys.ts).
  * The protocol with the SFU is in backend/src/calls/wire.rs.
  */
@@ -10,11 +11,6 @@
 import { fromBase64, randomKey, SendKey, toBase64 } from './e2ee';
 import type { TransformOptions, WorkerIn, WorkerOut, WorkerStats } from './e2ee-protocol';
 import { GuestKeys, parseSecret, type RelayBody } from './guests';
-
-export interface OpenIdToken {
-  access_token: string;
-  matrix_server_name: string;
-}
 
 export interface Member {
   pid: number;
@@ -64,8 +60,8 @@ export interface CallOptions {
   /* `wss://<box>/calls/api/ws`, or a guest's `/calls/guest/ws`. */
   socket: string;
   call: string;
-  /* A member's OpenID token and device; a guest has neither. */
-  openid?: OpenIdToken;
+  /* A member's device; a guest has none. Who the member is, nginx tells
+   * the SFU from LosOS Login. */
   device?: string;
   /* A guest's side: the invite from the link, the name it gave and the
    * secret from the link's fragment. */
@@ -186,7 +182,7 @@ export class CallSession {
       this.signal(
         g
           ? { type: 'guest', call: this.opts.call, invite: g.invite, name: g.name }
-          : { type: 'join', call: this.opts.call, openid: this.opts.openid, device: this.opts.device },
+          : { type: 'join', call: this.opts.call, device: this.opts.device },
       );
     ws.onmessage = (ev) => {
       let m: { type: string; [k: string]: unknown };

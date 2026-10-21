@@ -13,7 +13,8 @@
 
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
+import { connect } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
@@ -55,16 +56,6 @@ const worker = await bundle(here('../src/calls/e2ee-worker.ts'));
 const listen = (server) =>
   new Promise((ok) => server.listen(0, '127.0.0.1', () => ok(server.address().port)));
 
-// A homeserver that knows three OpenID tokens.
-const TOKENS = { 'tok-matus': '@matus:calls.test', 'tok-eva': '@eva:calls.test', 'tok-jan': '@jan:calls.test' };
-const homeserver = createServer((req, res) => {
-  const u = new URL(req.url, 'http://x');
-  const sub = u.pathname === '/_matrix/federation/v1/openid/userinfo' && TOKENS[u.searchParams.get('access_token')];
-  res.writeHead(sub ? 200 : 401, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(sub ? { sub } : { errcode: 'M_UNKNOWN_TOKEN' }));
-});
-const hsPort = await listen(homeserver);
-
 const pages = createServer((req, res) => {
   const body = { '/': '<!doctype html><title>call</title><script type="module" src="/harness.js"></script>', '/harness.js': harness, '/e2ee-worker.js': worker }[req.url];
   if (body === undefined) {
@@ -105,17 +96,51 @@ const relayToken = join(mkdtempSync(join(tmpdir(), 'losos-calls-edge-')), 'token
 writeFileSync(relayToken, 'box-token\n');
 const sfu = spawn(
   BIN,
-  ['--listen', `127.0.0.1:${sfuPort}`, '--udp-port', String(udpPort), '--address', ADDRESS, '--server-name', SERVER, '--homeserver', `127.0.0.1:${hsPort}`, '--tap', tap, '--ffmpeg', process.env.LOSOS_FFMPEG ?? 'ffmpeg', '--registrar', `http://127.0.0.1:${edgePort}`, '--relay-id', 'box-1', '--relay-token-file', relayToken],
+  ['--listen', `127.0.0.1:${sfuPort}`, '--udp-port', String(udpPort), '--address', ADDRESS, '--server-name', SERVER, '--tap', tap, '--ffmpeg', process.env.LOSOS_FFMPEG ?? 'ffmpeg', '--registrar', `http://127.0.0.1:${edgePort}`, '--relay-id', 'box-1', '--relay-token-file', relayToken],
   { stdio: ['ignore', 'inherit', 'inherit'] },
 );
-const base = `http://127.0.0.1:${sfuPort}/calls/api`;
 for (let i = 0; ; i++) {
   try {
-    if ((await fetch(`${base}/health`)).ok) break;
+    if ((await fetch(`http://127.0.0.1:${sfuPort}/calls/api/health`)).ok) break;
   } catch {}
   if (i > 100) throw new Error('losos-calls did not start');
   await new Promise((r) => setTimeout(r, 100));
 }
+
+/* nginx in front of the SFU, as modules/calls.nix has it: it names the
+ * person LosOS Login signed in as Remote-User and drops any the client sent.
+ * Here a path `/as/<name>/` stands in for that sign-in; anything else, a
+ * guest's socket among it, reaches the SFU with nobody named. */
+const forward = (req) => {
+  const m = /^\/as\/([^/]+)(\/.*)$/.exec(req.url);
+  const headers = { ...req.headers };
+  delete headers['remote-user'];
+  if (m) headers['remote-user'] = decodeURIComponent(m[1]);
+  return { path: m ? m[2] : req.url, headers };
+};
+const nginx = createServer((req, res) => {
+  const { path, headers } = forward(req);
+  const up = httpRequest({ host: '127.0.0.1', port: sfuPort, path, method: req.method, headers }, (r) => {
+    res.writeHead(r.statusCode, r.headers);
+    r.pipe(res);
+  });
+  up.on('error', () => res.destroy());
+  req.pipe(up);
+});
+nginx.on('upgrade', (req, socket, head) => {
+  const { path, headers } = forward(req);
+  const up = connect(sfuPort, '127.0.0.1', () => {
+    const lines = Object.entries(headers).map(([k, v]) => `${k}: ${v}`);
+    up.write(`${req.method} ${path} HTTP/1.1\r\n${lines.join('\r\n')}\r\n\r\n`);
+    up.write(head);
+    up.pipe(socket);
+    socket.pipe(up);
+  });
+  up.on('error', () => socket.destroy());
+  socket.on('error', () => up.destroy());
+});
+const front = `127.0.0.1:${await listen(nginx)}`;
+const api = (name) => `http://${front}${name ? `/as/${name}` : ''}/calls/api`;
 
 const browser = await launch({
   args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'],
@@ -143,22 +168,22 @@ const until = async (what, fn, ms = 20000) => {
   }
 };
 
-const create = async (token, invited) =>
-  fetch(`${base}/calls`, {
+const create = async (name, invited) =>
+  fetch(`${api(name)}/calls`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ openid: { access_token: token, matrix_server_name: SERVER }, room: '!room:calls.test', invited, video: true }),
+    body: JSON.stringify({ room: '!room:calls.test', invited, video: true }),
   });
 
 const ctx = await browser.newContext();
-const tab = async (token, user, device, extra = {}) => {
+const tab = async (name, user, device, extra = {}) => {
   const p = await ctx.newPage();
   p.on('pageerror', (e) => console.log(`[${user}] ${e}`));
   await p.goto(`http://127.0.0.1:${pagePort}/`);
   await p.waitForFunction(() => typeof window.startCall === 'function');
   await p.evaluate(
     (o) => window.startCall(o),
-    { socket: `ws://127.0.0.1:${sfuPort}/calls/api/ws`, call, token, server: SERVER, me: { user, device }, ...extra },
+    { socket: `ws://${front}/as/${name}/calls/api/ws`, call, me: { user, device }, ...extra },
   );
   return p;
 };
@@ -168,19 +193,18 @@ const guestTab = async (invite, name, secret) => {
   await p.goto(`http://127.0.0.1:${pagePort}/`);
   await p.waitForFunction(() => typeof window.startCall === 'function');
   await p.evaluate((o) => window.startCall(o), {
-    socket: `ws://127.0.0.1:${sfuPort}/calls/guest/ws`,
+    socket: `ws://${front}/calls/guest/ws`,
     call,
     guest: { invite, name, secret },
   });
   return p;
 };
 const secret = () => randomBytes(32).toString('base64url');
-const makeInvite = async (token, p) => {
-  const r = await fetch(`${base}/invites`, {
+const makeInvite = async (name, p) => {
+  const r = await fetch(`${api(name)}/invites`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      openid: { access_token: token, matrix_server_name: SERVER },
       call,
       pid: await p.evaluate(() => window.session.pid),
     }),
@@ -202,8 +226,8 @@ const SAME = 20;
 
 let call;
 await check('only a local person starts a call, and only the invited join', async () => {
-  assert.equal((await create('tok-nobody', [])).status, 401);
-  const r = await create('tok-matus', ['@eva:calls.test', '@jan:calls.test']);
+  assert.equal((await create(null, [])).status, 401);
+  const r = await create('matus', ['@eva:calls.test', '@jan:calls.test']);
   assert.equal(r.status, 200);
   call = (await r.json()).call;
   assert.match(call, /^[0-9a-f]{32}$/);
@@ -218,8 +242,8 @@ await ear.evaluate(() => window.overhear());
 let matus;
 let eva;
 await check('two people see each other through the SFU, decrypted', async () => {
-  matus = await tab('tok-matus', '@matus:calls.test', 'MATUSDEV');
-  eva = await tab('tok-eva', '@eva:calls.test', 'EVADEV');
+  matus = await tab('matus', '@matus:calls.test', 'MATUSDEV');
+  eva = await tab('eva', '@eva:calls.test', 'EVADEV');
   await until('both in the member list', async () => (await members(matus)).length === 2 && (await members(eva)).length === 2);
   const evaPid = await pidOf(matus, '@eva:calls.test');
   const matusPid = await pidOf(eva, '@matus:calls.test');
@@ -286,13 +310,10 @@ await check('a stranger is turned away at the socket', async () => {
   const p = await ctx.newPage();
   await p.goto(`http://127.0.0.1:${pagePort}/`);
   await p.waitForFunction(() => typeof window.startCall === 'function');
-  // Mallory's token is valid on the homeserver, but she was not invited.
-  TOKENS['tok-mallory'] = '@mallory:calls.test';
+  // Mallory is signed in to the box, but she was not invited.
   await p.evaluate((o) => window.startCall(o), {
-    socket: `ws://127.0.0.1:${sfuPort}/calls/api/ws`,
+    socket: `ws://${front}/as/mallory/calls/api/ws`,
     call,
-    token: 'tok-mallory',
-    server: SERVER,
     me: { user: '@mallory:calls.test', device: 'M' },
   });
   await until('refused', () => p.evaluate(() => window.callState.states.includes('failed:notInvited')));
@@ -301,7 +322,7 @@ await check('a stranger is turned away at the socket', async () => {
 });
 
 await check('a member without the keys gets frames it cannot open', async () => {
-  const jan = await tab('tok-jan', '@jan:calls.test', 'JANDEV', { dropKeys: true });
+  const jan = await tab('jan', '@jan:calls.test', 'JANDEV', { dropKeys: true });
   await until('jan in', async () => (await members(matus)).length === 3);
   const evaPid = await pidOf(jan, '@eva:calls.test');
   await new Promise((r) => setTimeout(r, 5000));
@@ -322,7 +343,7 @@ await check('after a leave, the others rotate and still see each other', async (
 });
 
 await check('someone who joins later sees everyone, on keys that open nothing earlier', async () => {
-  const jan = await tab('tok-jan', '@jan:calls.test', 'JANDEV2');
+  const jan = await tab('jan', '@jan:calls.test', 'JANDEV2');
   await until('jan in', async () => (await members(jan)).length === 3);
   const evaPid = await pidOf(jan, '@eva:calls.test');
   const matusPid = await pidOf(jan, '@matus:calls.test');
@@ -339,7 +360,7 @@ let zoePid;
 const matusAt = await pidOf(eva, '@matus:calls.test');
 const evaAt = await pidOf(matus, '@eva:calls.test');
 await check('a guest link comes from the edge, and a guest holding its secret sees and is seen', async () => {
-  const made = await makeInvite('tok-matus', matus);
+  const made = await makeInvite('matus', matus);
   assert.equal(made.status, 200, JSON.stringify(made.body));
   const url = new URL(made.body.url);
   const invite = url.searchParams.get('invite');
@@ -347,8 +368,9 @@ await check('a guest link comes from the edge, and a guest holding its secret se
   assert.equal(url.searchParams.get('call'), call);
   const ask = asked.at(-1);
   assert.deepEqual(ask, { appliance_id: 'box-1', token: 'box-token', call, invite }, 'the edge is asked for this call only');
-  // A stranger's token makes no link.
-  assert.equal((await makeInvite('tok-nobody', matus)).status, 401);
+  // Nobody signed in makes no link, and someone not in the call neither.
+  assert.equal((await makeInvite(null, matus)).status, 401);
+  assert.equal((await makeInvite('mallory', matus)).status, 403);
   const s = secret();
   // Matus keeps the secret and hands it to Eva over the key channel.
   await matus.evaluate((s) => window.addGuestSecret(s), s);
@@ -378,7 +400,7 @@ await check('a guest link comes from the edge, and a guest holding its secret se
 });
 
 await check('a guest without the secret gets in through the box but sees and shows nothing', async () => {
-  const made = await makeInvite('tok-eva', eva);
+  const made = await makeInvite('eva', eva);
   assert.equal(made.status, 200);
   const invite = new URL(made.body.url).searchParams.get('invite');
   // A link with someone else's secret after the `#`: what the box and the
@@ -492,7 +514,7 @@ await check('the tapped frames are AES-GCM under keys only the members had', asy
 await browser.close();
 sfu.kill();
 edge.close();
-homeserver.close();
+nginx.close();
 pages.close();
 console.log(failed ? 'calls: FAILED' : `calls: ${checks.length} passed`);
 process.exit(failed ? 1 : 0);

@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { segmenterQuiet } from "./vite.segmenter-quiet";
 
 /* The guest call page (guest.html, src/calls/guest-main.tsx), built on its
  * own under /calls/guest/ after the main build. nginx serves this folder to
@@ -13,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), segmenterQuiet()],
   base: "/calls/guest/",
   resolve: {
     alias: [{ find: /^@\//, replacement: "/src/" }],

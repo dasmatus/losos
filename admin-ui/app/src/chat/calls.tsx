@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { LiveStreaming02Icon, PodcastIcon, UserAdd01Icon } from "@hugeicons/core-free-icons";
 import { Badge } from "@/components/ui/badge";
-import { CallSession, canEncrypt, type KeyChannel, type KeyMessage, type Member, type OpenIdToken } from "@/calls/session";
+import { CallSession, canEncrypt, type KeyChannel, type KeyMessage, type Member } from "@/calls/session";
 import type { WorkerStats } from "@/calls/e2ee-protocol";
 import { LocalMedia, type Background } from "@/calls/local";
 import { Podcast, type PodcastSource } from "@/calls/podcast";
@@ -135,21 +135,12 @@ async function openMedia(video: boolean): Promise<LocalMedia> {
 
 const socketUrl = (path: string): string => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${path}`;
 
-async function openId(client: MatrixClient): Promise<OpenIdToken> {
-  const token = await client.getOpenIdToken();
-  return {
-    access_token: token.access_token,
-    matrix_server_name: token.matrix_server_name,
-  };
-}
-
-async function createCall(client: MatrixClient, room: Room, video: boolean): Promise<string> {
+async function createCall(room: Room, video: boolean): Promise<string> {
   const response = await fetch("/calls/api/calls", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
     body: JSON.stringify({
-      openid: await openId(client),
       room: room.roomId,
       invited: joinedUsers(room),
       video,
@@ -269,7 +260,7 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
   const start = React.useCallback(
     (room: Room, video: boolean) =>
       enter(room.roomId, video, async () => {
-        const call = await createCall(client, room, video);
+        const call = await createCall(room, video);
         await announce(client, room.roomId, call, video, "started");
         return call;
       }),
@@ -365,7 +356,6 @@ function CallScreen({
   }, [media, t]);
 
   React.useEffect(() => {
-    let live = true;
     const stop = (error: unknown): void => {
       if (finished.current) return;
       finished.current = true;
@@ -373,41 +363,36 @@ function CallScreen({
       callbacks.current.onEnd(false);
     };
     warnBackground();
-    // The token is fetched as the call opens rather than kept: it is good
-    // for a short while only, and a page left ringing can outlast it.
-    openId(client)
-      .then((openid) => {
-        if (!live) return;
-        const call = new CallSession({
-          socket: socketUrl("/calls/api/ws"),
-          call: active.call,
-          openid,
-          device: client.getDeviceId() ?? "",
-          local: media.stream,
-          keys: olmKeys(client, active.roomId),
-          events: {
-            state: (next, reason) => {
-              if (next === "connected") setState("connected");
-              if (next === "failed") stop(new CallError(reason ?? "failed"));
-            },
-            members: (list, you, liveBy) => {
-              others.current = list.filter((m) => m.pid !== you).length;
-              setMembers({ list, you, live: liveBy });
-              const keep = (current: Map<number, MediaStream>): Map<number, MediaStream> =>
-                new Map([...current].filter(([pid]) => list.some((m) => m.pid === pid)));
-              setStreams(keep);
-              setScreens(keep);
-            },
-            track: (pid, stream, screen) => (screen ? setScreens : setStreams)((current) => new Map(current).set(pid, stream)),
-            stats: setStats,
+    try {
+      const call = new CallSession({
+        socket: socketUrl("/calls/api/ws"),
+        call: active.call,
+        device: client.getDeviceId() ?? "",
+        local: media.stream,
+        keys: olmKeys(client, active.roomId),
+        events: {
+          state: (next, reason) => {
+            if (next === "connected") setState("connected");
+            if (next === "failed") stop(new CallError(reason ?? "failed"));
           },
-        });
-        session.current = call;
-        call.start();
-      })
-      .catch(stop);
+          members: (list, you, liveBy) => {
+            others.current = list.filter((m) => m.pid !== you).length;
+            setMembers({ list, you, live: liveBy });
+            const keep = (current: Map<number, MediaStream>): Map<number, MediaStream> =>
+              new Map([...current].filter(([pid]) => list.some((m) => m.pid === pid)));
+            setStreams(keep);
+            setScreens(keep);
+          },
+          track: (pid, stream, screen) => (screen ? setScreens : setStreams)((current) => new Map(current).set(pid, stream)),
+          stats: setStats,
+        },
+      });
+      session.current = call;
+      call.start();
+    } catch (error) {
+      stop(error);
+    }
     return () => {
-      live = false;
       if (!finished.current) session.current?.leave();
       session.current = null;
     };
@@ -497,14 +482,12 @@ function CallScreen({
     const call = session.current;
     if (podcast === null || call === null) return;
     setStreaming("starting");
-    openId(client)
-      .then((openid) =>
-        podcast.start(socketUrl("/calls/api/stream"), { call: active.call, pid: call.pid, openid, rtmp: fields.rtmp }),
-      )
-      .catch((error: unknown) => {
-        setStreaming("off");
-        onFail(error);
-      });
+    try {
+      podcast.start(socketUrl("/calls/api/stream"), { call: active.call, pid: call.pid, rtmp: fields.rtmp });
+    } catch (error) {
+      setStreaming("off");
+      onFail(error);
+    }
   };
 
   /* A link from the edge with the call's guest secret after `#`. The
@@ -515,20 +498,19 @@ function CallScreen({
     if (call === null) return;
     setPodcastOpen(false);
     setInvite({ link: null });
-    openId(client)
-      .then(async (openid) => {
-        const response = await fetch("/calls/api/invites", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "same-origin",
-          body: JSON.stringify({ openid, call: active.call, pid: call.pid }),
-        });
-        const body = (await response.json().catch(() => ({}))) as { url?: string; error?: string };
-        if (!response.ok || typeof body.url !== "string") throw new CallError(body.error ?? `HTTP ${response.status}`);
-        const secret = call.guestSecret ?? newSecret();
-        await call.addGuestSecret(secret);
-        setInvite({ link: `${body.url}#${secret}` });
-      })
+    (async () => {
+      const response = await fetch("/calls/api/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ call: active.call, pid: call.pid }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (!response.ok || typeof body.url !== "string") throw new CallError(body.error ?? `HTTP ${response.status}`);
+      const secret = call.guestSecret ?? newSecret();
+      await call.addGuestSecret(secret);
+      setInvite({ link: `${body.url}#${secret}` });
+    })()
       .catch((error: unknown) => {
         setInvite(null);
         const code = error instanceof Error ? error.message : "";

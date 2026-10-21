@@ -481,12 +481,21 @@ pkgs.testers.nixosTest {
         assert call("/calls/api/health", extra=f"-H 'Authorization: Bearer {spare}'")[0] == 401
         code, body = call("/calls/api/health", matus)
         assert code == 200 and body == "ok", (code, body)
-        # A call is made with an OpenID token the homeserver vouches for,
-        # never with a made-up one.
-        code, body = call("/calls/api/calls", matus, method="POST",
-                          data={"openid": {"access_token": "made-up", "matrix_server_name": HOST},
-                                "room": "!r:mattbox.local", "invited": [], "video": True})
+        # The SFU takes the person LosOS Login signed in from nginx, and
+        # nobody else: a Remote-User the client sends is no sign-in, and
+        # beside a real one it is replaced.
+        room = {"room": "!r:mattbox.local", "invited": [], "video": True}
+        code, body = call("/calls/api/calls", method="POST", data=room,
+                          extra="-H 'Remote-User: matus'")
         assert code == 401, (code, body)
+        code, body = call("/calls/api/calls", matus, method="POST", data=room,
+                          extra="-H 'Remote-User: eva'")
+        assert code == 200, (code, body)
+        made = json.loads(body)["call"]
+        box.wait_until_succeeds(
+            f"journalctl -u losos-calls --no-pager | grep -F '@matus:{HOST} started call {made}'",
+            timeout=30,
+        )
 
     # The browsers.
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "${browsers}"

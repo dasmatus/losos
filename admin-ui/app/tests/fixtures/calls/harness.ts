@@ -27,8 +27,6 @@ w.callState = state;
 w.startCall = async (opts: {
   socket: string;
   call: string;
-  token?: string;
-  server?: string;
   me?: Joined;
   dropKeys?: boolean;
   video?: boolean;
@@ -44,7 +42,6 @@ w.startCall = async (opts: {
     ...(opts.guest
       ? { guest: opts.guest }
       : {
-          openid: { access_token: opts.token ?? '', matrix_server_name: opts.server ?? '' },
           device: me.device,
           keys: {
             async send(to, msg) {
@@ -138,7 +135,7 @@ w.addGuestSecret = (secret: string) => (w.session as CallSession).addGuestSecret
 
 w.goLive = (rtmp: string, title: string) => {
   const session = w.session as CallSession;
-  const opts = w.callOpts as { socket: string; call: string; token: string; server: string };
+  const opts = w.callOpts as { socket: string; call: string };
   const podcast = new Podcast(
     () =>
       state.members.map((m) => {
@@ -155,7 +152,6 @@ w.goLive = (rtmp: string, title: string) => {
   podcast.start(opts.socket.replace(/\/ws$/, '/stream'), {
     call: opts.call,
     pid: session.pid,
-    openid: { access_token: opts.token, matrix_server_name: opts.server },
     rtmp,
   });
 };

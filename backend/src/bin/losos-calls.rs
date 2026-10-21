@@ -7,7 +7,7 @@
 
 use anyhow::Context;
 use clap::Parser;
-use losos_ctl::calls::{guests, openid, relay, server, sfu, tap};
+use losos_ctl::calls::{guests, person, relay, server, sfu, tap};
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -34,9 +34,6 @@ struct Cli {
     /// This box's Matrix server name: only its people start calls.
     #[arg(long)]
     server_name: String,
-    /// The homeserver's federation listener, asked who an OpenID token is for.
-    #[arg(long, default_value = "127.0.0.1:8008")]
-    homeserver: SocketAddr,
     /// Take media through the edge's relay at `HOST:PORT`, over QUIC, and
     /// open no UDP port here (`modules/calls.nix` with `losos.proxy` on).
     /// `--address` and `--udp-port` are then unused.
@@ -172,8 +169,7 @@ fn main() -> anyhow::Result<()> {
 
     let state = server::State {
         commands,
-        resolve: Arc::new(openid::Loopback {
-            addr: cli.homeserver,
+        resolve: Arc::new(person::Login {
             server_name: cli.server_name.clone(),
         }),
         ffmpeg: cli.ffmpeg.clone(),

@@ -3,7 +3,7 @@
 //!
 //! ```text
 //!   page                                   SFU
-//!   join {call, openid, device}      ──►
+//!   join {call, device}              ──►
 //!                                    ◄──   joined {you, video, members}
 //!   offer {sdp}  (audio, camera, screen) ──►
 //!                                    ◄──   answer {sdp}
@@ -24,7 +24,6 @@
 //! on while someone shares.
 
 use super::admit::ParticipantId;
-use super::openid::OpenIdToken;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -32,7 +31,6 @@ use serde::{Deserialize, Serialize};
 pub enum ClientMsg {
     Join {
         call: String,
-        openid: OpenIdToken,
         device: String,
     },
     /// A guest's first message, on `/calls/guest/ws`.
@@ -101,7 +99,6 @@ pub enum ServerMsg {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateInvite {
-    pub openid: OpenIdToken,
     pub call: String,
     pub pid: ParticipantId,
 }
@@ -110,7 +107,6 @@ pub struct CreateInvite {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateCall {
-    pub openid: OpenIdToken,
     pub room: String,
     pub invited: Vec<String>,
     pub video: bool,
@@ -132,10 +128,8 @@ mod tests {
 
     #[test]
     fn messages_have_the_documented_shape() {
-        let m: ClientMsg = serde_json::from_str(
-            r#"{"type":"join","call":"c","openid":{"access_token":"t","matrix_server_name":"b"},"device":"D"}"#,
-        )
-        .unwrap();
+        let m: ClientMsg =
+            serde_json::from_str(r#"{"type":"join","call":"c","device":"D"}"#).unwrap();
         assert!(matches!(m, ClientMsg::Join { ref device, .. } if device == "D"));
         let m: ClientMsg = serde_json::from_str(r#"{"type":"leave"}"#).unwrap();
         assert!(matches!(m, ClientMsg::Leave));

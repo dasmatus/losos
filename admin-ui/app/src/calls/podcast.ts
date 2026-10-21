@@ -88,7 +88,7 @@ export class Podcast {
 
   /* Go live: `hello` is what the box needs to know who asks and where to
    * send the stream to. */
-  start(socket: string, hello: { call: string; pid: number; openid: unknown; rtmp: string }): void {
+  start(socket: string, hello: { call: string; pid: number; rtmp: string }): void {
     if (this.disposed || this.ws !== null) return;
     void this.audio.resume().catch(() => undefined);
     const type = pickType();

@@ -138,8 +138,10 @@ and is never served or built by nix.
 - Calls (`modules/calls.nix`, `losos.calls.enable`, only while chat runs):
   `losos-calls` (`backend/src/calls/`, str0m, ICE-lite, VP8 and Opus) is an
   SFU as `shared` on `/run/losos-calls/http.sock` (nginx's group only),
-  `/calls/api/` behind LosOS Login with no spare-key bypass. A person is
-  admitted by a Matrix OpenID token it checks with Dendrite on loopback.
+  `/calls/api/` behind LosOS Login with no spare-key bypass. nginx hands
+  the SFU the signed-in person as `Remote-User` (`calls/person.rs`), the
+  Matrix id `@<name>:<server>`; Dendrite answers no OpenID check with
+  federation off, so calls take no Matrix token.
   Every frame is AES-GCM sealed in the browser by an encoded transform
   (`admin-ui/app/src/calls/e2ee.ts`, worker `e2ee-worker.ts`), sender keys
   ratchet on a join and are replaced on a leave, and travel as Olm

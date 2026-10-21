@@ -1,21 +1,20 @@
 //! The SFU's HTTP side: start a call, and the signalling websocket.
 //!
 //! nginx serves it under `/calls/api/` behind LosOS Login, on a socket only
-//! nginx can open; the SFU then checks the person a second time through the
-//! Matrix OpenID token, because the call is between Matrix people and the
-//! homeserver is what knows them.
+//! nginx can open, and names the person it signed in as `Remote-User`
+//! ([`super::person`]).
 //!
-//! * `POST /calls/api/calls` `{openid, room, invited, video}` → `{call}`
+//! * `POST /calls/api/calls` `{room, invited, video}` → `{call}`
 //! * `GET /calls/api/ws`, a websocket speaking [`super::wire`].
 //! * `GET /calls/api/stream`, podcast mode's websocket ([`super::stream`]).
-//! * `POST /calls/api/invites` `{openid, call, pid}` → `{url}`: a guest
+//! * `POST /calls/api/invites` `{call, pid}` → `{url}`: a guest
 //!   link, made by the box's official edge ([`super::guests`]).
 //! * `GET /calls/guest/ws`, a guest's websocket: no LosOS Login in front,
 //!   the invite is the way in. nginx serves it to the internet.
 //! * `GET /calls/api/health` → `ok`.
 
-use super::admit::{CallId, ParticipantId, Refusal};
-use super::openid::Resolve;
+use super::admit::{CallId, ParticipantId, Refusal, UserId};
+use super::person::{remote_user, Resolve};
 use super::sfu::{Command, Who};
 use super::wire::{ClientMsg, CreateCall, CreateInvite, ServerMsg};
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -71,7 +70,11 @@ fn new_call_id() -> Option<CallId> {
 
 /// A guest link for a call: the SFU opens the call to the invite, then
 /// asks the edge for the link.
-async fn invite(state: web::Data<State>, body: web::Json<CreateInvite>) -> HttpResponse {
+async fn invite(
+    state: web::Data<State>,
+    req: HttpRequest,
+    body: web::Json<CreateInvite>,
+) -> HttpResponse {
     let body = body.into_inner();
     let Some(edge) = state.edge.clone() else {
         return refused(Refusal::NoEdge);
@@ -80,12 +83,9 @@ async fn invite(state: web::Data<State>, body: web::Json<CreateInvite>) -> HttpR
         Ok(c) => c,
         Err(r) => return refused(r),
     };
-    let resolve = state.resolve.clone();
-    let token = body.openid.clone();
-    let user = match web::block(move || resolve.resolve(&token)).await {
-        Ok(Ok(u)) => u,
-        Ok(Err(r)) => return refused(r),
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+    let user = match state.resolve.resolve(remote_user(&req)) {
+        Ok(u) => u,
+        Err(r) => return refused(r),
     };
     let Some(invite) = random_hex() else {
         return HttpResponse::InternalServerError().finish();
@@ -118,14 +118,15 @@ async fn invite(state: web::Data<State>, body: web::Json<CreateInvite>) -> HttpR
     }
 }
 
-async fn create(state: web::Data<State>, body: web::Json<CreateCall>) -> HttpResponse {
+async fn create(
+    state: web::Data<State>,
+    req: HttpRequest,
+    body: web::Json<CreateCall>,
+) -> HttpResponse {
     let body = body.into_inner();
-    let resolve = state.resolve.clone();
-    let token = body.openid.clone();
-    let creator = match web::block(move || resolve.resolve(&token)).await {
-        Ok(Ok(u)) => u,
-        Ok(Err(r)) => return refused(r),
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+    let creator = match state.resolve.resolve(remote_user(&req)) {
+        Ok(u) => u,
+        Err(r) => return refused(r),
     };
     let Some(id) = new_call_id() else {
         return HttpResponse::InternalServerError().finish();
@@ -174,12 +175,14 @@ fn open(
     body: web::Payload,
     guest: bool,
 ) -> actix_web::Result<HttpResponse> {
+    // A guest's socket gets no person from nginx, and takes none.
+    let user = (!guest).then(|| state.resolve.resolve(remote_user(&req)));
     let (response, session, stream) = actix_ws::handle(&req, body)?;
     let stream = stream
         .max_frame_size(MAX_MESSAGE)
         .aggregate_continuations()
         .max_continuation_size(MAX_MESSAGE);
-    actix_web::rt::spawn(signal(state.into_inner(), session, stream, guest));
+    actix_web::rt::spawn(signal(state.into_inner(), session, stream, user));
     Ok(response)
 }
 
@@ -217,7 +220,7 @@ async fn signal(
     state: Arc<State>,
     mut session: Session,
     mut stream: actix_ws::AggregatedMessageStream,
-    guest: bool,
+    user: Option<Result<UserId, Refusal>>,
 ) {
     let error = |code: &str| ServerMsg::Error { code: code.into() };
     let first = tokio::time::timeout(JOIN_WITHIN, next_text(&mut stream, &mut session)).await;
@@ -227,19 +230,12 @@ async fn signal(
     };
     let joined = async {
         match serde_json::from_str::<ClientMsg>(&first) {
-            Ok(ClientMsg::Join {
-                call,
-                openid,
-                device,
-            }) if !guest => {
+            Ok(ClientMsg::Join { call, device }) if user.is_some() => {
                 let call = CallId::parse(&call)?;
-                let resolve = state.resolve.clone();
-                let user = web::block(move || resolve.resolve(&openid))
-                    .await
-                    .map_err(|_| Refusal::Unauthenticated)??;
+                let user = user.unwrap_or(Err(Refusal::Unauthenticated))?;
                 Ok((call, Who::Member { user, device }))
             }
-            Ok(ClientMsg::Guest { call, invite, name }) if guest => {
+            Ok(ClientMsg::Guest { call, invite, name }) if user.is_none() => {
                 Ok((CallId::parse(&call)?, Who::Guest { invite, name }))
             }
             _ => Err(Refusal::NotInvited),

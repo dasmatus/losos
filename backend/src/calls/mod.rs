@@ -6,9 +6,9 @@
 //!
 //! What the SFU does and does not know:
 //!
-//! * It knows who is in a call: each page proves its Matrix id with an
-//!   OpenID token ([`openid`]), and only the people the caller listed from
-//!   the room get in ([`admit`]).
+//! * It knows who is in a call: nginx names the person LosOS Login signed
+//!   in ([`person`]), and only the people the caller listed from the room
+//!   get in ([`admit`]).
 //! * It never has a media key. Every frame is encrypted in the sender's
 //!   browser before it reaches WebRTC's packetizer and decrypted in each
 //!   receiver's (`admin-ui/app/src/calls/`), with keys the browsers send
@@ -25,11 +25,12 @@
 //! Where the box tunnels through an edge, media goes through it too
 //! ([`relay`]), and the box opens no port for calls.
 //!
-//! The protocol is in `docs/calls.md` and [`wire`].
+//! The protocol is in [`wire`] and [`stream`]; `handbook/docs/manual/calls.md`
+//! is the owner's side.
 
 pub mod admit;
 pub mod guests;
-pub mod openid;
+pub mod person;
 pub mod relay;
 pub mod server;
 pub mod sfu;
