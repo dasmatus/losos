@@ -62,21 +62,21 @@
   --warn: #8c6512;
   --crit: #a8443c;
 
-  /* People: the colour of someone's initials, their cursor in a document
-   * edited together and their ring in a row of faces. Six, picked by the
-   * person or by their name; the wash is the ground behind initials. */
-  --person-teal: #0e7c7b;
-  --person-teal-wash: #dff1ef;
-  --person-blue: #2f64b0;
-  --person-blue-wash: #e3ecf8;
-  --person-violet: #6a4fb3;
-  --person-violet-wash: #ece7f8;
-  --person-rose: #b23a5e;
-  --person-rose-wash: #f8e4ea;
-  --person-amber: #9a6410;
-  --person-amber-wash: #f6ecd9;
-  --person-green: #3a7d33;
-  --person-green-wash: #e4f1e1;
+  /* One colour per person (backend/src/profiles.rs, `Accent`): the ring
+   * and initials of their picture, and the ground of a banner they have
+   * not set. Strong on wash reads at 4.5:1 or better in both modes. */
+  --person-teal: #0e6e7d;
+  --person-teal-wash: #e2eff1;
+  --person-blue: #2f5f9e;
+  --person-blue-wash: #e3ebf5;
+  --person-violet: #6a4c9c;
+  --person-violet-wash: #ece6f4;
+  --person-rose: #a3445e;
+  --person-rose-wash: #f5e4e9;
+  --person-amber: #86600f;
+  --person-amber-wash: #f4ecdc;
+  --person-green: #2e7357;
+  --person-green-wash: #e1efe8;
 
   /* Depth is a light-mode idea; dark flattens it and leans on --line. */
   --elev-card: 0 1px 2px rgb(24 33 42 / 0.05), 0 4px 16px rgb(24 33 42 / 0.06);
@@ -108,18 +108,18 @@
     --warn: #c79a3e;
     --crit: #d1756c;
 
-    --person-teal: #4cb8b0;
-    --person-teal-wash: #12302e;
-    --person-blue: #6b9be0;
-    --person-blue-wash: #16243a;
-    --person-violet: #a58ee6;
-    --person-violet-wash: #241d38;
-    --person-rose: #e27d9b;
-    --person-rose-wash: #3a1a25;
-    --person-amber: #d9a245;
-    --person-amber-wash: #33260f;
-    --person-green: #78bd6f;
-    --person-green-wash: #18301a;
+    --person-teal: #48b3c0;
+    --person-teal-wash: #0d2a2f;
+    --person-blue: #7aa5e0;
+    --person-blue-wash: #12213a;
+    --person-violet: #ac93dc;
+    --person-violet-wash: #211a33;
+    --person-rose: #e08aa0;
+    --person-rose-wash: #33171f;
+    --person-amber: #c79a3e;
+    --person-amber-wash: #2e2410;
+    --person-green: #4fa583;
+    --person-green-wash: #0f2a20;
 
     --elev-card: 0 1px 2px rgb(0 0 0 / 0.4);
     --elev-pop: 0 12px 40px rgb(0 0 0 / 0.55);
@@ -150,18 +150,18 @@
   --warn: #c79a3e;
   --crit: #d1756c;
 
-  --person-teal: #4cb8b0;
-  --person-teal-wash: #12302e;
-  --person-blue: #6b9be0;
-  --person-blue-wash: #16243a;
-  --person-violet: #a58ee6;
-  --person-violet-wash: #241d38;
-  --person-rose: #e27d9b;
-  --person-rose-wash: #3a1a25;
-  --person-amber: #d9a245;
-  --person-amber-wash: #33260f;
-  --person-green: #78bd6f;
-  --person-green-wash: #18301a;
+  --person-teal: #48b3c0;
+  --person-teal-wash: #0d2a2f;
+  --person-blue: #7aa5e0;
+  --person-blue-wash: #12213a;
+  --person-violet: #ac93dc;
+  --person-violet-wash: #211a33;
+  --person-rose: #e08aa0;
+  --person-rose-wash: #33171f;
+  --person-amber: #c79a3e;
+  --person-amber-wash: #2e2410;
+  --person-green: #4fa583;
+  --person-green-wash: #0f2a20;
 
   --elev-card: 0 1px 2px rgb(0 0 0 / 0.4);
   --elev-pop: 0 12px 40px rgb(0 0 0 / 0.55);
