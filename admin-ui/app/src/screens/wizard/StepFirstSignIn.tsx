@@ -22,6 +22,7 @@ import {
   Login01Icon,
 } from "@hugeicons/core-free-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { useWaitGame } from "@/components/play-while-waiting";
 import { Spinner } from "@/components/ui/progress";
 import { toast } from "@/components/ui/toast";
 import { Rich, useT } from "@/lib/i18n-react";
@@ -114,6 +115,7 @@ export function StepFirstSignIn({
   // The frame is on screen only once it holds a page of the app, or once
   // the sign-in is done (then it is the app, whatever it shows next).
   const showFrame = signedIn || frameState === "app";
+  const game = useWaitGame(watchable && !showFrame && frameState === "starting");
 
   React.useEffect(() => {
     if (signedIn) return;
@@ -205,29 +207,38 @@ export function StepFirstSignIn({
            the frame takes over. Before the first document: opening. After a
            document that is not the app: starting, with the reason. */
         <div
-          role="status"
           className={cn(
-            "flex h-[min(68vh,640px)] w-full flex-col items-center justify-center gap-3 px-6 text-center",
+            "flex min-h-[min(68vh,640px)] w-full flex-col items-center justify-center gap-3 px-6 py-4 text-center",
             "rounded-control border border-line bg-surface animate-fade-in",
           )}
         >
-          <Spinner
-            size={22}
-            className="text-muted"
-            label={t("wizard.first.opening")}
-          />
-          <p className="text-base font-medium text-ink">
-            {frameState === "starting"
-              ? t("wizard.first.starting.title")
-              : t("wizard.first.opening")}
-          </p>
-          {frameState === "starting" && (
-            <p className="max-w-prose text-sm text-muted">
-              {t("wizard.first.starting.body")}
+          <div role="status" className="flex flex-col items-center gap-3">
+            <Spinner
+              size={22}
+              className="text-muted"
+              label={t("wizard.first.opening")}
+            />
+            <p className="text-base font-medium text-ink">
+              {frameState === "starting"
+                ? t("wizard.first.starting.title")
+                : t("wizard.first.opening")}
             </p>
-          )}
+            {frameState === "starting" && (
+              <p className="max-w-prose text-sm text-muted">
+                {t("wizard.first.starting.body")}
+              </p>
+            )}
+          </div>
+          {/* The game is not part of the status: a live region would read
+              out every point scored. */}
+          {game.offer}
+          {game.panel !== null && <div className="w-full max-w-[560px] text-left">{game.panel}</div>}
         </div>
       )}
+
+      {/* Once the app is in the frame, the game's line that the wait is
+          over stands above it until it is closed. */}
+      {showFrame && game.panel}
 
       <iframe
         ref={frame}

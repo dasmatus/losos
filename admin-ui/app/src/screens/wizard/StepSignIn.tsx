@@ -47,6 +47,7 @@ import {
   ViewIcon,
   ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
+import { useWaitGame } from "@/components/play-while-waiting";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -232,6 +233,8 @@ function PasswordForm({
   // first answer can take twelve seconds, and a form left open meanwhile let
   // a password be typed that then sat greyed out behind the panel.
   const waiting = readiness.state.kind !== "ready";
+  // Offered once there is a reason on screen, not during the first answer.
+  const game = useWaitGame(readiness.state.kind === "waiting");
 
   /* Someone who sat through the waiting panel is told the moment it lifts,
    * once, as a status (the box reporting on itself; "Password set" is the
@@ -247,8 +250,9 @@ function PasswordForm({
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       {readiness.state.kind !== "ready" && (
-        <WaitingPanel state={readiness.state} />
+        <WaitingPanel state={readiness.state} offer={game.offer} />
       )}
+      {game.panel}
       {/* Two shadcn Fields in a FieldGroup. Each field carries its own
           invalid and disabled state, the eye is an Input Group addon inside
           the password box, and the four rules are the field's description. */}
@@ -621,7 +625,7 @@ function useReadiness(enabled: boolean): Readiness {
  * reason is lososd's own sentence when it gave one ("Nextcloud is still
  * installing itself…"), and the elapsed count ticks so a long wait visibly
  * is one rather than a hung page. */
-function WaitingPanel({ state }: { state: ReadinessState }) {
+function WaitingPanel({ state, offer }: { state: ReadinessState; offer: React.ReactNode }) {
   const t = useT();
   const [now, setNow] = React.useState(() => Date.now());
   React.useEffect(() => {
@@ -633,7 +637,10 @@ function WaitingPanel({ state }: { state: ReadinessState }) {
   return (
     <Alert variant="default">
       <HugeiconsIcon icon={Loading03Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-      <AlertTitle>{t("wizard.signin.waiting.title")}</AlertTitle>
+      <AlertTitle className="flex items-center gap-2">
+        <span className="flex-1">{t("wizard.signin.waiting.title")}</span>
+        {offer}
+      </AlertTitle>
       <AlertDescription>
         <div
           role="status"

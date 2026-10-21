@@ -571,31 +571,41 @@ einen Wert.
 
 ### USDC mit Euro kaufen {#buying-usdc-with-euros}
 
-Eine Wallet mit einer Adresse auf Base kann dort über
-[Onramp.money](https://onramp.money) USDC mit Euro kaufen. Der Markt-Bereich
-zeigt die Zeile nur bei einem Edge, der auf dem Base-Mainnet abrechnet:
-Onramp.money verkauft nichts, was ein Test-Edge annimmt.
+Eine Wallet mit einer Adresse auf Base kann dort bei
+[Binance](https://www.binance.com) USDC mit Euro kaufen, mit deinem eigenen
+Binance-Konto. Der Markt-Bereich zeigt die Zeile nur, wenn der Edge
+Binance-Connect-Partner ist und auf dem Base-Mainnet abrechnet. Binance
+verkauft nur USDC auf Base, Bitcoin und Monero zahlst du also weiter aus
+einer eigenen Wallet.
 
-1. Wähle Kaufen. Der Bereich sagt, dass Onramp.money die USDC verkauft,
-   nicht LosOS, und verlinkt dessen Geschäftsbedingungen,
-   Datenschutzerklärung und Risikohinweis. Setz den Haken, um sie zu
-   akzeptieren, und gib einen Betrag von 5 bis 100.000 Euro ein. Der Browser
-   merkt sich die Zustimmung zu diesen Bedingungen und fragt erneut, wenn sie
-   sich ändern.
-2. Weiter öffnet die Seite von Onramp.money in einem neuen Tab, mit Betrag,
-   USDC auf Base und der Adresse der Wallet. Die Box schickt sonst nichts,
-   und auf ihrer Seite gibt es weder Konto noch Schlüssel. Onramp.money
-   prüft deine Identität, zeigt Kurs und Gebühr und nimmt die Euro per
-   SEPA-Überweisung oder Open Banking.
-3. Danach schickt Onramp.money den Tab mit der Bestellnummer zurück in den
-   Markt-Bereich, und der Bereich zeigt sie.
-4. Solange er offen ist, liest der Bereich alle 20 Sekunden die USDC der
-   Wallet auf Base und meldet, wenn sie angekommen sind, mit einem Link zu
-   den Transfers im Explorer. Eine Überweisung kann ein, zwei Tage dauern.
-   Nach fünf Tagen oder mit Nicht mehr warten hört der Bereich auf zu warten.
+1. Wähle Kaufen. Der Bereich sagt, dass Binance die USDC verkauft, nicht
+   LosOS, und listet die Nutzungsbedingungen, Produktbedingungen, den
+   Datenschutzhinweis und die Risikowarnung von Binance. Jedes Dokument
+   öffnet sich in einem neuen Tab, und das Kästchen zum Akzeptieren bleibt
+   gesperrt, bis du alle vier geöffnet hast. Dann gib einen Betrag von 1 bis
+   100.000 Euro ein. Der Browser merkt sich, welche Fassung der Bedingungen
+   du wann akzeptiert hast.
+2. Leg die Bestellung an. Die Box schickt dem Edge nur den Betrag und die
+   Adresse der Wallet. Der Edge signiert die Bestellung mit seinem
+   Partnerschlüssel, und Binance antwortet mit einem Link zu seiner
+   Bezahlseite.
+3. Öffne Binance. Dort meldest du dich an, Binance prüft deine Identität,
+   zeigt Kurs und Gebühr und nimmt die Zahlung. LosOS sieht deine Identität
+   und Zahlungsdaten nie.
+4. Solange er offen ist, fragt der Bereich den Edge alle 15 Sekunden nach
+   der Bestellung, und nach einem Neuladen verfolgt er sie bis zu sieben Tage
+   weiter. Er meldet, wenn Binance die Zahlung entgegennimmt, wenn es die
+   USDC schickt und wenn sie geschickt sind, mit einem Link zur Transaktion
+   auf Basescan. Behält Binance die USDC stattdessen in deinem Binance-Konto
+   oder klappt der Kauf nicht, sagt der Bereich auch das.
 
-Der Kauf ist eine Sache zwischen dir und Onramp.money: Erstattungen und
-Streitfälle gehen an sie, nicht an den Edge.
+Binance entscheidet, in welche Länder es verkauft. Zum Zeitpunkt dieses
+Textes (Oktober 2026) hat Binance keine Lizenz nach der EU-Verordnung MiCA
+und nimmt keine neuen Käufe von Einwohnern der EU an, ein Käufer in der EU
+wird also auf der Seite von Binance abgelehnt.
+
+Der Kauf ist eine Sache zwischen dir und Binance: Erstattungen und
+Streitfälle gehen an Binance, nicht an den Edge.
 
 ### ENS-Namen und USDC senden {#ens-names-and-sending-usdc}
 
