@@ -382,8 +382,6 @@ let
   # What the picture-taking runs share: the owner claims boxa through the
   # laptop, and losos-capture signs in as them.
   shootDefs = lib.optionalString shoot ''
-    import json, re
-
     BOX = "192.168.1.1"
     PASSWORD = "${PASSWORD}"
 
@@ -459,11 +457,13 @@ let
   '';
 
   mainScript = ''
-    import json, time
-
     BOXES = {"boxa": boxa, "boxb": boxb}
 
-    start_all()
+    # One after another: three emulated machines booting at once can miss
+    # the driver's wait for a shell.
+    for m in [edge, boxa, boxb]:
+        m.start()
+        m.succeed("true")
     edge.wait_for_unit("registrar.service")
     edge.wait_for_open_port(8443)
     for b in BOXES.values():
@@ -661,19 +661,22 @@ pkgs.testers.nixosTest {
     };
   };
 
-  testScript =
-    shootDefs
-    + (
-      if after then
-        mainScript + lib.optionalString screens shootRun
-      else
-        ''
-          start_all()
-          boxa.wait_for_unit("nginx.service")
-          boxa.wait_for_unit("lososd.service")
-          claim()
-          capture("before")
-          laptop.copy_from_machine("/tmp/screens", "")
-        ''
-    );
+  testScript = ''
+    import json
+
+  ''
+  + shootDefs
+  + (
+    if after then
+      mainScript + lib.optionalString screens shootRun
+    else
+      ''
+        start_all()
+        boxa.wait_for_unit("nginx.service")
+        boxa.wait_for_unit("lososd.service")
+        claim()
+        capture("before")
+        laptop.copy_from_machine("/tmp/screens", "")
+      ''
+  );
 }
