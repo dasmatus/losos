@@ -1,17 +1,24 @@
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { LinkSquare02Icon, SquareLock01Icon } from "@hugeicons/core-free-icons";
+import { ImageUpload01Icon, LinkSquare02Icon, SquareLock01Icon } from "@hugeicons/core-free-icons";
+import { ProfileCard } from "@/components/person";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/progress";
 import {
+  ACCENTS,
   ApiError,
+  MAX_ABOUT_CHARS,
+  MAX_PRONOUNS_CHARS,
   postAccountCode,
   twoFactorSettingsUrl,
   type Account,
+  type Accent,
   type LoginReason,
+  type Profile,
+  type ProfileImage,
 } from "@/lib/api";
 import { intlTag } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
@@ -19,6 +26,8 @@ import { cn } from "@/lib/utils";
 import { MIN_PASSWORD_CHARS, passwordRules } from "@/screens/wizard/api";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow } from "./rows";
 import { useAccount, type AccountData } from "./use-account";
+import { PROFILE_IMAGE_TYPES, ProfileCropDialog } from "./profile-crop";
+import { useProfile, type ProfileData } from "./use-profile";
 
 /* Your account: a person's own name, email address, password and second
  * factors on LosOS Login.
@@ -83,6 +92,7 @@ export function AccountPane({ locked }: { locked: boolean }) {
   return (
     <>
       {state.account.locked.length > 0 && <HeldNotice reasons={state.account.locked} />}
+      <ProfileSection name={state.account.name} disabled={disabled} />
       <DetailsSection account={state.account} data={account} disabled={disabled} />
       <PasswordSection account={state.account} data={account} disabled={disabled} />
       <FactorsSection account={state.account} disabled={disabled} />
@@ -115,6 +125,219 @@ function HeldNotice({ reasons }: { reasons: LoginReason[] }) {
         <p className="text-muted">{t("account.held.after")}</p>
       </div>
     </div>
+  );
+}
+
+// ── Profile ─────────────────────────────────────────────────────────────
+
+/* What everyone signed in to the box sees beside this person's name: the
+ * picture, the banner, a colour, pronouns and a line about them
+ * (backend/src/profiles.rs). The card on top is the preview, drawn from
+ * what is typed and picked before it is saved. */
+
+const PRONOUN_SUGGESTIONS = ["she/her", "he/him", "they/them"];
+
+function ProfileSection({ name, disabled }: { name: string; disabled: boolean }) {
+  const data = useProfile(name);
+  if (data.profile === null) return null;
+  return <ProfileForm profile={data.profile} data={data} disabled={disabled || data.busy} />;
+}
+
+function ProfileForm({ profile, data, disabled }: { profile: Profile; data: ProfileData; disabled: boolean }) {
+  const t = useT();
+  const ids = { pronouns: React.useId(), about: React.useId(), suggestions: React.useId(), colour: React.useId() };
+  const [pronouns, setPronouns] = React.useState(profile.pronouns);
+  const [about, setAbout] = React.useState(profile.about);
+  const [accent, setAccent] = React.useState<Accent>(profile.accent);
+  const [error, setError] = React.useState<string | null>(null);
+  const [cropping, setCropping] = React.useState<{ kind: ProfileImage; file: File } | null>(null);
+  const fileRef = React.useRef<HTMLInputElement>(null);
+  const picking = React.useRef<ProfileImage>("picture");
+
+  // A saved answer is the new starting point unless the field was edited.
+  const saved = React.useRef(profile);
+  React.useEffect(() => {
+    setPronouns((typed) => (typed === saved.current.pronouns ? profile.pronouns : typed));
+    setAbout((typed) => (typed === saved.current.about ? profile.about : typed));
+    setAccent((picked) => (picked === saved.current.accent ? profile.accent : picked));
+    saved.current = profile;
+  }, [profile]);
+
+  const changed =
+    pronouns.trim() !== profile.pronouns || about.trim() !== profile.about || accent !== profile.accent;
+
+  const submit = async () => {
+    if (!changed) return;
+    setError(null);
+    const outcome = await data.saveDetails({
+      pronouns: pronouns.trim(),
+      about: about.trim(),
+      ...(accent !== profile.accent ? { accent } : {}),
+    });
+    if (!outcome.ok && outcome.message.length > 0) setError(outcome.message);
+  };
+
+  const choose = (kind: ProfileImage) => {
+    picking.current = kind;
+    fileRef.current?.click();
+  };
+
+  const remove = async (kind: ProfileImage) => {
+    setError(null);
+    const outcome = await data.remove(kind);
+    if (!outcome.ok && outcome.message.length > 0) setError(outcome.message);
+  };
+
+  const preview: Profile = { ...profile, pronouns: pronouns.trim(), about: about.trim(), accent };
+
+  const imageRow = (kind: ProfileImage, last?: boolean) => {
+    const has = profile[kind] !== null;
+    return (
+      <Row last={last} data-testid={`profile-${kind}-row`}>
+        <RowText title={t(`profile.${kind}.title`)} detail={t(`profile.${kind}.detail`)} />
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {has && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              data-testid={`profile-${kind}-remove`}
+              onClick={() => void remove(kind)}
+            >
+              {t("profile.remove")}
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={disabled}
+            data-testid={`profile-${kind}-choose`}
+            onClick={() => choose(kind)}
+          >
+            <HugeiconsIcon icon={ImageUpload01Icon} size={15} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            {t(has ? "profile.replace" : "profile.choose")}
+          </Button>
+        </div>
+      </Row>
+    );
+  };
+
+  return (
+    <PaneSection data-testid="account-profile">
+      <GroupTitle>{t("profile.title")}</GroupTitle>
+      <ProfileCard profile={preview} data-testid="profile-card" />
+      <input
+        ref={fileRef}
+        type="file"
+        accept={PROFILE_IMAGE_TYPES.join(",")}
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        data-testid="profile-file"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file !== undefined) setCropping({ kind: picking.current, file });
+        }}
+      />
+      <form
+        className="mt-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <Group>
+          {imageRow("picture")}
+          {imageRow("banner")}
+          <Row>
+            <RowText id={ids.colour} title={t("profile.colour.title")} />
+            <div role="radiogroup" aria-labelledby={ids.colour} className="flex flex-wrap justify-end gap-1.5">
+              {ACCENTS.map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  role="radio"
+                  aria-checked={accent === a}
+                  aria-label={t(`profile.colour.${a}`)}
+                  title={t(`profile.colour.${a}`)}
+                  data-accent={a}
+                  data-testid="profile-accent"
+                  disabled={disabled}
+                  onClick={() => setAccent(a)}
+                  className={cn(
+                    "size-6 rounded-full bg-person ring-offset-2 ring-offset-surface transition-shadow",
+                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
+                    "disabled:opacity-50",
+                    accent === a ? "ring-2 ring-person" : "hover:ring-2 hover:ring-line",
+                  )}
+                />
+              ))}
+            </div>
+          </Row>
+          <FieldRow id={ids.pronouns} title={t("profile.pronouns.title")}>
+            <Input
+              id={ids.pronouns}
+              data-testid="profile-pronouns"
+              value={pronouns}
+              maxLength={MAX_PRONOUNS_CHARS}
+              list={ids.suggestions}
+              placeholder={t("profile.pronouns.placeholder")}
+              disabled={disabled}
+              onChange={(event) => setPronouns(event.target.value)}
+            />
+            <datalist id={ids.suggestions}>
+              {PRONOUN_SUGGESTIONS.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
+          </FieldRow>
+          <FieldRow
+            id={ids.about}
+            title={t("profile.about.title")}
+            detail={t("profile.about.left", { count: MAX_ABOUT_CHARS - about.length })}
+            last
+          >
+            <Input
+              id={ids.about}
+              data-testid="profile-about"
+              value={about}
+              maxLength={MAX_ABOUT_CHARS}
+              placeholder={t("profile.about.placeholder")}
+              disabled={disabled}
+              onChange={(event) => setAbout(event.target.value)}
+            />
+          </FieldRow>
+        </Group>
+        <div className="flex flex-wrap items-center justify-end gap-3 pt-3">
+          {error !== null && (
+            <FieldError className="mr-auto" data-testid="profile-error">
+              {error}
+            </FieldError>
+          )}
+          <Button type="submit" size="sm" data-testid="profile-save" disabled={disabled || !changed}>
+            {t("profile.save")}
+          </Button>
+        </div>
+      </form>
+      <GroupCaption>{t("profile.caption")}</GroupCaption>
+      <ProfileCropDialog
+        kind={cropping?.kind ?? "picture"}
+        file={cropping?.file ?? null}
+        busy={disabled}
+        onCancel={() => setCropping(null)}
+        onDone={(picture) => {
+          const kind = cropping?.kind ?? "picture";
+          void data.upload(kind, picture).then((outcome) => {
+            if (outcome.ok) setCropping(null);
+            else if (outcome.message.length > 0) {
+              setCropping(null);
+              setError(outcome.message);
+            }
+          });
+        }}
+      />
+    </PaneSection>
   );
 }
 

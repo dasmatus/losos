@@ -528,9 +528,10 @@ await check('a person signed in at the box sign-in page gets the app without a k
   await page.getByRole('button', { name: 'Sign out' }).waitFor();
   await page.getByText('Sign in to this box').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null, 'a cookie session stored a key');
-  const who = page.getByTestId('signed-in-as');
+  // The name beside the picture or initials.
+  const who = page.getByTestId('signed-in-name');
   assert.equal((await who.innerText()).trim(), 'Matus', 'the top bar does not name the person signed in');
-  assert.match(await who.getAttribute('aria-label'), /as matus\. You are an administrator/, 'the top bar does not say who and what they are');
+  assert.match(await page.getByTestId('signed-in-as').getAttribute('aria-label'), /as matus\. You are an administrator/, 'the top bar does not say who and what they are');
   await page.close();
 });
 
@@ -546,9 +547,10 @@ await check('a person in one section sees that section and not the administrator
     assert.equal(await sections.getByRole('link', { name: hidden, exact: true }).count(), 0, `${hidden} is shown to a backup-only person`);
   }
   assert.equal(await sections.getByRole('link', { name: 'Overview' }).count(), 1, 'the overview is for everyone');
-  const who = page.getByTestId('signed-in-as');
+  // The name beside the picture or initials.
+  const who = page.getByTestId('signed-in-name');
   assert.equal((await who.innerText()).trim(), 'Eva', 'the top bar does not name the person signed in');
-  assert.match(await who.getAttribute('aria-label'), /the panes your account was given/, 'a backup-only person is called an administrator');
+  assert.match(await page.getByTestId('signed-in-as').getAttribute('aria-label'), /the panes your account was given/, 'a backup-only person is called an administrator');
   await page.close();
 });
 

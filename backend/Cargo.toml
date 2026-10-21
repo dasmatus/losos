@@ -78,6 +78,10 @@ walkdir = "2"
 # (src/people.rs): argon2id in PHC form, the format Authelia reads. Already
 # in the lock file through the access crate.
 argon2 = "0.6"
+# Profile pictures and banners (src/profiles.rs): decoded, turned upright,
+# cropped, scaled and encoded again, so no camera tag (a photo's position
+# among them) is ever stored. PNG, JPEG, GIF and WebP in; PNG and JPEG out.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its

@@ -62,6 +62,9 @@ struct Api {
     login: crate::login::Login,
     /// LosOS Login names on LosOS cloud's share (`crate::cloud_share`).
     share: crate::cloud_share::Share,
+    /// Each person's picture, banner and the rest of their profile
+    /// (`crate::profiles`).
+    profiles: crate::profiles::Profiles,
 }
 
 /// Who made a call.
@@ -539,9 +542,21 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 } else {
                     vec!["account"]
                 };
+                let shown = crate::profiles::render(
+                    &crate::people::Listed {
+                        name: p.name.clone(),
+                        display_name: p.display_name.clone(),
+                        email: String::new(),
+                        groups: Vec::new(),
+                        disabled: false,
+                    },
+                    &api.profiles.get(&p.name).unwrap_or_default(),
+                );
                 HttpResponse::Ok().json(serde_json::json!({
                     "name": p.name,
                     "displayName": p.display_name,
+                    "picture": shown["picture"],
+                    "accent": shown["accent"],
                     "groups": p.groups,
                     "admin": p.is_admin() && locked.is_empty(),
                     "spareKey": false,
@@ -631,6 +646,7 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
         };
         let rules = api.login.rules();
         let now = crate::login::now();
+        let profiles = api.profiles.all().unwrap_or_default();
         let people: Vec<serde_json::Value> = people
             .into_iter()
             .map(|p| {
@@ -639,6 +655,13 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 row["twoFactor"] = serde_json::json!(factors.any());
                 row["passwordSetAt"] = serde_json::json!(set_at);
                 row["locked"] = serde_json::json!(reasons);
+                let shown = crate::profiles::render(
+                    &p,
+                    &profiles.get(&p.name).cloned().unwrap_or_default(),
+                );
+                row["picture"] = shown["picture"].clone();
+                row["accent"] = shown["accent"].clone();
+                row["banner"] = shown["banner"].clone();
                 row
             })
             .collect();
@@ -807,6 +830,9 @@ async fn post_person_remove(
             Ok(()) => {
                 if let Err(e) = api.login.forget(&name) {
                     tracing::warn!(error = ?e, "a removed person's password date stayed");
+                }
+                if let Err(e) = api.profiles.forget(&name) {
+                    tracing::warn!(error = ?e, "a removed person's profile stayed");
                 }
                 HttpResponse::Ok().json(serde_json::json!({ "name": name, "removed": true }))
             }
@@ -989,6 +1015,235 @@ async fn post_account(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -
                 "email": email.trim(),
                 }))
             }
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+// ── Profiles ──────────────────────────────────────────────────────────────
+
+/* Each person's picture, banner, colour, pronouns and a line about them
+ * (`crate::profiles`, contract in docs/profiles.md). Anyone signed in may
+ * read everyone's, which is what makes a picture useful beside a name; only
+ * the person changes their own, and an administrator may take a picture
+ * down. */
+
+/// Everyone the people file lists and LosOS Login lets in, by name.
+fn shown_people(api: &Api) -> anyhow::Result<Vec<serde_json::Value>> {
+    if !api.people.headers {
+        return Ok(Vec::new());
+    }
+    let profiles = api.profiles.all()?;
+    Ok(api
+        .people
+        .list()?
+        .into_iter()
+        .filter(|p| !p.disabled)
+        .map(|p| {
+            let profile = profiles.get(&p.name).cloned().unwrap_or_default();
+            crate::profiles::render(&p, &profile)
+        })
+        .collect())
+}
+
+/// `GET /api/profiles`: everyone's profile.
+async fn get_profiles(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/profiles", false, || {
+        match shown_people(&api) {
+            Ok(people) => HttpResponse::Ok().json(serde_json::json!({ "people": people })),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `GET /api/profiles/{name}`: one person's profile, 404 for nobody.
+async fn get_profile(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let name = path.into_inner();
+    guarded(&api, &req, "/api/profiles", false, || {
+        match shown_people(&api) {
+            Ok(people) => match people.into_iter().find(|p| p["name"] == name.as_str()) {
+                Some(p) => HttpResponse::Ok().json(p),
+                None => err(StatusCode::NOT_FOUND, &format!("{name} has no account")),
+            },
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `GET /api/profiles/{name}/{kind}?v=N`: the picture or the banner. Cached
+/// hard, because a new one is a new `?v=`.
+async fn get_profile_image(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    let (name, kind) = path.into_inner();
+    guarded(&api, &req, "/api/profiles", false, || {
+        let Some(kind) = crate::profiles::Kind::parse(&kind) else {
+            return err(
+                StatusCode::NOT_FOUND,
+                "a profile has a picture and a banner",
+            );
+        };
+        if crate::people::validate_name(&name).is_err() {
+            return err(StatusCode::NOT_FOUND, "no picture");
+        }
+        let listed = api
+            .people
+            .list()
+            .map(|all| all.into_iter().any(|p| p.name == name && !p.disabled));
+        if !matches!(listed, Ok(true)) {
+            return err(StatusCode::NOT_FOUND, "no picture");
+        }
+        match api.profiles.read_image(&name, kind) {
+            Ok(Some((content_type, bytes))) => HttpResponse::Ok()
+                .content_type(content_type)
+                .insert_header(("Cache-Control", "private, max-age=31536000, immutable"))
+                .insert_header(("X-Content-Type-Options", "nosniff"))
+                .body(bytes),
+            Ok(None) => err(StatusCode::NOT_FOUND, "no picture"),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// The caller's own profile as every page shows it.
+fn own_profile(api: &Api, person: &crate::people::Person) -> HttpResponse {
+    let listed = match api.people.list() {
+        Ok(all) => all.into_iter().find(|p| p.name == person.name),
+        Err(e) => return error_response(e),
+    };
+    let Some(listed) = listed else {
+        return error_response(crate::people::Refused::Unknown(person.name.clone()).into());
+    };
+    match api.profiles.get(&person.name) {
+        Ok(profile) => HttpResponse::Ok().json(crate::profiles::render(&listed, &profile)),
+        Err(e) => error_response(e),
+    }
+}
+
+/// `POST /api/account/profile`: `{"pronouns", "about", "accent"}`, each
+/// optional, the caller's own.
+async fn post_account_profile(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/account/profile", true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let details = match crate::profiles::parse_details(&doc) {
+            Ok(d) => d,
+            Err(why) => return err(StatusCode::BAD_REQUEST, &why),
+        };
+        match api.profiles.set_details(&person.name, &details) {
+            Ok(_) => own_profile(&api, person),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `PUT` or `DELETE /api/account/{picture,banner}`: the caller's own. A
+/// PUT body is the picture's bytes; their type is read off the bytes.
+fn change_own_image(
+    api: &Api,
+    req: &HttpRequest,
+    kind: crate::profiles::Kind,
+    body: Option<&[u8]>,
+) -> HttpResponse {
+    let route = match kind {
+        crate::profiles::Kind::Picture => "/api/account/picture",
+        crate::profiles::Kind::Banner => "/api/account/banner",
+    };
+    guarded_as(api, req, route, true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let done = match body {
+            Some(bytes) => api.profiles.put_image(&person.name, kind, bytes),
+            None => api.profiles.remove_image(&person.name, kind),
+        };
+        match done {
+            Ok(_) => own_profile(api, person),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+async fn put_account_picture(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    change_own_image(&api, &req, crate::profiles::Kind::Picture, Some(&body))
+}
+
+async fn delete_account_picture(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    change_own_image(&api, &req, crate::profiles::Kind::Picture, None)
+}
+
+async fn put_account_banner(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    change_own_image(&api, &req, crate::profiles::Kind::Banner, Some(&body))
+}
+
+async fn delete_account_banner(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    change_own_image(&api, &req, crate::profiles::Kind::Banner, None)
+}
+
+/// `POST /api/people/profile/clear`: `{"name", "kind": "picture|banner"}`.
+/// An administrator takes down a picture someone else put up. The rest of
+/// the profile stays theirs.
+async fn post_people_profile_clear(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"name": "...", "kind": "picture|banner"}"#;
+    guarded(&api, &req, "/api/people/profile/clear", true, || {
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let (Some(name), Some(kind)) = (
+            doc.get("name").and_then(|v| v.as_str()),
+            doc.get("kind")
+                .and_then(|v| v.as_str())
+                .and_then(crate::profiles::Kind::parse),
+        ) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        match api.people.list() {
+            Ok(all) if all.iter().any(|p| p.name == name) => {}
+            Ok(_) => {
+                return error_response(crate::people::Refused::Unknown(name.to_string()).into())
+            }
+            Err(e) => return error_response(e),
+        }
+        match api.profiles.remove_image(name, kind) {
+            Ok(_) => HttpResponse::Ok()
+                .json(serde_json::json!({ "name": name, "kind": kind.as_str(), "cleared": true })),
             Err(e) => error_response(e),
         }
     })
@@ -3254,6 +3509,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             people,
             login,
             share: crate::cloud_share::Share::default(),
+            profiles: crate::profiles::Profiles::from_env(),
         });
         owner_in_owner_group(&api);
         start_login_marks(api.clone());
@@ -3302,6 +3558,27 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/account", web::get().to(get_account))
                 .route("/api/account", web::post().to(post_account))
                 .route("/api/account/code", web::post().to(post_account_code))
+                .route("/api/account/profile", web::post().to(post_account_profile))
+                .route("/api/account/picture", web::put().to(put_account_picture))
+                .route(
+                    "/api/account/picture",
+                    web::delete().to(delete_account_picture),
+                )
+                .route("/api/account/banner", web::put().to(put_account_banner))
+                .route(
+                    "/api/account/banner",
+                    web::delete().to(delete_account_banner),
+                )
+                .route("/api/profiles", web::get().to(get_profiles))
+                .route("/api/profiles/{name}", web::get().to(get_profile))
+                .route(
+                    "/api/profiles/{name}/{kind}",
+                    web::get().to(get_profile_image),
+                )
+                .route(
+                    "/api/people/profile/clear",
+                    web::post().to(post_people_profile_clear),
+                )
                 .route("/api/recovery", web::get().to(get_recovery))
                 .route("/api/devices/{kind}", web::post().to(post_device))
                 .route("/api/apps/search", web::get().to(get_apps_search))

@@ -59,6 +59,7 @@ pub mod options;
 pub mod overrides;
 pub mod people;
 pub mod pins;
+pub mod profiles;
 pub mod receipt;
 pub mod recovery;
 pub mod sections;

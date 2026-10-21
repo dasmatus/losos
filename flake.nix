@@ -429,6 +429,8 @@
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
+        losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
+        losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         losos-admin-ui = import ./nix/tests/admin-ui.nix {
