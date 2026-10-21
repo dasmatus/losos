@@ -38,6 +38,7 @@ export const HANDBOOK_ENTRIES = {
   "backup-and-erase": "manual/backup-and-erase/",
   terminal: "manual/terminal/",
   chat: "manual/chat/",
+  calls: "manual/calls/",
   "custom-domain": "types/official-edge/",
   "edge-manages-box": "types/company-edge/",
   tpm: "reference/tpm/",

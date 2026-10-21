@@ -229,7 +229,7 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
             : error instanceof Error
               ? error.message
               : String(error);
-      toast.error(t("calls.failed"), detail, { help: "chat" });
+      toast.error(t("calls.failed"), detail, { help: "calls" });
     },
     [t],
   );

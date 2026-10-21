@@ -260,9 +260,18 @@ let
     error_page 401 = @losos-chat-sign-in;
     ${toDendrite}
   '';
+  # A JSON answer nginx writes itself. add_header here drops the server's
+  # own headers, so all of them are repeated.
+  noStore = ''
+    add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'" always;
+    add_header Cache-Control "no-store" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+  '';
   json = body: ''
     default_type application/json;
-    add_header Cache-Control "no-store" always;
+    ${noStore}
     return 200 '${builtins.toJSON body}';
   '';
 in
@@ -504,7 +513,7 @@ in
             # (the token is fine, the sign-in is not), and where to sign in.
             "@losos-chat-sign-in".extraConfig = ''
               default_type application/json;
-              add_header Cache-Control "no-store" always;
+              ${noStore}
               return 401 '${
                 builtins.toJSON {
                   errcode = "M_UNKNOWN_TOKEN";

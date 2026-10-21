@@ -123,6 +123,21 @@ and is never served or built by nix.
   `gh`, never an edge-made key. `losos cloud setup` and `losos git setup` mint an
   app password and a Forgejo token per computer with the owner's password
   (`backend/src/devices.rs`); `losos git credential` is git's helper.
+- Calls (`modules/calls.nix`, `losos.calls.enable`, only while chat runs):
+  `losos-calls` (`backend/src/calls/`, str0m, ICE-lite, VP8 and Opus) is an
+  SFU as `shared` on `/run/losos-calls/http.sock` (nginx's group only),
+  `/calls/api/` behind LosOS Login with no spare-key bypass. A person is
+  admitted by a Matrix OpenID token it checks with Dendrite on loopback.
+  Every frame is AES-GCM sealed in the browser by an encoded transform
+  (`admin-ui/app/src/calls/e2ee.ts`, worker `e2ee-worker.ts`), sender keys
+  ratchet on a join and are replaced on a leave, and travel as Olm
+  to-device `org.losos.call.key`; the room gets `org.losos.call`
+  started/ended events (`src/chat/calls.tsx`). In Chromium a worker held
+  by an `RTCRtpScriptTransform` loses its own `postMessage` and timers, so
+  stats go over a MessagePort from the frame path. `--address IP=OFFERED`
+  offers a forwarded port's address; `nix/tests/calls.nix` reaches the SFU
+  that way and reads its `--tap` (`lososInternal.callsTap`) to prove the
+  box holds only ciphertext.
 - LosOS Lab, the setup visualizer at `/lab/` (sidebar entry Lab): the
   admin UI's second Vite page (`admin-ui/app/lab/`, `src/lab/`) over a Rust
   core in WebAssembly (`admin-ui/lab/core`, `losos-lab-core`, contract in
