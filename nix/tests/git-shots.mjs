@@ -141,7 +141,8 @@ async function browse(s, base) {
     create: p.getByRole("button", { name: "New repository" }),
   });
   await repo.click();
-  await p.locator("[data-readme] h1").waitFor();
+  // A README's own headings sit one level under the page's title.
+  await p.locator("[data-readme] h2", { hasText: "Backup tool" }).waitFor();
   const script = p.getByRole("link", { name: "backup.sh", exact: true });
   await s.take("code", "the code of main, with its README", { kind: "click", target: "script" }, {
     script,
@@ -334,6 +335,10 @@ const context = await browser.newContext({
   reducedMotion: "reduce",
 });
 const page = await context.newPage();
+// An emulated laptop at 2x renders slowly: Playwright's 30 s default is
+// too short for a locator or a navigation under TCG.
+page.setDefaultTimeout(180_000);
+page.setDefaultNavigationTimeout(180_000);
 await signIn(page, base, name, password);
 // What the admin page itself logs on a plain load (sonner's stylesheet,
 // which the box's style-src 'self' refuses and the bundle carries instead,

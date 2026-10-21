@@ -224,9 +224,13 @@ pkgs.testers.nixosTest {
             " && git push -q origin main",
         )
         pushed = laptop.succeed("git -C /tmp/config rev-parse HEAD").strip()
+        # lososd's own 30 s pass may take the push before this call does; then
+        # this pass finds the box in step. Either way the box ends on the push.
         doc = lososd("POST", "/api/config/sync")
-        assert doc["sync"]["state"] == "ok" and "rebuilding" in doc["sync"]["detail"], doc["sync"]
+        assert doc["sync"]["state"] == "ok", doc["sync"]
+        assert doc["sync"]["remoteHead"] == pushed, doc["sync"]
         assert box.succeed("git -C /etc/nixos rev-parse HEAD").strip() == pushed
+        box.wait_until_succeeds("journalctl -b -u 'losos-rebuild-*' | grep -q Started", timeout=60)
         box.succeed("grep -q 'losos.hostName = \"otherbox\";' /etc/nixos/modules/overrides.nix")
         # There is no flake in this /etc/nixos, so the rebuild it queued
         # fails; that it was tried is what matters here.

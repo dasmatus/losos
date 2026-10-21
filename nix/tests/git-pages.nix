@@ -335,8 +335,16 @@ pkgs.testers.nixosTest {
         assert trees["fix-backup"]["branch"] == "fix-backup", trees
         assert trees["release-notes"]["computer"] == "laptop", trees
 
+    def git_shots(phase, folder, *flags):
+        # On a failure the window as it was (failed-<phase>.png) comes out too.
+        try:
+            laptop.succeed(f"git-shots {BASE} matus '{PASSWORD}' /tmp/shots/{folder} {phase} {' '.join(flags)}")
+        except Exception:
+            laptop.copy_from_machine(f"/tmp/shots/{folder}", "failed")
+            raise
+
     with subtest("the owner reads the code and reviews the pull request"):
-        laptop.succeed(f"git-shots {BASE} matus '{PASSWORD}' /tmp/shots/after browse --test losos-git-pages")
+        git_shots("browse", "after", "--test", "losos-git-pages")
         reviews = ok("GET", f"/repos/{REPO}/pulls/1/reviews")
         assert [r["state"] for r in reviews] == ["APPROVED"], reviews
         assert reviews[0]["user"]["login"] == "notshared", reviews
@@ -348,7 +356,7 @@ pkgs.testers.nixosTest {
         ok("POST", f"/repos/{REPO}/pulls/1/comments",
            {"in_reply_to": notes[0]["id"], "body": "Logs it now: each failed try gets its own line."},
            token=eva)
-        laptop.succeed(f"git-shots {BASE} matus '{PASSWORD}' /tmp/shots/after finish --test losos-git-pages")
+        git_shots("finish", "after", "--test", "losos-git-pages")
         notes = ok("GET", f"/repos/{REPO}/pulls/1/comments")
         assert notes[0]["resolved"] is True, notes
         pr = ok("GET", f"/repos/{REPO}/pulls/1")
@@ -378,7 +386,7 @@ pkgs.testers.nixosTest {
         setting = ok("GET", f"/repos/{REPO}/ai-review", token=owner)
         assert setting["enabled"] is False and setting["available"], setting
         assert setting["model"] == "${model}", setting
-        laptop.succeed(f"git-shots {BASE} matus '{PASSWORD}' /tmp/shots/reviewer-before reviewer --test losos-git-pages")
+        git_shots("reviewer", "reviewer-before", "--test", "losos-git-pages")
         assert ok("GET", f"/repos/{REPO}/pulls/2/reviews") == []
 
         ok("PUT", f"/repos/{REPO}/ai-review", {"enabled": True}, token=owner)
@@ -392,15 +400,13 @@ pkgs.testers.nixosTest {
         lines = ok("GET", f"/repos/{REPO}/pulls/2/comments")
         assert [(c["path"], c["line"]) for c in lines] == [("prune.sh", 6)], lines
         assert '```suggestion\n  rm -rf "$TARGET/$d"\n```' in lines[0]["body"], lines[0]
-        laptop.succeed(
-            f"git-shots {BASE} matus '{PASSWORD}' /tmp/shots/reviewer-after reviewer --reviewed --test losos-git-pages"
-        )
+        git_shots("reviewer", "reviewer-after", "--reviewed", "--test", "losos-git-pages")
         laptop.copy_from_machine("/tmp/shots/reviewer-before", "shots")
         laptop.copy_from_machine("/tmp/shots/reviewer-after", "shots")
 
     with subtest("the pictures: the same addresses before the pages"):
         box.succeed("/run/current-system/specialisation/before/bin/switch-to-configuration test")
-        laptop.succeed(f"git-shots {BASE} matus '{PASSWORD}' /tmp/shots/before before")
+        git_shots("before", "before")
         laptop.copy_from_machine("/tmp/shots/before", "shots")
   '';
 }
