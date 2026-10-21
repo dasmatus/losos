@@ -21,7 +21,7 @@
 #     uid; in the libvirtd group that is root-equivalent, no more than the
 #     admin token already is.
 #   * The helper's port gets the same owner match lososd's has
-#     (modules/daemon.nix): the Nextcloud pod and LosOS Git share this
+#     (modules/daemon.nix): the apps' pods and LosOS Git share this
 #     loopback, and only root (lososd) and nginx may reach it.
 #
 # Off by default: libvirtd is a daemon the appliance has no other use for.

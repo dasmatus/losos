@@ -228,10 +228,10 @@ neoverený nárok sa po siedmich dňoch zahodí. Nároky sú uložené v
 
 Na zariadení lososd udržiava aktívne domény v
 `/var/lib/losos-public-names/domains.json`. Súbor obnovuje každé dve
-minúty a vždy, keď o to požiada panel Sieť. Pod Nextcloudu pripája tento
-adresár len na čítanie, pri každej požiadavke pridá názvy do
-`trusted_domains` a použije vlastnú doménu požiadavky pre `overwritehost`,
-ak je jednou z nich. Robí to iba režim kontajnera.
+minúty a vždy, keď o to požiada panel Sieť. LosOS Login ho číta, aby
+cookie svojej relácie dal doménu pre každý z týchto názvov
+(`modules/identity.nix`). LosOS Cloud a LosOS Git odpovedajú na ktorýkoľvek
+názov, cez ktorý požiadavka prišla, takže zoznam nepotrebujú.
 
 Zariadenie za lokálnym edge dostane svoje domény smerované tiež, cez ten lokálny
 edge, len čo sa za lokálny edge zaručilo relay passom a pripojilo sa k meshu

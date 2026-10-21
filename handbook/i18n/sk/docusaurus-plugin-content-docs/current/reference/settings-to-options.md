@@ -19,8 +19,7 @@ a [Správa](/in-depth/administration.md#settings) ich opisuje úplne.
 | Sieť         | Dostupné aj mimo domova     | `losos.proxy.enable`                                | vypnuté                 |
 | Sieť         | Adresa edge                 | `losos.proxy.registrarUrl`                          | edge LosOS              |
 | Aplikácie    | LosOS Git                   | `losos.git.enable`                                  | zapnuté                 |
-| Aplikácie    | režim (iba na čítanie)      | `losos.nextcloud.mode`                              | `container`             |
-| Aplikácie    | LosOS cloud, nastavenia pre všetkých | `losos.nextcloud.site.*` | ako ho dodáva LosOS cloud |
+| Aplikácie    | LosOS Cloud, dni v koši     | `losos.cloud.trashDays`                             | 30                      |
 | Aplikácie    | LosOS Git, nastavenia pre všetkých | `losos.git.site.*` | ako ho dodáva LosOS Git |
 | Úložisko     | Použiť rezervu…             | spustí `losos-ctl grow`, rezerva je `losos.storage.fillPercent` | 90 %  |
 | Mesh         | Pripojiť sa k sieti mesh    | `losos.cluster.enable`                              | vypnuté                 |
@@ -41,7 +40,6 @@ a [Správa](/in-depth/administration.md#settings) ich opisuje úplne.
 | Či sa zariadenie vôbec aktualizuje   | `losos.configRepo.upstream.enable` | zapnuté                                    |
 | Čo zostavuje nočná prestavba         | `losos.upgradeFlakeUri`            | `git+file:///etc/nixos#install`, vlastný repozitár zariadenia |
 | Základný hardening                   | `losos.hardening.enable`           | zapnuté                                    |
-| Federácia LosOS cloud                | `losos.nextcloud.federation.enable` | zapnutá, kým je disk zdieľaný             |
 | Režim odomykania disku               | `losos.tpm.enable`                 | podľa toho, čo našiel inštalátor           |
 | UEFI alebo BIOS                      | `losos.bios`                       | podľa toho, čo našiel inštalátor           |
 | Disky                                | `losos.targetDrives`               | podľa toho, čo našiel inštalátor           |

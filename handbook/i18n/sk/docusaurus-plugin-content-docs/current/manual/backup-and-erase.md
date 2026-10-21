@@ -49,7 +49,7 @@ a čítanie späť viac:
 Do Glacier idú iba súbory. Malý index so zoznamom záloh zostáva v triede
 Štandardné, takže zariadenie stále dokáže okamžite overiť kód obnovy a
 upratať staré zálohy. Pri Flexible Retrieval a Deep Archive obnova najprv
-požiada AWS o sprístupnenie zálohy a čaká; LosOS cloud a LosOS Git medzitým
+požiada AWS o sprístupnenie zálohy a čaká; LosOS Cloud a LosOS Git medzitým
 bežia, kým sa súbory nevrátia. AWS si sprístupnenie účtuje a triedy Glacier
 majú aj minimálnu dobu uloženia, takže záloha upratovaná skôr sa za ňu aj
 tak zaplatí.
@@ -70,14 +70,14 @@ zariadenie.
 
 ## Čo obsahuje záloha \{#what-a-backup-holds}
 
-- súbory LosOS cloud;
+- súbory LosOS Cloud;
 - repozitáre LosOS Git;
 - databázy oboch;
 - priečinok, ktorý zariadenie zdieľa s mesh, ak je zdieľanie zapnuté (na
   kópiu sa otvorí a potom znova zamkne);
 - každé nastavenie a vzhľad domovskej stránky.
 
-Náhľady, ktoré LosOS cloud dokáže nakresliť znova, v zálohe nie sú.
+Náhľady, ktoré LosOS Cloud dokáže nakresliť znova, v zálohe nie sú.
 **Zálohovať teraz** spustí zálohu. Prvá skopíruje všetko, ďalšie posielajú
 iba zmeny. Bucket uchováva posledných sedem.
 
@@ -87,7 +87,7 @@ V časti **Obnova** napíšte kód obnovy zariadenia, ktoré zálohu vytvorilo, 
 stlačte **Obnoviť…**. Vráti sa najnovšia záloha v buckete:
 
 - to, čo je teraz na zariadení, nahradí obsah zálohy;
-- LosOS cloud a LosOS Git sa zastavia, kým sa súbory vracajú na miesto, a
+- LosOS Cloud a LosOS Git sa zastavia, kým sa súbory vracajú na miesto, a
   potom sa znova spustia. Zálohu z Glacier Flexible Retrieval alebo Deep
   Archive treba najprv sprístupniť, čo trvá hodiny;
 - zariadenie použije nastavenia zo zálohy, čím sa znova zostaví;

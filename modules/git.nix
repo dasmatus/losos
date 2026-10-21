@@ -255,7 +255,7 @@ in
       path = [ git ];
       environment.RUST_LOG = "info";
       # Keep trying: on the first switch from a Forgejo generation the old
-      # pod can hold port 3000 for a moment (modules/workloads.nix).
+      # pod can hold port 3000 for a moment.
       startLimitIntervalSec = 0;
       serviceConfig = {
         User = "losos-git";

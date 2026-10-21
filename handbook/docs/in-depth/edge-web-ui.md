@@ -9,7 +9,7 @@ mdx:
 
 A company edge has a web page at `/manage/` for the people who run it. It
 lists the boxes the edge routes, and for each box whose owner allows it, it
-changes the box's LosOS cloud and LosOS Git settings and installs or removes
+changes the box's LosOS Cloud and LosOS Git settings and installs or removes
 apps. The official LosOS edges do not serve this page, and a box refuses to
 be managed by one.
 
@@ -59,11 +59,11 @@ off the list.
 
 ## A box's page
 
-![A box's page: LosOS cloud and LosOS Git settings, the installed apps and the app search.](../img/edge-manage-box.png)
+![A box's page: LosOS Cloud and LosOS Git settings, the installed apps and the app search.](../img/edge-manage-box.png)
 
 A box's page has three parts, the same ones as the box's own Apps pane:
 
-- **LosOS cloud and LosOS Git settings.** Default language, phone region, how
+- **LosOS Cloud and LosOS Git settings.** Default language, phone region, how
   long deleted files and old versions are kept, the default quota, public
   links and their password and expiry, and LosOS Git's sign-in, privacy
   and push settings. LosOS cloud's federation with other boxes is here too.
@@ -85,7 +85,7 @@ apps settings and read what any signed-in page reads, nothing else.
 
 So the edge cannot:
 
-- open anyone's files, in LosOS cloud, LosOS Git or anywhere else;
+- open anyone's files, in LosOS Cloud, LosOS Git or anywhere else;
 - add, change or remove people, or reset passwords;
 - change storage, backups, the network, sharing or updates;
 - turn the switch on, or keep it on after the owner turns it off.

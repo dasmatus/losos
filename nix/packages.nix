@@ -41,12 +41,12 @@
 #                losos-static is the same crate linked against musl for
 #                machines without a Nix store; CI publishes it beside
 #                install.sh. Both share one cargoHash.
-#   losos-image-{pause,nextcloud} — the OCI images the local k3s
-#                cluster runs as static pods, defined in nix/images.nix and
-#                merged in below. modules/defaults.nix wires them to
-#                losos.workloads.*. They are exported as flake packages
-#                because that is how they reach a binary cache: the appliance
-#                substitutes them, it never builds them (see the header of
+#   losos-image-pause — the OCI image the local k3s
+#                cluster builds its pods on, defined in nix/images.nix and
+#                merged in below. modules/defaults.nix wires it to
+#                losos.workloads.pauseImage. It is a flake package
+#                because that is how it reaches a binary cache: the appliance
+#                substitutes it, it never builds it (see the header of
 #                nix/images.nix).
 #   losos-lab-core — LosOS Lab's core in Rust (admin-ui/lab/core/), built
 #                for wasm32 and run through wasm-bindgen. The Lab itself is
@@ -396,9 +396,9 @@ images
     '';
   };
 
-  # The LosOS look for Nextcloud — the admin SPA's tokens.css plus
-  # its mapping onto it. Consumed by modules/nextcloud-stack.nix
-  # and images.nix through admin-ui/themes/default.nix,
+  # The LosOS look for LosOS Login: the admin SPA's tokens.css plus its
+  # mapping onto it. Consumed by modules/identity.nix through
+  # admin-ui/themes/default.nix,
   # not through this attribute; it is exported so the files can be built and
   # read on their own.
   losos-themes = (import ./../admin-ui/themes { inherit pkgs; }).package;

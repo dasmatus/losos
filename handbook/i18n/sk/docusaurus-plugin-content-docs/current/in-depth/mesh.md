@@ -20,7 +20,7 @@ Každé zariadenie beží s dvoma inštanciami Kubernetes:
 
 |                     | Lokálny (k3s)               | Mesh (agent rke2)                |
 | ------------------- | --------------------------- | -------------------------------- |
-| Beží na ňom         | Nextcloud tohto zariadenia  | úložisko Longhorn, zdieľaný výpočtový výkon |
+| Beží na ňom         | aplikácie inštalované ako shared | úložisko Longhorn, zdieľaný výpočtový výkon |
 | Server              | toto zariadenie             | edge VPS                         |
 | Potrebuje sieť      | nie                         | áno                              |
 

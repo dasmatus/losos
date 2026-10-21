@@ -35,7 +35,7 @@
 //! the mesh has already paused itself, and an owner changing the hostname
 //! during an outage must not be told off about storage — and the admin UI
 //! says what the daemon knows instead. Local use keeps working throughout:
-//! nothing here touches Nextcloud, LosOS Git or the box's own disk.
+//! nothing here touches LosOS Cloud, LosOS Git or the box's own disk.
 //!
 //! This module is the pure half: the record shapes, the Varlink framing and
 //! what resolved's replies mean, and the gate rule, all unit-tested. The

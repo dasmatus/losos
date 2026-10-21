@@ -48,7 +48,7 @@ and more to read back:
 Only the files go into Glacier. The small index that lists the backups stays
 in Standard, so the box can still check a recovery code and tidy old backups
 at once. With Flexible Retrieval and Deep Archive a restore first asks AWS to
-thaw the backup and waits; LosOS cloud and LosOS Git keep running until the
+thaw the backup and waits; LosOS Cloud and LosOS Git keep running until the
 files come back. AWS charges for the thaw, and Glacier classes also have a
 minimum storage time, so a backup tidied away early is still billed for it.
 
@@ -68,14 +68,14 @@ somewhere other than the box.
 
 ## What a backup holds
 
-- LosOS cloud's files;
+- LosOS Cloud's files;
 - LosOS Git's repositories;
 - the databases of both;
 - the folder the box shares with the mesh, if sharing is on (it is opened for
   the copy and locked again afterwards);
 - every setting, and the look of the home page.
 
-Thumbnails LosOS cloud can draw again are left out. **Back up now** starts a
+Thumbnails LosOS Cloud can draw again are left out. **Back up now** starts a
 backup. The first one copies everything; later ones send only what changed.
 The bucket keeps the last seven.
 
@@ -85,7 +85,7 @@ Under **Restore**, type the recovery code of the box that made the backup and
 press **Restore…**. The newest backup in the bucket comes back:
 
 - what is on the box now is replaced by what is in the backup;
-- LosOS cloud and LosOS Git stop while the files are put back, then start
+- LosOS Cloud and LosOS Git stop while the files are put back, then start
   again. From Glacier Flexible Retrieval or Deep Archive the backup is
   thawed first, which takes hours;
 - the settings in the backup are applied, which rebuilds the box;
