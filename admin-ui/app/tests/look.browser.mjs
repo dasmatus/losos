@@ -325,7 +325,8 @@ await check('the wallpaper leaves with the sign-out', async () => {
   });
   await page.waitForFunction(() => document.documentElement.classList.contains('has-bg'));
   assert.equal(await veilVar(page), '0.4');
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByTestId('signed-in-as').click();
+  await page.getByRole('menuitem', { name: /Sign out/ }).click();
   await page.waitForFunction(() => !document.documentElement.classList.contains('has-bg'));
   assert.equal(await bgVar(page), '');
   await page.close();
