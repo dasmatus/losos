@@ -465,6 +465,12 @@
           screens = true;
         };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # Notes on a kitchen garden vault, and the folder published as a
+        # knowledge base, on and off the mesh (nix/tests/notes.nix).
+        losos-notes = import ./nix/tests/notes.nix { inherit pkgs; };
+        # Two boxes sharing a note and editing it together, apart and
+        # together again (nix/tests/mesh-collab.nix).
+        losos-mesh-collab = import ./nix/tests/mesh-collab.nix { inherit pkgs; };
         # Apps run as notshared on rootless Podman, with no cluster: the
         # box's own, one in the LosOS app format and a chart from the
         # search (nix/tests/podman-apps.nix).
