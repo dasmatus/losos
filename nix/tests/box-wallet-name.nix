@@ -50,8 +50,9 @@ let
   password = "Correct-Horse-Battery-9";
 
   # The store keeps the fixture for as long as its inputs do not change, so
-  # its certificates are valid for a century, not a month after first build.
-  validDays = "36500";
+  # its certificates are valid for 3650 days (the most `identity sign`
+  # issues), not 30 days after the first build.
+  validDays = "3650";
 
   # The root, the edge's identity certificate naming the URL the box uses,
   # and a TLS certificate for that name from a CA the box trusts.
