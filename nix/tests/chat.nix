@@ -141,6 +141,8 @@ pkgs.testers.nixosTest {
         # back (switch-to-configuration, as an Apply would).
         specialisation.unshared.configuration.losos.sharingMyStorage = lib.mkForce false;
 
+        # The name a real box has; the claim wants it in Host.
+        networking.hostName = "mattbox";
         # configuration.nix's two data users, without the rest of it.
         users.users.shared = {
           isNormalUser = true;
@@ -333,10 +335,13 @@ pkgs.testers.nixosTest {
         # Nor is someone else's token.
         code, body = whoami(eva, m["accessToken"])
         assert code == 403, (code, body)
-        # The same device comes back when the page asks for it.
+        # The same device comes back when the page asks for it,
         again = json.loads(call("/api/chat/session", matus, method="POST",
                                 data={"device": m["deviceId"]})[1])
         assert again["deviceId"] == m["deviceId"], (again, m)
+        # with a new token, and the old one is gone.
+        assert whoami(matus, m["accessToken"])[0] == 401
+        m = again
         # Everyone on the box can be found.
         code, body = call("/api/chat/people", matus)
         people = {p["userId"]: p["displayName"] for p in json.loads(body)["people"]}
@@ -430,12 +435,24 @@ pkgs.testers.nixosTest {
     }
 
     def browser(phase):
-        done = subprocess.run(
+        run = subprocess.Popen(
             ["${pkgs.nodejs}/bin/node", "${./chat-browser.mjs}", phase, SHOTS],
-            env=browser_env, capture_output=True, text=True, timeout=1800,
+            env=browser_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
+        # How loaded the box is while the page works, in case a step stalls.
+        began = time.monotonic()
+        while run.poll() is None and time.monotonic() - began < 1800:
+            print(box.execute(
+                "uptime; free -m | sed -n 2p; top -bn1 -o %CPU | sed -n 8,13p; "
+                "${pkgs.redis}/bin/redis-cli -s /run/redis-*/redis.sock info clients | grep connected_clients"
+            )[1])
+            time.sleep(15)
+        out, err = run.communicate(timeout=60)
+        done = subprocess.CompletedProcess(run.args, run.returncode, out, err)
         print(done.stdout)
         print(done.stderr)
+        if done.returncode != 0:
+            print(box.execute("journalctl -b --no-pager -o cat -n 300 -u lososd -u dendrite -u authelia-losos -u nginx")[1])
         assert done.returncode == 0, f"the chat page, {phase}: {done.stderr[-2000:]}"
 
     with subtest("with sharing off there is no chat anywhere"):

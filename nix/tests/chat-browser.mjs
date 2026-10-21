@@ -36,6 +36,7 @@ const browser = await chromium.launch({
   args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
 });
 const problems = [];
+const network = [];
 
 /** A browser of its own for one person, signed in through LosOS Login. */
 async function person(name) {
@@ -50,8 +51,14 @@ async function person(name) {
     acceptDownloads: true,
   });
   const page = await context.newPage();
-  page.setDefaultTimeout(60_000);
+  // The box runs under emulation in the test, so first loads are slow.
+  page.setDefaultTimeout(120_000);
   page.on("pageerror", (error) => problems.push(`${name}: ${error.message}`));
+  // What the network did, printed when a step does not happen.
+  page.on("response", (r) => {
+    if (r.status() >= 400) network.push(`${name}: ${r.status()} ${r.request().method()} ${r.url()}`);
+  });
+  page.on("requestfailed", (r) => network.push(`${name}: failed ${r.method()} ${r.url()} ${r.failure()?.errorText}`));
   // Any refusal of the page's policy, but sonner's two known inline styles.
   page.on("console", (msg) => {
     if (msg.type() === "error" && msg.text().includes("Content Security Policy") && !msg.text().includes("inline style")) {
@@ -218,6 +225,7 @@ try {
     for (const page of context.pages()) await page.screenshot({ path: `${out}/failed-${phase}-${i++}.png` }).catch(() => {});
   }
   console.error(problems.join("\n"));
+  console.error(network.slice(-80).join("\n"));
   console.error(error);
   process.exitCode = 1;
 } finally {
