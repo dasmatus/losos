@@ -948,6 +948,49 @@ in
       '';
     };
 
+    # ── Lending memory to models split across boxes (modules/inference-lend.nix)
+    inference.lend.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Lend this box's memory to large AI models that run split across
+        several boxes on the mesh. A llama.cpp RPC server holds its share of
+        a model's layers and computes on them, on loopback only, reached
+        only by the edge through this box's tunnel; buyers pay the edge per
+        token. It runs as the `shared` user, away from the owner's data, and
+        cannot take more than `inference.lend.memoryMiB`: a request for more
+        stops the lending server, never LosOS cloud. Needs the edge proxy
+        (losos.proxy.enable).
+      '';
+    };
+
+    inference.lend.memoryMiB = lib.mkOption {
+      type = lib.types.ints.between 512 262144;
+      default = 1024;
+      description = ''
+        The memory this box lends, in MiB. The edge never gives the box a
+        larger share of a model than this, and the lending server is
+        stopped if it grows past it. The default leaves a 4 GiB box room
+        for LosOS cloud and LosOS Git; raise it on a box with more.
+      '';
+    };
+
+    inference.lend.threads = lib.mkOption {
+      type = lib.types.nullOr (lib.types.ints.between 1 256);
+      default = null;
+      description = ''
+        Processor threads the lending server computes with. Null lets it
+        take half of the box's processors.
+      '';
+    };
+
+    inference.lend.package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.llama-cpp.override { rpcSupport = true; };
+      defaultText = lib.literalExpression "pkgs.llama-cpp.override { rpcSupport = true; }";
+      description = "The llama.cpp build the lending server runs: its `ggml-rpc-server`.";
+    };
+
     # sharing's caring btw
     sharingMyStorage = lib.mkOption {
       type = lib.types.bool;
@@ -2490,6 +2533,92 @@ in
       type = lib.types.ints.between 1 512;
       default = 32;
       description = "The largest QCOW2 image a buyer may upload, in GiB. Uploads are kept in the registrar's state directory.";
+    };
+
+    # ── Models split across boxes (edge side, modules/edge-inference.nix) ───
+    # Boxes lend memory (losos.inference.lend on the box); the registrar
+    # groups lending boxes until a model fits, starts a llama.cpp head here
+    # over their RPC servers through the tunnels, and bills buyers per token.
+    edge.inference.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run large AI models split across the memory boxes lend, and sell
+        their tokens. The registrar groups lending boxes until a model of
+        `edge.inference.models` fits and starts a llama.cpp server for the
+        group on this edge, which reaches each box's share through its
+        tunnel.
+      '';
+    };
+
+    edge.inference.package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.llama-cpp.override { rpcSupport = true; };
+      defaultText = lib.literalExpression "pkgs.llama-cpp.override { rpcSupport = true; }";
+      description = "The llama.cpp build the edge's heads run: its `llama-server`, with RPC.";
+    };
+
+    edge.inference.models = lib.mkOption {
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            id = lib.mkOption {
+              # As long as the registrar takes (inference::parse_models).
+              type = lib.types.strMatching "[a-z0-9-]{1,64}";
+              description = "The model's id in the catalogue and in the API, up to 64 characters.";
+            };
+            name = lib.mkOption {
+              type = lib.types.str;
+              description = "The model's name as buyers see it.";
+            };
+            file = lib.mkOption {
+              type = lib.types.path;
+              example = lib.literalExpression ''pkgs.fetchurl { url = "https://example.org/model.gguf"; hash = "sha256-..."; }'';
+              description = "The model, one GGUF file. In the store, so every head reads the same bytes.";
+            };
+            needMiB = lib.mkOption {
+              type = lib.types.ints.positive;
+              description = "Lent memory, in MiB, a group of boxes needs in all to hold the model and its context.";
+            };
+            context = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 4096;
+              description = "Context window of each head, in tokens.";
+            };
+            priceIn = lib.mkOption {
+              type = lib.types.ints.positive;
+              description = "Price of a million prompt tokens, in USDC base units (millionths of a dollar).";
+            };
+            priceOut = lib.mkOption {
+              type = lib.types.ints.positive;
+              description = "Price of a million generated tokens, in USDC base units (millionths of a dollar).";
+            };
+            licence = lib.mkOption {
+              type = lib.types.str;
+              example = "Apache-2.0";
+              description = "The model's licence, shown to buyers.";
+            };
+          };
+        }
+      );
+      default = [ ];
+      description = "The models this edge offers. Written to /etc/losos/inference-models.json for the registrar.";
+    };
+
+    edge.inference.portRange = {
+      from = lib.mkOption {
+        type = lib.types.port;
+        default = 23000;
+        description = "First loopback port the rathole server binds a lending box's RPC tunnel on.";
+      };
+      to = lib.mkOption {
+        type = lib.types.port;
+        default = 23999;
+        description = ''
+          Last loopback port for the lending boxes' RPC tunnels. The range
+          holds at least as many ports as edge.ratholePortRange: one per box.
+        '';
+      };
     };
 
     # ── Edge on the LAN ─────────────────────────────────────────────────────

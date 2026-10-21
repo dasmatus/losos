@@ -66,6 +66,10 @@ pub struct Tenant {
     /// re-asserts on its next heartbeat, which is at most `heartbeat_interval`
     /// away, and until then it counts as busy.
     pub idle: Option<(bool, Instant)>,
+    /// The memory this box last said it lends to AI models (`crate::inference`),
+    /// in MiB, and when. Live state like `idle`: an edge that restarts counts
+    /// nobody as lending until they say so again.
+    pub llm: Option<(u64, Instant)>,
     /// The spoke that relayed this tenant (`crate::relay`), or `None` for a
     /// box that registered here itself. A relayed tenant's key is
     /// `<spoke>.<box>`; its hostname authority is the spoke's `relay_zone`
@@ -227,6 +231,7 @@ impl Registry {
                     rathole_port: t.port,
                     last_seen: now,
                     idle: None,
+                    llm: None,
                     via: t.via,
                 },
             );
@@ -277,6 +282,7 @@ impl Registry {
                         rathole_port: port,
                         last_seen: Instant::now(),
                         idle: None,
+                        llm: None,
                         via: None,
                     },
                 );
@@ -333,6 +339,7 @@ impl Registry {
                             rathole_port: port,
                             last_seen: now,
                             idle: None,
+                            llm: None,
                             via: Some(spoke.to_string()),
                         },
                     );
@@ -467,6 +474,35 @@ impl Registry {
             .collect()
     }
 
+    /// Record what an appliance said it lends to AI models. Zero is nothing.
+    /// Ignores an unknown id, like [`Registry::record_idle`].
+    pub async fn record_llm(&self, id: &str, mib: u64) {
+        let mut st = self.inner.lock().await;
+        if let Some(t) = st.tenants.get_mut(id) {
+            t.llm = (mib > 0).then(|| (mib, Instant::now()));
+        }
+    }
+
+    /// The boxes lending memory to AI models now, with a report no older
+    /// than `ttl`: id, tunnel port and MiB, sorted by id. Stale is lending
+    /// nothing, for the reason [`Registry::idle_nodes`] gives.
+    pub async fn lenders(&self, ttl: std::time::Duration) -> Vec<(String, u16, u64)> {
+        let now = Instant::now();
+        let st = self.inner.lock().await;
+        let mut out: Vec<(String, u16, u64)> = st
+            .tenants
+            .iter()
+            .filter_map(|(id, t)| match t.llm {
+                Some((mib, at)) if now.duration_since(at) <= ttl => {
+                    Some((id.clone(), t.rathole_port, mib))
+                }
+                _ => None,
+            })
+            .collect();
+        out.sort();
+        out
+    }
+
     pub async fn heartbeat(&self, id: &str) -> bool {
         let mut st = self.inner.lock().await;
         if let Some(t) = st.tenants.get_mut(id) {
@@ -539,6 +575,7 @@ impl Registry {
                 rathole_port: t.rathole_port,
                 // Token is enriched by the reconciler; placeholder here.
                 token: String::new(),
+                llm_port: None,
             })
             .collect();
         v.sort_by(|a, b| a.id.cmp(&b.id));
@@ -658,6 +695,7 @@ impl Registry {
                     rathole_port: t.rathole_port,
                     last_seen: now.checked_sub(age).unwrap_or(now),
                     idle,
+                    llm: None,
                     via: t.via,
                 },
             );
