@@ -270,9 +270,10 @@ def main():
                 "sameSite": "Lax",
             }
         ]
-        browser.call(
-            "Storage.setCookies", {"cookies": cookies, "browserContextId": context}
-        )
+        if a.cookie:
+            browser.call(
+                "Storage.setCookies", {"cookies": cookies, "browserContextId": context}
+            )
         target = browser.call(
             "Target.createTarget",
             {
@@ -379,6 +380,7 @@ def main():
             tab.until(frame("!/Saving/.test(this.document.body.innerText)"), "the status bar", 120)
         except SystemExit as e:
             log(f"{e}; the save itself is done")
+            log(tab.js(frame("(this.document.getElementById('DocumentStatus') || {}).outerHTML")))
         settle(tab)
     elif a.command == "views":
         (count,) = a.args
@@ -394,7 +396,16 @@ def main():
         tab.js(f"document.querySelector({json.dumps(button)}).click()")
     elif a.command == "where":
         (prefix,) = a.args
-        tab.until(f"location.href.startsWith({json.dumps(prefix)})", prefix, 300)
+        try:
+            tab.until(f"location.href.startsWith({json.dumps(prefix)})", prefix, 300)
+        except SystemExit:
+            log("the tab is at", tab.js("location.href"))
+            log(tab.js("document.body ? document.body.innerText.slice(0, 600) : ''"))
+            png = tab.call("Page.captureScreenshot", {"format": "png"})["data"]
+            os.makedirs(SHOTS, exist_ok=True)
+            with open(os.path.join(SHOTS, f"zz-where-{a.tab}.png"), "wb") as f:
+                f.write(base64.b64decode(png))
+            raise
         print(tab.js("location.href"))
     elif a.command == "shot":
         settle(tab)

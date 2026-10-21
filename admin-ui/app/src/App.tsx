@@ -40,6 +40,7 @@ import {
   makeFirstAccount,
   signIn,
   signInPageReady,
+  sentToSignIn,
   signInUrl,
   signOut,
   subscribeAuth,
@@ -547,7 +548,7 @@ function SignInDialog({ open }: { open: boolean }) {
    * dialog waits with a spinner and a fact about LosOS instead of sending
    * anyone to an error page, and goes on by itself once it is up. */
   const [portal, setPortal] = React.useState<"checking" | "starting" | "ready">("checking");
-  const [wanted, setWanted] = React.useState(false);
+  const [wanted, setWanted] = React.useState(sentToSignIn);
   const [fact, setFact] = React.useState(0);
   React.useEffect(() => {
     if (!open || mode !== "signin" || portal === "ready") return;

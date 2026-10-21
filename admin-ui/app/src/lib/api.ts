@@ -294,8 +294,37 @@ function httpsHere(): string {
   return `https://${host}${pathname}${search}${hash}`;
 }
 
-/** Authelia's sign-in page, coming back here afterwards. */
+/* The session cookie is https only, so a page on plain http cannot tell a
+ * signed-in person from a stranger. Sending them straight to Authelia would
+ * show someone who already has a session its second-factor page, so the
+ * plain page goes to its own https address first, marked `?signin`; there
+ * the dialog goes on to Authelia by itself only if nobody is signed in. */
+const SIGN_IN_MARK = "signin";
+
+function takeSignInMark(): boolean {
+  if (typeof window === "undefined") return false;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(SIGN_IN_MARK)) return false;
+  url.searchParams.delete(SIGN_IN_MARK);
+  window.history.replaceState(window.history.state, "", url);
+  return true;
+}
+
+const cameToSignIn = takeSignInMark();
+
+/** Whether this page was opened from the plain http address to sign in. */
+export function sentToSignIn(): boolean {
+  return cameToSignIn;
+}
+
+/** Authelia's sign-in page, coming back here afterwards; from plain http,
+ *  this page's https address first. */
 export function signInUrl(): string {
+  if (window.location.protocol === "http:") {
+    const url = new URL(httpsHere());
+    url.searchParams.set(SIGN_IN_MARK, "");
+    return url.toString();
+  }
   return `https://${window.location.host}/auth/?rd=${encodeURIComponent(httpsHere())}`;
 }
 

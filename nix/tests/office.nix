@@ -225,6 +225,7 @@ pkgs.testers.nixosTest {
     import json
     import re
     import shlex
+    import urllib.parse
 
     folder = "${folder}"
     client = "${client}"
@@ -497,6 +498,12 @@ pkgs.testers.nixosTest {
         laptop.wait_for_open_port(9222)
 
         def browse(*args):
+            # A session cookie may start with "-", which argparse would take
+            # for an option of its own; give it as --cookie=VALUE.
+            args = list(args)
+            if "--cookie" in args:
+                at = args.index("--cookie")
+                args[at : at + 2] = [f"--cookie={args[at + 1]}"]
             return laptop.succeed(" ".join([shots, *(shlex.quote(a) for a in args)]))
 
         def has(name, part, text):
@@ -577,17 +584,28 @@ pkgs.testers.nixosTest {
         browse("shot", "slides", "09-kickoff", "--title", "A PowerPoint presentation", "--target", "page")
         mattbox.succeed(f"file -b '{folder}/Kick-off.pptx' | grep -q 'Microsoft PowerPoint 2007+'")
         browse("close", "slides")
+        laptop.copy_from_machine("/tmp/shots", "office-shots")
 
-        # The session cookie is https only, so the plain address asks to sign
-        # in; LosOS Login knows the person and sends them back to the same
-        # document, on https, where the editor works.
+    with subtest("the plain http address goes through sign-in to the same document on https"):
+        # The session cookie is https only, so the plain address cannot tell
+        # who is there and asks to sign in. Sign in moves to the same
+        # document on https first: Matus, who has a session, is simply in,
+        # and only someone without one goes on to LosOS Login.
         plain = f"http://mattbox.local/office/#file={hexid('Trip plan.docx')}"
         browse("open", "plain", "--name", "Matus", "--cookie", matus, "--url", plain)
         browse("signin", "plain")
-        where = browse("where", "plain", "https://mattbox.local/office/").strip()
+        try:
+            # Until the page has dropped the ?signin mark it came with.
+            where = browse("where", "plain", link("Trip plan.docx")).strip()
+            browse("open", "stranger", "--name", "Stranger", "--url", plain)
+            browse("signin", "stranger")
+            portal = browse("where", "stranger", "https://mattbox.local/auth/").strip()
+        finally:
+            laptop.copy_from_machine("/tmp/shots", "office-shots-plain")
         assert where == link("Trip plan.docx"), where
         browse("loaded", "plain")
-        laptop.copy_from_machine("/tmp/shots", "office-shots")
+        back = urllib.parse.parse_qs(urllib.parse.urlsplit(portal).query)["rd"][0]
+        assert back == link("Trip plan.docx"), portal
 
     print(f"coolwsd memory: idle {idle // 2**20} MiB, with three editors open {busy // 2**20} MiB")
   '';

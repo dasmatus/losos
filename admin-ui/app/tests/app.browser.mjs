@@ -539,30 +539,52 @@ const PASSWORD = 'Correct-horse battery staple 1';
 async function openGate(options = {}) {
   const opened = await open(options);
   const portal = [];
-  await opened.page.route('https://**/auth/**', (route) => {
-    portal.push(route.request().url());
+  const secure = [];
+  await opened.page.route('https://**/*', (route) => {
+    const url = route.request().url();
+    if (new URL(url).pathname.startsWith('/auth/')) portal.push(url);
+    else secure.push(url);
     return route.fulfill({ status: 200, contentType: 'text/html', body: '<title>LosOS sign-in</title>' });
   });
-  return { ...opened, portal };
+  return { ...opened, portal, secure };
 }
 
-await check('signed out, Sign in goes to the box sign-in page over https and comes back', async () => {
-  const { page, portal } = await openGate({ path: '/storage' });
+/* This harness serves plain http. There the session cookie (https only)
+ * never arrives, so Sign in first goes to the same page on https, marked
+ * ?signin, where a person who has a session is simply in and a stranger
+ * goes on to the sign-in page without a second click. Straight to Authelia,
+ * a person with a session would get its second-factor page. */
+await check('signed out on plain http, Sign in goes to the same page on https, marked to go on', async () => {
+  const { page, portal, secure } = await openGate({ path: '/storage#here' });
   await page.getByText('Sign in to this box').waitFor();
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.waitForURL(/\/auth\//);
-  assert.equal(portal.length, 1, 'the sign-in page was not opened');
-  const url = new URL(portal[0]);
-  assert.equal(url.protocol, 'https:');
-  assert.equal(url.pathname, '/auth/');
-  const back = new URL(url.searchParams.get('rd'));
-  assert.equal(back.protocol, 'https:', 'the way back is not https');
-  assert.equal(back.pathname, '/storage', 'the way back is not the page the person was on');
+  await page.waitForURL(/^https:/);
+  assert.equal(portal.length, 0, 'went to the sign-in page from plain http');
+  assert.equal(secure.length, 1, 'did not move to https');
+  const url = new URL(secure[0]);
+  assert.equal(url.pathname, '/storage', 'the https page is not the page the person was on');
+  assert.ok(url.searchParams.has('signin'), 'the https page is not marked to go on to sign in');
   await page.close();
 });
 
+await check('a page marked ?signin drops the mark and goes on to sign in without a click', async () => {
+  const { page, secure } = await openGate({ path: '/' });
+  await page.getByText('Sign in to this box').waitFor();
+  await page.goto(origin + '/storage?signin=');
+  await page.waitForURL(/^https:/, { timeout: 10000 });
+  assert.equal(secure.length, 1, 'did not go on by itself');
+  await page.close();
+  const signedIn = await open({
+    path: '/storage?signin=',
+    person: { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage'] },
+  });
+  await signedIn.page.getByRole('button', { name: 'Sign out' }).waitFor();
+  assert.equal(new URL(signedIn.page.url()).search, '', 'the mark stayed in the address');
+  await signedIn.page.close();
+});
+
 await check('while the sign-in page starts, the prompt waits with a spinner and a fact, then goes on by itself', async () => {
-  const { page, portal } = await openGate();
+  const { page, secure } = await openGate();
   let up = false;
   await page.route('**/auth/api/health', (route) =>
     up ? json(route, 200, { status: 'OK' }) : route.fulfill({ status: 502, contentType: 'text/html', body: 'Bad Gateway' }),
@@ -575,10 +597,10 @@ await check('while the sign-in page starts, the prompt waits with a spinner and 
   assert.equal(await page.locator('dialog [data-slot="spinner"], [role="dialog"] [data-slot="spinner"]').count() > 0, true, 'no spinner');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.waitForTimeout(500);
-  assert.equal(portal.length, 0, 'went to the sign-in page before it answered');
+  assert.equal(secure.length, 0, 'went on before the sign-in page answered');
   up = true;
-  await page.waitForURL(/\/auth\//, { timeout: 10000 });
-  assert.equal(portal.length, 1, 'did not go on once the sign-in page answered');
+  await page.waitForURL(/^https:/, { timeout: 10000 });
+  assert.equal(secure.length, 1, 'did not go on once the sign-in page answered');
   await page.close();
 });
 
