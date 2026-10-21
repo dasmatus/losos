@@ -30,6 +30,8 @@ pub struct Job<'a> {
     pub runner_name: &'a str,
     pub sandbox: &'a mut dyn Sandbox,
     pub fetch: Fetch<'a>,
+    /// pm, for `uses: losos-project/pm`.
+    pub pm: Option<&'a super::pm::Tool>,
     pub stop: &'a dyn Fn() -> bool,
     pub log: &'a mut dyn FnMut(&str),
 }
@@ -623,6 +625,61 @@ impl<'j, 'a> Engine<'j, 'a> {
         self.uses(&uses, &with, ctx, env, &cwd, timeout)
     }
 
+    /// `uses: losos-project/pm`: build (or explain) a signed pm recipe from
+    /// the workspace with pm itself, in pm's jail, on this box as the shared
+    /// user. `archive` is the package it made, inside the workspace.
+    fn pm_recipe(&mut self, with: &Map<String, Value>, timeout: Duration) -> StepResult {
+        let get = |k: &str| with.get(k).map(expr::to_text).unwrap_or_default();
+        let Some(tool) = self.job.pm else {
+            self.log("##[error]pm is not on this runner.");
+            return StepResult {
+                outcome: "failure",
+                outputs: Map::new(),
+            };
+        };
+        let command = match get("command") {
+            c if c.is_empty() => "build".to_string(),
+            c => c,
+        };
+        let recipe = super::pm::Recipe {
+            tool,
+            dirs: self.job.dirs,
+            command,
+            recipe: get("recipe"),
+            permissive: get("permissive") == "true",
+            trust: get("trust")
+                .split(|c: char| c.is_whitespace() || c == ',')
+                .filter(|k| !k.is_empty())
+                .map(str::to_string)
+                .collect(),
+        };
+        let stop = self.job.stop;
+        let ran = {
+            let masks = &self.masks;
+            let log = &mut self.job.log;
+            let mut out = |l: &str| (log)(&commands::mask(l, masks));
+            recipe.run(timeout, stop, &mut out)
+        };
+        match ran {
+            Ok((exit, made)) => {
+                let mut outputs = Map::new();
+                if let Some(first) = made.first() {
+                    let inside = format!("{}/{first}", self.job.sandbox.inside().workspace);
+                    self.log(&format!("Packaged {inside}"));
+                    outputs.insert("archive".into(), json!(inside));
+                }
+                self.finish(exit, outputs)
+            }
+            Err(e) => {
+                self.log(&format!("##[error]{e:#}"));
+                StepResult {
+                    outcome: "failure",
+                    outputs: Map::new(),
+                }
+            }
+        }
+    }
+
     fn finish(&mut self, exit: Exit, outputs: Map<String, Value>) -> StepResult {
         let outcome = match exit {
             Exit::Code(0) => "success",
@@ -716,6 +773,7 @@ impl<'j, 'a> Engine<'j, 'a> {
                 self.log("There is no artifact store on the mesh; this step does nothing.");
                 return ok;
             }
+            "losos-project/pm" => return self.pm_recipe(with, timeout),
             _ => {}
         }
 
@@ -1126,6 +1184,7 @@ mod tests {
             runner_name: "box-1",
             sandbox: &mut host,
             fetch: &fetch,
+            pm: None,
             stop: &|| false,
             log: &mut log,
         };

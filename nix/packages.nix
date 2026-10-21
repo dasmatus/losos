@@ -73,6 +73,9 @@
   # from its sibling jobs. flake.nix passes it; the tests that import this
   # file directly get the same file.
   version ? import ./version.nix,
+  # losos-project/pm's source (the flake's `pm` input). The tests that
+  # import this file directly pass none and get no pm.
+  pmSrc ? null,
   ...
 }:
 
@@ -83,6 +86,8 @@ let
   # flake package, and a non-derivation breaks `nix flake check` and
   # `nix flake show` for everything else too.
   images = import ./images.nix { inherit pkgs; };
+  # What Mesh CI's jobs run in unless they name an image.
+  losos-image-ci-base = import ./ci-base-image.nix { inherit pkgs; };
 
   # mold as the linker, ccache in front of gcc, sccache in front of rustc —
   # for both crates, and for the dev shells through the same file, so that
@@ -267,6 +272,9 @@ let
   # nothing else (losos.backend.plugins). Plain rustPlatform like the Lab's
   # crates: rustc links wasm32 with rust-lld, not mold. `names` lets a test
   # build a set with the probe in it.
+  # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
+  # plugin are built from the one workspace.
+  pluginsCargoHash = "sha256-Xgiz1gNTzroUyvjbf/jdMlOJ0geZKjmH8oFrYqCGO8A=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -280,7 +288,7 @@ let
       inherit pname;
       version = "0.1.0";
       src = lib.cleanSource ./../backend/plugins;
-      cargoHash = "sha256-I0LrzrXhbPdAHUOXbowtrpm/eCbxABB26XGCau7sebs=";
+      cargoHash = pluginsCargoHash;
       nativeBuildInputs = [
         pkgs.wasm-tools
         pkgs.lld
@@ -308,7 +316,22 @@ let
 
 in
 images
+// lib.optionalAttrs (pmSrc != null) (
+  let
+    pm = import ./pm.nix { inherit pkgs pmSrc; };
+  in
+  {
+    inherit pm;
+    # Mesh CI's pm plugin, signed, as a pm configuration directory.
+    losos-ci-pm-plugin = import ./ci-pm-plugin.nix {
+      inherit pkgs pm pmSrc;
+      baseImage = losos-image-ci-base;
+      cargoHash = pluginsCargoHash;
+    };
+  }
+)
 // {
+  inherit losos-image-ci-base;
   inherit losos-lab-core losos-lab-render losos-lab-virt;
 
   losos-admin-ui = pkgs.buildNpmPackage {

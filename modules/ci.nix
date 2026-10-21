@@ -12,10 +12,16 @@
 #                     (LosOS Git's internal socket, group losos-git-peers).
 #   losos-ci-runner   as `shared`, the mesh user. Asks the daemon for one
 #                     job at a time, its own box's first, then other boxes'
-#                     through the edge, and runs it in rootless Podman: one
-#                     pod per job, memory, processor and process limits, a
-#                     low processor share. It sees no token and no
-#                     repository but the one the job checked out.
+#                     through the edge, and runs it in rootless Podman
+#                     through pm (github.com/losos-project/pm): the runner
+#                     writes each job's containers as compose files and pm
+#                     starts and stops them with Mesh CI's own pm plugin
+#                     (backend/plugins/pm-ci/), which answers for those
+#                     containers alone. Memory, processor and process
+#                     limits, a low processor share. It sees no token and no
+#                     repository but the one the job checked out. A step
+#                     `uses: losos-project/pm` builds a signed pm recipe in
+#                     pm's own jail.
 #
 # Sockets, each in a directory that is its gate:
 #
@@ -63,66 +69,21 @@ let
     runroot = "${runtimeDir}/losos-ci-containers"
   '';
 
-  # What jobs run in unless they name an image: the tools a workflow
-  # expects of ubuntu-latest that matter most, small enough for a 4 GiB box.
-  # JavaScript actions run with the host's node through /nix/store, so it is
-  # not in here. Tagged with its own hash, so a new build is loaded again.
-  baseImage = pkgs.dockerTools.buildLayeredImage {
-    name = "losos-ci-base";
-    contents = with pkgs; [
-      bashInteractive
-      coreutils
-      findutils
-      diffutils
-      gnugrep
-      gnused
-      gawk
-      gnutar
-      gzip
-      xz
-      zstd
-      unzip
-      which
-      procps
-      gnumake
-      jq
-      git
-      curl
-      cacert
-      python3Minimal
-      dockerTools.usrBinEnv
-      dockerTools.binSh
-      dockerTools.caCertificates
-      dockerTools.fakeNss
-    ];
-    extraCommands = ''
-      mkdir -p tmp
-      chmod 1777 tmp
-    '';
-    config = {
-      Env = [
-        "PATH=/usr/local/bin:/usr/bin:/bin"
-        "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
-        "GIT_SSL_CAINFO=/etc/ssl/certs/ca-bundle.crt"
-        "LANG=C.UTF-8"
-      ];
-      WorkingDir = "/github/workspace";
-    };
-  };
-  baseImageName = "localhost/${baseImage.imageName}:${baseImage.imageTag}";
-
   podmanEnv = {
     XDG_RUNTIME_DIR = runtimeDir;
     DBUS_SESSION_BUS_ADDRESS = "unix:path=${runtimeDir}/bus";
     CONTAINERS_STORAGE_CONF = "${storageConf}";
     HOME = runnerRoot;
+    XDG_CONFIG_HOME = "${cfg.pmPlugin}";
   };
 
-  # Every pod a runner left behind, at its stop.
-  cleanPods = pkgs.writeShellScript "losos-ci-runner-clean" ''
-    ${podmanPkg}/bin/podman pod ls --quiet --filter name=losos-ci- \
-      | ${pkgs.findutils}/bin/xargs --no-run-if-empty ${podmanPkg}/bin/podman pod rm --force --time 5 \
-      || true
+  # Every Mesh CI container a runner left behind, at its stop, through pm
+  # like everything else the runner does to them.
+  cleanContainers = pkgs.writeShellScript "losos-ci-runner-clean" ''
+    export XDG_CONFIG_HOME=${cfg.pmPlugin} RUST_LOG=warn
+    ${cfg.pm}/bin/pm container list | while read -r name; do
+      ${cfg.pm}/bin/pm container remove "$name" || true
+    done
   '';
 
   # Private, link-local, shared-address-space and loopback destinations.
@@ -330,6 +291,7 @@ in
       path = [
         "/run/wrappers"
         podmanPkg
+        pkgs.podman-compose
         pkgs.curl
         pkgs.gnutar
         pkgs.gzip
@@ -348,9 +310,11 @@ in
             "--name"
             config.losos.proxy.applianceId
             "--default-image"
-            baseImageName
-            "--default-image-archive"
-            "${baseImage}"
+            cfg.pmPlugin.baseImageName
+            "--pm"
+            "${cfg.pm}/bin/pm"
+            "--pm-config"
+            "${cfg.pmPlugin}"
             "--memory"
             cfg.runner.memory
             "--cpus"
@@ -363,11 +327,9 @@ in
             i
           ]) cfg.runner.images
         );
-        ExecStopPost = "${cleanPods}";
+        ExecStopPost = "${cleanContainers}";
         Restart = "always";
         RestartSec = "5s";
-        # The first image load takes a while on a small box.
-        TimeoutStartSec = "10min";
         # The runner itself is small; the pods live in the user manager.
         CPUWeight = 20;
         IOWeight = 20;

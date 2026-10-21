@@ -14,6 +14,15 @@
     disko.url = "github:nix-community/disko";
     disko.inputs.nixpkgs.follows = "nixpkgs";
 
+    # pm, the LosOS package manager (nix/pm.nix): Mesh CI starts each job's
+    # containers through it and builds workflows' pm recipes with it. Its
+    # source only, built here with this flake's nixpkgs. Pinned to the newest
+    # master whose root Cargo.lock still agrees with its Cargo.toml: from PR
+    # #55 on the lock carries wit-component 0.262 while Cargo.toml asks for
+    # 0.261, so an offline build cannot resolve it.
+    pm.url = "git+https://github.com/losos-project/pm?ref=master&rev=30abe308587967a71ee9142915d735d784430a9e";
+    pm.flake = false;
+
     # devenv is deliberately NOT a flake input. The dev environment lives in
     # devenv.nix, driven by the devenv CLI against devenv.yaml (standalone
     # mode). Wiring it through the flake instead — devenv.lib.mkShell — fails
@@ -35,6 +44,7 @@
       nixpkgs,
       impermanence,
       disko,
+      pm,
     }:
     let
       system = "x86_64-linux";
@@ -62,7 +72,10 @@
       # losos-registrar (the master-proxy edge) and losos-admin-ui (the static
       # admin SPA). See nix/packages.nix.
       packages.${system} =
-        import ./nix/packages.nix { inherit pkgs version; }
+        import ./nix/packages.nix {
+          inherit pkgs version;
+          pmSrc = pm;
+        }
         # Bootable media, built off nixosConfigurations.install. Separate from
         # packages.nix because these are the only outputs that reach back into
         # `self` — they overlay the install system rather than building

@@ -1,15 +1,17 @@
 //! The runner: `losos-ci runner`, as the `shared` user. It asks the
 //! daemon for work over the runner socket, unpacks the commit into a job
-//! directory, runs the steps ([`job`]) in a rootless Podman pod
-//! ([`sandbox`]) and reports the log and the result as it goes.
+//! directory, runs the steps ([`job`]) in the job's containers, which pm
+//! starts and stops with Mesh CI's pm plugin ([`pm`]), and reports the log
+//! and the result as it goes.
 
 pub mod commands;
 pub mod job;
+pub mod pm;
 pub mod sandbox;
 
 use super::net::{unix_http, Report};
 use anyhow::Context;
-use sandbox::{Dirs, Host, Limits, Podman, Sandbox};
+use sandbox::{Dirs, Host, Limits, Sandbox};
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -25,12 +27,14 @@ pub struct Config {
     pub work: PathBuf,
     /// This box, `runner.name`.
     pub name: String,
-    /// `podman` or `host`.
+    /// `pm`, or `host` to run steps as plain processes.
     pub sandbox: String,
-    /// The image a job runs in when its `runs-on` names no other.
+    /// The image a job runs in when its `runs-on` names no other. The pm
+    /// plugin loads it from the store before a job that needs it.
     pub default_image: String,
-    /// The image's archive, loaded once.
-    pub default_image_archive: Option<PathBuf>,
+    /// pm and its configuration with Mesh CI's plugin: the job's containers
+    /// and `uses: losos-project/pm`.
+    pub pm: Option<pm::Tool>,
     /// `runs-on` label to image.
     pub images: BTreeMap<String, String>,
     pub limits: Limits,
@@ -161,31 +165,6 @@ fn fetch_action(repo: &str, git_ref: &str, dest: &Path) -> anyhow::Result<()> {
     unpack(&out.stdout, dest, true)
 }
 
-/// Load the default image from its archive unless Podman has it.
-fn load_default_image(cfg: &Config) {
-    let Some(archive) = &cfg.default_image_archive else {
-        return;
-    };
-    let exists = std::process::Command::new("podman")
-        .args(["image", "exists", &cfg.default_image])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if exists {
-        return;
-    }
-    tracing::info!(image = %cfg.default_image, "loading the default image");
-    let ok = std::process::Command::new("podman")
-        .args(["load", "--quiet", "--input"])
-        .arg(archive)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !ok {
-        tracing::warn!("could not load {}", archive.display());
-    }
-}
-
 /// The image for a job: its `container:`, else the first `runs-on` label
 /// the box has an image for, else the default.
 fn image_for(cfg: &Config, payload: &Value) -> String {
@@ -260,7 +239,12 @@ fn run_one(cfg: &Config, work: Work) {
             let image = image_for(cfg, &work.payload);
             say(&format!("##[group]Starting the job's container ({image})"));
             let mut log = |l: &str| say(l);
-            let p = Podman::start(
+            let tool = cfg
+                .pm
+                .clone()
+                .context("this runner has no pm to start containers with")?;
+            let p = pm::Pm::start(
+                tool,
                 &format!("{}-{}", work.kind, work.id),
                 &dirs,
                 &image,
@@ -282,6 +266,7 @@ fn run_one(cfg: &Config, work: Work) {
             runner_name: &cfg.name,
             sandbox: sandbox.as_mut(),
             fetch: &fetch_action,
+            pm: cfg.pm.as_ref(),
             stop: &stop_now,
             log: &mut log,
         };
@@ -347,8 +332,8 @@ fn take_chunk(buf: &Mutex<String>) -> String {
 /// Take jobs one at a time, forever.
 pub fn run(cfg: Config) -> anyhow::Result<()> {
     std::fs::create_dir_all(&cfg.work)?;
-    if cfg.sandbox != "host" {
-        load_default_image(&cfg);
+    if let (Some(pm), true) = (&cfg.pm, cfg.sandbox != "host") {
+        pm.sweep();
     }
     loop {
         match claim(&cfg.socket) {
@@ -378,7 +363,7 @@ mod tests {
             name: "b".into(),
             sandbox: "host".into(),
             default_image: "losos-ci-base".into(),
-            default_image_archive: None,
+            pm: None,
             images: [(
                 "ubuntu-latest".to_string(),
                 "docker.io/library/ubuntu:24.04".to_string(),

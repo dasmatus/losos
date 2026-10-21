@@ -60,13 +60,18 @@ enum Cmd {
         /// This box's name in the logs, `runner.name`.
         #[arg(long)]
         name: String,
-        /// `podman`, or `host` to run steps as plain processes.
-        #[arg(long, default_value = "podman")]
+        /// `pm`, or `host` to run steps as plain processes.
+        #[arg(long, default_value = "pm")]
         sandbox: String,
         #[arg(long, default_value = "localhost/losos-ci-base:latest")]
         default_image: String,
+        /// pm, which starts and stops the job's containers.
+        #[arg(long, default_value = "pm")]
+        pm: PathBuf,
+        /// pm's configuration directory with Mesh CI's plugin in it
+        /// (pm/plugins/losos-ci.wasm and the key that signed it).
         #[arg(long)]
-        default_image_archive: Option<PathBuf>,
+        pm_config: Option<PathBuf>,
         /// A runs-on label and the image it runs in, `label=image`.
         #[arg(long = "image")]
         images: Vec<String>,
@@ -134,7 +139,8 @@ fn main() -> anyhow::Result<()> {
             name,
             sandbox,
             default_image,
-            default_image_archive,
+            pm,
+            pm_config,
             images,
             memory,
             cpus,
@@ -151,7 +157,7 @@ fn main() -> anyhow::Result<()> {
                 name,
                 sandbox,
                 default_image,
-                default_image_archive,
+                pm: pm_config.map(|config| runner::pm::Tool { bin: pm, config }),
                 images,
                 limits: runner::sandbox::Limits { memory, cpus },
                 node,

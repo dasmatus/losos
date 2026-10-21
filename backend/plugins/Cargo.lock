@@ -130,6 +130,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "losos-pm-ci"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
 name = "losos-widget"
 version = "0.1.0"
 dependencies = [

@@ -1668,6 +1668,20 @@ in
       '';
     };
 
+    ci.pm = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      internal = true;
+      description = "pm, which starts and stops Mesh CI's job containers and builds workflows' pm recipes.";
+    };
+
+    ci.pmPlugin = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      internal = true;
+      description = "Mesh CI's signed pm plugin, as a pm configuration directory (nix/ci-pm-plugin.nix).";
+    };
+
     # ── LosOS Lab's guests under libvirt (modules/lab.nix) ───────────────────
     lab.libvirt.enable = lib.mkOption {
       type = lib.types.bool;
