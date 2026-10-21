@@ -8,6 +8,7 @@ import {
   Visibility,
 } from "matrix-js-sdk";
 import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Dialog, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
@@ -57,6 +58,7 @@ export interface NewRoomProps {
 /** A new room, or a new space: name, topic, who may join, encryption. */
 export function NewRoomDialog({ client, open, onOpenChange, space, asSpace = false, onCreated }: NewRoomProps) {
   const t = useT();
+  const ids = React.useId();
   const [name, setName] = React.useState("");
   const [topic, setTopic] = React.useState("");
   const [open_, setPublic] = React.useState(false);
@@ -107,14 +109,14 @@ export function NewRoomDialog({ client, open, onOpenChange, space, asSpace = fal
           <DialogDescription>{asSpace ? t("chat.newSpace.lead") : t("chat.newRoom.lead")}</DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-[13px] font-medium">
-            {t("chat.newRoom.name")}
-            <Input value={name} onChange={(event) => setName(event.target.value)} required maxLength={120} autoFocus />
-          </label>
-          <label className="flex flex-col gap-1 text-[13px] font-medium">
-            {t("chat.newRoom.topic")}
-            <Textarea value={topic} onChange={(event) => setTopic(event.target.value)} rows={2} maxLength={500} />
-          </label>
+          <Field>
+            <FieldLabel htmlFor={`${ids}-name`}>{t("chat.newRoom.name")}</FieldLabel>
+            <Input id={`${ids}-name`} value={name} onChange={(event) => setName(event.target.value)} required maxLength={120} autoFocus />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${ids}-topic`}>{t("chat.newRoom.topic")}</FieldLabel>
+            <Textarea id={`${ids}-topic`} value={topic} onChange={(event) => setTopic(event.target.value)} rows={2} maxLength={500} />
+          </Field>
           <Row label={t("chat.newRoom.public")} hint={open_ ? t("chat.newRoom.publicOn") : t("chat.newRoom.publicOff")}>
             <Switch isSelected={open_} onChange={(on) => { setPublic(on); if (on) setEncrypted(false); }} aria-label={t("chat.newRoom.public")} />
           </Row>
@@ -402,6 +404,7 @@ export function JoinDialog({ client, open, onOpenChange, onJoined, space }: { cl
 /** A room's name, topic, encryption, people and spaces; and leaving it. */
 export function RoomSettingsDialog({ client, room, open, onOpenChange, onLeft, onInvite }: { client: MatrixClient; room: Room; open: boolean; onOpenChange: (open: boolean) => void; onLeft: () => void; onInvite: () => void }) {
   const t = useT();
+  const ids = React.useId();
   const me = client.getSafeUserId();
   const [name, setName] = React.useState(room.name);
   const [topic, setTopic] = React.useState("");
@@ -442,14 +445,14 @@ export function RoomSettingsDialog({ client, room, open, onOpenChange, onLeft, o
         <DialogDescription className="font-mono text-[12px] break-all">{room.getCanonicalAlias() ?? room.roomId}</DialogDescription>
       </DialogHeader>
       <DialogBody className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-[13px] font-medium">
-          {t("chat.newRoom.name")}
-          <Input value={name} onChange={(event) => setName(event.target.value)} disabled={!maySend(room, me, EventType.RoomName)} />
-        </label>
-        <label className="flex flex-col gap-1 text-[13px] font-medium">
-          {t("chat.newRoom.topic")}
-          <Textarea value={topic} onChange={(event) => setTopic(event.target.value)} rows={2} disabled={!maySend(room, me, EventType.RoomTopic)} />
-        </label>
+        <Field>
+          <FieldLabel htmlFor={`${ids}-name`}>{t("chat.newRoom.name")}</FieldLabel>
+          <Input id={`${ids}-name`} value={name} onChange={(event) => setName(event.target.value)} disabled={!maySend(room, me, EventType.RoomName)} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${ids}-topic`}>{t("chat.newRoom.topic")}</FieldLabel>
+          <Textarea id={`${ids}-topic`} value={topic} onChange={(event) => setTopic(event.target.value)} rows={2} disabled={!maySend(room, me, EventType.RoomTopic)} />
+        </Field>
         <Row label={t("chat.newRoom.encrypted")} hint={encrypted ? t("chat.settings.encryptedOn") : t("chat.settings.encryptedOff")}>
           <Switch
             isSelected={encrypted}

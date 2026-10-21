@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { MessageBody } from "./message-body";
 import { buildItems, continues, type Item, type Message, plainBody, useEmitted } from "./model";
+import { Button } from "@/components/ui/button";
 
 export const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮", "😢", "🙏", "👀"] as const;
 
@@ -148,7 +149,6 @@ function Toolbar({ client, room, item, actions, me }: { client: MatrixClient; ro
   const canRedact = mine || room.currentState.hasSufficientPowerLevelFor("redact", room.getMember(me)?.powerLevel ?? 0);
   const isText = typeof item.content["msgtype"] === "string" && ["m.text", "m.emote", "m.notice"].includes(item.content["msgtype"] as string);
   if (ev.isRedacted() || ev.status !== null) return null;
-  const tool = "rounded-control p-1.5 text-muted hover:bg-sunk hover:text-ink";
   const react = (key: string): void => {
     setPicking(false);
     const already = item.reactions.find((r) => r.key === key)?.mine;
@@ -173,33 +173,33 @@ function Toolbar({ client, room, item, actions, me }: { client: MatrixClient; ro
           ))}
         </div>
       ) : (
-        <button type="button" className={tool} aria-label={t("chat.reaction.add")} title={t("chat.reaction.add")} onClick={() => setPicking(true)}>
+        <Button variant="ghost" size="icon-sm" aria-label={t("chat.reaction.add")} title={t("chat.reaction.add")} onClick={() => setPicking(true)}>
           <HugeiconsIcon icon={SmileIcon} className="size-4" />
-        </button>
+        </Button>
       )}
-      <button type="button" className={tool} aria-label={t("chat.message.reply")} title={t("chat.message.reply")} onClick={() => actions.onReply(ev)}>
+      <Button variant="ghost" size="icon-sm" aria-label={t("chat.message.reply")} title={t("chat.message.reply")} onClick={() => actions.onReply(ev)}>
         <HugeiconsIcon icon={ArrowTurnBackwardIcon} className="size-4" />
-      </button>
+      </Button>
       {actions.onThread !== null && (
-        <button
-          type="button"
-          className={tool}
+        <Button variant="ghost" size="icon-sm"
+         
+         
           aria-label={t("chat.thread.reply")}
           title={t("chat.thread.reply")}
           onClick={() => actions.onThread?.(ev.getId() ?? "")}
         >
           <HugeiconsIcon icon={Comment01Icon} className="size-4" />
-        </button>
+        </Button>
       )}
       {mine && isText && (
-        <button type="button" className={tool} aria-label={t("chat.message.edit")} title={t("chat.message.edit")} onClick={() => actions.onEdit(ev)}>
+        <Button variant="ghost" size="icon-sm" aria-label={t("chat.message.edit")} title={t("chat.message.edit")} onClick={() => actions.onEdit(ev)}>
           <HugeiconsIcon icon={PencilEdit01Icon} className="size-4" />
-        </button>
+        </Button>
       )}
       {canRedact && (
-        <button
-          type="button"
-          className={cn(tool, "hover:text-crit")}
+        <Button variant="ghost" size="icon-sm"
+         
+          className={cn("hover:text-crit")}
           aria-label={t("chat.message.delete")}
           title={t("chat.message.delete")}
           onClick={() => {
@@ -207,7 +207,7 @@ function Toolbar({ client, room, item, actions, me }: { client: MatrixClient; ro
           }}
         >
           <HugeiconsIcon icon={Delete02Icon} className="size-4" />
-        </button>
+        </Button>
       )}
     </div>
   );

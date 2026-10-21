@@ -8,6 +8,7 @@ import { Avatar } from "./avatar";
 import { Composer } from "./composer";
 import { buildItems, plainBody, threadRootOf, useEmitted } from "./model";
 import { ItemList, type RowActions, TIMELINE_EVENTS, useStickToBottom } from "./timeline";
+import { Button } from "@/components/ui/button";
 
 interface ThreadSummary {
   root: MatrixEvent;
@@ -181,14 +182,14 @@ export function ThreadPanel({ client, room, root, me, actions, onOpen, onClose }
     <aside aria-label={t("chat.thread.panel")} className="flex min-h-0 w-full flex-col border-l border-line bg-surface lg:w-96">
       <header className="flex h-14 items-center gap-2 border-b border-line px-3">
         {root !== null && (
-          <button type="button" className="rounded-control p-1.5 text-muted hover:bg-sunk hover:text-ink" aria-label={t("chat.thread.all")} onClick={() => onOpen(null)}>
+          <Button variant="ghost" size="icon-sm" aria-label={t("chat.thread.all")} onClick={() => onOpen(null)}>
             <HugeiconsIcon icon={ArrowLeft01Icon} className="size-4" />
-          </button>
+          </Button>
         )}
         <h2 className="flex-1 text-[14px] font-semibold">{root === null ? t("chat.thread.title") : t("chat.thread.one")}</h2>
-        <button type="button" className="rounded-control p-1.5 text-muted hover:bg-sunk hover:text-ink" aria-label={t("chat.thread.close")} onClick={onClose}>
+        <Button variant="ghost" size="icon-sm" aria-label={t("chat.thread.close")} onClick={onClose}>
           <HugeiconsIcon icon={Cancel01Icon} className="size-4" />
-        </button>
+        </Button>
       </header>
       {root === null ? (
         <div className="min-h-0 flex-1 overflow-y-auto">

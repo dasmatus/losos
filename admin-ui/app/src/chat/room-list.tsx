@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Add01Icon, Home01Icon, Search01Icon, UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import { KnownMembership, type MatrixClient, type Room } from "matrix-js-sdk";
 import { Button } from "@/components/ui/button";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
@@ -136,25 +137,27 @@ export function RoomList({ client, current, space, onOpen, onNewRoom, onNewChat,
   }, [client, space, filter, tick]);
 
   const plus = (label: string, onClick: () => void, icon = Add01Icon) => (
-    <button type="button" className="rounded-control p-1 text-muted hover:bg-sunk hover:text-ink" aria-label={label} title={label} onClick={onClick}>
+    <Button variant="ghost" size="icon-sm" aria-label={label} title={label} onClick={onClick}>
       <HugeiconsIcon icon={icon} className="size-4" />
-    </button>
+    </Button>
   );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-3 pt-3 pb-2">
         {spaceName !== null && <p className="mb-2 truncate px-1 text-[15px] font-semibold">{spaceName}</p>}
-        <label className="flex h-8 items-center gap-2 rounded-control border border-line bg-ground px-2 focus-within:border-accent">
-          <HugeiconsIcon icon={Search01Icon} className="size-4 text-faint" />
-          <input
+        <InputGroup className="h-8">
+          <InputGroupAddon>
+            <HugeiconsIcon icon={Search01Icon} className="size-4" aria-hidden="true" />
+          </InputGroupAddon>
+          <InputGroupInput
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             placeholder={t("chat.list.filter")}
             aria-label={t("chat.list.filter")}
-            className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-faint"
+            className="text-[13px]"
           />
-        </label>
+        </InputGroup>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {invites.length > 0 && (

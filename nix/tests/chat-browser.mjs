@@ -121,7 +121,7 @@ async function on() {
   await shot(owner, "sidebar-after");
   await chatLink(owner).click();
   await owner.waitForURL(`${ORIGIN}/chat/**`);
-  await owner.getByRole("heading", { name: "LosOS chat" }).waitFor();
+  await owner.getByRole("heading", { name: "Conversations" }).waitFor();
 
   // Secure messages: a recovery key on the first device.
   await owner.getByRole("button", { name: "Set up secure messages" }).click();
@@ -138,7 +138,7 @@ async function on() {
   // Matus writes to Eva; the room is end to end encrypted.
   const eva = await person("eva");
   await eva.goto(`${ORIGIN}/chat/`);
-  await eva.getByRole("heading", { name: "LosOS chat" }).waitFor();
+  await eva.getByRole("heading", { name: "Conversations" }).waitFor();
   await owner.getByRole("button", { name: "Message someone" }).first().click();
   await owner.getByRole("textbox", { name: "Name or @name:server" }).fill("eva");
   await owner.getByRole("dialog").getByRole("button", { name: /Eva/ }).first().click();
@@ -204,7 +204,7 @@ async function on() {
   // A second device reads the past with the recovery key.
   const second = await person("matus");
   await second.goto(`${ORIGIN}/chat/`);
-  await second.getByRole("heading", { name: "LosOS chat" }).waitFor();
+  await second.getByRole("heading", { name: "Conversations" }).waitFor();
   await second.getByRole("button", { name: /Eva/ }).first().click();
   await second.getByRole("log").getByText(/no key for this message/).first().waitFor();
   await second.getByRole("button", { name: "Unlock this device to read encrypted messages" }).click();
