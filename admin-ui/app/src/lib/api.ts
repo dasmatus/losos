@@ -2991,7 +2991,12 @@ export function sendMail(draft: MailDraft): Promise<{ ok: true }> {
   });
 }
 
-// ── LosOS Contacts (backend/src/contacts.rs) ──────────────────────────────
+// ── LosOS Contacts ─────────────────────────────────────────────────────────
+// The book is LosOS Cloud's address books (backend/src/cloud/contacts.rs),
+// under /cloud/api/contacts/, the same cards phones sync over CardDAV.
+// LosOS Cloud knows the caller from LosOS Login's cookie, so these calls
+// carry no admin token, and a 401 from it leaves the stored one alone.
+// The pickers are lososd's (backend/src/contacts.rs).
 
 export interface ContactLabelled {
   value: string;
@@ -3039,6 +3044,8 @@ export interface ContactFields {
 /** A contact as the book keeps it. */
 export interface Contact extends ContactFields {
   id: string;
+  /** The address book it is in, by name. */
+  book?: string;
   /** Where the photo loads from, versioned; absent without one. */
   photo?: string;
   updated: number;
@@ -3064,43 +3071,50 @@ export interface ContactsImport {
   leftOut: number;
 }
 
-/** GET /api/contacts — the caller's book, by name. 404 off the shared side. */
+const CONTACTS = "/cloud/api/contacts";
+
+function contactsCall<T>(path: string, options: CallOptions = {}): Promise<T> {
+  return call<T>(`${CONTACTS}${path}`, { ...options, anonymous: true });
+}
+
+/** GET /cloud/api/contacts — the caller's contacts in every address book, by name. */
 export async function getContacts(options: RequestOptions = {}): Promise<{ contacts: Contact[] }> {
-  const answer = await call<{ contacts?: Contact[] }>("/api/contacts", options);
+  const answer = await contactsCall<{ contacts?: Contact[] }>("", options);
   return { contacts: answer.contacts ?? [] };
 }
 
-/** POST /api/contacts or PUT /api/contacts/{id} — save a contact's fields. */
+/** POST /cloud/api/contacts or PUT /cloud/api/contacts/{id} — save a
+ *  contact's fields. 412 when a phone changed the card since it was read. */
 export function saveContact(id: string | null, fields: ContactFields): Promise<Contact> {
-  return call<Contact>(id === null ? "/api/contacts" : `/api/contacts/${encodeURIComponent(id)}`, {
+  return contactsCall<Contact>(id === null ? "" : `/${encodeURIComponent(id)}`, {
     method: id === null ? "POST" : "PUT",
     contentType: "application/json",
     body: JSON.stringify(fields),
   });
 }
 
-/** DELETE /api/contacts/{id}. */
+/** DELETE /cloud/api/contacts/{id}. */
 export function deleteContact(id: string): Promise<{ removed: string }> {
-  return call<{ removed: string }>(`/api/contacts/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return contactsCall<{ removed: string }>(`/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-/** PUT /api/contacts/{id}/photo — a picture, scaled and squared by the box. */
+/** PUT /cloud/api/contacts/{id}/photo — a picture, scaled and squared by the box. */
 export function setContactPhoto(id: string, picture: Blob): Promise<Contact> {
-  return call<Contact>(`/api/contacts/${encodeURIComponent(id)}/photo`, {
+  return contactsCall<Contact>(`/${encodeURIComponent(id)}/photo`, {
     method: "PUT",
     contentType: picture.type || "application/octet-stream",
     body: picture,
   });
 }
 
-/** DELETE /api/contacts/{id}/photo. */
+/** DELETE /cloud/api/contacts/{id}/photo. */
 export function removeContactPhoto(id: string): Promise<Contact> {
-  return call<Contact>(`/api/contacts/${encodeURIComponent(id)}/photo`, { method: "DELETE" });
+  return contactsCall<Contact>(`/${encodeURIComponent(id)}/photo`, { method: "DELETE" });
 }
 
-/** POST /api/contacts/import — a .vcf file, one card or many. */
+/** POST /cloud/api/contacts/import — a .vcf file, one card or many. */
 export function importContacts(file: Blob): Promise<ContactsImport> {
-  return call<ContactsImport>("/api/contacts/import", {
+  return contactsCall<ContactsImport>("/import", {
     method: "POST",
     contentType: "text/vcard",
     body: file,
@@ -3111,11 +3125,11 @@ export function importContacts(file: Blob): Promise<ContactsImport> {
 export function contactsExportUrl(version: "3.0" | "4.0", ids?: readonly string[]): string {
   const params = new URLSearchParams({ version });
   if (ids !== undefined && ids.length > 0) params.set("ids", ids.join(","));
-  return apiPath(`/api/contacts/export?${params.toString()}`);
+  return `${CONTACTS}/export?${params.toString()}`;
 }
 
-/** GET /api/contacts/suggest — the people a picker offers for `q`. An empty
- *  list where the box has no contacts (off the shared side). */
+/** GET /api/contacts/suggest — the people a picker offers for `q`: the
+ *  caller's contacts and the people on this box. Empty for the spare key. */
 export async function suggestContacts(
   q: string,
   want: "any" | "email" | "matrix" | "mesh" | "box" = "any",

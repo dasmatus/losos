@@ -1,13 +1,14 @@
 /* LosOS Contacts: a screen of the admin UI at /contacts, inside its top bar
- * and sidebar like Mail, over lososd's /api/contacts
- * (backend/src/contacts.rs). Each person's book is a private room of
- * theirs on the box's Matrix server, so Contacts exists only where chat
- * does: on the shared side.
+ * and sidebar like Mail, over LosOS Cloud's /cloud/api/contacts
+ * (backend/src/cloud/contacts.rs). The book is the person's address books
+ * in LosOS Cloud, the same cards their phone syncs over CardDAV, so
+ * Contacts exists wherever LosOS Cloud does.
  *
  * Two views share one card: the person's own contacts, and the people
  * with an account on this box (who need no entry to be reached). A picked
  * person opens beside the list on a wide screen and over it on a phone,
- * with buttons that go straight to Mail, a chat, or a call in LosOS Chat.
+ * with buttons that go straight to Mail, a chat, or a call in LosOS Chat,
+ * where the box runs them.
  * Files come and go as .vcf (vCard 4.0, 3.0, 2.1). */
 
 import * as React from "react";
@@ -293,6 +294,7 @@ function Book({ contacts, onContacts }: { contacts: Contact[]; onContacts: (cont
     setColumn("person");
   };
 
+  const chat = sharedApp("chat");
   const reach = (s: Someone) => {
     const email = emailsOf(s)[0];
     const matrix = matrixOf(s);
@@ -300,9 +302,9 @@ function Book({ contacts, onContacts }: { contacts: Contact[]; onContacts: (cont
       mail: email !== undefined && sharedApp("mail") ? () => navigate(composeMailHref({ to: [email] })) : undefined,
       // A chat or a call is a real navigation: LosOS Chat is a document of
       // its own at /chat/ under its own policy.
-      chat: matrix !== null ? () => window.location.assign(chatWithHref(matrix)) : undefined,
-      call: matrix !== null ? () => window.location.assign(chatWithHref(matrix, { call: "voice" })) : undefined,
-      video: matrix !== null ? () => window.location.assign(chatWithHref(matrix, { call: "video" })) : undefined,
+      chat: matrix !== null && chat ? () => window.location.assign(chatWithHref(matrix)) : undefined,
+      call: matrix !== null && chat ? () => window.location.assign(chatWithHref(matrix, { call: "voice" })) : undefined,
+      video: matrix !== null && chat ? () => window.location.assign(chatWithHref(matrix, { call: "video" })) : undefined,
     };
   };
 

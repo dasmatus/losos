@@ -4,8 +4,8 @@
  * starting a chat, a contact's chat address and mesh sharing use it.
  *
  * It stays a plain text field underneath: an address typed by hand is kept
- * as typed, and where the box has no contacts (off the shared side) it
- * offers nothing and is just the field. With `multiple`, the value is a
+ * as typed, and where nobody matches it offers nothing and is just the
+ * field. With `multiple`, the value is a
  * comma-separated list and the suggestions answer the part being typed. */
 
 import * as React from "react";
