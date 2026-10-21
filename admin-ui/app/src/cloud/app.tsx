@@ -7,6 +7,7 @@ import {
   Folder01Icon,
   Image01Icon,
   LaptopPhoneSyncIcon,
+  NoteIcon,
   Search01Icon,
   StarIcon,
   UserSharingIcon,
@@ -41,6 +42,7 @@ import { FilesView } from "./files";
 import { formatBytes } from "./format";
 import { ListView } from "./lists";
 import { SharedFolderView, SharedView } from "./mesh/shared";
+import { NotesOpen, NotesPage } from "./notes/page";
 import { PhotosView } from "./photos";
 import { useMe } from "./store";
 import { TrashView } from "./trash";
@@ -48,7 +50,8 @@ import { UploadsPanel } from "./uploads";
 
 /* LosOS Cloud at /cloud/: the person's files in the browser, beside the
  * desktop and phone apps that sync them. One sidebar of places (Files,
- * Recent, Favorites, Photos, Trash, Devices), a search in the top bar, and
+ * Notes, Recent, Favorites, Photos, Trash, Devices), a search in the top
+ * bar, and
  * the uploads in the corner. /cloud/connect/<token> is the page the apps
  * open to sign in, and draws without the sidebar. */
 
@@ -69,6 +72,7 @@ interface Place {
 
 const PLACES: readonly Place[] = [
   { to: "/files", label: "cloud.nav.files", icon: Folder01Icon },
+  { to: "/notes", label: "notes.title", icon: NoteIcon },
   { to: "/recent", label: "cloud.nav.recent", icon: Clock01Icon },
   { to: "/favorites", label: "cloud.nav.favorites", icon: StarIcon },
   { to: "/shared", label: "mesh.shared.title", icon: UserSharingIcon },
@@ -81,13 +85,23 @@ function Shell() {
   const { pathname } = useLocation();
   const connecting = pathname.startsWith("/connect/");
   const editing = pathname.startsWith("/edit/");
+  const noting = pathname === "/notes" || pathname.startsWith("/notes/");
   return (
     <div className="losos-shell min-h-dvh text-ink">
-      <TopBar search={!connecting && !editing} />
+      <TopBar search={!connecting && !editing && !noting} wide={noting} />
       {connecting ? (
         <Routes>
           <Route path="/connect/:token" element={<ConnectPage />} />
         </Routes>
+      ) : noting ? (
+        // A vault has panes of its own and wants the width.
+        <div className="px-4 pt-5 pb-12 sm:px-6">
+          <Routes>
+            <Route path="/notes" element={<NotesPage />} />
+            <Route path="/notes/open" element={<NotesOpen />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </div>
       ) : editing ? (
         // A document gets the width; the places are one link away.
         <main className="px-4 pt-5 pb-12 sm:px-6">
@@ -120,7 +134,7 @@ function Shell() {
   );
 }
 
-function TopBar({ search }: { search: boolean }) {
+function TopBar({ search, wide = false }: { search: boolean; wide?: boolean }) {
   const t = useT();
   const logo = logoFor();
   const me = useMe();
@@ -135,7 +149,7 @@ function TopBar({ search }: { search: boolean }) {
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
-      <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
+      <div className={cn("mx-auto flex w-full items-center gap-3 px-4 py-3 sm:px-6", wide ? "max-w-[96rem]" : "max-w-6xl")}>
         <Link to="/files" className="flex shrink-0 items-center gap-2.5 rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
           <img src={logo.url} alt="" width={32} height={32} className="size-8" />
           <span className="text-[15px] font-semibold tracking-tight max-sm:sr-only">{me?.product ?? "LosOS Cloud"}</span>
