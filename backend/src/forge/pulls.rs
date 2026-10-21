@@ -1006,9 +1006,13 @@ pub fn notify_review_requested(state: &State, repo: &Repo, pr: &Issue, who: &Use
         "review requested"
     );
     let head = pr.head_sha.clone().or_else(|| {
-        pr.head_branch
-            .as_deref()
-            .and_then(|b| state.git.commit_of(&repo_dir(state, repo), b).ok().flatten())
+        pr.head_branch.as_deref().and_then(|b| {
+            state
+                .git
+                .commit_of(&repo_dir(state, repo), b)
+                .ok()
+                .flatten()
+        })
     });
     if let Some(head) = head {
         super::reviewer::worker::review_requested(state, repo.id, pr.id, &head, who.id);

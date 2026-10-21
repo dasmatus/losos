@@ -23,8 +23,10 @@
 //! The mesh's shared compute is not used: it would send the code to other
 //! people's boxes.
 
+pub mod api;
 pub mod checks;
 pub mod jobs;
 pub mod model;
 pub mod patch;
 pub mod review;
+pub mod worker;

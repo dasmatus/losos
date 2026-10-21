@@ -78,15 +78,6 @@ pub enum JobState {
 }
 
 impl JobState {
-    fn as_str(self) -> &'static str {
-        match self {
-            JobState::Queued => "queued",
-            JobState::Reviewing => "reviewing",
-            JobState::Done => "done",
-            JobState::Failed => "failed",
-            JobState::Superseded => "superseded",
-        }
-    }
     fn parse(s: &str) -> JobState {
         match s {
             "reviewing" => JobState::Reviewing,

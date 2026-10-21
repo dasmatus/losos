@@ -87,6 +87,7 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
     // scope that matches the prefix answers 404 for the rest.
     let scope = super::pulls::routes(scope);
     let scope = super::code::routes(scope);
+    let scope = super::reviewer::api::routes(scope);
     cfg.service(super::worktrees::routes(scope));
 }
 
@@ -168,6 +169,7 @@ pub fn repo_json(req: &HttpRequest, state: &State, repo: &Repo, permission: Perm
         "description": repo.description,
         "private": repo.private,
         "default_branch": repo.default_branch,
+        "ai_review": state.store.ai_review(repo.id).unwrap_or(false),
         "empty": empty,
         "fork": repo.fork_of.is_some(),
         "parent_id": repo.fork_of,

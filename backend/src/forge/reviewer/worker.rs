@@ -94,9 +94,7 @@ fn on_event(state: &State, event: &Event) {
                 state.store.drop_reviews(issue_id)?;
                 return Ok(());
             }
-            _ if !state.reviewer.available() || !state.store.ai_review(repo_id)? => {
-                return Ok(())
-            }
+            _ if !state.reviewer.available() || !state.store.ai_review(repo_id)? => return Ok(()),
             _ if !statuses::is_sha(head) => return Ok(()),
             "opened" | "reopened" => {
                 state
@@ -195,7 +193,9 @@ fn work(state: &State, job: &Job) -> Option<Duration> {
         }
     };
     let Some(config) = state.reviewer.config.as_ref() else {
-        let _ = state.store.fail_review_job(job.id, "Build with AI is off on this box.");
+        let _ = state
+            .store
+            .fail_review_job(job.id, "Build with AI is off on this box.");
         return None;
     };
     match model::has_model(config) {
@@ -258,7 +258,10 @@ fn review_job(
         .issue(repo.id, number)?
         .ok_or_else(|| anyhow::anyhow!("the pull request is gone"))?;
     let path = state.config.repo_path(&repo.owner, &repo.name);
-    let base = pull.base_branch.clone().unwrap_or(repo.default_branch.clone());
+    let base = pull
+        .base_branch
+        .clone()
+        .unwrap_or(repo.default_branch.clone());
     let git = |args: &[&str]| state.git.run(&path, args);
 
     // A push is reviewed from the last reviewed head when that head is still
@@ -275,7 +278,15 @@ fn review_job(
             false,
         ),
     };
-    let diff = git(&["diff", "--no-color", "--no-ext-diff", "-M", "-U3", &from, &job.head])?;
+    let diff = git(&[
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "-M",
+        "-U3",
+        &from,
+        &job.head,
+    ])?;
     let mut files = patch::files(&diff);
     for f in &mut files {
         let Some(p) = f.path.as_deref() else { continue };
