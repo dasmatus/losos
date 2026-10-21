@@ -330,6 +330,9 @@ let collecting = false;
 for (const p of [page, anon]) {
   p.on("console", (m) => {
     if (m.type() !== "error") return;
+    // A site that is not served answers 404, which is what the page asks
+    // to learn that it is missing.
+    if (/status of 404/.test(m.text()) && /\/kb\/api\/[^/]+\/site$/.test(m.location().url)) return;
     if (collecting) {
       if (!baseline.has(m.text())) problems.push(m.text());
     } else baseline.add(m.text());
