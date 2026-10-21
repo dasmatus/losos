@@ -1184,11 +1184,14 @@ pub fn cmd_domains<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     }
 }
 
-/// Add or remove a custom domain. The reply is the edge's whole view, so the
-/// page redraws from one answer.
+/// Add or remove a custom domain, or bind the box's wallet to its names.
+/// The reply is the edge's whole view, so the page redraws from one answer.
 pub fn cmd_domain_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Result<Value> {
     use crate::market::{Op, Outcome, Refused};
-    if !matches!(op, Op::DomainAdd { .. } | Op::DomainRemove { .. }) {
+    if !matches!(
+        op,
+        Op::DomainAdd { .. } | Op::DomainRemove { .. } | Op::DomainWallet { .. }
+    ) {
         anyhow::bail!("not a domain operation");
     }
     crate::edge::check_market_gate(&l.edge_status()?)?;

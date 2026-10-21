@@ -1415,6 +1415,10 @@ in
     # registrar replaces the file. Before the first reconcile the file does
     # not exist and Knot answers REFUSED for the zone; that lasts until the
     # registrar's first pass, which runs before its API opens.
+    # With dnssec.enable Knot signs what it loads (its default policy: ECDSA
+    # P-256, the KSK kept until an operator rolls it, ZSKs rolled by Knot),
+    # so the file stays unsigned and the keys stay in Knot's own state
+    # directory. ENS reads the wallet records only from a signed zone.
     services.knot = lib.mkIf dnsCfg.enable {
       enable = true;
       settings = {
@@ -1424,6 +1428,7 @@ in
           zonefile-load = "whole";
           zonefile-sync = "-1";
           journal-content = "none";
+          dnssec-signing = dnsCfg.dnssec.enable;
         };
       };
     };

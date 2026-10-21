@@ -6,6 +6,8 @@ import {
   isUnauthorized,
   postDomainAdd,
   postDomainRemove,
+  postDomainWallet,
+  type BoundWallet,
   type CustomDomain,
 } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
@@ -37,6 +39,10 @@ export type DomainsState =
       addresses: string[];
       maxDomains: number;
       domains: CustomDomain[];
+      box: string;
+      zone: string;
+      names: string[];
+      wallet: BoundWallet | null;
     };
 
 export interface DomainsData {
@@ -45,6 +51,8 @@ export interface DomainsData {
   refresh: () => void;
   add: (domain: string) => Promise<boolean>;
   remove: (domain: string) => Promise<boolean>;
+  /** Bind the wallet that signed to the box's names, or unbind with null. */
+  bindWallet: (binding: { address: string; signature: string } | null) => Promise<boolean>;
 }
 
 function stateOf(reply: Awaited<ReturnType<typeof getDomains>>): DomainsState {
@@ -55,7 +63,13 @@ function stateOf(reply: Awaited<ReturnType<typeof getDomains>>): DomainsState {
     target: reply.target,
     addresses: reply.addresses,
     maxDomains: reply.max_domains,
-    domains: reply.domains,
+    // An edge that predates wallets sends none of these: no names, nothing
+    // bound, and the pane leaves the section out.
+    domains: reply.domains.map((d) => ({ ...d, wallet: d.wallet ?? null })),
+    box: reply.box ?? "",
+    zone: reply.zone ?? "",
+    names: reply.names ?? [],
+    wallet: reply.wallet ?? null,
   };
 }
 
@@ -80,7 +94,14 @@ export function useDomains(enabled: boolean): DomainsData {
     return () => controller.abort();
   }, [enabled, tick]);
 
-  const waiting = state.kind === "ready" && state.domains.some((d) => d.status === "waiting");
+  // Ask again while a domain waits to go live, while the edge has yet to
+  // look for a bound wallet's record at one (a bind clears what it saw), and
+  // while a wallet could not yet find one of the box's own names.
+  const waiting =
+    state.kind === "ready" &&
+    (state.domains.some((d) => d.status === "waiting" || (state.wallet !== null && d.wallet === null)) ||
+      (state.wallet?.published !== undefined &&
+        state.names.some((name) => state.wallet?.published?.[name] !== "found")));
   React.useEffect(() => {
     if (!enabled || !waiting) return;
     const timer = window.setTimeout(refresh, DOMAINS_RECHECK_MS);
@@ -127,6 +148,14 @@ export function useDomains(enabled: boolean): DomainsData {
       act(
         () => postDomainRemove(domain),
         () => toast.done(t("panes.network.domains.removedTitle", { domain })),
+      ),
+    bindWallet: (binding) =>
+      act(
+        () => postDomainWallet(binding),
+        () =>
+          binding === null
+            ? toast.done(t("panes.network.wallet.unboundTitle"))
+            : toast.success(t("panes.network.wallet.boundTitle"), t("panes.network.wallet.boundBody")),
       ),
   };
 }
