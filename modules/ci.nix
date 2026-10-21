@@ -120,7 +120,15 @@ let
       "-p udp ! --dport 53"
       "-j REJECT"
     ];
-  rules = tool: dsts: lib.concatMap (d: map (r: "${tool} -w %s ${r d}") [ rule ruleUdp ]) dsts;
+  rules =
+    tool: dsts:
+    lib.concatMap (
+      d:
+      map (r: "${tool} -w %s ${r d}") [
+        rule
+        ruleUdp
+      ]
+    ) dsts;
   allRules = rules "iptables" lan4 ++ rules "ip6tables" lan6;
   apply =
     verb: suffix:

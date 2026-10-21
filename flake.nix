@@ -530,6 +530,13 @@
           inherit pkgs;
           pmSrc = pm;
         };
+        # The same with the real admin UI on boxa and a laptop that takes
+        # the pull request's pictures of the Mesh CI pages.
+        losos-mesh-ci-screens = import ./nix/tests/mesh-ci.nix {
+          inherit pkgs;
+          pmSrc = pm;
+          screens = true;
+        };
         # The signed installer medium under OVMF's Secure Boot build: the
         # real ISO (plus the test backdoor) signed with a throwaway key the
         # sandbox makes, boots with that key enrolled beside Microsoft's and

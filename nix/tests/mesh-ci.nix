@@ -17,20 +17,108 @@
 #     no container but Mesh CI's.
 #
 # Without KVM the boxes are slow; every wait here is generous for that.
+#
+# `screens = true` (the check losos-mesh-ci-screens) also gives boxa the
+# real admin UI behind LosOS Login and puts a laptop with a browser on the
+# LAN, which takes the pull request's pictures of the Mesh CI pages once the
+# runs are done. `before`, a path to an earlier admin-ui/app, builds that UI
+# instead, boots only boxa and the laptop, and takes the same addresses,
+# for the Before column:
+#
+#   nix build --impure --expr '(import ./nix/tests/mesh-ci.nix {
+#     pkgs = (builtins.getFlake (toString ./.)).inputs.nixpkgs.legacyPackages.x86_64-linux;
+#     pmSrc = (builtins.getFlake (toString ./.)).inputs.pm;
+#     before = /path/to/main/admin-ui/app; })'
 {
   pkgs,
   pmSrc,
+  screens ? false,
+  before ? null,
 }:
 
 let
   lososPkgs = import ../packages.nix { inherit pkgs pmSrc; };
   inherit (lososPkgs) pm;
-  git = "${pkgs.gitMinimal}/bin/git";
 
   stubUi = pkgs.runCommand "stub-admin-ui" { } ''
     mkdir -p $out
     echo "admin ui" > $out/index.html
   '';
+
+  after = before == null;
+  shoot = screens || !after;
+  shots = import ./screens { inherit pkgs; };
+  PASSWORD = "Correct-Horse-Battery-9";
+
+  # The admin UI as it ships, without the Lab page, which this test never
+  # opens and whose WebAssembly takes longer to build than the test to run.
+  ui = lososPkgs.losos-admin-ui.overrideAttrs (
+    _:
+    {
+      pname = "losos-admin-ui-without-lab";
+      preBuild = ''
+        cat > vite.ci-test.config.ts <<'EOF'
+        import base from "./vite.config";
+        import { join } from "node:path";
+        import { fileURLToPath } from "node:url";
+        const root = fileURLToPath(new URL(".", import.meta.url));
+        const config = base as Record<string, any>;
+        config.build.rolldownOptions.input = {
+          main: join(root, "index.html"),
+          manage: join(root, "manage/index.html"),
+        };
+        export default config;
+        EOF
+      '';
+      buildPhase = ''
+        runHook preBuild
+        npx vite build --config vite.ci-test.config.ts
+        runHook postBuild
+      '';
+    }
+    # The earlier UI shares this one's lock file, so its npm cache too.
+    // lib.optionalAttrs (!after) { src = before; }
+  );
+
+  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
+    case "$1" in
+      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
+      user:resetpassword) echo "Successfully reset password for $2" ;;
+      *) echo "stub occ: $*" >&2; exit 1 ;;
+    esac
+  '';
+
+  # The pictures. The run's address is known only once it exists, so the
+  # test script writes the run's shots itself (see `shoot_run` below).
+  plan = pkgs.writeText "plan-pages.json" (
+    builtins.toJSON {
+      width = 1280;
+      height = 800;
+      shots = [
+        {
+          name = "overview";
+          path = "/";
+          waitFor = {
+            role = "heading";
+            name = "mattbox";
+          };
+        }
+        {
+          name = "ci";
+          path = "/ci";
+          waitFor =
+            if after then
+              {
+                role = "button";
+                name = "Run workflow";
+              }
+            else
+              { selector = "main"; };
+          steps = [ { sleep = 3000; } ];
+        }
+      ];
+    }
+  );
 
   # A service and a container action, loaded into the shared user's
   # Podman on both boxes: nothing is pulled in a VM test. It answers
@@ -206,6 +294,7 @@ let
     {
       id,
       hostName,
+      real ? false,
     }:
     { config, ... }:
     {
@@ -215,14 +304,25 @@ let
         ../../modules/daemon.nix
         ../../modules/git.nix
         ../../modules/ci.nix
+      ]
+      ++ lib.optionals real [
+        ../../modules/tls.nix
+        ../../modules/identity.nix
       ];
+      # The real UI signs in through LosOS Login, which claims the box with
+      # a password lososd also gives LosOS cloud: a stand-in answers that.
+      systemd.services.lososd = lib.mkIf real {
+        path = lib.mkBefore [ stubOcc ];
+        environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+      };
       losos = {
         inherit hostName;
         backend.package = lososPkgs.losos-ctl;
         backend.plugins = lososPkgs.losos-plugins;
-        admin.ui = stubUi;
+        admin.ui = if real then ui else stubUi;
+        nextcloud.mode = lib.mkIf real "native";
         git.enable = true;
-        identity.enable = false;
+        identity.enable = real;
         sharingMyStorage = true;
         # In a mesh as far as the gate goes; rke2 is not imported.
         cluster.enable = true;
@@ -257,7 +357,8 @@ let
         before = [ "losos-ci-runner.service" ];
         after = [ "user@1001.service" ];
         wants = [ "user@1001.service" ];
-        inherit (config.systemd.services.losos-ci-runner) environment path;
+        inherit (config.systemd.services.losos-ci-runner) path;
+        environment = removeAttrs config.systemd.services.losos-ci-runner.environment [ "PATH" ];
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
@@ -277,23 +378,87 @@ let
         vlans = [ 1 ];
       };
     };
-in
-pkgs.testers.nixosTest {
-  name = "losos-mesh-ci";
 
-  nodes = {
-    boxa = boxNode {
-      id = "boxa";
-      hostName = "mattbox";
-    };
-    boxb = boxNode {
-      id = "boxb";
-      hostName = "evabox";
-    };
-    edge = edgeNode;
-  };
+  # What the picture-taking runs share: the owner claims boxa through the
+  # laptop, and losos-capture signs in as them.
+  shootDefs = lib.optionalString shoot ''
+    import json, re
 
-  testScript = ''
+    BOX = "192.168.1.1"
+    PASSWORD = "${PASSWORD}"
+
+    def claim():
+        laptop.wait_for_unit("multi-user.target")
+        boxa.wait_for_open_port(443)
+        body = json.dumps({"name": "matus", "password": PASSWORD})
+        out = laptop.succeed(
+            f"curl -sk -w '\\n%{{http_code}}' -X POST https://{BOX}/api/setup/claim "
+            f"-H 'Host: {BOX}' -H 'Content-Type: application/json' -d '{body}'"
+        )
+        reply, code = out.rsplit("\n", 1)
+        assert code == "200", (code, reply)
+        boxa.wait_for_unit("authelia-losos.service")
+        boxa.systemctl("start losos-identity-setup.service")
+        boxa.wait_until_succeeds(f"grep -q \"domain: '{BOX}'\" /run/losos-identity/session.yml")
+        boxa.wait_until_succeeds("systemctl is-active authelia-losos.service")
+        boxa.wait_for_open_port(9091)
+
+    def capture(name, plan="/etc/losos-test/plan-pages.json"):
+        laptop.succeed(
+            f"losos-capture --base https://{BOX} --plan {plan} "
+            f"--out /tmp/screens/{name} --user matus --password '{PASSWORD}'",
+            timeout=1800,
+        )
+  '';
+
+  # After the runs: the list, the run with a job's log open, and the dialog
+  # that starts a workflow by hand.
+  shootRun = ''
+    with subtest("pictures of the Mesh CI pages"):
+        claim()
+        capture("after")
+        run_plan = {
+            "width": 1280,
+            "height": 800,
+            "shots": [
+                {
+                    "name": "run",
+                    "path": f"/ci/runs/{site_run}",
+                    "waitFor": {"text": "services"},
+                    "steps": [
+                        {"click": {"text": "services"}},
+                        {"waitText": "web is healthy"},
+                        {"sleep": 1500},
+                    ],
+                },
+                {
+                    "name": "recipe",
+                    "path": f"/ci/runs/{site_run}",
+                    "waitFor": {"text": "recipe"},
+                    "steps": [
+                        {"click": {"text": "recipe"}},
+                        {"waitFor": {"text": "losos-project/pm@v0"}},
+                        {"sleep": 1500},
+                    ],
+                },
+                {
+                    "name": "dispatch",
+                    "path": "/ci",
+                    "waitFor": {"role": "button", "name": "Run workflow"},
+                    "steps": [
+                        {"click": {"role": "button", "name": "Run workflow"}},
+                        {"waitFor": {"role": "dialog"}},
+                        {"sleep": 1000},
+                    ],
+                },
+            ],
+        }
+        laptop.succeed(f"cat > /tmp/plan-run.json <<'EOF'\n{json.dumps(run_plan)}\nEOF")
+        capture("after-run", "/tmp/plan-run.json")
+        laptop.copy_from_machine("/tmp/screens", "")
+  '';
+
+  mainScript = ''
     import json, time
 
     BOXES = {"boxa": boxa, "boxb": boxb}
@@ -394,6 +559,7 @@ pkgs.testers.nixosTest {
             timeout=300,
         )
         run_id = api(boxa, "GET", "/api/ci/runs?owner=matus&repo=site")["runs"][0]["id"]
+        site_run = run_id
         run = run_done(boxa, run_id)
         logs = {j["name"]: log_of(boxa, j["id"]) for j in run["jobs"]}
         for name, text in logs.items():
@@ -459,4 +625,55 @@ pkgs.testers.nixosTest {
             timeout=300,
         )
   '';
+in
+pkgs.testers.nixosTest {
+  name =
+    if !after then
+      "losos-mesh-ci-before"
+    else if screens then
+      "losos-mesh-ci-screens"
+    else
+      "losos-mesh-ci";
+
+  nodes = {
+    boxa = boxNode {
+      id = "boxa";
+      hostName = "mattbox";
+      real = shoot;
+    };
+  }
+  // lib.optionalAttrs after {
+    boxb = boxNode {
+      id = "boxb";
+      hostName = "evabox";
+    };
+    edge = edgeNode;
+  }
+  // lib.optionalAttrs shoot {
+    laptop = _: {
+      imports = [ shots.browser ];
+      environment.systemPackages = [
+        pkgs.curl
+        pkgs.jq
+      ];
+      environment.etc."losos-test/plan-pages.json".source = plan;
+      virtualisation.vlans = [ 1 ];
+    };
+  };
+
+  testScript =
+    shootDefs
+    + (
+      if after then
+        mainScript + lib.optionalString screens shootRun
+      else
+        ''
+          start_all()
+          boxa.wait_for_unit("nginx.service")
+          boxa.wait_for_unit("lososd.service")
+          claim()
+          capture("before")
+          laptop.copy_from_machine("/tmp/screens", "")
+        ''
+    );
 }
