@@ -4,6 +4,7 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { ArrowDown01Icon, Logout01Icon, UserCircleIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { KbdGroup } from "@/components/ui/kbd";
+import { popupMotion } from "@/components/ui/motion";
 import { LanguagePicker } from "@/components/ui/language-picker";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -165,7 +166,7 @@ function PersonMenu({ person, onSignOut }: { person: AppBarPerson; onSignOut: ((
         data-testid="signed-in-as"
         aria-label={`${person.label}: ${person.tip}`}
         className={cn(
-          "inline-flex h-[34px] min-w-0 shrink items-center gap-1.5 rounded-control px-2 text-sm text-ink",
+          "group/person inline-flex h-[34px] min-w-0 shrink items-center gap-1.5 rounded-control px-2 text-sm text-ink",
           "hover:bg-sunk data-popup-open:bg-sunk",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
         )}
@@ -181,7 +182,7 @@ function PersonMenu({ person, onSignOut }: { person: AppBarPerson; onSignOut: ((
           size={14}
           strokeWidth={1.5}
           color="currentColor"
-          className="text-faint max-sm:hidden"
+          className="text-faint transition-[rotate] duration-150 ease-snap group-data-popup-open/person:rotate-180 max-sm:hidden"
           aria-hidden="true"
         />
       </Menu.Trigger>
@@ -191,9 +192,7 @@ function PersonMenu({ person, onSignOut }: { person: AppBarPerson; onSignOut: ((
             data-slot="person-menu"
             className={cn(
               "w-64 max-w-[calc(100vw-2rem)] rounded-card border border-line bg-surface p-1 text-ink shadow-pop outline-none",
-              "origin-(--transform-origin) transition-[opacity,scale] duration-100 ease-out",
-              "data-starting-style:scale-95 data-starting-style:opacity-0",
-              "data-ending-style:scale-95 data-ending-style:opacity-0",
+              popupMotion,
             )}
           >
             <div className="flex flex-col gap-0.5 px-2 pt-1.5 pb-2">
@@ -223,7 +222,7 @@ function PersonMenu({ person, onSignOut }: { person: AppBarPerson; onSignOut: ((
 
 const itemClass = cn(
   "flex cursor-default items-center gap-2 rounded-control px-2 py-1.5 text-[13px] text-ink outline-none select-none",
-  "data-highlighted:bg-accent-wash",
+  "transition-colors duration-100 data-highlighted:bg-accent-wash",
 );
 
 function ItemIcon({ icon }: { icon: IconSvgElement }) {

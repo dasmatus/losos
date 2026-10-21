@@ -31,6 +31,13 @@
 // `theme` is the choice made on the page's own theme toggle (Light or Dark),
 // as against `colorScheme`, the browser's, which Auto follows.
 //
+// A shot with `"clip": true` is also filmed: the same steps in a fresh
+// browser with motion allowed (stills take theirs under reduced motion, so
+// nothing is caught halfway), recorded to `<shot>.webm`. Animations run at
+// `clipRate` of their speed (default 0.1) through the DevTools protocol, so a
+// slow emulated machine still records every frame of a 150 ms transition;
+// play the file back at 1 / clipRate to see real time.
+//
 // Every run also writes report.json beside the pictures: per picture, the
 // page's width against the window's (a page wider than a phone scrolls
 // sideways) and the Content-Security-Policy violations the page raised.
@@ -92,6 +99,54 @@ async function step(page, s) {
   else if (s.sleep) await page.waitForTimeout(s.sleep);
   else if (s.goto) await page.goto(base + s.goto, { waitUntil: 'networkidle', timeout: 120000 });
   else throw new Error(`unknown step ${JSON.stringify(s)}`);
+}
+
+async function film(variant, width, shot, name) {
+  const height = variant.height ?? plan.height ?? 800;
+  const dir = join(args.out, `.video-${name}`);
+  const context = await browser.newContext({
+    viewport: { width, height },
+    ignoreHTTPSErrors: true,
+    locale: variant.locale ?? plan.locale ?? 'en-US',
+    colorScheme: variant.colorScheme ?? plan.colorScheme ?? 'light',
+    reducedMotion: 'no-preference',
+    recordVideo: { dir, size: { width, height } },
+  });
+  if (variant.theme) {
+    await context.addInitScript((theme) => {
+      try {
+        localStorage.setItem('losos-theme', theme);
+      } catch {
+        // about:blank has no storage.
+      }
+    }, variant.theme);
+  }
+  if (args.user) {
+    const r = await context.request.post(`${base}/auth/api/firstfactor`, {
+      data: { username: args.user, password: args.password },
+    });
+    if (!r.ok()) throw new Error(`signing in as ${args.user}: ${r.status()} ${await r.text()}`);
+  }
+  const page = await context.newPage();
+  await page.goto(base + shot.path, { waitUntil: 'networkidle', timeout: 120000 });
+  if (shot.waitFor) await locate(page, shot.waitFor).waitFor({ timeout: 120000 });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(1000);
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Animation.enable');
+  await cdp.send('Animation.setPlaybackRate', { playbackRate: plan.clipRate ?? 0.1 });
+  for (const s of shot.steps ?? []) {
+    await step(page, s);
+    await page.waitForTimeout(shot.clipPause ?? 2500);
+  }
+  const video = page.video();
+  await page.close();
+  await context.close();
+  if (video) {
+    const path = join(args.out, `${name}.webm`);
+    await video.saveAs(path);
+    console.log(`filmed ${path}`);
+  }
 }
 
 // The full Chromium in its new headless mode: nixpkgs' bundle has no
@@ -160,6 +215,10 @@ try {
       await page.close();
     }
     await context.close();
+    for (const shot of plan.shots.filter((s) => s.clip)) {
+      const name = variant.suffix ? `${shot.name}-${variant.suffix}` : shot.name;
+      await film(variant, width, shot, name);
+    }
   }
 } finally {
   writeFileSync(join(args.out, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);

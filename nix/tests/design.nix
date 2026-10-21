@@ -13,6 +13,11 @@
 #   * a background picture under a Dark picked on the page is veiled dark,
 #     not light.
 #
+# It also films the shared motion (`motion-*.webm`, at a tenth of real speed,
+# see screens/capture.mjs): the person's menu opening from its button, the
+# palette's dialog coming and going, a switch thrown and the apply bar
+# rising. Each film has a still beside it with the motion finished.
+#
 # The derivation's output holds the pictures (screens/) and report.json.
 { pkgs }:
 
@@ -23,6 +28,7 @@ let
   stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
     case "$1" in
       status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
+      user:resetpassword) echo "Successfully reset password for $2" ;;
       *) echo "stub occ: $*" >&2; exit 1 ;;
     esac
   '';
@@ -119,6 +125,49 @@ let
       ];
     }
   );
+
+  # The shared motion, filmed once in light at a desktop's width.
+  motionPlan = pkgs.writeText "motion-plan.json" (
+    builtins.toJSON {
+      width = 1280;
+      height = 800;
+      clipRate = 0.1;
+      variants = [
+        {
+          suffix = "light-desktop";
+          colorScheme = "light";
+        }
+      ];
+      shots = [
+        (shot {
+          name = "motion-person-menu";
+          path = "/";
+          clip = true;
+          steps = [
+            { click.selector = "[data-testid=signed-in-as]"; }
+            { waitFor.selector = "[data-slot=person-menu]"; }
+          ];
+        })
+        (shot {
+          name = "motion-palette";
+          path = "/";
+          clip = true;
+          steps = [
+            { press = "Control+Shift+P"; }
+            { waitFor.selector = "dialog[open]"; }
+          ];
+        })
+        (shot {
+          name = "motion-switch";
+          path = "/settings/security";
+          clip = true;
+          steps = [
+            { click.selector = "[data-slot=switch]"; }
+          ];
+        })
+      ];
+    }
+  );
 in
 
 pkgs.testers.nixosTest {
@@ -168,6 +217,7 @@ pkgs.testers.nixosTest {
         ];
         environment.etc."losos-test/plan.json".source = plan;
         environment.etc."losos-test/veil-plan.json".source = veilPlan;
+        environment.etc."losos-test/motion-plan.json".source = motionPlan;
         virtualisation.vlans = [ 1 ];
       };
   };
@@ -247,6 +297,13 @@ pkgs.testers.nixosTest {
         r, g, b = (int(x) for x in rgb.split())
         print(f"veil at the top left: {r} {g} {b}")
         assert max(r, g, b) < 128, f"the veil is light under a picked Dark: {rgb}"
+
+    with subtest("the shared motion, filmed"):
+        capture("/etc/losos-test/motion-plan.json", "/tmp/screens")
+        for name in ["motion-person-menu", "motion-palette", "motion-switch"]:
+            laptop.succeed(f"test -s /tmp/screens/{name}-light-desktop.webm")
+            laptop.succeed(f"test -s /tmp/screens/{name}-light-desktop.png")
+        laptop.succeed("rm -rf /tmp/screens/.video-*")
 
     laptop.copy_from_machine("/tmp/screens", "")
   '';
