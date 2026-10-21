@@ -307,8 +307,11 @@ await check('a ticked box writes its line back with the version it read', async 
   const { page, context, writes } = await open('/cloud/notes?vault=Notes');
   try {
     await page.waitForSelector('.note-body input.task-box');
+    // The box ticks at once; the write follows a fresh read of the file.
+    const written = page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().includes('/files/content'));
     await page.locator('.note-body input.task-box').nth(1).click();
     await page.waitForFunction(() => document.querySelectorAll('.note-body input.task-box:checked').length === 2);
+    await written;
     assert.equal(writes.length, 1);
     assert.equal(writes[0].path, 'Home.md');
     assert.equal(writes[0].ifMatch, 'e1');
