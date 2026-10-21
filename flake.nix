@@ -329,6 +329,9 @@
             # Text inside the owner's files for the admin pages' search
             # (backend/src/textsearch/): the cloud index and the Git search.
             ./modules/search.nix
+            # LosOS Cloud (backend/src/cloud/): files at /cloud/ and to the
+            # Nextcloud desktop and phone apps.
+            ./modules/cloud.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
@@ -445,6 +448,7 @@
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
+        losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
         # Apps run as notshared on rootless Podman, with no cluster: the
         # box's own, one in the LosOS app format and a chart from the
         # search (nix/tests/podman-apps.nix).
