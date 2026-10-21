@@ -1283,7 +1283,10 @@ mod tests {
         } else {
             &[]
         };
-        let secret = crate::setup::Secret::new("Correct-Horse-Battery-9");
+        // A fresh password per run: these tests never sign in with it.
+        let random = crate::io_backend::random_bytes::<12>().expect("random bytes");
+        let hex: String = random.iter().map(|b| format!("{b:02x}")).collect();
+        let secret = crate::setup::Secret::new(&format!("Pw-{hex}-9"));
         people
             .add(name, name, "", &secret, groups)
             .expect("person added");
