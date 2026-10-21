@@ -1689,7 +1689,7 @@
       "GET /api/contacts/suggest": {
         "auth": true,
         "out": "{\"available\": true, \"contacts\": [{\"key\": \"contact:<id>\"|\"box:<name>\", \"source\": \"contact\"|\"box\", \"name\", \"picture\"?, \"emails\": [\"...\"], \"matrixId\"?, \"meshAddress\"?, \"contactId\"?}]}",
-        "note": "People pickers (Mail's To and Cc, starting a chat, mesh sharing, @-mentions): ?q=&want=any|email|matrix|mesh&limit=8 (1 to 50). The caller's contacts and the people on this box, best match first, accents ignored; a box person who is a contact by Matrix ID shows once, as the contact; want=mesh offers contacts only. 404 {\"available\": false, \"error\"} when chat is not live on this box; 403 for the spare key and the edge; 503 while the homeserver starts."
+        "note": "People pickers (Mail's To and Cc, starting a chat, mesh sharing, @-mentions): ?q=&want=any|email|matrix|mesh|box&limit=8 (1 to 50). The caller's contacts and the people on this box, best match first, accents ignored; a box person who is a contact by Matrix ID shows once, as the contact; want=mesh offers contacts only; want=box offers everyone on this box but the caller, contacts or not, and no contacts. 404 {\"available\": false, \"error\"} when chat is not live on this box; 403 for the spare key and the edge; 503 while the homeserver starts."
       },
       "GET /api/contacts/{id}": {
         "auth": true,

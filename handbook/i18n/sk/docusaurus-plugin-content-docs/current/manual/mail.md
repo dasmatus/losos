@@ -39,8 +39,8 @@ schránku, takže Pošta vás požiada o prihlásenie vlastným účtom.
 - **Priečinky**: Doručená pošta, Koncepty, Odoslaná pošta, Archív,
   Nevyžiadaná pošta a Kôš, pri každom s počtom neprečítaných správ.
 - **Hľadanie** prehľadá otvorený priečinok: odosielateľov, predmety a text.
-- **Napísať** otvorí novú správu. Pole **Komu** ponúka ostatných ľudí na
-  zariadení. **Odpovedať**, **Odpovedať všetkým** a **Preposlať** správu
+- **Napísať** otvorí novú správu. Polia **Komu** a **Kópia** ponúkajú vaše
+  [kontakty](contacts) a ostatných ľudí na zariadení. **Odpovedať**, **Odpovedať všetkým** a **Preposlať** správu
   citujú.
 - **Označiť**, **Označiť ako neprečítané**, **Archivovať** a **Presunúť
   do** pracujú s otvorenou správou. **Odstrániť** ju presunie do koša a

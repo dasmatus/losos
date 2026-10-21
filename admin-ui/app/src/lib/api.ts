@@ -3147,7 +3147,7 @@ export function contactsExportUrl(version: "3.0" | "4.0", ids?: readonly string[
  *  list where the box has no contacts (off the shared side). */
 export async function suggestContacts(
   q: string,
-  want: "any" | "email" | "matrix" | "mesh" = "any",
+  want: "any" | "email" | "matrix" | "mesh" | "box" = "any",
   options: RequestOptions & { limit?: number } = {},
 ): Promise<ContactSuggestion[]> {
   const params = new URLSearchParams({ q, want, limit: String(options.limit ?? 8) });

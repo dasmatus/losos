@@ -66,7 +66,9 @@ alebo odhlásiť.
 ## Písanie ľuďom
 
 - **Priama správa:** kliknite na **Napísať niekomu** a vyberte človeka. V
-  zozname je každý, kto má na zariadení účet v LosOS Login.
+  zozname je každý, kto má na zariadení účet v LosOS Login, aj každý z vašich
+  [kontaktov](contacts), ktorý má adresu v chate. Tlačidlo **Chat** na
+  stránke kontaktu otvorí tú istú konverzáciu.
 - **Miestnosť:** kliknite na **Nová miestnosť**, pomenujte ju a vyberte, či
   je na zariadení verejná, alebo len na pozvanie. Ľudí pozvete z hlavičky
   miestnosti.

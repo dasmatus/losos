@@ -39,8 +39,9 @@ deinem eigenen Konto anzumelden.
 - **Ordner**: Posteingang, Entwürfe, Gesendet, Archiv, Spam und Papierkorb,
   jeweils mit der Zahl der ungelesenen Nachrichten.
 - **Suchen** durchsucht den offenen Ordner: Absender, Betreff und Text.
-- **Schreiben** öffnet eine neue Nachricht. Das Feld **An** schlägt die
-  anderen Personen auf der Box vor. **Antworten**, **Allen antworten** und
+- **Schreiben** öffnet eine neue Nachricht. Die Felder **An** und **Cc**
+  schlagen deine [Kontakte](contacts) und die anderen Personen auf der Box
+  vor. **Antworten**, **Allen antworten** und
   **Weiterleiten** zitieren die Nachricht.
 - **Markieren**, **Als ungelesen markieren**, **Archivieren** und
   **Verschieben nach** wirken auf die offene Nachricht. **Löschen**

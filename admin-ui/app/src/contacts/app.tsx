@@ -288,8 +288,8 @@ function Book({ contacts, onContacts }: { contacts: Contact[]; onContacts: (cont
   // The people on this box: everyone the box's own suggestions name.
   React.useEffect(() => {
     const controller = new AbortController();
-    suggestContacts("", "any", { signal: controller.signal, limit: 50 })
-      .then((all) => setBox(all.filter((s) => s.source === "box")))
+    suggestContacts("", "box", { signal: controller.signal, limit: 50 })
+      .then(setBox)
       .catch(() => setBox([]));
     return () => controller.abort();
   }, []);

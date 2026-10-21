@@ -454,6 +454,9 @@
         losos-tour = import ./nix/tests/tour.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
         losos-chat = import ./nix/tests/chat.nix { inherit pkgs; };
+        # LosOS Contacts: books kept in Matrix, vCard in and out, and the
+        # pickers in Mail and Chat (nix/tests/contacts.nix).
+        losos-contacts = import ./nix/tests/contacts.nix { inherit pkgs; };
         # Calls from chat: three people in real browsers through the box's
         # SFU, whose copy of every frame is ciphertext (nix/tests/calls.nix).
         losos-calls = import ./nix/tests/calls.nix { inherit pkgs; };

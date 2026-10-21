@@ -92,6 +92,9 @@ kláves Menu pre to, čo má práve fokus, a šípky sa ňou pohybujú.
 - **Správa v Pošte**: otvoriť, odpovedať, odpovedať všetkým, preposlať,
   označiť ako prečítanú alebo neprečítanú, označiť, archivovať, presunúť
   do iného priečinka, odstrániť.
+- **Človek v Kontaktoch**: pošta, chat, hovor alebo video, upraviť,
+  exportovať ako `.vcf`, odstrániť. Človek v zozname **Na tomto boxe**
+  ponúka namiesto posledných troch **Pridať do kontaktov**.
 
 Klávesy vedľa položky fungujú aj bez ponuky. V LosOS Cloud F2 premenuje
 zaškrtnutý súbor a Delete ho presunie do koša (na Macu Cmd+Backspace).

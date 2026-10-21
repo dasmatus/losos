@@ -143,6 +143,9 @@ pub enum Want {
     Email,
     Matrix,
     Mesh,
+    /// The people on this box alone, every one of them, contact or not:
+    /// the book's "On this box" view.
+    Box,
 }
 
 impl Want {
@@ -151,6 +154,7 @@ impl Want {
             "email" => Want::Email,
             "matrix" => Want::Matrix,
             "mesh" => Want::Mesh,
+            "box" => Want::Box,
             _ => Want::Any,
         }
     }
@@ -724,13 +728,14 @@ impl Contacts {
         let book = self.list(chat, person)?;
         let mut ranked: Vec<(u8, Suggestion)> = Vec::new();
         let mut known: HashSet<String> = HashSet::new();
-        for s in &book {
+        for s in book.iter().filter(|_| want != Want::Box) {
             let c = &s.contact;
             if !c.matrix.is_empty() {
                 known.insert(c.matrix.clone());
             }
             let fits = match want {
                 Want::Any => true,
+                Want::Box => false,
                 Want::Email => !c.emails.is_empty(),
                 Want::Matrix => !c.matrix.is_empty(),
                 Want::Mesh => !c.mesh.is_empty(),
@@ -762,7 +767,7 @@ impl Contacts {
                 continue;
             }
             let fits = match want {
-                Want::Any | Want::Matrix => true,
+                Want::Any | Want::Matrix | Want::Box => true,
                 Want::Email => n.email.is_some(),
                 // Sharing with someone on the same box is LosOS Cloud's own
                 // share, not a mesh address.
@@ -1216,6 +1221,8 @@ mod tests {
         assert_eq!(names("", Want::Email), ["Ján Štefan", "Stano"]);
         // Jan on the box is a contact already: shown once, as the contact.
         assert_eq!(names("jan", Want::Matrix), ["Ján Štefan"]);
+        // The book's "On this box" view: everyone else on the box, contact or not.
+        assert_eq!(names("", Want::Box), ["Jan", "Stano"]);
         let s = &book
             .suggest(&chat, &eva, &neighbours, "stano", Want::Any, 10)
             .unwrap()[0];
