@@ -193,6 +193,10 @@ pub struct ServeOpts {
     /// `--market-no-cards`) and every `/market/*` route answers 503; the rest
     /// of the API is unchanged.
     pub market: Option<Box<MarketOpts>>,
+    /// Buying USDC with euros at Binance (`crate::onramp`). `None` unless
+    /// `--onramp-binance-api` was given, and every `/market/onramp*` route
+    /// answers 503.
+    pub onramp: Option<crate::onramp::OnrampOpts>,
     /// AI models run across lending boxes (`crate::inference`), from
     /// `--inference-models`. Needs the market: requests are paid through
     /// its taps.
@@ -500,6 +504,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     .unwrap_or("/var/lib/losos-registrar/compute-windows.json")
                     .to_string(),
                 market: parse_market(&rest)?,
+                onramp: parse_onramp(&rest)?,
                 inference: match arg(&rest, "--inference-models") {
                     None => None,
                     Some(file) => Some(crate::inference::InferenceOpts {
@@ -833,6 +838,84 @@ fn parse_provision(args: &[String]) -> Result<Mode> {
         }
     };
     Ok(Mode::Provision(mode))
+}
+
+/// Binance's on-ramp (`crate::onramp`):
+///
+/// ```text
+/// --onramp-binance-api https://<the origin Binance gave the partner>
+/// --onramp-binance-client-id <X-Tesla-ClientId>
+/// --onramp-binance-key-file /run/credentials/losos-registrar.service/binance-connect-key
+/// --onramp-binance-token-file /run/credentials/losos-registrar.service/binance-connect-token
+/// --onramp-binance-webhook-key <Binance's public key, base64>
+/// ```
+///
+/// It sells USDC on Base, so the market must settle on Base mainnet: a test
+/// edge's USDC is not what Binance delivers.
+fn parse_onramp(args: &[String]) -> Result<Option<crate::onramp::OnrampOpts>> {
+    let Some(api_url) = arg(args, "--onramp-binance-api") else {
+        if let Some(flag) = [
+            "--onramp-binance-client-id",
+            "--onramp-binance-key-file",
+            "--onramp-binance-token-file",
+            "--onramp-binance-webhook-key-file",
+        ]
+        .into_iter()
+        .find(|f| arg(args, f).is_some())
+        {
+            return Err(miette!("{flag} needs --onramp-binance-api"));
+        }
+        return Ok(None);
+    };
+    let api_url = api_url.trim_end_matches('/');
+    if !crate::onramp::api_url_ok(api_url) {
+        return Err(miette!(
+            "bad --onramp-binance-api {api_url:?}; expected an https origin with no path (http only to loopback)"
+        ));
+    }
+    let client_id = req(args, "--onramp-binance-client-id")?;
+    if client_id.is_empty() || !client_id.bytes().all(|b| b.is_ascii_graphic()) {
+        return Err(miette!("bad --onramp-binance-client-id"));
+    }
+    let file = |flag: &str| -> Result<String> {
+        let path = req(args, flag)?;
+        if !path.starts_with('/') {
+            return Err(miette!("{flag} must be a credential file path"));
+        }
+        Ok(path.to_string())
+    };
+    // Binance's key for its notifications: public, PEM or one base64 line.
+    let key_path = req(args, "--onramp-binance-webhook-key-file")?;
+    let key_text = std::fs::read_to_string(key_path)
+        .map_err(|e| miette!("read --onramp-binance-webhook-key-file {key_path}: {e}"))?;
+    let webhook_key = crate::onramp::parse_public_key(&key_text).ok_or_else(|| {
+        miette!("--onramp-binance-webhook-key-file {key_path} holds no RSA public key")
+    })?;
+    let live_base = parse_usdc(args, arg(args, "--market-currency").unwrap_or("eur"))
+        .ok()
+        .flatten()
+        .is_some_and(|u| !u.test() && u.chains.iter().any(|c| c.network.key == "base"));
+    if !live_base {
+        return Err(miette!(
+            "--onramp-binance-api needs --market-usdc network=base: Binance delivers USDC on Base mainnet"
+        ));
+    }
+    let state_file = arg(args, "--market-state-file")
+        .map(|m| {
+            std::path::Path::new(m)
+                .with_file_name("onramp.json")
+                .to_string_lossy()
+                .into_owned()
+        })
+        .unwrap_or_else(|| "/var/lib/losos-registrar/onramp.json".to_string());
+    Ok(Some(crate::onramp::OnrampOpts {
+        api_url: api_url.to_string(),
+        client_id: client_id.to_string(),
+        key_file: file("--onramp-binance-key-file")?,
+        token_file: file("--onramp-binance-token-file")?,
+        webhook_key,
+        state_file,
+    }))
 }
 
 fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {

@@ -276,6 +276,7 @@ impl UsdcOpts {
             chains: self.chains.iter().map(UsdcChain::public).collect(),
             ens_chain_id: self.ens_rpc_file.as_ref().map(|_| ens_chain(self.test())),
             prices: std::collections::BTreeMap::new(),
+            onramp: None,
         }
     }
 }
@@ -522,6 +523,10 @@ pub struct UsdcPublic {
     /// are out of reach.
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub prices: std::collections::BTreeMap<&'static str, String>,
+    /// Who sells USDC on Base for euros through this edge (`binance`), when
+    /// anyone does (`crate::onramp`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub onramp: Option<&'static str>,
 }
 
 /// One network as a page sees it.
