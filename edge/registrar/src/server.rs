@@ -82,6 +82,7 @@ use crate::market::{
     AccountView, CheckoutView, HardwareCheckoutView, Market, MarketError, NewListing, NewOrder,
     OnboardView, Provision, PublicListing, Sharing,
 };
+use crate::onramp::{Onramp, OnrampError, OrderView};
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
 use crate::relay::{self, Enrolment, RelayRefused, RelayReq, RelayResp, RelayRoute, UplinkFile};
@@ -221,6 +222,9 @@ struct AppState {
     last_shed: Arc<std::sync::Mutex<Option<std::time::Instant>>>,
     /// `None` unless `--market-gate-socket` was given.
     market: Option<Arc<Market>>,
+    /// Binance's on-ramp (`crate::onramp`); `None` without
+    /// `--onramp-binance-api`.
+    onramp: Option<Arc<Onramp>>,
     /// AI models across lending boxes; `None` without `--inference-models`.
     inference: Option<Arc<crate::inference::Inference>>,
     /// Chat requests in flight (`llm::MAX_CHATS`), which run outside
@@ -487,6 +491,14 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         )),
         None => None,
     };
+    let onramp = match &opts.onramp {
+        Some(o) => Some(Arc::new(
+            Onramp::open(o.clone())
+                .await
+                .map_err(|e| miette!("open the onramp store: {e}"))?,
+        )),
+        None => None,
+    };
 
     let inference = match &opts.inference {
         None => None,
@@ -611,6 +623,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         limiter: Arc::new(Semaphore::new(MAX_INFLIGHT)),
         last_shed: Arc::new(std::sync::Mutex::new(None)),
         market,
+        onramp,
         inference,
         chats: llm::chats(),
         identity,
@@ -696,6 +709,15 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route(
             "/market/webhook",
             post(market_webhook).layer(DefaultBodyLimit::max(MAX_WEBHOOK_BYTES)),
+        )
+        // Euros to USDC at Binance (crate::onramp): 503 unless the edge has
+        // a Binance partner. The two box routes take the appliance token;
+        // the webhook is authenticated by Binance's signature.
+        .route("/market/onramp", post(onramp_create))
+        .route("/market/onramp/status", post(onramp_status))
+        .route(
+            "/market/onramp/webhook",
+            post(onramp_webhook).layer(DefaultBodyLimit::max(MAX_WEBHOOK_BYTES)),
         )
         // Custom domains (crate::domains). 503 unless the edge serves a zone
         // and holds an installed identity certificate; appliance token like
@@ -1502,7 +1524,96 @@ async fn market_account(
 ) -> Result<Json<AccountView>, ApiError> {
     let market = market_tenant(&st, &req).await?;
     let sharing = sharing_of(&st).await?;
-    Ok(Json(market.account(&req.appliance_id, &sharing).await?))
+    let mut view = market.account(&req.appliance_id, &sharing).await?;
+    if let (Some(onramp), Some(usdc)) = (&st.onramp, view.usdc.as_mut()) {
+        if !usdc.test
+            && usdc.chains.iter().any(|c| c.network == "base")
+            && onramp.configured().await
+        {
+            usdc.onramp = Some("binance");
+        }
+    }
+    Ok(Json(view))
+}
+
+#[derive(Debug, Deserialize)]
+struct OnrampReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    address: String,
+    euros: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OnrampStatusReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    order_id: String,
+}
+
+/// The on-ramp, for an authenticated box. Any tenant may buy: the USDC goes
+/// to the box's own wallet, not to another tenant.
+async fn onramp_of(st: &AppState, auth: &MarketAuth) -> Result<Arc<Onramp>, ApiError> {
+    authenticate(st, &auth.appliance_id, &auth.token).await?;
+    st.onramp
+        .clone()
+        .ok_or(ApiError::Onramp(OnrampError::Unconfigured))
+}
+
+/// `POST /market/onramp`: a Binance order for `euros` of USDC on Base to
+/// `address`, with the checkout link the buyer opens.
+async fn onramp_create(
+    State(st): State<AppState>,
+    Json(req): Json<OnrampReq>,
+) -> Result<(StatusCode, Json<OrderView>), ApiError> {
+    let onramp = onramp_of(&st, &req.auth).await?;
+    let view = onramp
+        .create(&req.auth.appliance_id, &req.address, &req.euros)
+        .await?;
+    Ok((StatusCode::CREATED, Json(view)))
+}
+
+/// `POST /market/onramp/status`: where one of the caller's orders is.
+async fn onramp_status(
+    State(st): State<AppState>,
+    Json(req): Json<OnrampStatusReq>,
+) -> Result<Json<OrderView>, ApiError> {
+    let onramp = onramp_of(&st, &req.auth).await?;
+    Ok(Json(
+        onramp.status(&req.auth.appliance_id, &req.order_id).await?,
+    ))
+}
+
+/// `POST /market/onramp/webhook`: Binance pushes an order's new status. The
+/// body is verified as it arrived, so it is taken as bytes. Binance wants a
+/// 200 with `returnCode` back.
+async fn onramp_webhook(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let onramp = st
+        .onramp
+        .as_ref()
+        .ok_or(ApiError::Onramp(OnrampError::Unconfigured))?;
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .ok_or(ApiError::Onramp(OnrampError::BadSignature))
+    };
+    onramp
+        .webhook(
+            header("X-BN-Connect-For")?,
+            header("X-BN-Connect-Timestamp")?,
+            header("X-BN-Connect-Signature")?,
+            &body,
+        )
+        .await?;
+    Ok(Json(serde_json::json!({
+        "returnCode": "SUCCESS",
+        "returnMessage": null,
+    })))
 }
 
 /// `box_uuid` is the box's own UUID, written onto its Stripe account. Optional

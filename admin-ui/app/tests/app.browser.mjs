@@ -89,6 +89,8 @@ async function open({
   // as GET /api/me describes them; null for none.
   person = null,
   claim = { claimed: true },
+  // The origin to load from: the plain server, or one serving the real CSP.
+  base = origin,
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
   if (now !== null) await page.clock.setFixedTime(now);
@@ -336,7 +338,7 @@ async function open({
         : route.fulfill({ status: 404, contentType: 'text/html', body: '' }),
     );
   }
-  await page.goto(origin + path, { waitUntil: 'networkidle' });
+  await page.goto(base + path, { waitUntil: 'networkidle' });
   return { page, errors, marketPosts, llmPosts, vmPosts, applies, domainPosts, backupPosts };
 }
 
@@ -1581,8 +1583,8 @@ await check('coin fees owed get one row with the limits, and a USDC sale names w
   await page.close();
 });
 
-/* A USDC edge on Base mainnet and a box with a payout address there: the
- * wallet offers euros for USDC through Onramp.money. */
+/* A USDC edge on Base mainnet that is a Binance partner, and a box with a
+ * payout address there: the wallet offers euros for USDC at Binance. */
 const PAYOUT = `0x${'44'.repeat(20)}`;
 const ONRAMP_MARKET = {
   ...MARKET,
@@ -1595,6 +1597,7 @@ const ONRAMP_MARKET = {
       chain_id: 8453,
       solana: null,
       ens_chain_id: null,
+      onramp: 'binance',
       chains: [
         {
           network: 'base',
@@ -1610,64 +1613,143 @@ const ONRAMP_MARKET = {
   },
 };
 
-await check('buying USDC with euros names Onramp.money and its terms first, then opens their page with the address on Base', async () => {
-  const { page, errors } = await open({ path: '/settings/market', stored: true, market: ONRAMP_MARKET });
-  await page.context().route('https://onramp.money/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Onramp</title>' }),
+const BINANCE_LINK = 'https://app.binance.com/en/pre-connect?orderId=1';
+const binanceOrder = (stage, extra = {}) => ({
+  order_id: 'a1'.repeat(16),
+  link: BINANCE_LINK,
+  link_expires: 0,
+  euros: '25',
+  address: PAYOUT,
+  network: 'base',
+  stage,
+  status: 0,
+  usdc: null,
+  tx: null,
+  ...extra,
+});
+
+await check('buying USDC at Binance takes each of its documents opened, then the edge makes the order and the row follows it', async () => {
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: ONRAMP_MARKET });
+  // Binance's pages, and the edge's answers through lososd.
+  await page.context().route('https://www.binance.com/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Binance</title>' }),
   );
+  let stage = binanceOrder('open');
+  await page.route('**/api/market/onramp', (route) => {
+    marketPosts.push(['/api/market/onramp', route.request().postDataJSON()]);
+    return json(route, 200, binanceOrder('open'));
+  });
+  await page.route('**/api/market/onramp/status', (route) => {
+    marketPosts.push(['/api/market/onramp/status', route.request().postDataJSON()]);
+    return json(route, 200, stage);
+  });
+
   const row = page.getByTestId('onramp-topup');
   await row.waitFor();
   assert.match(await row.innerText(), /Buy USDC with euros/);
   await row.getByRole('button', { name: 'Buy', exact: true }).click();
-  assert.match(await row.innerText(), /Onramp\.money sells the USDC, not LosOS/);
-  assert.equal(
-    await row.getByRole('link', { name: 'Terms and Conditions' }).getAttribute('href'),
-    'https://onramp.money/legal/terms-and-conditions/',
-  );
-  assert.equal(await row.getByRole('link', { name: 'Privacy Policy' }).count(), 1);
-  const go = row.getByRole('button', { name: 'Continue to Onramp.money' });
-  const amount = row.getByLabel('Amount in euros');
-  await amount.fill('3');
-  await row.getByText(/Onramp\.money takes 5 to 100,000 euros per order/).waitFor();
-  await amount.fill('25');
-  assert.equal(await go.isDisabled(), true, 'the page opens before the terms are accepted');
-  await row.getByRole('checkbox').check();
-  assert.equal(await go.isDisabled(), false);
-  const [popup] = await Promise.all([page.waitForEvent('popup'), go.click()]);
-  const url = new URL(popup.url());
-  assert.equal(url.origin + url.pathname, 'https://onramp.money/main/buy/');
-  assert.deepEqual(Object.fromEntries(url.searchParams), {
-    appId: '1',
-    walletAddress: PAYOUT,
-    coinCode: 'usdc',
-    network: 'base',
-    fiatType: '12',
-    fiatAmount: '25',
-    redirectUrl: `${origin}/settings/market`,
-  });
-  await popup.close();
-  await row.getByText(/Waiting for 25 euros of USDC to reach this wallet on Base/).waitFor();
-  assert.equal(await page.evaluate(() => localStorage.getItem('losos-onramp-terms')), 'onramp.money@2025-11-21');
+  assert.match(await row.innerText(), /Binance sells the USDC, not LosOS/);
+  assert.match(await row.innerText(), /may refuse a purchase from yours/);
 
-  // Onramp.money sends the buyer back with its order: the row names it and
-  // the address bar loses the query.
-  await page.goto(`${origin}/settings/market?orderId=OR123&status=success`, { waitUntil: 'networkidle' });
-  await page.getByText(/Onramp\.money order OR123 is paid/).waitFor();
-  assert.equal(new URL(page.url()).search, '');
-  const back = page.getByTestId('onramp-topup');
-  await back.getByRole('button', { name: 'Stop waiting' }).click();
-  assert.equal(await back.getByRole('button', { name: 'Buy', exact: true }).count(), 1);
+  const docs = {
+    'Terms of Use': 'https://www.binance.com/en/terms',
+    'Product Terms': 'https://www.binance.com/en/about-legal/product-terms',
+    'Privacy Notice': 'https://www.binance.com/en/about-legal/privacy-portal',
+    'Risk Warning': 'https://www.binance.com/en/risk-warning',
+  };
+  for (const [name, href] of Object.entries(docs)) {
+    assert.equal(await row.getByRole('link', { name }).getAttribute('href'), href);
+  }
+  const accept = row.getByRole('checkbox');
+  const go = row.getByRole('button', { name: 'Create the order' });
+  const amount = row.getByLabel('Amount in euros');
+  await amount.fill('0,50');
+  await row.getByText(/Enter 1 to 100,000 euros/).waitFor();
+  await amount.fill('25');
+  assert.equal(await accept.isDisabled(), true, 'the terms can be accepted unread');
+  assert.equal(await go.isDisabled(), true, 'an order can be made before the terms are accepted');
+  assert.equal(await row.getByText('Not opened').count(), 4);
+
+  // Opening three of the four is not enough.
+  const names = Object.keys(docs);
+  for (const name of names.slice(0, 3)) {
+    const [tab] = await Promise.all([page.waitForEvent('popup'), row.getByRole('link', { name }).click()]);
+    await tab.close();
+  }
+  assert.equal(await accept.isDisabled(), true, 'the terms can be accepted with one document unopened');
+  const [last] = await Promise.all([page.waitForEvent('popup'), row.getByRole('link', { name: names[3] }).click()]);
+  await last.close();
+  assert.equal(await row.getByText('Opened', { exact: true }).count(), 4);
+  assert.equal(await go.isDisabled(), true, 'opening the documents is not accepting them');
+  await accept.check();
+  assert.equal(await go.isDisabled(), false);
+  await go.click();
+
+  const followed = page.getByTestId('onramp-order');
+  await followed.getByText(/Your order for 25 euros is ready/).waitFor();
+  assert.equal(await followed.getByRole('link', { name: 'Open Binance' }).getAttribute('href'), BINANCE_LINK);
+  assert.deepEqual(
+    marketPosts.filter(([path]) => path === '/api/market/onramp'),
+    [['/api/market/onramp', { address: PAYOUT, euros: '25' }]],
+  );
+  assert.deepEqual(
+    JSON.parse(await page.evaluate(() => localStorage.getItem('losos-binance-terms'))).terms,
+    'binance@2026-10-21',
+  );
+
+  // A reload picks the order up again, and a finished one links the transfer.
+  const tx = `0x${'ab'.repeat(32)}`;
+  stage = binanceOrder('done', { status: 20, usdc: '24.61', tx });
+  await page.reload({ waitUntil: 'networkidle' });
+  const done = page.getByTestId('onramp-order');
+  await done.getByText('Binance sent 24.61 USDC to this wallet on Base.').waitFor();
+  assert.equal(await done.getByRole('link', { name: 'Open Binance' }).count(), 0);
+  assert.equal(await done.getByRole('link', { name: 'View the transaction' }).getAttribute('href'), `https://basescan.org/tx/${tx}`);
+  assert.deepEqual(
+    marketPosts.filter(([path]) => path === '/api/market/onramp/status').at(-1),
+    ['/api/market/onramp/status', { order_id: 'a1'.repeat(16) }],
+  );
+  await done.getByRole('button', { name: 'Done' }).click();
+  assert.equal(await page.getByTestId('onramp-topup').getByRole('button', { name: 'Buy', exact: true }).count(), 1);
+  assert.equal(await page.evaluate(() => localStorage.getItem('losos-binance-order')), null);
   assert.deepEqual(errors, []);
   await page.close();
 });
 
-await check('a test edge offers no euro top-up: Onramp.money sells mainnet USDC only', async () => {
-  const test = { ...ONRAMP_MARKET, account: { ...ONRAMP_MARKET.account, usdc: { ...ONRAMP_MARKET.account.usdc, test: true } } };
-  const { page, errors } = await open({ path: '/settings/market', stored: true, market: test });
-  await page.getByText('Stablecoins').waitFor();
-  assert.equal(await page.getByTestId('onramp-topup').count(), 0);
+await check('an order Binance refuses shows its reason and makes nothing to follow', async () => {
+  const { page, errors } = await open({ path: '/settings/market', stored: true, market: ONRAMP_MARKET });
+  await page.context().route('https://www.binance.com/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Binance</title>' }),
+  );
+  await page.route('**/api/market/onramp', (route) =>
+    json(route, 409, { error: 'Binance refused the order: service unavailable in your region' }),
+  );
+  const row = page.getByTestId('onramp-topup');
+  await row.getByRole('button', { name: 'Buy', exact: true }).click();
+  for (const link of await row.getByRole('link').all()) {
+    const [tab] = await Promise.all([page.waitForEvent('popup'), link.click()]);
+    await tab.close();
+  }
+  await row.getByRole('checkbox').check();
+  await row.getByLabel('Amount in euros').fill('25');
+  await row.getByRole('button', { name: 'Create the order' }).click();
+  await row.getByRole('alert').getByText(/service unavailable in your region/).waitFor();
+  assert.equal(await page.getByTestId('onramp-order').count(), 0);
+  assert.equal(await page.evaluate(() => localStorage.getItem('losos-binance-terms')), null);
   assert.deepEqual(errors, []);
   await page.close();
+});
+
+await check('no euro top-up on a test edge or an edge that is not a Binance partner', async () => {
+  const usdc = ONRAMP_MARKET.account.usdc;
+  for (const changed of [{ ...usdc, test: true }, { ...usdc, onramp: undefined }]) {
+    const market = { ...ONRAMP_MARKET, account: { ...ONRAMP_MARKET.account, usdc: changed } };
+    const { page, errors } = await open({ path: '/settings/market', stored: true, market });
+    await page.getByText('Stablecoins').waitFor();
+    assert.equal(await page.getByTestId('onramp-topup').count(), 0);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
 });
 
 await check('a seller whose coin fees are overdue is told coin payments stopped and USDC still works', async () => {
@@ -2634,6 +2716,56 @@ await check('AI models: Start asks for an hourly limit and a top-up, refuses a l
   await qwen.getByRole('button', { name: 'Start' }).last().click();
   await page.getByText('Set up the USDC wallet below first, or connect a browser wallet.').nth(1).waitFor();
   assert.deepEqual(llmPosts, [], 'a quote was asked for with no wallet to pay it');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+/* Under the real policy the Market pane, a running model and an opened Start
+ * form log only the two violations every page logs at load (Sonner's
+ * refused copy of its stylesheet). */
+await check('under the appliance CSP the AI models section adds no violation', async () => {
+  const { origin: strict, close } = await serve({ csp: true });
+  try {
+    const watch = () => {
+      window.__violations = [];
+      document.addEventListener('securitypolicyviolation', (e) =>
+        window.__violations.push(`${e.violatedDirective} ${e.target?.nodeName ?? ''}`),
+      );
+    };
+    const { page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM, base: strict, init: [watch] });
+    await page.getByTestId('ai-meters').waitFor();
+    const atLoad = await page.evaluate(() => window.__violations);
+    assert.deepEqual(atLoad, ['style-src-elem STYLE', 'style-src-elem STYLE'], `unexpected violations at load: ${atLoad.join(', ')}`);
+    const qwen = page.locator('[data-model="qwen3-32b"]');
+    await qwen.getByRole('button', { name: 'Start' }).click();
+    await qwen.getByLabel('Most it may spend in an hour (USDC)').fill('2');
+    await page.waitForTimeout(300);
+    const after = await page.evaluate(() => window.__violations);
+    assert.equal(after.length, atLoad.length, `the AI models section added CSP violations: ${after.slice(atLoad.length).join(', ')}`);
+    assert.deepEqual(errors, []);
+    await page.close();
+  } finally {
+    await close();
+  }
+});
+
+await check('AI models: a wallet imported further down the same page can pay at once, and forgetting it takes it away', async () => {
+  const { mnemonicToAccount } = await import('viem/accounts');
+  const phrase = 'test test test test test test test test test test test junk';
+  const address = mnemonicToAccount(phrase).address;
+  const { page, errors, llmPosts } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM });
+  const section = page.getByTestId('ai-models');
+  await section.getByText('Set up the USDC wallet below first, or connect a browser wallet.').first().waitFor();
+  await page.getByPlaceholder('12 or 24 words from MetaMask, Rabby, Rainbow, Trust Wallet or Phantom').fill(phrase);
+  await page.getByPlaceholder('A password for this browser (8 or more characters)').fill('right horse battery');
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  // No reload: the section reads the saved wallet again when it changes.
+  await section.getByText('The wallet on this box', { exact: true }).waitFor({ timeout: 15000 });
+  assert.match(await section.innerText(), new RegExp(`${address.slice(0, 6)}…${address.slice(-4)}`));
+  assert.doesNotMatch(await section.innerText(), /Set up the USDC wallet below first/);
+  await page.getByRole('button', { name: "Forget this browser's copy", exact: true }).click();
+  await section.getByText('Set up the USDC wallet below first, or connect a browser wallet.').first().waitFor();
+  assert.deepEqual(llmPosts, []);
   assert.deepEqual(errors, []);
   await page.close();
 });

@@ -89,7 +89,7 @@ und die Pfeiltasten bewegen sich darin.
 - **Eine App-Kachel oder ein angehefteter Eintrag**: in neuem Tab öffnen,
   anheften oder lösen.
 - **Eine Datei oder ein Ordner in LosOS Cloud**: öffnen, herunterladen,
-  umbenennen, verschieben, kopieren, frühere Versionen, Stern, Link
+  umbenennen, verschieben, kopieren, frühere Versionen, Stern, teilen, Link
   kopieren, löschen. Sind mehrere Dateien markiert, wirkt das Menü auf alle.
   Die Fläche um die Liste bietet einen neuen Ordner und das Hochladen, eine
   Datei im Papierkorb das Wiederherstellen oder endgültige Löschen.
@@ -172,6 +172,20 @@ oder das Freigeben der Reserve, öffnet stattdessen einen Dialog. Die sichere
 Wahl steht an erster Stelle.
 
 ![Ein Einstellungsbereich mit einer noch nicht angewendeten Änderung: unten die Leiste mit Verwerfen und Anwenden.](@site/docs/img/settings-apply-bar-de.png)
+
+## Ein Spiel, während du wartest \{#a-game-while-you-wait}
+
+Manches dauert Minuten: eine Änderung anwenden, LosOS Cloud beim ersten
+Start einrichten, LosOS Login starten, eine App installieren. Solange eines
+davon läuft, öffnet **Spiel was, während du wartest** neben dem Fortschritt
+ein kleines Spiel darunter, zufällig eines von fünf: Stromaufwärts, Aal,
+Verschmelzen, Steine und Paare. Der Fortschritt bleibt über dem Spiel zu
+sehen. Nichts beginnt, bevor du eine Taste drückst oder tippst, es gibt
+keinen Ton, und das Spiel pausiert, wenn du in einen anderen Tab wechselst.
+Ist das Warten vorbei, hält das Spiel an und sagt es, und **Spiel
+schließen** räumt es weg. Mit „Bewegung reduzieren“ in deinem System kommen
+nur Verschmelzen und Paare, weil sich darin zwischen den Zügen nichts
+bewegt. Deinen besten Wert pro Spiel merkt sich dieser Browser.
 
 ## Design und Sprache \{#theme-and-language}
 

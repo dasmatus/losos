@@ -264,6 +264,21 @@ pkgs.testers.nixosTest {
         box.wait_for_unit("lososd.service")
         box.wait_for_unit("nginx.service")
 
+    def saved(shared):
+        """Write the box's saved settings to match the switch, as an Apply
+        would. The mesh banner and /api/settings read these, not the
+        evaluated system, so without them the chat page would sit under a
+        "not joined a mesh" banner."""
+        value = "true" if shared else "false"
+        content = "\n".join([
+            "{ ... }:",
+            "{",
+            f"  losos.sharingMyStorage = {value};",
+            f"  losos.cluster.enable = {value};",
+            "}",
+        ])
+        box.succeed(f"mkdir -p /etc/nixos/modules && cat > /etc/nixos/modules/overrides.nix <<'EOF'\n{content}\nEOF")
+
     with subtest("the claim makes Matus, and an administrator adds Eva"):
         code, body = call(
             "/api/setup/claim",
@@ -461,6 +476,7 @@ pkgs.testers.nixosTest {
 
     with subtest("with sharing off there is no chat anywhere"):
         switch("unshared")
+        saved(False)
         box.wait_until_fails("systemctl is-active dendrite.service")
         box.fail("systemctl cat dendrite.service")
         code, body = call("/api/chat", matus)
@@ -476,6 +492,7 @@ pkgs.testers.nixosTest {
 
     with subtest("with sharing on, two people use the chat page"):
         switch(None)
+        saved(True)
         box.wait_for_unit("dendrite.service")
         box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
         assert json.loads(call("/api/me", matus)[1])["shared"] == ["chat"]

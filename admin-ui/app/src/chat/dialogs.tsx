@@ -23,7 +23,7 @@ import { boxPeople } from "./session";
 
 const ENCRYPTION = { type: EventType.RoomEncryption, state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" as const } };
 
-function failed(t: ReturnType<typeof useT>, error: unknown): void {
+export function failed(t: ReturnType<typeof useT>, error: unknown): void {
   toast.error(t("chat.dialog.failed"), error instanceof Error ? error.message : String(error), { help: "chat" });
 }
 

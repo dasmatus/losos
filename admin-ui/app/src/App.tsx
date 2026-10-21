@@ -54,6 +54,7 @@ import { seededShuffle } from "@/lib/shuffle";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
 import { useT } from "@/lib/i18n-react";
+import { useWaitGame } from "@/components/play-while-waiting";
 import { cn } from "@/lib/utils";
 import { chatDocument } from "@/chat/document";
 
@@ -495,6 +496,7 @@ function SignInDialog({ open }: { open: boolean }) {
    * dialog waits with a spinner and a fact about LosOS instead of sending
    * anyone to an error page, and goes on by itself once it is up. */
   const [portal, setPortal] = React.useState<"checking" | "starting" | "ready">("checking");
+  const game = useWaitGame(open && mode === "signin" && portal === "starting");
   const [wanted, setWanted] = React.useState(false);
   const [fact, setFact] = React.useState(0);
   React.useEffect(() => {
@@ -664,14 +666,18 @@ function SignInDialog({ open }: { open: boolean }) {
             <div className="flex flex-col gap-3 rounded-card border border-line bg-sunk p-3">
               <div className="flex items-center gap-2 text-[13px] text-muted">
                 <Spinner />
-                <p aria-live="polite">{t("shell.signIn.starting")}</p>
+                <p aria-live="polite" className="flex-1">{t("shell.signIn.starting")}</p>
+                {game.offer}
               </div>
-              <p className="text-[13px] text-ink">
-                <span className="font-medium">{t("shell.facts.title")}. </span>
-                {t(FACTS[fact] ?? "shell.facts.1")}
-              </p>
+              {game.panel ?? (
+                <p className="text-[13px] text-ink">
+                  <span className="font-medium">{t("shell.facts.title")}. </span>
+                  {t(FACTS[fact] ?? "shell.facts.1")}
+                </p>
+              )}
             </div>
           )}
+          {mode === "signin" && portal !== "starting" && game.panel}
           {mode !== "signin" && (
             <Field invalid={problem !== null} disabled={busy}>
               {keyField}

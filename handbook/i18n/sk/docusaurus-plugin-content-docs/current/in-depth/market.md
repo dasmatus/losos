@@ -503,29 +503,36 @@ toho nemá hodnotu.
 
 ### Kúpa USDC za eurá {#buying-usdc-with-euros}
 
-Peňaženka s adresou na sieti Base si tam môže kúpiť USDC za eurá cez
-[Onramp.money](https://onramp.money). Panel Trh ukáže tento riadok len pri
-edge, ktorý vyrovnáva platby na hlavnej sieti Base: Onramp.money nepredáva
-nič, čo by testovací edge prijal.
+Peňaženka s adresou na sieti Base si tam môže kúpiť USDC za eurá na
+[Binance](https://www.binance.com), s vaším vlastným účtom Binance. Panel Trh
+ukáže tento riadok len vtedy, keď je edge partnerom Binance Connect a
+vyrovnáva platby na hlavnej sieti Base. Binance predáva len USDC na sieti
+Base, takže Bitcoin a Monero sa naďalej platia z vašej vlastnej peňaženky.
 
-1. Zvoľte Kúpiť. Panel uvedie, že USDC predáva Onramp.money, nie LosOS, a
-   odkáže na jeho Obchodné podmienky, Zásady ochrany súkromia a Upozornenie
-   na riziká. Zaškrtnutím ich prijmete a potom zadáte sumu od 5 do 100 000
-   eur. Prehliadač si súhlas s týmito podmienkami zapamätá a opýta sa znova,
-   keď sa zmenia.
-2. Pokračovať otvorí stránku Onramp.money na novej karte so sumou, USDC na
-   sieti Base a adresou peňaženky. Zariadenie nepošle nič iné a na jeho
-   strane nie je žiadny účet ani kľúč. Onramp.money overí vašu totožnosť,
-   ukáže kurz a poplatok a eurá prijme prevodom SEPA alebo cez Open Banking.
-3. Po dokončení Onramp.money vráti kartu na panel Trh s číslom objednávky a
-   panel ho ukáže.
-4. Kým je panel otvorený, každých 20 sekúnd prečíta USDC peňaženky na sieti
-   Base a oznámi, keď prídu, s odkazom na prevody v prehliadači blokov.
-   Bankový prevod môže trvať deň či dva. Panel prestane čakať po piatich
-   dňoch alebo keď zvolíte Prestať čakať.
+1. Zvoľte Kúpiť. Panel uvedie, že USDC predáva Binance, nie LosOS, a uvedie
+   Podmienky používania, Podmienky produktov, Oznámenie o ochrane súkromia a
+   Upozornenie na riziká od Binance. Každý dokument sa otvorí na novej karte
+   a políčko na ich prijatie zostane zamknuté, kým neotvoríte všetky štyri.
+   Potom zadajte sumu od 1 do 100 000 eur. Prehliadač si zapamätá, ktorú
+   verziu podmienok ste prijali a kedy.
+2. Vytvorte objednávku. Zariadenie pošle edge len sumu a adresu peňaženky.
+   Edge objednávku podpíše svojím partnerským kľúčom a Binance odpovie
+   odkazom na svoju platobnú stránku.
+3. Otvorte Binance. Tam sa prihlásite, Binance overí vašu totožnosť, ukáže
+   kurz a poplatok a prijme platbu. LosOS vašu totožnosť ani platobné údaje
+   nikdy nevidí.
+4. Kým je panel otvorený, každých 15 sekúnd sa edge pýta na objednávku a po
+   opätovnom načítaní ju sleduje ďalej až sedem dní. Oznámi, keď Binance
+   prijíma platbu, keď posiela USDC a keď ich poslal, s odkazom na
+   transakciu na Basescan. Ak si Binance USDC namiesto toho nechá na vašom
+   účte Binance alebo nákup neprejde, panel to tiež oznámi.
 
-Nákup je medzi vami a Onramp.money: vrátenie peňazí alebo spor riešite s
-nimi, nie s edge.
+Binance rozhoduje, v ktorých krajinách predáva. V čase písania (október 2026)
+nemá Binance licenciu podľa nariadenia EÚ MiCA a nové nákupy od obyvateľov EÚ
+neprijíma, takže kupujúceho v EÚ stránka Binance odmietne.
+
+Nákup je medzi vami a Binance: vrátenie peňazí alebo spor riešite s Binance,
+nie s edge.
 
 ### Mená ENS a posielanie USDC {#ens-names-and-sending-usdc}
 

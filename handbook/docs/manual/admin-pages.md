@@ -84,7 +84,7 @@ whatever has the focus, and the arrow keys move through it.
 - **A link**: open it in a new tab, or copy its address.
 - **An app tile or a pin**: open it in a new tab, pin it or unpin it.
 - **A file or folder in LosOS Cloud**: open, download, rename, move, copy,
-  earlier versions, star, copy its link, delete. With several files ticked,
+  earlier versions, star, share, copy its link, delete. With several files ticked,
   the menu works on all of them. The space around the list offers a new
   folder and uploads, and a file in the trash offers restore or delete for
   good.
@@ -154,6 +154,19 @@ resetting the box or using the reserve, opens a dialog instead. The safe
 choice comes first.
 
 ![A settings pane with a change not applied yet: the apply bar at the bottom with Discard and Apply.](../img/settings-apply-bar.png)
+
+## A game while you wait
+
+Some things take minutes: applying a change, LosOS Cloud setting itself up
+on the first start, LosOS Login starting, an app being installed. While one
+of them runs, **Play while you wait** beside its progress opens a small game
+under it, one of five picked at random: Upstream, Eel, Merge, Bricks and
+Pairs. The progress stays on screen above the game. Nothing starts until you
+press a key or tap, there is no sound, and the game pauses when you switch
+to another tab. When the wait is over the game stops and says so, and
+**Close game** puts it away. With "reduce motion" set in your system only
+Merge and Pairs come up, since nothing in them moves between turns. This
+browser keeps your best score for each game.
 
 ## Theme and language
 

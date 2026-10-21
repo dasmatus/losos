@@ -39,7 +39,8 @@ import { Avatar } from "./avatar";
 import { useCalls } from "./calls";
 import { chatDocument } from "./document";
 import { Composer } from "./composer";
-import { ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, RoomSettingsDialog, StartChatDialog } from "./dialogs";
+import { failed, ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, openDirect, RoomSettingsDialog, StartChatDialog } from "./dialogs";
+import { withoutWith, withUserId } from "./links";
 import { directPartner, directRooms, isSpace, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
 import { RoomList } from "./room-list";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
@@ -308,6 +309,23 @@ function ChatHome({ signed }: { signed: Signed }) {
       client.off(CryptoEvent.VerificationRequestReceived, onRequest);
     };
   }, [client]);
+
+  // `?with=<person>` from Contacts, Mail or Cloud opens the direct chat
+  // with that person, made if there is none yet.
+  const navigate = useNavigate();
+  const linked = React.useRef(false);
+  React.useEffect(() => {
+    if (linked.current) return;
+    linked.current = true;
+    const raw = new URLSearchParams(window.location.search).get("with");
+    if (raw === null) return;
+    navigate(withoutWith(window.location.href), { replace: true });
+    const userId = withUserId(raw, client.getDomain() ?? "");
+    if (userId === null || userId === me) return;
+    openDirect(client, userId)
+      .then(setCurrent)
+      .catch((error: unknown) => failed(t, error));
+  }, [client, me, navigate, setCurrent, t]);
 
   const room = current !== null ? (client.getRoom(current) ?? null) : null;
   const spaceRoom = space !== null ? client.getRoom(space) : null;

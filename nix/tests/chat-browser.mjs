@@ -245,6 +245,18 @@ async function on() {
   await second.getByRole("button", { name: "Unlock", exact: true }).click();
   await second.getByRole("log").getByText("Hi Eva, chat is up on mattbox.").waitFor();
   await shot(second, "second-device");
+
+  // Contacts, Mail and Cloud link a person as /chat/?with=<sign-in name>:
+  // Eva's link to Matus opens the conversation they already have, not a
+  // new one, and the link's parameter is gone once it has been used.
+  const room = new URL(eva.url()).hash;
+  if (!room.startsWith("#/room/")) throw new Error(`Eva is not in a room: ${eva.url()}`);
+  await eva.goto(`${ORIGIN}/`);
+  await eva.goto(`${ORIGIN}/chat/?with=matus`);
+  await eva.getByRole("textbox", { name: "Message Matus" }).waitFor();
+  await eva.getByRole("log").getByText("Hi Eva, chat is up on mattbox.").waitFor();
+  const landed = new URL(eva.url());
+  if (landed.hash !== room || landed.searchParams.has("with")) throw new Error(`?with= landed on ${eva.url()}, wanted ${room}`);
 }
 
 try {
