@@ -257,9 +257,10 @@ async function phone() {
   const row = page.locator('[data-entry="budget.ods"]');
   const b = await row.boundingBox();
   const cdp = await context.newCDPSession(page);
-  const point = [{ x: b.x + b.width - 60, y: b.y + b.height / 2 }];
+  // The row is wider than a phone; press on the part that is on screen.
+  const point = [{ x: Math.min(b.x + b.width / 2, PHONE.width / 2), y: b.y + b.height / 2 }];
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: point });
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1500);
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   if (!before) {
     await menu(page).waitFor();
