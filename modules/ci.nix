@@ -318,6 +318,8 @@ in
         pkgs.curl
         pkgs.gnutar
         pkgs.gzip
+        # pm packs a recipe's .cpkg with `tar -cJf`.
+        pkgs.xz
       ];
       serviceConfig = {
         User = "shared";
