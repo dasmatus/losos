@@ -74,7 +74,7 @@ each EVM network for its balance and the escrow's `releaser()`. Both answer
 404 on an edge that settles USDC on no EVM network.
 
 Every credential the registrar loads (`usdc-rpc-*`, `usdc-releaser-key`,
-`ens-rpc`) has a `SetCredential=` fallback of `unsealed`, which the
+`ens-rpc`, `binance-connect-key`, `binance-connect-token`) has a `SetCredential=` fallback of `unsealed`, which the
 registrar reads as "not configured". Without it systemd would refuse to
 start the unit while a blob is missing, and the terminal would have nothing
 to seal it through.

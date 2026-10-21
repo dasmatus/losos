@@ -876,6 +876,8 @@ export interface UsdcPublic {
   /** Dollar prices of the fee coins, micro-dollars per whole coin as text,
    *  when the edge has a fresh one. Ranks networks by what their fee costs. */
   prices?: { eth?: string; sol?: string };
+  /** Who sells USDC on Base for euros through this edge, when anyone does. */
+  onramp?: "binance";
 }
 
 /** What the buyer's wallet pays. Amounts are USDC base units, as decimal
@@ -1046,6 +1048,52 @@ export function postMarketCoinPay(
     method: "POST",
     contentType: "application/json",
     body: JSON.stringify({ order_id: orderId, coin }),
+  });
+}
+
+/** Where an order is, in the edge's words. */
+export type OnrampStage = "open" | "paying" | "sending" | "done" | "kept" | "failed";
+
+export interface OnrampOrder {
+  order_id: string;
+  /** Binance's checkout, on binance.com. */
+  link: string;
+  /** Unix milliseconds; 0 when Binance gave none. */
+  link_expires: number;
+  euros: string;
+  address: string;
+  network: "base";
+  stage: OnrampStage;
+  /** Binance's own status number. */
+  status: number;
+  /** USDC bought, as Binance writes it. */
+  usdc: string | null;
+  /** The withdrawal's transaction on Base. */
+  tx: string | null;
+}
+
+/** POST /api/market/onramp — a Binance order for `euros` of USDC on Base
+ *  to `address`, this box's wallet, with Binance's checkout link. */
+export function postMarketOnramp(
+  address: string,
+  euros: string,
+  options: RequestOptions = {},
+): Promise<OnrampOrder> {
+  return call<OnrampOrder>("/api/market/onramp", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ address, euros }),
+  });
+}
+
+/** POST /api/market/onramp/status — where one of this box's Binance orders is. */
+export function postMarketOnrampStatus(orderId: string, options: RequestOptions = {}): Promise<OnrampOrder> {
+  return call<OnrampOrder>("/api/market/onramp/status", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ order_id: orderId }),
   });
 }
 
