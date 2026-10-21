@@ -653,8 +653,13 @@ export function section(source: string, sub: string): string {
   if (sub === "") return body;
   const lines = body.split("\n");
   if (sub.startsWith("^")) {
-    const id = sub.slice(1);
-    const at = lines.findIndex((l) => new RegExp(`(^|\\s)\\^${id.replace(/[-]/g, "\\-")}\\s*$`).test(l));
+    // Compared as text, not built into a RegExp: the id comes from whatever
+    // link the note's author typed, and a `(` or `\` in it would throw or match
+    // something else.
+    const at = lines.findIndex((l) => {
+      const t = l.trimEnd();
+      return t.endsWith(sub) && (t.length === sub.length || /\s/.test(t[t.length - sub.length - 1] ?? ""));
+    });
     if (at < 0) return "";
     // The paragraph or list item the id ends.
     let from = at;
