@@ -1,25 +1,76 @@
 ---
-title: Lab
+title: Diagramy
 sidebar_position: 7
 mdx:
   format: md
 ---
 
-# Lab
+# Diagramy
 
-LosOS Lab kreslí zostavu LosOS ako sieťový diagram a ukazuje prevádzku,
-ktorá cez ňu tečie. Každé zariadenie ho podáva na `/lab/`, v bočnom paneli
-administrácie pod položkou **Laboratórium**. Ako ostatné administračné stránky
-odpovedá iba v lokálnej sieti.
+LosOS Diagrams je editor diagramov: vývojové diagramy, plány, myšlienkové
+mapy, tabule a nákresy sietí, písané ako karty na plátne. Jeho súbory sú
+JSON Canvas, formát, ktorý používa Obsidian Canvas, takže súbor `.canvas`
+prejde medzi nimi bez straty. Pozná aj LosOS: sieť, ktorú nakreslíte, má
+vlastnú prevádzku a karta môže zastupovať stroj, ktorý ste si objednali v
+sieti mesh. Každé zariadenie ho podáva na `/diagrams/`, v bočnom paneli
+administrácie pod položkou **Diagramy**, a ako ostatné administračné
+stránky odpovedá iba v lokálnej sieti. Stará adresa `/lab/` vás pošle na
+novú.
 
-Otvára sa na **This box** (toto zariadenie). Lab prečíta nastavenia zariadenia a edge,
-ktoré zariadenie našlo, cez tie isté tri administračné routy ako ostatné stránky,
-a podľa nich zariadenie nakreslí: jeho router, edge v dosahu, oficiálny edge, ak je
-nastavený, a notebook. Router, káble a notebook sú predpokladané, pretože
-zariadenie ich nevidí. Lab do zariadenia nikdy nič nezapisuje. Ak nie je nikto
-prihlásený, povie to a otvorí vstavané zostavy.
+Horný panel prepína medzi tromi pohľadmi na jeden dokument: **Diagram**,
+teda plátno, a **Logický** a **Fyzický**, teda sieť v ňom tak, ako ju
+kreslí simulátor.
 
-## Čo ukazuje {#what-it-shows}
+## Diagram {#the-diagram}
+
+- **Karty.** Dvojklik na plátno pridá textovú kartu, alebo si vyberte z
+  panela: text, poznámku, skupinu, webovú stránku a tvary pilulka,
+  kosoštvorec, kruh, rovnobežník, šesťuholník, databáza, dokument, proces
+  a oblak. Text karty je Markdown: nadpisy, zoznamy a zoznamy úloh, citáty
+  a upozornenia, kód, odkazy, `**tučné**`, `*kurzíva*`, `~~prečiarknuté~~`
+  a `==zvýraznené==`. Kartu upravíte dvojklikom; Escape alebo klik mimo
+  úpravu ukončí.
+- **Šípky.** Potiahnite z jedného zo štyroch úchytov na bokoch karty na inú
+  kartu, alebo na prázdne plátno, kde vznikne nová karta. Šípka môže mať
+  popis, trasu (rovno, v pravých uhloch alebo okolo kariet), bodkovanú alebo
+  čiarkovanú čiaru a hrot na ktoromkoľvek konci. Medzi dvoma zariadeniami
+  je šípka kábel, ak v paneli nie je vybraná **Šípka**.
+- **Skupiny, farby a rozloženie.** Skupina je rámik s popisom; karty v nej
+  sa hýbu s ňou. Šesť farieb sa riadi svetlou a tmavou témou, alebo si
+  vyberte ľubovoľnú farbu. Inšpektor mení poradie, zarovnáva, zoskupuje,
+  duplikuje a maže vybrané. Späť a Znova pokrývajú každú zmenu.
+- **Šablóny.** Vývojový diagram, architektúra služby, myšlienková mapa,
+  tabuľa a domáca sieť, položené tam, kam kliknete.
+- **Súbory.** **Súbor** uloží diagram ako súbor `.canvas` a otvorí ho.
+  Keď na zariadení beží LosOS Cloud, otvára a ukladá diagramy aj tam a
+  súbor `.canvas` v LosOS Cloud sa otvorí v Diagramoch. Uloženie späť
+  uvádza verziu, ktorú prečítalo, takže ak sa súbor medzitým zmenil,
+  uloženie sa odmietne a nič sa neprepíše. Ctrl+S uloží tam, odkiaľ diagram
+  prišiel. Obrázok sa exportuje ako SVG alebo PNG.
+- **Stroje.** Položka **Stroje** v paneli uvádza virtuálne stroje, ktoré
+  si toto zariadenie objednalo v sieti mesh. Položte jeden a jeho karta
+  ukáže každú kópiu a čo práve robí, načítané znova každých 20 sekúnd.
+  Karta môže stroj aj naplánovať z obrazu; jej odkaz **Objednať** otvorí
+  stránku Stroje s vyplneným obrazom a menom. Zariadenie, ktoré nezdieľa
+  svoj disk so sieťou mesh, nedostane ponuku strojov a panel povie prečo.
+
+Tvary, okraje, zarovnanie textu, štýly čiar a hroty šípok sa zapisujú ako
+`styleAttributes` s menami, ktoré používa doplnok Advanced Canvas pre
+Obsidian. Kľúče, ktoré Diagramy nepoznajú, v dokumente, na karte alebo na
+šípke, zostanú pri ďalšom uložení tak, ako boli. Súbory sieťového
+simulátora spred premenovania na Diagramy (`.llf`) sa stále otvoria.
+
+## Sieť {#the-network}
+
+Zariadenie z panela (box, edge, router, switch, notebook) je karta, ktorú
+spúšťa simulátor, a šípka medzi dvoma z nich je kábel. Stránka sa otvára
+na **This box** (toto zariadenie): prečíta nastavenia zariadenia a edge,
+ktoré zariadenie našlo, cez tie isté tri administračné routy ako ostatné
+stránky, a podľa nich zariadenie nakreslí: jeho router, edge v dosahu,
+oficiálny edge, ak je nastavený, a notebook. Router, káble a notebook sú
+predpokladané, pretože zariadenie ich nevidí. Diagramy do zariadenia nikdy
+nič nezapisujú. Ak nie je nikto prihlásený, povedia to a otvoria vstavané
+zostavy.
 
 - **Pohľady Logický a Fyzický.** Logický pohľad ukazuje
   podsiete, cesty cez edge a mesh. Fyzický pohľad ukazuje racky, stoly a
@@ -30,14 +81,13 @@ prihlásený, povie to a otvorí vstavané zostavy.
   03:00, garbage collection o 04:30 a začiatok a koniec výpočtového okna.
   Simulácia zadrží každý paket, kým nestlačíte Spustiť alebo Krok, a vypíše
   každý skok s jeho protokolom.
-- **Vlastné zostavy.** Začnite od Empty canvas (prázdne plátno) alebo od
-  ktorejkoľvek vstavanej zostavy, vytiahnite zariadenia z panela a natiahnite
-  medzi ich portami meď, optiku alebo Wi-Fi. **Uložiť** stiahne zostavu ako
-  súbor `.llf` (LosOS Lab file, vnútri JSON) a **Otvoriť** ho načíta späť.
-  Posledná zostava, ktorú ste zmenili, sa uchováva aj v prehliadači a vo
-  výbere je uvedená ako "Posledná zostava". Otvorený súbor sa znova postaví tými
-  istými nástrojmi ako panel, takže čokoľvek v ňom, čo by panel nevedel
-  vytvoriť, sa vynechá a Lab povie, koľko častí zahodil.
+- **Vlastné zostavy.** Začnite od nového diagramu alebo od ktorejkoľvek
+  vstavanej zostavy, vytiahnite zariadenia z panela a natiahnite medzi ich
+  portami meď, optiku alebo Wi-Fi. Posledný diagram, ktorý ste zmenili, sa
+  uchováva v prehliadači a vo výbere je uvedený ako "Posledný diagram".
+  Otvorený súbor sa znova postaví tými istými nástrojmi ako panel, takže
+  zariadenie alebo kábel v ňom, ktoré by panel nevedel vytvoriť, sa vynechá
+  a stránka povie, koľko častí zahodila.
 - **Vstavané zostavy.** Dve lokality za jedným oficiálnym edge, jedno domáce
   zariadenie, firma s vlastnou bránou, LAN bez internetu a tri učebnicové
   topológie: hviezda, zbernica a sieť. Sú to len východiskové body,
@@ -50,7 +100,7 @@ prihlásený, povie to a otvorí vstavané zostavy.
   Betriebssystem. Jeho konzola má `show interfaces`, `show ip route`,
   `show arp` a `show dhcp`.
 
-Diagram sa riadi tými istými pravidlami ako skutočný softvér. Príklady: zariadenie
+Sieť sa riadi tými istými pravidlami ako skutočný softvér. Príklady: zariadenie
 bez edge v dosahu nespustí žiadny tunel; prepnutie na mesh sa odmietne s
 `edgeRequired`; trh sa otvorí iba vedľa oficiálneho edge (takého, ktorého
 certifikát podpísal koreňový kľúč LosOS); LAN brána s otvoreným zápisom
@@ -59,15 +109,15 @@ loopback.
 
 ## Dve kópie {#the-two-copies}
 
-| | Na zariadení (`/lab/`) | Hostovaná |
+| | Na zariadení (`/diagrams/`) | Hostovaná |
 | --- | --- | --- |
-| Zostavuje ju | `nix build .#losos-admin-ui` (Lab je jeho druhá stránka) | `admin-ui/lab/engine/build.sh` v `lab.yml` |
+| Zostavuje ju | `nix build .#losos-admin-ui` (Diagramy sú jeho druhá stránka) | `admin-ui/lab/engine/build.sh` v `lab.yml` |
 | Konzoly | simulované, alebo skutočné hosty pod libvirt, keď zariadenie spúšťa pomocníka | skutočné x86_64 hosty pod libvirt na vašom počítači, inak qemu-wasm |
 | Potrebuje | nič okrem zariadenia | cross-origin izolovaný hostiteľ (COOP + COEP) |
 
-Lab je súčasťou administračného rozhrania: `admin-ui/app/lab/index.html` je
+Diagramy sú súčasťou administračného rozhrania: `admin-ui/app/diagrams/index.html` je
 druhá stránka Vite vedľa administračných stránok, postavená z tých istých
-komponentov, palety, ikon a jazykov, a podávaná na `/lab/`. Všetko, čo nie je
+komponentov, palety, ikon a jazykov, a podávaná na `/diagrams/`. Všetko, čo nie je
 kreslenie, beží vo WebAssembly: model, simulátor, hodiny, konzoly a stránky
 sú Rust crate `admin-ui/lab/core` (`losos-lab-core`), ktorý nix zostaví pre
 wasm32 ešte pred vlastným zostavením administračného rozhrania. Stránka beží
@@ -83,7 +133,7 @@ zariadenia bootujú Netzgeräte Betriebssystem, ktorý zostaví nix z
 do diagramu, takže DHCP, ARP, ping a HTTP medzi hostmi idú po kábloch, ktoré
 ste nakreslili. Host routera prideľuje leasy vlastným `udhcpd`. Jedna karta
 spustí naraz najviac tri hosty. So štvrtým hostom došli jadrá a hosty
-zamrzli, preto Lab odmietne ďalší nabootovať. qemu-wasm spúšťa vlákna QEMU
+zamrzli, preto stránka odmietne ďalší nabootovať. qemu-wasm spúšťa vlákna QEMU
 ako Web Workery so zdieľanou pamäťou a prehliadače to dovolia iba na
 stránke podávanej s `Cross-Origin-Opener-Policy: same-origin` a
 `Cross-Origin-Embedder-Policy: require-corp`. `vercel.json` nastaví obe
@@ -92,25 +142,26 @@ vlastnom počítači:
 
 ```sh
 admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, node
-npx --yes serve@14.2.4 -l 8080 /tmp/lab   # then open http://localhost:8080/lab/
+npx --yes serve@14.2.4 -l 8080 /tmp/lab   # then open http://localhost:8080/diagrams/
 ```
 
 `lab.yml` zostaví hostovanú kópiu pre každý pull request, ktorý sa dotkne
-`admin-ui/lab/` alebo stránky Labu v `admin-ui/app/`, a nahrá ju ako
+`admin-ui/lab/` alebo stránky Diagramov v `admin-ui/app/`, a nahrá ju ako
 artefakt `losos-lab-hosted`. Pri pushi do `main` kópiu navyše nasadí na
 Vercel, ak má repozitár secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID` a
 `VERCEL_PROJECT_ID`.
 
 ## GPU plátno {#the-gpu-canvas}
 
-Diagram má dve plátna. Stránka vždy začína tým SVG, takže zostava je na
+Pohľady Logický a Fyzický majú dve plátna (pohľad Diagram vždy kreslí
+stránka sama). Stránka vždy začína tým SVG, takže zostava je na
 obrazovke hneď, ako sa načíta jadro. Potom sa prehliadača opýta, čo ponúka.
 S WebGPU načíta WebGPU zostavenie `admin-ui/lab/render` (`losos-lab-render`).
 Bez WebGPU, ale s WebGL2 načíta zostavenie pre WebGL2. Bez oboch zostane pri
 SVG.
 
 Každé zostavenie je Bevy 0.19.1 skompilované do WebAssembly spolu s jadrom
-Labu. Stránka presunie zostavu do vlastného jadra modulu tak, že zopakuje
+stránky. Stránka presunie zostavu do vlastného jadra modulu tak, že zopakuje
 každú zmenu, ktorú urobila v prvom jadre, a pokračuje iba vtedy, ak potom obe
 opisujú tú istú zostavu. Plátno Bevy potom zaujme miesto plátna SVG a ponechá
 si výber, nástroj a kameru.
@@ -141,8 +192,8 @@ lište uvádza plátno vo svojom tooltipe.
 ## Hosty pod libvirt {#guests-under-libvirt}
 
 qemu-wasm je pomalé: emuluje každú inštrukciu bez KVM, každý host stojí
-kartu asi 450 MB a jedna karta spustí tri. Ak má počítač, na ktorom je Lab
-otvorený, libvirt (to, čo ovláda virt-manager), Lab môže svoje hosty spúšťať
+kartu asi 450 MB a jedna karta spustí tri. Ak má počítač, na ktorom sú
+otvorené Diagramy, libvirt (to, čo ovláda virt-manager), Diagramy môžu svoje hosty spúšťať
 tam, pod KVM, ak ho procesor má. Nabootujú za pár sekúnd a naraz ich beží až
 osem.
 
@@ -154,13 +205,13 @@ Host môže bežať tromi spôsobmi, v poradí podľa preferencie:
    priečinku, ktorý pomocník vie čítať.
 2. **Stránka ovláda libvirt sama, cez relay pomocníka.** Pomocník ponúka aj
    WebSocket, ktorý bajt po bajte kopíruje do vlastného socketu libvirt.
-   Stránka Labu nesie WebAssembly klienta libvirt
+   Stránka nesie WebAssembly klienta libvirt
    (`admin-ui/lab/virt-rpc`, balík `losos-lab-virt`) a hovorí cez neho
    protokolom libvirt, takže táto cesta potrebuje pomocníka a bežiaceho
    démona libvirt, ale na počítači žiadny `virsh` ani klientsku knižnicu
    libvirt. Stránka ju použije, keď pomocníkovi chýba `virsh`, a pre každý
    host, ktorý prvý spôsob nevedel spustiť.
-3. **qemu-wasm v karte.** Na počítači nič, iba engine hostovaného Labu. Je
+3. **qemu-wasm v karte.** Na počítači nič, iba engine hostovanej kópie. Je
    to pomalá cesta a záloha pre každý host, ktorý prvé dve nevedia
    spustiť.
 
@@ -169,7 +220,7 @@ Host môže bežať tromi spôsobmi, v poradí podľa preferencie:
 Pomocník spúšťa každý host ako dočasnú (transient) doménu s názvom
 `losos-lab-...` cez `virsh create`. Transient znamená, že libvirt ju nikdy
 neuloží, takže nič neprežije pomocníka: Ctrl-C alebo SIGTERM zničí každý
-host, ktorý spustil, host, ktorý žiadna stránka Labu minútu nesledovala, sa
+host, ktorý spustil, host, ktorý žiadna stránka minútu nesledovala, sa
 zničí tiež a pri štarte pomocník odstráni každú doménu `losos-lab-`, ktorú
 po sebe nechal zabitý pomocník. Host nie je v žiadnej sieti libvirt ani na
 žiadnom bridge. Jeho sériová konzola a sieťová karta sú pripojené k
@@ -184,8 +235,8 @@ Ako ho použiť vedľa virt-managera na vlastnom PC:
    (`nix build .#losos-registrar`).
 2. Dajte obrazy hostov do priečinka s názvom `guest`: `bzImage`,
    `rootfs.bin` a pre routery, switche a prístupové body `gear.bin`.
-   `admin-ui/lab/engine/build.sh` vyrobí všetky tri a hostovaný Lab ich
-   podáva pod `/lab/guest/`, takže si ich môžete stiahnuť odtiaľ.
+   `admin-ui/lab/engine/build.sh` vyrobí všetky tri a hostovaná kópia ich
+   podáva pod `/diagrams/guest/`, takže si ich môžete stiahnuť odtiaľ.
 3. Spustite pomocníka v priečinku nad `guest`:
 
    ```sh
@@ -196,23 +247,23 @@ Ako ho použiť vedľa virt-managera na vlastnom PC:
    root. Zadajte `--connect qemu:///system`, ak chcete, aby sa hosty
    zobrazili vo virt-manageri vedľa vašich ostatných VM (váš používateľ musí
    byť v skupine `libvirt` a vlastný qemu používateľ libvirt musí vedieť
-   čítať priečinok s obrazmi). `--origin` uvádza adresu stránky Labu, ktorú
+   čítať priečinok s obrazmi). `--origin` uvádza adresu stránky Diagramov, ktorú
    otvárate; kópia podávaná na `localhost:8080`, ako vyššie, je povolená aj
    bez neho. Ďalšie prepínače sú `--images DIR`, `--max-guests N` (8),
    `--memory MiB` (96), `--virt-type auto|kvm|qemu`, `--idle 60s`,
    `--virsh PATH` a `--token-file FILE`. Bez súboru s tokenom pomocník
    odmietne počúvať na čomkoľvek inom ako loopback a odpovedá iba na
    požiadavky adresované na `127.0.0.1` alebo `localhost`.
-4. Otvorte Lab. Kópia na `localhost` hľadá pomocníka sama. Hostovaná kópia
+4. Otvorte Diagramy. Kópia na `localhost` hľadá pomocníka sama. Hostovaná kópia
    ho hľadá až vtedy, keď ju otvoríte s `?libvirt` na konci adresy, pretože
    Chrome sa každého návštevníka verejnej stránky pýta na prístup k
-   lokálnej sieti v okamihu, keď sa dotkne `127.0.0.1`. Lab si voľbu
+   lokálnej sieti v okamihu, keď sa dotkne `127.0.0.1`. Stránka si voľbu
    zapamätá; `?libvirt=0` ju zabudne.
 
 Odznak v hornej lište potom hovorí "KVM via libvirt" (alebo "QEMU via
 libvirt (no KVM)" na počítači bez neho) a každá konzola uvádza, čo spúšťa
 jej host: libvirt, alebo "QEMU in this tab". Ak pomocník nebeží alebo
-libvirt host odmietne, ten host nabootuje pod qemu-wasm ako predtým a Lab to
+libvirt host odmietne, ten host nabootuje pod qemu-wasm ako predtým a stránka to
 raz oznámi. Vlastná kópia zariadenia qemu-wasm nemá, takže tam si ponechá
 simulovanú konzolu.
 
@@ -238,7 +289,7 @@ nespúšťa session démona tak, ako to robí `virsh`, takže pri
 `qemu:///session` musí démon už bežať alebo ho musí spustiť jeho systemd
 socket.
 
-Stránka Labu túto cestu používa sama od seba (`engine/virt-rpc.ts`). Pre
+Stránka túto cestu používa sama od seba (`engine/virt-rpc.ts`). Pre
 každý host si vypýta tiket, otvorí jedno relayované spojenie, vytvorí
 doménu pozastavenú, otvorí jej konzolu a potom ju obnoví, takže konzola
 uvidí prvý bajt, ktorý host vypíše. Doména je tá istá, akú by pomocník
@@ -253,7 +304,7 @@ Ku každému tiketu patrí aj sieťová karta: pomocník naviaže ten istý druh
 UDP tunela, aký dáva vlastným hostom, a odpovie jeho dvoma portami, názvom
 pre doménu (`losos-lab-virt-...`) a druhým tiketom. Stránka zapíše tunel do
 domény a otvorí kartu na `guests/<key>/nic/0`, takže tieto hosty sú na
-kábloch Labu ako ostatné a host jednej cesty vie pingnúť host druhej.
+kábloch diagramu ako ostatné a host jednej cesty vie pingnúť host druhej.
 Karta sa započítava do `--max-guests`; plný pomocník stále vydá relay
 tiket, ale žiadnu kartu, a host potom nabootuje bez siete, čo uvedie
 hlavička jeho konzoly.
@@ -263,7 +314,7 @@ keď skončí spojenie: keď sa karta zatvorí a keď sa pomocník zastaví, pre
 pomocník pri Ctrl-C alebo SIGTERM zatvorí každý relayovaný socket. Keď
 stránka host vypne, zničí doménu sama a kartu vráti cez
 `DELETE guests/<key>`. Karta, ktorú žiadna stránka nesleduje, sa ukončí po
-`--idle`, ako host samotného pomocníka, a keďže Lab pomenúva svoju doménu
+`--idle`, ako host samotného pomocníka, a keďže stránka pomenúva svoju doménu
 rovnako ako pomocník, pomocníkovo upratovanie a kontrola nečinnosti
 zasiahnu aj túto doménu. `admin-ui/lab/virt-rpc/README.md` ukazuje klienta
 samostatne, cez jeho demo stránku.
@@ -278,7 +329,7 @@ nikdy nie stránku, a polkit sa pýta tiež na pomocníka. Pri
 môže vytvoriť doménu, ktorá pripojí ľubovoľný súbor alebo disk hostiteľa, a
 relay nevie takú doménu odmietnuť bez parsovania protokolu libvirt. Na
 vlastnom PC uprednostnite `qemu:///session`: potom sú najhorším prípadom
-súbory vášho vlastného používateľa. Hosty Labu zo systémovej inštancie nič
+súbory vášho vlastného používateľa. Hosty Diagramov zo systémovej inštancie nič
 nepotrebujú.
 :::
 
@@ -317,15 +368,18 @@ LosOS Desktop, nie samotná plocha.
   zostaví jadro do `src/lab/core-pkg/` a `npm run lab:virt` klienta
   libvirt do `src/lab/virt-pkg/` (oboje v gitignore; potrebujú cargo s
   cieľom `wasm32-unknown-unknown` a `wasm-bindgen` 0.2.127) a potom
-  `npm run dev` podáva stránku na `/lab/`. `npm run lab:render` rovnako
+  `npm run dev` podáva stránku na `/diagrams/`. `npm run lab:render` rovnako
   zostaví dva moduly GPU plátna do `src/lab/render-pkg/` a spustí na nich
   `wasm-opt`, keď ho `WASM_OPT` pomenúva. Stránka sa bez nich nezostaví a
-  ich zostavenie trvá asi 13 minút. `tests/lab.browser.mjs` ju kontroluje
-  pod vlastnou politikou Labu, cestu cez relay proti falošnému démonovi
-  libvirt.
+  ich zostavenie trvá asi 13 minút. `tests/lab.browser.mjs` kontroluje
+  sieťové pohľady pod vlastnou politikou stránky, cestu cez relay proti
+  falošnému démonovi libvirt, a `tests/diagrams.browser.mjs` diagram:
+  karty, šípky, súbor z Obsidianu, obrázky, LosOS Cloud a karty strojov.
 - Kontrakt jadra je `admin-ui/lab/core/README.md`. Jeho testy porovnávajú
-  každú vstavanú zostavu so správaním JavaScriptového Labu, ktorý
-  nahradilo.
+  každú vstavanú zostavu so správaním JavaScriptového simulátora,
+  ktorý nahradilo. Plátno, jeho formát súboru a jeho Späť sú v
+  `admin-ui/lab/core/src/canvas/` a časti diagramu v Reacte v
+  `admin-ui/app/src/lab/canvas/`.
 - Hosty: `admin-ui/app/src/lab/engine/` skúša libvirt cez `virsh`
   pomocníka, potom libvirt cez vlastného klienta stránky a relay
   pomocníka, potom qemu-wasm, v tomto poradí.

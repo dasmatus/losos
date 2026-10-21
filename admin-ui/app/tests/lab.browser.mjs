@@ -109,7 +109,7 @@ const node = (page, name) => page.locator(`[data-testid=lab-canvas-wrap] [data-d
 
 await check('loads under the lab CSP, simulated, signed out says so', async () => {
   const { page, clean } = await open();
-  await page.getByText('Sign in on the admin page first, then open the lab').waitFor();
+  await page.getByText('Sign in on the admin page first, then open Diagrams').waitFor();
   assert.strictEqual(await page.getByTestId('setup-picker').locator('option[value=this-box-problem]').innerText(), 'This box: sign in on the admin page first');
   assert.match(await page.getByTestId('engine-badge').innerText(), /Simulated consoles/);
   assert.ok((await devices(page)) >= 5, 'the default setup draws its devices');
@@ -138,7 +138,7 @@ await check('This box: signed in, the lab draws this box from /api', async () =>
   const { page, clean } = await open({ signedIn: true });
   const picker = page.getByTestId('setup-picker');
   assert.strictEqual(await picker.inputValue(), 'this-box');
-  assert.strictEqual(await page.getByText('Sign in on the admin page first, then open the lab').count(), 0);
+  assert.strictEqual(await page.getByText('Sign in on the admin page first, then open Diagrams').count(), 0);
   assert.ok((await node(page, 'mattbox').count()) === 1, 'the box carries its hostName');
   await clean();
   await page.close();

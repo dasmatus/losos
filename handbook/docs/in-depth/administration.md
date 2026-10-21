@@ -24,7 +24,7 @@ Services on the same host:
 | Nextcloud        | `<host>.local/nextcloud`  |
 | Forgejo (opt-in) | `<host>.local/forgejo/`   |
 | Handbook         | `<host>.local/handbook/`  |
-| [Lab](lab.md)       | `<host>.local/lab/`       |
+| [Diagrams](diagrams.md) | `<host>.local/diagrams/` |
 
 The box's IP address (the one on the tty1 banner) and its bare name work in
 place of `<host>.local` everywhere, Nextcloud included. That is the way in

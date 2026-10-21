@@ -1,7 +1,8 @@
 # losos-lab-core
 
-LosOS Lab's non-DOM half in Rust, compiled to WebAssembly: the world model
-and its evaluation (model.js), the packet simulator and lab clock (sim.js),
+LosOS Diagrams' non-DOM half in Rust, compiled to WebAssembly: the diagram
+(a JSON Canvas document with its undo history, `src/canvas/`), the world
+model and its evaluation (model.js), the packet simulator and lab clock (sim.js),
 the built-in setups (scenarios.js), "This box" (thisbox.js), setup files
 (files.js), the simulated web pages (pages.js) and the simulated console's
 command interpreter (term.js). Rendering, xterm, key handling, `fetch`,
@@ -112,6 +113,46 @@ class Lab {
   exec(id: string, line: string): string;  // ExecResult
   http(id: string, url: string): string;   // HttpStart
   error_page(error: string, host: string): string;   // errorPage() HTML
+
+  // ── the diagram (src/canvas/) ──
+  // Ids are JSON arrays of node or edge ids. Every change is one undo step,
+  // except moves and resizes, where calls with the same `gesture` number
+  // fold into one. A device card or a cable changes the world too.
+  canvas(): string;                        // CanvasSnap: {nodes, edges,
+                                           // canUndo, canRedo, scale}
+  canvas_new(): string;                    // an empty diagram: {ok}
+  rename_doc(name: string): string;        // {name} | Err (1-60 chars)
+  canvas_add_node(spec: string): string;   // NodeSpec → {node} | Err
+  canvas_add_device(type: string, cx: number, cy: number): string;
+                                           // a device card → {node, device} | Err
+  canvas_update_node(id: string, patch: string): string;
+                                           // text, url, file, label, color,
+                                           // styleAttributes, losos (null
+                                           // removes) → {node} | Err
+  canvas_move(ids: string, dx: number, dy: number, gesture: number): string;
+                                           // groups carry what lies inside
+                                           // → {moved} | Err
+  canvas_resize(id: string, rect: string, gesture: number): string;
+  canvas_connect(spec: string): string;    // EdgeSpec → {edge} | Err; with
+                                           // `cable: kind` between two device
+                                           // cards it is a cable of that kind
+  canvas_update_edge(id: string, patch: string): string;   // {edge} | Err
+  canvas_delete(what: string): string;     // {nodes?, edges?} → what went
+  canvas_order(ids: string, how: "front" | "back"): string;
+  canvas_align(ids: string, how: string): string;
+                                           // left, center, right, top,
+                                           // middle, bottom, horizontal,
+                                           // vertical (the last two spread)
+  canvas_group(ids: string, label: string): string;        // {node} | Err
+  canvas_copy(ids: string): string;        // {text}: a JSON Canvas fragment
+  canvas_paste(text: string, x: number, y: number): string;
+                                           // a fragment, a URL or plain text
+                                           // → {nodes, edges} | Err
+  canvas_templates(): string;              // [{key}]
+  canvas_insert_template(key: string, lang: string, cx: number, cy: number): string;
+                                           // lang: en | sk | de
+  canvas_undo(): string;                   // {ok} | Err
+  canvas_redo(): string;                   // {ok} | Err
 }
 ```
 
@@ -256,13 +297,25 @@ type HttpResult =
   `x`/`y` are already interpolated on the logical canvas (a bus drop runs
   along the backbone, then down). Paused in simulation mode, `t` is 1.
 
-## Setup files
+## Files
 
-`export_setup().text` is `JSON.stringify(setupDoc(), null, 2) + "\n"`;
-`filename` ends in `.llf`. `import_setup` strips `.llf`, `.losos-lab.json`
-or `.json` from the file name for the label, refuses text over 1 MiB, then
-applies `docProblem` and `buildFromDoc`: every part goes back through
-`newDevice` and `connect`, at most 200 devices and 400 links, names through
-`deviceName`, cfg keys and types checked against the type's defaults.
-`last_setup()` is `keepLast`: when dirty it clears the flag and returns the
-document (named "Edited …" for a built-in setup) for `localStorage`.
+`export_setup().text` is the diagram as JSON Canvas 1.0, pretty-printed,
+and `filename` ends in `.canvas`. Cards keep the six preset colours
+(`"1"`-`"6"`) or a hex colour; shapes, borders, text alignment, line styles,
+arrow heads and routes are `styleAttributes` with Advanced Canvas's names.
+LosOS's own keys sit under `losos` on a card (`device`, `machine`), on an
+edge (`link`) and on the document (`name`). Every other key, on any of the
+three, is kept as it came and written back. The canvas holds at most 5000
+cards and 10000 arrows.
+
+`import_setup` takes a JSON Canvas file or a setup file of the Lab before
+Diagrams (`losos-lab-setup`, version 1, `.llf`), strips `.canvas`, `.llf`,
+`.losos-lab.json` or `.json` from the file name for the label and refuses
+text over 8 MiB. A setup file is built with `newDevice` and `connect` as
+before (at most 200 devices and 400 links, names through `deviceName`, cfg
+keys and types checked against the type's defaults) and laid out as cards.
+In a canvas file, a card with `losos.device` goes back through the same
+checks, so a device the tray could not make is left out and counted in
+`skipped`. `last_setup()` is `keepLast`: when dirty it clears the flag and
+returns the document (named "Edited …" for a built-in setup) for
+`localStorage`.
