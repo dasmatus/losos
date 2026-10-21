@@ -502,6 +502,10 @@
         # `shared`, its memory cap, the lend file, the loopback owner rule
         # and the `:llm` tunnel service (nix/tests/inference-lend.nix).
         losos-inference-lend = import ./nix/tests/inference-lend.nix { inherit pkgs; };
+        # The whole pay-as-you-go story on a local chain: two lending boxes,
+        # a USDC escrow, a quote, a paid chat, the settle split, and the
+        # refusals (nix/tests/inference-payg.nix).
+        losos-inference-payg = import ./nix/tests/inference-payg.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
         # The real Forgejo with losos.forgejo.federation on, asked what another
         # server would ask, in both deployment modes; then off, and gone
