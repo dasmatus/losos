@@ -366,7 +366,10 @@ let
   ];
 
   # One map per header: value on the admin surface, empty (header omitted) on
-  # the two proxied service routes, the handbook's and the lab's own values
+  # the two proxied service routes and on LosOS Login under /auth/, which
+  # sends its own (the admin `base-uri 'none'` drops its `<base href>`, and
+  # every page below /auth/ then loads its scripts from the wrong folder and
+  # stays blank), the handbook's and the lab's own values
   # (or the admin value, for the headers they share) under /handbook/ and
   # /lab/, the widget frame's own value (or nothing) under /widget-frame/,
   # and a mail message's under its HTML route.
@@ -375,6 +378,7 @@ let
         default          "${value}";
         ~^/nextcloud     "";
         ~^/forgejo       "";
+        ~^/auth/         "";
         ~^/handbook/     "${handbookValue}";
         ~^/lab/          "${labValue}";
         ~^/widget-frame/ "${frameValue}";
