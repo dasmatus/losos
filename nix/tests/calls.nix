@@ -195,6 +195,100 @@ let
         -j DNAT --to-destination :${toString mediaPort}
     '';
   };
+
+  # The build sandbox has loopback only, and Chromium (since about 150)
+  # gathers no ICE candidates on a computer with no other interface, so the
+  # browsers would never send the SFU a packet. Each browser therefore runs
+  # in a network namespace of its own with a veth pair beside loopback, and
+  # this bridge, inside it, carries the SOCKS proxy and the media port out
+  # to the driver over unix sockets in $LOSOS_BRIDGE (the filesystem is
+  # shared, the network is not). Playwright drives the browser over pipes,
+  # which cross namespaces as they are.
+  browserBridge = pkgs.writeText "losos-calls-browser-bridge.py" ''
+    import itertools
+    import os
+    import selectors
+    import socket
+    import sys
+    import threading
+
+    bridge, ready = sys.argv[1], sys.argv[2]
+
+
+    def pipe(a, b):
+        try:
+            while data := a.recv(65536):
+                b.sendall(data)
+        except OSError:
+            pass
+        for s in (a, b):
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+
+    proxy = socket.socket()
+    proxy.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    proxy.bind(("127.0.0.1", 1080))
+    proxy.listen(64)
+
+
+    def accept():
+        while True:
+            c, _ = proxy.accept()
+            u = socket.socket(socket.AF_UNIX)
+            try:
+                u.connect(f"{bridge}/socks")
+            except OSError:
+                c.close()
+                continue
+            threading.Thread(target=pipe, args=(c, u), daemon=True).start()
+            threading.Thread(target=pipe, args=(u, c), daemon=True).start()
+
+
+    threading.Thread(target=accept, daemon=True).start()
+    front = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    front.bind(("127.0.0.1", ${toString mediaPort}))
+    open(ready, "w").close()
+    sel = selectors.DefaultSelector()
+    sel.register(front, selectors.EVENT_READ, None)
+    ups = {}
+    serial = itertools.count()
+    while True:
+        for key, _ in sel.select():
+            try:
+                if key.data is None:
+                    data, peer = front.recvfrom(65535)
+                    up = ups.get(peer)
+                    if up is None:
+                        up = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+                        up.bind(f"{bridge}/p{os.getpid()}-{next(serial)}")
+                        up.connect(f"{bridge}/media")
+                        ups[peer] = up
+                        sel.register(up, selectors.EVENT_READ, (up, peer))
+                    up.send(data)
+                else:
+                    sock, peer = key.data
+                    front.sendto(sock.recv(65535), peer)
+            except OSError:
+                pass
+  '';
+  chromiumInOwnNetwork = pkgs.writeShellScript "chromium-in-own-network" ''
+    exec ${pkgs.util-linux}/bin/unshare -rn ${pkgs.runtimeShell} -c '
+      set -e
+      ip=${pkgs.iproute2}/bin/ip
+      $ip link set lo up
+      $ip link add v0 type veth peer name v1
+      $ip addr add 192.0.2.1/24 dev v0
+      $ip link set v0 up
+      $ip link set v1 up
+      ready=$(${pkgs.coreutils}/bin/mktemp -u "$LOSOS_BRIDGE/ready.XXXXXX")
+      "$LOSOS_PYTHON" ${browserBridge} "$LOSOS_BRIDGE" "$ready" &
+      while [ ! -e "$ready" ]; do ${pkgs.coreutils}/bin/sleep 0.1; done
+      exec "$LOSOS_CHROME" "$@"
+    ' sh "$@"
+  '';
 in
 
 pkgs.testers.nixosTest {
@@ -392,6 +486,7 @@ pkgs.testers.nixosTest {
   };
 
   testScript = ''
+    import glob
     import json
     import os
     import re
@@ -401,26 +496,6 @@ pkgs.testers.nixosTest {
     import threading
     import time
     import urllib.parse
-
-    # The build sandbox has loopback only, and Chromium (since about 150)
-    # gathers no ICE candidates on a computer with no other interface: the
-    # browsers would never send the SFU a packet. So before any machine
-    # starts, the driver moves into a network namespace of its own with a
-    # veth pair beside loopback. The machines' forwarded ports, the shim
-    # below and the browsers all live in it; the VLANs are unix sockets.
-    def own_network():
-        uid, gid = os.getuid(), os.getgid()
-        os.unshare(os.CLONE_NEWUSER | os.CLONE_NEWNET)
-        for name, text in (("setgroups", "deny"), ("uid_map", f"{uid} {uid} 1"),
-                           ("gid_map", f"{gid} {gid} 1")):
-            with open(f"/proc/self/{name}", "w") as f:
-                f.write(text)
-        ip = "${pkgs.iproute2}/bin/ip"
-        for args in ("link set lo up", "link add v0 type veth peer name v1",
-                     "addr add 192.0.2.1/24 dev v0", "link set v0 up", "link set v1 up"):
-            subprocess.run(f"{ip} {args}", shell=True, check=True)
-
-    own_network()
 
     HOST = "mattbox.local"
     PASSWORDS = {
@@ -545,14 +620,47 @@ pkgs.testers.nixosTest {
     os.environ.setdefault("HOME", os.environ.get("TMPDIR", "/tmp"))
     from playwright.sync_api import sync_playwright
 
+    import selectors
+    import socket
+    import sys
+    import tempfile
+
+    # The driver's end of each browser's bridge (browserBridge above).
+    BRIDGE = tempfile.mkdtemp(prefix="br", dir=os.environ.get("TMPDIR", "/tmp"))
+
+    def socks_relay():
+        """The bridge's SOCKS connections, on to the laptop's proxy."""
+        def pipe(a, b):
+            try:
+                while data := a.recv(65536):
+                    b.sendall(data)
+            except OSError:
+                pass
+            for s in (a, b):
+                try:
+                    s.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+        listener = socket.socket(socket.AF_UNIX)
+        listener.bind(f"{BRIDGE}/socks")
+        listener.listen(64)
+        while True:
+            c, _ = listener.accept()
+            try:
+                u = socket.create_connection(("127.0.0.1", 1080))
+            except OSError:
+                c.close()
+                continue
+            threading.Thread(target=pipe, args=(c, u), daemon=True).start()
+            threading.Thread(target=pipe, args=(u, c), daemon=True).start()
+
     def media_shim():
-        """Each browser socket that writes to the media port gets a forwarded
-        port of its own (peerPorts in the Nix above), and the replies on it
-        go back to that socket."""
-        import selectors
-        import socket
-        front = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        front.bind(("127.0.0.1", ${toString mediaPort}))
+        """Each browser socket the bridges carry gets a forwarded port of its
+        own (peerPorts in the Nix above), and the replies on it go back to
+        that socket."""
+        front = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        front.bind(f"{BRIDGE}/media")
         sel = selectors.DefaultSelector()
         sel.register(front, selectors.EVENT_READ, None)
         free = list(range(${toString shimBase}, ${toString (shimBase + peerPorts)}))
@@ -581,8 +689,13 @@ pkgs.testers.nixosTest {
                 except OSError:
                     pass
 
-    SHIM: dict[tuple[str, int], tuple[int, int]] = {}
+    SHIM: dict[str, tuple[int, int]] = {}
+    threading.Thread(target=socks_relay, daemon=True).start()
     threading.Thread(target=media_shim, daemon=True).start()
+    os.environ["LOSOS_BRIDGE"] = BRIDGE
+    os.environ["LOSOS_PYTHON"] = sys.executable
+    os.environ["LOSOS_CHROME"] = next(iter(glob.glob(
+        "${browsers}/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell")))
 
     def media_report():
         print("media shim, packets to the box and back per browser socket:",
@@ -601,13 +714,15 @@ pkgs.testers.nixosTest {
     }
     browsers = {
         name: pw.chromium.launch(
+            executable_path="${chromiumInOwnNetwork}",
             chromium_sandbox=False,
             proxy={"server": "socks5://127.0.0.1:1080"},
             args=[
                 "--use-fake-ui-for-media-stream",
                 "--use-fake-device-for-media-stream",
                 f"--use-file-for-fake-video-capture={y4m}",
-                # The SFU's offered address is the driver's own loopback.
+                # The SFU's offered address is the driver's loopback, which
+                # the bridge serves in the browser's own namespace.
                 "--allow-loopback-in-peer-connection",
             ],
         )
