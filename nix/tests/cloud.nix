@@ -73,6 +73,8 @@ pkgs.testers.nixosTest {
       losos = {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
+        # The look and the pins, which the admin home asks for.
+        backend.plugins = lososPkgs.losos-plugins;
         admin.ui = lososPkgs.losos-admin-ui;
         cloud.enable = true;
         forgejo.enable = false;
