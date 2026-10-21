@@ -1,0 +1,36 @@
+{
+  "name": "probe",
+  "description": "Pokes at every import, for lososd's tests.",
+  "routes": [
+    { "method": "GET", "path": "/api/probe/echo" },
+    { "method": "POST", "path": "/api/probe/echo", "maxBody": 1024 },
+    { "method": "GET", "path": "/api/probe/items/{id}" },
+    { "method": "GET", "path": "/api/probe/items/new" },
+    { "method": "GET", "path": "/api/probe/open", "unguarded": true },
+    { "method": "GET", "path": "/api/probe/config" },
+    { "method": "POST", "path": "/api/probe/read" },
+    { "method": "POST", "path": "/api/probe/write" },
+    { "method": "POST", "path": "/api/probe/exec" },
+    { "method": "POST", "path": "/api/probe/http" },
+    { "method": "POST", "path": "/api/probe/lock" },
+    { "method": "POST", "path": "/api/probe/hold" },
+    { "method": "POST", "path": "/api/probe/cache" },
+    { "method": "POST", "path": "/api/probe/job" },
+    { "method": "POST", "path": "/api/probe/dispatch" },
+    { "method": "GET", "path": "/api/probe/spin" },
+    { "method": "GET", "path": "/api/probe/grow" },
+    { "method": "GET", "path": "/api/probe/panic" },
+    { "method": "GET", "path": "/api/probe/time" }
+  ],
+  "files": [
+    { "path": "${LOSOS_PROBE_DIR}", "access": "rw" },
+    { "path": "${LOSOS_PROBE_DIR}/sealed", "access": "ro" }
+  ],
+  "exec": ["echo"],
+  "http": ["${LOSOS_PROBE_HTTP:-}"],
+  "locks": ["probe"],
+  "timers": [{ "name": "start" }, { "name": "beat", "every": 1 }],
+  "dispatch": true,
+  "limits": { "memoryMiB": 32, "timeoutSecs": 2, "jobSecs": 5, "jobs": 1 },
+  "config": { "dir": "${LOSOS_PROBE_DIR}" }
+}
