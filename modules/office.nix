@@ -30,6 +30,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 
@@ -44,6 +45,7 @@ let
   stateDir = "/var/lib/losos-office";
 
   lanOnly = import ./lan-only.nix;
+  themes = import ../admin-ui/themes { inherit pkgs; };
 
   toCoolwsd = ''
     proxy_set_header Host $host;
@@ -119,7 +121,16 @@ in
           "^~ /browser/" = {
             proxyPass = coolwsd;
             recommendedProxySettings = false;
-            extraConfig = toCoolwsd;
+            # Every editor page links /browser/<version>/branding.css, which
+            # coolwsd does not ship: the box answers it with the LosOS look
+            # (admin-ui/themes/office/branding.css).
+            extraConfig = ''
+              ${toCoolwsd}
+              location ~ ^/browser/[^/]+/branding\.css$ {
+                alias ${themes.office.branding};
+                default_type text/css;
+              }
+            '';
           };
           # The admin console's pages, which are off anyway.
           "^~ /browser/dist/admin/".return = "404";

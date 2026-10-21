@@ -34,6 +34,9 @@
 #     core/css/losos-tokens.css   images under core/img/ that Nextcloud
 #     core/img/…               looks up there before its own
 #
+#   office/branding.css        tokens.css and office/branding.css in one
+#                              file, served as Collabora's branding.css
+#
 #   forgejo/                   laid out as Forgejo's $FORGEJO_CUSTOM, so it is
 #     public/assets/css/…      copied (image) or linked (native) file for file
 #     public/assets/img/…      into it: the three pickable themes, the logos
@@ -63,6 +66,12 @@ let
         ];
       }
       ''
+        # ── LosOS Office: Collabora's branding.css ────────────────────────
+        # One file: the palette, then the rules that dress the editor in it
+        # (./office/branding.css says why both are one file).
+        install -d "$out/office"
+        cat ${tokens} ${./office/branding.css} > "$out/office/branding.css"
+
         # ── Nextcloud: themes/<name>/ ─────────────────────────────────────
         nc="$out/nextcloud"
         install -Dm0644 ${./nextcloud/defaults.php} "$nc/defaults.php"
@@ -130,6 +139,10 @@ let
   ];
 in
 {
+  # LosOS Office (modules/office.nix): the stylesheet coolwsd's editor page
+  # links as /browser/<version>/branding.css.
+  office.branding = "${package}/office/branding.css";
+
   inherit package;
 
   authelia = {

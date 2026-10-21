@@ -46,12 +46,13 @@ HOST = os.environ.get("SHOTS_HOST", "mattbox.local")
 
 # What a picture may point at, as (in the editor frame?, selector).
 TARGETS = {
-    # The editor's own bar, the one right above its <main>; the shell's
-    # top bar is a <header> too.
-    "back": (False, "header:has(+ main) button"),
-    "name": (False, "header:has(+ main) h1"),
+    # The editor's own bars (src/cloud/office/editor.tsx); the shell's top
+    # bar is a <header> too.
+    "back": (False, '[data-testid="office-bar"] button'),
+    "name": (False, '[data-testid="office-bar"] h1'),
+    "toolbar": (False, '[role="toolbar"]'),
     "document": (False, "main iframe"),
-    "save": (True, '[id^="save"].unotoolbutton'),
+    "save": (False, '[data-testid="office-save"]'),
     "page": (True, "#document-container"),
 }
 
@@ -364,7 +365,7 @@ def main():
         settle(tab)
     elif a.command == "saved":
         # Saved when the editor says the document is unmodified again (an
-        # idle save may already have done it).
+        # idle save may already have done it), and the LosOS bar says so.
         tab.key("ctrl+s")
         tab.until(
             frame(
@@ -373,19 +374,10 @@ def main():
             ),
             "the save",
         )
-        # and, for the picture, its status bar no longer says "Saving...".
-        # In a shared document that line can stay up long after the file is
-        # written; the test checks the file on the box itself.
-        # Its tooltip may already say saved; saving again moves the line on.
-        try:
-            tab.until(frame("!/Saving/.test(this.document.body.innerText)"), "the status bar", 60)
-        except SystemExit:
-            tab.key("ctrl+s")
-            try:
-                tab.until(frame("!/Saving/.test(this.document.body.innerText)"), "the status bar", 120)
-            except SystemExit as e:
-                log(f"{e}; the save itself is done")
-                log(tab.js(frame("(this.document.getElementById('DocumentStatus') || {}).outerHTML")))
+        tab.until(
+            "document.querySelector('[data-testid=\"office-saved\"]')?.textContent === 'Saved to the box'",
+            "the bar",
+        )
         settle(tab)
     elif a.command == "views":
         (count,) = a.args
@@ -393,6 +385,11 @@ def main():
         tab.until(
             frame(f"this.app && this.app.map && Object.keys(this.app.map._viewInfo || {{}}).length >= {int(count)}"),
             f"{count} people in the document",
+        )
+        # and the LosOS bar shows the others.
+        tab.until(
+            f"document.querySelectorAll('[data-testid=\"office-viewers\"] li').length >= {int(count) - 1}",
+            "the others in the bar",
         )
         settle(tab, 6)
     elif a.command == "signin":

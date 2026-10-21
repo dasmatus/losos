@@ -344,6 +344,15 @@ pkgs.testers.nixosTest {
         page = laptop.succeed(f"curl -ksf -D - -o /dev/null {box}/office/").lower()
         assert "frame-src 'self'" in page and "x-frame-options: deny" in page, page
 
+    with subtest("the editor page links branding.css, and the box answers it with the LosOS look"):
+        editor = laptop.succeed(f"curl -ksf '{box}{session['url']}'")
+        linked = re.search(r'href="([^"]*/branding\.css)"', editor)
+        assert linked, "the editor page links no branding.css"
+        css = laptop.succeed(f"curl -ksf -D - '{box}{linked.group(1)}'")
+        assert re.search(r"(?im)^content-type: text/css", css), css[:400]
+        # The palette, then the rules that hide Collabora's own bars.
+        assert "--accent-rgb:" in css and "#toolbar-row" in css, css[-600:]
+
     with subtest("the WOPI routes take only a valid token for the file asked"):
         src = "http://127.0.0.1:8093/wopi/files/" + hexid("Plan.docx")
         token = session["accessToken"]
@@ -540,9 +549,22 @@ pkgs.testers.nixosTest {
             "type", "matus", "Pack the tent.", "--shot", "03-typing", "--title", "Matus types a line",
             "--action", "click:save",
         )
+        # The line made bold with the LosOS formatting bar, not Collabora's.
+        browse("key", "matus", "shift+Home")
+        browse("click", "matus", '[data-command=".uno:Bold"]')
+        browse(
+            "shot", "matus", "04-bold", "--title", "Bold, from the LosOS bar",
+            "--action", "click:save", "--target", "toolbar", "--target", "save",
+        )
         browse("saved", "matus")
-        browse("shot", "matus", "04-saved", "--title", "Saved to the box", "--target", "save")
+        browse("shot", "matus", "05-saved", "--title", "Saved to the box", "--target", "save")
         has("Trip plan.docx", word, "Pack the tent")
+        # Bold in Word's own markup: a run with <w:b/> that holds the line.
+        mattbox.wait_until_succeeds(
+            f"unzip -p '{folder}/Trip plan.docx' {word}"
+            " | grep -qP '<w:r>(?:(?!</w:r>).)*<w:b/>(?:(?!</w:r>).)*Pack the tent'",
+            timeout=300,
+        )
 
         browse("open", "eva", "--name", "Eva", "--cookie", eva, "--url", link("Trip plan.docx"))
         browse("loaded", "eva")
@@ -551,8 +573,8 @@ pkgs.testers.nixosTest {
         browse("key", "eva", "ctrl+Home", "ArrowDown", "End")
         browse("write", "eva", " We leave at 7.")
         browse("views", "matus", "2")
-        browse("shot", "matus", "05-together", "--title", "Eva is in the document too", "--target", "page")
-        browse("shot", "eva", "06-together-eva", "--title", "What Eva sees", "--target", "page")
+        browse("shot", "matus", "06-together", "--title", "Eva is in the document too", "--target", "page")
+        browse("shot", "eva", "07-together-eva", "--title", "What Eva sees", "--target", "page")
         browse("saved", "eva")
         has("Trip plan.docx", word, "We leave at 7.")
         has("Trip plan.docx", word, "Pack the tent")
@@ -564,14 +586,14 @@ pkgs.testers.nixosTest {
         # A spreadsheet: change one amount, and the total follows.
         browse("open", "budget", "--name", "Matus", "--cookie", matus, "--url", link("Trip budget.xlsx"))
         browse("loaded", "budget")
-        browse("shot", "budget", "07-budget", "--title", "An Excel workbook", "--target", "page")
+        browse("shot", "budget", "08-budget", "--title", "An Excel workbook", "--target", "page")
         busy = memory("with three editors open")
         browse("click", "budget", "main iframe")
         browse("key", "budget", "ctrl+Home", "ArrowDown", "ArrowDown", "ArrowDown", "ArrowRight")
         browse("write", "budget", "150")
         browse("key", "budget", "Enter")
         browse("saved", "budget")
-        browse("shot", "budget", "08-budget-total", "--title", "Food is 150 now, and the total follows", "--target", "page")
+        browse("shot", "budget", "09-budget-total", "--title", "Food is 150 now, and the total follows", "--target", "page")
         mattbox.succeed(f"file -b '{folder}/Trip budget.xlsx' | grep -q 'Microsoft Excel 2007+'")
         has("Trip budget.xlsx", sheet, "<v>150</v>")
         has("Trip budget.xlsx", sheet, "SUM(B2:B4)</f><v>476</v>")
@@ -581,7 +603,7 @@ pkgs.testers.nixosTest {
         # A presentation.
         browse("open", "slides", "--name", "Matus", "--cookie", matus, "--url", link("Kick-off.pptx"))
         browse("loaded", "slides")
-        browse("shot", "slides", "09-kickoff", "--title", "A PowerPoint presentation", "--target", "page")
+        browse("shot", "slides", "10-kickoff", "--title", "A PowerPoint presentation", "--target", "page")
         mattbox.succeed(f"file -b '{folder}/Kick-off.pptx' | grep -q 'Microsoft PowerPoint 2007+'")
         browse("close", "slides")
         laptop.copy_from_machine("/tmp/shots", "office-shots")

@@ -1,0 +1,91 @@
+/* LosOS Office: Collabora Online's page wearing the box's look.
+ *
+ * coolwsd links /browser/<version>/branding.css from every editor page, after
+ * its own bundle, and ships no such file; nginx answers that address with
+ * this one (modules/office.nix), with tokens.css put in front of it at build
+ * time (admin-ui/themes/default.nix). Collabora marks its theme on <html> as
+ * data-theme="light" or "dark", the admin SPA's own spelling, so the tokens
+ * switch with it and nothing here repeats a colour.
+ *
+ * The page around the frame draws the bars (src/cloud/office/editor.tsx):
+ * the way back, the name, who is in the document, whether it is saved, and
+ * the formatting buttons. So Collabora's own title bar, notebookbar, status
+ * bar, rulers and sidebar are hidden here, and what stays visible (the
+ * spreadsheet's formula bar and sheet tabs, the slide list, menus and
+ * dialogs) takes the box's type, corners and colours. The document itself is
+ * drawn by the office core. */
+
+:root:root {
+  --cool-font: var(--font-ui);
+  --jquery-ui-font: var(--font-ui);
+  --mobile-font: var(--font-ui);
+  --border-radius: var(--control-radius);
+  --border-radius-element: var(--control-radius);
+  --border-radius-s: var(--control-radius);
+  --border-radius-large: var(--card-radius);
+
+  --color-main-background: var(--surface);
+  --color-background-lighter: var(--surface);
+  --color-background-dark: var(--sunk);
+  --color-background-darker: var(--ground);
+  --color-background-hover: var(--sunk);
+  --color-background-tabs-group: var(--sunk);
+  --color-canvas: var(--ground);
+  --color-main-text: var(--ink);
+  --color-text-dark: var(--ink);
+  --color-text-darker: var(--ink);
+  --color-text-lighter: var(--muted);
+  --color-primary: var(--accent);
+  --color-primary-dark: var(--accent);
+  --color-primary-darker: var(--accent);
+  --color-primary-lighter: var(--accent-wash);
+  --color-primary-text: var(--ink);
+  --color-border: var(--line);
+  --color-border-dark: var(--line);
+  --color-border-darker: var(--muted);
+  --color-border-lighter: var(--hair);
+  --color-border-input: var(--line);
+  --color-toolbar-border: var(--line);
+  --color-btn-border: var(--line);
+  --color-hyperlink: var(--accent);
+  --color-error: var(--crit);
+  --color-warning: var(--warn);
+  --color-success: var(--ok);
+  --color-box-shadow: transparent;
+  --color-calc-header: var(--sunk);
+  --color-calc-header-hover: var(--line);
+  --color-calc-header-selected: var(--accent-wash);
+  --color-text-calc-header: var(--muted);
+  --color-text-calc-header-selected: var(--ink);
+  --color-border-calc-header: var(--line);
+  --color-calc-grid: var(--line);
+  --color-scrollbar-thumb: var(--faint);
+  --color-scrollbar-railway: transparent;
+}
+
+/* One accent for every kind of document: Collabora gives text, sheets and
+ * slides a colour each. */
+:root:root [data-doctype] {
+  --doc-type: var(--accent-rgb);
+}
+
+/* The page's bars stand in for these. A spreadsheet keeps the formula bar,
+ * which lives in the toolbar wrapper too. */
+.main-nav,
+#toolbar-row,
+#toolbar-wrapper:not(.spreadsheet),
+#toolbar-down,
+#sidebar-dock-wrapper,
+#navigator-floating-icon,
+.cool-ruler,
+#closebuttonwrapper,
+#document-titlebar {
+  display: none !important;
+}
+
+body,
+.jsdialog,
+.ui-dialog,
+.context-menu-list {
+  font-family: var(--font-ui) !important;
+}

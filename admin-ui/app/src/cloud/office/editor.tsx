@@ -1,6 +1,11 @@
 /* The Office editor: Collabora Online in a frame that fills its parent,
- * under a thin bar with the way back and the document's name. The shell's
- * top bar stays above it, so the logo and the person are not repeated.
+ * under two LosOS bars. The first has the way back, the document's name,
+ * whether it is saved, who else is in it, the zoom, PDF and Save; the second
+ * is the formatting bar (toolbar.tsx). Collabora's own bars are hidden by
+ * the stylesheet the box serves it (admin-ui/themes/office/branding.css),
+ * so the document sits in the same shell, type and buttons as every other
+ * app. The shell's top bar stays above it, so the logo and the person are
+ * not repeated.
  *
  * Collabora talks to the page that frames it with postMessage, one JSON
  * object per message ({MessageId, Values}). It waits for Host_PostmessageReady
@@ -14,21 +19,24 @@
  * shared from another box. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import {
+  ArrowLeft01Icon,
+  FloppyDiskIcon,
+  MinusSignIcon,
+  Pdf01Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { PersonAvatar } from "@/components/person";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLocale, useT } from "@/lib/i18n-react";
 import { getResolvedTheme } from "@/lib/theme";
-import {
-  editorLook,
-  editorSrc,
-  httpsAddress,
-  matchEditorTheme,
-  OfficeFailure,
-  type OfficeSession,
-} from "./api";
+import { editorSrc, httpsAddress, matchEditorTheme, OfficeFailure, type OfficeSession } from "./api";
+import { useDocument, type Viewer } from "./document";
+import { docKind, OfficeToolbar, watchedCommands } from "./toolbar";
 
 export interface OfficeEditorProps {
   /** Starts the session: the cloud's open call, or one minted elsewhere. */
@@ -45,7 +53,7 @@ type State =
 
 interface CoolMessage {
   MessageId?: string;
-  Values?: { Status?: string };
+  Values?: unknown;
 }
 
 export function OfficeEditor({ load, onClose, backLabel }: OfficeEditorProps) {
@@ -97,49 +105,79 @@ export function OfficeEditor({ load, onClose, backLabel }: OfficeEditorProps) {
       } catch {
         return;
       }
+      const status = (msg.Values as { Status?: string } | undefined)?.Status;
       if (msg.MessageId === "App_LoadingStatus") {
-        if (msg.Values?.Status === "Frame_Ready") post({ MessageId: "Host_PostmessageReady" });
-        if (msg.Values?.Status === "Document_Loaded") {
+        if (status === "Frame_Ready") post({ MessageId: "Host_PostmessageReady" });
+        if (status === "Document_Loaded") {
           setState((s) => (s.kind === "open" ? { ...s, loaded: true } : s));
         }
-      } else if (msg.MessageId === "UI_Close") {
-        onClose();
+      } else {
+        doc.onMessage(msg);
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [onClose, post]);
+  });
 
   const name = state.kind === "open" ? state.session.name : "";
   useEffect(() => {
     document.title = name ? `${name} · LosOS` : "LosOS";
   }, [name]);
 
-  // The editor's colours, type and corners, read from the page when the
-  // document opens, in the theme matchEditorTheme gave the editor.
-  const look = useMemo(() => (state.kind === "open" ? editorLook(document.documentElement) : ""), [state.kind]);
+  const kind = docKind(name);
+  const watched = useMemo(() => watchedCommands(kind), [kind]);
+  const loaded = state.kind === "open" && state.loaded;
+  const doc = useDocument(frame, loaded, watched, post);
+  const writable = state.kind === "open" && state.session.writable;
   const busy = state.kind === "opening" || (state.kind === "open" && !state.loaded);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-ground text-ink">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-surface px-2 sm:px-4">
+      <header data-testid="office-bar" className="flex h-12 shrink-0 items-center gap-2 border-b border-hair bg-surface px-2 sm:px-3">
         <Button variant="ghost" size="sm" onClick={onClose}>
-          <HugeiconsIcon icon={ArrowLeft01Icon} size={18} strokeWidth={1.5} aria-hidden="true" />
+          <HugeiconsIcon icon={ArrowLeft01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
           <span className="max-sm:sr-only">{backLabel ?? t("office.back")}</span>
         </Button>
-        <span aria-hidden="true" className="h-5 w-px bg-line" />
-        <h1 className="min-w-0 truncate text-sm font-medium">{name}</h1>
+        <span aria-hidden="true" className="h-5 w-px shrink-0 bg-line" />
+        <div className="flex min-w-0 flex-col">
+          <h1 className="truncate text-sm leading-tight font-medium">{name}</h1>
+          {loaded && writable && (
+            <p className="truncate text-[12px] leading-tight text-muted" data-testid="office-saved" aria-live="polite">
+              {doc.modified ? t("office.unsaved") : t("office.saved")}
+            </p>
+          )}
+        </div>
         {state.kind === "open" && !state.session.writable && (
           <Badge variant="secondary">{t("office.readOnly")}</Badge>
         )}
+        <span className="ml-auto" />
+        {doc.viewers.length > 0 && <Viewers viewers={doc.viewers} />}
+        {loaded && (
+          <div className="flex items-center gap-0.5 max-sm:hidden">
+            <Tool icon={MinusSignIcon} label={t("office.zoomOut")} onClick={doc.zoomOut} />
+            <span className="w-11 text-center text-[13px] text-muted tabular-nums" data-testid="office-zoom">
+              {doc.zoom === null ? "" : `${doc.zoom}%`}
+            </span>
+            <Tool icon={PlusSignIcon} label={t("office.zoomIn")} onClick={doc.zoomIn} />
+            <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
+          </div>
+        )}
+        {loaded && <Tool icon={Pdf01Icon} label={t("office.pdf")} onClick={doc.exportPdf} />}
+        {loaded && writable && (
+          <Button size="sm" onClick={doc.save} disabled={!doc.modified} data-testid="office-save">
+            <HugeiconsIcon icon={FloppyDiskIcon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <span className="max-sm:sr-only">{t("office.save")}</span>
+          </Button>
+        )}
       </header>
+      {writable && <OfficeToolbar kind={kind} doc={doc} disabled={!loaded} />}
 
       <main className="relative min-h-0 flex-1" aria-busy={busy}>
         {state.kind === "open" && (
           <iframe
             ref={frame}
             title={t("office.frameTitle", { name })}
-            src={editorSrc(state.session, locale, look)}
+            src={editorSrc(state.session, locale)}
             className="absolute inset-0 size-full border-0"
             allow="clipboard-read; clipboard-write; fullscreen"
           />
@@ -168,5 +206,45 @@ export function OfficeEditor({ load, onClose, backLabel }: OfficeEditorProps) {
         )}
       </main>
     </div>
+  );
+}
+
+/** An icon button that names itself in a tooltip, as the mail reader's do. */
+function Tool({ icon, label, onClick }: { icon: IconSvgElement; label: string; onClick: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} onClick={onClick} />}>
+        <HugeiconsIcon icon={icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** The others in the document, their pictures ringed in their cursor's
+ * colour; four at most, then a count. */
+function Viewers({ viewers }: { viewers: Viewer[] }) {
+  const t = useT();
+  const shown = viewers.slice(0, 4);
+  const more = viewers.length - shown.length;
+  return (
+    <ul className="flex items-center -space-x-1.5 pr-1" aria-label={t("office.together")} data-testid="office-viewers">
+      {shown.map((v) => (
+        <li key={v.id} title={v.name}>
+          <PersonAvatar
+            person={{ name: v.name, displayName: v.name }}
+            size="xs"
+            aria-label={v.name}
+            className="ring-2 ring-surface"
+            style={{ boxShadow: `0 0 0 3.5px ${v.color}` }}
+          />
+        </li>
+      ))}
+      {more > 0 && (
+        <li className="flex size-6 items-center justify-center rounded-full bg-sunk text-[10px] text-muted ring-2 ring-surface">
+          +{more}
+        </li>
+      )}
+    </ul>
   );
 }
