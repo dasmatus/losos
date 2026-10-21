@@ -509,8 +509,8 @@ fázach uložených v `state.json`, takže pokračuje aj bez otvorenej karty:
 1. voliteľná záloha. Ak zlyhá, vymazanie sa zastaví a nič sa nezmení;
 2. odpočítavanie `losos.reset.graceMinutes` (predvolene 15). Zrušiť ho
    zastaví a nič na zariadení ani mimo neho sa ešte nezmenilo;
-3. odchod z edge: vlastné domény zariadenia sa odstránia, jeho aktívne
-   ponuky na trhu sa uzavrú a zariadenie sa vyradí z registra
+3. odchod z edge: vlastné domény zariadenia sa odstránia, peňaženka
+   viazaná na jeho názvy sa odviaže, jeho aktívne ponuky na trhu sa uzavrú a zariadenie sa vyradí z registra
    (`POST /deregister`). Každý krok sa skúsi, aj keď predchádzajúci zlyhal,
    a správa vymenuje tie, ktoré edge nepotvrdil;
 4. predvolené nastavenia sa commitnú a prestavia, potom lososd nechá

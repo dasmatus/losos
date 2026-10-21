@@ -33,6 +33,9 @@ oddiele `/persist`.
 - [Trh](/in-depth/market.md). Predaj disku a CPU, ktoré zariadenie už poskytuje.
 - [Virtuálne stroje](/in-depth/virtual-machines.md). Prenájom strojov v mesh
   a hosťovanie strojov iných zariadení.
+- [Formát aplikácií](/in-depth/app-format.md). Jeden súbor Compose na
+  aplikáciu, spustený ako notshared na Podmane bez roota: čo s ním zariadenie
+  urobí a ako ho nainštalovať.
 - [Vytvoriť s AI](/in-depth/widget-builder.md). Jazykový model na zariadení
   napíše widget alebo aplikáciu podľa opisu a zariadenie ich skontroluje a
   vyskúša.

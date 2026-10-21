@@ -1942,6 +1942,19 @@ async fn post_app_install(api: web::Data<Api>, req: HttpRequest, body: web::Byte
     })
 }
 
+/// `POST /api/apps/compose` `{release, title?, compose, files?}` — install an
+/// app from a Compose file (the LosOS app format), or change one installed
+/// that way under the same name.
+async fn post_app_compose(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/apps/compose", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::apps::ComposeRequest::parse(&doc) {
+            Ok(request) => run(&api, |b| crate::apps::cmd_app_compose(b, &request)),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
 /// `POST /api/apps/remove` `{release}`.
 async fn post_app_remove(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
     guarded(&api, &req, "/api/apps/remove", true, || {
@@ -2669,6 +2682,38 @@ async fn post_domain_remove(
         crate::market::Op::DomainRemove { domain }
     })
     .await
+}
+
+/// `POST /api/domains/wallet` `{"address": "0x…", "signature": "0x…"}` —
+/// publish the box's wallet at its names on the edge, so wallets that send
+/// to ENS names pay it by name; `{}` takes it off.
+async fn post_domain_wallet(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/domains/wallet", true, || {
+        // `{}` unbinds, so anything that is not an object of strings is a
+        // 400 rather than read as one.
+        const SHAPE: &str =
+            r#"body must be JSON: {"address": "0x…", "signature": "0x…"} to bind, or {} to unbind"#;
+        let Ok(serde_json::Value::Object(doc)) = serde_json::from_slice(&body) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let text = |key: &str| match doc.get(key) {
+            None => Ok(None),
+            Some(serde_json::Value::String(v)) => Ok(Some(v.trim().to_string())),
+            Some(_) => Err(()),
+        };
+        let (Ok(address), Ok(signature)) = (text("address"), text("signature")) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let op = crate::market::Op::DomainWallet {
+            address: address.map(|a| a.to_ascii_lowercase()),
+            signature,
+        };
+        run(&api, |b| crate::losos::cmd_domain_op(b, &op))
+    })
 }
 
 // ── Plugins ───────────────────────────────────────────────────────────────
@@ -3515,6 +3560,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/apps", web::get().to(get_apps))
                 .route("/api/apps/chart", web::get().to(get_app_chart))
                 .route("/api/apps/install", web::post().to(post_app_install))
+                .route("/api/apps/compose", web::post().to(post_app_compose))
                 .route("/api/apps/remove", web::post().to(post_app_remove))
                 .route("/api/cloud/apps", web::get().to(get_cloud_apps))
                 .route(
@@ -3600,6 +3646,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/domains", web::get().to(get_domains))
                 .route("/api/domains", web::post().to(post_domain_add))
                 .route("/api/domains/remove", web::post().to(post_domain_remove))
+                .route("/api/domains/wallet", web::post().to(post_domain_wallet))
                 .route("/api/options", web::get().to(get_options))
                 .route("/api/site", web::get().to(get_site))
                 .route("/api/site", web::post().to(post_site))

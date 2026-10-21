@@ -332,7 +332,7 @@ function AppsPicker({ open, pins, busy, full, onToggle }: PickerProps) {
             {installed.map((record) => (
               <Row key={record.release}>
                 <Glyph icon={PackageIcon} />
-                <PinText name={record.release} detail={record.chart.name} />
+                <PinText name={record.release} detail={record.chart?.name ?? record.title ?? ""} />
                 <PinToggle
                   pin={{ kind: "app", release: record.release }}
                   pins={pins}

@@ -150,11 +150,14 @@ The second step asks once more. It says that the box will download and run
 code the publisher wrote, as the user you chose, with no admin rights. The
 box gets nothing until you press **Install** there.
 
-The box then installs the chart into its own cluster and changes it to run
-the way LosOS cloud and LosOS Git do.
+What runs the app follows from the user. A `notshared` app runs on
+rootless Podman, as `notshared` itself, and needs no cluster. A `shared`
+app runs in the box's own cluster, because that is the side of the box the
+mesh touches. Either way the box changes the chart to run the way LosOS
+cloud and LosOS Git do.
 
 - Every part of the app runs as the chosen user, never as root, with no
-  extra privileges and no access to the cluster.
+  extra privileges and no access to a cluster.
 - The storage the chart asks for becomes folders under
   `/home/<user>/data/apps/<name>`.
 - The app gets one port of its own from `losos.apps.ports`, 30000 to 30099
@@ -163,9 +166,11 @@ the way LosOS cloud and LosOS Git do.
 :::note[Charts the box refuses]
 The box refuses a chart that needs more than that and says why. Typical
 reasons are admin rights, a port below 1024, a port another app already
-uses, or a folder of the system. An app built from several services that
-call each other by name may not start, because the box's own cluster has
-no internal network.
+uses, or a folder of the system. A `notshared` app's services reach each
+other by name, on the box itself, so they have to listen on different
+ports. A `shared` app built from several services that call each other by
+name may not start, because the box's own cluster has no internal network.
+A scheduled job (a CronJob) runs only as `shared`.
 :::
 
 **Installed apps**, above the search, lists each app with its state.
@@ -174,11 +179,12 @@ opens the same dialog on the app's current properties. **Remove** asks
 first, then takes the app off the box. Its data folder stays, so an install
 under the same name finds the data again.
 
-:::note[Installs need workload mode]
-The search offers installs only while Files or Code is set to **Kept
-separate**, which is [workload mode](../types/app-modes). The box's own
-cluster runs only then. To turn installing off, set `losos.apps.enable` to
-false on the **Advanced** pane.
+:::note[Running as shared needs workload mode]
+A `notshared` app installs on any box. `shared` needs the box's own
+cluster, which runs only while Files or Code is set to **Kept separate**
+([workload mode](../types/app-modes)), and the box has to share its disk.
+To turn installing off, set `losos.apps.enable` to false on the
+**Advanced** pane.
 :::
 
 ## Your apps
@@ -196,6 +202,14 @@ the LosOS components, which the box checks and compiles when you save. It
 runs only in your browser, in a sandboxed frame with no access to the box
 beyond its own data. **Change** opens it in the editor again, and
 **Delete** removes it with everything entered into it.
+
+## Apps made for the box
+
+Apps can also come as a Compose file in the
+[LosOS app format](../in-depth/app-format), one you write or one a program
+sends for you. They run as `notshared`, show in
+**Installed apps** with the line "made for this box", and have **Open**
+and **Remove** but no **Change**, since they have no properties.
 
 ## Trusted addresses
 

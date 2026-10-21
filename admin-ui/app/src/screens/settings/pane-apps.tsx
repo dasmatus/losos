@@ -218,7 +218,7 @@ export function BoxApps({
               title: app.name,
               publisher: app.source,
               source,
-              existing: records.find((r) => r.chart.name === source.name && r.chart.repo === source.repo) ?? null,
+              existing: records.find((r) => r.chart?.name === source.name && r.chart?.repo === source.repo) ?? null,
             }),
         };
 
@@ -251,13 +251,16 @@ export function BoxApps({
                   disabled={disabled}
                   last={index === records.length - 1}
                   onBox={onBox}
-                  onChange={() =>
-                    setTarget({
-                      title: record.chart.name,
-                      publisher: record.chart.repo,
-                      source: record.chart,
-                      existing: record,
-                    })
+                  onChange={
+                    record.chart === null
+                      ? null
+                      : () =>
+                          setTarget({
+                            title: record.chart!.name,
+                            publisher: record.chart!.repo,
+                            source: record.chart!,
+                            existing: record,
+                          })
                   }
                   onRemove={() => setRemoving(record)}
                 />
@@ -308,7 +311,7 @@ export function BoxApps({
         <GroupCaption>
           {footerFor(catalogue.state)}
           {installed.state.kind === "unavailable" && catalogue.state.kind === "results" && (
-            <> {t("install.noCluster")}</>
+            <> {t("install.off")}</>
           )}
         </GroupCaption>
       </PaneSection>
@@ -490,7 +493,7 @@ function ResultRow({ app, install }: { app: CatalogueApp; install: Installer | n
   const record =
     chart === null
       ? undefined
-      : install?.records.find((r) => r.chart.name === chart.name && r.chart.repo === chart.repo);
+      : install?.records.find((r) => r.chart?.name === chart.name && r.chart?.repo === chart.repo);
   return (
     <TableRow>
       <TableCell className="whitespace-normal align-top">
@@ -565,7 +568,8 @@ function InstalledRow({
   record: InstalledApp;
   disabled: boolean;
   last: boolean;
-  onChange: () => void;
+  /** Null for an app with no properties to change (a compose app). */
+  onChange: (() => void) | null;
   onRemove: () => void;
   /** False on a company edge's page (src/manage/): the app's port is on the
    *  box's own network, and the sidebar pins belong to the box's people. */
@@ -591,7 +595,9 @@ function InstalledRow({
             </Badge>
           </p>
           <p className="mt-0.5 text-[12.5px] leading-snug text-muted">
-            {t("install.runsAs", { chart: record.chart.name, version: record.chart.version, user: record.runAs })}
+            {record.chart !== null
+              ? t("install.runsAs", { chart: record.chart.name, version: record.chart.version, user: record.runAs })
+              : t("install.madeHere", { title: record.title ?? record.release, user: record.runAs })}
           </p>
           {record.phase === "failed" && record.message !== null && (
             <p className="mt-1 text-[12.5px] leading-snug text-crit">{record.message}</p>
@@ -616,9 +622,11 @@ function InstalledRow({
             </a>
           )}
           {onBox && <InstalledPin release={record.release} />}
-          <Button size="sm" variant="secondary" disabled={disabled || busy} onClick={onChange}>
-            {t("install.change")}
-          </Button>
+          {onChange !== null && (
+            <Button size="sm" variant="secondary" disabled={disabled || busy} onClick={onChange}>
+              {t("install.change")}
+            </Button>
+          )}
           <Button size="sm" variant="ghost" disabled={disabled || busy} onClick={onRemove}>
             {t("install.remove")}
           </Button>
