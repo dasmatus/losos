@@ -102,7 +102,10 @@ async function openRebuild({
   if (init !== null) await page.addInitScript(init);
   await page.goto(origin + '/settings/network', { waitUntil: 'networkidle' });
   await page.getByLabel('This box is called').fill('fishbox');
-  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  /* By keyboard: the offer takes the place of Apply, and a pointer left
+   * resting there would preload the game the way a hover is meant to. */
+  await page.getByRole('button', { name: 'Apply', exact: true }).focus();
+  await page.keyboard.press('Enter');
   return { page, context, errors, box, chunks };
 }
 
