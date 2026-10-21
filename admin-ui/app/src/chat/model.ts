@@ -223,8 +223,12 @@ export function buildItems(events: readonly MatrixEvent[], me: string, inThread:
     }
   }
 
+  // In the order they were sent. A homeserver can hand someone who joined
+  // late the messages from before their join after the ones since; on one
+  // box every message is stamped by the same clock.
+  const ordered = [...events].sort((a, b) => a.getTs() - b.getTs());
   const items: Item[] = [];
-  for (const ev of events) {
+  for (const ev of ordered) {
     const type = ev.getType();
     const relation = relationOf(ev);
     if (relation?.rel_type === "m.replace" || type === EventType.Reaction || type === EventType.RoomRedaction) continue;

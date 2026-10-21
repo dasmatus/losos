@@ -162,6 +162,15 @@ async function on() {
   await eva.getByRole("textbox", { name: "Message Matus" }).fill("Nice. Can we plan the holiday here?");
   await eva.keyboard.press("Enter");
   await owner.getByRole("log").getByText("Nice. Can we plan the holiday here?").waitFor();
+  // Both see the conversation in the order it was written, Eva too,
+  // though she joined after the first two messages.
+  for (const page of [owner, eva]) {
+    const log = page.getByRole("log");
+    await log.getByText("Nice. Can we plan the holiday here?").waitFor();
+    const order = await log.getByText(/^(Hi Eva, chat is up|It's end to end|Nice\. Can we plan)/).allTextContents();
+    const want = ["Hi Eva, chat is up on the box.", "It's end to end encrypted, and nobody needs a chat password.", "Nice. Can we plan the holiday here?"];
+    if (JSON.stringify(order) !== JSON.stringify(want)) throw new Error(`out of order: ${JSON.stringify(order)}`);
+  }
   await film(owner, "room-with-eva", `${HOST}/chat/`, "a conversation with Eva", "type", { composer });
   await shot(owner, "conversation");
   await shot(eva, "conversation-eva");
