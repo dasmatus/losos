@@ -16,15 +16,20 @@ Diese Typen öffnet und speichert es:
 
 | Art | Typen |
 |---|---|
-| Text | `.odt`, `.docx`, `.doc`, `.rtf`, `.txt` |
-| Tabellen | `.ods`, `.xlsx`, `.xls`, `.csv` |
-| Präsentationen | `.odp`, `.pptx`, `.ppt` |
+| Text | `.odt`, `.docx`, `.docm`, `.dotx`, `.doc`, `.rtf`, `.txt` |
+| Tabellen | `.ods`, `.xlsx`, `.xlsm`, `.xlsb`, `.xls`, `.csv` |
+| Präsentationen | `.odp`, `.pptx`, `.pptm`, `.ppsx`, `.ppt` |
 | Zeichnungen | `.odg` |
 
 PDF-Dateien, Visio-Zeichnungen und Apples Pages-, Numbers- und
 Keynote-Dateien zeigt es an, ohne sie zu ändern. Ältere Microsoft-Formate
 öffnet und speichert es, aber die OpenDocument- und die neueren
 Microsoft-Formate erhalten am meisten.
+
+Word-, Excel- und PowerPoint-Dateien aus Microsoft 365 bleiben, was sie
+sind: Eine `.docx` wird als `.docx` mit ihren Formatvorlagen zurückgespeichert,
+und eine Arbeitsmappe behält ihre Formeln. Makros in `.docm`-, `.xlsm`- und
+`.pptm`-Dateien laufen auf der Box nie.
 
 ## Einschalten \{#turning-it-on}
 

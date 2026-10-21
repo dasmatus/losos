@@ -16,6 +16,7 @@ test script can check the box between two pictures.
     office-shots.py saved  TAB                    ctrl+s, until the editor says so
     office-shots.py views  TAB N                  until N people are in it
     office-shots.py signin TAB                    the sign-in dialog's button
+    office-shots.py close  TAB                    closes the tab
     office-shots.py where  TAB URL-PREFIX         until the tab is there, prints it
     office-shots.py shot   TAB NN-slug --title T [--action KIND[:TARGET]]
                            [--target NAME | --target NAME=SELECTOR]...
@@ -113,7 +114,10 @@ class Tab:
         *mods, name = combo.split("+")
         bits = {"alt": 1, "ctrl": 2, "meta": 4, "shift": 8}
         modifiers = sum(bits[m.lower()] for m in mods)
-        codes = {"Enter": 13, "End": 35, "Home": 36, "ArrowUp": 38, "ArrowDown": 40, "s": 83, "Tab": 9}
+        codes = {
+            "Tab": 9, "Enter": 13, "End": 35, "Home": 36,
+            "ArrowLeft": 37, "ArrowUp": 38, "ArrowRight": 39, "ArrowDown": 40, "s": 83,
+        }
         event = {
             "modifiers": modifiers,
             "key": name,
@@ -238,7 +242,7 @@ def shoot(tab, name, file, title, action="none", targets=()):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("command", choices=["open", "listed", "loaded", "click", "key", "type", "write", "saved", "views", "signin", "where", "shot"])
+    p.add_argument("command", choices=["open", "listed", "loaded", "click", "key", "type", "write", "saved", "views", "signin", "close", "where", "shot"])
     p.add_argument("tab")
     p.add_argument("args", nargs="*")
     p.add_argument("--name")
@@ -296,6 +300,13 @@ def main():
         tab.call("Page.navigate", {"url": a.url})
         state = tabs()
         state[a.tab] = {"target": target, "person": a.name}
+        with open(STATE, "w") as f:
+            json.dump(state, f)
+        return
+
+    if a.command == "close":
+        state = tabs()
+        Tab(None).call("Target.closeTarget", {"targetId": state.pop(a.tab)["target"]})
         with open(STATE, "w") as f:
             json.dump(state, f)
         return

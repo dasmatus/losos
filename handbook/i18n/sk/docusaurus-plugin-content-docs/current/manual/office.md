@@ -15,14 +15,19 @@ Otvára a ukladá tieto typy:
 
 | Druh | Typy |
 |---|---|
-| Text | `.odt`, `.docx`, `.doc`, `.rtf`, `.txt` |
-| Tabuľky | `.ods`, `.xlsx`, `.xls`, `.csv` |
-| Prezentácie | `.odp`, `.pptx`, `.ppt` |
+| Text | `.odt`, `.docx`, `.docm`, `.dotx`, `.doc`, `.rtf`, `.txt` |
+| Tabuľky | `.ods`, `.xlsx`, `.xlsm`, `.xlsb`, `.xls`, `.csv` |
+| Prezentácie | `.odp`, `.pptx`, `.pptm`, `.ppsx`, `.ppt` |
 | Kresby | `.odg` |
 
 Súbory PDF, kresby z Visia a súbory Pages, Numbers a Keynote od Apple
 zobrazí bez zmeny. Staršie formáty Microsoftu otvorí aj uloží, no najviac
 zachovajú formáty OpenDocument a novšie formáty Microsoftu.
+
+Súbory Word, Excel a PowerPoint z Microsoft 365 zostanú tým, čím sú:
+`.docx` sa uloží späť ako `.docx` aj so štýlmi a zošit si ponechá vzorce.
+Makrá v súboroch `.docm`, `.xlsm` a `.pptm` sa na zariadení nikdy
+nespustia.
 
 ## Zapnutie \{#turning-it-on}
 

@@ -90,6 +90,9 @@ in
               };
             };
             admin_console.enable = false;
+            # Macros in a .docm, .xlsm or .pptm never run here, whoever
+            # wrote them. coolwsd's default, pinned.
+            security.enable_macros_execution = false;
             # One document process kept warm, not four: the first person to
             # open a document waits a second less, and every one kept costs
             # memory on a small box.

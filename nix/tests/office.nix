@@ -17,11 +17,13 @@
 #   * the WOPI routes refuse a missing, foreign or other file's token, and
 #     nginx routes neither /wopi/ nor coolwsd's discovery, admin, metrics
 #     and convert-to endpoints;
-#   * the whole thing in a browser, in the admin app: the laptop opens
-#     Documents from the sidebar, the document loads, letters typed land in
-#     the file on the box, a second person shows up in the first one's
-#     editor, and the plain http address goes through sign-in to the same
-#     document on https. nix/tests/office-shots.py takes a picture of each
+#   * the whole thing in a browser, in the admin app, on Word, Excel and
+#     PowerPoint files: the laptop opens Documents from the sidebar, a .docx
+#     loads, letters typed land in the file on the box, a second person
+#     shows up in the first one's editor, the file stays a .docx with its
+#     headings, an amount changed in a .xlsx moves the total its formula
+#     keeps, a .pptx opens, and the plain http address goes through sign-in
+#     to the same document on https. nix/tests/office-shots.py takes a picture of each
 #     step (for the pull request and the launch film), and the driver
 #     copies them out to office-shots/;
 #   * how much memory coolwsd takes idle and with documents open.
@@ -79,6 +81,49 @@ let
      </office:body>
     </office:document>
   '';
+  # The presentation, made into a .pptx by coolwsd like the other two.
+  kickoff = pkgs.writeText "kickoff.fodp" ''
+    <?xml version="1.0" encoding="UTF-8"?>
+    <office:document xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0" office:version="1.3" office:mimetype="application/vnd.oasis.opendocument.presentation">
+     <office:automatic-styles>
+      <style:page-layout style:name="PM1">
+       <style:page-layout-properties fo:page-width="28cm" fo:page-height="15.75cm" style:print-orientation="landscape"/>
+      </style:page-layout>
+      <style:style style:name="dp1" style:family="drawing-page">
+       <style:drawing-page-properties draw:fill="solid" draw:fill-color="#f4f7f8"/>
+      </style:style>
+      <style:style style:name="gr1" style:family="graphic">
+       <style:graphic-properties draw:stroke="none" draw:fill="none"/>
+      </style:style>
+      <style:style style:name="P1" style:family="paragraph">
+       <style:text-properties fo:font-size="40pt" fo:font-weight="bold" fo:color="#0f3d44"/>
+      </style:style>
+      <style:style style:name="P2" style:family="paragraph">
+       <style:paragraph-properties fo:margin-bottom="0.3cm"/>
+       <style:text-properties fo:font-size="24pt" fo:color="#1c2830"/>
+      </style:style>
+     </office:automatic-styles>
+     <office:master-styles>
+      <style:master-page style:name="Default" style:page-layout-name="PM1" draw:style-name="dp1"/>
+     </office:master-styles>
+     <office:body>
+      <office:presentation>
+       <draw:page draw:name="Kick-off" draw:master-page-name="Default" draw:style-name="dp1">
+        <draw:frame draw:style-name="gr1" svg:x="2cm" svg:y="1.8cm" svg:width="24cm" svg:height="2.6cm">
+         <draw:text-box><text:p text:style-name="P1">Tatras trip</text:p></draw:text-box>
+        </draw:frame>
+        <draw:frame draw:style-name="gr1" svg:x="2cm" svg:y="5.2cm" svg:width="24cm" svg:height="8cm">
+         <draw:text-box>
+          <text:p text:style-name="P2">14 to 17 August, from Ždiar</text:p>
+          <text:p text:style-name="P2">Four of us, one car</text:p>
+          <text:p text:style-name="P2">Budget and plan in Documents</text:p>
+         </draw:text-box>
+        </draw:frame>
+       </draw:page>
+      </office:presentation>
+     </office:body>
+    </office:document>
+  '';
 in
 pkgs.testers.nixosTest {
   name = "losos-office";
@@ -126,6 +171,7 @@ pkgs.testers.nixosTest {
       networking.firewall.allowedTCPPorts = [ 80 ];
       environment.systemPackages = [
         pkgs.curl
+        pkgs.file
         pkgs.jq
         pkgs.unzip
       ];
@@ -184,6 +230,7 @@ pkgs.testers.nixosTest {
     client = "${client}"
     shots = "SHOTS=/tmp/shots ${shots}"
     trip_plan = "${tripPlan}"
+    kickoff = "${kickoff}"
     box = "https://mattbox.local"
     PASSWORD = "Correct-Horse-Battery-9"
     EVA_PASSWORD = "Eva-Long-Password-3"
@@ -221,7 +268,8 @@ pkgs.testers.nixosTest {
         if cookie:
             args += f" -H 'Cookie: losos_session={cookie}'"
         if data is not None:
-            args += f" -X POST -H 'Content-Type: application/json' -d '{json.dumps(data)}'"
+            # A browser sends its origin with every POST; the hosts check it.
+            args += f" -X POST -H 'Origin: {box}' -H 'Content-Type: application/json' -d '{json.dumps(data)}'"
         body, code = laptop.succeed(f"curl {args}").rsplit("\n", 1)
         return int(code), body
 
@@ -244,6 +292,11 @@ pkgs.testers.nixosTest {
             timeout=900,
         )
         mattbox.fail("ss -ltn | grep ':9980' | grep -v 127.0.0.1")
+        # Macros in a document never run.
+        mattbox.succeed(
+            "grep -q '<enable_macros_execution[^>]*>false<'"
+            " $(systemctl cat coolwsd | grep -o -- '--config-file=[^ \"]*' | cut -d= -f2)"
+        )
         mattbox.fail("ss -ltn | grep ':8093' | grep -v 127.0.0.1")
         exts = json.loads(
             mattbox.succeed(
@@ -252,7 +305,8 @@ pkgs.testers.nixosTest {
             )
         )["extensions"]
         by_ext = {e["extension"]: e["edit"] for e in exts}
-        for ext in ["docx", "xlsx", "pptx", "odt", "ods", "odp"]:
+        # Microsoft's formats, old, new and with macros, and OpenDocument.
+        for ext in ["docx", "docm", "doc", "xlsx", "xlsm", "xlsb", "xls", "pptx", "pptm", "ppsx", "ppt", "odt", "ods", "odp"]:
             assert by_ext.get(ext) is True, (ext, by_ext)
 
     with subtest("documents to work on, made by coolwsd itself over loopback"):
@@ -425,16 +479,18 @@ pkgs.testers.nixosTest {
         code, body = api("/office/api/files", eva)
         assert code == 200 and "Plan.docx" in body, (code, body)
 
-    with subtest("in a browser: open, type, save, and a second person joins"):
+    with subtest("in a browser: Word, Excel and PowerPoint files, and a second person joins"):
         # A folder that looks like someone's: the earlier subtests' files go.
+        # Microsoft's formats, as people bring them, and one OpenDocument file.
         mattbox.succeed(
             f"rm -rf {folder}/* {folder}/.trash",
             f"mkdir -p {folder}/Work",
             "printf 'Meeting notes\\n\\nNew office from 1 November.\\n' > /tmp/notes.txt",
             "printf 'Item,Amount\\nCabin,240\\nTrain,86\\nFood,120\\nTotal,=SUM(B2:B4)\\n' > /tmp/budget.csv",
         )
-        convert(trip_plan, "Trip plan.odt", "odt")
-        convert("/tmp/budget.csv", "Trip budget.ods", "ods")
+        convert(trip_plan, "Trip plan.docx", "docx")
+        convert("/tmp/budget.csv", "Trip budget.xlsx", "xlsx")
+        convert(kickoff, "Kick-off.pptx", "pptx")
         convert("/tmp/notes.txt", "Work/Meeting notes.odt", "odt")
         mattbox.succeed(f"chown -R losos-office:losos-office {folder}")
         laptop.wait_for_unit("chromium.service")
@@ -443,14 +499,18 @@ pkgs.testers.nixosTest {
         def browse(*args):
             return laptop.succeed(" ".join([shots, *(shlex.quote(a) for a in args)]))
 
-        def has(name, text):
+        def has(name, part, text):
             mattbox.wait_until_succeeds(
-                f"unzip -p '{folder}/{name}' content.xml | grep -q {shlex.quote(text)}", timeout=300
+                f"unzip -p '{folder}/{name}' {part} | grep -q {shlex.quote(text)}", timeout=300
             )
 
-        trip = f"{box}/office/#file={hexid('Trip plan.odt')}"
-        trip_row = f"a[href='#file={hexid('Trip plan.odt')}']"
-        budget_row = f"a[href='#file={hexid('Trip budget.ods')}']"
+        def link(name):
+            return f"{box}/office/#file={hexid(name)}"
+
+        word = "word/document.xml"
+        sheet = "xl/worksheets/sheet1.xml"
+        trip_row = f"a[href='#file={hexid('Trip plan.docx')}']"
+        budget_row = f"a[href='#file={hexid('Trip budget.xlsx')}']"
         documents = "nav a[href='/office/']"
         browse("open", "matus", "--name", "Matus", "--cookie", matus, "--url", f"{box}/apps")
         browse("click", "matus", documents)
@@ -463,7 +523,7 @@ pkgs.testers.nixosTest {
         browse("click", "matus", trip_row)
         browse("loaded", "matus")
         browse(
-            "shot", "matus", "02-trip-plan", "--title", "Trip plan open in the editor",
+            "shot", "matus", "02-trip-plan", "--title", "A Word document open in the editor",
             "--action", "click:page", "--target", "back", "--target", "name", "--target", "document",
         )
         # Into the document, then to its end and a new line.
@@ -475,9 +535,9 @@ pkgs.testers.nixosTest {
         )
         browse("saved", "matus")
         browse("shot", "matus", "04-saved", "--title", "Saved to the box", "--target", "save")
-        has("Trip plan.odt", "Pack the tent")
+        has("Trip plan.docx", word, "Pack the tent")
 
-        browse("open", "eva", "--name", "Eva", "--cookie", eva, "--url", trip)
+        browse("open", "eva", "--name", "Eva", "--cookie", eva, "--url", link("Trip plan.docx"))
         browse("loaded", "eva")
         browse("click", "eva", "main iframe")
         # The end of the line under the heading.
@@ -487,22 +547,45 @@ pkgs.testers.nixosTest {
         browse("shot", "matus", "05-together", "--title", "Eva is in the document too", "--target", "page")
         browse("shot", "eva", "06-together-eva", "--title", "What Eva sees", "--target", "page")
         browse("saved", "eva")
-        has("Trip plan.odt", "We leave at 7.")
-        has("Trip plan.odt", "Pack the tent")
+        has("Trip plan.docx", word, "We leave at 7.")
+        has("Trip plan.docx", word, "Pack the tent")
+        # Still Word's own file, headings and all, after two people saved it.
+        mattbox.succeed(f"file -b '{folder}/Trip plan.docx' | grep -q 'Microsoft Word 2007+'")
+        has("Trip plan.docx", word, 'w:pStyle w:val="Heading1"')
+        has("Trip plan.docx", word, 'w:pStyle w:val="Heading2"')
 
-        browse("open", "budget", "--name", "Matus", "--cookie", matus, "--url", f"{box}/office/#file={hexid('Trip budget.ods')}")
+        # A spreadsheet: change one amount, and the total follows.
+        browse("open", "budget", "--name", "Matus", "--cookie", matus, "--url", link("Trip budget.xlsx"))
         browse("loaded", "budget")
-        browse("shot", "budget", "07-budget", "--title", "A spreadsheet", "--target", "page")
+        browse("shot", "budget", "07-budget", "--title", "An Excel workbook", "--target", "page")
         busy = memory("with three editors open")
+        browse("click", "budget", "main iframe")
+        browse("key", "budget", "ctrl+Home", "ArrowDown", "ArrowDown", "ArrowDown", "ArrowRight")
+        browse("write", "budget", "150")
+        browse("key", "budget", "Enter")
+        browse("saved", "budget")
+        browse("shot", "budget", "08-budget-total", "--title", "Food is 150 now, and the total follows", "--target", "page")
+        mattbox.succeed(f"file -b '{folder}/Trip budget.xlsx' | grep -q 'Microsoft Excel 2007+'")
+        has("Trip budget.xlsx", sheet, "<v>150</v>")
+        has("Trip budget.xlsx", sheet, "SUM(B2:B4)</f><v>476</v>")
+        browse("close", "eva")
+        browse("close", "budget")
+
+        # A presentation.
+        browse("open", "slides", "--name", "Matus", "--cookie", matus, "--url", link("Kick-off.pptx"))
+        browse("loaded", "slides")
+        browse("shot", "slides", "09-kickoff", "--title", "A PowerPoint presentation", "--target", "page")
+        mattbox.succeed(f"file -b '{folder}/Kick-off.pptx' | grep -q 'Microsoft PowerPoint 2007+'")
+        browse("close", "slides")
 
         # The session cookie is https only, so the plain address asks to sign
         # in; LosOS Login knows the person and sends them back to the same
         # document, on https, where the editor works.
-        plain = f"http://mattbox.local/office/#file={hexid('Trip plan.odt')}"
+        plain = f"http://mattbox.local/office/#file={hexid('Trip plan.docx')}"
         browse("open", "plain", "--name", "Matus", "--cookie", matus, "--url", plain)
         browse("signin", "plain")
         where = browse("where", "plain", "https://mattbox.local/office/").strip()
-        assert where == f"https://mattbox.local/office/#file={hexid('Trip plan.odt')}", where
+        assert where == link("Trip plan.docx"), where
         browse("loaded", "plain")
         laptop.copy_from_machine("/tmp/shots", "office-shots")
 

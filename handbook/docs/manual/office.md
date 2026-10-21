@@ -15,14 +15,19 @@ It opens and saves these types:
 
 | Kind | Types |
 |---|---|
-| Text | `.odt`, `.docx`, `.doc`, `.rtf`, `.txt` |
-| Spreadsheets | `.ods`, `.xlsx`, `.xls`, `.csv` |
-| Presentations | `.odp`, `.pptx`, `.ppt` |
+| Text | `.odt`, `.docx`, `.docm`, `.dotx`, `.doc`, `.rtf`, `.txt` |
+| Spreadsheets | `.ods`, `.xlsx`, `.xlsm`, `.xlsb`, `.xls`, `.csv` |
+| Presentations | `.odp`, `.pptx`, `.pptm`, `.ppsx`, `.ppt` |
 | Drawings | `.odg` |
 
 It shows PDF files, Visio drawings and Apple's Pages, Numbers and Keynote
 files without changing them. Older Microsoft formats open and save, but the
 OpenDocument and the newer Microsoft formats keep the most.
+
+Word, Excel and PowerPoint files from Microsoft 365 stay what they are: a
+`.docx` is saved back as a `.docx` with its styles, and a workbook keeps its
+formulas. Macros in `.docm`, `.xlsm` and `.pptm` files never run on the
+box.
 
 ## Turning it on
 
