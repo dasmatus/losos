@@ -2592,6 +2592,19 @@ in
       '';
     };
 
+    edge.dns.dnssec.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Sign the zone with DNSSEC (Knot's automatic signing, ECDSA P-256,
+        keys in /var/lib/knot). A box that binds its wallet to its names
+        gets an ENS record at each of them, and ENS reads a DNS name only
+        from a signed zone. Signing does nothing for resolvers until the
+        parent zone publishes the zone's DS record, which
+        `keymgr <zone> ds` prints on the edge.
+      '';
+    };
+
     # Custom domains for boxes behind a local edge
     # (handbook/docs/in-depth/edge-federation.md, "Custom domains behind a local
     # edge"). The official edge keeps the route table in the registrar's own

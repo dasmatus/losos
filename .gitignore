@@ -45,6 +45,8 @@ ds-bundle/
 nix/demo/edge-lan/state/
 # Pictures, logs and the driver link of nix/demo/record.sh.
 nix/demo/recording/
+# The light box, edge, box demo's pictures and driver (nix/demo/box-edge-box/record.sh).
+nix/demo/box-edge-box/recording/
 
 # quickemu's VM directory for docs/vm/losos.conf: the installer ISO, the disk,
 # the firmware variables and the TPM state.
