@@ -329,6 +329,9 @@
             # Text inside the owner's files for the admin pages' search
             # (backend/src/textsearch/): the cloud index and the Git search.
             ./modules/search.nix
+            # LosOS Cloud (backend/src/cloud/): files at /cloud/ and to the
+            # Nextcloud desktop and phone apps.
+            ./modules/cloud.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
@@ -437,13 +440,19 @@
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
         losos-tour = import ./nix/tests/tour.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
+        losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
+        losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        # The banner a box off the mesh shows over every page, both states
+        # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
+        losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         # Your apps: Chromium on a laptop asks the box for an app, watches it
         # written, uses it and saves it, and keeps every screen
         # (nix/tests/app-builder.nix).
         losos-app-builder = import ./nix/tests/app-builder.nix { inherit pkgs; };
+        losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
         # Apps run as notshared on rootless Podman, with no cluster: the
         # box's own, one in the LosOS app format and a chart from the
         # search (nix/tests/podman-apps.nix).

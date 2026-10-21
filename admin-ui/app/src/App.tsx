@@ -3,7 +3,9 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon, UserCircleIcon } from "@hugeicons/core-free-icons";
 import { AppSidebar } from "@/components/app-sidebar";
+import { MeshNotice } from "@/components/mesh-notice";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { PersonAvatar } from "@/components/person";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -294,6 +296,7 @@ function Shell() {
       >
         <AppSidebar />
         <main className="min-w-0 flex-1">
+          {signedIn && !held && <MeshNotice />}
           <React.Suspense fallback={<ScreenFallback />}>
           {held ? (
             <Settings pane="account" />
@@ -416,8 +419,18 @@ function WhoIsSignedIn() {
             />
           }
         >
-          <HugeiconsIcon icon={UserCircleIcon} size={18} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-          <span className="hidden max-w-[12rem] truncate sm:inline">{name}</span>
+          {me.spareKey || !me.name ? (
+            <HugeiconsIcon icon={UserCircleIcon} size={18} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          ) : (
+            <PersonAvatar
+              size="xs"
+              data-testid="signed-in-avatar"
+              person={{ name: me.name, displayName: me.displayName ?? me.name, picture: me.picture, accent: me.accent }}
+            />
+          )}
+          <span data-testid="signed-in-name" className="hidden max-w-[12rem] truncate sm:inline">
+            {name}
+          </span>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="end" className="max-w-[22rem]">
           {tip}

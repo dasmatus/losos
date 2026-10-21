@@ -177,15 +177,17 @@ export default defineConfig({
     sourcemap: false,
     // The appliance has no external hosts and no CDN: one origin, one bundle.
     modulePreload: { polyfill: false },
-    // Three pages: the admin SPA at /, LosOS Lab at /lab/ (nginx serves
-    // dist/lab/index.html there under the Lab's own CSP), and a company
-    // edge's manage page, which the edge serves at /manage/ from this same
-    // dist/ (edge/registrar/src/server/manage.rs). They share chunks.
+    // Four pages: the admin SPA at /, LosOS Lab at /lab/ (nginx serves
+    // dist/lab/index.html there under the Lab's own CSP), a company edge's
+    // manage page, which the edge serves at /manage/ from this same dist/
+    // (edge/registrar/src/server/manage.rs), and LosOS Cloud at /cloud/
+    // (modules/cloud.nix). They share chunks.
     rolldownOptions: {
       input: {
         main: join(root, "index.html"),
         lab: join(root, "lab/index.html"),
         manage: join(root, "manage/index.html"),
+        cloud: join(root, "cloud/index.html"),
       },
     },
   },
@@ -197,6 +199,15 @@ export default defineConfig({
       "/api": {
         target: process.env["LOSOS_API_ORIGIN"] ?? "http://127.0.0.1:8082",
         changeOrigin: true,
+      },
+      // LosOS Cloud's API: `losos-cloud serve --listen 127.0.0.1:8095
+      // --trust-header` and a header-setting proxy, or a box. Host stays the
+      // dev origin's: the service refuses a write whose Origin names another
+      // host than Host, and the browser's Origin is this dev server.
+      "/cloud/api": {
+        target: process.env["LOSOS_CLOUD_ORIGIN"] ?? "http://127.0.0.1:8095",
+        changeOrigin: false,
+        headers: { "X-Losos-Cloud-User": process.env["LOSOS_CLOUD_USER"] ?? "owner" },
       },
       // The first-run wizard's step 1 reads /setup/state.json — the box's name
       // and its certificate fingerprint — and on the appliance that file is

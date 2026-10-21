@@ -112,6 +112,14 @@ box has ([The first run](../start/first-run) lists them). **Take the tour** unde
 again. With "reduce motion" set in your system, each step shows a still
 picture instead of a moving one.
 
+## The mesh banner
+
+Some features run only on a box that shares its storage and has joined a
+mesh. Until both are true, a banner over every page says that some features
+may not be available, with a link to **Mesh** to join one, or to **Market**
+to share the disk. **Dismiss** hides it in that browser. It goes away by
+itself once the box has joined, and comes back if the box leaves the mesh.
+
 ## Notifications
 
 Short status messages appear at the top right: a change being applied, a
