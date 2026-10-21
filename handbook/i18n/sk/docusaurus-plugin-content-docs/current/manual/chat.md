@@ -86,6 +86,13 @@ Obrázky, videá a súbory priložíte kancelárskou sponkou, vložením zo
 schránky alebo pretiahnutím. V šifrovanej miestnosti sa zašifrujú skôr, ako
 opustia váš prehliadač. Mikrofón nahrá hlasovú správu.
 
+Ak má zariadenie LosOS Cloud, tlačidlo s oblakom vedľa sponky pošle súbory
+priamo z vášho Cloudu. Súbor, ktorý vám niekto pošle, má na svojej karte
+tlačidlo s oblakom a v ponuke pravého tlačidla **Uložiť do LosOS Cloud**:
+uloží sa dešifrovaný do priečinka **Chat** vo vašom Cloude a tlačidlo ho
+potom otvorí tam. Keď v LosOS Cloud pošlete súbor do chatu, chat sa spýta,
+do ktorej konverzácie má ísť.
+
 Malý rad tvárí pod správou ukazuje, kto už čítal až potiaľto.
 
 ## Iné aplikácie pre Matrix
