@@ -563,6 +563,8 @@ pkgs.testers.nixosTest {
             text = msg.text
             if msg.type == "error" and "Content Security Policy" in text and "inline style" not in text:
                 problems.append(f"{name}: {text}")
+            if msg.type in ("error", "warning"):
+                seen.append(f"console {msg.type}: {text[:300]}")
 
         page.on("pageerror", on_error)
         page.on("console", on_console)
@@ -641,12 +643,6 @@ pkgs.testers.nixosTest {
         page.screenshot(path=f"{OUT}/stuck-{who}.png")
         print(f"{who} sees {page.url}:\n{page.inner_text('body')[:2000]}\n{problems}")
         print("\n".join(responses[who][-30:]))
-        for user in ["matus", "eva"]:
-            print(user, box.execute(
-                f"curl -s 'http://127.0.0.1:8008/_matrix/client/v3/profile/%40{user}%3A{HOST}' "
-                f"-H \"Authorization: Bearer $(cat /var/secrets/losos-chat/as_token)\""
-            )[1])
-        print(box.execute("journalctl -u lososd --no-pager | grep -i 'chat\\|display' | tail -n 20")[1])
 
     def room_button(page, name):
         return page.get_by_role("button", name=re.compile(name)).first
@@ -695,7 +691,13 @@ pkgs.testers.nixosTest {
         shot(owner, "room-after")
         owner.get_by_role("button", name="Video call").click()
         ring = her.locator("[data-ringing]")
-        ring.wait_for()
+        try:
+            ring.wait_for()
+        except Exception:
+            stuck("matus", owner)
+            stuck("eva", her)
+            print(box.execute("journalctl -u losos-calls --no-pager | tail -n 40")[1])
+            raise
         assert "Matus" in ring.text_content(), ring.text_content()
         shot(her, "ringing")
         ring.get_by_role("button", name="Answer", exact=True).click()
