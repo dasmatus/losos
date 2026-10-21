@@ -2,7 +2,7 @@
 # (modules/apps.nix, backend/src/compose.rs).
 #
 # The box runs lososd, the app job and nginx, and no cluster at all: neither
-# LosOS cloud nor LosOS Git runs here, so k3s is not even in the system. The laptop serves a Helm chart repository over https and is the
+# LosOS Cloud nor LosOS Git runs here, so k3s is not even in the system. The laptop serves a Helm chart repository over https and is the
 # computer on the LAN that opens the apps. Nothing comes from a registry:
 # one small image, built here, is loaded from the store by the box's own
 # app and used by every app after it. The test checks:

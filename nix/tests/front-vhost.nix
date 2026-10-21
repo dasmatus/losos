@@ -210,7 +210,7 @@ pkgs.testers.nixosTest {
     # to the LAN address, so the cross-node subtests keep using it.
     LAN = "192.168.1.1"
 
-    # LosOS cloud's federation addresses (modules/nextcloud-stack.nix,
+    # LosOS Cloud's federation addresses (modules/nextcloud-stack.nix,
     # `federation`), plus the spellings nginx normalises before it matches a
     # location: letter case, a doubled slash, an escaped letter.
     NC_FEDERATION = [
@@ -388,7 +388,7 @@ pkgs.testers.nixosTest {
         got = code(noadmin, "http://appliance/.well-known/openid-configuration")
         assert got == "200", f"LAN /.well-known/openid-configuration: expected 200 (the SPA), got {got}"
 
-    with subtest("with disk sharing on, LosOS cloud's federation addresses reach the pod"):
+    with subtest("with disk sharing on, LosOS Cloud's federation addresses reach the pod"):
         for path in NC_FEDERATION + NC_EVERYDAY:
             got = appliance.succeed(f"curl -s 'http://127.0.0.1{path}'")
             assert got.startswith("stub-nextcloud"), f"sharing on, {path}: {got!r}"
@@ -573,7 +573,7 @@ pkgs.testers.nixosTest {
         )
         appliance.wait_for_unit("nginx.service")
         appliance.wait_for_open_port(80)
-        # LosOS cloud: every federation address is a 404 from nginx, from the
+        # LosOS Cloud: every federation address is a 404 from nginx, from the
         # tunnel's loopback and from the LAN alike, and never reaches the pod.
         for path in NC_FEDERATION:
             got = appliance.succeed(

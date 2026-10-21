@@ -116,7 +116,7 @@ fn the_minimum_is_counted_in_characters_not_bytes() {
 
 #[test]
 fn the_four_composition_rules_each_name_what_is_missing() {
-    // One password opens the admin pages and LosOS cloud, so a new one wants
+    // One password opens the admin pages and LosOS Cloud, so a new one wants
     // both cases, a digit and a symbol as well as the length. Each refusal
     // names the one rule it is about, because the wizard shows that sentence.
     let err = validate_password("zqx-marmalade-77-parapet").unwrap_err();

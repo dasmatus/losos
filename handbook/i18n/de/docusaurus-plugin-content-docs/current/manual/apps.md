@@ -6,17 +6,17 @@ slug: /manual/apps
 
 # Die Apps
 
-## LosOS cloud \{#losos-cloud}
+## LosOS Cloud \{#losos-cloud}
 
 Deine Dateien, Fotos, Kalender, Kontakte, Notizen, Aufgaben, Musik und die
 übrigen unten genannten Apps, unter `http://<address>/nextcloud`. Das ist
 Nextcloud in den Farben und mit dem Namen der Box. Melde dich mit dem
-Passwort des Besitzers an. LosOS cloud kann alles, was Nextcloud kann. Der
+Passwort des Besitzers an. LosOS Cloud kann alles, was Nextcloud kann. Der
 Desktop-Client synchronisiert einen Ordner auf deinem Rechner, die
 Handy-Apps laden Fotos hoch, und Kalender und Kontakte synchronisieren über
 CalDAV und CardDAV.
 
-Die Übersicht hat eine Kachel für jede App im eigenen Menü von LosOS cloud,
+Die Übersicht hat eine Kachel für jede App im eigenen Menü von LosOS Cloud,
 in derselben Reihenfolge: Dateien, Dashboard, Fotos, Aktivität, Kontakte,
 Kalender, Notizen, Lesezeichen, Deck, Musik, Kollektive, Umfragen,
 Formulare, Tabellen, Memories, News, Aufgaben und Karten. Die Box schaltet
@@ -27,11 +27,11 @@ App-Store hinzu, erscheint ihre Kachel auf der Übersicht, wenn die Seite das
 nächste Mal lädt. Die Links gehen absichtlich über `index.php`,
 weil jede Konfiguration auf diesen Pfad antwortet.
 
-Familie oder Kollegen bekommen ein Konto in LosOS cloud, wenn sie es zum
+Familie oder Kollegen bekommen ein Konto in LosOS Cloud, wenn sie es zum
 ersten Mal öffnen, angemeldet über LosOS Login ([Anmelden](sign-in-and-spare-key)).
 Auch das Konto des Besitzers ist ein normales Konto, nicht der Administrator
-von LosOS cloud. Welche Apps laufen und die Einstellungen für alle stehen
-stattdessen im Bereich **Apps**, im Abschnitt LosOS cloud.
+von LosOS Cloud. Welche Apps laufen und die Einstellungen für alle stehen
+stattdessen im Bereich **Apps**, im Abschnitt LosOS Cloud.
 
 ## LosOS Git \{#losos-git}
 
@@ -58,12 +58,12 @@ Repositorys die anderen Server ein, deren Sterne zählen. Um die Föderation
 ganz abzuschalten, schalte **Mit anderen Forgejo-Servern föderieren** im
 Abschnitt LosOS Git des Bereichs **Apps** aus.
 
-LosOS cloud föderiert ebenfalls: Du kannst Dateien und Kalender mit Leuten
+LosOS Cloud föderiert ebenfalls: Du kannst Dateien und Kalender mit Leuten
 teilen, deren Konten auf anderen Nextcloud-Servern liegen, über ihre Adresse
 `user@server`. Der Besitzer einer anderen Box ist
 `notshared@andereBox.local/nextcloud`. **Mit anderen Nextcloud-Servern
-teilen** im Abschnitt LosOS cloud schaltet das ab. Solange es an ist, darf
-LosOS cloud Namen, die auf `.local` enden, und Adressen in deinem lokalen
+teilen** im Abschnitt LosOS Cloud schaltet das ab. Solange es an ist, darf
+LosOS Cloud Namen, die auf `.local` enden, und Adressen in deinem lokalen
 Netz erreichen und nimmt das Zertifikat an, das sich jede Box selbst
 ausstellt, was Nextcloud von sich aus ablehnt. So erreicht es andere Boxen
 im selben Netz.
@@ -89,15 +89,15 @@ LosOS hat eines davon geprüft.
 
 ![Der Bereich Apps mit einer installierten App über Mehr finden und Suchergebnissen aus Artifact Hub, jedes mit dem Herausgeber und einer Schaltfläche Installieren oder Ändern.](@site/docs/img/apps-find-more-de.png)
 
-## Die Apps in LosOS cloud \{#losos-clouds-apps}
+## Die Apps in LosOS Cloud \{#losos-clouds-apps}
 
-Der Abschnitt LosOS cloud listet die Apps in LosOS cloud, jede mit einem
+Der Abschnitt LosOS Cloud listet die Apps in LosOS Cloud, jede mit einem
 Schalter. Eine ausgeschaltete App verschwindet aus allen Konten, und was
 darin entstanden ist, bleibt für ihre Rückkehr erhalten. Sie bleibt auch
-nach einem Neustart der Box aus. Die in LosOS cloud eingebauten Apps warten
+nach einem Neustart der Box aus. Die in LosOS Cloud eingebauten Apps warten
 hinter einer Schaltfläche **… zeigen**, weil du sie selten brauchst; der
 Filter findet sie auch. Ein paar Schalter lassen sich nicht bewegen, und die
-Zeile sagt warum: LosOS cloud läuft nicht ohne sie, die Box braucht sie für
+Zeile sagt warum: LosOS Cloud läuft nicht ohne sie, die Box braucht sie für
 die Anmeldung, oder sie folgen dem Teilen der Festplatte.
 
 **Aus dem App-Store hinzufügen** durchsucht den App-Store von Nextcloud und
@@ -108,22 +108,22 @@ nachfragt. Entfernen nimmt ihren Code von der Box und behält, was Konten
 darin angelegt haben, sodass erneutes Hinzufügen es wiederfindet. Die Apps,
 die die Box mitbringt, lassen sich ausschalten, aber nicht entfernen.
 
-![Der Abschnitt LosOS cloud: Apps mit Schaltern, Deck aus dem App-Store mit Entfernen, die Anmelde-App gesperrt mit ihrem Grund und eine Suche nach Whiteboard im App-Store mit der Schaltfläche Hinzufügen.](@site/docs/img/apps-cloud-de.png)
+![Der Abschnitt LosOS Cloud: Apps mit Schaltern, Deck aus dem App-Store mit Entfernen, die Anmelde-App gesperrt mit ihrem Grund und eine Suche nach Whiteboard im App-Store mit der Schaltfläche Hinzufügen.](@site/docs/img/apps-cloud-de.png)
 
 ## Einstellungen für alle \{#settings-for-everyone}
 
-In den Abschnitten LosOS cloud und LosOS Git hat der Bereich Apps die
+In den Abschnitten LosOS Cloud und LosOS Git hat der Bereich Apps die
 Einstellungen, die für jedes Konto in der jeweiligen App gelten. Sonst
 fändest du sie auf den eigenen Verwaltungsseiten jeder App. Jeder Abschnitt
 beginnt mit dem Föderationsschalter der App ([Föderation](#federation)).
 
-Für LosOS cloud: die Sprache der Anmeldeseite und der Konten, die keine
+Für LosOS Cloud: die Sprache der Anmeldeseite und der Konten, die keine
 gewählt haben, das Land, zu dem eine Telefonnummer ohne Ländervorwahl
 gehört, ob Dateien per öffentlichem Link geteilt werden dürfen, ob jeder
 Link ein Passwort braucht, nach wie vielen Tagen Links nicht mehr
 funktionieren, wie viel Platz ein neues Konto bekommt und wie lange der
 Papierkorb und alte Versionen aufbewahrt werden. Ein leeres Feld überlässt
-die Wahl LosOS cloud.
+die Wahl LosOS Cloud.
 
 Für LosOS Git: ob nur angemeldete Konten überhaupt etwas sehen, was ein
 Besucher zuerst sieht, ob ein neues Repository privat, öffentlich oder wie
@@ -131,7 +131,7 @@ das letzte des Kontos beginnt, ob die E-Mail-Adresse eines neuen Kontos
 verborgen ist und ob ein Push in ein noch nicht vorhandenes Repository es
 anlegt.
 
-![Der Bereich Apps mit den Einstellungen für alle in LosOS cloud und LosOS Git.](@site/docs/img/apps-site-settings-de.png)
+![Der Bereich Apps mit den Einstellungen für alle in LosOS Cloud und LosOS Git.](@site/docs/img/apps-site-settings-de.png)
 
 Drücke **Anwenden**, um sie zu übernehmen, wie bei jeder anderen
 Einstellung. Die Box setzt sie bei jedem Start der App erneut, sodass eine
@@ -170,7 +170,7 @@ Was die App ausführt, hängt vom Benutzer ab. Eine `notshared`-App läuft
 auf Podman ohne root, als `notshared` selbst, und braucht keinen Cluster.
 Eine `shared`-App läuft im eigenen Cluster der Box, weil das der Teil der
 Box ist, den der Verbund berührt. In beiden Fällen ändert die Box das
-Chart so, dass es so läuft wie LosOS cloud und LosOS Git.
+Chart so, dass es so läuft wie LosOS Cloud und LosOS Git.
 
 - Jeder Teil der App läuft als der gewählte Benutzer, nie als root, ohne
   zusätzliche Rechte und ohne Zugriff auf einen Cluster.
@@ -216,9 +216,9 @@ weil sie keine Eigenschaften haben.
 
 ## Vertrauenswürdige Adressen \{#trusted-addresses}
 
-LosOS cloud antwortet auf den Namen der Box und auf die Adresse, an der die
+LosOS Cloud antwortet auf den Namen der Box und auf die Adresse, an der die
 Anfrage angekommen ist. Die Box gibt diese Adresse mit jeder Anfrage weiter.
-LosOS cloud antwortet nie auf einen Platzhalter. Deshalb zeigt eine Box, die
+LosOS Cloud antwortet nie auf einen Platzhalter. Deshalb zeigt eine Box, die
 du über ihre IP-Adresse erreichst, keine Seite „nicht vertrauenswürdige
 Domain“. Siehst du doch einmal eine, erklärt [Nicht vertrauenswürdige
 Domain](../troubleshooting/app-tile-404#access-through-untrusted-domain),

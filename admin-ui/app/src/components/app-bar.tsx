@@ -1,35 +1,47 @@
 import * as React from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { UserCircleIcon } from "@hugeicons/core-free-icons";
+import { Menu } from "@base-ui/react/menu";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import { ArrowDown01Icon, Logout01Icon, UserCircleIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
+import { KbdGroup } from "@/components/ui/kbd";
+import { popupMotion } from "@/components/ui/motion";
 import { LanguagePicker } from "@/components/ui/language-picker";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useT } from "@/lib/i18n-react";
 import { logoFor } from "@/lib/logo";
+import { isSignOutShortcut, signOutKeys } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 /* The bar across the top of every page the box serves: the admin UI and
- * each app (LosOS cloud, mail, chat, Office, ...). One component so the
+ * each app (LosOS Cloud, Mail, Chat, Office, ...). One component so the
  * height, the logo, the order of the controls and the phone layout are the
  * same everywhere, and a person going from one app to the next sees the same
  * frame with a different name in it.
  *
  * Left to right: the logo, which goes to the box's home; the app's name,
  * which goes to the app's first page; whatever the app puts in (a search, a
- * Compose button); then the language, the theme, who is signed in and Sign
- * out. On a phone the app's name and the person's name drop to icons and
- * tooltips first.
+ * Compose button); then the language, the theme and the person's menu, which
+ * holds Your account and Sign out. On a phone the app's name and the person's
+ * name drop out first.
+ *
+ * Sign out is also Alt+Shift+Q (lib/shortcuts.ts) on every page that draws
+ * this bar with `onSignOut`; the menu shows the keys.
  *
  * `width="page"` keeps the bar on the content column (max-w-6xl) for apps
  * laid out as pages under a sidebar; `width="full"` runs it edge to edge for
- * apps laid out as panes (mail, chat, an editor). */
+ * apps laid out as panes (Chat, an editor). */
 
 export interface AppBarPerson {
   /** What the bar shows: the person's name, or "Spare admin key". */
   label: string;
-  /** The longer line in the tooltip. */
+  /** The longer line at the top of the menu. */
   tip: string;
+  /** Their picture (PersonAvatar size xs); a person icon without one. */
+  avatar?: React.ReactNode;
+  /** Your account, as a link element: `<a href="/settings/account" />` or a
+   *  router `<Link to="/settings/account" />`. Left out, no such entry. */
+  accountLink?: React.ReactElement | undefined;
 }
 
 export interface AppBarProps {
@@ -64,6 +76,18 @@ export function AppBar({
 }: AppBarProps) {
   const t = useT();
   const logo = logoFor();
+
+  React.useEffect(() => {
+    if (onSignOut === undefined) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (!isSignOutShortcut(event)) return;
+      event.preventDefault();
+      onSignOut();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onSignOut]);
+
   return (
     <header
       data-slot="app-bar"
@@ -86,36 +110,39 @@ export function AppBar({
               aria-label={t(logo.tip)}
               className="inline-flex shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
-              <img src={logo.url} alt="" width={32} height={32} className="size-8" />
+              <img src={logo.url} alt="LosOS" width={32} height={32} className="size-8" />
             </TooltipTrigger>
             <TooltipContent side="bottom" align="start" className="max-w-[22rem]">
               {t(logo.tip)}
             </TooltipContent>
           </Tooltip>
-          {name !== undefined &&
-            React.cloneElement(
-              nameLink ?? <a href="./" />,
-              {
-                className: cn(
-                  "min-w-0 shrink truncate rounded-control text-[15px] font-semibold tracking-tight text-ink",
-                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                  // A search in the bar needs the room more than the name does.
-                  children !== undefined && "max-sm:sr-only",
-                ),
-              },
-              name,
-            )}
-          {badge !== undefined && <span className="hidden shrink-0 sm:inline-flex">{badge}</span>}
-          {children ?? <div className="flex-1" />}
-          <LanguagePicker />
-          <ThemeToggle />
-          {person != null && <SignedInAs person={person} />}
-          {onSignOut !== undefined && (
+        </TooltipProvider>
+        {name !== undefined &&
+          React.cloneElement(
+            nameLink ?? <a href="./" />,
+            {
+              className: cn(
+                "min-w-0 shrink truncate rounded-control text-[15px] font-semibold tracking-tight text-ink",
+                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                // A search in the bar needs the room more than the name does.
+                children !== undefined && "max-sm:sr-only",
+              ),
+            },
+            name,
+          )}
+        {badge !== undefined && <span className="hidden shrink-0 sm:inline-flex">{badge}</span>}
+        {children ?? <div className="flex-1" />}
+        <LanguagePicker />
+        <ThemeToggle />
+        {person != null ? (
+          <PersonMenu person={person} onSignOut={onSignOut} />
+        ) : (
+          onSignOut !== undefined && (
             <Button variant="ghost" size="sm" onClick={onSignOut}>
               {t("shell.signOut")}
             </Button>
-          )}
-        </TooltipProvider>
+          )
+        )}
       </div>
     </header>
   );
@@ -126,27 +153,78 @@ export function AppBarSearch({ className, ...props }: React.ComponentPropsWithou
   return <form role="search" className={cn("relative mx-auto w-full min-w-0 max-w-md flex-1", className)} {...props} />;
 }
 
-/** Who this tab is signed in as. The name hides on a phone, where the icon
- *  stays and the tooltip says the rest. */
-function SignedInAs({ person }: { person: AppBarPerson }) {
+/* Who this tab is signed in as, and the menu under them: who they are in
+ * full, Your account, Sign out with its keys. shadcn's base-registry
+ * Dropdown Menu on Base UI, like the pin menu: its positioner and scroll lock
+ * write CSSOM, which the admin CSP allows. The name hides on a phone, where
+ * the picture stays. */
+function PersonMenu({ person, onSignOut }: { person: AppBarPerson; onSignOut: (() => void) | undefined }) {
+  const t = useT();
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            aria-label={person.tip}
-            data-testid="signed-in-as"
-            className="inline-flex min-w-0 shrink items-center gap-1.5 rounded-control px-2 py-1 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          />
-        }
+    <Menu.Root>
+      <Menu.Trigger
+        data-testid="signed-in-as"
+        aria-label={`${person.label}: ${person.tip}`}
+        className={cn(
+          "group/person inline-flex h-[34px] min-w-0 shrink items-center gap-1.5 rounded-control px-2 text-sm text-ink",
+          "hover:bg-sunk data-popup-open:bg-sunk",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+        )}
       >
-        <HugeiconsIcon icon={UserCircleIcon} size={18} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-        <span className="hidden max-w-[12rem] truncate sm:inline">{person.label}</span>
-      </TooltipTrigger>
-      <TooltipContent side="bottom" align="end" className="max-w-[22rem]">
-        {person.tip}
-      </TooltipContent>
-    </Tooltip>
+        {person.avatar ?? (
+          <HugeiconsIcon icon={UserCircleIcon} size={18} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+        )}
+        <span data-testid="signed-in-name" className="hidden max-w-[12rem] truncate sm:inline">
+          {person.label}
+        </span>
+        <HugeiconsIcon
+          icon={ArrowDown01Icon}
+          size={14}
+          strokeWidth={1.5}
+          color="currentColor"
+          className="text-faint transition-[rotate] duration-150 ease-snap group-data-popup-open/person:rotate-180 max-sm:hidden"
+          aria-hidden="true"
+        />
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner side="bottom" align="end" sideOffset={6} className="isolate z-50 outline-none">
+          <Menu.Popup
+            data-slot="person-menu"
+            className={cn(
+              "w-64 max-w-[calc(100vw-2rem)] rounded-card border border-line bg-surface p-1 text-ink shadow-pop outline-none",
+              popupMotion,
+            )}
+          >
+            <div className="flex flex-col gap-0.5 px-2 pt-1.5 pb-2">
+              <span className="truncate text-[13.5px] font-medium">{person.label}</span>
+              <span className="text-[12px] leading-snug text-muted">{person.tip}</span>
+            </div>
+            <Menu.Separator className="my-1 h-px bg-hair" />
+            {person.accountLink !== undefined && (
+              <Menu.LinkItem render={person.accountLink} className={itemClass}>
+                <ItemIcon icon={UserCircleIcon} />
+                <span className="flex-1">{t("settings.panes.account.label")}</span>
+              </Menu.LinkItem>
+            )}
+            {onSignOut !== undefined && (
+              <Menu.Item onClick={onSignOut} className={itemClass} data-testid="sign-out">
+                <ItemIcon icon={Logout01Icon} />
+                <span className="flex-1">{t("shell.signOut")}</span>
+                <KbdGroup keys={signOutKeys()} />
+              </Menu.Item>
+            )}
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   );
+}
+
+const itemClass = cn(
+  "flex cursor-default items-center gap-2 rounded-control px-2 py-1.5 text-[13px] text-ink outline-none select-none",
+  "transition-colors duration-100 data-highlighted:bg-accent-wash",
+);
+
+function ItemIcon({ icon }: { icon: IconSvgElement }) {
+  return <HugeiconsIcon icon={icon} size={14} strokeWidth={1.5} color="currentColor" aria-hidden="true" />;
 }

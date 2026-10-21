@@ -9,8 +9,8 @@ slug: /manual/losos-cloud
 LosOS Cloud je vlastná súborová služba zariadenia: vaše súbory v
 prehliadači, sieťový priečinok pre správcu súborov a server, s ktorým sa
 synchronizujú aplikácie Nextcloud pre počítač a telefón. Beží na zariadení
-popri LosOS cloud, ktorý postupne preberá aplikáciu po aplikácii; zatiaľ má
-každý z nich vlastné súbory.
+popri službe Nextcloud na `/nextcloud/`, ktorú postupne preberá aplikáciu
+po aplikácii; zatiaľ má každá z nich vlastné súbory.
 
 Otvorte ho na `https://<name>.local/cloud/`. `<name>` je meno zariadenia,
 také ako na jeho obrazovke. Prihlásite sa cez LosOS Login a každý, kto sa
@@ -58,7 +58,7 @@ https://<name>.local/remote.php/webdav/
 V sieti zariadenia ho GNOME Files a Dolphin ukážu v sieti ako **LosOS
 Cloud on `<name>`**. Windows a macOS ho pridajú podľa adresy, ako v
 [Súboroch vo vašom počítači](files-on-your-computer), s touto adresou
-namiesto adresy LosOS cloud. Najprv nainštalujte certifikát zariadenia, ako
+namiesto adresy LosOS Cloud. Najprv nainštalujte certifikát zariadenia, ako
 v [prvom spustení, kroku 1](../start/first-run#step-1-trust-this-box).
 
 V sieti zariadenia zdieľanie prijme vaše meno a heslo do LosOS Login. Cez

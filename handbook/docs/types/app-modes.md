@@ -5,7 +5,7 @@ sidebar_position: 5
 
 # App modes
 
-LosOS cloud and LosOS Git each run in one of two modes. You see the
+LosOS Cloud and LosOS Git each run in one of two modes. You see the
 same app at the same address either way, and the Apps pane shows which mode
 each one is in.
 
@@ -37,20 +37,20 @@ in the mesh cluster. A cluster member cannot start while its server is
 unreachable, and the box restarts every night at 00:07, so an edge outage
 over midnight would take your own files offline.
 
-![Inside a box: the box's own cluster runs LosOS cloud and LosOS Git, the mesh agent belongs to a different cluster whose server is the edge.](../img/box-architecture.svg)
+![Inside a box: the box's own cluster runs LosOS Cloud and LosOS Git, the mesh agent belongs to a different cluster whose server is the edge.](../img/box-architecture.svg)
 
 ## Where the apps are
 
-![The Apps pane: LosOS cloud and LosOS Git, each with its mode, an installed app, and Find more below.](../img/apps.png)
+![The Apps pane: LosOS Cloud and LosOS Git, each with its mode, an installed app, and Find more below.](../img/apps.png)
 
 | App          | Address             | Note                                                                                      |
 | ------------ | ------------------- | ----------------------------------------------------------------------------------------- |
-| LosOS cloud  | `/nextcloud`        | Trusts the box's name and the address each request arrived on, never a wildcard.          |
+| LosOS Cloud  | `/nextcloud`        | Trusts the box's name and the address each request arrived on, never a wildcard.          |
 | LosOS Git    | `/forgejo/`         | Clone URLs use the box's name; turn it off in the Apps pane if you do not want it.         |
 | Admin pages  | `/`                 | LAN only.                                                                                 |
 | Handbook     | `/handbook/`        | LAN only.                                                                                 |
 
 :::note[App tiles go through index.php]
-The admin pages' app tiles open LosOS cloud's apps through `index.php`
+The admin pages' app tiles open LosOS Cloud's apps through `index.php`
 (`/nextcloud/index.php/apps/<app>/`), which every configuration answers.
 :::

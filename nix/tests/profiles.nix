@@ -18,7 +18,7 @@
 #     and go when the person does.
 #
 # The box is nix/tests/profile-box.nix: Authelia, lososd, nginx's front
-# vhost in its container shape, LosOS cloud as a stub.
+# vhost in its container shape, LosOS Cloud as a stub.
 { pkgs }:
 
 let

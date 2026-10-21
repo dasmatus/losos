@@ -119,9 +119,9 @@ export default defineMessages({
     de: "Das ganze System ist in Nix beschrieben. Jede übernommene Einstellung ist ein Commit im eigenen Git-Repository der Box.",
   },
   "shell.facts.7": {
-    en: "These pages, LosOS cloud, LosOS Git and LosOS Login all take their colours from one file.",
-    sk: "Tieto stránky, LosOS cloud, LosOS Git aj LosOS Login berú farby z jedného súboru.",
-    de: "Diese Seiten, LosOS cloud, LosOS Git und LosOS Login nehmen ihre Farben aus einer einzigen Datei.",
+    en: "These pages, LosOS Cloud, LosOS Git and LosOS Login all take their colours from one file.",
+    sk: "Tieto stránky, LosOS Cloud, LosOS Git aj LosOS Login berú farby z jedného súboru.",
+    de: "Diese Seiten, LosOS Cloud, LosOS Git und LosOS Login nehmen ihre Farben aus einer einzigen Datei.",
   },
   "shell.facts.8": {
     en: "LosOS Lab draws your setup with Bevy, a game engine, compiled to WebAssembly.",
@@ -169,9 +169,9 @@ export default defineMessages({
     de: "Bevor der Installer startet, prüft er sein eigenes Systemabbild gegen eine SHA-256-Summe auf seiner Kernel-Kommandozeile.",
   },
   "shell.facts.17": {
-    en: "LosOS cloud and LosOS Git run in a Kubernetes cluster of their own on this box, so they stay up when the mesh is away.",
-    sk: "LosOS cloud a LosOS Git bežia vo vlastnom klastri Kubernetes na tomto zariadení, takže fungujú, aj keď sieť nie je dostupná.",
-    de: "LosOS cloud und LosOS Git laufen in einem eigenen Kubernetes-Cluster auf dieser Box und bleiben erreichbar, wenn das Mesh weg ist.",
+    en: "LosOS Cloud and LosOS Git run in a Kubernetes cluster of their own on this box, so they stay up when the mesh is away.",
+    sk: "LosOS Cloud a LosOS Git bežia vo vlastnom klastri Kubernetes na tomto zariadení, takže fungujú, aj keď sieť nie je dostupná.",
+    de: "LosOS Cloud und LosOS Git laufen in einem eigenen Kubernetes-Cluster auf dieser Box und bleiben erreichbar, wenn das Mesh weg ist.",
   },
   "shell.signIn.useSignIn": {
     en: "Sign in with your name instead",

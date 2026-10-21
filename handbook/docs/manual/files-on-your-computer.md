@@ -6,9 +6,9 @@ slug: /manual/files-on-your-computer
 
 # Files on your computer
 
-Your LosOS cloud files are also a network folder. Any computer on the box's
+Your LosOS Cloud files are also a network folder. Any computer on the box's
 network can open it in its file manager, drag files in and out, and open
-them in place, without installing anything. The folder is LosOS cloud's
+them in place, without installing anything. The folder is LosOS Cloud's
 WebDAV share, at this address:
 
 ```text
@@ -16,7 +16,7 @@ https://<name>.local/nextcloud/remote.php/webdav/
 ```
 
 `<name>` is the box's name, as on the box's screen. The share holds the same
-files as Files in LosOS cloud.
+files as Files in LosOS Cloud.
 
 ## Before you start
 
@@ -29,12 +29,12 @@ and Windows refuses to connect at all.
 
 On the box's network, type the sign-in name and password you use on LosOS
 Login. The person who set up the box gets the owner's files. Anyone else
-gets their own, and the first time they open the share LosOS cloud makes
+gets their own, and the first time they open the share LosOS Cloud makes
 their account.
 
 Through the internet, LosOS Login does not answer, so the share asks for an
-app password instead. Make one in LosOS cloud under **Settings** >
-**Security** > **Create new app password**. LosOS cloud then shows the name
+app password instead. Make one in LosOS Cloud under **Settings** >
+**Security** > **Create new app password**. LosOS Cloud then shows the name
 and the password to type. An app password works on the box's network too,
 and you can revoke it on its own.
 
@@ -43,8 +43,8 @@ and you can revoke it on its own.
 GNOME Files and KDE Dolphin find the box by themselves.
 
 - **GNOME Files:** open **Other Locations**. Under **Networks**, click
-  **LosOS cloud on `<name>`**, then type your name and password.
-- **Dolphin:** open **Network** in the places panel, then **LosOS cloud on
+  **LosOS Cloud on `<name>`**, then type your name and password.
+- **Dolphin:** open **Network** in the places panel, then **LosOS Cloud on
   `<name>`**.
 
 To type the address instead, use `davs://<name>.local/nextcloud/remote.php/webdav/`
@@ -92,7 +92,7 @@ servers.
 ## The desktop and phone apps
 
 The share is for opening files where they are. To keep a copy of a folder
-in sync, or to upload photos from a phone, use the LosOS cloud apps (the
+in sync, or to upload photos from a phone, use the LosOS Cloud apps (the
 Nextcloud desktop client and the Nextcloud phone apps). Give them the
 address `https://<name>.local/nextcloud`. They open LosOS Login in a
 browser to sign you in, then keep an app password of their own.

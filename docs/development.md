@@ -89,8 +89,10 @@ One flake check is not a VM. `losos-invariants` (`nix/tests/invariants.nix`)
 evaluates the published `install` configuration and asserts the option values
 the appliance cannot afford to lose to a drifting default: garbage
 collection, the boot-menu cap, the unlock mode, the `#install` fragment.
-`nix flake check --no-build` runs it, so CI's eval job fails on it at no
-build cost.
+`nix flake check --no-build` runs it, and so does `nix/check-flake.sh`, the
+same evaluation a few attributes per process, which CI's eval job and
+`check-flake` use: one process evaluating every VM test passes 13 GiB, more
+than a GitHub runner has. Either way it fails at no build cost.
 
 ## Pull requests
 
@@ -209,7 +211,7 @@ this is the reasoning behind it.
   keep the spare-key path in the sign-in dialog. Who may call what is
   `backend/sections.json`, read by lososd (`backend/src/sections.rs`) and by
   nginx; a route missing there is admin only. `nix/tests/identity.nix` boots it.
-  `backend/src/signin.rs` now only holds the LosOS cloud login helpers that
+  `backend/src/signin.rs` now only holds the LosOS Cloud login helpers that
   device setup (`losos cloud setup`, `losos git setup`) and the pin picker
   use: keep the password in a Basic header over loopback, never a `curl -u`
   (it would be in an argv), and let `signin::validate_candidate` check shape

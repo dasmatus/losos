@@ -102,7 +102,7 @@ Das Repository enthält eine Konfiguration für
 Sie gibt der VM 4 Kerne, 8 GiB Arbeitsspeicher und eine Festplatte mit
 64 GiB, UEFI-Firmware mit ausgeschaltetem Secure Boot und ein emuliertes
 TPM, sodass der Installer den Festplattenschlüssel so versiegelt wie auf
-einem Mini-PC. Die Werte liegen über dem Minimum, weil die Box LosOS cloud
+einem Mini-PC. Die Werte liegen über dem Minimum, weil die Box LosOS Cloud
 und LosOS Git in ihrem eigenen Cluster betreibt und sich jede Nacht auf
 dieselbe Festplatte neu baut.
 

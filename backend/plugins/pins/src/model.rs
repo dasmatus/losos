@@ -2,7 +2,7 @@
 //!
 //! A pin is a reference, never a link: an app tile of the Overview by its
 //! id in the page's catalogue, an app installed from the Apps search by its
-//! release name, a file or folder in LosOS cloud by its file id and path,
+//! release name, a file or folder in LosOS Cloud by its file id and path,
 //! or a repository on LosOS Git by owner and name. The page turns each one
 //! into an address (`admin-ui/app/src/lib/pins.ts`), so nothing stored here
 //! can send a click anywhere but this box. The list is ordered, and the
@@ -11,7 +11,7 @@
 //!
 //! Like the look, the list is appliance state beside `state.json`, so a
 //! phone and a laptop show the same sidebar, and writing it starts no
-//! rebuild. The two lists the picker pins from (LosOS cloud's files and
+//! rebuild. The two lists the picker pins from (LosOS Cloud's files and
 //! LosOS Git's repositories) are still lososd's own, `pins.rs` there.
 
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ use serde_json::{json, Value};
 
 /// How many pins the sidebar keeps. A sidebar of more is a second app grid.
 pub const MAX_PINS: usize = 24;
-/// Longest catalogue id of a LosOS cloud app.
+/// Longest catalogue id of a LosOS Cloud app.
 pub const MAX_APP_ID_CHARS: usize = 24;
 
 /// One thing on the sidebar.
@@ -27,12 +27,12 @@ pub const MAX_APP_ID_CHARS: usize = 24;
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum Pin {
     /// An app tile of the Overview, by its id in the page's catalogue
-    /// (`admin-ui/app/src/lib/apps.ts`): the apps of LosOS cloud, LosOS
+    /// (`admin-ui/app/src/lib/apps.ts`): the apps of LosOS Cloud, LosOS
     /// Git and this page's settings.
     Tile { app: String },
     /// An app installed from the Apps search, by release name.
     App { release: String },
-    /// A file or folder in LosOS cloud. `id` opens it; `path` names it.
+    /// A file or folder in LosOS Cloud. `id` opens it; `path` names it.
     File { id: u64, path: String, folder: bool },
     /// A repository on LosOS Git.
     Repo { owner: String, name: String },
@@ -117,11 +117,11 @@ pub fn validate_pin(pin: &Pin) -> anyhow::Result<()> {
         }
         Pin::File { id, path, .. } => {
             if *id == 0 {
-                return invalid("That file has no id in LosOS cloud.");
+                return invalid("That file has no id in LosOS Cloud.");
             }
             validate_path(path)?;
             if path == "/" {
-                return invalid("Pin a folder inside LosOS cloud, not the whole of it.");
+                return invalid("Pin a folder inside LosOS Cloud, not the whole of it.");
             }
         }
         Pin::Repo { owner, name } => {
@@ -133,13 +133,13 @@ pub fn validate_pin(pin: &Pin) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// A path inside LosOS cloud: from the top (`/`), no empty, `.` or `..`
+/// A path inside LosOS Cloud: from the top (`/`), no empty, `.` or `..`
 /// part, nothing that is not printable.
 pub fn validate_path(path: &str) -> anyhow::Result<()> {
     if losos_names::cloud_path(path) {
         Ok(())
     } else {
-        invalid("That is not a folder in LosOS cloud.")
+        invalid("That is not a folder in LosOS Cloud.")
     }
 }
 

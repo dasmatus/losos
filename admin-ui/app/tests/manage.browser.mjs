@@ -5,7 +5,7 @@
  * What is checked: the page asks for the edge's manage key and says what is
  * wrong with a bad one; it lists the boxes and opens only one whose owner
  * switched management on; every call for that box goes through the edge's
- * relay with the key; the box's LosOS cloud and LosOS Git rows change only
+ * relay with the key; the box's LosOS Cloud and LosOS Git rows change only
  * the options named, through POST /api/site, and the bar follows the rebuild
  * to its end; the apps it lists have no link to their port and no pin; a
  * box that refuses the edge says so; a deep link reloads; and the page logs
@@ -303,7 +303,7 @@ await check("the owner's switch lets the company edge in use manage the box, and
   assert.equal(await page.getByRole('switch', { name, exact: true }).isChecked(), false);
   await toggle(page, name);
   await page.getByText('Office edge can manage this box now').waitFor();
-  await page.getByText(/can change LosOS cloud, LosOS Git and the apps here/).waitFor();
+  await page.getByText(/can change LosOS Cloud, LosOS Git and the apps here/).waitFor();
   assert.equal(await page.getByRole('switch', { name, exact: true }).isChecked(), true);
   await toggle(page, name);
   await page.getByText('No edge manages this box now').waitFor();

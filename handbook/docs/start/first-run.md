@@ -63,15 +63,15 @@ letter, an upper-case letter, a digit and a symbol such as `-` or `!`. The
 wizard ticks each rule as you type. You become the box's first
 administrator, and you sign in to the admin pages on LosOS Login, the box's
 sign-in page at `https://<box>/auth/`, with this name and password. The same
-password opens LosOS cloud and LosOS Git.
+password opens LosOS Cloud and LosOS Git.
 
 <img src={require("../img/wizard-step2-password.png").default} alt="Step 2 with a sign-in name and a password typed in: each of the four password rules is ticked as it is met." width="520" />
 
-The step waits until LosOS cloud has finished its own first start, which takes
+The step waits until LosOS Cloud has finished its own first start, which takes
 a few minutes on a fresh box. Meanwhile the page shows "waiting for" and the
 reason. It continues on its own.
 
-<img src={require("../img/wizard-step2-waiting.png").default} alt="Step 2 while LosOS cloud is still installing itself: the page says what it is waiting for and continues on its own." width="520" />
+<img src={require("../img/wizard-step2-waiting.png").default} alt="Step 2 while LosOS Cloud is still installing itself: the page says what it is waiting for and continues on its own." width="520" />
 
 :::warning[The spare key is shown once]
 When the password is set, the page shows the **spare admin key** once: 64
@@ -86,25 +86,25 @@ password you just set:
 
 - **Your name on LosOS Login**: your new sign-in name. It opens the admin
   pages.
-- **Your LosOS cloud account**: the account you type in step 3 and in the
+- **Your LosOS Cloud account**: the account you type in step 3 and in the
   desktop and phone apps.
 
-<img src={require("../img/wizard-step2-spare-key.png").default} alt="Step 2 after the password is set: your name on LosOS Login, your LosOS cloud account, and the spare admin key shown once with Copy and Print." width="520" />
+<img src={require("../img/wizard-step2-spare-key.png").default} alt="Step 2 after the password is set: your name on LosOS Login, your LosOS Cloud account, and the spare admin key shown once with Copy and Print." width="520" />
 
-A **passkey** for LosOS cloud, so a phone or a laptop can sign in to your
+A **passkey** for LosOS Cloud, so a phone or a laptop can sign in to your
 files without typing the password, can be added later from the security
-settings inside LosOS cloud.
+settings inside LosOS Cloud.
 
 ## Step 3: Sign in
 
-The wizard opens LosOS cloud inside the page, and you sign in with your
-LosOS cloud account and the password you just set. Then the wizard takes you
+The wizard opens LosOS Cloud inside the page, and you sign in with your
+LosOS Cloud account and the password you just set. Then the wizard takes you
 to the admin pages' overview. From here on, see [The admin
 pages](../manual/admin-pages).
 
 The first time, a short tour opens over the overview. Each step shows a
 small moving picture of the page, with the sidebar entry where that feature
-lives. Every box has six steps: LosOS cloud's apps, adding more, storage,
+lives. Every box has six steps: LosOS Cloud's apps, adding more, storage,
 lending the box at night, the nightly update and where to find the tour
 again. The tour asks the box what else it has and adds a step for each:
 Office, lending memory to AI models, a name to be paid at, chat and calls
@@ -113,6 +113,6 @@ profile pictures. A box with none of these sees the six steps.
 **Skip the tour** closes it, and that browser does not open it by
 itself again. **Take the tour** under Settings, About brings it back.
 
-![The tour's first step over the overview: a picture of the page with LosOS cloud's six apps, "1 of 6", and Skip the tour and Next.](../img/tour.png)
+![The tour's first step over the overview: a picture of the page with LosOS Cloud's six apps, "1 of 6", and Skip the tour and Next.](../img/tour.png)
 
 ![Step 3: You are signed in. That was the last step.](../img/wizard-step3-sign-in.png)

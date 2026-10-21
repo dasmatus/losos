@@ -1,6 +1,6 @@
 import { defineMessages } from "./define";
 
-/* LosOS chat (src/chat/), the Matrix client at /chat/. What other people
+/* LosOS Chat (src/chat/), the Matrix client at /chat/. What other people
  * write and what the homeserver names (room names, Matrix IDs, the
  * verification emoji's names) stays as it comes. */
 export default defineMessages({

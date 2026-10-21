@@ -23,6 +23,7 @@ import {
 } from "matrix-js-sdk";
 import { CryptoEvent, type VerificationRequest } from "matrix-js-sdk/lib/crypto-api";
 import { AppBar, type AppBarPerson } from "@/components/app-bar";
+import { PersonAvatar } from "@/components/person";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -178,11 +179,18 @@ function ChatBar({ children }: { children?: React.ReactNode }) {
     void loadMe().catch(() => undefined);
   }, []);
   const person: AppBarPerson | null =
-    me === null || me.spareKey
+    me === null || me.spareKey || !me.name
       ? null
       : {
-          label: me.displayName ?? me.name ?? "",
-          tip: `${t("shell.me.signedIn", { name: me.name ?? "" })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`,
+          label: me.displayName ?? me.name,
+          tip: `${t("shell.me.signedIn", { name: me.name })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`,
+          avatar: (
+            <PersonAvatar
+              size="xs"
+              person={{ name: me.name, displayName: me.displayName ?? me.name, picture: me.picture, accent: me.accent }}
+            />
+          ),
+          accountLink: <a href="/settings/account" />,
         };
   return (
     <AppBar width="full" name={t("chat.title")} nameLink={<a href="/chat/" />} person={person} onSignOut={signOutHere}>

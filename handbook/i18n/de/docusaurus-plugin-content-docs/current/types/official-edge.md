@@ -15,7 +15,7 @@ der Markt dieser Edge zahlt aus.
 
 | Funktion               | Wie                                                                                                        |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Fernzugriff**        | `https://<your-name>.<edge domain>` erreicht LosOS cloud und LosOS Git über einen verschlüsselten Tunnel, den die Box nach außen öffnet. Die Admin-Seiten veröffentlicht die Box nie; sie bleiben nur im LAN erreichbar, auch über den Tunnel. |
+| **Fernzugriff**        | `https://<your-name>.<edge domain>` erreicht LosOS Cloud und LosOS Git über einen verschlüsselten Tunnel, den die Box nach außen öffnet. Die Admin-Seiten veröffentlicht die Box nie; sie bleiben nur im LAN erreichbar, auch über den Tunnel. |
 | **Das Mesh**           | Die Box tritt einem Kubernetes-Cluster bei, den die Edge betreibt. Ihre freie Festplatte wird Teil eines gemeinsamen, replizierten Pools; ihre freie CPU führt innerhalb der Stunden, die du erlaubst, Arbeit anderer Leute aus, und nur, solange die Box untätig ist. |
 | **Der Markt**          | Du wirst für die Festplatte und die CPU bezahlt, die du teilst, und du kannst welche von anderen kaufen. Käufer zahlen in USDC, Bitcoin oder Monero, oder per Karte über Stripe, wo die Edge Karten annimmt, und die Edge behält eine Gebühr von 4 %. Eine Edge kann auch nur Coins annehmen, ohne Kartenzahlungen; dann braucht es für den Betrieb des Markts kein Geschäftskonto bei einem Kartenzahlungsanbieter. Der Bereich Markt liegt in der Seitenleiste unter Mesh. |
 | **Box finden**         | Die Edge stellt die Seite bereit, die eine Box in deinem LAN aus einem Browser heraus findet.              |
@@ -136,7 +136,7 @@ Domain hinzu:
 3. Warte. Die Edge schlägt die Einträge jede halbe Minute selbst nach und
    markiert jeden mit **✓ gefunden**, sobald sie ihn findet. Wenn beide
    stimmen, wird die Domain **Aktiv**, die Edge holt ein Zertifikat für sie,
-   und LosOS cloud antwortet unter `https://<your domain>/nextcloud`.
+   und LosOS Cloud antwortet unter `https://<your domain>/nextcloud`.
 
 :::note[Eine Domain, vor der nichts steht]
 Eine Domain, vor der nichts steht, etwa `novak-family.eu` selbst, kann keinen

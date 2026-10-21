@@ -11,7 +11,7 @@ place:
 
 | Kept                       | Holds                                                                 |
 | -------------------------- | --------------------------------------------------------------------- |
-| `/home/notshared`          | LosOS cloud's data: your files, photos, database                      |
+| `/home/notshared`          | LosOS Cloud's data: your files, photos, database                      |
 | `/home/shared`             | Room lent to the mesh, encrypted separately and unreadable while sharing is off |
 | `/var`                     | LosOS Git's data, the box's state and secrets, the two clusters' state, logs |
 | `/nix`                     | The system itself, every version kept for the boot menu               |
@@ -41,7 +41,7 @@ Every log under `/var` has a cap, so logs cannot fill the disk:
 
 - The system journal keeps at most 512 MB and nothing older than a month.
   `losos.logs.journalMaxUse` on the Advanced pane sets the size.
-- LosOS cloud, LosOS Git and each app keep at most three log files of 10 MB
+- LosOS Cloud, LosOS Git and each app keep at most three log files of 10 MB
   per container.
 - The web server's access log starts a new file every week, or sooner at
   20 MB, and keeps eight old ones.

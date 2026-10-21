@@ -9,7 +9,7 @@ slug: /troubleshooting/out-of-room
 <div className="losos-symptom">
 
 **Was du siehst:** Die Übersicht sagt **Fast voll** oder **Kein Platz
-mehr**; Uploads in LosOS cloud schlagen fehl; ein Anwenden oder das
+mehr**; Uploads in LosOS Cloud schlagen fehl; ein Anwenden oder das
 nächtliche Update schlägt fehl.
 
 </div>
@@ -32,7 +32,7 @@ mehr** erscheint.
    nutzen**. Der Installer hat dafür 10 % der Festplatte zurückgehalten.
    Das dauert eine Minute und braucht keinen Neustart. Siehe
    [Festplatte vergrößern](../manual/disk-growth).
-2. **Leere den Papierkorb in LosOS cloud.** Gelöschte Dateien liegen 30
+2. **Leere den Papierkorb in LosOS Cloud.** Gelöschte Dateien liegen 30
    Tage lang unter „Gelöschte Dateien“ und belegen weiter Platz.
    Vorschaubilder der Fotos-App und alte Dateiversionen, unter „Versionen“
    in der Seitenleiste einer Datei, summieren sich ebenfalls.

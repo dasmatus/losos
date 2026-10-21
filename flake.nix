@@ -319,7 +319,7 @@
             ./modules/keyring.nix
             ./modules/daemon.nix
             ./modules/identity.nix
-            # LosOS chat: Dendrite as the shared user while the box shares
+            # LosOS Chat: Dendrite as the shared user while the box shares
             # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
             ./modules/chat.nix
             # Backups to the owner's S3 bucket, restoring them, and the
@@ -454,6 +454,7 @@
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        losos-design = import ./nix/tests/design.nix { inherit pkgs; };
         # The banner a box off the mesh shows over every page, both states
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
@@ -521,7 +522,7 @@
         # reaches — the pretty /nextcloud/apps/<app>/ links the homepage
         # tiles use included (nix/tests/nextcloud-httpd.nix).
         losos-nextcloud-httpd = import ./nix/tests/nextcloud-httpd.nix { inherit pkgs; };
-        # LosOS cloud's apps managed from the Apps pane, the owner's account a
+        # LosOS Cloud's apps managed from the Apps pane, the owner's account a
         # standard one, and a federated share between two boxes
         # (nix/tests/cloud-apps.nix).
         losos-cloud-apps = import ./nix/tests/cloud-apps.nix { inherit pkgs; };

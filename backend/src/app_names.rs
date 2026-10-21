@@ -1,4 +1,4 @@
-//! Each person's name and address from LosOS Login, in LosOS cloud and
+//! Each person's name and address from LosOS Login, in LosOS Cloud and
 //! LosOS Git.
 //!
 //! Both apps make a person's account at their first sign-in through LosOS
@@ -57,7 +57,7 @@ pub enum Outcome {
     Off,
 }
 
-/// Give `who` their name and address in LosOS cloud. `Err` when LosOS cloud
+/// Give `who` their name and address in LosOS Cloud. `Err` when LosOS Cloud
 /// could not be asked, which is worth asking again.
 pub fn nextcloud<L: Losos>(l: &mut L, who: &Profile) -> anyhow::Result<Outcome> {
     let mode = l.nextcloud_mode()?;
@@ -110,7 +110,7 @@ pub fn forgejo<L: Losos>(l: &mut L, who: &Profile) -> anyhow::Result<Outcome> {
 pub fn sync<L: Losos>(l: &mut L, who: &Profile) -> bool {
     let mut settled = true;
     for (app, outcome) in [
-        ("LosOS cloud", nextcloud(l, who)),
+        ("LosOS Cloud", nextcloud(l, who)),
         ("LosOS Git", forgejo(l, who)),
     ] {
         if let Err(e) = outcome {

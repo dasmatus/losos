@@ -6,16 +6,16 @@ slug: /manual/apps
 
 # Aplikácie
 
-## LosOS cloud \{#losos-cloud}
+## LosOS Cloud \{#losos-cloud}
 
 Vaše súbory, fotky, kalendár, kontakty, poznámky, úlohy, hudba a ostatné
 aplikácie nižšie, na `http://<address>/nextcloud`. Je to Nextcloud vo
-farbách a s menom zariadenia. Prihlásite sa heslom vlastníka. LosOS cloud
+farbách a s menom zariadenia. Prihlásite sa heslom vlastníka. LosOS Cloud
 dokáže všetko, čo Nextcloud. Desktopový klient synchronizuje priečinok na
 vašom počítači, aplikácie v telefóne nahrávajú fotky a kalendáre a kontakty
 sa synchronizujú cez CalDAV a CardDAV.
 
-Prehľad má dlaždicu pre každú aplikáciu z ponuky LosOS cloud, v rovnakom
+Prehľad má dlaždicu pre každú aplikáciu z ponuky LosOS Cloud, v rovnakom
 poradí: Súbory, Nástenka, Fotky, Aktivita, Kontakty, Kalendár, Poznámky,
 Záložky, Deck, Hudba, Kolektívy, Ankety, Formuláre, Tabuľky, Memories,
 Správy, Úlohy a Mapy. Zariadenie ich pri každom štarte všetky zapne, okrem
@@ -25,11 +25,11 @@ aj tak pridáte z obchodu s aplikáciami, jej dlaždica sa na Prehľade objaví
 pri ďalšom načítaní stránky. Odkazy vedú zámerne cez
 `index.php`, pretože na túto cestu odpovedá každá konfigurácia.
 
-Rodina alebo kolegovia dostanú účet v LosOS cloud, keď ho prvýkrát otvoria,
+Rodina alebo kolegovia dostanú účet v LosOS Cloud, keď ho prvýkrát otvoria,
 prihlásení cez LosOS Login ([Prihlásenie](sign-in-and-spare-key)). Aj účet
-vlastníka je bežný účet, nie správca LosOS cloud. To, ktoré aplikácie
+vlastníka je bežný účet, nie správca LosOS Cloud. To, ktoré aplikácie
 bežia, a nastavenia pre všetkých sú namiesto toho na paneli **Aplikácie**,
-v sekcii LosOS cloud.
+v sekcii LosOS Cloud.
 
 ## LosOS Git \{#losos-git}
 
@@ -56,11 +56,11 @@ Ak sa chcete zapojiť, vypíšte na stránke repozitára
 počítať. Federáciu úplne vypnete prepínačom **Federovať s inými servermi
 Forgejo** v sekcii LosOS Git na paneli **Aplikácie**.
 
-Federuje aj LosOS cloud: súbory a kalendáre môžete zdieľať s ľuďmi, ktorí
+Federuje aj LosOS Cloud: súbory a kalendáre môžete zdieľať s ľuďmi, ktorí
 majú účty na iných serveroch Nextcloud, podľa ich adresy `user@server`;
 vlastník iného zariadenia je `notshared@inezariadenie.local/nextcloud`.
 Vypne to prepínač **Zdieľať s inými servermi Nextcloud** v sekcii LosOS
-cloud. Kým je zapnutý, LosOS cloud smie siahnuť na mená končiace na
+cloud. Kým je zapnutý, LosOS Cloud smie siahnuť na mená končiace na
 `.local` a na adresy vo vašej lokálnej sieti a prijme certifikát, ktorý si
 každé zariadenie vyrobí samo, čo Nextcloud sám odmieta. Tak sa dostane
 k ostatným zariadeniam v tej istej sieti.
@@ -75,7 +75,7 @@ serverom a panel **Aplikácie** ukazuje oba prepínače federácie sivé.
 ## Panel Aplikácie \{#the-apps-pane}
 
 Pri každej aplikácii panel ukazuje, či je zapnutá, v akom
-[režime](../types/app-modes) beží, a odkaz. Pod nimi majú LosOS cloud aj
+[režime](../types/app-modes) beží, a odkaz. Pod nimi majú LosOS Cloud aj
 LosOS Git vlastnú rozbaľovaciu sekciu, zavretú, kým ju neotvoríte. Pod tým
 **Nájsť ďalšie** hľadá
 Helm charty v [Artifact Hub](https://artifacthub.io). Výsledky sťahuje
@@ -84,14 +84,14 @@ chart zverejnil. Nikto na strane LosOS žiadny z nich neskontroloval.
 
 ![Panel Aplikácie s jednou nainštalovanou aplikáciou nad Nájsť ďalšie a výsledkami vyhľadávania v Artifact Hub, každý s tým, kto ho zverejnil, a tlačidlom Inštalovať alebo Zmeniť.](@site/docs/img/apps-find-more-sk.png)
 
-## Aplikácie v LosOS cloud \{#losos-clouds-apps}
+## Aplikácie v LosOS Cloud \{#losos-clouds-apps}
 
-Sekcia LosOS cloud vypisuje aplikácie vnútri LosOS cloud, každú s
+Sekcia LosOS Cloud vypisuje aplikácie vnútri LosOS Cloud, každú s
 prepínačom. Vypnutá aplikácia zmizne zo všetkých účtov a to, čo v nej ľudia
 vytvorili, zostane uložené pre jej návrat. Vypnutá zostane aj po reštarte
-zariadenia. Aplikácie zabudované v LosOS cloud čakajú za tlačidlom
+zariadenia. Aplikácie zabudované v LosOS Cloud čakajú za tlačidlom
 **Zobraziť**, lebo ich potrebujete zriedka; nájde ich aj filter. Niekoľko
-prepínačov sa pohnúť nedá a riadok povie prečo: LosOS cloud bez nich
+prepínačov sa pohnúť nedá a riadok povie prečo: LosOS Cloud bez nich
 nebeží, zariadenie ich potrebuje na prihlásenie alebo sa riadia zdieľaním
 disku.
 
@@ -103,16 +103,16 @@ Odstránenie zoberie zo zariadenia jej kód a ponechá, čo v nej účty
 vytvorili, takže ju opätovné pridanie nájde. Aplikácie, ktoré zariadenie
 prináša, sa dajú vypnúť, ale nie odstrániť.
 
-![Sekcia LosOS cloud: aplikácie s prepínačmi, Deck z obchodu s aplikáciami s tlačidlom Odstrániť, prihlasovacia aplikácia uzamknutá s dôvodom a hľadanie Whiteboard v obchode s tlačidlom Pridať.](@site/docs/img/apps-cloud-sk.png)
+![Sekcia LosOS Cloud: aplikácie s prepínačmi, Deck z obchodu s aplikáciami s tlačidlom Odstrániť, prihlasovacia aplikácia uzamknutá s dôvodom a hľadanie Whiteboard v obchode s tlačidlom Pridať.](@site/docs/img/apps-cloud-sk.png)
 
 ## Nastavenia pre všetkých \{#settings-for-everyone}
 
-V sekciách LosOS cloud a LosOS Git má panel Aplikácie nastavenia, ktoré
+V sekciách LosOS Cloud a LosOS Git má panel Aplikácie nastavenia, ktoré
 platia pre každý účet v danej aplikácii. Inak by ste ich našli na vlastných
 administrátorských stránkach každej aplikácie. Každá sekcia začína
 prepínačom federácie danej aplikácie ([Federácia](#federation)).
 
-Pre LosOS cloud: jazyk prihlasovacej stránky a účtov, ktoré si žiadny
+Pre LosOS Cloud: jazyk prihlasovacej stránky a účtov, ktoré si žiadny
 nevybrali, krajina, do ktorej patrí telefónne číslo bez predvoľby krajiny,
 či sa súbory dajú zdieľať verejným odkazom, či každý odkaz potrebuje heslo,
 po koľkých dňoch odkazy prestanú fungovať, koľko miesta dostane nový účet a
@@ -124,7 +124,7 @@ prvé, či nový repozitár začína ako súkromný, verejný alebo ako posledn�
 repozitár účtu, či je e-mailová adresa nového účtu skrytá a či push do
 repozitára, ktorý ešte neexistuje, ho vytvorí.
 
-![Panel Aplikácie s nastaveniami pre všetkých v LosOS cloud a LosOS Git.](@site/docs/img/apps-site-settings-sk.png)
+![Panel Aplikácie s nastaveniami pre všetkých v LosOS Cloud a LosOS Git.](@site/docs/img/apps-site-settings-sk.png)
 
 Ako každé iné nastavenie ich použijete tlačidlom **Použiť**. Zariadenie ich
 nastaví znova pri každom štarte aplikácie, takže zmena urobená vnútri
@@ -161,7 +161,7 @@ nedostane.
 na Podmane bez roota, priamo ako `notshared`, a nepotrebuje žiadny klaster.
 Aplikácia `shared` beží vo vlastnom klastri zariadenia, pretože to je časť
 zariadenia, ktorej sa dotýka sieť. V oboch prípadoch zariadenie chart
-upraví tak, aby bežal rovnako ako LosOS cloud a LosOS Git.
+upraví tak, aby bežal rovnako ako LosOS Cloud a LosOS Git.
 
 - Každá časť aplikácie beží ako vybraný používateľ, nikdy ako root, bez
   ďalších oprávnení a bez prístupu ku klastru.
@@ -206,7 +206,7 @@ pretože nemajú vlastnosti.
 
 ## Dôveryhodné adresy \{#trusted-addresses}
 
-LosOS cloud odpovedá na meno zariadenia a na tú adresu, na ktorú prišla
+LosOS Cloud odpovedá na meno zariadenia a na tú adresu, na ktorú prišla
 požiadavka. Zariadenie túto adresu posiela spolu s každou požiadavkou. LosOS
 cloud nikdy neodpovedá na zástupný znak. Preto zariadenie, na ktoré
 pristupujete cez IP adresu, neukáže stránku o nedôveryhodnej doméne. Ak ju

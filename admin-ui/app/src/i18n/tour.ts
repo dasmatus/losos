@@ -18,9 +18,9 @@ export default defineMessages({
     de: "Deine Apps, auf deiner Box",
   },
   "tour.overview.body": {
-    en: "LosOS cloud brings Files, Calendar, Contacts, Tasks, Notes and a Board, all on the Overview.",
-    sk: "LosOS cloud prináša Súbory, Kalendár, Kontakty, Úlohy, Poznámky a Tabuľu, všetko v Prehľade.",
-    de: "LosOS cloud bringt Dateien, Kalender, Kontakte, Aufgaben, Notizen und ein Board mit, alle in der Übersicht.",
+    en: "LosOS Cloud brings Files, Calendar, Contacts, Tasks, Notes and a Board, all on the Overview.",
+    sk: "LosOS Cloud prináša Súbory, Kalendár, Kontakty, Úlohy, Poznámky a Tabuľu, všetko v Prehľade.",
+    de: "LosOS Cloud bringt Dateien, Kalender, Kontakte, Aufgaben, Notizen und ein Board mit, alle in der Übersicht.",
   },
   "tour.together.title": {
     en: "Write together",

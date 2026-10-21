@@ -302,7 +302,7 @@ impl LabCore {
         let mesh = st.map(|s| s.mesh).unwrap_or("off");
         let market = st.map(|s| s.market).unwrap_or("unavailable");
         let html = format!(
-            "<div class=\"page\"><div class=\"pbar\"><img src=\"{plate}\" alt=\"LosOS\"><b>{}</b><span class=\"muted\">Home</span><span style=\"margin-left:auto\" class=\"muted\">Signed in on the LAN</span></div><div class=\"pbody\">\n    <h1>Apps</h1>\n    <div style=\"display:flex;gap:8px;flex-wrap:wrap\"><div class=\"card\" style=\"flex:1;min-width:120px\"><b>LosOS cloud</b><br><span class=\"muted\">/nextcloud</span></div><div class=\"card\" style=\"flex:1;min-width:120px\"><b>LosOS Git</b><br><span class=\"muted\">/forgejo</span></div></div>\n    <h1 style=\"margin-top:12px\">Mesh</h1>\n    {edges}\n    <div class=\"card\"><b>Path</b>: {path}<br><b>Public address</b>: {public}<br><b>Mesh</b>: {} · <b>Market</b>: {}</div>\n  </div></div>",
+            "<div class=\"page\"><div class=\"pbar\"><img src=\"{plate}\" alt=\"LosOS\"><b>{}</b><span class=\"muted\">Home</span><span style=\"margin-left:auto\" class=\"muted\">Signed in on the LAN</span></div><div class=\"pbody\">\n    <h1>Apps</h1>\n    <div style=\"display:flex;gap:8px;flex-wrap:wrap\"><div class=\"card\" style=\"flex:1;min-width:120px\"><b>LosOS Cloud</b><br><span class=\"muted\">/nextcloud</span></div><div class=\"card\" style=\"flex:1;min-width:120px\"><b>LosOS Git</b><br><span class=\"muted\">/forgejo</span></div></div>\n    <h1 style=\"margin-top:12px\">Mesh</h1>\n    {edges}\n    <div class=\"card\"><b>Path</b>: {path}<br><b>Public address</b>: {public}<br><b>Mesh</b>: {} · <b>Market</b>: {}</div>\n  </div></div>",
             esc(&d.name),
             esc(mesh),
             esc(market),
@@ -319,10 +319,10 @@ impl LabCore {
         let plate = &self.plate;
         page(
             200,
-            "LosOS cloud",
-            Some("<title>LosOS cloud</title>".into()),
+            "LosOS Cloud",
+            Some("<title>LosOS Cloud</title>".into()),
             format!(
-                "<div class=\"page\" style=\"background:linear-gradient(160deg,#0e6e7d,#0a4f5a);min-height:100%;color:#fff;padding:10px\"><div class=\"login\"><img src=\"{plate}\" alt=\"\" width=\"56\" height=\"56\"><h1 style=\"color:#fff\">LosOS cloud</h1><p style=\"opacity:.85;font-size:12px\">{}{}</p><input aria-label=\"Account name\" value=\"notshared\"><input aria-label=\"Password\" type=\"password\" value=\"••••••••••••\"><button class=\"go\" type=\"button\">Log in</button></div></div>",
+                "<div class=\"page\" style=\"background:linear-gradient(160deg,#0e6e7d,#0a4f5a);min-height:100%;color:#fff;padding:10px\"><div class=\"login\"><img src=\"{plate}\" alt=\"\" width=\"56\" height=\"56\"><h1 style=\"color:#fff\">LosOS Cloud</h1><p style=\"opacity:.85;font-size:12px\">{}{}</p><input aria-label=\"Account name\" value=\"notshared\"><input aria-label=\"Password\" type=\"password\" value=\"••••••••••••\"><button class=\"go\" type=\"button\">Log in</button></div></div>",
                 esc(&d.name),
                 if via_tunnel { " · through the edge tunnel" } else { " · on this network" }
             ),

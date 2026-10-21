@@ -14,7 +14,7 @@ use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(version, about = "Answer one thread-list question about LosOS chat")]
+#[command(version, about = "Answer one thread-list question about LosOS Chat")]
 struct Cli {
     /// Dendrite's sync database.
     #[arg(long)]

@@ -52,7 +52,7 @@ hárku. Správcovské stránky sa otvoria.
 
 Kľúčom môžete nastaviť aj nové heslo vlastníka, teda toho, kto zariadenie
 nastavil, a to cez tú istú cestu, ktorú použil sprievodca. Zmení naraz
-prihlasovacie heslo vlastníka aj jeho heslo do LosOS cloud. Na paneloch na
+prihlasovacie heslo vlastníka aj jeho heslo do LosOS Cloud. Na paneloch na
 to zatiaľ nie je tlačidlo, takže z počítača v LAN spustíte jeden príkaz.
 Nahraďte v ňom kľúč, adresu a heslo. Nové heslo musí spĺňať štyri pravidlá:
 
@@ -62,8 +62,8 @@ curl -H "Authorization: Bearer <spare key>" -H "Content-Type: application/json" 
   http://<address>/api/set-password
 ```
 
-Odpoveď uvedie účet LosOS cloud, ktorého heslo sa zmenilo. V LosOS Login sa
-prihláste svojím prihlasovacím menom a novým heslom; LosOS cloud a LosOS Git
+Odpoveď uvedie účet LosOS Cloud, ktorého heslo sa zmenilo. V LosOS Login sa
+prihláste svojím prihlasovacím menom a novým heslom; LosOS Cloud a LosOS Git
 sa pridajú.
 
 ## Nemáte ani jedno \{#you-have-neither}
