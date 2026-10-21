@@ -19,7 +19,11 @@
 #      sealed phrase with its password, signs, and lososd relays the binding;
 #   3. the edge's zone then carries the ENS record at the box's name, signed,
 #      and `delv` validates it against the zone's DS as the trust anchor;
-#   4. unbinding from the API takes the record away again.
+#   4. public DNS (a stand-in on the edge, as ENS's gateway would ask it)
+#      finds nothing until the zone is delegated, an unsigned record until
+#      its DS is published, and then the validated record, and the pane says
+#      so for the name: wallets find it;
+#   5. unbinding from the API takes the record away again.
 #
 # The pages it passes through are saved as PNGs (`shots/` in the test's
 # output): the PR's screenshots, and the states the launch film is cut from
@@ -90,6 +94,63 @@ let
     esac
   '';
 
+  # Public DNS as ENS's gateway sees it, in stand-in: a DNS-over-HTTPS JSON
+  # endpoint on the edge that answers for the zone only once the parent has
+  # delegated it (/run/public-dns/delegated), and sets the AD bit only once
+  # the parent has published its DS (/run/public-dns/anchor.conf, which
+  # delv validates against, as a resolver would from the root).
+  publicDns = pkgs.writers.writePython3 "losos-public-dns" { } ''
+    import json
+    import os
+    import subprocess
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from urllib.parse import parse_qs, urlparse
+
+    ZONE = "${zone}"
+    STATE = "/run/public-dns"
+    TYPES = {"A": 1, "AAAA": 28, "CNAME": 5, "TXT": 16}
+
+
+    def answer(name, rtype):
+        inside = name == ZONE or name.endswith("." + ZONE)
+        if not inside or not os.path.exists(STATE + "/delegated"):
+            return {"Status": 3, "AD": False, "Answer": []}
+        out = subprocess.run(
+            ["dig", "+noall", "+answer", "@127.0.0.1", name, rtype],
+            capture_output=True, text=True,
+        ).stdout
+        rows = []
+        for line in out.splitlines():
+            owner, ttl, _, kind, data = line.split(None, 4)
+            if kind in TYPES:
+                rows.append({"name": owner, "type": TYPES[kind],
+                             "TTL": int(ttl), "data": data})
+        anchor = STATE + "/anchor.conf"
+        valid = False
+        if rows and os.path.exists(anchor):
+            v = subprocess.run(
+                ["delv", "@127.0.0.1", "-a", anchor, "+root=" + ZONE,
+                 name, rtype],
+                capture_output=True, text=True,
+            )
+            valid = "fully validated" in v.stdout + v.stderr
+        return {"Status": 0, "AD": valid, "Answer": rows}
+
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            q = parse_qs(urlparse(self.path).query)
+            name = q.get("name", [""])[0].rstrip(".").lower()
+            body = json.dumps(answer(name, q.get("type", ["A"])[0].upper()))
+            self.send_response(200)
+            self.send_header("content-type", "application/dns-json")
+            self.end_headers()
+            self.wfile.write(body.encode())
+
+
+    HTTPServer(("127.0.0.1", 8053), Handler).serve_forever()
+  '';
+
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
@@ -143,7 +204,16 @@ pkgs.testers.nixosTest {
           dns = {
             enable = true;
             ipv4 = [ config.networking.primaryIPAddress ];
-            checkUrl = "http://127.0.0.1:9/dns-query";
+            checkUrl = "http://127.0.0.1:8053/dns-query";
+          };
+        };
+        systemd.services.losos-public-dns = {
+          wantedBy = [ "multi-user.target" ];
+          path = [ pkgs.bind.dnsutils ];
+          serviceConfig = {
+            ExecStart = publicDns;
+            RuntimeDirectory = "public-dns";
+            RuntimeDirectoryPreserve = true;
           };
         };
         # The registrar's API over TLS, as the box reaches a real edge.
@@ -239,7 +309,6 @@ pkgs.testers.nixosTest {
     in
     ''
       import json
-      import shlex
 
       start_all()
       edge.wait_for_unit("knot.service")
@@ -282,7 +351,7 @@ pkgs.testers.nixosTest {
         ''
           with subtest("the Network pane, before"):
               laptop.succeed("${shots "before"}")
-              laptop.copy_from_vm("/tmp/shots", "")
+              laptop.copy_from_machine("/tmp/shots", "")
         ''
       else
         ''
@@ -296,17 +365,13 @@ pkgs.testers.nixosTest {
 
           with subtest("the owner binds the wallet made on this box, in the browser"):
               laptop.succeed("${shots "after"}")
-              laptop.copy_from_vm("/tmp/shots", "")
               view = api("/api/domains")
               address = view["wallet"]["address"]
               # The wallet the script sealed: the test phrase's first account.
               assert address == "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266", view
 
           with subtest("the zone carries the ENS record, signed and validated"):
-              record = (
-                  "ENS1 2.dnsname.ens.eth"
-                  + "".join(f" a[{k}]={address}" for k in ["60", "e8453", "e42161", "e10"])
-              )
+              record = f"ENS1 dnsname.ens.eth {address}"
               laptop.wait_until_succeeds(
                   f"dig +short @${edgeIp} mattbox.${zone} TXT | grep -qF '{record}'"
               )
@@ -322,7 +387,31 @@ pkgs.testers.nixosTest {
               print(valid)
               assert "fully validated" in valid and record in valid, valid
               laptop.succeed(f"printf %s {json.dumps(valid)} > /tmp/shots/delv.txt")
-              laptop.copy_from_vm("/tmp/shots/delv.txt", "")
+
+          def published(state):
+              box.wait_until_succeeds(
+                  f"curl -s -H 'Authorization: Bearer {spare}' 127.0.0.1:8082/api/domains"
+                  f" | jq -e '.wallet.published[\"mattbox.${zone}\"] == \"{state}\"'",
+                  timeout=120,
+              )
+
+          with subtest("wallets find the name once the parent zone vouches for it"):
+              # Public DNS does not reach a zone the parent has not delegated.
+              published("missing")
+              # Delegated, but with no DS at the parent the answer is unsigned.
+              edge.succeed("touch /run/public-dns/delegated")
+              published("unsigned")
+              # The DS published: the record validates from the parent down.
+              edge.succeed(
+                  "printf 'trust-anchors { ${zone}. static-ds %s %s %s \"%s\"; };' "
+                  f"{tag} {alg} {dtype} {digest} > /run/public-dns/anchor.conf"
+              )
+              published("found")
+              laptop.succeed("${shots "found"}")
+              # Every shot of the run, delv's answer with them.
+              laptop.copy_from_machine("/tmp/shots", "")
+
+          import shlex
 
           with subtest("a body that is not an object of strings unbinds nothing"):
               for body in ["null", "not json", '{"address":1,"signature":false}', "[]"]:
@@ -339,6 +428,7 @@ pkgs.testers.nixosTest {
                   f"curl -sf -X POST -H 'Authorization: Bearer {spare}' "
                   "-H 'Content-Type: application/json' -d '{}' 127.0.0.1:8082/api/domains/wallet"
               )
+              assert api("/api/domains")["wallet"] is None
               laptop.wait_until_succeeds(
                   "test -z \"$(dig +short @${edgeIp} mattbox.${zone} TXT)\""
               )

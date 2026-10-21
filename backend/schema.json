@@ -590,7 +590,7 @@
             "object",
             "null"
           ],
-          "description": "The wallet bound to this box's names: {address, bound_at, record}, where `record` is the TXT value (`ENS1 2.dnsname.ens.eth a[60]=… a[e8453]=… a[e42161]=… a[e10]=…`) the edge publishes at `names` and the owner may add at a domain of their own. Null when none is bound."
+          "description": "The wallet bound to this box's names: {address, bound_at, record, published, published_at}, where `record` is the TXT value (`ENS1 dnsname.ens.eth 0x…`) the edge publishes at `names` and the owner may add at a domain of their own, and `published` maps each name to what public DNS showed of it when the edge last looked (`found`, `unsigned`, `other`, `missing`; a name not looked up yet is absent), at `published_at`. Null when none is bound."
         }
       },
       "description": "The edge's view of this box's custom domains (edge/registrar/src/domains.rs), plus `available`. The same document answers GET, add and remove."

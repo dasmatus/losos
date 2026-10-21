@@ -165,8 +165,9 @@ du nichts einrichten.
 Eine Box mit einem Namen auf der LosOS-Edge kann unter diesem Namen Zahlungen
 annehmen. Wer MetaMask, Rainbow oder eine andere Wallet nutzt, die an
 ENS-Namen sendet, tippt `mattbox.boxes.losos.dasmat.us` dort ein, wo eine
-Adresse hingehört, und das Geld landet in der Wallet der Box. Das gilt für ETH
-und Token wie USDC auf Ethereum, Base, Arbitrum und OP.
+Adresse hingehört, und das Geld landet in der Wallet der Box. Der Name ergibt
+eine Adresse, die Wallet der Box, und die ist auf Ethereum, Base, Arbitrum und
+OP dieselbe.
 
 Der Abschnitt **Bezahlt per Name** im Bereich Netzwerk listet die Namen der
 Box auf der Edge. **Wallet verknüpfen** bittet die Wallet, eine kurze
@@ -182,6 +183,18 @@ weg.
 Ist sie verknüpft, ist die Adresse öffentlich wie jede Adresse, die du
 herausgibst. Die Zone der Edge ist mit DNSSEC signiert, und deshalb vertraut
 ENS dem Eintrag.
+
+Neben jedem Namen sagt der Bereich, ob Wallets ihn schon finden. Eine Wallet
+fragt ENS, und ENS fragt das öffentliche DNS, das der Zone der Edge erst
+vertraut, wenn die Domain darüber auf die Edge zeigt und für ihre Signaturen
+bürgt. Bis dahin steht beim Namen **Wallets finden diesen Namen noch nicht**
+oder **Wallets vertrauen diesem Namen noch nicht**. Das richtet der Betreiber
+der Edge ein, die Box kann daran nichts ändern. Steht dort **Wallets finden
+diesen Namen**, kommen Zahlungen an.
+
+Die Wallet im Bereich Markt zahlt an Namen genauso: Tipp unter **USDC
+senden** in das Feld **Adresse oder ENS-Name** den Namen einer Box oder jeden
+Namen, den eine Wallet annehmen würde.
 
 Auch eine eigene Domain kann denselben Eintrag tragen. Unter jeder Domain
 zeigt der Bereich einen **TXT**-Eintrag, der mit `ENS1` beginnt; trag ihn

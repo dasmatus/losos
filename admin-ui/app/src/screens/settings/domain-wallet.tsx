@@ -13,8 +13,8 @@ import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, S
  * The edge serves the box's names in a DNSSEC-signed zone. Once the owner's
  * wallet signs the binding message, the edge puts an ENS record (`ENS1 …`)
  * at each of them, and a wallet that sends to ENS names (MetaMask, Rainbow,
- * Coinbase Wallet, viem) turns `mattbox.losos.cfd` into this address on
- * Ethereum, Base, Arbitrum and OP. The edge publishes only an address whose
+ * Coinbase Wallet, viem) turns `mattbox.losos.cfd` into this address, the
+ * same on every EVM network. The edge publishes only an address whose
  * wallet signed for this box, and only at the box's request; it holds the
  * zone, so the name is as trustworthy as the edge.
  *
@@ -25,6 +25,26 @@ import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, S
 
 interface Injected {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+}
+
+/* Whether a buyer's wallet finds the name, from the edge's last look at it
+ * in public DNS. An edge that predates that look says only what the name
+ * does once it is found. */
+function publishedDetail(t: ReturnType<typeof useT>, wallet: BoundWallet, name: string): string {
+  if (wallet.published === undefined) return t("panes.network.wallet.paysTo");
+  switch (wallet.published[name]) {
+    case "found":
+      return t("panes.network.wallet.published.found");
+    case "unsigned":
+      return t("panes.network.wallet.published.unsigned");
+    case "missing":
+    case "cname":
+      return t("panes.network.wallet.published.missing");
+    case "other":
+      return t("panes.network.wallet.published.other");
+    default:
+      return t("panes.network.wallet.published.checking");
+  }
 }
 
 function injected(): Injected | null {
@@ -128,8 +148,8 @@ export function DomainWallet({
     body = (
       <>
         {names.map((name) => (
-          <Row key={name} data-testid="wallet-name">
-            <RowText title={name} detail={t("panes.network.wallet.paysTo")} />
+          <Row key={name} data-testid="wallet-name" data-published={wallet.published?.[name] ?? "checking"}>
+            <RowText title={name} detail={publishedDetail(t, wallet, name)} />
             <RowValue className="numeric select-all" title={wallet.address}>
               {shortAddress(wallet.address)}
             </RowValue>

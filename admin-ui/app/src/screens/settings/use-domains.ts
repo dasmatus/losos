@@ -94,11 +94,14 @@ export function useDomains(enabled: boolean): DomainsData {
     return () => controller.abort();
   }, [enabled, tick]);
 
-  // Ask again while a domain waits to go live, and while the edge has yet
-  // to look for a bound wallet's record at one (a bind clears what it saw).
+  // Ask again while a domain waits to go live, while the edge has yet to
+  // look for a bound wallet's record at one (a bind clears what it saw), and
+  // while a wallet could not yet find one of the box's own names.
   const waiting =
     state.kind === "ready" &&
-    state.domains.some((d) => d.status === "waiting" || (state.wallet !== null && d.wallet === null));
+    (state.domains.some((d) => d.status === "waiting" || (state.wallet !== null && d.wallet === null)) ||
+      (state.wallet?.published !== undefined &&
+        state.names.some((name) => state.wallet?.published?.[name] !== "found")));
   React.useEffect(() => {
     if (!enabled || !waiting) return;
     const timer = window.setTimeout(refresh, DOMAINS_RECHECK_MS);

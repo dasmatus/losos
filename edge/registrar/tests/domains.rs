@@ -16,7 +16,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use common::{Edge, TenantSpec, DNS_ZONE, EDGE_IPV4, GOOD_TOKEN, OTHER_TOKEN};
 use k256::ecdsa::SigningKey;
-use losos_registrar::domains::{box_label, challenge_token, ens_record, wallet_message};
+use losos_registrar::domains::{self, box_label, challenge_token, ens_record, wallet_message};
 use losos_registrar::identity;
 use serde_json::{json, Value};
 use sha3::{Digest, Keccak256};
@@ -26,8 +26,9 @@ const THIRD_TOKEN: &str = "11112222333344445555666677778888111122223333444455556
 const MATT_UUID: &str = "0b1c2d3e-4f50-4617-8899-aabbccddeeff";
 const THIRD_UUID: &str = "11111111-2222-4333-8444-555555555555";
 
-/// `(name, type) → answers`, as the owner's DNS provider would publish them.
-type Records = Arc<Mutex<HashMap<(String, String), Vec<(u16, String)>>>>;
+/// `(name, type) → (answers, validated)`, as the owner's DNS provider would
+/// publish them and a validating resolver would see them.
+type Records = Arc<Mutex<HashMap<(String, String), (Vec<(u16, String)>, bool)>>>;
 
 struct Doh {
     url: String,
@@ -59,12 +60,21 @@ impl Doh {
     }
 
     fn set(&self, name: &str, rtype: &str, answers: &[(u16, &str)]) {
+        self.set_validated(name, rtype, answers, true);
+    }
+
+    /// `validated` false: the zone's signatures do not chain to the root
+    /// (no DS at the parent), so the resolver leaves the AD bit off.
+    fn set_validated(&self, name: &str, rtype: &str, answers: &[(u16, &str)], validated: bool) {
         self.records.lock().unwrap().insert(
             (name.to_string(), rtype.to_string()),
-            answers
-                .iter()
-                .map(|(t, d)| (*t, (*d).to_string()))
-                .collect(),
+            (
+                answers
+                    .iter()
+                    .map(|(t, d)| (*t, (*d).to_string()))
+                    .collect(),
+                validated,
+            ),
         );
     }
 }
@@ -86,10 +96,9 @@ async fn answer(
     let found = records.lock().unwrap().get(&(name.clone(), rtype)).cloned();
     match found {
         None => Json(json!({ "Status": 3 })),
-        // A validating resolver: the AD bit, as for a signed zone.
-        Some(answers) => Json(json!({
+        Some((answers, validated)) => Json(json!({
             "Status": 0,
-            "AD": true,
+            "AD": validated,
             "Answer": answers
                 .iter()
                 .map(|(t, d)| json!({ "name": name, "type": t, "TTL": 300, "data": d }))
@@ -879,6 +888,41 @@ async fn a_bound_wallet_is_published_at_the_box_names_and_checked_at_its_domains
         zone(&edge)
     );
 
+    // Whether a buyer's wallet finds them is public DNS's say, not the
+    // zone's: nothing while the parent has not delegated the zone, then an
+    // unsigned answer, then a validated one.
+    let hostname = "mattbox.boxes.example.test";
+    let published = |v: &Value, name: &str| v["wallet"]["published"][name].clone();
+    let wait_published = |name: String, want: &'static str| {
+        let edge = &edge;
+        async move {
+            // A name not found yet is looked up again every half minute.
+            let mut v = Value::Null;
+            for _ in 0..(10 * (domains::PENDING_RECHECK_SECS + 10)) {
+                v = list(edge, "mattbox", GOOD_TOKEN).await;
+                if published(&v, &name) == want {
+                    return v;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            panic!("{name} never read {want}: {v}");
+        }
+    };
+    let v = wait_published(hostname.to_string(), "missing").await;
+    assert_eq!(published(&v, &target), "missing", "{v}");
+    assert!(v["wallet"]["published_at"].is_u64(), "{v}");
+    doh.set_validated(hostname, "TXT", &[(16, &format!("\"{record}\""))], false);
+    wait_published(hostname.to_string(), "unsigned").await;
+    doh.set(hostname, "TXT", &[(16, &format!("\"{record}\""))]);
+    doh.set(&target, "TXT", &[(16, &format!("\"{record}\""))]);
+    wait_published(hostname.to_string(), "found").await;
+    // Once found, rechecked hourly, not every pass.
+    let v = wait_published(target.clone(), "found").await;
+    let checked = v["wallet"]["published_at"].as_u64().unwrap();
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    let v = list(&edge, "mattbox", GOOD_TOKEN).await;
+    assert_eq!(v["wallet"]["published_at"].as_u64(), Some(checked), "{v}");
+
     // An owner's domain: the record at the domain is looked up and reported.
     let domain = "cloud.example.org";
     let token = challenge_token(domain, MATT_UUID, "acct_test_1");
@@ -922,6 +966,7 @@ async fn a_bound_wallet_is_published_at_the_box_names_and_checked_at_its_domains
     );
     let stored = std::fs::read_to_string(edge.dir.join("domains.json")).unwrap();
     assert!(!stored.contains(&address), "{stored}");
+    assert!(!stored.contains("published"), "{stored}");
     edge.shutdown().await;
     let _ = std::fs::remove_dir_all(scratch);
 }

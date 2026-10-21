@@ -1030,7 +1030,7 @@ export function postMarketCoinPay(
 
 export interface RpcReply {
   result?: unknown;
-  error?: { code?: number; message?: string };
+  error?: { code?: number; message?: string; data?: unknown };
 }
 
 /** POST /api/market/rpc — one allowlisted chain call to `network`, or to
@@ -1474,6 +1474,11 @@ export interface BoundWallet {
   /** The TXT value (`ENS1 …`) at the box's names, and for the owner's own
    *  domains. */
   record: string;
+  /** What public DNS showed of each of the box's names when the edge last
+   *  looked: `found` means a buyer's wallet finds it. A name not looked up
+   *  yet is absent, and so is the map on an edge that predates the check. */
+  published?: Record<string, DomainWalletSeen>;
+  published_at?: number | null;
 }
 
 export interface CustomDomain {

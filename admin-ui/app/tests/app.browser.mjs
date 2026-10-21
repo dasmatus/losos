@@ -213,7 +213,14 @@ async function open({
     const sent = route.request().postDataJSON();
     domainPosts.push(['/api/domains/wallet', sent]);
     const wallet = sent.address
-      ? { address: sent.address, bound_at: 1791460000, record: ensRecord(sent.address) }
+      ? {
+          address: sent.address,
+          bound_at: 1791460000,
+          record: ensRecord(sent.address),
+          // Public DNS validates the hostname; the label is not looked up yet.
+          published: { 'mattbox.boxes.losos.dasmat.us': 'found' },
+          published_at: 1791460030,
+        }
       : null;
     domainsView = {
       ...domainsView,
@@ -376,7 +383,7 @@ const DOMAINS_READY = {
 /* The ENS record the edge publishes for a bound wallet
  * (edge/registrar/src/domains.rs, `ens_record`). */
 const ensRecord = (a) =>
-  `ENS1 2.dnsname.ens.eth a[60]=${a} a[e8453]=${a} a[e42161]=${a} a[e10]=${a}`;
+  `ENS1 dnsname.ens.eth ${a}`;
 /* What the wallet signs to bind (`wallet_message` there). */
 const walletMessage = (zone, box, a) => `LosOS box name v1\nzone: ${zone}\nbox: ${box}\naddress: ${a}\n`;
 
@@ -1848,9 +1855,12 @@ await check('a browser extension wallet binds to the box names, and unbinds', as
   const names = section.getByTestId('wallet-name');
   assert.equal(await names.count(), 2);
   assert.match(await names.nth(0).innerText(), /mattbox\.boxes\.losos\.dasmat\.us[\s\S]*0x4a62/);
+  // Whether a buyer's wallet finds each name, as public DNS last answered.
+  assert.match(await names.nth(0).innerText(), /Wallets find this name/);
+  assert.match(await names.nth(1).innerText(), /Checking whether wallets find this name/);
   // Each domain of the owner's offers the same record to add at the domain.
   const rows = page.getByTestId('custom-domains').getByTestId('custom-domain');
-  assert.match(await rows.nth(0).innerText(), new RegExp(`TXT\\s+cloud\\.example\\.org\\s+"ENS1 2\\.dnsname\\.ens\\.eth a\\[60\\]=${address}`));
+  assert.match(await rows.nth(0).innerText(), new RegExp(`TXT\\s+cloud\\.example\\.org\\s+"ENS1 dnsname\\.ens\\.eth ${address}"`));
   assert.match(await rows.nth(0).innerText(), /looks for this record at the domain on its next check/);
 
   await section.getByRole('button', { name: 'Unbind', exact: true }).click();

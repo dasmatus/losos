@@ -838,6 +838,31 @@ export default defineMessages({
     sk: "Peňaženky, ktoré posielajú na názvy ENS, platia do tejto peňaženky",
     de: "Wallets, die an ENS-Namen senden, zahlen an diese Wallet",
   },
+  "panes.network.wallet.published.found": {
+    en: "Wallets find this name and pay this wallet",
+    sk: "Peňaženky tento názov nájdu a platia do tejto peňaženky",
+    de: "Wallets finden diesen Namen und zahlen an diese Wallet",
+  },
+  "panes.network.wallet.published.unsigned": {
+    en: "Wallets do not trust this name yet: the zone above the edge's has not vouched for its signatures",
+    sk: "Peňaženky tomuto názvu zatiaľ neveria: zóna nad zónou okrajového servera ešte neručí za jej podpisy",
+    de: "Wallets vertrauen diesem Namen noch nicht: Die Zone über der des Edge bürgt noch nicht für ihre Signaturen",
+  },
+  "panes.network.wallet.published.missing": {
+    en: "Wallets do not find this name yet: public DNS does not reach the edge's zone",
+    sk: "Peňaženky tento názov zatiaľ nenájdu: verejné DNS sa k zóne okrajového servera nedostane",
+    de: "Wallets finden diesen Namen noch nicht: Das öffentliche DNS erreicht die Zone des Edge nicht",
+  },
+  "panes.network.wallet.published.other": {
+    en: "Public DNS still shows an older record here. It catches up within minutes",
+    sk: "Verejné DNS tu ešte ukazuje starší záznam. Dobehne ho do niekoľkých minút",
+    de: "Das öffentliche DNS zeigt hier noch einen älteren Eintrag. Es holt in wenigen Minuten auf",
+  },
+  "panes.network.wallet.published.checking": {
+    en: "Checking whether wallets find this name",
+    sk: "Overuje sa, či peňaženky tento názov nájdu",
+    de: "Es wird geprüft, ob Wallets diesen Namen finden",
+  },
   "panes.network.wallet.bound": {
     en: "Bound to this box's wallet",
     sk: "Prepojené s peňaženkou tohto zariadenia",
@@ -889,9 +914,9 @@ export default defineMessages({
     de: "Abbrechen",
   },
   "panes.network.wallet.caption": {
-    en: "The edge publishes the wallet's address at each of these names as an ENS record, in a zone it signs with DNSSEC, and only after checking the wallet's signature. It works on Ethereum, Base, Arbitrum and OP. To be paid at a domain of your own as well, add the TXT record shown under it; your DNS provider has to sign the domain with DNSSEC.",
-    sk: "Okrajový server zverejní adresu peňaženky pod každým z týchto názvov ako záznam ENS v zóne, ktorú podpisuje cez DNSSEC, a až po overení podpisu peňaženky. Funguje to na sietiach Ethereum, Base, Arbitrum a OP. Ak chcete platby aj na vlastnú doménu, pridajte záznam TXT uvedený pod ňou; váš poskytovateľ DNS musí doménu podpisovať cez DNSSEC.",
-    de: "Der Edge veröffentlicht die Adresse der Wallet unter jedem dieser Namen als ENS-Eintrag, in einer Zone, die er mit DNSSEC signiert, und erst nachdem er die Signatur der Wallet geprüft hat. Das funktioniert auf Ethereum, Base, Arbitrum und OP. Willst du auch unter einer eigenen Domain bezahlt werden, trag den TXT-Eintrag darunter ein; dein DNS-Anbieter muss die Domain mit DNSSEC signieren.",
+    en: "The edge publishes the wallet's address at each of these names as an ENS record, in a zone it signs with DNSSEC, and only after checking the wallet's signature. The address is the same on Ethereum, Base, Arbitrum and OP. To be paid at a domain of your own as well, add the TXT record shown under it; your DNS provider has to sign the domain with DNSSEC.",
+    sk: "Okrajový server zverejní adresu peňaženky pod každým z týchto názvov ako záznam ENS v zóne, ktorú podpisuje cez DNSSEC, a až po overení podpisu peňaženky. Adresa je rovnaká na sieťach Ethereum, Base, Arbitrum a OP. Ak chcete platby aj na vlastnú doménu, pridajte záznam TXT uvedený pod ňou; váš poskytovateľ DNS musí doménu podpisovať cez DNSSEC.",
+    de: "Der Edge veröffentlicht die Adresse der Wallet unter jedem dieser Namen als ENS-Eintrag, in einer Zone, die er mit DNSSEC signiert, und erst nachdem er die Signatur der Wallet geprüft hat. Die Adresse ist auf Ethereum, Base, Arbitrum und OP dieselbe. Willst du auch unter einer eigenen Domain bezahlt werden, trag den TXT-Eintrag darunter ein; dein DNS-Anbieter muss die Domain mit DNSSEC signieren.",
   },
   "panes.network.wallet.failedTitle": {
     en: "Wallet not bound",

@@ -52,7 +52,7 @@ let
   # as viem's signMessage makes it in the admin page.
   walletAddress = "0x4a62316623ad457f02cdc5d997ded67a383ec569";
   walletSignature = "0xf60bb8dd608847e9d8dcc4f85fc660e541f7b9050677dac6cf472873b4d01e622718b441f44b85d93219309bb09f4ab3a19894ef759bf155655b84c51c8370301c";
-  ensRecord = "ENS1 2.dnsname.ens.eth a[60]=${walletAddress} a[e8453]=${walletAddress} a[e42161]=${walletAddress} a[e10]=${walletAddress}";
+  ensRecord = "ENS1 dnsname.ens.eth ${walletAddress}";
 in
 
 pkgs.testers.nixosTest {

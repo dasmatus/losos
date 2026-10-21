@@ -62,6 +62,10 @@ const RPC_METHODS: &[&str] = &[
     "net_version",
 ];
 
+/// The registrar's `stablecoin::ENS_CCIP_METHOD`: an ENS lookup's offchain
+/// step (EIP-3668), relayed to ENS's DNS gateway by the edge.
+const ENS_CCIP_METHOD: &str = "ens_ccipRead";
+
 /// Solana methods the box will relay, the registrar's list
 /// (`edge/registrar/src/solana.rs`).
 const SOLANA_METHODS: &[&str] = &[
@@ -590,9 +594,12 @@ impl Op {
                 } else {
                     RPC_METHODS
                 };
+                // An offchain name lookup goes to ENS's gateway through the
+                // edge's ENS endpoint, never to a payment network.
+                let ccip = method == ENS_CCIP_METHOD && network.as_deref() == Some("ens");
                 if network.as_deref().is_some_and(|n| !network_key(n)) {
                     Err("network is not a network name")
-                } else if !methods.contains(&method.as_str()) {
+                } else if !ccip && !methods.contains(&method.as_str()) {
                     Err("that chain method is not forwarded")
                 } else if !params.starts_with('[') || params.len() > 8_000 {
                     Err("chain params must be a short array")
@@ -911,6 +918,10 @@ mod tests {
             .validate()
             .is_err());
         assert!(rpc("eth_call", Some("ens")).validate().is_ok());
+        // The offchain step of a name lookup, for ENS only.
+        assert!(rpc("ens_ccipRead", Some("ens")).validate().is_ok());
+        assert!(rpc("ens_ccipRead", Some("base")).validate().is_err());
+        assert!(rpc("ens_ccipRead", None).validate().is_err());
         assert!(rpc("eth_call", Some("../x")).validate().is_err());
         let body = rpc("getSlot", Some("solana-devnet"))
             .body("appliance-1", "tok")

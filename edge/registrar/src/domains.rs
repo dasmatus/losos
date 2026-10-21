@@ -61,6 +61,13 @@
 //! administrator). The zone is the edge's, so the name is only as good as the
 //! edge that signs it.
 //!
+//! Knot answering is not a wallet finding the name: a buyer's wallet asks
+//! ENS, whose gateway asks public DNS and proves the answer from the root.
+//! So while a wallet is bound the reconciler asks the DNS-over-HTTPS
+//! resolver for each of the box's names, as the gateway would, and records
+//! what it saw ([`Published`]): `found` once the record validates, which
+//! takes the parent zone delegating this one and publishing its DS.
+//!
 //! An owner's own domain lives in a zone the edge does not serve. The view
 //! gives the owner the same record to add at their DNS provider, and the
 //! reconciler reports what it finds there ([`WalletSeen`]); that never
@@ -107,14 +114,14 @@ pub const CHALLENGE_LABEL: &str = "_losos-challenge";
 pub const CHALLENGE_PREFIX: &str = "losos-domain-v1=";
 /// Default DNS-over-HTTPS endpoint (JSON API).
 pub const DEFAULT_DOH_URL: &str = "https://cloudflare-dns.com/dns-query";
-/// The ENS resolver a box name's `ENS1` record names: ENS's
-/// ExtendedDNSResolver, by the ENS name ENS points at the version that reads
-/// `a[...]=` records from the TXT record itself.
-pub const ENS_RESOLVER: &str = "2.dnsname.ens.eth";
-/// EVM chains, by chain id, a wallet may ask a name's address on besides
-/// Ethereum (`a[60]`): Base, Arbitrum One and OP Mainnet, the networks the
-/// market settles USDC on. ENSIP-11 keys them `a[e<chain id>]`.
-pub const ENS_CHAIN_IDS: [u64; 3] = [8453, 42161, 10];
+/// The ENS resolver a box name's `ENS1` record names: ENS's first DNS
+/// resolver, which answers the address after it for Ethereum, ABI-encoded
+/// the way every wallet decodes `addr`. Its successor, `2.dnsname.ens.eth`,
+/// reads per-chain `a[...]=` keys but answers a bare 20 bytes, which viem's
+/// default `getEnsAddress` and ethers fail to decode, so a buyer's wallet
+/// would find nothing. The box's wallet is one EOA, the same address on
+/// every EVM network, so the Ethereum answer pays it on Base too.
+pub const ENS_RESOLVER: &str = "dnsname.ens.eth";
 
 /// Everything `serve --dns-zone ...` was given.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,16 +188,10 @@ pub fn wallet_message(zone: &str, tenant: &str, address: &str) -> String {
     format!("LosOS box name v1\nzone: {zone}\nbox: {tenant}\naddress: {address}\n")
 }
 
-/// The TXT record that makes a name resolve to `address` in ENS: the same
-/// address on Ethereum and on every chain in [`ENS_CHAIN_IDS`]. One
-/// character-string, under the 255 bytes the resolver reads.
+/// The TXT record that makes a name resolve to `address` in ENS.
 #[must_use]
 pub fn ens_record(address: &str) -> String {
-    let mut out = format!("ENS1 {ENS_RESOLVER} a[60]={address}");
-    for id in ENS_CHAIN_IDS {
-        out.push_str(&format!(" a[e{id}]={address}"));
-    }
-    out
+    format!("ENS1 {ENS_RESOLVER} {address}")
 }
 
 /// `fqdn`, lowercased and without a trailing dot, if it lies strictly inside
@@ -375,6 +376,44 @@ impl Claim {
     }
 }
 
+/// What public DNS showed of a box's own names ([`box_names`]) the last
+/// time the edge looked, while a wallet is bound. Knot's answer proves
+/// nothing to a buyer: a wallet finds the name only through a resolver that
+/// validates it from the DNS root, which needs the parent zone to delegate
+/// this zone and publish its DS.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Published {
+    /// The address the lookup looked for.
+    pub address: String,
+    pub checked_at: u64,
+    /// Each name the lookup got an answer for. A name whose lookup failed
+    /// is left out and looked up again.
+    pub names: BTreeMap<String, WalletSeen>,
+}
+
+impl Published {
+    /// Whether `tenant`'s names are due a look for `address`: never looked
+    /// at, looked at for another address, or due again. Every name found is
+    /// rechecked hourly, anything else every half minute.
+    #[must_use]
+    pub fn due(this: Option<&Self>, address: &str, names: &[String], now: u64) -> bool {
+        let Some(p) = this else { return true };
+        if p.address != address {
+            return true;
+        }
+        let found = !names.is_empty()
+            && names
+                .iter()
+                .all(|n| p.names.get(n) == Some(&WalletSeen::Found));
+        let every = if found {
+            LIVE_RECHECK_SECS
+        } else {
+            PENDING_RECHECK_SECS
+        };
+        now.saturating_sub(p.checked_at) >= every
+    }
+}
+
 /// Everything persisted in `domains.json`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DomainsState {
@@ -383,6 +422,9 @@ pub struct DomainsState {
     /// Bound wallets, by tenant.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub wallets: BTreeMap<String, WalletBinding>,
+    /// What public DNS shows of each bound box's names, by tenant.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub published: BTreeMap<String, Published>,
 }
 
 /// What the box's Stripe account looks like to the edge, reduced to the two
@@ -621,6 +663,7 @@ pub fn bind_wallet(
 pub fn unbind_wallet(state: &DomainsState, tenant: &str) -> DomainsState {
     let mut next = state.clone();
     next.wallets.remove(tenant);
+    next.published.remove(tenant);
     for c in next.claims.iter_mut().filter(|c| c.tenant == tenant) {
         c.wallet = None;
     }
@@ -701,6 +744,10 @@ pub struct WalletView {
     pub bound_at: u64,
     /// The TXT value at every name below and for the owner's own domains.
     pub record: String,
+    /// What public DNS showed of each of the box's names when the edge last
+    /// looked ([`Published`]); a name not looked up yet is absent.
+    pub published: BTreeMap<String, WalletSeen>,
+    pub published_at: Option<u64>,
 }
 
 /// `POST /domains/list`, and the answer to every change.
@@ -782,10 +829,18 @@ pub fn view(
         box_id: tenant.to_string(),
         zone: opts.zone.clone(),
         names: box_names(opts, hostname, vouched),
-        wallet: wallet.map(|w| WalletView {
-            address: w.address.clone(),
-            bound_at: w.bound_at,
-            record: ens_record(&w.address),
+        wallet: wallet.map(|w| {
+            let published = state
+                .published
+                .get(tenant)
+                .filter(|p| p.address == w.address);
+            WalletView {
+                address: w.address.clone(),
+                bound_at: w.bound_at,
+                record: ens_record(&w.address),
+                published: published.map(|p| p.names.clone()).unwrap_or_default(),
+                published_at: published.map(|p| p.checked_at),
+            }
         }),
     }
 }
@@ -871,6 +926,10 @@ pub fn prune(state: &mut DomainsState, tenant_exists: impl Fn(&str) -> bool, now
             && (c.live() || now.saturating_sub(c.created_at) < PENDING_TTL_SECS)
     });
     state.wallets.retain(|t, _| tenant_exists(t));
+    let wallets = &state.wallets;
+    state
+        .published
+        .retain(|t, p| wallets.get(t).is_some_and(|w| w.address == p.address));
     (state.claims.len(), state.wallets.len()) != before
 }
 
@@ -1002,6 +1061,21 @@ impl Doh {
             .await
             .map_err(|e| format!("DNS-over-HTTPS answer is not JSON: {e}"))?;
         parse_doh_named(&body)
+    }
+
+    /// Look up the wallet record at each of a box's own names, as ENS's
+    /// gateway would. A name whose lookup failed is left out.
+    pub async fn published(&self, names: &[String], address: &str) -> BTreeMap<String, WalletSeen> {
+        let mut out = BTreeMap::new();
+        for name in names {
+            if let Ok((answers, validated)) = self.query_named(name, "TXT").await {
+                out.insert(
+                    name.clone(),
+                    wallet_seen(name, &answers, validated, address),
+                );
+            }
+        }
+        out
     }
 
     /// Run the lookups one claim needs: three, and a fourth for the wallet
@@ -1301,13 +1375,12 @@ mod tests {
             ),
             WalletSeen::Other
         );
-        // The right address on Ethereum is not enough: another resolver, a
-        // chain sent elsewhere or a chain left out does not pay this wallet.
-        let other = "0x1111111111111111111111111111111111111111";
+        // The right address is not enough: another resolver, or one whose
+        // answer wallets cannot decode, does not pay this wallet.
         for wrong in [
             record.replace(ENS_RESOLVER, "nonexistent.invalid"),
-            record.replace(&format!("a[e8453]={a}"), &format!("a[e8453]={other}")),
-            format!("ENS1 {ENS_RESOLVER} a[60]={a}"),
+            format!("ENS1 2.dnsname.ens.eth a[60]={a}"),
+            format!("{record} extra"),
         ] {
             assert_eq!(
                 wallet_seen(d, &[txt("example.org", &wrong)], true, a),

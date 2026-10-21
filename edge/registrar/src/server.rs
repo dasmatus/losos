@@ -1872,6 +1872,12 @@ async fn check_domains(st: &AppState) {
     {
         tracing::error!(target: Action::Domains.target(), "pruning domains failed: {e}");
     }
+    check_claims(st, store, doh, now).await;
+    check_published(st, store, doh, &tenants, now).await;
+}
+
+/// The claims half of [`check_domains`].
+async fn check_claims(st: &AppState, store: &domains::Domains, doh: &domains::Doh, now: u64) {
     let snapshot = store.snapshot().await;
     let due: Vec<domains::Claim> = snapshot
         .claims
@@ -1956,6 +1962,77 @@ async fn check_domains(st: &AppState) {
         .await;
     if let Err(e) = outcome {
         tracing::error!(target: Action::Domains.target(), "recording domain checks failed: {e}");
+    }
+}
+
+/// Ask public DNS for the wallet record at the names of every box with a
+/// wallet bound ([`domains::Published`]), at most
+/// [`domains::CHECKS_PER_PASS`] boxes a pass. Like the claims, the lookups
+/// run with no lock held and are dropped if the wallet changed meanwhile.
+async fn check_published(
+    st: &AppState,
+    store: &domains::Domains,
+    doh: &domains::Doh,
+    tenants: &HashMap<String, TenantEntry>,
+    now: u64,
+) {
+    let snapshot = store.snapshot().await;
+    let mut due = Vec::new();
+    for (tenant, wallet) in &snapshot.wallets {
+        if due.len() == domains::CHECKS_PER_PASS {
+            break;
+        }
+        let Some(entry) = tenants.get(tenant) else {
+            continue;
+        };
+        let vouched = vouched_for(st, tenant).await;
+        let names = domains::box_names(&store.opts, Some(&entry.hostname), vouched.as_ref());
+        if !names.is_empty()
+            && domains::Published::due(snapshot.published.get(tenant), &wallet.address, &names, now)
+        {
+            due.push((tenant.clone(), wallet.address.clone(), names));
+        }
+    }
+    if due.is_empty() {
+        return;
+    }
+    let mut results = Vec::with_capacity(due.len());
+    for (tenant, address, names) in due {
+        let seen = doh.published(&names, &address).await;
+        results.push((tenant, address, seen));
+    }
+    let outcome = store
+        .update(|s| {
+            let mut next = s.clone();
+            for (tenant, address, seen) in &results {
+                if next
+                    .wallets
+                    .get(tenant)
+                    .is_none_or(|w| w.address != *address)
+                {
+                    continue;
+                }
+                let before = next.published.get(tenant).map(|p| p.names.clone());
+                if before.as_ref() != Some(seen) {
+                    tracing::info!(
+                        target: Action::Domains.target(),
+                        "{tenant}'s names in public DNS: {seen:?}",
+                    );
+                }
+                next.published.insert(
+                    tenant.clone(),
+                    domains::Published {
+                        address: address.clone(),
+                        checked_at: now,
+                        names: seen.clone(),
+                    },
+                );
+            }
+            Ok(next)
+        })
+        .await;
+    if let Err(e) = outcome {
+        tracing::error!(target: Action::Domains.target(), "recording name checks failed: {e}");
     }
 }
 

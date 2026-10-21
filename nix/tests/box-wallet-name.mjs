@@ -2,11 +2,13 @@
 //
 // Signs in to mattbox.local through LosOS Login, opens Settings, Network and,
 // in `after` mode, binds the wallet made on this box to the box's name: Bind
-// wallet, the wallet's password typed one key at a time, Sign. Every state is
-// saved as a PNG under --out:
+// wallet, the wallet's password typed one key at a time, Sign. In `found`
+// mode, run once public DNS validates the name, it shows the pane saying
+// wallets find it. Every state is saved as a PNG under --out:
 //
 //   pr/<mode>/network-{light,dark}.png      the Network pane, scrolled to the end
 //   pr/after/network-bound-{light,dark}.png the same once the wallet is bound
+//   pr/found/network-found-{light,dark}.png the same once wallets find the name
 //   film/name-pay/NN-<slug>.png             each state the owner sees, in dark,
 //   film/name-pay/manifest.json             with what happens next and where
 //
@@ -16,7 +18,7 @@
 //
 // Playwright is nixpkgs' playwright-driver, named by $PLAYWRIGHT_CORE.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -92,7 +94,16 @@ async function save(page, path) {
   await page.screenshot({ path: full });
 }
 
-const steps = [];
+const MANIFEST = () => join(args.out, "film/name-pay/manifest.json");
+// A later mode adds to the steps an earlier one filmed.
+const steps = existsSync(MANIFEST()) ? JSON.parse(readFileSync(MANIFEST(), "utf8")).steps : [];
+function writeManifest() {
+  writeFileSync(
+    MANIFEST(),
+    `${JSON.stringify({ feature: "name-pay", viewport: VIEWPORT, dpr: 2, commit: "unknown", test: "losos-box-wallet-name", steps }, null, 2)}\n`,
+  );
+}
+
 async function film(page, slug, title, action, targets = {}) {
   const file = `${String(steps.length + 1).padStart(2, "0")}-${slug}.png`;
   await save(page, join("film/name-pay", file));
@@ -125,9 +136,14 @@ async function context(browser, colorScheme) {
 async function openNetwork(page) {
   await page.goto(`${BASE}/settings/network`);
   await page.getByTestId("custom-domains").waitFor();
+  // The edge's answer draws the last section; scroll once it is there.
+  if (args.mode !== "before") await page.getByTestId("domain-wallet").waitFor();
   await settle(page);
-  await page.evaluate(scrollToEnd);
-  await settle(page);
+  // Twice: a late layout change (a font, the edge's answer) can move the end.
+  for (let i = 0; i < 2; i++) {
+    await page.evaluate(scrollToEnd);
+    await settle(page);
+  }
 }
 
 async function prShots(browser, name) {
@@ -143,7 +159,9 @@ async function prShots(browser, name) {
 async function bind(browser) {
   const ctx = await context(browser, "dark");
   const page = await ctx.newPage();
-  await page.goto(`${BASE}/settings/network`);
+  // Seal on another page, so the Network pane below is a fresh load.
+  await page.goto(`${BASE}/`);
+  await page.waitForLoadState("networkidle");
   await page.evaluate(seal, { phrase: PHRASE, address: ADDRESS, password: WALLET_PASSWORD });
   await openNetwork(page);
 
@@ -172,26 +190,48 @@ async function bind(browser) {
   }
 
   await sign.click();
-  await section.getByTestId("wallet-name").first().waitFor({ timeout: 300_000 });
+  const name = section.getByTestId("wallet-name").first();
+  await name.waitFor({ timeout: 300_000 });
+  // Until the edge's first look at public DNS the row says it is checking.
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="wallet-name"]')?.getAttribute("data-published") !== "checking",
+    null,
+    { timeout: 120_000 },
+  );
   await settle(page);
   await page.evaluate(scrollToEnd);
   await settle(page);
   const after = await section.innerText();
   if (!after.includes(NAME) || !after.includes(ADDRESS.toLowerCase())) throw new Error(`not bound: ${after}`);
-  await film(page, "bound", `Bound: ${NAME} pays this box's wallet`, { kind: "none" },
-    { section, name: section.getByTestId("wallet-name").first() });
+  await film(page, "bound", `Bound to ${NAME}; wallets do not find the name until public DNS vouches for the zone`,
+    { kind: "none" }, { section, name });
+  writeManifest();
+  await ctx.close();
+}
 
-  writeFileSync(
-    join(args.out, "film/name-pay/manifest.json"),
-    `${JSON.stringify({ feature: "name-pay", viewport: VIEWPORT, dpr: 2, commit: "unknown", test: "losos-box-wallet-name", steps }, null, 2)}\n`,
-  );
+async function found(browser) {
+  const ctx = await context(browser, "dark");
+  const page = await ctx.newPage();
+  await openNetwork(page);
+  const section = page.getByTestId("domain-wallet");
+  const name = section.locator('[data-testid="wallet-name"][data-published="found"]');
+  await name.waitFor({ timeout: 120_000 });
+  await settle(page);
+  await film(page, "wallets-find-it", `${NAME} resolves: wallets find it and pay this box`, { kind: "none" },
+    { section, name });
+  writeManifest();
   await ctx.close();
 }
 
 const browser = await chromium.launch();
-await prShots(browser, "network");
-if (args.mode === "after") {
-  await bind(browser);
-  await prShots(browser, "network-bound");
+if (args.mode === "found") {
+  await found(browser);
+  await prShots(browser, "network-found");
+} else {
+  await prShots(browser, "network");
+  if (args.mode === "after") {
+    await bind(browser);
+    await prShots(browser, "network-bound");
+  }
 }
 await browser.close();

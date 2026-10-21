@@ -243,11 +243,7 @@ mod tests {
         let record = crate::domains::ens_record(address);
         assert_eq!(
             record,
-            "ENS1 2.dnsname.ens.eth \
-             a[60]=0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed \
-             a[e8453]=0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed \
-             a[e42161]=0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed \
-             a[e10]=0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"
+            "ENS1 dnsname.ens.eth 0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"
         );
         assert!(record.len() <= 255, "{}", record.len());
         let mut names = ZoneNames::default();
