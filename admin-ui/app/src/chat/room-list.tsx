@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
-import { directPartner, directRooms, isContactsBook, isSpace, lastActive, memberName, plainBody, ROOM_EVENTS, roomName, spaceChildren, unread, useEmitted } from "./model";
+import { directPartner, directRooms, isSpace, lastActive, memberName, plainBody, ROOM_EVENTS, roomName, spaceChildren, unread, useEmitted } from "./model";
 
 export interface RoomListProps {
   client: MatrixClient;
@@ -91,7 +91,7 @@ export function RoomList({ client, current, space, filter, onOpen, onNewRoom, on
 
   const { invites, people, rooms } = React.useMemo(() => {
     const direct = directRooms(client);
-    const all = client.getRooms().filter((room) => !isSpace(room) && !isContactsBook(room));
+    const all = client.getRooms().filter((room) => !isSpace(room));
     const spaceRoom = space === null ? null : client.getRoom(space);
     const inSpace = space === null ? null : new Set(spaceRoom === null ? [] : spaceChildren(spaceRoom));
     const wanted = filter.trim().toLowerCase();

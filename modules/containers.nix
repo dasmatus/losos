@@ -111,10 +111,10 @@ let
   # on the shared side, so with sharing off there is no /mail at all
   # (modules/mail.nix).
   mailEnabled = adminEnabled && config.lososInternal.mail.live;
-  # LosOS Contacts' screen (admin-ui/app/src/contacts/): each book is kept
-  # in chat's homeserver (backend/src/contacts.rs), so it exists exactly
-  # where chat runs.
-  contactsEnabled = adminEnabled && config.lososInternal.chat;
+  # LosOS Contacts' screen (admin-ui/app/src/contacts/): the book is LosOS
+  # Cloud's address books (backend/src/cloud/contacts.rs), so it exists
+  # exactly where LosOS Cloud runs.
+  contactsEnabled = adminEnabled && config.lososInternal.appSignIn.cloud;
 
   # Access guard for the admin surface (the SPA, its assets, the setup routes,
   # the lososd API): local network only. Master-proxy traffic must never reach
@@ -590,9 +590,9 @@ in
           "/mail/".return = "404";
         })
         (lib.mkIf (adminEnabled && !contactsEnabled) {
-          # LosOS Contacts is a screen of the SPA at /contacts while chat
-          # runs. Without chat there is no book: both spellings answer 404,
-          # as /api/contacts does.
+          # LosOS Contacts is a screen of the SPA at /contacts while LosOS
+          # Cloud runs. Without it there is no book: both spellings answer
+          # 404, as /cloud/api/ does.
           "= /contacts".return = "404";
           "/contacts/".return = "404";
         })

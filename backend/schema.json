@@ -1621,7 +1621,7 @@
       },
       "GET /api/me": {
         "auth": true,
-        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"], \"standalone\": bool, \"edge\": bool, \"locked\": [\"twoFactor\"|\"password\"], \"shared\": [\"chat\", \"contacts\"]}",
+        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"], \"standalone\": bool, \"edge\": bool, \"locked\": [\"twoFactor\"|\"password\"], \"shared\": [\"mail\", \"chat\", \"contacts\"]}",
         "note": "Who is calling (backend/src/http.rs, get_me). A person signed in at the box's sign-in page (Authelia at /auth/) arrives as the Remote-User nginx sets from Authelia's answer; lososd looks them up in the people file it writes (backend/src/people.rs) and answers with their name, groups and the sections of backend/sections.json those groups open. `standalone` is true when this box signs people in itself (LOSOS_IDENTITY=authelia), which is when the Users pane is shown. The spare key answers with name null, admin true and spareKey true. The admin pages show the panes `sections` names and hide the rest. 401 signed out; 403 with noAccount:true for a Remote-User the people file does not hold (removed since they signed in). A company edge the owner lets manage the box (POST /api/edge/manage) answers with edge true, name null, admin false and the sections it may use. `locked` lists what a rule of LosOS Login holds the person to their own account for (backend/src/login.rs); while it is not empty, `sections` is [\"account\"], `admin` is false, and every other route but the signed-in ones answers 403 with locked:true. `shared` (a person's only) names the apps that run as the `shared` user and are live on this box now, which is only while it shares its storage: the page draws their entries only when they are named here."
       },
       "GET /api/chat": {
@@ -1634,60 +1634,10 @@
         "out": "{\"people\": [{\"userId\": \"@<name>:<serverName>\", \"displayName\": \"...\"}]}",
         "note": "Everyone in LosOS Login who may chat, so the page can offer them before they have ever signed in: Dendrite's user directory lists only people who share a room. Makes each one's account through the application service on first sight, keeping the display name in step; a disabled person or one a rule of LosOS Login holds is left out. 403 for the spare key and the edge; 503 while the homeserver starts; 404 when chat is not live."
       },
-      "GET /api/contacts": {
-        "auth": true,
-        "out": "{\"available\": true, \"contacts\": [{\"id\": \"<32 hex>\", \"name\": \"...\", \"n\"?: {\"family\", \"given\", \"additional\", \"prefix\", \"suffix\"}, \"nickname\"?, \"org\"?, \"title\"?, \"emails\"?: [{\"value\", \"label\"}], \"phones\"?: [{\"value\", \"label\"}], \"addresses\"?: [{\"street\", \"locality\", \"region\", \"code\", \"country\", \"label\"}], \"urls\"?: [{\"value\", \"label\"}], \"birthday\"?: \"YYYY-MM-DD\"|\"--MM-DD\", \"note\"?, \"matrix\"?: \"@name:server\", \"mesh\"?: \"name@box\", \"uid\", \"photo\"?: \"/api/contacts/<id>/photo?v=<updated>\", \"updated\": ms}]}",
-        "note": "LosOS Contacts (backend/src/contacts.rs): the caller's own book, by name. Kept in Matrix: a private room per person (create type org.losos.contacts, m.federate false) named by their account data org.losos.contacts, one org.losos.contact state event per contact, written by lososd as the person through chat's application service. 404 {\"available\": false, \"error\"} when chat is not live on this box; 403 for the spare key and the edge; 503 while the homeserver starts."
-      },
-      "POST /api/contacts": {
-        "auth": true,
-        "out": "{\"id\": \"<32 hex>\", \"name\": \"...\", \"n\"?: {\"family\", \"given\", \"additional\", \"prefix\", \"suffix\"}, \"nickname\"?, \"org\"?, \"title\"?, \"emails\"?: [{\"value\", \"label\"}], \"phones\"?: [{\"value\", \"label\"}], \"addresses\"?: [{\"street\", \"locality\", \"region\", \"code\", \"country\", \"label\"}], \"urls\"?: [{\"value\", \"label\"}], \"birthday\"?: \"YYYY-MM-DD\"|\"--MM-DD\", \"note\"?, \"matrix\"?: \"@name:server\", \"mesh\"?: \"name@box\", \"uid\", \"photo\"?: \"/api/contacts/<id>/photo?v=<updated>\", \"updated\": ms}",
-        "note": "A new contact from the body's fields (the CONTACT shape without id, photo and updated). Every field is cleaned as an import cleans it; 400 when nothing is left to call the contact by. The photo is PUT /api/contacts/{id}/photo. 404 {\"available\": false, \"error\"} when chat is not live on this box; 403 for the spare key and the edge; 503 while the homeserver starts."
-      },
-      "POST /api/contacts/import": {
-        "auth": true,
-        "out": "{\"added\": n, \"updated\": n, \"skipped\": n, \"photosDropped\": n, \"leftOut\": n}",
-        "note": "The body is a vCard file (4.0, 3.0 or 2.1; one card or many; at most 16 MiB and 5000 cards). A card whose UID is in the book, or without one whose name and first email or phone match a contact, updates that contact; the rest are added. Embedded photos are scaled to 160 px; a photo by URL is never fetched. 404 {\"available\": false, \"error\"} when chat is not live on this box; 403 for the spare key and the edge; 503 while the homeserver starts."
-      },
-      "GET /api/contacts/export": {
-        "auth": true,
-        "out": "text/vcard attachment contacts.vcf",
-        "note": "?version=3.0 (default) or 4.0, ?ids=a,b for some contacts only (404 when none of them is in the book). 404 {\"available\": false, \"error\"} when chat is not live on this box; 403 for the spare key and the edge; 503 while the homeserver starts."
-      },
       "GET /api/contacts/suggest": {
         "auth": true,
-        "out": "{\"available\": true, \"contacts\": [{\"key\": \"contact:<id>\"|\"box:<name>\", \"source\": \"contact\"|\"box\", \"name\", \"picture\"?, \"emails\": [\"...\"], \"matrixId\"?, \"meshAddress\"?, \"contactId\"?}]}",
-        "note": "People pickers (Mail's To and Cc, starting a chat, mesh sharing, @-mentions): ?q=&want=any|email|matrix|mesh|box&limit=8 (1 to 50). The caller's contacts and the people on this box, best match first, accents ignored; a box person who is a contact by Matrix ID shows once, as the contact; want=mesh offers contacts only; want=box offers everyone on this box but the caller, contacts or not, and no contacts. 404 {\"available\": false, \"error\"} when chat is not live on this box; 403 for the spare key and the edge; 503 while the homeserver starts."
-      },
-      "GET /api/contacts/{id}": {
-        "auth": true,
-        "out": "{\"id\": \"<32 hex>\", \"name\": \"...\", \"n\"?: {\"family\", \"given\", \"additional\", \"prefix\", \"suffix\"}, \"nickname\"?, \"org\"?, \"title\"?, \"emails\"?: [{\"value\", \"label\"}], \"phones\"?: [{\"value\", \"label\"}], \"addresses\"?: [{\"street\", \"locality\", \"region\", \"code\", \"country\", \"label\"}], \"urls\"?: [{\"value\", \"label\"}], \"birthday\"?: \"YYYY-MM-DD\"|\"--MM-DD\", \"note\"?, \"matrix\"?: \"@name:server\", \"mesh\"?: \"name@box\", \"uid\", \"photo\"?: \"/api/contacts/<id>/photo?v=<updated>\", \"updated\": ms}",
-        "note": "One contact; 404 when it is not in the caller's book. 404 {\"available\": false, \"error\"} when chat is not live on this box; 403 for the spare key and the edge; 503 while the homeserver starts."
-      },
-      "PUT /api/contacts/{id}": {
-        "auth": true,
-        "out": "{\"id\": \"<32 hex>\", \"name\": \"...\", \"n\"?: {\"family\", \"given\", \"additional\", \"prefix\", \"suffix\"}, \"nickname\"?, \"org\"?, \"title\"?, \"emails\"?: [{\"value\", \"label\"}], \"phones\"?: [{\"value\", \"label\"}], \"addresses\"?: [{\"street\", \"locality\", \"region\", \"code\", \"country\", \"label\"}], \"urls\"?: [{\"value\", \"label\"}], \"birthday\"?: \"YYYY-MM-DD\"|\"--MM-DD\", \"note\"?, \"matrix\"?: \"@name:server\", \"mesh\"?: \"name@box\", \"uid\", \"photo\"?: \"/api/contacts/<id>/photo?v=<updated>\", \"updated\": ms}",
-        "note": "The contact's fields replaced; its photo and UID stay. 404 {\"available\": false, \"error\"} when chat is not live on this box; 403 for the spare key and the edge; 503 while the homeserver starts."
-      },
-      "DELETE /api/contacts/{id}": {
-        "auth": true,
-        "out": "{\"removed\": \"<id>\"}",
-        "note": "Clears the contact's state event (the room's history keeps earlier versions). 404 {\"available\": false, \"error\"} when chat is not live on this box; 403 for the spare key and the edge; 503 while the homeserver starts."
-      },
-      "GET /api/contacts/{id}/photo": {
-        "auth": true,
-        "out": "image/jpeg",
-        "note": "The photo, 160 px square. Cached as immutable: the list's ?v= changes with every save."
-      },
-      "PUT /api/contacts/{id}/photo": {
-        "auth": true,
-        "out": "{\"id\": \"<32 hex>\", \"name\": \"...\", \"n\"?: {\"family\", \"given\", \"additional\", \"prefix\", \"suffix\"}, \"nickname\"?, \"org\"?, \"title\"?, \"emails\"?: [{\"value\", \"label\"}], \"phones\"?: [{\"value\", \"label\"}], \"addresses\"?: [{\"street\", \"locality\", \"region\", \"code\", \"country\", \"label\"}], \"urls\"?: [{\"value\", \"label\"}], \"birthday\"?: \"YYYY-MM-DD\"|\"--MM-DD\", \"note\"?, \"matrix\"?: \"@name:server\", \"mesh\"?: \"name@box\", \"uid\", \"photo\"?: \"/api/contacts/<id>/photo?v=<updated>\", \"updated\": ms}",
-        "note": "The body is a picture (JPEG, PNG, GIF, WebP; at most 8 MiB), turned upright, cropped square, scaled to 160 px and re-encoded, so nothing of the file's metadata stays."
-      },
-      "DELETE /api/contacts/{id}/photo": {
-        "auth": true,
-        "out": "{\"id\": \"<32 hex>\", \"name\": \"...\", \"n\"?: {\"family\", \"given\", \"additional\", \"prefix\", \"suffix\"}, \"nickname\"?, \"org\"?, \"title\"?, \"emails\"?: [{\"value\", \"label\"}], \"phones\"?: [{\"value\", \"label\"}], \"addresses\"?: [{\"street\", \"locality\", \"region\", \"code\", \"country\", \"label\"}], \"urls\"?: [{\"value\", \"label\"}], \"birthday\"?: \"YYYY-MM-DD\"|\"--MM-DD\", \"note\"?, \"matrix\"?: \"@name:server\", \"mesh\"?: \"name@box\", \"uid\", \"photo\"?: \"/api/contacts/<id>/photo?v=<updated>\", \"updated\": ms}",
-        "note": "The photo removed."
+        "out": "{\"contacts\": [{\"key\": \"contact:<id>\"|\"box:<name>\", \"source\": \"contact\"|\"box\", \"name\", \"picture\"?, \"emails\": [\"...\"], \"matrixId\"?, \"meshAddress\"?, \"contactId\"?}]}",
+        "note": "People pickers (Mail's To and Cc, starting a chat, the Contacts book's On this box, mesh sharing, @-mentions): ?q=&want=any|email|matrix|mesh|box&limit=8 (1 to 50). The caller's contacts, from LosOS Cloud's address books (GET /cloud/api/contacts/suggest as the caller, backend/src/cloud/contacts.rs, which also keeps the book itself under /cloud/api/contacts/), and the people on this box, best match first, accents ignored. A box person who is a contact by Matrix ID shows once, as the contact; want=mesh offers contacts only; want=box offers everyone on this box but the caller, contacts or not, and no contacts. Box people carry a matrixId only where chat runs and an address only where mail does; without LosOS Cloud there are no contacts. 403 for the spare key and the edge."
       },
       "POST /api/chat/session": {
         "auth": true,

@@ -154,6 +154,13 @@ pub enum CloudRequest<'a> {
         user: &'a str,
         display_name: &'a str,
     },
+    /// `user`'s contacts that match `query`, for a people picker
+    /// (`crate::contacts`): `want` is `any`, `email`, `matrix` or `mesh`.
+    ContactMatches {
+        user: &'a str,
+        query: &'a str,
+        want: &'a str,
+    },
 }
 
 const PROPFIND_BODY: &str = concat!(
@@ -210,6 +217,18 @@ pub fn request_bytes(request: &CloudRequest<'_>) -> Vec<u8> {
             out.push_str(&person(user));
             out.push_str(&format!("X-Losos-Cloud-Name: {}\r\n", clean(display_name)));
             out.push_str("OCS-APIRequest: true\r\n");
+            out.push_str(&format!("User-Agent: {KEY_CLIENT}\r\n"));
+            out.push_str("Connection: close\r\n\r\n");
+        }
+        CloudRequest::ContactMatches { user, query, want } => {
+            let q = url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("q", query)
+                .append_pair("want", want)
+                .finish();
+            out.push_str(&format!("GET /cloud/api/contacts/suggest?{q} HTTP/1.1\r\n"));
+            out.push_str("Host: localhost\r\n");
+            out.push_str(&person(user));
+            out.push_str("Accept: application/json\r\n");
             out.push_str(&format!("User-Agent: {KEY_CLIENT}\r\n"));
             out.push_str("Connection: close\r\n\r\n");
         }
