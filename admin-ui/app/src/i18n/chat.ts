@@ -35,6 +35,11 @@ export default defineMessages({
     sk: "Chat sa neotvoril.",
     de: "Der Chat hat sich nicht geöffnet.",
   },
+  "chat.boot.refusedAgain": {
+    en: "The box signed this browser out of chat several times in a row.",
+    sk: "Zariadenie odhlásilo tento prehliadač z chatu niekoľkokrát za sebou.",
+    de: "Das Gerät hat diesen Browser mehrmals hintereinander vom Chat abgemeldet.",
+  },
   "chat.boot.retry": { en: "Try again", sk: "Skúsiť znova", de: "Erneut versuchen" },
 
   // ── the room list ──

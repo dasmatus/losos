@@ -69,13 +69,26 @@ export function ChatRoot() {
   const t = useT();
   const [boot, setBoot] = React.useState<Boot>({ state: "loading" });
   const [attempt, setAttempt] = React.useState(0);
+  // When each recent device was signed out, so a homeserver that refuses
+  // every new device too does not get asked for one again and again.
+  const signedOut = React.useRef<number[]>([]);
 
   React.useEffect(() => {
     let live = true;
     setBoot({ state: "loading" });
     (async () => {
       const signed = await signIn();
-      onSignedOut(signed.client, () => setAttempt((n) => n + 1));
+      onSignedOut(signed.client, () => {
+        const now = Date.now();
+        const recent = [...signedOut.current.filter((at) => now - at < 60_000), now];
+        signedOut.current = recent;
+        if (recent.length >= 3) {
+          signedOut.current = [];
+          if (live) setBoot({ state: "refused", why: "broken", message: t("chat.boot.refusedAgain") });
+          return;
+        }
+        setAttempt((n) => n + 1);
+      });
       await start(signed.client);
       if (live) {
         signedHere(signed);

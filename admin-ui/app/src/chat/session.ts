@@ -216,6 +216,9 @@ export async function signIn(): Promise<Signed> {
     deviceId: session.deviceId,
     timelineSupport: true,
     useAuthorizationHeader: true,
+    // nginx asks LosOS Login about every homeserver request, so the sign-in
+    // cookie has to travel with them; the SDK's own fetch leaves it out.
+    fetchFn: (input, init) => fetch(input, { ...init, credentials: "same-origin" }),
     cryptoCallbacks: {
       getSecretStorageKey: ({ keys: wanted }) => keys.get(Object.keys(wanted)),
       cacheSecretStorageKey: (keyId, _info, key) => keys.set(keyId, key),
