@@ -77,6 +77,8 @@ const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 /* LosOS Mail (src/mail/): only on the shared side, so most boxes never
  * fetch it. */
 const Mail = React.lazy(() => import("@/mail/app"));
+/* Mesh CI (src/ci/): on the shared side too, beside LosOS Git. */
+const Ci = React.lazy(() => import("@/ci/app"));
 const WidgetBoard = React.lazy(() =>
   import("@/widgets/board").then((m) => ({ default: m.WidgetBoard })),
 );
@@ -322,6 +324,10 @@ function Shell() {
                 (modules/containers.nix); the screen says so too if the box
                 leaves it while the page is open. */}
             <Route path="/mail" element={<Mail />} />
+            {/* The same for Mesh CI. LosOS Git's checks link a run's job as
+                /ci/runs/<id>#job-<job>. */}
+            <Route path="/ci" element={<Ci />} />
+            <Route path="/ci/runs/:id" element={<Ci />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />

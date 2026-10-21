@@ -8,6 +8,7 @@ import access from "./access";
 import account from "./account";
 import advanced from "./advanced";
 import apps from "./apps";
+import ci from "./ci";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import home from "./home";
@@ -56,6 +57,7 @@ export const MESSAGES = {
   ...pins,
   ...manage,
   ...mail,
+  ...ci,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

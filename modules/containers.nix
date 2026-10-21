@@ -132,6 +132,9 @@ let
   # on the shared side, so with sharing off there is no /mail at all
   # (modules/mail.nix).
   mailEnabled = adminEnabled && config.lososInternal.mail.live;
+  # Mesh CI's screen (admin-ui/app/src/screens/ci/), the same way: only
+  # while Mesh CI runs (modules/ci.nix).
+  ciEnabled = adminEnabled && config.lososInternal.ci.live;
 
   # Access guard for the admin surface (the SPA, its assets, the setup routes,
   # the lososd API): local network only. Master-proxy traffic must never reach
@@ -593,6 +596,11 @@ in
           # mail page: both spellings answer 404.
           "= /mail".return = "404";
           "/mail/".return = "404";
+        })
+        (lib.mkIf (adminEnabled && !ciEnabled) {
+          # Mesh CI's screen at /ci, gone with Mesh CI.
+          "= /ci".return = "404";
+          "/ci/".return = "404";
         })
         (lib.mkIf labLibvirt {
           # The Lab guests' serial consoles and network cards, as WebSockets

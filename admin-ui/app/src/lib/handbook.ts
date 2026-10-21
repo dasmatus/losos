@@ -38,6 +38,7 @@ export const HANDBOOK_ENTRIES = {
   "backup-and-erase": "manual/backup-and-erase/",
   terminal: "manual/terminal/",
   mail: "manual/mail/",
+  "mesh-ci": "manual/mesh-ci/",
   "custom-domain": "types/official-edge/",
   "edge-manages-box": "types/company-edge/",
   tpm: "reference/tpm/",

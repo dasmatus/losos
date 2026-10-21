@@ -169,8 +169,9 @@ async fn set_lend(ci: Shared, req: HttpRequest, body: web::Json<LendReq>) -> Htt
         return say(StatusCode::BAD_REQUEST, "lend is always, window or never.");
     };
     let ci = ci.get_ref().clone();
+    let name = lend.as_str();
     match blocking(move || ci.set_lend(lend)).await {
-        Ok(()) => HttpResponse::NoContent().finish(),
+        Ok(()) => HttpResponse::Ok().json(json!({ "lend": name })),
         Err(e) => failed(e),
     }
 }

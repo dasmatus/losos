@@ -951,7 +951,15 @@ let
     ++ accessArgs
     ++ manageArgs
     ++ inferenceArgs
+    ++ ciArgs
   );
+
+  # Mesh CI's job queue (edge/registrar/src/ci.rs): the jobs boxes hand
+  # over, kept in the registrar's StateDirectory across restarts.
+  ciArgs = lib.optionals cfg.ci.enable [
+    "--ci-dir"
+    "/var/lib/losos-registrar/ci"
+  ];
 
   # Models split across boxes (losos.edge.inference,
   # modules/edge-inference.nix): the catalogue, the loopback ports the

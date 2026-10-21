@@ -3012,3 +3012,150 @@ export function sendMail(draft: MailDraft): Promise<{ ok: true }> {
     body: JSON.stringify(draft),
   });
 }
+
+// ── Mesh CI (backend/src/ci/, through lososd's ci plugin) ───────────────
+
+export type CiState = "queued" | "running" | "success" | "failure" | "cancelled" | "skipped" | "error";
+export type CiLend = "always" | "window" | "never";
+
+/** GET /api/ci — this box's runner and whether the mesh's queue answers. */
+export interface CiOverview {
+  box: string;
+  lend: CiLend;
+  lendingNow: boolean;
+  window: { start: string; end: string } | null;
+  mesh: boolean;
+  privateOnMesh: boolean;
+  canChange: boolean;
+}
+
+export interface CiJobSummary {
+  name: string;
+  state: CiState;
+  runner: string;
+}
+
+export interface CiRun {
+  id: number;
+  owner: string;
+  repo: string;
+  private: boolean;
+  workflowFile: string;
+  workflowName: string;
+  number: number;
+  event: string;
+  sha: string;
+  gitRef: string;
+  title: string;
+  actor: string;
+  state: CiState;
+  message: string;
+  created: number;
+  started: number | null;
+  finished: number | null;
+}
+
+export interface CiJob {
+  id: number;
+  runId: number;
+  jobKey: string;
+  name: string;
+  matrix: Record<string, unknown>;
+  state: CiState;
+  /** `box`: this box's runner. `mesh`: any box of the mesh. */
+  placement: "box" | "mesh";
+  runner: string;
+  exitCode: number | null;
+  outputs: Record<string, unknown>;
+  continueOnError: boolean;
+  logLen: number;
+  created: number;
+  started: number | null;
+  finished: number | null;
+}
+
+export interface CiRunDetail extends CiRun {
+  jobs: CiJob[];
+  canChange: boolean;
+}
+
+export interface CiLog {
+  state: CiState;
+  from: number;
+  next: number;
+  text: string;
+}
+
+export interface CiWorkflows {
+  ref: string | null;
+  sha: string | null;
+  canRun: boolean;
+  workflows: { file: string; name: string }[];
+}
+
+export function getCi(options: RequestOptions = {}): Promise<CiOverview> {
+  return call<CiOverview>("/api/ci", options);
+}
+
+/** PUT /api/ci/runner — when this box lends its runner. Administrators. */
+export function setCiLend(lend: CiLend): Promise<{ lend: CiLend }> {
+  return call<{ lend: CiLend }>("/api/ci/runner", {
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({ lend }),
+  });
+}
+
+/** GET /api/ci/runs — newest first, only repositories this person reads. */
+export function getCiRuns(
+  filter: { owner?: string; repo?: string; before?: number } = {},
+  options: RequestOptions = {},
+): Promise<{ runs: (CiRun & { jobs: CiJobSummary[] })[] }> {
+  const params = new URLSearchParams();
+  if (filter.owner !== undefined && filter.repo !== undefined) {
+    params.set("owner", filter.owner);
+    params.set("repo", filter.repo);
+  }
+  if (filter.before !== undefined) params.set("before", String(filter.before));
+  const query = params.toString();
+  return call(`/api/ci/runs${query === "" ? "" : `?${query}`}`, options);
+}
+
+export function getCiRun(id: number, options: RequestOptions = {}): Promise<CiRunDetail> {
+  return call<CiRunDetail>(`/api/ci/runs/${id}`, options);
+}
+
+/** GET /api/ci/jobs/{id}/log — the log from byte `from` on. */
+export function getCiLog(job: number, from = 0, options: RequestOptions = {}): Promise<CiLog> {
+  return call<CiLog>(`/api/ci/jobs/${job}/log?from=${from}`, options);
+}
+
+export function cancelCiRun(id: number): Promise<{ id: number }> {
+  return call<{ id: number }>(`/api/ci/runs/${id}/cancel`, { method: "POST" });
+}
+
+/** POST /api/ci/runs/{id}/rerun — a new run of the same commit. */
+export function rerunCiRun(id: number): Promise<{ id: number }> {
+  return call<{ id: number }>(`/api/ci/runs/${id}/rerun`, { method: "POST" });
+}
+
+/** GET /api/ci/workflows — the workflows of a branch that take workflow_dispatch. */
+export function getCiWorkflows(
+  owner: string,
+  repo: string,
+  ref = "",
+  options: RequestOptions = {},
+): Promise<CiWorkflows> {
+  const params = new URLSearchParams({ owner, repo });
+  if (ref !== "") params.set("ref", ref);
+  return call<CiWorkflows>(`/api/ci/workflows?${params.toString()}`, options);
+}
+
+/** POST /api/ci/dispatch — run a workflow by hand. */
+export function dispatchCi(owner: string, repo: string, workflow: string, ref = ""): Promise<{ id: number }> {
+  return call<{ id: number }>("/api/ci/dispatch", {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ owner, repo, workflow, ref }),
+  });
+}

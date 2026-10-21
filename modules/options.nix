@@ -1615,6 +1615,59 @@ in
       '';
     };
 
+    # ── Mesh CI (modules/ci.nix) ─────────────────────────────────────────────
+    ci.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Mesh CI: the GitHub Actions workflows in LosOS Git's repositories
+        (.github/workflows/*.yml) run on pushes and pull requests, their
+        jobs spread over the boxes of the mesh, and each job's result is a
+        check on the commit. Like mail, it exists only while the box's
+        storage counts as shared: losos.sharingMyStorage on and the box in a
+        mesh (losos.cluster.enable). Other boxes' jobs run here as the shared
+        user, in rootless Podman, with no way into this box's network.
+      '';
+    };
+
+    ci.privateOnMesh = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let the jobs of private repositories run on other boxes of the mesh.
+        Off, they run on this box alone: another box would see the code.
+      '';
+    };
+
+    ci.runner.memory = lib.mkOption {
+      type = lib.types.strMatching "[0-9]+[kmg]";
+      default = "2g";
+      description = ''
+        The most memory one job may use on this box, as Podman's --memory
+        takes it. The box takes one job at a time.
+      '';
+    };
+
+    ci.runner.cpus = lib.mkOption {
+      type = lib.types.strMatching "[0-9]+([.][0-9]+)?";
+      default = "1.5";
+      description = ''
+        The most processor time one job may use on this box, in cores. Jobs
+        also run at a low share, so the box's own work comes first.
+      '';
+    };
+
+    ci.runner.images = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "ubuntu-latest=docker.io/library/ubuntu:24.04" ];
+      description = ''
+        Images for runs-on labels, as label=image. A job whose labels name
+        none of these, and that sets no container of its own, runs in LosOS's
+        own image: bash, the usual command-line tools, git and curl.
+      '';
+    };
+
     # ── LosOS Lab's guests under libvirt (modules/lab.nix) ───────────────────
     lab.libvirt.enable = lib.mkOption {
       type = lib.types.bool;
@@ -1930,6 +1983,18 @@ in
       );
       default = { };
       description = "Closed-enrollment whitelist of appliances permitted to register. The registrar only ever writes Traefik routers for ids listed here.";
+    };
+
+    # ── Mesh CI (edge side) ─────────────────────────────────────────────────
+    edge.ci.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Keep the Mesh CI job queue: boxes of the mesh hand jobs of their
+        GitHub-style workflows to it with POST /ci/submit, and boxes that
+        lend their compute claim them. Only boxes listed as tenants with
+        `cluster` may use it. Off, every /ci/* route answers 503.
+      '';
     };
 
     # ── Market (edge side) ──────────────────────────────────────────────────
@@ -3149,6 +3214,22 @@ in
     readOnly = true;
     default = config.losos.sharingMyStorage && config.losos.cluster.enable;
     description = "The shared side is live: losos.sharingMyStorage and losos.cluster.enable.";
+  };
+
+  # ── Mesh CI, as it actually runs ────────────────────────────────────────
+  # On the shared side, like mail, and only beside LosOS Git, whose pushes
+  # and pull requests start the runs. modules/ci.nix, lososd's environment
+  # and modules/containers.nix (the /ci page) read this one value. Read-only.
+  options.lososInternal.ci.live = lib.mkOption {
+    type = lib.types.bool;
+    internal = true;
+    readOnly = true;
+    default =
+      config.losos.ci.enable
+      && config.lososInternal.sharedSide
+      && config.losos.git.enable
+      && config.losos.backend.package != null;
+    description = "Mesh CI runs: losos.ci.enable, the shared side (lososInternal.sharedSide) and LosOS Git.";
   };
 
   # ── LosOS Mail, as it actually runs ─────────────────────────────────────

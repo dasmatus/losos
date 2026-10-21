@@ -344,6 +344,9 @@
             ./modules/git.nix
             # LosOS Mail: Stalwart as the shared user, only while sharing.
             ./modules/mail.nix
+            # Mesh CI: GitHub Actions workflows on the boxes of the mesh,
+            # only while sharing (backend/src/ci/).
+            ./modules/ci.nix
             # The option document and the configuration repository on LosOS
             # Git (modules/config-repo.nix, backend/src/{options,config_repo}.rs).
             ./modules/config-repo.nix
