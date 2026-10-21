@@ -10,7 +10,7 @@ mdx:
 LosOS Diagrams is a diagram editor: flowcharts, plans, mind maps, boards
 and network drawings, written as cards on a canvas. Its files are JSON
 Canvas, the format Obsidian Canvas uses, so a `.canvas` file moves between
-the two without losing anything. It also knows LosOS: a network you draw
+the two without losing anything. It also knows LosOS. A network you draw
 runs its own traffic, and a card can stand for a machine you ordered on the
 mesh. Every box serves it at `/diagrams/`, under **Diagrams** in the admin
 sidebar, and like the rest of the admin pages it answers only on the local
@@ -56,8 +56,8 @@ simulator draws it.
 Shapes, borders, text alignment, line styles and arrow heads are written as
 `styleAttributes` with the names the Advanced Canvas plugin for Obsidian
 uses. Keys that Diagrams does not know, on the document, a card or an
-arrow, are kept as they were when the file is saved again. Files from the
-network simulator before it became Diagrams (`.llf`) still open.
+arrow, are kept as they were when the file is saved again. Older `.llf` files
+from the network simulator still open.
 
 ## The network
 
