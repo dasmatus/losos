@@ -173,3 +173,7 @@ path = "src/bin/losos-search.rs"
 [[bin]]
 name = "losos-git"
 path = "src/bin/losos-git.rs"
+
+[[bin]]
+name = "losos-ci"
+path = "src/bin/losos-ci.rs"

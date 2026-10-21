@@ -13,6 +13,7 @@
 //! * [`db`]: runs and jobs. [`net`]: the edge and LosOS Git.
 //! * [`dispatch`]: from an event to runs, jobs and statuses.
 
+pub mod api;
 pub mod db;
 pub mod dispatch;
 pub mod expr;
