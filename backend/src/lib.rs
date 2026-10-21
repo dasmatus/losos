@@ -31,6 +31,7 @@ pub mod apps;
 pub mod backup;
 pub mod boxid;
 pub mod builder;
+pub mod calls;
 pub mod catalogue;
 pub mod cloud_apps;
 pub mod cloud_share;

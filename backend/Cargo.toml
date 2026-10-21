@@ -29,7 +29,7 @@ actix-web = { version = "4", default-features = false, features = ["macros"] }
 # "blocking-api" is what the facade CLI uses: a one-shot D-Bus call needs no
 # runtime. The daemon uses the async side on tokio.
 zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal", "net"] }
 
 # Job ids are "%Y%m%d%H%M%S-<pid>-<counter>"; the counter is what keeps two
 # jobs queued in the same second apart.
@@ -79,6 +79,16 @@ walkdir = "2"
 # in the lock file through the access crate.
 argon2 = "0.5"
 
+# Calls (src/calls/, the losos-calls binary): a forwarding SFU on str0m, a
+# sans-IO WebRTC stack, with its pure-Rust DTLS and SRTP so nothing links
+# OpenSSL. The browsers encrypt every frame end to end before it reaches
+# the SFU; str0m only ever sees that ciphertext inside SRTP.
+str0m = { version = "0.24", default-features = false, features = ["rust-crypto"] }
+# The call page's signalling socket.
+actix-ws = "0.4"
+# Which addresses the SFU offers as ICE host candidates.
+if-addrs = "0.15"
+
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its
 # output, and give it a throwaway filesystem.
@@ -110,3 +120,7 @@ path = "src/bin/losos-app-shape.rs"
 [[bin]]
 name = "losos-search"
 path = "src/bin/losos-search.rs"
+
+[[bin]]
+name = "losos-calls"
+path = "src/bin/losos-calls.rs"
