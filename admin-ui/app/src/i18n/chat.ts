@@ -239,6 +239,11 @@ export default defineMessages({
     de: "Nur die Personen im Raum können ihn lesen, nicht die Box. Sie lässt sich später nicht abschalten.",
   },
   "chat.start.title": { en: "Message someone", sk: "Napísať niekomu", de: "Jemandem schreiben" },
+  "chat.start.failed": {
+    en: "The chat could not be opened",
+    sk: "Chat sa nepodarilo otvoriť",
+    de: "Der Chat konnte nicht geöffnet werden",
+  },
   "chat.start.lead": {
     en: "Pick a person on this box, or type a full Matrix address.",
     sk: "Vyberte človeka na tomto boxe alebo napíšte celú adresu Matrix.",

@@ -32,6 +32,7 @@ import { Card } from "@/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { PaneHeader } from "@/screens/settings/rows";
@@ -39,7 +40,7 @@ import { Avatar } from "./avatar";
 import { useCalls } from "./calls";
 import { chatDocument } from "./document";
 import { Composer } from "./composer";
-import { ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, RoomSettingsDialog, StartChatDialog } from "./dialogs";
+import { ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, openDirect, RoomSettingsDialog, StartChatDialog } from "./dialogs";
 import { directPartner, directRooms, isSpace, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
 import { RoomList } from "./room-list";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
@@ -308,6 +309,33 @@ function ChatHome({ signed }: { signed: Signed }) {
       client.off(CryptoEvent.VerificationRequestReceived, onRequest);
     };
   }, [client]);
+
+  // /chat/?with=@name:server, and &call=voice|video: a contact's Chat, Call
+  // and Video buttons (src/contacts/app.tsx). The direct room is opened, or
+  // made, then the call starts once calls can. The query goes once read, so
+  // a reload does not start the call again.
+  const calls = useCalls();
+  const [pendingCall, setPendingCall] = React.useState<{ roomId: string; video: boolean } | null>(null);
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const partner = params.get("with");
+    if (partner === null) return;
+    const call = params.get("call");
+    window.history.replaceState(window.history.state, "", window.location.pathname + window.location.hash);
+    if (!/^@[^:\s]+:\S+$/.test(partner) || partner === me) return;
+    openDirect(client, partner)
+      .then((roomId) => {
+        setCurrent(roomId);
+        if (call === "voice" || call === "video") setPendingCall({ roomId, video: call === "video" });
+      })
+      .catch((error: unknown) => toast.status(t("chat.start.failed"), error instanceof Error ? error.message : String(error)));
+  }, [client, me, setCurrent, t]);
+  const callRoom = pendingCall !== null ? client.getRoom(pendingCall.roomId) : null;
+  React.useEffect(() => {
+    if (pendingCall === null || callRoom === null || !calls.available) return;
+    setPendingCall(null);
+    calls.start(callRoom, pendingCall.video);
+  }, [pendingCall, callRoom, calls]);
 
   const room = current !== null ? (client.getRoom(current) ?? null) : null;
   const spaceRoom = space !== null ? client.getRoom(space) : null;

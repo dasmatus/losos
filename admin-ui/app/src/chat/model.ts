@@ -78,6 +78,14 @@ export function isSpace(room: Room): boolean {
   return room.isSpaceRoom();
 }
 
+/** A person's LosOS Contacts book (backend/src/contacts.rs): a room of
+ *  theirs on the homeserver, never a conversation. */
+export const CONTACTS_ROOM_TYPE = "org.losos.contacts";
+
+export function isContactsBook(room: Room): boolean {
+  return room.getType() === CONTACTS_ROOM_TYPE;
+}
+
 /** The rooms m.direct lists, by room ID, with the person each one is with. */
 export function directRooms(client: MatrixClient): Map<string, string> {
   const content = (client.getAccountData(EventType.Direct)?.getContent() ?? {}) as Record<string, string[]>;

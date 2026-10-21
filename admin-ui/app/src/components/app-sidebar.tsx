@@ -8,6 +8,7 @@ import {
   Home01Icon,
   LayoutGridIcon,
   Mail01Icon,
+  ContactBookIcon,
   NetworkIcon,
   PencilEdit02Icon,
   PinOffIcon,
@@ -60,6 +61,8 @@ import { contextMenu } from "@/lib/context-menu";
  *     Machines              virtual machines on the mesh
  *   Lab                     (LosOS Lab at /lab/, a page of its own)
  *   Mail                    (LosOS Mail at /mail, only on the shared side)
+ *   Chat                    (LosOS Chat at /chat/, the same)
+ *   Contacts                (LosOS Contacts at /contacts, the same)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
  *
@@ -161,11 +164,11 @@ const TREE: readonly Entry[] = [
   },
   {
     kind: "link",
-    key: "mail",
-    to: "/mail",
-    label: "shell.nav.mail",
-    icon: Mail01Icon,
-    shared: "mail",
+    key: "contacts",
+    to: "/contacts",
+    label: "shell.nav.contacts",
+    icon: ContactBookIcon,
+    shared: "contacts",
   },
   {
     kind: "fold",

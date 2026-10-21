@@ -3020,3 +3020,142 @@ export function sendMail(draft: MailDraft): Promise<{ ok: true }> {
     body: JSON.stringify(draft),
   });
 }
+
+// ── LosOS Contacts (backend/src/contacts.rs) ──────────────────────────────
+
+export interface ContactLabelled {
+  value: string;
+  label: string;
+}
+
+export interface ContactAddress {
+  street: string;
+  locality: string;
+  region: string;
+  code: string;
+  country: string;
+  label: string;
+}
+
+export interface ContactName {
+  family: string;
+  given: string;
+  additional: string;
+  prefix: string;
+  suffix: string;
+}
+
+/** A contact's fields, as the page sends them to be saved. */
+export interface ContactFields {
+  name: string;
+  n?: ContactName;
+  nickname?: string;
+  org?: string;
+  title?: string;
+  emails?: ContactLabelled[];
+  phones?: ContactLabelled[];
+  addresses?: ContactAddress[];
+  urls?: ContactLabelled[];
+  /** `YYYY-MM-DD`, or `--MM-DD` without the year. */
+  birthday?: string;
+  note?: string;
+  /** A Matrix user ID, `@name:server`. */
+  matrix?: string;
+  /** A mesh address, `name@box`, for sharing files. */
+  mesh?: string;
+  uid?: string;
+}
+
+/** A contact as the book keeps it. */
+export interface Contact extends ContactFields {
+  id: string;
+  /** Where the photo loads from, versioned; absent without one. */
+  photo?: string;
+  updated: number;
+}
+
+/** One person a picker offers: a contact, or someone on this box. */
+export interface ContactSuggestion {
+  key: string;
+  source: "contact" | "box";
+  name: string;
+  picture?: string;
+  emails: string[];
+  matrixId?: string;
+  meshAddress?: string;
+  contactId?: string;
+}
+
+export interface ContactsImport {
+  added: number;
+  updated: number;
+  skipped: number;
+  photosDropped: number;
+  leftOut: number;
+}
+
+/** GET /api/contacts — the caller's book, by name. 404 off the shared side. */
+export function getContacts(options: RequestOptions = {}): Promise<{ contacts: Contact[] }> {
+  return call<{ contacts: Contact[] }>("/api/contacts", options);
+}
+
+/** POST /api/contacts or PUT /api/contacts/{id} — save a contact's fields. */
+export function saveContact(id: string | null, fields: ContactFields): Promise<Contact> {
+  return call<Contact>(id === null ? "/api/contacts" : `/api/contacts/${encodeURIComponent(id)}`, {
+    method: id === null ? "POST" : "PUT",
+    contentType: "application/json",
+    body: JSON.stringify(fields),
+  });
+}
+
+/** DELETE /api/contacts/{id}. */
+export function deleteContact(id: string): Promise<{ removed: string }> {
+  return call<{ removed: string }>(`/api/contacts/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** PUT /api/contacts/{id}/photo — a picture, scaled and squared by the box. */
+export function setContactPhoto(id: string, picture: Blob): Promise<Contact> {
+  return call<Contact>(`/api/contacts/${encodeURIComponent(id)}/photo`, {
+    method: "PUT",
+    contentType: picture.type || "application/octet-stream",
+    body: picture,
+  });
+}
+
+/** DELETE /api/contacts/{id}/photo. */
+export function removeContactPhoto(id: string): Promise<Contact> {
+  return call<Contact>(`/api/contacts/${encodeURIComponent(id)}/photo`, { method: "DELETE" });
+}
+
+/** POST /api/contacts/import — a .vcf file, one card or many. */
+export function importContacts(file: Blob): Promise<ContactsImport> {
+  return call<ContactsImport>("/api/contacts/import", {
+    method: "POST",
+    contentType: "text/vcard",
+    body: file,
+  });
+}
+
+/** Where the book, or some contacts of it, downloads as a .vcf file. */
+export function contactsExportUrl(version: "3.0" | "4.0", ids?: readonly string[]): string {
+  const params = new URLSearchParams({ version });
+  if (ids !== undefined && ids.length > 0) params.set("ids", ids.join(","));
+  return apiPath(`/api/contacts/export?${params.toString()}`);
+}
+
+/** GET /api/contacts/suggest — the people a picker offers for `q`. An empty
+ *  list where the box has no contacts (off the shared side). */
+export async function suggestContacts(
+  q: string,
+  want: "any" | "email" | "matrix" | "mesh" = "any",
+  options: RequestOptions & { limit?: number } = {},
+): Promise<ContactSuggestion[]> {
+  const params = new URLSearchParams({ q, want, limit: String(options.limit ?? 8) });
+  try {
+    const answer = await call<{ contacts: ContactSuggestion[] }>(`/api/contacts/suggest?${params.toString()}`, options);
+    return answer.contacts;
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 403)) return [];
+    throw error;
+  }
+}

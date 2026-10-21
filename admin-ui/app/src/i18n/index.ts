@@ -12,6 +12,7 @@ import calls from "./calls";
 import chat from "./chat";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
+import contacts from "./contacts";
 import home from "./home";
 import inference from "./inference";
 import install from "./install";
@@ -61,6 +62,7 @@ export const MESSAGES = {
   ...manage,
   ...chat,
   ...mail,
+  ...contacts,
   ...menu,
 };
 
