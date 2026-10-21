@@ -170,6 +170,7 @@ in
       systemd.tmpfiles.rules = [
         "R ${dir} - - - - -"
         "r /run/userdb/losos-win-*.user - - - - -"
+        "r /run/userdb/59???.user - - - - -"
       ];
     })
   ];

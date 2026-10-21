@@ -179,6 +179,8 @@ pkgs.testers.nixosTest {
         box.succeed("test $(stat -c %a /var/lib/losos-windows/smbpasswd) = 600")
         # Samba's Unix account, from the userdb record lososd wrote.
         print(box.succeed("getent passwd losos-win-matus"))
+        # Samba looks the account up by uid too, at every sign-in.
+        box.succeed("getent passwd $(id -u losos-win-matus) | grep -q ^losos-win-matus:")
 
     def sign_in(name, password):
         body = json.dumps({"username": name, "password": password})

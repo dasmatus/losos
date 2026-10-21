@@ -312,12 +312,24 @@ impl Windows {
                 &serde_json::to_vec(&record)?,
                 0o644,
             )?;
+            // A lookup by uid, which Samba makes at every sign-in, finds
+            // the record only through `<uid>.user`.
+            let by_uid = format!("{}.user", account_uid(i));
+            let link = self.userdb.join(&by_uid);
+            if std::fs::read_link(&link).ok().as_deref() != Some(Path::new(&file)) {
+                let _ = std::fs::remove_file(&link);
+                std::os::unix::fs::symlink(&file, &link)?;
+                changed = true;
+            }
             keep.push(file);
+            keep.push(by_uid);
         }
         for entry in std::fs::read_dir(&self.userdb)?.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with(ACCOUNT_PREFIX) && name.ends_with(".user") && !keep.contains(&name)
-            {
+            let ours = name.starts_with(ACCOUNT_PREFIX)
+                || std::fs::read_link(entry.path())
+                    .is_ok_and(|t| t.to_string_lossy().starts_with(ACCOUNT_PREFIX));
+            if ours && name.ends_with(".user") && !keep.contains(&name) {
                 std::fs::remove_file(entry.path())?;
                 changed = true;
             }
@@ -600,6 +612,11 @@ mod tests {
             serde_json::from_str(&read(b.root.join("userdb/losos-win-matus.user"))).unwrap();
         assert_eq!(record["userName"], "losos-win-matus");
         assert_eq!(record["locked"], true);
+        let by_uid = b.root.join(format!("userdb/{}.user", record["uid"]));
+        assert_eq!(
+            std::fs::read_link(by_uid).unwrap(),
+            Path::new("losos-win-matus.user")
+        );
 
         // Everyone else's share is under their own login.
         b.w.learn(&eva, &Secret::new("another"), &all);
@@ -650,6 +667,8 @@ mod tests {
         b.w.sync(&[]);
         assert!(!read(b.root.join("windows/learned.json")).contains("eva"));
         assert!(!b.root.join("userdb/losos-win-eva.user").exists());
+        // Its by-uid link went with it.
+        assert_eq!(std::fs::read_dir(b.root.join("userdb")).unwrap().count(), 0);
     }
 
     #[test]
