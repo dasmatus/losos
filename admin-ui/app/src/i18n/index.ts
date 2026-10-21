@@ -10,6 +10,8 @@ import advanced from "./advanced";
 import apps from "./apps";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
+import collab from "./collab";
+import games from "./games";
 import git from "./git";
 import gitReview from "./git-review";
 import home from "./home";
@@ -20,6 +22,7 @@ import look from "./look";
 import mail from "./mail";
 import machines from "./machines";
 import manage from "./manage";
+import notes from "./notes";
 import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
@@ -44,6 +47,8 @@ export const MESSAGES = {
   ...apps,
   ...cloudApps,
   ...cloud,
+  ...collab,
+  ...notes,
   ...git,
   ...gitReview,
   ...install,
@@ -60,6 +65,7 @@ export const MESSAGES = {
   ...pins,
   ...manage,
   ...mail,
+  ...games,
 };
 
 export type MessageKey = keyof typeof MESSAGES;
