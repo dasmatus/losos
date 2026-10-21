@@ -24,9 +24,12 @@
 # Then LosOS Reviewer: Eva opens #2, a pruning script, while the
 # repository's AI review is off, and the pages are pictured; the owner turns
 # it on and asks the bot, which reviews #2 with the stand-in for Ollama from
-# nix/tests/git-reviewer.nix, and the same pages are pictured again. Last,
-# the same addresses on the box without the pages, for the pull request's
-# "before" column.
+# nix/tests/git-reviewer.nix, and the same pages are pictured again. Then
+# who may see a repository: the owner makes a public one and shares
+# backup-tool with everyone on the box, and a visitor who has not signed
+# in reads the public one (with LOSOS_GIT_OLD_UI, the same steps on the
+# pages before first). Last, the same addresses on the box without the
+# pages, for the pull request's "before" column.
 { pkgs }:
 
 let
@@ -126,6 +129,9 @@ pkgs.testers.nixosTest {
       specialisation.before.configuration.services.nginx.virtualHosts."losos-front".locations."/git/" =
         lib.mkForce
           { proxyPass = "http://unix:/run/losos-git/http.sock:/"; };
+      # Every page behind LosOS Login, as it was before repositories had
+      # three levels: the "before" column of the visibility pictures.
+      specialisation.signed-in-only.configuration.losos.git.site.requireSignIn = true;
       environment.systemPackages = [
         pkgs.jq
         pkgs.curl
@@ -163,6 +169,7 @@ pkgs.testers.nixosTest {
 
   testScript = ''
     import json
+    import os
 
     HOST = "mattbox.local"
     BASE = f"https://{HOST}"
@@ -403,6 +410,39 @@ pkgs.testers.nixosTest {
         git_shots("reviewer", "reviewer-after", "--reviewed", "--test", "losos-git-pages")
         laptop.copy_from_machine("/tmp/shots/reviewer-before", "shots")
         laptop.copy_from_machine("/tmp/shots/reviewer-after", "shots")
+
+    with subtest("who may see a repository: private, this box, public"):
+        # LOSOS_GIT_OLD_UI, a losos-admin-ui from before the three levels,
+        # gives the pictures their "before" column: its pages over this
+        # box, every page behind LosOS Login.
+        old_ui = os.environ.get("LOSOS_GIT_OLD_UI", "")
+        if old_ui:
+            ui = "${lososPkgs.losos-admin-ui}"
+            box.succeed(
+                "/run/booted-system/specialisation/signed-in-only/bin/switch-to-configuration test",
+                f"mount --bind {old_ui} {ui}",
+                "systemctl restart nginx",
+            )
+            box.wait_for_open_port(443)
+            git_shots("visibility", "visibility-before", "--old", "--test", "losos-git-pages")
+            ok("DELETE", "/repos/notshared/website")
+            box.succeed(
+                f"umount {ui}",
+                "/run/booted-system/bin/switch-to-configuration test",
+                "systemctl restart nginx",
+            )
+            box.wait_for_open_port(443)
+            box.wait_for_open_port(3000)
+            laptop.copy_from_machine("/tmp/shots/visibility-before", "shots")
+        git_shots("visibility", "visibility-after", "--test", "losos-git-pages")
+        site = ok("GET", "/repos/notshared/website")
+        assert site["visibility"] == "public" and site["private"] is False, site
+        tool = ok("GET", f"/repos/{REPO}")
+        assert tool["visibility"] == "internal" and tool["private"] is True, tool
+        # What the visitor's pages read: the public one, and nothing else.
+        found = json.loads(curl(f"https://{HOST}/git/api/v1/repos/search"))
+        assert [r["full_name"] for r in found["data"]] == ["notshared/website"], found
+        laptop.copy_from_machine("/tmp/shots/visibility-after", "shots")
 
     with subtest("the pictures: the same addresses before the pages"):
         box.succeed("/run/current-system/specialisation/before/bin/switch-to-configuration test")

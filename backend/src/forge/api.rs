@@ -12,7 +12,7 @@
 //! after lososd checked the owner's password itself.
 
 use super::auth::{self, Caller};
-use super::db::{Attachment, Exists, Issue, IssueFilter, Permission, Repo, User};
+use super::db::{Attachment, Exists, Issue, IssueFilter, Permission, Repo, User, Visibility};
 use super::gitcmd::Signature;
 use super::server::{self, Fail, State};
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -168,6 +168,7 @@ pub fn repo_json(req: &HttpRequest, state: &State, repo: &Repo, permission: Perm
         "full_name": format!("{}/{}", repo.owner, repo.name),
         "description": repo.description,
         "private": repo.private,
+        "visibility": repo.visibility,
         "default_branch": repo.default_branch,
         "ai_review": state.store.ai_review(repo.id).unwrap_or(false),
         "empty": empty,
@@ -207,16 +208,20 @@ pub fn create_repo(
     owner: &User,
     name: &str,
     description: &str,
-    private: bool,
+    visibility: Visibility,
     default_branch: &str,
     readme: bool,
 ) -> anyhow::Result<Repo> {
     super::names::repo(name).map_err(|e| anyhow::anyhow!(e))?;
     super::names::branch(default_branch).map_err(|e| anyhow::anyhow!(e))?;
-    let repo =
-        state
-            .store
-            .create_repo(owner.id, name, description, private, default_branch, None)?;
+    let repo = state.store.create_repo(
+        owner.id,
+        name,
+        description,
+        visibility,
+        default_branch,
+        None,
+    )?;
     let dir = state.config.repo_path(&owner.login, name);
     let existed = dir.exists();
     let made = (|| -> anyhow::Result<()> {
@@ -337,13 +342,50 @@ async fn my_repos(req: HttpRequest, state: web::Data<State>) -> Answer {
     let c = server::caller(&req, &state)?;
     let u = need_person(&c)?;
     need_scope(&c, "repository", false)?;
+    // Their own, the ones shared with them, and the ones the box shares
+    // with everyone on it.
     let mut repos = state.store.repos_of(u.id)?;
     repos.extend(state.store.repos_shared_with(u.id)?);
+    let open: Vec<Repo> = state
+        .store
+        .all_repos()?
+        .into_iter()
+        .filter(|r| r.visibility != Visibility::Private)
+        .collect();
+    repos.extend(open);
+    let mut seen = std::collections::HashSet::new();
+    repos.retain(|r| seen.insert(r.id));
     let list: Vec<Value> = visible(&state, &c, repos)?
         .iter()
         .map(|(r, p)| repo_json(&req, &state, r, *p))
         .collect();
     Ok(HttpResponse::Ok().json(list))
+}
+
+/// Who may read a repository, as a call asks for it: `visibility`
+/// (`private`, `internal` or `public`), or Forgejo's `private` flag alone.
+/// Both, when they disagree, are refused rather than one picked.
+fn asked_visibility(
+    visibility: Option<&str>,
+    private: Option<bool>,
+) -> Result<Option<Visibility>, Fail> {
+    let named = match visibility {
+        None => None,
+        Some(v) => Some(Visibility::parse(v.trim()).ok_or_else(|| {
+            Fail::bad(format!(
+                "\"{v}\" is not a visibility: private, internal or public."
+            ))
+        })?),
+    };
+    match (named, private) {
+        (Some(v), Some(p)) if p != (v != Visibility::Public) => Err(Fail::bad(format!(
+            "A {} repository cannot have private set to {p}.",
+            v.as_str()
+        ))),
+        (Some(v), _) => Ok(Some(v)),
+        (None, Some(p)) => Ok(Some(Visibility::from_private(p))),
+        (None, None) => Ok(None),
+    }
 }
 
 #[derive(Deserialize)]
@@ -352,6 +394,7 @@ struct NewRepo {
     #[serde(default)]
     description: String,
     private: Option<bool>,
+    visibility: Option<String>,
     default_branch: Option<String>,
     #[serde(default)]
     auto_init: bool,
@@ -365,12 +408,14 @@ async fn create_my_repo(
     let c = server::caller(&req, &state)?;
     let u = need_person(&c)?.clone();
     need_scope(&c, "repository", true)?;
+    let visibility = asked_visibility(body.visibility.as_deref(), body.private)?
+        .unwrap_or(Visibility::from_private(state.config.default_private));
     let repo = create_repo(
         &state,
         &u,
         body.name.trim(),
         body.description.trim(),
-        body.private.unwrap_or(state.config.default_private),
+        visibility,
         body.default_branch.as_deref().unwrap_or("main"),
         body.auto_init,
     )
@@ -436,6 +481,7 @@ struct EditRepo {
     name: Option<String>,
     description: Option<String>,
     private: Option<bool>,
+    visibility: Option<String>,
     default_branch: Option<String>,
 }
 
@@ -461,6 +507,7 @@ async fn edit_repo(
     if let Some(n) = new_name {
         super::names::repo(n).map_err(Fail::bad)?;
     }
+    let visibility = asked_visibility(body.visibility.as_deref(), body.private)?;
     let branch = body.default_branch.as_deref().map(str::trim);
     let dir = state.config.repo_path(&repo.owner, &repo.name);
     if let Some(b) = branch {
@@ -478,7 +525,7 @@ async fn edit_repo(
         repo.id,
         new_name,
         body.description.as_deref().map(str::trim),
-        body.private,
+        visibility,
         branch,
     )?;
     if let Some(b) = branch {
@@ -727,6 +774,7 @@ struct EnsureRepo {
     #[serde(default)]
     description: String,
     private: Option<bool>,
+    visibility: Option<String>,
     default_branch: Option<String>,
 }
 
@@ -742,6 +790,7 @@ async fn admin_ensure_repo(
         .store
         .user(&path.0)?
         .ok_or_else(|| Fail::not_found("account"))?;
+    let visibility = asked_visibility(body.visibility.as_deref(), body.private)?;
     if let Some(repo) = state.store.repo(&owner.login, &path.1)? {
         return Ok(HttpResponse::Ok().json(repo_json(&req, &state, &repo, Permission::Admin)));
     }
@@ -750,7 +799,7 @@ async fn admin_ensure_repo(
         &owner,
         &path.1,
         body.description.trim(),
-        body.private.unwrap_or(true),
+        visibility.unwrap_or(Visibility::Private),
         body.default_branch.as_deref().unwrap_or("main"),
         false,
     )

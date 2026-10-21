@@ -190,6 +190,14 @@ const MIGRATIONS: &[&str] = &[
     // 5: AI review, the repository setting and the queue
     // (`reviewer::jobs`).
     super::reviewer::jobs::MIGRATION,
+    // 6: who may read a repository: its people only, everyone signed in to
+    // the box, or anyone. `private` stays, true for the first two, as
+    // Forgejo's API and the events say it.
+    "
+    ALTER TABLE repos ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'
+        CHECK (visibility IN ('private', 'internal', 'public'));
+    UPDATE repos SET visibility = CASE private WHEN 0 THEN 'public' ELSE 'private' END;
+    ",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -223,7 +231,9 @@ pub struct Repo {
     pub owner: String,
     pub name: String,
     pub description: String,
+    /// Not public: what Forgejo's API and the events call private.
     pub private: bool,
+    pub visibility: Visibility,
     pub default_branch: String,
     pub fork_of: Option<i64>,
     pub created: String,
@@ -339,7 +349,7 @@ pub struct Store {
 
 const USER_COLS: &str = "id, login, full_name, email, is_admin, created, is_bot";
 const REPO_COLS: &str = "r.id, r.owner_id, u.login, r.name, r.description, r.private, \
-     r.default_branch, r.fork_of, r.created, r.updated";
+     r.default_branch, r.fork_of, r.created, r.updated, r.visibility";
 
 fn user_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
     Ok(User {
@@ -361,6 +371,10 @@ fn repo_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Repo> {
         name: row.get(3)?,
         description: row.get(4)?,
         private: row.get(5)?,
+        visibility: {
+            let v: String = row.get(10)?;
+            Visibility::parse(&v).unwrap_or(Visibility::Private)
+        },
         default_branch: row.get(6)?,
         fork_of: row.get(7)?,
         created: row.get(8)?,
@@ -753,7 +767,7 @@ impl Store {
         owner_id: i64,
         name: &str,
         description: &str,
-        private: bool,
+        visibility: Visibility,
         default_branch: &str,
         fork_of: Option<i64>,
     ) -> anyhow::Result<Repo> {
@@ -762,14 +776,15 @@ impl Store {
             let conn = self.conn();
             let inserted = conn.execute(
                 "INSERT INTO repos (owner_id, name, lower_name, description, private,
-                                    default_branch, fork_of, created, updated)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+                                    visibility, default_branch, fork_of, created, updated)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
                 params![
                     owner_id,
                     name,
                     name.to_lowercase(),
                     description,
-                    private,
+                    visibility != Visibility::Public,
+                    visibility.as_str(),
                     default_branch,
                     fork_of,
                     now
@@ -793,7 +808,7 @@ impl Store {
         id: i64,
         name: Option<&str>,
         description: Option<&str>,
-        private: Option<bool>,
+        visibility: Option<Visibility>,
         default_branch: Option<&str>,
     ) -> anyhow::Result<()> {
         let conn = self.conn();
@@ -815,10 +830,10 @@ impl Store {
                 params![id, d],
             )?;
         }
-        if let Some(p) = private {
+        if let Some(v) = visibility {
             conn.execute(
-                "UPDATE repos SET private = ?2 WHERE id = ?1",
-                params![id, p],
+                "UPDATE repos SET visibility = ?2, private = ?3 WHERE id = ?1",
+                params![id, v.as_str(), v != Visibility::Public],
             )?;
         }
         if let Some(b) = default_branch {
@@ -1058,6 +1073,46 @@ impl Store {
             })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
+    }
+}
+
+/// Who may read a repository, past the people it is shared with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Visibility {
+    /// Its owner and the people they add.
+    Private,
+    /// Everyone with an account on the box, signed in.
+    Internal,
+    /// Anyone, signed in or not.
+    Public,
+}
+
+impl Visibility {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Visibility::Private => "private",
+            Visibility::Internal => "internal",
+            Visibility::Public => "public",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Visibility> {
+        match s {
+            "private" => Some(Visibility::Private),
+            "internal" => Some(Visibility::Internal),
+            "public" => Some(Visibility::Public),
+            _ => None,
+        }
+    }
+
+    /// Forgejo's `private` flag, for a caller that sends only that.
+    pub fn from_private(private: bool) -> Visibility {
+        if private {
+            Visibility::Private
+        } else {
+            Visibility::Public
+        }
     }
 }
 
@@ -1660,15 +1715,15 @@ mod tests {
         let u = s.ensure_user("notshared", "", "").unwrap();
         let v = s.ensure_user("jana", "", "").unwrap();
         let r = s
-            .create_repo(u.id, "Losos-Config", "", true, "main", None)
+            .create_repo(u.id, "Losos-Config", "", Visibility::Private, "main", None)
             .unwrap();
         assert_eq!(r.owner, "notshared");
         assert!(s
-            .create_repo(u.id, "losos-config", "", true, "main", None)
+            .create_repo(u.id, "losos-config", "", Visibility::Private, "main", None)
             .unwrap_err()
             .downcast_ref::<Exists>()
             .is_some());
-        s.create_repo(v.id, "losos-config", "", false, "main", None)
+        s.create_repo(v.id, "losos-config", "", Visibility::Public, "main", None)
             .unwrap();
         assert_eq!(
             s.repo("NOTSHARED", "losos-config").unwrap().unwrap().id,
@@ -1678,14 +1733,19 @@ mod tests {
             r.id,
             Some("config"),
             Some("mine"),
-            Some(false),
+            Some(Visibility::Internal),
             Some("trunk"),
         )
         .unwrap();
         let r = s.repo("notshared", "config").unwrap().unwrap();
         assert_eq!(
-            (r.description.as_str(), r.private, r.default_branch.as_str()),
-            ("mine", false, "trunk")
+            (
+                r.description.as_str(),
+                r.private,
+                r.visibility,
+                r.default_branch.as_str()
+            ),
+            ("mine", true, Visibility::Internal, "trunk")
         );
         s.set_collaborator(r.id, v.id, Permission::Write).unwrap();
         assert_eq!(s.collaborator(r.id, v.id).unwrap(), Permission::Write);

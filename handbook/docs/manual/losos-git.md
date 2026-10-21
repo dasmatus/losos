@@ -16,9 +16,10 @@ box is the owner, and their repositories are under `notshared`.
 
 ## Repositories
 
-The first page lists your repositories and the ones shared with you.
-**New repository** makes one, private unless you switch that off. An
-empty repository shows the commands that push a first branch to it.
+The first page lists your repositories, the ones shared with you and the
+ones everyone on the box can read. **New repository** makes one and asks
+who can see it. An empty repository shows the commands that push a first
+branch to it.
 
 A repository's pages are in the sidebar:
 
@@ -30,8 +31,24 @@ A repository's pages are in the sidebar:
   shows what it has that the default branch has not.
 - **Worktrees** lists the checkouts that push to the repository (see
   below).
-- **Settings** renames the repository, changes its description and makes
-  it private or public. Only the repository's owner and its admins see it.
+- **Settings** renames the repository, changes its description and who
+  can see it. Only the repository's owner and its admins see it.
+
+### Who can see a repository
+
+Every repository has one of three settings, shown as a badge beside its
+name:
+
+- **Private**: you and the people you add. This is the default.
+- **This box**: everyone with an account on the box, once they have signed
+  in.
+- **Public**: anyone who can reach the box, without signing in. They can
+  read the code, the history and the pull requests, and clone it. Through
+  an edge that is anyone on the internet.
+
+Whatever the setting, only you and the people you add can push. Someone
+who opens `/git/` without signing in sees the public repositories and a
+**Sign in** button.
 
 ## Clone and push
 
@@ -117,4 +134,6 @@ pushed from a named worktree shows that worktree's name in its header.
 
 ## Settings
 
-`losos.git.enable` turns LosOS Git off. It is on the **Advanced** pane.
+`losos.git.enable` turns LosOS Git off. `losos.git.site.requireSignIn`
+asks everyone to sign in before LosOS Git shows anything, public
+repositories included. Both are on the **Advanced** pane.

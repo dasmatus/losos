@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Copy01Icon, LockIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import { Copy01Icon, Globe02Icon, LockIcon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import { PersonAvatar, type AvatarSize } from "@/components/person";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -12,10 +12,11 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
-import { t as translate } from "@/lib/i18n";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
-import { GitError, type Branch, type Repo } from "./api";
+import { GitError, type Branch, type Repo, type Visibility } from "./api";
 import { notFound, useFaces, useRepo } from "./store";
 
 /* Pieces every page of LosOS Git draws the same way. */
@@ -94,9 +95,53 @@ export function Person({
   );
 }
 
-/** owner / repo, the lock of a private one, and the clone address. */
-export function RepoHeader({ repo, children }: { repo: Repo; children?: React.ReactNode }) {
+const VISIBILITY: Record<Visibility, { icon: IconSvgElement; label: MessageKey; hint: MessageKey }> = {
+  private: { icon: LockIcon, label: "git.visibility.private", hint: "git.visibility.privateHint" },
+  internal: { icon: UserGroupIcon, label: "git.visibility.internal", hint: "git.visibility.internalHint" },
+  public: { icon: Globe02Icon, label: "git.visibility.public", hint: "git.visibility.publicHint" },
+};
+
+/** Who may read a repository, as a badge; `compact` is the icon alone. */
+export function VisibilityBadge({ visibility, compact = false }: { visibility: Visibility; compact?: boolean }) {
   const t = useT();
+  const v = VISIBILITY[visibility];
+  return (
+    <Badge variant="outline" className={cn(compact && "px-1.5 py-0")} data-visibility={visibility} title={t(v.hint)}>
+      <HugeiconsIcon
+        icon={v.icon}
+        size={compact ? 11 : 12}
+        strokeWidth={1.5}
+        color="currentColor"
+        aria-hidden={compact ? undefined : true}
+        aria-label={compact ? t(v.label) : undefined}
+      />
+      {!compact && t(v.label)}
+    </Badge>
+  );
+}
+
+/** The three visibilities to pick from, with what the chosen one means. */
+export function VisibilityField({ value, onChange }: { value: Visibility; onChange: (v: Visibility) => void }) {
+  const t = useT();
+  const id = React.useId();
+  return (
+    <Field>
+      <FieldLabel id={`${id}-label`}>{t("git.visibility.label")}</FieldLabel>
+      <ToggleGroup variant="outline" value={value} onValueChange={(v) => onChange(v as Visibility)} aria-labelledby={`${id}-label`} data-visibility-field>
+        {(Object.keys(VISIBILITY) as Visibility[]).map((v) => (
+          <ToggleGroupItem key={v} value={v}>
+            <HugeiconsIcon icon={VISIBILITY[v].icon} size={14} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            {t(VISIBILITY[v].label)}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      <FieldDescription>{t(VISIBILITY[value].hint)}</FieldDescription>
+    </Field>
+  );
+}
+
+/** owner / repo, who may read it, and the clone address. */
+export function RepoHeader({ repo, children }: { repo: Repo; children?: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-2">
@@ -109,12 +154,7 @@ export function RepoHeader({ repo, children }: { repo: Repo; children?: React.Re
             {repo.name}
           </Link>
         </PageTitle>
-        {repo.private && (
-          <Badge variant="outline">
-            <HugeiconsIcon icon={LockIcon} size={12} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-            {t("git.repo.private")}
-          </Badge>
-        )}
+        <VisibilityBadge visibility={repo.visibility} />
         <div className="ml-auto flex items-center gap-2">
           {children}
           <CloneButton url={repo.clone_url} />

@@ -219,6 +219,7 @@ mod tests {
             name: "site".into(),
             description: String::new(),
             private: true,
+            visibility: crate::forge::db::Visibility::Private,
             default_branch: "main".into(),
             fork_of: None,
             created: String::new(),
@@ -238,10 +239,31 @@ mod tests {
         deliver_to(sock);
         let server = std::thread::spawn(move || {
             let (mut c, _) = listener.accept().unwrap();
+            // The head and the body can arrive in separate reads on a busy
+            // machine: read until the body is as long as its header says.
+            let mut request = Vec::new();
             let mut buf = vec![0u8; 4096];
-            let n = c.read(&mut buf).unwrap();
+            loop {
+                let n = c.read(&mut buf).unwrap();
+                request.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&request);
+                let done = text.split_once("\r\n\r\n").is_some_and(|(head, body)| {
+                    let length = head
+                        .lines()
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse::<usize>().unwrap())
+                        })
+                        .unwrap_or(0);
+                    body.len() >= length
+                });
+                if done || n == 0 {
+                    break;
+                }
+            }
             c.write_all(b"HTTP/1.1 204 No Content\r\n\r\n").unwrap();
-            String::from_utf8_lossy(&buf[..n]).to_string()
+            String::from_utf8_lossy(&request).to_string()
         });
 
         let a = "a".repeat(40);

@@ -140,7 +140,7 @@ fn authorize(
                     &user,
                     name,
                     "",
-                    state.config.default_private,
+                    super::db::Visibility::from_private(state.config.default_private),
                     "main",
                     false,
                 )

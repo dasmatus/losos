@@ -8,6 +8,13 @@ import { git, GitError, type User } from "./api";
 
 export const MeContext = React.createContext<User | null>(null);
 
+/** Not signed in: someone reading what the box makes public. */
+export const VisitorContext = React.createContext(false);
+
+export function useVisitor(): boolean {
+  return React.useContext(VisitorContext);
+}
+
 export function useMe(): User | null {
   return React.useContext(MeContext);
 }
@@ -66,7 +73,10 @@ export const FacesProvider = FacesContext.Provider;
 
 export function useFaceBook(me: User | null): Faces {
   const [profiles, setProfiles] = React.useState<readonly Profile[]>([]);
+  const signedIn = me !== null;
   React.useEffect(() => {
+    // A visitor has no profiles to read: they live behind LosOS Login.
+    if (!signedIn) return;
     const controller = new AbortController();
     void getProfiles({ signal: controller.signal })
       .then(({ people }) => setProfiles(people))
@@ -74,7 +84,7 @@ export function useFaceBook(me: User | null): Faces {
         /* initials, then: the profiles answer only on the LAN */
       });
     return () => controller.abort();
-  }, []);
+  }, [signedIn]);
   return React.useCallback(
     (login: string) => {
       const byName = profiles.find((p) => p.name === login);

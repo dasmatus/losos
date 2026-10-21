@@ -1,8 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Add01Icon, LockIcon } from "@hugeicons/core-free-icons";
-import { Badge } from "@/components/ui/badge";
+import { Add01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -11,30 +10,37 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n-react";
-import { git } from "./api";
+import { git, type Visibility } from "./api";
 import { when, whenFull } from "./format";
-import { ErrorAlert, explain, Loading, PageTitle, SwitchField } from "./parts";
-import { useLoad, useMe } from "./store";
+import { ErrorAlert, explain, Loading, PageTitle, VisibilityBadge, VisibilityField } from "./parts";
+import { useLoad, useMe, useVisitor } from "./store";
 
-/* The person's repositories: their own and the ones shared with them. */
+/* The person's repositories: their own, the ones shared with them and the
+ * ones the box shares with everyone on it. A visitor sees the public ones. */
 
 export function RepoList() {
   const t = useT();
   const me = useMe();
-  const repos = useLoad((signal) => git.repos(signal), []);
+  const visitor = useVisitor();
+  const repos = useLoad(
+    (signal) => (visitor ? git.publicRepos(signal) : me === null ? new Promise<never>(() => {}) : git.repos(signal)),
+    [visitor, me],
+  );
   const [creating, setCreating] = React.useState(false);
   const list = [...(repos.data ?? [])].sort((a, b) => b.updated.localeCompare(a.updated));
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex min-h-9 flex-wrap items-center gap-3">
-        <PageTitle>{t("git.repos.title")}</PageTitle>
-        <Button size="sm" className="ml-auto" onClick={() => setCreating(true)}>
-          <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-          {t("git.repos.new")}
-        </Button>
+        <PageTitle>{t(visitor ? "git.visitor.title" : "git.repos.title")}</PageTitle>
+        {!visitor && (
+          <Button size="sm" className="ml-auto" onClick={() => setCreating(true)}>
+            <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            {t("git.repos.new")}
+          </Button>
+        )}
       </div>
-      <p className="text-[13px] text-muted">{t("git.repos.summary")}</p>
+      <p className="text-[13px] text-muted">{t(visitor ? "git.visitor.summary" : "git.repos.summary")}</p>
       {repos.error !== null ? (
         <ErrorAlert error={repos.error} />
       ) : repos.data === null ? (
@@ -42,8 +48,8 @@ export function RepoList() {
       ) : list.length === 0 ? (
         <Empty className="min-h-64">
           <EmptyHeader>
-            <EmptyTitle>{t("git.repos.emptyTitle")}</EmptyTitle>
-            <EmptyDescription>{t("git.repos.emptyBody")}</EmptyDescription>
+            <EmptyTitle>{t(visitor ? "git.visitor.emptyTitle" : "git.repos.emptyTitle")}</EmptyTitle>
+            <EmptyDescription>{t(visitor ? "git.visitor.emptyBody" : "git.repos.emptyBody")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (
@@ -63,11 +69,7 @@ export function RepoList() {
                     <Link to={`/${r.owner.login}/${r.name}`} className="truncate font-medium text-ink hover:underline">
                       {me !== null && r.owner.login === me.login ? r.name : r.full_name}
                     </Link>
-                    {r.private && (
-                      <Badge variant="outline" className="px-1.5 py-0">
-                        <HugeiconsIcon icon={LockIcon} size={11} strokeWidth={1.5} color="currentColor" aria-label={t("git.repo.private")} />
-                      </Badge>
-                    )}
+                    <VisibilityBadge visibility={r.visibility} compact />
                   </span>
                 </TableCell>
                 <TableCell className="max-w-80 truncate text-muted max-md:hidden">{r.description}</TableCell>
@@ -90,7 +92,7 @@ function NewRepoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
   const navigate = useNavigate();
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
-  const [isPrivate, setPrivate] = React.useState(true);
+  const [visibility, setVisibility] = React.useState<Visibility>("private");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -98,7 +100,7 @@ function NewRepoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
     if (open) {
       setName("");
       setDescription("");
-      setPrivate(true);
+      setVisibility("private");
       setBusy(false);
       setError(null);
     }
@@ -112,7 +114,7 @@ function NewRepoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
           event.preventDefault();
           if (trimmed === "" || busy) return;
           setBusy(true);
-          git.createRepo(trimmed, description.trim(), isPrivate).then(
+          git.createRepo(trimmed, description.trim(), visibility).then(
             (repo) => {
               onOpenChange(false);
               navigate(`/${repo.owner.login}/${repo.name}`);
@@ -146,7 +148,7 @@ function NewRepoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
             <FieldLabel htmlFor={`${id}-description`}>{t("git.repos.description")}</FieldLabel>
             <Textarea id={`${id}-description`} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </Field>
-          <SwitchField label={t("git.repos.private")} description={t("git.repos.privateHint")} checked={isPrivate} onChange={setPrivate} />
+          <VisibilityField value={visibility} onChange={setVisibility} />
         </DialogBody>
         <DialogFooter>
           <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>

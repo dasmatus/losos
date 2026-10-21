@@ -253,9 +253,14 @@ pub fn adopt_repositories(state: &State) -> anyhow::Result<usize> {
                 .run(&repo_dir.path(), &["symbolic-ref", "--short", "HEAD"])
                 .map(|s| s.trim().to_string())
                 .unwrap_or_else(|_| "main".to_string());
-            state
-                .store
-                .create_repo(user.id, name, "", true, &branch, None)?;
+            state.store.create_repo(
+                user.id,
+                name,
+                "",
+                super::db::Visibility::Private,
+                &branch,
+                None,
+            )?;
             if let Err(e) = clear_hooks(&repo_dir.path()) {
                 tracing::warn!(repo = %repo_dir.path().display(), error = ?e, "could not clear hooks");
             }
