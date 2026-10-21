@@ -23,11 +23,11 @@ import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } 
 import type { CloudApps } from "./use-cloud-apps";
 import { useCloudStore } from "./use-cloud-apps";
 
-/* LosOS cloud's own apps, inside the Apps pane's LosOS cloud accordion: the
+/* LosOS Cloud's own apps, inside the Apps pane's LosOS Cloud accordion: the
  * list with a switch per app, and the app store search under it.
  *
  * The list is long (Nextcloud ships some forty apps of its own), so the ones
- * built into LosOS cloud are folded behind a button until asked for or
+ * built into LosOS Cloud are folded behind a button until asked for or
  * filtered to; the apps LosOS bundles and the ones added from the store are
  * the ones an owner comes here for. */
 

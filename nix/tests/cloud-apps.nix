@@ -1,4 +1,4 @@
-# nixos-test-vms config for managing LosOS cloud's apps from the admin UI's
+# nixos-test-vms config for managing LosOS Cloud's apps from the admin UI's
 # Apps pane, the owner's account being a standard one, and a federated share
 # between two boxes.
 #
@@ -269,7 +269,7 @@ pkgs.testers.nixosTest {
               f"curl -sfk -X POST -u 'notshared:{b}' -H 'OCS-APIRequest: true' "
               f"'https://evabox/ocs/v2.php/apps/files_sharing/api/v1/remote_shares/pending/{offer['id']}?format=json'"
           )
-          # Accepted, it is a file in the other owner's LosOS cloud, read
+          # Accepted, it is a file in the other owner's LosOS Cloud, read
           # through from the first box.
           read = f"curl -sfk -u 'notshared:{b}' https://evabox/remote.php/dav/files/notshared/{name}"
           try:

@@ -586,7 +586,7 @@ await check('a person signed in at the box sign-in page gets the app without a k
   const { page } = await open({
     person: { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage', 'backup'] },
   });
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   await page.getByText('Sign in to this box').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null, 'a cookie session stored a key');
   // The name beside the picture or initials.
@@ -601,7 +601,7 @@ await check('a person in one section sees that section and not the administrator
     path: '/settings/backup',
     person: { name: 'eva', displayName: 'Eva', groups: ['losos-backup'], admin: false, spareKey: false, sections: ['backup'] },
   });
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   const sections = nav(page);
   await sections.getByRole('link', { name: 'Backup' }).waitFor();
   for (const hidden of ['Storage', 'Mesh', 'Advanced', 'Security', 'Reset', 'Lab']) {
@@ -619,7 +619,7 @@ await check('Mail is in the sidebar only while /api/me lists it among the shared
   const matus = { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage', 'backup'] };
   for (const [shared, want] of [[['mail'], 1], [[], 0], [undefined, 0]]) {
     const { page } = await open({ person: { ...matus, ...(shared !== undefined ? { shared } : {}) } });
-    await page.getByRole('button', { name: 'Sign out' }).waitFor();
+    await page.getByTestId('signed-in-as').waitFor();
     const mail = nav(page).getByRole('link', { name: 'Mail', exact: true });
     assert.equal(await mail.count(), want, `Mail links with shared=${JSON.stringify(shared)}`);
     if (want === 1) assert.equal(await mail.getAttribute('href'), '/mail', 'Mail is not a screen of the admin pages');
@@ -638,7 +638,7 @@ await check('a wrong spare key is refused and the prompt stays up', async () => 
   assert.ok(/was not accepted/i.test(text), `no refusal shown:\n${text}`);
   assert.equal(await page.getByRole('dialog').locator('a[data-help]').getAttribute('href'), '/handbook/troubleshooting/forgot-password/');
   assert.equal(
-    await page.getByRole('button', { name: 'Sign out' }).count(),
+    await page.getByTestId('signed-in-as').count(),
     0,
     'the app unlocked on a wrong key',
   );
@@ -651,7 +651,7 @@ await check('the right spare key opens the app and is kept for the tab', async (
   await page.getByRole('button', { name: /Use the spare admin key instead/ }).click();
   await page.locator('#admin-key').fill(TOKEN);
   await page.getByRole('button', { name: 'Unlock' }).click();
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   await page.getByText('Sign in to this box').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), TOKEN);
   assert.equal(portal.length, 0, 'the key path must not go through the sign-in page');
@@ -676,7 +676,7 @@ await check('a box with nobody to sign in as makes its first administrator with 
   await page.locator('#first-password').fill(PASSWORD);
   await page.locator('#admin-key').fill(TOKEN);
   await page.getByRole('button', { name: 'Make it' }).click();
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   assert.equal(made.length, 1, 'expected one claim');
   assert.equal(made[0].auth, `Bearer ${TOKEN}`, 'the spare key did not go with it');
   assert.deepEqual(made[0].body, { name: 'matus', password: PASSWORD }, 'the name was not lower-cased or the body is wrong');
@@ -686,7 +686,24 @@ await check('a box with nobody to sign in as makes its first administrator with 
 
 await check('signing out returns to the prompt and forgets the token', async () => {
   const { page } = await open({ stored: true });
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByTestId('signed-in-as').click();
+  await page.getByRole('menuitem', { name: /Sign out/ }).click();
+  await page.getByText('Sign in to this box').waitFor();
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
+  await page.close();
+});
+
+await check('the person menu holds Your account and Sign out, and Alt+Shift+Q signs out too', async () => {
+  const { page } = await open({ stored: true });
+  await page.getByTestId('signed-in-as').click();
+  const menu = page.locator('[data-slot=person-menu]');
+  await menu.waitFor();
+  assert.equal(await menu.getByRole('menuitem', { name: /Sign out/ }).count(), 1, 'Sign out is not in the menu');
+  assert.match(await menu.getByRole('menuitem', { name: /Sign out/ }).innerText(), /Alt\s*Shift\s*Q/, 'the menu does not show the keys');
+  assert.equal(await page.getByRole('button', { name: 'Sign out' }).count(), 0, 'Sign out is still a button in the bar');
+  await page.keyboard.press('Escape');
+  await menu.waitFor({ state: 'hidden' });
+  await page.keyboard.press('Alt+Shift+KeyQ');
   await page.getByText('Sign in to this box').waitFor();
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
   await page.close();
@@ -867,7 +884,7 @@ for (const { name, now, file, tip } of [
     assert.equal(await page.locator('header').getByText('LosOS', { exact: true }).count(), 0, 'the name is still drawn as text');
     // A photo needs a word of explanation: hovering the logo says what it
     // is, and the same words are the trigger's accessible name.
-    const trigger = page.locator('header').getByRole('button', { name: /Losos is Slovak for salmon/ });
+    const trigger = page.locator('header').getByRole('link', { name: /Losos is Slovak for salmon/ });
     await trigger.hover();
     await page.locator('[data-slot="tooltip-content"]').filter({ hasText: tip }).waitFor();
     await page.close();
@@ -1118,7 +1135,7 @@ await check('About leads with the address this browser is using and names the .l
   await page.close();
 });
 
-/* LosOS cloud's apps, in the order of its own menu, each a link into it
+/* LosOS Cloud's apps, in the order of its own menu, each a link into it
  * through index.php. Mail is not shipped, so its tile waits for the probe. */
 const CLOUD_TILES = [
   ['Files', 'files'], ['Dashboard', 'dashboard'], ['Photos', 'photos'], ['Activity', 'activity'],
@@ -1132,7 +1149,7 @@ const tiles = (page) =>
     links.map((a) => [a.textContent.trim(), a.getAttribute('href')]),
   );
 
-await check('the homepage has a tile for every app in LosOS cloud\'s menu, and Mail only when it is installed', async () => {
+await check('the homepage has a tile for every app in LosOS Cloud\'s menu, and Mail only when it is installed', async () => {
   const expected = CLOUD_TILES.map(([name, id]) => [name, `/nextcloud/index.php/apps/${id}/`]);
   for (const mail of [false, true]) {
     const { page, errors } = await open({ stored: true, cloud: { mail } });

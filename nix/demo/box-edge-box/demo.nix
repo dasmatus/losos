@@ -26,11 +26,11 @@
 #   7. the edge goes away: both notice, the tunnels stop, sharing is refused
 #      again, and each box keeps serving its own LAN.
 #
-# What is smaller than a real box: LosOS cloud does not run in these VMs (it
+# What is smaller than a real box: LosOS Cloud does not run in these VMs (it
 # needs gigabytes and, without KVM, most of an hour to start). A one-file
 # stand-in answers on the loopback port the cloud pod would, behind the real
 # front nginx, so a request through the edge ends at box B's own nginx and
-# its /nextcloud location. The full mode reaches the real LosOS cloud.
+# its /nextcloud location. The full mode reaches the real LosOS Cloud.
 #
 # With LOSOS_RECORD_DIR set on the host, the script pauses at each step
 # until a recorder has photographed the admin pages (two-boxes.nix in
@@ -57,9 +57,9 @@ let
     pkgs.writeTextDir "nextcloud/status.php" (
       builtins.toJSON {
         installed = true;
-        productname = "LosOS cloud";
+        productname = "LosOS Cloud";
         box = name;
-        note = "light demo stand-in; the full demo runs the real LosOS cloud";
+        note = "light demo stand-in; the full demo runs the real LosOS Cloud";
       }
     );
 
@@ -103,7 +103,7 @@ let
         };
       };
       systemd.services.losos-cloud-stand-in = {
-        description = "stand-in for LosOS cloud on its loopback port (light demo only)";
+        description = "stand-in for LosOS Cloud on its loopback port (light demo only)";
         wantedBy = [ "multi-user.target" ];
         serviceConfig = {
           ExecStart = "${pkgs.python3}/bin/python3 -m http.server ${toString cloudPort} --bind 127.0.0.1 --directory ${standIn name}";

@@ -21,7 +21,7 @@
 #     request and the launch film (nix/tests/cloud-shots.mjs), then the same
 #     addresses on the box without LosOS Cloud, for the "before" column.
 #
-# LosOS cloud's pod is not here: lososd runs in native mode with a stub
+# LosOS Cloud's pod is not here: lososd runs in native mode with a stub
 # `nextcloud-occ`, which is all the claim asks of it (nix/tests/identity.nix
 # does the same).
 { pkgs }:

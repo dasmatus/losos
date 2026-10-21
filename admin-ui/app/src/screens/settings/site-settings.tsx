@@ -10,7 +10,7 @@ import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, SwitchRow }
 import type { SettingsForm } from "./use-settings-form";
 import { draftOn } from "./pane-advanced";
 
-/* The box-wide settings of LosOS cloud and LosOS Git, on the Apps pane,
+/* The box-wide settings of LosOS Cloud and LosOS Git, on the Apps pane,
  * each inside that app's accordion.
  *
  * What an administrator would otherwise change in Nextcloud's
@@ -30,7 +30,7 @@ import { draftOn } from "./pane-advanced";
  * only restates a default.
  */
 
-/* The languages LosOS cloud can be set to here, by the name each one uses
+/* The languages LosOS Cloud can be set to here, by the name each one uses
  * for itself. The same list as the option's enum. */
 const LANGUAGES: readonly (readonly [string, string])[] = [
   ["en", "English"],

@@ -1,7 +1,7 @@
 import { defineMessages } from "./define";
 
 /* The company edge's manage page (src/manage/), served by the edge at
- * /manage/: its key, the boxes it routes, and one box's LosOS cloud, LosOS
+ * /manage/: its key, the boxes it routes, and one box's LosOS Cloud, LosOS
  * Git and apps. The rows of a box reuse the Apps pane's own messages. */
 
 export default defineMessages({
@@ -92,9 +92,9 @@ export default defineMessages({
   // ── One box ───────────────────────────────────────────────────────────
   "manage.box.back": { en: "All boxes", sk: "Všetky zariadenia", de: "Alle Boxen" },
   "manage.box.summary": {
-    en: "LosOS cloud, LosOS Git and the apps on this box. Everything else stays with its owner.",
-    sk: "LosOS cloud, LosOS Git a aplikácie na tomto zariadení. Všetko ostatné ostáva jeho vlastníkovi.",
-    de: "LosOS cloud, LosOS Git und die Apps auf dieser Box. Alles andere bleibt bei ihrem Besitzer.",
+    en: "LosOS Cloud, LosOS Git and the apps on this box. Everything else stays with its owner.",
+    sk: "LosOS Cloud, LosOS Git a aplikácie na tomto zariadení. Všetko ostatné ostáva jeho vlastníkovi.",
+    de: "LosOS Cloud, LosOS Git und die Apps auf dieser Box. Alles andere bleibt bei ihrem Besitzer.",
   },
   "manage.box.refused": {
     en: "The box refused this edge. Its owner may have switched management off.",
@@ -114,9 +114,9 @@ export default defineMessages({
     de: "Die Einstellungen der Box konnten nicht geladen werden: {message}",
   },
   "manage.site.none": {
-    en: "This box has no settings of LosOS cloud or LosOS Git to change from here.",
-    sk: "Toto zariadenie nemá nastavenia LosOS cloud ani LosOS Git, ktoré by sa dali zmeniť odtiaľto.",
-    de: "Diese Box hat keine Einstellungen von LosOS cloud oder LosOS Git, die sich von hier ändern lassen.",
+    en: "This box has no settings of LosOS Cloud or LosOS Git to change from here.",
+    sk: "Toto zariadenie nemá nastavenia LosOS Cloud ani LosOS Git, ktoré by sa dali zmeniť odtiaľto.",
+    de: "Diese Box hat keine Einstellungen von LosOS Cloud oder LosOS Git, die sich von hier ändern lassen.",
   },
   "manage.site.applying": {
     en: "Applying the box's new settings",

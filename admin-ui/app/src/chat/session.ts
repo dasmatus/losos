@@ -136,7 +136,7 @@ function deviceName(): string {
         : /Safari\//.test(agent)
           ? "Safari"
           : "Browser";
-  return `LosOS chat, ${browser}`;
+  return `LosOS Chat, ${browser}`;
 }
 
 async function askSession(device: string | null): Promise<SessionReply> {

@@ -1,4 +1,4 @@
-/* Pins on the sidebar: apps, LosOS cloud files and LosOS Git repositories
+/* Pins on the sidebar: apps, LosOS Cloud files and LosOS Git repositories
  * the owner pins, kept on the box (backend/src/pins.rs).
  *
  * Same arrangement as the other files: the real dist/ bundle, the API
@@ -195,7 +195,7 @@ await check('an Overview tile pins its app, and says so once it is pinned', asyn
   await page.close();
 });
 
-await check('the dialog pins a file from a folder of LosOS cloud and a repository from LosOS Git', async () => {
+await check('the dialog pins a file from a folder of LosOS Cloud and a repository from LosOS Git', async () => {
   const { page, box } = await open({ pins: [{ kind: 'tile', app: 'calendar' }] });
   await pinned(page).getByRole('button', { name: 'Edit pins' }).click();
   const dialog = page.getByRole('dialog', { name: 'Pins' });
@@ -248,7 +248,7 @@ await check('the apps tab pins an app installed from the search', async () => {
   await page.close();
 });
 
-await check('without a key to LosOS cloud the files tab says how to get one', async () => {
+await check('without a key to LosOS Cloud the files tab says how to get one', async () => {
   const { page } = await open({ files: 'signIn' });
   await pinned(page).getByRole('button', { name: 'Edit pins' }).click();
   const dialog = page.getByRole('dialog', { name: 'Pins' });
@@ -282,7 +282,7 @@ await check('the palette lists the pins first and finds one by name or by its fo
   await page.close();
 });
 
-const menu = (page) => page.locator('[data-slot="pin-menu"]');
+const menu = (page) => page.locator('[data-slot="context-menu"]');
 
 await check('right-clicking a file or a repository in the palette pins it, and the palette stays open', async () => {
   const { page, box } = await open({ pins: [] });
@@ -294,7 +294,7 @@ await check('right-clicking a file or a repository in the palette pins it, and t
   const file = palette.getByRole('option').filter({ hasText: 'notes.md' });
   await file.click({ button: 'right' });
   // Inside the palette's <dialog>, or the top layer would hide it.
-  await palette.locator('[data-slot="pin-menu"]').waitFor();
+  await palette.locator('[data-slot="context-menu"]').waitFor();
   await menu(page).getByRole('menuitem', { name: 'Pin to sidebar' }).click();
   await pinned(page).getByRole('link', { name: 'notes.md' }).waitFor();
   assert.deepEqual(box.puts.at(-1), [{ kind: 'file', id: 12, path: '/notes.md', folder: false }]);
@@ -328,7 +328,7 @@ await check('right-clicking an Overview tile or a pin in the sidebar pins or unp
   assert.deepEqual(box.puts.at(-1), [...PINNED, { kind: 'tile', app: 'contacts' }]);
 
   await pinned(page).getByRole('link', { name: 'plan.pdf' }).click({ button: 'right' });
-  assert.deepEqual(await menu(page).getByRole('menuitem').allInnerTexts(), ['Unpin from sidebar', 'Open in new tab']);
+  assert.deepEqual(await menu(page).getByRole('menuitem').allInnerTexts(), ['Open in new tab', 'Unpin from sidebar']);
   await menu(page).getByRole('menuitem', { name: 'Unpin from sidebar' }).click();
   await pinned(page).getByRole('link', { name: 'plan.pdf' }).waitFor({ state: 'detached' });
   assert.equal(box.puts.at(-1).some((pin) => pin.kind === 'file'), false);
@@ -371,7 +371,7 @@ await check('under the appliance CSP the pins, the tile button, the dialog and t
     await dialog.getByText('losos-config').waitFor();
     await dialog.getByRole('button', { name: 'Done' }).click();
     await pinned(page).getByRole('link', { name: 'site' }).click({ button: 'right' });
-    await page.locator('[data-slot="pin-menu"]').waitFor();
+    await page.locator('[data-slot="context-menu"]').waitFor();
     await page.keyboard.press('Escape');
     const after = await page.evaluate(() => window.__violations);
     assert.equal(after.length, atLoad, `pins added CSP violations: ${after.slice(atLoad).join(', ')}`);

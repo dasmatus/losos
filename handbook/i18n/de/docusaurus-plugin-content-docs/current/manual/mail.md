@@ -53,6 +53,9 @@ deinem eigenen Konto anzumelden.
   Nachricht ohne reinen Text öffnet sich gleich in diesem Rahmen.
 - Anhänge werden auf deinen Rechner heruntergeladen. Sie öffnen sich nie in
   der Seite.
+- Mit einem Rechtsklick auf eine Nachricht in der Liste antwortest du,
+  markierst, archivierst oder verschiebst sie, ohne sie zu öffnen; siehe
+  [das Rechtsklick-Menü](admin-pages#the-right-click-menu).
 
 ## Was Mail noch nicht kann \{#what-mail-does-not-do-yet}
 

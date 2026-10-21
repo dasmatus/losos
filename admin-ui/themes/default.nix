@@ -1,6 +1,6 @@
 # The LosOS look and the LosOS names for Nextcloud and Forgejo, as one store
 # path plus the facts each consumer needs about it. Nextcloud is presented as
-# "LosOS cloud" and Forgejo as "LosOS Git": the colours, the logos, the names
+# "LosOS Cloud" and Forgejo as "LosOS Git": the colours, the logos, the names
 # and the words on the page are all the appliance's, and nothing links out to
 # either project's marketing.
 #

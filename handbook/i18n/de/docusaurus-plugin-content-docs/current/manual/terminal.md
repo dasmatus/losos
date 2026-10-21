@@ -161,7 +161,7 @@ Zugriffstokens, der Markt, das Labor und alles, was Daten löscht, bleiben
 auf den Admin-Seiten.
 :::
 
-## LosOS cloud und LosOS Git von diesem Rechner aus nutzen \{#use-losos-cloud-and-losos-git-from-this-computer}
+## LosOS Cloud und LosOS Git von diesem Rechner aus nutzen \{#use-losos-cloud-and-losos-git-from-this-computer}
 
 ```sh
 losos cloud setup
@@ -175,7 +175,7 @@ Taste.
 
 `cloud setup` fordert bei der Box ein App-Passwort nur für diesen Rechner an
 und legt es im Schlüsselbund dort ab, wo der Dateimanager danach sucht.
-LosOS cloud erscheint dann in der Seitenleiste des Dateimanagers (GNOME
+LosOS Cloud erscheint dann in der Seitenleiste des Dateimanagers (GNOME
 Dateien und andere Dateimanager, die GTK-Lesezeichen lesen), und beim
 Öffnen siehst du deine Dateien, ohne nach einem Passwort gefragt zu werden.
 Der Dateimanager fragt bei der ersten Verbindung einmal, ob er das eigene
@@ -195,7 +195,7 @@ dieses Zertifikats anzunehmen, dieselbe Prüfung, die `losos` macht.
 
 Beide tragen den Namen des Rechners, etwa „LosOS on laptop“. `--device`
 wählt einen anderen Namen. Um einem Rechner den Zugang zu nehmen, lösche
-seinen Eintrag unter **Sicherheit** in den Einstellungen von LosOS cloud
+seinen Eintrag unter **Sicherheit** in den Einstellungen von LosOS Cloud
 oder unter **Anwendungen** in denen von LosOS Git. Führst du ein Setup
 erneut aus, ersetzt es das Passwort oder Token dieses Rechners.
 

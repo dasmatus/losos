@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PinIcon } from "@hugeicons/core-free-icons";
-import { openInNewTab, PinMenu } from "@/components/pin-menu";
+import { openInNewTab, usePinItems } from "@/components/pin-menu";
 import { usePins, useSavePins } from "@/components/pins-dialog";
 import { StatusDot } from "@/components/ui/badge";
 import type { AppTileModel } from "@/lib/apps";
+import { contextMenu } from "@/lib/context-menu";
 import { useT } from "@/lib/i18n-react";
 import { isPinned, toggled, type Pin } from "@/lib/pins";
 import { cn } from "@/lib/utils";
@@ -59,6 +60,8 @@ export function AppTile({ tile, index = 0 }: AppTileProps) {
   const name = t(app.name);
   const note = t(app.note);
   const second = attention === null ? detail : attention.note;
+  const items = usePinItems();
+  const pin: Pin = { kind: "tile", app: app.id };
 
   const body = (
     <>
@@ -121,9 +124,11 @@ export function AppTile({ tile, index = 0 }: AppTileProps) {
   );
 
   return (
-    <li className={cn("group/tile relative animate-rise", staggerClass(index))}>
-      <TilePin pin={{ kind: "tile", app: app.id }} name={name} />
-      <PinMenu pin={{ kind: "tile", app: app.id }} name={name} newTab={() => openInNewTab(href)}>
+    <li
+      ref={contextMenu(() => ({ label: name, sections: [[items.newTab(() => openInNewTab(href))], [items.pin(pin)]] }))}
+      className={cn("group/tile relative animate-rise", staggerClass(index))}
+    >
+      <TilePin pin={pin} name={name} />
         {leavesAdmin ? (
           <a href={href} title={note} className={className}>
             {body}
@@ -133,7 +138,6 @@ export function AppTile({ tile, index = 0 }: AppTileProps) {
             {body}
           </Link>
         )}
-      </PinMenu>
     </li>
   );
 }

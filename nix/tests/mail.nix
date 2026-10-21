@@ -39,7 +39,7 @@
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  # Claiming the box asks LosOS cloud to set the owner's password; the
+  # Claiming the box asks LosOS Cloud to set the owner's password; the
   # identity test answers the same way.
   stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
     case "$1" in

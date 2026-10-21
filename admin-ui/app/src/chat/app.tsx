@@ -23,6 +23,8 @@ import {
 } from "matrix-js-sdk";
 import { CryptoEvent, type VerificationRequest } from "matrix-js-sdk/lib/crypto-api";
 import { AppBar, type AppBarPerson } from "@/components/app-bar";
+import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
+import { PersonAvatar } from "@/components/person";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -72,6 +74,7 @@ export function ChatRoot() {
   // When each recent device was signed out, so a homeserver that refuses
   // every new device too does not get asked for one again and again.
   const signedOut = React.useRef<number[]>([]);
+  const pageMenu = usePageMenu();
 
   React.useEffect(() => {
     let live = true;
@@ -121,18 +124,23 @@ export function ChatRoot() {
     return () => clearTimeout(handle);
   }, [boot]);
 
+  // One right-click menu for the whole page: a message answers with its
+  // own (timeline.tsx), anywhere else gets the page's.
+  const menu = <ContextMenuHost page={pageMenu} />;
   if (boot.state === "ready") {
     return (
       <>
         <CallsProvider client={boot.signed.client}>
           <ChatShell signed={boot.signed} />
         </CallsProvider>
+        {menu}
         <Toaster />
       </>
     );
   }
   return (
     <div className="flex h-dvh flex-col bg-ground text-ink">
+      {menu}
       <ChatBar />
       <main className="flex flex-1 items-center justify-center p-6">
         {boot.state === "loading" || (boot.state === "refused" && boot.why === "starting") ? (
@@ -178,11 +186,18 @@ function ChatBar({ children }: { children?: React.ReactNode }) {
     void loadMe().catch(() => undefined);
   }, []);
   const person: AppBarPerson | null =
-    me === null || me.spareKey
+    me === null || me.spareKey || !me.name
       ? null
       : {
-          label: me.displayName ?? me.name ?? "",
-          tip: `${t("shell.me.signedIn", { name: me.name ?? "" })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`,
+          label: me.displayName ?? me.name,
+          tip: `${t("shell.me.signedIn", { name: me.name })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`,
+          avatar: (
+            <PersonAvatar
+              size="xs"
+              person={{ name: me.name, displayName: me.displayName ?? me.name, picture: me.picture, accent: me.accent }}
+            />
+          ),
+          accountLink: <a href="/settings/account" />,
         };
   return (
     <AppBar width="full" name={t("chat.title")} nameLink={<a href="/chat/" />} person={person} onSignOut={signOutHere}>

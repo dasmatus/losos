@@ -12,6 +12,7 @@ import {
   Sun03Icon,
 } from "@hugeicons/core-free-icons";
 import { canUse, sharedApp, signOut } from "@/lib/api";
+import { signOutKeys } from "@/lib/shortcuts";
 import { CATALOGUE, recallAvailability, type AppDefinition } from "@/lib/apps";
 import { HANDBOOK_BASE } from "@/lib/handbook";
 import { LOCALE_NAMES, LOCALES, getLocaleChoice, setLocale, t, template, type MessageKey } from "@/lib/i18n";
@@ -31,7 +32,7 @@ import { openTour } from "@/tour/store";
 export type Target =
   /** A route of this page. */
   | { kind: "route"; to: string; state?: unknown }
-  /** Another app on this origin (LosOS cloud, LosOS Git, the Lab, the
+  /** Another app on this origin (LosOS Cloud, LosOS Git, the Lab, the
    *  handbook): a real navigation. */
   | { kind: "href"; href: string; newTab?: boolean }
   | { kind: "run"; run: () => void };
@@ -55,6 +56,8 @@ export interface Item {
   target: Target;
   /** What its right-click menu pins to the sidebar (components/pin-menu.tsx). */
   pin?: Pin;
+  /** The keyboard shortcut that does the same, shown at the right. */
+  keys?: readonly string[];
 }
 
 /** Lower-case and strip diacritics: "Úložisko" -> "ulozisko". */
@@ -142,7 +145,7 @@ export function pageItems(): Item[] {
   return items;
 }
 
-/* The LosOS cloud apps and LosOS Git, as the Overview's tiles have them:
+/* The LosOS Cloud apps and LosOS Git, as the Overview's tiles have them:
  * only what this browser last saw answering (lib/apps.ts), so the palette
  * does not offer a link the grid would have hidden. Settings is left out;
  * it is a page here already. */
@@ -240,6 +243,7 @@ export function actionItems(): Item[] {
       icon: Logout01Icon,
       words: `${template("shell.signOut", undefined, "en")} log out lock leave`,
       target: { kind: "run", run: signOut },
+      keys: signOutKeys(),
     },
   );
   return items;

@@ -1,5 +1,5 @@
 <?php
-/* LosOS cloud: the name, the words and the links Nextcloud shows as its own.
+/* LosOS Cloud: the name, the words and the links Nextcloud shows as its own.
  *
  * A theme folder's defaults.php is read by OC_Defaults on every request
  * (lib/private/legacy/OC_Defaults.php), and the theming app takes its own
@@ -18,23 +18,23 @@ class OC_Theme {
 	/* The name in the page title, on the login button ("Log in to …"), in
 	 * the footer and in every e-mail. */
 	public function getName(): string {
-		return 'LosOS cloud';
+		return 'LosOS Cloud';
 	}
 
 	public function getHTMLName(): string {
-		return 'LosOS cloud';
+		return 'LosOS Cloud';
 	}
 
 	public function getTitle(): string {
-		return 'LosOS cloud';
+		return 'LosOS Cloud';
 	}
 
 	public function getEntity(): string {
-		return 'LosOS cloud';
+		return 'LosOS Cloud';
 	}
 
 	public function getProductName(): string {
-		return 'LosOS cloud';
+		return 'LosOS Cloud';
 	}
 
 	/* Nextcloud's tagline ("a safe home for all your data") is its

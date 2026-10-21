@@ -1,6 +1,6 @@
 import { defineMessages } from "./define";
 
-/* LosOS chat (src/chat/), the Matrix client at /chat/. What other people
+/* LosOS Chat (src/chat/), the Matrix client at /chat/. What other people
  * write and what the homeserver names (room names, Matrix IDs, the
  * verification emoji's names) stays as it comes. */
 export default defineMessages({
@@ -82,6 +82,7 @@ export default defineMessages({
   "chat.invite.decline": { en: "Decline", sk: "Odmietnuť", de: "Ablehnen" },
 
   // ── messages ──
+  "chat.message.menu": { en: "Message from {name}", sk: "Správa od {name}", de: "Nachricht von {name}" },
   "chat.message.reply": { en: "Reply", sk: "Odpovedať", de: "Antworten" },
   "chat.message.edit": { en: "Edit", sk: "Upraviť", de: "Bearbeiten" },
   "chat.message.edited": { en: "(edited)", sk: "(upravené)", de: "(bearbeitet)" },

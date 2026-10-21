@@ -14,11 +14,11 @@ import {
 import { toast } from "@/components/ui/toast";
 import { t } from "@/lib/i18n";
 
-/* LosOS cloud's own apps (backend/src/cloud_apps.rs): the list, one change
+/* LosOS Cloud's own apps (backend/src/cloud_apps.rs): the list, one change
  * at a time, and the app store search.
  *
  * A change answers with the whole list after it, so the pane never shows a
- * switch in a position LosOS cloud did not confirm. An older box that does
+ * switch in a position LosOS Cloud did not confirm. An older box that does
  * not serve the route answers 404; the pane then draws no apps section. */
 
 export type CloudAppsState =

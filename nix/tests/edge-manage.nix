@@ -21,7 +21,7 @@
 #      without the token;
 #   4. the owner switches it on: the marker appears, the next heartbeat
 #      tells the edge, and the edge's calls reach lososd as the edge;
-#   5. through the edge, LosOS cloud and LosOS Git settings and the apps
+#   5. through the edge, LosOS Cloud and LosOS Git settings and the apps
 #      answer; the owner's routes (options, apply, backups, people, the
 #      switch itself, a new password) are 403;
 #   6. a settings change through the edge rewrites only the line it names

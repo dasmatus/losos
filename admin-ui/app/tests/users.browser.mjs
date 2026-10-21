@@ -339,7 +339,7 @@ await check('access, a new password and a removal each send their own request', 
   await eva.getByRole('button', { name: 'Remove' }).click();
   const removeDialog = page.getByRole('dialog', { name: 'Remove Eva Novak?' });
   await removeDialog.waitFor();
-  assert.match(await removeDialog.innerText(), /files in LosOS cloud and LosOS Git stay/);
+  assert.match(await removeDialog.innerText(), /files in LosOS Cloud and LosOS Git stay/);
   assert.equal(posts.length, before, 'Remove sent before it asked');
   await removeDialog.getByTestId('users-remove-confirm').click();
   await eva.waitFor({ state: 'detached' });

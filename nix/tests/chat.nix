@@ -1,4 +1,4 @@
-# nixos-test-vms config for LosOS chat (modules/chat.nix, backend/src/chat.rs,
+# nixos-test-vms config for LosOS Chat (modules/chat.nix, backend/src/chat.rs,
 # admin-ui/app/src/chat/).
 #
 # The box runs LosOS Login, lososd, nginx and Dendrite as they ship; a laptop

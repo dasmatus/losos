@@ -1,4 +1,4 @@
-//! Checking a password with LosOS cloud.
+//! Checking a password with LosOS Cloud.
 //!
 //! Signing in to the admin pages is Authelia's job now
 //! (`modules/identity.nix`, `crate::people`). What stays here is the probe
@@ -169,10 +169,10 @@ pub fn interpret_login(status: Option<u16>) -> LoginOutcome {
         // and 502/504 come from nothing on this box (there is no proxy on
         // the loopback hop), so every other status reads as "not now".
         Some(code) => LoginOutcome::Unavailable(format!(
-            "LosOS cloud answered {code} instead of checking the password. It may still be starting."
+            "LosOS Cloud answered {code} instead of checking the password. It may still be starting."
         )),
         None => LoginOutcome::Unavailable(
-            "LosOS cloud did not answer, so the password could not be checked. It may still be starting."
+            "LosOS Cloud did not answer, so the password could not be checked. It may still be starting."
                 .to_string(),
         ),
     }
@@ -217,7 +217,7 @@ pub struct WrongPassword;
 /// Nextcloud's brute-force protection refused to look. 429, so the page can
 /// say "wait" rather than "wrong".
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("too many attempts; LosOS cloud is making this address wait")]
+#[error("too many attempts; LosOS Cloud is making this address wait")]
 pub struct Throttled;
 
 #[cfg(test)]

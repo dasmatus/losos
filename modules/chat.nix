@@ -1,4 +1,4 @@
-# LosOS chat: a Matrix homeserver (Dendrite) on the box, the chat page at
+# LosOS Chat: a Matrix homeserver (Dendrite) on the box, the chat page at
 # /chat/, and lososd between the two (backend/src/chat.rs).
 #
 # Chat belongs to the `shared` user. Dendrite runs as it, and every room,
@@ -306,7 +306,7 @@ in
           ];
 
           systemd.services.losos-chat-setup = {
-            description = "Prepare LosOS chat: the homeserver's keys and lososd's application service";
+            description = "Prepare LosOS Chat: the homeserver's keys and lososd's application service";
             wantedBy = [ "multi-user.target" ];
             before = [ "dendrite.service" ];
             after = [ "losos-fscrypt-shared.service" ];
@@ -319,7 +319,7 @@ in
           };
 
           systemd.services.dendrite = {
-            description = "LosOS chat (Dendrite Matrix homeserver), as the shared user";
+            description = "LosOS Chat (Dendrite Matrix homeserver), as the shared user";
             wantedBy = [ "multi-user.target" ];
             after = [
               "network.target"
@@ -386,7 +386,7 @@ in
 
           # The thread list, one question per connection (see the header).
           systemd.sockets.losos-chat-threads = {
-            description = "Thread lists of LosOS chat";
+            description = "Thread lists of LosOS Chat";
             wantedBy = [ "sockets.target" ];
             socketConfig = {
               ListenStream = threadsSocket;
@@ -396,7 +396,7 @@ in
             };
           };
           systemd.services."losos-chat-threads@" = {
-            description = "One thread list of LosOS chat";
+            description = "One thread list of LosOS Chat";
             serviceConfig = {
               User = "shared";
               Group = "shared";

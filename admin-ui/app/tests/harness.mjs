@@ -70,7 +70,7 @@ export const LAB_CSP = [
   "form-action 'none'",
 ].join('; ');
 
-/* LosOS chat's policy (/chat/, modules/containers.nix `chatCsp`): the Lab's
+/* LosOS Chat's policy (/chat/, modules/containers.nix `chatCsp`): the Lab's
  * 'wasm-unsafe-eval' for the end-to-end crypto, and blob: for decrypted
  * pictures and voice messages. Mirror nginx's /chat/ arm here. */
 export const CHAT_CSP = [

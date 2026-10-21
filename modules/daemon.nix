@@ -295,7 +295,7 @@ in
       # that does not run one. `lib.optional false` does not force its
       # argument, so the attribute is not even evaluated there.
       ++ lib.optional ncNative config.services.nextcloud.occ
-      # The Apps pane's LosOS cloud apps (backend/src/cloud_apps.rs). In
+      # The Apps pane's LosOS Cloud apps (backend/src/cloud_apps.rs). In
       # container mode the same command is in the pod and reached by crictl.
       ++ lib.optional ncNative (
         nc.appsTool {

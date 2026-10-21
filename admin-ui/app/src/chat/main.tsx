@@ -1,4 +1,4 @@
-/* LosOS chat's entry: chat/index.html loads this. Chat is its own page, not
+/* LosOS Chat's entry: chat/index.html loads this. Chat is its own page, not
  * a route of the admin SPA, because it runs under a policy of its own
  * (script-src adds 'wasm-unsafe-eval' for the end-to-end crypto, img-src and
  * media-src add blob: for decrypted pictures and calls; modules/chat.nix)

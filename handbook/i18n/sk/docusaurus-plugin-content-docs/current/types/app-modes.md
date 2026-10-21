@@ -5,7 +5,7 @@ sidebar_position: 5
 
 # Režimy aplikácií
 
-LosOS cloud aj LosOS Git bežia každý v jednom z dvoch režimov. V oboch
+LosOS Cloud aj LosOS Git bežia každý v jednom z dvoch režimov. V oboch
 prípadoch vidíte tú istú aplikáciu na tej istej adrese a panel Aplikácie
 ukazuje, v ktorom režime je každá z nich.
 
@@ -38,21 +38,21 @@ mesh nikdy neumiestni. Člen klastra nedokáže naštartovať, kým je jeho serv
 nedostupný, a zariadenie sa každú noc o 00:07 reštartuje. Výpadok edge cez
 polnoc by tak odpojil vaše vlastné súbory.
 
-![Vnútri zariadenia: vlastný klaster zariadenia prevádzkuje LosOS cloud a LosOS Git, agent mesh patrí do iného klastra, ktorého serverom je edge.](@site/docs/img/box-architecture-sk.svg)
+![Vnútri zariadenia: vlastný klaster zariadenia prevádzkuje LosOS Cloud a LosOS Git, agent mesh patrí do iného klastra, ktorého serverom je edge.](@site/docs/img/box-architecture-sk.svg)
 
 ## Kde sú aplikácie \{#where-the-apps-are}
 
-![Panel Aplikácie: LosOS cloud a LosOS Git, každá so svojím režimom, jedna nainštalovaná aplikácia a pod nimi Nájsť ďalšie.](@site/docs/img/apps-sk.png)
+![Panel Aplikácie: LosOS Cloud a LosOS Git, každá so svojím režimom, jedna nainštalovaná aplikácia a pod nimi Nájsť ďalšie.](@site/docs/img/apps-sk.png)
 
 | Aplikácia    | Adresa              | Poznámka                                                                                  |
 | ------------ | ------------------- | ----------------------------------------------------------------------------------------- |
-| LosOS cloud  | `/nextcloud`        | Dôveruje názvu zariadenia a adrese, na ktorú prišla každá požiadavka, nikdy zástupnému znaku. |
+| LosOS Cloud  | `/nextcloud`        | Dôveruje názvu zariadenia a adrese, na ktorú prišla každá požiadavka, nikdy zástupnému znaku. |
 | LosOS Git    | `/forgejo/`         | Adresy na klonovanie používajú názov zariadenia. Ak ho nechcete, vypnite ho na paneli Aplikácie. |
 | Admin stránky | `/`                | Iba LAN.                                                                                  |
 | Príručka     | `/handbook/`        | Iba LAN.                                                                                  |
 
 :::note[Dlaždice aplikácií idú cez index.php]
-Dlaždice aplikácií na admin stránkach otvárajú aplikácie LosOS cloud cez
+Dlaždice aplikácií na admin stránkach otvárajú aplikácie LosOS Cloud cez
 `index.php` (`/nextcloud/index.php/apps/<app>/`), na ktorý odpovedá každá
 konfigurácia.
 :::

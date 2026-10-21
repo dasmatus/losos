@@ -1,4 +1,4 @@
-//! LosOS chat: the box's Matrix homeserver (Dendrite, `modules/chat.nix`)
+//! LosOS Chat: the box's Matrix homeserver (Dendrite, `modules/chat.nix`)
 //! and the parts of it lososd owns.
 //!
 //! Dendrite keeps the rooms, the messages, the devices and their keys.
@@ -67,10 +67,10 @@ const DEVICE_NAME_MAX: usize = 64;
 #[derive(Debug, thiserror::Error)]
 pub enum ChatError {
     /// The box runs no chat.
-    #[error("LosOS chat is off on this box")]
+    #[error("LosOS Chat is off on this box")]
     Off,
     /// The homeserver does not answer yet (starting, restarting).
-    #[error("LosOS chat is starting; try again in a moment")]
+    #[error("LosOS Chat is starting; try again in a moment")]
     NotUp,
     /// Who is asking cannot use chat: the spare key, the edge, or a person
     /// a rule of LosOS Login holds to their own account.
@@ -464,7 +464,7 @@ impl Chat {
             "initial_device_display_name": device_name
                 .map(clean_device_name)
                 .filter(|n| !n.is_empty())
-                .unwrap_or_else(|| "LosOS chat".to_string()),
+                .unwrap_or_else(|| "LosOS Chat".to_string()),
         });
         if let Some(device) = device.filter(|d| valid_device_id(d)) {
             login["device_id"] = json!(device);

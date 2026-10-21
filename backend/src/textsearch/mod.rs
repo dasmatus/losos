@@ -2,7 +2,7 @@
 //!
 //! Two sources, two methods, and neither runs inside lososd:
 //!
-//! * LosOS cloud: an SQLite FTS5 index of the owner's Nextcloud files
+//! * LosOS Cloud: an SQLite FTS5 index of the owner's Nextcloud files
 //!   ([`index`]). `losos-search index` brings it up to date every few
 //!   minutes and re-reads only the files whose size or modification time
 //!   changed since the last pass. [`extract`] turns one file into text. It
@@ -43,10 +43,10 @@ pub struct Request {
     pub limit: usize,
 }
 
-/// A file in LosOS cloud whose text matched.
+/// A file in LosOS Cloud whose text matched.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloudHit {
-    /// From the owner's root in LosOS cloud, `/`-separated, no leading `/`.
+    /// From the owner's root in LosOS Cloud, `/`-separated, no leading `/`.
     pub path: String,
     /// The text around the match, as alternating runs: even indices are
     /// plain text, odd ones are what matched. Always starts with a plain run,

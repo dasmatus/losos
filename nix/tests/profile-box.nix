@@ -1,6 +1,6 @@
 # The box both profile tests boot (nix/tests/profiles.nix asserts,
 # nix/tests/profile-screens.nix takes pictures): Authelia, lososd and
-# nginx's front vhost in its container shape, LosOS cloud as a stub that
+# nginx's front vhost in its container shape, LosOS Cloud as a stub that
 # says "installed", the way nix/tests/identity.nix sets it up.
 {
   pkgs,
