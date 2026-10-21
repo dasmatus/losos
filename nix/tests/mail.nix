@@ -203,10 +203,12 @@ pkgs.testers.nixosTest {
             f"  losos.cluster.enable = {str(mesh).lower()};",
             "}",
         ]
+        body = "\n".join(lines)
+        # Written beside it and moved in, so lososd never reads half a file.
         box.succeed(
-            "mkdir -p /etc/nixos/modules && printf '%s\\n' "
-            + " ".join("'" + l + "'" for l in lines)
-            + " > /etc/nixos/modules/overrides.nix"
+            "mkdir -p /etc/nixos/modules"
+            f" && cat > /etc/nixos/modules/overrides.nix.new <<'EOF'\n{body}\nEOF\n"
+            "mv /etc/nixos/modules/overrides.nix.new /etc/nixos/modules/overrides.nix"
         )
 
     def mail_page():
@@ -308,7 +310,7 @@ pkgs.testers.nixosTest {
         # The saved settings agree with the gate, so no page (the mesh
         # banner, the About pane) says this box is out of a mesh.
         settings = ok("/api/settings", matus)
-        assert settings["sharingMyStorage"] and settings["clusterEnable"], settings
+        assert settings.get("sharingMyStorage") is True and settings.get("clusterEnable") is True, settings
 
     with subtest("each person gets a mailbox on first use"):
         mhome = ok("/api/mail", matus)
