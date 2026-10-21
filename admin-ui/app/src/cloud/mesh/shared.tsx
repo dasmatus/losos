@@ -134,7 +134,7 @@ export function SharedView() {
       ) : (
         <ul className="flex flex-col divide-y divide-hair rounded-card border border-line bg-surface" data-incoming>
           {shown.map((s) => (
-            <li key={`${s.remote}/${s.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3" data-incoming-share={s.name}>
+            <li key={`${s.remote}/${s.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3" data-incoming-share={`${s.remote}/${s.id}`}>
               <Owner s={s} />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="flex min-w-0 items-center gap-2">
@@ -177,12 +177,12 @@ export function SharedView() {
                   <Button size="sm" variant="ghost" onClick={() => answer(s, false)}>
                     {t("mesh.shared.decline")}
                   </Button>
-                  <Button size="sm" onClick={() => answer(s, true)} data-accept={s.name}>
+                  <Button size="sm" onClick={() => answer(s, true)} data-accept={`${s.remote}/${s.id}`}>
                     {t("mesh.shared.accept")}
                   </Button>
                 </div>
               ) : (
-                <Button size="sm" variant="secondary" onClick={() => open(s)} data-open={s.name}>
+                <Button size="sm" variant="secondary" onClick={() => open(s)} data-open={`${s.remote}/${s.id}`}>
                   {s.folder || editable(s.name) ? t("mesh.shared.open") : t("collab.download")}
                 </Button>
               )}

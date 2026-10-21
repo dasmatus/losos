@@ -169,10 +169,15 @@ async function openEditor(w) {
   await w.page.waitForSelector("[data-connection=live]", { timeout: WAIT });
 }
 
+/** One row of Shared with you, by the file's name. */
+function incoming(page, file) {
+  return page.locator("[data-incoming-share]").filter({ hasText: file });
+}
+
 /** The guest's copy, from Shared with you. */
 async function openShared(w, file) {
   await w.page.goto(`${w.base}/cloud/shared`);
-  const open = w.page.locator(`[data-open="${file}"]`);
+  const open = incoming(w.page, file).locator("[data-open]");
   await open.waitFor({ timeout: WAIT });
   await open.click();
   await openEditor(w);
@@ -248,13 +253,13 @@ const phases = {
 
     const q = e.page;
     await q.goto(`${e.base}/cloud/shared`);
-    const offer = q.locator(`[data-incoming-share="${file}"]`);
+    const offer = incoming(q, file);
     await offer.waitFor({ timeout: WAIT });
-    const accept = q.locator(`[data-accept="${file}"]`);
+    const accept = offer.locator("[data-accept]");
     await accept.waitFor({ timeout: WAIT });
     await s.take(e, "incoming", "on kitchenbox, Eva sees what Matus shared", { kind: "click", target: "accept" }, { accept, offer });
     await accept.click();
-    const open = q.locator(`[data-open="${file}"]`);
+    const open = offer.locator("[data-open]");
     await open.waitFor({ timeout: WAIT });
     await s.take(e, "accepted", "accepted, ready to open", { kind: "click", target: "open" }, { open });
 
@@ -315,9 +320,9 @@ const phases = {
     await m.page.keyboard.type(cfg.matusApart);
     await s.take(m, "apart-typed", "Matus writes on mattbox meanwhile", { kind: "none" }, { editor: editorOf(m.page) });
     await e.page.goto(`${e.base}/cloud/shared`);
-    await e.page.locator(`[data-incoming-share="${cfg.file}"]`).getByText("Changes waiting for").waitFor({ timeout: WAIT });
+    await incoming(e.page, cfg.file).getByText("Changes waiting for").waitFor({ timeout: WAIT });
     await s.take(e, "unsynced", "Shared with you says the copy has changes mattbox has not seen", { kind: "none" }, {
-      offer: e.page.locator(`[data-incoming-share="${cfg.file}"]`),
+      offer: incoming(e.page, cfg.file),
     });
   },
 
