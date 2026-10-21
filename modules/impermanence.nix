@@ -162,6 +162,14 @@ in
       # falls out of the mesh on the first reboot after enrolling — and there
       # is no shell to notice it from.
       "/etc/rancher"
+      # Every secret of the box, each sealed with systemd-creds to the TPM or
+      # the host key (modules/credentials.nix). systemd looks for credentials
+      # here by name, and /etc is tmpfs: without this line every service that
+      # reads one fails on the next boot, and every secret is made anew.
+      {
+        directory = "/etc/credstore.encrypted";
+        mode = "0700";
+      }
       "/home/notshared/data"
       "/home/shared/data"
       # Service state lives under /var/lib/{nextcloud,forgejo} and is covered

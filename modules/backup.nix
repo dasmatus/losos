@@ -22,8 +22,11 @@
 # the copy needs to read both. It also survives the lososd restart a rebuild
 # causes, the same reason rebuilds run this way (backend/src/supervisor.rs).
 #
-# SECRETS. The bucket's keys reach the scripts as an EnvironmentFile= lososd
-# writes (0600, /var/secrets), the repository password as RESTIC_PASSWORD_FILE
+# SECRETS. The bucket's keys are the credential `backup-bucket`, which lososd
+# seals into the credential store when the owner saves the bucket
+# (modules/credentials.nix); each job gets it as LoadCredentialEncrypted= and
+# reads it from its own credential directory. The repository password is
+# RESTIC_PASSWORD_FILE
 # pointing at the recovery code (or, for a restore, at the code the owner
 # typed, on /run). None of them is ever an argument, so none is in `ps` or the
 # journal.
@@ -137,7 +140,19 @@ let
   # (3 to 5 hours for Flexible Retrieval, up to 12 for Deep Archive) and
   # waits up to 48 hours, and tidying old backups never repacks,
   # which would need a thaw as well.
+  #
+  # The keys first, out of the job's credential directory: the lines
+  # `Target::env_file` writes, each name checked here as well, so the file
+  # can only ever set these six.
   s3Fns = ''
+    bucket="''${CREDENTIALS_DIRECTORY:?no credentials}/backup-bucket"
+    while IFS='=' read -r k v; do
+      case "$k" in
+        RESTIC_REPOSITORY | AWS_ACCESS_KEY_ID | AWS_SECRET_ACCESS_KEY | AWS_DEFAULT_REGION | LOSOS_S3_STORAGE_CLASS | LOSOS_S3_THAW)
+          export "$k=$v"
+          ;;
+      esac
+    done < "$bucket"
     s3opts=()
     if [ -n "''${LOSOS_S3_STORAGE_CLASS:-}" ]; then
       s3opts+=(-o "s3.storage-class=$LOSOS_S3_STORAGE_CLASS")
@@ -391,6 +406,8 @@ let
     "/persist/var/lib/kubelet"
     "/persist/var/lib/longhorn"
     "/persist/var/secrets"
+    # Every credential the box sealed (modules/credentials.nix).
+    "/persist/etc/credstore.encrypted"
     "/persist/var/log/journal"
     "/persist/etc/rancher"
     # fscrypt's protector metadata: the old protector's key is in
@@ -429,6 +446,9 @@ let
   };
 in
 {
+  # The credential store every secret here lives in.
+  imports = [ ./credentials.nix ];
+
   config = lib.mkIf enabled {
     systemd.services.lososd.environment = {
       LOSOS_BACKUP_SCRIPT = lib.getExe backupScript;
@@ -437,6 +457,15 @@ in
       LOSOS_ERASE_GRACE_SECS = toString (config.losos.reset.graceMinutes * 60);
       LOSOS_ERASE_REPORT = "${eraseDir}/report.json";
       LOSOS_WIPE_MARKER = marker;
+    };
+
+    # The bucket's keys, set by the owner on the Backups pane and sealed by
+    # lososd. An older build kept them as plaintext beside the bucket's JSON.
+    losos.credentials.entries.backup-bucket = {
+      app = "backup";
+      description = "The keys of the bucket backups go to, as the owner typed them.";
+      pane = "/settings/backup";
+      legacy = [ "/var/secrets/losos-backup.env" ];
     };
 
     systemd.tmpfiles.rules = [

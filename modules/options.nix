@@ -726,44 +726,134 @@ in
       description = "OCI image running Forgejo in container mode.";
     };
 
-    # ── The keyring (modules/keyring.nix) ───────────────────────────────────
-    # Seals the secrets this box mints for itself with systemd-creds, so a copy
-    # of /persist that leaves the machine carries ciphertext instead of the
-    # Nextcloud admin password in plaintext. Not GNOME keyring and nothing
-    # shaped like it: there is no session bus, no desktop and nobody to type a
-    # passphrase, so an agent holding an unlocked store in RAM would have
-    # nothing to be unlocked by.
-    keyring.enable = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
+    # ── The credential manager (modules/credentials.nix) ────────────────────
+    # Every secret the box keeps, one systemd-creds file each in
+    # /etc/credstore.encrypted, sealed to the TPM or the host key, opened by
+    # PID 1 into the credential directory of each unit that reads it. Modules
+    # declare their own; the Credentials pane (backend/src/credentials.rs)
+    # lists them and makes new values. Kept off the Advanced pane
+    # (nix/options-doc.nix): these are wiring, not settings.
+    credentials.entries = lib.mkOption {
+      default = { };
       description = ''
-        Seal this box's self-minted secrets with systemd-creds instead of
-        leaving them readable on disk. Covers a /persist copy that leaves the
-        box and a file-read bug in a service that can reach /var/secrets; it
-        deliberately does not cover root on the running box, because boot has
-        to work with nobody present. See modules/keyring.nix for the full list
-        of what it does and does not defend against.
+        The box's credentials, by name. The name is the systemd credential
+        name: the file in /etc/credstore.encrypted, the name sealed into it,
+        and the file in each reader's credential directory.
       '';
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            app = lib.mkOption {
+              type = lib.types.str;
+              description = "What it belongs to, for the pane's groups: login, mail, admin, backup, cloud, ...";
+            };
+            description = lib.mkOption {
+              type = lib.types.str;
+              description = "One sentence on what it is for.";
+            };
+            format = lib.mkOption {
+              type = lib.types.nullOr (
+                lib.types.enum [
+                  "hex-32"
+                  "hex-64"
+                  "base64-24"
+                ]
+              );
+              default = null;
+              description = ''
+                How the box makes a value: 32 or 64 random bytes in hex, or 24
+                in base64. Null for a value the owner gives, which lososd
+                seals when they save the pane that asks for it (`pane`).
+              '';
+            };
+            services = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = "Units that read it; each gets `LoadCredentialEncrypted=<name>`.";
+            };
+            restart = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = "Units restarted after a new value, when not just `services`.";
+            };
+            rotate = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Whether a person may make a new value from the Credentials pane.";
+            };
+            pane = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Where the owner sets a value they give, as a path of the admin pages.";
+            };
+            legacy = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = ''
+                Plaintext files an older build kept the value in. The first one
+                found is adopted when nothing is sealed yet; every one is then
+                overwritten and deleted.
+              '';
+            };
+            legacySealed = lib.mkOption {
+              type = lib.types.nullOr (
+                lib.types.submodule {
+                  options = {
+                    path = lib.mkOption { type = lib.types.str; };
+                    name = lib.mkOption { type = lib.types.str; };
+                  };
+                }
+              );
+              default = null;
+              description = "A systemd-creds file an older build sealed under another name, adopted the same way.";
+            };
+            file = lib.mkOption {
+              default = null;
+              description = ''
+                For a reader that can only take a path: the value is opened at
+                boot into /run/losos-credentials (tmpfs) and `path` becomes a
+                link to it.
+              '';
+              type = lib.types.nullOr (
+                lib.types.submodule {
+                  options = {
+                    path = lib.mkOption { type = lib.types.str; };
+                    owner = lib.mkOption {
+                      type = lib.types.str;
+                      default = "0";
+                      description = "uid (and gid) of the opened file.";
+                    };
+                    mode = lib.mkOption {
+                      type = lib.types.str;
+                      default = "0600";
+                    };
+                    readers = lib.mkOption {
+                      type = lib.types.listOf lib.types.str;
+                      default = [ ];
+                      description = ''
+                        Units ordered after the link is in place. Ordering only
+                        (systemd ignores a unit that does not exist), so one list
+                        can name the readers of every mode.
+                      '';
+                    };
+                  };
+                }
+              );
+            };
+          };
+        }
+      );
     };
 
-    keyring.store = lib.mkOption {
-      type = lib.types.str;
-      default = "/var/secrets";
-      description = ''
-        Directory holding the sealed blobs (`<name>.cred`). Must NOT be under
-        /run: these have to survive a reboot, and the module asserts it.
-      '';
-    };
-
-    keyring.runtimeDir = lib.mkOption {
-      type = lib.types.str;
-      default = "/run/losos-keyring";
-      description = ''
-        Where a secret is unsealed to for the moment a service needs it. Must
-        be under /run, and the module asserts it — this is a systemd
-        RuntimeDirectory, which is tmpfs, and that is the whole point: the
-        plaintext never reaches the disk and does not outlive the boot.
-      '';
+    # What modules/keyring.nix read before the credential manager replaced
+    # it. Declared only so an overrides.nix that still sets it evaluates;
+    # nothing reads it, and a warning says so.
+    keyring = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = { };
+      visible = false;
+      internal = true;
+      description = "No longer read; see losos.credentials.";
     };
 
     # ── The shared data domain (fscrypt) ────────────────────────────────────

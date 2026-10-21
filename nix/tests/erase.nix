@@ -177,7 +177,7 @@ pkgs.testers.nixosTest {
     ROW = "a row the database must keep"
 
     def token():
-        return machine.succeed("cat /var/secrets/losos-admin-token").strip()
+        return machine.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip()
 
     def api(method, path, body=None, expect=200):
         args = f"-s -o /tmp/api.out -w '%{{http_code}}' -X {method} -H 'Authorization: Bearer {token()}'"
@@ -218,7 +218,7 @@ pkgs.testers.nixosTest {
     machine.wait_for_unit("minio.service")
     machine.wait_for_unit("postgresql.service")
     machine.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
-    machine.wait_until_succeeds("test -s /var/secrets/losos-admin-token")
+    machine.wait_until_succeeds("test -s /etc/credstore.encrypted/admin-token")
 
     with subtest("the box holds an owner's data"):
         machine.succeed(
@@ -243,7 +243,10 @@ pkgs.testers.nixosTest {
         view = api("GET", "/api/backup")
         assert view["target"]["hasSecret"] is True, view
         assert "boxbackup-secret-123" not in json.dumps(view)
-        machine.succeed("test \"$(stat -c %a /var/secrets/losos-backup.env)\" = 600")
+        # Sealed in the credential store, and nowhere in plaintext.
+        machine.succeed("test \"$(stat -c %a /etc/credstore.encrypted/backup-bucket)\" = 600")
+        machine.fail("test -e /var/secrets/losos-backup.env")
+        machine.fail("grep -rqF boxbackup-secret-123 /var/secrets /etc/credstore.encrypted /persist")
         api("POST", "/api/backup/target", {
             "endpoint": "http://8.8.8.8:9000", "bucket": "box-backups", "accessKeyId": "boxbackup",
         }, expect=400)
@@ -282,13 +285,13 @@ pkgs.testers.nixosTest {
     machine.start()
     machine.wait_for_unit("multi-user.target")
     machine.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
-    machine.wait_until_succeeds("test -s /var/secrets/losos-admin-token")
+    machine.wait_until_succeeds("test -s /etc/credstore.encrypted/admin-token")
 
     with subtest("the box comes back empty and unowned"):
         machine.succeed("journalctl -b -u losos-factory-wipe | grep -c 'deleting the owner'")
         machine.fail("test -e /persist/.losos-factory-wipe")
         machine.fail("test -e /var/lib/nextcloud/data/data/notshared/files/note.txt")
-        machine.fail("test -e /var/secrets/losos-backup.env")
+        machine.fail("test -e /etc/credstore.encrypted/backup-bucket")
         assert token() != old_token, "the admin token survived the erase"
         claim = machine.succeed("curl -fsS 127.0.0.1:8082/api/setup/claim")
         assert '"claimed":false' in claim.replace(" ", ""), claim

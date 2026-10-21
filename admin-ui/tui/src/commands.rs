@@ -11,8 +11,8 @@ use miette::{GraphicalReportHandler, GraphicalTheme};
 use serde_json::{json, Value};
 
 use crate::cli::{
-    self, CiCommand, Cli, CloudCommand, Command, EdgeCommand, EscrowCommand, GitCommand,
-    KeyCommand, SecretCommand,
+    self, CiCommand, Cli, CloudCommand, Command, CredentialsCommand, EdgeCommand, EscrowCommand,
+    GitCommand, KeyCommand, SecretCommand,
 };
 use crate::computer::{Computer, Service};
 use crate::envelope::{host_key_url, unreachable, Session, Transport};
@@ -202,6 +202,7 @@ fn dispatch(cli: Cli, io: &mut Io) -> Result<u8> {
                 Some(Command::Git {
                     command: GitCommand::Credential { action },
                 }) => git_credential(io, &action),
+                Some(Command::Credentials { command }) => credentials(io, host.as_deref(), command),
                 Some(Command::Call { .. } | Command::Edge { .. }) => unreachable!("handled above"),
             }
         }
@@ -985,6 +986,131 @@ fn device_setup(
         }
     }
     Ok(0)
+}
+
+// ── The box's credentials ────────────────────────────────────────────────
+
+/// The Credentials pane, in a terminal: what each secret is, never its value.
+fn credentials(io: &mut Io, host: Option<&str>, command: CredentialsCommand) -> Result<u8> {
+    let record = pick_host(&io.vault(), host, Some(HostKind::Box))?;
+    if record.kind != HostKind::Box {
+        return Err(Problem::new(
+            "losos::host",
+            tr!("tui.credentials.notBox", url = &record.url),
+        ));
+    }
+    let session = session_for(io, &record)?;
+    match command {
+        CredentialsCommand::List => {
+            let view = session.get("/api/credentials")?;
+            for line in credential_lines(&view) {
+                io.line(line);
+            }
+        }
+        CredentialsCommand::Rotate { name } => {
+            // The name goes into the path; anything but a credential's own
+            // shape is refused here rather than sent.
+            if name.is_empty()
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+            {
+                return Err(Problem::new(
+                    "losos::credential",
+                    tr!("tui.credentials.badName", name = &name),
+                ));
+            }
+            let row = session.post(&format!("/api/credentials/{name}/rotate"), Value::Null)?;
+            let units = strings(row.get("services"));
+            if units.is_empty() {
+                io.line(tr!("tui.credentials.rotated", name = &name));
+            } else {
+                io.line(tr!(
+                    "tui.credentials.rotatedRestarted",
+                    name = &name,
+                    units = units.join(", ")
+                ));
+            }
+        }
+    }
+    Ok(0)
+}
+
+fn strings(v: Option<&Value>) -> Vec<String> {
+    v.and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|s| s.as_str().map(str::to_string))
+        .collect()
+}
+
+/// `GET /api/credentials` as lines: what they are sealed to, then one row
+/// per credential.
+pub fn credential_lines(view: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    out.push(tr!(match view.get("key").and_then(Value::as_str) {
+        Some("tpm2") => "tui.credentials.sealedTpm",
+        _ => "tui.credentials.sealedHost",
+    }));
+    let list = view
+        .get("credentials")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if list.is_empty() {
+        out.push(tr!("tui.credentials.none"));
+        return out;
+    }
+    let width = list
+        .iter()
+        .filter_map(|c| c.get("name").and_then(Value::as_str))
+        .map(str::len)
+        .max()
+        .unwrap_or(0);
+    let mut rotatable = Vec::new();
+    for c in &list {
+        let name = c.get("name").and_then(Value::as_str).unwrap_or("");
+        let flag = |k: &str| c.get(k).and_then(Value::as_bool).unwrap_or(false);
+        let state = tr!(
+            match (flag("set"), c.get("source").and_then(Value::as_str)) {
+                (false, _) => "tui.credentials.notSet",
+                (true, Some("owner")) => "tui.credentials.byOwner",
+                (true, _) => "tui.credentials.byBox",
+            }
+        );
+        let when = c
+            .get("updated")
+            .and_then(Value::as_i64)
+            .and_then(|secs| chrono::DateTime::from_timestamp(secs, 0))
+            .map(|d| d.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "-".into());
+        let mut row = format!("{name:<width$}  {state}  {when}");
+        let services = strings(c.get("services"));
+        if !services.is_empty() {
+            row.push_str(&format!(
+                "  {}",
+                tr!("tui.credentials.readBy", units = services.join(", "))
+            ));
+        }
+        if flag("adopted") {
+            row.push_str(&format!("  ({})", tr!("tui.credentials.adopted")));
+        }
+        if flag("remade") {
+            row.push_str(&format!("  ({})", tr!("tui.credentials.remade")));
+        }
+        out.push(row);
+        if flag("rotate") {
+            rotatable.push(name.to_string());
+        }
+    }
+    if !rotatable.is_empty() {
+        out.push(String::new());
+        out.push(tr!(
+            "tui.credentials.canRotate",
+            names = rotatable.join(", ")
+        ));
+    }
+    out
 }
 
 /// `losos git credential <get|store|erase>`, as git runs it.

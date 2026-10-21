@@ -73,7 +73,9 @@ let
   user = "authelia-losos";
   dir = "/var/lib/losos-identity";
   peopleFile = "${dir}/users.yml";
-  secretsDir = "/var/secrets/losos-identity";
+  # Where an older build kept Authelia's three secrets as plaintext; the
+  # credential store adopts them from here (modules/credentials.nix).
+  legacySecrets = "/var/secrets/losos-identity";
   runDir = "/run/losos-identity";
   sessionFile = "${runDir}/session.yml";
   # Where LosOS Login keeps its sessions: a Redis of its own, on a socket
@@ -305,14 +307,21 @@ let
   };
 in
 {
+  # The credential store every secret here lives in.
+  imports = [ ./credentials.nix ];
+
   config = lib.mkIf enabled {
     services.authelia.instances.losos = {
       enable = true;
       inherit package;
-      secrets = {
-        jwtSecretFile = "${secretsDir}/jwt";
-        sessionSecretFile = "${secretsDir}/session";
-        storageEncryptionKeyFile = "${secretsDir}/storage";
+      # The three secrets are credentials (below): systemd opens them into
+      # the unit's credential directory, and Authelia reads them from there
+      # through its `_FILE` variables.
+      secrets.manual = true;
+      environmentVariables = {
+        AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE = "%d/authelia-jwt";
+        AUTHELIA_SESSION_SECRET_FILE = "%d/authelia-session";
+        AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE = "%d/authelia-storage";
       };
       settingsFiles = [ sessionFile ];
       settings = {
@@ -398,7 +407,7 @@ in
     };
 
     systemd.services.losos-identity-setup = {
-      description = "Prepare sign-in: Authelia's secrets and session domains";
+      description = "Prepare sign-in: the session domains";
       wantedBy = [ "multi-user.target" ];
       before = [ "authelia-losos.service" ];
       after = [ "network.target" ];
@@ -406,18 +415,8 @@ in
         Type = "oneshot";
         UMask = "0077";
       };
-      path = [
-        pkgs.coreutils
-        pkgs.openssl
-      ];
+      path = [ pkgs.coreutils ];
       script = ''
-        install -d -m 0700 ${secretsDir}
-        for s in jwt session storage; do
-          if [ ! -s ${secretsDir}/$s ]; then
-            openssl rand -hex 64 > ${secretsDir}/$s.tmp
-            mv ${secretsDir}/$s.tmp ${secretsDir}/$s
-          fi
-        done
         # lososd writes the people file here; Authelia reads it.
         install -d -m 0750 -o root -g ${user} ${dir}
         ${lib.getExe renderSession}
@@ -440,6 +439,35 @@ in
       timerConfig = {
         OnUnitActiveSec = "2min";
         OnBootSec = "2min";
+      };
+    };
+
+    losos.credentials.entries = {
+      authelia-jwt = {
+        app = "login";
+        description = "Signs the links LosOS Login sends to confirm who someone is.";
+        format = "hex-64";
+        services = [ "authelia-losos" ];
+        rotate = true;
+        legacy = [ "${legacySecrets}/jwt" ];
+      };
+      authelia-session = {
+        app = "login";
+        description = "Protects the sessions of LosOS Login. A new one signs everyone out.";
+        format = "hex-64";
+        services = [ "authelia-losos" ];
+        rotate = true;
+        legacy = [ "${legacySecrets}/session" ];
+      };
+      # Not rotatable from the pane: Authelia encrypts its database with it,
+      # and a new key without `authelia storage encryption change-key` is a
+      # database it can no longer open.
+      authelia-storage = {
+        app = "login";
+        description = "Encrypts what LosOS Login stores: second factors and passkeys.";
+        format = "hex-64";
+        services = [ "authelia-losos" ];
+        legacy = [ "${legacySecrets}/storage" ];
       };
     };
 

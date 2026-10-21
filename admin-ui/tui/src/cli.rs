@@ -97,6 +97,19 @@ pub enum Command {
         #[command(subcommand)]
         command: GitCommand,
     },
+    Credentials {
+        #[command(subcommand)]
+        command: CredentialsCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CredentialsCommand {
+    List,
+    Rotate {
+        #[arg(value_name = "NAME")]
+        name: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -204,6 +217,9 @@ const ABOUT: &[(&[&str], &str)] = &[
     (&["cloud", "setup"], "tui.help.cmd.cloudSetup"),
     (&["git"], "tui.help.cmd.git"),
     (&["git", "setup"], "tui.help.cmd.gitSetup"),
+    (&["credentials"], "tui.help.cmd.credentials"),
+    (&["credentials", "list"], "tui.help.cmd.credentialsList"),
+    (&["credentials", "rotate"], "tui.help.cmd.credentialsRotate"),
 ];
 
 /// Every argument's id and the catalogue key of its help.
@@ -232,11 +248,18 @@ const ARGS: &[(&str, &str)] = &[
 ];
 
 /// An argument whose help differs in one command from the table above.
-const ARGS_AT: &[(&[&str], &str, &str)] = &[(
-    &["key", "remove"],
-    "fingerprint",
-    "tui.help.arg.keyFingerprint",
-)];
+const ARGS_AT: &[(&[&str], &str, &str)] = &[
+    (
+        &["key", "remove"],
+        "fingerprint",
+        "tui.help.arg.keyFingerprint",
+    ),
+    (
+        &["credentials", "rotate"],
+        "name",
+        "tui.help.arg.credentialName",
+    ),
+];
 
 fn arg_help(path: &[&str], id: &str) -> Option<&'static str> {
     ARGS_AT

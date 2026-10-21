@@ -2034,6 +2034,62 @@ export function postAccessRevoke(
   });
 }
 
+// ── Credentials (the Credentials pane) ───────────────────────────────────
+
+/** What every credential on the box is sealed to: the TPM, or the host key
+ *  on a box without one. */
+export type CredentialKey = "tpm2" | "host";
+
+/** A credential as lososd lists it (backend/src/credentials.rs). Never its
+ *  value: the API has no route that returns one. */
+export interface Credential {
+  name: string;
+  /** What it belongs to: "login", "mail", "admin", "backup", "cloud", … */
+  app: string;
+  /** lososd's English sentence, for a name this page has no words for. */
+  description: string;
+  /** "box" for one the box makes itself, "owner" for one a person types. */
+  source: "box" | "owner";
+  /** Whether the sealed file is there. */
+  set: boolean;
+  /** Unix seconds of the last change, or null when it is not set. */
+  updated: number | null;
+  sealedWith: CredentialKey;
+  /** The units that read it. */
+  services: string[];
+  /** Whether a new value can be made from here. */
+  rotate: boolean;
+  /** For one the owner gives: the admin page where they set it. */
+  pane: string | null;
+  /** At boot the old file would not open, so the box made a new value. */
+  remade: boolean;
+  /** At boot the box sealed a value an older version kept as a plain file. */
+  adopted: boolean;
+}
+
+export interface CredentialsResponse {
+  /** null on a build without a credential store. */
+  key: CredentialKey | null;
+  credentials: Credential[];
+}
+
+/** GET /api/credentials — every credential, without a value. */
+export function getCredentials(options: RequestOptions = {}): Promise<CredentialsResponse> {
+  return call<CredentialsResponse>("/api/credentials", options);
+}
+
+/** POST /api/credentials/{name}/rotate — make a new value. 409 for one the
+ *  box does not make itself. The answer is the row, never the value. */
+export function postCredentialRotate(
+  name: string,
+  options: RequestOptions = {},
+): Promise<{ credential: Credential }> {
+  return call<{ credential: Credential }>(`/api/credentials/${encodeURIComponent(name)}/rotate`, {
+    ...options,
+    method: "POST",
+  });
+}
+
 // ── People (the Users pane) ───────────────────────────────────────────────
 
 /** Someone who may sign in to this box, as GET /api/people lists them. */

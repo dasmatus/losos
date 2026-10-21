@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { ApplyBar } from "./settings/apply-bar";
 import { AboutPane } from "./settings/pane-about";
 import { AccessPane } from "./settings/pane-access";
+import { CredentialsPane } from "./settings/pane-credentials";
 import { AccountPane } from "./settings/pane-account";
 import { UsersPane } from "./settings/pane-users";
 import { AdvancedPane } from "./settings/pane-advanced";
@@ -113,6 +114,9 @@ function Pane({
       return <HardwarePane form={form} />;
     case "security":
       return <SecurityPane form={form} />;
+    case "credentials":
+      // No draft, no Apply bar: a new value is its own request.
+      return <CredentialsPane locked={form.locked} />;
     case "account":
       // No draft, no Apply bar: each part of the account is its own request.
       return <AccountPane locked={form.locked} />;

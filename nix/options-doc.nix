@@ -48,6 +48,8 @@ let
   excluded = {
     edge = "declared for the edge VPS (nixosModules.edge); nothing on the appliance reads it";
     mdns = "set by modules/configuration.nix and modules/edge.nix; with it off nothing on the LAN finds the box";
+    credentials = "declared by the module that owns each secret; the Credentials pane lists them and makes new values";
+    keyring = "no longer read; every secret is in the credential store (modules/credentials.nix)";
   };
 
   # Options another file on the box sets at normal priority: a line in
@@ -78,7 +80,6 @@ let
     "cluster"
     "hardening.enable"
     "hostName"
-    "keyring"
     "nextcloud.mode"
     "forgejo.mode"
     "shared.fscrypt"

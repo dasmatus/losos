@@ -1331,4 +1331,94 @@ messages! {
         sk: "Prístup tohto počítača zrušíte vymazaním „LosOS on {device}“ v časti Aplikácie v nastaveniach LosOS Git.",
         de: "Um diesem Computer den Zugang zu nehmen, lösche „LosOS on {device}“ unter Anwendungen in den Einstellungen von LosOS Git.",
     },
+    "tui.help.cmd.credentials" => {
+        en: "The secrets this box keeps, sealed to it",
+        sk: "Tajomstvá, ktoré toto zariadenie uchováva, zapečatené preň",
+        de: "Die Geheimnisse, die diese Box aufbewahrt, an sie gebunden",
+    },
+    "tui.help.cmd.credentialsList" => {
+        en: "List each one, what reads it and when it changed, never its value",
+        sk: "Vypísať každé z nich, čo ho číta a kedy sa zmenilo, nikdy nie jeho hodnotu",
+        de: "Jedes auflisten, was es liest und wann es sich geändert hat, nie seinen Wert",
+    },
+    "tui.help.cmd.credentialsRotate" => {
+        en: "Have the box make a new value for one, seal it and restart what reads it",
+        sk: "Nechať zariadenie vytvoriť preň novú hodnotu, zapečatiť ju a reštartovať, čo ho číta",
+        de: "Die Box einen neuen Wert dafür erzeugen, versiegeln und neu starten lassen, was ihn liest",
+    },
+    "tui.help.arg.credentialName" => {
+        en: "The credential's name, as the list shows it",
+        sk: "Názov prihlasovacieho údaja, ako ho ukazuje zoznam",
+        de: "Der Name des Zugangsdatums, wie die Liste ihn zeigt",
+    },
+    "tui.credentials.notBox" => {
+        en: "{url} is an edge. The credential store is on a box.",
+        sk: "{url} je edge. Úložisko prihlasovacích údajov je na zariadení.",
+        de: "{url} ist eine Edge. Der Speicher für Zugangsdaten ist auf einer Box.",
+    },
+    "tui.credentials.badName" => {
+        en: "\"{name}\" is not a credential's name: lowercase letters, digits and dashes.",
+        sk: "„{name}“ nie je názov prihlasovacieho údaja: malé písmená, číslice a pomlčky.",
+        de: "„{name}“ ist kein Name eines Zugangsdatums: Kleinbuchstaben, Ziffern und Bindestriche.",
+    },
+    "tui.credentials.sealedTpm" => {
+        en: "Sealed to this box's TPM.",
+        sk: "Zapečatené pre TPM tohto zariadenia.",
+        de: "An das TPM dieser Box gebunden.",
+    },
+    "tui.credentials.sealedHost" => {
+        en: "Sealed to this box's own key (it has no TPM).",
+        sk: "Zapečatené vlastným kľúčom tohto zariadenia (nemá TPM).",
+        de: "Mit dem eigenen Schlüssel dieser Box versiegelt (sie hat kein TPM).",
+    },
+    "tui.credentials.none" => {
+        en: "This box keeps no credentials.",
+        sk: "Toto zariadenie neuchováva žiadne prihlasovacie údaje.",
+        de: "Diese Box bewahrt keine Zugangsdaten auf.",
+    },
+    "tui.credentials.byBox" => {
+        en: "made by the box",
+        sk: "vytvorené zariadením",
+        de: "von der Box erzeugt",
+    },
+    "tui.credentials.byOwner" => {
+        en: "set by you",
+        sk: "nastavené vami",
+        de: "von dir gesetzt",
+    },
+    "tui.credentials.notSet" => {
+        en: "not set",
+        sk: "nenastavené",
+        de: "nicht gesetzt",
+    },
+    "tui.credentials.readBy" => {
+        en: "read by {units}",
+        sk: "číta {units}",
+        de: "gelesen von {units}",
+    },
+    "tui.credentials.adopted" => {
+        en: "moved from a plain file",
+        sk: "presunuté z obyčajného súboru",
+        de: "aus einer einfachen Datei übernommen",
+    },
+    "tui.credentials.remade" => {
+        en: "made again at boot",
+        sk: "pri štarte vytvorené znova",
+        de: "beim Start neu erzeugt",
+    },
+    "tui.credentials.canRotate" => {
+        en: "`losos credentials rotate <name>` makes a new value for: {names}",
+        sk: "`losos credentials rotate <name>` vytvorí novú hodnotu pre: {names}",
+        de: "`losos credentials rotate <name>` erzeugt einen neuen Wert für: {names}",
+    },
+    "tui.credentials.rotated" => {
+        en: "{name} has a new value, sealed to this box.",
+        sk: "{name} má novú hodnotu, zapečatenú pre toto zariadenie.",
+        de: "{name} hat einen neuen Wert, an diese Box gebunden.",
+    },
+    "tui.credentials.rotatedRestarted" => {
+        en: "{name} has a new value, sealed to this box; restarted {units}.",
+        sk: "{name} má novú hodnotu, zapečatenú pre toto zariadenie; reštartované: {units}.",
+        de: "{name} hat einen neuen Wert, an diese Box gebunden; neu gestartet: {units}.",
+    },
 }

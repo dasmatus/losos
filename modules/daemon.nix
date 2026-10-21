@@ -70,6 +70,9 @@ let
   '';
 in
 {
+  # The credential store every secret here lives in.
+  imports = [ ./credentials.nix ];
+
   config = lib.mkIf enabled {
     # Callers of the facade (root plus any future in-container tooling) send
     # to org.losos1 via this group.
@@ -130,6 +133,19 @@ in
     environment.etc."losos/access-keys.asc".text =
       lib.concatStringsSep "\n" config.losos.access.gpgKeys;
 
+    # The spare key: lososd's Bearer token, sealed in the credential store
+    # (modules/credentials.nix) and opened into lososd's own credential
+    # directory as it starts. A box from before the store kept it as plaintext
+    # at losos.admin.tokenFile; the boot unit adopts that value, so a spare
+    # key the owner wrote down keeps working, and deletes the file.
+    losos.credentials.entries.admin-token = {
+      app = "admin";
+      description = "The spare key: the token that opens the admin API whether or not LosOS Login is up.";
+      format = "hex-32";
+      services = [ "lososd" ];
+      legacy = [ (toString config.losos.admin.tokenFile) ];
+    };
+
     systemd.services.lososd = {
       description = "losos appliance control daemon (D-Bus + admin HTTP API)";
       wantedBy = [ "multi-user.target" ];
@@ -139,7 +155,9 @@ in
       restartTriggers = [ config.environment.etc."losos/access-keys.asc".source ];
       environment = {
         LOSOS_ADMIN_PORT = toString config.losos.admin.apiPort;
-        LOSOS_ADMIN_TOKEN_FILE = toString config.losos.admin.tokenFile;
+        LOSOS_ADMIN_TOKEN_FILE = "%d/admin-token";
+        # The credential list and what it is sealed to (backend/src/credentials.rs).
+        LOSOS_CREDENTIALS_FILE = "/etc/losos/credentials.json";
         # See the `ncMode` binding above for why this is always set and never
         # defaulted daemon-side.
         LOSOS_NEXTCLOUD_MODE = ncMode;

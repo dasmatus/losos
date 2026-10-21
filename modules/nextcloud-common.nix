@@ -26,6 +26,9 @@ let
   nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
 in
 {
+  # The admin password below lives in the credential store.
+  imports = [ ./credentials.nix ];
+
   options.lososInternal.nextcloudStack = lib.mkOption {
     type = lib.types.attrs;
     internal = true;
@@ -78,7 +81,55 @@ in
       // lib.optionalAttrs config.lososInternal.federation.nextcloud nc.federation.system;
   };
 
-  # ── The admin password file ───────────────────────────────────────────────
+  # ── The admin password ────────────────────────────────────────────────────
+  # A credential (modules/credentials.nix), opened at boot onto tmpfs with
+  # losos.nextcloud.adminpassFile as a link to it: the pod mounts that path
+  # by host path and nix/images.nix has it baked in, so neither can take a
+  # credential directory. The kubelet's `type: File` check is a stat and
+  # follows the link, containerd resolves it as root, and the native
+  # module's LoadCredential opens it the same way.
+  #
+  # The owner is the uid the pod runs as, from the binding modules/workloads.nix
+  # uses: the pod reads the file through a bind mount and DAC still applies
+  # inside the container. Natively PID 1 reads it as root.
+  config.losos.credentials.entries.nextcloud-admin-pass = {
+    app = "cloud";
+    description = "The administrator password LosOS cloud is installed with.";
+    format = "base64-24";
+    legacy = [ (toString config.losos.nextcloud.adminpassFile) ];
+    # What modules/keyring.nix sealed before the credential store.
+    legacySealed = {
+      path = "/var/secrets/nextcloud-admin-pass.cred";
+      name = "losos-nextcloud-admin-pass";
+    };
+    file = {
+      path = toString config.losos.nextcloud.adminpassFile;
+      owner =
+        if config.losos.nextcloud.mode == "container" then
+          toString (
+            if (config.users.users.nextcloud.uid or null) == null then 1002 else config.users.users.nextcloud.uid
+          )
+        else
+          "0";
+      readers = [
+        "losos-nextcloud-adminpass"
+        "nextcloud-setup"
+        "phpfpm-nextcloud"
+        "k3s"
+      ];
+    };
+  };
+
+  # The pod mounts the link with `type: File`: a link not yet resolved is a
+  # pod that never starts.
+  config.systemd.services.k3s =
+    lib.mkIf (config.losos.nextcloud.mode == "container" && config.services.k3s.enable)
+      { requires = [ "losos-credentials.service" ]; };
+
+  # ── The admin password file, before the credential store ─────────────────
+  # A no-op on every box now: by the time it runs the credential store has
+  # put the link in place, and the condition below sees it. It stays as the
+  # unit modules/workloads.nix and modules/cluster.nix order the pod after.
   # losos.nextcloud.adminpassFile is consumed in both modes — as a systemd
   # LoadCredential natively, and as a hostPath mount in workload mode — and
   # nothing created it. On a fresh /persist the native path failed on the

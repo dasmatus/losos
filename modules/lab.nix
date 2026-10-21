@@ -42,6 +42,9 @@ let
   port = toString cfg.port;
 in
 {
+  # The credential store every secret here lives in.
+  imports = [ ./credentials.nix ];
+
   config = lib.mkIf enabled {
     virtualisation.libvirtd.enable = true;
 
@@ -56,11 +59,14 @@ in
     # qemu reads the images as its own user; the folder is world-readable.
     systemd.tmpfiles.rules = [ "d ${cfg.images} 0755 root root -" ];
 
+    # The admin token, so lososd's relayed calls authenticate: opened from
+    # the credential store into this unit's credential directory, never put
+    # in the environment.
+    losos.credentials.entries.admin-token.services = [ "losos-lab-libvirt" ];
+
     systemd.services.losos-lab-libvirt = {
       description = "LosOS Lab guests under libvirt (losos-registrar lab)";
       wantedBy = [ "multi-user.target" ];
-      # lososd mints the admin token on its first start; the credential
-      # below cannot load before it exists.
       after = [
         "libvirtd.service"
         "lososd.service"
@@ -71,15 +77,12 @@ in
       serviceConfig = {
         User = "losos-lab";
         Group = "losos-lab";
-        # The admin token, so lososd's relayed calls authenticate. Read from
-        # the credential directory, never from the environment.
-        LoadCredential = "token:${toString config.losos.admin.tokenFile}";
         ExecStart = lib.concatStringsSep " " [
           "${registrar}/bin/losos-registrar lab"
           "--listen 127.0.0.1:${port}"
           "--connect qemu:///system"
           "--images ${lib.escapeShellArg cfg.images}"
-          "--token-file %d/token"
+          "--token-file %d/admin-token"
           "--max-guests ${toString cfg.maxGuests}"
           "--memory ${toString cfg.memoryMiB}"
         ];
