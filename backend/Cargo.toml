@@ -111,7 +111,10 @@ base64 = "0.22"
 url = "2"
 mime = "0.3"
 # Thumbnails of pictures (src/cloud/preview.rs), turned the way the camera
-# held them. Decoders only for the formats phones and cameras write.
+# held them, and profile pictures and banners (src/profiles.rs): decoded,
+# turned upright, cropped, scaled and encoded again, so no camera tag (a
+# photo's position among them) is ever stored. Decoders only for the formats
+# phones and cameras write.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 
 # The plugin runtime (src/plugin/): lososd's areas are WebAssembly

@@ -20,6 +20,7 @@ import manage from "./manage";
 import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
+import profile from "./profile";
 import settings from "./settings";
 import shell from "./shell";
 import tour from "./tour";
@@ -47,6 +48,7 @@ export const MESSAGES = {
   ...access,
   ...users,
   ...account,
+  ...profile,
   ...lab,
   ...tour,
   ...palette,

@@ -42,6 +42,12 @@
   --color-warn: var(--warn);
   --color-crit: var(--crit);
 
+  /* The colour of the person a picture or banner belongs to: set by
+   * `data-accent` on any element (see the rules at the end of this file),
+   * and read by `text-person`, `bg-person-wash` and friends inside it. */
+  --color-person: var(--person);
+  --color-person-wash: var(--person-wash);
+
   /* shadcn/ui's colour names, aliased onto the palette above so a component
    * pasted from `npx shadcn add` resolves without a rename pass
    * (components.json points the CLI at this file). Two names are deliberately
@@ -427,4 +433,37 @@ html.has-bg .losos-shell {
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
+}
+
+/* ── A person's colour ────────────────────────────────────────────────────
+ * `data-accent="<name>"` on an element picks one pair of the person tokens
+ * in tokens.css for everything inside it (components/person.tsx). An
+ * attribute and a class, never a style: the admin CSP refuses style="". */
+:root {
+  --person: var(--person-teal);
+  --person-wash: var(--person-teal-wash);
+}
+[data-accent="teal"] {
+  --person: var(--person-teal);
+  --person-wash: var(--person-teal-wash);
+}
+[data-accent="blue"] {
+  --person: var(--person-blue);
+  --person-wash: var(--person-blue-wash);
+}
+[data-accent="violet"] {
+  --person: var(--person-violet);
+  --person-wash: var(--person-violet-wash);
+}
+[data-accent="rose"] {
+  --person: var(--person-rose);
+  --person-wash: var(--person-rose-wash);
+}
+[data-accent="amber"] {
+  --person: var(--person-amber);
+  --person-wash: var(--person-amber-wash);
+}
+[data-accent="green"] {
+  --person: var(--person-green);
+  --person-wash: var(--person-green-wash);
 }
