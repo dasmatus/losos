@@ -60,7 +60,7 @@ export function useSummary(): string {
   const s = useLab();
   const t = useT();
   const from = s.live?.from;
-  if (from) return t("dg.summary.shared", { name: s.cloudFile?.path.split("/").pop() ?? "", owner: from.owner, box: from.box });
+  if (from) return t("dg.summary.shared", { name: from.name, owner: from.owner, box: from.box });
   if (s.cloudFile) return t("dg.summary.cloud", { path: s.cloudFile.path });
   return t("dg.summary.local");
 }
