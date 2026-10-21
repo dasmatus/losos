@@ -40,6 +40,27 @@ enum Cmd {
         product: String,
         #[arg(long, default_value_t = 30)]
         trash_days: i64,
+        /// Let people publish folders of notes as knowledge bases. On when
+        /// the box shares and has joined a mesh.
+        #[arg(long)]
+        knowledge_bases: bool,
+        /// The name other boxes reach this one by
+        /// (`<name>/mesh/v1/link`), and the part after the @ in people's
+        /// addresses here.
+        #[arg(long, default_value = "localhost")]
+        box_name: String,
+        /// Share with people on other boxes and edit together across them.
+        /// Without it people on this box still edit text together.
+        #[arg(long)]
+        mesh: bool,
+        /// Accept other boxes' certificates nothing vouches for. Who a box
+        /// is rests on its key either way; see `cloud::mesh::dial`.
+        #[arg(long)]
+        mesh_self_signed: bool,
+        /// Dial a box at this address instead of `wss://<name>/mesh/v1/link`,
+        /// as `<name>=<url>`. For a developer's machine.
+        #[arg(long, value_name = "NAME=URL")]
+        mesh_peer: Vec<String>,
     },
     /// Bring the table in line with the files on disk, for one person or all.
     Scan {
@@ -82,12 +103,18 @@ fn main() -> anyhow::Result<()> {
             workers,
             product,
             trash_days,
+            knowledge_bases,
+            box_name,
+            mesh,
+            mesh_self_signed,
+            mesh_peer,
         } => {
             let cloud = Arc::new(Cloud::open(
                 &cli.root,
                 Config {
                     product,
                     trash_days,
+                    knowledge_bases,
                 },
             )?);
             let listen = match (socket, listen) {
@@ -95,14 +122,35 @@ fn main() -> anyhow::Result<()> {
                 (None, Some(l)) => server::Listen::Tcp(l),
                 (None, None) => server::Listen::Unix("/run/losos-cloud/http.sock".into()),
             };
-            actix_web::rt::System::new().block_on(server::serve(
-                cloud,
-                server::Options {
-                    listen,
-                    trust_header,
-                    workers,
-                },
-            ))?;
+            // A dot first: no login starts with one, so no home can take the name.
+            let mesh_dir = cli.root.join(".mesh");
+            actix_web::rt::System::new().block_on(async move {
+                cloud::mesh::start(
+                    &cloud,
+                    cloud::mesh::Options {
+                        name: box_name,
+                        dir: mesh_dir,
+                        dialer: cloud::mesh::dial::Dialer {
+                            self_signed: mesh_self_signed,
+                            urls: mesh_peer
+                                .iter()
+                                .filter_map(|p| p.split_once('='))
+                                .map(|(n, u)| (n.to_string(), u.to_string()))
+                                .collect(),
+                        },
+                        networked: mesh,
+                    },
+                )?;
+                server::serve(
+                    cloud,
+                    server::Options {
+                        listen,
+                        trust_header,
+                        workers,
+                    },
+                )
+                .await
+            })?;
             Ok(())
         }
         Cmd::Scan { owner } => {
