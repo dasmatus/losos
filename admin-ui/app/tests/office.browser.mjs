@@ -54,7 +54,7 @@ const FAKE_COLLABORA = `<!doctype html><title>editor</title><script>
     setZoom: (z) => { zoom = z; fire('zoomend', {}); },
     zoomIn: () => { zoom += 1; fire('zoomend', {}); },
     zoomOut: () => { zoom -= 1; fire('zoomend', {}); },
-  } };
+  }, LOUtil: { getViewIdColor: (id) => (id === 1 ? 0x2a8c3c : 0x000000) } };
   window.got = [];
   const post = (m) => parent.postMessage(JSON.stringify(m), location.origin);
   addEventListener('message', (event) => {
@@ -259,6 +259,12 @@ await check('the LosOS bars drive the document and show what it reports', async 
   const viewers = page.getByTestId('office-viewers');
   await viewers.getByLabel('Eva Nováková').waitFor();
   assert.equal(await viewers.locator('li').count(), 1);
+  // The ring is the colour Collabora draws Eva's cursor in, not her author colour.
+  const ring = await viewers.getByLabel('Eva Nováková').evaluate((el) => {
+    for (let n = el; n; n = n.parentElement) if (n.style.boxShadow) return n.style.boxShadow;
+    return '';
+  });
+  assert.match(ring, /rgb\(42, 140, 60\)/, ring);
   assert.ok(await page.getByRole('button', { name: 'Save' }).isDisabled());
 
   // A button sends the command and hands the keyboard back.

@@ -79,8 +79,17 @@
 #navigator-floating-icon,
 .cool-ruler,
 #closebuttonwrapper,
-#document-titlebar {
+#document-titlebar,
+#presentation-toolbar {
   display: none !important;
+}
+
+/* The slide list's title, sized like a pane's label rather than a page
+ * heading. */
+#navigation-sidebar .navigation-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 body,

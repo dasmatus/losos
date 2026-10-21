@@ -22,6 +22,7 @@ interface CoolMap {
   setZoom: (zoom: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
+  getDocType?: () => string;
 }
 
 interface CoolEvent {
@@ -61,12 +62,30 @@ export function viewColor(color: string | number | undefined): string {
   return "#8c98a4";
 }
 
-/** The other people in the document, from Get_Views_Resp's list. */
-export function otherViewers(values: unknown): Viewer[] {
+/** Collabora's own colour for a view's cursor (`app.LOUtil.getViewIdColor`). */
+type CursorColor = (viewId: number) => number;
+
+/**
+ * The other people in the document, from Get_Views_Resp's list. Their
+ * cursors are drawn in `cursor`'s colour, which in a text document is not
+ * the view's `Color` (Writer's author colour), so the ring takes it first.
+ */
+export function otherViewers(values: unknown, cursor?: CursorColor | null): Viewer[] {
   if (!Array.isArray(values)) return [];
   return (values as CoolView[])
     .filter((v) => v.IsCurrentView !== true && v.ViewId !== undefined)
-    .map((v) => ({ id: String(v.ViewId), name: v.UserName ?? "", color: viewColor(v.Color) }));
+    .map((v) => {
+      let color: string | number | undefined = v.Color;
+      const id = Number(v.ViewId);
+      if (cursor && Number.isInteger(id)) {
+        try {
+          color = cursor(id);
+        } catch {
+          /* keep the view's own colour */
+        }
+      }
+      return { id: String(v.ViewId), name: v.UserName ?? "", color: viewColor(color) };
+    });
 }
 
 function asState(value: unknown): string | undefined {
@@ -102,13 +121,19 @@ export function useDocument(
   const [viewers, setViewers] = useState<Viewer[]>([]);
   const [zoom, setZoom] = useState<number | null>(null);
   const map = useRef<CoolMap | null>(null);
+  const cursorColor = useRef<CursorColor | null>(null);
 
   useEffect(() => {
     if (!loaded) return;
     let found: CoolMap | null = null;
     try {
-      const win = frame.current?.contentWindow as (Window & { app?: { map?: CoolMap } }) | null;
+      const win = frame.current?.contentWindow as
+        | (Window & { app?: { map?: CoolMap; LOUtil?: { getViewIdColor?: CursorColor } } })
+        | null;
       found = win?.app?.map ?? null;
+      const util = win?.app?.LOUtil;
+      const get = util?.getViewIdColor;
+      cursorColor.current = get ? (id) => get.call(util, id) : null;
     } catch {
       found = null;
     }
@@ -139,9 +164,11 @@ export function useDocument(
     m.on("commandstatechanged", onState);
     m.on("zoomend", readZoom);
     // The page at its real size: Collabora opens a text document fitted to
-    // the window, which on a wide screen is a page larger than paper.
+    // the window, which on a wide screen is a page larger than paper. A
+    // slide stays fitted, so the whole of it shows.
     try {
-      m.setZoom(ACTUAL_SIZE);
+      const type = m.getDocType?.();
+      if (type !== "presentation" && type !== "drawing") m.setZoom(ACTUAL_SIZE);
     } catch {
       /* an older map: keep Collabora's zoom */
     }
@@ -159,7 +186,7 @@ export function useDocument(
       if (msg.MessageId === "View_Added" || msg.MessageId === "View_Removed") {
         post({ MessageId: "Get_Views" });
       } else if (msg.MessageId === "Get_Views_Resp") {
-        setViewers(otherViewers(msg.Values));
+        setViewers(otherViewers(msg.Values, cursorColor.current));
       }
     },
     [post],
