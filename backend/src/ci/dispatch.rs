@@ -1098,12 +1098,15 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    /// id, spec, state, outputs.
+    type EdgeRow = (String, EdgeSpec, String, Option<Map<String, Value>>);
+
     /// An edge that keeps jobs in memory, and lets the test play the box
     /// that runs them.
     #[derive(Default)]
     struct FakeMesh {
         up: bool,
-        jobs: Mutex<Vec<(String, EdgeSpec, String, Option<Map<String, Value>>)>>,
+        jobs: Mutex<Vec<EdgeRow>>,
     }
 
     impl Mesh for Arc<FakeMesh> {
