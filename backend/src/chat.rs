@@ -497,6 +497,7 @@ impl Chat {
     ) -> Result<Verdict, ChatError> {
         let inner = self.inner()?;
         if asked.cookie.as_deref().is_none_or(str::is_empty) {
+            tracing::info!(url = %asked.original_url, "a chat request without a sign-in cookie");
             return Ok(Verdict::SignIn);
         }
         let Some((name, groups)) = inner.gate.ask(asked)? else {
@@ -506,6 +507,7 @@ impl Chat {
         // request, and so does this.
         let person = people.get(&name).ok().flatten();
         let Some(person) = person else {
+            tracing::info!(%name, "a chat request from someone not in the people file");
             return Ok(Verdict::SignIn);
         };
         if person
@@ -956,9 +958,11 @@ impl LoginGate for Authelia {
             body: Value::Null,
         };
         if !(200..300).contains(&status) {
+            tracing::info!(status, "LosOS Login turned a chat request away");
             return Ok(None);
         }
         let Some(name) = reply.header("remote-user").filter(|n| !n.is_empty()) else {
+            tracing::info!(status, "LosOS Login named nobody for a chat request");
             return Ok(None);
         };
         let groups = reply

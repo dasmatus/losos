@@ -609,7 +609,8 @@ pkgs.testers.nixosTest {
             probe(box, "http://127.0.0.1:9091/auth/api/authz/auth-request", asked)
             probe(box, "http://127.0.0.1:8082/internal/chat/authz", "")
             print(box.execute("cat /var/lib/losos-identity/users.yml | grep -v password | head -n 30")[1])
-            print(box.execute("journalctl -u lososd -u dendrite -u authelia-losos --since -4min --no-pager | tail -n 120")[1])
+            print(box.execute("journalctl -u lososd --no-pager | grep -i 'chat\\|exchange\\|warn' | head -n 40")[1])
+            print(box.execute("journalctl -u authelia-losos -u dendrite --since -4min --no-pager | grep -v 'level=info' | tail -n 60")[1])
             print(box.execute("systemctl status dendrite --no-pager | head -n 5; ls -la /var/lib/losos-chat* 2>&1 | head")[1])
             raise
         return page
