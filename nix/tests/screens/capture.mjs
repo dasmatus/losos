@@ -119,7 +119,33 @@ async function strip(variant, width, shot, name, storageState) {
     await page.goto(base + shot.path, { waitUntil: 'networkidle', timeout: 120000 });
     if (shot.waitFor) await locate(page, shot.waitFor).waitFor({ timeout: 120000 });
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
+    // The page's own entrance has to be over before anything is frozen, or
+    // it lands in the strip; a slow emulated box can still be fading the
+    // content in seconds after load. Looping animations (a skeleton's
+    // pulse) never end and are left out.
+    await page.waitForFunction(
+      () =>
+        document
+          .getAnimations()
+          .every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().iterations === Infinity),
+      null,
+      { timeout: 120000 },
+    );
+    await page.waitForTimeout(500);
+    // A forced click skips Playwright's checks, so wait for the first
+    // control to be there and enabled: a switch clicked while its setting
+    // is still loading does nothing. (Later ones may appear only after it.)
+    const first = shot.steps?.[0];
+    if (first?.click) {
+      const target = locate(page, first.click);
+      await target.waitFor({ timeout: 60000 });
+      await page.waitForFunction(
+        (el) => !el.matches(':disabled, [aria-disabled=true], [data-disabled]'),
+        await target.elementHandle(),
+        { timeout: 60000 },
+      );
+    }
     const cdp = await context.newCDPSession(page);
     let started = [];
     cdp.on('Animation.animationStarted', ({ animation }) => started.push(animation.id));
