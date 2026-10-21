@@ -299,12 +299,16 @@ pkgs.testers.nixosTest {
         assert max(r, g, b) < 128, f"the veil is light under a picked Dark: {rgb}"
 
     with subtest("the shared motion, filmed"):
-        capture("/etc/losos-test/motion-plan.json", "/tmp/screens")
+        # On the box's own look, without the picture the veil check left.
+        code, body = api("/api/look", cookie, "POST", {"background": {"kind": "none"}})
+        assert code == 200, (code, body)
+        try:
+            capture("/etc/losos-test/motion-plan.json", "/tmp/screens")
+        finally:
+            laptop.copy_from_machine("/tmp/screens", "")
         for name in ["motion-person-menu", "motion-palette", "motion-switch"]:
             laptop.succeed(f"test -s /tmp/screens/{name}-light-desktop.webm")
             laptop.succeed(f"test -s /tmp/screens/{name}-light-desktop.png")
         laptop.succeed("rm -rf /tmp/screens/.video-*")
-
-    laptop.copy_from_machine("/tmp/screens", "")
   '';
 }

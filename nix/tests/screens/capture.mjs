@@ -101,7 +101,7 @@ async function step(page, s) {
   else throw new Error(`unknown step ${JSON.stringify(s)}`);
 }
 
-async function film(variant, width, shot, name) {
+async function film(variant, width, shot, name, storageState) {
   const height = variant.height ?? plan.height ?? 800;
   const dir = join(args.out, `.video-${name}`);
   const context = await browser.newContext({
@@ -111,33 +111,29 @@ async function film(variant, width, shot, name) {
     colorScheme: variant.colorScheme ?? plan.colorScheme ?? 'light',
     reducedMotion: 'no-preference',
     recordVideo: { dir, size: { width, height } },
+    // The session and the page's storage of the context that took the
+    // stills, so the clip opens on the same signed-in page.
+    storageState,
   });
-  if (variant.theme) {
-    await context.addInitScript((theme) => {
-      try {
-        localStorage.setItem('losos-theme', theme);
-      } catch {
-        // about:blank has no storage.
-      }
-    }, variant.theme);
-  }
-  if (args.user) {
-    const r = await context.request.post(`${base}/auth/api/firstfactor`, {
-      data: { username: args.user, password: args.password },
-    });
-    if (!r.ok()) throw new Error(`signing in as ${args.user}: ${r.status()} ${await r.text()}`);
-  }
   const page = await context.newPage();
-  await page.goto(base + shot.path, { waitUntil: 'networkidle', timeout: 120000 });
-  if (shot.waitFor) await locate(page, shot.waitFor).waitFor({ timeout: 120000 });
-  await page.evaluate(() => document.fonts.ready);
-  await page.waitForTimeout(1000);
-  const cdp = await context.newCDPSession(page);
-  await cdp.send('Animation.enable');
-  await cdp.send('Animation.setPlaybackRate', { playbackRate: plan.clipRate ?? 0.1 });
-  for (const s of shot.steps ?? []) {
-    await step(page, s);
-    await page.waitForTimeout(shot.clipPause ?? 2500);
+  try {
+    await page.goto(base + shot.path, { waitUntil: 'networkidle', timeout: 120000 });
+    if (shot.waitFor) await locate(page, shot.waitFor).waitFor({ timeout: 120000 });
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(1000);
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Animation.enable');
+    await cdp.send('Animation.setPlaybackRate', { playbackRate: plan.clipRate ?? 0.1 });
+    for (const s of shot.steps ?? []) {
+      await step(page, s);
+      await page.waitForTimeout(shot.clipPause ?? 2500);
+    }
+  } catch (e) {
+    // What the camera saw instead, for the log and the pictures.
+    console.error(`filming ${name} at ${page.url()}: ${e.message}`);
+    await page.screenshot({ path: join(args.out, `${name}-film-failed.png`), timeout: 180000 }).catch(() => {});
+    await context.close();
+    throw e;
   }
   const video = page.video();
   await page.close();
@@ -215,10 +211,11 @@ try {
       console.log(`captured ${path}${seen.pageWidth > width ? ` (page is ${seen.pageWidth}px wide)` : ''}`);
       await page.close();
     }
+    const storageState = await context.storageState();
     await context.close();
     for (const shot of plan.shots.filter((s) => s.clip)) {
       const name = variant.suffix ? `${shot.name}-${variant.suffix}` : shot.name;
-      await film(variant, width, shot, name);
+      await film(variant, width, shot, name, storageState);
     }
   }
 } finally {
