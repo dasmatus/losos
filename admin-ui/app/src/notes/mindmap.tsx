@@ -89,9 +89,12 @@ interface Placed {
 const ROW = 30;
 const GAP = 46;
 const MAX_LABEL = 42;
+/** Twigs (list items) are cut shorter: they carry detail, not structure. */
+const MAX_TWIG = 30;
 
-function label(text: string): string {
-  return text.length > MAX_LABEL ? `${text.slice(0, MAX_LABEL - 1)}…` : text;
+function label(text: string, depth = 0): string {
+  const max = depth >= 2 ? MAX_TWIG : MAX_LABEL;
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 /** Widths from a canvas, which measures with the page's own font. */
@@ -110,7 +113,7 @@ function layout(root: MindNode): { placed: Placed[]; width: number; height: numb
   const placed: Placed[] = [];
   const colWidth: number[] = [];
   const walkWidths = (n: MindNode, depth: number) => {
-    colWidth[depth] = Math.max(colWidth[depth] ?? 0, measure(label(n.text), depth) + (depth <= 1 ? 24 : 8));
+    colWidth[depth] = Math.max(colWidth[depth] ?? 0, measure(label(n.text, depth), depth) + (depth <= 1 ? 24 : 8));
     for (const c of n.children) walkWidths(c, depth + 1);
   };
   walkWidths(root, 0);
@@ -122,7 +125,7 @@ function layout(root: MindNode): { placed: Placed[]; width: number; height: numb
   }
   let row = 0;
   const place = (n: MindNode, depth: number, branch: number, parent: Placed | null): Placed => {
-    const p: Placed = { node: n, x: colX[depth] ?? 0, y: 0, w: measure(label(n.text), depth) + (depth <= 1 ? 24 : 8), depth, branch, parent };
+    const p: Placed = { node: n, x: colX[depth] ?? 0, y: 0, w: measure(label(n.text, depth), depth) + (depth <= 1 ? 24 : 8), depth, branch, parent };
     placed.push(p);
     if (n.children.length === 0) {
       p.y = row * ROW + ROW / 2;
@@ -157,8 +160,9 @@ export function MindMap({ root, onHeading, label: aria }: { root: MindNode; onHe
               {p.depth <= 1 && <rect className={p.depth === 0 ? "mm-root" : `mm-pill mm-b${p.branch % 6}`} x={p.x} y={p.y - 12} width={p.w} height={24} rx={12} />}
               {p.depth > 1 && <line className={`mm-under mm-b${p.branch % 6}`} x1={p.x} x2={p.x + p.w} y1={p.y + 9} y2={p.y + 9} />}
               <text className={p.depth === 0 ? "mm-text mm-text-root" : p.depth === 1 ? "mm-text mm-text-top" : "mm-text"} x={p.x + (p.depth <= 1 ? 12 : 2)} y={p.y + 4.5}>
-                {label(p.node.text)}
+                {label(p.node.text, p.depth)}
               </text>
+              {label(p.node.text, p.depth) !== p.node.text && <title>{p.node.text}</title>}
             </>
           );
           return heading !== null ? (
