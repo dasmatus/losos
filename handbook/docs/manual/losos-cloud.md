@@ -28,6 +28,12 @@ gets their own files. The person who set up the box gets the owner's.
   good.
 - **Devices** lists the computers and phones that sync, and signs one out.
 - The search field at the top finds files by name.
+- Text files open in an editor several people can type in at once, and
+  **Shared with you** holds what people on other boxes shared with you.
+  See [Sharing and editing together](sharing-and-editing-together).
+- **Notes** reads a folder of Markdown notes the way Obsidian does, with
+  links, tags and a graph, and can publish one as a knowledge base. See
+  [Notes and knowledge bases](notes-and-knowledge-bases).
 - Right-click a file, a folder or the space around them for what you can
   do there; see [the right-click menu](admin-pages#the-right-click-menu).
 

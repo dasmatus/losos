@@ -96,6 +96,12 @@ and is never served or built by nix.
 - `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
   is the front nginx vhost's root (`try_files … /index.html`), `/api/*` is
   proxied to lososd. Palette in `src/styles/tokens.css`.
+- `admin-ui/app/src/games/` + `components/play-while-waiting.tsx`: the
+  long waits (a rebuild, the wizard's two, LosOS Login starting, an app
+  installing) offer a random game of five on canvas, a lazy chunk that
+  fetches nothing; turn-based only under reduced motion, and the end of
+  the wait stops it. `nix/tests/wait-game.nix` plays it during a real
+  claim wait and a real rebuild unit, and films it.
 - `identity.nix` (`losos.identity.enable`): sign-in is LosOS Login
   (Authelia) on `127.0.0.1:9091`, its page at `https://<host>/auth/` (https
   only), over the people file `/var/lib/losos-identity/users.yml` that

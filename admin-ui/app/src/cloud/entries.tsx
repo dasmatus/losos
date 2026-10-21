@@ -9,6 +9,7 @@ import {
   FolderTransferIcon,
   HistoryIcon,
   PencilEdit02Icon,
+  Share08Icon,
   StarIcon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,8 @@ import { cloud, contentUrl, hasPreview, joinPath, parentOf, previewUrl, type Ent
 import { MoveDialog, NameDialog, VersionsDialog, failed } from "./dialogs";
 import { useEntryMenu } from "./entry-menu";
 import { formatBytes, formatFull, formatWhen, iconFor } from "./format";
-import { openersFor } from "./openers";
+import { MeshShareDialog } from "./mesh/share-dialog";
+import { folderActionsFor, openersFor, type FolderAction } from "./openers";
 import { bump } from "./store";
 
 /** The address of a folder in the web app. */
@@ -190,6 +192,7 @@ export function EntryTable({
                 ref={contextMenu(menu.row(entry))}
                 data-state={isSel ? "selected" : undefined}
                 data-entry={entry.name}
+                data-entry-id={entry.id}
                 className={cn("group/row", highlight === entry.id && "bg-accent-wash")}
                 onClick={(event) => {
                   // A click on the row's empty space picks it, as in a file manager.
@@ -266,10 +269,14 @@ export function SelectionBar({
 }) {
   const t = useT();
   const [renaming, setRenaming] = React.useState(false);
+  const [sharing, setSharing] = React.useState(false);
   const [moving, setMoving] = React.useState<"move" | "copy" | null>(null);
   const [versions, setVersions] = React.useState<Entry | null>(null);
   const one = entries.length === 1 ? entries[0] : undefined;
   const oneFile = one !== undefined && !one.dir ? one : undefined;
+  const oneFolder = one !== undefined && one.dir ? one : undefined;
+  const navigate = useNavigate();
+  const [folderDialog, setFolderDialog] = React.useState<FolderAction | null>(null);
 
   const remove = async () => {
     const paths = entries.map((e) => e.path);
@@ -309,6 +316,26 @@ export function SelectionBar({
             <span className="max-sm:sr-only">{t(o.label)}</span>
           </Button>
         ))}
+      {oneFolder !== undefined &&
+        folderActionsFor(oneFolder).map((a) => (
+          <Button
+            key={a.id}
+            size="sm"
+            variant="ghost"
+            className="text-ink"
+            data-action={a.id}
+            onClick={() => {
+              if (a.href !== undefined) navigate(a.href(oneFolder));
+              else setFolderDialog(a);
+            }}
+          >
+            <HugeiconsIcon icon={a.icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <span className="max-sm:sr-only">{t(a.label(oneFolder))}</span>
+          </Button>
+        ))}
+      {oneFolder !== undefined && folderDialog?.Dialog !== undefined && (
+        <folderDialog.Dialog folder={oneFolder} open onOpenChange={(open) => !open && setFolderDialog(null)} />
+      )}
       {oneFile !== undefined &&
         tool(t("cloud.download"), Download01Icon, () => {
           window.location.href = contentUrl(oneFile.path, true);
@@ -317,6 +344,7 @@ export function SelectionBar({
       {tool(t("cloud.move.action"), FolderTransferIcon, () => setMoving("move"))}
       {tool(t("cloud.copy.action"), Copy01Icon, () => setMoving("copy"))}
       {oneFile !== undefined && tool(t("cloud.versions.action"), HistoryIcon, () => setVersions(oneFile))}
+      {one !== undefined && tool(t("collab.share"), Share08Icon, () => setSharing(true))}
       {tool(t("cloud.delete.action"), Delete02Icon, () => void remove(), "hover:text-crit")}
 
       {one !== undefined && (
@@ -342,6 +370,7 @@ export function SelectionBar({
         }}
       />
       <VersionsDialog entry={versions} onOpenChange={(open) => !open && setVersions(null)} />
+      {one !== undefined && <MeshShareDialog open={sharing} onOpenChange={setSharing} fileId={one.id} name={one.name} />}
     </div>
   );
 }
