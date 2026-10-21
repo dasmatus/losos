@@ -208,6 +208,27 @@ async function open({
     };
     return json(route, 201, domainsView);
   });
+  await page.route('**/api/domains/wallet', (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    const sent = route.request().postDataJSON();
+    domainPosts.push(['/api/domains/wallet', sent]);
+    const wallet = sent.address
+      ? {
+          address: sent.address,
+          bound_at: 1791460000,
+          record: ensRecord(sent.address),
+          // Public DNS validates the hostname; the label is not looked up yet.
+          published: { 'mattbox.boxes.losos.dasmat.us': 'found' },
+          published_at: 1791460030,
+        }
+      : null;
+    domainsView = {
+      ...domainsView,
+      wallet,
+      domains: domainsView.domains.map((d) => ({ ...d, wallet: wallet === null ? null : d.wallet })),
+    };
+    return json(route, 200, domainsView);
+  });
   await page.route('**/api/domains/remove', (route) => {
     if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
     const sent = route.request().postDataJSON();
@@ -320,6 +341,7 @@ const BACKUP_SET = {
 /* GET /api/domains on an official edge, for a box Stripe has checked: one
  * domain live, one still waiting for its CNAME. */
 const WAITING_DOMAIN = {
+  wallet: null,
   domain: 'files.example.net',
   status: 'waiting',
   txt_name: '_losos-challenge.files.example.net',
@@ -348,10 +370,22 @@ const DOMAINS_READY = {
       problem: null,
       checked_at: 1791450000,
       verified_at: 1791440000,
+      wallet: null,
     },
     WAITING_DOMAIN,
   ],
+  box: 'mattbox',
+  zone: 'boxes.losos.dasmat.us',
+  names: ['mattbox.boxes.losos.dasmat.us', '3f9a1c0e7b2d4a55.boxes.losos.dasmat.us'],
+  wallet: null,
 };
+
+/* The ENS record the edge publishes for a bound wallet
+ * (edge/registrar/src/domains.rs, `ens_record`). */
+const ensRecord = (a) =>
+  `ENS1 dnsname.ens.eth ${a}`;
+/* What the wallet signs to bind (`wallet_message` there). */
+const walletMessage = (zone, box, a) => `LosOS box name v1\nzone: ${zone}\nbox: ${box}\naddress: ${a}\n`;
 
 /* What lososd's scan reports with an edge on the LAN, and with none. */
 const EDGE_FOUND = {
@@ -528,9 +562,10 @@ await check('a person signed in at the box sign-in page gets the app without a k
   await page.getByRole('button', { name: 'Sign out' }).waitFor();
   await page.getByText('Sign in to this box').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null, 'a cookie session stored a key');
-  const who = page.getByTestId('signed-in-as');
+  // The name beside the picture or initials.
+  const who = page.getByTestId('signed-in-name');
   assert.equal((await who.innerText()).trim(), 'Matus', 'the top bar does not name the person signed in');
-  assert.match(await who.getAttribute('aria-label'), /as matus\. You are an administrator/, 'the top bar does not say who and what they are');
+  assert.match(await page.getByTestId('signed-in-as').getAttribute('aria-label'), /as matus\. You are an administrator/, 'the top bar does not say who and what they are');
   await page.close();
 });
 
@@ -546,9 +581,10 @@ await check('a person in one section sees that section and not the administrator
     assert.equal(await sections.getByRole('link', { name: hidden, exact: true }).count(), 0, `${hidden} is shown to a backup-only person`);
   }
   assert.equal(await sections.getByRole('link', { name: 'Overview' }).count(), 1, 'the overview is for everyone');
-  const who = page.getByTestId('signed-in-as');
+  // The name beside the picture or initials.
+  const who = page.getByTestId('signed-in-name');
   assert.equal((await who.innerText()).trim(), 'Eva', 'the top bar does not name the person signed in');
-  assert.match(await who.getAttribute('aria-label'), /the panes your account was given/, 'a backup-only person is called an administrator');
+  assert.match(await page.getByTestId('signed-in-as').getAttribute('aria-label'), /the panes your account was given/, 'a backup-only person is called an administrator');
   await page.close();
 });
 
@@ -1797,6 +1833,162 @@ await check('a vouched box lists its domains with the records to publish, adds o
   await page.waitForFunction(() => document.querySelectorAll('[data-testid="custom-domain"]').length === 2);
   assert.match(await rows.nth(0).innerText(), /^files\.example\.net/);
   assert.deepEqual(domainPosts.at(-1), ['/api/domains/remove', { domain: 'cloud.example.org' }]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a browser extension wallet binds to the box names, and unbinds', async () => {
+  const { privateKeyToAccount } = await import('viem/accounts');
+  const { verifyMessage } = await import('viem');
+  const account = privateKeyToAccount(`0x${'07'.repeat(32)}`);
+  const { page, errors, domainPosts } = await open({ path: '/settings/network', stored: true, domains: DOMAINS_READY });
+  // The extension: personal_sign is answered by the test's own key.
+  await page.exposeFunction('testSign', (message) => account.signMessage({ message }));
+  await page.evaluate((address) => {
+    window.ethereum = {
+      request: async ({ method, params }) => {
+        if (method === 'eth_requestAccounts') return [address];
+        if (method === 'personal_sign') return window.testSign(params[0]);
+        throw new Error(method);
+      },
+    };
+  }, account.address);
+  const section = page.getByTestId('domain-wallet');
+  await section.getByText('Let people pay this box by name').waitFor();
+  assert.match(await section.innerText(), /mattbox\.boxes\.losos\.dasmat\.us, 3f9a1c0e7b2d4a55\.boxes\.losos\.dasmat\.us/);
+  await section.getByTestId('wallet-bind').click();
+  await section.getByText('Bound to this box’s wallet').or(section.getByText("Bound to this box's wallet")).waitFor();
+  const [route, sent] = domainPosts.at(-1);
+  assert.equal(route, '/api/domains/wallet');
+  const address = account.address.toLowerCase();
+  assert.equal(sent.address, address);
+  assert.ok(
+    await verifyMessage({ address, message: walletMessage('boxes.losos.dasmat.us', 'mattbox', address), signature: sent.signature }),
+    'the signature is not the wallet message the edge checks',
+  );
+  const names = section.getByTestId('wallet-name');
+  assert.equal(await names.count(), 2);
+  assert.match(await names.nth(0).innerText(), /mattbox\.boxes\.losos\.dasmat\.us[\s\S]*0x4a62/);
+  // Whether a buyer's wallet finds each name, as public DNS last answered.
+  assert.match(await names.nth(0).innerText(), /Wallets find this name/);
+  assert.match(await names.nth(1).innerText(), /Checking whether wallets find this name/);
+  // Each domain of the owner's offers the same record to add at the domain.
+  const rows = page.getByTestId('custom-domains').getByTestId('custom-domain');
+  assert.match(await rows.nth(0).innerText(), new RegExp(`TXT\\s+cloud\\.example\\.org\\s+"ENS1 dnsname\\.ens\\.eth ${address}"`));
+  assert.match(await rows.nth(0).innerText(), /looks for this record at the domain on its next check/);
+
+  await section.getByRole('button', { name: 'Unbind', exact: true }).click();
+  await section.getByText('Let people pay this box by name').waitFor();
+  assert.deepEqual(domainPosts.at(-1), ['/api/domains/wallet', {}]);
+  assert.equal(await page.getByTestId('domain-wallet-record').count(), 0, 'an unbound wallet still offered its record');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('an edge that predates wallets still draws the domains, without the wallet section', async () => {
+  const { box, zone, names, wallet, ...older } = DOMAINS_READY;
+  const domains = { ...older, domains: older.domains.map(({ wallet: _seen, ...d }) => d) };
+  const { page, errors } = await open({ path: '/settings/network', stored: true, domains });
+  const rows = page.getByTestId('custom-domains').getByTestId('custom-domain');
+  await rows.first().waitFor();
+  assert.equal(await rows.count(), 2);
+  assert.equal(await page.getByTestId('domain-wallet').count(), 0, 'the wallet section showed without a zone');
+  assert.doesNotMatch(await rows.nth(0).innerText(), /ENS1|Wallets pay/);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+// A wallet saved before its address was kept beside the phrase has none
+// until it is unlocked, and is still the box's wallet.
+for (const keptAddress of [true, false]) {
+await check(`the wallet made on this box signs the binding after its password${keptAddress ? '' : ', saved without its address'}`, async () => {
+  const { mnemonicToAccount } = await import('viem/accounts');
+  const { verifyMessage } = await import('viem');
+  const phrase = 'test test test test test test test test test test test junk';
+  const address = mnemonicToAccount(phrase).address;
+  const bound = {
+    ...DOMAINS_READY,
+    domains: [
+      { ...DOMAINS_READY.domains[0], wallet: 'found' },
+      { ...WAITING_DOMAIN, wallet: 'cname' },
+    ],
+  };
+  const { page, errors, domainPosts } = await open({ path: '/settings/network', stored: true, domains: bound });
+  // Seal the phrase the way wallet/hot.ts does, then load the page again.
+  await page.evaluate(
+    async ({ phrase, address, keptAddress }) => {
+      const enc = new TextEncoder();
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const base = await crypto.subtle.importKey('raw', enc.encode('right horse battery'), 'PBKDF2', false, ['deriveKey']);
+      const key = await crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: 210_000, hash: 'SHA-256' },
+        base,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt'],
+      );
+      const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(phrase)));
+      const b64 = (b) => btoa(String.fromCharCode(...b));
+      const db = await new Promise((resolve, reject) => {
+        const req = indexedDB.open('losos-wallet', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('key');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      await new Promise((resolve) => {
+        const tx = db.transaction('key', 'readwrite');
+        const sealed = { v: 1, salt: b64(salt), iv: b64(iv), ct: b64(ct), made: true };
+        tx.objectStore('key').put(keptAddress ? { ...sealed, evm: address } : sealed, 'phrase');
+        tx.oncomplete = resolve;
+      });
+      db.close();
+    },
+    { phrase, address, keptAddress },
+  );
+  await page.reload({ waitUntil: 'networkidle' });
+  const section = page.getByTestId('domain-wallet');
+  await section.getByTestId('wallet-bind').click();
+  const password = section.getByLabel('Password of the wallet on this box');
+  if (keptAddress) assert.match(await section.innerText(), new RegExp(`Signs as ${address.toLowerCase()}`));
+  else assert.doesNotMatch(await section.innerText(), /Signs as/);
+  await password.fill('wrong password');
+  await section.getByRole('button', { name: 'Sign', exact: true }).click();
+  await page.locator('[data-toast]').filter({ hasText: /password/i }).first().waitFor({ timeout: 10000 });
+  assert.equal(domainPosts.length, 0, 'a wrong password still sent a binding');
+  await password.fill('right horse battery');
+  await section.getByRole('button', { name: 'Sign', exact: true }).click();
+  await section.getByTestId('wallet-name').first().waitFor({ timeout: 15000 });
+  const [, sent] = domainPosts.at(-1);
+  const lower = address.toLowerCase();
+  assert.equal(sent.address, lower);
+  assert.ok(await verifyMessage({ address: lower, message: walletMessage('boxes.losos.dasmat.us', 'mattbox', lower), signature: sent.signature }));
+  // What the edge found at the owner's domains: one pays by name, one is a
+  // CNAME and is told why it cannot.
+  const rows = page.getByTestId('custom-domains').getByTestId('custom-domain');
+  assert.match(await rows.nth(0).innerText(), /Wallets pay cloud\.example\.org to this box/);
+  assert.doesNotMatch(await rows.nth(0).innerText(), /ENS1/);
+  assert.match(await rows.nth(1).innerText(), /is a CNAME, which can carry no other record/);
+  assert.doesNotMatch(await rows.nth(1).innerText(), /ENS1/, 'a CNAME was offered a record it cannot carry');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+}
+
+await check('a binding whose names lapsed can still be taken off', async () => {
+  const address = '0x4a62000000000000000000000000000000000001';
+  const domains = {
+    ...DOMAINS_READY,
+    names: [],
+    wallet: { address, bound_at: 1791460000, record: ensRecord(address), published: {}, published_at: 1791460030 },
+  };
+  const { page, errors, domainPosts } = await open({ path: '/settings/network', stored: true, domains });
+  const section = page.getByTestId('domain-wallet');
+  assert.match(await section.innerText(), /No name to bind yet/);
+  await section.getByRole('button', { name: 'Unbind', exact: true }).click();
+  await section.getByRole('button', { name: 'Unbind', exact: true }).waitFor({ state: 'detached' });
+  assert.deepEqual(domainPosts.at(-1), ['/api/domains/wallet', {}]);
+  assert.match(await section.innerText(), /No name to bind yet/);
   assert.deepEqual(errors, []);
   await page.close();
 });
