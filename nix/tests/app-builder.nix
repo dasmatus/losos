@@ -225,6 +225,7 @@ pkgs.testers.nixosTest {
     box.wait_for_unit("ollama-stand-in.service")
     box.wait_for_open_port(443)
     box.wait_for_open_port(11434)
+    box.wait_for_open_port(8082)
     laptop.wait_for_unit("multi-user.target")
 
     with subtest("the owner claims the box and LosOS Login starts"):
