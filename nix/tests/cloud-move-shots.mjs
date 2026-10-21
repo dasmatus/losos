@@ -65,7 +65,7 @@ async function walk() {
     await page.goto(`${base}/index.php/apps/files/`);
     await page.locator('[data-cy-files-list-row-name="Documents"]').waitFor();
     await take("files.png");
-    await page.goto(`${base}/index.php/apps/files/trashbin`);
+    await page.getByRole("link", { name: "Deleted files" }).click();
     // A trashed file's row is named after the file plus when it was deleted.
     await page.locator('[data-cy-files-list-row-name^="old notes"]').first().waitFor();
     await take("trash.png");
