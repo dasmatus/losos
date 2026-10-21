@@ -2,14 +2,14 @@
 # src/components/play-while-waiting.tsx): the game a long wait offers.
 #
 # The waits are the box's own, not a mocked API: lososd's claim state while
-# LosOS cloud has not finished installing, and a rebuild that lososd starts
+# LosOS Cloud has not finished installing, and a rebuild that lososd starts
 # from Apply as a real `losos-rebuild-<job>` unit and watches like any
 # other. Two stand-ins make them last as long as the test needs: `occ`
 # answers "not installed" until the script says otherwise, and the
 # `nixos-rebuild` lososd runs waits for the script before it exits 0. What
 # is asserted:
 #
-#   * the wizard's step 2, on an unclaimed box whose LosOS cloud is still
+#   * the wizard's step 2, on an unclaimed box whose LosOS Cloud is still
 #     installing, offers the game; Upstream plays and scores; and when occ
 #     reports installed the game stops with a line saying so and the
 #     password form opens;
@@ -58,7 +58,7 @@ let
     '';
   });
 
-  # LosOS cloud installs itself until the script touches the flag.
+  # LosOS Cloud installs itself until the script touches the flag.
   stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
     case "$1" in
       status)
@@ -116,7 +116,7 @@ pkgs.testers.nixosTest {
         forgejo.enable = false;
       };
 
-      # LosOS cloud's stand-in on the port the front vhost proxies to.
+      # LosOS Cloud's stand-in on the port the front vhost proxies to.
       services.nginx.virtualHosts."stub-nextcloud" = {
         listen = [
           {
@@ -199,7 +199,7 @@ pkgs.testers.nixosTest {
         assert run.returncode == 0, f"{mode}: the browser run failed"
         return json.loads(stdout.strip().splitlines()[-1])
 
-    with subtest("step 2 waits for LosOS cloud, offers the game, and the game gives way when it is installed"):
+    with subtest("step 2 waits for LosOS Cloud, offers the game, and the game gives way when it is installed"):
         claim = json.loads(box.succeed("curl -fsS 127.0.0.1:8082/api/setup/claim"))
         assert claim["ready"] is False and claim["waitingFor"], claim
 
@@ -213,7 +213,7 @@ pkgs.testers.nixosTest {
         assert seen["wizardReady"], seen
         assert seen["violations"] == [], seen
 
-    with subtest("the claim goes through once LosOS cloud is installed"):
+    with subtest("the claim goes through once LosOS Cloud is installed"):
         body = box.succeed(
             "curl -fsS -X POST 127.0.0.1:8082/api/setup/claim "
             "-H 'Content-Type: application/json' "
