@@ -499,6 +499,9 @@ pkgs.testers.nixosTest {
 
     if SCREENS:
         laptop.succeed("mail-screens manifest losos-mail-screens")
+        # copy_from_machine goes through the driver's shared directory, which
+        # outlives a run; a second run would land in mail-shots/shots/shots.
+        laptop.succeed("rm -rf /tmp/shared/mail-shots")
         laptop.copy_from_machine("/tmp/shots", "mail-shots")
   '';
 }
