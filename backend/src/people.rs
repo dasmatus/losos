@@ -190,20 +190,20 @@ pub fn validate_name(name: &str) -> Result<&str, String> {
 
 /// argon2id with Authelia's defaults (`m=65536,t=3,p=4`, 32-byte key).
 pub fn hash_password(secret: &Secret) -> anyhow::Result<String> {
-    use argon2::password_hash::{rand_core::OsRng, PasswordHasher, SaltString};
+    use argon2::password_hash::{phc::PasswordHash, PasswordHasher};
     let params = argon2::Params::new(65_536, 3, 4, Some(32))
         .map_err(|e| anyhow::anyhow!("argon2 parameters: {e}"))?;
     let hasher = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
-    let salt = SaltString::generate(&mut OsRng);
-    Ok(hasher
-        .hash_password(secret.expose().as_bytes(), &salt)
-        .map_err(|e| anyhow::anyhow!("hashing a password: {e}"))?
-        .to_string())
+    // The salt is 16 bytes from the OS, drawn by `hash_password` itself.
+    let hash: PasswordHash = hasher
+        .hash_password(secret.expose().as_bytes())
+        .map_err(|e| anyhow::anyhow!("hashing a password: {e}"))?;
+    Ok(hash.to_string())
 }
 
 /// Whether `secret` is the password behind `hash`.
 pub fn verify_password(hash: &str, secret: &Secret) -> bool {
-    use argon2::password_hash::{PasswordHash, PasswordVerifier};
+    use argon2::password_hash::{phc::PasswordHash, PasswordVerifier};
     PasswordHash::new(hash).is_ok_and(|parsed| {
         argon2::Argon2::default()
             .verify_password(secret.expose().as_bytes(), &parsed)
