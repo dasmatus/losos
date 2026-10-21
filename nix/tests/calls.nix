@@ -1182,6 +1182,21 @@ pkgs.testers.nixosTest {
         room_button(owner, "Holiday").click()
         room_button(her, "Holiday").click()
         room_button(jan, "Holiday").click()
+        # Jan has just signed in: his new device reaches the others' device
+        # lists a sync later, and a message sent before then is one he
+        # cannot open. Talk until both of them read Matus, as people would
+        # before a call.
+        for attempt in range(1, 6):
+            line = f"Call about the holiday in a minute ({attempt})"
+            owner.get_by_role("textbox", name="Message Holiday").fill(line)
+            owner.keyboard.press("Enter")
+            try:
+                for page in (her, jan):
+                    page.get_by_role("log").get_by_text(line).wait_for(timeout=30000)
+                break
+            except Exception:
+                if attempt == 5:
+                    raise
         owner.get_by_role("button", name="Video call").click()
         for page in (her, jan):
             page.locator("[data-ringing]").get_by_role("button", name="Answer", exact=True).click()
