@@ -596,11 +596,19 @@ pkgs.testers.nixosTest {
             print("cookies:", [(c["name"], c["domain"], c["path"], len(c["value"])) for c in jar])
             cookie = "; ".join(f"{c['name']}={c['value']}" for c in jar)
             q = shlex.quote(f"Cookie: {cookie}")
-            print(laptop.execute(f"curl -sk -i https://{HOST}/_matrix/client/versions -H {q} | head -n 12")[1])
+            def probe(where, url, headers):
+                out = where.execute(
+                    f"curl -sk -D /tmp/h -o /tmp/b -w '%{{http_code}}' {url} {headers}; echo; "
+                    "tr -d '\\r' < /tmp/h | grep -i '^remote-\\|^location\\|^set-cookie' ; head -c 300 /tmp/b"
+                )[1]
+                print(f"probe {url}: {out}")
+            probe(laptop, f"https://{HOST}/_matrix/client/versions", f"-H {q}")
             asked = (f"-H {q} -H 'X-Original-URL: https://{HOST}/_matrix/client/versions' "
                      "-H 'X-Original-Method: GET' -H 'X-Forwarded-For: 192.168.1.2'")
-            print(box.execute(f"curl -s -i http://127.0.0.1:8082/internal/chat/authz {asked} | head -n 8")[1])
-            print(box.execute(f"curl -s -i http://127.0.0.1:9091/auth/api/authz/auth-request {asked} | head -n 12")[1])
+            probe(box, "http://127.0.0.1:8082/internal/chat/authz", asked)
+            probe(box, "http://127.0.0.1:9091/auth/api/authz/auth-request", asked)
+            probe(box, "http://127.0.0.1:8082/internal/chat/authz", "")
+            print(box.execute("cat /var/lib/losos-identity/users.yml | grep -v password | head -n 30")[1])
             print(box.execute("journalctl -u lososd -u dendrite -u authelia-losos --since -4min --no-pager | tail -n 120")[1])
             print(box.execute("systemctl status dendrite --no-pager | head -n 5; ls -la /var/lib/losos-chat* 2>&1 | head")[1])
             raise
