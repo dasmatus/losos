@@ -60,6 +60,7 @@ pub mod overrides;
 pub mod people;
 pub mod pins;
 pub mod plugin;
+pub mod profiles;
 pub mod receipt;
 pub mod recovery;
 pub mod sections;
