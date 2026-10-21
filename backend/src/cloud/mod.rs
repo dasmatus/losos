@@ -8,6 +8,10 @@
 //! the web app at `/cloud/` uses ([`api`]). [`server`] puts them on one
 //! listener.
 
+// A handler's early exit is the response itself (`Result<_, HttpResponse>`),
+// built once per refused request; boxing it buys nothing.
+#![allow(clippy::result_large_err)]
+
 pub mod api;
 pub mod auth;
 pub mod collab;

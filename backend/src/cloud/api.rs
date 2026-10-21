@@ -47,7 +47,10 @@ fn query(req: &HttpRequest) -> Vec<(String, String)> {
 }
 
 fn param(req: &HttpRequest, name: &str) -> Option<String> {
-    query(req).into_iter().find(|(k, _)| k == name).map(|(_, v)| v)
+    query(req)
+        .into_iter()
+        .find(|(k, _)| k == name)
+        .map(|(_, v)| v)
 }
 
 fn path_param(req: &HttpRequest) -> Result<String, HttpResponse> {
@@ -117,7 +120,10 @@ pub async fn handle(
     if let Err(e) = store.ensure_home(login) {
         return store_error(&e);
     }
-    let rest = req.path().trim_start_matches("/cloud/api").trim_matches('/');
+    let rest = req
+        .path()
+        .trim_start_matches("/cloud/api")
+        .trim_matches('/');
     let segs: Vec<&str> = if rest.is_empty() {
         Vec::new()
     } else {
@@ -278,7 +284,11 @@ pub async fn handle(
             if q.trim().is_empty() {
                 return ok(json!({ "entries": [] }));
             }
-            list(store.search(login, q.trim(), 200))
+            let limit = param(req, "limit")
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(200)
+                .clamp(1, 200);
+            list(store.search(login, q.trim(), limit))
         }
         ("GET", ["files", "media"]) => {
             let kinds: &[&str] = match param(req, "kind").as_deref() {
@@ -388,7 +398,11 @@ pub async fn handle(
         // goes to next. Never for a request that is itself an app.
         ("POST", ["connect-v1"]) => {
             if matches!(who.via, crate::cloud::auth::Via::AppPassword(_)) {
-                return error(StatusCode::FORBIDDEN, "appPassword", "already an app password");
+                return error(
+                    StatusCode::FORBIDDEN,
+                    "appPassword",
+                    "already an app password",
+                );
             }
             let b: Client = match json_body(body).await {
                 Ok(b) => b,

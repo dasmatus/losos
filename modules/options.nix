@@ -804,13 +804,14 @@ in
 
     cloud.enable = lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      default = false;
       description = ''
         Run LosOS Cloud: the owner's and every person's files at /cloud/,
         over WebDAV for file managers, and to the Nextcloud desktop and
         phone apps, which sync with it as they would with Nextcloud. People
         sign in with LosOS Login; each computer or phone gets a password of
         its own. It runs beside the LosOS cloud pod, with its own files.
+        On by default on an installed box (modules/defaults.nix).
       '';
     };
 

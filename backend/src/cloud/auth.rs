@@ -234,7 +234,8 @@ impl Auth {
     /// Everyone the box has seen, for share pickers.
     pub fn people(&self, store: &Store) -> Result<Vec<(String, String)>, StoreError> {
         store.with_db(|db| {
-            let mut stmt = db.prepare("SELECT login, name FROM people ORDER BY name COLLATE NOCASE")?;
+            let mut stmt =
+                db.prepare("SELECT login, name FROM people ORDER BY name COLLATE NOCASE")?;
             let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
             Ok(rows.collect::<rusqlite::Result<_>>()?)
         })
@@ -243,7 +244,10 @@ impl Auth {
     fn check_app_password(&self, store: &Store, login: &str, password: &str) -> Option<i64> {
         // Nextcloud's own apps send the password with or without dashes in
         // some versions; only the letters and digits count.
-        let cleaned: String = password.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+        let cleaned: String = password
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect();
         if cleaned.len() != APP_PASSWORD_LEN {
             return None;
         }
@@ -290,7 +294,11 @@ impl Auth {
         Ok((id, password))
     }
 
-    pub fn app_passwords(&self, store: &Store, login: &str) -> Result<Vec<AppPassword>, StoreError> {
+    pub fn app_passwords(
+        &self,
+        store: &Store,
+        login: &str,
+    ) -> Result<Vec<AppPassword>, StoreError> {
         store.with_db(|db| {
             let mut stmt = db.prepare(
                 "SELECT id, name, created, last_used FROM app_passwords WHERE login = ?1 ORDER BY last_used DESC",
@@ -357,7 +365,12 @@ impl Auth {
     }
 
     /// The person said yes: make the app password and park it for the poll.
-    pub fn grant_flow(&self, store: &Store, login_token: &str, who: &Who) -> Result<bool, StoreError> {
+    pub fn grant_flow(
+        &self,
+        store: &Store,
+        login_token: &str,
+        who: &Who,
+    ) -> Result<bool, StoreError> {
         let Some(flow) = self.flow(store, login_token)? else {
             return Ok(false);
         };
@@ -374,7 +387,11 @@ impl Auth {
     }
 
     /// The poll: the login and app password once granted, exactly once.
-    pub fn poll_flow(&self, store: &Store, poll: &str) -> Result<Option<(String, String)>, StoreError> {
+    pub fn poll_flow(
+        &self,
+        store: &Store,
+        poll: &str,
+    ) -> Result<Option<(String, String)>, StoreError> {
         let hash = sha256_hex(poll.as_bytes());
         store.with_db(|db| {
             let row: Option<(Option<String>, Option<String>)> = db
@@ -440,10 +457,7 @@ mod tests {
             a.identify(&s, None, None, None, Some(&basic_header("bob", &pw))),
             Err(Refusal::Wrong)
         );
-        assert_eq!(
-            a.identify(&s, None, None, None, None),
-            Err(Refusal::None)
-        );
+        assert_eq!(a.identify(&s, None, None, None, None), Err(Refusal::None));
         assert!(a.revoke(&s, "alice", id).unwrap());
         assert_eq!(
             a.identify(&s, None, None, None, Some(&basic_header("alice", &pw))),
@@ -485,6 +499,9 @@ mod tests {
             .identify(&s, None, None, None, Some(&basic_header("alice", &pw)))
             .is_ok());
         assert_eq!(a.poll_flow(&s, &poll).unwrap(), None, "only once");
-        assert_eq!(a.app_passwords(&s, "alice").unwrap()[0].name, "Nextcloud desktop (laptop)");
+        assert_eq!(
+            a.app_passwords(&s, "alice").unwrap()[0].name,
+            "Nextcloud desktop (laptop)"
+        );
     }
 }
