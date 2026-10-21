@@ -1286,9 +1286,11 @@ fn kube_env(
                     env.insert(name.to_string(), json!(text(v)));
                 }
                 None if optional => {}
-                None => return refuse(format!(
+                None => {
+                    return refuse(format!(
                     "{workload} reads {name} from the {kind} {map}, which the chart does not make."
-                )),
+                ))
+                }
             }
             continue;
         }
