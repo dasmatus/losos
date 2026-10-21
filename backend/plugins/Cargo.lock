@@ -99,6 +99,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "losos-plugin-pins"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "losos-plugin",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "losos-plugin-probe"
 version = "0.1.0"
 dependencies = [

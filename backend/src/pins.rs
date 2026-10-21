@@ -1,22 +1,12 @@
-//! What the owner pinned to the admin page's sidebar.
+//! The two lists the sidebar's pin picker offers, each one searchable so
+//! the page can look things up by name. The pins themselves, and what makes
+//! one, are the pins plugin's (`plugins/pins/`); what the picker offers is
+//! still lososd's, because it speaks to LosOS cloud and LosOS Git with keys
+//! only lososd holds.
 //!
-//! A pin is a reference, never a link: an app tile of the Overview by its
-//! id in the page's catalogue, an app installed from the Apps search by its
-//! release name, a file or folder in LosOS cloud by its file id and path,
-//! or a repository on LosOS Git by owner and name. The page turns each one
-//! into an address (`admin-ui/app/src/lib/pins.ts`), so nothing stored here
-//! can send a click anywhere but this box. The list is ordered, and the
-//! order is the owner's: `PUT /api/pins` replaces it whole, which is also
-//! how a pin moves.
-//!
-//! Like the look (`crate::look`), the list is appliance state beside
-//! `state.json`, so a phone and a laptop show the same sidebar, and writing
-//! it starts no rebuild.
-//!
-//! The page also needs something to pin from, and this module carries the
-//! two lists it offers, each one searchable so the page can look things up
-//! by name: a folder of LosOS cloud (or the files whose name matches, from
-//! anywhere in it) and the owner's repositories on LosOS Git.
+//! - a folder of LosOS cloud, or the files whose name matches, from
+//!   anywhere in it;
+//! - the owner's repositories on LosOS Git.
 //!
 //! - **LosOS Git** is asked as the bot administrator lososd already talks
 //!   to it as (`crate::config_repo`), for the owner's repositories,
@@ -36,15 +26,11 @@
 
 use crate::losos::Losos;
 use crate::setup::Secret;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{json, Value};
 
-/// How many pins the sidebar keeps. A sidebar of more is a second app grid.
-pub const MAX_PINS: usize = 24;
-/// Longest LosOS cloud path a pin or a listing takes, in bytes.
+/// Longest LosOS cloud path a listing takes, in bytes.
 pub const MAX_PATH_BYTES: usize = 1024;
-/// Longest catalogue id of a LosOS cloud app.
-pub const MAX_APP_ID_CHARS: usize = 24;
 /// Longest owner or repository name on LosOS Git (Forgejo's own limit).
 pub const MAX_REPO_PART_CHARS: usize = 100;
 /// Most entries one folder listing returns; the rest are left out and the
@@ -59,40 +45,6 @@ pub const MAX_QUERY_CHARS: usize = 100;
 /// The name LosOS cloud shows for the app password in its security settings.
 pub const KEY_CLIENT: &str = "LosOS admin page";
 
-/// One thing on the sidebar.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
-pub enum Pin {
-    /// An app tile of the Overview, by its id in the page's catalogue
-    /// (`admin-ui/app/src/lib/apps.ts`): the apps of LosOS cloud, LosOS
-    /// Git and this page's settings.
-    Tile { app: String },
-    /// An app installed from the Apps search, by release name.
-    App { release: String },
-    /// A file or folder in LosOS cloud. `id` opens it; `path` names it.
-    File { id: u64, path: String, folder: bool },
-    /// A repository on LosOS Git.
-    Repo { owner: String, name: String },
-}
-
-impl Pin {
-    /// What makes two pins the same pin.
-    fn key(&self) -> String {
-        match self {
-            Pin::Tile { app } => format!("tile:{app}"),
-            Pin::App { release } => format!("app:{release}"),
-            Pin::File { id, .. } => format!("file:{id}"),
-            Pin::Repo { owner, name } => format!("repo:{owner}/{name}"),
-        }
-    }
-}
-
-/// The document on disk.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Pins {
-    pub pins: Vec<Pin>,
-}
-
 /// A request the owner can fix by sending a different one; the HTTP layer
 /// answers it as a 400 carrying the sentence.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -101,60 +53,6 @@ pub struct Invalid(pub String);
 
 fn invalid<T>(message: impl Into<String>) -> anyhow::Result<T> {
     Err(anyhow::Error::new(Invalid(message.into())))
-}
-
-// ── The list ──────────────────────────────────────────────────────────────
-
-fn render(pins: &Pins) -> Value {
-    json!({ "pins": pins.pins, "limit": MAX_PINS })
-}
-
-/// Read a `PUT /api/pins` body: `{"pins": [...]}`.
-pub fn parse_pins(doc: &Value) -> anyhow::Result<Vec<Pin>> {
-    let Some(list) = doc.get("pins").and_then(Value::as_array) else {
-        return invalid("Send the pins as a list under \"pins\".");
-    };
-    list.iter()
-        .map(|item| {
-            serde_json::from_value::<Pin>(item.clone()).map_err(|_| {
-                anyhow::Error::new(Invalid("That is not a pin this box knows.".into()))
-            })
-        })
-        .collect()
-}
-
-/// Check one pin's fields.
-pub fn validate_pin(pin: &Pin) -> anyhow::Result<()> {
-    match pin {
-        Pin::Tile { app } => {
-            let ok = !app.is_empty()
-                && app.chars().count() <= MAX_APP_ID_CHARS
-                && app.chars().all(|c| c.is_ascii_lowercase());
-            if !ok {
-                return invalid("That is not an app on the Overview.");
-            }
-        }
-        Pin::App { release } => {
-            if crate::apps::validate_release(release).is_err() {
-                return invalid("That is not the name of an installed app.");
-            }
-        }
-        Pin::File { id, path, .. } => {
-            if *id == 0 {
-                return invalid("That file has no id in LosOS cloud.");
-            }
-            validate_path(path)?;
-            if path == "/" {
-                return invalid("Pin a folder inside LosOS cloud, not the whole of it.");
-            }
-        }
-        Pin::Repo { owner, name } => {
-            if !repo_part(owner) || !repo_part(name) {
-                return invalid("That is not a repository on LosOS Git.");
-            }
-        }
-    }
-    Ok(())
 }
 
 fn repo_part(part: &str) -> bool {
@@ -187,30 +85,6 @@ pub fn validate_path(path: &str) -> anyhow::Result<()> {
     } else {
         invalid("That is not a folder in LosOS cloud.")
     }
-}
-
-/// `GET /api/pins`.
-pub fn cmd_pins<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
-    Ok(render(&l.load_pins()?))
-}
-
-/// `PUT /api/pins`: the whole list, in the owner's order.
-pub fn cmd_put_pins<L: Losos>(l: &mut L, pins: &[Pin]) -> anyhow::Result<Value> {
-    if pins.len() > MAX_PINS {
-        return invalid(format!("The sidebar keeps {MAX_PINS} pins at most."));
-    }
-    let mut seen = std::collections::HashSet::new();
-    for pin in pins {
-        validate_pin(pin)?;
-        if !seen.insert(pin.key()) {
-            return invalid("That is pinned already.");
-        }
-    }
-    let doc = Pins {
-        pins: pins.to_vec(),
-    };
-    l.save_pins(&doc)?;
-    Ok(render(&doc))
 }
 
 // ── LosOS Git: the owner's repositories ───────────────────────────────────
@@ -760,90 +634,6 @@ pub fn cmd_cloud_files<L: Losos>(
 mod tests {
     use super::*;
     use crate::fake::FakeLosos;
-
-    fn file(id: u64, path: &str) -> Pin {
-        Pin::File {
-            id,
-            path: path.into(),
-            folder: false,
-        }
-    }
-
-    #[test]
-    fn a_list_round_trips_in_the_owners_order() {
-        let mut f = FakeLosos::new();
-        let pins = vec![
-            Pin::Repo {
-                owner: "notshared".into(),
-                name: "site".into(),
-            },
-            Pin::Tile {
-                app: "calendar".into(),
-            },
-            file(42, "/Documents/plan.pdf"),
-            Pin::App {
-                release: "jellyfin".into(),
-            },
-        ];
-        let out = cmd_put_pins(&mut f, &pins).unwrap();
-        assert_eq!(out["limit"], MAX_PINS);
-        assert_eq!(out["pins"][0]["kind"], "repo");
-        assert_eq!(
-            out["pins"][2],
-            json!({"kind":"file","id":42,"path":"/Documents/plan.pdf","folder":false})
-        );
-        assert_eq!(cmd_pins(&mut f).unwrap(), out);
-        assert_eq!(parse_pins(&out).unwrap(), pins);
-    }
-
-    #[test]
-    fn duplicates_bad_fields_and_too_many_are_refused_and_nothing_is_written() {
-        let mut f = FakeLosos::new();
-        let refuse = |f: &mut FakeLosos, pins: &[Pin]| {
-            let e = cmd_put_pins(f, pins).unwrap_err();
-            assert!(e.downcast_ref::<Invalid>().is_some(), "untyped: {e}");
-        };
-        refuse(&mut f, &[file(1, "/a"), file(1, "/b")]);
-        refuse(&mut f, &[file(0, "/a")]);
-        refuse(&mut f, &[file(1, "/")]);
-        refuse(&mut f, &[file(1, "/a/../etc")]);
-        refuse(&mut f, &[file(1, "relative")]);
-        refuse(
-            &mut f,
-            &[Pin::Tile {
-                app: "Files".into(),
-            }],
-        );
-        refuse(
-            &mut f,
-            &[Pin::App {
-                release: "Bad Name".into(),
-            }],
-        );
-        refuse(
-            &mut f,
-            &[Pin::Repo {
-                owner: "..".into(),
-                name: "x".into(),
-            }],
-        );
-        let many: Vec<Pin> = (1..=(MAX_PINS as u64 + 1)).map(|i| file(i, "/a")).collect();
-        refuse(&mut f, &many);
-        assert!(cmd_pins(&mut f).unwrap()["pins"]
-            .as_array()
-            .unwrap()
-            .is_empty());
-    }
-
-    #[test]
-    fn a_pin_with_a_field_of_its_own_choosing_is_not_a_pin() {
-        // No href, no label: a stored pin cannot carry an address.
-        let doc =
-            json!({"pins": [{"kind": "repo", "owner": "a", "name": "b", "href": "https://x"}]});
-        assert!(parse_pins(&doc).is_err());
-        assert!(parse_pins(&json!({"pins": [{"kind": "link"}]})).is_err());
-        assert!(parse_pins(&json!({})).is_err());
-    }
 
     #[test]
     fn the_cloud_endpoint_follows_the_sign_in_probe() {

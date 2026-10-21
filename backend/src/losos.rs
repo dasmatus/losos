@@ -195,13 +195,9 @@ pub trait Losos {
     /// `routes.rs`). Root-only: it lets a local edge route this box's
     /// custom domains for a few hours.
     fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()>;
-    // ── The sidebar's pins ──────────────────────────────────────────────
-    // `crate::pins`: the list beside `state.json`, and the app password
-    // lososd lists the owner's LosOS cloud folders with.
-    /// The pins, or an empty list when there is none yet or it does not
-    /// parse.
-    fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins>;
-    fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()>;
+    // ── The pin picker ──────────────────────────────────────────────────
+    // `crate::pins`: the app password lososd lists the owner's LosOS cloud
+    // folders with. The pins themselves are the pins plugin's.
     /// The kept LosOS cloud app password, `None` before the first sign-in
     /// with the password.
     fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>>;
@@ -2333,12 +2329,6 @@ mod tests {
                 s: Option<&crate::setup::Secret>,
             ) -> anyhow::Result<(u16, String)> {
                 self.0.forgejo_request(op, s)
-            }
-            fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
-                self.0.load_pins()
-            }
-            fn save_pins(&mut self, p: &crate::pins::Pins) -> anyhow::Result<()> {
-                self.0.save_pins(p)
             }
             fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>> {
                 self.0.load_cloud_key()

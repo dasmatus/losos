@@ -270,7 +270,10 @@ let
   lososPlugins =
     {
       pname ? "losos-plugins",
-      names ? [ "look" ],
+      names ? [
+        "look"
+        "pins"
+      ],
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname;
@@ -407,6 +410,7 @@ images
     pname = "losos-plugins-probe";
     names = [
       "look"
+      "pins"
       "probe"
     ];
   };

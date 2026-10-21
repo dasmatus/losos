@@ -104,11 +104,6 @@ impl Paths {
         self.state_dir.join("forgejo-auth")
     }
 
-    /// The sidebar's pins (`crate::pins`).
-    pub fn pins_file(&self) -> PathBuf {
-        self.state_dir.join("pins.json")
-    }
-
     /// The LosOS cloud app password the pin picker lists folders with.
     pub fn cloud_key_file(&self) -> PathBuf {
         self.state_dir.join("cloud-key")
@@ -1672,17 +1667,6 @@ impl Losos for IoLosos {
 
     fn rebuild_log_tail(&mut self) -> anyhow::Result<String> {
         Ok(supervisor::log_tail(&self.paths.rebuild_log()))
-    }
-
-    fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
-        Ok(read_if_present(self.paths.pins_file(), "reading the pins")?
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default())
-    }
-
-    fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()> {
-        let bytes = serde_json::to_vec(pins).context("encoding the pins")?;
-        atomic_write(&self.paths.pins_file(), &bytes)
     }
 
     fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>> {
