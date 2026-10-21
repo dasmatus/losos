@@ -65,6 +65,9 @@ pkgs.testers.nixosTest {
         ../../modules/daemon.nix
         ../../modules/identity.nix
         ../../modules/cloud.nix
+        # The option document, so the Apps pane draws LosOS Cloud's fold
+        # for the pictures.
+        ../../modules/config-repo.nix
       ];
       networking.hostName = "mattbox";
       losos = {
@@ -73,6 +76,7 @@ pkgs.testers.nixosTest {
         admin.ui = lososPkgs.losos-admin-ui;
         cloud.enable = true;
         forgejo.enable = false;
+        configRepo.enable = false;
         mdns.enable = true;
       };
       # The same box before LosOS Cloud, for the pictures' "before" column.

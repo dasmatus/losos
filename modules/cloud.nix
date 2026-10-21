@@ -163,7 +163,10 @@ let
         : > "$work/pg/postgresql.conf"
         printf 'local all all trust\n' > "$work/pg/pg_hba.conf"
         mkdir -p "$work/sock"
-        chown -R postgres "$work/pg" "$work/sock"
+        # The work folder is root's (0711), so Postgres gets its log ready
+        # made.
+        : > "$work/pg.log"
+        chown -R postgres "$work/pg" "$work/sock" "$work/pg.log"
         runuser -u postgres -- "$bin/bin/pg_ctl" -D "$work/pg" -w -l "$work/pg.log" \
           -o "-c listen_addresses= -c unix_socket_directories=$work/sock -c hba_file=$work/pg/pg_hba.conf" start
         started=$bin
