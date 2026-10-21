@@ -56,7 +56,7 @@ Nextcloud and Forgejo run in the box's own k3s cluster
 ```
 admin-ui/app/            the admin SPA
 admin-ui/tui/            losos, the terminal client (Rust)
-admin-ui/lab/            LosOS Lab's core and canvas (Rust, WebAssembly)
+admin-ui/lab/            LosOS Diagrams' core and canvas (Rust, WebAssembly)
 admin-ui/themes/         LosOS cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
 admin-ui/design-system/  dev-only tokens and React wrapper; not shipped
 backend/                 lososd + losos-ctl (Rust)

@@ -1,26 +1,84 @@
 ---
-title: Lab
+title: Diagramme
 sidebar_position: 7
 mdx:
   format: md
 ---
 
-# Lab
+# Diagramme
 
-LosOS Lab zeichnet ein LosOS-Setup als Netzwerkdiagramm und zeigt den
-Verkehr, der hindurchläuft. Jede Box liefert es unter `/lab/` aus, in der
-Seitenleiste der Administration unter **Labor**. Wie die übrigen
-Administrationsseiten antwortet es nur im lokalen Netz.
+LosOS Diagrams ist ein Diagrammeditor: Flussdiagramme, Pläne, Mindmaps,
+Boards und Netzwerkzeichnungen, geschrieben als Karten auf einer
+Zeichenfläche. Seine Dateien sind JSON Canvas, das Format von Obsidian
+Canvas, sodass eine `.canvas`-Datei zwischen beiden wandert, ohne etwas zu
+verlieren. Es kennt auch LosOS: Ein Netzwerk, das du zeichnest, hat seinen
+eigenen Verkehr, und eine Karte kann für eine Maschine stehen, die du im
+Mesh bestellt hast. Jede Box liefert es unter `/diagrams/` aus, in der
+Seitenleiste der Administration unter **Diagramme**, und wie die übrigen
+Administrationsseiten antwortet es nur im lokalen Netz. Die alte Adresse
+`/lab/` leitet zur neuen weiter.
 
-Es öffnet mit **This box** (diese Box). Das Lab liest die Einstellungen der
-Box und die Edges, die sie gefunden hat, über dieselben drei
-Administrationsrouten wie die anderen Seiten, und zeichnet die Box daraus:
-ihren Router, die erreichbaren Edges, die offizielle Edge, sofern eine
-konfiguriert ist, und einen Laptop. Router, Kabel und Laptop sind
-angenommen, weil die Box sie nicht sehen kann. Das Lab schreibt nie auf die
-Box. Ist niemand angemeldet, sagt es das und öffnet die eingebauten Setups.
+Die obere Leiste wechselt zwischen drei Ansichten eines Dokuments:
+**Diagramm**, die Zeichenfläche, und **Logisch** und **Physisch**, das
+Netzwerk darin, wie der Simulator es zeichnet.
 
-## Was es zeigt {#what-it-shows}
+## Das Diagramm {#the-diagram}
+
+- **Karten.** Ein Doppelklick auf die Fläche legt eine Textkarte an, oder
+  nimm eine aus der Leiste: Text, Notiz, Gruppe, Webseite und die Formen
+  Pille, Raute, Kreis, Parallelogramm, Sechseck, Datenbank, Dokument,
+  Prozess und Wolke. Der Text einer Karte ist Markdown: Überschriften,
+  Listen und Aufgabenlisten, Zitate und Hinweise, Code, Links,
+  `**fett**`, `*kursiv*`, `~~durchgestrichen~~` und `==markiert==`. Ein
+  Doppelklick auf eine Karte bearbeitet sie; Escape oder ein Klick daneben
+  beendet die Bearbeitung.
+- **Pfeile.** Zieh von einem der vier Griffe an den Seiten einer Karte auf
+  eine andere Karte, oder auf leere Fläche für eine neue Karte dort. Ein
+  Pfeil hat eine Beschriftung, einen Verlauf (gerade, rechtwinklig oder um
+  die Karten herum), eine gepunktete oder gestrichelte Linie und eine
+  Spitze an jedem Ende. Zwischen zwei Geräten ist der Pfeil ein Kabel, es
+  sei denn, in der Leiste ist **Pfeil** gewählt.
+- **Gruppen, Farben und Anordnung.** Eine Gruppe ist ein beschrifteter
+  Rahmen; Karten darin bewegen sich mit ihr. Sechs Farben folgen dem hellen
+  und dem dunklen Thema, oder wähle eine beliebige Farbe. Der Inspektor
+  ordnet, richtet aus, gruppiert, dupliziert und löscht die Auswahl.
+  Rückgängig und Wiederholen decken jede Änderung ab.
+- **Vorlagen.** Ein Flussdiagramm, eine Dienstarchitektur, eine Mindmap,
+  ein Board und ein Heimnetz, abgelegt, wo du klickst.
+- **Dateien.** **Datei** speichert das Diagramm als `.canvas`-Datei und
+  öffnet eine. Läuft LosOS Cloud auf der Box, öffnet und speichert es
+  Diagramme auch dort, und eine `.canvas`-Datei in LosOS Cloud öffnet sich
+  in Diagramme. Das Zurückspeichern nennt die Version, die es gelesen hat:
+  Hat sich die Datei inzwischen geändert, wird das Speichern abgelehnt und
+  nichts überschrieben. Strg+S speichert dorthin, woher das Diagramm kam.
+  Das Bild lässt sich als SVG oder PNG exportieren.
+- **Maschinen.** **Maschinen** in der Leiste listet die virtuellen
+  Maschinen, die diese Box im Mesh bestellt hat. Leg eine ab, und ihre
+  Karte zeigt jede Kopie und was sie gerade tut, alle 20 Sekunden neu
+  gelesen. Eine Karte kann eine Maschine auch aus einem Image planen; ihr
+  Link **Bestellen** öffnet die Seite Maschinen mit Image und Namen
+  ausgefüllt. Eine Box, die ihre Platte nicht mit dem Mesh teilt, bekommt
+  keine Maschinen angeboten, und die Leiste sagt, warum.
+
+Formen, Rahmen, Textausrichtung, Linienarten und Pfeilspitzen werden als
+`styleAttributes` mit den Namen geschrieben, die das Plugin Advanced Canvas
+für Obsidian verwendet. Schlüssel, die Diagramme nicht kennt, am Dokument,
+an einer Karte oder an einem Pfeil, bleiben beim nächsten Speichern, wie
+sie waren. Dateien des Netzwerksimulators von vor der Umbenennung in
+Diagramme (`.llf`) öffnen sich weiterhin.
+
+## Das Netzwerk {#the-network}
+
+Ein Gerät aus der Leiste (eine Box, eine Edge, ein Router, ein Switch, ein
+Laptop) ist eine Karte, die der Simulator betreibt, und ein Pfeil zwischen
+zweien davon ist ein Kabel. Die Seite öffnet mit **This box** (diese Box):
+Sie liest die Einstellungen der Box und die Edges, die sie gefunden hat,
+über dieselben drei Administrationsrouten wie die anderen Seiten, und
+zeichnet die Box daraus: ihren Router, die erreichbaren Edges, die
+offizielle Edge, sofern eine konfiguriert ist, und einen Laptop. Router,
+Kabel und Laptop sind angenommen, weil die Box sie nicht sehen kann.
+Diagramme schreibt nie auf die Box. Ist niemand angemeldet, sagt die Seite
+das und öffnet die eingebauten Setups.
 
 - **Logisch und Physisch.** Die logische
   Ansicht zeigt Subnetze, die Edge-Pfade und das Mesh. Die physische
@@ -32,15 +90,14 @@ Box. Ist niemand angemeldet, sagt es das und öffnet die eingebauten Setups.
   04:30 sowie Beginn und Ende des Rechenfensters. Simulation hält jedes
   Paket an, bis du Abspielen oder Schritt drückst, und listet jeden Hop mit seinem
   Protokoll auf.
-- **Eigene Setups.** Beginne mit Empty canvas (leere Fläche) oder einem
+- **Eigene Setups.** Beginne mit einem neuen Diagramm oder einem
   beliebigen eingebauten Setup, zieh Geräte aus der Leiste und zieh
-  Kupfer, Glasfaser oder WLAN zwischen ihren Ports. **Speichern** lädt das
-  Setup als `.llf`-Datei herunter (LosOS Lab file, darin JSON), und
-  **Öffnen** lädt eine wieder. Das zuletzt geänderte Setup wird außerdem im
-  Browser gespeichert und in der Auswahl als "Letzter Aufbau" aufgeführt. Eine
-  geöffnete Datei wird mit denselben Werkzeugen wie die Leiste neu
-  aufgebaut; alles darin, was die Leiste nicht erzeugen könnte, bleibt
-  also weg, und das Lab sagt, wie viele Teile es verworfen hat.
+  Kupfer, Glasfaser oder WLAN zwischen ihren Ports. Das zuletzt geänderte
+  Diagramm wird im Browser gespeichert und in der Auswahl als "Letztes
+  Diagramm" aufgeführt. Eine geöffnete Datei wird mit denselben Werkzeugen
+  wie die Leiste neu aufgebaut; ein Gerät oder Kabel darin, das die Leiste
+  nicht erzeugen könnte, bleibt also weg, und die Seite sagt, wie viele
+  Teile sie verworfen hat.
 - **Eingebaute Setups.** Zwei Standorte hinter einer offiziellen Edge, eine
   einzelne Box zu Hause, eine Firma mit eigenem Gateway, ein LAN ohne
   Internet und drei Lehrbuchformen: Stern, Bus und vermaschtes Netz. Sie
@@ -53,7 +110,7 @@ Box. Ist niemand angemeldet, sagt es das und öffnet die eingebauten Setups.
   Betriebssystem. Seine Konsole kennt `show interfaces`, `show ip route`,
   `show arp` und `show dhcp`.
 
-Das Diagramm folgt denselben Regeln wie die echte Software. Beispiele: Eine
+Das Netzwerk folgt denselben Regeln wie die echte Software. Beispiele: Eine
 Box ohne erreichbare Edge startet keinen Tunnel; ein Wechsel zum Mesh wird
 mit `edgeRequired` abgelehnt; der Markt öffnet nur neben einer offiziellen
 Edge (einer, deren Zertifikat der LosOS-Root-Schlüssel signiert hat); ein
@@ -62,16 +119,16 @@ Nutzung auf; und die Administrationsrouten lehnen Loopback ab.
 
 ## Die zwei Kopien {#the-two-copies}
 
-| | Auf der Box (`/lab/`) | Gehostet |
+| | Auf der Box (`/diagrams/`) | Gehostet |
 | --- | --- | --- |
-| Gebaut von | `nix build .#losos-admin-ui` (das Lab ist seine zweite Seite) | `admin-ui/lab/engine/build.sh` in `lab.yml` |
+| Gebaut von | `nix build .#losos-admin-ui` (Diagramme ist seine zweite Seite) | `admin-ui/lab/engine/build.sh` in `lab.yml` |
 | Konsolen | simuliert, oder echte Gäste unter libvirt, wenn die Box den Helfer ausführt | echte x86_64-Gäste unter libvirt auf deinem Rechner, sonst qemu-wasm |
 | Braucht | nichts außer der Box | einen Cross-Origin-isolierten Host (COOP + COEP) |
 
-Das Lab ist Teil der Administrationsoberfläche: `admin-ui/app/lab/index.html`
+Diagramme ist Teil der Administrationsoberfläche: `admin-ui/app/diagrams/index.html`
 ist eine zweite Vite-Seite neben den Administrationsseiten, gebaut aus
 denselben Komponenten, derselben Palette, denselben Icons und Sprachen, und
-wird unter `/lab/` ausgeliefert. Alles, was nicht Zeichnen ist, läuft in
+wird unter `/diagrams/` ausgeliefert. Alles, was nicht Zeichnen ist, läuft in
 WebAssembly: Modell, Simulator, Uhr, Konsolen und Seiten sind ein Rust-Crate,
 `admin-ui/lab/core` (`losos-lab-core`), das nix vor dem eigentlichen Build
 der Administrationsoberfläche für wasm32 baut. Die Seite läuft unter einer
@@ -88,7 +145,7 @@ Netzwerkkarten der Gäste mit dem Diagramm, sodass DHCP, ARP, Ping und HTTP
 zwischen Gästen über die Kabel laufen, die du gezogen hast. Ein
 Router-Gast vergibt Leases mit seinem eigenen `udhcpd`. Ein Tab führt
 höchstens drei Gäste gleichzeitig aus. Mit einem vierten gingen den Gästen
-die Kerne aus und sie blieben hängen, deshalb weigert sich das Lab, einen
+die Kerne aus und sie blieben hängen, deshalb weigert sich die Seite, einen
 weiteren zu booten. qemu-wasm führt die Threads von QEMU als Web Worker mit
 gemeinsamem Speicher aus, und Browser erlauben das nur auf einer Seite, die
 mit `Cross-Origin-Opener-Policy: same-origin` und
@@ -98,24 +155,25 @@ für `serve` auf deinem eigenen Rechner:
 
 ```sh
 admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, node
-npx --yes serve@14.2.4 -l 8080 /tmp/lab   # then open http://localhost:8080/lab/
+npx --yes serve@14.2.4 -l 8080 /tmp/lab   # then open http://localhost:8080/diagrams/
 ```
 
 `lab.yml` baut die gehostete Kopie für jeden Pull Request, der
-`admin-ui/lab/` oder die Seite des Labs in `admin-ui/app/` berührt, und lädt
+`admin-ui/lab/` oder die Seite von Diagramme in `admin-ui/app/` berührt, und lädt
 sie als Artefakt `losos-lab-hosted` hoch. Bei einem Push auf `main`
 deployt es die Kopie außerdem auf Vercel, sofern das Repository die Secrets
 `VERCEL_TOKEN`, `VERCEL_ORG_ID` und `VERCEL_PROJECT_ID` hat.
 
 ## Die GPU-Zeichenfläche {#the-gpu-canvas}
 
-Das Diagramm hat zwei Zeichenflächen. Die Seite beginnt immer mit der
+Die Ansichten Logisch und Physisch haben zwei Zeichenflächen (die Ansicht
+Diagramm zeichnet die Seite immer selbst). Die Seite beginnt immer mit der
 SVG-Fläche, sodass das Setup auf dem Bildschirm steht, sobald der Kern
 geladen ist. Dann fragt sie den Browser, was er bietet. Mit WebGPU lädt sie
 den WebGPU-Build von `admin-ui/lab/render` (`losos-lab-render`). Ohne WebGPU,
 aber mit WebGL2 lädt sie den WebGL2-Build. Ohne beides bleibt sie bei SVG.
 
-Jeder Build ist Bevy 0.19.1, zusammen mit dem Kern des Labs nach
+Jeder Build ist Bevy 0.19.1, zusammen mit dem Kern der Seite nach
 WebAssembly kompiliert. Die Seite überträgt das Setup in den eigenen Kern
 des Moduls, indem sie jede Änderung wiederholt, die sie am ersten
 vorgenommen hat, und macht nur weiter, wenn beide danach dasselbe Setup
@@ -152,8 +210,8 @@ in seinem Tooltip.
 
 qemu-wasm ist langsam: Es emuliert jede Instruktion ohne KVM, jeder Gast
 kostet den Tab etwa 450 MB, und ein Tab führt drei aus. Hat der Rechner, auf
-dem das Lab geöffnet ist, libvirt (das, was virt-manager steuert), kann das
-Lab seine Gäste stattdessen dort ausführen, unter KVM, wenn die CPU es hat.
+dem Diagramme geöffnet ist, libvirt (das, was virt-manager steuert), kann die
+Seite ihre Gäste stattdessen dort ausführen, unter KVM, wenn die CPU es hat.
 Sie booten in wenigen Sekunden, und bis zu acht laufen gleichzeitig.
 
 Ein Gast kann auf drei Arten laufen, in der Reihenfolge der Präferenz:
@@ -165,15 +223,15 @@ Ein Gast kann auf drei Arten laufen, in der Reihenfolge der Präferenz:
    lesen kann.
 2. **Die Seite steuert libvirt selbst, über das Relay des Helfers.** Der
    Helfer bietet außerdem einen WebSocket an, den er Byte für Byte auf den
-   eigenen Socket von libvirt kopiert. Die Lab-Seite bringt den
+   eigenen Socket von libvirt kopiert. Die Seite bringt den
    WebAssembly-Client für libvirt mit (`admin-ui/lab/virt-rpc`, das Paket
    `losos-lab-virt`) und spricht darüber das Protokoll von libvirt; dieser
    Weg braucht also den Helfer und einen laufenden libvirt-Daemon, aber
    weder `virsh` noch eine libvirt-Client-Bibliothek auf dem Rechner. Die
    Seite nutzt ihn, wenn dem Helfer `virsh` fehlt, und für jeden Gast, den
    der erste Weg nicht starten konnte.
-3. **qemu-wasm im Tab.** Gar nichts auf dem Rechner, nur die Engine des
-   gehosteten Labs. Das ist der langsame Weg und der Fallback für jeden
+3. **qemu-wasm im Tab.** Gar nichts auf dem Rechner, nur die Engine der
+   gehosteten Kopie. Das ist der langsame Weg und der Fallback für jeden
    Gast, den die ersten beiden nicht starten können.
 
 ### Der Helfer und `virsh` {#the-helper-and-virsh}
@@ -181,7 +239,7 @@ Ein Gast kann auf drei Arten laufen, in der Reihenfolge der Präferenz:
 Der Helfer startet jeden Gast als transiente Domain namens `losos-lab-...`
 mit `virsh create`. Transient bedeutet, dass libvirt sie nie speichert,
 sodass nichts den Helfer überdauert: Ctrl-C oder SIGTERM zerstört jeden Gast,
-den er gestartet hat, ein Gast, den eine Minute lang keine Lab-Seite
+den er gestartet hat, ein Gast, den eine Minute lang keine Seite
 beobachtet hat, wird ebenfalls zerstört, und beim Start entfernt er jede
 `losos-lab-`-Domain, die ein abgeschossener Helfer hinterlassen hat. Ein
 Gast hängt an keinem libvirt-Netzwerk und keiner Bridge. Seine serielle
@@ -198,8 +256,8 @@ So nutzt du ihn neben virt-manager auf deinem eigenen PC:
    `losos-registrar` (`nix build .#losos-registrar`).
 2. Leg die Gast-Images in einen Ordner namens `guest`: `bzImage`,
    `rootfs.bin` und, für Router, Switches und Access Points, `gear.bin`.
-   `admin-ui/lab/engine/build.sh` erzeugt alle drei, und das gehostete Lab
-   liefert sie unter `/lab/guest/` aus, sodass du sie von dort
+   `admin-ui/lab/engine/build.sh` erzeugt alle drei, und die gehostete Kopie
+   liefert sie unter `/diagrams/guest/` aus, sodass du sie von dort
    herunterladen kannst.
 3. Starte den Helfer im Ordner oberhalb von `guest`:
 
@@ -211,7 +269,7 @@ So nutzt du ihn neben virt-manager auf deinem eigenen PC:
    root braucht. Gib `--connect qemu:///system` an, damit die Gäste in
    virt-manager neben deinen anderen VMs erscheinen (dein Benutzer muss in der
    Gruppe `libvirt` sein, und der eigene qemu-Benutzer von libvirt muss den
-   Image-Ordner lesen können). `--origin` nennt die Adresse der Lab-Seite,
+   Image-Ordner lesen können). `--origin` nennt die Adresse der Seite von Diagramme,
    die du öffnest; eine Kopie, die wie oben unter `localhost:8080`
    ausgeliefert wird, ist auch ohne erlaubt. Die übrigen Flags sind
    `--images DIR`, `--max-guests N` (8), `--memory MiB` (96),
@@ -219,18 +277,18 @@ So nutzt du ihn neben virt-manager auf deinem eigenen PC:
    `--token-file FILE`. Ohne Token-Datei weigert sich der Helfer, auf etwas
    anderem als Loopback zu lauschen, und beantwortet nur Anfragen, die an
    `127.0.0.1` oder `localhost` adressiert sind.
-4. Öffne das Lab. Eine Kopie auf `localhost` sucht den Helfer von
+4. Öffne Diagramme. Eine Kopie auf `localhost` sucht den Helfer von
    selbst. Eine gehostete Kopie sucht erst, wenn du sie mit `?libvirt` am
    Ende der Adresse öffnest, weil Chrome jeden Besucher einer öffentlichen
    Seite in dem Moment um Zugriff aufs lokale Netz bittet, in dem sie
-   `127.0.0.1` berührt. Das Lab merkt sich die Wahl; `?libvirt=0` vergisst
+   `127.0.0.1` berührt. Die Seite merkt sich die Wahl; `?libvirt=0` vergisst
    sie.
 
 Das Abzeichen in der oberen Leiste zeigt dann "KVM via libvirt" (oder "QEMU
 via libvirt (no KVM)" auf einem Rechner ohne KVM), und jede Konsole sagt,
 was ihren Gast ausführt: libvirt oder "QEMU in this tab". Läuft der Helfer
 nicht oder lehnt libvirt einen Gast ab, bootet dieser Gast wie bisher unter
-qemu-wasm, und das Lab sagt das einmal. Die eigene Kopie der Box hat kein
+qemu-wasm, und die Seite sagt das einmal. Die eigene Kopie der Box hat kein
 qemu-wasm, dort bleibt es also bei der simulierten Konsole.
 
 ### Der WebAssembly-Client und das Relay {#the-webassembly-client-and-the-relay}
@@ -257,7 +315,7 @@ fehlt. Der Helfer startet keinen Session-Daemon, wie `virsh` es tut; bei
 `qemu:///session` muss der Daemon also bereits laufen oder von seinem
 systemd-Socket gestartet werden.
 
-Die Lab-Seite nutzt diesen Weg von selbst (`engine/virt-rpc.ts`). Für jeden
+Die Seite nutzt diesen Weg von selbst (`engine/virt-rpc.ts`). Für jeden
 Gast fordert sie ein Ticket an, öffnet eine weitergeleitete Verbindung,
 legt die Domain pausiert an, öffnet ihre Konsole und setzt sie dann fort,
 sodass die Konsole das erste Byte sieht, das der Gast ausgibt. Die Domain
@@ -274,7 +332,7 @@ Art UDP-Tunnel, die er seinen eigenen Gästen gibt, und antwortet mit dessen
 zwei Ports, einem Namen für die Domain (`losos-lab-virt-...`) und einem
 zweiten Ticket. Die Seite schreibt den Tunnel in die Domain und öffnet die
 Karte unter `guests/<key>/nic/0`, sodass diese Gäste wie die anderen an den
-Kabeln des Labs hängen und ein Gast des einen Wegs einen des anderen
+Kabeln des Diagramms hängen und ein Gast des einen Wegs einen des anderen
 anpingen kann. Die Karte zählt gegen `--max-guests`; ein voller Helfer gibt
 weiterhin das Relay-Ticket aus, aber keine Karte, und der Gast bootet dann
 ohne Netzwerk, was sein Konsolenkopf anzeigt.
@@ -285,7 +343,7 @@ der Helfer stoppt, weil der Helfer bei Ctrl-C oder SIGTERM jeden
 weitergeleiteten Socket schließt. Schaltet die Seite einen Gast aus,
 zerstört sie die Domain selbst und gibt die Karte mit `DELETE guests/<key>`
 zurück. Eine Karte, die keine Seite beobachtet, wird nach `--idle` beendet,
-wie ein Gast des Helfers selbst, und weil das Lab seine Domain so benennt
+wie ein Gast des Helfers selbst, und weil die Seite ihre Domain so benennt
 wie der Helfer, erreichen das Aufräumen und die Leerlaufprüfung des Helfers
 auch diese Domain. `admin-ui/lab/virt-rpc/README.md` zeigt den Client für
 sich, über seine Demo-Seite.
@@ -301,7 +359,7 @@ kann eine Domain anlegen, die jede beliebige Datei oder Festplatte des Hosts
 einbindet, und das Relay kann eine solche Domain nicht ablehnen, ohne das
 Protokoll von libvirt zu parsen. Bevorzuge auf deinem eigenen PC
 `qemu:///session`: Dann sind im schlimmsten Fall die Dateien deines eigenen
-Benutzers betroffen. Die Gäste des Labs brauchen nichts von der
+Benutzers betroffen. Die Gäste von Diagramme brauchen nichts von der
 System-Instanz.
 :::
 
@@ -344,15 +402,19 @@ ein Bild von LosOS Desktop, nicht der Desktop selbst.
   `npm run lab:virt` den libvirt-Client nach `src/lab/virt-pkg/` (beide in
   gitignore; sie brauchen cargo mit dem Target `wasm32-unknown-unknown` und
   `wasm-bindgen` 0.2.127), und danach liefert `npm run dev` die Seite unter
-  `/lab/` aus. `npm run lab:render` baut die zwei Module der GPU-Fläche auf
+  `/diagrams/` aus. `npm run lab:render` baut die zwei Module der GPU-Fläche auf
   dieselbe Weise nach `src/lab/render-pkg/` und führt `wasm-opt` darauf
   aus, wenn `WASM_OPT` es benennt. Ohne sie baut die Seite nicht, und ihr
-  Build dauert etwa 13 Minuten. `tests/lab.browser.mjs` prüft sie unter der
-  eigenen Policy des Labs, den Relay-Weg gegen einen gefälschten
-  libvirt-Daemon.
+  Build dauert etwa 13 Minuten. `tests/lab.browser.mjs` prüft die
+  Netzwerkansichten unter der eigenen Policy der Seite, den Relay-Weg gegen
+  einen gefälschten libvirt-Daemon, und `tests/diagrams.browser.mjs` das
+  Diagramm: Karten, Pfeile, eine Obsidian-Datei, die Bilder, LosOS Cloud und
+  die Maschinenkarten.
 - Der Vertrag des Kerns ist `admin-ui/lab/core/README.md`. Seine Tests
   vergleichen jedes eingebaute Setup mit dem Verhalten des
-  JavaScript-Labs, das er ersetzt hat.
+  JavaScript-Simulators, den er ersetzt hat. Die Zeichenfläche, ihr
+  Dateiformat und ihr Rückgängig liegen in `admin-ui/lab/core/src/canvas/`,
+  die React-Teile des Diagramms in `admin-ui/app/src/lab/canvas/`.
 - Gäste: `admin-ui/app/src/lab/engine/` versucht libvirt über das `virsh`
   des Helfers, dann libvirt über den eigenen Client der Seite und das Relay
   des Helfers, dann qemu-wasm, in dieser Reihenfolge.

@@ -123,9 +123,9 @@ export default defineMessages({
     de: "Diese Seiten, LosOS cloud, LosOS Git und LosOS Login nehmen ihre Farben aus einer einzigen Datei.",
   },
   "shell.facts.8": {
-    en: "LosOS Lab draws your setup with Bevy, a game engine, compiled to WebAssembly.",
-    sk: "LosOS Lab kreslí vaše zapojenie pomocou Bevy, herného enginu skompilovaného do WebAssembly.",
-    de: "LosOS Lab zeichnet dein Setup mit Bevy, einer Spiele-Engine, kompiliert zu WebAssembly.",
+    en: "LosOS Diagrams draws your network with Bevy, a game engine, compiled to WebAssembly.",
+    sk: "LosOS Diagrams kreslí vašu sieť pomocou Bevy, herného enginu skompilovaného do WebAssembly.",
+    de: "LosOS Diagrams zeichnet dein Netzwerk mit Bevy, einer Spiele-Engine, kompiliert zu WebAssembly.",
   },
   "shell.facts.9": {
     en: "When the box boots, the salmon swims in beside the name, and that screen stays on as the box's face.",
@@ -153,9 +153,9 @@ export default defineMessages({
     de: "In der Einführungstour steckt kein Video. Jede Szene zeichnet Code, Bild für Bild, in der Sprache auf dem Bildschirm.",
   },
   "shell.facts.14": {
-    en: "The hosted copy of LosOS Lab runs real QEMU guests inside your browser, compiled to WebAssembly.",
-    sk: "Verejná verzia LosOS Lab spúšťa skutočné hosťovské systémy v QEMU priamo v prehliadači, skompilované do WebAssembly.",
-    de: "Die gehostete Fassung von LosOS Lab startet echte QEMU-Gäste in deinem Browser, kompiliert zu WebAssembly.",
+    en: "The hosted copy of LosOS Diagrams runs real QEMU guests inside your browser, compiled to WebAssembly.",
+    sk: "Verejná verzia LosOS Diagrams spúšťa skutočné hosťovské systémy v QEMU priamo v prehliadači, skompilované do WebAssembly.",
+    de: "Die gehostete Fassung von LosOS Diagrams startet echte QEMU-Gäste in deinem Browser, kompiliert zu WebAssembly.",
   },
   "shell.facts.15": {
     en: "Storage on the mesh can be paid for in USDC, Bitcoin, Monero or shielded Zcash. The edge counts money in whole cents, never in floating point.",

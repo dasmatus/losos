@@ -24,7 +24,7 @@ zúži na pás ikon. Na telefóne sa otvára ako vysúvací panel.
 | **Aplikácie**  | Aplikácie na tomto zariadení s ich režimom, vyhľadávanie v Artifact Hub a aplikácie nainštalované odtiaľ.    |
 | **Úložisko**   | Ako je disk plný, čo zaberá miesto a rezerva, ktorú si môžete vziať.                                         |
 | **Mesh**       | Pripojenie k ďalším zariadeniam, hodiny, keď toto zariadenie požičiava svoj voľný čas, **Trh** so zdieľaním disku a **Stroje**. |
-| **Laboratórium** | LosOS Lab, ktorý nakreslí toto zariadenie a jeho sieť ako diagram.                                     |
+| **Diagramy**     | LosOS Diagrams: diagramy, plány a tabule ako karty a sieť tohto zariadenia nakreslená a simulovaná.    |
 | **Nastavenia** | Sieť, Vzhľad, Hardvér, Zabezpečenie, Používatelia, Prístupové tokeny, Rozšírené, História, Záloha, O zariadení a Reset, každé ako samostatný panel.   |
 
 <img src={require("@site/docs/img/overview-phone-sk.png").default} alt="Prehľad na telefóne: sekcie sa zbalia do tlačidla ponuky." width="260" /> <img src={require("@site/docs/img/overview-phone-sheet-sk.png").default} alt="Ten istý telefón s ponukou otvorenou ako panel nad stránkou." width="260" />
