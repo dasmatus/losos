@@ -1,14 +1,14 @@
 import { defineMessages } from "./define";
 
 /* LosOS Contacts (src/contacts/), the address book at /contacts. Each
- * person's book is kept in Matrix on the box's chat server, so it exists
- * only on the shared side (sharing on, in a mesh), like Chat and Mail. */
+ * person's book is their LosOS Cloud address books, so it exists wherever
+ * LosOS Cloud runs; its Mail, Chat and call buttons follow those apps. */
 export default defineMessages({
   "contacts.title": { en: "Contacts", sk: "Kontakty", de: "Kontakte" },
   "contacts.summary": {
-    en: "Your address book, kept in LosOS Chat on this box. Only you can see it.",
-    sk: "Váš adresár, uložený v LosOS Chat na tomto boxe. Vidíte ho len vy.",
-    de: "Dein Adressbuch, gespeichert in LosOS Chat auf dieser Box. Nur du siehst es.",
+    en: "Your address book, kept in LosOS Cloud on this box and synced to your phone. Only you can see it.",
+    sk: "Váš adresár, uložený v LosOS Cloud na tomto boxe a synchronizovaný s telefónom. Vidíte ho len vy.",
+    de: "Dein Adressbuch, gespeichert in LosOS Cloud auf dieser Box und mit deinem Handy abgeglichen. Nur du siehst es.",
   },
   "contacts.missing": {
     en: "There are no contacts on this box. Contacts runs only while the box shares its storage with a mesh it has joined.",
