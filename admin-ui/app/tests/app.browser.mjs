@@ -89,6 +89,8 @@ async function open({
   // as GET /api/me describes them; null for none.
   person = null,
   claim = { claimed: true },
+  // The origin to load from: the plain server, or one serving the real CSP.
+  base = origin,
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
   if (now !== null) await page.clock.setFixedTime(now);
@@ -336,7 +338,7 @@ async function open({
         : route.fulfill({ status: 404, contentType: 'text/html', body: '' }),
     );
   }
-  await page.goto(origin + path, { waitUntil: 'networkidle' });
+  await page.goto(base + path, { waitUntil: 'networkidle' });
   return { page, errors, marketPosts, llmPosts, vmPosts, applies, domainPosts, backupPosts };
 }
 
@@ -2617,6 +2619,56 @@ await check('AI models: Start asks for an hourly limit and a top-up, refuses a l
   await qwen.getByRole('button', { name: 'Start' }).last().click();
   await page.getByText('Set up the USDC wallet below first, or connect a browser wallet.').nth(1).waitFor();
   assert.deepEqual(llmPosts, [], 'a quote was asked for with no wallet to pay it');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+/* Under the real policy the Market pane, a running model and an opened Start
+ * form log only the two violations every page logs at load (Sonner's
+ * refused copy of its stylesheet). */
+await check('under the appliance CSP the AI models section adds no violation', async () => {
+  const { origin: strict, close } = await serve({ csp: true });
+  try {
+    const watch = () => {
+      window.__violations = [];
+      document.addEventListener('securitypolicyviolation', (e) =>
+        window.__violations.push(`${e.violatedDirective} ${e.target?.nodeName ?? ''}`),
+      );
+    };
+    const { page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM, base: strict, init: [watch] });
+    await page.getByTestId('ai-meters').waitFor();
+    const atLoad = await page.evaluate(() => window.__violations);
+    assert.deepEqual(atLoad, ['style-src-elem STYLE', 'style-src-elem STYLE'], `unexpected violations at load: ${atLoad.join(', ')}`);
+    const qwen = page.locator('[data-model="qwen3-32b"]');
+    await qwen.getByRole('button', { name: 'Start' }).click();
+    await qwen.getByLabel('Most it may spend in an hour (USDC)').fill('2');
+    await page.waitForTimeout(300);
+    const after = await page.evaluate(() => window.__violations);
+    assert.equal(after.length, atLoad.length, `the AI models section added CSP violations: ${after.slice(atLoad.length).join(', ')}`);
+    assert.deepEqual(errors, []);
+    await page.close();
+  } finally {
+    await close();
+  }
+});
+
+await check('AI models: a wallet imported further down the same page can pay at once, and forgetting it takes it away', async () => {
+  const { mnemonicToAccount } = await import('viem/accounts');
+  const phrase = 'test test test test test test test test test test test junk';
+  const address = mnemonicToAccount(phrase).address;
+  const { page, errors, llmPosts } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM });
+  const section = page.getByTestId('ai-models');
+  await section.getByText('Set up the USDC wallet below first, or connect a browser wallet.').first().waitFor();
+  await page.getByPlaceholder('12 or 24 words from MetaMask, Rabby, Rainbow, Trust Wallet or Phantom').fill(phrase);
+  await page.getByPlaceholder('A password for this browser (8 or more characters)').fill('right horse battery');
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  // No reload: the section reads the saved wallet again when it changes.
+  await section.getByText('The wallet on this box', { exact: true }).waitFor({ timeout: 15000 });
+  assert.match(await section.innerText(), new RegExp(`${address.slice(0, 6)}…${address.slice(-4)}`));
+  assert.doesNotMatch(await section.innerText(), /Set up the USDC wallet below first/);
+  await page.getByRole('button', { name: "Forget this browser's copy", exact: true }).click();
+  await section.getByText('Set up the USDC wallet below first, or connect a browser wallet.').first().waitFor();
+  assert.deepEqual(llmPosts, []);
   assert.deepEqual(errors, []);
   await page.close();
 });
