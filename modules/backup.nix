@@ -192,7 +192,8 @@ let
       mkdir -p "$stage/databases" "$stage/settings" "$stage/look" "$stage/identity" "$stage/git"
 
       if systemctl is-active --quiet postgresql.service; then
-        for db in ${lib.escapeShellArgs databases}; do
+        dbs=(${lib.escapeShellArgs databases})
+        for db in "''${dbs[@]}"; do
           if runuser -u postgres -- psql -tAc "select 1 from pg_database where datname = '$db'" | grep -cx 1 >/dev/null; then
             echo "backup: dumping the $db database"
             runuser -u postgres -- pg_dump --format=custom "$db" > "$stage/databases/$db.pgdump"
@@ -332,10 +333,35 @@ let
         install -m 0600 -o 1003 -g 1003 "$staged/git/git.db" ${gitDb}
       fi
 
+      # A backup from before LosOS Git holds Forgejo's folder and database
+      # and no git.db. Both go back as Forgejo left them, LosOS Git's own
+      # records go, and LosOS Git's import (modules/git.nix) carries them
+      # over again, as it did on the upgrade.
+      legacy=0
+      if [ ! -s "$staged/git/git.db" ] && [ -d "$out/var/lib/forgejo" ]; then
+        legacy=1
+        echo "restore: this backup is from before LosOS Git; putting back Forgejo's data to import"
+        mkdir -p /var/lib/forgejo
+        rsync -aHAX --numeric-ids --delete "$out/var/lib/forgejo/" /var/lib/forgejo/
+        rm -rf /var/lib/losos-git/repositories /var/lib/losos-git/forgejo
+        rm -f ${gitDb} ${gitDb}-wal ${gitDb}-shm
+        if [ -s "$staged/databases/forgejo.pgdump" ]; then
+          if systemctl is-active --quiet postgresql.service; then
+            echo "restore: loading Forgejo's database for the import"
+            runuser -u postgres -- dropdb --if-exists forgejo
+            runuser -u postgres -- createdb forgejo
+            runuser -u postgres -- pg_restore --no-owner --dbname=forgejo < "$staged/databases/forgejo.pgdump"
+          else
+            echo "restore: Forgejo's database needs Postgres, which this box no longer runs; only its repositories come back" >&2
+          fi
+        fi
+      fi
+
       if systemctl is-active --quiet postgresql.service; then
         for dump in "$staged"/databases/*.pgdump; do
           [ -e "$dump" ] || continue
           db=$(basename "$dump" .pgdump)
+          [ "$db" = forgejo ] && continue
           if runuser -u postgres -- psql -tAc "select 1 from pg_database where datname = '$db'" | grep -cx 1 >/dev/null; then
             echo "restore: loading the $db database"
             runuser -u postgres -- pg_restore --clean --if-exists --dbname="$db" < "$dump"
@@ -378,6 +404,11 @@ let
       if [ -f "$staged/settings/overrides.nix" ]; then
         install -m 0600 "$staged/settings/overrides.nix" "$dir/restored-overrides.nix"
       fi
+      if [ "$legacy" = 1 ]; then
+        echo "restore: carrying Forgejo's records into LosOS Git"
+        systemctl start losos-git-forgejo-import.service \
+          || echo "restore: the import did not finish; LosOS Git tries it again when it next starts" >&2
+      fi
       echo "restore: done"
     '';
   };
@@ -389,6 +420,10 @@ let
   wipeDirs = [
     "/persist/var/lib/nextcloud"
     "/persist/var/lib/losos-git"
+    # What LosOS Git's import leaves of Forgejo on an upgraded box
+    # (modules/git.nix keeps it). Without it the old owner's database and
+    # attachments outlive the reset, and the import runs again next boot.
+    "/persist/var/lib/forgejo"
     "/persist/var/lib/postgresql"
     "/persist/var/lib/redis-nextcloud"
     "/persist/var/lib/losos"
