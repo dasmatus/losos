@@ -60,6 +60,14 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
             web::get().to(issue_comments),
         )
         .route("/repos/{owner}/{repo}/labels", web::get().to(repo_labels))
+        .route(
+            "/repos/{owner}/{repo}/commits/{sha}/statuses",
+            web::get().to(commit_statuses),
+        )
+        .route(
+            "/repos/{owner}/{repo}/statuses/{sha}",
+            web::post().to(create_status),
+        )
         .route("/attachments/{uuid}", web::get().to(get_attachment))
         .route("/admin/users", web::get().to(admin_users))
         .route("/admin/users/{login}", web::put().to(admin_ensure_user))
@@ -993,4 +1001,61 @@ async fn get_attachment(
         ))
         .insert_header(("X-Content-Type-Options", "nosniff"))
         .body(bytes))
+}
+
+// ── Commit statuses (`super::statuses`) ────────────────────────────────────
+
+/// `GET /api/v1/repos/{owner}/{repo}/commits/{sha}/statuses`: every check
+/// on a commit and the state they add up to.
+async fn commit_statuses(
+    req: HttpRequest,
+    path: web::Path<(String, String, String)>,
+    state: web::Data<State>,
+) -> Answer {
+    let c = server::caller(&req, &state)?;
+    seen_by_nobody(&state, &c)?;
+    need_scope(&c, "repository", false)?;
+    let (repo, _) = find_repo(&state, &c, &path.0, &path.1)?;
+    if !super::statuses::is_sha(&path.2) {
+        return Err(Fail::bad("A commit is 40 hex characters."));
+    }
+    let list = super::statuses::list(&state.store, repo.id, &path.2)?;
+    Ok(HttpResponse::Ok().json(json!({
+        "state": super::statuses::combined(&list),
+        "statuses": list,
+    })))
+}
+
+/// `POST /api/v1/repos/{owner}/{repo}/statuses/{sha}`: a check of one's
+/// own on a commit, the body Gitea and GitHub take. Needs push access.
+async fn create_status(
+    req: HttpRequest,
+    path: web::Path<(String, String, String)>,
+    body: web::Json<super::statuses::NewStatus>,
+    state: web::Data<State>,
+) -> Answer {
+    let c = server::caller(&req, &state)?;
+    need_scope(&c, "repository", true)?;
+    let (repo, p) = find_repo(&state, &c, &path.0, &path.1)?;
+    if p < Permission::Write {
+        return Err(Fail::forbidden(
+            "Only people who may push to the repository may set a check.",
+        ));
+    }
+    if !super::statuses::is_sha(&path.2) {
+        return Err(Fail::bad("A commit is 40 hex characters."));
+    }
+    if let Some(why) = body.fault() {
+        return Err(Fail::bad(why));
+    }
+    let who = c
+        .user()
+        .map(|u| u.login.clone())
+        .unwrap_or_else(|| "admin".into());
+    super::statuses::set(&state.store, repo.id, &path.2, &body, &who)?;
+    let list = super::statuses::list(&state.store, repo.id, &path.2)?;
+    Ok(HttpResponse::Created().json(json!({
+        "state": super::statuses::combined(&list),
+        "statuses": list,
+    })))
 }

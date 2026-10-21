@@ -34,11 +34,14 @@ pub mod api;
 pub mod auth;
 pub mod code;
 pub mod db;
+pub mod events;
 pub mod gitcmd;
 pub mod import;
+pub mod internal;
 pub mod names;
 pub mod pulls;
 pub mod server;
+pub mod statuses;
 pub mod transport;
 pub mod worktrees;
 

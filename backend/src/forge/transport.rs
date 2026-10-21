@@ -465,6 +465,9 @@ pub fn pushed(
         refs = changes.len(),
         "push"
     );
+    // Mesh CI and anything else listening (`super::events`).
+    let login = pusher.map(|u| u.login.as_str()).unwrap_or_default();
+    super::events::pushed(repo, login, &changes);
 }
 
 #[cfg(test)]

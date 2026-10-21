@@ -195,14 +195,41 @@ fn repo_dir(state: &State, repo: &Repo) -> PathBuf {
     state.config.repo_path(&repo.owner, &repo.name)
 }
 
-/// What a pull request's state change means to whoever listens (the CI,
-/// the code reviewer). Logged for now; the listeners attach here.
-pub fn notify(action: &str, repo: &Repo, pr: &Issue) {
-    tracing::info!(
+/// Tell whoever listens (the CI, the code reviewer, `super::events`) that a
+/// pull request was opened, synchronised, reviewed, closed, reopened or
+/// merged.
+pub fn notify(state: &State, action: &str, repo: &Repo, pr: &Issue) {
+    let head_sha = match pr.head_sha.clone() {
+        Some(sha) => sha,
+        None => pr
+            .head_branch
+            .as_deref()
+            .and_then(|b| {
+                state
+                    .git
+                    .commit_of(&repo_dir(state, repo), b)
+                    .ok()
+                    .flatten()
+            })
+            .unwrap_or_default(),
+    };
+    super::events::pull_request(
         action,
-        repo = format!("{}/{}", repo.owner, repo.name),
-        number = pr.number,
-        "pull request"
+        repo,
+        super::events::PullRequest {
+            number: pr.number,
+            title: pr.title.clone(),
+            head_ref: format!(
+                "refs/heads/{}",
+                pr.head_branch.as_deref().unwrap_or_default()
+            ),
+            head_sha,
+            base_ref: format!(
+                "refs/heads/{}",
+                pr.base_branch.as_deref().unwrap_or_default()
+            ),
+            author: pr.poster.clone(),
+        },
     );
 }
 
@@ -242,12 +269,12 @@ pub fn after_push(state: &State, repo: &Repo, changed: &[(String, String, String
             if let (Some(head), Some(base)) = (ends.head.as_deref(), ends.base.as_deref()) {
                 if moved(base_branch) && head != base && state.git.is_ancestor(&dir, head, base)? {
                     state.store.mark_merged(pr.id, base, head, base, None)?;
-                    notify("merged", repo, &pr);
+                    notify(state, "merged", repo, &pr);
                     return Ok(());
                 }
             }
             if moved(head_branch) {
-                notify("synchronize", repo, &pr);
+                notify(state, "synchronize", repo, &pr);
             }
             Ok(())
         };
@@ -527,7 +554,7 @@ async fn create_pull(
         &body.body,
         Some((&body.head, &body.base)),
     )?;
-    notify("opened", &repo, &pr);
+    notify(&state, "opened", &repo, &pr);
     Ok(HttpResponse::Created().json(pull_json(&state, &repo, &pr, p)?))
 }
 
@@ -600,7 +627,7 @@ async fn edit_pull(
                 _ => None,
             };
             state.store.set_closed(pr.id, true, shas)?;
-            notify("closed", &repo, &pr);
+            notify(&state, "closed", &repo, &pr);
         }
         Some("open") if pr.closed => {
             let head_there = match pr.head_branch.as_deref() {
@@ -611,7 +638,7 @@ async fn edit_pull(
                 return Err(Fail::bad("The branch it came from is gone."));
             }
             state.store.set_closed(pr.id, false, None)?;
-            notify("reopened", &repo, &pr);
+            notify(&state, "reopened", &repo, &pr);
         }
         Some("open" | "closed") => {}
         Some(other) => return Err(Fail::bad(format!("\"{other}\" is not open or closed."))),
@@ -818,7 +845,7 @@ async fn create_review(
         state
             .store
             .create_review(pr.id, user.id, review_state, &body.body, &head, &lines)?;
-    notify("reviewed", &repo, &pr);
+    notify(&state, "reviewed", &repo, &pr);
     Ok(HttpResponse::Created().json(review_json(&review)))
 }
 
@@ -1052,7 +1079,7 @@ async fn merge_pull(
         .store
         .issue(repo.id, pr.number)?
         .ok_or_else(|| Fail::not_found("pull request"))?;
-    notify("merged", &repo, &pr);
+    notify(&state, "merged", &repo, &pr);
     let mut doc = pull_json(&state, &repo, &pr, p)?;
     doc["sha"] = json!(merged);
     Ok(HttpResponse::Ok().json(doc))

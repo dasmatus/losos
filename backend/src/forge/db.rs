@@ -125,8 +125,8 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (kind, forgejo_id)
     );
     ",
-    // 3: commit statuses, from the CI branch.
-    "",
+    // 3: commit statuses (`super::statuses`).
+    super::statuses::MIGRATION,
     // 4: code review. A review is one verdict on one commit of a pull
     // request, with the line comments it was sent with; a reply to a line
     // comment has no review of its own. Who was asked to review, so a
