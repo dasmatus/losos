@@ -16,7 +16,7 @@
 //! access, and nobody (no token, no LosOS Login) is asked for credentials
 //! with a 401, which is what makes git call its credential helper.
 
-use super::db::{Permission, Repo};
+use super::db::{Permission, Repo, User};
 use super::server::{self, Fail, State};
 use actix_web::{web, HttpRequest, HttpResponse};
 use futures_util::StreamExt;
@@ -58,6 +58,10 @@ impl Service {
 pub fn pkt_line(payload: &str) -> Vec<u8> {
     format!("{:04x}{payload}", payload.len() + 4).into_bytes()
 }
+
+/// How much of a push's body is kept to read its commands and push
+/// options: enough for hundreds of refs, never the pack.
+const PREAMBLE_LIMIT: usize = 64 * 1024;
 
 /// The flush packet.
 pub const FLUSH: &[u8] = b"0000";
@@ -106,7 +110,7 @@ fn authorize(
     repo: &str,
     service: Service,
     may_create: bool,
-) -> Result<(Repo, PathBuf), Fail> {
+) -> Result<(Repo, PathBuf, Option<User>), Fail> {
     let caller = server::caller(req, state)?;
     let name = super::names::strip_git(repo);
     let (Ok(owner), Ok(name)) = (super::names::owner(owner), super::names::repo(name)) else {
@@ -167,7 +171,7 @@ fn authorize(
         tracing::error!(path = %path.display(), "a repository on record is missing on disk");
         return Err(Fail::not_found("repository"));
     }
-    Ok((repo, path))
+    Ok((repo, path, caller.user().cloned()))
 }
 
 fn internal<E: std::fmt::Debug>(e: E) -> HttpResponse {
@@ -200,7 +204,7 @@ async fn info_refs(
             "LosOS Git speaks git's smart protocol only. Update git.",
         ));
     };
-    let (_, dir) = match authorize(&req, &state, &owner, &repo, service, true) {
+    let (_, dir, _) = match authorize(&req, &state, &owner, &repo, service, true) {
         Ok(v) => v,
         Err(fail) => return actix_web::ResponseError::error_response(&fail),
     };
@@ -261,7 +265,7 @@ async fn rpc(
     service: Service,
 ) -> HttpResponse {
     let (owner, repo_name) = path.into_inner();
-    let (repo, dir) = match authorize(&req, &state, &owner, &repo_name, service, false) {
+    let (repo, dir, pusher) = match authorize(&req, &state, &owner, &repo_name, service, false) {
         Ok(v) => v,
         Err(fail) => return actix_web::ResponseError::error_response(&fail),
     };
@@ -309,6 +313,11 @@ async fn rpc(
         return internal("git has no pipes");
     };
 
+    // The start of a push's body, kept for its push options (the worktree
+    // it came from, `worktrees.rs`).
+    let preamble = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let keep = (service == Service::ReceivePack).then(|| preamble.clone());
+
     // The request body into git, unzipped on the way when it came gzipped.
     actix_web::rt::spawn(async move {
         let mut decoder = gzip.then(|| flate2::write::GzDecoder::new(Vec::new()));
@@ -324,6 +333,13 @@ async fn rpc(
                 }
                 None => chunk.to_vec(),
             };
+            if let Some(keep) = &keep {
+                let mut k = keep.lock().unwrap_or_else(|p| p.into_inner());
+                if k.len() < PREAMBLE_LIMIT {
+                    let room = PREAMBLE_LIMIT - k.len();
+                    k.extend_from_slice(&bytes[..bytes.len().min(room)]);
+                }
+            }
             if stdin.write_all(&bytes).await.is_err() {
                 return;
             }
@@ -341,7 +357,10 @@ async fn rpc(
     let after_push = before.map(|before| {
         let state = state.clone();
         let dir = dir.clone();
-        move || pushed(&state, &repo, &dir, &before)
+        move || {
+            let preamble = preamble.lock().unwrap_or_else(|p| p.into_inner());
+            pushed(&state, &repo, &dir, &before, pusher.as_ref(), &preamble)
+        }
     });
     let body = Answer {
         stdout,
@@ -401,7 +420,14 @@ impl Answer {
 /// empty repository whose default branch it did not create makes the
 /// branch it did push the default, as a clone would otherwise check out
 /// nothing.
-pub fn pushed(state: &State, repo: &Repo, dir: &std::path::Path, before: &[super::gitcmd::Ref]) {
+pub fn pushed(
+    state: &State,
+    repo: &Repo,
+    dir: &std::path::Path,
+    before: &[super::gitcmd::Ref],
+    pusher: Option<&User>,
+    preamble: &[u8],
+) {
     let after = match state.git.refs(dir) {
         Ok(r) => r,
         Err(e) => {
@@ -430,6 +456,10 @@ pub fn pushed(state: &State, repo: &Repo, dir: &std::path::Path, before: &[super
             }
         }
     }
+    if let Some(pusher) = pusher {
+        super::worktrees::record_push(state, repo, pusher, preamble);
+    }
+    super::pulls::after_push(state, repo, &changes);
     tracing::info!(
         repo = format!("{}/{}", repo.owner, repo.name),
         refs = changes.len(),

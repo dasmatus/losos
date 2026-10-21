@@ -32,12 +32,15 @@
 
 pub mod api;
 pub mod auth;
+pub mod code;
 pub mod db;
 pub mod gitcmd;
 pub mod import;
 pub mod names;
+pub mod pulls;
 pub mod server;
 pub mod transport;
+pub mod worktrees;
 
 use std::path::{Path, PathBuf};
 
