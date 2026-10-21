@@ -113,6 +113,7 @@ pub enum Op {
         owner_name: String,
         recipient: String,
         name: String,
+        file: FileId,
         folder: bool,
         size: u64,
         perm: Perm,
@@ -217,6 +218,11 @@ impl Mesh {
     }
 
     // ── Links ──────────────────────────────────────────────────────────
+
+    /// Whether a link to `name` is up now.
+    pub fn reaches(&self, name: &str) -> bool {
+        self.open_link(name).is_some()
+    }
 
     fn open_link(&self, name: &str) -> Option<Arc<Link>> {
         lock(&self.links)
@@ -359,6 +365,7 @@ impl Mesh {
                 owner_name: s.owner_name.clone(),
                 recipient: s.recipient.clone(),
                 name: s.name.clone(),
+                file: s.file_id,
                 folder: s.folder,
                 size,
                 perm: s.perm,
@@ -733,6 +740,7 @@ impl Mesh {
                 owner_name,
                 recipient,
                 name,
+                file,
                 folder,
                 size,
                 perm,
@@ -760,6 +768,7 @@ impl Mesh {
                         owner_name: clip(owner_name, 120),
                         recipient: login.into(),
                         name: clip(name, 255),
+                        file_id: file,
                         folder,
                         size,
                         perm,

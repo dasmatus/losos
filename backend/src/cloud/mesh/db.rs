@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS incoming_mesh (
   state TEXT NOT NULL,
   created INTEGER NOT NULL,
   unsynced INTEGER NOT NULL DEFAULT 0,
+  file_id INTEGER NOT NULL,
   PRIMARY KEY (remote, id)
 );
 ";
@@ -124,6 +125,9 @@ pub struct Incoming {
     pub owner_name: String,
     pub recipient: String,
     pub name: String,
+    /// The file or folder's id on the owner's box, which every request
+    /// about it names.
+    pub file_id: FileId,
     pub folder: bool,
     pub size: u64,
     pub perm: Perm,
@@ -345,8 +349,8 @@ impl Db {
     /// updated (name, size, permission), keeping the person's answer.
     pub fn offer(&self, s: &Incoming) -> rusqlite::Result<()> {
         self.c().execute(
-            "INSERT INTO incoming_mesh (id, remote, owner_remote, owner_name, recipient, name, folder, size, perm, state, created)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'pending', ?10)
+            "INSERT INTO incoming_mesh (id, remote, owner_remote, owner_name, recipient, name, folder, size, perm, state, created, file_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'pending', ?10, ?11)
              ON CONFLICT (remote, id) DO UPDATE SET
                owner_name = excluded.owner_name, name = excluded.name, folder = excluded.folder,
                size = excluded.size, perm = excluded.perm",
@@ -360,7 +364,8 @@ impl Db {
                 s.folder,
                 s.size as i64,
                 perm_str(s.perm),
-                s.created
+                s.created,
+                s.file_id
             ],
         )?;
         Ok(())
@@ -380,11 +385,12 @@ impl Db {
             state: r.get(9)?,
             created: r.get(10)?,
             unsynced: r.get(11)?,
+            file_id: r.get(12)?,
         })
     }
 
     const IN_COLS: &'static str =
-        "id, remote, owner_remote, owner_name, recipient, name, folder, size, perm, state, created, unsynced";
+        "id, remote, owner_remote, owner_name, recipient, name, folder, size, perm, state, created, unsynced, file_id";
 
     /// Shares sent to `login`, newest first.
     /// Offers from `remote` nobody here has answered yet.
@@ -493,6 +499,7 @@ mod tests {
             owner_name: "Alice".into(),
             recipient: "bob".into(),
             name: "notes.md".into(),
+            file_id: 4,
             folder: false,
             size: 10,
             perm: Perm::Edit,

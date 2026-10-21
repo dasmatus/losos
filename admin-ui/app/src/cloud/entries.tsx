@@ -9,6 +9,7 @@ import {
   FolderTransferIcon,
   HistoryIcon,
   PencilEdit02Icon,
+  Share08Icon,
   StarIcon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { cloud, contentUrl, hasPreview, joinPath, parentOf, previewUrl, type Entry } from "./api";
 import { MoveDialog, NameDialog, VersionsDialog, failed } from "./dialogs";
 import { formatBytes, formatFull, formatWhen, iconFor } from "./format";
+import { MeshShareDialog } from "./mesh/share-dialog";
 import { openersFor } from "./openers";
 import { bump } from "./store";
 
@@ -259,6 +261,7 @@ export function SelectionBar({
 }) {
   const t = useT();
   const [renaming, setRenaming] = React.useState(false);
+  const [sharing, setSharing] = React.useState(false);
   const [moving, setMoving] = React.useState<"move" | "copy" | null>(null);
   const [versions, setVersions] = React.useState<Entry | null>(null);
   const one = entries.length === 1 ? entries[0] : undefined;
@@ -310,6 +313,7 @@ export function SelectionBar({
       {tool(t("cloud.move.action"), FolderTransferIcon, () => setMoving("move"))}
       {tool(t("cloud.copy.action"), Copy01Icon, () => setMoving("copy"))}
       {oneFile !== undefined && tool(t("cloud.versions.action"), HistoryIcon, () => setVersions(oneFile))}
+      {one !== undefined && tool(t("collab.share"), Share08Icon, () => setSharing(true))}
       {tool(t("cloud.delete.action"), Delete02Icon, () => void remove(), "hover:text-crit")}
 
       {one !== undefined && (
@@ -335,6 +339,7 @@ export function SelectionBar({
         }}
       />
       <VersionsDialog entry={versions} onOpenChange={(open) => !open && setVersions(null)} />
+      {one !== undefined && <MeshShareDialog open={sharing} onOpenChange={setSharing} fileId={one.id} name={one.name} />}
     </div>
   );
 }

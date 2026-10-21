@@ -10,6 +10,7 @@ import advanced from "./advanced";
 import apps from "./apps";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
+import collab from "./collab";
 import home from "./home";
 import install from "./install";
 import lab from "./lab";
@@ -38,6 +39,7 @@ export const MESSAGES = {
   ...apps,
   ...cloudApps,
   ...cloud,
+  ...collab,
   ...install,
   ...look,
   ...machines,
