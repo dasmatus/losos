@@ -513,6 +513,7 @@ pkgs.testers.nixosTest {
         for name, y4m in CAMERAS.items()
     }
     problems = []
+    responses = {}
 
     # The screen Matus shares: a headless browser has no desktop to pick,
     # so the page's getDisplayMedia draws a slide on a canvas instead.
@@ -562,6 +563,7 @@ pkgs.testers.nixosTest {
         page.on("pageerror", on_error)
         page.on("console", on_console)
         seen = []
+        responses[name] = seen
 
         def on_response(r) -> None:
             if r.status >= 400 or "/api/chat/session" in r.url:
@@ -630,6 +632,12 @@ pkgs.testers.nixosTest {
         )
         assert page.locator("[data-e2ee]").get_attribute("data-refused") == "0"
 
+    def stuck(who, page):
+        """What a page shows when a step times out, and its failed requests."""
+        page.screenshot(path=f"{OUT}/stuck-{who}.png")
+        print(f"{who} sees {page.url}:\n{page.inner_text('body')[:2000]}\n{problems}")
+        print("\n".join(responses[who][-30:]))
+
     def room_button(page, name):
         return page.get_by_role("button", name=re.compile(name)).first
 
@@ -646,6 +654,11 @@ pkgs.testers.nixosTest {
         owner.get_by_role("textbox", name="Name or @name:server").fill("eva")
         owner.get_by_role("dialog").get_by_role("button", name=re.compile("Eva")).first.click()
         composer = owner.get_by_role("textbox", name="Message Eva")
+        try:
+            composer.wait_for()
+        except Exception:
+            stuck("matus", owner)
+            raise
         composer.fill("Free for a quick call about the holiday?")
         owner.keyboard.press("Enter")
         owner.get_by_role("log").get_by_text("Free for a quick call about the holiday?").wait_for()
