@@ -216,6 +216,10 @@ export async function signIn(): Promise<Signed> {
     deviceId: session.deviceId,
     timelineSupport: true,
     useAuthorizationHeader: true,
+    // The SDK fetches with credentials "omit", and nginx lets a request
+    // reach the homeserver only with the LosOS Login cookie beside the
+    // token (modules/chat.nix), so every call takes the cookie along.
+    fetchFn: (input, init) => fetch(input, { ...init, credentials: "same-origin" }),
     cryptoCallbacks: {
       getSecretStorageKey: ({ keys: wanted }) => keys.get(Object.keys(wanted)),
       cacheSecretStorageKey: (keyId, _info, key) => keys.set(keyId, key),

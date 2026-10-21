@@ -375,7 +375,6 @@ pkgs.testers.nixosTest {
     import json
     import os
     import re
-    import shlex
     import struct
     import subprocess
     import tarfile
@@ -592,26 +591,8 @@ pkgs.testers.nixosTest {
         except Exception:
             print(f"{name} sees {page.url}:\n{page.inner_text('body')[:3000]}\n{problems}")
             print("\n".join(seen[:8] + ["…"] + seen[-20:]))
-            jar = context.cookies()
-            print("cookies:", [(c["name"], c["domain"], c["path"], len(c["value"])) for c in jar])
-            cookie = "; ".join(f"{c['name']}={c['value']}" for c in jar)
-            q = shlex.quote(f"Cookie: {cookie}")
-            def probe(where, url, headers):
-                out = where.execute(
-                    f"curl -sk -D /tmp/h -o /tmp/b -w '%{{http_code}}' {url} {headers}; echo; "
-                    "tr -d '\\r' < /tmp/h | grep -i '^remote-\\|^location\\|^set-cookie' ; head -c 300 /tmp/b"
-                )[1]
-                print(f"probe {url}: {out}")
-            probe(laptop, f"https://{HOST}/_matrix/client/versions", f"-H {q}")
-            asked = (f"-H {q} -H 'X-Original-URL: https://{HOST}/_matrix/client/versions' "
-                     "-H 'X-Original-Method: GET' -H 'X-Forwarded-For: 192.168.1.2'")
-            probe(box, "http://127.0.0.1:8082/internal/chat/authz", asked)
-            probe(box, "http://127.0.0.1:9091/auth/api/authz/auth-request", asked)
-            probe(box, "http://127.0.0.1:8082/internal/chat/authz", "")
-            print(box.execute("cat /var/lib/losos-identity/users.yml | grep -v password | head -n 30")[1])
             print(box.execute("journalctl -u lososd --no-pager | grep -i 'chat\\|exchange\\|warn' | head -n 40")[1])
             print(box.execute("journalctl -u authelia-losos -u dendrite --since -4min --no-pager | grep -v 'level=info' | tail -n 60")[1])
-            print(box.execute("systemctl status dendrite --no-pager | head -n 5; ls -la /var/lib/losos-chat* 2>&1 | head")[1])
             raise
         return page
 
