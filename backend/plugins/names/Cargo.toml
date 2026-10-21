@@ -1,0 +1,11 @@
+[package]
+name = "losos-names"
+description = "The names lososd and its plugins both take: an app's release name, a LosOS Git owner or repository, a LosOS Cloud path"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
