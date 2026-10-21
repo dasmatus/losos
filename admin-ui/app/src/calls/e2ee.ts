@@ -233,17 +233,21 @@ export class ReceiveRing {
   private async forward(i: number): Promise<FrameKeys | null> {
     const known = this.keys.get(i);
     if (known) return known;
-    if (this.newest === null) return null;
-    const ahead = (i - this.newest + 256) % 256;
+    const from = this.newest;
+    if (from === null) return null;
+    const ahead = (i - from + 256) % 256;
     if (ahead === 0 || ahead > MAX_RATCHET_AHEAD) return null;
-    let key = this.raw.get(this.newest);
+    let key = this.raw.get(from);
     if (!key) return null;
     for (let step = 1; step <= ahead; step++) {
       key = await ratchet(key);
-      const at = (this.newest + 1) & 0xff;
-      this.raw.set(at, key);
-      this.keys.set(at, frameKeys(key));
-      this.newest = at;
+      const at = (from + step) & 0xff;
+      // A key handed over meanwhile wins over one worked out here.
+      if (!this.raw.has(at)) {
+        this.raw.set(at, key);
+        this.keys.set(at, frameKeys(key));
+      }
+      if (this.newest === null || (at - this.newest + 256) % 256 < 128) this.newest = at;
     }
     this.forget();
     return this.keys.get(i) ?? null;

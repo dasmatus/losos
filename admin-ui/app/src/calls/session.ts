@@ -81,7 +81,7 @@ export const streamPid = (id: string): number | null => {
   return m ? Number(m[1]) : null;
 };
 
-type Encodable = (RTCRtpSender | RTCRtpReceiver) & {
+type Encodable = Omit<RTCRtpSender | RTCRtpReceiver, 'transform'> & {
   transform?: unknown;
   createEncodedStreams?: () => { readable: ReadableStream; writable: WritableStream };
 };

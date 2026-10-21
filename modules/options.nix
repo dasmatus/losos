@@ -802,6 +802,27 @@ in
       '';
     };
 
+    calls.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let people on the box call each other from LosOS chat, by voice or
+        video. Calls belong to the box's shared side, like chat: they exist
+        only while the box shares its storage and is in a mesh. Every
+        frame is encrypted in the caller's browser and decrypted in the
+        others', so the box forwards media it cannot read.
+      '';
+    };
+
+    calls.udpPort = lib.mkOption {
+      type = lib.types.port;
+      default = 7882;
+      description = ''
+        The UDP port call media arrives on. It is opened on the box's
+        firewall while calls are on.
+      '';
+    };
+
     search.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -2886,6 +2907,14 @@ in
 
   # Whether this box hosts machines, as it actually runs: the switch and
   # the sharing gate together, read by modules/cluster.nix for the join.
+  # A directory the SFU writes every forwarded frame into, so a test can
+  # show they are ciphertext (backend/src/calls/tap.rs). Tests only.
+  options.lososInternal.callsTap = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    internal = true;
+  };
+
   options.lososInternal.vmHost = lib.mkOption {
     type = lib.types.bool;
     internal = true;

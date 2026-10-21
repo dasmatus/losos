@@ -8,6 +8,7 @@ import access from "./access";
 import account from "./account";
 import advanced from "./advanced";
 import apps from "./apps";
+import calls from "./calls";
 import cloudApps from "./cloud-apps";
 import home from "./home";
 import install from "./install";
@@ -47,6 +48,7 @@ export const MESSAGES = {
   ...tour,
   ...palette,
   ...pins,
+  ...calls,
   ...manage,
 };
 
