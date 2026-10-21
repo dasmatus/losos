@@ -204,7 +204,7 @@ pkgs.testers.nixosTest {
 
     def token_for(login):
         doc = ok("POST", f"/admin/users/{login}/tokens",
-                 {"name": "laptop", "scopes": ["write:repository", "read:user"], "replace": True})
+                 {"name": "laptop", "scopes": ["write:repository", "write:issue", "read:user"], "replace": True})
         return doc["token"]
 
     def url(token):
