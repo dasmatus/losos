@@ -56,6 +56,31 @@ let
   };
   adminUi = noLab lososPkgs.losos-admin-ui;
 
+  # Matus's profile picture, a figure drawn in the palette (no photo, no
+  # logo), so the editor shows a picture beside Eva's initials.
+  picture =
+    pkgs.runCommand "mesh-collab-picture"
+      {
+        nativeBuildInputs = [ (pkgs.python3.withPackages (ps: [ ps.pillow ])) ];
+      }
+      ''
+        python3 - $out <<'EOF'
+        import sys
+        from PIL import Image, ImageDraw
+        S = 1024
+        img = Image.new("RGB", (S, S))
+        d = ImageDraw.Draw(img)
+        for y in range(S):
+            t = y / S
+            d.line([(0, y), (S, y)], fill=(47 - int(20 * t), 95 + int(20 * t), 158 - int(30 * t)))
+        d.ellipse([S * 0.18, S * 0.62, S * 0.82, S * 1.30], fill=(14, 110, 125))
+        d.rectangle([S * 0.44, S * 0.50, S * 0.56, S * 0.68], fill=(226, 239, 241))
+        d.ellipse([S * 0.32, S * 0.20, S * 0.68, S * 0.60], fill=(226, 239, 241))
+        d.chord([S * 0.30, S * 0.16, S * 0.70, S * 0.48], 180, 360, fill=(46, 115, 87))
+        img.resize((512, 512), Image.LANCZOS).save(sys.argv[1], "PNG")
+        EOF
+      '';
+
   stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
     case "$1" in
       status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
@@ -227,6 +252,14 @@ pkgs.testers.nixosTest {
                 f"journalctl -u authelia-losos --after-cursor='{mark}' | grep -q 'Reloaded successfully'",
                 timeout=120,
             )
+
+    with subtest("Matus has a profile picture; Eva keeps the colour her name gives"):
+        code, body = call(
+            mattbox, "PUT", "/api/account/picture", sign_in(mattbox),
+            extra=f"-H 'Content-Type: image/png' --data-binary @${picture}",
+        )
+        assert code == 200, (code, body)
+        assert json.loads(body)["picture"].startswith("/api/profiles/matus/picture?v="), body
 
     with subtest("other boxes reach the link without signing in; people do not reach the rest"):
         # A plain GET is not a WebSocket: the service, not LosOS Login,
