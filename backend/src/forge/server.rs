@@ -139,6 +139,13 @@ pub fn caller(req: &HttpRequest, state: &State) -> Result<Caller, Fail> {
     });
     let authorization = header(req, "authorization");
     let act_as = header(req, HEADER_AS);
+    // The pages act for the person nginx names; a page of another site
+    // must not, whatever cookie the browser sends along.
+    if trusted && person.is_some() && authorization.is_none() && cross_site(req) {
+        return Err(Fail::forbidden(
+            "A page of another site cannot act for you here.",
+        ));
+    }
     match auth::resolve(
         &state.store,
         &state.admin_hash,
@@ -154,6 +161,29 @@ pub fn caller(req: &HttpRequest, state: &State) -> Result<Caller, Fail> {
         Ok(Err(Refused::BadName(why))) => Err(Fail::forbidden(why)),
         Err(e) => Err(e.into()),
     }
+}
+
+/// A browser request from another site: an unsafe method that the browser
+/// says came from elsewhere (`Sec-Fetch-Site`), or, from a browser too old
+/// to say, whose `Origin` is not this host. git and scripts send neither.
+pub fn cross_site(req: &HttpRequest) -> bool {
+    if matches!(req.method().as_str(), "GET" | "HEAD" | "OPTIONS") {
+        return false;
+    }
+    if let Some(site) = header(req, "sec-fetch-site") {
+        return !matches!(site.as_ref(), "same-origin" | "none");
+    }
+    let Some(origin) = header(req, "origin") else {
+        return false;
+    };
+    let host = header(req, "host").unwrap_or_default();
+    let origin: &str = &origin;
+    let origin_host = origin
+        .split_once("://")
+        .map(|(_, h)| h)
+        .unwrap_or(origin)
+        .trim_end_matches('/');
+    origin == "null" || !origin_host.eq_ignore_ascii_case(&host)
 }
 
 pub fn message(text: &str) -> serde_json::Value {
@@ -341,4 +371,37 @@ pub fn run(config: Config, listen: Listen) -> anyhow::Result<()> {
         }
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::test::TestRequest;
+
+    #[test]
+    fn writes_from_another_site_are_told_apart() {
+        let post = || TestRequest::post().insert_header(("host", "box.local"));
+        let r = post()
+            .insert_header(("sec-fetch-site", "cross-site"))
+            .to_http_request();
+        assert!(cross_site(&r));
+        let r = post()
+            .insert_header(("sec-fetch-site", "same-origin"))
+            .insert_header(("origin", "https://box.local"))
+            .to_http_request();
+        assert!(!cross_site(&r));
+        let r = post()
+            .insert_header(("origin", "https://evil.example"))
+            .to_http_request();
+        assert!(cross_site(&r), "an old browser's Origin");
+        let r = post()
+            .insert_header(("origin", "https://box.local"))
+            .to_http_request();
+        assert!(!cross_site(&r));
+        assert!(!cross_site(&post().to_http_request()), "git sends neither");
+        let r = TestRequest::get()
+            .insert_header(("sec-fetch-site", "cross-site"))
+            .to_http_request();
+        assert!(!cross_site(&r), "a GET changes nothing");
+    }
 }

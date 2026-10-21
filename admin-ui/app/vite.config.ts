@@ -119,17 +119,19 @@ export default defineConfig({
     sourcemap: false,
     // The appliance has no external hosts and no CDN: one origin, one bundle.
     modulePreload: { polyfill: false },
-    // Four pages: the admin SPA at /, LosOS Lab at /lab/ (nginx serves
+    // Five pages: the admin SPA at /, LosOS Lab at /lab/ (nginx serves
     // dist/lab/index.html there under the Lab's own CSP), a company edge's
     // manage page, which the edge serves at /manage/ from this same dist/
-    // (edge/registrar/src/server/manage.rs), and LosOS Cloud at /cloud/
-    // (modules/cloud.nix). They share chunks.
+    // (edge/registrar/src/server/manage.rs), LosOS Cloud at /cloud/
+    // (modules/cloud.nix) and LosOS Git at /git/ (modules/containers.nix).
+    // They share chunks.
     rolldownOptions: {
       input: {
         main: join(root, "index.html"),
         lab: join(root, "lab/index.html"),
         manage: join(root, "manage/index.html"),
         cloud: join(root, "cloud/index.html"),
+        git: join(root, "git/index.html"),
       },
     },
   },

@@ -163,8 +163,16 @@ and is never served or built by nix.
   unix socket nginx reaches (headers trusted) and `127.0.0.1:3000`
   (tokens only; lososd uses the admin token in
   `/var/lib/losos-git/admin-token` with `X-Losos-As`). Issues, PRs,
-  comments, labels and attachments are in the same SQLite (read-only API
-  for now). A box upgraded from Forgejo runs `losos-git-forgejo-import`
+  comments, labels and attachments are in the same SQLite. Pull requests
+  are writable: compare, open, line comments in threads, reviews with a
+  verdict, requested reviewers, merge (merge, squash, fast-forward) in a
+  temporary worktree (`forge/pulls.rs`). Worktrees are marked by push
+  options `worktree=` and `computer=` (`forge/worktrees.rs`). The pages
+  are a fifth Vite page of the admin UI (`admin-ui/app/git/`, `src/git/`)
+  at `/git/`: nginx serves them, strips `/git` from `/git/api/` and the
+  smart-HTTP paths to the socket. A write with sign-in headers and no
+  token is refused when `Sec-Fetch-Site`/`Origin` say another site sent
+  it (`server::cross_site`). A box upgraded from Forgejo runs `losos-git-forgejo-import`
   before LosOS Git: it moves the repositories, exports Forgejo's Postgres
   (a private copy of the data dir when Postgres is off) or SQLite, keeps a
   full dump, and `forge/import.rs` takes in accounts, tokens (Forgejo's
