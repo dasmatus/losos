@@ -14,18 +14,14 @@ use crate::cloud::collab::hub::Hub;
 use crate::cloud::collab::room::Room;
 use crate::cloud::collab::store::{CollabStore, MemStore};
 
-struct Everyone(Vec<&'static str>);
-
-impl People for Everyone {
-    fn exists(&self, login: &str) -> bool {
-        self.0.contains(&login)
-    }
-    fn display_name(&self, login: &str) -> String {
-        let mut c = login.chars();
-        c.next()
-            .map(|f| f.to_uppercase().chain(c).collect())
-            .unwrap_or_default()
-    }
+/// Someone signed in whose cloud login is their LosOS Login name.
+fn p(login: &str) -> Person {
+    let mut c = login.chars();
+    let name: String = c
+        .next()
+        .map(|f| f.to_uppercase().chain(c).collect())
+        .unwrap_or_default();
+    Person::named(login, &name)
 }
 
 /// The network: boxes by name, and whether the cable is plugged in.
@@ -104,7 +100,7 @@ impl Net {
         ((a_out, a_in), (b_out, b_in))
     }
 
-    fn add(self: &Arc<Self>, name: &str, people: Vec<&'static str>) -> (Arc<Mesh>, Arc<MemStore>) {
+    fn add(self: &Arc<Self>, name: &str, _people: Vec<&'static str>) -> (Arc<Mesh>, Arc<MemStore>) {
         let store = Arc::new(MemStore::new());
         let hub = Hub::with_timing(
             store.clone() as Arc<dyn CollabStore>,
@@ -117,7 +113,6 @@ impl Net {
             Identity::ephemeral(),
             Db::memory().unwrap(),
             hub,
-            Arc::new(Everyone(people)),
             self.dialer(),
         );
         Arc::get_mut(&mut mesh).unwrap().retry = Duration::from_millis(200);
@@ -236,7 +231,6 @@ async fn a_box_cannot_dial_in_under_another_boxs_name() {
         Identity::ephemeral(),
         Db::memory().unwrap(),
         Hub::new(Arc::new(MemStore::new()), tempdir("liar")),
-        Arc::new(Everyone(vec![])),
         net.dialer(),
     );
     let (client, server) = net.cable();
@@ -258,7 +252,7 @@ async fn two_people_on_two_boxes_edit_one_file() {
     let file = store.add("matus", None, "Holiday 2026.md", Some(b"# Holiday 2026\n"));
 
     let s = a
-        .share("matus", file, "eva@kitchenbox", Perm::Edit)
+        .share(&p("matus"), file, "eva@kitchenbox", Perm::Edit)
         .unwrap();
     eventually("the offer arrives", || b.incoming("eva").len() == 1).await;
     let got = &b.incoming("eva")[0];
@@ -312,7 +306,7 @@ async fn edits_made_while_apart_merge_when_the_boxes_meet() {
     tokio::spawn(b.clone().run());
     let file = store.add("matus", None, "list.txt", Some(b"milk\n"));
     let s = a
-        .share("matus", file, "eva@kitchenbox", Perm::Edit)
+        .share(&p("matus"), file, "eva@kitchenbox", Perm::Edit)
         .unwrap();
     eventually("offer", || b.incoming("eva").len() == 1).await;
     b.answer("eva", &s.id, true).await.unwrap();
@@ -356,7 +350,7 @@ async fn a_read_only_share_cannot_change_the_file() {
     let (b, _) = net.add("kitchenbox", vec!["eva"]);
     let file = store.add("matus", None, "budget.txt", Some(b"rent 900\n"));
     let s = a
-        .share("matus", file, "eva@kitchenbox", Perm::Read)
+        .share(&p("matus"), file, "eva@kitchenbox", Perm::Read)
         .unwrap();
     eventually("offer", || b.incoming("eva").len() == 1).await;
     b.answer("eva", &s.id, true).await.unwrap();
@@ -379,7 +373,7 @@ async fn taking_a_share_back_removes_it_from_the_other_box() {
     let (b, _) = net.add("kitchenbox", vec!["eva"]);
     let file = store.add("matus", None, "notes.md", Some(b"x\n"));
     let s = a
-        .share("matus", file, "eva@kitchenbox", Perm::Edit)
+        .share(&p("matus"), file, "eva@kitchenbox", Perm::Edit)
         .unwrap();
     eventually("offer", || b.incoming("eva").len() == 1).await;
     b.answer("eva", &s.id, true).await.unwrap();
@@ -405,7 +399,7 @@ async fn a_shared_folder_is_read_through_the_link_and_nothing_outside_it() {
     let soup = store.add("matus", Some(folder), "soup.md", Some(b"## Soup\n"));
     let private = store.add("matus", None, "diary.md", Some(b"secret\n"));
     let s = a
-        .share("matus", folder, "eva@kitchenbox", Perm::Edit)
+        .share(&p("matus"), folder, "eva@kitchenbox", Perm::Edit)
         .unwrap();
     eventually("offer", || b.incoming("eva").len() == 1).await;
     assert!(b.incoming("eva")[0].folder);
@@ -444,27 +438,29 @@ async fn a_shared_folder_is_read_through_the_link_and_nothing_outside_it() {
 }
 
 #[tokio::test]
-async fn sharing_with_nobody_there_is_declined() {
+async fn a_share_for_someone_unknown_waits_for_them() {
     let net = Net::new();
     let (a, store) = net.add("mattbox", vec!["matus"]);
     let (_b, _) = net.add("kitchenbox", vec!["eva"]);
     let file = store.add("matus", None, "n.md", Some(b"x"));
-    a.share("matus", file, "nobody@kitchenbox", Perm::Edit)
+    a.share(&p("matus"), file, "nobody@kitchenbox", Perm::Edit)
         .unwrap();
-    eventually("declined", || {
-        a.outgoing("matus")[0].state == OutState::Declined
+    // The other box takes it without saying whether "nobody" has an
+    // account there.
+    eventually("offered", || {
+        a.outgoing("matus")[0].state == OutState::Pending
     })
     .await;
     assert!(matches!(
-        a.share("matus", file, "eva", Perm::Edit),
+        a.share(&p("matus"), file, "eva", Perm::Edit),
         Err(MeshError::BadAddress)
     ));
     assert!(matches!(
-        a.share("matus", file, "eva@mattbox", Perm::Edit),
+        a.share(&p("matus"), file, "eva@mattbox", Perm::Edit),
         Err(MeshError::BadAddress)
     ));
     assert!(matches!(
-        a.share("eva", file, "eva@kitchenbox", Perm::Edit),
+        a.share(&p("eva"), file, "eva@kitchenbox", Perm::Edit),
         Err(MeshError::Forbidden)
     ));
 }
@@ -477,7 +473,7 @@ async fn a_share_offered_while_apart_arrives_later() {
     tokio::spawn(a.clone().run());
     net.cut();
     let file = store.add("matus", None, "n.md", Some(b"x"));
-    a.share("matus", file, "eva@kitchenbox", Perm::Read)
+    a.share(&p("matus"), file, "eva@kitchenbox", Perm::Read)
         .unwrap();
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(a.outgoing("matus")[0].state, OutState::Unsent);

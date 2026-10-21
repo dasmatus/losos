@@ -6,3 +6,4 @@ pub mod hub;
 pub mod room;
 pub mod routes;
 pub mod store;
+pub mod store_impl;

@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS pins (
 CREATE TABLE IF NOT EXISTS outgoing (
   id TEXT PRIMARY KEY,
   owner TEXT NOT NULL,
+  owner_address TEXT NOT NULL,
+  owner_name TEXT NOT NULL,
   file_id INTEGER NOT NULL,
   name TEXT NOT NULL,
   folder INTEGER NOT NULL,
@@ -95,7 +97,11 @@ impl OutState {
 #[serde(rename_all = "camelCase")]
 pub struct Outgoing {
     pub id: String,
+    /// The cloud login whose file it is.
     pub owner: String,
+    /// `matus@mattbox.example`, as the other box shows it.
+    pub owner_address: String,
+    pub owner_name: String,
     pub file_id: FileId,
     pub name: String,
     pub folder: bool,
@@ -215,8 +221,8 @@ impl Db {
 
     pub fn add_outgoing(&self, s: &Outgoing) -> rusqlite::Result<()> {
         self.c().execute(
-            "INSERT INTO outgoing (id, owner, file_id, name, folder, recipient, remote, perm, state, created)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO outgoing (id, owner, file_id, name, folder, recipient, remote, perm, state, created, owner_address, owner_name)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 s.id,
                 s.owner,
@@ -227,7 +233,9 @@ impl Db {
                 s.remote,
                 perm_str(s.perm),
                 s.state.as_str(),
-                s.created
+                s.created,
+                s.owner_address,
+                s.owner_name
             ],
         )?;
         Ok(())
@@ -245,11 +253,13 @@ impl Db {
             perm: perm_parse(&r.get::<_, String>(7)?),
             state: OutState::parse(&r.get::<_, String>(8)?),
             created: r.get(9)?,
+            owner_address: r.get(10)?,
+            owner_name: r.get(11)?,
         })
     }
 
     const OUT_COLS: &'static str =
-        "id, owner, file_id, name, folder, recipient, remote, perm, state, created";
+        "id, owner, file_id, name, folder, recipient, remote, perm, state, created, owner_address, owner_name";
 
     pub fn outgoing(&self, id: &str) -> Option<Outgoing> {
         self.c()
@@ -377,6 +387,17 @@ impl Db {
         "id, remote, owner_remote, owner_name, recipient, name, folder, size, perm, state, created, unsynced";
 
     /// Shares sent to `login`, newest first.
+    /// Offers from `remote` nobody here has answered yet.
+    pub fn unanswered_from(&self, remote: &str) -> u64 {
+        self.c()
+            .query_row(
+                "SELECT count(*) FROM incoming_mesh WHERE remote = ?1 AND state = 'pending'",
+                [remote],
+                |r| r.get::<_, i64>(0),
+            )
+            .map_or(0, |n| n.max(0) as u64)
+    }
+
     pub fn incoming_for(&self, login: &str) -> Vec<Incoming> {
         let c = self.c();
         let Ok(mut st) = c.prepare(&format!(
@@ -497,6 +518,8 @@ mod tests {
         let s = Outgoing {
             id: "x".into(),
             owner: "alice".into(),
+            owner_address: "alice@boxa".into(),
+            owner_name: "Alice".into(),
             file_id: 4,
             name: "n.md".into(),
             folder: false,

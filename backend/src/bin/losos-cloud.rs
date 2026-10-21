@@ -37,6 +37,15 @@ enum Cmd {
         product: String,
         #[arg(long, default_value_t = 30)]
         trash_days: i64,
+        /// Share with people on other boxes and edit together across
+        /// them, as the box other boxes reach at this name
+        /// (`<name>/mesh/v1/link`).
+        #[arg(long)]
+        mesh_name: Option<String>,
+        /// Accept other boxes' certificates nothing vouches for. Who a box
+        /// is rests on its key either way; see `cloud::mesh::dial`.
+        #[arg(long)]
+        mesh_self_signed: bool,
     },
     /// Bring the table in line with the files on disk, for one person or all.
     Scan {
@@ -79,6 +88,8 @@ fn main() -> anyhow::Result<()> {
             workers,
             product,
             trash_days,
+            mesh_name,
+            mesh_self_signed,
         } => {
             let cloud = Arc::new(Cloud::open(&cli.root, Config { product, trash_days })?);
             let listen = match (socket, listen) {
@@ -86,14 +97,32 @@ fn main() -> anyhow::Result<()> {
                 (None, Some(l)) => server::Listen::Tcp(l),
                 (None, None) => server::Listen::Unix("/run/losos-cloud/http.sock".into()),
             };
-            actix_web::rt::System::new().block_on(server::serve(
-                cloud,
-                server::Options {
-                    listen,
-                    trust_header,
-                    workers,
-                },
-            ))?;
+            // A dot first: no login starts with one, so no home can take the name.
+            let mesh_dir = cli.root.join(".mesh");
+            actix_web::rt::System::new().block_on(async move {
+                if let Some(name) = mesh_name {
+                    cloud::mesh::start(
+                        &cloud,
+                        cloud::mesh::Options {
+                            name,
+                            dir: mesh_dir,
+                            dialer: cloud::mesh::dial::Dialer {
+                                self_signed: mesh_self_signed,
+                                ..Default::default()
+                            },
+                        },
+                    )?;
+                }
+                server::serve(
+                    cloud,
+                    server::Options {
+                        listen,
+                        trust_header,
+                        workers,
+                    },
+                )
+                .await
+            })?;
             Ok(())
         }
         Cmd::Scan { owner } => {

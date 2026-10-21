@@ -72,8 +72,6 @@ pub enum MeshError {
     Forbidden,
     #[error("that is not an address like name@box")]
     BadAddress,
-    #[error("there is nobody by that name on the other box")]
-    UnknownPerson,
     #[error("the file cannot be edited together")]
     Open(#[from] OpenError),
     #[error("the file is too large to send")]
@@ -96,7 +94,6 @@ impl MeshError {
             MeshError::NotFound => "not-found",
             MeshError::Forbidden => "forbidden",
             MeshError::BadAddress => "bad-address",
-            MeshError::UnknownPerson => "unknown-person",
             MeshError::Open(OpenError::NotText) => "not-text",
             MeshError::Open(OpenError::TooLarge) | MeshError::TooLarge => "too-large",
             MeshError::Open(OpenError::Folder) => "folder",
@@ -143,11 +140,33 @@ pub enum Op {
     Stat { share: String, file: FileId },
 }
 
-/// Who lives on this box, as far as the mesh needs to know.
-pub trait People: Send + Sync + 'static {
-    fn exists(&self, login: &str) -> bool;
-    fn display_name(&self, login: &str) -> String;
+/// The person signed in, as the mesh needs them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Person {
+    /// Whose files these are in the cloud (the owner's are `notshared`).
+    pub login: String,
+    /// Their LosOS Login name: what goes before the `@` in their address.
+    /// Shares from other boxes are addressed to this.
+    pub public: String,
+    /// The name people see.
+    pub name: String,
 }
+
+impl Person {
+    /// Someone whose cloud login is their LosOS Login name.
+    pub fn named(login: &str, name: &str) -> Self {
+        Person {
+            login: login.into(),
+            public: login.into(),
+            name: name.into(),
+        }
+    }
+}
+
+/// Offers from one box that may wait unanswered at once. Offers are taken
+/// for anyone, known here or not, so that a share does not tell another box
+/// who has an account here; this keeps a box from filling the table.
+const UNANSWERED: u64 = 500;
 
 /// Opens a connection to the box at a name. The real one is
 /// [`dial::Dialer`]; tests connect boxes in memory.
@@ -162,7 +181,6 @@ pub struct Mesh {
     pub identity: Identity,
     pub db: Db,
     pub hub: Arc<Hub>,
-    people: Arc<dyn People>,
     dial: DialFn,
     links: Mutex<HashMap<String, Arc<Link>>>,
     /// Every live link, also a second one to a box both dialled at once:
@@ -183,20 +201,12 @@ fn store_err<E>(_: E) -> MeshError {
 }
 
 impl Mesh {
-    pub fn new(
-        name: String,
-        identity: Identity,
-        db: Db,
-        hub: Arc<Hub>,
-        people: Arc<dyn People>,
-        dial: DialFn,
-    ) -> Arc<Mesh> {
+    pub fn new(name: String, identity: Identity, db: Db, hub: Arc<Hub>, dial: DialFn) -> Arc<Mesh> {
         Arc::new(Mesh {
             name,
             identity,
             db,
             hub,
-            people,
             dial,
             links: Mutex::new(HashMap::new()),
             every: Mutex::new(Vec::new()),
@@ -284,7 +294,7 @@ impl Mesh {
     /// Share `file` (owned by or editable by `owner`) with `address`.
     pub fn share(
         self: &Arc<Self>,
-        owner: &str,
+        owner: &Person,
         file: FileId,
         address: &str,
         perm: Perm,
@@ -298,12 +308,14 @@ impl Mesh {
             .stat(file)
             .map_err(store_err)?
             .ok_or(MeshError::NotFound)?;
-        if store.access(owner, file) != Perm::Edit {
+        if store.access(&owner.login, file) != Perm::Edit {
             return Err(MeshError::Forbidden);
         }
         let s = Outgoing {
             id: identity::random_id(),
-            owner: owner.into(),
+            owner: owner.login.clone(),
+            owner_address: format!("{}@{}", owner.public, self.name),
+            owner_name: owner.name.chars().take(120).collect(),
             file_id: file,
             name: info.name,
             folder: info.folder,
@@ -343,23 +355,22 @@ impl Mesh {
                 .map_or(0, |i| i.size);
             let op = Op::Offer {
                 share: s.id.clone(),
-                owner: format!("{}@{}", s.owner, self.name),
-                owner_name: self.people.display_name(&s.owner),
+                owner: s.owner_address.clone(),
+                owner_name: s.owner_name.clone(),
                 recipient: s.recipient.clone(),
                 name: s.name.clone(),
                 folder: s.folder,
                 size,
                 perm: s.perm,
             };
-            let state = match l.request(op).await {
-                Ok(_) => OutState::Pending,
-                Err(MeshError::Remote(code)) if code == "unknown-person" => OutState::Declined,
+            match l.request(op).await {
+                Ok(_) => {
+                    let _ = self.db.set_out_state(&s.id, OutState::Pending);
+                }
                 Err(e) => {
                     tracing::info!(peer = remote, error = %e, "mesh: offer not delivered");
-                    continue;
                 }
-            };
-            let _ = self.db.set_out_state(&s.id, state);
+            }
         }
     }
 
@@ -736,8 +747,9 @@ impl Mesh {
                 {
                     return Err(MeshError::Forbidden);
                 }
-                if !self.people.exists(login) {
-                    return Err(MeshError::UnknownPerson);
+                if self.db.incoming(&share).is_none() && self.db.unanswered_from(peer) >= UNANSWERED
+                {
+                    return Err(MeshError::TooLarge);
                 }
                 let clip = |s: String, n: usize| s.chars().take(n).collect::<String>();
                 self.db
@@ -900,4 +912,53 @@ impl Mesh {
             tokio::time::sleep(self.retry).await;
         }
     }
+}
+
+/// How [`start`] sets the mesh up.
+pub struct Options {
+    /// This box's name as other boxes reach it.
+    pub name: String,
+    /// Where the key, the table and the documents are kept.
+    pub dir: std::path::PathBuf,
+    pub dialer: dial::Dialer,
+}
+
+/// Start sharing across boxes for `cloud`: the key, the table, the
+/// documents, the retries, and the cloud's change notices passed on to the
+/// documents open in the editor. Call it inside the runtime that serves.
+pub fn start(cloud: &Arc<crate::cloud::Cloud>, opts: Options) -> std::io::Result<Arc<Mesh>> {
+    use crate::cloud::collab::store_impl::CloudStore;
+    use tokio::sync::broadcast::error::RecvError;
+
+    if !identity::valid_box_name(&opts.name) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{:?} is not a box name other boxes can reach", opts.name),
+        ));
+    }
+    std::fs::create_dir_all(&opts.dir)?;
+    let identity = Identity::load_or_create(&opts.dir.join("identity.pk8"))?;
+    let db = Db::open(&opts.dir.join("mesh.db")).map_err(std::io::Error::other)?;
+    let store = Arc::new(CloudStore(Arc::downgrade(cloud)));
+    let hub = Hub::new(store, opts.dir.join("docs"));
+    let mesh = Mesh::new(opts.name, identity, db, hub, opts.dialer.into_fn());
+    cloud
+        .mesh
+        .set(mesh.clone())
+        .map_err(|_| std::io::Error::other("the mesh is started already"))?;
+    tokio::spawn(mesh.clone().run());
+    let mut changes = cloud.subscribe();
+    let hub = mesh.hub.clone();
+    tokio::spawn(async move {
+        loop {
+            match changes.recv().await {
+                Ok(c) => hub.file_changed(c.file_id, &c.etag),
+                Err(RecvError::Lagged(n)) => {
+                    tracing::warn!(missed = n, "mesh: change notices dropped");
+                }
+                Err(RecvError::Closed) => break,
+            }
+        }
+    });
+    Ok(mesh)
 }
