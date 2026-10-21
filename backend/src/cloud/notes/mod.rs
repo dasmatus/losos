@@ -104,7 +104,12 @@ fn relative<'a>(root: &str, path: &'a str) -> &'a str {
 
 impl Cache {
     fn scanned(&self, cloud: &Cloud, e: &Entry) -> Arc<scan::Scanned> {
-        if let Some((etag, s)) = self.read.lock().unwrap_or_else(|p| p.into_inner()).get(&e.id) {
+        if let Some((etag, s)) = self
+            .read
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&e.id)
+        {
             if *etag == e.etag {
                 return s.clone();
             }
@@ -353,14 +358,21 @@ mod tests {
                 cloud.store.mkdir_all("ann", parent).unwrap();
             }
         }
-        cloud.store.write_bytes("ann", path, text.as_bytes()).unwrap();
+        cloud
+            .store
+            .write_bytes("ann", path, text.as_bytes())
+            .unwrap();
     }
 
     #[test]
     fn a_vault_lists_notes_and_files_but_not_dot_folders() {
         let (_d, cloud) = cloud();
         write(&cloud, "Vault/Home.md", "# Home\n[[Ideas]] #start\n");
-        write(&cloud, "Vault/Sub/Ideas.md", "---\naliases: [Thoughts]\n---\n![[pic.png]]");
+        write(
+            &cloud,
+            "Vault/Sub/Ideas.md",
+            "---\naliases: [Thoughts]\n---\n![[pic.png]]",
+        );
         write(&cloud, "Vault/pic.png", "png");
         write(&cloud, "Vault/.obsidian/app.json", "{}");
         write(&cloud, "Vault/.trash/Old.md", "old");
@@ -451,7 +463,11 @@ mod tests {
     fn search_finds_lines_with_every_word_names_first() {
         let (_d, cloud) = cloud();
         write(&cloud, "V/Garden plan.md", "nothing here");
-        write(&cloud, "V/Log.md", "The garden plan is late\nplan\nGarden PLAN again");
+        write(
+            &cloud,
+            "V/Log.md",
+            "The garden plan is late\nplan\nGarden PLAN again",
+        );
         let v = vault(&cloud, &Cache::default(), "ann", "V").unwrap();
         let hits = search(&cloud, &v, "ann", "garden plan");
         let got: Vec<(&str, usize)> = hits.iter().map(|h| (h.path.as_str(), h.line)).collect();
