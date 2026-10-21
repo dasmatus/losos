@@ -123,3 +123,13 @@ fi
 say ""
 say "Next: losos key import --gpg <your key>, then losos login <address of your box>."
 say "The handbook walks through it: https://losos.dasmat.us/manual/terminal/"
+
+# ── AI tools ─────────────────────────────────────────────────────────────
+# One line when AI tools are on this computer and the companion is in none
+# of them. It only looks; `losos agents install` asks before it changes any.
+hint=$("$dest/losos" agents hint 2>/dev/null || true)
+if [ -n "$hint" ]; then
+  say ""
+  say "$hint"
+  say "The handbook explains it: https://losos.dasmat.us/manual/ai-agents/"
+fi
