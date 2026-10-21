@@ -11,6 +11,7 @@ import { applyStoredTheme } from "@/lib/theme";
 import "sonner/dist/styles.css";
 import "@/styles/index.css";
 import { CloudRoot } from "./app";
+import "./collab/opener";
 
 applyStoredTheme();
 applyFavicon();

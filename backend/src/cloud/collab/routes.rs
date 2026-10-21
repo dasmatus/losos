@@ -25,7 +25,20 @@ pub struct Which {
 
 /// The JSON error the web app shows a sentence for.
 pub fn error(e: &MeshError) -> HttpResponse {
-    let body = json!({ "error": e.code() });
+    // The cloud API's shape: a code in its camelCase, and words.
+    let mut code = String::new();
+    let mut upper = false;
+    for c in e.code().chars() {
+        if c == '-' {
+            upper = true;
+        } else if upper {
+            code.push(c.to_ascii_uppercase());
+            upper = false;
+        } else {
+            code.push(c);
+        }
+    }
+    let body = json!({ "code": code, "error": e.to_string() });
     match e {
         MeshError::NotFound | MeshError::Open(super::hub::OpenError::NotFound) => {
             HttpResponse::NotFound().json(body)
@@ -99,6 +112,9 @@ async fn open(
                 "box": s.remote,
                 "perm": s.perm,
                 "remote": true,
+                // Edits made here while the owner's box is out of reach
+                // stay here and merge when it is back.
+                "linked": mesh.reaches(&s.remote),
                 "me": me(mesh, who),
             });
             Ok((doc, access, meta))

@@ -9,6 +9,7 @@ import {
   LaptopPhoneSyncIcon,
   Search01Icon,
   StarIcon,
+  UserSharingIcon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -33,11 +34,13 @@ import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { logoFor } from "@/lib/logo";
 import { cn } from "@/lib/utils";
+import { EditPage } from "./collab/page";
 import { ConnectPage } from "./connect";
 import { DevicesView } from "./devices";
 import { FilesView } from "./files";
 import { formatBytes } from "./format";
 import { ListView } from "./lists";
+import { SharedFolderView, SharedView } from "./mesh/shared";
 import { PhotosView } from "./photos";
 import { useMe } from "./store";
 import { TrashView } from "./trash";
@@ -68,6 +71,7 @@ const PLACES: readonly Place[] = [
   { to: "/files", label: "cloud.nav.files", icon: Folder01Icon },
   { to: "/recent", label: "cloud.nav.recent", icon: Clock01Icon },
   { to: "/favorites", label: "cloud.nav.favorites", icon: StarIcon },
+  { to: "/shared", label: "mesh.shared.title", icon: UserSharingIcon },
   { to: "/photos", label: "cloud.nav.photos", icon: Image01Icon },
   { to: "/trash", label: "cloud.nav.trash", icon: Delete02Icon },
   { to: "/devices", label: "cloud.nav.devices", icon: LaptopPhoneSyncIcon },
@@ -76,13 +80,21 @@ const PLACES: readonly Place[] = [
 function Shell() {
   const { pathname } = useLocation();
   const connecting = pathname.startsWith("/connect/");
+  const editing = pathname.startsWith("/edit/");
   return (
     <div className="losos-shell min-h-dvh text-ink">
-      <TopBar search={!connecting} />
+      <TopBar search={!connecting && !editing} />
       {connecting ? (
         <Routes>
           <Route path="/connect/:token" element={<ConnectPage />} />
         </Routes>
+      ) : editing ? (
+        // A document gets the width; the places are one link away.
+        <main className="px-4 pt-5 pb-12 sm:px-6">
+          <Routes>
+            <Route path="/edit/:file" element={<EditPage />} />
+          </Routes>
+        </main>
       ) : (
         <SidebarProvider className={cn("mx-auto flex w-full max-w-6xl px-4 pt-5 pb-12 sm:px-6", "max-md:flex-col max-md:gap-3 md:gap-6")}>
           <Places />
@@ -93,6 +105,8 @@ function Shell() {
               <Route path="/recent" element={<ListView kind="recent" />} />
               <Route path="/favorites" element={<ListView kind="favorites" />} />
               <Route path="/search" element={<ListView kind="search" />} />
+              <Route path="/shared" element={<SharedView />} />
+              <Route path="/shared/:share" element={<SharedFolderView />} />
               <Route path="/photos" element={<PhotosView />} />
               <Route path="/trash" element={<TrashView />} />
               <Route path="/devices" element={<DevicesView />} />

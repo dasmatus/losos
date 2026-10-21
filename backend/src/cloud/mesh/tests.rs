@@ -493,6 +493,7 @@ async fn a_box_cannot_offer_files_of_another_box() {
         owner_name: "Your bank".into(),
         recipient: "eva@kitchenbox".into(),
         name: "statement.txt".into(),
+        file: 1,
         folder: false,
         size: 1,
         perm: Perm::Read,

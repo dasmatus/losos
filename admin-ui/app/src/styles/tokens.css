@@ -62,6 +62,22 @@
   --warn: #8c6512;
   --crit: #a8443c;
 
+  /* People: the colour of someone's initials, their cursor in a document
+   * edited together and their ring in a row of faces. Six, picked by the
+   * person or by their name; the wash is the ground behind initials. */
+  --person-teal: #0e7c7b;
+  --person-teal-wash: #dff1ef;
+  --person-blue: #2f64b0;
+  --person-blue-wash: #e3ecf8;
+  --person-violet: #6a4fb3;
+  --person-violet-wash: #ece7f8;
+  --person-rose: #b23a5e;
+  --person-rose-wash: #f8e4ea;
+  --person-amber: #9a6410;
+  --person-amber-wash: #f6ecd9;
+  --person-green: #3a7d33;
+  --person-green-wash: #e4f1e1;
+
   /* Depth is a light-mode idea; dark flattens it and leans on --line. */
   --elev-card: 0 1px 2px rgb(24 33 42 / 0.05), 0 4px 16px rgb(24 33 42 / 0.06);
   --elev-pop: 0 12px 40px rgb(24 33 42 / 0.18);
@@ -92,6 +108,19 @@
     --warn: #c79a3e;
     --crit: #d1756c;
 
+    --person-teal: #4cb8b0;
+    --person-teal-wash: #12302e;
+    --person-blue: #6b9be0;
+    --person-blue-wash: #16243a;
+    --person-violet: #a58ee6;
+    --person-violet-wash: #241d38;
+    --person-rose: #e27d9b;
+    --person-rose-wash: #3a1a25;
+    --person-amber: #d9a245;
+    --person-amber-wash: #33260f;
+    --person-green: #78bd6f;
+    --person-green-wash: #18301a;
+
     --elev-card: 0 1px 2px rgb(0 0 0 / 0.4);
     --elev-pop: 0 12px 40px rgb(0 0 0 / 0.55);
   }
@@ -120,6 +149,19 @@
   --ok: #4fa583;
   --warn: #c79a3e;
   --crit: #d1756c;
+
+  --person-teal: #4cb8b0;
+  --person-teal-wash: #12302e;
+  --person-blue: #6b9be0;
+  --person-blue-wash: #16243a;
+  --person-violet: #a58ee6;
+  --person-violet-wash: #241d38;
+  --person-rose: #e27d9b;
+  --person-rose-wash: #3a1a25;
+  --person-amber: #d9a245;
+  --person-amber-wash: #33260f;
+  --person-green: #78bd6f;
+  --person-green-wash: #18301a;
 
   --elev-card: 0 1px 2px rgb(0 0 0 / 0.4);
   --elev-pop: 0 12px 40px rgb(0 0 0 / 0.55);

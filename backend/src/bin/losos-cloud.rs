@@ -5,12 +5,15 @@
 //! data folder's files in. The rules are in [`losos_ctl::cloud`].
 
 use clap::{Parser, Subcommand};
-use losos_ctl::cloud::{self, server, Cloud, Config};
+use losos_ctl::cloud::{self, Cloud, Config, server};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Parser)]
-#[command(version, about = "LosOS Cloud: files, WebDAV and the Nextcloud app protocol")]
+#[command(
+    version,
+    about = "LosOS Cloud: files, WebDAV and the Nextcloud app protocol"
+)]
 struct Cli {
     /// Where the files and the database are.
     #[arg(long, default_value = "/var/lib/losos-cloud")]
@@ -46,6 +49,10 @@ enum Cmd {
         /// is rests on its key either way; see `cloud::mesh::dial`.
         #[arg(long)]
         mesh_self_signed: bool,
+        /// Dial a box at this address instead of `wss://<name>/mesh/v1/link`,
+        /// as `<name>=<url>`. For a developer's machine.
+        #[arg(long, value_name = "NAME=URL")]
+        mesh_peer: Vec<String>,
     },
     /// Bring the table in line with the files on disk, for one person or all.
     Scan {
@@ -90,8 +97,15 @@ fn main() -> anyhow::Result<()> {
             trash_days,
             mesh_name,
             mesh_self_signed,
+            mesh_peer,
         } => {
-            let cloud = Arc::new(Cloud::open(&cli.root, Config { product, trash_days })?);
+            let cloud = Arc::new(Cloud::open(
+                &cli.root,
+                Config {
+                    product,
+                    trash_days,
+                },
+            )?);
             let listen = match (socket, listen) {
                 (Some(s), _) => server::Listen::Unix(s),
                 (None, Some(l)) => server::Listen::Tcp(l),
@@ -108,7 +122,11 @@ fn main() -> anyhow::Result<()> {
                             dir: mesh_dir,
                             dialer: cloud::mesh::dial::Dialer {
                                 self_signed: mesh_self_signed,
-                                ..Default::default()
+                                urls: mesh_peer
+                                    .iter()
+                                    .filter_map(|p| p.split_once('='))
+                                    .map(|(n, u)| (n.to_string(), u.to_string()))
+                                    .collect(),
                             },
                         },
                     )?;
