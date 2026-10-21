@@ -31,6 +31,11 @@
 #                                             scenario A (edge off) then B
 #   nix/demo/edge-lan/run.sh join [N]             turn a box's mesh join on for
 #                                             real (a rebuild on the box)
+#   nix/demo/edge-lan/run.sh publish              name the boxes boxa, boxb, …,
+#                                             turn their edge path on (a
+#                                             rebuild each), and reach every
+#                                             box by its public name through
+#                                             the edge
 #   nix/demo/edge-lan/run.sh edge off|on          power the edge off, or back on
 #   nix/demo/edge-lan/run.sh api [N] METHOD PATH  one request to box N (default 1)
 #   nix/demo/edge-lan/run.sh status               what is running
@@ -42,6 +47,7 @@
 #   LOSOS_BOX_PORT      8080  box 1's web UI on the host; box N is +N-1
 #                             (http://127.0.0.1:8080/, http://127.0.0.1:8081/)
 #   LOSOS_EDGE_API_PORT 8443  the edge's registrar http://127.0.0.1:8443/health
+#   LOSOS_EDGE_HTTPS_PORT 9443 the edge's Traefik, where published boxes answer
 #   LOSOS_BOX_MEM/CPUS/DISK_GB, LOSOS_BOX_PASSWORD, LOSOS_FLAKE, LOSOS_NIX_ARGS
 #
 # State lives in $LOSOS_DEMO_STATE (default nix/demo/edge-lan/state, gitignored):
@@ -54,6 +60,7 @@ state="${LOSOS_DEMO_STATE:-$here/state}"
 boxes="${LOSOS_BOXES:-2}"
 box_port="${LOSOS_BOX_PORT:-8080}"
 edge_api_port="${LOSOS_EDGE_API_PORT:-8443}"
+edge_https_port="${LOSOS_EDGE_HTTPS_PORT:-9443}"
 box_mem="${LOSOS_BOX_MEM:-8192}"
 box_cpus="${LOSOS_BOX_CPUS:-4}"
 box_disk_gb="${LOSOS_BOX_DISK_GB:-40}"
@@ -71,7 +78,7 @@ die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 # ── Tools through nix shell ────────────────────────────────────────────────
 # One `nix shell` per tool set rather than requiring installs. The closure
 # is fetched once from cache.nixos.org and then cached locally.
-tools="nixpkgs#qemu nixpkgs#vde2 nixpkgs#swtpm nixpkgs#curl nixpkgs#jq"
+tools="nixpkgs#qemu nixpkgs#vde2 nixpkgs#swtpm nixpkgs#curl nixpkgs#jq nixpkgs#python3"
 in_tools() { nix shell $nix_args --inputs-from "$flake" $tools -c "$@"; }
 
 have_kvm() { [ -w /dev/kvm ]; }
@@ -141,6 +148,7 @@ edge_up() {
     export NIX_DISK_IMAGE="$state/edge.qcow2"
     export LOSOS_LAN_SOCK="$state/lan.sock"
     export LOSOS_EDGE_API_PORT="$edge_api_port"
+    export LOSOS_EDGE_HTTPS_PORT="$edge_https_port"
     local extra=""
     have_kvm || extra="-accel tcg,thread=multi"
     export QEMU_OPTS="-qmp unix:$state/edge.qmp,server,nowait $extra"
@@ -204,13 +212,13 @@ box_qemu() { # box_qemu N BOOT(d|c) — start box N; stdout is QEMU's
     -daemonize -pidfile "$state/box$n.pid"
 }
 
-box_api() { # box_api N METHOD PATH [JSON]
-  local n=$1 method=$2 path=$3 data=${4:-}
+box_api() { # box_api N METHOD PATH [BODY [CONTENT-TYPE]]
+  local n=$1 method=$2 path=$3 data=${4:-} ctype=${5:-application/json}
   local token=""
   [ -s "$(key_of "$n")" ] && token="$(cat "$(key_of "$n")")"
   in_tools curl -sS --max-time 15 -X "$method" \
     ${token:+-H "Authorization: Bearer $token"} \
-    ${data:+-H "Content-Type: application/json" --data-binary "$data"} \
+    ${data:+-H "Content-Type: $ctype" --data-binary "$data"} \
     -w '\n%{http_code}' "http://127.0.0.1:$(port_of "$n")$path"
 }
 
@@ -398,6 +406,60 @@ cmd_join() {
   log "accepted: box $n is rebuilding into mesh mode. Follow it with: $0 api $n GET /api/status"
 }
 
+# ── publishing the boxes through the edge ─────────────────────────────────
+# The installed boxes are identical, name included, and the edge keys a box
+# by its name; so each gets its own (boxa, boxb, …) together with the edge
+# path (losos.proxy.enable), in one Apply. The edge enrols each box the first
+# time it calls (lan.openEnrolment in edge-vm.nix) and Traefik routes
+# <name>.losos.cfd down its tunnel. This host stands in for any computer that
+# asks for a box by that name: the name is pointed at the edge, as a site's
+# DNS would point it.
+name_of() { printf "box\\$(printf %o $((96 + $1)))"; }
+
+through() { # through NAME PATH: status line and body of a request via the edge
+  in_tools curl -sk --max-time 15 -w '\n%{http_code}' \
+    --resolve "$1.losos.cfd:$edge_https_port:127.0.0.1" "https://$1.losos.cfd:$edge_https_port$2"
+}
+
+cmd_publish() {
+  local n name out code
+  for n in $(seq 1 "$boxes"); do [ -s "$(key_of "$n")" ] || die "box $n is not claimed; run: $0 up"; done
+  alive "$state/edge.qmp" || edge_up
+  wait_edge true
+  for n in $(seq 1 "$boxes"); do
+    name=$(name_of "$n")
+    log "box $n: naming it $name and turning its edge path on (Apply, a rebuild on the box)"
+    out=$(box_api "$n" POST /api/apply "$(printf '{ ... }:\n{\n  losos.hostName = "%s";\n  losos.proxy.enable = true;\n}\n' "$name")" text/plain)
+    code=$(tail -1 <<<"$out")
+    [ "$code" = 200 ] || die "box $n: Apply answered $code: $(head -n -1 <<<"$out")"
+  done
+  for n in $(seq 1 "$boxes"); do
+    name=$(name_of "$n")
+    log "waiting for $name.losos.cfd to answer through the edge (the rebuild, then the first heartbeat)"
+    local started=$SECONDS
+    while :; do
+      out=$(through "$name" /nextcloud/status.php || true)
+      [ "$(tail -1 <<<"$out")" = 200 ] && break
+      [ $((SECONDS - started)) -lt 2400 ] || die "$name did not answer through the edge in 40 minutes: $out"
+      sleep 15
+    done
+    printf '   %s.losos.cfd/nextcloud/status.php through the edge: %s\n' "$name" "$(head -n -1 <<<"$out" | tr -d '\n')" >&2
+    out=$(through "$name" /)
+    printf '   %s.losos.cfd/ (the admin pages) through the edge: %s, they stay on the LAN\n' "$name" "$(tail -1 <<<"$out")" >&2
+  done
+  log "every box answers by its public name through the edge. Switching the edge off:"
+  edge_off
+  wait_edge false
+  for n in $(seq 1 "$boxes"); do
+    printf '   %s: public name %s, own page on the LAN %s\n' "$(name_of "$n")" \
+      "$(through "$(name_of "$n")" / 2>/dev/null | tail -1 || echo gone)" \
+      "$(box_api "$n" GET /api/health | tail -1)" >&2
+  done
+  log "and back on; the boxes find it and publish themselves again with no hand on them"
+  edge_up
+  wait_edge true
+}
+
 cmd_api() {
   local n=1
   case ${1:-} in [0-9]*) n=$1; shift ;; esac
@@ -447,6 +509,6 @@ cmd_clean() {
 }
 
 case ${1:-} in
-  build|up|walk|join|api|edge|status|down|clean) cmd=$1; shift; "cmd_$cmd" "$@" ;;
-  *) sed -n '2,48p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  build|up|walk|join|publish|api|edge|status|down|clean) cmd=$1; shift; "cmd_$cmd" "$@" ;;
+  *) sed -n '2,54p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
