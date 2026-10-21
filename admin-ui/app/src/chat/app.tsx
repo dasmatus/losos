@@ -1,10 +1,14 @@
 import * as React from "react";
+import { useNavigate } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  Add01Icon,
   ArrowLeft01Icon,
   Call02Icon,
   Comment01Icon,
+  Home01Icon,
   Notification01Icon,
+  Search01Icon,
   Settings01Icon,
   SquareLock01Icon,
   UserAdd01Icon,
@@ -22,32 +26,76 @@ import {
   SyncState,
 } from "matrix-js-sdk";
 import { CryptoEvent, type VerificationRequest } from "matrix-js-sdk/lib/crypto-api";
-import { AppBar, type AppBarPerson } from "@/components/app-bar";
-import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
-import { PersonAvatar } from "@/components/person";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { loadMe, useMe } from "@/lib/api";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
-import { Toaster } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
+import { PaneHeader } from "@/screens/settings/rows";
 import { Avatar } from "./avatar";
 import { CallsProvider, useCalls } from "./calls";
 import { Composer } from "./composer";
 import { ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, RoomSettingsDialog, StartChatDialog } from "./dialogs";
-import { directPartner, directRooms, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
-import { RoomList, SpaceRail } from "./room-list";
+import { directPartner, directRooms, isSpace, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
+import { RoomList } from "./room-list";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
-import { ChatRefused, goSignIn, onSignedOut, type Refusal, type Signed, signedHere, signIn, signOutHere, start } from "./session";
+import { ChatRefused, goSignIn, onSignedOut, type Refusal, type Signed, signIn, start } from "./session";
 import { RoomTimeline, type RowActions } from "./timeline";
 import { ThreadPanel } from "./thread-panel";
 
+/* LosOS Chat, a screen of the admin pages at /chat/ (App.tsx), in their top
+ * bar and sidebar like Mail: a header, a row of spaces and a search, then
+ * one card with the conversations beside the open one. On a phone the card
+ * shows one column at a time.
+ *
+ * The document has to be loaded at /chat/: nginx serves it there under
+ * chat's own policy (modules/containers.nix), which adds 'wasm-unsafe-eval'
+ * for the end-to-end crypto and blob: for decrypted media. The sidebar and
+ * the palette link to it as a real navigation; anything that routes here
+ * inside the page instead loads it again (loadedHere). */
+
 type Boot = { state: "loading" } | { state: "ready"; signed: Signed } | { state: "refused"; why: Refusal; message: string };
 
+/** Whether this document was loaded at /chat/, under chat's policy. */
+function loadedHere(): boolean {
+  const entry = performance.getEntriesByType("navigation")[0];
+  const url = entry !== undefined ? entry.name : window.location.href;
+  return new URL(url, window.location.href).pathname.startsWith("/chat/");
+}
+
+/* One session per page load. Leaving the screen for another admin page
+ * keeps the client syncing, so coming back is instant and two clients never
+ * share one device's crypto store. A homeserver that signs the device out
+ * clears it, and the screen, if it is on screen, signs in again. */
+let pending: Promise<Signed> | null = null;
+let ready: Signed | null = null;
+const signedOutListeners = new Set<() => void>();
+
+function session(): Promise<Signed> {
+  if (pending !== null) return pending;
+  const attempt: Promise<Signed> = (async () => {
+    const signed = await signIn();
+    onSignedOut(signed.client, () => {
+      if (ready === signed) ready = null;
+      if (pending === attempt) pending = null;
+      for (const listener of signedOutListeners) listener();
+    });
+    await start(signed.client);
+    ready = signed;
+    return signed;
+  })();
+  pending = attempt;
+  attempt.catch(() => {
+    if (pending === attempt) pending = null;
+  });
+  return attempt;
+}
+
 /* The room on screen lives in the address's hash (#/room/!id:server), so a
- * reload or a shared link opens it again without the box routing anything. */
+ * reload or a shared link opens it again. */
 function roomFromHash(): string | null {
   const match = /^#\/room\/(.+)$/.exec(window.location.hash);
   return match?.[1] !== undefined ? decodeURIComponent(match[1]) : null;
@@ -67,55 +115,64 @@ function useHashRoom(): [string | null, (id: string | null) => void] {
   return [room, go];
 }
 
-export function ChatRoot() {
+export default function ChatScreen() {
   const t = useT();
-  const [boot, setBoot] = React.useState<Boot>({ state: "loading" });
+  const navigate = useNavigate();
+  const here = loadedHere();
+  const [boot, setBoot] = React.useState<Boot>(() => (ready !== null ? { state: "ready", signed: ready } : { state: "loading" }));
   const [attempt, setAttempt] = React.useState(0);
   // When each recent device was signed out, so a homeserver that refuses
   // every new device too does not get asked for one again and again.
   const signedOut = React.useRef<number[]>([]);
-  const pageMenu = usePageMenu();
 
   React.useEffect(() => {
+    if (!here) window.location.reload();
+  }, [here]);
+
+  React.useEffect(() => {
+    const again = (): void => {
+      const now = Date.now();
+      const recent = [...signedOut.current.filter((at) => now - at < 60_000), now];
+      signedOut.current = recent;
+      if (recent.length >= 3) {
+        signedOut.current = [];
+        setBoot({ state: "refused", why: "broken", message: t("chat.boot.refusedAgain") });
+        return;
+      }
+      setAttempt((n) => n + 1);
+    };
+    signedOutListeners.add(again);
+    return () => {
+      signedOutListeners.delete(again);
+    };
+  }, [t]);
+
+  React.useEffect(() => {
+    if (!here) return;
     let live = true;
-    setBoot({ state: "loading" });
-    (async () => {
-      const signed = await signIn();
-      onSignedOut(signed.client, () => {
-        const now = Date.now();
-        const recent = [...signedOut.current.filter((at) => now - at < 60_000), now];
-        signedOut.current = recent;
-        if (recent.length >= 3) {
-          signedOut.current = [];
-          if (live) setBoot({ state: "refused", why: "broken", message: t("chat.boot.refusedAgain") });
+    if (ready === null) setBoot({ state: "loading" });
+    session()
+      .then((signed) => {
+        if (live) setBoot({ state: "ready", signed });
+      })
+      .catch((error: unknown) => {
+        if (!live) return;
+        const why: Refusal = error instanceof ChatRefused ? error.why : "broken";
+        if (why === "signIn") {
+          goSignIn();
           return;
         }
-        setAttempt((n) => n + 1);
+        if (why === "off") {
+          // Chat is not on this box now (sharing off): back to the overview.
+          navigate("/", { replace: true });
+          return;
+        }
+        setBoot({ state: "refused", why, message: error instanceof Error ? error.message : String(error) });
       });
-      await start(signed.client);
-      if (live) {
-        signedHere(signed);
-        setBoot({ state: "ready", signed });
-      }
-    })().catch((error: unknown) => {
-      if (!live) return;
-      const why: Refusal = error instanceof ChatRefused ? error.why : "broken";
-      if (why === "signIn") {
-        goSignIn();
-        return;
-      }
-      if (why === "off") {
-        // Chat is not on this box now (sharing off): back to the admin page.
-        window.location.replace("/");
-        return;
-      }
-      setBoot({ state: "refused", why, message: error instanceof Error ? error.message : String(error) });
-    });
     return () => {
       live = false;
-      signedHere(null);
     };
-  }, [attempt]);
+  }, [attempt, here, navigate]);
 
   // A box still starting chat answers again in a few seconds.
   React.useEffect(() => {
@@ -124,85 +181,47 @@ export function ChatRoot() {
     return () => clearTimeout(handle);
   }, [boot]);
 
-  // One right-click menu for the whole page: a message answers with its
-  // own (timeline.tsx), anywhere else gets the page's.
-  const menu = <ContextMenuHost page={pageMenu} />;
   if (boot.state === "ready") {
     return (
-      <>
-        <CallsProvider client={boot.signed.client}>
-          <ChatShell signed={boot.signed} />
-        </CallsProvider>
-        {menu}
-        <Toaster />
-      </>
+      <CallsProvider client={boot.signed.client}>
+        <ChatHome signed={boot.signed} />
+      </CallsProvider>
+    );
+  }
+  if (boot.state === "loading" || boot.why === "starting") {
+    return (
+      <div className="grid min-h-48 place-items-center text-muted">
+        <p className="flex items-center gap-2 text-[13.5px]">
+          <Spinner size={16} />
+          {boot.state === "loading" ? t("chat.boot.loading") : t("chat.boot.starting")}
+        </p>
+      </div>
     );
   }
   return (
-    <div className="flex h-dvh flex-col bg-ground text-ink">
-      {menu}
-      <ChatBar />
-      <main className="flex flex-1 items-center justify-center p-6">
-        {boot.state === "loading" || (boot.state === "refused" && boot.why === "starting") ? (
-          <p className="flex items-center gap-2 text-[13.5px] text-muted">
-            <Spinner size={16} />
-            {boot.state === "loading" ? t("chat.boot.loading") : t("chat.boot.starting")}
-          </p>
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <HugeiconsIcon icon={Comment01Icon} strokeWidth={1.5} aria-hidden="true" />
+        </EmptyMedia>
+        <EmptyTitle>{t(boot.why === "notForYou" ? "chat.boot.notForYouTitle" : "chat.boot.broken")}</EmptyTitle>
+        {boot.why === "notForYou" && <EmptyDescription>{t("chat.boot.notForYou")}</EmptyDescription>}
+      </EmptyHeader>
+      {boot.why !== "notForYou" && (
+        <Alert variant="crit" className="text-left">
+          <AlertDescription>{boot.message}</AlertDescription>
+        </Alert>
+      )}
+      <EmptyContent>
+        {boot.why === "notForYou" ? (
+          <Button onClick={goSignIn}>{t("chat.boot.signIn")}</Button>
         ) : (
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <HugeiconsIcon icon={Comment01Icon} strokeWidth={1.5} aria-hidden="true" />
-              </EmptyMedia>
-              <EmptyTitle>{t(boot.why === "notForYou" ? "chat.boot.notForYouTitle" : "chat.boot.broken")}</EmptyTitle>
-              {boot.why === "notForYou" && <EmptyDescription>{t("chat.boot.notForYou")}</EmptyDescription>}
-            </EmptyHeader>
-            {boot.why !== "notForYou" && (
-              <Alert variant="crit" className="text-left">
-                <AlertDescription>{boot.message}</AlertDescription>
-              </Alert>
-            )}
-            <EmptyContent>
-              {boot.why === "notForYou" ? (
-                <Button onClick={goSignIn}>{t("chat.boot.signIn")}</Button>
-              ) : (
-                <Button onClick={() => setAttempt((n) => n + 1)}>{t("chat.boot.retry")}</Button>
-              )}
-            </EmptyContent>
-          </Empty>
+          <Button variant="secondary" onClick={() => setAttempt((n) => n + 1)}>
+            {t("chat.boot.retry")}
+          </Button>
         )}
-      </main>
-    </div>
-  );
-}
-
-/** The web UI's top bar (components/app-bar.tsx) at full width, as over every
- *  app laid out in panes: the box's logo, LosOS Chat, chat's own buttons,
- *  then the language, the theme, who is signed in and Sign out. */
-function ChatBar({ children }: { children?: React.ReactNode }) {
-  const t = useT();
-  const me = useMe();
-  React.useEffect(() => {
-    void loadMe().catch(() => undefined);
-  }, []);
-  const person: AppBarPerson | null =
-    me === null || me.spareKey || !me.name
-      ? null
-      : {
-          label: me.displayName ?? me.name,
-          tip: `${t("shell.me.signedIn", { name: me.name })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`,
-          avatar: (
-            <PersonAvatar
-              size="xs"
-              person={{ name: me.name, displayName: me.displayName ?? me.name, picture: me.picture, accent: me.accent }}
-            />
-          ),
-          accountLink: <a href="/settings/account" />,
-        };
-  return (
-    <AppBar width="full" name={t("chat.title")} nameLink={<a href="/chat/" />} person={person} onSignOut={signOutHere}>
-      {children}
-    </AppBar>
+      </EmptyContent>
+    </Empty>
   );
 }
 
@@ -238,22 +257,70 @@ function useNotifications(client: MatrixClient, current: string | null): void {
   }, [client, current, t]);
 }
 
-/** The page title carries the unread count, so a background tab shows it. */
+/** The page title carries the unread count while chat is on screen, so a
+ *  background tab shows it. */
 function useTitle(client: MatrixClient): void {
   const t = useT();
   const tick = useEmitted(client, ROOM_EVENTS);
+  React.useEffect(() => {
+    const before = document.title;
+    return () => {
+      document.title = before;
+    };
+  }, []);
   React.useEffect(() => {
     const total = client.getRooms().reduce((sum, room) => sum + (room.getMyMembership() === KnownMembership.Join ? unread(room).total : 0), 0);
     document.title = total > 0 ? `(${total}) ${t("chat.title")}` : t("chat.title");
   }, [client, tick, t]);
 }
 
-function ChatShell({ signed }: { signed: Signed }) {
+/** Spaces as one row of buttons, as Mail's folders are. */
+function SpaceRow({ client, space, onSpace, onNewSpace }: { client: MatrixClient; space: string | null; onSpace: (id: string | null) => void; onNewSpace: () => void }) {
+  const t = useT();
+  useEmitted(client, ROOM_EVENTS);
+  const spaces = client.getRooms().filter((room) => isSpace(room) && room.getMyMembership() === KnownMembership.Join);
+  const chip = (id: string | null, label: string, icon: React.ReactNode) => {
+    const current = space === id;
+    return (
+      <li key={id ?? "all"} className="shrink-0">
+        <Button
+          variant={current ? "secondary" : "ghost"}
+          size="sm"
+          aria-current={current ? "page" : undefined}
+          onClick={() => onSpace(id)}
+          className={cn("gap-1.5", current && "text-ink")}
+        >
+          {icon}
+          {label}
+        </Button>
+      </li>
+    );
+  };
+  return (
+    <nav aria-label={t("chat.spaces.label")} className="-mx-1 min-w-0 max-w-full overflow-x-auto px-1">
+      <ul className="flex gap-1">
+        {chip(null, t("chat.spaces.all"), <HugeiconsIcon icon={Home01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />)}
+        {spaces.map((room) =>
+          chip(room.roomId, roomName(room), <Avatar client={client} id={room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={16} className="size-4 text-[8px]" />),
+        )}
+        <li className="shrink-0">
+          <Button variant="ghost" size="sm" className="gap-1.5 text-muted" onClick={onNewSpace}>
+            <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            {t("chat.spaces.new")}
+          </Button>
+        </li>
+      </ul>
+    </nav>
+  );
+}
+
+function ChatHome({ signed }: { signed: Signed }) {
   const t = useT();
   const { client } = signed;
   const me = client.getSafeUserId();
   const [current, setCurrent] = useHashRoom();
   const [space, setSpace] = React.useState<string | null>(null);
+  const [filter, setFilter] = React.useState("");
   const [dialog, setDialog] = React.useState<"room" | "space" | "chat" | "join" | "invite" | "settings" | "security" | null>(null);
   const [verification, setVerification] = React.useState<VerificationRequest | null>(null);
   const [trust, recheck] = useTrust(client);
@@ -275,87 +342,109 @@ function ChatShell({ signed }: { signed: Signed }) {
   }, [client]);
 
   const room = current !== null ? (client.getRoom(current) ?? null) : null;
+  const spaceRoom = space !== null ? client.getRoom(space) : null;
+  const unsafe = trust !== "ready" && trust !== "loading";
 
   return (
-    <div className="flex h-dvh flex-col bg-ground text-ink">
-      <ChatBar>
-        <div className="flex-1" />
-        <Button variant="ghost" size="icon-sm" className="relative" aria-label={t("chat.security.title")} title={t("chat.security.title")} onClick={() => setDialog("security")}>
-          <HugeiconsIcon icon={SquareLock01Icon} className="size-4" />
-          {trust !== "ready" && trust !== "loading" && <span className="absolute top-1 right-1 size-2 rounded-full bg-warn" />}
-        </Button>
-        {notify === "default" && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("chat.notify.ask")}
-            title={t("chat.notify.ask")}
-            onClick={() => void Notification.requestPermission().then(setNotify)}
-          >
-            <HugeiconsIcon icon={Notification01Icon} className="size-4" />
+    <div className="flex flex-col">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <PaneHeader title={t("shell.nav.chat")} summary={t("chat.summary", { id: me })} />
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {notify === "default" && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t("chat.notify.ask")}
+              title={t("chat.notify.ask")}
+              onClick={() => void Notification.requestPermission().then(setNotify)}
+            >
+              <HugeiconsIcon icon={Notification01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            </Button>
+          )}
+          <Button variant="secondary" className="relative max-sm:px-2.5" aria-label={t("chat.security.title")} onClick={() => setDialog("security")}>
+            <HugeiconsIcon icon={SquareLock01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <span className="max-sm:hidden">{t("chat.security.title")}</span>
+            {unsafe && <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2 border-surface bg-warn" />}
           </Button>
-        )}
-      </ChatBar>
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-      <div className={cn("hidden sm:flex", room !== null && "max-sm:hidden")}>
-        <SpaceRail client={client} space={space} onSpace={setSpace} onNewSpace={() => setDialog("space")} />
+          <Button onClick={() => setDialog("chat")}>
+            <HugeiconsIcon icon={UserAdd01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            {t("chat.list.newChat")}
+          </Button>
+        </div>
       </div>
-      <aside className={cn("flex w-full min-w-0 flex-col border-r border-line bg-surface sm:w-72 sm:shrink-0", room !== null && "max-sm:hidden")} aria-label={t("chat.list.label")}>
-        <header className="flex h-12 items-center border-b border-line px-3">
-          <h1 className="text-[15px] font-semibold tracking-tight">{t("chat.list.label")}</h1>
-        </header>
-        {trust !== "ready" && trust !== "loading" && (
-          <button type="button" onClick={() => setDialog("security")} className="flex items-center gap-2 border-b border-line bg-accent-wash px-3 py-2 text-left text-[12.5px] text-accent">
-            <HugeiconsIcon icon={SquareLock01Icon} className="size-4 shrink-0" />
-            {trust === "new" ? t("chat.security.bannerNew") : t("chat.security.bannerUnverified")}
-          </button>
-        )}
-        {syncState === SyncState.Error || syncState === SyncState.Reconnecting ? (
-          <p className="border-b border-line bg-sunk px-3 py-1.5 text-[12.5px] text-warn">{t("chat.offline")}</p>
-        ) : null}
-        <RoomList
-          client={client}
-          current={current}
-          space={space}
-          onSpace={setSpace}
-          onOpen={setCurrent}
-          onNewRoom={() => setDialog("room")}
-          onNewChat={() => setDialog("chat")}
-          onJoin={() => setDialog("join")}
-          onNewSpace={() => setDialog("space")}
-        />
-        <footer className="flex items-center gap-2 border-t border-line px-3 py-2">
-          <Avatar client={client} id={me} name={signed.displayName} mxc={client.getUser(me)?.avatarUrl} size={24} />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-medium">{signed.displayName}</span>
-            <span className="block truncate text-[11.5px] text-muted">{me}</span>
-          </span>
-        </footer>
-      </aside>
-      {room !== null ? (
-        <RoomView key={room.roomId} signed={signed} room={room} onBack={() => setCurrent(null)} onDialog={setDialog} />
-      ) : (
-        <main className="hidden flex-1 items-center justify-center p-6 sm:flex">
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <HugeiconsIcon icon={Comment01Icon} strokeWidth={1.5} aria-hidden="true" />
-              </EmptyMedia>
-              <EmptyTitle>{t("chat.empty.title")}</EmptyTitle>
-              <EmptyDescription>{t("chat.empty.lead")}</EmptyDescription>
-            </EmptyHeader>
-            <EmptyContent className="flex-row justify-center">
-              <Button variant="secondary" onClick={() => setDialog("chat")}>
-                {t("chat.list.newChat")}
-              </Button>
-              <Button variant="secondary" onClick={() => setDialog("room")}>
-                {t("chat.list.newRoom")}
-              </Button>
-            </EmptyContent>
-          </Empty>
-        </main>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <SpaceRow client={client} space={space} onSpace={setSpace} onNewSpace={() => setDialog("space")} />
+        <form className="w-full sm:ml-auto sm:w-64" role="search" onSubmit={(event) => event.preventDefault()}>
+          <InputGroup>
+            <InputGroupAddon>
+              <HugeiconsIcon icon={Search01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            </InputGroupAddon>
+            <InputGroupInput type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder={t("chat.list.filter")} aria-label={t("chat.list.filter")} />
+          </InputGroup>
+        </form>
+      </div>
+
+      {unsafe && (
+        <Alert className="mb-3">
+          <HugeiconsIcon icon={SquareLock01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span className="min-w-0 flex-1">{trust === "new" ? t("chat.security.whyNew") : t("chat.security.whyUnverified")}</span>
+            <Button variant="secondary" size="sm" onClick={() => setDialog("security")}>
+              {trust === "new" ? t("chat.security.bannerNew") : t("chat.security.bannerUnverified")}
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
-      </div>
+
+      <Card className="flex h-[min(46rem,calc(100dvh-15rem))] min-h-[26rem] overflow-hidden">
+        <section
+          aria-label={t("chat.list.label")}
+          className={cn("min-w-0 flex-1 flex-col md:flex md:w-72 md:flex-none md:border-r md:border-line lg:w-80", room !== null ? "hidden" : "flex")}
+        >
+          <div className="flex items-center gap-2 border-b border-hair px-4 py-2.5">
+            <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">{spaceRoom !== null ? roomName(spaceRoom) : t("chat.list.label")}</h2>
+          </div>
+          {syncState === SyncState.Error || syncState === SyncState.Reconnecting ? (
+            <p className="border-b border-hair bg-sunk px-4 py-1.5 text-[12.5px] text-warn">{t("chat.offline")}</p>
+          ) : null}
+          <RoomList
+            client={client}
+            current={current}
+            space={space}
+            filter={filter}
+            onOpen={setCurrent}
+            onNewRoom={() => setDialog("room")}
+            onNewChat={() => setDialog("chat")}
+            onJoin={() => setDialog("join")}
+          />
+        </section>
+        {room !== null ? (
+          <RoomView key={room.roomId} signed={signed} room={room} onBack={() => setCurrent(null)} onDialog={setDialog} />
+        ) : (
+          <section className="hidden min-w-0 flex-1 items-center justify-center p-6 md:flex">
+            <Empty className="border-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={Comment01Icon} strokeWidth={1.5} aria-hidden="true" />
+                </EmptyMedia>
+                <EmptyTitle>{t("chat.empty.title")}</EmptyTitle>
+                <EmptyDescription>{t("chat.empty.lead")}</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent className="flex-row justify-center">
+                <Button variant="secondary" onClick={() => setDialog("chat")}>
+                  {t("chat.list.newChat")}
+                </Button>
+                <Button variant="secondary" onClick={() => setDialog("room")}>
+                  {t("chat.list.newRoom")}
+                </Button>
+              </EmptyContent>
+            </Empty>
+          </section>
+        )}
+      </Card>
 
       <NewRoomDialog client={client} open={dialog === "room"} onOpenChange={(o) => setDialog(o ? "room" : null)} space={space} onCreated={setCurrent} />
       <NewRoomDialog
@@ -474,9 +563,9 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
 
   return (
     <>
-      <main className={cn("flex min-w-0 flex-1 flex-col", panel !== null && "max-lg:hidden")} aria-label={roomName(room)}>
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-2 sm:px-4">
-          <Button variant="ghost" size="icon-sm" className={cn("sm:hidden")} aria-label={t("chat.back")} onClick={onBack}>
+      <section className={cn("flex min-w-0 flex-1 flex-col", panel !== null && "hidden")} aria-label={roomName(room)}>
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-hair px-2 sm:px-4">
+          <Button variant="ghost" size="icon-sm" className="md:hidden" aria-label={t("chat.back")} onClick={onBack}>
             <HugeiconsIcon icon={ArrowLeft01Icon} className="size-4" />
           </Button>
           <Avatar client={client} id={partner ?? room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={32} />
@@ -499,8 +588,9 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
               <Button variant="ghost" size="icon-sm" aria-label={t("chat.call.video")} title={t("chat.call.video")} disabled={calls.active !== null} onClick={() => calls.start(room, true)}>
                 <HugeiconsIcon icon={Video01Icon} className="size-4" />
               </Button>
-              <Button variant="ghost" size="icon-sm"
-               
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 className={cn(panel !== null && "bg-accent-wash text-accent")}
                 aria-label={t("chat.thread.title")}
                 title={t("chat.thread.title")}
@@ -509,7 +599,7 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
               >
                 <HugeiconsIcon icon={Comment01Icon} className="size-4" />
               </Button>
-              <Button variant="ghost" size="icon-sm" className={cn("max-sm:hidden")} aria-label={t("chat.settings.invite")} title={t("chat.settings.invite")} onClick={() => onDialog("invite")}>
+              <Button variant="ghost" size="icon-sm" className="max-sm:hidden" aria-label={t("chat.settings.invite")} title={t("chat.settings.invite")} onClick={() => onDialog("invite")}>
                 <HugeiconsIcon icon={UserAdd01Icon} className="size-4" />
               </Button>
               <Button variant="ghost" size="icon-sm" aria-label={t("chat.settings.open")} title={t("chat.settings.open")} onClick={() => onDialog("settings")}>
@@ -536,7 +626,7 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
             />
           </>
         )}
-      </main>
+      </section>
       {panel !== null && (
         <ThreadPanel client={client} room={room} root={panel.root} me={me} actions={actions} onOpen={(root) => setPanel({ root })} onClose={() => setPanel(null)} />
       )}

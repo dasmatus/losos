@@ -179,8 +179,8 @@ export interface ThreadPanelProps {
 export function ThreadPanel({ client, room, root, me, actions, onOpen, onClose }: ThreadPanelProps) {
   const t = useT();
   return (
-    <aside aria-label={t("chat.thread.panel")} className="flex min-h-0 w-full flex-col border-l border-line bg-surface lg:w-96">
-      <header className="flex h-14 items-center gap-2 border-b border-line px-3">
+    <aside aria-label={t("chat.thread.panel")} className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-hair px-3">
         {root !== null && (
           <Button variant="ghost" size="icon-sm" aria-label={t("chat.thread.all")} onClick={() => onOpen(null)}>
             <HugeiconsIcon icon={ArrowLeft01Icon} className="size-4" />

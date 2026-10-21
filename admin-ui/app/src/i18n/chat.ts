@@ -5,6 +5,11 @@ import { defineMessages } from "./define";
  * verification emoji's names) stays as it comes. */
 export default defineMessages({
   "chat.title": { en: "LosOS Chat", sk: "LosOS Chat", de: "LosOS Chat" },
+  "chat.summary": {
+    en: "You are {id}. Chat goes between the people on this box; direct messages and new rooms are end-to-end encrypted.",
+    sk: "Ste {id}. Chat ide medzi ľuďmi na tomto boxe; priame správy a nové miestnosti sú šifrované end-to-end.",
+    de: "Du bist {id}. Der Chat geht zwischen den Personen auf dieser Box; Direktnachrichten und neue Räume sind Ende-zu-Ende-verschlüsselt.",
+  },
   "chat.back": { en: "Back to the list", sk: "Späť na zoznam", de: "Zurück zur Liste" },
   "chat.offline": {
     en: "The box is not answering. Chat reconnects by itself.",
@@ -314,6 +319,16 @@ export default defineMessages({
     en: "This device can read your encrypted messages. Your devices:",
     sk: "Toto zariadenie vie čítať vaše šifrované správy. Vaše zariadenia:",
     de: "Dieses Gerät kann deine verschlüsselten Nachrichten lesen. Deine Geräte:",
+  },
+  "chat.security.whyNew": {
+    en: "Make a recovery key, so you can read your encrypted messages on another device and after a reset.",
+    sk: "Vytvorte si kľúč na obnovenie, aby ste šifrované správy prečítali aj na inom zariadení a po resete.",
+    de: "Erstelle einen Wiederherstellungsschlüssel, damit du deine verschlüsselten Nachrichten auch auf einem anderen Gerät und nach einem Zurücksetzen lesen kannst.",
+  },
+  "chat.security.whyUnverified": {
+    en: "This browser has no keys for your earlier encrypted messages yet.",
+    sk: "Tento prehliadač ešte nemá kľúče k vašim starším šifrovaným správam.",
+    de: "Dieser Browser hat noch keine Schlüssel für deine älteren verschlüsselten Nachrichten.",
   },
   "chat.security.bannerNew": { en: "Set up secure messages", sk: "Nastaviť zabezpečené správy", de: "Sichere Nachrichten einrichten" },
   "chat.security.bannerUnverified": {

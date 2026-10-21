@@ -21,7 +21,7 @@ import {
   SyncState,
 } from "matrix-js-sdk";
 import { decodeRecoveryKey } from "matrix-js-sdk/lib/crypto-api";
-import { signInUrl, signOutTo } from "@/lib/api";
+import { signInUrl } from "@/lib/api";
 import { boxNames } from "./model";
 
 export interface ChatView {
@@ -261,36 +261,6 @@ export function onSignedOut(client: MatrixClient, then: () => void): void {
     client.stopClient();
     then();
   });
-}
-
-/** Leave chat and LosOS Login together: the device goes, then its keys on
- *  this browser, then the LosOS Login session. */
-/** The chat this page is signed in to, for the top bar's sign-out. */
-let current: Signed | null = null;
-
-export function signedHere(signed: Signed | null): void {
-  current = signed;
-}
-
-/** The top bar's sign-out on the chat page: the device first, when there is
- *  one, then LosOS Login. */
-export function signOutHere(): void {
-  if (current !== null) void signOut(current);
-  else signOutTo("/chat/");
-}
-
-export async function signOut(signed: Signed): Promise<void> {
-  const { client, name } = signed;
-  const userId = client.getSafeUserId();
-  const deviceId = client.getDeviceId();
-  try {
-    await client.logout(true);
-  } catch {
-    /* already gone */
-  }
-  if (deviceId !== null) await dropCryptoStore(cryptoPrefix(userId, deviceId));
-  storeDevice(name, null);
-  signOutTo("/chat/");
 }
 
 export interface BoxPerson {
