@@ -96,12 +96,24 @@ class Shots {
   }
 }
 
-/** LosOS Login, as its page does it; the cookie is the browser's. */
+/**
+ * LosOS Login, as its page does it, from inside its page: the request and
+ * the cookie are the browser's, which trusts the box by the pin above.
+ */
 async function signIn(page, base, name, password) {
-  const r = await page.request.post(`${base}/auth/api/firstfactor`, {
-    data: { username: name, password, keepMeLoggedIn: false, targetURL: `${base}/cloud/` },
-  });
-  if (!r.ok()) throw new Error(`sign-in refused: ${r.status()} ${await r.text()}`);
+  await page.goto(`${base}/auth/`);
+  const status = await page.evaluate(
+    async ([username, password, targetURL]) => {
+      const r = await fetch("/auth/api/firstfactor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, keepMeLoggedIn: false, targetURL }),
+      });
+      return r.status;
+    },
+    [name, password, `${base}/cloud/`],
+  );
+  if (status !== 200) throw new Error(`sign-in refused: ${status}`);
 }
 
 async function after(s, base) {
@@ -214,12 +226,32 @@ const context = await browser.newContext({
   reducedMotion: "reduce",
 });
 const page = await context.newPage();
-const problems = [];
-page.on("console", (m) => {
-  if (m.type() === "error") problems.push(m.text());
-});
-page.on("pageerror", (e) => problems.push(String(e)));
 await signIn(page, base, name, password);
+// What the admin page itself logs on a plain load (sonner's stylesheet,
+// which the box's style-src 'self' refuses and the bundle carries instead,
+// as tests/*.browser.mjs baseline it): LosOS Cloud's pages may log nothing
+// beyond that.
+const baseline = new Set();
+const listen = (sink) => {
+  const onConsole = (m) => {
+    if (m.type() === "error") sink(m.text());
+  };
+  const onError = (e) => sink(String(e));
+  page.on("console", onConsole);
+  page.on("pageerror", onError);
+  return () => {
+    page.off("console", onConsole);
+    page.off("pageerror", onError);
+  };
+};
+const stop = listen((text) => baseline.add(text));
+await page.goto(`${base}/`);
+await page.waitForLoadState("networkidle");
+stop();
+const problems = [];
+listen((text) => {
+  if (!baseline.has(text)) problems.push(text);
+});
 const s = new Shots(page, base, out, { commit: opts.commit ?? "", test: opts.test ?? "" });
 if (opts.before) {
   await before(s, base);
