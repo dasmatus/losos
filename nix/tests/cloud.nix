@@ -52,6 +52,13 @@ let
   # binary cache carries, under the Node it is built for.
   shots = pkgs.writeShellScriptBin "cloud-shots" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}/index.mjs
+    export PLAYWRIGHT_BROWSERS_PATH=${
+      pkgs.playwright-driver.browsers.override {
+        withFirefox = false;
+        withWebkit = false;
+      }
+    }
+    export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
     exec ${pkgs.nodejs}/bin/node ${./cloud-shots.mjs} "$@"
   '';
 in
@@ -111,18 +118,12 @@ pkgs.testers.nixosTest {
         seed
         shots
       ];
-      environment.variables = {
-        SSL_CERT_FILE = "/etc/losos-box.pem";
-        PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers.override {
-          withFirefox = false;
-          withWebkit = false;
-        }}";
-        PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
-      };
       fonts.packages = [ pkgs.dejavu_fonts ];
       virtualisation = {
         memorySize = 3072;
         cores = 2;
+        # The desktop client keeps 1 GB free before it downloads anything.
+        diskSize = 4096;
         vlans = [ 1 ];
       };
     };
@@ -326,7 +327,11 @@ pkgs.testers.nixosTest {
     with subtest("the desktop client's sync engine syncs a folder both ways"):
         laptop.succeed("mkdir -p /tmp/sync && echo 'from the laptop' > /tmp/sync/laptop.txt")
         sync = (
-            f"nextcloudcmd --non-interactive -u notshared -p '{owner_app}'"
+            # --trust is the desktop client's "Trust this certificate"
+            # prompt, which it shows for the box's self-signed certificate:
+            # Qt does not take a leaf certificate as its own trust anchor
+            # the way curl (partial chains) does.
+            f"nextcloudcmd --non-interactive --trust -u notshared -p '{owner_app}'"
             f" /tmp/sync {BASE}"
         )
         laptop.succeed(sync)
@@ -344,9 +349,9 @@ pkgs.testers.nixosTest {
         # A clean set of files for the pictures, as a person would have them.
         for path in ["owner-dir", "owner-app-dir", "owner-name-dir", "big.bin", "from-box.txt", "owner-app.bin"]:
             dav("notshared", owner_app, "DELETE", path)
-        dav("notshared", owner_app, "DELETE", "Documents/old notes.txt")
+        dav("notshared", owner_app, "DELETE", "Documents/old%20notes.txt")
         laptop.succeed(f"cloud-seed {BASE} notshared '{owner_app}' {CA}")
-        dav("notshared", owner_app, "DELETE", "Documents/old notes.txt")
+        dav("notshared", owner_app, "DELETE", "Documents/old%20notes.txt")
         dav("notshared", owner_app, "PROPPATCH", "Documents/budget.ods",
             "-H 'Content-Type: application/xml' --data '<d:propertyupdate xmlns:d=\"DAV:\" xmlns:oc=\"http://owncloud.org/ns\"><d:set><d:prop><oc:favorite>1</oc:favorite></d:prop></d:set></d:propertyupdate>'")
         # A sign-in the desktop client has started, for the connect page.
@@ -357,12 +362,12 @@ pkgs.testers.nixosTest {
         )
         got = json.loads(curl(f"-f -X POST {BASE}/index.php/login/v2/poll -d token={init['poll']['token']}"))
         assert got["loginName"] == "notshared", got
-        laptop.copy_from_vm("/tmp/shots/after", "shots")
+        laptop.copy_from_machine("/tmp/shots/after", "shots")
 
     with subtest("the pictures: the same addresses before LosOS Cloud"):
         box.succeed("/run/current-system/specialisation/before/bin/switch-to-configuration test")
         box.wait_until_fails("systemctl is-active losos-cloud.service")
         laptop.succeed(f"cloud-shots {BASE} matus '{PASSWORD}' /tmp/shots/before --before")
-        laptop.copy_from_vm("/tmp/shots/before", "shots")
+        laptop.copy_from_machine("/tmp/shots/before", "shots")
   '';
 }
