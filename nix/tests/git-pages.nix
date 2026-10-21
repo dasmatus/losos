@@ -289,8 +289,16 @@ pkgs.testers.nixosTest {
         assert trees["fix-backup"]["branch"] == "fix-backup", trees
         assert trees["release-notes"]["computer"] == "laptop", trees
 
+    def git_shots(phase, folder, *flags):
+        # On a failure the window as it was (failed-<phase>.png) comes out too.
+        try:
+            laptop.succeed(f"git-shots {BASE} matus '{PASSWORD}' /tmp/shots/{folder} {phase} {' '.join(flags)}")
+        except Exception:
+            laptop.copy_from_machine(f"/tmp/shots/{folder}", "failed")
+            raise
+
     with subtest("the owner reads the code and reviews the pull request"):
-        laptop.succeed(f"git-shots {BASE} matus '{PASSWORD}' /tmp/shots/after browse --test losos-git-pages")
+        git_shots("browse", "after", "--test", "losos-git-pages")
         reviews = ok("GET", f"/repos/{REPO}/pulls/1/reviews")
         assert [r["state"] for r in reviews] == ["APPROVED"], reviews
         assert reviews[0]["user"]["login"] == "notshared", reviews
@@ -302,7 +310,7 @@ pkgs.testers.nixosTest {
         ok("POST", f"/repos/{REPO}/pulls/1/comments",
            {"in_reply_to": notes[0]["id"], "body": "Logs it now: each failed try gets its own line."},
            token=eva)
-        laptop.succeed(f"git-shots {BASE} matus '{PASSWORD}' /tmp/shots/after finish --test losos-git-pages")
+        git_shots("finish", "after", "--test", "losos-git-pages")
         notes = ok("GET", f"/repos/{REPO}/pulls/1/comments")
         assert notes[0]["resolved"] is True, notes
         pr = ok("GET", f"/repos/{REPO}/pulls/1")
@@ -317,7 +325,7 @@ pkgs.testers.nixosTest {
 
     with subtest("the pictures: the same addresses before the pages"):
         box.succeed("/run/current-system/specialisation/before/bin/switch-to-configuration test")
-        laptop.succeed(f"git-shots {BASE} matus '{PASSWORD}' /tmp/shots/before before")
+        git_shots("before", "before")
         laptop.copy_from_machine("/tmp/shots/before", "shots")
   '';
 }

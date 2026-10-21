@@ -137,7 +137,8 @@ async function browse(s, base) {
     create: p.getByRole("button", { name: "New repository" }),
   });
   await repo.click();
-  await p.locator("[data-readme] h1").waitFor();
+  // A README's own headings sit one level under the page's title.
+  await p.locator("[data-readme] h2", { hasText: "Backup tool" }).waitFor();
   const script = p.getByRole("link", { name: "backup.sh", exact: true });
   await s.take("code", "the code of main, with its README", { kind: "click", target: "script" }, {
     script,
