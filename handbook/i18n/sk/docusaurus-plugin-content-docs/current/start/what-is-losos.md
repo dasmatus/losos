@@ -13,7 +13,7 @@ ho už používate iba cez webový prehliadač.
 
 | Čo vidíte             | Čo to je                                                                                        |
 | --------------------- | ----------------------------------------------------------------------------------------------- |
-| **LosOS cloud**       | Vaše súbory, fotky, kalendár, kontakty, poznámky a úlohy. Postavené na Nextcloude. Na `/nextcloud`. |
+| **LosOS Cloud**       | Vaše súbory, fotky, kalendáre, kontakty a tabule. Aplikácie Nextcloud sa s ním synchronizujú. Na `/cloud/`. |
 | **LosOS Git**         | Vaše repozitáre kódu, predvolene zapnuté. Vlastný Git server zariadenia. Na `/git/`.           |
 | **Admin stránky**     | Tu zariadenie nastavujete a staráte sa oň. Na `/`, dostupné iba z vašej lokálnej siete.         |
 | **Mesh**              | Voliteľné. Voľný disk a CPU požičané iným zariadeniam LosOS a požičané od nich.                  |
@@ -21,7 +21,7 @@ ho už používate iba cez webový prehliadač.
 
 ## Čím sa líši od NAS \{#what-makes-it-different-from-a-nas}
 
-![Vnútri zariadenia: nginx sú jediné vstupné dvere; za nimi riadiaci démon, vlastný cluster zariadenia s LosOS cloud, LosOS Git vedľa démona a agent mesh siete; pod nimi systémový disk v RAM a jeden šifrovaný zväzok.](@site/docs/img/box-architecture-sk.svg)
+![Vnútri zariadenia: nginx sú jediné vstupné dvere a vedú k LosOS Cloud, LosOS Git a admin stránkam; za nimi riadiaci démon a vedľa neho obe aplikácie, vlastný cluster zariadenia pre aplikácie inštalované ako shared a agent mesh siete; pod nimi systémový disk v RAM a jeden šifrovaný zväzok.](@site/docs/img/box-architecture-sk.svg)
 
 - **Zabudne všetko, čo nepotrebuje.** Zariadenie pri každom štarte zostaví
   svoj systémový disk úplne nanovo. Prežijú iba vaše dáta, nastavenia, ktoré
@@ -34,7 +34,7 @@ ho už používate iba cez webový prehliadač.
 - **Šifruje svoj disk a kľúč drží vo vlastnom čipe.** Na počítači s TPM
   disk neprečíta nikto, kto ho vyberie a zapojí do iného počítača.
 - **Vlastné prihlásenie.** Každý sa do admin stránok prihlasuje vlastným
-  menom a heslom a heslo vlastníka otvára aj LosOS cloud. Vytlačený náhradný
+  menom a heslom a heslo vlastníka otvára aj LosOS Cloud. Vytlačený náhradný
   kľúč vás pustí dnu v deň, keď LosOS Login, prihlasovacia stránka
   zariadenia, nebeží.
 - **Môže požičať, čo práve nepoužíva.** Zariadenie môže zdieľať voľný disk
@@ -49,6 +49,6 @@ ho už používate iba cez webový prehliadač.
   nastaviť do stavu, ktorý nikto nezapísal.
 - Nie je to záloha. Zariadenie je jedna kópia. Všetko, o čo nesmiete prísť,
   majte ešte v ďalšej kópii. Jednou z možností sú desktopoví a mobilní
-  klienti LosOS cloud.
+  klienti LosOS Cloud.
 - Nie je to hotové. Trh, jeden spoločný priestor úložiska naprieč
   zariadeniami a podpísaný inštalátor ešte len prídu.

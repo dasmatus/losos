@@ -28,11 +28,8 @@ pub const DEFAULT_OVERRIDES_NIX: &str = r#"{ ... }:
 
 {
   losos.sharingMyStorage = true;
-  losos.nextcloud.mode = "container";
   losos.hostName = "mattbox";
-  losos.nextcloud.https = false;
   losos.gpu.enable = true;
-  losos.nextcloud.apachePort = 11000;
   losos.proxy.enable = false;
   losos.cluster.enable = false;
   losos.cluster.shareCompute = false;
@@ -44,6 +41,39 @@ pub const DEFAULT_OVERRIDES_NIX: &str = r#"{ ... }:
   losos.hardening.usbguard = false;
 }
 "#;
+
+/// Option prefixes an older box's `overrides.nix` may still assign, for
+/// things the box no longer has: Nextcloud (`nextcloud.*`, and `aio.*`
+/// from before its rename) and the admin password kept for it
+/// (`keyring.*`). `modules/options.nix` still accepts and ignores them so
+/// such a file evaluates; lososd drops their lines whenever it writes the
+/// file, and the gate does not hold them against an Apply.
+pub const RETIRED: &[&str] = &["nextcloud.", "keyring.", "aio."];
+
+/// Whether `key` (without `losos.`) is one of [`RETIRED`].
+pub fn is_retired(key: &str) -> bool {
+    RETIRED.iter().any(|p| key.starts_with(p))
+}
+
+/// `body` without the lines that assign only retired options.
+pub fn drop_retired(body: &str) -> String {
+    let mut out: String = body
+        .lines()
+        .filter(|l| {
+            let keys: Vec<String> = statements(l)
+                .into_iter()
+                .filter_map(parse_line)
+                .map(|(k, _)| k)
+                .collect();
+            keys.is_empty() || !keys.iter().all(|k| is_retired(k))
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    if body.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
 
 /// One `losos.<key> = <value>;` line, as `(key, value)`, or `None` when the
 /// line is not an assignment of a `losos.*` option.
@@ -252,31 +282,12 @@ fn read_str(default: &str, v: Option<String>) -> String {
         .unwrap_or_else(|| default.to_string())
 }
 
-/// Like [`read_str`], but folds the retired `"aio"` deployment mode into the
-/// `"container"` it became, so a pre-migration overrides file still reads back
-/// as something the admin UI's `<select>` can display.
-fn read_mode(default: &str, v: Option<String>) -> String {
-    let s = read_str(default, v);
-    if s == "aio" {
-        "container".to_string()
-    } else {
-        s
-    }
-}
-
-/// Integer, or `default` when the key is absent or unparseable.
-fn read_int(default: i64, v: Option<String>) -> i64 {
-    v.and_then(|s| s.trim().parse::<i64>().ok())
-        .unwrap_or(default)
-}
-
 /// Parse a whole `overrides.nix` body into [`Settings`].
 ///
 /// Missing keys fall back to [`Settings::default`] field by field, so a partial
-/// file is still readable. Two keys carry legacy aliases that are honoured only
-/// when the current spelling is absent: `losos.aio.apachePort` (pre-rename
-/// Nextcloud AIO) and `losos.cfd.enable` (the retired Cloudflare tunnel, whose
-/// role the master proxy took over).
+/// file is still readable. `losos.proxy.enable` carries a legacy alias that is
+/// honoured only when the current spelling is absent: `losos.cfd.enable` (the
+/// retired Cloudflare tunnel, whose role the master proxy took over).
 pub fn parse_settings(content: &str) -> Settings {
     let d = Settings::default();
     Settings {
@@ -284,15 +295,8 @@ pub fn parse_settings(content: &str) -> Settings {
             d.sharing_my_storage,
             lookup_nix("sharingMyStorage", content),
         ),
-        nextcloud_mode: read_mode(&d.nextcloud_mode, lookup_nix("nextcloud.mode", content)),
         host_name: read_str(&d.host_name, lookup_nix("hostName", content)),
-        https: read_bool(d.https, lookup_nix("nextcloud.https", content)),
         gpu_enable: read_bool(d.gpu_enable, lookup_nix("gpu.enable", content)),
-        apache_port: read_int(
-            d.apache_port,
-            lookup_nix("nextcloud.apachePort", content)
-                .or_else(|| lookup_nix("aio.apachePort", content)),
-        ),
         proxy_enable: read_bool(
             d.proxy_enable,
             lookup_nix("proxy.enable", content).or_else(|| lookup_nix("cfd.enable", content)),
@@ -539,7 +543,7 @@ mod tests {
         let s = parse_settings("{ ... }:\n{\n  losos.hostName = \"box2\";\n}\n");
         assert_eq!(s.host_name, "box2");
         // everything else stays at the default
-        assert_eq!(s.apache_port, 11000);
+        assert!(s.gpu_enable);
         assert!(s.sharing_my_storage);
     }
 
@@ -551,28 +555,22 @@ mod tests {
     }
 
     #[test]
-    fn legacy_aio_apache_port_is_honoured() {
-        let s = parse_settings("{\n  losos.aio.apachePort = 12345;\n}");
-        assert_eq!(s.apache_port, 12345);
-    }
-
-    #[test]
-    fn current_apache_port_wins_over_legacy_alias() {
-        let s =
-            parse_settings("{\n  losos.nextcloud.apachePort = 1;\n  losos.aio.apachePort = 2;\n}");
-        assert_eq!(s.apache_port, 1);
-    }
-
-    #[test]
     fn legacy_cfd_enable_feeds_proxy_enable() {
         let s = parse_settings("{\n  losos.cfd.enable = true;\n}");
         assert!(s.proxy_enable);
     }
 
     #[test]
-    fn legacy_aio_mode_reads_back_as_container() {
-        let s = parse_settings("{\n  losos.nextcloud.mode = \"aio\";\n}");
-        assert_eq!(s.nextcloud_mode, "container");
+    fn retired_lines_are_dropped_and_nothing_else() {
+        let old = "{ ... }:\n{\n  losos.nextcloud.mode = \"container\";\n  losos.hostName = \"box2\";\n  losos.keyring.enable = true; losos.aio.apachePort = 1;\n  losos.nextcloud.https = false; losos.gpu.enable = false;\n  # losos.nextcloud.mode is gone\n}\n";
+        let new = drop_retired(old);
+        assert_eq!(
+            new,
+            "{ ... }:\n{\n  losos.hostName = \"box2\";\n  losos.nextcloud.https = false; losos.gpu.enable = false;\n  # losos.nextcloud.mode is gone\n}\n"
+        );
+        assert!(is_retired("nextcloud.site.trashDays"));
+        assert!(!is_retired("cloud.trashDays"));
+        assert_eq!(drop_retired(DEFAULT_OVERRIDES_NIX), DEFAULT_OVERRIDES_NIX);
     }
 
     #[test]
@@ -624,11 +622,9 @@ mod tests {
 
     #[test]
     fn a_trailing_comment_does_not_poison_the_value() {
-        // Split on the first `=` and this read back as `11000; # default`,
-        // which parsed to the default by luck. `= 12345; # x` would have
-        // silently returned the wrong port.
-        let s = parse_settings("{\n  losos.nextcloud.apachePort = 12345; # default\n}\n");
-        assert_eq!(s.apache_port, 12345);
+        // Split on the first `=` and this read back as `"box2"; # default`.
+        let s = parse_settings("{\n  losos.hostName = \"box2\"; # default\n}\n");
+        assert_eq!(s.host_name, "box2");
     }
 
     #[test]

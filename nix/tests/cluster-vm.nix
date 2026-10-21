@@ -87,11 +87,11 @@
 #     being asked, three of which nix/tests/edge-vm.nix already covers. The cost is
 #     real and worth naming: nothing asserts that edge.nix's server options and
 #     cluster.nix's agent options agree.
-#   * modules/workloads.nix. The real Nextcloud image is ~2.6 GiB; importing it
-#     into a VM to prove a namespace is not the wrong one is not a trade worth
-#     making. The probe pod below reuses the real pod shape (hostNetwork,
+#   * modules/apps.nix. A real chart's image is large; importing it into a VM
+#     to prove a namespace is not the wrong one is not a trade worth making.
+#     The probe pod below reuses the shape the box's pods get (hostNetwork,
 #     dnsPolicy Default, imagePullPolicy Never, system-node-critical, dropped
-#     capabilities) so the shape is exercised even though the workload is not.
+#     capabilities) so the shape is exercised even though no app is.
 #     The IMPORT path is exercised for real, though: the probe image is handed to
 #     modules/cluster.nix as losos.workloads.pauseImage and reaches the CRI by
 #     whatever oneshot that module uses, with no help from this file.
@@ -202,7 +202,7 @@ let
 
   yaml = pkgs.formats.yaml { };
 
-  # The probe pod mirrors the shape modules/workloads.nix gives Nextcloud,
+  # The probe pod mirrors the shape the box's own pods get,
   # field for field where the field is load-bearing:
   #
   #   hostNetwork          the local cluster runs no CNI, so this is the only
@@ -341,8 +341,8 @@ pkgs.testers.nixosTest {
       }:
       {
         # options.nix and cluster.nix, and nothing else. Not defaults.nix (it
-        # would wire the real workload images), not workloads.nix (2.6 GiB of
-        # Nextcloud), not proxy.nix (a rathole client dialling an edge that runs
+        # would wire the real packages), not apps.nix (an app's image), not
+        # proxy.nix (a rathole client dialling an edge that runs
         # no rathole server would only add a failing unit to read past).
         imports = [
           ../../modules/options.nix
@@ -375,9 +375,9 @@ pkgs.testers.nixosTest {
             kubeletPort = meshKubeletPort;
           };
 
-          # Enough to turn the LOCAL cluster on: cluster.nix keys it off
-          # losos.nextcloud.mode, whose default is already "container". The pause
-          # image is asserted non-null there — without it no pod on the box gets
+          # Enough to turn the LOCAL cluster on: cluster.nix keys it off the
+          # shared side (lososInternal.sharedSide), sharing on and the mesh
+          # joined above. The pause image is asserted non-null there — without it no pod on the box gets
           # a sandbox — and it is the only one of the three this test supplies.
           #
           # It is also the whole payload of the image import: modules/cluster.nix
@@ -387,6 +387,7 @@ pkgs.testers.nixosTest {
           # where the module's own import is broken, which is the one thing step
           # 3 is for.
           workloads.pauseImage = probeImage;
+          sharingMyStorage = true;
         };
 
         # Merged into the instance modules/cluster.nix declares. Same harness
@@ -421,11 +422,9 @@ pkgs.testers.nixosTest {
           echo "mesh join stubbed by nix/tests/cluster-vm.nix; the token is a fixture"
         '';
 
-        # modules/workloads.nix owns the static pod directory on a real
-        # appliance, and creates it in the same tmpfiles pass that symlinks the
-        # manifests in. It is not imported here, so the test does that job — and
-        # only because it is not imported: a second rule for one path earns a
-        # "Duplicate line for path" from systemd-tmpfiles on every boot.
+        # modules/cluster.nix creates the static pod directory; the test only
+        # links its probe into it. A second rule for the directory would earn
+        # a "Duplicate line for path" from systemd-tmpfiles on every boot.
         systemd.tmpfiles.rules = [
           "d /var/secrets 0700 root root - -"
           "f ${proxyTokenFile} 0600 root root - ${proxyTokenValue}"
@@ -434,7 +433,6 @@ pkgs.testers.nixosTest {
           # credential the join route hands out.
           "f ${meshTokenFile} 0600 root root - ${agentTokenValue}"
           "d /var/lib/losos 0700 root root -"
-          "d ${staticPodDir} 0700 root root -"
           "L+ ${staticPodDir}/losos-probe.yaml - - - - ${probePod}"
         ];
 

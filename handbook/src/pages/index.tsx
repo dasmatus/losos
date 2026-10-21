@@ -34,11 +34,11 @@ import {
 
 const FEATURES: Feature[] = [
   {
-    title: <Translate id="losos.home.feature.cloud.title">LosOS cloud</Translate>,
+    title: <Translate id="losos.home.feature.cloud.title">LosOS Cloud</Translate>,
     body: (
       <Translate id="losos.home.feature.cloud.body">
-        Your files, photos, calendar, contacts, notes and tasks, with desktop
-        and phone apps. Built on Nextcloud.
+        Your files, photos, calendars, contacts and boards, in the browser
+        and in the Nextcloud desktop and phone apps.
       </Translate>
     ),
     to: '/start/what-is-losos',
@@ -83,8 +83,8 @@ const FEATURES: Feature[] = [
     body: (
       <Translate id="losos.home.feature.password.body">
         There is no login prompt and no SSH. You use the box from a web
-        browser, and the password you set for LosOS cloud also opens the admin
-        pages.
+        browser, and one password, set when you claim the box, opens the
+        admin pages, LosOS Cloud and LosOS Git.
       </Translate>
     ),
     to: '/manual/sign-in-and-spare-key',

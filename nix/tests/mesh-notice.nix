@@ -62,21 +62,6 @@ let
     // lib.optionalAttrs (!after) { src = before; }
   );
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   # The box's settings as Apply writes them: a named box with its tunnel on,
   # sharing its storage, joined to a mesh or not.
   overrides =
@@ -86,11 +71,8 @@ let
 
       {
         losos.sharingMyStorage = true;
-        losos.nextcloud.mode = "container";
         losos.hostName = "kitchenbox";
-        losos.nextcloud.https = false;
         losos.gpu.enable = true;
-        losos.nextcloud.apachePort = 11000;
         losos.proxy.enable = true;
         losos.cluster.enable = ${lib.boolToString joined};
         losos.cluster.shareCompute = false;
@@ -228,22 +210,15 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
         ];
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = ui;
-          nextcloud.mode = "container";
           git.enable = false;
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
         };
-        systemd.services.lososd.path = lib.mkForce [
-          stubOcc
-          pkgs.coreutils
-        ];
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+        systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
         environment.systemPackages = [ pkgs.jq ];
         virtualisation = {
           memorySize = 1536;

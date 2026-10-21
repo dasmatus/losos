@@ -21,7 +21,7 @@ Jede Box betreibt zwei Kubernetes-Instanzen:
 
 |                     | Lokal (k3s)                 | Mesh (rke2-Agent)                |
 | ------------------- | --------------------------- | -------------------------------- |
-| Führt aus           | Nextcloud dieser Box        | Longhorn-Speicher, geteilte Rechenleistung |
+| Führt aus           | als shared installierte Apps | Longhorn-Speicher, geteilte Rechenleistung |
 | Server              | diese Box                   | der Edge-VPS                     |
 | Braucht das Netzwerk | nein                       | ja                               |
 

@@ -9,7 +9,7 @@ mdx:
 
 Firemný edge má pre ľudí, ktorí ho spravujú, webovú stránku na `/manage/`.
 Ukazuje zariadenia, ktoré edge smeruje, a na každom zariadení, ktorého
-vlastník to dovolí, mení nastavenia LosOS cloud a LosOS Git a inštaluje či
+vlastník to dovolí, mení nastavenia LosOS Cloud a LosOS Git a inštaluje či
 odstraňuje aplikácie. Oficiálne edge LosOS túto stránku nemajú a zariadenie
 odmietne, aby ho niektorý z nich spravoval.
 
@@ -61,12 +61,12 @@ prestane posielať, zo zoznamu zmizne.
 
 ## Stránka zariadenia
 
-![Stránka zariadenia: nastavenia LosOS cloud a LosOS Git, nainštalované aplikácie a hľadanie aplikácií.](@site/docs/img/edge-manage-box-sk.png)
+![Stránka zariadenia: nastavenia LosOS Cloud a LosOS Git, nainštalované aplikácie a hľadanie aplikácií.](@site/docs/img/edge-manage-box-sk.png)
 
 Stránka zariadenia má tri časti, tie isté ako panel Aplikácie na samotnom
 zariadení:
 
-- **Nastavenia LosOS cloud a LosOS Git.** Predvolený jazyk, oblasť
+- **Nastavenia LosOS Cloud a LosOS Git.** Predvolený jazyk, oblasť
   telefónnych čísel, ako dlho sa držia zmazané súbory a staré verzie,
   predvolená kvóta, verejné odkazy s heslom a platnosťou, a v LosOS Git
   prihlásenie, súkromie a nastavenia pushu. Je tu aj federácia LosOS
@@ -92,7 +92,7 @@ k ničomu inému.
 
 Edge preto nemôže:
 
-- otvoriť ničie súbory, v LosOS cloud, LosOS Git ani nikde inde;
+- otvoriť ničie súbory, v LosOS Cloud, LosOS Git ani nikde inde;
 - pridávať, meniť ani odstraňovať ľudí, ani obnovovať heslá;
 - meniť úložisko, zálohy, sieť, zdieľanie ani aktualizácie;
 - zapnúť prepínač, ani ho držať zapnutý, keď ho vlastník vypne.

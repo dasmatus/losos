@@ -151,17 +151,17 @@ pkgs.testers.nixosTest {
 
     # Everything the appliance must not lose. The paths are the ones the
     # modules actually use: lososd's state file and the token it mints
-    # (modules/daemon.nix), the two service state dirs the workload pods
-    # hostPath-mount (modules/workloads.nix), the Kubernetes node identity
-    # under /etc/rancher (modules/cluster.nix), and the two data homes.
+    # (modules/daemon.nix), LosOS Cloud's state (modules/cloud.nix) and
+    # LosOS Git's (modules/git.nix), the Kubernetes node identity under
+    # /etc/rancher (modules/cluster.nix), and the two data homes.
     machine.succeed(
         "install -d -m 0755 /var/lib/losos",
         "echo '{\"mode\":\"local\"}' > /var/lib/losos/state.json",
         "install -d -m 0700 /var/secrets",
         "head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > /var/secrets/losos-admin-token",
         "chmod 0600 /var/secrets/losos-admin-token",
-        "install -d /var/lib/nextcloud /var/lib/losos-git",
-        "echo nextcloud-state > /var/lib/nextcloud/marker",
+        "install -d /var/lib/losos-cloud /var/lib/losos-git",
+        "echo cloud-state > /var/lib/losos-cloud/marker",
         "echo git-state > /var/lib/losos-git/marker",
         "echo notshared-doc > /home/notshared/data/marker",
         "echo shared-doc > /home/shared/data/marker",
@@ -204,7 +204,7 @@ pkgs.testers.nixosTest {
 
     with subtest("the persisted set survives the reboot"):
         assert machine.succeed("cat /var/lib/losos/state.json").strip() == '{"mode":"local"}'
-        assert machine.succeed("cat /var/lib/nextcloud/marker").strip() == "nextcloud-state"
+        assert machine.succeed("cat /var/lib/losos-cloud/marker").strip() == "cloud-state"
         assert machine.succeed("cat /var/lib/losos-git/marker").strip() == "git-state"
         assert machine.succeed("cat /home/notshared/data/marker").strip() == "notshared-doc"
         assert machine.succeed("cat /home/shared/data/marker").strip() == "shared-doc"

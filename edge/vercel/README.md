@@ -28,7 +28,7 @@ running `losos-registrar announce`) authenticates with its token, is allotted
 a tunnel port, heartbeats, reports whether it is idle, and disappears from the
 registry when its heartbeats stop — and the page shows the exact Traefik
 configuration the edge would be writing for it. The data path (a browser
-reaching the box's Nextcloud through `https://<hostname>`) needs the tunnel
+reaching the box's LosOS Cloud through `https://<hostname>`) needs the tunnel
 and stays a self-hosted demonstration (`nix/tests/edge-vm.nix` is the automated
 one).
 

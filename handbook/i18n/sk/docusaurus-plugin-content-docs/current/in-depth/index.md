@@ -13,7 +13,7 @@ Zvyšok tejto príručky je pre vlastníka zariadenia. Táto kapitola je pre ľu
 ktorí LosOS vyvíjajú, prevádzkujú edge alebo pripravujú vydanie: ako do seba
 časti zapadajú, prečo je každá tam, kde je, a ako ich meniť.
 
-LosOS je NixOS appliance pre mini-PC. Beží na ňom Nextcloud pre vaše vlastné
+LosOS je NixOS appliance pre mini-PC. Beží na ňom LosOS Cloud pre vaše vlastné
 súbory a voľné miesto na disku a výkon CPU môže požičiavať do mesh siete
 ďalších LosOS zariadení. Nemá SSH ani prihlasovací shell. Spravujete ho
 z webovej stránky a aktualizuje sa sám.

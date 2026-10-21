@@ -26,11 +26,8 @@ const { check, finish } = runner();
 
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   hostName: 'mattbox',
-  https: false,
   gpuEnable: false,
-  apachePort: 80,
   proxyEnable: false,
   clusterEnable: false,
   shareCompute: false,

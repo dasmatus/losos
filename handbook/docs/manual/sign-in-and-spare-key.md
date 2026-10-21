@@ -14,7 +14,7 @@ admin key, shown once during setup.
 
 The wizard's password step asks for a sign-in name and a password. The
 person who finishes it becomes the box's first administrator. The same
-password also becomes the owner's password for LosOS cloud, so one password
+password also becomes the owner's password for LosOS Cloud, so one password
 opens both.
 
 A sign-in name is lower case. It starts with a letter, then letters, digits,
@@ -52,9 +52,9 @@ After a few wrong passwords in a row, LosOS Login refuses that name for
 a few minutes. Wait, then try again.
 :::
 
-## LosOS cloud and LosOS Git
+## LosOS Cloud and LosOS Git
 
-LosOS cloud and LosOS Git sign you in with LosOS Login too, on the box's own
+LosOS Cloud and LosOS Git sign you in with LosOS Login too, on the box's own
 network and through the internet alike. Open either one signed out and you
 land on LosOS Login; sign in there once and both apps let you in, with no
 second password. Neither app shows a sign-in page of its own.
@@ -72,15 +72,15 @@ Right after a boot, while LosOS Login is still starting, the apps show a
 page saying so and try again every few seconds by themselves.
 
 Desktop and phone apps and `git` keep using app passwords and tokens.
-LosOS cloud's network folder takes your LosOS Login name and password on
+LosOS Cloud's network folder takes your LosOS Login name and password on
 the box's network, and an app password through the internet; see
 [Files on your computer](files-on-your-computer).
 
-**Log out** in LosOS cloud also signs you out of LosOS Login. LosOS Git
+**Log out** in LosOS Cloud also signs you out of LosOS Login. LosOS Git
 keeps no sign-in of its own: it asks LosOS Login on every page, so signing
-out of LosOS Login (in the admin pages or in LosOS cloud) signs you out of
-it too. A LosOS cloud tab that is already open stays signed in until you
-sign out of LosOS cloud too.
+out of LosOS Login (in the admin pages or in LosOS Cloud) signs you out of
+it too. A LosOS Cloud tab that is already open stays signed in until you
+sign out of LosOS Cloud too.
 
 ## Who sees what
 
@@ -119,7 +119,7 @@ password that follows the same rules as yours, and their access.
 
 A new person starts with **Own account** switched on. Give them the name and
 password yourself. They sign in on LosOS Login.
-LosOS cloud and LosOS Git each make them an account of their own the first
+LosOS Cloud and LosOS Git each make them an account of their own the first
 time they open the app.
 
 A person with an authenticator app or a passkey has a **Two-factor** badge.
@@ -138,7 +138,7 @@ Each person in the list has these buttons:
 - **Remove picture** and **Remove banner** take down a picture someone
   else should not see. They show only for someone who has one.
 - **Remove** stops them signing in, to the admin pages and to both apps, at
-  once, and deletes their profile. Their accounts and files in LosOS cloud
+  once, and deletes their profile. Their accounts and files in LosOS Cloud
   and LosOS Git stay on the box.
 
 Your own row has no buttons. The owner's row has only **Reset two-factor**,
@@ -163,12 +163,12 @@ the spare key, which has no account.
   camera a photo was taken with stay on your device. Your sign-in name is
   always shown beside the profile, so a picture cannot pass you off as
   someone else.
-- **Your details**: your full name and email address. LosOS cloud and LosOS
+- **Your details**: your full name and email address. LosOS Cloud and LosOS
   Git show the same ones. Only an administrator can change your sign-in
   name.
 - **Password**: when you last changed it and when it runs out, if the box
   has that rule. A new password follows the same rules as the first one, and
-  opens LosOS cloud and LosOS Git too.
+  opens LosOS Cloud and LosOS Git too.
 - **Two-factor sign-in**: whether you have an authenticator app and how many
   passkeys. **Open LosOS Login** opens LosOS Login's own page in a new tab,
   where you add or remove them. With either one, LosOS Login asks for it
@@ -190,9 +190,9 @@ Sign-in rules**:
 
 Someone a rule catches is held. They still sign in, but the admin pages
 show them only **Your account**, with a note saying what to do, and LosOS
-Login keeps them out of LosOS cloud and LosOS Git. Once they choose a new password or
+Login keeps them out of LosOS Cloud and LosOS Git. Once they choose a new password or
 add a second factor, the rest opens again. After a new second factor, LosOS
-Login asks for it once before the next page. A held person who opens LosOS cloud or LosOS Git sees a page that
+Login asks for it once before the next page. A held person who opens LosOS Cloud or LosOS Git sees a page that
 sends them to their account, which opens on the box's own network.
 
 Before you require two-factor sign-in, add an authenticator app or a passkey
@@ -237,7 +237,7 @@ LosOS Login takes passkeys. Add one on LosOS Login's page from
 [Your account](#your-account), over HTTPS once the box's certificate is
 installed. On the sign-in page, a phone or laptop then signs you in with
 its own unlock instead of your name and password, for the admin pages,
-LosOS cloud and LosOS Git alike. A passkey is not a second spare key: it
+LosOS Cloud and LosOS Git alike. A passkey is not a second spare key: it
 opens only your own account.
 
 ## The claim window

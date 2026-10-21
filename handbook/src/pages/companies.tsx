@@ -45,12 +45,12 @@ function useLocaleSvg(svgs: Record<string, Svg>): Svg {
 
 const IN_THE_BOX: Feature[] = [
   {
-    title: <Translate id="losos.companies.box.cloud.title">LosOS cloud</Translate>,
+    title: <Translate id="losos.companies.box.cloud.title">LosOS Cloud</Translate>,
     body: (
       <Translate id="losos.companies.box.cloud.body">
-        Files, photos, calendar, contacts, notes, tasks, Deck, Forms, Tables
-        and more, with desktop and phone apps. Every colleague gets an
-        account. Built on Nextcloud.
+        Files, photos, calendars, contacts and boards, in the browser and in
+        the Nextcloud desktop and phone apps. Every colleague gets an
+        account.
       </Translate>
     ),
     to: '/manual/apps',
@@ -152,8 +152,8 @@ const EUROPEAN: Feature[] = [
     title: 'Nextcloud',
     body: (
       <Translate id="losos.companies.eu.nextcloud">
-        The base of LosOS cloud. Developed by Nextcloud GmbH in Stuttgart,
-        Germany.
+        LosOS Cloud speaks its protocol, so its desktop and phone apps sync
+        with the box. Developed by Nextcloud GmbH in Stuttgart, Germany.
       </Translate>
     ),
     to: 'https://nextcloud.com',
@@ -174,7 +174,7 @@ function WhereDataLives(): ReactNode {
   const rows: [ReactNode, ReactNode][] = [
     [
       <Translate id="losos.companies.where.files.what">
-        Files, photos, calendars and contacts in LosOS cloud
+        Files, photos, calendars and contacts in LosOS Cloud
       </Translate>,
       <Translate id="losos.companies.where.files.where">
         On the box, on its encrypted disk
@@ -602,7 +602,7 @@ export default function Companies(): ReactNode {
           <p className={styles.prose}>
             <Translate id="losos.companies.eu.languages">
               The admin pages and this handbook come in English, Slovak and
-              German. LosOS cloud and LosOS Git follow each person's browser
+              German. LosOS Cloud and LosOS Git follow each person's browser
               language and carry many more.
             </Translate>
           </p>
@@ -611,7 +611,7 @@ export default function Companies(): ReactNode {
         <Section title={<Translate id="losos.companies.cost.title">No fee per seat</Translate>}>
           <p className={styles.prose}>
             <Translate id="losos.companies.cost.body">
-              LosOS and Nextcloud are free software. Your fortieth
+              LosOS is free software. Your fortieth
               hire costs a user account, not a subscription. You pay once for
               the hardware and then for the electricity, and an office mini-PC
               does the job.

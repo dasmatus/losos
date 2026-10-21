@@ -41,10 +41,10 @@ sie behebt.
 
 | Was                                 | Warum es kein Internet braucht                                                                                   |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Die Anmeldung an den Admin-Seiten   | Die Box prüft das Passwort gegen LosOS cloud auf der Box selbst, über ihr eigenes Loopback. Der gedruckte Ersatzschlüssel funktioniert auch. |
-| LosOS cloud und LosOS Git           | Beide laufen auf der Box, also bleiben Dateien, Kalender, Kontakte, Repositorys und die Handy-Apps im selben WLAN lokal. |
+| Die Anmeldung an den Admin-Seiten   | Die Box prüft das Passwort gegen LosOS Cloud auf der Box selbst, über ihr eigenes Loopback. Der gedruckte Ersatzschlüssel funktioniert auch. |
+| LosOS Cloud und LosOS Git           | Beide laufen auf der Box, also bleiben Dateien, Kalender, Kontakte, Repositorys und die Handy-Apps im selben WLAN lokal. |
 | Deine eigenen Dateien               | Sie liegen auf der verschlüsselten Festplatte der Box, in jedem Speichermodus.                                   |
-| Lokales Teilen zwischen Leuten zu Hause | Die Box entscheidet über Freigaben, Links und Berechtigungen innerhalb von LosOS cloud.                       |
+| Lokales Teilen zwischen Leuten zu Hause | Die Box entscheidet über Freigaben, Links und Berechtigungen innerhalb von LosOS Cloud.                       |
 | Die ganze Admin-Oberfläche          | Anwenden, Einstellungen, der Bereich Aussehen, der Bereich Speicher und Neustarts sprechen alle über das LAN mit der Box. |
 | Eingebaute und selbst geschriebene Widgets | Sie werden auf der Box gezeichnet, aus den eigenen Messwerten der Box. Ein selbst geschriebenes Widget, das *von sich aus* etwas aus dem Internet holt, zeigt diesen Teil leer, bis die Verbindung nach außen zurück ist, und zeichnet den Rest. |
 | Dieses Handbuch                     | Die Box liefert unter `/handbook/` eine eigene Kopie aus, mit Suche. Wenn du diese Seite über Einstellungen → Über geöffnet hast, liest du diese Kopie. |

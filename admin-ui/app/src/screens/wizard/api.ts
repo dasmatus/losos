@@ -208,26 +208,17 @@ function parseInstallers(value: unknown): SetupInstallers | null {
 
 // ── POST /api/set-password ────────────────────────────────────────────────
 
-/* SHIPPING. backend/src/http.rs `post_set_password`, planned in
- * backend/src/setup.rs.
- *
- * This is the reason the wizard exists. modules/nextcloud-common.nix generates
- * the install-time password from /dev/urandom, writes it 0600 and shows it to
- * nobody; the appliance has no SSH and no shell login, so on a fresh box
- * nobody can sign in at all. This route replaces that password with one the
- * owner chose. It never reads the old one back — there would be no point, the
- * owner has to type a password they want either way. */
+/* backend/src/http.rs `post_set_password`. A second password from the same
+ * tab, once the claim has closed the window: it replaces the owner's
+ * password in the people file (backend/src/people.rs). It never reads the
+ * old one back. */
 
 export interface SetPasswordResponse {
   /** The account that changed, echoed back. The wizard shows it: the owner has
    *  to type this name on the sign-in page and has no other way to learn it. */
   user: string;
-  /** Which route ran. Not shown to the owner — it names a runtime. */
-  mode: "container" | "native";
-  /** Whether occ exited 0. A failure is an error reply, never `false`, so this
-   *  is true on every success path. */
+  /** False only on a box with no owner yet. A failure is an error reply. */
   changed: boolean;
-  message: string;
 }
 
 /** No `user` field on purpose: the default is the appliance's own admin

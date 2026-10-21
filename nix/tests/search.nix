@@ -2,7 +2,7 @@
 # (modules/search.nix, backend/src/textsearch/).
 #
 # The parts a unit test cannot reach: that the index unit can read the
-# owner's files as `nextcloud` through its sandbox and write its index, that
+# owner's files as `losos-cloud` through its sandbox and write its index, that
 # a second pass picks up a changed file, that PDFs go through pdftotext, that
 # the two socket-activated searches answer as their apps' users, and that the
 # sockets are root's alone. lososd's relay is covered by
@@ -12,7 +12,7 @@
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  files = "/var/lib/nextcloud/data/data/notshared/files";
+  files = "/var/lib/losos-cloud/notshared/files";
   repos = "/var/lib/losos-git/repositories";
 
   # A one-page PDF with a known sentence in it.
@@ -33,12 +33,13 @@ pkgs.testers.nixosTest {
         ../../modules/search.nix
       ];
       losos.backend.package = lososPkgs.losos-ctl;
+      losos.cloud.enable = true;
       losos.git.enable = true;
-      # The two app users as modules/configuration.nix and modules/git.nix pin them.
-      users.groups.nextcloud.gid = 1002;
-      users.users.nextcloud = {
-        uid = 1002;
-        group = "nextcloud";
+      # The two app users, as modules/cloud.nix and modules/git.nix declare
+      # them.
+      users.groups.losos-cloud = { };
+      users.users.losos-cloud = {
+        group = "losos-cloud";
         isSystemUser = true;
       };
       users.groups.losos-git.gid = 1003;
@@ -74,16 +75,15 @@ pkgs.testers.nixosTest {
         answer = ask("cloud", "tax")
         assert answer["hits"] == [], answer
 
-    with subtest("the owner's files, as Nextcloud leaves them: 0750 and 0640, owned by nextcloud"):
+    with subtest("the owner's files, as LosOS Cloud leaves them: 0700 and 0600, owned by losos-cloud"):
         machine.succeed(
-            "install -d -m 0750 -o nextcloud -g nextcloud /var/lib/nextcloud /var/lib/nextcloud/data /var/lib/nextcloud/data/data /var/lib/nextcloud/data/data/notshared ${files} ${files}/Documents",
-            "install -d -m 0750 -o nextcloud -g nextcloud /var/lib/nextcloud/data/config",
-            "echo \"<?php 'secret' => 'hidden-config-word';\" > /var/lib/nextcloud/data/config/config.php",
+            "install -d -m 0700 -o losos-cloud -g losos-cloud /var/lib/losos-cloud /var/lib/losos-cloud/notshared ${files} ${files}/Documents",
+            "echo 'hidden-database-word' > /var/lib/losos-cloud/cloud.db",
             "echo 'The daňové priznanie and the tax return are due in March.' > ${files}/Documents/tax.txt",
-            "install -m 0640 ${invoice} ${files}/Documents/invoice.pdf",
+            "install -m 0600 ${invoice} ${files}/Documents/invoice.pdf",
             "head -c 4096 /dev/urandom > ${files}/photo.jpg",
-            "chown -R nextcloud:nextcloud /var/lib/nextcloud",
-            "chmod 0640 ${files}/Documents/tax.txt ${files}/photo.jpg",
+            "chown -R losos-cloud:losos-cloud /var/lib/losos-cloud",
+            "chmod 0600 /var/lib/losos-cloud/cloud.db ${files}/Documents/tax.txt ${files}/Documents/invoice.pdf ${files}/photo.jpg",
         )
 
     with subtest("a pass reads them into the index, PDFs included"):
@@ -93,11 +93,11 @@ pkgs.testers.nixosTest {
         assert answer["partial"] is False, answer
         answer = ask("cloud", "allotment")
         assert [h["path"] for h in answer["hits"]] == ["Documents/invoice.pdf"], answer
-        # Only the owner's files are in reach, never Nextcloud's config.
-        assert ask("cloud", "hidden-config-word")["hits"] == []
+        # Only the owner's files are in reach, never LosOS Cloud's database.
+        assert ask("cloud", "hidden-database-word")["hits"] == []
 
-    with subtest("the index belongs to nextcloud alone"):
-        machine.succeed("test $(stat -c %U:%a /var/lib/losos-search) = nextcloud:700")
+    with subtest("the index belongs to losos-cloud alone"):
+        machine.succeed("test $(stat -c %U:%a /var/lib/losos-search) = losos-cloud:700")
 
     with subtest("a second pass picks up a changed file and a removed one"):
         machine.succeed(
@@ -129,7 +129,7 @@ pkgs.testers.nixosTest {
     with subtest("the sockets are root's alone"):
         for socket in ["cloud", "git"]:
             machine.succeed(f"test $(stat -c %U:%a /run/losos-search/{socket}.sock) = root:600")
-        machine.fail("echo '{\"q\":\"tax\",\"limit\":1}' | runuser -u nextcloud -- socat -t 5 - UNIX-CONNECT:/run/losos-search/cloud.sock")
+        machine.fail("echo '{\"q\":\"tax\",\"limit\":1}' | runuser -u losos-cloud -- socat -t 5 - UNIX-CONNECT:/run/losos-search/cloud.sock")
 
     with subtest("lososd is told where both searches are"):
         env = machine.succeed("systemctl show -p Environment --value lososd.service")

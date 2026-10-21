@@ -99,7 +99,7 @@ Before / After prose, a screenshots table, How, Tested, notes for the
 reviewer. Keep every section.
 
 Screenshots are required for any change a person can see: the admin UI and
-the wizard, the installer and the tty1 banner, the Nextcloud
+the wizard, the installer and the tty1 banner, LosOS Cloud, LosOS Git, the LosOS Login
 theme, the handbook and docs pages. Take a Before and an After per screen at
 the same window size and in the same state, so the only difference is the
 change, and drag them into the table. A change with nothing visible says
@@ -209,26 +209,11 @@ this is the reasoning behind it.
   keep the spare-key path in the sign-in dialog. Who may call what is
   `backend/sections.json`, read by lososd (`backend/src/sections.rs`) and by
   nginx; a route missing there is admin only. `nix/tests/identity.nix` boots it.
-  `backend/src/signin.rs` now only holds the LosOS cloud login helpers that
+  `backend/src/signin.rs` now only holds the LosOS Cloud login helpers that
   device setup (`losos cloud setup`, `losos git setup`) and the pin picker
   use: keep the password in a Basic header over loopback, never a `curl -u`
   (it would be in an argv), and let `signin::validate_candidate` check shape
   only.
-- **Nextcloud trusts the box's own IP address through one nginx header.**
-  The `/nextcloud` location sets `X-Losos-Server-Addr $server_addr`, and the
-  pod's `losos.config.php` appends that value to `trusted_domains` per
-  request, IP literals only. That is how a libvirt VM, which gets no mDNS
-  name, is reached at `http://192.168.122.x/nextcloud` without "Untrusted
-  domain". Don't replace it with a `192.168.*` wildcard. Nextcloud's `*`
-  matches `[-.a-zA-Z0-9]*`, so `192.168.attacker.example` would be trusted
-  too. `localhost` and `127.0.0.1` need nothing, since Nextcloud always
-  trusts them.
-- **The admin UI's app tiles link through `index.php`.** Nextcloud answers
-  `/nextcloud/index.php/apps/<id>/` on every configuration. The short
-  `/nextcloud/apps/<id>/` form works only when the pod's Apache rewrites
-  pretty URLs, and without that it was an Apache 404 straight from the admin
-  home. `admin-ui/app/src/lib/apps.ts` uses the long form for that reason.
-  Don't "tidy" the tiles back to the short one.
 - **Hand-written widgets run in `/widget-frame/`, never in the admin page.**
   `<iframe sandbox="allow-scripts" src="/widget-frame/">` draws the owner's
   HTML and script (`backend/src/look.rs`, `GET/POST /api/look*`). The frame
@@ -260,8 +245,7 @@ this is the reasoning behind it.
   nodes `disable` and its agent node neither, and rke2's `role` description
   says the same. Gate every server-only flag on the role.
 - **The two Kubernetes instances are separate clusters on purpose.**
-  `services.k3s` (role `server`) runs *this box's* Nextcloud and the apps
-  the owner installs.
+  `services.k3s` (role `server`) runs *this box's* shared apps.
   `services.rke2` (role `agent`) joins the edge's mesh. An agent's kubelet
   cannot start while its server is unreachable, and `midnight-reboot.timer`
   fires unconditionally at 00:07. Putting the box's own services in the

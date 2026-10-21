@@ -52,7 +52,7 @@ pages open.
 
 The key also lets you set a new password for the owner, the person who set
 up the box, through the same route the wizard used. It changes the owner's
-sign-in password and their LosOS cloud password together. There is no button
+sign-in password and their LosOS Cloud password together. There is no button
 for it on the panes yet, so you run one command from a computer on the LAN.
 Replace the key, the address and the password. The new password must follow
 the four rules:
@@ -63,8 +63,8 @@ curl -H "Authorization: Bearer <spare key>" -H "Content-Type: application/json" 
   http://<address>/api/set-password
 ```
 
-The answer names the LosOS cloud account it reset. Sign in on LosOS Login
-with your sign-in name and the new password; LosOS cloud and LosOS Git follow.
+The answer names the LosOS Cloud account it reset. Sign in on LosOS Login
+with your sign-in name and the new password; LosOS Cloud and LosOS Git follow.
 
 ## You have neither
 

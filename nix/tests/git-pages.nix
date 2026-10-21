@@ -27,14 +27,6 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-
   # Playwright from nixpkgs' playwright-driver (playwright-core), which the
   # binary cache carries, under the Node it is built for.
   shots = pkgs.writeShellScriptBin "git-shots" ''
@@ -69,12 +61,9 @@ pkgs.testers.nixosTest {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
         admin.ui = lososPkgs.losos-admin-ui;
-        nextcloud.mode = "native";
         git.enable = true;
         mdns.enable = true;
       };
-      systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
       # The same box before the pages, for the pictures' "before" column:
       # LosOS Git answered every /git/ address itself.
       specialisation.before.configuration.services.nginx.virtualHosts."losos-front".locations."/git/" =

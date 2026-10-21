@@ -161,8 +161,7 @@ in
       # ── One-time filesystem preparation ──────────────────────────────────────
       # `fscrypt setup` writes /etc/fscrypt.conf and then per-mountpoint metadata
       # at <mountpoint>/.fscrypt. Both are one-time: the ConditionPathExists makes
-      # this a no-op on every later boot, the same shape as the adminpass
-      # generator in modules/nextcloud-common.nix.
+      # this a no-op on every later boot.
       #
       # /etc is tmpfs here, so fscrypt.conf is regenerated each boot and only the
       # /persist metadata is durable — which is the half that matters, and the

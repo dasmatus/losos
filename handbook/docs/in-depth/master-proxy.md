@@ -226,10 +226,10 @@ unverified claim is dropped after seven days. Claims live in
 
 On the box, lososd keeps the live domains in
 `/var/lib/losos-public-names/domains.json`. It refreshes the file every two
-minutes and whenever the Network pane asks. The Nextcloud pod mounts that
-directory read-only, adds the names to `trusted_domains` per request, and
-uses a request's own domain for `overwritehost` when it is one of them. Only
-container mode does this.
+minutes and whenever the Network pane asks. LosOS Login reads it to give
+its session cookie a domain for each of those names
+(`modules/identity.nix`). LosOS Cloud and LosOS Git answer on whichever
+name a request came by, so they need no list.
 
 A box behind a local edge gets its domains routed too, through that local
 edge, once it has vouched for the local edge with a relay pass and joined
