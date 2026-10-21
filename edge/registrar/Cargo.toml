@@ -62,8 +62,13 @@ futures-util = { version = "0.3", default-features = false }
 # The terminal envelope (`crate::operator`): the same OpenPGP code the box
 # uses, from the box's crate tree, so the two sides cannot drift.
 losos-access = { path = "../../backend/access" }
+# Mesh CI (`ci.rs`): a commit's archive travels in the JSON body as
+# base64. Already in the lock tree through reqwest.
+base64 = "0.22"
 
 [dev-dependencies]
+# Paused time for the CI queue's lease and grace tests (`ci.rs`).
+tokio = { version = "1", features = ["test-util"] }
 # tests/lab.rs talks to the helper's console and NIC WebSockets as the
 # browser would. Both are already in the lock tree through axum's "ws" and
 # reqwest, so the test client vendors nothing new.
