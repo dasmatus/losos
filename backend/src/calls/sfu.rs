@@ -61,10 +61,23 @@ pub enum Command {
 
 pub struct Config {
     pub server_name: String,
-    /// The local addresses the UDP sockets are bound to, which are also the
-    /// host candidates the SFU offers.
-    pub sockets: Vec<UdpSocket>,
+    /// The UDP sockets media arrives on.
+    pub sockets: Vec<Media>,
     pub tap: Option<Tap>,
+}
+
+/// One UDP socket and the address browsers are told to send to. The two
+/// are the same unless something in front forwards the port to the box (a
+/// router, or the edge), and then the offered address is that forwarder's.
+pub struct Media {
+    pub socket: UdpSocket,
+    pub offered: SocketAddr,
+}
+
+#[derive(Clone)]
+struct Socket {
+    socket: Arc<UdpSocket>,
+    offered: SocketAddr,
 }
 
 struct Datagram {
@@ -75,16 +88,23 @@ struct Datagram {
 
 /// Run the loop until every command sender is dropped.
 pub async fn run(config: Config, mut commands: mpsc::Receiver<Command>) {
-    let sockets: Vec<Arc<UdpSocket>> = config.sockets.into_iter().map(Arc::new).collect();
-    let addrs: Vec<SocketAddr> = sockets.iter().filter_map(|s| s.local_addr().ok()).collect();
+    let sockets: Vec<Socket> = config
+        .sockets
+        .into_iter()
+        .map(|m| Socket {
+            socket: Arc::new(m.socket),
+            offered: m.offered,
+        })
+        .collect();
+    let addrs: Vec<SocketAddr> = sockets.iter().map(|s| s.offered).collect();
     let (dgram_tx, mut dgrams) = mpsc::channel::<Datagram>(4096);
-    for socket in &sockets {
-        let socket = socket.clone();
+    for s in &sockets {
+        let socket = s.socket.clone();
+        // str0m knows the offered address only, so that is where every
+        // datagram on this socket says it arrived.
+        let destination = s.offered;
         let tx = dgram_tx.clone();
         tokio::spawn(async move {
-            let Ok(destination) = socket.local_addr() else {
-                return;
-            };
             let mut buf = vec![0u8; 2000];
             loop {
                 match socket.recv_from(&mut buf).await {
@@ -135,7 +155,7 @@ pub async fn run(config: Config, mut commands: mpsc::Receiver<Command>) {
 struct Sfu {
     calls: Calls,
     clients: Vec<Client>,
-    sockets: Vec<Arc<UdpSocket>>,
+    sockets: Vec<Socket>,
     addrs: Vec<SocketAddr>,
     tap: Option<Tap>,
     next_pid: ParticipantId,
@@ -331,7 +351,11 @@ impl Sfu {
     }
 
     fn propagate(&mut self, p: Propagated) {
-        let Some(origin) = self.clients.iter().find(|c| c.pid == p.origin()).map(|c| c.call.clone())
+        let Some(origin) = self
+            .clients
+            .iter()
+            .find(|c| c.pid == p.origin())
+            .map(|c| c.call.clone())
         else {
             return;
         };
@@ -346,9 +370,19 @@ impl Sfu {
                 Some(MediaKind::Video) => Kind::Video,
                 _ => Kind::Audio,
             };
-            tap.record(*pid, &data.mid.to_string(), kind, data.time.numer(), &data.data);
+            tap.record(
+                *pid,
+                &data.mid.to_string(),
+                kind,
+                data.time.numer(),
+                &data.data,
+            );
         }
-        for c in self.clients.iter_mut().filter(|c| c.call == origin && c.pid != p.origin()) {
+        for c in self
+            .clients
+            .iter_mut()
+            .filter(|c| c.call == origin && c.pid != p.origin())
+        {
             match &p {
                 Propagated::TrackOpen(_, track) => c.track_open(track.clone()),
                 Propagated::MediaData(from, data) => c.media_out(*from, data),
@@ -533,7 +567,7 @@ impl Client {
         }
     }
 
-    fn poll(&mut self, sockets: &[Arc<UdpSocket>], queue: &mut VecDeque<Propagated>) -> Instant {
+    fn poll(&mut self, sockets: &[Socket], queue: &mut VecDeque<Propagated>) -> Instant {
         self.negotiate();
         loop {
             if !self.rtc.is_alive() {
@@ -550,10 +584,10 @@ impl Client {
             match out {
                 Output::Timeout(t) => return t,
                 Output::Transmit(t) => {
-                    if let Some(s) = sockets.iter().find(|s| s.local_addr().ok() == Some(t.source)) {
+                    if let Some(s) = sockets.iter().find(|s| s.offered == t.source) {
                         // A full send buffer drops the datagram, as the
                         // network would.
-                        let _ = s.try_send_to(&t.contents, t.destination);
+                        let _ = s.socket.try_send_to(&t.contents, t.destination);
                     }
                 }
                 Output::Event(e) => {
@@ -602,7 +636,12 @@ impl Client {
             Event::KeyframeRequest(req) => {
                 let out = self.tracks_out.iter().find(|t| t.mid() == Some(req.mid))?;
                 let track = out.track.upgrade()?;
-                Some(Propagated::KeyframeRequest(self.pid, req, track.origin, track.mid))
+                Some(Propagated::KeyframeRequest(
+                    self.pid,
+                    req,
+                    track.origin,
+                    track.mid,
+                ))
             }
             _ => None,
         }

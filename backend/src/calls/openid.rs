@@ -67,7 +67,8 @@ impl Resolve for Loopback {
 fn token_ok(t: &str) -> bool {
     !t.is_empty()
         && t.len() <= 512
-        && t.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_.~".contains(&b))
+        && t.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_.~".contains(&b))
 }
 
 /// The `sub` of a `200` answer, which must be on the server that answered:
@@ -114,7 +115,13 @@ fn get(addr: SocketAddr, path: &str) -> std::io::Result<Answer> {
 fn parse_answer(raw: &[u8]) -> Option<Answer> {
     let split = raw.windows(4).position(|w| w == b"\r\n\r\n")?;
     let head = std::str::from_utf8(&raw[..split]).ok()?;
-    let status = head.lines().next()?.split_whitespace().nth(1)?.parse().ok()?;
+    let status = head
+        .lines()
+        .next()?
+        .split_whitespace()
+        .nth(1)?
+        .parse()
+        .ok()?;
     Some(Answer {
         status,
         body: raw[split + 4..].to_vec(),
@@ -144,7 +151,11 @@ mod tests {
             let mut buf = [0u8; 4096];
             let n = s.read(&mut buf).unwrap();
             s.write_all(answer.as_bytes()).unwrap();
-            String::from_utf8_lossy(&buf[..n]).lines().next().unwrap().to_owned()
+            String::from_utf8_lossy(&buf[..n])
+                .lines()
+                .next()
+                .unwrap()
+                .to_owned()
         });
         (addr, t)
     }
@@ -158,7 +169,10 @@ mod tests {
             addr,
             server_name: "b".into(),
         };
-        assert_eq!(hs.resolve(&token("tok-1_x", "b")).unwrap().as_str(), "@eva:b");
+        assert_eq!(
+            hs.resolve(&token("tok-1_x", "b")).unwrap().as_str(),
+            "@eva:b"
+        );
         assert_eq!(
             req.join().unwrap(),
             "GET /_matrix/federation/v1/openid/userinfo?access_token=tok-1_x HTTP/1.0"
@@ -167,9 +181,8 @@ mod tests {
 
     #[test]
     fn a_refused_token_is_unauthenticated() {
-        let (addr, _req) = homeserver(
-            "HTTP/1.1 401 Unauthorized\r\n\r\n{\"errcode\":\"M_UNKNOWN_TOKEN\"}",
-        );
+        let (addr, _req) =
+            homeserver("HTTP/1.1 401 Unauthorized\r\n\r\n{\"errcode\":\"M_UNKNOWN_TOKEN\"}");
         let hs = Loopback {
             addr,
             server_name: "b".into(),
@@ -197,7 +210,11 @@ mod tests {
         };
         assert_eq!(hs.resolve(&token("t", "elsewhere")), Err(Refusal::NotLocal));
         for bad in ["", "a&b=c", "a b", "x\r\nHost: evil", &"a".repeat(513)] {
-            assert_eq!(hs.resolve(&token(bad, "b")), Err(Refusal::Unauthenticated), "{bad}");
+            assert_eq!(
+                hs.resolve(&token(bad, "b")),
+                Err(Refusal::Unauthenticated),
+                "{bad}"
+            );
         }
     }
 
@@ -218,6 +235,13 @@ mod tests {
         let a = parse_answer(b"HTTP/1.1 200 OK\r\nA: b\r\n\r\n{}").unwrap();
         assert_eq!((a.status, a.body.as_slice()), (200, &b"{}"[..]));
         assert!(parse_answer(b"garbage").is_none());
-        assert!(user_from_answer(&Answer { status: 200, body: b"[]".to_vec() }, "b").is_err());
+        assert!(user_from_answer(
+            &Answer {
+                status: 200,
+                body: b"[]".to_vec()
+            },
+            "b"
+        )
+        .is_err());
     }
 }

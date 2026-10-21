@@ -94,7 +94,9 @@ mod tests {
         assert!(matches!(m, ClientMsg::Join { ref device, .. } if device == "D"));
         let m: ClientMsg = serde_json::from_str(r#"{"type":"leave"}"#).unwrap();
         assert!(matches!(m, ClientMsg::Leave));
-        assert!(serde_json::from_str::<ClientMsg>(r#"{"type":"offer","sdp":"x","more":1}"#).is_err());
+        assert!(
+            serde_json::from_str::<ClientMsg>(r#"{"type":"offer","sdp":"x","more":1}"#).is_err()
+        );
 
         let s = serde_json::to_string(&ServerMsg::Joined {
             you: 3,

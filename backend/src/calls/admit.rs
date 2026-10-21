@@ -68,7 +68,10 @@ pub struct CallId(pub String);
 
 impl CallId {
     pub fn parse(s: &str) -> Result<Self, Refusal> {
-        if s.len() == 32 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+        if s.len() == 32
+            && s.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
             Ok(CallId(s.to_owned()))
         } else {
             Err(Refusal::NoSuchCall)
@@ -157,7 +160,9 @@ fn room_ok(room: &str) -> bool {
 fn device_ok(device: &str) -> bool {
     !device.is_empty()
         && device.len() <= 64
-        && device.bytes().all(|b| b.is_ascii_alphanumeric() || b"_-.".contains(&b))
+        && device
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_-.".contains(&b))
 }
 
 pub struct Calls {
@@ -276,7 +281,9 @@ impl Calls {
 
     /// The call `pid` is in.
     pub fn call_of(&self, pid: ParticipantId) -> Option<(&CallId, &Call)> {
-        self.calls.iter().find(|(_, c)| c.members.contains_key(&pid))
+        self.calls
+            .iter()
+            .find(|(_, c)| c.members.contains_key(&pid))
     }
 
     /// Drop calls nobody joined in time and calls that stayed empty.
@@ -311,10 +318,20 @@ mod tests {
     fn user_ids_are_checked_for_shape() {
         assert!(UserId::parse("@matus:mattbox.home.arpa").is_ok());
         assert!(UserId::parse("@eva:[::1]:8448").is_ok());
-        for bad in ["matus:box", "@:box", "@matus", "@Matus:box", "@ma tus:box", "@m:"] {
+        for bad in [
+            "matus:box",
+            "@:box",
+            "@matus",
+            "@Matus:box",
+            "@ma tus:box",
+            "@m:",
+        ] {
             assert_eq!(UserId::parse(bad), Err(Refusal::BadUser), "{bad}");
         }
-        assert_eq!(uid("@eva:kitchenbox.home.arpa").server(), "kitchenbox.home.arpa");
+        assert_eq!(
+            uid("@eva:kitchenbox.home.arpa").server(),
+            "kitchenbox.home.arpa"
+        );
     }
 
     #[test]
@@ -335,7 +352,14 @@ mod tests {
         );
         assert!(calls.is_empty());
         calls
-            .create(cid(1), uid("@matus:mattbox.home.arpa"), ROOM, &[], true, now)
+            .create(
+                cid(1),
+                uid("@matus:mattbox.home.arpa"),
+                ROOM,
+                &[],
+                true,
+                now,
+            )
             .unwrap();
         assert_eq!(calls.len(), 1);
     }
@@ -371,7 +395,9 @@ mod tests {
         assert!(calls.admit(&cid(1), 1, uid("@m:b"), "DEV1", now).is_ok());
         assert!(calls.admit(&cid(1), 2, uid("@eva:b"), "DEV2", now).is_ok());
         assert_eq!(
-            calls.admit(&cid(1), 3, uid("@mallory:b"), "DEV3", now).err(),
+            calls
+                .admit(&cid(1), 3, uid("@mallory:b"), "DEV3", now)
+                .err(),
             Some(Refusal::NotInvited)
         );
         assert_eq!(
@@ -379,7 +405,9 @@ mod tests {
             Some(Refusal::NoSuchCall)
         );
         assert_eq!(
-            calls.admit(&cid(1), 3, uid("@eva:b"), "bad device!", now).err(),
+            calls
+                .admit(&cid(1), 3, uid("@eva:b"), "bad device!", now)
+                .err(),
             Some(Refusal::BadDevice)
         );
         assert_eq!(calls.get(&cid(1)).unwrap().members.len(), 2);
@@ -389,7 +417,9 @@ mod tests {
     fn a_call_holds_at_most_max_members() {
         let mut calls = Calls::new("b");
         let now = Instant::now();
-        calls.create(cid(1), uid("@m:b"), ROOM, &[], true, now).unwrap();
+        calls
+            .create(cid(1), uid("@m:b"), ROOM, &[], true, now)
+            .unwrap();
         for pid in 0..MAX_MEMBERS as u64 {
             calls.admit(&cid(1), pid, uid("@m:b"), "D", now).unwrap();
         }
@@ -404,7 +434,9 @@ mod tests {
         let mut calls = Calls::new("b");
         let now = Instant::now();
         for n in 0..MAX_CALLS as u8 {
-            calls.create(cid(n), uid("@m:b"), ROOM, &[], true, now).unwrap();
+            calls
+                .create(cid(n), uid("@m:b"), ROOM, &[], true, now)
+                .unwrap();
         }
         assert_eq!(
             calls.create(cid(200), uid("@m:b"), ROOM, &[], true, now),
@@ -416,8 +448,12 @@ mod tests {
     fn unjoined_and_emptied_calls_are_reaped() {
         let mut calls = Calls::new("b");
         let t0 = Instant::now();
-        calls.create(cid(1), uid("@m:b"), ROOM, &[], true, t0).unwrap();
-        calls.create(cid(2), uid("@m:b"), ROOM, &[], true, t0).unwrap();
+        calls
+            .create(cid(1), uid("@m:b"), ROOM, &[], true, t0)
+            .unwrap();
+        calls
+            .create(cid(2), uid("@m:b"), ROOM, &[], true, t0)
+            .unwrap();
         calls.admit(&cid(2), 7, uid("@m:b"), "D", t0).unwrap();
 
         // Nobody joined call 1; call 2 is live.
@@ -431,7 +467,9 @@ mod tests {
         assert_eq!(calls.leave(7, t1), None);
         calls.reap(t1 + EMPTY_TTL / 2);
         assert!(calls.get(&cid(2)).is_some());
-        calls.admit(&cid(2), 8, uid("@m:b"), "D", t1 + EMPTY_TTL / 2).unwrap();
+        calls
+            .admit(&cid(2), 8, uid("@m:b"), "D", t1 + EMPTY_TTL / 2)
+            .unwrap();
         calls.reap(t1 + EMPTY_TTL * 3);
         assert!(calls.get(&cid(2)).is_some(), "a member is back in");
         calls.leave(8, t1 + EMPTY_TTL * 3);
@@ -443,7 +481,9 @@ mod tests {
     fn call_of_finds_a_members_call() {
         let mut calls = Calls::new("b");
         let now = Instant::now();
-        calls.create(cid(1), uid("@m:b"), ROOM, &[], false, now).unwrap();
+        calls
+            .create(cid(1), uid("@m:b"), ROOM, &[], false, now)
+            .unwrap();
         calls.admit(&cid(1), 4, uid("@m:b"), "D", now).unwrap();
         assert_eq!(calls.call_of(4).map(|(id, _)| id.clone()), Some(cid(1)));
         assert!(calls.call_of(5).is_none());

@@ -107,7 +107,10 @@ async fn send(session: &mut Session, msg: &ServerMsg) -> bool {
     }
 }
 
-async fn next_text(stream: &mut actix_ws::AggregatedMessageStream, session: &mut Session) -> Option<String> {
+async fn next_text(
+    stream: &mut actix_ws::AggregatedMessageStream,
+    session: &mut Session,
+) -> Option<String> {
     loop {
         match stream.recv().await? {
             Ok(AggregatedMessage::Text(t)) => return Some(t.to_string()),
@@ -117,7 +120,9 @@ async fn next_text(stream: &mut actix_ws::AggregatedMessageStream, session: &mut
                 }
             }
             Ok(AggregatedMessage::Pong(_)) => {}
-            Ok(AggregatedMessage::Binary(_)) | Ok(AggregatedMessage::Close(_)) | Err(_) => return None,
+            Ok(AggregatedMessage::Binary(_)) | Ok(AggregatedMessage::Close(_)) | Err(_) => {
+                return None
+            }
         }
     }
 }

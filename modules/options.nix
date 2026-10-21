@@ -2994,6 +2994,15 @@ in
     internal = true;
   };
 
+  # The addresses the SFU takes media on, as losos-calls' `--address`
+  # (`IP` or `IP=OFFERED`); empty for every address the box has. Tests set
+  # it to reach the SFU through a forwarded port.
+  options.lososInternal.callsAddresses = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [ ];
+    internal = true;
+  };
+
   options.lososInternal.vmHost = lib.mkOption {
     type = lib.types.bool;
     internal = true;

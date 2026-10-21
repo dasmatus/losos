@@ -65,6 +65,10 @@ in
             "--homeserver"
             "127.0.0.1:${toString chat.port}"
           ]
+          ++ lib.concatMap (a: [
+            "--address"
+            a
+          ]) config.lososInternal.callsAddresses
           ++ lib.optionals (tap != null) [
             "--tap"
             tap

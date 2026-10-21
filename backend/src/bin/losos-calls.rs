@@ -12,7 +12,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Parser)]
-#[command(version, about = "Forward end-to-end encrypted call media between chat members")]
+#[command(
+    version,
+    about = "Forward end-to-end encrypted call media between chat members"
+)]
 struct Cli {
     /// Where the signalling listener binds: `unix:/path` or `host:port`.
     #[arg(long, default_value = "unix:/run/losos-calls/http.sock")]
@@ -20,11 +23,13 @@ struct Cli {
     /// The UDP port media arrives on, on every address offered.
     #[arg(long, default_value_t = 7882)]
     udp_port: u16,
-    /// An address to offer as an ICE host candidate. Repeat for more;
+    /// An address to take media on and offer as an ICE host candidate,
+    /// `IP`, or `IP=OFFERED` when something in front forwards the same UDP
+    /// port to IP and browsers must be told OFFERED. Repeat for more;
     /// without any, every address of every interface that is up, except
     /// loopback and the clusters' own interfaces.
-    #[arg(long = "address")]
-    addresses: Vec<IpAddr>,
+    #[arg(long = "address", value_parser = parse_address)]
+    addresses: Vec<(IpAddr, IpAddr)>,
     /// This box's Matrix server name: only its people start calls.
     #[arg(long)]
     server_name: String,
@@ -41,6 +46,12 @@ struct Cli {
 const SKIP_INTERFACES: &[&str] = &[
     "cali", "vxlan", "tunl", "flannel", "cni", "kube", "docker", "podman", "veth", "virbr", "lo",
 ];
+
+fn parse_address(s: &str) -> Result<(IpAddr, IpAddr), String> {
+    let (bind, offered) = s.split_once('=').unwrap_or((s, s));
+    let ip = |v: &str| v.parse::<IpAddr>().map_err(|e| format!("{v}: {e}"));
+    Ok((ip(bind)?, ip(offered)?))
+}
 
 fn host_addresses() -> anyhow::Result<Vec<IpAddr>> {
     let mut v: Vec<IpAddr> = if_addrs::get_if_addrs()?
@@ -68,7 +79,7 @@ fn main() -> anyhow::Result<()> {
     str0m::crypto::from_feature_flags().install_process_default();
 
     let addresses = if cli.addresses.is_empty() {
-        host_addresses()?
+        host_addresses()?.into_iter().map(|ip| (ip, ip)).collect()
     } else {
         cli.addresses.clone()
     };
@@ -76,13 +87,16 @@ fn main() -> anyhow::Result<()> {
     let tap = cli.tap.clone().map(tap::Tap::new).transpose()?;
 
     let (commands, rx) = tokio::sync::mpsc::channel(256);
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
     let mut sockets = Vec::new();
-    for ip in &addresses {
+    for (ip, offered) in &addresses {
         let addr = SocketAddr::new(*ip, cli.udp_port);
-        let s = rt.block_on(tokio::net::UdpSocket::bind(addr))?;
-        tracing::info!("media on udp {addr}");
-        sockets.push(s);
+        let socket = rt.block_on(tokio::net::UdpSocket::bind(addr))?;
+        let offered = SocketAddr::new(*offered, cli.udp_port);
+        tracing::info!("media on udp {addr}, offered as {offered}");
+        sockets.push(sfu::Media { socket, offered });
     }
     let config = sfu::Config {
         server_name: cli.server_name.clone(),
