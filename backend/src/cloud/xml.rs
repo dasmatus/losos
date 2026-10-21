@@ -456,7 +456,8 @@ mod tests {
     #[test]
     fn multistatus_writes_found_and_missing() {
         let mut r = Response::new("/remote.php/dav/files/a/x y".into());
-        r.found.push((Name::new(DAV, "getetag"), "&quot;1&quot;".into()));
+        r.found
+            .push((Name::new(DAV, "getetag"), "&quot;1&quot;".into()));
         r.missing.push(Name::new("urn:x", "odd"));
         let out = multistatus(&[r]);
         assert!(out.contains("<d:href>/remote.php/dav/files/a/x y</d:href>"));

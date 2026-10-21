@@ -17,9 +17,7 @@
 //! `OC-ETag` and `OC-FileId` so the desktop app need not ask again.
 
 use crate::cloud::auth::Who;
-use crate::cloud::store::{
-    clean_path, is_within, mime_for, parent_of, Entry, StoreError, Written,
-};
+use crate::cloud::store::{clean_path, is_within, mime_for, parent_of, Entry, StoreError, Written};
 use crate::cloud::util::{
     decode_path, encode_path, http_date, iso_date, now, random_token, xml_escape,
 };
@@ -190,9 +188,7 @@ impl Locks {
         let mut held = self.held.lock().unwrap_or_else(|p| p.into_inner());
         held.retain(|_, l| l.until > Instant::now());
         held.iter()
-            .filter(|((o, p), l)| {
-                o == owner && (p == path || (l.infinite && is_within(path, p)))
-            })
+            .filter(|((o, p), l)| o == owner && (p == path || (l.infinite && is_within(path, p))))
             .map(|((_, p), l)| (p.clone(), l.clone()))
             .collect()
     }
@@ -260,7 +256,10 @@ fn dead_props(cloud: &Cloud, file: i64) -> Vec<(Name, String)> {
         .with_db(|db| {
             let mut stmt = db.prepare("SELECT ns, name, value FROM props WHERE file = ?1")?;
             let rows = stmt.query_map(params![file], |r| {
-                Ok((Name::new(&r.get::<_, String>(0)?, &r.get::<_, String>(1)?), r.get(2)?))
+                Ok((
+                    Name::new(&r.get::<_, String>(0)?, &r.get::<_, String>(1)?),
+                    r.get(2)?,
+                ))
             })?;
             Ok(rows.filter_map(|r| r.ok()).collect())
         })
@@ -304,17 +303,11 @@ pub fn store_error(e: &StoreError) -> HttpResponse {
         ),
         StoreError::Io(err) => {
             tracing::warn!("cloud: {err}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Sabre\\DAV\\Exception",
-            )
+            (StatusCode::INTERNAL_SERVER_ERROR, "Sabre\\DAV\\Exception")
         }
         StoreError::Db(err) => {
             tracing::warn!("cloud: {err}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Sabre\\DAV\\Exception",
-            )
+            (StatusCode::INTERNAL_SERVER_ERROR, "Sabre\\DAV\\Exception")
         }
     };
     dav_error(status, exception, &e.to_string())
@@ -384,7 +377,11 @@ fn client_checksum(req: &HttpRequest) -> Option<String> {
     if value.is_empty() {
         return None;
     }
-    Some(format!("{}:{}", kind.to_ascii_uppercase(), value.to_ascii_lowercase()))
+    Some(format!(
+        "{}:{}",
+        kind.to_ascii_uppercase(),
+        value.to_ascii_lowercase()
+    ))
 }
 
 /// Everything about one request the handlers need.
@@ -786,17 +783,15 @@ async fn proppatch(ctx: &Ctx<'_>, t: &Target, body: web::Payload) -> HttpRespons
                 }
             }
             (DAV, "lastmodified") | (DAV, "getlastmodified") => {
-                let parsed = value
-                    .map(|v| v.deep_text())
-                    .and_then(|s| {
-                        s.parse::<i64>()
-                            .ok()
-                            .or_else(|| httpdate::parse_http_date(&s).ok().map(|t| {
-                                t.duration_since(std::time::UNIX_EPOCH)
-                                    .map(|d| d.as_secs() as i64)
-                                    .unwrap_or(0)
-                            }))
-                    });
+                let parsed = value.map(|v| v.deep_text()).and_then(|s| {
+                    s.parse::<i64>().ok().or_else(|| {
+                        httpdate::parse_http_date(&s).ok().map(|t| {
+                            t.duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_secs() as i64)
+                                .unwrap_or(0)
+                        })
+                    })
+                });
                 match parsed {
                     Some(m) => match crate::cloud::set_mtime(ctx.cloud, &t.owner, &t.rest, m) {
                         Ok(e) => {
@@ -816,7 +811,12 @@ async fn proppatch(ctx: &Ctx<'_>, t: &Target, body: web::Payload) -> HttpRespons
                         Some(v) => db.execute(
                             "INSERT INTO props (file, ns, name, value) VALUES (?1, ?2, ?3, ?4)
                              ON CONFLICT (file, ns, name) DO UPDATE SET value = excluded.value",
-                            params![id, name.ns, name.local, v.inner_xml.chars().take(65536).collect::<String>()],
+                            params![
+                                id,
+                                name.ns,
+                                name.local,
+                                v.inner_xml.chars().take(65536).collect::<String>()
+                            ],
                         )?,
                         None => db.execute(
                             "DELETE FROM props WHERE file = ?1 AND ns = ?2 AND name = ?3",
@@ -881,7 +881,10 @@ pub fn serve_file(
     download: bool,
 ) -> HttpResponse {
     if let (Some(tag), Some(inm)) = (etag, header_str(req, "if-none-match")) {
-        if inm.split(',').any(|v| bare_etag(v) == tag || v.trim() == "*") {
+        if inm
+            .split(',')
+            .any(|v| bare_etag(v) == tag || v.trim() == "*")
+        {
             return HttpResponse::NotModified()
                 .insert_header((header::ETAG, quoted(tag)))
                 .finish();
@@ -979,7 +982,8 @@ pub async fn receive(
             ));
         }
     }
-    temp.flush().map_err(|e| store_error(&StoreError::from(e)))?;
+    temp.flush()
+        .map_err(|e| store_error(&StoreError::from(e)))?;
     Ok((temp, crate::cloud::util::hex(sha.finish().as_ref())))
 }
 
@@ -1002,7 +1006,11 @@ async fn put(ctx: &Ctx<'_>, t: &Target, body: web::Payload) -> HttpResponse {
         return Ctx::locked_response();
     }
     // Refuse early what would be refused after the whole upload.
-    match ctx.cloud.store.stat(&t.owner, parent_of(&t.rest).unwrap_or("")) {
+    match ctx
+        .cloud
+        .store
+        .stat(&t.owner, parent_of(&t.rest).unwrap_or(""))
+    {
         Ok(p) if p.dir => {}
         _ => return store_error(&StoreError::Conflict),
     }
@@ -1279,7 +1287,14 @@ async fn lock(ctx: &Ctx<'_>, t: &Target, body: web::Payload) -> HttpResponse {
 
 fn uuid_like() -> String {
     let t = random_token(32).to_lowercase();
-    format!("{}-{}-{}-{}-{}", &t[0..8], &t[8..12], &t[12..16], &t[16..20], &t[20..32])
+    format!(
+        "{}-{}-{}-{}-{}",
+        &t[0..8],
+        &t[8..12],
+        &t[12..16],
+        &t[16..20],
+        &t[20..32]
+    )
 }
 
 fn unlock(ctx: &Ctx<'_>, t: &Target) -> HttpResponse {
@@ -1442,14 +1457,17 @@ async fn uploads(ctx: &Ctx<'_>, t: &Target, method: &str, body: web::Payload) ->
                 let mut names = chunk_names(&dir);
                 chunk_order(&mut names);
                 for n in names {
-                    let size = std::fs::metadata(dir.join(&n)).map(|m| m.len()).unwrap_or(0);
+                    let size = std::fs::metadata(dir.join(&n))
+                        .map(|m| m.len())
+                        .unwrap_or(0);
                     let mut r = Response::new(format!(
                         "{}/{}/{}",
                         t.base,
                         encode_path(&transfer),
                         encode_path(&n)
                     ));
-                    r.found.push((Name::new(DAV, "resourcetype"), String::new()));
+                    r.found
+                        .push((Name::new(DAV, "resourcetype"), String::new()));
                     r.found
                         .push((Name::new(DAV, "getcontentlength"), size.to_string()));
                     out.push(r);
@@ -1510,7 +1528,11 @@ fn assemble(
 ) -> Result<(tempfile::NamedTempFile, String), HttpResponse> {
     let mut names = chunk_names(dir);
     chunk_order(&mut names);
-    let mut temp = ctx.cloud.store.temp_file(owner).map_err(|e| store_error(&e))?;
+    let mut temp = ctx
+        .cloud
+        .store
+        .temp_file(owner)
+        .map_err(|e| store_error(&e))?;
     let mut sha = ring::digest::Context::new(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY);
     let mut n: u64 = 0;
     let mut buf = vec![0u8; 1 << 16];
@@ -1684,11 +1706,7 @@ async fn trash(ctx: &Ctx<'_>, t: &Target, method: &str, body: web::Payload) -> H
     }
 }
 
-fn trash_response(
-    t: &Target,
-    i: &crate::cloud::store::Trashed,
-    req: &PropRequest,
-) -> Response {
+fn trash_response(t: &Target, i: &crate::cloud::store::Trashed, req: &PropRequest) -> Response {
     let mut r = Response::new(format!(
         "{}/trash/{}{}",
         t.base,
@@ -1839,7 +1857,15 @@ async fn versions(ctx: &Ctx<'_>, t: &Target, method: &str, body: web::Payload) -
 pub fn is_dav_method(m: &Method) -> bool {
     matches!(
         m.as_str(),
-        "PROPFIND" | "PROPPATCH" | "MKCOL" | "COPY" | "MOVE" | "LOCK" | "UNLOCK" | "REPORT" | "SEARCH"
+        "PROPFIND"
+            | "PROPPATCH"
+            | "MKCOL"
+            | "COPY"
+            | "MOVE"
+            | "LOCK"
+            | "UNLOCK"
+            | "REPORT"
+            | "SEARCH"
     )
 }
 
@@ -1892,7 +1918,10 @@ mod tests {
             Resolve::Ok(t) => assert_eq!(t.space, Space::Root),
             r => panic!("{r:?}"),
         }
-        assert!(matches!(resolve("/remote.php/other", "alice"), Resolve::NotFound));
+        assert!(matches!(
+            resolve("/remote.php/other", "alice"),
+            Resolve::NotFound
+        ));
     }
 
     #[test]
@@ -1901,7 +1930,10 @@ mod tests {
             destination_path("https://box.local/remote.php/dav/files/a/x"),
             Some("/remote.php/dav/files/a/x")
         );
-        assert_eq!(destination_path("/remote.php/webdav/x"), Some("/remote.php/webdav/x"));
+        assert_eq!(
+            destination_path("/remote.php/webdav/x"),
+            Some("/remote.php/webdav/x")
+        );
         assert_eq!(destination_path("x"), None);
     }
 
