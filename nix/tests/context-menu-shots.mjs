@@ -204,9 +204,10 @@ async function desktop(scheme) {
   await close(page);
 
   // The space under the list: what a folder can take.
-  const view = page.locator("main");
-  const vb = await view.boundingBox();
-  await rightClick(page, view, { x: vb.x + vb.width / 2, y: vb.y + vb.height - 30 });
+  const last = page.locator("[data-entry]").last();
+  const lb = await last.boundingBox();
+  assert.ok(lb.y + lb.height + 60 < DESKTOP.height, "no space under the list");
+  await rightClick(page, last, { x: lb.x + lb.width / 2, y: lb.y + lb.height + 60 });
   if (!before) assert.deepEqual((await texts(page)).slice(0, 3), ["New folder…", "Upload…", "Upload folder…"]);
   await take(page, `${scheme}-cloud-space`, "the space around the files");
   await close(page);

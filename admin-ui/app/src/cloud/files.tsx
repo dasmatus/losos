@@ -137,7 +137,9 @@ export function FilesView() {
           ],
         ],
       }))}
-      className="relative flex flex-col gap-4"
+      // Tall enough that the blank space under a short list is still this
+      // folder's, for its right-click menu and for dropped files.
+      className="relative flex min-h-[70dvh] flex-col gap-4"
       onDragOver={(event) => {
         if (![...event.dataTransfer.types].includes("Files")) return;
         event.preventDefault();
