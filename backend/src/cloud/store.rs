@@ -971,6 +971,54 @@ impl Store {
         Ok(())
     }
 
+    /// Take a file or folder from elsewhere on the same disk straight into
+    /// the trash bin (a rename), as if it had been deleted from `original`
+    /// at `deleted`. The Nextcloud import moves Nextcloud's trash in so.
+    pub fn adopt_trashed(
+        &self,
+        owner: &str,
+        from: &Path,
+        original: &str,
+        deleted: i64,
+    ) -> Result<Trashed> {
+        let name = original.rsplit('/').next().unwrap_or(original).to_owned();
+        if !valid_name(&name) {
+            return Err(StoreError::BadName);
+        }
+        let meta = fs::symlink_metadata(from).map_err(map_io)?;
+        if meta.file_type().is_symlink() {
+            return Err(StoreError::BadName);
+        }
+        let size = if meta.is_dir() {
+            walkdir_size(from)
+        } else {
+            meta.len()
+        };
+        let trash = self.trash_dir(owner);
+        fs::create_dir_all(&trash)?;
+        let mut stored = format!("{name}.d{deleted}");
+        let mut n = 1;
+        while trash.join(&stored).exists() {
+            stored = format!("{name}.d{deleted}-{n}");
+            n += 1;
+        }
+        fs::rename(from, trash.join(&stored)).map_err(map_io)?;
+        let db = self.db.lock().unwrap_or_else(|p| p.into_inner());
+        db.execute(
+            "INSERT INTO trash (owner, original, name, dir, size, deleted, stored) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![owner, original, name, meta.is_dir() as i64, size as i64, deleted, stored],
+        )?;
+        Ok(Trashed {
+            id: db.last_insert_rowid(),
+            original: original.to_owned(),
+            name,
+            dir: meta.is_dir(),
+            size,
+            deleted,
+            stored,
+        })
+    }
+
     pub fn trash(&self, owner: &str) -> Result<Vec<Trashed>> {
         let db = self.db.lock().unwrap_or_else(|p| p.into_inner());
         let mut stmt = db.prepare(
@@ -1361,6 +1409,21 @@ impl Store {
             .map(|s| s.f_bavail.saturating_mul(s.f_frsize))
             .unwrap_or(0)
     }
+}
+
+/// The bytes under a folder, for a trash row.
+fn walkdir_size(dir: &Path) -> u64 {
+    let mut total = 0;
+    if let Ok(rd) = fs::read_dir(dir) {
+        for e in rd.flatten() {
+            match e.file_type() {
+                Ok(t) if t.is_dir() => total += walkdir_size(&e.path()),
+                Ok(t) if t.is_file() => total += e.metadata().map(|m| m.len()).unwrap_or(0),
+                _ => {}
+            }
+        }
+    }
+    total
 }
 
 #[cfg(test)]
