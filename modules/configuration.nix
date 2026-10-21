@@ -134,7 +134,7 @@
   };
 
   # ── Service accounts for the workload pods ────────────────────────────────
-  # Rootless Podman is gone, and so is systemd-nspawn. The services run as pods
+  # systemd-nspawn is gone. Nextcloud and Forgejo run as pods
   # in this box's own local k3s cluster (modules/workloads.nix), and because
   # that cluster runs no CNI the pods are `hostNetwork` — they share the host's
   # network *and* user namespace. So `runAsUser` in a pod spec is a real uid on

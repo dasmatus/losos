@@ -41,7 +41,7 @@ export function Crumbs({ path }: { path: string }) {
   const t = useT();
   const parts = path === "" ? [] : path.split("/");
   return (
-    <nav aria-label={t("cloud.crumbs")} className="flex min-w-0 flex-wrap items-center gap-1 text-[15px]">
+    <nav aria-label={t("cloud.crumbs")} className="flex min-w-0 flex-wrap items-center gap-1 text-[19px] leading-tight">
       <Link to="/files" className={cn("font-semibold tracking-tight", parts.length > 0 && "text-muted hover:text-ink")}>
         {t("cloud.nav.files")}
       </Link>

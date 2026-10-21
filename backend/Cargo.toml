@@ -82,6 +82,11 @@ walkdir = "2"
 # (src/people.rs): argon2id in PHC form, the format Authelia reads. Already
 # in the lock file through the access crate.
 argon2 = "0.6"
+# Profile pictures and banners (src/profiles.rs): decoded, turned upright,
+# cropped, scaled and encoded again, so no camera tag (a photo's position
+# among them) is ever stored. PNG, JPEG, GIF and WebP in; PNG and JPEG out.
+# The `image` dependency itself is declared once, below with LosOS Cloud's
+# thumbnails, whose decoders are a superset of these.
 
 # LosOS Cloud (src/cloud/, the losos-cloud binary): WebDAV bodies are XML,
 # read with namespaces resolved, and downloads go through actix-files for

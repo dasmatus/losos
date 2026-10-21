@@ -143,8 +143,11 @@ async function open({
     if (installRefusal !== null) return json(route, 409, { error: installRefusal });
     const record = {
       release: body.release,
+      kind: 'chart',
       chart: body.chart,
+      title: null,
       runAs: body.runAs,
+      runtime: body.runAs === 'shared' ? 'kube' : 'podman',
       values: body.values,
       valuesYaml: body.valuesYaml,
       frontPort: 30000,
@@ -190,8 +193,11 @@ const shot = async (page, name, target = page) => {
 
 const RUNNING = {
   release: 'jellyfin',
+  kind: 'chart',
   chart: JELLYFIN,
+  title: null,
   runAs: 'notshared',
+  runtime: 'podman',
   values: { service: { port: 8097 } },
   valuesYaml: null,
   frontPort: 30000,
@@ -214,11 +220,11 @@ await check('a hit the box can fetch has an Install button; one without a chart 
   await page.close();
 });
 
-await check('with no cluster on the box, no hit offers an install and the footer says why', async () => {
-  const { page, errors } = await open({ apps: { available: false, reason: 'noCluster', apps: [] } });
+await check('with installing turned off, no hit offers an install and the footer says why', async () => {
+  const { page, errors } = await open({ apps: { available: false, reason: 'off', apps: [] } });
   await search(page);
   assert.equal(await page.locator('[data-slot="table"]').getByRole('button').count(), 0);
-  assert.match(await page.locator('main').innerText(), /install only while Files or Code is set to Kept separate/);
+  assert.match(await page.locator('main').innerText(), /Installing apps is turned off on this box/);
   await clean(page, errors);
   await page.close();
 });
@@ -349,6 +355,46 @@ await check('an installed app opens on its own port, changes in place and is rem
   await confirm.getByRole('button', { name: 'Remove' }).click();
   await page.getByText('Removing').waitFor();
   assert.deepEqual(writes.find((w) => w[1] === '/api/apps/remove')[2], { release: 'jellyfin' });
+  await clean(page, errors);
+  await page.close();
+});
+
+// An app in the LosOS app format: made by the AI builder or sent by the
+// owner, with no chart and no properties.
+const MADE = {
+  release: 'notes',
+  kind: 'compose',
+  chart: null,
+  title: 'Notes',
+  runAs: 'notshared',
+  runtime: 'podman',
+  values: {},
+  valuesYaml: null,
+  frontPort: 30001,
+  appPort: 8097,
+  phase: 'running',
+  message: null,
+  updatedAt: 1,
+};
+
+await check('an app made for this box sits beside the charts, opens, and has no Change', async () => {
+  const { page, errors, writes } = await open({ apps: { available: true, sharedAvailable: false, apps: [RUNNING, MADE] } });
+  await page.getByRole('heading', { name: 'Installed apps' }).waitFor();
+  const text = await page.locator('main').innerText();
+  assert.match(text, /Notes, made for this box, runs as notshared/);
+  assert.match(text, /jellyfin 2\.0\.0, runs as notshared/);
+  // The page never names what runs an app.
+  assert.doesNotMatch(text, /podman|compose|kube|helm/i);
+  const links = page.getByRole('link', { name: 'Open' });
+  assert.equal(await links.nth(1).getAttribute('href'), `http://127.0.0.1:30001/`);
+  assert.equal(await page.getByRole('button', { name: 'Change' }).count(), 1, 'a made app offers Change');
+  await shot(page, 'installed-made', page.locator('main'));
+  await page.getByRole('button', { name: 'Remove' }).nth(1).click();
+  const confirm = page.locator('dialog[open]');
+  await confirm.getByRole('heading', { name: 'Remove notes?' }).waitFor();
+  await confirm.getByRole('button', { name: 'Remove' }).click();
+  await page.getByText('Removing').waitFor();
+  assert.deepEqual(writes.find((w) => w[1] === '/api/apps/remove')[2], { release: 'notes' });
   await clean(page, errors);
   await page.close();
 });
