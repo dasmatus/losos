@@ -19,13 +19,29 @@
 //                         {"waitText": "Background set."}],
 //               "fullPage": false}]}
 //
+// `variants` takes each shot more than once, in a fresh browser each time,
+// named `<shot>-<suffix>`; without it there is one pass at the plan's own
+// width, height and colour scheme:
+//
+//   "variants": [{"suffix": "light-desktop", "colorScheme": "light"},
+//                {"suffix": "dark-phone", "colorScheme": "dark",
+//                 "width": 390, "height": 844},
+//                {"suffix": "picked-dark", "theme": "dark"}]
+//
+// `theme` is the choice made on the page's own theme toggle (Light or Dark),
+// as against `colorScheme`, the browser's, which Auto follows.
+//
+// Every run also writes report.json beside the pictures: per picture, the
+// page's width against the window's (a page wider than a phone scrolls
+// sideways) and the Content-Security-Policy violations the page raised.
+//
 // Steps, in order: `click` / `waitFor` ({role, name}, {text} or
 // {selector}), `fill` ({label, value}), `upload` ({selector, file}),
 // `press` (a key), `waitText` (exact text), `sleep` (milliseconds) and
 // `goto` (a path). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
 
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -76,39 +92,71 @@ async function step(page, s) {
 // The full Chromium in its new headless mode: nixpkgs' bundle has no
 // separate headless shell.
 const browser = await chromium.launch({ channel: 'chromium', args: ['--disable-gpu'] });
+const variants = plan.variants ?? [{ suffix: null }];
+const report = [];
 try {
-  const context = await browser.newContext({
-    viewport: { width: plan.width ?? 1280, height: plan.height ?? 800 },
-    ignoreHTTPSErrors: true,
-    locale: plan.locale ?? 'en-US',
-    colorScheme: plan.colorScheme ?? 'light',
-    reducedMotion: 'reduce',
-  });
-  if (args.user) {
-    // LosOS Login's own API, as its sign-in page calls it: the session
-    // cookie lands in this context.
-    const r = await context.request.post(`${base}/auth/api/firstfactor`, {
-      data: { username: args.user, password: args.password },
+  for (const variant of variants) {
+    const width = variant.width ?? plan.width ?? 1280;
+    const context = await browser.newContext({
+      viewport: { width, height: variant.height ?? plan.height ?? 800 },
+      ignoreHTTPSErrors: true,
+      locale: variant.locale ?? plan.locale ?? 'en-US',
+      colorScheme: variant.colorScheme ?? plan.colorScheme ?? 'light',
+      reducedMotion: 'reduce',
     });
-    if (!r.ok()) throw new Error(`signing in as ${args.user}: ${r.status()} ${await r.text()}`);
-  }
-  for (const shot of plan.shots) {
-    const page = await context.newPage();
-    const errors = [];
-    page.on('pageerror', (e) => errors.push(String(e)));
-    await page.goto(base + shot.path, { waitUntil: 'networkidle', timeout: 120000 });
-    if (shot.waitFor) await locate(page, shot.waitFor).waitFor({ timeout: 120000 });
-    for (const s of shot.steps ?? []) await step(page, s);
-    // Fonts and pictures, then a moment for the layout to settle.
-    await page.evaluate(() => document.fonts.ready);
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(shot.settle ?? 500);
-    if (errors.length > 0) throw new Error(`${shot.name}: the page threw: ${errors.join('; ')}`);
-    const path = join(args.out, `${shot.name}.png`);
-    await page.screenshot({ path, fullPage: shot.fullPage ?? false });
-    console.log(`captured ${path}`);
-    await page.close();
+    // A theme picked on the page (lib/theme.ts), as against the browser's
+    // own colour scheme, which is what Auto follows.
+    if (variant.theme) {
+      await context.addInitScript((theme) => {
+        try {
+          localStorage.setItem('losos-theme', theme);
+        } catch {
+          // about:blank has no storage.
+        }
+      }, variant.theme);
+    }
+    // The policy's refusals, counted in the page, since a refused style
+    // shows nowhere else.
+    await context.addInitScript(() => {
+      window.__lososCsp = [];
+      document.addEventListener('securitypolicyviolation', (e) => {
+        window.__lososCsp.push(`${e.violatedDirective} ${e.blockedURI || 'inline'}`);
+      });
+    });
+    if (args.user) {
+      // LosOS Login's own API, as its sign-in page calls it: the session
+      // cookie lands in this context.
+      const r = await context.request.post(`${base}/auth/api/firstfactor`, {
+        data: { username: args.user, password: args.password },
+      });
+      if (!r.ok()) throw new Error(`signing in as ${args.user}: ${r.status()} ${await r.text()}`);
+    }
+    for (const shot of plan.shots) {
+      const name = variant.suffix ? `${shot.name}-${variant.suffix}` : shot.name;
+      const page = await context.newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(String(e)));
+      await page.goto(base + shot.path, { waitUntil: 'networkidle', timeout: 120000 });
+      if (shot.waitFor) await locate(page, shot.waitFor).waitFor({ timeout: 120000 });
+      for (const s of shot.steps ?? []) await step(page, s);
+      // Fonts and pictures, then a moment for the layout to settle.
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(shot.settle ?? 500);
+      if (errors.length > 0) throw new Error(`${name}: the page threw: ${errors.join('; ')}`);
+      const path = join(args.out, `${name}.png`);
+      await page.screenshot({ path, fullPage: shot.fullPage ?? false });
+      const seen = await page.evaluate(() => ({
+        pageWidth: document.documentElement.scrollWidth,
+        csp: window.__lososCsp ?? [],
+      }));
+      report.push({ name, path: shot.path, width, ...seen });
+      console.log(`captured ${path}${seen.pageWidth > width ? ` (page is ${seen.pageWidth}px wide)` : ''}`);
+      await page.close();
+    }
+    await context.close();
   }
 } finally {
+  writeFileSync(join(args.out, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
   await browser.close();
 }

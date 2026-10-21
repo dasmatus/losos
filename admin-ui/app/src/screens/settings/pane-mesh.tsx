@@ -69,7 +69,7 @@ function EdgeSign({ official }: { official: boolean }) {
             data-edge-sign={official ? "official" : "warning"}
             className={cn(
               "inline-flex size-5 shrink-0 items-center justify-center rounded-full align-middle",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
               official ? "text-ok" : "text-warn",
             )}
           />
