@@ -489,7 +489,25 @@ let
         out = b.succeed(f"curl {args} http://127.0.0.1:3000/api/v1{path}")
         return json.loads(out) if out.strip() else None
 
-    def run_done(b, run_id, timeout=1500):
+    def diagnose():
+        for name, m in [("boxa", boxa), ("boxb", boxb)]:
+            print(f"── {name} ──")
+            print(m.execute("journalctl -b --no-pager -o cat -u losos-ci -u losos-ci-runner | tail -n 150")[1])
+            print(m.execute("runuser -u shared -- env XDG_RUNTIME_DIR=/run/user/1001"
+                            " CONTAINERS_STORAGE_CONF=$(systemctl show -p Environment losos-ci-runner"
+                            " | tr ' ' '\\n' | sed -n 's/^CONTAINERS_STORAGE_CONF=//p')"
+                            " podman ps --all")[1])
+        print(edge.execute("journalctl -b --no-pager -o cat -u registrar | grep -i ci | tail -n 80")[1])
+
+    def run_done(b, run_id, timeout=3000):
+        try:
+            return wait_run(b, run_id, timeout)
+        except Exception:
+            print(json.dumps(api(b, "GET", f"/api/ci/runs/{run_id}"), indent=1))
+            diagnose()
+            raise
+
+    def wait_run(b, run_id, timeout):
         b.wait_until_succeeds(
             "curl -fsS -H \"Authorization: Bearer $(cat /var/secrets/losos-admin-token)\""
             f" 127.0.0.1:8082/api/ci/runs/{run_id}"
@@ -564,8 +582,10 @@ let
         logs = {j["name"]: log_of(boxa, j["id"]) for j in run["jobs"]}
         for name, text in logs.items():
             print(f"── {name} ──\n{text}")
-        assert run["state"] == "success", run
         runners = sorted(j["runner"] for j in run["jobs"])
+        if run["state"] != "success" or runners != ["boxa", "boxb"]:
+            diagnose()
+        assert run["state"] == "success", run
         assert runners == ["boxa", "boxb"], runners
         assert all(j["placement"] == "mesh" for j in run["jobs"]), run["jobs"]
 

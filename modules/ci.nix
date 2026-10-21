@@ -189,6 +189,15 @@ in
     # lososd's `ci` plugin relays the admin pages here; /api/me lists `ci`.
     systemd.services.lososd.environment.LOSOS_CI_SOCKET = pageSocket;
 
+    # Podman runs a service's health check from a timer in the user manager,
+    # with the manager's environment rather than the runner's: without the
+    # same storage it finds no container and the service never turns
+    # healthy. The manager hands this on to everything it starts.
+    systemd.services."user@${sharedUid}" = {
+      overrideStrategy = "asDropin";
+      environment.CONTAINERS_STORAGE_CONF = "${storageConf}";
+    };
+
     systemd.services.losos-ci = {
       description = "LosOS Mesh CI";
       wantedBy = [ "multi-user.target" ];
