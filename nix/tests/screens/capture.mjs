@@ -44,7 +44,8 @@
 //
 // Steps, in order: `click` / `waitFor` / `gone` / `absent` ({role, name},
 // {text} or {selector}; `gone` waits for it to leave, `absent` fails if it
-// is there now), `fill` ({label, value}), `upload` ({selector, file}),
+// is there now), `fill` ({label, value}), `select` ({label, value}, an
+// option of a native select), `upload` ({selector, file}),
 // `press` (a key), `waitText` (exact text), `sleep` (milliseconds) and
 // `goto` (a path). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
@@ -93,6 +94,7 @@ async function step(page, s, { force = false } = {}) {
     if ((await locate(page, s.absent).count()) > 0) throw new Error(`present: ${JSON.stringify(s.absent)}`);
   }
   else if (s.fill) await page.getByLabel(s.fill.label, { exact: true }).fill(s.fill.value);
+  else if (s.select) await page.getByLabel(s.select.label, { exact: true }).selectOption(s.select.value);
   else if (s.upload) await page.locator(s.upload.selector).setInputFiles(s.upload.file);
   else if (s.press) await page.keyboard.press(s.press);
   else if (s.waitText) await page.getByText(s.waitText, { exact: true }).first().waitFor({ timeout: 60000 });

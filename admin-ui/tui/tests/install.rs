@@ -8,7 +8,11 @@ use std::process::{Command, Output};
 
 use sha2::{Digest, Sha256};
 
-const PROGRAM: &str = "#!/bin/sh\necho 'losos 9.9.9'\n";
+/// The published program: its version, and for `agents hint` whatever
+/// FAKE_HINT says, as the real one names the AI tools it found.
+const PROGRAM: &str = "#!/bin/sh\n\
+    [ \"$1 $2\" = \"agents hint\" ] && { [ -n \"$FAKE_HINT\" ] && echo \"$FAKE_HINT\"; exit 0; }\n\
+    echo 'losos 9.9.9'\n";
 
 struct Fake {
     dir: tempfile::TempDir,
@@ -102,6 +106,7 @@ fn installs_into_local_bin_after_checking_the_checksum() {
         "{out}"
     );
     assert!(out.contains("not on your PATH"), "{out}");
+    assert!(!out.contains("AI tools"), "{out}");
     assert!(!err.contains("sudo"));
     let requests = fs::read_to_string(fake.served().join("requests")).unwrap();
     assert!(requests.contains("https://proxy.losos.dasmat.us/updates/main/x86_64/SHA256SUMS\n"));
@@ -125,6 +130,17 @@ fn installs_into_local_bin_after_checking_the_checksum() {
     ] {
         assert!(out.contains(word), "{word}: {out}");
     }
+}
+
+#[test]
+fn names_the_ai_tools_it_finds_and_changes_none() {
+    let fake = Fake::new();
+    let hint = "AI tools found on this computer: Codex, Zed. To let them read your LosOS files, run: losos agents install";
+    let r = fake.run(&[("FAKE_HINT", hint)]);
+    assert!(r.status.success(), "{}", text(&r.stderr));
+    let out = text(&r.stdout);
+    assert!(out.contains(hint), "{out}");
+    assert!(out.contains("/manual/ai-agents/"), "{out}");
 }
 
 #[test]
