@@ -32,6 +32,10 @@ vlastníka.
 - **Zariadenia** zobrazujú počítače a telefóny, ktoré sa synchronizujú, a
   vedia ktorékoľvek odhlásiť.
 - Vyhľadávanie hore nájde súbory podľa mena.
+- Textové súbory sa otvárajú v editore, do ktorého môže písať viac ľudí
+  naraz, a **Zdieľané s vami** drží to, čo s vami zdieľali ľudia na iných
+  zariadeniach. Pozrite
+  [Zdieľanie a spoločné úpravy](sharing-and-editing-together).
 
 ## Aplikácie pre počítač a telefón \{#desktop-and-phone-apps}
 

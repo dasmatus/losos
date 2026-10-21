@@ -29,6 +29,15 @@ fn tempdir(name: &str) -> std::path::PathBuf {
 /// Start a box's cloud on a free port; `peers` maps other box names to
 /// their ports.
 fn start(name: &str, listener: std::net::TcpListener, peers: &[(&str, u16)]) -> TestBox {
+    start_with(name, listener, peers, true)
+}
+
+fn start_with(
+    name: &str,
+    listener: std::net::TcpListener,
+    peers: &[(&str, u16)],
+    networked: bool,
+) -> TestBox {
     let port = listener.local_addr().unwrap().port();
     let root = tempdir(name);
     let cloud = Arc::new(Cloud::open(&root, Config::default()).unwrap());
@@ -44,6 +53,7 @@ fn start(name: &str, listener: std::net::TcpListener, peers: &[(&str, u16)]) -> 
             name: name.into(),
             dir: root.join(".mesh"),
             dialer,
+            networked,
         },
     )
     .unwrap();
@@ -376,4 +386,57 @@ async fn json_from(port: u16, who: As, origin: &str, method: &str, path: &str) -
     let mut out = Vec::new();
     s.read_to_end(&mut out).await.unwrap();
     (String::from_utf8_lossy(&out)[9..12].parse().unwrap(), ())
+}
+
+#[actix_web::test]
+async fn a_box_off_the_mesh_still_edits_together() {
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let a = start_with("homebox", l, &[], false);
+    a.cloud.store.ensure_home("notshared").unwrap();
+    let file = a
+        .cloud
+        .store
+        .write_bytes("notshared", "Groceries.md", b"Milk\n")
+        .unwrap()
+        .entry
+        .id;
+    // Nothing for other boxes: no sharing calls, and the link's address is
+    // the catch-all's, which wants a person.
+    let (status, _) = json(a.port, Some(MATUS), "GET", "/cloud/api/mesh/box", None).await;
+    assert_eq!(status, 404);
+    let (status, _) = json(a.port, None, "GET", "/mesh/v1/link", None).await;
+    assert_eq!(status, 401);
+    // Two windows of the owner's type into one file.
+    let (status, meta) = json(
+        a.port,
+        Some(MATUS),
+        "GET",
+        &format!("/cloud/api/collab/doc?file={file}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{meta}");
+    assert_eq!(meta["me"]["address"], "matus@homebox");
+    let one = editor(a.port, MATUS, &format!("file={file}")).await;
+    let two = editor(a.port, MATUS, &format!("file={file}")).await;
+    eventually("both windows have the file", || {
+        one.text() == "Milk\n" && two.text() == "Milk\n"
+    })
+    .await;
+    one.replace_text("Milk\nEggs\n");
+    eventually("the second window has Eggs", || two.text().contains("Eggs")).await;
+    two.replace_text(&format!("# Groceries\n{}", two.text()));
+    eventually("the windows agree", || {
+        one.text() == "# Groceries\nMilk\nEggs\n" && two.text() == one.text()
+    })
+    .await;
+    eventually("the file has both lines", || {
+        a.cloud
+            .store
+            .read_bytes("notshared", "Groceries.md")
+            .ok()
+            .as_deref()
+            == Some(b"# Groceries\nMilk\nEggs\n".as_slice())
+    })
+    .await;
 }

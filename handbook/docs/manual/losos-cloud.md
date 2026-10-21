@@ -27,6 +27,9 @@ gets their own files. The person who set up the box gets the owner's.
   good.
 - **Devices** lists the computers and phones that sync, and signs one out.
 - The search field at the top finds files by name.
+- Text files open in an editor several people can type in at once, and
+  **Shared with you** holds what people on other boxes shared with you.
+  See [Sharing and editing together](sharing-and-editing-together).
 
 ## Desktop and phone apps
 

@@ -191,6 +191,9 @@ pub struct Mesh {
     keepers: Mutex<HashSet<String>>,
     /// How often [`Mesh::run`] retries what did not get through.
     pub retry: Duration,
+    /// Whether this box talks to other boxes. Without it the box still
+    /// edits its own files live; nothing goes out and nothing comes in.
+    pub networked: bool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -214,6 +217,7 @@ impl Mesh {
             dialing: Mutex::new(HashMap::new()),
             keepers: Mutex::new(HashSet::new()),
             retry: Duration::from_secs(15),
+            networked: true,
         })
     }
 
@@ -930,6 +934,8 @@ pub struct Options {
     /// Where the key, the table and the documents are kept.
     pub dir: std::path::PathBuf,
     pub dialer: dial::Dialer,
+    /// Talk to other boxes. Off, people on this box still edit together.
+    pub networked: bool,
 }
 
 /// Start sharing across boxes for `cloud`: the key, the table, the
@@ -950,12 +956,22 @@ pub fn start(cloud: &Arc<crate::cloud::Cloud>, opts: Options) -> std::io::Result
     let db = Db::open(&opts.dir.join("mesh.db")).map_err(std::io::Error::other)?;
     let store = Arc::new(CloudStore(Arc::downgrade(cloud)));
     let hub = Hub::new(store, opts.dir.join("docs"));
-    let mesh = Mesh::new(opts.name, identity, db, hub, opts.dialer.into_fn());
+    let dial: DialFn = if opts.networked {
+        opts.dialer.into_fn()
+    } else {
+        Arc::new(|name: String| Box::pin(async move { Err(MeshError::Unreachable(name)) }))
+    };
+    let mut mesh = Mesh::new(opts.name, identity, db, hub, dial);
+    if let Some(m) = Arc::get_mut(&mut mesh) {
+        m.networked = opts.networked;
+    }
     cloud
         .mesh
         .set(mesh.clone())
         .map_err(|_| std::io::Error::other("the mesh is started already"))?;
-    tokio::spawn(mesh.clone().run());
+    if opts.networked {
+        tokio::spawn(mesh.clone().run());
+    }
     let mut changes = cloud.subscribe();
     let hub = mesh.hub.clone();
     tokio::spawn(async move {
