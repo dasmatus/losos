@@ -83,6 +83,9 @@ const ROTATE_AFTER_MS = 1500;
 /* Every sender ratchets this often, so a key taken from a running call
  * opens no more than the last few minutes. */
 export const RATCHET_EVERY_MS = 5 * 60_000;
+/* How long a page that hangs up waits for the SFU to say whether it was
+ * the last one there. */
+const LEFT_WITHIN_MS = 5000;
 
 const hasScriptTransform = typeof (globalThis as { RTCRtpScriptTransform?: unknown }).RTCRtpScriptTransform === 'function';
 const hasEncodedStreams =
@@ -479,18 +482,43 @@ export class CallSession {
     this.opts.events.state('failed', reason);
   }
 
-  leave(): void {
-    if (this.done) return;
+  /* Hang up. Resolves to whether nobody of the room is left in the call,
+   * as the SFU counted it, or null when it did not answer in time. */
+  leave(): Promise<boolean | null> {
+    if (this.done) return Promise.resolve(null);
+    const ws = this.ws;
+    const last = new Promise<boolean | null>((resolve) => {
+      if (ws === null || ws.readyState !== WebSocket.OPEN) {
+        resolve(null);
+        return;
+      }
+      const timer = setTimeout(() => resolve(null), LEFT_WITHIN_MS);
+      ws.onmessage = (ev) => {
+        try {
+          const m = JSON.parse(String(ev.data)) as { type?: string; last?: unknown };
+          if (m.type !== 'left') return;
+          clearTimeout(timer);
+          resolve(m.last === true);
+        } catch {
+          // Anything else said after the leave is of no use now.
+        }
+      };
+      ws.onclose = () => {
+        clearTimeout(timer);
+        resolve(null);
+      };
+    });
     this.signal({ type: 'leave' });
-    this.close();
+    this.close(false);
     this.opts.events.state('ended');
+    return last.finally(() => ws?.close());
   }
 
-  private close(): void {
+  private close(socket = true): void {
     this.done = true;
     for (const t of this.timers) clearInterval(t);
     this.unsubscribe();
-    this.ws?.close();
+    if (socket) this.ws?.close();
     this.pc.close();
     this.post({ type: 'stop' });
     this.worker.terminate();

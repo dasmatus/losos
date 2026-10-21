@@ -214,7 +214,7 @@ function GuestCall({
     session.current = call;
     call.start();
     return () => {
-      call.leave();
+      void call.leave();
       session.current = null;
     };
     // One session per mount: the page joins once per name.
@@ -290,7 +290,7 @@ function GuestCall({
             .catch(() => undefined);
         }}
         onLeave={() => {
-          session.current?.leave();
+          void session.current?.leave();
           over.current("ended");
         }}
       />

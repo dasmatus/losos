@@ -423,12 +423,14 @@ await check('a guest without the secret gets in through the box but sees and sho
 });
 
 await check('guests are sent away once the last of the room has left', async () => {
-  await eva.evaluate(() => window.session.leave());
+  // Matus is still there, so Eva's hang-up does not end the call.
+  assert.equal(await eva.evaluate(() => window.session.leave()), false);
   await until('eva gone', async () => (await members(zoe)).length === 2);
   // Zoe and Matus still see each other on the key rotated after Eva left.
   const matusPid = await pidOf(zoe, '@matus:calls.test');
   await until('matus at zoe after the rotation', async () => (await distance(matus, zoe, matusPid)) < SAME, 20000);
-  await matus.evaluate(() => window.session.leave());
+  // Only a guest is left: Matus was the last of the room.
+  assert.equal(await matus.evaluate(() => window.session.leave()), true);
   await until('zoe sent away', async () => (await zoe.evaluate(() => window.callState.states)).some((x) => x.startsWith('failed:')));
   assert.equal((await zoe.evaluate(() => window.callState.states)).at(-1), 'failed:ended');
 });

@@ -1167,7 +1167,11 @@ pkgs.testers.nixosTest {
         code, body = call("/_matrix/client/v3/createRoom", cookies["matus"], method="POST",
                           token=tokens["matus"],
                           data={"name": "Holiday", "preset": "private_chat",
-                                "invite": [f"@eva:{HOST}", f"@jan:{HOST}"]})
+                                "invite": [f"@eva:{HOST}", f"@jan:{HOST}"],
+                                # Calls are only for encrypted rooms: their
+                                # keys go to devices the crypto tracks.
+                                "initial_state": [{"type": "m.room.encryption", "state_key": "",
+                                                   "content": {"algorithm": "m.megolm.v1.aes-sha2"}}]})
         assert code == 200, (code, body)
         room = urllib.parse.quote(json.loads(body)["room_id"])
         for n in ("eva", "jan"):
@@ -1178,6 +1182,21 @@ pkgs.testers.nixosTest {
         room_button(owner, "Holiday").click()
         room_button(her, "Holiday").click()
         room_button(jan, "Holiday").click()
+        # Jan has just signed in: his new device reaches the others' device
+        # lists a sync later, and a message sent before then is one he
+        # cannot open. Talk until both of them read Matus, as people would
+        # before a call.
+        for attempt in range(1, 6):
+            line = f"Call about the holiday in a minute ({attempt})"
+            owner.get_by_role("textbox", name="Message Holiday").fill(line)
+            owner.keyboard.press("Enter")
+            try:
+                for page in (her, jan):
+                    page.get_by_role("log").get_by_text(line).wait_for(timeout=30000)
+                break
+            except Exception:
+                if attempt == 5:
+                    raise
         owner.get_by_role("button", name="Video call").click()
         for page in (her, jan):
             page.locator("[data-ringing]").get_by_role("button", name="Answer", exact=True).click()
@@ -1204,10 +1223,13 @@ pkgs.testers.nixosTest {
             live(page, 2, frames=0)
 
     with subtest("hanging up ends the call for the room"):
-        for page in (jan, her, owner):
+        for page in (jan, her):
             page.get_by_role("button", name="Leave the call").click()
             page.locator("[data-call-view]").wait_for(state="detached")
-        owner.get_by_role("log").get_by_text("The call ended").last.wait_for()
+        # Left alone, Matus is out of the call too, and the SFU told his
+        # page it was the last one there, so it tells the room.
+        owner.locator("[data-call-view]").wait_for(state="detached", timeout=60000)
+        owner.get_by_role("log").get_by_text("The call ended").last.wait_for(timeout=60000)
         jan.locator("[data-call-notice] button").wait_for(state="detached", timeout=30000)
 
     with subtest("a call link from another app opens the direct chat and rings"):

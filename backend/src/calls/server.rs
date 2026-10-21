@@ -281,6 +281,7 @@ async fn signal(
     };
     tracing::info!("{who_name} joined as p{pid}");
 
+    let mut leaving = false;
     loop {
         tokio::select! {
             msg = out_rx.recv() => match msg {
@@ -299,7 +300,10 @@ async fn signal(
                     Ok(ClientMsg::Answer { sdp }) => Command::Answer { pid, sdp },
                     Ok(ClientMsg::Relay { to, body }) => Command::Relay { from: pid, to, body },
                     Ok(ClientMsg::Screen { on }) => Command::Screen { pid, on },
-                    Ok(ClientMsg::Leave) => break,
+                    Ok(ClientMsg::Leave) => {
+                        leaving = true;
+                        break;
+                    }
                     Ok(ClientMsg::Join { .. }) | Ok(ClientMsg::Guest { .. }) | Err(_) => {
                         send(&mut session, &error("badMessage")).await;
                         break;
@@ -311,6 +315,23 @@ async fn signal(
             }
         }
     }
-    let _ = state.commands.send(Command::Leave { pid }).await;
+    if !leaving {
+        let _ = state
+            .commands
+            .send(Command::Leave { pid, reply: None })
+            .await;
+        let _ = session.close(None).await;
+        return;
+    }
+    let (reply, last) = oneshot::channel();
+    let asked = state.commands.send(Command::Leave {
+        pid,
+        reply: Some(reply),
+    });
+    if asked.await.is_ok() {
+        if let Ok(last) = last.await {
+            send(&mut session, &ServerMsg::Left { last }).await;
+        }
+    }
     let _ = session.close(None).await;
 }

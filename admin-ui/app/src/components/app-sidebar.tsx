@@ -148,14 +148,6 @@ const TREE: readonly Entry[] = [
   },
   {
     kind: "link",
-    key: "mail",
-    to: "/mail",
-    label: "shell.nav.mail",
-    icon: Mail01Icon,
-    shared: "mail",
-  },
-  {
-    kind: "link",
     key: "chat",
     to: "/chat/",
     label: "shell.nav.chat",
