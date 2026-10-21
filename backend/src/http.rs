@@ -65,6 +65,8 @@ struct Api {
     /// Each person's picture, banner and the rest of their profile
     /// (`crate::profiles`).
     profiles: crate::profiles::Profiles,
+    /// Turns at decoding an upload (`IMAGE_JOBS`).
+    image_jobs: tokio::sync::Semaphore,
 }
 
 /// Who made a call.
@@ -1075,13 +1077,18 @@ async fn get_profile(
 }
 
 /// `GET /api/profiles/{name}/{kind}?v=N`: the picture or the banner. Cached
-/// hard, because a new one is a new `?v=`.
+/// hard, because a new one is a new `?v=`; any other `?v=` is a 404, so a
+/// cache never keeps bytes under a URL that names others.
 async fn get_profile_image(
     api: web::Data<Api>,
     req: HttpRequest,
     path: web::Path<(String, String)>,
 ) -> HttpResponse {
     let (name, kind) = path.into_inner();
+    let version =
+        web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+            .ok()
+            .and_then(|q| q.get("v").and_then(|v| v.parse::<u64>().ok()));
     guarded(&api, &req, "/api/profiles", false, || {
         let Some(kind) = crate::profiles::Kind::parse(&kind) else {
             return err(
@@ -1099,7 +1106,10 @@ async fn get_profile_image(
         if !matches!(listed, Ok(true)) {
             return err(StatusCode::NOT_FOUND, "no picture");
         }
-        match api.profiles.read_image(&name, kind) {
+        let Some(version) = version else {
+            return err(StatusCode::NOT_FOUND, "no picture");
+        };
+        match api.profiles.read_image(&name, kind, version) {
             Ok(Some((content_type, bytes))) => HttpResponse::Ok()
                 .content_type(content_type)
                 .insert_header(("Cache-Control", "private, max-age=31536000, immutable"))
@@ -1148,26 +1158,46 @@ async fn post_account_profile(
             Ok(d) => d,
             Err(why) => return err(StatusCode::BAD_REQUEST, &why),
         };
-        match api.profiles.set_details(&person.name, &details) {
+        match api
+            .profiles
+            .set_details(&person.name, &details, || still_listed(&api, &person.name))
+        {
             Ok(_) => own_profile(&api, person),
             Err(e) => error_response(e),
         }
     })
 }
 
-/// `PUT` or `DELETE /api/account/{picture,banner}`: the caller's own. A
-/// PUT body is the picture's bytes; their type is read off the bytes.
-fn change_own_image(
-    api: &Api,
-    req: &HttpRequest,
-    kind: crate::profiles::Kind,
-    body: Option<&[u8]>,
-) -> HttpResponse {
-    let route = match kind {
+/// Whether `name` is still in the people file, asked by the profile store
+/// under its lock so a change racing the person's removal is refused.
+fn still_listed(api: &Api, name: &str) -> anyhow::Result<bool> {
+    Ok(api.people.get(name)?.is_some())
+}
+
+fn own_image_route(kind: crate::profiles::Kind) -> &'static str {
+    match kind {
         crate::profiles::Kind::Picture => "/api/account/picture",
         crate::profiles::Kind::Banner => "/api/account/banner",
-    };
-    guarded_as(api, req, route, true, |who| {
+    }
+}
+
+/// How many uploads are decoded and encoded at once. The work runs on the
+/// blocking pool, never on a worker that answers requests, and a few
+/// people uploading 8 MiB photos together wait their turn rather than take
+/// every core of a small box.
+const IMAGE_JOBS: usize = 2;
+
+/// `PUT /api/account/{picture,banner}`: the caller's own. The body is the
+/// picture's bytes; their type is read off the bytes.
+async fn put_own_image(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    kind: crate::profiles::Kind,
+    body: web::Bytes,
+) -> HttpResponse {
+    // The guard first, so nobody unsigned makes the box decode anything.
+    let mut caller = None;
+    let refused = guarded_as(&api, &req, own_image_route(kind), true, |who| {
         let Some(person) = who.person() else {
             return err(
                 StatusCode::CONFLICT,
@@ -1177,11 +1207,46 @@ fn change_own_image(
         if !api.people.headers {
             return not_standalone();
         }
-        let done = match body {
-            Some(bytes) => api.profiles.put_image(&person.name, kind, bytes),
-            None => api.profiles.remove_image(&person.name, kind),
+        caller = Some(person.clone());
+        HttpResponse::Ok().finish()
+    });
+    let Some(person) = caller else {
+        return refused;
+    };
+    let normalized = {
+        let Ok(_turn) = api.image_jobs.acquire().await else {
+            return err(StatusCode::SERVICE_UNAVAILABLE, "lososd is stopping");
         };
-        match done {
+        match web::block(move || crate::profiles::normalize(kind, &body)).await {
+            Ok(done) => done,
+            Err(e) => return error_response(anyhow::anyhow!("decoding the picture: {e}")),
+        }
+    };
+    let stored = normalized.and_then(|picture| {
+        api.profiles
+            .put_normalized(&person.name, kind, picture, || {
+                still_listed(&api, &person.name)
+            })
+    });
+    match stored {
+        Ok(_) => own_profile(&api, &person),
+        Err(e) => error_response(e),
+    }
+}
+
+/// `DELETE /api/account/{picture,banner}`: the caller's own.
+fn delete_own_image(api: &Api, req: &HttpRequest, kind: crate::profiles::Kind) -> HttpResponse {
+    guarded_as(api, req, own_image_route(kind), true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.headers {
+            return not_standalone();
+        }
+        match api.profiles.remove_image(&person.name, kind) {
             Ok(_) => own_profile(api, person),
             Err(e) => error_response(e),
         }
@@ -1193,11 +1258,11 @@ async fn put_account_picture(
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    change_own_image(&api, &req, crate::profiles::Kind::Picture, Some(&body))
+    put_own_image(api, req, crate::profiles::Kind::Picture, body).await
 }
 
 async fn delete_account_picture(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    change_own_image(&api, &req, crate::profiles::Kind::Picture, None)
+    delete_own_image(&api, &req, crate::profiles::Kind::Picture)
 }
 
 async fn put_account_banner(
@@ -1205,11 +1270,11 @@ async fn put_account_banner(
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    change_own_image(&api, &req, crate::profiles::Kind::Banner, Some(&body))
+    put_own_image(api, req, crate::profiles::Kind::Banner, body).await
 }
 
 async fn delete_account_banner(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    change_own_image(&api, &req, crate::profiles::Kind::Banner, None)
+    delete_own_image(&api, &req, crate::profiles::Kind::Banner)
 }
 
 /// `POST /api/people/profile/clear`: `{"name", "kind": "picture|banner"}`.
@@ -3510,6 +3575,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             login,
             share: crate::cloud_share::Share::default(),
             profiles: crate::profiles::Profiles::from_env(),
+            image_jobs: tokio::sync::Semaphore::new(IMAGE_JOBS),
         });
         owner_in_owner_group(&api);
         start_login_marks(api.clone());

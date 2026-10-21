@@ -135,8 +135,9 @@ impl Accent {
 /// One stored picture: which upload it is and its type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Stored {
-    /// Never reused for the same person, so the URL of a replaced or
-    /// removed picture never serves the new one from a cache.
+    /// Never reused on the box, not even for someone who is removed and
+    /// added again under the same name, so the URL of a replaced or removed
+    /// picture never serves another one from a cache.
     pub version: u64,
     #[serde(rename = "contentType")]
     pub content_type: String,
@@ -156,9 +157,6 @@ pub struct Profile {
     pub picture: Option<Stored>,
     #[serde(default)]
     pub banner: Option<Stored>,
-    /// The next version a picture of theirs gets.
-    #[serde(default = "first_version", rename = "nextVersion")]
-    pub next_version: u64,
 }
 
 fn first_version() -> u64 {
@@ -181,10 +179,23 @@ impl Profile {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Document {
     #[serde(default)]
     people: BTreeMap<String, Profile>,
+    /// The version the next picture on the box gets. It outlives the
+    /// people, so a name taken again starts after the old one's pictures.
+    #[serde(default = "first_version", rename = "nextVersion")]
+    next_version: u64,
+}
+
+impl Default for Document {
+    fn default() -> Document {
+        Document {
+            people: BTreeMap::new(),
+            next_version: first_version(),
+        }
+    }
 }
 
 /// A change to the words and colour of a profile. Absent fields stay as
@@ -375,11 +386,23 @@ impl Profiles {
         self.dir.join("profiles.json")
     }
 
-    fn image_path(&self, name: &str, kind: Kind) -> anyhow::Result<PathBuf> {
+    /// One file per version: a new picture is written beside the old one,
+    /// so the old URL never answers with the new bytes.
+    fn image_path(&self, name: &str, kind: Kind, version: u64) -> anyhow::Result<PathBuf> {
         // A name from the people file is always one of these; anything else
         // is refused before it can be a path.
         crate::people::validate_name(name).map_err(|e| anyhow::anyhow!(e))?;
-        Ok(self.dir.join(format!("{name}.{}", kind.as_str())))
+        Ok(self.dir.join(format!("{name}.{}.{version}", kind.as_str())))
+    }
+
+    fn remove_file(&self, path: &Path) {
+        match std::fs::remove_file(path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            // The document no longer names it, so it is never served; it
+            // only takes room until someone looks.
+            Err(e) => tracing::warn!(error = %e, path = %path.display(), "an old picture stayed"),
+        }
     }
 
     fn read(&self) -> anyhow::Result<Document> {
@@ -429,8 +452,15 @@ impl Profiles {
         Ok(self.read()?.people)
     }
 
-    /// Change the words and colour of `name`'s profile.
-    pub fn set_details(&self, name: &str, details: &Details) -> anyhow::Result<Profile> {
+    /// Change the words and colour of `name`'s profile. `listed` says, under
+    /// the store's lock, whether `name` is still on the box: a person taken
+    /// off while the change was on its way gets no profile back.
+    pub fn set_details(
+        &self,
+        name: &str,
+        details: &Details,
+        listed: impl FnOnce() -> anyhow::Result<bool>,
+    ) -> anyhow::Result<Profile> {
         let pronouns = details
             .pronouns
             .as_deref()
@@ -442,6 +472,9 @@ impl Profiles {
             .map(|a| one_line(a, MAX_ABOUT_CHARS, "a few words about you"))
             .transpose()?;
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        if !listed()? {
+            return Err(crate::people::Refused::Unknown(name.to_string()).into());
+        }
         let mut doc = self.read()?;
         let profile = doc.people.entry(name.to_string()).or_default();
         if let Some(p) = pronouns {
@@ -460,54 +493,91 @@ impl Profiles {
 
     /// Store a new picture of `kind` for `name`, made from `bytes` by
     /// [`normalize`].
+    #[cfg(test)]
     pub fn put_image(&self, name: &str, kind: Kind, bytes: &[u8]) -> anyhow::Result<Profile> {
-        let path = self.image_path(name, kind)?;
-        let (content_type, encoded) = normalize(kind, bytes)?;
+        self.image_path(name, kind, 0)?;
+        let picture = normalize(kind, bytes)?;
+        self.put_normalized(name, kind, picture, || Ok(true))
+    }
+
+    /// Store a picture [`normalize`] made as `name`'s `kind`. `listed` is
+    /// asked under the store's lock, as for [`Profiles::set_details`], so an
+    /// upload that was still being decoded when its person was taken off
+    /// leaves nothing behind.
+    pub fn put_normalized(
+        &self,
+        name: &str,
+        kind: Kind,
+        (content_type, encoded): (&'static str, Vec<u8>),
+        listed: impl FnOnce() -> anyhow::Result<bool>,
+    ) -> anyhow::Result<Profile> {
+        self.image_path(name, kind, 0)?;
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        if !listed()? {
+            return Err(crate::people::Refused::Unknown(name.to_string()).into());
+        }
         let mut doc = self.read()?;
+        let version = doc.next_version.max(1);
+        doc.next_version = version + 1;
         let profile = doc.people.entry(name.to_string()).or_default();
-        let version = profile.next_version.max(1);
-        profile.next_version = version + 1;
-        // The bytes first, then the document that names them: a crash in
-        // between leaves a file nothing names, never a name with no file.
+        // The new file first, then the document that names it, then the old
+        // file: a crash anywhere leaves a file nothing names, never a name
+        // with no file or the old URL on the new bytes.
+        let path = self.image_path(name, kind, version)?;
         self.write_file(&path, &encoded)?;
-        *profile.slot(kind) = Some(Stored {
+        let old = profile.slot(kind).replace(Stored {
             version,
             content_type: content_type.to_string(),
         });
         let out = profile.clone();
-        self.write(&doc)?;
+        if let Err(e) = self.write(&doc) {
+            self.remove_file(&path);
+            return Err(e);
+        }
+        if let Some(old) = old {
+            self.remove_file(&self.image_path(name, kind, old.version)?);
+        }
         Ok(out)
     }
 
     /// Take `name`'s picture of `kind` away. Doing it twice is not an error.
     pub fn remove_image(&self, name: &str, kind: Kind) -> anyhow::Result<Profile> {
-        let path = self.image_path(name, kind)?;
+        self.image_path(name, kind, 0)?;
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        self.remove_locked(name, kind)
+    }
+
+    fn remove_locked(&self, name: &str, kind: Kind) -> anyhow::Result<Profile> {
         let mut doc = self.read()?;
         let Some(profile) = doc.people.get_mut(name) else {
             return Ok(Profile::default());
         };
-        if profile.slot(kind).take().is_some() {
-            self.write(&doc)?;
-        }
-        match std::fs::remove_file(&path) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(e.into()),
-        }
-        Ok(doc.people.get(name).cloned().unwrap_or_default())
+        let Some(old) = profile.slot(kind).take() else {
+            return Ok(profile.clone());
+        };
+        let out = profile.clone();
+        self.write(&doc)?;
+        self.remove_file(&self.image_path(name, kind, old.version)?);
+        Ok(out)
     }
 
-    /// The bytes and type of `name`'s picture of `kind`, if they have one.
-    pub fn read_image(&self, name: &str, kind: Kind) -> anyhow::Result<Option<(String, Vec<u8>)>> {
-        let path = self.image_path(name, kind)?;
+    /// The bytes and type of `name`'s picture of `kind` at `version`, if that
+    /// is the one they have: an older or a made-up `?v=` is not found, so
+    /// nothing is cached for good under a URL that names other bytes.
+    pub fn read_image(
+        &self,
+        name: &str,
+        kind: Kind,
+        version: u64,
+    ) -> anyhow::Result<Option<(String, Vec<u8>)>> {
+        let path = self.image_path(name, kind, version)?;
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         let Some(stored) = self
             .read()?
             .people
             .remove(name)
             .and_then(|mut p| p.slot(kind).take())
+            .filter(|s| s.version == version)
         else {
             return Ok(None);
         };
@@ -519,11 +589,14 @@ impl Profiles {
     }
 
     /// Forget everything about `name`, for a person taken off the box.
+    /// Call it after the person is gone from the people file: it waits for
+    /// a change already under way, and every later one is refused.
     pub fn forget(&self, name: &str) -> anyhow::Result<()> {
-        for kind in [Kind::Picture, Kind::Banner] {
-            self.remove_image(name, kind)?;
-        }
+        self.image_path(name, Kind::Picture, 0)?;
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        for kind in [Kind::Picture, Kind::Banner] {
+            self.remove_locked(name, kind)?;
+        }
         let mut doc = self.read()?;
         if doc.people.remove(name).is_some() {
             self.write(&doc)?;
@@ -776,7 +849,8 @@ mod tests {
     #[test]
     fn details_change_one_field_at_a_time() {
         let (_d, profiles) = store();
-        let set = |doc: Value| profiles.set_details("eva", &parse_details(&doc).unwrap());
+        let set =
+            |doc: Value| profiles.set_details("eva", &parse_details(&doc).unwrap(), || Ok(true));
         set(json!({"pronouns": " she/her ", "accent": "rose"})).unwrap();
         let p = set(json!({"about": "Keeps the family photos in order."})).unwrap();
         assert_eq!(p.pronouns, "she/her");
@@ -804,6 +878,7 @@ mod tests {
                     about: Some(long),
                     ..Details::default()
                 },
+                || Ok(true),
             )
             .unwrap_err();
         assert!(said.downcast_ref::<BadDetails>().is_some());
@@ -814,6 +889,7 @@ mod tests {
                     pronouns: Some("she\nher".into()),
                     ..Details::default()
                 },
+                || Ok(true),
             )
             .unwrap_err();
         assert_eq!(said.to_string(), "pronouns are one line of text");
@@ -821,9 +897,21 @@ mod tests {
         assert_eq!(profiles.get("eva").unwrap(), Profile::default());
     }
 
+    fn files(dir: &assert_fs::TempDir) -> Vec<String> {
+        let Ok(entries) = std::fs::read_dir(dir.path().join("profiles")) else {
+            return Vec::new();
+        };
+        let mut names: Vec<String> = entries
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|f| f != "profiles.json")
+            .collect();
+        names.sort();
+        names
+    }
+
     #[test]
     fn a_replaced_or_removed_picture_never_gets_its_url_back() {
-        let (_d, profiles) = store();
+        let (dir, profiles) = store();
         let png = encode(
             DynamicImage::ImageRgb8(RgbImage::from_pixel(40, 40, Rgb([1, 2, 3]))),
             ImageFormat::Png,
@@ -831,23 +919,114 @@ mod tests {
         let first = profiles.put_image("eva", Kind::Picture, &png).unwrap();
         let v1 = first.picture.unwrap().version;
         let banner = profiles.put_image("eva", Kind::Banner, &png).unwrap();
-        assert!(banner.banner.unwrap().version > v1);
+        let v2 = banner.banner.unwrap().version;
+        assert!(v2 > v1);
         profiles.remove_image("eva", Kind::Picture).unwrap();
-        assert!(profiles.read_image("eva", Kind::Picture).unwrap().is_none());
+        assert!(profiles
+            .read_image("eva", Kind::Picture, v1)
+            .unwrap()
+            .is_none());
         let again = profiles.put_image("eva", Kind::Picture, &png).unwrap();
         let v3 = again.picture.as_ref().unwrap().version;
-        assert!(v3 > v1, "{v3} reuses an old version");
-        let (kind, bytes) = profiles.read_image("eva", Kind::Picture).unwrap().unwrap();
+        assert!(v3 > v2, "{v3} reuses an old version");
+        let (kind, bytes) = profiles
+            .read_image("eva", Kind::Picture, v3)
+            .unwrap()
+            .unwrap();
         assert_eq!(kind, "image/jpeg");
         assert_eq!(decode(&bytes).dimensions(), (40, 40));
         assert_eq!(
             render(&listed("eva", "Eva"), &again)["picture"],
             format!("/api/profiles/eva/picture?v={v3}")
         );
+        // The old URL and one not given out yet both find nothing.
+        assert!(profiles
+            .read_image("eva", Kind::Picture, v1)
+            .unwrap()
+            .is_none());
+        assert!(profiles
+            .read_image("eva", Kind::Picture, v3 + 1)
+            .unwrap()
+            .is_none());
+        // A replaced picture's file goes once the new one is named.
+        let v4 = profiles
+            .put_image("eva", Kind::Picture, &png)
+            .unwrap()
+            .picture
+            .unwrap()
+            .version;
+        assert!(profiles
+            .read_image("eva", Kind::Picture, v3)
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            files(&dir),
+            [format!("eva.banner.{v2}"), format!("eva.picture.{v4}")]
+        );
         // Removing twice is fine, and someone with no profile has nothing.
         profiles.remove_image("eva", Kind::Picture).unwrap();
         profiles.remove_image("eva", Kind::Picture).unwrap();
-        assert!(profiles.read_image("oma", Kind::Banner).unwrap().is_none());
+        assert_eq!(files(&dir), [format!("eva.banner.{v2}")]);
+        assert!(profiles
+            .read_image("oma", Kind::Banner, 1)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn a_name_taken_again_never_gets_the_old_versions() {
+        let (dir, profiles) = store();
+        let png = encode(
+            DynamicImage::ImageRgb8(RgbImage::from_pixel(40, 40, Rgb([1, 2, 3]))),
+            ImageFormat::Png,
+        );
+        let old = profiles.put_image("eva", Kind::Picture, &png).unwrap();
+        let old = old.picture.unwrap().version;
+        profiles.forget("eva").unwrap();
+        // Restarted between the two, as a box is every night.
+        let profiles = Profiles::new(dir.path().join("profiles"));
+        let new = profiles.put_image("eva", Kind::Picture, &png).unwrap();
+        let new = new.picture.unwrap().version;
+        assert!(new > old, "the new eva got v={new} after v={old}");
+        assert!(profiles
+            .read_image("eva", Kind::Picture, old)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn a_change_for_someone_taken_off_meanwhile_leaves_nothing() {
+        let (dir, profiles) = store();
+        let png = encode(
+            DynamicImage::ImageRgb8(RgbImage::from_pixel(40, 40, Rgb([1, 2, 3]))),
+            ImageFormat::Png,
+        );
+        // The upload was decoded while eva was still listed; by the time it
+        // is stored she is not.
+        let picture = normalize(Kind::Picture, &png).unwrap();
+        let said = profiles
+            .put_normalized("eva", Kind::Picture, picture, || Ok(false))
+            .unwrap_err();
+        assert!(
+            said.downcast_ref::<crate::people::Refused>().is_some(),
+            "{said}"
+        );
+        let said = profiles
+            .set_details(
+                "eva",
+                &Details {
+                    pronouns: Some("she/her".into()),
+                    ..Details::default()
+                },
+                || Ok(false),
+            )
+            .unwrap_err();
+        assert!(
+            said.downcast_ref::<crate::people::Refused>().is_some(),
+            "{said}"
+        );
+        assert!(files(&dir).is_empty(), "{:?}", files(&dir));
+        assert!(!profiles.all().unwrap().contains_key("eva"));
     }
 
     #[test]
@@ -862,13 +1041,17 @@ mod tests {
             .put_image("eva", Kind::Picture, b"GIF89a broken")
             .is_err());
         assert_eq!(profiles.get("eva").unwrap(), before);
-        assert!(profiles.read_image("eva", Kind::Picture).unwrap().is_some());
+        let v = before.picture.unwrap().version;
+        assert!(profiles
+            .read_image("eva", Kind::Picture, v)
+            .unwrap()
+            .is_some());
     }
 
     #[test]
     fn a_name_that_is_not_one_never_becomes_a_path() {
         let (_d, profiles) = store();
-        assert!(profiles.read_image("../state", Kind::Picture).is_err());
+        assert!(profiles.read_image("../state", Kind::Picture, 1).is_err());
         assert!(profiles
             .put_image("../../etc/x", Kind::Banner, b"")
             .is_err());
@@ -885,12 +1068,12 @@ mod tests {
         profiles.put_image("eva", Kind::Banner, &png).unwrap();
         profiles.put_image("oma", Kind::Picture, &png).unwrap();
         profiles.forget("eva").unwrap();
-        let left: Vec<String> = std::fs::read_dir(dir.path().join("profiles"))
-            .unwrap()
-            .map(|e| e.unwrap().file_name().into_string().unwrap())
-            .collect();
+        let left = files(&dir);
         assert!(!left.iter().any(|f| f.starts_with("eva")), "{left:?}");
-        assert!(left.contains(&"oma.picture".to_string()), "{left:?}");
+        assert!(
+            left.iter().any(|f| f.starts_with("oma.picture.")),
+            "{left:?}"
+        );
         assert!(!profiles.all().unwrap().contains_key("eva"));
     }
 }

@@ -187,7 +187,7 @@ export function ProfileCropDialog({
             aria-label={t("profile.crop.canvas")}
             className={
               round
-                ? "size-72 max-w-full cursor-grab touch-none rounded-card bg-sunk active:cursor-grabbing"
+                ? "aspect-square w-72 max-w-full cursor-grab touch-none rounded-card bg-sunk active:cursor-grabbing"
                 : "aspect-[3/1] w-[30rem] max-w-full cursor-grab touch-none rounded-card bg-sunk active:cursor-grabbing"
             }
             onPointerDown={(event) => {

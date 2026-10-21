@@ -92,7 +92,7 @@ export function AccountPane({ locked }: { locked: boolean }) {
   return (
     <>
       {state.account.locked.length > 0 && <HeldNotice reasons={state.account.locked} />}
-      <ProfileSection name={state.account.name} disabled={disabled} />
+      <ProfileSection name={state.account.name} displayName={state.account.displayName} disabled={disabled} />
       <DetailsSection account={state.account} data={account} disabled={disabled} />
       <PasswordSection account={state.account} data={account} disabled={disabled} />
       <FactorsSection account={state.account} disabled={disabled} />
@@ -137,10 +137,17 @@ function HeldNotice({ reasons }: { reasons: LoginReason[] }) {
 
 const PRONOUN_SUGGESTIONS = ["she/her", "he/him", "they/them"];
 
-function ProfileSection({ name, disabled }: { name: string; disabled: boolean }) {
+/* The full name comes from Your details above, so the card follows a name
+ * saved there without asking for the profile again. */
+function ProfileSection({ name, displayName, disabled }: { name: string; displayName: string; disabled: boolean }) {
   const data = useProfile(name);
-  if (data.profile === null) return null;
-  return <ProfileForm profile={data.profile} data={data} disabled={disabled || data.busy} />;
+  const profile = React.useMemo(() => {
+    if (data.profile === null) return null;
+    const shown = displayName.trim();
+    return { ...data.profile, displayName: shown.length > 0 ? shown : data.profile.name };
+  }, [data.profile, displayName]);
+  if (profile === null) return null;
+  return <ProfileForm profile={profile} data={data} disabled={disabled || data.busy} />;
 }
 
 function ProfileForm({ profile, data, disabled }: { profile: Profile; data: ProfileData; disabled: boolean }) {

@@ -115,18 +115,22 @@ async function open({ path = '/settings/account', admin = false } = {}) {
   await page.route('**/api/state', (route) => json(route, 200, { mode: 'local', sharing: false }));
   await page.route('**/api/settings', (route) => json(route, 200, SETTINGS));
   await page.route('**/api/status', (route) => json(route, 200, { state: 'idle', progress: 0, message: '' }));
-  await page.route('**/api/account', (route) =>
-    json(route, 200, {
+  await page.route('**/api/account', (route) => {
+    // Your details saves the full name here, not on the profile.
+    if (route.request().method() === 'POST') {
+      box.displayName = JSON.parse(route.request().postData() ?? '{}').displayName;
+    }
+    return json(route, 200, {
       name: 'eva',
-      displayName: box.profile.displayName,
+      displayName: box.displayName ?? box.profile.displayName,
       email: 'eva@mattbox.local',
       factors: { app: false, passkeys: [] },
       passwordSetAt: Date.UTC(2026, 8, 1) / 1000,
       passwordExpiresAt: null,
       rules: { twoFactor: false, passwordDays: 0 },
       locked: [],
-    }),
-  );
+    });
+  });
   await page.route('**/api/profiles/eva', (route) => json(route, 200, box.profile));
   await page.route(/\/api\/profiles\/(eva|oma)\/(picture|banner)\?v=\d+$/, (route) => {
     const [, who, kind] = /\/api\/profiles\/(\w+)\/(\w+)/.exec(route.request().url());
@@ -225,6 +229,35 @@ await check('a fresh profile is the initials on the colour of the name', async (
   assert.equal(await page.getByTestId('signed-in-avatar').innerText(), 'EN');
   assert.ok(await page.getByTestId('profile-save').isDisabled(), 'Save is on with nothing changed');
   assert.equal(await page.getByTestId('profile-picture-remove').count(), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('a full name saved in Your details moves onto the profile card', async () => {
+  const { page, context, errors } = await open();
+  const card = page.getByTestId('profile-card');
+  await card.waitFor();
+  assert.equal(await card.locator('[data-slot=avatar]').innerText(), 'EN');
+  await page.getByTestId('account-name').fill('Eva Horváth');
+  await page.getByTestId('account-details-save').click();
+  await card.getByText('Eva Horváth').waitFor();
+  assert.equal(await card.locator('[data-slot=avatar]').innerText(), 'EH');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('the crop frame keeps its shape on a narrow phone', async () => {
+  const { page, context, errors } = await open();
+  await page.setViewportSize({ width: 300, height: 700 });
+  await page.getByTestId('profile-card').waitFor();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByTestId('profile-picture-choose').click();
+  await (await chooser).setFiles(await photo(page, 1600, 900));
+  const canvas = page.getByTestId('profile-crop-canvas');
+  await canvas.waitFor();
+  const b = await canvas.boundingBox();
+  assert.ok(b.width < 288, `the frame is ${b.width} wide, not squeezed`);
+  assert.ok(Math.abs(b.width - b.height) < 1, `the frame is ${b.width} by ${b.height}`);
   assert.deepEqual(errors, []);
   await context.close();
 });

@@ -31,7 +31,9 @@ for the box's own apps.
   (initials' ground, a missing banner) from `tokens.css`, which has light
   and dark values for each.
 - `picture` and `banner` are URLs on the box's own origin, or `null`. A new
-  picture is a new `?v=`, so the bytes can be cached for good.
+  picture is a new `?v=`, so the bytes can be cached for good. Versions are
+  never reused on the box, not even when a name is removed and added again,
+  and any `?v=` but the current one answers 404.
 - The email address is never part of a profile.
 
 With no picture, draw the initials (first letter of the first and last word

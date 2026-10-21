@@ -185,10 +185,15 @@ pkgs.testers.nixosTest {
         head = curl(f"-D - -o /dev/null -H 'Cookie: {matus}' 'https://{BOX}{url}'")
         assert re.search(r"(?im)^cache-control: private, max-age=31536000, immutable", head), head
         assert re.search(r"(?im)^content-type: image/jpeg", head), head
-        # The store keeps only what was made again, owner-only.
-        stored = box.succeed(f"stat -c '%a %U' {STORE}/eva.picture").strip()
+        # The store keeps only what was made again, owner-only, one file
+        # per version.
+        version = url.rsplit("=", 1)[1]
+        stored = box.succeed(f"stat -c '%a %U' {STORE}/eva.picture.{version}").strip()
         assert stored == "600 root", stored
-        box.fail(f"grep -q 'LosOS test camera' {STORE}/eva.picture")
+        box.fail(f"grep -q 'LosOS test camera' {STORE}/eva.picture.{version}")
+        # A version it never gave out is not found, so no cache keeps one.
+        assert api(f"/api/profiles/eva/picture?v={int(version) + 100}", matus)[0] == 404
+        assert api("/api/profiles/eva/picture", matus)[0] == 404
         assert box.succeed("stat -c '%a' /var/lib/losos").strip() == "700"
 
     with subtest("a banner with transparent pixels stays a PNG of its shape"):
@@ -235,11 +240,18 @@ pkgs.testers.nixosTest {
         p = json.loads(api("/api/profiles/eva", eva)[1])
         assert p["picture"] is None and p["banner"] == banner_url and p["pronouns"] == "she/her", p
         assert api(url, matus)[0] == 404
-        box.fail(f"test -e {STORE}/eva.picture")
-        # A new picture never takes the old URL.
+        box.fail(f"ls {STORE} | grep -q '^eva\\.picture'")
+        # A new picture never takes the old URL, and replacing it again
+        # leaves one file and a 404 on the one before.
         code, body = api("/api/account/picture", eva, method="PUT", upload="/tmp/phone.jpg")
         assert code == 200 and json.loads(body)["picture"] != url, body
+        replaced = json.loads(body)["picture"]
+        code, body = api("/api/account/picture", eva, method="PUT", upload="/tmp/phone.jpg")
+        assert code == 200, (code, body)
         url = json.loads(body)["picture"]
+        assert url != replaced and api(replaced, matus)[0] == 404
+        assert api(url, matus)[0] == 200
+        assert box.succeed(f"ls {STORE} | grep -c '^eva\\.picture'").strip() == "1"
 
     with subtest("profiles outlive a restart of lososd"):
         box.systemctl("restart lososd.service")
@@ -257,5 +269,22 @@ pkgs.testers.nixosTest {
         assert api(url, matus)[0] == 404
         names = [p["name"] for p in json.loads(api("/api/profiles", matus)[1])["people"]]
         assert names == ["matus"], names
+        # The name taken again starts after every version the old Eva had.
+        code, body = api("/api/people", matus, method="POST", data={
+            "name": "eva", "displayName": "Eva Again", "email": "eva@mattbox.local",
+            "password": EVA_PASSWORD, "groups": ["losos-account"],
+        })
+        assert code == 200, (code, body)
+        laptop.wait_until_succeeds(
+            f"curl -sk -o /dev/null -w '%{{http_code}}' https://{BOX}/auth/api/firstfactor "
+            f"-H 'Content-Type: application/json' "
+            f"-d '{json.dumps({'username': 'eva', 'password': EVA_PASSWORD})}' | grep -q 200",
+            timeout=60,
+        )
+        eva = sign_in("eva", EVA_PASSWORD)
+        code, body = api("/api/account/picture", eva, method="PUT", upload="/tmp/phone.jpg")
+        assert code == 200, (code, body)
+        again = json.loads(body)["picture"]
+        assert int(again.rsplit("=", 1)[1]) > int(url.rsplit("=", 1)[1]), (again, url)
   '';
 }
