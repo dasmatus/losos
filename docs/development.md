@@ -209,7 +209,7 @@ this is the reasoning behind it.
   keep the spare-key path in the sign-in dialog. Who may call what is
   `backend/sections.json`, read by lososd (`backend/src/sections.rs`) and by
   nginx; a route missing there is admin only. `nix/tests/identity.nix` boots it.
-  `backend/src/signin.rs` now only holds the LosOS cloud login helpers that
+  `backend/src/signin.rs` now only holds the LosOS Cloud login helpers that
   device setup (`losos cloud setup`, `losos git setup`) and the pin picker
   use: keep the password in a Basic header over loopback, never a `curl -u`
   (it would be in an argv), and let `signin::validate_candidate` check shape

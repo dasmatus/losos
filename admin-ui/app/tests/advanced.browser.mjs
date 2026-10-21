@@ -459,11 +459,11 @@ await check('History on a box with LosOS Git off says so and still lists the com
 });
 
 await check('the Apps pane draws every box-wide setting of both apps, and Apply writes their lines', async () => {
-  assert.equal(Object.keys(ON_PANE).length, 15, `expected 9 LosOS cloud and 6 LosOS Git settings, the document has ${Object.keys(ON_PANE).length}`);
+  assert.equal(Object.keys(ON_PANE).length, 15, `expected 9 LosOS Cloud and 6 LosOS Git settings, the document has ${Object.keys(ON_PANE).length}`);
   const { page, applies, errors } = await open({ path: '/apps', overrides: { 'nextcloud.site.trashDays': '30' } });
   // Each app's settings are folded away until its fold is opened.
   await main(page).getByTestId('accordion-cloud').waitFor();
-  assert.equal(await main(page).getByTestId('site-cloud').isVisible(), false, 'the LosOS cloud fold starts open');
+  assert.equal(await main(page).getByTestId('site-cloud').isVisible(), false, 'the LosOS Cloud fold starts open');
   await main(page).getByTestId('accordion-cloud').getByRole('button').first().click();
   await main(page).getByTestId('accordion-git').getByRole('button').first().click();
   await main(page).getByTestId('site-cloud').waitFor();
@@ -528,7 +528,7 @@ await check('the Advanced pane links each box-wide setting to the Apps pane', as
   assert.equal(await link.getAttribute('href'), '/apps#git');
   await link.click();
   await page.waitForURL(origin + '/apps#git');
-  // The link opens the LosOS Git fold and leaves LosOS cloud's shut.
+  // The link opens the LosOS Git fold and leaves LosOS Cloud's shut.
   await main(page).getByTestId('site-git').waitFor();
   assert.equal(await main(page).getByTestId('site-cloud').isVisible(), false);
   await page.close();

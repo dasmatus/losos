@@ -106,7 +106,7 @@ and is never served or built by nix.
   (`losos-<section>` groups, `losos-admins`, `losos-viewers`); a missing
   route is admin only. The claim makes the first person an administrator
   and puts them in `losos-owner`. `nix/tests/identity.nix` boots it.
-  LosOS cloud and LosOS Git (pods only) take the person from nginx in
+  LosOS Cloud and LosOS Git (pods only) take the person from nginx in
   `X-Losos-Cloud-*` headers (`modules/app-sign-in.nix`: user_saml in
   environment-variable mode, Forgejo's reverse-proxy sign-in); the owner
   maps to `notshared`. nginx sets the headers on every request to either
@@ -169,7 +169,7 @@ and is never served or built by nix.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
   `losos-tokens.css` into the Nextcloud theme folder and Forgejo's custom
   CSS, so one colour change moves all three. `default.nix` is the data every
-  caller imports. Owners see LosOS cloud and LosOS Git.
+  caller imports. Owners see LosOS Cloud and LosOS Git.
 - `hardening.nix` (install only): KSPP primitives, on by default, with
   `apparmor`, `malloc`, `nosmt`, `usbguard` opt-in. `nix/tests/hardening.nix`
   asserts both halves.
@@ -586,7 +586,7 @@ server root and a symlink beside the package is never found. Forgejo gets
 (tmpfiles links natively, copied by the image's entrypoint) with
 `DEFAULT_THEME = losos-auto`, which Forgejo stamps on accounts at creation —
 an existing account keeps its old theme until its owner switches.
-Owners see the two apps as **LosOS cloud** and **LosOS Git**: the theme
+Owners see the two apps as **LosOS Cloud** and **LosOS Git**: the theme
 folder's `defaults.php` names Nextcloud, Forgejo's `APP_NAME` names it, and
 both get logos drawn from `admin-ui/themes/brand/` (`marks.py` wraps
 `salmon.png`, a live coho salmon cut out of a NOAA Fisheries photo, into
@@ -803,7 +803,7 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   box while Authelia is down; keep that bypass and the dialog's spare-key
   path. `backend/sections.json` decides who may call what, for lososd and
   nginx alike; a route missing from it is admin only. `signin.rs` is left
-  only for LosOS cloud's login in device setup: Basic over loopback, never
+  only for LosOS Cloud's login in device setup: Basic over loopback, never
   `curl -u`, and `signin::validate_candidate` checks shape only.
 - **Nextcloud trusts the box's own IP address through one nginx header.**
   The `/nextcloud` location sets `X-Losos-Server-Addr $server_addr`, and the

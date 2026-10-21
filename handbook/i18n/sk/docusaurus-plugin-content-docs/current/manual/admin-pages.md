@@ -38,8 +38,8 @@ kdekoľvek mimo textového poľa. Nájde:
 
 - sekcie a panely nastavení, podľa mena alebo podľa slova ako „gpu“ či
   „hostname“, v jazyku na obrazovke alebo v angličtine
-- aplikácie v LosOS cloud a LosOS Git
-- súbory a priečinky v LosOS cloud, podľa mena
+- aplikácie v LosOS Cloud a LosOS Git
+- súbory a priečinky v LosOS Cloud, podľa mena
 - repozitáre v LosOS Git
 - text vnútri súborov, keď napíšete tri písmená: vo vašich súboroch v LosOS
   cloud a na hlavnej vetve každého repozitára v LosOS Git
@@ -55,12 +55,12 @@ Ctrl+Enter alebo Cmd+Enter otvorí položku na novej karte.
 
 :::note[Vyhľadávanie súborov potrebuje heslo aplikácie zariadenia]
 Vyhľadávanie súborov používa heslo aplikácie, ktoré zariadenie dostane od
-LosOS cloud, keď sa nastaví heslo vlastníka, a to urobí sprievodca. Bez neho
+LosOS Cloud, keď sa nastaví heslo vlastníka, a to urobí sprievodca. Bez neho
 to zoznam napíše tam, kde by boli súbory; pozrite
 [Ako zariadenie vypisuje vaše súbory](#pins) nižšie.
 :::
 
-Aby mohlo hľadať vnútri vašich súborov v LosOS cloud, zariadenie si vedie
+Aby mohlo hľadať vnútri vašich súborov v LosOS Cloud, zariadenie si vedie
 index ich textu. Každé dve minúty skontroluje nové a zmenené súbory a číta
 iba tie. Číta obyčajný text a kód, Markdown, CSV, JSON a HTML, súbory
 OpenDocument, súbory Wordu, Excelu a PowerPointu v súčasných formátoch
@@ -75,7 +75,7 @@ paneli Rozšírené ho vypne. LosOS Git index nepotrebuje: každé vyhľadávani
 
 Pripnite si aplikácie, súbory a repozitáre, ktoré otvárate najčastejšie, a
 budú v bočnom paneli pod **Pripnuté**. Pripnutá položka sa otvára vo
-vlastnej aplikácii: súbor alebo priečinok v LosOS cloud, repozitár v LosOS
+vlastnej aplikácii: súbor alebo priečinok v LosOS Cloud, repozitár v LosOS
 Git, aplikácia na Prehľade alebo aplikácia nainštalovaná z vyhľadávania na
 vlastnom porte. Zoznam drží zariadenie, takže každý prehliadač, z ktorého sa
 prihlásite, ukazuje tie isté pripnuté položky.
@@ -85,7 +85,7 @@ prihlásite, ukazuje tie isté pripnuté položky.
 - Na stránke Aplikácie je pri každej nainštalovanej aplikácii **Pripnúť**.
 - Ceruzka pri **Pripnuté** otvorí celý zoznam. Tam pripnutú položku posuniete
   vyššie alebo nižšie, odopnete ju a pripínate z troch kariet: **Aplikácie**,
-  **Súbory**, ktorá prechádza priečinkami LosOS cloud, a **Repozitáre**.
+  **Súbory**, ktorá prechádza priečinkami LosOS Cloud, a **Repozitáre**.
 - Ukážte na pripnutú položku v bočnom paneli a kliknutím na prečiarknutý
   špendlík ju odopnete. Pripnuté položky nájde aj
   [vyhľadávanie](#search).
@@ -96,12 +96,12 @@ prihlásite, ukazuje tie isté pripnuté položky.
 
 ![Prehľad so šiestimi pripnutými položkami pod Pripnuté v bočnom paneli a označenými pripnutými dlaždicami Kalendár a Poznámky.](@site/docs/img/pins-overview-sk.png)
 
-![Zoznam pripnutých položiek s kartou Súbory otvorenou na priečinku Documents v LosOS cloud.](@site/docs/img/pins-dialog-sk.png)
+![Zoznam pripnutých položiek s kartou Súbory otvorenou na priečinku Documents v LosOS Cloud.](@site/docs/img/pins-dialog-sk.png)
 
 :::note[Ako zariadenie vypisuje vaše súbory]
 Zariadenie vypisuje vaše súbory s heslom aplikácie, o ktoré požiada LosOS
 cloud, keď sa nastaví heslo vlastníka, a to urobí sprievodca. Heslo
-aplikácie sa v nastaveniach zabezpečenia LosOS cloud zobrazí ako „LosOS
+aplikácie sa v nastaveniach zabezpečenia LosOS Cloud zobrazí ako „LosOS
 admin page“. Keď ho tam zrušíte, výpis aj vyhľadávanie súborov sa zastavia,
 kým sa heslo vlastníka nenastaví znova, a to cestou s náhradným kľúčom na
 stránke [Zabudnuté heslo](../troubleshooting/forgot-password#you-have-the-spare-admin-key). Bočný panel pojme 24 pripnutých položiek.
@@ -141,7 +141,7 @@ to isté. Pozri [Prihlásenie a náhradný kľúč](sign-in-and-spare-key).
 ## Čo správcovské stránky nedokážu \{#what-the-admin-pages-cannot-do}
 
 Nie je tu prehliadač súborov, terminál ani prehliadač logov. Vaše súbory sú
-v LosOS cloud; karta **Súbory** v zozname pripnutých položiek ukazuje
+v LosOS Cloud; karta **Súbory** v zozname pripnutých položiek ukazuje
 priečinky iba na to, aby ste z nich mohli pripínať. Zariadenie nemá shell,
 takže ho nemajú ani stránky. Zariadenie o sebe podáva správu cez Prehľad,
 panel Úložisko a panel O zariadení. Keď to nestačí, stránka

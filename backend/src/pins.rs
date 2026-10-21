@@ -2,7 +2,7 @@
 //!
 //! A pin is a reference, never a link: an app tile of the Overview by its
 //! id in the page's catalogue, an app installed from the Apps search by its
-//! release name, a file or folder in LosOS cloud by its file id and path,
+//! release name, a file or folder in LosOS Cloud by its file id and path,
 //! or a repository on LosOS Git by owner and name. The page turns each one
 //! into an address (`admin-ui/app/src/lib/pins.ts`), so nothing stored here
 //! can send a click anywhere but this box. The list is ordered, and the
@@ -15,19 +15,19 @@
 //!
 //! The page also needs something to pin from, and this module carries the
 //! two lists it offers, each one searchable so the page can look things up
-//! by name: a folder of LosOS cloud (or the files whose name matches, from
+//! by name: a folder of LosOS Cloud (or the files whose name matches, from
 //! anywhere in it) and the owner's repositories on LosOS Git.
 //!
 //! - **LosOS Git** is asked as the bot administrator lososd already talks
 //!   to it as (`crate::config_repo`), for the owner's repositories,
 //!   private ones included.
-//! - **LosOS cloud** is asked over WebDAV with an *app password* of the
+//! - **LosOS Cloud** is asked over WebDAV with an *app password* of the
 //!   owner's (Nextcloud's "devices & sessions" kind). lososd has no other
 //!   key to the owner's files and keeps no copy of their password, so it
-//!   asks LosOS cloud for one the moment it holds the password anyway: a
+//!   asks LosOS Cloud for one the moment it holds the password anyway: a
 //!   sign-in with it, or the first password at setup. The app password is
 //!   kept at `$LOSOS_STATE_DIR/cloud-key`, mode 0600, and shows up in the
-//!   owner's LosOS cloud security settings as "LosOS admin page", where they
+//!   owner's LosOS Cloud security settings as "LosOS admin page", where they
 //!   can revoke it. A revoked or missing one makes the folder list say
 //!   "sign in with your password once", nothing worse.
 //!
@@ -41,9 +41,9 @@ use serde_json::{json, Value};
 
 /// How many pins the sidebar keeps. A sidebar of more is a second app grid.
 pub const MAX_PINS: usize = 24;
-/// Longest LosOS cloud path a pin or a listing takes, in bytes.
+/// Longest LosOS Cloud path a pin or a listing takes, in bytes.
 pub const MAX_PATH_BYTES: usize = 1024;
-/// Longest catalogue id of a LosOS cloud app.
+/// Longest catalogue id of a LosOS Cloud app.
 pub const MAX_APP_ID_CHARS: usize = 24;
 /// Longest owner or repository name on LosOS Git (Forgejo's own limit).
 pub const MAX_REPO_PART_CHARS: usize = 100;
@@ -52,11 +52,11 @@ pub const MAX_REPO_PART_CHARS: usize = 100;
 pub const MAX_ENTRIES: usize = 500;
 /// Most repositories one listing returns (Forgejo's page size).
 pub const MAX_REPOS: usize = 50;
-/// Most results one search of LosOS cloud returns.
+/// Most results one search of LosOS Cloud returns.
 pub const MAX_HITS: usize = 50;
 /// Longest search text, in characters.
 pub const MAX_QUERY_CHARS: usize = 100;
-/// The name LosOS cloud shows for the app password in its security settings.
+/// The name LosOS Cloud shows for the app password in its security settings.
 pub const KEY_CLIENT: &str = "LosOS admin page";
 
 /// One thing on the sidebar.
@@ -64,12 +64,12 @@ pub const KEY_CLIENT: &str = "LosOS admin page";
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum Pin {
     /// An app tile of the Overview, by its id in the page's catalogue
-    /// (`admin-ui/app/src/lib/apps.ts`): the apps of LosOS cloud, LosOS
+    /// (`admin-ui/app/src/lib/apps.ts`): the apps of LosOS Cloud, LosOS
     /// Git and this page's settings.
     Tile { app: String },
     /// An app installed from the Apps search, by release name.
     App { release: String },
-    /// A file or folder in LosOS cloud. `id` opens it; `path` names it.
+    /// A file or folder in LosOS Cloud. `id` opens it; `path` names it.
     File { id: u64, path: String, folder: bool },
     /// A repository on LosOS Git.
     Repo { owner: String, name: String },
@@ -141,11 +141,11 @@ pub fn validate_pin(pin: &Pin) -> anyhow::Result<()> {
         }
         Pin::File { id, path, .. } => {
             if *id == 0 {
-                return invalid("That file has no id in LosOS cloud.");
+                return invalid("That file has no id in LosOS Cloud.");
             }
             validate_path(path)?;
             if path == "/" {
-                return invalid("Pin a folder inside LosOS cloud, not the whole of it.");
+                return invalid("Pin a folder inside LosOS Cloud, not the whole of it.");
             }
         }
         Pin::Repo { owner, name } => {
@@ -167,11 +167,11 @@ fn repo_part(part: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
-/// A path inside LosOS cloud: from the top (`/`), no empty, `.` or `..`
+/// A path inside LosOS Cloud: from the top (`/`), no empty, `.` or `..`
 /// part, nothing that is not printable.
 pub fn validate_path(path: &str) -> anyhow::Result<()> {
     if !path.starts_with('/') || path.len() > MAX_PATH_BYTES {
-        return invalid("That is not a folder in LosOS cloud.");
+        return invalid("That is not a folder in LosOS Cloud.");
     }
     if path == "/" {
         return Ok(());
@@ -185,7 +185,7 @@ pub fn validate_path(path: &str) -> anyhow::Result<()> {
     if ok {
         Ok(())
     } else {
-        invalid("That is not a folder in LosOS cloud.")
+        invalid("That is not a folder in LosOS Cloud.")
     }
 }
 
@@ -295,7 +295,7 @@ pub fn parse_repos(doc: &Value) -> Vec<Value> {
     rows
 }
 
-// ── LosOS cloud: a folder ─────────────────────────────────────────────────
+// ── LosOS Cloud: a folder ─────────────────────────────────────────────────
 
 /// The app password lososd lists the owner's files with.
 #[derive(Debug, Clone)]
@@ -324,7 +324,7 @@ impl CloudKey {
     }
 }
 
-/// One request to LosOS cloud.
+/// One request to LosOS Cloud.
 #[derive(Debug)]
 pub enum CloudRequest<'a> {
     /// Trade the owner's password for an app password.
@@ -334,7 +334,7 @@ pub enum CloudRequest<'a> {
     /// Files and folders anywhere whose name holds `query`.
     Search { key: &'a CloudKey, query: &'a str },
     /// Sign `user` in through LosOS Login's headers, as nginx does for a
-    /// browser, so LosOS cloud makes their account if it has none yet
+    /// browser, so LosOS Cloud makes their account if it has none yet
     /// (`crate::cloud_share`).
     Arrive {
         user: &'a str,
@@ -342,7 +342,7 @@ pub enum CloudRequest<'a> {
     },
 }
 
-/// Where LosOS cloud answers on loopback: the socket, the `Host` header and
+/// Where LosOS Cloud answers on loopback: the socket, the `Host` header and
 /// the path its web root is at (`/nextcloud` for the workload, empty for
 /// the native vhost). Derived from the sign-in probe's URL, so the two can
 /// never disagree.
@@ -391,7 +391,7 @@ pub fn request_bytes(endpoint: &CloudEndpoint, request: &CloudRequest<'_>) -> Ve
             out.push_str(&basic(user, password.expose()));
             out.push_str("OCS-APIRequest: true\r\n");
             out.push_str("Accept: application/json\r\n");
-            // LosOS cloud names the app password after the client.
+            // LosOS Cloud names the app password after the client.
             out.push_str(&format!("User-Agent: {KEY_CLIENT}\r\n"));
             out.push_str("Connection: close\r\n\r\n");
         }
@@ -439,7 +439,7 @@ pub fn request_bytes(endpoint: &CloudEndpoint, request: &CloudRequest<'_>) -> Ve
     out.into_bytes()
 }
 
-/// A WebDAV SEARCH (RFC 5323, as LosOS cloud speaks it) for names that
+/// A WebDAV SEARCH (RFC 5323, as LosOS Cloud speaks it) for names that
 /// hold `query`, anywhere under the owner's files. `%` is the wildcard, so
 /// one typed in the text is dropped rather than matched as one.
 fn search_body(user: &str, query: &str) -> String {
@@ -575,7 +575,7 @@ pub fn parse_minted(body: &[u8]) -> Option<String> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Entry {
     pub name: String,
-    /// From the top of LosOS cloud, `/Documents/plan.pdf`.
+    /// From the top of LosOS Cloud, `/Documents/plan.pdf`.
     pub path: String,
     pub id: u64,
     pub folder: bool,
@@ -658,15 +658,15 @@ pub fn parse_multistatus(xml: &str, user: &str, path: &str) -> Vec<Entry> {
     rows
 }
 
-/// Ask LosOS cloud for an app password with the owner's password, unless
+/// Ask LosOS Cloud for an app password with the owner's password, unless
 /// lososd holds one already. Best effort, like the LosOS Git password sync
-/// beside it: a sign-in LosOS cloud accepted is never refused for this.
+/// beside it: a sign-in LosOS Cloud accepted is never refused for this.
 pub fn keep_cloud_key<L: Losos>(l: &mut L, user: &str, password: &Secret) {
     match l.load_cloud_key() {
         Ok(Some(key)) if key.user == user => return,
         Ok(_) => {}
         Err(e) => {
-            tracing::warn!(error = ?e, "could not read the LosOS cloud key");
+            tracing::warn!(error = ?e, "could not read the LosOS Cloud key");
             return;
         }
     }
@@ -674,11 +674,11 @@ pub fn keep_cloud_key<L: Losos>(l: &mut L, user: &str, password: &Secret) {
     let minted = match answer {
         Ok((200, body)) => parse_minted(&body),
         Ok((status, _)) => {
-            tracing::info!(status, "LosOS cloud did not hand out an app password");
+            tracing::info!(status, "LosOS Cloud did not hand out an app password");
             None
         }
         Err(e) => {
-            tracing::info!(error = ?e, "LosOS cloud could not be asked for an app password");
+            tracing::info!(error = ?e, "LosOS Cloud could not be asked for an app password");
             None
         }
     };
@@ -688,8 +688,8 @@ pub fn keep_cloud_key<L: Losos>(l: &mut L, user: &str, password: &Secret) {
             key: Secret::new(&key),
         };
         match l.save_cloud_key(Some(&key)) {
-            Ok(()) => tracing::info!(user, "kept an app password for listing LosOS cloud"),
-            Err(e) => tracing::warn!(error = ?e, "could not keep the LosOS cloud key"),
+            Ok(()) => tracing::info!(user, "kept an app password for listing LosOS Cloud"),
+            Err(e) => tracing::warn!(error = ?e, "could not keep the LosOS Cloud key"),
         }
     }
 }
@@ -727,7 +727,7 @@ pub fn cmd_cloud_files<L: Losos>(
     let (status, body) = match l.cloud_request(&request) {
         Ok(answer) => answer,
         Err(e) => {
-            tracing::info!(error = ?e, "LosOS cloud could not be asked for a folder");
+            tracing::info!(error = ?e, "LosOS Cloud could not be asked for a folder");
             return unavailable("notUp");
         }
     };
@@ -745,13 +745,13 @@ pub fn cmd_cloud_files<L: Losos>(
                 "more": more,
             }))
         }
-        // Revoked in LosOS cloud's security settings, or the account is new:
+        // Revoked in LosOS Cloud's security settings, or the account is new:
         // forget it, and the next sign-in with the password asks for another.
         401 => {
             l.save_cloud_key(None)?;
             unavailable("signIn")
         }
-        404 => invalid("That folder is not in LosOS cloud any more."),
+        404 => invalid("That folder is not in LosOS Cloud any more."),
         _ => unavailable("notUp"),
     }
 }

@@ -70,7 +70,7 @@ Das hat zwei Folgen.
    Fall hängt der Leser die ESP ein, kopiert den Schlüssel aus der initrd und
    öffnet das Volume. Dafür braucht es
    gewöhnliche Linux-Werkzeuge und ein paar Minuten. Offengelegt werden die
-   Dateien des Besitzers in LosOS cloud, die Repositories in LosOS Git, der
+   Dateien des Besitzers in LosOS Cloud, die Repositories in LosOS Git, der
    Admin-Schlüssel und der Rest von `/persist`.
 2. Die eigenen Geheimnisse der Box verlieren ihren Chip. Der Keyring fällt
    auf den Host-Schlüssel von `systemd-creds` zurück, der Speicherschlüssel

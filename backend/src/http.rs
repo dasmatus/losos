@@ -60,7 +60,7 @@ struct Api {
     people: crate::people::People,
     /// LosOS Login's rules and second factors (`crate::login`).
     login: crate::login::Login,
-    /// LosOS Login names on LosOS cloud's share (`crate::cloud_share`).
+    /// LosOS Login names on LosOS Cloud's share (`crate::cloud_share`).
     share: crate::cloud_share::Share,
     /// The plugins that answer every route not registered below
     /// (`crate::plugin`).
@@ -182,7 +182,7 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
     {
         return err(StatusCode::CONFLICT, &why);
     }
-    // LosOS cloud turned an app change down, or could not make it: its own
+    // LosOS Cloud turned an app change down, or could not make it: its own
     // words, as a 502, because the box itself did what it was asked.
     if let Some(why) = e.downcast_ref::<crate::cloud_apps::Failed>() {
         tracing::warn!(reason = why.0.as_str(), "cloud app change failed");
@@ -198,17 +198,17 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
             .insert_header(("Retry-After", "10"))
             .json(serde_json::json!({ "error": why, "ready": false, "waitingFor": why }));
     }
-    // A password sign-in that LosOS cloud turned down: 401, which the
+    // A password sign-in that LosOS Cloud turned down: 401, which the
     // dialog shows as "try again" and the caller counts as a failure for
     // the per-address throttle, exactly like a wrong token.
     if let Some(why) = e.downcast_ref::<crate::signin::WrongPassword>() {
         tracing::info!("sign-in refused: wrong password");
         return err(StatusCode::UNAUTHORIZED, &why.to_string());
     }
-    // LosOS cloud's own brute-force protection shut the door; the page
+    // LosOS Cloud's own brute-force protection shut the door; the page
     // says "wait" rather than "wrong".
     if let Some(why) = e.downcast_ref::<crate::signin::Throttled>() {
-        tracing::warn!("sign-in refused: LosOS cloud is throttling this address");
+        tracing::warn!("sign-in refused: LosOS Cloud is throttling this address");
         let mut resp = err(StatusCode::TOO_MANY_REQUESTS, &why.to_string());
         resp.headers_mut().insert(
             actix_web::http::header::RETRY_AFTER,
@@ -498,7 +498,7 @@ fn guarded_at(
     if matches!(who, Principal::Edge) && !crate::sections::edge_allows(method, section) {
         audit("forbidden", Some("edge"));
         return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "the edge may manage only LosOS cloud, LosOS Git and the apps on this box",
+            "error": "the edge may manage only LosOS Cloud, LosOS Git and the apps on this box",
             "section": section,
         }));
     }
@@ -754,7 +754,7 @@ async fn post_person_access(
 
 /// `POST /api/people/password`: `{"name", "password"}`, for someone who
 /// forgot theirs. The owner changes their own on the Account menu, which
-/// keeps their LosOS cloud password in step.
+/// keeps their LosOS Cloud password in step.
 async fn post_person_password(
     api: web::Data<Api>,
     req: HttpRequest,
@@ -799,7 +799,7 @@ async fn post_person_password(
 }
 
 /// `POST /api/people/remove`: `{"name"}`. They can no longer sign in; their
-/// accounts in LosOS cloud and LosOS Git, and the files in them, stay.
+/// accounts in LosOS Cloud and LosOS Git, and the files in them, stay.
 async fn post_person_remove(
     api: web::Data<Api>,
     req: HttpRequest,
@@ -901,7 +901,7 @@ fn start_login_marks(api: web::Data<Api>) {
     });
 }
 
-/// Give LosOS cloud and LosOS Git LosOS Login's name and address for
+/// Give LosOS Cloud and LosOS Git LosOS Login's name and address for
 /// everyone (`only` none) or one person, in the background: either app may
 /// still be starting, so whoever is left is asked again for a while.
 fn sync_names_later(api: web::Data<Api>, only: Option<String>) {
@@ -1155,7 +1155,7 @@ async fn post_person_factors_reset(
     })
 }
 
-/// `GET /internal/cloud-share`: whose request to LosOS cloud's share this
+/// `GET /internal/cloud-share`: whose request to LosOS Cloud's share this
 /// is, for nginx (`crate::cloud_share`). Always a 200; the person, if any,
 /// in the headers nginx reads from Authelia's answers too. Only with
 /// LosOS Login on: without it nginx does not ask, and nobody is named.
@@ -1212,7 +1212,7 @@ async fn get_edge(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/edge", false, || run(&api, cmd_edge))
 }
 
-/// The owner lets the company edge in use manage LosOS cloud, LosOS Git and
+/// The owner lets the company edge in use manage LosOS Cloud, LosOS Git and
 /// the apps, or stops it: `{"enabled": bool}`.
 async fn post_edge_manage(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
     guarded(&api, &req, "/api/edge/manage", true, || {
@@ -1502,7 +1502,7 @@ async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
         let mut out = crate::losos::cmd_claim(l, &user, password, &token, &mut receipts)?;
         if out.get("replayed").is_none() {
             // The first person on a box is its administrator. The password
-            // is the one LosOS cloud just took, so one password opens both.
+            // is the one LosOS Cloud just took, so one password opens both.
             let secret =
                 crate::setup::validate_password(password).map_err(|e| anyhow::anyhow!(e))?;
             claims.people.add(
@@ -1519,7 +1519,7 @@ async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
     })
 }
 
-/// Record which person owns the box's LosOS cloud account, so their
+/// Record which person owns the box's LosOS Cloud account, so their
 /// password changes change that one too.
 fn remember_owner(l: &mut IoLosos, name: &str) -> anyhow::Result<()> {
     use crate::losos::Losos;
@@ -1612,7 +1612,7 @@ async fn post_set_password(
 }
 
 /// A person changing their own password. It is the one Authelia checks,
-/// and for the person who owns the box's LosOS cloud account (`State::
+/// and for the person who owns the box's LosOS Cloud account (`State::
 /// owner`), that account's too, so one password keeps opening both.
 fn post_own_password(api: &Api, person: &crate::people::Person, body: &[u8]) -> HttpResponse {
     const SHAPE: &str = r#"body must be JSON: {"password": "..."}"#;
@@ -1701,7 +1701,7 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
 }
 
 /// `POST /api/devices/cloud` and `POST /api/devices/git`: a credential of
-/// one computer's own for LosOS cloud or LosOS Git (`crate::devices`).
+/// one computer's own for LosOS Cloud or LosOS Git (`crate::devices`).
 ///
 /// Bearer-gated like every other route, and on top of that the owner's
 /// password, which Nextcloud and Forgejo both insist on before they make a
@@ -1825,7 +1825,7 @@ fn get_apps_search_inner(api: &Api, req: &HttpRequest) -> HttpResponse {
 // apps' own users (modules/search.nix), and lososd only relays. HTTP-only,
 // like /api/apps/search: the palette is the only caller.
 
-/// `GET /api/cloud/text?q=` — files in LosOS cloud whose text matches.
+/// `GET /api/cloud/text?q=` — files in LosOS Cloud whose text matches.
 async fn get_cloud_text(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/cloud/text", false, || {
         text_search::<crate::textsearch::CloudHit>(&req, "LOSOS_SEARCH_CLOUD_SOCKET", "off")
@@ -1952,12 +1952,12 @@ async fn post_app_remove(api: web::Data<Api>, req: HttpRequest, body: web::Bytes
     })
 }
 
-// ── LosOS cloud's own apps ───────────────────────────────────────────────
+// ── LosOS Cloud's own apps ───────────────────────────────────────────────
 // `crate::cloud_apps` holds the rules. HTTP-only, like the chart installs.
-// None of these take the state lock: they run occ in LosOS cloud, which can
+// None of these take the state lock: they run occ in LosOS Cloud, which can
 // take as long as an app store download, and touch no state of lososd's.
 
-/// `GET /api/cloud/apps` — every app LosOS cloud has, and what may be done
+/// `GET /api/cloud/apps` — every app LosOS Cloud has, and what may be done
 /// to each.
 async fn get_cloud_apps(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/cloud/apps", false, || {
@@ -2788,7 +2788,7 @@ async fn plugin_route(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -
 
 // ── The sidebar's pins ────────────────────────────────────────────────────
 // What the owner pinned to the sidebar, and the two lists the picker pins
-// from, LosOS cloud's files and LosOS Git's repositories (`crate::pins`).
+// from, LosOS Cloud's files and LosOS Git's repositories (`crate::pins`).
 // HTTP-only like the look.
 
 /// `GET /api/pins`.
@@ -2809,7 +2809,7 @@ async fn put_pins(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> Ht
     })
 }
 
-/// `GET /api/cloud/files?path=/...` — one folder of LosOS cloud, or with
+/// `GET /api/cloud/files?path=/...` — one folder of LosOS Cloud, or with
 /// `q=...` the files and folders anywhere whose name holds the text. The
 /// pin picker reads it; so can anything else on the page that looks files up.
 async fn get_cloud_files(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
@@ -2848,7 +2848,7 @@ async fn get_options(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/options", false, || run(&api, cmd_options))
 }
 
-/// `GET /api/site` — the settings of LosOS cloud and LosOS Git only
+/// `GET /api/site` — the settings of LosOS Cloud and LosOS Git only
 /// (`crate::site`), for the apps section and a managing edge, which may not
 /// read every option.
 async fn get_site(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
@@ -3258,7 +3258,7 @@ fn admin_port() -> anyhow::Result<u16> {
 }
 
 /// Put the person who claimed the box in `losos-owner`, which a box claimed
-/// before the group existed lacks. nginx signs that group in to LosOS cloud
+/// before the group existed lacks. nginx signs that group in to LosOS Cloud
 /// and LosOS Git as the owner's own accounts (`modules/app-sign-in.nix`).
 /// A box with nobody yet, or no people file, has nothing to do.
 fn owner_in_owner_group(api: &Api) {

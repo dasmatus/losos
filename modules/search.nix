@@ -1,7 +1,7 @@
 # Text inside the owner's files, for the admin pages' palette
 # (backend/src/textsearch/, the losos-search binary).
 #
-#   losos-search-index   a timer-driven pass over the owner's LosOS cloud
+#   losos-search-index   a timer-driven pass over the owner's LosOS Cloud
 #                        files that reads only what changed since the last
 #                        one into an SQLite full-text index, as `nextcloud`
 #   losos-search-cloud   one search of that index per connection
@@ -89,7 +89,7 @@ in
     lib.mkMerge [
       {
         systemd.services.losos-search-index = {
-          description = "Read new and changed files in LosOS cloud into the search index";
+          description = "Read new and changed files in LosOS Cloud into the search index";
           serviceConfig = sandbox // {
             Type = "oneshot";
             User = "nextcloud";
@@ -124,7 +124,7 @@ in
         };
 
         systemd.sockets.losos-search-cloud = {
-          description = "Searches of the text in LosOS cloud files";
+          description = "Searches of the text in LosOS Cloud files";
           wantedBy = [ "sockets.target" ];
           socketConfig = {
             ListenStream = cloudSocket;
@@ -134,7 +134,7 @@ in
           };
         };
         systemd.services."losos-search-cloud@" = {
-          description = "One search of the text in LosOS cloud files";
+          description = "One search of the text in LosOS Cloud files";
           serviceConfig =
             sandbox
             // perConnection

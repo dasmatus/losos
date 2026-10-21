@@ -191,7 +191,7 @@ in
     storeAppsDir
     ;
 
-  # config.php keys for the LosOS cloud branding, set in both modes —
+  # config.php keys for the LosOS Cloud branding, set in both modes —
   # services.nextcloud.settings natively, the image's config snippet in
   # workload mode — from this one attrset. `theme` loads the folder under the
   # package's themes/; the rest (admin-ui/themes/default.nix) take out what
@@ -234,7 +234,7 @@ in
     # (RemoteHostValidator), which is every other LosOS box on the LAN: a
     # share to owner@otherbox.local failed before a byte left the box. So
     # federation turns that rule off. It also lets anything an account can
-    # make LosOS cloud fetch (a share's server, a link preview) point at
+    # make LosOS Cloud fetch (a share's server, a link preview) point at
     # the LAN; the accounts are the owner's people.
     #
     # Every box answers https with a certificate it made itself
@@ -363,7 +363,7 @@ in
     ];
   };
 
-  # The owner's LosOS cloud apps, managed from the admin UI's Apps pane
+  # The owner's LosOS Cloud apps, managed from the admin UI's Apps pane
   # through lososd (backend/src/cloud_apps.rs), in the shapes both modes need.
   #
   #   offFile   the apps the owner turned off, one id per line. Both modes

@@ -21,7 +21,7 @@ them in full.
 | Network  | Edge address                | `losos.proxy.registrarUrl`                          | the LosOS edge          |
 | Apps     | LosOS Git                   | `losos.forgejo.enable`                              | on                      |
 | Apps     | mode (read-only)            | `losos.nextcloud.mode`, `losos.forgejo.mode`        | `container`             |
-| Apps     | LosOS cloud, settings for everyone | `losos.nextcloud.site.*` | as LosOS cloud ships |
+| Apps     | LosOS Cloud, settings for everyone | `losos.nextcloud.site.*` | as LosOS Cloud ships |
 | Apps     | LosOS Git, settings for everyone | `losos.forgejo.site.*` | as LosOS Git ships |
 | Storage  | Use the reserve             | runs `losos-ctl grow`, and the reserve is `losos.storage.fillPercent` | 90 %  |
 | Mesh     | Join the mesh               | `losos.cluster.enable`                              | off                     |
@@ -43,7 +43,7 @@ them in full.
 | What the nightly rebuild builds      | `losos.upgradeFlakeUri`            | `git+file:///etc/nixos#install`, the box's own repository |
 | The hardening baseline               | `losos.hardening.enable`           | on                                         |
 | LosOS Git federation (ActivityPub)   | `losos.forgejo.federation.enable`  | on, while the disk is shared               |
-| LosOS cloud federation               | `losos.nextcloud.federation.enable` | on, while the disk is shared              |
+| LosOS Cloud federation               | `losos.nextcloud.federation.enable` | on, while the disk is shared              |
 | The disk unlock mode                 | `losos.tpm.enable`                 | what the installer found                    |
 | UEFI or BIOS                         | `losos.bios`                       | what the installer found                    |
 | The disks                            | `losos.targetDrives`               | what the installer found                    |

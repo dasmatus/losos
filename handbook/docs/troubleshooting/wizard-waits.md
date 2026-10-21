@@ -13,12 +13,12 @@ finish starting", and stays there.
 
 </div>
 
-<img src={require("../img/wizard-step2-waiting.png").default} alt="Step 2 of the wizard waiting for LosOS cloud, with what it is waiting for." width="520" />
+<img src={require("../img/wizard-step2-waiting.png").default} alt="Step 2 of the wizard waiting for LosOS Cloud, with what it is waiting for." width="520" />
 
 ## Why
 
-The password lives in LosOS cloud, so the wizard cannot set it until LosOS
-cloud has installed itself. LosOS cloud does that on the box's first start.
+The password lives in LosOS Cloud, so the wizard cannot set it until LosOS
+cloud has installed itself. LosOS Cloud does that on the box's first start.
 On a mini-PC that
 takes two to five minutes; in an emulated VM without hardware acceleration it
 can take fifteen. The page checks every few seconds and continues on its own.
@@ -30,7 +30,7 @@ can take fifteen. The page checks every few seconds and continues on its own.
    `"ready": false`, its `waitingFor` field names what the box is waiting
    for.
 2. **After fifteen minutes**, pull the power to restart the box, and reopen
-   the wizard. LosOS cloud's first start is restartable.
+   the wizard. LosOS Cloud's first start is restartable.
 3. **A box that never gets there** after a restart is rarely missing a
    network, because it fetches nothing and everything is on the box. It
    usually has a full disk or a failed install. Check the Storage pane if
@@ -39,5 +39,5 @@ can take fifteen. The page checks every few seconds and continues on its own.
 ## A known bug
 
 Builds from before 6 October 2026 could leave the panel on "starting" after
-LosOS cloud was ready. Pull request #62 fixed it. If you reload the page and
+LosOS Cloud was ready. Pull request #62 fixed it. If you reload the page and
 it goes straight on, you hit it.

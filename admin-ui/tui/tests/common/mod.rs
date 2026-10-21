@@ -127,7 +127,7 @@ fn serve(
                 if !edge && path.starts_with("/nextcloud/") {
                     let challenge = tiny_http::Header::from_bytes(
                         "WWW-Authenticate",
-                        r#"Basic realm="LosOS cloud", charset="UTF-8""#,
+                        r#"Basic realm="LosOS Cloud", charset="UTF-8""#,
                     )
                     .unwrap();
                     let _ = request.respond(

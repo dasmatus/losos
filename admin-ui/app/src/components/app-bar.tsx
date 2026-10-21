@@ -10,7 +10,7 @@ import { logoFor } from "@/lib/logo";
 import { cn } from "@/lib/utils";
 
 /* The bar across the top of every page the box serves: the admin UI and
- * each app (LosOS cloud, mail, chat, Office, ...). One component so the
+ * each app (LosOS Cloud, mail, chat, Office, ...). One component so the
  * height, the logo, the order of the controls and the phone layout are the
  * same everywhere, and a person going from one app to the next sees the same
  * frame with a different name in it.

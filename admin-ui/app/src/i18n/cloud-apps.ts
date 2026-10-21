@@ -1,6 +1,6 @@
 import { defineMessages } from "./define";
 
-/* The Apps pane's two accordions: LosOS cloud (its apps, the app store and
+/* The Apps pane's two accordions: LosOS Cloud (its apps, the app store and
  * its settings for everyone) and LosOS Git (its settings for everyone). The
  * settings rows themselves keep their text in panes.ts. */
 
@@ -80,14 +80,14 @@ export default defineMessages({
     de: "Nach Namen filtern",
   },
   "cloudApps.apps.loading": {
-    en: "Asking LosOS cloud…",
-    sk: "Pýtam sa LosOS cloud…",
-    de: "Frage LosOS cloud…",
+    en: "Asking LosOS Cloud…",
+    sk: "Pýtam sa LosOS Cloud…",
+    de: "Frage LosOS Cloud…",
   },
   "cloudApps.apps.unavailable": {
-    en: "The apps show here once LosOS cloud is running. {reason}",
-    sk: "Aplikácie sa tu zobrazia, keď bude LosOS cloud bežať. {reason}",
-    de: "Die Apps erscheinen hier, sobald LosOS cloud läuft. {reason}",
+    en: "The apps show here once LosOS Cloud is running. {reason}",
+    sk: "Aplikácie sa tu zobrazia, keď bude LosOS Cloud bežať. {reason}",
+    de: "Die Apps erscheinen hier, sobald LosOS Cloud läuft. {reason}",
   },
   "cloudApps.apps.failed": {
     en: "The app list did not come back: {message}",
@@ -101,24 +101,24 @@ export default defineMessages({
   },
   "cloudApps.apps.showCore": {
     en: {
-      one: "Show the {count} app built into LosOS cloud",
-      other: "Show the {count} apps built into LosOS cloud",
+      one: "Show the {count} app built into LosOS Cloud",
+      other: "Show the {count} apps built into LosOS Cloud",
     },
     sk: {
-      one: "Zobraziť {count} aplikáciu zabudovanú v LosOS cloud",
-      few: "Zobraziť {count} aplikácie zabudované v LosOS cloud",
-      many: "Zobraziť {count} aplikácií zabudovaných v LosOS cloud",
-      other: "Zobraziť {count} aplikácií zabudovaných v LosOS cloud",
+      one: "Zobraziť {count} aplikáciu zabudovanú v LosOS Cloud",
+      few: "Zobraziť {count} aplikácie zabudované v LosOS Cloud",
+      many: "Zobraziť {count} aplikácií zabudovaných v LosOS Cloud",
+      other: "Zobraziť {count} aplikácií zabudovaných v LosOS Cloud",
     },
     de: {
-      one: "Die {count} in LosOS cloud eingebaute App zeigen",
-      other: "Die {count} in LosOS cloud eingebauten Apps zeigen",
+      one: "Die {count} in LosOS Cloud eingebaute App zeigen",
+      other: "Die {count} in LosOS Cloud eingebauten Apps zeigen",
     },
   },
   "cloudApps.apps.hideCore": {
-    en: "Hide the apps built into LosOS cloud",
-    sk: "Skryť aplikácie zabudované v LosOS cloud",
-    de: "Die in LosOS cloud eingebauten Apps ausblenden",
+    en: "Hide the apps built into LosOS Cloud",
+    sk: "Skryť aplikácie zabudované v LosOS Cloud",
+    de: "Die in LosOS Cloud eingebauten Apps ausblenden",
   },
   "cloudApps.apps.fromStore": {
     en: "From the app store",
@@ -151,16 +151,16 @@ export default defineMessages({
     de: "Das hat sich nicht geändert",
   },
   "cloudApps.apps.caption": {
-    en: "An app turned off is gone from every account, and what was made in it is kept for when it comes back. It stays off after the box restarts. The owner's account in LosOS cloud is a standard one, so apps are added and turned on or off here, not in LosOS cloud.",
-    sk: "Vypnutá aplikácia zmizne zo všetkých účtov a to, čo sa v nej vytvorilo, zostane pre jej návrat. Zostane vypnutá aj po reštarte zariadenia. Účet vlastníka v LosOS cloud je bežný účet, takže aplikácie sa pridávajú, zapínajú a vypínajú tu, nie v LosOS cloud.",
-    de: "Eine ausgeschaltete App verschwindet aus allen Konten, und was darin entstanden ist, bleibt für ihre Rückkehr erhalten. Sie bleibt auch nach einem Neustart der Box aus. Das Konto des Besitzers in LosOS cloud ist ein normales Konto, deshalb werden Apps hier hinzugefügt und ein- oder ausgeschaltet, nicht in LosOS cloud.",
+    en: "An app turned off is gone from every account, and what was made in it is kept for when it comes back. It stays off after the box restarts. The owner's account in LosOS Cloud is a standard one, so apps are added and turned on or off here, not in LosOS Cloud.",
+    sk: "Vypnutá aplikácia zmizne zo všetkých účtov a to, čo sa v nej vytvorilo, zostane pre jej návrat. Zostane vypnutá aj po reštarte zariadenia. Účet vlastníka v LosOS Cloud je bežný účet, takže aplikácie sa pridávajú, zapínajú a vypínajú tu, nie v LosOS Cloud.",
+    de: "Eine ausgeschaltete App verschwindet aus allen Konten, und was darin entstanden ist, bleibt für ihre Rückkehr erhalten. Sie bleibt auch nach einem Neustart der Box aus. Das Konto des Besitzers in LosOS Cloud ist ein normales Konto, deshalb werden Apps hier hinzugefügt und ein- oder ausgeschaltet, nicht in LosOS Cloud.",
   },
 
   // ── Why an app cannot be changed ────────────────────────────────────────
   "cloudApps.locked.nextcloud": {
-    en: "LosOS cloud does not run without it.",
-    sk: "LosOS cloud bez nej nebeží.",
-    de: "LosOS cloud läuft nicht ohne sie.",
+    en: "LosOS Cloud does not run without it.",
+    sk: "LosOS Cloud bez nej nebeží.",
+    de: "LosOS Cloud läuft nicht ohne sie.",
   },
   "cloudApps.locked.signIn": {
     en: "The box needs it for signing in.",
@@ -173,9 +173,9 @@ export default defineMessages({
     de: "Nur an, solange die Box ihre Platte teilt.",
   },
   "cloudApps.locked.look": {
-    en: "It gives LosOS cloud its look.",
-    sk: "Dáva LosOS cloud jeho vzhľad.",
-    de: "Sie gibt LosOS cloud sein Aussehen.",
+    en: "It gives LosOS Cloud its look.",
+    sk: "Dáva LosOS Cloud jeho vzhľad.",
+    de: "Sie gibt LosOS Cloud sein Aussehen.",
   },
   "cloudApps.locked.wizard": {
     en: "Kept off: it would open inside the setup wizard.",
@@ -190,9 +190,9 @@ export default defineMessages({
     de: "{name} entfernen?",
   },
   "cloudApps.remove.body": {
-    en: "Its code leaves the box. What accounts made in it stays in LosOS cloud, so adding it again from the app store finds it.",
-    sk: "Jej kód zo zariadenia zmizne. To, čo v nej účty vytvorili, zostane v LosOS cloud, takže keď ju znova pridáte z obchodu s aplikáciami, nájde to.",
-    de: "Ihr Code verschwindet von der Box. Was Konten darin angelegt haben, bleibt in LosOS cloud, und wenn du sie wieder aus dem App-Store hinzufügst, findet sie es.",
+    en: "Its code leaves the box. What accounts made in it stays in LosOS Cloud, so adding it again from the app store finds it.",
+    sk: "Jej kód zo zariadenia zmizne. To, čo v nej účty vytvorili, zostane v LosOS Cloud, takže keď ju znova pridáte z obchodu s aplikáciami, nájde to.",
+    de: "Ihr Code verschwindet von der Box. Was Konten darin angelegt haben, bleibt in LosOS Cloud, und wenn du sie wieder aus dem App-Store hinzufügst, findet sie es.",
   },
   "cloudApps.remove.cancel": {
     en: "Cancel",
@@ -242,9 +242,9 @@ export default defineMessages({
     de: "Hinzufügen",
   },
   "cloudApps.store.addLabel": {
-    en: "Add {name} to LosOS cloud",
-    sk: "Pridať {name} do LosOS cloud",
-    de: "{name} zu LosOS cloud hinzufügen",
+    en: "Add {name} to LosOS Cloud",
+    sk: "Pridať {name} do LosOS Cloud",
+    de: "{name} zu LosOS Cloud hinzufügen",
   },
   "cloudApps.store.adding": {
     en: "Adding",
@@ -252,9 +252,9 @@ export default defineMessages({
     de: "Wird hinzugefügt",
   },
   "cloudApps.store.added": {
-    en: "In LosOS cloud",
-    sk: "V LosOS cloud",
-    de: "In LosOS cloud",
+    en: "In LosOS Cloud",
+    sk: "V LosOS Cloud",
+    de: "In LosOS Cloud",
   },
   "cloudApps.store.lookAt": {
     en: "Look at it",

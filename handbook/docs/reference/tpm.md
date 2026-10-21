@@ -60,7 +60,7 @@ That has two consequences.
    the reader mounts the ESP, copies the key out of the initrd and opens the
    volume. That needs
    ordinary Linux tools and a few minutes. It exposes the owner's files in
-   LosOS cloud, the repositories in LosOS Git, the admin key and the rest of
+   LosOS Cloud, the repositories in LosOS Git, the admin key and the rest of
    `/persist`.
 2. The box's own secrets lose their chip. The keyring falls back to
    `systemd-creds`' host key, and the mesh storage key to a plain file at

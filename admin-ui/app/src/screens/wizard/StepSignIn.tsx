@@ -144,7 +144,7 @@ function PasswordForm({
 }) {
   const t = useT();
   const [name, setName] = React.useState("");
-  // The LosOS Login name the claim made, shown beside the LosOS cloud
+  // The LosOS Login name the claim made, shown beside the LosOS Cloud
   // account once the password is set.
   const [login, setLogin] = React.useState<string | null>(null);
   const [password, setPassword] = React.useState("");
@@ -458,7 +458,7 @@ async function setFirstPassword(
   }
   const claimed = await claimAgainIfTheReplyWasLost(password, name);
   saveToken(claimed.token);
-  // `user` is the LosOS cloud account step 3 signs in to; `name` is the
+  // `user` is the LosOS Cloud account step 3 signs in to; `name` is the
   // LosOS Login name the box made for the admin pages.
   return { user: claimed.user ?? name, login: claimed.name ?? name, adminKey: claimed.token };
 }

@@ -282,9 +282,9 @@ export default defineMessages({
     de: "Automatisch",
   },
   "panes.apps.site.cloudCaption": {
-    en: "These hold for every account in LosOS cloud. The box sets them each time the app starts. What each account sets for itself stays in LosOS cloud. An empty field leaves the choice to LosOS cloud.",
-    sk: "Tieto nastavenia platia pre každý účet v LosOS cloud. Zariadenie ich nastaví pri každom spustení aplikácie. Čo si každý účet nastaví sám pre seba, zostáva v LosOS cloud. Prázdne pole nechá voľbu na LosOS cloud.",
-    de: "Diese gelten für jedes Konto in LosOS cloud. Die Box setzt sie bei jedem Start der App. Was jedes Konto für sich selbst einstellt, bleibt in LosOS cloud. Ein leeres Feld überlässt die Wahl LosOS cloud.",
+    en: "These hold for every account in LosOS Cloud. The box sets them each time the app starts. What each account sets for itself stays in LosOS Cloud. An empty field leaves the choice to LosOS Cloud.",
+    sk: "Tieto nastavenia platia pre každý účet v LosOS Cloud. Zariadenie ich nastaví pri každom spustení aplikácie. Čo si každý účet nastaví sám pre seba, zostáva v LosOS Cloud. Prázdne pole nechá voľbu na LosOS Cloud.",
+    de: "Diese gelten für jedes Konto in LosOS Cloud. Die Box setzt sie bei jedem Start der App. Was jedes Konto für sich selbst einstellt, bleibt in LosOS Cloud. Ein leeres Feld überlässt die Wahl LosOS Cloud.",
   },
   "panes.apps.site.signIn": {
     en: "Only signed-in accounts see anything",
@@ -542,14 +542,14 @@ export default defineMessages({
     de: "{name} diese Box verwalten lassen",
   },
   "panes.mesh.manage.offDetail": {
-    en: "Its admins could then change LosOS cloud, LosOS Git and the apps here from the edge's page.",
-    sk: "Jeho správcovia by potom mohli meniť LosOS cloud, LosOS Git a aplikácie tu zo stránky okrajového servera.",
-    de: "Seine Admins könnten dann LosOS cloud, LosOS Git und die Apps hier von der Seite des Edge aus ändern.",
+    en: "Its admins could then change LosOS Cloud, LosOS Git and the apps here from the edge's page.",
+    sk: "Jeho správcovia by potom mohli meniť LosOS Cloud, LosOS Git a aplikácie tu zo stránky okrajového servera.",
+    de: "Seine Admins könnten dann LosOS Cloud, LosOS Git und die Apps hier von der Seite des Edge aus ändern.",
   },
   "panes.mesh.manage.active": {
-    en: "{name} can change LosOS cloud, LosOS Git and the apps here. It cannot see your files, add people or change anything else.",
-    sk: "{name} môže meniť LosOS cloud, LosOS Git a aplikácie tu. Nevidí vaše súbory, nepridáva ľudí a nič iné nemení.",
-    de: "{name} kann LosOS cloud, LosOS Git und die Apps hier ändern. Er sieht deine Dateien nicht, fügt keine Personen hinzu und ändert sonst nichts.",
+    en: "{name} can change LosOS Cloud, LosOS Git and the apps here. It cannot see your files, add people or change anything else.",
+    sk: "{name} môže meniť LosOS Cloud, LosOS Git a aplikácie tu. Nevidí vaše súbory, nepridáva ľudí a nič iné nemení.",
+    de: "{name} kann LosOS Cloud, LosOS Git und die Apps hier ändern. Er sieht deine Dateien nicht, fügt keine Personen hinzu und ändert sonst nichts.",
   },
   "panes.mesh.manage.elsewhere": {
     en: "On for {url}, which this box does not use right now, so nothing manages it.",
@@ -814,9 +814,9 @@ export default defineMessages({
     de: "Für eine Domain, vor der nichts steht, etwa example.org selbst, ist kein CNAME erlaubt. Nimm dort stattdessen A- oder AAAA-Einträge auf {addresses}.",
   },
   "panes.network.domains.caption": {
-    en: "Add the two records shown under a domain at the company you bought it from. The edge looks them up itself every half minute and switches the domain on as soon as both are right, with a certificate of its own. LosOS cloud then answers on it from anywhere, at /nextcloud. The TXT value proves the domain is yours. It is made from this box's identity and its Stripe account without revealing either.",
-    sk: "Pridajte dva záznamy uvedené pod doménou u firmy, od ktorej ste ju kúpili. Okrajový server si ich každú pol minútu sám overí a doménu zapne, hneď ako sú oba správne, aj s vlastným certifikátom. LosOS cloud potom na nej odpovedá odkiaľkoľvek, na adrese /nextcloud. Hodnota TXT dokazuje, že doména je vaša. Vzniká z identity tohto zariadenia a jeho účtu Stripe bez toho, aby jedno či druhé prezradila.",
-    de: "Trage die zwei Einträge unter einer Domain bei der Firma ein, bei der du sie gekauft hast. Der Edge prüft sie jede halbe Minute selbst und schaltet die Domain ein, sobald beide stimmen, mit eigenem Zertifikat. LosOS cloud antwortet dann von überall darauf, unter /nextcloud. Der TXT-Wert beweist, dass die Domain dir gehört. Er entsteht aus der Identität dieser Box und ihrem Stripe-Konto, ohne eines davon preiszugeben.",
+    en: "Add the two records shown under a domain at the company you bought it from. The edge looks them up itself every half minute and switches the domain on as soon as both are right, with a certificate of its own. LosOS Cloud then answers on it from anywhere, at /nextcloud. The TXT value proves the domain is yours. It is made from this box's identity and its Stripe account without revealing either.",
+    sk: "Pridajte dva záznamy uvedené pod doménou u firmy, od ktorej ste ju kúpili. Okrajový server si ich každú pol minútu sám overí a doménu zapne, hneď ako sú oba správne, aj s vlastným certifikátom. LosOS Cloud potom na nej odpovedá odkiaľkoľvek, na adrese /nextcloud. Hodnota TXT dokazuje, že doména je vaša. Vzniká z identity tohto zariadenia a jeho účtu Stripe bez toho, aby jedno či druhé prezradila.",
+    de: "Trage die zwei Einträge unter einer Domain bei der Firma ein, bei der du sie gekauft hast. Der Edge prüft sie jede halbe Minute selbst und schaltet die Domain ein, sobald beide stimmen, mit eigenem Zertifikat. LosOS Cloud antwortet dann von überall darauf, unter /nextcloud. Der TXT-Wert beweist, dass die Domain dir gehört. Er entsteht aus der Identität dieser Box und ihrem Stripe-Konto, ohne eines davon preiszugeben.",
   },
   "panes.network.domains.failedTitle": {
     en: "The edge refused",
@@ -1087,9 +1087,9 @@ export default defineMessages({
   },
   "panes.backup.runs.button": { en: "Back up", sk: "Zálohovať", de: "Sichern" },
   "panes.backup.runs.caption": {
-    en: "A backup holds LosOS cloud's files and database, LosOS Git's repositories, the folder you share with the mesh, your settings and the look of the home page. The bucket keeps the last seven.",
-    sk: "Záloha obsahuje súbory a databázu LosOS cloud, repozitáre LosOS Git, priečinok, ktorý zdieľate s mesh sieťou, vaše nastavenia a vzhľad domovskej stránky. Bucket uchováva posledných sedem.",
-    de: "Eine Sicherung enthält die Dateien und die Datenbank von LosOS cloud, die Repositorys von LosOS Git, den Ordner, den du mit dem Mesh teilst, deine Einstellungen und das Aussehen der Startseite. Der Bucket behält die letzten sieben.",
+    en: "A backup holds LosOS Cloud's files and database, LosOS Git's repositories, the folder you share with the mesh, your settings and the look of the home page. The bucket keeps the last seven.",
+    sk: "Záloha obsahuje súbory a databázu LosOS Cloud, repozitáre LosOS Git, priečinok, ktorý zdieľate s mesh sieťou, vaše nastavenia a vzhľad domovskej stránky. Bucket uchováva posledných sedem.",
+    de: "Eine Sicherung enthält die Dateien und die Datenbank von LosOS Cloud, die Repositorys von LosOS Git, den Ordner, den du mit dem Mesh teilst, deine Einstellungen und das Aussehen der Startseite. Der Bucket behält die letzten sieben.",
   },
   "panes.backup.restore.title": {
     en: "Restore",
@@ -1102,14 +1102,14 @@ export default defineMessages({
     de: "Stelle wieder her…",
   },
   "panes.backup.restore.runningDetail": {
-    en: "LosOS cloud and LosOS Git are stopped until it is done.",
-    sk: "LosOS cloud a LosOS Git sú dovtedy zastavené.",
-    de: "LosOS cloud und LosOS Git sind bis dahin angehalten.",
+    en: "LosOS Cloud and LosOS Git are stopped until it is done.",
+    sk: "LosOS Cloud a LosOS Git sú dovtedy zastavené.",
+    de: "LosOS Cloud und LosOS Git sind bis dahin angehalten.",
   },
   "panes.backup.restore.runningThaw": {
-    en: "AWS is thawing the backup first, which takes hours. LosOS cloud and LosOS Git keep running until the files come back.",
-    sk: "AWS najprv zálohu sprístupňuje, čo trvá hodiny. LosOS cloud a LosOS Git bežia, kým sa súbory nevrátia.",
-    de: "AWS stellt die Sicherung zuerst bereit, das dauert Stunden. LosOS cloud und LosOS Git laufen weiter, bis die Dateien zurück sind.",
+    en: "AWS is thawing the backup first, which takes hours. LosOS Cloud and LosOS Git keep running until the files come back.",
+    sk: "AWS najprv zálohu sprístupňuje, čo trvá hodiny. LosOS Cloud a LosOS Git bežia, kým sa súbory nevrátia.",
+    de: "AWS stellt die Sicherung zuerst bereit, das dauert Stunden. LosOS Cloud und LosOS Git laufen weiter, bis die Dateien zurück sind.",
   },
   "panes.backup.restore.done": {
     en: "Restored",

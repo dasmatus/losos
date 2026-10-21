@@ -128,7 +128,7 @@ let
     cp ${pkgs.writeText "held.html" (
       page "held" "Finish your account first" ''
         <h1>Finish your account first</h1>
-        <p>This box asks something of your account before you can use LosOS cloud and LosOS Git: a second step at sign-in, or a new password. Open <a href="/settings/account">Your account</a> in the box's admin pages, on the box's own network.</p>
+        <p>This box asks something of your account before you can use LosOS Cloud and LosOS Git: a second step at sign-in, or a new password. Open <a href="/settings/account">Your account</a> in the box's admin pages, on the box's own network.</p>
         <p lang="sk">Toto zariadenie od vášho účtu najprv niečo žiada: druhý krok pri prihlásení alebo nové heslo. Otvorte Váš účet na stránkach správy zariadenia, v jeho sieti.</p>
         <p lang="de">Diese Box verlangt zuerst etwas von deinem Konto: einen zweiten Schritt bei der Anmeldung oder ein neues Passwort. Öffne Dein Konto auf den Verwaltungsseiten der Box, in ihrem eigenen Netz.</p>
       ''
@@ -139,7 +139,7 @@ let
   # claimed the box and their sign-in name for everyone else
   # (modules/app-sign-in.nix).
   appMaps = ''
-    # Where a request comes from, for LosOS cloud's share below: the LAN,
+    # Where a request comes from, for LosOS Cloud's share below: the LAN,
     # or anywhere else (the tunnel arrives from 127.0.0.1). The ranges are
     # lanOnly's (modules/lan-only.nix).
     geo $losos_lan {
@@ -149,7 +149,7 @@ let
       172.16.0.0/12 1;
       192.168.0.0/16 1;
     }
-    # LosOS cloud's share (`/internal/losos-cloud-share`): the client's
+    # LosOS Cloud's share (`/internal/losos-cloud-share`): the client's
     # own credentials go on unless lososd named the person they are for.
     map $losos_user $losos_share_authorization {
       "" $http_authorization;
@@ -282,7 +282,7 @@ let
           echo "      default_redirection_url: 'https://$n/'"
         done
         # The admin pages answer on the LAN only, so from outside a sign-in
-        # with nowhere else to go lands in LosOS cloud.
+        # with nowhere else to go lands in LosOS Cloud.
         for n in $(printf '%s\n' "''${public[@]}" | sort -u); do
           echo "    - domain: '$n'"
           echo "      authelia_url: 'https://$n/auth'"
@@ -327,7 +327,7 @@ in
           password_reset.disable = true;
           password_change.disable = true;
           # Look the person up on every request, not every five minutes: a
-          # person removed on the Users pane loses LosOS cloud and LosOS Git
+          # person removed on the Users pane loses LosOS Cloud and LosOS Git
           # at their next click, and a changed group reaches nginx at once.
           # The file backend keeps everyone in memory, so it costs nothing.
           refresh_interval = "always";
@@ -339,7 +339,7 @@ in
         # Everyone with an account may pass; lososd decides what each person
         # may do (backend/sections.json). Two marks lososd keeps in the people
         # file come first (backend/src/login.rs): a person a rule holds to
-        # their own account gets no LosOS cloud or LosOS Git, and a person
+        # their own account gets no LosOS Cloud or LosOS Git, and a person
         # with an authenticator app or a passkey is asked for it.
         access_control = {
           default_policy = "deny";
@@ -511,10 +511,10 @@ in
           '';
         };
         "@losos-app-nobody".extraConfig = "return 200;";
-        # Whose request to LosOS cloud's share this is (backend/src/cloud_share.rs):
+        # Whose request to LosOS Cloud's share this is (backend/src/cloud_share.rs):
         # lososd checks a LosOS Login name and password in the Basic header
         # and names the person, or names nobody and the request goes on as it
-        # came. Never a refusal, so app passwords and LosOS cloud's own
+        # came. Never a refusal, so app passwords and LosOS Cloud's own
         # accounts keep working, off the LAN and while lososd is down too.
         "= /internal/losos-cloud-share" = {
           proxyPass = "http://127.0.0.1:${toString apiPort}/internal/cloud-share";

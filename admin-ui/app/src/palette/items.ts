@@ -30,7 +30,7 @@ import { openTour } from "@/tour/store";
 export type Target =
   /** A route of this page. */
   | { kind: "route"; to: string; state?: unknown }
-  /** Another app on this origin (LosOS cloud, LosOS Git, the Lab, the
+  /** Another app on this origin (LosOS Cloud, LosOS Git, the Lab, the
    *  handbook): a real navigation. */
   | { kind: "href"; href: string; newTab?: boolean }
   | { kind: "run"; run: () => void };
@@ -133,7 +133,7 @@ export function pageItems(): Item[] {
   return items;
 }
 
-/* The LosOS cloud apps and LosOS Git, as the Overview's tiles have them:
+/* The LosOS Cloud apps and LosOS Git, as the Overview's tiles have them:
  * only what this browser last saw answering (lib/apps.ts), so the palette
  * does not offer a link the grid would have hidden. Settings is left out;
  * it is a page here already. */

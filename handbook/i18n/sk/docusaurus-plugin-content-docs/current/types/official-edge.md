@@ -15,7 +15,7 @@ tohto edge.
 
 | Funkcia                | Ako                                                                                                        |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Vzdialený prístup**  | `https://<vaše-meno>.<doména edge>` sa dostane k LosOS cloud a LosOS Git cez šifrovaný tunel, ktorý zariadenie otvára smerom von. Admin stránky zariadenie nikdy nezverejní, zostávajú dostupné iba z LAN, aj cez tunel. |
+| **Vzdialený prístup**  | `https://<vaše-meno>.<doména edge>` sa dostane k LosOS Cloud a LosOS Git cez šifrovaný tunel, ktorý zariadenie otvára smerom von. Admin stránky zariadenie nikdy nezverejní, zostávajú dostupné iba z LAN, aj cez tunel. |
 | **Mesh**               | Zariadenie sa pripojí ku Kubernetes klastru, ktorý prevádzkuje edge. Jeho voľný disk sa stane súčasťou spoločného replikovaného priestoru a jeho voľné CPU spúšťa prácu iných ľudí v hodinách, ktoré povolíte, a iba vtedy, keď je zariadenie nečinné. |
 | **Trh**                | Dostanete zaplatené za disk a CPU, ktoré zdieľate, a môžete si ich kúpiť od iných. Kupujúci platia v USDC, Bitcoine alebo Monere, alebo kartou cez Stripe, ak edge karty prijíma, a edge si ponechá poplatok 4 %. Edge môže prijímať iba mince bez platieb kartou, takže na prevádzku trhu netreba firemný účet u spracovateľa kariet. Panel Trh je v bočnom paneli pod Mesh. |
 | **Nájsť moje zariadenie** | Edge hostí stránku, ktorá z prehliadača nájde zariadenie vo vašej LAN.                                  |
@@ -123,7 +123,7 @@ Názov vzniká z identity zariadenia, ale neprezrádza ju. Doménu pridáte takt
    z domény, identity zariadenia a jeho účtu Stripe a neprezrádza nič z toho.
 3. Počkajte. Edge si záznamy každú pol minútu sám vyhľadá a každý, ktorý
    nájde, označí **✓ nájdené**. Keď sú oba správne, doména sa zmení na
-   **Funguje**, edge pre ňu získa certifikát a LosOS cloud odpovedá na
+   **Funguje**, edge pre ňu získa certifikát a LosOS Cloud odpovedá na
    `https://<vaša doména>/nextcloud`.
 
 :::note[Doména, pred ktorou nič nie je]

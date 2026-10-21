@@ -138,7 +138,7 @@ pub trait Losos {
     /// route" (a 404) and offers the field again.
     fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>>;
 
-    // ── LosOS cloud's own apps ──────────────────────────────────────────
+    // ── LosOS Cloud's own apps ──────────────────────────────────────────
     // `crate::cloud_apps` holds the rules; these are the effects.
     /// Run `losos-nextcloud-apps` with the argv [`crate::cloud_apps::plan`]
     /// built. `Err` means it could not be run at all; a non-zero exit is
@@ -186,7 +186,7 @@ pub trait Losos {
     fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus>;
 
     /// Record the custom domains that are live for this box on its edge, for
-    /// LosOS cloud to trust (`trusted_domains`) and to build its links from
+    /// LosOS Cloud to trust (`trusted_domains`) and to build its links from
     /// when a request arrives on one. The edge verified each of them; this is
     /// only the box learning the answer. Sorted, lowercase, deduplicated.
     fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()>;
@@ -197,17 +197,17 @@ pub trait Losos {
     fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()>;
     // ── The sidebar's pins ──────────────────────────────────────────────
     // `crate::pins`: the list beside `state.json`, and the app password
-    // lososd lists the owner's LosOS cloud folders with.
+    // lososd lists the owner's LosOS Cloud folders with.
     /// The pins, or an empty list when there is none yet or it does not
     /// parse.
     fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins>;
     fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()>;
-    /// The kept LosOS cloud app password, `None` before the first sign-in
+    /// The kept LosOS Cloud app password, `None` before the first sign-in
     /// with the password.
     fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>>;
     /// Keep an app password, or forget it with `None`.
     fn save_cloud_key(&mut self, key: Option<&crate::pins::CloudKey>) -> anyhow::Result<()>;
-    /// One request to LosOS cloud on loopback ([`crate::pins::request_bytes`]):
+    /// One request to LosOS Cloud on loopback ([`crate::pins::request_bytes`]):
     /// its status and body. `Err` when it could not be asked at all.
     fn cloud_request(
         &mut self,
@@ -811,7 +811,7 @@ pub fn cmd_claim<L: Losos>(
     }))
 }
 
-/// `POST /api/devices/cloud`: an app password for LosOS cloud, for one of
+/// `POST /api/devices/cloud`: an app password for LosOS Cloud, for one of
 /// the owner's computers.
 ///
 /// The owner's password is what Nextcloud asks for before it makes one (see
@@ -833,15 +833,15 @@ pub fn cmd_device_cloud<L: Losos>(
     let minted = match l.nextcloud_app_password(user, &secret, &device, client) {
         Ok((status, body)) => interpret_app_password(status, &body),
         Err(e) => {
-            tracing::info!(error = ?e, "the app password request could not reach LosOS cloud");
+            tracing::info!(error = ?e, "the app password request could not reach LosOS Cloud");
             Minted::Unavailable(
-                "LosOS cloud could not be reached. It may still be starting.".to_string(),
+                "LosOS Cloud could not be reached. It may still be starting.".to_string(),
             )
         }
     };
     match minted {
         Minted::Credential(app_password) => {
-            tracing::info!(device = device.as_str(), "LosOS cloud app password made");
+            tracing::info!(device = device.as_str(), "LosOS Cloud app password made");
             Ok(json!({ "user": user, "appPassword": app_password, "path": dav_path(user) }))
         }
         other => Err(mint_refusal(other)),
@@ -851,10 +851,10 @@ pub fn cmd_device_cloud<L: Losos>(
 /// `POST /api/devices/git`: an access token for LosOS Git, for one of the
 /// owner's computers.
 ///
-/// LosOS cloud judges the password first, as at the sign-in, and LosOS Git
+/// LosOS Cloud judges the password first, as at the sign-in, and LosOS Git
 /// is given the same one ([`sync_owner_password`]) before Forgejo is asked:
 /// Forgejo only mints a token under Basic auth with the account's own
-/// password, and a password changed inside LosOS cloud would not have
+/// password, and a password changed inside LosOS Cloud would not have
 /// reached it yet. A token of the same name, from an earlier setup of the
 /// same computer, is removed first, because Forgejo refuses a second token
 /// of one name and the old one is what this computer is replacing.
@@ -882,9 +882,9 @@ pub fn cmd_device_git<L: Losos>(
         Ok(LoginOutcome::Throttled) => return Err(Throttled.into()),
         Ok(LoginOutcome::Unavailable(why)) => return Err(crate::setup::NotReady(why).into()),
         Err(e) => {
-            tracing::info!(error = ?e, "the password check could not reach LosOS cloud");
+            tracing::info!(error = ?e, "the password check could not reach LosOS Cloud");
             return Err(crate::setup::NotReady(
-                "LosOS cloud could not be reached, so the password could not be checked. \
+                "LosOS Cloud could not be reached, so the password could not be checked. \
                  It may still be starting."
                     .to_string(),
             )
@@ -1212,7 +1212,7 @@ pub fn cmd_domain_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
     Ok(view)
 }
 
-/// The live domains in an edge's domains view, as LosOS cloud should trust
+/// The live domains in an edge's domains view, as LosOS Cloud should trust
 /// them: lowercase, a plain host name each, sorted, no duplicates. Anything
 /// that is not a host name is dropped rather than trusted, whatever the edge
 /// sent.
@@ -1232,7 +1232,7 @@ pub fn live_public_names(view: &Value) -> Vec<String> {
     names
 }
 
-/// Hand the live names to LosOS cloud and the relay pass to the announce
+/// Hand the live names to LosOS Cloud and the relay pass to the announce
 /// loop, and take the pass out of the view: the admin page has no use for
 /// it. A failure is logged, not returned: the owner asked to see or change
 /// their domains, and that worked.
@@ -1299,7 +1299,7 @@ fn manage_json(managed_by: Option<&str>, status: &crate::edge::EdgeStatus) -> Va
     })
 }
 
-/// Let the company edge this box uses manage its LosOS cloud, LosOS Git and
+/// Let the company edge this box uses manage its LosOS Cloud, LosOS Git and
 /// app settings, or stop it (`POST /api/edge/manage`). Switching on names the
 /// edge in use, so a box that later moves to another edge is not managed by
 /// that one. Switching off always works.
@@ -1340,7 +1340,7 @@ pub fn cmd_options<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     }
 }
 
-/// The settings of LosOS cloud and LosOS Git (`GET /api/site`; see
+/// The settings of LosOS Cloud and LosOS Git (`GET /api/site`; see
 /// `crate::site`), in the shape of `GET /api/options`.
 pub fn cmd_site<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     match l.read_options_doc()? {

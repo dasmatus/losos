@@ -1,8 +1,8 @@
-# nixos-test-vms config for LosOS cloud's files from a computer on the LAN:
+# nixos-test-vms config for LosOS Cloud's files from a computer on the LAN:
 # WebDAV, the sync clients' sign-in, and the entry a file manager's Network
 # view shows.
 #
-# The box runs LosOS cloud as it ships: the pod's own entrypoint, Apache
+# The box runs LosOS Cloud as it ships: the pod's own entrypoint, Apache
 # and php-fpm configuration and mounted config files (nix/images.nix,
 # modules/workloads.nix), with the Nextcloud package and apps a box serves,
 # behind the real front vhost (modules/containers.nix, modules/tls.nix) and
@@ -19,13 +19,13 @@
 # first-run page tells an owner to. It then does what a person's computer
 # does:
 #
-#   * finds "LosOS cloud on mattbox" among the LAN's WebDAV shares and
+#   * finds "LosOS Cloud on mattbox" among the LAN's WebDAV shares and
 #     follows it to the share;
 #   * lists, uploads, downloads and compares, makes a folder, moves,
 #     copies, deletes, and sends a large file in chunks as the desktop
 #     client does;
 #   * opens the share with LosOS Login names and passwords, the owner's
-#     and that of a person who never opened LosOS cloud before, which
+#     and that of a person who never opened LosOS Cloud before, which
 #     lososd checks for nginx (backend/src/cloud_share.rs);
 #   * gets an app password through Login Flow v2 (the desktop client) and
 #     v1 (the phone apps), meeting LosOS Login on the way, for the owner and
@@ -209,7 +209,7 @@ pkgs.testers.nixosTest {
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("losos-test-kubelet.service")
 
-    with subtest("LosOS cloud comes up in its pod"):
+    with subtest("LosOS Cloud comes up in its pod"):
         # The entrypoint installs, upgrades and enables the apps before it
         # starts Apache, so status.php answering means all of that is done.
         box.wait_until_succeeds(
@@ -264,7 +264,7 @@ pkgs.testers.nixosTest {
             timeout=60,
         )
 
-    with subtest("the Network view lists LosOS cloud"):
+    with subtest("the Network view lists LosOS Cloud"):
         found = laptop.wait_until_succeeds(
             "avahi-browse -rpt _webdavs._tcp | grep '^='", timeout=120
         )
@@ -317,7 +317,7 @@ pkgs.testers.nixosTest {
         assert status == "404", status
 
     with subtest("the owner's share opens with the owner's password"):
-        # LosOS cloud's name for the owner, the one their files are under.
+        # LosOS Cloud's name for the owner, the one their files are under.
         files_round_trip("notshared", PASSWORD, "owner")
 
     with subtest("no password, a wrong one, or a made-up header is refused"):
@@ -333,10 +333,10 @@ pkgs.testers.nixosTest {
         files_round_trip("matus", PASSWORD, "owner-name")
         dav("matus", PASSWORD, "PUT", "by-name.txt", "--data-binary 'typed as matus'")
         assert curl(f"-f -u 'notshared:{PASSWORD}' '{DAV}by-name.txt'") == "typed as matus"
-        # Eva has never opened LosOS cloud: the share makes her account.
+        # Eva has never opened LosOS Cloud: the share makes her account.
         files_round_trip("eva", EVA, "eva-name")
         assert code(f"-u 'eva:{EVA}' -X PROPFIND '{BASE}/nextcloud/remote.php/dav/files/notshared/'") in (401, 403, 404)
-        # A wrong LosOS password is LosOS cloud's 401, as before.
+        # A wrong LosOS password is LosOS Cloud's 401, as before.
         assert code(f"-u 'eva:not-her-password' -X PROPFIND '{DAV}'") == 401
         assert code(f"-u 'matus:not-his-password' -X PROPFIND '{DAV}'") == 401
         # lososd checked each password once; the rest were remembered.

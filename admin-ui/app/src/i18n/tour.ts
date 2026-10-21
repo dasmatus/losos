@@ -17,9 +17,9 @@ export default defineMessages({
     de: "Deine Apps, auf deiner Box",
   },
   "tour.overview.body": {
-    en: "LosOS cloud and LosOS Git run here, and the Overview opens every app they bring.",
-    sk: "LosOS cloud a LosOS Git bežia tu a v Prehľade otvoríte každú aplikáciu, ktorú prinášajú.",
-    de: "LosOS cloud und LosOS Git laufen hier, und die Übersicht öffnet jede App, die sie mitbringen.",
+    en: "LosOS Cloud and LosOS Git run here, and the Overview opens every app they bring.",
+    sk: "LosOS Cloud a LosOS Git bežia tu a v Prehľade otvoríte každú aplikáciu, ktorú prinášajú.",
+    de: "LosOS Cloud und LosOS Git laufen hier, und die Übersicht öffnet jede App, die sie mitbringen.",
   },
   "tour.apps.title": { en: "Add more apps", sk: "Pridajte ďalšie aplikácie", de: "Weitere Apps hinzufügen" },
   "tour.apps.body": {

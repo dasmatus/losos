@@ -102,7 +102,7 @@ pub struct FakeLosos {
     /// prove the command trimmed before searching rather than after.
     pub catalogue_queries: Vec<String>,
 
-    // ── LosOS cloud's own apps ──────────────────────────────────────────
+    // ── LosOS Cloud's own apps ──────────────────────────────────────────
     /// What `losos-nextcloud-apps list` prints.
     pub cloud_apps_list: String,
     /// What any other call of the tool reports.
@@ -129,7 +129,7 @@ pub struct FakeLosos {
     pub market_routes: std::collections::BTreeMap<String, (u16, String)>,
     /// Every operation asked for, in order.
     pub market_ops: Vec<crate::market::Op>,
-    /// The live custom domains last handed to LosOS cloud; `None` until the
+    /// The live custom domains last handed to LosOS Cloud; `None` until the
     /// first write.
     pub public_names: Option<Vec<String>>,
     /// The last relay pass written: `None` never written, `Some(None)`
@@ -147,11 +147,11 @@ pub struct FakeLosos {
     // ── The sidebar's pins ──────────────────────────────────────────────
     /// Stands in for `pins.json`.
     pub pins: crate::pins::Pins,
-    /// Stands in for the kept LosOS cloud app password.
+    /// Stands in for the kept LosOS Cloud app password.
     pub cloud_key: Option<crate::pins::CloudKey>,
-    /// LosOS cloud's next answers, in order; empty is "not answering".
+    /// LosOS Cloud's next answers, in order; empty is "not answering".
     pub cloud_answers: std::collections::VecDeque<(u16, Vec<u8>)>,
-    /// Every request made of LosOS cloud: `mint <user>` or
+    /// Every request made of LosOS Cloud: `mint <user>` or
     /// `list <user>:<key> <path>`.
     pub cloud_calls: Vec<String>,
 
@@ -668,7 +668,7 @@ impl Losos for FakeLosos {
         });
         self.cloud_answers
             .pop_front()
-            .ok_or_else(|| anyhow::anyhow!("the fake LosOS cloud is not answering"))
+            .ok_or_else(|| anyhow::anyhow!("the fake LosOS Cloud is not answering"))
     }
 
     fn vg_free(&mut self) -> anyhow::Result<crate::grow::VgFree> {

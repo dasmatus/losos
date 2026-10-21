@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the LosOS cloud and LosOS Git marks from salmon.png.
+"""Generate the LosOS Cloud and LosOS Git marks from salmon.png.
 
 salmon.png is the source: a live coho salmon, cut out of a NOAA Fisheries
 photo on a transparent ground, 512 px square (CREDITS.md has the source).
@@ -55,7 +55,7 @@ CLOUD = """\
 def cloud_mark(uri):
     return f"""\
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <title>LosOS cloud</title>
+  <title>LosOS Cloud</title>
   <defs>
     <linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1="15" x2="0" y2="55">
       <stop offset="0" stop-color="#ffffff"/>

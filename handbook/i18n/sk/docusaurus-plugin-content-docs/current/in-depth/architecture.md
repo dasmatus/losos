@@ -59,7 +59,7 @@ smeruje podľa cesty.
 admin-ui/app/            the admin SPA
 admin-ui/tui/            losos, the terminal client (Rust)
 admin-ui/lab/            LosOS Lab's core and canvas (Rust, WebAssembly)
-admin-ui/themes/         LosOS cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
+admin-ui/themes/         LosOS Cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
 admin-ui/design-system/  dev-only tokens and React wrapper; not shipped
 backend/                 lososd + losos-ctl (Rust)
 edge/registrar/          the edge registrar (Rust)
@@ -292,7 +292,7 @@ skopírované vstupným bodom obrazu, s `DEFAULT_THEME = losos-auto`. Forgejo to
 vtlačí účtom pri ich vytvorení, takže existujúci účet si ponechá starú tému,
 kým ju jeho vlastník neprepne.
 
-Vlastníci vidia tieto dve aplikácie ako **LosOS cloud** a **LosOS Git**.
+Vlastníci vidia tieto dve aplikácie ako **LosOS Cloud** a **LosOS Git**.
 `defaults.php` v priečinku témy pomenúva Nextcloud a `APP_NAME` vo Forgejo
 pomenúva Forgejo. Obe dostanú logá nakreslené z `admin-ui/themes/brand/`.
 `marks.py` zabalí `salmon.png`, živého lososa kisuča vystrihnutého z
@@ -418,7 +418,7 @@ rovnakom zväzku ako `/nix`, takže záznam, ktorý rastie bez konca, skončí
 nočnou prestavbou, ktorá nemá kde zostavovať. Žurnál má strop
 `losos.logs.journalMaxUse` (512 MB) a mesiac. Kubelet každého klastra si
 nechá tri súbory po 10 MiB na kontajner (`containerLogMaxSize`,
-`containerLogMaxFiles`), čo pokrýva LosOS cloud, LosOS Git aj aplikácie,
+`containerLogMaxFiles`), čo pokrýva LosOS Cloud, LosOS Git aj aplikácie,
 lebo zapisujú na stdout. logrotate otáča `audit.log` a `rebuild.log` démona
 lososd pri 10 MB a pravidlu pre nginx, ktoré dodáva nixpkgs, pridáva hranicu
 20 MB. Pravidlo tmpfiles maže záznamy zostavení Nixu staršie ako 30 dní,

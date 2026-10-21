@@ -487,7 +487,7 @@
         # reaches — the pretty /nextcloud/apps/<app>/ links the homepage
         # tiles use included (nix/tests/nextcloud-httpd.nix).
         losos-nextcloud-httpd = import ./nix/tests/nextcloud-httpd.nix { inherit pkgs; };
-        # LosOS cloud's apps managed from the Apps pane, the owner's account a
+        # LosOS Cloud's apps managed from the Apps pane, the owner's account a
         # standard one, and a federated share between two boxes
         # (nix/tests/cloud-apps.nix).
         losos-cloud-apps = import ./nix/tests/cloud-apps.nix { inherit pkgs; };

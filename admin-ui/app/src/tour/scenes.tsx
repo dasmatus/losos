@@ -266,7 +266,7 @@ function AppsScene({ frame: f }: SceneProps) {
   };
 
   const mine = [
-    { icon: CloudIcon, name: "LosOS cloud" },
+    { icon: CloudIcon, name: "LosOS Cloud" },
     { icon: GitBranchIcon, name: "LosOS Git" },
   ];
 

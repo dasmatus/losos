@@ -1043,7 +1043,7 @@ await check('About leads with the address this browser is using and names the .l
   await page.close();
 });
 
-/* LosOS cloud's apps, in the order of its own menu, each a link into it
+/* LosOS Cloud's apps, in the order of its own menu, each a link into it
  * through index.php. Mail is not shipped, so its tile waits for the probe. */
 const CLOUD_TILES = [
   ['Files', 'files'], ['Dashboard', 'dashboard'], ['Photos', 'photos'], ['Activity', 'activity'],
@@ -1057,7 +1057,7 @@ const tiles = (page) =>
     links.map((a) => [a.textContent.trim(), a.getAttribute('href')]),
   );
 
-await check('the homepage has a tile for every app in LosOS cloud\'s menu, and Mail only when it is installed', async () => {
+await check('the homepage has a tile for every app in LosOS Cloud\'s menu, and Mail only when it is installed', async () => {
   const expected = CLOUD_TILES.map(([name, id]) => [name, `/nextcloud/index.php/apps/${id}/`]);
   for (const mail of [false, true]) {
     const { page, errors } = await open({ stored: true, cloud: { mail } });

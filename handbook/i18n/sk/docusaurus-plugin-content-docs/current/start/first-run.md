@@ -64,15 +64,15 @@ písmeno, veľké písmeno, číslicu a symbol, napríklad `-` alebo `!`.
 Sprievodca počas písania odškrtáva každé pravidlo. Stanete sa prvým správcom
 zariadenia a do admin stránok sa prihlasujete týmto menom a heslom v LosOS
 Login, prihlasovacej stránke zariadenia na `https://<zariadenie>/auth/`. To
-isté heslo otvára LosOS cloud aj LosOS Git.
+isté heslo otvára LosOS Cloud aj LosOS Git.
 
 <img src={require("@site/docs/img/wizard-step2-password-sk.png").default} alt="Krok 2 so zadaným prihlasovacím menom a heslom: každé zo štyroch pravidiel pre heslo je odškrtnuté, keď je splnené." width="520" />
 
-Krok čaká, kým LosOS cloud dokončí svoje vlastné prvé spustenie, čo na
+Krok čaká, kým LosOS Cloud dokončí svoje vlastné prvé spustenie, čo na
 novom zariadení trvá niekoľko minút. Medzitým stránka ukazuje „Čaká sa“
 a dôvod. Pokračuje sama.
 
-<img src={require("@site/docs/img/wizard-step2-waiting-sk.png").default} alt="Krok 2, kým sa LosOS cloud ešte inštaluje: stránka hovorí, na čo čaká, a pokračuje sama." width="520" />
+<img src={require("@site/docs/img/wizard-step2-waiting-sk.png").default} alt="Krok 2, kým sa LosOS Cloud ešte inštaluje: stránka hovorí, na čo čaká, a pokračuje sama." width="520" />
 
 :::warning[Náhradný kľúč sa ukáže iba raz]
 Keď je heslo nastavené, stránka raz ukáže **náhradný správcovský kľúč**:
@@ -87,19 +87,19 @@ práve nastavili:
 
 - **Vaše meno v LosOS Login**: vaše nové prihlasovacie meno. Otvára admin
   stránky.
-- **Váš účet v LosOS cloud**: účet, ktorý zadáte v kroku 3 a v aplikáciách
+- **Váš účet v LosOS Cloud**: účet, ktorý zadáte v kroku 3 a v aplikáciách
   pre počítač a telefón.
 
-<img src={require("@site/docs/img/wizard-step2-spare-key-sk.png").default} alt="Krok 2 po nastavení hesla: vaše meno v LosOS Login, váš účet v LosOS cloud a náhradný správcovský kľúč, ukázaný raz, s tlačidlami Kopírovať a Tlačiť." width="520" />
+<img src={require("@site/docs/img/wizard-step2-spare-key-sk.png").default} alt="Krok 2 po nastavení hesla: vaše meno v LosOS Login, váš účet v LosOS Cloud a náhradný správcovský kľúč, ukázaný raz, s tlačidlami Kopírovať a Tlačiť." width="520" />
 
-**Prístupový kľúč** (passkey) pre LosOS cloud, aby sa telefón alebo
+**Prístupový kľúč** (passkey) pre LosOS Cloud, aby sa telefón alebo
 notebook mohli k vašim súborom prihlásiť bez písania hesla, si môžete pridať
-neskôr v nastaveniach zabezpečenia v LosOS cloud.
+neskôr v nastaveniach zabezpečenia v LosOS Cloud.
 
 ## Krok 3: Prihlásiť sa \{#step-3-sign-in}
 
-Sprievodca otvorí LosOS cloud priamo na stránke a vy sa prihlásite svojím
-účtom v LosOS cloud a heslom, ktoré ste práve nastavili. Potom vás
+Sprievodca otvorí LosOS Cloud priamo na stránke a vy sa prihlásite svojím
+účtom v LosOS Cloud a heslom, ktoré ste práve nastavili. Potom vás
 sprievodca prenesie na prehľad admin stránok. Odtiaľto pokračujte stránkou
 [Admin stránky](../manual/admin-pages).
 

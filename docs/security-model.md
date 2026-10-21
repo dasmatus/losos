@@ -91,7 +91,7 @@ redirects.
   and `losos-<section>`, never `losos-owner`, and refuses to change or remove
   the owner, the caller's own account or the last administrator. Authelia's
   `refresh_interval` is `always`, so a removed person's session stops naming
-  them to LosOS cloud and LosOS Git at their next request.
+  them to LosOS Cloud and LosOS Git at their next request.
 - **Start order.** Authelia starts only once the people file exists (a path
   unit, after the claim). Its file backend refuses to start with an empty
   users map, and without the file it writes an example account of its own.
@@ -113,7 +113,7 @@ redirects.
   everything and `losos-viewers` may `GET` every section. `signed-in` covers
   the overview's reads, `GET /api/me` and `POST /api/set-password`, which
   changes the caller's own password (and, for the person who claimed the box,
-  the LosOS cloud password). A route missing from the file is admin only. A
+  the LosOS Cloud password). A route missing from the file is admin only. A
   person outside a route's section gets 403 with the section named. A person
   whose account was removed after signing in gets 403 with `noAccount`, not
   401, which would send the page round Authelia and back.

@@ -526,7 +526,7 @@ fn programs_endpoints_and_locks_need_the_manifest() {
 
 #[test]
 fn http_reaches_a_granted_endpoint() {
-    // A one-shot server standing in for Ollama or LosOS cloud.
+    // A one-shot server standing in for Ollama or LosOS Cloud.
     let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let origin = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
     std::thread::spawn(move || {

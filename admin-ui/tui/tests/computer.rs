@@ -132,7 +132,7 @@ fn cloud_setup_puts_the_files_in_the_file_manager_with_no_password_to_type() {
             ("user", "notshared"),
             ("server", "127.0.0.1"),
             ("protocol", "http"),
-            ("object", "LosOS cloud"),
+            ("object", "LosOS Cloud"),
             ("authtype", "basic"),
             ("port", &port),
         ])
@@ -152,7 +152,7 @@ fn cloud_setup_puts_the_files_in_the_file_manager_with_no_password_to_type() {
     let bookmarks = s.home.path().join("config/gtk-3.0/bookmarks");
     assert_eq!(
         std::fs::read_to_string(&bookmarks).unwrap(),
-        format!("{location} LosOS cloud\n")
+        format!("{location} LosOS Cloud\n")
     );
     // Again: one bookmark still, and the credential replaced.
     let r = s.client.run(&["cloud", "setup"], PASSWORD);
@@ -170,7 +170,7 @@ fn a_wrong_password_sets_up_nothing() {
     let r = s.client.run(&["cloud", "setup"], "not-the-password");
     assert_eq!(r.code, 1);
     assert!(
-        r.err.contains("not the password of LosOS cloud"),
+        r.err.contains("not the password of LosOS Cloud"),
         "{}",
         r.err
     );

@@ -63,7 +63,7 @@ Má to dva dôsledky.
    vymazania. V každom z týchto prípadov si ten, kto ho číta, pripojí ESP,
    skopíruje kľúč z initrd a otvorí zväzok. Stačia na to
    bežné linuxové nástroje a pár minút. Odhalí to súbory vlastníka
-   v LosOS cloud, repozitáre v LosOS Git, admin kľúč a zvyšok `/persist`.
+   v LosOS Cloud, repozitáre v LosOS Git, admin kľúč a zvyšok `/persist`.
 2. Vlastné tajomstvá zariadenia prídu o svoj čip. Keyring sa vráti
    k hostiteľskému kľúču `systemd-creds` a kľúč úložiska pre mesh
    k obyčajnému súboru na `/var/secrets/losos-shared-key`. Oba ležia na tom

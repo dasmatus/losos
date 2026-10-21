@@ -13,12 +13,12 @@ Box fertig gestartet ist“ und bleibt dabei.
 
 </div>
 
-<img src={require("@site/docs/img/wizard-step2-waiting-de.png").default} alt="Schritt 2 des Assistenten wartet auf LosOS cloud und zeigt, worauf genau." width="520" />
+<img src={require("@site/docs/img/wizard-step2-waiting-de.png").default} alt="Schritt 2 des Assistenten wartet auf LosOS Cloud und zeigt, worauf genau." width="520" />
 
 ## Warum \{#why}
 
-Das Passwort liegt in LosOS cloud, deshalb kann der Assistent es erst
-setzen, wenn LosOS cloud sich installiert hat. Das tut LosOS cloud beim
+Das Passwort liegt in LosOS Cloud, deshalb kann der Assistent es erst
+setzen, wenn LosOS Cloud sich installiert hat. Das tut LosOS Cloud beim
 ersten Start der Box. Auf einem Mini-PC dauert das zwei bis fünf Minuten,
 in einer emulierten VM ohne Hardwarebeschleunigung können es fünfzehn sein.
 Die Seite prüft alle paar Sekunden und macht von selbst weiter.
@@ -41,6 +41,6 @@ Die Seite prüft alle paar Sekunden und macht von selbst weiter.
 ## Ein bekannter Fehler \{#a-known-bug}
 
 Builds von vor dem 6. Oktober 2026 konnten das Feld auf „starting“ stehen
-lassen, nachdem LosOS cloud schon bereit war. Pull Request #62 hat das
+lassen, nachdem LosOS Cloud schon bereit war. Pull Request #62 hat das
 behoben. Wenn du die Seite neu lädst und es direkt weitergeht, warst du
 davon betroffen.

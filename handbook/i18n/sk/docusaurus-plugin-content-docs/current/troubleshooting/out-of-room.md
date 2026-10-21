@@ -9,7 +9,7 @@ slug: /troubleshooting/out-of-room
 <div className="losos-symptom">
 
 **Čo vidíte:** Prehľad hlási **Takmer plné** alebo **Nie je miesto**;
-nahrávanie do LosOS cloud zlyháva; použitie zmien alebo nočná aktualizácia
+nahrávanie do LosOS Cloud zlyháva; použitie zmien alebo nočná aktualizácia
 zlyhá.
 
 </div>
@@ -30,7 +30,7 @@ opravuje, takže konajte skôr, než sa objaví **Nie je miesto**.
 1. **Zaberte rezervu.** Panel Úložisko → **Použiť rezervu**. Inštalátor na
    to odložil 10 % disku. Zabratie trvá minútu a nepotrebuje reštart.
    Pozrite [Zväčšenie disku](../manual/disk-growth).
-2. **Vyprázdnite kôš v LosOS cloud.** Odstránené súbory zostávajú
+2. **Vyprázdnite kôš v LosOS Cloud.** Odstránené súbory zostávajú
    v „Vymazané súbory“ 30 dní a stále zaberajú miesto. Náhľady aplikácie
    Fotky a staré verzie súborov (karta „Verzie“ v bočnom paneli súboru) sa
    tiež nasčítajú.

@@ -166,7 +166,7 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
   );
 }
 
-/* A company's own edge may look after LosOS cloud, LosOS Git and the apps
+/* A company's own edge may look after LosOS Cloud, LosOS Git and the apps
  * from its own page, once the owner says so here. The switch names the edge
  * in use and is bound to it: a box that moves to another edge is not managed
  * by that one. It takes effect at once, like the Access tokens pane, rather

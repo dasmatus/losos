@@ -61,7 +61,7 @@ export default defineMessages({
     de: "Apps, die du über die Suche auf der Seite Apps installierst, erscheinen hier.",
   },
 
-  "pins.files.top": { en: "LosOS cloud", sk: "LosOS cloud", de: "LosOS cloud" },
+  "pins.files.top": { en: "LosOS Cloud", sk: "LosOS Cloud", de: "LosOS Cloud" },
   "pins.files.up": { en: "Up one folder", sk: "O priečinok vyššie", de: "Einen Ordner höher" },
   "pins.files.open": { en: "Open {name}", sk: "Otvoriť {name}", de: "{name} öffnen" },
   "pins.files.empty": {
@@ -75,14 +75,14 @@ export default defineMessages({
     de: "Dieser Ordner enthält mehr, als die Liste zeigt. Öffne einen Ordner darin, um von dort anzuheften.",
   },
   "pins.files.signIn": {
-    en: "This box lists your LosOS cloud files once the owner's password is set again. The handbook's forgotten-password page shows how.",
-    sk: "Zariadenie vám tu zobrazí súbory z LosOS cloud, keď sa heslo vlastníka znova nastaví. Ako na to, ukazuje stránka príručky o zabudnutom hesle.",
-    de: "Die Box zeigt hier deine Dateien aus LosOS cloud, sobald das Passwort des Besitzers neu gesetzt ist. Wie das geht, steht auf der Handbuchseite zum vergessenen Passwort.",
+    en: "This box lists your LosOS Cloud files once the owner's password is set again. The handbook's forgotten-password page shows how.",
+    sk: "Zariadenie vám tu zobrazí súbory z LosOS Cloud, keď sa heslo vlastníka znova nastaví. Ako na to, ukazuje stránka príručky o zabudnutom hesle.",
+    de: "Die Box zeigt hier deine Dateien aus LosOS Cloud, sobald das Passwort des Besitzers neu gesetzt ist. Wie das geht, steht auf der Handbuchseite zum vergessenen Passwort.",
   },
   "pins.files.notUp": {
-    en: "LosOS cloud did not answer. It may still be starting.",
-    sk: "LosOS cloud neodpovedá. Možno sa ešte spúšťa.",
-    de: "LosOS cloud antwortet nicht. Vielleicht startet es noch.",
+    en: "LosOS Cloud did not answer. It may still be starting.",
+    sk: "LosOS Cloud neodpovedá. Možno sa ešte spúšťa.",
+    de: "LosOS Cloud antwortet nicht. Vielleicht startet es noch.",
   },
 
   "pins.repos.empty": {

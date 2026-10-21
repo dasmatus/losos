@@ -307,13 +307,13 @@ const RESULTS = {
 
 /* One app installed from the search, and what the box reads out of a chart
  * for the install dialog. */
-/* LosOS cloud's own apps on the Apps pane's LosOS cloud fold. */
+/* LosOS Cloud's own apps on the Apps pane's LosOS Cloud fold. */
 const CLOUD_APPS = {
   available: true,
   store: true,
   apps: [
-    { id: 'calendar', name: 'Calendar', summary: 'A calendar app for LosOS cloud.', version: '5.5.4', kind: 'bundled', enabled: true, locked: null },
-    { id: 'contacts', name: 'Contacts', summary: 'An address book for LosOS cloud.', version: '7.2.5', kind: 'bundled', enabled: true, locked: null },
+    { id: 'calendar', name: 'Calendar', summary: 'A calendar app for LosOS Cloud.', version: '5.5.4', kind: 'bundled', enabled: true, locked: null },
+    { id: 'contacts', name: 'Contacts', summary: 'An address book for LosOS Cloud.', version: '7.2.5', kind: 'bundled', enabled: true, locked: null },
     { id: 'deck', name: 'Deck', summary: 'Kanban-style boards for your projects.', version: '1.15.2', kind: 'store', enabled: true, locked: null },
     { id: 'notes', name: 'Notes', summary: 'Distraction-free notes.', version: '4.12.1', kind: 'bundled', enabled: false, locked: null },
     { id: 'user_saml', name: 'SSO & SAML authentication', summary: null, version: '7.1.0', kind: 'bundled', enabled: true, locked: { by: 'losos', reason: 'signIn' } },
@@ -395,14 +395,14 @@ const options = (overrides = {}) => ({
   stray: [],
   excluded: DOC.excluded,
 });
-/* GET /api/site: the settings of LosOS cloud and LosOS Git only. */
+/* GET /api/site: the settings of LosOS Cloud and LosOS Git only. */
 const SITE_OPTION = /^(nextcloud|forgejo)\.(site\.|federation\.enable$)/;
 const site = (overrides = {}) => {
   const doc = options(overrides);
   return { ...doc, options: doc.options.filter((o) => SITE_OPTION.test(o.name)), excluded: {} };
 };
 
-/* Six pins, as an owner would have them after a week: two LosOS cloud apps,
+/* Six pins, as an owner would have them after a week: two LosOS Cloud apps,
  * a file, a folder, a repository and an app installed from the search. */
 const PINS = [
   { kind: 'tile', app: 'calendar' },
@@ -621,8 +621,8 @@ async function open({
     current = { ...current, ...(patch.background ? { background: patch.background } : {}), ...(typeof patch.veil === 'number' ? { veil: patch.veil } : {}) };
     return json(route, 200, current);
   });
-  // The app tiles probe LosOS cloud and LosOS Git; both answer.
-  await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true, version: '32.0.1.2', productname: 'LosOS cloud' }));
+  // The app tiles probe LosOS Cloud and LosOS Git; both answer.
+  await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true, version: '32.0.1.2', productname: 'LosOS Cloud' }));
   await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>LosOS Git</title>' }));
   // The wizard's frame: what Nextcloud's <head> carries once the owner is
   // signed in, over an empty body. The shot that uses it is clipped above
@@ -743,7 +743,7 @@ const SHOTS = [
       await settle(page, 800);
     },
   },
-  /* LosOS cloud's fold: its apps, each with a switch, and the app store
+  /* LosOS Cloud's fold: its apps, each with a switch, and the app store
    * search under them. */
   {
     name: 'apps-cloud',
@@ -758,7 +758,7 @@ const SHOTS = [
       await page.evaluate(() => window.scrollTo(0, 0));
     },
     crop: {
-      selector: '[data-slot="accordion-trigger"]:has-text("LosOS cloud"), [data-testid="cloud-apps"], [data-testid="cloud-store"]',
+      selector: '[data-slot="accordion-trigger"]:has-text("LosOS Cloud"), [data-testid="cloud-apps"], [data-testid="cloud-store"]',
       pad: 8,
     },
   },
@@ -969,7 +969,7 @@ const SHOTS = [
       await settle(page, 1200);
     },
   },
-  /* Pins: the sidebar with six, and the list open on a LosOS cloud folder. */
+  /* Pins: the sidebar with six, and the list open on a LosOS Cloud folder. */
   { name: 'pins-overview', path: '/', pins: PINS, langs: true },
   {
     name: 'pins-dialog',
@@ -997,7 +997,7 @@ const SHOTS = [
     claimed: false,
     signedIn: false,
     ready: false,
-    waitingFor: 'LosOS cloud is still installing itself',
+    waitingFor: 'LosOS Cloud is still installing itself',
     crop: 'column',
     langs: true,
     act: async (page, t) => {
