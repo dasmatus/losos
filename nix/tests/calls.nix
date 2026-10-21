@@ -368,8 +368,10 @@ pkgs.testers.nixosTest {
           # lososd starts and stops the tunnel units with systemctl.
           pkgs.systemd
         ];
-        # ICE and DTLS in the log, for a call that does not connect.
-        systemd.services.losos-calls = lib.mkIf config.losos.calls.enable {
+        # ICE and DTLS in the log, for a call that does not connect. Only
+        # where the unit exists: with sharing off this line alone would
+        # make a unit with no ExecStart.
+        systemd.services.losos-calls = lib.mkIf (config.losos.calls.enable && config.lososInternal.chat) {
           environment.RUST_LOG = "info,str0m=debug";
         };
         environment.systemPackages = [
