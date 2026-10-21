@@ -98,6 +98,31 @@ makes two deposits.
 USDC only the balance above what open deposits are owed. Keep `treasury` on a
 hardware wallet or a multisig, never on a server.
 
+## Balances and taps
+
+The same contract also holds prepaid balances for pay-as-you-go. A buyer
+calls `topUp(amount)` to move USDC onto their balance, one balance per buyer.
+To use listings the buyer calls `openTaps(ids, sellers, rates, feeBps)`,
+which opens up to 16 taps in one call. A tap names one seller, the most the
+edge may bill per hour (`rate`, in USDC base units) and the fee, at most
+half. The tap id is keccak256 of the edge's tap id and can be opened once.
+
+The edge meters what the buyer used and calls `settleTap(tap, amount)` from
+time to time. The contract takes `amount` from the buyer's balance, sends the
+fee (rounded down) to `treasury` and the rest to the tap's seller, and
+refuses an amount over the balance or over the tap's rate for the time since
+its last settle. That time counts up to the tap's close, and at most 7 days
+of it, so cap left unused is not carried over and a stolen edge key can take
+at most a week at the rate the buyer chose, to the seller the buyer named.
+
+The buyer or the edge can close a tap with `closeTap`, once. The edge can
+still bill a closed tap for the time before it closed. To take money back the
+buyer calls `askWithdrawal(amount)`, which replaces any earlier ask, waits 48
+hours so the edge can bill the last slice, then calls `withdraw` and gets the
+amount asked for, or what is left of the balance if that is less. Withdrawing
+never needs the edge. Balances count towards `held`, so `rescue` cannot move
+them.
+
 Deploy it from a fresh key whose first transaction on every chain is this
 deployment. A contract's address depends only on the deployer and its nonce,
 so the escrow then has the same address on Base, Arbitrum and OP, and USDC

@@ -62,6 +62,7 @@ pub mod idle;
 pub mod join;
 pub mod lab;
 pub mod market;
+pub mod meter;
 pub mod monero;
 pub mod operator;
 pub mod opts;
