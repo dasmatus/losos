@@ -18,6 +18,7 @@ import look from "./look";
 import mail from "./mail";
 import machines from "./machines";
 import manage from "./manage";
+import menu from "./menu";
 import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
@@ -56,6 +57,7 @@ export const MESSAGES = {
   ...pins,
   ...manage,
   ...mail,
+  ...menu,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

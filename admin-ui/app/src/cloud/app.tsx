@@ -10,6 +10,7 @@ import {
   Search01Icon,
   StarIcon,
 } from "@hugeicons/core-free-icons";
+import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
@@ -76,9 +77,15 @@ const PLACES: readonly Place[] = [
 function Shell() {
   const { pathname } = useLocation();
   const connecting = pathname.startsWith("/connect/");
+  const navigate = useNavigate();
+  const pageMenu = usePageMenu();
   return (
     <div className="losos-shell min-h-dvh text-ink">
       <TopBar search={!connecting} />
+      <ContextMenuHost
+        page={pageMenu}
+        search={connecting ? undefined : (text) => navigate(`/search?q=${encodeURIComponent(text)}`)}
+      />
       {connecting ? (
         <Routes>
           <Route path="/connect/:token" element={<ConnectPage />} />

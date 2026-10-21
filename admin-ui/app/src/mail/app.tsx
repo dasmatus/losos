@@ -73,6 +73,7 @@ import {
 } from "@/lib/api";
 import { useLocale, useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
+import { contextMenu, type MenuBuilder } from "@/lib/context-menu";
 import { cn } from "@/lib/utils";
 
 /* How often the open folder and the counts are read again. */
@@ -385,6 +386,88 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
   const trash = home.mailboxes.find((f) => f.role === "trash");
   const archive = home.mailboxes.find((f) => f.role === "archive");
 
+  /* A right click on a message in the list: what the reader's buttons do,
+   * without opening it first. Replying needs the whole message, so it is
+   * fetched then. */
+  const withMessage = (id: string, then: (m: MailMessage) => void) =>
+    void getMailMessage(id).then(then, (error: unknown) =>
+      toast.error(t("mail.actionFailed"), message(error), { help: "mail" }),
+    );
+  const rowMenu =
+    (m: MailSummary): MenuBuilder =>
+    () => {
+      const close = m.id === openId;
+      const elsewhere = home.mailboxes.filter((f) => f.id !== folder?.id && f.role !== "drafts");
+      return {
+        label: m.subject || t("mail.noSubject"),
+        sections: [
+          [
+            { id: "open", label: t("menu.open"), icon: MailOpen01Icon, onSelect: () => void openMessage(m.id) },
+            { id: "reply", label: t("mail.reply"), icon: MailReply01Icon, onSelect: () => withMessage(m.id, (full) => reply(full, false)) },
+            { id: "reply-all", label: t("mail.replyAll"), icon: MailReplyAllIcon, onSelect: () => withMessage(m.id, (full) => reply(full, true)) },
+            { id: "forward", label: t("mail.forward"), icon: ArrowTurnForwardIcon, onSelect: () => withMessage(m.id, forward) },
+          ],
+          [
+            {
+              id: "seen",
+              label: t(m.seen ? "mail.markUnread" : "mail.markRead"),
+              icon: m.seen ? Mail01Icon : MailOpen01Icon,
+              onSelect: () =>
+                void act(() => changeMailMessage(m.id, { seen: !m.seen }), m.seen ? "mail.done.unread" : "mail.done.read", close && m.seen),
+            },
+            {
+              id: "flag",
+              label: t(m.flagged ? "mail.unflag" : "mail.flag"),
+              icon: FavouriteIcon,
+              onSelect: () =>
+                void act(async () => {
+                  await changeMailMessage(m.id, { flagged: !m.flagged });
+                  if (open?.id === m.id) setOpen({ ...open, flagged: !m.flagged });
+                }, m.flagged ? "mail.done.unflagged" : "mail.done.flagged"),
+            },
+          ],
+          [
+            {
+              id: "archive",
+              label: t("mail.archive"),
+              icon: Archive02Icon,
+              hidden: archive === undefined || folder?.id === archive.id,
+              onSelect: () => {
+                if (archive !== undefined) void act(() => changeMailMessage(m.id, { mailbox: archive.id }), "mail.done.archived", close);
+              },
+            },
+            {
+              kind: "submenu",
+              id: "move",
+              // A submenu names where it leads, without the select's dots.
+              label: t("mail.moveTo").replace(/…$/, ""),
+              icon: Folder01Icon,
+              items: elsewhere.map((f) => ({
+                id: `move-${f.id}`,
+                label: folderName(f, t),
+                icon: f.role !== null ? ROLE_ICON[f.role] : Folder01Icon,
+                onSelect: () => void act(() => changeMailMessage(m.id, { mailbox: f.id }), "mail.done.moved", close),
+              })),
+            },
+          ],
+          [
+            {
+              id: "delete",
+              label: t("mail.delete"),
+              icon: Delete02Icon,
+              danger: true,
+              onSelect: () =>
+                void act(
+                  () => deleteMailMessage(m.id),
+                  trash !== undefined && folder?.id === trash.id ? "mail.done.deleted" : "mail.done.binned",
+                  close,
+                ),
+            },
+          ],
+        ],
+      };
+    };
+
   return (
     <TooltipProvider>
     <div className="flex flex-col">
@@ -507,6 +590,7 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
                     current={m.id === openId}
                     locale={locale}
                     onOpen={() => void openMessage(m.id)}
+                    menu={rowMenu(m)}
                   />
                 ))}
               </ul>
@@ -598,6 +682,7 @@ function MessageRow({
   current,
   locale,
   onOpen,
+  menu,
 }: {
   message: MailSummary;
   faces: Faces;
@@ -605,11 +690,12 @@ function MessageRow({
   current: boolean;
   locale: string;
   onOpen: () => void;
+  menu: MenuBuilder;
 }) {
   const t = useT();
   const people = sent ? m.to : m.from;
   return (
-    <li>
+    <li ref={contextMenu(menu)}>
       <button
         type="button"
         onClick={onOpen}

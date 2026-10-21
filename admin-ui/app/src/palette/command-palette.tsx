@@ -10,7 +10,8 @@ import {
   Search01Icon,
   SourceCodeIcon,
 } from "@hugeicons/core-free-icons";
-import { openInNewTab, PinMenu } from "@/components/pin-menu";
+import { openInNewTab, usePinItems } from "@/components/pin-menu";
+import { contextMenu } from "@/lib/context-menu";
 import { Dialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import type { MessageKey } from "@/lib/i18n";
@@ -373,9 +374,20 @@ function Option({
   const target = item.target;
   const newTab =
     target.kind === "href" ? () => onChoose(true) : target.kind === "route" ? () => openInNewTab(target.to) : undefined;
+  const t = useT();
+  const items = usePinItems();
   return (
-    <PinMenu pin={item.pin ?? null} name={item.title} newTab={item.pin === undefined ? undefined : newTab}>
       <div
+        ref={contextMenu(() => ({
+          label: item.title,
+          sections: [
+            [
+              { id: "open", label: t("menu.open"), keys: ["Enter"], onSelect: () => onChoose(false) },
+              { ...items.newTab(() => newTab?.()), keys: ["Mod", "Enter"], hidden: newTab === undefined },
+            ],
+            [items.pin(item.pin ?? null)],
+          ],
+        }))}
         id={id}
         role="option"
         aria-selected={selected}
@@ -425,7 +437,6 @@ function Option({
           )}
         </span>
       </div>
-    </PinMenu>
   );
 }
 

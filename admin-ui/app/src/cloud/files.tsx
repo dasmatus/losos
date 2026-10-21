@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/progress";
+import { contextMenu } from "@/lib/context-menu";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { cloud, isAbort, joinPath, parentOf, type Entry } from "./api";
@@ -126,6 +127,16 @@ export function FilesView() {
 
   return (
     <div
+      ref={contextMenu(() => ({
+        label: path === "" ? t("cloud.nav.files") : path,
+        sections: [
+          [
+            { id: "new-folder", label: `${t("cloud.folder.new")}…`, icon: FolderAddIcon, onSelect: () => setCreating(true) },
+            { id: "upload", label: `${t("cloud.upload.files")}…`, icon: Upload01Icon, onSelect: () => fileInput.current?.click() },
+            { id: "upload-folder", label: `${t("cloud.upload.folder")}…`, icon: FolderUploadIcon, onSelect: () => folderInput.current?.click() },
+          ],
+        ],
+      }))}
       className="relative flex flex-col gap-4"
       onDragOver={(event) => {
         if (![...event.dataTransfer.types].includes("Files")) return;

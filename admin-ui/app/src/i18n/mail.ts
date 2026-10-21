@@ -59,6 +59,7 @@ export default defineMessages({
   "mail.flag": { en: "Flag", sk: "Označiť", de: "Markieren" },
   "mail.unflag": { en: "Remove the flag", sk: "Zrušiť označenie", de: "Markierung entfernen" },
   "mail.markUnread": { en: "Mark as unread", sk: "Označiť ako neprečítané", de: "Als ungelesen markieren" },
+  "mail.markRead": { en: "Mark as read", sk: "Označiť ako prečítané", de: "Als gelesen markieren" },
   "mail.archive": { en: "Archive", sk: "Archivovať", de: "Archivieren" },
   "mail.delete": { en: "Delete", sk: "Odstrániť", de: "Löschen" },
   "mail.moveTo": { en: "Move to…", sk: "Presunúť do…", de: "Verschieben nach…" },
@@ -75,6 +76,7 @@ export default defineMessages({
   "mail.done.unflagged": { en: "Flag removed", sk: "Označenie zrušené", de: "Markierung entfernt" },
   "mail.done.moved": { en: "Moved", sk: "Presunuté", de: "Verschoben" },
   "mail.done.unread": { en: "Marked as unread", sk: "Označené ako neprečítané", de: "Als ungelesen markiert" },
+  "mail.done.read": { en: "Marked as read", sk: "Označené ako prečítané", de: "Als gelesen markiert" },
   "mail.done.sent": { en: "Sent", sk: "Odoslané", de: "Gesendet" },
 
   // ── writing ──
