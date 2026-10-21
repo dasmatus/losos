@@ -208,8 +208,20 @@ Jede gespeicherte App hat eine eigene Seite. Eine App ist eine
 React-Komponente aus den LosOS-Komponenten, die die Box beim Speichern prüft
 und übersetzt. Sie läuft nur in deinem Browser, in einem abgeschotteten
 Rahmen ohne Zugriff auf die Box außer auf ihre eigenen Daten. **Ändern**
-öffnet sie wieder im Editor, und **Löschen** entfernt sie mit allem, was
-eingegeben wurde.
+öffnet sie wieder im Editor, und **Löschen** entfernt sie von der Box mit
+allem, was eingegeben wurde.
+
+Jede App hat außerdem ein eigenes privates Repository in LosOS Git, nach ihr
+benannt (`app-chores` für eine App namens Chores), und jedes Speichern ist
+dort ein Commit. **Quelle** auf der Seite der App öffnet es. Klone es, ändere
+`app.jsx` und pushe: Innerhalb einer Minute prüft die Box die Änderung wie
+beim Speichern, und die App führt sie aus. Lässt sich die Änderung nicht
+übersetzen, bleibt die App, wie sie war, ihre Seite sagt warum, und die Box
+fügt einen Commit hinzu, der die App zurücksetzt, sodass dein nächstes
+`git pull` das ebenfalls zeigt. Dateien, die du ins Repository legst,
+bleiben dort, und die Daten der App sind nicht darin. Das Repository bleibt
+in LosOS Git, wenn du die App löschst; lösche es dort, wenn du es nicht mehr
+willst. Ist LosOS Git aus, behält die Box die Versionen selbst.
 
 ## Apps, die für die Box gemacht sind \{#apps-made-for-the-box}
 
