@@ -400,9 +400,12 @@
 }
 
 /* The mind map (mindmap.tsx). */
+/* Drawn at its own size, and scaled down to fit a narrower column, so
+ * the twigs at the right edge stay in view. */
 .mindmap {
   display: block;
-  max-width: none;
+  max-width: 100%;
+  height: auto;
 }
 .mindmap .mm-link {
   fill: none;
