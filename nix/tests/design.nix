@@ -233,6 +233,8 @@ pkgs.testers.nixosTest {
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("nginx.service")
     box.wait_for_open_port(443)
+    # lososd is active before its plugins are loaded and its port is open.
+    box.wait_for_open_port(8082)
     laptop.wait_for_unit("multi-user.target")
 
     def curl(args):
