@@ -11,6 +11,8 @@ import { applyStoredTheme } from "@/lib/theme";
 import "sonner/dist/styles.css";
 import "@/styles/index.css";
 import { CloudRoot } from "./app";
+// Notes first: a Markdown file's name opens it as a note.
+import "./notes/opener";
 import "./collab/opener";
 
 applyStoredTheme();

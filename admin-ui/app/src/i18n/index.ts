@@ -17,6 +17,7 @@ import lab from "./lab";
 import look from "./look";
 import machines from "./machines";
 import manage from "./manage";
+import notes from "./notes";
 import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
@@ -40,6 +41,7 @@ export const MESSAGES = {
   ...cloudApps,
   ...cloud,
   ...collab,
+  ...notes,
   ...install,
   ...look,
   ...machines,

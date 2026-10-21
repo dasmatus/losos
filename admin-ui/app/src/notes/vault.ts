@@ -101,7 +101,7 @@ export class Vault {
   readonly resolved = new Map<string, Resolved>();
   readonly backlinks = new Map<string, Set<string>>();
   readonly tags = new Map<string, Set<string>>();
-  private readonly links: LinkIndex<VaultNote, VaultFile>;
+  private readonly links: LinkIndex<VaultNote, VaultFile | VaultNote>;
 
   constructor(readonly index: VaultIndex) {
     const all = [...index.notes, ...index.canvases];

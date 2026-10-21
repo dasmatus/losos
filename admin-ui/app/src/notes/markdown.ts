@@ -1,5 +1,5 @@
 import MarkdownIt from "markdown-it";
-import type { StateBlock, StateCore, StateInline, Token } from "markdown-it";
+import type { PluginSimple, StateBlock, StateCore, StateInline, Token } from "markdown-it";
 import footnote from "markdown-it-footnote";
 import DOMPurify from "dompurify";
 import katex from "katex";
@@ -430,7 +430,8 @@ function createMd(): MarkdownIt {
     typographer: false,
     highlight: (code, lang) => highlight(code, lang),
   });
-  md.use(footnote);
+  // Its types are written against an older markdown-it; the plugin is not.
+  md.use(footnote as unknown as PluginSimple);
   md.inline.ruler.before("link", "wikilink", wikilinkRule);
   md.inline.ruler.before("emphasis", "highlight", highlightRule);
   md.inline.ruler.after("wikilink", "obsidian_tag", tagRule);

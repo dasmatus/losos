@@ -439,7 +439,7 @@ pub async fn public(req: &HttpRequest, cloud: &Cloud, who: Option<&Who>, path: &
                 return not_found();
             };
             let listed = if call == "note" {
-                v.notes.iter().any(|n| n.path == rel)
+                v.notes.iter().chain(&v.canvases).any(|n| n.path == rel)
             } else {
                 v.files.iter().any(|f| f.path == rel)
             };
