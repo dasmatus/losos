@@ -608,6 +608,7 @@ pkgs.testers.nixosTest {
             box.fail("runuser -u nobody -- cat /run/credentials/lososd.service/admin-token")
 
     with subtest("claim the box and sign in"):
+        box.wait_for_open_port(8082)
         claim = json.dumps({"name": "matus", "password": PASSWORD})
         out = curl(
             f"-w '\\n%{{http_code}}' -X POST https://{BOX}/api/setup/claim "
