@@ -1,54 +1,50 @@
 //! The owner's look: a background picture and the widgets they wrote by hand.
 //!
 //! Both are **appliance** state, not browser state, and that is the one
-//! decision this module exists to carry. The widget board itself stays in the
+//! decision this plugin exists to carry. The widget board itself stays in the
 //! browser (`admin-ui/app/src/lib/widgets.ts` says why: nothing on a
 //! dashboard may be able to start a rebuild), but a picture the owner chose
 //! and a widget they typed by hand are the box's, so a phone and a laptop see
 //! the same page. Neither touches `overrides.nix` or starts a rebuild: the
-//! document lives beside `state.json` under `$LOSOS_STATE_DIR` and is written
-//! the same way, atomically, by the one daemon that owns that directory.
+//! document lives beside `state.json` and is written the same way,
+//! atomically. What a widget may hold is `losos-widget`'s business; the
+//! security argument for running owner-written script at all is in the
+//! frame's own header (`admin-ui/app/public/widget-frame/index.html`).
 //!
-//! What a hand-written widget is, from here: a name, a size, and a few text
-//! files (`index.html` and whatever it links: stylesheets, scripts, SVG
-//! pictures, JSON) that the admin page renders inside a **sandboxed iframe**
-//! served under its own, permissive-for-itself CSP (`/widget-frame/`, see
-//! `modules/containers.nix`). lososd stores the text and never interprets it;
-//! the only rules enforced here are the file names and the sizes, so one
-//! widget cannot be a gigabyte and a thousand of them cannot be a thousand. The security argument
-//! for running owner-written script at all is in the frame's own header
-//! (`admin-ui/app/public/widget-frame/index.html`), not here.
-//!
-//! The picture is read back *without* a token (`GET /api/look/background`):
-//! a CSS `background-image` cannot carry a Bearer header, and the alternative
-//! — fetching bytes with the token and painting a `blob:` URL — needs an
-//! `img-src blob:` grant the admin CSP deliberately does not make. The route
-//! is behind the same LAN-only guard as the page that shows it, and the
-//! picture is the owner's wallpaper, no more secret than the logo beside it.
-//! Everything that *changes* the look needs the token and is audited.
+//! The picture is read back *without* a token (`GET /api/look/background`,
+//! `unguarded` in the manifest): a CSS `background-image` cannot carry a
+//! Bearer header, and the alternative, fetching bytes with the token and
+//! painting a `blob:` URL, needs an `img-src blob:` grant the admin CSP
+//! deliberately does not make. The route is behind the same LAN-only guard
+//! and LosOS Login check in nginx as the page that shows it, and the picture
+//! is the owner's wallpaper, no more secret than the logo beside it.
+//! Everything that *changes* the look is checked by lososd and audited.
 
-use crate::losos::Losos;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+
+pub use losos_widget::{
+    is_file_name, parse_files, validate_files, Invalid, WidgetFile, ENTRY_FILE, FILE_KINDS,
+    MAX_FILES, MAX_FILE_NAME_CHARS, MAX_WIDGET_BYTES,
+};
 
 /// How many widgets the box keeps. Each one is an iframe on the board; a
 /// mini-PC serving photos has no business hosting a hundred of them.
 pub const MAX_WIDGETS: usize = 24;
 /// Longest widget name, in characters.
 pub const MAX_NAME_CHARS: usize = 60;
-/// Most bytes in one widget, all its files together. Generous for a tile
-/// with a stylesheet, a script and a picture or two, far short of anything
-/// that could be mistaken for an application.
-pub const MAX_WIDGET_BYTES: usize = 128 * 1024;
-/// Most files in one widget.
-pub const MAX_FILES: usize = 12;
-/// Longest file name, in characters.
-pub const MAX_FILE_NAME_CHARS: usize = 40;
-/// The file the frame renders; the others are only what it links.
-pub const ENTRY_FILE: &str = "index.html";
-/// The kinds of file a widget may carry, by extension. Text only: the frame
-/// inlines a linked file, and a picture is SVG.
-pub const FILE_KINDS: &[&str] = &["html", "css", "js", "mjs", "json", "svg", "txt", "md"];
+/// Where the look is kept: [`crate::FileStore`] on the box, a map in the
+/// tests.
+pub trait Store {
+    /// The document, or [`Look::default`] when there is none or it does not
+    /// parse: a damaged file costs the owner their wallpaper, not the page.
+    fn load_look(&mut self) -> Look;
+    fn save_look(&mut self, look: &Look) -> anyhow::Result<()>;
+    fn write_background(&mut self, bytes: &[u8]) -> anyhow::Result<()>;
+    fn read_background(&mut self) -> anyhow::Result<Option<Vec<u8>>>;
+    fn remove_background(&mut self) -> anyhow::Result<()>;
+}
+
 /// Largest background picture accepted, in bytes.
 pub const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 /// The veil over the picture — how much of the theme's ground colour sits on
@@ -89,23 +85,6 @@ pub enum Background {
 pub enum Span {
     Half,
     Full,
-}
-
-/// One file of a widget.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WidgetFile {
-    pub name: String,
-    pub content: String,
-}
-
-impl WidgetFile {
-    #[must_use]
-    pub fn entry(content: &str) -> Self {
-        WidgetFile {
-            name: ENTRY_FILE.to_string(),
-            content: content.to_string(),
-        }
-    }
 }
 
 /// One widget the owner wrote.
@@ -151,7 +130,7 @@ impl From<StoredWidget> for HandWidget {
 /// The persisted document at `$LOSOS_STATE_DIR/look.json`.
 ///
 /// Decoding is lenient the way `state.json` is: a document that does not
-/// parse reads as [`Look::default`] (see `io_backend`), and every field has a
+/// parse reads as [`Look::default`] ([`Store::load_look`]), and every field has a
 /// default so a file from an older build still opens.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Look {
@@ -193,12 +172,6 @@ impl Default for Look {
         }
     }
 }
-
-/// A request the owner can act on: the field that was wrong, in a sentence.
-/// The HTTP layer answers it as a 400 carrying the sentence.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{0}")]
-pub struct Invalid(pub String);
 
 fn invalid<T>(message: impl Into<String>) -> anyhow::Result<T> {
     Err(anyhow::Error::new(Invalid(message.into())))
@@ -282,21 +255,6 @@ pub struct WidgetDraft {
     pub files: Vec<WidgetFile>,
 }
 
-/// Read a list of files, `[{ "name": …, "content": … }]`, or `None` when it
-/// is not that shape.
-pub fn parse_files(value: &Value) -> Option<Vec<WidgetFile>> {
-    value
-        .as_array()?
-        .iter()
-        .map(|f| {
-            Some(WidgetFile {
-                name: f.get("name")?.as_str()?.to_string(),
-                content: f.get("content")?.as_str()?.to_string(),
-            })
-        })
-        .collect()
-}
-
 /// Read a draft out of the request body, or `None` for a body that is not
 /// the shape. Sizes are checked by the command, with the sentence. A body
 /// with a single `source` instead of `files` is a one-file widget.
@@ -323,64 +281,6 @@ pub fn parse_draft(doc: &Value) -> Option<WidgetDraft> {
         span,
         files,
     })
-}
-
-/// A file name a widget may use: lowercase letters, digits, `-` and `_`,
-/// then a dot and one of [`FILE_KINDS`]. No directories, so a name can
-/// never be read as a path.
-pub fn is_file_name(name: &str) -> bool {
-    let Some((stem, kind)) = name.rsplit_once('.') else {
-        return false;
-    };
-    name.chars().count() <= MAX_FILE_NAME_CHARS
-        && FILE_KINDS.contains(&kind)
-        && stem
-            .bytes()
-            .next()
-            .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
-        && stem
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"-_.".contains(&b))
-        && !stem.contains("..")
-}
-
-/// The rules a widget's files have to meet: `index.html` among them and not
-/// empty, names [`is_file_name`] and each used once, at most [`MAX_FILES`]
-/// and [`MAX_WIDGET_BYTES`] together.
-pub fn validate_files(files: &[WidgetFile]) -> Result<(), Invalid> {
-    if files.len() > MAX_FILES {
-        return Err(Invalid(format!("a widget has at most {MAX_FILES} files")));
-    }
-    let mut seen = std::collections::HashSet::new();
-    for file in files {
-        if !is_file_name(&file.name) {
-            return Err(Invalid(format!(
-                "{:?} is not a file name a widget can use",
-                file.name
-                    .chars()
-                    .take(MAX_FILE_NAME_CHARS + 1)
-                    .collect::<String>()
-            )));
-        }
-        if !seen.insert(file.name.as_str()) {
-            return Err(Invalid(format!("there are two files called {}", file.name)));
-        }
-    }
-    match files.iter().find(|f| f.name == ENTRY_FILE) {
-        None => return Err(Invalid(format!("the widget has no {ENTRY_FILE}"))),
-        Some(entry) if entry.content.trim().is_empty() => {
-            return Err(Invalid(format!("{ENTRY_FILE} is empty")))
-        }
-        Some(_) => {}
-    }
-    let bytes: usize = files.iter().map(|f| f.content.len()).sum();
-    if bytes > MAX_WIDGET_BYTES {
-        return Err(Invalid(format!(
-            "the widget's files are larger than {} KiB together",
-            MAX_WIDGET_BYTES / 1024
-        )));
-    }
-    Ok(())
 }
 
 /// The rules a draft has to meet, pure, so the HTTP layer and the command
@@ -455,8 +355,8 @@ pub fn render(look: &Look) -> Value {
 }
 
 /// `GET /api/look`.
-pub fn cmd_look<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
-    Ok(render(&l.load_look()?))
+pub fn cmd_look<S: Store>(l: &mut S) -> anyhow::Result<Value> {
+    Ok(render(&l.load_look()))
 }
 
 /// `POST /api/look`: the background by choice, the veil, or both.
@@ -464,8 +364,8 @@ pub fn cmd_look<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
 /// Choosing anything but the upload deletes an uploaded picture: the owner
 /// has moved on from it, and a megabyte nobody can see has no business
 /// staying on `/persist`.
-pub fn cmd_patch_look<L: Losos>(l: &mut L, patch: &LookPatch) -> anyhow::Result<Value> {
-    let mut look = l.load_look()?;
+pub fn cmd_patch_look<S: Store>(l: &mut S, patch: &LookPatch) -> anyhow::Result<Value> {
+    let mut look = l.load_look();
     if let Some(veil) = patch.veil {
         if !(MIN_VEIL..=MAX_VEIL).contains(&veil) {
             return invalid(format!(
@@ -494,7 +394,7 @@ pub fn cmd_patch_look<L: Losos>(l: &mut L, patch: &LookPatch) -> anyhow::Result<
 }
 
 /// `PUT /api/look/background`: the picture, raw.
-pub fn cmd_upload_background<L: Losos>(l: &mut L, bytes: &[u8]) -> anyhow::Result<Value> {
+pub fn cmd_upload_background<S: Store>(l: &mut S, bytes: &[u8]) -> anyhow::Result<Value> {
     if bytes.len() > MAX_IMAGE_BYTES {
         return invalid(format!(
             "the picture is larger than {} MiB",
@@ -504,7 +404,7 @@ pub fn cmd_upload_background<L: Losos>(l: &mut L, bytes: &[u8]) -> anyhow::Resul
     let Some(content_type) = sniff_image(bytes) else {
         return invalid("the picture must be a PNG, JPEG, GIF or WebP");
     };
-    let mut look = l.load_look()?;
+    let mut look = l.load_look();
     let version = match look.background {
         Background::Upload { version, .. } => version + 1,
         _ => 1,
@@ -522,8 +422,8 @@ pub fn cmd_upload_background<L: Losos>(l: &mut L, bytes: &[u8]) -> anyhow::Resul
 
 /// What `GET /api/look/background` serves: the bytes and their type, or
 /// `None` when the look has no uploaded picture.
-pub fn cmd_read_background<L: Losos>(l: &mut L) -> anyhow::Result<Option<(String, Vec<u8>)>> {
-    let look = l.load_look()?;
+pub fn cmd_read_background<S: Store>(l: &mut S) -> anyhow::Result<Option<(String, Vec<u8>)>> {
+    let look = l.load_look();
     let Background::Upload { content_type, .. } = look.background else {
         return Ok(None);
     };
@@ -531,9 +431,9 @@ pub fn cmd_read_background<L: Losos>(l: &mut L) -> anyhow::Result<Option<(String
 }
 
 /// `POST /api/look/widgets`: add a widget, or replace the one its id names.
-pub fn cmd_put_widget<L: Losos>(l: &mut L, draft: &WidgetDraft) -> anyhow::Result<Value> {
+pub fn cmd_put_widget<S: Store>(l: &mut S, draft: &WidgetDraft) -> anyhow::Result<Value> {
     validate_draft(draft).map_err(anyhow::Error::new)?;
-    let mut look = l.load_look()?;
+    let mut look = l.load_look();
     let name = draft.name.trim().to_string();
     let widget = match &draft.id {
         Some(id) => {
@@ -567,11 +467,11 @@ pub fn cmd_put_widget<L: Losos>(l: &mut L, draft: &WidgetDraft) -> anyhow::Resul
 /// `DELETE /api/look/widgets/{id}`. Idempotent: deleting a widget that is
 /// already gone is `deleted: false`, not an error — a 404 would be read by
 /// the page as "this box does not serve the route".
-pub fn cmd_delete_widget<L: Losos>(l: &mut L, id: &str) -> anyhow::Result<Value> {
+pub fn cmd_delete_widget<S: Store>(l: &mut S, id: &str) -> anyhow::Result<Value> {
     if !is_widget_id(id) {
         return invalid("that is not a widget id");
     }
-    let mut look = l.load_look()?;
+    let mut look = l.load_look();
     let before = look.widgets.len();
     look.widgets.retain(|w| w.id != id);
     let deleted = look.widgets.len() != before;
@@ -584,7 +484,34 @@ pub fn cmd_delete_widget<L: Losos>(l: &mut L, id: &str) -> anyhow::Result<Value>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake::FakeLosos;
+
+    /// The look in memory.
+    #[derive(Default)]
+    struct Mem {
+        look: Look,
+        background: Option<Vec<u8>>,
+    }
+
+    impl Store for Mem {
+        fn load_look(&mut self) -> Look {
+            self.look.clone()
+        }
+        fn save_look(&mut self, look: &Look) -> anyhow::Result<()> {
+            self.look = look.clone();
+            Ok(())
+        }
+        fn write_background(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
+            self.background = Some(bytes.to_vec());
+            Ok(())
+        }
+        fn read_background(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
+            Ok(self.background.clone())
+        }
+        fn remove_background(&mut self) -> anyhow::Result<()> {
+            self.background = None;
+            Ok(())
+        }
+    }
 
     const PNG: &[u8] = b"\x89PNG\r\n\x1a\n0000";
     const JPEG: &[u8] = b"\xff\xd8\xff\xe0JFIF";
@@ -608,7 +535,7 @@ mod tests {
 
     #[test]
     fn a_fresh_box_has_a_plain_look() {
-        let mut l = FakeLosos::new();
+        let mut l = Mem::default();
         let doc = cmd_look(&mut l).unwrap();
         assert_eq!(doc["background"]["kind"], "none");
         assert_eq!(doc["veil"], DEFAULT_VEIL);
@@ -633,7 +560,7 @@ mod tests {
 
     #[test]
     fn an_upload_is_stored_versioned_and_served_back() {
-        let mut l = FakeLosos::new();
+        let mut l = Mem::default();
         let doc = cmd_upload_background(&mut l, PNG).unwrap();
         assert_eq!(doc["background"]["kind"], "upload");
         assert_eq!(doc["background"]["version"], 1);
@@ -654,7 +581,7 @@ mod tests {
 
     #[test]
     fn an_upload_that_is_not_a_picture_is_refused_and_nothing_is_written() {
-        let mut l = FakeLosos::new();
+        let mut l = Mem::default();
         let err = cmd_upload_background(&mut l, b"<svg/>").unwrap_err();
         assert!(err.downcast_ref::<Invalid>().is_some(), "{err}");
         assert!(l.background.is_none());
@@ -668,7 +595,7 @@ mod tests {
 
     #[test]
     fn picking_a_shipped_picture_drops_the_upload() {
-        let mut l = FakeLosos::new();
+        let mut l = Mem::default();
         cmd_upload_background(&mut l, PNG).unwrap();
         let patch = LookPatch {
             background: Some(BackgroundChoice::Shipped("dusk".to_string())),
@@ -683,7 +610,7 @@ mod tests {
 
     #[test]
     fn a_picture_the_box_does_not_ship_is_refused() {
-        let mut l = FakeLosos::new();
+        let mut l = Mem::default();
         let patch = LookPatch {
             background: Some(BackgroundChoice::Shipped("../etc/passwd".to_string())),
             veil: None,
@@ -695,7 +622,7 @@ mod tests {
 
     #[test]
     fn the_veil_is_clamped_to_the_readable_range() {
-        let mut l = FakeLosos::new();
+        let mut l = Mem::default();
         let ok = LookPatch {
             background: None,
             veil: Some(35),
@@ -746,7 +673,7 @@ mod tests {
 
     #[test]
     fn widgets_are_minted_with_ids_that_are_never_reused() {
-        let mut l = FakeLosos::new();
+        let mut l = Mem::default();
         let first = cmd_put_widget(&mut l, &draft("Clock", "<b>12:00</b>")).unwrap();
         assert_eq!(first["widget"]["id"], "w1");
         assert_eq!(first["widget"]["name"], "Clock");
@@ -772,7 +699,7 @@ mod tests {
 
     #[test]
     fn a_widget_is_edited_in_place() {
-        let mut l = FakeLosos::new();
+        let mut l = Mem::default();
         cmd_put_widget(&mut l, &draft("Clock", "<b>12:00</b>")).unwrap();
         let edit = WidgetDraft {
             id: Some("w1".to_string()),
@@ -804,7 +731,7 @@ mod tests {
 
     #[test]
     fn the_sizes_are_enforced() {
-        let mut l = FakeLosos::new();
+        let mut l = Mem::default();
         let cases = [
             draft("", "<b/>"),
             draft("   ", "<b/>"),
@@ -833,65 +760,6 @@ mod tests {
         let err = cmd_put_widget(&mut l, &draft("one too many", "<b/>")).unwrap_err();
         assert!(err.downcast_ref::<Invalid>().is_some(), "{err}");
         assert_eq!(l.look.widgets.len(), MAX_WIDGETS);
-    }
-
-    #[test]
-    fn a_widget_is_a_few_named_files() {
-        let ok = |files: Vec<WidgetFile>| validate_files(&files).is_ok();
-        assert!(ok(vec![file("index.html", "<p>")]));
-        assert!(ok(vec![
-            file("style.css", "p{}"),
-            file("index.html", "<p>"),
-            file("app.js", ""),
-            file("logo-2_dark.svg", "<svg/>"),
-            file("data.json", "{}"),
-        ]));
-        // No entry, an empty entry, a name used twice.
-        assert!(!ok(vec![file("app.js", "1")]));
-        assert!(!ok(vec![file("index.html", "  \n")]));
-        assert!(!ok(vec![
-            file("index.html", "<p>"),
-            file("index.html", "<b>")
-        ]));
-        // Too many, too large together though each file is small.
-        let many: Vec<WidgetFile> = std::iter::once(file("index.html", "<p>"))
-            .chain((1..MAX_FILES).map(|i| file(&format!("f{i}.js"), "1")))
-            .collect();
-        assert!(ok(many.clone()));
-        let mut one_more = many;
-        one_more.push(file("last.js", "1"));
-        assert!(!ok(one_more));
-        let half = "x".repeat(MAX_WIDGET_BYTES / 2);
-        assert!(!ok(vec![
-            file("index.html", &half),
-            file("a.css", &half),
-            file("b.css", "x"),
-        ]));
-
-        for good in [
-            "index.html",
-            "a.js",
-            "0.css",
-            "my-tile_v2.min.js",
-            "x.mjs",
-            "notes.md",
-        ] {
-            assert!(is_file_name(good), "{good}");
-        }
-        for bad in [
-            "", "index", ".css", "../a.js", "a/b.js", "a\\b.js", "App.js", "a.exe", "a.png",
-            "-a.js", "a..b.js", "a b.js", "a.JS",
-        ] {
-            assert!(!is_file_name(bad), "{bad}");
-        }
-        assert!(is_file_name(&format!(
-            "{}.js",
-            "a".repeat(MAX_FILE_NAME_CHARS - 3)
-        )));
-        assert!(!is_file_name(&format!(
-            "{}.js",
-            "a".repeat(MAX_FILE_NAME_CHARS - 2)
-        )));
     }
 
     #[test]
