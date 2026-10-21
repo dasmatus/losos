@@ -31,29 +31,18 @@ instead, in the LosOS cloud fold.
 
 ## LosOS Git
 
-Your repositories, at `http://<address>/forgejo/`. It is Forgejo in the same
-colours. Sign up inside it the first time. It keeps its own accounts. Clone
-URLs use the box's name, so a computer that does not resolve `.local` should
-use the address instead. Turn it off in the **Apps** pane if the box is not
-for code.
+Your repositories, at `http://<address>/git/<account>/<repository>.git`.
+LosOS Git is the box's own Git server. A person LosOS Login knows has an
+account in it from their first visit, under the same name. A computer clones
+and pushes with a token of its own, which git asks for as the password:
+`losos git setup` makes one ([The terminal client](terminal)). The box's own
+configuration is the private repository `notshared/losos-config`
+([Administration](../in-depth/administration)). Clone addresses follow the
+address you reached the box by. Turn it off in the **Apps** pane if the box is not for code.
 
 ### Federation
 
-LosOS Git speaks ActivityPub with other Forgejo servers. Forgejo still calls
-this experimental. Stars that people on another server give your repositories
-count here. People on other servers can follow an account on your box and see
-what it does. The box also answers the fediverse's discovery address,
-`/.well-known/nodeinfo`. All of this reaches as far as the box does. Through
-an [edge](../types/official-edge) that is the internet. On a box that is only
-on your local network, it is the other boxes on that network. The box never
-publishes how many accounts it has or how active they are.
-
-To take part, list the other servers whose stars count on a repository's
-**Settings → Federation** page. To turn federation off entirely, switch off
-**Federate with other Forgejo servers** in the LosOS Git fold of the
-**Apps** pane.
-
-LosOS cloud federates too: you can share files and calendars with people
+LosOS cloud federates: you can share files and calendars with people
 whose accounts are on other Nextcloud servers, by their `user@server`
 address. The owner of another box is `notshared@otherbox.local/nextcloud`.
 **Share with other Nextcloud servers** in the LosOS cloud fold turns that
@@ -63,10 +52,10 @@ for itself, which Nextcloud refuses on its own. That is how it reaches
 other boxes on the same network.
 
 :::note[Federation needs disk sharing]
-Both kinds of federation work only while the box shares its disk
+Federation works only while the box shares its disk
 (`losos.sharingMyStorage`), because that is when the shared part of the
 disk is unlocked. With sharing off, the box talks to no other server, and
-the **Apps** pane greys both federation switches out.
+the **Apps** pane greys the federation switch out.
 :::
 
 ## The Apps pane
@@ -104,8 +93,8 @@ The apps the box ships can be turned off but not removed.
 
 In the LosOS cloud and LosOS Git folds, the Apps pane has the settings that
 hold for every account in each app. You would otherwise find them on each
-app's own administration pages. Each fold starts with the app's federation
-switch ([Federation](#federation)).
+app's own administration pages. The LosOS cloud fold starts with its
+federation switch ([Federation](#federation)).
 
 For LosOS cloud: the language of the sign-in page and of accounts that have
 not picked one, the country a phone number without a country code belongs
@@ -114,9 +103,8 @@ password, after how many days links stop working, how much space a new
 account gets, and how long the trash and old versions are kept. An empty
 field leaves the choice to LosOS cloud.
 
-For LosOS Git: whether only signed-in accounts see anything, what a visitor
-sees first, whether a new repository starts private or public or like the
-account's last one, whether a new account's e-mail address is hidden, and
+For LosOS Git: whether only signed-in accounts see anything, whether a new
+repository starts private or public or like the account's last one, and
 whether pushing to a repository that does not exist yet creates it.
 
 ![The Apps pane with the settings for everyone in LosOS cloud and LosOS Git.](../img/apps-site-settings.png)

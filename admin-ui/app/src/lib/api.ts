@@ -36,7 +36,6 @@ export interface StateResponse {
 export interface SettingsResponse {
   sharingMyStorage: boolean;
   nextcloudMode: ServiceMode;
-  forgejoMode: ServiceMode;
   hostName: string;
   https: boolean;
   gpuEnable: boolean;
@@ -2103,9 +2102,9 @@ export function buildOverridesNix(
   settings: SettingsResponse,
   /* Every other `losos.<name>` the file should carry, as Nix literals the
    * Advanced pane produced (lib/option-value.ts): one line each, after the
-   * sixteen above, sorted so the file is stable from one apply to the next
+   * fifteen above, sorted so the file is stable from one apply to the next
    * and the commit lososd makes shows only what changed. A name here that is
-   * one of the sixteen would be a second line for the same key; the first
+   * one of the fifteen would be a second line for the same key; the first
    * wins in lososd's parser, so the form's own value would silently win over
    * the Advanced pane's. The pane never hands one in (it edits those through
    * the form), and the filter below is the belt to that. */
@@ -2120,7 +2119,6 @@ export function buildOverridesNix(
     "{",
     `  losos.sharingMyStorage = ${nixBool(settings.sharingMyStorage)};`,
     `  losos.nextcloud.mode = ${nixString(settings.nextcloudMode)};`,
-    `  losos.forgejo.mode = ${nixString(settings.forgejoMode)};`,
     `  losos.hostName = ${nixString(settings.hostName)};`,
     `  losos.nextcloud.https = ${nixBool(settings.https)};`,
     `  losos.gpu.enable = ${nixBool(settings.gpuEnable)};`,
@@ -2140,11 +2138,10 @@ export function buildOverridesNix(
   ].join("\n");
 }
 
-/** The sixteen `losos.*` names the lines above always write. */
+/** The fifteen `losos.*` names the lines above always write. */
 export const OWNED_NAMES: ReadonlySet<string> = new Set([
   "sharingMyStorage",
   "nextcloud.mode",
-  "forgejo.mode",
   "hostName",
   "nextcloud.https",
   "gpu.enable",
@@ -2171,7 +2168,7 @@ export function isValidTime(value: string): boolean {
 }
 
 /* An RFC 1123 label. The value becomes the system hostname, the mDNS name,
- * Nextcloud's trusted_domains and Forgejo's ROOT_URL. A space or a slash
+ * Nextcloud's trusted_domains and the addresses LosOS Git hands out. A space or a slash
  * fails evaluation; a leading hyphen or a 64th character gives a box that
  * boots unreachable — and there is no SSH and no shell login to fix it. */
 export const HOSTNAME_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
@@ -2427,11 +2424,11 @@ export type ConfigSyncState =
 export interface ConfigRepository {
   owner: string;
   name: string;
-  /** The repository's page on this box: /forgejo/<owner>/<name>. */
+  /** The repository's page on this box: /git/<owner>/<name>. */
   url: string;
   /** The URL lososd pushes to (loopback; not for the owner). */
   clone: string;
-  viaForgejo: boolean;
+  viaServer: boolean;
 }
 
 export interface ConfigHead {

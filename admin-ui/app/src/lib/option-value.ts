@@ -4,7 +4,7 @@ import type { SettingsPaneId } from "@/screens/settings/panes";
 /* One Nix literal per option, and the rules for reading and writing it.
  *
  * The Advanced pane (screens/settings/pane-advanced.tsx) edits the lines of
- * modules/overrides.nix that the sixteen-key form does not own. Each of those
+ * modules/overrides.nix that the fifteen-key form does not own. Each of those
  * lines is `losos.<name> = <literal>;`, and the literal is what this module
  * deals in: the pane's draft holds the literal as a string, the editors turn
  * it into a switch, a number field or a list and back, and `fits` says
@@ -164,7 +164,7 @@ export function toLiteral(editor: OptionEditor, value: OptionValue): string | nu
   }
 }
 
-/* The sixteen options the settings form edits on its own panes, by their
+/* The fifteen options the settings form edits on its own panes, by their
  * Nix name. The Advanced pane shows each one with its value and a link to
  * the pane that owns it, rather than a second editor that could disagree
  * with the first. */
@@ -176,7 +176,6 @@ export interface OwnedOption {
 export const OWNED: Readonly<Record<string, OwnedOption>> = {
   sharingMyStorage: { key: "sharingMyStorage", pane: "market" },
   "nextcloud.mode": { key: "nextcloudMode", pane: "apps" },
-  "forgejo.mode": { key: "forgejoMode", pane: "apps" },
   hostName: { key: "hostName", pane: "network" },
   "nextcloud.https": { key: "https", pane: "network" },
   "gpu.enable": { key: "gpuEnable", pane: "hardware" },
@@ -194,7 +193,7 @@ export const OWNED: Readonly<Record<string, OwnedOption>> = {
 
 /* Options another pane draws an editor for, though they are lines of
  * overrides.nix like any the Advanced pane edits (form.extra, not one of the
- * sixteen fields). The Advanced pane shows each with its value and a link to
+ * fifteen fields). The Advanced pane shows each with its value and a link to
  * that pane, so there is one place to change it. */
 export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
   "nextcloud.site.defaultLanguage": "apps",
@@ -205,11 +204,8 @@ export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
   "nextcloud.site.defaultQuotaGB": "apps",
   "nextcloud.site.trashDays": "apps",
   "nextcloud.site.versionDays": "apps",
-  "forgejo.site.requireSignIn": "apps",
-  "forgejo.site.landingPage": "apps",
-  "forgejo.site.defaultPrivate": "apps",
-  "forgejo.site.keepEmailPrivate": "apps",
-  "forgejo.site.pushCreate": "apps",
+  "git.site.requireSignIn": "apps",
+  "git.site.defaultPrivate": "apps",
+  "git.site.pushCreate": "apps",
   "nextcloud.federation.enable": "apps",
-  "forgejo.federation.enable": "apps",
 };

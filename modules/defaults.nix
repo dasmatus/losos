@@ -16,10 +16,8 @@ let
   pkgs' = self.packages.x86_64-linux;
 in
 {
-  # The git host is on by default. Consulted in both deployment modes: the
-  # workload path in modules/workloads.nix and the native path in
-  # modules/services.nix.
-  losos.forgejo.enable = lib.mkDefault true;
+  # LosOS Git, the box's Git server (modules/git.nix), is on by default.
+  losos.git.enable = lib.mkDefault true;
 
   # The Rust control plane (lososd + the losos-ctl facade) and the static admin
   # SPA the front vhost serves, so the admin endpoint works out of the box.
@@ -51,5 +49,4 @@ in
   # previous generation keeps running.
   losos.workloads.pauseImage = lib.mkDefault pkgs'.losos-image-pause;
   losos.workloads.nextcloudImage = lib.mkDefault pkgs'.losos-image-nextcloud;
-  losos.workloads.forgejoImage = lib.mkDefault pkgs'.losos-image-forgejo;
 }

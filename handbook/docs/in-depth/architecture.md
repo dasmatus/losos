@@ -47,9 +47,10 @@ for the wire format.
 
 ## Workloads
 
-Nextcloud and Forgejo run in the box's own k3s cluster
-(`losos.<svc>.mode = "container"`) or natively on the host. The pods use
-`hostNetwork`. nginx is the only service on public ports and routes by path.
+Nextcloud runs in the box's own k3s cluster
+(`losos.nextcloud.mode = "container"`) or natively on the host. The pods use
+`hostNetwork`. LosOS Git is a service on the host. nginx is the only service
+on public ports and routes by path.
 
 ## Repository layout
 
@@ -219,16 +220,15 @@ the key it refused.
 
 Every apply, mode change and reset is a commit in `/etc/nixos`, the
 repository the installer made. A reconciler thread in lososd polls every
-30 s. It creates the admin's Forgejo account (`notshared`, with the owner
-password, kept in step on password changes and device setup) and a private
-`losos-config` repository. It does that through a bot account whose token the
-Forgejo start-up script mints (`nix/forgejo-bootstrap.nix`, token at
-`/var/lib/forgejo/.losos-token`). It pushes when Forgejo is behind. When a
-clone has pushed ahead, it fast-forwards, gates the new `overrides.nix` the
-same way, and rebuilds. It reports a diverged history and never touches it.
-There is deliberately **no Forgejo Actions runner** behind this.
+30 s. It creates the admin's LosOS Git account (`notshared`, an
+administrator) and a private `losos-config` repository, with the admin token
+LosOS Git writes on its first start (`/var/lib/losos-git/admin-token`). It
+pushes when LosOS Git is behind. When a clone has pushed ahead, it
+fast-forwards, gates the new `overrides.nix` the same way, and rebuilds. It
+reports a diverged history and never touches it. There is deliberately **no
+CI runner** behind this.
 
-The Advanced pane links the sixteen settings the other panes own instead of
+The Advanced pane links the fifteen settings the other panes own instead of
 editing them twice. `OWNED` in `admin-ui/app/src/lib/option-value.ts` and
 `OWNED_NAMES` in `lib/api.ts` are that list, and `buildOverridesNix` filters
 extras against it so the file never carries a key twice. Two parser facts
@@ -239,13 +239,26 @@ matter here. `overrides.rs`'s `parse_line` cuts a value at the first `#`
 **Workloads and the single front door** (`modules/containers.nix`,
 `modules/workloads.nix`, `modules/cluster.nix`,
 `modules/nextcloud-common.nix`). Rootless Podman is gone, and so is
-systemd-nspawn. When `losos.<svc>.mode == "container"`, Nextcloud and Forgejo
-run as Kubernetes workloads in the box's own local k3s cluster. The shared
+systemd-nspawn. When `losos.nextcloud.mode == "container"`, Nextcloud runs
+as a Kubernetes workload in the box's own local k3s cluster. The shared
 Nextcloud configuration still lives in `nextcloud-common.nix`, so the native
 and workload modes cannot drift apart. nginx is the only process holding
 public ports. It routes by path on the appliance's mDNS name
-(`<hostName>.local:80/nextcloud`, `:80/forgejo`) and serves the admin SPA on
+(`<hostName>.local:80/nextcloud`, `:80/git/`) and serves the admin SPA on
 the same `:80` vhost.
+
+**LosOS Git** (`modules/git.nix`, `backend/src/forge/`, the `losos-git`
+binary of lososd's crate). The box's Git server, as its own user. git's
+smart HTTP (`git-upload-pack` and `git-receive-pack --stateless-rpc`,
+protocol v2 included) streams both ways, accounts, tokens and repository
+records are one SQLite file, and repositories are bare under
+`/var/lib/losos-git/repositories/<owner>/<name>.git`. It listens twice:
+on `/run/losos-git/http.sock`, which only nginx may open and the only place
+it believes the person LosOS Login names in the `X-Losos-Cloud-*` headers,
+and on `127.0.0.1:3000` for tokens only, where lososd keeps the
+configuration repository and makes computers' tokens. A token is stored as
+its SHA-256 and carries scopes. Repositories Forgejo left on a box are
+moved over on the first start and taken in without their hooks.
 
 `admin-ui/design-system/` (`tokens.css` and `losos.css`, plus a `react/`
 wrapper package for claude.ai/design) is dev-machine-only and no longer
@@ -256,23 +269,18 @@ because the source *root* of `losos-admin-ui` is `admin-ui/app`. That is a
 stronger guarantee than the `design-system` name filter it replaced, which a
 rename would have broken.
 
-**One look across the homepage, Nextcloud and Forgejo** (`admin-ui/themes/`).
-`tokens.css` is plain CSS on purpose. Both apps' themes ship it byte for byte
-as `losos-tokens.css` and map their own variables onto it, so a colour
-changed there moves all three.
+**One look across the homepage and Nextcloud** (`admin-ui/themes/`).
+`tokens.css` is plain CSS on purpose. Nextcloud's theme ships it byte for
+byte as `losos-tokens.css` and maps its own variables onto it, so a colour
+changed there moves both.
 
 Nextcloud gets a *theme folder*: `nextcloud-stack.nix` copies `themes/losos/`
 into the package, and the config sets `theme = "losos"`. Nextcloud resolves
 themes against its real server root, so it never finds a symlink beside the
-package. Forgejo gets `theme-losos-{auto,light,dark}.css` in
-`$FORGEJO_CUSTOM/public/assets/css/`, linked by tmpfiles natively and copied
-by the image's entrypoint, with `DEFAULT_THEME = losos-auto`. Forgejo stamps
-that on accounts at creation, so an existing account keeps its old theme
-until its owner switches.
+package.
 
-Owners see the two apps as **LosOS cloud** and **LosOS Git**. The theme
-folder's `defaults.php` names Nextcloud and Forgejo's `APP_NAME` names
-Forgejo. Both get logos drawn from `admin-ui/themes/brand/`. `marks.py` wraps
+Owners see Nextcloud as **LosOS cloud**: the theme folder's `defaults.php`
+names it, and it gets logos drawn from `admin-ui/themes/brand/`. `marks.py` wraps
 `salmon.png`, a live coho salmon cut out of a NOAA Fisheries photo, into the
 SVGs and copies it to the SPA and the handbook. The build renders every PNG
 and the `.ico` from those. On 31 October, by the viewer's own date, the admin
@@ -281,7 +289,7 @@ Matus's own photo. `brand/CREDITS.md` says where both pictures come from.
 The old pixel-art fish was dropped over a copyright worry and does not go
 back in. The rest of the
 upstream branding goes by config (no skeleton files, no help or sign-up
-links, no "Powered by") and two Forgejo template overrides.
+links, no "Powered by").
 
 Two details are easy to miss. Nextcloud's header filter inverts any logo it
 takes for its own white one, so `server.css` sets
@@ -322,7 +330,7 @@ exactly the origins in `losos.setup.finderOrigins` (an nginx map, asserted by
 
 **The `losos.*` option namespace** (`options.nix`). All project-specific
 knobs live under `options.losos`, with defaults in `defaults.nix`:
-`targetDrive`, `tpm.enable`, `sharingMyStorage`, `forgejo.enable`,
+`targetDrive`, `tpm.enable`, `sharingMyStorage`, `git.enable`,
 `nextcloud.*`, `cluster.*` (mesh join, compute window), `shared.fscrypt.*`,
 `upgradeFlakeUri`, `backend.package`,
 `admin.{enable,port,apiPort,tokenFile,ui}`, `proxy.*` (the appliance side of

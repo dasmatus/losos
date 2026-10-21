@@ -187,7 +187,7 @@ wann immer es mit der Box spricht, sodass Klonen und Pushen kein Passwort
 brauchen:
 
 ```sh
-git clone https://mattbox.local/forgejo/notshared/notes.git
+git clone https://mattbox.local/git/notshared/notes.git
 ```
 
 Hat die Box ihr eigenes Zertifikat, wird git angewiesen, genau den Schlüssel

@@ -33,7 +33,7 @@ na bootovacom oddiele.
 **LosOS cloud.** Nextcloud vo farbách zariadenia: súbory, fotky, kalendár,
 kontakty, poznámky, úlohy.
 
-**LosOS Git.** Forgejo vo farbách zariadenia: repozitáre.
+**LosOS Git.** Vlastný Git server zariadenia: repozitáre.
 
 **Trh.** Platba za zdieľaný disk a CPU a ich nákup, v USDC, Bitcoine alebo
 Monere, alebo kartou tam, kde edge karty prijíma. Funguje iba na edge LosOS.

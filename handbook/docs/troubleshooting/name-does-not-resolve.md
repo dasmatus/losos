@@ -34,9 +34,9 @@ most Linux desktops do. These do not:
 ![The banner under the salmon on the box's screen: the IP address works where the .local name does not.](../img/tty1-banner.png)
 
 - **Use the address.** Everything answers on it, the apps included. The
-  About pane shows which address your browser is using. Only two things
-  need the name: the `https://` certificate, which the box issues for the
-  name, and LosOS Git's clone URLs, which print the name.
+  About pane shows which address your browser is using. Only the
+  `https://` certificate needs the name, because the box issues it for
+  the name.
 - **On a VM host**, add a line to the host's `hosts` file. That file is
   `/etc/hosts` on Linux and macOS and
   `C:\Windows\System32\drivers\etc\hosts` on Windows. The line is

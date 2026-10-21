@@ -1880,7 +1880,6 @@ mod tests {
         let out = cmd_settings(&mut f).unwrap();
         assert_eq!(out["sharingMyStorage"], true);
         assert_eq!(out["nextcloudMode"], "container");
-        assert_eq!(out["forgejoMode"], "container");
         assert_eq!(out["hostName"], "mattbox");
         assert_eq!(out["apachePort"], 11000);
         assert_eq!(out["proxyEnable"], false);
@@ -3127,8 +3126,8 @@ mod tests {
             "editor": { "kind": "int", "min": 1 }, "nixType": "int" }),
         );
         options.push(
-            json!({ "name": "forgejo.site.landingPage", "group": "forgejo",
-            "editor": { "kind": "enum", "values": ["home", "explore"] }, "nixType": "enum" }),
+            json!({ "name": "git.site.defaultPrivate", "group": "git",
+            "editor": { "kind": "enum", "values": ["last", "public"] }, "nixType": "enum" }),
         );
         serde_json::from_value(json!({ "version": 1, "options": options })).unwrap()
     }
@@ -3148,7 +3147,7 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            ["nextcloud.site.trashDays", "forgejo.site.landingPage"]
+            ["nextcloud.site.trashDays", "git.site.defaultPrivate"]
         );
 
         let out = cmd_site_set(
@@ -3156,8 +3155,8 @@ mod tests {
             &[
                 ("nextcloud.site.trashDays".into(), Some("30".into())),
                 (
-                    "forgejo.site.landingPage".into(),
-                    Some("\"explore\"".into()),
+                    "git.site.defaultPrivate".into(),
+                    Some("\"public\"".into()),
                 ),
             ],
         )
@@ -3253,18 +3252,18 @@ mod tests {
     #[test]
     fn apply_is_gated_by_the_option_document() {
         let mut f = with_doc(FakeLosos::new());
-        let err = cmd_apply(&mut f, "{ losos.forgejo.enable = \"yes\"; }").unwrap_err();
+        let err = cmd_apply(&mut f, "{ losos.git.enable = \"yes\"; }").unwrap_err();
         let rejected = err
             .downcast_ref::<crate::options::Rejected>()
             .expect("typed, so the HTTP layer answers 400");
-        assert_eq!(rejected.0, "losos.forgejo.enable must be true or false");
+        assert_eq!(rejected.0, "losos.git.enable must be true or false");
         assert!(!f.spawned, "a refused apply rebuilds nothing");
         assert_eq!(f.commits.len(), 1, "and commits nothing");
 
         let err = cmd_apply(&mut f, "{ losos.tpm.enable = false; }").unwrap_err();
         assert!(err.downcast_ref::<crate::options::Rejected>().is_some());
 
-        cmd_apply(&mut f, "{ losos.forgejo.enable = false; }").unwrap();
+        cmd_apply(&mut f, "{ losos.git.enable = false; }").unwrap();
         assert!(f.spawned);
     }
 
@@ -3281,11 +3280,11 @@ mod tests {
     #[test]
     fn options_joins_what_overrides_sets() {
         let mut f = with_doc(FakeLosos::new());
-        cmd_apply(&mut f, "{ losos.forgejo.enable = false; }").unwrap();
+        cmd_apply(&mut f, "{ losos.git.enable = false; }").unwrap();
         let out = cmd_options(&mut f).unwrap();
         assert_eq!(out["available"], true);
         let opts = out["options"].as_array().unwrap();
-        let fe = opts.iter().find(|o| o["name"] == "forgejo.enable").unwrap();
+        let fe = opts.iter().find(|o| o["name"] == "git.enable").unwrap();
         assert_eq!(fe["set"], "false");
         assert_eq!(fe["editor"]["kind"], "bool");
         let hn = opts.iter().find(|o| o["name"] == "hostName").unwrap();
@@ -3351,7 +3350,7 @@ mod tests {
         let pushed = "f".repeat(40);
         f.remote_commits.push(pushed.clone());
         f.remote_overrides = Some(
-            "{ ... }:\n{\n  losos.sharingMyStorage = true;\n  losos.forgejo.enable = false;\n}\n"
+            "{ ... }:\n{\n  losos.sharingMyStorage = true;\n  losos.git.enable = false;\n}\n"
                 .to_string(),
         );
         let out = cmd_config_sync(&mut f).unwrap();
@@ -3373,7 +3372,7 @@ mod tests {
         assert!(f
             .read_overrides()
             .unwrap()
-            .contains("losos.forgejo.enable = false;"));
+            .contains("losos.git.enable = false;"));
         // Nothing was pushed back: the remote already has it.
         assert_eq!(f.pushed.len(), 1);
     }
@@ -3393,13 +3392,13 @@ mod tests {
         assert!(!f.spawned);
         assert_eq!(f.commits.last().unwrap().sha, before);
         // A value of the wrong type: the second gate.
-        f.remote_overrides = Some("{ losos.forgejo.enable = \"yes\"; }".to_string());
+        f.remote_overrides = Some("{ losos.git.enable = \"yes\"; }".to_string());
         let out = cmd_config_sync(&mut f).unwrap();
         assert_eq!(out["sync"]["state"], "refused");
         assert!(out["sync"]["detail"]
             .as_str()
             .unwrap()
-            .contains("losos.forgejo.enable must be true or false"));
+            .contains("losos.git.enable must be true or false"));
         // No overrides.nix at all in the pushed commit.
         f.remote_overrides = None;
         let out = cmd_config_sync(&mut f).unwrap();
@@ -3412,7 +3411,7 @@ mod tests {
         let mut f = with_doc(FakeLosos::new().with_config_repo());
         cmd_config_sync(&mut f).unwrap();
         f.remote_commits.push("d".repeat(40));
-        f.remote_overrides = Some("{ losos.forgejo.enable = false; }".to_string());
+        f.remote_overrides = Some("{ losos.git.enable = false; }".to_string());
         f.state.rebuild = Some(building("job-9", MSG_STARTED));
         let out = cmd_config_sync(&mut f).unwrap();
         assert_eq!(out["sync"]["state"], "waiting");

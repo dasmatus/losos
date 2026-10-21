@@ -47,8 +47,8 @@
 #
 # The whole product surface above the disk: the Nginx front door and its
 # LAN-only guard, the admin SPA, lososd and its Bearer-authed API, the
-# first-run setup wizard, the self-signed certificate, Nextcloud and Forgejo as
-# static pods in the box's own k3s cluster, the hardening baseline, and the
+# first-run setup wizard, the self-signed certificate, Nextcloud as a
+# static pod in the box's own k3s cluster, the hardening baseline, and the
 # no-shell-logins model (the image has no root password either — same as the
 # appliance; if you are debugging a kernel panic rather than demoing, add a
 # `users.users.root.initialHashedPassword` of your own to vmOverlay below).
@@ -225,8 +225,8 @@ let
 
     # 20 GiB, sparse — the qcow2 on disk is a fraction of this. Sized for what
     # the box does to itself after first boot rather than for the closure:
-    # k3s imports the Nextcloud and Forgejo image tarballs into containerd,
-    # which unpacks a second copy of both (~2.7 GiB) beside the ~2.9 GiB store
+    # k3s imports the Nextcloud image tarball into containerd,
+    # which unpacks a second copy of it (~2.7 GiB) beside the ~2.9 GiB store
     # this image ships, and then Nextcloud wants somewhere to put data.
     diskSize = 20480;
 
@@ -326,7 +326,7 @@ let
   # The plain ISO carries the installer and one small output, so a fresh box
   # fetches and builds the rest itself. Measured on a dev machine that closure
   # is 5.78 GiB over 882 store paths. Most of it substitutes from
-  # cache.nixos.org, but three things cannot: the Nextcloud, Forgejo and pause
+  # cache.nixos.org, but three things cannot: the Nextcloud and pause
   # image tarballs (849 MiB, and no public cache has them because dockerTools
   # builds them from this flake) and `losos-ctl` itself. A repurposed mini-PC
   # compresses multi-gigabyte layer tars and compiles Rust as part of its first

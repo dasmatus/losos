@@ -47,16 +47,6 @@ export default defineMessages({
     sk: "Účty môžu zdieľať súbory a kalendáre s ľuďmi na iných serveroch, cez ich adresu používateľ@server.",
     de: "Konten können Dateien und Kalender mit Leuten auf anderen Servern teilen, über deren Adresse nutzer@server.",
   },
-  "cloudApps.federation.git": {
-    en: "Federate with other Forgejo servers",
-    sk: "Federovať s inými servermi Forgejo",
-    de: "Mit anderen Forgejo-Servern föderieren",
-  },
-  "cloudApps.federation.gitDetail": {
-    en: "People on other servers can star your repositories and follow accounts here.",
-    sk: "Ľudia na iných serveroch môžu dávať hviezdičky vašim repozitárom a sledovať účty tu.",
-    de: "Leute auf anderen Servern können deine Repositorys mit Sternen versehen und Konten hier folgen.",
-  },
   "cloudApps.federation.needsSharing": {
     en: "Runs only while the box shares its disk, and sharing is off, so this does nothing for now.",
     sk: "Beží len vtedy, keď zariadenie zdieľa disk, a zdieľanie je vypnuté, takže toto zatiaľ nič nerobí.",

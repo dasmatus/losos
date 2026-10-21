@@ -229,7 +229,7 @@ On the box, lososd keeps the live domains in
 minutes and whenever the Network pane asks. The Nextcloud pod mounts that
 directory read-only, adds the names to `trusted_domains` per request, and
 uses a request's own domain for `overwritehost` when it is one of them. Only
-container mode does this. LosOS Git keeps its edge-name `ROOT_URL`.
+container mode does this.
 
 A box behind a local edge gets its domains routed too, through that local
 edge, once it has vouched for the local edge with a relay pass and joined

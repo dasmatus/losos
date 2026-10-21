@@ -22,7 +22,7 @@ Services on the same host:
 | ---------------- | ------------------------- |
 | Admin UI         | `<host>.local/`           |
 | Nextcloud        | `<host>.local/nextcloud`  |
-| Forgejo (opt-in) | `<host>.local/forgejo/`   |
+| LosOS Git        | `<host>.local/git/`       |
 | Handbook         | `<host>.local/handbook/`  |
 | [Lab](lab.md)       | `<host>.local/lab/`       |
 
@@ -155,25 +155,27 @@ a removal or a changed group reaches the apps at the next click too.
 Sessions live in a Redis of LosOS Login's own, on a socket only it can
 open, so a restart of LosOS Login or the nightly reboot signs nobody out.
 
-LosOS cloud and LosOS Git sign people in the same way when they run as
-pods, the default. nginx asks LosOS Login on each app's sign-in page and
-sends the person on in three headers, `X-Losos-Cloud-User`, `-Name` and
-`-Email`, which it sets on every request to either app so no client can
-send its own. The owner, in the `losos-owner` group, arrives as the
-`notshared` account in both; everyone else under their sign-in name.
-Nextcloud reads the headers with its user_saml app in environment-variable
-mode, Forgejo with its reverse-proxy sign-in, and each makes an account
-the first time; lososd then keeps the name and address in both apps in
-step with the people file. A person LosOS Login does not know is sent to it,
+LosOS cloud (as a pod, the default) and LosOS Git sign people in the same
+way. nginx asks LosOS Login and sends the person on in three headers,
+`X-Losos-Cloud-User`, `-Name` and `-Email`, which it sets on every request
+to either app so no client can send its own. The owner, in the
+`losos-owner` group, arrives as the `notshared` account in both; everyone
+else under their sign-in name. Nextcloud reads the headers with its
+user_saml app in environment-variable mode, LosOS Git itself, and each
+makes an account the first time; lososd then keeps the name and address in
+both apps in step with the people file. A request to LosOS Git that brings
+its own token in `Authorization` (git, the API) is not asked about. A person LosOS Login does not know is sent to it,
 from the LAN and through the edge alike; neither app shows its own sign-in
 page. Through the edge, the tunnel delivers from loopback with
 `X-Forwarded-Proto: https`, which nginx believes from loopback only, and
 lososd adds each public name the box answers on to LosOS Login's cookie
 domains. While LosOS Login starts, the apps answer 503 with a page that
-retries by itself. Both apps listen on loopback, and the
-firewall rejects a connection to either port from any process on the box
-but root, nginx and the app itself, so nothing on the box can name a
-person to them. The names `notshared`, `shared` and `losos` are kept for
+retries by itself. Nextcloud listens on loopback, and the firewall rejects
+a connection to its port from any process on the box but root, nginx and
+Nextcloud itself. LosOS Git reads the headers only on its Unix socket,
+`/run/losos-git/http.sock`, which only root and nginx may open; its
+loopback port, `127.0.0.1:3000`, takes tokens and never the headers. So
+nothing on the box can name a person to either app. The names `notshared`, `shared` and `losos` are kept for
 the box's own accounts.
 
 Each person with the `losos-account` group (Own account on the Users pane)
@@ -262,10 +264,8 @@ after of each in the body. **Settings, History** lists the last forty.
 With `losos.configRepo.enable` (the default) and LosOS Git on, lososd also
 keeps the configuration in a private repository on LosOS Git,
 `<owner>/losos-config`, owned by the admin's own account (`notshared`). The
-account is created on the first sync with the admin password and kept in
-step with it on every password change and each time a computer is set up
-for LosOS Git. A reconciler in lososd
-runs every 30 s:
+account is created on the first sync, as LosOS Git's administrator. A
+reconciler in lososd runs every 30 s:
 
 - it commits anything uncommitted and pushes the box's branch when LosOS
   Git is behind;
@@ -281,42 +281,26 @@ runs every 30 s:
 **Sync now** on the History pane runs one tick immediately. `losos-ctl
 config` prints the same document, and `losos-ctl config --sync` runs a tick.
 Secrets never enter the repository. `overrides.nix` carries option values
-only, and the token lososd authenticates to LosOS Git with lives in
-`/var/lib/forgejo/.losos-token`, outside `/etc/nixos`. There is no Forgejo
-Actions runner behind this. The box polls.
+only, and the token lososd authenticates to LosOS Git with is the admin
+token LosOS Git writes on its first start,
+`/var/lib/losos-git/admin-token`, outside `/etc/nixos`. There is no CI
+runner behind this. The box polls.
 
-The clone address is shown on the pane (`http://<box>/forgejo/<owner>/
-losos-config.git`). The repository is private, so it needs the admin's
-password. The daemon talks to Forgejo on loopback with a bot account,
-`losos`, that the Forgejo start-up script creates and mints a token for
-(`nix/forgejo-bootstrap.nix`).
+The clone address is shown on the pane (`http://<box>/git/<owner>/
+losos-config.git`). The repository is private, so a computer needs a token
+of its own (`losos git setup`, [The terminal client](../manual/terminal)).
+lososd talks to LosOS Git on its loopback port with the admin token, acting
+as the owner with `X-Losos-As` where a call is the owner's.
 
 ### Federation
 
-Federation runs only while the box shares its disk. Both federation options
-below are ANDed with `losos.sharingMyStorage`, the setting that unlocks the
-shared data pool (`lososInternal.federation` in `modules/options.nix`). With
-sharing off, neither LosOS Git nor LosOS cloud talks to other servers,
-whatever its own option says. The Apps pane greys both switches out with
-the reason, and the Advanced pane shows both rows as unavailable and links
-to them.
-
-`losos.forgejo.federation.enable` (default on) turns Forgejo's ActivityPub
-side on in both modes: `[federation] ENABLED` in app.ini, with
-`SHARE_USER_STATISTICS = false` so nodeinfo publishes no account or activity
-totals. The shipped Forgejo (16.x) federates stars (a repository's
-Settings → Federation lists the servers whose stars count), lets accounts be
-followed from other servers, and serves nodeinfo and one ActivityPub actor
-per account and repository under `/api/v1/activitypub/`; every inbound
-request must carry a valid HTTP signature. In container mode the front vhost
-adds exact-match routes for `/.well-known/nodeinfo` and
-`/.well-known/webfinger`, the two addresses other servers discover a box by,
-which Forgejo serves at the host's root rather than under `ROOT_URL`; they
-are not LAN-guarded, like `/forgejo/`. Reach follows `ROOT_URL`: through the
-edge it is `https://<proxy hostname>/forgejo/` and any server can federate
-with the box; on a LAN-only box it is `https://<host>.local/forgejo/`, so only
-other boxes on the same LAN can. `nix/tests/forgejo-federation.nix` boots the
-real Forgejo and asks it, with sharing on and then off.
+Federation runs only while the box shares its disk.
+`losos.nextcloud.federation.enable` is ANDed with `losos.sharingMyStorage`,
+the setting that unlocks the shared data pool (`lososInternal.federation`
+in `modules/options.nix`). With sharing off, LosOS cloud talks to no other
+server, whatever its own option says. The Apps pane greys the switch out
+with the reason, and the Advanced pane shows the row as unavailable and
+links to it. LosOS Git does not federate.
 
 `losos.nextcloud.federation.enable` (default on) is LosOS cloud's side:
 Federated Cloud Sharing (sharing with `user@host` accounts on other Nextcloud
@@ -358,12 +342,12 @@ box, accepted, and read back through WebDAV.
 The Apps pane carries the settings that hold for everyone on LosOS cloud
 and LosOS Git, the ones each app otherwise keeps on its own administration
 pages. Each field is an option under `losos.nextcloud.site.*` or
-`losos.forgejo.site.*`, so it goes through Apply, the gate, History and the
+`losos.git.site.*`, so it goes through Apply, the gate, History and the
 configuration repository like any other setting. The Advanced pane shows
 their values and links to the app's fold on the Apps pane (`/apps#cloud`,
 `/apps#git`) instead of drawing a second editor (`ON_PANE` in
-`admin-ui/app/src/lib/option-value.ts`). The two federation switches above
-are drawn there too, at the top of each fold.
+`admin-ui/app/src/lib/option-value.ts`). LosOS cloud's federation switch
+above is drawn there too, at the top of its fold.
 
 | Option | What it sets in the app |
 | --- | --- |
@@ -375,11 +359,9 @@ are drawn there too, at the top of each fold.
 | `losos.nextcloud.site.linkPassword` | `core` `shareapi_enforce_links_password` |
 | `losos.nextcloud.site.linkExpiryDays` | `core` `shareapi_default_expire_date`, `shareapi_enforce_expire_date`, `shareapi_expire_after_n_days` |
 | `losos.nextcloud.site.defaultQuotaGB` | `files` `default_quota` |
-| `losos.forgejo.site.requireSignIn` | `[service] REQUIRE_SIGNIN_VIEW` |
-| `losos.forgejo.site.keepEmailPrivate` | `[service] DEFAULT_KEEP_EMAIL_PRIVATE` |
-| `losos.forgejo.site.defaultPrivate` | `[repository] DEFAULT_PRIVATE` |
-| `losos.forgejo.site.pushCreate` | `[repository] ENABLE_PUSH_CREATE_USER` |
-| `losos.forgejo.site.landingPage` | `[server] LANDING_PAGE` |
+| `losos.git.site.requireSignIn` | `losos-git serve --require-sign-in` |
+| `losos.git.site.defaultPrivate` | `--public-by-default` when `"public"` |
+| `losos.git.site.pushCreate` | `--push-create` |
 
 A null Nextcloud option leaves that setting to Nextcloud. The first four
 are `config.php` keys: native mode puts them in the module's
@@ -395,14 +377,12 @@ switches included, so a change made there cannot drift from the box. The
 admin page still shows the value. `nix/tests/front-vhost.nix` checks the 403 and
 that other keys still reach Nextcloud.
 
-Forgejo's five are `app.ini` keys, which Forgejo's Site administration shows
-without a way to change them. Both modes read one attribute set,
-`lososInternal.forgejoSite`.
+LosOS Git's three are flags on its command line (`modules/git.nix`), so
+there is no page inside it to change them from.
 
 :::note[What stays in the apps]
 Everything an account sets for itself stays in the app. In LosOS Git, the
-owner's account stays Forgejo's administrator for what LosOS does not cover
-yet: Forgejo's database-backed settings and the account list. In LosOS
+owner's account is the administrator. In LosOS
 cloud no account is an administrator (next section), so mail delivery,
 background jobs and two-factor enforcement keep the values the box sets.
 :::
@@ -463,8 +443,9 @@ pane shows on request; without it nobody can open a backup.
 
 A backup holds:
 
-- `/var/lib/nextcloud` and `/var/lib/forgejo`, Nextcloud previews left out;
-- a `pg_dump` of the `nextcloud` and `forgejo` databases;
+- `/var/lib/nextcloud` and `/var/lib/losos-git`, Nextcloud previews left out;
+- a `pg_dump` of the `nextcloud` database and a copy of LosOS Git's SQLite
+  database taken with `.backup`, so a push during the backup cannot tear it;
 - the shared folder. When sharing is on it is an fscrypt policy, and Linux
   gives no ciphertext for a locked fscrypt file, so the script unlocks the
   policy for the copy and locks it again afterwards. restic's encryption

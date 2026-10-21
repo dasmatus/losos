@@ -12,10 +12,10 @@
 #   * the configuration repository — /etc/nixos is a git repository (the
 #     installer makes it one), lososd commits every change there, and with
 #     `losos.configRepo.enable` it keeps that repository in step with a private
-#     one on the box's own Forgejo, owned by the owner's account
-#     (backend/src/config_repo.rs). The daemon needs to know where Forgejo
-#     listens and where the bootstrap (nix/forgejo-bootstrap.nix) left the
-#     bot account's token; that is the environment below.
+#     one on LosOS Git, owned by the owner's account
+#     (backend/src/config_repo.rs). The daemon needs to know where LosOS Git
+#     listens and where it left its admin token (modules/git.nix); that is
+#     the environment below.
 #
 # Nothing here is the installer's business: the ISO imports neither this
 # module nor daemon.nix.
@@ -30,19 +30,9 @@
 let
   cfg = config.losos.configRepo;
   daemonOn = config.losos.backend.package != null;
-  # The repository needs Forgejo; without it the daemon commits locally and
-  # the History pane says so.
-  publish = daemonOn && cfg.enable && config.losos.forgejo.enable;
-
-  # Forgejo's loopback listener. Both ports are literals where they are set
-  # (modules/workloads.nix for the pod, modules/services.nix for the native
-  # service) and nothing off-box ever sees either, so they are repeated here
-  # rather than promoted to options.
-  forgejoPort = if config.losos.forgejo.mode == "container" then 3000 else 8888;
-
-  # Same path in both modes: the pod's hostPath and services.forgejo.stateDir
-  # are both /var/lib/forgejo, persisted by impermanence's whole-/var mount.
-  tokenFile = "/var/lib/forgejo/.losos-token";
+  # The repository needs LosOS Git; without it the daemon commits locally
+  # and the History pane says so.
+  publish = daemonOn && cfg.enable && config.losos.git.enable;
 
   doc = import ../nix/options-doc.nix { inherit lib options config; };
 in
@@ -68,8 +58,9 @@ in
         }
         // lib.optionalAttrs publish {
           LOSOS_CONFIG_REPO = "${cfg.owner}/${cfg.name}";
-          LOSOS_FORGEJO_URL = "http://127.0.0.1:${toString forgejoPort}";
-          LOSOS_FORGEJO_TOKEN_FILE = tokenFile;
+          # modules/git.nix: its loopback listener and the token it writes.
+          LOSOS_GIT_URL = "http://127.0.0.1:3000";
+          LOSOS_GIT_TOKEN_FILE = "/var/lib/losos-git/admin-token";
         };
       }
 
@@ -80,8 +71,9 @@ in
       # because lososd is the one writer of /etc/nixos and holds its lock
       # against a concurrent Apply. The `-` keeps a failure from stopping the
       # update: a box with no internet builds the tree it has, as before.
-      # Gated on autoUpgrade for the reason the Forgejo block below spells out:
-      # a definition here would otherwise create an empty nixos-upgrade unit.
+      # Gated on autoUpgrade, not on `ExecStartPre` alone: a definition under
+      # `systemd.services.nixos-upgrade` that evaluates to nothing still
+      # creates the entry, and NixOS then writes an empty unit.
       (lib.mkIf (cfg.upstream.enable && config.system.autoUpgrade.enable) {
         nixos-upgrade = {
           wants = [ "lososd.service" ];
@@ -90,21 +82,6 @@ in
             "-${config.losos.backend.package}/bin/losos-ctl config --update"
           ];
         };
-      })
-
-      # The bot account for the native service. The workload image carries
-      # the same snippet in its entrypoint (nix/images.nix). The mkIf sits
-      # on the whole attrset, not on `preStart`: a definition under
-      # `systemd.services.forgejo` that evaluates to nothing still creates the
-      # `forgejo` entry, and NixOS then writes an empty forgejo.service on a
-      # container-mode box that has no such service.
-      (lib.mkIf (config.losos.forgejo.mode == "native" && config.losos.forgejo.enable) {
-        forgejo.preStart = lib.mkAfter (
-          import ../nix/forgejo-bootstrap.nix {
-            forgejo = lib.getExe config.services.forgejo.package;
-            tokenFile = "${config.services.forgejo.stateDir}/.losos-token";
-          }
-        );
       })
     ];
   };

@@ -34,7 +34,7 @@ Der Schlüssel liegt auf der Boot-Partition.
 **LosOS cloud.** Nextcloud in den Farben der Box: Dateien, Fotos, Kalender,
 Kontakte, Notizen, Aufgaben.
 
-**LosOS Git.** Forgejo in den Farben der Box: Repositories.
+**LosOS Git.** Der eigene Git-Server der Box: Repositories.
 
 **Marktplatz.** Für geteilten Speicherplatz und geteilte CPU-Leistung bezahlt
 werden und selbst welche kaufen, in USDC, Bitcoin oder Monero, oder per

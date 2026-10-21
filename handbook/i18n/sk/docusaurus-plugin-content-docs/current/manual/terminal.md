@@ -177,7 +177,7 @@ uloží ho do kľúčenky. git ho potom dostane od `losos` vždy, keď sa rozpr�
 so zariadením, takže klonovanie a push nepotrebujú heslo:
 
 ```sh
-git clone https://mattbox.local/forgejo/notshared/notes.git
+git clone https://mattbox.local/git/notshared/notes.git
 ```
 
 Keď má zariadenie vlastný certifikát, git dostane pokyn prijať presne kľúč

@@ -5,7 +5,7 @@
 //!
 //! The local k3s server (`modules/cluster.nix`) runs no CNI, no kube-proxy
 //! and no DNS, and its one node is NotReady for life. That is on purpose and
-//! it is why Nextcloud and Forgejo are static pods. A chart from the
+//! it is why Nextcloud is a static pod. A chart from the
 //! catalogue knows none of this: its Deployment would sit Pending behind the
 //! not-ready taint, and its pods would never get a sandbox without a pod
 //! network. So every chart is rendered by Helm and then *shaped* by

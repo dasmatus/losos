@@ -230,7 +230,7 @@ fn the_configuration_repository_round_trip() {
 #[test]
 fn tokens_hold_their_scopes_and_owners_their_namespace() {
     let dir = scratch("scopes");
-    let s = start(&dir, &[]);
+    let s = start(&dir, &["--push-create"]);
     let admin = format!("token {}", s.admin);
     let write = owner_token(&s, r#""write:repository""#, "write");
     let read = owner_token(&s, r#""read:repository""#, "read");
@@ -411,7 +411,23 @@ fn repositories_on_disk_without_a_record_are_taken_in() {
     let repo = dir.join("state/repositories/notshared/old-project.git");
     std::fs::create_dir_all(repo.parent().unwrap()).unwrap();
     ok(git(&dir, &["init", "-q", "--bare", "-b", "master", repo.to_str().unwrap()]));
+    // Forgejo's hooks call a forgejo binary that is gone: left in place,
+    // they would refuse every push.
+    let hooks = repo.join("hooks");
+    std::fs::create_dir_all(hooks.join("pre-receive.d")).unwrap();
+    for hook in ["pre-receive", "update", "post-receive"] {
+        std::fs::write(hooks.join(hook), "#!/bin/sh\nexit 1\n").unwrap();
+        let f = hooks.join(hook);
+        let mut p = std::fs::metadata(&f).unwrap().permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut p, 0o755);
+        std::fs::set_permissions(&f, p).unwrap();
+    }
+    std::fs::write(hooks.join("pre-receive.d/gitea"), "#!/bin/sh\nexit 1\n").unwrap();
+    std::fs::write(hooks.join("update.sample"), "#!/bin/sh\n").unwrap();
     let s = start(&dir, &[]);
+    assert!(!hooks.join("pre-receive").exists(), "Forgejo's hook is gone");
+    assert!(!hooks.join("pre-receive.d").exists());
+    assert!(hooks.join("update.sample").exists(), "git's own samples stay");
     let token = owner_token(&s, r#""read:repository""#, "r");
     let (status, body) = http(
         s.port,

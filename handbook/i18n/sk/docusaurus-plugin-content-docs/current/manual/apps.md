@@ -33,30 +33,19 @@ v sekcii LosOS cloud.
 
 ## LosOS Git \{#losos-git}
 
-Vaše repozitáre, na `http://<address>/forgejo/`. Je to Forgejo v tých istých
-farbách. Pri prvom použití sa v ňom zaregistrujte, vedie si vlastné účty.
-Adresy na klonovanie používajú meno zariadenia, takže počítač, ktorý
-nepreloží `.local`, by mal použiť adresu. Ak zariadenie nie je na kód,
-vypnite LosOS Git na paneli **Aplikácie**.
+Vaše repozitáre, na `http://<address>/git/<účet>/<repozitár>.git`. LosOS
+Git je vlastný Git server zariadenia. Človek, ktorého pozná LosOS Login, v
+ňom má účet od prvej návštevy, pod tým istým menom. Počítač klonuje a
+pushuje s vlastným tokenom, ktorý si git pýta ako heslo: vyrobí ho
+`losos git setup` ([Terminálový klient](terminal)). Vlastná konfigurácia
+zariadenia je súkromný repozitár `notshared/losos-config`
+([Správa](../in-depth/administration)). Adresy na klonovanie sa riadia
+adresou, cez ktorú ste sa k zariadeniu dostali. Ak zariadenie nie je na kód, vypnite LosOS Git na paneli
+**Aplikácie**.
 
 ### Federácia \{#federation}
 
-LosOS Git sa cez ActivityPub rozpráva s inými servermi Forgejo. Forgejo to
-stále označuje za experimentálne. Hviezdičky, ktoré vašim repozitárom dajú
-ľudia na inom serveri, sa započítajú aj tu. Ľudia na iných serveroch môžu
-sledovať účet na vašom zariadení a vidieť, čo robí. Zariadenie odpovedá aj
-na adrese, cez ktorú fediverse hľadá servery, `/.well-known/nodeinfo`. To
-všetko siaha tak ďaleko ako samotné zariadenie. Cez [edge](../types/official-edge)
-je to internet. Na zariadení, ktoré je iba vo vašej lokálnej sieti, sú to
-ostatné zariadenia v tej sieti. Zariadenie nikdy nezverejňuje, koľko má
-účtov ani aké sú aktívne.
-
-Ak sa chcete zapojiť, vypíšte na stránke repozitára
-**Nastavenia → Federácia** ostatné servery, ktorých hviezdičky sa majú
-počítať. Federáciu úplne vypnete prepínačom **Federovať s inými servermi
-Forgejo** v sekcii LosOS Git na paneli **Aplikácie**.
-
-Federuje aj LosOS cloud: súbory a kalendáre môžete zdieľať s ľuďmi, ktorí
+LosOS cloud federuje: súbory a kalendáre môžete zdieľať s ľuďmi, ktorí
 majú účty na iných serveroch Nextcloud, podľa ich adresy `user@server`;
 vlastník iného zariadenia je `notshared@inezariadenie.local/nextcloud`.
 Vypne to prepínač **Zdieľať s inými servermi Nextcloud** v sekcii LosOS
@@ -66,10 +55,10 @@ každé zariadenie vyrobí samo, čo Nextcloud sám odmieta. Tak sa dostane
 k ostatným zariadeniam v tej istej sieti.
 
 :::note[Federácia potrebuje zdieľanie disku]
-Oba druhy federácie fungujú iba vtedy, keď zariadenie zdieľa svoj disk
+Federácia funguje iba vtedy, keď zariadenie zdieľa svoj disk
 (`losos.sharingMyStorage`), pretože iba vtedy je zdieľaná časť disku
 odomknutá. So zdieľaním vypnutým sa zariadenie nerozpráva so žiadnym iným
-serverom a panel **Aplikácie** ukazuje oba prepínače federácie sivé.
+serverom a panel **Aplikácie** ukazuje prepínač federácie sivý.
 :::
 
 ## Panel Aplikácie \{#the-apps-pane}
@@ -109,8 +98,8 @@ prináša, sa dajú vypnúť, ale nie odstrániť.
 
 V sekciách LosOS cloud a LosOS Git má panel Aplikácie nastavenia, ktoré
 platia pre každý účet v danej aplikácii. Inak by ste ich našli na vlastných
-administrátorských stránkach každej aplikácie. Každá sekcia začína
-prepínačom federácie danej aplikácie ([Federácia](#federation)).
+administrátorských stránkach každej aplikácie. Sekcia LosOS cloud začína
+svojím prepínačom federácie ([Federácia](#federation)).
 
 Pre LosOS cloud: jazyk prihlasovacej stránky a účtov, ktoré si žiadny
 nevybrali, krajina, do ktorej patrí telefónne číslo bez predvoľby krajiny,
@@ -119,10 +108,9 @@ po koľkých dňoch odkazy prestanú fungovať, koľko miesta dostane nový úč
 ako dlho sa uchováva kôš a staré verzie. Prázdne pole nechá voľbu na LosOS
 cloud.
 
-Pre LosOS Git: či niečo vidia iba prihlásené účty, čo návštevník uvidí ako
-prvé, či nový repozitár začína ako súkromný, verejný alebo ako posledný
-repozitár účtu, či je e-mailová adresa nového účtu skrytá a či push do
-repozitára, ktorý ešte neexistuje, ho vytvorí.
+Pre LosOS Git: či niečo vidia iba prihlásené účty, či nový repozitár
+začína ako súkromný, verejný alebo ako posledný repozitár účtu a či push
+do repozitára, ktorý ešte neexistuje, ho vytvorí.
 
 ![Panel Aplikácie s nastaveniami pre všetkých v LosOS cloud a LosOS Git.](@site/docs/img/apps-site-settings-sk.png)
 

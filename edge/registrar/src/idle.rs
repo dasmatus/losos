@@ -18,7 +18,7 @@
 //! clever ones are wrong here:
 //!
 //!   * Per-process accounting would have to know which processes are "the
-//!     owner's". On this box that is Nextcloud, Forgejo, Postgres, Redis and
+//!     owner's". On this box that is Nextcloud, LosOS Git, Postgres, Redis and
 //!     two Kubernetes instances, all of which run whether or not anybody is
 //!     awake. There is no session to attribute work to; there is no session at
 //!     all, because there are no logins.

@@ -45,12 +45,12 @@ pub const MAX_PINS: usize = 24;
 pub const MAX_PATH_BYTES: usize = 1024;
 /// Longest catalogue id of a LosOS cloud app.
 pub const MAX_APP_ID_CHARS: usize = 24;
-/// Longest owner or repository name on LosOS Git (Forgejo's own limit).
+/// Longest owner or repository name on LosOS Git (`crate::forge::names::MAX_REPO`).
 pub const MAX_REPO_PART_CHARS: usize = 100;
 /// Most entries one folder listing returns; the rest are left out and the
 /// answer says so.
 pub const MAX_ENTRIES: usize = 500;
-/// Most repositories one listing returns (Forgejo's page size).
+/// Most repositories one listing returns (one page).
 pub const MAX_REPOS: usize = 50;
 /// Most results one search of LosOS cloud returns.
 pub const MAX_HITS: usize = 50;

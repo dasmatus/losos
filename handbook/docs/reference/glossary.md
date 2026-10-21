@@ -31,7 +31,7 @@ sits on the boot partition.
 **LosOS cloud.** Nextcloud, in the box's colours: files, photos, calendar,
 contacts, notes, tasks.
 
-**LosOS Git.** Forgejo, in the box's colours: repositories.
+**LosOS Git.** The box's own Git server: repositories.
 
 **Market.** Being paid for shared disk and CPU, and buying some, in USDC,
 Bitcoin or Monero, or by card where the edge takes cards. It runs on the

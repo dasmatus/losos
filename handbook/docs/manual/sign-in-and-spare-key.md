@@ -76,11 +76,11 @@ LosOS cloud's network folder takes your LosOS Login name and password on
 the box's network, and an app password through the internet; see
 [Files on your computer](files-on-your-computer).
 
-**Log out** in LosOS cloud also signs you out of LosOS Login. LosOS Git's
-**Sign out** does not: while you are signed in to LosOS Login, LosOS Git
-signs you straight back in. Sign out of LosOS Login (in the admin pages or
-in LosOS cloud) to leave both. An app tab that is already open stays signed
-in until you sign out of that app too.
+**Log out** in LosOS cloud also signs you out of LosOS Login. LosOS Git
+keeps no sign-in of its own: it asks LosOS Login on every page, so signing
+out of LosOS Login (in the admin pages or in LosOS cloud) signs you out of
+it too. A LosOS cloud tab that is already open stays signed in until you
+sign out of LosOS cloud too.
 
 ## Who sees what
 

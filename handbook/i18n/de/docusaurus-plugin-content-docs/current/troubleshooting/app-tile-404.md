@@ -52,11 +52,3 @@ Platzhalter gibt die Box ihm nie. Du siehst diese Seite, wenn:
 - du eine Box von vor dem 6. Oktober 2026 über die IP-Adresse erreicht
   hast. Pull Request #65 hat das Vertrauen pro Anfrage eingeführt. Nimm
   bis zum Update `<name>.local`.
-
-## Links in LosOS Git zeigen den falschen Namen \{#losos-git-links-show-the-wrong-name}
-
-LosOS Git zeigt Clone-URLs mit dem `.local`-Namen der Box an, auch wenn du
-sie über die Adresse erreicht hast. Die Seiten funktionieren so oder so.
-Für `git clone` setzt du die Adresse an die Stelle des Namens, oder du
-trägst den Namen in deine hosts-Datei ein, wie es
-[Der Name wird nicht aufgelöst](name-does-not-resolve) beschreibt.

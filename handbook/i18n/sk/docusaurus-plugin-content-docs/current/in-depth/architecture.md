@@ -48,10 +48,10 @@ a formát komunikácie v [`backend/schema.json`](https://github.com/dasmatus/los
 
 ## Pracovné záťaže {#workloads}
 
-Nextcloud a Forgejo bežia vo vlastnom k3s klastri zariadenia
-(`losos.<svc>.mode = "container"`) alebo natívne na hostiteľovi. Pody
-používajú `hostNetwork`. nginx je jediná služba na verejných portoch a
-smeruje podľa cesty.
+Nextcloud beží vo vlastnom k3s klastri zariadenia
+(`losos.nextcloud.mode = "container"`) alebo natívne na hostiteľovi. Pody
+používajú `hostNetwork`. LosOS Git je služba na hostiteľovi. nginx je
+jediná služba na verejných portoch a smeruje podľa cesty.
 
 ## Rozloženie repozitára {#repository-layout}
 
@@ -225,16 +225,15 @@ a akékoľvek `${` a pomenuje kľúč, ktorý odmietol.
 
 Každé použitie zmien (apply), zmena režimu a reset je commit v `/etc/nixos`,
 repozitári, ktorý vytvoril inštalátor. Zosúlaďovacie vlákno v lososd sa
-dopytuje každých 30 s. Vytvorí administrátorov účet vo Forgejo (`notshared`,
-s heslom vlastníka, udržiavaným v súlade pri zmene hesla a nastavení počítača) a
-súkromný repozitár `losos-config`. Robí to cez účet bota, ktorého token
-vyrobí štartovací skript Forgejo (`nix/forgejo-bootstrap.nix`, token v
-`/var/lib/forgejo/.losos-token`). Keď Forgejo zaostáva, pushne. Keď klon
-pushol dopredu, urobí fast-forward, nový `overrides.nix` prepustí rovnakou
-bránou a spustí prestavbu. Rozdvojenú históriu nahlási a nikdy sa jej
-nedotkne. Za tým všetkým zámerne **nie je žiadny runner Forgejo Actions**.
+dopytuje každých 30 s. Vytvorí administrátorov účet v LosOS Git
+(`notshared`, správca) a súkromný repozitár `losos-config`, s admin
+tokenom, ktorý LosOS Git zapíše pri prvom štarte
+(`/var/lib/losos-git/admin-token`). Keď LosOS Git zaostáva, pushne. Keď
+klon pushol dopredu, urobí fast-forward, nový `overrides.nix` prepustí
+rovnakou bránou a spustí prestavbu. Rozdvojenú históriu nahlási a nikdy sa
+jej nedotkne. Za tým všetkým zámerne **nie je žiadny CI runner**.
 
-Panel Rozšírené odkazuje na šestnásť nastavení, ktoré vlastnia ostatné panely,
+Panel Rozšírené odkazuje na pätnásť nastavení, ktoré vlastnia ostatné panely,
 namiesto toho, aby ich upravoval druhýkrát. `OWNED` v
 `admin-ui/app/src/lib/option-value.ts` a `OWNED_NAMES` v `lib/api.ts` sú
 tento zoznam a `buildOverridesNix` podľa neho filtruje ďalšie kľúče, aby
@@ -246,13 +245,26 @@ zoznam je jeden riadok `[ "a" "b" ]`, iba reťazce.
 **Pracovné záťaže a jediné predné dvere** (`modules/containers.nix`,
 `modules/workloads.nix`, `modules/cluster.nix`,
 `modules/nextcloud-common.nix`). Rootless Podman je preč a systemd-nspawn
-tiež. Keď `losos.<svc>.mode == "container"`, Nextcloud a Forgejo bežia ako
-Kubernetes záťaže vo vlastnom lokálnom k3s klastri zariadenia. Zdieľaná
+tiež. Keď `losos.nextcloud.mode == "container"`, Nextcloud beží ako
+Kubernetes záťaž vo vlastnom lokálnom k3s klastri zariadenia. Zdieľaná
 konfigurácia Nextcloudu stále žije v `nextcloud-common.nix`, takže natívny a
 kontajnerový režim sa nemôžu rozísť. nginx je jediný proces, ktorý drží
 verejné porty. Smeruje podľa cesty na mDNS mene zariadenia
-(`<hostName>.local:80/nextcloud`, `:80/forgejo`) a na tom istom vhoste `:80`
+(`<hostName>.local:80/nextcloud`, `:80/git/`) a na tom istom vhoste `:80`
 servíruje administračnú SPA.
+
+**LosOS Git** (`modules/git.nix`, `backend/src/forge/`, binárka
+`losos-git` z crate lososd). Git server zariadenia, pod vlastným
+používateľom. Smart HTTP gitu (`git-upload-pack` a `git-receive-pack
+--stateless-rpc`, vrátane protokolu v2) prúdi oboma smermi, účty, tokeny a
+záznamy repozitárov sú jeden súbor SQLite a repozitáre sú holé pod
+`/var/lib/losos-git/repositories/<owner>/<name>.git`. Počúva dvakrát: na
+`/run/losos-git/http.sock`, ktorý smie otvoriť iba nginx a ktorý je jediné
+miesto, kde verí človeku, ktorého LosOS Login pomenuje v hlavičkách
+`X-Losos-Cloud-*`, a na `127.0.0.1:3000` iba pre tokeny, kde lososd drží
+repozitár konfigurácie a vyrába tokeny počítačov. Token je uložený ako
+jeho SHA-256 a nesie rozsahy. Repozitáre, ktoré na zariadení nechal
+Forgejo, sa pri prvom štarte presunú a prevezmú bez svojich hookov.
 
 `admin-ui/design-system/` (`tokens.css` a `losos.css`, plus obalový balík
 `react/` pre claude.ai/design) je iba pre vývojársky stroj a už sa vôbec
@@ -263,23 +275,18 @@ kľúče témy Tailwind v4. Dizajnový systém zostáva mimo Nix closure, preto�
 než filter podľa názvu `design-system`, ktorý nahradil a ktorý by
 premenovanie pokazilo.
 
-**Jeden vzhľad pre domovskú stránku, Nextcloud a Forgejo** (`admin-ui/themes/`).
-`tokens.css` je zámerne čisté CSS. Témy oboch aplikácií ho dodávajú bajt po
-bajte ako `losos-tokens.css` a mapujú naň vlastné premenné, takže farba
-zmenená tam pohne všetkými tromi.
+**Jeden vzhľad pre domovskú stránku a Nextcloud** (`admin-ui/themes/`).
+`tokens.css` je zámerne čisté CSS. Téma Nextcloudu ho dodáva bajt po bajte
+ako `losos-tokens.css` a mapuje naň vlastné premenné, takže farba zmenená
+tam pohne oboma.
 
 Nextcloud dostane *priečinok témy*: `nextcloud-stack.nix` skopíruje
 `themes/losos/` do balíka a konfigurácia nastaví `theme = "losos"`. Nextcloud
 hľadá témy voči svojmu skutočnému koreňu servera, takže symbolický odkaz
-vedľa balíka nikdy nenájde. Forgejo dostane `theme-losos-{auto,light,dark}.css`
-v `$FORGEJO_CUSTOM/public/assets/css/`, natívne prepojené cez tmpfiles a
-skopírované vstupným bodom obrazu, s `DEFAULT_THEME = losos-auto`. Forgejo to
-vtlačí účtom pri ich vytvorení, takže existujúci účet si ponechá starú tému,
-kým ju jeho vlastník neprepne.
+vedľa balíka nikdy nenájde.
 
-Vlastníci vidia tieto dve aplikácie ako **LosOS cloud** a **LosOS Git**.
-`defaults.php` v priečinku témy pomenúva Nextcloud a `APP_NAME` vo Forgejo
-pomenúva Forgejo. Obe dostanú logá nakreslené z `admin-ui/themes/brand/`.
+Vlastníci vidia Nextcloud ako **LosOS cloud**: pomenúva ho `defaults.php`
+v priečinku témy a dostane logá nakreslené z `admin-ui/themes/brand/`.
 `marks.py` zabalí `salmon.png`, živého lososa kisuča vystrihnutého z
 fotografie NOAA Fisheries, do SVG a skopíruje ho do SPA a príručky. Zostavenie
 z nich vyrenderuje každé PNG aj `.ico`. 31. októbra, podľa vlastného dátumu
@@ -288,8 +295,7 @@ návštevníka, ukážu administračné stránky a príručka namiesto toho
 uvádza, odkiaľ obe obrázky pochádzajú. Stará pixel-artová ryba bola
 odstránená pre obavy z autorských práv a späť sa nevracia. Zvyšok
 značky upstreamu sa rieši konfiguráciou (žiadne súbory skeleton, žiadne
-odkazy na pomoc ani registráciu, žiadne „Powered by“) a dvoma prepísanými
-šablónami Forgejo.
+odkazy na pomoc ani registráciu, žiadne „Powered by“).
 
 Dva detaily sa ľahko prehliadnu. Filter hlavičky Nextcloudu invertuje každé
 logo, ktoré považuje za svoje vlastné biele, preto `server.css` nastavuje
@@ -331,7 +337,7 @@ presne originy v `losos.setup.finderOrigins` (nginx map, overený v
 **Menný priestor volieb `losos.*`** (`options.nix`). Všetky nastavenia
 špecifické pre projekt sú pod `options.losos`, s predvolenými hodnotami v
 `defaults.nix`: `targetDrive`, `tpm.enable`, `sharingMyStorage`,
-`forgejo.enable`, `nextcloud.*`, `cluster.*` (pripojenie k mesh, výpočtové
+`git.enable`, `nextcloud.*`, `cluster.*` (pripojenie k mesh, výpočtové
 okno), `shared.fscrypt.*`, `upgradeFlakeUri`, `backend.package`,
 `admin.{enable,port,apiPort,tokenFile,ui}`, `proxy.*` (strana zariadenia v
 master proxy) a `edge.*` (strana VPS, používaná cez výstup flaku

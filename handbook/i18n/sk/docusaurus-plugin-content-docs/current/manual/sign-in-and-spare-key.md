@@ -81,11 +81,11 @@ tokeny. Sieťový priečinok LosOS cloud berie v sieti zariadenia vaše meno a
 heslo z LosOS Login a cez internet heslo aplikácie; pozrite
 [Súbory vo vašom počítači](files-on-your-computer).
 
-**Odhlásiť sa** v LosOS cloud vás odhlási aj z LosOS Login. **Odhlásiť sa**
-v LosOS Git nie: kým ste prihlásení v LosOS Login, LosOS Git vás hneď
-prihlási znova. Z oboch odídete odhlásením z LosOS Login (v správcovských
-stránkach alebo v LosOS cloud). Karta aplikácie, ktorá je už otvorená, zostane
-prihlásená, kým sa neodhlásite aj z tej aplikácie.
+**Odhlásiť sa** v LosOS cloud vás odhlási aj z LosOS Login. LosOS Git si
+nevedie vlastné prihlásenie: na každej stránke sa pýta LosOS Login, takže
+odhlásenie z LosOS Login (v správcovských stránkach alebo v LosOS cloud)
+vás odhlási aj z neho. Karta LosOS cloud, ktorá je už otvorená, zostane
+prihlásená, kým sa neodhlásite aj z LosOS cloud.
 
 ## Kto čo vidí \{#who-sees-what}
 

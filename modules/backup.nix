@@ -28,7 +28,7 @@
 # typed, on /run). None of them is ever an argument, so none is in `ps` or the
 # journal.
 #
-# WHY THE WIPE IS AT BOOT. On a running box Nextcloud, Forgejo, PostgreSQL,
+# WHY THE WIPE IS AT BOOT. On a running box Nextcloud, LosOS Git, PostgreSQL,
 # both Kubernetes instances and lososd itself hold files open in exactly the
 # directories that have to go. Deleting them underneath live services leaves
 # half-written state behind for whatever restarts first. Early in the next
@@ -66,12 +66,12 @@ let
   # and a restore puts each one back where it came from.
   appDirs = [
     "/var/lib/nextcloud"
-    "/var/lib/forgejo"
+    "/var/lib/losos-git"
   ];
-  databases = [
-    "nextcloud"
-    "forgejo"
-  ];
+  databases = [ "nextcloud" ];
+  # LosOS Git's records (modules/git.nix), copied whole through SQLite's own
+  # backup so a write in the middle of the copy cannot tear it.
+  gitDb = "/var/lib/losos-git/git.db";
   proxyToken = toString config.losos.proxy.tokenFile;
 
   # Opening the fscrypt domain for the length of a copy, and closing it again
@@ -154,6 +154,7 @@ let
     pkgs.util-linux
     pkgs.systemd
     pkgs.rsync
+    pkgs.sqlite
     pg
   ]
   ++ lib.optional fscryptOn fs.package
@@ -188,7 +189,7 @@ let
       fi
 
       rm -rf "$stage"
-      mkdir -p "$stage/databases" "$stage/settings" "$stage/look" "$stage/identity"
+      mkdir -p "$stage/databases" "$stage/settings" "$stage/look" "$stage/identity" "$stage/git"
 
       if systemctl is-active --quiet postgresql.service; then
         for db in ${lib.escapeShellArgs databases}; do
@@ -197,6 +198,11 @@ let
             runuser -u postgres -- pg_dump --format=custom "$db" > "$stage/databases/$db.pgdump"
           fi
         done
+      fi
+
+      if [ -f ${gitDb} ]; then
+        echo "backup: copying LosOS Git's records"
+        sqlite3 ${gitDb} ".backup '$stage/git/git.db'"
       fi
 
       if [ -f /etc/nixos/modules/overrides.nix ]; then
@@ -269,9 +275,9 @@ let
           echo "restore: starting the apps"
           ${
             if ncContainer then
-              "systemctl start k3s.service || true"
+              "systemctl start k3s.service losos-git.service || true"
             else
-              "systemctl start phpfpm-nextcloud.service nextcloud-cron.timer forgejo.service || true"
+              "systemctl start phpfpm-nextcloud.service nextcloud-cron.timer losos-git.service || true"
           }
           stopped=0
         fi
@@ -301,13 +307,13 @@ let
           ''
             # Stopping k3s leaves its pods running; stop them through the
             # runtime so nothing writes while the files are swapped.
-            systemctl stop k3s.service || true
+            systemctl stop k3s.service losos-git.service || true
             crictl --runtime-endpoint ${localCri} pods --quiet \
               | xargs -r crictl --runtime-endpoint ${localCri} stopp || true
           ''
         else
           ''
-            systemctl stop nextcloud-cron.timer phpfpm-nextcloud.service forgejo.service || true
+            systemctl stop nextcloud-cron.timer phpfpm-nextcloud.service losos-git.service || true
           ''
       }
 
@@ -318,6 +324,13 @@ let
           rsync -aHAX --numeric-ids --delete "$out$p/" "$p/"
         fi
       done
+
+      if [ -s "$staged/git/git.db" ]; then
+        echo "restore: putting back LosOS Git's records"
+        rm -f ${gitDb}-wal ${gitDb}-shm
+        # losos-git's uid and gid (modules/git.nix).
+        install -m 0600 -o 1003 -g 1003 "$staged/git/git.db" ${gitDb}
+      fi
 
       if systemctl is-active --quiet postgresql.service; then
         for dump in "$staged"/databases/*.pgdump; do
@@ -375,7 +388,7 @@ let
   # the box builds from), not /etc/keys (what unlocks the disk).
   wipeDirs = [
     "/persist/var/lib/nextcloud"
-    "/persist/var/lib/forgejo"
+    "/persist/var/lib/losos-git"
     "/persist/var/lib/postgresql"
     "/persist/var/lib/redis-nextcloud"
     "/persist/var/lib/losos"

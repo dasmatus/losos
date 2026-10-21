@@ -1,5 +1,5 @@
 {
-  description = "losos — stateless NixOS appliance: Nextcloud and Forgejo as k3s workloads, mesh storage and compute on rke2/Longhorn, auto-upgrade, midnight reboot, TPM-or-keyfile FDE";
+  description = "losos — stateless NixOS appliance: Nextcloud as a k3s workload, its own Git server, mesh storage and compute on rke2/Longhorn, auto-upgrade, midnight reboot, TPM-or-keyfile FDE";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -298,8 +298,8 @@
             ./modules/containers.nix
             # The local k3s cluster + the mesh rke2 agent, and the workload
             # manifests the local cluster runs. These must be imported together
-            # with containers.nix: that file now proxies /nextcloud and
-            # /forgejo to loopback ports that only these two modules make
+            # with containers.nix: that file now proxies /nextcloud to
+            # a loopback port that only these two modules make
             # anything listen on, so dropping either leaves the front door
             # serving 502s.
             ./modules/cluster.nix
@@ -330,6 +330,8 @@
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
             ./modules/lab.nix
+            # LosOS Git, the box's Git server (backend/src/forge/).
+            ./modules/git.nix
             # The option document and the configuration repository on LosOS
             # Git (modules/config-repo.nix, backend/src/{options,config_repo}.rs).
             ./modules/config-repo.nix
@@ -456,10 +458,10 @@
         # (nix/tests/search.nix).
         losos-search = import ./nix/tests/search.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
-        # The real Forgejo with losos.forgejo.federation on, asked what another
-        # server would ask, in both deployment modes; then off, and gone
-        # (nix/tests/forgejo-federation.nix).
-        losos-forgejo-federation = import ./nix/tests/forgejo-federation.nix { inherit pkgs; };
+        # LosOS Git: Forgejo's repositories moved in, the configuration
+        # repository's round trip through lososd, clone and push through
+        # nginx, and who it believes (nix/tests/git.nix).
+        losos-git = import ./nix/tests/git.nix { inherit pkgs; };
         # The signed installer medium under OVMF's Secure Boot build: the
         # real ISO (plus the test backdoor) signed with a throwaway key the
         # sandbox makes, boots with that key enrolled beside Microsoft's and

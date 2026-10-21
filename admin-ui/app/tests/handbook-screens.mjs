@@ -34,7 +34,6 @@ const NOW = Date.UTC(2026, 9, 8, 9, 30); // 2026-10-08 09:30Z, so dates in shots
 const SETTINGS = {
   sharingMyStorage: false,
   nextcloudMode: 'container',
-  forgejoMode: 'container',
   hostName: 'mattbox',
   https: true,
   gpuEnable: false,
@@ -278,9 +277,9 @@ const CONFIG = {
   repository: {
     owner: 'notshared',
     name: 'losos-config',
-    url: '/forgejo/notshared/losos-config',
-    clone: 'http://mattbox.local/forgejo/notshared/losos-config.git',
-    viaForgejo: true,
+    url: '/git/notshared/losos-config',
+    clone: 'http://mattbox.local/git/notshared/losos-config.git',
+    viaServer: true,
   },
   head: { sha: 'b'.repeat(40), branch: 'main' },
   log: [
@@ -396,7 +395,7 @@ const options = (overrides = {}) => ({
   excluded: DOC.excluded,
 });
 /* GET /api/site: the settings of LosOS cloud and LosOS Git only. */
-const SITE_OPTION = /^(nextcloud|forgejo)\.(site\.|federation\.enable$)/;
+const SITE_OPTION = /^(nextcloud\.(site\.|federation\.enable$)|git\.site\.)/;
 const site = (overrides = {}) => {
   const doc = options(overrides);
   return { ...doc, options: doc.options.filter((o) => SITE_OPTION.test(o.name)), excluded: {} };
@@ -623,7 +622,7 @@ async function open({
   });
   // The app tiles probe LosOS cloud and LosOS Git; both answer.
   await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true, version: '32.0.1.2', productname: 'LosOS cloud' }));
-  await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>LosOS Git</title>' }));
+  await page.route('**/git/api/v1/version', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>LosOS Git</title>' }));
   // The wizard's frame: what Nextcloud's <head> carries once the owner is
   // signed in, over an empty body. The shot that uses it is clipped above
   // the frame, so nothing of the app is drawn, let alone invented.

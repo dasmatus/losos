@@ -35,30 +35,20 @@ stattdessen im Bereich **Apps**, im Abschnitt LosOS cloud.
 
 ## LosOS Git \{#losos-git}
 
-Deine Repositorys, unter `http://<address>/forgejo/`. Das ist Forgejo in
-denselben Farben. Registriere dich beim ersten Mal darin. Es führt eigene
-Konten. Clone-URLs verwenden den Namen der Box; ein Rechner, der `.local`
-nicht auflöst, sollte stattdessen die Adresse verwenden. Schalte es im
-Bereich **Apps** ab, wenn die Box nicht für Code gedacht ist.
+Deine Repositorys, unter `http://<address>/git/<konto>/<repository>.git`.
+LosOS Git ist der eigene Git-Server der Box. Wen LosOS Login kennt, hat
+darin ab dem ersten Besuch ein Konto, unter demselben Namen. Ein Rechner
+klont und pusht mit einem eigenen Token, das git als Passwort abfragt:
+`losos git setup` erstellt eines ([Der Terminal-Client](terminal)). Die
+eigene Konfiguration der Box ist das private Repository
+`notshared/losos-config` ([Administration](../in-depth/administration)).
+Clone-Adressen folgen der Adresse, über die du die Box erreicht hast.
+Schalte es im Bereich
+**Apps** ab, wenn die Box nicht für Code gedacht ist.
 
 ### Föderation \{#federation}
 
-LosOS Git spricht ActivityPub mit anderen Forgejo-Servern. Forgejo nennt das
-noch experimentell. Sterne, die Leute auf einem anderen Server deinen
-Repositorys geben, zählen hier. Leute auf anderen Servern können einem Konto
-auf deiner Box folgen und sehen, was es tut. Die Box antwortet außerdem auf
-die Erkennungsadresse des Fediverse, `/.well-known/nodeinfo`. All das reicht
-so weit wie die Box selbst. Über eine [Edge](../types/official-edge) ist das
-das Internet. Bei einer Box, die nur in deinem lokalen Netz ist, sind es die
-anderen Boxen in diesem Netz. Die Box veröffentlicht nie, wie viele Konten
-sie hat oder wie aktiv sie sind.
-
-Um mitzumachen, trägst du auf der Seite **Einstellungen → Föderation** eines
-Repositorys die anderen Server ein, deren Sterne zählen. Um die Föderation
-ganz abzuschalten, schalte **Mit anderen Forgejo-Servern föderieren** im
-Abschnitt LosOS Git des Bereichs **Apps** aus.
-
-LosOS cloud föderiert ebenfalls: Du kannst Dateien und Kalender mit Leuten
+LosOS cloud föderiert: Du kannst Dateien und Kalender mit Leuten
 teilen, deren Konten auf anderen Nextcloud-Servern liegen, über ihre Adresse
 `user@server`. Der Besitzer einer anderen Box ist
 `notshared@andereBox.local/nextcloud`. **Mit anderen Nextcloud-Servern
@@ -69,10 +59,10 @@ ausstellt, was Nextcloud von sich aus ablehnt. So erreicht es andere Boxen
 im selben Netz.
 
 :::note[Föderation nur mit geteilter Festplatte]
-Beide Arten der Föderation funktionieren nur, solange die Box ihre
+Föderation funktioniert nur, solange die Box ihre
 Festplatte teilt (`losos.sharingMyStorage`), weil der geteilte Teil der
 Festplatte nur dann entsperrt ist. Ist das Teilen aus, spricht die Box mit
-keinem anderen Server, und der Bereich **Apps** zeigt beide
+keinem anderen Server, und der Bereich **Apps** zeigt den
 Föderationsschalter ausgegraut.
 :::
 
@@ -114,8 +104,8 @@ die die Box mitbringt, lassen sich ausschalten, aber nicht entfernen.
 
 In den Abschnitten LosOS cloud und LosOS Git hat der Bereich Apps die
 Einstellungen, die für jedes Konto in der jeweiligen App gelten. Sonst
-fändest du sie auf den eigenen Verwaltungsseiten jeder App. Jeder Abschnitt
-beginnt mit dem Föderationsschalter der App ([Föderation](#federation)).
+fändest du sie auf den eigenen Verwaltungsseiten jeder App. Der Abschnitt
+LosOS cloud beginnt mit seinem Föderationsschalter ([Föderation](#federation)).
 
 Für LosOS cloud: die Sprache der Anmeldeseite und der Konten, die keine
 gewählt haben, das Land, zu dem eine Telefonnummer ohne Ländervorwahl
@@ -125,11 +115,9 @@ funktionieren, wie viel Platz ein neues Konto bekommt und wie lange der
 Papierkorb und alte Versionen aufbewahrt werden. Ein leeres Feld überlässt
 die Wahl LosOS cloud.
 
-Für LosOS Git: ob nur angemeldete Konten überhaupt etwas sehen, was ein
-Besucher zuerst sieht, ob ein neues Repository privat, öffentlich oder wie
-das letzte des Kontos beginnt, ob die E-Mail-Adresse eines neuen Kontos
-verborgen ist und ob ein Push in ein noch nicht vorhandenes Repository es
-anlegt.
+Für LosOS Git: ob nur angemeldete Konten überhaupt etwas sehen, ob ein
+neues Repository privat, öffentlich oder wie das letzte des Kontos beginnt
+und ob ein Push in ein noch nicht vorhandenes Repository es anlegt.
 
 ![Der Bereich Apps mit den Einstellungen für alle in LosOS cloud und LosOS Git.](@site/docs/img/apps-site-settings-de.png)
 

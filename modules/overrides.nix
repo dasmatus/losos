@@ -31,7 +31,6 @@ _:
 {
   losos.sharingMyStorage = true;
   losos.nextcloud.mode = "container";
-  losos.forgejo.mode = "container";
   losos.hostName = "mattbox";
   losos.nextcloud.https = false;
   losos.gpu.enable = true;

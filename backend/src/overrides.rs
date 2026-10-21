@@ -29,7 +29,6 @@ pub const DEFAULT_OVERRIDES_NIX: &str = r#"{ ... }:
 {
   losos.sharingMyStorage = true;
   losos.nextcloud.mode = "container";
-  losos.forgejo.mode = "container";
   losos.hostName = "mattbox";
   losos.nextcloud.https = false;
   losos.gpu.enable = true;
@@ -286,7 +285,6 @@ pub fn parse_settings(content: &str) -> Settings {
             lookup_nix("sharingMyStorage", content),
         ),
         nextcloud_mode: read_mode(&d.nextcloud_mode, lookup_nix("nextcloud.mode", content)),
-        forgejo_mode: read_str(&d.forgejo_mode, lookup_nix("forgejo.mode", content)),
         host_name: read_str(&d.host_name, lookup_nix("hostName", content)),
         https: read_bool(d.https, lookup_nix("nextcloud.https", content)),
         gpu_enable: read_bool(d.gpu_enable, lookup_nix("gpu.enable", content)),
@@ -361,7 +359,7 @@ pub fn inject_line(sharing: bool, lines: &[String]) -> Vec<String> {
 ///
 /// `losos.hostName` becomes `networking.hostName`, the mDNS name the box is
 /// reached by, Nextcloud's `trusted_domains` and `overwrite.cli.url`, and
-/// Forgejo's `ROOT_URL`. A space, a slash, a leading hyphen or a 64th
+/// the address LosOS Git hands out. A space, a slash, a leading hyphen or a 64th
 /// character produces either a config that will not evaluate or an appliance
 /// that boots unreachable — and there is no SSH and no login shell to repair
 /// it from. The admin UI checks this too, but a browser is not a trust

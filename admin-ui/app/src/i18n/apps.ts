@@ -83,20 +83,10 @@ export default defineMessages({
   "apps.settings.note": { en: "Run this box", sk: "Správa tohto zariadenia", de: "Diese Box verwalten" },
 
   // ── Why the grid is short ───────────────────────────────────────────────
-  "apps.notice.both": {
-    en: "Your files and your code are served under this box's own name, not from this page.",
-    sk: "Vaše súbory a váš kód sa poskytujú pod vlastným názvom tohto zariadenia, nie z tejto stránky.",
-    de: "Deine Dateien und dein Code werden unter dem eigenen Namen dieser Box ausgeliefert, nicht von dieser Seite.",
-  },
   "apps.notice.files": {
     en: "Your files are served under this box's own name, not from this page.",
     sk: "Vaše súbory sa poskytujú pod vlastným názvom tohto zariadenia, nie z tejto stránky.",
     de: "Deine Dateien werden unter dem eigenen Namen dieser Box ausgeliefert, nicht von dieser Seite.",
-  },
-  "apps.notice.code": {
-    en: "Your code is served under this box's own name, not from this page.",
-    sk: "Váš kód sa poskytuje pod vlastným názvom tohto zariadenia, nie z tejto stránky.",
-    de: "Dein Code wird unter dem eigenen Namen dieser Box ausgeliefert, nicht von dieser Seite.",
   },
 
   // ── Figures ─────────────────────────────────────────────────────────────

@@ -73,7 +73,6 @@
       "required": [
         "sharingMyStorage",
         "nextcloudMode",
-        "forgejoMode",
         "hostName",
         "https",
         "gpuEnable",
@@ -93,13 +92,6 @@
           "type": "boolean"
         },
         "nextcloudMode": {
-          "type": "string",
-          "enum": [
-            "native",
-            "container"
-          ]
-        },
-        "forgejoMode": {
           "type": "string",
           "enum": [
             "native",
@@ -1283,7 +1275,7 @@
       "properties": {
         "enabled": {
           "type": "boolean",
-          "description": "Whether the box publishes /etc/nixos to a repository ($LOSOS_CONFIG_REPO or $LOSOS_CONFIG_REMOTE_URL set; modules/config-repo.nix sets the first when losos.configRepo.enable and losos.forgejo.enable are both on). Off, the box still commits every change locally."
+          "description": "Whether the box publishes /etc/nixos to a repository ($LOSOS_CONFIG_REPO or $LOSOS_CONFIG_REMOTE_URL set; modules/config-repo.nix sets the first when losos.configRepo.enable and losos.git.enable are both on). Off, the box still commits every change locally."
         },
         "repository": {
           "type": [
@@ -1295,26 +1287,26 @@
             "name",
             "url",
             "clone",
-            "viaForgejo"
+            "viaServer"
           ],
           "properties": {
             "owner": {
               "type": "string",
-              "description": "The Forgejo account the repository belongs to: the owner's (losos.configRepo.owner, default `notshared`). lososd creates it as a site administrator if missing and gives it the owner's password at the claim and at every password change, so one password opens LosOS Git too."
+              "description": "The LosOS Git account the repository belongs to: the owner's (losos.configRepo.owner, default `notshared`). lososd creates it as a site administrator if missing; the owner signs in to it with LosOS Login."
             },
             "name": {
               "type": "string",
-              "description": "losos.configRepo.name, default `losos-config`. Created private: /forgejo/ is published through the master-proxy tunnel whenever the proxy is on."
+              "description": "losos.configRepo.name, default `losos-config`. Created private: /git/ is published through the master-proxy tunnel whenever the proxy is on."
             },
             "url": {
               "type": "string",
-              "description": "The repository's page on this box, relative to the front vhost: `/forgejo/<owner>/<name>`."
+              "description": "The repository's page on this box, relative to the front vhost: `/git/<owner>/<name>`."
             },
             "clone": {
               "type": "string",
-              "description": "The URL lososd fetches from and pushes to, without credentials. The owner clones the same repository through /forgejo/ with their own account."
+              "description": "The URL lososd fetches from and pushes to, without credentials. The owner clones the same repository through /git/ with a token of their own."
             },
-            "viaForgejo": {
+            "viaServer": {
               "type": "boolean",
               "description": "False when $LOSOS_CONFIG_REMOTE_URL names the remote directly (the VM test's bare repository): no account and no repository are created, and no credentials are sent."
             }
@@ -1705,8 +1697,8 @@
       "POST /api/devices/git": {
         "auth": true,
         "in": "{\"password\":\"...\",\"device\":\"...\"}",
-        "out": "{\"user\":\"notshared\",\"token\":\"...\",\"path\":\"/forgejo/\"}",
-        "note": "A LosOS Git access token of one computer's own, for `losos git setup` (backend/src/devices.rs). Forgejo makes tokens only under Basic auth with the account's password, so LosOS cloud judges the password first, LosOS Git is given it as at a sign-in, and then, as the owner over loopback, a token named `LosOS on <device>` of the same name is deleted and a new one created with scopes write:repository and read:user. 403 with wrongPassword:true on a wrong password; 409 with gitOff:true when LosOS Git is off on this box; 429 when LosOS cloud is throttling; 503 when either cannot be asked. HTTP-only; reached by the terminal client as a sealed call."
+        "out": "{\"user\":\"notshared\",\"token\":\"...\",\"path\":\"/git/\"}",
+        "note": "A LosOS Git access token of one computer's own, for `losos git setup` (backend/src/devices.rs). lososd checks the password against the owner's LosOS Login account, then asks LosOS Git with its admin token over loopback for a token named `LosOS on <device>` on the owner's account, replacing one of the same name, with scopes write:repository and read:user. 403 with wrongPassword:true on a wrong password; 409 with gitOff:true when LosOS Git is off on this box; 503 when it cannot be asked. HTTP-only; reached by the terminal client as a sealed call."
       },
       "GET /api/apps/search": {
         "auth": true,
@@ -1724,7 +1716,7 @@
         "auth": true,
         "in": "query string: q and limit as GET /api/cloud/text",
         "out": "{\"available\": false, \"reason\": \"noGit|notUp\"} | {\"available\": true, \"partial\": false, \"hits\": [{\"owner\", \"repo\", \"branch\", \"path\", \"line\", \"snippet\": [string]}]}",
-        "note": "Lines on the default branch of every LosOS Git repository that contain every word, ignoring case (`git grep -F -i` per repository, as the forgejo user, under `losos-search git` on /run/losos-search/git.sock). Wikis are left out, at most two lines per file, and the search answers with what it found after four seconds. `noGit` is a box without losos.forgejo.enable, or with losos.search.enable off. Same 400 and HTTP-only rules as GET /api/cloud/text."
+        "note": "Lines on the default branch of every LosOS Git repository that contain every word, ignoring case (`git grep -F -i` per repository, as the losos-git user, under `losos-search git` on /run/losos-search/git.sock). Wikis are left out, at most two lines per file, and the search answers with what it found after four seconds. `noGit` is a box without losos.git.enable, or with losos.search.enable off. Same 400 and HTTP-only rules as GET /api/cloud/text."
       },
       "GET /api/apps": {
         "auth": true,
@@ -2031,7 +2023,7 @@
       "GET /api/site": {
         "auth": true,
         "out": "optionsResponse",
-        "note": "The settings of LosOS cloud and LosOS Git only (backend/src/site.rs): GET /api/options cut down to losos.nextcloud.site.*, losos.forgejo.site.* and the two federation switches, with `stray` empty. Section apps, so a company edge the owner lets manage the box reaches it too."
+        "note": "The settings of LosOS cloud and LosOS Git only (backend/src/site.rs): GET /api/options cut down to losos.nextcloud.site.*, losos.git.site.* and LosOS cloud's federation switch, with `stray` empty. Section apps, so a company edge the owner lets manage the box reaches it too."
       },
       "POST /api/site": {
         "auth": true,

@@ -116,7 +116,6 @@ pkgs.testers.nixosTest {
         backend.package = lososPkgs.losos-ctl;
         admin.ui = stubUi;
         nextcloud.mode = "container";
-        forgejo.enable = false;
         # What modules/configuration.nix gives the real box.
         mdns.enable = true;
         # The manifest names the image; the stand-in kubelet runs its root.

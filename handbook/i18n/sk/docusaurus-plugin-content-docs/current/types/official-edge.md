@@ -137,7 +137,6 @@ obsluhovať. Funkčnú doménu edge znova kontroluje každú hodinu. Ak záznamy
 zmiznú, prestane doménu obsluhovať po troch neúspešných kontrolách za sebou,
 takže jeden výpadok DNS stránku neodstaví. Ak účet Stripe prestane byť
 pripravený, prestane okamžite. V oboch prípadoch panel uvedie prečo.
-LosOS Git stále zostavuje svoje odkazy s názvom zariadenia na edge.
 
 Ak je vaše zariadenie doma za vaším vlastným edge, vaše domény fungujú aj
 tak, pokiaľ sa zariadenie pripojilo k mesh. Edge LosOS pošle prevádzku na váš

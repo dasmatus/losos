@@ -47,10 +47,3 @@ address work. The box never hands it a wildcard. You see this page when:
 - you reached a box from before 6 October 2026 by IP address. Pull
   request #65 added the per-request trust. Use `<name>.local` until the
   update.
-
-## LosOS Git links show the wrong name
-
-LosOS Git prints clone URLs with the box's `.local` name even when you reached
-it by address. The pages work either way. For `git clone`, put the address in
-place of the name, or add the name to your hosts file as
-[The name does not resolve](name-does-not-resolve) describes.

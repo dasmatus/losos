@@ -5,7 +5,7 @@
  * of its web/src/themes/tailwind-themes.css at build time
  * (admin-ui/themes/default.nix, `authelia.web`), so those names point at
  * the admin SPA's own tokens.css, which is imported first and is the same
- * file Nextcloud and Forgejo ship. The mapping is the one
+ * file Nextcloud ships. The mapping is the one
  * admin-ui/app/src/styles/index.css makes for the SPA's shadcn components,
  * so a button here is a button there.
  *

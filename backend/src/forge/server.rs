@@ -221,6 +221,9 @@ pub fn adopt_repositories(state: &State) -> anyhow::Result<usize> {
             state
                 .store
                 .create_repo(user.id, name, "", true, &branch, None)?;
+            if let Err(e) = clear_hooks(&repo_dir.path()) {
+                tracing::warn!(repo = %repo_dir.path().display(), error = ?e, "could not clear hooks");
+            }
             if let Err(e) = state.git.configure(&repo_dir.path()) {
                 tracing::warn!(repo = %repo_dir.path().display(), error = ?e, "could not configure");
             }
@@ -233,6 +236,27 @@ pub fn adopt_repositories(state: &State) -> anyhow::Result<usize> {
         }
     }
     Ok(adopted)
+}
+
+/// Take out every hook a repository came with but git's own `*.sample`
+/// files. Forgejo's call a `forgejo` binary that is not here, and would
+/// refuse every push.
+pub fn clear_hooks(repo: &std::path::Path) -> std::io::Result<()> {
+    let Ok(entries) = std::fs::read_dir(repo.join("hooks")) else {
+        return Ok(());
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "sample") {
+            continue;
+        }
+        if entry.file_type()?.is_dir() {
+            std::fs::remove_dir_all(&path)?;
+        } else {
+            std::fs::remove_file(&path)?;
+        }
+    }
+    Ok(())
 }
 
 /// Every route, for one listener.

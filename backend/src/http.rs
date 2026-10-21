@@ -2834,7 +2834,7 @@ async fn get_site(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 }
 
 /// `POST /api/site` — `{"set": {"nextcloud.site.trashDays": "30",
-/// "forgejo.site.landingPage": null}}`: each value a Nix literal, or null to
+/// "git.site.pushCreate": null}}`: each value a Nix literal, or null to
 /// go back to the default. Only those lines of `overrides.nix` change; the
 /// rest is an apply.
 async fn post_site(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {

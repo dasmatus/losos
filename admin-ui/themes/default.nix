@@ -1,21 +1,22 @@
-# The LosOS look and the LosOS names for Nextcloud and Forgejo, as one store
-# path plus the facts each consumer needs about it. Nextcloud is presented as
-# "LosOS cloud" and Forgejo as "LosOS Git": the colours, the logos, the names
-# and the words on the page are all the appliance's, and nothing links out to
-# either project's marketing.
+# The LosOS look and the LosOS name for Nextcloud and LosOS Login, as one
+# store path plus the facts each consumer needs about it. Nextcloud is
+# presented as "LosOS cloud": the colours, the logos, the names and the words
+# on the page are all the appliance's, and nothing links out to the project's
+# marketing. (LosOS Git's pages are the admin UI's own and need nothing here.)
 #
 # Plain data rather than a module, for modules/nextcloud-stack.nix's reason:
 # the same files are installed by NixOS modules (native mode) and baked into
 # the OCI images by nix/images.nix (workload mode), and an image is built
 # from the flake where there is no module system to read an option from. So
-# everything both paths need is written down here once — and three callers
-# import it: modules/nextcloud-stack.nix (the Nextcloud package), and, for
-# Forgejo, modules/services.nix (native) and nix/images.nix (the image).
+# everything both paths need is written down here once:
+# modules/nextcloud-stack.nix (the Nextcloud package) and
+# modules/identity.nix (LosOS Login) import it.
 #
 # The palette is not copied into this directory. Both themes ship the admin
 # SPA's own admin-ui/app/src/styles/tokens.css, byte for byte, under the name
 # losos-tokens.css, and map their app's variables onto it. A colour changed
-# there changes the homepage, Nextcloud and Forgejo in one commit; that file's
+# there changes the homepage, LosOS Git, Nextcloud and LosOS Login in one
+# commit; that file's
 # header says what is allowed to live in it so this stays true.
 #
 # The logos are brand/losos-cloud.svg and brand/losos-git.svg, drawn by
@@ -34,15 +35,10 @@
 #     core/css/losos-tokens.css   images under core/img/ that Nextcloud
 #     core/img/…               looks up there before its own
 #
-#   forgejo/                   laid out as Forgejo's $FORGEJO_CUSTOM, so it is
-#     public/assets/css/…      copied (image) or linked (native) file for file
-#     public/assets/img/…      into it: the three pickable themes, the logos
-#     templates/…              and favicons, and the two template overrides
+#   authelia/                  LosOS Login's logo and favicon
 { pkgs }:
 
 let
-  inherit (pkgs) lib;
-
   tokens = ../app/src/styles/tokens.css;
   brand = ./brand;
 
@@ -83,20 +79,6 @@ let
         ${render 48 "${brand}/losos-cloud.svg" "ico-48.png"}
         magick ico-16.png "$nc/core/img/favicon.png" ico-48.png "$nc/core/img/favicon.ico"
 
-        # ── Forgejo: $FORGEJO_CUSTOM ──────────────────────────────────────
-        fj="$out/forgejo"
-        install -Dm0644 -t "$fj/public/assets/css" ${./forgejo}/*.css
-        install -Dm0644 ${tokens} "$fj/public/assets/css/losos-tokens.css"
-
-        install -Dm0644 ${brand}/losos-git.svg "$fj/public/assets/img/logo.svg"
-        install -Dm0644 ${brand}/losos-git.svg "$fj/public/assets/img/favicon.svg"
-        ${render 512 "${brand}/losos-git.svg" "$fj/public/assets/img/logo.png"}
-        ${render 180 "${brand}/losos-git.svg" "$fj/public/assets/img/apple-touch-icon.png"}
-        ${render 32 "${brand}/losos-git.svg" "$fj/public/assets/img/favicon.png"}
-
-        install -Dm0644 ${./forgejo/templates/home.tmpl} "$fj/templates/home.tmpl"
-        install -Dm0644 ${./forgejo/templates/custom/header.tmpl} "$fj/templates/custom/header.tmpl"
-
         # ── Authelia: server.asset_path ───────────────────────────────────
         # The sign-in pages' logo and favicon. Authelia serves a file from
         # this directory in place of its own when one is there
@@ -107,27 +89,7 @@ let
         ${render 32 "${brand}/losos-cloud.svg" "au-32.png"}
         ${render 48 "${brand}/losos-cloud.svg" "au-48.png"}
         magick au-16.png au-32.png au-48.png "$au/favicon.ico"
-
-        # The list below is what native mode links; a file built here and
-        # missing from it would exist in the image and silently not natively.
-        ( cd "$fj" && find . -type f | sed 's|^\./||' | sort ) > files
-        printf '%s\n' ${lib.escapeShellArgs forgejoFiles} | sort | diff -u - files
       '';
-
-  forgejoFiles = [
-    "public/assets/css/losos-forgejo.css"
-    "public/assets/css/losos-tokens.css"
-    "public/assets/css/theme-losos-auto.css"
-    "public/assets/css/theme-losos-dark.css"
-    "public/assets/css/theme-losos-light.css"
-    "public/assets/img/apple-touch-icon.png"
-    "public/assets/img/favicon.png"
-    "public/assets/img/favicon.svg"
-    "public/assets/img/logo.png"
-    "public/assets/img/logo.svg"
-    "templates/custom/header.tmpl"
-    "templates/home.tmpl"
-  ];
 in
 {
   inherit package;
@@ -150,20 +112,20 @@ in
       web:
       web.overrideAttrs (old: {
         postPatch = (old.postPatch or "") + ''
-          install -m0644 ${./authelia/losos-authelia.css} src/themes/tailwind-themes.css
-          install -m0644 ${tokens} src/themes/losos-tokens.css
-          substituteInPlace src/constants/constants.ts \
-            --replace-fail 'export const EncodedName = [81, 88, 86, 48, 97, 71, 86, 115, 97, 87, 69, 61];' \
-                           'export const EncodedName = [84, 71, 57, 122, 84, 49, 77, 103, 84, 71, 57, 110, 97, 87, 52, 61];'
-          cat > src/components/Brand.tsx <<'TSX'
-        export interface Props {}
+            install -m0644 ${./authelia/losos-authelia.css} src/themes/tailwind-themes.css
+            install -m0644 ${tokens} src/themes/losos-tokens.css
+            substituteInPlace src/constants/constants.ts \
+              --replace-fail 'export const EncodedName = [81, 88, 86, 48, 97, 71, 86, 115, 97, 87, 69, 61];' \
+                             'export const EncodedName = [84, 71, 57, 122, 84, 49, 77, 103, 84, 71, 57, 110, 97, 87, 52, 61];'
+            cat > src/components/Brand.tsx <<'TSX'
+          export interface Props {}
 
-        const Brand = function () {
-            return <p className="mt-4 text-center text-sm text-muted-foreground">LosOS Login</p>;
-        };
+          const Brand = function () {
+              return <p className="mt-4 text-center text-sm text-muted-foreground">LosOS Login</p>;
+          };
 
-        export default Brand;
-        TSX
+          export default Brand;
+          TSX
         '';
       });
   };
@@ -201,50 +163,6 @@ in
       "simpleSignUpLink.shown" = false;
       # No Help entry in the user menu, which opens docs.nextcloud.com.
       knowledgebaseenabled = false;
-    };
-  };
-
-  forgejo = {
-    # Everything here belongs in Forgejo's $FORGEJO_CUSTOM, at the same
-    # relative path: css beside where Forgejo serves its stock themes, so the
-    # relative @imports resolve; img/ where its templates load the logo and
-    # favicons from; templates/ where it looks for overrides. The files in
-    # customDir provide the stylesheets; ui.THEMES registers them in Appearance.
-    customDir = "${package}/forgejo";
-
-    # app.ini, in services.forgejo.settings' shape (the image renders it to
-    # INI). Merged under each mode's own settings.
-    settings = {
-      # The name in every page title, on the front page, in the OpenGraph
-      # tags and in e-mails. Forgejo's default is "Forgejo: Beyond coding. We
-      # forge."
-      DEFAULT.APP_NAME = "LosOS Git";
-
-      # Auto, as on the homepage: follow the browser until someone chooses.
-      # Forgejo copies DEFAULT_THEME into each account when it is created, so
-      # this reaches new accounts; an existing account keeps the theme it had
-      # until its owner picks LosOS under Settings → Appearance.
-      ui = {
-        THEMES = "auto,forgejo-auto,forgejo-light,forgejo-dark,gitea,arc-green,losos-auto,losos-light,losos-dark";
-        DEFAULT_THEME = "losos-auto";
-      };
-
-      # The <meta> tags of pages that are not a repository's. Upstream's
-      # describe Forgejo.
-      "ui.meta" = {
-        AUTHOR = "LosOS Git";
-        DESCRIPTION = "The git host on your LosOS box";
-        KEYWORDS = "git,losos";
-      };
-
-      # The footer's left half: "Powered by Forgejo", the version and the
-      # template timings. With all three off it is empty; the language picker
-      # and the licences stay on the right.
-      other = {
-        SHOW_FOOTER_POWERED_BY = false;
-        SHOW_FOOTER_VERSION = false;
-        SHOW_FOOTER_TEMPLATE_LOAD_TIME = false;
-      };
     };
   };
 }

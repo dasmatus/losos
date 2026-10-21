@@ -73,7 +73,6 @@ function isServiceMode(value: string): value is ServiceMode {
 export function AppsPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const filesId = React.useId();
-  const codeId = React.useId();
 
   const draft = form.draft;
   const disabled = form.locked || !form.ready;
@@ -101,14 +100,6 @@ export function AppsPane({ form }: { form: SettingsForm }) {
             value={draft?.nextcloudMode ?? "container"}
             disabled={disabled}
             onChange={(mode) => form.set("nextcloudMode", mode)}
-          />
-          <AppModeRow
-            id={codeId}
-            title={t("panes.apps.code.title")}
-            detail={t("panes.apps.code.detail")}
-            value={draft?.forgejoMode ?? "container"}
-            disabled={disabled}
-            onChange={(mode) => form.set("forgejoMode", mode)}
             last
           />
         </Group>

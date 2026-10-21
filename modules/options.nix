@@ -27,6 +27,47 @@ let
   inNixStore = p: lib.hasPrefix builtins.storeDir (toString p);
 in
 {
+  # LosOS Git took over from Forgejo; an older overrides.nix still names
+  # the settings by the old prefix, and keeps evaluating: each old name is a
+  # hidden alias of the new one. No warning, because nix/options-doc.nix
+  # reads every option and would print it on every rebuild.
+  imports =
+    map
+      (
+        path:
+        lib.doRename {
+          from = [
+            "losos"
+            "forgejo"
+          ]
+          ++ path;
+          to = [
+            "losos"
+            "git"
+          ]
+          ++ path;
+          visible = false;
+          warn = false;
+          use = x: x;
+          withPriority = true;
+        }
+      )
+      [
+        [ "enable" ]
+        [
+          "site"
+          "requireSignIn"
+        ]
+        [
+          "site"
+          "defaultPrivate"
+        ]
+        [
+          "site"
+          "pushCreate"
+        ]
+      ];
+
   options.losos = {
     targetDrives = lib.mkOption {
       type = lib.types.listOf lib.types.str;
@@ -455,8 +496,7 @@ in
     # docs/superpowers/specs/2026-09-09-k3s-mesh-design.md.
     #
     #   LOCAL  services.k3s, role=server, /var/lib/rancher/k3s — runs THIS
-    #          box's Nextcloud and Forgejo. Always on when either service is in
-    #          "container" mode. It has no off-box dependency, so the appliance
+    #          box's Nextcloud. Always on while it is in "container" mode. It has no off-box dependency, so the appliance
     #          boots and serves its own data with the edge unreachable.
     #   MESH   services.rke2, role=agent, /var/lib/rancher/rke2 — joins the
     #          edge's cluster for Longhorn storage and mesh compute. Gated on
@@ -473,7 +513,7 @@ in
         Join the edge's mesh cluster as an rke2 agent, contributing storage
         (Longhorn) and, when losos.cluster.shareCompute is on, compute. Off by
         default: joining makes mesh workloads — but never this box's own
-        Nextcloud and Forgejo — depend on the edge being reachable.
+        LosOS cloud and LosOS Git — depend on the edge being reachable.
       '';
     };
 
@@ -527,8 +567,8 @@ in
         my compute when I sleep"), and only while the box is actually idle.
         Outside the window, or while the box is busy, the edge holds a
         NoSchedule taint on this box's mesh node, so mesh work is repelled.
-        This box's OWN Nextcloud and Forgejo are unaffected in either case:
-        they live in the local cluster, which has no taint and no scheduler.
+        This box's OWN LosOS cloud and LosOS Git are unaffected in either
+        case: they never run on the mesh.
       '';
     };
 
@@ -552,7 +592,7 @@ in
         charts) into this box's own cluster, each running as `notshared` or
         `shared`, without root, with its files in that user's data folder.
         Only on a box that runs its own cluster, which it does while
-        Nextcloud or Forgejo runs in the box's own container mode.
+        Nextcloud runs in the box's own container mode.
       '';
     };
 
@@ -662,13 +702,6 @@ in
       default = null;
       internal = true;
       description = "OCI image running the Nextcloud stack in container mode.";
-    };
-
-    workloads.forgejoImage = lib.mkOption {
-      type = lib.types.nullOr lib.types.package;
-      default = null;
-      internal = true;
-      description = "OCI image running Forgejo in container mode.";
     };
 
     # ── The keyring (modules/keyring.nix) ───────────────────────────────────
@@ -891,9 +924,8 @@ in
         contribution, and a domain left unlocked while nothing is shared is a
         standing liability on a box with no shell to lock it from.
 
-        It is also the gate for federation: LosOS Git and LosOS cloud talk
-        to other servers only while this is on
-        (losos.forgejo.federation.enable, losos.nextcloud.federation.enable).
+        It is also the gate for federation: LosOS cloud talks to other
+        servers only while this is on (losos.nextcloud.federation.enable).
 
         This used to read "expose local storage to the Tahoe-LAFS grid as a
         storage server". Tahoe-LAFS is gone; the option name is unchanged
@@ -925,78 +957,59 @@ in
       '';
     };
 
+    # LosOS Git (modules/git.nix, backend/src/forge/): the box's own Git
+    # server, a Rust service of lososd's crate. One mode: it runs on the
+    # host, never in a cluster.
+    git.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run LosOS Git, the box's Git server: repositories for every account
+        on LosOS Login, cloned and pushed over https, and the box's own
+        configuration repository. Set to true by modules/defaults.nix.
+      '';
+    };
+
+    # The names an older overrides.nix may still carry. Each keeps
+    # evaluating, does nothing, and is off the Advanced pane; the next Apply
+    # writes the file without it.
     forgejo.mode = lib.mkOption {
       type = lib.types.enum [
         "native"
         "container"
       ];
       default = "container";
-      description = ''
-        "native" — run Forgejo as a native NixOS service (services.forgejo).
-        "container" — run Forgejo as a static pod in this box's own local k3s
-        cluster (modules/workloads.nix) behind Nginx path routing
-        (modules/containers.nix). As with losos.nextcloud.mode, "container" is
-        a kept spelling and no longer means systemd-nspawn.
-      '';
+      visible = false;
+      description = "No longer used: LosOS Git has one mode.";
     };
-
-    forgejo.enable = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = ''
-        Run the Forgejo git host. Consulted in *both* deployment modes: native
-        (modules/services.nix) and container (modules/workloads.nix gates the
-        pod and the config it mounts, modules/cluster.nix the local cluster,
-        modules/containers.nix the /forgejo/ route and its firewall entry).
-        Set to true by modules/defaults.nix.
-      '';
-    };
-
-    # Forgejo's ActivityPub side. Upstream labels it experimental, and in the
-    # shipped Forgejo (16.x) it amounts to: nodeinfo at
-    # /.well-known/nodeinfo and /api/v1/nodeinfo, one ActivityPub actor per
-    # account and per repository under /api/v1/activitypub/, stars given from
-    # another Forgejo counted on repositories that list that server, and
-    # accounts here followable from other servers (their activity goes out as
-    # notes). Every inbound request has to carry a valid HTTP signature
-    # (Forgejo's SIGNATURE_ENFORCED default); nothing is accepted unsigned.
-    #
-    # Reach decides what it does: Forgejo advertises itself under ROOT_URL,
-    # which modules/workloads.nix builds from losos.proxy.{enable,hostname}.
-    # Through an edge that is a public https address and any server can
-    # federate with the box; on a LAN-only box it is http://<name>.local/,
-    # which only the LAN resolves, so federation reaches other boxes on the
-    # same LAN and nothing further.
-    #
-    # Federation is the box talking to servers it does not know, so it runs
-    # only while the box shares at all: the switch below is ANDed with
-    # losos.sharingMyStorage (lososInternal.federation, near the end of this
-    # file), the one setting that unlocks the shared data pool. With sharing
-    # off, Forgejo runs with [federation] off and the front vhost carries no
-    # discovery routes, whatever this option says.
     forgejo.federation.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = ''
-        Let LosOS Git federate over ActivityPub with other Forgejo servers:
-        stars from other servers count on your repositories, accounts here
-        can be followed from elsewhere, and the box publishes nodeinfo.
-        Forgejo calls this experimental. Other servers reach the box at the
-        address it is served on, so through an edge this is the internet
-        and on a LAN-only box it is the LAN. Usage statistics (how many
-        accounts, how active) are never published.
-
-        Takes effect only while losos.sharingMyStorage is on. With disk
-        sharing off the shared data pool is locked and LosOS Git does not
-        federate, whatever this says.
-      '';
+      visible = false;
+      description = "No longer used.";
+    };
+    forgejo.site.landingPage = lib.mkOption {
+      type = lib.types.enum [
+        "home"
+        "explore"
+        "organizations"
+        "login"
+      ];
+      default = "home";
+      visible = false;
+      description = "No longer used.";
+    };
+    forgejo.site.keepEmailPrivate = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      visible = false;
+      description = "No longer used: LosOS Git shows an e-mail address only to its owner.";
     };
 
     # ── The box's configuration on LosOS Git ──────────────────────────────
     # /etc/nixos is a git repository; every Apply commits there
     # (backend/src/config_repo.rs). With this on, lososd keeps it in step
-    # with a private repository on the box's own Forgejo, owned by the
-    # owner's account, and takes a commit pushed there (after its
+    # with a private repository on LosOS Git, owned by the owner's account, and takes a commit pushed there (after its
     # overrides.nix passes the gates every Apply does) and rebuilds from it.
     configRepo.enable = lib.mkOption {
       type = lib.types.bool;
@@ -1004,7 +1017,7 @@ in
       description = ''
         Publish this box's configuration (/etc/nixos) to a private repository
         on LosOS Git, and pick up commits pushed to it. Needs
-        losos.forgejo.enable. Off, every change is still committed on the
+        losos.git.enable. Off, every change is still committed on the
         box; it is just not published anywhere.
       '';
     };
@@ -1013,10 +1026,9 @@ in
       default = "notshared";
       description = ''
         The LosOS Git account the configuration repository belongs to. lososd
-        creates it as a site administrator if it is missing and gives it the
-        owner's password whenever that password is proved (the first-run
-        claim, a password change, a sign-in), so one password opens LosOS
-        Git too.
+        creates it as a site administrator if it is missing. The owner
+        reaches it by signing in with LosOS Login, and their computers with
+        a token of their own.
       '';
     };
     configRepo.name = lib.mkOption {
@@ -1103,17 +1115,16 @@ in
 
     # ── The two apps' box-wide settings ─────────────────────────────────────
     # What an administrator would otherwise change in Nextcloud's
-    # Administration settings and Forgejo's Site administration, kept here so
+    # Administration settings and LosOS Git's site settings, kept here so
     # it goes through Apply, the history and LosOS Git like every other
     # setting. The admin UI draws them on the Apps pane.
     #
     # Each app is told on every start, and its own admin page cannot change
-    # them in between: Forgejo shows app.ini settings without an editor, and
-    # the front vhost refuses Nextcloud's app-config writes for the keys
-    # modules/nextcloud-stack.nix lists (`site.locked`), so the two places
-    # cannot drift. Per-account settings stay in the apps. The values are
-    # rendered for both modes from one place: `site` in
-    # modules/nextcloud-stack.nix, lososInternal.forgejoSite below.
+    # them in between: LosOS Git takes them as flags (modules/git.nix) and
+    # has no page for them, and the front vhost refuses Nextcloud's
+    # app-config writes for the keys modules/nextcloud-stack.nix lists
+    # (`site.locked`), so the two places cannot drift. Per-account settings
+    # stay in the apps.
     nextcloud.site.defaultLanguage = lib.mkOption {
       type = lib.types.nullOr (
         lib.types.enum [
@@ -1207,7 +1218,7 @@ in
       '';
     };
 
-    forgejo.site.requireSignIn = lib.mkOption {
+    git.site.requireSignIn = lib.mkOption {
       type = lib.types.bool;
       default = false;
       description = ''
@@ -1218,7 +1229,7 @@ in
       '';
     };
 
-    forgejo.site.defaultPrivate = lib.mkOption {
+    git.site.defaultPrivate = lib.mkOption {
       type = lib.types.enum [
         "last"
         "private"
@@ -1226,37 +1237,14 @@ in
       ];
       default = "last";
       description = ''
-        Whether the "Make repository private" box starts ticked when a
-        repository is created: "last" repeats the account's previous choice,
-        "private" and "public" always start the same way.
+        Whether the "Private" box starts ticked when a repository is
+        created: "last" repeats the account's previous choice, "private" and
+        "public" always start the same way. A repository made by a push, or
+        through the API without saying, is public only with "public".
       '';
     };
 
-    forgejo.site.landingPage = lib.mkOption {
-      type = lib.types.enum [
-        "home"
-        "explore"
-        "organizations"
-        "login"
-      ];
-      default = "home";
-      description = ''
-        What /forgejo/ shows a visitor who is not signed in: the front page,
-        the list of public repositories, the list of organisations, or the
-        sign-in form.
-      '';
-    };
-
-    forgejo.site.keepEmailPrivate = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = ''
-        Hide a new account's e-mail address from other people from the start.
-        Each account can change it later in its own settings.
-      '';
-    };
-
-    forgejo.site.pushCreate = lib.mkOption {
+    git.site.pushCreate = lib.mkOption {
       type = lib.types.bool;
       default = false;
       description = ''
@@ -1860,9 +1848,7 @@ in
           {
             options = {
               pay = lib.mkOption {
-                type = lib.types.nullOr (
-                  lib.types.strMatching "0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}"
-                );
+                type = lib.types.nullOr (lib.types.strMatching "0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}");
                 default = null;
                 description = ''
                   The escrow payments wait in until each slot ends. Public. On
@@ -2840,13 +2826,6 @@ in
   # whether a box federates. Read-only: set losos.<service>.federation.enable
   # or losos.sharingMyStorage instead.
   options.lososInternal.federation = {
-    forgejo = lib.mkOption {
-      type = lib.types.bool;
-      internal = true;
-      readOnly = true;
-      default = config.losos.forgejo.federation.enable && config.losos.sharingMyStorage;
-      description = "LosOS Git federates: losos.forgejo.federation.enable and losos.sharingMyStorage.";
-    };
     nextcloud = lib.mkOption {
       type = lib.types.bool;
       internal = true;
@@ -2875,11 +2854,11 @@ in
         default = identity && config.losos.nextcloud.mode == "container";
         description = "LosOS cloud signs people in with LosOS Login.";
       };
-      forgejo = lib.mkOption {
+      git = lib.mkOption {
         type = lib.types.bool;
         internal = true;
         readOnly = true;
-        default = identity && config.losos.forgejo.enable && config.losos.forgejo.mode == "container";
+        default = identity && config.losos.git.enable;
         description = "LosOS Git signs people in with LosOS Login.";
       };
     };
@@ -2892,33 +2871,6 @@ in
     readOnly = true;
     default = config.losos.vms.host && config.losos.sharingMyStorage;
     description = "This box hosts mesh virtual machines: losos.vms.host and losos.sharingMyStorage.";
-  };
-
-  # ── LosOS Git's box-wide settings, as app.ini sections ──────────────────
-  # losos.forgejo.site.* in the shape services.forgejo.settings takes and the
-  # pod's losos.ini is rendered from, so the two modes (modules/services.nix,
-  # modules/workloads.nix) read one value. Forgejo shows these under Site
-  # administration -> Configuration with no editor.
-  options.lososInternal.forgejoSite = lib.mkOption {
-    type = lib.types.attrsOf (lib.types.attrsOf (lib.types.either lib.types.bool lib.types.str));
-    internal = true;
-    readOnly = true;
-    default =
-      let
-        site = config.losos.forgejo.site;
-      in
-      {
-        service = {
-          REQUIRE_SIGNIN_VIEW = site.requireSignIn;
-          DEFAULT_KEEP_EMAIL_PRIVATE = site.keepEmailPrivate;
-        };
-        repository = {
-          DEFAULT_PRIVATE = site.defaultPrivate;
-          ENABLE_PUSH_CREATE_USER = site.pushCreate;
-        };
-        server.LANDING_PAGE = site.landingPage;
-      };
-    description = "losos.forgejo.site.* as app.ini sections.";
   };
 
   config.warnings =

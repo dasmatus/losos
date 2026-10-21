@@ -79,9 +79,6 @@ pkgs.testers.nixosTest {
         # Deliberately not the 11000 default, so a hard-coded port anywhere in
         # the proxy path fails this test instead of passing by coincidence.
         nextcloud.apachePort = 11007;
-        # Nothing here requests /forgejo/, and off means no route proxying to a
-        # port nothing listens on.
-        forgejo.enable = false;
       };
 
       # For the script's own inspection of the certificate. The generator gets

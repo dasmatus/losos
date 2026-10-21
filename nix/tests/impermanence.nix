@@ -160,9 +160,9 @@ pkgs.testers.nixosTest {
         "install -d -m 0700 /var/secrets",
         "head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > /var/secrets/losos-admin-token",
         "chmod 0600 /var/secrets/losos-admin-token",
-        "install -d /var/lib/nextcloud /var/lib/forgejo",
+        "install -d /var/lib/nextcloud /var/lib/losos-git",
         "echo nextcloud-state > /var/lib/nextcloud/marker",
-        "echo forgejo-state > /var/lib/forgejo/marker",
+        "echo git-state > /var/lib/losos-git/marker",
         "echo notshared-doc > /home/notshared/data/marker",
         "echo shared-doc > /home/shared/data/marker",
         # The rest of the module's list. /etc/keys carries the LUKS keyfile on
@@ -205,7 +205,7 @@ pkgs.testers.nixosTest {
     with subtest("the persisted set survives the reboot"):
         assert machine.succeed("cat /var/lib/losos/state.json").strip() == '{"mode":"local"}'
         assert machine.succeed("cat /var/lib/nextcloud/marker").strip() == "nextcloud-state"
-        assert machine.succeed("cat /var/lib/forgejo/marker").strip() == "forgejo-state"
+        assert machine.succeed("cat /var/lib/losos-git/marker").strip() == "git-state"
         assert machine.succeed("cat /home/notshared/data/marker").strip() == "notshared-doc"
         assert machine.succeed("cat /home/shared/data/marker").strip() == "shared-doc"
         assert machine.succeed("cat /var/secrets/losos-admin-token").strip() == token, \

@@ -2,7 +2,7 @@
 //!
 //! `/api/apply` takes the WHOLE of `modules/overrides.nix`, so the draft is
 //! a complete settings document and every pane edits a slice of it; Apply
-//! writes all sixteen lines plus every other line the file already carries,
+//! writes all fifteen lines plus every other line the file already carries,
 //! the way the web UI's `buildOverridesNix` does. Nothing takes effect until
 //! Apply, and Apply asks before it starts a rebuild. The shell polls
 //! `/api/status` while one runs.
@@ -12,13 +12,12 @@ use serde_json::Value;
 
 use crate::i18n::t;
 
-/// GET /api/settings, the sixteen settings the panes own.
+/// GET /api/settings, the fifteen settings the panes own.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub sharing_my_storage: bool,
     pub nextcloud_mode: String,
-    pub forgejo_mode: String,
     pub host_name: String,
     pub https: bool,
     pub gpu_enable: bool,
@@ -39,7 +38,6 @@ pub struct Settings {
 pub enum SettingKey {
     SharingMyStorage,
     NextcloudMode,
-    ForgejoMode,
     HostName,
     Https,
     GpuEnable,
@@ -56,10 +54,9 @@ pub enum SettingKey {
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 16] = [
+    pub const ALL: [SettingKey; 15] = [
         SettingKey::SharingMyStorage,
         SettingKey::NextcloudMode,
-        SettingKey::ForgejoMode,
         SettingKey::HostName,
         SettingKey::Https,
         SettingKey::GpuEnable,
@@ -104,7 +101,6 @@ impl Settings {
     fn text_mut(&mut self, key: SettingKey) -> Option<&mut String> {
         Some(match key {
             SettingKey::NextcloudMode => &mut self.nextcloud_mode,
-            SettingKey::ForgejoMode => &mut self.forgejo_mode,
             SettingKey::HostName => &mut self.host_name,
             SettingKey::ComputeWindowStart => &mut self.compute_window_start,
             SettingKey::ComputeWindowEnd => &mut self.compute_window_end,
@@ -167,11 +163,10 @@ fn nix_bool(value: bool) -> &'static str {
     }
 }
 
-/// The sixteen `losos.*` names the lines below always write.
-pub const OWNED_NAMES: [&str; 16] = [
+/// The fifteen `losos.*` names the lines below always write.
+pub const OWNED_NAMES: [&str; 15] = [
     "sharingMyStorage",
     "nextcloud.mode",
-    "forgejo.mode",
     "hostName",
     "nextcloud.https",
     "gpu.enable",
@@ -188,7 +183,7 @@ pub const OWNED_NAMES: [&str; 16] = [
 ];
 
 /// The full `modules/overrides.nix` body, as the web UI's
-/// `buildOverridesNix` writes it: the sixteen, then every other line the
+/// `buildOverridesNix` writes it: the fifteen, then every other line the
 /// file carries, sorted, so the commit lososd makes shows only what changed.
 pub fn build_overrides_nix(s: &Settings, extra: &[(String, String)]) -> String {
     let mut extra: Vec<&(String, String)> = extra
@@ -207,7 +202,6 @@ pub fn build_overrides_nix(s: &Settings, extra: &[(String, String)]) -> String {
             "  losos.nextcloud.mode = {};",
             nix_string(&s.nextcloud_mode)
         ),
-        format!("  losos.forgejo.mode = {};", nix_string(&s.forgejo_mode)),
         format!("  losos.hostName = {};", nix_string(&s.host_name)),
         format!("  losos.nextcloud.https = {};", nix_bool(s.https)),
         format!("  losos.gpu.enable = {};", nix_bool(s.gpu_enable)),
@@ -411,7 +405,6 @@ mod tests {
         Settings {
             sharing_my_storage: true,
             nextcloud_mode: "container".into(),
-            forgejo_mode: "container".into(),
             host_name: "mattbox".into(),
             https: true,
             gpu_enable: false,
@@ -442,11 +435,11 @@ mod tests {
         );
         let lines: Vec<&str> = body.lines().collect();
         assert_eq!(lines[0], "{ ... }:");
-        assert_eq!(lines[5], "  losos.hostName = \"a\\\"b\\${c}\";");
-        assert_eq!(lines[8], "  losos.nextcloud.apachePort = 8080;");
-        assert_eq!(lines[18], "  losos.apps.ports = [ ];");
-        assert_eq!(lines[19], "  losos.upgradeFlakeUri = \"github:x/y\";");
-        assert_eq!(lines[20], "}");
+        assert_eq!(lines[4], "  losos.hostName = \"a\\\"b\\${c}\";");
+        assert_eq!(lines[7], "  losos.nextcloud.apachePort = 8080;");
+        assert_eq!(lines[17], "  losos.apps.ports = [ ];");
+        assert_eq!(lines[18], "  losos.upgradeFlakeUri = \"github:x/y\";");
+        assert_eq!(lines[19], "}");
         assert!(body.ends_with("}\n"));
         assert!(!body.contains("dropped"));
     }

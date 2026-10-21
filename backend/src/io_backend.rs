@@ -1011,7 +1011,10 @@ fn curl_git(
     const MAX_BYTES: usize = 1024 * 1024;
 
     let token = read_bot_token(repo)?;
-    let header = format!("Authorization: token {token}\n");
+    let mut header = format!("Authorization: token {token}\n");
+    if let Some(person) = op.acting_as() {
+        header.push_str(&format!("X-Losos-As: {person}\n"));
+    }
     atomic_write_secret(&paths.git_header_file(), header.as_bytes())
         .context("writing the LosOS Git header file")?;
     let (method, path) = op.route();

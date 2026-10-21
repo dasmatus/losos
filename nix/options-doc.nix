@@ -80,7 +80,6 @@ let
     "hostName"
     "keyring"
     "nextcloud.mode"
-    "forgejo.mode"
     "shared.fscrypt"
     "storage"
     "tls"
@@ -96,9 +95,8 @@ let
   # greys the row and says so while that one is off in the draft. The value
   # still saves; it just does nothing until the gate opens. Each pair is
   # enforced in the modules, not here (lososInternal.federation in
-  # modules/options.nix for the two below).
+  # modules/options.nix for the first).
   needs = {
-    "forgejo.federation.enable" = "sharingMyStorage";
     "nextcloud.federation.enable" = "sharingMyStorage";
     "vms.host" = "sharingMyStorage";
   };

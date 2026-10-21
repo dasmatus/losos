@@ -2,16 +2,16 @@
 #
 # One default_server vhost on :80 carries everything the appliance publishes:
 # the admin SPA at /, lososd's JSON API at /api/*, and the two service routes
-# /nextcloud and /forgejo/. default_server because master-proxy
+# /nextcloud and /git/. default_server because master-proxy
 # (Traefik+rathole) traffic arrives with a public hostname, not
 # <hostName>.local. Nothing but Nginx binds a public port. The admin surface
 # (/, /assets/, /setup/, /api/) is LAN-only (see `lanOnly` below); only
-# /nextcloud and /forgejo are reachable through the master-proxy tunnel.
+# /nextcloud and /git/ are reachable through the master-proxy tunnel.
 #
 # This file used to *define* the two services as well, as systemd-nspawn
 # containers on private veths (10.231.1.2 and 10.231.2.2) with NAT for egress.
-# All of that is gone. `losos.<svc>.mode == "container"` now means a static pod
-# in this box's own local k3s cluster: modules/cluster.nix runs the cluster,
+# All of that is gone. `losos.nextcloud.mode == "container"` now means a static
+# pod in this box's own local k3s cluster: modules/cluster.nix runs the cluster,
 # modules/workloads.nix writes the manifests and the rendered config the pods
 # mount, and modules/nextcloud-common.nix still holds the Nextcloud truth both
 # modes share. The option value keeps the name "container" — it is the
@@ -19,13 +19,13 @@
 # break by renaming it, but it no longer implies nspawn.
 #
 # The local cluster runs no CNI (--flannel-backend=none), so its pods share the
-# host's network namespace and bind 127.0.0.1. That is why the two routes below
-# proxy to loopback ports instead of container addresses — and why `lanOnly`
+# host's network namespace and bind 127.0.0.1. That is why the Nextcloud route
+# proxies to a loopback port instead of a container address — and why `lanOnly`
 # lost a layer of depth. That loss is spelled out where the guard is defined;
 # do not re-add a deny rule for a subnet that no longer exists.
 #
 # The vhost itself is unconditional: it owns the *service* routes, so gating it
-# on losos.admin.enable (as it used to be) took Nextcloud and Forgejo offline
+# on losos.admin.enable (as it used to be) took the two apps offline
 # along with the dashboard. Only the admin locations, the document root and the
 # admin-only firewall entry follow losos.admin.enable.
 {
@@ -41,11 +41,9 @@ let
   nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
 
   nextcloudWorkload = config.losos.nextcloud.mode == "container";
-  # losos.forgejo.enable is consulted in *both* modes. It used to be read only
-  # by the native path (modules/services.nix), so with the default
-  # mode == "container" the option was dead: enable = false still ran the git
-  # host and still published /forgejo/ through the tunnel.
-  forgejoWorkload = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
+  # LosOS Git (modules/git.nix) answers on a Unix socket only nginx may open.
+  gitOn = config.losos.git.enable;
+  gitSocket = "/run/losos-git/http.sock";
 
   # The Nextcloud pod's httpd listens here. The port is runtime-tunable from
   # the settings SPA, which is exactly why it is not baked into the image:
@@ -54,18 +52,11 @@ let
   # restarts the pod. Both ends read the same option, so they cannot drift.
   apachePort = config.losos.nextcloud.apachePort;
 
-  # Forgejo's port is a literal on both sides — here and in the losos.ini that
-  # modules/workloads.nix mounts into the pod. There is deliberately no
-  # losos.forgejo.httpPort: nothing off-box ever sees it (the prefix is
-  # stripped here and ROOT_URL carries the public form), so an option would be
-  # a knob with no reason to be turned.
-  forgejoPort = 3000;
-
   # Sign-in to the two apps with LosOS Login (modules/app-sign-in.nix,
   # modules/identity.nix for the questions nginx asks it).
   signIn = import ./app-sign-in.nix { inherit lib; };
   signInNextcloud = config.lososInternal.appSignIn.nextcloud;
-  signInForgejo = config.lososInternal.appSignIn.forgejo;
+  signInGit = config.lososInternal.appSignIn.git;
   # Whatever a client sent, the apps never see these headers from it.
   clearSignIn = ''
     proxy_set_header ${signIn.header.user} "";
@@ -198,15 +189,16 @@ let
   lanOnly = import ./lan-only.nix;
 
   # ── Security response headers ─────────────────────────────────────────────
-  # The admin UI, /api/, /nextcloud and /forgejo/ share one origin by design,
+  # The admin UI, /api/, /nextcloud and /git/ share one origin by design,
   # so a strict CSP is the only thing standing between an injected script on
   # the admin pages and the Bearer token the SPA keeps in sessionStorage.
   #
-  # It cannot be applied to Nextcloud or Forgejo: both ship their own CSP and
-  # both need inline script, and `add_header` at server level is inherited by
-  # every location that does not set one of its own — including the two proxy
-  # locations. So the values are selected by a `map` on $uri and the two
-  # service prefixes map to the empty string; nginx omits a header whose value
+  # It cannot be applied to Nextcloud: it ships its own CSP and needs inline
+  # script, and `add_header` at server level is inherited by every location
+  # that does not set one of its own — including its proxy location. So the
+  # values are selected by a `map` on $uri and its prefix maps to the empty
+  # string; LosOS Git's pages are the admin UI's own and keep the strict
+  # policy; nginx omits a header whose value
   # is empty. Fail-closed on purpose: the default arm is the strict policy, so
   # a new admin route is covered without anyone remembering to add it.
   #
@@ -341,7 +333,7 @@ let
   ];
 
   # One map per header: value on the admin surface, empty (header omitted) on
-  # the two proxied service routes, the handbook's and the lab's own values
+  # the Nextcloud route, the handbook's and the lab's own values
   # (or the admin value, for the headers they share) under /handbook/ and
   # /lab/, and the widget frame's own value (or nothing) under
   # /widget-frame/.
@@ -349,7 +341,6 @@ let
     map $uri ${variable} {
         default          "${value}";
         ~^/nextcloud     "";
-        ~^/forgejo       "";
         ~^/handbook/     "${handbookValue}";
         ~^/lab/          "${labValue}";
         ~^/widget-frame/ "${frameValue}";
@@ -644,25 +635,27 @@ in
             '';
           };
         })
-        (lib.mkIf forgejoWorkload {
-          # Trailing slash on proxyPass -> /forgejo prefix stripped;
-          # Forgejo's ROOT_URL is https://<host>.local/forgejo/ (http without
-          # losos.tls, or the master-proxy hostname) so it generates prefixed
-          # links.
-          "/forgejo/" = {
-            proxyPass = "http://127.0.0.1:${toString forgejoPort}/";
-            proxyWebsockets = true;
-            # Who LosOS Login says is calling, on every request, so a person
-            # signed in there is signed in here from the first page
-            # (modules/app-sign-in.nix). Nobody, without LosOS Login.
-            extraConfig = if signInForgejo then signInMaybe else clearSignIn;
-          };
-        })
-        (lib.mkIf (forgejoWorkload && signInForgejo) {
-          # Forgejo's sign-in page: LosOS Login's instead (see `signInPage`).
-          "= /forgejo/user/login" = {
-            proxyPass = "http://127.0.0.1:${toString forgejoPort}/user/login";
-            extraConfig = signInPage;
+        (lib.mkIf gitOn {
+          # LosOS Git: its pages, its API and git's smart HTTP, all on the
+          # Unix socket of modules/git.nix with the /git prefix taken off
+          # (the `/` after the socket path). Not LAN-guarded, like
+          # /nextcloud: through an edge it is how the owner clones from
+          # anywhere, and every repository is checked by LosOS Git itself.
+          # Pushes and clones of any size, streamed both ways, and the
+          # person LosOS Login names on every request (modules/app-sign-in.nix);
+          # a git client's own token in Authorization skips that question
+          # (`/internal/losos-app-authz`).
+          "/git/" = {
+            proxyPass = "http://unix:${gitSocket}:/";
+            extraConfig = ''
+              ${if signInGit then signInMaybe else clearSignIn}
+              client_max_body_size 0;
+              proxy_request_buffering off;
+              proxy_buffering off;
+              proxy_http_version 1.1;
+              proxy_read_timeout 1h;
+              proxy_send_timeout 1h;
+            '';
           };
         })
         (lib.mkIf (nextcloudWorkload && signInNextcloud) {
@@ -737,26 +730,6 @@ in
             return = "404";
           })
         ))
-        # Only while the box shares its disk: lososInternal.federation.forgejo
-        # is losos.forgejo.federation.enable gated on losos.sharingMyStorage.
-        (lib.mkIf (forgejoWorkload && config.lososInternal.federation.forgejo) {
-          # The two addresses the fediverse discovers a server by, and the
-          # only two Forgejo serves at the host's root rather than under
-          # ROOT_URL: a server that wants to federate with this box asks
-          # https://<host>/.well-known/nodeinfo, never
-          # /forgejo/.well-known/nodeinfo. Exact matches, so nothing else
-          # under /.well-known/ leaves the admin SPA's `/` location, and not
-          # LAN-guarded for the same reason /forgejo/ is not: the peers
-          # arrive through the tunnel, from loopback. Everything Forgejo
-          # answers with is a URL under ROOT_URL, so the rest of federation
-          # rides the /forgejo/ route above.
-          "= /.well-known/nodeinfo" = {
-            proxyPass = "http://127.0.0.1:${toString forgejoPort}";
-          };
-          "= /.well-known/webfinger" = {
-            proxyPass = "http://127.0.0.1:${toString forgejoPort}";
-          };
-        })
       ];
     };
   };
@@ -787,15 +760,13 @@ in
   };
 
   # ── Firewall ──────────────────────────────────────────────────────────────
-  # Nginx owns :80 and nothing else on the box holds a public port: both
-  # workload pods bind 127.0.0.1 (hostNetwork, config-driven — see
+  # Nginx owns :80 and nothing else on the box holds a public port: the
+  # Nextcloud pod binds 127.0.0.1, LosOS Git a Unix socket and 127.0.0.1 (hostNetwork, config-driven — see
   # modules/workloads.nix), the lososd API is loopback, and neither Kubernetes
   # instance adds to allowedTCPPorts, so 6443/9345/10250/10260 stay closed
   # against NixOS' default-deny firewall. The port is opened whenever the front
   # vhost has any route to serve — the admin SPA *or* either workload — because
   # gating it on the admin flag alone took the service routes down with the
   # dashboard.
-  networking.firewall.allowedTCPPorts = lib.optional (
-    adminEnabled || nextcloudWorkload || forgejoWorkload
-  ) 80;
+  networking.firewall.allowedTCPPorts = lib.optional (adminEnabled || nextcloudWorkload || gitOn) 80;
 }

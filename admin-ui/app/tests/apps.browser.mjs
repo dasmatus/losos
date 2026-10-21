@@ -25,7 +25,6 @@ if (SHOTS !== null) await mkdir(SHOTS, { recursive: true });
 const SETTINGS = {
   sharingMyStorage: false,
   nextcloudMode: 'container',
-  forgejoMode: 'container',
   hostName: 'mattbox',
   https: false,
   gpuEnable: false,

@@ -38,9 +38,10 @@ enum Cmd {
         /// New repositories are public unless their maker says otherwise.
         #[arg(long)]
         public_by_default: bool,
-        /// A push to a repository that does not exist does not make it.
+        /// A push to a repository that does not exist yet makes it, in the
+        /// pusher's own namespace.
         #[arg(long)]
-        no_push_create: bool,
+        push_create: bool,
         /// Where the pages are below the box's address.
         #[arg(long, default_value = "/git/")]
         base_path: String,
@@ -65,7 +66,7 @@ fn main() -> anyhow::Result<()> {
             git,
             require_sign_in,
             public_by_default,
-            no_push_create,
+            push_create,
             base_path,
         } => server::run(
             Config {
@@ -73,7 +74,7 @@ fn main() -> anyhow::Result<()> {
                 git,
                 require_sign_in,
                 default_private: !public_by_default,
-                push_create: !no_push_create,
+                push_create,
                 base_path,
             },
             server::Listen {

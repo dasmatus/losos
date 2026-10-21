@@ -28,7 +28,6 @@ const SECTIONS = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab
 const SETTINGS = {
   sharingMyStorage: false,
   nextcloudMode: 'container',
-  forgejoMode: 'container',
   hostName: 'mattbox',
   https: false,
   gpuEnable: false,

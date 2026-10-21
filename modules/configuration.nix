@@ -167,13 +167,7 @@
     extraGroups = [ "redis-nextcloud" ];
   };
 
-  users.groups.forgejo.gid = 1003;
-  users.users.forgejo = {
-    uid = 1003;
-    group = "forgejo";
-    isSystemUser = true;
-    description = "Forgejo workload";
-  };
+  # 1003 was Forgejo's; LosOS Git's account has it now (modules/git.nix).
 
   # The Redis group needs a *fixed* gid, and this is the only place it can get
   # one. modules/workloads.nix reads it back out of

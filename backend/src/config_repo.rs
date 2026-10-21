@@ -133,6 +133,15 @@ pub enum GitOp {
     /// The repositories an account owns, private ones included. The
     /// sidebar's pin picker reads it.
     ListRepos { login: String },
+    /// The repositories `login` may read whose owner, name or description
+    /// holds `query`, newest first, at most `limit`. Asked as that person
+    /// (`X-Losos-As`), so LosOS Git applies their permissions, not the
+    /// administrator's.
+    SearchRepos {
+        login: String,
+        query: String,
+        limit: u32,
+    },
     /// A token for one of `login`'s computers, replacing one of the same
     /// name: clone and push, and read who it belongs to.
     CreateToken { login: String, name: String },
@@ -147,16 +156,39 @@ impl GitOp {
                 ("PUT", format!("/api/v1/admin/users/{owner}/repos/{name}"))
             }
             GitOp::ListRepos { login } => ("GET", format!("/api/v1/users/{login}/repos")),
+            GitOp::SearchRepos { query, limit, .. } => (
+                "GET",
+                format!(
+                    "/api/v1/repos/search?q={}&limit={limit}",
+                    crate::catalogue::percent_encode(query)
+                ),
+            ),
             GitOp::CreateToken { login, .. } => {
                 ("POST", format!("/api/v1/admin/users/{login}/tokens"))
             }
         }
     }
 
+    /// The person LosOS Git should answer as, when not the administrator.
+    /// `None` also for a login that could not travel in a header.
+    pub fn acting_as(&self) -> Option<&str> {
+        match self {
+            GitOp::SearchRepos { login, .. }
+                if !login.is_empty()
+                    && login
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b)) =>
+            {
+                Some(login)
+            }
+            _ => None,
+        }
+    }
+
     /// The JSON body, or `None` for a read.
     pub fn body(&self) -> Option<String> {
         let doc = match self {
-            GitOp::ListRepos { .. } => return None,
+            GitOp::ListRepos { .. } | GitOp::SearchRepos { .. } => return None,
             GitOp::EnsureUser {
                 full_name,
                 email,
@@ -550,6 +582,24 @@ mod tests {
         assert_eq!(body["replace"], true);
         assert_eq!(body["scopes"], json!(crate::devices::GIT_SCOPES));
         assert!(GitOp::ListRepos { login: "x".into() }.body().is_none());
+        let search = GitOp::SearchRepos {
+            login: "eva".into(),
+            query: "notes & todo".into(),
+            limit: 8,
+        };
+        assert_eq!(
+            search.route(),
+            ("GET", "/api/v1/repos/search?q=notes%20%26%20todo&limit=8".to_string())
+        );
+        assert!(search.body().is_none());
+        assert_eq!(search.acting_as(), Some("eva"));
+        let smuggled = GitOp::SearchRepos {
+            login: "eva\r\nX-Evil: 1".into(),
+            query: String::new(),
+            limit: 8,
+        };
+        assert_eq!(smuggled.acting_as(), None, "a header break never travels");
+        assert_eq!(GitOp::ListRepos { login: "x".into() }.acting_as(), None);
     }
 
     #[test]
