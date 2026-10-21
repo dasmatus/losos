@@ -136,11 +136,8 @@ pub fn parse(text: &str) -> anyhow::Result<OptionsDoc> {
 
 /// Keys an older `overrides.nix` may still spell the old way, and the option
 /// each one is today. [`crate::overrides::parse_settings`] honours the same
-/// two, so a file that reads back fine there must pass the gate here too.
-const ALIASES: &[(&str, &str)] = &[
-    ("aio.apachePort", "nextcloud.apachePort"),
-    ("cfd.enable", "proxy.enable"),
-];
+/// one, so a file that reads back fine there must pass the gate here too.
+const ALIASES: &[(&str, &str)] = &[("cfd.enable", "proxy.enable")];
 
 fn canonical(key: &str) -> &str {
     ALIASES
@@ -176,7 +173,7 @@ pub fn join(doc: &OptionsDoc, overrides: &str) -> Value {
         .collect();
     let stray: Vec<Value> = set
         .iter()
-        .filter(|(k, _)| doc.find(canonical(k)).is_none())
+        .filter(|(k, _)| doc.find(canonical(k)).is_none() && !crate::overrides::is_retired(k))
         .map(|(k, v)| json!({ "key": k, "value": v }))
         .collect();
     json!({
@@ -209,6 +206,11 @@ pub struct Rejected(pub String);
 /// validate_apply`] handles the shape of the file.
 pub fn check_body(doc: &OptionsDoc, body: &str) -> Result<(), Rejected> {
     for (key, raw) in assignments(body) {
+        // An older box's line for something it no longer has; cmd_apply
+        // drops it on the way to the file.
+        if crate::overrides::is_retired(&key) {
+            continue;
+        }
         let name = canonical(&key);
         let Some(opt) = doc.find(name) else {
             return Err(Rejected(format!(
@@ -434,12 +436,12 @@ pub(crate) mod tests {
                  "default":["https://proxy.losos.dasmat.us"],"current":["https://proxy.losos.dasmat.us"],"danger":true,"fixed":null,"readOnly":false},
                 {"name":"proxy.noisePublicKeyFile","group":"proxy","editor":{"kind":"nullable","inner":{"kind":"str","form":"path"}},"nixType":"null or string",
                  "default":null,"current":"/var/secrets/x","danger":false,"fixed":null,"readOnly":false},
+                {"name":"proxy.enable","group":"proxy","editor":{"kind":"bool"},"nixType":"boolean",
+                 "default":false,"current":false,"danger":true,"fixed":null,"readOnly":false},
                 {"name":"tpm.enable","group":"tpm","editor":{"kind":"bool"},"nixType":"boolean",
                  "default":true,"current":true,"danger":false,"fixed":"installer","readOnly":true},
                 {"name":"backend.package","group":"backend","editor":{"kind":"opaque","reason":"null or package"},"nixType":"null or package",
-                 "default":{"package":"losos-ctl"},"current":{"package":"losos-ctl"},"danger":true,"fixed":null,"readOnly":true},
-                {"name":"nextcloud.apachePort","group":"nextcloud","editor":{"kind":"int","min":0,"max":65535},"nixType":"16 bit unsigned integer",
-                 "default":11000,"current":11000,"danger":false,"fixed":null,"readOnly":false}
+                 "default":{"package":"losos-ctl"},"current":{"package":"losos-ctl"},"danger":true,"fixed":null,"readOnly":true}
               ],
               "excluded": {"edge": "the VPS side"}
             }"#,
@@ -487,14 +489,15 @@ pub(crate) mod tests {
         let doc = sample();
         let out = join(
             &doc,
-            "{ ... }:\n{\n  losos.hostName = \"box2\";\n  losos.aio.apachePort = 12000;\n  losos.ghost = 1;\n}\n",
+            "{ ... }:\n{\n  losos.hostName = \"box2\";\n  losos.cfd.enable = true;\n  losos.nextcloud.mode = \"container\";\n  losos.ghost = 1;\n}\n",
         );
         let opts = out["options"].as_array().unwrap();
         let by = |n: &str| opts.iter().find(|o| o["name"] == n).unwrap().clone();
         assert_eq!(by("hostName")["set"], "\"box2\"");
         assert_eq!(by("forgejo.enable")["set"], Value::Null);
-        // The legacy spelling lands on the option it became.
-        assert_eq!(by("nextcloud.apachePort")["set"], "12000");
+        // The legacy spelling lands on the option it became, and a retired
+        // one is no stray: lososd drops it on the next write.
+        assert_eq!(by("proxy.enable")["set"], "true");
         assert_eq!(out["stray"], json!([{"key": "ghost", "value": "1"}]));
         assert_eq!(out["available"], true);
     }
@@ -517,12 +520,11 @@ pub(crate) mod tests {
                     losos.cluster.idleLoadThreshold = 0.5;\n  \
                     losos.cache.substituters = [ \"https://a\" \"https://b\" ];\n  \
                     losos.proxy.noisePublicKeyFile = null;\n  losos.cfd.enable = true;\n}\n";
-        // `cfd.enable` is an alias of proxy.enable, which the sample does not
-        // declare — so that line alone must be the one refused.
-        let err = check_body(&doc, body).unwrap_err();
+        // `cfd.enable` is checked as proxy.enable, the option it became.
+        assert_eq!(check_body(&doc, body), Ok(()));
+        let body = body.replace("losos.cfd.enable = true", "losos.cfd.enable = 1");
+        let err = check_body(&doc, &body).unwrap_err();
         assert!(err.0.contains("losos.cfd.enable"), "{err}");
-        let body = body.replace("  losos.cfd.enable = true;\n", "");
-        assert_eq!(check_body(&doc, &body), Ok(()));
     }
 
     #[test]

@@ -33,10 +33,8 @@ makes a random key, formats the volume with it, and then seals the key to the
 TPM with `systemd-cryptenroll`. At boot the initrd asks the chip for the key
 and opens the volume. The boot partition carries no secret.
 
-The box seals two smaller secrets to the chip as well:
+The box seals a smaller secret to the chip as well:
 
-- The secrets the box makes for itself, such as Nextcloud's first admin
-  password (`modules/keyring.nix`, through `systemd-creds`).
 - The key that encrypts the mesh's storage directory (`modules/fscrypt.nix`).
 
 :::note[The recovery copy of the key]
@@ -62,10 +60,9 @@ That has two consequences.
    ordinary Linux tools and a few minutes. It exposes the owner's files in
    LosOS Cloud, the repositories in LosOS Git, the admin key and the rest of
    `/persist`.
-2. The box's own secrets lose their chip. The keyring falls back to
-   `systemd-creds`' host key, and the mesh storage key to a plain file at
-   `/var/secrets/losos-shared-key`. Both sit on the same volume as the data
-   they protect. A copy of `/persist` that leaves the box takes the keys with
+2. The mesh storage key loses its chip and falls back to a plain file at
+   `/var/secrets/losos-shared-key`, on the same volume as the data it
+   protects. A copy of `/persist` that leaves the box takes the key with
    it, and a bug that lets a service read any file as root reads both halves.
 
 The network side does not change. The LAN guard, the sign-in, the tunnel,

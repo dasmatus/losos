@@ -1,206 +1,41 @@
-//! `losos-ctl set-password` — replace the Nextcloud admin password.
+//! The owner's password: the rules for a new one, and the wrapper that
+//! keeps it out of logs.
 //!
-//! `modules/nextcloud-common.nix` generates the install-time password with
-//! `head -c 24 /dev/urandom | base64`, writes it 0600, and shows it to nobody.
-//! `nix/images.nix` has already run `occ maintenance:install` with it by the
-//! time anyone looks. The appliance has no SSH and no shell logins, so on a
-//! fresh box the only account that can administer Nextcloud is one whose
-//! password exists solely as bytes in a root-only file. This command is the way
-//! out: it **replaces** that password with one the owner chose. It never reads
-//! it back out. Surfacing the generated one would turn a root-only 0600 file
-//! into an API-readable secret and buy nothing — the owner still has to type a
-//! password they want either way.
+//! The password lives in LosOS Login's people file (`crate::people`), which
+//! lososd alone writes. `POST /api/setup/claim` sets the first one and
+//! `POST /api/set-password` changes it; LosOS Cloud has no password of its
+//! own for the owner and believes the person nginx names
+//! (`modules/cloud.nix`).
 //!
-//! Same shape as [`crate::grow`]: a pure planner producing an ordered
-//! [`OccAction`] list, and a thin executor behind the [`crate::losos::Losos`]
-//! trait. The reason the plan is data here is narrower than `grow`'s ordering
-//! argument, and it is this:
-//!
-//! > **The password must never appear in an argv.** `/proc/<pid>/cmdline` is
-//! > world-readable and nothing in `modules/` sets `hidepid`, so
-//! > `occ user:resetpassword --password hunter2` publishes it to every process
-//! > on the box, including the two data domains' own workloads. With the argv
-//! > in the plan as data, "no rendered argv contains the password" is a
-//! > property the test suite checks by construction instead of by reading the
-//! > code and hoping.
-//!
-//! The password is not a field of [`OccAction`] at all. It travels beside the
-//! plan, as the `secret` argument to [`crate::losos::Losos::run_occ`], so it
-//! cannot reach an argv — and cannot reach a serialized plan in a debug log
-//! either.
-//!
-//! ## The two modes take different routes, and neither is optional
-//!
-//! ```text
-//!   container   crictl ps   → the running workload container's id
-//!               stage       → /var/lib/nextcloud/.losos-setpass, 0600, uid 1002
-//!               crictl exec → /bin/losos-nextcloud-occ-setpass <user>
-//!               clear       → unlink the staged file, success or failure
-//!
-//!   native      nextcloud-occ user:resetpassword <user> --password-from-env
-//!               with OC_PASS in the child's environment
-//! ```
-//!
-//! Container mode stages a file because **`crictl exec` has no environment
-//! flag**. That is checked, not assumed: `crictl exec --help` on the pinned
-//! `cri-tools 1.36.0` lists `--ignore-errors/-e`, `--image`, `--interactive`,
-//! `--label`, `--last`, `--latest`, `--name`, `--parallel`, `--pod`, `--quiet`,
-//! `--state`, `--sync`, `--timeout`, `--tls-*`, `--transport` and `--tty`, and
-//! nothing else. `-e` is `--ignore-errors`, which is a trap of its own. The
-//! staged file is the only channel left that is not an argv, and
-//! `/var/lib/nextcloud` is a read-write `hostPath` mount shared by the host and
-//! the pod (`modules/workloads.nix`), so both ends can reach it.
+//! One rule holds everywhere a password is handled here: it never appears
+//! in an argv. `/proc/<pid>/cmdline` is world-readable, so a password
+//! travels as a [`Secret`] beside a request, never inside a command line.
 
-use serde::{Deserialize, Serialize};
-
-/// The Nextcloud admin account this appliance installs.
-/// `modules/nextcloud-stack.nix` sets `adminUser = "notshared"`, matching the
-/// uid-1000 data domain in `modules/configuration.nix`.
+/// The account that holds the owner's files in LosOS Cloud, matching the
+/// uid-1000 data domain in `modules/configuration.nix`
+/// (`modules/app-sign-in.nix`).
 pub const DEFAULT_ADMIN_USER: &str = "notshared";
 
 /// Shortest password this daemon will set.
 ///
-/// Above Nextcloud's own `password_policy` default of 10, and deliberately a
-/// server-side rule rather than a browser one: the admin HTTP API is reachable
-/// by anything that holds the admin token, and the wizard's `<input>` is not a
-/// boundary.
+/// Deliberately a server-side rule rather than a browser one: the admin
+/// HTTP API is reachable by anything that holds the admin token, and the
+/// wizard's `<input>` is not a boundary.
 ///
-/// Length is no longer the only rule. Since `crate::signin` the one password
-/// opens the admin pages too — `POST /api/apply` and a factory reset sit
-/// behind it, not only the owner's files — so [`validate_password`] also
-/// wants both letter cases, a digit and a symbol. Four rules, all shown up
+/// Length is not the only rule. The one password opens the admin pages
+/// (`POST /api/apply` and a factory reset sit behind it, not only the
+/// owner's files), so [`validate_password`] also wants both letter cases, a digit and a symbol. Four rules, all shown up
 /// front by the wizard with a tick each, and nothing hidden: an owner who
 /// meets what is on screen is never refused by a rule they did not see. A
 /// symbol here is any character that is not a letter, a digit or
 /// whitespace, so a hyphen between two words counts and nothing has to be
-/// hunted for on a phone keyboard. Nextcloud's own policy app can add more
-/// if an owner wants it.
+/// hunted for on a phone keyboard.
 pub const MIN_PASSWORD_CHARS: usize = 12;
 
 /// Longest password accepted, in bytes.
 ///
-/// Not a security limit — a cap on what gets handed to a password hasher. Note
-/// that Nextcloud hashes with bcrypt, which itself stops at 72 bytes, so
-/// anything past that adds no entropy on Nextcloud's side either.
+/// Not a security limit, a cap on what gets handed to a password hasher.
 pub const MAX_PASSWORD_BYTES: usize = 256;
-
-/// Where the host stages the new password for the pod to read.
-///
-/// Inside `/var/lib/nextcloud`, which `modules/workloads.nix` mounts into the
-/// pod as a read-write `Directory` hostPath owned `1002:1002`. Deliberately
-/// *not* `/var/secrets/nextcloud-admin-pass`: that one is mounted `type: File`,
-/// a bind mount of a single inode, so the temp-and-rename in
-/// [`crate::io_backend::atomic_write_secret`] would swap the directory entry
-/// and leave the pod reading the old inode forever.
-pub const STAGED_SECRET: &str = "/var/lib/nextcloud/.losos-setpass";
-
-/// The uid the Nextcloud workload runs as (`modules/workloads.nix`), and so the
-/// uid that has to be able to read the staged file. It is 0600, so ownership is
-/// the whole of its access control.
-pub const NEXTCLOUD_UID: u32 = 1002;
-
-/// The native-mode entry point: the wrapper `services.nextcloud` puts on
-/// `environment.systemPackages`. It handles `cd webroot`,
-/// `NEXTCLOUD_CONFIG_DIR`, dropping to the `nextcloud` user, and — the reason
-/// it is the right entry point rather than calling `php occ` ourselves — it
-/// forwards `OC_PASS` across that privilege drop.
-pub const NATIVE_OCC: &str = "nextcloud-occ";
-
-/// The container-mode entry point, which lives **inside the image**.
-///
-/// `occ` is not on the pod's `PATH`: `nix/images.nix` defines it as a shell
-/// function in the entrypoint, after a `cd` to the webroot and an
-/// `export NEXTCLOUD_CONFIG_DIR`, and an external `crictl exec` inherits none
-/// of that. The wrapper named here is the contract this module depends on:
-///
-/// > `/bin/losos-nextcloud-occ-setpass <user>` reads the password from
-/// > [`STAGED_SECRET`], exports it as `OC_PASS`, runs
-/// > `occ user:resetpassword <user> --password-from-env`, and exits with occ's
-/// > status.
-///
-/// Read the file with a plain `$(cat …)`: the daemon writes it with no trailing
-/// newline and [`validate_password`] rejects control characters, so command
-/// substitution round-trips it exactly.
-pub const IMAGE_OCC_SETPASS: &str = "/bin/losos-nextcloud-occ-setpass";
-
-/// The container-mode readiness probe, which also lives **inside the image**.
-///
-/// > `/bin/losos-nextcloud-occ-status` runs `occ status --output=json` from
-/// > the webroot with `NEXTCLOUD_CONFIG_DIR` set, and exits with occ's status.
-///
-/// It exists because `crictl ps --state Running` is true from the first line
-/// of the pod's entrypoint, and that entrypoint runs `occ maintenance:install`
-/// before it serves anything — minutes on a mini-PC, the better part of an
-/// hour under emulation. A password reset in that window fails, and the
-/// first-run wizard used to show the owner a bare 500. Now the wizard asks
-/// [`interpret_status`]'s question first and waits.
-pub const IMAGE_OCC_STATUS: &str = "/bin/losos-nextcloud-occ-status";
-
-/// The container-mode call that gives an account LosOS Login's name and
-/// address (`crate::app_names`), also **inside the image**:
-///
-/// > `/bin/losos-nextcloud-occ-person <account> <name> <email>` sets the
-/// > display name, and the address unless it is empty, with
-/// > `occ user:setting`, and exits [`NO_ACCOUNT`] when the account does not
-/// > exist yet.
-pub const IMAGE_OCC_PERSON: &str = "/bin/losos-nextcloud-occ-person";
-
-/// What the steps of [`plan_person`] exit with when LosOS Cloud has no such
-/// account yet: it makes one, with the name, at the person's first sign-in.
-pub const NO_ACCOUNT: i32 = 3;
-
-/// The CRI socket of the box's **own** k3s cluster's containerd
-/// (`modules/cluster.nix`, `localCriSocket`).
-///
-/// Not `/run/k3s/containerd/containerd.sock` — that one belongs to the mesh
-/// rke2 agent, which runs the edge's workloads and has never heard of this
-/// box's Nextcloud.
-pub const DEFAULT_CRI_SOCKET: &str = "unix:///run/containerd/containerd.sock";
-
-/// `crictl ps --name` takes a regular expression, so this is anchored: an
-/// unanchored `nextcloud` would also match a `nextcloud-cron` sidecar if one is
-/// ever added, and [`parse_container_ids`] would then refuse to guess between
-/// them.
-const CONTAINER_NAME_RE: &str = "^nextcloud$";
-/// `modules/workloads.nix` puts every static pod in `kube-system`.
-const CONTAINER_NAMESPACE_RE: &str = "^kube-system$";
-
-/// Which deployment mode Nextcloud is **running** in.
-///
-/// Read from `$LOSOS_NEXTCLOUD_MODE`, set by `modules/daemon.nix` from
-/// `config.losos.nextcloud.mode`. Deliberately not derived from
-/// [`crate::losos::cmd_settings`]: `overrides.nix` describes what the *next*
-/// rebuild will be, and between `POST /api/apply` and that rebuild finishing
-/// the two disagree. The pod that has to be talked to is the running one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum NcMode {
-    Container,
-    Native,
-}
-
-impl NcMode {
-    /// The wire spelling, and the spelling `losos.nextcloud.mode` uses.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            NcMode::Container => "container",
-            NcMode::Native => "native",
-        }
-    }
-
-    /// Exact-match parse; anything else is `None`.
-    ///
-    /// No lenient fallback, unlike [`crate::model::Mode`]. A wrong guess here
-    /// does not degrade gracefully — it runs `crictl` on a box with no local
-    /// cluster, or `nextcloud-occ` on a box whose Nextcloud lives in an image.
-    pub fn parse(s: &str) -> Option<NcMode> {
-        match s {
-            "container" => Some(NcMode::Container),
-            "native" => Some(NcMode::Native),
-            _ => None,
-        }
-    }
-}
 
 /// A password, wrapped so it cannot be printed by accident.
 ///
@@ -221,9 +56,7 @@ impl Secret {
         Secret(password.to_string())
     }
 
-    /// The plaintext. Every call site is one of exactly three: writing the
-    /// staged file, setting `OC_PASS` on a child process, or the Basic
-    /// header of the sign-in probe (`crate::signin::login_request`).
+    /// The plaintext, for hashing it or putting it in a Basic header.
     pub fn expose(&self) -> &str {
         &self.0
     }
@@ -235,248 +68,8 @@ impl std::fmt::Debug for Secret {
     }
 }
 
-/// Where the `occ` invocation is going to run, once it has been located.
-///
-/// The container id is an *input* to the planner rather than something the plan
-/// discovers, for the same reason [`crate::grow::plan_grow`] takes a
-/// [`crate::grow::VgFree`]: the look and the do are separate, so the do is a
-/// pure function of what was found.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Target {
-    /// A running workload container, addressed by CRI id on a CRI socket.
-    Container { socket: String, id: String },
-    /// The host's own `nextcloud-occ` wrapper.
-    Native,
-}
-
-impl Target {
-    pub fn mode(&self) -> NcMode {
-        match self {
-            Target::Container { .. } => NcMode::Container,
-            Target::Native => NcMode::Native,
-        }
-    }
-}
-
-/// How the password reaches `occ`. Both arms exist because neither mode can use
-/// the other's channel, and naming the channel in the plan is what stops a
-/// later edit from quietly adding a third one that happens to be an argv.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SecretChannel {
-    /// `OC_PASS` in the child process's environment.
-    /// `/proc/<pid>/environ` is mode 0400 owner-only and the child is root.
-    Env,
-    /// A file staged beforehand, read by the in-image wrapper. The only channel
-    /// left in container mode, because `crictl exec` has no environment flag.
-    File { path: String },
-}
-
-/// One step of a password change. Data rather than a call, so the argv is
-/// testable without running anything — and so the password, which is *not* a
-/// field here, provably cannot be in one.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum OccAction {
-    /// Write the new password to `path`, mode 0600, owned by `uid`.
-    ///
-    /// 0600 plus the chown is the whole access control: the pod's process runs
-    /// as `uid` and there is no group anyone shares.
-    StageSecret { path: String, uid: u32 },
-    /// Run `occ`. A non-zero exit is reported as data, not as a spawn failure —
-    /// see [`interpret_occ`].
-    RunOcc {
-        argv: Vec<String>,
-        secret: SecretChannel,
-    },
-    /// Remove the staged file.
-    ///
-    /// Runs on the failure path too. It holds a plaintext password, and a
-    /// `crictl exec` that fails because the pod is still installing would
-    /// otherwise leave it lying in `/var/lib/nextcloud` until the next attempt.
-    ClearSecret { path: String },
-}
-
-/// What a finished `occ` run reported. Interpreted purely by
-/// [`interpret_occ`], so "which failures are which" is unit-tested rather than
-/// discovered in a journal.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OccOutcome {
-    pub code: i32,
-    pub stdout: String,
-    pub stderr: String,
-}
-
-/// The argv that finds the running Nextcloud container.
-///
-/// The "look" half, matching [`crate::losos::Losos::vg_free`]. Two details are
-/// load-bearing and both are flag traps in `crictl`:
-///
-///   * `--runtime-endpoint` comes **before** the subcommand. It is a global
-///     flag; after `ps` the short form `-r` means `--resolve-image-path`, and
-///     after `exec` it means `--transport`. `nix/tests/cluster-vm.nix` already
-///     spells its calls this way.
-///   * every flag is spelled long. `-s` is `--state` on `ps` but `--sync` on
-///     `exec`, and `-t` is `--timeout` globally but `--tty` on `exec`.
-pub fn resolve_argv(socket: &str) -> Vec<String> {
-    vec![
-        "crictl".into(),
-        "--runtime-endpoint".into(),
-        socket.to_string(),
-        "ps".into(),
-        "--name".into(),
-        CONTAINER_NAME_RE.into(),
-        "--namespace".into(),
-        CONTAINER_NAMESPACE_RE.into(),
-        "--state".into(),
-        "Running".into(),
-        // Ids only, untruncated — a truncated id is not a valid `exec` target.
-        "--quiet".into(),
-        "--no-trunc".into(),
-    ]
-}
-
-/// The most recent Nextcloud container in **any** state, for reading its last
-/// words when [`resolve_argv`] finds no running one.
-///
-/// `--all` because the interesting container is the one that just exited;
-/// `--latest` because a crash-looping pod leaves a trail of them and only the
-/// newest explains the present. Same flag traps as [`resolve_argv`].
-pub fn last_container_argv(socket: &str) -> Vec<String> {
-    vec![
-        "crictl".into(),
-        "--runtime-endpoint".into(),
-        socket.to_string(),
-        "ps".into(),
-        "--all".into(),
-        "--name".into(),
-        CONTAINER_NAME_RE.into(),
-        "--namespace".into(),
-        CONTAINER_NAMESPACE_RE.into(),
-        "--latest".into(),
-        "--quiet".into(),
-        "--no-trunc".into(),
-    ]
-}
-
-/// The tail of one container's log, as the owner's only window into a pod that
-/// keeps dying on a box with no shell.
-pub fn container_log_argv(socket: &str, id: &str) -> Vec<String> {
-    vec![
-        "crictl".into(),
-        "--runtime-endpoint".into(),
-        socket.to_string(),
-        "logs".into(),
-        "--tail".into(),
-        "20".into(),
-        id.to_string(),
-    ]
-}
-
-/// Word a stopped container's last log line for the waiting panel, or `None`
-/// when there is nothing to show (no container yet, or an empty log).
-///
-/// This exists because the alternative was discovered the hard way: an
-/// install sat on "Nextcloud has not started yet" for an hour while the pod
-/// was in CrashLoopBackOff over a one-line
-/// `mkdir: cannot create directory '/run/nextcloud': Permission denied`, and
-/// the only way to read that line was to boot the live ISO and mount the
-/// encrypted volume by hand. The line is what the owner (or whoever they ask)
-/// needs; the sentence around it says plainly that waiting will not fix it.
-pub fn describe_stopped(log_tail: &str) -> Option<String> {
-    const MAX: usize = 240;
-    // The line to show is the last one that reads as a complaint, and only
-    // failing that the last line of all. A tool that fails on its arguments
-    // prints the complaint first and its usage after (Symfony's console,
-    // behind `occ`, does exactly that: a failed install once surfaced a
-    // `maintenance:install [--database DATABASE] …` usage line here with the
-    // reason scrolled off above it). Not `last_line`
-    // either way: that one caps silently, and a cut here should be visible,
-    // so the owner knows the message goes on.
-    let lines: Vec<&str> = log_tail
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .collect();
-    let last = lines
-        .iter()
-        .rev()
-        .find(|l| looks_like_a_complaint(l))
-        .or(lines.last())
-        .map(|l| (*l).to_string())
-        .unwrap_or_default();
-    if last.is_empty() {
-        return None;
-    }
-    let shown = if last.chars().count() > MAX {
-        let cut: String = last.chars().take(MAX).collect();
-        format!("{cut}\u{2026}")
-    } else {
-        last
-    };
-    Some(format!(
-        "Nextcloud started and stopped again. Its last message was: {shown} \
-         The box retries on its own; if this stays on screen the message \
-         above is what needs fixing."
-    ))
-}
-
-/// Does a log line read as the reason something stopped, rather than as
-/// progress or usage text? Case-insensitive words, no regex crate needed.
-fn looks_like_a_complaint(line: &str) -> bool {
-    const WORDS: [&str; 14] = [
-        "error",
-        "fail",
-        "cannot",
-        "can't",
-        "denied",
-        "refused",
-        "requires",
-        "required",
-        "not found",
-        "no such",
-        "missing",
-        "exception",
-        "invalid",
-        "not enough",
-    ];
-    let lower = line.to_lowercase();
-    WORDS.iter().any(|w| lower.contains(w))
-}
-
-/// Pick the one container id out of `crictl ps --quiet` output.
-///
-/// Zero and many are both errors rather than a guess. The filters in
-/// [`resolve_argv`] *should* select exactly one container, but that is an
-/// inference from `modules/workloads.nix`, not something this code can see —
-/// and the cost of guessing wrong is resetting a password inside the wrong
-/// container and reporting success.
-pub fn parse_container_ids(stdout: &str) -> Result<String, String> {
-    let ids: Vec<&str> = stdout
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .collect();
-    match ids.as_slice() {
-        [id] => Ok((*id).to_string()),
-        [] => Err(format!(
-            "no running container matches name {CONTAINER_NAME_RE} in namespace \
-             {CONTAINER_NAMESPACE_RE}. On a fresh box the pod takes minutes to \
-             come up — its entrypoint runs `occ maintenance:install` first. \
-             Check `systemctl status k3s` and try again."
-        )),
-        many => Err(format!(
-            "{} containers match name {CONTAINER_NAME_RE} in namespace \
-             {CONTAINER_NAMESPACE_RE}; refusing to guess which one is Nextcloud",
-            many.len()
-        )),
-    }
-}
-
-/// Reject a user name that could be read as a flag, or that could not be a
-/// Nextcloud account.
-///
-/// The leading-dash rule is the one with teeth: `occ user:resetpassword
-/// --version --password-from-env` parses, and would report success having
-/// changed nothing.
+/// Reject a user name that could be read as a flag, or that could not be an
+/// account name.
 pub fn validate_user(user: &str) -> Result<&str, String> {
     if user.is_empty() {
         return Err("user must not be empty".to_string());
@@ -486,7 +79,7 @@ pub fn validate_user(user: &str) -> Result<&str, String> {
     }
     if user.starts_with('-') {
         return Err(format!(
-            "user must not start with '-' ({user:?} would be read as a flag by occ)"
+            "user must not start with '-' ({user:?} would be read as a flag)"
         ));
     }
     if !user
@@ -518,12 +111,8 @@ pub fn validate_password(password: &str) -> Result<Secret, String> {
             "password must be at most {MAX_PASSWORD_BYTES} bytes"
         ));
     }
-    // A newline is the one that would actually bite: the in-image wrapper reads
-    // the staged file with `$(cat …)`, so a password containing one would be
-    // silently truncated there while the owner believes they set the whole
-    // thing — and would then be unable to log in. Every other control character
-    // is refused with it, because none of them survive a round trip through a
-    // shell any more reliably.
+    // A control character would end a header line early on the way to
+    // LosOS Git, and none of them can be typed back reliably on a phone.
     if let Some(c) = password.chars().find(|c| c.is_control()) {
         return Err(format!(
             "password must not contain control characters (found U+{:04X})",
@@ -557,291 +146,14 @@ pub fn is_symbol(c: char) -> bool {
     !c.is_alphanumeric() && !c.is_whitespace()
 }
 
-/// Turn a located target into an ordered action list.
-///
-/// `user` must already have been through [`validate_user`]; the planner
-/// re-checks rather than trusting its caller, because this is the function that
-/// puts the value into an argv.
-pub fn plan_set_password(target: &Target, user: &str) -> Result<Vec<OccAction>, String> {
-    let user = validate_user(user)?;
-    Ok(match target {
-        Target::Native => vec![OccAction::RunOcc {
-            argv: vec![
-                NATIVE_OCC.into(),
-                "user:resetpassword".into(),
-                user.to_string(),
-                // The whole reason this command is safe to run at all. Without
-                // it occ takes the password interactively, and a daemon has no
-                // terminal; with `--password` it would take it from an argv.
-                "--password-from-env".into(),
-            ],
-            secret: SecretChannel::Env,
-        }],
-        Target::Container { socket, id } => vec![
-            OccAction::StageSecret {
-                path: STAGED_SECRET.to_string(),
-                uid: NEXTCLOUD_UID,
-            },
-            OccAction::RunOcc {
-                argv: vec![
-                    "crictl".into(),
-                    "--runtime-endpoint".into(),
-                    socket.clone(),
-                    "exec".into(),
-                    // ExecSync: one RPC returning stdout, stderr and the exit
-                    // code. Without it crictl wants a streaming server and a
-                    // stdin this daemon does not have.
-                    "--sync".into(),
-                    id.clone(),
-                    IMAGE_OCC_SETPASS.into(),
-                    user.to_string(),
-                ],
-                secret: SecretChannel::File {
-                    path: STAGED_SECRET.to_string(),
-                },
-            },
-            OccAction::ClearSecret {
-                path: STAGED_SECRET.to_string(),
-            },
-        ],
-    })
-}
-
-/// The argv an action becomes, or `None` for the two that touch only files.
-///
-/// Kept next to the planner so the test suite can assert the exact command line
-/// — and assert what is *not* on it — without spawning anything.
-pub fn action_argv(a: &OccAction) -> Option<&[String]> {
-    match a {
-        OccAction::RunOcc { argv, .. } => Some(argv),
-        OccAction::StageSecret { .. } | OccAction::ClearSecret { .. } => None,
-    }
-}
-
-/// Turn a finished `occ` run into a message, or an error worth reading.
-///
-/// Unlike `resize2fs`, occ's exit code is trustworthy here:
-/// `core/Command/User/ResetPassword.php` returns 1 on every failure branch and
-/// 0 only after `setPassword` has returned true. There is no
-/// succeeded-while-doing-nothing path, so this needs none of `grow`'s
-/// measure-before-and-after paranoia.
-pub fn interpret_occ(outcome: &OccOutcome) -> Result<String, String> {
-    if outcome.code == 0 {
-        let msg = last_line(&outcome.stdout);
-        return Ok(if msg.is_empty() {
-            "password updated".to_string()
-        } else {
-            msg
-        });
-    }
-
-    let combined = format!("{}\n{}", outcome.stdout, outcome.stderr);
-    // `crictl ps --state Running` goes true long before Nextcloud is usable:
-    // the entrypoint runs `occ maintenance:install` on first boot and that
-    // takes minutes. Saying so is the difference between an owner waiting and
-    // an owner re-imaging the box.
-    if combined.contains("not installed") {
-        return Err(
-            "Nextcloud is not installed yet, so there is no account to reset. \
-             The first boot runs `occ maintenance:install`, which takes several \
-             minutes; try again once the Nextcloud page loads."
-                .to_string(),
-        );
-    }
-    // ResetPassword.php prints exactly this when the environment channel did
-    // not arrive — which in container mode means the staged file never reached
-    // the pod, not that the password was empty.
-    if combined.contains("NC_PASS/OC_PASS is empty") {
-        return Err(format!(
-            "occ received no password. The staged file at {STAGED_SECRET} did not \
-             reach the container — check that /var/lib/nextcloud is the pod's \
-             hostPath mount and that {IMAGE_OCC_SETPASS} reads it."
-        ));
-    }
-    let detail = {
-        let stderr = last_line(&outcome.stderr);
-        if stderr.is_empty() {
-            last_line(&outcome.stdout)
-        } else {
-            stderr
-        }
-    };
-    Err(if detail.is_empty() {
-        format!("occ user:resetpassword failed (exit {})", outcome.code)
-    } else {
-        format!(
-            "occ user:resetpassword failed (exit {}): {detail}",
-            outcome.code
-        )
-    })
-}
-
-/// The argv that asks Nextcloud whether it is ready to take an `occ` command.
-///
-/// Pure, like [`plan_set_password`]: the target is an input, and the test
-/// suite asserts the exact command line without spawning anything.
-pub fn plan_status(target: &Target) -> Vec<String> {
-    match target {
-        Target::Native => vec![NATIVE_OCC.into(), "status".into(), "--output=json".into()],
-        Target::Container { socket, id } => vec![
-            "crictl".into(),
-            "--runtime-endpoint".into(),
-            socket.clone(),
-            "exec".into(),
-            "--sync".into(),
-            id.clone(),
-            IMAGE_OCC_STATUS.into(),
-        ],
-    }
-}
-
-/// The calls that give `account` in LosOS Cloud the `name` and `email`
-/// LosOS Login has for its person, in order. Neither is a secret, so both
-/// travel as arguments; `--` ends occ's (and crictl's) options first, so a
-/// name that starts with a dash stays a name. Natively the first step asks
-/// whether the account exists, the way the image's wrapper does.
-pub fn plan_person(target: &Target, account: &str, name: &str, email: &str) -> Vec<Vec<String>> {
-    let s = |v: &[&str]| v.iter().map(ToString::to_string).collect::<Vec<String>>();
-    match target {
-        Target::Native => {
-            let mut steps = vec![
-                s(&[NATIVE_OCC, "user:info", "--", account]),
-                s(&[
-                    NATIVE_OCC,
-                    "user:setting",
-                    "--",
-                    account,
-                    "settings",
-                    "display_name",
-                    name,
-                ]),
-            ];
-            if !email.is_empty() {
-                steps.push(s(&[
-                    NATIVE_OCC,
-                    "user:setting",
-                    "--",
-                    account,
-                    "settings",
-                    "email",
-                    email,
-                ]));
-            }
-            steps
-        }
-        Target::Container { socket, id } => vec![s(&[
-            "crictl",
-            "--runtime-endpoint",
-            socket,
-            "exec",
-            "--sync",
-            id,
-            "--",
-            IMAGE_OCC_PERSON,
-            account,
-            name,
-            email,
-        ])],
-    }
-}
-
-/// Why Nextcloud cannot take the first password yet, in a sentence the wizard
-/// shows to the owner. `Ok(())` means an `occ user:resetpassword` would reach
-/// an installed, serving instance.
-///
-/// `occ status --output=json` prints `{"installed":…,"maintenance":…,
-/// "needsDbUpgrade":…,…}`; before `maintenance:install` has finished it prints
-/// `installed: false`, or exits non-zero with "not installed" on its stderr,
-/// depending on how far the installer got. All of those are the same answer
-/// here: not yet.
-pub fn interpret_status(outcome: &OccOutcome) -> Result<(), String> {
-    const INSTALLING: &str = "Nextcloud is still installing itself. \
-         This happens once, on the first boot, and takes a few minutes.";
-    const STARTING: &str = "Nextcloud is starting but not answering yet. \
-         On a new box this takes a few minutes.";
-    if outcome.code != 0 {
-        let combined = format!("{}\n{}", outcome.stdout, outcome.stderr);
-        if combined.contains("not installed") {
-            return Err(INSTALLING.to_string());
-        }
-        // The runtime, not occ, answered: the container exists but is not
-        // running yet (seen on the first boot, between the pod being created
-        // and its process starting: `failed to create exec`,
-        // `container is not running`). That is the same window as "has not
-        // started yet", worded for the owner rather than crictl's rpc error.
-        if combined.contains("failed to exec in container")
-            || combined.contains("is not running")
-            || combined.contains("not in running state")
-        {
-            return Err(STARTING.to_string());
-        }
-        let detail = {
-            let stderr = last_line(&outcome.stderr);
-            if stderr.is_empty() {
-                last_line(&outcome.stdout)
-            } else {
-                stderr
-            }
-        };
-        return Err(if detail.is_empty() {
-            format!(
-                "Nextcloud did not answer `occ status` (exit {}).",
-                outcome.code
-            )
-        } else {
-            format!(
-                "Nextcloud did not answer `occ status` (exit {}): {detail}",
-                outcome.code
-            )
-        });
-    }
-    // occ prints Symfony deprecation notices and the like *before* the JSON
-    // on a bad day, so the document is the last line that parses, not stdout
-    // whole.
-    let doc = outcome
-        .stdout
-        .lines()
-        .rev()
-        .map(str::trim)
-        .find_map(|l| serde_json::from_str::<serde_json::Value>(l).ok());
-    let Some(doc) = doc else {
-        return Err("Nextcloud answered `occ status` with something other than JSON.".to_string());
-    };
-    let flag = |k: &str| doc.get(k).and_then(serde_json::Value::as_bool);
-    if flag("installed") != Some(true) {
-        return Err(INSTALLING.to_string());
-    }
-    if flag("maintenance") == Some(true) {
-        return Err("Nextcloud is in maintenance mode right now.".to_string());
-    }
-    if flag("needsDbUpgrade") == Some(true) {
-        return Err(
-            "Nextcloud is upgrading its database. This finishes on its own in a few minutes."
-                .to_string(),
-        );
-    }
-    Ok(())
-}
-
-/// Whether the box can take its first password, and if not, why not yet.
-///
-/// Serialized into `GET /api/setup/claim`'s reply as `ready` and `waitingFor`,
-/// so the wizard can wait with a reason on screen instead of letting the
-/// owner submit into a 500.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Readiness {
-    Ready,
-    NotYet(String),
-}
-
-/// `POST /api/setup/claim` while Nextcloud cannot take the password yet.
+/// Something the request needs is not up yet: LosOS Cloud or LosOS Git still
+/// starting, or sign-in not set up.
 ///
 /// A distinct error type so the HTTP layer can answer 503 with the reason and
 /// a `Retry-After`, rather than the opaque 500 every other command failure
-/// gets: this one is expected on every fresh box, is nobody's fault, and
-/// resolves itself. The box stays claimable — nothing was changed.
+/// gets: it is nobody's fault and resolves itself. Nothing was changed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("not ready for the first password yet: {0}")]
+#[error("not ready yet: {0}")]
 pub struct NotReady(pub String);
 
 /// A claim on a box that already has an owner. Typed so the HTTP layer can
@@ -850,13 +162,3 @@ pub struct NotReady(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("this box has already been set up")]
 pub struct AlreadyClaimed;
-
-/// Last non-empty line, capped. occ writes one line worth reading and a
-/// variable amount of Symfony framing around it.
-///
-/// Delegates to [`crate::supervisor::last_log_line`] so the daemon has one
-/// capping rule rather than two that drift.
-fn last_line(text: &str) -> String {
-    let lines: Vec<String> = text.lines().map(str::to_string).collect();
-    crate::supervisor::last_log_line(&lines)
-}

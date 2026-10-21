@@ -41,9 +41,47 @@ pub async fn api(
     segs: &[&str],
     body: web::Payload,
 ) -> HttpResponse {
-    match segs {
-        ["notes", rest @ ..] => crate::cloud::notes::api(req, cloud, who, rest, body).await,
-        ["kb", rest @ ..] => crate::cloud::notes::kb::api(req, cloud, who, rest, body).await,
+    let store = &cloud.store;
+    match (req.method().as_str(), segs) {
+        (_, ["notes", rest @ ..]) => crate::cloud::notes::api(req, cloud, who, rest, body).await,
+        (_, ["kb", rest @ ..]) => crate::cloud::notes::kb::api(req, cloud, who, rest, body).await,
+        ("GET", ["boards"]) => match crate::cloud::boards::list(store, &who.login) {
+            Ok(list) => HttpResponse::Ok().json(serde_json::json!({ "boards": list })),
+            Err(e) => crate::cloud::api::store_error(&e),
+        },
+        ("GET", ["boards", id]) => match id.parse::<i64>() {
+            Ok(id) => match crate::cloud::boards::get(store, &who.login, id) {
+                Ok(b) => HttpResponse::Ok().json(b),
+                Err(e) => crate::cloud::api::store_error(&e),
+            },
+            Err(_) => crate::cloud::api::error(StatusCode::NOT_FOUND, "notFound", "no such board"),
+        },
+        // Calendars and address books with how much is in each, for the
+        // web app's overview; the entries themselves go over CalDAV.
+        ("GET", ["collections"]) => {
+            use crate::cloud::pim::{self, Kind};
+            if let Err(e) = pim::ensure_defaults(store, &who.login) {
+                return crate::cloud::api::store_error(&e);
+            }
+            let mut out = Vec::new();
+            for kind in [Kind::Calendar, Kind::AddressBook] {
+                let list = match pim::collections(store, &who.login, kind) {
+                    Ok(l) => l,
+                    Err(e) => return crate::cloud::api::store_error(&e),
+                };
+                for c in list {
+                    out.push(serde_json::json!({
+                        "kind": kind.as_str(),
+                        "uri": c.uri,
+                        "name": c.name,
+                        "color": c.color,
+                        "components": c.components,
+                        "count": pim::count(store, &c).unwrap_or(0),
+                    }));
+                }
+            }
+            HttpResponse::Ok().json(serde_json::json!({ "collections": out }))
+        }
         _ => crate::cloud::api::error(StatusCode::NOT_FOUND, "notFound", "no such call"),
     }
 }

@@ -65,13 +65,6 @@ let
     '';
   });
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
   standIn =
     name:
     pkgs.hello
@@ -328,10 +321,8 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = ui;
-          nextcloud.mode = "container";
           forgejo.enable = true;
           forgejo.mode = "container";
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
           workloads.forgejoImage = standIn "losos-forgejo-stand-in";
           # The shared user's side of the box: chat's gate, and so calls'.
           sharingMyStorage = true;
@@ -372,13 +363,11 @@ pkgs.testers.nixosTest {
 
         # curl for the edge scan's /health probe.
         systemd.services.lososd.path = lib.mkForce [
-          stubOcc
           pkgs.coreutils
           pkgs.curl
           # lososd starts and stops the tunnel units with systemctl.
           pkgs.systemd
         ];
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         # ICE and DTLS in the log, for a call that does not connect.
         systemd.services.losos-calls = lib.mkIf config.losos.calls.enable {
           environment.RUST_LOG = "info,str0m=debug";

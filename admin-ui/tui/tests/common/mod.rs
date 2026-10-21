@@ -225,8 +225,8 @@ fn serve(
                 let mut body = Vec::new();
                 let _ = request.as_reader().read_to_end(&mut body);
                 // What a box's front door answers outside the API: LosOS
-                // cloud's WebDAV asks for credentials, LosOS Git a page.
-                if !edge && path.starts_with("/nextcloud/") {
+                // Cloud's WebDAV asks for credentials, LosOS Git a page.
+                if !edge && path.starts_with("/remote.php/") {
                     let challenge = tiny_http::Header::from_bytes(
                         "WWW-Authenticate",
                         r#"Basic realm="LosOS Cloud", charset="UTF-8""#,

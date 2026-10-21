@@ -171,8 +171,7 @@ let
     }
     map $uri $losos_app_back {
       ~^/forgejo/ /forgejo/user/login;
-      ~^/cloud/ $request_uri;
-      default /nextcloud/login;
+      default $request_uri;
     }
     map "$losos_groups|$losos_user" $losos_app_user {
       "~(^|,)\s*${signIn.ownerGroup}\s*(,|\|)" ${signIn.ownerAccount};
@@ -193,8 +192,7 @@ let
 
   signIn = import ./app-sign-in.nix { inherit lib; };
   appSignIn = config.lososInternal.appSignIn;
-  anyAppSignIn = appSignIn.nextcloud || appSignIn.forgejo || appSignIn.cloud;
-  nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
+  anyAppSignIn = appSignIn.forgejo || appSignIn.cloud;
 
   # Ask Authelia about the request nginx is handling, as the /api/
   # question below does.
@@ -209,7 +207,7 @@ let
   # Only these may open a connection to `port` on loopback: root, nginx and
   # the app's own uid. The same owner match as lososd's port
   # (modules/daemon.nix says why a match on OUTPUT and not a socket), here
-  # because both apps take the person from a header: a Helm app on the host
+  # because the app takes the person from a header: a Helm app on the host
   # network could otherwise name anyone it liked.
   loopbackRule =
     port: uid:
@@ -222,10 +220,8 @@ let
       ++ lib.optional config.services.nginx.enable "-m owner ! --uid-owner ${config.services.nginx.user}"
       ++ [ "-j REJECT --reject-with tcp-reset" ]
     );
-  loopbackRules =
-    lib.optional appSignIn.nextcloud (loopbackRule config.losos.nextcloud.apachePort nc.uid)
-    # modules/workloads.nix: Forgejo's literal port and its pinned uid.
-    ++ lib.optional appSignIn.forgejo (loopbackRule 3000 1003);
+  # modules/workloads.nix: Forgejo's literal port and its pinned uid.
+  loopbackRules = lib.optional appSignIn.forgejo (loopbackRule 3000 1003);
 
   package = pkgs.authelia.override {
     authelia-web = themes.authelia.web pkgs.authelia.web;
@@ -301,7 +297,7 @@ let
         for n in $(printf '%s\n' "''${public[@]}" | sort -u); do
           echo "    - domain: '$n'"
           echo "      authelia_url: 'https://$n/auth'"
-          echo "      default_redirection_url: 'https://$n/nextcloud/'"
+          echo "      default_redirection_url: 'https://$n/cloud/'"
         done
       } > "$tmp"
       chgrp ${user} "$tmp"

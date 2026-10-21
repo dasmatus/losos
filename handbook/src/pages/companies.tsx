@@ -48,9 +48,9 @@ const IN_THE_BOX: Feature[] = [
     title: <Translate id="losos.companies.box.cloud.title">LosOS Cloud</Translate>,
     body: (
       <Translate id="losos.companies.box.cloud.body">
-        Files, photos, calendar, contacts, notes, tasks, Deck, Forms, Tables
-        and more, with desktop and phone apps. Every colleague gets an
-        account. Built on Nextcloud.
+        Files, photos, calendars, contacts and boards, in the browser and in
+        the Nextcloud desktop and phone apps. Every colleague gets an
+        account.
       </Translate>
     ),
     to: '/manual/apps',
@@ -152,8 +152,8 @@ const EUROPEAN: Feature[] = [
     title: 'Nextcloud',
     body: (
       <Translate id="losos.companies.eu.nextcloud">
-        The base of LosOS Cloud. Developed by Nextcloud GmbH in Stuttgart,
-        Germany.
+        LosOS Cloud speaks its protocol, so its desktop and phone apps sync
+        with the box. Developed by Nextcloud GmbH in Stuttgart, Germany.
       </Translate>
     ),
     to: 'https://nextcloud.com',
@@ -621,7 +621,7 @@ export default function Companies(): ReactNode {
         <Section title={<Translate id="losos.companies.cost.title">No fee per seat</Translate>}>
           <p className={styles.prose}>
             <Translate id="losos.companies.cost.body">
-              LosOS, Nextcloud and Forgejo are free software. Your fortieth
+              LosOS and Forgejo are free software. Your fortieth
               hire costs a user account, not a subscription. You pay once for
               the hardware and then for the electricity, and an office mini-PC
               does the job.

@@ -36,7 +36,7 @@ act before **Out of room**.
    box was installed or updated a lot in the last two weeks, that can be
    several gigabytes.
 4. **Move data off** with the desktop client or by downloading from LosOS
-   cloud, then delete it there.
+   Cloud, then delete it there.
 5. **Share less.** A box that lends room to the mesh, with Storage mode set
    to shared, holds copies for other boxes. Turning sharing off returns that
    room once the pool has re-replicated.

@@ -13,7 +13,7 @@ USB stick, and after that you only use it through a web browser.
 
 | What you see          | What it is                                                                                      |
 | --------------------- | ----------------------------------------------------------------------------------------------- |
-| **LosOS Cloud**       | Your files, photos, calendar, contacts, notes and tasks. Built on Nextcloud. At `/nextcloud`.   |
+| **LosOS Cloud**       | Your files, photos, calendars, contacts and boards. The Nextcloud apps sync with it. At `/cloud/`. |
 | **LosOS Git**         | Your code repositories, on by default. Built on Forgejo. At `/forgejo/`.                        |
 | **The admin pages**   | Where you set up and look after the box. At `/`, reachable only from your local network.         |
 | **The mesh**          | Optional. Spare disk and CPU lent to other LosOS boxes, and borrowed from them.                  |
@@ -21,7 +21,7 @@ USB stick, and after that you only use it through a web browser.
 
 ## What makes it different from a NAS
 
-![Inside a box: nginx is the one front door; behind it the control daemon, the box's own cluster running LosOS Cloud and LosOS Git, and the mesh agent; under them a RAM system disk and one encrypted volume.](../img/box-architecture.svg)
+![Inside a box: nginx is the one front door, routing to LosOS Cloud, LosOS Git and the admin pages; behind it the control daemon, the box's own cluster running LosOS Git, and the mesh agent; under them a RAM system disk and one encrypted volume.](../img/box-architecture.svg)
 
 - **It forgets everything it does not need.** The box rebuilds its system
   disk from scratch on every boot. Only your data, the settings you chose and
@@ -36,7 +36,7 @@ USB stick, and after that you only use it through a web browser.
   computer cannot read it.
 - **A sign-in of your own.** Each person signs in to the admin pages with
   their own name and password, and the owner's password also opens LosOS
-  cloud. A printed spare key lets you in on a day LosOS Login, the box's
+  Cloud. A printed spare key lets you in on a day LosOS Login, the box's
   sign-in page, is not running.
 - **It can lend what it is not using.** A box can share its spare disk and
   CPU with other boxes, only within hours you choose and only while it is

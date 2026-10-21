@@ -135,7 +135,7 @@ anmeldest, dieselben Einträge zeigt.
 
 :::note[Wie die Box deine Dateien auflistet]
 Die Box listet deine Dateien mit einem App-Passwort auf, das sie bei LosOS
-cloud anfordert, wenn das Passwort des Besitzers gesetzt wird, und das tut
+Cloud anfordert, wenn das Passwort des Besitzers gesetzt wird, und das tut
 der Assistent. Das App-Passwort erscheint in den Sicherheitseinstellungen
 von LosOS Cloud als „LosOS admin page“. Widerrufst du es dort, enden die
 Auflistung und die Dateisuche, bis das Passwort des Besitzers wieder gesetzt

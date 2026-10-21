@@ -160,7 +160,7 @@ Bootstrap-Token) beim ersten Start, wenn die Dateien fehlen. Ihr öffentlicher
 Name ist ebenfalls derselbe: `losos.proxy.hostname`
 des Besitzers muss ein Label unterhalb der Zone des Standorts sein
 (`mattbox.acme.losos.cfd`), damit das Relay ihn annimmt, und das ist auch
-der Name, dem Nextcloud vertraut. Eine Box, die auf die offizielle Edge
+der Name, auf den die Apps der Box antworten. Eine Box, die auf die offizielle Edge
 zurückfällt, behält über ihre direkte Tenant-Zeile denselben Namen. Das
 Market-Relay braucht keinen zusätzlichen Schalter: Es hängt davon ab, dass
 eine *offizielle* Edge antwortet, und ist keine erreichbar, meldet es

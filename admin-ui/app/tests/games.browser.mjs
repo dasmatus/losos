@@ -10,7 +10,7 @@
  * the loop keeps time on a screen faster than its step; a lost focus lets
  * go of held keys; blocked storage keeps the visit's best; Merge and Pairs
  * read their boards out;
- * the wizard's wait for LosOS Cloud offers it too; a phone gets the icon
+ * the wizard's wait offers it too; a phone gets the icon
  * button and a game that fits; and none of it trips the appliance's
  * Content-Security-Policy.
  *
@@ -28,7 +28,6 @@ const { check, finish } = runner();
 
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   forgejoMode: 'container',
   hostName: 'mattbox',
   https: false,
@@ -103,7 +102,10 @@ async function openRebuild({
   if (init !== null) await page.addInitScript(init);
   await page.goto(origin + '/settings/network', { waitUntil: 'networkidle' });
   await page.getByLabel('This box is called').fill('fishbox');
-  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  /* By keyboard: the offer takes the place of Apply, and a pointer left
+   * resting there would preload the game the way a hover is meant to. */
+  await page.getByRole('button', { name: 'Apply', exact: true }).focus();
+  await page.keyboard.press('Enter');
   return { page, context, errors, box, chunks };
 }
 
@@ -412,7 +414,7 @@ await check('on a phone the offer is an icon with its name, and the game fits th
   await context.close();
 });
 
-await check("the wizard's wait for LosOS Cloud offers the game, and it gives way when the box is ready", async () => {
+await check("the wizard's wait offers the game, and it gives way when the box is ready", async () => {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   const page = await context.newPage();
   const errors = [];
@@ -420,7 +422,7 @@ await check("the wizard's wait for LosOS Cloud offers the game, and it gives way
   let installed = false;
   await page.route('**/api/**', (route) => json(route, 200, {}));
   await page.route('**/api/setup/claim', (route) =>
-    json(route, 200, { claimed: false, ready: installed, waitingFor: installed ? null : 'LosOS Cloud is still installing itself.' }),
+    json(route, 200, { claimed: false, ready: installed, waitingFor: installed ? null : 'LosOS Git is still starting.' }),
   );
   await page.route('**/setup/state.json', (route) =>
     json(route, 200, { hostName: 'mattbox', fqdn: 'mattbox.local', address: '192.168.122.56', tls: false, certificate: null }),

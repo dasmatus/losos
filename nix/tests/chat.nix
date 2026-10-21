@@ -29,8 +29,8 @@
 # film's states are numbered there with a manifest.json; the pull request's
 # pictures are under result/shots/pr/.
 #
-# LosOS cloud and LosOS Git are stand-ins, as in nix/tests/identity.nix: the
-# claim asks LosOS cloud one question, and nothing here is about either app.
+# LosOS Git is a stand-in; LosOS Cloud is the real service, for the files
+# chat sends from it and keeps in it.
 { pkgs }:
 
 let
@@ -63,13 +63,6 @@ let
     '';
   });
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
   standIn =
     name:
     pkgs.hello
@@ -129,10 +122,8 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = ui;
-          nextcloud.mode = "container";
           forgejo.enable = true;
           forgejo.mode = "container";
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
           workloads.forgejoImage = standIn "losos-forgejo-stand-in";
           # The shared user's side of the box: chat's gate.
           sharingMyStorage = true;
@@ -155,11 +146,7 @@ pkgs.testers.nixosTest {
         };
         users.groups.shared.gid = 1001;
 
-        systemd.services.lososd.path = lib.mkForce [
-          stubOcc
-          pkgs.coreutils
-        ];
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+        systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
         environment.systemPackages = [
           pkgs.jq
           pkgs.curl

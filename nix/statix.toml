@@ -7,7 +7,6 @@
 #
 #   services.nginx    = { ... };
 #   services.forgejo  = { ... };
-#   services.nextcloud = { ... };
 #
 # is clearer than the same thing collapsed into a single `services = { ... }`
 # attrset, because each block is independently readable and independently
