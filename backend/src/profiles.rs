@@ -32,7 +32,7 @@ use crate::people::BadDetails;
 
 const DEFAULT_DIR: &str = "/var/lib/losos/profiles";
 /// Most bytes in one upload, before it is decoded.
-pub const MAX_UPLOAD_BYTES: usize = crate::look::MAX_IMAGE_BYTES;
+pub const MAX_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
 /// The longest side a picture may have before it is decoded. A phone's
 /// photo is 4000 to 8000 pixels on its long side; the admin page scales
 /// before it sends, so only a client of its own sends more.
@@ -284,6 +284,22 @@ pub fn render(person: &crate::people::Listed, profile: &Profile) -> Value {
 
 // ── Pictures ──────────────────────────────────────────────────────────────
 
+/// The type by the first bytes, never by what the browser called it. SVG
+/// is not one: it is a document that may carry script.
+fn sniff(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(b"\xff\xd8\xff") {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else {
+        None
+    }
+}
+
 /// Decode `bytes`, turn the picture upright, crop it to `kind`'s shape from
 /// the middle, scale it down to `kind`'s size if it is larger, and encode it
 /// again: JPEG when every pixel is opaque, PNG when any is not. Returns the
@@ -297,7 +313,7 @@ pub fn normalize(kind: Kind, bytes: &[u8]) -> anyhow::Result<(&'static str, Vec<
             MAX_UPLOAD_BYTES / (1024 * 1024)
         )));
     }
-    let format = match crate::look::sniff_image(bytes) {
+    let format = match sniff(bytes) {
         Some("image/png") => ImageFormat::Png,
         Some("image/jpeg") => ImageFormat::Jpeg,
         Some("image/gif") => ImageFormat::Gif,
