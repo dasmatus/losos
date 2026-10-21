@@ -90,6 +90,8 @@ async function shot(w, name) {
   await w.page.evaluate(() => document.fonts.ready.then(() => true));
   // No toast over the picture.
   await w.page.waitForFunction(() => !document.querySelector("[data-sonner-toast]"), undefined, { timeout: WAIT });
+  // A click low on the page scrolled it; the picture starts at the top.
+  await w.page.evaluate(() => window.scrollTo(0, 0));
   await w.page.waitForTimeout(400);
   await w.page.screenshot({ path: join(out, `${name}.png`), timeout: WAIT });
   console.log(`captured ${name}.png`);
@@ -132,7 +134,7 @@ try {
 
   // Matus picks the decision; Eva points at the database.
   await card(m.page, "Everything copied?").click();
-  p = await at(m.page, 300, 470);
+  p = await at(m.page, 300, 380);
   await m.page.mouse.move(p.x, p.y);
   await card(e.page, "LosOS Cloud").click();
   p = await at(e.page, 760, 360);
