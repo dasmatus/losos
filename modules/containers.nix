@@ -416,7 +416,7 @@ let
   adminHeaderMaps = lib.concatMapStrings (
     h:
     adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) h.frameValue (
-      h.mailValue or h.frameValue
+      h.mailValue or h.value
     )
   ) adminHeaders;
 
