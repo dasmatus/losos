@@ -119,17 +119,19 @@ export default defineConfig({
     sourcemap: false,
     // The appliance has no external hosts and no CDN: one origin, one bundle.
     modulePreload: { polyfill: false },
-    // Four pages: the admin SPA at /, LosOS Diagrams at /diagrams/ (nginx serves
+    // Five pages: the admin SPA at /, LosOS Diagrams at /diagrams/ (nginx serves
     // dist/diagrams/index.html there under the Lab's own CSP), a company edge's
     // manage page, which the edge serves at /manage/ from this same dist/
-    // (edge/registrar/src/server/manage.rs), and LosOS Cloud at /cloud/
-    // (modules/cloud.nix). They share chunks.
+    // (edge/registrar/src/server/manage.rs), LosOS Cloud at /cloud/ and the
+    // knowledge bases published from it at /kb/ (modules/cloud.nix). They
+    // share chunks.
     rolldownOptions: {
       input: {
         main: join(root, "index.html"),
         diagrams: join(root, "diagrams/index.html"),
         manage: join(root, "manage/index.html"),
         cloud: join(root, "cloud/index.html"),
+        kb: join(root, "kb/index.html"),
       },
     },
   },
@@ -150,6 +152,11 @@ export default defineConfig({
         target: process.env["LOSOS_CLOUD_ORIGIN"] ?? "http://127.0.0.1:8095",
         changeOrigin: false,
         headers: { "X-Losos-Cloud-User": process.env["LOSOS_CLOUD_USER"] ?? "owner" },
+      },
+      // A knowledge base's data, read as nobody.
+      "/kb/api": {
+        target: process.env["LOSOS_CLOUD_ORIGIN"] ?? "http://127.0.0.1:8095",
+        changeOrigin: false,
       },
       // The first-run wizard's step 1 reads /setup/state.json — the box's name
       // and its certificate fingerprint — and on the appliance that file is

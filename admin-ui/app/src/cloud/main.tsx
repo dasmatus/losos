@@ -11,7 +11,10 @@ import { applyStoredTheme } from "@/lib/theme";
 import "sonner/dist/styles.css";
 import "@/styles/index.css";
 import { CloudRoot } from "./app";
+// A .canvas file's name opens it in Diagrams, and a Markdown file's as a note.
 import "./open-diagrams";
+import "./notes/opener";
+import "./collab/opener";
 
 applyStoredTheme();
 applyFavicon();
