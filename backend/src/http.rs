@@ -1407,6 +1407,79 @@ async fn post_account_code(
     })
 }
 
+/// The caller's Windows sign-in, for `GET` and `POST /api/windows`.
+fn windows_answer(api: &Api, name: &str) -> HttpResponse {
+    let host = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+    match api.people.windows_status(name) {
+        Ok(None) => HttpResponse::Ok().json(serde_json::json!({ "on": false })),
+        Ok(Some(status)) => HttpResponse::Ok().json(serde_json::json!({
+            "on": true,
+            "ready": status.ready,
+            "share": status.share,
+            "host": host.trim(),
+        })),
+        Err(e) => error_response(e),
+    }
+}
+
+/// `GET /api/windows`: whether the box's Windows shares are on
+/// (`crate::windows`), and whether Windows takes the caller's LosOS
+/// password yet.
+async fn get_windows(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/windows", false, |who| {
+        match who.person() {
+            Some(person) => windows_answer(&api, &person.name),
+            None => HttpResponse::Ok().json(serde_json::json!({ "on": api.people.windows_on() })),
+        }
+    })
+}
+
+/// `POST /api/windows`: `{"password"}`. A person whose password this daemon
+/// has not seen in the clear since the shares came on types it once, and
+/// Windows takes it from then on.
+async fn post_windows(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    let remote = remote_addr(&req);
+    guarded_as(&api, &req, "/api/windows", true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.windows_on() {
+            return err(StatusCode::CONFLICT, "the Windows share is off");
+        }
+        let Some(password) = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|d| {
+                d.get("password")
+                    .and_then(|p| p.as_str())
+                    .map(str::to_string)
+            })
+        else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"password": "..."}"#,
+            );
+        };
+        let secret = match crate::signin::validate_candidate(&password) {
+            Ok(s) => s,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+        };
+        match api.people.check_password(&person.name, &secret) {
+            Ok(true) => windows_answer(&api, &person.name),
+            Ok(false) => {
+                api.throttle.record_failure(&remote, Instant::now());
+                HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "that is not your password",
+                    "wrongPassword": true,
+                }))
+            }
+            Err(e) => error_response(e),
+        }
+    })
+}
+
 /// `POST /api/people/rules`: `{"twoFactor": bool, "passwordDays": n}`.
 async fn post_people_rules(
     api: web::Data<Api>,
@@ -4078,6 +4151,11 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
 
     actix_web::rt::System::new().block_on(async move {
         let people = crate::people::People::from_env();
+        // The Windows shares' accounts live on /run: written again at
+        // every start.
+        if let Err(e) = people.sync_windows() {
+            tracing::warn!(error = ?e, "the Windows shares could not be written");
+        }
         let login = crate::login::Login::from_env(people.path());
         let api = web::Data::new(Api {
             backend,
@@ -4162,6 +4240,8 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/account", web::get().to(get_account))
                 .route("/api/account", web::post().to(post_account))
                 .route("/api/account/code", web::post().to(post_account_code))
+                .route("/api/windows", web::get().to(get_windows))
+                .route("/api/windows", web::post().to(post_windows))
                 .route("/api/account/profile", web::post().to(post_account_profile))
                 .route("/api/account/picture", web::put().to(put_account_picture))
                 .route(

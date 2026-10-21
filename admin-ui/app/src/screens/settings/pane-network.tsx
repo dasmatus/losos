@@ -3,6 +3,7 @@ import { FieldError, Input } from "@/components/ui/input";
 import { useT } from "@/lib/i18n-react";
 import { DomainsSection } from "./domains-section";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, SwitchRow } from "./rows";
+import { BoolRow, slotFor } from "./site-settings";
 import type { SettingsForm } from "./use-settings-form";
 
 /* The name this box answers to, and how it is reached.
@@ -25,6 +26,9 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
   const portId = React.useId();
   const portErrorId = React.useId();
   const proxyId = React.useId();
+  const windowsId = React.useId();
+  // Drawn only on a box whose option document declares it.
+  const windows = slotFor(form, "cloud.windows.enable");
 
   const draft = form.draft;
   const disabled = form.locked || !form.ready;
@@ -110,6 +114,24 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
 
         <GroupCaption>{t("panes.network.reachCaption")}</GroupCaption>
       </PaneSection>
+
+      {windows !== null && (
+        <PaneSection data-testid="network-windows">
+          <GroupTitle>{t("panes.network.windows.title")}</GroupTitle>
+          <Group>
+            <BoolRow
+              id={windowsId}
+              slot={windows}
+              title={t("panes.network.windows.show")}
+              description={t("panes.network.windows.showDetail")}
+              last
+            />
+          </Group>
+          <GroupCaption>
+            {t("panes.network.windows.caption", { address: `\\\\${(name || "box").toUpperCase()}\\` })}
+          </GroupCaption>
+        </PaneSection>
+      )}
 
       <DomainsSection locked={form.locked} />
     </>

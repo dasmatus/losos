@@ -12,13 +12,16 @@ import {
   ApiError,
   MAX_ABOUT_CHARS,
   MAX_PRONOUNS_CHARS,
+  getWindowsShare,
   postAccountCode,
+  postWindowsShare,
   twoFactorSettingsUrl,
   type Account,
   type Accent,
   type LoginReason,
   type Profile,
   type ProfileImage,
+  type WindowsShare,
 } from "@/lib/api";
 import { intlTag } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
@@ -96,6 +99,7 @@ export function AccountPane({ locked }: { locked: boolean }) {
       <DetailsSection account={state.account} data={account} disabled={disabled} />
       <PasswordSection account={state.account} data={account} disabled={disabled} />
       <FactorsSection account={state.account} disabled={disabled} />
+      <WindowsSection disabled={disabled} />
     </>
   );
 }
@@ -635,6 +639,107 @@ function CodeRow({ disabled }: { disabled: boolean }) {
         </p>
       )}
     </StackRow>
+  );
+}
+
+// ── Windows network share ───────────────────────────────────────────────
+
+/* The person's LosOS Cloud files as a share under Network in File Explorer
+ * (backend/src/windows.rs). Windows signs in with NTLM, which needs a form
+ * of the password the box only makes while it sees the password itself: a
+ * password set or checked since the share came on is enough, and otherwise
+ * the person types it here once. Nothing to show while the share is off. */
+function WindowsSection({ disabled }: { disabled: boolean }) {
+  const t = useT();
+  const id = React.useId();
+  const [share, setShare] = React.useState<WindowsShare | null>(null);
+  const [password, setPassword] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    getWindowsShare({ signal: controller.signal })
+      .then(setShare)
+      .catch(() => setShare(null));
+    return () => controller.abort();
+  }, []);
+
+  if (share === null || !share.on) return null;
+  const address = `\\\\${share.host.toUpperCase()}\\${share.share}`;
+
+  const allow = async () => {
+    if (password.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setShare(await postWindowsShare(password));
+      setPassword("");
+    } catch (failure) {
+      const status = failure instanceof ApiError ? failure.status : 0;
+      setError(status === 403 ? t("account.windows.wrongPassword") : t("account.windows.failed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <PaneSection data-testid="account-windows">
+      <GroupTitle>{t("account.windows.title")}</GroupTitle>
+      <Group>
+        <Row>
+          <RowText title={t("account.windows.address")} />
+          <RowValue data-testid="account-windows-address" className="numeric select-all">
+            {address}
+          </RowValue>
+        </Row>
+        <Row last={share.ready}>
+          <RowText title={t("account.windows.signIn")} />
+          <Badge variant={share.ready ? "ok" : "neutral"} data-testid="account-windows-ready">
+            {share.ready ? t("account.windows.ready") : t("account.windows.notReady")}
+          </Badge>
+        </Row>
+        {share.ready ? null : (
+          <StackRow last data-testid="account-windows-allow">
+            <RowText title={t("account.windows.allow")} detail={t("account.windows.allowDetail")} />
+            <form
+              className="flex flex-wrap items-center gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void allow();
+              }}
+            >
+              <label htmlFor={id} className="sr-only">
+                {t("account.code.password")}
+              </label>
+              <Input
+                id={id}
+                data-testid="account-windows-password"
+                type="password"
+                autoComplete="current-password"
+                placeholder={t("account.code.password")}
+                className="w-[16rem] max-sm:w-full"
+                value={password}
+                disabled={disabled || busy}
+                aria-invalid={error !== null ? true : undefined}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+              <Button
+                type="submit"
+                size="sm"
+                variant="secondary"
+                data-testid="account-windows-save"
+                disabled={disabled || busy || password.length === 0}
+              >
+                {t("account.windows.save")}
+              </Button>
+            </form>
+            {error !== null && <FieldError data-testid="account-windows-error">{error}</FieldError>}
+          </StackRow>
+        )}
+      </Group>
+      <GroupCaption>{t("account.windows.caption")}</GroupCaption>
+    </PaneSection>
   );
 }
 

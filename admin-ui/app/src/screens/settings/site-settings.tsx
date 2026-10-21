@@ -64,7 +64,7 @@ const PRIVATE: readonly (readonly [string, MessageKey])[] = [
 const PHONE_REGION = /^[A-Z]{2}$/;
 
 /** One option's row state: the literal the draft holds, else the default's. */
-interface Slot {
+export interface Slot {
   option: OptionDoc;
   /** The literal in force: the draft's line, else the default's. */
   raw: string | null;
@@ -80,7 +80,7 @@ export type SiteForm = Pick<
   "draft" | "options" | "extra" | "extraProblems" | "locked" | "ready" | "setExtra"
 >;
 
-function slotFor(form: SiteForm, name: string): Slot | null {
+export function slotFor(form: SiteForm, name: string): Slot | null {
   const option = form.options?.options.find((candidate) => candidate.name === name);
   if (option === undefined || option.readOnly) return null;
   const defaultRaw = toLiteral(option.editor, option.default);
@@ -306,7 +306,7 @@ export function SiteSettings({
 
 // ── Rows ──────────────────────────────────────────────────────────────────
 
-function BoolRow({
+export function BoolRow({
   id,
   slot,
   title,

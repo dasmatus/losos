@@ -89,13 +89,16 @@ in
       after = [ "network.target" ];
       before = [ "nginx.service" ];
       serviceConfig = {
-        ExecStart = lib.concatStringsSep " " [
+        ExecStart = lib.concatStringsSep " " ([
           "${pkg}/bin/losos-cloud"
           "--root ${stateDir}"
           "serve"
           "--socket ${socket}"
           "--trash-days ${toString cfg.trashDays}"
-        ];
+        ]
+        # Files the Windows share writes, into the table as they land
+        # (modules/windows.nix).
+        ++ lib.optional cfg.windows.enable "--watch");
         User = "losos-cloud";
         Group = "losos-cloud";
         StateDirectory = "losos-cloud";

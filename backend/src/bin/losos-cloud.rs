@@ -40,6 +40,10 @@ enum Cmd {
         product: String,
         #[arg(long, default_value_t = 30)]
         trash_days: i64,
+        /// Watch the files on disk and bring changes made behind the
+        /// service's back into the table as they happen (the Windows share).
+        #[arg(long)]
+        watch: bool,
     },
     /// Bring the table in line with the files on disk, for one person or all.
     Scan {
@@ -82,6 +86,7 @@ fn main() -> anyhow::Result<()> {
             workers,
             product,
             trash_days,
+            watch,
         } => {
             let cloud = Arc::new(Cloud::open(
                 &cli.root,
@@ -90,6 +95,9 @@ fn main() -> anyhow::Result<()> {
                     trash_days,
                 },
             )?);
+            if watch {
+                cloud::watch::spawn(cloud.clone())?;
+            }
             let listen = match (socket, listen) {
                 (Some(s), _) => server::Listen::Unix(s),
                 (None, Some(l)) => server::Listen::Tcp(l),

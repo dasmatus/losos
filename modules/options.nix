@@ -870,6 +870,20 @@ in
       '';
     };
 
+    cloud.windows.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Show the box under Network in Windows' File Explorer, and in Finder
+        and Linux file managers, with each person's LosOS Cloud files as a
+        network share they open with their LosOS name and password. Only on
+        the local network, never through the edge. Windows takes a person's
+        password once the box has seen it: when it is set, at a sign-in to
+        the share from a file manager, or typed once on the Account page.
+        On by default on an installed box (modules/defaults.nix).
+      '';
+    };
+
     cloud.trashDays = lib.mkOption {
       type = lib.types.ints.between 1 365;
       default = 30;

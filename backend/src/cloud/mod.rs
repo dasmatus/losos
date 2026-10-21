@@ -24,6 +24,7 @@ pub mod server;
 pub mod share;
 pub mod store;
 pub mod util;
+pub mod watch;
 pub mod xml;
 
 use store::{Entry, Store, StoreError};
