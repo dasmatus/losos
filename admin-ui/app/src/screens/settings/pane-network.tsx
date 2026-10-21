@@ -96,7 +96,7 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
             />
           </Group>
           <GroupCaption>
-            {t("panes.network.windows.caption", { address: `\\\\${(name || "box").toUpperCase()}\\` })}
+            {t("panes.network.windows.caption", { address: `\\\\${name || "box"}\\` })}
           </GroupCaption>
         </PaneSection>
       )}

@@ -140,12 +140,15 @@ pkgs.testers.nixosTest {
     EVA = "Eva-Long-Password-3"
     EVA_NEW = "Eva-Second-Password-4"
 
-    start_all()
+    # One after the other: two VMs booting at once under emulation can miss
+    # the driver's wait for a shell.
+    box.start()
     box.wait_for_unit("nginx.service")
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("losos-cloud.service")
     box.wait_for_unit("samba-smbd.service")
     box.wait_for_unit("samba-wsdd.service")
+    box.wait_for_unit("samba-dcerpcd.service")
     box_ip = box.succeed("ip -4 -o addr show eth1 | awk '{print $4}' | cut -d/ -f1").strip()
     laptop_ip = laptop.succeed("ip -4 -o addr show eth1 | awk '{print $4}' | cut -d/ -f1").strip()
 
@@ -245,7 +248,6 @@ pkgs.testers.nixosTest {
         assert len(boxes) == 1, out
 
     with subtest("each person sees and opens only their own share"):
-        box.wait_for_unit("samba-dcerpcd.service")
         rc, out = smb(f"-L //{box_ip}", "matus", PASSWORD)
         assert rc == 0 and re.search(r"(?m)^\s+matus\s+Disk", out) and "eva" not in out, out
         rc, out = smb(f"-L //{box_ip}", "eva", EVA)

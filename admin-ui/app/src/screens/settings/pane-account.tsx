@@ -666,7 +666,7 @@ function WindowsSection({ disabled }: { disabled: boolean }) {
   }, []);
 
   if (share === null || !share.on) return null;
-  const address = `\\\\${share.host.toUpperCase()}\\${share.share}`;
+  const address = `\\\\${share.host}\\${share.share}`;
 
   const allow = async () => {
     if (password.length === 0) return;
