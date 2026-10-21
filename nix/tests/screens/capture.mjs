@@ -85,8 +85,8 @@ function locate(page, what) {
   throw new Error(`cannot locate ${JSON.stringify(what)}`);
 }
 
-async function step(page, s) {
-  if (s.click) await locate(page, s.click).click();
+async function step(page, s, { force = false } = {}) {
+  if (s.click) await locate(page, s.click).click({ force });
   else if (s.waitFor) await locate(page, s.waitFor).waitFor({ timeout: s.timeout ?? 60000 });
   else if (s.gone) await locate(page, s.gone).waitFor({ state: 'detached', timeout: s.timeout ?? 60000 });
   else if (s.absent) {
@@ -125,7 +125,10 @@ async function film(variant, width, shot, name, storageState) {
     await cdp.send('Animation.enable');
     await cdp.send('Animation.setPlaybackRate', { playbackRate: plan.clipRate ?? 0.1 });
     for (const s of shot.steps ?? []) {
-      await step(page, s);
+      // The stills already waited for each control to be ready. Slowed down,
+      // a press's own transition keeps Playwright waiting for it to settle,
+      // so the clip clicks straight away.
+      await step(page, s, { force: true });
       await page.waitForTimeout(shot.clipPause ?? 2500);
     }
   } catch (e) {
