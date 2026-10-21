@@ -198,6 +198,9 @@ let
       fi
 
       if systemctl is-active --quiet postgresql.service; then
+        # One database is left on the list, so shellcheck sees a loop that
+        # runs once; it stays a loop for the next one.
+        # shellcheck disable=SC2043
         for db in ${lib.escapeShellArgs databases}; do
           if runuser -u postgres -- psql -tAc "select 1 from pg_database where datname = '$db'" | grep -cx 1 >/dev/null; then
             echo "backup: dumping the $db database"
