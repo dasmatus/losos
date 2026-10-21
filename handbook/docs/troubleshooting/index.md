@@ -74,7 +74,7 @@ restart repairs it on its own, or it needs a reinstall.
 - [Forgot the password](./forgot-password.md)
 - [Stuck at a passphrase prompt](./stuck-at-passphrase.md)
 - [The wizard keeps waiting](./wizard-waits.md)
-- [An app tile gives 404, or "untrusted domain"](./app-tile-404.md)
+- [An app tile gives 404](./app-tile-404.md)
 - [Apply fails](./apply-fails.md)
 - [Out of room](./out-of-room.md)
 - [No edge found](./edge-not-found.md)

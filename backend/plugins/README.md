@@ -67,7 +67,7 @@ entry in `cache` (lososd's memory, per plugin, gone at restart) or a job.
   "files": [
     { "path": "${LOSOS_STATE_DIR:-/var/lib/losos}/look.json", "access": "rw" }
   ],
-  "exec": ["git", { "program": "/run/current-system/sw/bin/nextcloud-occ", "uids": [1000] }],
+  "exec": ["git", { "program": "/run/current-system/sw/bin/losos-cloud", "uids": [1000] }],
   "units": { "prefix": "losos-backup-", "programs": ["restic"] },
   "http": ["http://127.0.0.1:11434", "unix:/run/losos-search/cloud.sock", "https://*"],
   "locks": ["state"],

@@ -136,7 +136,7 @@ Domain hinzu:
 3. Warte. Die Edge schlägt die Einträge jede halbe Minute selbst nach und
    markiert jeden mit **✓ gefunden**, sobald sie ihn findet. Wenn beide
    stimmen, wird die Domain **Aktiv**, die Edge holt ein Zertifikat für sie,
-   und LosOS Cloud antwortet unter `https://<your domain>/nextcloud`.
+   und LosOS Cloud antwortet unter `https://<your domain>/cloud/`.
 
 :::note[Eine Domain, vor der nichts steht]
 Eine Domain, vor der nichts steht, etwa `novak-family.eu` selbst, kann keinen

@@ -157,14 +157,19 @@ fn strip<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
 
 /// The path part of a `Destination` header, which may be a full URL.
 pub fn destination_path(dest: &str) -> Option<&str> {
-    if let Some(i) = dest.find("://") {
+    let path = if let Some(i) = dest.find("://") {
         let after = &dest[i + 3..];
-        Some(after.find('/').map(|j| &after[j..]).unwrap_or("/"))
+        after.find('/').map(|j| &after[j..]).unwrap_or("/")
     } else if dest.starts_with('/') {
-        Some(dest)
+        dest
     } else {
-        None
-    }
+        return None;
+    };
+    // An app set up against Nextcloud's old address keeps sending it.
+    Some(match path.strip_prefix(crate::cloud::server::OLD_PREFIX) {
+        Some(rest) if rest.starts_with("/remote.php/") => rest,
+        _ => path,
+    })
 }
 
 /// A lock a client holds.
@@ -603,6 +608,12 @@ fn active_lock(l: &Lock, href: &str) -> String {
 
 /// The entry point: one request to `/remote.php/…`, already signed in.
 pub async fn handle(ctx: Ctx<'_>, body: web::Payload) -> HttpResponse {
+    if crate::cloud::caldav::route(ctx.req.path()).is_some() {
+        if let Some(r) = crate::cloud::caldav::handle(ctx.cloud, ctx.who, ctx.req, body).await {
+            return r;
+        }
+        return HttpResponse::NotFound().finish();
+    }
     let t = match resolve(ctx.req.path(), &ctx.who.login) {
         Resolve::Ok(t) => t,
         Resolve::NotFound => {
@@ -664,11 +675,14 @@ fn method_not_allowed() -> HttpResponse {
 
 pub fn options() -> HttpResponse {
     HttpResponse::Ok()
-        .insert_header(("DAV", "1, 2, 3, extended-mkcol, nextcloud-checksum-update"))
+        .insert_header((
+            "DAV",
+            "1, 2, 3, access-control, calendar-access, addressbook, extended-mkcol, nextcloud-checksum-update",
+        ))
         .insert_header(("MS-Author-Via", "DAV"))
         .insert_header((
             header::ALLOW,
-            "OPTIONS, GET, HEAD, DELETE, PROPFIND, PUT, PROPPATCH, COPY, MOVE, REPORT, SEARCH, LOCK, UNLOCK, MKCOL",
+            "OPTIONS, GET, HEAD, DELETE, PROPFIND, PUT, PROPPATCH, COPY, MOVE, REPORT, SEARCH, LOCK, UNLOCK, MKCOL, MKCALENDAR",
         ))
         .insert_header(("Accept-Ranges", "bytes"))
         .finish()
@@ -724,14 +738,29 @@ async fn propfind(ctx: &Ctx<'_>, t: &Target, body: web::Payload) -> HttpResponse
 }
 
 async fn root_propfind(ctx: &Ctx<'_>, t: &Target, body: web::Payload) -> HttpResponse {
-    if let Err(r) = parse_request(body).await {
-        return r;
-    }
+    let preq = match parse_request(body).await {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
     let login = encode_path(&ctx.who.login);
+    // Calendar and contacts apps start here and ask who they are.
+    let principal = format!(
+        "<d:href>{}</d:href>",
+        crate::cloud::caldav::principal_href(&ctx.who.login)
+    );
     let collection = |href: String| {
         let mut r = Response::new(href);
         r.found
             .push((Name::new(DAV, "resourcetype"), "<d:collection/>".into()));
+        if let PropRequest::Props(names) = &preq {
+            for name in names {
+                if name.is(DAV, "current-user-principal") || name.is(DAV, "principal-URL") {
+                    r.found.push((name.clone(), principal.clone()));
+                } else if !name.is(DAV, "resourcetype") {
+                    r.missing.push(name.clone());
+                }
+            }
+        }
         r
     };
     let mut out = Vec::new();
@@ -739,7 +768,15 @@ async fn root_propfind(ctx: &Ctx<'_>, t: &Target, body: web::Payload) -> HttpRes
         "" => {
             out.push(collection("/remote.php/dav/".into()));
             if depth(ctx.req) != Some(0) {
-                for kind in ["files", "uploads", "trashbin", "versions"] {
+                for kind in [
+                    "files",
+                    "uploads",
+                    "trashbin",
+                    "versions",
+                    "principals",
+                    "calendars",
+                    "addressbooks",
+                ] {
                     out.push(collection(format!("/remote.php/dav/{kind}/")));
                 }
             }

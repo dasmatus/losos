@@ -14,6 +14,8 @@
 
 pub mod api;
 pub mod auth;
+pub mod boards;
+pub mod caldav;
 pub mod collab;
 pub mod dav;
 pub mod extensions;
@@ -21,6 +23,7 @@ pub mod import;
 pub mod mesh;
 pub mod nc;
 pub mod notes;
+pub mod pim;
 pub mod preview;
 pub mod search;
 pub mod server;
@@ -81,6 +84,8 @@ impl Cloud {
         let auth = auth::Auth::new(&store)?;
         store.with_db(|db| Ok(db.execute_batch(dav::PROPS_SCHEMA)?))?;
         extensions::init(&store)?;
+        pim::init(&store)?;
+        boards::init(&store)?;
         let (changes, _) = broadcast::channel(256);
         Ok(Cloud {
             store,

@@ -1,16 +1,15 @@
 ---
-title: Eine App-Kachel liefert 404 oder „nicht vertrauenswürdige Domain“
+title: Eine App-Kachel liefert 404
 sidebar_position: 8
 slug: /troubleshooting/app-tile-404
 ---
 
-# Eine App-Kachel liefert 404 oder „nicht vertrauenswürdige Domain“
+# Eine App-Kachel liefert 404
 
 <div className="losos-symptom">
 
-**Was du siehst:** Ein Klick auf **Aufgaben**, **Kalender** oder eine andere
-Kachel der Übersicht öffnet eine schlichte Seite „Not Found“, oder LosOS
-cloud zeigt „Zugriff über eine nicht vertrauenswürdige Domain“.
+**Was du siehst:** Ein Klick auf **Dateien**, **Fotos** oder **Code** in der
+Übersicht, oder ein altes Lesezeichen, öffnet eine Seite „Not Found“.
 
 </div>
 
@@ -18,40 +17,22 @@ cloud zeigt „Zugriff über eine nicht vertrauenswürdige Domain“.
 
 ## „Not Found“ von einer App-Kachel \{#not-found-from-an-app-tile}
 
-Es gibt zwei Ursachen. Die Pull Requests #65 und #66 haben beide am
-6. Oktober 2026 behoben, und das nächtliche Update bringt die Korrekturen
-mit:
+- **Die App ist aus.** **Dateien** und **Fotos** öffnen LosOS Cloud, das
+  `losos.cloud.enable` im Bereich **Erweitert** ein- und ausschaltet.
+  **Code** öffnet LosOS Git, das der Bereich **Apps** ein- und ausschaltet.
+- **Die Box ist gerade gestartet.** LosOS Cloud öffnet ein paar Sekunden,
+  nachdem die Box läuft. Beim ersten Start nach einem Update von Nextcloud
+  zieht es zuerst deine Dateien um, was länger dauert
+  ([Eine Box, auf der Nextcloud lief](../manual/losos-cloud#a-box-that-ran-nextcloud)).
+  Warte und lade die Seite neu.
 
-- Die Kacheln verlinkten auf die kurze Form `/nextcloud/apps/<app>/`, auf
-  die der Webserver von LosOS Cloud im standardmäßigen
-  [App-Modus](../types/app-modes) nicht antwortete. Die Kacheln gehen jetzt
-  über `/nextcloud/index.php/apps/<app>/`, worauf jede Konfiguration
-  antwortet.
-- Die App selbst ist in LosOS Cloud nicht installiert oder deaktiviert.
-  Öffne LosOS Cloud → Apps und aktiviere sie.
+## „Not Found“ von einem alten Lesezeichen \{#not-found-from-an-old-bookmark}
 
-:::tip[Bis das Update da ist]
-Bis das Update da ist, öffnest du LosOS Cloud über die Kachel **Dateien**
-oder unter `/nextcloud` und nimmst das eigene App-Menü von LosOS Cloud.
-Dessen Links funktionieren.
-:::
-
-## „Zugriff über eine nicht vertrauenswürdige Domain“ \{#access-through-untrusted-domain}
-
-LosOS Cloud antwortet nur auf Namen, denen es vertraut. Bei jeder Anfrage
-teilt die Box ihm mit, über welche Adresse die Anfrage hereinkam, deshalb
-funktionieren sowohl `<name>.local` als auch die IP-Adresse. Einen
-Platzhalter gibt die Box ihm nie. Du siehst diese Seite, wenn:
-
-- du die Box unter einem Namen erreicht hast, der nicht ihr eigener ist:
-  ein Alias deines Routers, ein Eintrag in der hosts-Datei unter einem
-  anderen Namen oder eine Domain über eine Edge, von der die Box nichts
-  weiß. Nimm `<name>.local` oder die Adresse.
-- du den Namen der Box gerade eben geändert hast und LosOS Cloud noch nicht
-  neu gestartet ist. Warte, bis der Rebuild fertig ist.
-- du eine Box von vor dem 6. Oktober 2026 über die IP-Adresse erreicht
-  hast. Pull Request #65 hat das Vertrauen pro Anfrage eingeführt. Nimm
-  bis zum Update `<name>.local`.
+Lesezeichen auf die eigenen Seiten von Nextcloud, etwa
+`/nextcloud/index.php/apps/calendar/`, führen nirgends mehr hin: Die Box
+hat kein Nextcloud. Öffne stattdessen `https://<name>.local/cloud/`. Die
+Apps für Computer und Telefon betrifft das nicht, LosOS Cloud antwortet
+ihnen weiter unter der Adresse `/nextcloud`, mit der sie eingerichtet sind.
 
 ## Links in LosOS Git zeigen den falschen Namen \{#losos-git-links-show-the-wrong-name}
 

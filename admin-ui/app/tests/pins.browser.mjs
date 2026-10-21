@@ -17,12 +17,9 @@ const { check, finish } = runner();
 
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   forgejoMode: 'container',
   hostName: 'mattbox',
-  https: false,
   gpuEnable: false,
-  apachePort: 80,
   proxyEnable: false,
   clusterEnable: false,
   shareCompute: false,
@@ -35,7 +32,7 @@ const SETTINGS = {
 };
 
 const PINNED = [
-  { kind: 'tile', app: 'calendar' },
+  { kind: 'tile', app: 'photos' },
   { kind: 'file', id: 42, path: '/Documents/plan.pdf', folder: false },
   { kind: 'repo', owner: 'notshared', name: 'site' },
   { kind: 'app', release: 'jellyfin' },
@@ -142,11 +139,8 @@ async function open({
     authed(route) ? json(route, 200, REPOS) : json(route, 401, { error: 'unauthorized' }),
   );
   // The apps the Overview probes, answering as on a box that is set up.
-  await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true }));
+  await page.route('**/status.php', (route) => json(route, 200, { installed: true }));
   await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
-  await page.route('**/nextcloud/index.php/apps/mail/', (route) =>
-    route.fulfill({ status: 404, contentType: 'text/html', body: '' }),
-  );
   await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   await page.goto((csp ?? origin) + path, { waitUntil: 'networkidle' });
   return { page, errors, box };
@@ -160,10 +154,10 @@ await check('the pins the box keeps sit under the sections, each opening in its 
   const group = pinned(page);
   await group.waitFor();
   const links = group.getByRole('link');
-  assert.deepEqual(await links.allInnerTexts(), ['Calendar', 'plan.pdf', 'site', 'jellyfin']);
+  assert.deepEqual(await links.allInnerTexts(), ['Photos', 'plan.pdf', 'site', 'jellyfin']);
   const href = (name) => group.getByRole('link', { name, exact: true }).getAttribute('href');
-  assert.equal(await href('Calendar'), '/nextcloud/index.php/apps/calendar/');
-  assert.equal(await href('plan.pdf'), '/nextcloud/index.php/f/42');
+  assert.equal(await href('Photos'), '/cloud/photos');
+  assert.equal(await href('plan.pdf'), '/cloud/files?fileid=42');
   assert.equal(await href('site'), '/forgejo/notshared/site');
   // An installed app opens on the port the box gave it, in a tab of its own.
   assert.equal(await href('jellyfin'), 'http://127.0.0.1:30001/');
@@ -185,18 +179,18 @@ await check('an Overview tile pins its app, and says so once it is pinned', asyn
   const { page, box } = await open({ pins: [] });
   await pinned(page).getByRole('button', { name: 'Pin apps, files and repositories here.' }).waitFor();
   const grid = page.getByRole('list', { name: /apps/i }).first();
-  await grid.getByRole('link', { name: 'Contacts' }).hover();
-  const pin = page.getByRole('button', { name: 'Pin Contacts' });
+  await grid.getByRole('link', { name: 'Code' }).hover();
+  const pin = page.getByRole('button', { name: 'Pin Code' });
   await pin.click();
-  await pinned(page).getByRole('link', { name: 'Contacts' }).waitFor();
-  assert.deepEqual(box.puts.at(-1), [{ kind: 'tile', app: 'contacts' }]);
-  const unpin = page.getByRole('main').getByRole('button', { name: 'Unpin Contacts' });
+  await pinned(page).getByRole('link', { name: 'Code' }).waitFor();
+  assert.deepEqual(box.puts.at(-1), [{ kind: 'tile', app: 'code' }]);
+  const unpin = page.getByRole('main').getByRole('button', { name: 'Unpin Code' });
   assert.equal(await unpin.getAttribute('aria-pressed'), 'true');
   await page.close();
 });
 
 await check('the dialog pins a file from a folder of LosOS Cloud and a repository from LosOS Git', async () => {
-  const { page, box } = await open({ pins: [{ kind: 'tile', app: 'calendar' }] });
+  const { page, box } = await open({ pins: [{ kind: 'tile', app: 'code' }] });
   await pinned(page).getByRole('button', { name: 'Edit pins' }).click();
   const dialog = page.getByRole('dialog', { name: 'Pins' });
   await dialog.waitFor();
@@ -207,7 +201,7 @@ await check('the dialog pins a file from a folder of LosOS Cloud and a repositor
   await dialog.getByRole('button', { name: 'Pin plan.pdf' }).click();
   await dialog.getByRole('button', { name: 'Unpin plan.pdf' }).first().waitFor();
   assert.deepEqual(box.puts.at(-1), [
-    { kind: 'tile', app: 'calendar' },
+    { kind: 'tile', app: 'code' },
     { kind: 'file', id: 42, path: '/Documents/plan.pdf', folder: false },
   ]);
   // Up one folder, and a folder pins as a folder.
@@ -322,10 +316,10 @@ await check('right-clicking a file or a repository in the palette pins it, and t
 await check('right-clicking an Overview tile or a pin in the sidebar pins or unpins it', async () => {
   const { page, box } = await open();
   await pinned(page).waitFor();
-  await page.getByRole('main').getByRole('link', { name: 'Contacts' }).click({ button: 'right' });
+  await page.getByRole('main').getByRole('link', { name: 'Code' }).click({ button: 'right' });
   await menu(page).getByRole('menuitem', { name: 'Pin to sidebar' }).click();
-  await pinned(page).getByRole('link', { name: 'Contacts' }).waitFor();
-  assert.deepEqual(box.puts.at(-1), [...PINNED, { kind: 'tile', app: 'contacts' }]);
+  await pinned(page).getByRole('link', { name: 'Code' }).waitFor();
+  assert.deepEqual(box.puts.at(-1), [...PINNED, { kind: 'tile', app: 'code' }]);
 
   await pinned(page).getByRole('link', { name: 'plan.pdf' }).click({ button: 'right' });
   assert.deepEqual(await menu(page).getByRole('menuitem').allInnerTexts(), ['Unpin from sidebar', 'Open in new tab']);
@@ -339,7 +333,7 @@ await check('a full sidebar greys out Pin to sidebar in the menu', async () => {
   const many = Array.from({ length: 24 }, (_, i) => ({ kind: 'file', id: 1000 + i, path: `/f${i}.txt`, folder: false }));
   const { page, box } = await open({ pins: many });
   await pinned(page).waitFor();
-  await page.getByRole('main').getByRole('link', { name: 'Contacts' }).click({ button: 'right' });
+  await page.getByRole('main').getByRole('link', { name: 'Code' }).click({ button: 'right' });
   const item = menu(page).getByRole('menuitem', { name: 'Pin to sidebar' });
   assert.equal(await item.getAttribute('aria-disabled'), 'true');
   assert.equal(box.puts.length, 0);
@@ -361,8 +355,8 @@ await check('under the appliance CSP the pins, the tile button, the dialog and t
     const { page, errors } = await open({ csp: strict });
     await pinned(page).waitFor();
     const atLoad = await page.evaluate(() => window.__violations.length);
-    await page.getByRole('link', { name: 'Contacts' }).first().hover();
-    await page.getByRole('button', { name: 'Pin Contacts' }).click();
+    await page.getByRole('link', { name: 'Code' }).first().hover();
+    await page.getByRole('button', { name: 'Pin Code' }).click();
     await pinned(page).getByRole('button', { name: 'Edit pins' }).click();
     const dialog = page.getByRole('dialog', { name: 'Pins' });
     await dialog.getByRole('tab', { name: 'Files' }).click();

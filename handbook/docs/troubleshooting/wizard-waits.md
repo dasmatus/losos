@@ -18,7 +18,7 @@ finish starting", and stays there.
 ## Why
 
 The password lives in LosOS Cloud, so the wizard cannot set it until LosOS
-cloud has installed itself. LosOS Cloud does that on the box's first start.
+Cloud has installed itself. LosOS Cloud does that on the box's first start.
 On a mini-PC that
 takes two to five minutes; in an emulated VM without hardware acceleration it
 can take fifteen. The page checks every few seconds and continues on its own.

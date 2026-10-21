@@ -1,18 +1,13 @@
 # nixos-test-vms config for "Play while you wait" (admin-ui/app/src/games/,
 # src/components/play-while-waiting.tsx): the game a long wait offers.
 #
-# The waits are the box's own, not a mocked API: lososd's claim state while
-# LosOS Cloud has not finished installing, and a rebuild that lososd starts
+# The wait is the box's own, not a mocked API: a rebuild that lososd starts
 # from Apply as a real `losos-rebuild-<job>` unit and watches like any
-# other. Two stand-ins make them last as long as the test needs: `occ`
-# answers "not installed" until the script says otherwise, and the
-# `nixos-rebuild` lososd runs waits for the script before it exits 0. What
-# is asserted:
+# other. A stand-in makes it last as long as the test needs: the
+# `nixos-rebuild` lososd runs waits for the script before it exits 0. (The
+# wizard's wait is tests/games.browser.mjs's: nothing on a real box has to
+# start before the first password any more.) What is asserted:
 #
-#   * the wizard's step 2, on an unclaimed box whose LosOS Cloud is still
-#     installing, offers the game; Upstream plays and scores; and when occ
-#     reports installed the game stops with a line saying so and the
-#     password form opens;
 #   * on a claimed box, Apply starts a rebuild unit and the apply bar offers
 #     the game; each of the five games plays by keyboard, pointer or touch;
 #     Home's applying alert offers it too; dark and phone widths draw it
@@ -58,20 +53,6 @@ let
     '';
   });
 
-  # LosOS Cloud installs itself until the script touches the flag.
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status)
-        if [ -e /run/wait-game/installed ]; then
-          echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}'
-        else
-          echo '{"installed":false,"maintenance":false,"needsDbUpgrade":false}'
-        fi ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-
   # What lososd's rebuild unit runs: a rebuild that takes as long as the
   # script wants, then succeeds.
   stubRebuild = pkgs.writeShellScriptBin "nixos-rebuild" ''
@@ -96,9 +77,7 @@ in
 pkgs.testers.nixosTest {
   name = "losos-wait-game";
 
-  nodes.box =
-    { config, ... }:
-    {
+  nodes.box = _: {
       imports = [
         ../../modules/options.nix
         ../../modules/containers.nix
@@ -112,28 +91,12 @@ pkgs.testers.nixosTest {
         backend.package = lososPkgs.losos-ctl;
         admin.ui = ui;
         identity.enable = false;
-        nextcloud.mode = "container";
         forgejo.enable = false;
       };
 
-      # LosOS Cloud's stand-in on the port the front vhost proxies to.
-      services.nginx.virtualHosts."stub-nextcloud" = {
-        listen = [
-          {
-            addr = "127.0.0.1";
-            port = config.losos.nextcloud.apachePort;
-          }
-        ];
-        locations."/".extraConfig = ''return 200 "stub-nextcloud\n";'';
-      };
-
-      # The stand-ins first, so they shadow the real occ and nixos-rebuild;
-      # git and the rest of lososd's path stay for the settings commit.
-      systemd.services.lososd.path = lib.mkBefore [
-        stubOcc
-        stubRebuild
-      ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+      # The stand-in first, so it shadows the real nixos-rebuild; git and
+      # the rest of lososd's path stay for the settings commit.
+      systemd.services.lososd.path = lib.mkBefore [ stubRebuild ];
       systemd.tmpfiles.rules = [ "d /run/wait-game 0755 root root -" ];
       environment.systemPackages = [
         pkgs.curl
@@ -199,21 +162,7 @@ pkgs.testers.nixosTest {
         assert run.returncode == 0, f"{mode}: the browser run failed"
         return json.loads(stdout.strip().splitlines()[-1])
 
-    with subtest("step 2 waits for LosOS Cloud, offers the game, and the game gives way when it is installed"):
-        claim = json.loads(box.succeed("curl -fsS 127.0.0.1:8082/api/setup/claim"))
-        assert claim["ready"] is False and claim["waitingFor"], claim
-
-        def wizard_step(step):
-            assert step == "installed", step
-            box.succeed("touch /run/wait-game/installed")
-
-        seen = browse("wizard", wizard_step)
-        assert seen["wizardWaiting"], seen
-        assert seen["games"]["upstream"] > 0, seen
-        assert seen["wizardReady"], seen
-        assert seen["violations"] == [], seen
-
-    with subtest("the claim goes through once LosOS Cloud is installed"):
+    with subtest("the owner claims the box"):
         body = box.succeed(
             "curl -fsS -X POST 127.0.0.1:8082/api/setup/claim "
             "-H 'Content-Type: application/json' "

@@ -373,7 +373,7 @@
     "message": "LosOS Cloud"
   },
   "losos.home.feature.cloud.body": {
-    "message": "Vaše súbory, fotky, kalendár, kontakty, poznámky a úlohy, s aplikáciami pre počítač aj telefón. Postavené na Nextcloude."
+    "message": "Vaše súbory, fotky, kalendáre, kontakty a tabule, v prehliadači aj v aplikáciách Nextcloud pre počítač a telefón."
   },
   "losos.home.feature.git.title": {
     "message": "LosOS Git"
@@ -397,7 +397,7 @@
     "message": "Jedno heslo, žiadny shell"
   },
   "losos.home.feature.password.body": {
-    "message": "Nemá prihlasovacie okno ani SSH. Box sa používa z prehliadača a heslo, ktoré si nastavíte pre LosOS Cloud, otvára aj správu boxu."
+    "message": "Nemá prihlasovacie okno ani SSH. Box sa používa z prehliadača a jedno heslo, ktoré si nastavíte pri privlastnení boxu, otvára správu boxu, LosOS Cloud aj LosOS Git."
   },
   "losos.home.feature.lan.title": {
     "message": "Funguje aj bez internetu"
@@ -596,7 +596,7 @@
     "message": "LosOS Cloud"
   },
   "losos.companies.box.cloud.body": {
-    "message": "Súbory, fotky, kalendár, kontakty, poznámky, úlohy, Deck, Forms, Tables a ďalšie, s aplikáciami pre počítač aj telefón. Každý kolega dostane účet. Postavené na Nextcloude."
+    "message": "Súbory, fotky, kalendáre, kontakty a tabule, v prehliadači aj v aplikáciách Nextcloud pre počítač a telefón. Každý kolega dostane účet."
   },
   "losos.companies.box.git.title": {
     "message": "LosOS Git"
@@ -647,7 +647,7 @@
     "message": "Kópie idú do ľubovoľného úložiska kompatibilného s S3, ktoré si vyberiete, u poskytovateľa v EÚ alebo vo vlastnej sieti, zašifrované vaším kódom na obnovenie ešte predtým, ako box opustia."
   },
   "losos.companies.eu.nextcloud": {
-    "message": "Základ LosOS Cloud. Vyvíja ho Nextcloud GmbH v Stuttgarte v Nemecku."
+    "message": "LosOS Cloud hovorí jeho protokolom, takže jeho aplikácie pre počítač a telefón sa so zariadením synchronizujú. Vyvíja ho Nextcloud GmbH v Stuttgarte v Nemecku."
   },
   "losos.companies.eu.forgejo": {
     "message": "Základ LosOS Git. Komunitný projekt pod Codeberg e.V., neziskovou organizáciou v Berlíne."
@@ -857,7 +857,7 @@
     "message": "Žiadny poplatok za používateľa"
   },
   "losos.companies.cost.body": {
-    "message": "LosOS, Nextcloud aj Forgejo sú slobodný softvér. Váš štyridsiaty zamestnanec stojí jeden používateľský účet, nie predplatné. Raz zaplatíte za hardvér a potom za elektrinu, a kancelárske mini-PC na to stačí."
+    "message": "LosOS aj Forgejo sú slobodný softvér. Váš štyridsiaty zamestnanec stojí jeden používateľský účet, nie predplatné. Raz zaplatíte za hardvér a potom za elektrinu, a kancelárske mini-PC na to stačí."
   },
   "losos.companies.soon.intro": {
     "message": "LosOS je predbežné vydanie, zatiaľ bez zmluvy o podpore a bez certifikácie. Toto sú časti, ktoré sa ešte stavajú."
