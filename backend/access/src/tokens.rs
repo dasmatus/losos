@@ -306,10 +306,48 @@ pub fn path_allowed(path: &str, allowed: &[&str], forbidden: &[&str]) -> bool {
     allowed.iter().any(|a| under(a)) && !forbidden.iter().any(|f| under(f))
 }
 
+/// The OAuth client the LosOS companion signs in as (`losos agents
+/// install`), registered with LosOS Login in `modules/identity.nix`.
+pub const COMPANION_CLIENT_ID: &str = "losos-companion";
+
+/// Every route a LosOS companion token reaches on a box, all of them reads:
+/// who it acts as, the box's health, and the person's files and
+/// repositories. Matched exactly, with any query string. A route an AI tool
+/// should reach is added here and to the companion's own tool table
+/// (`admin-ui/tui/src/agents/mcp.rs`), whose test holds the two together.
+pub const COMPANION_ROUTES: &[&str] = &[
+    "/api/me",
+    "/api/status",
+    "/api/cloud/files",
+    "/api/cloud/text",
+    "/api/git/repos",
+    "/api/git/text",
+];
+
+/// May a companion token make this call? GET only, on one of
+/// [`COMPANION_ROUTES`], after the same shape checks as [`path_allowed`].
+pub fn companion_route(method: &str, path: &str) -> bool {
+    let route = path.split('?').next().unwrap_or(path);
+    method.eq_ignore_ascii_case("GET")
+        && path_allowed(path, &["/api/"], &[])
+        && COMPANION_ROUTES.contains(&route)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::keys::HostKey;
+
+    #[test]
+    fn a_companion_reads_its_routes_and_nothing_else() {
+        assert!(companion_route("GET", "/api/me"));
+        assert!(companion_route("get", "/api/cloud/text?q=salmon"));
+        assert!(!companion_route("POST", "/api/me"));
+        assert!(!companion_route("GET", "/api/settings"));
+        assert!(!companion_route("GET", "/api/cloud/files/../settings"));
+        assert!(!companion_route("GET", "/api/cloud/filesx"));
+        assert!(!companion_route("GET", "/api/access/tokens"));
+    }
 
     fn ring() -> (Keyring, String) {
         let k = HostKey::generate("Owner").unwrap();
