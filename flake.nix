@@ -438,11 +438,18 @@
         losos-resize = import ./nix/tests/resize.nix { inherit pkgs; };
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
+        losos-tour = import ./nix/tests/tour.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
+        losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
+        losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # Apps run as notshared on rootless Podman, with no cluster: the
+        # box's own, one in the LosOS app format and a chart from the
+        # search (nix/tests/podman-apps.nix).
+        losos-podman-apps = import ./nix/tests/podman-apps.nix { inherit pkgs; };
         losos-admin-ui = import ./nix/tests/admin-ui.nix {
           inherit pkgs;
           # The real option document, so the Advanced pane is drawn from
