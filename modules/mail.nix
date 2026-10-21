@@ -95,7 +95,9 @@ let
       enable = true;
     };
     resolver.type = "system";
-    resolver.public-suffix = [ "file://${pkgs.publicsuffix-list}/share/publicsuffix/public_suffix_list.dat" ];
+    resolver.public-suffix = [
+      "file://${pkgs.publicsuffix-list}/share/publicsuffix/public_suffix_list.dat"
+    ];
     spam-filter.resource = "file://${package.spam-filter}/spam-filter.toml";
     # Shipped with the package, so Stalwart never fetches it from GitHub.
     # Nobody opens it: the listener is loopback and lososd uses the API.
