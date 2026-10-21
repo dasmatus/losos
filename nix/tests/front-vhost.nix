@@ -130,6 +130,10 @@ let
       # Deliberately not the 11000 default — see stubBackends.
       nextcloud.apachePort = 11007;
       git.enable = true;
+      # LosOS Login is not imported (its maps live in modules/identity.nix):
+      # the routes here are the ones without it. nix/tests/identity.nix and
+      # nix/tests/app-sign-in.nix boot the signed-in side.
+      identity.enable = false;
       # Federation runs only while the box shares its disk
       # (lososInternal.federation), so the federation subtests start with
       # sharing on and end by switching into a specialisation with it off.
