@@ -10,6 +10,7 @@ import advanced from "./advanced";
 import apps from "./apps";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
+import games from "./games";
 import home from "./home";
 import inference from "./inference";
 import install from "./install";
@@ -56,6 +57,7 @@ export const MESSAGES = {
   ...pins,
   ...manage,
   ...mail,
+  ...games,
 };
 
 export type MessageKey = keyof typeof MESSAGES;
