@@ -399,6 +399,8 @@ await check('a folder publishes as a knowledge base from its right click', async
     await page.waitForSelector('[data-slot="context-menu"]');
     const items = await page.$$eval('[data-slot="context-menu"] [data-item^="folder-"]', (els) => els.map((e) => e.getAttribute('data-item').slice('folder-'.length)));
     assert.ok(items.includes('notes-open') && items.includes('kb-publish'), items.join(','));
+    // The folder's own items sit beside the file menu's, sharing among them.
+    assert.ok(await page.isVisible('[data-slot="context-menu"] [data-item="share"]'), 'no Share item');
     await page.click('[data-slot="context-menu"] [data-item="folder-kb-publish"]');
     await page.waitForSelector('[data-publish-dialog] [data-publish]');
     await page.fill('[data-publish-dialog] input', 'Kitchen garden');
