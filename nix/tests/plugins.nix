@@ -245,9 +245,17 @@ pkgs.testers.nixosTest {
         code, body = api("/api/look/background", cookie, "DELETE")
         assert code == 200 and json.loads(body)["background"]["kind"] == "none", body
         box.fail("test -e /var/lib/losos/background.img")
-        # The spare key reaches it too.
+        # The spare key reaches it too, and puts the veil back to its
+        # default for the pictures below.
         code, _ = api("/api/look", extra=f"-H 'Authorization: Bearer {spare}'")
         assert code == 200, code
+        code, body = api(
+            "/api/look",
+            method="POST",
+            data={"veil": 60},
+            extra=f"-H 'Authorization: Bearer {spare}'",
+        )
+        assert code == 200 and json.loads(body)["veil"] == 60, (code, body)
 
     with subtest("lososd will not start on plugins from anywhere but the store"):
         # A copy outside the store, sealed like a store path.
