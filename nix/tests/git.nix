@@ -88,7 +88,10 @@ pkgs.testers.nixosTest {
       };
       systemd.services.forgejo-leftovers = {
         wantedBy = [ "losos-git.service" ];
-        before = [ "losos-git.service" ];
+        before = [
+          "losos-git-forgejo-import.service"
+          "losos-git.service"
+        ];
         serviceConfig = {
           Type = "oneshot";
           ExecStart = forgejoLeftovers;

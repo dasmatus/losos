@@ -10,6 +10,7 @@ import advanced from "./advanced";
 import apps from "./apps";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
+import git from "./git";
 import home from "./home";
 import inference from "./inference";
 import install from "./install";
@@ -42,6 +43,7 @@ export const MESSAGES = {
   ...apps,
   ...cloudApps,
   ...cloud,
+  ...git,
   ...install,
   ...look,
   ...machines,

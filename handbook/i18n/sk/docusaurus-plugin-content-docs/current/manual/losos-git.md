@@ -1,0 +1,119 @@
+---
+title: LosOS Git
+sidebar_position: 4.6
+slug: /manual/losos-git
+---
+
+# LosOS Git
+
+LosOS Git je vlastný Git server zariadenia. Drží vaše repozitáre, prijíma
+pushe a klonovanie cez HTTPS a má stránky na čítanie kódu, otváranie pull
+requestov a ich review.
+
+Otvorte ho na `https://<name>.local/git/`. `<name>` je meno zariadenia,
+také ako na jeho obrazovke. Prihlásite sa cez LosOS Login. Kto zariadenie
+nastavil, je vlastník a jeho repozitáre sú pod `notshared`.
+
+## Repozitáre \{#repositories}
+
+Prvá stránka ukazuje vaše repozitáre a tie, ktoré s vami niekto zdieľa.
+**Nový repozitár** vytvorí ďalší, súkromný, ak to nevypnete. Prázdny
+repozitár ukáže príkazy, ktorými doň pushnete prvú vetvu.
+
+Stránky repozitára sú v bočnom paneli:
+
+- **Kód** ukazuje súbory vetvy a pod nimi README. Hore vyberiete inú
+  vetvu, alebo otvoríte súbor a čítate ho s číslami riadkov. Súbory
+  Markdown sa zobrazia ako formátovaný text.
+- **Pull requesty** zobrazujú otvorené a zatvorené.
+- **Commity** a **Vetvy** ukazujú históriu. **Porovnať** pri vetve ukáže,
+  čo v nej je a v predvolenej vetve nie.
+- **Pracovné stromy** zobrazujú checkouty, ktoré do repozitára pushujú
+  (pozri nižšie).
+- **Nastavenia** premenujú repozitár, zmenia jeho popis a urobia ho
+  súkromným či verejným. Vidí ich len vlastník repozitára a jeho správcovia.
+
+## Klonovanie a push \{#clone-and-push}
+
+Adresa repozitára je navrchu jeho stránok, s tlačidlom, ktoré ju skopíruje:
+
+```sh
+git clone https://<name>.local/git/notshared/notes.git
+```
+
+git sa spýta na meno a token. `losos git setup` z
+[terminálového klienta](terminal#use-losos-cloud-and-losos-git-from-this-computer)
+vytvorí token pre jeden počítač a odovzdá ho gitu, takže klonovanie a push
+potom heslo nepotrebujú.
+
+## Pull requesty \{#pull-requests}
+
+Pushnite vetvu a stlačte **Otvoriť pull request** na stránke Kód alebo
+**Porovnať** na stránke Vetvy. Vyberte vetvu, do ktorej sa má zlúčiť, dajte
+mu názov a popis a stlačte **Otvoriť pull request**.
+
+Pull request má tri karty:
+
+- **Rozhovor** drží popis, komentáre a review v poradí, v akom prišli, a
+  pole na zlúčenie.
+- **Commity** zobrazujú commity vo vetve.
+- **Zmenené súbory** ukazujú zmeny, súbor po súbore.
+
+### Review \{#review}
+
+V **Zmenených súboroch** ukážte na riadok a stlačte **+**, čím ho
+okomentujete. **Komentovať hneď** komentár hneď odošle. **Pridať do
+review** ho podrží vo vašom review, kým ho neodošlete. Keď skončíte,
+vyberte **Komentár**, **Schváliť** alebo **Žiadať zmeny**, ak chcete,
+napíšte zhrnutie, a stlačte **Odoslať review**. Kto pull request otvoril,
+môže ten svoj len komentovať.
+
+Komentár k riadku začne vlákno. Odpovedzte pod ním a keď je vec vybavená,
+stlačte **Vyriešiť**; vyriešené vlákno sa zbalí a **Znova otvoriť** ho
+vráti. Vlákno, ktorého riadok sa odvtedy zmenil, je označené ako zastarané.
+
+**Recenzenti** vpravo požiadajú ľudí o review a ukážu, ako na tom kto je.
+
+### Kontroly \{#checks}
+
+Keď nástroj ohlási výsledok pre najnovší commit vetvy, napríklad build
+alebo beh testov, výsledok sa ukáže na karte Rozhovor nad poľom na
+zlúčenie.
+
+### Zlúčenie \{#merge}
+
+Pole na zlúčenie ponúka tri spôsoby:
+
+- **Merge commit** zachová všetky commity a pridá jeden, ktorý vetvy spojí.
+- **Squash** dá všetky zmeny vetvy do jedného commitu.
+- **Fast-forward** posunie základnú vetvu na vetvu so zmenami, ak základ
+  nemá nič, čo vetve chýba.
+
+**Potom zmazať `<branch>`** vetvu po zlúčení odstráni. Zlúčenie s
+konfliktmi zariadenie odmietne; zlúčte základnú vetvu do svojej, pushnite
+a skúste znova. **Zatvoriť bez zlúčenia** odloží pull request bokom a
+**Znova otvoriť** ho vráti.
+
+## Pracovné stromy \{#worktrees}
+
+Pracovný strom je jeden checkout repozitára na jednom počítači, vytvorený
+cez `git worktree add`. Každý pomenujte a povedzte, na ktorom počítači je,
+a každý push z neho ponesie oboje:
+
+```sh
+git config extensions.worktreeConfig true
+git worktree add ../fix-backup -b fix-backup
+cd ../fix-backup
+git config --worktree push.pushOption "worktree=fix-backup"
+git config --worktree --add push.pushOption "computer=laptop"
+git push -u origin fix-backup
+```
+
+**Pracovné stromy** ho potom ukážu s jeho vetvou, posledným pushom a pull
+requestom pre túto vetvu, ak nejaký je. Pull request, ktorého vetvu pushuje
+pomenovaný pracovný strom, ukáže meno toho stromu vo svojej hlavičke.
+**Zabudnúť** strom zo zoznamu vyradí; ďalší push ho tam vráti.
+
+## Nastavenia \{#settings}
+
+`losos.git.enable` vypne LosOS Git. Je na paneli **Rozšírené**.
