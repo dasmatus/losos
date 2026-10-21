@@ -260,6 +260,78 @@ export interface ConsoleInfo {
   completions: string[];
 }
 
+// ── the canvas (admin-ui/lab/core/src/canvas/) ─────────────────────────
+export type Side = "top" | "right" | "bottom" | "left";
+export type NodeKind = "text" | "file" | "link" | "group";
+
+/** A JSON Canvas node as the core hands it out; `dev` on a device's card. */
+export interface CanvasNode {
+  id: string;
+  type: NodeKind;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color?: string;
+  text?: string;
+  file?: string;
+  subpath?: string;
+  url?: string;
+  label?: string;
+  background?: string;
+  backgroundStyle?: "cover" | "ratio" | "repeat";
+  styleAttributes?: Record<string, string>;
+  losos?: Record<string, unknown>;
+  dev?: string;
+}
+
+export interface CanvasEdge {
+  id: string;
+  fromNode: string;
+  fromSide?: Side;
+  fromEnd?: "none" | "arrow";
+  toNode: string;
+  toSide?: Side;
+  toEnd?: "none" | "arrow";
+  color?: string;
+  label?: string;
+  styleAttributes?: Record<string, string>;
+  losos?: Record<string, unknown>;
+  /** A cable: the world link it draws, and its kind. */
+  link?: string;
+  cable?: string;
+  path: string;
+  labelAt: [number, number];
+  heads: { x: number; y: number; angle: number; end: "from" | "to" }[];
+  sides: [Side, Side];
+}
+
+export interface CanvasSnap {
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  canUndo: boolean;
+  canRedo: boolean;
+  /** Canvas units per unit of the logical view. */
+  scale: number;
+}
+
+export type NodeSpec = Partial<Omit<CanvasNode, "id" | "dev">> & { type: NodeKind; x: number; y: number };
+export type NodePatch = Partial<Record<keyof Omit<CanvasNode, "id" | "dev" | "type" | "x" | "y">, unknown>>;
+export type EdgeSpec = {
+  fromNode: string;
+  toNode: string;
+  fromSide?: Side;
+  toSide?: Side;
+  fromEnd?: "none" | "arrow";
+  toEnd?: "none" | "arrow";
+  label?: string;
+  color?: string;
+  styleAttributes?: Record<string, string | null>;
+  cable?: string;
+};
+export type EdgePatch = Partial<Record<keyof Omit<EdgeSpec, "cable">, unknown>>;
+export type Placed = { nodes: string[]; edges: string[]; skipped: number };
+
 export function isErr(value: unknown): value is Err {
   return typeof value === "object" && value !== null && typeof (value as Err).error === "string" && !("status" in value);
 }
@@ -380,4 +452,32 @@ export class Core {
   exec = (id: string, line: string) => parse<ExecResult | Err>("exec", this.m("exec", id, line));
   http = (id: string, url: string) => parse<HttpStart | Err>("http", this.m("http", id, url));
   errorPage = (error: string, host: string): string => this.lab.error_page(error, host);
+
+  // ── the canvas ──
+  canvas = (): CanvasSnap => parse("canvas", this.lab.canvas());
+  canvasNew = () => parse<{ ok: true }>("canvas_new", this.m("canvas_new"));
+  canvasAddNode = (spec: NodeSpec) => parse<{ node: CanvasNode } | Err>("canvas_add_node", this.m("canvas_add_node", JSON.stringify(spec)));
+  canvasAddDevice = (type: string, cx: number, cy: number) =>
+    parse<{ node: CanvasNode; device: Device } | Err>("canvas_add_device", this.m("canvas_add_device", type, cx, cy));
+  canvasUpdateNode = (id: string, patch: NodePatch) =>
+    parse<{ node: CanvasNode } | Err>("canvas_update_node", this.m("canvas_update_node", id, JSON.stringify(patch)));
+  canvasMove = (ids: string[], dx: number, dy: number, gesture: number) =>
+    parse<{ moved: string[] } | Err>("canvas_move", this.m("canvas_move", JSON.stringify(ids), dx, dy, gesture));
+  canvasResize = (id: string, rect: { x: number; y: number; width: number; height: number }, gesture: number) =>
+    parse<{ ok: true } | Err>("canvas_resize", this.m("canvas_resize", id, JSON.stringify(rect), gesture));
+  canvasConnect = (spec: EdgeSpec) => parse<{ edge: CanvasEdge } | Err>("canvas_connect", this.m("canvas_connect", JSON.stringify(spec)));
+  canvasUpdateEdge = (id: string, patch: EdgePatch) =>
+    parse<{ edge: CanvasEdge } | Err>("canvas_update_edge", this.m("canvas_update_edge", id, JSON.stringify(patch)));
+  canvasDelete = (what: { nodes?: string[]; edges?: string[] }) =>
+    parse<{ nodes: string[]; edges: string[] } | Err>("canvas_delete", this.m("canvas_delete", JSON.stringify(what)));
+  canvasOrder = (ids: string[], how: "front" | "back") => parse<{ ok: true } | Err>("canvas_order", this.m("canvas_order", JSON.stringify(ids), how));
+  canvasAlign = (ids: string[], how: string) => parse<{ ok: true } | Err>("canvas_align", this.m("canvas_align", JSON.stringify(ids), how));
+  canvasGroup = (ids: string[], label: string) => parse<{ node: CanvasNode } | Err>("canvas_group", this.m("canvas_group", JSON.stringify(ids), label));
+  canvasCopy = (ids: string[]) => parse<{ text: string } | Err>("canvas_copy", this.lab.canvas_copy(JSON.stringify(ids)));
+  canvasPaste = (text: string, x: number, y: number) => parse<Placed | Err>("canvas_paste", this.m("canvas_paste", text, x, y));
+  canvasTemplates = (): { key: string }[] => parse("canvas_templates", this.lab.canvas_templates());
+  canvasInsertTemplate = (key: string, lang: string, cx: number, cy: number) =>
+    parse<Placed | Err>("canvas_insert_template", this.m("canvas_insert_template", key, lang, cx, cy));
+  canvasUndo = () => parse<{ ok: true } | Err>("canvas_undo", this.m("canvas_undo"));
+  canvasRedo = () => parse<{ ok: true } | Err>("canvas_redo", this.m("canvas_redo"));
 }

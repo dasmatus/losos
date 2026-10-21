@@ -147,10 +147,6 @@ fn same(what: &str, rust: &Value, js: &Value) {
     }
 }
 
-fn parse(s: impl AsRef<str>) -> Value {
-    serde_json::from_str(s.as_ref()).unwrap_or_else(|e| panic!("not JSON ({e}): {}", s.as_ref()))
-}
-
 fn snap(lab: &LabCore) -> Value {
     lab.snapshot()
 }
@@ -254,7 +250,7 @@ fn check_scenario(key: &str) {
     same(&format!("{key} log"), &s["sim"]["log"], &fx["log"]);
     same(&format!("{key} tick"), &s["sim"]["tick"], &fx["tick"]);
     same(&format!("{key} clock"), &s["clock"]["t"], &fx["clock"]);
-    let doc = parse(lab.export_setup()["text"].as_str().unwrap_or(""));
+    let doc = lab.export_setup_v1();
     same(&format!("{key} setup"), &doc, &fx["setup"]);
 
     lab.clear();
@@ -383,7 +379,7 @@ fn this_box_matches() {
         same(&format!("this-box {i} net"), &s["net"], &c["net"]);
         same(
             &format!("this-box {i} setup"),
-            &parse(lab.export_setup()["text"].as_str().unwrap_or("")),
+            &lab.export_setup_v1(),
             &c["setup"],
         );
         let cat = lab.catalog();
@@ -420,6 +416,17 @@ fn files_match() {
         lab.set_mode("simulation");
         let out = lab.import_setup(&text, "x.llf");
         if let Some(p) = r["problem"].as_str() {
+            // The words are the product's now; the cases are the JS's.
+            let p = p
+                .replace(
+                    "This is not a LosOS Lab setup file.",
+                    "This is not a canvas or a setup file.",
+                )
+                .replace("this Lab reads", "LosOS Diagrams reads")
+                .replace(
+                    "That file is too big to be a setup.",
+                    "That file is too big to open.",
+                );
             assert_eq!(out["error"], json!(p), "{label}");
             continue;
         }
