@@ -2,7 +2,7 @@ import * as React from "react";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
@@ -85,6 +85,10 @@ export interface CollabEditorProps {
   onPresence: (people: Presence[]) => void;
   onEdited: (edit: Edited | null) => void;
   className?: string;
+  /** More CodeMirror extensions, after the editor's own: Notes adds link
+   * completion and a listener that renders the text beside it. Read when
+   * the editor starts. */
+  extensions?: readonly Extension[];
 }
 
 export function CollabEditor({
@@ -98,6 +102,7 @@ export function CollabEditor({
   onPresence,
   onEdited,
   className,
+  extensions,
 }: CollabEditorProps) {
   const hostRef = React.useRef<HTMLDivElement>(null);
   const viewRef = React.useRef<EditorView | null>(null);
@@ -106,6 +111,8 @@ export function CollabEditor({
   callbacks.current = { onConnection, onPresence, onEdited };
   const meRef = React.useRef(me);
   meRef.current = me;
+  const extra = React.useRef(extensions);
+  extra.current = extensions;
 
   React.useEffect(() => {
     const host = hostRef.current;
@@ -177,6 +184,7 @@ export function CollabEditor({
           // Sync and undo from y-codemirror.next; the cursors are ours.
           yCollab(ytext, null, { undoManager: undo }),
           remoteCursors(ytext, awareness),
+          ...(extra.current ?? []),
         ],
       }),
     });

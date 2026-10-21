@@ -13,6 +13,7 @@ import {
   StarIcon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
@@ -21,7 +22,7 @@ import { cloud, contentUrl, hasPreview, joinPath, parentOf, previewUrl, type Ent
 import { MoveDialog, NameDialog, VersionsDialog, failed } from "./dialogs";
 import { formatBytes, formatFull, formatWhen, iconFor } from "./format";
 import { MeshShareDialog } from "./mesh/share-dialog";
-import { openersFor } from "./openers";
+import { folderActionsFor, openersFor, type FolderAction } from "./openers";
 import { bump } from "./store";
 
 /** The address of a folder in the web app. */
@@ -157,7 +158,47 @@ export function EntryTable({
     </TableHead>
   );
 
+  // What a right click on a row offers: the apps that open a file, the
+  // actions a folder has (Notes, knowledge bases).
+  const [menuFor, setMenuFor] = React.useState<Entry | null>(null);
+  const [dialog, setDialog] = React.useState<{ action: FolderAction; folder: Entry } | null>(null);
+  const menuItems =
+    menuFor === null
+      ? []
+      : menuFor.dir
+        ? folderActionsFor(menuFor).map((a) => ({
+            id: a.id,
+            label: t(a.label(menuFor)),
+            icon: a.icon,
+            run: () => {
+              if (a.href !== undefined) navigate(a.href(menuFor));
+              else if (a.Dialog !== undefined) setDialog({ action: a, folder: menuFor });
+            },
+          }))
+        : openersFor(menuFor).map((o) => ({
+            id: o.id,
+            label: t(o.label),
+            icon: o.icon,
+            run: () => window.open(o.href(menuFor), "_blank", "noopener"),
+          }));
+
   return (
+    <ContextMenu>
+      <ContextMenuTrigger
+        render={<div />}
+        onContextMenu={(event: React.MouseEvent) => {
+          const row = (event.target as HTMLElement).closest<HTMLElement>("[data-entry-id]");
+          const entry = row === null ? undefined : entries.find((e) => String(e.id) === row.dataset["entryId"]);
+          const offered = entry === undefined ? 0 : entry.dir ? folderActionsFor(entry).length : openersFor(entry).length;
+          // Nothing to offer: the browser's own menu.
+          if (entry === undefined || offered === 0) {
+            event.stopPropagation();
+            setMenuFor(null);
+            return;
+          }
+          setMenuFor(entry);
+        }}
+      >
     <Table data-files>
       <TableHeader>
         <TableRow className="hover:bg-transparent">
@@ -187,6 +228,7 @@ export function EntryTable({
               key={entry.id}
               data-state={isSel ? "selected" : undefined}
               data-entry={entry.name}
+              data-entry-id={entry.id}
               className={cn("group/row", highlight === entry.id && "bg-accent-wash")}
               onClick={(event) => {
                 // A click on the row's empty space picks it, as in a file manager.
@@ -241,6 +283,21 @@ export function EntryTable({
         })}
       </TableBody>
     </Table>
+      </ContextMenuTrigger>
+      {menuItems.length > 0 && (
+        <ContextMenuContent aria-label={menuFor?.name} data-row-menu>
+          {menuItems.map((item) => (
+            <ContextMenuItem key={item.id} onClick={item.run} data-action={item.id}>
+              <HugeiconsIcon icon={item.icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+              {item.label}
+            </ContextMenuItem>
+          ))}
+        </ContextMenuContent>
+      )}
+      {dialog?.action.Dialog !== undefined && (
+        <dialog.action.Dialog folder={dialog.folder} open onOpenChange={(open) => !open && setDialog(null)} />
+      )}
+    </ContextMenu>
   );
 }
 
@@ -266,6 +323,9 @@ export function SelectionBar({
   const [versions, setVersions] = React.useState<Entry | null>(null);
   const one = entries.length === 1 ? entries[0] : undefined;
   const oneFile = one !== undefined && !one.dir ? one : undefined;
+  const oneFolder = one !== undefined && one.dir ? one : undefined;
+  const navigate = useNavigate();
+  const [folderDialog, setFolderDialog] = React.useState<FolderAction | null>(null);
 
   const remove = async () => {
     const paths = entries.map((e) => e.path);
@@ -305,6 +365,26 @@ export function SelectionBar({
             <span className="max-sm:sr-only">{t(o.label)}</span>
           </Button>
         ))}
+      {oneFolder !== undefined &&
+        folderActionsFor(oneFolder).map((a) => (
+          <Button
+            key={a.id}
+            size="sm"
+            variant="ghost"
+            className="text-ink"
+            data-action={a.id}
+            onClick={() => {
+              if (a.href !== undefined) navigate(a.href(oneFolder));
+              else setFolderDialog(a);
+            }}
+          >
+            <HugeiconsIcon icon={a.icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <span className="max-sm:sr-only">{t(a.label(oneFolder))}</span>
+          </Button>
+        ))}
+      {oneFolder !== undefined && folderDialog?.Dialog !== undefined && (
+        <folderDialog.Dialog folder={oneFolder} open onOpenChange={(open) => !open && setFolderDialog(null)} />
+      )}
       {oneFile !== undefined &&
         tool(t("cloud.download"), Download01Icon, () => {
           window.location.href = contentUrl(oneFile.path, true);

@@ -40,6 +40,10 @@ enum Cmd {
         product: String,
         #[arg(long, default_value_t = 30)]
         trash_days: i64,
+        /// Let people publish folders of notes as knowledge bases. On when
+        /// the box shares and has joined a mesh.
+        #[arg(long)]
+        knowledge_bases: bool,
         /// The name other boxes reach this one by
         /// (`<name>/mesh/v1/link`), and the part after the @ in people's
         /// addresses here.
@@ -99,6 +103,7 @@ fn main() -> anyhow::Result<()> {
             workers,
             product,
             trash_days,
+            knowledge_bases,
             box_name,
             mesh,
             mesh_self_signed,
@@ -109,6 +114,7 @@ fn main() -> anyhow::Result<()> {
                 Config {
                     product,
                     trash_days,
+                    knowledge_bases,
                 },
             )?);
             let listen = match (socket, listen) {
