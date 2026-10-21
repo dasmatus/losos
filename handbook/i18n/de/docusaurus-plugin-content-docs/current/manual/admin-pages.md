@@ -124,6 +124,16 @@ unter Einstellungen, Über öffnet sie erneut. Ist in deinem System „Bewegung
 reduzieren“ eingestellt, zeigt jeder Schritt ein Standbild statt eines
 bewegten.
 
+## Der Hinweis zum Mesh \{#the-mesh-banner}
+
+Manche Funktionen laufen nur auf einer Box, die ihren Speicher teilt und
+einem Mesh beigetreten ist. Solange nicht beides gilt, sagt ein Hinweis über
+jeder Seite, dass manche Funktionen vielleicht nicht verfügbar sind, mit
+einem Link zu **Mesh**, um beizutreten, oder zu **Markt**, um die Festplatte
+zu teilen. **Schließen** blendet ihn in diesem Browser aus. Er verschwindet
+von selbst, sobald die Box beigetreten ist, und kommt zurück, wenn sie das
+Mesh verlässt.
+
 ## Benachrichtigungen \{#notifications}
 
 Kurze Statusmeldungen erscheinen oben rechts: eine Änderung, die gerade
