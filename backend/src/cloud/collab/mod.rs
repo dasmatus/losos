@@ -4,4 +4,5 @@
 pub mod diff;
 pub mod hub;
 pub mod room;
+pub mod routes;
 pub mod store;
