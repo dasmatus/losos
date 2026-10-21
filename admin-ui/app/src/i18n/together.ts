@@ -33,6 +33,7 @@ export default defineMessages({
     sk: "Do LosOS Cloud sa nepodarilo uložiť",
     de: "Speichern in LosOS Cloud fehlgeschlagen",
   },
+  "together.download": { en: "Download", sk: "Stiahnuť", de: "Herunterladen" },
   "together.show": { en: "Show in LosOS Cloud", sk: "Ukázať v LosOS Cloud", de: "In LosOS Cloud zeigen" },
   "together.open": { en: "Open", sk: "Otvoriť", de: "Öffnen" },
   "together.opening": { en: "Opening {name}", sk: "Otvára sa {name}", de: "{name} wird geöffnet" },
@@ -108,5 +109,4 @@ export default defineMessages({
   "together.ai.copy": { en: "Copy the answer", sk: "Kopírovať odpoveď", de: "Antwort kopieren" },
   "together.ai.saveNote": { en: "Save as a note", sk: "Uložiť ako poznámku", de: "Als Notiz speichern" },
   "together.ai.reply": { en: "Use as a reply", sk: "Použiť ako odpoveď", de: "Als Antwort verwenden" },
-  "together.ai.notesFolder": { en: "Notes", sk: "Poznámky", de: "Notizen" },
 });

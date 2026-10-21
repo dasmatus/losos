@@ -271,6 +271,7 @@ let
     {
       pname ? "losos-plugins",
       names ? [
+        "assistant"
         "look"
         "pins"
       ],
@@ -409,6 +410,7 @@ images
   losos-plugins-probe = lososPlugins {
     pname = "losos-plugins-probe";
     names = [
+      "assistant"
       "look"
       "pins"
       "probe"

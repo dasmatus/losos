@@ -54,6 +54,13 @@ const USING: [&str; 3] = [
     "urn:ietf:params:jmap:mail",
     "urn:ietf:params:jmap:submission",
 ];
+/// Files one message may carry.
+pub const MAX_ATTACHMENTS: usize = 20;
+/// Their bytes together. The send route's body limit follows from it.
+pub const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
+/// The largest body `POST /api/mail/send` takes: the files in base64, the
+/// text and room for the rest.
+pub const MAX_SEND_BYTES: usize = MAX_ATTACHMENT_BYTES / 3 * 4 + MAX_BODY + 64 * 1024;
 /// Messages per page of a mailbox.
 pub const PAGE: usize = 50;
 /// Recipients one message may have.
@@ -151,6 +158,8 @@ pub struct Request {
     pub user: String,
     pub secret: String,
     pub body: Option<Vec<u8>>,
+    /// The body's type; `None` is JSON, which every call but an upload is.
+    pub content_type: Option<String>,
 }
 
 /// Its answer.
@@ -210,7 +219,8 @@ pub fn request_bytes(host: &str, req: &Request) -> Vec<u8> {
     if let Some(body) = &req.body {
         out.extend_from_slice(
             format!(
-                "Content-Type: application/json\r\nContent-Length: {}\r\n",
+                "Content-Type: {}\r\nContent-Length: {}\r\n",
+                req.content_type.as_deref().unwrap_or("application/json"),
                 body.len()
             )
             .as_bytes(),
@@ -346,7 +356,7 @@ pub struct Neighbour {
 }
 
 /// A message the person wrote.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Draft {
     pub to: Vec<String>,
     pub cc: Vec<String>,
@@ -354,6 +364,31 @@ pub struct Draft {
     pub text: String,
     /// The id of the message this answers, for the threading headers.
     pub in_reply_to: Option<String>,
+    /// Files to attach, as the page sent them.
+    pub files: Vec<Upload>,
+    /// The same files once the server holds them, which is what the
+    /// message points at.
+    pub attached: Vec<Attachment>,
+}
+
+/// A file the person attached: from their computer, or from LosOS Cloud,
+/// which the page read with their own session before sending.
+#[derive(Clone, PartialEq, Default)]
+pub struct Upload {
+    pub name: String,
+    pub kind: String,
+    pub data: Vec<u8>,
+}
+
+impl std::fmt::Debug for Upload {
+    // The bytes are the person's; a log line names the file and its size.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Upload")
+            .field("name", &self.name)
+            .field("kind", &self.kind)
+            .field("bytes", &self.data.len())
+            .finish()
+    }
 }
 
 /// What a message may be changed to.
@@ -448,12 +483,112 @@ pub fn parse_draft(doc: &Value) -> Result<Draft, Refused> {
     if let Some(id) = &in_reply_to {
         check_id(id)?;
     }
+    let files = parse_files(doc)?;
     Ok(Draft {
         to,
         cc,
         subject,
         text,
         in_reply_to,
+        files,
+        attached: Vec::new(),
+    })
+}
+
+/// A file name that cannot break a header or name a path: no control
+/// characters, quotes, slashes or backslashes, at most 200 characters.
+pub fn clean_file_name(name: &str) -> String {
+    let name: String = name
+        .chars()
+        .filter(|c| !c.is_control() && !matches!(c, '"' | '\\' | '/'))
+        .take(200)
+        .collect();
+    let name = name.trim();
+    if name.is_empty() || name == "." || name == ".." {
+        "attachment".to_string()
+    } else {
+        name.to_string()
+    }
+}
+
+/// A media type as a header may carry it, else `application/octet-stream`.
+pub fn clean_media_type(kind: &str) -> String {
+    let token = |s: &str| {
+        !s.is_empty()
+            && s.len() <= 100
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"!#$&-^_.+".contains(&b))
+    };
+    let kind = kind
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    match kind.split_once('/') {
+        Some((a, b)) if token(a) && token(b) => kind,
+        _ => "application/octet-stream".to_string(),
+    }
+}
+
+/// `attachments`: `[{"name", "type", "data": base64}]`.
+fn parse_files(doc: &Value) -> Result<Vec<Upload>, Refused> {
+    use base64::Engine;
+    let Some(list) = doc.get("attachments") else {
+        return Ok(Vec::new());
+    };
+    let Some(list) = list.as_array() else {
+        return refuse(400, "attachments is a list");
+    };
+    if list.len() > MAX_ATTACHMENTS {
+        return refuse(
+            400,
+            format!("one message carries at most {MAX_ATTACHMENTS} files"),
+        );
+    }
+    let mut total = 0usize;
+    let mut files = Vec::with_capacity(list.len());
+    for item in list {
+        let data = item
+            .get("data")
+            .and_then(Value::as_str)
+            .and_then(|d| base64::engine::general_purpose::STANDARD.decode(d).ok());
+        let Some(data) = data else {
+            return refuse(400, "an attachment's data is not base64");
+        };
+        total += data.len();
+        if total > MAX_ATTACHMENT_BYTES {
+            return refuse(413, "the attachments come to more than 20 MiB");
+        }
+        files.push(Upload {
+            name: clean_file_name(item.get("name").and_then(Value::as_str).unwrap_or("")),
+            kind: clean_media_type(item.get("type").and_then(Value::as_str).unwrap_or("")),
+            data,
+        });
+    }
+    Ok(files)
+}
+
+/// What the server answered an upload with: the blob the message points at.
+pub fn parse_uploaded(resp: &Response, file: &Upload) -> Result<Attachment, Refused> {
+    if !(200..300).contains(&resp.status) {
+        tracing::warn!(status = resp.status, "the mail server refused an upload");
+        return Err(odd("upload"));
+    }
+    let doc: Value = serde_json::from_slice(&resp.body).map_err(|_| odd("upload JSON"))?;
+    let blob_id = doc
+        .get("blobId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| odd("upload blobId"))?;
+    check_id(blob_id)?;
+    Ok(Attachment {
+        blob_id: blob_id.to_string(),
+        name: file.name.clone(),
+        kind: file.kind.clone(),
+        size: doc
+            .get("size")
+            .and_then(Value::as_u64)
+            .unwrap_or(file.data.len() as u64),
     })
 }
 
@@ -1021,6 +1156,13 @@ pub fn send_calls(account: &str, from: &Address, prep: &Prepared, draft: &Draft)
         "bodyValues": { "t": { "value": draft.text } },
         "textBody": [{ "partId": "t", "type": "text/plain" }],
     });
+    if !draft.attached.is_empty() {
+        email["attachments"] = draft
+            .attached
+            .iter()
+            .map(|a| json!({ "blobId": a.blob_id, "type": a.kind, "name": a.name, "disposition": "attachment" }))
+            .collect();
+    }
     if !cc.is_empty() {
         email["cc"] = Value::Array(cc);
     }
@@ -1169,6 +1311,7 @@ impl Mail {
             user: ADMIN_USER.to_string(),
             secret: self.secret(config)?,
             body: Some(serde_json::to_vec(&body).unwrap_or_default()),
+            content_type: None,
         })
     }
 
@@ -1223,6 +1366,7 @@ impl Mail {
             user: format!("{}%{MASTER_USER}", person.name),
             secret: self.secret(config)?,
             body: None,
+            content_type: None,
         })?;
         if resp.status != 200 {
             return Err(odd("/jmap/session"));
@@ -1254,6 +1398,7 @@ impl Mail {
             user: format!("{}%{MASTER_USER}", person.name),
             secret: self.secret(config)?,
             body: Some(serde_json::to_vec(&envelope(calls(&account))).unwrap_or_default()),
+            content_type: None,
         })?;
         if resp.status != 200 {
             tracing::warn!(
@@ -1312,7 +1457,19 @@ impl Mail {
             name: Some(person.display_name.clone()).filter(|n| !n.is_empty()),
             email: address,
         };
-        let (_, resp) = self.jmap(person, |_| send_calls(&account, &from, &prep, draft))?;
+        let mut draft = draft.clone();
+        for file in std::mem::take(&mut draft.files) {
+            let resp = self.transport.send(&Request {
+                method: "POST",
+                path: format!("/jmap/upload/{account}/"),
+                user: format!("{}%{MASTER_USER}", person.name),
+                secret: self.secret(config)?,
+                body: Some(file.data.clone()),
+                content_type: Some(file.kind.clone()),
+            })?;
+            draft.attached.push(parse_uploaded(&resp, &file)?);
+        }
+        let (_, resp) = self.jmap(person, |_| send_calls(&account, &from, &prep, &draft))?;
         parse_sent(&resp, prep.identity.is_none())
     }
 
@@ -1361,6 +1518,7 @@ impl Mail {
             user: format!("{}%{MASTER_USER}", person.name),
             secret: self.secret(config)?,
             body: None,
+            content_type: None,
         })?;
         match resp.status {
             200 => Ok((resp.content_type, resp.body)),
@@ -1463,6 +1621,7 @@ mod tests {
             user: "eva%losos".into(),
             secret: "pw".into(),
             body: Some(b"{}".to_vec()),
+            content_type: None,
         };
         let text = String::from_utf8(request_bytes("127.0.0.1:8089", &req)).unwrap();
         assert!(text.starts_with("POST /jmap/ HTTP/1.0\r\n"));
@@ -1711,6 +1870,7 @@ mod tests {
             subject: "Re: plan".into(),
             text: "Yes.".into(),
             in_reply_to: Some("m1".into()),
+            ..Draft::default()
         };
         let calls = send_calls("c", &from, &prep, &draft);
         assert_eq!(calls[0][0], "Identity/set");
@@ -1749,6 +1909,115 @@ mod tests {
     }
 
     #[test]
+    fn attachments_arrive_as_base64_and_are_kept_to_what_a_header_takes() {
+        let d = parse_draft(&json!({
+            "to": "eva@mattbox.home.arpa",
+            "attachments": [
+                { "name": "plan \"v2\"/../x.docx", "type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "data": "UEsDBA==" },
+                { "name": "", "type": "text/plain; charset=utf-8\r\nX: y", "data": "aGk=" },
+            ],
+        }))
+        .unwrap();
+        assert_eq!(d.files.len(), 2);
+        assert_eq!(d.files[0].name, "plan v2..x.docx");
+        assert_eq!(d.files[0].data, b"PK\x03\x04");
+        assert_eq!(d.files[1].name, "attachment");
+        assert_eq!(d.files[1].kind, "text/plain");
+        assert_eq!(
+            clean_media_type("image/png\r\nBcc: x"),
+            "application/octet-stream"
+        );
+        assert!(!format!("{:?}", d.files[1]).contains("hi"));
+
+        let r =
+            parse_draft(&json!({ "to": "a@b.org", "attachments": [{ "data": "not base64!" }] }))
+                .unwrap_err();
+        assert_eq!(r.status, 400);
+        let many: Vec<Value> = (0..21).map(|_| json!({ "data": "" })).collect();
+        assert_eq!(
+            parse_draft(&json!({ "to": "a@b.org", "attachments": many }))
+                .unwrap_err()
+                .status,
+            400
+        );
+        use base64::Engine;
+        let big =
+            base64::engine::general_purpose::STANDARD
+                .encode(vec![0u8; MAX_ATTACHMENT_BYTES / 2 + 1]);
+        let r = parse_draft(
+            &json!({ "to": "a@b.org", "attachments": [{ "data": big }, { "data": big }] }),
+        )
+        .unwrap_err();
+        assert_eq!(r.status, 413);
+    }
+
+    #[test]
+    fn an_attached_blob_goes_into_the_message_as_an_attachment() {
+        let file = Upload {
+            name: "plan.docx".into(),
+            kind: "application/octet-stream".into(),
+            data: vec![1, 2, 3],
+        };
+        let resp = Response {
+            status: 201,
+            content_type: "application/json".into(),
+            body: br#"{"accountId":"c","blobId":"b9","type":"application/octet-stream","size":3}"#
+                .to_vec(),
+        };
+        let a = parse_uploaded(&resp, &file).unwrap();
+        assert_eq!((a.blob_id.as_str(), a.size), ("b9", 3));
+        let bad = Response {
+            status: 400,
+            content_type: String::new(),
+            body: Vec::new(),
+        };
+        assert!(parse_uploaded(&bad, &file).is_err());
+
+        let prep = Prepared {
+            identity: Some("i".into()),
+            drafts: "d".into(),
+            sent: "e".into(),
+            message_id: vec![],
+            references: vec![],
+        };
+        let from = Address {
+            name: None,
+            email: "matus@mattbox.home.arpa".into(),
+        };
+        let draft = Draft {
+            to: vec!["eva@mattbox.home.arpa".into()],
+            attached: vec![a],
+            ..Draft::default()
+        };
+        let calls = send_calls("c", &from, &prep, &draft);
+        assert_eq!(
+            calls[0][1]["create"]["draft"]["attachments"],
+            json!([{ "blobId": "b9", "type": "application/octet-stream", "name": "plan.docx", "disposition": "attachment" }])
+        );
+        let plain = send_calls(
+            "c",
+            &from,
+            &prep,
+            &Draft {
+                attached: vec![],
+                ..draft
+            },
+        );
+        assert!(plain[0][1]["create"]["draft"].get("attachments").is_none());
+
+        let req = Request {
+            method: "POST",
+            path: "/jmap/upload/c/".into(),
+            user: "u".into(),
+            secret: "s".into(),
+            body: Some(vec![1]),
+            content_type: Some("image/png".into()),
+        };
+        let text = String::from_utf8_lossy(&request_bytes("h", &req)).into_owned();
+        assert!(text.contains("Content-Type: image/png\r\n"));
+    }
+
+    #[test]
     fn a_refused_send_says_why() {
         let resp = json!({ "methodResponses": [
             ["Email/set", { "created": { "draft": { "id": "x" } } }, "e"],
@@ -1783,6 +2052,7 @@ mod tests {
             subject: String::new(),
             text: String::new(),
             in_reply_to: None,
+            ..Draft::default()
         };
         assert!(local_only("mattbox.home.arpa", &draft("Eva@MattBox.home.arpa")).is_ok());
         let r = local_only("mattbox.home.arpa", &draft("eva@gmail.com")).unwrap_err();
