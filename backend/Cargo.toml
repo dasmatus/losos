@@ -29,7 +29,7 @@ actix-web = { version = "4", default-features = false, features = ["macros"] }
 # "blocking-api" is what the facade CLI uses: a one-shot D-Bus call needs no
 # runtime. The daemon uses the async side on tokio.
 zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal", "process", "io-util"] }
 
 # Job ids are "%Y%m%d%H%M%S-<pid>-<counter>"; the counter is what keeps two
 # jobs queued in the same second apart.
@@ -79,6 +79,14 @@ walkdir = "2"
 # in the lock file through the access crate.
 argon2 = "0.5"
 
+# LosOS Git (src/forge/, the losos-git binary): git's smart HTTP requests
+# may come gzipped, the pack streams back as it is written, and a Basic
+# header carries the token. All three were already in the lock file
+# (through zip, actix-web and the access crate).
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+base64 = "0.22"
+
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its
 # output, and give it a throwaway filesystem.
@@ -110,3 +118,7 @@ path = "src/bin/losos-app-shape.rs"
 [[bin]]
 name = "losos-search"
 path = "src/bin/losos-search.rs"
+
+[[bin]]
+name = "losos-git"
+path = "src/bin/losos-git.rs"

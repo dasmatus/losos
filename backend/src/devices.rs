@@ -7,15 +7,14 @@
 //! file manager and git at it. The owner's password never leaves the call,
 //! and what is stored on the computer can be revoked on its own.
 //!
-//! Neither credential can be made from lososd's own keys. Nextcloud mints an
-//! app password only for a session that signed in with the real password
-//! (`GET /ocs/v2.php/core/getapppassword`), and Forgejo creates an access
-//! token only under Basic auth with the account's password: its API refuses
-//! the bot administrator's token, `Sudo` and a token as a Basic password
-//! alike ("auth method not allowed"). So both routes take the owner's
-//! password, as the sign-in does, and send it the way the sign-in does: as
-//! a header in request bytes built here, written to a loopback socket by the
-//! backend, never in an argv (see the header of [`crate::setup`]).
+//! Both routes take the owner's password. Nextcloud mints an app password
+//! only for a session that signed in with the real password (`GET
+//! /ocs/v2.php/core/getapppassword`), so that one is sent the way the
+//! sign-in sends it: as a header in request bytes built here, written to a
+//! loopback socket by the backend, never in an argv (see the header of
+//! [`crate::setup`]). LosOS Git holds no passwords: lososd checks the
+//! owner's against the people file and asks LosOS Git, as its
+//! administrator, for a token (`crate::config_repo::GitOp::CreateToken`).
 //!
 //! The builders and readers are pure so the tests can check every byte.
 //! Requests are HTTP/1.0: both servers then answer with a plain body ended
@@ -24,7 +23,7 @@
 use crate::setup::Secret;
 
 /// Longest computer name, in characters. It ends up in a token name, which
-/// Forgejo caps at 255, and in the owner's list of app passwords.
+/// LosOS Git caps at 100, and in the owner's list of app passwords.
 pub const MAX_DEVICE_CHARS: usize = 48;
 
 /// The scopes of a LosOS Git token: clone and push the owner's repositories,
@@ -38,7 +37,7 @@ pub fn dav_path(user: &str) -> String {
 }
 
 /// Where LosOS Git starts, below the box's address.
-pub const GIT_PATH: &str = "/forgejo/";
+pub const GIT_PATH: &str = "/git/";
 
 /// The name the client gave its computer, checked. Letters, digits, spaces,
 /// dots, dashes and underscores: it is shown in two lists the owner reads
@@ -104,35 +103,6 @@ pub fn app_password_request(
     basic_request("GET", path, host, user, secret, &extra, None)
 }
 
-/// One Forgejo API call as `owner` with the real password.
-pub fn forgejo_request(
-    method: &str,
-    path: &str,
-    host: &str,
-    owner: &str,
-    secret: &Secret,
-    body: Option<&str>,
-) -> Vec<u8> {
-    basic_request(method, path, host, owner, secret, &[], body)
-}
-
-/// `DELETE` of the token a previous setup of the same computer left, so the
-/// name is free again. Forgejo refuses a second token of one name.
-pub fn token_delete_path(owner: &str, name: &str) -> String {
-    format!(
-        "/api/v1/users/{owner}/tokens/{}",
-        percent_encode_segment(name)
-    )
-}
-
-/// `POST` that creates the token, and its body.
-pub fn token_create(owner: &str, name: &str) -> (String, String) {
-    (
-        format!("/api/v1/users/{owner}/tokens"),
-        serde_json::json!({ "name": name, "scopes": GIT_SCOPES }).to_string(),
-    )
-}
-
 fn basic_request(
     method: &str,
     path: &str,
@@ -165,19 +135,6 @@ fn basic_request(
 
 fn header_safe(value: &str) -> String {
     value.chars().filter(|c| !c.is_control()).collect()
-}
-
-/// A path segment with everything but unreserved characters escaped.
-fn percent_encode_segment(s: &str) -> String {
-    let mut out = String::new();
-    for b in s.bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
-            out.push(b as char);
-        } else {
-            out.push_str(&format!("%{b:02X}"));
-        }
-    }
-    out
 }
 
 /// A whole HTTP/1.x answer split into its status and its body.
@@ -225,14 +182,13 @@ pub fn interpret_app_password(status: u16, body: &str) -> Minted {
     }
 }
 
-/// Forgejo's answer to the `POST` of [`token_create`], or to the `DELETE`
-/// before it when that was neither 204 nor 404.
+/// LosOS Git's answer to [`crate::config_repo::GitOp::CreateToken`].
 pub fn interpret_token(status: u16, body: &str) -> Minted {
     match status {
         201 => {
             let doc: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
             match doc
-                .get("sha1")
+                .get("token")
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
             {
@@ -240,21 +196,13 @@ pub fn interpret_token(status: u16, body: &str) -> Minted {
                 None => Minted::Unavailable("LosOS Git answered without a token.".to_string()),
             }
         }
-        // LosOS cloud has already judged the password by now, and LosOS Git
-        // was just given it, so a refusal here means the two are not in step
-        // yet, not that the owner typed it wrong.
-        401 | 403 => Minted::Unavailable(
-            "LosOS Git did not take the password LosOS cloud accepted. Try again in a minute."
-                .to_string(),
-        ),
-        429 => Minted::Throttled,
         code => Minted::Unavailable(format!(
             "LosOS Git answered {code} instead of a token. It may still be starting."
         )),
     }
 }
 
-/// LosOS Git is off on this box (`losos.forgejo.enable = false`, or the
+/// LosOS Git is off on this box (`losos.git.enable = false`, or the
 /// configuration repository points elsewhere), so there is no account to
 /// make a token for. 409: the request is fine, the box is not set up for it.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -323,33 +271,6 @@ mod tests {
     }
 
     #[test]
-    fn the_token_requests_free_the_name_then_create_it() {
-        let name = credential_name("work pc");
-        assert_eq!(
-            token_delete_path("notshared", &name),
-            "/api/v1/users/notshared/tokens/LosOS%20on%20work%20pc"
-        );
-        let (path, body) = token_create("notshared", &name);
-        assert_eq!(path, "/api/v1/users/notshared/tokens");
-        let doc: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert_eq!(doc["name"], "LosOS on work pc");
-        assert_eq!(doc["scopes"], serde_json::json!(GIT_SCOPES));
-
-        let raw = forgejo_request(
-            "POST",
-            &path,
-            "localhost",
-            "notshared",
-            &secret(),
-            Some(&body),
-        );
-        let text = String::from_utf8(raw).unwrap();
-        assert!(text.starts_with("POST /api/v1/users/notshared/tokens HTTP/1.0\r\n"));
-        assert!(text.contains(&format!("\r\nContent-Length: {}\r\n", body.len())));
-        assert!(text.ends_with(&format!("\r\n\r\n{body}")));
-    }
-
-    #[test]
     fn answers_split_into_status_and_body() {
         let raw =
             b"HTTP/1.0 201 Created\r\nContent-Type: application/json\r\n\r\n{\"sha1\":\"abc\"}";
@@ -384,20 +305,13 @@ mod tests {
     }
 
     #[test]
-    fn forgejo_answers_mean_what_the_client_needs() {
-        // The shape Forgejo 16 answers with.
-        let ok = r#"{"id":2,"name":"LosOS on laptop","sha1":"e617fd66","token_last_eight":"e617fd66","scopes":["write:repository","read:user"]}"#;
+    fn git_answers_mean_what_the_client_needs() {
+        let ok = r#"{"id":2,"name":"LosOS on laptop","token":"e617fd66","last_eight":"e617fd66","scopes":["read:user","write:repository"]}"#;
         assert_eq!(
             interpret_token(201, ok),
             Minted::Credential("e617fd66".into())
         );
-        assert!(matches!(interpret_token(401, ""), Minted::Unavailable(_)));
-        assert!(matches!(
-            interpret_token(
-                400,
-                r#"{"message":"access token name has been used already"}"#
-            ),
-            Minted::Unavailable(_)
-        ));
+        assert!(matches!(interpret_token(201, "{}"), Minted::Unavailable(_)));
+        assert!(matches!(interpret_token(403, ""), Minted::Unavailable(_)));
     }
 }

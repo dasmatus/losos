@@ -2,10 +2,11 @@
 //!
 //! `losos cloud setup` and `losos git setup` ask the box for an app password
 //! and an access token of the computer's own. These tests pin what that
-//! rests on: the owner's password is required and judged by Nextcloud, a
-//! wrong one is the typed refusal and makes nothing, LosOS Git gets the same
-//! password before Forgejo is asked, a token of the same name is replaced
-//! rather than refused, and a box without LosOS Git says so.
+//! rests on: the cloud's password is judged by Nextcloud and a wrong one is
+//! the typed refusal that makes nothing; LosOS Git's token is made for the
+//! owner's account (the HTTP layer checked the password against the people
+//! file), replaces one of the same name, and a box without LosOS Git, or
+//! with one still starting, says so.
 
 use losos_ctl::devices::{GitOff, GIT_SCOPES};
 use losos_ctl::fake::FakeLosos;
@@ -15,8 +16,7 @@ use losos_ctl::signin::{Throttled, WrongPassword};
 
 const PASSWORD: &str = "Zqx-marmalade-77-parapet";
 const CLIENT: &str = "192.168.122.1";
-const DELETE: &str = "DELETE /api/v1/users/notshared/tokens/LosOS%20on%20laptop";
-const CREATE: &str = "POST /api/v1/users/notshared/tokens";
+const CREATE: &str = "POST /api/v1/admin/users/notshared/tokens";
 
 fn cloud_box() -> FakeLosos {
     let mut f = FakeLosos::new();
@@ -33,15 +33,11 @@ fn git_box() -> FakeLosos {
     let mut f = FakeLosos::new().with_config_repo();
     f.state.claimed = true;
     f.accepted_password = Some(PASSWORD.to_string());
-    f.owner_forgejo_routes.insert(
-        DELETE.to_string(),
-        (404, r#"{"message":"not found"}"#.to_string()),
-    );
-    f.owner_forgejo_routes.insert(
+    f.git_routes.insert(
         CREATE.to_string(),
         (
             201,
-            r#"{"id":3,"name":"LosOS on laptop","sha1":"9f8e7d6c5b4a","token_last_eight":"6c5b4a"}"#
+            r#"{"id":3,"name":"LosOS on laptop","token":"9f8e7d6c5b4a","last_eight":"6c5b4a"}"#
                 .to_string(),
         ),
     );
@@ -94,84 +90,55 @@ fn a_bad_device_name_is_refused_before_anything_is_asked() {
 }
 
 #[test]
-fn the_git_token_is_made_as_the_owner_with_the_password() {
+fn the_git_token_is_made_for_the_owners_account() {
     let mut f = git_box();
-    let out = cmd_device_git(&mut f, PASSWORD, "laptop", CLIENT).unwrap();
+    let out = cmd_device_git(&mut f, "laptop").unwrap();
     assert_eq!(out["user"], "notshared");
     assert_eq!(out["token"], "9f8e7d6c5b4a");
-    assert_eq!(out["path"], "/forgejo/");
-
-    // LosOS Git was given the password first, so a password changed inside
-    // LosOS cloud is the one Forgejo checks.
-    let synced = f
-        .forgejo_calls
-        .iter()
-        .position(|(k, _)| k == "PATCH /api/v1/admin/users/notshared")
-        .expect("the password was kept in step");
+    assert_eq!(out["path"], "/git/");
     assert_eq!(
-        f.forgejo_calls[synced].1.as_deref(),
-        Some(PASSWORD),
-        "the bot set the owner's password"
+        f.git_calls,
+        vec!["PUT /api/v1/admin/users/notshared".to_string(), CREATE.to_string()],
+        "the account is made sure of first"
     );
-
-    let calls: Vec<&str> = f
-        .owner_forgejo_calls
-        .iter()
-        .map(|(k, _, _)| k.as_str())
-        .collect();
-    assert_eq!(calls, vec![DELETE, CREATE], "the old name is freed first");
-    for (_, password, _) in &f.owner_forgejo_calls {
-        assert_eq!(password, PASSWORD);
-    }
-    let body: serde_json::Value =
-        serde_json::from_str(f.owner_forgejo_calls[1].2.as_deref().unwrap()).unwrap();
-    assert_eq!(body["name"], "LosOS on laptop");
+    let op = losos_ctl::config_repo::GitOp::CreateToken {
+        login: "notshared".into(),
+        name: "LosOS on laptop".into(),
+    };
+    let body: serde_json::Value = serde_json::from_str(&op.body().unwrap()).unwrap();
     assert_eq!(body["scopes"], serde_json::json!(GIT_SCOPES));
+    assert_eq!(body["replace"], true, "a second setup replaces the token");
 }
 
 #[test]
-fn setting_up_the_same_computer_again_replaces_its_token() {
+fn a_bad_device_name_never_reaches_losos_git() {
     let mut f = git_box();
-    f.owner_forgejo_routes
-        .insert(DELETE.to_string(), (204, String::new()));
-    let out = cmd_device_git(&mut f, PASSWORD, "laptop", CLIENT).unwrap();
-    assert_eq!(out["token"], "9f8e7d6c5b4a");
-}
-
-#[test]
-fn a_wrong_password_never_reaches_losos_git() {
-    let mut f = git_box();
-    let err = cmd_device_git(&mut f, "not-the-password", "laptop", CLIENT).unwrap_err();
-    assert!(err.downcast_ref::<WrongPassword>().is_some(), "{err:#}");
-    assert!(f.owner_forgejo_calls.is_empty());
-    assert!(
-        !f.forgejo_calls.iter().any(|(k, _)| k.starts_with("PATCH")),
-        "a wrong password was given to LosOS Git"
-    );
+    assert!(cmd_device_git(&mut f, "a/b").is_err());
+    assert!(f.git_calls.is_empty());
 }
 
 #[test]
 fn a_box_without_losos_git_says_so() {
     let mut f = cloud_box();
-    let err = cmd_device_git(&mut f, PASSWORD, "laptop", CLIENT).unwrap_err();
+    let err = cmd_device_git(&mut f, "laptop").unwrap_err();
     assert!(err.downcast_ref::<GitOff>().is_some(), "{err:#}");
 }
 
 #[test]
 fn losos_git_that_is_not_up_is_not_now() {
     let mut f = git_box();
-    f.owner_forgejo_routes.clear();
-    let err = cmd_device_git(&mut f, PASSWORD, "laptop", CLIENT).unwrap_err();
+    f.git_routes.clear();
+    let err = cmd_device_git(&mut f, "laptop").unwrap_err();
     assert!(err.downcast_ref::<NotReady>().is_some(), "{err:#}");
 }
 
 #[test]
-fn a_forgejo_out_of_step_is_not_now_rather_than_wrong() {
+fn a_refused_token_is_not_now_rather_than_wrong() {
     let mut f = git_box();
-    f.owner_forgejo_routes.insert(
-        DELETE.to_string(),
-        (401, r#"{"message":"unauthorized"}"#.to_string()),
+    f.git_routes.insert(
+        CREATE.to_string(),
+        (500, r#"{"message":"LosOS Git could not answer."}"#.to_string()),
     );
-    let err = cmd_device_git(&mut f, PASSWORD, "laptop", CLIENT).unwrap_err();
+    let err = cmd_device_git(&mut f, "laptop").unwrap_err();
     assert!(err.downcast_ref::<NotReady>().is_some(), "{err:#}");
 }

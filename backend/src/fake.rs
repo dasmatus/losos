@@ -185,14 +185,9 @@ pub struct FakeLosos {
     pub fast_forwarded: Vec<String>,
     /// LosOS Git's answers by `METHOD path`; a route with no entry models a
     /// LosOS Git that is not up.
-    pub forgejo_routes: std::collections::BTreeMap<String, (u16, String)>,
-    /// Every request made, as `METHOD path` and the password it carried.
-    pub forgejo_calls: Vec<(String, Option<String>)>,
-    /// What the fake LosOS Git answers to a call as the owner, by
-    /// `"METHOD path"`; a route not listed is a LosOS Git that is not up.
-    pub owner_forgejo_routes: std::collections::BTreeMap<String, (u16, String)>,
-    /// Every call as the owner: `"METHOD path"`, the password and the body.
-    pub owner_forgejo_calls: Vec<(String, String, Option<String>)>,
+    pub git_routes: std::collections::BTreeMap<String, (u16, String)>,
+    /// Every request made, as `METHOD path`.
+    pub git_calls: Vec<String>,
     /// What the fake Nextcloud answers to an app password request: `None`
     /// is a Nextcloud that is not up. Every request is recorded as
     /// `(user, device, client)`.
@@ -352,10 +347,8 @@ impl FakeLosos {
             fetch_fails: false,
             pushed: Vec::new(),
             fast_forwarded: Vec::new(),
-            forgejo_routes: std::collections::BTreeMap::new(),
-            forgejo_calls: Vec::new(),
-            owner_forgejo_routes: std::collections::BTreeMap::new(),
-            owner_forgejo_calls: Vec::new(),
+            git_routes: std::collections::BTreeMap::new(),
+            git_calls: Vec::new(),
             app_password_answer: None,
             app_password_asked: Vec::new(),
             sync_report: None,
@@ -421,21 +414,17 @@ impl FakeLosos {
         self.repo = Some(crate::config_repo::RepoConfig {
             owner: "notshared".to_string(),
             name: "losos-config".to_string(),
-            forgejo_url: "http://127.0.0.1:3000".to_string(),
-            token_file: "/var/lib/forgejo/.losos-token".to_string(),
+            git_url: "http://127.0.0.1:3000".to_string(),
+            token_file: "/var/lib/losos-git/admin-token".to_string(),
             remote_url: None,
         });
-        self.forgejo_routes.insert(
-            "GET /api/v1/users/notshared".to_string(),
+        self.git_routes.insert(
+            "PUT /api/v1/admin/users/notshared".to_string(),
             (200, r#"{"id": 2, "login": "notshared"}"#.to_string()),
         );
-        self.forgejo_routes.insert(
-            "GET /api/v1/repos/notshared/losos-config".to_string(),
+        self.git_routes.insert(
+            "PUT /api/v1/admin/users/notshared/repos/losos-config".to_string(),
             (200, r#"{"id": 1, "name": "losos-config"}"#.to_string()),
-        );
-        self.forgejo_routes.insert(
-            "PATCH /api/v1/admin/users/notshared".to_string(),
-            (200, r#"{"id": 2}"#.to_string()),
         );
         self
     }
@@ -916,47 +905,16 @@ impl Losos for FakeLosos {
             .collect())
     }
 
-    fn forgejo_request(
-        &mut self,
-        op: &crate::config_repo::ForgejoOp,
-        secret: Option<&crate::setup::Secret>,
-    ) -> anyhow::Result<(u16, String)> {
+    fn git_request(&mut self, op: &crate::config_repo::GitOp) -> anyhow::Result<(u16, String)> {
         let (method, path) = op.route();
         let key = format!("{method} {path}");
-        self.forgejo_calls
-            .push((key.clone(), secret.map(|s| s.expose().to_string())));
-        match self.forgejo_routes.get(&key) {
+        self.git_calls.push(key.clone());
+        match self.git_routes.get(&key) {
             Some((status, body)) => Ok((*status, body.clone())),
             None => {
                 Err(crate::config_repo::NotUp("the fake LosOS Git is not up".to_string()).into())
             }
         }
-    }
-
-    fn forgejo_as_owner(
-        &mut self,
-        method: &str,
-        path: &str,
-        _owner: &str,
-        secret: &crate::setup::Secret,
-        body: Option<&str>,
-    ) -> anyhow::Result<(u16, String)> {
-        let key = format!("{method} {path}");
-        self.owner_forgejo_calls.push((
-            key.clone(),
-            secret.expose().to_string(),
-            body.map(str::to_string),
-        ));
-        match self.owner_forgejo_routes.get(&key) {
-            Some(answer) => Ok(answer.clone()),
-            None => {
-                Err(crate::config_repo::NotUp("the fake LosOS Git is not up".to_string()).into())
-            }
-        }
-    }
-
-    fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret> {
-        Ok(crate::setup::Secret::new("minted-fake-password-0123"))
     }
 
     fn load_sync_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {
