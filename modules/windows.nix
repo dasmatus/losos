@@ -97,11 +97,6 @@ in
           "printcap name" = "/dev/null";
           "disable spoolss" = "yes";
 
-          # The share list comes from samba-dcerpcd's helpers. Started on
-          # demand they take long enough on a slow box that Windows' first
-          # look at it times out, so they run from the start (below).
-          "rpc start on demand helpers" = "no";
-
           "logging" = "systemd";
           "log level" = 1;
         };
@@ -142,34 +137,6 @@ in
         serviceConfig = {
           # Samba opens the cloud's files and nothing in the two data
           # homes.
-          ProtectHome = true;
-          PrivateTmp = true;
-          PrivateDevices = true;
-          ProtectClock = true;
-          ProtectHostname = true;
-          ProtectKernelLogs = true;
-          ProtectKernelModules = true;
-          ProtectKernelTunables = true;
-          ProtectControlGroups = true;
-          RestrictRealtime = true;
-          RestrictSUIDSGID = true;
-          LockPersonality = true;
-          SystemCallArchitectures = "native";
-        };
-      };
-
-      systemd.services.samba-dcerpcd = {
-        description = "Samba RPC helpers (the share list)";
-        after = [ "network.target" ];
-        before = [ "samba-smbd.service" ];
-        partOf = [ "samba.target" ];
-        wantedBy = [ "samba.target" ];
-        environment.LD_LIBRARY_PATH = config.system.nssModules.path;
-        unitConfig.RequiresMountsFor = "/var/lib/samba";
-        restartTriggers = [ config.environment.etc."samba/smb.conf".source ];
-        serviceConfig = {
-          ExecStart = "${samba}/libexec/samba/samba-dcerpcd --libexec-rpcds --foreground --no-process-group";
-          Slice = "system-samba.slice";
           ProtectHome = true;
           PrivateTmp = true;
           PrivateDevices = true;

@@ -148,7 +148,6 @@ pkgs.testers.nixosTest {
     box.wait_for_unit("losos-cloud.service")
     box.wait_for_unit("samba-smbd.service")
     box.wait_for_unit("samba-wsdd.service")
-    box.wait_for_unit("samba-dcerpcd.service")
     box_ip = box.succeed("ip -4 -o addr show eth1 | awk '{print $4}' | cut -d/ -f1").strip()
     laptop_ip = laptop.succeed("ip -4 -o addr show eth1 | awk '{print $4}' | cut -d/ -f1").strip()
 
@@ -248,6 +247,9 @@ pkgs.testers.nixosTest {
         assert len(boxes) == 1, out
 
     with subtest("each person sees and opens only their own share"):
+        # smbd starts the helpers that list shares on the first ask, which
+        # under emulation outlasts smbclient's wait.
+        laptop.wait_until_succeeds(f"smbclient -U 'matus%{PASSWORD}' -L //{box_ip} 2>&1 | grep -q Disk", timeout=120)
         rc, out = smb(f"-L //{box_ip}", "matus", PASSWORD)
         assert rc == 0 and re.search(r"(?m)^\s+matus\s+Disk", out) and "eva" not in out, out
         rc, out = smb(f"-L //{box_ip}", "eva", EVA)
