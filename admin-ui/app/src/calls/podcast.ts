@@ -111,10 +111,19 @@ export class Podcast {
           videoBitsPerSecond: 2_500_000,
           audioBitsPerSecond: 128_000,
         });
+        // What went out so far, on the preview canvas, for whoever has to
+        // find out why a stream stays empty.
+        let sent = 0;
+        this.canvas.dataset.audio = this.audio.state;
         recorder.ondataavailable = (e) => {
-          if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data);
+          if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+            ws.send(e.data);
+            sent += e.data.size;
+            this.canvas.dataset.sent = String(sent);
+          }
         };
         recorder.start(500);
+        this.canvas.dataset.recorder = recorder.state;
         this.recorder = recorder;
         this.events.live();
       }

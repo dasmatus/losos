@@ -1035,7 +1035,14 @@ pkgs.testers.nixosTest {
         panel.get_by_role("button", name="End the stream").wait_for()
         shot(her, "podcast-live-eva")
         # The RTMP server keeps ten seconds and stops.
-        laptop.wait_until_fails("systemctl is-active rtmp-sink", timeout=180)
+        try:
+            laptop.wait_until_fails("systemctl is-active rtmp-sink", timeout=180)
+        except Exception:
+            print("page:", owner.evaluate(
+                "() => ({...document.querySelector('[data-podcast-preview] canvas')?.dataset})"))
+            print(box.execute("for p in $(pgrep -f pipe:0); do ps -o pid,etime,args= -p $p; cat /proc/$p/io; done")[1])
+            print(box.execute("journalctl -u losos-calls --no-pager | grep -iE 'ffmpeg|stream' | tail -20")[1])
+            raise
         probe = json.loads(laptop.succeed(
             "${pkgs.ffmpeg-headless}/bin/ffprobe -v error -show_entries "
             "stream=codec_name,width,height:format=duration -of json /tmp/podcast.flv"))
