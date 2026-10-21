@@ -59,7 +59,7 @@ class Shots {
   async take(w, slug, title, action = { kind: "none" }, targets = {}) {
     await settle(w.page);
     const file = `${String(this.steps.length + 1).padStart(2, "0")}-${w.box}-${slug}.png`;
-    await w.page.screenshot({ path: join(this.out, file) });
+    await w.page.screenshot({ path: join(this.out, file), timeout: WAIT });
     const found = {};
     for (const [key, loc] of Object.entries(targets)) {
       const b = await loc.boundingBox().catch(() => null);
