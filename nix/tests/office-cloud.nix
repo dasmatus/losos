@@ -147,7 +147,7 @@ pkgs.testers.nixosTest {
         assert code(f"'{wopi}'") == "401"
         assert code(f"-H 'X-Losos-Cloud-User: matus' '{wopi}/contents'") == "401"
         assert code("http://127.0.0.1:8093/cloud/api/files") == "404"
-        assert code(f"-H 'X-Losos-Cloud-User: matus' http://127.0.0.1:8093/remote.php/dav/files/matus/") == "404"
+        assert code("-H 'X-Losos-Cloud-User: matus' http://127.0.0.1:8093/remote.php/dav/files/matus/") == "404"
         mattbox.fail("ss -ltn | grep ':8093' | grep -v 127.0.0.1")
         # The front door routes no WOPI.
         assert code(f"-k 'https://mattbox.local/wopi/files/{fid}?access_token={token}'") == "404"
