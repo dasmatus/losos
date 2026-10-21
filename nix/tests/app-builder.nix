@@ -200,6 +200,7 @@ pkgs.testers.nixosTest {
         networking.hosts."192.168.1.1" = [ "mattbox.local" ];
         environment.systemPackages = [
           pkgs.curl
+          pkgs.gitMinimal
           pkgs.nodejs
         ];
         environment.variables.PLAYWRIGHT_BROWSERS_PATH = "${browsers}";
