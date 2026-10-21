@@ -309,13 +309,13 @@ await check('colour, pronouns and the line are previewed, then sent in one reque
   await page.locator('[data-testid=profile-accent][data-accent=rose]').click();
   await page.getByTestId('profile-pronouns').fill('she/her');
   await page.getByTestId('profile-about').fill('Keeps the family photos in order.');
-  // The card shows it before anything is saved.
-  assert.equal(await card.getAttribute('data-accent'), 'rose');
+  // The card shows it before anything is saved. Waited for rather than read
+  // once: on a slow runner the read can land before React has drawn it.
+  await page.locator('[data-testid=profile-card][data-accent=rose]').waitFor({ timeout: 5000 });
   assert.equal(await page.getByTestId('profile-card-handle').innerText(), '@eva · she/her');
   assert.equal(await page.getByTestId('profile-card-about').innerText(), 'Keeps the family photos in order.');
   assert.equal(sent.length, 0);
-  const checked = await page.locator('[data-testid=profile-accent][aria-checked=true]').getAttribute('data-accent');
-  assert.equal(checked, 'rose');
+  await page.locator('[data-testid=profile-accent][aria-checked=true][data-accent=rose]').waitFor({ timeout: 5000 });
 
   box.refuse = 'a few words about you are at most 160 characters';
   await page.getByTestId('profile-save').click();
@@ -326,7 +326,8 @@ await check('colour, pronouns and the line are previewed, then sent in one reque
   await page.getByTestId('profile-save').click();
   await page.locator('[data-testid="profile-save"][disabled]').waitFor();
   assert.deepEqual(sent.at(-1).body, { pronouns: 'she/her', about: 'Keeps the family photos in order.', accent: 'rose' });
-  assert.equal(await page.getByTestId('signed-in-avatar').getAttribute('data-accent'), 'rose');
+  // The bar's picture follows once /api/me is fetched again after the save.
+  await page.locator('[data-testid=signed-in-avatar][data-accent=rose]').waitFor({ timeout: 10000 });
   await context.close();
 });
 
