@@ -1,3 +1,4 @@
+import { useWaitGame } from "@/components/play-while-waiting";
 import { Button } from "@/components/ui/button";
 import { Progress, Spinner } from "@/components/ui/progress";
 import { LogView } from "@/components/ui/scroll-area";
@@ -30,6 +31,9 @@ export type ApplyBarForm = Pick<
 export function ApplyBar({ form }: { form: ApplyBarForm }) {
   const t = useT();
   const { rebuild } = form;
+  // The game outlives the rebuild by the line that says it is over, so the
+  // bar stays for as long as the game is open.
+  const game = useWaitGame(rebuild !== null);
 
   if (rebuild !== null) {
     return (
@@ -37,6 +41,7 @@ export function ApplyBar({ form }: { form: ApplyBarForm }) {
         <div className="flex items-center gap-2.5">
           <Spinner className="text-accent" label={t("settings.applyBar.spinner")} />
           <p className="flex-1 text-[13.5px] font-medium">{rebuild.title}</p>
+          {game.offer}
         </div>
 
         {/* lososd reports 0 for the whole of a rebuild and 100 only at the
@@ -45,8 +50,13 @@ export function ApplyBar({ form }: { form: ApplyBarForm }) {
         <Progress label={t("settings.form.applyingYours")} />
 
         {rebuild.message.length > 0 && <LogView>{rebuild.message}</LogView>}
+        {game.panel}
       </div>
     );
+  }
+
+  if (game.open) {
+    return <div className={cn(BAR, "flex-col items-stretch")}>{game.panel}</div>;
   }
 
   if (!form.dirty) return null;
