@@ -106,8 +106,9 @@ again, through the spare-key route in
 
 ## The tour
 
-The first time you reach these pages after setup, a tour of six short steps
-opens over the Overview. **Take the tour** under Settings, About opens it
+The first time you reach these pages after setup, a short tour opens over
+the Overview: six steps on every box, and one more for each feature this
+box has ([The first run](../start/first-run) lists them). **Take the tour** under Settings, About opens it
 again. With "reduce motion" set in your system, each step shows a still
 picture instead of a moving one.
 
