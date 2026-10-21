@@ -376,11 +376,16 @@ def main():
         # and, for the picture, its status bar no longer says "Saving...".
         # In a shared document that line can stay up long after the file is
         # written; the test checks the file on the box itself.
+        # Its tooltip may already say saved; saving again moves the line on.
         try:
-            tab.until(frame("!/Saving/.test(this.document.body.innerText)"), "the status bar", 120)
-        except SystemExit as e:
-            log(f"{e}; the save itself is done")
-            log(tab.js(frame("(this.document.getElementById('DocumentStatus') || {}).outerHTML")))
+            tab.until(frame("!/Saving/.test(this.document.body.innerText)"), "the status bar", 60)
+        except SystemExit:
+            tab.key("ctrl+s")
+            try:
+                tab.until(frame("!/Saving/.test(this.document.body.innerText)"), "the status bar", 120)
+            except SystemExit as e:
+                log(f"{e}; the save itself is done")
+                log(tab.js(frame("(this.document.getElementById('DocumentStatus') || {}).outerHTML")))
         settle(tab)
     elif a.command == "views":
         (count,) = a.args
