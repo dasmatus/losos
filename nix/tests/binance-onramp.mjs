@@ -85,7 +85,7 @@ async function shoot(page, row, state) {
     await settle(page);
     const full = join(args.out, `pr/${args.mode}/${state}-${colorScheme}.png`);
     mkdirSync(dirname(full), { recursive: true });
-    await page.screenshot({ path: full });
+    await page.screenshot({ path: full, timeout: 300_000 });
   }
   await page.emulateMedia({ colorScheme: "light" });
 }

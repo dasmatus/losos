@@ -462,7 +462,11 @@ pkgs.testers.nixosTest {
     ''
       import json
 
-      start_all()
+      # One at a time: three VMs booting at once under emulation can miss
+      # the driver's wait for a shell.
+      for machine in [edge, box, laptop]:
+          machine.start()
+          machine.succeed("true")
       edge.wait_for_unit("losos-registrar.service")
       edge.wait_for_unit("binance-stand-in.service")
       edge.wait_for_open_port(8444)
