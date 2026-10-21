@@ -376,7 +376,11 @@ fn legacy_token(conn: &Connection, value: &str) -> anyhow::Result<Option<Token>>
          FROM tokens WHERE salt IS NOT NULL AND last_eight = ?1",
     )?;
     let rows = stmt.query_map([&value[value.len() - 8..]], |row| {
-        Ok((token_row(row)?, row.get::<_, String>(7)?, row.get::<_, String>(8)?))
+        Ok((
+            token_row(row)?,
+            row.get::<_, String>(7)?,
+            row.get::<_, String>(8)?,
+        ))
     })?;
     for row in rows {
         let (token, hash, salt) = row?;

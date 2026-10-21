@@ -56,7 +56,13 @@ fn start(dir: &Path, extra: &[&str]) -> Server {
 }
 
 /// One HTTP/1.0 request; status and body.
-fn http(port: u16, method: &str, path: &str, auth: Option<&str>, body: Option<&str>) -> (u16, String) {
+fn http(
+    port: u16,
+    method: &str,
+    path: &str,
+    auth: Option<&str>,
+    body: Option<&str>,
+) -> (u16, String) {
     let mut req = format!("{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n");
     if let Some(a) = auth {
         req.push_str(&format!("Authorization: {a}\r\n"));
@@ -139,7 +145,9 @@ fn owner_token(s: &Server, scopes: &str, name: &str) -> String {
         "POST",
         "/api/v1/admin/users/notshared/tokens",
         Some(&admin),
-        Some(&format!(r#"{{"name":"{name}","scopes":[{scopes}],"replace":true}}"#)),
+        Some(&format!(
+            r#"{{"name":"{name}","scopes":[{scopes}],"replace":true}}"#
+        )),
     );
     assert_eq!(status, 201, "{body}");
     json(&body)["token"].as_str().unwrap().to_string()
@@ -159,7 +167,9 @@ fn the_configuration_repository_round_trip() {
         "PUT",
         "/api/v1/admin/users/notshared/repos/losos-config",
         Some(&admin),
-        Some(r#"{"description":"This box's NixOS configuration.","private":true,"default_branch":"main"}"#),
+        Some(
+            r#"{"description":"This box's NixOS configuration.","private":true,"default_branch":"main"}"#,
+        ),
     );
     assert_eq!(status, 201, "{body}");
     let (status, again) = http(
@@ -171,7 +181,10 @@ fn the_configuration_repository_round_trip() {
     );
     assert_eq!(status, 200);
     assert_eq!(json(&body)["id"], json(&again)["id"]);
-    assert!(s.state.join("repositories/notshared/losos-config.git/HEAD").exists());
+    assert!(s
+        .state
+        .join("repositories/notshared/losos-config.git/HEAD")
+        .exists());
     assert_eq!(json(&body)["empty"], true);
 
     // Nobody is asked to sign in, never told the repository exists.
@@ -193,13 +206,22 @@ fn the_configuration_repository_round_trip() {
     std::fs::write(work.join("overrides.nix"), "{ ... }:\n{\n}\n").unwrap();
     ok(git(&work, &["add", "."]));
     ok(git(&work, &["commit", "-q", "-m", "Install"]));
-    let lososd = format!("http://losos:{}@127.0.0.1:{}/notshared/losos-config.git", s.admin, s.port);
+    let lososd = format!(
+        "http://losos:{}@127.0.0.1:{}/notshared/losos-config.git",
+        s.admin, s.port
+    );
     ok(git(&work, &["push", "-q", &lososd, "main"]));
 
     // The owner's token clones it, with protocol 2 and with protocol 0.
-    let mine = format!("http://notshared:{token}@127.0.0.1:{}/notshared/losos-config.git", s.port);
+    let mine = format!(
+        "http://notshared:{token}@127.0.0.1:{}/notshared/losos-config.git",
+        s.port
+    );
     ok(git(&dir, &["clone", "-q", &mine, "laptop"]));
-    ok(git(&dir, &["-c", "protocol.version=0", "clone", "-q", &mine, "laptop0"]));
+    ok(git(
+        &dir,
+        &["-c", "protocol.version=0", "clone", "-q", &mine, "laptop0"],
+    ));
     let laptop = dir.join("laptop");
     assert_eq!(
         std::fs::read_to_string(laptop.join("overrides.nix")).unwrap(),
@@ -207,7 +229,11 @@ fn the_configuration_repository_round_trip() {
     );
 
     // A change pushed from the laptop is on the server.
-    std::fs::write(laptop.join("overrides.nix"), "{ ... }:\n{\n  losos.sharingMyStorage = true;\n}\n").unwrap();
+    std::fs::write(
+        laptop.join("overrides.nix"),
+        "{ ... }:\n{\n  losos.sharingMyStorage = true;\n}\n",
+    )
+    .unwrap();
     ok(git(&laptop, &["commit", "-qam", "Share storage"]));
     ok(git(&laptop, &["push", "-q", "origin", "main"]));
     let head = ok(git(&laptop, &["rev-parse", "HEAD"]));
@@ -242,15 +268,33 @@ fn tokens_hold_their_scopes_and_owners_their_namespace() {
     ok(git(&work, &["add", "."]));
     ok(git(&work, &["commit", "-q", "-m", "a"]));
     let url = |t: &str, repo: &str| format!("http://notshared:{t}@127.0.0.1:{}/{repo}.git", s.port);
-    ok(git(&work, &["push", "-q", &url(&write, "notshared/fresh"), "trunk"]));
-    let (status, doc) = http(s.port, "GET", "/api/v1/repos/notshared/fresh", Some(&format!("token {write}")), None);
+    ok(git(
+        &work,
+        &["push", "-q", &url(&write, "notshared/fresh"), "trunk"],
+    ));
+    let (status, doc) = http(
+        s.port,
+        "GET",
+        "/api/v1/repos/notshared/fresh",
+        Some(&format!("token {write}")),
+        None,
+    );
     assert_eq!(status, 200);
     let doc = json(&doc);
-    assert_eq!(doc["private"], true, "new repositories are private by default");
-    assert_eq!(doc["default_branch"], "trunk", "the first pushed branch becomes the default");
+    assert_eq!(
+        doc["private"], true,
+        "new repositories are private by default"
+    );
+    assert_eq!(
+        doc["default_branch"], "trunk",
+        "the first pushed branch becomes the default"
+    );
 
     // A read token clones and cannot push.
-    ok(git(&dir, &["clone", "-q", &url(&read, "notshared/fresh"), "clone"]));
+    ok(git(
+        &dir,
+        &["clone", "-q", &url(&read, "notshared/fresh"), "clone"],
+    ));
     let clone = dir.join("clone");
     std::fs::write(clone.join("b"), "b").unwrap();
     ok(git(&clone, &["add", "."]));
@@ -272,7 +316,13 @@ fn tokens_hold_their_scopes_and_owners_their_namespace() {
     assert!(!s.state.join("repositories/jana/stolen.git").exists());
 
     // A wrong token is a 401, not "nobody".
-    let (status, _) = http(s.port, "GET", "/api/v1/user", Some("token 0123456789"), None);
+    let (status, _) = http(
+        s.port,
+        "GET",
+        "/api/v1/user",
+        Some("token 0123456789"),
+        None,
+    );
     assert_eq!(status, 401);
     // A token cannot mint another.
     let (status, _) = http(
@@ -284,9 +334,21 @@ fn tokens_hold_their_scopes_and_owners_their_namespace() {
     );
     assert_eq!(status, 403);
     // The administrator removes a computer's token; it stops working.
-    let (status, _) = http(s.port, "DELETE", "/api/v1/admin/users/notshared/tokens/read", Some(&admin), None);
+    let (status, _) = http(
+        s.port,
+        "DELETE",
+        "/api/v1/admin/users/notshared/tokens/read",
+        Some(&admin),
+        None,
+    );
     assert_eq!(status, 204);
-    let (status, _) = http(s.port, "GET", "/api/v1/repos/notshared/fresh", Some(&format!("token {read}")), None);
+    let (status, _) = http(
+        s.port,
+        "GET",
+        "/api/v1/repos/notshared/fresh",
+        Some(&format!("token {read}")),
+        None,
+    );
     assert_eq!(status, 401);
 }
 
@@ -313,15 +375,30 @@ fn public_repositories_rename_and_collaborators() {
         .as_str()
         .unwrap()
         .ends_with("/git/notshared/Notes.git"));
-    let (status, _) = http(s.port, "POST", "/api/v1/user/repos", Some(&auth), Some(r#"{"name":"notes"}"#));
+    let (status, _) = http(
+        s.port,
+        "POST",
+        "/api/v1/user/repos",
+        Some(&auth),
+        Some(r#"{"name":"notes"}"#),
+    );
     assert_eq!(status, 409, "names are unique whatever the case");
-    let (status, _) = http(s.port, "POST", "/api/v1/user/repos", Some(&auth), Some(r#"{"name":"../escape"}"#));
+    let (status, _) = http(
+        s.port,
+        "POST",
+        "/api/v1/user/repos",
+        Some(&auth),
+        Some(r#"{"name":"../escape"}"#),
+    );
     assert_eq!(status, 422);
 
     // Anybody clones a public repository.
     let anon = format!("http://127.0.0.1:{}/notshared/Notes.git", s.port);
     ok(git(&dir, &["clone", "-q", &anon, "anon"]));
-    assert_eq!(std::fs::read_to_string(dir.join("anon/README.md")).unwrap(), "# Notes\n\nOpen notes\n");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("anon/README.md")).unwrap(),
+        "# Notes\n\nOpen notes\n"
+    );
 
     // Renamed, it is found under the new name only.
     let (status, body) = http(
@@ -332,14 +409,37 @@ fn public_repositories_rename_and_collaborators() {
         Some(r#"{"name":"notebook","private":true}"#),
     );
     assert_eq!(status, 200, "{body}");
-    assert!(s.state.join("repositories/notshared/notebook.git/HEAD").exists());
-    let (status, _) = http(s.port, "GET", "/api/v1/repos/notshared/Notes", Some(&auth), None);
+    assert!(s
+        .state
+        .join("repositories/notshared/notebook.git/HEAD")
+        .exists());
+    let (status, _) = http(
+        s.port,
+        "GET",
+        "/api/v1/repos/notshared/Notes",
+        Some(&auth),
+        None,
+    );
     assert_eq!(status, 404);
-    let out = git(&dir, &["clone", "-q", &format!("http://127.0.0.1:{}/notshared/notebook.git", s.port), "gone"]);
+    let out = git(
+        &dir,
+        &[
+            "clone",
+            "-q",
+            &format!("http://127.0.0.1:{}/notshared/notebook.git", s.port),
+            "gone",
+        ],
+    );
     assert!(!out.status.success(), "private now");
 
     // A collaborator sees it; before that, nothing.
-    http(s.port, "PUT", "/api/v1/admin/users/jana", Some(&admin), Some("{}"));
+    http(
+        s.port,
+        "PUT",
+        "/api/v1/admin/users/jana",
+        Some(&admin),
+        Some("{}"),
+    );
     let (_, body) = http(
         s.port,
         "POST",
@@ -348,7 +448,13 @@ fn public_repositories_rename_and_collaborators() {
         Some(r#"{"name":"t","scopes":["write:repository"]}"#),
     );
     let jana = format!("token {}", json(&body)["token"].as_str().unwrap());
-    let (status, _) = http(s.port, "GET", "/api/v1/repos/notshared/notebook", Some(&jana), None);
+    let (status, _) = http(
+        s.port,
+        "GET",
+        "/api/v1/repos/notshared/notebook",
+        Some(&jana),
+        None,
+    );
     assert_eq!(status, 404);
     let (status, _) = http(
         s.port,
@@ -358,12 +464,30 @@ fn public_repositories_rename_and_collaborators() {
         Some(r#"{"permission":"read"}"#),
     );
     assert_eq!(status, 204);
-    let (status, body) = http(s.port, "GET", "/api/v1/repos/notshared/notebook", Some(&jana), None);
+    let (status, body) = http(
+        s.port,
+        "GET",
+        "/api/v1/repos/notshared/notebook",
+        Some(&jana),
+        None,
+    );
     assert_eq!(status, 200);
     assert_eq!(json(&body)["permission"], "read");
-    let (status, _) = http(s.port, "DELETE", "/api/v1/repos/notshared/notebook", Some(&jana), None);
+    let (status, _) = http(
+        s.port,
+        "DELETE",
+        "/api/v1/repos/notshared/notebook",
+        Some(&jana),
+        None,
+    );
     assert_eq!(status, 403);
-    let (status, _) = http(s.port, "DELETE", "/api/v1/repos/notshared/notebook", Some(&auth), None);
+    let (status, _) = http(
+        s.port,
+        "DELETE",
+        "/api/v1/repos/notshared/notebook",
+        Some(&auth),
+        None,
+    );
     assert_eq!(status, 204);
     assert!(!s.state.join("repositories/notshared/notebook.git").exists());
 }
@@ -381,7 +505,10 @@ fn a_gzipped_fetch_request_is_unzipped_for_git() {
         Some(r#"{"name":"z","auto_init":true}"#),
     );
     assert_eq!(status, 201, "{body}");
-    let sha = ok(git(&s.state.join("repositories/notshared/z.git"), &["rev-parse", "main"]));
+    let sha = ok(git(
+        &s.state.join("repositories/notshared/z.git"),
+        &["rev-parse", "main"],
+    ));
     let sha = sha.trim();
 
     let want = format!("want {sha}\n");
@@ -410,7 +537,17 @@ fn repositories_on_disk_without_a_record_are_taken_in() {
     // A bare repository where Forgejo kept it, moved over before the start.
     let repo = dir.join("state/repositories/notshared/old-project.git");
     std::fs::create_dir_all(repo.parent().unwrap()).unwrap();
-    ok(git(&dir, &["init", "-q", "--bare", "-b", "master", repo.to_str().unwrap()]));
+    ok(git(
+        &dir,
+        &[
+            "init",
+            "-q",
+            "--bare",
+            "-b",
+            "master",
+            repo.to_str().unwrap(),
+        ],
+    ));
     // Forgejo's hooks call a forgejo binary that is gone: left in place,
     // they would refuse every push.
     let hooks = repo.join("hooks");
@@ -425,9 +562,15 @@ fn repositories_on_disk_without_a_record_are_taken_in() {
     std::fs::write(hooks.join("pre-receive.d/gitea"), "#!/bin/sh\nexit 1\n").unwrap();
     std::fs::write(hooks.join("update.sample"), "#!/bin/sh\n").unwrap();
     let s = start(&dir, &[]);
-    assert!(!hooks.join("pre-receive").exists(), "Forgejo's hook is gone");
+    assert!(
+        !hooks.join("pre-receive").exists(),
+        "Forgejo's hook is gone"
+    );
     assert!(!hooks.join("pre-receive.d").exists());
-    assert!(hooks.join("update.sample").exists(), "git's own samples stay");
+    assert!(
+        hooks.join("update.sample").exists(),
+        "git's own samples stay"
+    );
     let token = owner_token(&s, r#""read:repository""#, "r");
     let (status, body) = http(
         s.port,
@@ -447,7 +590,10 @@ fn a_forgejo_export_is_imported_and_served() {
     let dir = scratch("import");
     let repo = dir.join("state/repositories/matus/notes.git");
     std::fs::create_dir_all(repo.parent().unwrap()).unwrap();
-    ok(git(&dir, &["init", "-q", "--bare", "-b", "main", repo.to_str().unwrap()]));
+    ok(git(
+        &dir,
+        &["init", "-q", "--bare", "-b", "main", repo.to_str().unwrap()],
+    ));
     let from = dir.join("forgejo");
     std::fs::create_dir_all(from.join("tables")).unwrap();
     let token = "0123456789abcdef0123456789abcdef5678abcd";
@@ -478,7 +624,11 @@ fn a_forgejo_export_is_imported_and_served() {
         .arg(&from)
         .output()
         .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let report = json(&std::fs::read_to_string(from.join("import.json")).unwrap());
     assert_eq!(report["complete"], true);
     assert_eq!(report["imported"]["issue"], 1);
@@ -488,13 +638,25 @@ fn a_forgejo_export_is_imported_and_served() {
     let (status, body) = http(s.port, "GET", "/api/v1/user", Some(&auth), None);
     assert_eq!(status, 200, "Forgejo's token still opens the box: {body}");
     assert_eq!(json(&body)["login"], "matus");
-    let (status, body) = http(s.port, "GET", "/api/v1/repos/matus/notes/issues/12", Some(&auth), None);
+    let (status, body) = http(
+        s.port,
+        "GET",
+        "/api/v1/repos/matus/notes/issues/12",
+        Some(&auth),
+        None,
+    );
     assert_eq!(status, 200, "{body}");
     let issue = json(&body);
     assert_eq!(issue["title"], "Fix the backup script");
     assert_eq!(issue["user"]["login"], "eva");
     assert_eq!(issue["state"], "open");
-    let (_, body) = http(s.port, "GET", "/api/v1/repos/matus/notes/issues/12/comments", Some(&auth), None);
+    let (_, body) = http(
+        s.port,
+        "GET",
+        "/api/v1/repos/matus/notes/issues/12/comments",
+        Some(&auth),
+        None,
+    );
     assert_eq!(json(&body)[0]["body"], "On it.");
     let (status, body) = http(
         s.port,

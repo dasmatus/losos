@@ -98,7 +98,10 @@ fn the_git_token_is_made_for_the_owners_account() {
     assert_eq!(out["path"], "/git/");
     assert_eq!(
         f.git_calls,
-        vec!["PUT /api/v1/admin/users/notshared".to_string(), CREATE.to_string()],
+        vec![
+            "PUT /api/v1/admin/users/notshared".to_string(),
+            CREATE.to_string()
+        ],
         "the account is made sure of first"
     );
     let op = losos_ctl::config_repo::GitOp::CreateToken {
@@ -137,7 +140,10 @@ fn a_refused_token_is_not_now_rather_than_wrong() {
     let mut f = git_box();
     f.git_routes.insert(
         CREATE.to_string(),
-        (500, r#"{"message":"LosOS Git could not answer."}"#.to_string()),
+        (
+            500,
+            r#"{"message":"LosOS Git could not answer."}"#.to_string(),
+        ),
     );
     let err = cmd_device_git(&mut f, "laptop").unwrap_err();
     assert!(err.downcast_ref::<NotReady>().is_some(), "{err:#}");

@@ -162,7 +162,10 @@ mod tests {
             let name = step.iter().position(|a| a == "--help");
             assert!(name.is_none_or(|n| n > dashes), "{step:?}");
         }
-        assert!(l.git_calls.iter().any(|k| k == "PUT /api/v1/admin/users/eva"));
+        assert!(l
+            .git_calls
+            .iter()
+            .any(|k| k == "PUT /api/v1/admin/users/eva"));
     }
 
     #[test]

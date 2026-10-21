@@ -836,7 +836,9 @@ pub fn cmd_device_cloud<L: Losos>(
 /// from an earlier setup of the same computer: that is the token this
 /// computer is replacing.
 pub fn cmd_device_git<L: Losos>(l: &mut L, device: &str) -> anyhow::Result<Value> {
-    use crate::devices::{credential_name, interpret_token, validate_device, GitOff, Minted, GIT_PATH};
+    use crate::devices::{
+        credential_name, interpret_token, validate_device, GitOff, Minted, GIT_PATH,
+    };
 
     let device = validate_device(device).map_err(|e| anyhow::anyhow!(e))?;
     let Some(repo) = l.config_repo().filter(|r| r.via_server()) else {
@@ -1637,10 +1639,7 @@ fn ask<L: Losos>(
 }
 
 /// The owner's account on LosOS Git, made if missing, and an administrator.
-fn ensure_owner<L: Losos>(
-    l: &mut L,
-    repo: &crate::config_repo::RepoConfig,
-) -> anyhow::Result<()> {
+fn ensure_owner<L: Losos>(l: &mut L, repo: &crate::config_repo::RepoConfig) -> anyhow::Result<()> {
     use crate::config_repo::{Answer, GitOp};
     let login = repo.owner.clone();
     match ask(
@@ -3095,10 +3094,8 @@ mod tests {
             json!({ "name": "nextcloud.site.trashDays", "group": "nextcloud",
             "editor": { "kind": "int", "min": 1 }, "nixType": "int" }),
         );
-        options.push(
-            json!({ "name": "git.site.defaultPrivate", "group": "git",
-            "editor": { "kind": "enum", "values": ["last", "public"] }, "nixType": "enum" }),
-        );
+        options.push(json!({ "name": "git.site.defaultPrivate", "group": "git",
+            "editor": { "kind": "enum", "values": ["last", "public"] }, "nixType": "enum" }));
         serde_json::from_value(json!({ "version": 1, "options": options })).unwrap()
     }
 
@@ -3124,10 +3121,7 @@ mod tests {
             &mut f,
             &[
                 ("nextcloud.site.trashDays".into(), Some("30".into())),
-                (
-                    "git.site.defaultPrivate".into(),
-                    Some("\"public\"".into()),
-                ),
+                ("git.site.defaultPrivate".into(), Some("\"public\"".into())),
             ],
         )
         .unwrap();
@@ -3528,7 +3522,10 @@ mod tests {
         // Both calls are "ensure": a repeat asks again and makes nothing twice.
         f.git_routes.insert(
             "PUT /api/v1/admin/users/notshared/repos/losos-config".into(),
-            (409, r#"{"message":"There is already a repository."}"#.into()),
+            (
+                409,
+                r#"{"message":"There is already a repository."}"#.into(),
+            ),
         );
         let out = cmd_config_sync(&mut f).unwrap();
         assert_eq!(out["sync"]["state"], "ok");
@@ -3551,5 +3548,4 @@ mod tests {
             .unwrap()
             .contains("administrator"));
     }
-
 }

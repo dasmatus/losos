@@ -517,7 +517,10 @@ pub(crate) mod tests {
         let out = join(&doc, "{ ... }:\n{\n}\n");
         let opts = out["options"].as_array().unwrap();
         let by = |n: &str| opts.iter().find(|o| o["name"] == n).unwrap().clone();
-        assert_eq!(by("nextcloud.federation.enable")["needs"], "sharingMyStorage");
+        assert_eq!(
+            by("nextcloud.federation.enable")["needs"],
+            "sharingMyStorage"
+        );
         assert!(by("git.enable").get("needs").is_none());
     }
 

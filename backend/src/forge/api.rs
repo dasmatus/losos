@@ -52,7 +52,10 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
             )
             .route("/repos/{owner}/{repo}/issues", web::get().to(list_issues))
             .route("/repos/{owner}/{repo}/pulls", web::get().to(list_pulls))
-            .route("/repos/{owner}/{repo}/issues/{number}", web::get().to(get_issue))
+            .route(
+                "/repos/{owner}/{repo}/issues/{number}",
+                web::get().to(get_issue),
+            )
             .route(
                 "/repos/{owner}/{repo}/issues/{number}/comments",
                 web::get().to(issue_comments),
@@ -838,14 +841,20 @@ async fn issues_of(
         None | Some("open") => Some(false),
         Some("closed") => Some(true),
         Some("all") => None,
-        Some(other) => return Err(Fail::bad(format!("\"{other}\" is not open, closed or all."))),
+        Some(other) => {
+            return Err(Fail::bad(format!(
+                "\"{other}\" is not open, closed or all."
+            )))
+        }
     };
     let pulls = match (pulls, query.kind.as_deref()) {
         (Some(p), _) => Some(p),
         (None, None) => None,
         (None, Some("issues")) => Some(false),
         (None, Some("pulls")) => Some(true),
-        (None, Some(other)) => return Err(Fail::bad(format!("\"{other}\" is not issues or pulls."))),
+        (None, Some(other)) => {
+            return Err(Fail::bad(format!("\"{other}\" is not issues or pulls.")))
+        }
     };
     let base = base(state);
     let list: Vec<Value> = state
@@ -963,12 +972,21 @@ async fn get_attachment(
     if c.permission(&state.store, &repo)? == Permission::None {
         return Err(Fail::not_found("attachment"));
     }
-    let bytes = std::fs::read(state.config.state_dir.join("attachments").join(&attachment.uuid))
-        .map_err(|_| Fail::not_found("attachment"))?;
+    let bytes = std::fs::read(
+        state
+            .config
+            .state_dir
+            .join("attachments")
+            .join(&attachment.uuid),
+    )
+    .map_err(|_| Fail::not_found("attachment"))?;
     let name = attachment.name.replace(['"', '\\', '\r', '\n'], "_");
     Ok(HttpResponse::Ok()
         .content_type("application/octet-stream")
-        .insert_header(("Content-Disposition", format!("attachment; filename=\"{name}\"")))
+        .insert_header((
+            "Content-Disposition",
+            format!("attachment; filename=\"{name}\""),
+        ))
         .insert_header(("X-Content-Type-Options", "nosniff"))
         .body(bytes))
 }

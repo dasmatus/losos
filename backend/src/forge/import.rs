@@ -16,9 +16,9 @@
 //! remembers its Forgejo id (`forgejo_ids`), so running it again changes
 //! nothing that is already there.
 
-use anyhow::Context;
 use super::db::Store;
 use super::{names, repo_path};
+use anyhow::Context;
 use rusqlite::{params, OptionalExtension, Transaction};
 use serde::Serialize;
 use serde_json::Value;
@@ -212,10 +212,11 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
             ));
             continue;
         }
-        let local = match mapped(&tx, "user", id)? {
-            Some(l) => l,
-            None => {
-                tx.execute(
+        let local =
+            match mapped(&tx, "user", id)? {
+                Some(l) => l,
+                None => {
+                    tx.execute(
                     "INSERT INTO users (login, lower_login, full_name, email, is_admin, created)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                      ON CONFLICT (lower_login) DO UPDATE SET
@@ -233,15 +234,15 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
                         time(row, "created_unix"),
                     ],
                 )?;
-                let local: i64 = tx.query_row(
-                    "SELECT id FROM users WHERE lower_login = ?1",
-                    [login.to_lowercase()],
-                    |r| r.get(0),
-                )?;
-                remember(&tx, "user", id, local)?;
-                local
-            }
-        };
+                    let local: i64 = tx.query_row(
+                        "SELECT id FROM users WHERE lower_login = ?1",
+                        [login.to_lowercase()],
+                        |r| r.get(0),
+                    )?;
+                    remember(&tx, "user", id, local)?;
+                    local
+                }
+            };
         let _ = local;
         if kind == 1 {
             org_names.insert(id, login.clone());
@@ -269,7 +270,9 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
             continue;
         };
         let owner_login: String =
-            tx.query_row("SELECT login FROM users WHERE id = ?1", [owner], |r| r.get(0))?;
+            tx.query_row("SELECT login FROM users WHERE id = ?1", [owner], |r| {
+                r.get(0)
+            })?;
         if let Err(why) = names::repo(&name) {
             report.note(format!(
                 "The repository \"{owner_login}/{name}\" was left out: {why}. Its Git data \
@@ -330,9 +333,10 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
     for row in &tables["repository"] {
         let fork = int(row, "fork_id");
         if fork > 0 {
-            if let (Some(local), Some(parent)) =
-                (mapped(&tx, "repo", int(row, "id"))?, mapped(&tx, "repo", fork)?)
-            {
+            if let (Some(local), Some(parent)) = (
+                mapped(&tx, "repo", int(row, "id"))?,
+                mapped(&tx, "repo", fork)?,
+            ) {
                 tx.execute(
                     "UPDATE repos SET fork_of = ?2 WHERE id = ?1",
                     params![local, parent],
@@ -423,7 +427,11 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
             params![user, name],
             |r| r.get(0),
         )?;
-        let local_name = if taken { format!("{name} (from Forgejo)") } else { name.clone() };
+        let local_name = if taken {
+            format!("{name} (from Forgejo)")
+        } else {
+            name.clone()
+        };
         tx.execute(
             "INSERT INTO tokens (user_id, name, hash, last_eight, scopes, created, last_used, salt)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7)",
@@ -452,7 +460,9 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
                      say so in the database dump."
                 ));
             } else {
-                report.note(format!("The label \"{name}\" of a repository that was left out."));
+                report.note(format!(
+                    "The label \"{name}\" of a repository that was left out."
+                ));
             }
             continue;
         };
@@ -473,14 +483,15 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
     }
 
     // ── Issues and pull requests ─────────────────────────────────────────
-    let poster = |tx: &Transaction<'_>, row: &Row, key: &str| -> rusqlite::Result<(Option<i64>, String)> {
-        let user = mapped(tx, "user", int(row, key))?;
-        let mut name = text(row, "original_author");
-        if name.is_empty() {
-            name = "ghost".to_string();
-        }
-        Ok((user, name))
-    };
+    let poster =
+        |tx: &Transaction<'_>, row: &Row, key: &str| -> rusqlite::Result<(Option<i64>, String)> {
+            let user = mapped(tx, "user", int(row, key))?;
+            let mut name = text(row, "original_author");
+            if name.is_empty() {
+                name = "ghost".to_string();
+            }
+            Ok((user, name))
+        };
     for row in &tables["issue"] {
         let id = int(row, "id");
         let number = int(row, "index");
@@ -574,7 +585,9 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
             }
         };
         let Some(issue) = mapped(&tx, "issue", int(row, "issue_id"))? else {
-            report.note(format!("A comment on an issue that was left out (Forgejo comment {id})."));
+            report.note(format!(
+                "A comment on an issue that was left out (Forgejo comment {id})."
+            ));
             continue;
         };
         if mapped(&tx, "comment", id)?.is_none() {
@@ -655,7 +668,9 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
                      it is in the copy of Forgejo's attachments."
                 ));
             } else {
-                report.note(format!("The attachment \"{name}\" of an issue that was left out."));
+                report.note(format!(
+                    "The attachment \"{name}\" of an issue that was left out."
+                ));
             }
             continue;
         };
@@ -682,7 +697,14 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
         tx.execute(
             "INSERT OR IGNORE INTO attachments (uuid, issue_id, comment_id, name, size, created)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![uuid, issue, comment, name, int(row, "size"), time(row, "created_unix")],
+            params![
+                uuid,
+                issue,
+                comment,
+                name,
+                int(row, "size"),
+                time(row, "created_unix")
+            ],
         )?;
         report.count("attachment");
     }
@@ -703,8 +725,8 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::db::forgejo_token_hash;
+    use super::*;
     use serde_json::json;
 
     fn write(dir: &Path, table: &str, rows: Value) {
@@ -729,66 +751,110 @@ mod tests {
         std::fs::write(hooks.join("update.sample"), "").unwrap();
         let f = from.path();
         // Postgres's shapes: booleans as booleans.
-        write(f, "user", json!([
-            {"id": 1, "name": "Matus", "full_name": "Matus K", "email": "m@box.local",
-             "is_admin": true, "type": 0, "created_unix": 1_760_000_000},
-            {"id": 2, "name": "eva", "full_name": "", "email": "eva@box.local",
-             "is_admin": false, "type": 0, "created_unix": 1_760_000_000},
-            {"id": 3, "name": "team", "type": 1, "created_unix": 1_760_000_000},
-            {"id": 4, "name": "forgejo-actions", "type": 4}
-        ]));
+        write(
+            f,
+            "user",
+            json!([
+                {"id": 1, "name": "Matus", "full_name": "Matus K", "email": "m@box.local",
+                 "is_admin": true, "type": 0, "created_unix": 1_760_000_000},
+                {"id": 2, "name": "eva", "full_name": "", "email": "eva@box.local",
+                 "is_admin": false, "type": 0, "created_unix": 1_760_000_000},
+                {"id": 3, "name": "team", "type": 1, "created_unix": 1_760_000_000},
+                {"id": 4, "name": "forgejo-actions", "type": 4}
+            ]),
+        );
         write(f, "org_user", json!([{"id": 1, "uid": 2, "org_id": 3}]));
-        write(f, "repository", json!([
-            {"id": 10, "owner_id": 1, "owner_name": "Matus", "name": "notes",
-             "description": "My notes", "is_private": true, "default_branch": "main",
-             "created_unix": 1_760_000_100, "updated_unix": 1_760_000_200, "fork_id": 0},
-            {"id": 11, "owner_id": 3, "owner_name": "team", "name": "site",
-             "is_private": false, "default_branch": "trunk", "fork_id": 0},
-            {"id": 12, "owner_id": 1, "owner_name": "Matus", "name": "gone",
-             "is_private": true, "default_branch": "main", "fork_id": 0}
-        ]));
-        write(f, "collaboration", json!([{"id": 1, "repo_id": 10, "user_id": 2, "mode": 1}]));
+        write(
+            f,
+            "repository",
+            json!([
+                {"id": 10, "owner_id": 1, "owner_name": "Matus", "name": "notes",
+                 "description": "My notes", "is_private": true, "default_branch": "main",
+                 "created_unix": 1_760_000_100, "updated_unix": 1_760_000_200, "fork_id": 0},
+                {"id": 11, "owner_id": 3, "owner_name": "team", "name": "site",
+                 "is_private": false, "default_branch": "trunk", "fork_id": 0},
+                {"id": 12, "owner_id": 1, "owner_name": "Matus", "name": "gone",
+                 "is_private": true, "default_branch": "main", "fork_id": 0}
+            ]),
+        );
+        write(
+            f,
+            "collaboration",
+            json!([{"id": 1, "repo_id": 10, "user_id": 2, "mode": 1}]),
+        );
         let salt = "s4lt";
         let value = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1234abcd";
-        write(f, "access_token", json!([
-            {"id": 5, "uid": 1, "name": "laptop", "token_hash": forgejo_token_hash(value, salt),
-             "token_salt": salt, "token_last_eight": "1234abcd",
-             "scope": "write:repository,read:user,read:package", "created_unix": 1_760_000_300},
-            {"id": 6, "uid": 1, "name": "packages", "token_hash": "x", "token_salt": "y",
-             "token_last_eight": "00000000", "scope": "write:package"}
-        ]));
-        write(f, "label", json!([
-            {"id": 7, "repo_id": 10, "org_id": 0, "name": "bug", "color": "#ee0701", "description": ""}
-        ]));
+        write(
+            f,
+            "access_token",
+            json!([
+                {"id": 5, "uid": 1, "name": "laptop", "token_hash": forgejo_token_hash(value, salt),
+                 "token_salt": salt, "token_last_eight": "1234abcd",
+                 "scope": "write:repository,read:user,read:package", "created_unix": 1_760_000_300},
+                {"id": 6, "uid": 1, "name": "packages", "token_hash": "x", "token_salt": "y",
+                 "token_last_eight": "00000000", "scope": "write:package"}
+            ]),
+        );
+        write(
+            f,
+            "label",
+            json!([
+                {"id": 7, "repo_id": 10, "org_id": 0, "name": "bug", "color": "#ee0701", "description": ""}
+            ]),
+        );
         // SQLite's shapes: booleans as numbers.
-        write(f, "issue", json!([
-            {"id": 20, "repo_id": 10, "index": 1, "poster_id": 1, "name": "Fix the backup script",
-             "content": "It stops at 3 a.m.", "is_closed": 0, "is_pull": 0,
-             "created_unix": 1_760_001_000, "updated_unix": 1_760_001_100, "closed_unix": 0},
-            {"id": 21, "repo_id": 10, "index": 2, "poster_id": 99, "original_author": "old-eva",
-             "name": "Faster backups", "content": "", "is_closed": 1, "is_pull": 1,
-             "created_unix": 1_760_002_000, "updated_unix": 1_760_002_100, "closed_unix": 1_760_002_200}
-        ]));
-        write(f, "pull_request", json!([
-            {"id": 1, "issue_id": 21, "head_repo_id": 10, "base_repo_id": 10,
-             "head_branch": "fast", "base_branch": "main", "has_merged": 1,
-             "merged_commit_id": "abc123"}
-        ]));
-        write(f, "comment", json!([
-            {"id": 30, "type": 0, "poster_id": 2, "issue_id": 20, "content": "Seen it too.",
-             "created_unix": 1_760_001_500, "updated_unix": 1_760_001_500},
-            {"id": 31, "type": 2, "poster_id": 1, "issue_id": 21, "content": ""},
-            {"id": 32, "type": 21, "poster_id": 1, "issue_id": 21, "content": "Why sleep?",
-             "tree_path": "backup.sh", "line": -12}
-        ]));
-        write(f, "issue_label", json!([{"id": 1, "issue_id": 20, "label_id": 7}]));
-        write(f, "issue_assignees", json!([{"id": 1, "issue_id": 20, "assignee_id": 2}]));
-        write(f, "attachment", json!([
-            {"id": 1, "uuid": "ab12cd34-0000-4000-8000-000000000001", "issue_id": 20,
-             "comment_id": 0, "release_id": 0, "name": "log.txt", "size": 5},
-            {"id": 2, "uuid": "ff12cd34-0000-4000-8000-000000000002", "issue_id": 0,
-             "comment_id": 0, "release_id": 3, "name": "v1.tar.gz", "size": 9}
-        ]));
+        write(
+            f,
+            "issue",
+            json!([
+                {"id": 20, "repo_id": 10, "index": 1, "poster_id": 1, "name": "Fix the backup script",
+                 "content": "It stops at 3 a.m.", "is_closed": 0, "is_pull": 0,
+                 "created_unix": 1_760_001_000, "updated_unix": 1_760_001_100, "closed_unix": 0},
+                {"id": 21, "repo_id": 10, "index": 2, "poster_id": 99, "original_author": "old-eva",
+                 "name": "Faster backups", "content": "", "is_closed": 1, "is_pull": 1,
+                 "created_unix": 1_760_002_000, "updated_unix": 1_760_002_100, "closed_unix": 1_760_002_200}
+            ]),
+        );
+        write(
+            f,
+            "pull_request",
+            json!([
+                {"id": 1, "issue_id": 21, "head_repo_id": 10, "base_repo_id": 10,
+                 "head_branch": "fast", "base_branch": "main", "has_merged": 1,
+                 "merged_commit_id": "abc123"}
+            ]),
+        );
+        write(
+            f,
+            "comment",
+            json!([
+                {"id": 30, "type": 0, "poster_id": 2, "issue_id": 20, "content": "Seen it too.",
+                 "created_unix": 1_760_001_500, "updated_unix": 1_760_001_500},
+                {"id": 31, "type": 2, "poster_id": 1, "issue_id": 21, "content": ""},
+                {"id": 32, "type": 21, "poster_id": 1, "issue_id": 21, "content": "Why sleep?",
+                 "tree_path": "backup.sh", "line": -12}
+            ]),
+        );
+        write(
+            f,
+            "issue_label",
+            json!([{"id": 1, "issue_id": 20, "label_id": 7}]),
+        );
+        write(
+            f,
+            "issue_assignees",
+            json!([{"id": 1, "issue_id": 20, "assignee_id": 2}]),
+        );
+        write(
+            f,
+            "attachment",
+            json!([
+                {"id": 1, "uuid": "ab12cd34-0000-4000-8000-000000000001", "issue_id": 20,
+                 "comment_id": 0, "release_id": 0, "name": "log.txt", "size": 5},
+                {"id": 2, "uuid": "ff12cd34-0000-4000-8000-000000000002", "issue_id": 0,
+                 "comment_id": 0, "release_id": 3, "name": "v1.tar.gz", "size": 9}
+            ]),
+        );
         let a = f.join("attachments/a/b");
         std::fs::create_dir_all(&a).unwrap();
         std::fs::write(a.join("ab12cd34-0000-4000-8000-000000000001"), "hello").unwrap();
@@ -804,7 +870,10 @@ mod tests {
 
         let matus = store.user("matus").unwrap().unwrap();
         assert!(matus.is_admin && matus.full_name == "Matus K");
-        assert!(store.user("team").unwrap().is_some(), "an organisation is an account");
+        assert!(
+            store.user("team").unwrap().is_some(),
+            "an organisation is an account"
+        );
         assert!(store.user("forgejo-actions").unwrap().is_none());
 
         let notes = store.repo("matus", "notes").unwrap().unwrap();
@@ -817,10 +886,19 @@ mod tests {
         assert_eq!(left, vec!["update.sample"], "Forgejo's hooks are gone");
         let site = store.repo("team", "site").unwrap().unwrap();
         assert_eq!(site.default_branch, "trunk");
-        assert!(store.repo("matus", "gone").unwrap().is_none(), "no Git data, no record");
+        assert!(
+            store.repo("matus", "gone").unwrap().is_none(),
+            "no Git data, no record"
+        );
         let eva = store.user("eva").unwrap().unwrap();
-        assert_eq!(store.collaborator(notes.id, eva.id).unwrap(), super::super::db::Permission::Read);
-        assert_eq!(store.collaborator(site.id, eva.id).unwrap(), super::super::db::Permission::Write);
+        assert_eq!(
+            store.collaborator(notes.id, eva.id).unwrap(),
+            super::super::db::Permission::Read
+        );
+        assert_eq!(
+            store.collaborator(site.id, eva.id).unwrap(),
+            super::super::db::Permission::Write
+        );
 
         // The old token opens LosOS Git; the package-only one does not exist.
         let (who, t) = store
@@ -832,7 +910,13 @@ mod tests {
         assert_eq!(store.tokens(matus.id).unwrap().len(), 1);
 
         let issues = store
-            .issues(notes.id, super::super::db::IssueFilter { closed: None, pulls: None })
+            .issues(
+                notes.id,
+                super::super::db::IssueFilter {
+                    closed: None,
+                    pulls: None,
+                },
+            )
             .unwrap();
         assert_eq!(issues.len(), 2);
         let one = store.issue(notes.id, 1).unwrap().unwrap();
@@ -868,7 +952,10 @@ mod tests {
             "1 milestones",
             "organisation \"team\"",
         ] {
-            assert!(notes_text.contains(expected), "{expected} not in:\n{notes_text}");
+            assert!(
+                notes_text.contains(expected),
+                "{expected} not in:\n{notes_text}"
+            );
         }
         assert_eq!(r.forgejo["issue"], 2);
         assert_eq!(r.imported["issue"], 2);
@@ -878,7 +965,13 @@ mod tests {
         assert_eq!(again.imported["issue"], 2);
         assert_eq!(
             store
-                .issues(notes.id, super::super::db::IssueFilter { closed: None, pulls: None })
+                .issues(
+                    notes.id,
+                    super::super::db::IssueFilter {
+                        closed: None,
+                        pulls: None
+                    }
+                )
                 .unwrap()
                 .len(),
             2

@@ -81,8 +81,7 @@ impl RepoConfig {
         Some(RepoConfig {
             owner,
             name,
-            git_url: std::env::var("LOSOS_GIT_URL")
-                .unwrap_or_else(|_| DEFAULT_GIT_URL.to_string()),
+            git_url: std::env::var("LOSOS_GIT_URL").unwrap_or_else(|_| DEFAULT_GIT_URL.to_string()),
             token_file: std::env::var("LOSOS_GIT_TOKEN_FILE")
                 .unwrap_or_else(|_| DEFAULT_TOKEN_FILE.to_string()),
             remote_url,
@@ -548,7 +547,10 @@ mod tests {
             email: String::new(),
             admin: Some(true),
         };
-        assert_eq!(op.route(), ("PUT", "/api/v1/admin/users/notshared".to_string()));
+        assert_eq!(
+            op.route(),
+            ("PUT", "/api/v1/admin/users/notshared".to_string())
+        );
         let body: Value = serde_json::from_str(&op.body().unwrap()).unwrap();
         assert_eq!(body["admin"], true);
         assert_eq!(body["full_name"], "Jana Novak");
@@ -559,7 +561,10 @@ mod tests {
             admin: None,
         };
         let body: Value = serde_json::from_str(&op.body().unwrap()).unwrap();
-        assert!(body.get("admin").is_none(), "an unsaid admin flag is left as it is");
+        assert!(
+            body.get("admin").is_none(),
+            "an unsaid admin flag is left as it is"
+        );
 
         let op = GitOp::EnsureRepo {
             owner: "notshared".into(),
@@ -568,7 +573,10 @@ mod tests {
         };
         assert_eq!(
             op.route(),
-            ("PUT", "/api/v1/admin/users/notshared/repos/losos-config".to_string())
+            (
+                "PUT",
+                "/api/v1/admin/users/notshared/repos/losos-config".to_string()
+            )
         );
         let body: Value = serde_json::from_str(&op.body().unwrap()).unwrap();
         assert_eq!(body["private"], true, "the tunnel publishes /git/");
@@ -589,7 +597,10 @@ mod tests {
         };
         assert_eq!(
             search.route(),
-            ("GET", "/api/v1/repos/search?q=notes%20%26%20todo&limit=8".to_string())
+            (
+                "GET",
+                "/api/v1/repos/search?q=notes%20%26%20todo&limit=8".to_string()
+            )
         );
         assert!(search.body().is_none());
         assert_eq!(search.acting_as(), Some("eva"));
