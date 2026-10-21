@@ -57,7 +57,7 @@ LGTM";
 
 pub const DESCRIBE: &str = "\
 You describe one file's changes in a pull request for a reviewer. Every line starts with its line number. \"+\" marks a line the pull request adds, \"-\" a removed line, the rest is unchanged context.
-Answer with one sentence of at most 20 words saying what the change does, starting with a verb (for example \"Adds\", \"Fixes\", \"Moves\"). No code, no line numbers, no judgement.";
+Answer with one sentence of at most 20 words saying what the change does, starting with a verb (for example \"Adds\", \"Fixes\", \"Moves\"). Do not name the file. No code, no line numbers, no judgement.";
 
 pub const OVERVIEW: &str = "\
 You write the overview of a pull request for its reviewers, from its title and a one-line description of each changed file.

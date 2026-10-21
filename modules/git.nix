@@ -252,8 +252,23 @@ in
       ];
       # nginx opens the socket; it waits for nothing of ours to start.
       before = lib.optional config.services.nginx.enable "nginx.service";
-      path = [ git ];
-      environment.RUST_LOG = "info";
+      # curl asks the box's code model for LosOS Reviewer
+      # (backend/src/forge/reviewer/).
+      path = [
+        git
+        pkgs.curl
+      ];
+      # LosOS Reviewer asks the model Build with AI runs (modules/builder.nix),
+      # with the same context size so Ollama never loads it twice. Without
+      # Build with AI the reviewer is off and its setting says why.
+      environment = {
+        RUST_LOG = "info";
+      }
+      // lib.optionalAttrs config.losos.builder.enable {
+        LOSOS_REVIEWER_URL = "http://127.0.0.1:11434";
+        LOSOS_REVIEWER_MODEL = config.losos.builder.model;
+        LOSOS_REVIEWER_CONTEXT = toString config.losos.builder.contextTokens;
+      };
       # Keep trying: on the first switch from a Forgejo generation the old
       # pod can hold port 3000 for a moment (modules/workloads.nix).
       startLimitIntervalSec = 0;
@@ -314,6 +329,11 @@ in
           "AF_INET"
           "AF_INET6"
         ];
+        # Loopback only: people reach it through nginx's socket, lososd on
+        # 127.0.0.1, and LosOS Reviewer asks the model on 127.0.0.1. Code
+        # in the repositories cannot be sent anywhere else from here.
+        IPAddressDeny = "any";
+        IPAddressAllow = "localhost";
         RestrictNamespaces = true;
         RestrictRealtime = true;
         RestrictSUIDSGID = true;
