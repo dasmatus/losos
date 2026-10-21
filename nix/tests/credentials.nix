@@ -588,7 +588,10 @@ pkgs.testers.nixosTest {
             ):
                 box.fail(f"test -e {f}")
             assert BUCKET_SECRET in decrypt(box, "backup-bucket")
-            # lososd took the secret out of the bucket's JSON at start.
+            # lososd took the secret out of the bucket's JSON at start,
+            # before it opened its port (the plugins load first, slowly
+            # under TCG).
+            box.wait_for_open_port(8082)
             box.succeed("test -s /var/secrets/losos-backup.json")
             box.fail(f"grep -qF '{BUCKET_SECRET}' /var/secrets/losos-backup.json")
 
@@ -627,7 +630,7 @@ pkgs.testers.nixosTest {
             assert box.succeed(f"cat {d}/authelia-storage") == STORAGE
             assert box.succeed(f"cat {d}/authelia-oidc-hmac") == HMAC
             assert box.succeed(f"cat {d}/authelia-oidc-jwks") == jwks
-            assert box.succeed(f"cat /run/credentials/lososd.service/oidc-lososd") == decrypt(box, "oidc-lososd")
+            assert box.succeed("cat /run/credentials/lososd.service/oidc-lososd") == decrypt(box, "oidc-lososd")
             box.fail(f"runuser -u nobody -- cat {d}/authelia-session")
             box.fail("test -e /var/secrets/losos-identity/jwt")
 
