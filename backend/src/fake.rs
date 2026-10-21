@@ -144,15 +144,10 @@ pub struct FakeLosos {
     /// How often the status was asked for: the gate must read it on every
     /// turn-on, and a read-only command must not.
     pub edge_asked: usize,
-    // ── The owner's look ────────────────────────────────────────────────
-    /// Stands in for `look.json`.
-    pub look: crate::look::Look,
     /// Stands in for `user-apps.json`.
     pub user_apps: crate::user_apps::UserApps,
     /// Stands in for `user-apps/<id>.json`, by app id.
     pub app_data: std::collections::BTreeMap<String, crate::user_apps::AppData>,
-    /// Stands in for the uploaded picture's file; `None` is no file.
-    pub background: Option<Vec<u8>>,
     // ── The sidebar's pins ──────────────────────────────────────────────
     /// Stands in for `pins.json`.
     pub pins: crate::pins::Pins,
@@ -336,10 +331,8 @@ impl FakeLosos {
                 None,
             ),
             edge_asked: 0,
-            look: crate::look::Look::default(),
             user_apps: crate::user_apps::UserApps::default(),
             app_data: std::collections::BTreeMap::new(),
-            background: None,
             pins: crate::pins::Pins::default(),
             cloud_key: None,
             cloud_answers: std::collections::VecDeque::new(),
@@ -647,20 +640,6 @@ impl Losos for FakeLosos {
         Ok(())
     }
 
-    fn load_look(&mut self) -> anyhow::Result<crate::look::Look> {
-        Ok(self.look.clone())
-    }
-
-    fn save_look(&mut self, look: &crate::look::Look) -> anyhow::Result<()> {
-        self.look = look.clone();
-        Ok(())
-    }
-
-    fn write_background(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
-        self.background = Some(bytes.to_vec());
-        Ok(())
-    }
-
     fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
         Ok(self.pins.clone())
     }
@@ -696,15 +675,6 @@ impl Losos for FakeLosos {
         self.cloud_answers
             .pop_front()
             .ok_or_else(|| anyhow::anyhow!("the fake LosOS cloud is not answering"))
-    }
-
-    fn read_background(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
-        Ok(self.background.clone())
-    }
-
-    fn remove_background(&mut self) -> anyhow::Result<()> {
-        self.background = None;
-        Ok(())
     }
 
     fn load_user_apps(&mut self) -> anyhow::Result<crate::user_apps::UserApps> {

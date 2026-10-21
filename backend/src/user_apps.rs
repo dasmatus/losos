@@ -23,8 +23,13 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use crate::look::Invalid;
 use crate::losos::Losos;
+
+/// A request the owner can fix by sending a different one; the HTTP layer
+/// answers it as a 400 carrying the sentence.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct Invalid(pub String);
 
 /// Apps a box keeps.
 pub const MAX_APPS: usize = 24;

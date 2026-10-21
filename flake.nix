@@ -97,6 +97,9 @@
             pkgs.rustc
             pkgs.clippy
             pkgs.rustfmt
+            # The wasm32 linker for lososd's plugins (backend/plugins), which
+            # backend's tests/plugins.rs builds.
+            pkgs.lld
           ];
           # mold as the linker, ccache and sccache in front of the compilers
           # — the same stdenv nix/packages.nix builds the crates with, so
@@ -429,6 +432,7 @@
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
+        losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-cloud-webdav = import ./nix/tests/cloud-webdav.nix { inherit pkgs; };
         # Your apps: Chromium on a laptop asks the box for an app, watches it

@@ -1,7 +1,7 @@
 //! The builder: a language model on this box writes a widget or an app from
 //! the owner's description.
 //!
-//! A hand-written widget (`crate::look`) is HTML, style and script that the
+//! A hand-written widget (`losos_widget`, stored by the look plugin) is HTML, style and script that the
 //! admin page draws in a sandboxed frame; an app (`crate::user_apps`) is one
 //! React component in JSX that runs in a frame of its own and keeps its data
 //! on the box. Writing either takes some knowledge of the frame, so the
@@ -77,7 +77,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use crate::look::{is_file_name, validate_files, WidgetFile, ENTRY_FILE, MAX_FILES};
+use losos_widget::{is_file_name, validate_files, WidgetFile, ENTRY_FILE, MAX_FILES};
 
 /// What the model is told before a widget, as chat turns.
 pub const WIDGET_PROMPT: &str = include_str!("builder-widget-prompt.md");
@@ -131,7 +131,7 @@ const MAX_REPORT_CHARS: usize = 200;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
-    /// A tile for the board (`crate::look`).
+    /// A tile for the board (`losos_widget`).
     Widget,
     /// An app with a page of its own (`crate::user_apps`).
     App,
@@ -549,7 +549,7 @@ pub fn parse_request(doc: &Value) -> Result<Request, Refused> {
             name: APP_FILE.into(),
             content: s.clone(),
         }]),
-        (Kind::Widget, Some(files)) => match crate::look::parse_files(files) {
+        (Kind::Widget, Some(files)) => match losos_widget::parse_files(files) {
             Some(files) => Some(files),
             None => return refuse(400, "the widget to change is not a list of files"),
         },
