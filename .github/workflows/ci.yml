@@ -530,8 +530,6 @@ jobs:
           path: images-cache
           retention-days: 1
           include-hidden-files: true
-      # losos-image-nextcloud is not built here either; see the
-      # image-nextcloud job below for what changed about that on this forge.
 
   publish-cache:
     name: "nix: publish built paths to proxy"
@@ -749,53 +747,6 @@ jobs:
           name: losos-pages-updates
           path: dev-machine
           retention-days: 30
-
-  # ── The Nextcloud image ────────────────────────────────────────────────────
-  #
-  # The appliance is *required* to substitute this image: it never builds one.
-  # So a cache that does not have it is worse than no cache at all — the box
-  # discovers the gap during system.autoUpgrade at 03:00, on a mini-PC with a
-  # tmpfs root and no shell, three hours before an unconditional reboot. It is
-  # also the image most likely to break.
-  #
-  # On the retired Codeberg lane this was workflow_dispatch only, because of
-  # the cap: the content closure is 2.3 GiB across 244 store paths
-  # (nextcloud34 with ~30 apps, php-with-extensions, apacheHttpd) against
-  # Forgejo's 647 MiB, so on a cold runner it fetches roughly 3.5x what the `images` job fetches, inside
-  # ten minutes. That objection does not survive the move: this job may take an
-  # hour here.
-  #
-  # So it also runs on the weekly schedule, which closes the hole that lane
-  # documents as "a real hole and not an oversight" without putting a 2.3 GiB
-  # fetch on every push. It is deliberately NOT folded into `images`: the one
-  # number nobody has measured is what this costs a cold runner, and this
-  # repository has been burned twice by guessing — doCheck stayed on until
-  # `nix build .#losos-ctl` turned out to be a 7.7-10.3 minute coin flip, and
-  # the ISO was excluded as fitting "neither the time nor the disk-as-RAM
-  # budget" on a figure taken against zstd level 19 when flake.nix already sets
-  # level 6. The weekly run prints its own timing; move it into `images` once
-  # there are numbers, not before.
-  image-nextcloud:
-    name: "nix: Nextcloud image -> proxy"
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-      # Do not spend an hour building an image without somewhere to publish it.
-      - uses: ./.github/actions/proxy-push
-        if: vars.LOSOS_PROXY_URL != ''
-        with:
-          installables: ".#losos-image-nextcloud"
-          build-args: "-L"
-          signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
 
   fmt-bot:
     name: "bot: cargo fmt, push back"

@@ -1,13 +1,16 @@
-# LosOS Cloud: people's files, in the browser at /cloud/ and to the
-# Nextcloud desktop and phone apps and file managers over the addresses
-# they already know (backend/src/cloud/, the losos-cloud binary).
+# LosOS Cloud: people's files, calendars, contacts and boards, in the
+# browser at /cloud/ and to the Nextcloud desktop and phone apps, calendar
+# apps and file managers over the addresses they already know
+# (backend/src/cloud/, the losos-cloud binary).
 #
 #   /cloud/         the web app (admin-ui/app/cloud/), behind LosOS Login
 #   /cloud/api/     its JSON API
 #   /status.php, /remote.php/, /ocs/, /index.php/, /public.php/
 #                   what the Nextcloud apps call: discovery, sign-in (Login
 #                   Flow v2, which opens /cloud/connect/<token>), WebDAV with
-#                   chunked uploads, trash and versions
+#                   chunked uploads, trash and versions, CalDAV and CardDAV
+#   /nextcloud/     the same, where a box's Nextcloud used to answer, so
+#                   apps set up against it keep working
 #
 # nginx is the only way in. The service listens on a Unix socket only
 # nginx's group may open, which is what makes the person nginx names in
@@ -18,9 +21,10 @@
 # and through the tunnel alike.
 #
 # Files live under /var/lib/losos-cloud/<login>/files, persisted with /var.
-# The owner is `notshared`, the account that holds their files in the LosOS
-# cloud pod too (modules/app-sign-in.nix), so `losos-cloud import` can move
-# them over unchanged. nix/tests/cloud.nix boots it.
+# The owner is `notshared`, the account that held their files in Nextcloud
+# too (modules/app-sign-in.nix), so `losos-cloud import` moves them over
+# under the same name. nix/tests/cloud.nix boots it, and
+# nix/tests/cloud-from-nextcloud.nix moves a real Nextcloud into it.
 {
   config,
   lib,
@@ -50,22 +54,34 @@ let
     proxy_set_header ${signIn.header.email} $losos_person_email;
   '';
 
-  # Where Nextcloud kept everything, on every box that ran it in either
-  # mode (it was modules/nextcloud-stack.nix's layout): the files under
-  # data/<login>/files, its config.php, and its database in the box's
-  # Postgres. The move below reads them once and leaves them in place.
+  # Where Nextcloud kept everything, on every box that ran it, in the pod
+  # and natively alike: the files under data/<login>/files, its config.php,
+  # and its database in the box's Postgres. The move below takes the files
+  # (a rename, so no second copy), reads the rest once and leaves it.
   ncData = "/var/lib/nextcloud/data/data";
   ncConfig = "/var/lib/nextcloud/data/config/config.php";
   marker = "${stateDir}/.from-nextcloud";
   report = "${stateDir}/from-nextcloud.json";
 
-  # The Postgres Nextcloud's database was made with: what nixpkgs gives
-  # stateVersion 26.11. Checked against the data's PG_VERSION before use.
+  # The Postgres the box runs, if it still runs one, for its client tools.
+  # A data folder no server has open is started with the server of its own
+  # major version (PG_VERSION), from this list: 18 is what nixpkgs gives
+  # stateVersion 26.11, the others are there in case a box was moved on.
   pg =
     if config.services.postgresql.enable then
       config.services.postgresql.package
     else
       pkgs.postgresql_18;
+  pgByMajor = {
+    "16" = pkgs.postgresql_16;
+    "17" = pkgs.postgresql_17;
+    "18" = pkgs.postgresql_18;
+  };
+
+  # The box's own containerd (modules/cluster.nix, `localCriSocket`), where
+  # Nextcloud's pod ran.
+  localCri = "unix:///run/containerd/containerd.sock";
+  staticPod = "/var/lib/losos/k3s-static-pods/nextcloud.yaml";
 
   # The tables the move reads: every row of each, as JSON.
   ncTables = [
@@ -93,7 +109,7 @@ let
     started=
     cleanup() {
       if [ -n "$started" ]; then
-        runuser -u postgres -- pg_ctl -D "$work/pg" -m fast -w stop >/dev/null || true
+        runuser -u postgres -- "$started/bin/pg_ctl" -D "$work/pg" -m fast -w stop >/dev/null || true
       fi
       rm -rf "$work"
     }
@@ -101,38 +117,64 @@ let
     mkdir -p "$work/dump" ${stateDir}
     chmod 0700 ${stateDir}
 
+    # Nextcloud first stops for good, so nothing writes while its files
+    # move. The pod's manifest link goes (modules/workloads.nix removes it
+    # too, but that may run after this on the boot that switches), and a
+    # pod still running is stopped through the runtime. Natively there is
+    # nothing to do: the switch to this system stopped php-fpm already.
+    rm -f ${staticPod}
+    if [ -S ${lib.removePrefix "unix://" localCri} ]; then
+      for pod in $(crictl --runtime-endpoint ${localCri} pods --name '^nextcloud' --quiet 2>/dev/null); do
+        echo "losos-cloud: stopping Nextcloud's pod"
+        crictl --runtime-endpoint ${localCri} stopp "$pod" >/dev/null || true
+      done
+    fi
+
     # Nextcloud's database: the running server if there is one, else a
-    # private copy of its data folder on a private socket. Never the
-    # original files, which stay as they are.
+    # private copy of its data folder on a private socket, started with
+    # the Postgres that made it. Never the original files, which stay as
+    # they are.
+    has_nextcloud() {
+      # grep reads to the end (no -q), so psql never dies of a closed pipe
+      # under pipefail.
+      runuser -u postgres -- "$1/bin/psql" -h "$2" -XAtq -l | cut -d'|' -f1 | grep -x nextcloud >/dev/null
+    }
     sock=
-    if [ -S /run/postgresql/.s.PGSQL.5432 ]; then
+    bin=${pg}
+    if [ -S /run/postgresql/.s.PGSQL.5432 ] && has_nextcloud ${pg} /run/postgresql; then
       sock=/run/postgresql
     else
-      for v in /var/lib/postgresql/*/PG_VERSION; do
-        [ -e "$v" ] || continue
+      for v in $(ls -d /var/lib/postgresql/*/PG_VERSION 2>/dev/null | sort -rV); do
         data=$(dirname "$v")
         major=$(cat "$v")
-        if [ "$major" != "${lib.versions.major pg.version}" ]; then
-          echo "losos-cloud: Nextcloud's database is Postgres $major, this box has ${pg.version}; not moving it" >&2
-          exit 1
-        fi
+        case "$major" in
+          ${lib.concatStrings (lib.mapAttrsToList (m: p: "${m}) bin=${p} ;;
+          ") pgByMajor)}*)
+            echo "losos-cloud: $data is Postgres $major, which this box cannot open; skipped" >&2
+            continue
+            ;;
+        esac
+        rm -rf "$work/pg" "$work/sock"
         cp -a "$data" "$work/pg"
         rm -f "$work/pg/postmaster.pid"
-        rm -f "$work/pg/postgresql.conf"
         : > "$work/pg/postgresql.conf"
         printf 'local all all trust\n' > "$work/pg/pg_hba.conf"
         mkdir -p "$work/sock"
         chown -R postgres "$work/pg" "$work/sock"
-        runuser -u postgres -- pg_ctl -D "$work/pg" -w -l "$work/pg.log" \
+        runuser -u postgres -- "$bin/bin/pg_ctl" -D "$work/pg" -w -l "$work/pg.log" \
           -o "-c listen_addresses= -c unix_socket_directories=$work/sock -c hba_file=$work/pg/pg_hba.conf" start
-        started=1
-        sock="$work/sock"
-        break
+        started=$bin
+        if has_nextcloud "$bin" "$work/sock"; then
+          sock="$work/sock"
+          break
+        fi
+        runuser -u postgres -- "$bin/bin/pg_ctl" -D "$work/pg" -m fast -w stop >/dev/null
+        started=
       done
     fi
 
-    if [ -n "$sock" ] && runuser -u postgres -- psql -h "$sock" -XAtq -l | cut -d'|' -f1 | grep -qx nextcloud; then
-      q() { runuser -u postgres -- psql -h "$sock" -d nextcloud -XAtq -v ON_ERROR_STOP=1 -c "$1"; }
+    if [ -n "$sock" ]; then
+      q() { runuser -u postgres -- "$bin/bin/psql" -h "$sock" -d nextcloud -XAtq -v ON_ERROR_STOP=1 -c "$1"; }
       for t in ${lib.concatStringsSep " " ncTables}; do
         if [ "$(q "select to_regclass('oc_$t') is not null")" = t ]; then
           q "select coalesce(json_agg(row_to_json(x)), '[]') from oc_$t x" > "$work/dump/$t.json"
@@ -182,14 +224,15 @@ in
       after = [
         "local-fs.target"
         "postgresql.service"
+        "k3s.service"
       ];
       unitConfig.ConditionPathExists = [
         ncData
         "!${marker}"
       ];
       path = [
-        pg
         pkgs.coreutils
+        pkgs.cri-tools
         pkgs.gnugrep
         pkgs.util-linux
       ];
@@ -316,9 +359,13 @@ in
       };
     };
 
-    # The share in a file manager's Network view, while the LosOS cloud pod
-    # does not announce its own (modules/containers.nix).
-    losos.mdns.services = lib.mkIf (config.losos.nextcloud.mode != "container") {
+    # The share in a file manager's Network view, announced over DNS-SD
+    # (modules/mdns.nix), which is how GNOME Files, KDE Dolphin and other
+    # Linux file managers list shares on the LAN. Over TLS whenever the box
+    # has it, so the password does not cross the LAN in the clear. Windows
+    # Explorer and the macOS Finder do not list WebDAV announcements;
+    # handbook/docs/manual/files-on-your-computer.md has their way in.
+    losos.mdns.services = {
       losos-cloud =
         let
           tls = config.losos.tls.enable;

@@ -201,7 +201,7 @@ in
     };
 
     # ── the edge that manages this box ───────────────────────────────────
-    # A company's own edge may change LosOS cloud, LosOS Git and the apps,
+    # A company's own edge may change LosOS Cloud, LosOS Git and the apps,
     # once the owner switched that on for it on the Mesh page
     # (backend/src/edge.rs, "management"). Its calls come through this box's
     # own tunnel, which lands on 127.0.0.1:80, so this server takes loopback

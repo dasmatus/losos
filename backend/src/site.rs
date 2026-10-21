@@ -1,8 +1,8 @@
-//! The settings of LosOS cloud and LosOS Git, on a route of their own.
+//! The settings of LosOS Cloud and LosOS Git, on a route of their own.
 //!
 //! `GET /api/site` and `POST /api/site` are the apps section's way to change
-//! what Nextcloud's Administration settings and Forgejo's Site administration
-//! would otherwise hold, without `POST /api/apply`, which writes any option
+//! what LosOS Cloud keeps (`losos.cloud.trashDays`) and what Forgejo's Site
+//! administration would otherwise hold, without `POST /api/apply`, which writes any option
 //! and is admin only. A company edge the owner lets manage the box
 //! (`crate::edge::manageable`) reaches these two routes and nothing that
 //! writes the rest of `overrides.nix`.
@@ -19,9 +19,8 @@ use crate::overrides::parse_line;
 /// The options this route may read and write, by name or by prefix (a name
 /// ending in `.`), without the `losos.` prefix.
 pub const OPTIONS: &[&str] = &[
-    "nextcloud.site.",
+    "cloud.trashDays",
     "forgejo.site.",
-    "nextcloud.federation.enable",
     "forgejo.federation.enable",
 ];
 
@@ -51,7 +50,7 @@ pub fn view(doc: &OptionsDoc, overrides: &str) -> Value {
 pub fn check(doc: &OptionsDoc, name: &str, raw: Option<&str>) -> Result<(), Rejected> {
     if !is_site(name) {
         return Err(Rejected(format!(
-            "losos.{name} is not a setting of LosOS cloud or LosOS Git"
+            "losos.{name} is not a setting of LosOS Cloud or LosOS Git"
         )));
     }
     let Some(opt) = doc.find(name) else {
@@ -146,11 +145,11 @@ mod tests {
         serde_json::from_value(json!({
             "version": 1,
             "options": [
-                { "name": "nextcloud.site.trashDays", "group": "nextcloud",
+                { "name": "cloud.trashDays", "group": "cloud",
                   "editor": { "kind": "int", "min": 1, "max": 3650 }, "nixType": "int" },
                 { "name": "forgejo.site.landingPage", "group": "forgejo",
                   "editor": { "kind": "enum", "values": ["home", "explore", "login"] }, "nixType": "enum" },
-                { "name": "nextcloud.federation.enable", "group": "nextcloud",
+                { "name": "forgejo.federation.enable", "group": "forgejo",
                   "editor": { "kind": "bool" }, "nixType": "bool" },
                 { "name": "hostName", "group": "general",
                   "editor": { "kind": "str" }, "nixType": "str" },
@@ -163,15 +162,16 @@ mod tests {
 
     #[test]
     fn only_the_two_apps_settings_are_site_settings() {
-        assert!(is_site("nextcloud.site.trashDays"));
+        assert!(is_site("cloud.trashDays"));
         assert!(is_site("forgejo.site.landingPage"));
-        assert!(is_site("nextcloud.federation.enable"));
-        assert!(!is_site("nextcloud.site."));
-        assert!(!is_site("nextcloud.siteX.a"));
-        assert!(!is_site("nextcloud.federation.enabled"));
+        assert!(is_site("forgejo.federation.enable"));
+        assert!(!is_site("forgejo.site."));
+        assert!(!is_site("forgejo.siteX.a"));
+        assert!(!is_site("forgejo.federation.enabled"));
+        assert!(!is_site("cloud.trashDaysX"));
         assert!(!is_site("hostName"));
         assert!(!is_site("sharingMyStorage"));
-        assert!(!is_site("nextcloud.mode"));
+        assert!(!is_site("cloud.enable"));
     }
 
     #[test]
@@ -184,19 +184,19 @@ mod tests {
             .map(|o| o["name"].as_str().unwrap())
             .collect();
         assert!(!names.contains(&"hostName"), "{names:?}");
-        assert!(names.contains(&"nextcloud.site.trashDays"));
+        assert!(names.contains(&"cloud.trashDays"));
         assert_eq!(v["stray"], json!([]));
     }
 
     #[test]
     fn each_change_is_checked_by_name_and_kind() {
         let d = doc();
-        assert!(check(&d, "nextcloud.site.trashDays", Some("30")).is_ok());
-        assert!(check(&d, "nextcloud.site.trashDays", None).is_ok());
-        assert!(check(&d, "nextcloud.site.trashDays", Some("0")).is_err());
+        assert!(check(&d, "cloud.trashDays", Some("30")).is_ok());
+        assert!(check(&d, "cloud.trashDays", None).is_ok());
+        assert!(check(&d, "cloud.trashDays", Some("0")).is_err());
         assert!(check(
             &d,
-            "nextcloud.site.trashDays",
+            "cloud.trashDays",
             Some("30; losos.hostName = \"x\"")
         )
         .is_err());
@@ -215,7 +215,7 @@ mod tests {
         )
         .is_err());
         assert!(check(&d, "hostName", Some("\"x\"")).is_err());
-        assert!(check(&d, "nextcloud.site.notDeclared", Some("1")).is_err());
+        assert!(check(&d, "forgejo.site.notDeclared", Some("1")).is_err());
         assert!(check(&d, "forgejo.site.fixedOne", Some("true")).is_err());
     }
 
@@ -223,11 +223,11 @@ mod tests {
     fn a_patch_touches_only_the_named_lines() {
         let one = patch(
             DEFAULT_OVERRIDES_NIX,
-            &[("nextcloud.site.trashDays".into(), Some("30".into()))],
+            &[("cloud.trashDays".into(), Some("30".into()))],
         )
         .unwrap();
         assert_eq!(
-            lookup_nix("nextcloud.site.trashDays", &one).as_deref(),
+            lookup_nix("cloud.trashDays", &one).as_deref(),
             Some("30")
         );
         assert_eq!(lookup_nix("hostName", &one).as_deref(), Some("\"mattbox\""));
@@ -239,28 +239,28 @@ mod tests {
 
         let two = patch(
             &one,
-            &[("nextcloud.site.trashDays".into(), Some("60".into()))],
+            &[("cloud.trashDays".into(), Some("60".into()))],
         )
         .unwrap();
         assert_eq!(
-            lookup_nix("nextcloud.site.trashDays", &two).as_deref(),
+            lookup_nix("cloud.trashDays", &two).as_deref(),
             Some("60")
         );
         assert_eq!(two.matches("trashDays").count(), 1);
 
-        let back = patch(&two, &[("nextcloud.site.trashDays".into(), None)]).unwrap();
+        let back = patch(&two, &[("cloud.trashDays".into(), None)]).unwrap();
         assert_eq!(back, DEFAULT_OVERRIDES_NIX);
     }
 
     #[test]
     fn a_shared_line_is_refused_not_half_rewritten() {
         let body =
-            "{ ... }:\n{\n  losos.hostName = \"a\"; losos.nextcloud.site.trashDays = 5;\n}\n";
+            "{ ... }:\n{\n  losos.hostName = \"a\"; losos.cloud.trashDays = 5;\n}\n";
         assert!(patch(
             body,
-            &[("nextcloud.site.trashDays".into(), Some("9".into()))]
+            &[("cloud.trashDays".into(), Some("9".into()))]
         )
         .is_err());
-        assert!(patch(body, &[("nextcloud.site.trashDays".into(), None)]).is_err());
+        assert!(patch(body, &[("cloud.trashDays".into(), None)]).is_err());
     }
 }

@@ -1,58 +1,44 @@
 # The Nginx front door.
 #
 # One default_server vhost on :80 carries everything the appliance publishes:
-# the admin SPA at /, lososd's JSON API at /api/*, and the two service routes
-# /nextcloud and /forgejo/. default_server because master-proxy
+# the admin SPA at /, lososd's JSON API at /api/*, LosOS Cloud
+# (modules/cloud.nix) and /forgejo/. default_server because master-proxy
 # (Traefik+rathole) traffic arrives with a public hostname, not
 # <hostName>.local. Nothing but Nginx binds a public port. The admin surface
-# (/, /assets/, /setup/, /api/) is LAN-only (see `lanOnly` below); only
-# /nextcloud and /forgejo are reachable through the master-proxy tunnel.
+# (/, /setup/, /api/) is LAN-only (see `lanOnly` below); LosOS Cloud and
+# /forgejo are reachable through the master-proxy tunnel.
 #
-# This file used to *define* the two services as well, as systemd-nspawn
+# This file used to *define* the services as well, as systemd-nspawn
 # containers on private veths (10.231.1.2 and 10.231.2.2) with NAT for egress.
 # All of that is gone. `losos.<svc>.mode == "container"` now means a static pod
 # in this box's own local k3s cluster: modules/cluster.nix runs the cluster,
 # modules/workloads.nix writes the manifests and the rendered config the pods
-# mount, and modules/nextcloud-common.nix still holds the Nextcloud truth both
-# modes share. The option value keeps the name "container" — it is the
+# mount. The option value keeps the name "container" — it is the
 # user-facing spelling in the settings SPA and there is no installed base to
 # break by renaming it, but it no longer implies nspawn.
 #
 # The local cluster runs no CNI (--flannel-backend=none), so its pods share the
-# host's network namespace and bind 127.0.0.1. That is why the two routes below
-# proxy to loopback ports instead of container addresses — and why `lanOnly`
+# host's network namespace and bind 127.0.0.1. That is why the route below
+# proxies to a loopback port instead of container addresses — and why `lanOnly`
 # lost a layer of depth. That loss is spelled out where the guard is defined;
 # do not re-add a deny rule for a subnet that no longer exists.
 #
 # The vhost itself is unconditional: it owns the *service* routes, so gating it
-# on losos.admin.enable (as it used to be) took Nextcloud and Forgejo offline
+# on losos.admin.enable (as it used to be) took the services offline
 # along with the dashboard. Only the admin locations, the document root and the
 # admin-only firewall entry follow losos.admin.enable.
 {
   lib,
   config,
-  pkgs,
   ...
 }:
 
 let
-  # Plain data about the Nextcloud stack; only the federation addresses and
-  # the admin-page writes refused for LosOS-owned settings are read here.
-  nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
-
-  nextcloudWorkload = config.losos.nextcloud.mode == "container";
   # losos.forgejo.enable is consulted in *both* modes. It used to be read only
   # by the native path (modules/services.nix), so with the default
   # mode == "container" the option was dead: enable = false still ran the git
   # host and still published /forgejo/ through the tunnel.
   forgejoWorkload = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
-
-  # The Nextcloud pod's httpd listens here. The port is runtime-tunable from
-  # the settings SPA, which is exactly why it is not baked into the image:
-  # modules/workloads.nix renders listen.conf in module context and
-  # hostPath-mounts it, so a changed port changes the manifest and the kubelet
-  # restarts the pod. Both ends read the same option, so they cannot drift.
-  apachePort = config.losos.nextcloud.apachePort;
 
   # Forgejo's port is a literal on both sides — here and in the losos.ini that
   # modules/workloads.nix mounts into the pod. There is deliberately no
@@ -64,7 +50,6 @@ let
   # Sign-in to the two apps with LosOS Login (modules/app-sign-in.nix,
   # modules/identity.nix for the questions nginx asks it).
   signIn = import ./app-sign-in.nix { inherit lib; };
-  signInNextcloud = config.lososInternal.appSignIn.nextcloud;
   signInForgejo = config.lososInternal.appSignIn.forgejo;
   # Whatever a client sent, the apps never see these headers from it.
   clearSignIn = ''
@@ -97,21 +82,6 @@ let
     error_page 403 @losos-app-held;
     error_page 500 =503 @losos-app-waiting;
   '';
-  # Uploads of any size, streamed, and sync runs that take all day.
-  nextcloudFiles = ''
-    client_max_body_size 0;
-    proxy_request_buffering off;
-    proxy_read_timeout 86400s;
-    proxy_send_timeout 86400s;
-  '';
-  # What the `/nextcloud` location below does for every page, for the two
-  # sign-in locations that sit beside it. The reasons are written there.
-  nextcloudPage = ''
-    proxy_set_header X-Losos-Server-Addr $server_addr;
-    proxy_redirect http://$host/ /;
-    absolute_redirect off;
-  '';
-
   adminUi = config.losos.admin.ui;
   adminApiPort = config.losos.admin.apiPort;
   # Only nginx's `losos-manage.invalid` server (modules/proxy.nix) may
@@ -153,7 +123,7 @@ let
   #
   # Under nspawn the workloads had their own subnet, so this list began with
   # `deny 10.231.0.0/16;` — nginx takes the first matching rule, and a PHP RCE
-  # in Nextcloud reaching Nginx on 0.0.0.0:80 *from* 10.231.1.2 was refused
+  # in a workload reaching Nginx on 0.0.0.0:80 *from* 10.231.1.2 was refused
   # before `allow 10.0.0.0/8` could wave it through. hostNetwork pods have no
   # address of their own, so there is nothing left to deny: nginx sees them as
   # 127.0.0.1 or as the box's own LAN address. A pod connecting over loopback
@@ -186,7 +156,7 @@ let
   #
   # What is genuinely left: /api is Bearer-authed against
   # losos.admin.tokenFile, which is 0600 root-only, and the workload pods run
-  # as uid 1002/1003 — so they cannot read the token and cannot drive the API
+  # as their own uids (1003, the apps' 1000/1001) — so they cannot read the token and cannot drive the API
   # even from an address this guard accepts. The static admin pages behind the
   # other guarded locations are not secrets.
   #
@@ -198,15 +168,15 @@ let
   lanOnly = import ./lan-only.nix;
 
   # ── Security response headers ─────────────────────────────────────────────
-  # The admin UI, /api/, /nextcloud and /forgejo/ share one origin by design,
+  # The admin UI, /api/, /cloud/ and /forgejo/ share one origin by design,
   # so a strict CSP is the only thing standing between an injected script on
   # the admin pages and the Bearer token the SPA keeps in sessionStorage.
   #
-  # It cannot be applied to Nextcloud or Forgejo: both ship their own CSP and
-  # both need inline script, and `add_header` at server level is inherited by
-  # every location that does not set one of its own — including the two proxy
-  # locations. So the values are selected by a `map` on $uri and the two
-  # service prefixes map to the empty string; nginx omits a header whose value
+  # It cannot be applied to Forgejo: it ships its own CSP and needs inline
+  # script, and `add_header` at server level is inherited by every location
+  # that does not set one of its own — including the proxy location. So the
+  # values are selected by a `map` on $uri and the service prefix maps to the
+  # empty string; nginx omits a header whose value
   # is empty. Fail-closed on purpose: the default arm is the strict policy, so
   # a new admin route is covered without anyone remembering to add it.
   #
@@ -236,26 +206,14 @@ let
     "img-src 'self' data:"
     "font-src 'self'"
     "connect-src 'self'"
-    # The first-run wizard embeds /nextcloud so the handover from "choose a
-    # password" to "here are your files" happens without leaving the page.
-    #
-    # It has to be spelled out: under CSP3 frame-src falls back to child-src
-    # and then to default-src, which is 'none' above, so an absent frame-src is
-    # a *block*, not an inherit.
-    #
-    # 'self' and nothing wider, and this is not merely tidiness. The framed
-    # page is same-origin, which means it is NOT sandboxed from us: it can
-    # reach `parent.document` and therefore the admin token in sessionStorage.
-    # docs/security-model.md already accepts that an XSS in Nextcloud is a full
-    # appliance compromise because the two share an origin; framing Nextcloud
-    # inside the admin document does not create that exposure, but it does
-    # remove the "an attacker must first land an XSS" step for anything
-    # Nextcloud itself loads. That trade was made deliberately — see the
-    # "Embedding Nextcloud in the wizard" section of the security model.
+    # The board embeds `/widget-frame/` (below) for the owner's hand-written
+    # widgets. It has to be spelled out: under CSP3 frame-src falls back to
+    # child-src and then to default-src, which is 'none' above, so an absent
+    # frame-src is a *block*, not an inherit. 'self' and nothing wider.
     "frame-src 'self'"
     "form-action 'none'"
     # Unchanged, and it governs the OTHER direction: who may frame the admin
-    # page. Nothing about embedding Nextcloud needs this loosened, and
+    # page. Nothing about embedding a frame needs this loosened, and
     # nix/tests/front-vhost.nix asserts it stayed DENY precisely because reaching
     # for it is the obvious wrong way to unblock an iframe.
     "frame-ancestors 'none'"
@@ -341,14 +299,13 @@ let
   ];
 
   # One map per header: value on the admin surface, empty (header omitted) on
-  # the two proxied service routes, the handbook's and the lab's own values
+  # the proxied Git route, the handbook's and the lab's own values
   # (or the admin value, for the headers they share) under /handbook/ and
   # /lab/, and the widget frame's own value (or nothing) under
   # /widget-frame/.
   adminHeaderMap = variable: value: handbookValue: labValue: frameValue: ''
     map $uri ${variable} {
         default          "${value}";
-        ~^/nextcloud     "";
         ~^/forgejo       "";
         ~^/handbook/     "${handbookValue}";
         ~^/lab/          "${labValue}";
@@ -608,46 +565,6 @@ in
             '';
           };
         })
-        (lib.mkIf nextcloudWorkload {
-          # No URI part in proxyPass -> path preserved; the pod's
-          # losos.config.php sets overwritewebroot = /nextcloud.
-          #
-          # Loopback, not a container address: the pod is hostNetwork, so its
-          # httpd binds 127.0.0.1:<apachePort> on the host itself. The pod's
-          # trusted_proxies must therefore list 127.0.0.1 rather than a veth
-          # host address, or Nextcloud sees one client for every request and
-          # its brute-force throttle protects nothing (modules/workloads.nix).
-          "/nextcloud" = {
-            proxyPass = "http://127.0.0.1:${toString apachePort}";
-            proxyWebsockets = true;
-            extraConfig = ''
-              ${nextcloudFiles}
-              # The address this request reached the box on. The pod's
-              # losos.config.php (modules/workloads.nix) adds it to
-              # trusted_domains, so a browser that opens the box by its IP
-              # address — the only way in from a libvirt VM, which gets no
-              # mDNS name — is not met with "Untrusted domain". $server_addr
-              # is the kernel's view of the accepting socket, not anything
-              # the client sent, and proxy_set_header replaces a header of
-              # the same name on the way in; nginx also drops a client's
-              # X_Losos_Server_Addr (underscores, which CGI would fold into
-              # the same variable) under its default ignore_invalid_headers.
-              proxy_set_header X-Losos-Server-Addr $server_addr;
-              ${clearSignIn}
-              # Apache answers `/nextcloud` with a 301 to the directory,
-              # spelled absolute and always http, because the pod only ever
-              # sees plain http from this proxy. Opened over https that sends
-              # the browser back to :80, and inside the first-run wizard's
-              # frame the admin CSP (frame-src 'self') refuses the http
-              # origin, so the step showed "This content is blocked". Cut to
-              # a path, and left a path (nginx would otherwise spell it out
-              # again with its own scheme and port), the browser resolves it
-              # against the address it is on, https included.
-              proxy_redirect http://$host/ /;
-              absolute_redirect off;
-            '';
-          };
-        })
         (lib.mkIf forgejoWorkload {
           # Trailing slash on proxyPass -> /forgejo prefix stripped;
           # Forgejo's ROOT_URL is https://<host>.local/forgejo/ (http without
@@ -669,78 +586,6 @@ in
             extraConfig = signInPage;
           };
         })
-        (lib.mkIf (nextcloudWorkload && signInNextcloud) {
-          # Nextcloud's sign-in page and user_saml's, which reads the
-          # headers (modules/app-sign-in.nix): LosOS Login's instead (see
-          # `signInPage`). Regex, so it wins over the `/nextcloud` prefix;
-          # both spellings Nextcloud links.
-          "~ ^/nextcloud/(?:index\\.php/)?(?:login|apps/user_saml/saml/login)$" = {
-            proxyPass = "http://127.0.0.1:${toString apachePort}";
-            extraConfig = ''
-              ${signInPage}
-              ${nextcloudPage}
-            '';
-          };
-          # Log out: Nextcloud ends its session, then LosOS Login ends its
-          # own, or the sign-in page would sign the person straight back in.
-          # Only for a person LosOS Login signed in; anyone else, and anyone
-          # while LosOS Login is down, gets Nextcloud's own answer.
-          "~ ^/nextcloud/(?:index\\.php/)?logout$" = {
-            proxyPass = "http://127.0.0.1:${toString apachePort}";
-            extraConfig = ''
-              auth_request /internal/losos-app-sign-in;
-              error_page 401 403 500 = @losos-nextcloud-page;
-              proxy_redirect ~.* https://$host/auth/logout?rd=https://$host/nextcloud/login;
-              ${clearSignIn}
-              ${nextcloudPage}
-            '';
-          };
-          "@losos-nextcloud-page" = {
-            proxyPass = "http://127.0.0.1:${toString apachePort}";
-            extraConfig = ''
-              ${clearSignIn}
-              ${nextcloudPage}
-            '';
-          };
-          # The WebDAV share, as file managers and the sync apps open it
-          # (the announcement below): a LosOS Login name and password open
-          # it as that person, anything else goes on to Nextcloud as it came
-          # (modules/identity.nix, backend/src/cloud_share.rs). Regex, so it
-          # wins over the `/nextcloud` prefix.
-          "~ ^/nextcloud/remote\\.php/(?:webdav|dav)(?:/|$)" = {
-            proxyPass = "http://127.0.0.1:${toString apachePort}";
-            extraConfig = ''
-              ${passSignIn "/internal/losos-cloud-share"}
-              proxy_set_header Authorization $losos_share_authorization;
-              ${nextcloudFiles}
-              ${nextcloudPage}
-            '';
-          };
-        })
-        (lib.mkIf nextcloudWorkload (
-          # The admin pages' writes to the settings LosOS sets on every start
-          # (losos.nextcloud.site.* and federation's switches): refused here,
-          # so Nextcloud's admin page reports an error instead of changing a
-          # value the next start would put back. A regex location, so it
-          # wins over the `/nextcloud` prefix above, matched against the
-          # normalised path. modules/nextcloud-stack.nix (`site`) lists the
-          # keys.
-          lib.genAttrs (nc.site.locations "/nextcloud") (_: {
-            return = "403";
-          })
-        ))
-        (lib.mkIf (nextcloudWorkload && !config.lososInternal.federation.nextcloud) (
-          # Federation off (losos.nextcloud.federation.enable, gated on
-          # losos.sharingMyStorage): the addresses other Nextcloud servers
-          # call answer 404 here and never reach the pod. Regex locations, so
-          # they win over the `/nextcloud` prefix above; nginx matches them
-          # against the normalised path, so an escaped or doubled slash does
-          # not slip past. modules/nextcloud-stack.nix lists them and says why
-          # Nextcloud's own switches alone are not enough.
-          lib.genAttrs (nc.federation.locations "/nextcloud") (_: {
-            return = "404";
-          })
-        ))
         # Only while the box shares its disk: lososInternal.federation.forgejo
         # is losos.forgejo.federation.enable gated on losos.sharingMyStorage.
         (lib.mkIf (forgejoWorkload && config.lososInternal.federation.forgejo) {
@@ -765,41 +610,16 @@ in
     };
   };
 
-  # ── LosOS cloud in a file manager's Network view ─────────────────────────
-  # The WebDAV share, announced over DNS-SD (modules/mdns.nix), which is how
-  # GNOME Files, KDE Dolphin and other Linux file managers list shares on the
-  # LAN: an entry named after the box that opens the owner's files as a
-  # folder, after their user name and password. `path` is where those
-  # clients go on the host; remote.php/webdav is Nextcloud's WebDAV root for
-  # whoever signs in, so one announcement serves every account. Over TLS
-  # whenever the box has it, so the password does not cross the LAN in the
-  # clear; a client that has not trusted the box's certificate asks first.
-  # Windows Explorer and the macOS Finder do not list WebDAV announcements;
-  # handbook/docs/manual/files-on-your-computer.md has their way in.
-  # nix/tests/cloud-webdav.nix browses for it and follows it.
-  losos.mdns.services = lib.mkIf nextcloudWorkload {
-    losos-cloud =
-      let
-        tls = config.losos.tls.enable;
-      in
-      ''
-        Name=LosOS cloud on %H
-        Type=${if tls then "_webdavs._tcp" else "_webdav._tcp"}
-        Port=${if tls then "443" else "80"}
-        TxtText=path=/nextcloud/remote.php/webdav/
-      '';
-  };
-
   # ── Firewall ──────────────────────────────────────────────────────────────
-  # Nginx owns :80 and nothing else on the box holds a public port: both
-  # workload pods bind 127.0.0.1 (hostNetwork, config-driven — see
+  # Nginx owns :80 and nothing else on the box holds a public port: the
+  # workload pod binds 127.0.0.1 (hostNetwork, config-driven — see
   # modules/workloads.nix), the lososd API is loopback, and neither Kubernetes
   # instance adds to allowedTCPPorts, so 6443/9345/10250/10260 stay closed
   # against NixOS' default-deny firewall. The port is opened whenever the front
-  # vhost has any route to serve — the admin SPA *or* either workload — because
+  # vhost has any route to serve — the admin SPA, LosOS Cloud or Git — because
   # gating it on the admin flag alone took the service routes down with the
   # dashboard.
   networking.firewall.allowedTCPPorts = lib.optional (
-    adminEnabled || nextcloudWorkload || forgejoWorkload
+    adminEnabled || config.losos.cloud.enable || forgejoWorkload
   ) 80;
 }

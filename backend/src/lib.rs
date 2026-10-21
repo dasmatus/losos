@@ -33,7 +33,6 @@ pub mod boxid;
 pub mod builder;
 pub mod catalogue;
 pub mod cloud;
-pub mod cloud_apps;
 pub mod cloud_share;
 pub mod config_repo;
 pub mod dbus;

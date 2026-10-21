@@ -1,4 +1,4 @@
-# nixos-test-vms config for signing in to LosOS cloud and LosOS Git with
+# nixos-test-vms config for signing in to LosOS Cloud and LosOS Git with
 # LosOS Login (modules/app-sign-in.nix), on the apps' side.
 #
 # nix/tests/identity.nix proves who nginx names to each app and when. This

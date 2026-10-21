@@ -1,55 +1,19 @@
-//! Checking a password with LosOS cloud.
+//! Checking a password someone typed, and the pieces lososd needs to ask
+//! a loopback HTTP service with one.
 //!
-//! Signing in to the admin pages is Authelia's job now
-//! (`modules/identity.nix`, `crate::people`). What stays here is the probe
-//! lososd uses where Nextcloud itself has to judge the owner's password:
-//! before it mints an app password or a LosOS Git token for one of their
-//! computers (`crate::devices`, `crate::pins`).
-//!
-//! The question is one HTTP request over loopback to the OCS route that does
-//! nothing but authenticate (`/ocs/v2.php/cloud/user`), with the password in
-//! a Basic header. Same rule as [`crate::setup`]: **the password must never
-//! appear in an argv**, so this is not a `curl -u`. It is a request built as
-//! bytes by [`login_request`] and written to a socket by the backend; the
-//! builder is pure so a test can read every byte it produces. The real
-//! client's address rides along as `X-Forwarded-For`, which Nextcloud honours
-//! from `127.0.0.1` (`trusted_proxies`, modules/workloads.nix), so its own
-//! brute-force throttle counts the browser, not lososd.
+//! Signing in to the admin pages is LosOS Login's job (`modules/identity.nix`,
+//! `crate::people`). What stays here is the shape check for a password
+//! being tried, before lososd checks it against the people file for one of
+//! the owner's computers (`crate::devices`), and the small HTTP helpers the
+//! LosOS Git requests share. Same rule as [`crate::setup`]: **the password
+//! must never appear in an argv**, so requests are built as bytes and
+//! written to a socket, never handed to `curl -u`.
 
 use crate::setup::Secret;
 
 /// Longest password a sign-in attempt may carry, in bytes. Matches
 /// [`crate::setup::MAX_PASSWORD_BYTES`]: nothing longer was ever set.
 pub const MAX_CANDIDATE_BYTES: usize = crate::setup::MAX_PASSWORD_BYTES;
-
-/// Default of `$LOSOS_NEXTCLOUD_LOGIN_URL`: the workload pod's Apache on the
-/// host's loopback, at the subpath the front vhost preserves
-/// (modules/containers.nix, modules/workloads.nix, nix/images.nix). The
-/// port is the default of `losos.nextcloud.apachePort`; modules/daemon.nix
-/// sets the variable from the option so the two cannot drift.
-pub const DEFAULT_LOGIN_URL: &str = "http://127.0.0.1:8080/nextcloud/ocs/v2.php/cloud/user";
-
-/// Default of `$LOSOS_NEXTCLOUD_LOGIN_HOST`, the `Host` header on that
-/// request. `localhost` is trusted by Nextcloud unconditionally
-/// (`TrustedDomainHelper`, `REGEX_LOCALHOST`), whatever `trusted_domains`
-/// says, so the probe cannot be answered "Untrusted domain".
-pub const DEFAULT_LOGIN_HOST: &str = "localhost";
-
-/// What Nextcloud said about the password.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LoginOutcome {
-    /// 200: the password is the account's.
-    Accepted,
-    /// 401: it is not.
-    Rejected,
-    /// 429: Nextcloud's own brute-force protection has closed the door for
-    /// this client for a while. Not a wrong password, and not retried.
-    Throttled,
-    /// Anything else, or no answer at all: Nextcloud could not be asked.
-    /// The sentence is for the owner, who can act on it by waiting or by
-    /// using the spare key.
-    Unavailable(String),
-}
 
 /// The password offered to the dialog was not one this box could have set.
 ///
@@ -74,10 +38,10 @@ pub fn validate_candidate(password: &str) -> Result<Secret, String> {
     Ok(Secret::new(password))
 }
 
-/// Where the probe goes: `$LOSOS_NEXTCLOUD_LOGIN_URL` split into the socket
-/// address and the request path. Only `http://host:port/path` is accepted —
-/// the pod is reached over the host's own loopback, and a `https://` here
-/// would be a configuration error worth failing loudly on.
+/// A loopback service's URL split into the socket address and the request
+/// path. Only `http://host:port/path` is accepted: the service is reached
+/// over the host's own loopback, and a `https://` here would be a
+/// configuration error worth failing loudly on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoginEndpoint {
     pub addr: String,
@@ -87,7 +51,7 @@ pub struct LoginEndpoint {
 pub fn parse_login_url(url: &str) -> Result<LoginEndpoint, String> {
     let Some(rest) = url.strip_prefix("http://") else {
         return Err(format!(
-            "LOSOS_NEXTCLOUD_LOGIN_URL must start with http:// (got {url:?})"
+            "a loopback URL must start with http:// (got {url:?})"
         ));
     };
     let (authority, path) = match rest.find('/') {
@@ -96,54 +60,13 @@ pub fn parse_login_url(url: &str) -> Result<LoginEndpoint, String> {
     };
     if authority.is_empty() || !authority.contains(':') {
         return Err(format!(
-            "LOSOS_NEXTCLOUD_LOGIN_URL must name host:port (got {url:?})"
+            "a loopback URL must name host:port (got {url:?})"
         ));
     }
     Ok(LoginEndpoint {
         addr: authority.to_string(),
         path: path.to_string(),
     })
-}
-
-/// The request, as the bytes that go on the wire.
-///
-/// Pure, so the test suite can check what every call site relies on: the
-/// password is in the Basic header and nowhere else, `Connection: close` is
-/// set (the reader stops at EOF), and nothing the caller supplied can start
-/// a new header line. `client` is the browser's address for
-/// `X-Forwarded-For`; anything that does not parse as an IP is dropped
-/// rather than forwarded, since the header would otherwise be writable by
-/// whatever set `X-Real-IP`.
-///
-/// `user` must have passed [`crate::setup::validate_user`], which admits no
-/// `:` and no control character, so the `user:password` pair splits where
-/// Basic auth expects it to.
-pub fn login_request(
-    endpoint: &LoginEndpoint,
-    host: &str,
-    user: &str,
-    secret: &Secret,
-    client: &str,
-) -> Vec<u8> {
-    let credentials = base64(format!("{user}:{}", secret.expose()).as_bytes());
-    let mut out = String::new();
-    out.push_str(&format!("GET {} HTTP/1.1\r\n", endpoint.path));
-    out.push_str(&format!("Host: {}\r\n", header_safe(host)));
-    out.push_str(&format!("Authorization: Basic {credentials}\r\n"));
-    // Without this the OCS routes answer 401 with a WWW-Authenticate that is
-    // meant for a browser, before they look at the credentials at all.
-    out.push_str("OCS-APIRequest: true\r\n");
-    out.push_str("Accept: application/json\r\n");
-    if client.parse::<std::net::IpAddr>().is_ok() {
-        out.push_str(&format!("X-Forwarded-For: {client}\r\n"));
-    }
-    out.push_str("Connection: close\r\n\r\n");
-    out.into_bytes()
-}
-
-/// A header value with anything that could end the line removed.
-fn header_safe(value: &str) -> String {
-    value.chars().filter(|c| !c.is_control()).collect()
 }
 
 /// Read the status code off the first line of an HTTP/1.x response, if it
@@ -157,25 +80,6 @@ pub fn status_code(response: &[u8]) -> Option<u16> {
         return None;
     }
     parts.next()?.parse().ok()
-}
-
-/// What a status means for the sign-in.
-pub fn interpret_login(status: Option<u16>) -> LoginOutcome {
-    match status {
-        Some(200) => LoginOutcome::Accepted,
-        Some(401) => LoginOutcome::Rejected,
-        Some(429) => LoginOutcome::Throttled,
-        // Apache answers 503 while the pod's entrypoint is still installing,
-        // and 502/504 come from nothing on this box (there is no proxy on
-        // the loopback hop), so every other status reads as "not now".
-        Some(code) => LoginOutcome::Unavailable(format!(
-            "LosOS cloud answered {code} instead of checking the password. It may still be starting."
-        )),
-        None => LoginOutcome::Unavailable(
-            "LosOS cloud did not answer, so the password could not be checked. It may still be starting."
-                .to_string(),
-        ),
-    }
 }
 
 /// Standard base64 with padding, as RFC 7617 wants it. Hand-rolled rather
@@ -214,10 +118,11 @@ pub fn base64(data: &[u8]) -> String {
 #[error("that password was not accepted")]
 pub struct WrongPassword;
 
-/// Nextcloud's brute-force protection refused to look. 429, so the page can
-/// say "wait" rather than "wrong".
+/// Too many wrong passwords from this address lately; lososd is not
+/// checking another one yet. 429, so the page can say "wait" rather than
+/// "wrong".
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("too many attempts; LosOS cloud is making this address wait")]
+#[error("too many attempts; this address has to wait a while")]
 pub struct Throttled;
 
 #[cfg(test)]
@@ -238,9 +143,9 @@ mod tests {
 
     #[test]
     fn the_login_url_splits_into_address_and_path() {
-        let e = parse_login_url(DEFAULT_LOGIN_URL).unwrap();
-        assert_eq!(e.addr, "127.0.0.1:8080");
-        assert_eq!(e.path, "/nextcloud/ocs/v2.php/cloud/user");
+        let e = parse_login_url("http://127.0.0.1:3000/forgejo/api/v1").unwrap();
+        assert_eq!(e.addr, "127.0.0.1:3000");
+        assert_eq!(e.path, "/forgejo/api/v1");
         assert_eq!(parse_login_url("http://127.0.0.1:80").unwrap().path, "/");
         assert!(parse_login_url("https://127.0.0.1:443/x").is_err());
         assert!(parse_login_url("http://127.0.0.1/x").is_err());
@@ -256,21 +161,6 @@ mod tests {
         );
         assert_eq!(status_code(b"<html>not http"), None);
         assert_eq!(status_code(b""), None);
-    }
-
-    #[test]
-    fn statuses_mean_what_the_dialog_needs() {
-        assert_eq!(interpret_login(Some(200)), LoginOutcome::Accepted);
-        assert_eq!(interpret_login(Some(401)), LoginOutcome::Rejected);
-        assert_eq!(interpret_login(Some(429)), LoginOutcome::Throttled);
-        assert!(matches!(
-            interpret_login(Some(503)),
-            LoginOutcome::Unavailable(_)
-        ));
-        assert!(matches!(
-            interpret_login(None),
-            LoginOutcome::Unavailable(_)
-        ));
     }
 
     #[test]

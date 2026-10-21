@@ -48,6 +48,8 @@ let
   excluded = {
     edge = "declared for the edge VPS (nixosModules.edge); nothing on the appliance reads it";
     mdns = "set by modules/configuration.nix and modules/edge.nix; with it off nothing on the LAN finds the box";
+    nextcloud = "retired with Nextcloud; accepted from an older overrides.nix and ignored";
+    keyring = "retired with Nextcloud's admin password, its only secret; accepted and ignored";
   };
 
   # Options another file on the box sets at normal priority: a line in
@@ -78,8 +80,6 @@ let
     "cluster"
     "hardening.enable"
     "hostName"
-    "keyring"
-    "nextcloud.mode"
     "forgejo.mode"
     "shared.fscrypt"
     "storage"
@@ -99,7 +99,6 @@ let
   # modules/options.nix for the two below).
   needs = {
     "forgejo.federation.enable" = "sharingMyStorage";
-    "nextcloud.federation.enable" = "sharingMyStorage";
     "vms.host" = "sharingMyStorage";
   };
 

@@ -44,7 +44,7 @@ in
   # directory, so the pods run with imagePullPolicy: Never and nothing is
   # fetched from a container registry at runtime.
   #
-  # They are NOT built on the appliance. A Nextcloud image is ~2.6 GiB, and
+  # They are NOT built on the appliance. An image is hundreds of MiB, and
   # system.autoUpgrade would rebuild it at 03:00 on a repurposed mini-PC with a
   # tmpfs root, three hours before the unconditional 00:07 reboot. They are
   # substituted from this project's own Nix binary cache instead — a deliberate,
@@ -53,6 +53,5 @@ in
   # binary cache. If the cache is unreachable at 03:00 the rebuild fails and the
   # previous generation keeps running.
   losos.workloads.pauseImage = lib.mkDefault pkgs'.losos-image-pause;
-  losos.workloads.nextcloudImage = lib.mkDefault pkgs'.losos-image-nextcloud;
   losos.workloads.forgejoImage = lib.mkDefault pkgs'.losos-image-forgejo;
 }

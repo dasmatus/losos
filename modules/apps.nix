@@ -24,7 +24,7 @@
 # WHY THE SHAPING. The local cluster has no pod network, no kube-proxy and no
 # DNS, and its node is NotReady for life (modules/cluster.nix). A chart as
 # published would never start there. Shaping makes it run the way the box's
-# own Nextcloud and Forgejo do, and the non-root uid keeps a pod on the host
+# own Forgejo does, and the non-root uid keeps a pod on the host
 # network out of lososd's API (the OUTPUT rule in modules/daemon.nix).
 #
 # WHY A TRANSIENT UNIT. Like a backup (modules/backup.nix): lososd runs with
@@ -32,8 +32,8 @@
 # /home/<user>/data. A unit started by PID 1 is outside that sandbox and
 # outlives a lososd restart.
 #
-# Only on a box that runs its own cluster: with Nextcloud and Forgejo both
-# native, there is no k3s to install into and lososd says so.
+# Only on a box that runs its own cluster: with Forgejo native or off, there
+# is no k3s to install into and lososd says so.
 {
   pkgs,
   lib,
@@ -46,9 +46,7 @@ let
   pkg = config.losos.backend.package;
 
   # modules/cluster.nix's `localEnabled`, a `let` binding there.
-  localCluster =
-    config.losos.nextcloud.mode == "container"
-    || (config.losos.forgejo.mode == "container" && config.losos.forgejo.enable);
+  localCluster = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
   enabled = cfg.enable && localCluster && pkg != null;
 
   helm = pkgs.kubernetes-helm;
@@ -67,7 +65,6 @@ let
       80
       443
       config.losos.admin.apiPort
-      config.losos.nextcloud.apachePort
       3000 # Forgejo, modules/containers.nix `forgejoPort`
       config.losos.lab.libvirt.port
       5432

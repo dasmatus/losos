@@ -1,13 +1,12 @@
-# The local cluster's own workloads: Nextcloud and Forgejo, as Kubernetes
-# *static pods*.
+# The local cluster's own workload: Forgejo, as a Kubernetes *static pod*.
 #
 # `losos.<svc>.mode == "container"` used to mean a systemd-nspawn container on a
 # private veth; it now means a pod in this box's own k3s server.
 # modules/cluster.nix runs the cluster (and preloads the images listed in
 # losos.workloads.*), modules/containers.nix keeps the Nginx front door that
-# proxies to them, modules/nextcloud-common.nix still holds the Nextcloud truth
-# both modes share, and this file owns the Kubernetes objects plus the config
-# they mount.
+# proxies to them, and this file owns the Kubernetes objects plus the config
+# they mount. Nextcloud ran here too; it is gone, and LosOS Cloud
+# (modules/cloud.nix) takes in what a box's Nextcloud held.
 #
 # ── Why static pods and not Deployments ──────────────────────────────────────
 # The local cluster runs --flannel-backend=none, so the kubelet reports
@@ -20,7 +19,7 @@
 # why the box serves its own data while the apiserver is still coming up.
 # Anyone converting these to Deployments must add tolerations for
 # node.kubernetes.io/not-ready, both NoSchedule *and* NoExecute, or the
-# appliance comes up with no Nextcloud and no shell to find out why.
+# appliance comes up with no Git and no shell to find out why.
 #
 # The manifests are symlinked into a losos-owned directory selected with
 # --kubelet-arg=pod-manifest-path (see modules/cluster.nix), not into
@@ -32,8 +31,7 @@
 #
 # ── Why hostNetwork, and what it costs ───────────────────────────────────────
 # No CNI means no pod network, so every container shares the host's netns:
-#   * every listener binds 127.0.0.1 explicitly (listen.conf below, and
-#     Forgejo's HTTP_ADDR). Nginx stays the only thing holding a public port.
+#   * every listener binds 127.0.0.1 explicitly (Forgejo's HTTP_ADDR). Nginx stays the only thing holding a public port.
 #   * dnsPolicy is Default — the host's /etc/resolv.conf.
 #     ClusterFirstWithHostNet would be wrong twice over: coredns is disabled and
 #     there is no kube-proxy to reach a ClusterIP with.
@@ -44,16 +42,16 @@
 #     admin guard.
 #
 # ── Why the config is rendered here and not baked into the image ─────────────
-# losos.nextcloud.apachePort is tunable from the settings SPA, so it must not be
-# an image layer: a ~2.6 GiB Nextcloud image cannot be rebuilt on a mini-PC at
-# 03:00 with a tmpfs root. The port-bearing files are rendered in module context
-# and hostPath-mounted, so changing the port changes a store path, which changes
-# the manifest, which changes the tmpfiles symlink, and the kubelet restarts the
-# pod on the next `nixos-rebuild switch`. No image is ever rebuilt.
+# The rendered files carry option values (the host name, the owner's site
+# settings), and an image cannot be rebuilt on a mini-PC at 03:00 with a tmpfs
+# root. They are rendered in module context and hostPath-mounted, so changing
+# an option changes a store path, which changes the manifest, which changes the
+# tmpfiles symlink, and the kubelet restarts the pod on the next
+# `nixos-rebuild switch`. No image is ever rebuilt.
 #
 # Every hostPath volume declares an explicit `type:`. Without it the kubelet
-# CREATES A DIRECTORY at a missing path — which silently turns the admin
-# password file into a directory and Nextcloud's first-run install into a loop.
+# CREATES A DIRECTORY at a missing path, which turns a missing socket into an
+# empty directory the pod then waits on forever.
 {
   pkgs,
   lib,
@@ -62,59 +60,33 @@
 }:
 
 let
-  nextcloudWorkload = config.losos.nextcloud.mode == "container";
   # losos.forgejo.enable is consulted in *both* modes; see modules/containers.nix.
   forgejoWorkload = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
-  anyWorkload = nextcloudWorkload || forgejoWorkload;
+  anyWorkload = forgejoWorkload;
 
   hostName = config.losos.hostName;
   proxied = config.losos.proxy.enable;
   proxyHostName = config.losos.proxy.hostname;
-  apachePort = config.losos.nextcloud.apachePort;
-  adminpassFile = toString config.losos.nextcloud.adminpassFile;
-  # The custom domains that are live for this box on its edge, as JSON, kept
-  # by lososd (DEFAULT_PUBLIC_NAMES_FILE in backend/src/io_backend.rs; the
-  # same literal there). World-readable on purpose: the pod reads it and the
-  # names are in public DNS anyway.
-  publicNamesDir = "/var/lib/losos-public-names";
-  gpu = config.losos.gpu.enable;
 
-  nextcloudImage = config.losos.workloads.nextcloudImage;
   forgejoImage = config.losos.workloads.forgejoImage;
 
-  # Durable state. Both are covered by impermanence's whole-/var bind mount, so
-  # nothing has to be added to modules/impermanence.nix for them.
-  nextcloudState = "/var/lib/nextcloud";
+  # Durable state. Covered by impermanence's whole-/var bind mount, so
+  # nothing has to be added to modules/impermanence.nix for it.
   forgejoState = "/var/lib/forgejo";
 
-  # Host sockets the pods reach their databases through. Postgres and Redis run
-  # natively rather than in the pods: under hostNetwork an in-pod Postgres binds
+  # Host socket the pod reaches its database through. Postgres runs natively
+  # rather than in the pod: under hostNetwork an in-pod Postgres binds
   # the *host's* 0.0.0.0:5432 unless hand-configured, and "nothing but Nginx
   # holds a public port" only survives the native form. See modules/services.nix.
   pgSocketDir = "/run/postgresql";
-  redisSocketDir = "/run/redis-nextcloud";
 
   # Fixed uids, pinned in modules/configuration.nix next to notshared/shared.
   # They are not cosmetic: Postgres peer auth over /run/postgresql compares the
   # *uid* of the connecting process, and the pod shares the host's user
   # namespace, so the pod's runAsUser is what Postgres maps to a role. gid ==
-  # uid by construction there, hence one binding each. Nextcloud's comes from
-  # nextcloud-stack.nix, which nix/images.nix reads too: the image bakes
-  # /run/nextcloud owned by that uid, so the two must not drift.
-  nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
+  # uid by construction there, hence one binding.
   signIn = import ./app-sign-in.nix { inherit lib; };
-  nextcloudUid = nc.uid;
   forgejoUid = 1003;
-
-  # Redis' socket is mode 0660, group redis-nextcloud, and a container does not
-  # inherit the *host* user's supplementary groups: only what the pod spec asks
-  # for. So the pod can reach the socket only if that group has a fixed gid we
-  # can name here. If it is left dynamic this stays null, the pod runs with
-  # group 1002 alone, and Nextcloud fails to reach Redis with EACCES on
-  # /run/redis-nextcloud/redis.sock — pin users.groups."redis-nextcloud".gid in
-  # modules/configuration.nix rather than widening unixSocketPerm, which would
-  # open the cache to every uid on the box.
-  redisGid = config.users.groups."redis-nextcloud".gid or null;
 
   staticPodDir = "/var/lib/losos/k3s-static-pods";
 
@@ -154,154 +126,6 @@ let
       )
     );
 
-  # ── Nextcloud's rendered config ──────────────────────────────────────────
-  # PHP source, so option-derived values are escaped as PHP rather than
-  # interpolated: losos.hostName and losos.proxy.hostname are operator-supplied
-  # strings, and a stray quote in one would turn the config into a parse error
-  # on a box with no shell to fix it from.
-  phpStr = s: "'" + lib.escape [ "\\" "'" ] s + "'";
-  phpList = xs: "[" + lib.concatMapStringsSep ", " phpStr xs + "]";
-
-  nextcloudPhpConfig = {
-    # Subpath deployment keys: the front vhost proxies /nextcloud with the
-    # path preserved, so Nextcloud must generate /nextcloud-prefixed URLs.
-    overwritewebroot = phpStr "/nextcloud";
-    "htaccess.RewriteBase" = phpStr "/nextcloud";
-    "overwrite.cli.url" = phpStr (
-      if proxied then "https://${proxyHostName}/nextcloud" else "http://${hostName}.local/nextcloud"
-    );
-    # Requests arrive with the appliance's mDNS name (direct), its bare name
-    # (a router or Windows that resolves `losos` without the suffix), the
-    # master-proxy public hostname (tunnel), or the box's own IP address — a
-    # libvirt VM gets no mDNS name, so its owner types the address the
-    # console banner shows. All of those must be trusted, or Nextcloud
-    # answers "Untrusted domain"; localhost and 127.0.0.1 it trusts on its
-    # own (TrustedDomainHelper, REGEX_LOCALHOST).
-    #
-    # The address is a PHP expression, not a literal, because the box does
-    # not know it at build time: DHCP hands it out, and it changes when the
-    # box moves. nginx tells the pod which address each request arrived on
-    # (X-Losos-Server-Addr, set from $server_addr in modules/containers.nix),
-    # and this reads it back per request. Only an IP literal is accepted, so
-    # even a header that somehow reached Apache from a client could at most
-    # trust an address — which a Host header attack needs to resolve to this
-    # box anyway — never a name. `occ` runs with no $_SERVER entry and gets
-    # the static list. Not a wildcard like `192.168.*`: that trusts
-    # `192.168.attacker.example` too.
-    #
-    # The owner's own domains (Settings -> Network -> Your own domain) are
-    # trusted too, read per request from the list lososd keeps
-    # ($losos_public_names, set before $CONFIG below). The official edge
-    # verified each one against the owner's DNS before routing it here.
-    trusted_domains = ''
-      array_values(array_filter(array_merge(
-        ${
-          phpList (
-            [
-              "${hostName}.local"
-              hostName
-            ]
-            ++ lib.optional proxied proxyHostName
-          )
-        },
-        $losos_public_names,
-        (function () {
-          $own = $_SERVER['HTTP_X_LOSOS_SERVER_ADDR'] ?? null;
-          if (!is_string($own) || filter_var($own, FILTER_VALIDATE_IP) === false) {
-            return [];
-          }
-          // Nextcloud strips the port but keeps an IPv6 literal's brackets.
-          return str_contains($own, ':') ? [$own, '[' . $own . ']'] : [$own];
-        })()
-      )))'';
-    # Loopback, not a container address: the veth is gone and Nginx now
-    # reaches the pod over the host's own loopback. Without this Nextcloud
-    # sees one client address for every request, so the brute-force throttle
-    # and per-IP blocking protect nothing and the audit log records a single
-    # source.
-    trusted_proxies = phpList [ "127.0.0.1" ];
-  }
-  # The config.php half of the owner's box-wide settings
-  # (losos.nextcloud.site.*; modules/nextcloud-stack.nix, `site`). Every
-  # value is a string. Read after config.php, so Nextcloud's own writes
-  # there never win over these.
-  // lib.mapAttrs (_: phpStr) (nc.site.system config.losos.nextcloud.site)
-  # While it federates, the key that lets it reach other boxes on the LAN
-  # (modules/nextcloud-stack.nix, `federation`). Booleans, written as PHP.
-  // lib.optionalAttrs config.lososInternal.federation.nextcloud (
-    lib.mapAttrs (_: v: lib.boolToString v) nc.federation.system
-  )
-  # Behind the master proxy Traefik terminates TLS and the pod is reached over
-  # plain HTTP. Without these Nextcloud derives http:// absolute URLs and
-  # embeds them in an https:// page — mixed content, blocked by browsers, and
-  # clients redirected back to http.
-  // lib.optionalAttrs proxied {
-    overwriteprotocol = phpStr "https";
-    # The edge name, unless the request came in on one of the owner's own
-    # domains: then that one, so a page opened at https://cloud.example.org
-    # keeps its links there instead of bouncing to the edge name.
-    overwritehost = ''
-      (function () use ($losos_public_names) {
-        $host = strtolower(preg_replace('/:[0-9]+$/', "", (string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? "")));
-        return in_array($host, $losos_public_names, true) ? $host : ${phpStr proxyHostName};
-      })()'';
-  };
-
-  nextcloudConf = confDir "losos-nextcloud-conf" {
-    # The one file carrying losos.nextcloud.apachePort. 127.0.0.1 is
-    # load-bearing under hostNetwork: httpd would otherwise bind every address
-    # on the box, including the LAN one, behind Nginx's back.
-    "listen.conf" = pkgs.writeText "listen.conf" "Listen 127.0.0.1:${toString apachePort}\n";
-    # yes or no: whether the entrypoint (nix/images.nix) switches
-    # Nextcloud's federation on or off at start. losos.nextcloud.federation
-    # .enable gated on losos.sharingMyStorage (lososInternal.federation); the
-    # front vhost refuses the federation addresses on the same value
-    # (modules/containers.nix). A change here changes the manifest, so the
-    # kubelet restarts the pod and the new value is applied.
-    "federation" = pkgs.writeText "federation" (
-      if config.lososInternal.federation.nextcloud then "yes\n" else "no\n"
-    );
-    # The app-config half of the owner's box-wide settings
-    # (losos.nextcloud.site.*), "app key value" per line, which the
-    # entrypoint writes with occ on every start. The config.php half is in
-    # losos.config.php below. modules/nextcloud-stack.nix (`site`) says what
-    # each line sets; a change restarts the pod like the file above.
-    "site" = pkgs.writeText "site" (lib.concatLines (nc.site.appConfig config.losos.nextcloud.site));
-    # yes or no: whether the entrypoint switches on sign-in with LosOS
-    # Login (lososInternal.appSignIn; modules/app-sign-in.nix). A change
-    # restarts the pod like the two files above.
-    "sign-in" = pkgs.writeText "sign-in" (
-      if config.lososInternal.appSignIn.nextcloud then "yes\n" else "no\n"
-    );
-    "losos.config.php" = pkgs.writeText "losos.config.php" ''
-      <?php
-      // Rendered by modules/workloads.nix and bind-mounted read-only from the
-      // store. Editing it on the box is pointless: the next rebuild replaces it.
-
-      // The owner's live custom domains: a JSON list of host names lososd
-      // writes. Read per request; anything that is not a plain host name is
-      // dropped, whatever the file says.
-      $losos_public_names = (function () {
-        $raw = @file_get_contents('/etc/losos/public-names/domains.json');
-        $list = is_string($raw) ? json_decode($raw, true) : null;
-        if (!is_array($list)) {
-          return [];
-        }
-        return array_values(array_filter($list, function ($n) {
-          return is_string($n) && strlen($n) <= 253
-            && preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/', $n) === 1;
-        }));
-      })();
-
-      $CONFIG = [
-      ${
-        lib.concatStrings (
-          lib.mapAttrsToList (key: value: "  ${phpStr key} => ${value},\n") nextcloudPhpConfig
-        )
-      }];
-    '';
-  };
-
   # ── Forgejo's rendered config ────────────────────────────────────────────
   forgejoConf = confDir "losos-forgejo-conf" {
     # The owner's box-wide settings (losos.forgejo.site.*,
@@ -316,8 +140,7 @@ let
         ))
         {
           server = {
-            # Same reasoning as Nextcloud's Listen line: under hostNetwork an
-            # unqualified bind is a public one. The port is a literal on both ends
+            # Under hostNetwork an unqualified bind is a public one. The port is a literal on both ends
             # (here and in modules/containers.nix) on purpose — nothing off-box ever
             # sees it, so an option would be a knob with no reason to be turned.
             HTTP_ADDR = "127.0.0.1";
@@ -385,13 +208,13 @@ let
     );
   };
 
-  # ── The pod shape both workloads share ───────────────────────────────────
-  # Kept in one place so the load-bearing fields (hostNetwork, dnsPolicy, the
-  # dropped capabilities) cannot drift between the two manifests.
+  # ── The pod shape ────────────────────────────────────────────────────────
+  # Kept apart from the pod so the load-bearing fields (hostNetwork, dnsPolicy,
+  # the dropped capabilities) read in one place.
   #
   # priorityClassName is system-node-critical because these *are* the appliance:
-  # if the kubelet starts evicting under pressure, the box's own file storage
-  # and git host are the last things that should go. The kubelet resolves the
+  # if the kubelet starts evicting under pressure, the box's own git host is
+  # the last thing that should go. The kubelet resolves the
   # system-* classes locally for static pods, so this needs no apiserver object.
   staticPod =
     {
@@ -468,62 +291,6 @@ let
     volumes = map (b: b.volume) list;
   };
 
-  nextcloudPod = staticPod (
-    {
-      name = "nextcloud";
-      image = imageRef nextcloudImage;
-      uid = nextcloudUid;
-      groups = lib.optional (redisGid != null) redisGid;
-    }
-    // binds (
-      map bind [
-        {
-          name = "state";
-          path = nextcloudState;
-        }
-        {
-          name = "conf";
-          path = "${nextcloudConf}";
-          at = "/etc/losos/nextcloud";
-          readOnly = true;
-        }
-        # type: File, so a missing password file is a loud pod failure instead
-        # of an empty directory the kubelet helpfully creates in its place.
-        {
-          name = "adminpass";
-          path = adminpassFile;
-          type = "File";
-          readOnly = true;
-        }
-        # A directory, not the file: lososd replaces the file by rename, and
-        # a file bind mount would keep showing the pod the old inode.
-        {
-          name = "publicnames";
-          path = publicNamesDir;
-          at = "/etc/losos/public-names";
-          readOnly = true;
-        }
-        {
-          name = "pgsock";
-          path = pgSocketDir;
-        }
-        {
-          name = "redissock";
-          path = redisSocketDir;
-        }
-      ]
-      # Mounting the device nodes is necessary but may not be sufficient: the
-      # nspawn path also granted `DeviceAllow = char-drm rw` on the unit, and a
-      # pod has no equivalent knob short of privileged: true or a device
-      # plugin. If VA-API comes back "permission denied" inside the pod, that
-      # cgroup device rule — not this mount — is what is missing.
-      ++ lib.optional gpu (bind {
-        name = "dri";
-        path = "/dev/dri";
-      })
-    )
-  );
-
   forgejoPod = staticPod (
     {
       name = "forgejo";
@@ -552,15 +319,6 @@ let
 in
 {
   assertions = [
-    {
-      assertion = nextcloudWorkload -> nextcloudImage != null;
-      message = ''
-        losos.nextcloud.mode = "container" needs losos.workloads.nextcloudImage,
-        which modules/defaults.nix wires to this flake's own image derivation
-        (nix/images.nix). Either restore that wiring or set
-        losos.nextcloud.mode = "native".
-      '';
-    }
     {
       assertion = forgejoWorkload -> forgejoImage != null;
       message = ''
@@ -600,27 +358,11 @@ in
       "d /var/lib/losos 0700 root root -"
       "d ${staticPodDir} 0700 root root -"
     ]
-    ++ (
-      if nextcloudWorkload then
-        [
-          # Numeric ids, not names: in container mode the host may have no
-          # `nextcloud` user at all, and these are the same literals the pod's
-          # runAsUser carries, from the same binding.
-          "d ${nextcloudState} 0750 ${toString nextcloudUid} ${toString nextcloudUid} -"
-          # modules/nextcloud-common.nix mints the password file 0600
-          # root:root, and the pod runs as uid 1002 — so it is mounted and
-          # unreadable, which Nextcloud reports as a failed install rather than
-          # as a permission problem. Root still reads it either way, so the
-          # native path is unaffected. `z` fixes a file that already exists;
-          # the ExecStartPost below covers the first boot, where the file is
-          # created at multi-user.target, long after tmpfiles has run.
-          "z ${adminpassFile} 0600 ${toString nextcloudUid} ${toString nextcloudUid} -"
-          "d ${publicNamesDir} 0755 root root -"
-          "L+ ${staticPodDir}/nextcloud.yaml - - - - ${nextcloudPod}"
-        ]
-      else
-        [ "r ${staticPodDir}/nextcloud.yaml" ]
-    )
+    # Nextcloud's pod is gone. A box that ran it still has its manifest link
+    # here, and tmpfiles' --remove does not drop a line nobody lists any more,
+    # so the kubelet would go on running it beside LosOS Cloud's move of its
+    # files (modules/cloud.nix stops it too, for the boot that races this).
+    ++ [ "r ${staticPodDir}/nextcloud.yaml" ]
     ++ (
       if forgejoWorkload then
         [
@@ -642,38 +384,11 @@ in
       k3s = {
         after = [
           "postgresql.service"
-          "redis-nextcloud.service"
-          "losos-nextcloud-adminpass.service"
           # The shared domain must be fully unlocked or fully locked before any
           # pod can see it — never half-way through (modules/fscrypt.nix).
           "losos-fscrypt-shared.service"
         ];
-        wants = [
-          "postgresql.service"
-          "redis-nextcloud.service"
-        ];
-        # Requires, not merely After: the adminpass file is mounted with
-        # hostPath type: File. Scoped to the Nextcloud path so a Forgejo-only
-        # box does not hold its whole cluster hostage to a Nextcloud secret.
-        requires = lib.optional nextcloudWorkload "losos-nextcloud-adminpass.service";
-      };
-    })
-
-    # ── Re-order the adminpass generator onto this path ────────────────────
-    # modules/nextcloud-common.nix orders it before nextcloud-setup.service and
-    # phpfpm-nextcloud.service, and neither of those exists in container mode —
-    # so on the k8s path the ordering constrained nothing at all and the kubelet
-    # could reach the mount before the file existed. This merges k3s.service
-    # into that `before` list (the module system concatenates the two
-    # definitions) rather than editing the generator, which the native path
-    # still needs unchanged.
-    (lib.mkIf nextcloudWorkload {
-      losos-nextcloud-adminpass = {
-        before = [ "k3s.service" ];
-        # See the `z` tmpfiles line above: this is the first-boot half, run in
-        # the same unit that mints the secret, because tmpfiles has long since
-        # passed by the time it exists.
-        serviceConfig.ExecStartPost = "${pkgs.coreutils}/bin/chown ${toString nextcloudUid}:${toString nextcloudUid} ${adminpassFile}";
+        wants = [ "postgresql.service" ];
       };
     })
   ];

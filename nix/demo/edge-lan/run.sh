@@ -274,7 +274,7 @@ wait_box() { # wait_box N — until the web UI answers
 box_claim() { # box_claim N
   local n=$1
   if [ -s "$(key_of "$n")" ]; then log "box $n already claimed; admin key in $(key_of "$n")"; return; fi
-  log "box $n: waiting for LosOS cloud to finish its first start so the box can be claimed (minutes; ~45 without KVM)"
+  log "box $n: waiting for LosOS Cloud to finish its first start so the box can be claimed (minutes; ~45 without KVM)"
   local out code
   while :; do
     out=$(box_api "$n" GET /api/setup/claim); code=$(tail -1 <<<"$out")
