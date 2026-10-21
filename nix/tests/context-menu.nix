@@ -67,6 +67,8 @@ pkgs.testers.nixosTest {
       losos = {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
+        # The sidebar pins the tile menu offers live in a plugin.
+        backend.plugins = lososPkgs.losos-plugins;
         admin.ui = lososPkgs.losos-admin-ui;
         nextcloud.mode = "native";
         cloud.enable = true;
