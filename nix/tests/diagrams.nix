@@ -267,10 +267,11 @@ let
               {
                 fill = {
                   label = "Card text, in Markdown";
-                  value = "## Launch\n\n@matus films it, the plan is in [@launch.canvas](/diagrams?file=Diagrams%2Flaunch.canvas)";
+                  value = "@matus films it\n[@launch.canvas](/diagrams?file=Diagrams%2Flaunch.canvas)";
                 };
               }
               { press = "Escape"; }
+              { press = "Shift+1"; }
               { waitFor.selector = "[data-testid=mention-chip][data-kind=person]"; }
               { waitFor.selector = "[data-testid=mention-chip][data-kind=file]"; }
             ];

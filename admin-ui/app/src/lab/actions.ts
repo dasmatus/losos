@@ -202,7 +202,7 @@ export class Actions {
         file: id,
         share,
         readOnly: info.perm === "read",
-        from: { owner: info.owner, box: info.box },
+        from: { name, owner: info.owner, box: info.box },
         opening: (text) => {
           if (!this.importText(text, name, true, true)) return false;
           s.cloudFile = null;

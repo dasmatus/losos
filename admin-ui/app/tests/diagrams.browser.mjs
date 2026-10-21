@@ -501,6 +501,7 @@ await check('a diagram shared from another box opens in its room; a view-only sh
   const { page, clean } = await open({ routes, query: '&share=sh_1&fileId=7' });
   await card(page, 'Inbox').waitFor();
   await page.getByText('Shared by Matus. The file stays on mattbox.local.').waitFor();
+  await page.getByText('plan.canvas, shared by Matus on mattbox.local.', { exact: true }).waitFor();
   await page.getByTestId('live-people').getByText('View only').waitFor();
 
   await page.locator('[data-testid=tray-items] [data-card=text]').click();

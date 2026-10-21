@@ -48,8 +48,8 @@ export interface LiveView {
   /** This tab's client number. */
   me: number;
   myAddress: string;
-  /** A file from another box: whose, and where it lives. */
-  from: { owner: string; box: string } | null;
+  /** A file from another box: its name, whose it is, and where it lives. */
+  from: { name: string; owner: string; box: string } | null;
   canUndo: boolean;
   canRedo: boolean;
 }
