@@ -157,7 +157,7 @@ let
           url = "https://losos.dasmat.us";
           x = 440;
           y = -230;
-          width = 140;
+          width = 190;
           height = 120;
         }
       ];

@@ -97,14 +97,14 @@ await check('opens on the diagram under its CSP, the network drawn as cards', as
   await page.close();
 });
 
-await check('a double-click writes a card, and its Markdown is drawn', async () => {
+await check('a double-click writes a card, and its Markdown is drawn, one newline a line break', async () => {
   const { page, clean } = await open();
   await fresh(page);
   const p = await at(page, 400, 300);
   await page.mouse.dblclick(p.x, p.y);
   const editor = page.getByRole('textbox', { name: 'Card text' });
   await editor.waitFor();
-  await editor.fill('# Launch plan\n\n- [x] film\n- [ ] post\n\n**Friday** at ==noon==, see [the site](https://losos.dasmat.us)');
+  await editor.fill('# Launch plan\n\n- [x] film\n- [ ] post\n\n**Friday** at ==noon==, see [the site](https://losos.dasmat.us)\nthen lunch');
   await page.keyboard.press('Escape');
   const body = page.locator('[data-testid=diagram] [data-node-body]').first();
   await body.locator('h1', { hasText: 'Launch plan' }).waitFor();
@@ -112,6 +112,7 @@ await check('a double-click writes a card, and its Markdown is drawn', async () 
   assert.strictEqual(await body.locator('strong').innerText(), 'Friday');
   assert.strictEqual(await body.locator('mark').innerText(), 'noon');
   assert.strictEqual(await body.locator('a').getAttribute('href'), 'https://losos.dasmat.us');
+  assert.match(await body.locator('p').last().innerText(), /the site\nthen lunch$/, 'Obsidian shows one newline as a line break');
   assert.strictEqual(await card(page, 'Launch plan').count(), 1, 'the card is named by its first line');
   await clean();
   await page.close();
