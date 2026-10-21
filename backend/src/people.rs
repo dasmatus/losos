@@ -224,8 +224,19 @@ pub struct People {
 }
 
 impl People {
+    /// [`PEOPLE_DIR`], always, in a release build. A debug build, which is
+    /// what `cargo test` runs as the daemon, also takes `LOSOS_PEOPLE_DIR`,
+    /// so a test can keep its people file in a temporary directory.
+    fn people_dir() -> PathBuf {
+        #[cfg(debug_assertions)]
+        if let Some(dir) = std::env::var_os("LOSOS_PEOPLE_DIR").filter(|d| !d.is_empty()) {
+            return PathBuf::from(dir);
+        }
+        PathBuf::from(PEOPLE_DIR)
+    }
+
     fn sanitize_people_path(input: PathBuf) -> PathBuf {
-        let base = PathBuf::from(PEOPLE_DIR);
+        let base = Self::people_dir();
         let candidate = if input.is_absolute() {
             input
         } else {
