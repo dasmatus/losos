@@ -170,7 +170,10 @@ pkgs.testers.nixosTest {
     def base(m):
         return f"https://{m.name}.local"
 
-    start_all()
+    # Three emulated machines booting at once can starve each other past the
+    # driver's five minutes for a shell; one after the other boots steadily.
+    for m in (mattbox, kitchenbox, laptop):
+        m.succeed("true")
     for m in (mattbox, kitchenbox):
         m.wait_for_unit("nginx.service")
         m.wait_for_unit("lososd.service")
