@@ -115,6 +115,29 @@ jq -n --slurpfile receipt "${FEE_RECEIPT}" --arg usdc "${USDC}" --arg treasury "
 ( cd ../registrar && LOSOS_ANVIL_FEE_RECEIPT=/tmp/losos-anvil-fee.json cargo test --lib an_anvil_fee_transfer_pays_the_treasury -- --nocapture )
 test "$(balance "${TREASURY}")" = "580000"
 
+echo "== taps: a wallet tops up and opens a tap; the edge key settles and closes it =="
+RATE=3600000
+cast send "${USDC}" "mint(address,uint256)" "${BUYER}" 10000000 --rpc-url "${RPC}" --private-key "${KEY}" >/dev/null
+cast send "${USDC}" "approve(address,uint256)" "${PAY}" 10000000 --rpc-url "${RPC}" --private-key "${KEY}" >/dev/null
+cast send "${PAY}" "topUp(uint256)" 10000000 --rpc-url "${RPC}" --private-key "${KEY}" >/dev/null
+TAP_HASH=$(cast keccak tap_anvil_1)
+# Another wallet copies the quoted id first; it gets a tap of its own and
+# the buyer's opens all the same.
+cast send "${PAY}" "openTaps(bytes32[],address[],uint128[],uint16)" "[${TAP_HASH}]" "[${SELLER}]" "[${RATE}]" 400 --rpc-url "${RPC}" --private-key "${SELLER_KEY}" >/dev/null
+cast send "${PAY}" "openTaps(bytes32[],address[],uint128[],uint16)" "[${TAP_HASH}]" "[${SELLER}]" "[${RATE}]" 400 --rpc-url "${RPC}" --private-key "${KEY}" >/dev/null
+TAP_KEY=$(cast call "${PAY}" "tapKey(address,bytes32)(bytes32)" "${BUYER}" "${TAP_HASH}" --rpc-url "${RPC}")
+SELLER_BEFORE=$(balance "${SELLER}")
+TREASURY_BEFORE=$(balance "${TREASURY}")
+jq -n --arg rpc "${RPC}" --arg escrow "${PAY}" --arg key "${RELEASER_KEY}" \
+  --arg buyer "${BUYER}" --arg seller "${SELLER}" --argjson rate "${RATE}" --arg tapkey "${TAP_KEY}" \
+  '{rpc:$rpc, escrow:$escrow, tap:"tap_anvil_1", tap_key:$tapkey, buyer:$buyer, seller:$seller, rate:$rate, topped_up:10000000, releaser_key:$key}' \
+  > /tmp/losos-anvil-taps.json
+( cd ../registrar && LOSOS_ANVIL_TAPS=/tmp/losos-anvil-taps.json cargo test --lib an_anvil_tap_is_settled_within_its_cap_and_closed -- --nocapture )
+# An hour at the rate: 4% to the treasury, the rest to the seller.
+test "$(balance "${SELLER}")" = "$((SELLER_BEFORE + 3456000))"
+test "$(balance "${TREASURY}")" = "$((TREASURY_BEFORE + 144000))"
+test "$(balance "${PAY}")" = "6400000"
+
 echo "== Base Sepolia fork, if the public RPC answers =="
 if curl -sf --max-time 8 -X POST -H 'content-type: application/json' \
   --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' \
