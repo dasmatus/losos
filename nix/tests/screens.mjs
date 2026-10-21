@@ -99,10 +99,22 @@ export class Shots {
     }, QUIET);
     const deadline = Date.now() + 60_000;
     for (;;) {
-      const busy = await page.locator(BUSY).count();
+      // Visible ones only: a closed <dialog> keeps its spinner in the DOM.
+      const busy = await page.locator(BUSY).filter({ visible: true }).count();
       const loading = await page.evaluate(() => [...document.images].some((i) => !i.complete));
       if (busy === 0 && !loading) break;
-      if (Date.now() > deadline) throw new Error('the page never settled');
+      if (Date.now() > deadline) {
+        const still = await page.evaluate(
+          (busy) => [
+            ...[...document.querySelectorAll(busy)]
+              .filter((e) => e.checkVisibility())
+              .map((e) => e.parentElement.outerHTML.slice(0, 400)),
+            ...[...document.images].filter((i) => !i.complete).map((i) => `loading ${i.src}`),
+          ],
+          BUSY,
+        );
+        throw new Error(`the page never settled at ${page.url()}:\n${still.join('\n')}`);
+      }
       await sleep(250);
     }
     await sleep(extra);
@@ -112,7 +124,7 @@ export class Shots {
   async toastsGone(page) {
     const toasts = page.locator(TOASTS);
     const deadline = Date.now() + 60_000;
-    while ((await toasts.count()) > 0) {
+    while ((await toasts.filter({ visible: true }).count()) > 0) {
       if (Date.now() > deadline) throw new Error('a toast never went away');
       await sleep(250);
     }

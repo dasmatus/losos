@@ -49,6 +49,9 @@ in
     workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
     workloads.forgejoImage = standIn "losos-forgejo-stand-in";
   };
+  # The test driver names the machine after its node; lososd only lets a
+  # claim through for its own name.
+  networking.hostName = "mattbox";
   systemd.services.lososd.path = lib.mkForce [
     stubOcc
     pkgs.coreutils

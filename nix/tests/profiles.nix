@@ -73,15 +73,13 @@ pkgs.testers.nixosTest {
   nodes = {
     box = import ./profile-box.nix { inherit pkgs; };
 
-    laptop =
-      { ... }:
-      {
-        environment.systemPackages = [
-          pkgs.curl
-          python
-        ];
-        virtualisation.vlans = [ 1 ];
-      };
+    laptop = _: {
+      environment.systemPackages = [
+        pkgs.curl
+        python
+      ];
+      virtualisation.vlans = [ 1 ];
+    };
   };
 
   testScript = ''

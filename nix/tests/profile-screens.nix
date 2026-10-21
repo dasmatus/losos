@@ -42,7 +42,7 @@ let
     cp ${./profile-screens.mjs} $out/profile-screens.mjs
   '';
   # The owner's picture, a figure drawn in the palette, and a banner: a
-  # river at dusk with the salmon in it.
+  # river at dusk. No brand mark and no photo, so neither reads as the logo.
   pictures =
     pkgs.runCommand "profile-screens-pictures"
       {
@@ -67,28 +67,36 @@ let
         d.chord([S * 0.30, S * 0.16, S * 0.70, S * 0.48], 180, 360, fill=(46, 115, 87))
         img.resize((1024, 1024), Image.LANCZOS).save(sys.argv[1])
         EOF
-        python3 - ${../../admin-ui/themes/brand/salmon.png} $out/banner.png <<'EOF'
+        python3 - $out/banner.png <<'EOF'
         import sys
         from PIL import Image, ImageDraw
         W, H = 2400, 800
         img = Image.new("RGB", (W, H))
         d = ImageDraw.Draw(img)
-        # Sky to river, in the palette's teal.
+        # Sky to river at dusk, in the palette's teal, with the moon up.
         for y in range(H):
             t = y / H
-            sky = (14 + int(40 * t), 110 - int(50 * t), 125 - int(30 * t))
-            d.line([(0, y), (W, y)], fill=sky)
+            d.line([(0, y), (W, y)], fill=(14 + int(40 * t), 110 - int(50 * t), 125 - int(30 * t)))
+        d.ellipse([1700, 150, 1820, 270], fill=(226, 239, 241))
         # Two hills and the water line.
         d.polygon([(0, 470), (500, 330), (1000, 450), (1500, 360), (2400, 480), (2400, 800), (0, 800)], fill=(10, 46, 52))
         for i in range(9):
             y = 560 + i * 26
             d.line([(0, y), (W, y + 6)], fill=(36 + i * 3, 120 + i * 4, 132 + i * 3), width=3)
-        fish = Image.open(sys.argv[1]).convert("RGBA").resize((420, 420))
-        img.paste(fish, (1400, 330), fish)
-        img.save(sys.argv[2])
+        img.save(sys.argv[1])
         EOF
       '';
-  schemes = if before then [ "light" "dark" ] else [ "dark" "light" ];
+  schemes =
+    if before then
+      [
+        "light"
+        "dark"
+      ]
+    else
+      [
+        "dark"
+        "light"
+      ];
   mode = if before then "before" else "after";
 in
 
@@ -98,24 +106,22 @@ pkgs.testers.nixosTest {
   nodes = {
     box = import ./profile-box.nix { inherit pkgs adminUi lososCtl; };
 
-    laptop =
-      { ... }:
-      {
-        environment.systemPackages = [
-          pkgs.curl
-          pkgs.nodejs
-          python
-        ];
-        environment.variables.PLAYWRIGHT_BROWSERS_PATH = "${browsers}";
-        networking.hosts."192.168.1.1" = [ "mattbox.local" ];
-        fonts.packages = [ pkgs.inter ];
-        fonts.fontconfig.defaultFonts.sansSerif = [ "Inter" ];
-        virtualisation = {
-          memorySize = 3072;
-          cores = 2;
-          vlans = [ 1 ];
-        };
+    laptop = _: {
+      environment.systemPackages = [
+        pkgs.curl
+        pkgs.nodejs
+        python
+      ];
+      environment.variables.PLAYWRIGHT_BROWSERS_PATH = "${browsers}";
+      networking.hosts."192.168.1.1" = [ "mattbox.local" ];
+      fonts.packages = [ pkgs.inter ];
+      fonts.fontconfig.defaultFonts.sansSerif = [ "Inter" ];
+      virtualisation = {
+        memorySize = 3072;
+        cores = 2;
+        vlans = [ 1 ];
       };
+    };
   };
 
   testScript = ''
@@ -160,6 +166,9 @@ pkgs.testers.nixosTest {
         )
         assert code == "200", code
         box.wait_for_unit("authelia-losos.service")
+        box.systemctl("start losos-identity-setup.service")
+        box.wait_until_succeeds(f"grep -q \"domain: '{BOX}'\" /run/losos-identity/session.yml")
+        box.wait_until_succeeds("systemctl is-active authelia-losos.service")
         box.wait_for_open_port(9091)
         laptop.wait_until_succeeds(f"curl -skf https://{BOX}/auth/api/health", timeout=120)
         matus = sign_in("matus", PASSWORD)
@@ -193,6 +202,6 @@ pkgs.testers.nixosTest {
                 assert size == ["2560", "1800"], (step, size)
 
     laptop.succeed("tar -C /tmp -cf /tmp/shots.tar shots")
-    laptop.copy_from_vm("/tmp/shots.tar", "")
+    laptop.copy_from_machine("/tmp/shots.tar", "")
   '';
 }
