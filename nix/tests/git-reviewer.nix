@@ -246,6 +246,7 @@ pkgs.testers.nixosTest {
         mine = [s for s in statuses["statuses"] if s["context"] == "LosOS Reviewer"]
         assert mine and mine[0]["state"] == "success", statuses
         assert mine[0]["description"] == "Left 2 comments", mine
+        assert mine[0]["targetUrl"] == f"/git/matus/backup/pulls/{n}/files", mine
         code, progress = forge("GET", f"{REPO}/pulls/{n}/ai-review", token=jana)
         assert progress["state"] == "done" and progress["filesTotal"] == 3, progress
 

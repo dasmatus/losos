@@ -374,6 +374,10 @@ fn a_repository_that_asks_for_it_gets_a_review_from_the_box() {
         .unwrap();
     assert_eq!(mine["state"], "success");
     assert_eq!(mine["description"], "Left 2 comments");
+    assert_eq!(
+        mine["targetUrl"],
+        format!("/git/notshared/app/pulls/{n}/files")
+    );
     let (_, progress) = api("GET", &format!("/pulls/{n}/ai-review"), &jana, None);
     assert_eq!(progress["state"], "done");
     assert_eq!(progress["filesTotal"], 2);

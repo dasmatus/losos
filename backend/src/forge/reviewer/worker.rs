@@ -181,12 +181,23 @@ pub fn start(state: actix_web::web::Data<State>) -> std::io::Result<()> {
 
 /// Do one review. Returns how long to rest when it had to be put back.
 fn work(state: &State, job: &Job) -> Option<Duration> {
+    // The row links to the pull request's changed files, where the
+    // comments are.
+    let target_url = match (
+        state.store.repo_by_id(job.repo_id),
+        state.store.issue_number(job.issue_id),
+    ) {
+        (Ok(Some(repo)), Ok(Some(number))) => {
+            format!("/git/{}/{}/pulls/{number}/files", repo.owner, repo.name)
+        }
+        _ => String::new(),
+    };
     let status = |s: &str, description: &str| {
         let status = NewStatus {
             state: s.to_string(),
             context: STATUS_CONTEXT.to_string(),
             description: description.to_string(),
-            target_url: String::new(),
+            target_url: target_url.clone(),
         };
         if let Err(e) = statuses::set(&state.store, job.repo_id, &job.head, &status, BOT_LOGIN) {
             tracing::debug!(error = ?e, "the reviewer could not write its status");
