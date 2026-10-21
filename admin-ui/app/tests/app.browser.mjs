@@ -2437,7 +2437,7 @@ await check('AI models: Stop needs no wallet and a chat answer says what it cost
     { role: 'user', content: 'And its tail?' },
   ]);
   await page.getByTestId('ai-meters').getByRole('button', { name: 'Stop' }).click();
-  await page.getByText('The edge closes the taps; nothing more is billed.').waitFor();
+  await page.getByText('The edge closes the taps; nothing more is billed.', { exact: true }).waitFor();
   assert.deepEqual(llmPosts[2], ['/api/market/taps/stop', { meter: AI_METER.id }]);
   assert.deepEqual(errors, []);
   await page.close();
