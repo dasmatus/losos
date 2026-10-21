@@ -28,7 +28,7 @@ export function AboutPane({ form }: { form: SettingsForm }) {
    * who had just reached the box by its IP address to go somewhere that did
    * not load. */
   const here = browserOrigin();
-  const byName = saved === null ? "" : `${saved.https ? "https" : "http"}://${saved.hostName}.local`;
+  const byName = saved === null ? "" : `${window.location.protocol}//${saved.hostName}.local`;
 
   if (saved === null) {
     return (

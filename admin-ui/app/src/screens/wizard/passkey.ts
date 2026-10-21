@@ -20,8 +20,7 @@
  *
  * A passkey is scoped to the browser that made it. The desktop and phone sync
  * clients authenticate with a name and a password (or an app password derived
- * from one), and Nextcloud's `twofactor_webauthn` — the app
- * modules/nextcloud-stack.nix installs — is a *second* factor layered on a
+ * from one), and LosOS Login's passkeys are a *second* factor layered on a
  * password, not a replacement for one. So step 2 collects a password whatever
  * happens here, and this file is an addition to it.
  *

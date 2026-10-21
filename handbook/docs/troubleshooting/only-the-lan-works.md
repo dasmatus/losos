@@ -39,10 +39,10 @@ it.
 
 | What                                | Why it does not need the internet                                                                                |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Signing in to the admin pages       | The box checks the password against LosOS cloud on the box itself, over its own loopback. The printed spare key works too. |
-| LosOS cloud and LosOS Git           | Both run on the box, so files, calendars, contacts, repositories and the mobile apps on the same Wi-Fi all stay local. |
+| Signing in to the admin pages       | The box checks the password against LosOS Cloud on the box itself, over its own loopback. The printed spare key works too. |
+| LosOS Cloud and LosOS Git           | Both run on the box, so files, calendars, contacts, repositories and the mobile apps on the same Wi-Fi all stay local. |
 | Your own files                      | They are on the box's encrypted disk, in every storage mode.                                                     |
-| Local sharing between people at home | The box decides shares, links and permissions inside LosOS cloud.                                             |
+| Local sharing between people at home | The box decides shares, links and permissions inside LosOS Cloud.                                             |
 | The whole admin UI                  | Apply, Settings, the Look pane, the Storage pane and restarts all talk to the box over the LAN.                |
 | Built-in widgets and hand-written widgets | They render on the box, from the box's own readings. A hand-written widget that *chooses* to fetch something from the internet shows that part empty until the outside is back, and draws the rest. |
 | This handbook                       | The box serves its own copy at `/handbook/`, search included. If you opened this page from Settings → About, you are reading that copy. |

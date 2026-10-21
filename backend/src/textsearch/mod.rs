@@ -2,11 +2,11 @@
 //!
 //! Two sources, two methods, and neither runs inside lososd:
 //!
-//! * LosOS cloud: an SQLite FTS5 index of the owner's Nextcloud files
+//! * LosOS Cloud: an SQLite FTS5 index of the owner's files in LosOS Cloud
 //!   ([`index`]). `losos-search index` brings it up to date every few
 //!   minutes and re-reads only the files whose size or modification time
 //!   changed since the last pass. [`extract`] turns one file into text. It
-//!   runs as the `nextcloud` user with the files mounted read-only.
+//!   runs as the `losos-cloud` user with the files mounted read-only.
 //! * LosOS Git: no index at all. `losos-search git` runs `git grep` over the
 //!   default branch of each repository when a search comes in ([`git`]), as
 //!   the `forgejo` user. A box holds a handful of repositories, and git

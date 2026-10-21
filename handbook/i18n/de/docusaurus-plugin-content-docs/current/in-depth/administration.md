@@ -21,18 +21,16 @@ Dienste auf demselben Host:
 | Dienst              | URL                       |
 | ------------------- | ------------------------- |
 | Admin-Oberfläche    | `<host>.local/`           |
-| Nextcloud           | `<host>.local/nextcloud`  |
+| LosOS Cloud         | `<host>.local/cloud/`     |
 | Forgejo (optional)  | `<host>.local/forgejo/`   |
 | Handbuch            | `<host>.local/handbook/`  |
 | [Diagramme](/in-depth/diagrams.md) | `<host>.local/diagrams/` |
 
 Die IP-Adresse der Box (die aus dem tty1-Banner) und ihr bloßer Name
-funktionieren überall anstelle von `<host>.local`, auch bei Nextcloud. So
-kommst du aus einer libvirt-VM hinein, die keinen mDNS-Namen erhält. nginx
-teilt dem Nextcloud-Pod mit, über welche Adresse jede Anfrage eingegangen
-ist, und der Pod vertraut genau dieser einen, nie einem Platzhalter
-(`modules/workloads.nix`). `localhost` und `127.0.0.1` vertraut Nextcloud
-von sich aus.
+funktionieren überall anstelle von `<host>.local`, auch bei LosOS Cloud. So
+kommst du aus einer libvirt-VM hinein, die keinen mDNS-Namen erhält. LosOS
+Cloud führt keine Liste vertrauenswürdiger Namen und antwortet deshalb auf
+der Adresse, über die eine Anfrage eingegangen ist.
 
 `losos.tls.enable` (standardmäßig an) fügt HTTPS auf :443 hinzu, mit einem
 Zertifikat, das die Box selbst erzeugt und das zwei Jahre gültig ist.
@@ -128,26 +126,12 @@ Box nur in einem vertrauenswürdigen LAN ein, denn der erste Aufrufer wird ihr
 Eigentümer. Das Token wird nur einmal herausgegeben und kann über die
 Oberfläche nicht erneut abgerufen werden.
 
-Ein Anspruch, der gesendet wird, bevor Nextcloud seinen ersten Start
-abgeschlossen hat, wird mit `503` und
-`{"error": …, "ready": false, "waitingFor": …}` beantwortet und ändert
-nichts. Die Box bleibt beanspruchbar. `GET /api/setup/claim` trägt dieselben
-Felder `ready` und `waitingFor`. Der Einrichtungsassistent fragt sie
-regelmäßig ab und lässt den Eigentümer von selbst weiter, sobald sie
-umschlagen. Auf einer frischen Box dauert das einige Minuten, weil der
-Nextcloud-Pod `occ maintenance:install` ausführt, bevor er irgendetwas
-ausliefert.
-
-`ready` schlägt um, wenn diese Installation fertig ist, also bevor LosOS
-cloud einem Browser antwortet. Der Pod aktiviert dann seine 26 Apps und
-startet erst danach Apache. Nativ auf einem 4-Kern-Host gemessen
-(2026-10-07) dauert die Installation etwa 11 s, das Aktivieren der Apps etwa
-13 s, und die erste Seite antwortet 27 s nach dem Start des Pods. Der
-Anmeldeschritt des Assistenten zeigt für diese Lücke "Deine Dateien starten
-noch". Ein Neustart wiederholt dieselben
-Schritte gegen eine bereits installierte Instanz in etwa 2 s. In einer VM
-ohne KVM (QEMUs TCG-Emulation) dauern dieselben Schritte 10 bis 30 Minuten,
-gib einer Demo-VM also Hardwarevirtualisierung.
+Vor dem ersten Passwort muss nichts starten, deshalb antwortet
+`GET /api/setup/claim` auf einer unbeanspruchten Box mit `ready: true`, und
+der Einrichtungsassistent geht sofort weiter. Eine Anfrage, die einen Dienst
+braucht, der noch bei seinem ersten Start ist (etwa LosOS Git), wird mit
+`503`, `{"error": …, "ready": false, "waitingFor": …}` und einem
+`Retry-After` beantwortet und ändert nichts.
 
 Dieser Aufrufer ist der Einrichtungsassistent. Danach melden sich Personen
 bei LosOS Login an, der Anmeldeseite der Box unter `https://<box>/auth/`,
@@ -159,7 +143,7 @@ Login bei jeder Anfrage an `/api/` und gibt den Namen der Person an lososd
 weiter, das die Bereiche öffnet, die ihre Gruppen erlauben. Die erste Person
 ist immer Administrator. Ihr eigenes Passwort ändert eine Person mit `POST
 /api/set-password`, und beim Eigentümer ändert das auch das Passwort für
-LosOS cloud. Alle anderen fügt ein Administrator im Bereich Benutzer hinzu,
+LosOS Cloud. Alle anderen fügt ein Administrator im Bereich Benutzer hinzu,
 ändert und entfernt sie, über `GET` und `POST /api/people` und
 `POST /api/people/{access,password,remove}`. Den Bereich gibt es nur, solange
 die Box Personen selbst anmeldet (`standalone` in `GET /api/me`). lososd
@@ -171,14 +155,13 @@ Die Anmeldungen liegen in einem eigenen Redis von LosOS Login, auf einem
 Socket, den nur es öffnet, daher meldet weder ein Neustart von LosOS Login
 noch der nächtliche Neustart jemanden ab.
 
-LosOS cloud und LosOS Git melden Menschen genauso an, wenn sie als Pods
-laufen, was der Standard ist. nginx fragt auf der Anmeldeseite jeder App
+LosOS Cloud und LosOS Git melden Menschen genauso an. nginx fragt auf der Anmeldeseite jeder App
 LosOS Login und gibt die Person in drei Headern weiter, `X-Losos-Cloud-User`,
 `-Name` und `-Email`, die es bei jeder Anfrage an eine der Apps setzt, damit
 kein Client eigene schicken kann. Der Eigentümer, in der Gruppe
 `losos-owner`, kommt in beiden als Konto `notshared` an; alle anderen unter
-ihrem Anmeldenamen. Nextcloud liest die Header mit der App user_saml im
-Modus für Umgebungsvariablen, Forgejo mit seiner Anmeldung über den Reverse
+ihrem Anmeldenamen. LosOS Cloud liest die Header selbst
+(`backend/src/cloud/auth.rs`), Forgejo mit seiner Anmeldung über den Reverse
 Proxy, und beide legen beim ersten Mal ein Konto an; danach hält lososd
 Namen und Adresse in beiden Apps mit der Personendatei gleich. Wen LosOS
 Login nicht kennt, den schickt nginx dorthin, aus dem LAN wie über den Edge;
@@ -205,7 +188,7 @@ Passwörter, die nach einer Zahl von Tagen ablaufen. lososd markiert die
 Personendatei mit zwei Gruppen: `losos-two-factor` für alle mit einem
 zweiten Faktor, nach dem LosOS Login bei jeder Anmeldung fragt, und
 `losos-locked` für alle, die eine Regel erfasst. LosOS Login verweigert
-einer gesperrten Person LosOS cloud und LosOS Git, und lososd antwortet ihr
+einer gesperrten Person LosOS Cloud und LosOS Git, und lososd antwortet ihr
 nur zu ihrem Konto (`locked` in `GET /api/me`). lososd lehnt die
 Zwei-Faktor-Regel ab, solange der Administrator, der sie setzt, keinen
 zweiten Faktor hat, und der Ersatzschlüssel wird nie gesperrt.
@@ -324,14 +307,16 @@ Token ausstellt (`nix/forgejo-bootstrap.nix`).
 
 ### Föderation {#federation}
 
-Die Föderation läuft nur, solange die Box ihre Festplatte teilt. Beide
-Föderationsoptionen unten sind per UND mit `losos.sharingMyStorage`
+Die Föderation läuft nur, solange die Box ihre Festplatte teilt.
+`losos.forgejo.federation.enable` ist per UND mit `losos.sharingMyStorage`
 verknüpft, der Einstellung, die den geteilten Datenpool freischaltet
 (`lososInternal.federation` in `modules/options.nix`). Mit ausgeschaltetem
-Teilen spricht weder LosOS Git noch LosOS cloud mit anderen Servern, egal
-was die eigene Option sagt. Der Bereich Apps graut beide Schalter mit dem
-Grund aus, und der Bereich Erweitert zeigt beide Zeilen als nicht verfügbar
-an und verweist auf sie.
+Teilen spricht LosOS Git mit keinem anderen Server, egal was die eigene
+Option sagt. Der Bereich Apps graut den Schalter mit dem Grund aus, und der
+Bereich Erweitert zeigt die Zeile als nicht verfügbar an und verweist auf
+sie. LosOS Cloud föderiert nicht: Eine Datei verlässt die Box über einen
+Freigabelink oder das Konto einer Person, nie als Freigabe an einen anderen
+Server.
 
 `losos.forgejo.federation.enable` (standardmäßig an) schaltet die
 ActivityPub-Seite von Forgejo in beiden Modi ein: `[federation] ENABLED` in
@@ -353,90 +338,31 @@ Box föderieren; auf einer reinen LAN-Box ist es
 können. `nix/tests/forgejo-federation.nix` startet das echte Forgejo und fragt
 es ab, mit eingeschaltetem und dann ausgeschaltetem Teilen.
 
-`losos.nextcloud.federation.enable` (standardmäßig an) ist die Seite von
-LosOS cloud: Federated Cloud Sharing (Teilen mit `user@host`-Konten auf
-anderen Nextcloud-Servern), Kalenderföderation und die App trusted-servers.
-Ist sie aus, passieren zwei Dinge. Die eigenen Schalter von Nextcloud werden
-bei jedem Start gesetzt: `outgoing_server2server_share_enabled` und
-`incoming_server2server_share_enabled` von `files_sharing` (und die zwei
-Gruppenvarianten) auf `no`, `enableCalendarFederation` von `dav` auf false,
-und die App `federation` wird deaktiviert. Der Entrypoint des Pods tut das
-anhand einer `federation`-Datei, die der Host einhängt; der native Modus
-hängt es an `nextcloud-setup` an. Und der vhost antwortet mit 404 auf die
-Adressen, die andere Server aufrufen: `ocm-provider`, `ocs-provider`,
-`ocm/`, `.well-known/ocm`, `ocs/v[12].php/cloud/shares` und die App-Routen
-von `federation` und `federatedfilesharing`. Die vhost-Hälfte ist nötig,
-weil die OCM-Discovery sich als aktiviert meldet, egal was die
-Einstellungen sagen, und `cloud_federation_api` und `federatedfilesharing`
-immer aktivierte Apps sind, die sich nicht abschalten lassen.
-`nix/tests/front-vhost.nix` prüft die Routen beider Dienste mit ein- und
-ausgeschaltetem Teilen; `nix/tests/invariants.nix` prüft das Gate zur
-Evaluierungszeit.
-
-Eingeschaltet bekommt LosOS cloud außerdem `allow_local_remote_servers = true`
-und `sharing.federation.allowSelfSignedCertificates = true`
-(`modules/nextcloud-stack.nix`, `federation.system`; nativ in der
-`override.config.php` des Moduls, im Pod in `losos.config.php`). Der
-`RemoteHostValidator` von Nextcloud lehnt sonst jeden Server unter `.local`,
-jeden Namen ohne Punkt und jede private Adresse ab, also jede andere Box im
-LAN, und eine Freigabe an `notshared@andereBox.local/nextcloud` scheiterte,
-bevor eine Anfrage die Box verließ. Eine Adresse ohne Protokoll versucht
-Nextcloud nur über https, und jede Box hat ihr eigenes Zertifikat
-(`modules/tls.nix`), also schaltet der zweite Schlüssel die
-Zertifikatsprüfung bei Föderationsaufrufen ab. Der Preis: Was ein Konto
-Nextcloud abrufen lassen kann, darf dann auch ins LAN zeigen, und
-Föderationsaufrufe sind für jeden offen, der zwischen zwei Boxen sitzt. Eine
-Box ohne https erreicht man als `notshared@http://andereBox.local/nextcloud`.
-`nix/tests/cloud-apps.nix` startet zwei Boxen im nativen Modus mit
-eingeschaltetem Teilen und selbst ausgestellten Zertifikaten für https und
-schickt eine Datei von einem Besitzer zum anderen: Die Freigabe wird auf der
-zweiten Box angeboten, angenommen und über WebDAV zurückgelesen.
-
 ### Box-weite App-Einstellungen {#box-wide-app-settings}
 
-Der Bereich Apps trägt die Einstellungen, die für alle in LosOS cloud und
+Der Bereich Apps trägt die Einstellungen, die für alle in LosOS Cloud und
 LosOS Git gelten, also die, die jede App sonst auf ihren eigenen
-Verwaltungsseiten führt. Jedes Feld ist eine Option unter
-`losos.nextcloud.site.*` oder `losos.forgejo.site.*` und geht damit wie jede
+Verwaltungsseiten führt. Jedes Feld ist eine Option, `losos.cloud.trashDays`
+oder eine unter `losos.forgejo.site.*`, und geht damit wie jede
 andere Einstellung durch Anwenden, die Prüfung, den Verlauf und das
 Konfigurations-Repository. Der Bereich Erweitert zeigt ihre Werte und
 verweist auf den Abschnitt der App im Bereich Apps (`/apps#cloud`,
 `/apps#git`), statt einen zweiten Editor zu zeichnen (`ON_PANE` in
-`admin-ui/app/src/lib/option-value.ts`). Die beiden Föderationsschalter von
-oben stehen dort auch, am Anfang jedes Abschnitts.
+`admin-ui/app/src/lib/option-value.ts`). Der Föderationsschalter von
+oben steht dort auch, am Anfang des Abschnitts LosOS Git.
 
 | Option | Was sie in der App setzt |
 | --- | --- |
-| `losos.nextcloud.site.defaultLanguage` | `default_language` |
-| `losos.nextcloud.site.phoneRegion` | `default_phone_region` |
-| `losos.nextcloud.site.trashDays` | `trashbin_retention_obligation`, `"D, D"` |
-| `losos.nextcloud.site.versionDays` | `versions_retention_obligation`, `"D, D"` |
-| `losos.nextcloud.site.publicLinks` | `core` `shareapi_allow_links` |
-| `losos.nextcloud.site.linkPassword` | `core` `shareapi_enforce_links_password` |
-| `losos.nextcloud.site.linkExpiryDays` | `core` `shareapi_default_expire_date`, `shareapi_enforce_expire_date`, `shareapi_expire_after_n_days` |
-| `losos.nextcloud.site.defaultQuotaGB` | `files` `default_quota` |
+| `losos.cloud.trashDays` | wie viele Tage eine gelöschte Datei im Papierkorb bleibt (1 bis 365, Standard 30) |
 | `losos.forgejo.site.requireSignIn` | `[service] REQUIRE_SIGNIN_VIEW` |
 | `losos.forgejo.site.keepEmailPrivate` | `[service] DEFAULT_KEEP_EMAIL_PRIVATE` |
 | `losos.forgejo.site.defaultPrivate` | `[repository] DEFAULT_PRIVATE` |
 | `losos.forgejo.site.pushCreate` | `[repository] ENABLE_PUSH_CREATE_USER` |
 | `losos.forgejo.site.landingPage` | `[server] LANDING_PAGE` |
 
-Eine Nextcloud-Option auf null überlässt die Einstellung Nextcloud. Die
-ersten vier sind `config.php`-Schlüssel: Der native Modus schreibt sie in
-die `override.config.php` des Moduls, der Pod in `losos.config.php`, und
-beide werden nach `config.php` gelesen, sodass ein Wert, den Nextcloud dort
-schreibt, nie gewinnt. Die anderen vier sind App-Konfiguration in der
-Datenbank. `modules/nextcloud-stack.nix` (`site`) gibt sie als Zeilen
-`app key value` aus, die `occ config:app:set` bei jedem Start schreibt: der
-Entrypoint des Pods aus einer Datei `site`, die der Host einhängt, der
-native Modus am Ende von `nextcloud-setup`. Die Verwaltungsseiten von
-Nextcloud speichern diese Schlüssel über
-`ocs/v[12].php/apps/provisioning_api/api/v1/config/apps/<app>/<key>`, und
-der vordere vhost antwortet für jeden Schlüssel, den LosOS setzt, mit 403,
-die Föderationsschalter eingeschlossen. Eine Änderung dort kann sich also
-nicht von der Box entfernen. Die Verwaltungsseite zeigt den Wert weiterhin.
-`nix/tests/front-vhost.nix` prüft die 403 und dass andere Schlüssel Nextcloud
-weiter erreichen.
+`modules/cloud.nix` gibt `trashDays` als `--trash-days` an den Dienst, und
+dessen stündliches Aufräumen löscht endgültig, was länger im Papierkorb
+einer Person liegt.
 
 Die fünf von Forgejo sind `app.ini`-Schlüssel, die Forgejos
 Website-Administration ohne Möglichkeit zur Änderung zeigt. Beide Modi lesen
@@ -446,58 +372,10 @@ eine Attributmenge, `lososInternal.forgejoSite`.
 Alles, was ein Konto für sich selbst einstellt, bleibt in der App. In LosOS
 Git bleibt das Konto des Besitzers Forgejos Administrator für das, was LosOS
 noch nicht abdeckt: Forgejos in der Datenbank gespeicherte Einstellungen und
-die Kontenliste. In LosOS cloud ist kein Konto Administrator (nächster
-Abschnitt), daher behalten Mailversand, Hintergrundjobs und erzwungene
-Zwei-Faktor-Anmeldung die Werte, die die Box setzt.
+die Kontenliste. LosOS Cloud hat überhaupt keinen Administrator in sich:
+Wer es nutzen darf, entscheidet LosOS Login, und alles Box-weite ist eine
+Einstellung im Bereich Apps.
 :::
-
-### Die Apps in LosOS cloud {#losos-clouds-apps}
-
-Der Abschnitt LosOS cloud im Bereich Apps listet jede App, die Nextcloud
-hat, mit je einem Schalter, entfernt Apps aus dem Store und durchsucht den
-Store. lososd bedient ihn im Abschnitt `apps`:
-
-| Route | Tut |
-| --- | --- |
-| `GET /api/cloud/apps` | `{available, store, apps}`, oder `{available: false, reason}`, solange LosOS cloud nicht antwortet |
-| `GET /api/cloud/apps/search?q=` | die besten Treffer des Stores für diese Nextcloud-Version |
-| `POST /api/cloud/apps/{install,enable,disable,remove}` | `{id}`; antwortet mit der ganzen Liste nach der Änderung |
-
-lososd prüft eine Änderung, bevor es sie ausführt (`backend/src/cloud_apps.rs`).
-Es lehnt die Apps ab, die LosOS selbst setzt (`user_saml` und
-`provisioning_api` für die Anmeldung, `federation` für das Teilen,
-`theming` für das Aussehen, `firstrunwizard` für den Einrichtungsassistenten),
-die Apps, die Nextcloud immer an lässt (`alwaysEnabled` in
-`core/shipped.json`), und das Entfernen von allem außerhalb von
-`store-apps`, weil eine mitgelieferte App beim nächsten Start zurückkäme.
-Eine Ablehnung ist eine 400, ein Nextcloud, das nicht läuft, eine 409 und
-ein gescheiterter `occ`-Lauf eine 502 mit seiner Meldung.
-
-Die Arbeit erledigt `losos-nextcloud-apps` (`modules/nextcloud-stack.nix`,
-`appsTool`), im Pod (`crictl exec`) oder nativ auf dem Pfad der lososd-Unit.
-`list` verbindet `occ app:list` mit der `appinfo/info.xml` jeder App
-(`modules/nextcloud-apps-list.php`); die Verben führen `occ app:install`,
-`app:enable`, `app:disable` und `app:remove --keep-data` aus. Das
-Ausschalten einer App schreibt ihre ID nach
-`/var/lib/nextcloud/.losos-apps-off`, und jeder Start hält sich daran: Der
-Pod lässt diese IDs aus seiner `app:enable`-Zeile weg, und der native Modus
-schaltet sie nach `extraAppsEnable` des Moduls wieder aus. Einschalten oder
-erneutes Hinzufügen nimmt die ID von der Liste. Die Store-Suche lädt den
-Index des Stores für diese Nextcloud-Version alle sechs Stunden einmal
-(`apps.nextcloud.com/api/v1/platform/<version>/apps.json`, etwa 17 MB) und
-behält die neueste stabile Version jeder App.
-
-Das Konto des Besitzers (`notshared`) wird bei jedem Start aus der Gruppe
-`admin` von Nextcloud genommen (`demoteOwner`, nachdem die Installation es
-zum ersten Administrator gemacht hat), sodass ein angemeldeter Besitzer in
-LosOS cloud nicht ändern kann, was LosOS setzt. Alles, was lososd als
-Besitzer von Nextcloud verlangt (App-Passwörter, WebDAV, `cloud/user`),
-funktioniert mit einem normalen Konto. Die eigenen Seiten Apps und Benutzer
-von Nextcloud sind deshalb nicht erreichbar; Leute bekommen ihre Konten
-beim ersten Besuch von LosOS Login. `nix/tests/cloud-apps.nix` prüft die
-Gruppe, die Liste, dass eine ausgeschaltete App nach einem weiteren Lauf von
-`nextcloud-setup` aus bleibt und dass sich nur eine Store-App entfernen
-lässt.
 
 ## Sicherung, Wiederherstellung und Löschen {#backup-restore-and-erase}
 
@@ -512,8 +390,10 @@ ohne ihn kann niemand ein Backup öffnen.
 
 Ein Backup enthält:
 
-- `/var/lib/nextcloud` und `/var/lib/forgejo`, ohne die Nextcloud-Vorschauen;
-- einen `pg_dump` der Datenbanken `nextcloud` und `forgejo`;
+- `/var/lib/losos-cloud` und `/var/lib/forgejo`, wobei die Datenbank von
+  LosOS Cloud zuerst mit dem eigenen Backup von SQLite kopiert wird, damit
+  ein Schreibvorgang während der Kopie sie nicht zerreißen kann;
+- einen `pg_dump` der Datenbank `forgejo`;
 - den geteilten Ordner. Bei eingeschaltetem Teilen ist er eine
   fscrypt-Policy, und Linux liefert für eine gesperrte fscrypt-Datei keinen
   Chiffretext, daher entsperrt das Skript die Policy für die Kopie und
@@ -590,7 +470,7 @@ Zwei Datenbenutzer, beide ohne Passwort und ohne Shell:
 
 | Benutzer    | Besitzt             |
 | ----------- | ------------------- |
-| `notshared` | Nextcloud           |
+| `notshared` | Die Apps des Eigentümers; seine Dateien in LosOS Cloud tragen diesen Namen |
 | `shared`    | Mesh-Speicher       |
 
 Jeder hat seine eigene primäre Gruppe und ein Home mit Modus 700, sodass

@@ -63,7 +63,7 @@ Security pane: AppArmor, a hardened memory allocator, no SMT, USBGuard.
   possession protects its boot chain. [Secure Boot and signed
   media](../start/secure-boot) has the details.
 
-- **One origin.** The admin pages, LosOS cloud and LosOS Git share one
+- **One origin.** The admin pages, LosOS Cloud and LosOS Git share one
   address. A cross-site scripting hole in either app could read the admin
   key from a tab that has it. The defences are the strict content-security
   policy on the admin pages, the LAN-only guard, and keeping the apps

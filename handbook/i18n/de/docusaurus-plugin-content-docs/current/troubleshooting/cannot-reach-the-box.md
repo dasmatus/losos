@@ -38,7 +38,7 @@ endlos. Nichts auf der Box antwortet.
    ist der eine Zustand, den der nächtliche Neustart behebt. Warte bis
    00:07 oder zieh den Stecker.
 5. **Nur eine Seite ist weg.** `http://<address>/api/health` antwortet,
-   LosOS cloud aber nicht. Entweder startet die App noch, was nach jedem
+   LosOS Cloud aber nicht. Entweder startet die App noch, was nach jedem
    Neustart ein paar Minuten dauert, oder siehe
    [Eine App-Kachel liefert 404](app-tile-404).
 
@@ -46,7 +46,7 @@ endlos. Nichts auf der Box antwortet.
 
 Eine Box für sich allein ist von außen nicht erreichbar, und das ist kein
 Fehler. Eine Box mit Edge ist unter ihrem öffentlichen Namen erreichbar,
-aber nur für LosOS cloud und LosOS Git. Die Admin-Seiten veröffentlicht die
+aber nur für LosOS Cloud und LosOS Git. Die Admin-Seiten veröffentlicht die
 Box nie. Wenn der öffentliche Name nicht mehr antwortet, ist der Tunnel
 unterbrochen. Im LAN zeigt der Bereich Mesh, ob die Box die Edge findet,
 und [Keine Edge gefunden](edge-not-found) behandelt den Fall, dass sie es

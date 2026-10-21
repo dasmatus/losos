@@ -7,7 +7,7 @@
  *
  * Resolution order: the owner's explicit pick (localStorage), then the first
  * browser language we carry, then English. "auto" is a real choice, as it is
- * for the theme: Nextcloud and Forgejo both follow the browser's
+ * for the theme: LosOS Cloud and Forgejo both follow the browser's
  * Accept-Language too, so leaving the picker on auto keeps all three in step.
  *
  * Messages live in src/i18n/, one module per area, with all three languages

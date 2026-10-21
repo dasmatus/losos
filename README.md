@@ -1,6 +1,6 @@
 <h1><img src="admin-ui/themes/brand/salmon-128.png" alt="" width="56" height="56" align="center"> LosOS</h1>
 
-A NixOS appliance for a mini-PC. It runs Nextcloud for your own files and can
+A NixOS appliance for a mini-PC. It runs LosOS Cloud for your own files and can
 lend spare disk and CPU to a mesh of other losos boxes. There is no SSH and no
 login shell: you administer it from a web page, and it upgrades itself.
 
@@ -16,7 +16,7 @@ the handbook's last chapter.
 
 | Service          | Notes                                                                    |
 | ---------------- | ------------------------------------------------------------------------ |
-| **Nextcloud**    | Files, calendar, contacts for the `notshared` user, at `<host>.local/nextcloud` |
+| **LosOS Cloud**  | Files, photos, calendars, contacts and boards for everyone who signs in, at `<host>.local/cloud/`; the Nextcloud desktop and phone apps sync with it |
 | **Mesh storage** | Optional. Spare disk for the mesh as the `shared` user, replicated by Longhorn |
 | **Mesh compute** | Optional. Spare CPU for the mesh inside a time window, only when idle    |
 | **Forgejo**      | Optional git hosting at `<host>.local/forgejo/`                          |
