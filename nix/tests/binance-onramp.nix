@@ -252,14 +252,6 @@ let
       imageName = name;
       imageTag = "test";
     };
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
@@ -410,8 +402,6 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = lososPkgs.losos-admin-ui;
-          nextcloud.mode = "container";
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
           workloads.forgejoImage = standIn "losos-forgejo-stand-in";
           proxy = {
             enable = true;
@@ -426,11 +416,9 @@ pkgs.testers.nixosTest {
         security.pki.certificateFiles = [ "${fixture}/ca.pem" ];
         networking.hosts.${nodes.edge.networking.primaryIPAddress} = [ edgeName ];
         systemd.services.lososd.path = lib.mkForce [
-          stubOcc
           pkgs.coreutils
           pkgs.curl
         ];
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         environment.systemPackages = [ pkgs.jq ];
         virtualisation = {
           memorySize = 1536;

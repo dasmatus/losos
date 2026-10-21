@@ -14,7 +14,7 @@ noch über einen Webbrowser.
 
 | Was du siehst          | Was es ist                                                                                                 |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **LosOS Cloud**        | Deine Dateien, Fotos, Kalender, Kontakte, Notizen und Aufgaben. Basiert auf Nextcloud. Unter `/nextcloud`. |
+| **LosOS Cloud**        | Deine Dateien, Fotos, Kalender, Kontakte und Boards. Die Nextcloud-Apps synchronisieren mit ihm. Unter `/cloud/`. |
 | **LosOS Git**          | Deine Code-Repositories, standardmäßig an. Basiert auf Forgejo. Unter `/forgejo/`.                         |
 | **Die Admin-Seiten**   | Hier richtest du die Box ein und kümmerst dich um sie. Unter `/`, nur aus deinem lokalen Netzwerk erreichbar. |
 | **Das Mesh**           | Optional. Freier Speicherplatz und CPU-Leistung, an andere LosOS-Boxen verliehen und von ihnen geliehen.    |
@@ -22,7 +22,7 @@ noch über einen Webbrowser.
 
 ## Was sie von einem NAS unterscheidet \{#what-makes-it-different-from-a-nas}
 
-![Im Inneren einer Box: nginx ist die einzige Eingangstür; dahinter der Steuerdienst, der eigene Cluster der Box mit LosOS Cloud und LosOS Git und der Mesh-Agent; darunter eine Systemfestplatte im RAM und ein verschlüsseltes Volume.](@site/docs/img/box-architecture-de.svg)
+![Im Inneren einer Box: nginx ist die einzige Eingangstür und führt zu LosOS Cloud, LosOS Git und den Admin-Seiten; dahinter der Steuerdienst, der eigene Cluster der Box mit LosOS Git und der Mesh-Agent; darunter eine Systemfestplatte im RAM und ein verschlüsseltes Volume.](@site/docs/img/box-architecture-de.svg)
 
 - **Sie vergisst alles, was sie nicht braucht.** Die Box baut ihre
   Systemfestplatte bei jedem Start von Grund auf neu. Nur deine Daten, die

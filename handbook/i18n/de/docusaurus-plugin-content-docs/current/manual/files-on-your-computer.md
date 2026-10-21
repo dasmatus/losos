@@ -12,7 +12,7 @@ Netz der Box öffnet ihn im Dateimanager, zieht Dateien hinein und heraus und
 WebDAV-Freigabe von LosOS Cloud unter dieser Adresse:
 
 ```text
-https://<name>.local/nextcloud/remote.php/webdav/
+https://<name>.local/remote.php/webdav/
 ```
 
 `<name>` ist der Name der Box, wie er auf ihrem Bildschirm steht. Die
@@ -33,11 +33,10 @@ des Eigentümers. Alle anderen bekommen ihre eigenen, und beim ersten Öffnen
 der Freigabe legt LosOS Cloud ihr Konto an.
 
 Über das Internet antwortet LosOS Login nicht, deshalb fragt die Freigabe
-dort nach einem App-Passwort. Du erstellst es in LosOS Cloud unter
-**Einstellungen** > **Sicherheit** > **Neues App-Passwort erstellen**. LosOS
-cloud zeigt dann den Namen und das Passwort an, die du eingibst. Ein
-App-Passwort funktioniert auch im Netz der Box und lässt sich einzeln
-widerrufen.
+dort nach einem App-Passwort: dem, das eine App für Computer oder Telefon
+bei der Anmeldung bekommen hat, oder dem, das `losos cloud setup` erstellt
+hat (unten). Ein App-Passwort funktioniert auch im Netz der Box, und
+**Geräte** in LosOS Cloud meldet es einzeln ab.
 
 ## Linux \{#linux}
 
@@ -49,9 +48,9 @@ GNOME Dateien und KDE Dolphin finden die Box von selbst.
   on `<name>`**.
 
 Um die Adresse selbst einzugeben, schreibe
-`davs://<name>.local/nextcloud/remote.php/webdav/` in das Feld **Mit Server
+`davs://<name>.local/remote.php/webdav/` in das Feld **Mit Server
 verbinden** von GNOME Dateien oder
-`webdavs://<name>.local/nextcloud/remote.php/webdav/` in die Adresszeile von
+`webdavs://<name>.local/remote.php/webdav/` in die Adresszeile von
 Dolphin.
 
 Lässt du das Passwort speichern, öffnet sich der Ordner beim nächsten Mal
@@ -66,7 +65,7 @@ Der Datei-Explorer zeigt die Freigabe nicht unter **Netzwerk**. Füge sie
 1. Öffne **Dieser PC** und dann **Netzlaufwerk verbinden** (unter Windows 11
    im Menü **...**).
 2. Wähle einen Laufwerksbuchstaben. Gib unter **Ordner**
-   `https://<name>.local/nextcloud/remote.php/webdav/` ein.
+   `https://<name>.local/remote.php/webdav/` ein.
 3. Setze die Häkchen bei **Verbindung mit anderen Anmeldeinformationen
    herstellen** und **Verbindung bei Anmeldung wiederherstellen**, dann
    **Fertig stellen**.
@@ -88,7 +87,7 @@ Auch der Finder zeigt die Freigabe nicht unter **Netzwerk**. Füge sie über
 die Adresse hinzu:
 
 1. Wähle im Finder **Gehe zu** > **Mit Server verbinden** (Befehl-K).
-2. Gib `https://<name>.local/nextcloud/remote.php/webdav/` ein und klicke
+2. Gib `https://<name>.local/remote.php/webdav/` ein und klicke
    auf **Verbinden**.
 3. Wähle **Registrierter Benutzer**, gib Namen und Passwort ein und setze
    das Häkchen bei **Kennwort im Schlüsselbund sichern**.
@@ -100,9 +99,8 @@ bevorzugten Server.
 
 Die Freigabe ist dafür da, Dateien dort zu öffnen, wo sie liegen. Um eine
 Kopie eines Ordners synchron zu halten oder Fotos vom Handy hochzuladen,
-nimm die Apps von LosOS Cloud (den Nextcloud-Desktop-Client und die
-Nextcloud-Apps fürs Handy). Gib ihnen die Adresse
-`https://<name>.local/nextcloud`. Zum Anmelden öffnen sie LosOS Login im
+nimm den Nextcloud-Desktop-Client und die Nextcloud-Apps fürs Handy, die mit
+LosOS Cloud synchronisieren. Gib ihnen die Adresse `https://<name>.local`. Zum Anmelden öffnen sie LosOS Login im
 Browser und behalten danach ein eigenes App-Passwort.
 
 Auf einem Linux-Computer mit dem Terminal-Client `losos` richtet

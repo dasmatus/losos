@@ -161,7 +161,7 @@ of the full-screen view does the same with one key.
 
 `cloud setup` asks the box for an app password for this computer alone
 and keeps it in the keychain where the file manager looks for it. LosOS
-cloud then appears in the file manager's sidebar (GNOME Files and other
+Cloud then appears in the file manager's sidebar (GNOME Files and other
 file managers that read GTK bookmarks), and opening it shows your files
 without asking for a password. The file manager asks once to accept the
 box's own certificate when it first connects.

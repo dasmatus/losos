@@ -1,21 +1,18 @@
-# The LosOS look and the LosOS names for Nextcloud and Forgejo, as one store
-# path plus the facts each consumer needs about it. Nextcloud is presented as
-# "LosOS Cloud" and Forgejo as "LosOS Git": the colours, the logos, the names
-# and the words on the page are all the appliance's, and nothing links out to
-# either project's marketing.
+# The LosOS look and the LosOS name for Forgejo ("LosOS Git") and LosOS
+# Login, as one store path plus the facts each consumer needs about it: the
+# colours, the logos, the names and the words on the page are all the
+# appliance's, and nothing links out to either project's marketing.
 #
-# Plain data rather than a module, for modules/nextcloud-stack.nix's reason:
-# the same files are installed by NixOS modules (native mode) and baked into
-# the OCI images by nix/images.nix (workload mode), and an image is built
-# from the flake where there is no module system to read an option from. So
-# everything both paths need is written down here once — and three callers
-# import it: modules/nextcloud-stack.nix (the Nextcloud package), and, for
-# Forgejo, modules/services.nix (native) and nix/images.nix (the image).
+# Plain data rather than a module: the same files are installed by NixOS
+# modules (native mode) and baked into the OCI image by nix/images.nix
+# (workload mode), and an image is built from the flake where there is no
+# module system to read an option from. So everything both paths need is
+# written down here once.
 #
 # The palette is not copied into this directory. Both themes ship the admin
 # SPA's own admin-ui/app/src/styles/tokens.css, byte for byte, under the name
 # losos-tokens.css, and map their app's variables onto it. A colour changed
-# there changes the homepage, Nextcloud and Forgejo in one commit; that file's
+# there changes the homepage, LosOS Git and LosOS Login in one commit; that file's
 # header says what is allowed to live in it so this stays true.
 #
 # The logos are brand/losos-cloud.svg and brand/losos-git.svg, drawn by
@@ -27,12 +24,6 @@
 # with them.
 #
 # Layout of the output:
-#
-#   nextcloud/                 a Nextcloud theme folder, copied whole into
-#     defaults.php             the server package's themes/<name>/: the name,
-#     core/css/server.css      the stylesheet and its palette, and the
-#     core/css/losos-tokens.css   images under core/img/ that Nextcloud
-#     core/img/…               looks up there before its own
 #
 #   office/branding.css        tokens.css and office/branding.css in one
 #                              file, served as Collabora's branding.css
@@ -71,26 +62,6 @@ let
         # (./office/branding.css says why both are one file).
         install -d "$out/office"
         cat ${tokens} ${./office/branding.css} > "$out/office/branding.css"
-
-        # ── Nextcloud: themes/<name>/ ─────────────────────────────────────
-        nc="$out/nextcloud"
-        install -Dm0644 ${./nextcloud/defaults.php} "$nc/defaults.php"
-        install -Dm0644 ${./nextcloud/server.css} "$nc/core/css/server.css"
-        install -Dm0644 ${tokens} "$nc/core/css/losos-tokens.css"
-
-        # The names Nextcloud's templates ask for: logo/logo.svg in the header
-        # and on the login page, logo/logo.png in e-mails, favicon.ico and
-        # favicon-touch.png in every page's <head>, favicon-mask.svg for
-        # Safari's pinned tab, favicon.png for the theming app's fallback.
-        install -Dm0644 ${brand}/losos-cloud.svg "$nc/core/img/logo/logo.svg"
-        install -Dm0644 ${brand}/losos-cloud.svg "$nc/core/img/favicon.svg"
-        install -Dm0644 ${brand}/losos-cloud.svg "$nc/core/img/favicon-mask.svg"
-        ${render 512 "${brand}/losos-cloud.svg" "$nc/core/img/logo/logo.png"}
-        ${render 512 "${brand}/losos-cloud.svg" "$nc/core/img/favicon-touch.png"}
-        ${render 32 "${brand}/losos-cloud.svg" "$nc/core/img/favicon.png"}
-        ${render 16 "${brand}/losos-cloud.svg" "ico-16.png"}
-        ${render 48 "${brand}/losos-cloud.svg" "ico-48.png"}
-        magick ico-16.png "$nc/core/img/favicon.png" ico-48.png "$nc/core/img/favicon.ico"
 
         # ── Forgejo: $FORGEJO_CUSTOM ──────────────────────────────────────
         fj="$out/forgejo"
@@ -158,7 +129,7 @@ in
     # name is kept base64-encoded in
     # src/constants/constants.ts, as an array of character codes), and the
     # "Powered by" line under the form names LosOS Login instead, as LosOS
-    # cloud and LosOS Git name themselves. The licence (Apache-2.0) stays in the package.
+    # Git names itself. The licence (Apache-2.0) stays in the package.
     web =
       web:
       web.overrideAttrs (old: {
@@ -181,43 +152,8 @@ in
       });
   };
 
-  nextcloud = {
-    # The `theme` system config value, and the directory name under the
-    # server's themes/. Nextcloud ties the two by name and by nothing else.
-    name = "losos";
-    # Copied into themes/<name>/ of the server package itself: Nextcloud
-    # resolves themes against its *real* server root, which is the package
-    # path, so a symlink in the webroot would never be found.
-    dir = "${package}/nextcloud";
-
-    # Images Nextcloud reads by absolute path under core/img/, without asking
-    # the theme folder: the theming app's favicon and touch-icon routes fall
-    # back to core/img/favicon.png and favicon-touch.png, and build icons from
-    # core/img/logo/logo.svg when PHP has Imagick. Those are what the web-app
-    # manifest points at ("add to home screen"). modules/nextcloud-stack.nix
-    # overwrites these in the package with the theme folder's copies.
-    coreImages = [
-      "favicon.png"
-      "favicon-touch.png"
-      "logo/logo.svg"
-    ];
-
-    # config.php keys that take the remaining Nextcloud material out:
-    settings = {
-      # No "Nextcloud Manual.pdf", "Nextcloud intro.mp4", "Reasons to use
-      # Nextcloud.pdf" or Readme dropped into each new account. The
-      # templates directory (blank documents to start from) is separate and
-      # stays.
-      skeletondirectory = "";
-      # Public share pages: no "Get your own free account" link to
-      # nextcloud.com/signup under every shared file.
-      "simpleSignUpLink.shown" = false;
-      # No Help entry in the user menu, which opens docs.nextcloud.com.
-      knowledgebaseenabled = false;
-    };
-  };
-
   forgejo = {
+    # Everything here belongs in Forgejo's $FORGEJO_CUSTOM  forgejo = {
     # Everything here belongs in Forgejo's $FORGEJO_CUSTOM, at the same
     # relative path: css beside where Forgejo serves its stock themes, so the
     # relative @imports resolve; img/ where its templates load the logo and

@@ -21,18 +21,10 @@
 { pkgs }:
 
 let
-  inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
   python = pkgs.python3.withPackages (p: [ p.websocket-client ]);
   client = pkgs.writeShellScript "office-client" ''
     exec ${python}/bin/python3 ${./office-client.py} "$@"
-  '';
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
   '';
   plan = pkgs.writeText "plan.fodt" ''
     <?xml version="1.0" encoding="UTF-8"?>
@@ -65,13 +57,10 @@ pkgs.testers.nixosTest {
       hostName = "mattbox";
       backend.package = lososPkgs.losos-ctl;
       admin.ui = lososPkgs.losos-admin-ui;
-      nextcloud.mode = "native";
       cloud.enable = true;
       forgejo.enable = false;
       office.enable = true;
     };
-    systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
-    systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
     environment.systemPackages = [
       pkgs.curl
       pkgs.file

@@ -41,13 +41,6 @@ let
   client = pkgs.writeShellScript "office-client" ''
     exec ${python}/bin/python3 ${./office-client.py} "$@"
   '';
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
   shots = pkgs.writeShellScript "office-shots" ''
     exec ${python}/bin/python3 ${./office-shots.py} "$@"
   '';
@@ -154,12 +147,7 @@ pkgs.testers.nixosTest {
         };
       };
 
-      systemd.services.lososd.path = lib.mkForce [
-        stubOcc
-        pkgs.coreutils
-      ];
-      # The stub above, not a pod.
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
+      systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
 
       # A TCG run is slow enough for a tab to count as idle or away; a box
       # keeps coolwsd's defaults.

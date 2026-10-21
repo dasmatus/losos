@@ -88,12 +88,23 @@ enum Cmd {
         #[arg(long, default_value = "losos-cloud")]
         name: String,
     },
-    /// Move every person's files out of a Nextcloud data folder
-    /// (`<from>/<login>/files/`) into the cloud. Files already in the cloud
+    /// Move everything out of a Nextcloud: with `--dump`, first its
+    /// calendars, contacts, boards and trash bin from a dump of its database
+    /// (`modules/cloud.nix` makes it), then every person's files out of its
+    /// data folder (`<from>/<login>/files/`). Files already in the cloud
     /// keep their place; a name taken gets the Nextcloud copy beside it.
     Import {
         #[arg(long)]
         from: PathBuf,
+        #[arg(long)]
+        dump: Option<PathBuf>,
+        /// Nextcloud's `config.php`, whose secret keeps its app passwords
+        /// working.
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// Write what came across, per person, as JSON here.
+        #[arg(long)]
+        report: Option<PathBuf>,
     },
 }
 
@@ -199,10 +210,41 @@ fn main() -> anyhow::Result<()> {
             println!("{pw}");
             Ok(())
         }
-        Cmd::Import { from } => {
+        Cmd::Import {
+            from,
+            dump,
+            config,
+            report,
+        } => {
             let cloud = Cloud::open(&cli.root, Config::default())?;
+            // The database first: should it fail, the files are still where
+            // Nextcloud kept them and the next run starts over.
+            let mut moved = match &dump {
+                Some(d) => cloud::import::database(&cloud, d)?,
+                None => cloud::import::Report::default(),
+            };
+            if let (Some(d), Some(c)) = (&dump, &config) {
+                for (login, n) in cloud::import::passwords(&cloud, d, c)? {
+                    moved.people.entry(login).or_default().app_passwords += n;
+                }
+            }
+            if let Some(d) = &dump {
+                for (login, n) in cloud::import::trash(&cloud, &from, d)? {
+                    moved.people.entry(login).or_default().trash += n;
+                }
+            }
             for (login, n) in cloud::import::nextcloud(&cloud, &from)? {
-                println!("{login}: {n} entries");
+                moved.people.entry(login).or_default().files += n;
+            }
+            cloud::import::write_notes(&cloud, &moved)?;
+            for (login, m) in &moved.people {
+                println!(
+                    "{login}: {} files, {} in the trash, {} calendars ({} events, {} tasks), {} address books ({} contacts), {} boards ({} cards), {} app passwords, {} not moved",
+                    m.files, m.trash, m.calendars, m.events, m.tasks, m.address_books, m.contacts, m.boards, m.cards, m.app_passwords, m.not_moved.len()
+                );
+            }
+            if let Some(path) = report {
+                std::fs::write(path, serde_json::to_vec_pretty(&moved)?)?;
             }
             Ok(())
         }

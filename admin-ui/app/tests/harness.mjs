@@ -21,7 +21,7 @@ const TYPES = {
 };
 
 /* The admin vhost's Content-Security-Policy (modules/containers.nix,
- * `adminCsp`), minus the frame-src line the wizard needs for /nextcloud.
+ * `adminCsp`), up to frame-src, which the board needs for /widget-frame/.
  * A check that passes `csp: true` to serve() gets its pages under it, so a
  * library that styles itself with an injected <style> element, or a
  * component that sets a style attribute, fails here before it fails on the

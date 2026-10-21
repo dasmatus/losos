@@ -12,7 +12,7 @@ them in place, without installing anything. The folder is LosOS Cloud's
 WebDAV share, at this address:
 
 ```text
-https://<name>.local/nextcloud/remote.php/webdav/
+https://<name>.local/remote.php/webdav/
 ```
 
 `<name>` is the box's name, as on the box's screen. The share holds the same
@@ -33,10 +33,9 @@ gets their own, and the first time they open the share LosOS Cloud makes
 their account.
 
 Through the internet, LosOS Login does not answer, so the share asks for an
-app password instead. Make one in LosOS Cloud under **Settings** >
-**Security** > **Create new app password**. LosOS Cloud then shows the name
-and the password to type. An app password works on the box's network too,
-and you can revoke it on its own.
+app password instead: one a desktop or phone app got when you signed it in,
+or one `losos cloud setup` made (below). An app password works on the box's
+network too, and **Devices** in LosOS Cloud signs it out on its own.
 
 ## Linux
 
@@ -47,9 +46,9 @@ GNOME Files and KDE Dolphin find the box by themselves.
 - **Dolphin:** open **Network** in the places panel, then **LosOS Cloud on
   `<name>`**.
 
-To type the address instead, use `davs://<name>.local/nextcloud/remote.php/webdav/`
+To type the address instead, use `davs://<name>.local/remote.php/webdav/`
 in GNOME Files' **Connect to Server** field, or
-`webdavs://<name>.local/nextcloud/remote.php/webdav/` in Dolphin's location
+`webdavs://<name>.local/remote.php/webdav/` in Dolphin's location
 bar.
 
 Choose to remember the password and the folder opens without asking next
@@ -62,7 +61,7 @@ File Explorer does not list the share under **Network**. Add it by address:
 1. Open **This PC**, then **Map network drive** (under the **...** menu on
    Windows 11).
 2. Pick a drive letter. In **Folder**, type
-   `https://<name>.local/nextcloud/remote.php/webdav/`.
+   `https://<name>.local/remote.php/webdav/`.
 3. Tick **Connect using different credentials** and **Reconnect at
    sign-in**, then **Finish**.
 4. Type your name and password, and tick **Remember my credentials**.
@@ -81,7 +80,7 @@ The Finder does not list the share under **Network** either. Add it by
 address:
 
 1. In the Finder, choose **Go** > **Connect to Server** (Command-K).
-2. Type `https://<name>.local/nextcloud/remote.php/webdav/` and click
+2. Type `https://<name>.local/remote.php/webdav/` and click
    **Connect**.
 3. Choose **Registered User**, type your name and password, and tick
    **Remember this password in my keychain**.
@@ -92,10 +91,10 @@ servers.
 ## The desktop and phone apps
 
 The share is for opening files where they are. To keep a copy of a folder
-in sync, or to upload photos from a phone, use the LosOS Cloud apps (the
-Nextcloud desktop client and the Nextcloud phone apps). Give them the
-address `https://<name>.local/nextcloud`. They open LosOS Login in a
-browser to sign you in, then keep an app password of their own.
+in sync, or to upload photos from a phone, use the Nextcloud desktop client
+and the Nextcloud phone apps, which sync with LosOS Cloud. Give them the
+address `https://<name>.local`. They open LosOS Login in a browser to sign
+you in, then keep an app password of their own.
 
 On a Linux computer with the `losos` terminal client, `losos cloud setup`
 sets up the file manager for you; see [The terminal client](terminal).

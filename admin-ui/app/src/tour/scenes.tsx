@@ -64,15 +64,12 @@ export interface SceneDef {
 
 /* ── 1. Overview: an app opens from its tile and folds back into it ─────── */
 
-/* LosOS Cloud's six apps, as the Overview's tiles. The Board is the
- * catalogue's kanban app under the name LosOS Cloud gives it. */
+/* LosOS Cloud's apps and the rest of the box, as the Overview's tiles. */
 const OVERVIEW_APPS: readonly { id: AppId; name?: MessageKey }[] = [
   { id: "files" },
-  { id: "calendar" },
-  { id: "contacts" },
-  { id: "tasks" },
-  { id: "notes" },
-  { id: "deck", name: "tour.scene.board" },
+  { id: "photos" },
+  { id: "code" },
+  { id: "settings" },
 ];
 const TILE = { x: 24, y: 60, size: 44, step: 72 } as const;
 
@@ -108,7 +105,7 @@ function OverviewScene({ frame: f }: SceneProps) {
   const files: { icon: typeof Folder01Icon; name: string; size: string }[] = [
     { icon: Folder01Icon, name: t("tour.scene.documents"), size: "38 MB" },
     { icon: Folder01Icon, name: t("apps.photos.name"), size: "2.1 GB" },
-    { icon: File01Icon, name: `${t("apps.notes.name")}.md`, size: "64 KB" },
+    { icon: File01Icon, name: "README.md", size: "64 KB" },
   ];
 
   return (

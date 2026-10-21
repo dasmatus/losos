@@ -23,12 +23,9 @@ const { check, finish } = runner();
 
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   forgejoMode: 'container',
   hostName: 'mattbox',
-  https: false,
   gpuEnable: false,
-  apachePort: 80,
   proxyEnable: false,
   clusterEnable: false,
   shareCompute: false,
@@ -326,17 +323,10 @@ async function open({
   }
   if (init !== null) await page.addInitScript(...init);
   // The apps the homepage probes, when a check wants them answering the way
-  // a set-up box does. `cloud.mail` says whether the owner installed Mail:
-  // an installed app sends a visitor without a session to the sign-in page,
-  // a missing one is Nextcloud's 404.
+  // a set-up box does: LosOS Cloud's status document and LosOS Git's page.
   if (cloud !== null) {
-    await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true }));
+    await page.route('**/status.php', (route) => json(route, 200, { installed: true, productname: 'LosOS Cloud' }));
     await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
-    await page.route('**/nextcloud/index.php/apps/mail/', (route) =>
-      cloud.mail
-        ? route.fulfill({ status: 303, headers: { location: '/nextcloud/index.php/login' } })
-        : route.fulfill({ status: 404, contentType: 'text/html', body: '' }),
-    );
   }
   await page.goto(base + path, { waitUntil: 'networkidle' });
   return { page, errors, marketPosts, llmPosts, vmPosts, applies, domainPosts, backupPosts };
@@ -972,7 +962,7 @@ await check('under the appliance CSP the rail tooltip, the folds and the phone s
  * is a real <input type="checkbox" role="switch"> inside a <label>, so the
  * old hand-made <button role="switch"> must be gone from every pane. */
 const SWITCH_PANES = {
-  '/settings/network': ['Encrypt the connection', 'Reachable from outside your home'],
+  '/settings/network': ['Reachable from outside your home'],
   '/settings/hardware': null,
   '/settings/security': [
     'Ignore USB devices plugged in later',
@@ -1159,35 +1149,22 @@ await check('About leads with the address this browser is using and names the .l
   await page.close();
 });
 
-/* LosOS Cloud's apps, in the order of its own menu, each a link into it
- * through index.php. Mail is not shipped, so its tile waits for the probe. */
-const CLOUD_TILES = [
-  ['Files', 'files'], ['Dashboard', 'dashboard'], ['Photos', 'photos'], ['Activity', 'activity'],
-  ['Contacts', 'contacts'], ['Calendar', 'calendar'], ['Notes', 'notes'], ['Bookmarks', 'bookmarks'],
-  ['Deck', 'deck'], ['Music', 'music'], ['Collectives', 'collectives'], ['Polls', 'polls'],
-  ['Forms', 'forms'], ['Tables', 'tables'], ['Memories', 'memories'], ['News', 'news'],
-  ['Tasks', 'tasks'], ['Maps', 'maps'],
-];
 const tiles = (page) =>
   page.getByRole('list', { name: 'Apps on this box' }).getByRole('link').evaluateAll((links) =>
     links.map((a) => [a.textContent.trim(), a.getAttribute('href')]),
   );
 
-await check('the homepage has a tile for every app in LosOS Cloud\'s menu, and Mail only when it is installed', async () => {
-  const expected = CLOUD_TILES.map(([name, id]) => [name, `/nextcloud/index.php/apps/${id}/`]);
-  for (const mail of [false, true]) {
-    const { page, errors } = await open({ stored: true, cloud: { mail } });
-    await page.getByRole('link', { name: 'Maps' }).waitFor();
-    const want = [
-      ...expected,
-      ...(mail ? [['Mail', '/nextcloud/index.php/apps/mail/']] : []),
-      ['Code', '/forgejo/'],
-      ['Settings', '/settings'],
-    ];
-    assert.deepEqual(await tiles(page), want);
-    assert.deepEqual(errors, []);
-    await page.close();
-  }
+await check('the homepage has a tile for each page of LosOS Cloud, LosOS Git and Settings', async () => {
+  const { page, errors } = await open({ stored: true, cloud: {} });
+  await page.getByRole('link', { name: 'Photos' }).waitFor();
+  assert.deepEqual(await tiles(page), [
+    ['Files', '/cloud/files'],
+    ['Photos', '/cloud/photos'],
+    ['Code', '/forgejo/'],
+    ['Settings', '/settings'],
+  ]);
+  assert.deepEqual(errors, []);
+  await page.close();
 });
 
 await check('an unknown address says so instead of showing a blank page', async () => {
@@ -1898,7 +1875,7 @@ await check('the daemon\'s refusal reaches the owner in the daemon\'s own words'
   // the toast, and nothing is marked as applying afterwards.
   // The fixture's port 80 fails the form's own validation and keeps Apply
   // greyed; this check is about the daemon's refusal, so the form is valid.
-  const { page, applies } = await open({ path: '/mesh', stored: true, settings: { ...JOINABLE, apachePort: 11000 } });
+  const { page, applies } = await open({ path: '/mesh', stored: true, settings: JOINABLE });
   await page.locator('[data-edge="found"]').waitFor();
   const join = page.getByRole('switch', { name: 'Join the mesh', exact: true });
   await page.locator('[data-slot="switch"]').filter({ has: join }).click();
