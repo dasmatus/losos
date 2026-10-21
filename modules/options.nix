@@ -877,6 +877,9 @@ in
         no edge. It is opened on the box's firewall while calls are on. A
         box with `losos.proxy.enable` opens no port: its media goes
         through the edge over QUIC (`losos.edge.calls.relay`).
+      '';
+    };
+
     cloud.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
