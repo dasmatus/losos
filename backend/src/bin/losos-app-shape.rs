@@ -135,7 +135,12 @@ fn own_tree(path: &Path, uid: u32) -> std::io::Result<()> {
         return Ok(());
     }
     std::os::unix::fs::lchown(path, Some(uid), Some(uid))?;
-    let mode = if meta.is_dir() { 0o700 } else { 0o600 };
+    // A file keeps its owner's execute bit, which a chart can ask for.
+    let mode = if meta.is_dir() || meta.permissions().mode() & 0o100 != 0 {
+        0o700
+    } else {
+        0o600
+    };
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
     if meta.is_dir() {
         for entry in std::fs::read_dir(path)? {
@@ -177,6 +182,10 @@ fn write_project(
             std::fs::create_dir_all(parent).map_err(|e| io("writing the app's settings", e))?;
         }
         std::fs::write(&to, &f.bytes).map_err(|e| io("writing the app's settings", e))?;
+        if f.exec {
+            std::fs::set_permissions(&to, std::fs::Permissions::from_mode(0o700))
+                .map_err(|e| io("writing the app's settings", e))?;
+        }
     }
     for d in &project.scratch {
         let rel = Path::new(d)

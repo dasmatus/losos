@@ -78,6 +78,9 @@ pub struct File {
     /// Relative to the project's `files/`.
     pub path: String,
     pub bytes: Vec<u8>,
+    /// The chart asked for it to be executable (`defaultMode` or an item's
+    /// `mode` with an execute bit): its owner may run it.
+    pub exec: bool,
 }
 
 /// An app as Podman Compose will run it.
@@ -819,6 +822,22 @@ fn expand(s: &str, env: &Map<String, Value>) -> String {
     out
 }
 
+/// A Kubernetes volume name: an RFC 1123 label.
+fn dns_label(name: &str) -> bool {
+    let b = name.as_bytes();
+    !b.is_empty()
+        && b.len() <= 63
+        && b.iter()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
+        && b[0] != b'-'
+        && b[b.len() - 1] != b'-'
+}
+
+/// Whether a file mode from a chart lets anyone execute the file.
+fn executable(mode: Option<u64>) -> bool {
+    mode.is_some_and(|m| m & 0o111 != 0)
+}
+
 fn service_name(workload: &str, container: &str) -> String {
     let raw = if workload == container {
         workload.to_string()
@@ -931,6 +950,23 @@ pub fn from_kube(shaped: Shaped, ctx: &ShapeCtx) -> Result<Project, Refusal> {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
+            // The name becomes part of a path the box writes as root, and
+            // `helm template` never asked Kubernetes whether it is valid.
+            if !dns_label(&vname) {
+                return refuse(format!(
+                    "The {kind} {workload} has a volume with a name Kubernetes would refuse ({vname:?})."
+                ));
+            }
+            let downward = v.get("downwardAPI").is_some()
+                || v.pointer("/projected/sources")
+                    .and_then(Value::as_array)
+                    .is_some_and(|s| s.iter().any(|s| s.get("downwardAPI").is_some()));
+            if downward {
+                return refuse(format!(
+                    "The {kind} {workload} reads its own details from a downwardAPI volume ({vname}), \
+                     which apps run as notshared do not get. Run it as shared."
+                ));
+            }
             if let Some(p) = v.pointer("/hostPath/path").and_then(Value::as_str) {
                 vols.insert(vname, Vol::Dir(p.to_string()));
             } else if let Some(e) = v.get("emptyDir") {
@@ -946,6 +982,7 @@ pub fn from_kube(shaped: Shaped, ctx: &ShapeCtx) -> Result<Project, Refusal> {
                 }
             } else {
                 let rel = format!("kube/{}/{vname}", service_name(&workload, "pod"));
+                let projected_mode = v.pointer("/projected/defaultMode").and_then(Value::as_u64);
                 let mut sources = Vec::new();
                 if let Some(c) = v.get("configMap") {
                     sources.push(("ConfigMap", c.clone()));
@@ -985,6 +1022,10 @@ pub fn from_kube(shaped: Shaped, ctx: &ShapeCtx) -> Result<Project, Refusal> {
                             "The {kind} {workload} mounts the {k} {name}, which the chart does not make."
                         ));
                     };
+                    let default_mode = src
+                        .get("defaultMode")
+                        .and_then(Value::as_u64)
+                        .or(projected_mode);
                     match src.get("items").and_then(Value::as_array) {
                         Some(items) => {
                             for item in items {
@@ -996,9 +1037,12 @@ pub fn from_kube(shaped: Shaped, ctx: &ShapeCtx) -> Result<Project, Refusal> {
                                     ));
                                 };
                                 if let Some(bytes) = data.get(key) {
+                                    let mode =
+                                        item.get("mode").and_then(Value::as_u64).or(default_mode);
                                     files.push(File {
                                         path: format!("{rel}/{to}"),
                                         bytes: bytes.clone(),
+                                        exec: executable(mode),
                                     });
                                 }
                             }
@@ -1010,6 +1054,7 @@ pub fn from_kube(shaped: Shaped, ctx: &ShapeCtx) -> Result<Project, Refusal> {
                                     files.push(File {
                                         path: format!("{rel}/{key}"),
                                         bytes: bytes.clone(),
+                                        exec: executable(default_mode),
                                     });
                                 }
                             }
@@ -1609,6 +1654,58 @@ mod tests {
             "spec": { "jobTemplate": { "spec": { "template": { "spec": { "containers": [{ "name": "t", "image": "t" }] } } } } } });
         let e = from_kube(shape(vec![cron], &ctx()).unwrap(), &ctx()).unwrap_err();
         assert!(e.0.contains("CronJob"), "{e}");
+    }
+
+    #[test]
+    fn a_volume_name_cannot_lead_out_of_the_project() {
+        for bad in ["../../../etc", "a/b", "Config", ""] {
+            let mut docs = chart();
+            docs[3]["spec"]["template"]["spec"]["volumes"][1]["name"] = json!(bad);
+            docs[3]["spec"]["template"]["spec"]["containers"][0]["volumeMounts"][1]["name"] =
+                json!(bad);
+            let e = from_kube(shape(docs, &ctx()).unwrap(), &ctx()).unwrap_err();
+            assert!(e.0.contains("Kubernetes would refuse"), "{bad}: {e}");
+        }
+    }
+
+    #[test]
+    fn a_downward_api_volume_refuses_rather_than_mounting_nothing() {
+        let mut docs = chart();
+        docs[3]["spec"]["template"]["spec"]["volumes"][1] = json!({ "name": "config",
+            "downwardAPI": { "items": [{ "path": "name", "fieldRef": { "fieldPath": "metadata.name" } }] } });
+        let e = from_kube(shape(docs, &ctx()).unwrap(), &ctx()).unwrap_err();
+        assert!(e.0.contains("downwardAPI"), "{e}");
+
+        let mut docs = chart();
+        docs[3]["spec"]["template"]["spec"]["volumes"][1] = json!({ "name": "config",
+            "projected": { "sources": [{ "downwardAPI": { "items": [] } }] } });
+        let e = from_kube(shape(docs, &ctx()).unwrap(), &ctx()).unwrap_err();
+        assert!(e.0.contains("downwardAPI"), "{e}");
+    }
+
+    #[test]
+    fn a_file_the_chart_makes_executable_stays_executable() {
+        let mut docs = chart();
+        docs[3]["spec"]["template"]["spec"]["volumes"][1]["configMap"]["defaultMode"] =
+            json!(0o755);
+        let p = from_kube(shape(docs, &ctx()).unwrap(), &ctx()).unwrap();
+        assert!(p.files.iter().all(|f| f.exec), "{:?}", p.files);
+
+        let mut docs = chart();
+        docs[3]["spec"]["template"]["spec"]["volumes"][1]["configMap"]["items"] = json!([
+            { "key": "board.conf", "path": "board.conf" },
+            { "key": "MODE", "path": "run.sh", "mode": 0o700 },
+        ]);
+        let p = from_kube(shape(docs, &ctx()).unwrap(), &ctx()).unwrap();
+        let exec: Vec<(&str, bool)> = p.files.iter().map(|f| (f.path.as_str(), f.exec)).collect();
+        assert!(
+            exec.contains(&("kube/board-pod/config/board.conf", false)),
+            "{exec:?}"
+        );
+        assert!(
+            exec.contains(&("kube/board-pod/config/run.sh", true)),
+            "{exec:?}"
+        );
     }
 
     #[test]
