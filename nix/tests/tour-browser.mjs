@@ -3,7 +3,7 @@
  *
  *   node tour-browser.mjs '{"origin": "http://127.0.0.1:18080", "token": "…",
  *     "out": "/…/shots/local", "locales": ["en-US"], "themes": ["light"],
- *     "expect": 11, "shots": true, "about": false}'
+ *     "expect": 7, "shots": true, "about": false}'
  *
  * The page is signed in the way the wizard leaves it: the spare key in
  * sessionStorage and the tour owed in localStorage. Each run checks the
@@ -66,16 +66,19 @@ for (const locale of plan.locales) {
 
     const tour = page.getByTestId('tour');
     if (plan.about) {
-      await page.goto(`${plan.origin}/settings/about`, { waitUntil: 'networkidle' });
+      await page.goto(`${plan.origin}/settings/about`, { waitUntil: 'load' });
       await page.waitForTimeout(500);
       if ((await tour.count()) !== 0) fail('the tour opened for an owner who had seen it');
       await page.getByRole('button', { name: words.take }).click();
     } else {
-      await page.goto(`${plan.origin}/`, { waitUntil: 'networkidle' });
+      await page.goto(`${plan.origin}/`, { waitUntil: 'load' });
     }
     await tour.waitFor();
-    // The step count comes from the box's settings; wait for the settled one.
+    // The step count comes from the box's answers; wait for the settled one,
+    // and give a late answer the time to change it if it would.
     await tour.getByText(words.count(1, plan.expect), { exact: true }).waitFor({ timeout: 20000 });
+    await page.waitForTimeout(3000);
+    await tour.getByText(words.count(1, plan.expect), { exact: true }).waitFor({ timeout: 1000 });
     const baseline = (await page.evaluate(() => window.__violations)).length;
 
     const seen = [];

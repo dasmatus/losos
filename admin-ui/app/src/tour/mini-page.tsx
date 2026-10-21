@@ -26,7 +26,19 @@ export const VIEW_H = 360;
 export const CONTENT = { x: 166, y: 42, w: 460, h: 304 } as const;
 
 /** The sidebar entries the miniature draws, in the real sidebar's order. */
-export type MiniEntry = "overview" | "apps" | "storage" | "mesh" | "market" | "chat" | "settings" | "account" | "history" | "about";
+export type MiniEntry =
+  | "overview"
+  | "apps"
+  | "storage"
+  | "mesh"
+  | "market"
+  | "chat"
+  | "settings"
+  | "network"
+  | "look"
+  | "account"
+  | "history"
+  | "about";
 
 interface EntryDef {
   id: MiniEntry;
@@ -36,8 +48,8 @@ interface EntryDef {
   sub?: boolean;
   /** Settings is a fold: a chevron, never the current entry. */
   fold?: boolean;
-  /** Only on a box that shares its storage in a mesh (the real sidebar draws Chat only then). */
-  shared?: boolean;
+  /** Only on a box with chat (the real sidebar draws Chat only then). */
+  chat?: boolean;
 }
 
 const ENTRIES: readonly EntryDef[] = [
@@ -46,8 +58,10 @@ const ENTRIES: readonly EntryDef[] = [
   { id: "storage", label: "shell.nav.storage", icon: HardDriveIcon },
   { id: "mesh", label: "shell.nav.mesh", icon: Share08Icon },
   { id: "market", label: paneById("market").labelKey, icon: paneById("market").icon, sub: true },
-  { id: "chat", label: "tour.scene.chat", icon: BubbleChatIcon, shared: true },
+  { id: "chat", label: "tour.scene.chat", icon: BubbleChatIcon, chat: true },
   { id: "settings", label: "shell.nav.settings", icon: Settings01Icon, fold: true },
+  { id: "network", label: paneById("network").labelKey, icon: paneById("network").icon, sub: true },
+  { id: "look", label: paneById("look").labelKey, icon: paneById("look").icon, sub: true },
   { id: "account", label: paneById("account").labelKey, icon: paneById("account").icon, sub: true },
   { id: "history", label: paneById("history").labelKey, icon: paneById("history").icon, sub: true },
   { id: "about", label: paneById("about").labelKey, icon: paneById("about").icon, sub: true },
@@ -56,8 +70,8 @@ const ENTRIES: readonly EntryDef[] = [
 const ROW_Y = 74;
 const ROW_H = 21;
 
-function entriesFor(shared: boolean): readonly EntryDef[] {
-  return ENTRIES.filter((entry) => shared || entry.shared !== true);
+function entriesFor(chat: boolean): readonly EntryDef[] {
+  return ENTRIES.filter((entry) => chat || entry.chat !== true);
 }
 
 function pillFor(entries: readonly EntryDef[], id: MiniEntry): { x: number; y: number; w: number } {
@@ -128,19 +142,19 @@ export interface MiniPageProps {
   from: MiniEntry;
   /** Frames since the step changed; the pill and the content settle over the first 36. */
   arrival: number;
-  /** The box shares its storage in a mesh, so the sidebar has Chat. */
-  shared?: boolean;
+  /** The box has chat, so the sidebar has Chat. */
+  chat?: boolean;
   children: React.ReactNode;
 }
 
 export const ARRIVAL = 36;
 
-export function MiniPage({ entry, from, arrival, shared = false, children }: MiniPageProps) {
+export function MiniPage({ entry, from, arrival, chat = false, children }: MiniPageProps) {
   const t = useT();
   const clip = useSvgId("tour-pill");
   const logo = logoFor();
 
-  const entries = entriesFor(shared);
+  const entries = entriesFor(chat);
   const a = pillFor(entries, from);
   const b = pillFor(entries, entry);
   const move = prog(arrival, 0, 30, E.glide);

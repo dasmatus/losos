@@ -1,23 +1,28 @@
 # nixos-test-vms config for the first-run tour (admin-ui/app/src/tour/).
 #
-# The tour opens over the overview once the wizard is done, and which steps
-# it has depends on the box: chat, mail and calls run as the shared user,
-# so their step is there only while the box shares its storage and has
-# joined a mesh. That gate is read from lososd's real /api/settings, which
-# reads the box's own overrides.nix, so only a booted box shows the two
-# tours side by side. What is asserted:
+# The tour opens over the overview once the wizard is done. Six of its steps
+# are on every box; each other step shows a feature and is there only when
+# the box reports that feature (src/tour/features.ts), so the tour never
+# shows something the owner cannot open. Those reports are lososd's real
+# answers on a booted box: GET /api/options (the option document
+# modules/config-repo.nix builds from this generation), GET /api/me and
+# GET /api/domains. What is asserted:
 #
 #   * a claimed box, as the wizard leaves it, opens the tour over the
 #     overview, served by the real nginx under the real Content-Security-
 #     Policy, with the admin UI signed in by the spare key the claim gave;
-#   * on a box that shares nothing the tour has eleven steps and no Chat
-#     anywhere, neither as a step nor in the picture's sidebar;
-#   * with sharing on alone, or a mesh joined alone, still eleven;
-#   * with both, twelve: Chat, mail and calls is step 9, and Chat is in the
-#     picture's sidebar;
+#   * Build with AI is on by default (losos.builder.enable), so this box's
+#     tour has seven steps: the six and Build with AI, in English, Slovak
+#     and German, light and dark, with no Chat anywhere;
+#   * sharing its storage and joining a mesh adds no chat step here: this
+#     lososd lists no shared apps in /api/me, and the step follows that, not
+#     the two settings;
+#   * with losos.builder.enable off (the specialisation) the tour has the
+#     six steps;
+#   * Office, lending to AI models, a name on an edge and profiles are not
+#     on this box, and none of their steps shows;
 #   * every step draws with no page error and no CSP violation beyond the
-#     one every load logs (Sonner's stylesheet), in English, Slovak and
-#     German, light and dark.
+#     one every load logs (Sonner's stylesheet).
 #
 # Each step is photographed: `nix build .#checks.x86_64-linux.losos-tour`
 # and look in result/shots/. The pictures are taken under reduced motion,
@@ -28,8 +33,10 @@
 # from the user-mode gateway, which the LAN guard counts as the LAN.
 # LosOS Login is off here (losos.identity.enable): the spare key is the
 # sign-in the admin UI keeps in the browser after the wizard, and nothing in
-# this test is about LosOS Login. LosOS cloud is a stand-in, as in
-# nix/tests/setup.nix: the claim asks it one question.
+# this test is about LosOS Login. Build with AI's model is not part of this
+# box, only its option: the step is about what the option document says.
+# LosOS cloud is a stand-in, as in nix/tests/setup.nix: the claim asks it
+# one question.
 { pkgs }:
 
 let
@@ -94,6 +101,7 @@ pkgs.testers.nixosTest {
         ../../modules/tls.nix
         ../../modules/setup.nix
         ../../modules/daemon.nix
+        ../../modules/config-repo.nix
       ];
       losos = {
         hostName = "mattbox";
@@ -128,6 +136,8 @@ pkgs.testers.nixosTest {
         memorySize = 1536;
         cores = 2;
       };
+
+      specialisation.noBuilder.configuration.losos.builder.enable = false;
     };
 
   testScript = ''
@@ -190,24 +200,45 @@ pkgs.testers.nixosTest {
         assert run.returncode == 0, f"{name}: the browser run failed"
         return json.loads(run.stdout.strip().splitlines()[-1])
 
-    with subtest("a box that shares nothing: eleven steps, no Chat anywhere"):
+    STOCK = [
+        "Your apps, on your box",
+        "Add more apps",
+        "See where the space goes",
+        "Lend it while you sleep",
+        "It updates itself at night",
+        "Find this tour again",
+    ]
+    WITH_BUILDER = STOCK[:4] + ["Describe a widget, get a widget"] + STOCK[4:]
+
+    def options_on(name):
+        doc = json.loads(box.succeed(f"curl -fsS -H 'Authorization: Bearer {token}' localhost:8082/api/options"))
+        return [o["current"] for o in doc["options"] if o["name"] == name]
+
+    with subtest("this box has Build with AI and nothing else: seven steps, no Chat anywhere"):
+        assert options_on("builder.enable") == [True], options_on("builder.enable")
+        assert options_on("office.enable") == [] and options_on("inference.lend.enable") == []
         share(False, False)
-        seen = browse("local", locales=["en-US", "sk-SK", "de-DE"], themes=["light", "dark"], expect=11)
-        assert "Chat, mail and calls" not in seen["titles"], seen
+        seen = browse("local", locales=["en-US", "sk-SK", "de-DE"], themes=["light", "dark"], expect=len(WITH_BUILDER))
+        assert seen["titles"] == WITH_BUILDER, seen
+        assert not seen["chatInSidebar"], seen
 
-    with subtest("sharing alone, or a mesh alone, is not enough"):
-        share(True, False)
-        browse("sharing-only", locales=["en-US"], themes=["light"], expect=11, shots=False)
-        share(False, True)
-        browse("mesh-only", locales=["en-US"], themes=["light"], expect=11, shots=False)
-
-    with subtest("a box that shares its storage in a mesh: twelve steps, chat is step 9"):
+    with subtest("sharing in a mesh adds no chat step where lososd lists no chat"):
         share(True, True)
-        seen = browse("shared", locales=["en-US", "sk-SK", "de-DE"], themes=["light", "dark"], expect=12)
-        assert seen["titles"][8] == "Chat, mail and calls", seen
-        assert seen["chatInSidebar"], seen
+        me = json.loads(box.succeed(f"curl -fsS -H 'Authorization: Bearer {token}' localhost:8082/api/me"))
+        assert "chat" not in me.get("shared", []), me
+        seen = browse("shared", locales=["en-US"], themes=["light", "dark"], expect=len(WITH_BUILDER))
+        assert seen["titles"] == WITH_BUILDER, seen
+        assert not seen["chatInSidebar"], seen
+
+    with subtest("with Build with AI off, the six steps"):
+        box.succeed("/run/booted-system/specialisation/noBuilder/bin/switch-to-configuration test")
+        box.wait_for_unit("lososd.service")
+        box.wait_until_succeeds("curl -fsS localhost:8082/api/health")
+        assert options_on("builder.enable") == [False], options_on("builder.enable")
+        seen = browse("no-builder", locales=["en-US", "sk-SK", "de-DE"], themes=["light", "dark"], expect=len(STOCK))
+        assert seen["titles"] == STOCK, seen
 
     with subtest("Take the tour under Settings, About opens it again"):
-        browse("about", locales=["en-US"], themes=["light"], expect=12, about=True, shots=False)
+        browse("about", locales=["en-US"], themes=["light"], expect=len(STOCK), about=True, shots=False)
   '';
 }

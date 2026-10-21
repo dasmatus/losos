@@ -32,19 +32,20 @@ import { logoFor } from "@/lib/logo";
 import { describeWindow } from "@/screens/settings/window";
 import { BAR, BEAT, E, clamp, fd, hitPulse, hold, lmix, mix, prog } from "./motion";
 import { Glyph, Hatch, useSvgId, type MiniEntry } from "./mini-page";
-import { BoardScene, BuilderScene, ChatScene, PaidScene, ProfileScene, TogetherScene } from "./more-scenes";
+import type { BoxFeatures, Feature } from "./features";
+import { BuilderScene, ChatScene, LendScene, NameScene, ProfileScene, TogetherScene } from "./more-scenes";
 import { Caption, Heading, W, wrap, type SceneProps } from "./parts";
 
 export type SceneId =
   | "overview"
-  | "board"
   | "together"
   | "apps"
-  | "builder"
   | "storage"
   | "mesh"
+  | "lend"
   | "chat"
-  | "paid"
+  | "byName"
+  | "builder"
   | "profile"
   | "history"
   | "about";
@@ -57,8 +58,8 @@ export interface SceneDef {
   /** The frame shown when motion is reduced. */
   still: number;
   Scene: (props: SceneProps) => React.ReactNode;
-  /** Only on a box that shares its storage in a mesh: chat, mail and calls run as the shared user and nowhere else. */
-  shared?: true;
+  /** Only on a box that has this feature (features.ts). */
+  needs?: Feature;
 }
 
 /* ── 1. Overview: an app opens from its tile and folds back into it ─────── */
@@ -792,28 +793,29 @@ function AboutScene({ frame: f }: SceneProps) {
 }
 
 /* Every step, in the sidebar's order, so the teal entry only ever travels
- * down it. The new things a box can do sit beside the section they live
- * in: LosOS cloud's apps, the Board and writing together open from the
- * Overview, building an app is under Apps, money under Market, chat under
- * its own entry and the profile under Your account. */
+ * down it. Six are on every box. The rest each need a feature the box
+ * reports (features.ts), and each sits by the section it lives in: writing
+ * together opens from a document, lending under Market, the name under
+ * Network, Build with AI under Look, the profile under Your account and
+ * chat under its own entry. */
 export const SCENES: readonly SceneDef[] = [
   { id: "overview", entry: "overview", length: 3 * BAR, still: BEAT + 20, Scene: OverviewScene },
-  { id: "board", entry: "overview", length: 3 * BAR, still: 7 * BEAT + 15, Scene: BoardScene },
-  { id: "together", entry: "overview", length: 3 * BAR, still: 6 * BEAT, Scene: TogetherScene },
+  { id: "together", entry: "overview", length: 3 * BAR, still: 6 * BEAT, Scene: TogetherScene, needs: "office" },
   { id: "apps", entry: "apps", length: 3 * BAR, still: 7 * BEAT + 10, Scene: AppsScene },
-  { id: "builder", entry: "apps", length: 3 * BAR, still: 7 * BEAT, Scene: BuilderScene },
   { id: "storage", entry: "storage", length: 3 * BAR, still: 4 * BEAT, Scene: StorageScene },
   { id: "mesh", entry: "mesh", length: 4 * BAR, still: 2 * BAR, Scene: MeshScene },
-  { id: "paid", entry: "market", length: 3 * BAR, still: 8 * BEAT, Scene: PaidScene },
-  { id: "chat", entry: "chat", length: 3 * BAR, still: 7 * BEAT, Scene: ChatScene, shared: true },
-  { id: "profile", entry: "account", length: 2 * BAR, still: 5 * BEAT, Scene: ProfileScene },
+  { id: "lend", entry: "market", length: 3 * BAR, still: 8 * BEAT, Scene: LendScene, needs: "lend" },
+  { id: "chat", entry: "chat", length: 3 * BAR, still: 7 * BEAT, Scene: ChatScene, needs: "chat" },
+  { id: "byName", entry: "network", length: 3 * BAR, still: 8 * BEAT, Scene: NameScene, needs: "byName" },
+  { id: "builder", entry: "look", length: 3 * BAR, still: 7 * BEAT, Scene: BuilderScene, needs: "builder" },
+  { id: "profile", entry: "account", length: 2 * BAR, still: 5 * BEAT, Scene: ProfileScene, needs: "profile" },
   { id: "history", entry: "history", length: 3 * BAR, still: 4 * BEAT + 10, Scene: HistoryScene },
   { id: "about", entry: "about", length: 2 * BAR, still: 4 * BEAT + 10, Scene: AboutScene },
 ];
 
-/** The steps this box gets: chat, mail and calls only where they exist, on a box that shares its storage in a mesh. */
-export function scenesFor(shared: boolean): readonly SceneDef[] {
-  return SCENES.filter((scene) => shared || scene.shared !== true);
+/** The steps this box gets: the six every box has, and each other one only where its feature is. */
+export function scenesFor(features: BoxFeatures): readonly SceneDef[] {
+  return SCENES.filter((scene) => scene.needs === undefined || features[scene.needs]);
 }
 
 /** How many steps the tour on screen has, for the About scene's picture of the tour itself. */

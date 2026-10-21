@@ -6,11 +6,11 @@
  * Skipping, Escape, a click on the backdrop and Done all close it the same
  * way: closeTour() marks it seen in this browser (store.ts).
  *
- * Which steps it has depends on the box: chat, mail and calls run as the
- * shared user, so their step is there only while the box shares its storage
- * and has joined a mesh (GET /api/settings). Until the settings answer, and
- * if they never do, the tour goes without it, as the sidebar goes without
- * Chat.
+ * Six steps are on every box. Each other step shows a feature, and is there
+ * only on a box that reports it has that feature (features.ts): Office,
+ * lending memory to AI models, a name to be paid at, chat, Build with AI
+ * and profiles. Until the box answers, and if it never does, the tour goes
+ * without them.
  *
  * The pictures are code, not video. Each scene in scenes.tsx and
  * more-scenes.tsx is a function of a frame number, the clock (clock.ts)
@@ -27,46 +27,31 @@ import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } fr
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
-import { getSettings } from "@/lib/api";
 import { useLoopFrame, useOneShot } from "./clock";
 import { ARRIVAL, MiniPage, VIEW_H, VIEW_W } from "./mini-page";
+import { useBoxFeatures } from "./features";
 import { scenesFor, sceneAt, TourLength, type SceneDef, type SceneId } from "./scenes";
 import { closeTour } from "./store";
 
 const COPY: Record<SceneId, { title: MessageKey; body: MessageKey }> = {
   overview: { title: "tour.overview.title", body: "tour.overview.body" },
-  board: { title: "tour.board.title", body: "tour.board.body" },
   together: { title: "tour.together.title", body: "tour.together.body" },
   apps: { title: "tour.apps.title", body: "tour.apps.body" },
-  builder: { title: "tour.builder.title", body: "tour.builder.body" },
   storage: { title: "tour.storage.title", body: "tour.storage.body" },
   mesh: { title: "tour.mesh.title", body: "tour.mesh.body" },
-  paid: { title: "tour.paid.title", body: "tour.paid.body" },
+  lend: { title: "tour.lend.title", body: "tour.lend.body" },
   chat: { title: "tour.chat.title", body: "tour.chat.body" },
+  byName: { title: "tour.byName.title", body: "tour.byName.body" },
+  builder: { title: "tour.builder.title", body: "tour.builder.body" },
   profile: { title: "tour.profile.title", body: "tour.profile.body" },
   history: { title: "tour.history.title", body: "tour.history.body" },
   about: { title: "tour.about.title", body: "tour.about.body" },
 };
 
-/** Whether this box shares its storage in a mesh: the gate on chat, mail and calls. False until it is known. */
-function useSharedSide(): boolean {
-  const [shared, setShared] = React.useState(false);
-  React.useEffect(() => {
-    const controller = new AbortController();
-    getSettings({ signal: controller.signal })
-      .then((settings) => setShared(settings.sharingMyStorage && settings.clusterEnable))
-      .catch(() => {
-        // No answer: the tour goes on without the shared steps.
-      });
-    return () => controller.abort();
-  }, []);
-  return shared;
-}
-
 export interface TourSceneProps {
   scenes: readonly SceneDef[];
-  /** The box shares its storage in a mesh, so the miniature's sidebar has Chat. */
-  shared: boolean;
+  /** The box has chat, so the miniature's sidebar has Chat. */
+  chat: boolean;
   index: number;
   /** The step before, for the sidebar entry's travel. */
   from: number;
@@ -76,7 +61,7 @@ export interface TourSceneProps {
 }
 
 /** One step's picture at a given frame: the miniature page with the scene inside. */
-export function TourScene({ scenes, shared, index, from, frame, arrival, className }: TourSceneProps) {
+export function TourScene({ scenes, chat, index, from, frame, arrival, className }: TourSceneProps) {
   const scene = sceneAt(scenes, index);
   const previous = sceneAt(scenes, from);
   const { Scene } = scene;
@@ -87,7 +72,7 @@ export function TourScene({ scenes, shared, index, from, frame, arrival, classNa
       aria-hidden="true"
       focusable="false"
     >
-      <MiniPage entry={scene.entry} from={previous.entry} arrival={arrival} shared={shared}>
+      <MiniPage entry={scene.entry} from={previous.entry} arrival={arrival} chat={chat}>
         <Scene frame={frame} />
       </MiniPage>
     </svg>
@@ -96,14 +81,14 @@ export function TourScene({ scenes, shared, index, from, frame, arrival, classNa
 
 export default function Tour() {
   const t = useT();
-  // Steps are held by id, so a step that arrives once the settings answer
-  // (chat) does not move the owner off the one they are reading.
+  // Steps are held by id, so a step that arrives once the box answers does
+  // not move the owner off the one they are reading.
   const [stepId, setStepId] = React.useState<SceneId>("overview");
   const [fromId, setFromId] = React.useState<SceneId>("overview");
   const titleId = React.useId();
   const bodyId = React.useId();
-  const shared = useSharedSide();
-  const scenes = React.useMemo(() => scenesFor(shared), [shared]);
+  const features = useBoxFeatures();
+  const scenes = React.useMemo(() => scenesFor(features), [features]);
   const indexOf = (id: SceneId): number => Math.max(0, scenes.findIndex((s) => s.id === id));
   const step = indexOf(stepId);
   const from = indexOf(fromId);
@@ -149,7 +134,7 @@ export default function Tour() {
       <div className="p-3 pb-0">
         <div className="overflow-hidden rounded-control border border-line">
           <TourLength.Provider value={scenes.length}>
-            <TourScene scenes={scenes} shared={shared} index={step} from={from} frame={frame} arrival={arrival} />
+            <TourScene scenes={scenes} chat={features.chat} index={step} from={from} frame={frame} arrival={arrival} />
           </TourLength.Provider>
         </div>
       </div>
