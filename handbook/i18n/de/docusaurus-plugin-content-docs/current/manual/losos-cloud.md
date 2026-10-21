@@ -36,6 +36,9 @@ eingerichtet hat, bekommt die des Besitzers.
   gleichzeitig schreiben, und **Mit Ihnen geteilt** enthält, was Leute auf
   anderen Boxen mit dir geteilt haben. Siehe
   [Teilen und gemeinsam bearbeiten](sharing-and-editing-together).
+- **Notizen** liest einen Ordner mit Markdown-Notizen wie Obsidian, mit
+  Links, Tags und einem Graphen, und kann ihn als Wissensbasis
+  veröffentlichen. Siehe [Notizen und Wissensbasen](notes-and-knowledge-bases).
 
 ## Apps für Computer und Telefon \{#desktop-and-phone-apps}
 

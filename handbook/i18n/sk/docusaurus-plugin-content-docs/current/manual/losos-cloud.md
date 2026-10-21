@@ -36,6 +36,9 @@ vlastníka.
   naraz, a **Zdieľané s vami** drží to, čo s vami zdieľali ľudia na iných
   zariadeniach. Pozrite
   [Zdieľanie a spoločné úpravy](sharing-and-editing-together).
+- **Poznámky** čítajú priečinok poznámok Markdown tak ako Obsidian, s
+  odkazmi, štítkami a grafom, a môžu ho zverejniť ako znalostnú bázu.
+  Pozrite [Poznámky a znalostné bázy](notes-and-knowledge-bases).
 
 ## Aplikácie pre počítač a telefón \{#desktop-and-phone-apps}
 

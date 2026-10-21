@@ -9,8 +9,9 @@ slug: /manual/sharing-and-editing-together
 In [LosOS Cloud](losos-cloud), text files open in an editor that several
 people can type in at once. Each person sees the others' faces at the top,
 their cursors in their own colour with their name beside them, and who
-edited last under the text. Plain text, Markdown and notes open this way:
-`.md`, `.txt`, `.csv`, `.json`, `.yaml` and similar.
+edited last under the text. Plain text opens this way: `.txt`, `.csv`,
+`.json`, `.yaml` and similar. A Markdown file opens in
+[Notes](notes-and-knowledge-bases), and its **Edit** brings you here.
 
 On one box this works for anyone who can open the file. Once the box is in a
 mesh, you can also share a file or a folder with a person on another box,
