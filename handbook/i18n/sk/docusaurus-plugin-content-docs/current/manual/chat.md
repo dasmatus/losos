@@ -79,8 +79,9 @@ alebo odhlásiť.
 
 ## V konverzácii
 
-Keď podržíte ukazovateľ nad správou, môžete na ňu reagovať, odpovedať,
-odpovedať vo vlákne, upraviť ju alebo zmazať. To isté, a navyše kopírovanie
+Keď podržíte ukazovateľ nad správou, môžete na ňu odpovedať, odpovedať vo
+vlákne, upraviť ju alebo zmazať. Rýchle reakcie sa ukážu v lište pod ňou:
+stlačením jednu pridáte a ďalším stlačením ju vezmete späť. To isté, a navyše kopírovanie
 textu, ponúka kliknutie pravým tlačidlom na správu. Tlačidlo vlákien v hlavičke
 miestnosti uvádza jej vlákna.
 

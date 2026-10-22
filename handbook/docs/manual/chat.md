@@ -74,8 +74,9 @@ The lock button in the bar at the top opens **Secure messages** at any time. It 
 
 ## In a conversation
 
-Hover over a message to react, reply, reply in a thread, edit or delete
-it, or right-click it for the same and to copy its text
+Hover over a message to reply, reply in a thread, edit or delete it. The
+quick reactions show in a pill under it: press one to add it, and press it
+again to take it back. Right-click a message for the same and to copy its text
 ([the right-click menu](admin-pages#the-right-click-menu)). The thread button
 in the room's header lists the room's threads.
 

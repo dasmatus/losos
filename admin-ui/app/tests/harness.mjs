@@ -70,6 +70,24 @@ export const CHAT_CSP = [
   "form-action 'none'",
 ].join('; ');
 
+/* The app frame's own policy (modules/containers.nix, `appFrameCsp`), for
+ * /app-frame/ alone. An app of the owner's runs there under
+ * `sandbox="allow-scripts allow-forms"`: the runtime is the box's own
+ * script ('self'), the app is an inline script the runtime adds. Mirror
+ * any change here. */
+export const APP_FRAME_CSP = [
+  "default-src 'none'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src data: blob: https: http:",
+  "font-src 'self' data: https: http:",
+  "media-src data: blob: https: http:",
+  "connect-src https: http:",
+  "frame-ancestors 'self'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
+
 /* A mail message's HTML (backend/src/http.rs MAIL_FRAME_CSP, the same
  * text as nginx's mail arm in modules/containers.nix). Mirror it here. */
 export const MAIL_FRAME_CSP = [
@@ -134,10 +152,12 @@ export async function serve({ csp = false } = {}) {
       const body = await readFile(join(DIST, file));
       const policy = file.startsWith('/widget-frame/')
         ? WIDGET_FRAME_CSP
-        : file.startsWith('/manage/') || file === 'manage/index.html'
-          ? MANAGE_CSP
-          : file.startsWith('/chat/') || file === 'chat/index.html'
-            ? CHAT_CSP
+        : file.startsWith('/app-frame/')
+          ? APP_FRAME_CSP
+          : file.startsWith('/manage/') || file === 'manage/index.html'
+            ? MANAGE_CSP
+            : file.startsWith('/chat/') || file === 'chat/index.html'
+              ? CHAT_CSP
             : ADMIN_CSP;
       res.writeHead(200, {
         'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
@@ -147,10 +167,10 @@ export async function serve({ csp = false } = {}) {
     };
     // A directory gets its index, as nginx's `index` directive gives it.
     const file = rel === '/' ? 'index.html' : rel.endsWith('/') ? rel + 'index.html' : rel;
-    // The edge's /manage/, LosOS Cloud's /cloud/, a knowledge base's /kb/
-    // and LosOS Chat's /chat/ are pages of their own with their own
-    // fallback, as their nginx locations are; /diagrams is the SPA's.
-    const page = ['manage', 'cloud', 'kb', 'chat'].find((p) => rel.startsWith(`/${p}/`) || rel === `/${p}`);
+    // The edge's /manage/, LosOS Cloud's /cloud/, a knowledge base's /kb/,
+    // LosOS Git's /git/ and LosOS Chat's /chat/ are pages of their own with
+    // their own fallback, as their nginx locations are; /diagrams is the SPA's.
+    const page = ['manage', 'cloud', 'kb', 'git', 'chat'].find((p) => rel.startsWith(`/${p}/`) || rel === `/${p}`);
     const fallback = page === undefined ? 'index.html' : `${page}/index.html`;
     send(file).catch(() =>
       send(fallback).catch(() => {

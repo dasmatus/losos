@@ -197,7 +197,6 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub sharing_my_storage: bool,
-    pub forgejo_mode: String,
     pub host_name: String,
     pub gpu_enable: bool,
     pub proxy_enable: bool,
@@ -246,7 +245,6 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             sharing_my_storage: true,
-            forgejo_mode: "container".to_string(),
             host_name: "mattbox".to_string(),
             gpu_enable: true,
             proxy_enable: false,
@@ -268,7 +266,6 @@ impl Settings {
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "sharingMyStorage": self.sharing_my_storage,
-            "forgejoMode": self.forgejo_mode,
             "hostName": self.host_name,
             "gpuEnable": self.gpu_enable,
             "proxyEnable": self.proxy_enable,
@@ -324,7 +321,6 @@ mod tests {
         let out = Settings::default().to_json().to_string();
         for key in [
             "sharingMyStorage",
-            "forgejoMode",
             "hostName",
             "gpuEnable",
             "proxyEnable",

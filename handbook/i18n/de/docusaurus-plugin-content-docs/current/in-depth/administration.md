@@ -22,7 +22,7 @@ Dienste auf demselben Host:
 | ------------------- | ------------------------- |
 | Admin-Oberfläche    | `<host>.local/`           |
 | LosOS Cloud         | `<host>.local/cloud/`     |
-| Forgejo (optional)  | `<host>.local/forgejo/`   |
+| LosOS Git           | `<host>.local/git/`       |
 | Handbuch            | `<host>.local/handbook/`  |
 | [Diagramme](/in-depth/diagrams.md) | `<host>.local/diagrams/` |
 
@@ -109,7 +109,7 @@ Der Editor hat auch einen Tab **Mit KI bauen**, in dem ein Sprachmodell auf
 der Box das Widget nach einer Beschreibung schreibt und seine Dateien in den
 Editor legt, damit du sie vor dem Speichern liest. Es läuft auf der Box, also
 bleibt, was du eintippst, dort, und ein Bau kostet nichts; siehe
-[Widget-Baukasten](widget-builder.md).
+[Mit KI bauen](widget-builder.md).
 
 ## Admin-Token {#admin-token}
 
@@ -158,25 +158,28 @@ Die Anmeldungen liegen in einem eigenen Redis von LosOS Login, auf einem
 Socket, den nur es öffnet, daher meldet weder ein Neustart von LosOS Login
 noch der nächtliche Neustart jemanden ab.
 
-LosOS Cloud und LosOS Git melden Menschen genauso an. nginx fragt auf der Anmeldeseite jeder App
-LosOS Login und gibt die Person in drei Headern weiter, `X-Losos-Cloud-User`,
+LosOS Cloud und LosOS Git melden Menschen genauso an. nginx fragt LosOS
+Login und gibt die Person in drei Headern weiter, `X-Losos-Cloud-User`,
 `-Name` und `-Email`, die es bei jeder Anfrage an eine der Apps setzt, damit
 kein Client eigene schicken kann. Der Eigentümer, in der Gruppe
 `losos-owner`, kommt in beiden als Konto `notshared` an; alle anderen unter
-ihrem Anmeldenamen. LosOS Cloud liest die Header selbst
-(`backend/src/cloud/auth.rs`), Forgejo mit seiner Anmeldung über den Reverse
-Proxy, und beide legen beim ersten Mal ein Konto an; danach hält lososd
-Namen und Adresse in beiden Apps mit der Personendatei gleich. Wen LosOS
+ihrem Anmeldenamen. LosOS Cloud (`backend/src/cloud/auth.rs`) und LosOS Git
+(`backend/src/forge/auth.rs`) lesen die Header selbst, und beide legen beim
+ersten Mal ein Konto an; danach hält lososd Namen und Adresse in beiden Apps
+mit der Personendatei gleich. Eine Anfrage an LosOS Git, die ein eigenes
+Token in `Authorization` mitbringt (git, die API), fragt nginx nicht nach.
+Wen LosOS
 Login nicht kennt, den schickt nginx dorthin, aus dem LAN wie über den Edge;
 keine der beiden Apps zeigt eine eigene Anmeldeseite. Über den Edge liefert
 der Tunnel von Loopback mit `X-Forwarded-Proto: https`, was nginx nur von
 Loopback glaubt, und lososd nimmt jeden öffentlichen Namen, unter dem die
 Box antwortet, in die Cookie-Domains von LosOS Login auf. Solange LosOS
 Login startet, antworten die Apps mit 503 und einer Seite, die es von selbst
-erneut versucht. Beide Apps lauschen auf Loopback, und die Firewall
-weist eine Verbindung zu ihren Ports von jedem Prozess auf der Box ab außer
-root, nginx und der App selbst, sodass nichts auf der Box ihnen eine Person
-nennen kann. Die Namen `notshared`, `shared` und `losos` sind für die
+erneut versucht. Beide Apps lesen die Header nur auf ihren Unix-Sockets,
+`/run/losos-cloud/http.sock` und `/run/losos-git/http.sock`, die nur root
+und nginx öffnen dürfen; der Loopback-Port von LosOS Git, `127.0.0.1:3000`,
+nimmt Tokens und nie die Header. So kann nichts auf der Box einer der beiden Apps eine Person
+nennen. Die Namen `notshared`, `shared` und `losos` sind für die
 eigenen Konten der Box reserviert.
 
 Jede Person mit der Gruppe `losos-account` (Eigenes Konto im Bereich
@@ -242,7 +245,7 @@ Grenzen, eine Auswahl, ein Textfeld oder ein Element pro Zeile für eine
 Liste.
 
 - Eine Option, die schon ein anderer Bereich bearbeitet (der Name, die
-  Betriebsmodi der Apps, die Hardening-Schalter), wird mit ihrem Wert und
+  Mesh-Einstellungen, die Hardening-Schalter), wird mit ihrem Wert und
   einem Link zu diesem Bereich angezeigt, damit es einen einzigen Ort gibt,
   an dem sie geändert wird.
 - Die drei, die der Installer schreibt (`targetDrives`, `tpm.enable`,
@@ -278,10 +281,8 @@ die letzten vierzig.
 Mit `losos.configRepo.enable` (Standard) und eingeschaltetem LosOS Git führt
 lososd die Konfiguration außerdem in einem privaten Repository auf LosOS
 Git, `<owner>/losos-config`, das dem eigenen Konto des Admins (`notshared`)
-gehört. Das Konto wird bei der ersten Synchronisierung mit dem
-Admin-Passwort angelegt und bei jeder Passwortänderung und jedes Mal, wenn
-ein Rechner für LosOS Git eingerichtet wird, damit abgeglichen. Ein
-Reconciler in lososd läuft alle 30 s:
+gehört. Das Konto wird bei der ersten Synchronisierung als Administrator
+von LosOS Git angelegt. Ein Reconciler in lososd läuft alle 30 s:
 
 - er committet alles Uncommittete und pusht den Branch der Box, wenn LosOS
   Git zurückliegt;
@@ -298,86 +299,66 @@ Reconciler in lososd läuft alle 30 s:
 config` gibt dasselbe Dokument aus, und `losos-ctl config --sync` führt
 einen Tick aus. Geheimnisse gelangen nie in das Repository. `overrides.nix`
 enthält nur Optionswerte, und das Token, mit dem sich lososd bei LosOS Git
-authentifiziert, liegt in `/var/lib/forgejo/.losos-token`, außerhalb von
-`/etc/nixos`. Dahinter steht kein Forgejo-Actions-Runner. Die Box fragt
-regelmäßig ab.
+authentifiziert, ist das Admin-Token, das LosOS Git beim ersten Start
+schreibt, `/var/lib/losos-git/admin-token`, außerhalb von `/etc/nixos`.
+Dahinter steht kein CI-Runner. Die Box fragt regelmäßig ab.
 
-Die Klon-Adresse wird im Bereich angezeigt (`http://<box>/forgejo/<owner>/
-losos-config.git`). Das Repository ist privat und braucht daher das
-Admin-Passwort. Der Daemon spricht über Loopback mit Forgejo, mit einem
-Bot-Konto `losos`, das das Start-Skript von Forgejo anlegt und dem es ein
-Token ausstellt (`nix/forgejo-bootstrap.nix`).
+Die Klon-Adresse wird im Bereich angezeigt (`http://<box>/git/<owner>/
+losos-config.git`). Das Repository ist privat, ein Rechner braucht daher
+ein eigenes Token (`losos git setup`, [Der Terminal-Client](../manual/terminal)).
+lososd spricht mit LosOS Git über dessen Loopback-Port mit dem Admin-Token
+und handelt mit `X-Losos-As` als Eigentümer, wo ein Aufruf dessen ist.
 
-### Föderation {#federation}
+### Umzug von Forgejo {#moving-from-forgejo}
 
-Die Föderation läuft nur, solange die Box ihre Festplatte teilt.
-`losos.forgejo.federation.enable` ist per UND mit `losos.sharingMyStorage`
-verknüpft, der Einstellung, die den geteilten Datenpool freischaltet
-(`lososInternal.federation` in `modules/options.nix`). Mit ausgeschaltetem
-Teilen spricht LosOS Git mit keinem anderen Server, egal was die eigene
-Option sagt. Der Bereich Apps graut den Schalter mit dem Grund aus, und der
-Bereich Erweitert zeigt die Zeile als nicht verfügbar an und verweist auf
-sie. LosOS Cloud föderiert nicht: Eine Datei verlässt die Box über einen
-Freigabelink oder das Konto einer Person, nie als Freigabe an einen anderen
-Server.
+Eine Box, auf der Forgejo lief, bringt dessen Einträge selbst nach LosOS
+Git, beim ersten Start nach dem Update und bevor LosOS Git antwortet:
+Repositorys, Konten, Mitarbeitende, Zugriffstokens (die alten Werte
+funktionieren weiter für git und die API), Labels, Issues, Pull Requests,
+Kommentare, Zuständige und Anhänge. Aus einer Organisation wird ein Konto
+mit demselben Namen.
 
-`losos.forgejo.federation.enable` (standardmäßig an) schaltet die
-ActivityPub-Seite von Forgejo in beiden Modi ein: `[federation] ENABLED` in
-app.ini, mit `SHARE_USER_STATISTICS = false`, damit nodeinfo keine Konto-
-oder Aktivitätssummen veröffentlicht. Das mitgelieferte Forgejo (16.x)
-föderiert Sterne (Settings → Federation eines Repositorys listet die Server,
-deren Sterne zählen), erlaubt, Konten von anderen Servern aus zu folgen, und
-liefert nodeinfo sowie einen ActivityPub-Actor pro Konto und Repository
-unter `/api/v1/activitypub/` aus; jede eingehende Anfrage muss eine gültige
-HTTP-Signatur tragen. Im Container-Modus fügt der Front-vhost Routen mit
-exakter Übereinstimmung für `/.well-known/nodeinfo` und
-`/.well-known/webfinger` hinzu, die zwei Adressen, über die andere Server
-eine Box entdecken und die Forgejo an der Wurzel des Hosts statt unter
-`ROOT_URL` ausliefert; sie sind wie `/forgejo/` nicht durch den
-Nur-LAN-Schutz abgesichert. Die Reichweite folgt `ROOT_URL`: über die Edge
-ist es `https://<proxy hostname>/forgejo/`, und jeder Server kann mit der
-Box föderieren; auf einer reinen LAN-Box ist es
-`https://<host>.local/forgejo/`, sodass das nur andere Boxen im selben LAN
-können. `nix/tests/forgejo-federation.nix` startet das echte Forgejo und fragt
-es ab, mit eingeschaltetem und dann ausgeschaltetem Teilen.
+Der Bericht ist `/var/lib/losos-git/forgejo/import.json`. Er zählt, was
+Forgejo hatte und was übernommen wurde, Tabelle für Tabelle, und nennt,
+was nicht übernommen wurde, etwa Meilensteine, Releases und
+Zeitleisteneinträge. Daneben bleibt ein vollständiger Dump der Datenbank
+von Forgejo (`forgejo.sql`, auf einer nativen Box `forgejo.db`), und der
+Ordner von Forgejo sowie die Postgres-Daten bleiben, wo sie waren. Schlägt
+der Umzug fehl, ändert sich nichts, und er wird beim nächsten Start erneut
+versucht; LosOS Git bedient die Repositorys solange.
 
 ### Box-weite App-Einstellungen {#box-wide-app-settings}
 
 Der Bereich Apps trägt die Einstellungen, die für alle in LosOS Cloud und
 LosOS Git gelten, also die, die jede App sonst auf ihren eigenen
 Verwaltungsseiten führt. Jedes Feld ist eine Option, `losos.cloud.trashDays`
-oder eine unter `losos.forgejo.site.*`, und geht damit wie jede
+oder eine unter `losos.git.site.*`, und geht damit wie jede
 andere Einstellung durch Anwenden, die Prüfung, den Verlauf und das
 Konfigurations-Repository. Der Bereich Erweitert zeigt ihre Werte und
 verweist auf den Abschnitt der App im Bereich Apps (`/apps#cloud`,
 `/apps#git`), statt einen zweiten Editor zu zeichnen (`ON_PANE` in
-`admin-ui/app/src/lib/option-value.ts`). Der Föderationsschalter von
-oben steht dort auch, am Anfang des Abschnitts LosOS Git.
+`admin-ui/app/src/lib/option-value.ts`).
 
 | Option | Was sie in der App setzt |
 | --- | --- |
 | `losos.cloud.trashDays` | wie viele Tage eine gelöschte Datei im Papierkorb bleibt (1 bis 365, Standard 30) |
-| `losos.forgejo.site.requireSignIn` | `[service] REQUIRE_SIGNIN_VIEW` |
-| `losos.forgejo.site.keepEmailPrivate` | `[service] DEFAULT_KEEP_EMAIL_PRIVATE` |
-| `losos.forgejo.site.defaultPrivate` | `[repository] DEFAULT_PRIVATE` |
-| `losos.forgejo.site.pushCreate` | `[repository] ENABLE_PUSH_CREATE_USER` |
-| `losos.forgejo.site.landingPage` | `[server] LANDING_PAGE` |
+| `losos.git.site.requireSignIn` | `losos-git serve --require-sign-in` |
+| `losos.git.site.defaultPrivate` | `--public-by-default` bei `"public"` |
+| `losos.git.site.pushCreate` | `--push-create` |
 
 `modules/cloud.nix` gibt `trashDays` als `--trash-days` an den Dienst, und
 dessen stündliches Aufräumen löscht endgültig, was länger im Papierkorb
 einer Person liegt.
 
-Die fünf von Forgejo sind `app.ini`-Schlüssel, die Forgejos
-Website-Administration ohne Möglichkeit zur Änderung zeigt. Beide Modi lesen
-eine Attributmenge, `lososInternal.forgejoSite`.
+Die drei von LosOS Git sind Schalter auf seiner Befehlszeile
+(`modules/git.nix`), daher gibt es darin keine Seite, auf der man sie ändern
+könnte.
 
 :::note[Was in den Apps bleibt]
 Alles, was ein Konto für sich selbst einstellt, bleibt in der App. In LosOS
-Git bleibt das Konto des Besitzers Forgejos Administrator für das, was LosOS
-noch nicht abdeckt: Forgejos in der Datenbank gespeicherte Einstellungen und
-die Kontenliste. LosOS Cloud hat überhaupt keinen Administrator in sich:
-Wer es nutzen darf, entscheidet LosOS Login, und alles Box-weite ist eine
-Einstellung im Bereich Apps.
+Git ist das Konto des Besitzers der Administrator. LosOS Cloud hat
+überhaupt keinen Administrator in sich: Wer es nutzen darf, entscheidet
+LosOS Login, und alles Box-weite ist eine Einstellung im Bereich Apps.
 :::
 
 ## Sicherung, Wiederherstellung und Löschen {#backup-restore-and-erase}
@@ -393,10 +374,10 @@ ohne ihn kann niemand ein Backup öffnen.
 
 Ein Backup enthält:
 
-- `/var/lib/losos-cloud` und `/var/lib/forgejo`, wobei die Datenbank von
-  LosOS Cloud zuerst mit dem eigenen Backup von SQLite kopiert wird, damit
-  ein Schreibvorgang während der Kopie sie nicht zerreißen kann;
-- einen `pg_dump` der Datenbank `forgejo`;
+- `/var/lib/losos-cloud` und `/var/lib/losos-git`, wobei die
+  SQLite-Datenbanken von LosOS Cloud und LosOS Git zuerst mit dem eigenen
+  Backup von SQLite kopiert werden, damit ein Schreibvorgang während der
+  Kopie sie nicht zerreißen kann;
 - den geteilten Ordner. Bei eingeschaltetem Teilen ist er eine
   fscrypt-Policy, und Linux liefert für eine gesperrte fscrypt-Datei keinen
   Chiffretext, daher entsperrt das Skript die Policy für die Kopie und

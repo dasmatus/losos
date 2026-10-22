@@ -34,8 +34,8 @@
 # film's states are numbered there with a manifest.json; the pull request's
 # pictures are under result/shots/pr/.
 #
-# LosOS Git is a stand-in; LosOS Cloud is the real service, for the files
-# chat sends from it and keeps in it.
+# LosOS Git is off; LosOS Cloud is the real service, for the files chat
+# sends from it and keeps in it.
 { pkgs }:
 
 let
@@ -54,15 +54,23 @@ let
     magick -size 480x320 xc:'#10b030' $out/green.png
   '';
 
-  # The admin UI as it ships, without the Lab page, which this test never
-  # opens and whose WebAssembly takes longer to build than the test to run,
-  # and with the stand-in in place of the nudity model.
+  # The admin UI as it ships, without LosOS Diagrams' WebAssembly, which
+  # takes longer to build than the test to run: stand-ins take the place of
+  # the three packages, so the bundle builds without Bevy, and only
+  # /diagrams, which no step here opens, would fail. The nudity model is
+  # the stand-in above.
   ui = lososPkgs.losos-admin-ui.overrideAttrs (old: {
     pname = "losos-admin-ui-without-lab";
     env = old.env // {
       LOSOS_NUDITY_MODEL = "${nudityStandIn}";
     };
     preBuild = ''
+      for f in core-pkg/losos_lab_core virt-pkg/losos_lab_virt \
+               render-pkg/webgpu/losos_lab_render render-pkg/webgl2/losos_lab_render; do
+        mkdir -p "src/lab/$(dirname "$f")"
+        echo 'export default function init() { throw new Error("not in this build"); } export class Lab {}' > "src/lab/$f.js"
+        : > "src/lab/''${f}_bg.wasm"
+      done
       cat > vite.chat-test.config.ts <<'EOF'
       import base from "./vite.config";
       import { join } from "node:path";
@@ -74,14 +82,6 @@ let
         chat: join(root, "chat/index.html"),
         manage: join(root, "manage/index.html"),
       };
-      // Diagrams is a lazy screen of the SPA now; its WebAssembly packages
-      // stand in as empty modules, since the test never opens it.
-      config.plugins.push({
-        name: "chat-test-no-lab",
-        enforce: "pre",
-        resolveId: (id: string) => (/(core|virt|render)-pkg\//.test(id) ? "\0lab-stub" : null),
-        load: (id: string) => (id === "\0lab-stub" ? "export default async function init() {}; export const Lab = class {};" : null),
-      });
       export default config;
       EOF
     '';
@@ -91,14 +91,6 @@ let
       runHook postBuild
     '';
   });
-
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
 
   # The playwright the admin UI pins (to nixpkgs' playwright-driver, which
   # nix/tests/admin-ui.nix asserts), from the same lock file and hash.
@@ -143,7 +135,6 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/chat.nix
           ../../modules/cloud.nix
         ];
@@ -151,9 +142,7 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = ui;
-          forgejo.enable = true;
-          forgejo.mode = "container";
-          workloads.forgejoImage = standIn "losos-forgejo-stand-in";
+          git.enable = false;
           # The shared user's side of the box: chat's gate.
           sharingMyStorage = true;
           cluster.enable = true;

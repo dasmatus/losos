@@ -77,14 +77,6 @@ let
     // lib.optionalAttrs before { src = beforeSrc; }
   );
 
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   playwright =
     (pkgs.buildNpmPackage {
       pname = "losos-contacts-test-playwright";
@@ -237,7 +229,6 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/chat.nix
           ../../modules/mail.nix
           ../../modules/cloud.nix
@@ -246,9 +237,8 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = ui;
-          forgejo.enable = true;
-          forgejo.mode = "container";
-          workloads.forgejoImage = standIn "losos-forgejo-stand-in";
+          backend.plugins = lososPkgs.losos-plugins;
+          git.enable = false;
           # LosOS Cloud keeps the book.
           cloud.enable = true;
           # The shared user's side of the box: chat's gate, and mail's.

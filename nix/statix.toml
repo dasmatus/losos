@@ -5,8 +5,8 @@
 # findings on this tree, and every one of them is idiomatic NixOS: a module
 # that writes
 #
-#   services.nginx    = { ... };
-#   services.forgejo  = { ... };
+#   services.nginx = { ... };
+#   services.k3s   = { ... };
 #
 # is clearer than the same thing collapsed into a single `services = { ... }`
 # attrset, because each block is independently readable and independently

@@ -69,7 +69,6 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/mail.nix
         ];
         losos = {
@@ -78,7 +77,7 @@ pkgs.testers.nixosTest {
           # The mail plugin answers the folder and filter routes.
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = if screens then lososPkgs.losos-admin-ui else stubUi;
-          forgejo.enable = false;
+          git.enable = false;
           sharingMyStorage = true;
           # In a mesh, as far as the gate goes; modules/cluster.nix (rke2)
           # is not imported, so nothing joins anything.

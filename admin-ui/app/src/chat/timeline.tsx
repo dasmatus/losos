@@ -149,6 +149,55 @@ function ReactionBar({ client, room, item }: { client: MatrixClient; room: Room;
   );
 }
 
+/** The quick reactions in a pill under a message, shown while the pointer
+ *  or the focus is on it. A reaction of yours is lit, and pressing it again
+ *  takes it back. */
+function QuickReactions({ client, room, item, live }: { client: MatrixClient; room: Room; item: Message; live: boolean }) {
+  const t = useT();
+  if (!live) return null;
+  const toggle = (key: string): void => {
+    const mine = item.reactions.find((r) => r.key === key)?.mine ?? null;
+    if (mine !== null) {
+      void client.redactEvent(room.roomId, mine.getId() ?? "");
+    } else {
+      void client.sendEvent(room.roomId, EventType.Reaction, {
+        "m.relates_to": { rel_type: RelationType.Annotation, event_id: item.event.getId() ?? "", key },
+      });
+    }
+  };
+  return (
+    <div
+      role="group"
+      aria-label={t("chat.reaction.pick")}
+      data-slot="quick-reactions"
+      className={cn(
+        "pointer-events-none absolute bottom-0 left-15 z-10 flex translate-y-1/2 items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 opacity-0 shadow-card",
+        "transition-opacity duration-150 motion-reduce:transition-none",
+        "group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
+      )}
+    >
+      {QUICK_REACTIONS.map((key) => {
+        const mine = (item.reactions.find((r) => r.key === key)?.mine ?? null) !== null;
+        return (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={mine}
+            title={key}
+            onClick={() => toggle(key)}
+            className={cn(
+              "grid size-7 place-items-center rounded-full text-[15px] leading-none transition-transform duration-150 hover:scale-125 hover:bg-sunk motion-reduce:transition-none motion-reduce:hover:scale-100",
+              mine && "bg-accent-wash",
+            )}
+          >
+            {key}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** What can be done to one message, shared by its hover toolbar and its
  *  right-click menu, so the two never offer different things. */
 function useMoves(client: MatrixClient, room: Room, item: Message, me: string) {
@@ -241,38 +290,12 @@ function messageMenu(
 
 function Toolbar({ moves, actions }: { moves: ReturnType<typeof useMoves>; actions: RowActions }) {
   const t = useT();
-  const [picking, setPicking] = React.useState(false);
-  const { ev, mine, canRedact, isText, live, react, remove } = moves;
+  const { ev, mine, canRedact, isText, live, remove } = moves;
   if (!live) return null;
   return (
     <div
-      className={cn(
-        "absolute -top-4 right-3 z-10 flex items-center gap-0.5 rounded-control border border-line bg-surface p-0.5 shadow-card",
-        picking ? "flex" : "hidden group-hover:flex group-focus-within:flex",
-      )}
+      className="absolute -top-4 right-3 z-10 hidden items-center gap-0.5 rounded-control border border-line bg-surface p-0.5 shadow-card group-hover:flex group-focus-within:flex"
     >
-      {picking ? (
-        <div role="menu" aria-label={t("chat.reaction.pick")} className="flex items-center gap-0.5">
-          {QUICK_REACTIONS.map((key) => (
-            <button
-              key={key}
-              type="button"
-              role="menuitem"
-              className="rounded-control px-1.5 py-1 text-base hover:bg-sunk"
-              onClick={() => {
-                setPicking(false);
-                react(key);
-              }}
-            >
-              {key}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <Button variant="ghost" size="icon-sm" aria-label={t("chat.reaction.add")} title={t("chat.reaction.add")} onClick={() => setPicking(true)}>
-          <HugeiconsIcon icon={SmileIcon} className="size-4" />
-        </Button>
-      )}
       <Button variant="ghost" size="icon-sm" aria-label={t("chat.message.reply")} title={t("chat.message.reply")} onClick={() => actions.onReply(ev)}>
         <HugeiconsIcon icon={ArrowTurnBackwardIcon} className="size-4" />
       </Button>
@@ -385,6 +408,7 @@ export function MessageRow({ client, room, item, grouped, me, actions, seenBy }:
         )}
       </div>
       <Toolbar moves={moves} actions={actions} />
+      <QuickReactions client={client} room={room} item={item} live={moves.live} />
     </div>
   );
 }
@@ -613,7 +637,7 @@ export function RoomTimeline({ client, room, me, actions }: RoomTimelineProps) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div
         ref={box}
-        className="min-h-0 flex-1 overflow-y-auto pb-2"
+        className="min-h-0 flex-1 overflow-y-auto pb-5"
         onScroll={(event) => {
           if (event.currentTarget.scrollTop < 200) void loadOlder();
         }}

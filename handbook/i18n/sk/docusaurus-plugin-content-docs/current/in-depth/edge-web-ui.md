@@ -69,8 +69,8 @@ zariadení:
 - **Nastavenia LosOS Cloud a LosOS Git.** Predvolený jazyk, oblasť
   telefónnych čísel, ako dlho sa držia zmazané súbory a staré verzie,
   predvolená kvóta, verejné odkazy s heslom a platnosťou, a v LosOS Git
-  prihlásenie, súkromie, úvodná stránka a nastavenia pushu. Je tu aj
-  federácia s inými zariadeniami. Nastavenie, ktoré zariadenie pevne určilo
+  prihlásenie, súkromie a nastavenia pushu. Je tu aj federácia LosOS
+  cloud s inými zariadeniami. Nastavenie, ktoré zariadenie pevne určilo
   vo vlastnej konfigurácii, sa neukáže.
 - **Nainštalované aplikácie.** Čo na zariadení beží, s tlačidlom na
   odstránenie každej.
