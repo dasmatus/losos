@@ -5,7 +5,7 @@
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
-import { Badge, StatusDot } from "@/components/ui/badge";
+import { StatusDot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -55,12 +55,13 @@ function Row({ k, children, mono }: { k: React.ReactNode; children: React.ReactN
 function Sect({ children }: { children: React.ReactNode }) {
   return <div className="mt-3.5 mb-1.5 text-[11px] font-semibold tracking-[0.07em] text-muted uppercase">{children}</div>;
 }
+/** A state beside a value: a word, with a dot when it is good or bad news. */
 function Tag({ tone, children }: { tone?: "ok" | "warn" | "crit" | "acc"; children: React.ReactNode }) {
-  const variant = tone === "acc" ? "local" : (tone ?? "neutral");
   return (
-    <Badge variant={variant} className="px-2 text-[11.5px] leading-[18px] font-normal">
+    <span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap", tone === "acc" ? "text-accent" : tone ? "text-ink" : "text-muted")}>
+      {tone && tone !== "acc" && <StatusDot state={tone} />}
       {children}
-    </Badge>
+    </span>
   );
 }
 function StatusCard({ children }: { children: React.ReactNode }) {

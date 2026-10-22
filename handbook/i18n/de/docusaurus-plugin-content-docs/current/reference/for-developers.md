@@ -10,7 +10,7 @@ Der größte Teil dieses Handbuchs ist für Besitzer. LosOS bauen, testen und
 
 - das Kapitel [Im Detail](/in-depth/index.md): Installation im Detail,
   Administration, Mesh, Marktplatz, Virtuelle Maschinen, Master-Proxy,
-  Edge-Föderation, Lab, Härtung, Architektur;
+  Edge-Föderation, Diagramme, Härtung, Architektur;
 - [`.claude/CLAUDE.md`](https://github.com/dasmatus/losos/blob/main/.claude/CLAUDE.md) im
   Repository: die Build-Befehle, die dateiübergreifende Architektur und die
   Liste der Fehler, die man leicht noch einmal macht.
