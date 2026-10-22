@@ -573,6 +573,48 @@ in
             };
           };
         }
+        # Port 8448 for a .local name. Another Matrix server reads the
+        # well-known above with a client that verifies certificates, which a
+        # box's own one never passes, and then falls back to <name>:8448, so a
+        # LAN of LosOS boxes federates through this listener: federation and
+        # keys only, LAN only, with the box's certificate, which the other
+        # side's federation client does not verify for a .local name.
+        (lib.mkIf (federation && lanName && config.losos.tls.enable) {
+          services.nginx.virtualHosts."losos-chat-federation" = {
+            inherit serverName;
+            onlySSL = true;
+            sslCertificate = "/var/lib/losos-tls/cert.pem";
+            sslCertificateKey = "/var/lib/losos-tls/key.pem";
+            listen = [
+              {
+                addr = "0.0.0.0";
+                port = 8448;
+                ssl = true;
+              }
+            ];
+            locations = {
+              "/".return = "404";
+              "/_matrix/federation/" = {
+                proxyPass = "http://127.0.0.1:${toString port}";
+                recommendedProxySettings = false;
+                extraConfig = ''
+                  ${lanOnly}
+                  ${toDendrite}
+                  client_max_body_size ${toString cfg.maxUploadMiB}m;
+                '';
+              };
+              "/_matrix/key/" = {
+                proxyPass = "http://127.0.0.1:${toString port}";
+                recommendedProxySettings = false;
+                extraConfig = ''
+                  ${lanOnly}
+                  ${toDendrite}
+                '';
+              };
+            };
+          };
+          networking.firewall.allowedTCPPorts = [ 8448 ];
+        })
       ]
     ))
   ];
