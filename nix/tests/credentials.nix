@@ -690,6 +690,9 @@ pkgs.testers.nixosTest {
             box.start()
             box.wait_for_unit("lososd.service")
             box.wait_for_unit("authelia-losos.service")
+            # The unit is active before lososd has loaded its plugins and
+            # opened its port, a minute or more under TCG.
+            box.wait_for_open_port(8082)
             for n, digest in blobs.items():
                 assert sha(box, f"{STORE}/{n}") == digest, f"{n} was sealed again"
             assert decrypt(box, "admin-token") == TOKEN
