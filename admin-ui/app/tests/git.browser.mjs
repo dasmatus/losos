@@ -6,8 +6,10 @@
  * reviewer's progress, checks, the merge box), a line comment added to a
  * review that asks for changes, a reply and a resolve, a squash merge, the
  * AI review switch in the settings, the worktrees, a comment whose Markdown
- * carries script, German, and the phone layout. nix/tests/git-pages.nix
- * runs the same pages against a real box. */
+ * carries script, German, the phone layout, the repository's room in
+ * LosOS Chat, and someone of another box signing in with their chat
+ * address. nix/tests/git-pages.nix and nix/tests/git-federation.nix run the
+ * same pages against real boxes. */
 
 import assert from 'node:assert';
 import { launch, runner, serve } from './harness.mjs';
@@ -38,6 +40,16 @@ const REPO = {
   updated: '2026-10-21T09:00:00Z',
   permissions: { admin: true, push: true, pull: true },
 };
+const EVA = {
+  id: 9,
+  login: 'eva@kitchenbox.local',
+  full_name: 'Eva',
+  email: '',
+  is_admin: false,
+  is_bot: false,
+  matrix_id: '@eva:kitchenbox.local',
+};
+const ROOM = '!garden:mattbox.local';
 const PATCH = [
   '@@ -1,3 +1,4 @@',
   ' # Notes',
@@ -101,12 +113,16 @@ function model() {
     reviews: [
       { id: 5, user: { login: 'eva' }, state: 'commented', body: '', commit_id: HEAD, submitted_at: '2026-10-21T08:31:00Z' },
     ],
+    repo: { ...REPO, chat_room: null },
     calls: [],
   };
 }
 
-async function open(path, { locale = 'en-US', viewport = { width: 1280, height: 900 } } = {}) {
+/* `me` is who LosOS Git says is signed in: an account, null for a visitor
+ * (401), or a function of the request. */
+async function open(path, { locale = 'en-US', viewport = { width: 1280, height: 900 }, me = ME, room = null } = {}) {
   const m = model();
+  m.repo.chat_room = room;
   const page = await browser.newPage({ viewport, locale });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -122,6 +138,13 @@ async function open(path, { locale = 'en-US', viewport = { width: 1280, height: 
       ],
     }),
   );
+  await page.route('**/api/chat', (route) => json(route, 200, { available: true }));
+  await page.route('**/api/chat/git-room', (route) => {
+    const body = route.request().postDataJSON();
+    m.calls.push({ method: 'POST', path: '/api/chat/git-room', body });
+    m.repo.chat_room = ROOM;
+    return json(route, 200, { room: ROOM });
+  });
   const api = '/git/api/v1';
   await page.route(`**${api}/**`, (route) => {
     const req = route.request();
@@ -130,9 +153,18 @@ async function open(path, { locale = 'en-US', viewport = { width: 1280, height: 
     const method = req.method();
     if (method !== 'GET') m.calls.push({ method, path: p, body: req.postDataJSON?.() ?? null });
     const r = '/repos/notshared/notes';
-    if (p === '/user') return json(route, 200, ME);
+    if (p === '/user') {
+      const who = typeof me === 'function' ? me(req) : me;
+      return who === null ? json(route, 401, { message: 'Sign in first.' }) : json(route, 200, who);
+    }
+    if (p === '/matrix/session' && method === 'POST') return json(route, 200, { token: 'chat-tok', login: EVA.login });
     if (p === '/user/repos') return json(route, 200, [REPO, { ...REPO, id: 8, name: 'site', private: false, visibility: 'public', description: '' }]);
-    if (p === r) return json(route, 200, REPO);
+    if (p === r && method === 'PATCH') {
+      Object.assign(m.repo, req.postDataJSON());
+      if (m.repo.chat_room === '') m.repo.chat_room = null;
+      return json(route, 200, m.repo);
+    }
+    if (p === r) return json(route, 200, m.repo);
     if (p === `${r}/collaborators`) return json(route, 200, [{ id: 2, login: 'eva', full_name: 'Eva', email: '', is_admin: false, is_bot: false, permission: 'write' }]);
     if (p === `${r}/ai-review` && method === 'PUT')
       return json(route, 200, { enabled: req.postDataJSON().enabled, available: true, model: 'qwen2.5-coder:1.5b', reviewer: { login: 'losos-reviewer', full_name: 'LosOS Reviewer' }, canChange: true });
@@ -325,6 +357,71 @@ await check('the AI review switch in the settings turns LosOS Reviewer off', asy
   await page.getByText('AI review is off', { exact: true }).first().waitFor();
   const put = m.calls.find((c) => c.method === 'PUT' && c.path.endsWith('/ai-review'));
   assert.deepEqual(put.body, { enabled: false });
+  await settle();
+  await page.close();
+});
+
+await check("the room switch makes the repository's room in LosOS Chat and the header links it", async () => {
+  const { page, m, settle } = await open('/notshared/notes/settings');
+  const off = page.locator('[data-chat-room-setting="off"]');
+  await off.getByText('Talk about this repository in LosOS Chat').waitFor();
+  await off.getByText('People join when you invite them from chat', { exact: false }).waitFor();
+  await off.getByRole('switch').click({ force: true });
+  const on = page.locator('[data-chat-room-setting="on"]');
+  await on.waitFor();
+  await page.getByText('The room is ready', { exact: true }).first().waitFor();
+  const made = m.calls.find((c) => c.path === '/api/chat/git-room');
+  assert.deepEqual(made.body, { owner: 'notshared', repo: 'notes' });
+  const link = `/chat/?join=${encodeURIComponent(ROOM)}&via=mattbox.local`;
+  assert.equal(await on.locator('[data-chat-room-open]').getAttribute('href'), link);
+  await page.getByRole('link', { name: 'Code' }).first().click();
+  await page.locator('[data-readme]').waitFor();
+  assert.equal(await page.locator('[data-chat-room]').getAttribute('href'), link);
+  await page.getByRole('link', { name: 'Settings' }).first().click();
+  await on.getByRole('switch').click({ force: true });
+  await page.locator('[data-chat-room-setting="off"]').waitFor();
+  const unlinked = m.calls.find((c) => c.method === 'PATCH');
+  assert.deepEqual(unlinked.body, { chat_room: '' });
+  await settle();
+  await page.close();
+});
+
+await check('a visitor goes to their own box to say who they are', async () => {
+  const { page, settle } = await open('/notshared/notes', { me: null });
+  await page.locator('[data-readme]').waitFor();
+  await page.locator('[data-chat-sign-in]').click();
+  await page.locator('[data-chat-address]').fill('eva');
+  await page.locator('[data-chat-continue]').click();
+  await page.getByText('A chat address looks like @you:yourbox.local.').waitFor();
+  await page.locator('[data-chat-address]').fill('@eva:kitchenbox.local');
+  await settle();
+  await page.route('https://kitchenbox.local/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<p>kitchenbox</p>' }),
+  );
+  await page.locator('[data-chat-continue]').click();
+  await page.waitForURL('https://kitchenbox.local/chat/vouch**');
+  const asked = new URL(page.url()).searchParams;
+  assert.equal(asked.get('for'), new URL(origin).host);
+  assert.equal(asked.get('back'), `${origin}/git/notshared/notes`);
+  await page.close();
+});
+
+await check('back from their box, someone of another box keeps to their own branches', async () => {
+  const { page, m, settle } = await open('/notshared/notes#chat-token=openid-tok&chat-server=kitchenbox.local&chat-name=Eva', {
+    me: (req) => (req.headers().authorization === 'token chat-tok' ? EVA : null),
+    room: ROOM,
+  });
+  await page.locator('[data-me]', { hasText: 'Eva' }).waitFor();
+  const session = m.calls.find((c) => c.path === '/matrix/session');
+  assert.deepEqual(session.body, { access_token: 'openid-tok', matrix_server_name: 'kitchenbox.local', display_name: 'Eva' });
+  assert.equal(new URL(page.url()).hash, '');
+  assert.equal(await page.evaluate(() => localStorage.getItem('losos-git-chat-token')), 'chat-tok');
+  await page.locator('[data-contributor-note]').getByText('eva@kitchenbox.local/', { exact: false }).waitFor();
+  assert.equal(
+    await page.locator('[data-chat-room]').getAttribute('href'),
+    `https://kitchenbox.local/chat/?join=${encodeURIComponent(ROOM)}&via=mattbox.local`,
+  );
+  assert.equal(await page.locator('[data-chat-sign-in]').count(), 0);
   await settle();
   await page.close();
 });
