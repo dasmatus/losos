@@ -309,7 +309,7 @@ function Planner({ calendars, onCalendars }: { calendars: CalendarInfo[]; onCale
           <div className="min-w-0 flex-1">
             <PaneHeader title={t("calendar.title")} summary={t("calendar.summary")} />
           </div>
-          <div className="flex shrink-0 flex-wrap gap-2">
+          <div className="flex min-w-0 flex-wrap gap-2">
             <Button variant="secondary" onClick={() => setDialog("subscribe")}>
               <HugeiconsIcon icon={Link01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
               {t("calendar.subscribe")}
@@ -614,7 +614,7 @@ function Week({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="grid grid-cols-[3.5rem_repeat(7,minmax(0,1fr))] border-b border-line">
+      <div className="grid grid-cols-[4.25rem_repeat(7,minmax(0,1fr))] border-b border-line">
         <div />
         {days.map((d) => (
           <div key={d} className={cn("px-1 py-2 text-center", d === today && "text-accent")}>
@@ -631,7 +631,7 @@ function Week({
         ))}
       </div>
       {allDay.length > 0 && (
-        <div className="grid grid-cols-[3.5rem_repeat(7,minmax(0,1fr))] border-b border-line py-1">
+        <div className="grid grid-cols-[4.25rem_repeat(7,minmax(0,1fr))] border-b border-line py-1">
           <p className="self-center pr-2 text-right text-[11px] text-muted">{t("calendar.allDay")}</p>
           {days.map((d) => (
             <ul key={d} className="flex min-w-0 flex-col gap-0.5 px-0.5">
@@ -650,10 +650,10 @@ function Week({
         </div>
       )}
       <div ref={scroller} className="relative min-h-0 flex-1 overflow-y-auto">
-        <div className="relative grid grid-cols-[3.5rem_repeat(7,minmax(0,1fr))]" style={{ height: HOUR_PX * 24 }}>
+        <div className="relative grid grid-cols-[4.25rem_repeat(7,minmax(0,1fr))]" style={{ height: HOUR_PX * 24 }}>
           <div className="relative">
             {Array.from({ length: 23 }, (_, i) => i + 1).map((h) => (
-              <span key={h} className="absolute right-2 -translate-y-1/2 text-[11px] text-faint tabular-nums" style={{ top: h * HOUR_PX }}>
+              <span key={h} className="absolute right-2 -translate-y-1/2 whitespace-nowrap text-[11px] text-faint tabular-nums" style={{ top: h * HOUR_PX }}>
                 {timeText(new Date(2026, 0, 1, h).getTime(), locale)}
               </span>
             ))}

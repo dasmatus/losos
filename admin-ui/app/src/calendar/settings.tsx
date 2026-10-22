@@ -322,11 +322,11 @@ export function feedAddress(path: string, scheme: "https" | "webcal"): string {
   return `${scheme === "webcal" ? "webcal" : window.location.protocol.replace(":", "")}://${host}${path}`;
 }
 
-function Copyable({ value, label }: { value: string; label: string }) {
+function Copyable({ value, label, id }: { value: string; label: string; id?: string }) {
   const t = useT();
   return (
     <div className="flex gap-2">
-      <Input readOnly value={value} aria-label={label} className="font-mono text-[12.5px]" onFocus={(e) => e.target.select()} />
+      <Input id={id} readOnly value={value} aria-label={label} className="font-mono text-[12.5px]" onFocus={(e) => e.target.select()} />
       <Button
         type="button"
         variant="secondary"
@@ -394,7 +394,7 @@ export function CalendarSettings({
           <>
             <Field>
               <FieldLabel htmlFor="calendar-settings-url">{t("calendar.field.address")}</FieldLabel>
-              <Copyable value={feed.url} label={t("calendar.field.address")} />
+              <Copyable id="calendar-settings-url" value={feed.url} label={t("calendar.field.address")} />
             </Field>
             <Field>
               <FieldLabel htmlFor="calendar-settings-refresh">{t("calendar.field.refresh")}</FieldLabel>
