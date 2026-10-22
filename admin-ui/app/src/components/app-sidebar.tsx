@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   ArrowRight01Icon,
+  Doc01Icon,
   HardDriveIcon,
   Home01Icon,
   LayoutGridIcon,
@@ -42,6 +43,7 @@ import { canUse, heldBy, sharedApp, useMe } from "@/lib/api";
 import { openInNewTab, PinMenu } from "@/components/pin-menu";
 import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
 import { pinKey, viewPin, type PinView } from "@/lib/pins";
+import { useOfficeFolder } from "@/lib/office-folder";
 
 /* The one panel: every destination on this page in a single sidebar, in the
  * shape of shadcn's Sidebar ("collapses to icons"), inside the recessed box.
@@ -52,6 +54,7 @@ import { pinKey, viewPin, type PinView } from "@/lib/pins";
  *
  *   Overview
  *   Apps
+ *   Documents               (a box that edits a folder of documents)
  *   Storage
  *   Mesh                ▾   (the link opens Mesh; the chevron folds)
  *     Market                selling storage and compute, and disk sharing
@@ -119,6 +122,7 @@ const TREE: readonly Entry[] = [
     icon: Home01Icon,
   },
   { kind: "link", key: "apps", to: "/apps", label: "shell.nav.apps", icon: LayoutGridIcon, pane: "apps" },
+  { kind: "link", key: "documents", to: "/office/", label: "office.files.title", icon: Doc01Icon },
   { kind: "link", key: "storage", to: "/storage", label: "shell.nav.storage", icon: HardDriveIcon, pane: "storage" },
   {
     kind: "link",
@@ -162,22 +166,23 @@ const TREE: readonly Entry[] = [
  * anyone else the panes of their sections (GET /api/me). A hidden link's
  * own children that stay visible move up a level, so someone in the market
  * section sees Market without Mesh. A fold left empty goes. */
-function allowed(entry: LinkEntry): boolean {
+function allowed(entry: LinkEntry, office: boolean): boolean {
   if (entry.pane !== undefined) return paneOpen(entry.pane);
   if (entry.key === "lab") return canUse("lab");
+  if (entry.key === "documents") return office;
   // Shared-side: there only while the box shares its storage, which lososd
   // says in /api/me's `shared`. With sharing off the page does not exist.
   if (entry.key === "mail") return sharedApp("mail");
   return true;
 }
 
-function visible(entries: readonly Entry[]): Entry[] {
+function visible(entries: readonly Entry[], office: boolean): Entry[] {
   const out: Entry[] = [];
   for (const entry of entries) {
-    const children = visible(entry.children ?? []);
+    const children = visible(entry.children ?? [], office);
     if (entry.kind === "fold") {
       if (children.length > 0) out.push({ ...entry, children });
-    } else if (allowed(entry)) {
+    } else if (allowed(entry, office)) {
       out.push(entry.children === undefined ? entry : { ...entry, children });
     } else {
       out.push(...children);
@@ -188,6 +193,7 @@ function visible(entries: readonly Entry[]): Entry[] {
 
 function isCurrent(entry: LinkEntry, pathname: string): boolean {
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
+  if (entry.key === "documents") return pathname === "/office" || pathname === "/office/";
   return pathname === entry.to;
 }
 
@@ -204,10 +210,11 @@ export function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
   const rail = !isMobile && state === "collapsed";
   const me = useMe();
+  const office = useOfficeFolder();
   // Someone a rule of LosOS Login holds gets their account, at the top.
   const tree = React.useMemo(
-    () => ((me?.locked?.length ?? 0) > 0 ? [settingsLeaf("account")] : visible(TREE)),
-    [me],
+    () => ((me?.locked?.length ?? 0) > 0 ? [settingsLeaf("account")] : visible(TREE, office)),
+    [me, office],
   );
 
   // Which folds are open. One that holds the current page opens by itself.
