@@ -296,7 +296,10 @@ pkgs.testers.runNixOSTest (
             hidden.i2p.enable = true;
           };
           services.i2pd.settings = i2pTestnet config.networking.primaryIPAddress;
-          environment.systemPackages = [ pkgs.jq ];
+          environment.systemPackages = [
+            pkgs.curl
+            pkgs.jq
+          ];
           virtualisation = {
             memorySize = 1536;
             cores = 2;
@@ -359,7 +362,10 @@ pkgs.testers.runNixOSTest (
               git -c user.name=LosOS -c user.email=losos@mattbox.local commit -qm "The box as installed"
             '';
           };
-          environment.systemPackages = [ pkgs.jq ];
+          environment.systemPackages = [
+            pkgs.jq
+            pkgs.openssl
+          ];
           # It boots alone, first; under emulation it needs every core to
           # reach a shell within the driver's five minutes.
           virtualisation = {
