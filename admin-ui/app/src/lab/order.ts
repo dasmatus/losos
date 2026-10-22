@@ -1,4 +1,4 @@
-/* Ordering the hardware of a setup. Only in the copy a box serves at /lab/,
+/* Ordering the hardware of a setup. Only in the copy a box serves at /diagrams/,
  * and only when the box has `losos.lab.ordering.enable`: lososd answers
  * GET /api/lab/order with `enabled: false` otherwise, and the Lab draws
  * nothing. The catalogue and the checkout come from the official edge
@@ -28,20 +28,21 @@ export type Ordering =
 /** The device types the Lab counts for each sku the edge sells. */
 export const SKU_OF_TYPE: Record<string, string> = { box: "box", "edge-local": "gateway" };
 
-function token(): string | null {
+/** The spare key the admin page keeps for this tab, else nothing: the LosOS
+ *  Login cookie goes with every request on its own. */
+function auth(): Record<string, string> {
   try {
-    return window.sessionStorage.getItem(TOKEN_KEY);
+    const key = window.sessionStorage.getItem(TOKEN_KEY);
+    return key ? { Authorization: "Bearer " + key } : {};
   } catch {
-    return null;
+    return {};
   }
 }
 
 /** Never throws: a box that does not answer reads as "off". */
 export async function readOrdering(): Promise<Ordering> {
-  const key = token();
-  if (!key) return { enabled: false };
   try {
-    const r = await fetch("/api/lab/order", { headers: { Authorization: "Bearer " + key }, cache: "no-store" });
+    const r = await fetch("/api/lab/order", { headers: auth(), cache: "no-store" });
     if (!r.ok) return { enabled: false };
     const body = (await r.json()) as Partial<Record<string, unknown>>;
     if (body["enabled"] !== true) return { enabled: false };
@@ -61,17 +62,16 @@ export type CheckoutResult = { url: string } | { error: string };
 /** Ask the edge for a Stripe Checkout. The URL is lososd's, already checked
  * to be a Stripe-hosted page; this checks it once more before leaving. */
 export async function checkout(items: { sku: string; quantity: number }[]): Promise<CheckoutResult> {
-  const key = token();
-  if (!key) return { error: "signedOut" };
   try {
     const r = await fetch("/api/lab/order", {
       method: "POST",
-      headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
+      headers: { ...auth(), "Content-Type": "application/json" },
       body: JSON.stringify({ items }),
     });
     const body = (await r.json().catch(() => ({}))) as Partial<Record<string, unknown>>;
     const url = body["checkout_url"];
     if (r.ok && typeof url === "string" && url.startsWith("https://checkout.stripe.com/")) return { url };
+    if (r.status === 401) return { error: "signedOut" };
     const message = body["error"];
     return { error: typeof message === "string" && message ? message : `HTTP ${r.status}` };
   } catch (e) {

@@ -78,6 +78,9 @@ const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 /* LosOS Mail (src/mail/): only on the shared side, so most boxes never
  * fetch it. */
 const Mail = React.lazy(() => import("@/mail/app"));
+/* LosOS Diagrams (src/lab/): its own chunk with the Rust core's
+ * WebAssembly, fetched when /diagrams is first opened. */
+const Diagrams = React.lazy(() => import("@/lab/app"));
 const WidgetBoard = React.lazy(() =>
   import("@/widgets/board").then((m) => ({ default: m.WidgetBoard })),
 );
@@ -216,6 +219,9 @@ function Shell() {
    * says why instead of failing pane by pane. */
   const me = useMe();
   const held = signedIn && (me?.locked?.length ?? 0) > 0;
+  /* LosOS Diagrams draws on a canvas beside an inspector, which wants more
+   * room than a pane of rows: on /diagrams the bar and the page are wider. */
+  const wide = useLocation().pathname.startsWith("/diagrams");
   const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
   const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
   // Once fetched, the palette stays mounted so it can close the way it opened.
@@ -286,11 +292,12 @@ function Shell() {
 
   return (
     <div className="losos-shell min-h-dvh text-ink">
-      <TopBar signedIn={signedIn} />
+      <TopBar signedIn={signedIn} wide={wide} />
 
       <SidebarProvider
         className={cn(
-          "mx-auto flex w-full max-w-6xl px-4 pt-5 pb-12 sm:px-6",
+          "mx-auto flex w-full px-4 pt-5 pb-12 sm:px-6",
+          wide ? "max-w-[96rem]" : "max-w-6xl",
           "max-md:flex-col max-md:gap-3 md:gap-6",
         )}
       >
@@ -323,6 +330,7 @@ function Shell() {
                 (modules/containers.nix); the screen says so too if the box
                 leaves it while the page is open. */}
             <Route path="/mail" element={<Mail />} />
+            <Route path="/diagrams/*" element={<Diagrams />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />
@@ -350,12 +358,12 @@ function Shell() {
 
 // ── Chrome ────────────────────────────────────────────────────────────────
 
-function TopBar({ signedIn }: { signedIn: boolean }) {
+function TopBar({ signedIn, wide }: { signedIn: boolean; wide: boolean }) {
   const t = useT();
   const logo = logoFor();
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
-      <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
+      <div className={cn("mx-auto flex w-full items-center gap-3 px-4 py-3 sm:px-6", wide ? "max-w-[96rem]" : "max-w-6xl")}>
         {/* The logo in place of the name, a live salmon (a plate of it on
             Halloween; lib/logo.ts picks); its alt text is the name. A photo
             needs a word of explanation, so the logo is a tooltip trigger
