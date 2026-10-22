@@ -1055,3 +1055,218 @@ fn a_pull_request_from_a_marked_worktree_is_reviewed_and_merged() {
     let (_, log) = api("GET", "/commits?limit=2", &owner, None);
     assert_eq!(log.as_array().unwrap().len(), 2);
 }
+
+/// A homeserver that knows two OpenID tokens: `good` is Eva's, and `liar`
+/// claims a person of another server.
+fn fake_homeserver() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut c) = stream else { continue };
+            let mut buf = vec![0u8; 4096];
+            let n = c.read(&mut buf).unwrap_or(0);
+            let head = String::from_utf8_lossy(&buf[..n]).to_string();
+            let (status, body) = if head.contains("access_token=good ") {
+                ("200 OK", r#"{"sub":"@eva:kitchenbox.local"}"#)
+            } else if head.contains("access_token=liar ") {
+                ("200 OK", r#"{"sub":"@boss:other.box"}"#)
+            } else {
+                ("401 Unauthorized", r#"{"errcode":"M_UNKNOWN_TOKEN"}"#)
+            };
+            let _ = c.write_all(
+                format!(
+                    "HTTP/1.0 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            );
+        }
+    });
+    port
+}
+
+#[test]
+fn a_person_from_another_box_signs_in_by_chat_address_and_proposes_a_change() {
+    let dir = scratch("matrix");
+    let hs = fake_homeserver();
+    let s = start(
+        &dir,
+        &[
+            "--matrix-server-url",
+            &format!("kitchenbox.local=http://127.0.0.1:{hs}"),
+        ],
+    );
+    let owner = format!("token {}", owner_token(&s, r#""all""#, "all"));
+    for (name, visibility) in [
+        ("site", "public"),
+        ("plans", "internal"),
+        ("secret", "private"),
+    ] {
+        let (status, body) = http(
+            s.port,
+            "POST",
+            "/api/v1/user/repos",
+            Some(&owner),
+            Some(&format!(
+                r#"{{"name":"{name}","visibility":"{visibility}","auto_init":true}}"#
+            )),
+        );
+        assert_eq!(status, 201, "{body}");
+    }
+    let session = |token: &str, server: &str| {
+        http(
+            s.port,
+            "POST",
+            "/api/v1/matrix/session",
+            None,
+            Some(&format!(
+                r#"{{"access_token":"{token}","matrix_server_name":"{server}","display_name":"Eva"}}"#
+            )),
+        )
+    };
+
+    // A token the server does not know, and a server vouching for a
+    // person of another server, are both turned away.
+    assert_eq!(session("stale", "kitchenbox.local").0, 401);
+    assert_eq!(session("liar", "kitchenbox.local").0, 401);
+    let (status, body) = session("good", "kitchenbox.local");
+    assert_eq!(status, 201, "{body}");
+    let signed = json(&body);
+    assert_eq!(signed["login"], "eva@kitchenbox.local");
+    assert_eq!(signed["matrix_id"], "@eva:kitchenbox.local");
+    let eva_token = signed["token"].as_str().unwrap().to_string();
+    let eva = format!("token {eva_token}");
+    let (status, me) = http(s.port, "GET", "/api/v1/user", Some(&eva), None);
+    assert_eq!(status, 200);
+    assert_eq!(json(&me)["matrix_id"], "@eva:kitchenbox.local");
+    assert_eq!(json(&me)["full_name"], "Eva");
+
+    // She reads the public repository; the box's internal one and the
+    // private one are not there for her.
+    let get = |repo: &str, auth: &str| {
+        http(
+            s.port,
+            "GET",
+            &format!("/api/v1/repos/notshared/{repo}"),
+            Some(auth),
+            None,
+        )
+        .0
+    };
+    assert_eq!(get("site", &eva), 200);
+    assert_eq!(get("plans", &eva), 404);
+    assert_eq!(get("secret", &eva), 404);
+
+    // She clones, may not push to main, and pushes to a branch of her own.
+    let url = format!(
+        "http://eva:{eva_token}@127.0.0.1:{}/notshared/site.git",
+        s.port
+    );
+    ok(git(&dir, &["clone", "-q", &url, "eva"]));
+    let work = dir.join("eva");
+    std::fs::write(work.join("README.md"), "# site\n\nOpen on Sundays.\n").unwrap();
+    ok(git(&work, &["commit", "-qam", "Say when it is open"]));
+    // git prints why, beside the ref, and main stays where it was.
+    let main_before = git(&work, &["ls-remote", "origin", "refs/heads/main"]).stdout;
+    let refused = git(&work, &["push", "-q", "origin", "HEAD:main"]);
+    assert!(!refused.status.success());
+    let said = String::from_utf8_lossy(&refused.stderr);
+    assert!(said.contains("[remote rejected]"), "{said}");
+    assert!(said.contains("under eva@kitchenbox.local/"), "{said}");
+    assert_eq!(
+        git(&work, &["ls-remote", "origin", "refs/heads/main"]).stdout,
+        main_before
+    );
+    let refused = git(&work, &["push", "-q", "origin", "HEAD:refs/heads/hours"]);
+    assert!(!refused.status.success());
+    ok(git(
+        &work,
+        &[
+            "push",
+            "-q",
+            "origin",
+            "HEAD:refs/heads/eva@kitchenbox.local/hours",
+        ],
+    ));
+
+    // She opens a pull request from it and writes in it.
+    let (status, body) = http(
+        s.port,
+        "POST",
+        "/api/v1/repos/notshared/site/pulls",
+        Some(&eva),
+        Some(
+            r#"{"title":"Say when it is open","head":"eva@kitchenbox.local/hours","base":"main"}"#,
+        ),
+    );
+    assert_eq!(status, 201, "{body}");
+    let pr = json(&body);
+    assert_eq!(pr["user"]["login"], "eva@kitchenbox.local");
+    let number = pr["number"].as_i64().unwrap();
+    let (status, body) = http(
+        s.port,
+        "POST",
+        &format!("/api/v1/repos/notshared/site/issues/{number}/comments"),
+        Some(&eva),
+        Some(r#"{"body":"Sundays only, as we said."}"#),
+    );
+    assert_eq!(status, 201, "{body}");
+    // She cannot merge it.
+    let (status, _) = http(
+        s.port,
+        "POST",
+        &format!("/api/v1/repos/notshared/site/pulls/{number}/merge"),
+        Some(&eva),
+        Some(r#"{"Do":"merge"}"#),
+    );
+    assert_eq!(status, 403);
+
+    // The owner adds her to the private repository by her address; she may
+    // read it, and is never made an administrator.
+    let (status, _) = http(
+        s.port,
+        "PUT",
+        "/api/v1/repos/notshared/secret/collaborators/@eva:kitchenbox.local",
+        Some(&owner),
+        Some(r#"{"permission":"admin"}"#),
+    );
+    assert_eq!(status, 422);
+    let (status, _) = http(
+        s.port,
+        "PUT",
+        "/api/v1/repos/notshared/secret/collaborators/eva@kitchenbox.local",
+        Some(&owner),
+        Some(r#"{"permission":"read"}"#),
+    );
+    assert_eq!(status, 204);
+    assert_eq!(get("secret", &eva), 200);
+
+    // The repository's chat room: the owner sets it, nobody else.
+    let room = r#"{"chat_room":"!abc:mattbox.local"}"#;
+    let (status, _) = http(
+        s.port,
+        "PATCH",
+        "/api/v1/repos/notshared/site",
+        Some(&eva),
+        Some(room),
+    );
+    assert_eq!(status, 403);
+    let (status, body) = http(
+        s.port,
+        "PATCH",
+        "/api/v1/repos/notshared/site",
+        Some(&owner),
+        Some(room),
+    );
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(json(&body)["chat_room"], "!abc:mattbox.local");
+    let (status, _) = http(
+        s.port,
+        "PATCH",
+        "/api/v1/repos/notshared/site",
+        Some(&owner),
+        Some(r#"{"chat_room":"not a room"}"#),
+    );
+    assert_eq!(status, 422);
+}
