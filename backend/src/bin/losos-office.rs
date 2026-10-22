@@ -1,8 +1,8 @@
 //! `losos-office` — Office documents in a folder, through Collabora Online.
 //!
 //! The WOPI host of [`losos_ctl::office`] over a plain folder, for a box that
-//! edits documents without LosOS cloud's file store (and for the VM test).
-//! LosOS cloud mounts the same routes over its own store instead.
+//! edits documents without LosOS Cloud's file store (and for the VM test).
+//! LosOS Cloud mounts the same routes over its own store instead.
 //!
 //! Two listeners, because they trust different things:
 //!

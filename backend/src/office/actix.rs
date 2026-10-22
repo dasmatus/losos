@@ -2,7 +2,7 @@
 //!
 //! [`wopi_routes`] is what coolwsd calls, on a loopback listener of its own;
 //! [`session_routes`] is what the editor page calls through nginx, which
-//! names the signed-in person in `X-Losos-Cloud-User`. LosOS cloud mounts
+//! names the signed-in person in `X-Losos-Cloud-User`. LosOS Cloud mounts
 //! the same two pieces in its own service; the standalone `losos-office`
 //! binary mounts them over a [`DirStore`](super::store::DirStore).
 
@@ -203,7 +203,7 @@ pub async fn extensions_answer(sessions: Arc<Sessions>) -> HttpResponse {
 }
 
 /// `GET {prefix}/files`: the documents in a plain folder (losos-office's
-/// `--root`), for the Office page's list. LosOS cloud lists its own files.
+/// `--root`), for the Office page's list. LosOS Cloud lists its own files.
 pub fn folder_routes(
     prefix: &str,
     folder: Arc<DirStore>,
