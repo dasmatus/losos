@@ -280,7 +280,7 @@ function messageMenu(
             label: t("report.action"),
             icon: Flag02Icon,
             hidden: mine,
-            onSelect: () => openReport({ app: "chat", about: boxName(ev.getSender() ?? "", moves.me), ref: ev.getId() ?? "" }),
+            onSelect: () => openReport({ app: "chat", about: boxName(ev.getSender() ?? "", moves.me), ref: `${ev.getRoomId() ?? ""}/${ev.getId() ?? ""}` }),
           },
         ],
       ],
