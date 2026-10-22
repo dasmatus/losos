@@ -105,7 +105,10 @@ for pkg in core virt render; do
   cp -r "$WORK/lab-$pkg"/* "$APP/src/lab/$pkg-pkg/"
   chmod -R u+w "$APP/src/lab/$pkg-pkg"
 done
-(cd "$APP" && npm ci --ignore-scripts && VITE_LAB_HOSTED=1 npm run build -- --outDir "$WORK/dist" --emptyOutDir)
+# The main build only: `npm run build -- --outDir` would hand the flags to
+# the guest call page's build, the script's last step, which then empties
+# the folder the Lab was just built into.
+(cd "$APP" && npm ci --ignore-scripts && npx tsc --noEmit && VITE_LAB_HOSTED=1 npx vite build --outDir "$WORK/dist" --emptyOutDir)
 cp -r "$WORK/dist/lab/." "$OUT/lab/"
 cp -r "$WORK/dist/assets" "$WORK/dist/theme-boot.js" "$OUT/"
 cp "$LAB/vercel.json" "$LAB/serve.json" "$OUT/"
