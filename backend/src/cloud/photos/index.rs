@@ -76,8 +76,14 @@ pub fn run(store: &Store, faces: Faces, owners: &[String]) -> Result<Report, Err
                 }
             };
             let src = store.disk_path(owner, &path);
+            let started = std::time::Instant::now();
             match look(&src, models) {
                 Ok(seen) => {
+                    tracing::info!(
+                        "photos: {owner}/{path}: {} faces in {:.1} s",
+                        seen.faces.len(),
+                        started.elapsed().as_secs_f32()
+                    );
                     report.photos += 1;
                     report.faces += seen.faces.len();
                     save(store, owner, id, &etag, Some(&seen), on)?;

@@ -114,6 +114,9 @@ in
 
 pkgs.testers.nixosTest {
   name = "losos-cloud-photos";
+  # The face pass runs at idle priority on one core; emulated, without KVM,
+  # a camera original takes minutes.
+  globalTimeout = 4 * 3600;
 
   nodes.box = _: {
     imports = [
@@ -174,6 +177,30 @@ pkgs.testers.nixosTest {
         assert int(code) == status, f"{method} {path} as {who}: {code} {text}"
         return json.loads(text) if text.strip().startswith(("{", "[")) else text
 
+    def pass_state():
+        return [
+            box.succeed(f"systemctl show -P {p} losos-cloud-photos.service").strip()
+            for p in ("ActiveState", "ExecMainExitTimestampMonotonic")
+        ]
+
+    def wait_for_pass(before=None):
+        # A oneshot is "activating" while it runs. Emulated, a camera
+        # original takes minutes, so this says which photo it is on.
+        deadline = time.monotonic() + 3 * 3600
+        while True:
+            state, ended = pass_state()
+            if state != "activating" and ended != before:
+                break
+            assert time.monotonic() < deadline, "the pass did not finish in three hours"
+            print(box.execute("journalctl -u losos-cloud-photos.service -o cat | grep '^photos: ' | tail -n 1")[1].strip())
+            time.sleep(30)
+        box.succeed("systemctl show -P Result losos-cloud-photos.service | grep -qx success")
+
+    def run_pass():
+        before = pass_state()[1]
+        box.succeed("systemctl start --no-block losos-cloud-photos.service")
+        wait_for_pass(before)
+
     def upload(name):
         start = time.monotonic()
         box.succeed(
@@ -210,10 +237,10 @@ pkgs.testers.nixosTest {
 
     with subtest("every photo is read once"):
         # The pass that ran, then one more for what arrived during it.
-        box.wait_until_succeeds("! systemctl is-active -q losos-cloud-photos.service", timeout=3600)
-        box.succeed("systemctl start losos-cloud-photos.service")
+        wait_for_pass()
+        run_pass()
         print(box.succeed("journalctl -u losos-cloud-photos.service -o cat | grep 'photos read'"))
-        box.succeed("systemctl start losos-cloud-photos.service")
+        run_pass()
         box.succeed("journalctl -u losos-cloud-photos.service -o cat | tail -n 3 | grep -q '^0 photos read'")
         data = call("GET", "/photos")
         print(json.dumps(data["index"]))
@@ -314,7 +341,7 @@ pkgs.testers.nixosTest {
 
     with subtest("faces off: every face and person goes, the camera's details stay"):
         box.succeed(f"{BOOTED}/specialisation/nofaces/bin/switch-to-configuration test")
-        box.succeed("systemctl start losos-cloud-photos.service")
+        run_pass()
         off = call("GET", "/photos")
         assert off["index"]["faces"] is False and off["people"] == [], off["index"]
         assert all(p["people"] == [] for p in off["photos"])
@@ -333,7 +360,7 @@ pkgs.testers.nixosTest {
                     f"curl -sSf -k -u notshared:{app_password} -X DELETE"
                     f" https://127.0.0.1/remote.php/dav/files/notshared/Pictures/{n}"
                 )
-        box.succeed("systemctl start losos-cloud-photos.service")
+        run_pass()
         left = call("GET", "/photos")
         assert sorted(p["name"] for p in left["photos"]) == ["danube.jpg", "old-town.jpg", "tatras.jpg", "vienna.jpg"]
         status, out = box.execute(f"cloud-photos-shots film /tmp/shots/film matus '{PASSWORD}' 127.0.0.1 2>&1", timeout=3000)
