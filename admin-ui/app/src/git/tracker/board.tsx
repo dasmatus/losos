@@ -4,9 +4,11 @@ import { Add01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { failed } from "../parts";
 import { useT } from "@/lib/i18n-react";
+import { contextMenu } from "@/lib/context-menu";
 import { cn } from "@/lib/utils";
 import { CATEGORY_ORDER, closed, tracker, type Category, type Issue, type Priority, type Project, type WorkflowState } from "./api";
 import { Assignee, CATEGORY_NAME, DueDate, LabelChip, PRIORITY_NAME, PriorityIcon, StateIcon, orderedStates } from "./parts";
+import { useIssueMenu } from "./pin";
 import { useTracker } from "./store";
 
 /* The board: a column per state of the project's workflow (per kind of
@@ -207,8 +209,10 @@ function Card({
 }) {
   const t = useT();
   const { home } = useTracker();
+  const menu = useIssueMenu();
   return (
     <button
+      ref={contextMenu(menu(i, onOpen))}
       type="button"
       draggable
       data-issue-key={i.key}
