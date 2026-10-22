@@ -507,6 +507,16 @@ pkgs.testers.nixosTest {
     OUT = os.environ.get("out", os.getcwd())
     SHOTS = f"{OUT}/shots/pr"
     os.makedirs(SHOTS, exist_ok=True)
+    # The launch film's frames: one picture per state, numbered in the
+    # order a person sees them, with the boxes the film may point at.
+    FILM = f"{OUT}/shots/film"
+    os.makedirs(FILM, exist_ok=True)
+    film_steps = []
+    # One window size for the film and the PR alike, at 2x so the film can
+    # zoom in, and Matus's window recorded from his first page to the end;
+    # `at` in the manifest is where each still falls in that clip.
+    VIEW = {"width": 1280, "height": 900}
+    clip_start = {}
 
     # The edge node, with throughEdge; looked up so the script reads the
     # same without one.
@@ -756,14 +766,17 @@ pkgs.testers.nixosTest {
     def person(name):
         browser = browsers[name]
         context = browser.new_context(
-            viewport={"width": 1280, "height": 860},
+            viewport={"width": 1280, "height": 900},
             device_scale_factor=2,
             color_scheme="dark",
             locale="en-US",
             timezone_id="Europe/Bratislava",
             reduced_motion="reduce",
             ignore_https_errors=True,
+            **({"record_video_dir": f"{FILM}/raw", "record_video_size": {"width": 2560, "height": 1800}} if name == "matus" else {}),
         )
+        if name == "matus":
+            clip_start["matus"] = time.time()
         if name == "matus":
             context.add_init_script(SLIDE)
         page = context.new_page()
@@ -838,6 +851,28 @@ pkgs.testers.nixosTest {
         if top:
             page.evaluate("window.scrollTo(0, 0)")
         page.screenshot(path=f"{SHOTS}/{name}.png")
+
+    def film(page, slug, title, action="none", targets=None, top=True):
+        settle(page)
+        if top:
+            page.evaluate("window.scrollTo(0, 0)")
+        boxes = {}
+        for key, locator in (targets or {}).items():
+            b = locator.bounding_box()
+            if b:
+                boxes[key] = {"x": round(b["x"]), "y": round(b["y"]),
+                              "w": round(b["width"]), "h": round(b["height"])}
+        name = f"{len(film_steps) + 1:02d}-{slug}.png"
+        page.screenshot(path=f"{FILM}/{name}")
+        step = {"file": name, "url": f"{HOST}/chat/", "title": title,
+                "action": action, "targets": boxes}
+        if page is owner:
+            step["clip"] = "calls-matus.mp4"
+            step["at"] = round(time.time() - clip_start["matus"], 1)
+        film_steps.append(step)
+        with open(f"{FILM}/manifest.json", "w") as f:
+            json.dump({"feature": "calls", "viewport": VIEW, "dpr": 2, "fps": 60,
+                       "test": "losos-calls", "steps": film_steps}, f, indent=2)
 
     def opened(page):
         return int(page.locator("[data-e2ee]").get_attribute("data-opened") or "0")
@@ -929,6 +964,8 @@ pkgs.testers.nixosTest {
         room_button(her, "Matus").click()
         owner.get_by_role("button", name="Video call").wait_for()
         shot(owner, "room-after")
+        film(owner, "chat-with-eva", "a direct chat with Eva: voice and video call buttons",
+             "click", {"video": owner.get_by_role("button", name="Video call")})
         owner.get_by_role("button", name="Video call").click()
         ring = her.locator("[data-ringing]")
         try:
@@ -940,6 +977,8 @@ pkgs.testers.nixosTest {
             raise
         assert "Matus" in ring.text_content(), ring.text_content()
         shot(her, "ringing")
+        film(her, "eva-rings", "Eva's browser rings with Matus's call",
+             "click", {"answer": ring.get_by_role("button", name="Answer", exact=True)})
         ring.get_by_role("button", name="Answer", exact=True).click()
 
     with subtest("they see each other, on frames only they can open"):
@@ -947,10 +986,14 @@ pkgs.testers.nixosTest {
         live(her, 1)
         shot(owner, "call-two")
         shot(her, "call-two-eva")
+        film(owner, "call", "Matus and Eva in a video call, the room behind them black",
+             "hover", {"lock": owner.locator("[data-e2ee]")})
         # The view says so, and says what it counted.
         owner.locator("[data-e2ee]").hover()
         owner.get_by_text(re.compile(r"frames sent encrypted")).wait_for()
         shot(owner, "call-encrypted")
+        film(owner, "encrypted", "every frame is encrypted in the browser; the box cannot see it",
+             "click", {"share": owner.get_by_role("button", name="Share your screen")})
 
     def their_tile(page):
         """The pid of the first other person's tile on `page`."""
@@ -1014,6 +1057,8 @@ pkgs.testers.nixosTest {
         her.get_by_text("Matus's screen").wait_for()
         shot(her, "share-eva")
         shot(owner, "share")
+        film(owner, "screen", "a shared screen in the middle, the people beside it",
+             "click", {"stop": owner.get_by_role("button", name="Stop sharing")})
         # The camera keeps coming beside the screen, and both open.
         before = opened(her)
         time.sleep(5)
@@ -1031,21 +1076,36 @@ pkgs.testers.nixosTest {
         # Not wait_for_open_port: its probe would be the one connection
         # `-listen 1` takes, and ffmpeg would give up on its handshake.
         laptop.wait_until_succeeds("ss -tln | grep -q ':${toString rtmpPort} '")
+        film(owner, "call-again", "back to the two of them",
+             "click", {"podcast": owner.get_by_role("button", name="Podcast mode")})
         owner.get_by_role("button", name="Podcast mode").click()
         panel = owner.locator("[data-podcast-panel]")
         panel.wait_for()
         panel.get_by_label("RTMP address with stream key").fill(
             "rtmp://laptop:${toString rtmpPort}/live/holiday-key")
-        panel.get_by_label("Title", exact=True).fill("Holiday plans")
-        panel.get_by_label("Subtitle").fill("Matus and Eva, live from mattbox")
-        panel.get_by_label("Overlay image (PNG)").set_input_files("${overlay}")
+        # Under a plain name: the file field shows it.
+        overlay_png = os.path.join(os.environ.get("TMPDIR", "/tmp"), "holiday-overlay.png")
+        with open("${overlay}", "rb") as src, open(overlay_png, "wb") as dst:
+            dst.write(src.read())
+        panel.get_by_label("Overlay image (PNG)").set_input_files(overlay_png)
+        # Typed a word at a time, so the film can show the typing.
+        for label, text in (("Title", "Holiday plans"), ("Subtitle", "Matus and Eva, live from mattbox")):
+            field = panel.get_by_label(label, exact=True)
+            words = text.split(" ")
+            for i in range(1, len(words) + 1):
+                field.fill(" ".join(words[:i]))
+                film(owner, f"podcast-{label.lower()}-{i}", f"podcast mode: the {label.lower()} is typed",
+                     "type", {"field": field})
         owner.wait_for_timeout(1500)
         shot(owner, "podcast-panel")
+        film(owner, "podcast-ready", "podcast mode: a grid, a title and an overlay, streamed to an RTMP address",
+             "click", {"live": panel.get_by_role("button", name="Go live")})
         panel.get_by_role("button", name="Go live").click()
         her.locator("[data-live]").wait_for(timeout=60000)
         owner.locator("[data-live]").wait_for()
         panel.get_by_role("button", name="End the stream").wait_for()
         shot(her, "podcast-live-eva")
+        film(owner, "podcast-live", "live: everyone in the call sees that it is public")
         # The box encodes H.264 under emulation here, far slower than real
         # time, so the server keeps what arrives until the stream ends.
         try:
@@ -1096,7 +1156,7 @@ pkgs.testers.nixosTest {
             panel.get_by_role("button", name="Close").click()
             # A stranger opens it from the internet: no LosOS Login, no LAN.
             guest_ctx = browsers["jan"].new_context(
-                viewport={"width": 1280, "height": 860},
+                viewport={"width": 1280, "height": 900},
                 device_scale_factor=2,
                 color_scheme="dark",
                 locale="en-US",
@@ -1218,6 +1278,7 @@ pkgs.testers.nixosTest {
         for page in (owner, her, jan):
             live(page, 2)
         shot(owner, "call-three")
+        film(owner, "call-of-three", "a call of three in a room")
         jan.get_by_role("button", name="Leave the call").click()
         jan.locator("[data-call-view]").wait_for(state="detached")
         for page in (owner, her):
@@ -1286,6 +1347,7 @@ pkgs.testers.nixosTest {
         until_js(owner, "() => document.querySelectorAll('[data-call-view] [data-pid]').length === 2")
         settle(her)
         shot(her, "no-camera")
+        film(her, "no-camera", "no camera: Eva joins with hers off, and still hears and is heard")
         shot(owner, "no-camera-matus")
         # Eva hangs up; Matus, left alone, leaves by himself.
         her.get_by_role("button", name="Leave the call").click()
@@ -1302,6 +1364,19 @@ pkgs.testers.nixosTest {
 
     with subtest("the pages broke no rule of their policy"):
         assert problems == [], problems
+
+    # Matus's clip: Chromium writes it when his window closes. Under
+    # emulation the page paints well below 60 frames a second, so the
+    # clip is resampled to a constant 60 for the cut.
+    raw = owner.video.path()
+    owner.context.close()
+    subprocess.run(
+        ["${pkgs.ffmpeg-headless}/bin/ffmpeg", "-v", "error", "-i", raw, "-vf", "fps=60",
+         "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+         "-movflags", "+faststart", "-y", f"{FILM}/calls-matus.mp4"],
+        check=True,
+    )
+    os.remove(raw)
 
     for b in browsers.values():
         b.close()
