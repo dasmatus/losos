@@ -180,7 +180,7 @@ function GuestCall({
   const [streams, setStreams] = React.useState<Map<number, MediaStream>>(new Map());
   const [screens, setScreens] = React.useState<Map<number, MediaStream>>(new Map());
   const [stats, setStats] = React.useState<WorkerStats | null>(null);
-  const [micOff, setMicOff] = React.useState(false);
+  const [micOff, setMicOff] = React.useState(!media.micOn);
   const [cameraOff, setCameraOff] = React.useState(!media.cameraOn);
   const [background, setBackground] = React.useState<Background>(media.background);
   const [ownScreen, setOwnScreen] = React.useState<MediaStream | null>(null);
@@ -190,6 +190,8 @@ function GuestCall({
 
   React.useEffect(() => {
     if (media.backgroundFailed) toast.error(t("calls.failed"), t("calls.backgroundFailed"), { help: "calls" });
+    if (media.missing.mic) toast.error(t("calls.noMicTitle"), t("calls.noMic"), { help: "calls" });
+    else if (media.missing.camera) toast.error(t("calls.noCameraTitle"), t("calls.noCamera"), { help: "calls" });
     const call = new CallSession({
       socket: socketUrl(),
       call: link.call,
@@ -260,14 +262,27 @@ function GuestCall({
         background={background}
         stats={stats}
         onMic={() => {
+          if (!media.micOn) {
+            media
+              .openMic()
+              .then(async (track) => {
+                await session.current?.setAudioTrack(track);
+                setMicOff(false);
+              })
+              .catch(() => toast.error(t("calls.noMicTitle"), t("calls.noMic"), { help: "calls" }));
+            return;
+          }
           media.setMuted(!micOff);
           setMicOff(!micOff);
         }}
         onCamera={() => {
-          void media.setCamera(cameraOff).then(async () => {
-            await session.current?.setVideoTrack(media.picture);
-            setCameraOff(!media.cameraOn);
-          });
+          media
+            .setCamera(cameraOff)
+            .then(async () => {
+              await session.current?.setVideoTrack(media.picture);
+              setCameraOff(!media.cameraOn);
+            })
+            .catch(() => toast.error(t("calls.noCameraTitle"), t("calls.cameraFailed"), { help: "calls" }));
         }}
         onBackground={() => {
           const next: Background = background === "black" ? "real" : "black";

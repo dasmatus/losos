@@ -78,6 +78,23 @@ export default defineMessages({
     sk: "Zatemniť pozadie",
     de: "Hintergrund schwärzen",
   },
+  "calls.noMicTitle": { en: "No microphone", sk: "Žiadny mikrofón", de: "Kein Mikrofon" },
+  "calls.noMic": {
+    en: "The browser did not open a microphone, so you are in the call listening only. Press the microphone button to try again.",
+    sk: "Prehliadač neotvoril mikrofón, preto ste v hovore len ako poslucháč. Skúste to znova tlačidlom mikrofónu.",
+    de: "Der Browser hat kein Mikrofon geöffnet, deshalb hörst du im Anruf nur zu. Drück den Mikrofonknopf, um es erneut zu versuchen.",
+  },
+  "calls.noCameraTitle": { en: "No camera", sk: "Žiadna kamera", de: "Keine Kamera" },
+  "calls.noCamera": {
+    en: "The browser did not open a camera, so you joined with it off. The others hear you as usual.",
+    sk: "Prehliadač neotvoril kameru, preto ste sa pripojili s vypnutou kamerou. Ostatní vás počujú ako zvyčajne.",
+    de: "Der Browser hat keine Kamera geöffnet, deshalb bist du mit ausgeschalteter Kamera dabei. Die anderen hören dich wie gewohnt.",
+  },
+  "calls.cameraFailed": {
+    en: "The browser did not open a camera. Check that one is connected and that this page may use it.",
+    sk: "Prehliadač neotvoril kameru. Skontrolujte, či je pripojená a či ju táto stránka smie používať.",
+    de: "Der Browser hat keine Kamera geöffnet. Prüf, ob eine angeschlossen ist und diese Seite sie verwenden darf.",
+  },
   "calls.backgroundFailed": {
     en: "Your background could not be blacked out, so your camera sends nothing. Show your room to send your picture.",
     sk: "Pozadie sa nepodarilo zatemniť, preto kamera nič neposiela. Ak chcete poslať obraz, ukážte miestnosť.",

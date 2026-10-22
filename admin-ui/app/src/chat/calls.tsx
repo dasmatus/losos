@@ -350,7 +350,7 @@ function CallScreen({
   const [streams, setStreams] = React.useState<Map<number, MediaStream>>(new Map());
   const [screens, setScreens] = React.useState<Map<number, MediaStream>>(new Map());
   const [stats, setStats] = React.useState<WorkerStats | null>(null);
-  const [micOff, setMicOff] = React.useState(false);
+  const [micOff, setMicOff] = React.useState(!media.micOn);
   const [cameraOff, setCameraOff] = React.useState(!media.cameraOn);
   const [background, setBackground] = React.useState<Background>(media.background);
   const [ownScreen, setOwnScreen] = React.useState<MediaStream | null>(null);
@@ -375,6 +375,12 @@ function CallScreen({
     screen: null,
     fields: EMPTY_FIELDS,
   });
+
+  // A call that opened without a device says so once, and goes on.
+  React.useEffect(() => {
+    if (media.missing.mic) toast.error(t("calls.noMicTitle"), t("calls.noMic"), { help: "calls" });
+    else if (media.missing.camera) toast.error(t("calls.noCameraTitle"), t("calls.noCamera"), { help: "calls" });
+  }, [media, t]);
 
   const warnBackground = React.useCallback(() => {
     if (media.backgroundFailed) toast.error(t("calls.failed"), t("calls.backgroundFailed"), { help: "calls" });
@@ -444,7 +450,19 @@ function CallScreen({
     if (deserted) leaveRef.current();
   }, [deserted]);
 
+  // A call that started without a microphone asks for it on the first
+  // press; after that the button mutes and unmutes.
   const toggleMic = (): void => {
+    if (!media.micOn) {
+      media
+        .openMic()
+        .then(async (track) => {
+          await session.current?.setAudioTrack(track);
+          setMicOff(false);
+        })
+        .catch(() => toast.error(t("calls.noMicTitle"), t("calls.noMic"), { help: "calls" }));
+      return;
+    }
     media.setMuted(!micOff);
     setMicOff(!micOff);
   };
@@ -459,7 +477,7 @@ function CallScreen({
         setCameraOff(!media.cameraOn);
         warnBackground();
       })
-      .catch(() => onFail(new CallError("calls.noDevices")));
+      .catch(() => toast.error(t("calls.noCameraTitle"), t("calls.cameraFailed"), { help: "calls" }));
   };
 
   const toggleBackground = (): void => {
