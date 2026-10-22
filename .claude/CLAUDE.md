@@ -38,7 +38,7 @@ Ten Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
 (the terminal envelope, its own workspace, a path dependency of lososd, the
 registrar and the client), `backend/plugins` (lososd's WebAssembly plugins,
 their SDK and WIT, its own workspace, linted for the host and wasm32), `edge/registrar/`, `edge/vercel/` (outside the
-flake), the terminal client `admin-ui/tui`, and the Lab's `admin-ui/lab/core`,
+flake), the terminal client `admin-ui/tui`, and Diagrams' `admin-ui/lab/core`,
 `admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32), and
 the Solana escrow program `edge/contracts/solana` (`cargo build-sbf`, outside
 the flake). All ten must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
@@ -174,11 +174,20 @@ and is never served or built by nix.
   guest (`calls/guests.ts`). lososd runs `HTTP_WORKERS` (8) and a 120 s
   `client_request_timeout` because its handlers block; one worker per core
   and the 5 s default 408'd chat on a two-core box.
-- LosOS Lab, the setup visualizer at `/lab/` (sidebar entry Lab): the
-  admin UI's second Vite page (`admin-ui/app/lab/`, `src/lab/`) over a Rust
-  core in WebAssembly (`admin-ui/lab/core`, `losos-lab-core`, contract in
-  its README), under its own CSP arm (the admin one plus
-  `'wasm-unsafe-eval'`). The box copy has simulated consoles, or libvirt
+- LosOS Diagrams at `/diagrams/` (sidebar entry Diagrams; `/lab/` 301s
+  there; internal names stay `lab`: the section, `/api/lab/*`, the crates,
+  `src/lab/`): a screen of the admin SPA at `/diagrams`, laid out like Mail
+  (`src/lab/app.tsx`, a lazy chunk; the shell widens on that route) over a
+  Rust core in WebAssembly (`admin-ui/lab/core`, `losos-lab-core`, contract
+  in its README). The admin CSP carries `'wasm-unsafe-eval'` for it; the
+  hosted copy alone builds `admin-ui/app/diagrams/index.html`
+  (`VITE_LAB_HOSTED=1`). Its default view is a JSON Canvas
+  1.0 editor (`core/src/canvas/`, `src/lab/canvas/`): files are `.canvas`
+  with Advanced Canvas `styleAttributes`, unknown keys kept on save;
+  devices are cards with `losos.device`, cables edges with `losos.link`,
+  machine cards `losos.machine` over `/api/vms`. It opens and saves in LosOS
+  Cloud with `ifMatch`, and Cloud opens `.canvas` in it
+  (`src/cloud/open-diagrams.ts`). The box copy has simulated consoles, or libvirt
   guests through `losos-registrar lab` with `losos.lab.libvirt.enable`;
   `admin-ui/lab/engine/build.sh` and `lab.yml` build the hosted copy with
   qemu-wasm guests and deploy it to Vercel when the secrets exist.
@@ -188,7 +197,7 @@ and is never served or built by nix.
   orthographic camera, in one module with the core. The page draws with the
   SVG canvas first, then loads one module (`src/lab/render.ts`), replays the
   core's calls into that module's `Lab` and swaps `bevy-canvas.tsx` in;
-  anything that fails leaves it on SVG. No Python in the Lab.
+  anything that fails leaves it on SVG. No Python in Diagrams.
 - `cloud.nix` + `backend/src/cloud/` (`losos-cloud`): LosOS Cloud, the
   owner's files, photos, calendars, contacts and boards, in the browser at
   `/cloud/` (`admin-ui/app/cloud/`) and to the Nextcloud desktop and phone

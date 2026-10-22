@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+mod canvas;
 mod catalog;
 mod console;
 mod files;
@@ -186,5 +187,74 @@ impl Lab {
     }
     pub fn error_page(&self, error: &str, host: &str) -> String {
         self.core.borrow().error_page(error, host)
+    }
+
+    // ── the canvas (canvas/mod.rs) ──
+    pub fn canvas(&self) -> String {
+        out(self.core.borrow().canvas_snapshot())
+    }
+    pub fn canvas_new(&mut self) -> String {
+        out(self.core.borrow_mut().canvas_new())
+    }
+    pub fn rename_doc(&mut self, name: &str) -> String {
+        out(self.core.borrow_mut().rename_doc(name))
+    }
+    pub fn canvas_add_node(&mut self, spec: &str) -> String {
+        out(self.core.borrow_mut().canvas_add_node(spec))
+    }
+    pub fn canvas_add_device(&mut self, kind: &str, cx: f64, cy: f64) -> String {
+        out(self.core.borrow_mut().canvas_add_device(kind, cx, cy))
+    }
+    pub fn canvas_update_node(&mut self, id: &str, patch: &str) -> String {
+        out(self.core.borrow_mut().canvas_update_node(id, patch))
+    }
+    pub fn canvas_move(&mut self, ids: &str, dx: f64, dy: f64, gesture: f64) -> String {
+        out(self.core.borrow_mut().canvas_move(ids, dx, dy, gesture))
+    }
+    pub fn canvas_resize(&mut self, id: &str, rect: &str, gesture: f64) -> String {
+        out(self.core.borrow_mut().canvas_resize(id, rect, gesture))
+    }
+    pub fn canvas_connect(&mut self, spec: &str) -> String {
+        out(self.core.borrow_mut().canvas_connect(spec))
+    }
+    pub fn canvas_update_edge(&mut self, id: &str, patch: &str) -> String {
+        out(self.core.borrow_mut().canvas_update_edge(id, patch))
+    }
+    pub fn canvas_delete(&mut self, what: &str) -> String {
+        out(self.core.borrow_mut().canvas_delete(what))
+    }
+    pub fn canvas_order(&mut self, ids: &str, how: &str) -> String {
+        out(self.core.borrow_mut().canvas_order(ids, how))
+    }
+    pub fn canvas_align(&mut self, ids: &str, how: &str) -> String {
+        out(self.core.borrow_mut().canvas_align(ids, how))
+    }
+    pub fn canvas_group(&mut self, ids: &str, label: &str) -> String {
+        out(self.core.borrow_mut().canvas_group(ids, label))
+    }
+    pub fn canvas_copy(&self, ids: &str) -> String {
+        out(self.core.borrow().canvas_copy(ids))
+    }
+    pub fn canvas_paste(&mut self, text: &str, x: f64, y: f64) -> String {
+        out(self.core.borrow_mut().canvas_paste(text, x, y))
+    }
+    pub fn canvas_templates(&self) -> String {
+        out(self.core.borrow().canvas_templates())
+    }
+    pub fn canvas_insert_template(&mut self, key: &str, lang: &str, cx: f64, cy: f64) -> String {
+        out(self
+            .core
+            .borrow_mut()
+            .canvas_insert_template(key, lang, cx, cy))
+    }
+    pub fn canvas_undo(&mut self) -> String {
+        out(self.core.borrow_mut().canvas_undo())
+    }
+    pub fn canvas_redo(&mut self) -> String {
+        out(self.core.borrow_mut().canvas_redo())
+    }
+    /// The diagram's file as several people edit it, whole again after a change.
+    pub fn canvas_sync(&mut self, text: &str) -> String {
+        out(self.core.borrow_mut().canvas_sync(text))
     }
 }

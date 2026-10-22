@@ -25,7 +25,7 @@ dem Handy öffnet sie sich als Overlay.
 | **Apps**          | Die Apps auf dieser Box mit ihrem Modus, eine Suche in Artifact Hub und die von dort installierten Apps.      |
 | **Speicher**      | Wie voll die Festplatte ist, was den Platz belegt, und die Reserve, die du freigeben kannst.                  |
 | **Mesh**          | Anderen Boxen beitreten, die Stunden, in denen diese Box ihre freie Zeit verleiht, **Markt** mit dem Teilen der Festplatte und **Maschinen**. |
-| **Labor**         | LosOS Lab, das diese Box und ihr Netzwerk als Diagramm zeichnet.                                             |
+| **Diagramme**     | LosOS Diagrams: Diagramme, Pläne und Boards als Karten, dazu das Netzwerk dieser Box gezeichnet und simuliert. |
 | **Einstellungen** | Netzwerk, Aussehen, Hardware, Sicherheit, Benutzer, Zugriffstokens, Zugangsdaten, Erweitert, Historie, Sicherung, Über und Zurücksetzen, jeder davon ein eigener Bereich. |
 
 <img src={require("@site/docs/img/overview-phone-de.png").default} alt="Die Übersicht auf einem Handy: Die Bereiche klappen in eine Menütaste zusammen." width="260" /> <img src={require("@site/docs/img/overview-phone-sheet-de.png").default} alt="Dasselbe Handy mit dem Menü, das als Overlay über der Seite offen ist." width="260" />

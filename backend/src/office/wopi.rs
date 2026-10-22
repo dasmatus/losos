@@ -941,7 +941,7 @@ mod tests {
         assert_eq!(r.call("PUT", "Plan.docx", "", &t, &[], b"").status, 405);
     }
 
-    /// A store whose ids survive a rename, like LosOS cloud's.
+    /// A store whose ids survive a rename, like LosOS Cloud's.
     struct Fixed(DirStore);
 
     impl OfficeStore for Fixed {

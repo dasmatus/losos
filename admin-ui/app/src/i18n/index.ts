@@ -18,9 +18,11 @@ import games from "./games";
 import home from "./home";
 import inference from "./inference";
 import install from "./install";
+import diagrams from "./diagrams";
 import lab from "./lab";
 import look from "./look";
 import mail from "./mail";
+import mention from "./mention";
 import machines from "./machines";
 import manage from "./manage";
 import menu from "./menu";
@@ -63,6 +65,7 @@ export const MESSAGES = {
   ...account,
   ...profile,
   ...lab,
+  ...diagrams,
   ...tour,
   ...palette,
   ...pins,
@@ -72,6 +75,7 @@ export const MESSAGES = {
   ...office,
   ...mail,
   ...menu,
+  ...mention,
   ...games,
   ...together,
 };

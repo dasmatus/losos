@@ -457,8 +457,8 @@ in
 
           services.nginx.virtualHosts."losos-front".locations = {
             # The chat page: chat/index.html in the admin UI's bundle, on real
-            # paths under /chat/ as the Lab is under /lab/, under its own CSP
-            # (modules/containers.nix, chatCsp).
+            # paths under /chat/, under its own CSP (modules/containers.nix,
+            # chatCsp).
             "/chat/" = {
               tryFiles = "$uri /chat/index.html";
               extraConfig = lanOnly;

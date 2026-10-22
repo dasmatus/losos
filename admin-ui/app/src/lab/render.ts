@@ -162,7 +162,7 @@ export async function loadRender(backend: Backend): Promise<RenderModule> {
 }
 
 function note(text: string): void {
-  console.info(`LosOS Lab canvas: ${text}`);
+  console.info(`LosOS Diagrams canvas: ${text}`);
 }
 
 /** Tries the GPU canvas once per page. Runs after the page has painted. */

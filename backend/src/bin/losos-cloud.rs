@@ -64,10 +64,6 @@ enum Cmd {
         /// as `<name>=<url>`. For a developer's machine.
         #[arg(long, value_name = "NAME=URL")]
         mesh_peer: Vec<String>,
-        /// Watch the files on disk and bring changes made behind the
-        /// service's back into the table as they happen (the Windows share).
-        #[arg(long)]
-        watch: bool,
         /// Open Office documents in Collabora: the address coolwsd reaches
         /// this cloud's `/wopi/files/` at, e.g. `http://127.0.0.1:8093`. On
         /// the box nginx listens there on loopback and relays to the socket;
@@ -78,6 +74,10 @@ enum Cmd {
         /// of a saved copy (the box's cloud has no network to ask it on).
         #[arg(long, default_value = "http://127.0.0.1:9980")]
         coolwsd: String,
+        /// Watch the files on disk and bring changes made behind the
+        /// service's back into the table as they happen (the Windows share).
+        #[arg(long)]
+        watch: bool,
     },
     /// Bring the table in line with the files on disk, for one person or all.
     Scan {
@@ -136,9 +136,9 @@ fn main() -> anyhow::Result<()> {
             mesh,
             mesh_self_signed,
             mesh_peer,
-            watch,
             office_wopi,
             coolwsd,
+            watch,
         } => {
             let cloud = Arc::new(Cloud::open(
                 &cli.root,
