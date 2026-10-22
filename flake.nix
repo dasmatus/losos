@@ -326,6 +326,12 @@
             ./modules/credentials.nix
             ./modules/daemon.nix
             ./modules/identity.nix
+            # LosOS Chat: Dendrite as the shared user while the box shares
+            # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
+            ./modules/chat.nix
+            # Calls from chat rooms and DMs: the SFU, as the shared user, which
+            # forwards only frames the browsers encrypted (backend/src/calls/).
+            ./modules/calls.nix
             # Backups to the owner's S3 bucket, restoring them, and the
             # boot-time wipe of an erase (backend/src/{backup,erase}.rs).
             ./modules/backup.nix
@@ -468,6 +474,14 @@
         # real rebuild, with the pull request's pictures (nix/tests/wait-game.nix).
         losos-wait-game = import ./nix/tests/wait-game.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
+        losos-chat = import ./nix/tests/chat.nix { inherit pkgs; };
+        # Calls from chat: three people in real browsers through the box's
+        # SFU, whose copy of every frame is ciphertext (nix/tests/calls.nix).
+        losos-calls = import ./nix/tests/calls.nix { inherit pkgs; };
+        losos-calls-edge = import ./nix/tests/calls.nix {
+          inherit pkgs;
+          throughEdge = true;
+        };
         # Screenshots of a booted box; the plan is read when the driver runs.
         losos-screens = import ./nix/tests/screens.nix { inherit pkgs; };
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
@@ -523,6 +537,7 @@
           # libvirt client; the bundle under test copies them in the way the
           # shipped one does.
           inherit (self.packages.${system}.losos-admin-ui) labCorePkg labVirtPkg labRenderPkg;
+          callsPackage = self.packages.${system}.losos-ctl;
         };
         # Not a VM: the option document of the install configuration
         # (nix/options-doc.nix via modules/config-repo.nix), forced here so

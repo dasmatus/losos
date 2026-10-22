@@ -264,6 +264,9 @@ struct AppState {
     /// The page boxes are managed from (`manage`); `None` without
     /// `--manage-key-file`.
     manage: manage::Shared,
+    /// Call media for this edge's boxes (`crate::calls_relay`); `None`
+    /// without `--calls-relay-listen`.
+    calls_relay: Option<Arc<crate::calls_relay::Relay>>,
     /// Mesh CI's queue (`crate::ci`); `None` without `--ci-dir`.
     ci: Option<Arc<crate::ci::Ci>>,
 }
@@ -389,6 +392,19 @@ where
         .uplink
         .is_some()
         .then(|| tokio::spawn(uplink_loop(app.state.clone())));
+    // The calls relay authenticates a box exactly as /register does.
+    let calls = app.state.calls_relay.clone().map(|relay| {
+        let st = app.state.clone();
+        let auth: crate::calls_relay::Auth = Arc::new(move |id, token| {
+            let st = st.clone();
+            Box::pin(async move { authenticate(&st, &id, &token).await.is_ok() })
+        });
+        tokio::spawn(async move {
+            if let Err(e) = crate::calls_relay::run(relay, auth).await {
+                tracing::error!(target: Action::Serve.target(), "calls relay: {e:?}");
+            }
+        })
+    });
 
     // axum::serve returns when the listener errors or `shutdown` resolves.
     axum::serve(listener, app.router)
@@ -401,6 +417,10 @@ where
     // panic inside it surfaces instead of being silently detached.
     recon.abort();
     let _ = recon.await;
+    if let Some(calls) = calls {
+        calls.abort();
+        let _ = calls.await;
+    }
     if let Some(uplink) = uplink {
         uplink.abort();
         let _ = uplink.await;
@@ -569,6 +589,12 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
     };
 
     // The manage page's key, made on the first start like the terminal's.
+    // The certificate is made here so `GET /calls/relay` can name it before
+    // `serve` binds the relay.
+    let calls_relay = match &opts.calls_relay {
+        Some(c) => Some(Arc::new(crate::calls_relay::Relay::new(c.clone())?)),
+        None => None,
+    };
     let manage = match &opts.manage {
         None => None,
         Some(m) => Some(Arc::new(manage::Manage::load(m)?)),
@@ -630,6 +656,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         transfers: Arc::new(Semaphore::new(vm::MAX_TRANSFERS)),
         operator,
         manage,
+        calls_relay,
         ci,
     };
 
@@ -640,6 +667,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
     let router = Router::new()
         .route("/health", get(health))
         .route("/noise-public-key", get(noise_public_key))
+        .route("/calls/relay", get(calls_relay_info))
+        .route("/calls/guest-link", post(calls_guest_link))
         .route("/identity", get(identity_route))
         // The identity's other half: the public key an operator signs, and
         // the push that installs the signed certificate. The push is the one
@@ -818,6 +847,69 @@ async fn noise_public_key(State(st): State<AppState>) -> Response {
     match tokio::fs::read_to_string(path).await {
         Ok(key) => key.trim().to_string().into_response(),
         Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// Where this edge takes call media for its boxes, and the hash of the
+/// relay's certificate for them to pin (`crate::calls_relay`). Public: a box
+/// asks before it connects, over the URL it registers with, and the token it
+/// then proves itself with never travels here. 404 when the relay is off.
+/// Body of `POST /calls/guest-link`.
+#[derive(Debug, Deserialize)]
+struct GuestLinkReq {
+    appliance_id: String,
+    token: String,
+    call: String,
+    invite: String,
+}
+
+/// `POST /calls/guest-link` — the link a guest opens to join one call on a
+/// box behind this edge, with no account on the box. Only an official edge
+/// makes one, and only on the box's own hostname, so a link always names
+/// the box it leads to. The edge sees the call and the invite: enough to
+/// knock, not to hear. The secret that lets the guest and the members trust
+/// each other's keys is added in the inviting browser, after the `#`, and
+/// never reaches the edge or the box.
+async fn calls_guest_link(
+    State(st): State<AppState>,
+    Json(req): Json<GuestLinkReq>,
+) -> Result<Response, ApiError> {
+    let tenant = authenticate(&st, &req.appliance_id, &req.token).await?;
+    let official = st
+        .identity
+        .as_ref()
+        .and_then(|i| i.cert())
+        .is_some_and(|c| c.not_after > crate::market::now_secs());
+    if !official {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "notOfficial" })),
+        )
+            .into_response());
+    }
+    let hex32 =
+        |s: &str| s.len() == 32 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    if !hex32(&req.call) || !hex32(&req.invite) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "badInvite" })),
+        )
+            .into_response());
+    }
+    tracing::info!("calls: {} made a guest link", req.appliance_id);
+    Ok(Json(serde_json::json!({
+        "url": format!(
+            "https://{}/calls/guest/?call={}&invite={}",
+            tenant.hostname, req.call, req.invite
+        )
+    }))
+    .into_response())
+}
+
+async fn calls_relay_info(State(st): State<AppState>) -> Response {
+    match &st.calls_relay {
+        Some(relay) => Json(relay.info()).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
     }
 }
 

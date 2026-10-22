@@ -80,6 +80,8 @@ struct Api {
     login: crate::login::Login,
     /// LosOS Login names on LosOS Cloud's share (`crate::cloud_share`).
     share: crate::cloud_share::Share,
+    /// LosOS Chat's homeserver, as far as lososd runs it (`crate::chat`).
+    chat: crate::chat::Chat,
     /// LosOS Mail (`crate::mail`).
     mail: crate::mail::Mail,
     /// The box's credential store (`crate::credentials`).
@@ -616,6 +618,9 @@ fn shared_apps(api: &Api) -> Vec<&'static str> {
     if api.mail.open().is_some() {
         apps.push("mail");
     }
+    if api.chat.live() {
+        apps.push("chat");
+    }
     // modules/ci.nix names the socket only while Mesh CI runs.
     if std::env::var_os("LOSOS_CI_SOCKET").is_some() {
         apps.push("ci");
@@ -948,6 +953,16 @@ async fn post_person_remove(
             Ok(()) => {
                 if let Err(e) = api.login.forget(&name) {
                     tracing::warn!(error = ?e, "a removed person's password date stayed");
+                }
+                if let Err(e) = api.profiles.forget(&name) {
+                    tracing::warn!(error = ?e, "a removed person's profile stayed");
+                }
+                // Every chat device they had, signed out (`crate::chat`).
+                match api.chat.close(&name) {
+                    Ok(()) | Err(crate::chat::ChatError::Off) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, person = %name, "a removed person's chat devices stayed signed in")
+                    }
                 }
                 if let Err(e) = api.profiles.forget(&name) {
                     tracing::warn!(error = ?e, "a removed person's profile stayed");
@@ -1682,6 +1697,195 @@ async fn get_cloud_share(api: web::Data<Api>, req: HttpRequest) -> HttpResponse 
             .insert_header(("Remote-Name", p.display_name.as_str()))
             .finish(),
         _ => HttpResponse::Ok().finish(),
+    }
+}
+
+// ── LosOS Chat (crate::chat) ─────────────────────────────────────────────
+
+/// A refusal from chat, as `{"error": ...}` at its own status.
+fn chat_refused(e: &crate::chat::ChatError) -> HttpResponse {
+    if !matches!(
+        e,
+        crate::chat::ChatError::NotForYou(_) | crate::chat::ChatError::Off
+    ) {
+        tracing::warn!(error = %e, "chat");
+    }
+    err(
+        StatusCode::from_u16(e.status()).unwrap_or(StatusCode::BAD_GATEWAY),
+        &e.to_string(),
+    )
+}
+
+/// `GET /api/chat`: whether the box runs chat, and its server name.
+async fn get_chat(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let mut asked = false;
+    let refused = guarded(&api, &req, "/api/chat", false, || {
+        asked = true;
+        HttpResponse::Ok().finish()
+    });
+    if !asked {
+        return refused;
+    }
+    if !api.chat.live() {
+        return chat_refused(&crate::chat::ChatError::Off);
+    }
+    // Every call below waits on the homeserver: off the server's workers, or
+    // a slow answer holds up every request on the same worker, nginx's
+    // /internal/chat/authz included.
+    let api = api.clone();
+    match web::block(move || api.chat.view()).await {
+        Ok(view) => HttpResponse::Ok().json(view),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// The person LosOS Login signed in, for the chat routes; the refusal
+/// otherwise (chat is a person's, never the spare key's or the edge's).
+fn chat_person(
+    api: &web::Data<Api>,
+    req: &HttpRequest,
+    route: &str,
+    writes: bool,
+) -> Result<crate::people::Person, Box<HttpResponse>> {
+    let mut person = None;
+    let refused = guarded_as(api, req, route, writes, |who| match who.person() {
+        Some(p) => {
+            person = Some(p.clone());
+            HttpResponse::Ok().finish()
+        }
+        None => chat_refused(&crate::chat::ChatError::NotForYou(
+            "sign in with LosOS Login to use chat".to_string(),
+        )),
+    });
+    person.ok_or_else(|| Box::new(refused))
+}
+
+/// `GET /api/chat/people`: everyone on the box chat can reach, each with
+/// an account made, for "Message someone" and invites. A person only.
+async fn get_chat_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    if let Err(refused) = chat_person(&api, &req, "/api/chat/people", false) {
+        return *refused;
+    }
+    let api = api.clone();
+    let answer = web::block(move || {
+        let everyone = api.people.list().map_err(|e| e.to_string())?;
+        Ok::<_, String>(api.chat.people(&everyone))
+    })
+    .await;
+    match answer {
+        Ok(Ok(Ok(list))) => HttpResponse::Ok().json(serde_json::json!({ "people": list })),
+        Ok(Ok(Err(e))) => chat_refused(&e),
+        Ok(Err(e)) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e })),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// `POST /api/chat/session` `{"device"?: "...", "deviceName"?: "..."}`:
+/// a device signed in to chat for the person LosOS Login signed in. Never
+/// for the spare key or the edge: chat is a person's.
+async fn post_chat_session(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let person = match chat_person(&api, &req, "/api/chat/session", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let field = |k: &str| {
+        doc.get(k)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+    };
+    let (device, device_name) = (field("device"), field("deviceName"));
+    let api = api.clone();
+    let made = web::block(move || {
+        api.chat
+            .session(&person, device.as_deref(), device_name.as_deref())
+    })
+    .await;
+    match made {
+        Ok(Ok(s)) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(serde_json::json!({
+                "userId": s.user_id,
+                "accessToken": s.access_token,
+                "deviceId": s.device_id,
+                "homeserver": "/",
+            })),
+        Ok(Err(e)) => chat_refused(&e),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// `GET /internal/chat/authz`: nginx's question before every request to the
+/// homeserver's client and media APIs. 200 goes on, 401 is "sign in with
+/// LosOS Login", 403 is "not yours". nginx alone asks it (`modules/chat.nix`).
+async fn get_chat_authz(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let header = |k: &str| {
+        req.headers()
+            .get(k)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+    };
+    let asked = crate::chat::Asked {
+        cookie: header("cookie"),
+        original_url: header("x-original-url").unwrap_or_default(),
+        original_method: header("x-original-method").unwrap_or_default(),
+        forwarded_for: header("x-forwarded-for").unwrap_or_default(),
+    };
+    let token = crate::chat::token_of(header("authorization").as_deref(), &asked.original_url);
+    let api = api.clone();
+    let verdict =
+        web::block(move || api.chat.authorize(&api.people, &asked, token.as_deref())).await;
+    match verdict {
+        Ok(Ok(crate::chat::Verdict::Allow)) => HttpResponse::Ok().finish(),
+        Ok(Ok(crate::chat::Verdict::SignIn)) => HttpResponse::Unauthorized().finish(),
+        Ok(Ok(crate::chat::Verdict::Refuse)) => HttpResponse::Forbidden().finish(),
+        Ok(Err(crate::chat::ChatError::Off)) => HttpResponse::NotFound().finish(),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "chat authz");
+            HttpResponse::ServiceUnavailable().finish()
+        }
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// `GET /internal/chat/threads/{room}`: Matrix's thread list, which Dendrite
+/// lacks. nginx sends `GET /_matrix/client/v1/rooms/{room}/threads` here,
+/// after `/internal/chat/authz` let it through; the caller's own Matrix
+/// token decides what it sees (`crate::chat::Chat::threads`).
+async fn get_chat_threads(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    room: web::Path<String>,
+) -> HttpResponse {
+    let token = crate::chat::token_of(
+        req.headers()
+            .get(actix_web::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok()),
+        &req.uri().to_string(),
+    );
+    let Some(token) = token else {
+        return HttpResponse::Unauthorized().json(serde_json::json!({
+            "errcode": "M_MISSING_TOKEN",
+            "error": "Missing access token",
+        }));
+    };
+    let query = crate::chat::ThreadsQuery::parse(&query_map(&req));
+    let room = room.into_inner();
+    let api = api.clone();
+    match web::block(move || api.chat.threads(&token, &room, &query)).await {
+        Ok(Ok(reply)) => HttpResponse::build(
+            StatusCode::from_u16(reply.status).unwrap_or(StatusCode::BAD_GATEWAY),
+        )
+        .json(reply.body),
+        Ok(Err(e)) => {
+            HttpResponse::build(StatusCode::from_u16(e.status()).unwrap_or(StatusCode::BAD_GATEWAY))
+                .json(serde_json::json!({ "errcode": "M_UNKNOWN", "error": e.to_string() }))
+        }
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
     }
 }
 
@@ -4480,6 +4684,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             companion: crate::companion::Companion::from_env(),
             login,
             share: crate::cloud_share::Share::default(),
+            chat: crate::chat::Chat::from_env(),
             mail: crate::mail::Mail::from_env(),
             credentials: crate::credentials::Credentials::from_env(),
             profiles: crate::profiles::Profiles::from_env(),
@@ -4707,6 +4912,14 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 // Asked by nginx alone, never proxied to a client
                 // (crate::cloud_share, modules/identity.nix).
                 .route("/internal/cloud-share", web::get().to(get_cloud_share))
+                .route("/api/chat", web::get().to(get_chat))
+                .route("/api/chat/session", web::post().to(post_chat_session))
+                .route("/api/chat/people", web::get().to(get_chat_people))
+                .route("/internal/chat/authz", web::get().to(get_chat_authz))
+                .route(
+                    "/internal/chat/threads/{room}",
+                    web::get().to(get_chat_threads),
+                )
                 // Everything else is a plugin's, or nobody's (crate::plugin).
                 .default_service(web::route().to(plugin_route))
         })

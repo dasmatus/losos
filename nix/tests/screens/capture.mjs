@@ -29,7 +29,14 @@
 //                {"suffix": "picked-dark", "theme": "dark"}]
 //
 // `theme` is the choice made on the page's own theme toggle (Light or Dark),
-// as against `colorScheme`, the browser's, which Auto follows.
+// as against `colorScheme`, the browser's, which Auto follows. A variant can
+// also set `dpr` (device pixels per CSS pixel), `timezoneId`, and
+// `hideCaret`, which makes the text caret transparent.
+//
+// A shot with `"film": {"title", "action", "targets": {key: locator}}` is
+// also listed in film.json beside the pictures: its file, path, title, the
+// action that leads to the next shot, and the CSS px box of each target on
+// this picture, for a film cut from the stills.
 //
 // A shot with `"strip": [ms, ...]` also gets its motion frame by frame: the
 // same steps in a fresh browser with motion allowed (stills take theirs under
@@ -37,6 +44,8 @@
 // at its start through the DevTools protocol, then moved to each time in the
 // list and photographed, `<shot>-<ms>ms.png`. A recording would lose the
 // frames a slow emulated machine never paints; a frozen animation waits.
+// `"clip": {"fps": 60, "ms": 300}` takes the same frames at an even rate
+// instead, `<shot>-clip-NNN.png`, for a video at that rate.
 //
 // Every run also writes report.json beside the pictures: per picture, the
 // page's width against the window's (a page wider than a phone scrolls
@@ -46,7 +55,7 @@
 // {text} or {selector}; `gone` waits for it to leave, `absent` fails if it
 // is there now), `fill` ({label, value}), `select` ({label, value}, an
 // option of a native select), `upload` ({selector, file}),
-// `press` (a key), `hold` (the mouse pressed on a control and left
+// `press` (a key), `type` (text typed at the focus), `hold` (the mouse pressed on a control and left
 // down), `waitText` (exact text), `sleep` (milliseconds), `goto` (a path)
 // and, for a strip, `freeze` (what comes before it plays at full speed,
 // only what comes after is taken frame by frame). A shot fails the run when a step does or the page throws:
@@ -99,6 +108,7 @@ async function step(page, s, { force = false } = {}) {
   else if (s.select) await page.getByLabel(s.select.label, { exact: true }).selectOption(s.select.value);
   else if (s.upload) await page.locator(s.upload.selector).setInputFiles(s.upload.file);
   else if (s.press) await page.keyboard.press(s.press);
+  else if (s.type !== undefined) await page.keyboard.type(s.type);
   else if (s.waitText) await page.getByText(s.waitText, { exact: true }).first().waitFor({ timeout: 60000 });
   else if (s.sleep) await page.waitForTimeout(s.sleep);
   else if (s.goto) await page.goto(base + s.goto, { waitUntil: 'networkidle', timeout: 120000 });
@@ -120,6 +130,8 @@ async function strip(variant, width, shot, name, storageState) {
     locale: variant.locale ?? plan.locale ?? 'en-US',
     colorScheme: variant.colorScheme ?? plan.colorScheme ?? 'light',
     reducedMotion: 'no-preference',
+    deviceScaleFactor: variant.dpr ?? 1,
+    ...(variant.timezoneId ? { timezoneId: variant.timezoneId } : {}),
     // The session and the page's storage of the context that took the
     // stills, so the strip opens on the same signed-in page.
     storageState,
@@ -183,7 +195,10 @@ async function strip(variant, width, shot, name, storageState) {
     // One at a time: an animation a later one replaced (a hover's, say) is
     // gone, and the protocol refuses the whole list for one missing id.
     let ids = [...started];
-    for (const ms of shot.strip) {
+    const times = shot.clip
+      ? Array.from({ length: Math.floor((shot.clip.ms * shot.clip.fps) / 1000) + 1 }, (_, i) => (i * 1000) / shot.clip.fps)
+      : shot.strip;
+    for (const [frame, ms] of times.entries()) {
       const live = [];
       for (const id of ids) {
         try {
@@ -199,11 +214,12 @@ async function strip(variant, width, shot, name, storageState) {
         for (const a of fresh) a.currentTime = time;
         return fresh.length;
       }, ms);
-      if (ms === shot.strip[0]) console.log(`strip ${name}: the page lists ${fromPage} new animations`);
-      const path = join(args.out, `${name}-${String(ms).padStart(3, '0')}ms.png`);
+      if (frame === 0) console.log(`strip ${name}: the page lists ${fromPage} new animations`);
+      const file = shot.clip ? `clip-${String(frame).padStart(3, '0')}` : `${String(ms).padStart(3, '0')}ms`;
+      const path = join(args.out, `${name}-${file}.png`);
       await page.screenshot({ path, timeout: 180000 });
     }
-    console.log(`strip ${name}: ${ids.length} animations at ${shot.strip.join(', ')} ms`);
+    console.log(`strip ${name}: ${ids.length} animations over ${times.length} frames`);
     // No motion is a finding too (the before picture of a change that adds
     // some), so the frames are kept and it is only said.
     if (ids.length === 0) console.log(`strip ${name}: the steps started no animation`);
@@ -221,6 +237,7 @@ async function strip(variant, width, shot, name, storageState) {
 const browser = await chromium.launch({ channel: 'chromium', args: ['--disable-gpu'] });
 const variants = plan.variants ?? [{ suffix: null }];
 const report = [];
+const film = [];
 try {
   for (const variant of variants) {
     const width = variant.width ?? plan.width ?? 1280;
@@ -230,6 +247,8 @@ try {
       locale: variant.locale ?? plan.locale ?? 'en-US',
       colorScheme: variant.colorScheme ?? plan.colorScheme ?? 'light',
       reducedMotion: 'reduce',
+      deviceScaleFactor: variant.dpr ?? 1,
+      ...(variant.timezoneId ? { timezoneId: variant.timezoneId } : {}),
     });
     // A theme picked on the page (lib/theme.ts), as against the browser's
     // own colour scheme, which is what Auto follows.
@@ -266,6 +285,9 @@ try {
       await page.goto(base + shot.path, { waitUntil: 'networkidle', timeout: 120000 });
       if (shot.waitFor) await locate(page, shot.waitFor).waitFor({ timeout: 120000 });
       for (const s of shot.steps ?? []) await step(page, s);
+      // A CSSOM write, which the page's style-src 'self' allows; caret-color
+      // inherits, so the root's reaches every field.
+      if (variant.hideCaret) await page.evaluate(() => document.documentElement.style.setProperty('caret-color', 'transparent'));
       // Fonts and pictures, then a moment for the layout to settle.
       await page.evaluate(() => document.fonts.ready);
       await page.waitForLoadState('networkidle');
@@ -279,17 +301,27 @@ try {
         csp: window.__lososCsp ?? [],
       }));
       report.push({ name, path: shot.path, width, ...seen });
+      if (shot.film) {
+        const targets = {};
+        for (const [key, what] of Object.entries(shot.film.targets ?? {})) {
+          const box = await locate(page, what).boundingBox();
+          if (box === null) throw new Error(`${name}: film target ${key} is not on the page`);
+          targets[key] = Object.fromEntries(Object.entries(box).map(([k, v]) => [k, Math.round(v)]));
+        }
+        film.push({ file: `${name}.png`, path: page.url().slice(base.length) || '/', title: shot.film.title, action: shot.film.action ?? { kind: 'none' }, targets });
+      }
       console.log(`captured ${path}${seen.pageWidth > width ? ` (page is ${seen.pageWidth}px wide)` : ''}`);
       await page.close();
     }
     const storageState = await context.storageState();
     await context.close();
-    for (const shot of plan.shots.filter((s) => s.strip)) {
+    for (const shot of plan.shots.filter((s) => s.strip || s.clip)) {
       const name = variant.suffix ? `${shot.name}-${variant.suffix}` : shot.name;
       await strip(variant, width, shot, name, storageState);
     }
   }
 } finally {
   writeFileSync(join(args.out, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
+  if (film.length > 0) writeFileSync(join(args.out, 'film.json'), `${JSON.stringify(film, null, 2)}\n`);
   await browser.close();
 }
