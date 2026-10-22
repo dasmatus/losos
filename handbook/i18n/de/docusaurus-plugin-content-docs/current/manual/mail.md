@@ -54,6 +54,67 @@ deinem eigenen Konto anzumelden.
 - Anhänge werden auf deinen Rechner heruntergeladen. Sie öffnen sich nie in
   der Seite.
 
+## Verschlüsselung \{#encryption}
+
+Mail kann Nachrichten mit OpenPGP verschlüsseln und signieren, dem
+Standard, den GnuPG, Thunderbird und die meisten Mailprogramme lesen.
+
+**Dein Schlüssel.** **Verschlüsselung** neben **Schreiben** erstellt einen
+Schlüssel für deine Adresse oder importiert einen, den du schon hast. Du
+wählst eine Passphrase dafür; sie ist nicht dein Anmeldepasswort. Der
+Schlüssel wird in deinem Browser erstellt und entsperrt. Die Box bewahrt
+den privaten Schlüssel nur gesperrt mit deiner Passphrase auf und versiegelt
+ihn zusätzlich an ihr TPM oder ihren eigenen Schlüssel, wie ihre anderen
+Geheimnisse (siehe [Zugangsdaten](../reference/credentials)). Ohne die Passphrase kann
+niemand auf der Box deine verschlüsselte Mail lesen, auch kein
+Administrator. Dasselbe Fenster zeigt den Fingerabdruck, lädt eine
+Sicherung (weiterhin mit deiner Passphrase gesperrt) und den öffentlichen
+Schlüssel herunter, sperrt den Schlüssel wieder und entfernt ihn. Ein
+entfernter Schlüssel kann an ihn geschickte Mail erst wieder lesen, wenn du
+die Sicherung importierst.
+
+**Entsperren.** Der Schlüssel bleibt in dem Tab entsperrt, in dem du ihn
+entsperrt hast, bis du ihn sperrst oder den Tab schließt. Mail fragt nach
+der Passphrase, wenn sie gebraucht wird: um eine verschlüsselte Nachricht
+zu öffnen oder um eine zu signieren.
+
+**Schreiben.** Unter der Nachricht schaltest du **Verschlüsseln** und
+**Signieren** ein oder aus. Während du eine Adresse tippst, sucht Mail den
+Schlüssel dieser Person und zeigt, woher er kommt:
+
+- jemand auf dieser Box: der Schlüssel, den die Person hier erstellt hat;
+- deine Kontakte: ein beim Kontakt gespeicherter Schlüssel;
+- frühere Mail: ein Schlüssel, den die Person in einem Autocrypt-Header
+  geschickt hat, gelernt, als du ihre Mail geöffnet hast;
+- ihre Maildomain: das Web Key Directory (WKD) der Domain;
+- keys.openpgp.org, wenn ihre Domain keines hat. Ein Administrator kann mit
+  `losos.mail.keyserver` einen anderen Schlüsselserver eintragen oder ihn
+  abschalten.
+
+Hat jeder Empfänger einen Schlüssel, schaltet sich **Verschlüsseln** von
+selbst ein. Fehlt einer, sagt Mail, bei wem, und die Nachricht geht erst
+raus, wenn du die Verschlüsselung ausschaltest oder die Person weglässt.
+Verschlüsselte Mail wird auch an deinen eigenen Schlüssel verschlüsselt,
+damit du deine Kopie unter Gesendet lesen kannst. Der Betreff wird nicht
+verschlüsselt. Mail wird als PGP/MIME verschickt; **Inline, für ältere
+Mailprogramme** setzt den verschlüsselten Text stattdessen in den Inhalt,
+was den Text schützt, aber nicht die Anhänge.
+
+**Lesen.** Eine verschlüsselte Nachricht hat in der Liste ein Schloss. Beim
+Öffnen wird sie in deinem Browser entschlüsselt, und eine Zeile unter den
+Kopfzeilen sagt, wie sie kam: verschlüsselt, signiert und von wem, signiert
+mit einem Schlüssel, den die Box nicht kennt, oder mit einer Signatur, die
+nicht passt. Eine Nachricht, die jemand anderes als ihr Absender signiert
+hat, sagt das. Entschlüsselte Mail wird als Text gezeigt, nie in der
+Formatierung des Absenders, und ihre Anhänge werden wie alle anderen
+heruntergeladen.
+
+**Dein öffentlicher Schlüssel für andere.** Die Box veröffentlicht den
+öffentlichen Schlüssel jeder Person in ihrem eigenen Web Key Directory
+unter `/.well-known/openpgpkey/`, damit Mailprogramme anderswo ihn über
+deine Adresse finden. Jede Nachricht, die du schickst, trägt ihn außerdem
+in einem Autocrypt-Header.
+
 ## Was Mail noch nicht kann \{#what-mail-does-not-do-yet}
 
 Mail geht nur zwischen den Personen auf dieser Box. Mail an eine andere

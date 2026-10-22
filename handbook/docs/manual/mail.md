@@ -50,6 +50,58 @@ Mail asks you to sign in with your own account.
   it. A message with no plain text opens in that frame straight away.
 - Attachments download to your computer. They never open inside the page.
 
+## Encryption
+
+Mail can encrypt and sign messages with OpenPGP, the standard GnuPG,
+Thunderbird and most mail programs read.
+
+**Your key.** **Encryption**, beside **Write**, makes a key for your address
+or imports one you already have. You choose a passphrase for it; it is not
+your sign-in password. The key is made and unlocked in your browser. The
+box keeps only the private key locked with your passphrase, and seals that
+again to its TPM or its own key, as it does its other secrets (see
+[credentials](../reference/credentials)), so nobody on the box, an administrator included, can read your encrypted
+mail without the passphrase. The same window shows the fingerprint, downloads
+a backup (still locked with your passphrase) and the public key, locks the
+key again, and removes it. A removed key cannot read mail sent to it until
+you import the backup.
+
+**Unlocking.** The key stays unlocked in the tab where you unlocked it, until
+you lock it or close the tab. Mail asks for the passphrase when it needs it:
+to open an encrypted message or to sign one.
+
+**Writing.** Under the message, **Encrypt** and **Sign** switch each one on
+or off. As you type an address, Mail looks for that person's key and shows
+where it came from:
+
+- someone on this box: the key they made here;
+- your contacts: a key saved on the contact;
+- earlier mail: a key the person sent in an Autocrypt header, learned when
+  you opened their mail;
+- their mail domain: the domain's Web Key Directory (WKD);
+- keys.openpgp.org, when their domain has none. An administrator can point
+  this at another keyserver, or turn it off, with `losos.mail.keyserver`.
+
+When every recipient has a key, **Encrypt** turns on by itself. If one of
+them has none, Mail says who, and the message is not sent until you turn
+encryption off or leave them out. Encrypted mail is also encrypted to your
+own key, so you can read your copy in Sent. The subject is not encrypted.
+Mail is sent as PGP/MIME; **Inline, for older mail programs** puts the
+encrypted text in the body instead, which protects the text but not
+attachments.
+
+**Reading.** An encrypted message shows a lock in the list. Opening it
+decrypts it in your browser, and a line under the headers says how it came:
+encrypted, signed and by whom, signed by a key the box does not know, or a
+signature that does not match. A message signed by someone other than its
+sender says so. Decrypted mail is shown as text, never as the sender's
+formatting, and its attachments download like any other.
+
+**Your public key for others.** The box publishes everyone's public key in
+its own Web Key Directory at `/.well-known/openpgpkey/`, so mail programs
+elsewhere find it from your address. Every message you send also carries it
+in an Autocrypt header.
+
 ## What Mail does not do yet
 
 Mail goes between the people on this box only. Mail to another domain is
