@@ -168,7 +168,7 @@ pkgs.testers.nixosTest {
 
     box.wait_for_unit("lososd.service")
     box.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
-    admin = box.succeed("cat /var/secrets/losos-admin-token").strip()
+    admin = box.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip()
 
     def call(machine, url, method="GET", data=None, headers=()):
         hs = " ".join(f"-H {shlex.quote(h)}" for h in headers)

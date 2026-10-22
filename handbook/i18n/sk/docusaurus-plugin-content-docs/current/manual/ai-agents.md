@@ -95,7 +95,13 @@ Keď je pridaný, nástroj od neho dostane tieto nástroje:
   texte;
 - vypísať vaše repozitáre v LosOS Git a hľadať v kóde ich predvolených
   vetiev;
+- vypísať vaše priečinky v LosOS Mail, hľadať v priečinku a prečítať
+  správu, ktorá pre vás zostane neprečítaná;
 - povedať, ako sa zariadeniu darí a pod ktorým účtom pomocník číta.
+
+LosOS Mail je iba na zariadení, ktoré zdieľa svoje úložisko v sieti mesh.
+Poznámky sú súbory v LosOS Cloud, takže ich pomocník nájde a prehľadá
+nástrojmi pre Cloud.
 
 Pomocník číta to, čo môžete čítať vy. Človek s vlastným účtom na zariadení
 dostane svoje súbory, nie vaše.
@@ -107,7 +113,7 @@ prehliadači a LosOS Login dá pomocníkovi dva tokeny: jeden otvára
 zariadenie na hodinu a druhý po jej uplynutí získa nový pár. Ak pomocník
 30 dní nikto nepoužije, musí sa prihlásiť znova.
 
-Zariadenie týmto tokenom dovolí čítať súbory, repozitáre a stav
+Zariadenie týmto tokenom dovolí čítať súbory, repozitáre, poštu a stav
 zariadenia, nič iné, ani keď ste správca. Pomocník posiela iba čítanie a
 zariadenie všetko ostatné odmietne. Človek, ktorého účet čaká na druhý krok
 alebo nové heslo, pomocníka neprihlási, kým to nedokončí.

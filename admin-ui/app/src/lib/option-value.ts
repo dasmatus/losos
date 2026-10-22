@@ -199,4 +199,5 @@ export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
   "git.site.pushCreate": "apps",
   "inference.lend.enable": "market",
   "inference.lend.memoryMiB": "market",
+  "cloud.windows.enable": "network",
 };

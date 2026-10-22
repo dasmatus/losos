@@ -22,6 +22,8 @@ pub struct State {
     pub git: Git,
     /// SHA-256 of the admin token.
     pub admin_hash: String,
+    /// LosOS Reviewer's model and its worker's bell.
+    pub reviewer: super::reviewer::worker::Handle,
 }
 
 /// Which listener a request came in on.
@@ -251,9 +253,14 @@ pub fn adopt_repositories(state: &State) -> anyhow::Result<usize> {
                 .run(&repo_dir.path(), &["symbolic-ref", "--short", "HEAD"])
                 .map(|s| s.trim().to_string())
                 .unwrap_or_else(|_| "main".to_string());
-            state
-                .store
-                .create_repo(user.id, name, "", true, &branch, None)?;
+            state.store.create_repo(
+                user.id,
+                name,
+                "",
+                super::db::Visibility::Private,
+                &branch,
+                None,
+            )?;
             if let Err(e) = clear_hooks(&repo_dir.path()) {
                 tracing::warn!(repo = %repo_dir.path().display(), error = ?e, "could not clear hooks");
             }
@@ -309,7 +316,9 @@ pub fn run(config: Config, listen: Listen) -> anyhow::Result<()> {
         config,
         store,
         git,
+        reviewer: super::reviewer::worker::Handle::from_env(),
     });
+    super::reviewer::worker::start(state.clone())?;
     let adopted = adopt_repositories(&state)?;
     if adopted > 0 {
         tracing::info!(adopted, "repositories taken in from disk");

@@ -327,14 +327,17 @@ let
     "form-action 'none'"
   ];
 
-  # One map per header: value on the admin surface, the handbook's and the
-  # lab's own values
-  # (or the admin value, for the headers they share) under /handbook/ and
+  # One map per header: value on the admin surface, empty (header omitted) on
+  # LosOS Login under /auth/, which sends its own (the admin `base-uri 'none'`
+  # drops its `<base href>`, and every page below /auth/ then loads its scripts
+  # from the wrong folder and stays blank), the handbook's and the lab's own
+  # values (or the admin value, for the headers they share) under /handbook/ and
   # /lab/, each frame's own value (or nothing) under /widget-frame/ and
   # /app-frame/, and a mail message's under its HTML route.
   adminHeaderMap = variable: value: handbookValue: labValue: frameValue: appFrameValue: mailValue: ''
     map $uri ${variable} {
         default          "${value}";
+        ~^/auth/         "";
         ~^/handbook/     "${handbookValue}";
         ~^/lab/          "${labValue}";
         ~^/widget-frame/ "${frameValue}";
@@ -664,14 +667,17 @@ in
                 ${toGit}
               '';
             };
-            # The pages: one document for every path, behind LosOS Login like
-            # LosOS Cloud's (modules/cloud.nix). Without the admin UI there
-            # are no pages, and the socket answers the rest as before.
+            # The pages: one document for every path. They hold no data, so
+            # a visitor gets them too and reads the public repositories
+            # through the API; with `git.site.requireSignIn` they are behind
+            # LosOS Login like LosOS Cloud's (modules/cloud.nix). Without the
+            # admin UI there are no pages, and the socket answers the rest as
+            # before.
             "/git/" =
               if gitPages then
                 {
                   tryFiles = "$uri /git/index.html";
-                  extraConfig = lib.optionalString signInGit ''
+                  extraConfig = lib.optionalString (signInGit && config.losos.git.site.requireSignIn) ''
                     auth_request /internal/losos-app-sign-in;
                     error_page 401 = @losos-app-sign-in;
                     error_page 403 @losos-app-held;

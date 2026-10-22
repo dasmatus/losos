@@ -37,7 +37,14 @@ vrátane prevádzky, ktorá prichádza cez tunel edge, dostane **403**.
 | 80      | HTTP     | Všetko vyššie                                          |
 | 443     | HTTPS    | To isté s vlastným certifikátom zariadenia (`losos.tls.enable`, predvolene zapnuté) |
 | 5353    | mDNS     | Ohlasovanie `<name>.local` a boxu ako služby `_losos._tcp` |
+| 445     | SMB      | Súbory každého človeka v LosOS Cloud ako sieťový priečinok Windows (`losos.cloud.windows.enable`, predvolene zapnuté); iba lokálna sieť |
+| 3702 (UDP), 5357 | WS-Discovery | Zobrazenie zariadenia v Sieti v Prieskumníkovi Windows, kým je priečinok zapnutý |
+| 5355    | LLMNR    | Odpoveď Windows, keď sa pýta na zariadenie jeho holým názvom, kým je priečinok zapnutý |
 | 8082    | HTTP     | Riadiace API, iba na loopbacku zariadenia; nginx naň presmeruje `/api/` |
+
+Kým je priečinok zapnutý, záznam mDNS pre LosOS Cloud je priečinok SMB
+(`_smb._tcp`), takže Finder a správcovia súborov v Linuxe ukážu zariadenie
+raz.
 
 Nič iné otvorené nie je. Zariadenie sa k mesh sieti a k edge pripája smerom
 von. Tunel otvára a ku clustru sa pripája samo, takže doma neotvárate žiadny

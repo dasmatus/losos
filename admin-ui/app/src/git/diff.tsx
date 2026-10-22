@@ -257,7 +257,7 @@ function CommentBody({ comment, tone }: { comment: LineComment; tone?: "reply" }
   return (
     <div className={cn("flex flex-col gap-1.5", tone === "reply" && "border-t border-line pt-3")}>
       <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
-        <Person login={comment.user.login} />
+        <Person login={comment.user.login} {...(comment.user.full_name !== undefined ? { name: comment.user.full_name } : {})} bot={comment.user.is_bot === true} />
         <span title={whenFull(comment.created_at)}>{when(comment.created_at)}</span>
       </div>
       <Markdown source={comment.body} className="text-[13.5px]" />

@@ -31,8 +31,9 @@
 # password of its own exists. lososd is its one client (backend/src/mail.rs):
 # it signs in with Stalwart's master user as `<person>%losos`, for the person
 # LosOS Login signed in, and makes their account on their first call with
-# the fallback administrator. Both use one secret, made here, readable by root
-# alone and handed to Stalwart by LoadCredential. lososd runs with
+# the fallback administrator. Both use one secret, `mail-master` in the box's
+# credential store (modules/credentials.nix), which systemd opens into the
+# credential directory of Stalwart and of lososd alone. lososd runs with
 # ProtectHome=true and never reads the mailboxes itself.
 #
 # Mail between the people on this box is delivered locally. Mail to and from
@@ -51,15 +52,13 @@ let
   port = config.losos.mail.port;
   package = pkgs.stalwart;
 
-  # Root-only. /var is persisted, so the secret survives reboots; a new
-  # one would only mean lososd restarting with it, the mailboxes do not
-  # depend on it.
-  secretDir = "/var/lib/losos-mail";
-  secretFile = "${secretDir}/master-secret";
+  # Where an older build kept the secret as plaintext; the credential store
+  # adopts it from here.
+  legacySecret = "/var/lib/losos-mail/master-secret";
   # The real path is /persist/home/shared/data, bind-mounted here by
   # modules/impermanence.nix; the unit sees the bind-mounted view.
   dataDir = "/home/shared/data/mail";
-  credential = "%{file:/run/credentials/losos-mail.service/master}%";
+  credential = "%{file:/run/credentials/losos-mail.service/mail-master}%";
 
   fscrypt = config.losos.shared.fscrypt.enable;
 
@@ -147,27 +146,22 @@ let
   configFile = (pkgs.formats.toml { }).generate "losos-mail.toml" settings;
 in
 {
+  # The credential store every secret here lives in.
+  imports = [ ./credentials.nix ];
+
   config = lib.mkIf live {
-    systemd.services.losos-mail-secret = {
-      description = "LosOS Mail: make the secret lososd and Stalwart share";
-      wantedBy = [ "multi-user.target" ];
-      before = [
-        "losos-mail.service"
-        "lososd.service"
+    # Not rotatable from the pane: lososd holds its copy from the moment it
+    # starts, so a new value would mean restarting the admin API under the
+    # page that asked for it. The mailboxes do not depend on it either way.
+    losos.credentials.entries.mail-master = {
+      app = "mail";
+      description = "The secret LosOS Mail and the box share, to act for each person in their own mailbox.";
+      format = "hex-32";
+      services = [
+        "losos-mail"
+        "lososd"
       ];
-      unitConfig.ConditionPathExists = "!${secretFile}";
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        UMask = "0077";
-      };
-      path = [ pkgs.coreutils ];
-      script = ''
-        set -eu
-        install -d -m 0700 ${secretDir}
-        head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > ${secretFile}.tmp
-        mv ${secretFile}.tmp ${secretFile}
-      '';
+      legacy = [ legacySecret ];
     };
 
     systemd.services.losos-mail-dir = {
@@ -188,12 +182,10 @@ in
       after = [
         "local-fs.target"
         "network.target"
-        "losos-mail-secret.service"
         "losos-mail-dir.service"
       ]
       ++ lib.optional fscrypt "losos-fscrypt-shared.service";
       requires = [
-        "losos-mail-secret.service"
         "losos-mail-dir.service"
       ]
       ++ lib.optional fscrypt "losos-fscrypt-shared.service";
@@ -204,7 +196,6 @@ in
         ExecStart = "${lib.getExe package} --config=${configFile}";
         User = "shared";
         Group = "shared";
-        LoadCredential = "master:${secretFile}";
         CacheDirectory = "losos-mail";
         LimitNOFILE = 65536;
         KillMode = "process";
@@ -254,11 +245,9 @@ in
     systemd.services.lososd = {
       environment = {
         LOSOS_MAIL_ADDR = "127.0.0.1:${toString port}";
-        LOSOS_MAIL_SECRET_FILE = secretFile;
+        LOSOS_MAIL_SECRET_FILE = "%d/mail-master";
         LOSOS_MAIL_DOMAIN = domain;
       };
-      after = [ "losos-mail-secret.service" ];
-      wants = [ "losos-mail-secret.service" ];
     };
   };
 }

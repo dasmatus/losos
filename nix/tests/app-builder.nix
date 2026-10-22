@@ -254,7 +254,7 @@ pkgs.testers.nixosTest {
             assert tried.endswith("It is still the app for: A chore chart for the kids"), tried
             checked = asked[2]["messages"][-1]["content"]
             assert "Line 4: children is used before line 5, which makes it" in checked, checked
-            TOKEN = box.succeed("cat /var/secrets/losos-admin-token").strip()
+            TOKEN = box.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip()
             builds = json.loads(box.succeed(f"curl -sf -H 'Authorization: Bearer {TOKEN}' 127.0.0.1:8082/api/builder"))
             build = json.loads(box.succeed(
                 f"curl -sf -H 'Authorization: Bearer {TOKEN}' 127.0.0.1:8082/api/builder/builds/{builds['builds'][0]['id']}"

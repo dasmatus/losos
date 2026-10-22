@@ -7,7 +7,7 @@
 // test's own requests in between; the same pictures serve the pull request
 // and the launch film. Run it again against any box:
 //
-//   node git-shots.mjs BASE NAME PASSWORD OUT PHASE [--commit SHA] [--test NAME] [--ca FILE]
+//   node git-shots.mjs BASE NAME PASSWORD OUT PHASE [--reviewed] [--old] [--commit SHA] [--test NAME] [--ca FILE]
 //
 // BASE is the box (https://mattbox.local), OUT a folder for NN-slug.png and
 // manifest.json (a later phase adds to the pictures an earlier one left).
@@ -18,10 +18,20 @@
 //            and the review sent with Approve;
 //   finish   the reply on that line resolved, the worktrees, the merge box,
 //            a squash merge that deletes the branch, the worktrees after;
-//   before   the same addresses on a box without the pages.
+//   before   the same addresses on a box without the pages;
+//   reviewer the repository's AI review setting, pull request #2 and its
+//            files, in the dark and the light theme; with --reviewed, the
+//            switch on, LosOS Reviewer's review, its check and its comment
+//            on a line;
+//   visibility
+//            a new public repository, website; backup-tool shared with
+//            the box from its settings; the list; then a visitor who has
+//            not signed in, on /git/ and on website. With --old, the same
+//            steps on the pages before repositories had three levels: the
+//            private switch, and the sign-in page for the visitor.
 //
 // The repository is notshared/backup-tool with pull request #1 from the
-// branch fix-backup, as the test makes them. The browser trusts the box's
+// branch fix-backup and #2 from prune-copies, as the test makes them. The browser trusts the box's
 // certificate by its public key (--ca, default /etc/losos-box.pem).
 //
 // Playwright comes from PLAYWRIGHT_CORE (a path to playwright-core, as
@@ -255,16 +265,139 @@ async function before(s, base) {
   }
 }
 
+async function reviewer(s, base, reviewed) {
+  const p = s.page;
+  for (const scheme of ["dark", "light"]) {
+    await p.emulateMedia({ colorScheme: scheme });
+    const theme = scheme === "dark" ? "" : "-light";
+    const state = reviewed ? "on" : "off";
+    await p.goto(`${base}${REPO}/settings`);
+    const setting = p.locator(`[data-ai-review-setting="${state}"]`);
+    await setting.waitFor();
+    await setting.scrollIntoViewIfNeeded();
+    await s.take(`ai-review-setting${theme}`, `the repository's AI review, ${state} (${scheme})`, { kind: "none" }, { setting });
+
+    await p.goto(`${base}${REPO}/pulls/2`);
+    await p.locator("[data-pull-title]").waitFor();
+    const targets = { reviewers: p.locator("[data-reviewers]") };
+    if (reviewed) {
+      const review = p.locator('[data-event="review"]').first();
+      await review.getByText("Pull request overview").waitFor();
+      // The table of files, drawn as a table.
+      await review.locator("table").getByText("prune.sh").waitFor();
+      await p.locator("[data-checks]").getByText("LosOS Reviewer").waitFor();
+      await review.scrollIntoViewIfNeeded();
+      Object.assign(targets, { review, checks: p.locator("[data-checks]") });
+    }
+    await s.take(
+      `ai-review-pull${theme}`,
+      reviewed ? `LosOS Reviewer's review of the pull request (${scheme})` : `the pull request, nobody's review yet (${scheme})`,
+      { kind: "none" },
+      targets,
+    );
+
+    await p.goto(`${base}${REPO}/pulls/2/files`);
+    await p.locator('[data-file-diff="prune.sh"]').waitFor();
+    const lineTargets = {};
+    if (reviewed) {
+      const thread = p.locator("[data-thread]").first();
+      await thread.locator("[data-suggestion]").getByText('"$TARGET/$d"', { exact: false }).waitFor();
+      await thread.scrollIntoViewIfNeeded();
+      lineTargets.thread = thread;
+    }
+    await s.take(
+      `ai-review-files${theme}`,
+      reviewed ? `its comment on a line, with the fix (${scheme})` : `the changed files, no comments (${scheme})`,
+      { kind: "none" },
+      lineTargets,
+    );
+  }
+}
+
+async function visibility(s, base, old) {
+  const p = s.page;
+  await p.goto(`${base}/git/`);
+  await p.getByRole("button", { name: "New repository" }).click();
+  const dialog = p.getByRole("dialog");
+  await dialog.getByLabel("Name").fill("website");
+  await dialog.getByLabel("Description").fill("The family's web page");
+  if (old) {
+    const lock = dialog.getByRole("switch", { name: "Private" });
+    // React Aria's switch hides its input under the label, which takes the
+    // pointer; the input still takes a forced uncheck.
+    if (await lock.isChecked()) await lock.uncheck({ force: true });
+  } else {
+    await dialog.locator("[data-visibility-field]").getByText("Public", { exact: true }).click();
+  }
+  await s.take("new-public", "a new repository anyone may read", { kind: "click", target: "create" }, {
+    field: old ? dialog.getByRole("switch", { name: "Private" }) : dialog.locator("[data-visibility-field]"),
+    create: dialog.getByRole("button", { name: "Create" }),
+  });
+  await dialog.getByRole("button", { name: "Create" }).click();
+  await p.waitForURL(/\/git\/notshared\/website$/);
+
+  await p.goto(`${base}${REPO}/settings`);
+  await p.getByRole("button", { name: "Save" }).waitFor();
+  const field = old ? p.getByRole("switch", { name: "Private" }) : p.locator("[data-visibility-field]");
+  if (!old) await field.getByText("This box", { exact: true }).click();
+  await field.scrollIntoViewIfNeeded();
+  await s.take("share-box", old ? "who may see it: private or not" : "shared with everyone on the box", {
+    kind: old ? "none" : "click",
+    target: "save",
+  }, { field, save: p.getByRole("button", { name: "Save" }) });
+  if (!old) {
+    await p.getByRole("button", { name: "Save" }).click();
+    await p.locator("[data-visibility=internal]").first().waitFor();
+  }
+
+  await p.goto(`${base}/git/`);
+  await p.getByRole("link", { name: "website" }).waitFor();
+  await s.take("list", "the repositories, each with who may see it", { kind: "none" }, {
+    rows: p.locator("table"),
+  });
+
+  // A visitor: a window of its own, with no sign-in.
+  const visitor = await p.context().browser().newContext({
+    viewport: VIEW,
+    deviceScaleFactor: 2,
+    colorScheme: "dark",
+    locale: "en-US",
+    timezoneId: "Europe/Bratislava",
+    reducedMotion: "reduce",
+  });
+  const v = await visitor.newPage();
+  v.setDefaultTimeout(180_000);
+  v.setDefaultNavigationTimeout(180_000);
+  const away = new Shots(v, base, s.out, s.meta);
+  away.steps = s.steps;
+  await v.goto(`${base}/git/`);
+  // LosOS Login draws its form after a loading screen.
+  if (old) await v.locator("#username-textfield, input[autocomplete=username]").first().waitFor();
+  else await v.getByRole("link", { name: "notshared/website" }).waitFor();
+  await away.take("visitor-list", old ? "a visitor is sent to sign in" : "a visitor sees the public repositories", {
+    kind: "none",
+  }, old ? {} : { signIn: v.locator("[data-sign-in]") });
+  await v.goto(`${base}/git/notshared/website`);
+  if (old) await v.locator("#username-textfield, input[autocomplete=username]").first().waitFor();
+  else await v.locator("[data-visibility=public]").first().waitFor();
+  await away.take("visitor-code", old ? "a public repository, to a visitor" : "a public repository, read without signing in");
+  await visitor.close();
+}
+
 function parse(argv) {
   const pos = [];
   const opts = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (["--commit", "--test", "--ca"].includes(a)) opts[a.slice(2)] = argv[++i];
+    else if (a === "--reviewed") opts.reviewed = true;
+    else if (a === "--old") opts.old = true;
     else pos.push(a);
   }
-  if (pos.length < 5 || !["browse", "finish", "before"].includes(pos[4])) {
-    console.error("usage: git-shots.mjs BASE NAME PASSWORD OUT browse|finish|before [--commit SHA] [--test NAME] [--ca FILE]");
+  if (pos.length < 5 || !["browse", "finish", "before", "reviewer", "visibility"].includes(pos[4])) {
+    console.error(
+      "usage: git-shots.mjs BASE NAME PASSWORD OUT browse|finish|before|reviewer|visibility [--reviewed] [--old] [--commit SHA] [--test NAME] [--ca FILE]",
+    );
     process.exit(2);
   }
   return { base: pos[0], name: pos[1], password: pos[2], out: pos[3], phase: pos[4], opts };
@@ -328,6 +461,8 @@ const s = new Shots(page, base, out, { commit: opts.commit ?? "", test: opts.tes
 try {
   if (phase === "browse") await browse(s, base);
   else if (phase === "finish") await finish(s, base);
+  else if (phase === "reviewer") await reviewer(s, base, opts.reviewed === true);
+  else if (phase === "visibility") await visibility(s, base, opts.old === true);
   else await before(s, base);
 } catch (e) {
   // The window as it was when a step gave up, for the test's output.
@@ -337,7 +472,7 @@ try {
   s.save();
 }
 await browser.close();
-if (problems.length > 0 && phase !== "before") {
+if (problems.length > 0 && phase !== "before" && opts.old !== true) {
   console.error(`the page reported errors:\n${problems.join("\n")}`);
   process.exit(1);
 }

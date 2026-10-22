@@ -219,6 +219,7 @@ mod tests {
             name: "site".into(),
             description: String::new(),
             private: true,
+            visibility: crate::forge::db::Visibility::Private,
             default_branch: "main".into(),
             fork_of: None,
             created: String::new(),
