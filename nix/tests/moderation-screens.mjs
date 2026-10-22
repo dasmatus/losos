@@ -103,7 +103,7 @@ if (MODE === 'before') {
   await shots.take(page, 'queue', 'the Moderation pane: a report about a child first, then spam in mail', {
     action: { kind: 'click', target: 'hold' },
     targets: {
-      child: page.locator('[data-testid=moderation-report][data-reason=child]'),
+      child: page.locator('[data-testid=moderation-report][data-reason=child][data-state=open]'),
       spam,
       hold,
     },
@@ -153,7 +153,11 @@ if (MODE === 'before') {
   });
 
   const log = page.getByTestId('moderation-log');
-  await log.scrollIntoViewIfNeeded();
+  // The log is taller than the window: start at its title, under the top bar.
+  await log.evaluate((el) => {
+    el.style.scrollMarginTop = '80px';
+    el.scrollIntoView({ block: 'start' });
+  });
   await shots.take(page, 'log', 'what moderators did', { targets: { log } });
 }
 
