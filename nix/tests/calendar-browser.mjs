@@ -212,7 +212,7 @@ async function on() {
   await card.getByRole("button", { name: "Yes", exact: true }).waitFor();
   await shot(eva, "mail-invite-after");
   await card.getByRole("button", { name: "Yes", exact: true }).click();
-  await eva.getByText("Going: Review the box is in your calendar").waitFor();
+  await eva.getByText("Going: Review the box is in your calendar").first().waitFor();
   await shot(eva, "mail-invite-answered");
   await card.getByRole("button", { name: "Open in Calendar" }).click();
   await eva.waitForURL(`${ORIGIN}/calendar**`);
@@ -250,7 +250,7 @@ async function on() {
   });
   if (!made.ok()) throw new Error(`the call was not saved: ${made.status()} ${await made.text()}`);
   const call = await made.json();
-  await owner.getByText("Coming up: Call with Eva").waitFor({ timeout: 240_000 });
+  await owner.getByText("Coming up: Call with Eva").first().waitFor({ timeout: 240_000 });
   await owner.getByRole("button", { name: "Join the call" }).first().waitFor();
   await shot(owner, "calendar-reminder");
   await owner.context().request.delete(`${ORIGIN}/cloud/api/calendar/events/${encodeURIComponent(call.id)}`);
