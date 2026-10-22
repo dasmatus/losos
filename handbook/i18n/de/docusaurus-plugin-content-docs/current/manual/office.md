@@ -98,7 +98,10 @@ Tabellen, eingeklappte Abschnitte, Trennlinien, Hinweisboxen, Links,
 Bilder, Links auf Notizen und eingebettete Notizen, Tags, Sprungziele für
 Blöcke, Fußnoten und Eigenschaften. Markier zuerst etwas Text, dann setzt
 der Knopf die Auszeichnung; ein zweiter Druck nimmt sie wieder weg. **Strg
-B**, **Strg I**, **Strg K** und **Strg E** gehen auch.
+B**, **Strg I**, **Strg K** und **Strg E** gehen auch. Über markiertem Text
+erscheint außerdem eine kleine Leiste mit den häufigsten Auszeichnungen,
+Links, Erwähnungen und **KI fragen**; siehe
+[die Leiste über einer Auswahl](admin-pages#the-bar-over-a-selection).
 
 Ein Dokument schreibst du links und liest es rechts, so gezeichnet wie in
 Notizen. **Schreiben** und **Lesen** geben einer Seite die ganze Breite.

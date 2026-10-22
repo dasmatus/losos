@@ -33,6 +33,7 @@ import { machineOf, replicaTone } from "./machines";
 import { canvasOps } from "./ops-hook";
 import { centred, dash, head, outline, textBox } from "./shapes";
 import { PeerLayer } from "./people";
+import { DiagramQuickActions } from "./quick";
 import { live } from "./shared";
 
 const SIDES: Side[] = ["top", "right", "bottom", "left"];
@@ -523,7 +524,9 @@ export function DiagramCanvas() {
   // Keys and the clipboard, while nothing else has the keyboard.
   React.useEffect(() => {
     const busy = (el: EventTarget | null) =>
-      !!(el as Element | null)?.closest?.("input, textarea, select, [contenteditable], .lab-term, .xterm, dialog, [role=dialog], [role=menu]");
+      !!(el as Element | null)?.closest?.(
+        "input, textarea, select, [contenteditable], .lab-term, .xterm, dialog, [role=dialog], [role=menu], [role=toolbar], [data-quick-popup]",
+      );
     const onKey = (e: KeyboardEvent) => {
       if (e.key === " " && !busy(e.target)) space.current = e.type === "keydown";
       if (e.type !== "keydown" || busy(e.target)) return;
@@ -957,6 +960,7 @@ export function DiagramCanvas() {
           <PeerLayer k={k} />
         </g>
       </svg>
+      <DiagramQuickActions svg={svgRef} busy={gesture.current !== null || marquee !== null || wire !== null} />
       {empty && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center p-6 text-center text-[13.5px] text-muted" data-testid="diagram-empty">
           <p className="max-w-[360px]">{t("dg.canvas.empty")}</p>
