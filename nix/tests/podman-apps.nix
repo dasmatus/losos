@@ -287,7 +287,7 @@ pkgs.testers.nixosTest {
 
     start_all()
     box.wait_for_unit("lososd.service")
-    box.wait_until_succeeds("test -s /var/secrets/losos-admin-token")
+    box.wait_until_succeeds("test -s /etc/credstore.encrypted/admin-token")
     # The owner claimed this box in the first-run wizard; here the claim is
     # stated, so the admin UI opens on its panes rather than the wizard.
     box.succeed(
@@ -296,7 +296,7 @@ pkgs.testers.nixosTest {
       " > /var/lib/losos/state.json; systemctl start lososd.service"
     )
     box.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
-    token = box.succeed("cat /var/secrets/losos-admin-token").strip()
+    token = box.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip()
     api = f"curl -sS -H 'Authorization: Bearer {token}' http://127.0.0.1:8082"
 
     # What the recorder photographs: the Apps pane, the box's own app on its

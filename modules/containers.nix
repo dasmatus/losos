@@ -313,14 +313,17 @@ let
   ];
 
   # One map per header: value on the admin surface, empty (header omitted) on
-  # the proxied Git route, the handbook's own value (or the admin value, for
-  # the headers they share) under /handbook/, the widget frame's own value
-  # (or nothing) under /widget-frame/, and a mail message's under its HTML
-  # route.
+  # the proxied Git route and on LosOS Login under /auth/, which sends its
+  # own (the admin `base-uri 'none'` drops its `<base href>`, and every page
+  # below /auth/ then loads its scripts from the wrong folder and stays
+  # blank), the handbook's own value (or the admin value, for the headers
+  # they share) under /handbook/, the widget frame's own value (or nothing)
+  # under /widget-frame/, and a mail message's under its HTML route.
   adminHeaderMap = variable: value: handbookValue: frameValue: mailValue: ''
     map $uri ${variable} {
         default          "${value}";
         ~^/forgejo       "";
+        ~^/auth/         "";
         ~^/handbook/     "${handbookValue}";
         ~^/widget-frame/ "${frameValue}";
         ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";

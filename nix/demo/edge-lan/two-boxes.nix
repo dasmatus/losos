@@ -213,10 +213,10 @@ pkgs.testers.nixosTest {
         )
         m.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
         m.forward_port(host_port=ports[name], guest_port=80)
-        note(f"{name}.token", m.succeed("cat /var/secrets/losos-admin-token").strip())
+        note(f"{name}.token", m.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip())
         note(f"{name}.port", str(ports[name]))
 
-    tokens = {n: m.succeed("cat /var/secrets/losos-admin-token").strip() for n, m in boxes.items()}
+    tokens = {n: m.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip() for n, m in boxes.items()}
 
     def api(m, name, method, path, data=None, ctype="application/json"):
         extra = f"-H 'Content-Type: {ctype}' --data-binary @- " if data is not None else ""
@@ -306,7 +306,7 @@ pkgs.testers.nixosTest {
     box2.wait_for_unit("multi-user.target")
     box2.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
     box2.forward_port(host_port=ports["box2"], guest_port=80)
-    tokens["box2"] = box2.succeed("cat /var/secrets/losos-admin-token").strip()
+    tokens["box2"] = box2.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip()
     note("box2.token", tokens["box2"])
     with box2.nested("box2 after reboot: no edge, still refusing"):
         retry(lambda _: edge_doc(box2, "box2")["reachable"] is False, timeout_seconds=120)

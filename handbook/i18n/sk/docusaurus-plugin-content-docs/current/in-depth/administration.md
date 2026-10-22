@@ -105,9 +105,11 @@ a tvorba nič nestojí; pozri [Tvorca widgetov](widget-builder.md).
 
 ## Admin token {#admin-token}
 
-`lososd` pri prvom spustení zapíše náhodný token so 64 hexadecimálnymi
-znakmi do `/var/secrets/losos-admin-token` (mód 0600). Token môže zmeniť
-akékoľvek nastavenie, takže je to root.
+Zariadenie pri prvom štarte vytvorí náhodný token so 64 hexadecimálnymi
+znakmi a uchová ho zapečatený vo svojom úložisku prihlasovacích údajov ako
+`admin-token` (pozrite [Prihlasovacie údaje](../reference/credentials.md));
+`lososd` ho číta zo svojho vlastného adresára prihlasovacích údajov. Token
+môže zmeniť akékoľvek nastavenie, takže je to root.
 
 Na novom, neprivlastnenom zariadení prvý volajúci z LAN, ktorý pošle
 `POST /api/setup/claim`, nastaví heslo vlastníka, stane sa prvým človekom,
@@ -381,8 +383,9 @@ paneli.
 
 Bucket drží posledných sedem. lososd spúšťa každú zálohu a obnovu ako
 prechodnú jednotku `losos-backup-<job>`, spustenú systemd mimo sandboxu
-`ProtectHome=true` lososd. Kľúče bucketu sa k nej dostanú ako
-`EnvironmentFile=` v `/var/secrets`, nikdy nie na príkazovom riadku.
+`ProtectHome=true` lososd. Kľúče bucketu sú zapečatené v úložisku
+prihlasovacích údajov a k jednotke sa dostanú cez `LoadCredentialEncrypted=`,
+nikdy nie na príkazovom riadku ani v obyčajnom súbore.
 
 **Obnova** si vyžaduje kód na obnovu zariadenia, ktoré zálohu vytvorilo.
 Vráti sa najnovší snapshot: aplikácie sa zastavia, súbory sa synchronizujú
