@@ -29,7 +29,9 @@ Die Box kündigt `<name>.local` und ihre Dienste über systemd-resolved an,
 nicht über Avahi. resolved ist ohnehin Teil des Systems, läuft als eigener
 Benutzer in der Sandbox seiner Upstream-Unit und gibt nichts anderem auf
 der Box einen Weg, Dienste anzukündigen. Sein zweites Namensprotokoll,
-LLMNR, ist aus. Avahi lief als root mit einer leichteren Sandbox, weil es
+LLMNR, ist nur an, solange die Windows-Freigabe an ist
+(`losos.cloud.windows.enable`): Windows findet die Box über einen bloßen
+Namen und fragt per LLMNR nach ihrer Adresse. Avahi lief als root mit einer leichteren Sandbox, weil es
 Netlink brauchte, um den Netzwerkschnittstellen zu folgen. Es ist weg und
 läuft nicht neben resolved weiter, denn zwei Responder an einem Port
 beantworten jede Frage doppelt.

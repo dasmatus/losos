@@ -26,7 +26,7 @@ sheet.
 | **Storage**  | How full the disk is, what is holding the room, and the reserve to claim.                                   |
 | **Mesh**     | Joining other boxes, the hours this one lends its spare time, **Market** with disk sharing, and **Machines**. |
 | **Diagrams** | LosOS Diagrams: diagrams, plans and boards as cards, and this box's network drawn and simulated.          |
-| **Settings** | Network, Look, Hardware, Security, Users, Access tokens, Advanced, History, Backup, About and Reset, each a pane.  |
+| **Settings** | Network, Look, Hardware, Security, Users, Access tokens, Credentials, Advanced, History, Backup, About and Reset, each a pane.  |
 
 <img src={require("../img/overview-phone.png").default} alt="The Overview on a phone: the sections fold into a menu button." width="260" /> <img src={require("../img/overview-phone-sheet.png").default} alt="The same phone with the menu open as a sheet over the page." width="260" />
 

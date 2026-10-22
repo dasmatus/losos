@@ -315,6 +315,7 @@ pub const COMPANION_CLIENT_ID: &str = "losos-companion";
 /// repositories. Matched exactly, with any query string. A route an AI tool
 /// should reach is added here and to the companion's own tool table
 /// (`admin-ui/tui/src/agents/mcp.rs`), whose test holds the two together.
+/// `{id}` stands for one path segment of letters, digits, `-` and `_`.
 pub const COMPANION_ROUTES: &[&str] = &[
     "/api/me",
     "/api/status",
@@ -322,6 +323,9 @@ pub const COMPANION_ROUTES: &[&str] = &[
     "/api/cloud/text",
     "/api/git/repos",
     "/api/git/text",
+    "/api/mail",
+    "/api/mail/messages",
+    "/api/mail/messages/{id}",
 ];
 
 /// May a companion token make this call? GET only, on one of
@@ -330,7 +334,27 @@ pub fn companion_route(method: &str, path: &str) -> bool {
     let route = path.split('?').next().unwrap_or(path);
     method.eq_ignore_ascii_case("GET")
         && path_allowed(path, &["/api/"], &[])
-        && COMPANION_ROUTES.contains(&route)
+        && COMPANION_ROUTES.iter().any(|r| route_matches(r, route))
+}
+
+fn route_matches(pattern: &str, route: &str) -> bool {
+    let (mut p, mut r) = (pattern.split('/'), route.split('/'));
+    loop {
+        match (p.next(), r.next()) {
+            (None, None) => return true,
+            (Some("{id}"), Some(seg)) => {
+                let fits = !seg.is_empty()
+                    && seg
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+                if !fits {
+                    return false;
+                }
+            }
+            (Some(a), Some(b)) if a == b => {}
+            _ => return false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -347,6 +371,14 @@ mod tests {
         assert!(!companion_route("GET", "/api/cloud/files/../settings"));
         assert!(!companion_route("GET", "/api/cloud/filesx"));
         assert!(!companion_route("GET", "/api/access/tokens"));
+        assert!(companion_route("GET", "/api/mail/messages?mailbox=a&q=x"));
+        assert!(companion_route("GET", "/api/mail/messages/Ma1b-2_c"));
+        assert!(!companion_route("GET", "/api/mail/messages/m1/html"));
+        assert!(!companion_route("GET", "/api/mail/messages/"));
+        assert!(!companion_route("GET", "/api/mail/messages/m%2F1"));
+        assert!(!companion_route("GET", "/api/mail/attachments/b1"));
+        assert!(!companion_route("POST", "/api/mail/messages/m1"));
+        assert!(!companion_route("GET", "/api/mail/send"));
     }
 
     fn ring() -> (Keyring, String) {
