@@ -36,10 +36,9 @@ die meisten Linux-Desktops tun das. Diese nicht:
 ![Das Banner unter dem Lachs auf dem Bildschirm der Box: Die IP-Adresse funktioniert, wo der .local-Name es nicht tut.](@site/docs/img/tty1-banner.png)
 
 - **Nimm die Adresse.** Alles antwortet darauf, die Apps eingeschlossen.
-  Der Bereich Über zeigt, welche Adresse dein Browser verwendet. Nur zwei
-  Dinge brauchen den Namen: das `https://`-Zertifikat, das die Box für den
-  Namen ausstellt, und die Clone-URLs von LosOS Git, die den Namen
-  anzeigen.
+  Der Bereich Über zeigt, welche Adresse dein Browser verwendet. Nur das
+  `https://`-Zertifikat braucht den Namen, weil die Box es für den Namen
+  ausstellt.
 - **Auf einem VM-Host** fügst du der `hosts`-Datei des Hosts eine Zeile
   hinzu. Diese Datei ist `/etc/hosts` unter Linux und macOS und
   `C:\Windows\System32\drivers\etc\hosts` unter Windows. Die Zeile lautet

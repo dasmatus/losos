@@ -222,7 +222,7 @@ pkgs.testers.nixosTest {
         # The spare key signs in; LosOS Login has a test of its own.
         identity.enable = false;
         # No modules/cluster.nix: no cluster on this box.
-        forgejo.enable = false;
+        git.enable = false;
         apps.builtin.welcome = {
           compose = {
             "x-losos" = {

@@ -45,7 +45,7 @@
 #   * Master-proxy traffic reaches this vhost from 127.0.0.1 (rathole's
 #     local_addr), so anything *not* guarded here is on the public internet the
 #     moment losos.proxy.enable is on. "Guarded" is therefore the default a new
-#     route has to argue its way out of. /cloud/ and /forgejo/ argued their
+#     route has to argue its way out of. /cloud/ and /git/ argued their
 #     way out — carrying them is what the tunnel is for.
 #   * This route cannot. The certificate is valid for <hostName>.local,
 #     localhost and 127.0.0.1 and nothing else, so it is of no use to anyone

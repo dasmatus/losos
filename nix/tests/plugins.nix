@@ -80,14 +80,13 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
         ];
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = lososPkgs.losos-admin-ui;
-          forgejo.enable = false;
+          git.enable = false;
         };
         systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
         # A second package with the probe in it, for the refusals below. In

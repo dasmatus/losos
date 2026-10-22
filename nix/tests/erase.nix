@@ -70,17 +70,6 @@ pkgs.testers.nixosTest {
       networking.networkmanager.enable = lib.mkForce false;
       losos.mdns.enable = lib.mkForce false;
 
-      services.postgresql = {
-        enable = true;
-        ensureDatabases = [ "forgejo" ];
-        ensureUsers = [
-          {
-            name = "forgejo";
-            ensureDBOwnership = true;
-          }
-        ];
-      };
-
       services.minio = {
         enable = true;
         # nixpkgs marks MinIO insecure since upstream stopped maintaining the
@@ -217,7 +206,7 @@ pkgs.testers.nixosTest {
     machine.start()
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("minio.service")
-    machine.wait_for_unit("postgresql.service")
+    machine.wait_for_open_port(9000)
     machine.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
     machine.wait_until_succeeds("test -s /etc/credstore.encrypted/admin-token")
 
@@ -228,8 +217,8 @@ pkgs.testers.nixosTest {
             "install -d /var/lib/losos-cloud/notshared/files",
             f"echo '{NOTE}' > /var/lib/losos-cloud/notshared/files/note.txt",
             f"sqlite3 /var/lib/losos-cloud/cloud.db \"create table events (body text); insert into events values ('{EVENT}');\"",
-            "runuser -u postgres -- psql -d forgejo -c "
-            f"\"create table notes (body text); insert into notes values ('{ROW}');\"",
+            "install -d /var/lib/losos-git",
+            f"sqlite3 /var/lib/losos-git/git.db \"create table notes (body text); insert into notes values ('{ROW}');\"",
         )
         machine.wait_for_unit("losos-fscrypt-shared.service")
         p = policy()
@@ -299,8 +288,7 @@ pkgs.testers.nixosTest {
         assert token() != old_token, "the admin token survived the erase"
         claim = machine.succeed("curl -fsS 127.0.0.1:8082/api/setup/claim")
         assert '"claimed":false' in claim.replace(" ", ""), claim
-        machine.wait_for_unit("postgresql.service")
-        machine.fail("runuser -u postgres -- psql -d forgejo -tAc 'select body from notes'")
+        machine.fail("test -e /var/lib/losos-git/git.db")
         machine.fail("test -e /var/lib/losos-cloud/cloud.db")
         machine.wait_for_unit("losos-fscrypt-shared.service")
         machine.fail(f"test -e {policy()}/lent.txt")
@@ -309,6 +297,7 @@ pkgs.testers.nixosTest {
         # The bucket is somewhere the wipe does not reach. mc keeps its alias
         # under /root, which is the tmpfs root, so it is set again.
         machine.wait_for_unit("minio.service")
+        machine.wait_for_open_port(9000)
         machine.succeed(
             "mc alias set local http://127.0.0.1:9000 boxbackup boxbackup-secret-123",
             "mc ls local/box-backups | grep -c .",
@@ -333,7 +322,7 @@ pkgs.testers.nixosTest {
         machine.succeed(
             f"grep -qF '{NOTE}' /var/lib/losos-cloud/notshared/files/note.txt"
         )
-        row = machine.succeed("runuser -u postgres -- psql -d forgejo -tAc 'select body from notes'")
+        row = machine.succeed("sqlite3 /var/lib/losos-git/git.db 'select body from notes'")
         assert row.strip() == ROW, row
         event = machine.succeed("sqlite3 /var/lib/losos-cloud/cloud.db 'select body from events'")
         assert event.strip() == EVENT, event

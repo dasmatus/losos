@@ -142,7 +142,7 @@ pkgs.testers.nixosTest {
         backend.package = lososPkgs.losos-ctl;
         admin.ui = noLab lososPkgs.losos-admin-ui;
         cloud.enable = true;
-        forgejo.enable = false;
+        git.enable = false;
         mdns.enable = true;
         # Sharing and in a mesh: knowledge bases on.
         sharingMyStorage = true;

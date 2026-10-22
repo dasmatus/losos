@@ -121,12 +121,12 @@ export default defineMessages({
   "look.builder.intro": {
     en: "Describe the widget and the AI writes it. It lands in the editor, where you can read it, try it in the preview and change it before you save.",
     sk: "Opíšte widget a AI ho napíše. Objaví sa v editore, kde si ho môžete prečítať, vyskúšať v náhľade a upraviť ešte pred uložením.",
-    de: "Beschreiben Sie das Widget, und die KI schreibt es. Es landet im Editor, wo Sie es lesen, in der Vorschau ausprobieren und vor dem Speichern ändern können.",
+    de: "Beschreibe das Widget, und die KI schreibt es. Es landet im Editor, wo du es lesen, in der Vorschau ausprobieren und vor dem Speichern ändern kannst.",
   },
   "look.builder.local": {
-    en: "The AI is {model}, running on this box. What you write here stays on the box, and building is free. A widget takes a few minutes to write. The model is small and makes mistakes, so try the widget in the preview before you save it.",
-    sk: "AI je {model} a beží na tomto zariadení. Čo sem napíšete, zostáva na zariadení, a tvorba je zadarmo. Napísanie widgetu trvá niekoľko minút. Model je malý a robí chyby, preto widget pred uložením vyskúšajte v náhľade.",
-    de: "Die KI ist {model} und läuft auf dieser Box. Was Sie hier schreiben, bleibt auf der Box, und das Bauen ist kostenlos. Ein Widget zu schreiben dauert ein paar Minuten. Das Modell ist klein und macht Fehler, probieren Sie das Widget daher vor dem Speichern in der Vorschau aus.",
+    en: "The AI is {model}, running on this box. What you write here stays on the box, and building is free. A widget takes a minute or two to write. The model is small and makes mistakes, so try the widget in the preview before you save it.",
+    sk: "AI je {model} a beží na tomto zariadení. Čo sem napíšete, zostáva na zariadení, a tvorba je zadarmo. Napísanie widgetu trvá minútu či dve. Model je malý a robí chyby, preto widget pred uložením vyskúšajte v náhľade.",
+    de: "Die KI ist {model} und läuft auf dieser Box. Was du hier schreibst, bleibt auf der Box, und das Bauen ist kostenlos. Ein Widget zu schreiben dauert ein, zwei Minuten. Das Modell ist klein und macht Fehler, probiere das Widget daher vor dem Speichern in der Vorschau aus.",
   },
   "look.builder.loading": { en: "Asking the box…", sk: "Pýtam sa zariadenia…", de: "Box wird gefragt …" },
   "look.builder.loadFailed": {
@@ -143,20 +143,20 @@ export default defineMessages({
   "look.builder.starting": {
     en: "The AI on this box is starting. Try again in a minute.",
     sk: "AI na tomto zariadení sa spúšťa. Skúste to znova o minútu.",
-    de: "Die KI auf dieser Box startet. Versuchen Sie es in einer Minute erneut.",
+    de: "Die KI auf dieser Box startet. Versuche es in einer Minute erneut.",
   },
   "look.builder.downloading": {
-    en: "This box is still downloading the AI model ({model}, about 2 GB). It needs to be online for that, and it downloads it only once.",
-    sk: "Toto zariadenie ešte sťahuje model AI ({model}, asi 2 GB). Musí byť pritom online a sťahuje ho iba raz.",
-    de: "Diese Box lädt das KI-Modell noch herunter ({model}, etwa 2 GB). Dafür muss sie online sein, und sie lädt es nur einmal.",
+    en: "This box is still downloading the AI model ({model}, about 1 GB). It needs to be online for that, and it downloads it only once.",
+    sk: "Toto zariadenie ešte sťahuje model AI ({model}, asi 1 GB). Musí byť pritom online a sťahuje ho iba raz.",
+    de: "Diese Box lädt das KI-Modell noch herunter ({model}, etwa 1 GB). Dafür muss sie online sein, und sie lädt es nur einmal.",
   },
   "look.builder.terms": {
-    en: "Built with Llama. Llama 3.2 is licensed under the Llama 3.2 Community License, Copyright © Meta Platforms, Inc.",
-    sk: "Built with Llama. Llama 3.2 je licencovaná podľa Llama 3.2 Community License, Copyright © Meta Platforms, Inc.",
-    de: "Built with Llama. Llama 3.2 ist unter der Llama 3.2 Community License lizenziert, Copyright © Meta Platforms, Inc.",
+    en: "The AI is Qwen2.5-Coder by the Qwen team at Alibaba Cloud, licensed under the Apache License 2.0.",
+    sk: "AI je Qwen2.5-Coder od tímu Qwen v Alibaba Cloud, licencovaný podľa Apache License 2.0.",
+    de: "Die KI ist Qwen2.5-Coder vom Qwen-Team bei Alibaba Cloud, lizenziert unter der Apache License 2.0.",
   },
   "look.builder.terms.license": { en: "License", sk: "Licencia", de: "Lizenz" },
-  "look.builder.terms.usage": { en: "Acceptable Use Policy", sk: "Zásady prijateľného používania", de: "Richtlinie zur zulässigen Nutzung" },
+  "look.builder.terms.model": { en: "About the model", sk: "O modeli", de: "Über das Modell" },
   "look.builder.field.prompt": {
     en: "What should the widget show?",
     sk: "Čo má widget zobrazovať?",
@@ -178,12 +178,72 @@ export default defineMessages({
   "look.builder.reading": {
     en: "The AI is reading your request. It carries on if you close this window.",
     sk: "AI číta vašu požiadavku. Pokračuje aj vtedy, keď toto okno zavriete.",
-    de: "Die KI liest Ihre Anfrage. Sie macht weiter, wenn Sie dieses Fenster schließen.",
+    de: "Die KI liest deine Anfrage. Sie macht weiter, wenn du dieses Fenster schließt.",
   },
   "look.builder.writing": {
     en: "The AI is writing the widget: {lines} lines so far. It carries on if you close this window.",
     sk: "AI píše widget: zatiaľ {lines} riadkov. Pokračuje aj vtedy, keď toto okno zavriete.",
-    de: "Die KI schreibt das Widget: bisher {lines} Zeilen. Sie macht weiter, wenn Sie dieses Fenster schließen.",
+    de: "Die KI schreibt das Widget: bisher {lines} Zeilen. Sie macht weiter, wenn du dieses Fenster schließt.",
+  },
+  "look.builder.steps": {
+    en: "What the AI did",
+    sk: "Čo AI urobila",
+    de: "Was die KI getan hat",
+  },
+  "look.builder.step.write.running": {
+    en: "Writing, {lines} lines so far",
+    sk: "Píše, zatiaľ {lines} riadkov",
+    de: "Schreibt, bisher {lines} Zeilen",
+  },
+  "look.builder.step.write.done": {
+    en: "Wrote it",
+    sk: "Napísané",
+    de: "Geschrieben",
+  },
+  "look.builder.step.fix.running": {
+    en: "Fixing what was found, {lines} lines so far",
+    sk: "Opravuje, čo sa našlo, zatiaľ {lines} riadkov",
+    de: "Behebt, was gefunden wurde, bisher {lines} Zeilen",
+  },
+  "look.builder.step.fix.done": {
+    en: "Wrote it again",
+    sk: "Napísané znova",
+    de: "Neu geschrieben",
+  },
+  "look.builder.step.check.running": {
+    en: "Checking the code",
+    sk: "Kontroluje kód",
+    de: "Prüft den Code",
+  },
+  "look.builder.step.check.ok": {
+    en: "Checked the code: nothing wrong",
+    sk: "Kód skontrolovaný: nič zlé",
+    de: "Code geprüft: nichts falsch",
+  },
+  "look.builder.step.check.found": {
+    en: "Checked the code and found what to fix:",
+    sk: "Pri kontrole kódu sa našlo, čo opraviť:",
+    de: "Beim Prüfen des Codes gefunden, was zu beheben ist:",
+  },
+  "look.builder.step.try.running": {
+    en: "Trying it in the preview",
+    sk: "Skúša ho v náhľade",
+    de: "Probiert es in der Vorschau aus",
+  },
+  "look.builder.step.try.ok": {
+    en: "Tried it: nothing went wrong",
+    sk: "Vyskúšané: nič sa nepokazilo",
+    de: "Ausprobiert: nichts ging schief",
+  },
+  "look.builder.step.try.found": {
+    en: "Tried it and found what to fix:",
+    sk: "Pri skúške sa našlo, čo opraviť:",
+    de: "Beim Ausprobieren gefunden, was zu beheben ist:",
+  },
+  "look.builder.step.try.skipped": {
+    en: "Not tried: the preview was not open",
+    sk: "Nevyskúšané: náhľad nebol otvorený",
+    de: "Nicht ausprobiert: die Vorschau war nicht offen",
   },
   "look.builder.fixing": {
     en: "The box found a mistake in the widget and the AI is fixing it: {lines} lines so far.",
@@ -198,7 +258,7 @@ export default defineMessages({
   "look.builder.problem.prompt": {
     en: "Describe the widget first.",
     sk: "Najprv widget opíšte.",
-    de: "Beschreiben Sie zuerst das Widget.",
+    de: "Beschreibe zuerst das Widget.",
   },
   "look.builder.problem.promptLong": {
     en: "Keep the description under {max} characters.",
@@ -213,7 +273,7 @@ export default defineMessages({
   "look.builder.doneNote": {
     en: "It is in the editor. Try it in the preview before you save it.",
     sk: "Je v editore. Pred uložením ho vyskúšajte v náhľade.",
-    de: "Es ist im Editor. Probieren Sie es vor dem Speichern in der Vorschau aus.",
+    de: "Es ist im Editor. Probiere es vor dem Speichern in der Vorschau aus.",
   },
   "look.builder.done": {
     en: "Written and put in the editor.",
@@ -233,22 +293,22 @@ export default defineMessages({
   "look.builder.fault.noWidget": {
     en: "The AI answered without writing a widget. Try describing it differently.",
     sk: "AI odpovedala bez widgetu. Skúste ho opísať inak.",
-    de: "Die KI hat ohne Widget geantwortet. Beschreiben Sie es anders.",
+    de: "Die KI hat ohne Widget geantwortet. Beschreibe es anders.",
   },
   "look.builder.fault.unusable": {
     en: "The AI wrote files a widget cannot have. Try again, or describe it differently.",
     sk: "AI napísala súbory, aké widget mať nemôže. Skúste to znova alebo ho opíšte inak.",
-    de: "Die KI hat Dateien geschrieben, die ein Widget nicht haben kann. Versuchen Sie es erneut oder beschreiben Sie es anders.",
+    de: "Die KI hat Dateien geschrieben, die ein Widget nicht haben kann. Versuche es erneut oder beschreibe es anders.",
   },
   "look.builder.fault.upstream": {
     en: "The AI on this box did not answer. Try again in a minute.",
     sk: "AI na tomto zariadení neodpovedala. Skúste to znova o minútu.",
-    de: "Die KI auf dieser Box hat nicht geantwortet. Versuchen Sie es in einer Minute erneut.",
+    de: "Die KI auf dieser Box hat nicht geantwortet. Versuche es in einer Minute erneut.",
   },
   "look.builder.fault.memory": {
-    en: "This box has too little free memory for the AI right now. It needs about 4 GiB while it writes.",
-    sk: "Toto zariadenie má teraz na AI málo voľnej pamäte. Počas písania potrebuje asi 4 GiB.",
-    de: "Diese Box hat gerade zu wenig freien Speicher für die KI. Beim Schreiben braucht sie etwa 4 GiB.",
+    en: "This box has too little free memory for the AI right now. It needs about 1.5 GiB while it writes.",
+    sk: "Toto zariadenie má teraz na AI málo voľnej pamäte. Počas písania potrebuje asi 1,5 GiB.",
+    de: "Diese Box hat gerade zu wenig freien Speicher für die KI. Beim Schreiben braucht sie etwa 1,5 GiB.",
   },
   "look.editor.field.name": { en: "Name", sk: "Názov", de: "Name" },
   "look.editor.field.span": { en: "Width", sk: "Šírka", de: "Breite" },

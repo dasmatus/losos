@@ -10,7 +10,7 @@
 # staged behind separate flags rather than one boolean.
 #
 # The appliance runs two Kubernetes instances (modules/cluster.nix): a local
-# k3s server for its own Nextcloud and Forgejo, and an rke2 agent that joins
+# k3s server for its own Nextcloud, and an rke2 agent that joins
 # the edge for Longhorn and mesh compute. That makes this test's second job at
 # least as important as its first. Nearly every published hardening baseline
 # was written for a machine that does not run a container runtime, and roughly

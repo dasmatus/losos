@@ -1,0 +1,36 @@
+<!doctype html>
+<!--
+  The app frame: where one of the owner's own apps runs.
+
+  An app is a React component the box compiled (backend/src/jsx.rs). The
+  admin page embeds this page as
+
+      <iframe sandbox="allow-scripts allow-forms" src="/app-frame/">
+
+  for the reasons the widget frame gives (public/widget-frame/index.html):
+  no `allow-same-origin`, so the app is an opaque origin that cannot read
+  the admin page, its token, its cookies or the API; and a real URL with a
+  policy of its own (the `~^/(widget|app)-frame/` arm of nginx's header map,
+  modules/containers.nix) rather than a srcdoc that would inherit the admin
+  page's. `allow-forms` lets an app's <form> submit to its own handler; the
+  policy's `form-action 'none'` keeps it from going anywhere.
+
+  runtime.js is React, the LosOS components and the bridge to the page
+  (src/app-frame/runtime.tsx), a classic script because an opaque origin
+  fetches module scripts in CORS mode. Everything the app gets from the box
+  comes through postMessage.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="no-referrer" />
+    <title>App</title>
+    <link rel="stylesheet" href="/app-frame/runtime.css" />
+    <script src="/app-frame/runtime.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

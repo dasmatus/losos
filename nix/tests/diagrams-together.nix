@@ -49,7 +49,7 @@ let
         backend.package = lososPkgs.losos-ctl;
         backend.plugins = lososPkgs.losos-plugins;
         admin.ui = common.ui;
-        forgejo.enable = false;
+        git.enable = false;
         cloud.enable = true;
         cloud.mesh.enable = true;
       };
