@@ -559,6 +559,26 @@ export default defineMessages({
     sk: "Keď je zapnuté „dostupné mimo domova“, zariadenie si otvorí cestu von k malému sprostredkovateľovi, aby ste sa k nemu dostali odkiaľkoľvek. Na routeri netreba nič otvárať.",
     de: "Mit „von außerhalb erreichbar“ öffnet diese Box einen Weg nach draußen zu einem kleinen Relay, sodass du von überall an sie herankommst. An deinem Router muss nichts geöffnet werden.",
   },
+  "panes.network.windows.title": {
+    en: "Windows, Mac and Linux",
+    sk: "Windows, Mac a Linux",
+    de: "Windows, Mac und Linux",
+  },
+  "panes.network.windows.show": {
+    en: "Show under Network on computers nearby",
+    sk: "Zobraziť v Sieti na počítačoch nablízku",
+    de: "Unter Netzwerk auf Computern in der Nähe zeigen",
+  },
+  "panes.network.windows.showDetail": {
+    en: "File Explorer, Finder and Linux file managers list this box and open each person's LosOS Cloud files with their LosOS name and password.",
+    sk: "Prieskumník, Finder a správcovia súborov v Linuxe zobrazia toto zariadenie a otvoria každému jeho súbory v LosOS Cloud po zadaní mena a hesla LosOS.",
+    de: "Explorer, Finder und Linux-Dateimanager zeigen diese Box und öffnen jeder Person ihre Dateien in LosOS Cloud mit ihrem LosOS-Namen und -Passwort.",
+  },
+  "panes.network.windows.caption": {
+    en: "Each person finds their files at {address} followed by their name. Only computers on your local network get in, never through the relay. Each person's Account page says whether Windows takes their password yet.",
+    sk: "Každý nájde svoje súbory na adrese {address} a za ňou svoje meno. Dostanú sa sem len počítače v lokálnej sieti, nikdy nie cez sprostredkovateľa. Na stránke Účet každý vidí, či Windows už berie jeho heslo.",
+    de: "Jede Person findet ihre Dateien unter {address} gefolgt von ihrem Namen. Hinein kommen nur Computer in deinem lokalen Netz, nie über das Relay. Auf der Seite Konto sieht jede Person, ob Windows ihr Passwort schon annimmt.",
+  },
   "panes.network.domains.title": {
     en: "Your own domain",
     sk: "Vlastná doména",

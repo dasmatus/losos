@@ -113,9 +113,12 @@ bleibt, was du eintippst, dort, und ein Bau kostet nichts; siehe
 
 ## Admin-Token {#admin-token}
 
-`lososd` schreibt beim ersten Start ein zufälliges Token aus 64
-Hexadezimalzeichen nach `/var/secrets/losos-admin-token` (Modus 0600). Das
-Token kann jede Einstellung ändern, es ist also root.
+Die Box erzeugt beim ersten Start ein zufälliges Token aus 64
+Hexadezimalzeichen und bewahrt es versiegelt in ihrem Speicher für
+Zugangsdaten auf, als `admin-token` (siehe
+[Zugangsdaten](../reference/credentials.md)); `lososd` liest es aus seinem
+eigenen Verzeichnis für Zugangsdaten. Das Token kann jede Einstellung ändern,
+es ist also root.
 
 Auf einer neuen, noch nicht beanspruchten Box setzt der erste Aufrufer aus
 dem LAN, der `POST /api/setup/claim` sendet, das Eigentümer-Passwort, wird
@@ -398,8 +401,9 @@ Bereich gewählt.
 Der Bucket behält die letzten sieben. lososd führt jedes Backup und jede
 Wiederherstellung als transiente Unit `losos-backup-<job>` aus, die systemd
 außerhalb der `ProtectHome=true`-Sandbox von lososd startet. Die Schlüssel
-des Buckets erreichen sie als `EnvironmentFile=` in `/var/secrets`, nie
-über eine Befehlszeile.
+des Buckets sind im Speicher für Zugangsdaten versiegelt und erreichen die
+Unit über `LoadCredentialEncrypted=`, nie über eine Befehlszeile oder eine
+einfache Datei.
 
 **Wiederherstellen** verlangt den Wiederherstellungscode der Box, die das Backup
 erstellt hat. Der neueste Snapshot kommt zurück: Die Apps halten an, die

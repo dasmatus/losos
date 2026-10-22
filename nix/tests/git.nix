@@ -143,7 +143,7 @@ pkgs.testers.nixosTest {
     laptop.wait_for_unit("multi-user.target")
 
     git_admin = box.succeed("cat /var/lib/losos-git/admin-token").strip()
-    losos_admin = box.succeed("cat /var/secrets/losos-admin-token").strip()
+    losos_admin = box.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip()
 
     def forge(method, path, body=None, token=None):
         """LosOS Git's API on its loopback port: (status, JSON or text)."""
