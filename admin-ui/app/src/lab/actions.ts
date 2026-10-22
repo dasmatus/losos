@@ -3,21 +3,33 @@
  * so the order of "change the world, re-read it, move the selection" lives
  * in one place. */
 
+import { ACCENTS, accentFor, nameOf, type Accent } from "@/cloud/collab/people";
 import { t } from "@/lib/i18n";
 import { isErr, type HttpResult } from "./core";
 import type { Engine } from "./engine";
+import { CloudFail, readFile, roomInfo, writeFile } from "./canvas/cloud";
+import { LiveDiagram, live, type Room, setLive } from "./canvas/shared";
+import type { PresenceUser } from "@/cloud/collab/cursors";
+import { exportPng, exportSvg } from "./canvas/export";
+import { CanvasOps } from "./canvas/ops";
 import { download, MAX_FILE, readLast, writeLast } from "./files";
-import { type LabStore, type Tab, type View } from "./store";
+import { type LabStore, type Tab, type Workspace } from "./store";
 
 export class Actions {
+  /** The diagram's own operations (canvas/ops.ts). */
+  readonly canvas: CanvasOps;
+
   constructor(
     readonly s: LabStore,
     readonly engine: Engine,
-  ) {}
+  ) {
+    this.canvas = new CanvasOps(s, engine);
+  }
 
   // ── setups ─────────────────────────────────────────────────────────────
   pick(key: string): void {
     const s = this.s;
+    this.leaveRoom();
     this.engine.stopAll();
     if (key === "last") {
       const text = readLast();
@@ -44,6 +56,7 @@ export class Actions {
 
   loadThisBox(settings: string, edge: string): boolean {
     const s = this.s;
+    this.leaveRoom();
     const r = s.ok(s.core.loadThisBox(settings, edge));
     if (!r) return false;
     s.scenarios = s.core.catalog().scenarios;
@@ -72,22 +85,191 @@ export class Actions {
       return;
     }
     const text = await file.text();
-    this.importText(text, file.name, true);
+    if (this.importText(text, file.name, true)) this.s.cloudFile = null;
   }
 
-  private importText(text: string, fileName: string, fresh: boolean): void {
+  private importText(text: string, fileName: string, fresh: boolean, inRoom = false): boolean {
     const s = this.s;
+    if (!inRoom) this.leaveRoom();
     this.engine.stopAll();
     const r = s.core.importSetup(text, fileName);
     if (isErr(r)) {
       s.toast(r.error);
       s.emit("model");
-      return;
+      return false;
     }
     if (fresh) s.openedText = { text, fileName };
     this.setExtra("file", r.name);
     s.startedWorld(r.focus ?? null);
     s.toast(r.skipped ? t("lab.toast.openedSkipped", { name: r.name, count: r.skipped }) : t("lab.toast.opened", { name: r.name }));
+    return true;
+  }
+
+  // ── LosOS Cloud ────────────────────────────────────────────────────────
+  private cloudProblem(e: unknown): string {
+    if (e instanceof CloudFail) {
+      if (e.code === "signIn") return t("dg.cloud.signIn");
+      if (e.code === "notFound") return t("dg.cloud.notFound");
+      if (e.code === "full") return t("dg.cloud.full");
+    }
+    return t("dg.cloud.failed");
+  }
+
+  async openCloud(path: string): Promise<boolean> {
+    const s = this.s;
+    try {
+      const f = await readFile(path);
+      if (f.text.length > MAX_FILE) {
+        s.toast(t("lab.toast.tooBig"));
+        return false;
+      }
+      const name = path.slice(path.lastIndexOf("/") + 1);
+      if (!this.importText(f.text, name, true)) return false;
+      s.cloudFile = { path, etag: f.etag, ...(f.id === undefined ? {} : { id: f.id }) };
+      s.setUi({ view: "canvas" });
+      s.fit();
+      if (f.id !== undefined) void this.joinRoom(f.id);
+      return true;
+    } catch (e) {
+      s.toast(this.cloudProblem(e));
+      return false;
+    }
+  }
+
+  /** Saves the diagram at `path` in LosOS Cloud. `etag`: overwrite that
+   *  version (a replace the person agreed to); by default the version this
+   *  tab read, or a new file. "changed": someone else saved it meanwhile. */
+  async saveCloud(path: string, etag?: string): Promise<"saved" | "changed" | "failed"> {
+    const s = this.s;
+    const doc = s.core.exportSetup();
+    const guard = etag ?? (s.cloudFile?.path === path ? s.cloudFile.etag || "*" : null);
+    try {
+      const e = await writeFile(path, doc.text, guard);
+      s.cloudFile = { path, etag: e.etag, id: e.id };
+      s.emit("model");
+      s.toast(t("dg.cloud.saved", { name: doc.name, path }));
+      if (live()?.file !== e.id) void this.joinRoom(e.id);
+      return "saved";
+    } catch (e) {
+      if (e instanceof CloudFail && (e.status === 412 || e.code === "exists")) return "changed";
+      s.toast(this.cloudProblem(e));
+      return "failed";
+    }
+  }
+
+  /** Ctrl+S: back to LosOS Cloud when the diagram came from there, else a download. */
+  async saveQuick(): Promise<void> {
+    const s = this.s;
+    if (live() && s.live?.state !== "offline") {
+      // The room writes every change to the file as it goes.
+      const where = s.live?.from ? t("dg.live.on", { box: s.live.from.box }) : (s.cloudFile?.path ?? "");
+      s.toast(s.live?.readOnly ? t("dg.live.viewOnly") : t("dg.live.saved", { path: where }));
+      return;
+    }
+    if (!s.cloudFile) {
+      await this.save();
+      return;
+    }
+    const r = await this.saveCloud(s.cloudFile.path);
+    if (r === "changed") s.toast(t("dg.cloud.changedElsewhere"));
+  }
+
+  /** Opens the file's live-editing room, where this box has one: from
+   *  then on everyone with the file open edits the same diagram. */
+  private async joinRoom(id: number): Promise<void> {
+    const s = this.s;
+    this.leaveRoom();
+    const info = await roomInfo(id);
+    if (!info || info.perm === "none" || s.cloudFile?.id !== id) return;
+    const me = await this.presence(info);
+    if (s.cloudFile?.id !== id || live()) return;
+    this.startRoom({ file: id, readOnly: info.perm === "read", from: null }, me);
+  }
+
+  /** A diagram someone on another box shared with the person here. */
+  async openShared(share: string, id: number): Promise<boolean> {
+    const s = this.s;
+    const info = await roomInfo(id, share);
+    if (!info || info.perm === "none") {
+      s.toast(t("dg.cloud.notFound"));
+      return false;
+    }
+    const me = await this.presence(info);
+    this.leaveRoom();
+    const name = info.name;
+    this.startRoom(
+      {
+        file: id,
+        share,
+        readOnly: info.perm === "read",
+        from: { name, owner: info.owner, box: info.box },
+        opening: (text) => {
+          if (!this.importText(text, name, true, true)) return false;
+          s.cloudFile = null;
+          s.setUi({ view: "canvas" });
+          s.fit();
+          return true;
+        },
+      },
+      me,
+    );
+    return true;
+  }
+
+  private async presence(info: { me: { name: string; address: string } }): Promise<PresenceUser> {
+    const login = nameOf(info.me.address);
+    let accent = accentFor(login);
+    let picture: string | null = null;
+    try {
+      // The colour and picture of their profile; the colour of their name until then.
+      const r = await fetch(`/api/profiles/${encodeURIComponent(login)}`, { credentials: "same-origin", cache: "no-store" });
+      if (r.ok) {
+        const p = (await r.json()) as { accent?: Accent; picture?: string | null };
+        if (p.accent && (ACCENTS as readonly string[]).includes(p.accent)) accent = p.accent;
+        picture = typeof p.picture === "string" ? p.picture : null;
+      }
+    } catch {
+      /* the colour of their name */
+    }
+    return { name: info.me.name, address: info.me.address, accent, picture };
+  }
+
+  private startRoom(room: Room, me: PresenceUser): void {
+    const s = this.s;
+    setLive(
+      new LiveDiagram(s, room, me, () => {
+        this.engine.stopAll();
+        s.desks.clear();
+        s.consoleEpoch += 1;
+        s.linkBorn.clear();
+        s.events = [];
+        s.ui.sel = null;
+        s.emit("events");
+      }),
+    );
+    s.emit("model");
+  }
+
+  leaveRoom(): void {
+    setLive(null);
+  }
+
+  // ── pictures ───────────────────────────────────────────────────────────
+  async exportPicture(kind: "svg" | "png"): Promise<void> {
+    const s = this.s;
+    const base = s.core.exportSetup().filename.replace(/\.canvas$/, "");
+    if (s.canvas.nodes.length === 0) {
+      s.toast(t("dg.toast.nothingToExport"));
+      return;
+    }
+    const svg = exportSvg(s);
+    const blob = kind === "svg" ? new Blob([svg], { type: "image/svg+xml" }) : await exportPng(svg);
+    if (!blob) {
+      s.toast(t("dg.toast.pngFailed"));
+      return;
+    }
+    const r = await download(`${base}.${kind}`, blob);
+    if (r === "unsupported") s.toast(t("lab.toast.cannotSave"));
   }
 
   /** keepLast(): every 2 s and on pagehide. */
@@ -97,9 +279,9 @@ export class Actions {
   }
 
   // ── view and tools ─────────────────────────────────────────────────────
-  setView(view: View): void {
+  setView(view: Workspace): void {
     const s = this.s;
-    s.setUi({ view });
+    s.setUi({ view, cardTool: null, editing: null });
     if (view === "physical") s.placePhysical();
     s.fit();
   }

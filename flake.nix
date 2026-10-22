@@ -458,6 +458,12 @@
         # The banner a box off the mesh shows over every page, both states
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
+        # LosOS Diagrams on a box with LosOS Cloud: the /lab/ move, a .canvas
+        # file opened and saved back, and the pull request's pictures.
+        losos-diagrams = import ./nix/tests/diagrams.nix { inherit pkgs; };
+        # Two people on two boxes drawing in one shared diagram at once
+        # (nix/tests/diagrams-together.nix).
+        losos-diagrams-together = import ./nix/tests/diagrams-together.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         # Your apps: Chromium on a laptop asks the box for an app, watches it
         # written, uses it and saves it, and keeps every screen

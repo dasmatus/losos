@@ -124,19 +124,19 @@ fn hostile_files() {
     let before = l.snapshot()["world"].clone();
     assert_eq!(
         error(&l.import_setup("{", "x.llf")),
-        "This is not a LosOS Lab setup file."
+        "This is not a canvas or a setup file."
     );
-    let huge = format!("\"{}\"", "x".repeat((1 << 20) + 1));
+    let huge = format!("\"{}\"", "x".repeat((8 << 20) + 1));
     assert_eq!(
         error(&l.import_setup(&huge, "x.llf")),
-        "That file is too big to be a setup."
+        "That file is too big to open."
     );
     assert_eq!(
         error(&l.import_setup(
             r#"{"format":"losos-lab-setup","version":"<b>9</b>","devices":[],"links":[]}"#,
             "x"
         )),
-        "This setup file is version <b>9</b>; this Lab reads version 1."
+        "This setup file is version <b>9</b>; LosOS Diagrams reads version 1."
     );
     // a refused file leaves the canvas be
     assert_eq!(l.snapshot()["world"], before);
@@ -175,7 +175,7 @@ fn hostile_files() {
     // the file name is only ever a label; the saved name goes through deviceName
     assert_eq!(
         l.export_setup()["filename"],
-        json!("img-src-x-onerror-alert-1.llf")
+        json!("img-src-x-onerror-alert-1.canvas")
     );
 
     // ten thousand devices: the caps hold
@@ -210,7 +210,7 @@ fn last_setup_naming() {
     l.set_cfg(&bx, "joinMesh", "true");
     let doc: Value =
         serde_json::from_str(&l.last_setup().unwrap_or_default()).unwrap_or(Value::Null);
-    assert_eq!(doc["name"], json!("Edited Home: one box"));
+    assert_eq!(doc["losos"]["name"], json!("Edited Home: one box"));
     assert_eq!(l.last_setup(), None);
     let text = l.export_setup()["text"].as_str().unwrap_or("").to_string();
     assert_eq!(
@@ -227,7 +227,7 @@ fn last_setup_naming() {
     assert_eq!(r["name"], json!("Home: one box"));
     let doc: Value =
         serde_json::from_str(&l.last_setup().unwrap_or_default()).unwrap_or(Value::Null);
-    assert_eq!(doc["name"], json!("Home: one box"));
+    assert_eq!(doc["losos"]["name"], json!("Home: one box"));
 }
 
 #[test]

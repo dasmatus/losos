@@ -22,15 +22,16 @@ const TYPES = {
 
 /* The admin vhost's Content-Security-Policy (modules/containers.nix,
  * `adminCsp`), up to frame-src, which the board needs for /widget-frame/.
+ * LosOS Diagrams at /diagrams runs under it too.
  * A check that passes `csp: true` to serve() gets its pages under it, so a
  * library that styles itself with an injected <style> element, or a
  * component that sets a style attribute, fails here before it fails on the
  * box. */
 export const ADMIN_CSP = [
   "default-src 'none'",
-  "script-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self'",
-  "img-src 'self' data:",
+  "img-src 'self' data: blob:",
   "font-src 'self'",
   "connect-src 'self'",
   "frame-src 'self'",
@@ -71,23 +72,6 @@ export const APP_FRAME_CSP = [
   "form-action 'none'",
 ].join('; ');
 
-/* LosOS Lab's policy (/lab/, a second page of the same bundle). It differs
- * from the admin page's in 'wasm-unsafe-eval' (the simulator is a
- * WebAssembly module), blob: workers and images, and the closing
- * frame-ancestors/base-uri/form-action. Mirror nginx's /lab/ arm here. */
-export const LAB_CSP = [
-  "default-src 'none'",
-  "script-src 'self' 'wasm-unsafe-eval'",
-  "style-src 'self'",
-  "img-src 'self' data: blob:",
-  "font-src 'self'",
-  "connect-src 'self'",
-  "worker-src 'self' blob:",
-  "frame-ancestors 'none'",
-  "base-uri 'none'",
-  "form-action 'none'",
-].join('; ');
-
 /* A mail message's HTML (backend/src/http.rs MAIL_FRAME_CSP, the same
  * text as nginx's mail arm in modules/containers.nix). Mirror it here. */
 export const MAIL_FRAME_CSP = [
@@ -116,6 +100,32 @@ export const MANAGE_CSP = [
   "frame-ancestors 'none'",
 ].join('; ');
 
+/* The admin shell around a screen: someone signed in with LosOS Login (an
+ * administrator, so every sidebar entry shows) on a claimed box, and empty
+ * answers for what the shell reads on the side (pins, the look). Call it
+ * before a check's own routes, which then win. /api/lab/* stays refused,
+ * as lososd refuses it without the key, so Diagrams' probes find no helper. */
+export const SHELL_ME = {
+  name: 'matus',
+  displayName: 'Matus',
+  groups: ['losos-admins'],
+  admin: true,
+  spareKey: false,
+  sections: ['storage', 'lab'],
+  shared: [],
+};
+export async function shellRoutes(page, me = SHELL_ME) {
+  const json = (route, status, body) =>
+    route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+  await page.route('**/api/**', (route) =>
+    new URL(route.request().url()).pathname.startsWith('/api/lab')
+      ? json(route, 401, { error: 'unauthorized' })
+      : json(route, 200, {}),
+  );
+  await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
+  await page.route('**/api/me', (route) => json(route, 200, me));
+}
+
 /* Serves dist/ with an SPA fallback (`try_files $uri /index.html`). Without it
  * a deep link 404s and the test would be asserting against an error page. */
 export async function serve({ csp = false } = {}) {
@@ -128,11 +138,9 @@ export async function serve({ csp = false } = {}) {
         ? WIDGET_FRAME_CSP
         : file.startsWith('/app-frame/')
           ? APP_FRAME_CSP
-          : file.startsWith('/lab/') || file === 'lab/index.html'
-            ? LAB_CSP
-            : file.startsWith('/manage/') || file === 'manage/index.html'
-              ? MANAGE_CSP
-              : ADMIN_CSP;
+          : file.startsWith('/manage/') || file === 'manage/index.html'
+            ? MANAGE_CSP
+            : ADMIN_CSP;
       res.writeHead(200, {
         'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
         ...(csp ? { 'Content-Security-Policy': policy } : {}),
@@ -141,10 +149,10 @@ export async function serve({ csp = false } = {}) {
     };
     // A directory gets its index, as nginx's `index` directive gives it.
     const file = rel === '/' ? 'index.html' : rel.endsWith('/') ? rel + 'index.html' : rel;
-    // /lab/ is its own page with its own fallback, as its nginx location is,
-    // and so are the edge's /manage/, LosOS Cloud's /cloud/, a knowledge
-    // base's /kb/ and LosOS Git's /git/.
-    const page = ['lab', 'manage', 'cloud', 'kb', 'git'].find((p) => rel.startsWith(`/${p}/`) || rel === `/${p}`);
+    // The edge's /manage/, LosOS Cloud's /cloud/, a knowledge base's /kb/ and
+    // LosOS Git's /git/ are pages of their own with their own fallback, as
+    // their nginx locations are; /diagrams is the SPA's.
+    const page = ['manage', 'cloud', 'kb', 'git'].find((p) => rel.startsWith(`/${p}/`) || rel === `/${p}`);
     const fallback = page === undefined ? 'index.html' : `${page}/index.html`;
     send(file).catch(() =>
       send(fallback).catch(() => {
@@ -171,7 +179,10 @@ export function launch({ args = [] } = {}) {
 
 export function runner() {
   const failures = [];
+  // LOSOS_ONLY=<text> runs only the checks whose name contains it.
+  const only = process.env.LOSOS_ONLY;
   const check = async (name, fn) => {
+    if (only && !name.includes(only)) return;
     try {
       await fn();
       console.log(`  ok   ${name}`);

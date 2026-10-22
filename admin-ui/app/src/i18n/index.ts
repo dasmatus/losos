@@ -18,9 +18,11 @@ import gitReview from "./git-review";
 import home from "./home";
 import inference from "./inference";
 import install from "./install";
+import diagrams from "./diagrams";
 import lab from "./lab";
 import look from "./look";
 import mail from "./mail";
+import mention from "./mention";
 import machines from "./machines";
 import manage from "./manage";
 import notes from "./notes";
@@ -64,11 +66,13 @@ export const MESSAGES = {
   ...account,
   ...profile,
   ...lab,
+  ...diagrams,
   ...tour,
   ...palette,
   ...pins,
   ...manage,
   ...mail,
+  ...mention,
   ...games,
 };
 

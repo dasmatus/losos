@@ -157,7 +157,7 @@ bleibt ein Entwurf, bis du `a` drückst, um sie anzuwenden, und die Box fragt
 vor dem Neuaufbau nach, wie es die Admin-Seiten tun.
 
 :::note[Was auf den Admin-Seiten bleibt]
-Zugriffstokens, der Markt, das Labor und alles, was Daten löscht, bleiben
+Zugriffstokens, der Markt, Diagramme und alles, was Daten löscht, bleiben
 auf den Admin-Seiten.
 :::
 

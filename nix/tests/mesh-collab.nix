@@ -27,7 +27,7 @@
 # admin UI as it was before this feature: the boxes switch to it at the end
 # for the "before" pictures. The flake check runs without it.
 #
-# The admin UI is built without LosOS Lab, whose
+# The admin UI is built without LosOS Diagrams, whose
 # WebAssembly takes longer to build than this whole test runs and is not
 # part of anything tested here; the shipped package builds it.
 {
@@ -39,21 +39,20 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  noLab =
-    ui:
-    ui.overrideAttrs {
-      preBuild = "";
-      buildPhase = ''
-        runHook preBuild
-        cat > vite.nolab.config.ts <<'EOF'
-        import config from "./vite.config";
-        delete (config.build!.rolldownOptions!.input as Record<string, string>)["lab"];
-        export default config;
-        EOF
-        node_modules/.bin/vite build --config vite.nolab.config.ts
-        runHook postBuild
-      '';
-    };
+  noLab = ui: ui.overrideAttrs {
+    preBuild = "";
+    buildPhase = ''
+      runHook preBuild
+      cat > vite.nolab.config.ts <<'EOF'
+      import config from "./vite.config";
+      // Before the rename the page was `lab`; a Before UI may still have it.
+      for (const page of ["diagrams", "lab"]) delete (config.build!.rolldownOptions!.input as Record<string, string>)[page];
+      export default config;
+      EOF
+      node_modules/.bin/vite build --config vite.nolab.config.ts
+      runHook postBuild
+    '';
+  };
   adminUi = noLab lososPkgs.losos-admin-ui;
 
   # Matus's profile picture, a figure drawn in the palette (no photo, no

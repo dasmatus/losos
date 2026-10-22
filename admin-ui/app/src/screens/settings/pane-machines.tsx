@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ComputerCloudIcon, MinusSignIcon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Badge, StatusDot, type DotState } from "@/components/ui/badge";
@@ -198,8 +198,11 @@ function StartSection({
   const problemId = React.useId();
   const { offered, own } = choices(catalogue, account);
   const all = [...offered, ...own];
-  const [image, setImage] = React.useState(offered[0]?.id ?? "");
-  const [name, setName] = React.useState("");
+  // LosOS Diagrams links a planned machine card here as ?image=&name=.
+  const asked = new URLSearchParams(useLocation().search);
+  const askedImage = asked.get("image");
+  const [image, setImage] = React.useState(all.some((c) => c.id === askedImage) ? askedImage! : (offered[0]?.id ?? ""));
+  const [name, setName] = React.useState(asked.get("name")?.slice(0, 63) ?? "");
   const [listingId, setListingId] = React.useState(listings[0]?.id ?? "");
   const [replicas, setReplicas] = React.useState(1);
   const [userData, setUserData] = React.useState("");

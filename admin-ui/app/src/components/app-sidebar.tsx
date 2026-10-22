@@ -6,8 +6,8 @@ import {
   HardDriveIcon,
   Home01Icon,
   LayoutGridIcon,
+  FlowchartIcon,
   Mail01Icon,
-  NetworkIcon,
   PencilEdit02Icon,
   PinOffIcon,
   Search01Icon,
@@ -56,7 +56,7 @@ import { pinKey, viewPin, type PinView } from "@/lib/pins";
  *   Mesh                ▾   (the link opens Mesh; the chevron folds)
  *     Market                selling storage and compute, and disk sharing
  *     Machines              virtual machines on the mesh
- *   Lab                     (LosOS Lab at /lab/, a page of its own)
+ *   Diagrams                (LosOS Diagrams at /diagrams)
  *   Mail                    (LosOS Mail at /mail, only on the shared side)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
@@ -87,9 +87,6 @@ interface LinkEntry {
   icon: IconSvgElement;
   /** The settings pane behind it, for matching and for "is this current". */
   pane?: SettingsPaneId;
-  /** A page outside this app (the lab at /lab/): a plain link that loads it,
-   * not a router link that would draw this app's 404 at that address. */
-  external?: boolean;
   children?: readonly Entry[];
 }
 
@@ -132,10 +129,9 @@ const TREE: readonly Entry[] = [
   {
     kind: "link",
     key: "lab",
-    to: "/lab/",
+    to: "/diagrams",
     label: "shell.nav.lab",
-    icon: NetworkIcon,
-    external: true,
+    icon: FlowchartIcon,
   },
   {
     kind: "link",
@@ -190,7 +186,7 @@ function isCurrent(entry: LinkEntry, pathname: string): boolean {
   // An app of the owner's own (/apps/<id>, src/apps/) is under Apps.
   if (entry.pane === "apps" && pathname.startsWith("/apps/")) return true;
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
-  return pathname === entry.to;
+  return pathname.replace(/(.)\/$/, "$1") === entry.to;
 }
 
 function containsCurrent(entry: Entry, pathname: string): boolean {
@@ -492,13 +488,7 @@ function TopEntry({ entry, pathname, rail, open, onOpenChange }: TopEntryProps) 
     <SidebarMenuButton
       isActive={active}
       tooltip={label}
-      render={
-        entry.external === true ? (
-          <a href={entry.to} />
-        ) : (
-          <Link to={entry.to} aria-current={active ? "page" : undefined} />
-        )
-      }
+      render={<Link to={entry.to} aria-current={active ? "page" : undefined} />}
     >
       <Glyph icon={entry.icon} active={active} />
       <span className="group-data-[collapsible=icon]/sidebar:sr-only">{label}</span>

@@ -1521,7 +1521,7 @@ in
       '';
     };
 
-    # LosOS Lab is the admin UI's second page (admin-ui/app/lab/, inside
+    # LosOS Diagrams is the admin UI's second page (admin-ui/app/diagrams/, inside
     # losos-admin-ui), so there is nothing to point at, only whether to serve
     # it. Internal, like admin.ui.
     admin.lab = lib.mkOption {
@@ -1529,8 +1529,9 @@ in
       default = true;
       internal = true;
       description = ''
-        Serve LosOS Lab, the setup visualizer, at /lab/ from the admin UI's
-        own bundle, LAN-only, under its own content security policy.
+        Serve LosOS Diagrams, the diagram editor and network simulator, at
+        /diagrams/ from the admin UI's own bundle, LAN-only, under its own
+        content security policy.
       '';
     };
 
@@ -1570,16 +1571,16 @@ in
       '';
     };
 
-    # ── LosOS Lab's guests under libvirt (modules/lab.nix) ───────────────────
+    # ── LosOS Diagrams' guests under libvirt (modules/lab.nix) ───────────────────
     lab.libvirt.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
       description = ''
-        Run LosOS Lab's guests under libvirt on this box (KVM when the CPU
+        Run LosOS Diagrams' guests under libvirt on this box (KVM when the CPU
         has it) instead of simulating their consoles. Turns on libvirtd and
         a `losos-registrar lab` helper on a loopback port; lososd relays
         /api/lab/ to it and nginx proxies the guests' console and network
-        sockets, and the byte relay to libvirtd's socket that the Lab's
+        sockets, and the byte relay to libvirtd's socket that Diagrams'
         WebAssembly libvirt client uses (one ticket per socket, minted
         under the admin token). The guest images (bzImage, rootfs.bin, gear.bin from
         admin-ui/lab/engine/build.sh) go in `lab.libvirt.images`. Off by
@@ -1590,14 +1591,14 @@ in
     lab.libvirt.port = lib.mkOption {
       type = lib.types.port;
       default = 8095;
-      description = "Loopback port the Lab's libvirt helper listens on.";
+      description = "Loopback port Diagrams' libvirt helper listens on.";
     };
 
     lab.libvirt.images = lib.mkOption {
       type = lib.types.str;
       default = "/var/lib/losos-lab/images";
       description = ''
-        Folder holding the Lab's guest images: bzImage and rootfs.bin, and
+        Folder holding Diagrams' guest images: bzImage and rootfs.bin, and
         gear.bin for routers, switches and access points. A guest whose
         image is missing boots nowhere on the box and keeps its simulated
         console. Persisted via /var.
@@ -1607,20 +1608,20 @@ in
     lab.libvirt.maxGuests = lib.mkOption {
       type = lib.types.ints.between 1 64;
       default = 8;
-      description = "Most Lab guests the helper runs at once.";
+      description = "Most guests the helper runs at once.";
     };
 
     lab.libvirt.memoryMiB = lib.mkOption {
       type = lib.types.ints.between 32 4096;
       default = 96;
-      description = "Memory of each Lab guest, in MiB. The guests are busybox systems; 96 is what the in-browser engine gives them.";
+      description = "Memory of each guest, in MiB. The guests are busybox systems; 96 is what the in-browser engine gives them.";
     };
 
     lab.ordering.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
       visible = false;
-      description = "Show the order button in LosOS Lab.";
+      description = "Show the order button in LosOS Diagrams.";
     };
 
     # ── Installer (the `losos-ctl install` subcommand) ──────────────────────

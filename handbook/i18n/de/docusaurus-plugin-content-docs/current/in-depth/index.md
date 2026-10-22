@@ -46,8 +46,9 @@ erhalten, und zwar auf einer verschlüsselten Partition `/persist`.
   einen Port zu öffnen.
 - [Edge-Föderation](/in-depth/edge-federation.md). Deine eigene Edge im LAN, weitergeleitet über die offiziellen.
 - [Webseite der Edge](/in-depth/edge-web-ui.md). Die Seite unter `/manage/`, von der eine Firmen-Edge ihre Boxen verwaltet.
-- [Lab](/in-depth/lab.md). Der Visualisierer unter `/lab/`, seine simulierten und
-  echten Gäste.
+- [Diagramme](/in-depth/diagrams.md). Der Diagrammeditor unter `/diagrams/`:
+  JSON-Canvas-Dateien, LosOS Cloud, Maschinenkarten und der Netzwerksimulator
+  mit seinen simulierten und echten Gästen.
 - [Härtung](/in-depth/hardening.md). Die standardmäßige Härtungsbasis und die
   optionalen Schalter.
 - [TPM und der Festplattenschlüssel](/reference/tpm.md). Was der Chip leistet und
