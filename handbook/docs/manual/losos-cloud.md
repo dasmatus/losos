@@ -7,8 +7,6 @@ slug: /manual/losos-cloud
 # LosOS Cloud
 
 
-![LosOS Cloud and the other shared apps appear as tiles on the Overview.](../img/overview.png)
-
 LosOS Cloud is the box's own file service: your files in a browser, a
 network folder for the file manager, a server the Nextcloud desktop and
 phone apps sync with, and your calendars and contacts for any calendar app.
