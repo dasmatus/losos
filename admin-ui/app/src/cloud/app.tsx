@@ -44,6 +44,7 @@ import { formatBytes } from "./format";
 import { ListView } from "./lists";
 import { SharedFolderView, SharedView } from "./mesh/shared";
 import { NotesOpen, NotesPage } from "./notes/page";
+import { OfficePage } from "./office/page";
 import { OpenFile } from "./open";
 import { PhotosView } from "./photos";
 import { useMe } from "./store";
@@ -87,17 +88,25 @@ function Shell() {
   const { pathname } = useLocation();
   const connecting = pathname.startsWith("/connect/");
   const editing = pathname.startsWith("/edit/");
+  const office = pathname.startsWith("/office/");
   const noting = pathname === "/notes" || pathname.startsWith("/notes/");
   const navigate = useNavigate();
   const pageMenu = usePageMenu();
   return (
-    <div className="losos-shell min-h-dvh text-ink">
-      <TopBar search={!connecting && !editing && !noting} wide={noting} />
+    <div className={cn("losos-shell min-h-dvh text-ink", office && "flex h-dvh flex-col")}>
+      <TopBar search={!connecting && !editing && !noting && !office} wide={noting || office} />
       <ContextMenuHost
         page={pageMenu}
         search={connecting ? undefined : (text) => navigate(`/search?q=${encodeURIComponent(text)}`)}
       />
-      {connecting ? (
+      {office ? (
+        // The document under the top bar, edge to edge, its bars its own.
+        <main className="min-h-0 flex-1">
+          <Routes>
+            <Route path="/office/:file" element={<OfficePage />} />
+          </Routes>
+        </main>
+      ) : connecting ? (
         <Routes>
           <Route path="/connect/:token" element={<ConnectPage />} />
         </Routes>

@@ -34,6 +34,11 @@
     "POST /api/assistant/asks": "signed-in",
     "GET /api/assistant/asks/{id}": "signed-in",
     "DELETE /api/assistant/asks/{id}": "signed-in",
+    "POST /api/mail/folders": "signed-in",
+    "PUT /api/mail/folders/{id}": "signed-in",
+    "DELETE /api/mail/folders/{id}": "signed-in",
+    "GET /api/mail/filters": "signed-in",
+    "PUT /api/mail/filters": "signed-in",
 
     "GET /api/storage": "storage",
     "POST /api/grow": "storage",

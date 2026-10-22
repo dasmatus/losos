@@ -274,13 +274,14 @@ let
         "assistant"
         "look"
         "pins"
+        "mail"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname;
       version = "0.1.0";
       src = lib.cleanSource ./../backend/plugins;
-      cargoHash = "sha256-6cBVWYjliYOb5ZZC2EfU1aqwAGsIFEMYX+/BeBgcsA8=";
+      cargoHash = "sha256-BqSi8N3KGThyxoZA/6UO+ZAPrpDLyL0W0KPoSqGrNZY=";
       nativeBuildInputs = [
         pkgs.wasm-tools
         pkgs.lld
@@ -413,6 +414,7 @@ images
       "assistant"
       "look"
       "pins"
+      "mail"
       "probe"
     ];
   };

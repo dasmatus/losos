@@ -15,6 +15,8 @@ import { CloudTogether } from "./together";
 // Notes first: a Markdown file's name opens it as a note.
 import "./notes/opener";
 import "./collab/opener";
+// Office once the box says which types its Collabora opens.
+import "./office/opener";
 
 applyStoredTheme();
 applyFavicon();

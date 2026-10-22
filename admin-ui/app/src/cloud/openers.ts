@@ -24,6 +24,20 @@ export function registerOpener(opener: Opener): void {
   if (!openers.some((o) => o.id === opener.id)) openers.push(opener);
 }
 
+/* An opener that first asks the box whether it applies (Office asks which
+ * types its Collabora opens) registers late. /cloud/open waits for those
+ * answers, so a link from another app does not fall back to the folder
+ * while the question is still out. */
+const pending: Promise<unknown>[] = [];
+
+export function registeringOpener(answer: Promise<unknown>): void {
+  pending.push(answer.catch(() => {}));
+}
+
+export function openersSettled(): Promise<void> {
+  return Promise.all(pending).then(() => {});
+}
+
 export function openersFor(entry: Entry): readonly Opener[] {
   return entry.dir ? [] : openers.filter((o) => o.accepts(entry));
 }
