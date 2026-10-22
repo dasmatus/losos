@@ -12,6 +12,7 @@
 // after a picture of every open page.
 import { createRequire } from "node:module";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 
 const { chromium } = createRequire(import.meta.url)(process.env.CONTACTS_PLAYWRIGHT ?? "playwright");
 
@@ -26,9 +27,9 @@ const browser = await chromium.launch({ chromiumSandbox: false, proxy: { server:
 const problems = [];
 const pages = [];
 
-async function person(name, password, viewport = { width: 1280, height: 860 }) {
+async function person(name, password, film = false) {
   const context = await browser.newContext({
-    viewport,
+    viewport: film ? { width: 1280, height: 900 } : { width: 1280, height: 860 },
     deviceScaleFactor: 2,
     colorScheme: "dark",
     locale: "en-US",
@@ -243,10 +244,15 @@ async function on() {
 }
 
 // ── The launch film ────────────────────────────────────────────────────────
-// One full-viewport picture per state at 1280x900, and per typed letter,
-// with a manifest of where each picture leads and what it may point at.
+// One 1280x900 picture at 2x per state and per typed letter, and the whole
+// walk as one 60 fps clip at the same size. Chromium's screencast hands over a frame
+// whenever the page draws one; ffmpeg lays them out on a 60 fps timeline by
+// their own timestamps. The manifest says where each picture leads, what it
+// may point at, and where it sits in the clip.
 
 const steps = [];
+const frames = [];
+let clipStart = null;
 
 async function box(locator) {
   const b = await locator.boundingBox();
@@ -261,7 +267,8 @@ async function frame(page, title, action = { kind: "none" }, targets = {}) {
   const at = new URL(page.url());
   const shown = {};
   for (const [name, locator] of Object.entries(targets)) shown[name] = await box(locator);
-  steps.push({ file, url: `${HOST}${at.pathname}${at.search}`, title, action, targets: shown });
+  const clipAt = clipStart === null ? null : Math.round((Date.now() / 1000 - clipStart) * 1000) / 1000;
+  steps.push({ file, url: `${HOST}${at.pathname}${at.search}`, title, action, targets: shown, clipAt });
   console.log(`film ${file}`);
 }
 
@@ -275,10 +282,50 @@ async function typed(page, field, text, title) {
   }
 }
 
+async function record(page) {
+  mkdirSync(`${out}/film/frames`, { recursive: true });
+  const cdp = await page.context().newCDPSession(page);
+  cdp.on("Page.screencastFrame", ({ data, metadata, sessionId }) => {
+    const name = `frames/${String(frames.length).padStart(6, "0")}.jpg`;
+    writeFileSync(`${out}/film/${name}`, Buffer.from(data, "base64"));
+    frames.push({ name, t: metadata.timestamp });
+    if (clipStart === null) clipStart = metadata.timestamp;
+    cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
+  });
+  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 95, maxWidth: 2560, maxHeight: 1800, everyNthFrame: 1 });
+  return async () => {
+    await page.waitForTimeout(1000);
+    const clipName = `${String(steps.length + 1).padStart(2, "0")}-walkthrough.mp4`;
+    await cdp.send("Page.stopScreencast");
+    // Each frame stays on screen until the next one; ffmpeg's fps filter
+    // then samples that at 60 per second.
+    const lines = ["ffconcat version 1.0"];
+    for (const [i, f] of frames.entries()) {
+      const next = frames[i + 1]?.t ?? f.t + 1;
+      lines.push(`file '${f.name}'`, `duration ${Math.max(next - f.t, 0.001).toFixed(6)}`);
+    }
+    lines.push(`file '${frames.at(-1).name}'`);
+    writeFileSync(`${out}/film/frames.ffconcat`, lines.join("\n") + "\n");
+    const ffmpeg = spawnSync(
+      process.env.CONTACTS_FFMPEG ?? "ffmpeg",
+      ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", "frames.ffconcat",
+       "-vf", "fps=60,scale=2560:1800:flags=lanczos,format=yuv420p", "-r", "60",
+       "-c:v", "libx264", "-preset", "slow", "-crf", "16", "-movflags", "+faststart", clipName],
+      { cwd: `${out}/film`, encoding: "utf8" },
+    );
+    if (ffmpeg.status !== 0) throw new Error(`ffmpeg: ${ffmpeg.stderr}`);
+    console.log(`film ${clipName} from ${frames.length} frames`);
+    steps.push({ file: clipName, url: `${HOST}/`, title: "The walk through Contacts, Mail and Chat", action: { kind: "none" }, targets: {}, fps: 60, frames: frames.length });
+  };
+}
+
 async function film() {
   mkdirSync(`${out}/film`, { recursive: true });
-  const owner = await person("matus", process.env.CONTACTS_MATUS_PASSWORD, { width: 1280, height: 900 });
+  const owner = await person("matus", process.env.CONTACTS_MATUS_PASSWORD, true);
   await overview(owner);
+  await settle(owner);
+  const stop = await record(owner);
+  await owner.waitForTimeout(500);
   await frame(owner, "Overview with Contacts", { kind: "click", target: "contacts" }, { contacts: contactsLink(owner) });
 
   await contactsLink(owner).click();
@@ -338,6 +385,7 @@ async function film() {
   await importer.getByText(/updated/).waitFor();
   await frame(owner, "Import from a phone", { kind: "none" });
   await importer.getByRole("button", { name: "Done" }).click();
+  await stop();
 
   writeFileSync(
     `${out}/film/manifest.json`,

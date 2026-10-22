@@ -414,6 +414,7 @@ pkgs.testers.nixosTest {
         "CONTACTS_HOST": HOST,
         "CONTACTS_MATUS_PASSWORD": PASSWORD,
         "CONTACTS_OLD_CARD": "${oldCard}",
+        "CONTACTS_FFMPEG": "${pkgs.ffmpeg-headless}/bin/ffmpeg",
     }
 
     def browser(phase):
