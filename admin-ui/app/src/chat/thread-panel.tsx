@@ -2,6 +2,7 @@ import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowLeft01Icon, Cancel01Icon, Comment01Icon } from "@hugeicons/core-free-icons";
 import { Direction, type MatrixClient, MatrixEvent, Method, type Room } from "matrix-js-sdk";
+import { Masked } from "@/components/details";
 import { Spinner } from "@/components/ui/spinner";
 import { useT } from "@/lib/i18n-react";
 import { Avatar } from "./avatar";
@@ -78,11 +79,11 @@ function ThreadList({ client, room, onOpen }: { client: MatrixClient; room: Room
               <Avatar client={client} id={sender} name={name} mxc={room.getMember(sender)?.getMxcAvatarUrl()} size={32} />
               <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-semibold">{name}</span>
-                <span className="line-clamp-2 text-[13px] text-ink">{plainBody(root.getContent()) || t("chat.reply.attachment")}</span>
+                <span className="line-clamp-2 text-[13px] text-ink"><Masked text={plainBody(root.getContent()) || t("chat.reply.attachment")} still /></span>
                 <span className="mt-0.5 flex items-center gap-1 text-[12px] text-accent">
                   <HugeiconsIcon icon={Comment01Icon} className="size-3.5" />
                   {t("chat.thread.replies", { count })}
-                  {latest !== null && <span className="truncate text-muted"> · {plainBody(latest.getContent())}</span>}
+                  {latest !== null && <span className="truncate text-muted"> · <Masked text={plainBody(latest.getContent())} still /></span>}
                 </span>
               </span>
             </button>

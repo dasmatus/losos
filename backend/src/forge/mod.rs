@@ -38,11 +38,13 @@ pub mod events;
 pub mod gitcmd;
 pub mod import;
 pub mod internal;
+pub mod matrix;
 pub mod names;
 pub mod pulls;
 pub mod reviewer;
 pub mod server;
 pub mod statuses;
+pub mod tracker;
 pub mod transport;
 pub mod worktrees;
 
@@ -64,6 +66,8 @@ pub struct Config {
     pub push_create: bool,
     /// Where the pages are, below the box's address: `/git/`.
     pub base_path: String,
+    /// How people from other boxes are vouched for.
+    pub matrix: matrix::MatrixConfig,
 }
 
 impl Config {

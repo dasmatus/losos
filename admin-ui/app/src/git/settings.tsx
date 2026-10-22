@@ -8,11 +8,12 @@ import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
 import { AiReviewSetting } from "./ai-review";
 import { git, type Repo } from "./api";
+import { ChatRoomSetting } from "./chat-room";
 import { explain, NotFound, RepoHeader, VisibilityField, WithRepo } from "./parts";
 
 /* A repository's own settings, for the people who administer it: its
- * name, its description, who may see it, and whether LosOS Reviewer
- * reviews its pull requests. */
+ * name, its description, who may see it, its room in LosOS Chat, and
+ * whether LosOS Reviewer reviews its pull requests. */
 
 export function SettingsView() {
   return <WithRepo>{(repo, reload) => (repo.permissions.admin ? <Settings repo={repo} reload={reload} /> : <NotFound />)}</WithRepo>;
@@ -72,6 +73,7 @@ function Settings({ repo, reload }: { repo: Repo; reload: () => void }) {
           </Button>
         </div>
       </form>
+      <ChatRoomSetting repo={repo} reload={reload} />
       <AiReviewSetting owner={repo.owner.login} repo={repo.name} />
     </div>
   );

@@ -63,7 +63,9 @@ Haken gespeichert.
   schreiben (siehe
   [Teilen und gemeinsam bearbeiten](sharing-and-editing-together)), auf
   einem breiten Bildschirm mit der gezeichneten Notiz neben dem Text. Tipp
-  `[[`, um eine Notiz zum Verlinken auszuwählen.
+  `[[`, um eine Notiz zum Verlinken auszuwählen. Markier Wörter, im Editor
+  oder beim Lesen, für
+  [eine Leiste mit Aktionen](admin-pages#the-bar-over-a-selection) darüber.
 - **Mindmap** zeichnet die Überschriften der Notiz und die Listen darunter
   als Äste. Klick auf den Ast einer Überschrift, um diesen Teil zu lesen.
 - Der Knopf **Graph aller Notizen** über den Notizen zeigt jede Notiz im

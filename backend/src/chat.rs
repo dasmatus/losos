@@ -63,6 +63,39 @@ const THREADS_DEFAULT: u32 = 25;
 /// The longest device name a page may give.
 const DEVICE_NAME_MAX: usize = 64;
 
+/// LosOS Git's account in chat, which posts into repository rooms.
+pub const GIT_BOT: &str = "losos-git";
+/// Its display name.
+const GIT_BOT_NAME: &str = "LosOS Git";
+/// Notices sent since start, for their transaction IDs.
+static NOTICES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// A repository a room is made for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepoRoom {
+    /// The room's name.
+    pub name: String,
+    /// The repository's page, for the topic.
+    pub url: String,
+    /// Anyone may join, from any box.
+    pub public: bool,
+}
+
+/// One notice into a room: plain text and the same as HTML.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Notice {
+    pub text: String,
+    pub html: String,
+}
+
+/// What a person is called in chat: their display name, or their name.
+fn shown_name(person: &crate::people::Person) -> String {
+    match person.display_name.trim() {
+        "" => person.name.clone(),
+        shown => shown.to_string(),
+    }
+}
+
 /// Why chat could not do what was asked.
 #[derive(Debug, thiserror::Error)]
 pub enum ChatError {
@@ -331,6 +364,12 @@ impl Chat {
 
     fn inner(&self) -> Result<&Inner, ChatError> {
         self.inner.as_ref().ok_or(ChatError::Off)
+    }
+
+    /// The part after the colon in every user ID here, when chat runs.
+    #[must_use]
+    pub fn server_name(&self) -> Option<&str> {
+        self.inner.as_ref().map(|i| i.config.server_name.as_str())
     }
 
     /// The Matrix user ID of a LosOS Login name on this box.
@@ -634,6 +673,152 @@ impl Chat {
             // so, in its own words, so the page signs the device in again.
             None => Ok(Verdict::Allow),
         }
+    }
+
+    /// `POST /api/chat/openid`: a Matrix OpenID token for the person. Another
+    /// box checks it at this one's federation API
+    /// (`/_matrix/federation/v1/openid/userinfo`) and learns their chat
+    /// address and nothing else; LosOS Git signs people of other boxes in
+    /// that way (`crate::forge::matrix`). It lasts as long as Dendrite says,
+    /// an hour.
+    pub fn openid(&self, person: &crate::people::Person) -> Result<Value, ChatError> {
+        let inner = self.inner()?;
+        if person.groups.iter().any(|g| g == crate::people::LOCKED) {
+            return Err(ChatError::NotForYou(
+                "finish what LosOS Login asks of your account first".to_string(),
+            ));
+        }
+        let token = inner.as_token()?;
+        let user_id = self.account(&token, &person.name, &person.display_name)?;
+        let answer = inner.homeserver.call(
+            "POST",
+            &format!(
+                "/_matrix/client/v3/user/{}/openid/request_token?user_id={}",
+                encode(&user_id),
+                encode(&user_id)
+            ),
+            &token,
+            Some(&json!({})),
+        )?;
+        let access_token = answer
+            .body
+            .get("access_token")
+            .and_then(Value::as_str)
+            .filter(|_| answer.status == 200);
+        let Some(access_token) = access_token else {
+            return Err(ChatError::Homeserver {
+                status: answer.status,
+                errcode: answer.errcode(),
+            });
+        };
+        Ok(json!({
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "matrix_server_name": inner.config.server_name,
+            "expires_in": answer.body.get("expires_in").cloned().unwrap_or(json!(3600)),
+            "user_id": user_id,
+            "display_name": shown_name(person),
+        }))
+    }
+
+    /// The account LosOS Git's notices come from, made the first time.
+    fn git_bot(&self, token: &str) -> Result<String, ChatError> {
+        self.account(token, GIT_BOT, GIT_BOT_NAME)
+    }
+
+    /// Make a room for a repository, as `person` (its administrator; the
+    /// caller checked), with LosOS Git's account in it to post what happens.
+    /// Anyone may join the room of a public repository, from any box; the
+    /// room of any other is by invitation.
+    pub fn git_room(
+        &self,
+        person: &crate::people::Person,
+        repo: &RepoRoom,
+    ) -> Result<String, ChatError> {
+        let inner = self.inner()?;
+        let token = inner.as_token()?;
+        let hs = &*inner.homeserver;
+        let user_id = self.account(&token, &person.name, &person.display_name)?;
+        let bot = self.git_bot(&token)?;
+        let made = hs.call(
+            "POST",
+            &format!("/_matrix/client/v3/createRoom?user_id={}", encode(&user_id)),
+            &token,
+            Some(&json!({
+                "name": repo.name,
+                "topic": format!("LosOS Git: {}", repo.url),
+                "preset": if repo.public { "public_chat" } else { "private_chat" },
+                "visibility": "private",
+                "invite": [bot],
+            })),
+        )?;
+        let room = made
+            .body
+            .get("room_id")
+            .and_then(Value::as_str)
+            .filter(|_| made.status == 200)
+            .map(str::to_string);
+        let Some(room) = room else {
+            return Err(ChatError::Homeserver {
+                status: made.status,
+                errcode: made.errcode(),
+            });
+        };
+        let joined = hs.call(
+            "POST",
+            &format!(
+                "/_matrix/client/v3/rooms/{}/join?user_id={}",
+                encode(&room),
+                encode(&bot)
+            ),
+            &token,
+            Some(&json!({})),
+        )?;
+        if joined.status != 200 {
+            return Err(ChatError::Homeserver {
+                status: joined.status,
+                errcode: joined.errcode(),
+            });
+        }
+        Ok(room)
+    }
+
+    /// Post a notice into `room` as LosOS Git's account.
+    pub fn git_notice(&self, room: &str, notice: &Notice) -> Result<(), ChatError> {
+        let inner = self.inner()?;
+        let token = inner.as_token()?;
+        let bot = self.git_bot(&token)?;
+        let txn = format!(
+            "losos-git-{}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0),
+            NOTICES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        let sent = inner.homeserver.call(
+            "PUT",
+            &format!(
+                "/_matrix/client/v3/rooms/{}/send/m.room.message/{}?user_id={}",
+                encode(room),
+                encode(&txn),
+                encode(&bot)
+            ),
+            &token,
+            Some(&json!({
+                "msgtype": "m.notice",
+                "body": notice.text,
+                "format": "org.matrix.custom.html",
+                "formatted_body": notice.html,
+            })),
+        )?;
+        if sent.status != 200 {
+            return Err(ChatError::Homeserver {
+                status: sent.status,
+                errcode: sent.errcode(),
+            });
+        }
+        Ok(())
     }
 
     /// `GET /_matrix/client/v1/rooms/{room}/threads`, which Dendrite lacks:
@@ -1218,6 +1403,35 @@ mod tests {
                         )
                     }
                 }
+                ("POST", p) if p.ends_with("/openid/request_token") => {
+                    assert_eq!(token, AS);
+                    let user = path
+                        .split("user_id=")
+                        .nth(1)
+                        .unwrap()
+                        .replace("%40", "@")
+                        .replace("%3A", ":");
+                    assert!(p.contains(&user.replace('@', "%40").replace(':', "%3A")));
+                    ok(
+                        json!({ "access_token": format!("openid-{user}"), "token_type": "Bearer",
+                               "matrix_server_name": SERVER, "expires_in": 3600 }),
+                    )
+                }
+                ("POST", "/_matrix/client/v3/createRoom") => {
+                    assert_eq!(token, AS);
+                    s.next += 1;
+                    let room = format!("!room{}:{SERVER}", s.next);
+                    s.events
+                        .insert(room.clone(), json!({ "as": path, "body": body }));
+                    ok(json!({ "room_id": room }))
+                }
+                ("POST", p) if p.ends_with("/join") => ok(json!({ "joined": path })),
+                ("PUT", p) if p.contains("/send/m.room.message/") => {
+                    let n = s.calls.len();
+                    s.events
+                        .insert(format!("sent{n}"), json!({ "path": path, "body": body }));
+                    ok(json!({ "event_id": "$sent" }))
+                }
                 ("GET", p) if p.contains("/event/") => {
                     if !s.tokens.contains_key(token) {
                         return no(401, "M_UNKNOWN_TOKEN");
@@ -1365,6 +1579,80 @@ mod tests {
             original_method: "GET".into(),
             forwarded_for: "192.168.1.2".into(),
         }
+    }
+
+    #[test]
+    fn an_openid_token_names_the_person_and_a_held_person_gets_none() {
+        let r = rig();
+        let t = r.chat.openid(&person("eva", "Eva", &[])).unwrap();
+        assert_eq!(t["access_token"], "openid-@eva:mattbox.local");
+        assert_eq!(t["matrix_server_name"], SERVER);
+        assert_eq!(t["user_id"], "@eva:mattbox.local");
+        assert_eq!(t["display_name"], "Eva");
+        assert!(matches!(
+            r.chat.openid(&person("held", "", &[crate::people::LOCKED])),
+            Err(ChatError::NotForYou(_))
+        ));
+        assert!(matches!(
+            Chat::off().openid(&person("eva", "", &[])),
+            Err(ChatError::Off)
+        ));
+    }
+
+    #[test]
+    fn a_repository_room_is_made_as_its_owner_with_the_git_account_in_it() {
+        let r = rig();
+        let room = r
+            .chat
+            .git_room(
+                &person("matus", "Matúš", &["losos-admins"]),
+                &RepoRoom {
+                    name: "site".into(),
+                    url: "https://mattbox.local/git/notshared/site".into(),
+                    public: true,
+                },
+            )
+            .unwrap();
+        let s = r.hs.state.lock().unwrap();
+        let made = &s.events[&room];
+        assert!(made["as"]
+            .as_str()
+            .unwrap()
+            .ends_with("user_id=%40matus%3Amattbox.local"));
+        assert_eq!(made["body"]["preset"], "public_chat");
+        assert_eq!(made["body"]["invite"], json!(["@losos-git:mattbox.local"]));
+        assert_eq!(
+            s.accounts.get("losos-git").map(String::as_str),
+            Some("LosOS Git")
+        );
+        assert!(s
+            .calls
+            .iter()
+            .any(|c| c.starts_with("POST /_matrix/client/v3/rooms/")
+                && c.ends_with("/join?user_id=%40losos-git%3Amattbox.local")));
+        drop(s);
+
+        r.chat
+            .git_notice(
+                &room,
+                &Notice {
+                    text: "hello".into(),
+                    html: "<b>hello</b>".into(),
+                },
+            )
+            .unwrap();
+        let s = r.hs.state.lock().unwrap();
+        let sent = s
+            .events
+            .iter()
+            .find(|(k, _)| k.starts_with("sent"))
+            .map(|(_, v)| v)
+            .expect("a notice");
+        assert_eq!(sent["body"]["msgtype"], "m.notice");
+        assert!(sent["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("user_id=%40losos-git%3Amattbox.local"));
     }
 
     #[test]

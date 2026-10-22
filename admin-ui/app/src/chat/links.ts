@@ -18,12 +18,12 @@ export function withUserId(raw: string | null, server: string): string | null {
   return LOCALPART.test(value) ? `@${value}:${server}` : null;
 }
 
-/** `href` without the parameters chat acts on (`with`, `share`, `text`),
- *  so a reload does not do it again. The others (a call's `call`) stay
- *  for whoever reads them next. */
+/** `href` without the parameters chat acts on (`with`, `share`, `text`,
+ *  `join`, `via`), so a reload does not do it again. The others (a call's
+ *  `call`) stay for whoever reads them next. */
 export function withoutLink(href: string): string {
   const url = new URL(href);
-  for (const key of ["with", "share", "text"]) url.searchParams.delete(key);
+  for (const key of ["with", "share", "text", "join", "via"]) url.searchParams.delete(key);
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
@@ -40,4 +40,14 @@ export function withoutCall(path: string): string {
   const url = new URL(path, "http://box.invalid");
   url.searchParams.delete("call");
   return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/** `?join=<room ID>&via=<server>`, from a LosOS Git repository's page: the
+ *  room to open, joined first, over the server that has it. */
+export function linkedRoom(search: string): { room: string; via: string[] } | null {
+  const q = new URLSearchParams(search);
+  const room = q.get("join");
+  if (room === null || !/^![^:\s]+:[^\s]+$/.test(room)) return null;
+  const via = q.get("via");
+  return { room, via: via !== null && via !== "" ? [via] : [room.slice(room.indexOf(":") + 1)] };
 }
