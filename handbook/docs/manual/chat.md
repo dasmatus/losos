@@ -99,6 +99,17 @@ Other Matrix apps, such as Element, cannot sign in to the box's chat,
 because chat has no passwords and signs in only through LosOS Login. Use
 the chat page in a browser on any device on the box's network.
 
-Chat talks only to the box. Talking to other Matrix servers is off unless
-an administrator turns on `losos.chat.federation.enable` in **Settings** >
-**Advanced**, which needs a domain of your own that other servers can reach.
+## Other LosOS boxes
+
+Chat reaches the LosOS boxes on your network. Write to `@eva:kitchenbox.local`
+from `mattbox.local` and the message goes from one box to the other, without
+leaving the network. A box named `.local` answers other chat servers only
+from the network it is on.
+
+To talk to Matrix servers on the internet as well, the box needs a domain of
+your own that they can reach. `losos.chat.federation.enable` in **Settings**
+> **Advanced** turns talking to other servers off altogether.
+
+A repository in [LosOS Git](losos-git#a-chat-room-for-a-repository) can have
+a room here, where LosOS Git posts what happens in it. People of other boxes
+also sign in to LosOS Git with their chat address.

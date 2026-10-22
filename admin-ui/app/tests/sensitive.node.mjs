@@ -17,7 +17,7 @@ const built = await esbuild.build({
   platform: 'node',
   write: false,
 });
-const { findDetails, detailSpans, luhn, ibanValid, mrzCheck, birthNumberValid } = await import(
+const { findDetails, detailSpans, blackOut, luhn, ibanValid, mrzCheck, birthNumberValid } = await import(
   `data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`
 );
 
@@ -92,6 +92,10 @@ assert.deepEqual(cut('rodné číslo 8551011238.'), ['8551011238']);
 assert.deepEqual(cut('passport EA1234567 and SSN 123-45-6789'), ['EA1234567', '123-45-6789']);
 assert.deepEqual(cut(`Here:\n  ${idCard}`), ['I<UTOD231458907<<<<<<<<<<<<<<<', '7408122F1204159UTO<<<<<<<<<<<6']);
 assert.deepEqual(cut('twice: 4242424242424242 and 4242 4242 4242 4242').length, 2);
+
+// Plain text, for a desktop notification: squares where the numbers were.
+assert.equal(blackOut('Pay SK31 1200 0000 1987 4263 7541 or card 4242 4242 4242 4242.'), 'Pay \u2588\u2588\u2588\u2588 or card \u2588\u2588\u2588\u2588.');
+assert.equal(blackOut('Hi Eva, chat is up on the box.'), 'Hi Eva, chat is up on the box.');
 
 // Ordinary messages.
 assert.deepEqual(kinds('Hi Eva, chat is up on the box.'), []);
