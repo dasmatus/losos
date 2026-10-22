@@ -36,11 +36,12 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { PaneHeader } from "@/screens/settings/rows";
 import { Avatar } from "./avatar";
-import { CallsProvider, useCalls } from "./calls";
+import { callable, useCalls } from "./calls";
+import { chatDocument } from "./document";
 import { Composer } from "./composer";
 import { failed, ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, openDirect, RoomSettingsDialog, StartChatDialog } from "./dialogs";
 import { readShare, ShareDialog } from "./cloud";
-import { withoutLink, withUserId } from "./links";
+import { linkedCall, withoutCall, withoutLink, withUserId } from "./links";
 import { directPartner, directRooms, isSpace, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
 import { RoomList } from "./room-list";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
@@ -57,16 +58,9 @@ import { ThreadPanel } from "./thread-panel";
  * chat's own policy (modules/containers.nix), which adds 'wasm-unsafe-eval'
  * for the end-to-end crypto and blob: for decrypted media. The sidebar and
  * the palette link to it as a real navigation; anything that routes here
- * inside the page instead loads it again (loadedHere). */
+ * inside the page instead loads it again (chatDocument). */
 
 type Boot = { state: "loading" } | { state: "ready"; signed: Signed } | { state: "refused"; why: Refusal; message: string };
-
-/** Whether this document was loaded at /chat/, under chat's policy. */
-function loadedHere(): boolean {
-  const entry = performance.getEntriesByType("navigation")[0];
-  const url = entry !== undefined ? entry.name : window.location.href;
-  return new URL(url, window.location.href).pathname.startsWith("/chat/");
-}
 
 /* The room on screen lives in the address's hash (#/room/!id:server), so a
  * reload or a shared link opens it again. */
@@ -92,7 +86,7 @@ function useHashRoom(): [string | null, (id: string | null) => void] {
 export default function ChatScreen() {
   const t = useT();
   const navigate = useNavigate();
-  const here = loadedHere();
+  const here = chatDocument();
   const [boot, setBoot] = React.useState<Boot>(() => {
     const now = signedNow();
     return now !== null ? { state: "ready", signed: now } : { state: "loading" };
@@ -160,9 +154,8 @@ export default function ChatScreen() {
 
   if (boot.state === "ready") {
     return (
-      <CallsProvider client={boot.signed.client}>
-        <ChatHome signed={boot.signed} />
-      </CallsProvider>
+      // Calls are held by the shell (calls-shell.tsx), so one outlives this screen.
+      <ChatHome signed={boot.signed} />
     );
   }
   if (boot.state === "loading" || boot.why === "starting") {
@@ -319,10 +312,13 @@ function ChatHome({ signed }: { signed: Signed }) {
   }, [client]);
 
   // `?with=<person>` from Contacts, Mail or Cloud opens the direct chat
-  // with that person, made if there is none yet; `?share=<path>` from
-  // LosOS Cloud asks which conversation gets the files.
+  // with that person, made if there is none yet, and `&call=voice|video`
+  // starts that call in it; `?share=<path>` from LosOS Cloud asks which
+  // conversation gets the files.
   const navigate = useNavigate();
+  const calls = useCalls();
   const linked = React.useRef(false);
+  const ring = React.useRef<{ room: string; video: boolean } | null>(null);
   const [share, setShare] = React.useState<{ paths: string[]; text: string } | null>(null);
   React.useEffect(() => {
     if (linked.current) return;
@@ -331,14 +327,28 @@ function ChatHome({ signed }: { signed: Signed }) {
     const raw = search.get("with");
     const shared = readShare(search);
     if (raw === null && shared === null) return;
-    navigate(withoutLink(window.location.href), { replace: true });
+    const video = linkedCall(window.location.search);
+    navigate(withoutCall(withoutLink(window.location.href)), { replace: true });
     if (shared !== null) setShare(shared);
     const userId = withUserId(raw, client.getDomain() ?? "");
     if (userId === null || userId === me) return;
     openDirect(client, userId)
-      .then(setCurrent)
+      .then((roomId) => {
+        if (video !== null) ring.current = { room: roomId, video };
+        setCurrent(roomId);
+      })
       .catch((error: unknown) => failed(t, error));
   }, [client, me, navigate, setCurrent, t]);
+  // Every render: a room just made reaches the client a sync later, and
+  // calls are available once their session is up.
+  React.useEffect(() => {
+    const want = ring.current;
+    if (want === null || !calls.available) return;
+    const linkedRoom = client.getRoom(want.room);
+    if (linkedRoom === null) return;
+    ring.current = null;
+    if (calls.active === null && callable(linkedRoom)) calls.start(linkedRoom, want.video);
+  });
 
   const room = current !== null ? (client.getRoom(current) ?? null) : null;
   const spaceRoom = space !== null ? client.getRoom(space) : null;
@@ -590,12 +600,16 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
           </div>
           {membership === KnownMembership.Join && (
             <>
-              <Button variant="ghost" size="icon-sm" aria-label={t("chat.call.voice")} title={t("chat.call.voice")} disabled={calls.active !== null} onClick={() => calls.start(room, false)}>
-                <HugeiconsIcon icon={Call02Icon} className="size-4" />
-              </Button>
-              <Button variant="ghost" size="icon-sm" aria-label={t("chat.call.video")} title={t("chat.call.video")} disabled={calls.active !== null} onClick={() => calls.start(room, true)}>
-                <HugeiconsIcon icon={Video01Icon} className="size-4" />
-              </Button>
+              {calls.available && callable(room) && (
+                <>
+                  <Button variant="ghost" size="icon-sm" aria-label={t("chat.call.voice")} title={t("chat.call.voice")} disabled={calls.active !== null} onClick={() => calls.start(room, false)}>
+                    <HugeiconsIcon icon={Call02Icon} className="size-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon-sm" aria-label={t("chat.call.video")} title={t("chat.call.video")} disabled={calls.active !== null} onClick={() => calls.start(room, true)}>
+                    <HugeiconsIcon icon={Video01Icon} className="size-4" />
+                  </Button>
+                </>
+              )}
               <Button
                 variant="ghost"
                 size="icon-sm"
