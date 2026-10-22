@@ -3,7 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Attachment01Icon, Cancel01Icon, CloudIcon, Mic01Icon, SentIcon } from "@hugeicons/core-free-icons";
 import type { MatrixClient, MatrixEvent, Room } from "matrix-js-sdk";
 import { CloudPicker } from "@/components/cloud-picker";
-import { useDetailsCheck } from "@/components/details";
+import { Masked, useDetailsCheck } from "@/components/details";
 import { useSendCheck } from "@/components/send-check";
 import { toast } from "@/components/ui/toast";
 import { readCloudFile } from "@/lib/cloud-files";
@@ -192,7 +192,7 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
         <div className="mb-2 flex items-center gap-2 rounded-control bg-sunk px-3 py-1.5 text-[12.5px] text-muted">
           <span className="min-w-0 flex-1 truncate">
             <span className="font-medium text-ink">{banner}</span>
-            {replyTo !== null && editing === null && <> · {plainBody(replyTo.getContent())}</>}
+            {replyTo !== null && editing === null && <> · <Masked text={plainBody(replyTo.getContent())} still /></>}
           </span>
           <button type="button" aria-label={t("chat.composer.cancel")} className="rounded p-0.5 hover:bg-surface" onClick={() => { setText(""); onDone(); }}>
             <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
