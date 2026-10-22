@@ -232,6 +232,60 @@ pub fn pushed_refs(body: &[u8]) -> Option<Vec<String>> {
     }
 }
 
+/// The capabilities a push asks for, after the NUL of its first command.
+pub fn push_capabilities(body: &[u8]) -> Vec<String> {
+    let Some(len) = body
+        .get(..4)
+        .and_then(|h| std::str::from_utf8(h).ok())
+        .and_then(|h| usize::from_str_radix(h, 16).ok())
+        .filter(|len| *len > 4)
+    else {
+        return Vec::new();
+    };
+    let Some(line) = body.get(4..len) else {
+        return Vec::new();
+    };
+    let Some(nul) = line.iter().position(|b| *b == 0) else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&line[nul + 1..])
+        .split_whitespace()
+        .map(str::to_string)
+        .collect()
+}
+
+/// The answer to a push refused before git saw it, as git reads one: every
+/// ref `ng` with the reason, so `git push` prints the reason beside each
+/// ref instead of a bare HTTP status. Inside the side band when the client
+/// asked for it, with the reason once more as a `remote:` line.
+pub fn refused_push(refs: &[String], caps: &[String], reason: &str) -> Vec<u8> {
+    let reason = reason.replace(['\n', '\r'], " ");
+    let mut report = pkt_line("unpack ok\n");
+    for r in refs {
+        report.extend(pkt_line(&format!("ng {r} {reason}\n")));
+    }
+    report.extend_from_slice(FLUSH);
+    let band = if caps.iter().any(|c| c == "side-band-64k") {
+        65515
+    } else if caps.iter().any(|c| c == "side-band") {
+        995
+    } else {
+        return report;
+    };
+    let mut out = Vec::new();
+    let mut packet = |channel: u8, data: &[u8]| {
+        out.extend(format!("{:04x}", data.len() + 5).into_bytes());
+        out.push(channel);
+        out.extend_from_slice(data);
+    };
+    packet(2, format!("{reason}\n").as_bytes());
+    for chunk in report.chunks(band) {
+        packet(1, chunk);
+    }
+    out.extend_from_slice(FLUSH);
+    out
+}
+
 fn internal<E: std::fmt::Debug>(e: E) -> HttpResponse {
     use actix_web::ResponseError;
     tracing::error!(error = ?e, "LosOS Git could not answer");
@@ -372,17 +426,23 @@ async fn rpc(
             }
             raw = out;
         }
-        let ok = pushed_refs(&raw).is_some_and(|refs| {
-            !refs.is_empty()
-                && refs
-                    .iter()
-                    .all(|r| r.starts_with(prefix.as_str()) && r.len() > prefix.len())
+        let refs = pushed_refs(&raw).filter(|refs| !refs.is_empty());
+        let ok = refs.as_ref().is_some_and(|refs| {
+            refs.iter()
+                .all(|r| r.starts_with(prefix.as_str()) && r.len() > prefix.len())
         });
         if !ok {
             let branch = prefix.trim_start_matches("refs/heads/");
-            return HttpResponse::Forbidden().json(server::message(&format!(
+            let reason = format!(
                 "You may push only to branches under {branch} here: name yours {branch}<name>."
-            )));
+            );
+            return match refs {
+                Some(refs) => HttpResponse::Ok()
+                    .content_type("application/x-git-receive-pack-result")
+                    .insert_header(("Cache-Control", "no-cache"))
+                    .body(refused_push(&refs, &push_capabilities(&raw), &reason)),
+                None => HttpResponse::Forbidden().json(server::message(&reason)),
+            };
         }
         whole = Some(raw);
     }
@@ -600,6 +660,37 @@ pub fn pushed(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_push_names_every_ref_with_the_reason_in_the_band_git_asked_for() {
+        let zero = "0".repeat(40);
+        let a = "a".repeat(40);
+        let mut body = pkt_line(&format!(
+            "{zero} {a} refs/heads/main\0report-status side-band-64k quiet\n"
+        ));
+        body.extend(pkt_line(&format!("{zero} {a} refs/heads/hours\n")));
+        body.extend_from_slice(FLUSH);
+        let caps = push_capabilities(&body);
+        assert_eq!(caps, ["report-status", "side-band-64k", "quiet"]);
+        let refs = pushed_refs(&body).unwrap();
+
+        let plain = refused_push(&refs, &[], "Not\nhere.");
+        let mut want = pkt_line("unpack ok\n");
+        want.extend(pkt_line("ng refs/heads/main Not here.\n"));
+        want.extend(pkt_line("ng refs/heads/hours Not here.\n"));
+        want.extend_from_slice(FLUSH);
+        assert_eq!(plain, want);
+
+        // In the side band: the reason on 2, the report on 1, then a flush.
+        let banded = refused_push(&refs, &caps, "Not\nhere.");
+        let mut expect = b"000f\x02Not here.\n".to_vec();
+        expect.extend(format!("{:04x}", want.len() + 5).into_bytes());
+        expect.push(1);
+        expect.extend_from_slice(&want);
+        expect.extend_from_slice(FLUSH);
+        assert_eq!(banded, expect);
+        assert!(push_capabilities(b"0000").is_empty());
+    }
 
     #[test]
     fn pkt_lines_carry_their_own_length() {

@@ -677,6 +677,7 @@ in
             toGit = ''
               ${if signInGit then signInMaybe else clearSignIn}
               client_max_body_size 0;
+              client_body_buffer_size 1m;
               proxy_request_buffering off;
               proxy_buffering off;
               proxy_http_version 1.1;

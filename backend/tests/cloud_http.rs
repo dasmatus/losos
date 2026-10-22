@@ -251,6 +251,89 @@ async fn a_bad_checksum_or_a_short_body_is_refused() {
     assert_eq!(r.status(), 409);
 }
 
+/// The body of a request in many small pieces, as from the network, and
+/// optionally breaking off after them.
+fn pieces(body: &[u8], piece: usize, cut: bool) -> actix_web::dev::Payload {
+    let mut parts: Vec<Result<actix_web::web::Bytes, actix_web::error::PayloadError>> = body
+        .chunks(piece)
+        .map(|c| Ok(actix_web::web::Bytes::copy_from_slice(c)))
+        .collect();
+    if cut {
+        parts.push(Err(actix_web::error::PayloadError::Incomplete(None)));
+    }
+    let stream: std::pin::Pin<
+        Box<
+            dyn futures_util::Stream<
+                Item = Result<actix_web::web::Bytes, actix_web::error::PayloadError>,
+            >,
+        >,
+    > = Box::pin(futures_util::stream::iter(parts));
+    stream.into()
+}
+
+#[actix_web::test]
+async fn a_body_of_many_batches_lands_whole() {
+    let (d, c) = cloud();
+    let app = app!(c);
+    // Two and a half batches and a few bytes, in pieces that never line up
+    // with a batch.
+    let len = losos_ctl::cloud::dav::BATCH * 5 / 2 + 13;
+    let body: Vec<u8> = (0..len).map(|i| (i * 31 % 251) as u8).collect();
+    let sum = {
+        let mut sha = ring::digest::Context::new(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY);
+        sha.update(&body);
+        sha.finish()
+            .as_ref()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    };
+    let r = call_service(
+        &app,
+        as_alice(method("PUT", "/remote.php/webdav/big.bin"))
+            .insert_header(("oc-checksum", format!("SHA1:{sum}")))
+            .insert_header(("oc-total-length", len.to_string()))
+            .to_request()
+            .replace_payload(pieces(&body, 7_919, false))
+            .0,
+    )
+    .await;
+    assert_eq!(r.status(), 201);
+    assert_eq!(c.store.read_bytes("alice", "big.bin").unwrap(), body);
+    assert_eq!(
+        c.store
+            .stat("alice", "big.bin")
+            .unwrap()
+            .checksum
+            .as_deref(),
+        Some(format!("SHA1:{sum}").as_str())
+    );
+
+    // Cut off after a batch went to disk: refused, and nothing left behind.
+    let r = call_service(
+        &app,
+        as_alice(method("PUT", "/remote.php/webdav/cut.bin"))
+            .to_request()
+            .replace_payload(pieces(
+                &body[..losos_ctl::cloud::dav::BATCH + 100],
+                65_536,
+                true,
+            ))
+            .0,
+    )
+    .await;
+    assert_eq!(r.status(), 400);
+    assert!(c.store.stat("alice", "cut.bin").is_err());
+    let uploads = d.path().join("alice/uploads");
+    for _ in 0..50 {
+        if std::fs::read_dir(&uploads).unwrap().next().is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(std::fs::read_dir(&uploads).unwrap().count(), 0);
+}
+
 #[actix_web::test]
 async fn if_match_protects_a_concurrent_edit() {
     let (_d, c) = cloud();
