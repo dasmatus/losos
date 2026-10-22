@@ -20,7 +20,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash, X509Certificate } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const VIEW = { width: 1280, height: 900 };
@@ -192,16 +192,89 @@ async function office(s, p, base, old) {
 
 /** The bar arriving over a selection and gliding to the next one, filmed
  *  at a tenth of real speed in its own context with motion on. */
+/** Centre of `word` on the line with `line` on it, for a double click. */
+async function wordAt(p, line, word) {
+  const l = p.locator(".cm-line", { hasText: line }).first();
+  await l.waitFor();
+  return l.evaluate((el, word) => {
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n !== null; n = walk.nextNode()) {
+      const at = n.data.lastIndexOf(word);
+      if (at < 0) continue;
+      const r = document.createRange();
+      r.setStart(n, at);
+      r.setEnd(n, at + word.length);
+      const box = r.getBoundingClientRect();
+      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    }
+    throw new Error(`${word} is not on the line`);
+  }, word);
+}
+
+/**
+ * The clip, frame by frame: CDP holds every new animation at its start, then
+ * each frame sets the ones that began since the last action to its time and
+ * is screenshotted, so an emulated laptop draws 60 frames a second however
+ * slowly it runs. A still stretch is one screenshot copied.
+ */
+class Reel {
+  constructor(p, dir) {
+    this.p = p;
+    this.dir = dir;
+    this.n = 0;
+  }
+
+  path() {
+    return join(this.dir, `${String(this.n).padStart(4, "0")}.png`);
+  }
+
+  async frame() {
+    await this.p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    await this.p.screenshot({ path: this.path() });
+    this.n++;
+  }
+
+  async hold(frames) {
+    await this.frame();
+    const last = join(this.dir, `${String(this.n - 1).padStart(4, "0")}.png`);
+    for (let i = 1; i < frames; i++) {
+      copyFileSync(last, this.path());
+      this.n++;
+    }
+  }
+
+  /** Plays what the last action started, at 60 frames a second. */
+  async play() {
+    const end = await this.p.evaluate(() => {
+      const live = document
+        .getAnimations()
+        .filter((a) => a.playState !== "finished" && Number.isFinite(a.effect?.getComputedTiming().endTime ?? Infinity));
+      for (const a of live) a.pause();
+      window.__reel = live;
+      return Math.max(0, ...live.map((a) => Number(a.effect.getComputedTiming().endTime)));
+    });
+    for (let t = 0; t < end; t += 1000 / 60) {
+      await this.p.evaluate((t) => {
+        for (const a of window.__reel) a.currentTime = t;
+      }, t);
+      await this.frame();
+    }
+    await this.p.evaluate(() => {
+      for (const a of window.__reel) a.finish();
+    });
+  }
+}
+
 async function film(browser, base, name, password, s, old) {
   const dir = join(s.out, "clip");
   rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
   const context = await browser.newContext({
     viewport: VIEW,
     deviceScaleFactor: 2,
     colorScheme: "dark",
     locale: "en-US",
     timezoneId: "Europe/Bratislava",
-    recordVideo: { dir, size: { width: 2560, height: 1800 } },
   });
   const p = await context.newPage();
   p.setDefaultTimeout(120_000);
@@ -214,21 +287,24 @@ async function film(browser, base, name, password, s, old) {
   });
   const cdp = await context.newCDPSession(p);
   await cdp.send("Animation.enable");
-  await cdp.send("Animation.setPlaybackRate", { playbackRate: 0.1 });
-  await p.waitForTimeout(1500);
-  await pick(p, "a few tools", "Saturday");
-  await p.waitForTimeout(3500);
-  await pick(p, "calendar", "calendar");
-  await p.waitForTimeout(3500);
-  await p.keyboard.press("Escape");
-  await p.waitForTimeout(2500);
+  await cdp.send("Animation.setPlaybackRate", { playbackRate: 0 });
+  const reel = new Reel(p, dir);
+  await reel.hold(40);
+  for (const [line, word] of [
+    ["a few tools", "everyone"],
+    ["calendar", "calendar"],
+  ]) {
+    const at = await wordAt(p, line, word);
+    await p.mouse.dblclick(at.x, at.y);
+    if (!old) await quick(p).waitFor();
+    await reel.play();
+    await reel.hold(70);
+  }
   await context.close();
-  const raw = readdirSync(dir).find((f) => f.endsWith(".webm"));
   const file = `${String(s.steps.length + 1).padStart(2, "0")}-${old ? "office-select" : "office-motion"}.mp4`;
-  // Ten times faster to real speed, at 60 frames a second.
   execFileSync(process.env.FFMPEG ?? "ffmpeg", [
-    "-y", "-loglevel", "error", "-i", join(dir, raw),
-    "-vf", "setpts=PTS/10,fps=60", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", join(s.out, file),
+    "-y", "-loglevel", "error", "-framerate", "60", "-i", join(dir, "%04d.png"),
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", join(s.out, file),
   ]);
   rmSync(dir, { recursive: true, force: true });
   s.clip(file, old ? "picking words in a document" : "the bar arrives over picked words and glides to the next ones");
