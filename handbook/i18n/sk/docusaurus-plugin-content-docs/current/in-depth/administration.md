@@ -101,7 +101,7 @@ internetu (napríklad dlaždica s počasím), ale nie zo zariadenia. Limit je
 Editor má aj kartu **Vytvoriť s AI**, kde jazykový model na zariadení
 napíše widget podľa opisu a vloží jeho súbory do editora, aby ste si ich pred
 uložením prečítali. Beží na zariadení, takže to, čo napíšete, zostane na ňom
-a tvorba nič nestojí; pozri [Tvorca widgetov](widget-builder.md).
+a tvorba nič nestojí; pozri [Vytvoriť s AI](widget-builder.md).
 
 ## Admin token {#admin-token}
 

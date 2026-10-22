@@ -27,6 +27,7 @@
 
 pub mod access;
 pub mod app_names;
+pub mod app_repo;
 pub mod apps;
 pub mod backup;
 pub mod boxid;
@@ -51,6 +52,7 @@ pub mod install_screen;
 pub mod installer;
 pub mod installer_io;
 pub mod io_backend;
+pub mod jsx;
 pub mod lab;
 pub mod login;
 pub mod losos;
@@ -72,5 +74,6 @@ pub mod signin;
 pub mod site;
 pub mod supervisor;
 pub mod textsearch;
+pub mod user_apps;
 pub mod vm_upload;
 pub mod zcash_key;

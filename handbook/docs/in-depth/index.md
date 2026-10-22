@@ -35,8 +35,8 @@ directories listed in `modules/impermanence.nix` survive, on an encrypted
   and paying for their answers by the token.
 - [App format](app-format.md). One Compose file per app, run as notshared on
   rootless Podman: what the box does to it and how to install one.
-- [Widget builder](widget-builder.md). A language model on the box writes a
-  widget from a description.
+- [Build with AI](widget-builder.md). A language model on the box writes a
+  widget or an app from a description, and the box checks and tries it.
 - [Master proxy](master-proxy.md). Reaching the box from the internet without
   opening a port.
 - [Edge federation](edge-federation.md). Your own edge on the LAN, relayed through the official ones.

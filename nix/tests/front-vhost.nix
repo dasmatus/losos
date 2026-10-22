@@ -401,6 +401,29 @@ pkgs.testers.nixosTest {
         got = code(appliance, "http://127.0.0.1/widget-frame/")
         assert got == "403", f"loopback /widget-frame/: expected 403, got {got}"
 
+    with subtest("/app-frame/ gets the app frame's own policy, the runtime is served, nothing else changes"):
+        # An app of the owner's runs there (backend/src/user_apps.rs,
+        # admin-ui/app/public/app-frame/): the box's runtime script from
+        # 'self', the app as an inline script the runtime adds.
+        frame = headers(noadmin, "http://appliance/app-frame/")
+        fcsp = frame["content-security-policy"]
+        assert "script-src 'self' 'unsafe-inline'" in fcsp, f"the frame cannot run an app: {fcsp}"
+        assert "'unsafe-eval'" not in fcsp, f"the app frame allows eval: {fcsp}"
+        assert "form-action 'none'" in fcsp, f"an app's form could post anywhere: {fcsp}"
+        assert "frame-ancestors 'self'" in fcsp, f"the frame may be embedded by anyone: {fcsp}"
+        assert "x-frame-options" not in frame, \
+            f"X-Frame-Options would block the page's own iframe: {frame['x-frame-options']!r}"
+        rt = headers(noadmin, "http://appliance/app-frame/runtime.js")
+        assert rt["content-type"].startswith("application/javascript") or rt["content-type"].startswith("text/javascript"), \
+            f"runtime.js served as {rt['content-type']}"
+        for path in ("/apps", "/apps/u1", "/app-frame"):
+            hdrs = headers(noadmin, f"http://appliance{path}")
+            got = hdrs.get("content-security-policy", "")
+            assert "'unsafe-inline'" not in got, f"{path}: the app frame policy leaked: {got}"
+            assert hdrs.get("x-frame-options") == "DENY", f"{path}: X-Frame-Options lost"
+        got = code(appliance, "http://127.0.0.1/app-frame/")
+        assert got == "403", f"loopback /app-frame/: expected 403, got {got}"
+
     with subtest("the admin CSP is kept on LosOS Git"):
         # LosOS Git's pages are built like the admin pages and keep their rules.
         hdrs = headers(appliance, "http://127.0.0.1/git/")

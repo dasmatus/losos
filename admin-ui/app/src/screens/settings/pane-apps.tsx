@@ -46,6 +46,7 @@ import { Group, GroupCaption, GroupTitle, PaneSection, StackRow } from "./rows";
 import { hasSiteSettings, SiteSettings } from "./site-settings";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import type { SettingsForm } from "./use-settings-form";
+import { YourApps } from "@/apps/your-apps";
 
 /* The apps this box runs, and where to look for more.
  *
@@ -99,6 +100,8 @@ export function AppsPane({ form }: { form: SettingsForm }) {
           )}
         </Accordion>
       )}
+
+      <YourApps active={!form.locked} disabled={form.locked} />
 
       <BoxApps active={!form.locked} disabled={disabled} />
     </>

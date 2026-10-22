@@ -103,7 +103,7 @@ each at most 12 files and 128 KiB together.
 The editor also has a **Build with AI** tab, where a language model on the
 box writes the widget from a description and puts its files in the editor for
 you to read before saving. It runs on the box, so what you type stays there
-and a build costs nothing; see [Widget builder](widget-builder.md).
+and a build costs nothing; see [Build with AI](widget-builder.md).
 
 ## Admin token
 
