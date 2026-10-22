@@ -44,24 +44,11 @@
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  # LosOS Lab is not on any screen here, and its Rust core, GPU canvas and
-  # libvirt client take most of an hour to build: stand-ins with the same
-  # module names keep `tsc` and Vite happy, and the Lab page is never
-  # opened.
-  labStubs = ''
-    mkdir -p src/lab/core-pkg src/lab/virt-pkg src/lab/render-pkg/webgl2 src/lab/render-pkg/webgpu
-    stub() {
-      echo 'export default async function init() {} export class Lab {} export class LabCanvas {} export class VirtClient {} export class VirtConsole {}' > "$1.js"
-      echo 'export default function init(...a: any[]): Promise<any>; export class Lab { static [k: string]: any; constructor(...a: any[]); [k: string]: any } export class LabCanvas { static [k: string]: any; constructor(...a: any[]); [k: string]: any } export class VirtClient { static [k: string]: any; constructor(...a: any[]); [k: string]: any } export class VirtConsole { static [k: string]: any; constructor(...a: any[]); [k: string]: any }' > "$1.d.ts"
-      : > "$1_bg.wasm"
-    }
-    stub src/lab/core-pkg/losos_lab_core
-    stub src/lab/virt-pkg/losos_lab_virt
-    stub src/lab/render-pkg/webgl2/losos_lab_render
-    stub src/lab/render-pkg/webgpu/losos_lab_render
-  '';
-  adminUi = lososPkgs.losos-admin-ui.overrideAttrs (
-    _: { preBuild = labStubs; } // pkgs.lib.optionalAttrs (uiSource != null) { src = uiSource; }
+  # Diagrams is not on any screen here.
+  adminUi = import ./admin-ui-without-lab.nix (
+    lososPkgs.losos-admin-ui.overrideAttrs (
+      _: pkgs.lib.optionalAttrs (uiSource != null) { src = uiSource; }
+    )
   );
 
   # /etc/nixos as the installer leaves it, so the configuration sync that
@@ -166,7 +153,10 @@ pkgs.testers.nixosTest {
             "${./app-builder/chore-chart-fix-2.md}"
           ];
         };
-        environment.systemPackages = [ pkgs.jq pkgs.gitMinimal ];
+        environment.systemPackages = [
+          pkgs.jq
+          pkgs.gitMinimal
+        ];
         virtualisation = {
           memorySize = 2048;
           cores = 2;
@@ -174,23 +164,21 @@ pkgs.testers.nixosTest {
         };
       };
 
-    laptop =
-      { ... }:
-      {
-        networking.hosts."192.168.1.1" = [ "mattbox.local" ];
-        environment.systemPackages = [
-          pkgs.curl
-          pkgs.gitMinimal
-          pkgs.nodejs
-        ];
-        environment.variables.PLAYWRIGHT_BROWSERS_PATH = "${browsers}";
-        fonts.packages = [ pkgs.dejavu_fonts ];
-        virtualisation = {
-          memorySize = 3072;
-          cores = 2;
-          vlans = [ 1 ];
-        };
+    laptop = _: {
+      networking.hosts."192.168.1.1" = [ "mattbox.local" ];
+      environment.systemPackages = [
+        pkgs.curl
+        pkgs.gitMinimal
+        pkgs.nodejs
+      ];
+      environment.variables.PLAYWRIGHT_BROWSERS_PATH = "${browsers}";
+      fonts.packages = [ pkgs.dejavu_fonts ];
+      virtualisation = {
+        memorySize = 3072;
+        cores = 2;
+        vlans = [ 1 ];
       };
+    };
   };
 
   testScript = ''
