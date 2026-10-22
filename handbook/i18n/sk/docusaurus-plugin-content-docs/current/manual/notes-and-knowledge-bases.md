@@ -59,7 +59,9 @@ políčkom.
 - **Upraviť** otvorí poznámku v editore, do ktorého ľudia píšu spolu
   (pozrite [Zdieľanie a spoločné úpravy](sharing-and-editing-together)),
   a na širokej obrazovke je poznámka vykreslená vedľa textu. Napíšte
-  `[[` a vyberte poznámku, na ktorú chcete odkázať.
+  `[[` a vyberte poznámku, na ktorú chcete odkázať. Keď označíte slová, v
+  editore alebo pri čítaní, objaví sa nad nimi
+  [lišta s akciami](admin-pages#the-bar-over-a-selection).
 - **Myšlienková mapa** nakreslí nadpisy poznámky a zoznamy pod nimi ako
   vetvy. Kliknutím na vetvu nadpisu si prečítate tú časť.
 - Tlačidlo **Graf všetkých poznámok** nad poznámkami ukáže každú poznámku

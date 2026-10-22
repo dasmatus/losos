@@ -90,6 +90,9 @@ upozornenia, odkazy, obrázky, odkazy na poznámky a vložené poznámky,
 štítky, ciele odkazov na blok, poznámky pod čiarou a vlastnosti. Najprv
 označte text a tlačidlo ho naformátuje; ďalším stlačením formát zmizne.
 Fungujú aj **Ctrl B**, **Ctrl I**, **Ctrl K** a **Ctrl E**.
+Nad označeným textom sa objaví aj malá lišta s najčastejšími formátmi,
+odkazmi, zmienkami a **Opýtať sa AI**; pozrite
+[lištu nad výberom](admin-pages#the-bar-over-a-selection).
 
 Dokument sa píše vľavo a číta vpravo, vykreslený tak ako v Poznámkach.
 **Písať** a **Čítať** dajú jednej strane celú šírku. Odkazy na iné poznámky

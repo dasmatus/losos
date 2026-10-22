@@ -100,6 +100,37 @@ on a Mac). Text fields keep the browser's own menu, for spelling and paste.
 The menu lists only what this box can do: an item for a feature the box
 does not have is left out, not greyed.
 
+## The bar over a selection
+
+Select words in a LosOS Office Markdown document or presentation, or in a
+note, and a small bar comes up above them once you let go of the mouse.
+Pick cards or arrows in Diagrams and it comes up above those. It offers
+what you would most likely do next, so you do not have to look for it in
+the toolbar.
+
+- **Text you can edit** (LosOS Office, and Notes in **Edit**): **Ask AI**,
+  bold, italic, strikethrough, highlight and code, a link to a web page, a
+  link to another note, a mention of a person or a file, and Copy. A
+  pressed button shows the mark is already there; press it again to take
+  it off. A link asks for its address in the bar itself, and a link to a
+  note or a mention offers names as you type.
+- **A note you are reading**: **Ask AI**, Copy, and a copy of the link to
+  the section the words are in.
+- **Cards and arrows in Diagrams**: **Ask AI** when the cards have text, a
+  colour, editing the text of one card, aligning several, an arrow between
+  two cards, grouping, duplicating and deleting. Each one does the same as
+  the inspector's button, so one undo takes it back.
+
+With Mail or Chat on the box, the bar over text also sends the words by
+mail or in a chat. **Ask AI** shows only while the box's AI is turned on;
+on text you can edit, **Replace selection** puts the answer in place of the
+words.
+
+From the keyboard, Alt+F10 moves into the bar, the arrow keys move along
+it, and Enter or Space presses a button. Escape goes back to the text or
+the diagram and hides the bar until you select something else. Typing over
+the selection hides it too.
+
 ## Pins
 
 Pin the apps, files and repositories you open most, and they sit under
