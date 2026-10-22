@@ -616,12 +616,12 @@ export default defineMessages({
   },
   "panes.network.hidden.edgeTor": {
     en: "Tor, through your edge",
-    sk: "Tor cez váš okrajový server",
+    sk: "Tor cez váš edge",
     de: "Tor, über deinen Edge",
   },
   "panes.network.hidden.edgeI2p": {
     en: "I2P, through your edge",
-    sk: "I2P cez váš okrajový server",
+    sk: "I2P cez váš edge",
     de: "I2P, über deinen Edge",
   },
   "panes.network.hidden.making": {

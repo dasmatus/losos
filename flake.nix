@@ -493,6 +493,7 @@
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        losos-hidden-services = import ./nix/tests/hidden-services.nix { inherit pkgs; };
         losos-design = import ./nix/tests/design.nix { inherit pkgs; };
         losos-agents = import ./nix/tests/agents.nix { inherit pkgs; };
         # The banner a box off the mesh shows over every page, both states

@@ -2074,6 +2074,11 @@
         "out": "{\"deleted\": true|false}",
         "note": "Idempotent; false when there was no such widget."
       },
+      "GET /api/hidden": {
+        "auth": true,
+        "out": "{\"box\": {\"tor\": \"<56>.onion\"|null, \"i2p\": \"<52>.b32.i2p\"|null}, \"edge\": {\"tor\": ...|null, \"i2p\": ...|null}}",
+        "note": "This box's addresses on Tor and I2P (backend/plugins/hidden): `box` those its own Tor and I2P made for its front door (losos.hidden.tor.enable, losos.hidden.i2p.enable, read from /var/lib/losos-hidden/addresses.json), `edge` those the edge it heartbeats to made for it (losos.edge.hidden.*, /var/lib/losos-hidden/edge.json). A name is null while its network is off or its daemon has not made it yet, and when it does not have the shape of one. Section network."
+      },
       "GET /api/pins": {
         "auth": true,
         "out": "{\"pins\": [<pin>], \"limit\": 24}",
