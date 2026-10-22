@@ -1578,11 +1578,15 @@ in
 
     chat.federation.enable = lib.mkOption {
       type = lib.types.bool;
-      default = false;
+      default = true;
       description = ''
-        Let people here talk with people on other Matrix servers, and let
-        those servers reach this one. Needs a chat server name other
-        servers can reach (not a .local name).
+        Let people here talk with people on other chat servers, and let
+        those servers reach this one. With a .local server name that means
+        the other boxes on this network, and only them: the federation
+        addresses answer the LAN alone. With a name other servers can
+        reach, any Matrix server. LosOS Git uses it too: people of other
+        boxes sign in to its repositories with their chat address, and a
+        repository's room takes them in.
       '';
     };
 

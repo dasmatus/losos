@@ -13,6 +13,9 @@ export interface User {
   email: string;
   is_admin: boolean;
   is_bot: boolean;
+  /** Someone of another box, signed in with their chat address
+   *  (`@eva:kitchenbox.local`); null for the people of this one. */
+  matrix_id?: string | null;
 }
 
 export type Permission = "none" | "read" | "write" | "admin";
@@ -36,6 +39,8 @@ export interface Repo {
   created: string;
   updated: string;
   permissions: { admin: boolean; push: boolean; pull: boolean };
+  /** The repository's room in LosOS Chat, when its owner made one. */
+  chat_room?: string | null;
 }
 
 export interface Branch {
@@ -257,6 +262,61 @@ export class GitError extends Error {
 
 const BASE = "/git/api/v1";
 
+/* Someone of another box has no LosOS Login session here. They sign in
+ * with their chat address (`matrixSignIn`), and LosOS Git hands this page a
+ * token of their own, kept in this browser and sent with every call. */
+const CHAT_TOKEN = "losos-git-chat-token";
+
+export function chatToken(): string | null {
+  try {
+    return window.localStorage.getItem(CHAT_TOKEN);
+  } catch {
+    return null;
+  }
+}
+
+export function dropChatToken(): void {
+  try {
+    window.localStorage.removeItem(CHAT_TOKEN);
+  } catch {
+    /* nothing kept */
+  }
+}
+
+/** Trade the chat server's word for a LosOS Git token, and keep it. */
+export async function matrixSignIn(accessToken: string, server: string, displayName: string): Promise<User> {
+  dropChatToken();
+  const res = await fetch(`${BASE}/matrix/session`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ access_token: accessToken, matrix_server_name: server, display_name: displayName }),
+  });
+  const data = (await res.json().catch(() => ({}))) as { token?: string; message?: string };
+  if (!res.ok || typeof data.token !== "string") throw new GitError(res.status, data.message ?? res.statusText);
+  try {
+    window.localStorage.setItem(CHAT_TOKEN, data.token);
+  } catch {
+    throw new GitError(0, "storage");
+  }
+  return git.me();
+}
+
+/** `@eva:kitchenbox.local` or `eva@kitchenbox.local` → the server, or null. */
+export function chatServerOf(address: string): string | null {
+  const a = address.trim();
+  const server = a.startsWith("@") ? a.slice(a.indexOf(":") + 1) : a.includes("@") ? a.slice(a.indexOf("@") + 1) : "";
+  if (a.startsWith("@") && a.indexOf(":") < 2) return null;
+  return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$/i.test(server) ? server.toLowerCase() : null;
+}
+
+/** The person's chat address for a login: someone of another box is
+ *  `@name:server`; null for the people of this one. */
+export function remoteAddress(login: string): string | null {
+  const at = login.indexOf("@");
+  return at > 0 ? `@${login.slice(0, at)}:${login.slice(at + 1)}` : null;
+}
+
 /** Told when a call finds the session gone, so the shell can say so. */
 let onSignedOut: () => void = () => {};
 export function whenSignedOut(f: () => void): void {
@@ -266,10 +326,14 @@ export function whenSignedOut(f: () => void): void {
 export async function call<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const init: RequestInit = { method, credentials: "same-origin" };
   if (signal !== undefined) init.signal = signal;
+  const headers: Record<string, string> = {};
+  const token = chatToken();
+  if (token !== null) headers.Authorization = `token ${token}`;
   if (body !== undefined) {
-    init.headers = { "Content-Type": "application/json" };
+    headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);
   }
+  init.headers = headers;
   let res: Response;
   try {
     res = await fetch(BASE + path, init);
@@ -306,7 +370,11 @@ export const git = {
   createRepo: (name: string, description: string, visibility: Visibility) =>
     call<Repo>("POST", "/user/repos", { name, description, visibility, auto_init: true }),
   repo: (o: string, r: string, signal?: AbortSignal) => call<Repo>("GET", repoPath(o, r), undefined, signal),
-  editRepo: (o: string, r: string, change: { name?: string; description?: string; visibility?: Visibility; default_branch?: string }) =>
+  editRepo: (
+    o: string,
+    r: string,
+    change: { name?: string; description?: string; visibility?: Visibility; default_branch?: string; chat_room?: string },
+  ) =>
     call<Repo>("PATCH", repoPath(o, r), change),
   collaborators: (o: string, r: string, signal?: AbortSignal) =>
     call<(User & { permission: Permission })[]>("GET", `${repoPath(o, r)}/collaborators`, undefined, signal),
@@ -377,3 +445,38 @@ export const git = {
   aiReview: (o: string, r: string, n: number, signal?: AbortSignal) =>
     call<AiReview>("GET", `${repoPath(o, r)}/pulls/${n}/ai-review`, undefined, signal),
 };
+
+/* LosOS Chat, from lososd (backend/src/git_rooms.rs): whether the box runs
+ * it, and a repository's room, made by its administrator. */
+
+export async function chatRunsHere(signal?: AbortSignal): Promise<boolean> {
+  try {
+    const res = await fetch("/api/chat", { credentials: "same-origin", signal });
+    if (!res.ok) return false;
+    const view = (await res.json()) as { available?: boolean };
+    return view.available === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function makeChatRoom(owner: string, repo: string): Promise<string> {
+  const res = await fetch("/api/chat/git-room", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ owner, repo }),
+  });
+  const data = (await res.json().catch(() => ({}))) as { room?: string; error?: string };
+  if (!res.ok || typeof data.room !== "string") throw new GitError(res.status, data.error ?? res.statusText);
+  return data.room;
+}
+
+/** Where a room opens: in this box's chat, or, for someone of another box,
+ *  in their own box's chat, which joins it over federation. */
+export function roomLink(room: string, me: User | null): string {
+  const via = room.slice(room.indexOf(":") + 1);
+  const query = `?join=${encodeURIComponent(room)}&via=${encodeURIComponent(via)}`;
+  const home = me?.matrix_id ? me.matrix_id.slice(me.matrix_id.indexOf(":") + 1) : null;
+  return home !== null ? `https://${home}/chat/${query}` : `/chat/${query}`;
+}

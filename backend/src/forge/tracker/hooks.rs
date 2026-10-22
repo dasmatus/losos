@@ -75,7 +75,7 @@ pub fn handle(state: &State, e: &Event) -> anyhow::Result<()> {
             };
             pull(state, &repo, action, pr.number)
         }
-        Event::Issue { .. } => Ok(()),
+        Event::Issue { .. } | Event::Status { .. } => Ok(()),
     }
 }
 

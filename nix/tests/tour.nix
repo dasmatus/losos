@@ -11,16 +11,19 @@
 #   * a claimed box, as the wizard leaves it, opens the tour over the
 #     overview, served by the real nginx under the real Content-Security-
 #     Policy, with the admin UI signed in by the spare key the claim gave;
-#   * Build with AI is on by default (losos.builder.enable), so this box's
-#     tour has seven steps: the six and Build with AI, in English, Slovak
-#     and German, light and dark, with no Chat anywhere;
+#   * every box declares losos.inference.lend.enable (modules/options.nix),
+#     so the Market pane offers to lend memory to AI models and the tour
+#     has that step, and Build with AI is on by default
+#     (losos.builder.enable): this box's tour has eight steps, the six, the
+#     lending step and Build with AI, in English, Slovak and German, light
+#     and dark, with no Chat anywhere;
 #   * sharing its storage and joining a mesh adds no chat step here: this
 #     lososd lists no shared apps in /api/me, and the step follows that, not
 #     the two settings;
 #   * with losos.builder.enable off (the specialisation) the tour has the
-#     six steps;
-#   * Office, lending to AI models, a name on an edge and profiles are not
-#     on this box, and none of their steps shows;
+#     six steps and the lending step;
+#   * Office is declared but off, and a name on an edge and profiles are not
+#     on this box, so none of their steps shows;
 #   * every step draws with no page error and no CSP violation beyond the
 #     one every load logs (Sonner's stylesheet).
 #
@@ -49,12 +52,8 @@ let
     withFirefox = false;
     withWebkit = false;
   };
-  fonts = pkgs.makeFontsConf {
-    fontDirectories = [
-      pkgs.inter
-      pkgs.dejavu_fonts
-    ];
-  };
+  # fonts.nix: the generic families mapped, or the pictures come out serif.
+  fonts = import ./fonts.nix { inherit pkgs; };
   driver = ./tour-browser.mjs;
 in
 
@@ -159,15 +158,18 @@ pkgs.testers.nixosTest {
         "It updates itself at night",
         "Find this tour again",
     ]
-    WITH_BUILDER = STOCK[:4] + ["Describe a widget, get a widget"] + STOCK[4:]
+    LEND = "Lend memory to AI models"
+    WITHOUT_BUILDER = STOCK[:4] + [LEND] + STOCK[4:]
+    WITH_BUILDER = STOCK[:4] + [LEND, "Describe a widget, get a widget"] + STOCK[4:]
 
     def options_on(name):
         doc = json.loads(box.succeed(f"curl -fsS -H 'Authorization: Bearer {token}' localhost:8082/api/options"))
         return [o["current"] for o in doc["options"] if o["name"] == name]
 
-    with subtest("this box has Build with AI and nothing else: seven steps, no Chat anywhere"):
+    with subtest("this box lends to AI models and has Build with AI: eight steps, no Chat anywhere"):
         assert options_on("builder.enable") == [True], options_on("builder.enable")
-        assert options_on("office.enable") == [] and options_on("inference.lend.enable") == []
+        assert options_on("office.enable") == [False], options_on("office.enable")
+        assert options_on("inference.lend.enable") == [False], options_on("inference.lend.enable")
         share(False, False)
         seen = browse("local", locales=["en-US", "sk-SK", "de-DE"], themes=["light", "dark"], expect=len(WITH_BUILDER))
         assert seen["titles"] == WITH_BUILDER, seen
@@ -181,15 +183,15 @@ pkgs.testers.nixosTest {
         assert seen["titles"] == WITH_BUILDER, seen
         assert not seen["chatInSidebar"], seen
 
-    with subtest("with Build with AI off, the six steps"):
+    with subtest("with Build with AI off, the six steps and the lending step"):
         box.succeed("/run/booted-system/specialisation/noBuilder/bin/switch-to-configuration test")
         box.wait_for_unit("lososd.service")
         box.wait_until_succeeds("curl -fsS localhost:8082/api/health")
         assert options_on("builder.enable") == [False], options_on("builder.enable")
-        seen = browse("no-builder", locales=["en-US", "sk-SK", "de-DE"], themes=["light", "dark"], expect=len(STOCK))
-        assert seen["titles"] == STOCK, seen
+        seen = browse("no-builder", locales=["en-US", "sk-SK", "de-DE"], themes=["light", "dark"], expect=len(WITHOUT_BUILDER))
+        assert seen["titles"] == WITHOUT_BUILDER, seen
 
     with subtest("Take the tour under Settings, About opens it again"):
-        browse("about", locales=["en-US"], themes=["light"], expect=len(STOCK), about=True, shots=False)
+        browse("about", locales=["en-US"], themes=["light"], expect=len(WITHOUT_BUILDER), about=True, shots=False)
   '';
 }

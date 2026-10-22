@@ -36,6 +36,11 @@
 
 let
   cfg = config.losos.git;
+  chat = config.losos.chat;
+  # People of other boxes sign in with their chat address: LosOS Git asks
+  # their box who a token belongs to (backend/src/forge/matrix.rs). The
+  # boxes of this LAN, or any server once this box's chat has a public name.
+  chatOutside = chat.federation.enable && !lib.hasSuffix ".local" chat.serverName;
   pkg = config.losos.backend.package;
   on = cfg.enable && pkg != null;
 
@@ -353,7 +358,15 @@ in
             # box without it the socket is missing and nothing is sent.
             "--events-socket"
             "/run/losos-ci-events/events.sock"
+            "--matrix-server-name"
+            chat.serverName
           ]
+          # Repository rooms in LosOS Chat (modules/chat.nix).
+          ++ lib.optionals config.lososInternal.chat [
+            "--events-socket"
+            "/run/losos-git-chat/events.sock"
+          ]
+          ++ lib.optional config.losos.cloud.mesh.selfSigned "--matrix-self-signed"
           ++ lib.optional cfg.site.requireSignIn "--require-sign-in"
           ++ lib.optional (cfg.site.defaultPrivate == "public") "--public-by-default"
           ++ lib.optional cfg.site.pushCreate "--push-create"
@@ -386,11 +399,19 @@ in
           "AF_INET"
           "AF_INET6"
         ];
-        # Loopback only: people reach it through nginx's socket, lososd on
-        # 127.0.0.1, and LosOS Reviewer asks the model on 127.0.0.1. Code
-        # in the repositories cannot be sent anywhere else from here.
-        IPAddressDeny = "any";
-        IPAddressAllow = "localhost";
+        # People reach it through nginx's socket, lososd on 127.0.0.1, and
+        # LosOS Reviewer asks the model on 127.0.0.1. The only other address
+        # it dials is a chat server's, to ask who signs in with a chat
+        # address: a GET of a fixed path, never with code in it
+        # (backend/src/forge/matrix.rs), and never this box itself.
+        IPAddressDeny = lib.mkIf (!chatOutside) "any";
+        IPAddressAllow = [
+          "localhost"
+          "10.0.0.0/8"
+          "172.16.0.0/12"
+          "192.168.0.0/16"
+          "fc00::/7"
+        ];
         RestrictNamespaces = true;
         RestrictRealtime = true;
         RestrictSUIDSGID = true;

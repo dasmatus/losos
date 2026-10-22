@@ -18,7 +18,10 @@ import {
 } from "@hugeicons/core-free-icons";
 import { PersonAvatar } from "@/components/person";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { LanguagePicker } from "@/components/ui/language-picker";
 import {
   Sidebar,
@@ -36,12 +39,12 @@ import {
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Toaster } from "@/components/ui/toast";
-import type { MessageKey } from "@/lib/i18n";
+import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { logoFor } from "@/lib/logo";
 import { cn } from "@/lib/utils";
-import { git, GitError, whenSignedOut, type User } from "./api";
-import { ErrorAlert, Loading, NotFound } from "./parts";
+import { chatServerOf, chatToken, dropChatToken, git, GitError, matrixSignIn, whenSignedOut, type User } from "./api";
+import { ErrorAlert, failed, Loading, NotFound } from "./parts";
 import { BranchesView, CommitsView } from "./history";
 import { CodeView } from "./code";
 import { CompareView } from "./compare";
@@ -63,7 +66,13 @@ import { WorktreesView } from "./worktrees";
  * when they are signed in to LosOS Login (modules/containers.nix). Someone
  * who is not is a visitor: they read the public repositories and get a
  * Sign in button. With `losos.git.site.requireSignIn` nginx sends them to
- * LosOS Login before the page loads. */
+ * LosOS Login before the page loads.
+ *
+ * Someone of another box signs in with their chat address instead: this
+ * page sends them to their own box's chat (`/chat/vouch`), which asks
+ * them, and comes back here with a token their chat server vouches for
+ * (`#chat-token=…&chat-server=…`). LosOS Git checks it with that server and
+ * hands back a token of its own (backend/src/forge/matrix.rs). */
 
 export function GitRoot() {
   return (
@@ -86,13 +95,23 @@ function Shell() {
       if (signedIn.current) setSignedOut(true);
     });
     const controller = new AbortController();
-    git.me(controller.signal).then(
+    const vouched = vouchedHere();
+    const who = vouched !== null ? matrixSignIn(vouched.token, vouched.server, vouched.name) : git.me(controller.signal);
+    who.then(
       (u) => {
         signedIn.current = true;
         setMe(u);
       },
       (e: unknown) => {
-        if (e instanceof GitError && e.status === 401) setVisitor(true);
+        if (controller.signal.aborted) return;
+        if (vouched !== null) failed(translate("git.chatSignIn.failed"), e);
+        if (e instanceof GitError && e.status === 401 && chatToken() !== null) {
+          // The token is gone (taken back, or the account removed).
+          dropChatToken();
+          window.location.reload();
+          return;
+        }
+        if (e instanceof GitError && (e.status === 401 || vouched !== null)) setVisitor(true);
       },
     );
     return () => controller.abort();
@@ -149,11 +168,91 @@ function signIn() {
   window.location.assign(`${window.location.origin}/auth/?rd=${encodeURIComponent(window.location.href)}`);
 }
 
+/** What the person's own box sent back, once: the hash is cleared. */
+function vouchedHere(): { token: string; server: string; name: string } | null {
+  const hash = new URLSearchParams(window.location.hash.slice(1));
+  const token = hash.get("chat-token");
+  const server = hash.get("chat-server");
+  if (token === null || server === null) return null;
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  return { token, server, name: hash.get("chat-name") ?? "" };
+}
+
+/** Ask the person's own box who they are; it sends them back here. */
+function ChatSignIn({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const t = useT();
+  const id = React.useId();
+  const [address, setAddress] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (open) {
+      setAddress("");
+      setError(null);
+    }
+  }, [open]);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} labelledBy={`${id}-title`} dialogClassName="w-[min(30rem,calc(100vw-2rem))]">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const server = chatServerOf(address);
+          if (server === null) {
+            setError(t("git.chatSignIn.bad"));
+            return;
+          }
+          if (server === window.location.host) {
+            signIn();
+            return;
+          }
+          const back = `${window.location.origin}${window.location.pathname}`;
+          window.location.assign(
+            `https://${server}/chat/vouch?for=${encodeURIComponent(window.location.host)}&back=${encodeURIComponent(back)}`,
+          );
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle id={`${id}-title`}>{t("git.chatSignIn.title")}</DialogTitle>
+          <DialogDescription>{t("git.chatSignIn.body")}</DialogDescription>
+        </DialogHeader>
+        <DialogBody className="flex flex-col gap-4">
+          <Field invalid={error !== null}>
+            <FieldLabel htmlFor={`${id}-address`}>{t("git.chatSignIn.address")}</FieldLabel>
+            <Input
+              id={`${id}-address`}
+              value={address}
+              onChange={(e) => {
+                setAddress(e.target.value);
+                setError(null);
+              }}
+              placeholder="@you:yourbox.local"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              autoFocus
+              data-chat-address
+            />
+            {error !== null ? <FieldError>{error}</FieldError> : <FieldDescription>{t("git.chatSignIn.hint")}</FieldDescription>}
+          </Field>
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            {t("git.cancel")}
+          </Button>
+          <Button type="submit" disabled={address.trim() === ""} data-chat-continue>
+            {t("git.chatSignIn.go")}
+          </Button>
+        </DialogFooter>
+      </form>
+    </Dialog>
+  );
+}
+
 function TopBar() {
   const t = useT();
   const logo = logoFor();
   const me = React.useContext(MeContext);
   const visitor = useVisitor();
+  const [asking, setAsking] = React.useState(false);
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
@@ -168,15 +267,26 @@ function TopBar() {
         </div>
         {me !== null && <MeChip me={me} />}
         {visitor ? (
-          <Button size="sm" onClick={signIn} data-sign-in>
-            {t("git.visitor.signIn")}
-          </Button>
+          <>
+            <Button variant="ghost" size="sm" onClick={() => setAsking(true)} data-chat-sign-in>
+              {t("git.chatSignIn.open")}
+            </Button>
+            <Button size="sm" onClick={signIn} data-sign-in>
+              {t("git.visitor.signIn")}
+            </Button>
+          </>
         ) : (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
               const home = `${window.location.origin}/git/`;
+              if (me?.matrix_id) {
+                // Someone of another box: forget this browser's token.
+                dropChatToken();
+                window.location.assign(home);
+                return;
+              }
               window.location.assign(`${window.location.origin}/auth/logout?rd=${encodeURIComponent(home)}`);
             }}
           >
@@ -184,6 +294,7 @@ function TopBar() {
           </Button>
         )}
       </div>
+      <ChatSignIn open={asking} onOpenChange={setAsking} />
     </header>
   );
 }
@@ -191,9 +302,9 @@ function TopBar() {
 function MeChip({ me }: { me: User }) {
   const faces = useFaces();
   return (
-    <span className="flex max-w-48 items-center gap-2 text-[13px] text-muted max-lg:hidden" title={me.email || me.login}>
+    <span className="flex max-w-56 items-center gap-2 text-[13px] text-muted max-lg:hidden" title={me.matrix_id ?? (me.email || me.login)}>
       <PersonAvatar person={faces(me.login)} size="xs" />
-      <span className="truncate">{me.full_name || me.login}</span>
+      <span className="truncate" data-me>{me.full_name || me.matrix_id || me.login}</span>
     </span>
   );
 }

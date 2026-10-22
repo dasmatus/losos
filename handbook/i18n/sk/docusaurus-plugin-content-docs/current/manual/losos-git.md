@@ -136,6 +136,52 @@ requestom pre túto vetvu, ak nejaký je. Pull request, ktorého vetvu pushuje
 pomenovaný pracovný strom, ukáže meno toho stromu vo svojej hlavičke.
 **Zabudnúť** strom zo zoznamu vyradí; ďalší push ho tam vráti.
 
+## Ľudia z iných boxov \{#people-of-other-boxes}
+
+Niekto, kto má účet na inom LosOS boxe vo vašej sieti, sa môže zapojiť do
+vašich verejných repozitárov bez účtu na vašom zariadení. Prihlási sa svojou
+chatovou adresou, tou, ktorú LosOS Chat ukazuje pod jeho menom, napríklad
+`@eva:kitchenbox.local`.
+
+1. Na stránke repozitára na vašom zariadení stlačí **Použiť chatovú
+   adresu**, napíše adresu a stlačí **Pokračovať na tvojom boxe**.
+2. Otvorí sa jeho vlastný box a spýta sa, či má vášmu povedať, kto je.
+   Stlačí **Povedať boxu `<name>.local`**.
+3. Je späť na vašom zariadení, prihlásený ako `@eva:kitchenbox.local`.
+
+Jeho box vášmu povie len chatovú adresu a meno. Vaše zariadenie si odpoveď
+overí u chatového servera jeho boxu, skôr než jej uverí. Ľudia s účtom na
+vašom zariadení sa prihlasujú cez LosOS Login ako doteraz.
+
+Takto prihlásený môže komentovať, robiť recenzie a otvárať pull requesty.
+Do vašich vetiev pushovať nemôže. Pushuje do vetiev, ktorých názov začína
+jeho prihlasovacím menom tu, napríklad `eva@kitchenbox.local/hours`, a o
+zmenu požiada v pull requeste. **Kopírovať heslo pre git** na stránke
+repozitára skopíruje heslo, ktoré git pýta; meno môže byť akékoľvek.
+
+```sh
+git push https://<name>.local/git/notshared/site.git HEAD:eva@kitchenbox.local/hours
+```
+
+Zlučujete len vy a vaši správcovia. **Odhlásiť sa** ukončí jeho návštevu na
+tomto počítači.
+
+## Miestnosť v chate pre repozitár \{#a-chat-room-for-a-repository}
+
+Keď je na zariadení LosOS Chat, **Nastavenia** repozitára majú prepínač
+**Rozprávať sa o tomto repozitári v LosOS Chat**. Zapnite ho a zariadenie
+vytvorí pre repozitár miestnosť vo vašom chate, s LosOS Git v nej. LosOS
+Git tam píše každý push, pull request, komentár, zlúčenie a výsledok
+kontroly.
+
+V hlavičke repozitára potom bude tlačidlo **Chat** pre každého
+prihláseného. Do miestnosti verejného repozitára sa môže pridať ktokoľvek,
+aj z chatu na svojom boxe. Do súkromného sa ľudia pridajú, keď ich pozvete
+z chatu.
+
+Vypnutím prepínača príspevky prestanú. Miestnosť a to, čo v nej je, vo
+vašom chate zostanú.
+
 ## Nastavenia \{#settings}
 
 `losos.git.enable` vypne LosOS Git. `losos.git.site.requireSignIn`

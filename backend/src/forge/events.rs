@@ -31,27 +31,43 @@ pub enum Event {
         before: String,
         after: String,
         pusher: String,
+        chat_room: Option<String>,
     },
-    /// A pull request was opened, reopened, closed or merged, or its head
-    /// moved (`synchronize`).
+    /// A pull request was opened, reopened, closed or merged, its head
+    /// moved (`synchronize`), or someone reviewed it or wrote in it
+    /// (`reviewed`, `commented`).
     PullRequest {
         action: String,
         owner: String,
         repo: String,
         private: bool,
         pr: PullRequest,
+        chat_room: Option<String>,
     },
-    /// An issue of a repository was opened, closed (done or canceled),
-    /// reopened or commented on. `key` is its tracker key (`LOS-12`).
+    /// An issue was opened, closed, reopened or written in.
     Issue {
         action: String,
         owner: String,
         repo: String,
         private: bool,
         number: i64,
+        /// The issue tracker's key (`LOS-12`), when it has one.
         key: Option<String>,
         title: String,
+        /// Who did it.
         author: String,
+        chat_room: Option<String>,
+    },
+    /// A check on a commit finished: `success`, `failure` or `error`.
+    Status {
+        owner: String,
+        repo: String,
+        private: bool,
+        sha: String,
+        context: String,
+        state: String,
+        description: String,
+        chat_room: Option<String>,
     },
 }
 
@@ -66,6 +82,8 @@ pub struct PullRequest {
     /// `refs/heads/main`.
     pub base_ref: String,
     pub author: String,
+    /// Who did what the event says, when a person did (not a push).
+    pub actor: String,
 }
 
 impl Event {
@@ -81,6 +99,7 @@ impl Event {
                 before,
                 after,
                 pusher,
+                chat_room,
             } => json!({
                 "kind": "push",
                 "owner": owner,
@@ -90,6 +109,7 @@ impl Event {
                 "before": before,
                 "after": after,
                 "pusher": pusher,
+                "chatRoom": chat_room,
             }),
             Event::PullRequest {
                 action,
@@ -97,6 +117,7 @@ impl Event {
                 repo,
                 private,
                 pr,
+                chat_room,
             } => json!({
                 "kind": "pull_request",
                 "action": action,
@@ -109,6 +130,8 @@ impl Event {
                 "headSha": pr.head_sha,
                 "baseRef": pr.base_ref,
                 "author": pr.author,
+                "actor": pr.actor,
+                "chatRoom": chat_room,
             }),
             Event::Issue {
                 action,
@@ -119,6 +142,7 @@ impl Event {
                 key,
                 title,
                 author,
+                chat_room,
             } => json!({
                 "kind": "issue",
                 "action": action,
@@ -129,6 +153,27 @@ impl Event {
                 "key": key,
                 "title": title,
                 "author": author,
+                "chatRoom": chat_room,
+            }),
+            Event::Status {
+                owner,
+                repo,
+                private,
+                sha,
+                context,
+                state,
+                description,
+                chat_room,
+            } => json!({
+                "kind": "status",
+                "owner": owner,
+                "repo": repo,
+                "private": private,
+                "sha": sha,
+                "context": context,
+                "state": state,
+                "description": description,
+                "chatRoom": chat_room,
             }),
         }
     }
@@ -225,6 +270,7 @@ pub fn pushed(repo: &Repo, pusher: &str, changes: &[(String, String, String)]) {
             before: before.clone(),
             after: after.clone(),
             pusher: pusher.to_string(),
+            chat_room: repo.chat_room.clone(),
         });
     }
 }
@@ -238,6 +284,7 @@ pub fn pull_request(action: &str, repo: &Repo, pr: PullRequest) {
         repo: repo.name.clone(),
         private: repo.private,
         pr,
+        chat_room: repo.chat_room.clone(),
     });
 }
 
@@ -252,6 +299,25 @@ pub fn issue(action: &str, repo: &Repo, number: i64, key: Option<&str>, title: &
         key: key.map(str::to_string),
         title: title.to_string(),
         author: author.to_string(),
+        chat_room: repo.chat_room.clone(),
+    });
+}
+
+/// A check on `sha` reached `state`. Only a finished check is an event:
+/// `pending` says nothing yet.
+pub fn status(repo: &Repo, sha: &str, context: &str, state: &str, description: &str) {
+    if !matches!(state, "success" | "failure" | "error") {
+        return;
+    }
+    emit(Event::Status {
+        owner: repo.owner.clone(),
+        repo: repo.name.clone(),
+        private: repo.private,
+        sha: sha.to_string(),
+        context: context.to_string(),
+        state: state.to_string(),
+        description: description.to_string(),
+        chat_room: repo.chat_room.clone(),
     });
 }
 
@@ -273,6 +339,7 @@ mod tests {
             fork_of: None,
             created: String::new(),
             updated: String::new(),
+            chat_room: Some("!room:mattbox.local".into()),
         }
     }
 
@@ -287,12 +354,13 @@ mod tests {
             key: Some("SIT-12".into()),
             title: "Fix the header".into(),
             author: "eva".into(),
+            chat_room: None,
         };
         assert_eq!(
             e.to_json(),
             json!({"kind": "issue", "action": "closed", "owner": "matus", "repo": "site",
                    "private": true, "number": 12, "key": "SIT-12", "title": "Fix the header",
-                   "author": "eva"})
+                   "author": "eva", "chatRoom": null})
         );
     }
 
@@ -351,6 +419,7 @@ mod tests {
         assert_eq!(body["ref"], "refs/heads/main");
         assert_eq!(body["after"], a);
         assert_eq!(body["private"], true);
+        assert_eq!(body["chatRoom"], "!room:mattbox.local");
         // The deletion is not an event.
         let seen = seen.lock().unwrap();
         assert!(seen

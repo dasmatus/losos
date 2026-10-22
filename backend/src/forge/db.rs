@@ -198,7 +198,20 @@ const MIGRATIONS: &[&str] = &[
         CHECK (visibility IN ('private', 'internal', 'public'));
     UPDATE repos SET visibility = CASE private WHEN 0 THEN 'public' ELSE 'private' END;
     ",
-    // 7: the issue tracker (`super::tracker`): projects with keys and
+    // 7: people from other boxes, known by their chat address, with the
+    // key each of their servers first answered with (`super::matrix`), and
+    // the chat room a repository's owner asked for.
+    "
+    ALTER TABLE users ADD COLUMN matrix_id TEXT;
+    CREATE UNIQUE INDEX users_matrix_id ON users (matrix_id) WHERE matrix_id IS NOT NULL;
+    ALTER TABLE repos ADD COLUMN chat_room TEXT;
+    CREATE TABLE matrix_servers (
+        name  TEXT PRIMARY KEY,
+        key   TEXT NOT NULL,
+        seen  TEXT NOT NULL
+    );
+    ",
+    // 8: the issue tracker (`super::tracker`): projects with keys and
     // workflows, issues, cycles, relations, links, views and the inbox.
     super::tracker::MIGRATION,
 ];
@@ -213,6 +226,16 @@ pub struct User {
     pub created: String,
     /// A program rather than a person (the code reviewer).
     pub is_bot: bool,
+    /// A person from another box, by their chat address
+    /// (`@eva:kitchenbox.local`); `None` for the people of this box.
+    pub matrix_id: Option<String>,
+}
+
+impl User {
+    /// Whether this is a person from another box.
+    pub fn is_remote(&self) -> bool {
+        self.matrix_id.is_some()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -241,6 +264,8 @@ pub struct Repo {
     pub fork_of: Option<i64>,
     pub created: String,
     pub updated: String,
+    /// The repository's chat room, when its owner asked for one.
+    pub chat_room: Option<String>,
 }
 
 /// What a person may do in one repository, weakest first.
@@ -350,9 +375,9 @@ pub struct Store {
     conn: Mutex<Connection>,
 }
 
-const USER_COLS: &str = "id, login, full_name, email, is_admin, created, is_bot";
+const USER_COLS: &str = "id, login, full_name, email, is_admin, created, is_bot, matrix_id";
 const REPO_COLS: &str = "r.id, r.owner_id, u.login, r.name, r.description, r.private, \
-     r.default_branch, r.fork_of, r.created, r.updated, r.visibility";
+     r.default_branch, r.fork_of, r.created, r.updated, r.visibility, r.chat_room";
 
 fn user_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
     Ok(User {
@@ -363,6 +388,7 @@ fn user_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
         is_admin: row.get(4)?,
         created: row.get(5)?,
         is_bot: row.get(6)?,
+        matrix_id: row.get(7)?,
     })
 }
 
@@ -382,6 +408,7 @@ fn repo_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Repo> {
         fork_of: row.get(7)?,
         created: row.get(8)?,
         updated: row.get(9)?,
+        chat_room: row.get(11)?,
     })
 }
 
@@ -597,6 +624,50 @@ impl Store {
         }
         self.user(login)?
             .ok_or_else(|| anyhow::anyhow!("the account {login} vanished"))
+    }
+
+    /// The account of a person from another box, by their chat address,
+    /// made the first time they sign in. Its login is the address without
+    /// the `@` (`eva:kitchenbox.local` becomes `eva@kitchenbox.local`), a
+    /// name [`crate::forge::names::owner`] never allows, so it cannot be
+    /// an account of this box.
+    pub fn ensure_remote_user(&self, matrix_id: &str, full_name: &str) -> anyhow::Result<User> {
+        let login = super::matrix::login_of(matrix_id)
+            .ok_or_else(|| anyhow::anyhow!("{matrix_id} is not a chat address"))?;
+        {
+            let conn = self.conn();
+            conn.execute(
+                "INSERT INTO users (login, lower_login, full_name, email, created, matrix_id)
+                 VALUES (?1, ?2, ?3, '', ?4, ?5)
+                 ON CONFLICT (lower_login) DO NOTHING",
+                params![
+                    login,
+                    login.to_lowercase(),
+                    full_name,
+                    super::now(),
+                    matrix_id
+                ],
+            )?;
+            if !full_name.is_empty() {
+                conn.execute(
+                    "UPDATE users SET full_name = ?2 WHERE matrix_id = ?1",
+                    params![matrix_id, full_name],
+                )?;
+            }
+        }
+        self.user_by_matrix_id(matrix_id)?
+            .ok_or_else(|| anyhow::anyhow!("the account {login} is not {matrix_id}'s"))
+    }
+
+    pub fn user_by_matrix_id(&self, matrix_id: &str) -> anyhow::Result<Option<User>> {
+        Ok(self
+            .conn()
+            .query_row(
+                &format!("SELECT {USER_COLS} FROM users WHERE matrix_id = ?1"),
+                [matrix_id],
+                user_row,
+            )
+            .optional()?)
     }
 
     pub fn set_admin(&self, user_id: i64, admin: bool) -> anyhow::Result<()> {
@@ -852,6 +923,15 @@ impl Store {
         Ok(())
     }
 
+    /// The repository's chat room, or none.
+    pub fn set_chat_room(&self, id: i64, room: Option<&str>) -> anyhow::Result<()> {
+        self.conn().execute(
+            "UPDATE repos SET chat_room = ?2 WHERE id = ?1",
+            params![id, room],
+        )?;
+        Ok(())
+    }
+
     /// A push landed.
     pub fn touch_repo(&self, id: i64) -> anyhow::Result<()> {
         self.conn().execute(
@@ -873,12 +953,12 @@ impl Store {
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT u.id, u.login, u.full_name, u.email, u.is_admin, u.created, u.is_bot,
-                    c.permission
+                    u.matrix_id, c.permission
              FROM collaborators c JOIN users u ON u.id = c.user_id
              WHERE c.repo_id = ?1 ORDER BY u.lower_login",
         )?;
         let rows = stmt.query_map([repo_id], |row| {
-            let p: String = row.get(7)?;
+            let p: String = row.get(8)?;
             Ok((
                 user_row(row)?,
                 Permission::parse(&p).unwrap_or(Permission::Read),
@@ -1566,7 +1646,8 @@ impl Store {
     pub fn review_requests(&self, issue_id: i64) -> anyhow::Result<Vec<User>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT u.id, u.login, u.full_name, u.email, u.is_admin, u.created, u.is_bot
+            "SELECT u.id, u.login, u.full_name, u.email, u.is_admin, u.created, u.is_bot,
+                    u.matrix_id
              FROM review_requests q JOIN users u ON u.id = q.user_id
              WHERE q.issue_id = ?1 ORDER BY q.created, u.lower_login",
         )?;
