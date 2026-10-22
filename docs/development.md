@@ -89,8 +89,10 @@ One flake check is not a VM. `losos-invariants` (`nix/tests/invariants.nix`)
 evaluates the published `install` configuration and asserts the option values
 the appliance cannot afford to lose to a drifting default: garbage
 collection, the boot-menu cap, the unlock mode, the `#install` fragment.
-`nix flake check --no-build` runs it, so CI's eval job fails on it at no
-build cost.
+`nix flake check --no-build` runs it, and so does `nix/check-flake.sh`, the
+same evaluation a few attributes per process, which CI's eval job and
+`check-flake` use: one process evaluating every VM test passes 13 GiB, more
+than a GitHub runner has. Either way it fails at no build cost.
 
 ## Pull requests
 

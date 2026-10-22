@@ -28,7 +28,7 @@ and stops.
 | | full | light |
 | --- | --- | --- |
 | Picked when | KVM, 14 GiB of memory and 60 GB of disk | anything else with 6 GiB and 15 GB |
-| The boxes | installed from the installer ISO, unattended, with LosOS cloud | the control plane, the admin pages and the edge path, as test VMs |
+| The boxes | installed from the installer ISO, unattended, with LosOS Cloud | the control plane, the admin pages and the edge path, as test VMs |
 | The edge | `nixosConfigurations.edge-demo` ([../edge-lan/edge-vm.nix](../edge-lan/edge-vm.nix)) | the edge gateway, as `losos-disk-edge-qcow2` runs it |
 | What runs it | [../edge-lan/run.sh](../edge-lan/run.sh) `up`, `walk`, `publish` | [demo.nix](demo.nix), `checks.losos-box-edge-box` |
 | Time | about half an hour with KVM | about 15 minutes without KVM, after the first build |
@@ -52,7 +52,7 @@ and stops.
 
 The full demo runs the [verification checklist](../edge-lan/CHECKLIST.md)
 first, then names the boxes `boxa` and `boxb`, turns their edge path on with
-an Apply (a rebuild on each box), and asks for each box's LosOS cloud through
+an Apply (a rebuild on each box), and asks for each box's LosOS Cloud through
 the edge. In the full demo the computer running it asks, standing in for any
 computer on the network.
 
@@ -65,7 +65,7 @@ computer on the network.
   would point them.
 - The edge carries no identity, so it is a company edge: sharing works
   through it, the market does not.
-- In the light demo LosOS cloud does not run. A one-file stand-in answers on
+- In the light demo LosOS Cloud does not run. A one-file stand-in answers on
   the loopback port the cloud would, behind the box's real front nginx.
 - Boxes in the light demo send a heartbeat every 5 seconds instead of 30, so
   the demo does not wait on it.

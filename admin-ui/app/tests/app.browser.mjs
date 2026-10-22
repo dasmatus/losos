@@ -530,30 +530,52 @@ const PASSWORD = 'Correct-horse battery staple 1';
 async function openGate(options = {}) {
   const opened = await open(options);
   const portal = [];
-  await opened.page.route('https://**/auth/**', (route) => {
-    portal.push(route.request().url());
+  const secure = [];
+  await opened.page.route('https://**/*', (route) => {
+    const url = route.request().url();
+    if (new URL(url).pathname.startsWith('/auth/')) portal.push(url);
+    else secure.push(url);
     return route.fulfill({ status: 200, contentType: 'text/html', body: '<title>LosOS sign-in</title>' });
   });
-  return { ...opened, portal };
+  return { ...opened, portal, secure };
 }
 
-await check('signed out, Sign in goes to the box sign-in page over https and comes back', async () => {
-  const { page, portal } = await openGate({ path: '/storage' });
+/* This harness serves plain http. There the session cookie (https only)
+ * never arrives, so Sign in first goes to the same page on https, marked
+ * ?signin, where a person who has a session is simply in and a stranger
+ * goes on to the sign-in page without a second click. Straight to Authelia,
+ * a person with a session would get its second-factor page. */
+await check('signed out on plain http, Sign in goes to the same page on https, marked to go on', async () => {
+  const { page, portal, secure } = await openGate({ path: '/storage#here' });
   await page.getByText('Sign in to this box').waitFor();
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.waitForURL(/\/auth\//);
-  assert.equal(portal.length, 1, 'the sign-in page was not opened');
-  const url = new URL(portal[0]);
-  assert.equal(url.protocol, 'https:');
-  assert.equal(url.pathname, '/auth/');
-  const back = new URL(url.searchParams.get('rd'));
-  assert.equal(back.protocol, 'https:', 'the way back is not https');
-  assert.equal(back.pathname, '/storage', 'the way back is not the page the person was on');
+  await page.waitForURL(/^https:/);
+  assert.equal(portal.length, 0, 'went to the sign-in page from plain http');
+  assert.equal(secure.length, 1, 'did not move to https');
+  const url = new URL(secure[0]);
+  assert.equal(url.pathname, '/storage', 'the https page is not the page the person was on');
+  assert.ok(url.searchParams.has('signin'), 'the https page is not marked to go on to sign in');
   await page.close();
 });
 
+await check('a page marked ?signin drops the mark and goes on to sign in without a click', async () => {
+  const { page, secure } = await openGate({ path: '/' });
+  await page.getByText('Sign in to this box').waitFor();
+  await page.goto(origin + '/storage?signin=');
+  await page.waitForURL(/^https:/, { timeout: 10000 });
+  assert.equal(secure.length, 1, 'did not go on by itself');
+  await page.close();
+  const signedIn = await open({
+    path: '/storage?signin=',
+    person: { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage'] },
+  });
+  await signedIn.page.getByTestId('signed-in-as').waitFor();
+  assert.equal(new URL(signedIn.page.url()).search, '', 'the mark stayed in the address');
+  await signedIn.page.close();
+});
+
 await check('while the sign-in page starts, the prompt waits with a spinner and a fact, then goes on by itself', async () => {
-  const { page, portal } = await openGate();
+  const { page, secure } = await openGate();
   let up = false;
   await page.route('**/auth/api/health', (route) =>
     up ? json(route, 200, { status: 'OK' }) : route.fulfill({ status: 502, contentType: 'text/html', body: 'Bad Gateway' }),
@@ -566,10 +588,10 @@ await check('while the sign-in page starts, the prompt waits with a spinner and 
   assert.equal(await page.locator('dialog [data-slot="spinner"], [role="dialog"] [data-slot="spinner"]').count() > 0, true, 'no spinner');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.waitForTimeout(500);
-  assert.equal(portal.length, 0, 'went to the sign-in page before it answered');
+  assert.equal(secure.length, 0, 'went on before the sign-in page answered');
   up = true;
-  await page.waitForURL(/\/auth\//, { timeout: 10000 });
-  assert.equal(portal.length, 1, 'did not go on once the sign-in page answered');
+  await page.waitForURL(/^https:/, { timeout: 10000 });
+  assert.equal(secure.length, 1, 'did not go on once the sign-in page answered');
   await page.close();
 });
 
@@ -577,7 +599,7 @@ await check('a person signed in at the box sign-in page gets the app without a k
   const { page } = await open({
     person: { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage', 'backup'] },
   });
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   await page.getByText('Sign in to this box').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null, 'a cookie session stored a key');
   // The name beside the picture or initials.
@@ -592,7 +614,7 @@ await check('a person in one section sees that section and not the administrator
     path: '/settings/backup',
     person: { name: 'eva', displayName: 'Eva', groups: ['losos-backup'], admin: false, spareKey: false, sections: ['backup'] },
   });
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   const sections = nav(page);
   await sections.getByRole('link', { name: 'Backup' }).waitFor();
   for (const hidden of ['Storage', 'Mesh', 'Advanced', 'Security', 'Reset', 'Lab']) {
@@ -610,7 +632,7 @@ await check('Mail is in the sidebar only while /api/me lists it among the shared
   const matus = { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage', 'backup'] };
   for (const [shared, want] of [[['mail'], 1], [[], 0], [undefined, 0]]) {
     const { page } = await open({ person: { ...matus, ...(shared !== undefined ? { shared } : {}) } });
-    await page.getByRole('button', { name: 'Sign out' }).waitFor();
+    await page.getByTestId('signed-in-as').waitFor();
     const mail = nav(page).getByRole('link', { name: 'Mail', exact: true });
     assert.equal(await mail.count(), want, `Mail links with shared=${JSON.stringify(shared)}`);
     if (want === 1) assert.equal(await mail.getAttribute('href'), '/mail', 'Mail is not a screen of the admin pages');
@@ -629,7 +651,7 @@ await check('a wrong spare key is refused and the prompt stays up', async () => 
   assert.ok(/was not accepted/i.test(text), `no refusal shown:\n${text}`);
   assert.equal(await page.getByRole('dialog').locator('a[data-help]').getAttribute('href'), '/handbook/troubleshooting/forgot-password/');
   assert.equal(
-    await page.getByRole('button', { name: 'Sign out' }).count(),
+    await page.getByTestId('signed-in-as').count(),
     0,
     'the app unlocked on a wrong key',
   );
@@ -642,7 +664,7 @@ await check('the right spare key opens the app and is kept for the tab', async (
   await page.getByRole('button', { name: /Use the spare admin key instead/ }).click();
   await page.locator('#admin-key').fill(TOKEN);
   await page.getByRole('button', { name: 'Unlock' }).click();
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   await page.getByText('Sign in to this box').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), TOKEN);
   assert.equal(portal.length, 0, 'the key path must not go through the sign-in page');
@@ -667,7 +689,7 @@ await check('a box with nobody to sign in as makes its first administrator with 
   await page.locator('#first-password').fill(PASSWORD);
   await page.locator('#admin-key').fill(TOKEN);
   await page.getByRole('button', { name: 'Make it' }).click();
-  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByTestId('signed-in-as').waitFor();
   assert.equal(made.length, 1, 'expected one claim');
   assert.equal(made[0].auth, `Bearer ${TOKEN}`, 'the spare key did not go with it');
   assert.deepEqual(made[0].body, { name: 'matus', password: PASSWORD }, 'the name was not lower-cased or the body is wrong');
@@ -677,7 +699,24 @@ await check('a box with nobody to sign in as makes its first administrator with 
 
 await check('signing out returns to the prompt and forgets the token', async () => {
   const { page } = await open({ stored: true });
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByTestId('signed-in-as').click();
+  await page.getByRole('menuitem', { name: /Sign out/ }).click();
+  await page.getByText('Sign in to this box').waitFor();
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
+  await page.close();
+});
+
+await check('the person menu holds Your account and Sign out, and Alt+Shift+Q signs out too', async () => {
+  const { page } = await open({ stored: true });
+  await page.getByTestId('signed-in-as').click();
+  const menu = page.locator('[data-slot=person-menu]');
+  await menu.waitFor();
+  assert.equal(await menu.getByRole('menuitem', { name: /Sign out/ }).count(), 1, 'Sign out is not in the menu');
+  assert.match(await menu.getByRole('menuitem', { name: /Sign out/ }).innerText(), /Alt\s*Shift\s*Q/, 'the menu does not show the keys');
+  assert.equal(await page.getByRole('button', { name: 'Sign out' }).count(), 0, 'Sign out is still a button in the bar');
+  await page.keyboard.press('Escape');
+  await menu.waitFor({ state: 'hidden' });
+  await page.keyboard.press('Alt+Shift+KeyQ');
   await page.getByText('Sign in to this box').waitFor();
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
   await page.close();
@@ -860,7 +899,7 @@ for (const { name, now, file, tip } of [
     assert.equal(await page.locator('header').getByText('LosOS', { exact: true }).count(), 0, 'the name is still drawn as text');
     // A photo needs a word of explanation: hovering the logo says what it
     // is, and the same words are the trigger's accessible name.
-    const trigger = page.locator('header').getByRole('button', { name: /Losos is Slovak for salmon/ });
+    const trigger = page.locator('header').getByRole('link', { name: /Losos is Slovak for salmon/ });
     await trigger.hover();
     await page.locator('[data-slot="tooltip-content"]').filter({ hasText: tip }).waitFor();
     await page.close();

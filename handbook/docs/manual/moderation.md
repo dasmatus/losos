@@ -68,6 +68,9 @@ app:
 
 - **Hold the message** moves a reported mail out of the inbox into a folder
   no page lists. The box refuses to open it. **Let it go** puts it back.
+- **Hide the message** removes a reported chat message from LosOS Chat on
+  every device. The room keeps a note that a message was deleted. It works
+  for messages from people on this box.
 - **Take it down** removes a reported profile picture or banner.
 - **Dealt with** closes a report you handled some other way, for example by
   talking to the person.
@@ -76,8 +79,8 @@ app:
 **People.** Moderators can act on members and guests. Administrators can act
 on everyone but the owner. Nobody can act on themselves.
 
-- **Mute** stops someone sending mail and changing their profile. They keep
-  reading everything they could read before.
+- **Mute** stops someone sending mail, writing in LosOS Chat and changing
+  their profile. They keep reading everything they could read before.
 - **Suspend** stops LosOS Login letting them in, from their next click. Their
   files, mail and accounts stay on the box.
 

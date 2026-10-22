@@ -103,17 +103,25 @@ export class ApiError extends Error {
   /** The box refused a market action because no edge in reach is one LosOS
    *  runs: a 409 with `officialEdgeRequired: true`. */
   readonly officialEdgeRequired: boolean;
+  /** A word for the refusal, where the route gives one (`code` in the
+   *  body), so the page can say it in the reader's language. */
+  readonly code: string | null;
 
   constructor(
     status: number,
     message: string,
-    { edgeRequired = false, officialEdgeRequired = false } = {},
+    {
+      edgeRequired = false,
+      officialEdgeRequired = false,
+      code = null,
+    }: { edgeRequired?: boolean; officialEdgeRequired?: boolean; code?: string | null } = {},
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.edgeRequired = edgeRequired;
     this.officialEdgeRequired = officialEdgeRequired;
+    this.code = code;
   }
 
   /** The token this tab holds is not the one lososd minted. Re-prompt. */
@@ -370,14 +378,44 @@ export function useMe(): Me | null {
 }
 
 /** The https address of this page, which Authelia sends the browser back to.
- *  Authelia works over https only; the box serves both. */
+ *  Authelia works over https only; the box serves both. The fragment goes
+ *  too: it names the open document in Documents. */
 function httpsHere(): string {
-  const { host, pathname, search } = window.location;
-  return `https://${host}${pathname}${search}`;
+  const { host, pathname, search, hash } = window.location;
+  return `https://${host}${pathname}${search}${hash}`;
 }
 
-/** Authelia's sign-in page, coming back here afterwards. */
+/* The session cookie is https only, so a page on plain http cannot tell a
+ * signed-in person from a stranger. Sending them straight to Authelia would
+ * show someone who already has a session its second-factor page, so the
+ * plain page goes to its own https address first, marked `?signin`; there
+ * the dialog goes on to Authelia by itself only if nobody is signed in. */
+const SIGN_IN_MARK = "signin";
+
+function takeSignInMark(): boolean {
+  if (typeof window === "undefined") return false;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(SIGN_IN_MARK)) return false;
+  url.searchParams.delete(SIGN_IN_MARK);
+  window.history.replaceState(window.history.state, "", url);
+  return true;
+}
+
+const cameToSignIn = takeSignInMark();
+
+/** Whether this page was opened from the plain http address to sign in. */
+export function sentToSignIn(): boolean {
+  return cameToSignIn;
+}
+
+/** Authelia's sign-in page, coming back here afterwards; from plain http,
+ *  this page's https address first. */
 export function signInUrl(): string {
+  if (window.location.protocol === "http:") {
+    const url = new URL(httpsHere());
+    url.searchParams.set(SIGN_IN_MARK, "");
+    return url.toString();
+  }
   return `https://${window.location.host}/auth/?rd=${encodeURIComponent(httpsHere())}`;
 }
 
@@ -399,10 +437,15 @@ export async function signInPageReady(signal?: AbortSignal): Promise<boolean> {
 export function signOut(): void {
   const session = me !== null && !me.spareKey;
   dropToken();
-  if (session) {
-    const home = `https://${window.location.host}/`;
-    window.location.assign(`https://${window.location.host}/auth/logout?rd=${encodeURIComponent(home)}`);
-  }
+  if (session) signOutTo("/");
+}
+
+/** End the LosOS Login session and come back to `path` on this box, which
+ *  then asks for a sign-in again. Every app's Sign out button goes here, so
+ *  signing out of one app signs the person out of all of them. */
+export function signOutTo(path: string): void {
+  const back = `https://${window.location.host}${path}`;
+  window.location.assign(`https://${window.location.host}/auth/logout?rd=${encodeURIComponent(back)}`);
 }
 
 /* A 401 on a stored token is the session ending, and every screen has to
@@ -490,8 +533,8 @@ async function call<T>(path: string, options: CallOptions = {}): Promise<T> {
   }
 
   if (!response.ok) {
-    const { message, edgeRequired, officialEdgeRequired } = await errorBody(response);
-    throw new ApiError(response.status, message, { edgeRequired, officialEdgeRequired });
+    const { message, ...rest } = await errorBody(response);
+    throw new ApiError(response.status, message, rest);
   }
 
   return (await response.json()) as T;
@@ -501,6 +544,7 @@ interface ErrorBody {
   message: string;
   edgeRequired: boolean;
   officialEdgeRequired: boolean;
+  code: string | null;
 }
 
 async function errorBody(response: Response): Promise<ErrorBody> {
@@ -509,10 +553,12 @@ async function errorBody(response: Response): Promise<ErrorBody> {
       error?: unknown;
       edgeRequired?: unknown;
       officialEdgeRequired?: unknown;
+      code?: unknown;
     };
     const flags = {
       edgeRequired: body.edgeRequired === true,
       officialEdgeRequired: body.officialEdgeRequired === true,
+      code: typeof body.code === "string" ? body.code : null,
     };
     if (typeof body.error === "string" && body.error.length > 0) {
       return { message: body.error, ...flags };
@@ -521,7 +567,7 @@ async function errorBody(response: Response): Promise<ErrorBody> {
   } catch {
     /* lososd restarting mid-rebuild answers through nginx, not as JSON */
   }
-  return { message: `HTTP ${response.status}`, edgeRequired: false, officialEdgeRequired: false };
+  return { message: `HTTP ${response.status}`, edgeRequired: false, officialEdgeRequired: false, code: null };
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────
@@ -664,7 +710,7 @@ export interface EdgeResponse {
   manage?: EdgeManage;
 }
 
-/** The switch that lets a company edge on this LAN manage LosOS cloud,
+/** The switch that lets a company edge on this LAN manage LosOS Cloud,
  *  LosOS Git and the apps (backend/src/edge.rs, "management"). */
 export interface EdgeManage {
   /** The edge in use that could manage the box, or null. */
@@ -3034,7 +3080,7 @@ export function getOptions(options: RequestOptions = {}): Promise<OptionsRespons
   return call<OptionsResponse>("/api/options", options);
 }
 
-/** GET /api/site: the settings of LosOS cloud and LosOS Git only, in the
+/** GET /api/site: the settings of LosOS Cloud and LosOS Git only, in the
  *  shape of GET /api/options. Open to the apps section and to a company edge
  *  the owner lets manage the box. */
 export function getSite(options: RequestOptions = {}): Promise<OptionsResponse> {
@@ -3157,7 +3203,7 @@ export type Pin =
   | { kind: "tile"; app: string }
   /** An app installed from the Apps search, by release name. */
   | { kind: "app"; release: string }
-  /** A file or folder in LosOS cloud. */
+  /** A file or folder in LosOS Cloud. */
   | { kind: "file"; id: number; path: string; folder: boolean }
   /** A repository on LosOS Git. */
   | { kind: "repo"; owner: string; name: string };
@@ -3185,7 +3231,7 @@ export function putPins(pins: readonly Pin[], options: RequestOptions = {}): Pro
 
 export interface CloudEntry {
   name: string;
-  /** From the top of LosOS cloud: "/Documents/plan.pdf". */
+  /** From the top of LosOS Cloud: "/Documents/plan.pdf". */
   path: string;
   id: number;
   folder: boolean;
@@ -3195,10 +3241,10 @@ export interface CloudEntry {
 export type CloudFilesResponse =
   | { available: true; path: string; query: string | null; entries: CloudEntry[]; more: boolean }
   /** signIn: the box holds no key to the owner's files until they sign in
-   *  with their password once. notUp: LosOS cloud did not answer. */
+   *  with their password once. notUp: LosOS Cloud did not answer. */
   | { available: false; reason: "signIn" | "notUp"; path: string; query: string | null; entries: [] };
 
-/** GET /api/cloud/files — one folder of LosOS cloud, folders first; with a
+/** GET /api/cloud/files — one folder of LosOS Cloud, folders first; with a
  *  query, the files and folders anywhere whose name holds it. */
 export function getCloudFiles(
   where: { path: string } | { query: string },
@@ -3238,6 +3284,8 @@ export interface MailFolder {
   id: string;
   name: string;
   role: MailRole | null;
+  /** The folder it sits in; null at the top. */
+  parentId: string | null;
   total: number;
   unread: number;
 }
@@ -3301,6 +3349,40 @@ export interface MailDraft {
   subject: string;
   text: string;
   inReplyTo?: string;
+  /** Files the message carries, read by the page (from the computer, from
+   *  LosOS Cloud, or a forwarded message's own). */
+  attachments?: MailFile[];
+}
+
+/** One attached file on its way to lososd. */
+export interface MailFile {
+  name: string;
+  type: string;
+  /** The bytes, base64. */
+  data: string;
+}
+
+/** What lososd takes in all (backend/src/mail.rs MAX_ATTACHMENT_BYTES). */
+export const MAIL_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+/** A file as POST /api/mail/send carries it. */
+export async function mailFile(file: File): Promise<MailFile> {
+  const url = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("could not read the file"));
+    reader.readAsDataURL(file);
+  });
+  return { name: file.name, type: file.type || "application/octet-stream", data: url.slice(url.indexOf(",") + 1) };
+}
+
+/** An attachment of a message the person can read, as a File, to forward
+ *  or to save into LosOS Cloud. */
+export async function fetchMailAttachment(attachment: MailAttachment): Promise<File> {
+  const res = await fetch(mailAttachmentUrl(attachment), { credentials: "same-origin" });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  const blob = await res.blob();
+  return new File([blob], attachment.name, { type: attachment.type || blob.type || "application/octet-stream" });
 }
 
 export interface MailChange {
@@ -3363,6 +3445,271 @@ export function sendMail(draft: MailDraft): Promise<{ ok: true }> {
     method: "POST",
     contentType: "application/json",
     body: JSON.stringify(draft),
+  });
+}
+
+// ── LosOS Contacts ─────────────────────────────────────────────────────────
+// The book is LosOS Cloud's address books (backend/src/cloud/contacts.rs),
+// under /cloud/api/contacts/, the same cards phones sync over CardDAV.
+// LosOS Cloud knows the caller from LosOS Login's cookie, so these calls
+// carry no admin token, and a 401 from it leaves the stored one alone.
+// The pickers are lososd's (backend/src/contacts.rs).
+
+export interface ContactLabelled {
+  value: string;
+  label: string;
+}
+
+export interface ContactAddress {
+  street: string;
+  locality: string;
+  region: string;
+  code: string;
+  country: string;
+  label: string;
+}
+
+export interface ContactName {
+  family: string;
+  given: string;
+  additional: string;
+  prefix: string;
+  suffix: string;
+}
+
+/** A contact's fields, as the page sends them to be saved. */
+export interface ContactFields {
+  name: string;
+  n?: ContactName;
+  nickname?: string;
+  org?: string;
+  title?: string;
+  emails?: ContactLabelled[];
+  phones?: ContactLabelled[];
+  addresses?: ContactAddress[];
+  urls?: ContactLabelled[];
+  /** `YYYY-MM-DD`, or `--MM-DD` without the year. */
+  birthday?: string;
+  note?: string;
+  /** A Matrix user ID, `@name:server`. */
+  matrix?: string;
+  /** A mesh address, `name@box`, for sharing files. */
+  mesh?: string;
+  uid?: string;
+}
+
+/** A contact as the book keeps it. */
+export interface Contact extends ContactFields {
+  id: string;
+  /** The address book it is in, by name. */
+  book?: string;
+  /** Where the photo loads from, versioned; absent without one. */
+  photo?: string;
+  updated: number;
+}
+
+/** One person a picker offers: a contact, or someone on this box. */
+export interface ContactSuggestion {
+  key: string;
+  source: "contact" | "box";
+  name: string;
+  picture?: string;
+  emails: string[];
+  matrixId?: string;
+  meshAddress?: string;
+  contactId?: string;
+}
+
+export interface ContactsImport {
+  added: number;
+  updated: number;
+  skipped: number;
+  photosDropped: number;
+  leftOut: number;
+}
+
+const CONTACTS = "/cloud/api/contacts";
+
+function contactsCall<T>(path: string, options: CallOptions = {}): Promise<T> {
+  return call<T>(`${CONTACTS}${path}`, { ...options, anonymous: true });
+}
+
+/** GET /cloud/api/contacts — the caller's contacts in every address book, by name. */
+export async function getContacts(options: RequestOptions = {}): Promise<{ contacts: Contact[] }> {
+  const answer = await contactsCall<{ contacts?: Contact[] }>("", options);
+  return { contacts: answer.contacts ?? [] };
+}
+
+/** POST /cloud/api/contacts or PUT /cloud/api/contacts/{id} — save a
+ *  contact's fields. 412 when a phone changed the card since it was read. */
+export function saveContact(id: string | null, fields: ContactFields): Promise<Contact> {
+  return contactsCall<Contact>(id === null ? "" : `/${encodeURIComponent(id)}`, {
+    method: id === null ? "POST" : "PUT",
+    contentType: "application/json",
+    body: JSON.stringify(fields),
+  });
+}
+
+/** DELETE /cloud/api/contacts/{id}. */
+export function deleteContact(id: string): Promise<{ removed: string }> {
+  return contactsCall<{ removed: string }>(`/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** PUT /cloud/api/contacts/{id}/photo — a picture, scaled and squared by the box. */
+export function setContactPhoto(id: string, picture: Blob): Promise<Contact> {
+  return contactsCall<Contact>(`/${encodeURIComponent(id)}/photo`, {
+    method: "PUT",
+    contentType: picture.type || "application/octet-stream",
+    body: picture,
+  });
+}
+
+/** DELETE /cloud/api/contacts/{id}/photo. */
+export function removeContactPhoto(id: string): Promise<Contact> {
+  return contactsCall<Contact>(`/${encodeURIComponent(id)}/photo`, { method: "DELETE" });
+}
+
+/** POST /cloud/api/contacts/import — a .vcf file, one card or many. */
+export function importContacts(file: Blob): Promise<ContactsImport> {
+  return contactsCall<ContactsImport>("/import", {
+    method: "POST",
+    contentType: "text/vcard",
+    body: file,
+  });
+}
+
+/** Where the book, or some contacts of it, downloads as a .vcf file. */
+export function contactsExportUrl(version: "3.0" | "4.0", ids?: readonly string[]): string {
+  const params = new URLSearchParams({ version });
+  if (ids !== undefined && ids.length > 0) params.set("ids", ids.join(","));
+  return `${CONTACTS}/export?${params.toString()}`;
+}
+
+/** GET /api/contacts/suggest — the people a picker offers for `q`: the
+ *  caller's contacts and the people on this box. Empty for the spare key. */
+export async function suggestContacts(
+  q: string,
+  want: "any" | "email" | "matrix" | "mesh" | "box" = "any",
+  options: RequestOptions & { limit?: number } = {},
+): Promise<ContactSuggestion[]> {
+  const params = new URLSearchParams({ q, want, limit: String(options.limit ?? 8) });
+  try {
+    const answer = await call<{ contacts?: ContactSuggestion[] }>(`/api/contacts/suggest?${params.toString()}`, options);
+    return answer.contacts ?? [];
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 403)) return [];
+    throw error;
+  }
+}
+
+// ── The box's AI on what the person shows it (backend/plugins/assistant) ──
+
+export interface AssistantStatus {
+  /** The box runs a language model at all. */
+  available: boolean;
+  /** Its model is pulled and answering. */
+  ready?: boolean;
+  model?: string;
+}
+
+/** Something the person chose to show the model: a file, a note, a thread. */
+export interface AssistantSource {
+  title: string;
+  text: string;
+}
+
+export interface AssistantAsk {
+  id: string;
+  state: "queued" | "running" | "done" | "failed" | "stopped";
+  answer: string;
+  /** Some of the material did not fit and was cut. */
+  cut: boolean;
+  error?: string;
+}
+
+/** GET /api/assistant. */
+export function getAssistant(options: RequestOptions = {}): Promise<AssistantStatus> {
+  return call<AssistantStatus>("/api/assistant", options);
+}
+
+/** POST /api/assistant/asks. A 429 means the model is busy with another. */
+export function askAssistant(
+  ask: { question: string; sources: AssistantSource[]; lang: string },
+  options: RequestOptions = {},
+): Promise<AssistantAsk> {
+  return call<AssistantAsk>("/api/assistant/asks", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(ask),
+  });
+}
+
+/** GET /api/assistant/asks/{id}. */
+export function getAssistantAsk(id: string, options: RequestOptions = {}): Promise<AssistantAsk> {
+  return call<AssistantAsk>(`/api/assistant/asks/${encodeURIComponent(id)}`, options);
+}
+
+/** DELETE /api/assistant/asks/{id}: stop it. */
+export function stopAssistantAsk(id: string): Promise<AssistantAsk> {
+  return call<AssistantAsk>(`/api/assistant/asks/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/* A person's own folders and filters: the mail plugin
+ * (backend/plugins/mail). LosOS Mail's own folders, the ones with a role,
+ * keep their names and places. */
+
+/** POST /api/mail/folders — a folder of one's own, at the top or inside one. */
+export function createMailFolder(name: string, parentId: string | null): Promise<{ id: string }> {
+  return call<{ id: string }>("/api/mail/folders", {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ name, parentId }),
+  });
+}
+
+/** PUT /api/mail/folders/{id} — rename it, or move it (`parentId: null` is the top). */
+export function updateMailFolder(
+  id: string,
+  change: { name?: string; parentId?: string | null },
+): Promise<{ ok: true }> {
+  return call<{ ok: true }>(`/api/mail/folders/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify(change),
+  });
+}
+
+/** DELETE /api/mail/folders/{id} — its mail goes to the bin first. */
+export function deleteMailFolder(id: string): Promise<{ moved: number }> {
+  return call<{ moved: number }>(`/api/mail/folders/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export type MailFilterField = "from" | "to" | "subject";
+
+export interface MailFilter {
+  name: string;
+  enabled: boolean;
+  /** Every condition must hold, or one is enough. */
+  match: "all" | "any";
+  conditions: { field: MailFilterField; value: string }[];
+  /** The folder it files into, the bin included; null leaves it in the inbox. */
+  moveTo: string | null;
+  markRead: boolean;
+  flag: boolean;
+}
+
+/** GET /api/mail/filters — in the order they run. */
+export function getMailFilters(options: RequestOptions = {}): Promise<{ filters: MailFilter[] }> {
+  return call<{ filters: MailFilter[] }>("/api/mail/filters", options);
+}
+
+/** PUT /api/mail/filters — the whole list, which the mail server runs as mail arrives. */
+export function putMailFilters(filters: MailFilter[]): Promise<{ filters: MailFilter[] }> {
+  return call<{ filters: MailFilter[] }>("/api/mail/filters", {
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({ filters }),
   });
 }
 

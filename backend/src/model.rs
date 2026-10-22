@@ -132,12 +132,12 @@ pub struct State {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub erase: Option<crate::erase::Erase>,
     /// The sign-in name (`crate::people`) of the person who claimed the box
-    /// and so owns its LosOS cloud account: their password changes change
+    /// and so owns its LosOS Cloud account: their password changes change
     /// that account's too.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
     /// The registrar URL of the company edge the owner let manage this box's
-    /// LosOS cloud, LosOS Git and app settings (`crate::edge::manager_active`).
+    /// LosOS Cloud, LosOS Git and app settings (`crate::edge::manager_active`).
     /// `None`, the default, is nobody.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub managed_by: Option<String>,

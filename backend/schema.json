@@ -1613,8 +1613,40 @@
       },
       "GET /api/me": {
         "auth": true,
-        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"], \"standalone\": bool, \"edge\": bool, \"locked\": [\"twoFactor\"|\"password\"], \"role\": \"owner\"|\"admin\"|\"moderator\"|\"member\"|\"guest\", \"roleName\": \"...\"|null, \"reports\": n (moderators only)}",
-        "note": "Who is calling (backend/src/http.rs, get_me). A person signed in at the box's sign-in page (Authelia at /auth/) arrives as the Remote-User nginx sets from Authelia's answer; lososd looks them up in the people file it writes (backend/src/people.rs) and answers with their name, groups and the sections of backend/sections.json those groups open. `standalone` is true when this box signs people in itself (LOSOS_IDENTITY=authelia), which is when the Users pane is shown. The spare key answers with name null, admin true and spareKey true. The admin pages show the panes `sections` names and hide the rest. 401 signed out; 403 with noAccount:true for a Remote-User the people file does not hold (removed since they signed in). A company edge the owner lets manage the box (POST /api/edge/manage) answers with edge true, name null, admin false and the sections it may use. `locked` lists what a rule of LosOS Login holds the person to their own account for (backend/src/login.rs); while it is not empty, `sections` is [\"account\"], `admin` is false, and every other route but the signed-in ones answers 403 with locked:true. `role` is the caller's role, a layer over their groups (backend/src/roles.rs), and `roleName` the name of a role of the box's own when they hold one. `reports` counts the open reports for anyone who can open the Moderation pane."
+        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"], \"standalone\": bool, \"edge\": bool, \"locked\": [\"twoFactor\"|\"password\"], \"shared\": [\"mail\", \"chat\", \"contacts\"], \"role\": \"owner\"|\"admin\"|\"moderator\"|\"member\"|\"guest\", \"roleName\": \"...\"|null, \"reports\": n (moderators only)}",
+        "note": "Who is calling (backend/src/http.rs, get_me). A person signed in at the box's sign-in page (Authelia at /auth/) arrives as the Remote-User nginx sets from Authelia's answer; lososd looks them up in the people file it writes (backend/src/people.rs) and answers with their name, groups and the sections of backend/sections.json those groups open. `standalone` is true when this box signs people in itself (LOSOS_IDENTITY=authelia), which is when the Users pane is shown. The spare key answers with name null, admin true and spareKey true. The admin pages show the panes `sections` names and hide the rest. 401 signed out; 403 with noAccount:true for a Remote-User the people file does not hold (removed since they signed in). A company edge the owner lets manage the box (POST /api/edge/manage) answers with edge true, name null, admin false and the sections it may use. `locked` lists what a rule of LosOS Login holds the person to their own account for (backend/src/login.rs); while it is not empty, `sections` is [\"account\"], `admin` is false, and every other route but the signed-in ones answers 403 with locked:true. `shared` (a person's only) names the apps that run as the `shared` user and are live on this box now, which is only while it shares its storage: the page draws their entries only when they are named here. `role` is the caller's role, a layer over their groups (backend/src/roles.rs), and `roleName` the name of a role of the box's own when they hold one. `reports` counts the open reports for anyone who can open the Moderation pane."
+      },
+      "GET /api/chat": {
+        "auth": true,
+        "out": "{\"available\": bool, \"reason\": \"up\"|\"starting\", \"serverName\": \"...\", \"federation\": bool}",
+        "note": "LosOS Chat (backend/src/chat.rs, modules/chat.nix): whether the homeserver answers, and the part after the colon in every user ID. 404 {\"error\"} when chat is not live on this box: it is off, or the box does not both share its storage and belong to a mesh."
+      },
+      "GET /api/chat/people": {
+        "auth": true,
+        "out": "{\"people\": [{\"userId\": \"@<name>:<serverName>\", \"displayName\": \"...\"}]}",
+        "note": "Everyone in LosOS Login who may chat, so the page can offer them before they have ever signed in: Dendrite's user directory lists only people who share a room. Makes each one's account through the application service on first sight, keeping the display name in step; a disabled person or one a rule of LosOS Login holds is left out. 403 for the spare key and the edge; 503 while the homeserver starts; 404 when chat is not live."
+      },
+      "GET /api/contacts/suggest": {
+        "auth": true,
+        "out": "{\"contacts\": [{\"key\": \"contact:<id>\"|\"box:<name>\", \"source\": \"contact\"|\"box\", \"name\", \"picture\"?, \"emails\": [\"...\"], \"matrixId\"?, \"meshAddress\"?, \"contactId\"?}]}",
+        "note": "People pickers (Mail's To and Cc, starting a chat, the Contacts book's On this box, mesh sharing, @-mentions): ?q=&want=any|email|matrix|mesh|box&limit=8 (1 to 50). The caller's contacts, from LosOS Cloud's address books (GET /cloud/api/contacts/suggest as the caller, backend/src/cloud/contacts.rs, which also keeps the book itself under /cloud/api/contacts/), and the people on this box, best match first, accents ignored. A box person who is a contact by Matrix ID shows once, as the contact; want=mesh offers contacts only; want=box offers everyone on this box but the caller, contacts or not, and no contacts. Box people carry a matrixId only where chat runs and an address only where mail does; without LosOS Cloud there are no contacts. 403 for the spare key and the edge."
+      },
+      "POST /api/chat/session": {
+        "auth": true,
+        "in": "{\"device\": \"<device ID the page had>\" (optional), \"deviceName\": \"...\" (optional, at most 64 characters)}",
+        "out": "{\"userId\": \"@<name>:<serverName>\", \"accessToken\": \"...\", \"deviceId\": \"...\", \"homeserver\": \"/\"}",
+        "note": "Sign a chat device in for the person LosOS Login signed in. The first call makes their account, @<name>:<serverName>, through the application service lososd is; nobody has a Matrix password. Keeps their display name in step with LosOS Login. A `device` the page had keeps that device (and its end-to-end keys); a malformed one is ignored. 403 for the spare key, the edge, and a person a rule of LosOS Login holds; 503 while the homeserver starts; 404 when chat is not live. Cache-Control no-store. Every request with the token then passes GET /internal/chat/authz."
+      },
+      "GET /internal/chat/authz": {
+        "auth": false,
+        "out": "empty: 200 go on, 401 sign in with LosOS Login, 403 not yours, 404 chat not live, 503 not answering",
+        "note": "Asked by nginx alone (an internal location in modules/chat.nix) before every request to the homeserver's client and media APIs, with the request's Cookie, Authorization, X-Original-URL, X-Original-Method and X-Forwarded-For. lososd asks LosOS Login about the cookie, wants the person still in the people file and not held, and a Matrix token, when there is one, of that same person (asked of the homeserver, remembered by its SHA-256 for five minutes). A token the homeserver does not know goes on, so the homeserver answers M_UNKNOWN_TOKEN itself."
+      },
+      "GET /internal/chat/threads/{room}": {
+        "auth": false,
+        "in": "Authorization: Bearer <Matrix token>; query string limit (1-100, default 25), from (next_batch), include=all|participated",
+        "out": "{\"chunk\": [<root event with unsigned[\"m.relations\"][\"m.thread\"] = {latest_event, count, current_user_participated}>], \"next_batch\": \"...\" (when there may be more)}",
+        "note": "GET /_matrix/client/v1/rooms/{room}/threads, which Dendrite lacks; nginx sends it here after GET /internal/chat/authz. The threads come from Dendrite's relations table, read by losos-chat-threads as `shared` over a socket only root opens; each root and latest reply is fetched from the homeserver with the caller's token, so a thread whose root the caller may not see is left out. The homeserver's own 401 for an unknown token is passed back."
       },
       "GET /api/people": {
         "auth": true,
@@ -1673,24 +1705,24 @@
         "auth": true,
         "in": "{\"app\": \"mail\"|\"chat\"|\"profile\"|\"cloud\"|\"git\"|\"notes\"|\"diagrams\"|\"office\"|\"calls\", \"ref\": \"...\", \"reason\": \"spam\"|\"abuse\"|\"sexual\"|\"child\"|\"other\", \"about\": \"...\" (optional), \"note\": \"...\" (optional)}",
         "out": "{\"id\": \"...\"}",
-        "note": "Report something to the box's moderators (backend/src/moderation.rs). `ref` names the thing in its app (a mail id, a Matrix event, picture or banner) and is never its content. A report about a child keeps no note. The same report twice is one report; 20 open from one person is a 429. Anyone signed in, guests too."
+        "note": "Report something to the box's moderators (backend/src/moderation.rs). `ref` names the thing in its app (a mail id, <room ID>/<event ID> in chat, picture or banner) and is never its content. A report about a child keeps no note. The same report twice is one report; 20 open from one person is a 429. Anyone signed in, guests too."
       },
       "GET /api/moderation": {
         "auth": true,
-        "out": "{\"standalone\": bool, \"you\": \"...\"|null, \"admin\": bool, \"hides\": [\"mail\", \"profile\"], \"reports\": [{\"id\", \"at\", \"by\", \"app\", \"about\", \"ref\", \"reason\", \"note\", \"state\": \"open\"|\"hidden\"|\"dismissed\"|\"resolved\", \"handledBy\", \"handledAt\"}], \"people\": [profile + {\"role\", \"roleName\", \"muted\": hold|null, \"suspended\": hold|null, \"disabled\": bool, \"actionable\": bool}], \"log\": [{\"at\", \"by\", \"action\", \"about\", \"detail\"}]}",
+        "out": "{\"standalone\": bool, \"you\": \"...\"|null, \"admin\": bool, \"hides\": [\"mail\", \"chat\" (while chat is live), \"profile\"], \"reports\": [{\"id\", \"at\", \"by\", \"app\", \"about\", \"ref\", \"reason\", \"note\", \"state\": \"open\"|\"hidden\"|\"dismissed\"|\"resolved\", \"handledBy\", \"handledAt\"}], \"people\": [profile + {\"role\", \"roleName\", \"muted\": hold|null, \"suspended\": hold|null, \"disabled\": bool, \"actionable\": bool}], \"log\": [{\"at\", \"by\", \"action\", \"about\", \"detail\"}]}",
         "note": "The Moderation pane: the queue (open first, child reports first, newest first), everyone with what the caller may do to them, and the latest lines of /var/lib/losos/moderation.log. `hides` are the apps the queue can hide a thing in. Moderators and administrators; viewers do not read it."
       },
       "POST /api/moderation/reports/{id}": {
         "auth": true,
         "in": "{\"action\": \"hide\"|\"release\"|\"dismiss\"|\"resolve\"}",
         "out": "the report as it now stands: {\"id\", ..., \"state\", \"handledBy\", \"handledAt\"}",
-        "note": "Act on a report. hide moves a mail into the reporter's Quarantine mailbox (no page lists it and lososd refuses to open it) or takes a profile picture or banner down; release lets held mail go; a report about a child can only be hidden, or resolved where the box cannot hide it, never dismissed or released. 409 for a closed report. Moderators and administrators."
+        "note": "Act on a report. hide moves a mail into the reporter's Quarantine mailbox (no page lists it and lososd refuses to open it), redacts a chat message as its sender (a chat report's ref is <room ID>/<event ID>), or takes a profile picture or banner down; release lets held mail go; a report about a child can only be hidden, or resolved where the box cannot hide it, never dismissed or released. 409 for a closed report. Moderators and administrators."
       },
       "POST /api/moderation/mute": {
         "auth": true,
         "in": "{\"name\": \"...\", \"minutes\": 1..527040|null, \"reason\": \"...\" (optional)}",
         "out": "{\"name\": \"...\", \"muted\": hold}",
-        "note": "Stop someone sending mail and changing their profile (the `speech` routes of backend/sections.json answer 403 with muted) for `minutes`, or until unmuted when null. Administrators may hold anyone but the owner; moderators members and guests; nobody themselves. Moderators and administrators."
+        "note": "Stop someone sending mail, writing in chat and changing their profile (the `speech` routes of backend/sections.json answer 403 with muted, and /internal/chat/authz refuses what they would say in a room) for `minutes`, or until unmuted when null. Administrators may hold anyone but the owner; moderators members and guests; nobody themselves. Moderators and administrators."
       },
       "POST /api/moderation/unmute": {
         "auth": true,

@@ -46,6 +46,10 @@
   # The same for the GPU canvas's two modules into src/lab/render-pkg
   # (losos-admin-ui.labRenderPkg), imported lazily too.
   labRenderPkg ? "",
+  # The SFU behind calls (the losos-ctl package's losos-calls), which
+  # tests/calls.browser.mjs runs a call through. Without it that file
+  # cannot run, so the check needs it.
+  callsPackage,
 }:
 let
   inherit (pkgs) lib;
@@ -62,12 +66,14 @@ pkgs.buildNpmPackage {
   # nix/packages.nix carries the SAME hash over the SAME lock file — two
   # derivations, one dependency set. Change both together or the second one
   # fails with the correct hash in its error.
-  npmDepsHash = "sha256-xuNMvZ29PHuMfTjWRsQ1tap+6QVQuScKoaI/MUra3eo=";
+  npmDepsHash = "sha256-+RP46Gutn7cNbCyBatNNtXpE4XK/qy0dL20yG2Sb6wY=";
 
   # No postinstall scripts: playwright must not try to fetch browsers (there is
   # no network here, and the ones it would fetch are not the ones this runs
   # against), and esbuild's binary arrives through its platform package.
   npmFlags = [ "--ignore-scripts" ];
+  # tests/calls.browser.mjs decodes the SFU's tap with ffmpeg.
+  nativeBuildInputs = [ pkgs.ffmpeg-headless ];
   preBuild = labCorePkg + labVirtPkg + labRenderPkg;
 
   env = {
@@ -81,6 +87,9 @@ pkgs.buildNpmPackage {
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
     FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
+    LOSOS_CALLS_BIN = "${callsPackage}/bin/losos-calls";
+    # The sandbox has only loopback; Chromium takes a loopback candidate.
+    LOSOS_CALLS_ADDRESS = "127.0.0.1";
   }
   // lib.optionalAttrs (optionsJson != null) {
     LOSOS_OPTIONS_JSON = optionsJson;

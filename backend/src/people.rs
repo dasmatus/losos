@@ -31,7 +31,7 @@ const DEFAULT_FILE: &str = "/var/lib/losos-identity/users.yml";
 const PEOPLE_DIR: &str = "/var/lib/losos-identity";
 /// The group every first person lands in.
 pub const ADMINS: &str = "losos-admins";
-/// The person who claimed the box. nginx signs them in to LosOS cloud and
+/// The person who claimed the box. nginx signs them in to LosOS Cloud and
 /// LosOS Git as the account that holds their files and repositories
 /// (`modules/app-sign-in.nix`); everyone else arrives under their own name.
 pub const OWNER: &str = "losos-owner";
@@ -42,13 +42,13 @@ pub const VIEWERS: &str = "losos-viewers";
 /// for it at every sign-in (`crate::login`, `modules/identity.nix`).
 pub const TWO_FACTOR: &str = "losos-two-factor";
 /// A rule of LosOS Login holds the person to their own account
-/// (`crate::login`): LosOS Login keeps them out of LosOS cloud and LosOS
+/// (`crate::login`): LosOS Login keeps them out of LosOS Cloud and LosOS
 /// Git, and this daemon out of everything but their account.
 pub const LOCKED: &str = "losos-locked";
 /// The marks this daemon keeps in step itself. Nobody hands them out, and a
 /// change of access keeps them.
 pub const MARKS: [&str; 2] = [TWO_FACTOR, LOCKED];
-/// Names already taken by the box's own accounts in LosOS cloud and LosOS
+/// Names already taken by the box's own accounts in LosOS Cloud and LosOS
 /// Git: the owner's, the shared domain's and the bot's. A person
 /// signing in under one of them would arrive as that account.
 const RESERVED: [&str; 3] = ["notshared", "shared", "losos"];
@@ -84,7 +84,7 @@ pub enum Refused {
     /// The name is taken.
     Taken(String),
     /// The person who claimed the box keeps their account and their access:
-    /// their files in LosOS cloud and LosOS Git hang off it.
+    /// their files in LosOS Cloud and LosOS Git hang off it.
     Owner(String),
     /// A person cannot remove themselves or change their own access, so
     /// nobody locks themselves out by a slip.
@@ -442,7 +442,7 @@ impl People {
 
     /// Take `name` out of the file. `by` is the person asking, if a person
     /// is: nobody removes themselves, the owner, or the last administrator.
-    /// Their accounts in LosOS cloud and LosOS Git, and the files in them,
+    /// Their accounts in LosOS Cloud and LosOS Git, and the files in them,
     /// stay where they are.
     pub fn remove(&self, name: &str, by: Option<&str>) -> anyhow::Result<()> {
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());

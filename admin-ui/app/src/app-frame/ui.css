@@ -1,6 +1,6 @@
 /* The LosOS components inside the app frame (ui.tsx), and plain HTML
  * elements styled to match, on the box's palette (../styles/tokens.css, the
- * same file the admin page, LosOS cloud and LosOS Git read). No utility
+ * same file the admin page, LosOS Cloud and LosOS Git read). No utility
  * classes: an app's code cannot add to a stylesheet that was compiled before
  * it was written, so everything an app can name is styled here.
  *

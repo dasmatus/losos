@@ -303,7 +303,7 @@ impl Act {
 /// Whether a moderator can hide something in `app` from the queue: hold
 /// a mail, take a picture down.
 pub fn can_hide(app: App) -> bool {
-    matches!(app, App::Mail | App::Profile)
+    matches!(app, App::Mail | App::Chat | App::Profile)
 }
 
 /// Whether `act` may be done to `report` at all. A report of a child being

@@ -70,7 +70,7 @@ pub struct FakeLosos {
     pub market_routes: std::collections::BTreeMap<String, (u16, String)>,
     /// Every operation asked for, in order.
     pub market_ops: Vec<crate::market::Op>,
-    /// The live custom domains last handed to LosOS cloud; `None` until the
+    /// The live custom domains last handed to LosOS Cloud; `None` until the
     /// first write.
     pub public_names: Option<Vec<String>>,
     /// The last relay pass written: `None` never written, `Some(None)`
@@ -561,6 +561,9 @@ impl Losos for FakeLosos {
             crate::pins::CloudRequest::List { user, path } => format!("list {user} {path}"),
             crate::pins::CloudRequest::Search { user, query } => format!("search {user} {query}"),
             crate::pins::CloudRequest::Arrive { user, .. } => format!("arrive {user}"),
+            crate::pins::CloudRequest::ContactMatches { user, query, want } => {
+                format!("contacts {user} {want} {query}")
+            }
         });
         self.cloud_answers
             .pop_front()
