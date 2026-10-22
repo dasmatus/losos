@@ -768,6 +768,10 @@ pkgs.testers.nixosTest {
     else
       "losos-mesh-ci";
 
+  # Under emulation the film's twenty states at twice the pixels take most
+  # of an hour on their own, after the hour the jobs and pictures take.
+  globalTimeout = if screens then 4 * 3600 else 3600;
+
   nodes = {
     boxa = boxNode {
       id = "boxa";
