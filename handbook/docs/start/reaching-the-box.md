@@ -12,7 +12,7 @@ write that address, and they are not equally reliable.
 
 The banner on the box's screen shows `http://192.168.x.y`, the address your
 router gave the box. Every page answers on it: the admin pages at `/`, LosOS
-Cloud at `/cloud/`, LosOS Git at `/forgejo/`, this handbook at
+Cloud at `/cloud/`, LosOS Git at `/git/`, this handbook at
 `/handbook/`. The box redraws the banner when the address changes.
 
 ![The banner under the salmon on the box's screen, with the address to type into a browser and the box's .local name.](../img/tty1-banner.png)

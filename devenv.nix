@@ -74,7 +74,7 @@ let
   # two the k3s/fscrypt rework broke. A local gate that quietly skips whatever
   # nobody remembered to add to it does not merely miss the regression: it
   # prints a row of green ticks over the top of it. Same for `build-pkgs` and
-  # the three OCI images. If you add a check or a package, this picks it up;
+  # the OCI images. If you add a check or a package, this picks it up;
   # do not "clarify" it back into a literal list.
   #
   # x86_64-linux is a literal because the flake exports exactly one system (see
@@ -428,13 +428,12 @@ in
   '';
   scripts.build-pkgs.description = "Build every flake package except the images and media.";
 
-  # The images the LOCAL k3s cluster runs as static pods (nix/images.nix,
-  # wired to losos.workloads.* in modules/defaults.nix).
+  # The image the LOCAL k3s cluster builds its pods on (nix/images.nix,
+  # wired to losos.workloads.pauseImage in modules/defaults.nix).
   #
-  # Opt-in, and deliberately not part of `devenv test`, because of what they
-  # cost: Forgejo's tarball is 585 MiB over 126 paths and pause's 51 MiB, and
-  # from a cold store realising their closures is the "multi-gigabyte
-  # closure" the enterTest block below promises not to spend on you unasked.
+  # Opt-in, and deliberately not part of `devenv test`: pause's tarball is
+  # 51 MiB, small, but realising it is still a build the enterTest block below
+  # promises not to start unasked.
   #
   # It has to be gated *somewhere*, though, and until CI grows a job for it
   # this is the only place. The appliance never builds these: it substitutes
@@ -446,7 +445,7 @@ in
   # it at build time) or a buildEnv whose paths collide. Run this before
   # pushing anything that touches nix/images.nix.
   scripts.build-images.exec = buildMatching "losos-image-";
-  scripts.build-images.description = "Build the OCI images the local cluster runs (gigabytes; opt-in).";
+  scripts.build-images.description = "Build the OCI image the local cluster runs (opt-in).";
 
   # The two bootable media (nix/disk-images.nix), built off the same
   # `install` system the ISO installs:

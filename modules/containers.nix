@@ -2,25 +2,21 @@
 #
 # One default_server vhost on :80 carries everything the appliance publishes:
 # the admin SPA at /, lososd's JSON API at /api/*, LosOS Cloud
-# (modules/cloud.nix) and /forgejo/. default_server because master-proxy
-# (Traefik+rathole) traffic arrives with a public hostname, not
+# (modules/cloud.nix) and LosOS Git at /git/. default_server because
+# master-proxy (Traefik+rathole) traffic arrives with a public hostname, not
 # <hostName>.local. Nothing but Nginx binds a public port. The admin surface
-# (/, /setup/, /api/) is LAN-only (see `lanOnly` below); LosOS Cloud and
-# /forgejo are reachable through the master-proxy tunnel.
+# (/, /assets/, /setup/, /api/) is LAN-only (see `lanOnly` below); LosOS
+# Cloud and /git/ are reachable through the master-proxy tunnel.
 #
 # This file used to *define* the services as well, as systemd-nspawn
 # containers on private veths (10.231.1.2 and 10.231.2.2) with NAT for egress.
-# All of that is gone. `losos.<svc>.mode == "container"` now means a static pod
-# in this box's own local k3s cluster: modules/cluster.nix runs the cluster,
-# modules/workloads.nix writes the manifests and the rendered config the pods
-# mount. The option value keeps the name "container" — it is the
-# user-facing spelling in the settings SPA and there is no installed base to
-# break by renaming it, but it no longer implies nspawn.
+# All of that is gone: LosOS Cloud and LosOS Git run on the host, and the
+# local cluster (modules/cluster.nix) runs only the `shared` apps.
 #
 # The local cluster runs no CNI (--flannel-backend=none), so its pods share the
-# host's network namespace and bind 127.0.0.1. That is why the route below
-# proxies to a loopback port instead of container addresses — and why `lanOnly`
-# lost a layer of depth. That loss is spelled out where the guard is defined;
+# host's network namespace and bind 127.0.0.1. That is why the routes below
+# proxy to loopback and to sockets instead of container addresses — and why
+# `lanOnly` lost a layer of depth. That loss is spelled out where the guard is defined;
 # do not re-add a deny rule for a subnet that no longer exists.
 #
 # The vhost itself is unconditional: it owns the *service* routes, so gating it
@@ -34,23 +30,16 @@
 }:
 
 let
-  # losos.forgejo.enable is consulted in *both* modes. It used to be read only
-  # by the native path (modules/services.nix), so with the default
-  # mode == "container" the option was dead: enable = false still ran the git
-  # host and still published /forgejo/ through the tunnel.
-  forgejoWorkload = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
-
-  # Forgejo's port is a literal on both sides — here and in the losos.ini that
-  # modules/workloads.nix mounts into the pod. There is deliberately no
-  # losos.forgejo.httpPort: nothing off-box ever sees it (the prefix is
-  # stripped here and ROOT_URL carries the public form), so an option would be
-  # a knob with no reason to be turned.
-  forgejoPort = 3000;
+  # LosOS Git (modules/git.nix) answers on a Unix socket only nginx may open.
+  gitOn = config.losos.git.enable;
+  gitSocket = "/run/losos-git/http.sock";
+  # LosOS Git's pages come from the admin UI's bundle.
+  gitPages = gitOn && adminEnabled;
 
   # Sign-in to the two apps with LosOS Login (modules/app-sign-in.nix,
   # modules/identity.nix for the questions nginx asks it).
   signIn = import ./app-sign-in.nix { inherit lib; };
-  signInForgejo = config.lososInternal.appSignIn.forgejo;
+  signInGit = config.lososInternal.appSignIn.git;
   # Whatever a client sent, the apps never see these headers from it.
   clearSignIn = ''
     proxy_set_header ${signIn.header.user} "";
@@ -71,17 +60,6 @@ let
   '';
   # Every request: the person if there is one, nobody otherwise.
   signInMaybe = passSignIn "/internal/losos-app-authz";
-  # An app's sign-in page. Signed in to LosOS Login: on to the app, which
-  # signs the person in. Not signed in: to LosOS Login, which sends them
-  # back here, from the LAN and through the tunnel alike. Held to their own
-  # account by a rule of LosOS Login: a page that says so. LosOS Login
-  # starting: a page that waits for it. Never the app's own sign-in page.
-  signInPage = ''
-    ${passSignIn "/internal/losos-app-sign-in"}
-    error_page 401 = @losos-app-sign-in;
-    error_page 403 @losos-app-held;
-    error_page 500 =503 @losos-app-waiting;
-  '';
   adminUi = config.losos.admin.ui;
   adminApiPort = config.losos.admin.apiPort;
   # Only nginx's `losos-manage.invalid` server (modules/proxy.nix) may
@@ -111,6 +89,9 @@ let
   # on the shared side, so with sharing off there is no /mail at all
   # (modules/mail.nix).
   mailEnabled = adminEnabled && config.lososInternal.mail.live;
+  # Mesh CI's screen (admin-ui/app/src/screens/ci/), the same way: only
+  # while Mesh CI runs (modules/ci.nix).
+  ciEnabled = adminEnabled && config.lososInternal.ci.live;
 
   # Access guard for the admin surface (the SPA, its assets, the setup routes,
   # the lososd API): local network only. Master-proxy traffic must never reach
@@ -172,15 +153,14 @@ let
   lanOnly = import ./lan-only.nix;
 
   # ── Security response headers ─────────────────────────────────────────────
-  # The admin UI, /api/, /cloud/ and /forgejo/ share one origin by design,
+  # The admin UI, /api/, /cloud/ and /git/ share one origin by design,
   # so a strict CSP is the only thing standing between an injected script on
   # the admin pages and the Bearer token the SPA keeps in sessionStorage.
   #
-  # It cannot be applied to Forgejo: it ships its own CSP and needs inline
-  # script, and `add_header` at server level is inherited by every location
-  # that does not set one of its own — including the proxy location. So the
-  # values are selected by a `map` on $uri and the service prefix maps to the
-  # empty string; nginx omits a header whose value
+  # `add_header` at server level is inherited by every location that does
+  # not set one of its own, so the values are selected by a `map` on $uri:
+  # the routes with a policy of their own get theirs; nginx omits a header
+  # whose value
   # is empty. Fail-closed on purpose: the default arm is the strict policy, so
   # a new admin route is covered without anyone remembering to add it.
   #
@@ -291,6 +271,30 @@ let
     "form-action 'none'"
   ];
 
+  # ── The app frame ─────────────────────────────────────────────────────
+  # The owner's own apps (backend/src/user_apps.rs, src/apps/ in the SPA)
+  # run in `/app-frame/` under `<iframe sandbox="allow-scripts allow-forms">`,
+  # for the reasons the widget frame gives above. The difference is the
+  # script: the frame loads the box's own runtime (React and the LosOS
+  # components, /app-frame/runtime.js, so 'self') and the runtime adds the
+  # app, which lososd compiled from the owner's JSX, as an inline script.
+  # 'self' matches the frame's URL even though the sandbox gives the
+  # document an opaque origin. No 'unsafe-eval': nothing in an app needs it.
+  # `allow-forms` lets an app's <form> call its own submit handler;
+  # `form-action 'none'` keeps the form from going anywhere.
+  appFrameCsp = lib.concatStringsSep "; " [
+    "default-src 'none'"
+    "script-src 'self' 'unsafe-inline'"
+    "style-src 'self' 'unsafe-inline'"
+    "img-src data: blob: https: http:"
+    "font-src 'self' data: https: http:"
+    "media-src data: blob: https: http:"
+    "connect-src https: http:"
+    "frame-ancestors 'self'"
+    "base-uri 'none'"
+    "form-action 'none'"
+  ];
+
   # ── A message's HTML ──────────────────────────────────────────────────
   # LosOS Mail shows an HTML message in `<iframe sandbox>` from lososd's
   # /api/mail/messages/<id>/html, never inside the Mail page. The document
@@ -313,12 +317,12 @@ let
   ];
 
   # One map per header: value on the admin surface, empty (header omitted) on
-  # the proxied Git route and on LosOS Login under /auth/, which sends its
-  # own (the admin `base-uri 'none'` drops its `<base href>`, and every page
-  # below /auth/ then loads its scripts from the wrong folder and stays
-  # blank), the handbook's own value (or the admin value, for the headers
-  # they share) under /handbook/, the widget frame's own value (or nothing)
-  # under /widget-frame/, and a mail message's under its HTML route.
+  # LosOS Login under /auth/, which sends its own (the admin `base-uri 'none'`
+  # drops its `<base href>`, and every page below /auth/ then loads its scripts
+  # from the wrong folder and stays blank), the handbook's own value (or the
+  # admin value, for the headers they share) under /handbook/, each frame's
+  # own value (or nothing) under /widget-frame/ and /app-frame/, and a mail
+  # message's under its HTML route.
   #
   # Collabora Online's two prefixes (modules/office.nix) get nothing either,
   # only while it is on: coolwsd sends its own policy, whose frame-ancestors
@@ -328,14 +332,14 @@ let
     ~^/browser/      "";
         ~^/cool/         "";
   '';
-  adminHeaderMap = variable: value: handbookValue: frameValue: mailValue: ''
+  adminHeaderMap = variable: value: handbookValue: frameValue: appFrameValue: mailValue: ''
     map $uri ${variable} {
         default          "${value}";
-        ~^/forgejo       "";
         ${officeArms}
         ~^/auth/         "";
         ~^/handbook/     "${handbookValue}";
         ~^/widget-frame/ "${frameValue}";
+        ~^/app-frame/    "${appFrameValue}";
         ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";
     }
   '';
@@ -347,6 +351,7 @@ let
       value = adminCsp;
       handbookValue = handbookCsp;
       frameValue = widgetFrameCsp;
+      appFrameValue = appFrameCsp;
       mailValue = mailFrameCsp;
     }
     {
@@ -373,6 +378,8 @@ let
   adminHeaderMaps = lib.concatMapStrings (
     h:
     adminHeaderMap h.variable h.value (h.handbookValue or h.value) h.frameValue (
+      h.appFrameValue or h.frameValue
+    ) (
       h.mailValue or h.value
     )
   ) adminHeaders;
@@ -461,13 +468,14 @@ in
           # theme-boot.js is deliberately NOT covered: it is the one unhashed
           # file in the bundle (admin-ui/app/vite.config.ts says why), so it
           # has to keep revalidating against its ETag.
-          # Not LAN-only while LosOS Cloud runs: its page at /cloud/
-          # (modules/cloud.nix) is reached through the tunnel too and loads
-          # the same bundle. The files are the app's code, the same on every
-          # box, and hold nothing of the owner's.
+          # Not LAN-only while LosOS Cloud or LosOS Git signs people in:
+          # their pages at /cloud/ (modules/cloud.nix) and /git/ are reached
+          # through the tunnel too and load the same bundle. The files are
+          # the app's code, the same on every box, and hold nothing of the
+          # owner's.
           "/assets/" = {
             extraConfig = ''
-              ${lib.optionalString (!config.lososInternal.appSignIn.cloud) lanOnly}
+              ${lib.optionalString (!(config.lososInternal.appSignIn.cloud || signInGit)) lanOnly}
               expires 1y;
             '';
           };
@@ -565,6 +573,11 @@ in
           "= /mail".return = "404";
           "/mail/".return = "404";
         })
+        (lib.mkIf (adminEnabled && !ciEnabled) {
+          # Mesh CI's screen at /ci, gone with Mesh CI.
+          "= /ci".return = "404";
+          "/ci/".return = "404";
+        })
         (lib.mkIf labLibvirt {
           # The Lab guests' serial consoles and network cards, as WebSockets
           # straight to `losos-registrar lab`. Longer than /api/ so it wins
@@ -621,61 +634,82 @@ in
             '';
           };
         })
-        (lib.mkIf forgejoWorkload {
-          # Trailing slash on proxyPass -> /forgejo prefix stripped;
-          # Forgejo's ROOT_URL is https://<host>.local/forgejo/ (http without
-          # losos.tls, or the master-proxy hostname) so it generates prefixed
-          # links.
-          "/forgejo/" = {
-            proxyPass = "http://127.0.0.1:${toString forgejoPort}/";
-            proxyWebsockets = true;
-            # Who LosOS Login says is calling, on every request, so a person
-            # signed in there is signed in here from the first page
-            # (modules/app-sign-in.nix). Nobody, without LosOS Login.
-            extraConfig = if signInForgejo then signInMaybe else clearSignIn;
-          };
-        })
-        (lib.mkIf (forgejoWorkload && signInForgejo) {
-          # Forgejo's sign-in page: LosOS Login's instead (see `signInPage`).
-          "= /forgejo/user/login" = {
-            proxyPass = "http://127.0.0.1:${toString forgejoPort}/user/login";
-            extraConfig = signInPage;
-          };
-        })
-        # Only while the box shares its disk: lososInternal.federation.forgejo
-        # is losos.forgejo.federation.enable gated on losos.sharingMyStorage.
-        (lib.mkIf (forgejoWorkload && config.lososInternal.federation.forgejo) {
-          # The two addresses the fediverse discovers a server by, and the
-          # only two Forgejo serves at the host's root rather than under
-          # ROOT_URL: a server that wants to federate with this box asks
-          # https://<host>/.well-known/nodeinfo, never
-          # /forgejo/.well-known/nodeinfo. Exact matches, so nothing else
-          # under /.well-known/ leaves the admin SPA's `/` location, and not
-          # LAN-guarded for the same reason /forgejo/ is not: the peers
-          # arrive through the tunnel, from loopback. Everything Forgejo
-          # answers with is a URL under ROOT_URL, so the rest of federation
-          # rides the /forgejo/ route above.
-          "= /.well-known/nodeinfo" = {
-            proxyPass = "http://127.0.0.1:${toString forgejoPort}";
-          };
-          "= /.well-known/webfinger" = {
-            proxyPass = "http://127.0.0.1:${toString forgejoPort}";
-          };
-        })
+        (lib.mkIf gitOn (
+          let
+            # Pushes and clones of any size, streamed both ways, and the
+            # person LosOS Login names on every request
+            # (modules/app-sign-in.nix); a git client's own token in
+            # Authorization skips that question (`/internal/losos-app-authz`).
+            toGit = ''
+              ${if signInGit then signInMaybe else clearSignIn}
+              client_max_body_size 0;
+              proxy_request_buffering off;
+              proxy_buffering off;
+              proxy_http_version 1.1;
+              proxy_read_timeout 1h;
+              proxy_send_timeout 1h;
+            '';
+          in
+          {
+            # LosOS Git: its API and git's smart HTTP on the Unix socket of
+            # modules/git.nix with the /git prefix taken off, and its pages
+            # from the admin UI's bundle (admin-ui/app/git/). Not LAN-guarded,
+            # like LosOS Cloud: through an edge it is how the owner clones from
+            # anywhere, and every repository is checked by LosOS Git itself.
+            "/git/api/" = {
+              proxyPass = "http://unix:${gitSocket}:/api/";
+              extraConfig = toGit;
+            };
+            # What git asks for: /git/<owner>/<repo>[.git]/info/refs and the
+            # two service calls. Regex, so it wins over the pages' prefix.
+            "~ ^/git/[^/]+/[^/]+/(?:info/refs|git-upload-pack|git-receive-pack)$" = {
+              proxyPass = "http://unix:${gitSocket}";
+              extraConfig = ''
+                rewrite ^/git(/.*)$ $1 break;
+                ${toGit}
+              '';
+            };
+            # The pages: one document for every path. They hold no data, so
+            # a visitor gets them too and reads the public repositories
+            # through the API; with `git.site.requireSignIn` they are behind
+            # LosOS Login like LosOS Cloud's (modules/cloud.nix). Without the
+            # admin UI there are no pages, and the socket answers the rest as
+            # before.
+            "/git/" =
+              if gitPages then
+                {
+                  tryFiles = "$uri /git/index.html";
+                  extraConfig = lib.optionalString (signInGit && config.losos.git.site.requireSignIn) ''
+                    auth_request /internal/losos-app-sign-in;
+                    error_page 401 = @losos-app-sign-in;
+                    error_page 403 @losos-app-held;
+                    error_page 500 =503 @losos-app-waiting;
+                  '';
+                }
+              else
+                {
+                  proxyPass = "http://unix:${gitSocket}:/";
+                  extraConfig = toGit;
+                };
+          }
+          # The pre-paint theme script the pages load, outside the LAN guard
+          # of `/` for the same reason as /assets/ below.
+          // lib.optionalAttrs (gitPages && signInGit) { "= /theme-boot.js" = { }; }
+        ))
       ];
     };
   };
 
   # ── Firewall ──────────────────────────────────────────────────────────────
-  # Nginx owns :80 and nothing else on the box holds a public port: the
-  # workload pod binds 127.0.0.1 (hostNetwork, config-driven — see
-  # modules/workloads.nix), the lososd API is loopback, and neither Kubernetes
+  # Nginx owns :80 and nothing else on the box holds a public port: LosOS
+  # Git binds a Unix socket and 127.0.0.1 (modules/git.nix), LosOS Cloud a
+  # socket (modules/cloud.nix), the lososd API is loopback, and neither Kubernetes
   # instance adds to allowedTCPPorts, so 6443/9345/10250/10260 stay closed
   # against NixOS' default-deny firewall. The port is opened whenever the front
   # vhost has any route to serve — the admin SPA, LosOS Cloud or Git — because
   # gating it on the admin flag alone took the service routes down with the
   # dashboard.
   networking.firewall.allowedTCPPorts = lib.optional (
-    adminEnabled || config.losos.cloud.enable || forgejoWorkload
+    adminEnabled || config.losos.cloud.enable || gitOn
   ) 80;
 }

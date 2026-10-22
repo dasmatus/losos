@@ -22,7 +22,7 @@ sheet.
 | Section      | What is there                                                                                              |
 | ------------ | ---------------------------------------------------------------------------------------------------------- |
 | **Overview** | Whether the box is answering and for how long, the storage card, the app tiles and your board of widgets.  |
-| **Apps**     | The apps on this box with their mode, a search of Artifact Hub, and the apps installed from it.            |
+| **Apps**     | The apps on this box with their settings, a search of Artifact Hub, and the apps installed from it.            |
 | **Storage**  | How full the disk is, what is holding the room, and the reserve to claim.                                   |
 | **Mesh**     | Joining other boxes, the hours this one lends its spare time, **Market** with disk sharing, and **Machines**. |
 | **Diagrams** | LosOS Diagrams: diagrams, plans and boards as cards, and this box's network drawn and simulated.          |
