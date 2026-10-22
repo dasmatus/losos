@@ -190,8 +190,9 @@ function visible(entries: readonly Entry[], office: boolean): Entry[] {
 
 function isCurrent(entry: LinkEntry, pathname: string): boolean {
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
-  if (entry.key === "documents") return pathname === "/office" || pathname === "/office/";
-  return pathname.replace(/(.)\/$/, "$1") === entry.to;
+  const path = pathname.replace(/(.)\/$/, "$1");
+  if (entry.key === "documents") return path === "/office";
+  return path === entry.to;
 }
 
 function containsCurrent(entry: Entry, pathname: string): boolean {
