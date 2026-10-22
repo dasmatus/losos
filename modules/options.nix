@@ -1175,6 +1175,46 @@ in
       '';
     };
 
+    assistant.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Ask the box's AI: "Ask AI about this" in LosOS Cloud, Summarise in
+        Mail and the other apps' questions about a file or a message go to
+        a language model that runs on this box (Ollama, on loopback only,
+        beside the builder's). The material and the question never leave
+        the box. The model is downloaded once, about 800 MB, the first
+        time the box is online. While it answers it needs about 1 GiB of
+        memory; it lets go of it five minutes after the last question.
+      '';
+    };
+
+    assistant.model = lib.mkOption {
+      type = lib.types.str;
+      default = "gemma3:1b";
+      description = ''
+        The Ollama model the apps' questions go to: everything that is not
+        code. The builder and LosOS Reviewer keep `builder.model`. The
+        default, Gemma 3 1B (Gemma Terms of Use, ai.google.dev/gemma/terms),
+        fits the smallest box LosOS runs on: 4 GiB of memory and two
+        processor cores. Ollama holds one model at a time, so the two never
+        need memory together. On a box with 8 GiB or more, `gemma4:e2b`
+        (Apache License 2.0, about 5 GiB while it answers) writes better
+        summaries.
+      '';
+    };
+
+    assistant.contextTokens = lib.mkOption {
+      type = lib.types.ints.between 4096 131072;
+      default = 8192;
+      description = ''
+        The assistant's context window, in tokens: its instructions, the
+        material (cut at 9,000 characters, about 2,500 tokens), the question
+        and the answer. Each token of window costs the model some memory
+        while it runs.
+      '';
+    };
+
     # ── Lending memory to models split across boxes (modules/inference-lend.nix)
     inference.lend.enable = lib.mkOption {
       type = lib.types.bool;

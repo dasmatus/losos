@@ -11,16 +11,22 @@
 // nginx.
 //
 //   node together-shots.mjs VERB BASE NAME PASSWORD OUT [--test NAME] [--ca FILE]
+//                           [--commit SHA] [--typing] [--view WxH] [--dpr N]
+//                           [--video DIR]
 //
 // VERB is `after` (the walk), `before` (the same screens on the admin pages
 // from before the apps were tied together) or `closed` (the box once it
 // stops sharing: no Mail, so Cloud's menu offers no "Send by mail").
+// `--typing` adds a picture per word where the walk types, `--view` and
+// `--dpr` change the window from 1280x900 at 2x, and `--video` records the
+// walk as WebM into DIR as well, all for a film.
 
 import { createHash, X509Certificate } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const VIEW = { width: 1280, height: 860 };
+let VIEW = { width: 1280, height: 900 };
+let DPR = 2;
 const FILE = "Lake trip.md";
 const SUBJECT = "Plan for the lake";
 const EVA = "eva@mattbox.home.arpa";
@@ -71,7 +77,7 @@ class Shots {
   }
 
   save() {
-    const manifest = { feature: "apps-together", viewport: VIEW, dpr: 2, ...this.meta, steps: this.steps };
+    const manifest = { feature: "apps-together", viewport: VIEW, dpr: DPR, ...this.meta, steps: this.steps };
     writeFileSync(join(this.out, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   }
 }
@@ -168,7 +174,16 @@ async function after(s, p, base) {
   await p.locator("#mail-to").fill(EVA);
   await p.locator("#mail-subject").fill(`Re: ${SUBJECT}`);
   const body = p.getByRole("dialog").locator("textarea");
-  await body.fill("Added the second canoe. See the plan attached.");
+  const reply = "Added the second canoe. See the plan attached.";
+  if (s.typing) {
+    const words = reply.split(" ");
+    for (let i = 1; i <= words.length; i++) {
+      await body.fill(words.slice(0, i).join(" "));
+      await s.take(p, `reply-${i}`, "typing the reply", { kind: "type", target: "body" }, { body });
+    }
+  } else {
+    await body.fill(reply);
+  }
   const send = p.getByRole("dialog").getByRole("button", { name: "Send", exact: true });
   await s.take(p, "compose-from-cloud", "a new message with the file from LosOS Cloud already attached", { kind: "click", target: "send" }, {
     chip,
@@ -219,6 +234,11 @@ function parse(argv) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--test") opts.test = argv[++i];
     else if (argv[i] === "--ca") opts.ca = argv[++i];
+    else if (argv[i] === "--commit") opts.commit = argv[++i];
+    else if (argv[i] === "--typing") opts.typing = true;
+    else if (argv[i] === "--view") opts.view = argv[++i];
+    else if (argv[i] === "--dpr") opts.dpr = Number(argv[++i]);
+    else if (argv[i] === "--video") opts.video = argv[++i];
     else pos.push(argv[i]);
   }
   return { verb: pos[0], base: pos[1], name: pos[2], password: pos[3], out: pos[4], opts };
@@ -226,6 +246,11 @@ function parse(argv) {
 
 const { verb, base, name, password, out, opts } = parse(process.argv.slice(2));
 const walks = { after, before, closed };
+if (opts.view) {
+  const [width, height] = opts.view.split("x").map(Number);
+  VIEW = { width, height };
+}
+if (opts.dpr) DPR = opts.dpr;
 if (!(verb in walks)) {
   console.error(`unknown verb ${verb}`);
   process.exit(2);
@@ -235,7 +260,9 @@ const browser = await chromium.launch({
 });
 const context = await browser.newContext({
   viewport: VIEW,
-  deviceScaleFactor: 2,
+  deviceScaleFactor: DPR,
+  // The video at the pictures' own pixels.
+  ...(opts.video ? { recordVideo: { dir: opts.video, size: { width: VIEW.width * DPR, height: VIEW.height * DPR } } } : {}),
   colorScheme: "dark",
   locale: "en-US",
   timezoneId: "Europe/Bratislava",
@@ -250,7 +277,8 @@ const problems = [];
 page.on("pageerror", (e) => problems.push(String(e)));
 await signIn(context, base, name, password);
 
-const s = new Shots(base, out, { test: opts.test ?? "", verb });
+const s = new Shots(base, out, { commit: opts.commit ?? "", test: opts.test ?? "", verb });
+s.typing = opts.typing === true;
 try {
   await walks[verb](s, page, base);
 } catch (err) {
@@ -258,6 +286,8 @@ try {
   throw err;
 } finally {
   s.save();
+  // The video is written when its page closes.
+  await context.close();
 }
 await browser.close();
 if (problems.length > 0) {
