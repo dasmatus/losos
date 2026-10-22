@@ -295,8 +295,13 @@ pkgs.testers.nixosTest {
         for b, other in ((mattbox, "kitchenbox.local"), (kitchenbox, "mattbox.local")):
             b.succeed(f"curl -sfk https://{other}/.well-known/matrix/server | jq -e '.\"m.server\" == \"{other}:443\"'")
             b.succeed(f"curl -sfk https://{other}/_matrix/key/v2/server | jq -e '.server_name == \"{other}\"'")
+            # ...or, as Dendrite does when the well-known's certificate is a
+            # box's own, at <name>:8448, which carries federation and keys only.
+            b.succeed(f"curl -sfk https://{other}:8448/_matrix/key/v2/server | jq -e '.server_name == \"{other}\"'")
+            b.fail(f"curl -sfk https://{other}:8448/git/")
         # The box itself is no other server: loopback is refused by nginx.
         mattbox.fail("curl -sfk --resolve mattbox.local:443:127.0.0.1 https://mattbox.local/_matrix/key/v2/server")
+        mattbox.fail("curl -sfk --resolve mattbox.local:8448:127.0.0.1 https://mattbox.local:8448/_matrix/key/v2/server")
 
     with subtest("Matus has a public repository with its main branch"):
         ok("PUT", "/admin/users/notshared", {"full_name": "Matus", "email": "matus@mattbox.local"})
