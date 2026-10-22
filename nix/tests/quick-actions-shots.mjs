@@ -144,7 +144,7 @@ async function office(s, p, base, old) {
   const id = await fileId(p, "Notes", "Saturday.md");
   await p.goto(`${base}/cloud/office/${id}`);
   await waitOffice(p);
-  await pick(p, "allotment", "everyone");
+  await pick(p, "a few tools", "everyone");
   if (old) {
     await s.take(p, "office-picked", "words picked in a document");
     return;
@@ -163,7 +163,7 @@ async function office(s, p, base, old) {
     link: action(p, "link"),
   });
 
-  await pick(p, "allotment", "allotment");
+  await pick(p, "a few tools", "allotment");
   await action(p, "link").click();
   const field = quick(p).getByRole("textbox", { name: "Link" });
   await field.waitFor();
@@ -216,7 +216,7 @@ async function film(browser, base, name, password, s, old) {
   await cdp.send("Animation.enable");
   await cdp.send("Animation.setPlaybackRate", { playbackRate: 0.1 });
   await p.waitForTimeout(1500);
-  await pick(p, "allotment", "Saturday");
+  await pick(p, "a few tools", "Saturday");
   await p.waitForTimeout(3500);
   await pick(p, "calendar", "calendar");
   await p.waitForTimeout(3500);
