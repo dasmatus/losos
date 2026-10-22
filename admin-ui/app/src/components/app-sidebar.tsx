@@ -201,10 +201,10 @@ function isCurrent(entry: LinkEntry, pathname: string): boolean {
   // An app of the owner's own (/apps/<id>, src/apps/) is under Apps.
   if (entry.pane === "apps" && pathname.startsWith("/apps/")) return true;
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
-  const path = pathname.replace(/(.)\/$/, "$1");
-  if (entry.key === "documents") return path === "/office";
   // A run of Mesh CI is still Mesh CI.
+  const path = pathname.replace(/(.)\/$/, "$1");
   if (entry.key === "ci") return path === "/ci" || path.startsWith("/ci/");
+  if (entry.key === "documents") return path === "/office";
   return path === entry.to;
 }
 

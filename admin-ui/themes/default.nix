@@ -56,6 +56,7 @@ let
         install -d "$out/office"
         cat ${tokens} ${./office/branding.css} > "$out/office/branding.css"
 
+
         # ── Authelia: server.asset_path ───────────────────────────────────
         # The sign-in pages' logo and favicon. Authelia serves a file from
         # this directory in place of its own when one is there
