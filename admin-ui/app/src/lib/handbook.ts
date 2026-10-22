@@ -45,6 +45,7 @@ export const HANDBOOK_ENTRIES = {
   pictures: "manual/pictures/",
   git: "manual/losos-git/",
   "mesh-ci": "manual/mesh-ci/",
+  machines: "manual/machines/",
   "custom-domain": "types/official-edge/",
   "edge-manages-box": "types/company-edge/",
   tpm: "reference/tpm/",
