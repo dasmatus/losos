@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Spinner } from "@/components/ui/spinner";
 import { useT } from "@/lib/i18n-react";
 import { cloud, isAbort } from "./api";
-import { openersFor } from "./openers";
+import { openersFor, openersSettled } from "./openers";
 
 /* /cloud/open/<id>: a file in the app that edits it. Mail, Chat and the
  * rest link here (lib/intents.ts openFileHref) rather than each keeping a
@@ -23,8 +23,8 @@ export function OpenFile() {
       return;
     }
     const ctl = new AbortController();
-    cloud.byId(id, ctl.signal).then(
-      (entry) => {
+    Promise.all([cloud.byId(id, ctl.signal), openersSettled()]).then(
+      ([entry]) => {
         setName(entry.name);
         const opener = openersFor(entry)[0];
         if (opener === undefined) {

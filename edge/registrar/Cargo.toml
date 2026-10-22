@@ -69,8 +69,13 @@ quinn = { version = "0.11", default-features = false, features = ["runtime-tokio
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 if-addrs = "0.15"
+# Mesh CI (`ci.rs`): a commit's archive travels in the JSON body as
+# base64. Already in the lock tree through reqwest.
+base64 = "0.22"
 
 [dev-dependencies]
+# Paused time for the CI queue's lease and grace tests (`ci.rs`).
+tokio = { version = "1", features = ["test-util"] }
 # tests/lab.rs talks to the helper's console and NIC WebSockets as the
 # browser would. Both are already in the lock tree through axum's "ws" and
 # reqwest, so the test client vendors nothing new.

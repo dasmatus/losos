@@ -31,20 +31,7 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  noLab = ui: ui.overrideAttrs {
-    preBuild = "";
-    buildPhase = ''
-      runHook preBuild
-      cat > vite.nolab.config.ts <<'EOF'
-      import config from "./vite.config";
-      // Before the rename the page was `lab`; a Before UI may still have it.
-      for (const page of ["diagrams", "lab"]) delete (config.build!.rolldownOptions!.input as Record<string, string>)[page];
-      export default config;
-      EOF
-      node_modules/.bin/vite build --config vite.nolab.config.ts
-      runHook postBuild
-    '';
-  };
+  noLab = import ./admin-ui-without-lab.nix;
 
   vault = ../../admin-ui/app/tests/fixtures/vault;
 
@@ -142,7 +129,7 @@ pkgs.testers.nixosTest {
         backend.package = lososPkgs.losos-ctl;
         admin.ui = noLab lososPkgs.losos-admin-ui;
         cloud.enable = true;
-        forgejo.enable = false;
+        git.enable = false;
         mdns.enable = true;
         # Sharing and in a mesh: knowledge bases on.
         sharingMyStorage = true;

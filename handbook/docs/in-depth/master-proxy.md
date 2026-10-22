@@ -228,8 +228,8 @@ On the box, lososd keeps the live domains in
 `/var/lib/losos-public-names/domains.json`. It refreshes the file every two
 minutes and whenever the Network pane asks. LosOS Login reads it to give
 its session cookie a domain for each of those names
-(`modules/identity.nix`). LosOS Cloud answers on whichever name a request
-came by, so it needs no list. LosOS Git keeps its edge-name `ROOT_URL`.
+(`modules/identity.nix`). LosOS Cloud and LosOS Git answer on whichever
+name a request came by, so they need no list.
 
 A box behind a local edge gets its domains routed too, through that local
 edge, once it has vouched for the local edge with a relay pass and joined

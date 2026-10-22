@@ -85,8 +85,10 @@ einzelne überprüfen oder abmelden.
 
 ## In einer Unterhaltung
 
-Fahr mit dem Zeiger über eine Nachricht, um darauf zu reagieren, zu
-antworten, im Thread zu antworten, sie zu bearbeiten oder zu löschen. Ein
+Fahr mit dem Zeiger über eine Nachricht, um darauf zu antworten, im Thread
+zu antworten, sie zu bearbeiten oder zu löschen. Die schnellen Reaktionen
+erscheinen in einer Leiste darunter: Drück eine, um sie hinzuzufügen, und
+noch einmal, um sie zurückzunehmen. Ein
 Rechtsklick auf die Nachricht bietet dasselbe und dazu das Kopieren ihres
 Texts. Die
 Thread-Schaltfläche in der Kopfzeile des Raums listet seine Threads.

@@ -17,42 +17,20 @@ the **Files** and **Photos** tiles open it.
 
 ## LosOS Git
 
-Your repositories, at `http://<address>/forgejo/`. It is Forgejo in the same
-colours. Sign up inside it the first time. It keeps its own accounts. Clone
-URLs use the box's name, so a computer that does not resolve `.local` should
-use the address instead. Turn it off in the **Apps** pane if the box is not
-for code.
-
-### Federation
-
-LosOS Git speaks ActivityPub with other Forgejo servers. Forgejo still calls
-this experimental. Stars that people on another server give your repositories
-count here. People on other servers can follow an account on your box and see
-what it does. The box also answers the fediverse's discovery address,
-`/.well-known/nodeinfo`. All of this reaches as far as the box does. Through
-an [edge](../types/official-edge) that is the internet. On a box that is only
-on your local network, it is the other boxes on that network. The box never
-publishes how many accounts it has or how active they are.
-
-To take part, list the other servers whose stars count on a repository's
-**Settings → Federation** page. To turn federation off entirely, switch off
-**Federate with other Forgejo servers** in the LosOS Git fold of the
-**Apps** pane.
-
-:::note[Federation needs disk sharing]
-Federation works only while the box shares its disk
-(`losos.sharingMyStorage`), because that is when the shared part of the
-disk is unlocked. With sharing off, the box talks to no other server, and
-the **Apps** pane greys the federation switch out.
-:::
+Your repositories, at `http://<address>/git/<account>/<repository>.git`.
+LosOS Git is the box's own Git server. A person LosOS Login knows has an
+account in it from their first visit, under the same name. A computer clones
+and pushes with a token of its own, which git asks for as the password:
+`losos git setup` makes one ([The terminal client](terminal)). The box's own
+configuration is the private repository `notshared/losos-config`
+([Administration](../in-depth/administration)). Clone addresses follow the
+address you reached the box by. Turn it off in the **Apps** pane if the box is not for code.
 
 ## The Apps pane
 
-For each app the pane shows whether it is on, which
-[mode](../types/app-modes) it runs in, and a link. Under them, LosOS Cloud
-and LosOS Git each have a fold of their own, closed until you open it.
-Below that, **Find more**
-searches [Artifact Hub](https://artifacthub.io) for Helm charts. The box
+For each app the pane shows whether it is on, and a link. Under them,
+LosOS Cloud and LosOS Git each have a fold of their own, closed until you
+open it. Below that, **Find more** searches [Artifact Hub](https://artifacthub.io) for Helm charts. The box
 fetches the results, so the search needs the internet. Every row names who
 published the chart. Nobody on the LosOS side has checked any of them.
 
@@ -66,10 +44,8 @@ hold for every account in each app.
 For LosOS Cloud: how many days the trash keeps a deleted file. An empty
 field keeps it for 30 days.
 
-For LosOS Git, after its federation switch ([Federation](#federation)):
-whether only signed-in accounts see anything, what a visitor
-sees first, whether a new repository starts private or public or like the
-account's last one, whether a new account's e-mail address is hidden, and
+For LosOS Git: whether only signed-in accounts see anything, whether a new
+repository starts private or public or like the account's last one, and
 whether pushing to a repository that does not exist yet creates it.
 
 ![The Apps pane with the settings for everyone in LosOS Cloud and LosOS Git.](../img/apps-site-settings.png)
@@ -132,13 +108,40 @@ opens the same dialog on the app's current properties. **Remove** asks
 first, then takes the app off the box. Its data folder stays, so an install
 under the same name finds the data again.
 
-:::note[Running as shared needs workload mode]
+:::note[Running as shared needs a mesh]
 A `notshared` app installs on any box. `shared` needs the box's own
-cluster, which runs only while Code is set to **Kept separate**
-([workload mode](../types/app-modes)), and the box has to share its disk.
+cluster, which runs only while the box shares its disk with a mesh
+([Where the apps run](../types/app-modes)).
 To turn installing off, set `losos.apps.enable` to false on the
 **Advanced** pane.
 :::
+
+## Your apps
+
+Small apps of your own, a shopping list, a chore chart, a reading list,
+that you describe and the AI on the box writes
+([Build with AI](../in-depth/widget-builder)). They are under **Your
+apps** on the Apps page. **Make an app** opens the editor: describe the app
+on the **Build with AI** tab, or write its code on the **Code** tab. The
+preview beside it is the real app, so you can use it before you save it.
+It forgets what you enter; the saved app keeps its data on the box.
+
+Each saved app has its own page. An app is one React component built from
+the LosOS components, which the box checks and compiles when you save. It
+runs only in your browser, in a sandboxed frame with no access to the box
+beyond its own data. **Change** opens it in the editor again, and
+**Delete** removes it from the box with everything entered into it.
+
+Each app also has a private repository of its own on LosOS Git, named
+after it (`app-chores` for an app called Chores), and every save is a
+commit there. **Source** on the app's page opens it. Clone it, change
+`app.jsx` and push: within a minute the box checks the change the way it
+checks a save, and the app runs it. If the change does not compile, the app
+stays as it was, its page says why, and the box adds a commit that puts the
+app back, so your next `git pull` shows that too. Files you add to the
+repository stay there, and the app's data is not in it. The repository
+stays on LosOS Git when you delete the app; delete it there if you want it
+gone. With LosOS Git off, the box keeps the versions itself.
 
 ## Apps made for the box
 

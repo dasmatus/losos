@@ -35,6 +35,10 @@ gets their own files. The person who set up the box gets the owner's.
   [Notes and knowledge bases](notes-and-knowledge-bases).
 - Right-click a file, a folder or the space around them for what you can
   do there; see [the right-click menu](admin-pages#the-right-click-menu).
+- A file's right-click menu also hands it to the other apps: **Send by
+  mail** and **Send in chat** while the box has Mail and Chat, and **Ask AI
+  about this** for a text file on a box that runs a language model. The AI
+  runs on the box and reads only the file you picked.
 
 ## Desktop and phone apps
 

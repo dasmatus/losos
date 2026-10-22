@@ -74,6 +74,64 @@ function themeBoot(): Plugin {
   };
 }
 
+/* The app frame's runtime (src/app-frame/runtime.tsx): React, the LosOS
+ * components and the bridge, bundled by esbuild into one classic script and
+ * its stylesheet at fixed names, /app-frame/runtime.js and runtime.css,
+ * which public/app-frame/index.html loads. Classic and unhashed for the
+ * reasons runtime.tsx gives: the frame is an opaque origin, where a module
+ * script would be fetched in CORS mode, and the page that loads it is a
+ * static file Vite's HTML pipeline does not rewrite. */
+const APP_FRAME_ENTRY = "src/app-frame/runtime.tsx";
+
+function appFrame(): Plugin {
+  let config: ResolvedConfig;
+
+  const compile = async (minify: boolean): Promise<{ js: string; css: string }> => {
+    const result = await esbuild({
+      absWorkingDir: config.root,
+      entryPoints: [APP_FRAME_ENTRY],
+      bundle: true,
+      format: "iife",
+      target: "es2020",
+      jsx: "automatic",
+      minify,
+      write: false,
+      outfile: "app-frame/runtime.js",
+      legalComments: "none",
+      define: { "process.env.NODE_ENV": JSON.stringify(minify ? "production" : "development") },
+    });
+    const pick = (ext: string) => result.outputFiles.find((f) => f.path.endsWith(ext))?.text ?? "";
+    return { js: pick(".js"), css: pick(".css") };
+  };
+
+  return {
+    name: "losos:app-frame",
+    configResolved(resolved) {
+      config = resolved;
+    },
+    configureServer(server) {
+      for (const [file, type] of [
+        ["runtime.js", "text/javascript"],
+        ["runtime.css", "text/css"],
+      ] as const) {
+        server.middlewares.use(`/app-frame/${file}`, (_req, res) => {
+          void compile(false).then((out) => {
+            res.setHeader("Content-Type", type);
+            res.setHeader("Cache-Control", "no-store");
+            res.end(file.endsWith(".js") ? out.js : out.css);
+          });
+        });
+      }
+    },
+    async buildStart() {
+      if (config.command !== "build") return;
+      const out = await compile(true);
+      this.emitFile({ type: "asset", fileName: "app-frame/runtime.js", source: out.js });
+      this.emitFile({ type: "asset", fileName: "app-frame/runtime.css", source: out.css });
+    },
+  };
+}
+
 /* LosOS Lab's splash can carry a two-panel meme: LOSOS_LAB_MEME names a
  * folder with no.jpg and yes.jpg, which are copied beside dist/diagrams/index.html
  * as meme-no.jpg and meme-yes.jpg, and __LAB_MEME__ tells the page they are
@@ -175,7 +233,7 @@ function labMeme(): Plugin {
 const root = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), themeBoot(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet()],
+  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet()],
   // Served from the vhost root by nginx.
   base: "/",
   resolve: {
@@ -189,14 +247,15 @@ export default defineConfig({
     sourcemap: false,
     // The appliance has no external hosts and no CDN: one origin, one bundle.
     modulePreload: { polyfill: false },
-    // Five pages: the admin SPA at / (LosOS Diagrams is its screen at
+    // Six pages: the admin SPA at / (LosOS Diagrams is its screen at
     // /diagrams), LosOS Chat at /chat/ (the admin SPA's own document under
     // chat's CSP, which adds blob: media for decrypted voice messages and
     // videos; modules/chat.nix), a company edge's manage page, which the
     // edge serves at /manage/ from this same dist/
     // (edge/registrar/src/server/manage.rs), LosOS Cloud at /cloud/ and the
-    // knowledge bases published from it at /kb/ (modules/cloud.nix). They
-    // share chunks. The hosted copy of Diagrams (VITE_LAB_HOSTED=1,
+    // knowledge bases published from it at /kb/ (modules/cloud.nix), and
+    // LosOS Git at /git/ (modules/containers.nix). They share chunks. The
+    // hosted copy of Diagrams (VITE_LAB_HOSTED=1,
     // admin-ui/lab/engine/build.sh) adds diagrams/index.html, the same
     // screen on a page of its own; a box never gets that page, so nothing
     // shadows the SPA's /diagrams.
@@ -208,6 +267,7 @@ export default defineConfig({
         manage: join(root, "manage/index.html"),
         cloud: join(root, "cloud/index.html"),
         kb: join(root, "kb/index.html"),
+        git: join(root, "git/index.html"),
       },
     },
   },
