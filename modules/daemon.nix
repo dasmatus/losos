@@ -9,8 +9,7 @@
 # bus interface and backend/src/http.rs for the HTTP surface).
 #
 # The `losos-ctl` facade CLI (same package) relays subcommands over D-Bus, so
-# nothing but the daemon ever rewrites the flake or triggers a rebuild. This
-# module replaces the old sudoers bridge (nextcloud user -> sudo losos-ctl).
+# nothing but the daemon ever rewrites the flake or triggers a rebuild.
 {
   pkgs,
   lib,
@@ -21,29 +20,6 @@
 let
   enabled = config.losos.backend.package != null;
   pkg = config.losos.backend.package;
-
-  # Which way `losos-ctl set-password` has to reach into Nextcloud.
-  #
-  # There is no default on the daemon's side and there must not be: lososd
-  # treats an unset LOSOS_NEXTCLOUD_MODE as a hard error naming this module,
-  # because guessing runs `crictl` against a box that has no containerd or
-  # `nextcloud-occ` against a box whose closure never contained it — and both
-  # failures surface as "the owner cannot set their password", on an appliance
-  # with no shell to investigate from.
-  ncMode = config.losos.nextcloud.mode;
-  ncContainer = ncMode == "container";
-  nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
-
-  # modules/cluster.nix's `localCriSocket`, which is a `let` binding there and
-  # so cannot be read from here. Repeated as a literal rather than promoted to
-  # an option: it is containerd's compiled-in default and nothing in this repo
-  # moves it. If it ever does move, it moves in both files or set-password
-  # starts reporting that the pod is not running.
-  #
-  # The box's *own* k3s containerd. Deliberately not /run/k3s/…, which belongs
-  # to the mesh rke2 agent — that one runs the edge's workloads and has never
-  # heard of this box's Nextcloud.
-  localCriSocket = "unix:///run/containerd/containerd.sock";
 
   # System-bus policy: root owns org.losos1; members of the fixed `losos`
   # group may send to it (the facade runs as root or a losos-group caller).
@@ -80,9 +56,8 @@ in
     # Only root and nginx may open a connection to the loopback API.
     #
     # lososd binds 127.0.0.1, which keeps the LAN out, but not this box: the
-    # Nextcloud and Forgejo pods are hostNetwork and share its loopback, as
-    # uid 1002 and 1003, and both are on the internet whenever the master
-    # proxy is. Going around nginx skips the lanOnly guard entirely, and
+    # Forgejo pod and the apps' pods are hostNetwork and share its loopback,
+    # and Forgejo is on the internet whenever the master proxy is. Going around nginx skips the lanOnly guard entirely, and
     # lososd trusts X-Real-IP from any loopback peer because it assumes that
     # peer is nginx. So a compromised pod could claim an unclaimed box (the
     # claim route hands back the admin token, which is root), lock the owner
@@ -137,40 +112,11 @@ in
       environment = {
         LOSOS_ADMIN_PORT = toString config.losos.admin.apiPort;
         LOSOS_ADMIN_TOKEN_FILE = toString config.losos.admin.tokenFile;
-        # See the `ncMode` binding above for why this is always set and never
-        # defaulted daemon-side.
-        LOSOS_NEXTCLOUD_MODE = ncMode;
-        # Which app store releases `GET /api/cloud/apps/search` offers: the
-        # store lists apps per Nextcloud version (backend/src/cloud_apps.rs).
-        LOSOS_NEXTCLOUD_VERSION = nc.package.version;
         # Terminal access (backend/src/access.rs): the box's own OpenPGP key
         # and the token file under its state directory, and the owner's
         # seeded keys from losos.access.gpgKeys.
         LOSOS_ACCESS_DIR = "/var/lib/losos/access";
         LOSOS_ACCESS_KEYS_FILE = "/etc/losos/access-keys.asc";
-      }
-      # Only in container mode: in native mode lososd never looks at it, and
-      # setting it anyway would suggest a CRI socket is consulted on a box that
-      # runs no containers.
-      // lib.optionalAttrs ncContainer {
-        LOSOS_CRI_SOCKET = localCriSocket;
-      }
-      # Where `POST /api/sign-in` asks Nextcloud whether the owner's password
-      # is right (backend/src/signin.rs): one loopback request to the OCS
-      # route that only authenticates. Container mode reaches the pod's
-      # Apache on the host's loopback at the subpath the front vhost
-      # preserves; native mode goes through the box's own nginx to the
-      # services.nextcloud vhost, which is why that one needs the Host
-      # header spelled out. `localhost` is trusted by Nextcloud whatever
-      # trusted_domains says, so the container probe can never be answered
-      # "Untrusted domain" — but the native vhost is selected by name.
-      // {
-        LOSOS_NEXTCLOUD_LOGIN_URL =
-          if ncContainer then
-            "http://127.0.0.1:${toString config.losos.nextcloud.apachePort}/nextcloud/ocs/v2.php/cloud/user"
-          else
-            "http://127.0.0.1:80/ocs/v2.php/cloud/user";
-        LOSOS_NEXTCLOUD_LOGIN_HOST = if ncContainer then "localhost" else config.losos.nextcloud.hostName;
       }
       # Where lososd looks for an edge proxy besides the LAN (backend/src/edge.rs):
       # the configured registrar, probed whether or not the master proxy is on,
@@ -251,11 +197,8 @@ in
       # coreutils is for `df`, which is how the daemon measures whether the
       # filesystem actually got bigger rather than trusting an exit status.
       #
-      # `set-password` adds one entry per mode, and only the one that mode
-      # uses. `path` *replaces* PATH rather than extending it, so neither
-      # binary is reachable by accident: without the line below, the command
-      # fails at the exec with ENOENT after it has already staged a plaintext
-      # password on disk.
+      # `path` *replaces* PATH rather than extending it, so nothing is
+      # reachable by accident.
       path = [
         pkgs.lvm2
         pkgs.cryptsetup
@@ -283,23 +226,7 @@ in
         config.system.build.nixos-rebuild
         config.nix.package.out
         pkgs.gitMinimal
-      ]
-      # crictl, to find and exec into the Nextcloud workload container.
-      ++ lib.optional ncContainer pkgs.cri-tools
-      # The nixpkgs `nextcloud-occ` wrapper. Gated on native mode for more than
-      # tidiness: in container mode services.nextcloud is never enabled, so
-      # this attribute pulls a whole second Nextcloud closure into a system
-      # that does not run one. `lib.optional false` does not force its
-      # argument, so the attribute is not even evaluated there.
-      ++ lib.optional (!ncContainer) config.services.nextcloud.occ
-      # The Apps pane's LosOS cloud apps (backend/src/cloud_apps.rs). In
-      # container mode the same command is in the pod and reached by crictl.
-      ++ lib.optional (!ncContainer) (
-        nc.appsTool {
-          occ = "${config.services.nextcloud.occ}/bin/nextcloud-occ";
-          webroot = config.services.nextcloud.finalPackage;
-        }
-      );
+      ];
       serviceConfig = {
         ExecStart = "${pkg}/bin/lososd";
         # `always`, not `on-failure`: a clean exit(0) — an unhandled shutdown

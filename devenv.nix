@@ -341,6 +341,17 @@ in
   '';
   scripts.test-solana-escrow.description = "Build the Solana escrow program and test it and the registrar against it.";
 
+  # LososEscrow's Foundry suite, then edge/contracts/test-payment.sh on anvil:
+  # deposits, coin fees and taps paid and settled by the registrar's signer.
+  # It fetches forge-std, solc and the wallet's npm packages, so it is not in
+  # `devenv test`; CI's `evm-escrow` job runs it.
+  scripts.test-evm-escrow.exec = ''
+    set -eu
+    export PATH=${pkgs.foundry}/bin:${pkgs.nodejs}/bin:${pkgs.jq}/bin:$PATH
+    bash "$DEVENV_ROOT/edge/contracts/test-payment.sh"
+  '';
+  scripts.test-evm-escrow.description = "Test the EVM escrow and pay through it on a local chain.";
+
   # losos, the terminal client (admin-ui/tui/README.md), as CI's `tui` job
   # ships it: the static musl binary, then the pseudo-terminal test against
   # that very binary. The crate's own suite is in test-rust already.
@@ -352,8 +363,11 @@ in
   '';
   scripts.test-tui.description = "Build the static losos and drive it in a pseudo-terminal.";
 
-  scripts.check-flake.exec = "command nix flake check --no-build -L";
-  scripts.check-flake.description = "Evaluate every flake output (builds nothing).";
+  # What `nix flake check --no-build` checks, one `nix eval` per derivation, so
+  # the peak memory is one VM test's evaluation rather than all of them at
+  # once (nix/check-flake.sh says why). CI's eval job runs the same script.
+  scripts.check-flake.exec = ''bash "$DEVENV_ROOT/nix/check-flake.sh" "$@"'';
+  scripts.check-flake.description = "Evaluate every flake output, one at a time (builds nothing).";
 
   # devenv runs standalone (see flake.nix), so there are two lock files:
   # flake.lock pins the nixpkgs that BUILDS the appliance, devenv.lock pins the
@@ -414,18 +428,13 @@ in
   '';
   scripts.build-pkgs.description = "Build every flake package except the images and media.";
 
-  # The three images the LOCAL k3s cluster runs as static pods
-  # (nix/images.nix, wired to losos.workloads.* in modules/defaults.nix).
+  # The images the LOCAL k3s cluster runs as static pods (nix/images.nix,
+  # wired to losos.workloads.* in modules/defaults.nix).
   #
   # Opt-in, and deliberately not part of `devenv test`, because of what they
-  # cost: measured on a dev machine, the Nextcloud image's content closure is
-  # 2.3 GiB across 244 store paths (nextcloud34 with ~30 apps, php-with-
-  # extensions, apacheHttpd). The tarball itself is smaller than that suggests,
-  # 606 MiB, against Forgejo's 585 MiB over 126 paths and pause's 51 MiB — so
-  # what costs you here is realising the closure, not writing the layers. From
-  # a warm store the three build in well under two minutes; from a cold one you
-  # are fetching 2.3 GiB first, which is precisely the "multi-gigabyte closure"
-  # the enterTest block below promises not to spend on you unasked.
+  # cost: Forgejo's tarball is 585 MiB over 126 paths and pause's 51 MiB, and
+  # from a cold store realising their closures is the "multi-gigabyte
+  # closure" the enterTest block below promises not to spend on you unasked.
   #
   # It has to be gated *somewhere*, though, and until CI grows a job for it
   # this is the only place. The appliance never builds these: it substitutes
@@ -435,8 +444,7 @@ in
   # `nix flake check --no-build` evaluates these derivations, and evaluation
   # cannot see an entrypoint that fails shellcheck (writeShellApplication runs
   # it at build time) or a buildEnv whose paths collide. Run this before
-  # pushing anything that touches nix/images.nix or
-  # modules/nextcloud-stack.nix.
+  # pushing anything that touches nix/images.nix.
   scripts.build-images.exec = buildMatching "losos-image-";
   scripts.build-images.description = "Build the OCI images the local cluster runs (gigabytes; opt-in).";
 
@@ -508,6 +516,7 @@ in
     echo "  fmt · lint · test-rust        Rust"
     echo "  test-tui                      the static losos in a pseudo-terminal"
     echo "  test-solana-escrow            the Solana escrow program (needs Anza's tools)"
+    echo "  test-evm-escrow               the EVM escrow on a local chain (fetches tools)"
     echo "  lint-wasm                     clippy on the Lab canvas's wasm32 builds"
     echo "  check-flake · check-eval      Nix eval gates"
     echo "  build-pkgs · build-images     builds"

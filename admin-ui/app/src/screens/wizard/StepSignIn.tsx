@@ -1,29 +1,24 @@
 /* Step 2 — Choose how you sign in.
  *
- * This is the step the whole wizard exists for. modules/nextcloud-common.nix
- * generates the first admin password from /dev/urandom, writes it 0600 and
- * shows it to nobody; the appliance has no SSH and no shell login, so without
- * this step a fresh box cannot be signed into at all.
+ * This is the step the whole wizard exists for. A fresh box has no password
+ * at all, and the appliance has no SSH and no shell login, so without this
+ * step it cannot be signed into.
  *
  * On a fresh box this tab holds no admin token, and every /api route except
  * the claim refuses without one. So the first password goes through
  * `POST /api/setup/claim` (@/lib/api `claimBox`): public while the box is
  * unowned, never after, and it hands back the admin token so the rest of the
- * wizard (the sign-in frame) runs authenticated. The
+ * wizard runs authenticated. The
  * token-gated `/api/set-password` is only for a second attempt from the same
  * tab, once the claim has closed the window. The old code posted to
  * set-password first, got a 401 on every fresh box, and the wizard could not
  * get past this step; the browser test walks it now.
  *
- * The step also waits before it asks. On a fresh box the Nextcloud pod spends
- * its first minutes in `occ maintenance:install`, and a claim sent in that
- * window fails: it is occ that sets the password. `GET /api/setup/claim` now
- * carries `ready` and `waitingFor`, so the form stays disabled behind a
- * waiting panel that polls every few seconds and opens on its own, and a 503
- * from the claim itself (the race between the last poll and the submit) goes
- * back to waiting rather than reading as an error. Before that, an owner
- * who typed a good password in that window got a bare "command failed; see
- * the lososd journal".
+ * The step also waits before it asks, if lososd says the box is not ready
+ * for a claim yet: `GET /api/setup/claim` carries `ready` and `waitingFor`,
+ * so the form stays disabled behind a waiting panel that polls every few
+ * seconds and opens on its own, and a 503 from the claim itself goes back to
+ * waiting rather than reading as an error.
  *
  * A password is collected whatever else happens. The passkey is an addition,
  * never a substitute: the desktop and phone sync clients authenticate with a
@@ -47,6 +42,7 @@ import {
   ViewIcon,
   ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
+import { useWaitGame } from "@/components/play-while-waiting";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -232,6 +228,8 @@ function PasswordForm({
   // first answer can take twelve seconds, and a form left open meanwhile let
   // a password be typed that then sat greyed out behind the panel.
   const waiting = readiness.state.kind !== "ready";
+  // Offered once there is a reason on screen, not during the first answer.
+  const game = useWaitGame(readiness.state.kind === "waiting");
 
   /* Someone who sat through the waiting panel is told the moment it lifts,
    * once, as a status (the box reporting on itself; "Password set" is the
@@ -247,8 +245,9 @@ function PasswordForm({
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       {readiness.state.kind !== "ready" && (
-        <WaitingPanel state={readiness.state} />
+        <WaitingPanel state={readiness.state} offer={game.offer} />
       )}
+      {game.panel}
       {/* Two shadcn Fields in a FieldGroup. Each field carries its own
           invalid and disabled state, the eye is an Input Group addon inside
           the password box, and the four rules are the field's description. */}
@@ -618,10 +617,9 @@ function useReadiness(enabled: boolean): Readiness {
 }
 
 /* What the owner sees instead of a disabled form with no explanation. The
- * reason is lososd's own sentence when it gave one ("Nextcloud is still
- * installing itself…"), and the elapsed count ticks so a long wait visibly
+ * reason is lososd's own sentence when it gave one, and the elapsed count ticks so a long wait visibly
  * is one rather than a hung page. */
-function WaitingPanel({ state }: { state: ReadinessState }) {
+function WaitingPanel({ state, offer }: { state: ReadinessState; offer: React.ReactNode }) {
   const t = useT();
   const [now, setNow] = React.useState(() => Date.now());
   React.useEffect(() => {
@@ -633,7 +631,10 @@ function WaitingPanel({ state }: { state: ReadinessState }) {
   return (
     <Alert variant="default">
       <HugeiconsIcon icon={Loading03Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-      <AlertTitle>{t("wizard.signin.waiting.title")}</AlertTitle>
+      <AlertTitle className="flex items-center gap-2">
+        <span className="flex-1">{t("wizard.signin.waiting.title")}</span>
+        {offer}
+      </AlertTitle>
       <AlertDescription>
         <div
           role="status"

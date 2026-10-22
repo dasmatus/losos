@@ -64,15 +64,15 @@ písmeno, veľké písmeno, číslicu a symbol, napríklad `-` alebo `!`.
 Sprievodca počas písania odškrtáva každé pravidlo. Stanete sa prvým správcom
 zariadenia a do admin stránok sa prihlasujete týmto menom a heslom v LosOS
 Login, prihlasovacej stránke zariadenia na `https://<zariadenie>/auth/`. To
-isté heslo otvára LosOS cloud aj LosOS Git.
+isté heslo otvára LosOS Cloud aj LosOS Git.
 
 <img src={require("@site/docs/img/wizard-step2-password-sk.png").default} alt="Krok 2 so zadaným prihlasovacím menom a heslom: každé zo štyroch pravidiel pre heslo je odškrtnuté, keď je splnené." width="520" />
 
-Krok čaká, kým LosOS cloud dokončí svoje vlastné prvé spustenie, čo na
+Krok čaká, kým LosOS Cloud dokončí svoje vlastné prvé spustenie, čo na
 novom zariadení trvá niekoľko minút. Medzitým stránka ukazuje „Čaká sa“
 a dôvod. Pokračuje sama.
 
-<img src={require("@site/docs/img/wizard-step2-waiting-sk.png").default} alt="Krok 2, kým sa LosOS cloud ešte inštaluje: stránka hovorí, na čo čaká, a pokračuje sama." width="520" />
+<img src={require("@site/docs/img/wizard-step2-waiting-sk.png").default} alt="Krok 2, kým sa LosOS Cloud ešte inštaluje: stránka hovorí, na čo čaká, a pokračuje sama." width="520" />
 
 :::warning[Náhradný kľúč sa ukáže iba raz]
 Keď je heslo nastavené, stránka raz ukáže **náhradný správcovský kľúč**:
@@ -87,30 +87,35 @@ práve nastavili:
 
 - **Vaše meno v LosOS Login**: vaše nové prihlasovacie meno. Otvára admin
   stránky.
-- **Váš účet v LosOS cloud**: účet, ktorý zadáte v kroku 3 a v aplikáciách
+- **Váš účet v LosOS Cloud**: účet, ktorý zadáte v kroku 3 a v aplikáciách
   pre počítač a telefón.
 
-<img src={require("@site/docs/img/wizard-step2-spare-key-sk.png").default} alt="Krok 2 po nastavení hesla: vaše meno v LosOS Login, váš účet v LosOS cloud a náhradný správcovský kľúč, ukázaný raz, s tlačidlami Kopírovať a Tlačiť." width="520" />
+<img src={require("@site/docs/img/wizard-step2-spare-key-sk.png").default} alt="Krok 2 po nastavení hesla: vaše meno v LosOS Login, váš účet v LosOS Cloud a náhradný správcovský kľúč, ukázaný raz, s tlačidlami Kopírovať a Tlačiť." width="520" />
 
-**Prístupový kľúč** (passkey) pre LosOS cloud, aby sa telefón alebo
+**Prístupový kľúč** (passkey) pre LosOS Cloud, aby sa telefón alebo
 notebook mohli k vašim súborom prihlásiť bez písania hesla, si môžete pridať
-neskôr v nastaveniach zabezpečenia v LosOS cloud.
+neskôr v nastaveniach zabezpečenia v LosOS Cloud.
 
 ## Krok 3: Prihlásiť sa \{#step-3-sign-in}
 
-Sprievodca otvorí LosOS cloud priamo na stránke a vy sa prihlásite svojím
-účtom v LosOS cloud a heslom, ktoré ste práve nastavili. Potom vás
+Sprievodca otvorí LosOS Cloud priamo na stránke a vy sa prihlásite svojím
+účtom v LosOS Cloud a heslom, ktoré ste práve nastavili. Potom vás
 sprievodca prenesie na prehľad admin stránok. Odtiaľto pokračujte stránkou
 [Admin stránky](../manual/admin-pages).
 
-Pri prvom otvorení sa nad prehľadom spustí krátka prehliadka. Má šesť
-krokov a každý ukazuje malý pohyblivý obrázok stránky s položkou bočného
-panela, kde daná funkcia je. Kroky prechádzajú aplikácie, pridávanie
-ďalších, úložisko, požičiavanie zariadenia v noci, nočnú aktualizáciu a to,
-kde prehliadku znova nájdete. **Preskočiť prehliadku** ju zavrie a v tom
-prehliadači sa už sama neotvorí. **Spustiť prehliadku** v časti Nastavenia,
-O zariadení ju vráti.
+Pri prvom otvorení sa nad prehľadom spustí krátka prehliadka. Každý krok
+ukazuje malý pohyblivý obrázok stránky s položkou bočného panela, kde daná
+funkcia je. Každé zariadenie má šesť krokov: aplikácie LosOS Cloud,
+pridávanie ďalších, úložisko, požičiavanie zariadenia v noci, nočnú
+aktualizáciu a to, kde prehliadku znova nájdete. Prehliadka sa zariadenia
+spýta, čo ešte má, a za každú takú vec pridá krok: Office, požičiavanie
+pamäte modelom AI, názov, na ktorý mu možno platiť, chat a hovory (len kým
+zariadenie zdieľa úložisko v mesh), Vytvoriť s AI a profilové fotky.
+Zariadenie bez nich ukáže šesť krokov.
+**Preskočiť prehliadku** ju zavrie a v tom prehliadači sa už
+sama neotvorí. **Spustiť prehliadku** v časti Nastavenia, O zariadení ju
+vráti.
 
-![Prvý krok prehliadky nad prehľadom: obrázok stránky s otvorenou aplikáciou Súbory, „1 z 6“ a tlačidlá Preskočiť prehliadku a Ďalej.](@site/docs/img/tour-sk.png)
+![Prvý krok prehliadky nad prehľadom: obrázok stránky so šiestimi aplikáciami LosOS Cloud, „1 z 6“ a tlačidlá Preskočiť prehliadku a Ďalej.](@site/docs/img/tour-sk.png)
 
 ![Krok 3: Ste prihlásení. To bol posledný krok.](@site/docs/img/wizard-step3-sign-in-sk.png)

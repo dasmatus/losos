@@ -2,8 +2,8 @@
 //! Login name and password.
 //!
 //! A file manager opens LosOS cloud's WebDAV share
-//! (`/nextcloud/remote.php/webdav/`, announced on the LAN by
-//! `modules/containers.nix`) and asks for a name and a password, which it
+//! (`/remote.php/webdav/`, announced on the LAN by `modules/cloud.nix`)
+//! and asks for a name and a password, which it
 //! then sends as Basic auth on every request. LosOS cloud itself knows the
 //! owner only as `notshared` and the other people by no password at all, so
 //! nginx asks this route about every request to the share from the LAN
@@ -14,7 +14,7 @@
 //!     the request carries a LosOS Login name and that person's password.
 //!     nginx then drops the `Authorization` header and names the person to
 //!     LosOS cloud in the sign-in headers, as it does for a browser
-//!     (`modules/app-sign-in.nix`): the owner arrives as `notshared`;
+//!     (`modules/cloud.nix`): the owner arrives as `notshared`;
 //!   * nobody, for everything else: no credentials, an app password, a
 //!     name LosOS Login does not know, a wrong password. nginx passes the
 //!     request on untouched and LosOS cloud answers it with its own

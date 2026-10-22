@@ -341,6 +341,33 @@ jobs:
             cargo test --manifest-path edge/registrar/Cargo.toml --test solana_escrow
           '
 
+  evm-escrow:
+    name: "evm: test the escrow and pay through it on a local chain"
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # devenv.nix's test-evm-escrow. Foundry's suite for LososEscrow, then
+    # edge/contracts/test-payment.sh on anvil: a deposit paid, matched and
+    # released by the registrar's own signer, a coin fee, and a tap topped
+    # up, settled within its cap and closed by the edge key.
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+        with:
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/sccache
+            ~/.cache/ccache
+          key: ${{ runner.os }}-evm-compiler-cache-${{ hashFiles('edge/registrar/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-evm-compiler-cache-
+      - name: forge suite and the anvil payment run
+        run: |
+          nix develop .#ci -c nix shell --inputs-from . nixpkgs#foundry nixpkgs#nodejs nixpkgs#jq \
+            -c bash edge/contracts/test-payment.sh
+
   eval:
     name: "nix: flake check + module merge + ISO derivation"
     runs-on: ubuntu-latest
@@ -352,11 +379,15 @@ jobs:
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Mirrors devenv.nix's `check-flake`. Evaluates every output — every VM
-      # test derivation, both nixosConfigurations and every package, the three
+      # test derivation, every nixosConfiguration and every package, the three
       # OCI images among them; builds nothing. Which is the limit of it: an
       # image whose entrypoint fails shellcheck evaluates perfectly happily,
-      # and only the images job below catches that.
-      - run: nix flake check --no-build -L
+      # and only the images job below catches that. It is what `nix flake
+      # check --no-build` checks, one `nix eval` per derivation: flake check
+      # holds every VM test's evaluation in one process, which outgrew the
+      # runner's memory and got the runner shut down mid-check with no error
+      # printed. nix/check-flake.sh says what it covers.
+      - run: bash nix/check-flake.sh
       # Mirrors devenv.nix's `check-eval`, and this is the gate the repo lacked
       # entirely: `flake check` only forces each nixosConfiguration's toplevel
       # *derivation*, so an option conflict, a type error or a failed assertion
@@ -508,7 +539,7 @@ jobs:
         with:
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-      # The cheap two thirds of devenv.nix's `build-images`.
+      # What devenv.nix's `build-images` builds.
       #
       # These are the images modules/defaults.nix wires into losos.workloads.*,
       # and the appliance is *required* to substitute them: it never builds an
@@ -536,8 +567,6 @@ jobs:
           path: images-cache
           retention-days: 1
           include-hidden-files: true
-      # losos-image-nextcloud is not built here either; see the
-      # image-nextcloud job below for what changed about that on this forge.
 
   publish-cache:
     name: "nix: publish built paths to proxy"
@@ -755,53 +784,6 @@ jobs:
           name: losos-pages-updates
           path: dev-machine
           retention-days: 30
-
-  # ── The Nextcloud image ────────────────────────────────────────────────────
-  #
-  # The appliance is *required* to substitute this image: it never builds one.
-  # So a cache that does not have it is worse than no cache at all — the box
-  # discovers the gap during system.autoUpgrade at 03:00, on a mini-PC with a
-  # tmpfs root and no shell, three hours before an unconditional reboot. It is
-  # also the image most likely to break.
-  #
-  # On the retired Codeberg lane this was workflow_dispatch only, because of
-  # the cap: the content closure is 2.3 GiB across 244 store paths
-  # (nextcloud34 with ~30 apps, php-with-extensions, apacheHttpd) against
-  # Forgejo's 647 MiB, so on a cold runner it fetches roughly 3.5x what the `images` job fetches, inside
-  # ten minutes. That objection does not survive the move: this job may take an
-  # hour here.
-  #
-  # So it also runs on the weekly schedule, which closes the hole that lane
-  # documents as "a real hole and not an oversight" without putting a 2.3 GiB
-  # fetch on every push. It is deliberately NOT folded into `images`: the one
-  # number nobody has measured is what this costs a cold runner, and this
-  # repository has been burned twice by guessing — doCheck stayed on until
-  # `nix build .#losos-ctl` turned out to be a 7.7-10.3 minute coin flip, and
-  # the ISO was excluded as fitting "neither the time nor the disk-as-RAM
-  # budget" on a figure taken against zstd level 19 when flake.nix already sets
-  # level 6. The weekly run prints its own timing; move it into `images` once
-  # there are numbers, not before.
-  image-nextcloud:
-    name: "nix: Nextcloud image -> proxy"
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-      # Do not spend an hour building an image without somewhere to publish it.
-      - uses: ./.github/actions/proxy-push
-        if: vars.LOSOS_PROXY_URL != ''
-        with:
-          installables: ".#losos-image-nextcloud"
-          build-args: "-L"
-          signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
 
   fmt-bot:
     name: "bot: cargo fmt, push back"

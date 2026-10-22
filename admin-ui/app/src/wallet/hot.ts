@@ -29,6 +29,12 @@ export function payoutMessage(chain: number | string, address: string): string {
   return `LosOS market payout v1\nchain: ${chain}\naddress: ${shown}\n`;
 }
 
+/** What the wallet signs to let the edge publish its address at the box's
+ *  names (edge/registrar/src/domains.rs, `wallet_message`). */
+export function walletMessage(zone: string, box: string, address: string): string {
+  return `LosOS box name v1\nzone: ${zone}\nbox: ${box}\naddress: ${address.toLowerCase()}\n`;
+}
+
 interface Sealed {
   v: 1;
   salt: string;
@@ -40,6 +46,14 @@ interface Sealed {
   sol?: string;
   /** The phrase was made on this box rather than imported. */
   made?: boolean;
+}
+
+/** Sent on `window` when the saved wallet is sealed or forgotten, so a
+ *  section that shows its address can read it again. */
+export const WALLET_CHANGED = "losos-wallet-changed";
+
+function changed(): void {
+  window.dispatchEvent(new Event(WALLET_CHANGED));
 }
 
 /** The saved wallet's public addresses, or null when none is saved. */
@@ -70,6 +84,7 @@ export async function sealPhrase(password: string, phrase: string, made = false)
     sol: solanaKeyFromPhrase(words).address,
     made,
   });
+  changed();
 }
 
 export async function openPhrase(password: string): Promise<string> {
@@ -97,6 +112,7 @@ export async function forgetPhrase(): Promise<void> {
     tx.onerror = () => reject(tx.error);
   });
   db.close();
+  changed();
 }
 
 async function derive(password: string, salt: Uint8Array): Promise<CryptoKey> {

@@ -8,6 +8,7 @@ export default defineMessages({
   "shell.nav.mesh": { en: "Mesh", sk: "Mesh", de: "Mesh" },
   /* LosOS Lab, the setup visualizer at /lab/ (admin-ui/lab/). */
   "shell.nav.lab": { en: "Lab", sk: "Laboratórium", de: "Labor" },
+  "shell.nav.mail": { en: "Mail", sk: "Pošta", de: "Mail" },
   "shell.nav.settings": { en: "Settings", sk: "Nastavenia", de: "Einstellungen" },
   "shell.nav.label": { en: "Sections", sk: "Sekcie", de: "Bereiche" },
   "shell.nav.collapse": { en: "Collapse the sidebar", sk: "Zbaliť bočný panel", de: "Seitenleiste einklappen" },
@@ -167,9 +168,9 @@ export default defineMessages({
     de: "Bevor der Installer startet, prüft er sein eigenes Systemabbild gegen eine SHA-256-Summe auf seiner Kernel-Kommandozeile.",
   },
   "shell.facts.17": {
-    en: "LosOS cloud and LosOS Git run in a Kubernetes cluster of their own on this box, so they stay up when the mesh is away.",
-    sk: "LosOS cloud a LosOS Git bežia vo vlastnom klastri Kubernetes na tomto zariadení, takže fungujú, aj keď sieť nie je dostupná.",
-    de: "LosOS cloud und LosOS Git laufen in einem eigenen Kubernetes-Cluster auf dieser Box und bleiben erreichbar, wenn das Mesh weg ist.",
+    en: "LosOS Cloud runs on this box itself and LosOS Git in a Kubernetes cluster of its own here, so both stay up when the mesh is away.",
+    sk: "LosOS Cloud beží priamo na tomto zariadení a LosOS Git vo vlastnom klastri Kubernetes tu, takže oba fungujú, aj keď sieť nie je dostupná.",
+    de: "LosOS Cloud läuft direkt auf dieser Box und LosOS Git in einem eigenen Kubernetes-Cluster hier, deshalb bleiben beide erreichbar, wenn das Mesh weg ist.",
   },
   "shell.signIn.useSignIn": {
     en: "Sign in with your name instead",
@@ -234,6 +235,29 @@ export default defineMessages({
     de: "Der Schlüssel zur Festplatte liegt auf der unverschlüsselten Boot-Partition, weil kein Chip da ist, der ihn verwahrt. Wer die Festplatte in die Hände bekommt, kann damit deine Dateien lesen. Um den Schlüssel in einen Chip zu verlegen, schalte das TPM in der Firmware ein und installiere die Box neu.",
   },
   "ui.noTpm.link": { en: "What a TPM does", sk: "Čo robí TPM", de: "Was ein TPM tut" },
+  // The banner while the box is not on a mesh (components/mesh-notice.tsx).
+  "ui.mesh.title": {
+    en: "Some features may not be available",
+    sk: "Niektoré funkcie nemusia byť dostupné",
+    de: "Manche Funktionen sind vielleicht nicht verfügbar",
+  },
+  "ui.mesh.notJoined": {
+    en: "This box has not joined a mesh yet. Some features need one and stay off until it joins.",
+    sk: "Toto zariadenie sa ešte nepripojilo k sieti mesh. Niektoré funkcie ju potrebujú a zostanú vypnuté, kým sa nepripojí.",
+    de: "Diese Box ist noch keinem Mesh beigetreten. Manche Funktionen brauchen eines und bleiben aus, bis sie beitritt.",
+  },
+  "ui.mesh.notSharing": {
+    en: "This box is on a mesh but does not share its storage. Some features need that and stay off until it does.",
+    sk: "Toto zariadenie je v sieti mesh, ale nezdieľa svoje úložisko. Niektoré funkcie to potrebujú a zostanú vypnuté, kým ho nezačne zdieľať.",
+    de: "Diese Box ist in einem Mesh, teilt aber ihren Speicher nicht. Manche Funktionen brauchen das und bleiben aus, bis sie ihn teilt.",
+  },
+  "ui.mesh.askAdmin": {
+    en: "An administrator of this box can change that.",
+    sk: "Zmeniť to môže správca tohto zariadenia.",
+    de: "Eine Person, die diese Box verwaltet, kann das ändern.",
+  },
+  "ui.mesh.join": { en: "Join a mesh", sk: "Pripojiť sa k sieti mesh", de: "Einem Mesh beitreten" },
+  "ui.mesh.share": { en: "Share storage", sk: "Zdieľať úložisko", de: "Speicher teilen" },
   "ui.notifications": { en: "Notifications", sk: "Upozornenia", de: "Benachrichtigungen" },
   "ui.confirmations": { en: "Confirmations", sk: "Potvrdenia", de: "Bestätigungen" },
   "ui.theme.label": { en: "Appearance", sk: "Vzhľad", de: "Erscheinungsbild" },

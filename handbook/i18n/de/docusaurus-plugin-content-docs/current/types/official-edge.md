@@ -15,7 +15,7 @@ der Markt dieser Edge zahlt aus.
 
 | Funktion               | Wie                                                                                                        |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Fernzugriff**        | `https://<your-name>.<edge domain>` erreicht LosOS cloud und LosOS Git über einen verschlüsselten Tunnel, den die Box nach außen öffnet. Die Admin-Seiten veröffentlicht die Box nie; sie bleiben nur im LAN erreichbar, auch über den Tunnel. |
+| **Fernzugriff**        | `https://<your-name>.<edge domain>` erreicht LosOS Cloud und LosOS Git über einen verschlüsselten Tunnel, den die Box nach außen öffnet. Die Admin-Seiten veröffentlicht die Box nie; sie bleiben nur im LAN erreichbar, auch über den Tunnel. |
 | **Das Mesh**           | Die Box tritt einem Kubernetes-Cluster bei, den die Edge betreibt. Ihre freie Festplatte wird Teil eines gemeinsamen, replizierten Pools; ihre freie CPU führt innerhalb der Stunden, die du erlaubst, Arbeit anderer Leute aus, und nur, solange die Box untätig ist. |
 | **Der Markt**          | Du wirst für die Festplatte und die CPU bezahlt, die du teilst, und du kannst welche von anderen kaufen. Käufer zahlen in USDC, Bitcoin oder Monero, oder per Karte über Stripe, wo die Edge Karten annimmt, und die Edge behält eine Gebühr von 4 %. Eine Edge kann auch nur Coins annehmen, ohne Kartenzahlungen; dann braucht es für den Betrieb des Markts kein Geschäftskonto bei einem Kartenzahlungsanbieter. Der Bereich Markt liegt in der Seitenleiste unter Mesh. |
 | **Box finden**         | Die Edge stellt die Seite bereit, die eine Box in deinem LAN aus einem Browser heraus findet.              |
@@ -136,7 +136,7 @@ Domain hinzu:
 3. Warte. Die Edge schlägt die Einträge jede halbe Minute selbst nach und
    markiert jeden mit **✓ gefunden**, sobald sie ihn findet. Wenn beide
    stimmen, wird die Domain **Aktiv**, die Edge holt ein Zertifikat für sie,
-   und LosOS cloud antwortet unter `https://<your domain>/nextcloud`.
+   und LosOS Cloud antwortet unter `https://<your domain>/cloud/`.
 
 :::note[Eine Domain, vor der nichts steht]
 Eine Domain, vor der nichts steht, etwa `novak-family.eu` selbst, kann keinen
@@ -159,6 +159,50 @@ schickt den Verkehr an deine Edge, und deine Edge reicht ihn an die Box
 weiter. Deine Box teilt der LosOS-Edge mit, hinter welcher Heim-Edge sie
 steht, sodass keine fremde Edge deine Domain beanspruchen kann. Dafür musst
 du nichts einrichten.
+
+## Per Name bezahlt \{#paid-by-name}
+
+Eine Box mit einem Namen auf der LosOS-Edge kann unter diesem Namen Zahlungen
+annehmen. Wer MetaMask, Rainbow oder eine andere Wallet nutzt, die an
+ENS-Namen sendet, tippt `mattbox.boxes.losos.dasmat.us` dort ein, wo eine
+Adresse hingehört, und das Geld landet in der Wallet der Box. Der Name ergibt
+eine Adresse, die Wallet der Box, und die ist auf Ethereum, Base, Arbitrum und
+OP dieselbe.
+
+Der Abschnitt **Bezahlt per Name** im Bereich Netzwerk listet die Namen der
+Box auf der Edge. **Wallet verknüpfen** bittet die Wallet, eine kurze
+Nachricht zu signieren: Die auf dieser Box angelegte Wallet fragt nach ihrem
+Passwort, sonst meldet sich die Wallet-Erweiterung des Browsers. Die Edge
+prüft die Signatur und veröffentlicht dann die Adresse der Wallet unter jedem
+Namen. Sie veröffentlicht nur eine Adresse, deren Wallet für diese Box
+signiert hat, und darum bitten kann nur die Box, für jemanden, der dort als
+Administrator angemeldet ist. Die Zone liegt bei der Edge, also ist der Name
+so vertrauenswürdig wie die Edge selbst. **Trennen** nimmt die Adresse wieder
+weg.
+
+Ist sie verknüpft, ist die Adresse öffentlich wie jede Adresse, die du
+herausgibst. Die Zone der Edge ist mit DNSSEC signiert, und deshalb vertraut
+ENS dem Eintrag.
+
+Neben jedem Namen sagt der Bereich, ob Wallets ihn schon finden. Eine Wallet
+fragt ENS, und ENS fragt das öffentliche DNS, das der Zone der Edge erst
+vertraut, wenn die Domain darüber auf die Edge zeigt und für ihre Signaturen
+bürgt. Bis dahin steht beim Namen **Wallets finden diesen Namen noch nicht**
+oder **Wallets vertrauen diesem Namen noch nicht**. Das richtet der Betreiber
+der Edge ein, die Box kann daran nichts ändern. Steht dort **Wallets finden
+diesen Namen**, kommen Zahlungen an.
+
+Die Wallet im Bereich Markt zahlt an Namen genauso: Tipp unter **USDC
+senden** in das Feld **Adresse oder ENS-Name** den Namen einer Box oder jeden
+Namen, den eine Wallet annehmen würde.
+
+Auch eine eigene Domain kann denselben Eintrag tragen. Unter jeder Domain
+zeigt der Bereich einen **TXT**-Eintrag, der mit `ENS1` beginnt; trag ihn
+direkt bei der Domain ein. Zwei Bedingungen gelten. Dein DNS-Anbieter muss
+die Domain mit DNSSEC signieren, und der Name darf kein CNAME sein, weil ein
+CNAME keinen anderen Eintrag trägt. Eine Domain mit A- und AAAA-Einträgen,
+etwa `novak-family.eu` selbst, funktioniert. Der Bereich zeigt, was davon die
+Edge gefunden hat.
 
 ## Einstellungen, auf die es ankommt \{#settings-that-matter}
 

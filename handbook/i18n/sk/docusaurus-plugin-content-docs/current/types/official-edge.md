@@ -15,7 +15,7 @@ tohto edge.
 
 | Funkcia                | Ako                                                                                                        |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Vzdialený prístup**  | `https://<vaše-meno>.<doména edge>` sa dostane k LosOS cloud a LosOS Git cez šifrovaný tunel, ktorý zariadenie otvára smerom von. Admin stránky zariadenie nikdy nezverejní, zostávajú dostupné iba z LAN, aj cez tunel. |
+| **Vzdialený prístup**  | `https://<vaše-meno>.<doména edge>` sa dostane k LosOS Cloud a LosOS Git cez šifrovaný tunel, ktorý zariadenie otvára smerom von. Admin stránky zariadenie nikdy nezverejní, zostávajú dostupné iba z LAN, aj cez tunel. |
 | **Mesh**               | Zariadenie sa pripojí ku Kubernetes klastru, ktorý prevádzkuje edge. Jeho voľný disk sa stane súčasťou spoločného replikovaného priestoru a jeho voľné CPU spúšťa prácu iných ľudí v hodinách, ktoré povolíte, a iba vtedy, keď je zariadenie nečinné. |
 | **Trh**                | Dostanete zaplatené za disk a CPU, ktoré zdieľate, a môžete si ich kúpiť od iných. Kupujúci platia v USDC, Bitcoine alebo Monere, alebo kartou cez Stripe, ak edge karty prijíma, a edge si ponechá poplatok 4 %. Edge môže prijímať iba mince bez platieb kartou, takže na prevádzku trhu netreba firemný účet u spracovateľa kariet. Panel Trh je v bočnom paneli pod Mesh. |
 | **Nájsť moje zariadenie** | Edge hostí stránku, ktorá z prehliadača nájde zariadenie vo vašej LAN.                                  |
@@ -123,8 +123,8 @@ Názov vzniká z identity zariadenia, ale neprezrádza ju. Doménu pridáte takt
    z domény, identity zariadenia a jeho účtu Stripe a neprezrádza nič z toho.
 3. Počkajte. Edge si záznamy každú pol minútu sám vyhľadá a každý, ktorý
    nájde, označí **✓ nájdené**. Keď sú oba správne, doména sa zmení na
-   **Funguje**, edge pre ňu získa certifikát a LosOS cloud odpovedá na
-   `https://<vaša doména>/nextcloud`.
+   **Funguje**, edge pre ňu získa certifikát a LosOS Cloud odpovedá na
+   `https://<vaša doména>/cloud/`.
 
 :::note[Doména, pred ktorou nič nie je]
 Doména, pred ktorou nič nie je, napríklad samotná `novak-family.eu`,
@@ -144,6 +144,44 @@ tak, pokiaľ sa zariadenie pripojilo k mesh. Edge LosOS pošle prevádzku na vá
 edge a váš edge ju odovzdá zariadeniu. Vaše zariadenie oznámi edge LosOS, za
 ktorým domácim edge je, takže vašu doménu si nemôže privlastniť nikoho iného
 edge. Netreba na to nič nastavovať.
+
+## Platby na názov \{#paid-by-name}
+
+Zariadenie, ktoré má názov na edge LosOS, môže na tento názov prijímať
+platby. Kto má MetaMask, Rainbow alebo inú peňaženku, ktorá posiela na názvy
+ENS, napíše namiesto adresy `mattbox.boxes.losos.dasmat.us` a peniaze prídu
+do peňaženky zariadenia. Názov dáva jednu adresu, peňaženku zariadenia, ktorá
+je rovnaká na sieťach Ethereum, Base, Arbitrum a OP.
+
+Sekcia **Platby na názov** na paneli Sieť uvádza názvy zariadenia na edge.
+**Prepojiť peňaženku** požiada peňaženku o podpis jednej krátkej správy:
+peňaženka vytvorená na tomto zariadení si vypýta heslo, inak sa ozve
+peňaženka v rozšírení prehliadača. Edge podpis overí a potom zverejní adresu
+peňaženky pod každým názvom. Zverejní len adresu, ktorej peňaženka podpísala
+správu pre toto zariadenie, a požiadať oň môže len toto zariadenie, za správcu,
+ktorý je v ňom prihlásený. Zónu drží edge, takže názov je taký dôveryhodný ako
+edge sám. **Zrušiť prepojenie** adresu zase odoberie.
+
+Po prepojení je adresa verejná ako každá adresa, ktorú niekomu dáte. Zóna
+edge je podpísaná cez DNSSEC, a vďaka tomu ENS záznamu dôveruje.
+
+Pri každom názve panel ukazuje, či ho peňaženky už nájdu. Peňaženka sa pýta
+ENS a ENS sa pýta verejného DNS, ktoré zóne edge verí, až keď doména nad ňou
+ukazuje na edge a ručí za jej podpisy. Dovtedy pri názve stojí **Peňaženky
+tento názov zatiaľ nenájdu** alebo **Peňaženky tomuto názvu zatiaľ neveria**.
+To nastavuje prevádzkovateľ edge, zariadenie to zmeniť nevie. Keď stojí
+**Peňaženky tento názov nájdu**, platby prichádzajú.
+
+Peňaženka na paneli Trh platí na názvy rovnako: v časti **Poslať USDC**
+napíšte do poľa **Adresa alebo meno ENS** názov zariadenia alebo akýkoľvek
+názov, ktorý by prijala peňaženka.
+
+Rovnaký záznam môže niesť aj vaša vlastná doména. Pod každou doménou panel
+ukazuje záznam **TXT**, ktorý začína `ENS1`; pridajte ho priamo k doméne.
+Platia dve podmienky. Váš poskytovateľ DNS musí doménu podpisovať cez
+DNSSEC a názov nesmie byť CNAME, pretože CNAME nenesie žiadny iný záznam.
+Doména so záznamami A a AAAA, napríklad samotná `novak-family.eu`, funguje.
+Panel ukazuje, čo z toho edge našiel.
 
 ## Dôležité nastavenia \{#settings-that-matter}
 

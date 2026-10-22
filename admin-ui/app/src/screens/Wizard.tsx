@@ -1,17 +1,16 @@
 /* The first-run wizard.
  *
- * Three steps, and it exists because of one bug: modules/nextcloud-common.nix
- * mints the first admin password from /dev/urandom, writes it 0600 and shows
- * it to nobody. There is no SSH and no shell login, so on a box out of the
- * carton nothing — not the owner, not a support call — can sign in at all.
- * Step 2 is the fix; the other two are what has to be true around it.
+ * Three steps. A box out of the carton has no password at all, and there
+ * is no SSH and no shell login, so nothing (not the owner, not a support
+ * call) can sign in until step 2 sets one. The other two are what has to be
+ * true around it.
  *
  *   1  Trust this box       install the self-signed certificate, come back on
  *                           https, because step 2 sends a password and a
  *                           passkey cannot be made without a secure context
  *   2  Choose how you sign in   the password (required), the passkey (offered),
  *                           and the spare admin key, shown and printable once
- *   3  Sign in              the files app, embedded, watched
+ *   3  Sign in              LosOS Cloud in a tab of its own, watched from here
  *
  * This component owns the sequence and the gates and nothing else. Each step
  * reports upward when its gate is met — `account` for step 2, `signedIn` for

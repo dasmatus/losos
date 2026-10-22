@@ -3,8 +3,8 @@
 //! `POST /api/setup/claim` sets the owner's first password and hands back the
 //! admin key — once, to the caller who set it, because after that call the
 //! route refuses everything ([`crate::losos::cmd_claim`]). That "once" has a
-//! hole: on a box still warming up, `occ user:resetpassword` took longer than
-//! the proxy in front of lososd was willing to wait, the browser got a 504 and
+//! hole: on a box still warming up, setting the password could take longer
+//! than the proxy in front of lososd was willing to wait, the browser got a 504 and
 //! the connection was gone when the reply was ready. lososd had done its work
 //! — password set, box claimed — and the one copy of the admin key went to
 //! nobody. On a box with no shell that owner is locked out of the admin UI for

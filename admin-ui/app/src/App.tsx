@@ -3,7 +3,9 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon, UserCircleIcon } from "@hugeicons/core-free-icons";
 import { AppSidebar } from "@/components/app-sidebar";
+import { MeshNotice } from "@/components/mesh-notice";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { PersonAvatar } from "@/components/person";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,6 +56,7 @@ import { seededShuffle } from "@/lib/shuffle";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
 import { useT } from "@/lib/i18n-react";
+import { useWaitGame } from "@/components/play-while-waiting";
 import { cn } from "@/lib/utils";
 
 /* Screens load on demand.
@@ -72,6 +75,9 @@ const Tour = React.lazy(() => import("@/tour/tour"));
 /* The command palette (src/palette/): its own chunk, fetched the first time
  * Ctrl/Cmd+Shift+P, a colon or the sidebar's search button opens it. */
 const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
+/* LosOS Mail (src/mail/): only on the shared side, so most boxes never
+ * fetch it. */
+const Mail = React.lazy(() => import("@/mail/app"));
 const WidgetBoard = React.lazy(() =>
   import("@/widgets/board").then((m) => ({ default: m.WidgetBoard })),
 );
@@ -290,6 +296,7 @@ function Shell() {
       >
         <AppSidebar />
         <main className="min-w-0 flex-1">
+          {signedIn && !held && <MeshNotice />}
           <React.Suspense fallback={<ScreenFallback />}>
           {held ? (
             <Settings pane="account" />
@@ -312,6 +319,10 @@ function Shell() {
             <Route path="/mesh" element={<SettingsRoute pane="mesh" />} />
             <Route path="/machines" element={<SettingsRoute pane="machines" />} />
             <Route path="/apps" element={<SettingsRoute pane="apps" />} />
+            {/* nginx answers /mail with 404 off the shared side
+                (modules/containers.nix); the screen says so too if the box
+                leaves it while the page is open. */}
+            <Route path="/mail" element={<Mail />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />
@@ -409,8 +420,18 @@ function WhoIsSignedIn() {
             />
           }
         >
-          <HugeiconsIcon icon={UserCircleIcon} size={18} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-          <span className="hidden max-w-[12rem] truncate sm:inline">{name}</span>
+          {me.spareKey || !me.name ? (
+            <HugeiconsIcon icon={UserCircleIcon} size={18} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          ) : (
+            <PersonAvatar
+              size="xs"
+              data-testid="signed-in-avatar"
+              person={{ name: me.name, displayName: me.displayName ?? me.name, picture: me.picture, accent: me.accent }}
+            />
+          )}
+          <span data-testid="signed-in-name" className="hidden max-w-[12rem] truncate sm:inline">
+            {name}
+          </span>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="end" className="max-w-[22rem]">
           {tip}
@@ -509,6 +530,7 @@ function SignInDialog({ open }: { open: boolean }) {
    * dialog waits with a spinner and a fact about LosOS instead of sending
    * anyone to an error page, and goes on by itself once it is up. */
   const [portal, setPortal] = React.useState<"checking" | "starting" | "ready">("checking");
+  const game = useWaitGame(open && mode === "signin" && portal === "starting");
   const [wanted, setWanted] = React.useState(false);
   const [fact, setFact] = React.useState(0);
   React.useEffect(() => {
@@ -678,14 +700,18 @@ function SignInDialog({ open }: { open: boolean }) {
             <div className="flex flex-col gap-3 rounded-card border border-line bg-sunk p-3">
               <div className="flex items-center gap-2 text-[13px] text-muted">
                 <Spinner />
-                <p aria-live="polite">{t("shell.signIn.starting")}</p>
+                <p aria-live="polite" className="flex-1">{t("shell.signIn.starting")}</p>
+                {game.offer}
               </div>
-              <p className="text-[13px] text-ink">
-                <span className="font-medium">{t("shell.facts.title")}. </span>
-                {t(FACTS[fact] ?? "shell.facts.1")}
-              </p>
+              {game.panel ?? (
+                <p className="text-[13px] text-ink">
+                  <span className="font-medium">{t("shell.facts.title")}. </span>
+                  {t(FACTS[fact] ?? "shell.facts.1")}
+                </p>
+              )}
             </div>
           )}
+          {mode === "signin" && portal !== "starting" && game.panel}
           {mode !== "signin" && (
             <Field invalid={problem !== null} disabled={busy}>
               {keyField}

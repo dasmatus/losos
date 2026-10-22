@@ -806,9 +806,7 @@ let
   # Payments wait in an escrow (LososEscrow on EVM, losos-escrow on Solana)
   # until the registrar releases them with this key. A Solana network with no
   # `pay` is a direct transfer and needs none.
-  releaserOn =
-    usdcOn
-    && lib.any (n: n.pay != null) (lib.attrValues usdcNetworks);
+  releaserOn = usdcOn && lib.any (n: n.pay != null) (lib.attrValues usdcNetworks);
   usdcServeArgs =
     lib.optionals usdcOn (
       lib.concatLists (
@@ -825,7 +823,25 @@ let
     ++ lib.optionals ensOn [
       "--market-ens-rpc-file"
       "${credDir}/ens-rpc"
+    ]
+    ++ lib.optionals binanceOn [
+      "--onramp-binance-api"
+      binance.apiUrl
+      "--onramp-binance-client-id"
+      binance.clientId
+      "--onramp-binance-webhook-key-file"
+      (toString binance.webhookPublicKeyFile)
+      "--onramp-binance-key-file"
+      "${credDir}/binance-connect-key"
+      "--onramp-binance-token-file"
+      "${credDir}/binance-connect-token"
     ];
+  # Buying USDC with euros at Binance (losos.edge.market.usdc.binance,
+  # edge/registrar/src/onramp.rs). The partner key and token are credentials
+  # like the RPC URLs; the client id, API origin and Binance's webhook key
+  # are public.
+  binance = cfg.market.usdc.binance;
+  binanceOn = usdcOn && binance.enable;
 
   # Machines (losos.edge.vms, modules/edge-vms.nix): the shape of a replica,
   # where its disk is claimed from, and the origin CDI's importer fetches an
@@ -908,6 +924,10 @@ let
     ]
     ++ lib.optionals ensOn [
       "ens-rpc:${toString cfg.market.usdc.ensRpcUrlSealed}"
+    ]
+    ++ lib.optionals binanceOn [
+      "binance-connect-key:${toString binance.keySealed}"
+      "binance-connect-token:${toString binance.tokenSealed}"
     ];
 
   serveArgs = utils.escapeSystemdExecArgs (
@@ -950,7 +970,23 @@ let
     ++ uplinkArgs
     ++ accessArgs
     ++ manageArgs
+    ++ inferenceArgs
   );
+
+  # Models split across boxes (losos.edge.inference,
+  # modules/edge-inference.nix): the catalogue, the loopback ports the
+  # lending boxes' RPC tunnels are bound on, and where the registrar writes
+  # each head's environment and finds its socket.
+  inferenceArgs = lib.optionals cfg.inference.enable [
+    "--inference-models"
+    "/etc/losos/inference-models.json"
+    "--llm-port-range"
+    "${toString cfg.inference.portRange.from}-${toString cfg.inference.portRange.to}"
+    "--llm-env-dir"
+    "/run/losos-llm-env"
+    "--llm-socket-dir"
+    "/run/losos-llm-heads"
+  ];
 
   # The page boxes are managed from (losos.edge.manage, server/manage.rs in
   # the registrar). The key is made by the registrar on its first start.
@@ -1006,6 +1042,12 @@ in
     );
 
     assertions = [
+      {
+        # A lending box's second tunnel service is `<id>:llm`
+        # (edge/registrar/src/config.rs); a colon in an id could take it.
+        assertion = lib.all (id: !lib.hasInfix ":" id) (lib.attrNames cfg.tenants);
+        message = "losos.edge.tenants: an appliance id may not contain a colon.";
+      }
       {
         assertion = (cfg.identity.keyFile == null) == (cfg.identity.certFile == null);
         message = ''
@@ -1099,8 +1141,7 @@ in
             if lib.hasPrefix "solana" name then
               builtins.match "[1-9A-HJ-NP-Za-km-z]{32,44}" n.treasury != null
               && (
-                n.pay == null
-                || (builtins.match "[1-9A-HJ-NP-Za-km-z]{32,44}" n.pay != null && n.pay != n.treasury)
+                n.pay == null || (builtins.match "[1-9A-HJ-NP-Za-km-z]{32,44}" n.pay != null && n.pay != n.treasury)
               )
             else
               n.pay != null
@@ -1114,6 +1155,23 @@ in
           `0x` treasury that differ; a Solana network needs a base58 treasury
           and, for its escrow, a base58 `pay` that differs from it. Only
           `solana-devnet` takes `genesisHash`.
+        '';
+      }
+      {
+        assertion = binance.enable -> usdcOn && usdcNetworks ? base;
+        message = ''
+          losos.edge.market.usdc.binance.enable needs losos.edge.market.usdc
+          with the live `base` network: Binance sends the USDC on Base.
+        '';
+      }
+      {
+        assertion =
+          binance.enable
+          -> binance.apiUrl != null && binance.clientId != null && binance.webhookPublicKeyFile != null;
+        message = ''
+          losos.edge.market.usdc.binance.enable needs apiUrl, clientId and
+          webhookPublicKeyFile, the details Binance gives with the partner
+          account.
         '';
       }
       {
@@ -1314,8 +1372,9 @@ in
       // lib.optionalAttrs (registrarCreds != [ ]) {
         # Plaintext only in this unit's credential directory, read per request.
         # `usdc-rpc-<network>` is a chain endpoint, `usdc-releaser-key` the
-        # escrow's key and `ens-rpc` the name lookups. None is a flag, so none
-        # shows up in the process list.
+        # escrow's key, `ens-rpc` the name lookups and `binance-connect-*`
+        # the Binance partner's key and token. None is a flag, so none shows
+        # up in the process list.
         LoadCredentialEncrypted = registrarCreds;
         # systemd fails the unit when an absolute blob is missing, and an
         # edge whose registrar never starts cannot have anything sealed
@@ -1415,6 +1474,10 @@ in
     # registrar replaces the file. Before the first reconcile the file does
     # not exist and Knot answers REFUSED for the zone; that lasts until the
     # registrar's first pass, which runs before its API opens.
+    # With dnssec.enable Knot signs what it loads (its default policy: ECDSA
+    # P-256, the KSK kept until an operator rolls it, ZSKs rolled by Knot),
+    # so the file stays unsigned and the keys stay in Knot's own state
+    # directory. ENS reads the wallet records only from a signed zone.
     services.knot = lib.mkIf dnsCfg.enable {
       enable = true;
       settings = {
@@ -1424,6 +1487,7 @@ in
           zonefile-load = "whole";
           zonefile-sync = "-1";
           journal-content = "none";
+          dnssec-signing = dnsCfg.dnssec.enable;
         };
       };
     };

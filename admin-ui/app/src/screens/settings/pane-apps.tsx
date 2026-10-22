@@ -32,6 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useWaitGame } from "@/components/play-while-waiting";
 import { Spinner } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { t as translate, type MessageKey } from "@/lib/i18n";
@@ -44,8 +45,6 @@ import { usePins, useSavePins } from "@/components/pins-dialog";
 import { isPinned, toggled } from "@/lib/pins";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 import { hasSiteSettings, SiteSettings } from "./site-settings";
-import { CloudAppsSection } from "./cloud-apps";
-import { useCloudApps } from "./use-cloud-apps";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -72,16 +71,12 @@ function isServiceMode(value: string): value is ServiceMode {
 
 export function AppsPane({ form }: { form: SettingsForm }) {
   const t = useT();
-  const filesId = React.useId();
   const codeId = React.useId();
 
   const draft = form.draft;
   const disabled = form.locked || !form.ready;
   const location = useLocation();
-  const cloudApps = useCloudApps(!form.locked);
-  const cloudOn =
-    cloudApps.state.kind === "ready" ? cloudApps.state.apps.filter((app) => app.enabled).length : null;
-  const showCloud = cloudApps.state.kind !== "unsupported" || hasSiteSettings(form, "cloud");
+  const showCloud = hasSiteSettings(form, "cloud");
   const showGit = hasSiteSettings(form, "git");
   /* A link from the Advanced pane names the fold to open: /apps#git. */
   const [folds, setFolds] = React.useState<string[]>(() => {
@@ -94,14 +89,6 @@ export function AppsPane({ form }: { form: SettingsForm }) {
       <PaneSection>
         <GroupTitle>{t("panes.apps.onThisBox")}</GroupTitle>
         <Group>
-          <AppModeRow
-            id={filesId}
-            title={t("panes.apps.files.title")}
-            detail={t("panes.apps.files.detail")}
-            value={draft?.nextcloudMode ?? "container"}
-            disabled={disabled}
-            onChange={(mode) => form.set("nextcloudMode", mode)}
-          />
           <AppModeRow
             id={codeId}
             title={t("panes.apps.code.title")}
@@ -125,9 +112,9 @@ export function AppsPane({ form }: { form: SettingsForm }) {
         </GroupCaption>
       </PaneSection>
 
-      {/* LosOS cloud and LosOS Git, each folded in an accordion of its own:
-          LosOS cloud's apps and app store, then each app's settings for
-          everyone, the ones its own admin pages would otherwise hold. */}
+      {/* LosOS Cloud and LosOS Git, each folded in an accordion of its own:
+          each app's settings for everyone, the ones its own admin pages
+          would otherwise hold. */}
       {(showCloud || showGit) && (
         <Accordion
           aria-label={t("panes.apps.onThisBox")}
@@ -136,17 +123,8 @@ export function AppsPane({ form }: { form: SettingsForm }) {
         >
           {showCloud && (
             <AccordionItem value="cloud" data-testid="accordion-cloud">
-              <AccordionTrigger
-                detail={
-                  cloudOn === null
-                    ? t("cloudApps.cloud.detailPlain")
-                    : t("cloudApps.cloud.detail", { count: cloudOn })
-                }
-              >
-                LosOS cloud
-              </AccordionTrigger>
+              <AccordionTrigger detail={t("cloudApps.git.detail")}>LosOS Cloud</AccordionTrigger>
               <AccordionContent>
-                <CloudAppsSection apps={cloudApps} disabled={disabled} />
                 <SiteSettings form={form} app="cloud" />
               </AccordionContent>
             </AccordionItem>
@@ -215,7 +193,7 @@ export function BoxApps({
               title: app.name,
               publisher: app.source,
               source,
-              existing: records.find((r) => r.chart.name === source.name && r.chart.repo === source.repo) ?? null,
+              existing: records.find((r) => r.chart?.name === source.name && r.chart?.repo === source.repo) ?? null,
             }),
         };
 
@@ -225,6 +203,9 @@ export function BoxApps({
     handoff.current = null;
     install.start(picked.app, picked.app.chart);
   });
+
+  // Pulling an app's images can take minutes: the wait offers a game.
+  const installing = useWaitGame(records.some((record) => record.phase === "installing"));
 
   return (
     <>
@@ -248,13 +229,16 @@ export function BoxApps({
                   disabled={disabled}
                   last={index === records.length - 1}
                   onBox={onBox}
-                  onChange={() =>
-                    setTarget({
-                      title: record.chart.name,
-                      publisher: record.chart.repo,
-                      source: record.chart,
-                      existing: record,
-                    })
+                  onChange={
+                    record.chart === null
+                      ? null
+                      : () =>
+                          setTarget({
+                            title: record.chart!.name,
+                            publisher: record.chart!.repo,
+                            source: record.chart!,
+                            existing: record,
+                          })
                   }
                   onRemove={() => setRemoving(record)}
                 />
@@ -262,6 +246,12 @@ export function BoxApps({
             )}
           </Group>
           <GroupCaption>{t("install.installedCaption")}</GroupCaption>
+          {(installing.offer !== null || installing.panel !== null) && (
+            <div className="mt-3 flex flex-col items-end gap-3">
+              {installing.offer}
+              {installing.panel !== null && <div className="w-full">{installing.panel}</div>}
+            </div>
+          )}
         </PaneSection>
       )}
 
@@ -305,7 +295,7 @@ export function BoxApps({
         <GroupCaption>
           {footerFor(catalogue.state)}
           {installed.state.kind === "unavailable" && catalogue.state.kind === "results" && (
-            <> {t("install.noCluster")}</>
+            <> {t("install.off")}</>
           )}
         </GroupCaption>
       </PaneSection>
@@ -487,7 +477,7 @@ function ResultRow({ app, install }: { app: CatalogueApp; install: Installer | n
   const record =
     chart === null
       ? undefined
-      : install?.records.find((r) => r.chart.name === chart.name && r.chart.repo === chart.repo);
+      : install?.records.find((r) => r.chart?.name === chart.name && r.chart?.repo === chart.repo);
   return (
     <TableRow>
       <TableCell className="whitespace-normal align-top">
@@ -562,7 +552,8 @@ function InstalledRow({
   record: InstalledApp;
   disabled: boolean;
   last: boolean;
-  onChange: () => void;
+  /** Null for an app with no properties to change (a compose app). */
+  onChange: (() => void) | null;
   onRemove: () => void;
   /** False on a company edge's page (src/manage/): the app's port is on the
    *  box's own network, and the sidebar pins belong to the box's people. */
@@ -588,7 +579,9 @@ function InstalledRow({
             </Badge>
           </p>
           <p className="mt-0.5 text-[12.5px] leading-snug text-muted">
-            {t("install.runsAs", { chart: record.chart.name, version: record.chart.version, user: record.runAs })}
+            {record.chart !== null
+              ? t("install.runsAs", { chart: record.chart.name, version: record.chart.version, user: record.runAs })
+              : t("install.madeHere", { title: record.title ?? record.release, user: record.runAs })}
           </p>
           {record.phase === "failed" && record.message !== null && (
             <p className="mt-1 text-[12.5px] leading-snug text-crit">{record.message}</p>
@@ -613,9 +606,11 @@ function InstalledRow({
             </a>
           )}
           {onBox && <InstalledPin release={record.release} />}
-          <Button size="sm" variant="secondary" disabled={disabled || busy} onClick={onChange}>
-            {t("install.change")}
-          </Button>
+          {onChange !== null && (
+            <Button size="sm" variant="secondary" disabled={disabled || busy} onClick={onChange}>
+              {t("install.change")}
+            </Button>
+          )}
           <Button size="sm" variant="ghost" disabled={disabled || busy} onClick={onRemove}>
             {t("install.remove")}
           </Button>

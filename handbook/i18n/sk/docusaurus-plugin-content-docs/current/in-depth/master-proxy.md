@@ -228,10 +228,10 @@ neoverený nárok sa po siedmich dňoch zahodí. Nároky sú uložené v
 
 Na zariadení lososd udržiava aktívne domény v
 `/var/lib/losos-public-names/domains.json`. Súbor obnovuje každé dve
-minúty a vždy, keď o to požiada panel Sieť. Pod Nextcloudu pripája tento
-adresár len na čítanie, pri každej požiadavke pridá názvy do
-`trusted_domains` a použije vlastnú doménu požiadavky pre `overwritehost`,
-ak je jednou z nich. Robí to iba režim kontajnera. LosOS Git si ponecháva
+minúty a vždy, keď o to požiada panel Sieť. LosOS Login ho číta, aby
+cookie svojej relácie dal doménu pre každý z týchto názvov
+(`modules/identity.nix`). LosOS Cloud odpovedá na ktorýkoľvek názov, cez
+ktorý požiadavka prišla, takže zoznam nepotrebuje. LosOS Git si ponecháva
 svoj `ROOT_URL` s názvom edge.
 
 Zariadenie za lokálnym edge dostane svoje domény smerované tiež, cez ten lokálny
@@ -241,10 +241,85 @@ vedľa svojho registra. [Federácia
 edge](/in-depth/edge-federation.md#custom-domains-behind-a-local-edge) obsahuje
 podrobnosti a `losos.edge.dns.relayRoutes`.
 
+### Peňaženky pod názvami zariadení {#wallets-at-box-names}
+
+Zariadenie prepojí svoju peňaženku so svojimi názvami cez `POST /domains/wallet`
+(`{address, signature}`, lososd to prenáša z Nastavenia → Sieť). Podpis je
+`personal_sign` peňaženky nad správou
+
+```
+LosOS box name v1
+zone: <zone>
+box: <box id>
+address: <0x address, lowercase>
+```
+
+takže na inom edge ani pre iné zariadenie nič neprepojí. Registrar zistí
+podpisovateľa, uloží adresu aj podpis do `domains.json` a pod každý názov
+zariadenia v zóne, jeho hostname aj jeho štítok, zapíše jeden záznam TXT:
+
+```
+mattbox IN TXT "ENS1 dnsname.ens.eth 0x…"
+```
+
+To je bezplatné DNS rozlíšenie ENS (ENSIP-17): peňaženka sa spýta ENS na
+Ethereum mainnet, brána DNSSEC od ENS stiahne záznam TXT, kontrakt overí
+podpisy až po koreň DNS a `dnsname.ens.eth`, prvý DNS resolver od ENS, vráti
+adresu. `addr` vracia zakódované podľa ABI, tak, ako ho dekóduje každá
+peňaženka. Jeho nástupca, `2.dnsname.ens.eth`, číta kľúče pre jednotlivé
+siete (`a[e8453]=…`), ale vracia holých 20 bajtov, ktoré predvolené
+vyhľadávanie vo viem ani ethers nedekódujú, takže peňaženka kupujúceho by
+nenašla nič. Peňaženka zariadenia má na každej sieti EVM jednu adresu, preto
+stačí odpoveď pre Ethereum. `{}` prepojenie zruší.
+
+Volanie nesie token zariadenia, takže prepojiť alebo zrušiť ho môže len
+zariadenie, a lososd oň požiada len za správcu (sekcia `network`). Podpis
+ukazuje, že peňaženka s názvom tohto zariadenia súhlasí. Nezabráni však edge,
+ktorý zónu podpisuje, aby podával niečo iné: názov je taký dôveryhodný ako
+edge.
+
+ENS číta len podpísanú zónu, takže Knot túto zónu podpisuje
+(`losos.edge.dns.dnssec.enable`, predvolene zapnuté) svojou predvolenou
+politikou, ECDSA P-256 s kľúčmi v `/var/lib/knot`. Resolvery podpisom
+dôverujú, keď nadradená zóna zverejní záznam DS zóny, ktorý na edge vypíše
+`keymgr <zone> ds`. Zverejnite ho vedľa záznamov NS vyššie.
+
+To, že Knot odpovedá, ešte neznamená, že peňaženka názov nájde. Kým je
+peňaženka prepojená, reconciler sa pýta resolvera DNS-over-HTTPS
+(`losos.edge.dns.checkUrl`) na záznam TXT pri každom názve zariadenia, tak
+ako by sa pýtala brána ENS, a hlási to pre každý názov vo `wallet.published`:
+`found`, keď záznam prejde overením (bit AD resolvera), `unsigned`, kým
+nadradená zóna nezverejní DS, `missing`, kým zónu nedeleguje, `other`, kým
+resolver drží starší záznam. Názov, ktorý sa ešte nenašiel, sa znova vyhľadá
+každú pol minútu, nájdený raz za hodinu. Panel Sieť to ukazuje pri každom
+názve.
+
+Peňaženka zariadenia rozlišuje názvy cez ten istý relay ako svoje čítania z
+reťazca (`/api/market/rpc` s `network: "ens"`). Vyhľadanie názvu DNS má krok
+mimo reťazca (EIP-3668): resolver sa vráti s URL brány, stránka pošle
+`ens_ccipRead` s odosielateľom a calldata a edge ich odošle na
+`https://dnssec-oracle.ens.domains/`, jedinú bránu, ktorej sa pýta, a vráti
+odpoveď, ktorú overí kontrakt. CSP stránky správcu jej stále dovolí hovoriť
+len s vlastným zariadením.
+
+Vlastná doména majiteľa dostane ten istý záznam, ukázaný na paneli, na
+pridanie priamo k doméne. Kým je peňaženka prepojená, každá kontrola vyhľadá
+aj TXT pri doméne a hlási `wallet`: `found` (celý záznam tak, ako ho edge
+zverejňuje, overený resolverom cez DNSSEC), `unsigned`, `cname` (CNAME
+nenesie TXT a ENS číta len presný názov), `other` alebo `missing`. Nikdy nerozhoduje o tom, či sa doména smeruje.
+
 :::note[Ako sa to testuje]
 `nix/tests/edge-dns.nix` (`losos-edge-dns`) spustí edge a klienta a pýta sa
-Knotu cez UDP aj TCP. `edge/registrar/tests/domains.rs` prevedie tok
-nárokov proti skutočnému registraru a falošnému serveru DNS-over-HTTPS.
+Knotu cez UDP aj TCP, prepojí peňaženku a jej podpísaný záznam overí cez
+`delv` od záznamu DS zóny. `nix/tests/box-wallet-name.nix`
+(`losos-box-wallet-name`) pridá zariadenie s LosOS Login a notebook: majiteľ
+prepojí peňaženku v Chromiu na paneli Sieť cez lososd a záznam prejde
+overením. Náhrada verejného DNS na edge potom neodpovie nič, nepodpísaný
+záznam a overený záznam, ako test zónu deleguje a zverejní jej DS, a panel
+nasleduje každý krok. `edge/registrar/tests/domains.rs` prevedie tok
+nárokov aj peňaženiek proti skutočnému registraru a falošnému serveru
+DNS-over-HTTPS. `admin-ui/app/tests/ens.node.mjs` cez relay prehrá
+vyhľadanie názvu DNS zaznamenané z Ethereum mainnet a brány ENS.
 :::
 
 ## Demo nasadenie na Verceli {#demo-deployment-on-vercel}

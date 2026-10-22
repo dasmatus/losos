@@ -19,8 +19,10 @@
 //                         {"waitText": "Background set."}],
 //               "fullPage": false}]}
 //
-// Steps, in order: `click` / `waitFor` ({role, name}, {text} or
-// {selector}), `fill` ({label, value}), `upload` ({selector, file}),
+// Steps, in order: `click` / `waitFor` / `gone` / `absent` ({role, name},
+// {text} or {selector}; `gone` waits for it to leave, `absent` fails if it
+// is there now), `fill` ({label, value}), `select` ({label, value}, an
+// option of a native select), `upload` ({selector, file}),
 // `press` (a key), `waitText` (exact text), `sleep` (milliseconds) and
 // `goto` (a path). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
@@ -64,7 +66,12 @@ function locate(page, what) {
 async function step(page, s) {
   if (s.click) await locate(page, s.click).click();
   else if (s.waitFor) await locate(page, s.waitFor).waitFor({ timeout: s.timeout ?? 60000 });
+  else if (s.gone) await locate(page, s.gone).waitFor({ state: 'detached', timeout: s.timeout ?? 60000 });
+  else if (s.absent) {
+    if ((await locate(page, s.absent).count()) > 0) throw new Error(`present: ${JSON.stringify(s.absent)}`);
+  }
   else if (s.fill) await page.getByLabel(s.fill.label, { exact: true }).fill(s.fill.value);
+  else if (s.select) await page.getByLabel(s.select.label, { exact: true }).selectOption(s.select.value);
   else if (s.upload) await page.locator(s.upload.selector).setInputFiles(s.upload.file);
   else if (s.press) await page.keyboard.press(s.press);
   else if (s.waitText) await page.getByText(s.waitText, { exact: true }).first().waitFor({ timeout: 60000 });
@@ -105,7 +112,8 @@ try {
     await page.waitForTimeout(shot.settle ?? 500);
     if (errors.length > 0) throw new Error(`${shot.name}: the page threw: ${errors.join('; ')}`);
     const path = join(args.out, `${shot.name}.png`);
-    await page.screenshot({ path, fullPage: shot.fullPage ?? false });
+    // Under TCG a busy page can take more than Playwright's 30 s to paint.
+    await page.screenshot({ path, fullPage: shot.fullPage ?? false, timeout: 180000 });
     console.log(`captured ${path}`);
     await page.close();
   }

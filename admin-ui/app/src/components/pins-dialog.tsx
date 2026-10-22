@@ -26,7 +26,7 @@ import {
   type GitReposResponse,
   type InstalledApp,
 } from "@/lib/api";
-import { CATALOGUE, formatBytes, recallAvailability } from "@/lib/apps";
+import { CATALOGUE, formatBytes } from "@/lib/apps";
 import { useT } from "@/lib/i18n-react";
 import {
   getPinsState,
@@ -314,10 +314,8 @@ function AppsPicker({ open, pins, busy, full, onToggle }: PickerProps) {
     return () => controller.abort();
   }, [open]);
 
-  // The Overview's tiles, less the one that is only there when a probe
-  // found it (lib/apps.ts, `optional`).
-  const mail = recallAvailability().mail;
-  const tiles = CATALOGUE.filter((app) => app.optional !== true || mail === "present");
+  // The Overview's tiles (lib/apps.ts).
+  const tiles = CATALOGUE;
 
   return (
     <div className="flex flex-col gap-3">
@@ -332,7 +330,7 @@ function AppsPicker({ open, pins, busy, full, onToggle }: PickerProps) {
             {installed.map((record) => (
               <Row key={record.release}>
                 <Glyph icon={PackageIcon} />
-                <PinText name={record.release} detail={record.chart.name} />
+                <PinText name={record.release} detail={record.chart?.name ?? record.title ?? ""} />
                 <PinToggle
                   pin={{ kind: "app", release: record.release }}
                   pins={pins}

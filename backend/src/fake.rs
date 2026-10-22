@@ -36,57 +36,6 @@ pub struct FakeLosos {
     /// Key file handed to `cryptsetup resize`; None models the TPM path.
     pub luks_key_file: Option<String>,
 
-    // ── Setting the Nextcloud admin password ────────────────────────────
-    /// Mode the fake appliance reports running in.
-    pub nextcloud_mode: crate::setup::NcMode,
-    /// Container id `crictl ps` would return. `None` models a pod that is not
-    /// running yet — the common case on a box in its first few minutes.
-    pub nextcloud_container: Option<String>,
-    /// Every `occ` step that was executed, in order. Recorded rather than
-    /// simulated, so a test can assert the order and — the point of the whole
-    /// module — inspect every argv for the password.
-    pub occ_ran: Vec<crate::setup::OccAction>,
-    /// Content of the staged secret file, or `None` once it has been cleared.
-    /// A test reads this to prove the password travelled by file rather than by
-    /// argv, and that it does not survive the command.
-    pub staged_secret: Option<String>,
-    /// Exit code the fake `occ` reports.
-    pub occ_exit: i32,
-    pub occ_stdout: String,
-    pub occ_stderr: String,
-    /// Make `run_occ` fail to *spawn* the exec step, modelling a missing
-    /// `crictl` or an unreachable CRI socket — which is what the cleanup path
-    /// has to survive.
-    pub occ_spawn_fails: bool,
-    /// What the fake `occ status --output=json` prints and exits with. The
-    /// default is an installed, serving instance; a test that wants the
-    /// first-boot window sets `installed: false` or a non-zero exit.
-    pub status_exit: i32,
-    pub status_stdout: String,
-    pub status_stderr: String,
-    /// Make the status probe fail to spawn, like `occ_spawn_fails`.
-    pub status_spawn_fails: bool,
-    /// Every readiness probe that ran, with the target it was aimed at.
-    pub status_probed: Vec<crate::setup::Target>,
-    /// Every `plan_person` step that ran, and what each exits with.
-    pub nextcloud_runs: Vec<Vec<String>>,
-    pub nextcloud_run_exit: i32,
-    /// What `crictl logs` of the latest container would print; `None` is
-    /// "no container has ever run".
-    pub last_log: Option<String>,
-    /// How often the last log was asked for — a running pod must never be.
-    pub last_log_asked: usize,
-    /// The password the fake Nextcloud accepts for the admin account, or
-    /// `None` for a Nextcloud that cannot be asked at all (the pod not up
-    /// yet). A sign-in attempt compares against this; nothing else does.
-    pub accepted_password: Option<String>,
-    /// Model Nextcloud's brute-force protection having shut the door.
-    pub login_throttled: bool,
-    /// Every sign-in probe that was made: the account asked about and the
-    /// client address forwarded, in order. A test reads this to prove the
-    /// probe names the one admin account and carries the browser's address.
-    pub login_asked: Vec<(String, String)>,
-
     // ── The appliance recovery code ─────────────────────────────────────
     /// In-memory stand-in for `/var/secrets/losos-recovery-code`. Public so a
     /// test can seed it with [`crate::recovery::MemoryStore::with_file`] or
@@ -102,22 +51,14 @@ pub struct FakeLosos {
     /// prove the command trimmed before searching rather than after.
     pub catalogue_queries: Vec<String>,
 
-    // ── LosOS cloud's own apps ──────────────────────────────────────────
-    /// What `losos-nextcloud-apps list` prints.
-    pub cloud_apps_list: String,
-    /// What any other call of the tool reports.
-    pub cloud_apps_action: crate::setup::OccOutcome,
-    /// Every argv the tool was run with, in order.
-    pub cloud_apps_ran: Vec<Vec<String>>,
-    /// The app store's list; `None` models a box that offers no store.
-    pub cloud_store_body: Option<String>,
-
     // ── Installing an app ───────────────────────────────────────────────
     /// `None` models a box with no local cluster.
     pub apps: Option<crate::apps::Config>,
     /// What a chart fetch hands back; `None` is a chart that cannot be had.
     pub chart_files: Option<crate::apps::ChartFiles>,
     pub app_records: Vec<crate::apps::Record>,
+    /// What `save_app_source` was handed, by app.
+    pub app_sources: std::collections::BTreeMap<String, (String, Vec<(String, String)>)>,
     /// Every job started, in order.
     pub app_jobs: Vec<(String, crate::apps::Action)>,
     /// Apps whose job the fake reports as still running.
@@ -144,15 +85,11 @@ pub struct FakeLosos {
     /// How often the status was asked for: the gate must read it on every
     /// turn-on, and a read-only command must not.
     pub edge_asked: usize,
-    // ── The sidebar's pins ──────────────────────────────────────────────
-    /// Stands in for `pins.json`.
-    pub pins: crate::pins::Pins,
-    /// Stands in for the kept LosOS cloud app password.
-    pub cloud_key: Option<crate::pins::CloudKey>,
-    /// LosOS cloud's next answers, in order; empty is "not answering".
+    // ── The pin picker ──────────────────────────────────────────────────
+    /// LosOS Cloud's next answers, in order; empty is "not answering".
     pub cloud_answers: std::collections::VecDeque<(u16, Vec<u8>)>,
-    /// Every request made of LosOS cloud: `mint <user>` or
-    /// `list <user>:<key> <path>`.
+    /// Every request made of LosOS Cloud: `mint <user> <device>`,
+    /// `list <user> <path>`, `search <user> <query>` or `arrive <user>`.
     pub cloud_calls: Vec<String>,
 
     // ── The option document and the configuration repository ───────────
@@ -188,11 +125,6 @@ pub struct FakeLosos {
     pub owner_forgejo_routes: std::collections::BTreeMap<String, (u16, String)>,
     /// Every call as the owner: `"METHOD path"`, the password and the body.
     pub owner_forgejo_calls: Vec<(String, String, Option<String>)>,
-    /// What the fake Nextcloud answers to an app password request: `None`
-    /// is a Nextcloud that is not up. Every request is recorded as
-    /// `(user, device, client)`.
-    pub app_password_answer: Option<(u16, String)>,
-    pub app_password_asked: Vec<(String, String, String)>,
     pub sync_report: Option<crate::config_repo::SyncReport>,
     /// Where the box follows the published tree from; `None` is off.
     pub upstream: Option<crate::config_repo::Upstream>,
@@ -257,31 +189,6 @@ impl FakeLosos {
             persist_used_bytes: 8 * 1024 * 1024 * 1024,
             grow_ran: Vec::new(),
             luks_key_file: None,
-            // Container is the appliance's default (losos.nextcloud.mode), so
-            // it is the default here too: the mode most tests should exercise
-            // is the one most boxes run.
-            nextcloud_mode: crate::setup::NcMode::Container,
-            nextcloud_container: Some("c0ffee1234".to_string()),
-            occ_ran: Vec::new(),
-            staged_secret: None,
-            occ_exit: 0,
-            occ_stdout: "Successfully reset password for notshared".to_string(),
-            occ_stderr: String::new(),
-            occ_spawn_fails: false,
-            status_exit: 0,
-            status_stdout: r#"{"installed":true,"version":"34.0.2.1","versionstring":"34.0.2","edition":"","maintenance":false,"needsDbUpgrade":false,"productname":"Nextcloud","extendedSupport":false}"#.to_string(),
-            status_stderr: String::new(),
-            status_spawn_fails: false,
-            status_probed: Vec::new(),
-            nextcloud_runs: Vec::new(),
-            nextcloud_run_exit: 0,
-            last_log: None,
-            last_log_asked: 0,
-            // A reachable Nextcloud whose password nobody knows yet, like a
-            // fresh box: a sign-in has to fail until a test sets one.
-            accepted_password: None,
-            login_throttled: false,
-            login_asked: Vec::new(),
             // Empty, so the default fake is a fresh appliance that has never
             // minted a code — the state the first-run wizard actually meets.
             recovery: crate::recovery::MemoryStore::empty(),
@@ -296,17 +203,12 @@ impl FakeLosos {
                     .to_string(),
             ),
             catalogue_queries: Vec::new(),
-            cloud_apps_list: "[]".to_string(),
-            cloud_apps_action: crate::setup::OccOutcome {
-                code: 0,
-                stdout: String::new(),
-                stderr: String::new(),
-            },
-            cloud_apps_ran: Vec::new(),
-            cloud_store_body: Some("[]".to_string()),
             apps: Some(crate::apps::Config {
                 ports: (30000, 30099),
+                kube: true,
+                builtin: Vec::new(),
             }),
+            app_sources: std::collections::BTreeMap::new(),
             chart_files: None,
             app_records: Vec::new(),
             app_jobs: Vec::new(),
@@ -327,8 +229,6 @@ impl FakeLosos {
                 None,
             ),
             edge_asked: 0,
-            pins: crate::pins::Pins::default(),
-            cloud_key: None,
             cloud_answers: std::collections::VecDeque::new(),
             cloud_calls: Vec::new(),
             options_doc: None,
@@ -349,8 +249,6 @@ impl FakeLosos {
             forgejo_calls: Vec::new(),
             owner_forgejo_routes: std::collections::BTreeMap::new(),
             owner_forgejo_calls: Vec::new(),
-            app_password_answer: None,
-            app_password_asked: Vec::new(),
             sync_report: None,
             upstream: None,
             upstream_head: None,
@@ -489,73 +387,8 @@ impl Losos for FakeLosos {
     /// Deliberately [`crate::recovery::ensure_code`] rather than a hand-written
     /// stub: the mint-once behaviour is the thing under test, and a fake that
     /// reimplemented it would prove only that the fake agrees with itself.
-    fn nextcloud_login(
-        &mut self,
-        user: &str,
-        secret: &crate::setup::Secret,
-        client: &str,
-    ) -> anyhow::Result<crate::signin::LoginOutcome> {
-        use crate::signin::LoginOutcome;
-        self.login_asked
-            .push((user.to_string(), client.to_string()));
-        if self.login_throttled {
-            return Ok(LoginOutcome::Throttled);
-        }
-        match &self.accepted_password {
-            None => anyhow::bail!("connection refused (the fake Nextcloud is not up)"),
-            Some(p) if p == secret.expose() => Ok(LoginOutcome::Accepted),
-            Some(_) => Ok(LoginOutcome::Rejected),
-        }
-    }
-
-    fn nextcloud_app_password(
-        &mut self,
-        user: &str,
-        secret: &crate::setup::Secret,
-        device: &str,
-        client: &str,
-    ) -> anyhow::Result<(u16, String)> {
-        self.app_password_asked
-            .push((user.to_string(), device.to_string(), client.to_string()));
-        if self.login_throttled {
-            return Ok((429, String::new()));
-        }
-        match (&self.accepted_password, &self.app_password_answer) {
-            (None, _) | (_, None) => {
-                anyhow::bail!("connection refused (the fake Nextcloud is not up)")
-            }
-            (Some(p), _) if p != secret.expose() => Ok((401, String::new())),
-            (Some(_), Some(answer)) => Ok(answer.clone()),
-        }
-    }
-
     fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
         crate::recovery::ensure_code(&mut self.recovery)
-    }
-
-    fn run_cloud_apps(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome> {
-        self.cloud_apps_ran.push(argv.to_vec());
-        if argv.last().map(String::as_str) == Some("list") {
-            return Ok(crate::setup::OccOutcome {
-                code: 0,
-                stdout: self.cloud_apps_list.clone(),
-                stderr: String::new(),
-            });
-        }
-        Ok(self.cloud_apps_action.clone())
-    }
-
-    fn cloud_store_offered(&mut self) -> bool {
-        self.cloud_store_body.is_some()
-    }
-
-    /// The real parser, as for `search_apps` below.
-    fn cloud_store(&mut self) -> anyhow::Result<std::sync::Arc<Vec<crate::cloud_apps::StoreApp>>> {
-        let body = self
-            .cloud_store_body
-            .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("the app store could not be reached"))?;
-        Ok(std::sync::Arc::new(crate::cloud_apps::parse_store(body)?))
     }
 
     /// The real parser, run against a recorded body — same reasoning as
@@ -585,6 +418,17 @@ impl Losos for FakeLosos {
 
     fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>> {
         Ok(self.app_records.clone())
+    }
+
+    fn save_app_source(
+        &mut self,
+        release: &str,
+        compose: &str,
+        files: &[(String, String)],
+    ) -> anyhow::Result<()> {
+        self.app_sources
+            .insert(release.to_string(), (compose.to_string(), files.to_vec()));
+        Ok(())
     }
 
     fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()> {
@@ -620,7 +464,7 @@ impl Losos for FakeLosos {
         let (method, path) = op.route();
         match self.market_routes.get(&format!("{method} {path}")) {
             None => Ok(crate::market::Outcome::Unavailable),
-            Some((status, body)) => crate::market::classify(*status, body),
+            Some((status, body)) => op.classify(*status, body),
         }
     }
 
@@ -634,41 +478,19 @@ impl Losos for FakeLosos {
         Ok(())
     }
 
-    fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
-        Ok(self.pins.clone())
-    }
-
-    fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()> {
-        self.pins = pins.clone();
-        Ok(())
-    }
-
-    fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>> {
-        Ok(self.cloud_key.clone())
-    }
-
-    fn save_cloud_key(&mut self, key: Option<&crate::pins::CloudKey>) -> anyhow::Result<()> {
-        self.cloud_key = key.cloned();
-        Ok(())
-    }
-
     fn cloud_request(
         &mut self,
         request: &crate::pins::CloudRequest<'_>,
     ) -> anyhow::Result<(u16, Vec<u8>)> {
         self.cloud_calls.push(match request {
-            crate::pins::CloudRequest::MintKey { user, .. } => format!("mint {user}"),
-            crate::pins::CloudRequest::List { key, path } => {
-                format!("list {}:{} {path}", key.user, key.key.expose())
-            }
-            crate::pins::CloudRequest::Search { key, query } => {
-                format!("search {} {query}", key.user)
-            }
+            crate::pins::CloudRequest::MintKey { user, device } => format!("mint {user} {device}"),
+            crate::pins::CloudRequest::List { user, path } => format!("list {user} {path}"),
+            crate::pins::CloudRequest::Search { user, query } => format!("search {user} {query}"),
             crate::pins::CloudRequest::Arrive { user, .. } => format!("arrive {user}"),
         });
         self.cloud_answers
             .pop_front()
-            .ok_or_else(|| anyhow::anyhow!("the fake LosOS cloud is not answering"))
+            .ok_or_else(|| anyhow::anyhow!("the fake LosOS Cloud is not answering"))
     }
 
     fn vg_free(&mut self) -> anyhow::Result<crate::grow::VgFree> {
@@ -703,92 +525,6 @@ impl Losos for FakeLosos {
 
     fn luks_key_file(&mut self) -> anyhow::Result<Option<String>> {
         Ok(self.luks_key_file.clone())
-    }
-
-    fn nextcloud_mode(&mut self) -> anyhow::Result<crate::setup::NcMode> {
-        Ok(self.nextcloud_mode)
-    }
-
-    fn nextcloud_target(
-        &mut self,
-        mode: crate::setup::NcMode,
-    ) -> anyhow::Result<crate::setup::Target> {
-        match mode {
-            crate::setup::NcMode::Native => Ok(crate::setup::Target::Native),
-            crate::setup::NcMode::Container => {
-                // Runs the real parser over what `crictl ps --quiet` would have
-                // printed, so "zero or two matches is an error" is genuinely
-                // covered instead of stubbed into always succeeding.
-                let stdout = self.nextcloud_container.clone().unwrap_or_default();
-                let id = crate::setup::parse_container_ids(&stdout)
-                    .map_err(|e| anyhow::anyhow!("{e}"))?;
-                Ok(crate::setup::Target::Container {
-                    socket: crate::setup::DEFAULT_CRI_SOCKET.to_string(),
-                    id,
-                })
-            }
-        }
-    }
-
-    fn run_occ(
-        &mut self,
-        action: &crate::setup::OccAction,
-        secret: &crate::setup::Secret,
-    ) -> anyhow::Result<Option<crate::setup::OccOutcome>> {
-        use crate::setup::OccAction;
-        self.occ_ran.push(action.clone());
-        match action {
-            // The one effect a later step reads back: the secret has to be in
-            // the file before the exec, and gone after the clear.
-            OccAction::StageSecret { .. } => {
-                self.staged_secret = Some(secret.expose().to_string());
-                Ok(None)
-            }
-            OccAction::ClearSecret { .. } => {
-                self.staged_secret = None;
-                Ok(None)
-            }
-            OccAction::RunOcc { .. } if self.occ_spawn_fails => {
-                Err(anyhow::anyhow!("crictl: No such file or directory"))
-            }
-            OccAction::RunOcc { .. } => Ok(Some(crate::setup::OccOutcome {
-                code: self.occ_exit,
-                stdout: self.occ_stdout.clone(),
-                stderr: self.occ_stderr.clone(),
-            })),
-        }
-    }
-
-    fn nextcloud_status(
-        &mut self,
-        target: &crate::setup::Target,
-    ) -> anyhow::Result<crate::setup::OccOutcome> {
-        self.status_probed.push(target.clone());
-        if self.status_spawn_fails {
-            anyhow::bail!("crictl: No such file or directory");
-        }
-        Ok(crate::setup::OccOutcome {
-            code: self.status_exit,
-            stdout: self.status_stdout.clone(),
-            stderr: self.status_stderr.clone(),
-        })
-    }
-
-    fn nextcloud_run(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome> {
-        self.nextcloud_runs.push(argv.to_vec());
-        Ok(crate::setup::OccOutcome {
-            code: self.nextcloud_run_exit,
-            stdout: String::new(),
-            stderr: String::new(),
-        })
-    }
-
-    fn nextcloud_last_log(
-        &mut self,
-        _mode: crate::setup::NcMode,
-    ) -> anyhow::Result<Option<String>> {
-        self.last_log_asked += 1;
-        Ok(self.last_log.clone())
     }
 
     fn read_options_doc(&mut self) -> anyhow::Result<Option<crate::options::OptionsDoc>> {

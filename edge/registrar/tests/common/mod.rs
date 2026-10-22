@@ -687,6 +687,7 @@ impl Edge {
             kube_ca_file: None,
             compute_windows_file: dir.path_str("compute-windows.json"),
             market,
+            inference: None,
             github_api_url: github_api_url
                 .unwrap_or(losos_registrar::provision::GITHUB_API_URL)
                 .to_string(),
@@ -708,6 +709,7 @@ impl Edge {
             routes: None,
             operator: None,
             manage: None,
+            onramp: None,
         };
         if let Some(tweak) = tweak {
             tweak(&mut opts, &dir);

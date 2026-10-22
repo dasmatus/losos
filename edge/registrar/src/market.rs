@@ -61,6 +61,12 @@ use crate::stripe_mode::StripeMode;
 use crate::sync::{Delivery, Event, SyncLog};
 use crate::vms::{Upload, UploadView, VmOrder, VmProvision, VM_FEE_BPS};
 
+mod taps;
+pub use taps::{
+    ChainFuture, EscrowChain, LendingView, MeterView, QuotedTap, TapChain, TapQuote, WalletReport,
+    WARN_RUNWAY_SECS,
+};
+
 /// The cut kept by the platform, in basis points of the gross amount: 4%.
 pub const DEFAULT_FEE_BPS: u32 = 400;
 /// The most an operator may configure. A typo (`--market-fee-bps 4000`) would
@@ -592,6 +598,9 @@ pub struct MarketState {
     /// busy to hear heartbeats) is never counted against a seller.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub presence_tick: Option<u64>,
+    /// Pay as you go: meters and their taps (`crate::meter`).
+    #[serde(default, skip_serializing_if = "crate::meter::Taps::is_empty")]
+    pub taps: crate::meter::Taps,
 }
 
 /// A seller's watch-only keys for coin orders (`crate::coins`), and the
@@ -765,6 +774,16 @@ pub enum MarketError {
     BadSignature,
     #[error("market store: {0}")]
     Store(String),
+    /// The buyer's balance or allowance cannot cover the request (402).
+    #[error("{0}")]
+    PaymentRequired(&'static str),
+    /// The same meter already has a request running (429).
+    #[error("{0}")]
+    Busy(&'static str),
+    /// What the request needs is not running right now, such as a model still
+    /// loading on its boxes (503).
+    #[error("{0}")]
+    Unavailable(&'static str),
 }
 
 impl From<io::Error> for MarketError {
@@ -2015,6 +2034,9 @@ pub struct Market {
     presence_saved: std::sync::atomic::AtomicU64,
     /// One card settle pass at a time.
     card_lock: Mutex<()>,
+    /// The escrows taps are read from and settled in.
+    tap_chain: Arc<dyn TapChain>,
+    taps_live: taps::TapsLive,
 }
 
 /// How often the slots pass writes the offline time it counted even when
@@ -2175,6 +2197,7 @@ impl Market {
             ),
         ));
         let zec = opts.zec.clone().map(crate::zcash::Scanner::new);
+        let opts_usdc = opts.usdc.clone();
         Ok(Self {
             opts,
             zec,
@@ -2189,6 +2212,8 @@ impl Market {
             escrow_lock: Mutex::new(()),
             presence_saved: std::sync::atomic::AtomicU64::new(0),
             card_lock: Mutex::new(()),
+            tap_chain: Arc::new(EscrowChain::new(opts_usdc)),
+            taps_live: taps::TapsLive::default(),
         })
     }
 
@@ -5021,8 +5046,9 @@ impl Market {
     }
 
     /// Forward one allowlisted chain call to `network`, or to the ENS
-    /// endpoint for `"ens"`. The URL stays in the credential file; the
-    /// caller gets the JSON-RPC object and nothing else.
+    /// endpoint for `"ens"`, where [`crate::stablecoin::ENS_CCIP_METHOD`]
+    /// goes to ENS's DNS gateway instead. The URL stays in the credential
+    /// file; the caller gets the JSON-RPC object and nothing else.
     pub async fn forward_rpc(
         &self,
         network: Option<&str>,
@@ -5037,6 +5063,14 @@ impl Market {
                 .ens_rpc_file
                 .as_deref()
                 .ok_or(MarketError::Unconfigured)?;
+            if method == crate::stablecoin::ENS_CCIP_METHOD {
+                return crate::stablecoin::forward_ccip(
+                    crate::stablecoin::ENS_DNS_GATEWAY,
+                    params,
+                    id,
+                )
+                .await;
+            }
             let url = crate::stablecoin::read_rpc_url(std::path::Path::new(file)).await?;
             if method != "eth_chainId" {
                 self.check_ens_once(&url, usdc.test()).await?;

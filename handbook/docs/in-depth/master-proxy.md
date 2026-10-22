@@ -226,10 +226,10 @@ unverified claim is dropped after seven days. Claims live in
 
 On the box, lososd keeps the live domains in
 `/var/lib/losos-public-names/domains.json`. It refreshes the file every two
-minutes and whenever the Network pane asks. The Nextcloud pod mounts that
-directory read-only, adds the names to `trusted_domains` per request, and
-uses a request's own domain for `overwritehost` when it is one of them. Only
-container mode does this. LosOS Git keeps its edge-name `ROOT_URL`.
+minutes and whenever the Network pane asks. LosOS Login reads it to give
+its session cookie a domain for each of those names
+(`modules/identity.nix`). LosOS Cloud answers on whichever name a request
+came by, so it needs no list. LosOS Git keeps its edge-name `ROOT_URL`.
 
 A box behind a local edge gets its domains routed too, through that local
 edge, once it has vouched for the local edge with a relay pass and joined
@@ -238,10 +238,87 @@ this edge's mesh. The registrar keeps those routes itself, in
 federation](edge-federation.md#custom-domains-behind-a-local-edge) has the
 details and `losos.edge.dns.relayRoutes`.
 
+### Wallets at box names
+
+A box binds its wallet to its names with `POST /domains/wallet`
+(`{address, signature}`, relayed by lososd from Settings → Network). The
+signature is the wallet's `personal_sign` of
+
+```
+LosOS box name v1
+zone: <zone>
+box: <box id>
+address: <0x address, lowercase>
+```
+
+so it binds nothing on another edge or for another box. The registrar
+recovers the signer, keeps the address and the signature in `domains.json`,
+and writes one TXT record at each of the box's names in the zone, its
+hostname and its label:
+
+```
+mattbox IN TXT "ENS1 dnsname.ens.eth 0x…"
+```
+
+That is ENS's gasless DNS resolution (ENSIP-17): a wallet asks ENS on
+Ethereum mainnet, ENS's DNSSEC gateway fetches the TXT record, a contract
+checks the signatures up to the DNS root, and `dnsname.ens.eth`, ENS's first
+DNS resolver, answers the address. It answers `addr` ABI-encoded, the way
+every wallet decodes it. Its successor, `2.dnsname.ens.eth`, reads per-chain
+keys (`a[e8453]=…`) but answers a bare 20 bytes, which viem's default lookup
+and ethers fail to decode, so a buyer's wallet would find nothing. The box's
+wallet is one address on every EVM network, so the Ethereum answer is the one
+to give. `{}` unbinds.
+
+The call carries the box's token, so only the box can bind or unbind, and
+lososd asks it only for an administrator (the `network` section). The
+signature shows the wallet agreed to this box's name. It cannot stop the
+edge, which signs the zone, from serving something else: the name is as
+trustworthy as the edge.
+
+ENS only reads a signed zone, so Knot signs this one
+(`losos.edge.dns.dnssec.enable`, on by default) with its default policy,
+ECDSA P-256 with keys in `/var/lib/knot`. Resolvers trust the signatures once
+the parent zone publishes the zone's DS record, which `keymgr <zone> ds`
+prints on the edge. Publish it next to the NS records above.
+
+Knot answering is not a wallet finding the name. While a wallet is bound,
+the reconciler asks the DNS-over-HTTPS resolver (`losos.edge.dns.checkUrl`)
+for the TXT record at each of the box's names, as ENS's gateway would, and
+reports it per name in `wallet.published`: `found` once the record validates
+(the resolver's AD bit), `unsigned` while the parent zone publishes no DS,
+`missing` while it does not delegate the zone, `other` while a resolver still
+holds an older record. A name not found yet is looked up again every half
+minute, a found one hourly. The Network pane shows it beside each name.
+
+The box's own wallet resolves names through the relay its chain reads use
+(`/api/market/rpc` with `network: "ens"`). A DNS name's lookup has an
+offchain step (EIP-3668): the resolver reverts with the gateway's URL, the
+page sends `ens_ccipRead` with the sender and the calldata, and the edge
+posts them to `https://dnssec-oracle.ens.domains/`, the only gateway it asks,
+and hands back the answer, which the contract checks. The admin page's CSP
+still lets it talk to its own box and nothing else.
+
+An owner's own domain gets the same record shown in the pane, to add at the
+domain itself. While a wallet is bound, each check also looks up TXT at the
+domain and reports `wallet`: `found` (the whole record as the edge publishes
+it, DNSSEC-validated by the resolver), `unsigned`, `cname` (a CNAME can
+carry no TXT, and ENS reads only the exact name), `other` or `missing`. It never decides whether the domain
+is routed.
+
 :::note[How this is tested]
 `nix/tests/edge-dns.nix` (`losos-edge-dns`) boots an edge and a client and asks
-Knot over UDP and TCP. `edge/registrar/tests/domains.rs` drives the claim
-flow against a real registrar and a fake DNS-over-HTTPS server.
+Knot over UDP and TCP, binds a wallet and validates its signed record with
+`delv` from the zone's DS. `nix/tests/box-wallet-name.nix`
+(`losos-box-wallet-name`) adds a box with LosOS Login and a laptop: the owner
+binds the wallet in Chromium on the Network pane, through lososd, and the
+record validates. A stand-in for public DNS on the edge then answers
+nothing, an unsigned record and a validated one as the test delegates the
+zone and publishes its DS, and the pane follows each step.
+`edge/registrar/tests/domains.rs` drives the claim and wallet flows against a
+real registrar and a fake DNS-over-HTTPS server.
+`admin-ui/app/tests/ens.node.mjs` replays, through the relay, a DNS name's
+lookup recorded from Ethereum mainnet and ENS's gateway.
 :::
 
 ## Demo deployment on Vercel

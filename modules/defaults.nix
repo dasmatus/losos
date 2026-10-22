@@ -20,6 +20,9 @@ in
   # workload path in modules/workloads.nix and the native path in
   # modules/services.nix.
   losos.forgejo.enable = lib.mkDefault true;
+  # LosOS Cloud (modules/cloud.nix). Off in the bare option set, so a VM
+  # test that imports the identity routes without the service gets neither.
+  losos.cloud.enable = lib.mkDefault true;
 
   # The Rust control plane (lososd + the losos-ctl facade) and the static admin
   # SPA the front vhost serves, so the admin endpoint works out of the box.
@@ -42,7 +45,7 @@ in
   # directory, so the pods run with imagePullPolicy: Never and nothing is
   # fetched from a container registry at runtime.
   #
-  # They are NOT built on the appliance. A Nextcloud image is ~2.6 GiB, and
+  # They are NOT built on the appliance. An image is hundreds of MiB, and
   # system.autoUpgrade would rebuild it at 03:00 on a repurposed mini-PC with a
   # tmpfs root, three hours before the unconditional 00:07 reboot. They are
   # substituted from this project's own Nix binary cache instead — a deliberate,
@@ -51,6 +54,5 @@ in
   # binary cache. If the cache is unreachable at 03:00 the rebuild fails and the
   # previous generation keeps running.
   losos.workloads.pauseImage = lib.mkDefault pkgs'.losos-image-pause;
-  losos.workloads.nextcloudImage = lib.mkDefault pkgs'.losos-image-nextcloud;
   losos.workloads.forgejoImage = lib.mkDefault pkgs'.losos-image-forgejo;
 }

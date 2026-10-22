@@ -15,7 +15,7 @@ einmal gezeigt wird.
 
 Der Passwort-Schritt des Assistenten fragt nach einem Anmeldenamen und
 einem Passwort. Wer ihn abschließt, wird der erste Administrator der Box.
-Dasselbe Passwort wird auch das Passwort des Besitzers für LosOS cloud, ein
+Dasselbe Passwort wird auch das Passwort des Besitzers für LosOS Cloud, ein
 Passwort öffnet also beides.
 
 Ein Anmeldename ist kleingeschrieben. Er beginnt mit einem Buchstaben,
@@ -57,9 +57,9 @@ Nach einigen falschen Passwörtern hintereinander weist LosOS Login diesen
 Namen ein paar Minuten lang ab. Warte und versuch es dann noch einmal.
 :::
 
-## LosOS cloud und LosOS Git \{#losos-cloud-and-losos-git}
+## LosOS Cloud und LosOS Git \{#losos-cloud-and-losos-git}
 
-LosOS cloud und LosOS Git melden dich ebenfalls über LosOS Login an, im
+LosOS Cloud und LosOS Git melden dich ebenfalls über LosOS Login an, im
 eigenen Netz der Box und über das Internet gleichermaßen. Öffnest du eine
 der beiden abgemeldet, landest du bei LosOS Login; meldest du dich dort
 einmal an, lassen dich beide Apps herein, ohne zweites Passwort. Keine der
@@ -79,14 +79,14 @@ die Apps eine Seite, die das sagt, und versuchen es alle paar Sekunden von
 selbst erneut.
 
 Desktop- und Handy-Apps und `git` nutzen weiter App-Passwörter und Tokens.
-Der Netzwerkordner von LosOS cloud nimmt im Netz der Box deinen Namen und
+Der Netzwerkordner von LosOS Cloud nimmt im Netz der Box deinen Namen und
 dein Passwort von LosOS Login, über das Internet ein App-Passwort; siehe
 [Dateien auf deinem Computer](files-on-your-computer).
 
-**Abmelden** in LosOS cloud meldet dich auch bei LosOS Login ab. **Abmelden**
+**Abmelden** in LosOS Cloud meldet dich auch bei LosOS Login ab. **Abmelden**
 in LosOS Git tut das nicht: Solange du bei LosOS Login angemeldet bist,
 meldet LosOS Git dich gleich wieder an. Melde dich bei LosOS Login ab (in den
-Admin-Seiten oder in LosOS cloud), um beide zu verlassen. Ein schon offener
+Admin-Seiten oder in LosOS Cloud), um beide zu verlassen. Ein schon offener
 App-Tab bleibt angemeldet, bis du dich auch in dieser App abmeldest.
 
 ## Wer was sieht \{#who-sees-what}
@@ -128,7 +128,7 @@ Zugriff.
 ![Der Bereich Benutzer: drei Personen mit ihrem Zugriff, darunter das Formular Person hinzufügen.](@site/docs/img/settings-users-de.png)
 
 Bei einer neuen Person ist **Eigenes Konto** eingeschaltet. Gib Namen und Passwort selbst weiter. Die Anmeldung läuft über LosOS Login.
-LosOS cloud und LosOS Git legen beim ersten Öffnen jeweils ein eigenes Konto
+LosOS Cloud und LosOS Git legen beim ersten Öffnen jeweils ein eigenes Konto
 an.
 
 Wer eine Authenticator-App oder einen Passkey hat, trägt das Abzeichen
@@ -145,9 +145,12 @@ Jede Person in der Liste hat diese Knöpfe:
   für jemanden, der Handy oder Schlüssel verloren hat. Die Person meldet
   sich dann nur mit dem Passwort an, bis sie neue hinzufügt. Den Knopf gibt
   es nur bei jemandem, der welche hat.
+- **Bild entfernen** und **Banner entfernen** nehmen ein Bild herunter,
+  das andere nicht sehen sollen. Die Knöpfe gibt es nur bei jemandem, der
+  eins hat.
 - **Entfernen** beendet sofort die Anmeldung an den Admin-Seiten und an
-  beiden Apps. Konten und Dateien in LosOS cloud und LosOS Git bleiben auf
-  der Box.
+  beiden Apps und löscht das Profil. Konten und Dateien in LosOS Cloud und
+  LosOS Git bleiben auf der Box.
 
 Deine eigene Zeile hat keine Knöpfe. Die Zeile des Besitzers hat nur
 **Zwei-Faktor zurücksetzen**, für einen anderen Administrator. Den Besitzer
@@ -164,12 +167,20 @@ für den Ersatzschlüssel, der kein Konto hat.
 
 ![Dein Konto: deine Angaben, dein Passwort, die Zwei-Faktor-Anmeldung und der Einmalcode.](@site/docs/img/settings-account-de.png)
 
-- **Deine Angaben**: vollständiger Name und E-Mail-Adresse. LosOS cloud und
+- **Profil**: ein Bild, ein Banner, eine Farbe, deine Pronomen und eine
+  Zeile über dich. Alle, die an der Box angemeldet sind, sehen sie neben
+  deinem Namen: in der oberen Leiste, im Bereich Benutzer und in den Apps
+  der Box. Wähl ein Bild oder Banner, zieh und zoome auf den Teil, den du
+  willst, und wähl **Übernehmen**. Die Box schneidet das Bild erneut zu und
+  speichert es als neue Datei, sodass Ort und Kamera eines Fotos auf deinem
+  Gerät bleiben. Neben dem Profil steht immer dein Anmeldename, damit sich
+  niemand mit einem Bild als du ausgeben kann.
+- **Deine Angaben**: vollständiger Name und E-Mail-Adresse. LosOS Cloud und
   LosOS Git zeigen dieselben. Nur ein Administrator kann deinen
   Anmeldenamen ändern.
 - **Passwort**: wann du es zuletzt geändert hast und wann es abläuft, wenn
   die Box diese Regel hat. Ein neues Passwort folgt denselben Regeln wie das
-  erste und öffnet auch LosOS cloud und LosOS Git.
+  erste und öffnet auch LosOS Cloud und LosOS Git.
 - **Zwei-Faktor-Anmeldung**: ob du eine Authenticator-App hast und wie
   viele Passkeys. **LosOS Login öffnen** öffnet die eigene Seite von LosOS
   Login in einem neuen Tab, wo du sie hinzufügst oder entfernst. Mit einem
@@ -193,11 +204,11 @@ Benutzer > Anmelderegeln**:
 
 Wen eine Regel erfasst, der ist angehalten. Die Person meldet sich weiter
 an, aber die Admin-Seiten zeigen ihr nur **Dein Konto**, mit einem Hinweis,
-was zu tun ist, und LosOS Login hält sie aus LosOS cloud und LosOS Git
+was zu tun ist, und LosOS Login hält sie aus LosOS Cloud und LosOS Git
 heraus. Sobald sie ein neues Passwort wählt oder einen zweiten Faktor
 hinzufügt, öffnet sich der Rest wieder. Nach einem neuen zweiten Faktor
 fragt LosOS Login einmal danach, bevor die nächste Seite kommt. Wer
-angehalten ist und LosOS cloud oder LosOS Git öffnet, sieht eine Seite, die
+angehalten ist und LosOS Cloud oder LosOS Git öffnet, sieht eine Seite, die
 zum eigenen Konto schickt; das öffnet sich im eigenen Netz der Box.
 
 Bevor du die Zwei-Faktor-Anmeldung verlangst, füge deinem eigenen Konto eine
@@ -248,7 +259,7 @@ LosOS Login nimmt Passkeys an. Du fügst einen auf der Seite von LosOS Login
 hinzu, die du aus [Dein Konto](#your-account) öffnest, über HTTPS, sobald
 das Zertifikat der Box installiert ist. Auf der Anmeldeseite meldet dich ein
 Handy oder Laptop dann mit seiner eigenen Entsperrung an statt mit Name und
-Passwort, für die Admin-Seiten, LosOS cloud und LosOS Git gleichermaßen. Ein
+Passwort, für die Admin-Seiten, LosOS Cloud und LosOS Git gleichermaßen. Ein
 Passkey ist kein zweiter Ersatzschlüssel: Er öffnet nur dein eigenes Konto.
 
 ## Das Zeitfenster zum Beanspruchen \{#the-claim-window}

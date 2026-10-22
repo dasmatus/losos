@@ -276,6 +276,7 @@ impl UsdcOpts {
             chains: self.chains.iter().map(UsdcChain::public).collect(),
             ens_chain_id: self.ens_rpc_file.as_ref().map(|_| ens_chain(self.test())),
             prices: std::collections::BTreeMap::new(),
+            onramp: None,
         }
     }
 }
@@ -372,6 +373,17 @@ pub fn payout_message(chain: impl std::fmt::Display, address: &str) -> String {
 #[must_use]
 pub fn order_id_hash(order_id: &str) -> [u8; 32] {
     keccak256(order_id.as_bytes())
+}
+
+/// The key `LososEscrow` keeps `buyer`'s tap `tap` under:
+/// `keccak256(abi.encode(buyer, keccak256(tap)))`, as its `tapKey` works it
+/// out. The wallet passes only `keccak256(tap)`; the buyer is whoever sends
+/// `openTaps`, so the same id from another wallet is another tap.
+#[must_use]
+pub fn tap_key(buyer: [u8; 20], tap: &str) -> [u8; 32] {
+    let mut data = crate::evm_tx::address_word(buyer).to_vec();
+    data.extend_from_slice(&order_id_hash(tap));
+    keccak256(&data)
 }
 
 #[must_use]
@@ -511,6 +523,10 @@ pub struct UsdcPublic {
     /// are out of reach.
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub prices: std::collections::BTreeMap<&'static str, String>,
+    /// Who sells USDC on Base for euros through this edge (`binance`), when
+    /// anyone does (`crate::onramp`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub onramp: Option<&'static str>,
 }
 
 /// One network as a page sees it.
@@ -694,6 +710,86 @@ pub async fn forward_rpc(
     }
     serde_json::from_slice(&bytes)
         .map_err(|_| MarketError::Conflict("the chain endpoint did not answer JSON"))
+}
+
+/// The pseudo-method a wallet sends through the ENS relay when a lookup
+/// asks for an offchain answer (EIP-3668). Not a node method: the edge
+/// answers it from [`ENS_DNS_GATEWAY`].
+pub const ENS_CCIP_METHOD: &str = "ens_ccipRead";
+
+/// The one gateway the relay asks: ENS's own, which `OffchainDNSResolver`
+/// names for every DNS name (`mattbox.boxes.losos.dasmat.us` and an
+/// owner's domain alike). It answers with DNSSEC proofs the contract checks
+/// itself, so the gateway is not trusted with the answer.
+pub const ENS_DNS_GATEWAY: &str = "https://dnssec-oracle.ens.domains/";
+
+/// The calldata a resolver hands the gateway: a DNS name and a query, a few
+/// hundred bytes.
+const MAX_CCIP_DATA: usize = 16 * 1024;
+
+fn hex_bytes(s: &str, max: usize) -> bool {
+    s.strip_prefix("0x").is_some_and(|h| {
+        h.len() % 2 == 0 && h.len() <= max * 2 && h.bytes().all(|b| b.is_ascii_hexdigit())
+    })
+}
+
+/// Ask `gateway` for one offchain answer: `params` is `[sender, data]`, as
+/// the resolver's `OffchainLookup` revert gave them. The reply is shaped as a
+/// JSON-RPC object whose result is the gateway's `data`, so a wallet's
+/// transport reads it like any relayed call.
+///
+/// # Errors
+/// Params that are not an address and calldata, or a gateway that does not
+/// answer hex.
+pub async fn forward_ccip(gateway: &str, params: &Value, id: &Value) -> Result<Value, MarketError> {
+    let (Some(sender), Some(data)) = (
+        params.get(0).and_then(Value::as_str),
+        params.get(1).and_then(Value::as_str),
+    ) else {
+        return Err(MarketError::Invalid(
+            "an offchain lookup is a sender and its calldata",
+        ));
+    };
+    if params.as_array().map_or(0, Vec::len) != 2 || !hex_bytes(sender, 20) || sender.len() != 42 {
+        return Err(MarketError::Invalid("the sender is not an address"));
+    }
+    if !hex_bytes(data, MAX_CCIP_DATA) {
+        return Err(MarketError::Invalid("the lookup's calldata is not hex"));
+    }
+    let client = reqwest::Client::builder()
+        .timeout(RPC_TIMEOUT * 2)
+        .build()
+        .map_err(|_| MarketError::Unconfigured)?;
+    let mut response = client
+        .post(gateway)
+        .json(&json!({ "sender": sender.to_ascii_lowercase(), "data": data }))
+        .send()
+        .await
+        .map_err(|_| MarketError::Conflict("the name gateway did not answer"))?;
+    if !response.status().is_success() {
+        return Err(MarketError::Conflict("the name gateway refused the lookup"));
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| MarketError::Conflict("the name gateway did not answer"))?
+    {
+        if bytes.len() + chunk.len() > MAX_RPC_REPLY {
+            return Err(MarketError::Conflict("the name gateway answered too much"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let reply: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| MarketError::Conflict("the name gateway did not answer JSON"))?;
+    match reply.get("data").and_then(Value::as_str) {
+        Some(answer) if hex_bytes(answer, MAX_RPC_REPLY) => Ok(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": answer,
+        })),
+        _ => Err(MarketError::Conflict("the name gateway did not answer hex")),
+    }
 }
 
 /// The receipt object, or a conflict when it is not mined yet. Errors do not
@@ -887,6 +983,80 @@ pub async fn deposit_state(
         Some(4) => Ok(DepositState::Split),
         _ => Err(MarketError::Conflict("the chain endpoint did not answer")),
     }
+}
+
+/// A tap as `LososEscrow.taps(bytes32)` answers it: `None` when the escrow
+/// has no such tap (a zero buyer).
+#[must_use]
+pub fn decode_tap(answer: &[u8]) -> Option<Option<crate::meter::ChainTap>> {
+    let word = |i: usize| answer.get(i * 32..i * 32 + 32);
+    let key = |i: usize| -> Option<[u8; 32]> {
+        let w = word(i)?;
+        if w[..12].iter().any(|b| *b != 0) {
+            return None;
+        }
+        let mut k = [0u8; 32];
+        k.copy_from_slice(w);
+        Some(k)
+    };
+    let small = |i: usize| -> Option<u64> { u64::try_from(word_u128(answer, i)?).ok() };
+    let buyer = key(0)?;
+    if buyer == [0u8; 32] {
+        return Some(None);
+    }
+    let closed_at = small(5)?;
+    Some(Some(crate::meter::ChainTap {
+        buyer,
+        seller: key(1)?,
+        rate: small(2)?,
+        fee_bps: u32::try_from(small(3)?).ok()?,
+        settled_at: small(4)?,
+        closed_at: (closed_at > 0).then_some(closed_at),
+    }))
+}
+
+async fn escrow_call(rpc_url: &str, escrow: &str, data: &[u8]) -> Result<Vec<u8>, MarketError> {
+    let data = format!("0x{}", to_hex(data));
+    let answer = call_result(
+        rpc_url,
+        Relay::Evm,
+        "eth_call",
+        json!([{ "to": escrow, "data": data }, "latest"]),
+    )
+    .await?;
+    decode_hex(answer.as_str().unwrap_or(""))
+        .ok_or(MarketError::Conflict("the chain endpoint did not answer"))
+}
+
+/// A tap as the escrow records it, `None` when it has none by that id.
+pub async fn tap_state(
+    rpc_url: &str,
+    escrow: &str,
+    tap: [u8; 32],
+) -> Result<Option<crate::meter::ChainTap>, MarketError> {
+    let bytes = escrow_call(rpc_url, escrow, &crate::evm_tx::taps_data(tap)).await?;
+    decode_tap(&bytes).ok_or(MarketError::Conflict("the chain endpoint did not answer"))
+}
+
+/// What the escrow holds for `wallet`, and what it asked to withdraw.
+pub async fn wallet_view(
+    rpc_url: &str,
+    escrow: &str,
+    wallet: [u8; 20],
+) -> Result<crate::meter::WalletView, MarketError> {
+    let bad = || MarketError::Conflict("the chain endpoint did not answer");
+    let balance = escrow_call(rpc_url, escrow, &crate::evm_tx::balances_data(wallet)).await?;
+    let ask = escrow_call(rpc_url, escrow, &crate::evm_tx::withdrawals_data(wallet)).await?;
+    let small = |b: &[u8], i| word_u128(b, i).and_then(|v| u64::try_from(v).ok());
+    Ok(crate::meter::WalletView {
+        balance: small(&balance, 0).ok_or_else(bad)?,
+        // The escrow keeps an ask as asked, up to 2^128 - 1, and pays out
+        // at most the balance; more than u64 holds reads as all of it.
+        asked: word_u128(&ask, 0)
+            .map(|v| u64::try_from(v).unwrap_or(u64::MAX))
+            .ok_or_else(bad)?,
+        not_before: small(&ask, 1).ok_or_else(bad)?,
+    })
 }
 
 /// Whether an ENS endpoint is on the chain names are looked up on for this
@@ -1173,7 +1343,7 @@ pub(crate) fn decode_hex(raw: &str) -> Option<Vec<u8>> {
 /// Sign `message` the way a wallet's `personal_sign` does. Tests only: the
 /// registrar never holds a key, so this is not available outside the suite.
 #[cfg(test)]
-fn sign_personal(secret: &[u8; 32], message: &[u8]) -> String {
+pub(crate) fn sign_personal(secret: &[u8; 32], message: &[u8]) -> String {
     let key = SigningKey::from_bytes(secret.into()).expect("key");
     let (signature, recid) = key.sign_prehash_recoverable(&personal_sign_hash(message));
     let mut bytes = [0u8; 65];
@@ -1195,6 +1365,80 @@ mod tests {
     fn address_of_key() -> String {
         let key = SigningKey::from_bytes((&key()).into()).unwrap();
         address_of(&VerifyingKey::from(&key))
+    }
+
+    /// A stand-in for ENS's gateway: it answers `0x` + the sender's last
+    /// byte twice, or with `reply` when one is given.
+    async fn gateway(reply: Option<Value>) -> String {
+        use axum::{routing::post, Json, Router};
+        let app = Router::new().route(
+            "/",
+            post(move |Json(body): Json<Value>| {
+                let reply = reply.clone();
+                async move {
+                    Json(reply.unwrap_or_else(|| {
+                        let sender = body["sender"].as_str().unwrap_or_default();
+                        let data = body["data"].as_str().unwrap_or_default();
+                        json!({ "data": format!("0x{}{}", &sender[40..], &data[2..]) })
+                    }))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        url
+    }
+
+    #[tokio::test]
+    async fn an_offchain_lookup_goes_to_the_gateway_and_back_as_rpc() {
+        let url = gateway(None).await;
+        let sender = "0xF142B308cF687d4358410a4cB885513b30A42025";
+        let reply = forward_ccip(&url, &json!([sender, "0xabcd"]), &json!(7))
+            .await
+            .unwrap();
+        // The gateway saw the sender in lowercase and the calldata as sent.
+        assert_eq!(
+            reply,
+            json!({ "jsonrpc": "2.0", "id": 7, "result": "0x25abcd" })
+        );
+    }
+
+    #[tokio::test]
+    async fn an_offchain_lookup_is_an_address_and_calldata() {
+        let url = gateway(None).await;
+        let sender = "0xf142b308cf687d4358410a4cb885513b30a42025";
+        for params in [
+            json!([]),
+            json!([sender]),
+            json!([sender, "0xab", "extra"]),
+            json!(["0x1234", "0xab"]),
+            json!([sender, "abcd"]),
+            json!([sender, "0xabc"]),
+            json!([sender, "0xzz"]),
+            json!([sender, format!("0x{}", "00".repeat(MAX_CCIP_DATA + 1))]),
+            json!({ "sender": sender, "data": "0x" }),
+        ] {
+            let err = forward_ccip(&url, &params, &json!(1)).await.unwrap_err();
+            assert!(matches!(err, MarketError::Invalid(_)), "{params}: {err:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_gateway_answer_that_is_not_hex_is_refused() {
+        let sender = "0xf142b308cf687d4358410a4cb885513b30a42025";
+        for reply in [json!({}), json!({ "data": "nope" }), json!({ "data": 5 })] {
+            let url = gateway(Some(reply.clone())).await;
+            let err = forward_ccip(&url, &json!([sender, "0x00"]), &json!(1))
+                .await
+                .unwrap_err();
+            assert!(matches!(err, MarketError::Conflict(_)), "{reply}: {err:?}");
+        }
+        // Nothing listening.
+        let err = forward_ccip("http://127.0.0.1:9/", &json!([sender, "0x00"]), &json!(1))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, MarketError::Conflict(_)));
     }
 
     /// The calls viem makes to send a transaction and wait for its receipt,

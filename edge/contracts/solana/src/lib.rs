@@ -14,6 +14,19 @@
 //! is released, refunded or split, both are closed and their rent goes back
 //! to the payer, so a finished deposit no longer exists.
 //!
+//! Pay as you go uses two more accounts. A buyer tops up a balance
+//! (`["balance", config, buyer]`, its USDC in the token account
+//! `["vault", balance]`) and opens taps against it (`["tap", config, tap
+//! id]`). A tap names one seller, a fee and a rate: the most the releaser may
+//! bill per hour of the tap's life. The releaser settles a tap from time to
+//! time for what it metered, never more than the rate times the time since
+//! the last settle, counted up to seven days. A new tap starts one hour into
+//! that time, so the first hour can be billed as soon as it opens; over its
+//! whole life a tap pays out at most its rate times the time since it opened
+//! plus one hour. The buyer can close a tap at any
+//! time and withdraw the balance after asking 48 hours ahead, which leaves
+//! the edge time to settle the last of it and needs nothing from the edge.
+//!
 //! Only the classic SPL token program is taken, the one Circle's USDC lives
 //! on. The program keeps no id of its own, so the same build serves any
 //! address it is deployed to.
@@ -30,7 +43,7 @@ use pinocchio::{AccountView, Address};
 
 pub mod state;
 
-use state::{Config, Deposit, TokenAccount};
+use state::{Balance, Config, Deposit, Tap, TokenAccount};
 
 #[cfg(target_os = "solana")]
 mod entrypoint {
@@ -56,9 +69,23 @@ pub const MAX_FEE_BPS: u128 = 5000;
 pub const MIN_HOLD: i64 = 60 * 60;
 pub const MAX_HOLD: i64 = 35 * 24 * 60 * 60;
 
+/// A withdrawal waits this long after it is asked for, so the edge can
+/// settle what the buyer used up to then: 48 hours.
+pub const NOTICE: i64 = 48 * 60 * 60;
+/// One settle bills at most this much of a tap's time: 7 days. Time beyond
+/// it since the last settle is not billable.
+pub const MAX_ACCRUAL: i64 = 7 * 24 * 60 * 60;
+pub const HOUR: i64 = 60 * 60;
+/// A new tap's billing starts this long before it opened, so the edge can
+/// bill the first hour of use at once. In all, a tap can be billed at most
+/// its rate times (the time since it opened + 1 hour).
+pub const HEADSTART: i64 = 60 * 60;
+
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const DEPOSIT_SEED: &[u8] = b"deposit";
 pub const VAULT_SEED: &[u8] = b"vault";
+pub const BALANCE_SEED: &[u8] = b"balance";
+pub const TAP_SEED: &[u8] = b"tap";
 
 /// The first byte of every instruction.
 pub mod ix {
@@ -85,6 +112,28 @@ pub mod ix {
     pub const SETTLE: u8 = 4;
     /// `[next: 32]`. Accounts: treasury (signer), config (writable).
     pub const SET_RELEASER: u8 = 5;
+    /// `[amount: u64]`. Accounts: buyer (signer, writable, pays the rent on
+    /// first use), buyer's token account (writable), config, balance
+    /// (writable), vault (writable), mint, token program, system program.
+    pub const TOP_UP: u8 = 6;
+    /// `[tap id: 32][rate: u64][fee bps: u16]`. Accounts: buyer (signer,
+    /// writable, pays the rent), config, balance, tap (writable), seller,
+    /// system program.
+    pub const OPEN_TAP: u8 = 7;
+    /// No data. Accounts: buyer or releaser (signer), config, tap
+    /// (writable), buyer (writable, takes the rent if nothing is left to
+    /// settle).
+    pub const CLOSE_TAP: u8 = 8;
+    /// `[amount: u64]`. Accounts: releaser (signer), config, tap (writable),
+    /// balance, vault (writable), seller's token account (writable),
+    /// treasury's token account (writable), buyer (writable, takes the rent
+    /// when a closed tap is fully settled), mint, token program.
+    pub const SETTLE_TAP: u8 = 9;
+    /// `[amount: u64]`. Accounts: buyer (signer), config, balance (writable).
+    pub const ASK_WITHDRAWAL: u8 = 10;
+    /// No data. Accounts: buyer (signer), config, balance (writable), vault
+    /// (writable), buyer's token account (writable), mint, token program.
+    pub const WITHDRAW: u8 = 11;
 }
 
 /// Why an instruction was refused, as `Custom(n)`. The numbers are the
@@ -107,6 +156,21 @@ pub enum EscrowError {
     WrongMint,
     /// A token account belongs to someone other than whom it pays.
     WrongOwner,
+    /// The account is not a tap of this program: never opened, or closed
+    /// and fully settled.
+    NoTap,
+    /// A tap with this id is already open.
+    TapExists,
+    /// The tap is already closed.
+    TapClosed,
+    /// More than the tap's rate allows for the time since its last settle.
+    OverCap,
+    /// More than the buyer's balance holds.
+    OverBalance,
+    /// The account is not a balance of this program.
+    NoBalance,
+    /// The buyer has asked for no withdrawal.
+    NoWithdrawal,
 }
 
 impl From<EscrowError> for ProgramError {
@@ -132,6 +196,12 @@ pub fn process_instruction(
         ix::REFUND => refund(program_id, accounts),
         ix::SETTLE => settle(program_id, accounts, rest),
         ix::SET_RELEASER => set_releaser(program_id, accounts, rest),
+        ix::TOP_UP => top_up(program_id, accounts, rest),
+        ix::OPEN_TAP => open_tap(program_id, accounts, rest),
+        ix::CLOSE_TAP => close_tap(program_id, accounts),
+        ix::SETTLE_TAP => settle_tap(program_id, accounts, rest),
+        ix::ASK_WITHDRAWAL => ask_withdrawal(program_id, accounts, rest),
+        ix::WITHDRAW => withdraw(program_id, accounts),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
@@ -379,7 +449,7 @@ fn release(program_id: &Address, accounts: &mut [AccountView]) -> ProgramResult 
         )?;
         close_token_account(vault, payer, deposit, signer)
     })?;
-    close_deposit(deposit, payer)
+    close_account(deposit, payer)
 }
 
 /// Back to the payer, whole. The edge may refund at any time (the seller's
@@ -415,7 +485,7 @@ fn refund(program_id: &Address, accounts: &mut [AccountView]) -> ProgramResult {
         )?;
         close_token_account(vault, payer, deposit, signer)
     })?;
-    close_deposit(deposit, payer)
+    close_account(deposit, payer)
 }
 
 /// Part back to the payer, the rest released: the seller's box went offline
@@ -465,7 +535,7 @@ fn settle(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> Pr
         )?;
         close_token_account(vault, payer, deposit, signer)
     })?;
-    close_deposit(deposit, payer)
+    close_account(deposit, payer)
 }
 
 /// The fee and the seller's share when `back` of `gross` goes back to the
@@ -497,6 +567,399 @@ fn set_releaser(program_id: &Address, accounts: &mut [AccountView], data: &[u8])
     Ok(())
 }
 
+/// Money into the buyer's balance. The first top-up makes the balance and
+/// its vault, at the buyer's cost.
+fn top_up(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
+    let [buyer, buyer_token, config, balance, vault, mint, token, system, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    let amount = u64_at(data, 0)?;
+    if !buyer.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if token.address() != &TOKEN_PROGRAM || system.address() != &SYSTEM_PROGRAM {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let cfg = Config::load(program_id, config)?;
+    if mint.address() != &cfg.mint {
+        return Err(EscrowError::WrongMint.into());
+    }
+    let decimals = state::mint_decimals(mint)?;
+    if amount == 0 {
+        return Err(EscrowError::ZeroAmount.into());
+    }
+    if balance.owned_by(program_id) {
+        let b = Balance::load(program_id, balance)?;
+        if b.config != *config.address() || b.buyer != *buyer.address() {
+            return Err(EscrowError::WrongAccount.into());
+        }
+        check_vault(program_id, balance, &b, vault)?;
+    } else {
+        let (want, bump) = Address::find_program_address(
+            &[
+                BALANCE_SEED,
+                config.address().as_ref(),
+                buyer.address().as_ref(),
+            ],
+            program_id,
+        );
+        if balance.address() != &want {
+            return Err(EscrowError::WrongAccount.into());
+        }
+        let (want_vault, vault_bump) =
+            Address::find_program_address(&[VAULT_SEED, balance.address().as_ref()], program_id);
+        if vault.address() != &want_vault {
+            return Err(EscrowError::WrongAccount.into());
+        }
+        let bump_seed = [bump];
+        let balance_seeds = [
+            Seed::from(BALANCE_SEED),
+            Seed::from(config.address().as_ref()),
+            Seed::from(buyer.address().as_ref()),
+            Seed::from(&bump_seed),
+        ];
+        open_account(buyer, balance, Balance::LEN, program_id, &balance_seeds)?;
+        let vault_bump_seed = [vault_bump];
+        let vault_seeds = [
+            Seed::from(VAULT_SEED),
+            Seed::from(balance.address().as_ref()),
+            Seed::from(&vault_bump_seed),
+        ];
+        open_account(
+            buyer,
+            vault,
+            TokenAccount::LEN,
+            &TOKEN_PROGRAM,
+            &vault_seeds,
+        )?;
+        initialize_token_account(vault, mint, balance.address())?;
+        Balance {
+            bump,
+            vault_bump,
+            config: *config.address(),
+            buyer: *buyer.address(),
+            asked: 0,
+            not_before: 0,
+        }
+        .write(&mut balance.try_borrow_mut()?);
+    }
+    transfer(buyer_token, mint, vault, buyer, amount, decimals, &[])
+}
+
+/// The buyer lets the releaser bill one seller from the balance at up to
+/// `rate` an hour, `fee_bps` of each settle to the treasury. Billing counts
+/// from `HEADSTART` before now, so the first hour can be settled at once.
+fn open_tap(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
+    let [buyer, config, balance, tap, seller, system, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    let id = bytes_at(data, 0)?;
+    let rate = u64_at(data, 32)?;
+    let fee_bps = u16_at(data, 40)?;
+    if !buyer.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if system.address() != &SYSTEM_PROGRAM {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let cfg = Config::load(program_id, config)?;
+    let b = Balance::load(program_id, balance)?;
+    if b.config != *config.address() || b.buyer != *buyer.address() {
+        return Err(EscrowError::WrongAccount.into());
+    }
+    if u128::from(fee_bps) > MAX_FEE_BPS {
+        return Err(EscrowError::FeeTooHigh.into());
+    }
+    if rate == 0 {
+        return Err(EscrowError::ZeroAmount.into());
+    }
+    let vault = vault_of(program_id, balance, &b);
+    let seller_key = *seller.address();
+    if seller_key == Address::default()
+        || seller_key == cfg.treasury
+        || seller_key == *config.address()
+        || seller_key == *balance.address()
+        || seller_key == vault
+        || seller_key == *tap.address()
+    {
+        return Err(EscrowError::ZeroSeller.into());
+    }
+    if tap.owned_by(program_id) {
+        return Err(EscrowError::TapExists.into());
+    }
+    // The buyer is in the seeds, so the same id opened by another wallet is
+    // another tap: nobody can take a buyer's quoted ids first.
+    let (want, bump) = Address::find_program_address(
+        &[
+            TAP_SEED,
+            config.address().as_ref(),
+            buyer.address().as_ref(),
+            &id,
+        ],
+        program_id,
+    );
+    if tap.address() != &want {
+        return Err(EscrowError::WrongAccount.into());
+    }
+    let bump_seed = [bump];
+    let seeds = [
+        Seed::from(TAP_SEED),
+        Seed::from(config.address().as_ref()),
+        Seed::from(buyer.address().as_ref()),
+        Seed::from(&id),
+        Seed::from(&bump_seed),
+    ];
+    open_account(buyer, tap, Tap::LEN, program_id, &seeds)?;
+    Tap {
+        bump,
+        config: *config.address(),
+        buyer: *buyer.address(),
+        seller: seller_key,
+        id,
+        rate,
+        settled_at: Clock::get()?
+            .unix_timestamp
+            .saturating_sub(HEADSTART)
+            .max(0),
+        closed_at: None,
+        fee_bps,
+    }
+    .write(&mut tap.try_borrow_mut()?);
+    Ok(())
+}
+
+/// The buyer or the releaser ends a tap's billing now. The releaser may
+/// still settle it, for time up to now. A tap with nothing left to settle
+/// is closed at once and its rent goes back to the buyer.
+fn close_tap(program_id: &Address, accounts: &mut [AccountView]) -> ProgramResult {
+    let [authority, config, tap, buyer, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    let cfg = Config::load(program_id, config)?;
+    let mut t = Tap::load(program_id, tap)?;
+    if t.config != *config.address() {
+        return Err(EscrowError::WrongAccount.into());
+    }
+    if !authority.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if authority.address() != &cfg.releaser && authority.address() != &t.buyer {
+        return Err(EscrowError::NotReleaser.into());
+    }
+    if t.closed_at.is_some() {
+        return Err(EscrowError::TapClosed.into());
+    }
+    if buyer.address() != &t.buyer {
+        return Err(EscrowError::WrongAccount.into());
+    }
+    // Never before the last settle, so the time left to bill is never
+    // negative.
+    let closed_at = Clock::get()?.unix_timestamp.max(t.settled_at);
+    if closed_at == t.settled_at {
+        return close_account(tap, buyer);
+    }
+    t.closed_at = Some(closed_at);
+    t.write(&mut tap.try_borrow_mut()?);
+    Ok(())
+}
+
+/// The releaser bills `amount` of what it metered on a tap: at most the
+/// tap's rate times the time since the last settle (or since `HEADSTART`
+/// before the tap opened), up to now or up to when the tap closed, counting
+/// at most `MAX_ACCRUAL` of it. The fee
+/// (`fee_bps` of the amount, rounded down) goes to the treasury and the rest
+/// to the tap's seller. Cap not used is not carried over. A closed tap
+/// settled up to its close is finished: its account is closed and its rent
+/// goes back to the buyer. On a closed tap `amount` may be 0, which only
+/// finishes it.
+fn settle_tap(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
+    let [releaser, config, tap, balance, vault, seller_token, treasury_token, buyer, mint, token, ..] =
+        accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    let amount = u64_at(data, 0)?;
+    if token.address() != &TOKEN_PROGRAM {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let cfg = Config::load(program_id, config)?;
+    if !releaser.is_signer() || releaser.address() != &cfg.releaser {
+        return Err(EscrowError::NotReleaser.into());
+    }
+    let mut t = Tap::load(program_id, tap)?;
+    if t.config != *config.address() {
+        return Err(EscrowError::WrongAccount.into());
+    }
+    let b = Balance::load(program_id, balance)?;
+    if b.config != *config.address() || b.buyer != t.buyer {
+        return Err(EscrowError::WrongAccount.into());
+    }
+    check_vault(program_id, balance, &b, vault)?;
+    if buyer.address() != &t.buyer {
+        return Err(EscrowError::WrongAccount.into());
+    }
+    if mint.address() != &cfg.mint {
+        return Err(EscrowError::WrongMint.into());
+    }
+    let decimals = state::mint_decimals(mint)?;
+    check_destination(seller_token, &cfg.mint, &t.seller)?;
+    check_destination(treasury_token, &cfg.mint, &cfg.treasury)?;
+
+    let end = match t.closed_at {
+        Some(closed_at) => closed_at,
+        None => Clock::get()?.unix_timestamp,
+    };
+    if end <= t.settled_at {
+        return Err(EscrowError::TooEarly.into());
+    }
+    if amount == 0 && t.closed_at.is_none() {
+        return Err(EscrowError::ZeroAmount.into());
+    }
+    if u128::from(amount) > cap(t.rate, end - t.settled_at) {
+        return Err(EscrowError::OverCap.into());
+    }
+    if amount > TokenAccount::load(vault)?.amount {
+        return Err(EscrowError::OverBalance.into());
+    }
+    let fee = tap_fee(amount, t.fee_bps);
+    with_balance_signer(&b, |signer| {
+        transfer(vault, mint, treasury_token, balance, fee, decimals, signer)?;
+        transfer(
+            vault,
+            mint,
+            seller_token,
+            balance,
+            amount - fee,
+            decimals,
+            signer,
+        )
+    })?;
+    t.settled_at = end;
+    if t.closed_at.is_some() {
+        return close_account(tap, buyer);
+    }
+    t.write(&mut tap.try_borrow_mut()?);
+    Ok(())
+}
+
+/// The most a tap at `rate` an hour can bill for `elapsed` seconds:
+/// `rate * min(elapsed, MAX_ACCRUAL) / 3600`, rounded down.
+#[must_use]
+pub fn cap(rate: u64, elapsed: i64) -> u128 {
+    let elapsed = elapsed.clamp(0, MAX_ACCRUAL) as u128;
+    u128::from(rate) * elapsed / HOUR as u128
+}
+
+/// The treasury's part of a settle: `fee_bps` of `amount`, rounded down.
+#[must_use]
+pub fn tap_fee(amount: u64, fee_bps: u16) -> u64 {
+    // A tap's fee_bps is at most MAX_FEE_BPS, so the quotient is at most
+    // half the amount and fits.
+    (u128::from(amount) * u128::from(fee_bps) / 10_000) as u64
+}
+
+/// The buyer asks to take `amount` out of the balance. It can be withdrawn
+/// after `NOTICE`; a new ask replaces the old one and waits again.
+fn ask_withdrawal(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    data: &[u8],
+) -> ProgramResult {
+    let [buyer, config, balance, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    let amount = u64_at(data, 0)?;
+    if !buyer.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    Config::load(program_id, config)?;
+    let mut b = Balance::load(program_id, balance)?;
+    if b.config != *config.address() || b.buyer != *buyer.address() {
+        return Err(EscrowError::WrongAccount.into());
+    }
+    if amount == 0 {
+        return Err(EscrowError::ZeroAmount.into());
+    }
+    b.asked = amount;
+    b.not_before = Clock::get()?
+        .unix_timestamp
+        .checked_add(NOTICE)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    b.write(&mut balance.try_borrow_mut()?);
+    Ok(())
+}
+
+/// After the notice the buyer takes what was asked, or the whole balance if
+/// settles since left less, to their own token account. The ask is then
+/// spent.
+fn withdraw(program_id: &Address, accounts: &mut [AccountView]) -> ProgramResult {
+    let [buyer, config, balance, vault, buyer_token, mint, token, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    if !buyer.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if token.address() != &TOKEN_PROGRAM {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let cfg = Config::load(program_id, config)?;
+    let mut b = Balance::load(program_id, balance)?;
+    if b.config != *config.address() || b.buyer != *buyer.address() {
+        return Err(EscrowError::WrongAccount.into());
+    }
+    check_vault(program_id, balance, &b, vault)?;
+    if mint.address() != &cfg.mint {
+        return Err(EscrowError::WrongMint.into());
+    }
+    let decimals = state::mint_decimals(mint)?;
+    if b.asked == 0 {
+        return Err(EscrowError::NoWithdrawal.into());
+    }
+    if Clock::get()?.unix_timestamp < b.not_before {
+        return Err(EscrowError::TooEarly.into());
+    }
+    check_destination(buyer_token, &cfg.mint, &b.buyer)?;
+    let out = b.asked.min(TokenAccount::load(vault)?.amount);
+    b.asked = 0;
+    b.not_before = 0;
+    b.write(&mut balance.try_borrow_mut()?);
+    with_balance_signer(&b, |signer| {
+        transfer(vault, mint, buyer_token, balance, out, decimals, signer)
+    })
+}
+
+/// The vault address of a balance.
+fn vault_of(program_id: &Address, balance: &AccountView, b: &Balance) -> Address {
+    Address::derive_address(
+        &[VAULT_SEED, balance.address().as_ref()],
+        Some(b.vault_bump),
+        program_id,
+    )
+}
+
+fn check_vault(
+    program_id: &Address,
+    balance: &AccountView,
+    b: &Balance,
+    vault: &AccountView,
+) -> ProgramResult {
+    if vault.address() != &vault_of(program_id, balance, b) {
+        return Err(EscrowError::WrongAccount.into());
+    }
+    Ok(())
+}
+
+fn with_balance_signer(b: &Balance, f: impl FnOnce(&[Signer]) -> ProgramResult) -> ProgramResult {
+    let bump = [b.bump];
+    let seeds = [
+        Seed::from(BALANCE_SEED),
+        Seed::from(b.config.as_ref()),
+        Seed::from(b.buyer.as_ref()),
+        Seed::from(&bump),
+    ];
+    f(&[Signer::from(&seeds)])
+}
+
 fn with_deposit_signer(d: &Deposit, f: impl FnOnce(&[Signer]) -> ProgramResult) -> ProgramResult {
     let bump = [d.bump];
     let seeds = [
@@ -508,18 +971,18 @@ fn with_deposit_signer(d: &Deposit, f: impl FnOnce(&[Signer]) -> ProgramResult) 
     f(&[Signer::from(&seeds)])
 }
 
-/// Hand the deposit account's lamports to the payer and close it, so a
-/// finished deposit no longer exists and cannot be acted on again.
-fn close_deposit(deposit: &mut AccountView, payer: &mut AccountView) -> ProgramResult {
-    let lamports = deposit.lamports();
+/// Hand a deposit's or a tap's lamports to the payer and close it, so a
+/// finished one no longer exists and cannot be acted on again.
+fn close_account(account: &mut AccountView, payer: &mut AccountView) -> ProgramResult {
+    let lamports = account.lamports();
     payer.set_lamports(
         payer
             .lamports()
             .checked_add(lamports)
             .ok_or(ProgramError::ArithmeticOverflow)?,
     );
-    deposit.set_lamports(0);
-    deposit.close()
+    account.set_lamports(0);
+    account.close()
 }
 
 fn create_account(
@@ -546,6 +1009,69 @@ fn create_account(
             accounts: &metas,
         },
         &[from, to],
+        &[Signer::from(seeds)],
+    )
+}
+
+/// `create_account`, except that an address someone already sent lamports
+/// to is topped up to the rent, allocated and assigned instead. A balance's
+/// address is known in advance, and a gift of one lamport must not stop its
+/// buyer from ever topping up.
+fn open_account(
+    from: &AccountView,
+    to: &AccountView,
+    space: usize,
+    owner: &Address,
+    seeds: &[Seed],
+) -> ProgramResult {
+    let held = to.lamports();
+    if held == 0 {
+        return create_account(from, to, space, owner, seeds);
+    }
+    let need = Rent::get()?
+        .try_minimum_balance(space)?
+        .saturating_sub(held);
+    if need > 0 {
+        let mut data = [0u8; 12];
+        data[0] = 2; // SystemInstruction::Transfer
+        data[4..12].copy_from_slice(&need.to_le_bytes());
+        let metas = [
+            InstructionAccount::writable_signer(from.address()),
+            InstructionAccount::writable(to.address()),
+        ];
+        invoke_signed(
+            &InstructionView {
+                program_id: &SYSTEM_PROGRAM,
+                data: &data,
+                accounts: &metas,
+            },
+            &[from, to],
+            &[],
+        )?;
+    }
+    let metas = [InstructionAccount::writable_signer(to.address())];
+    let mut allocate = [0u8; 12];
+    allocate[0] = 8; // SystemInstruction::Allocate
+    allocate[4..12].copy_from_slice(&(space as u64).to_le_bytes());
+    invoke_signed(
+        &InstructionView {
+            program_id: &SYSTEM_PROGRAM,
+            data: &allocate,
+            accounts: &metas,
+        },
+        &[to],
+        &[Signer::from(seeds)],
+    )?;
+    let mut assign = [0u8; 36];
+    assign[0] = 1; // SystemInstruction::Assign
+    assign[4..36].copy_from_slice(owner.as_ref());
+    invoke_signed(
+        &InstructionView {
+            program_id: &SYSTEM_PROGRAM,
+            data: &assign,
+            accounts: &metas,
+        },
+        &[to],
         &[Signer::from(seeds)],
     )
 }
@@ -638,6 +1164,13 @@ fn address_at(data: &[u8], at: usize) -> Result<Address, ProgramError> {
     bytes_at(data, at).map(Address::new_from_array)
 }
 
+fn u16_at(data: &[u8], at: usize) -> Result<u16, ProgramError> {
+    data.get(at..at + 2)
+        .and_then(|b| b.try_into().ok())
+        .map(u16::from_le_bytes)
+        .ok_or(ProgramError::InvalidInstructionData)
+}
+
 fn u64_at(data: &[u8], at: usize) -> Result<u64, ProgramError> {
     data.get(at..at + 8)
         .and_then(|b| b.try_into().ok())
@@ -647,7 +1180,80 @@ fn u64_at(data: &[u8], at: usize) -> Result<u64, ProgramError> {
 
 #[cfg(test)]
 mod tests {
-    use super::split;
+    use super::state::{Balance, Tap};
+    use super::{cap, split, tap_fee, Address, MAX_ACCRUAL};
+
+    /// The bytes the edge's client decodes in its own tests
+    /// (`edge/registrar/src/solana_escrow.rs`): change both together.
+    const BALANCE_FIXTURE: &str = "03fefd0001010101010101010101010101010101010101010101010101010101010101010202020202020202020202020202020202020202020202020202020202020202c0cf6a000000000000754c6b00000000";
+    const TAP_CLOSED_FIXTURE: &str = "04ff0100010101010101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202020202020303030303030303030303030303030303030303030303030303030303030303040404040404040404040404040404040404040404040404040404040404040440420f000000000000d2496b0000000010e0496b000000009001";
+    const TAP_OPEN_FIXTURE: &str = "04ff0000010101010101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202020202020303030303030303030303030303030303030303030303030303030303030303040404040404040404040404040404040404040404040404040404040404040440420f000000000000d2496b0000000000000000000000009001";
+
+    fn hex(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn the_layouts_the_edge_reads_are_pinned() {
+        let balance = Balance {
+            bump: 254,
+            vault_bump: 253,
+            config: Address::new_from_array([1; 32]),
+            buyer: Address::new_from_array([2; 32]),
+            asked: 7_000_000,
+            not_before: 1_800_172_800,
+        };
+        let mut data = [0u8; Balance::LEN];
+        balance.write(&mut data);
+        assert_eq!(data.to_vec(), hex(BALANCE_FIXTURE));
+        assert_eq!(Balance::read(&data), Some(balance));
+
+        let closed = Tap {
+            bump: 255,
+            config: Address::new_from_array([1; 32]),
+            buyer: Address::new_from_array([2; 32]),
+            seller: Address::new_from_array([3; 32]),
+            id: [4; 32],
+            rate: 1_000_000,
+            settled_at: 1_800_000_000,
+            closed_at: Some(1_800_003_600),
+            fee_bps: 400,
+        };
+        let mut data = [0u8; Tap::LEN];
+        closed.write(&mut data);
+        assert_eq!(data.to_vec(), hex(TAP_CLOSED_FIXTURE));
+        assert_eq!(Tap::read(&data), Some(closed));
+        let open = Tap {
+            closed_at: None,
+            ..closed
+        };
+        open.write(&mut data);
+        assert_eq!(data.to_vec(), hex(TAP_OPEN_FIXTURE));
+        assert_eq!(Tap::read(&data), Some(open));
+        // A closed flag other than 0 or 1 is not a tap.
+        data[2] = 2;
+        assert_eq!(Tap::read(&data), None);
+    }
+
+    #[test]
+    fn a_tap_bills_at_most_its_rate_for_at_most_a_week() {
+        assert_eq!(cap(3_600, 1), 1);
+        assert_eq!(cap(1_000_000, 90 * 60), 1_500_000);
+        // Rounded down.
+        assert_eq!(cap(1, 3_599), 0);
+        assert_eq!(cap(7, 1_800), 3);
+        // A week at most, and never for time that has not passed.
+        assert_eq!(cap(1_000, 30 * 24 * 3600), cap(1_000, MAX_ACCRUAL));
+        assert_eq!(cap(1_000, -5), 0);
+        // The largest rate for the longest time still fits.
+        assert_eq!(cap(u64::MAX, MAX_ACCRUAL), u128::from(u64::MAX) * 7 * 24);
+        assert_eq!(tap_fee(999, 400), 39);
+        assert_eq!(tap_fee(24, 400), 0);
+        assert_eq!(tap_fee(u64::MAX, 5000), u64::MAX / 2);
+    }
 
     #[test]
     fn a_split_scales_the_fee_with_what_the_seller_keeps() {

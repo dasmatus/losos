@@ -33,12 +33,9 @@ const NOW = Date.UTC(2026, 9, 8, 9, 30); // 2026-10-08 09:30Z, so dates in shots
 
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   forgejoMode: 'container',
   hostName: 'mattbox',
-  https: true,
   gpuEnable: false,
-  apachePort: 11000,
   proxyEnable: false,
   clusterEnable: false,
   shareCompute: false,
@@ -273,6 +270,78 @@ const MARKET_SLOTS = {
   },
 };
 
+/* A box on an official edge that settles in USDC on Base and Solana and
+ * runs AI models on the memory boxes lend: one model running for this box
+ * for three hours, its balance under a day of runway, and this box lending
+ * 16 GiB to the group that serves it. */
+const USDC_MAINNET = {
+  test: false,
+  chain_id: 8453,
+  solana: 'solana',
+  ens_chain_id: null,
+  chains: [
+    {
+      network: 'base',
+      name: 'Base',
+      family: 'evm',
+      chain_id: 8453,
+      usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      pay: `0x${'7a'.repeat(20)}`,
+      treasury: `0x${'3c'.repeat(20)}`,
+    },
+    {
+      network: 'solana',
+      name: 'Solana',
+      family: 'solana',
+      chain_id: null,
+      usdc: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      pay: 'Esc7oWpF3x1QfXo4pYbJjLW1kY5nqH8TzCtqGm2RA9dV',
+      treasury: 'Trs9vH4dQ1mWb6KxJ3cNfR8sLpZ2gYtE5uAoXk7nB1q',
+    },
+  ],
+};
+const MARKET_AI = {
+  ...MARKET_OPEN,
+  account: { ...MARKET_OPEN.account, currency: 'usd', seller_onboarded: true, seller_ready: true, usdc: USDC_MAINNET },
+};
+const LLM_STARTED = NOW / 1000 - 3 * 3600;
+const LLM = {
+  available: true,
+  network: 'base',
+  feeBps: 400,
+  models: [
+    { id: 'llama-3-3-70b', name: 'Llama 3.3 70B', needMib: 46080, context: 8192, priceIn: '600000', priceOut: '900000', licence: 'Llama 3.3 Community', lentMib: 61440, group: 'ready', boxes: 4 },
+    { id: 'qwen3-32b', name: 'Qwen3 32B', needMib: 22528, context: 8192, priceIn: '300000', priceOut: '450000', licence: 'Apache-2.0', lentMib: 61440 },
+    { id: 'deepseek-r1', name: 'DeepSeek R1', needMib: 409600, context: 4096, priceIn: '2000000', priceOut: '4000000', licence: 'MIT', lentMib: 61440 },
+  ],
+  meters: [
+    {
+      id: 'mtr_5c1e0a9b7d3f42e8a6b01c9d',
+      model: 'llama-3-3-70b',
+      network: 'base',
+      state: 'open',
+      wallet: `0x${'4e'.repeat(20)}`,
+      spendPerHour: '500000',
+      boxes: 4,
+      group: 'ready',
+      requests: 9,
+      tokensIn: 12400,
+      tokensOut: 3100,
+      billedE6: '10230000000',
+      paid: '0',
+      createdAt: LLM_STARTED,
+    },
+  ],
+  wallets: [
+    { network: 'base', wallet: `0x${'4e'.repeat(20)}`, balance: 8000000, asked: 0, notBefore: 0, available: '7989770', runwaySecs: 57526, low: true },
+  ],
+  lending: { paid: '4210000', owed: '380000', model: 'llama-3-3-70b', group: 'ready', lentMib: 16384 },
+  noticeSecs: 172800,
+  minSpendPerHour: '10000',
+  maxSpendPerHour: '100000000',
+};
+const LENDING = { 'inference.lend.enable': 'true', 'inference.lend.memoryMiB': '16384' };
+
 const CONFIG = {
   enabled: true,
   repository: {
@@ -307,27 +376,6 @@ const RESULTS = {
 
 /* One app installed from the search, and what the box reads out of a chart
  * for the install dialog. */
-/* LosOS cloud's own apps on the Apps pane's LosOS cloud fold. */
-const CLOUD_APPS = {
-  available: true,
-  store: true,
-  apps: [
-    { id: 'calendar', name: 'Calendar', summary: 'A calendar app for LosOS cloud.', version: '5.5.4', kind: 'bundled', enabled: true, locked: null },
-    { id: 'contacts', name: 'Contacts', summary: 'An address book for LosOS cloud.', version: '7.2.5', kind: 'bundled', enabled: true, locked: null },
-    { id: 'deck', name: 'Deck', summary: 'Kanban-style boards for your projects.', version: '1.15.2', kind: 'store', enabled: true, locked: null },
-    { id: 'notes', name: 'Notes', summary: 'Distraction-free notes.', version: '4.12.1', kind: 'bundled', enabled: false, locked: null },
-    { id: 'user_saml', name: 'SSO & SAML authentication', summary: null, version: '7.1.0', kind: 'bundled', enabled: true, locked: { by: 'losos', reason: 'signIn' } },
-    { id: 'files', name: 'Files', summary: null, version: '2.4.0', kind: 'core', enabled: true, locked: { by: 'nextcloud' } },
-    { id: 'activity', name: 'Activity', summary: null, version: '5.0.0', kind: 'core', enabled: true, locked: null },
-  ],
-};
-const CLOUD_STORE = {
-  results: [
-    { id: 'whiteboard', name: 'Whiteboard', summary: 'A shared whiteboard to draw on together.', version: '1.5.6', homepage: 'https://apps.nextcloud.com/apps/whiteboard', featured: true },
-    { id: 'polls', name: 'Polls', summary: 'Polls for dates and opinions.', version: '8.4.2', homepage: 'https://apps.nextcloud.com/apps/polls', featured: false },
-  ],
-};
-
 const APPS = {
   available: true,
   sharedAvailable: false,
@@ -395,18 +443,18 @@ const options = (overrides = {}) => ({
   stray: [],
   excluded: DOC.excluded,
 });
-/* GET /api/site: the settings of LosOS cloud and LosOS Git only. */
-const SITE_OPTION = /^(nextcloud|forgejo)\.(site\.|federation\.enable$)/;
+/* GET /api/site: the settings of LosOS Cloud and LosOS Git only. */
+const SITE_OPTION = /^(cloud\.trashDays|forgejo\.(site\..+|federation\.enable))$/;
 const site = (overrides = {}) => {
   const doc = options(overrides);
   return { ...doc, options: doc.options.filter((o) => SITE_OPTION.test(o.name)), excluded: {} };
 };
 
-/* Six pins, as an owner would have them after a week: two LosOS cloud apps,
- * a file, a folder, a repository and an app installed from the search. */
+/* Six pins, as an owner would have them after a week: two pages of LosOS
+ * Cloud, a file, a folder, a repository and an app installed from the search. */
 const PINS = [
-  { kind: 'tile', app: 'calendar' },
-  { kind: 'tile', app: 'notes' },
+  { kind: 'tile', app: 'files' },
+  { kind: 'tile', app: 'photos' },
   { kind: 'file', id: 42, path: '/Documents/plan.pdf', folder: false },
   { kind: 'file', id: 11, path: '/Photos/Holidays 2026', folder: true },
   { kind: 'repo', owner: 'notshared', name: 'site' },
@@ -457,7 +505,7 @@ const REBUILDS = {
   jobs: [
     { job: 'losos-rebuild-7f3a', state: 'done', at: NOW - 2 * 3600_000, message: 'Rebuilt and switched.' },
     { job: 'losos-rebuild-61c0', state: 'done', at: NOW - 26 * 3600_000, message: 'Rebuilt and switched.' },
-    { job: 'losos-rebuild-2b9e', state: 'failed', at: NOW - 3 * 86400_000, message: 'error: attribute "losos.nextcloud.port" is read-only' },
+    { job: 'losos-rebuild-2b9e', state: 'failed', at: NOW - 3 * 86400_000, message: 'error: attribute "losos.cloud.trashDays" must be between 1 and 365' },
   ],
 };
 
@@ -520,6 +568,7 @@ async function open({
   storage = STORAGE,
   look = LOOK_PLAIN,
   market = MARKET_OFF,
+  llm = { available: false },
   domains = DOMAINS_OFF,
   backup = BACKUP_SET,
   board = BOARD,
@@ -592,6 +641,7 @@ async function open({
   await page.route('**/api/edge', (route) => json(route, 200, edge));
   await page.route('**/api/storage', (route) => json(route, 200, storage));
   await page.route('**/api/market', (route) => json(route, 200, market));
+  await page.route('**/api/market/llm/models', (route) => json(route, 200, llm));
   await page.route('**/api/domains', (route) => json(route, 200, domains));
   await page.route('**/api/backup', (route) => json(route, 200, backup));
   await page.route('**/api/config', (route) => json(route, 200, CONFIG));
@@ -611,8 +661,6 @@ async function open({
   await page.route('**/api/apply', (route) => json(route, 200, apply));
   await page.route('**/api/recovery', (route) => json(route, 200, { code: '7d1c3a52-9b0e-4f61-8c2d-5a7e9f0b1c3d', minted: true }));
   await page.route('**/api/apps', (route) => json(route, 200, APPS));
-  await page.route('**/api/cloud/apps', (route) => json(route, 200, CLOUD_APPS));
-  await page.route('**/api/cloud/apps/search**', (route) => json(route, 200, CLOUD_STORE));
   await page.route('**/api/apps/search**', (route) => json(route, 200, RESULTS));
   await page.route('**/api/apps/chart**', (route) => json(route, 200, CHART));
   await page.route('**/api/look', (route) => {
@@ -621,15 +669,11 @@ async function open({
     current = { ...current, ...(patch.background ? { background: patch.background } : {}), ...(typeof patch.veil === 'number' ? { veil: patch.veil } : {}) };
     return json(route, 200, current);
   });
-  // The app tiles probe LosOS cloud and LosOS Git; both answer.
-  await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true, version: '32.0.1.2', productname: 'LosOS cloud' }));
+  // The app tiles probe LosOS Cloud and LosOS Git; both answer.
+  await page.route('**/status.php', (route) => json(route, 200, { installed: true, productname: 'LosOS Cloud' }));
   await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>LosOS Git</title>' }));
-  // The wizard's frame: what Nextcloud's <head> carries once the owner is
-  // signed in, over an empty body. The shot that uses it is clipped above
-  // the frame, so nothing of the app is drawn, let alone invented.
-  await page.route(/\/nextcloud(\/.*)?$/, (route) =>
-    route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><html><head data-requesttoken="x" data-user="notshared"></head><body style="margin:0;background:#f4f6f6"></body></html>' }),
-  );
+  // The wizard's last step asks LosOS Cloud who is signed in: nobody yet.
+  await page.route('**/cloud/api/me', (route) => json(route, 401, { error: 'signed out' }));
 
   await page.goto(AT + path, { waitUntil: 'networkidle' });
   await page.waitForTimeout(600);
@@ -743,27 +787,8 @@ const SHOTS = [
       await settle(page, 800);
     },
   },
-  /* LosOS cloud's fold: its apps, each with a switch, and the app store
-   * search under them. */
-  {
-    name: 'apps-cloud',
-    path: '/apps#cloud',
-    langs: true,
-    act: async (page) => {
-      await page.getByTestId('cloud-apps').waitFor();
-      await page.getByTestId('cloud-store').locator('input[type="search"]').fill('whiteboard');
-      await page.locator('[data-store-app="whiteboard"]').waitFor();
-      await settle(page, 600);
-      // The crop measures from the window, so from the top of the page.
-      await page.evaluate(() => window.scrollTo(0, 0));
-    },
-    crop: {
-      selector: '[data-slot="accordion-trigger"]:has-text("LosOS cloud"), [data-testid="cloud-apps"], [data-testid="cloud-store"]',
-      pad: 8,
-    },
-  },
-  /* The box-wide settings of both apps, with the cloud's language set to the
-   * page's own and the trash emptied after 30 days. */
+  /* The box-wide settings of both apps, with the trash emptied after two
+   * weeks. */
   {
     name: 'apps-site-settings',
     path: '/apps',
@@ -773,12 +798,7 @@ const SHOTS = [
       await settle(page, 600);
       await page.evaluate(() => window.scrollTo(0, 0));
     },
-    perLang: (lang) => ({
-      overrides: {
-        'nextcloud.site.trashDays': '30',
-        ...(lang === 'en' ? {} : { 'nextcloud.site.defaultLanguage': `"${lang}"` }),
-      },
-    }),
+    overrides: { 'cloud.trashDays': '14' },
     crop: { selector: '[data-testid="site-cloud"], [data-testid="site-git"]', pad: 8 },
   },
   { name: 'storage', path: '/storage', crop: 'fit', langs: true },
@@ -988,6 +1008,17 @@ const SHOTS = [
   { name: 'overview-de-dark', path: '/', lang: 'de', theme: 'dark' },
   { name: 'market-open', path: '/settings/market', edge: EDGE_OFFICIAL, market: MARKET_OPEN, settings: JOINED, langs: true },
   { name: 'market-slots', path: '/settings/market', edge: EDGE_OFFICIAL, market: MARKET_SLOTS, settings: JOINED, full: true },
+  { name: 'market-ai', path: '/settings/market', edge: EDGE_OFFICIAL, market: MARKET_AI, llm: LLM, settings: JOINED, overrides: LENDING, full: true },
+  {
+    name: 'market-lend',
+    path: '/settings/market',
+    edge: EDGE_OFFICIAL,
+    market: MARKET_AI,
+    llm: LLM,
+    settings: JOINED,
+    overrides: LENDING,
+    crop: { selector: '[data-testid="lend-memory"]', pad: 24 },
+  },
   // ── The wizard ───────────────────────────────────────────────────────
   { name: 'wizard-step1-trust', path: '/', claimed: false, signedIn: false, full: true, crop: 'column', langs: true },
   { name: 'wizard-step1-trust-phone', path: '/', claimed: false, signedIn: false, viewport: { width: 390, height: 844 } },
@@ -997,7 +1028,7 @@ const SHOTS = [
     claimed: false,
     signedIn: false,
     ready: false,
-    waitingFor: 'LosOS cloud is still installing itself',
+    waitingFor: 'LosOS Login is still starting',
     crop: 'column',
     langs: true,
     act: async (page, t) => {
@@ -1027,7 +1058,7 @@ const SHOTS = [
     path: '/',
     claimed: false,
     signedIn: false,
-    crop: { clip: { x: 300, y: 0, width: 680, height: 200 } },
+    crop: 'column',
     langs: true,
     act: async (page, t) => {
       await wizardSetPassword(page, t);

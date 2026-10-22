@@ -104,13 +104,9 @@ impl Paths {
         self.state_dir.join("forgejo-auth")
     }
 
-    /// The sidebar's pins (`crate::pins`).
-    pub fn pins_file(&self) -> PathBuf {
-        self.state_dir.join("pins.json")
-    }
-
-    /// The LosOS cloud app password the pin picker lists folders with.
-    pub fn cloud_key_file(&self) -> PathBuf {
+    /// Where an older build kept a LosOS cloud app password for the pin
+    /// picker; removed at start, since the picker asks over the socket now.
+    pub fn retired_cloud_key_file(&self) -> PathBuf {
         self.state_dir.join("cloud-key")
     }
 }
@@ -225,17 +221,6 @@ pub fn atomic_write_secret(path: &Path, content: &[u8]) -> anyhow::Result<()> {
     write_atomically(path, content, 0o600, 0o700, None)
 }
 
-/// [`atomic_write_secret`] for a file that must belong to `uid` (owner and
-/// group), owned from before it appears under its real name.
-///
-/// For the staged Nextcloud password, which lands in a directory the pod's
-/// uid can write to. The old sequence, write as root then `chown(path)`, let
-/// that uid swap the freshly renamed file for a symlink to the admin token in
-/// the gap and have root chown the token over to it.
-pub fn atomic_write_secret_owned(path: &Path, content: &[u8], uid: u32) -> anyhow::Result<()> {
-    write_atomically(path, content, 0o600, 0o700, Some(uid))
-}
-
 /// The real [`crate::recovery::CodeStore`]: one 0600 file plus `/dev/urandom`.
 ///
 /// Separate from [`IoLosos`] rather than folded into it because the recovery
@@ -282,19 +267,12 @@ impl FileCodeStore {
 /// Nothing is passed through a shell: the argument vector goes to `execve`, so
 /// the query needs no quoting to be safe. [`crate::catalogue::validate_query`]
 /// still refuses control characters, so the property does not rest on that.
-/// The app store's list for this box's Nextcloud, from
-/// `$LOSOS_NEXTCLOUD_VERSION` (modules/daemon.nix); `None` without one.
-fn nextcloud_store_url() -> Option<String> {
-    crate::cloud_apps::store_url(&std::env::var("LOSOS_NEXTCLOUD_VERSION").ok()?)
-}
-
 fn curl_get(url: &str) -> anyhow::Result<String> {
     // Bytes of response body accepted. The screen renders twenty rows.
     curl_get_bounded(url, 2 * 1024 * 1024, crate::catalogue::TIMEOUT_SECS)
 }
 
-/// [`curl_get`] with its two bounds given: the app store's list for one
-/// Nextcloud version is about 17 MB, where a catalogue search is kilobytes.
+/// [`curl_get`] with its two bounds given.
 fn curl_get_bounded(url: &str, max_bytes: usize, timeout_secs: u32) -> anyhow::Result<String> {
     let out = std::process::Command::new("curl")
         .args(["--silent", "--show-error", "--fail", "--location"])
@@ -802,11 +780,10 @@ pub fn start_edge_scanner(backend: &IoLosos) {
     }
 }
 
-/// Where the live custom domains go for LosOS cloud
-/// (`$LOSOS_PUBLIC_NAMES_FILE`). Its directory is world-readable on purpose
-/// and outside the daemon's 0700 state directory: the Nextcloud pod mounts it
-/// read-only (modules/workloads.nix) and its PHP config reads the file on
-/// every request. The names are public anyway; they are in public DNS.
+/// Where the live custom domains go (`$LOSOS_PUBLIC_NAMES_FILE`). Its
+/// directory is world-readable on purpose and outside the daemon's 0700
+/// state directory: LosOS Login reads it (modules/identity.nix). The names
+/// are public anyway; they are in public DNS.
 pub const DEFAULT_PUBLIC_NAMES_FILE: &str = "/var/lib/losos-public-names/domains.json";
 
 /// Where the relay pass goes for `losos-registrar announce --relay-pass-file`
@@ -875,13 +852,10 @@ fn curl_market(
     config: &crate::market::Config,
     op: &crate::market::Op,
 ) -> anyhow::Result<(u16, String)> {
-    /// A listing page is small; a registrar that sends more is wrong.
-    const MAX_BYTES: usize = 1024 * 1024;
-    /// Above the registrar's own budget for the routes that wait on Stripe
-    /// (`STRIPE_ROUTE_TIMEOUT` in edge/registrar/src/server.rs, 22 s:
-    /// four gate calls of 5 s plus persistence), so a slow but successful
-    /// onboarding is not dropped here after the account was already made.
-    const TIMEOUT_SECS: &str = "25";
+    // A listing page is small, and most routes answer in seconds; an answer
+    // from an AI model is longer and slower (`Op::max_reply_bytes`,
+    // `Op::timeout_secs`, which say why).
+    let max_bytes = op.max_reply_bytes();
 
     let (method, path) = op.route();
     let token = std::fs::read_to_string(&config.token_file)
@@ -898,8 +872,8 @@ fn curl_market(
             "--max-redirs",
             "0",
         ])
-        .args(["--max-time", TIMEOUT_SECS])
-        .args(["--max-filesize", &MAX_BYTES.to_string()])
+        .args(["--max-time", &op.timeout_secs().to_string()])
+        .args(["--max-filesize", &max_bytes.to_string()])
         .args(["--header", "Accept: application/json"])
         .args(["--write-out", "\n%{http_code}"])
         .args(["--request", method]);
@@ -930,8 +904,8 @@ fn curl_market(
             String::from_utf8_lossy(&out.stderr).trim()
         );
     }
-    if out.stdout.len() > MAX_BYTES + 8 {
-        anyhow::bail!("the registrar returned more than {MAX_BYTES} bytes");
+    if out.stdout.len() > max_bytes + 8 {
+        anyhow::bail!("the registrar returned more than {max_bytes} bytes");
     }
     let text = String::from_utf8(out.stdout).context("the registrar returned non-UTF-8")?;
     let (body, code) = text
@@ -1674,82 +1648,37 @@ impl Losos for IoLosos {
         Ok(supervisor::log_tail(&self.paths.rebuild_log()))
     }
 
-    fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
-        Ok(read_if_present(self.paths.pins_file(), "reading the pins")?
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default())
-    }
-
-    fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()> {
-        let bytes = serde_json::to_vec(pins).context("encoding the pins")?;
-        atomic_write(&self.paths.pins_file(), &bytes)
-    }
-
-    fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>> {
-        Ok(
-            read_if_present(self.paths.cloud_key_file(), "reading the LosOS cloud key")?
-                .as_deref()
-                .and_then(crate::pins::CloudKey::decode),
-        )
-    }
-
-    fn save_cloud_key(&mut self, key: Option<&crate::pins::CloudKey>) -> anyhow::Result<()> {
-        let path = self.paths.cloud_key_file();
-        match key {
-            Some(key) => atomic_write_secret(&path, key.encode().as_bytes()),
-            None => match std::fs::remove_file(&path) {
-                Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-                    Err(e).with_context(|| format!("removing {}", path.display()))
-                }
-                _ => Ok(()),
-            },
-        }
-    }
-
     fn cloud_request(
         &mut self,
         request: &crate::pins::CloudRequest<'_>,
     ) -> anyhow::Result<(u16, Vec<u8>)> {
         use std::io::Read;
-        use std::net::{TcpStream, ToSocketAddrs};
+        use std::os::unix::net::UnixStream;
         use std::time::Duration;
         // A folder of a few hundred entries is well under this; anything
         // past it is not read.
         const MAX_BYTES: usize = 4 * 1024 * 1024;
 
-        let url = std::env::var("LOSOS_NEXTCLOUD_LOGIN_URL")
+        // LosOS Cloud's socket (modules/cloud.nix). It believes the person
+        // a request names because only nginx and root can open it.
+        let socket = std::env::var("LOSOS_CLOUD_SOCKET")
             .ok()
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| crate::signin::DEFAULT_LOGIN_URL.to_string());
-        let host = std::env::var("LOSOS_NEXTCLOUD_LOGIN_HOST")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| crate::signin::DEFAULT_LOGIN_HOST.to_string());
-        let login = crate::signin::parse_login_url(&url).map_err(|e| anyhow::anyhow!(e))?;
-        let endpoint = crate::pins::CloudEndpoint::from_login(&login, &host);
-        let bytes = crate::pins::request_bytes(&endpoint, request);
-
-        // A raw socket for the reason nextcloud_login gives: the password,
-        // or the app password, never goes into an argument vector or a file.
-        let addr = endpoint
-            .addr
-            .to_socket_addrs()
-            .with_context(|| format!("resolving {}", endpoint.addr))?
-            .next()
-            .with_context(|| format!("{} names no address", endpoint.addr))?;
-        let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(5))
-            .with_context(|| format!("connecting to LosOS cloud at {addr}"))?;
+            .unwrap_or_else(|| "/run/losos-cloud/http.sock".to_string());
+        let bytes = crate::pins::request_bytes(request);
+        let mut stream = UnixStream::connect(&socket)
+            .with_context(|| format!("connecting to LosOS Cloud at {socket}"))?;
         stream.set_read_timeout(Some(Duration::from_secs(15)))?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
         stream
             .write_all(&bytes)
-            .context("sending the request to LosOS cloud")?;
+            .context("sending the request to LosOS Cloud")?;
         let mut raw = Vec::new();
         stream
             .take(MAX_BYTES as u64)
             .read_to_end(&mut raw)
-            .context("reading LosOS cloud's answer")?;
-        crate::pins::split_response(&raw).context("LosOS cloud's answer is not HTTP")
+            .context("reading LosOS Cloud's answer")?;
+        crate::pins::split_response(&raw).context("LosOS Cloud's answer is not HTTP")
     }
 
     // ── Online growth of /persist ───────────────────────────────────────
@@ -1841,292 +1770,6 @@ impl Losos for IoLosos {
         df_persist("used")
     }
 
-    // ── Setting the Nextcloud admin password ────────────────────────────
-    fn nextcloud_mode(&mut self) -> anyhow::Result<crate::setup::NcMode> {
-        // No default. Guessing "container" would run `crictl` against a socket
-        // that does not exist on a native box, and guessing "native" would run
-        // `nextcloud-occ`, which is not even in the closure of a container-mode
-        // box — and both failures read as "the command is broken" rather than
-        // "the daemon was not told". modules/daemon.nix sets this from
-        // config.losos.nextcloud.mode.
-        let raw = match std::env::var("LOSOS_NEXTCLOUD_MODE") {
-            Ok(raw) => raw,
-            Err(std::env::VarError::NotPresent) => anyhow::bail!(
-                "LOSOS_NEXTCLOUD_MODE is not set, so lososd cannot tell whether \
-                 Nextcloud is running as a k3s workload or natively. \
-                 modules/daemon.nix must set it from config.losos.nextcloud.mode."
-            ),
-            Err(e) => return Err(anyhow::Error::new(e).context("LOSOS_NEXTCLOUD_MODE")),
-        };
-        crate::setup::NcMode::parse(raw.trim()).with_context(|| {
-            format!("LOSOS_NEXTCLOUD_MODE must be 'container' or 'native': {raw:?}")
-        })
-    }
-
-    fn nextcloud_target(
-        &mut self,
-        mode: crate::setup::NcMode,
-    ) -> anyhow::Result<crate::setup::Target> {
-        if mode == crate::setup::NcMode::Native {
-            return Ok(crate::setup::Target::Native);
-        }
-        let socket = std::env::var("LOSOS_CRI_SOCKET")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| crate::setup::DEFAULT_CRI_SOCKET.to_string());
-        let argv = crate::setup::resolve_argv(&socket);
-        let (cmd, args) = argv.split_first().context("resolve_argv is never empty")?;
-        let out = std::process::Command::new(cmd)
-            .args(args)
-            .output()
-            .with_context(|| {
-                format!(
-                    "running {} (is pkgs.cri-tools on lososd's unit path?)",
-                    argv.join(" ")
-                )
-            })?;
-        if !out.status.success() {
-            anyhow::bail!(
-                "{} failed: {}",
-                argv.join(" "),
-                String::from_utf8_lossy(&out.stderr).trim()
-            );
-        }
-        let id = crate::setup::parse_container_ids(&String::from_utf8_lossy(&out.stdout))
-            .map_err(|e| anyhow::anyhow!(e))?;
-        Ok(crate::setup::Target::Container { socket, id })
-    }
-
-    fn run_occ(
-        &mut self,
-        action: &crate::setup::OccAction,
-        secret: &crate::setup::Secret,
-    ) -> anyhow::Result<Option<crate::setup::OccOutcome>> {
-        use crate::setup::{OccAction, OccOutcome, SecretChannel};
-        match action {
-            OccAction::StageSecret { path, uid } => {
-                let path = Path::new(path);
-                // No trailing newline: the in-image wrapper reads this with
-                // `$(cat …)`, which strips trailing newlines, so writing one
-                // would make the two sides agree only by accident.
-                // Owned by the pod's uid from creation, via fchown on the temp
-                // file: never a path-based chown after the rename, which would
-                // follow a symlink the pod planted in its own directory.
-                atomic_write_secret_owned(path, secret.expose().as_bytes(), *uid)
-                    .with_context(|| format!("staging the new password at {}", path.display()))?;
-                Ok(None)
-            }
-            OccAction::ClearSecret { path } => {
-                match std::fs::remove_file(path) {
-                    Ok(()) => {}
-                    // Already gone is the goal, not a failure.
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(e) => {
-                        return Err(anyhow::Error::new(e)
-                            .context(format!("removing the staged password at {path}")))
-                    }
-                }
-                Ok(None)
-            }
-            OccAction::RunOcc { argv, secret: chan } => {
-                let (cmd, args) = argv.split_first().context("RunOcc argv is never empty")?;
-                let mut child = std::process::Command::new(cmd);
-                child.args(args);
-                if let SecretChannel::Env = chan {
-                    // /proc/<pid>/environ is mode 0400 owner-only and this
-                    // child is root, unlike /proc/<pid>/cmdline.
-                    child.env("OC_PASS", secret.expose());
-                    // ResetPassword.php reads `getenv('NC_PASS') ?: getenv('OC_PASS')`,
-                    // so an NC_PASS inherited from anywhere would silently win
-                    // over the password the owner just typed.
-                    child.env_remove("NC_PASS");
-                    // The nixpkgs nextcloud-occ wrapper tests `$USER` under
-                    // `set -u`, and systemd does not export USER to a root
-                    // service with no User=. Unset, the wrapper aborts with
-                    // "USER: unbound variable" before occ ever starts.
-                    child.env("USER", "root");
-                }
-                let out = child.output().with_context(|| {
-                    format!(
-                        "running {} (is the occ wrapper on lososd's unit path?)",
-                        // The argv is safe to quote: the password is never in it.
-                        argv.join(" ")
-                    )
-                })?;
-                Ok(Some(OccOutcome {
-                    // A signalled child has no code; -1 is not a status occ can
-                    // return, so it cannot be mistaken for one.
-                    code: out.status.code().unwrap_or(-1),
-                    stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-                    stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-                }))
-            }
-        }
-    }
-
-    fn nextcloud_status(
-        &mut self,
-        target: &crate::setup::Target,
-    ) -> anyhow::Result<crate::setup::OccOutcome> {
-        let argv = crate::setup::plan_status(target);
-        let (cmd, args) = argv.split_first().context("plan_status is never empty")?;
-        let mut child = std::process::Command::new(cmd);
-        child.args(args);
-        // Same reason as the native RunOcc arm above: nixpkgs' nextcloud-occ
-        // wrapper reads `$USER` under `set -u`.
-        child.env("USER", "root");
-        let out = child
-            .output()
-            .with_context(|| format!("running {}", argv.join(" ")))?;
-        Ok(crate::setup::OccOutcome {
-            code: out.status.code().unwrap_or(-1),
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-        })
-    }
-
-    fn nextcloud_run(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome> {
-        let (cmd, args) = argv.split_first().context("an occ step is never empty")?;
-        let out = std::process::Command::new(cmd)
-            .args(args)
-            // The native wrapper reads `$USER` under `set -u`, as above.
-            .env("USER", "root")
-            .output()
-            .with_context(|| format!("running {cmd}"))?;
-        Ok(crate::setup::OccOutcome {
-            code: out.status.code().unwrap_or(-1),
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-        })
-    }
-
-    fn nextcloud_last_log(&mut self, mode: crate::setup::NcMode) -> anyhow::Result<Option<String>> {
-        if mode == crate::setup::NcMode::Native {
-            return Ok(None);
-        }
-        let socket = std::env::var("LOSOS_CRI_SOCKET")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| crate::setup::DEFAULT_CRI_SOCKET.to_string());
-        let run = |argv: Vec<String>| -> anyhow::Result<std::process::Output> {
-            let (cmd, args) = argv.split_first().context("argv is never empty")?;
-            std::process::Command::new(cmd)
-                .args(args)
-                .output()
-                .with_context(|| format!("running {}", argv.join(" ")))
-        };
-        let listed = run(crate::setup::last_container_argv(&socket))?;
-        if !listed.status.success() {
-            anyhow::bail!(
-                "crictl ps --all failed: {}",
-                String::from_utf8_lossy(&listed.stderr).trim()
-            );
-        }
-        let stdout = String::from_utf8_lossy(&listed.stdout);
-        let Some(id) = stdout.lines().map(str::trim).find(|l| !l.is_empty()) else {
-            return Ok(None);
-        };
-        // `crictl logs` prints the container's stdout and stderr on its own
-        // matching streams; the entrypoint's `fail` writes to stderr.
-        let logged = run(crate::setup::container_log_argv(&socket, id))?;
-        let text = format!(
-            "{}\n{}",
-            String::from_utf8_lossy(&logged.stdout),
-            String::from_utf8_lossy(&logged.stderr)
-        );
-        Ok(if text.trim().is_empty() {
-            None
-        } else {
-            Some(text)
-        })
-    }
-
-    fn nextcloud_login(
-        &mut self,
-        user: &str,
-        secret: &crate::setup::Secret,
-        client: &str,
-    ) -> anyhow::Result<crate::signin::LoginOutcome> {
-        use std::io::Read;
-        use std::net::{TcpStream, ToSocketAddrs};
-        use std::time::Duration;
-
-        let url = std::env::var("LOSOS_NEXTCLOUD_LOGIN_URL")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| crate::signin::DEFAULT_LOGIN_URL.to_string());
-        let host = std::env::var("LOSOS_NEXTCLOUD_LOGIN_HOST")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| crate::signin::DEFAULT_LOGIN_HOST.to_string());
-        let endpoint = crate::signin::parse_login_url(&url).map_err(|e| anyhow::anyhow!(e))?;
-        let request = crate::signin::login_request(&endpoint, &host, user, secret, client);
-
-        // A raw socket rather than curl: curl takes credentials on the
-        // command line or in a file, and neither is a channel this crate
-        // lets a password use (see the header of crate::setup). The hop is
-        // loopback and the answer is one status line, so std is enough.
-        let addr = endpoint
-            .addr
-            .to_socket_addrs()
-            .with_context(|| format!("resolving {}", endpoint.addr))?
-            .next()
-            .with_context(|| format!("{} names no address", endpoint.addr))?;
-        let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(5))
-            .with_context(|| format!("connecting to LosOS cloud at {addr}"))?;
-        // Nextcloud's brute-force protection answers a wrong password late on
-        // purpose — up to 25 seconds — so the read waits longer than that.
-        stream.set_read_timeout(Some(Duration::from_secs(40)))?;
-        stream.set_write_timeout(Some(Duration::from_secs(5)))?;
-        stream
-            .write_all(&request)
-            .context("sending the sign-in probe to LosOS cloud")?;
-        // The status line is all that is read; the rest is drained only as
-        // far as one buffer goes, and `Connection: close` ends the exchange.
-        let mut buf = vec![0u8; 4096];
-        let mut filled = 0;
-        while filled < buf.len() {
-            match stream.read(&mut buf[filled..]) {
-                Ok(0) => break,
-                Ok(n) => {
-                    filled += n;
-                    if buf[..filled].windows(4).any(|w| w == b"\r\n\r\n") {
-                        break;
-                    }
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(e) => return Err(e).context("reading LosOS cloud's answer"),
-            }
-        }
-        Ok(crate::signin::interpret_login(crate::signin::status_code(
-            &buf[..filled],
-        )))
-    }
-
-    fn nextcloud_app_password(
-        &mut self,
-        user: &str,
-        secret: &crate::setup::Secret,
-        device: &str,
-        client: &str,
-    ) -> anyhow::Result<(u16, String)> {
-        let url = std::env::var("LOSOS_NEXTCLOUD_LOGIN_URL")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| crate::signin::DEFAULT_LOGIN_URL.to_string());
-        let host = std::env::var("LOSOS_NEXTCLOUD_LOGIN_HOST")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| crate::signin::DEFAULT_LOGIN_HOST.to_string());
-        let endpoint = crate::signin::parse_login_url(&url).map_err(|e| anyhow::anyhow!(e))?;
-        let path = crate::devices::app_password_path(&endpoint.path);
-        let request =
-            crate::devices::app_password_request(&path, &host, user, secret, device, client);
-        // Nextcloud answers a wrong password late on purpose, as at the
-        // sign-in, so the read waits longer than its 25 seconds.
-        loopback_exchange(&endpoint.addr, &request, 40).context("asking LosOS cloud")
-    }
-
     fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
         crate::recovery::ensure_code(&mut FileCodeStore::from_env())
     }
@@ -2136,80 +1779,25 @@ impl Losos for IoLosos {
         crate::catalogue::parse_results(&body)
     }
 
-    fn run_cloud_apps(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome> {
-        let (cmd, args) = argv
-            .split_first()
-            .context("cloud_apps::plan is never empty")?;
-        let mut child = std::process::Command::new(cmd);
-        child.args(args);
-        // Natively the tool runs nixpkgs' nextcloud-occ, which reads `$USER`
-        // under `set -u` (the same reason as RunOcc above).
-        child.env("USER", "root");
-        let out = child.output().with_context(|| {
-            format!(
-                "running {} (is it on lososd's unit path, or in the pod's image?)",
-                argv.join(" ")
-            )
-        })?;
-        Ok(crate::setup::OccOutcome {
-            code: out.status.code().unwrap_or(-1),
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-        })
-    }
-
-    fn cloud_store_offered(&mut self) -> bool {
-        nextcloud_store_url().is_some()
-    }
-
-    fn cloud_store(&mut self) -> anyhow::Result<std::sync::Arc<Vec<crate::cloud_apps::StoreApp>>> {
-        use std::sync::{Arc, Mutex};
-        use std::time::{Duration, Instant};
-        /// How long a fetched list is used before the store is asked again.
-        const FRESH: Duration = Duration::from_secs(6 * 60 * 60);
-        type Cached = (Instant, String, Arc<Vec<crate::cloud_apps::StoreApp>>);
-        static CACHE: Mutex<Option<Cached>> = Mutex::new(None);
-
-        let url = nextcloud_store_url().context(
-            "LOSOS_NEXTCLOUD_VERSION is not a plain Nextcloud version (modules/daemon.nix)",
-        )?;
-        let stale = {
-            let cache = CACHE
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            match cache.as_ref() {
-                Some((at, for_url, index)) if *for_url == url && at.elapsed() < FRESH => {
-                    return Ok(Arc::clone(index));
-                }
-                Some((_, for_url, index)) if *for_url == url => Some(Arc::clone(index)),
-                _ => None,
-            }
-        };
-        let fetched = curl_get_bounded(&url, 48 * 1024 * 1024, 60)
-            .and_then(|body| crate::cloud_apps::parse_store(&body));
-        match fetched {
-            Ok(index) => {
-                let index = Arc::new(index);
-                *CACHE
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                    Some((Instant::now(), url, Arc::clone(&index)));
-                Ok(index)
-            }
-            // An old list beats none while the store is unreachable, which
-            // is the store's fault, not the request's (502).
-            Err(e) => stale.ok_or_else(|| {
-                crate::cloud_apps::Failed(format!("The app store did not answer: {e:#}")).into()
-            }),
-        }
-    }
-
     fn apps_config(&mut self) -> Option<crate::apps::Config> {
         // The job is wired by modules/apps.nix only on a box that runs its
         // own cluster; without it there is nothing to install into.
         std::env::var_os("LOSOS_APPS_JOB")?;
         let ports = crate::apps::parse_port_range(&std::env::var("LOSOS_APPS_PORTS").ok()?)?;
-        Some(crate::apps::Config { ports })
+        // modules/apps.nix sets it only on a box that runs its own cluster.
+        let kube = std::env::var("LOSOS_APPS_KUBE").is_ok_and(|v| v == "1");
+        let builtin = std::env::var("LOSOS_APPS_BUILTIN")
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(str::to_string)
+            .collect();
+        Some(crate::apps::Config {
+            ports,
+            kube,
+            builtin,
+        })
     }
 
     fn chart_files(
@@ -2239,6 +1827,35 @@ impl Losos for IoLosos {
         }
         records.sort_by(|a, b| a.release.cmp(&b.release));
         Ok(records)
+    }
+
+    fn save_app_source(
+        &mut self,
+        release: &str,
+        compose: &str,
+        files: &[(String, String)],
+    ) -> anyhow::Result<()> {
+        // Written beside the record, root's alone like it: the files can
+        // carry the app's passwords. The job copies them into the app's
+        // project, owned by the app's user. Staged under a temporary name
+        // and swapped in whole, so a job never reads half of one install
+        // and half of the next.
+        let dir = apps_dir().join(release);
+        std::fs::create_dir_all(&dir).context("creating the app's directory")?;
+        let staged = dir.join("source.new");
+        if staged.exists() {
+            std::fs::remove_dir_all(&staged).context("clearing a staged source")?;
+        }
+        atomic_write_secret(&staged.join("compose.yaml"), compose.as_bytes())?;
+        for (path, text) in files {
+            atomic_write_secret(&staged.join("files").join(path), text.as_bytes())?;
+        }
+        let live = dir.join("source");
+        if live.exists() {
+            std::fs::remove_dir_all(&live).context("clearing the old source")?;
+        }
+        std::fs::rename(&staged, &live).context("putting the source in place")?;
+        Ok(())
     }
 
     fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()> {
@@ -2301,7 +1918,7 @@ impl Losos for IoLosos {
             return Ok(crate::market::Outcome::Unavailable);
         };
         let (status, body) = curl_market(&config, op)?;
-        crate::market::classify(status, &body)
+        op.classify(status, &body)
     }
 
     fn read_options_doc(&mut self) -> anyhow::Result<Option<crate::options::OptionsDoc>> {
@@ -2955,18 +2572,18 @@ mod tests {
     }
 
     #[test]
-    fn staged_secret_is_owned_through_the_fd_and_never_follows_a_symlink() {
+    fn an_owned_file_is_owned_through_the_fd_and_never_follows_a_symlink() {
         use std::os::unix::fs::MetadataExt;
         let dir = tmpdir().join("stage");
         std::fs::create_dir_all(&dir).unwrap();
         let victim = dir.join("victim");
         std::fs::write(&victim, b"untouched").unwrap();
         let staged = dir.join(".losos-setpass");
-        // What a hostile pod would plant: the staged name already pointing at
-        // a file it must not get.
+        // What whoever can write the directory would plant: the name already
+        // pointing at a file they must not get.
         std::os::unix::fs::symlink(&victim, &staged).unwrap();
         let uid = std::fs::metadata(&dir).unwrap().uid();
-        atomic_write_secret_owned(&staged, b"pw", uid).unwrap();
+        write_atomically(&staged, b"pw", 0o600, 0o700, Some(uid)).unwrap();
         let meta = std::fs::symlink_metadata(&staged).unwrap();
         assert!(
             meta.file_type().is_file(),

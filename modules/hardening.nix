@@ -21,7 +21,7 @@
 # ── The constraint that shapes everything below ──────────────────────────────
 #
 # This box runs two Kubernetes instances (modules/cluster.nix): a local k3s
-# server for its own Nextcloud and Forgejo, and an rke2 agent that joins the
+# server for its own Forgejo and apps, and an rke2 agent that joins the
 # edge for Longhorn and mesh compute. Published hardening baselines are written
 # for machines that do not run a container runtime, and a large fraction of
 # what they recommend breaks one. Every such setting is called out by name here
@@ -42,8 +42,8 @@
 #
 # Every claim in this file is asserted in nix/tests/hardening.nix against three
 # booted VMs, including the claims about what is deliberately *not* set. That
-# test does not boot Kubernetes (pulling the ~2.6 GiB Nextcloud image into a
-# test VM is a multi-hour build); it asserts the kernel surface Kubernetes
+# test does not boot Kubernetes (pulling the workload images into a test VM
+# is a long build); it asserts the kernel surface Kubernetes
 # needs is intact, and nix/tests/cluster-vm.nix covers the rest.
 #
 # Scope note: imported by the `install` system only. The ISO must keep squashfs
@@ -166,7 +166,7 @@ in
 
         # CPU side channels. `mitigations=auto,nosmt` is deliberately NOT
         # used: the `nosmt` half halves the core count of a mini-PC that
-        # transcodes video for Nextcloud, and it has its own opt-in flag
+        # makes previews for LosOS Cloud, and it has its own opt-in flag
         # (losos.hardening.nosmt) so that trade stays a decision rather than a
         # side effect of this line. Everything below is the half that costs
         # nothing a default kernel was not already paying.

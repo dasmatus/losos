@@ -82,6 +82,7 @@ use crate::market::{
     AccountView, CheckoutView, HardwareCheckoutView, Market, MarketError, NewListing, NewOrder,
     OnboardView, Provision, PublicListing, Sharing,
 };
+use crate::onramp::{Onramp, OnrampError, OrderView};
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
 use crate::relay::{self, Enrolment, RelayRefused, RelayReq, RelayResp, RelayRoute, UplinkFile};
@@ -90,6 +91,7 @@ use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 use crate::zone::{self, ZoneNames};
 
+mod llm;
 mod manage;
 mod operator;
 mod vm;
@@ -144,7 +146,12 @@ const STRIPE_ROUTES: [&str; 3] = [
 /// they get more than [`REQUEST_TIMEOUT`] and still stay under the box's
 /// 25 s relay.
 const COIN_ROUTE_TIMEOUT: Duration = Duration::from_secs(20);
-const COIN_ROUTES: [&str; 2] = ["/market/coins/key", "/market/coins/pay"];
+const COIN_ROUTES: [&str; 3] = [
+    "/market/coins/key",
+    "/market/coins/pay",
+    // Reads every tap of a meter back from the chain.
+    "/market/taps/confirm",
+];
 
 /// Budget for `POST /identity/cert`, which asks GitHub who the pusher is
 /// before it looks at the list: one round trip to api.github.com, bounded
@@ -215,6 +222,14 @@ struct AppState {
     last_shed: Arc<std::sync::Mutex<Option<std::time::Instant>>>,
     /// `None` unless `--market-gate-socket` was given.
     market: Option<Arc<Market>>,
+    /// Binance's on-ramp (`crate::onramp`); `None` without
+    /// `--onramp-binance-api`.
+    onramp: Option<Arc<Onramp>>,
+    /// AI models across lending boxes; `None` without `--inference-models`.
+    inference: Option<Arc<crate::inference::Inference>>,
+    /// Chat requests in flight (`llm::MAX_CHATS`), which run outside
+    /// [`guard`].
+    chats: Arc<Semaphore>,
     /// This edge's identity key and, once pushed, its certificate
     /// (`crate::identity`); `None` (no `--identity-key-file`) makes every
     /// `/identity*` route a 404, i.e. an edge that cannot become official.
@@ -273,6 +288,9 @@ struct HeartbeatReq {
     /// unknown resolves that way.
     #[serde(default)]
     idle: Option<bool>,
+    /// The memory the box lends to AI models now, MiB. Absent is none.
+    #[serde(default)]
+    llm_mib: Option<u64>,
     /// As on [`RegisterReq`].
     #[serde(default)]
     relay_pass: Option<String>,
@@ -453,6 +471,32 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         )),
         None => None,
     };
+    let onramp = match &opts.onramp {
+        Some(o) => Some(Arc::new(
+            Onramp::open(o.clone())
+                .await
+                .map_err(|e| miette!("open the onramp store: {e}"))?,
+        )),
+        None => None,
+    };
+
+    let inference = match &opts.inference {
+        None => None,
+        Some(i) => {
+            if opts.market.as_ref().and_then(|m| m.usdc.as_ref()).is_none() {
+                return Err(miette!(
+                    "--inference-models needs the market with USDC (--market-usdc): models are paid for through it"
+                ));
+            }
+            let state_file = Path::new(&opts.registry_path).with_file_name("inference.json");
+            let heads = Arc::new(crate::inference::SystemdHeads::new(i));
+            Some(Arc::new(
+                crate::inference::Inference::open(i.clone(), opts.port_range, state_file, heads)
+                    .await
+                    .map_err(|e| miette!("open the model catalogue: {e}"))?,
+            ))
+        }
+    };
 
     // Opened before the API accepts: the key is made here on the first start
     // if the file is missing (the private half never travels), and the
@@ -553,6 +597,9 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         limiter: Arc::new(Semaphore::new(MAX_INFLIGHT)),
         last_shed: Arc::new(std::sync::Mutex::new(None)),
         market,
+        onramp,
+        inference,
+        chats: llm::chats(),
         identity,
         push_lock: Arc::new(Mutex::new(())),
         http: reqwest::Client::builder()
@@ -615,6 +662,12 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/market/fees/pay", post(market_fees_pay))
         .route("/market/rpc", post(market_rpc))
         .route("/market/account", post(market_account))
+        // Pay as you go for AI models (`llm`). The chat route is merged
+        // below, outside the guard.
+        .route("/market/llm/models", post(llm::overview))
+        .route("/market/taps", post(llm::quote))
+        .route("/market/taps/confirm", post(llm::confirm))
+        .route("/market/taps/stop", post(llm::stop))
         .route("/market/hardware", get(market_hardware))
         .route("/market/hardware/checkout", post(market_hardware_checkout))
         // Virtual machines (crate::vms): the catalogue is anonymous like the
@@ -628,6 +681,15 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
             "/market/webhook",
             post(market_webhook).layer(DefaultBodyLimit::max(MAX_WEBHOOK_BYTES)),
         )
+        // Euros to USDC at Binance (crate::onramp): 503 unless the edge has
+        // a Binance partner. The two box routes take the appliance token;
+        // the webhook is authenticated by Binance's signature.
+        .route("/market/onramp", post(onramp_create))
+        .route("/market/onramp/status", post(onramp_status))
+        .route(
+            "/market/onramp/webhook",
+            post(onramp_webhook).layer(DefaultBodyLimit::max(MAX_WEBHOOK_BYTES)),
+        )
         // Custom domains (crate::domains). 503 unless the edge serves a zone
         // and holds an installed identity certificate; appliance token like
         // the market. None of them looks anything up in DNS: an add kicks
@@ -635,6 +697,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/domains/list", post(domains_list))
         .route("/domains/add", post(domains_add))
         .route("/domains/remove", post(domains_remove))
+        .route("/domains/wallet", post(domains_wallet))
         // The terminal (crate::operator, docs/edge-terminal.md). 404 unless
         // the edge was started with `--access-dir`. The call is authenticated
         // by its envelope; the token routes by a GitHub account, like the
@@ -659,7 +722,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .merge(vm::transfer_router(state.clone()))
         // The same for the manage page: an app install on a box outlasts
         // the API's budget (`manage`).
-        .merge(manage::router(state.clone()));
+        .merge(manage::router(state.clone()))
+        .merge(llm::chat_router(state.clone()));
 
     Ok(App { state, router })
 }
@@ -1035,6 +1099,9 @@ async fn heartbeat(
     st.reg
         .record_idle(&req.appliance_id, req.idle.unwrap_or(false))
         .await;
+    st.reg
+        .record_llm(&req.appliance_id, req.llm_mib.unwrap_or(0))
+        .await;
     if st.reg.heartbeat(&req.appliance_id).await {
         remember_pass(&st, &req.appliance_id, req.relay_pass.as_deref());
         if let Some(manage) = &st.manage {
@@ -1365,7 +1432,96 @@ async fn market_account(
 ) -> Result<Json<AccountView>, ApiError> {
     let market = market_tenant(&st, &req).await?;
     let sharing = sharing_of(&st).await?;
-    Ok(Json(market.account(&req.appliance_id, &sharing).await?))
+    let mut view = market.account(&req.appliance_id, &sharing).await?;
+    if let (Some(onramp), Some(usdc)) = (&st.onramp, view.usdc.as_mut()) {
+        if !usdc.test
+            && usdc.chains.iter().any(|c| c.network == "base")
+            && onramp.configured().await
+        {
+            usdc.onramp = Some("binance");
+        }
+    }
+    Ok(Json(view))
+}
+
+#[derive(Debug, Deserialize)]
+struct OnrampReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    address: String,
+    euros: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OnrampStatusReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    order_id: String,
+}
+
+/// The on-ramp, for an authenticated box. Any tenant may buy: the USDC goes
+/// to the box's own wallet, not to another tenant.
+async fn onramp_of(st: &AppState, auth: &MarketAuth) -> Result<Arc<Onramp>, ApiError> {
+    authenticate(st, &auth.appliance_id, &auth.token).await?;
+    st.onramp
+        .clone()
+        .ok_or(ApiError::Onramp(OnrampError::Unconfigured))
+}
+
+/// `POST /market/onramp`: a Binance order for `euros` of USDC on Base to
+/// `address`, with the checkout link the buyer opens.
+async fn onramp_create(
+    State(st): State<AppState>,
+    Json(req): Json<OnrampReq>,
+) -> Result<(StatusCode, Json<OrderView>), ApiError> {
+    let onramp = onramp_of(&st, &req.auth).await?;
+    let view = onramp
+        .create(&req.auth.appliance_id, &req.address, &req.euros)
+        .await?;
+    Ok((StatusCode::CREATED, Json(view)))
+}
+
+/// `POST /market/onramp/status`: where one of the caller's orders is.
+async fn onramp_status(
+    State(st): State<AppState>,
+    Json(req): Json<OnrampStatusReq>,
+) -> Result<Json<OrderView>, ApiError> {
+    let onramp = onramp_of(&st, &req.auth).await?;
+    Ok(Json(
+        onramp.status(&req.auth.appliance_id, &req.order_id).await?,
+    ))
+}
+
+/// `POST /market/onramp/webhook`: Binance pushes an order's new status. The
+/// body is verified as it arrived, so it is taken as bytes. Binance wants a
+/// 200 with `returnCode` back.
+async fn onramp_webhook(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let onramp = st
+        .onramp
+        .as_ref()
+        .ok_or(ApiError::Onramp(OnrampError::Unconfigured))?;
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .ok_or(ApiError::Onramp(OnrampError::BadSignature))
+    };
+    onramp
+        .webhook(
+            header("X-BN-Connect-For")?,
+            header("X-BN-Connect-Timestamp")?,
+            header("X-BN-Connect-Signature")?,
+            &body,
+        )
+        .await?;
+    Ok(Json(serde_json::json!({
+        "returnCode": "SUCCESS",
+        "returnMessage": null,
+    })))
 }
 
 /// `box_uuid` is the box's own UUID, written onto its Stripe account. Optional
@@ -1681,14 +1837,39 @@ async fn vouched_for(st: &AppState, tenant: &str) -> Option<Vouched> {
 
 /// Authenticate first, so a caller without a token learns nothing about
 /// whether this edge offers domains.
-async fn domains_tenant(
-    st: &AppState,
-    auth: &MarketAuth,
-) -> Result<(Arc<Domains>, Option<Vouched>), ApiError> {
-    authenticate(st, &auth.appliance_id, &auth.token).await?;
-    let domains = Arc::clone(domains_of(st)?);
+async fn domains_tenant(st: &AppState, auth: &MarketAuth) -> Result<DomainsTenant, ApiError> {
+    let entry = authenticate(st, &auth.appliance_id, &auth.token).await?;
+    let store = Arc::clone(domains_of(st)?);
     let vouched = vouched_for(st, &auth.appliance_id).await;
-    Ok((domains, vouched))
+    Ok(DomainsTenant {
+        store,
+        vouched,
+        hostname: entry.hostname,
+    })
+}
+
+/// An authenticated box on an edge that hands out names.
+struct DomainsTenant {
+    store: Arc<Domains>,
+    vouched: Option<Vouched>,
+    /// Its name on this edge.
+    hostname: String,
+}
+
+impl DomainsTenant {
+    fn view(&self, st: &AppState, state: &domains::DomainsState, tenant: &str) -> DomainsView {
+        with_pass(
+            st,
+            tenant,
+            domains::view(
+                state,
+                tenant,
+                Some(&self.hostname),
+                self.vouched.as_ref(),
+                &self.store.opts,
+            ),
+        )
+    }
 }
 
 /// A box's view with its relay pass, on an edge that keeps a route table.
@@ -1705,21 +1886,18 @@ async fn domains_list(
     State(st): State<AppState>,
     Json(req): Json<MarketAuth>,
 ) -> Result<Json<DomainsView>, ApiError> {
-    let (store, vouched) = domains_tenant(&st, &req).await?;
-    let state = store.snapshot().await;
-    Ok(Json(with_pass(
-        &st,
-        &req.appliance_id,
-        domains::view(&state, &req.appliance_id, vouched.as_ref(), &store.opts),
-    )))
+    let tenant = domains_tenant(&st, &req).await?;
+    let state = tenant.store.snapshot().await;
+    Ok(Json(tenant.view(&st, &state, &req.appliance_id)))
 }
 
 async fn domains_add(
     State(st): State<AppState>,
     Json(req): Json<DomainReq>,
 ) -> Result<(StatusCode, Json<DomainsView>), ApiError> {
-    let (store, vouched) = domains_tenant(&st, &req.auth).await?;
-    if vouched.is_none() {
+    let tenant = domains_tenant(&st, &req.auth).await?;
+    let store = &tenant.store;
+    if tenant.vouched.is_none() {
         return Err(ApiError::Domains(DomainError::Conflict(
             "a custom domain needs this box's Stripe account, checked by Stripe; finish it on the Market pane first",
         )));
@@ -1738,16 +1916,7 @@ async fn domains_add(
     st.notify.notify_one();
     Ok((
         StatusCode::CREATED,
-        Json(with_pass(
-            &st,
-            &req.auth.appliance_id,
-            domains::view(
-                &state,
-                &req.auth.appliance_id,
-                vouched.as_ref(),
-                &store.opts,
-            ),
-        )),
+        Json(tenant.view(&st, &state, &req.auth.appliance_id)),
     ))
 }
 
@@ -1755,7 +1924,8 @@ async fn domains_remove(
     State(st): State<AppState>,
     Json(req): Json<DomainReq>,
 ) -> Result<Json<DomainsView>, ApiError> {
-    let (store, vouched) = domains_tenant(&st, &req.auth).await?;
+    let tenant = domains_tenant(&st, &req.auth).await?;
+    let store = &tenant.store;
     // Not normalised through the full check: a claim made under rules that
     // have since tightened must still be removable.
     let domain = req.domain.trim().trim_end_matches('.').to_ascii_lowercase();
@@ -1769,16 +1939,62 @@ async fn domains_remove(
     );
     // Its router goes at once.
     st.notify.notify_one();
-    Ok(Json(with_pass(
-        &st,
-        &req.auth.appliance_id,
-        domains::view(
-            &state,
-            &req.auth.appliance_id,
-            vouched.as_ref(),
-            &store.opts,
-        ),
-    )))
+    Ok(Json(tenant.view(&st, &state, &req.auth.appliance_id)))
+}
+
+/// Body of `POST /domains/wallet`: an address and its wallet's signature of
+/// [`domains::wallet_message`] to bind, or neither to unbind.
+#[derive(Debug, Deserialize)]
+struct WalletReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    #[serde(default)]
+    address: Option<String>,
+    #[serde(default)]
+    signature: Option<String>,
+}
+
+/// `POST /domains/wallet`: publish the box's wallet at its names in this
+/// edge's zone, or take it off. The zone follows at the next reconcile, which
+/// this asks for now.
+async fn domains_wallet(
+    State(st): State<AppState>,
+    Json(req): Json<WalletReq>,
+) -> Result<Json<DomainsView>, ApiError> {
+    let tenant = domains_tenant(&st, &req.auth).await?;
+    let id = &req.auth.appliance_id;
+    let now = crate::market::now_secs();
+    let state = match (&req.address, &req.signature) {
+        (Some(address), Some(signature)) => {
+            let state = tenant
+                .store
+                .update(|s| {
+                    domains::bind_wallet(s, &tenant.store.opts, id, address, signature, now)
+                })
+                .await?;
+            tracing::info!(
+                target: Action::Domains.target(),
+                "{id} bound its names to {}",
+                state.wallets.get(id.as_str()).map_or("", |w| w.address.as_str()),
+            );
+            state
+        }
+        (None, None) => {
+            let state = tenant
+                .store
+                .update(|s| Ok(domains::unbind_wallet(s, id)))
+                .await?;
+            tracing::info!(target: Action::Domains.target(), "{id} took its wallet off its names");
+            state
+        }
+        _ => {
+            return Err(ApiError::Domains(DomainError::Invalid(
+                "send the address with its signature, or neither to unbind",
+            )))
+        }
+    };
+    st.notify.notify_one();
+    Ok(Json(tenant.view(&st, &state, id)))
 }
 
 /// Look up the claims that are due ([`domains::Claim::due`]), at most
@@ -1792,7 +2008,8 @@ async fn check_domains(st: &AppState) {
         return;
     };
     let now = crate::market::now_secs();
-    let tenants = match st.tenants.load(&st.opts.tenants_file).await {
+    // Enrolled boxes too: they sign in like listed ones and may bind a wallet.
+    let tenants = match all_tenants(st).await {
         Ok(t) => t,
         Err(e) => {
             tracing::warn!(target: Action::Domains.target(), "not checking domains: {e}");
@@ -1810,6 +2027,12 @@ async fn check_domains(st: &AppState) {
     {
         tracing::error!(target: Action::Domains.target(), "pruning domains failed: {e}");
     }
+    check_claims(st, store, doh, now).await;
+    check_published(st, store, doh, &tenants, now).await;
+}
+
+/// The claims half of [`check_domains`].
+async fn check_claims(st: &AppState, store: &domains::Domains, doh: &domains::Doh, now: u64) {
     let snapshot = store.snapshot().await;
     let due: Vec<domains::Claim> = snapshot
         .claims
@@ -1824,21 +2047,26 @@ async fn check_domains(st: &AppState) {
     let mut results = Vec::with_capacity(due.len());
     for claim in due {
         let vouched = vouched_for(st, &claim.tenant).await;
+        let wallet = snapshot
+            .wallets
+            .get(&claim.tenant)
+            .map(|w| w.address.clone());
         // No Stripe data: nothing to look up, the answer is already known.
         let observed = if vouched.is_some() {
-            doh.observe(&claim.domain).await
+            doh.observe(&claim.domain, wallet.is_some()).await
         } else {
             domains::Observed {
                 txt: Ok(Vec::new()),
                 addrs: Ok(Vec::new()),
+                wallet: None,
             }
         };
-        results.push((claim, vouched, observed));
+        results.push((claim, vouched, wallet, observed));
     }
     let outcome = store
         .update(|s| {
             let mut next = s.clone();
-            for (claim, vouched, observed) in &results {
+            for (claim, vouched, wallet, observed) in &results {
                 let taken = next
                     .claims
                     .iter()
@@ -1849,14 +2077,30 @@ async fn check_domains(st: &AppState) {
                     .find(|c| c.domain == claim.domain && c.tenant == claim.tenant)
                 {
                     let was_live = slot.live();
+                    // The owner rebound (or unbound) while this lookup ran: what
+                    // it saw was checked against the old address. Keep the
+                    // routing verdict, drop the wallet one; the next pass
+                    // looks again for the new address.
+                    let current = next.wallets.get(&claim.tenant).map(|w| w.address.clone());
+                    let stale = current != *wallet;
+                    let mut observed = observed.clone();
+                    if stale {
+                        observed.wallet = None;
+                    }
+                    let checked_at = slot.checked_at;
                     *slot = domains::evaluate(
                         slot,
                         vouched.as_ref(),
+                        current.as_deref(),
                         &store.opts,
                         taken,
-                        observed,
+                        &observed,
                         now,
                     );
+                    if stale {
+                        // Still due, so the new address is looked up next pass.
+                        slot.checked_at = checked_at;
+                    }
                     if slot.live() != was_live {
                         tracing::info!(
                             target: Action::Domains.target(),
@@ -1873,6 +2117,77 @@ async fn check_domains(st: &AppState) {
         .await;
     if let Err(e) = outcome {
         tracing::error!(target: Action::Domains.target(), "recording domain checks failed: {e}");
+    }
+}
+
+/// Ask public DNS for the wallet record at the names of every box with a
+/// wallet bound ([`domains::Published`]), at most
+/// [`domains::CHECKS_PER_PASS`] boxes a pass. Like the claims, the lookups
+/// run with no lock held and are dropped if the wallet changed meanwhile.
+async fn check_published(
+    st: &AppState,
+    store: &domains::Domains,
+    doh: &domains::Doh,
+    tenants: &HashMap<String, TenantEntry>,
+    now: u64,
+) {
+    let snapshot = store.snapshot().await;
+    let mut due = Vec::new();
+    for (tenant, wallet) in &snapshot.wallets {
+        if due.len() == domains::CHECKS_PER_PASS {
+            break;
+        }
+        let Some(entry) = tenants.get(tenant) else {
+            continue;
+        };
+        let vouched = vouched_for(st, tenant).await;
+        let names = domains::box_names(&store.opts, Some(&entry.hostname), vouched.as_ref());
+        if !names.is_empty()
+            && domains::Published::due(snapshot.published.get(tenant), &wallet.address, &names, now)
+        {
+            due.push((tenant.clone(), wallet.address.clone(), names));
+        }
+    }
+    if due.is_empty() {
+        return;
+    }
+    let mut results = Vec::with_capacity(due.len());
+    for (tenant, address, names) in due {
+        let seen = doh.published(&names, &address).await;
+        results.push((tenant, address, seen));
+    }
+    let outcome = store
+        .update(|s| {
+            let mut next = s.clone();
+            for (tenant, address, seen) in &results {
+                if next
+                    .wallets
+                    .get(tenant)
+                    .is_none_or(|w| w.address != *address)
+                {
+                    continue;
+                }
+                let before = next.published.get(tenant).map(|p| p.names.clone());
+                if before.as_ref() != Some(seen) {
+                    tracing::info!(
+                        target: Action::Domains.target(),
+                        "{tenant}'s names in public DNS: {seen:?}",
+                    );
+                }
+                next.published.insert(
+                    tenant.clone(),
+                    domains::Published {
+                        address: address.clone(),
+                        checked_at: now,
+                        names: seen.clone(),
+                    },
+                );
+            }
+            Ok(next)
+        })
+        .await;
+    if let Err(e) = outcome {
+        tracing::error!(target: Action::Domains.target(), "recording name checks failed: {e}");
     }
 }
 
@@ -2025,6 +2340,20 @@ async fn fulfil_market(st: &AppState) {
         .max(300);
     market.slots_pass(&online, can_tell, max_gap).await;
     market.settle_escrow().await;
+    if let Some(inference) = &st.inference {
+        let lenders = llm::lenders_of(st).await;
+        let in_use = market.groups_in_use().await;
+        for b in inference.pass(&lenders, |g| in_use.contains(g)).await {
+            tracing::warn!(
+                target: Action::Market.target(),
+                "model group {} stopped: {}",
+                b.group,
+                b.reason.message(),
+            );
+            market.end_group(&b.group, b.reason).await;
+        }
+    }
+    market.taps_pass().await;
     market.settle_cards().await;
     vm::fulfil(st, market).await;
     let pending = market.pending_provisions().await;
@@ -2784,6 +3113,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             hostname: hostname.to_string(),
             rathole_port: v.rathole_port,
             token: token.to_string(),
+            llm_port: None,
         });
     }
     // The relayed half (crate::relay): a `<spoke>.<box>` tenant stays only
@@ -2850,6 +3180,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             hostname: r.hostname,
             rathole_port: r.rathole_port,
             token,
+            llm_port: None,
         });
     }
     for id in &stale {
@@ -2899,6 +3230,19 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     // for, every proved custom domain, and the zone file itself. Computed
     // before the Traefik file so both describe the same moment.
     let (extra_hosts, zone_names) = domain_hosts(st, &enriched, &tenants).await;
+    // A box lending memory to AI models gets its second tunnel service.
+    if let Some(inference) = &st.inference {
+        let lending: HashSet<String> = llm::lenders_of(st)
+            .await
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        for t in &mut enriched {
+            if lending.contains(&t.id) {
+                t.llm_port = inference.llm_port(t.rathole_port);
+            }
+        }
+    }
     let files = desired_config_with_hosts(&enriched, &opts, &extra_hosts);
 
     let traefik_path = Path::new(&st.opts.traefik_dir).join("losos.yml");
@@ -3004,10 +3348,21 @@ async fn domain_hosts(
         return (hosts, names);
     };
     let zone = &store.opts.zone;
+    let state = store.snapshot().await;
+    // The wallet record of a box that bound one, at each of its names.
+    let record = |tenant: &str| {
+        state
+            .wallets
+            .get(tenant)
+            .map(|w| domains::ens_record(&w.address))
+    };
     // Tenant hostnames inside the zone: every whitelisted one, live or not,
     // so a box that reboots keeps its name and only its router comes and goes.
-    for entry in tenants.values() {
+    for (tenant, entry) in tenants.iter() {
         names.add_fqdn(&entry.hostname, zone);
+        if let Some(r) = record(tenant) {
+            names.add_txt(&entry.hostname, zone, &r);
+        }
     }
     // And the registrar's own name, when the zone is the whole public domain.
     if !store.opts.public_domain.is_empty() {
@@ -3023,11 +3378,14 @@ async fn domain_hosts(
             if let Some(v) = Vouched::from_seller(Some(&seller)) {
                 let target = store.opts.target_for(&v.box_uuid);
                 names.add_fqdn(&target, zone);
+                if let Some(r) = record(&tenant) {
+                    names.add_txt(&target, zone, &r);
+                }
                 hosts.entry(tenant).or_default().push(target);
             }
         }
     }
-    for (tenant, domains) in domains::live_routes(&store.snapshot().await) {
+    for (tenant, domains) in domains::live_routes(&state) {
         hosts.entry(tenant).or_default().extend(domains);
     }
     // A box behind a local edge: its names go to its relayed tenant, as the

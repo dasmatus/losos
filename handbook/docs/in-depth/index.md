@@ -13,7 +13,7 @@ The rest of this handbook is for the owner of a box. This chapter is for the
 people who build LosOS, run an edge or cut a release: how the pieces fit
 together, why each one sits where it does, and how to change them.
 
-LosOS is a NixOS appliance for a mini-PC. It runs Nextcloud for your own files
+LosOS is a NixOS appliance for a mini-PC. It runs LosOS Cloud for your own files
 and can lend spare disk and CPU to a mesh of other LosOS boxes. There is no SSH
 and no login shell. You administer it from a web page, and it upgrades itself.
 
@@ -31,6 +31,10 @@ directories listed in `modules/impermanence.nix` survive, on an encrypted
 - [Market](market.md). Selling the disk and CPU a box already shares.
 - [Virtual machines](virtual-machines.md). Renting machines on the mesh and
   hosting other boxes' machines.
+- [AI models](ai-models.md). Lending memory to models split across boxes,
+  and paying for their answers by the token.
+- [App format](app-format.md). One Compose file per app, run as notshared on
+  rootless Podman: what the box does to it and how to install one.
 - [Widget builder](widget-builder.md). A language model on the box writes a
   widget from a description.
 - [Master proxy](master-proxy.md). Reaching the box from the internet without

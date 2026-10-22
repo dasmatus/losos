@@ -10,7 +10,10 @@
 //!     through to the sections their groups open (`crate::sections`);
 //!   * **the spare key**, `Authorization: Bearer <token>` with the file at
 //!     `$LOSOS_ADMIN_TOKEN_FILE`. It opens everything, and nginx lets it past
-//!     Authelia so the box can still be run when Authelia cannot.
+//!     Authelia so the box can still be run when Authelia cannot;
+//!   * **the LosOS companion** in someone's AI tools, `Authorization: Bearer`
+//!     with an access token LosOS Login issued to it (`crate::companion`).
+//!     It reads a few routes as the person who approved it, and nothing more.
 //!
 //! The public routes in `backend/sections.json` take neither: health, the
 //! first-run claim and its state read, and the terminal's two routes, whose
@@ -41,11 +44,24 @@ const TOKEN_BYTES: usize = 32;
 /// Length of the hex-encoded token, and the only length this daemon accepts.
 const TOKEN_HEX_LEN: usize = TOKEN_BYTES * 2;
 
+/// Most handlers run their command on the worker's own thread, under the
+/// state lock, so a slow command (crictl, vgs, a call to the edge) holds that
+/// worker. actix starts one worker per core, a single one on a small box, and
+/// answers 408 to any request whose head it has not read within five
+/// seconds. A pane fires a dozen reads at once, so one slow command turned
+/// the rest into 408s. More workers keep the reads from queueing behind it,
+/// and a longer head timeout keeps a queued one from failing: only nginx
+/// reaches this loopback port, and it gives up on slow clients itself.
+const HTTP_WORKERS: usize = 8;
+const HEAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// Shared handler state.
 struct Api {
     backend: IoLosos,
     token: String,
     throttle: Throttle,
+    /// Wrong passwords at device setup, per address (`post_device`).
+    passwords: Throttle,
     audit: Audit,
     /// The last claim answered, so a reply lost to a proxy timeout can be
     /// given again to the same password (`crate::receipt`).
@@ -58,10 +74,19 @@ struct Api {
     builder: crate::builder::Builder,
     /// The people Authelia signs in (`crate::people`).
     people: crate::people::People,
+    /// LosOS Login's word on companion tokens (`crate::companion`).
+    companion: crate::companion::Companion,
     /// LosOS Login's rules and second factors (`crate::login`).
     login: crate::login::Login,
     /// LosOS Login names on LosOS cloud's share (`crate::cloud_share`).
     share: crate::cloud_share::Share,
+    /// LosOS Mail (`crate::mail`).
+    mail: crate::mail::Mail,
+    /// Each person's picture, banner and the rest of their profile
+    /// (`crate::profiles`).
+    profiles: crate::profiles::Profiles,
+    /// Turns at decoding an upload (`IMAGE_JOBS`).
+    image_jobs: tokio::sync::Semaphore,
     /// The plugins that answer every route not registered below
     /// (`crate::plugin`).
     plugins: crate::plugin::Runtime,
@@ -78,13 +103,17 @@ pub(crate) enum Principal {
     /// own tunnel (`crate::edge::manager_active`). It may use the sections
     /// `sections.json` lists under `edge`, and nothing admin.
     Edge,
+    /// The LosOS companion in someone's AI tools, as the person who signed
+    /// it in: GET on `losos_access::COMPANION_ROUTES` only, and within
+    /// those what the person may read.
+    Companion(crate::people::Person),
 }
 
 impl Principal {
     fn audit_name(&self) -> &str {
         match self {
             Principal::Spare => "spare-key",
-            Principal::Person(p) => &p.name,
+            Principal::Person(p) | Principal::Companion(p) => &p.name,
             Principal::Edge => "edge",
         }
     }
@@ -93,14 +122,14 @@ impl Principal {
         match self {
             Principal::Spare => true,
             Principal::Person(p) => p.is_admin(),
-            Principal::Edge => false,
+            Principal::Edge | Principal::Companion(_) => false,
         }
     }
 
     fn person(&self) -> Option<&crate::people::Person> {
         match self {
             Principal::Spare | Principal::Edge => None,
-            Principal::Person(p) => Some(p),
+            Principal::Person(p) | Principal::Companion(p) => Some(p),
         }
     }
 }
@@ -182,18 +211,11 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
     {
         return err(StatusCode::CONFLICT, &why);
     }
-    // LosOS cloud turned an app change down, or could not make it: its own
-    // words, as a 502, because the box itself did what it was asked.
-    if let Some(why) = e.downcast_ref::<crate::cloud_apps::Failed>() {
-        tracing::warn!(reason = why.0.as_str(), "cloud app change failed");
-        return err(StatusCode::BAD_GATEWAY, &why.0);
-    }
-    // The first boot's one expected failure: Nextcloud is still installing
-    // itself, so the first password cannot be set *yet*. 503 with the
-    // reason and a Retry-After, so the wizard waits and says why, instead
-    // of the opaque 500 that once sent owners to re-image a working box.
+    // Something the request needs is still starting (LosOS Cloud, LosOS
+    // Git). 503 with the reason and a Retry-After, so the page waits and
+    // says why, instead of an opaque 500.
     if let Some(crate::setup::NotReady(why)) = e.downcast_ref() {
-        tracing::info!(reason = why.as_str(), "claim refused: not ready yet");
+        tracing::info!(reason = why.as_str(), "refused: not ready yet");
         return HttpResponse::build(StatusCode::SERVICE_UNAVAILABLE)
             .insert_header(("Retry-After", "10"))
             .json(serde_json::json!({ "error": why, "ready": false, "waitingFor": why }));
@@ -205,10 +227,10 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
         tracing::info!("sign-in refused: wrong password");
         return err(StatusCode::UNAUTHORIZED, &why.to_string());
     }
-    // LosOS cloud's own brute-force protection shut the door; the page
-    // says "wait" rather than "wrong".
+    // Too many wrong passwords from this address; the page says "wait"
+    // rather than "wrong".
     if let Some(why) = e.downcast_ref::<crate::signin::Throttled>() {
-        tracing::warn!("sign-in refused: LosOS cloud is throttling this address");
+        tracing::warn!("password refused: this address is waiting out its wrong guesses");
         let mut resp = err(StatusCode::TOO_MANY_REQUESTS, &why.to_string());
         resp.headers_mut().insert(
             actix_web::http::header::RETRY_AFTER,
@@ -327,6 +349,23 @@ fn identify(api: &Api, req: &HttpRequest) -> Option<Principal> {
             None => Some(Principal::Spare),
         };
     }
+    if let Some(token) = header("authorization").and_then(bearer_credentials) {
+        // nginx passes a Bearer header on without asking Authelia; a token
+        // of LosOS Login's is checked with LosOS Login, at the address the
+        // request came to, which is where it was issued.
+        if !(from_loopback
+            && api.people.headers
+            && crate::companion::Companion::is_login_token(token))
+        {
+            return None;
+        }
+        let host = header("x-forwarded-host").or_else(|| header("host"))?;
+        let grant = api.companion.check(token, host)?;
+        return match lookup(&grant.person)? {
+            Principal::Person(p) => Some(Principal::Companion(p)),
+            _ => None,
+        };
+    }
     match header("remote-user") {
         Some(name) if from_loopback && api.people.headers => lookup(name),
         _ => None,
@@ -425,6 +464,40 @@ fn guarded_at(
     mutating: bool,
     f: impl FnOnce(&Principal) -> HttpResponse,
 ) -> HttpResponse {
+    let who = match gate_at(api, req, route, pattern, mutating) {
+        Ok(who) => who,
+        Err(refused) => return *refused,
+    };
+    let resp = f(&who);
+    if mutating {
+        audit_outcome(api, req, route, &resp, &who);
+    }
+    resp
+}
+
+/// Record a mutating call's outcome by its status.
+fn audit_outcome(api: &Api, req: &HttpRequest, route: &str, resp: &HttpResponse, who: &Principal) {
+    let status = resp.status();
+    let outcome = if status.is_success() {
+        "ok"
+    } else if status.is_client_error() {
+        "rejected"
+    } else {
+        "error"
+    };
+    api.audit
+        .record_as(route, outcome, &remote_addr(req), Some(who.audit_name()));
+}
+
+/// The checks of [`guarded_at`] before the handler runs: the caller, or the
+/// answer that refuses them, audited when `mutating`.
+fn gate_at(
+    api: &Api,
+    req: &HttpRequest,
+    route: &str,
+    pattern: Option<&str>,
+    mutating: bool,
+) -> Result<Principal, Box<HttpResponse>> {
     let remote = remote_addr(req);
     let audit = |outcome: &str, who: Option<&str>| {
         if mutating {
@@ -441,7 +514,7 @@ fn guarded_at(
             actix_web::http::header::RETRY_AFTER,
             retry_after_secs(wait).to_string().parse().expect("digits"),
         );
-        return resp;
+        return Err(Box::new(resp));
     }
     let Some(who) = identify(api, req) else {
         // Authelia let someone through whom the people file no longer
@@ -455,14 +528,16 @@ fn guarded_at(
                 .is_some_and(|v| !v.is_empty())
         {
             audit("no account", None);
-            return HttpResponse::Forbidden().json(serde_json::json!({
-                "error": "your account is not on this box any more",
-                "noAccount": true,
-            }));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "your account is not on this box any more",
+                    "noAccount": true,
+                }),
+            )));
         }
         api.throttle.record_failure(&remote, Instant::now());
         audit("unauthorized", None);
-        return err(StatusCode::UNAUTHORIZED, "unauthorized");
+        return Err(Box::new(err(StatusCode::UNAUTHORIZED, "unauthorized")));
     };
     api.throttle.record_success(&remote);
     let method = req.method().as_str();
@@ -471,7 +546,22 @@ fn guarded_at(
         .or_else(|| req.match_pattern())
         .unwrap_or_else(|| req.path().to_string());
     let section = crate::sections::section(method, &pattern);
-    if let Principal::Person(person) = &who {
+    if let Principal::Companion(person) = &who {
+        let asked = match req.query_string() {
+            "" => req.path().to_string(),
+            q => format!("{}?{q}", req.path()),
+        };
+        if !losos_access::companion_route(method, &asked) {
+            audit("forbidden", Some(&person.name));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "the LosOS companion reads files, repositories and the box's health, nothing else",
+                    "section": section,
+                }),
+            )));
+        }
+    }
+    if let Principal::Person(person) | Principal::Companion(person) = &who {
         // A rule of LosOS Login holds them to their own account until they
         // comply (`crate::login`): that, and what every signed-in page
         // reads, is all they reach.
@@ -479,42 +569,48 @@ fn guarded_at(
             && !matches!(section, "account" | "signed-in" | "public")
         {
             audit("locked", Some(&person.name));
-            return HttpResponse::Forbidden().json(serde_json::json!({
-                "error": "finish what LosOS Login asks of your account first",
-                "locked": true,
-                "section": section,
-            }));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "finish what LosOS Login asks of your account first",
+                    "locked": true,
+                    "section": section,
+                }),
+            )));
         }
         let locked_to_account =
             section == "account" && person.groups.iter().any(|g| g == crate::people::LOCKED);
         if !locked_to_account && !crate::sections::allows(person, method, section) {
             audit("forbidden", Some(&person.name));
-            return HttpResponse::Forbidden().json(serde_json::json!({
-                "error": "your account cannot use this part of the box",
-                "section": section,
-            }));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "your account cannot use this part of the box",
+                    "section": section,
+                }),
+            )));
         }
     }
     if matches!(who, Principal::Edge) && !crate::sections::edge_allows(method, section) {
         audit("forbidden", Some("edge"));
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "the edge may manage only LosOS cloud, LosOS Git and the apps on this box",
-            "section": section,
-        }));
+        return Err(Box::new(HttpResponse::Forbidden().json(
+            serde_json::json!({
+                "error": "the edge may manage only LosOS Cloud, LosOS Git and the apps on this box",
+                "section": section,
+            }),
+        )));
     }
-    let resp = f(&who);
-    let status = resp.status();
-    audit(
-        if status.is_success() {
-            "ok"
-        } else if status.is_client_error() {
-            "rejected"
-        } else {
-            "error"
-        },
-        Some(who.audit_name()),
-    );
-    resp
+    Ok(who)
+}
+
+/// The apps on the shared side that are live on this box now, by name:
+/// mail and chat run only while the box shares its storage, and the admin
+/// UI draws their entries only when they are listed here. The spare key
+/// and an edge are nobody, so they get none.
+fn shared_apps(api: &Api) -> Vec<&'static str> {
+    let mut apps = Vec::new();
+    if api.mail.open().is_some() {
+        apps.push("mail");
+    }
+    apps
 }
 
 /// `GET /api/me`: who is signed in, and which sections they can use. The
@@ -538,7 +634,7 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 "sections": all(),
                 "standalone": api.people.headers,
             })),
-            Principal::Person(p) => {
+            Principal::Person(p) | Principal::Companion(p) => {
                 // What holds them now, not at their last request: a page
                 // that has just added a passkey asks again to be let go.
                 let locked = if api.people.headers {
@@ -552,15 +648,29 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 } else {
                     vec!["account"]
                 };
+                let shown = crate::profiles::render(
+                    &crate::people::Listed {
+                        name: p.name.clone(),
+                        display_name: p.display_name.clone(),
+                        email: String::new(),
+                        groups: Vec::new(),
+                        disabled: false,
+                    },
+                    &api.profiles.get(&p.name).unwrap_or_default(),
+                );
                 HttpResponse::Ok().json(serde_json::json!({
                     "name": p.name,
                     "displayName": p.display_name,
+                    "picture": shown["picture"],
+                    "accent": shown["accent"],
                     "groups": p.groups,
-                    "admin": p.is_admin() && locked.is_empty(),
+                    "admin": who.is_admin() && locked.is_empty(),
                     "spareKey": false,
+                    "companion": matches!(who, Principal::Companion(_)),
                     "sections": sections,
                     "standalone": api.people.headers,
                     "locked": locked,
+                    "shared": if locked.is_empty() { shared_apps(&api) } else { Vec::new() },
                 }))
             }
             Principal::Edge => HttpResponse::Ok().json(serde_json::json!({
@@ -644,6 +754,7 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
         };
         let rules = api.login.rules();
         let now = crate::login::now();
+        let profiles = api.profiles.all().unwrap_or_default();
         let people: Vec<serde_json::Value> = people
             .into_iter()
             .map(|p| {
@@ -652,6 +763,13 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 row["twoFactor"] = serde_json::json!(factors.any());
                 row["passwordSetAt"] = serde_json::json!(set_at);
                 row["locked"] = serde_json::json!(reasons);
+                let shown = crate::profiles::render(
+                    &p,
+                    &profiles.get(&p.name).cloned().unwrap_or_default(),
+                );
+                row["picture"] = shown["picture"].clone();
+                row["accent"] = shown["accent"].clone();
+                row["banner"] = shown["banner"].clone();
                 row
             })
             .collect();
@@ -820,6 +938,9 @@ async fn post_person_remove(
             Ok(()) => {
                 if let Err(e) = api.login.forget(&name) {
                     tracing::warn!(error = ?e, "a removed person's password date stayed");
+                }
+                if let Err(e) = api.profiles.forget(&name) {
+                    tracing::warn!(error = ?e, "a removed person's profile stayed");
                 }
                 HttpResponse::Ok().json(serde_json::json!({ "name": name, "removed": true }))
             }
@@ -1002,6 +1123,298 @@ async fn post_account(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -
                 "email": email.trim(),
                 }))
             }
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+// ── Profiles ──────────────────────────────────────────────────────────────
+
+/* Each person's picture, banner, colour, pronouns and a line about them
+ * (`crate::profiles`, contract in docs/profiles.md). Anyone signed in may
+ * read everyone's, which is what makes a picture useful beside a name; only
+ * the person changes their own, and an administrator may take a picture
+ * down. */
+
+/// Everyone the people file lists and LosOS Login lets in, by name.
+fn shown_people(api: &Api) -> anyhow::Result<Vec<serde_json::Value>> {
+    if !api.people.headers {
+        return Ok(Vec::new());
+    }
+    let profiles = api.profiles.all()?;
+    Ok(api
+        .people
+        .list()?
+        .into_iter()
+        .filter(|p| !p.disabled)
+        .map(|p| {
+            let profile = profiles.get(&p.name).cloned().unwrap_or_default();
+            crate::profiles::render(&p, &profile)
+        })
+        .collect())
+}
+
+/// `GET /api/profiles`: everyone's profile.
+async fn get_profiles(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/profiles", false, || {
+        match shown_people(&api) {
+            Ok(people) => HttpResponse::Ok().json(serde_json::json!({ "people": people })),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `GET /api/profiles/{name}`: one person's profile, 404 for nobody.
+async fn get_profile(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let name = path.into_inner();
+    guarded(&api, &req, "/api/profiles", false, || {
+        match shown_people(&api) {
+            Ok(people) => match people.into_iter().find(|p| p["name"] == name.as_str()) {
+                Some(p) => HttpResponse::Ok().json(p),
+                None => err(StatusCode::NOT_FOUND, &format!("{name} has no account")),
+            },
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `GET /api/profiles/{name}/{kind}?v=N`: the picture or the banner. Cached
+/// hard, because a new one is a new `?v=`; any other `?v=` is a 404, so a
+/// cache never keeps bytes under a URL that names others.
+async fn get_profile_image(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    let (name, kind) = path.into_inner();
+    let version =
+        web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+            .ok()
+            .and_then(|q| q.get("v").and_then(|v| v.parse::<u64>().ok()));
+    guarded(&api, &req, "/api/profiles", false, || {
+        let Some(kind) = crate::profiles::Kind::parse(&kind) else {
+            return err(
+                StatusCode::NOT_FOUND,
+                "a profile has a picture and a banner",
+            );
+        };
+        if crate::people::validate_name(&name).is_err() {
+            return err(StatusCode::NOT_FOUND, "no picture");
+        }
+        let listed = api
+            .people
+            .list()
+            .map(|all| all.into_iter().any(|p| p.name == name && !p.disabled));
+        if !matches!(listed, Ok(true)) {
+            return err(StatusCode::NOT_FOUND, "no picture");
+        }
+        let Some(version) = version else {
+            return err(StatusCode::NOT_FOUND, "no picture");
+        };
+        match api.profiles.read_image(&name, kind, version) {
+            Ok(Some((content_type, bytes))) => HttpResponse::Ok()
+                .content_type(content_type)
+                .insert_header(("Cache-Control", "private, max-age=31536000, immutable"))
+                .insert_header(("X-Content-Type-Options", "nosniff"))
+                .body(bytes),
+            Ok(None) => err(StatusCode::NOT_FOUND, "no picture"),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// The caller's own profile as every page shows it.
+fn own_profile(api: &Api, person: &crate::people::Person) -> HttpResponse {
+    let listed = match api.people.list() {
+        Ok(all) => all.into_iter().find(|p| p.name == person.name),
+        Err(e) => return error_response(e),
+    };
+    let Some(listed) = listed else {
+        return error_response(crate::people::Refused::Unknown(person.name.clone()).into());
+    };
+    match api.profiles.get(&person.name) {
+        Ok(profile) => HttpResponse::Ok().json(crate::profiles::render(&listed, &profile)),
+        Err(e) => error_response(e),
+    }
+}
+
+/// `POST /api/account/profile`: `{"pronouns", "about", "accent"}`, each
+/// optional, the caller's own.
+async fn post_account_profile(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/account/profile", true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let details = match crate::profiles::parse_details(&doc) {
+            Ok(d) => d,
+            Err(why) => return err(StatusCode::BAD_REQUEST, &why),
+        };
+        match api
+            .profiles
+            .set_details(&person.name, &details, || still_listed(&api, &person.name))
+        {
+            Ok(_) => own_profile(&api, person),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// Whether `name` is still in the people file, asked by the profile store
+/// under its lock so a change racing the person's removal is refused.
+fn still_listed(api: &Api, name: &str) -> anyhow::Result<bool> {
+    Ok(api.people.get(name)?.is_some())
+}
+
+fn own_image_route(kind: crate::profiles::Kind) -> &'static str {
+    match kind {
+        crate::profiles::Kind::Picture => "/api/account/picture",
+        crate::profiles::Kind::Banner => "/api/account/banner",
+    }
+}
+
+/// How many uploads are decoded and encoded at once. The work runs on the
+/// blocking pool, never on a worker that answers requests, and a few
+/// people uploading 8 MiB photos together wait their turn rather than take
+/// every core of a small box.
+const IMAGE_JOBS: usize = 2;
+
+/// `PUT /api/account/{picture,banner}`: the caller's own. The body is the
+/// picture's bytes; their type is read off the bytes.
+async fn put_own_image(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    kind: crate::profiles::Kind,
+    body: web::Bytes,
+) -> HttpResponse {
+    // The guard first, so nobody unsigned makes the box decode anything.
+    let mut caller = None;
+    let refused = guarded_as(&api, &req, own_image_route(kind), true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.headers {
+            return not_standalone();
+        }
+        caller = Some(person.clone());
+        HttpResponse::Ok().finish()
+    });
+    let Some(person) = caller else {
+        return refused;
+    };
+    let normalized = {
+        let Ok(_turn) = api.image_jobs.acquire().await else {
+            return err(StatusCode::SERVICE_UNAVAILABLE, "lososd is stopping");
+        };
+        match web::block(move || crate::profiles::normalize(kind, &body)).await {
+            Ok(done) => done,
+            Err(e) => return error_response(anyhow::anyhow!("decoding the picture: {e}")),
+        }
+    };
+    let stored = normalized.and_then(|picture| {
+        api.profiles
+            .put_normalized(&person.name, kind, picture, || {
+                still_listed(&api, &person.name)
+            })
+    });
+    match stored {
+        Ok(_) => own_profile(&api, &person),
+        Err(e) => error_response(e),
+    }
+}
+
+/// `DELETE /api/account/{picture,banner}`: the caller's own.
+fn delete_own_image(api: &Api, req: &HttpRequest, kind: crate::profiles::Kind) -> HttpResponse {
+    guarded_as(api, req, own_image_route(kind), true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            );
+        };
+        if !api.people.headers {
+            return not_standalone();
+        }
+        match api.profiles.remove_image(&person.name, kind) {
+            Ok(_) => own_profile(api, person),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+async fn put_account_picture(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    put_own_image(api, req, crate::profiles::Kind::Picture, body).await
+}
+
+async fn delete_account_picture(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    delete_own_image(&api, &req, crate::profiles::Kind::Picture)
+}
+
+async fn put_account_banner(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    put_own_image(api, req, crate::profiles::Kind::Banner, body).await
+}
+
+async fn delete_account_banner(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    delete_own_image(&api, &req, crate::profiles::Kind::Banner)
+}
+
+/// `POST /api/people/profile/clear`: `{"name", "kind": "picture|banner"}`.
+/// An administrator takes down a picture someone else put up. The rest of
+/// the profile stays theirs.
+async fn post_people_profile_clear(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"name": "...", "kind": "picture|banner"}"#;
+    guarded(&api, &req, "/api/people/profile/clear", true, || {
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let (Some(name), Some(kind)) = (
+            doc.get("name").and_then(|v| v.as_str()),
+            doc.get("kind")
+                .and_then(|v| v.as_str())
+                .and_then(crate::profiles::Kind::parse),
+        ) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        match api.people.list() {
+            Ok(all) if all.iter().any(|p| p.name == name) => {}
+            Ok(_) => {
+                return error_response(crate::people::Refused::Unknown(name.to_string()).into())
+            }
+            Err(e) => return error_response(e),
+        }
+        match api.profiles.remove_image(name, kind) {
+            Ok(_) => HttpResponse::Ok()
+                .json(serde_json::json!({ "name": name, "kind": kind.as_str(), "cleared": true })),
             Err(e) => error_response(e),
         }
     })
@@ -1384,18 +1797,6 @@ async fn post_grow(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/grow", true, || run(&api, cmd_grow))
 }
 
-/// Replace the Nextcloud admin password.
-///
-/// The body is parsed by hand rather than through actix's JSON extractor, for
-/// the same reason `post_apply` takes raw bytes: the extractor's rejection
-/// handler renders the offending payload into its error, and this payload is a
-/// password.
-///
-/// The 400s below name the field that was wrong and never echo what was sent.
-/// The command's own errors go through [`run`], which keeps the context chain
-/// out of the response and puts it in the journal — where, by construction, it
-/// cannot carry the password either: it is not a field of any `OccAction` and
-/// never reaches an argv.
 /// `GET /api/setup/claim` — has this box got an owner yet? No token required.
 ///
 /// The page has to ask this before it can decide whether to show the wizard or
@@ -1493,7 +1894,7 @@ async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
     let token = api.token.clone();
     let claims = api.clone();
     run(&api, move |l| {
-        // Held across the occ run on purpose: two claims racing each other
+        // Held across the claim on purpose: two claims racing each other
         // would otherwise both see an unclaimed box.
         let mut receipts = claims
             .claims
@@ -1608,12 +2009,13 @@ async fn post_set_password(
         Principal::Person(p) => post_own_password(&api, p, &body),
         Principal::Spare => post_set_password_inner(&api, &body),
         Principal::Edge => err(StatusCode::FORBIDDEN, "the edge has no password here"),
+        Principal::Companion(_) => err(StatusCode::FORBIDDEN, "the LosOS companion only reads"),
     })
 }
 
-/// A person changing their own password. It is the one Authelia checks,
-/// and for the person who owns the box's LosOS cloud account (`State::
-/// owner`), that account's too, so one password keeps opening both.
+/// A person changing their own password: the one LosOS Login checks, and
+/// for the person who owns the box (`State::owner`), their LosOS Git
+/// account's too, so one password keeps opening both.
 fn post_own_password(api: &Api, person: &crate::people::Person, body: &[u8]) -> HttpResponse {
     const SHAPE: &str = r#"body must be JSON: {"password": "..."}"#;
     let Some(password) = serde_json::from_slice::<serde_json::Value>(body)
@@ -1643,19 +2045,13 @@ fn post_own_password(api: &Api, person: &crate::people::Person, body: &[u8]) -> 
     let name = person.name.clone();
     run(api, move |l| {
         use crate::losos::Losos;
-        let owner = l.load_state()?.owner;
-        let cloud = if owner.as_deref() == Some(name.as_str()) {
-            Some(cmd_set_password(
-                l,
-                crate::setup::DEFAULT_ADMIN_USER,
-                &password,
-            )?)
-        } else {
-            None
-        };
         api.people.set_password(&name, &secret)?;
         note_password(api, &name);
-        Ok(serde_json::json!({ "name": name, "changed": true, "cloud": cloud }))
+        // The owner's LosOS Git account keeps the same password.
+        if l.load_state()?.owner.as_deref() == Some(name.as_str()) {
+            cmd_set_password(l, crate::setup::DEFAULT_ADMIN_USER, &password)?;
+        }
+        Ok(serde_json::json!({ "name": name, "changed": true }))
     })
 }
 
@@ -1664,8 +2060,8 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
     let Ok(doc) = serde_json::from_slice::<serde_json::Value>(body) else {
         return err(StatusCode::BAD_REQUEST, SHAPE);
     };
-    // `user` is optional: the appliance installs exactly one Nextcloud admin,
-    // and the wizard should not have to know its name to reset it.
+    // `user` is optional: the box has one owner account, and the wizard
+    // should not have to know its name to reset it.
     let user = match doc.get("user") {
         None | Some(serde_json::Value::Null) => crate::setup::DEFAULT_ADMIN_USER.to_string(),
         Some(serde_json::Value::String(u)) => u.clone(),
@@ -1686,15 +2082,23 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
     let password = password.to_string();
     run(api, |b| {
         use crate::losos::Losos;
-        let out = cmd_set_password(b, &user, &password)?;
-        // The owner signs in to Authelia with the same password.
-        if user == crate::setup::DEFAULT_ADMIN_USER {
-            if let Some(owner) = b.load_state()?.owner {
+        let mut out = cmd_set_password(b, &user, &password)?;
+        // The owner signs in to LosOS Login with it. A box claimed before
+        // sign-in went through LosOS Login has no owner there yet; its
+        // first account is made by the claim with the spare key.
+        let owner = if user == crate::setup::DEFAULT_ADMIN_USER {
+            b.load_state()?.owner
+        } else {
+            None
+        };
+        match owner {
+            Some(owner) => {
                 let secret =
                     crate::setup::validate_password(&password).map_err(|e| anyhow::anyhow!(e))?;
                 api.people.set_password(&owner, &secret)?;
                 note_password(api, &owner);
             }
+            None => out["changed"] = serde_json::Value::Bool(false),
         }
         Ok(out)
     })
@@ -1704,8 +2108,8 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
 /// one computer's own for LosOS cloud or LosOS Git (`crate::devices`).
 ///
 /// Bearer-gated like every other route, and on top of that the owner's
-/// password, which Nextcloud and Forgejo both insist on before they make a
-/// credential. A wrong password is a 403 with `wrongPassword`, not the 401
+/// password, checked against LosOS Login's people file before either app
+/// is asked. A wrong password is a 403 with `wrongPassword`, not the 401
 /// of a bad token: the caller holds a good token, and a client that reads
 /// 401 as "sign in again" would throw it away.
 async fn post_device(
@@ -1737,14 +2141,32 @@ fn post_device_inner(api: &Api, kind: &str, client: &str, body: &[u8]) -> HttpRe
     if let Err(e) = crate::devices::validate_device(device) {
         return err(StatusCode::BAD_REQUEST, &e);
     }
+    if !matches!(kind, "cloud" | "git") {
+        return err(StatusCode::NOT_FOUND, "no such device credential");
+    }
+    // The owner's password, as LosOS Login knows it. Wrong guesses are
+    // counted per address, and past the budget nothing is checked until
+    // the address's window ends.
+    let now = std::time::Instant::now();
+    if api.passwords.check(client, now).is_err() {
+        return error_response(crate::signin::Throttled.into());
+    }
+    let password_ok = match owner_password_ok(api, password) {
+        Ok(ok) => ok,
+        Err(e) => return error_response(e),
+    };
+    if password_ok {
+        api.passwords.record_success(client);
+    } else {
+        api.passwords.record_failure(client, now);
+    }
     let result = match kind {
         "cloud" => api
             .backend
-            .serialized(|l| crate::losos::cmd_device_cloud(l, password, device, client)),
-        "git" => api
+            .serialized(|l| crate::losos::cmd_device_cloud(l, password_ok, device)),
+        _ => api
             .backend
-            .serialized(|l| crate::losos::cmd_device_git(l, password, device, client)),
-        _ => return err(StatusCode::NOT_FOUND, "no such device credential"),
+            .serialized(|l| crate::losos::cmd_device_git(l, password, password_ok, device)),
     };
     match result {
         Ok(v) => HttpResponse::Ok().json(v),
@@ -1763,6 +2185,23 @@ fn post_device_inner(api: &Api, kind: &str, client: &str, body: &[u8]) -> HttpRe
         }
         Err(e) => error_response(e),
     }
+}
+
+/// Whether `password` is the owner's, as LosOS Login's people file has it.
+/// A box claimed before sign-in went through LosOS Login has no owner
+/// there yet, and nothing to check against: not now, rather than wrong.
+fn owner_password_ok(api: &Api, password: &str) -> anyhow::Result<bool> {
+    use crate::losos::Losos;
+    let secret = crate::signin::validate_candidate(password).map_err(|e| anyhow::anyhow!(e))?;
+    let owner = api.backend.serialized(|l| l.load_state())?.owner;
+    let Some(owner) = owner else {
+        return Err(crate::setup::NotReady(
+            "Nobody signs in to this box yet. Make the first account on the Users pane with the spare key."
+                .to_string(),
+        )
+        .into());
+    };
+    api.people.check_password(&owner, &secret)
 }
 
 /// The appliance recovery code.
@@ -1938,6 +2377,19 @@ async fn post_app_install(api: web::Data<Api>, req: HttpRequest, body: web::Byte
     })
 }
 
+/// `POST /api/apps/compose` `{release, title?, compose, files?}` — install an
+/// app from a Compose file (the LosOS app format), or change one installed
+/// that way under the same name.
+async fn post_app_compose(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/apps/compose", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::apps::ComposeRequest::parse(&doc) {
+            Ok(request) => run(&api, |b| crate::apps::cmd_app_compose(b, &request)),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
 /// `POST /api/apps/remove` `{release}`.
 async fn post_app_remove(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
     guarded(&api, &req, "/api/apps/remove", true, || {
@@ -1950,99 +2402,6 @@ async fn post_app_remove(api: web::Data<Api>, req: HttpRequest, body: web::Bytes
             ),
         }
     })
-}
-
-// ── LosOS cloud's own apps ───────────────────────────────────────────────
-// `crate::cloud_apps` holds the rules. HTTP-only, like the chart installs.
-// None of these take the state lock: they run occ in LosOS cloud, which can
-// take as long as an app store download, and touch no state of lososd's.
-
-/// `GET /api/cloud/apps` — every app LosOS cloud has, and what may be done
-/// to each.
-async fn get_cloud_apps(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/cloud/apps", false, || {
-        let mut backend = api.backend.clone();
-        match crate::cloud_apps::cmd_cloud_apps(&mut backend) {
-            Ok(v) => HttpResponse::Ok().json(v),
-            Err(e) => error_response(e),
-        }
-    })
-}
-
-/// `GET /api/cloud/apps/search?q=` — the app store's best matches.
-async fn get_cloud_apps_search(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/cloud/apps/search", false, || {
-        let q =
-            web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
-                .map(web::Query::into_inner)
-                .unwrap_or_default();
-        let query = q.get("q").cloned().unwrap_or_default();
-        let mut backend = api.backend.clone();
-        match crate::cloud_apps::cmd_cloud_store_search(&mut backend, &query) {
-            Ok(v) => HttpResponse::Ok().json(v),
-            Err(e) => error_response(e),
-        }
-    })
-}
-
-/// `POST /api/cloud/apps/<verb>` `{id}` — answered with the list after it.
-fn post_cloud_app(
-    api: &Api,
-    req: &HttpRequest,
-    body: &web::Bytes,
-    verb: crate::cloud_apps::Verb,
-    route: &str,
-) -> HttpResponse {
-    guarded(api, req, route, true, || {
-        let doc = serde_json::from_slice::<serde_json::Value>(body).unwrap_or_default();
-        let Some(id) = field_str(&doc, "id") else {
-            return err(
-                StatusCode::BAD_REQUEST,
-                r#"body must be JSON: {"id": "<app id>"}"#,
-            );
-        };
-        let mut backend = api.backend.clone();
-        match crate::cloud_apps::cmd_cloud_app(&mut backend, verb, &id) {
-            Ok(v) => HttpResponse::Ok().json(v),
-            Err(e) => error_response(e),
-        }
-    })
-}
-
-async fn post_cloud_app_install(
-    api: web::Data<Api>,
-    req: HttpRequest,
-    body: web::Bytes,
-) -> HttpResponse {
-    use crate::cloud_apps::Verb;
-    post_cloud_app(&api, &req, &body, Verb::Install, "/api/cloud/apps/install")
-}
-
-async fn post_cloud_app_enable(
-    api: web::Data<Api>,
-    req: HttpRequest,
-    body: web::Bytes,
-) -> HttpResponse {
-    use crate::cloud_apps::Verb;
-    post_cloud_app(&api, &req, &body, Verb::Enable, "/api/cloud/apps/enable")
-}
-
-async fn post_cloud_app_disable(
-    api: web::Data<Api>,
-    req: HttpRequest,
-    body: web::Bytes,
-) -> HttpResponse {
-    use crate::cloud_apps::Verb;
-    post_cloud_app(&api, &req, &body, Verb::Disable, "/api/cloud/apps/disable")
-}
-
-async fn post_cloud_app_remove(
-    api: web::Data<Api>,
-    req: HttpRequest,
-    body: web::Bytes,
-) -> HttpResponse {
-    use crate::cloud_apps::Verb;
-    post_cloud_app(&api, &req, &body, Verb::Remove, "/api/cloud/apps/remove")
 }
 
 /// Where the Lab's libvirt helper listens, from `$LOSOS_LAB_URL`; `None`
@@ -2183,9 +2542,38 @@ async fn post_lab_order(api: web::Data<Api>, req: HttpRequest, body: web::Bytes)
 /// `backend/src/market.rs`. Unavailable is a 200, not a 404, because the SPA
 /// latches a 404 as "this box does not serve the route" for the whole session.
 async fn get_market(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/market", false, || {
-        run(&api, crate::losos::cmd_market)
-    })
+    relayed(&api, &req, "/api/market", false, crate::losos::cmd_market).await
+}
+
+/// A call the box relays to its edge, run on a blocking thread and outside the
+/// state lock. It only reads the box's edge status and asks the edge, and the
+/// edge can take its time (a tap confirm reads the chain): held under the lock
+/// on a request thread, it kept every other call waiting until actix gave
+/// them a 408.
+async fn relayed(
+    api: &web::Data<Api>,
+    req: &HttpRequest,
+    route: &str,
+    mutating: bool,
+    work: impl FnOnce(&mut IoLosos) -> anyhow::Result<serde_json::Value> + Send + 'static,
+) -> HttpResponse {
+    let who = match gate_at(api, req, route, None, mutating) {
+        Ok(who) => who,
+        Err(refused) => return *refused,
+    };
+    let worker = api.clone();
+    let resp = match web::block(move || work(&mut worker.backend.clone())).await {
+        Ok(Ok(v)) => HttpResponse::Ok().json(v),
+        Ok(Err(e)) => error_response(e),
+        Err(e) => {
+            tracing::error!(error = %e, "the edge call did not finish");
+            err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+        }
+    };
+    if mutating {
+        audit_outcome(api, req, route, &resp, &who);
+    }
+    resp
 }
 
 /// The `POST /api/market/*` actions. The body is parsed by hand and the 400s
@@ -2197,16 +2585,21 @@ async fn post_market(
     route: &'static str,
     build: fn(&serde_json::Value) -> Option<crate::market::Op>,
 ) -> HttpResponse {
-    guarded(&api, &req, route, true, || {
-        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
-        match build(&doc) {
-            Some(op) => run(&api, |b| crate::losos::cmd_market_op(b, &op)),
-            None => err(
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    match build(&doc) {
+        Some(op) => {
+            relayed(&api, &req, route, true, move |b| {
+                crate::losos::cmd_market_op(b, &op)
+            })
+            .await
+        }
+        None => guarded(&api, &req, route, true, || {
+            err(
                 StatusCode::BAD_REQUEST,
                 "the request body is missing a required field",
-            ),
-        }
-    })
+            )
+        }),
+    }
 }
 
 fn field_u64(doc: &serde_json::Value, key: &str) -> Option<u64> {
@@ -2356,6 +2749,36 @@ async fn post_market_coin_pay(
     .await
 }
 
+/// `POST /api/market/onramp` — `{"address","euros"}`: a Binance order for
+/// USDC on Base to this box's wallet, with Binance's checkout link.
+async fn post_market_onramp(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/onramp", |d| {
+        Some(crate::market::Op::Onramp {
+            address: field_str(d, "address")?,
+            euros: field_str(d, "euros")?,
+        })
+    })
+    .await
+}
+
+/// `POST /api/market/onramp/status` — `{"order_id"}`: where that order is.
+async fn post_market_onramp_status(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/onramp/status", |d| {
+        Some(crate::market::Op::OnrampStatus {
+            order_id: field_str(d, "order_id")?,
+        })
+    })
+    .await
+}
+
 async fn post_market_rpc(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
     post_market(api, req, body, "/api/market/rpc", |d| {
         let method = field_str(d, "method")?;
@@ -2367,6 +2790,174 @@ async fn post_market_rpc(api: web::Data<Api>, req: HttpRequest, body: web::Bytes
         })
     })
     .await
+}
+
+// ── AI models on lent memory ──────────────────────────────────────────────
+// Pay as you go through the edge (`edge/registrar/src/server/llm.rs`): the
+// pane quotes a meter, the owner's wallet opens its taps in the escrow, and
+// each answer is billed per token. Field names are the edge's own.
+
+/// `POST /api/market/llm/models` `{network?}` — the models, this box's
+/// meters, balances and lending, or `{"available": false}`.
+async fn post_market_llm_models(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let network = field_str(&doc, "network");
+    relayed(&api, &req, "/api/market/llm/models", false, move |b| {
+        crate::losos::cmd_llm_models(b, network)
+    })
+    .await
+}
+
+/// A whole number of USDC base units, as a JSON number or decimal text.
+fn field_units(doc: &serde_json::Value, key: &str) -> Option<u64> {
+    let v = doc.get(key)?;
+    v.as_u64()
+        .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+}
+
+/// `POST /api/market/taps` `{model, network?, spendPerHour}` — quote a meter.
+async fn post_market_taps(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    post_market(api, req, body, "/api/market/taps", |d| {
+        Some(crate::market::Op::TapQuote {
+            model: field_str(d, "model")?,
+            network: field_str(d, "network"),
+            spend_per_hour: field_units(d, "spendPerHour")?,
+        })
+    })
+    .await
+}
+
+/// `POST /api/market/taps/confirm` `{meter, wallet}` — `wallet` opened the
+/// taps.
+async fn post_market_taps_confirm(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/taps/confirm", |d| {
+        Some(crate::market::Op::TapConfirm {
+            meter: field_str(d, "meter")?,
+            wallet: field_str(d, "wallet")?,
+        })
+    })
+    .await
+}
+
+/// `POST /api/market/taps/stop` `{meter, wallet?}` — stop a meter.
+async fn post_market_taps_stop(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/taps/stop", |d| {
+        let wallet = match d.get("wallet") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(w) => Some(w.as_str()?.to_string()),
+        };
+        Some(crate::market::Op::TapStop {
+            meter: field_str(d, "meter")?,
+            wallet,
+        })
+    })
+    .await
+}
+
+/// The chat body as the page sends it, or `None` when a field is missing or
+/// of the wrong kind. The limits are checked by `ChatAsk::validate`.
+fn chat_ask(doc: &serde_json::Value) -> Option<crate::market::ChatAsk> {
+    let messages = doc
+        .get("messages")?
+        .as_array()?
+        .iter()
+        .map(|m| Some((field_str(m, "role")?, field_str(m, "content")?)))
+        .collect::<Option<Vec<_>>>()?;
+    let number = |key: &str| match doc.get(key) {
+        None | Some(serde_json::Value::Null) => Some(None),
+        Some(v) => v.as_f64().map(Some),
+    };
+    let stop = match doc.get("stop") {
+        None | Some(serde_json::Value::Null) => Vec::new(),
+        Some(serde_json::Value::String(s)) => vec![s.clone()],
+        Some(serde_json::Value::Array(a)) => a
+            .iter()
+            .map(|s| s.as_str().map(str::to_string))
+            .collect::<Option<Vec<_>>>()?,
+        Some(_) => return None,
+    };
+    let max_tokens = match doc.get("maxTokens") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(v) => Some(v.as_u64()?),
+    };
+    Some(crate::market::ChatAsk {
+        meter: field_str(doc, "meter")?,
+        messages,
+        max_tokens,
+        temperature: number("temperature")?,
+        top_p: number("topP")?,
+        stop,
+    })
+}
+
+/// `POST /api/market/llm/chat` — one request to a running model, billed on
+/// its meter: `{meter, messages: [{role, content}], maxTokens?,
+/// temperature?, topP?, stop?}`.
+///
+/// An answer can take a quarter of an hour, so this runs off the HTTP worker
+/// and without the state lock every other command takes: it touches no
+/// state of the box, and holding the lock would stall the whole API while a
+/// model thinks. The audit record is written when the answer is back.
+async fn post_market_llm_chat(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    const ROUTE: &str = "/api/market/llm/chat";
+    let mut who: Option<String> = None;
+    let gate = guarded_as(&api, &req, ROUTE, false, |p| {
+        who = Some(p.audit_name().to_string());
+        HttpResponse::Ok().finish()
+    });
+    let Some(who) = who else {
+        return gate;
+    };
+    let remote = remote_addr(&req);
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let resp = match chat_ask(&doc) {
+        None => err(
+            StatusCode::BAD_REQUEST,
+            "the request body is missing a required field",
+        ),
+        Some(ask) => {
+            let worker = api.clone();
+            let answer = web::block(move || {
+                let mut backend = worker.backend.clone();
+                crate::losos::cmd_market_op(&mut backend, &crate::market::Op::LlmChat(ask))
+            })
+            .await;
+            match answer {
+                Ok(Ok(v)) => HttpResponse::Ok().json(v),
+                Ok(Err(e)) => error_response(e),
+                Err(e) => {
+                    tracing::error!(error = %e, "the model request did not finish");
+                    err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+                }
+            }
+        }
+    };
+    let status = resp.status();
+    let outcome = if status.is_success() {
+        "ok"
+    } else if status.is_client_error() {
+        "rejected"
+    } else {
+        "error"
+    };
+    api.audit.record_as(ROUTE, outcome, &remote, Some(&who));
+    resp
 }
 
 // ── The widget builder ────────────────────────────────────────────────────
@@ -2432,6 +3023,263 @@ async fn delete_builder_build(
             Err(r) => builder_refused(&r),
         }
     })
+}
+
+// ── LosOS Mail ────────────────────────────────────────────────────────────
+// A mailbox per person (`crate::mail`). Every route is `signed-in` in
+// sections.json: whoever LosOS Login signed in reads their own mail, and
+// only their own, because each call is made as them. The spare key and a
+// managing edge are nobody, so they have no mailbox.
+
+/// The policy a message's HTML is shown under, by lososd and by nginx's
+/// header map alike (`modules/containers.nix`, the `mailFrame` arm): a
+/// sandbox with no scripts and no same origin, inline style, and nothing
+/// loaded from anywhere, so a remote picture cannot tell the sender the
+/// message was read. Links open in a new tab, which is all
+/// `allow-popups` is for.
+pub const MAIL_FRAME_CSP: &str = "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
+
+fn mail_refused(r: &crate::mail::Refused) -> HttpResponse {
+    err(
+        StatusCode::from_u16(r.status).unwrap_or(StatusCode::BAD_GATEWAY),
+        &r.message,
+    )
+}
+
+/// The person a mail call is made as, or the answer for a caller who is
+/// nobody's mailbox: the spare key, an edge, or a person LosOS Login is
+/// holding to their own account.
+fn mail_person<'a>(
+    api: &Api,
+    who: &'a Principal,
+) -> Result<&'a crate::people::Person, Box<HttpResponse>> {
+    if api.mail.open().is_none() {
+        return Err(Box::new(err(
+            StatusCode::NOT_FOUND,
+            "there is no mail on this box",
+        )));
+    }
+    match who.person() {
+        Some(p) if p.groups.iter().any(|g| g == crate::people::LOCKED) => Err(Box::new(
+            HttpResponse::Forbidden().json(serde_json::json!({
+                "error": "finish what LosOS Login asks of your account first",
+                "locked": true,
+            })),
+        )),
+        Some(p) => Ok(p),
+        None => Err(Box::new(err(
+            StatusCode::CONFLICT,
+            "the spare key has no mailbox; sign in with LosOS Login to read mail",
+        ))),
+    }
+}
+
+/// `GET /api/mail` — the person's address, their folders, and the people
+/// on this box to write to. 404 when mail is not live here: off, or the box
+/// not sharing its storage, in which case the page does not exist either.
+async fn get_mail(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail", false, |who| {
+        let person = match mail_person(&api, who) {
+            Ok(p) => p,
+            Err(resp) => return *resp,
+        };
+        let people = api.people.list().unwrap_or_default();
+        match api.mail.mailboxes(person) {
+            Ok(mailboxes) => HttpResponse::Ok().json(serde_json::json!({
+                "address": api.mail.address(&person.name),
+                "name": person.display_name,
+                "mailboxes": mailboxes,
+                "people": api.mail.neighbours(&people),
+            })),
+            Err(r) => mail_refused(&r),
+        }
+    })
+}
+
+/// `GET /api/mail/messages?mailbox=<id>&q=<words>&position=<n>` — a page of
+/// a folder, newest first, optionally only what matches `q`.
+async fn get_mail_messages(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail/messages", false, |who| {
+        let person = match mail_person(&api, who) {
+            Ok(p) => p,
+            Err(resp) => return *resp,
+        };
+        let query =
+            web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+                .map(web::Query::into_inner)
+                .unwrap_or_default();
+        let Some(mailbox) = query.get("mailbox") else {
+            return err(StatusCode::BAD_REQUEST, "which folder?");
+        };
+        let position = query
+            .get("position")
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(0);
+        match api.mail.list(
+            person,
+            mailbox,
+            query.get("q").map(String::as_str),
+            position,
+        ) {
+            Ok(page) => HttpResponse::Ok().json(page),
+            Err(r) => mail_refused(&r),
+        }
+    })
+}
+
+/// `GET /api/mail/messages/{id}` — open a message, which marks it read.
+async fn get_mail_message(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(
+        &api,
+        &req,
+        "/api/mail/messages",
+        false,
+        |who| match mail_person(&api, who).map(|p| api.mail.message(p, &path)) {
+            Ok(Ok(m)) => HttpResponse::Ok().json(m),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        },
+    )
+}
+
+/// `GET /api/mail/messages/{id}/html` — the message's HTML, as a document
+/// of its own under [`MAIL_FRAME_CSP`], for the page's sandboxed frame.
+async fn get_mail_html(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(
+        &api,
+        &req,
+        "/api/mail/messages/html",
+        false,
+        |who| match mail_person(&api, who).map(|p| api.mail.html(p, &path)) {
+            Ok(Ok(html)) => HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .insert_header(("Content-Security-Policy", MAIL_FRAME_CSP))
+                .insert_header(("X-Content-Type-Options", "nosniff"))
+                .insert_header(("Referrer-Policy", "no-referrer"))
+                .insert_header(("Cache-Control", "private, no-store"))
+                .body(html),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        },
+    )
+}
+
+/// `POST /api/mail/messages/{id}` `{"seen"?, "flagged"?, "mailbox"?}`.
+async fn post_mail_message(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail/messages", true, |who| {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let done = mail_person(&api, who)
+            .map(|p| crate::mail::parse_change(&doc).and_then(|c| api.mail.change(p, &path, &c)));
+        match done {
+            Ok(Ok(())) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        }
+    })
+}
+
+/// `DELETE /api/mail/messages/{id}` — to the bin, or out of it for good.
+async fn delete_mail_message(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(
+        &api,
+        &req,
+        "/api/mail/messages",
+        true,
+        |who| match mail_person(&api, who).map(|p| api.mail.delete(p, &path)) {
+            Ok(Ok(())) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        },
+    )
+}
+
+/// `POST /api/mail/send` `{"to", "cc"?, "subject", "text", "inReplyTo"?}`.
+async fn post_mail_send(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail/send", true, |who| {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let done = mail_person(&api, who)
+            .map(|p| crate::mail::parse_draft(&doc).and_then(|d| api.mail.send(p, &d)));
+        match done {
+            Ok(Ok(())) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        }
+    })
+}
+
+/// `GET /api/mail/attachments/{blob}?name=<file name>` — an attachment, as
+/// a download. Never shown inline: a file from a stranger is not opened
+/// under this origin.
+async fn get_mail_attachment(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail/attachments", false, |who| {
+        let name =
+            web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+                .ok()
+                .and_then(|q| q.get("name").cloned())
+                .unwrap_or_else(|| "attachment".into());
+        // Only what cannot break the header or the file system.
+        let name: String = name
+            .chars()
+            .filter(|c| !c.is_control() && !matches!(c, '"' | '\\' | '/'))
+            .take(120)
+            .collect();
+        let name = if name.trim().is_empty() {
+            "attachment".to_string()
+        } else {
+            name
+        };
+        match mail_person(&api, who).map(|p| api.mail.download(p, &path)) {
+            Ok(Ok((_, bytes))) => HttpResponse::Ok()
+                .content_type("application/octet-stream")
+                .insert_header((
+                    "Content-Disposition",
+                    format!(
+                        "attachment; filename=\"{}\"; filename*=UTF-8''{}",
+                        name.replace(|c: char| !c.is_ascii(), "_"),
+                        percent(&name)
+                    ),
+                ))
+                .insert_header(("X-Content-Type-Options", "nosniff"))
+                .insert_header(("Cache-Control", "private, no-store"))
+                .body(bytes),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        }
+    })
+}
+
+/// RFC 5987 percent-encoding for a `filename*` parameter.
+fn percent(s: &str) -> String {
+    s.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
+                char::from(b).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
 }
 
 // ── Virtual machines ──────────────────────────────────────────────────────
@@ -2647,6 +3495,38 @@ async fn post_domain_remove(
     .await
 }
 
+/// `POST /api/domains/wallet` `{"address": "0x…", "signature": "0x…"}` —
+/// publish the box's wallet at its names on the edge, so wallets that send
+/// to ENS names pay it by name; `{}` takes it off.
+async fn post_domain_wallet(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/domains/wallet", true, || {
+        // `{}` unbinds, so anything that is not an object of strings is a
+        // 400 rather than read as one.
+        const SHAPE: &str =
+            r#"body must be JSON: {"address": "0x…", "signature": "0x…"} to bind, or {} to unbind"#;
+        let Ok(serde_json::Value::Object(doc)) = serde_json::from_slice(&body) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let text = |key: &str| match doc.get(key) {
+            None => Ok(None),
+            Some(serde_json::Value::String(v)) => Ok(Some(v.trim().to_string())),
+            Some(_) => Err(()),
+        };
+        let (Ok(address), Ok(signature)) = (text("address"), text("signature")) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let op = crate::market::Op::DomainWallet {
+            address: address.map(|a| a.to_ascii_lowercase()),
+            signature,
+        };
+        run(&api, |b| crate::losos::cmd_domain_op(b, &op))
+    })
+}
+
 // ── Plugins ───────────────────────────────────────────────────────────────
 // Every route not registered above is a plugin's (`crate::plugin`): the
 // manifest names it, this daemon authenticates the caller and checks the
@@ -2698,6 +3578,10 @@ fn plugin_caller(
         None => t::Principal::Anonymous,
         Some(Principal::Spare) => t::Principal::Spare,
         Some(Principal::Edge) => t::Principal::Edge,
+        // No plugin route is a companion route (`guarded_at` refuses it
+        // before a plugin is asked), and a plugin's own calls would run
+        // with this caller: nobody, then.
+        Some(Principal::Companion(_)) => t::Principal::Anonymous,
         Some(Principal::Person(p)) => t::Principal::Person(t::Person {
             name: p.name.clone(),
             display_name: p.display_name.clone(),
@@ -2786,28 +3670,10 @@ async fn plugin_route(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -
     )
 }
 
-// ── The sidebar's pins ────────────────────────────────────────────────────
-// What the owner pinned to the sidebar, and the two lists the picker pins
-// from, LosOS cloud's files and LosOS Git's repositories (`crate::pins`).
-// HTTP-only like the look.
-
-/// `GET /api/pins`.
-async fn get_pins(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/pins", false, || {
-        run(&api, crate::pins::cmd_pins)
-    })
-}
-
-/// `PUT /api/pins` — the whole list, in order.
-async fn put_pins(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
-    guarded(&api, &req, "/api/pins", true, || {
-        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
-        match crate::pins::parse_pins(&doc) {
-            Ok(pins) => run(&api, |b| crate::pins::cmd_put_pins(b, &pins)),
-            Err(e) => error_response(e),
-        }
-    })
-}
+// ── The pin picker ────────────────────────────────────────────────────────
+// The two lists the sidebar's picker pins from, LosOS cloud's files and
+// LosOS Git's repositories (`crate::pins`). The pins themselves are the
+// pins plugin's (`plugins/pins/`).
 
 /// `GET /api/cloud/files?path=/...` — one folder of LosOS cloud, or with
 /// `q=...` the files and folders anywhere whose name holds the text. The
@@ -2857,7 +3723,7 @@ async fn get_site(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     })
 }
 
-/// `POST /api/site` — `{"set": {"nextcloud.site.trashDays": "30",
+/// `POST /api/site` — `{"set": {"cloud.trashDays": "30",
 /// "forgejo.site.landingPage": null}}`: each value a Nix literal, or null to
 /// go back to the default. Only those lines of `overrides.nix` change; the
 /// rest is an apply.
@@ -3297,19 +4163,28 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             backend,
             token,
             throttle: Throttle::default(),
+            passwords: Throttle::default(),
             audit: Audit,
             claims: std::sync::Mutex::new(crate::receipt::Receipts::default()),
             access: crate::access::Access::from_env(),
             port,
             builder: crate::builder::Builder::from_env(),
             people,
+            companion: crate::companion::Companion::from_env(),
             login,
             share: crate::cloud_share::Share::default(),
+            mail: crate::mail::Mail::from_env(),
+            profiles: crate::profiles::Profiles::from_env(),
+            image_jobs: tokio::sync::Semaphore::new(IMAGE_JOBS),
             plugins,
         });
         api.plugins
             .set_authorize(std::sync::Arc::new(authorize_caller));
-        let payload_cap = api.plugins.max_body().max(1024 * 1024);
+        let payload_cap = api
+            .plugins
+            .max_body()
+            .max(crate::profiles::MAX_UPLOAD_BYTES)
+            .max(1024 * 1024);
         owner_in_owner_group(&api);
         start_login_marks(api.clone());
         sync_names_later(api.clone(), None);
@@ -3317,10 +4192,26 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             App::new()
                 .app_data(api.clone())
                 // actix reads at most 256 KiB into `web::Bytes` by default.
-                // The cap is the largest `maxBody` a plugin route asks for;
-                // each route's own limit is checked in `plugin_route`.
+                // The cap is the largest `maxBody` a plugin route asks for,
+                // or a profile picture's; each plugin route's own limit is
+                // checked in `plugin_route`, and profiles.rs refuses a
+                // picture over its limit with a sentence.
                 .app_data(web::PayloadConfig::new(payload_cap))
                 .route("/api/health", web::get().to(health))
+                .route("/api/mail", web::get().to(get_mail))
+                .route("/api/mail/send", web::post().to(post_mail_send))
+                .route("/api/mail/messages", web::get().to(get_mail_messages))
+                .route("/api/mail/messages/{id}", web::get().to(get_mail_message))
+                .route("/api/mail/messages/{id}", web::post().to(post_mail_message))
+                .route(
+                    "/api/mail/messages/{id}",
+                    web::delete().to(delete_mail_message),
+                )
+                .route("/api/mail/messages/{id}/html", web::get().to(get_mail_html))
+                .route(
+                    "/api/mail/attachments/{blob}",
+                    web::get().to(get_mail_attachment),
+                )
                 .route("/api/me", web::get().to(get_me))
                 .route("/api/state", web::get().to(get_state))
                 .route("/api/settings", web::get().to(get_settings))
@@ -3353,6 +4244,27 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/account", web::get().to(get_account))
                 .route("/api/account", web::post().to(post_account))
                 .route("/api/account/code", web::post().to(post_account_code))
+                .route("/api/account/profile", web::post().to(post_account_profile))
+                .route("/api/account/picture", web::put().to(put_account_picture))
+                .route(
+                    "/api/account/picture",
+                    web::delete().to(delete_account_picture),
+                )
+                .route("/api/account/banner", web::put().to(put_account_banner))
+                .route(
+                    "/api/account/banner",
+                    web::delete().to(delete_account_banner),
+                )
+                .route("/api/profiles", web::get().to(get_profiles))
+                .route("/api/profiles/{name}", web::get().to(get_profile))
+                .route(
+                    "/api/profiles/{name}/{kind}",
+                    web::get().to(get_profile_image),
+                )
+                .route(
+                    "/api/people/profile/clear",
+                    web::post().to(post_people_profile_clear),
+                )
                 .route("/api/recovery", web::get().to(get_recovery))
                 .route("/api/devices/{kind}", web::post().to(post_device))
                 .route("/api/apps/search", web::get().to(get_apps_search))
@@ -3361,28 +4273,8 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/apps", web::get().to(get_apps))
                 .route("/api/apps/chart", web::get().to(get_app_chart))
                 .route("/api/apps/install", web::post().to(post_app_install))
+                .route("/api/apps/compose", web::post().to(post_app_compose))
                 .route("/api/apps/remove", web::post().to(post_app_remove))
-                .route("/api/cloud/apps", web::get().to(get_cloud_apps))
-                .route(
-                    "/api/cloud/apps/search",
-                    web::get().to(get_cloud_apps_search),
-                )
-                .route(
-                    "/api/cloud/apps/install",
-                    web::post().to(post_cloud_app_install),
-                )
-                .route(
-                    "/api/cloud/apps/enable",
-                    web::post().to(post_cloud_app_enable),
-                )
-                .route(
-                    "/api/cloud/apps/disable",
-                    web::post().to(post_cloud_app_disable),
-                )
-                .route(
-                    "/api/cloud/apps/remove",
-                    web::post().to(post_cloud_app_remove),
-                )
                 .route("/api/market", web::get().to(get_market))
                 .route("/api/market/onboard", web::post().to(post_market_onboard))
                 .route("/api/market/listings", web::post().to(post_market_listing))
@@ -3404,6 +4296,25 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                     web::post().to(post_market_coin_pay),
                 )
                 .route("/api/market/rpc", web::post().to(post_market_rpc))
+                .route("/api/market/onramp", web::post().to(post_market_onramp))
+                .route(
+                    "/api/market/onramp/status",
+                    web::post().to(post_market_onramp_status),
+                )
+                .route(
+                    "/api/market/llm/models",
+                    web::post().to(post_market_llm_models),
+                )
+                .route("/api/market/llm/chat", web::post().to(post_market_llm_chat))
+                .route("/api/market/taps", web::post().to(post_market_taps))
+                .route(
+                    "/api/market/taps/confirm",
+                    web::post().to(post_market_taps_confirm),
+                )
+                .route(
+                    "/api/market/taps/stop",
+                    web::post().to(post_market_taps_stop),
+                )
                 .route("/api/builder", web::get().to(get_builder))
                 .route("/api/builder/builds", web::post().to(post_builder_start))
                 .route("/api/builder/builds/{id}", web::get().to(get_builder_build))
@@ -3432,13 +4343,12 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/domains", web::get().to(get_domains))
                 .route("/api/domains", web::post().to(post_domain_add))
                 .route("/api/domains/remove", web::post().to(post_domain_remove))
+                .route("/api/domains/wallet", web::post().to(post_domain_wallet))
                 .route("/api/options", web::get().to(get_options))
                 .route("/api/site", web::get().to(get_site))
                 .route("/api/site", web::post().to(post_site))
                 .route("/api/config", web::get().to(get_config))
                 .route("/api/config/sync", web::post().to(post_config_sync))
-                .route("/api/pins", web::get().to(get_pins))
-                .route("/api/pins", web::put().to(put_pins))
                 .route("/api/cloud/files", web::get().to(get_cloud_files))
                 .route("/api/git/repos", web::get().to(get_git_repos))
                 // The web UI's side of terminal access (crate::access):
@@ -3465,6 +4375,8 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 // Everything else is a plugin's, or nobody's (crate::plugin).
                 .default_service(web::route().to(plugin_route))
         })
+        .workers(HTTP_WORKERS)
+        .client_request_timeout(HEAD_TIMEOUT)
         .bind(("127.0.0.1", port))
         .with_context(|| format!("binding 127.0.0.1:{port}"))?;
         tracing::info!(port, "admin API listening on loopback");
@@ -3477,6 +4389,55 @@ mod tests {
     use super::*;
 
     const JSON: Option<&str> = Some("application/json");
+
+    #[test]
+    fn a_chat_body_is_read_field_by_field_and_a_wrong_kind_is_missing() {
+        let doc = serde_json::json!({
+            "meter": "mtr_ab",
+            "messages": [{ "role": "user", "content": "hi" }],
+            "maxTokens": 32,
+            "temperature": 0.2,
+            "stop": "END",
+        });
+        let ask = chat_ask(&doc).expect("a chat");
+        assert_eq!(ask.meter, "mtr_ab");
+        assert_eq!(ask.messages, vec![("user".to_string(), "hi".to_string())]);
+        assert_eq!(ask.max_tokens, Some(32));
+        assert_eq!(ask.temperature, Some(0.2));
+        assert_eq!(ask.top_p, None);
+        assert_eq!(ask.stop, vec!["END".to_string()]);
+        for bad in [
+            serde_json::json!({ "messages": [] }),
+            serde_json::json!({ "meter": "mtr_ab", "messages": "hi" }),
+            serde_json::json!({ "meter": "mtr_ab", "messages": [{ "role": "user" }] }),
+            serde_json::json!({ "meter": "mtr_ab", "messages": [], "maxTokens": -1 }),
+            serde_json::json!({ "meter": "mtr_ab", "messages": [], "temperature": "hot" }),
+            serde_json::json!({ "meter": "mtr_ab", "messages": [], "stop": [1] }),
+        ] {
+            assert!(chat_ask(&bad).is_none(), "{bad}");
+        }
+        assert_eq!(
+            field_units(
+                &serde_json::json!({ "spendPerHour": "250000" }),
+                "spendPerHour"
+            ),
+            Some(250_000)
+        );
+        assert_eq!(
+            field_units(
+                &serde_json::json!({ "spendPerHour": 250_000 }),
+                "spendPerHour"
+            ),
+            Some(250_000)
+        );
+        assert_eq!(
+            field_units(
+                &serde_json::json!({ "spendPerHour": "2.5" }),
+                "spendPerHour"
+            ),
+            None
+        );
+    }
 
     #[test]
     fn claim_from_the_box_own_page_passes() {

@@ -13,7 +13,6 @@
 
 use crate::model::{Mode, Rebuild, RebuildState, State};
 use crate::overrides::{parse_settings, DEFAULT_OVERRIDES_NIX};
-use crate::setup::Readiness;
 use serde_json::{json, Value};
 
 /// Anything the commands need from the outside world.
@@ -52,71 +51,6 @@ pub trait Losos {
     /// resize prompts on a stdin the daemon does not have.
     fn luks_key_file(&mut self) -> anyhow::Result<Option<String>>;
 
-    // ── Setting the Nextcloud admin password ────────────────────────────
-    // Split look / plan / do the same way growth is, and for a second reason:
-    // the password is an argument to `run_occ` rather than a field of the
-    // action, so it cannot end up in an argv or in a serialized plan.
-    /// Which mode Nextcloud is *running* in, from `$LOSOS_NEXTCLOUD_MODE`.
-    fn nextcloud_mode(&mut self) -> anyhow::Result<crate::setup::NcMode>;
-    /// Locate the `occ` entry point: in container mode the single running
-    /// workload container, in native mode the host wrapper.
-    fn nextcloud_target(
-        &mut self,
-        mode: crate::setup::NcMode,
-    ) -> anyhow::Result<crate::setup::Target>;
-    /// Execute one planned step.
-    ///
-    /// `Err` means the step could not be run at all — a missing binary, an
-    /// unreachable CRI socket, an unwritable staging directory. A command that
-    /// ran and exited non-zero is `Ok(Some(outcome))`, so which failures mean
-    /// what is decided by [`crate::setup::interpret_occ`], purely.
-    fn run_occ(
-        &mut self,
-        action: &crate::setup::OccAction,
-        secret: &crate::setup::Secret,
-    ) -> anyhow::Result<Option<crate::setup::OccOutcome>>;
-    /// Ask the located Nextcloud whether it is ready for `occ`: the argv is
-    /// [`crate::setup::plan_status`], the answer is read by
-    /// [`crate::setup::interpret_status`]. `Err` means the probe could not be
-    /// run at all; a non-zero exit is data, as for [`Losos::run_occ`].
-    fn nextcloud_status(
-        &mut self,
-        target: &crate::setup::Target,
-    ) -> anyhow::Result<crate::setup::OccOutcome>;
-    /// Run one step of [`crate::setup::plan_person`]. `Err` means it could
-    /// not be run at all; a non-zero exit is data.
-    fn nextcloud_run(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome>;
-    /// The last few log lines of the most recent Nextcloud container in any
-    /// state, when [`Losos::nextcloud_target`] found no running one: the argv
-    /// pair is [`crate::setup::last_container_argv`] then
-    /// [`crate::setup::container_log_argv`], and the text is read by
-    /// [`crate::setup::describe_stopped`]. `Ok(None)` when there is no such
-    /// container or no log; native mode has neither.
-    fn nextcloud_last_log(&mut self, mode: crate::setup::NcMode) -> anyhow::Result<Option<String>>;
-    /// Ask the running Nextcloud whether `secret` is `user`'s password, on
-    /// behalf of the browser at `client` (an IP, forwarded so Nextcloud's own
-    /// brute-force protection counts the right party). The request is
-    /// [`crate::signin::login_request`] and the answer is read by
-    /// [`crate::signin::interpret_login`]; `Err` means the question could
-    /// not even be sent, which [`cmd_sign_in`] reports as "not now" rather
-    /// than as "wrong".
-    fn nextcloud_login(
-        &mut self,
-        user: &str,
-        secret: &crate::setup::Secret,
-        client: &str,
-    ) -> anyhow::Result<crate::signin::LoginOutcome>;
-    /// Ask the running Nextcloud for a new app password for `user`, named
-    /// after `device` ([`crate::devices::app_password_request`]): status and
-    /// body. `Err` means Nextcloud could not be asked at all.
-    fn nextcloud_app_password(
-        &mut self,
-        user: &str,
-        secret: &crate::setup::Secret,
-        device: &str,
-        client: &str,
-    ) -> anyhow::Result<(u16, String)>;
-
     // ── The appliance recovery code ─────────────────────────────────────
     /// The appliance's recovery code, minting one only if there is none.
     ///
@@ -138,20 +72,6 @@ pub trait Losos {
     /// route" (a 404) and offers the field again.
     fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>>;
 
-    // ── LosOS cloud's own apps ──────────────────────────────────────────
-    // `crate::cloud_apps` holds the rules; these are the effects.
-    /// Run `losos-nextcloud-apps` with the argv [`crate::cloud_apps::plan`]
-    /// built. `Err` means it could not be run at all; a non-zero exit is
-    /// data, as for [`Losos::run_occ`].
-    fn run_cloud_apps(&mut self, argv: &[String]) -> anyhow::Result<crate::setup::OccOutcome>;
-    /// Whether this box knows which Nextcloud version to ask the app store
-    /// about, and so offers adding apps from it.
-    fn cloud_store_offered(&mut self) -> bool;
-    /// The app store's apps for this box's Nextcloud, parsed by
-    /// [`crate::cloud_apps::parse_store`]. The real backend keeps the parsed
-    /// list for a few hours: the store's own list is about 17 MB.
-    fn cloud_store(&mut self) -> anyhow::Result<std::sync::Arc<Vec<crate::cloud_apps::StoreApp>>>;
-
     // ── Installing an app from the catalogue ────────────────────────────
     // `crate::apps` holds the rules; these are the effects.
     /// `None` when this box runs no local cluster (both apps native) or the
@@ -166,6 +86,14 @@ pub trait Losos {
     /// Every installed app's record, by name.
     fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>>;
     fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()>;
+    /// A Compose app's file and the files beside it, where the job reads
+    /// them (`<apps dir>/<release>/source/`), replacing what was there.
+    fn save_app_source(
+        &mut self,
+        release: &str,
+        compose: &str,
+        files: &[(String, String)],
+    ) -> anyhow::Result<()>;
     /// Start the job that installs or removes `release`, from its record.
     fn start_app_job(&mut self, release: &str, action: crate::apps::Action) -> anyhow::Result<()>;
     /// Whether a job for `release` is running.
@@ -195,20 +123,12 @@ pub trait Losos {
     /// `routes.rs`). Root-only: it lets a local edge route this box's
     /// custom domains for a few hours.
     fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()>;
-    // ── The sidebar's pins ──────────────────────────────────────────────
-    // `crate::pins`: the list beside `state.json`, and the app password
-    // lososd lists the owner's LosOS cloud folders with.
-    /// The pins, or an empty list when there is none yet or it does not
-    /// parse.
-    fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins>;
-    fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()>;
-    /// The kept LosOS cloud app password, `None` before the first sign-in
-    /// with the password.
-    fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>>;
-    /// Keep an app password, or forget it with `None`.
-    fn save_cloud_key(&mut self, key: Option<&crate::pins::CloudKey>) -> anyhow::Result<()>;
-    /// One request to LosOS cloud on loopback ([`crate::pins::request_bytes`]):
-    /// its status and body. `Err` when it could not be asked at all.
+    // ── The pin picker ──────────────────────────────────────────────────
+    // `crate::pins`: what the picker offers. The pins themselves are the
+    // pins plugin's.
+    /// One request to LosOS Cloud over its socket
+    /// ([`crate::pins::request_bytes`]): its status and body. `Err` when it
+    /// could not be asked at all.
     fn cloud_request(
         &mut self,
         request: &crate::pins::CloudRequest<'_>,
@@ -475,8 +395,9 @@ pub fn cmd_apply<L: Losos>(l: &mut L, nix_code: &str) -> anyhow::Result<Value> {
     let want = parse_settings(nix_code);
     crate::edge::check_gate(&now, &want, &l.edge_status()?)?;
     crate::edge::check_mesh(nix_code)?;
-    l.write_overrides(nix_code)?;
-    let commit = commit_settings(l, "Change", &before, nix_code);
+    let body = crate::overrides::drop_retired(nix_code);
+    l.write_overrides(&body)?;
+    let commit = commit_settings(l, "Change", &before, &body);
     let job = queue_rebuild(l, MSG_STARTED)?;
     Ok(json!({ "job": job, "commit": commit }))
 }
@@ -576,78 +497,18 @@ pub fn cmd_storage<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     }))
 }
 
-/// Replace the Nextcloud admin password.
+/// The owner's new password reaches the places outside the people file
+/// that keep one: LosOS Git's account ([`sync_owner_password`]).
 ///
-/// Replaces, never reveals. The install-time password from
-/// `modules/nextcloud-common.nix` is 0600 and displayed nowhere; reading it
-/// back out over this API would make a root-only file API-readable and save the
-/// owner nothing, because they have to type a password they have chosen either
-/// way.
-///
-/// Both validations run before any effect, so a rejected password stages
-/// nothing and execs nothing. `changed` is derived from occ's exit status
-/// rather than asserted: see [`crate::setup::interpret_occ`] for why that
-/// status is worth trusting here and is not in `grow`.
+/// The people file itself is written by the HTTP layer, which holds it
+/// (`crate::people`). Both validations run before any effect.
 pub fn cmd_set_password<L: Losos>(l: &mut L, user: &str, password: &str) -> anyhow::Result<Value> {
-    use crate::setup::{
-        interpret_occ, plan_set_password, validate_password, validate_user, OccAction,
-    };
+    use crate::setup::{validate_password, validate_user};
 
     let user = validate_user(user).map_err(|e| anyhow::anyhow!(e))?;
     let secret = validate_password(password).map_err(|e| anyhow::anyhow!(e))?;
-
-    let mode = l.nextcloud_mode()?;
-    let target = l.nextcloud_target(mode)?;
-    // The mode that actually ran, taken from the located target rather than
-    // from the env var, so the two cannot disagree in the reply.
-    let ran_mode = target.mode();
-    let plan = plan_set_password(&target, user).map_err(|e| anyhow::anyhow!(e))?;
-
-    let mut outcome = None;
-    let mut failed_at = None;
-    for (i, action) in plan.iter().enumerate() {
-        match l.run_occ(action, &secret) {
-            Ok(Some(o)) => outcome = Some(o),
-            Ok(None) => {}
-            Err(e) => {
-                failed_at = Some((i, e));
-                break;
-            }
-        }
-    }
-
-    // The staged file holds a plaintext password, so it gets removed whatever
-    // happened. Anything before the failure point has already run; this is the
-    // tail that did not.
-    let resume = failed_at.as_ref().map_or(plan.len(), |(i, _)| i + 1);
-    for action in plan.iter().skip(resume) {
-        if matches!(action, OccAction::ClearSecret { .. }) {
-            if let Err(e) = l.run_occ(action, &secret) {
-                // Warned about, not raised: it must not mask the failure that
-                // got us here, and the next attempt overwrites the file anyway.
-                tracing::warn!(error = ?e, "could not remove the staged Nextcloud password file");
-            }
-        }
-    }
-
-    if let Some((_, e)) = failed_at {
-        return Err(e);
-    }
-    let Some(outcome) = outcome else {
-        anyhow::bail!("set-password executed no occ command; plan_set_password is broken");
-    };
-    let message = interpret_occ(&outcome).map_err(|e| anyhow::anyhow!(e))?;
-    if outcome.code == 0 {
-        sync_owner_password(l, user, &secret);
-        crate::pins::keep_cloud_key(l, user, &secret);
-    }
-
-    Ok(json!({
-        "user": user,
-        "mode": ran_mode.as_str(),
-        "changed": outcome.code == 0,
-        "message": message,
-    }))
+    sync_owner_password(l, user, &secret);
+    Ok(json!({ "user": user, "changed": true }))
 }
 
 /// Whether this box has an owner yet. Unauthenticated, on purpose.
@@ -658,77 +519,15 @@ pub fn cmd_set_password<L: Losos>(l: &mut L, user: &str, password: &str) -> anyh
 /// on the LAN, and `modules/containers.nix`'s `lanOnly` guard is what keeps
 /// "on the LAN" meaningful.
 ///
-/// `ready` and `waitingFor` say whether the first password can be set *now*.
-/// On a fresh box the Nextcloud pod spends its first minutes in
-/// `occ maintenance:install`, and a claim sent before that finishes fails;
-/// the wizard polls this instead and lets the owner proceed when it is true.
-/// Only probed while unclaimed — afterwards there is nothing to wait for, and
-/// an unauthenticated route should not spawn a process per request forever.
+/// `ready` and `waitingFor` are kept for the wizard, which waits while
+/// `ready` is false. Nothing has to start before the first password any
+/// more, so an unclaimed box is always ready.
 pub fn cmd_claim_state<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     let claimed = l.load_state().map(|s| s.claimed).unwrap_or(false);
     if claimed {
         return Ok(json!({ "claimed": true, "ready": true, "waitingFor": Value::Null }));
     }
-    match nextcloud_readiness(l) {
-        Readiness::Ready => {
-            Ok(json!({ "claimed": false, "ready": true, "waitingFor": Value::Null }))
-        }
-        Readiness::NotYet(why) => {
-            Ok(json!({ "claimed": false, "ready": false, "waitingFor": why }))
-        }
-    }
-}
-
-/// Can Nextcloud take an `occ user:resetpassword` right now?
-///
-/// Three things have to be true, and each has its own sentence for the
-/// owner: the mode is known, the `occ` entry point can be found (in container
-/// mode, that the pod is running at all), and `occ status` says installed and
-/// not in maintenance. A probe that cannot even be run reads as "not yet"
-/// rather than as an error, because on a box with no shell the only thing the
-/// owner can do about either is wait.
-pub fn nextcloud_readiness<L: Losos>(l: &mut L) -> Readiness {
-    const NOT_STARTED: &str =
-        "Nextcloud has not started yet. On a new box this takes a few minutes.";
-    let mode = match l.nextcloud_mode() {
-        Ok(m) => m,
-        Err(e) => {
-            tracing::info!(error = ?e, "Nextcloud mode unknown");
-            return Readiness::NotYet(NOT_STARTED.to_string());
-        }
-    };
-    let target = match l.nextcloud_target(mode) {
-        Ok(t) => t,
-        Err(e) => {
-            tracing::info!(error = ?e, "Nextcloud not located yet");
-            // No running container. Before saying "not yet", look at whether
-            // one *was* running and what it said as it died: a pod in
-            // CrashLoopBackOff is "not yet" forever, and its last log line
-            // is the only thing an owner with no shell can act on.
-            let why = match l.nextcloud_last_log(mode) {
-                Ok(Some(tail)) => crate::setup::describe_stopped(&tail),
-                Ok(None) => None,
-                Err(e) => {
-                    tracing::info!(error = ?e, "Nextcloud last log could not be read");
-                    None
-                }
-            };
-            return Readiness::NotYet(why.unwrap_or_else(|| NOT_STARTED.to_string()));
-        }
-    };
-    match l.nextcloud_status(&target) {
-        Ok(outcome) => match crate::setup::interpret_status(&outcome) {
-            Ok(()) => Readiness::Ready,
-            Err(why) => Readiness::NotYet(why),
-        },
-        Err(e) => {
-            tracing::info!(error = ?e, "Nextcloud status probe could not run");
-            Readiness::NotYet(
-                "Nextcloud is starting but not answering yet. On a new box this takes a few minutes."
-                    .to_string(),
-            )
-        }
-    }
+    Ok(json!({ "claimed": false, "ready": true, "waitingFor": Value::Null }))
 }
 
 /// Claim an unowned box: set the first password, and record that it has an
@@ -763,8 +562,9 @@ pub fn nextcloud_readiness<L: Losos>(l: &mut L) -> Readiness {
 /// ([`crate::receipt`]): a claimed box still answers, with the same reply,
 /// a caller who presents the password that claimed it within the grace
 /// window. That is for the reply that was lost in transit — the proxy timed
-/// out while occ was still running, and the admin key in the reply reached
-/// nobody — and it changes nothing: no occ runs, the state is not rewritten.
+/// out while the password was still being set, and the admin key in the
+/// reply reached nobody — and it changes nothing: no password is set, the
+/// state is not rewritten.
 pub fn cmd_claim<L: Losos>(
     l: &mut L,
     user: &str,
@@ -788,15 +588,7 @@ pub fn cmd_claim<L: Losos>(
         }
         return Err(crate::setup::AlreadyClaimed.into());
     }
-    // Asked before anything is staged: the wizard shows this sentence and
-    // keeps waiting, where the 500 a failed occ would produce told the owner
-    // nothing. Typed, so the HTTP layer answers 503 rather than 500.
-    if let Readiness::NotYet(why) = nextcloud_readiness(l) {
-        return Err(crate::setup::NotReady(why).into());
-    }
-
-    // Reuses the set-password path whole, so the two cannot drift on the thing
-    // that matters most here: the password never reaching an argv.
+    // Reuses the set-password path whole, so the two cannot drift.
     let out = cmd_set_password(l, user, password)?;
 
     state.claimed = true;
@@ -811,37 +603,45 @@ pub fn cmd_claim<L: Losos>(
     }))
 }
 
-/// `POST /api/devices/cloud`: an app password for LosOS cloud, for one of
+/// `POST /api/devices/cloud`: an app password for LosOS Cloud, for one of
 /// the owner's computers.
 ///
-/// The owner's password is what Nextcloud asks for before it makes one (see
-/// [`crate::devices`]); a wrong one is [`crate::signin::WrongPassword`], as
-/// at the sign-in. The answer carries the user, the app password and the
-/// WebDAV path below the box's address, everything a computer needs to
-/// mount the files.
+/// `password_ok` says whether the password the owner typed is theirs, as
+/// LosOS Login's people file has it (the HTTP layer holds that file and
+/// counts wrong guesses); a wrong one is [`crate::signin::WrongPassword`].
+/// Then LosOS Cloud makes the app password for the owner's account over its
+/// socket, as nginx would ask it for a signed-in person. The answer carries
+/// the user, the app password and the WebDAV path below the box's address,
+/// everything a computer needs to mount the files.
 pub fn cmd_device_cloud<L: Losos>(
     l: &mut L,
-    password: &str,
+    password_ok: bool,
     device: &str,
-    client: &str,
 ) -> anyhow::Result<Value> {
     use crate::devices::{dav_path, interpret_app_password, validate_device, Minted};
+    use crate::pins::CloudRequest;
 
-    let secret = crate::signin::validate_candidate(password).map_err(|e| anyhow::anyhow!(e))?;
     let device = validate_device(device).map_err(|e| anyhow::anyhow!(e))?;
+    if !password_ok {
+        return Err(crate::signin::WrongPassword.into());
+    }
     let user = crate::setup::DEFAULT_ADMIN_USER;
-    let minted = match l.nextcloud_app_password(user, &secret, &device, client) {
-        Ok((status, body)) => interpret_app_password(status, &body),
+    let name = crate::devices::credential_name(&device);
+    let minted = match l.cloud_request(&CloudRequest::MintKey {
+        user,
+        device: &name,
+    }) {
+        Ok((status, body)) => interpret_app_password(status, &String::from_utf8_lossy(&body)),
         Err(e) => {
-            tracing::info!(error = ?e, "the app password request could not reach LosOS cloud");
+            tracing::info!(error = ?e, "the app password request could not reach LosOS Cloud");
             Minted::Unavailable(
-                "LosOS cloud could not be reached. It may still be starting.".to_string(),
+                "LosOS Cloud could not be reached. It may still be starting.".to_string(),
             )
         }
     };
     match minted {
         Minted::Credential(app_password) => {
-            tracing::info!(device = device.as_str(), "LosOS cloud app password made");
+            tracing::info!(device = device.as_str(), "LosOS Cloud app password made");
             Ok(json!({ "user": user, "appPassword": app_password, "path": dav_path(user) }))
         }
         other => Err(mint_refusal(other)),
@@ -851,24 +651,23 @@ pub fn cmd_device_cloud<L: Losos>(
 /// `POST /api/devices/git`: an access token for LosOS Git, for one of the
 /// owner's computers.
 ///
-/// LosOS cloud judges the password first, as at the sign-in, and LosOS Git
-/// is given the same one ([`sync_owner_password`]) before Forgejo is asked:
-/// Forgejo only mints a token under Basic auth with the account's own
-/// password, and a password changed inside LosOS cloud would not have
-/// reached it yet. A token of the same name, from an earlier setup of the
+/// The password is judged against the people file first (`password_ok`, as
+/// for [`cmd_device_cloud`]), and LosOS Git is given the same one
+/// ([`sync_owner_password`]) before Forgejo is asked: Forgejo only mints a
+/// token under Basic auth with the account's own password, and a password
+/// set while LosOS Git was down would not have reached it yet. A token of the same name, from an earlier setup of the
 /// same computer, is removed first, because Forgejo refuses a second token
 /// of one name and the old one is what this computer is replacing.
 pub fn cmd_device_git<L: Losos>(
     l: &mut L,
     password: &str,
+    password_ok: bool,
     device: &str,
-    client: &str,
 ) -> anyhow::Result<Value> {
     use crate::devices::{
         credential_name, interpret_token, token_create, token_delete_path, validate_device, GitOff,
         Minted, GIT_PATH,
     };
-    use crate::signin::{LoginOutcome, Throttled, WrongPassword};
 
     let secret = crate::signin::validate_candidate(password).map_err(|e| anyhow::anyhow!(e))?;
     let device = validate_device(device).map_err(|e| anyhow::anyhow!(e))?;
@@ -876,20 +675,8 @@ pub fn cmd_device_git<L: Losos>(
         return Err(GitOff.into());
     };
     let user = crate::setup::DEFAULT_ADMIN_USER;
-    match l.nextcloud_login(user, &secret, client) {
-        Ok(LoginOutcome::Accepted) => {}
-        Ok(LoginOutcome::Rejected) => return Err(WrongPassword.into()),
-        Ok(LoginOutcome::Throttled) => return Err(Throttled.into()),
-        Ok(LoginOutcome::Unavailable(why)) => return Err(crate::setup::NotReady(why).into()),
-        Err(e) => {
-            tracing::info!(error = ?e, "the password check could not reach LosOS cloud");
-            return Err(crate::setup::NotReady(
-                "LosOS cloud could not be reached, so the password could not be checked. \
-                 It may still be starting."
-                    .to_string(),
-            )
-            .into());
-        }
+    if !password_ok {
+        return Err(crate::signin::WrongPassword.into());
     }
     sync_owner_password(l, user, &secret);
 
@@ -998,6 +785,34 @@ pub fn cmd_market<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     Ok(json!({ "available": true, "listings": listings, "account": account }))
 }
 
+/// The AI models the edge runs on lent memory, and this box's meters, escrow
+/// balances and lending: `POST /api/market/llm/models`.
+///
+/// A view, like [`cmd_market`]: an edge that runs no models, a box not
+/// cleared for the market, or no official edge in reach is
+/// `{"available": false}` rather than an error, so the pane can say so
+/// quietly.
+pub fn cmd_llm_models<L: Losos>(l: &mut L, network: Option<String>) -> anyhow::Result<Value> {
+    use crate::market::{Op, Outcome, Refused};
+    if crate::edge::check_market_gate(&l.edge_status()?).is_err() {
+        return Ok(json!({ "available": false, "reason": "noOfficialEdge" }));
+    }
+    let op = Op::LlmModels { network };
+    op.validate().map_err(|e| {
+        anyhow::Error::from(Refused {
+            status: 400,
+            message: e.to_string(),
+        })
+    })?;
+    let Outcome::Reply(mut reply) = l.market_request(&op)? else {
+        return Ok(json!({ "available": false }));
+    };
+    if let Some(obj) = reply.as_object_mut() {
+        obj.insert("available".to_string(), json!(true));
+    }
+    Ok(reply)
+}
+
 /// One market action, validated here as well as at the HTTP boundary so the
 /// rule travels with the command.
 ///
@@ -1036,6 +851,18 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
     // A chain call is a JSON-RPC object. Wrapping it, or treating a missing
     // checkout URL as a Stripe page, would make the wallet's transport fail.
     if matches!(op, Op::Rpc { .. }) {
+        return Ok(reply);
+    }
+    // Binance's checkout is the one page an on-ramp order sends the owner
+    // to; nothing else in its answer is a page.
+    if matches!(op, Op::Onramp { .. } | Op::OnrampStatus { .. }) {
+        if reply
+            .get("link")
+            .and_then(Value::as_str)
+            .is_some_and(|link| !crate::market::binance_hosted_url(link))
+        {
+            anyhow::bail!("the registrar returned a link that is not a binance.com page");
+        }
         return Ok(reply);
     }
     for key in ["checkout_url", "url"] {
@@ -1184,11 +1011,14 @@ pub fn cmd_domains<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     }
 }
 
-/// Add or remove a custom domain. The reply is the edge's whole view, so the
-/// page redraws from one answer.
+/// Add or remove a custom domain, or bind the box's wallet to its names.
+/// The reply is the edge's whole view, so the page redraws from one answer.
 pub fn cmd_domain_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Result<Value> {
     use crate::market::{Op, Outcome, Refused};
-    if !matches!(op, Op::DomainAdd { .. } | Op::DomainRemove { .. }) {
+    if !matches!(
+        op,
+        Op::DomainAdd { .. } | Op::DomainRemove { .. } | Op::DomainWallet { .. }
+    ) {
         anyhow::bail!("not a domain operation");
     }
     crate::edge::check_market_gate(&l.edge_status()?)?;
@@ -1816,8 +1646,8 @@ fn ensure_repo<L: Losos>(
 /// Called after a successful claim, set-password and sign-in. Best effort:
 /// LosOS Git may be starting, or off, and neither is a reason to refuse the
 /// thing that just succeeded. Only the configured owner's account is
-/// touched; a password set for any other Nextcloud user is none of LosOS
-/// Git's business.
+/// touched; a password set for any other person is none of LosOS Git's
+/// business.
 pub fn sync_owner_password<L: Losos>(l: &mut L, user: &str, secret: &crate::setup::Secret) {
     let Some(repo) = l.config_repo() else {
         return;
@@ -2014,10 +1844,9 @@ mod tests {
         let mut f = FakeLosos::new();
         let out = cmd_settings(&mut f).unwrap();
         assert_eq!(out["sharingMyStorage"], true);
-        assert_eq!(out["nextcloudMode"], "container");
         assert_eq!(out["forgejoMode"], "container");
         assert_eq!(out["hostName"], "mattbox");
-        assert_eq!(out["apachePort"], 11000);
+        assert!(out.get("nextcloudMode").is_none());
         assert_eq!(out["proxyEnable"], false);
     }
 
@@ -2042,28 +1871,26 @@ mod tests {
     #[test]
     fn settings_reflects_an_applied_body() {
         let mut f = FakeLosos::new();
-        let code = "{ ... }:\n{\n  losos.sharingMyStorage = false;\n  losos.hostName = \"box2\";\n  losos.nextcloud.mode = \"native\";\n  losos.nextcloud.apachePort = 12345;\n  losos.proxy.enable = true;\n}\n";
+        let code = "{ ... }:\n{\n  losos.sharingMyStorage = false;\n  losos.hostName = \"box2\";\n  losos.proxy.enable = true;\n}\n";
         cmd_apply(&mut f, code).unwrap();
         let out = cmd_settings(&mut f).unwrap();
         assert_eq!(out["hostName"], "box2");
-        assert_eq!(out["nextcloudMode"], "native");
-        assert_eq!(out["apachePort"], 12345);
         assert_eq!(out["proxyEnable"], true);
     }
 
     #[test]
-    fn apply_then_settings_honours_the_legacy_aliases() {
+    fn apply_honours_the_proxy_alias_and_drops_what_nextcloud_took_with_it() {
         let mut f = FakeLosos::new();
-        cmd_apply(&mut f, "{ ... }:\n{\n  losos.aio.apachePort = 12345;\n}\n").unwrap();
-        assert_eq!(cmd_settings(&mut f).unwrap()["apachePort"], 12345);
-
-        let mut g = FakeLosos::new();
         cmd_apply(
-            &mut g,
-            "{ ... }:\n{\n  losos.nextcloud.mode = \"aio\";\n}\n",
+            &mut f,
+            "{ ... }:\n{\n  losos.cfd.enable = true;\n  losos.nextcloud.mode = \"container\";\n  losos.keyring.enable = true;\n}\n",
         )
         .unwrap();
-        assert_eq!(cmd_settings(&mut g).unwrap()["nextcloudMode"], "container");
+        assert_eq!(cmd_settings(&mut f).unwrap()["proxyEnable"], true);
+        let file = f.read_overrides().unwrap();
+        assert!(file.contains("losos.cfd.enable = true;"), "{file}");
+        assert!(!file.contains("nextcloud"), "{file}");
+        assert!(!file.contains("keyring"), "{file}");
     }
 
     #[test]
@@ -2183,76 +2010,11 @@ mod tests {
             fn luks_key_file(&mut self) -> anyhow::Result<Option<String>> {
                 self.0.luks_key_file()
             }
-            fn nextcloud_mode(&mut self) -> anyhow::Result<crate::setup::NcMode> {
-                self.0.nextcloud_mode()
-            }
-            fn nextcloud_target(
-                &mut self,
-                mode: crate::setup::NcMode,
-            ) -> anyhow::Result<crate::setup::Target> {
-                self.0.nextcloud_target(mode)
-            }
-            fn run_occ(
-                &mut self,
-                action: &crate::setup::OccAction,
-                secret: &crate::setup::Secret,
-            ) -> anyhow::Result<Option<crate::setup::OccOutcome>> {
-                self.0.run_occ(action, secret)
-            }
-            fn nextcloud_status(
-                &mut self,
-                target: &crate::setup::Target,
-            ) -> anyhow::Result<crate::setup::OccOutcome> {
-                self.0.nextcloud_status(target)
-            }
-            fn nextcloud_run(
-                &mut self,
-                argv: &[String],
-            ) -> anyhow::Result<crate::setup::OccOutcome> {
-                self.0.nextcloud_run(argv)
-            }
-            fn nextcloud_last_log(
-                &mut self,
-                mode: crate::setup::NcMode,
-            ) -> anyhow::Result<Option<String>> {
-                self.0.nextcloud_last_log(mode)
-            }
-            fn nextcloud_login(
-                &mut self,
-                user: &str,
-                secret: &crate::setup::Secret,
-                client: &str,
-            ) -> anyhow::Result<crate::signin::LoginOutcome> {
-                self.0.nextcloud_login(user, secret, client)
-            }
-            fn nextcloud_app_password(
-                &mut self,
-                user: &str,
-                secret: &crate::setup::Secret,
-                device: &str,
-                client: &str,
-            ) -> anyhow::Result<(u16, String)> {
-                self.0.nextcloud_app_password(user, secret, device, client)
-            }
             fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
                 self.0.recovery_code()
             }
             fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>> {
                 self.0.search_apps(query)
-            }
-            fn run_cloud_apps(
-                &mut self,
-                argv: &[String],
-            ) -> anyhow::Result<crate::setup::OccOutcome> {
-                self.0.run_cloud_apps(argv)
-            }
-            fn cloud_store_offered(&mut self) -> bool {
-                self.0.cloud_store_offered()
-            }
-            fn cloud_store(
-                &mut self,
-            ) -> anyhow::Result<std::sync::Arc<Vec<crate::cloud_apps::StoreApp>>> {
-                self.0.cloud_store()
             }
             fn apps_config(&mut self) -> Option<crate::apps::Config> {
                 self.0.apps_config()
@@ -2265,6 +2027,14 @@ mod tests {
             }
             fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>> {
                 self.0.load_app_records()
+            }
+            fn save_app_source(
+                &mut self,
+                release: &str,
+                compose: &str,
+                files: &[(String, String)],
+            ) -> anyhow::Result<()> {
+                self.0.save_app_source(release, compose, files)
             }
             fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()> {
                 self.0.save_app_record(record)
@@ -2333,18 +2103,6 @@ mod tests {
                 s: Option<&crate::setup::Secret>,
             ) -> anyhow::Result<(u16, String)> {
                 self.0.forgejo_request(op, s)
-            }
-            fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
-                self.0.load_pins()
-            }
-            fn save_pins(&mut self, p: &crate::pins::Pins) -> anyhow::Result<()> {
-                self.0.save_pins(p)
-            }
-            fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>> {
-                self.0.load_cloud_key()
-            }
-            fn save_cloud_key(&mut self, k: Option<&crate::pins::CloudKey>) -> anyhow::Result<()> {
-                self.0.save_cloud_key(k)
             }
             fn cloud_request(
                 &mut self,
@@ -2668,6 +2426,84 @@ mod tests {
     }
 
     #[test]
+    fn the_ai_models_are_a_quiet_view_when_the_edge_runs_none() {
+        // No registrar configured, or an edge that runs no models.
+        let mut f = FakeLosos::new();
+        assert_eq!(
+            cmd_llm_models(&mut f, None).unwrap(),
+            serde_json::json!({ "available": false })
+        );
+        f.market_routes.insert(
+            "POST /market/llm/models".to_string(),
+            (503, "market not configured on this edge".to_string()),
+        );
+        assert_eq!(
+            cmd_llm_models(&mut f, None).unwrap(),
+            serde_json::json!({ "available": false })
+        );
+        // Through an edge the root never vouched for, the registrar is not
+        // even asked.
+        let mut f = FakeLosos::new().with_company_edge();
+        assert_eq!(
+            cmd_llm_models(&mut f, None).unwrap(),
+            serde_json::json!({ "available": false, "reason": "noOfficialEdge" })
+        );
+        assert!(f.market_ops.is_empty());
+    }
+
+    #[test]
+    fn the_ai_models_carry_the_edges_answer_and_a_loading_model_is_a_refusal() {
+        use crate::market::{ChatAsk, Op, Refused};
+        let mut f = FakeLosos::new();
+        f.market_routes.insert(
+            "POST /market/llm/models".to_string(),
+            (
+                200,
+                r#"{"network":"base","models":[{"id":"llama-70b","needMib":45000}]}"#.to_string(),
+            ),
+        );
+        let out = cmd_llm_models(&mut f, Some("base".to_string())).unwrap();
+        assert_eq!(out["available"], true);
+        assert_eq!(out["models"][0]["needMib"], 45000);
+        assert_eq!(
+            f.market_ops,
+            vec![Op::LlmModels {
+                network: Some("base".to_string())
+            }]
+        );
+        assert!(cmd_llm_models(&mut f, Some("../x".to_string()))
+            .unwrap_err()
+            .downcast_ref::<Refused>()
+            .is_some());
+
+        f.market_routes.insert(
+            "POST /market/llm/chat".to_string(),
+            (503, "the model is still loading on its boxes".to_string()),
+        );
+        let chat = Op::LlmChat(ChatAsk {
+            meter: "mtr_00ff".to_string(),
+            messages: vec![("user".to_string(), "hi".to_string())],
+            max_tokens: None,
+            temperature: None,
+            top_p: None,
+            stop: Vec::new(),
+        });
+        let err = cmd_market_op(&mut f, &chat).unwrap_err();
+        let r = err.downcast_ref::<Refused>().expect("a refusal");
+        assert_eq!(r.status, 503);
+        f.market_routes.insert(
+            "POST /market/llm/chat".to_string(),
+            (
+                200,
+                r#"{"content":"Hello.","tokensIn":3,"tokensOut":2,"costE6":"91000"}"#.to_string(),
+            ),
+        );
+        let out = cmd_market_op(&mut f, &chat).unwrap();
+        assert_eq!(out["content"], "Hello.");
+        assert_eq!(out["available"], true);
+    }
+
+    #[test]
     fn a_box_without_a_market_is_unavailable_not_failed() {
         // No registrar configured.
         let mut f = FakeLosos::new();
@@ -2748,6 +2584,50 @@ mod tests {
             (201, r#"{"checkout_url":"javascript:alert(1)"}"#.to_string()),
         );
         assert!(cmd_market_op(&mut f, &order).is_err());
+    }
+
+    #[test]
+    fn a_binance_order_hands_on_binances_checkout_and_nothing_else() {
+        use crate::market::Op;
+        let buy = Op::Onramp {
+            address: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266".to_string(),
+            euros: "50".to_string(),
+        };
+        let mut f = market_fake();
+        f.market_routes.insert(
+            "POST /market/onramp".to_string(),
+            (
+                201,
+                r#"{"order_id":"0123456789abcdef0123456789abcdef","link":"https://app.binance.com/uni-qr/qccnt?x=1","stage":"open"}"#
+                    .to_string(),
+            ),
+        );
+        let out = cmd_market_op(&mut f, &buy).unwrap();
+        assert_eq!(out["link"], "https://app.binance.com/uni-qr/qccnt?x=1");
+        assert_eq!(out["stage"], "open");
+
+        // An edge cannot send the owner's browser anywhere but binance.com.
+        for link in ["https://binance.com.evil.example/", "javascript:alert(1)"] {
+            f.market_routes.insert(
+                "POST /market/onramp".to_string(),
+                (201, format!(r#"{{"order_id":"x","link":"{link}"}}"#)),
+            );
+            assert!(cmd_market_op(&mut f, &buy).is_err(), "{link}");
+        }
+
+        // The edge's daily cap is the owner's to wait out, not a fault.
+        f.market_routes.insert(
+            "POST /market/onramp".to_string(),
+            (
+                429,
+                "this box started too many purchases today; try again tomorrow".to_string(),
+            ),
+        );
+        let refused = cmd_market_op(&mut f, &buy).unwrap_err();
+        assert!(
+            refused.downcast_ref::<crate::market::Refused>().is_some(),
+            "{refused}"
+        );
     }
 
     #[test]
@@ -3256,10 +3136,8 @@ mod tests {
                 json!({ "name": k, "group": "general", "editor": editor, "nixType": "x" })
             })
             .collect();
-        options.push(
-            json!({ "name": "nextcloud.site.trashDays", "group": "nextcloud",
-            "editor": { "kind": "int", "min": 1 }, "nixType": "int" }),
-        );
+        options.push(json!({ "name": "cloud.trashDays", "group": "cloud",
+            "editor": { "kind": "int", "min": 1 }, "nixType": "int" }));
         options.push(
             json!({ "name": "forgejo.site.landingPage", "group": "forgejo",
             "editor": { "kind": "enum", "values": ["home", "explore"] }, "nixType": "enum" }),
@@ -3280,15 +3158,12 @@ mod tests {
             .iter()
             .map(|o| o["name"].as_str().unwrap())
             .collect();
-        assert_eq!(
-            names,
-            ["nextcloud.site.trashDays", "forgejo.site.landingPage"]
-        );
+        assert_eq!(names, ["cloud.trashDays", "forgejo.site.landingPage"]);
 
         let out = cmd_site_set(
             &mut f,
             &[
-                ("nextcloud.site.trashDays".into(), Some("30".into())),
+                ("cloud.trashDays".into(), Some("30".into())),
                 (
                     "forgejo.site.landingPage".into(),
                     Some("\"explore\"".into()),
@@ -3299,7 +3174,7 @@ mod tests {
         assert!(out["job"].is_string());
         let body = f.read_overrides().unwrap();
         assert_eq!(
-            crate::overrides::lookup_nix("nextcloud.site.trashDays", &body).as_deref(),
+            crate::overrides::lookup_nix("cloud.trashDays", &body).as_deref(),
             Some("30")
         );
         assert_eq!(
@@ -3312,11 +3187,8 @@ mod tests {
         for (name, raw) in [
             ("hostName", Some("\"evil\"")),
             ("sharingMyStorage", Some("false")),
-            ("nextcloud.site.trashDays", Some("0")),
-            (
-                "nextcloud.site.trashDays",
-                Some("30;\n  losos.hostName = \"x\""),
-            ),
+            ("cloud.trashDays", Some("0")),
+            ("cloud.trashDays", Some("30;\n  losos.hostName = \"x\"")),
         ] {
             let e = cmd_site_set(&mut f, &[(name.into(), raw.map(str::to_string))]).unwrap_err();
             assert!(
@@ -3326,9 +3198,9 @@ mod tests {
             assert_eq!(f.read_overrides().unwrap(), body);
         }
 
-        cmd_site_set(&mut f, &[("nextcloud.site.trashDays".into(), None)]).unwrap();
+        cmd_site_set(&mut f, &[("cloud.trashDays".into(), None)]).unwrap();
         assert_eq!(
-            crate::overrides::lookup_nix("nextcloud.site.trashDays", &f.read_overrides().unwrap()),
+            crate::overrides::lookup_nix("cloud.trashDays", &f.read_overrides().unwrap()),
             None
         );
     }
@@ -3763,7 +3635,7 @@ mod tests {
             .find(|(k, _)| k == "PATCH /api/v1/admin/users/notshared")
             .expect("the password was set");
         assert_eq!(set.1.as_deref(), Some("Correct-Horse-Battery-9"));
-        // Another Nextcloud user is none of LosOS Git's business.
+        // Another person is none of LosOS Git's business.
         f.forgejo_calls.clear();
         cmd_set_password(&mut f, "someone", "Correct-Horse-Battery-9").unwrap();
         assert!(f.forgejo_calls.is_empty());

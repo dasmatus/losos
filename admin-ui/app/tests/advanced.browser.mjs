@@ -27,17 +27,14 @@ const DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/f
 assert.equal(DOC.version, 1, 'the option document is version 1');
 assert.ok(DOC.options.length > 40, `the document carries ${DOC.options.length} options; expected the whole losos.* tree`);
 
-/* The sixteen names lib/api.ts's buildOverridesNix always writes, and the
+/* The thirteen names lib/api.ts's buildOverridesNix always writes, and the
  * pane links to another pane for. Kept as a list here so the test does not
  * import the bundle it is testing. */
 const OWNED = {
   sharingMyStorage: 'market',
-  'nextcloud.mode': 'apps',
   'forgejo.mode': 'apps',
   hostName: 'network',
-  'nextcloud.https': 'network',
   'gpu.enable': 'hardware',
-  'nextcloud.apachePort': 'network',
   'proxy.enable': 'network',
   'cluster.enable': 'mesh',
   'cluster.shareCompute': 'mesh',
@@ -49,25 +46,28 @@ const OWNED = {
   'hardening.usbguard': 'security',
 };
 /* Lines of overrides.nix another pane draws its own editor for: each app's
- * box-wide settings and its federation switch, on the Apps pane
+ * box-wide settings and its federation switch, on the Apps pane, and the
+ * memory this box lends to AI models, on the Market pane
  * (lib/option-value.ts, ON_PANE). The Advanced row shows the value and links
- * there, to the app's fold. */
+ * there, to the app's fold on the Apps pane. */
 const ON_PANE = Object.fromEntries(
-  DOC.options
-    .filter((option) => /^(nextcloud|forgejo)\.(site\.|federation\.enable$)/.test(option.name))
-    .map((option) => [option.name, 'apps']),
+  DOC.options.flatMap((option) =>
+    option.name === 'cloud.trashDays' || /^forgejo\.(site\.|federation\.enable$)/.test(option.name)
+      ? [[option.name, 'apps']]
+      : /^inference\.lend\.(enable|memoryMiB)$/.test(option.name)
+        ? [[option.name, 'market']]
+        : [],
+  ),
 );
-const fold = (name) => (name.startsWith('nextcloud.') ? 'cloud' : 'git');
+const fold = (name) => (name.startsWith('cloud.') ? 'cloud' : name.startsWith('forgejo.') ? 'git' : null);
+const ON_APPS = Object.keys(ON_PANE).filter((name) => ON_PANE[name] === 'apps');
 const KINDS = new Set(['bool', 'str', 'int', 'float', 'enum', 'list', 'nullable', 'opaque']);
 
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   forgejoMode: 'container',
   hostName: 'mattbox',
-  https: false,
   gpuEnable: false,
-  apachePort: 11000,
   proxyEnable: false,
   clusterEnable: false,
   shareCompute: false,
@@ -197,7 +197,8 @@ await check('every option in the document is drawn, with an editor kind the pane
     } else if (option.name in ON_PANE) {
       assert.equal(controls, 0, `losos.${option.name} has a second editor beside the ${ON_PANE[option.name]} pane's`);
       const href = await r.getByRole('link').getAttribute('href');
-      assert.ok(href.endsWith(`/${ON_PANE[option.name]}#${fold(option.name)}`), `losos.${option.name} links to ${href}`);
+      const hash = fold(option.name) === null ? '' : `#${fold(option.name)}`;
+      assert.ok(href.endsWith(`/${ON_PANE[option.name]}${hash}`), `losos.${option.name} links to ${href}`);
     } else {
       assert.ok(controls >= 1, `losos.${option.name} (${option.editor.kind}) has no editor`);
     }
@@ -212,11 +213,11 @@ await check('every option in the document is drawn, with an editor kind the pane
 });
 
 await check('federation is unavailable while disk sharing is off, and opens when it is on', async () => {
-  const FEDERATION = ['forgejo.federation.enable', 'nextcloud.federation.enable'];
+  const FEDERATION = ['forgejo.federation.enable'];
   for (const name of FEDERATION) {
     assert.equal(DOC.options.find((o) => o.name === name)?.needs, 'sharingMyStorage', `losos.${name} does not name its gate`);
   }
-  // The Advanced pane shows the gate and links to the Apps pane's folds.
+  // The Advanced pane shows the gate and links to the Apps pane's fold.
   const { page, errors } = await open();
   for (const name of FEDERATION) {
     const r = row(page, name);
@@ -228,9 +229,9 @@ await check('federation is unavailable while disk sharing is off, and opens when
   assert.deepEqual(errors, []);
   await page.close();
 
-  // On the Apps pane each switch is greyed with the reason while sharing is off.
+  // On the Apps pane the switch is greyed with the reason while sharing is off.
   const apps = await open({ path: '/apps' });
-  for (const id of ['accordion-cloud', 'accordion-git']) await main(apps.page).getByTestId(id).getByRole('button').first().click();
+  for (const id of ['accordion-git']) await main(apps.page).getByTestId(id).getByRole('button').first().click();
   for (const name of FEDERATION) {
     const r = main(apps.page).locator(`[data-option="${name}"]`);
     await r.getByText('Runs only while the box shares its disk', { exact: false }).waitFor();
@@ -239,9 +240,9 @@ await check('federation is unavailable while disk sharing is off, and opens when
   assert.deepEqual(apps.errors, []);
   await apps.page.close();
 
-  // Disk sharing is switched on the Market pane; with it on, both open.
+  // Disk sharing is switched on the Market pane; with it on, it opens.
   const sharing = await open({ path: '/apps', settings: { ...SETTINGS, sharingMyStorage: true } });
-  for (const id of ['accordion-cloud', 'accordion-git']) await main(sharing.page).getByTestId(id).getByRole('button').first().click();
+  for (const id of ['accordion-git']) await main(sharing.page).getByTestId(id).getByRole('button').first().click();
   for (const name of FEDERATION) {
     const r = main(sharing.page).locator(`[data-option="${name}"]`);
     await r.waitFor();
@@ -255,14 +256,14 @@ await check('federation is unavailable while disk sharing is off, and opens when
 
   // The reason reads in the owner's language.
   const sk = await open({ locale: 'sk-SK' });
-  await row(sk.page, 'nextcloud.federation.enable').getByText('Federácia beží len vtedy', { exact: false }).waitFor();
+  await row(sk.page, 'forgejo.federation.enable').getByText('Federácia beží len vtedy', { exact: false }).waitFor();
   await sk.page.close();
   const de = await open({ locale: 'de-DE' });
-  await row(de.page, 'nextcloud.federation.enable').getByText('Föderation läuft nur', { exact: false }).waitFor();
+  await row(de.page, 'forgejo.federation.enable').getByText('Föderation läuft nur', { exact: false }).waitFor();
   await de.page.close();
 });
 
-await check('a plain switch writes one more line after the sixteen, and Apply sends it', async () => {
+await check('a plain switch writes one more line after the thirteen, and Apply sends it', async () => {
   const { page, applies } = await open();
   const r = row(page, 'configRepo.enable');
   await flip(r);
@@ -272,9 +273,9 @@ await check('a plain switch writes one more line after the sixteen, and Apply se
   await page.waitForTimeout(200);
   assert.equal(applies.length, 1);
   const lines = nixLines(applies[0]);
-  assert.equal(lines.length, 17, `expected the sixteen lines plus one, got:\n${lines.join('\n')}`);
+  assert.equal(lines.length, 14, `expected the thirteen lines plus one, got:\n${lines.join('\n')}`);
   assert.ok(lines.includes('  losos.configRepo.enable = false;'), lines.join('\n'));
-  assert.ok(lines[0].startsWith('  losos.sharingMyStorage'), 'the sixteen come first');
+  assert.ok(lines[0].startsWith('  losos.sharingMyStorage'), 'the thirteen come first');
   await page.close();
 });
 
@@ -357,9 +358,9 @@ await check('${ in a value is refused by the field', async () => {
 });
 
 await check('a stray line is shown, blocks Apply, and Remove clears it', async () => {
-  const { page, applies } = await open({ stray: [{ key: 'nextcloud.oldKnob', value: '1' }] });
+  const { page, applies } = await open({ stray: [{ key: 'oldApp.knob', value: '1' }] });
   await main(page).getByText('Lines this box has no option for').waitFor();
-  const stray = page.locator('[data-option="nextcloud.oldKnob"]');
+  const stray = page.locator('[data-option="oldApp.knob"]');
   await stray.getByText('Not an option here').waitFor();
   // Toggle something so the bar is up, then see it refuse while the stray stays.
   await flip(row(page, 'configRepo.enable'));
@@ -400,12 +401,12 @@ await check('search narrows the rows and says when nothing matches', async () =>
   await page.close();
 });
 
-await check('a box without the options route still applies its sixteen lines', async () => {
+await check('a box without the options route still applies its thirteen lines', async () => {
   const { page, applies, errors } = await open({ path: '/settings/network', optionsStatus: 404 });
-  await main(page).getByText('Encrypt the connection', { exact: true }).click();
+  await main(page).getByText('Reachable from outside your home', { exact: true }).click();
   await applyButton(page).click();
   await page.waitForTimeout(200);
-  assert.equal(nixLines(applies[0]).length, 16);
+  assert.equal(nixLines(applies[0]).length, 13);
   await page.goto(origin + '/settings/advanced', { waitUntil: 'networkidle' });
   await main(page).getByText('does not serve its option document yet').waitFor();
   assert.deepEqual(errors, []);
@@ -459,62 +460,95 @@ await check('History on a box with LosOS Git off says so and still lists the com
 });
 
 await check('the Apps pane draws every box-wide setting of both apps, and Apply writes their lines', async () => {
-  assert.equal(Object.keys(ON_PANE).length, 15, `expected 9 LosOS cloud and 6 LosOS Git settings, the document has ${Object.keys(ON_PANE).length}`);
-  const { page, applies, errors } = await open({ path: '/apps', overrides: { 'nextcloud.site.trashDays': '30' } });
+  assert.equal(ON_APPS.length, 7, `expected 1 LosOS Cloud and 6 LosOS Git settings, the document has ${ON_APPS.length}`);
+  const { page, applies, errors } = await open({ path: '/apps', overrides: { 'cloud.trashDays': '14' } });
   // Each app's settings are folded away until its fold is opened.
   await main(page).getByTestId('accordion-cloud').waitFor();
-  assert.equal(await main(page).getByTestId('site-cloud').isVisible(), false, 'the LosOS cloud fold starts open');
+  assert.equal(await main(page).getByTestId('site-cloud').isVisible(), false, 'the LosOS Cloud fold starts open');
   await main(page).getByTestId('accordion-cloud').getByRole('button').first().click();
   await main(page).getByTestId('accordion-git').getByRole('button').first().click();
   await main(page).getByTestId('site-cloud').waitFor();
   await main(page).getByTestId('site-git').waitFor();
-  for (const name of Object.keys(ON_PANE)) {
+  for (const name of ON_APPS) {
     assert.equal(await row(page, name).count(), 1, `losos.${name} has no row on the Apps pane`);
     assert.ok((await row(page, name).locator('input, select').count()) >= 1, `losos.${name} has no control on the Apps pane`);
   }
   // A value the box already carries is shown, not the default.
-  assert.equal(await row(page, 'nextcloud.site.trashDays').getByRole('textbox').inputValue(), '30');
-  // The defaults: links on, no password, no expiry.
-  assert.ok(await row(page, 'nextcloud.site.publicLinks').locator('input').isChecked());
-  assert.equal(await row(page, 'nextcloud.site.linkExpiryDays').getByRole('textbox').inputValue(), '');
-
-  await row(page, 'nextcloud.site.defaultLanguage').locator('select').selectOption('sk');
-  const region = row(page, 'nextcloud.site.phoneRegion').getByRole('textbox');
-  await region.fill('s');
-  await region.press('Enter');
-  await row(page, 'nextcloud.site.phoneRegion').getByText('Two capital letters', { exact: false }).waitFor();
-  await region.fill('sk');
-  await region.press('Enter');
-  const expiry = row(page, 'nextcloud.site.linkExpiryDays').getByRole('textbox');
-  await expiry.fill('14');
-  await expiry.press('Enter');
-  const trash = row(page, 'nextcloud.site.trashDays').getByRole('textbox');
+  const trash = row(page, 'cloud.trashDays').getByRole('textbox');
+  assert.equal(await trash.inputValue(), '14');
+  await trash.fill('0');
+  await trash.press('Enter');
+  await row(page, 'cloud.trashDays').getByText('Must be between 1 and 365.', { exact: false }).waitFor();
+  // Cleared, the field goes back to the default and the line goes.
   await trash.fill('');
   await trash.press('Enter');
+  assert.equal(await trash.inputValue(), '30');
   await flip(row(page, 'forgejo.site.requireSignIn'));
   await row(page, 'forgejo.site.landingPage').locator('select').selectOption('login');
   // Picking the default adds no line; clearing a field above dropped one.
   await row(page, 'forgejo.site.defaultPrivate').locator('select').selectOption('private');
   await row(page, 'forgejo.site.defaultPrivate').locator('select').selectOption('last');
 
-  await main(page).getByText('6 changes not applied yet').waitFor();
+  await main(page).getByText('3 changes not applied yet').waitFor();
   await applyButton(page).click();
   await page.waitForTimeout(200);
   assert.equal(applies.length, 1);
   const lines = nixLines(applies[0]);
-  for (const line of [
-    '  losos.nextcloud.site.defaultLanguage = "sk";',
-    '  losos.nextcloud.site.phoneRegion = "SK";',
-    '  losos.nextcloud.site.linkExpiryDays = 14;',
-    '  losos.forgejo.site.requireSignIn = true;',
-    '  losos.forgejo.site.landingPage = "login";',
-  ]) {
+  for (const line of ['  losos.forgejo.site.requireSignIn = true;', '  losos.forgejo.site.landingPage = "login";']) {
     assert.ok(lines.includes(line), `missing ${line.trim()} in:\n${lines.join('\n')}`);
   }
   assert.ok(!lines.some((line) => line.includes('trashDays')), 'clearing a field back to the default kept its line');
   assert.ok(!lines.some((line) => line.includes('defaultPrivate')), 'a default the box had unset was written');
-  assert.equal(lines.length, 16 + 5);
+  assert.equal(lines.length, 13 + 2);
   await noViolations(page);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('the Market pane lends memory to AI models with two lines of overrides.nix, and only with the edge proxy on', async () => {
+  let { page, applies, errors } = await open({ path: '/settings/market' });
+  const lend = main(page).getByTestId('lend-memory');
+  await lend.waitFor();
+  // Lending reaches the box only through the edge's tunnel.
+  assert.equal(await row(page, 'inference.lend.enable').locator('input').isDisabled(), true, 'lending can be turned on with the proxy off');
+  await lend.getByText('Turn on “Reachable from outside your home” in Network first.', { exact: false }).waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+
+  ({ page, applies, errors } = await open({ path: '/settings/market', settings: { ...SETTINGS, proxyEnable: true } }));
+  await main(page).getByTestId('lend-memory').waitFor();
+  await flip(row(page, 'inference.lend.enable'));
+  const amount = page.locator('[data-option="inference.lend.memoryMiB"]');
+  assert.equal(await amount.inputValue(), '1', 'the default 1024 MiB is not shown as 1 GiB');
+  await amount.fill('300');
+  await main(page).getByText('Lend a whole number of GiB, from 1 to 256.').waitFor();
+  await amount.fill('24');
+  await main(page).getByText('2 changes not applied yet').waitFor();
+  await applyButton(page).click();
+  await page.waitForTimeout(200);
+  assert.equal(applies.length, 1);
+  const lines = nixLines(applies[0]);
+  assert.ok(lines.includes('  losos.inference.lend.enable = true;'), lines.join('\n'));
+  assert.ok(lines.includes('  losos.inference.lend.memoryMiB = 24576;'), lines.join('\n'));
+  await noViolations(page);
+  assert.deepEqual(errors, []);
+  await page.close();
+
+  // A box that already lends shows its amount, and turning it off drops
+  // both lines back to the defaults.
+  ({ page, applies, errors } = await open({
+    path: '/settings/market',
+    overrides: { 'inference.lend.enable': 'true', 'inference.lend.memoryMiB': '8192' },
+  }));
+  await main(page).getByTestId('lend-memory').waitFor();
+  assert.equal(await page.locator('[data-option="inference.lend.memoryMiB"]').inputValue(), '8');
+  assert.equal(await row(page, 'inference.lend.enable').locator('input').isDisabled(), false, 'lending cannot be turned off with the proxy off');
+  await flip(row(page, 'inference.lend.enable'));
+  await applyButton(page).click();
+  await page.waitForTimeout(200);
+  assert.equal(applies.length, 1);
+  assert.ok(!nixLines(applies[0]).some((line) => line.includes('inference.lend.enable')), 'turning lending off kept its line');
+  assert.ok(nixLines(applies[0]).includes('  losos.inference.lend.memoryMiB = 8192;'), 'the amount was dropped');
   assert.deepEqual(errors, []);
   await page.close();
 });
@@ -528,7 +562,7 @@ await check('the Advanced pane links each box-wide setting to the Apps pane', as
   assert.equal(await link.getAttribute('href'), '/apps#git');
   await link.click();
   await page.waitForURL(origin + '/apps#git');
-  // The link opens the LosOS Git fold and leaves LosOS cloud's shut.
+  // The link opens the LosOS Git fold and leaves LosOS Cloud's shut.
   await main(page).getByTestId('site-git').waitFor();
   assert.equal(await main(page).getByTestId('site-cloud').isVisible(), false);
   await page.close();

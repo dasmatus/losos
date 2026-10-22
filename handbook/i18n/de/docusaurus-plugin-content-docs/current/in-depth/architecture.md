@@ -48,8 +48,10 @@ das Wire-Format [`backend/schema.json`](https://github.com/dasmatus/losos/blob/m
 
 ## Workloads {#workloads}
 
-Nextcloud und Forgejo laufen im eigenen k3s-Cluster der Box
-(`losos.<svc>.mode = "container"`) oder nativ auf dem Host. Die Pods nutzen
+LosOS Cloud (`modules/cloud.nix`, `backend/src/cloud/`) ist ein eigener
+Dienst auf dem Host und lauscht auf einem Unix-Socket, den nur nginx öffnen
+darf. Forgejo läuft im eigenen k3s-Cluster der Box
+(`losos.forgejo.mode = "container"`) oder nativ auf dem Host; sein Pod nutzt
 `hostNetwork`. nginx ist der einzige Dienst auf öffentlichen Ports und
 routet nach Pfad.
 
@@ -59,7 +61,7 @@ routet nach Pfad.
 admin-ui/app/            the admin SPA
 admin-ui/tui/            losos, the terminal client (Rust)
 admin-ui/lab/            LosOS Lab's core and canvas (Rust, WebAssembly)
-admin-ui/themes/         LosOS cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
+admin-ui/themes/         LosOS Cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
 admin-ui/design-system/  dev-only tokens and React wrapper; not shipped
 backend/                 lososd + losos-ctl (Rust)
 edge/registrar/          the edge registrar (Rust)
@@ -89,8 +91,7 @@ eine gut gemeinte Änderung dort kaputt macht.
   kann, und importiert nur `options.nix`, `disko.nix` und `installer.nix`.
 - `install` ist das auf der Platte installierte System. Es importiert alles:
   `options`, `configuration`, `impermanence`, `disko`, `boot`, `services`,
-  `nextcloud-common`, `containers`, `daemon`, `overrides`, `updates`,
-  `defaults`. Der Flake übergibt `specialArgs.self = self`, damit
+  `cloud`, `containers`, `daemon`, `overrides`, `updates`, `defaults`. Der Flake übergibt `specialArgs.self = self`, damit
   `defaults.nix` an `self.packages.${system}.{losos-ctl,losos-admin-ui}`
   kommt und Steuerungsebene und Admin-UI einbinden kann.
 
@@ -114,8 +115,7 @@ sodass die initrd kein Geheimnis enthält und die Schlüsseldatei nur innerhalb
 von `/persist` als Wiederherstellungs-Slot bleibt, mit dem sich
 `losos-ctl grow` authentifiziert. Eine PCR-Bindung gibt es absichtlich nicht.
 Die Box aktualisiert sich unbeaufsichtigt und hat keine Shell, von der aus
-man eine Aussperrung beheben könnte; `keyring.nix` trifft dieselbe
-Entscheidung.
+man eine Aussperrung beheben könnte.
 
 Sieht das Installationsmedium kein `/dev/tpmrm0`, oder mit `losos-ctl install
 --no-tpm`, läuft die Box im Schlüsseldatei-Modus. `install-target.nix` setzt
@@ -134,7 +134,7 @@ kann, und beide Rebuild-Pfade (`updates.nix`, `supervisor.rs`) übergeben
 dafür `--impure`. Siehe den Absatz zum automatischen Upgrade weiter unten.
 
 **Zwei isolierte Datendomänen, keine Shell** (`configuration.nix`). `notshared`
-(uid 1000) besitzt Nextcloud. `shared` (uid 1001) besitzt den Speicher, der
+(uid 1000) ist das Konto des Eigentümers in LosOS Cloud. `shared` (uid 1001) besitzt den Speicher, der
 dem Mesh zur Verfügung gestellt wird. Beide Home-Verzeichnisse haben Modus
 `700`, jedes mit eigener primärer Gruppe, sodass keiner der beiden Benutzer
 die Dateien des anderen lesen kann. `isNormalUser` ohne explizite `group`
@@ -178,9 +178,9 @@ Frist, sodass ein Plugin, das hängt oder abstürzt, eine 500 kostet und sonst
 nichts. lososd lädt Plugins nur aus `losos.backend.plugins`, einem
 Verzeichnis im Nix-Store (`.#losos-plugins`), und startet nicht, wenn das
 Verzeichnis oder eine Datei darin außerhalb des Stores liegt, beschreibbar
-ist, nicht root gehört oder auf einem beschreibbaren Mount liegt. Das
-Aussehen (Hintergrundbild und Widgets) ist das erste Plugin;
-`nix/tests/plugins.nix` bootet es.
+ist, nicht root gehört oder auf einem beschreibbaren Mount liegt. Bisher
+sind das Aussehen (Hintergrundbild und Widgets) und die angehefteten
+Einträge der Seitenleiste Plugins; `nix/tests/plugins.nix` bootet sie.
 
 `losos-ctl` ist eine schlanke Fassaden-CLI. Sie behält die alten
 Unterbefehle und die JSON-Ausgabe bei (`state`, `change --mode`, `status`,
@@ -274,16 +274,17 @@ früher schnitt es auch innerhalb, was das Standard-`upgradeFlakeUri`
 verstümmelte. Und eine Liste ist eine Zeile `[ "a" "b" ]`, nur Strings.
 
 **Workloads und die einzige Eingangstür** (`modules/containers.nix`,
-`modules/workloads.nix`, `modules/cluster.nix`,
-`modules/nextcloud-common.nix`). Rootless Podman ist weg, und
-systemd-nspawn auch. Bei `losos.<svc>.mode == "container"` laufen Nextcloud
-und Forgejo als Kubernetes-Workloads im eigenen lokalen k3s-Cluster der Box.
-Die gemeinsame Nextcloud-Konfiguration liegt weiterhin in
-`nextcloud-common.nix`, sodass nativer und Workload-Modus nicht
-auseinanderlaufen können. nginx ist der einzige Prozess, der öffentliche
-Ports belegt. Er routet nach Pfad auf dem mDNS-Namen der Appliance
-(`<hostName>.local:80/nextcloud`, `:80/forgejo`) und liefert die Admin-SPA
-auf demselben `:80`-vhost aus.
+`modules/workloads.nix`, `modules/cluster.nix`, `modules/cloud.nix`).
+systemd-nspawn ist weg. Bei `losos.forgejo.mode == "container"` läuft Forgejo
+als Kubernetes-Workload im eigenen lokalen k3s-Cluster der Box. LosOS Cloud
+läuft auf dem Host unter einem eigenen Benutzer. nginx ist der einzige
+Prozess, der öffentliche Ports belegt. Er routet nach Pfad auf dem
+mDNS-Namen der Appliance (`<hostName>.local/cloud/` und die Adressen, die
+die Nextcloud-Apps aufrufen, `/forgejo/`) und liefert die Admin-SPA auf
+demselben vhost aus.auf demselben `:80`-vhost aus. Apps, die ein Besitzer als `notshared`
+installiert, und die eigenen Apps der Box laufen dagegen auf Podman ohne
+root mit Podman Compose (`modules/apps.nix`, [App-Format](app-format.md)),
+sodass eine Box, die nichts teilt, für sie keinen Cluster braucht.
 
 `admin-ui/design-system/` (`tokens.css` und `losos.css`, dazu ein
 Wrapper-Paket `react/` für claude.ai/design) ist nur für den
@@ -295,24 +296,23 @@ Nix-Closure, weil die Quell-*Wurzel* von `losos-admin-ui` `admin-ui/app` ist.
 Das ist eine stärkere Garantie als der Namensfilter `design-system`, den sie
 ersetzt hat und den eine Umbenennung ausgehebelt hätte.
 
-**Ein Erscheinungsbild für Startseite, Nextcloud und Forgejo** (`admin-ui/themes/`).
-`tokens.css` ist absichtlich reines CSS. Die Themes beider Apps liefern es
-Byte für Byte als `losos-tokens.css` aus und bilden ihre eigenen Variablen
-darauf ab, sodass eine dort geänderte Farbe alle drei mitzieht.
+**Ein Erscheinungsbild für Admin-Seiten, LosOS Cloud und Forgejo**
+(`admin-ui/themes/`). LosOS Cloud ist eine Seite aus dem eigenen Build der
+Admin-Oberfläche (`admin-ui/app/cloud/`) und nutzt deshalb dieselben
+Komponenten und dieselbe `tokens.css`. `tokens.css` ist absichtlich reines
+CSS: Das Theme von Forgejo und das von LosOS Login liefern es Byte für Byte
+als `losos-tokens.css` aus und bilden ihre eigenen Variablen darauf ab,
+sodass eine dort geänderte Farbe alle mitzieht.
 
-Nextcloud bekommt einen *Theme-Ordner*: `nextcloud-stack.nix` kopiert
-`themes/losos/` ins Paket, und die Konfiguration setzt `theme = "losos"`.
-Nextcloud löst Themes gegen sein echtes Server-Root auf und findet daher nie
-einen Symlink neben dem Paket. Forgejo bekommt
+Forgejo bekommt
 `theme-losos-{auto,light,dark}.css` in `$FORGEJO_CUSTOM/public/assets/css/`,
 nativ per tmpfiles verlinkt und vom Entrypoint des Images kopiert, mit
 `DEFAULT_THEME = losos-auto`. Forgejo prägt das Konten bei ihrer Erstellung
 auf, sodass ein bestehendes Konto sein altes Theme behält, bis sein Besitzer
 umschaltet.
 
-Besitzer sehen die beiden Apps als **LosOS cloud** und **LosOS Git**.
-`defaults.php` im Theme-Ordner benennt Nextcloud, und `APP_NAME` von Forgejo
-benennt Forgejo. Beide bekommen Logos, die aus `admin-ui/themes/brand/`
+Besitzer sehen die beiden Apps als **LosOS Cloud** und **LosOS Git**.
+`APP_NAME` von Forgejo benennt Forgejo. Beide bekommen Logos, die aus `admin-ui/themes/brand/`
 gezeichnet sind. `marks.py` verpackt `salmon.png`, einen lebenden
 Silberlachs, ausgeschnitten aus einem Foto von NOAA Fisheries, in die SVGs
 und kopiert ihn in die SPA und das Handbuch. Der Build rendert daraus jedes
@@ -325,14 +325,8 @@ Upstream-Branding regelt die Konfiguration (keine Skeleton-Dateien, keine
 Hilfe- oder Registrierungslinks, kein „Powered by“) sowie zwei überschriebene
 Forgejo-Templates.
 
-Zwei Details übersieht man leicht. Der Header-Filter von Nextcloud
-invertiert jedes Logo, das er für sein eigenes weißes hält, deshalb setzt
-`server.css` `--image-logoheader-custom`. Und die Theming-App liest einige
-Dateien aus `core/img/` über den absoluten Pfad, deshalb überschreibt
-`nextcloud-stack.nix` diese im Paket. Darum setzt das Image
-`integrity.check.disabled`, wie es `services.nextcloud` bereits tut.
-`admin-ui/themes/default.nix` sind reine Daten, die alle drei Aufrufer
-importieren, aus demselben Grund wie bei `nextcloud-stack.nix`. Die
+`admin-ui/themes/default.nix` sind reine Daten, die jeder Aufrufer
+importiert. Die
 Workload-Pods nutzen `hostNetwork`, da der lokale Cluster kein CNI hat, und
 antworten daher auf Loopback. Was das kostet, erklärt die Stolperfalle zum
 `lanOnly`-Wächter in `.claude/CLAUDE.md`.
@@ -368,7 +362,7 @@ nie `*`, denn das Dokument ist ein LAN-Inventar.
 **Der Options-Namensraum `losos.*`** (`options.nix`). Alle
 projektspezifischen Einstellungen liegen unter `options.losos`, mit
 Standardwerten in `defaults.nix`: `targetDrive`, `tpm.enable`,
-`sharingMyStorage`, `forgejo.enable`, `nextcloud.*`, `cluster.*`
+`sharingMyStorage`, `forgejo.enable`, `cloud.*`, `cluster.*`
 (Mesh-Beitritt, Rechenfenster), `shared.fscrypt.*`, `upgradeFlakeUri`,
 `backend.package`, `admin.{enable,port,apiPort,tokenFile,ui}`, `proxy.*`
 (die Appliance-Seite des Master-Proxys) und `edge.*` (die VPS-Seite, genutzt
@@ -448,7 +442,7 @@ liegt auf demselben Volume wie `/nix`, ein Protokoll ohne Ende endet also als
 nächtlicher Neubau ohne Platz zum Bauen. Das Journal ist auf
 `losos.logs.journalMaxUse` (512 MB) und einen Monat begrenzt. Das Kubelet
 jedes Clusters behält drei Dateien zu 10 MiB pro Container
-(`containerLogMaxSize`, `containerLogMaxFiles`). Das deckt LosOS cloud,
+(`containerLogMaxSize`, `containerLogMaxFiles`). Das deckt LosOS Cloud,
 LosOS Git und die Apps ab, weil sie auf stdout protokollieren. logrotate
 rotiert `audit.log` und `rebuild.log` von lososd bei 10 MB und ergänzt die
 nginx-Regel, die nixpkgs mitbringt, um eine Grenze von 20 MB. Eine

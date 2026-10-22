@@ -23,12 +23,9 @@ const { check, finish } = runner();
 
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   forgejoMode: 'container',
   hostName: 'mattbox',
-  https: false,
   gpuEnable: false,
-  apachePort: 80,
   proxyEnable: false,
   clusterEnable: false,
   shareCompute: false,
@@ -67,6 +64,12 @@ async function open({
   viewport = { width: 1280, height: 900 },
   locale = 'en-US',
   market = { available: false },
+  // POST /api/market/llm/models's document: the AI models, meters and balances.
+  llm = { available: false },
+  // POST /api/market/taps's answer, the edge's quote for a model.
+  quote = null,
+  // [script, arg] run in the page before the app, such as a browser wallet.
+  init = null,
   vms = { available: false, reason: 'notSharing' },
   domains = { available: false },
   backup = BACKUP_EMPTY,
@@ -83,6 +86,8 @@ async function open({
   // as GET /api/me describes them; null for none.
   person = null,
   claim = { claimed: true },
+  // The origin to load from: the plain server, or one serving the real CSP.
+  base = origin,
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
   if (now !== null) await page.clock.setFixedTime(now);
@@ -172,6 +177,26 @@ async function open({
     if (path === '/api/market/orders') return json(route, 201, { available: true, checkout_url: checkoutUrl });
     return json(route, 201, { available: true });
   });
+  // The AI models relay: the overview is read, every other call recorded and
+  // answered the way lososd relays the edge's answer.
+  const llmPosts = [];
+  await page.route(/\/api\/market\/(llm|taps)(\/|$)/, (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    const path = new URL(route.request().url()).pathname;
+    const body = route.request().postDataJSON();
+    if (path === '/api/market/llm/models') return json(route, 200, llm);
+    llmPosts.push([path, body]);
+    if (path === '/api/market/llm/chat') {
+      return json(route, 200, { content: 'Mostly water, then ice.', finishReason: 'stop', tokensIn: 42, tokensOut: 7, costE6: '31500000', billedE6: '10261500000' });
+    }
+    if (path === '/api/market/taps/stop') return json(route, 200, { meter: body.meter, state: 'ending' });
+    if (path === '/api/market/taps' && quote !== null) return json(route, 200, quote);
+    if (path === '/api/market/taps/confirm') {
+      if (typeof body.wallet !== 'string' || body.wallet.length === 0) return json(route, 400, { error: 'wallet is not a wallet address' });
+      return json(route, 200, { meter: body.meter, state: 'open' });
+    }
+    return json(route, 409, { error: 'not in this test' });
+  });
   // The machines relay: `vms` is GET /api/vms's document; every action and
   // every image upload is recorded and answered the way lososd does.
   const vmPosts = [];
@@ -207,6 +232,27 @@ async function open({
       domains: [...domainsView.domains, { ...WAITING_DOMAIN, domain: sent.domain, txt_name: `_losos-challenge.${sent.domain}` }],
     };
     return json(route, 201, domainsView);
+  });
+  await page.route('**/api/domains/wallet', (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    const sent = route.request().postDataJSON();
+    domainPosts.push(['/api/domains/wallet', sent]);
+    const wallet = sent.address
+      ? {
+          address: sent.address,
+          bound_at: 1791460000,
+          record: ensRecord(sent.address),
+          // Public DNS validates the hostname; the label is not looked up yet.
+          published: { 'mattbox.boxes.losos.dasmat.us': 'found' },
+          published_at: 1791460030,
+        }
+      : null;
+    domainsView = {
+      ...domainsView,
+      wallet,
+      domains: domainsView.domains.map((d) => ({ ...d, wallet: wallet === null ? null : d.wallet })),
+    };
+    return json(route, 200, domainsView);
   });
   await page.route('**/api/domains/remove', (route) => {
     if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
@@ -275,21 +321,15 @@ async function open({
   if (stored) {
     await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   }
+  if (init !== null) await page.addInitScript(...init);
   // The apps the homepage probes, when a check wants them answering the way
-  // a set-up box does. `cloud.mail` says whether the owner installed Mail:
-  // an installed app sends a visitor without a session to the sign-in page,
-  // a missing one is Nextcloud's 404.
+  // a set-up box does: LosOS Cloud's status document and LosOS Git's page.
   if (cloud !== null) {
-    await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true }));
+    await page.route('**/status.php', (route) => json(route, 200, { installed: true, productname: 'LosOS Cloud' }));
     await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
-    await page.route('**/nextcloud/index.php/apps/mail/', (route) =>
-      cloud.mail
-        ? route.fulfill({ status: 303, headers: { location: '/nextcloud/index.php/login' } })
-        : route.fulfill({ status: 404, contentType: 'text/html', body: '' }),
-    );
   }
-  await page.goto(origin + path, { waitUntil: 'networkidle' });
-  return { page, errors, marketPosts, vmPosts, applies, domainPosts, backupPosts };
+  await page.goto(base + path, { waitUntil: 'networkidle' });
+  return { page, errors, marketPosts, llmPosts, vmPosts, applies, domainPosts, backupPosts };
 }
 
 /* GET /api/backup: a box with no bucket yet, and one with a bucket, a last
@@ -320,6 +360,7 @@ const BACKUP_SET = {
 /* GET /api/domains on an official edge, for a box Stripe has checked: one
  * domain live, one still waiting for its CNAME. */
 const WAITING_DOMAIN = {
+  wallet: null,
   domain: 'files.example.net',
   status: 'waiting',
   txt_name: '_losos-challenge.files.example.net',
@@ -348,10 +389,22 @@ const DOMAINS_READY = {
       problem: null,
       checked_at: 1791450000,
       verified_at: 1791440000,
+      wallet: null,
     },
     WAITING_DOMAIN,
   ],
+  box: 'mattbox',
+  zone: 'boxes.losos.dasmat.us',
+  names: ['mattbox.boxes.losos.dasmat.us', '3f9a1c0e7b2d4a55.boxes.losos.dasmat.us'],
+  wallet: null,
 };
+
+/* The ENS record the edge publishes for a bound wallet
+ * (edge/registrar/src/domains.rs, `ens_record`). */
+const ensRecord = (a) =>
+  `ENS1 dnsname.ens.eth ${a}`;
+/* What the wallet signs to bind (`wallet_message` there). */
+const walletMessage = (zone, box, a) => `LosOS box name v1\nzone: ${zone}\nbox: ${box}\naddress: ${a}\n`;
 
 /* What lososd's scan reports with an edge on the LAN, and with none. */
 const EDGE_FOUND = {
@@ -528,9 +581,10 @@ await check('a person signed in at the box sign-in page gets the app without a k
   await page.getByRole('button', { name: 'Sign out' }).waitFor();
   await page.getByText('Sign in to this box').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null, 'a cookie session stored a key');
-  const who = page.getByTestId('signed-in-as');
+  // The name beside the picture or initials.
+  const who = page.getByTestId('signed-in-name');
   assert.equal((await who.innerText()).trim(), 'Matus', 'the top bar does not name the person signed in');
-  assert.match(await who.getAttribute('aria-label'), /as matus\. You are an administrator/, 'the top bar does not say who and what they are');
+  assert.match(await page.getByTestId('signed-in-as').getAttribute('aria-label'), /as matus\. You are an administrator/, 'the top bar does not say who and what they are');
   await page.close();
 });
 
@@ -546,10 +600,23 @@ await check('a person in one section sees that section and not the administrator
     assert.equal(await sections.getByRole('link', { name: hidden, exact: true }).count(), 0, `${hidden} is shown to a backup-only person`);
   }
   assert.equal(await sections.getByRole('link', { name: 'Overview' }).count(), 1, 'the overview is for everyone');
-  const who = page.getByTestId('signed-in-as');
+  // The name beside the picture or initials.
+  const who = page.getByTestId('signed-in-name');
   assert.equal((await who.innerText()).trim(), 'Eva', 'the top bar does not name the person signed in');
-  assert.match(await who.getAttribute('aria-label'), /the panes your account was given/, 'a backup-only person is called an administrator');
+  assert.match(await page.getByTestId('signed-in-as').getAttribute('aria-label'), /the panes your account was given/, 'a backup-only person is called an administrator');
   await page.close();
+});
+
+await check('Mail is in the sidebar only while /api/me lists it among the shared apps', async () => {
+  const matus = { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage', 'backup'] };
+  for (const [shared, want] of [[['mail'], 1], [[], 0], [undefined, 0]]) {
+    const { page } = await open({ person: { ...matus, ...(shared !== undefined ? { shared } : {}) } });
+    await page.getByRole('button', { name: 'Sign out' }).waitFor();
+    const mail = nav(page).getByRole('link', { name: 'Mail', exact: true });
+    assert.equal(await mail.count(), want, `Mail links with shared=${JSON.stringify(shared)}`);
+    if (want === 1) assert.equal(await mail.getAttribute('href'), '/mail', 'Mail is not a screen of the admin pages');
+    await page.close();
+  }
 });
 
 await check('a wrong spare key is refused and the prompt stays up', async () => {
@@ -856,7 +923,7 @@ await check('under the appliance CSP the rail tooltip, the folds and the phone s
  * is a real <input type="checkbox" role="switch"> inside a <label>, so the
  * old hand-made <button role="switch"> must be gone from every pane. */
 const SWITCH_PANES = {
-  '/settings/network': ['Encrypt the connection', 'Reachable from outside your home'],
+  '/settings/network': ['Reachable from outside your home'],
   '/settings/hardware': null,
   '/settings/security': [
     'Ignore USB devices plugged in later',
@@ -1043,35 +1110,22 @@ await check('About leads with the address this browser is using and names the .l
   await page.close();
 });
 
-/* LosOS cloud's apps, in the order of its own menu, each a link into it
- * through index.php. Mail is not shipped, so its tile waits for the probe. */
-const CLOUD_TILES = [
-  ['Files', 'files'], ['Dashboard', 'dashboard'], ['Photos', 'photos'], ['Activity', 'activity'],
-  ['Contacts', 'contacts'], ['Calendar', 'calendar'], ['Notes', 'notes'], ['Bookmarks', 'bookmarks'],
-  ['Deck', 'deck'], ['Music', 'music'], ['Collectives', 'collectives'], ['Polls', 'polls'],
-  ['Forms', 'forms'], ['Tables', 'tables'], ['Memories', 'memories'], ['News', 'news'],
-  ['Tasks', 'tasks'], ['Maps', 'maps'],
-];
 const tiles = (page) =>
   page.getByRole('list', { name: 'Apps on this box' }).getByRole('link').evaluateAll((links) =>
     links.map((a) => [a.textContent.trim(), a.getAttribute('href')]),
   );
 
-await check('the homepage has a tile for every app in LosOS cloud\'s menu, and Mail only when it is installed', async () => {
-  const expected = CLOUD_TILES.map(([name, id]) => [name, `/nextcloud/index.php/apps/${id}/`]);
-  for (const mail of [false, true]) {
-    const { page, errors } = await open({ stored: true, cloud: { mail } });
-    await page.getByRole('link', { name: 'Maps' }).waitFor();
-    const want = [
-      ...expected,
-      ...(mail ? [['Mail', '/nextcloud/index.php/apps/mail/']] : []),
-      ['Code', '/forgejo/'],
-      ['Settings', '/settings'],
-    ];
-    assert.deepEqual(await tiles(page), want);
-    assert.deepEqual(errors, []);
-    await page.close();
-  }
+await check('the homepage has a tile for each page of LosOS Cloud, LosOS Git and Settings', async () => {
+  const { page, errors } = await open({ stored: true, cloud: {} });
+  await page.getByRole('link', { name: 'Photos' }).waitFor();
+  assert.deepEqual(await tiles(page), [
+    ['Files', '/cloud/files'],
+    ['Photos', '/cloud/photos'],
+    ['Code', '/forgejo/'],
+    ['Settings', '/settings'],
+  ]);
+  assert.deepEqual(errors, []);
+  await page.close();
 });
 
 await check('an unknown address says so instead of showing a blank page', async () => {
@@ -1489,8 +1543,8 @@ await check('coin fees owed get one row with the limits, and a USDC sale names w
   await page.close();
 });
 
-/* A USDC edge on Base mainnet and a box with a payout address there: the
- * wallet offers euros for USDC through Onramp.money. */
+/* A USDC edge on Base mainnet that is a Binance partner, and a box with a
+ * payout address there: the wallet offers euros for USDC at Binance. */
 const PAYOUT = `0x${'44'.repeat(20)}`;
 const ONRAMP_MARKET = {
   ...MARKET,
@@ -1503,6 +1557,7 @@ const ONRAMP_MARKET = {
       chain_id: 8453,
       solana: null,
       ens_chain_id: null,
+      onramp: 'binance',
       chains: [
         {
           network: 'base',
@@ -1518,64 +1573,143 @@ const ONRAMP_MARKET = {
   },
 };
 
-await check('buying USDC with euros names Onramp.money and its terms first, then opens their page with the address on Base', async () => {
-  const { page, errors } = await open({ path: '/settings/market', stored: true, market: ONRAMP_MARKET });
-  await page.context().route('https://onramp.money/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Onramp</title>' }),
+const BINANCE_LINK = 'https://app.binance.com/en/pre-connect?orderId=1';
+const binanceOrder = (stage, extra = {}) => ({
+  order_id: 'a1'.repeat(16),
+  link: BINANCE_LINK,
+  link_expires: 0,
+  euros: '25',
+  address: PAYOUT,
+  network: 'base',
+  stage,
+  status: 0,
+  usdc: null,
+  tx: null,
+  ...extra,
+});
+
+await check('buying USDC at Binance takes each of its documents opened, then the edge makes the order and the row follows it', async () => {
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: ONRAMP_MARKET });
+  // Binance's pages, and the edge's answers through lososd.
+  await page.context().route('https://www.binance.com/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Binance</title>' }),
   );
+  let stage = binanceOrder('open');
+  await page.route('**/api/market/onramp', (route) => {
+    marketPosts.push(['/api/market/onramp', route.request().postDataJSON()]);
+    return json(route, 200, binanceOrder('open'));
+  });
+  await page.route('**/api/market/onramp/status', (route) => {
+    marketPosts.push(['/api/market/onramp/status', route.request().postDataJSON()]);
+    return json(route, 200, stage);
+  });
+
   const row = page.getByTestId('onramp-topup');
   await row.waitFor();
   assert.match(await row.innerText(), /Buy USDC with euros/);
   await row.getByRole('button', { name: 'Buy', exact: true }).click();
-  assert.match(await row.innerText(), /Onramp\.money sells the USDC, not LosOS/);
-  assert.equal(
-    await row.getByRole('link', { name: 'Terms and Conditions' }).getAttribute('href'),
-    'https://onramp.money/legal/terms-and-conditions/',
-  );
-  assert.equal(await row.getByRole('link', { name: 'Privacy Policy' }).count(), 1);
-  const go = row.getByRole('button', { name: 'Continue to Onramp.money' });
-  const amount = row.getByLabel('Amount in euros');
-  await amount.fill('3');
-  await row.getByText(/Onramp\.money takes 5 to 100,000 euros per order/).waitFor();
-  await amount.fill('25');
-  assert.equal(await go.isDisabled(), true, 'the page opens before the terms are accepted');
-  await row.getByRole('checkbox').check();
-  assert.equal(await go.isDisabled(), false);
-  const [popup] = await Promise.all([page.waitForEvent('popup'), go.click()]);
-  const url = new URL(popup.url());
-  assert.equal(url.origin + url.pathname, 'https://onramp.money/main/buy/');
-  assert.deepEqual(Object.fromEntries(url.searchParams), {
-    appId: '1',
-    walletAddress: PAYOUT,
-    coinCode: 'usdc',
-    network: 'base',
-    fiatType: '12',
-    fiatAmount: '25',
-    redirectUrl: `${origin}/settings/market`,
-  });
-  await popup.close();
-  await row.getByText(/Waiting for 25 euros of USDC to reach this wallet on Base/).waitFor();
-  assert.equal(await page.evaluate(() => localStorage.getItem('losos-onramp-terms')), 'onramp.money@2025-11-21');
+  assert.match(await row.innerText(), /Binance sells the USDC, not LosOS/);
+  assert.match(await row.innerText(), /may refuse a purchase from yours/);
 
-  // Onramp.money sends the buyer back with its order: the row names it and
-  // the address bar loses the query.
-  await page.goto(`${origin}/settings/market?orderId=OR123&status=success`, { waitUntil: 'networkidle' });
-  await page.getByText(/Onramp\.money order OR123 is paid/).waitFor();
-  assert.equal(new URL(page.url()).search, '');
-  const back = page.getByTestId('onramp-topup');
-  await back.getByRole('button', { name: 'Stop waiting' }).click();
-  assert.equal(await back.getByRole('button', { name: 'Buy', exact: true }).count(), 1);
+  const docs = {
+    'Terms of Use': 'https://www.binance.com/en/terms',
+    'Product Terms': 'https://www.binance.com/en/about-legal/product-terms',
+    'Privacy Notice': 'https://www.binance.com/en/about-legal/privacy-portal',
+    'Risk Warning': 'https://www.binance.com/en/risk-warning',
+  };
+  for (const [name, href] of Object.entries(docs)) {
+    assert.equal(await row.getByRole('link', { name }).getAttribute('href'), href);
+  }
+  const accept = row.getByRole('checkbox');
+  const go = row.getByRole('button', { name: 'Create the order' });
+  const amount = row.getByLabel('Amount in euros');
+  await amount.fill('0,50');
+  await row.getByText(/Enter 1 to 100,000 euros/).waitFor();
+  await amount.fill('25');
+  assert.equal(await accept.isDisabled(), true, 'the terms can be accepted unread');
+  assert.equal(await go.isDisabled(), true, 'an order can be made before the terms are accepted');
+  assert.equal(await row.getByText('Not opened').count(), 4);
+
+  // Opening three of the four is not enough.
+  const names = Object.keys(docs);
+  for (const name of names.slice(0, 3)) {
+    const [tab] = await Promise.all([page.waitForEvent('popup'), row.getByRole('link', { name }).click()]);
+    await tab.close();
+  }
+  assert.equal(await accept.isDisabled(), true, 'the terms can be accepted with one document unopened');
+  const [last] = await Promise.all([page.waitForEvent('popup'), row.getByRole('link', { name: names[3] }).click()]);
+  await last.close();
+  assert.equal(await row.getByText('Opened', { exact: true }).count(), 4);
+  assert.equal(await go.isDisabled(), true, 'opening the documents is not accepting them');
+  await accept.check();
+  assert.equal(await go.isDisabled(), false);
+  await go.click();
+
+  const followed = page.getByTestId('onramp-order');
+  await followed.getByText(/Your order for 25 euros is ready/).waitFor();
+  assert.equal(await followed.getByRole('link', { name: 'Open Binance' }).getAttribute('href'), BINANCE_LINK);
+  assert.deepEqual(
+    marketPosts.filter(([path]) => path === '/api/market/onramp'),
+    [['/api/market/onramp', { address: PAYOUT, euros: '25' }]],
+  );
+  assert.deepEqual(
+    JSON.parse(await page.evaluate(() => localStorage.getItem('losos-binance-terms'))).terms,
+    'binance@2026-10-21',
+  );
+
+  // A reload picks the order up again, and a finished one links the transfer.
+  const tx = `0x${'ab'.repeat(32)}`;
+  stage = binanceOrder('done', { status: 20, usdc: '24.61', tx });
+  await page.reload({ waitUntil: 'networkidle' });
+  const done = page.getByTestId('onramp-order');
+  await done.getByText('Binance sent 24.61 USDC to this wallet on Base.').waitFor();
+  assert.equal(await done.getByRole('link', { name: 'Open Binance' }).count(), 0);
+  assert.equal(await done.getByRole('link', { name: 'View the transaction' }).getAttribute('href'), `https://basescan.org/tx/${tx}`);
+  assert.deepEqual(
+    marketPosts.filter(([path]) => path === '/api/market/onramp/status').at(-1),
+    ['/api/market/onramp/status', { order_id: 'a1'.repeat(16) }],
+  );
+  await done.getByRole('button', { name: 'Done' }).click();
+  assert.equal(await page.getByTestId('onramp-topup').getByRole('button', { name: 'Buy', exact: true }).count(), 1);
+  assert.equal(await page.evaluate(() => localStorage.getItem('losos-binance-order')), null);
   assert.deepEqual(errors, []);
   await page.close();
 });
 
-await check('a test edge offers no euro top-up: Onramp.money sells mainnet USDC only', async () => {
-  const test = { ...ONRAMP_MARKET, account: { ...ONRAMP_MARKET.account, usdc: { ...ONRAMP_MARKET.account.usdc, test: true } } };
-  const { page, errors } = await open({ path: '/settings/market', stored: true, market: test });
-  await page.getByText('Stablecoins').waitFor();
-  assert.equal(await page.getByTestId('onramp-topup').count(), 0);
+await check('an order Binance refuses shows its reason and makes nothing to follow', async () => {
+  const { page, errors } = await open({ path: '/settings/market', stored: true, market: ONRAMP_MARKET });
+  await page.context().route('https://www.binance.com/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Binance</title>' }),
+  );
+  await page.route('**/api/market/onramp', (route) =>
+    json(route, 409, { error: 'Binance refused the order: service unavailable in your region' }),
+  );
+  const row = page.getByTestId('onramp-topup');
+  await row.getByRole('button', { name: 'Buy', exact: true }).click();
+  for (const link of await row.getByRole('link').all()) {
+    const [tab] = await Promise.all([page.waitForEvent('popup'), link.click()]);
+    await tab.close();
+  }
+  await row.getByRole('checkbox').check();
+  await row.getByLabel('Amount in euros').fill('25');
+  await row.getByRole('button', { name: 'Create the order' }).click();
+  await row.getByRole('alert').getByText(/service unavailable in your region/).waitFor();
+  assert.equal(await page.getByTestId('onramp-order').count(), 0);
+  assert.equal(await page.evaluate(() => localStorage.getItem('losos-binance-terms')), null);
   assert.deepEqual(errors, []);
   await page.close();
+});
+
+await check('no euro top-up on a test edge or an edge that is not a Binance partner', async () => {
+  const usdc = ONRAMP_MARKET.account.usdc;
+  for (const changed of [{ ...usdc, test: true }, { ...usdc, onramp: undefined }]) {
+    const market = { ...ONRAMP_MARKET, account: { ...ONRAMP_MARKET.account, usdc: changed } };
+    const { page, errors } = await open({ path: '/settings/market', stored: true, market });
+    await page.getByText('Stablecoins').waitFor();
+    assert.equal(await page.getByTestId('onramp-topup').count(), 0);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
 });
 
 await check('a seller whose coin fees are overdue is told coin payments stopped and USDC still works', async () => {
@@ -1702,7 +1836,7 @@ await check('the daemon\'s refusal reaches the owner in the daemon\'s own words'
   // the toast, and nothing is marked as applying afterwards.
   // The fixture's port 80 fails the form's own validation and keeps Apply
   // greyed; this check is about the daemon's refusal, so the form is valid.
-  const { page, applies } = await open({ path: '/mesh', stored: true, settings: { ...JOINABLE, apachePort: 11000 } });
+  const { page, applies } = await open({ path: '/mesh', stored: true, settings: JOINABLE });
   await page.locator('[data-edge="found"]').waitFor();
   const join = page.getByRole('switch', { name: 'Join the mesh', exact: true });
   await page.locator('[data-slot="switch"]').filter({ has: join }).click();
@@ -1785,6 +1919,162 @@ await check('a vouched box lists its domains with the records to publish, adds o
   await page.waitForFunction(() => document.querySelectorAll('[data-testid="custom-domain"]').length === 2);
   assert.match(await rows.nth(0).innerText(), /^files\.example\.net/);
   assert.deepEqual(domainPosts.at(-1), ['/api/domains/remove', { domain: 'cloud.example.org' }]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a browser extension wallet binds to the box names, and unbinds', async () => {
+  const { privateKeyToAccount } = await import('viem/accounts');
+  const { verifyMessage } = await import('viem');
+  const account = privateKeyToAccount(`0x${'07'.repeat(32)}`);
+  const { page, errors, domainPosts } = await open({ path: '/settings/network', stored: true, domains: DOMAINS_READY });
+  // The extension: personal_sign is answered by the test's own key.
+  await page.exposeFunction('testSign', (message) => account.signMessage({ message }));
+  await page.evaluate((address) => {
+    window.ethereum = {
+      request: async ({ method, params }) => {
+        if (method === 'eth_requestAccounts') return [address];
+        if (method === 'personal_sign') return window.testSign(params[0]);
+        throw new Error(method);
+      },
+    };
+  }, account.address);
+  const section = page.getByTestId('domain-wallet');
+  await section.getByText('Let people pay this box by name').waitFor();
+  assert.match(await section.innerText(), /mattbox\.boxes\.losos\.dasmat\.us, 3f9a1c0e7b2d4a55\.boxes\.losos\.dasmat\.us/);
+  await section.getByTestId('wallet-bind').click();
+  await section.getByText('Bound to this box’s wallet').or(section.getByText("Bound to this box's wallet")).waitFor();
+  const [route, sent] = domainPosts.at(-1);
+  assert.equal(route, '/api/domains/wallet');
+  const address = account.address.toLowerCase();
+  assert.equal(sent.address, address);
+  assert.ok(
+    await verifyMessage({ address, message: walletMessage('boxes.losos.dasmat.us', 'mattbox', address), signature: sent.signature }),
+    'the signature is not the wallet message the edge checks',
+  );
+  const names = section.getByTestId('wallet-name');
+  assert.equal(await names.count(), 2);
+  assert.match(await names.nth(0).innerText(), /mattbox\.boxes\.losos\.dasmat\.us[\s\S]*0x4a62/);
+  // Whether a buyer's wallet finds each name, as public DNS last answered.
+  assert.match(await names.nth(0).innerText(), /Wallets find this name/);
+  assert.match(await names.nth(1).innerText(), /Checking whether wallets find this name/);
+  // Each domain of the owner's offers the same record to add at the domain.
+  const rows = page.getByTestId('custom-domains').getByTestId('custom-domain');
+  assert.match(await rows.nth(0).innerText(), new RegExp(`TXT\\s+cloud\\.example\\.org\\s+"ENS1 dnsname\\.ens\\.eth ${address}"`));
+  assert.match(await rows.nth(0).innerText(), /looks for this record at the domain on its next check/);
+
+  await section.getByRole('button', { name: 'Unbind', exact: true }).click();
+  await section.getByText('Let people pay this box by name').waitFor();
+  assert.deepEqual(domainPosts.at(-1), ['/api/domains/wallet', {}]);
+  assert.equal(await page.getByTestId('domain-wallet-record').count(), 0, 'an unbound wallet still offered its record');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('an edge that predates wallets still draws the domains, without the wallet section', async () => {
+  const { box, zone, names, wallet, ...older } = DOMAINS_READY;
+  const domains = { ...older, domains: older.domains.map(({ wallet: _seen, ...d }) => d) };
+  const { page, errors } = await open({ path: '/settings/network', stored: true, domains });
+  const rows = page.getByTestId('custom-domains').getByTestId('custom-domain');
+  await rows.first().waitFor();
+  assert.equal(await rows.count(), 2);
+  assert.equal(await page.getByTestId('domain-wallet').count(), 0, 'the wallet section showed without a zone');
+  assert.doesNotMatch(await rows.nth(0).innerText(), /ENS1|Wallets pay/);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+// A wallet saved before its address was kept beside the phrase has none
+// until it is unlocked, and is still the box's wallet.
+for (const keptAddress of [true, false]) {
+await check(`the wallet made on this box signs the binding after its password${keptAddress ? '' : ', saved without its address'}`, async () => {
+  const { mnemonicToAccount } = await import('viem/accounts');
+  const { verifyMessage } = await import('viem');
+  const phrase = 'test test test test test test test test test test test junk';
+  const address = mnemonicToAccount(phrase).address;
+  const bound = {
+    ...DOMAINS_READY,
+    domains: [
+      { ...DOMAINS_READY.domains[0], wallet: 'found' },
+      { ...WAITING_DOMAIN, wallet: 'cname' },
+    ],
+  };
+  const { page, errors, domainPosts } = await open({ path: '/settings/network', stored: true, domains: bound });
+  // Seal the phrase the way wallet/hot.ts does, then load the page again.
+  await page.evaluate(
+    async ({ phrase, address, keptAddress }) => {
+      const enc = new TextEncoder();
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const base = await crypto.subtle.importKey('raw', enc.encode('right horse battery'), 'PBKDF2', false, ['deriveKey']);
+      const key = await crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: 210_000, hash: 'SHA-256' },
+        base,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt'],
+      );
+      const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(phrase)));
+      const b64 = (b) => btoa(String.fromCharCode(...b));
+      const db = await new Promise((resolve, reject) => {
+        const req = indexedDB.open('losos-wallet', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('key');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      await new Promise((resolve) => {
+        const tx = db.transaction('key', 'readwrite');
+        const sealed = { v: 1, salt: b64(salt), iv: b64(iv), ct: b64(ct), made: true };
+        tx.objectStore('key').put(keptAddress ? { ...sealed, evm: address } : sealed, 'phrase');
+        tx.oncomplete = resolve;
+      });
+      db.close();
+    },
+    { phrase, address, keptAddress },
+  );
+  await page.reload({ waitUntil: 'networkidle' });
+  const section = page.getByTestId('domain-wallet');
+  await section.getByTestId('wallet-bind').click();
+  const password = section.getByLabel('Password of the wallet on this box');
+  if (keptAddress) assert.match(await section.innerText(), new RegExp(`Signs as ${address.toLowerCase()}`));
+  else assert.doesNotMatch(await section.innerText(), /Signs as/);
+  await password.fill('wrong password');
+  await section.getByRole('button', { name: 'Sign', exact: true }).click();
+  await page.locator('[data-toast]').filter({ hasText: /password/i }).first().waitFor({ timeout: 10000 });
+  assert.equal(domainPosts.length, 0, 'a wrong password still sent a binding');
+  await password.fill('right horse battery');
+  await section.getByRole('button', { name: 'Sign', exact: true }).click();
+  await section.getByTestId('wallet-name').first().waitFor({ timeout: 15000 });
+  const [, sent] = domainPosts.at(-1);
+  const lower = address.toLowerCase();
+  assert.equal(sent.address, lower);
+  assert.ok(await verifyMessage({ address: lower, message: walletMessage('boxes.losos.dasmat.us', 'mattbox', lower), signature: sent.signature }));
+  // What the edge found at the owner's domains: one pays by name, one is a
+  // CNAME and is told why it cannot.
+  const rows = page.getByTestId('custom-domains').getByTestId('custom-domain');
+  assert.match(await rows.nth(0).innerText(), /Wallets pay cloud\.example\.org to this box/);
+  assert.doesNotMatch(await rows.nth(0).innerText(), /ENS1/);
+  assert.match(await rows.nth(1).innerText(), /is a CNAME, which can carry no other record/);
+  assert.doesNotMatch(await rows.nth(1).innerText(), /ENS1/, 'a CNAME was offered a record it cannot carry');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+}
+
+await check('a binding whose names lapsed can still be taken off', async () => {
+  const address = '0x4a62000000000000000000000000000000000001';
+  const domains = {
+    ...DOMAINS_READY,
+    names: [],
+    wallet: { address, bound_at: 1791460000, record: ensRecord(address), published: {}, published_at: 1791460030 },
+  };
+  const { page, errors, domainPosts } = await open({ path: '/settings/network', stored: true, domains });
+  const section = page.getByTestId('domain-wallet');
+  assert.match(await section.innerText(), /No name to bind yet/);
+  await section.getByRole('button', { name: 'Unbind', exact: true }).click();
+  await section.getByRole('button', { name: 'Unbind', exact: true }).waitFor({ state: 'detached' });
+  assert.deepEqual(domainPosts.at(-1), ['/api/domains/wallet', {}]);
+  assert.match(await section.innerText(), /No name to bind yet/);
   assert.deepEqual(errors, []);
   await page.close();
 });
@@ -1984,7 +2274,9 @@ await check('a box that does not share its disk sees the Machines pane greyed, w
   await notice.getByText('Machines are for boxes that share their disk').waitFor();
   const share = notice.getByRole('link', { name: 'Share the disk' });
   assert.equal(await share.getAttribute('href'), '/settings/market');
-  assert.equal(await page.locator('main').getByRole('button').count(), 0, 'the greyed pane offers a button');
+  // The mesh banner's own Dismiss is the shell's, not the pane's.
+  const buttons = page.locator('main').getByRole('button').and(page.locator(':not([data-mesh-dismiss])'));
+  assert.equal(await buttons.count(), 0, 'the greyed pane offers a button');
   assert.deepEqual(vmPosts, []);
   assert.deepEqual(errors, []);
   await page.close();
@@ -2097,6 +2389,84 @@ await check('a hosting box offers replicas at a price per replica-month', async 
   await page.close();
 });
 
+/* The banner while the box is not on a mesh (components/mesh-notice.tsx):
+ * it reads the saved settings, names no feature, links to the switch, and
+ * stays dismissed in this browser until the box joins. */
+const SHARED = { ...JOINABLE, sharingMyStorage: true, clusterEnable: true };
+
+await check('a box off the mesh shows the banner on every page, with the way to join', async () => {
+  const { page, errors } = await open({ stored: true, settings: { ...SETTINGS, sharingMyStorage: true } });
+  const notice = page.locator('[data-notice="mesh"]');
+  await notice.waitFor();
+  assert.equal(await notice.getAttribute('data-mesh'), 'notJoined');
+  assert.equal(await notice.getAttribute('role'), 'status');
+  assert.match(await notice.innerText(), /Some features may not be available/);
+  assert.doesNotMatch(await notice.innerText(), /chat|mail|call/i, 'the banner names a feature');
+  await notice.getByRole('link', { name: 'Join a mesh', exact: true }).click();
+  await page.waitForURL('**/mesh');
+  // On the Mesh pane the switch is right there: the banner stays, the link goes.
+  await page.getByRole('switch', { name: 'Join the mesh', exact: true }).waitFor();
+  await notice.waitFor();
+  assert.equal(await notice.getByRole('link').count(), 0);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a box on a mesh that keeps its storage to itself points at the sharing switch', async () => {
+  const { page } = await open({ stored: true, settings: { ...SHARED, sharingMyStorage: false } });
+  const notice = page.locator('[data-notice="mesh"]');
+  await notice.waitFor();
+  assert.equal(await notice.getAttribute('data-mesh'), 'notSharing');
+  assert.equal(await notice.getByRole('link', { name: 'Share storage', exact: true }).getAttribute('href'), '/settings/market');
+  await page.close();
+});
+
+await check('a box that shares and has joined shows no banner', async () => {
+  const { page } = await open({ stored: true, settings: SHARED });
+  await page.getByRole('heading', { name: 'mattbox' }).first().waitFor().catch(() => {});
+  await page.waitForLoadState('networkidle');
+  assert.equal(await page.locator('[data-notice="mesh"]').count(), 0);
+  await page.close();
+});
+
+await check('the banner stays dismissed across reloads, goes when the box joins, and comes back if it leaves', async () => {
+  let current = SETTINGS;
+  const { page } = await open({ stored: true });
+  await page.route('**/api/settings', (route) => json(route, 200, current));
+  await page.reload({ waitUntil: 'networkidle' });
+  const notice = page.locator('[data-notice="mesh"]');
+  await notice.waitFor();
+  await notice.getByRole('button', { name: 'Dismiss', exact: true }).click();
+  await notice.waitFor({ state: 'detached' });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByRole('link', { name: 'Overview' }).first().waitFor();
+  assert.equal(await notice.count(), 0, 'the dismissal did not survive a reload');
+  // The box joins; a page change reads the settings again.
+  current = SHARED;
+  await page.getByRole('link', { name: 'Mesh' }).first().click();
+  await page.waitForURL('**/mesh');
+  await page.waitForFunction(() => window.localStorage.getItem('losos-mesh-notice') === null);
+  // ...and leaves: the banner is back without being asked.
+  current = SETTINGS;
+  await page.getByRole('link', { name: 'Overview' }).first().click();
+  await notice.waitFor();
+  await page.close();
+});
+
+await check('the banner fits a phone in both themes', async () => {
+  for (const scheme of ['light', 'dark']) {
+    const { page, errors } = await open({ stored: true, viewport: { width: 375, height: 800 } });
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.locator('[data-notice="mesh"]').waitFor();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    assert.ok(overflow <= 0, `${scheme}: page is ${overflow}px wider than the viewport`);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+});
+
 await check('a phone-width viewport does not scroll the page sideways', async () => {
   const { page } = await open({ stored: true, viewport: { width: 375, height: 800 } });
   await page.getByRole('button', { name: 'Expand the sidebar' }).waitFor();
@@ -2113,6 +2483,292 @@ await check('the Machines pane fits a phone too', async () => {
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
+  assert.ok(overflow <= 0, `page is ${overflow}px wider than the viewport`);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+/* AI models on a USDC edge on Base: three models, one running for this box
+ * with a balance under a day of runway. No wallet is saved in this browser. */
+const AI_WALLET = `0x${'4e'.repeat(20)}`;
+const AI_MARKET = {
+  ...MARKET,
+  account: {
+    ...MARKET.account,
+    currency: 'usd',
+    usdc: {
+      test: false,
+      chain_id: 8453,
+      solana: null,
+      ens_chain_id: null,
+      chains: [
+        { network: 'base', name: 'Base', family: 'evm', chain_id: 8453, usdc: `0x${'11'.repeat(20)}`, pay: `0x${'22'.repeat(20)}`, treasury: `0x${'33'.repeat(20)}` },
+      ],
+    },
+  },
+};
+const AI_METER = {
+  id: 'mtr_5c1e0a9b7d3f42e8a6b01c9d',
+  model: 'llama-3-3-70b',
+  network: 'base',
+  state: 'open',
+  wallet: AI_WALLET,
+  spendPerHour: '500000',
+  boxes: 4,
+  group: 'ready',
+  requests: 9,
+  tokensIn: 12400,
+  tokensOut: 3100,
+  billedE6: '10230000000',
+  paid: '0',
+  createdAt: 1791450000,
+};
+const LLM = {
+  available: true,
+  network: 'base',
+  feeBps: 400,
+  models: [
+    { id: 'llama-3-3-70b', name: 'Llama 3.3 70B', needMib: 46080, context: 8192, priceIn: '600000', priceOut: '900000', licence: 'Llama 3.3 Community', lentMib: 61440, group: 'ready', boxes: 4 },
+    { id: 'qwen3-32b', name: 'Qwen3 32B', needMib: 22528, context: 8192, priceIn: '300000', priceOut: '450000', licence: 'Apache-2.0', lentMib: 61440 },
+    { id: 'deepseek-r1', name: 'DeepSeek R1', needMib: 409600, context: 4096, priceIn: '2000000', priceOut: '4000000', licence: 'MIT', lentMib: 61440 },
+  ],
+  meters: [AI_METER],
+  wallets: [{ network: 'base', wallet: AI_WALLET, balance: 8000000, asked: 0, notBefore: 0, available: '7989770', runwaySecs: 57526, low: true }],
+  lending: { paid: '0', owed: '0' },
+  noticeSecs: 172800,
+  minSpendPerHour: '10000',
+  maxSpendPerHour: '100000000',
+};
+
+await check('AI models: the catalogue has prices and memory, says once who reads the prompts, and a running model shows its meter and balance', async () => {
+  const { page, errors, marketPosts, llmPosts } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM });
+  const section = page.getByTestId('ai-models');
+  await section.waitFor();
+  const llama = section.locator('[data-model="llama-3-3-70b"]');
+  assert.match(await llama.innerText(), /\$0\.60 in, \S*\$0\.90 out per million tokens/);
+  assert.match(await llama.innerText(), /Needs 45 GiB; boxes lend 60 GiB now/);
+  assert.match(await llama.innerText(), /Running on 4 boxes/);
+  // A model already running for this box has no Start; one that does not
+  // fit in what the boxes lend cannot be started.
+  assert.equal(await llama.getByRole('button', { name: 'Start' }).count(), 0);
+  assert.equal(await section.locator('[data-model="deepseek-r1"]').getByRole('button', { name: 'Start' }).isDisabled(), true);
+  assert.match(await section.locator('[data-model="deepseek-r1"]').innerText(), /Waiting for more memory/);
+  assert.equal(await page.getByText('The boxes running a model can read its prompts and answers.', { exact: false }).count(), 1);
+  const meters = page.getByTestId('ai-meters');
+  assert.match(await meters.innerText(), /Llama 3\.3 70B · Open/);
+  assert.match(await meters.innerText(), /\$0\.0102 spent on 15,500 tokens · at most \S*\$0\.50 an hour/);
+  const balance = page.getByTestId('ai-balance');
+  assert.match(await balance.innerText(), /Less than a day left at the limits you set: about 16 hours/);
+  assert.match(await balance.innerText(), /\$7\.99/);
+  await balance.getByRole('button', { name: 'Ask for it back' }).waitFor();
+  assert.match(await section.innerText(), /Set up the USDC wallet below first, or connect a browser wallet\./);
+  assert.deepEqual(marketPosts, []);
+  assert.deepEqual(llmPosts, []);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('AI models: Stop needs no wallet and a chat answer says what it cost', async () => {
+  const { page, errors, llmPosts } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM });
+  const chat = page.getByTestId('ai-chat');
+  await chat.waitFor();
+  await chat.getByPlaceholder('Ask something').fill('What is a comet made of?');
+  await chat.getByRole('button', { name: 'Send' }).click();
+  await chat.getByText('Mostly water, then ice.').waitFor();
+  // 42 tokens at $0.60 a million and 7 at $0.90: 31.5 millionths of a dollar.
+  assert.match(await chat.innerText(), /This answer cost \S*\$0\.000031: 42 tokens in, 7 out\./);
+  assert.deepEqual(llmPosts, [
+    ['/api/market/llm/chat', { meter: AI_METER.id, messages: [{ role: 'user', content: 'What is a comet made of?' }], maxTokens: 256 }],
+  ]);
+  // The next question carries the conversation so far.
+  await chat.getByPlaceholder('Ask something').fill('And its tail?');
+  await chat.getByRole('button', { name: 'Send' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="ai-chat"] p').length >= 6);
+  assert.deepEqual(llmPosts[1][1].messages, [
+    { role: 'user', content: 'What is a comet made of?' },
+    { role: 'assistant', content: 'Mostly water, then ice.' },
+    { role: 'user', content: 'And its tail?' },
+  ]);
+  await page.getByTestId('ai-meters').getByRole('button', { name: 'Stop' }).click();
+  await page.getByText('The edge closes the taps; nothing more is billed.', { exact: true }).waitFor();
+  assert.deepEqual(llmPosts[2], ['/api/market/taps/stop', { meter: AI_METER.id }]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('AI models: Check again tells the edge which wallet opened the taps', async () => {
+  const quoted = { ...LLM, meters: [{ ...AI_METER, state: 'quoted', wallet: undefined }] };
+  const { page, errors, llmPosts } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: quoted });
+  const meters = page.getByTestId('ai-meters');
+  await meters.waitFor();
+  // The tab that opened the taps remembers the wallet that did.
+  await page.evaluate(([meter, wallet]) => sessionStorage.setItem('losos-llm-meter', JSON.stringify({ meter, wallet })), [AI_METER.id, AI_WALLET]);
+  await meters.getByRole('button', { name: 'Check again' }).click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="ai-meters"] button[disabled]') === null);
+  for (let i = 0; i < 50 && !llmPosts.some(([path]) => path === '/api/market/taps/confirm'); i++) await page.waitForTimeout(100);
+  assert.deepEqual(
+    llmPosts.filter(([path]) => path === '/api/market/taps/confirm'),
+    [['/api/market/taps/confirm', { meter: AI_METER.id, wallet: AI_WALLET }]],
+  );
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('AI models: a wallet that gives up partway tells the edge which wallet it was', async () => {
+  const meter = 'mtr_0b7e4c2a9d1f36e85a4c07b2';
+  const quote = {
+    available: true,
+    meter,
+    model: 'qwen3-32b',
+    network: 'base',
+    chain: AI_MARKET.account.usdc.chains[0],
+    feeBps: 400,
+    spendPerHour: '500000',
+    taps: [
+      { id: 'tap-1', key: `0x${'a1'.repeat(32)}`, seller: `0x${'51'.repeat(20)}`, rate: '250000' },
+      { id: 'tap-2', key: `0x${'a2'.repeat(32)}`, seller: `0x${'52'.repeat(20)}`, rate: '250000' },
+    ],
+    openBefore: Math.floor(Date.now() / 1000) + 900,
+  };
+  // A browser wallet that connects, then refuses everything it is asked.
+  const init = (wallet) => {
+    window.ethereum = {
+      request: async ({ method }) => {
+        if (method === 'eth_requestAccounts') return [wallet];
+        throw Object.assign(new Error('User rejected the request.'), { code: 4001 });
+      },
+    };
+  };
+  const { page, llmPosts } = await open({
+    path: '/settings/market',
+    stored: true,
+    market: AI_MARKET,
+    llm: { ...LLM, meters: [], wallets: [] },
+    quote,
+    init: [init, AI_WALLET],
+  });
+  const qwen = page.locator('[data-model="qwen3-32b"]');
+  await qwen.waitFor();
+  await qwen.getByRole('button', { name: 'Start' }).click();
+  await qwen.getByRole('button', { name: 'Start' }).last().click();
+  for (let i = 0; i < 50 && !llmPosts.some(([path]) => path === '/api/market/taps/stop'); i++) await page.waitForTimeout(100);
+  assert.deepEqual(
+    llmPosts.filter(([path]) => path.startsWith('/api/market/taps/')),
+    [['/api/market/taps/stop', { meter, wallet: AI_WALLET }]],
+  );
+  await page.close();
+});
+
+await check('AI models: Start asks for an hourly limit and a top-up, refuses a limit out of range, and needs a wallet before it asks the edge', async () => {
+  const { page, errors, llmPosts } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM });
+  const qwen = page.locator('[data-model="qwen3-32b"]');
+  await qwen.waitFor();
+  await qwen.getByRole('button', { name: 'Start' }).click();
+  const limit = qwen.getByLabel('Most it may spend in an hour (USDC)');
+  assert.equal(await limit.inputValue(), '0.50');
+  // Eight hours at the limit; with no wallet chosen, nothing is known held.
+  assert.equal(await qwen.getByLabel('Add to your balance (USDC)').inputValue(), '4');
+  await limit.fill('500');
+  await qwen.getByRole('button', { name: 'Start' }).last().click();
+  await qwen.getByText('Allow between 0.01 and 100 USDC an hour.').waitFor();
+  await limit.fill('2');
+  assert.equal(await qwen.getByLabel('Add to your balance (USDC)').inputValue(), '16');
+  await qwen.getByRole('button', { name: 'Start' }).last().click();
+  await page.getByText('Set up the USDC wallet below first, or connect a browser wallet.').nth(1).waitFor();
+  assert.deepEqual(llmPosts, [], 'a quote was asked for with no wallet to pay it');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+/* Under the real policy the Market pane, a running model and an opened Start
+ * form log only the two violations every page logs at load (Sonner's
+ * refused copy of its stylesheet). */
+await check('under the appliance CSP the AI models section adds no violation', async () => {
+  const { origin: strict, close } = await serve({ csp: true });
+  try {
+    const watch = () => {
+      window.__violations = [];
+      document.addEventListener('securitypolicyviolation', (e) =>
+        window.__violations.push(`${e.violatedDirective} ${e.target?.nodeName ?? ''}`),
+      );
+    };
+    const { page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM, base: strict, init: [watch] });
+    await page.getByTestId('ai-meters').waitFor();
+    const atLoad = await page.evaluate(() => window.__violations);
+    assert.deepEqual(atLoad, ['style-src-elem STYLE', 'style-src-elem STYLE'], `unexpected violations at load: ${atLoad.join(', ')}`);
+    const qwen = page.locator('[data-model="qwen3-32b"]');
+    await qwen.getByRole('button', { name: 'Start' }).click();
+    await qwen.getByLabel('Most it may spend in an hour (USDC)').fill('2');
+    await page.waitForTimeout(300);
+    const after = await page.evaluate(() => window.__violations);
+    assert.equal(after.length, atLoad.length, `the AI models section added CSP violations: ${after.slice(atLoad.length).join(', ')}`);
+    assert.deepEqual(errors, []);
+    await page.close();
+  } finally {
+    await close();
+  }
+});
+
+await check('AI models: a wallet imported further down the same page can pay at once, and forgetting it takes it away', async () => {
+  const { mnemonicToAccount } = await import('viem/accounts');
+  const phrase = 'test test test test test test test test test test test junk';
+  const address = mnemonicToAccount(phrase).address;
+  const { page, errors, llmPosts } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM });
+  const section = page.getByTestId('ai-models');
+  await section.getByText('Set up the USDC wallet below first, or connect a browser wallet.').first().waitFor();
+  await page.getByPlaceholder('12 or 24 words from MetaMask, Rabby, Rainbow, Trust Wallet or Phantom').fill(phrase);
+  await page.getByPlaceholder('A password for this browser (8 or more characters)').fill('right horse battery');
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  // No reload: the section reads the saved wallet again when it changes.
+  await section.getByText('The wallet on this box', { exact: true }).waitFor({ timeout: 15000 });
+  assert.match(await section.innerText(), new RegExp(`${address.slice(0, 6)}…${address.slice(-4)}`));
+  assert.doesNotMatch(await section.innerText(), /Set up the USDC wallet below first/);
+  await page.getByRole('button', { name: "Forget this browser's copy", exact: true }).click();
+  await section.getByText('Set up the USDC wallet below first, or connect a browser wallet.').first().waitFor();
+  assert.deepEqual(llmPosts, []);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('AI models: a balance asked back says when it can be taken, then offers to take it', async () => {
+  const now = Date.UTC(2026, 9, 8, 9, 30);
+  const waiting = { ...LLM, meters: [], wallets: [{ ...LLM.wallets[0], asked: 8000000, notBefore: now / 1000 + 36 * 3600, runwaySecs: undefined, low: false }] };
+  let { page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: waiting, now });
+  let balance = page.getByTestId('ai-balance');
+  await balance.waitFor();
+  assert.match(await balance.innerText(), /\$8\.00 asked back; you can take it from 9 Oct 2026/);
+  assert.equal(await balance.getByRole('button').count(), 0);
+  assert.equal(await page.getByTestId('ai-chat').count(), 0, 'a chat with nothing running');
+  assert.deepEqual(errors, []);
+  await page.close();
+
+  const due = { ...waiting, wallets: [{ ...waiting.wallets[0], notBefore: now / 1000 - 60 }] };
+  ({ page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: due, now }));
+  balance = page.getByTestId('ai-balance');
+  await balance.waitFor();
+  assert.match(await balance.innerText(), /\$8\.00 can be taken back now/);
+  await balance.getByRole('button', { name: 'Take it back' }).waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('AI models: an edge that runs none says so, and a USDC-less market asks for none', async () => {
+  let { page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: { available: false } });
+  await page.getByTestId('ai-models').getByText('This edge runs no AI models.').waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+  ({ page, errors } = await open({ path: '/settings/market', stored: true, market: MARKET, llm: LLM }));
+  await page.getByRole('heading', { name: 'Market' }).first().waitFor().catch(() => undefined);
+  await page.waitForTimeout(300);
+  assert.equal(await page.getByTestId('ai-models').count(), 0);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('the Market pane with AI models fits a phone', async () => {
+  const { page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM, viewport: { width: 375, height: 800 } });
+  await page.getByTestId('ai-chat').waitFor();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   assert.ok(overflow <= 0, `page is ${overflow}px wider than the viewport`);
   assert.deepEqual(errors, []);
   await page.close();

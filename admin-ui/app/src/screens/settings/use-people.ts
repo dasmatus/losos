@@ -10,9 +10,11 @@ import {
   postPersonRemove,
   postPeopleRules,
   postPersonFactorsReset,
+  clearPersonImage,
   type LoginRules,
   type NewPerson,
   type PeopleResponse,
+  type ProfileImage,
 } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import { t } from "@/lib/i18n";
@@ -42,6 +44,8 @@ export interface PeopleData {
   remove: (name: string) => Promise<boolean>;
   setRules: (rules: LoginRules) => Promise<Outcome>;
   resetFactors: (name: string) => Promise<boolean>;
+  /** Take a picture or banner off someone's profile. */
+  takeDown: (name: string, kind: ProfileImage) => Promise<boolean>;
 }
 
 function viewOf(reply: Partial<PeopleResponse>): PeopleResponse {
@@ -167,5 +171,15 @@ export function usePeople(enabled: boolean): PeopleData {
     [attempt],
   );
 
-  return { state, busy, refresh, add, setAccess, setPassword, remove, setRules, resetFactors };
+  const takeDown = React.useCallback(
+    async (name: string, kind: ProfileImage) => {
+      const outcome = await attempt(() => clearPersonImage(name, kind), t("profile.failed"));
+      if (outcome.ok) toast.done(t("profile.users.takenDown", { name }));
+      else if (outcome.message.length > 0) toast.error(t("profile.failed"), outcome.message, { help: "sign-in-and-spare-key" });
+      return outcome.ok;
+    },
+    [attempt],
+  );
+
+  return { state, busy, refresh, add, setAccess, setPassword, remove, setRules, resetFactors, takeDown };
 }

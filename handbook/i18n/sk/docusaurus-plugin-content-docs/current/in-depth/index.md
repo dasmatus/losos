@@ -13,7 +13,7 @@ Zvyšok tejto príručky je pre vlastníka zariadenia. Táto kapitola je pre ľu
 ktorí LosOS vyvíjajú, prevádzkujú edge alebo pripravujú vydanie: ako do seba
 časti zapadajú, prečo je každá tam, kde je, a ako ich meniť.
 
-LosOS je NixOS appliance pre mini-PC. Beží na ňom Nextcloud pre vaše vlastné
+LosOS je NixOS appliance pre mini-PC. Beží na ňom LosOS Cloud pre vaše vlastné
 súbory a voľné miesto na disku a výkon CPU môže požičiavať do mesh siete
 ďalších LosOS zariadení. Nemá SSH ani prihlasovací shell. Spravujete ho
 z webovej stránky a aktualizuje sa sám.
@@ -33,6 +33,11 @@ oddiele `/persist`.
 - [Trh](/in-depth/market.md). Predaj disku a CPU, ktoré zariadenie už poskytuje.
 - [Virtuálne stroje](/in-depth/virtual-machines.md). Prenájom strojov v mesh
   a hosťovanie strojov iných zariadení.
+- [Modely AI](/in-depth/ai-models.md). Požičiavanie pamäte modelom rozdeleným
+  medzi zariadenia a platba za ich odpovede po tokenoch.
+- [Formát aplikácií](/in-depth/app-format.md). Jeden súbor Compose na
+  aplikáciu, spustený ako notshared na Podmane bez roota: čo s ním zariadenie
+  urobí a ako ho nainštalovať.
 - [Tvorca widgetov](/in-depth/widget-builder.md). Jazykový model na zariadení
   napíše widget podľa opisu.
 - [Master proxy](/in-depth/master-proxy.md). Prístup k zariadeniu z internetu bez

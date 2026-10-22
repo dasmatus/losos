@@ -15,7 +15,7 @@ nastavenia.
 
 Krok sprievodcu s heslom si pýta prihlasovacie meno a heslo. Kto ho dokončí,
 stane sa prvým správcom zariadenia. To isté heslo sa stane aj heslom
-vlastníka do LosOS cloud, takže jedno heslo otvára oboje.
+vlastníka do LosOS Cloud, takže jedno heslo otvára oboje.
 
 Prihlasovacie meno sa píše malými písmenami. Začína písmenom, potom
 nasledujú písmená, číslice, `.`, `_` alebo `-`, najviac 32 znakov. Nové
@@ -55,9 +55,9 @@ Po niekoľkých nesprávnych heslách za sebou LosOS Login to meno na pár minú
 odmietne. Počkajte a skúste to znova.
 :::
 
-## LosOS cloud a LosOS Git \{#losos-cloud-and-losos-git}
+## LosOS Cloud a LosOS Git \{#losos-cloud-and-losos-git}
 
-LosOS cloud aj LosOS Git vás prihlásia cez LosOS Login, na vlastnej sieti
+LosOS Cloud aj LosOS Git vás prihlásia cez LosOS Login, na vlastnej sieti
 zariadenia aj cez internet. Keď otvoríte niektorú z nich neprihlásení,
 ocitnete sa v LosOS Login; prihláste sa tam raz a pustia vás obe aplikácie,
 bez druhého hesla. Ani jedna aplikácia neukazuje vlastnú prihlasovaciu
@@ -77,14 +77,14 @@ ukážu stránku, ktorá to oznamuje, a každých pár sekúnd to skúsia znova
 samy.
 
 Aplikácie pre počítač a telefón a `git` ďalej používajú heslá aplikácií a
-tokeny. Sieťový priečinok LosOS cloud berie v sieti zariadenia vaše meno a
+tokeny. Sieťový priečinok LosOS Cloud berie v sieti zariadenia vaše meno a
 heslo z LosOS Login a cez internet heslo aplikácie; pozrite
 [Súbory vo vašom počítači](files-on-your-computer).
 
-**Odhlásiť sa** v LosOS cloud vás odhlási aj z LosOS Login. **Odhlásiť sa**
+**Odhlásiť sa** v LosOS Cloud vás odhlási aj z LosOS Login. **Odhlásiť sa**
 v LosOS Git nie: kým ste prihlásení v LosOS Login, LosOS Git vás hneď
 prihlási znova. Z oboch odídete odhlásením z LosOS Login (v správcovských
-stránkach alebo v LosOS cloud). Karta aplikácie, ktorá je už otvorená, zostane
+stránkach alebo v LosOS Cloud). Karta aplikácie, ktorá je už otvorená, zostane
 prihlásená, kým sa neodhlásite aj z tej aplikácie.
 
 ## Kto čo vidí \{#who-sees-what}
@@ -120,7 +120,7 @@ celé meno, heslo podľa rovnakých pravidiel ako to vaše a prístup.
 
 ![Panel Používatelia: traja ľudia s ich prístupom a pod nimi formulár Pridať človeka.](@site/docs/img/settings-users-sk.png)
 
-Nový človek má **Vlastný účet** zapnutý. Meno a heslo mu odovzdajte sami. Prihlási sa cez LosOS Login. LosOS cloud aj
+Nový človek má **Vlastný účet** zapnutý. Meno a heslo mu odovzdajte sami. Prihlási sa cez LosOS Login. LosOS Cloud aj
 LosOS Git mu pri prvom otvorení vytvoria vlastný účet.
 
 Kto má overovaciu aplikáciu alebo prístupový kľúč, má štítok
@@ -135,9 +135,11 @@ Každý človek v zozname má tieto tlačidlá:
 - **Obnoviť dvojstupňové** mu odstráni overovaciu aplikáciu a prístupové
   kľúče, keď stratil telefón alebo kľúč. Prihlasuje sa potom iba heslom,
   kým si nepridá nové. Zobrazí sa iba pri tom, kto nejaké má.
+- **Odstrániť fotku** a **Odstrániť banner** stiahnu obrázok, ktorý by
+  ostatní nemali vidieť. Zobrazia sa iba pri tom, kto nejaký má.
 - **Odstrániť** mu hneď zastaví prihlasovanie do správcovských stránok aj do
-  oboch aplikácií. Jeho účty a súbory v LosOS cloud a LosOS Git na zariadení
-  zostanú.
+  oboch aplikácií a zmaže jeho profil. Jeho účty a súbory v LosOS Cloud a
+  LosOS Git na zariadení zostanú.
 
 Váš vlastný riadok tlačidlá nemá. Riadok vlastníka má iba **Obnoviť
 dvojstupňové**, pre iného správcu. Vlastníka tu nikto nemôže odstrániť,
@@ -153,11 +155,19 @@ nemá.
 
 ![Váš účet: vaše údaje, heslo, dvojstupňové prihlásenie a jednorazový kód.](@site/docs/img/settings-account-sk.png)
 
-- **Vaše údaje**: celé meno a e-mailová adresa. LosOS cloud aj LosOS Git
+- **Profil**: fotka, banner, farba, vaše zámená a riadok o vás. Každý, kto
+  je prihlásený do zariadenia, ich vidí vedľa vášho mena: v hornej lište, v
+  table Používatelia a v aplikáciách zariadenia. Vyberte fotku alebo banner,
+  ťahaním a priblížením nastavte časť, ktorú chcete, a zvoľte **Použiť**.
+  Zariadenie obrázok znova oreže a uloží ako nový súbor, takže miesto a
+  fotoaparát, ktorým bola fotka nasnímaná, zostanú vo vašom zariadení. Vedľa
+  profilu je vždy aj vaše prihlasovacie meno, takže sa za vás fotkou nikto
+  nevydá.
+- **Vaše údaje**: celé meno a e-mailová adresa. LosOS Cloud aj LosOS Git
   ukazujú tie isté. Prihlasovacie meno môže zmeniť iba správca.
 - **Heslo**: kedy ste ho naposledy zmenili a kedy vyprší, ak má zariadenie
   také pravidlo. Nové heslo sa riadi rovnakými pravidlami ako prvé a otvára
-  aj LosOS cloud a LosOS Git.
+  aj LosOS Cloud a LosOS Git.
 - **Dvojstupňové prihlásenie**: či máte overovaciu aplikáciu a koľko
   prístupových kľúčov. **Otvoriť LosOS Login** otvorí vlastnú stránku LosOS
   Login na novej karte, kde ich pridáte alebo odstránite. S ktorýmkoľvek z
@@ -179,10 +189,10 @@ Pravidlá prihlásenia**:
 
 Koho pravidlo zachytí, je zadržaný. Stále sa prihlási, ale správcovské
 stránky mu ukážu iba **Váš účet** s poznámkou, čo treba urobiť, a LosOS
-Login ho nepustí do LosOS cloud ani LosOS Git. Keď si zvolí nové heslo alebo
+Login ho nepustí do LosOS Cloud ani LosOS Git. Keď si zvolí nové heslo alebo
 pridá druhý faktor, zvyšok sa znova otvorí. Po novom druhom faktore si ho
 LosOS Login raz vypýta pred ďalšou stránkou. Zadržaný človek, ktorý otvorí
-LosOS cloud alebo LosOS Git, uvidí stránku, ktorá ho pošle do jeho účtu; ten sa otvára na vlastnej sieti zariadenia.
+LosOS Cloud alebo LosOS Git, uvidí stránku, ktorá ho pošle do jeho účtu; ten sa otvára na vlastnej sieti zariadenia.
 
 Kým začnete vyžadovať dvojstupňové prihlásenie, pridajte si overovaciu
 aplikáciu alebo prístupový kľúč do vlastného účtu. Zariadenie pravidlo
@@ -229,7 +239,7 @@ LosOS Login prijíma prístupové kľúče (passkeys). Pridáte si ho na stránk
 LosOS Login z [Vášho účtu](#your-account), cez HTTPS, keď je certifikát
 zariadenia nainštalovaný. Na prihlasovacej stránke vás potom telefón alebo
 notebook prihlási vlastným odomknutím namiesto mena a hesla, do
-správcovských stránok, LosOS cloud aj LosOS Git. Prístupový kľúč nie je
+správcovských stránok, LosOS Cloud aj LosOS Git. Prístupový kľúč nie je
 druhý náhradný kľúč: otvára iba váš vlastný účet.
 
 ## Okno na prevzatie \{#the-claim-window}

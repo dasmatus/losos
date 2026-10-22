@@ -23,12 +23,9 @@ const { check, finish } = runner();
 
 const SETTINGS = {
   sharingMyStorage: false,
-  nextcloudMode: 'container',
   forgejoMode: 'container',
   hostName: 'mattbox',
-  https: false,
   gpuEnable: false,
-  apachePort: 80,
   proxyEnable: false,
   clusterEnable: false,
   shareCompute: false,
@@ -107,6 +104,18 @@ async function open({ path = '/settings/account', locked = [], spareKey = false,
     box.email = b.email;
     return json(route, 200, { name: 'eva', ...b });
   });
+  await page.route('**/api/profiles/eva', (route) =>
+    json(route, 200, {
+      name: 'eva',
+      displayName: box.displayName,
+      pronouns: '',
+      about: '',
+      accent: 'violet',
+      accentChosen: false,
+      picture: null,
+      banner: null,
+    }),
+  );
   await page.route('**/api/account/code', (route) => {
     const b = body(route);
     posts.push({ path: '/api/account/code', body: b });

@@ -146,7 +146,7 @@ every road. The hub has it in its whitelist, a gateway learns it on first
 contact, and `lososd` mints it (and the bootstrap token) on first start when
 the files are missing. Its public name is the same too: the owner's `losos.proxy.hostname` must be one
 label under the site's zone (`mattbox.acme.losos.cfd`) for the relay to
-accept it, which is also the name Nextcloud trusts. A box that falls back to
+accept it, which is also the name the box's apps answer to. A box that falls back to
 the official edge keeps the same name through its direct tenant row. The
 market relay needs no extra switch: it is gated on an *official* edge
 answering, and with none in reach it already says `available: false`.

@@ -45,7 +45,7 @@ diskom na mieste. Najprv zálohujte, pretože inštalátor zmaže všetko.
 ## Keď dochádza miesto \{#running-out-of-room}
 
 Prehľad ukáže **Takmer plné** a potom **Nie je miesto**. Plný disk zabráni
-LosOS cloud prijímať nahrávané súbory. Horšie je, že môže zastaviť nočné
+LosOS Cloud prijímať nahrávané súbory. Horšie je, že môže zastaviť nočné
 zostavenie. Postup nájdete v časti [Nie je miesto](../troubleshooting/out-of-room).
 
 ![Prehľad na takmer plnom zariadení: dlaždica Súbory a karta úložiska varujú.](@site/docs/img/overview-almost-full-sk.png)

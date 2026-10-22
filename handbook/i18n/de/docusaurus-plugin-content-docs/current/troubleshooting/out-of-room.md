@@ -9,7 +9,7 @@ slug: /troubleshooting/out-of-room
 <div className="losos-symptom">
 
 **Was du siehst:** Die Übersicht sagt **Fast voll** oder **Kein Platz
-mehr**; Uploads in LosOS cloud schlagen fehl; ein Anwenden oder das
+mehr**; Uploads in LosOS Cloud schlagen fehl; ein Anwenden oder das
 nächtliche Update schlägt fehl.
 
 </div>
@@ -32,7 +32,7 @@ mehr** erscheint.
    nutzen**. Der Installer hat dafür 10 % der Festplatte zurückgehalten.
    Das dauert eine Minute und braucht keinen Neustart. Siehe
    [Festplatte vergrößern](../manual/disk-growth).
-2. **Leere den Papierkorb in LosOS cloud.** Gelöschte Dateien liegen 30
+2. **Leere den Papierkorb in LosOS Cloud.** Gelöschte Dateien liegen 30
    Tage lang unter „Gelöschte Dateien“ und belegen weiter Platz.
    Vorschaubilder der Fotos-App und alte Dateiversionen, unter „Versionen“
    in der Seitenleiste einer Datei, summieren sich ebenfalls.
@@ -40,7 +40,7 @@ mehr** erscheint.
    Systemversionen. Wenn die Box in den letzten zwei Wochen installiert
    oder oft aktualisiert wurde, können das mehrere Gigabyte sein.
 4. **Lagere Daten aus**, mit dem Desktop-Client oder per Download aus LosOS
-   cloud, und lösch sie dann dort.
+   Cloud, und lösch sie dann dort.
 5. **Teile weniger.** Eine Box, die dem Mesh Platz leiht, mit dem
    Speichermodus auf geteilt, hält Kopien für andere Boxen. Schaltest du das
    Teilen aus, wird dieser Platz wieder frei, sobald der Pool die Daten neu

@@ -38,11 +38,11 @@ kdekoľvek mimo textového poľa. Nájde:
 
 - sekcie a panely nastavení, podľa mena alebo podľa slova ako „gpu“ či
   „hostname“, v jazyku na obrazovke alebo v angličtine
-- aplikácie v LosOS cloud a LosOS Git
-- súbory a priečinky v LosOS cloud, podľa mena
+- aplikácie v LosOS Cloud a LosOS Git
+- súbory a priečinky v LosOS Cloud, podľa mena
 - repozitáre v LosOS Git
 - text vnútri súborov, keď napíšete tri písmená: vo vašich súboroch v LosOS
-  cloud a na hlavnej vetve každého repozitára v LosOS Git
+  Cloud a na hlavnej vetve každého repozitára v LosOS Git
 - vaše pripnuté položky
 - aplikácie na inštaláciu z Artifact Hub; keď jednu vyberiete, otvorí sa
   panel Aplikácie s jej inštalačným dialógom
@@ -55,12 +55,12 @@ Ctrl+Enter alebo Cmd+Enter otvorí položku na novej karte.
 
 :::note[Vyhľadávanie súborov potrebuje heslo aplikácie zariadenia]
 Vyhľadávanie súborov používa heslo aplikácie, ktoré zariadenie dostane od
-LosOS cloud, keď sa nastaví heslo vlastníka, a to urobí sprievodca. Bez neho
+LosOS Cloud, keď sa nastaví heslo vlastníka, a to urobí sprievodca. Bez neho
 to zoznam napíše tam, kde by boli súbory; pozrite
 [Ako zariadenie vypisuje vaše súbory](#pins) nižšie.
 :::
 
-Aby mohlo hľadať vnútri vašich súborov v LosOS cloud, zariadenie si vedie
+Aby mohlo hľadať vnútri vašich súborov v LosOS Cloud, zariadenie si vedie
 index ich textu. Každé dve minúty skontroluje nové a zmenené súbory a číta
 iba tie. Číta obyčajný text a kód, Markdown, CSV, JSON a HTML, súbory
 OpenDocument, súbory Wordu, Excelu a PowerPointu v súčasných formátoch
@@ -75,7 +75,7 @@ paneli Rozšírené ho vypne. LosOS Git index nepotrebuje: každé vyhľadávani
 
 Pripnite si aplikácie, súbory a repozitáre, ktoré otvárate najčastejšie, a
 budú v bočnom paneli pod **Pripnuté**. Pripnutá položka sa otvára vo
-vlastnej aplikácii: súbor alebo priečinok v LosOS cloud, repozitár v LosOS
+vlastnej aplikácii: súbor alebo priečinok v LosOS Cloud, repozitár v LosOS
 Git, aplikácia na Prehľade alebo aplikácia nainštalovaná z vyhľadávania na
 vlastnom porte. Zoznam drží zariadenie, takže každý prehliadač, z ktorého sa
 prihlásite, ukazuje tie isté pripnuté položky.
@@ -85,7 +85,7 @@ prihlásite, ukazuje tie isté pripnuté položky.
 - Na stránke Aplikácie je pri každej nainštalovanej aplikácii **Pripnúť**.
 - Ceruzka pri **Pripnuté** otvorí celý zoznam. Tam pripnutú položku posuniete
   vyššie alebo nižšie, odopnete ju a pripínate z troch kariet: **Aplikácie**,
-  **Súbory**, ktorá prechádza priečinkami LosOS cloud, a **Repozitáre**.
+  **Súbory**, ktorá prechádza priečinkami LosOS Cloud, a **Repozitáre**.
 - Ukážte na pripnutú položku v bočnom paneli a kliknutím na prečiarknutý
   špendlík ju odopnete. Pripnuté položky nájde aj
   [vyhľadávanie](#search).
@@ -96,12 +96,12 @@ prihlásite, ukazuje tie isté pripnuté položky.
 
 ![Prehľad so šiestimi pripnutými položkami pod Pripnuté v bočnom paneli a označenými pripnutými dlaždicami Kalendár a Poznámky.](@site/docs/img/pins-overview-sk.png)
 
-![Zoznam pripnutých položiek s kartou Súbory otvorenou na priečinku Documents v LosOS cloud.](@site/docs/img/pins-dialog-sk.png)
+![Zoznam pripnutých položiek s kartou Súbory otvorenou na priečinku Documents v LosOS Cloud.](@site/docs/img/pins-dialog-sk.png)
 
 :::note[Ako zariadenie vypisuje vaše súbory]
 Zariadenie vypisuje vaše súbory s heslom aplikácie, o ktoré požiada LosOS
-cloud, keď sa nastaví heslo vlastníka, a to urobí sprievodca. Heslo
-aplikácie sa v nastaveniach zabezpečenia LosOS cloud zobrazí ako „LosOS
+Cloud, keď sa nastaví heslo vlastníka, a to urobí sprievodca. Heslo
+aplikácie sa v nastaveniach zabezpečenia LosOS Cloud zobrazí ako „LosOS
 admin page“. Keď ho tam zrušíte, výpis aj vyhľadávanie súborov sa zastavia,
 kým sa heslo vlastníka nenastaví znova, a to cestou s náhradným kľúčom na
 stránke [Zabudnuté heslo](../troubleshooting/forgot-password#you-have-the-spare-admin-key). Bočný panel pojme 24 pripnutých položiek.
@@ -110,9 +110,20 @@ stránke [Zabudnuté heslo](../troubleshooting/forgot-password#you-have-the-spar
 ## Prehliadka \{#the-tour}
 
 Keď sa na tieto stránky po nastavení dostanete prvýkrát, nad Prehľadom sa
-otvorí prehliadka so šiestimi krátkymi krokmi. **Spustiť prehliadku** v
+otvorí krátka prehliadka: šesť krokov na každom zariadení a jeden navyše za
+každú funkciu, ktorú toto zariadenie má ([Prvé spustenie](../start/first-run)
+ich vymenúva). **Spustiť prehliadku** v
 Nastaveniach, O zariadení ju otvorí znova. Ak máte v systéme nastavené
 „obmedziť pohyb“, každý krok namiesto animácie ukáže statický obrázok.
+
+## Pruh o sieti mesh \{#the-mesh-banner}
+
+Niektoré funkcie bežia len na zariadení, ktoré zdieľa svoje úložisko a je
+pripojené k sieti mesh. Kým neplatí oboje, pruh nad každou stránkou hovorí,
+že niektoré funkcie nemusia byť dostupné, a odkazuje na **Mesh**, kde sa
+pripojíte, alebo na **Trh**, kde zapnete zdieľanie disku. **Zavrieť** ho v
+danom prehliadači skryje. Zmizne sám, keď sa zariadenie pripojí, a vráti
+sa, ak zariadenie sieť mesh opustí.
 
 ## Upozornenia \{#notifications}
 
@@ -122,6 +133,19 @@ napríklad reset zariadenia alebo použitie rezervy, namiesto toho otvorí
 dialóg. Bezpečná voľba je v ňom prvá.
 
 ![Panel nastavení so zmenou, ktorá ešte nie je použitá: lišta dole s tlačidlami Zahodiť a Použiť.](@site/docs/img/settings-apply-bar-sk.png)
+
+## Hra počas čakania \{#a-game-while-you-wait}
+
+Niektoré veci trvajú minúty: použitie zmeny, prvé spustenie LosOS Cloud,
+štart LosOS Login, inštalácia aplikácie. Kým niektorá z nich beží, tlačidlo
+**Zahrajte si, kým čakáte** vedľa priebehu otvorí pod ním malú hru, náhodne
+jednu z piatich: Proti prúdu, Úhor, Spájanie, Tehličky a Dvojice. Priebeh
+zostáva nad hrou na obrazovke. Nič sa nezačne, kým nestlačíte kláves alebo
+neťuknete, hra nemá zvuk a pozastaví sa, keď prejdete na inú kartu. Keď
+čakanie skončí, hra sa zastaví a oznámi to a **Zavrieť hru** ju odloží. Ak
+máte v systéme zapnuté obmedzenie pohybu, ponúknu sa len Spájanie a Dvojice,
+lebo v nich sa medzi ťahmi nič nehýbe. Najlepšie skóre každej hry si
+pamätá tento prehliadač.
 
 ## Téma a jazyk \{#theme-and-language}
 
@@ -141,7 +165,7 @@ to isté. Pozri [Prihlásenie a náhradný kľúč](sign-in-and-spare-key).
 ## Čo správcovské stránky nedokážu \{#what-the-admin-pages-cannot-do}
 
 Nie je tu prehliadač súborov, terminál ani prehliadač logov. Vaše súbory sú
-v LosOS cloud; karta **Súbory** v zozname pripnutých položiek ukazuje
+v LosOS Cloud; karta **Súbory** v zozname pripnutých položiek ukazuje
 priečinky iba na to, aby ste z nich mohli pripínať. Zariadenie nemá shell,
 takže ho nemajú ani stránky. Zariadenie o sebe podáva správu cez Prehľad,
 panel Úložisko a panel O zariadení. Keď to nestačí, stránka
