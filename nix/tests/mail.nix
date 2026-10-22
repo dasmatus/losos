@@ -119,12 +119,10 @@ pkgs.testers.nixosTest {
         # What a laptop's mDNS would answer.
         networking.extraHosts = "192.168.1.1 mattbox.local";
         environment.variables = lib.mkIf screens {
-          PLAYWRIGHT_BROWSERS_PATH = "${
-            pkgs.playwright-driver.browsers.override {
-              withFirefox = false;
-              withWebkit = false;
-            }
-          }";
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers.override {
+            withFirefox = false;
+            withWebkit = false;
+          }}";
           PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
         };
         fonts = lib.mkIf screens {
@@ -169,6 +167,25 @@ pkgs.testers.nixosTest {
     def curl(args):
         return laptop.succeed(f"curl -sk {args}")
 
+    def box_settings(sharing, mesh):
+        # What Apply would have written for this state: lososd's settings
+        # (and the pages that read them, like the mesh banner) come from
+        # overrides.nix, while the gate itself is the evaluated config.
+        lines = [
+            "{ ... }:",
+            "{",
+            f"  losos.sharingMyStorage = {str(sharing).lower()};",
+            f"  losos.cluster.enable = {str(mesh).lower()};",
+            "}",
+        ]
+        body = "\n".join(lines)
+        # Written beside it and moved in, so lososd never reads half a file.
+        box.succeed(
+            "mkdir -p /etc/nixos/modules"
+            f" && cat > /etc/nixos/modules/overrides.nix.new <<'EOF'\n{body}\nEOF\n"
+            "mv /etc/nixos/modules/overrides.nix.new /etc/nixos/modules/overrides.nix"
+        )
+
     def mail_page():
         return [curl(f"-o /dev/null -w '%{{http_code}}' https://{BOX}{p}") for p in ["/mail", "/mail/"]]
 
@@ -212,6 +229,8 @@ pkgs.testers.nixosTest {
             time.sleep(2)
         raise AssertionError(f"{subject!r} never arrived in {mailbox}: {page}")
 
+    box_settings(True, True)
+
     with subtest("Stalwart runs as the shared user, on loopback only"):
         pid = box.succeed("systemctl show -p MainPID --value losos-mail.service").strip()
         uid = box.succeed(f"stat -c %u /proc/{pid}").strip()
@@ -221,8 +240,10 @@ pkgs.testers.nixosTest {
         local = box.succeed("ss -Hltn 'sport = :8096' | awk '{print $4}'").split()
         assert local == ["127.0.0.1:8096"], local
         laptop.fail(f"curl -s --max-time 5 http://{BOX}:8096/")
-        # The secret it shares with lososd is root's alone.
-        assert box.succeed("stat -c '%U %a' /var/lib/losos-mail/master-secret").strip() == "root 600"
+        # The secret it shares with lososd is sealed in the credential store,
+        # and no plaintext copy is left where an older build kept it.
+        assert box.succeed("stat -c '%U %a' /etc/credstore.encrypted/mail-master").strip() == "root 600"
+        box.fail("test -e /var/lib/losos-mail/master-secret")
         # Its own mail listeners are not configured: nothing on 25, 143, 993.
         for port in (25, 143, 465, 587, 993):
             box.fail(f"ss -Hltn 'sport = :{port}' | grep -q LISTEN")
@@ -263,6 +284,10 @@ pkgs.testers.nixosTest {
         assert ok("/api/me", eva)["shared"] == ["mail"]
         # A screen of the admin pages: /mail falls through to their index.
         assert mail_page() == ["200", "200"]
+        # The saved settings agree with the gate, so no page (the mesh
+        # banner, the About pane) says this box is out of a mesh.
+        settings = ok("/api/settings", matus)
+        assert settings.get("sharingMyStorage") is True and settings.get("clusterEnable") is True, settings
 
     with subtest("each person gets a mailbox on first use"):
         mhome = ok("/api/mail", matus)
@@ -331,7 +356,9 @@ pkgs.testers.nixosTest {
     with subtest("formatted mail is drawn only from its own sandboxed route"):
         # A sender's HTML, put in Eva's inbox the way delivery would: through
         # Stalwart's JMAP as Eva, from the box itself.
-        secret = box.succeed("cat /var/lib/losos-mail/master-secret").strip()
+        secret = box.succeed(
+            "systemd-creds decrypt --name=mail-master /etc/credstore.encrypted/mail-master -"
+        ).strip()
         jmap = f"curl -sf -u 'eva%losos:{secret}' http://127.0.0.1:8096"
         session = json.loads(box.succeed(f"{jmap}/jmap/session"))
         account = session["primaryAccounts"]["urn:ietf:params:jmap:mail"]
@@ -431,6 +458,7 @@ pkgs.testers.nixosTest {
             print(laptop.succeed(f"MAIL_SCREENS_PASSWORD='{PASSWORD}' mail-screens {quoted}", timeout=3600))
 
     with subtest("sharing on but in no mesh is not the shared side"):
+        box_settings(True, False)
         box.succeed("/run/current-system/specialisation/alone/bin/switch-to-configuration test")
         box.wait_until_fails("systemctl is-active losos-mail.service", timeout=60)
         box.wait_for_unit("lososd.service")
@@ -439,12 +467,14 @@ pkgs.testers.nixosTest {
         code, _ = api("/api/mail", eva)
         assert code == 404, code
         assert mail_page() == ["404", "404"]
+        box_settings(True, True)
         box.succeed("/run/booted-system/bin/switch-to-configuration test")
         box.wait_for_unit("losos-mail.service")
         box.wait_for_open_port(8096)
         laptop.wait_until_succeeds(f"curl -sk -H 'Cookie: {eva}' https://{BOX}/api/me | jq -e '.shared == [\"mail\"]'", timeout=60)
 
     with subtest("with sharing off there is no mail at all"):
+        box_settings(False, True)
         box.succeed("/run/current-system/specialisation/closed/bin/switch-to-configuration test")
         box.wait_until_fails("systemctl is-active losos-mail.service", timeout=60)
         box.wait_for_unit("lososd.service")
@@ -461,6 +491,7 @@ pkgs.testers.nixosTest {
         screens("sidebar", "01", "sidebar-sharing-off", "the sidebar while the box does not share", "none")
 
     with subtest("with sharing back on, the mail is still there"):
+        box_settings(True, True)
         box.succeed("/run/booted-system/bin/switch-to-configuration test")
         box.wait_for_unit("losos-mail.service")
         box.wait_for_open_port(8096)

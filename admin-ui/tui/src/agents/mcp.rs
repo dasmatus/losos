@@ -24,7 +24,7 @@ pub const PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26
 const MAX_ARGUMENT_CHARS: usize = 500;
 
 /// One argument of a tool: what the agent calls it, and the query
-/// parameter it becomes.
+/// parameter it becomes, or the `{id}` of its route it fills.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Param {
     pub name: &'static str,
@@ -112,13 +112,55 @@ pub const MCP_TOOLS: &[McpTool] = &[
         route: "/api/git/text",
         params: &[QUERY],
     },
+    McpTool {
+        name: "mail_list_folders",
+        title: "List LosOS Mail folders",
+        description: "The owner's mail address and LosOS Mail folders, with each folder's id, \
+                      name and unread count. LosOS Mail is on a box that shares its storage \
+                      in a mesh; elsewhere this says there is no mail.",
+        route: "/api/mail",
+        params: &[],
+    },
+    McpTool {
+        name: "mail_search",
+        title: "Search LosOS Mail",
+        description: "The newest messages in one LosOS Mail folder, or those that hold the \
+                      words, with sender, subject, date, a preview and each message's id.",
+        route: "/api/mail/messages",
+        params: &[
+            Param {
+                name: "folder",
+                query: "mailbox",
+                description: "The folder's id, from mail_list_folders.",
+                required: true,
+            },
+            Param {
+                required: false,
+                ..QUERY
+            },
+        ],
+    },
+    McpTool {
+        name: "mail_read",
+        title: "Read a LosOS Mail message",
+        description: "One message in LosOS Mail, with its text and the names of its \
+                      attachments. Reading it here leaves it unread for the owner.",
+        route: "/api/mail/messages/{id}",
+        params: &[Param {
+            name: "id",
+            query: "{id}",
+            description: "The message's id, from mail_search.",
+            required: true,
+        }],
+    },
 ];
 
 /// What `initialize` tells the agent about the server as a whole.
-const INSTRUCTIONS: &str = "Reads the owner's LosOS box: files in LosOS Cloud and repositories \
-     in LosOS Git. Every tool only looks; none changes anything. When the owner asks about \
-     their own files, notes or code, look here, and say which file or repository an answer \
-     came from.";
+const INSTRUCTIONS: &str = "Reads the owner's LosOS box: files and notes in LosOS Cloud, \
+     repositories in LosOS Git, and mail in LosOS Mail. Every tool only looks; none changes \
+     anything, and a message read here stays unread. When the owner asks about their own \
+     files, notes, code or mail, look here, and say which file, repository or message an \
+     answer came from.";
 
 impl McpTool {
     fn schema(&self) -> Value {
@@ -175,6 +217,7 @@ impl McpTool {
         }
         let mut query = url::form_urlencoded::Serializer::new(String::new());
         let mut any = false;
+        let mut route = self.route.to_string();
         for p in self.params {
             match given.get(p.name) {
                 None | Some(Value::Null) if p.required => {
@@ -192,7 +235,16 @@ impl McpTool {
                             p.name
                         ));
                     }
-                    if !s.is_empty() {
+                    if p.query.starts_with('{') {
+                        // One path segment: nothing that could step out of it.
+                        if !s
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                        {
+                            return Err(format!("{} is not an id", p.name));
+                        }
+                        route = route.replace(p.query, s);
+                    } else if !s.is_empty() {
                         query.append_pair(p.query, s);
                         any = true;
                     }
@@ -201,9 +253,9 @@ impl McpTool {
             }
         }
         Ok(if any {
-            format!("{}?{}", self.route, query.finish())
+            format!("{route}?{}", query.finish())
         } else {
-            self.route.to_string()
+            route
         })
     }
 }
@@ -395,11 +447,13 @@ mod tests {
                 t.name,
                 t.route
             );
-            assert!(losos_access::companion_route(
-                "GET",
-                &t.path(&json!({ "query": "x" }))
-                    .unwrap_or_else(|_| t.route.to_string())
-            ));
+            let given: Map<String, Value> = t
+                .params
+                .iter()
+                .map(|p| (p.name.into(), json!("x1")))
+                .collect();
+            let path = t.path(&Value::Object(given)).unwrap();
+            assert!(losos_access::companion_route("GET", &path), "{path}");
         }
         for route in losos_access::COMPANION_ROUTES {
             assert!(
@@ -407,6 +461,26 @@ mod tests {
                 "{route} is open to the companion but no tool reads it"
             );
         }
+    }
+
+    #[test]
+    fn a_message_id_fills_its_segment_and_nothing_more() {
+        let read = tool("mail_read").unwrap();
+        assert_eq!(
+            read.path(&json!({ "id": "Ma1b-2_c" })).unwrap(),
+            "/api/mail/messages/Ma1b-2_c"
+        );
+        for bad in ["../settings", "m1/html", "m1?x=1", "m 1", ""] {
+            assert!(read.path(&json!({ "id": bad })).is_err(), "{bad}");
+        }
+        let search = tool("mail_search").unwrap();
+        assert_eq!(
+            search
+                .path(&json!({ "folder": "inbox1", "query": "invoice" }))
+                .unwrap(),
+            "/api/mail/messages?mailbox=inbox1&q=invoice"
+        );
+        assert!(search.path(&json!({ "query": "invoice" })).is_err());
     }
 
     #[test]

@@ -162,4 +162,59 @@ export default defineMessages({
     sk: "Tento kód zadajte na stránke LosOS Login:",
     de: "Gib diesen Code auf der Seite von LosOS Login ein:",
   },
+  "account.windows.title": {
+    en: "Your files on Windows, Mac and Linux",
+    sk: "Vaše súbory vo Windows, Macu a Linuxe",
+    de: "Deine Dateien unter Windows, Mac und Linux",
+  },
+  "account.windows.address": {
+    en: "Address in File Explorer",
+    sk: "Adresa v Prieskumníkovi",
+    de: "Adresse im Explorer",
+  },
+  "account.windows.signIn": {
+    en: "Sign in with your LosOS password",
+    sk: "Prihlásenie heslom LosOS",
+    de: "Anmeldung mit deinem LosOS-Passwort",
+  },
+  "account.windows.ready": {
+    en: "Ready",
+    sk: "Pripravené",
+    de: "Bereit",
+  },
+  "account.windows.notReady": {
+    en: "Not yet",
+    sk: "Ešte nie",
+    de: "Noch nicht",
+  },
+  "account.windows.allow": {
+    en: "Let Windows take your password",
+    sk: "Povoliť Windows vaše heslo",
+    de: "Windows dein Passwort erlauben",
+  },
+  "account.windows.allowDetail": {
+    en: "Windows checks passwords its own way, so the box needs to see yours once. Type it here, or change it, and it works from then on.",
+    sk: "Windows overuje heslá po svojom, takže zariadenie musí to vaše raz vidieť. Zadajte ho sem alebo ho zmeňte a odvtedy to bude fungovať.",
+    de: "Windows prüft Passwörter auf seine eigene Art, darum muss die Box deins einmal sehen. Gib es hier ein oder ändere es, dann klappt es ab sofort.",
+  },
+  "account.windows.save": {
+    en: "Allow",
+    sk: "Povoliť",
+    de: "Erlauben",
+  },
+  "account.windows.wrongPassword": {
+    en: "That is not your password.",
+    sk: "To nie je vaše heslo.",
+    de: "Das ist nicht dein Passwort.",
+  },
+  "account.windows.failed": {
+    en: "That did not work. Try again in a moment.",
+    sk: "Nepodarilo sa. Skúste to o chvíľu znova.",
+    de: "Das hat nicht geklappt. Versuch es gleich noch einmal.",
+  },
+  "account.windows.caption": {
+    en: "On a computer on the same network as this box, open Network in File Explorer, or Network in Finder or your Linux file manager, and open the box. Sign in with your LosOS name and password. Files you change there change in LosOS Cloud too. Something you delete there is gone for good: it skips LosOS Cloud's trash.",
+    sk: "Na počítači v rovnakej sieti ako toto zariadenie otvorte Sieť v Prieskumníkovi, vo Finderi alebo v správcovi súborov v Linuxe a otvorte zariadenie. Prihláste sa svojím menom a heslom LosOS. Súbory, ktoré tam zmeníte, sa zmenia aj v LosOS Cloud. Čo tam vymažete, zmizne natrvalo: obíde kôš LosOS Cloud.",
+    de: "Öffne auf einem Computer im selben Netz wie diese Box Netzwerk im Explorer, im Finder oder in deinem Linux-Dateimanager und öffne die Box. Melde dich mit deinem LosOS-Namen und -Passwort an. Dateien, die du dort änderst, ändern sich auch in LosOS Cloud. Was du dort löschst, ist endgültig weg: Es landet nicht im Papierkorb von LosOS Cloud.",
+  },
 });
