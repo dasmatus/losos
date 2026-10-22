@@ -41,7 +41,7 @@ let
 
   noLab = import ./admin-ui-without-lab.nix;
 
-  model = "llama3.2:3b";
+  model = "gemma3:1b";
   # What the stand-in answers, by a word in the material.
   answers = pkgs.writeText "answers.json" (
     builtins.toJSON [
@@ -121,9 +121,9 @@ pkgs.testers.nixosTest {
 
       systemd.services.lososd.environment = {
         # What modules/builder.nix sets, pointed at the stand-in.
-        LOSOS_BUILDER_URL = "http://127.0.0.1:11434";
-        LOSOS_BUILDER_MODEL = model;
-        LOSOS_BUILDER_CONTEXT = "8192";
+        LOSOS_ASSISTANT_URL = "http://127.0.0.1:11434";
+        LOSOS_ASSISTANT_MODEL = model;
+        LOSOS_ASSISTANT_CONTEXT = "8192";
       };
       systemd.services.assistant-model-stand-in = {
         wantedBy = [ "multi-user.target" ];
@@ -261,9 +261,9 @@ pkgs.testers.nixosTest {
         laptop.succeed(f"curl -sf --cacert {CA} -H 'Cookie: {cookie}' '{BASE}{path}' -o /tmp/got")
         return laptop.succeed("base64 -w0 /tmp/got").strip()
 
-    def shots(verb, out):
+    def shots(verb, out, extra=""):
         laptop.succeed(
-            f"together-shots {verb} {BASE} matus '{PASSWORD}' /tmp/shots/{out} --test losos-apps-together >&2",
+            f"together-shots {verb} {BASE} matus '{PASSWORD}' /tmp/shots/{out} --test losos-apps-together {extra} >&2",
             timeout=3600,
         )
 
@@ -366,6 +366,10 @@ pkgs.testers.nixosTest {
         for bad in [{"question": ""}, {"question": "x", "sources": "y"}, {"question": "x" * 2001}]:
             code, _ = api("/api/assistant/asks", matus, method="POST", data=bad)
             assert code == 400, (bad, code)
+
+    with subtest("the same walk again, typed word by word and recorded"):
+        shots("after", "film", "--typing --video /tmp/shots/film-video")
+        laptop.succeed("ls /tmp/shots/film-video/*.webm")
 
     if BEFORE:
         with subtest("the same screens from before the apps were tied together"):

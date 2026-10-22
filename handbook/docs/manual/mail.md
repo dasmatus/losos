@@ -109,12 +109,19 @@ server, so they work while Mail is closed and nobody is signed in.
 
 ## Ask the box's AI
 
-On a box that runs a language model for **Build with AI**, **Summarise** in
-the message's toolbar asks it about the open message. The model runs on the
-box, so the message and the answer stay there, and it reads only the
-message you asked about. It answers one question at a time; on a small box
-an answer can take a few minutes. Text in a message that tells the AI to do
-something counts as part of the message, not as your request.
+**Summarise** in the message's toolbar asks the box's own language model
+about the open message. The model runs on the box, so the message and the
+answer stay there, and it reads only the message you asked about. It
+answers one question at a time; on a small box an answer can take a minute
+or two. Text in a message that tells the AI to do something counts as part
+of the message, not as your request.
+
+Questions about mail, files and notes go to Gemma 3 1B, a model for text.
+**Build with AI** keeps a model for code. The box downloads each model
+once, the first time it is online, and keeps only one in memory at a time.
+An administrator can pick another model under **Settings**, **Advanced**
+(`assistant.model`). Gemma is provided under and subject to the Gemma Terms
+of Use found at ai.google.dev/gemma/terms.
 
 ## What Mail does not do yet
 
