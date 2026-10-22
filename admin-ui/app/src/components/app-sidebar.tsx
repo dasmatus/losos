@@ -166,6 +166,7 @@ const TREE: readonly Entry[] = [
     to: "/ci",
     label: "shell.nav.ci",
     icon: WorkflowSquare01Icon,
+    shared: "ci",
   },
   {
     kind: "fold",
@@ -192,7 +193,6 @@ function allowed(entry: LinkEntry, office: boolean): boolean {
   // Shared-side: there only while the box shares its storage, which lososd
   // says in /api/me's `shared`. With sharing off the page does not exist.
   if (entry.shared !== undefined) return sharedApp(entry.shared);
-  if (entry.key === "ci") return sharedApp("ci");
   return true;
 }
 
