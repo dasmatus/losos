@@ -514,6 +514,9 @@
         # cloud's socket, a save landing in the person's cloud
         # (nix/tests/office-cloud.nix).
         losos-office-cloud = import ./nix/tests/office-cloud.nix { inherit pkgs; };
+        # Markdown documents and presentations in LosOS Office, with no
+        # Collabora on the box (nix/tests/office-markdown.nix).
+        losos-office-markdown = import ./nix/tests/office-markdown.nix { inherit pkgs; };
         # The box half of models split across boxes: the RPC server as
         # `shared`, its memory cap, the lend file, the loopback owner rule
         # and the `:llm` tunnel service (nix/tests/inference-lend.nix).
