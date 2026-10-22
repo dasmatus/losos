@@ -321,6 +321,18 @@ let
         path = lib.mkBefore [ stubOcc ];
         environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
       };
+      # lososd reads the owner's choices from overrides.nix, as the admin UI
+      # saves them; without it the pages would say the box is in no mesh.
+      environment.etc."nixos/modules/overrides.nix" = lib.mkIf real {
+        mode = "0644";
+        text = ''
+          { ... }:
+          {
+            losos.sharingMyStorage = true;
+            losos.cluster.enable = true;
+          }
+        '';
+      };
       losos = {
         inherit hostName;
         backend.package = lososPkgs.losos-ctl;
