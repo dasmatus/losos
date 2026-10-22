@@ -52,7 +52,8 @@ function load(): void {
   if (settings !== null || loading !== null) return;
   loading = getPictures()
     .then((s) => {
-      settings = s;
+      // An older lososd leaves out what it does not know yet.
+      settings = { ...FALLBACK, ...s };
     })
     .catch(() => {
       settings = FALLBACK;
@@ -64,7 +65,7 @@ function load(): void {
 }
 
 function forgetAnswers(next: PictureSettings): void {
-  settings = next;
+  settings = { ...FALLBACK, ...next };
   senders.clear();
   changed();
 }

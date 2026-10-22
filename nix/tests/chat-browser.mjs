@@ -386,7 +386,7 @@ async function safety(owner, eva) {
   const asked = owner.getByRole("dialog", { name: /private details/ });
   await asked.waitFor();
   const named = (await asked.getByTestId("details-found").innerText()).split("\n").map((s) => s.trim());
-  if (JSON.stringify(named) !== JSON.stringify(["Card number ending 4242", "IBAN ending 7541"])) throw new Error(`the details named: ${JSON.stringify(named)}`);
+  if (JSON.stringify(named) !== JSON.stringify(["IBAN ending 7541", "Card number ending 4242"])) throw new Error(`the details named: ${JSON.stringify(named)}`);
   await shot(owner, "details-send-anyway");
   await asked.getByRole("button", { name: "Send anyway" }).click();
   await owner.getByRole("log").locator("[data-detail=iban]").last().waitFor();
