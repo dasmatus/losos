@@ -29,6 +29,7 @@ const REPO = {
   full_name: 'notshared/notes',
   description: 'Notes from the garden',
   private: true,
+  visibility: 'private',
   default_branch: 'main',
   empty: false,
   fork: false,
@@ -130,7 +131,7 @@ async function open(path, { locale = 'en-US', viewport = { width: 1280, height: 
     if (method !== 'GET') m.calls.push({ method, path: p, body: req.postDataJSON?.() ?? null });
     const r = '/repos/notshared/notes';
     if (p === '/user') return json(route, 200, ME);
-    if (p === '/user/repos') return json(route, 200, [REPO, { ...REPO, id: 8, name: 'site', private: false, description: '' }]);
+    if (p === '/user/repos') return json(route, 200, [REPO, { ...REPO, id: 8, name: 'site', private: false, visibility: 'public', description: '' }]);
     if (p === r) return json(route, 200, REPO);
     if (p === `${r}/collaborators`) return json(route, 200, [{ id: 2, login: 'eva', full_name: 'Eva', email: '', is_admin: false, is_bot: false, permission: 'write' }]);
     if (p === `${r}/ai-review` && method === 'PUT')

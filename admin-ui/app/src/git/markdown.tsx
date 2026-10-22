@@ -216,7 +216,8 @@ export function Markdown({ source, className }: { source: string; className?: st
           case "table":
             return (
               <div key={key} className="overflow-x-auto rounded-control border border-line">
-                <table className="w-full border-collapse text-[13px]">
+                {/* Cells wrap at spaces only, so a file name stays whole. */}
+                <table className="w-full border-collapse text-[13px] [overflow-wrap:normal]">
                   <thead className="bg-sunk">
                     <tr>
                       {b.head.map((h, c) => (

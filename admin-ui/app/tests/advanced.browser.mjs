@@ -429,6 +429,8 @@ await check('the Apps pane draws every box-wide setting of both apps, and Apply 
   // Cleared, the field goes back to the default and the line goes.
   await trash.fill('');
   await trash.press('Enter');
+  // The default comes back on the render after the commit, not with it.
+  for (let i = 0; i < 50 && (await trash.inputValue()) !== '30'; i++) await page.waitForTimeout(100);
   assert.equal(await trash.inputValue(), '30');
   await flip(row(page, 'git.site.requireSignIn'));
   await flip(row(page, 'git.site.pushCreate'));
