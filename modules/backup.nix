@@ -47,7 +47,13 @@ let
   fs = config.lososInternal.fscrypt;
   fscryptOn = config.losos.shared.fscrypt.enable;
   k3s = config.services.k3s.enable;
-  pg = config.services.postgresql.package;
+  # pg_dump and pg_restore for a box that still runs PostgreSQL. Nothing
+  # declares it any more, and its package option then has no value.
+  pg =
+    if config.services.postgresql.enable then
+      config.services.postgresql.package
+    else
+      pkgs.postgresql_18;
 
   # The scripts' working directory: the job log, the last report, and the
   # staging directories. The wipe deletes it with the rest, since a staging
