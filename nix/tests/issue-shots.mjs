@@ -180,6 +180,7 @@ async function tracker(s, base) {
   await s.take("palette-found", "the issue a pull request closed", { kind: "press", target: "found" }, { found });
   await p.keyboard.press("Enter");
   await p.locator("[data-links]").waitFor();
+  await p.locator("[data-links]").scrollIntoViewIfNeeded();
   await s.take("closed-by-pull", "closed by Eva's merged pull request", { kind: "none" }, {
     links: p.locator("[data-links]"),
     status: p.locator("[data-prop=state]"),

@@ -58,6 +58,7 @@ export default defineMessages({
   "tracker.field.repo": { en: "Repository", sk: "Repozitár", de: "Repository" },
   "tracker.unassigned": { en: "No one", sk: "Nikto", de: "Niemand" },
   "tracker.me": { en: "Me", sk: "Ja", de: "Ich" },
+  "tracker.due.none": { en: "No due date", sk: "Bez termínu", de: "Kein Fälligkeitsdatum" },
   "tracker.due.full": { en: "Due {date}", sk: "Termín {date}", de: "Fällig am {date}" },
   "tracker.estimate.none": { en: "No estimate", sk: "Bez odhadu", de: "Keine Schätzung" },
   "tracker.estimate.points": {

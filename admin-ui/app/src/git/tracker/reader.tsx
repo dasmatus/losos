@@ -385,15 +385,7 @@ function Open({
             )}
             <Prop label={t("tracker.field.due")}>
               <span className="flex items-center gap-2">
-                <Input
-                  type="date"
-                  value={issue.due ?? ""}
-                  disabled={!write}
-                  onChange={(e) => void save({ due: e.target.value === "" ? null : e.target.value })}
-                  className="-mx-1.5 h-7 w-36 border-transparent bg-transparent px-1.5 text-[13px] shadow-none hover:border-line"
-                  aria-label={t("tracker.field.due")}
-                  data-prop="due"
-                />
+                <DueField due={issue.due} write={write} onSave={(due) => void save({ due })} />
                 {issue.due !== null && <DueDate due={issue.due} today={today} open={!closed(issue.state.category)} />}
               </span>
             </Prop>
@@ -445,6 +437,43 @@ function Prop({ label, children }: { label: string; children: React.ReactNode })
       <dt className="text-muted">{label}</dt>
       <dd className="min-w-0">{children}</dd>
     </>
+  );
+}
+
+/** A due date, or a quiet "No due date" until someone picks one: an empty
+ *  date field would show the browser's mm/dd/yyyy. */
+function DueField({ due, write, onSave }: { due: string | null; write: boolean; onSave: (due: string | null) => void }) {
+  const t = useT();
+  const [editing, setEditing] = React.useState(false);
+  const input = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => {
+    if (!editing) return;
+    input.current?.focus();
+    try {
+      input.current?.showPicker();
+    } catch {
+      // Not every browser opens the picker from a script; the field has focus.
+    }
+  }, [editing]);
+  if (due === null && !editing) {
+    return (
+      <PropButton disabled={!write} onClick={() => setEditing(true)} data-prop="due">
+        <span className="text-muted">{t("tracker.due.none")}</span>
+      </PropButton>
+    );
+  }
+  return (
+    <Input
+      ref={input}
+      type="date"
+      value={due ?? ""}
+      disabled={!write}
+      onChange={(e) => onSave(e.target.value === "" ? null : e.target.value)}
+      onBlur={() => setEditing(false)}
+      className="-mx-1.5 h-7 w-36 border-transparent bg-transparent px-1.5 text-[13px] shadow-none hover:border-line"
+      aria-label={t("tracker.field.due")}
+      data-prop="due"
+    />
   );
 }
 
