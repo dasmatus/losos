@@ -373,6 +373,8 @@
             ./modules/logs.nix
             ./modules/defaults.nix
             ./modules/proxy.nix
+            # The box on Tor and I2P (losos.hidden.*).
+            ./modules/hidden-services.nix
           ]
           # The two files that describe *this* box rather than the appliance:
           # modules/install-target.nix (drive list, firmware mode, unlock
@@ -425,6 +427,7 @@
           ./modules/edge-vms.nix
           ./modules/edge-inference.nix
           ./modules/edge-gateway.nix
+          ./modules/edge-hidden.nix
           ./modules/logs.nix
         ];
         _module.args.self = self;

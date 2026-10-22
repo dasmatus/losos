@@ -284,6 +284,7 @@ let
         "pins"
         "mail"
         "ci"
+        "hidden"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {

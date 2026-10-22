@@ -26,6 +26,7 @@
 {
   lib,
   config,
+  pkgs,
   ...
 }:
 
@@ -155,6 +156,13 @@ let
   # (A LAN that genuinely numbers itself inside RFC1918 is the normal case and
   # is what the allows are for; there is no longer a carve-out to collide with.)
   lanOnly = import ./lan-only.nix;
+
+  # Tor and I2P (modules/hidden-services.nix) arrive on loopback listeners
+  # of their own. Loopback, so the guard above turns them away from the
+  # admin surface like the tunnel.
+  hiddenListen = (import ./hidden-lib.nix { inherit lib pkgs; }).frontListen (
+    config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable
+  );
 
   # ── Security response headers ─────────────────────────────────────────────
   # The admin UI, /api/, /cloud/ and /git/ share one origin by design,
@@ -458,12 +466,18 @@ in
       # boot, which on this box means the only front door crash-loops with no
       # shell to see it from. nix/tests/setup.nix is what caught it, by being the
       # first test to import containers.nix and tls.nix together.
-      listen = lib.mkDefault [
-        {
-          addr = "0.0.0.0";
-          port = 80;
-        }
-      ];
+      #
+      # The loopback listeners after it are where the box's Tor and I2P
+      # addresses deliver (modules/hidden-services.nix).
+      listen = lib.mkDefault (
+        [
+          {
+            addr = "0.0.0.0";
+            port = 80;
+          }
+        ]
+        ++ hiddenListen
+      );
       root = lib.mkIf adminEnabled "${adminUi}";
       extraConfig = adminHeaderDirectives;
       locations = lib.mkMerge [

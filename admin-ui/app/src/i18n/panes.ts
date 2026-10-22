@@ -579,6 +579,71 @@ export default defineMessages({
     sk: "Každý nájde svoje súbory na adrese {address} a za ňou svoje meno. Dostanú sa sem len počítače v lokálnej sieti, nikdy nie cez sprostredkovateľa. Na stránke Účet každý vidí, či Windows už berie jeho heslo.",
     de: "Jede Person findet ihre Dateien unter {address} gefolgt von ihrem Namen. Hinein kommen nur Computer in deinem lokalen Netz, nie über das Relay. Auf der Seite Konto sieht jede Person, ob Windows ihr Passwort schon annimmt.",
   },
+  "panes.network.hidden.title": {
+    en: "Tor and I2P",
+    sk: "Tor a I2P",
+    de: "Tor und I2P",
+  },
+  "panes.network.hidden.tor": {
+    en: "Reachable on Tor",
+    sk: "Dostupné cez Tor",
+    de: "Über Tor erreichbar",
+  },
+  "panes.network.hidden.torDetail": {
+    en: "An .onion address that Tor Browser opens.",
+    sk: "Adresa .onion, ktorú otvorí Tor Browser.",
+    de: "Eine .onion-Adresse, die der Tor Browser öffnet.",
+  },
+  "panes.network.hidden.i2p": {
+    en: "Reachable on I2P",
+    sk: "Dostupné cez I2P",
+    de: "Über I2P erreichbar",
+  },
+  "panes.network.hidden.i2pDetail": {
+    en: "A .b32.i2p address that any browser set up for I2P opens.",
+    sk: "Adresa .b32.i2p, ktorú otvorí prehliadač nastavený pre I2P.",
+    de: "Eine .b32.i2p-Adresse, die jeder für I2P eingerichtete Browser öffnet.",
+  },
+  "panes.network.hidden.torAddress": {
+    en: "Tor address",
+    sk: "Adresa v sieti Tor",
+    de: "Tor-Adresse",
+  },
+  "panes.network.hidden.i2pAddress": {
+    en: "I2P address",
+    sk: "Adresa v sieti I2P",
+    de: "I2P-Adresse",
+  },
+  "panes.network.hidden.edgeTor": {
+    en: "Tor, through your edge",
+    sk: "Tor cez váš okrajový server",
+    de: "Tor, über deinen Edge",
+  },
+  "panes.network.hidden.edgeI2p": {
+    en: "I2P, through your edge",
+    sk: "I2P cez váš okrajový server",
+    de: "I2P, über deinen Edge",
+  },
+  "panes.network.hidden.making": {
+    en: "Being made…",
+    sk: "Vytvára sa…",
+    de: "Wird erstellt…",
+  },
+  "panes.network.hidden.copy": {
+    en: "Copy the {what}",
+    sk: "Kopírovať: {what}",
+    de: "{what} kopieren",
+  },
+  "panes.network.hidden.copied": {
+    en: "Copied",
+    sk: "Skopírované",
+    de: "Kopiert",
+  },
+  "panes.network.hidden.caption": {
+    en: "These addresses open LosOS Cloud, LosOS Git and sign-in, and stay the same after a restart. The admin pages stay on your local network, and nothing opens on your router.",
+    sk: "Tieto adresy otvoria LosOS Cloud, LosOS Git a prihlásenie a po reštarte sa nemenia. Stránky správy zostávajú len vo vašej lokálnej sieti a na routeri sa nič neotvára.",
+    de: "Diese Adressen öffnen LosOS Cloud, LosOS Git und die Anmeldung und bleiben nach einem Neustart gleich. Die Verwaltungsseiten bleiben in deinem lokalen Netz, und an deinem Router öffnet sich nichts.",
+  },
   "panes.network.domains.title": {
     en: "Your own domain",
     sk: "Vlastná doména",
