@@ -92,6 +92,8 @@ struct Api {
     /// Each person's picture, banner and the rest of their profile
     /// (`crate::profiles`).
     profiles: crate::profiles::Profiles,
+    /// Who sees which pictures blurred, and the age marks (`crate::pictures`).
+    pictures: crate::pictures::Pictures,
     /// Turns at decoding an upload (`IMAGE_JOBS`).
     image_jobs: tokio::sync::Semaphore,
     /// The plugins that answer every route not registered below
@@ -779,6 +781,7 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
         let rules = api.login.rules();
         let now = crate::login::now();
         let profiles = api.profiles.all().unwrap_or_default();
+        let marks = api.pictures.marks().unwrap_or_default();
         let people: Vec<serde_json::Value> = people
             .into_iter()
             .map(|p| {
@@ -794,6 +797,7 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 row["picture"] = shown["picture"].clone();
                 row["accent"] = shown["accent"].clone();
                 row["banner"] = shown["banner"].clone();
+                row["age"] = serde_json::json!(marks.get(&p.name));
                 row
             })
             .collect();
@@ -973,8 +977,8 @@ async fn post_person_remove(
                         tracing::warn!(error = %e, person = %name, "a removed person's chat devices stayed signed in")
                     }
                 }
-                if let Err(e) = api.profiles.forget(&name) {
-                    tracing::warn!(error = ?e, "a removed person's profile stayed");
+                if let Err(e) = api.pictures.forget(&name) {
+                    tracing::warn!(error = ?e, "a removed person's picture settings stayed");
                 }
                 HttpResponse::Ok().json(serde_json::json!({ "name": name, "removed": true }))
             }
@@ -1415,6 +1419,194 @@ async fn put_account_banner(
 
 async fn delete_account_banner(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     delete_own_image(&api, &req, crate::profiles::Kind::Banner)
+}
+
+// ── Pictures in Chat and Mail: blur, trusted people, age marks ───────────
+// (`crate::pictures`). The blur and the nudity warning are drawn by the
+// person's browser; these routes only keep and answer the settings.
+
+/// A refusal from the picture settings, with the word the page keys on.
+fn pictures_error(e: anyhow::Error) -> HttpResponse {
+    match e.downcast_ref::<crate::pictures::Refused>() {
+        Some(r) => HttpResponse::Forbidden()
+            .json(serde_json::json!({ "error": r.to_string(), "code": r.code() })),
+        None => error_response(e),
+    }
+}
+
+fn own_pictures(
+    who: &Principal,
+    f: impl FnOnce(&crate::people::Person) -> anyhow::Result<crate::pictures::Settings>,
+) -> HttpResponse {
+    let Some(person) = who.person() else {
+        return err(
+            StatusCode::CONFLICT,
+            "the spare key has no account of its own",
+        );
+    };
+    match f(person) {
+        Ok(s) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(crate::pictures::render(&s)),
+        Err(e) => pictures_error(e),
+    }
+}
+
+/// `GET /api/pictures`: the caller's own picture settings.
+async fn get_pictures(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/pictures", false, |who| {
+        own_pictures(who, |p| api.pictures.get(&p.name))
+    })
+}
+
+/// `POST /api/pictures`: `{"blur": "everyone|strangers|nobody",
+/// "nudityCheck": bool}`, each optional. 403 `adultRequired` or
+/// `childAccount` when the age mark does not allow it.
+async fn post_pictures(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded_as(&api, &req, "/api/pictures", true, |who| {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let change = match crate::pictures::parse_change(&doc) {
+            Ok(c) => c,
+            Err(why) => return err(StatusCode::BAD_REQUEST, &why),
+        };
+        own_pictures(who, |p| api.pictures.set(&p.name, &change))
+    })
+}
+
+/// `POST /api/pictures/trust`: `{"id": "@bo:box.local" | "bo@example.org",
+/// "trusted": bool}`. A trusted sender's pictures are never blurred.
+async fn post_pictures_trust(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/pictures/trust", true, |who| {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let (Some(id), Some(trusted)) = (
+            doc.get("id").and_then(serde_json::Value::as_str),
+            doc.get("trusted").and_then(serde_json::Value::as_bool),
+        ) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"id": "...", "trusted": true}"#,
+            );
+        };
+        own_pictures(who, |p| api.pictures.trust(&p.name, id, trusted))
+    })
+}
+
+/// `GET /api/pictures/sender?id=`: whether pictures from this chat ID or
+/// address show at once for the caller. `{"shown": bool, "because":
+/// "trusted|known|setting"|null, "nudityCheck": bool}`. "known" means on
+/// this box or in the caller's contacts, asked only for `strangers`.
+async fn get_pictures_sender(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let mut person = None;
+    let refused = guarded_as(&api, &req, "/api/pictures/sender", false, |who| {
+        match who.person() {
+            Some(p) => {
+                person = Some(p.clone());
+                HttpResponse::Ok().finish()
+            }
+            None => err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            ),
+        }
+    });
+    let Some(person) = person else {
+        return refused;
+    };
+    let Some(sender) = query_map(&req)
+        .get("id")
+        .and_then(|id| crate::pictures::valid_id(id))
+    else {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "id is a chat ID such as @ana:box.local or a mail address",
+        );
+    };
+    let worker = api.clone();
+    let answer = web::block(move || -> anyhow::Result<serde_json::Value> {
+        let settings = worker.pictures.get(&person.name)?;
+        let because = crate::pictures::shown_because(&settings, &sender, || {
+            sender_known(&worker, &person, &sender)
+        });
+        Ok(serde_json::json!({
+            "shown": because.is_some(),
+            "because": because,
+            "nudityCheck": settings.nudity_check(),
+        }))
+    })
+    .await;
+    match answer {
+        Ok(Ok(v)) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(v),
+        Ok(Err(e)) => error_response(e),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// Whether `sender` is a person on this box or in `person`'s contacts.
+fn sender_known(api: &Api, person: &crate::people::Person, sender: &str) -> bool {
+    let same = |s: &str| s.eq_ignore_ascii_case(sender);
+    if contacts_neighbours(api).iter().any(|n| {
+        n.name != person.name
+            && (n.matrix_id.as_deref().is_some_and(same) || n.email.as_deref().is_some_and(same))
+    }) {
+        return true;
+    }
+    if !api.contacts {
+        return false;
+    }
+    let login = if person.groups.iter().any(|g| g == crate::people::OWNER) {
+        crate::app_names::OWNER_ACCOUNT.to_string()
+    } else {
+        person.name.clone()
+    };
+    let want = if sender.starts_with('@') {
+        crate::cloud::contacts::Want::Matrix
+    } else {
+        crate::cloud::contacts::Want::Email
+    };
+    let book = crate::contacts::book_matches(&mut api.backend.clone(), &login, sender, want);
+    book.known_matrix_ids.iter().any(|id| same(id))
+        || book.matches.iter().any(|r| {
+            r.suggestion.matrix_id.as_deref().is_some_and(same)
+                || r.suggestion.emails.iter().any(|e| same(e))
+        })
+}
+
+/// `POST /api/people/age`: `{"name", "age": "adult" | "child" | null}`.
+/// An administrator marks a person as an adult (who may then show every
+/// picture at once) or as a child (whose nudity warning stays on).
+async fn post_people_age(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/people/age", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let name = doc.get("name").and_then(serde_json::Value::as_str);
+        let age = match doc.get("age") {
+            Some(serde_json::Value::Null) => Some(None),
+            Some(v) => v.as_str().and_then(crate::pictures::Age::parse).map(Some),
+            None => None,
+        };
+        let (Some(name), Some(age)) = (name, age) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"name": "...", "age": "adult" | "child" | null}"#,
+            );
+        };
+        match api.people.get(name) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return error_response(crate::people::Refused::Unknown(name.to_string()).into())
+            }
+            Err(e) => return error_response(e),
+        }
+        match api.pictures.set_age(name, age) {
+            Ok(s) => HttpResponse::Ok().json(serde_json::json!({ "name": name, "age": s.age })),
+            Err(e) => pictures_error(e),
+        }
+    })
 }
 
 /// `POST /api/people/profile/clear`: `{"name", "kind": "picture|banner"}`.
@@ -2996,13 +3188,29 @@ async fn relayed(
     mutating: bool,
     work: impl FnOnce(&mut IoLosos) -> anyhow::Result<serde_json::Value> + Send + 'static,
 ) -> HttpResponse {
+    relayed_then(api, req, route, mutating, work, |_, _, _| {}).await
+}
+
+/// [`relayed`], with `then` shown the caller and the edge's answer before
+/// it goes back.
+async fn relayed_then(
+    api: &web::Data<Api>,
+    req: &HttpRequest,
+    route: &str,
+    mutating: bool,
+    work: impl FnOnce(&mut IoLosos) -> anyhow::Result<serde_json::Value> + Send + 'static,
+    then: impl FnOnce(&Api, &Principal, &serde_json::Value),
+) -> HttpResponse {
     let who = match gate_at(api, req, route, None, mutating) {
         Ok(who) => who,
         Err(refused) => return *refused,
     };
     let worker = api.clone();
     let resp = match web::block(move || work(&mut worker.backend.clone())).await {
-        Ok(Ok(v)) => HttpResponse::Ok().json(v),
+        Ok(Ok(v)) => {
+            then(api, &who, &v);
+            HttpResponse::Ok().json(v)
+        }
         Ok(Err(e)) => error_response(e),
         Err(e) => {
             tracing::error!(error = %e, "the edge call did not finish");
@@ -3189,33 +3397,79 @@ async fn post_market_coin_pay(
 }
 
 /// `POST /api/market/onramp` — `{"address","euros"}`: a Binance order for
-/// USDC on Base to this box's wallet, with Binance's checkout link.
+/// USDC on Base to this box's wallet, with Binance's checkout link. The
+/// order is noted against the person who started it, so a finished
+/// purchase can mark them as an adult (`crate::pictures`).
 async fn post_market_onramp(
     api: web::Data<Api>,
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    post_market(api, req, body, "/api/market/onramp", |d| {
-        Some(crate::market::Op::Onramp {
-            address: field_str(d, "address")?,
-            euros: field_str(d, "euros")?,
-        })
-    })
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let (Some(address), Some(euros)) = (field_str(&doc, "address"), field_str(&doc, "euros"))
+    else {
+        return post_market(api, req, body, "/api/market/onramp", |_| None).await;
+    };
+    let op = crate::market::Op::Onramp { address, euros };
+    relayed_then(
+        &api,
+        &req,
+        "/api/market/onramp",
+        true,
+        move |b| crate::losos::cmd_market_op(b, &op),
+        |api, who, order| {
+            let (Some(person), Some(id)) = (who.person(), order_id_of(order)) else {
+                return;
+            };
+            if let Err(e) = api.pictures.order_started(&person.name, id) {
+                tracing::warn!(error = ?e, "a Binance order was not noted for the adult mark");
+            }
+        },
+    )
     .await
 }
 
 /// `POST /api/market/onramp/status` — `{"order_id"}`: where that order is.
+/// A finished purchase marks whoever started it as an adult.
 async fn post_market_onramp_status(
     api: web::Data<Api>,
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    post_market(api, req, body, "/api/market/onramp/status", |d| {
-        Some(crate::market::Op::OnrampStatus {
-            order_id: field_str(d, "order_id")?,
-        })
-    })
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let Some(order_id) = field_str(&doc, "order_id") else {
+        return post_market(api, req, body, "/api/market/onramp/status", |_| None).await;
+    };
+    let op = crate::market::Op::OnrampStatus { order_id };
+    relayed_then(
+        &api,
+        &req,
+        "/api/market/onramp/status",
+        true,
+        move |b| crate::losos::cmd_market_op(b, &op),
+        |api, _, order| {
+            let (Some(id), Some(stage)) = (
+                order_id_of(order),
+                order.get("stage").and_then(serde_json::Value::as_str),
+            ) else {
+                return;
+            };
+            match api.pictures.order_stage(id, stage) {
+                Ok(Some(name)) => tracing::info!(person = %name, "marked as an adult by a finished Binance purchase"),
+                Ok(None) => {}
+                Err(e) => tracing::warn!(error = ?e, "a finished Binance order did not reach the adult mark"),
+            }
+        },
+    )
     .await
+}
+
+/// The order ID in the edge's answer about a Binance order, when it is one.
+fn order_id_of(order: &serde_json::Value) -> Option<&str> {
+    order
+        .get("order_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|id| id.len() == 32 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
 }
 
 async fn post_market_rpc(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
@@ -3498,6 +3752,14 @@ async fn delete_builder_build(
 /// `allow-popups` is for.
 pub const MAIL_FRAME_CSP: &str = "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
 
+/// [`MAIL_FRAME_CSP`] for a message whose pictures stay hidden: no picture
+/// of any kind loads, in an `<img>` or in its CSS (`crate::pictures`).
+pub const MAIL_FRAME_CSP_NO_PICTURES: &str = "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
+
+/// Drawn where a hidden picture would be, so the layout keeps its holes
+/// instead of broken-image icons.
+const MAIL_HIDDEN_PICTURE_STYLE: &str = "<style>img{color:transparent;background:repeating-linear-gradient(45deg,#8881 0 8px,#8882 8px 16px);min-width:24px;min-height:24px}</style>";
+
 fn mail_refused(r: &crate::mail::Refused) -> HttpResponse {
     err(
         StatusCode::from_u16(r.status).unwrap_or(StatusCode::BAD_GATEWAY),
@@ -3622,13 +3884,26 @@ async fn get_mail_html(
         "/api/mail/messages/html",
         false,
         |who| match mail_person(&api, who).map(|p| api.mail.html(p, &path)) {
-            Ok(Ok(html)) => HttpResponse::Ok()
-                .content_type("text/html; charset=utf-8")
-                .insert_header(("Content-Security-Policy", MAIL_FRAME_CSP))
-                .insert_header(("X-Content-Type-Options", "nosniff"))
-                .insert_header(("Referrer-Policy", "no-referrer"))
-                .insert_header(("Cache-Control", "private, no-store"))
-                .body(html),
+            Ok(Ok(html)) => {
+                // `?pictures=1` once the person chose to see them; hidden
+                // otherwise, whatever the message says.
+                let shown = query_map(&req).get("pictures").is_some_and(|v| v == "1");
+                let (csp, html) = if shown {
+                    (MAIL_FRAME_CSP, html)
+                } else {
+                    (
+                        MAIL_FRAME_CSP_NO_PICTURES,
+                        format!("{MAIL_HIDDEN_PICTURE_STYLE}{html}"),
+                    )
+                };
+                HttpResponse::Ok()
+                    .content_type("text/html; charset=utf-8")
+                    .insert_header(("Content-Security-Policy", csp))
+                    .insert_header(("X-Content-Type-Options", "nosniff"))
+                    .insert_header(("Referrer-Policy", "no-referrer"))
+                    .insert_header(("Cache-Control", "private, no-store"))
+                    .body(html)
+            }
             Ok(Err(r)) => mail_refused(&r),
             Err(resp) => *resp,
         },
@@ -4784,6 +5059,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             mail: crate::mail::Mail::from_env(),
             credentials: crate::credentials::Credentials::from_env(),
             profiles: crate::profiles::Profiles::from_env(),
+            pictures: crate::pictures::Pictures::from_env(),
             image_jobs: tokio::sync::Semaphore::new(IMAGE_JOBS),
             plugins,
         });
@@ -4867,6 +5143,11 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/windows", web::get().to(get_windows))
                 .route("/api/windows", web::post().to(post_windows))
                 .route("/api/account/profile", web::post().to(post_account_profile))
+                .route("/api/pictures", web::get().to(get_pictures))
+                .route("/api/pictures", web::post().to(post_pictures))
+                .route("/api/pictures/trust", web::post().to(post_pictures_trust))
+                .route("/api/pictures/sender", web::get().to(get_pictures_sender))
+                .route("/api/people/age", web::post().to(post_people_age))
                 .route("/api/account/picture", web::put().to(put_account_picture))
                 .route(
                     "/api/account/picture",

@@ -69,6 +69,7 @@ pub mod office;
 pub mod options;
 pub mod overrides;
 pub mod people;
+pub mod pictures;
 pub mod pins;
 pub mod plugin;
 pub mod profiles;

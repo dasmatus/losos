@@ -40,6 +40,7 @@ export const HANDBOOK_ENTRIES = {
   chat: "manual/chat/",
   calls: "manual/calls/",
   mail: "manual/mail/",
+  pictures: "manual/pictures/",
   git: "manual/losos-git/",
   "mesh-ci": "manual/mesh-ci/",
   "custom-domain": "types/official-edge/",
