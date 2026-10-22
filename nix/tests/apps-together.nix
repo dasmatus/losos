@@ -293,7 +293,10 @@ pkgs.testers.nixosTest {
             timeout=60,
         )
         eva = sign_in("eva", EVA_PASSWORD)
-        assert ok("/api/me", matus)["shared"] == ["mail"]
+        # Mail is on the shared side, so the box lists it; Contacts and
+        # Calendar join it wherever LosOS Cloud runs.
+        shared = ok("/api/me", matus)["shared"]
+        assert "mail" in shared, shared
 
     with subtest("the box's AI is the plugin over the box's own model"):
         assert ok("/api/assistant", matus) == {"available": True, "ready": True, "model": "${model}"}
