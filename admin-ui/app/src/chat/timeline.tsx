@@ -23,6 +23,7 @@ import {
   RoomEvent,
   RoomMemberEvent,
 } from "matrix-js-sdk";
+import { Masked } from "@/components/details";
 import { openReport } from "@/components/report-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -107,7 +108,7 @@ function ReplyQuote({ client, room, id }: { client: MatrixClient; room: Room; id
   return (
     <div className="mb-1 max-w-md border-l-2 border-accent pl-2 text-[12.5px] leading-snug text-muted">
       {who !== null && <span className="font-medium text-ink">{who} </span>}
-      <span className="line-clamp-2">{text}</span>
+      <span className="line-clamp-2"><Masked text={text} /></span>
     </div>
   );
 }

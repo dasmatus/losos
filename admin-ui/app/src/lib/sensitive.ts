@@ -240,6 +240,18 @@ export function detailSpans(text: string): DetailSpan[] {
   return scan(text).map(({ kind, last, start, end }) => ({ kind, last, start, end }));
 }
 
+/** `text` with every private detail replaced by black squares, for places
+ *  that take plain text only (a desktop notification). */
+export function blackOut(text: string): string {
+  let out = "";
+  let last = 0;
+  for (const span of detailSpans(text)) {
+    out += text.slice(last, span.start) + "\u2588".repeat(4);
+    last = span.end;
+  }
+  return out + text.slice(last);
+}
+
 /** Every private detail in `text`, each once, in the order found. */
 export function findDetails(text: string): Detail[] {
   const all = scan(text);
