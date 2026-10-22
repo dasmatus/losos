@@ -27,21 +27,7 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  noLab =
-    ui:
-    ui.overrideAttrs {
-      preBuild = "";
-      buildPhase = ''
-        runHook preBuild
-        cat > vite.nolab.config.ts <<'EOF'
-        import config from "./vite.config";
-        delete (config.build!.rolldownOptions!.input as Record<string, string>)["lab"];
-        export default config;
-        EOF
-        node_modules/.bin/vite build --config vite.nolab.config.ts
-        runHook postBuild
-      '';
-    };
+  noLab = import ./admin-ui-without-lab.nix;
 
   # The cloud serves an SVG as a download (it can carry script), so the
   # slide's picture is the vault's tomato drawn as a PNG.
