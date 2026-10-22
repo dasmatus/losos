@@ -277,12 +277,28 @@ impl Windows {
         }
         use std::os::unix::fs::DirBuilderExt;
         let home = files.parent().unwrap_or(&self.cloud);
-        for dir in [home, files] {
-            if !dir.exists() {
-                std::fs::DirBuilder::new().mode(0o700).create(dir)?;
-                std::os::unix::fs::chown(dir, Some(uid), Some(gid))?;
-            }
+        // Made under a dot name and moved into place once they are LosOS
+        // Cloud's: the cloud watches a new folder the moment it appears
+        // (cloud/watch.rs), and one still root's would be refused.
+        let (stage, target) = if home.is_dir() {
+            (home.join(".files-new"), files)
+        } else {
+            let login = home
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+            (self.cloud.join(format!(".new-{login}")), home)
+        };
+        let _ = std::fs::remove_dir_all(&stage);
+        let mut made = vec![stage.clone()];
+        if target == home {
+            made.push(stage.join("files"));
         }
+        for dir in &made {
+            std::fs::DirBuilder::new().mode(0o700).create(dir)?;
+            std::os::unix::fs::chown(dir, Some(uid), Some(gid))?;
+        }
+        std::fs::rename(&stage, target)?;
         Ok(())
     }
 

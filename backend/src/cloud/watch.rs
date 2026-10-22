@@ -266,7 +266,8 @@ impl Watcher {
             let made = flags.intersects(ReadFlags::CREATE | ReadFlags::MOVED_TO);
             let dir = flags.contains(ReadFlags::ISDIR);
             match spot {
-                Spot::Root if made && dir => {
+                // A dot name is a home still being made; it arrives by a move.
+                Spot::Root if made && dir && !name.starts_with('.') => {
                     self.watch_home(&name);
                     pending.add(&name, String::new(), now);
                 }
