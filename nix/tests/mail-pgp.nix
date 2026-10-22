@@ -88,7 +88,8 @@ let
     exec ${pkgs.nodejs}/bin/node ${./mail-pgp.mjs} "$@"
   '';
 
-  outsideHosts = "192.168.1.3 example.org openpgpkey.example.org keys.example.net";
+  # The test numbers its machines by name: box .1, elsewhere .2, laptop .3.
+  outsideHosts = "192.168.1.2 example.org openpgpkey.example.org keys.example.net";
 in
 
 pkgs.testers.nixosTest {
@@ -291,6 +292,12 @@ pkgs.testers.nixosTest {
             data = data.encode()
         machine.succeed(f"echo {base64.b64encode(data).decode()} | base64 -d > {path}")
 
+    def match(pattern, text, group=0, flags=0):
+        """The group of the first match, which must be there."""
+        m = re.search(pattern, text, flags)
+        assert m is not None, f"{pattern!r} not in {text[:2000]!r}"
+        return m.group(group)
+
     def wkd_hash(local):
         # z-base-32 of SHA-1 of the lower-cased local part.
         alphabet = "ybndrfg8ejkmcpqxot1uwisza345h769"
@@ -369,7 +376,8 @@ pkgs.testers.nixosTest {
 
     with subtest("the private key is kept sealed, and locked inside the seal"):
         box.succeed("test -e /var/lib/losos/mail-keys/matus/locked.cred")
-        assert box.succeed("stat -c '%U %a' /var/lib/losos/mail-keys/matus/locked.cred").strip() == "root 600"
+        mode = box.succeed("stat -c '%U %a' /var/lib/losos/mail-keys/matus/locked.cred").strip()
+        assert mode == "root 600", mode
         box.fail("grep -rl 'PRIVATE KEY BLOCK' /var/lib/losos/mail-keys")
         box.fail("test -e /var/lib/losos/mail-keys/matus/locked.asc")
         opened = box.succeed(
@@ -433,7 +441,7 @@ pkgs.testers.nixosTest {
         assert m, message[:800]
         value = re.sub(r"\s+", " ", m.group(1))
         assert f"addr=matus@{DOMAIN}" in value, value
-        keydata = base64.b64decode(re.search(r"keydata=([A-Za-z0-9+/= ]+)", value).group(1).replace(" ", ""))
+        keydata = base64.b64decode(match(r"keydata=([A-Za-z0-9+/= ]+)", value, 1).replace(" ", ""))
         put(laptop, "/tmp/autocrypt.bin", keydata)
         shown = laptop.succeed("GNUPGHOME=$(mktemp -d) gpg --batch --with-colons --show-keys /tmp/autocrypt.bin")
         assert f"fpr:::::::::{mkey['fingerprint']}:" in shown, shown
@@ -443,7 +451,7 @@ pkgs.testers.nixosTest {
         # GnuPG with Eva's key opens what Stalwart stored, signed by Matus.
         put(laptop, "/tmp/eva-locked.asc", ekey["lockedKey"])
         put(laptop, "/tmp/matus-public.asc", mkey["publicKey"])
-        armored = re.search(r"-----BEGIN PGP MESSAGE-----.*?-----END PGP MESSAGE-----", message, re.S).group(0)
+        armored = match(r"-----BEGIN PGP MESSAGE-----.*?-----END PGP MESSAGE-----", message, flags=re.S)
         put(laptop, "/tmp/stored.asc", armored)
         out = laptop.succeed(
             "export GNUPGHOME=$(mktemp -d) && gpg --batch --import /tmp/matus-public.asc && "
@@ -493,7 +501,7 @@ pkgs.testers.nixosTest {
         got = wait_for(matus, folder(mhome, "inbox"), "Signed elsewhere")
         assert got["pgp"] == "signed", got
         message = raw(matus, got["id"])
-        boundary = re.search(r'boundary="([^"]+)"', message).group(1)
+        boundary = match(r'boundary="([^"]+)"', message, 1)
         first = message.split(f"--{boundary}\r\n", 2)[1]
         arrived = first[: first.rindex("\r\n")]
         assert arrived == part, (arrived, part)

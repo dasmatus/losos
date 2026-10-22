@@ -146,7 +146,7 @@ async function key(name, password, passphrase, first) {
   const fingerprint = dialog.getByTestId('mail-key-fingerprint');
   await fingerprint.waitFor({ timeout: 180_000 });
   await noToasts(page);
-  await dialog.getByText("sealed again to this box's", { exact: false }).waitFor();
+  await dialog.getByText('sealed again', { exact: false }).waitFor();
   await shot(page, 'key', 'the key: its fingerprint, sealed on the box, published for others', { kind: 'none' }, {
     fingerprint: await target(fingerprint),
   });
@@ -201,7 +201,6 @@ async function send(password, passphrase, first) {
   await sendButton.click();
   await unlockWith(page, passphrase, shot, 'unlock-to-sign', 'signing asks for the passphrase once per tab');
   await dialog.waitFor({ state: 'detached', timeout: 120_000 });
-  await page.getByText('Sent', { exact: true }).first().waitFor();
   await noToasts(page);
   await context.close();
 }

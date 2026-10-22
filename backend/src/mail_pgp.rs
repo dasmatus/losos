@@ -690,6 +690,12 @@ impl Keys {
                         &home.join("locked.cred"),
                     )
                     .map_err(|e| broken("seal the private key", e))?;
+                // systemd-creds leaves its file to the umask.
+                std::fs::set_permissions(
+                    home.join("locked.cred"),
+                    std::fs::Permissions::from_mode(0o600),
+                )
+                .map_err(|e| broken("keep the private key", e))?;
                 write_file(&home.join("sealed-to"), key.as_arg().as_bytes(), 0o600)
                     .map_err(|e| broken("keep the private key", e))?;
                 let _ = std::fs::remove_file(home.join("locked.asc"));

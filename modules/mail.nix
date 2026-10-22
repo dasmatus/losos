@@ -283,7 +283,12 @@ in
         autoindex off;
         # Every mail program asks from anywhere; WKD asks servers to say so.
         add_header Access-Control-Allow-Origin "*" always;
-        add_header X-Content-Type-Options nosniff always;
+        # An add_header here drops every one the server sets, so the rest
+        # are repeated (as chat.nix's noStore does).
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "no-referrer" always;
         add_header Cache-Control "public, max-age=3600" always;
         limit_except GET HEAD { deny all; }
       '';

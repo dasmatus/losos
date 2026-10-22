@@ -985,12 +985,18 @@ fn summary(m: &Value) -> Option<Summary> {
             .and_then(Value::as_bool)
             .unwrap_or(false),
         pgp: pgp_kind(
-            m.get("header:Content-Type:asRaw")
-                .and_then(Value::as_str)
-                .unwrap_or(""),
+            raw_header(m, "Content-Type").unwrap_or(""),
             m.get("preview").and_then(Value::as_str).unwrap_or(""),
         ),
     })
+}
+
+/// A header asked for as `header:<name>:asRaw`. Stalwart answers it under
+/// `header:<name>`, without the form, so both keys are read.
+fn raw_header<'a>(m: &'a Value, name: &str) -> Option<&'a str> {
+    m.get(format!("header:{name}:asRaw"))
+        .or_else(|| m.get(format!("header:{name}")))
+        .and_then(Value::as_str)
 }
 
 /// Whether a message is OpenPGP mail, from its top-level `Content-Type` and
@@ -1178,10 +1184,7 @@ pub fn parse_message(resp: &Value, marked_read: bool) -> Result<Message, Refused
         text,
         has_html,
         attachments,
-        autocrypt: m
-            .get("header:Autocrypt:asRaw")
-            .and_then(Value::as_str)
-            .map(str::to_string),
+        autocrypt: raw_header(m, "Autocrypt").map(str::to_string),
         sent_at: m.get("sentAt").and_then(Value::as_str).map(str::to_string),
     })
 }
@@ -2715,6 +2718,19 @@ mod tests {
         let n = mail.neighbours(&[listed("eva", false), listed("bob", true)]);
         assert_eq!(n.len(), 1);
         assert_eq!(n[0].address, "eva@mattbox.home.arpa");
+    }
+
+    #[test]
+    fn a_raw_header_is_read_as_stalwart_names_it() {
+        // Stalwart answers header:Content-Type:asRaw under header:Content-Type.
+        let stalwart = json!({ "header:Content-Type": " multipart/signed; micalg=pgp-sha256" });
+        assert_eq!(
+            raw_header(&stalwart, "Content-Type"),
+            Some(" multipart/signed; micalg=pgp-sha256")
+        );
+        let spec = json!({ "header:Autocrypt:asRaw": " addr=x" });
+        assert_eq!(raw_header(&spec, "Autocrypt"), Some(" addr=x"));
+        assert_eq!(raw_header(&spec, "Content-Type"), None);
     }
 
     #[test]
