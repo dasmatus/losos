@@ -190,7 +190,9 @@ pkgs.testers.runNixOSTest (
         after = [ "network-online.target" ];
         wants = [ "network-online.target" ];
         serviceConfig = {
-          DynamicUser = true;
+          # Not DynamicUser: tor refuses a data directory behind a symlink.
+          User = "tor-net";
+          Group = "tor-net";
           StateDirectory = "tor-net-${name}";
           StateDirectoryMode = "0700";
           RuntimeDirectory = "tor-net-${name}";
@@ -239,6 +241,11 @@ pkgs.testers.runNixOSTest (
         { config, ... }:
         {
           networking.firewall.enable = false;
+          users.users.tor-net = {
+            isSystemUser = true;
+            group = "tor-net";
+          };
+          users.groups.tor-net = { };
           systemd.services = lib.listToAttrs (map relayUnit relays);
           services.i2pd = {
             enable = true;
