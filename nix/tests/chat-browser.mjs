@@ -100,7 +100,8 @@ async function film(page, slug, url, title, action = "none", targets = {}) {
   await page.screenshot({ path: `${out}/film/${file}` });
   const boxes = {};
   for (const [key, locator] of Object.entries(targets)) boxes[key] = await boxOf(locator);
-  steps.push({ file, url, title, action, targets: boxes });
+  const target = Object.keys(targets)[0];
+  steps.push({ file, url, title, action: action === "none" || target === undefined ? { kind: action } : { kind: action, target }, targets: boxes });
 }
 
 async function shot(page, name) {
@@ -206,8 +207,26 @@ async function on() {
   await film(eva, "message-menu", `${HOST}/chat/`, "a message's right-click menu: reply, thread, react, copy", "click", { react: menu.getByRole("menuitem", { name: "React" }) });
   await shot(eva, "message-menu");
   await reactions.getByRole("menuitem", { name: "👍" }).click();
-  await owner.getByRole("log").getByRole("button", { name: /👍/ }).waitFor();
-  await owner.getByRole("log").getByText("Nice. Can we plan the holiday here?").hover();
+  // The reaction under the message reads "👍 1"; the quick reactions'
+  // pill under every message has a bare "👍".
+  await owner.getByRole("log").getByRole("button", { name: /^👍\s*1$/ }).waitFor();
+  // Hovering a message shows the quick reactions in a pill under it; one
+  // press adds a reaction and a second takes it back.
+  const evaRow = owner.getByRole("log").locator("[data-event-id]", { hasText: "Nice. Can we plan the holiday here?" });
+  await evaRow.getByText("Nice. Can we plan the holiday here?").hover();
+  const pill = evaRow.locator('[data-slot="quick-reactions"]');
+  await owner.waitForFunction((el) => el !== null && getComputedStyle(el).opacity === "1", await pill.elementHandle());
+  const heart = pill.getByRole("button", { name: "❤️", exact: true });
+  await film(owner, "quick-reactions", `${HOST}/chat/`, "the quick reactions under a message", "click", { heart });
+  await shot(owner, "quick-reactions");
+  await heart.click();
+  await eva.getByRole("log").getByRole("button", { name: /^❤️\s*1$/ }).waitFor();
+  if ((await heart.getAttribute("aria-pressed")) !== "true") throw new Error("the pill does not light a reaction of yours");
+  await heart.click();
+  await eva.getByRole("log").getByRole("button", { name: /^❤️\s*1$/ }).waitFor({ state: "detached" });
+  await heart.click();
+  await eva.getByRole("log").getByRole("button", { name: /^❤️\s*1$/ }).waitFor();
+  await evaRow.getByText("Nice. Can we plan the holiday here?").hover();
   await owner.getByRole("button", { name: "Reply in a thread" }).first().click();
   await owner.getByRole("textbox", { name: "Reply in the thread" }).fill("Somewhere with a lake.");
   await owner.keyboard.press("Enter");

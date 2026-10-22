@@ -271,6 +271,7 @@ let
     {
       pname ? "losos-plugins",
       names ? [
+        "assistant"
         "look"
         "pins"
         "mail"
@@ -280,7 +281,7 @@ let
       inherit pname;
       version = "0.1.0";
       src = lib.cleanSource ./../backend/plugins;
-      cargoHash = "sha256-TnaNLgfxuIAEQRCW1rrbO9vGk6zCEuAKZFYQLUkldYU=";
+      cargoHash = "sha256-BqSi8N3KGThyxoZA/6UO+ZAPrpDLyL0W0KPoSqGrNZY=";
       nativeBuildInputs = [
         pkgs.wasm-tools
         pkgs.lld
@@ -417,6 +418,7 @@ images
   losos-plugins-probe = lososPlugins {
     pname = "losos-plugins-probe";
     names = [
+      "assistant"
       "look"
       "pins"
       "mail"

@@ -347,20 +347,19 @@ pkgs.testers.nixosTest {
     with subtest("the pictures: the same files and trash in LosOS Cloud"):
         # The owner claims the box, and LosOS Login opens LosOS Cloud for
         # them as `notshared`, the account Nextcloud's files moved into.
-        # From the box's LAN address: the admin routes refuse loopback.
-        lan = box.succeed("ip -4 -o addr show eth0 | awk '{print $4}' | cut -d/ -f1").strip()
-        box.wait_until_succeeds(
-            f"curl -sfk --resolve mattbox.local:443:{lan} https://mattbox.local/api/setup/claim | jq -e .ready",
-            timeout=600,
-        )
+        # The claim goes to lososd itself: nginx's admin routes refuse a
+        # request from the box to its own address, and this box has no
+        # other machine on its network. LosOS Login and LosOS Cloud answer
+        # on loopback, as they do for the tunnel.
+        box.wait_until_succeeds("curl -sf 127.0.0.1:8082/api/setup/claim | jq -e .ready", timeout=600)
         box.succeed(
-            f"curl -sfk --resolve mattbox.local:443:{lan} -X POST https://mattbox.local/api/setup/claim"
+            "curl -sf -X POST 127.0.0.1:8082/api/setup/claim"
             " -H 'Content-Type: application/json'"
             " -d '{\"name\": \"matus\", \"password\": \"Correct-Horse-Battery-9\"}'"
         )
         box.wait_for_unit("authelia-losos.service")
         box.wait_for_open_port(9091)
-        status, out = box.execute(f"cloud-move-shots cloud /tmp/shots/after matus 'Correct-Horse-Battery-9' {lan} 2>&1", timeout=3000)
+        status, out = box.execute("cloud-move-shots cloud /tmp/shots/after matus 'Correct-Horse-Battery-9' 127.0.0.1 2>&1", timeout=3000)
         print(out)
         box.copy_from_machine("/tmp/shots/after", "shots")
         assert status == 0, "the LosOS Cloud pictures failed; shots/after/failed.png shows where"
