@@ -67,7 +67,8 @@ directory.
 | `LOSOS_FLAKE` | `/etc/nixos#install` |
 | `LOSOS_NO_DBUS` | unset; any value disables the bus listener |
 | `LOSOS_ADMIN_PORT` | `8082` |
-| `LOSOS_ADMIN_TOKEN_FILE` | `/var/secrets/losos-admin-token` |
+| `LOSOS_ADMIN_TOKEN_FILE` | `/var/secrets/losos-admin-token`; the module sets `%d/admin-token`, the credential |
+| `LOSOS_CREDENTIALS_FILE` | `/etc/losos/credentials.json`, the credential list `modules/credentials.nix` renders |
 | `LOSOS_FLAKE_URL` | `https://github.com/dasmatus/losos.git` |
 | `LOSOS_FLAKE_WORK` | `/tmp/losos-flake` |
 | `LOSOS_KEYFILE` | `/etc/keys/persist-keyfile` |

@@ -28,7 +28,9 @@ Zariadenie ohlasuje `<name>.local` a svoje služby cez systemd-resolved, nie
 cez Avahi. resolved je aj tak súčasťou systému, beží pod vlastným
 používateľom v sandboxe svojej upstream jednotky a ničomu inému na
 zariadení nedáva spôsob, ako ohlasovať služby. Jeho druhý protokol mien,
-LLMNR, je vypnutý. Avahi bežalo ako root s ľahším sandboxom, lebo
+LLMNR, je zapnutý len vtedy, keď je zapnutý priečinok pre Windows
+(`losos.cloud.windows.enable`): Windows nájde zariadenie podľa holého
+názvu a na jeho adresu sa pýta cez LLMNR. Avahi bežalo ako root s ľahším sandboxom, lebo
 potrebovalo netlink, aby sledovalo sieťové rozhrania. Je preč a nebeží
 vedľa resolved, pretože dva respondery na jednom porte odpovedajú na každú
 otázku dvakrát.

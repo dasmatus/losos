@@ -37,7 +37,13 @@ arriving through an edge's tunnel, gets **403**.
 | 80      | HTTP     | Everything above                                        |
 | 443     | HTTPS    | The same, with the box's own certificate (`losos.tls.enable`, on by default) |
 | 5353    | mDNS     | Announcing `<name>.local`, and the box as a `_losos._tcp` service |
+| 445     | SMB      | Each person's LosOS Cloud files as a Windows network share (`losos.cloud.windows.enable`, on by default); the local network only |
+| 3702 (UDP), 5357 | WS-Discovery | Listing the box under Network in Windows' File Explorer, while the share is on |
+| 5355    | LLMNR    | Answering Windows when it asks for the box by its bare name, while the share is on |
 | 8082    | HTTP     | The control API, on the box's loopback only; nginx proxies `/api/` to it |
+
+While the share is on, the mDNS entry for LosOS Cloud is the SMB share
+(`_smb._tcp`), so Finder and Linux file managers list the box once.
 
 Nothing else is open. The box reaches the mesh and the edge outwards. It
 opens the tunnel and joins the cluster itself, so you open no inbound port
