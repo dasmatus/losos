@@ -62,6 +62,12 @@ git sa spýta na meno a token. `losos git setup` z
 vytvorí token pre jeden počítač a odovzdá ho gitu, takže klonovanie a push
 potom heslo nepotrebujú.
 
+## Úlohy \{#issues}
+
+Chyby, práce a nápady k repozitáru aj k práci, ktorá nie je kód, sú v
+zozname úloh pod **Úlohy** v bočnom paneli. **Úlohy** repozitára otvoria
+jeho projekt. Pozri [Úlohy v LosOS Git](issues).
+
 ## Pull requesty \{#pull-requests}
 
 Pushnite vetvu a stlačte **Otvoriť pull request** na stránke Kód alebo

@@ -75,6 +75,7 @@ pub fn handle(state: &State, e: &Event) -> anyhow::Result<()> {
             };
             pull(state, &repo, action, pr.number)
         }
+        Event::Issue { .. } => Ok(()),
     }
 }
 
@@ -118,6 +119,7 @@ fn close(state: &State, t: &Ticket, actor: &Actor) -> anyhow::Result<bool> {
         },
         actor,
     )?;
+    super::announce(&state.store, t, "closed", &actor.name);
     Ok(true)
 }
 

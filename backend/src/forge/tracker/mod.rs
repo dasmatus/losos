@@ -279,6 +279,30 @@ pub fn valid_project_key(k: &str) -> bool {
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
 }
 
+/// Tell LosOS Git's listeners (a repository's chat room) about an issue
+/// of a repository. An issue with no repository says nothing.
+pub fn announce(store: &super::db::Store, t: &store::Ticket, action: &str, author: &str) {
+    let Some(r) = &t.repo else {
+        return;
+    };
+    match store.repo(&r.owner, &r.name) {
+        Ok(Some(repo)) => {
+            super::events::issue(action, &repo, r.number, Some(&t.key), &t.title, author)
+        }
+        Ok(None) => {}
+        Err(e) => tracing::debug!(error = %e, "an issue event was not sent"),
+    }
+}
+
+/// What a move from one state to another says: closed, reopened or nothing.
+pub fn closing(before: Category, after: Category) -> Option<&'static str> {
+    match (before.closed(), after.closed()) {
+        (false, true) => Some("closed"),
+        (true, false) => Some("reopened"),
+        _ => None,
+    }
+}
+
 /// A colour for a label made without one: the usual names get the usual
 /// colours, anything else one of the same eight, the same every time.
 pub fn label_color(name: &str) -> &'static str {

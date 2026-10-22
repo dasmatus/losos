@@ -1325,4 +1325,34 @@ fn issues_are_tracked_and_closed_by_commits_and_pull_requests() {
     assert_eq!(status, 404);
     let (_, hers) = call("GET", "/tracker/issues", &eva, None);
     assert_eq!(hers["issues"].as_array().unwrap().len(), 0);
+
+    // Given read access, she may open an issue, but only its words count.
+    let (status, _) = call(
+        "PUT",
+        "/repos/notshared/losos/collaborators/eva",
+        &owner,
+        Some(r#"{"permission":"read"}"#),
+    );
+    assert!(status == 204 || status == 200, "{status}");
+    let (status, mine) = call(
+        "POST",
+        "/tracker/issues",
+        &eva,
+        Some(
+            r#"{"project":"LOS","title":"The restore page is blank","priority":1,"assignee":"eva","labels":["urgent"]}"#,
+        ),
+    );
+    assert_eq!(status, 201, "{mine}");
+    assert_eq!(mine["priority"], 0);
+    assert!(mine["assignee"].is_null(), "{mine}");
+    assert_eq!(mine["labels"].as_array().unwrap().len(), 0);
+    assert_eq!(mine["state"]["category"], "unstarted");
+    let key = mine["key"].as_str().unwrap();
+    let (status, _) = call(
+        "PATCH",
+        &format!("/tracker/issues/{key}"),
+        &eva,
+        Some(r#"{"priority":1}"#),
+    );
+    assert_eq!(status, 403);
 }

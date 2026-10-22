@@ -41,6 +41,18 @@ pub enum Event {
         private: bool,
         pr: PullRequest,
     },
+    /// An issue of a repository was opened, closed (done or canceled),
+    /// reopened or commented on. `key` is its tracker key (`LOS-12`).
+    Issue {
+        action: String,
+        owner: String,
+        repo: String,
+        private: bool,
+        number: i64,
+        key: Option<String>,
+        title: String,
+        author: String,
+    },
 }
 
 /// What an event says about a pull request.
@@ -98,14 +110,35 @@ impl Event {
                 "baseRef": pr.base_ref,
                 "author": pr.author,
             }),
+            Event::Issue {
+                action,
+                owner,
+                repo,
+                private,
+                number,
+                key,
+                title,
+                author,
+            } => json!({
+                "kind": "issue",
+                "action": action,
+                "owner": owner,
+                "repo": repo,
+                "private": private,
+                "number": number,
+                "key": key,
+                "title": title,
+                "author": author,
+            }),
         }
     }
 }
 
 type Consumer = Box<dyn Fn(&Event) + Send + Sync>;
+type Shared = std::sync::Arc<dyn Fn(&Event) + Send + Sync>;
 
-fn consumers() -> &'static Mutex<Vec<Consumer>> {
-    static C: OnceLock<Mutex<Vec<Consumer>>> = OnceLock::new();
+fn consumers() -> &'static Mutex<Vec<Shared>> {
+    static C: OnceLock<Mutex<Vec<Shared>>> = OnceLock::new();
     C.get_or_init(|| Mutex::new(Vec::new()))
 }
 
@@ -119,7 +152,7 @@ pub fn subscribe(f: Consumer) {
     consumers()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .push(f);
+        .push(std::sync::Arc::from(f));
 }
 
 /// Send every event from now on to the socket at `path` as well.
@@ -132,11 +165,13 @@ pub fn deliver_to(path: PathBuf) {
 
 /// Tell everyone.
 pub fn emit(event: Event) {
-    for c in consumers()
+    // Called with the list unlocked: a consumer may emit an event of its
+    // own (the tracker closes an issue for a push and says so).
+    let listeners = consumers()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .iter()
-    {
+        .clone();
+    for c in listeners {
         c(&event);
     }
     let targets = sockets()
@@ -206,6 +241,20 @@ pub fn pull_request(action: &str, repo: &Repo, pr: PullRequest) {
     });
 }
 
+/// An issue changed: `action` is opened, closed, reopened or commented.
+pub fn issue(action: &str, repo: &Repo, number: i64, key: Option<&str>, title: &str, author: &str) {
+    emit(Event::Issue {
+        action: action.to_string(),
+        owner: repo.owner.clone(),
+        repo: repo.name.clone(),
+        private: repo.private,
+        number,
+        key: key.map(str::to_string),
+        title: title.to_string(),
+        author: author.to_string(),
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,6 +274,26 @@ mod tests {
             created: String::new(),
             updated: String::new(),
         }
+    }
+
+    #[test]
+    fn an_issue_event_is_the_shape_the_rooms_read() {
+        let e = Event::Issue {
+            action: "closed".into(),
+            owner: "matus".into(),
+            repo: "site".into(),
+            private: true,
+            number: 12,
+            key: Some("SIT-12".into()),
+            title: "Fix the header".into(),
+            author: "eva".into(),
+        };
+        assert_eq!(
+            e.to_json(),
+            json!({"kind": "issue", "action": "closed", "owner": "matus", "repo": "site",
+                   "private": true, "number": 12, "key": "SIT-12", "title": "Fix the header",
+                   "author": "eva"})
+        );
     }
 
     #[test]

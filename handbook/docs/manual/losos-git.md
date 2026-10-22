@@ -64,6 +64,12 @@ git asks for a name and a token. `losos git setup`, from
 makes a token for one computer and hands it to git, so cloning and pushing
 then need no password.
 
+## Issues
+
+Bugs, tasks and ideas for a repository, and for work that is not code, are
+kept in the issue tracker at **Issues** in the sidebar. A repository's
+**Issues** opens its project there. See [Issues in LosOS Git](issues).
+
 ## Pull requests
 
 Push a branch, then press **Open a pull request** on the Code page or

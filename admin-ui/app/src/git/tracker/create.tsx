@@ -27,7 +27,9 @@ export function CreateIssue({ draft, onClose, onCreated }: { draft: Draft; onClo
   const t = useT();
   const id = React.useId();
   const { home } = useTracker();
-  const projects = (home?.projects ?? []).filter((p) => !p.archived && (p.permission === "write" || p.permission === "admin"));
+  // A reader of a repository may open an issue on it too; its words are
+  // all that count, so the properties stay with its writers.
+  const projects = (home?.projects ?? []).filter((p) => !p.archived && (p.permission === "write" || p.permission === "admin" || p.repos.length > 0));
   const [projectKey, setProjectKey] = React.useState(draft.project !== "" ? draft.project : (projects[0]?.key ?? ""));
   const project = projects.find((p) => p.key === projectKey) ?? projects[0];
   const [title, setTitle] = React.useState("");
@@ -136,7 +138,7 @@ export function CreateIssue({ draft, onClose, onCreated }: { draft: Draft; onClo
             className="border-0 px-0 shadow-none focus-visible:ring-0"
           />
           {mentions.picker}
-          {project !== undefined && (
+          {project !== undefined && project.permission !== "read" && (
             <div className="flex flex-wrap items-center gap-1.5">
               <StateMenu
                 states={project.states}

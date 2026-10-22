@@ -544,11 +544,29 @@ async fn create(req: HttpRequest, body: web::Json<Fields>, state: web::Data<Stat
         .project
         .as_deref()
         .ok_or_else(|| Fail::bad("Say which project the issue is in."))?;
-    let (p, _) = find_project(&state, &c, key, Permission::Write)?;
+    let (p, perm) = find_project(&state, &c, key, Permission::Read)?;
+    // Anyone who may read a repository may open an issue on it, as on any
+    // forge; what the issue gets beyond its words is for its writers.
+    let linked = !state.store.project_repo_ids(p.id)?.is_empty();
+    if perm < Permission::Write && !(linked && c.allows("issue", true)) {
+        find_project(&state, &c, key, Permission::Write)?;
+    }
     if body.title.as_deref().is_none_or(|t| t.trim().is_empty()) {
         return Err(Fail::bad("An issue needs a title."));
     }
-    let change = change_of(&state, &c, &p, &body, None)?;
+    let words = Fields {
+        project: body.project.clone(),
+        title: body.title.clone(),
+        body: body.body.clone(),
+        repo: body.repo.clone(),
+        ..Fields::default()
+    };
+    let body = if perm < Permission::Write {
+        &words
+    } else {
+        &*body
+    };
+    let change = change_of(&state, &c, &p, body, None)?;
     let repo_id = match body.repo.as_deref() {
         // A project of one repository numbers its issues in it.
         None => match state.store.project_repo_ids(p.id)?.as_slice() {
@@ -589,7 +607,9 @@ async fn create(req: HttpRequest, body: web::Json<Fields>, state: web::Data<Stat
         due: change.due.clone().flatten(),
         repo_id,
     };
-    let t = state.store.create_ticket(p.id, &new, &actor(&c))?;
+    let who = actor(&c);
+    let t = state.store.create_ticket(p.id, &new, &who)?;
+    super::announce(&state.store, &t, "opened", &who.name);
     let perm = state.store.project_permission(&c, &p)?;
     let mut answer = full(&state, &c, &t, &p, perm)?;
     *answer.status_mut() = actix_web::http::StatusCode::CREATED;
@@ -599,10 +619,16 @@ async fn create(req: HttpRequest, body: web::Json<Fields>, state: web::Data<Stat
 fn apply(state: &State, c: &Caller, t: &Ticket, p: &Project, f: &Fields) -> Result<(), Fail> {
     let change = change_of(state, c, p, f, Some(t.id))?;
     if !change.is_empty() {
+        let who = actor(c);
         state
             .store
-            .change_ticket(t.id, &change, &actor(c))
+            .change_ticket(t.id, &change, &who)
             .map_err(bad_change)?;
+        if let Some(now) = state.store.ticket_by_id(t.id)? {
+            if let Some(action) = super::closing(t.state.category, now.state.category) {
+                super::announce(&state.store, &now, action, &who.name);
+            }
+        }
     }
     if let Some(to) = f.project.as_deref() {
         if !to.eq_ignore_ascii_case(&p.key) {
@@ -696,7 +722,9 @@ async fn comment(
     if body.body.len() > 100_000 {
         return Err(Fail::bad("The comment is too long."));
     }
-    let comment = state.store.comment_ticket(t.id, &body.body, &actor(&c))?;
+    let who = actor(&c);
+    let comment = state.store.comment_ticket(t.id, &body.body, &who)?;
+    super::announce(&state.store, &t, "commented", &who.name);
     Ok(HttpResponse::Created().json(comment))
 }
 

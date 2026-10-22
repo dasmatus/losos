@@ -543,6 +543,10 @@
         # Its pages in Chromium: code, a pull request reviewed and merged, the
         # worktrees (nix/tests/git-pages.nix).
         losos-git-pages = import ./nix/tests/git-pages.nix { inherit pkgs; };
+        # LosOS Git's issue tracker: Forgejo's issues and LosOS Cloud's
+        # boards carried over, closing words in commits and pull requests,
+        # and the pages from Chromium (nix/tests/git-issues.nix).
+        losos-git-issues = import ./nix/tests/git-issues.nix { inherit pkgs; };
         # A Forgejo box's switch: everything it held, carried into LosOS Git.
         losos-git-forgejo = import ./nix/tests/git-forgejo.nix { inherit pkgs; };
         # Mesh CI: a push to LosOS Git runs its GitHub Actions workflows on
