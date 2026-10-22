@@ -475,6 +475,9 @@
         losos-wait-game = import ./nix/tests/wait-game.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
         losos-chat = import ./nix/tests/chat.nix { inherit pkgs; };
+        # LosOS Contacts: the book in LosOS Cloud, vCard in and out, and the
+        # pickers in Mail and Chat (nix/tests/contacts.nix).
+        losos-contacts = import ./nix/tests/contacts.nix { inherit pkgs; };
         # Calls from chat: three people in real browsers through the box's
         # SFU, whose copy of every frame is ciphertext (nix/tests/calls.nix).
         losos-calls = import ./nix/tests/calls.nix { inherit pkgs; };
@@ -519,6 +522,9 @@
         # One file through Mail, LosOS Cloud, Notes and the box's AI on one
         # box, with the pull request's pictures (nix/tests/apps-together.nix).
         losos-apps-together = import ./nix/tests/apps-together.nix { inherit pkgs; };
+        # Gemma answers the apps, the coder builds, one model in memory at
+        # a time on a 4 GiB box (nix/tests/assistant-models.nix).
+        losos-assistant-models = import ./nix/tests/assistant-models.nix { inherit pkgs; };
         # Two boxes sharing a note and editing it together, apart and
         # together again (nix/tests/mesh-collab.nix).
         losos-mesh-collab = import ./nix/tests/mesh-collab.nix { inherit pkgs; };
@@ -581,6 +587,9 @@
         # Its pages in Chromium: code, a pull request reviewed and merged, the
         # worktrees (nix/tests/git-pages.nix).
         losos-git-pages = import ./nix/tests/git-pages.nix { inherit pkgs; };
+        # People of another box in LosOS Git by their chat address, and a
+        # repository's chat room between two boxes (nix/tests/git-federation.nix).
+        losos-git-federation = import ./nix/tests/git-federation.nix { inherit pkgs; };
         # A Forgejo box's switch: everything it held, carried into LosOS Git.
         losos-git-forgejo = import ./nix/tests/git-forgejo.nix { inherit pkgs; };
         # Mesh CI: a push to LosOS Git runs its GitHub Actions workflows on

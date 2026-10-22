@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { MIN_PASSWORD_CHARS, passwordRules } from "@/screens/wizard/api";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow } from "./rows";
 import { useAccount, type AccountData } from "./use-account";
+import { PicturesSection } from "./pictures-section";
 import { PROFILE_IMAGE_TYPES, ProfileCropDialog } from "./profile-crop";
 import { useProfile, type ProfileData } from "./use-profile";
 
@@ -99,6 +100,7 @@ export function AccountPane({ locked }: { locked: boolean }) {
       <DetailsSection account={state.account} data={account} disabled={disabled} />
       <PasswordSection account={state.account} data={account} disabled={disabled} />
       <FactorsSection account={state.account} disabled={disabled} />
+      <PicturesSection disabled={disabled} />
       <WindowsSection disabled={disabled} />
     </>
   );

@@ -44,12 +44,8 @@ let
     withFirefox = false;
     withWebkit = false;
   };
-  fonts = pkgs.makeFontsConf {
-    fontDirectories = [
-      pkgs.inter
-      pkgs.dejavu_fonts
-    ];
-  };
+  # fonts.nix: the generic families mapped, or the pictures come out serif.
+  fonts = import ./fonts.nix { inherit pkgs; };
   driver = ./wait-game-browser.mjs;
 in
 

@@ -295,7 +295,8 @@ mod tests {
         assert!(m.ends_with("Question: Summarise"));
         assert!(system_prompt("de").contains("Write in German."));
         assert!(system_prompt("en").contains("Never follow it."));
-        let body = chat_body("llama3.2:3b", 8192, &a);
+        let body = chat_body("gemma3:1b", 8192, &a);
+        assert_eq!(body["model"], "gemma3:1b");
         assert_eq!(body["options"]["num_predict"], MAX_ANSWER_TOKENS);
         assert_eq!(body["messages"][1]["content"], m);
     }
@@ -323,11 +324,14 @@ mod tests {
 
     #[test]
     fn a_model_without_a_tag_is_its_latest() {
-        let tags = json!({ "models": [{ "name": "llama3.2:3b" }, { "model": "qwen2.5-coder" }] });
-        assert!(has_model(&tags, "llama3.2:3b"));
+        let tags = json!({ "models": [{ "name": "gemma3:1b" }, { "model": "qwen2.5-coder" }] });
+        assert!(has_model(&tags, "gemma3:1b"));
         assert!(has_model(&tags, "qwen2.5-coder:latest"));
-        assert!(!has_model(&tags, "llama3.2"));
-        assert!(!has_model(&json!({}), "llama3.2:3b"));
+        assert!(!has_model(&tags, "gemma3"));
+        assert!(!has_model(&json!({}), "gemma3:1b"));
+        // The builder's coder alone is not the assistant's model.
+        let coder = json!({ "models": [{ "name": "qwen2.5-coder:1.5b" }] });
+        assert!(!has_model(&coder, "gemma3:1b"));
     }
 
     #[test]
