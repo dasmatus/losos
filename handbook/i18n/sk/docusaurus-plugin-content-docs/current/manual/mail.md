@@ -52,7 +52,11 @@ schránku, takže Pošta vás požiada o prihlásenie vlastným účtom.
   formulárov a bez obrázkov zvonka zariadenia, takže odosielateľ nezistí,
   že ste správu otvorili. Správa bez obyčajného textu sa v tomto rámci
   otvorí hneď.
-- Prílohy sa stiahnu do počítača. Nikdy sa neotvoria priamo na stránke.
+- Prílohy sa stiahnu do počítača a nikdy sa neotvoria priamo na stránke.
+  Čo ďalej s nimi môžete robiť, opisuje
+  [Súbory a LosOS Cloud](#files-and-losos-cloud).
+- Keď je odosielateľ na tomto zariadení a zariadenie má Chat, tlačidlá
+  **Chat** a **Zavolať** v paneli správy s ním začnú rozhovor.
 - Kliknite pravým tlačidlom na správu v zozname a odpovedzte na ňu,
   označte, archivujte alebo presuňte ju bez otvorenia; pozrite
   [ponuku pravého tlačidla](admin-pages#the-right-click-menu).
@@ -96,6 +100,33 @@ prihlásený.
 - Filtre pracujú s poštou, ktorá príde po ich uložení; pošta, ktorá už je
   v priečinku, tam zostane. Odstránenie priečinka vypne filter, ktorý doň
   len presúval poštu.
+
+## Súbory a LosOS Cloud \{#files-and-losos-cloud}
+
+- **Uložiť do LosOS Cloud** vedľa prílohy ju uloží do priečinka **Mail**
+  vo vašom LosOS Cloud. **Otvoriť** ju potom otvorí v aplikácii, ktorá ju
+  upravuje: Markdown v Poznámkach, iné textové súbory v spoločnom editore.
+- Pri písaní pridáte súbory tlačidlami **Priložiť z tohto počítača** a
+  **Priložiť z LosOS Cloud**, spolu najviac 20 MB. **Preposlať** ponechá
+  prílohy správy.
+- V LosOS Cloud kliknite pravým tlačidlom na súbor a vyberte **Poslať
+  e-mailom**. Otvorí sa nová správa so súborom v prílohe.
+
+## Opýtať sa AI zariadenia \{#ask-the-boxs-ai}
+
+Tlačidlom **Zhrnúť** v paneli správy sa opýtate vlastného jazykového modelu
+zariadenia na otvorenú správu. Model beží na zariadení, takže správa aj
+odpoveď zostávajú na ňom, a číta len správu, na ktorú ste sa pýtali.
+Odpovedá na jednu otázku naraz, na malom zariadení môže odpoveď trvať minútu
+či dve. Text v správe, ktorý AI prikazuje niečo urobiť, sa berie ako časť
+správy, nie ako vaša požiadavka.
+
+Otázky na poštu, súbory a poznámky idú modelu Gemma 3 1B, ktorý je určený na
+text. **Vytvoriť s AI** má vlastný model na kód. Zariadenie si každý model
+stiahne raz, keď je prvýkrát online, a v pamäti drží naraz len jeden.
+Správca môže zvoliť iný model v **Nastavenia**, **Rozšírené**
+(`assistant.model`). Gemma is provided under and subject to the Gemma Terms
+of Use found at ai.google.dev/gemma/terms.
 
 ## Čo Pošta zatiaľ nerobí \{#what-mail-does-not-do-yet}
 

@@ -47,8 +47,8 @@
 #
 # The whole product surface above the disk: the Nginx front door and its
 # LAN-only guard, the admin SPA, lososd and its Bearer-authed API, the
-# first-run setup wizard, the self-signed certificate, LosOS Cloud, Forgejo as
-# a static pod in the box's own k3s cluster, the hardening baseline, and the
+# first-run setup wizard, the self-signed certificate, LosOS Cloud, LosOS
+# Git, the hardening baseline, and the
 # no-shell-logins model (the image has no root password either — same as the
 # appliance; if you are debugging a kernel panic rather than demoing, add a
 # `users.users.root.initialHashedPassword` of your own to vmOverlay below).
@@ -225,7 +225,7 @@ let
 
     # 20 GiB, sparse — the qcow2 on disk is a fraction of this. Sized for what
     # the box does to itself after first boot rather than for the closure:
-    # k3s imports the Forgejo image tarball into containerd, which unpacks a
+    # k3s imports the pause image tarball into containerd, which unpacks a
     # second copy beside the store this image ships, and then LosOS Cloud
     # wants somewhere to put data.
     diskSize = 20480;
@@ -326,10 +326,10 @@ let
   # The plain ISO carries the installer and one small output, so a fresh box
   # fetches and builds the rest itself. Measured on a dev machine that closure
   # is 5.78 GiB over 882 store paths. Most of it substitutes from
-  # cache.nixos.org, but some things cannot: the Forgejo and pause image
-  # tarballs (no public cache has them because dockerTools
-  # builds them from this flake) and `losos-ctl` itself. A repurposed mini-PC
-  # compresses multi-gigabyte layer tars and compiles Rust as part of its first
+  # cache.nixos.org, but some things cannot: the pause image tarball
+  # (no public cache has it because dockerTools builds it from this flake)
+  # and `losos-ctl` itself. A repurposed mini-PC
+  # compresses layer tars and compiles Rust as part of its first
   # install, with nobody watching and no shell to watch from.
   #
   # `isoImage.storeContents` puts the finished `install` toplevel on the medium,

@@ -146,7 +146,7 @@ let
     chmod 0700 ${stateDir}
 
     # Nextcloud first stops for good, so nothing writes while its files
-    # move. The pod's manifest link goes (modules/workloads.nix removes it
+    # move. The pod's manifest link goes (modules/cluster.nix removes it
     # too, but that may run after this on the boot that switches), and a
     # pod still running is stopped through the runtime. Natively there is
     # nothing to do: the switch to this system stopped php-fpm already.
@@ -240,9 +240,14 @@ let
     proxy_set_header X-Forwarded-Host $host;
   '';
 
-  # Uploads of any size, streamed, and sync runs that take all day.
+  # Uploads of any size, streamed, and sync runs that take all day. The
+  # body goes on in pieces of up to client_body_buffer_size; nginx's 16 KiB
+  # default costs a write per piece on both sides, and 1 MiB took a large
+  # upload from 24 s to 20 s on a two-core box (nix/tests/upload-speed.nix).
+  # A smaller body gets a buffer of its own size.
   files = ''
     client_max_body_size 0;
+    client_body_buffer_size 1m;
     proxy_request_buffering off;
     proxy_buffering off;
     proxy_read_timeout 86400s;

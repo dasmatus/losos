@@ -13,16 +13,6 @@
   lososCtl ? (import ../packages.nix { inherit pkgs; }).losos-ctl,
 }:
 { lib, ... }:
-let
-  # Any derivation with the two attributes imageRef reads: no cluster runs.
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-in
 {
   imports = [
     ../../modules/options.nix
@@ -30,15 +20,11 @@ in
     ../../modules/tls.nix
     ../../modules/daemon.nix
     ../../modules/identity.nix
-    ../../modules/workloads.nix
   ];
   losos = {
     hostName = "mattbox";
     backend.package = lososCtl;
     admin.ui = adminUi;
-    forgejo.enable = true;
-    forgejo.mode = "container";
-    workloads.forgejoImage = standIn "losos-forgejo-stand-in";
   };
   # The test driver names the machine after its node; lososd only lets a
   # claim through for its own name.

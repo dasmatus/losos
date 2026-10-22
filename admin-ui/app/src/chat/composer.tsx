@@ -3,6 +3,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Attachment01Icon, Cancel01Icon, CloudIcon, Mic01Icon, SentIcon } from "@hugeicons/core-free-icons";
 import type { MatrixClient, MatrixEvent, Room } from "matrix-js-sdk";
 import { CloudPicker } from "@/components/cloud-picker";
+import { Masked, useDetailsCheck } from "@/components/details";
+import { useSendCheck } from "@/components/send-check";
 import { toast } from "@/components/ui/toast";
 import { readCloudFile } from "@/lib/cloud-files";
 import { useT } from "@/lib/i18n-react";
@@ -54,6 +56,8 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
   const typingSent = React.useRef(0);
   const [recording, setRecording] = React.useState<{ recorder: MediaRecorder; started: number } | null>(null);
   const [uploading, setUploading] = React.useState(0);
+  const sendCheck = useSendCheck();
+  const detailsCheck = useDetailsCheck();
 
   React.useEffect(() => {
     if (editing !== null) {
@@ -89,6 +93,8 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
   const send = async (): Promise<void> => {
     const body = text.trim();
     if (body === "") return;
+    // Card and ID numbers are asked about first; "Don't send" keeps the text.
+    if (!(await detailsCheck.check(body))) return;
     setText("");
     typing(false);
     const mentions = [...new Set(body.match(MENTION) ?? [])];
@@ -123,6 +129,7 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
     setUploading((n) => n + chosen.length);
     for (const file of chosen) {
       try {
+        if (!(await sendCheck.check(file))) continue;
         await sendFile(client, room.roomId, file, file.name, threadRoot !== null ? { threadRoot } : {});
       } catch (error) {
         toast.error(t("chat.composer.uploadFailed", { name: file.name }), String(error), { help: "chat" });
@@ -185,7 +192,7 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
         <div className="mb-2 flex items-center gap-2 rounded-control bg-sunk px-3 py-1.5 text-[12.5px] text-muted">
           <span className="min-w-0 flex-1 truncate">
             <span className="font-medium text-ink">{banner}</span>
-            {replyTo !== null && editing === null && <> · {plainBody(replyTo.getContent())}</>}
+            {replyTo !== null && editing === null && <> · <Masked text={plainBody(replyTo.getContent())} still /></>}
           </span>
           <button type="button" aria-label={t("chat.composer.cancel")} className="rounded p-0.5 hover:bg-surface" onClick={() => { setText(""); onDone(); }}>
             <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
@@ -269,6 +276,8 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
           </Button>
         )}
       </div>
+      {sendCheck.dialog}
+      {detailsCheck.dialog}
     </div>
   );
 }

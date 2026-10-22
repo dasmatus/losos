@@ -997,16 +997,30 @@ pub fn serve_file(
     resp
 }
 
+/// How much of a body is gathered before it goes to disk in one write.
+/// actix hands a body over in pieces of a few KiB; writing each one on its
+/// own costs a system call per piece on the worker that also reads the
+/// network. Two batches at most are held per upload: one filling, one being
+/// written.
+pub const BATCH: usize = 1 << 20;
+
 /// Stream a request body into a temporary file beside the owner's files,
 /// with its SHA-1. `expected` is the Content-Length, which a body cut short
 /// must not pass for a whole one.
+///
+/// The body is written in batches of [`BATCH`] on the blocking pool, so the
+/// next batch arrives while the last one is written. A body smaller than one
+/// batch is written once, here.
 pub async fn receive(
     cloud: &Cloud,
     owner: &str,
     mut body: web::Payload,
     expected: Option<u64>,
 ) -> Result<(tempfile::NamedTempFile, String), HttpResponse> {
-    let mut temp = cloud.store.temp_file(owner).map_err(|e| store_error(&e))?;
+    let fail = |e: std::io::Error| store_error(&StoreError::from(e));
+    let mut file = Some(cloud.store.temp_file(owner).map_err(|e| store_error(&e))?);
+    let mut writing: Option<WriteBatch> = None;
+    let mut batch = web::BytesMut::new();
     let mut sha = ring::digest::Context::new(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY);
     let mut n: u64 = 0;
     while let Some(chunk) = body.next().await {
@@ -1019,9 +1033,34 @@ pub async fn receive(
         })?;
         sha.update(&chunk);
         n += chunk.len() as u64;
-        temp.write_all(&chunk)
-            .map_err(|e| store_error(&StoreError::from(e)))?;
+        if batch.is_empty() {
+            batch.reserve(BATCH);
+        }
+        batch.extend_from_slice(&chunk);
+        if batch.len() >= BATCH {
+            let full = batch.split().freeze();
+            let f = match writing.take() {
+                Some(w) => w.done().await.map_err(fail)?,
+                None => file.take().expect("the temporary file"),
+            };
+            writing = Some(WriteBatch::start(f, full));
+        }
     }
+    let mut temp = match writing.take() {
+        Some(w) => {
+            let mut f = w.done().await.map_err(fail)?;
+            if !batch.is_empty() {
+                let rest = batch.freeze();
+                f = WriteBatch::start(f, rest).done().await.map_err(fail)?;
+            }
+            f
+        }
+        None => {
+            let mut f = file.take().expect("the temporary file");
+            f.write_all(&batch).map_err(fail)?;
+            f
+        }
+    };
     if let Some(len) = expected {
         if n != len {
             return Err(dav_error(
@@ -1031,9 +1070,24 @@ pub async fn receive(
             ));
         }
     }
-    temp.flush()
-        .map_err(|e| store_error(&StoreError::from(e)))?;
+    temp.flush().map_err(fail)?;
     Ok((temp, crate::cloud::util::hex(sha.finish().as_ref())))
+}
+
+/// A batch on its way to disk, handing the file back when it is written.
+struct WriteBatch(actix_web::rt::task::JoinHandle<std::io::Result<tempfile::NamedTempFile>>);
+
+impl WriteBatch {
+    fn start(mut f: tempfile::NamedTempFile, bytes: web::Bytes) -> WriteBatch {
+        WriteBatch(actix_web::rt::task::spawn_blocking(move || {
+            f.write_all(&bytes)?;
+            Ok(f)
+        }))
+    }
+
+    async fn done(self) -> std::io::Result<tempfile::NamedTempFile> {
+        self.0.await.map_err(std::io::Error::other)?
+    }
 }
 
 fn content_length(req: &HttpRequest) -> Option<u64> {
@@ -1539,7 +1593,7 @@ async fn uploads(ctx: &Ctx<'_>, t: &Target, method: &str, body: web::Payload) ->
                 return Ctx::locked_response();
             }
             let total = header_str(ctx.req, "oc-total-length").and_then(|v| v.parse::<u64>().ok());
-            let joined = match assemble(ctx, &t.owner, &dir, total) {
+            let joined = match assemble(ctx, &t.owner, &dir, total).await {
                 Ok(v) => v,
                 Err(r) => return r,
             };
@@ -1569,7 +1623,7 @@ fn chunk_names(dir: &std::path::Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn assemble(
+async fn assemble(
     ctx: &Ctx<'_>,
     owner: &str,
     dir: &std::path::Path,
@@ -1577,28 +1631,38 @@ fn assemble(
 ) -> Result<(tempfile::NamedTempFile, String), HttpResponse> {
     let mut names = chunk_names(dir);
     chunk_order(&mut names);
-    let mut temp = ctx
+    let temp = ctx
         .cloud
         .store
         .temp_file(owner)
         .map_err(|e| store_error(&e))?;
-    let mut sha = ring::digest::Context::new(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY);
-    let mut n: u64 = 0;
-    let mut buf = vec![0u8; 1 << 16];
-    for name in &names {
-        let mut f = std::fs::File::open(dir.join(name)).map_err(|e| store_error(&e.into()))?;
-        loop {
-            use std::io::Read;
-            let k = f.read(&mut buf).map_err(|e| store_error(&e.into()))?;
-            if k == 0 {
-                break;
+    // Gigabytes for a large file: off the worker, in batches.
+    let dir = dir.to_path_buf();
+    let joined = actix_web::rt::task::spawn_blocking(move || {
+        let mut temp = temp;
+        let mut sha = ring::digest::Context::new(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY);
+        let mut n: u64 = 0;
+        let mut buf = vec![0u8; BATCH];
+        for name in &names {
+            let mut f = std::fs::File::open(dir.join(name))?;
+            loop {
+                use std::io::Read;
+                let k = f.read(&mut buf)?;
+                if k == 0 {
+                    break;
+                }
+                sha.update(&buf[..k]);
+                temp.write_all(&buf[..k])?;
+                n += k as u64;
             }
-            sha.update(&buf[..k]);
-            temp.write_all(&buf[..k])
-                .map_err(|e| store_error(&e.into()))?;
-            n += k as u64;
         }
-    }
+        temp.flush()?;
+        Ok::<_, std::io::Error>((temp, sha.finish(), n))
+    })
+    .await
+    .map_err(std::io::Error::other)
+    .and_then(|r| r);
+    let (temp, sha, n) = joined.map_err(|e| store_error(&e.into()))?;
     if let Some(total) = total {
         if total != n {
             return Err(dav_error(
@@ -1608,7 +1672,7 @@ fn assemble(
             ));
         }
     }
-    Ok((temp, crate::cloud::util::hex(sha.finish().as_ref())))
+    Ok((temp, crate::cloud::util::hex(sha.as_ref())))
 }
 
 /// Remove upload transfers nobody finished.

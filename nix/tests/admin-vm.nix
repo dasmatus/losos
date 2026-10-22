@@ -22,7 +22,7 @@
 # This is the "disko-free variant" the plan calls for: it imports only
 # options.nix + daemon.nix — no disko, impermanence, boot, services, cluster or
 # containers — so the VM closure stays small: the Rust daemon plus base NixOS,
-# with no Nextcloud, no Forgejo and neither Kubernetes instance. The nginx front
+# with no Nextcloud, no LosOS Git and neither Kubernetes instance. The nginx front
 # door has a booted test of its own (nix/tests/front-vhost.nix, which stubs the
 # backends); the workload pods behind it are covered by `nix eval` of the
 # install config and are booted nowhere, because pulling the ~2.6 GiB Nextcloud
@@ -47,7 +47,7 @@ pkgs.testers.nixosTest {
         ../../modules/options.nix
         ../../modules/daemon.nix
         # The option document (/etc/losos/options.json) and the LosOS Git
-        # wiring. No Forgejo runs here, so the reconciler reports it
+        # wiring. No LosOS Git runs here, so the reconciler reports it
         # unavailable; what step 9 asserts is the document and the config
         # routes themselves.
         ../../modules/config-repo.nix

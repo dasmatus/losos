@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ReportDialogHost } from "@/components/report-dialog";
 import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon, Search01Icon } from "@hugeicons/core-free-icons";
@@ -73,6 +74,10 @@ const Settings = React.lazy(() => import("@/screens/Settings"));
 /* Documents (losos.office.folder) and the editor, on boxes that edit a
  * folder of documents. */
 const Office = React.lazy(() => import("@/screens/Office"));
+const AppScreen = React.lazy(() => import("@/apps/screens").then((m) => ({ default: m.AppScreen })));
+const AppEditorScreen = React.lazy(() =>
+  import("@/apps/screens").then((m) => ({ default: m.AppEditorScreen })),
+);
 /* The first-run tour (src/tour/): its own chunk, fetched only when it opens,
  * which on most visits is never. */
 const Tour = React.lazy(() => import("@/tour/tour"));
@@ -93,9 +98,13 @@ const Reminders = React.lazy(() => import("@/calendar/reminders"));
 /* LosOS Chat (src/chat/), the same: on the shared side only, and the only
  * screen that brings matrix-js-sdk and its crypto. */
 const Chat = React.lazy(() => import("@/chat/app"));
+/* Another box asks who the person is, for its LosOS Git (src/chat/vouch.tsx). */
+const ChatVouch = React.lazy(() => import("@/chat/vouch"));
 /* Calls outlive the chat screen, so the shell holds them, on a document
  * loaded at /chat/ only: elsewhere matrix-js-sdk stays out of the page. */
 const CallsShell = React.lazy(() => import("@/chat/calls-shell"));
+/* Mesh CI (src/ci/): on the shared side too, beside LosOS Git. */
+const Ci = React.lazy(() => import("@/ci/app"));
 /* LosOS Diagrams (src/lab/): its own chunk with the Rust core's
  * WebAssembly, fetched when /diagrams is first opened. */
 const Diagrams = React.lazy(() => import("@/lab/app"));
@@ -377,6 +386,9 @@ function Shell() {
             <Route path="/machines" element={<SettingsRoute pane="machines" />} />
             <Route path="/apps" element={<SettingsRoute pane="apps" />} />
             <Route path="/office" element={<Office hash={location.hash} />} />
+            <Route path="/apps/new" element={<AppEditorScreen />} />
+            <Route path="/apps/:id" element={<AppScreen />} />
+            <Route path="/apps/:id/edit" element={<AppEditorScreen />} />
             {/* nginx answers /mail with 404 off the shared side
                 (modules/containers.nix); the screen says so too if the box
                 leaves it while the page is open. */}
@@ -387,7 +399,12 @@ function Shell() {
             <Route path="/calendar" element={<Calendar />} />
             {/* nginx serves /chat/ only on the shared side, under chat's
                 own policy (modules/chat.nix); off it, /chat/ goes home. */}
+            <Route path="/chat/vouch" element={<ChatVouch />} />
             <Route path="/chat/*" element={<Chat />} />
+            {/* The same for Mesh CI. LosOS Git's checks link a run's job as
+                /ci/runs/<id>#job-<job>. */}
+            <Route path="/ci" element={<Ci />} />
+            <Route path="/ci/runs/:id" element={<Ci />} />
             <Route path="/diagrams/*" element={<Diagrams />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
@@ -416,6 +433,7 @@ function Shell() {
           <Tour />
         </React.Suspense>
       )}
+      {signedIn && <ReportDialogHost />}
       <Toaster />
     </div>
   );

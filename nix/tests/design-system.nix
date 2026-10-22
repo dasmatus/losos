@@ -28,7 +28,7 @@ pkgs.buildNpmPackage {
   # unpacked store copy, whose name is the path's basename ("design-system").
   src = ../../admin-ui/design-system;
   sourceRoot = "design-system/react";
-  npmDepsHash = "sha256-USiTmmm3mzEiTA/gb1YyEcwBHIqXk4cnIG5F/OKo3e8=";
+  npmDepsHash = "sha256-nVhfD1tarlxAGZe5ctWvcvKNw9W2qUa7vrV5Xi6Iok4=";
 
   # No postinstall scripts: esbuild's binary rides in via its platform
   # package, and playwright must not try to download browsers (no network).
@@ -38,7 +38,8 @@ pkgs.buildNpmPackage {
     PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers;
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
-    FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
+    # fonts.nix: the generic families mapped, or the pictures come out serif.
+    FONTCONFIG_FILE = import ./fonts.nix { inherit pkgs; };
   };
 
   # `npm run build` already ran (npmBuildScript default); the install phase

@@ -12,6 +12,7 @@ export default defineMessages({
   "shell.nav.mail": { en: "Mail", sk: "Pošta", de: "Mail" },
   "shell.nav.contacts": { en: "Contacts", sk: "Kontakty", de: "Kontakte" },
   "shell.nav.calendar": { en: "Calendar", sk: "Kalendár", de: "Kalender" },
+  "shell.nav.ci": { en: "Mesh CI", sk: "Mesh CI", de: "Mesh CI" },
   "shell.nav.settings": { en: "Settings", sk: "Nastavenia", de: "Einstellungen" },
   "shell.nav.label": { en: "Sections", sk: "Sekcie", de: "Bereiche" },
   "shell.nav.collapse": { en: "Collapse the sidebar", sk: "Zbaliť bočný panel", de: "Seitenleiste einklappen" },

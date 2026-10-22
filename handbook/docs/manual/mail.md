@@ -49,7 +49,11 @@ Mail asks you to sign in with your own account.
   sender's layout in a sandboxed frame with no scripts, no forms and no
   pictures from outside the box, so the sender cannot tell that you opened
   it. A message with no plain text opens in that frame straight away.
-- Attachments download to your computer. They never open inside the page.
+- Attachments download to your computer, and never open inside the page.
+  [Files and LosOS Cloud](#files-and-losos-cloud) says what else you can do
+  with them.
+- When the sender is on this box and the box has Chat, **Chat** and
+  **Call** in the message's toolbar start a conversation with them.
 - Right-click a message in the list to reply, flag, archive or move it
   without opening it; see
   [the right-click menu](admin-pages#the-right-click-menu).
@@ -91,6 +95,33 @@ server, so they work while Mail is closed and nobody is signed in.
 - Filters act on mail that arrives after they are saved; mail already in a
   folder stays where it is. Deleting a folder turns off a filter that only
   moved mail into it.
+
+## Files and LosOS Cloud
+
+- **Save to LosOS Cloud** beside an attachment puts it in the **Mail**
+  folder of your LosOS Cloud. **Open** then opens it in the app that edits
+  it: Notes for Markdown, the shared editor for other text files.
+- While writing, **Attach from this computer** and **Attach from LosOS
+  Cloud** add files, up to 20 MB in all. **Forward** keeps the message's
+  attachments.
+- In LosOS Cloud, right-click a file and choose **Send by mail** to start a
+  message with it attached.
+
+## Ask the box's AI
+
+**Summarise** in the message's toolbar asks the box's own language model
+about the open message. The model runs on the box, so the message and the
+answer stay there, and it reads only the message you asked about. It
+answers one question at a time; on a small box an answer can take a minute
+or two. Text in a message that tells the AI to do something counts as part
+of the message, not as your request.
+
+Questions about mail, files and notes go to Gemma 3 1B, a model for text.
+**Build with AI** keeps a model for code. The box downloads each model
+once, the first time it is online, and keeps only one in memory at a time.
+An administrator can pick another model under **Settings**, **Advanced**
+(`assistant.model`). Gemma is provided under and subject to the Gemma Terms
+of Use found at ai.google.dev/gemma/terms.
 
 ## What Mail does not do yet
 

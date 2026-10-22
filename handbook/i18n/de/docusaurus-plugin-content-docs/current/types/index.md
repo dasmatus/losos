@@ -35,10 +35,10 @@ virtuelle Maschinen.
 
 ## 3. Wie die Apps laufen \{#3-how-the-apps-run}
 
-[App-Modi](/types/app-modes.md) erklärt die beiden Modi. Standardmäßig laufen
-LosOS Cloud und LosOS Git als Workloads im eigenen kleinen Kubernetes-Cluster
-der Box. Sie können auch nativ auf dem Host laufen. Du siehst in beiden Fällen
-dieselben Apps.
+LosOS Cloud und LosOS Git laufen auf der Box selbst als Systemdienste. Apps,
+die du installierst, laufen auf rootless Podman oder, wenn sie als `shared`
+laufen, im eigenen kleinen Kubernetes-Cluster der Box. Die Einzelheiten
+stehen unter [Wo die Apps laufen](/types/app-modes.md).
 
 ## 4. Wofür die Festplatte da ist \{#4-what-the-disk-is-for}
 

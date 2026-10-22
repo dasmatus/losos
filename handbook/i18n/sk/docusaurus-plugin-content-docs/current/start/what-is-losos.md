@@ -14,14 +14,14 @@ ho už používate iba cez webový prehliadač.
 | Čo vidíte             | Čo to je                                                                                        |
 | --------------------- | ----------------------------------------------------------------------------------------------- |
 | **LosOS Cloud**       | Vaše súbory, fotky, kalendáre, kontakty a tabule. Aplikácie Nextcloud sa s ním synchronizujú. Na `/cloud/`. |
-| **LosOS Git**         | Vaše repozitáre kódu, predvolene zapnuté. Postavené na Forgejo. Na `/forgejo/`.                 |
+| **LosOS Git**         | Vaše repozitáre kódu, predvolene zapnuté. Vlastný Git server zariadenia. Na `/git/`.           |
 | **Admin stránky**     | Tu zariadenie nastavujete a staráte sa oň. Na `/`, dostupné iba z vašej lokálnej siete.         |
 | **Mesh**              | Voliteľné. Voľný disk a CPU požičané iným zariadeniam LosOS a požičané od nich.                  |
 | **Vzdialený prístup** | Voliteľný. Verejná adresa zariadenia cez edge server, bez otvoreného portu doma.                  |
 
 ## Čím sa líši od NAS \{#what-makes-it-different-from-a-nas}
 
-![Vnútri zariadenia: nginx sú jediné vstupné dvere a vedú k LosOS Cloud, LosOS Git a admin stránkam; za nimi riadiaci démon, vlastný cluster zariadenia s LosOS Git a agent mesh siete; pod nimi systémový disk v RAM a jeden šifrovaný zväzok.](@site/docs/img/box-architecture-sk.svg)
+![Vnútri zariadenia: nginx sú jediné vstupné dvere a vedú k LosOS Cloud, LosOS Git a admin stránkam; za nimi riadiaci démon a vedľa neho obe aplikácie, vlastný cluster zariadenia pre aplikácie inštalované ako shared a agent mesh siete; pod nimi systémový disk v RAM a jeden šifrovaný zväzok.](@site/docs/img/box-architecture-sk.svg)
 
 - **Zabudne všetko, čo nepotrebuje.** Zariadenie pri každom štarte zostaví
   svoj systémový disk úplne nanovo. Prežijú iba vaše dáta, nastavenia, ktoré

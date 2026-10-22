@@ -15,6 +15,9 @@
  * the message (modules/containers.nix). The plain text, when there is one,
  * is the default view; HTML is one button away. */
 
+import { Masked, useDetailsCheck } from "@/components/details";
+import { openReport } from "@/components/report-dialog";
+import { MailHtml } from "./pictures";
 import * as React from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
@@ -23,6 +26,7 @@ import {
   Attachment01Icon,
   Delete02Icon,
   FileEditIcon,
+  Flag02Icon,
   FavouriteIcon,
   Folder01Icon,
   InboxIcon,
@@ -68,12 +72,12 @@ import {
   getMailMessages,
   getProfiles,
   loadMe,
-  mailAttachmentUrl,
-  mailHtmlUrl,
+  mailFile,
   sendMail,
   signInUrl,
   updateMailFolder,
   type MailAddress,
+  type MailAttachment,
   type MailDraft,
   type MailFilter,
   type MailFolder,
@@ -91,8 +95,10 @@ import { PeopleField } from "@/contacts/suggest";
 import { readMailIntent, withoutMailIntent } from "@/lib/intents";
 import { cn } from "@/lib/utils";
 import { InviteCard, isCalendarFile } from "@/calendar/invite";
+import { ComposeAttachments, ReceivedAttachment, useAttached, useCloud } from "./attachments";
 import { DeleteFolderDialog, FolderDialog, explainFolder, tree, within, type Placed } from "./folders";
 import { FiltersDialog, blankFilter } from "./filters";
+import { PersonLinks } from "./together";
 
 /* How often the open folder and the counts are read again. */
 const REFRESH_MS = 30_000;
@@ -124,6 +130,10 @@ type Loading =
 
 /* Which half of the card a phone shows. */
 type Column = "list" | "message";
+
+/* How the composer opens: a draft, and the files it starts with (LosOS
+ * Cloud paths from another app's link, a forwarded message's own). */
+type ComposeStart = MailDraft & { cloud?: string[]; carry?: MailAttachment[] };
 
 /* What a drag carries: a message, or one of the person's own folders. */
 const DRAG_MESSAGE = "text/x-losos-mail-message";
@@ -201,12 +211,6 @@ function who(addresses: readonly MailAddress[]): string {
 
 function full(address: MailAddress): string {
   return address.name !== null ? `${address.name} <${address.email}>` : address.email;
-}
-
-function size(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} kB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /* Today: the time. This year: day and month. Before: the date. */
@@ -312,7 +316,7 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [open, setOpen] = React.useState<MailMessage | null>(null);
   const [openError, setOpenError] = React.useState<string | null>(null);
-  const [draft, setDraft] = React.useState<MailDraft | null>(null);
+  const [draft, setDraft] = React.useState<ComposeStart | null>(null);
   const [column, setColumn] = React.useState<Column>("list");
   const [folderDialog, setFolderDialog] = React.useState<
     { kind: "new"; parentId: string | null } | { kind: "rename"; folder: MailFolder } | null
@@ -324,19 +328,19 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
   const [dropAt, setDropAt] = React.useState<string | null>(null);
   const draggedFolder = React.useRef<string | null>(null);
 
-  const folder = home.mailboxes.find((f) => f.id === folderId) ?? inbox;
-  const placed = React.useMemo(() => tree(home.mailboxes), [home.mailboxes]);
-
-  // /mail?to=…&cc=…&subject=…&body=… (lib/intents.ts: a contact's Mail
-  // button, another app's hand-over) opens the composer filled in. The
-  // query goes once handled, so a reload does not open it again.
+  // Another app's link (lib/intents.ts composeMailHref): the composer,
+  // filled in, once; the address loses the parameters so a reload does
+  // not open it again.
   React.useEffect(() => {
     const search = new URLSearchParams(window.location.search);
     const intent = readMailIntent(search);
     if (intent === null) return;
-    setDraft({ to: intent.to, cc: intent.cc, subject: intent.subject, text: intent.body });
-    window.history.replaceState(window.history.state, "", window.location.pathname + withoutMailIntent(search));
+    setDraft({ to: intent.to, cc: intent.cc, subject: intent.subject, text: intent.body, cloud: intent.attach });
+    window.history.replaceState(window.history.state, "", window.location.pathname + withoutMailIntent(search) + window.location.hash);
   }, []);
+
+  const folder = home.mailboxes.find((f) => f.id === folderId) ?? inbox;
+  const placed = React.useMemo(() => tree(home.mailboxes), [home.mailboxes]);
 
   const refreshHome = React.useCallback(async () => {
     try {
@@ -606,7 +610,13 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
   };
 
   const forward = (m: MailMessage) => {
-    setDraft({ to: [], cc: [], subject: withPrefix(t("mail.compose.fwd"), m.subject), text: quoted(m, locale, t) });
+    setDraft({
+      to: [],
+      cc: [],
+      subject: withPrefix(t("mail.compose.fwd"), m.subject),
+      text: quoted(m, locale, t),
+      carry: m.attachments,
+    });
   };
 
   const faces = useFaces(home);
@@ -886,7 +896,7 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
           ) : (
             <Reader
               message={open}
-              address={home.address}
+              home={home}
               faces={faces}
               locale={locale}
               folders={placed}
@@ -1045,7 +1055,9 @@ function MessageRow({
         <span className={cn("truncate pl-4 text-sm", !m.seen && "font-medium")}>
           {m.subject || t("mail.noSubject")}
         </span>
-        <span className="line-clamp-1 pl-4 text-[13px] text-muted">{m.preview}</span>
+        <span className="line-clamp-1 pl-4 text-[13px] text-muted">
+          <Masked text={m.preview} still />
+        </span>
         </span>
       </button>
     </li>
@@ -1054,7 +1066,7 @@ function MessageRow({
 
 function Reader({
   message: m,
-  address,
+  home,
   faces,
   locale,
   folders,
@@ -1068,7 +1080,7 @@ function Reader({
   onDelete,
 }: {
   message: MailMessage;
-  address: string;
+  home: MailHome;
   faces: Faces;
   locale: string;
   folders: readonly Placed[];
@@ -1087,6 +1099,7 @@ function Reader({
   const [html, setHtml] = React.useState(m.text.trim() === "" && m.hasHtml);
   React.useEffect(() => setHtml(m.text.trim() === "" && m.hasHtml), [m.id, m.text, m.hasHtml]);
   const others = folders.filter(({ folder: f }) => !m.mailboxIds.includes(f.id) && f.role !== "drafts");
+  const cloud = useCloud();
 
   // Icon buttons name themselves in a tooltip, as the sidebar's rail does.
   const tool = (icon: IconSvgElement, label: string, onClick: () => void, pressed?: boolean) => (
@@ -1132,7 +1145,10 @@ function Reader({
             ))}
           </NativeSelect>
         )}
+        <PersonLinks message={m} home={home} />
         <span className="ml-auto" />
+        {!folders.some(({ folder: f }) => f.role === "sent" && m.mailboxIds.includes(f.id)) &&
+          tool(Flag02Icon, t("report.action"), () => openReport({ app: "mail", about: null, ref: m.id }))}
         {tool(Delete02Icon, t("mail.delete"), onDelete)}
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -1174,39 +1190,24 @@ function Reader({
           m.attachments
             .filter(isCalendarFile)
             .slice(0, 1)
-            .map((a) => <InviteCard key={a.blobId} attachment={a} address={address} subject={m.subject} />)}
+            .map((a) => <InviteCard key={a.blobId} attachment={a} address={home.address} subject={m.subject} />)}
         {m.attachments.length > 0 && (
           <ul className="flex flex-wrap gap-2 px-5 pb-3" aria-label={t("mail.attachments")}>
             {m.attachments.map((a) => (
-              <li key={a.blobId}>
-                <a
-                  href={mailAttachmentUrl(a)}
-                  download={a.name}
-                  className="flex items-center gap-2 rounded-control border border-line px-2.5 py-1.5 text-[13px] hover:bg-sunk"
-                >
-                  <HugeiconsIcon icon={Attachment01Icon} className="size-3.5 text-muted" />
-                  <span className="max-w-48 truncate">{a.name}</span>
-                  <span className="text-muted tabular-nums">{size(a.size)}</span>
-                </a>
-              </li>
+              <ReceivedAttachment key={a.blobId} attachment={a} cloud={cloud} />
             ))}
           </ul>
         )}
         {html ? (
-          // White, as senders lay their HTML out for it, and inset like a card
-          // so it does not read as a hole in the dark theme.
-          <div className="mx-5 mb-5 flex min-h-80 flex-1 overflow-hidden rounded-card border border-line">
-            <iframe
-              title={t("mail.htmlTitle")}
-              src={mailHtmlUrl(m.id)}
-              sandbox="allow-popups allow-popups-to-escape-sandbox"
-              referrerPolicy="no-referrer"
-              className="w-full flex-1 bg-white"
-            />
-          </div>
+          <MailHtml
+            id={m.id}
+            from={m.from[0]}
+            title={t("mail.htmlTitle")}
+            own={folders.some(({ folder: f }) => f.role === "sent" && m.mailboxIds.includes(f.id))}
+          />
         ) : (
           <pre className="border-t border-hair px-5 py-4 font-sans text-sm leading-relaxed break-words whitespace-pre-wrap">
-            {m.text !== "" ? m.text : m.preview}
+            <Masked text={m.text !== "" ? m.text : m.preview} />
           </pre>
         )}
       </div>
@@ -1221,7 +1222,7 @@ function Composer({
   onClose,
   onSent,
 }: {
-  initial: MailDraft;
+  initial: ComposeStart;
   from: string;
   people: readonly { address: string; label: string }[];
   onClose: () => void;
@@ -1235,6 +1236,8 @@ function Composer({
   const [sending, setSending] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [showCc, setShowCc] = React.useState(initial.cc.length > 0);
+  const detailsCheck = useDetailsCheck();
+  const attached = useAttached({ cloud: initial.cloud, carry: initial.carry });
   const list = (value: string) =>
     value
       .split(/[,;]/)
@@ -1245,9 +1248,16 @@ function Composer({
     event.preventDefault();
     setSending(true);
     setProblem(null);
+    // Card and ID numbers are asked about first; "Don't send" keeps the draft.
+    if (!(await detailsCheck.check(`${subject}\n${text}`))) {
+      setSending(false);
+      return;
+    }
     try {
       const draft: MailDraft = { to: list(to), cc: list(cc), subject, text };
       if (initial.inReplyTo !== undefined) draft.inReplyTo = initial.inReplyTo;
+      const files = attached.files.flatMap((a) => (a.file === null ? [] : [a.file]));
+      if (files.length > 0) draft.attachments = await Promise.all(files.map(mailFile));
       await sendMail(draft);
       onSent();
     } catch (error) {
@@ -1318,6 +1328,7 @@ function Composer({
               className="min-h-56 font-sans"
             />
           </Field>
+          <ComposeAttachments attached={attached} />
           <p className="text-[12px] text-muted">{t("mail.compose.local")}</p>
           {problem !== null && <Failed text={problem} />}
         </DialogBody>
@@ -1325,12 +1336,13 @@ function Composer({
           <Button type="button" variant="ghost" onClick={onClose} disabled={sending}>
             {t("mail.compose.discard")}
           </Button>
-          <Button type="submit" disabled={sending}>
+          <Button type="submit" disabled={sending || !attached.ready || attached.tooBig}>
             {sending ? <Spinner className="size-4" /> : <HugeiconsIcon icon={MailSend01Icon} className="size-4" />}
             {t("mail.compose.send")}
           </Button>
         </DialogFooter>
       </form>
+      {detailsCheck.dialog}
     </Dialog>
   );
 }

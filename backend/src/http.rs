@@ -82,6 +82,9 @@ struct Api {
     share: crate::cloud_share::Share,
     /// LosOS Chat's homeserver, as far as lososd runs it (`crate::chat`).
     chat: crate::chat::Chat,
+    /// The chat rooms lososd made for LosOS Git repositories
+    /// (`crate::git_rooms`).
+    git_rooms: crate::git_rooms::Rooms,
     /// LosOS Cloud runs here, and with it LosOS Contacts' address books
     /// and LosOS Calendar (`LOSOS_CLOUD_CONTACTS`, `modules/cloud.nix`).
     contacts: bool,
@@ -92,6 +95,8 @@ struct Api {
     /// Each person's picture, banner and the rest of their profile
     /// (`crate::profiles`).
     profiles: crate::profiles::Profiles,
+    /// Who sees which pictures blurred, and the age marks (`crate::pictures`).
+    pictures: crate::pictures::Pictures,
     /// Turns at decoding an upload (`IMAGE_JOBS`).
     image_jobs: tokio::sync::Semaphore,
     /// The plugins that answer every route not registered below
@@ -192,6 +197,10 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
         })
         .or_else(|| {
             e.downcast_ref::<crate::pins::Invalid>()
+                .map(ToString::to_string)
+        })
+        .or_else(|| {
+            e.downcast_ref::<crate::user_apps::Invalid>()
                 .map(ToString::to_string)
         })
         .or_else(|| {
@@ -609,7 +618,7 @@ fn gate_at(
 }
 
 /// The apps on the shared side that are live on this box now, by name:
-/// mail and chat run only while the box shares its storage, and the admin
+/// mail, chat and Mesh CI run only while the box shares its storage, and the admin
 /// UI draws their entries only when they are listed here. The spare key
 /// and an edge are nobody, so they get none.
 fn shared_apps(api: &Api) -> Vec<&'static str> {
@@ -627,6 +636,10 @@ fn shared_apps(api: &Api) -> Vec<&'static str> {
     if api.contacts {
         apps.push("contacts");
         apps.push("calendar");
+    }
+    // modules/ci.nix names the socket only while Mesh CI runs.
+    if std::env::var_os("LOSOS_CI_SOCKET").is_some() {
+        apps.push("ci");
     }
     apps
 }
@@ -773,6 +786,7 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
         let rules = api.login.rules();
         let now = crate::login::now();
         let profiles = api.profiles.all().unwrap_or_default();
+        let marks = api.pictures.marks().unwrap_or_default();
         let people: Vec<serde_json::Value> = people
             .into_iter()
             .map(|p| {
@@ -788,6 +802,7 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 row["picture"] = shown["picture"].clone();
                 row["accent"] = shown["accent"].clone();
                 row["banner"] = shown["banner"].clone();
+                row["age"] = serde_json::json!(marks.get(&p.name));
                 row
             })
             .collect();
@@ -967,8 +982,8 @@ async fn post_person_remove(
                         tracing::warn!(error = %e, person = %name, "a removed person's chat devices stayed signed in")
                     }
                 }
-                if let Err(e) = api.profiles.forget(&name) {
-                    tracing::warn!(error = ?e, "a removed person's profile stayed");
+                if let Err(e) = api.pictures.forget(&name) {
+                    tracing::warn!(error = ?e, "a removed person's picture settings stayed");
                 }
                 HttpResponse::Ok().json(serde_json::json!({ "name": name, "removed": true }))
             }
@@ -1411,6 +1426,194 @@ async fn delete_account_banner(api: web::Data<Api>, req: HttpRequest) -> HttpRes
     delete_own_image(&api, &req, crate::profiles::Kind::Banner)
 }
 
+// ── Pictures in Chat and Mail: blur, trusted people, age marks ───────────
+// (`crate::pictures`). The blur and the nudity warning are drawn by the
+// person's browser; these routes only keep and answer the settings.
+
+/// A refusal from the picture settings, with the word the page keys on.
+fn pictures_error(e: anyhow::Error) -> HttpResponse {
+    match e.downcast_ref::<crate::pictures::Refused>() {
+        Some(r) => HttpResponse::Forbidden()
+            .json(serde_json::json!({ "error": r.to_string(), "code": r.code() })),
+        None => error_response(e),
+    }
+}
+
+fn own_pictures(
+    who: &Principal,
+    f: impl FnOnce(&crate::people::Person) -> anyhow::Result<crate::pictures::Settings>,
+) -> HttpResponse {
+    let Some(person) = who.person() else {
+        return err(
+            StatusCode::CONFLICT,
+            "the spare key has no account of its own",
+        );
+    };
+    match f(person) {
+        Ok(s) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(crate::pictures::render(&s)),
+        Err(e) => pictures_error(e),
+    }
+}
+
+/// `GET /api/pictures`: the caller's own picture settings.
+async fn get_pictures(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/pictures", false, |who| {
+        own_pictures(who, |p| api.pictures.get(&p.name))
+    })
+}
+
+/// `POST /api/pictures`: `{"blur": "everyone|strangers|nobody",
+/// "nudityCheck": bool}`, each optional. 403 `adultRequired` or
+/// `childAccount` when the age mark does not allow it.
+async fn post_pictures(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded_as(&api, &req, "/api/pictures", true, |who| {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let change = match crate::pictures::parse_change(&doc) {
+            Ok(c) => c,
+            Err(why) => return err(StatusCode::BAD_REQUEST, &why),
+        };
+        own_pictures(who, |p| api.pictures.set(&p.name, &change))
+    })
+}
+
+/// `POST /api/pictures/trust`: `{"id": "@bo:box.local" | "bo@example.org",
+/// "trusted": bool}`. A trusted sender's pictures are never blurred.
+async fn post_pictures_trust(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/pictures/trust", true, |who| {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let (Some(id), Some(trusted)) = (
+            doc.get("id").and_then(serde_json::Value::as_str),
+            doc.get("trusted").and_then(serde_json::Value::as_bool),
+        ) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"id": "...", "trusted": true}"#,
+            );
+        };
+        own_pictures(who, |p| api.pictures.trust(&p.name, id, trusted))
+    })
+}
+
+/// `GET /api/pictures/sender?id=`: whether pictures from this chat ID or
+/// address show at once for the caller. `{"shown": bool, "because":
+/// "trusted|known|setting"|null, "nudityCheck": bool}`. "known" means on
+/// this box or in the caller's contacts, asked only for `strangers`.
+async fn get_pictures_sender(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let mut person = None;
+    let refused = guarded_as(&api, &req, "/api/pictures/sender", false, |who| {
+        match who.person() {
+            Some(p) => {
+                person = Some(p.clone());
+                HttpResponse::Ok().finish()
+            }
+            None => err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            ),
+        }
+    });
+    let Some(person) = person else {
+        return refused;
+    };
+    let Some(sender) = query_map(&req)
+        .get("id")
+        .and_then(|id| crate::pictures::valid_id(id))
+    else {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "id is a chat ID such as @ana:box.local or a mail address",
+        );
+    };
+    let worker = api.clone();
+    let answer = web::block(move || -> anyhow::Result<serde_json::Value> {
+        let settings = worker.pictures.get(&person.name)?;
+        let because = crate::pictures::shown_because(&settings, &sender, || {
+            sender_known(&worker, &person, &sender)
+        });
+        Ok(serde_json::json!({
+            "shown": because.is_some(),
+            "because": because,
+            "nudityCheck": settings.nudity_check(),
+        }))
+    })
+    .await;
+    match answer {
+        Ok(Ok(v)) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(v),
+        Ok(Err(e)) => error_response(e),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// Whether `sender` is a person on this box or in `person`'s contacts.
+fn sender_known(api: &Api, person: &crate::people::Person, sender: &str) -> bool {
+    let same = |s: &str| s.eq_ignore_ascii_case(sender);
+    if contacts_neighbours(api).iter().any(|n| {
+        n.name != person.name
+            && (n.matrix_id.as_deref().is_some_and(same) || n.email.as_deref().is_some_and(same))
+    }) {
+        return true;
+    }
+    if !api.contacts {
+        return false;
+    }
+    let login = if person.groups.iter().any(|g| g == crate::people::OWNER) {
+        crate::app_names::OWNER_ACCOUNT.to_string()
+    } else {
+        person.name.clone()
+    };
+    let want = if sender.starts_with('@') {
+        crate::cloud::contacts::Want::Matrix
+    } else {
+        crate::cloud::contacts::Want::Email
+    };
+    let book = crate::contacts::book_matches(&mut api.backend.clone(), &login, sender, want);
+    book.known_matrix_ids.iter().any(|id| same(id))
+        || book.matches.iter().any(|r| {
+            r.suggestion.matrix_id.as_deref().is_some_and(same)
+                || r.suggestion.emails.iter().any(|e| same(e))
+        })
+}
+
+/// `POST /api/people/age`: `{"name", "age": "adult" | "child" | null}`.
+/// An administrator marks a person as an adult (who may then show every
+/// picture at once) or as a child (whose nudity warning stays on).
+async fn post_people_age(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/people/age", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let name = doc.get("name").and_then(serde_json::Value::as_str);
+        let age = match doc.get("age") {
+            Some(serde_json::Value::Null) => Some(None),
+            Some(v) => v.as_str().and_then(crate::pictures::Age::parse).map(Some),
+            None => None,
+        };
+        let (Some(name), Some(age)) = (name, age) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"name": "...", "age": "adult" | "child" | null}"#,
+            );
+        };
+        match api.people.get(name) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return error_response(crate::people::Refused::Unknown(name.to_string()).into())
+            }
+            Err(e) => return error_response(e),
+        }
+        match api.pictures.set_age(name, age) {
+            Ok(s) => HttpResponse::Ok().json(serde_json::json!({ "name": name, "age": s.age })),
+            Err(e) => pictures_error(e),
+        }
+    })
+}
+
 /// `POST /api/people/profile/clear`: `{"name", "kind": "picture|banner"}`.
 /// An administrator takes down a picture someone else put up. The rest of
 /// the profile stays theirs.
@@ -1819,6 +2022,212 @@ async fn post_chat_session(
             })),
         Ok(Err(e)) => chat_refused(&e),
         Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// `POST /api/chat/openid`: a Matrix OpenID token for the person LosOS Login
+/// signed in, for another box to learn their chat address from
+/// (`crate::chat::Chat::openid`). The chat page's "tell that box who you
+/// are" asks for it; never the spare key or the edge.
+async fn post_chat_openid(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let person = match chat_person(&api, &req, "/api/chat/openid", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let api = api.clone();
+    match web::block(move || api.chat.openid(&person)).await {
+        Ok(Ok(token)) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(token),
+        Ok(Err(e)) => chat_refused(&e),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// `POST /api/chat/git-room` `{"owner": "...", "repo": "..."}`: give a
+/// LosOS Git repository a chat room (`crate::git_rooms`). Only an
+/// administrator of the repository, asked of LosOS Git as that person. A
+/// repository that has its room gets the same one back.
+async fn post_chat_git_room(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let person = match chat_person(&api, &req, "/api/chat/git-room", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let field = |k: &str| {
+        doc.get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let (owner, repo) = (field("owner"), field("repo"));
+    if !crate::git_rooms::plain_name(&owner) || !crate::git_rooms::plain_name(&repo) {
+        return err(
+            StatusCode::BAD_REQUEST,
+            r#"body must be JSON: {"owner": "...", "repo": "..."}"#,
+        );
+    }
+    if !api.chat.live() {
+        return chat_refused(&crate::chat::ChatError::Off);
+    }
+    let api = api.clone();
+    let made = web::block(move || git_room(&api, &person, &owner, &repo)).await;
+    match made {
+        Ok(Ok(room)) => HttpResponse::Ok().json(serde_json::json!({ "room": room })),
+        Ok(Err((status, message))) => err(status, &message),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+fn git_room(
+    api: &Api,
+    person: &crate::people::Person,
+    owner: &str,
+    repo: &str,
+) -> Result<String, (StatusCode, String)> {
+    use crate::config_repo::{classify, Answer, GitOp};
+    use crate::losos::Losos;
+    let login = if person.groups.iter().any(|g| g == crate::people::OWNER) {
+        crate::app_names::OWNER_ACCOUNT.to_string()
+    } else {
+        person.name.clone()
+    };
+    let not_up = |e: anyhow::Error| {
+        tracing::warn!(error = ?e, "LosOS Git for a chat room");
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "LosOS Git is not answering; try again in a moment.".to_string(),
+        )
+    };
+    let mut backend = api.backend.clone();
+    let (status, body) = backend
+        .git_request(&GitOp::RepoAs {
+            login: login.clone(),
+            owner: owner.to_string(),
+            name: repo.to_string(),
+        })
+        .map_err(not_up)?;
+    let doc = match classify(status, &body) {
+        Answer::Ok(doc) => doc,
+        Answer::Missing => {
+            return Err((StatusCode::NOT_FOUND, "No such repository.".to_string()));
+        }
+        Answer::Exists | Answer::Refused { .. } => {
+            return Err((
+                StatusCode::BAD_GATEWAY,
+                format!("LosOS Git answered {status}."),
+            ));
+        }
+    };
+    if doc["permissions"]["admin"] != serde_json::json!(true) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Only an administrator of the repository can give it a chat room.".to_string(),
+        ));
+    }
+    let linked = doc["chat_room"].as_str().unwrap_or("");
+    let room = match api.git_rooms.get(owner, repo) {
+        Some(room) if room == linked => return Ok(room),
+        // Made before, unlinked since: link the same room again.
+        Some(room) => room,
+        None => {
+            let server = api.chat.server_name().unwrap_or_default();
+            let made = api.chat.git_room(
+                person,
+                &crate::chat::RepoRoom {
+                    name: repo.to_string(),
+                    url: format!("https://{server}/git/{owner}/{repo}"),
+                    public: doc["visibility"] == "public",
+                },
+            );
+            let room = made.map_err(|e| {
+                (
+                    StatusCode::from_u16(e.status()).unwrap_or(StatusCode::BAD_GATEWAY),
+                    e.to_string(),
+                )
+            })?;
+            api.git_rooms.set(owner, repo, &room).map_err(|e| {
+                tracing::warn!(error = ?e, "the chat room of a repository was not kept");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "The room was made but could not be kept.".to_string(),
+                )
+            })?;
+            room
+        }
+    };
+    let (status, body) = backend
+        .git_request(&GitOp::SetChatRoom {
+            login,
+            owner: owner.to_string(),
+            name: repo.to_string(),
+            room: room.clone(),
+        })
+        .map_err(not_up)?;
+    match classify(status, &body) {
+        Answer::Ok(_) => Ok(room),
+        _ => Err((
+            StatusCode::BAD_GATEWAY,
+            format!("LosOS Git would not link the room ({status})."),
+        )),
+    }
+}
+
+/// Take LosOS Git's events and post those of a repository with a room
+/// there (`crate::git_rooms`). Only where chat runs and `modules/chat.nix`
+/// names the socket.
+fn listen_for_git_events(api: &web::Data<Api>) {
+    let Some(path) = std::env::var_os("LOSOS_GIT_CHAT_EVENTS_SOCKET") else {
+        return;
+    };
+    if !api.chat.live() {
+        return;
+    }
+    let api = api.clone();
+    let started = crate::git_rooms::listen(std::path::Path::new(&path), move |event| {
+        git_event(&api, &event);
+    });
+    if let Err(e) = started {
+        tracing::warn!(error = ?e, "LosOS Git's events will not reach chat rooms");
+    }
+}
+
+fn git_event(api: &Api, event: &serde_json::Value) {
+    let text = |k: &str| {
+        event
+            .get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+    };
+    let room = text("chatRoom");
+    if room.is_empty() || api.git_rooms.get(text("owner"), text("repo")).as_deref() != Some(room) {
+        return;
+    }
+    let Some(server) = api.chat.server_name() else {
+        return;
+    };
+    let owner = api
+        .people
+        .list()
+        .ok()
+        .and_then(|all| {
+            all.into_iter()
+                .find(|p| p.groups.iter().any(|g| g == crate::people::OWNER))
+        })
+        .map(|p| format!("@{}:{server}", p.name))
+        .unwrap_or_default();
+    let who = |login: &str| {
+        crate::git_rooms::address(login, server, crate::app_names::OWNER_ACCOUNT, &owner)
+    };
+    let Some(notice) = crate::git_rooms::notice(event, &format!("https://{server}"), &who) else {
+        return;
+    };
+    if let Err(e) = api.chat.git_notice(room, &notice) {
+        tracing::warn!(error = %e, room, "a LosOS Git notice was not posted");
     }
 }
 
@@ -2588,7 +2997,10 @@ fn post_device_inner(api: &Api, kind: &str, client: &str, body: &[u8]) -> HttpRe
     if password_ok {
         api.passwords.record_success(client);
     } else {
-        api.passwords.record_failure(client, now);
+        // Counted from when the answer is known: the argon2 check takes a
+        // while, and a window started before it could end before the reply.
+        api.passwords
+            .record_failure(client, std::time::Instant::now());
     }
     let result = match kind {
         "cloud" => api
@@ -2596,7 +3008,7 @@ fn post_device_inner(api: &Api, kind: &str, client: &str, body: &[u8]) -> HttpRe
             .serialized(|l| crate::losos::cmd_device_cloud(l, password_ok, device)),
         _ => api
             .backend
-            .serialized(|l| crate::losos::cmd_device_git(l, password, password_ok, device)),
+            .serialized(|l| crate::losos::cmd_device_git(l, password_ok, device)),
     };
     match result {
         Ok(v) => HttpResponse::Ok().json(v),
@@ -2987,13 +3399,29 @@ async fn relayed(
     mutating: bool,
     work: impl FnOnce(&mut IoLosos) -> anyhow::Result<serde_json::Value> + Send + 'static,
 ) -> HttpResponse {
+    relayed_then(api, req, route, mutating, work, |_, _, _| {}).await
+}
+
+/// [`relayed`], with `then` shown the caller and the edge's answer before
+/// it goes back.
+async fn relayed_then(
+    api: &web::Data<Api>,
+    req: &HttpRequest,
+    route: &str,
+    mutating: bool,
+    work: impl FnOnce(&mut IoLosos) -> anyhow::Result<serde_json::Value> + Send + 'static,
+    then: impl FnOnce(&Api, &Principal, &serde_json::Value),
+) -> HttpResponse {
     let who = match gate_at(api, req, route, None, mutating) {
         Ok(who) => who,
         Err(refused) => return *refused,
     };
     let worker = api.clone();
     let resp = match web::block(move || work(&mut worker.backend.clone())).await {
-        Ok(Ok(v)) => HttpResponse::Ok().json(v),
+        Ok(Ok(v)) => {
+            then(api, &who, &v);
+            HttpResponse::Ok().json(v)
+        }
         Ok(Err(e)) => error_response(e),
         Err(e) => {
             tracing::error!(error = %e, "the edge call did not finish");
@@ -3180,33 +3608,79 @@ async fn post_market_coin_pay(
 }
 
 /// `POST /api/market/onramp` — `{"address","euros"}`: a Binance order for
-/// USDC on Base to this box's wallet, with Binance's checkout link.
+/// USDC on Base to this box's wallet, with Binance's checkout link. The
+/// order is noted against the person who started it, so a finished
+/// purchase can mark them as an adult (`crate::pictures`).
 async fn post_market_onramp(
     api: web::Data<Api>,
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    post_market(api, req, body, "/api/market/onramp", |d| {
-        Some(crate::market::Op::Onramp {
-            address: field_str(d, "address")?,
-            euros: field_str(d, "euros")?,
-        })
-    })
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let (Some(address), Some(euros)) = (field_str(&doc, "address"), field_str(&doc, "euros"))
+    else {
+        return post_market(api, req, body, "/api/market/onramp", |_| None).await;
+    };
+    let op = crate::market::Op::Onramp { address, euros };
+    relayed_then(
+        &api,
+        &req,
+        "/api/market/onramp",
+        true,
+        move |b| crate::losos::cmd_market_op(b, &op),
+        |api, who, order| {
+            let (Some(person), Some(id)) = (who.person(), order_id_of(order)) else {
+                return;
+            };
+            if let Err(e) = api.pictures.order_started(&person.name, id) {
+                tracing::warn!(error = ?e, "a Binance order was not noted for the adult mark");
+            }
+        },
+    )
     .await
 }
 
 /// `POST /api/market/onramp/status` — `{"order_id"}`: where that order is.
+/// A finished purchase marks whoever started it as an adult.
 async fn post_market_onramp_status(
     api: web::Data<Api>,
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    post_market(api, req, body, "/api/market/onramp/status", |d| {
-        Some(crate::market::Op::OnrampStatus {
-            order_id: field_str(d, "order_id")?,
-        })
-    })
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let Some(order_id) = field_str(&doc, "order_id") else {
+        return post_market(api, req, body, "/api/market/onramp/status", |_| None).await;
+    };
+    let op = crate::market::Op::OnrampStatus { order_id };
+    relayed_then(
+        &api,
+        &req,
+        "/api/market/onramp/status",
+        true,
+        move |b| crate::losos::cmd_market_op(b, &op),
+        |api, _, order| {
+            let (Some(id), Some(stage)) = (
+                order_id_of(order),
+                order.get("stage").and_then(serde_json::Value::as_str),
+            ) else {
+                return;
+            };
+            match api.pictures.order_stage(id, stage) {
+                Ok(Some(name)) => tracing::info!(person = %name, "marked as an adult by a finished Binance purchase"),
+                Ok(None) => {}
+                Err(e) => tracing::warn!(error = ?e, "a finished Binance order did not reach the adult mark"),
+            }
+        },
+    )
     .await
+}
+
+/// The order ID in the edge's answer about a Binance order, when it is one.
+fn order_id_of(order: &serde_json::Value) -> Option<&str> {
+    order
+        .get("order_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|id| id.len() == 32 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
 }
 
 async fn post_market_rpc(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
@@ -3410,9 +3884,10 @@ fn builder_refused(r: &crate::builder::Refused) -> HttpResponse {
     )
 }
 
-/// `POST /api/builder/builds` `{"prompt": ..., "base"?: [files], "lang"?: ...}`
-/// — start a build. `base` is the widget to change, as the files the editor
-/// holds; a single string is read as its `index.html`.
+/// `POST /api/builder/builds` `{"prompt": ..., "kind"?: "widget"|"app",
+/// "base"?: ..., "lang"?: ...}` — start a build. `base` is the widget to
+/// change, as the files the editor holds (a single string is read as its
+/// `index.html`), or the source of the app to change.
 async fn post_builder_start(
     api: web::Data<Api>,
     req: HttpRequest,
@@ -3437,6 +3912,25 @@ async fn get_builder_build(
         match api.builder.build(&path) {
             Some(build) => HttpResponse::Ok().json(build),
             None => err(StatusCode::NOT_FOUND, "no such build"),
+        }
+    })
+}
+
+/// `POST /api/builder/builds/{id}/tried` — what the page found when it
+/// tried the app the build asked it to (`crate::builder::TryReport`).
+async fn post_builder_tried(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/builder/builds", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::builder::parse_report(&doc)
+            .and_then(|(trial, report)| api.builder.tried(&path, &trial, report))
+        {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(r) => builder_refused(&r),
         }
     })
 }
@@ -3468,6 +3962,14 @@ async fn delete_builder_build(
 /// message was read. Links open in a new tab, which is all
 /// `allow-popups` is for.
 pub const MAIL_FRAME_CSP: &str = "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
+
+/// [`MAIL_FRAME_CSP`] for a message whose pictures stay hidden: no picture
+/// of any kind loads, in an `<img>` or in its CSS (`crate::pictures`).
+pub const MAIL_FRAME_CSP_NO_PICTURES: &str = "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
+
+/// Drawn where a hidden picture would be, so the layout keeps its holes
+/// instead of broken-image icons.
+const MAIL_HIDDEN_PICTURE_STYLE: &str = "<style>img{color:transparent;background:repeating-linear-gradient(45deg,#8881 0 8px,#8882 8px 16px);min-width:24px;min-height:24px}</style>";
 
 fn mail_refused(r: &crate::mail::Refused) -> HttpResponse {
     err(
@@ -3593,13 +4095,26 @@ async fn get_mail_html(
         "/api/mail/messages/html",
         false,
         |who| match mail_person(&api, who).map(|p| api.mail.html(p, &path)) {
-            Ok(Ok(html)) => HttpResponse::Ok()
-                .content_type("text/html; charset=utf-8")
-                .insert_header(("Content-Security-Policy", MAIL_FRAME_CSP))
-                .insert_header(("X-Content-Type-Options", "nosniff"))
-                .insert_header(("Referrer-Policy", "no-referrer"))
-                .insert_header(("Cache-Control", "private, no-store"))
-                .body(html),
+            Ok(Ok(html)) => {
+                // `?pictures=1` once the person chose to see them; hidden
+                // otherwise, whatever the message says.
+                let shown = query_map(&req).get("pictures").is_some_and(|v| v == "1");
+                let (csp, html) = if shown {
+                    (MAIL_FRAME_CSP, html)
+                } else {
+                    (
+                        MAIL_FRAME_CSP_NO_PICTURES,
+                        format!("{MAIL_HIDDEN_PICTURE_STYLE}{html}"),
+                    )
+                };
+                HttpResponse::Ok()
+                    .content_type("text/html; charset=utf-8")
+                    .insert_header(("Content-Security-Policy", csp))
+                    .insert_header(("X-Content-Type-Options", "nosniff"))
+                    .insert_header(("Referrer-Policy", "no-referrer"))
+                    .insert_header(("Cache-Control", "private, no-store"))
+                    .body(html)
+            }
             Ok(Err(r)) => mail_refused(&r),
             Err(resp) => *resp,
         },
@@ -4105,6 +4620,142 @@ async fn plugin_route(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -
     )
 }
 
+// ── The owner's own apps ──────────────────────────────────────────────────
+// Apps the builder wrote or the owner typed (`crate::user_apps`), and the
+// data each one keeps. Making and changing them is the apps section's;
+// opening one and its data is anyone's who is signed in, since the people
+// on a box share its apps the way a family shares a list.
+
+fn user_app_missing() -> HttpResponse {
+    err(
+        StatusCode::NOT_FOUND,
+        "there is no app with that id on this box",
+    )
+}
+
+/// `GET /api/user-apps`.
+async fn get_user_apps(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps", false, || {
+        run(&api, crate::user_apps::cmd_list)
+    })
+}
+
+/// `GET /api/user-apps/{id}` — one app, with its source and its script.
+async fn get_user_app(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps", false, || {
+        match api
+            .backend
+            .serialized(|b| crate::user_apps::cmd_get(b, &id))
+        {
+            Ok(Some(v)) => HttpResponse::Ok().json(v),
+            Ok(None) => user_app_missing(),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/user-apps` `{"id"?, "name", "summary"?, "prompt"?, "source"}`
+/// — add an app, or save a new version of one.
+async fn post_user_app(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::user_apps::parse_draft(&doc) {
+            Some(draft) => run(&api, |b| {
+                let saved = crate::user_apps::cmd_put(b, &draft);
+                if saved.is_ok() {
+                    crate::config_repo::nudge();
+                }
+                saved
+            }),
+            None => err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"id": "..." (optional), "name": "...", "source": "..."}"#,
+            ),
+        }
+    })
+}
+
+/// `POST /api/user-apps/check` `{"source"}` — check and compile, saving
+/// nothing: the code editor's preview.
+async fn post_user_app_check(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps/check", false, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match doc.get("source").and_then(serde_json::Value::as_str) {
+            Some(source) => match crate::user_apps::cmd_check(source) {
+                Ok(v) => HttpResponse::Ok().json(v),
+                Err(e) => error_response(e),
+            },
+            None => err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"source": "..."}"#,
+            ),
+        }
+    })
+}
+
+/// `DELETE /api/user-apps/{id}` — the app and its data.
+async fn delete_user_app(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps", true, || {
+        run(&api, |b| crate::user_apps::cmd_delete(b, &id))
+    })
+}
+
+/// `GET /api/user-apps/{id}/data` — what the app keeps.
+async fn get_user_app_data(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps/data", false, || {
+        match api
+            .backend
+            .serialized(|b| crate::user_apps::cmd_data(b, &id))
+        {
+            Ok(Some(v)) => HttpResponse::Ok().json(v),
+            Ok(None) => user_app_missing(),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/user-apps/{id}/data` `{"op": ...}` — one write to it.
+async fn post_user_app_data(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps/data", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let Some(op) = crate::user_apps::parse_op(&doc) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"op": "add"|"update"|"remove"|"replace"|"set", ...}"#,
+            );
+        };
+        match api
+            .backend
+            .serialized(|b| crate::user_apps::cmd_data_op(b, &id, &op))
+        {
+            Ok(Some(v)) => HttpResponse::Ok().json(v),
+            Ok(None) => user_app_missing(),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
 // ── The pin picker ────────────────────────────────────────────────────────
 // The two lists the sidebar's picker pins from, LosOS Cloud's files and
 // LosOS Git's repositories (`crate::pins`). The pins themselves are the
@@ -4159,7 +4810,7 @@ async fn get_site(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 }
 
 /// `POST /api/site` — `{"set": {"cloud.trashDays": "30",
-/// "forgejo.site.landingPage": null}}`: each value a Nix literal, or null to
+/// "git.site.pushCreate": null}}`: each value a Nix literal, or null to
 /// go back to the default. Only those lines of `overrides.nix` change; the
 /// rest is an apply.
 async fn post_site(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
@@ -4615,10 +5266,12 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             login,
             share: crate::cloud_share::Share::default(),
             chat: crate::chat::Chat::from_env(),
+            git_rooms: crate::git_rooms::Rooms::from_env(),
             contacts: std::env::var("LOSOS_CLOUD_CONTACTS").is_ok_and(|v| v == "1"),
             mail: crate::mail::Mail::from_env(),
             credentials: crate::credentials::Credentials::from_env(),
             profiles: crate::profiles::Profiles::from_env(),
+            pictures: crate::pictures::Pictures::from_env(),
             image_jobs: tokio::sync::Semaphore::new(IMAGE_JOBS),
             plugins,
         });
@@ -4630,6 +5283,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             .max(crate::profiles::MAX_UPLOAD_BYTES)
             .max(1024 * 1024);
         owner_in_owner_group(&api);
+        listen_for_git_events(&api);
         start_login_marks(api.clone());
         sync_names_later(api.clone(), None);
         let server = HttpServer::new(move || {
@@ -4702,6 +5356,11 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/windows", web::get().to(get_windows))
                 .route("/api/windows", web::post().to(post_windows))
                 .route("/api/account/profile", web::post().to(post_account_profile))
+                .route("/api/pictures", web::get().to(get_pictures))
+                .route("/api/pictures", web::post().to(post_pictures))
+                .route("/api/pictures/trust", web::post().to(post_pictures_trust))
+                .route("/api/pictures/sender", web::get().to(get_pictures_sender))
+                .route("/api/people/age", web::post().to(post_people_age))
                 .route("/api/account/picture", web::put().to(put_account_picture))
                 .route(
                     "/api/account/picture",
@@ -4753,6 +5412,16 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                     web::post().to(post_market_coin_pay),
                 )
                 .route("/api/market/rpc", web::post().to(post_market_rpc))
+                .route("/api/user-apps", web::get().to(get_user_apps))
+                .route("/api/user-apps", web::post().to(post_user_app))
+                .route("/api/user-apps/check", web::post().to(post_user_app_check))
+                .route("/api/user-apps/{id}", web::get().to(get_user_app))
+                .route("/api/user-apps/{id}", web::delete().to(delete_user_app))
+                .route("/api/user-apps/{id}/data", web::get().to(get_user_app_data))
+                .route(
+                    "/api/user-apps/{id}/data",
+                    web::post().to(post_user_app_data),
+                )
                 .route("/api/market/onramp", web::post().to(post_market_onramp))
                 .route(
                     "/api/market/onramp/status",
@@ -4778,6 +5447,10 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route(
                     "/api/builder/builds/{id}",
                     web::delete().to(delete_builder_build),
+                )
+                .route(
+                    "/api/builder/builds/{id}/tried",
+                    web::post().to(post_builder_tried),
                 )
                 .route("/api/vms", web::get().to(get_vms))
                 .route("/api/vms/orders", web::post().to(post_vm_order))
@@ -4832,6 +5505,8 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/chat", web::get().to(get_chat))
                 .route("/api/chat/session", web::post().to(post_chat_session))
                 .route("/api/chat/people", web::get().to(get_chat_people))
+                .route("/api/chat/openid", web::post().to(post_chat_openid))
+                .route("/api/chat/git-room", web::post().to(post_chat_git_room))
                 .route("/api/contacts/suggest", web::get().to(get_contacts_suggest))
                 .route("/internal/chat/authz", web::get().to(get_chat_authz))
                 .route(

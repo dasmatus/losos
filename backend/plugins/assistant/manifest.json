@@ -1,0 +1,17 @@
+{
+  "name": "assistant",
+  "description": "Questions to the box's own language model about what the person shows it.",
+  "routes": [
+    { "method": "GET", "path": "/api/assistant" },
+    { "method": "POST", "path": "/api/assistant/asks", "maxBody": 262144 },
+    { "method": "GET", "path": "/api/assistant/asks/{id}" },
+    { "method": "DELETE", "path": "/api/assistant/asks/{id}" }
+  ],
+  "http": ["${LOSOS_ASSISTANT_URL:-http://127.0.0.1:11434}"],
+  "limits": { "memoryMiB": 32, "timeoutSecs": 10, "jobSecs": 1800, "jobs": 1 },
+  "config": {
+    "url": "${LOSOS_ASSISTANT_URL:-}",
+    "model": "${LOSOS_ASSISTANT_MODEL:-gemma3:1b}",
+    "context": "${LOSOS_ASSISTANT_CONTEXT:-8192}"
+  }
+}

@@ -21,7 +21,7 @@
 # ── The constraint that shapes everything below ──────────────────────────────
 #
 # This box runs two Kubernetes instances (modules/cluster.nix): a local k3s
-# server for its own Forgejo and apps, and an rke2 agent that joins the
+# server for the apps of its shared side, and an rke2 agent that joins the
 # edge for Longhorn and mesh compute. Published hardening baselines are written
 # for machines that do not run a container runtime, and a large fraction of
 # what they recommend breaks one. Every such setting is called out by name here

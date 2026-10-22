@@ -79,6 +79,43 @@ derselben Kopie. Jede sieht den Cursor und den Namen der anderen, und jede
 Niemand wartet, bis jemand fertig ist, und ein Speichern behält die
 Änderungen aller.
 
+## Markdown-Dokumente und Präsentationen \{#markdown-documents-and-presentations}
+
+**Neues Dokument** und **Neue Präsentation** in der Dateileiste von LosOS
+Cloud legen in dem Ordner, in dem du gerade bist, eine Markdown-Datei mit
+dem Namen *Unbenanntes Dokument* oder *Unbenannte Präsentation* an und
+öffnen sie in LosOS Office. Klick oben auf den Namen, um ihn zu ändern.
+Markdown-Dateien gehören LosOS selbst, sie öffnen sich also auch, wenn
+Collabora aus ist, und jede `.md`-Datei bietet im Rechtsklickmenü **In
+LosOS Office öffnen** an.
+
+Die Leiste über dem Text hat einen Knopf für alles, was Markdown schreiben
+kann, in der Form, die GitHub und Obsidian beide lesen: Überschriften,
+fett, kursiv, durchgestrichen, hervorgehoben, Code, tief- und hochgestellt,
+Tasten, versteckte Kommentare, Aufzählungen, nummerierte Listen und
+Aufgabenlisten, Zitate, Codeblöcke, Formeln in der Zeile oder für sich,
+Tabellen, eingeklappte Abschnitte, Trennlinien, Hinweisboxen, Links,
+Bilder, Links auf Notizen und eingebettete Notizen, Tags, Sprungziele für
+Blöcke, Fußnoten und Eigenschaften. Markier zuerst etwas Text, dann setzt
+der Knopf die Auszeichnung; ein zweiter Druck nimmt sie wieder weg. **Strg
+B**, **Strg I**, **Strg K** und **Strg E** gehen auch.
+
+Ein Dokument schreibst du links und liest es rechts, so gezeichnet wie in
+Notizen. **Schreiben** und **Lesen** geben einer Seite die ganze Breite.
+Links auf andere Notizen und Bilder werden im selben Ordner gesucht oder im
+Obsidian-Vault, in dem die Datei liegt. Geschrieben wird gemeinsam wie in
+jeder Textdatei von LosOS Cloud: alle in der Datei tippen zusammen, und die
+Box speichert kurz nachdem das Tippen aufhört.
+
+Eine Präsentation ist eine Markdown-Datei mit `slides: true` in den
+Eigenschaften. Jede Zeile `---` beginnt eine neue Folie. Jede Folie ist
+gleich aufgebaut: der Text in der Mitte, zentriert, und die Bilder rechts.
+Links stehen die Folien untereinander, rechts siehst du die Folie, in der
+der Cursor steht, so wie sie aussehen wird. **Präsentieren** spielt sie im
+Vollbild ab; die Pfeiltasten, die Leertaste und Bild ab gehen weiter, Escape
+beendet sie. Der PDF-Knopf druckt ein Dokument als Seiten und eine
+Präsentation mit einer Folie pro Seite.
+
 ## Was privat bleibt \{#what-stays-private}
 
 Der Editor läuft auf der Box und liest das Dokument direkt von ihrer

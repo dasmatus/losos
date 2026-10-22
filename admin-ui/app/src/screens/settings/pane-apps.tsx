@@ -23,7 +23,6 @@ import {
 import { HelpLink } from "@/components/ui/help-link";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { NativeSelect } from "@/components/ui/native-select";
 import {
   Table,
   TableBody,
@@ -36,17 +35,18 @@ import { useWaitGame } from "@/components/play-while-waiting";
 import { Spinner } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { t as translate, type MessageKey } from "@/lib/i18n";
-import { Rich, useT } from "@/lib/i18n-react";
-import type { InstalledApp, ServiceMode } from "@/lib/api";
+import { useT } from "@/lib/i18n-react";
+import type { InstalledApp } from "@/lib/api";
 import { useCatalogue, type CatalogueApp, type CatalogueState } from "./catalogue";
 import { InstallDialog, type InstallTarget } from "./install-dialog";
 import { useInstalledApps } from "./use-installed-apps";
 import { usePins, useSavePins } from "@/components/pins-dialog";
 import { isPinned, toggled } from "@/lib/pins";
-import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
+import { Group, GroupCaption, GroupTitle, PaneSection, StackRow } from "./rows";
 import { hasSiteSettings, SiteSettings } from "./site-settings";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import type { SettingsForm } from "./use-settings-form";
+import { YourApps } from "@/apps/your-apps";
 
 /* The apps this box runs, and where to look for more.
  *
@@ -58,22 +58,9 @@ import type { SettingsForm } from "./use-settings-form";
  * buried in a tooltip.
  */
 
-/** The wire spells these `native` and `container`; the reader never sees
- *  either word. The labels are what the choice actually costs them. */
-const MODE_LABEL: Record<ServiceMode, MessageKey> = {
-  native: "panes.apps.mode.native",
-  container: "panes.apps.mode.container",
-};
-
-function isServiceMode(value: string): value is ServiceMode {
-  return value === "native" || value === "container";
-}
-
 export function AppsPane({ form }: { form: SettingsForm }) {
   const t = useT();
-  const codeId = React.useId();
 
-  const draft = form.draft;
   const disabled = form.locked || !form.ready;
   const location = useLocation();
   const showCloud = hasSiteSettings(form, "cloud");
@@ -86,32 +73,6 @@ export function AppsPane({ form }: { form: SettingsForm }) {
 
   return (
     <>
-      <PaneSection>
-        <GroupTitle>{t("panes.apps.onThisBox")}</GroupTitle>
-        <Group>
-          <AppModeRow
-            id={codeId}
-            title={t("panes.apps.code.title")}
-            detail={t("panes.apps.code.detail")}
-            value={draft?.forgejoMode ?? "container"}
-            disabled={disabled}
-            onChange={(mode) => form.set("forgejoMode", mode)}
-            last
-          />
-        </Group>
-        <GroupCaption>
-          <Rich
-            k="panes.apps.modeCaption"
-            vars={{
-              kept: (
-                <strong className="font-medium text-ink">{t(MODE_LABEL.container)}</strong>
-              ),
-              native: <strong className="font-medium text-ink">{t(MODE_LABEL.native)}</strong>,
-            }}
-          />
-        </GroupCaption>
-      </PaneSection>
-
       {/* LosOS Cloud and LosOS Git, each folded in an accordion of its own:
           each app's settings for everyone, the ones its own admin pages
           would otherwise hold. */}
@@ -139,6 +100,8 @@ export function AppsPane({ form }: { form: SettingsForm }) {
           )}
         </Accordion>
       )}
+
+      <YourApps active={!form.locked} disabled={form.locked} />
 
       <BoxApps active={!form.locked} disabled={disabled} />
     </>
@@ -339,41 +302,6 @@ function readHandoff(state: unknown): PaletteHandoff | null {
 }
 
 // ── Rows ──────────────────────────────────────────────────────────────────
-
-interface AppModeRowProps {
-  id: string;
-  title: string;
-  detail: string;
-  value: ServiceMode;
-  disabled: boolean;
-  onChange: (mode: ServiceMode) => void;
-  last?: boolean;
-}
-
-function AppModeRow({ id, title, detail, value, disabled, onChange, last }: AppModeRowProps) {
-  const t = useT();
-  return (
-    <Row last={last}>
-      <RowText htmlFor={id} title={title} detail={detail} />
-      {/* No badge beside the picker. `local` and `mesh` are the app's only
-          two badge variants and they mean "on this box" versus "on the mesh";
-          both choices here run on this box, so borrowing that pair would
-          teach the reader something untrue about the texture. */}
-      <NativeSelect
-        id={id}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => {
-          const next = event.target.value;
-          if (isServiceMode(next)) onChange(next);
-        }}
-      >
-        <option value="container">{t(MODE_LABEL.container)}</option>
-        <option value="native">{t(MODE_LABEL.native)}</option>
-      </NativeSelect>
-    </Row>
-  );
-}
 
 // ── The catalogue ─────────────────────────────────────────────────────────
 

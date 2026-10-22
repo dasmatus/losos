@@ -6,7 +6,7 @@
 #                        one into an SQLite full-text index, as `losos-cloud`
 #   losos-search-cloud   one search of that index per connection
 #   losos-search-git     one `git grep` over the repositories' default
-#                        branches per connection, as `forgejo`
+#                        branches per connection, as `losos-git`
 #
 # The two searches are socket-activated with Accept=yes: systemd holds the
 # socket, starts a process for each search and nothing stays in memory in
@@ -33,11 +33,11 @@ let
   # The owner's files as LosOS Cloud keeps them (modules/cloud.nix).
   files = "/var/lib/losos-cloud/notshared/files";
   withCloud = config.losos.cloud.enable;
-  repos = "/var/lib/forgejo/repositories";
+  repos = "/var/lib/losos-git/repositories";
   runDir = "/run/losos-search";
   cloudSocket = "${runDir}/cloud.sock";
   gitSocket = "${runDir}/git.sock";
-  withGit = config.losos.forgejo.enable;
+  withGit = config.losos.git.enable;
 
   sandbox = {
     NoNewPrivileges = true;
@@ -168,8 +168,8 @@ in
             sandbox
             // perConnection
             // {
-              User = "forgejo";
-              Group = "forgejo";
+              User = "losos-git";
+              Group = "losos-git";
               ExecStart = lib.escapeShellArgs [
                 search
                 "git"
