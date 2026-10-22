@@ -12,6 +12,7 @@ import calls from "./calls";
 import chat from "./chat";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
+import credentials from "./credentials";
 import collab from "./collab";
 import games from "./games";
 import home from "./home";
@@ -56,6 +57,7 @@ export const MESSAGES = {
   ...machines,
   ...advanced,
   ...access,
+  ...credentials,
   ...users,
   ...account,
   ...profile,

@@ -26,6 +26,8 @@
     "GET /api/chat": "signed-in",
     "POST /api/chat/session": "signed-in",
     "GET /api/chat/people": "signed-in",
+    "GET /api/windows": "signed-in",
+    "POST /api/windows": "signed-in",
 
     "GET /api/mail": "signed-in",
     "POST /api/mail/send": "signed-in",
@@ -41,6 +43,8 @@
     "POST /api/change": "storage",
 
     "GET /api/backup": "backup",
+    "GET /api/credentials": "admin",
+    "POST /api/credentials/{name}/rotate": "admin",
     "POST /api/backup/target": "backup",
     "DELETE /api/backup/target": "backup",
     "POST /api/backup/run": "backup",

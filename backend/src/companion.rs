@@ -30,8 +30,10 @@ use losos_access::COMPANION_CLIENT_ID;
 
 /// LosOS Login's own address, under its `/auth` path.
 const DEFAULT_LOGIN: &str = "127.0.0.1:9091";
-/// The secret lososd introspects with; `modules/identity.nix` makes it.
-const DEFAULT_SECRET_FILE: &str = "/var/secrets/losos-identity/oidc-lososd";
+/// The secret lososd introspects with: the credential `oidc-lososd`, which
+/// `modules/identity.nix` declares and systemd opens into lososd's own
+/// credential directory.
+const DEFAULT_SECRET_FILE: &str = "/run/credentials/lososd.service/oidc-lososd";
 /// The client id that secret belongs to.
 const CLIENT_ID: &str = "lososd";
 /// The longest an answer is kept.
@@ -48,7 +50,10 @@ pub struct Grant {
 
 pub struct Companion {
     login: String,
-    secret_file: String,
+    /// Read once at start. A new secret restarts lososd
+    /// (`losos-identity-setup`), so it is never stale, and no request
+    /// handler reads a file for it.
+    secret: Option<String>,
     kept: Mutex<HashMap<[u8; 32], (Grant, Instant)>>,
 }
 
@@ -68,7 +73,10 @@ impl Companion {
         };
         Companion {
             login: var("LOSOS_LOGIN_ADDR", DEFAULT_LOGIN),
-            secret_file: var("LOSOS_OIDC_SECRET_FILE", DEFAULT_SECRET_FILE),
+            secret: std::fs::read_to_string(var("LOSOS_OIDC_SECRET_FILE", DEFAULT_SECRET_FILE))
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
             kept: Mutex::new(HashMap::new()),
         }
     }
@@ -121,9 +129,14 @@ impl Companion {
 
     /// One introspection request to LosOS Login, as `lososd`.
     fn introspect(&self, token: &str, host: &str) -> std::io::Result<serde_json::Value> {
-        let secret = std::fs::read_to_string(&self.secret_file)?;
-        let basic = base64::engine::general_purpose::STANDARD
-            .encode(format!("{CLIENT_ID}:{}", secret.trim()));
+        let secret = self.secret.as_deref().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "lososd has no OIDC client secret",
+            )
+        })?;
+        let basic =
+            base64::engine::general_purpose::STANDARD.encode(format!("{CLIENT_ID}:{secret}"));
         // The token is letters, digits and `_-.` (checked above): nothing
         // in it needs escaping in a form body.
         let body = format!("token={token}&token_type_hint=access_token");
@@ -279,12 +292,9 @@ mod tests {
                 .unwrap();
             }
         });
-        let dir = tempfile::tempdir().unwrap();
-        let secret = dir.path().join("secret");
-        std::fs::write(&secret, "s3cret\n").unwrap();
         let c = Companion {
             login: addr,
-            secret_file: secret.display().to_string(),
+            secret: Some("s3cret".into()),
             kept: Mutex::new(HashMap::new()),
         };
         let token = "authelia_at_abc.def";

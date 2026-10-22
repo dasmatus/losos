@@ -61,6 +61,10 @@ enum Cmd {
         /// as `<name>=<url>`. For a developer's machine.
         #[arg(long, value_name = "NAME=URL")]
         mesh_peer: Vec<String>,
+        /// Watch the files on disk and bring changes made behind the
+        /// service's back into the table as they happen (the Windows share).
+        #[arg(long)]
+        watch: bool,
     },
     /// Bring the table in line with the files on disk, for one person or all.
     Scan {
@@ -119,6 +123,7 @@ fn main() -> anyhow::Result<()> {
             mesh,
             mesh_self_signed,
             mesh_peer,
+            watch,
         } => {
             let cloud = Arc::new(Cloud::open(
                 &cli.root,
@@ -128,6 +133,9 @@ fn main() -> anyhow::Result<()> {
                     knowledge_bases,
                 },
             )?);
+            if watch {
+                cloud::watch::spawn(cloud.clone())?;
+            }
             let listen = match (socket, listen) {
                 (Some(s), _) => server::Listen::Unix(s),
                 (None, Some(l)) => server::Listen::Tcp(l),

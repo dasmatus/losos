@@ -23,7 +23,8 @@ gets their own files. The person who set up the box gets the owner's.
 - **Photos** shows every picture, newest month first. Click one to see it
   large and use the arrow keys to go through them.
 - **Trash** keeps deleted files for 30 days, or as long as the **Apps**
-  pane says. Restore one, or delete it for good.
+  pane says. Restore one, or delete it for good. Files deleted through
+  the [network share](files-on-your-computer#the-network-share) skip it.
 - **Devices** lists the computers and phones that sync, and signs one out.
 - The search field at the top finds files by name.
 - Text files open in an editor several people can type in at once, and
