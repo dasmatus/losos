@@ -50,8 +50,10 @@ let
   shots = import ./screens { inherit pkgs; };
   PASSWORD = "Correct-Horse-Battery-9";
 
-  # The admin UI as it ships, without the Lab page, which this test never
-  # opens and whose WebAssembly takes longer to build than the test to run.
+  # The admin UI as it ships, without LosOS Diagrams (the Lab), which this
+  # test never opens and whose WebAssembly takes longer to build than the
+  # test to run: its page is left out and the shell's lazy import of it
+  # gets an empty component.
   ui = lososPkgs.losos-admin-ui.overrideAttrs (
     _:
     {
@@ -67,8 +69,10 @@ let
           main: join(root, "index.html"),
           manage: join(root, "manage/index.html"),
         };
+        config.resolve.alias.unshift({ find: /^@\/lab\/app$/, replacement: "/src/no-diagrams.tsx" });
         export default config;
         EOF
+        echo 'export default function Diagrams() { return null; }' > src/no-diagrams.tsx
       '';
       buildPhase = ''
         runHook preBuild
