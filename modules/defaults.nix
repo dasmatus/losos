@@ -16,10 +16,8 @@ let
   pkgs' = self.packages.x86_64-linux;
 in
 {
-  # The git host is on by default. Consulted in both deployment modes: the
-  # workload path in modules/workloads.nix and the native path in
-  # modules/services.nix.
-  losos.forgejo.enable = lib.mkDefault true;
+  # LosOS Git, the box's Git server (modules/git.nix), is on by default.
+  losos.git.enable = lib.mkDefault true;
   # LosOS Cloud (modules/cloud.nix). Off in the bare option set, so a VM
   # test that imports the identity routes without the service gets neither.
   losos.cloud.enable = lib.mkDefault true;
@@ -28,6 +26,8 @@ in
   # SPA the front vhost serves, so the admin endpoint works out of the box.
   losos.backend.package = lib.mkDefault pkgs'.losos-ctl;
   losos.backend.plugins = lib.mkDefault pkgs'.losos-plugins;
+  losos.ci.pm = lib.mkDefault pkgs'.pm;
+  losos.ci.pmPlugin = lib.mkDefault pkgs'.losos-ci-pm-plugin;
   losos.admin.ui = lib.mkDefault pkgs'.losos-admin-ui;
   # The owner's handbook the same vhost serves at /handbook/.
   losos.admin.handbook = lib.mkDefault pkgs'.losos-handbook;
@@ -54,5 +54,4 @@ in
   # binary cache. If the cache is unreachable at 03:00 the rebuild fails and the
   # previous generation keeps running.
   losos.workloads.pauseImage = lib.mkDefault pkgs'.losos-image-pause;
-  losos.workloads.forgejoImage = lib.mkDefault pkgs'.losos-image-forgejo;
 }

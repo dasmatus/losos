@@ -1,0 +1,17 @@
+[package]
+name = "losos-pm-ci"
+description = "pm plugin: runs Mesh CI's job containers for `pm container`"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wit-bindgen = { version = "0.63", default-features = false, features = ["macros", "realloc", "std"] }
+
+[lints]
+workspace = true

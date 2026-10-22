@@ -34,10 +34,10 @@ virtuálne stroje.
 
 ## 3. Ako bežia aplikácie \{#3-how-the-apps-run}
 
-Dva režimy vysvetľuje stránka [Režimy aplikácií](/types/app-modes.md).
-Predvolene bežia LosOS Cloud a LosOS Git ako záťaže vo vlastnom malom
-Kubernetes klastri zariadenia. Môžu bežať aj natívne priamo na hostiteľovi.
-V oboch prípadoch vidíte tie isté aplikácie.
+LosOS Cloud a LosOS Git bežia priamo na zariadení ako systémové služby.
+Aplikácie, ktoré nainštalujete, bežia na rootless Podmane, alebo vo vlastnom
+malom Kubernetes klastri zariadenia, keď bežia ako `shared`. Podrobnosti sú
+na stránke [Kde bežia aplikácie](/types/app-modes.md).
 
 ## 4. Na čo slúži disk \{#4-what-the-disk-is-for}
 

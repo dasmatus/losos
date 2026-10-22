@@ -47,10 +47,11 @@ for the wire format.
 
 ## Workloads
 
-LosOS Cloud (`modules/cloud.nix`, `backend/src/cloud/`) is a service of its
-own on the host, listening on a Unix socket only nginx may open. Forgejo
-runs in the box's own k3s cluster (`losos.forgejo.mode = "container"`) or
-natively on the host; its pod uses `hostNetwork`. nginx is the only service
+LosOS Cloud (`modules/cloud.nix`, `backend/src/cloud/`) and LosOS Git
+(`modules/git.nix`, `backend/src/forge/`) are services of their own on the
+host, each listening on a Unix socket only nginx may open. The box's own k3s
+cluster runs only the apps installed as `shared`, while the box shares its
+disk with a mesh; its pods use `hostNetwork`. nginx is the only service
 on public ports and routes by path.
 
 ## Repository layout
@@ -234,16 +235,15 @@ the key it refused.
 
 Every apply, mode change and reset is a commit in `/etc/nixos`, the
 repository the installer made. A reconciler thread in lososd polls every
-30 s. It creates the admin's Forgejo account (`notshared`, with the owner
-password, kept in step on password changes and device setup) and a private
-`losos-config` repository. It does that through a bot account whose token the
-Forgejo start-up script mints (`nix/forgejo-bootstrap.nix`, token at
-`/var/lib/forgejo/.losos-token`). It pushes when Forgejo is behind. When a
-clone has pushed ahead, it fast-forwards, gates the new `overrides.nix` the
-same way, and rebuilds. It reports a diverged history and never touches it.
-There is deliberately **no Forgejo Actions runner** behind this.
+30 s. It creates the admin's LosOS Git account (`notshared`, an
+administrator) and a private `losos-config` repository, with the admin token
+LosOS Git writes on its first start (`/var/lib/losos-git/admin-token`). It
+pushes when LosOS Git is behind. When a clone has pushed ahead, it
+fast-forwards, gates the new `overrides.nix` the same way, and rebuilds. It
+reports a diverged history and never touches it. There is deliberately **no
+CI runner** behind this.
 
-The Advanced pane links the sixteen settings the other panes own instead of
+The Advanced pane links the fifteen settings the other panes own instead of
 editing them twice. `OWNED` in `admin-ui/app/src/lib/option-value.ts` and
 `OWNED_NAMES` in `lib/api.ts` are that list, and `buildOverridesNix` filters
 extras against it so the file never carries a key twice. Two parser facts
@@ -252,16 +252,42 @@ matter here. `overrides.rs`'s `parse_line` cuts a value at the first `#`
 `upgradeFlakeUri`. And a list is one `[ "a" "b" ]` line, strings only.
 
 **Workloads and the single front door** (`modules/containers.nix`,
-`modules/workloads.nix`, `modules/cluster.nix`, `modules/cloud.nix`).
-systemd-nspawn is gone. When `losos.forgejo.mode == "container"`, Forgejo
-runs as a Kubernetes workload in the box's own local k3s cluster. LosOS
-Cloud runs on the host as its own user. nginx is the only process holding
+`modules/cluster.nix`, `modules/cloud.nix`, `modules/git.nix`).
+systemd-nspawn is gone, and so are the app modes: LosOS Cloud and LosOS Git
+run on the host, each as its own user, and the box's own local k3s cluster
+runs only the apps installed as `shared`. nginx is the only process holding
 public ports. It routes by path on the appliance's mDNS name
 (`<hostName>.local/cloud/` and the addresses the Nextcloud apps call,
-`/forgejo/`) and serves the admin SPA on the same vhost. Apps an owner installs as `notshared`, and the box's
+`/git/`) and serves the admin SPA on the same vhost. Apps an owner installs
+as `notshared`, and the box's
 own apps, run on rootless Podman with Podman Compose instead
 (`modules/apps.nix`, [App format](app-format.md)), so a box that shares
 nothing needs no cluster for them.
+
+**LosOS Git** (`modules/git.nix`, `backend/src/forge/`, the `losos-git`
+binary of lososd's crate). The box's Git server, as its own user. git's
+smart HTTP (`git-upload-pack` and `git-receive-pack --stateless-rpc`,
+protocol v2 included) streams both ways, accounts, tokens and repository
+records are one SQLite file, and repositories are bare under
+`/var/lib/losos-git/repositories/<owner>/<name>.git`. It listens twice:
+on `/run/losos-git/http.sock`, which only nginx may open and the only place
+it believes the person LosOS Login names in the `X-Losos-Cloud-*` headers,
+and on `127.0.0.1:3000` for tokens only, where lososd keeps the
+configuration repository and makes computers' tokens. A token is stored as
+its SHA-256 and carries scopes. Issues, pull requests, comments, labels
+and attachments live in the same file and are read at `/api/v1/repos/…`.
+
+A box that ran Forgejo brings its records along. Before LosOS Git first
+starts, `losos-git-forgejo-import` moves the repositories over without
+their hooks, exports Forgejo's database (from Postgres, or from SQLite on a
+native box), keeps a full dump of it, and `losos-git import-forgejo` takes
+in the accounts, collaborators, access tokens (the old values keep
+working), labels, issues, pull requests, comments, assignees and
+attachments. An organisation becomes an account of the same name. What has
+no place in LosOS Git (milestones, releases, timeline entries such as
+"closed this") is counted and named in the report, never dropped quietly.
+Nothing of Forgejo's is deleted, and a failed run changes nothing and is
+tried again on the next start.
 
 `admin-ui/design-system/` (`tokens.css` and `losos.css`, plus a `react/`
 wrapper package for claude.ai/design) is dev-machine-only and no longer
@@ -272,21 +298,15 @@ because the source *root* of `losos-admin-ui` is `admin-ui/app`. That is a
 stronger guarantee than the `design-system` name filter it replaced, which a
 rename would have broken.
 
-**One look across the admin pages, LosOS Cloud and Forgejo**
-(`admin-ui/themes/`). LosOS Cloud is a page of the admin UI's own build
-(`admin-ui/app/cloud/`), so it uses the same components and `tokens.css`.
-`tokens.css` is plain CSS on purpose: Forgejo's theme and LosOS Login's ship
-it byte for byte as `losos-tokens.css` and map their own variables onto it,
-so a colour changed there moves all of them.
+**One look across the admin pages, LosOS Cloud and LosOS Git**
+(`admin-ui/themes/`). LosOS Cloud and LosOS Git are pages of the admin UI's
+own build (`admin-ui/app/cloud/`, `admin-ui/app/git/`), so they use the same
+components and `tokens.css`. `tokens.css` is plain CSS on purpose: LosOS
+Login's theme ships it byte for byte as `losos-tokens.css` and maps its own
+variables onto it, so a colour changed there moves all of them.
 
-Forgejo gets `theme-losos-{auto,light,dark}.css` in
-`$FORGEJO_CUSTOM/public/assets/css/`, linked by tmpfiles natively and copied
-by the image's entrypoint, with `DEFAULT_THEME = losos-auto`. Forgejo stamps
-that on accounts at creation, so an existing account keeps its old theme
-until its owner switches.
-
-Owners see the two apps as **LosOS Cloud** and **LosOS Git**. Forgejo's
-`APP_NAME` names it. Both get logos drawn from `admin-ui/themes/brand/`. `marks.py` wraps
+Owners see the two apps as **LosOS Cloud** and **LosOS Git**. Both get logos
+drawn from `admin-ui/themes/brand/`. `marks.py` wraps
 `salmon.png`, a live coho salmon cut out of a NOAA Fisheries photo, into the
 SVGs and copies it to the SPA and the handbook. The build renders every PNG
 and the `.ico` from those. On 31 October, by the viewer's own date, the admin
@@ -295,7 +315,7 @@ Matus's own photo. `brand/CREDITS.md` says where both pictures come from.
 The old pixel-art fish was dropped over a copyright worry and does not go
 back in. The rest of the
 upstream branding goes by config (no skeleton files, no help or sign-up
-links, no "Powered by") and two Forgejo template overrides.
+links, no "Powered by").
 
 `admin-ui/themes/default.nix` is plain data that every caller imports. The
 workload pods use `hostNetwork`, since the local cluster runs no CNI,
@@ -330,7 +350,7 @@ exactly the origins in `losos.setup.finderOrigins` (an nginx map, asserted by
 
 **The `losos.*` option namespace** (`options.nix`). All project-specific
 knobs live under `options.losos`, with defaults in `defaults.nix`:
-`targetDrive`, `tpm.enable`, `sharingMyStorage`, `forgejo.enable`,
+`targetDrive`, `tpm.enable`, `sharingMyStorage`, `git.enable`,
 `cloud.*`, `cluster.*` (mesh join, compute window), `shared.fscrypt.*`,
 `upgradeFlakeUri`, `backend.package`,
 `admin.{enable,port,apiPort,tokenFile,ui}`, `proxy.*` (the appliance side of

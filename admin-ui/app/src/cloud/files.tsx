@@ -1,7 +1,15 @@
 import * as React from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowRight01Icon, CloudUploadIcon, FolderAddIcon, FolderUploadIcon, Upload01Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowRight01Icon,
+  CloudUploadIcon,
+  FileAddIcon,
+  FolderAddIcon,
+  FolderUploadIcon,
+  PresentationBarChart01Icon,
+  Upload01Icon,
+} from "@hugeicons/core-free-icons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -10,8 +18,9 @@ import { contextMenu } from "@/lib/context-menu";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { cloud, isAbort, joinPath, parentOf, type Entry } from "./api";
-import { NameDialog, explain } from "./dialogs";
+import { NameDialog, explain, failed } from "./dialogs";
 import { EntryTable, SelectionBar, folderHref, sortEntries, type SortKey } from "./entries";
+import { createDocument, type Kind } from "./office/markdown/new";
 import { bump, enqueue, useRevision } from "./store";
 
 type Loaded = { state: "loading" } | { state: "error"; message: string; missing: boolean } | { state: "ready"; entries: Entry[] };
@@ -123,6 +132,29 @@ export function FilesView() {
   const entries = loaded.state === "ready" ? sortEntries(loaded.entries, sort.key, sort.up) : [];
   const picked = entries.filter((e) => selected.has(e.path));
 
+  // A new document or presentation opens in LosOS Office at once.
+  const [making, setMaking] = React.useState(false);
+  const newDocument = (kind: Kind) => {
+    setMaking(true);
+    const starter = {
+      name: kind === "doc" ? t("office.md.untitledDoc") : t("office.md.untitledDeck"),
+      title: kind === "doc" ? t("office.md.untitledDoc") : t("office.md.untitledDeck"),
+      subtitle: t("office.md.starter.subtitle"),
+      next: t("office.md.starter.next"),
+      point: t("office.md.starter.point"),
+    };
+    createDocument(path, kind, starter).then(
+      (entry) => {
+        bump();
+        navigate(`/office/${entry.id}`);
+      },
+      (err: unknown) => {
+        setMaking(false);
+        failed(kind === "doc" ? t("office.md.newDocFailed") : t("office.md.newDeckFailed"), err);
+      },
+    );
+  };
+
   const onSort = (key: SortKey) => setSort((s) => (s.key === key ? { key, up: !s.up } : { key, up: key === "name" }));
 
   return (
@@ -160,9 +192,17 @@ export function FilesView() {
       <div className="flex min-h-9 flex-wrap items-center gap-3">
         <Crumbs path={path} />
         <div className="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={() => newDocument("doc")} disabled={making} data-new="doc">
+            <HugeiconsIcon icon={FileAddIcon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <span className="max-sm:sr-only">{t("office.md.newDoc")}</span>
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => newDocument("deck")} disabled={making} data-new="deck">
+            <HugeiconsIcon icon={PresentationBarChart01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <span className="max-sm:sr-only">{t("office.md.newDeck")}</span>
+          </Button>
           <Button size="sm" variant="secondary" onClick={() => setCreating(true)}>
             <HugeiconsIcon icon={FolderAddIcon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-            {t("cloud.folder.new")}
+            <span className="max-sm:sr-only">{t("cloud.folder.new")}</span>
           </Button>
           <Button size="sm" variant="secondary" onClick={() => folderInput.current?.click()} className="max-sm:hidden">
             <HugeiconsIcon icon={FolderUploadIcon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />

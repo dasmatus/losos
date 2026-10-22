@@ -33,7 +33,6 @@ const NOW = Date.UTC(2026, 9, 8, 9, 30); // 2026-10-08 09:30Z, so dates in shots
 
 const SETTINGS = {
   sharingMyStorage: false,
-  forgejoMode: 'container',
   hostName: 'mattbox',
   gpuEnable: false,
   proxyEnable: false,
@@ -347,9 +346,9 @@ const CONFIG = {
   repository: {
     owner: 'notshared',
     name: 'losos-config',
-    url: '/forgejo/notshared/losos-config',
-    clone: 'http://mattbox.local/forgejo/notshared/losos-config.git',
-    viaForgejo: true,
+    url: '/git/notshared/losos-config',
+    clone: 'http://mattbox.local/git/notshared/losos-config.git',
+    viaServer: true,
   },
   head: { sha: 'b'.repeat(40), branch: 'main' },
   log: [
@@ -444,7 +443,7 @@ const options = (overrides = {}) => ({
   excluded: DOC.excluded,
 });
 /* GET /api/site: the settings of LosOS Cloud and LosOS Git only. */
-const SITE_OPTION = /^(cloud\.trashDays|forgejo\.(site\..+|federation\.enable))$/;
+const SITE_OPTION = /^(cloud\.trashDays|git\.site\..+)$/;
 const site = (overrides = {}) => {
   const doc = options(overrides);
   return { ...doc, options: doc.options.filter((o) => SITE_OPTION.test(o.name)), excluded: {} };
@@ -671,7 +670,7 @@ async function open({
   });
   // The app tiles probe LosOS Cloud and LosOS Git; both answer.
   await page.route('**/status.php', (route) => json(route, 200, { installed: true, productname: 'LosOS Cloud' }));
-  await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>LosOS Git</title>' }));
+  await page.route('**/git/api/v1/version', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>LosOS Git</title>' }));
   // The wizard's last step asks LosOS Cloud who is signed in: nobody yet.
   await page.route('**/cloud/api/me', (route) => json(route, 401, { error: 'signed out' }));
 

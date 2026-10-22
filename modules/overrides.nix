@@ -30,7 +30,6 @@ _:
 
 {
   losos.sharingMyStorage = true;
-  losos.forgejo.mode = "container";
   losos.hostName = "mattbox";
   losos.gpu.enable = true;
   losos.proxy.enable = false;

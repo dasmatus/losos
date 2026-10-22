@@ -250,9 +250,8 @@ Auf der Box hält lososd die live geschalteten Domains in
 `/var/lib/losos-public-names/domains.json`. Die Datei wird alle zwei Minuten
 aktualisiert und immer dann, wenn der Bereich Netzwerk danach fragt. LosOS
 Login liest sie, um dem Cookie seiner Sitzung für jeden dieser Namen eine
-Domain zu geben (`modules/identity.nix`). LosOS Cloud antwortet auf jeden
-Namen, über den eine Anfrage kam, und braucht daher keine Liste. LosOS Git
-behält seine `ROOT_URL` mit dem Edge-Namen.
+Domain zu geben (`modules/identity.nix`). LosOS Cloud und LosOS Git antworten
+auf jeden Namen, über den eine Anfrage kam, und brauchen daher keine Liste.
 
 Auch eine Box hinter einer lokalen Edge bekommt ihre Domains geroutet, über
 diese lokale Edge, sobald sie sich mit einem Relay-Pass für die lokale Edge

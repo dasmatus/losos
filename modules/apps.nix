@@ -10,8 +10,8 @@
 #               turned into a Compose project (backend/src/compose.rs).
 #   shared      a Helm release in this box's own k3s cluster, as before,
 #               because that is the side of the box the mesh touches. Only
-#               on a box that runs that cluster (Forgejo in container
-#               mode).
+#               on a box that runs that cluster: sharing on and in a
+#               mesh (modules/cluster.nix).
 #
 # lososd decides (backend/src/apps.rs); this module provides what it starts:
 #
@@ -45,7 +45,7 @@
 # WHY THE SHAPING. The local cluster has no pod network, no kube-proxy and no
 # DNS, and its node is NotReady for life (modules/cluster.nix). A chart as
 # published would never start there. Shaping makes it run the way the box's
-# own Forgejo does, and the non-root uid keeps an app on the host
+# own pods once did, and the non-root uid keeps an app on the host
 # network out of lososd's API (the OUTPUT rule in modules/daemon.nix). The
 # Podman side keeps the same rules for the same reasons.
 #
@@ -68,8 +68,8 @@ let
   cfg = config.losos.apps;
   pkg = config.losos.backend.package;
 
-  # The box's own cluster: modules/cluster.nix runs it while Forgejo is in
-  # container mode. A `shared` app needs it.
+  # The box's own cluster: modules/cluster.nix runs it on the shared side
+  # (sharing on and in a mesh). A `shared` app needs it.
   localCluster = config.services.k3s.enable;
   # Installs from the Apps pane.
   enabled = cfg.enable && pkg != null;
@@ -181,7 +181,7 @@ let
       80
       443
       config.losos.admin.apiPort
-      3000 # Forgejo, modules/containers.nix `forgejoPort`
+      3000 # LosOS Git, modules/git.nix
       config.losos.lab.libvirt.port
       5432
       6379

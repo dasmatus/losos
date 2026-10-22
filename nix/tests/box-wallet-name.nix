@@ -82,16 +82,6 @@ let
           -CAcreateserial -days ${validDays} -extfile ext -out $out/tls.pem
       '';
 
-  # Any derivation with the two attributes imageRef reads: no cluster runs
-  # (nix/tests/identity.nix).
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   # Public DNS as ENS's gateway sees it, in stand-in: a DNS-over-HTTPS JSON
   # endpoint on the edge that answers for the zone only once the parent has
   # delegated it (/run/public-dns/delegated), and sets the AD bit only once
@@ -244,13 +234,11 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
         ];
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = lososPkgs.losos-admin-ui;
-          workloads.forgejoImage = standIn "losos-forgejo-stand-in";
           proxy = {
             enable = true;
             inherit registrarUrl;
