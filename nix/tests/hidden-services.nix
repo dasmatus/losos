@@ -540,7 +540,9 @@ pkgs.testers.runNixOSTest (
               "curl -sk -D - -o /dev/null https://mattbox.local/auth/api/firstfactor "
               f"-H 'Content-Type: application/json' -d '{body}'"
           )
-          cookie = re.search(r"(?im)^set-cookie: (losos_session=[^;]+)", head).group(1)
+          found = re.search(r"(?im)^set-cookie: (losos_session=[^;]+)", head)
+          assert found, head
+          cookie = found.group(1)
           shown = json.loads(
               client.succeed(f"curl -skf https://mattbox.local/api/hidden -H 'Cookie: {cookie}'")
           )
