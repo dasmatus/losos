@@ -7,6 +7,8 @@ mdx:
 
 # Mesh
 
+![Mesh.](../img/stub-mesh.png)
+
 A box can lend spare disk and CPU to other LosOS boxes. Joining is off by
 default. The Mesh pane has two switches: join the mesh, and share compute. The
 third switch, sharing this box's disk, sits on the [Market](market.md) pane,

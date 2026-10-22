@@ -7,6 +7,8 @@ mdx:
 
 # Install in depth
 
+![Install.](../img/stub-install.png)
+
 ## Get the installer
 
 Download the ISO and its `.sha256` from the

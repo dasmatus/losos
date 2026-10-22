@@ -6,6 +6,8 @@ slug: /manual/terminal
 
 # The terminal client
 
+![Terminal.](../img/stub-terminal.png)
+
 `losos` is a terminal program that manages a box from another computer.
 It shows the same panes as the admin pages, in the same words and colours,
 and needs no SSH, because the box has none. Every request it sends is

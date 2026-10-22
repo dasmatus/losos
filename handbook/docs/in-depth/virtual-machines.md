@@ -7,6 +7,8 @@ mdx:
 
 # Virtual machines
 
+![Virtual Machines.](../img/stub-virtual-machines.png)
+
 A box that shares its disk with the mesh can rent virtual machines on the
 mesh, and can host other boxes' machines. A machine is sold by the
 **replica**: each replica is one copy of the machine with its own disk,

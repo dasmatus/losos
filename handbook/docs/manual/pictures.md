@@ -6,6 +6,8 @@ slug: /manual/pictures
 
 # Pictures and reporting
 
+![Pictures.](../img/stub-pictures.png)
+
 Pictures that other people send you in [Chat](chat) and [Mail](mail) are
 hidden until you press them. You decide which senders get past that, and
 you can turn on a nudity warning that runs on your own device. Card and

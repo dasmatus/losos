@@ -7,6 +7,8 @@ mdx:
 
 # Hardening
 
+![Hardening.](../img/stub-hardening.png)
+
 `losos.hardening.enable` is on by default. It sets:
 
 - KSPP kernel parameters
