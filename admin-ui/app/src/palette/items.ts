@@ -6,7 +6,7 @@ import {
   LanguageSquareIcon,
   Logout01Icon,
   Moon02Icon,
-  NetworkIcon,
+  FlowchartIcon,
   RoadLocation01Icon,
   Sun03Icon,
 } from "@hugeicons/core-free-icons";
@@ -129,9 +129,9 @@ export function pageItems(): Item[] {
     id: "page-lab",
     group: "pages",
     title: t("shell.nav.lab"),
-    icon: NetworkIcon,
-    words: `${template("shell.nav.lab", undefined, "en")} simulator topology diagram network map`,
-    target: { kind: "href", href: "/lab/" },
+    icon: FlowchartIcon,
+    words: `${template("shell.nav.lab", undefined, "en")} lab canvas obsidian flowchart whiteboard mind map simulator topology network map machines`,
+    target: { kind: "route", to: "/diagrams" },
   });
   return items;
 }

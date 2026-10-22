@@ -1,10 +1,11 @@
 //! `LabCore`: the whole Lab state and its public operations. Every method
 //! answers a JSON value; a refusal is `{"error": "..."}` and changes nothing.
 
+use crate::canvas::{self, Canvas, History, Ids};
 use crate::catalog::{
     self, default_cfg, is_endpoint, is_gear, is_link_kind, is_proto, is_site, port_kind, SPEEDS,
 };
-use crate::files::{file_label, keep_name, last_label, parse_doc};
+use crate::files::{doc_problem, file_label, keep_name, last_label, parse_doc};
 use crate::net::{evaluate, Net};
 use crate::rng::Rng;
 use crate::scenarios::{this_box, ThisBox, BUILTIN};
@@ -27,6 +28,10 @@ pub struct LabCore {
     pub(crate) plate: String,
     pub(crate) outbox: Outbox,
     next_job: u64,
+    /// The diagram (canvas/mod.rs), devices and cables included.
+    pub(crate) canvas: Canvas,
+    pub(crate) ids: Ids,
+    pub(crate) history: History,
 }
 
 fn err(msg: impl Into<String>) -> Value {
@@ -52,6 +57,7 @@ impl LabCore {
     /// fixed offset in minutes east of UTC.
     pub fn new(seed: f64, now_ms: f64, tz_offset_min: f64) -> LabCore {
         let seed = if seed.is_finite() { seed.to_bits() } else { 0 };
+        let ids = Ids::new(seed ^ 0x6c6f_736f_735f_6376);
         let mut lab = LabCore {
             world: World::default(),
             net: Net::default(),
@@ -76,6 +82,9 @@ impl LabCore {
             plate: "plate.png".into(),
             outbox: Outbox::default(),
             next_job: 1,
+            canvas: Canvas::default(),
+            ids,
+            history: History::default(),
         };
         lab.net = evaluate(&lab.world);
         lab
@@ -112,10 +121,11 @@ impl LabCore {
         c
     }
 
-    fn changed(&mut self) {
+    pub(crate) fn changed(&mut self) {
         self.dirty = true;
         self.net = evaluate(&self.world);
         self.traffic_for_change();
+        self.sync_canvas();
     }
 
     /// `startWorld`: a fresh world from `build`, then its power-on traffic.
@@ -125,10 +135,13 @@ impl LabCore {
         build: impl FnOnce(&mut Self) -> Option<String>,
     ) -> Option<String> {
         self.world = World::default();
+        self.canvas = Canvas::default();
+        self.history.clear();
         self.sim_reset();
         let focus = build(self);
         self.scenario = key.to_string();
         self.net = evaluate(&self.world);
+        self.sync_canvas();
         self.reset_prev(false);
         self.traffic_for_change();
         self.reset_prev(true);
@@ -203,20 +216,42 @@ impl LabCore {
     }
 
     // ── setup files ──────────────────────────────────────────────────────
+    /// The diagram's name: the file's, the setup's, or "My diagram".
+    pub(crate) fn doc_name(&self) -> String {
+        let name = if self.scenario == "file" || self.scenario == "last" {
+            Some(self.file_name.clone())
+        } else {
+            self.scenario_name(&self.scenario)
+        };
+        name.filter(|n| !n.is_empty())
+            .unwrap_or_else(|| "My diagram".into())
+    }
+
+    /// The diagram as a JSON Canvas file (`.canvas`).
     pub fn export_setup(&self) -> Value {
-        let doc = self.setup_doc();
+        let name = self.doc_name();
+        let doc = self.canvas_doc(&name);
         let text = serde_json::to_string_pretty(&doc).unwrap_or_default() + "\n";
-        json!({ "name": doc["name"], "filename": self.setup_filename(&doc), "text": text })
+        let filename = self.setup_filename(&json!({ "name": name }));
+        json!({ "name": name, "filename": filename, "text": text })
+    }
+
+    /// Opens a JSON Canvas file, or a setup file of the Lab before it.
+    fn open_text(&mut self, text: &str, key: &str, label: &str) -> Result<usize, String> {
+        let doc = parse_doc(text)?;
+        if let Some(c) = canvas::file::to_doc(&doc) {
+            return Ok(self.open_canvas(&c, key, label));
+        }
+        if doc.get("format").is_some() || doc_problem(&doc).is_none() {
+            return self.open_doc(&doc, key, label);
+        }
+        Err(crate::files::NOT_A_FILE.into())
     }
 
     pub fn import_setup(&mut self, text: &str, file_name: &str) -> Value {
-        let doc = match parse_doc(text) {
-            Ok(d) => d,
-            Err(e) => return err(e),
-        };
-        match self.open_doc(&doc, "file", &file_label(file_name)) {
+        match self.open_text(text, "file", &file_label(file_name)) {
             Ok(skipped) => {
-                self.dirty = true; // keep it as the last setup too
+                self.dirty = true; // keep it as the last diagram too
                 json!({ "skipped": skipped, "name": self.file_name })
             }
             Err(e) => err(e),
@@ -224,7 +259,7 @@ impl LabCore {
     }
 
     pub fn open_last(&mut self, text: &str) -> Value {
-        let r = parse_doc(text).and_then(|doc| self.open_doc(&doc, "last", "My setup"));
+        let r = self.open_text(text, "last", "My diagram");
         match r {
             Ok(skipped) => json!({ "skipped": skipped, "name": self.file_name }),
             Err(e) => {
@@ -240,14 +275,31 @@ impl LabCore {
             return None;
         }
         self.dirty = false;
-        let builtin = self.scenario != "file" && self.scenario != "last";
-        Some(keep_name(self.setup_doc(), builtin).to_string())
+        let builtin =
+            self.scenario != "file" && self.scenario != "last" && self.scenario != "blank";
+        let name = keep_name(json!({ "name": self.doc_name() }), builtin)["name"]
+            .as_str()
+            .unwrap_or("My diagram")
+            .to_string();
+        Some(self.canvas_doc(&name).to_string())
     }
 
     pub fn peek_setup(&self, text: &str) -> Value {
-        match parse_doc(text).ok().as_ref().and_then(last_label) {
+        let Ok(doc) = parse_doc(text) else {
+            return err(crate::files::NOT_A_FILE);
+        };
+        if canvas::file::is_canvas(&doc) {
+            let name = doc
+                .get("losos")
+                .and_then(|l| l.get("name"))
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("My diagram");
+            return json!({ "name": crate::js::slice16(name, 60) });
+        }
+        match last_label(&doc) {
             Some(name) => json!({ "name": name }),
-            None => err("This is not a LosOS Lab setup file."),
+            None => err(crate::files::NOT_A_FILE),
         }
     }
 
@@ -274,6 +326,7 @@ impl LabCore {
         let (Ok(px), Ok(py)) = (coord("px"), coord("py")) else {
             return err("A device needs a place on the canvas.");
         };
+        self.checkpoint(None);
         let id = self.world.new_device(
             kind,
             x,
@@ -315,11 +368,15 @@ impl LabCore {
                 return err(format!("{} {p} is already in use.", d.name));
             }
         }
+        self.checkpoint(None);
         let r = self.world.connect(a, b, kind, a_port, b_port);
         self.changed();
         match r {
             Connected::Link(l) => json!({ "link": l }),
-            Connected::Error(e) => err(e),
+            Connected::Error(e) => {
+                self.history.drop_last();
+                err(e)
+            }
         }
     }
 
@@ -327,6 +384,7 @@ impl LabCore {
         if self.world.dev(id).is_none() {
             return err("There is no such device.");
         }
+        self.checkpoint(None);
         self.world.remove_device(id);
         self.changed();
         ok()
@@ -336,6 +394,7 @@ impl LabCore {
         if !self.world.links.iter().any(|l| l.id == id) {
             return err("There is no such link.");
         }
+        self.checkpoint(None);
         self.world.remove_link(id);
         self.changed();
         ok()
@@ -371,6 +430,7 @@ impl LabCore {
             (Some(_), _) => return err(format!("{key} takes a different kind of value.")),
             (None, _) => return err(format!("A {kind} has no setting {key}.")),
         };
+        self.checkpoint(None);
         let cfg = match self.world.dev_mut(id) {
             Some(d) => {
                 d.cfg.insert(key.to_string(), v);
@@ -402,6 +462,7 @@ impl LabCore {
         if v.is_empty() || self.world.devices.iter().any(|x| x.id != id && x.name == v) {
             return err("Pick a host name no other device uses.");
         }
+        self.checkpoint(None);
         if let Some(d) = self.world.dev_mut(id) {
             d.name = v.clone();
         }
@@ -413,6 +474,10 @@ impl LabCore {
         if !is_site(site) {
             return err("There is no such location.");
         }
+        if self.world.dev(id).is_none() {
+            return err("There is no such device.");
+        }
+        self.checkpoint(None);
         let Some(d) = self.world.dev_mut(id) else {
             return err("There is no such device.");
         };
@@ -452,6 +517,11 @@ impl LabCore {
             Some(Value::String(s)) if is_site(s) => Some(s.clone()),
             _ => return err("There is no such location."),
         };
+        // A drag in the logical or physical view: its steps share a number
+        // and make one undo step.
+        if let Some(g) = o.get("gesture").and_then(Value::as_f64) {
+            self.checkpoint(Some(g));
+        }
         if let Some(d) = self.world.dev_mut(id) {
             if let Some(Some(x)) = x {
                 d.x = x;
@@ -469,6 +539,7 @@ impl LabCore {
                 d.site = s;
             }
         }
+        self.sync_canvas();
         self.dirty = true;
         ok()
     }
