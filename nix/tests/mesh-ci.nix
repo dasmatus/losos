@@ -499,7 +499,7 @@ let
             {"click": {"role": "button", "name": "Run workflow"}},
             {"waitFor": {"role": "dialog"}},
         ]
-        film = [
+        film: list[dict] = [
             {"path": "/", "waitFor": {"role": "link", "name": "Mesh CI"},
              "title": "the overview: Mesh CI in the sidebar",
              "action": {"kind": "click", "target": "ci"},
