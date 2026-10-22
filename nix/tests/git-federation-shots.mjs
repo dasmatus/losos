@@ -218,8 +218,10 @@ function parse(argv) {
 const { out, phase, opts } = parse(process.argv.slice(2));
 const pins = ["/etc/losos-mattbox.pem", "/etc/losos-kitchenbox.pem"].map(spkiPin).join(",");
 const browser = await chromium.launch({ args: [`--ignore-certificate-errors-spki-list=${pins}`] });
-const window = () =>
-  browser.newContext({
+// The boxes share but never join a real mesh here, so the admin pages would
+// carry the "not joined a mesh yet" notice; it is closed as a person would.
+const window = async () => {
+  const ctx = await browser.newContext({
     viewport: VIEW,
     deviceScaleFactor: 2,
     colorScheme: "dark",
@@ -227,6 +229,15 @@ const window = () =>
     timezoneId: "Europe/Bratislava",
     reducedMotion: "reduce",
   });
+  await ctx.addInitScript(() => {
+    try {
+      localStorage.setItem("losos-mesh-notice", "dismissed");
+    } catch {
+      /* no storage: the notice stays */
+    }
+  });
+  return ctx;
+};
 const page = async (ctx) => {
   const p = await ctx.newPage();
   p.setDefaultTimeout(180_000);
@@ -236,7 +247,10 @@ const page = async (ctx) => {
 
 const problems = [];
 const watch = (p) => {
-  p.on("pageerror", (e) => problems.push(String(e)));
+  p.on("pageerror", (e) => problems.push(`${e}\n${e.stack ?? ""}`));
+  p.on("console", (m) => {
+    if (m.type() === "error") console.error(`console: ${m.text()}`);
+  });
   p.on("response", (r) => {
     const path = new URL(r.url()).pathname;
     // LosOS Git without LosOS Reviewer answers the AI review's address 404;
@@ -270,7 +284,13 @@ try {
     }
   }
 } catch (e) {
-  if (last !== null) await last.screenshot({ path: join(out, `failed-${phase}.png`) }).catch(() => {});
+  if (last !== null) {
+    await last.screenshot({ path: join(out, `failed-${phase}.png`) }).catch(() => {});
+    const html = await last.content().catch(() => "");
+    writeFileSync(join(out, `failed-${phase}.html`), html);
+    console.error(`failed at ${last.url()}`);
+  }
+  if (problems.length > 0) console.error(`the pages reported errors:\n${problems.join("\n")}`);
   throw e;
 } finally {
   s.save();

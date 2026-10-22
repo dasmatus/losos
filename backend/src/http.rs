@@ -86,7 +86,7 @@ struct Api {
     /// (`crate::git_rooms`).
     git_rooms: crate::git_rooms::Rooms,
     /// LosOS Cloud runs here, and with it LosOS Contacts' address books
-    /// (`LOSOS_CLOUD_CONTACTS`, `modules/cloud.nix`).
+    /// and LosOS Calendar (`LOSOS_CLOUD_CONTACTS`, `modules/cloud.nix`).
     contacts: bool,
     /// LosOS Mail (`crate::mail`).
     mail: crate::mail::Mail,
@@ -629,11 +629,13 @@ fn shared_apps(api: &Api) -> Vec<&'static str> {
     if api.chat.live() {
         apps.push("chat");
     }
-    // Not a shared-side app: LosOS Contacts is LosOS Cloud's address books,
-    // on every box that runs LosOS Cloud. Listed here because the sidebar
-    // draws the app entries this list names.
+    // Not shared-side apps: LosOS Contacts and LosOS Calendar are LosOS
+    // Cloud's address books and calendars, on every box that runs LosOS
+    // Cloud. Listed here because the sidebar draws the app entries this
+    // list names.
     if api.contacts {
         apps.push("contacts");
+        apps.push("calendar");
     }
     // modules/ci.nix names the socket only while Mesh CI runs.
     if std::env::var_os("LOSOS_CI_SOCKET").is_some() {

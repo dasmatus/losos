@@ -8,6 +8,7 @@ import access from "./access";
 import account from "./account";
 import advanced from "./advanced";
 import apps from "./apps";
+import calendar from "./calendar";
 import calls from "./calls";
 import chat from "./chat";
 import ci from "./ci";
@@ -19,6 +20,7 @@ import collab from "./collab";
 import contacts from "./contacts";
 import games from "./games";
 import git from "./git";
+import tracker from "./tracker";
 import gitReview from "./git-review";
 import home from "./home";
 import inference from "./inference";
@@ -66,6 +68,7 @@ export const MESSAGES = {
   ...collab,
   ...notes,
   ...git,
+  ...tracker,
   ...gitReview,
   ...install,
   ...look,
@@ -90,6 +93,7 @@ export const MESSAGES = {
   ...office,
   ...mail,
   ...contacts,
+  ...calendar,
   ...menu,
   ...ci,
   ...mention,

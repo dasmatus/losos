@@ -69,6 +69,9 @@ phone app's sign-in, or, on the box's network, with your LosOS Login
 password. A calendar app that asks for the full address takes
 `https://<name>.local/remote.php/dav/`.
 
+In the browser, the same calendars are in [Calendar](calendar), and the
+address books in [Contacts](contacts).
+
 ## In the file manager
 
 The same files are a WebDAV share at this address:

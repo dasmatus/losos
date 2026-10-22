@@ -16,6 +16,7 @@ pub mod api;
 pub mod auth;
 pub mod boards;
 pub mod caldav;
+pub mod calendar;
 pub mod collab;
 pub mod contacts;
 pub mod dav;
@@ -33,6 +34,7 @@ pub mod share;
 pub mod store;
 pub mod util;
 pub mod watch;
+pub mod webcal;
 pub mod xml;
 
 use store::{Entry, Store, StoreError};
@@ -48,6 +50,9 @@ pub struct Config {
     /// Folders may be published as knowledge bases: the box shares and has
     /// joined a mesh (`notes::kb`).
     pub knowledge_bases: bool,
+    /// The socket of the fetcher that reads subscribed calendars
+    /// (`webcal`); `None` runs curl in this process, for tests.
+    pub webcal_socket: Option<std::path::PathBuf>,
 }
 
 impl Default for Config {
@@ -56,6 +61,7 @@ impl Default for Config {
             product: "LosOS Cloud".into(),
             trash_days: 30,
             knowledge_bases: false,
+            webcal_socket: None,
         }
     }
 }
@@ -92,6 +98,7 @@ impl Cloud {
         extensions::init(&store)?;
         pim::init(&store)?;
         boards::init(&store)?;
+        calendar::init(&store)?;
         let (changes, _) = broadcast::channel(256);
         Ok(Cloud {
             store,
