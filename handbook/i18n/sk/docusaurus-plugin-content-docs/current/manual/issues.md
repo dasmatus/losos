@@ -7,8 +7,8 @@ slug: /manual/issues
 # Úlohy v LosOS Git
 
 LosOS Git drží úlohy zariadenia: chyby, práce a nápady, pre kód aj pre
-čokoľvek iné. Nájdete ich pod **Úlohy** v bočnom paneli LosOS Git
-(`https://<box>.local/git/issues`), jeden zoznam pre všetky projekty na
+čokoľvek iné. Nájdete ich pod **Úlohy** v bočnom paneli LosOS Git, na adrese
+`https://<box>.local/git/issues`, v jednom zozname pre všetky projekty na
 zariadení.
 
 ## Projekty a kľúče \{#projects-and-keys}
@@ -30,8 +30,8 @@ každému s účtom na zariadení, ktorý potom môže jeho úlohy aj meniť.
 
 Úloha prechádza pracovným postupom projektu. Nový projekt má šesť stavov:
 Backlog, Todo, In Progress, In Review, Done a Canceled. Každý stav je jedného
-z piatich druhov (zásobník, na rade, rozpracované, hotové, zrušené) a
-zoznamy, nástenka aj uzatváracie slová nižšie sa riadia druhom, takže
+z piatich druhov: zásobník, na rade, rozpracované, hotové a zrušené.
+Zoznamy, nástenka aj uzatváracie slová nižšie sa riadia druhom, takže
 projekt môže stavy premenovať alebo pridať vlastné.
 
 Okrem stavu má úloha:
@@ -45,8 +45,8 @@ Okrem stavu má úloha:
 - nadradenú úlohu, čím sa z nej stane podúloha. Nadradená úloha ukazuje,
   koľko jej podúloh je hotových.
 
-Dve úlohy môžu súvisieť: jedna blokuje druhú, jedna je duplikátom druhej
-(duplikát sa zruší) alebo jednoducho súvisia.
+Dve úlohy môžu súvisieť: jedna blokuje druhú, jedna je duplikátom druhej,
+čím sa duplikát zruší, alebo jednoducho súvisia.
 
 Každá úloha si pamätá svoju históriu: kto ju vytvoril, každú zmenu stavu,
 priority, riešiteľa, štítku či cyklu, každý komentár a commity a pull
@@ -56,7 +56,7 @@ requesty, ktoré ju spomenuli.
 
 **Moje úlohy** ukazuje, čo riešite vy, naprieč všetkými projektmi.
 **Všetky úlohy** ukazuje všetko, čo smiete vidieť. Projekt má svoje úlohy,
-svoj **Zásobník** (úlohy, ktoré nikto nezačal) a svoje **Cykly**.
+svoj **Zásobník** s úlohami, ktoré nikto nezačal, a svoje **Cykly**.
 
 Každý zoznam môžete zobraziť ako zoznam zoskupený podľa stavu alebo ako
 nástenku so stĺpcom pre každý stav. Na nástenke kartu potiahnete do iného
@@ -129,8 +129,8 @@ Z ponuky **⋯** navrchu úlohy:
 Mail, Chat a Kontakty sú tam, keď zariadenie zdieľa a je v sieti mesh.
 Každá vaša úloha s termínom je aj v odbere kalendára na
 `https://<box>.local/git/api/v1/tracker/calendar.ics`. Kalendárová
-aplikácia sa naň prihlási vaším menom a prístupovým tokenom LosOS Git (s
-rozsahom pre úlohy) ako heslom.
+aplikácia sa naň prihlási vaším menom a prístupovým tokenom LosOS Git s
+rozsahom pre úlohy ako heslom.
 
 Keď je zapnuté Build with AI, **AI boxu** pri úlohe ju vie **Rozdeliť na
 kroky**, z ktorých zaškrtnutím urobíte podúlohy, alebo **Zhrnúť**, čo sa

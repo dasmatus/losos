@@ -8,8 +8,8 @@ slug: /manual/issues
 
 LosOS Git hält die Issues der Box: Fehler, Aufgaben und Ideen, für Code und
 für alles andere. Du findest sie unter **Issues** in der Seitenleiste von
-LosOS Git (`https://<box>.local/git/issues`), eine Liste für alle Projekte
-der Box.
+LosOS Git, in einer Liste für alle Projekte der Box. Die Adresse ist
+`https://<box>.local/git/issues`.
 
 ## Projekte und Kürzel \{#projects-and-keys}
 
@@ -33,8 +33,8 @@ Issues ändern dürfen.
 
 Ein Issue läuft durch den Ablauf seines Projekts. Ein neues Projekt hat
 sechs Status: Backlog, Todo, In Progress, In Review, Done und Canceled.
-Jeder Status ist von einer von fünf Arten (Backlog, zu erledigen, in
-Arbeit, erledigt, abgebrochen), und die Listen, das Board und die
+Jeder Status gehört zu einer von fünf Arten: Backlog, zu erledigen, in
+Arbeit, erledigt und abgebrochen. Die Listen, das Board und die
 Schließwörter unten richten sich nach der Art. Ein Projekt kann seine
 Status also umbenennen oder eigene hinzufügen.
 
@@ -50,8 +50,8 @@ Neben dem Status hat ein Issue:
   zeigt, wie viele seiner Unter-Issues erledigt sind.
 
 Zwei Issues können zusammenhängen: eines blockiert das andere, eines ist
-ein Duplikat des anderen (das Duplikat wird abgebrochen), oder sie hängen
-einfach zusammen.
+ein Duplikat des anderen, womit das Duplikat abgebrochen wird, oder sie
+hängen einfach zusammen.
 
 Jedes Issue behält seinen Verlauf: wer es angelegt hat, jede Änderung von
 Status, Priorität, Person, Label oder Zyklus, jeden Kommentar und die
@@ -61,8 +61,8 @@ Commits und Pull-Requests, die es genannt haben.
 
 **Meine Issues** zeigt, was dir zugewiesen ist, über alle Projekte.
 **Alle Issues** zeigt alles, was du sehen darfst. Ein Projekt hat seine
-Issues, sein **Backlog** (Issues, die noch niemand begonnen hat) und seine
-**Zyklen**.
+Issues, sein **Backlog** mit den Issues, die noch niemand begonnen hat, und
+seine **Zyklen**.
 
 Jede Liste kannst du als Liste, nach Status gruppiert, oder als Board mit
 einer Spalte je Status zeigen. Auf dem Board ziehst du eine Karte in eine
@@ -141,7 +141,7 @@ Mail, Chat und Kontakte gibt es, wenn die Box teilt und in einem Mesh ist.
 Jedes dir zugewiesene Issue mit Fälligkeitsdatum steht auch in einem
 Kalender-Abo unter `https://<box>.local/git/api/v1/tracker/calendar.ics`.
 Eine Kalender-App abonniert es mit deinem Namen und einem Zugriffstoken von
-LosOS Git (mit dem Bereich für Issues) als Passwort.
+LosOS Git mit dem Bereich für Issues als Passwort.
 
 Ist Build with AI an, kann **Die KI der Box** an einem Issue es **In
 Schritte zerlegen**, die du ankreuzt, um sie zu Unter-Issues zu machen,

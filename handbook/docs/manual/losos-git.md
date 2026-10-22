@@ -66,8 +66,8 @@ then need no password.
 
 ## Issues
 
-Bugs, tasks and ideas for a repository, and for work that is not code, are
-kept in the issue tracker at **Issues** in the sidebar. A repository's
+The issue tracker at **Issues** in the sidebar keeps the bugs, tasks and
+ideas of a repository, and of work that is not code. A repository's
 **Issues** opens its project there. See [Issues in LosOS Git](issues).
 
 ## Pull requests

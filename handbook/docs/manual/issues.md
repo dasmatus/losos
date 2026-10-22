@@ -7,8 +7,8 @@ slug: /manual/issues
 # Issues in LosOS Git
 
 LosOS Git keeps the box's issues: bugs, tasks and ideas, for code and for
-anything else. They live at **Issues** in LosOS Git's sidebar
-(`https://<box>.local/git/issues`), one list for every project on the box.
+anything else. They live at **Issues** in LosOS Git's sidebar, at
+`https://<box>.local/git/issues`, in one list for every project on the box.
 
 ## Projects and keys
 
@@ -30,9 +30,9 @@ also change its issues.
 
 An issue moves through the project's workflow. A new project has six
 states: Backlog, Todo, In Progress, In Review, Done and Canceled. Each state
-is one of five kinds (backlog, not started, started, done, canceled), and
-the lists, the board and the closing words below go by the kind, so a
-project can rename its states or add its own.
+is one of five kinds: backlog, not started, started, done and canceled. The
+lists, the board and the closing words below go by the kind, so a project
+can rename its states or add its own.
 
 Besides its status an issue has:
 
@@ -45,8 +45,8 @@ Besides its status an issue has:
 - a parent issue, which makes it a sub-issue. The parent shows how many of
   its sub-issues are finished.
 
-Two issues can be related: one blocks the other, one duplicates the other
-(the duplicate is canceled), or they are simply related.
+Two issues can be related: one blocks the other, one duplicates the other,
+which cancels the duplicate, or they are simply related.
 
 Each issue keeps its history: who made it, every change of status,
 priority, person, label or cycle, every comment, and the commits and pull
@@ -56,10 +56,10 @@ requests that named it.
 
 **My issues** shows what is given to you, across all projects. **All issues**
 shows everything you may see. A project has its issues, its **Backlog**
-(issues nobody has started) and its **Cycles**.
+of issues nobody has started, and its **Cycles**.
 
 Every list can be shown as a list, grouped by status, or as a board with a
-column for each state. On the board a card is dragged to another column to
+column for each state. On the board, drag a card to another column to
 change its status, or up and down to change its order. **Filter** narrows a
 list by status, priority, person, label, cycle and more, and **Display**
 picks how it is grouped and sorted. **Save view** keeps the filter and the
@@ -130,8 +130,8 @@ From the **⋯** menu at the top of an issue:
 Mail, Chat and Contacts are there when the box shares and is in a mesh.
 Every issue with a due date that is given to you is also in a calendar
 feed, at `https://<box>.local/git/api/v1/tracker/calendar.ics`. A calendar
-app subscribes to it with your name and a LosOS Git access token (with the
-issue scope) as the password.
+app subscribes to it with your name and a LosOS Git access token with the
+issue scope as the password.
 
 When Build with AI is on, **The box's AI** on an issue can **Break it
 down** into steps, which you tick to make them sub-issues, or **Sum up**
