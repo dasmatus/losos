@@ -8,7 +8,7 @@
     { "method": "DELETE", "path": "/api/assistant/asks/{id}" }
   ],
   "http": ["${LOSOS_ASSISTANT_URL:-http://127.0.0.1:11434}"],
-  "limits": { "memoryMiB": 32, "timeoutSecs": 10, "jobSecs": 900, "jobs": 1 },
+  "limits": { "memoryMiB": 32, "timeoutSecs": 10, "jobSecs": 1800, "jobs": 1 },
   "config": {
     "url": "${LOSOS_ASSISTANT_URL:-}",
     "model": "${LOSOS_ASSISTANT_MODEL:-gemma3:1b}",
