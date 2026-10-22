@@ -557,7 +557,7 @@ fn gate_at(
             audit("forbidden", Some(&person.name));
             return Err(Box::new(HttpResponse::Forbidden().json(
                 serde_json::json!({
-                    "error": "the LosOS companion reads files, repositories and the box's health, nothing else",
+                    "error": "the LosOS companion reads files, repositories, mail and the box's health, nothing else",
                     "section": section,
                 }),
             )));
@@ -3183,7 +3183,8 @@ async fn get_mail_messages(api: web::Data<Api>, req: HttpRequest) -> HttpRespons
     })
 }
 
-/// `GET /api/mail/messages/{id}` — open a message, which marks it read.
+/// `GET /api/mail/messages/{id}` — open a message, which marks it read,
+/// unless the LosOS companion opened it for an AI tool.
 async fn get_mail_message(
     api: web::Data<Api>,
     req: HttpRequest,
@@ -3194,7 +3195,10 @@ async fn get_mail_message(
         &req,
         "/api/mail/messages",
         false,
-        |who| match mail_person(&api, who).map(|p| api.mail.message(p, &path)) {
+        |who| match mail_person(&api, who).map(|p| {
+            let by_person = !matches!(who, Principal::Companion(_));
+            api.mail.message(p, &path, by_person)
+        }) {
             Ok(Ok(m)) => HttpResponse::Ok().json(m),
             Ok(Err(r)) => mail_refused(&r),
             Err(resp) => *resp,

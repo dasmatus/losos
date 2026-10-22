@@ -256,14 +256,20 @@ pkgs.testers.nixosTest {
         # This computer never ran losos login: no key, no access token.
         me(f"setsid nohup losos agents install --yes --host {URL} >/tmp/agents-install.log 2>&1 &")
         laptop.wait_until_succeeds("grep -q 'user_code=' /tmp/agents-install.log", timeout=300)
-        log = laptop.succeed("cat /tmp/agents-install.log")
-        print(log)
-        assert "SHA-256 fingerprint is" in log, log
-        link = next(w for w in log.split() if "user_code=" in w)
+        printed = laptop.succeed("cat /tmp/agents-install.log")
+        print(printed)
+        assert "SHA-256 fingerprint is" in printed, printed
+        link = next(w for w in printed.split() if "user_code=" in w)
         assert link.startswith(f"{URL}/auth/consent/openid/device-authorization?user_code="), link
         code = link.rsplit("=", 1)[1]
-        assert f"shows the code {code}" in log, log
+        assert f"shows the code {code}" in printed, printed
         page = link[len(URL):]
+        # LosOS Login's pages keep their own headers: the admin page's
+        # `base-uri 'none'` would drop their `<base href>`, and every page
+        # below /auth/ would load its scripts from the wrong folder.
+        headers = laptop.succeed(f"curl -sk -D - -o /dev/null '{link}'").lower()
+        policies = [h for h in headers.splitlines() if h.startswith("content-security-policy:")]
+        assert len(policies) == 1 and "base-uri 'self'" in policies[0], headers
         plan = {
             "width": 1280,
             "height": 800,
@@ -286,12 +292,14 @@ pkgs.testers.nixosTest {
             ],
         }
         laptop.succeed(f"echo {shlex.quote(json.dumps(plan))} > /tmp/plan.json")
-        laptop.succeed(
+        shot, said = laptop.execute(
             f"losos-capture --base {URL} --plan /tmp/plan.json "
-            f"--out /tmp/screens --user matus --password '{PASSWORD}'",
+            f"--out /tmp/screens --user matus --password '{PASSWORD}' 2>&1",
             timeout=1800,
         )
+        print(said)
         laptop.copy_from_machine("/tmp/screens", "")
+        assert shot == 0, said
         laptop.wait_until_succeeds("grep -q 'takes it out again' /tmp/agents-install.log", timeout=900)
         out = laptop.succeed("cat /tmp/agents-install.log")
         print(out)
@@ -422,13 +430,14 @@ pkgs.testers.nixosTest {
         assert code != 0, "the companion is still in the keychain"
         code, listed = me("timeout 180 claude mcp list 2>&1", check=False)
         assert "losos" not in listed, listed
-        # LosOS Login refuses the refresh token at once, and lososd the
-        # access token once its minute of trust is over.
-        refresh = curl(
+        # LosOS Login refuses the refresh token at once (as server_error:
+        # Authelia then tries to revoke the access token a second time), and
+        # lososd the access token once its minute of trust is over.
+        refresh = json.loads(curl(
             f"-X POST {URL}/auth/api/oidc/token -d grant_type=refresh_token "
             f"-d client_id=losos-companion -d refresh_token={signed['refreshToken']}"
-        )
-        assert "invalid_grant" in refresh, refresh
+        ))
+        assert "error" in refresh and "access_token" not in refresh, refresh
         laptop.wait_until_succeeds(
             f"test $(curl -sk -o /dev/null -w '%{{http_code}}' -H 'Authorization: Bearer {signed['accessToken']}' {URL}/api/me) = 401",
             timeout=180,
