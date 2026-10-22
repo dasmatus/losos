@@ -65,8 +65,8 @@ A box's page has three parts, the same ones as the box's own Apps pane:
 
 - **LosOS Cloud and LosOS Git settings.** Default language, phone region, how
   long deleted files and old versions are kept, the default quota, public
-  links and their password and expiry, and LosOS Git's sign-in, privacy,
-  landing page and push settings. Federation with other boxes is here too.
+  links and their password and expiry, and LosOS Git's sign-in, privacy
+  and push settings. LosOS cloud's federation with other boxes is here too.
   A setting the box fixed in its own configuration does not show.
 - **Installed apps.** What runs on the box, with a button to remove each.
 - **App search.** The app store search, with an install button per result.

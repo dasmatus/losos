@@ -21,7 +21,6 @@ const json = (route, status, body) =>
 
 const SETTINGS = {
   sharingMyStorage: false,
-  forgejoMode: 'container',
   hostName: 'mattbox',
   gpuEnable: false,
   proxyEnable: false,
@@ -127,7 +126,7 @@ async function open({
   }
   // The two apps' own pages, so a jump there has somewhere to land. A regex,
   // because `**/cloud/**` would also catch /api/cloud/files.
-  for (const app of ['cloud', 'forgejo']) {
+  for (const app of ['cloud', 'git']) {
     await page.route(new RegExp(`^[a-z]+://[^/]+/${app}(/|\\?|$)`), (route) =>
       route.fulfill({ status: 200, contentType: 'text/html', body: `<title>${app}</title>` }),
     );
@@ -259,7 +258,7 @@ await check('files in LosOS cloud and repositories in LosOS Git open in their ap
   await box(page).fill('tax-scr');
   await option(page, /^notshared\/tax-scripts/).waitFor();
   await page.keyboard.press('Enter');
-  await page.waitForURL(origin + '/forgejo/notshared/tax-scripts');
+  await page.waitForURL(origin + '/git/notshared/tax-scripts');
   await page.close();
 });
 
@@ -286,7 +285,7 @@ await check('text inside files: cloud first, then Git, with the match marked, ea
   await box(page).fill('tax_year');
   await option(page, /^sort\.py/).waitFor();
   await page.keyboard.press('Enter');
-  await page.waitForURL(origin + '/forgejo/notshared/tax-scripts/src/branch/main/src/sort.py#L12');
+  await page.waitForURL(origin + '/git/notshared/tax-scripts/src/branch/main/src/sort.py#L12');
   await page.close();
 });
 

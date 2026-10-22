@@ -21,7 +21,7 @@ zúži na pás ikon. Na telefóne sa otvára ako vysúvací panel.
 | Sekcia         | Čo tam je                                                                                                   |
 | -------------- | ----------------------------------------------------------------------------------------------------------- |
 | **Prehľad**    | Či zariadenie odpovedá a ako dlho, karta úložiska, dlaždice aplikácií a vaša nástenka widgetov.              |
-| **Aplikácie**  | Aplikácie na tomto zariadení s ich režimom, vyhľadávanie v Artifact Hub a aplikácie nainštalované odtiaľ.    |
+| **Aplikácie**  | Aplikácie na tomto zariadení s ich nastaveniami, vyhľadávanie v Artifact Hub a aplikácie nainštalované odtiaľ.    |
 | **Úložisko**   | Ako je disk plný, čo zaberá miesto a rezerva, ktorú si môžete vziať.                                         |
 | **Mesh**       | Pripojenie k ďalším zariadeniam, hodiny, keď toto zariadenie požičiava svoj voľný čas, **Trh** so zdieľaním disku a **Stroje**. |
 | **Diagramy**     | LosOS Diagrams: diagramy, plány a tabule ako karty a sieť tohto zariadenia nakreslená a simulovaná.    |

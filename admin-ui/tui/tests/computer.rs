@@ -27,7 +27,7 @@ fn device_handler(seen: Arc<Mutex<Vec<Value>>>) -> Box<common::Handler> {
             ),
             ("POST", "/api/devices/git") if right => (
                 200,
-                json!({ "user": "notshared", "token": "9f8e7d6c5b4a", "path": "/forgejo/" }),
+                json!({ "user": "notshared", "token": "9f8e7d6c5b4a", "path": "/git/" }),
             ),
             ("POST", "/api/devices/cloud" | "/api/devices/git") => (
                 403,
@@ -188,7 +188,7 @@ fn git_setup_makes_this_program_git_s_credential_helper_for_the_box() {
         .client
         .run(&["git", "setup", "--device", "laptop"], PASSWORD);
     assert_eq!(r.code, 0, "{}", r.err);
-    let git_url = format!("{}/forgejo", s.host.url);
+    let git_url = format!("{}/git", s.host.url);
     assert!(
         r.out
             .contains(&format!("git clone {git_url}/notshared/<repository>.git")),
@@ -225,7 +225,7 @@ fn git_setup_makes_this_program_git_s_credential_helper_for_the_box() {
     let authority = s.host.url.trim_start_matches("https://").to_string();
     let r = s.client.run(
         &["git", "credential", "get"],
-        &format!("protocol=https\nhost={authority}\npath=forgejo/notshared/notes.git\n"),
+        &format!("protocol=https\nhost={authority}\npath=git/notshared/notes.git\n"),
     );
     assert_eq!(r.code, 0, "{}", r.err);
     assert_eq!(r.out, "username=notshared\npassword=9f8e7d6c5b4a\n");

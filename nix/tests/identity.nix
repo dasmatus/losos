@@ -28,60 +28,16 @@
 #     that run out, hold a person to their own account and out of the apps
 #     until they comply, and let them go the moment they do.
 #
-# The front vhost is in its container shape, with LosOS Git's routes, and on
-# its loopback port a stand-in answers with the path and headers it was
-# sent. That is where signing in to LosOS Git with LosOS Login
-# (modules/app-sign-in.nix) is decided: who nginx names to it, on which
-# pages, and where it sends a person LosOS Login does not know.
-# nix/tests/app-sign-in.nix boots the real Forgejo on those headers, and
-# nix/tests/cloud.nix signs in to LosOS Cloud the same way.
+# The front vhost carries LosOS Git's routes, and LosOS Git is the real one
+# (modules/git.nix), asked who it thinks is calling. That is where signing in
+# to LosOS Git with LosOS Login (modules/app-sign-in.nix) is decided: who
+# nginx names to it, on which pages, and where it sends a person LosOS Login
+# does not know. nix/tests/app-sign-in.nix checks LosOS Git on those headers,
+# and nix/tests/cloud.nix signs in to LosOS Cloud the same way.
 { pkgs }:
 
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
-
-  # Each app's port answers with what it was sent.
-  echo = pkgs.writeText "echo.py" ''
-    import http.server, json, sys
-
-    class Echo(http.server.BaseHTTPRequestHandler):
-        def answer(self):
-            if self.path.endswith("/logout"):
-                self.send_response(303)
-                host = self.headers["Host"]
-                self.send_header("Location", f"http://{host}/forgejo/user/login")
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
-            body = json.dumps({
-                "path": self.path,
-                "headers": {k.lower(): v for k, v in self.headers.items()},
-            }).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-        do_GET = do_POST = answer
-
-    http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), Echo).serve_forever()
-  '';
-  echoService = port: {
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      ExecStart = "${pkgs.python3}/bin/python3 ${echo} ${toString port}";
-      DynamicUser = true;
-    };
-  };
-  # Any derivation with the two attributes imageRef reads: no cluster runs,
-  # so the image is never pulled (nix/tests/forgejo-federation.nix).
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
 
   # The admin pages themselves are not under test; one file stands in.
   stubUi = pkgs.runCommand "stub-admin-ui" { } ''
@@ -103,22 +59,19 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
+          ../../modules/git.nix
         ];
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = stubUi;
-          forgejo.enable = true;
-          forgejo.mode = "container";
-          workloads.forgejoImage = standIn "losos-forgejo-stand-in";
+          git.enable = true;
         };
         systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
         # The script asks for more one-time codes from one address than
         # LosOS Login allows in five minutes (three).
         services.authelia.instances.losos.settings.server.endpoints.rate_limits.session_elevation_start.enable =
           false;
-        systemd.services.forgejo-stand-in = echoService 3000;
         environment.systemPackages = [ pkgs.jq ];
         virtualisation = {
           memorySize = 1536;
@@ -127,15 +80,13 @@ pkgs.testers.nixosTest {
         };
       };
 
-    laptop =
-      { ... }:
-      {
-        environment.systemPackages = [
-          pkgs.curl
-          pkgs.jq
-        ];
-        virtualisation.vlans = [ 1 ];
-      };
+    laptop = _: {
+      environment.systemPackages = [
+        pkgs.curl
+        pkgs.jq
+      ];
+      virtualisation.vlans = [ 1 ];
+    };
   };
 
   testScript = ''
@@ -373,39 +324,43 @@ pkgs.testers.nixosTest {
             return int(code), where
         return 200, json.loads(node.succeed("cat /tmp/app"))
 
-    def person(answer):
+    def git(cookie=None, extra="", answer=None):
+        """Who LosOS Git thinks is calling: its own account of the caller,
+        or Nones when it sees nobody (401). `answer` is (code, body) from
+        somewhere other than the LAN, e.g. the tunnel."""
+        if answer is None:
+            answer = app("/git/api/v1/user", cookie, extra)
         code, sent = answer
+        if code == 401:
+            return (None, None, None)
         assert code == 200, answer
-        h = sent["headers"]
-        return (
-            h.get("x-losos-cloud-user"),
-            h.get("x-losos-cloud-name"),
-            h.get("x-losos-cloud-email"),
-        )
+        if isinstance(sent, str):
+            sent = json.loads(sent)
+        return (sent["login"], sent["full_name"], sent["email"])
 
     with subtest("LosOS Git hears who LosOS Login vouches for, and nobody else"):
+        box.wait_for_unit("losos-git.service")
         # A fresh sign-in, after the restarts above.
         cookie = sign_in("matus", PASSWORD)
-        got = person(app("/forgejo/", cookie))
+        got = git(cookie)
         # The claim's address is <name>@<the box's hostname>.local.
         assert got[:2] == ("notshared", "matus") and got[2].startswith("matus@"), got
-        got = person(app("/forgejo/explore/repos", eva))
-        assert got == ("eva", "Eva", "eva@mattbox.local"), got
-        assert person(app("/forgejo/")) == (None, None, None)
+        assert git(eva) == ("eva", "Eva", "eva@mattbox.local"), git(eva)
+        assert git() == (None, None, None)
         forged = "-H 'X-Losos-Cloud-User: notshared' -H 'X-Losos-Cloud-Name: x'"
-        assert person(app("/forgejo/", extra=forged)) == (None, None, None)
-        assert person(app("/forgejo/", eva, extra=forged))[0] == "eva"
-        # git and the API bring credentials of their own.
-        assert person(app("/forgejo/x.git/info/refs", cookie, extra="-u matus:pw"))[0] is None
-        # The prefix is stripped, as before.
-        assert app("/forgejo/explore/repos", eva)[1]["path"] == "/explore/repos"
+        assert git(extra=forged) == (None, None, None)
+        assert git(eva, extra=forged)[0] == "eva"
+        # git brings credentials of its own: a password where a token
+        # belongs names nobody, and is refused rather than taken for the
+        # cookie's person.
+        code, _ = app("/git/notshared/x.git/info/refs?service=git-upload-pack",
+                      cookie, extra="-u matus:pw")
+        assert code == 401, code
 
     with subtest("each app's sign-in page goes to LosOS Login, or past it"):
         signin = f"https://{BOX}/auth/?rd=https://{BOX}"
-        code, where = app("/forgejo/user/login")
-        assert code == 302 and where == signin + "/forgejo/user/login", (code, where)
-        code, sent = app("/forgejo/user/login?redirect_to=%2F", eva)
-        assert person((code, sent))[0] == "eva" and sent["path"] == "/user/login?redirect_to=%2F", sent
+        code, where = app("/git/notshared/x")
+        assert code == 302 and where == signin + "/git/", (code, where)
 
     def tunnel(path, host, cookie=None, proto="https", extra=""):
         """A request the way the edge's tunnel delivers it: plain http from
@@ -442,9 +397,9 @@ pkgs.testers.nixosTest {
         # The sessions are in LosOS Login's Redis, so the restart ended none.
         assert api("/api/state", cookie)[0] == 200
         # Through the tunnel: LosOS Login, on the public name.
-        code, where = tunnel("/forgejo/user/login", public)
+        code, where = tunnel("/git/", public)
         assert code == 302, (code, where)
-        assert where == f"https://{public}/auth/?rd=https://{public}/forgejo/user/login", where
+        assert where == f"https://{public}/auth/?rd=https://{public}/git/", where
         # The portal answers there over the browser's https, with no loop;
         # plain http through the tunnel goes to https, and a LAN client
         # cannot claim https it does not have.
@@ -460,29 +415,36 @@ pkgs.testers.nixosTest {
         m = re.search(r"(?im)^set-cookie: (losos_session=[^;]+);.*domain={}".format(re.escape(public)), head)
         assert m, head
         outside = m.group(1)
-        code, sent = tunnel("/forgejo/", public, outside)
-        assert code == 200 and sent["headers"].get("x-losos-cloud-user") == "eva", (code, sent)
+        code, sent = tunnel("/git/api/v1/user", public, outside)
+        assert git(answer=(code, sent))[0] == "eva", (code, sent)
         # The admin pages stay on the LAN.
         assert tunnel("/api/state", public, outside)[0] == 403
         # LosOS Login down: a page that waits for it, nobody named.
         box.systemctl("stop losos-identity.path authelia-losos.service")
-        code, _ = app("/forgejo/user/login", cookie)
+        code, _ = app("/git/", cookie)
         assert code == 503, code
         page = laptop.succeed("cat /tmp/app")
         assert "LosOS Login is starting" in page and 'http-equiv="refresh"' in page, page
-        assert tunnel("/forgejo/user/login", public)[0] == 503
-        assert person(app("/forgejo/", cookie)) == (None, None, None)
+        assert git(cookie) == (None, None, None)
         box.systemctl("start authelia-losos.service losos-identity.path")
         box.wait_for_open_port(9091)
         laptop.wait_until_succeeds(f"curl -sf http://{BOX}/auth/api/health", timeout=60)
         cookie = sign_in("matus", PASSWORD)
         eva = sign_in("eva", "Eva-Long-Password-3")
-        assert person(app("/forgejo/", cookie))[0] == "notshared"
+        assert git(cookie)[0] == "notshared"
 
     with subtest("only root, nginx and the app itself reach the apps' ports"):
-        box.succeed("curl -sf http://127.0.0.1:3000/")
-        box.fail("runuser -u nobody -- curl -sf --max-time 5 http://127.0.0.1:3000/")
-        box.succeed("runuser -u nginx -- curl -sf http://127.0.0.1:3000/")
+        # LosOS Git believes the headers only on its socket, which nginx
+        # alone may open; its loopback port takes tokens and nothing else.
+        me = "http://git/api/v1/user -H 'X-Losos-Cloud-User: notshared'"
+        sock = "--unix-socket /run/losos-git/http.sock"
+        box.succeed(f"runuser -u nginx -- curl -sf {sock} {me}")
+        box.fail(f"runuser -u nobody -- curl -s --max-time 5 {sock} {me}")
+        code = box.succeed(
+            "runuser -u nobody -- curl -s -o /dev/null -w '%{http_code}'"
+            " http://127.0.0.1:3000/api/v1/user -H 'X-Losos-Cloud-User: notshared'"
+        )
+        assert code == "401", code
 
     with subtest("a box claimed before losos-owner existed gets it on start"):
         mark = journal_mark()
@@ -544,7 +506,7 @@ pkgs.testers.nixosTest {
         ]
 
     with subtest("a removed person loses the admin pages and the apps at once"):
-        assert person(app("/forgejo/", eva))[0] == "eva"
+        assert git(eva)[0] == "eva"
         code, body = api("/api/people/remove", cookie, method="POST", data={"name": "eva"})
         assert code == 200, (code, body)
         assert "eva" not in json.loads(box.succeed(f"cat {PEOPLE}"))["users"]
@@ -554,7 +516,7 @@ pkgs.testers.nixosTest {
             assert json.loads(body)["noAccount"] is True, body
         # LosOS Login looks the person up on every request, so the old
         # cookie no longer names anyone to LosOS Git.
-        assert person(app("/forgejo/", eva)) == (None, None, None)
+        assert git(eva) == (None, None, None)
         body = json.dumps({"username": "eva", "password": "Eva-Reset-Password-55"})
         code = status(
             f"https://{BOX}/auth/api/firstfactor -H 'Content-Type: application/json' -d '{body}'"
@@ -749,10 +711,10 @@ pkgs.testers.nixosTest {
         assert json.loads(api("/api/account", oma)[1])["locked"] == ["twoFactor"]
         # LosOS Login names them to no app, and the apps' sign-in pages say
         # why.
-        eventually(lambda: person(app("/forgejo/", oma)) == (None, None, None))
-        assert app("/forgejo/user/login", oma)[0] == 403
+        eventually(lambda: git(oma) == (None, None, None))
+        assert app("/git/", oma)[0] == 403
         assert "Finish your account first" in laptop.succeed("cat /tmp/app")
-        assert person(app("/forgejo/", cookie))[0] == "notshared"
+        assert git(cookie)[0] == "notshared"
         listed = json.loads(api("/api/people", cookie)[1])
         assert listed["rules"] == {"twoFactor": True, "passwordDays": 0}, listed
         assert {p["name"]: p["locked"] for p in listed["people"]} == {
@@ -765,7 +727,7 @@ pkgs.testers.nixosTest {
         me = json.loads(api("/api/me", oma)[1])
         assert me["locked"] == [] and me["sections"] == ["account"], me
         assert api("/api/state", oma)[0] == 200
-        eventually(lambda: person(app("/forgejo/", oma))[:2] == ("oma", "Oma Horvathova"))
+        eventually(lambda: git(oma)[:2] == ("oma", "Oma Horvathova"))
 
     with subtest("an administrator resets a lost authenticator app"):
         code, _ = api("/api/people/two-factor/reset", oma, method="POST", data={"name": "oma"})

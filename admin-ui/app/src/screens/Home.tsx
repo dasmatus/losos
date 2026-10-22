@@ -31,7 +31,6 @@ import {
   probeApps,
   recallAvailability,
   rememberAvailability,
-  servedHere,
   type AppAttention,
   type AppFacts,
   type AppId,
@@ -106,10 +105,10 @@ export function Home({
   const signedIn = React.useSyncExternalStore(subscribeAuth, hasToken, () => false);
   const health = useHealth();
   const { settings, boxState, status, measured } = useBoxFacts(signedIn);
-  const availability = useAvailability(settings);
+  const availability = useAvailability();
   const disk = storage ?? measured;
 
-  const facts = buildFacts({ availability, settings, status, storage: disk });
+  const facts = buildFacts({ availability, status, storage: disk });
   const model = deriveApps(facts);
 
   const hostName = settings?.hostName ?? browserHostName();
@@ -426,12 +425,10 @@ function clampPercent(value: number): number {
  * dot is a state the box actually reported, never a hunch. */
 function buildFacts({
   availability,
-  settings,
   status,
   storage,
 }: {
   availability: { seen: Availabilities; measured: boolean };
-  settings: SettingsResponse | null;
   status: StatusResponse | null;
   storage: HomeStorage | null;
 }): AppFacts {
@@ -462,11 +459,6 @@ function buildFacts({
     files: availability.seen.files,
     code: availability.seen.code,
     measured: availability.measured,
-    ...(settings === null
-      ? {}
-      : {
-          codeServedHere: servedHere(settings.forgejoMode),
-        }),
     details,
     attention,
   };
@@ -621,7 +613,7 @@ function useBoxFacts(signedIn: boolean): {
  * overwrites a remembered "present": a box does not lose its apps because one
  * request failed, and the grid emptying itself on a flaky network is the exact
  * failure this whole module exists to avoid. */
-function useAvailability(settings: SettingsResponse | null): {
+function useAvailability(): {
   seen: Availabilities;
   measured: boolean;
 } {
@@ -651,15 +643,6 @@ function useAvailability(settings: SettingsResponse | null): {
       controller.abort();
     };
   }, []);
-
-  /* LosOS Git served under this box's own name rather than from this page is
-   * not something the probe can see: there is no route here to ask. Forget
-   * what was remembered about it instead of leaving a stale "present"
-   * behind, and let `codeServedHere` do the deciding. */
-  React.useEffect(() => {
-    if (settings === null || servedHere(settings.forgejoMode)) return;
-    setSeen((previous) => ({ ...previous, code: "unknown" }));
-  }, [settings]);
 
   return { seen, measured };
 }

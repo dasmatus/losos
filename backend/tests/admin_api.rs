@@ -58,6 +58,9 @@ impl Daemon {
             .env("LOSOS_OVERRIDES", dir.path().join("overrides.nix"))
             .env("LOSOS_ADMIN_TOKEN_FILE", &token_file)
             .env("LOSOS_ADMIN_PORT", port.to_string())
+            // Nobody has claimed this box: no owner until a test makes one.
+            .env("LOSOS_PEOPLE_DIR", dir.path())
+            .env("LOSOS_PEOPLE_FILE", dir.path().join("users.yml"))
             .env("RUST_LOG", "warn")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -107,6 +110,9 @@ impl Daemon {
             format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n");
         if let Some(value) = authorization {
             request.push_str(&format!("Authorization: {value}\r\n"));
+        }
+        if body.is_some() {
+            request.push_str("Content-Type: application/json\r\n");
         }
         let body = body.unwrap_or_default();
         request.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
@@ -312,6 +318,35 @@ fn repeated_bad_tokens_are_throttled_and_health_stays_open() {
 
     // The window is short (1s at first) and a correct token then works again.
     std::thread::sleep(Duration::from_millis(1100));
+    assert_eq!(
+        daemon
+            .request("GET", "/api/state", Some(&right), None)
+            .status,
+        200
+    );
+}
+
+#[test]
+fn wrong_owner_passwords_are_throttled_though_the_token_is_right() {
+    let daemon = Daemon::start(None);
+    let right = format!("Bearer {}", daemon.token());
+    // A box with nobody in LosOS Login has no password to be wrong about, so
+    // the spare key makes the owner first.
+    let owner = r#"{"name":"owner","password":"Zqx-marmalade-77-parapet"}"#;
+    let r = daemon.request("POST", "/api/setup/claim", Some(&right), Some(owner));
+    assert_eq!(r.status, 200, "{}", r.body);
+    let body = r#"{"password":"Not-the-owners-password-1","device":"laptop"}"#;
+
+    // Each request signs in with the right token, which clears the token
+    // throttle; the wrong passwords are counted apart and add up all the same.
+    for _ in 0..11 {
+        let r = daemon.request("POST", "/api/devices/cloud", Some(&right), Some(body));
+        assert_eq!(r.status, 403, "{}", r.body);
+        assert!(r.body.contains("wrongPassword"), "{}", r.body);
+    }
+    let r = daemon.request("POST", "/api/devices/cloud", Some(&right), Some(body));
+    assert_eq!(r.status, 429, "{}", r.body);
+    // Only guessing is held back: the rest of the API still answers.
     assert_eq!(
         daemon
             .request("GET", "/api/state", Some(&right), None)

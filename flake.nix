@@ -1,5 +1,5 @@
 {
-  description = "losos — stateless NixOS appliance: LosOS Cloud, Forgejo as a k3s workload, mesh storage and compute on rke2/Longhorn, auto-upgrade, midnight reboot, TPM-or-keyfile FDE";
+  description = "losos — stateless NixOS appliance: LosOS Cloud, LosOS Git, mesh storage and compute on rke2/Longhorn, auto-upgrade, midnight reboot, TPM-or-keyfile FDE";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -298,13 +298,9 @@
             ./modules/builder.nix
             ./modules/services.nix
             ./modules/containers.nix
-            # The local k3s cluster + the mesh rke2 agent, and the workload
-            # manifests the local cluster runs. These must be imported together
-            # with containers.nix: that file proxies /forgejo to a loopback
-            # port that only these two modules make anything listen on, so
-            # dropping either leaves the front door serving 502s.
+            # The local k3s cluster (the `shared` apps) and the mesh rke2
+            # agent.
             ./modules/cluster.nix
-            ./modules/workloads.nix
             # The fscrypt policy on the shared data domain, locked and unlocked
             # off losos.sharingMyStorage.
             ./modules/fscrypt.nix
@@ -340,6 +336,8 @@
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
             ./modules/lab.nix
+            # LosOS Git, the box's Git server (backend/src/forge/).
+            ./modules/git.nix
             # LosOS Mail: Stalwart as the shared user, only while sharing.
             ./modules/mail.nix
             # The option document and the configuration repository on LosOS
@@ -451,6 +449,8 @@
         # real rebuild, with the pull request's pictures (nix/tests/wait-game.nix).
         losos-wait-game = import ./nix/tests/wait-game.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
+        # Screenshots of a booted box; the plan is read when the driver runs.
+        losos-screens = import ./nix/tests/screens.nix { inherit pkgs; };
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
@@ -465,6 +465,10 @@
         # (nix/tests/diagrams-together.nix).
         losos-diagrams-together = import ./nix/tests/diagrams-together.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
+        # Your apps: Chromium on a laptop asks the box for an app, watches it
+        # written, uses it and saves it, and keeps every screen
+        # (nix/tests/app-builder.nix).
+        losos-app-builder = import ./nix/tests/app-builder.nix { inherit pkgs; };
         losos-mail = import ./nix/tests/mail.nix { inherit pkgs; };
         losos-mail-screens = import ./nix/tests/mail.nix {
           inherit pkgs;
@@ -516,10 +520,18 @@
         # refusals (nix/tests/inference-payg.nix).
         losos-inference-payg = import ./nix/tests/inference-payg.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
-        # The real Forgejo with losos.forgejo.federation on, asked what another
-        # server would ask, in both deployment modes; then off, and gone
-        # (nix/tests/forgejo-federation.nix).
-        losos-forgejo-federation = import ./nix/tests/forgejo-federation.nix { inherit pkgs; };
+        # LosOS Git: Forgejo's repositories moved in, the configuration
+        # repository's round trip through lososd, clone and push through
+        # nginx, and who it believes (nix/tests/git.nix).
+        losos-git = import ./nix/tests/git.nix { inherit pkgs; };
+        # Its pages in Chromium: code, a pull request reviewed and merged, the
+        # worktrees (nix/tests/git-pages.nix).
+        losos-git-pages = import ./nix/tests/git-pages.nix { inherit pkgs; };
+        # A Forgejo box's switch: everything it held, carried into LosOS Git.
+        losos-git-forgejo = import ./nix/tests/git-forgejo.nix { inherit pkgs; };
+        # LosOS Reviewer: the code model's reviews of pull requests, on
+        # recorded answers (nix/tests/git-reviewer.nix).
+        losos-git-reviewer = import ./nix/tests/git-reviewer.nix { inherit pkgs; };
         # The signed installer medium under OVMF's Secure Boot build: the
         # real ISO (plus the test backdoor) signed with a throwaway key the
         # sandbox makes, boots with that key enrolled beside Microsoft's and
@@ -540,13 +552,6 @@
           inherit pkgs;
           inherit (nixpkgs) lib;
           inherit (self.nixosConfigurations.install) config;
-          # The same configuration with disk sharing forced each way, for
-          # the federation gate (losos.sharingMyStorage).
-          sharing =
-            on:
-            (self.nixosConfigurations.install.extendModules {
-              modules = [ { losos.sharingMyStorage = nixpkgs.lib.mkForce on; } ];
-            }).config;
           mesh =
             (self.nixosConfigurations.install.extendModules {
               modules = [

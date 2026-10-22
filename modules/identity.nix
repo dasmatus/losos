@@ -177,7 +177,7 @@ let
       default "";
     }
     map $uri $losos_app_back {
-      ~^/forgejo/ /forgejo/user/login;
+      ~^/git/ /git/;
       default $request_uri;
     }
     map "$losos_groups|$losos_user" $losos_app_user {
@@ -199,7 +199,7 @@ let
 
   signIn = import ./app-sign-in.nix { inherit lib; };
   appSignIn = config.lososInternal.appSignIn;
-  anyAppSignIn = appSignIn.forgejo || appSignIn.cloud;
+  anyAppSignIn = appSignIn.git || appSignIn.cloud;
 
   # Ask Authelia about the request nginx is handling, as the /api/
   # question below does.
@@ -210,25 +210,6 @@ let
     proxy_set_header X-Original-URL https://$host$request_uri;
     proxy_set_header X-Forwarded-For $remote_addr;
   '';
-
-  # Only these may open a connection to `port` on loopback: root, nginx and
-  # the app's own uid. The same owner match as lososd's port
-  # (modules/daemon.nix says why a match on OUTPUT and not a socket), here
-  # because the app takes the person from a header: a Helm app on the host
-  # network could otherwise name anyone it liked.
-  loopbackRule =
-    port: uid:
-    lib.concatStringsSep " " (
-      [
-        "OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString port}"
-        "-m owner ! --uid-owner 0"
-        "-m owner ! --uid-owner ${toString uid}"
-      ]
-      ++ lib.optional config.services.nginx.enable "-m owner ! --uid-owner ${config.services.nginx.user}"
-      ++ [ "-j REJECT --reject-with tcp-reset" ]
-    );
-  # modules/workloads.nix: Forgejo's literal port and its pinned uid.
-  loopbackRules = lib.optional appSignIn.forgejo (loopbackRule 3000 1003);
 
   package = pkgs.authelia.override {
     authelia-web = themes.authelia.web pkgs.authelia.web;
@@ -384,7 +365,7 @@ in
             {
               domain_regex = ".*";
               subject = [ "group:losos-locked" ];
-              resources = [ "^/(nextcloud|forgejo|cloud)([/?].*)?$" ];
+              resources = [ "^/(nextcloud|git|cloud)([/?].*)?$" ];
               policy = "deny";
             }
             {
@@ -660,16 +641,6 @@ in
       }
       ${lib.optionalString anyAppSignIn appMaps}
     '';
-
-    networking.firewall = lib.mkIf (config.networking.firewall.enable && loopbackRules != [ ]) {
-      extraCommands = lib.concatMapStrings (rule: ''
-        iptables -w -D ${rule} 2>/dev/null || true
-        iptables -w -I ${rule}
-      '') loopbackRules;
-      extraStopCommands = lib.concatMapStrings (rule: ''
-        iptables -w -D ${rule} 2>/dev/null || true
-      '') loopbackRules;
-    };
 
     services.nginx.virtualHosts."losos-front".locations =
       lib.optionalAttrs anyAppSignIn {

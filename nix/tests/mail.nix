@@ -64,14 +64,13 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/mail.nix
         ];
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = if screens then lososPkgs.losos-admin-ui else stubUi;
-          forgejo.enable = false;
+          git.enable = false;
           sharingMyStorage = true;
           # In a mesh, as far as the gate goes; modules/cluster.nix (rke2)
           # is not imported, so nothing joins anything.

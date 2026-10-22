@@ -15,7 +15,6 @@ const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
 pub fn settings() -> Value {
     json!({
       "sharingMyStorage": false,
-      "forgejoMode": "container",
       "hostName": "mattbox",
       "gpuEnable": false,
       "proxyEnable": false,
@@ -247,9 +246,9 @@ pub fn config() -> Value {
       "repository": {
         "owner": "matus",
         "name": "losos-config",
-        "url": "/forgejo/matus/losos-config",
+        "url": "/git/matus/losos-config",
         "clone": "http://127.0.0.1:3000/matus/losos-config.git",
-        "viaForgejo": true
+        "viaServer": true
       },
       "head": {
         "sha": "4f2a9c1e0b7d",
@@ -453,7 +452,7 @@ pub fn box_route(method: &str, path: &str, body: &Value) -> (u16, Value) {
         ),
         ("POST", "/api/devices/git") => (
             200,
-            json!({ "user": "notshared", "token": "9f8e7d6c5b4a", "path": "/forgejo/" }),
+            json!({ "user": "notshared", "token": "9f8e7d6c5b4a", "path": "/git/" }),
         ),
         ("GET" | "POST", _) => (404, json!({ "error": format!("no route {p}") })),
         _ => (405, json!({ "error": "method" })),
