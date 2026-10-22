@@ -66,6 +66,13 @@ git fragt nach einem Namen und einem Token. `losos git setup` aus dem
 macht ein Token für einen Rechner und gibt es git, sodass Klonen und
 Pushen danach kein Passwort mehr brauchen.
 
+## Issues \{#issues}
+
+Fehler, Aufgaben und Ideen zu einem Repository und zu Arbeit, die kein
+Code ist, stehen im Issue-Tracker unter **Issues** in der Seitenleiste.
+Die **Issues** eines Repositorys öffnen dort sein Projekt. Siehe
+[Issues in LosOS Git](issues).
+
 ## Pull-Requests \{#pull-requests}
 
 Pushe einen Branch und drück dann **Pull-Request öffnen** auf der Seite

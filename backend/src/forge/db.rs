@@ -211,7 +211,10 @@ const MIGRATIONS: &[&str] = &[
         seen  TEXT NOT NULL
     );
     ",
-    // 8: a Forgejo wiki (`<name>.wiki.git`) that an earlier start took in
+    // 8: the issue tracker (`super::tracker`): projects with keys and
+    // workflows, issues, cycles, relations, links, views and the inbox.
+    super::tracker::MIGRATION,
+    // 9: a Forgejo wiki (`<name>.wiki.git`) that an earlier start took in
     // as a repository of its own is its repository's wiki again
     // (`super::wiki`); the Git data stays where it is. Only a record with
     // nothing of its own goes.

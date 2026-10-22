@@ -89,6 +89,7 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
     let scope = super::code::routes(scope);
     let scope = super::wiki::routes(scope);
     let scope = super::reviewer::api::routes(scope);
+    let scope = super::tracker::api::routes(scope);
     let scope = super::matrix::routes(scope);
     cfg.service(super::worktrees::routes(scope));
 }

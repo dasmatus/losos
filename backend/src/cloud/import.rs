@@ -15,9 +15,11 @@
 //! came from. `modules/cloud.nix` dumps those tables to JSON (one file per
 //! table, `row_to_json` of every row) before Nextcloud's server is gone, and
 //! [`database`] reads the dump: calendars and address books into
-//! [`crate::cloud::pim`], boards into [`crate::cloud::boards`]. Whatever has
-//! no place here yet (a calendar subscription, a board shared with a group)
-//! is written into the person's files as `From Nextcloud/Not moved.txt`, so
+//! [`crate::cloud::pim`], calendar subscriptions into
+//! [`crate::cloud::calendar`] (read again on the cloud's next pass), boards
+//! into [`crate::cloud::boards`]. Whatever has no place here yet (a board
+//! shared with a group, a subscription to an address the cloud cannot
+//! read) is written into the person's files as `From Nextcloud/Not moved.txt`, so
 //! nothing goes without a trace.
 
 use crate::cloud::boards::{self, NewBoard, NewCard, NewColumn};
@@ -254,6 +256,19 @@ pub fn database(cloud: &Cloud, dump: &Path) -> Result<Report, StoreError> {
         if let Some(login) = principal_login(&sub) {
             let name = s(&sub, "displayname").unwrap_or_default();
             let source = s(&sub, "source").unwrap_or_default();
+            let kept = crate::cloud::calendar::adopt(
+                &cloud.store,
+                &login,
+                &crate::cloud::calendar::Subscription {
+                    url: source.clone(),
+                    name: Some(name.clone()),
+                    color: s(&sub, "calendarcolor"),
+                    refresh: s(&sub, "refreshrate").and_then(|r| crate::ical::parse_duration(&r)),
+                },
+            );
+            if kept.is_ok() {
+                continue;
+            }
             report
                 .people
                 .entry(login)
@@ -833,7 +848,10 @@ mod tests {
         );
         w(
             "calendarsubscriptions",
-            serde_json::json!([{"principaluri": "principals/users/notshared", "displayname": "Holidays", "source": "https://example.org/h.ics"}]),
+            serde_json::json!([
+                {"principaluri": "principals/users/notshared", "displayname": "Holidays", "source": "webcal://example.org/h.ics", "refreshrate": "P1W", "calendarcolor": "#0a7d5a"},
+                {"principaluri": "principals/users/notshared", "displayname": "Old", "source": "ftp://example.org/o.ics"}
+            ]),
         );
 
         let cloud = Cloud::open(root.path(), Config::default()).unwrap();
@@ -844,10 +862,24 @@ mod tests {
         assert_eq!(me.not_moved.len(), 3, "{:?}", me.not_moved);
         assert!(me.not_moved.iter().any(|l| l.contains("bad.ics")));
         assert!(me.not_moved.iter().any(|l| l.contains("family")));
+        // A subscription is one again, read on the cloud's next pass; one
+        // to an address it cannot read is named instead.
         assert!(me
             .not_moved
             .iter()
-            .any(|l| l.contains("https://example.org/h.ics")));
+            .any(|l| l.contains("ftp://example.org/o.ics")));
+        let subs: Vec<_> = crate::cloud::calendar::list(&cloud.store, "notshared")
+            .unwrap()
+            .into_iter()
+            .filter(|c| c.read_only)
+            .collect();
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].name, "Holidays");
+        let feed = subs[0].feed.as_ref().unwrap();
+        assert_eq!(
+            (feed.url.as_str(), feed.refresh),
+            ("webcal://example.org/h.ics", 7 * 86_400)
+        );
         assert_eq!(
             cloud
                 .store
@@ -889,13 +921,15 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        assert!(note.contains("Holidays"));
+        assert!(note.contains("ftp://example.org/o.ics"));
 
         // Again: nothing doubles.
         let again = database(&cloud, dump.path()).unwrap();
         assert_eq!(again.people["notshared"].boards, 0);
         assert_eq!(boards::list(&cloud.store, "notshared").unwrap().len(), 1);
         assert_eq!(pim::count(&cloud.store, &cal).unwrap(), 2);
+        let subs = crate::cloud::calendar::list(&cloud.store, "notshared").unwrap();
+        assert_eq!(subs.iter().filter(|c| c.read_only).count(), 1);
     }
 
     #[test]

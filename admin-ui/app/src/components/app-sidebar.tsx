@@ -11,6 +11,7 @@ import {
   FlowchartIcon,
   LibraryIcon,
   Mail01Icon,
+  Calendar03Icon,
   ContactBookIcon,
   PencilEdit02Icon,
   PinOffIcon,
@@ -69,6 +70,7 @@ import { useOfficeFolder } from "@/lib/office-folder";
  *   Chat                    (LosOS Chat at /chat/, only on the shared side)
  *   Mail                    (LosOS Mail at /mail, the same)
  *   Contacts                (LosOS Contacts at /contacts, wherever LosOS Cloud runs)
+ *   Calendar                (LosOS Calendar at /calendar, the same)
  *   Mesh CI                 (workflows at /ci, only on the shared side)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
@@ -183,6 +185,14 @@ const TREE: readonly Entry[] = [
   },
   {
     kind: "link",
+    key: "calendar",
+    to: "/calendar",
+    label: "shell.nav.calendar",
+    icon: Calendar03Icon,
+    shared: "calendar",
+  },
+  {
+    kind: "link",
     key: "ci",
     to: "/ci",
     label: "shell.nav.ci",
@@ -212,7 +222,8 @@ function allowed(entry: LinkEntry, office: boolean): boolean {
   if (entry.key === "lab") return canUse("lab");
   if (entry.key === "documents") return office;
   // There only while lososd lists the app in /api/me's `shared`: mail and
-  // chat while the box shares its storage, contacts with LosOS Cloud.
+  // chat while the box shares its storage, contacts and calendar with LosOS
+  // Cloud.
   if (entry.shared !== undefined) return sharedApp(entry.shared);
   return true;
 }
