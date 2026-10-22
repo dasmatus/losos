@@ -12,15 +12,15 @@
 #     overview, served by the real nginx under the real Content-Security-
 #     Policy, with the admin UI signed in by the spare key the claim gave;
 #   * Build with AI is on by default (losos.builder.enable), so this box's
-#     tour has seven steps: the six and Build with AI, in English, Slovak
-#     and German, light and dark, with no Chat anywhere;
+#     tour has the six, lending to AI models (Market can lend memory on any
+#     box that declares losos.inference.lend.enable) and Build with AI, in
+#     English, Slovak and German, light and dark, with no Chat anywhere;
 #   * sharing its storage and joining a mesh adds no chat step here: this
 #     lososd lists no shared apps in /api/me, and the step follows that, not
 #     the two settings;
-#   * with losos.builder.enable off (the specialisation) the tour has the
-#     six steps;
-#   * Office, lending to AI models, a name on an edge and profiles are not
-#     on this box, and none of their steps shows;
+#   * with losos.builder.enable off (the specialisation) its step goes;
+#   * Office, a name on an edge and profiles (the spare key has no Your
+#     account) are not on this box, and none of their steps shows;
 #   * every step draws with no page error and no CSP violation beyond the
 #     one every load logs (Sonner's stylesheet).
 #
@@ -147,23 +147,30 @@ pkgs.testers.nixosTest {
         assert run.returncode == 0, f"{name}: the browser run failed"
         return json.loads(run.stdout.strip().splitlines()[-1])
 
+    def options_on(name):
+        doc = json.loads(box.succeed(f"curl -fsS -H 'Authorization: Bearer {token}' localhost:8082/api/options"))
+        return [o["current"] for o in doc["options"] if o["name"] == name]
+
+    # The six every box has, plus lending to AI models wherever lososd
+    # declares inference.lend.enable (the Market pane lends memory whether
+    # or not it is on), in the order of SCENES in src/tour/scenes.tsx.
+    LEND = ["Lend memory to AI models"] if options_on("inference.lend.enable") else []
     STOCK = [
         "Your apps, on your box",
         "Add more apps",
         "See where the space goes",
         "Lend it while you sleep",
+        *LEND,
+        "Describe a widget, get a widget",
         "It updates itself at night",
         "Find this tour again",
     ]
-    WITH_BUILDER = STOCK[:4] + ["Describe a widget, get a widget"] + STOCK[4:]
+    WITH_BUILDER = STOCK
+    STOCK = [t for t in STOCK if t != "Describe a widget, get a widget"]
 
-    def options_on(name):
-        doc = json.loads(box.succeed(f"curl -fsS -H 'Authorization: Bearer {token}' localhost:8082/api/options"))
-        return [o["current"] for o in doc["options"] if o["name"] == name]
-
-    with subtest("this box has Build with AI and nothing else: seven steps, no Chat anywhere"):
+    with subtest("this box has Build with AI and no Office or Chat: no step for either"):
         assert options_on("builder.enable") == [True], options_on("builder.enable")
-        assert options_on("office.enable") == [] and options_on("inference.lend.enable") == []
+        assert options_on("office.enable") in ([], [False]), options_on("office.enable")
         share(False, False)
         seen = browse("local", locales=["en-US", "sk-SK", "de-DE"], themes=["light", "dark"], expect=len(WITH_BUILDER))
         assert seen["titles"] == WITH_BUILDER, seen
@@ -177,7 +184,7 @@ pkgs.testers.nixosTest {
         assert seen["titles"] == WITH_BUILDER, seen
         assert not seen["chatInSidebar"], seen
 
-    with subtest("with Build with AI off, the six steps"):
+    with subtest("with Build with AI off, its step goes"):
         box.succeed("/run/booted-system/specialisation/noBuilder/bin/switch-to-configuration test")
         box.wait_for_unit("lososd.service")
         box.wait_until_succeeds("curl -fsS localhost:8082/api/health")
