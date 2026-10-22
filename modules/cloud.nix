@@ -5,6 +5,8 @@
 #
 #   /cloud/         the web app (admin-ui/app/cloud/), behind LosOS Login
 #   /cloud/api/     its JSON API
+#   /cloud/feed/    calendars their owners published, for any calendar app
+#                   holding the address (LosOS Calendar)
 #   /status.php, /remote.php/, /ocs/, /index.php/, /public.php/
 #                   what the Nextcloud apps call: discovery, sign-in (Login
 #                   Flow v2, which opens /cloud/connect/<token>), WebDAV with
@@ -63,6 +65,9 @@ let
   stateDir = "/var/lib/losos-cloud";
   runDir = "/run/losos-cloud";
   socket = "${runDir}/http.sock";
+  # The fetcher that reads subscribed calendars, which the cloud, with no
+  # network of its own, asks over this socket.
+  webcalSocket = "/run/losos-webcal/fetch.sock";
   upstream = "http://unix:${socket}";
 
   passSignIn = authz: ''
@@ -310,6 +315,7 @@ in
           "serve"
           "--socket ${socket}"
           "--trash-days ${toString cfg.trashDays}"
+          "--webcal-socket ${webcalSocket}"
           # People on the box edit text together either way; with the mesh
           # they also share with, and edit with, people on other boxes.
           "--box-name ${lib.escapeShellArg mesh.name}"
@@ -378,6 +384,76 @@ in
       };
     };
 
+    # LosOS Calendar's subscriptions (backend/src/cloud/webcal.rs): one
+    # fetch per connection, by a process with the network the cloud lacks
+    # and none of its files. It answers the cloud's group alone, reads
+    # http and https only (webcal:// is https first, then http), and never
+    # the box itself: lososd and the other local services listen on
+    # loopback, and link-local is where cloud machines keep their secrets.
+    # Addresses on the LAN stay open, for a calendar served at home.
+    systemd.sockets.losos-webcal = {
+      description = "Calendar subscriptions for LosOS Cloud";
+      wantedBy = [ "sockets.target" ];
+      socketConfig = {
+        ListenStream = webcalSocket;
+        Accept = true;
+        SocketGroup = "losos-cloud";
+        SocketMode = "0660";
+        MaxConnections = 4;
+      };
+    };
+    systemd.services."losos-webcal@" = {
+      description = "Read one subscribed calendar for LosOS Cloud";
+      environment.SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt";
+      serviceConfig = {
+        ExecStart = "${pkg}/bin/losos-cloud webcal-fetch --curl ${pkgs.curl}/bin/curl";
+        StandardInput = "socket";
+        StandardOutput = "socket";
+        StandardError = "journal";
+        # curl gives up after 30 s (webcal::MAX_SECS).
+        RuntimeMaxSec = "45s";
+        LogLevelMax = "notice";
+        DynamicUser = true;
+        NoNewPrivileges = true;
+        CapabilityBoundingSet = "";
+        RestrictAddressFamilies = [
+          "AF_UNIX"
+          "AF_INET"
+          "AF_INET6"
+        ];
+        IPAddressDeny = [
+          "localhost"
+          "link-local"
+          "multicast"
+        ];
+        PrivateTmp = true;
+        PrivateDevices = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        TemporaryFileSystem = "/var/lib:ro";
+        ProtectKernelTunables = true;
+        ProtectKernelModules = true;
+        ProtectKernelLogs = true;
+        ProtectControlGroups = true;
+        ProtectClock = true;
+        ProtectHostname = true;
+        ProtectProc = "invisible";
+        ProcSubset = "pid";
+        RestrictNamespaces = true;
+        RestrictRealtime = true;
+        RestrictSUIDSGID = true;
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        MemoryMax = "128M";
+        SystemCallArchitectures = "native";
+        SystemCallFilter = [
+          "@system-service"
+          "~@privileged"
+        ];
+        UMask = "0077";
+      };
+    };
+
     services.nginx.virtualHosts."losos-front".locations = {
       # The web app, on real paths: every address under /cloud/ is the one
       # document. Signed out, LosOS Login's page first, which sends the
@@ -417,6 +493,23 @@ in
           proxy_set_header Authorization $losos_share_authorization;
           proxy_set_header X-Losos-Cloud-Prefix /nextcloud;
           ${files}
+        '';
+      };
+      # A calendar its owner published (LosOS Calendar), for any calendar
+      # app holding the address: the token in it is the whole permission,
+      # so no LosOS Login, and no person passed on.
+      "/cloud/feed/" = {
+        proxyPass = upstream;
+        recommendedProxySettings = false;
+        extraConfig = ''
+          ${forwarded}
+          limit_except GET {
+            deny all;
+          }
+          proxy_set_header ${signIn.header.user} "";
+          proxy_set_header ${signIn.header.name} "";
+          proxy_set_header ${signIn.header.email} "";
+          proxy_set_header X-Losos-Cloud-Login "";
         '';
       };
       "= /nextcloud".return = "301 /cloud/";

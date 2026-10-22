@@ -113,7 +113,8 @@ let
   mailEnabled = adminEnabled && config.lososInternal.mail.live;
   # LosOS Contacts' screen (admin-ui/app/src/contacts/): the book is LosOS
   # Cloud's address books (backend/src/cloud/contacts.rs), so it exists
-  # exactly where LosOS Cloud runs.
+  # exactly where LosOS Cloud runs. LosOS Calendar (src/calendar/) is its
+  # calendars, under the same condition.
   contactsEnabled = adminEnabled && config.lososInternal.appSignIn.cloud;
 
   # Access guard for the admin surface (the SPA, its assets, the setup routes,
@@ -598,6 +599,9 @@ in
           # 404, as /cloud/api/ does.
           "= /contacts".return = "404";
           "/contacts/".return = "404";
+          # LosOS Calendar, at /calendar, is LosOS Cloud's calendars.
+          "= /calendar".return = "404";
+          "/calendar/".return = "404";
         })
         (lib.mkIf labLibvirt {
           # The Lab guests' serial consoles and network cards, as WebSockets

@@ -630,6 +630,46 @@ pub fn subscribe(cloud: &Cloud, login: &str, s: &Subscription) -> Result<(Calend
     Ok((view(store, &c)?, report))
 }
 
+/// Keep a subscription without reading it now: the next pass of
+/// [`refresh_due`] does. For one carried over from another server; the
+/// person's subscription to the same address, when there is one.
+pub fn adopt(store: &Store, login: &str, s: &Subscription) -> Result<Collection> {
+    let url = webcal::normalize(&s.url).map_err(CalendarError::Bad)?;
+    let held: Option<String> = store.with_db(|db| {
+        Ok(db
+            .query_row(
+                "SELECT c.uri FROM calendar_feed f JOIN dav_collection c ON c.id = f.collection
+                 WHERE c.owner = ?1 AND f.url = ?2",
+                params![login, url],
+                |r| r.get(0),
+            )
+            .optional()?)
+    })?;
+    if let Some(uri) = held {
+        return Ok(pim::collection(store, login, Kind::Calendar, &uri)?);
+    }
+    let color = clean_color(s.color.as_deref()).unwrap_or(None);
+    let name = s
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .unwrap_or("Subscription");
+    let c = make(store, login, "webcal", name, color)?;
+    let refresh = s
+        .refresh
+        .unwrap_or(DEFAULT_REFRESH)
+        .clamp(MIN_REFRESH, 30 * 86_400);
+    store.with_db(|db| {
+        db.execute(
+            "INSERT INTO calendar_feed (collection, url, refresh) VALUES (?1, ?2, ?3)",
+            params![c.id, url, refresh],
+        )?;
+        Ok(())
+    })?;
+    Ok(c)
+}
+
 /// Read every subscription whose time has come. The serve loop calls it
 /// once a minute; one feed's failure is kept on that feed and the rest go on.
 pub fn refresh_due(cloud: &Cloud) -> usize {
