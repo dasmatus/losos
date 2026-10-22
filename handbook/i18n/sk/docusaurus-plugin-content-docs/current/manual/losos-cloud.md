@@ -73,6 +73,9 @@ aplikácie pre počítač alebo telefón, alebo v sieti zariadenia heslom do
 LosOS Login. Kalendárová aplikácia, ktorá chce celú adresu, dostane
 `https://<name>.local/remote.php/dav/`.
 
+V prehliadači sú tie isté kalendáre v [Kalendári](calendar) a adresáre
+v [Kontaktoch](contacts).
+
 ## V správcovi súborov \{#in-the-file-manager}
 
 Tie isté súbory sú zdieľaním WebDAV na tejto adrese:
