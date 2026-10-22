@@ -150,8 +150,9 @@ function ReactionBar({ client, room, item }: { client: MatrixClient; room: Room;
 }
 
 /** The quick reactions in a pill under a message, shown while the pointer
- *  or the focus is on it. A reaction of yours is lit, and pressing it again
- *  takes it back. */
+ *  or the focus is on it. It hangs below the row, over the gap to the next
+ *  one, so it never covers the message's own text. A reaction of yours is
+ *  lit, and pressing it again takes it back. */
 function QuickReactions({ client, room, item, live }: { client: MatrixClient; room: Room; item: Message; live: boolean }) {
   const t = useT();
   if (!live) return null;
@@ -171,7 +172,7 @@ function QuickReactions({ client, room, item, live }: { client: MatrixClient; ro
       aria-label={t("chat.reaction.pick")}
       data-slot="quick-reactions"
       className={cn(
-        "pointer-events-none absolute bottom-0 left-15 z-10 flex translate-y-1/2 items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 opacity-0 shadow-card",
+        "pointer-events-none absolute top-full left-15 z-10 flex -translate-y-1 items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 opacity-0 shadow-card",
         "transition-opacity duration-150 motion-reduce:transition-none",
         "group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
       )}
@@ -186,7 +187,7 @@ function QuickReactions({ client, room, item, live }: { client: MatrixClient; ro
             title={key}
             onClick={() => toggle(key)}
             className={cn(
-              "grid size-7 place-items-center rounded-full text-[15px] leading-none transition-transform duration-150 hover:scale-125 hover:bg-sunk motion-reduce:transition-none motion-reduce:hover:scale-100",
+              "grid size-6 place-items-center rounded-full text-[14px] leading-none transition-transform duration-150 hover:scale-125 hover:bg-sunk motion-reduce:transition-none motion-reduce:hover:scale-100",
               mine && "bg-accent-wash",
             )}
           >
@@ -637,7 +638,7 @@ export function RoomTimeline({ client, room, me, actions }: RoomTimelineProps) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div
         ref={box}
-        className="min-h-0 flex-1 overflow-y-auto pb-5"
+        className="min-h-0 flex-1 overflow-y-auto pb-8"
         onScroll={(event) => {
           if (event.currentTarget.scrollTop < 200) void loadOlder();
         }}
