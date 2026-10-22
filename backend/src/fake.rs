@@ -70,7 +70,7 @@ pub struct FakeLosos {
     pub market_routes: std::collections::BTreeMap<String, (u16, String)>,
     /// Every operation asked for, in order.
     pub market_ops: Vec<crate::market::Op>,
-    /// The live custom domains last handed to LosOS cloud; `None` until the
+    /// The live custom domains last handed to LosOS Cloud; `None` until the
     /// first write.
     pub public_names: Option<Vec<String>>,
     /// The last relay pass written: `None` never written, `Some(None)`

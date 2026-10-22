@@ -398,14 +398,14 @@ export default defineMessages({
     de: "{name} diese Box verwalten lassen",
   },
   "panes.mesh.manage.offDetail": {
-    en: "Its admins could then change LosOS cloud, LosOS Git and the apps here from the edge's page.",
-    sk: "Jeho správcovia by potom mohli meniť LosOS cloud, LosOS Git a aplikácie tu zo stránky okrajového servera.",
-    de: "Seine Admins könnten dann LosOS cloud, LosOS Git und die Apps hier von der Seite des Edge aus ändern.",
+    en: "Its admins could then change LosOS Cloud, LosOS Git and the apps here from the edge's page.",
+    sk: "Jeho správcovia by potom mohli meniť LosOS Cloud, LosOS Git a aplikácie tu zo stránky okrajového servera.",
+    de: "Seine Admins könnten dann LosOS Cloud, LosOS Git und die Apps hier von der Seite des Edge aus ändern.",
   },
   "panes.mesh.manage.active": {
-    en: "{name} can change LosOS cloud, LosOS Git and the apps here. It cannot see your files, add people or change anything else.",
-    sk: "{name} môže meniť LosOS cloud, LosOS Git a aplikácie tu. Nevidí vaše súbory, nepridáva ľudí a nič iné nemení.",
-    de: "{name} kann LosOS cloud, LosOS Git und die Apps hier ändern. Er sieht deine Dateien nicht, fügt keine Personen hinzu und ändert sonst nichts.",
+    en: "{name} can change LosOS Cloud, LosOS Git and the apps here. It cannot see your files, add people or change anything else.",
+    sk: "{name} môže meniť LosOS Cloud, LosOS Git a aplikácie tu. Nevidí vaše súbory, nepridáva ľudí a nič iné nemení.",
+    de: "{name} kann LosOS Cloud, LosOS Git und die Apps hier ändern. Er sieht deine Dateien nicht, fügt keine Personen hinzu und ändert sonst nichts.",
   },
   "panes.mesh.manage.elsewhere": {
     en: "On for {url}, which this box does not use right now, so nothing manages it.",
@@ -1108,9 +1108,9 @@ export default defineMessages({
   },
   "panes.backup.runs.button": { en: "Back up", sk: "Zálohovať", de: "Sichern" },
   "panes.backup.runs.caption": {
-    en: "A backup holds LosOS cloud's files and database, LosOS Git's repositories, the folder you share with the mesh, your settings and the look of the home page. The bucket keeps the last seven.",
-    sk: "Záloha obsahuje súbory a databázu LosOS cloud, repozitáre LosOS Git, priečinok, ktorý zdieľate s mesh sieťou, vaše nastavenia a vzhľad domovskej stránky. Bucket uchováva posledných sedem.",
-    de: "Eine Sicherung enthält die Dateien und die Datenbank von LosOS cloud, die Repositorys von LosOS Git, den Ordner, den du mit dem Mesh teilst, deine Einstellungen und das Aussehen der Startseite. Der Bucket behält die letzten sieben.",
+    en: "A backup holds LosOS Cloud's files and database, LosOS Git's repositories, the folder you share with the mesh, your settings and the look of the home page. The bucket keeps the last seven.",
+    sk: "Záloha obsahuje súbory a databázu LosOS Cloud, repozitáre LosOS Git, priečinok, ktorý zdieľate s mesh sieťou, vaše nastavenia a vzhľad domovskej stránky. Bucket uchováva posledných sedem.",
+    de: "Eine Sicherung enthält die Dateien und die Datenbank von LosOS Cloud, die Repositorys von LosOS Git, den Ordner, den du mit dem Mesh teilst, deine Einstellungen und das Aussehen der Startseite. Der Bucket behält die letzten sieben.",
   },
   "panes.backup.restore.title": {
     en: "Restore",
@@ -1123,14 +1123,14 @@ export default defineMessages({
     de: "Stelle wieder her…",
   },
   "panes.backup.restore.runningDetail": {
-    en: "LosOS cloud and LosOS Git are stopped until it is done.",
-    sk: "LosOS cloud a LosOS Git sú dovtedy zastavené.",
-    de: "LosOS cloud und LosOS Git sind bis dahin angehalten.",
+    en: "LosOS Cloud and LosOS Git are stopped until it is done.",
+    sk: "LosOS Cloud a LosOS Git sú dovtedy zastavené.",
+    de: "LosOS Cloud und LosOS Git sind bis dahin angehalten.",
   },
   "panes.backup.restore.runningThaw": {
-    en: "AWS is thawing the backup first, which takes hours. LosOS cloud and LosOS Git keep running until the files come back.",
-    sk: "AWS najprv zálohu sprístupňuje, čo trvá hodiny. LosOS cloud a LosOS Git bežia, kým sa súbory nevrátia.",
-    de: "AWS stellt die Sicherung zuerst bereit, das dauert Stunden. LosOS cloud und LosOS Git laufen weiter, bis die Dateien zurück sind.",
+    en: "AWS is thawing the backup first, which takes hours. LosOS Cloud and LosOS Git keep running until the files come back.",
+    sk: "AWS najprv zálohu sprístupňuje, čo trvá hodiny. LosOS Cloud a LosOS Git bežia, kým sa súbory nevrátia.",
+    de: "AWS stellt die Sicherung zuerst bereit, das dauert Stunden. LosOS Cloud und LosOS Git laufen weiter, bis die Dateien zurück sind.",
   },
   "panes.backup.restore.done": {
     en: "Restored",

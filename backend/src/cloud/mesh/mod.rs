@@ -175,7 +175,7 @@ pub type DialFn = Arc<
     dyn Fn(String) -> Pin<Box<dyn Future<Output = Result<Wire, MeshError>> + Send>> + Send + Sync,
 >;
 
-/// The mesh side of LosOS cloud.
+/// The mesh side of LosOS Cloud.
 pub struct Mesh {
     /// This box's name, as other boxes reach it.
     pub name: String,

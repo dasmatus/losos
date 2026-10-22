@@ -62,7 +62,7 @@ again.
 ### Why a model this small
 
 The model is sized for the smallest box LosOS supports: 4 GiB of memory,
-two processor cores, no graphics card, with LosOS cloud and LosOS Git
+two processor cores, no graphics card, with LosOS Cloud and LosOS Git
 running beside it. A larger model would not fit there, or would take most
 of an hour per app.
 

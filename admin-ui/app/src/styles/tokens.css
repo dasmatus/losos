@@ -54,6 +54,8 @@
   --hair: #eaeef1;
 
   --accent: #0e6e7d;
+  /* The accent as "r, g, b", for Collabora's rgba() (themes/office). */
+  --accent-rgb: 14, 110, 125;
   --accent-wash: #e2eff1;
 
   --ok: #2e7357;
@@ -86,7 +88,6 @@
     color-scheme: dark;
 
     --ground: #0a0e12;
-  --ground-rgb: 10, 14, 18;
     --ground-rgb: 10, 14, 18;
     --surface: #141b22;
     --surface-rgb: 20, 27, 34;
@@ -100,6 +101,7 @@
     --hair: #1a242d;
 
     --accent: #48b3c0;
+    --accent-rgb: 72, 179, 192;
     --accent-wash: #0d2a2f;
 
     --ok: #4fa583;
@@ -130,6 +132,7 @@
   color-scheme: dark;
 
   --ground: #0a0e12;
+  --ground-rgb: 10, 14, 18;
   --surface: #141b22;
   --surface-rgb: 20, 27, 34;
   --sunk: #10171d;
@@ -142,6 +145,7 @@
   --hair: #1a242d;
 
   --accent: #48b3c0;
+  --accent-rgb: 72, 179, 192;
   --accent-wash: #0d2a2f;
 
   --ok: #4fa583;

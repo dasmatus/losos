@@ -246,8 +246,56 @@ const MICALG: Record<string, string> = {
   sha512: "pgp-sha512",
 };
 
+/** A file that travels inside the encrypted or signed part. */
+export interface OutgoingFile {
+  name: string;
+  type: string;
+  bytes: Uint8Array;
+}
+
+function base64Lines(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return (btoa(binary).match(/.{1,76}/g) ?? []).join("\r\n");
+}
+
+/** A header parameter: quoted when it is plain ASCII, RFC 2231 otherwise. */
+function parameter(key: string, value: string): string {
+  return /^[\x20-\x7e]*$/.test(value) && !/["\\]/.test(value)
+    ? `${key}="${value}"`
+    : `${key}*=utf-8''${encodeURIComponent(value).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`;
+}
+
+/** The part that is signed or encrypted: the text alone, or the text and
+ *  the files as multipart/mixed (RFC 3156 puts them inside, so nothing of
+ *  them shows on the way). */
+export function bodyPart(text: string, files: readonly OutgoingFile[]): string {
+  if (files.length === 0) return textPart(text);
+  const random = crypto.getRandomValues(new Uint8Array(12));
+  const boundary = `losos-${Array.from(random, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+  const parts = [textPart(text)];
+  for (const file of files) {
+    const type = /^[\w.+-]+\/[\w.+-]+$/.test(file.type) ? file.type : "application/octet-stream";
+    parts.push(
+      `Content-Type: ${type}; ${parameter("name", file.name)}\r\n` +
+        `Content-Disposition: attachment; ${parameter("filename", file.name)}\r\n` +
+        "Content-Transfer-Encoding: base64\r\n" +
+        "\r\n" +
+        base64Lines(file.bytes),
+    );
+  }
+  return (
+    `Content-Type: multipart/mixed; boundary="${boundary}"\r\n` +
+    "\r\n" +
+    parts.map((part) => `--${boundary}\r\n${part}\r\n`).join("") +
+    `--${boundary}--\r\n`
+  );
+}
+
 export interface Outgoing {
   text: string;
+  /** Files, carried inside the PGP/MIME part; inline PGP cannot carry them. */
+  files?: readonly OutgoingFile[];
   /** Recipients' public keys, armoured, and the sender's own, so the
    *  message in Sent can be read again. */
   encryptTo: string[];
@@ -262,20 +310,22 @@ export type Made = { text: string; pgp?: undefined } | { text: ""; pgp: import("
 export async function seal(out: Outgoing): Promise<Made> {
   const pgp = await openpgp();
   const signingKeys = out.signWith ?? undefined;
+  const files = out.files ?? [];
+  const inline = out.inline && files.length === 0;
   if (out.encryptTo.length > 0) {
     const encryptionKeys = await Promise.all(out.encryptTo.map((armoredKey) => pgp.readKey({ armoredKey })));
-    const message = out.inline
+    const message = inline
       ? await pgp.createMessage({ text: out.text })
-      : await pgp.createMessage({ binary: encoder.encode(textPart(out.text)) });
+      : await pgp.createMessage({ binary: encoder.encode(bodyPart(out.text, files)) });
     const armored = await pgp.encrypt({ message, encryptionKeys, signingKeys, format: "armored" });
-    return out.inline ? { text: armored } : { text: "", pgp: { mime: "encrypted", armored } };
+    return inline ? { text: armored } : { text: "", pgp: { mime: "encrypted", armored } };
   }
   if (out.signWith !== null) {
-    if (out.inline) {
+    if (inline) {
       const message = await pgp.createCleartextMessage({ text: out.text });
       return { text: await pgp.sign({ message, signingKeys: out.signWith, format: "armored" }) };
     }
-    const part = textPart(out.text);
+    const part = bodyPart(out.text, files);
     const message = await pgp.createMessage({ binary: encoder.encode(part) });
     const signature = await pgp.sign({ message, signingKeys: out.signWith, detached: true, format: "armored" });
     const parsed = await pgp.readSignature({ armoredSignature: signature });

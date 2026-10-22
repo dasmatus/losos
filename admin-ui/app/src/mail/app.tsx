@@ -1,8 +1,13 @@
 /* LosOS Mail: a screen of the admin UI at /mail, inside its top bar and
  * sidebar like every other pane, over lososd's /api/mail (backend/src/mail.rs).
- * The folders are a row of buttons under the pane's heading; under them one
- * card holds the folder's messages and the open message side by side on a
- * wide screen, and one at a time on a phone, with a way back to the list.
+ * On a wide screen one card holds three columns: the folders as a tree, the
+ * open folder's messages, and the open message. Narrower, the folders are a
+ * row of buttons above the card; on a phone the card shows the list or the
+ * message, with a way back to the list. A person's own folders (made,
+ * renamed, nested, deleted) and their filters are the mail plugin's
+ * (backend/plugins/mail), in ./folders.tsx and ./filters.tsx. Messages and
+ * folders drag onto folders; every folder and message has a right-click
+ * menu.
  *
  * A message's HTML never enters this page. It is a document of its own at
  * /api/mail/messages/<id>/html, shown in an <iframe sandbox> without
@@ -39,6 +44,8 @@ import {
   CheckmarkBadge01Icon,
   Key01Icon,
   SquareLock02Icon,
+  FilterIcon,
+  FolderAddIcon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { PersonAvatar, type PersonLike } from "@/components/person";
@@ -60,6 +67,8 @@ import { PaneHeader } from "@/screens/settings/rows";
 import {
   ApiError,
   changeMailMessage,
+  createMailFolder,
+  deleteMailFolder,
   deleteMailMessage,
   findMailKeys,
   getMail,
@@ -68,12 +77,15 @@ import {
   getMailRaw,
   getProfiles,
   loadMe,
-  mailAttachmentUrl,
+  mailFile,
   mailHtmlUrl,
   sendMail,
   signInUrl,
+  updateMailFolder,
   type MailAddress,
+  type MailAttachment,
   type MailDraft,
+  type MailFilter,
   type MailFolder,
   type MailHome,
   type MailMessage,
@@ -83,6 +95,8 @@ import {
 } from "@/lib/api";
 import { useLocale, useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
+import { contextMenu, type MenuBuilder, type MenuItem } from "@/lib/context-menu";
+import { readMailIntent, withoutMailIntent } from "@/lib/intents";
 import { cn } from "@/lib/utils";
 import {
   KeyDialog,
@@ -95,7 +109,12 @@ import {
   type OwnKey,
   type Reading,
 } from "./encryption";
+import { formatBytes } from "@/lib/apps";
 import { CannotOpen, openMail, seal, type Opened } from "./pgp";
+import { ComposeAttachments, ReceivedAttachment, useAttached, useCloud } from "./attachments";
+import { DeleteFolderDialog, FolderDialog, explainFolder, tree, within, type Placed } from "./folders";
+import { FiltersDialog, blankFilter } from "./filters";
+import { PersonLinks } from "./together";
 
 /* How often the open folder and the counts are read again. */
 const REFRESH_MS = 30_000;
@@ -127,6 +146,14 @@ type Loading =
 
 /* Which half of the card a phone shows. */
 type Column = "list" | "message";
+
+/* How the composer opens: a draft, and the files it starts with (LosOS
+ * Cloud paths from another app's link, a forwarded message's own). */
+type ComposeStart = MailDraft & { cloud?: string[]; carry?: MailAttachment[] };
+
+/* What a drag carries: a message, or one of the person's own folders. */
+const DRAG_MESSAGE = "text/x-losos-mail-message";
+const DRAG_FOLDER = "text/x-losos-mail-folder";
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -190,12 +217,6 @@ function who(addresses: readonly MailAddress[]): string {
 
 function full(address: MailAddress): string {
   return address.name !== null ? `${address.name} <${address.email}>` : address.email;
-}
-
-function size(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} kB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /* Today: the time. This year: day and month. Before: the date. */
@@ -301,14 +322,35 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [open, setOpen] = React.useState<MailMessage | null>(null);
   const [openError, setOpenError] = React.useState<string | null>(null);
-  const [draft, setDraft] = React.useState<MailDraft | null>(null);
+  const [draft, setDraft] = React.useState<ComposeStart | null>(null);
   const [column, setColumn] = React.useState<Column>("list");
   const [own, setOwn] = useOwnKey();
   const [keys, setKeys] = React.useState(false);
   // What an opened OpenPGP message said, for quoting it in a reply.
   const [opened, setOpened] = React.useState<{ id: string; text: string } | null>(null);
+  const [folderDialog, setFolderDialog] = React.useState<
+    { kind: "new"; parentId: string | null } | { kind: "rename"; folder: MailFolder } | null
+  >(null);
+  const [deleting, setDeleting] = React.useState<MailFolder | null>(null);
+  const [filters, setFilters] = React.useState<{ start: MailFilter | null } | null>(null);
+  /* The folder a drag is over ("top" for the tree's empty space), and the
+   * folder being dragged, which a dragover cannot read from the drag. */
+  const [dropAt, setDropAt] = React.useState<string | null>(null);
+  const draggedFolder = React.useRef<string | null>(null);
+
+  // Another app's link (lib/intents.ts composeMailHref): the composer,
+  // filled in, once; the address loses the parameters so a reload does
+  // not open it again.
+  React.useEffect(() => {
+    const search = new URLSearchParams(window.location.search);
+    const intent = readMailIntent(search);
+    if (intent === null) return;
+    setDraft({ to: intent.to, cc: intent.cc, subject: intent.subject, text: intent.body, cloud: intent.attach });
+    window.history.replaceState(window.history.state, "", window.location.pathname + withoutMailIntent(search) + window.location.hash);
+  }, []);
 
   const folder = home.mailboxes.find((f) => f.id === folderId) ?? inbox;
+  const placed = React.useMemo(() => tree(home.mailboxes), [home.mailboxes]);
 
   const refreshHome = React.useCallback(async () => {
     try {
@@ -391,6 +433,180 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
 
   const textOf = (m: MailMessage) => (opened?.id === m.id ? opened.text : m.pgp === "encrypted" ? "" : m.text);
 
+  const openFolder = (id: string) => {
+    setFolderId(id);
+    setOpenId(null);
+    setOpen(null);
+    setColumn("list");
+  };
+
+  /* A folder change: said in a toast, then the folders read again. */
+  const folderAct = async (work: () => Promise<unknown>, done: string) => {
+    try {
+      await work();
+      toast.done(done);
+    } catch (error) {
+      toast.error(t("mail.actionFailed"), explainFolder(error, t), { help: "mail" });
+    }
+    await refreshHome();
+  };
+
+  const moveFolder = (id: string, parentId: string | null) =>
+    void folderAct(() => updateMailFolder(id, { parentId }), t("mail.done.folderMoved"));
+
+  const moveMessage = (id: string, to: string) =>
+    void act(() => changeMailMessage(id, { mailbox: to }), "mail.done.moved", id === openId);
+
+  /* Where a drag may land: a message on any folder but its own and Drafts;
+   * a folder on the top level or on any folder outside itself. */
+  const canDrop = (target: MailFolder | null, types: readonly string[]): boolean => {
+    if (types.includes(DRAG_MESSAGE)) return target !== null && target.id !== folder?.id && target.role !== "drafts";
+    const dragged = draggedFolder.current;
+    if (!types.includes(DRAG_FOLDER) || dragged === null) return false;
+    const parent = home.mailboxes.find((f) => f.id === dragged)?.parentId ?? null;
+    if (target === null) return parent !== null;
+    return target.id !== parent && !within(home.mailboxes, target.id, dragged);
+  };
+
+  const dropProps = (target: MailFolder | null) => ({
+    onDragOver: (event: React.DragEvent) => {
+      if (!canDrop(target, [...event.dataTransfer.types])) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "move";
+      setDropAt(target?.id ?? "top");
+    },
+    onDragLeave: (event: React.DragEvent) => {
+      if (!(event.currentTarget as Node).contains(event.relatedTarget as Node | null)) setDropAt(null);
+    },
+    onDrop: (event: React.DragEvent) => {
+      if (!canDrop(target, [...event.dataTransfer.types])) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setDropAt(null);
+      const message = event.dataTransfer.getData(DRAG_MESSAGE);
+      const dragged = event.dataTransfer.getData(DRAG_FOLDER);
+      if (message !== "" && target !== null) moveMessage(message, target.id);
+      else if (dragged !== "") moveFolder(dragged, target?.id ?? null);
+    },
+  });
+
+  const folderDrag = (f: MailFolder) =>
+    f.role !== null
+      ? {}
+      : {
+          draggable: true,
+          onDragStart: (event: React.DragEvent) => {
+            draggedFolder.current = f.id;
+            event.dataTransfer.setData(DRAG_FOLDER, f.id);
+            event.dataTransfer.effectAllowed = "move";
+          },
+          onDragEnd: () => {
+            draggedFolder.current = null;
+            setDropAt(null);
+          },
+        };
+
+  /* A right click on a folder: open it, make one inside it, and for the
+   * person's own folders rename, move and delete. */
+  const folderMenu =
+    (f: MailFolder): MenuBuilder =>
+    () => {
+      const own = f.role === null;
+      const moveTargets: MenuItem[] = [
+        {
+          id: "move-top",
+          label: t("mail.folder.top"),
+          hidden: f.parentId === null,
+          onSelect: () => moveFolder(f.id, null),
+        },
+        ...placed
+          .filter(({ folder: x }) => x.id !== f.parentId && !within(home.mailboxes, x.id, f.id))
+          .map(({ folder: x }) => ({
+            id: `move-${x.id}`,
+            label: folderName(x, t),
+            icon: x.role !== null ? ROLE_ICON[x.role] : Folder01Icon,
+            onSelect: () => moveFolder(f.id, x.id),
+          })),
+      ];
+      return {
+        label: folderName(f, t),
+        sections: [
+          [
+            { id: "open", label: t("menu.open"), icon: MailOpen01Icon, onSelect: () => openFolder(f.id) },
+            {
+              id: "new-inside",
+              label: t("mail.folder.newInside"),
+              icon: FolderAddIcon,
+              onSelect: () => setFolderDialog({ kind: "new", parentId: f.id }),
+            },
+          ],
+          [
+            {
+              id: "rename",
+              label: t("mail.folder.rename"),
+              icon: PencilEdit02Icon,
+              hidden: !own,
+              onSelect: () => setFolderDialog({ kind: "rename", folder: f }),
+            },
+            {
+              kind: "submenu",
+              id: "move",
+              label: t("mail.folder.moveTo"),
+              icon: Folder01Icon,
+              hidden: !own,
+              items: moveTargets,
+            },
+          ],
+          [
+            {
+              id: "delete",
+              label: t("mail.folder.delete"),
+              icon: Delete02Icon,
+              danger: true,
+              hidden: !own,
+              onSelect: () => setDeleting(f),
+            },
+          ],
+        ],
+      };
+    };
+
+  /* One folder, in the tree or in the row. */
+  const folderItem = ({ folder: f, depth }: Placed, layout: "tree" | "row") => {
+    const current = f.id === folderId;
+    const icon = f.role !== null ? ROLE_ICON[f.role] : Folder01Icon;
+    return (
+      <li key={f.id} ref={contextMenu(folderMenu(f))} className={layout === "row" ? "shrink-0" : undefined}>
+        <button
+          type="button"
+          aria-current={current ? "page" : undefined}
+          data-folder={f.name}
+          onClick={() => openFolder(f.id)}
+          {...folderDrag(f)}
+          {...dropProps(f)}
+          // A CSSOM write, which the admin CSP allows.
+          style={layout === "tree" ? { paddingInlineStart: `${0.5 + depth * 0.875}rem` } : undefined}
+          className={cn(
+            "flex items-center gap-2 rounded-control text-left text-[13px] outline-none transition-colors duration-150",
+            "focus-visible:ring-2 focus-visible:ring-accent/40",
+            layout === "tree" ? "w-full py-1.5 pr-2" : "h-8 px-2.5",
+            current ? "bg-accent-wash font-medium text-ink" : "text-muted hover:bg-sunk hover:text-ink",
+            dropAt === f.id && "bg-accent-wash text-ink ring-2 ring-accent/50",
+          )}
+        >
+          <HugeiconsIcon icon={icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{folderName(f, t)}</span>
+          {f.unread > 0 && (
+            <Badge variant="default" className="tabular-nums">
+              {f.unread}
+            </Badge>
+          )}
+        </button>
+      </li>
+    );
+  };
+
   const reply = (m: MailMessage, all: boolean) => {
     const to = (m.replyTo.length > 0 ? m.replyTo : m.from).map((a) => a.email);
     const cc = all
@@ -406,12 +622,121 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
   };
 
   const forward = (m: MailMessage) => {
-    setDraft({ to: [], cc: [], subject: withPrefix(t("mail.compose.fwd"), m.subject), text: quoted(m, textOf(m), locale, t) });
+    setDraft({
+      to: [],
+      cc: [],
+      subject: withPrefix(t("mail.compose.fwd"), m.subject),
+      text: quoted(m, textOf(m), locale, t),
+      // An encrypted message's files are inside it; the reader offers them.
+      carry: isPgp(m) ? undefined : m.attachments,
+    });
   };
 
   const faces = useFaces(home);
   const trash = home.mailboxes.find((f) => f.role === "trash");
   const archive = home.mailboxes.find((f) => f.role === "archive");
+
+  /* A right click on a message in the list: what the reader's buttons do,
+   * without opening it first. Replying needs the whole message, so it is
+   * fetched then. */
+  const withMessage = (id: string, then: (m: MailMessage) => void) =>
+    void getMailMessage(id).then(then, (error: unknown) =>
+      toast.error(t("mail.actionFailed"), message(error), { help: "mail" }),
+    );
+  const rowMenu =
+    (m: MailSummary): MenuBuilder =>
+    () => {
+      const close = m.id === openId;
+      const elsewhere = placed.map((p) => p.folder).filter((f) => f.id !== folder?.id && f.role !== "drafts");
+      return {
+        label: m.subject || t("mail.noSubject"),
+        sections: [
+          [
+            { id: "open", label: t("menu.open"), icon: MailOpen01Icon, onSelect: () => void openMessage(m.id) },
+            { id: "reply", label: t("mail.reply"), icon: MailReply01Icon, onSelect: () => withMessage(m.id, (full) => reply(full, false)) },
+            { id: "reply-all", label: t("mail.replyAll"), icon: MailReplyAllIcon, onSelect: () => withMessage(m.id, (full) => reply(full, true)) },
+            { id: "forward", label: t("mail.forward"), icon: ArrowTurnForwardIcon, onSelect: () => withMessage(m.id, forward) },
+          ],
+          [
+            {
+              id: "seen",
+              label: t(m.seen ? "mail.markUnread" : "mail.markRead"),
+              icon: m.seen ? Mail01Icon : MailOpen01Icon,
+              onSelect: () =>
+                void act(() => changeMailMessage(m.id, { seen: !m.seen }), m.seen ? "mail.done.unread" : "mail.done.read", close && m.seen),
+            },
+            {
+              id: "flag",
+              label: t(m.flagged ? "mail.unflag" : "mail.flag"),
+              icon: FavouriteIcon,
+              onSelect: () =>
+                void act(async () => {
+                  await changeMailMessage(m.id, { flagged: !m.flagged });
+                  if (open?.id === m.id) setOpen({ ...open, flagged: !m.flagged });
+                }, m.flagged ? "mail.done.unflagged" : "mail.done.flagged"),
+            },
+          ],
+          [
+            {
+              id: "archive",
+              label: t("mail.archive"),
+              icon: Archive02Icon,
+              hidden: archive === undefined || folder?.id === archive.id,
+              onSelect: () => {
+                if (archive !== undefined) void act(() => changeMailMessage(m.id, { mailbox: archive.id }), "mail.done.archived", close);
+              },
+            },
+            {
+              kind: "submenu",
+              id: "move",
+              // A submenu names where it leads, without the select's dots.
+              label: t("mail.moveTo").replace(/…$/, ""),
+              icon: Folder01Icon,
+              items: elsewhere.map((f) => ({
+                id: `move-${f.id}`,
+                label: folderName(f, t),
+                icon: f.role !== null ? ROLE_ICON[f.role] : Folder01Icon,
+                onSelect: () => void act(() => changeMailMessage(m.id, { mailbox: f.id }), "mail.done.moved", close),
+              })),
+            },
+          ],
+          [
+            {
+              id: "filter",
+              label: t("mail.filters.fromThis"),
+              icon: FilterIcon,
+              hidden: m.from[0] === undefined || folder?.role === "sent" || folder?.role === "drafts",
+              onSelect: () => {
+                const sender = m.from[0];
+                if (sender === undefined) return;
+                setFilters({
+                  start: {
+                    ...blankFilter(),
+                    name: sender.name ?? sender.email,
+                    conditions: [{ field: "from", value: sender.email }],
+                    moveTo: folder !== undefined && folder.role === null ? folder.id : null,
+                  },
+                });
+              },
+            },
+          ],
+          [
+            {
+              id: "delete",
+              label: t("mail.delete"),
+              icon: Delete02Icon,
+              danger: true,
+              onSelect: () =>
+                void act(
+                  () => deleteMailMessage(m.id),
+                  trash !== undefined && folder?.id === trash.id ? "mail.done.deleted" : "mail.done.binned",
+                  close,
+                ),
+            },
+          ],
+        ],
+      };
+    };
 
   return (
     <TooltipProvider>
@@ -430,6 +755,10 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
             />
             {t("mail.pgp.button")}
           </Button>
+          <Button variant="secondary" onClick={() => setFilters({ start: null })}>
+            <HugeiconsIcon icon={FilterIcon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            {t("mail.filters")}
+          </Button>
           <Button onClick={() => setDraft({ to: [], cc: [], subject: "", text: "" })}>
             <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
             {t("mail.compose.new")}
@@ -438,42 +767,21 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        {/* Folders: one row, each with its unread count. */}
-        <nav aria-label={t("mail.folders")} className="-mx-1 min-w-0 max-w-full overflow-x-auto px-1">
+        {/* Folders, narrower than the tree: one row, each with its unread count. */}
+        <nav aria-label={t("mail.folders")} className="-mx-1 min-w-0 max-w-full overflow-x-auto px-1 lg:hidden">
           <ul className="flex gap-1">
-            {home.mailboxes.map((f) => {
-              const current = f.id === folderId;
-              return (
-                <li key={f.id} className="shrink-0">
-                  <Button
-                    variant={current ? "secondary" : "ghost"}
-                    size="sm"
-                    aria-current={current ? "page" : undefined}
-                    onClick={() => {
-                      setFolderId(f.id);
-                      setOpenId(null);
-                      setOpen(null);
-                      setColumn("list");
-                    }}
-                    className={cn("gap-1.5", current && "text-ink")}
-                  >
-                    <HugeiconsIcon
-                      icon={f.role !== null ? ROLE_ICON[f.role] : Folder01Icon}
-                      size={16}
-                      strokeWidth={1.5}
-                      color="currentColor"
-                      aria-hidden="true"
-                    />
-                    {folderName(f, t)}
-                    {f.unread > 0 && (
-                      <Badge variant="default" className="tabular-nums">
-                        {f.unread}
-                      </Badge>
-                    )}
-                  </Button>
-                </li>
-              );
-            })}
+            {placed.map((p) => folderItem(p, "row"))}
+            <li className="shrink-0">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("mail.folder.new")}
+                title={t("mail.folder.new")}
+                onClick={() => setFolderDialog({ kind: "new", parentId: null })}
+              >
+                <HugeiconsIcon icon={FolderAddIcon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+              </Button>
+            </li>
           </ul>
         </nav>
         <form
@@ -504,6 +812,35 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
       </div>
 
       <Card className="flex h-[min(46rem,calc(100dvh-15rem))] min-h-[26rem] overflow-hidden">
+        {/* Folders, as a tree, on a wide screen */}
+        <nav aria-label={t("mail.folders")} className="hidden w-52 shrink-0 flex-col border-r border-line lg:flex xl:w-56">
+          <div className="flex items-center gap-2 border-b border-hair py-1.5 pr-1.5 pl-4">
+            <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">{t("mail.folders")}</h2>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("mail.folder.new")}
+                    onClick={() => setFolderDialog({ kind: "new", parentId: null })}
+                  />
+                }
+              >
+                <HugeiconsIcon icon={FolderAddIcon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t("mail.folder.new")}</TooltipContent>
+            </Tooltip>
+          </div>
+          {/* The empty space under the tree takes a folder to the top level. */}
+          <div
+            className={cn("min-h-0 flex-1 overflow-y-auto p-1.5", dropAt === "top" && "bg-accent-wash")}
+            {...dropProps(null)}
+          >
+            <ul className="flex flex-col gap-px">{placed.map((p) => folderItem(p, "tree"))}</ul>
+          </div>
+        </nav>
+
         {/* Messages */}
         <section
           aria-label={folder !== undefined ? folderName(folder, t) : undefined}
@@ -546,6 +883,8 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
                     current={m.id === openId}
                     locale={locale}
                     onOpen={() => void openMessage(m.id)}
+                    menu={rowMenu(m)}
+                    onDragEnd={() => setDropAt(null)}
                   />
                 ))}
               </ul>
@@ -584,9 +923,10 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
               own={own}
               onSetUp={() => setKeys(true)}
               onOpened={(text) => setOpened({ id: open.id, text })}
+              home={home}
               faces={faces}
               locale={locale}
-              folders={home.mailboxes}
+              folders={placed}
               onBack={() => setColumn("list")}
               onReply={(all) => reply(open, all)}
               onForward={() => forward(open)}
@@ -615,6 +955,49 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
         </article>
       </Card>
     </div>
+      {folderDialog !== null && (
+        <FolderDialog
+          mode={folderDialog}
+          folders={home.mailboxes}
+          label={(f) => folderName(f, t)}
+          onClose={() => setFolderDialog(null)}
+          onSubmit={async (name, parentId) => {
+            if (folderDialog.kind === "new") {
+              const made = await createMailFolder(name, parentId);
+              toast.done(t("mail.done.folderMade"));
+              await refreshHome();
+              openFolder(made.id);
+            } else {
+              await updateMailFolder(folderDialog.folder.id, { name });
+              toast.done(t("mail.done.folderRenamed"));
+              await refreshHome();
+            }
+          }}
+        />
+      )}
+      {deleting !== null && (
+        <DeleteFolderDialog
+          folder={deleting}
+          onClose={() => setDeleting(null)}
+          onDelete={async () => {
+            const { moved } = await deleteMailFolder(deleting.id);
+            toast.done(
+              t("mail.done.folderDeleted"),
+              moved > 0 ? t("mail.done.folderBinned", { count: moved }) : undefined,
+            );
+            if (deleting.id === folderId && inbox !== undefined) openFolder(inbox.id);
+            await refreshHome();
+          }}
+        />
+      )}
+      {filters !== null && (
+        <FiltersDialog
+          folders={home.mailboxes}
+          label={(f) => folderName(f, t)}
+          start={filters.start}
+          onClose={() => setFilters(null)}
+        />
+      )}
       {draft !== null && (
         <Composer
           initial={draft}
@@ -651,6 +1034,8 @@ function MessageRow({
   current,
   locale,
   onOpen,
+  menu,
+  onDragEnd,
 }: {
   message: MailSummary;
   faces: Faces;
@@ -658,14 +1043,22 @@ function MessageRow({
   current: boolean;
   locale: string;
   onOpen: () => void;
+  menu: MenuBuilder;
+  onDragEnd: () => void;
 }) {
   const t = useT();
   const people = sent ? m.to : m.from;
   return (
-    <li>
+    <li ref={contextMenu(menu)}>
       <button
         type="button"
         onClick={onOpen}
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData(DRAG_MESSAGE, m.id);
+          event.dataTransfer.effectAllowed = "move";
+        }}
+        onDragEnd={onDragEnd}
         aria-current={current ? "true" : undefined}
         className={cn(
           "flex w-full items-start gap-3 border-b border-hair px-3 py-2.5 text-left",
@@ -804,6 +1197,7 @@ function Reader({
   own,
   onSetUp,
   onOpened,
+  home,
   faces,
   locale,
   folders,
@@ -820,9 +1214,10 @@ function Reader({
   own: OwnKey;
   onSetUp: () => void;
   onOpened: (text: string) => void;
+  home: MailHome;
   faces: Faces;
   locale: string;
-  folders: readonly MailFolder[];
+  folders: readonly Placed[];
   onBack: () => void;
   onReply: (all: boolean) => void;
   onForward: () => void;
@@ -837,7 +1232,8 @@ function Reader({
   // loads nothing.
   const [html, setHtml] = React.useState(m.text.trim() === "" && m.hasHtml);
   React.useEffect(() => setHtml(m.text.trim() === "" && m.hasHtml), [m.id, m.text, m.hasHtml]);
-  const others = folders.filter((f) => !m.mailboxIds.includes(f.id) && f.role !== "drafts");
+  const others = folders.filter(({ folder: f }) => !m.mailboxIds.includes(f.id) && f.role !== "drafts");
+  const cloud = useCloud();
   const { reading, opened } = useOpened(m, own);
   const [unlocking, setUnlocking] = React.useState(false);
   const pgp = isPgp(m);
@@ -885,13 +1281,14 @@ function Reader({
             className="ml-1 [&_select]:h-8 [&_select]:text-[13px]"
           >
             <NativeSelectOption value="">{t("mail.moveTo")}</NativeSelectOption>
-            {others.map((f) => (
+            {others.map(({ folder: f, depth }) => (
               <NativeSelectOption key={f.id} value={f.id}>
-                {folderName(f, t)}
+                {"\u2003".repeat(depth) + folderName(f, t)}
               </NativeSelectOption>
             ))}
           </NativeSelect>
         )}
+        <PersonLinks message={m} home={home} />
         <span className="ml-auto" />
         {tool(Delete02Icon, t("mail.delete"), onDelete)}
       </div>
@@ -942,17 +1339,7 @@ function Reader({
         {!pgp && m.attachments.length > 0 && (
           <ul className="flex flex-wrap gap-2 px-5 pb-3" aria-label={t("mail.attachments")}>
             {m.attachments.map((a) => (
-              <li key={a.blobId}>
-                <a
-                  href={mailAttachmentUrl(a)}
-                  download={a.name}
-                  className="flex items-center gap-2 rounded-control border border-line px-2.5 py-1.5 text-[13px] hover:bg-sunk"
-                >
-                  <HugeiconsIcon icon={Attachment01Icon} className="size-3.5 text-muted" />
-                  <span className="max-w-48 truncate">{a.name}</span>
-                  <span className="text-muted tabular-nums">{size(a.size)}</span>
-                </a>
-              </li>
+              <ReceivedAttachment key={a.blobId} attachment={a} cloud={cloud} />
             ))}
           </ul>
         )}
@@ -967,7 +1354,7 @@ function Reader({
                 >
                   <HugeiconsIcon icon={Attachment01Icon} className="size-3.5 text-muted" />
                   <span className="max-w-48 truncate">{a.name}</span>
-                  <span className="text-muted tabular-nums">{size(a.bytes.length)}</span>
+                  <span className="text-muted tabular-nums">{formatBytes(a.bytes.length)}</span>
                 </a>
               </li>
             ))}
@@ -1019,7 +1406,7 @@ function Composer({
   onClose,
   onSent,
 }: {
-  initial: MailDraft;
+  initial: ComposeStart;
   from: string;
   own: OwnKey;
   onSetUp: () => void;
@@ -1035,6 +1422,7 @@ function Composer({
   const [sending, setSending] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [showCc, setShowCc] = React.useState(initial.cc.length > 0);
+  const attached = useAttached({ cloud: initial.cloud, carry: initial.carry });
   const [unlocking, setUnlocking] = React.useState(false);
   const list = (value: string) =>
     value
@@ -1066,7 +1454,9 @@ function Composer({
     setProblem(null);
     try {
       let made: { text: string; pgp?: MailDraft["pgp"] } = { text };
-      if (own.state === "set" && (encrypt || sign)) {
+      const files = attached.files.flatMap((a) => (a.file === null ? [] : [a.file]));
+      const sealing = own.state === "set" && (encrypt || sign);
+      if (sealing && own.state === "set") {
         const encryptTo: string[] = [];
         if (encrypt) {
           for (const a of recipients) {
@@ -1078,7 +1468,10 @@ function Composer({
           encryptTo.push(own.key.publicKey);
         }
         try {
-          made = await seal({ text, encryptTo, signWith: sign ? unlocked : null, inline });
+          const inside = await Promise.all(
+            files.map(async (f) => ({ name: f.name, type: f.type, bytes: new Uint8Array(await f.arrayBuffer()) })),
+          );
+          made = await seal({ text, files: inside, encryptTo, signWith: sign ? unlocked : null, inline });
         } catch (error) {
           throw new Error(t("mail.pgp.compose.failed", { detail: message(error) }));
         }
@@ -1086,6 +1479,8 @@ function Composer({
       const draft: MailDraft = { to: list(to), cc: list(cc), subject, text: made.text };
       if (made.pgp !== undefined) draft.pgp = made.pgp;
       if (initial.inReplyTo !== undefined) draft.inReplyTo = initial.inReplyTo;
+      // A sealed message carries its files inside; the box refuses them beside it.
+      if (!sealing && files.length > 0) draft.attachments = await Promise.all(files.map(mailFile));
       await sendMail(draft);
       onSent();
     } catch (error) {
@@ -1209,6 +1604,7 @@ function Composer({
               className="min-h-56 font-sans"
             />
           </Field>
+          <ComposeAttachments attached={attached} />
           {hasKey ? (
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
               <span className="flex items-center gap-2">
@@ -1237,7 +1633,7 @@ function Composer({
                   {t("mail.pgp.compose.sign")}
                 </label>
               </span>
-              {(encrypt || sign) && (
+              {(encrypt || sign) && attached.files.length === 0 && (
                 <span className="flex items-center gap-2 text-muted">
                   <Switch id="mail-inline" size="sm" isSelected={inline} onChange={setInline} />
                   <label htmlFor="mail-inline">{t("mail.pgp.compose.inline")}</label>
@@ -1267,7 +1663,11 @@ function Composer({
           <Button type="button" variant="ghost" onClick={onClose} disabled={sending}>
             {t("mail.compose.discard")}
           </Button>
-          <Button type="submit" disabled={sending || missing.length > 0 || looking} data-encrypted={encrypt || undefined}>
+          <Button
+            type="submit"
+            disabled={sending || missing.length > 0 || looking || !attached.ready || attached.tooBig}
+            data-encrypted={encrypt || undefined}
+          >
             {sending ? (
               <Spinner className="size-4" />
             ) : (

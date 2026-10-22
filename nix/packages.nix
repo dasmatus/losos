@@ -274,13 +274,15 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-Xgiz1gNTzroUyvjbf/jdMlOJ0geZKjmH8oFrYqCGO8A=";
+  pluginsCargoHash = "sha256-KfPuzfODxOgD0a1zjrob4bsYM56pwi8k3Jar5vs4+R8=";
   lososPlugins =
     {
       pname ? "losos-plugins",
       names ? [
+        "assistant"
         "look"
         "pins"
+        "mail"
         "ci"
       ],
     }:
@@ -352,7 +354,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-23rdHBeebofW56p8FZT3XnKrTnLeFpUrLxOy/wjsARs=";
+    npmDepsHash = "sha256-ITWr3t02KoCqCbjJMcXiqhT4Itw8VRUV9Ez2oruX8Zc=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -363,6 +365,13 @@ images
     # nothing else needs a script to run.
     npmFlags = [ "--ignore-scripts" ];
     env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+    # The person segmenter behind a call's black background
+    # (src/calls/background.ts): MediaPipe's selfie segmenter, Apache-2.0,
+    # a fixed version of the model, copied beside the chat page.
+    env.LOSOS_SEGMENTER_MODEL = "${pkgs.fetchurl {
+      url = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite";
+      hash = "sha256-GRrJUprlBu4L7vprLJRaFy2rnQfR6AKikKTkA4ImZYs=";
+    }}";
     # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core,
     # the GPU canvas and, for guests on the relay path, the libvirt client.
     preBuild = labCorePkg + labVirtPkg + labRenderPkg;
@@ -433,8 +442,10 @@ images
   losos-plugins-probe = lososPlugins {
     pname = "losos-plugins-probe";
     names = [
+      "assistant"
       "look"
       "pins"
+      "mail"
       "probe"
     ];
   };
@@ -445,7 +456,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-9YDmo/V9Mfxf+ttc0yUuIq7Jnwz8C/NJjrKABIjtnwk=";
+    cargoHash = "sha256-LX3tsCW2kR6ljcPBQOEv3jkZEiDLxWp8LlWCuorfcZk=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -471,7 +482,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-/8x0VXwOtWciHb73EyTKCX6YJY9E368RWjdYQJfFJDI=";
+    cargoHash = "sha256-FA4QaT3fwEAX9Xorhea8MePJHiGKCUi50EXqR6VHA7s=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -496,7 +507,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-/8x0VXwOtWciHb73EyTKCX6YJY9E368RWjdYQJfFJDI=";
+    cargoHash = "sha256-FA4QaT3fwEAX9Xorhea8MePJHiGKCUi50EXqR6VHA7s=";
     doCheck = false;
   };
 

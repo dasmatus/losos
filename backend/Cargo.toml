@@ -29,7 +29,7 @@ actix-web = { version = "4", default-features = false, features = ["macros"] }
 # "blocking-api" is what the facade CLI uses: a one-shot D-Bus call needs no
 # runtime. The daemon uses the async side on tokio.
 zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal", "process", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal", "net", "process", "io-util"] }
 
 # Job ids are "%Y%m%d%H%M%S-<pid>-<counter>"; the counter is what keeps two
 # jobs queued in the same second apart.
@@ -95,7 +95,7 @@ oxc = { version = "0.155", default-features = false, features = ["transformer", 
 # among them) is ever stored. PNG, JPEG, GIF and WebP in; PNG and JPEG out.
 # The `image` dependency itself is declared once, below with LosOS Cloud's
 # thumbnails, whose decoders are a superset of these.
-# Live editing in LosOS cloud (src/cloud/collab/): yrs is the Rust port of
+# Live editing in LosOS Cloud (src/cloud/collab/): yrs is the Rust port of
 # Yjs, the CRDT the editor runs in the browser, and speaks its binary
 # format and sync protocol. similar diffs a file written outside the editor
 # into line edits.
@@ -130,6 +130,18 @@ mime = "0.3"
 # phones and cameras write.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 
+# Calls (src/calls/, the losos-calls binary): a forwarding SFU on str0m, a
+# sans-IO WebRTC stack, with its pure-Rust DTLS and SRTP so nothing links
+# OpenSSL. The browsers encrypt every frame end to end before it reaches
+# the SFU; str0m only ever sees that ciphertext inside SRTP.
+str0m = { version = "0.24", default-features = false, features = ["rust-crypto"] }
+# The call page's signalling socket is actix-ws, declared above.
+# Which addresses the SFU offers as ICE host candidates.
+if-addrs = "0.15"
+# Media through the edge (src/calls/relay.rs): one QUIC connection the
+# edge hands the browsers' datagrams down, TLS 1.3 on ring like the rest.
+# rustls is declared above with the mesh link.
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 # The plugin runtime (src/plugin/): lososd's areas are WebAssembly
 # components written against plugins/wit/plugin.wit, loaded from the
 # read-only directory the NixOS module names. Component model for typed
@@ -203,6 +215,18 @@ path = "src/bin/losos-cloud.rs"
 [[bin]]
 name = "losos-search"
 path = "src/bin/losos-search.rs"
+
+[[bin]]
+name = "losos-chat-threads"
+path = "src/bin/losos-chat-threads.rs"
+
+[[bin]]
+name = "losos-calls"
+path = "src/bin/losos-calls.rs"
+
+[[bin]]
+name = "losos-office"
+path = "src/bin/losos-office.rs"
 
 [[bin]]
 name = "losos-git"

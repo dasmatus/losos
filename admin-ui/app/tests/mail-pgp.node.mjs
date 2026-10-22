@@ -164,6 +164,30 @@ await check('PGP/MIME signed: good, then tampered', async () => {
   assert.equal(bad.signature.state, 'bad');
 });
 
+await check('files travel inside the encrypted part, and inside the signed one', async () => {
+  const bytes = new Uint8Array(70_000).map((_, i) => (i * 7) % 256);
+  const files = [
+    { name: 'lake.bin', type: 'application/octet-stream', bytes },
+    { name: 'Údolie "plán".txt', type: 'text/plain', bytes: enc.encode('the plan') },
+  ];
+  // Inline PGP cannot carry files, so it turns to PGP/MIME.
+  const made = await seal({ text: BODY, files, encryptTo: [bob.publicKey], signWith: annaKey, inline: true });
+  assert.equal(made.pgp.mime, 'encrypted');
+  const opened = await openMail(raw({ from: 'anna@box.home.arpa', to: 'b@x', subject: 's', pgp: made.pgp }), bobKey, [anna.publicKey]);
+  assert.equal(opened.text.replace(/\r\n/g, '\n').trimEnd(), BODY.trimEnd());
+  assert.equal(opened.signature.state, 'good');
+  assert.deepEqual(opened.attachments.map((a) => a.name), ['lake.bin', 'Údolie "plán".txt']);
+  assert.deepEqual(Buffer.from(opened.attachments[0].bytes), Buffer.from(bytes));
+  assert.equal(new TextDecoder().decode(opened.attachments[1].bytes), 'the plan');
+
+  const signed = await seal({ text: BODY, files, encryptTo: [], signWith: annaKey, inline: false });
+  assert.ok(/^[\x00-\x7f]*$/.test(signed.pgp.part));
+  assert.ok(!/[^\r]\n/.test(signed.pgp.part));
+  const read = await openMail(raw({ from: 'anna@box.home.arpa', to: 'b@x', subject: 's', pgp: signed.pgp }), null, [anna.publicKey]);
+  assert.equal(read.signature.state, 'good');
+  assert.equal(read.attachments.length, 2);
+});
+
 await check('inline encrypted and inline cleartext signed', async () => {
   const made = await seal({ text: 'inline words', encryptTo: [bob.publicKey], signWith: annaKey, inline: true });
   assert.equal(made.pgp, undefined);

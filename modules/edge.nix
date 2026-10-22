@@ -970,10 +970,35 @@ let
     ++ uplinkArgs
     ++ accessArgs
     ++ manageArgs
+    ++ callsRelayArgs
     ++ inferenceArgs
     ++ ciArgs
   );
 
+  # Call media for this edge's boxes (losos.edge.calls.relay,
+  # edge/registrar/src/calls_relay.rs). The QUIC port is dual-stack like
+  # rathole's; media ports bind per address.
+  relayCfg = cfg.calls.relay;
+  callsRelayArgs = lib.optionals relayCfg.enable (
+    [
+      "--calls-relay-listen"
+      "[::]:${toString relayCfg.port}"
+      "--calls-relay-media-ports"
+      relayCfg.mediaPorts
+    ]
+    ++ lib.concatMap (a: [
+      "--calls-relay-address"
+      a
+    ]) relayCfg.addresses
+  );
+  mediaRange =
+    let
+      parts = lib.splitString "-" relayCfg.mediaPorts;
+    in
+    {
+      from = lib.toInt (lib.elemAt parts 0);
+      to = lib.toInt (lib.elemAt parts 1);
+    };
   # Mesh CI's job queue (edge/registrar/src/ci.rs): the jobs boxes hand
   # over, kept in the registrar's StateDirectory across restarts.
   ciArgs = lib.optionals cfg.ci.enable [
@@ -1863,6 +1888,8 @@ in
     ]
     # DNS answers over TCP too: large responses and zone checks need it.
     ++ lib.optional dnsCfg.enable 53;
-    networking.firewall.allowedUDPPorts = lib.optional dnsCfg.enable 53;
+    networking.firewall.allowedUDPPorts =
+      lib.optional dnsCfg.enable 53 ++ lib.optional relayCfg.enable relayCfg.port;
+    networking.firewall.allowedUDPPortRanges = lib.optional relayCfg.enable mediaRange;
   };
 }

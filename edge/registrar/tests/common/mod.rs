@@ -709,6 +709,7 @@ impl Edge {
             routes: None,
             operator: None,
             manage: None,
+            calls_relay: None,
             ci_dir: None,
             onramp: None,
         };

@@ -49,6 +49,7 @@
 pub mod action;
 pub mod announce;
 pub mod bitcoin;
+pub mod calls_relay;
 pub mod ci;
 pub mod coins;
 pub mod config;

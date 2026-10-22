@@ -326,6 +326,12 @@
             ./modules/credentials.nix
             ./modules/daemon.nix
             ./modules/identity.nix
+            # LosOS Chat: Dendrite as the shared user while the box shares
+            # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
+            ./modules/chat.nix
+            # Calls from chat rooms and DMs: the SFU, as the shared user, which
+            # forwards only frames the browsers encrypted (backend/src/calls/).
+            ./modules/calls.nix
             # Backups to the owner's S3 bucket, restoring them, and the
             # boot-time wipe of an erase (backend/src/{backup,erase}.rs).
             ./modules/backup.nix
@@ -343,6 +349,9 @@
             # LosOS Cloud (backend/src/cloud/): files, calendars, contacts and
             # boards at /cloud/, and to the Nextcloud desktop and phone apps.
             ./modules/cloud.nix
+            # Office documents in the browser: Collabora Online and its WOPI
+            # host (backend/src/office/).
+            ./modules/office.nix
             # Its files in Windows' Network view, as an SMB share.
             ./modules/windows.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
@@ -465,11 +474,20 @@
         # real rebuild, with the pull request's pictures (nix/tests/wait-game.nix).
         losos-wait-game = import ./nix/tests/wait-game.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
+        losos-chat = import ./nix/tests/chat.nix { inherit pkgs; };
+        # Calls from chat: three people in real browsers through the box's
+        # SFU, whose copy of every frame is ciphertext (nix/tests/calls.nix).
+        losos-calls = import ./nix/tests/calls.nix { inherit pkgs; };
+        losos-calls-edge = import ./nix/tests/calls.nix {
+          inherit pkgs;
+          throughEdge = true;
+        };
         # Screenshots of a booted box; the plan is read when the driver runs.
         losos-screens = import ./nix/tests/screens.nix { inherit pkgs; };
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        losos-design = import ./nix/tests/design.nix { inherit pkgs; };
         losos-agents = import ./nix/tests/agents.nix { inherit pkgs; };
         # The banner a box off the mesh shows over every page, both states
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
@@ -495,10 +513,19 @@
         # Autocrypt (nix/tests/mail-pgp.nix).
         losos-mail-pgp = import ./nix/tests/mail-pgp.nix { inherit pkgs; };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # The right-click menu on the admin page and in LosOS Cloud, with
+        # the pull request's pictures (nix/tests/context-menu.nix).
+        losos-context-menu = import ./nix/tests/context-menu.nix { inherit pkgs; };
         losos-cloud-from-nextcloud = import ./nix/tests/cloud-from-nextcloud.nix { inherit pkgs; };
         # Notes on a kitchen garden vault, and the folder published as a
         # knowledge base, on and off the mesh (nix/tests/notes.nix).
         losos-notes = import ./nix/tests/notes.nix { inherit pkgs; };
+        # One file through Mail, LosOS Cloud, Notes and the box's AI on one
+        # box, with the pull request's pictures (nix/tests/apps-together.nix).
+        losos-apps-together = import ./nix/tests/apps-together.nix { inherit pkgs; };
+        # Gemma answers the apps, the coder builds, one model in memory at
+        # a time on a 4 GiB box (nix/tests/assistant-models.nix).
+        losos-assistant-models = import ./nix/tests/assistant-models.nix { inherit pkgs; };
         # Two boxes sharing a note and editing it together, apart and
         # together again (nix/tests/mesh-collab.nix).
         losos-mesh-collab = import ./nix/tests/mesh-collab.nix { inherit pkgs; };
@@ -517,6 +544,7 @@
           # libvirt client; the bundle under test copies them in the way the
           # shipped one does.
           inherit (self.packages.${system}.losos-admin-ui) labCorePkg labVirtPkg labRenderPkg;
+          callsPackage = self.packages.${system}.losos-ctl;
         };
         # Not a VM: the option document of the install configuration
         # (nix/options-doc.nix via modules/config-repo.nix), forced here so
@@ -531,6 +559,18 @@
         # its sandbox, PDFs, a changed file, the Git search and who may ask
         # (nix/tests/search.nix).
         losos-search = import ./nix/tests/search.nix { inherit pkgs; };
+        # Collabora Online behind the front vhost over the folder host: open,
+        # type, save, save as PDF, two people in one document, the token
+        # rules and what nginx refuses (nix/tests/office.nix).
+        losos-office = import ./nix/tests/office.nix { inherit pkgs; };
+        # Office over LosOS Cloud's own files: discovery saved for a cloud
+        # with no network, coolwsd through nginx's loopback bridge to the
+        # cloud's socket, a save landing in the person's cloud
+        # (nix/tests/office-cloud.nix).
+        losos-office-cloud = import ./nix/tests/office-cloud.nix { inherit pkgs; };
+        # Markdown documents and presentations in LosOS Office, with no
+        # Collabora on the box (nix/tests/office-markdown.nix).
+        losos-office-markdown = import ./nix/tests/office-markdown.nix { inherit pkgs; };
         # The box half of models split across boxes: the RPC server as
         # `shared`, its memory cap, the lend file, the loopback owner rule
         # and the `:llm` tunnel service (nix/tests/inference-lend.nix).
