@@ -124,7 +124,7 @@ async function tracker(s, base) {
   const p = s.page;
   await p.goto(`${base}/git/issues`);
   await p.locator("[data-tracker-scope=mine]").waitFor();
-  await row(p, "BT-3").waitFor();
+  await row(p, "BT-4").waitFor();
   const project = p.locator("[data-sidebar=menu-button]", { hasText: "backup-tool" }).first();
   await s.take("my-issues", "the issues given to me, across projects", { kind: "click", target: "project" }, {
     project,
@@ -133,7 +133,7 @@ async function tracker(s, base) {
 
   await project.click();
   await p.locator("[data-tracker-scope=project]").waitFor();
-  await row(p, "BT-6").waitFor();
+  await row(p, "BT-7").waitFor();
   await s.take("project", "the backup-tool project, grouped by status", { kind: "click", target: "issue" }, {
     issue: row(p, "BT-1"),
     create: p.getByRole("button", { name: /New issue/ }),
@@ -141,7 +141,7 @@ async function tracker(s, base) {
 
   // Done is folded; the issue the commit closed opens from the palette
   // instead, so this one is a Forgejo issue that is still open.
-  await row(p, "BT-6").click();
+  await row(p, "BT-7").click();
   await p.locator("[data-timeline]").waitFor();
   await s.take("issue", "an issue beside the list, with its properties and history", { kind: "press", target: "status" }, {
     status: p.locator("[data-prop=state]"),
@@ -161,14 +161,14 @@ async function tracker(s, base) {
 
   await p.getByRole("radio", { name: "Board" }).click();
   await p.locator("[data-board]").waitFor();
-  const card = p.locator('[data-card][data-issue-key="BT-7"]');
+  const card = p.locator('[data-card][data-issue-key="BT-8"]');
   const doing = p.locator('[data-column="In Progress"]');
   await card.waitFor();
   await s.take("board", "the same issues as a board", { kind: "drag", target: "card" }, { card, doing });
   await card.dragTo(doing);
-  await doing.locator('[data-issue-key="BT-7"]').waitFor();
+  await doing.locator('[data-issue-key="BT-8"]').waitFor();
   await s.take("board-moved", "a card dragged to In Progress", { kind: "none" }, {
-    card: doing.locator('[data-issue-key="BT-7"]'),
+    card: doing.locator('[data-issue-key="BT-8"]'),
   });
 
   // Ctrl+K finds any issue by its words.

@@ -15,9 +15,9 @@
 # project BT with the same numbers, losos-git-boards-import takes the
 # boards in once (Garden a project of its own, the Backup tool cards into
 # BT), and a second start changes nothing. Then people work: issues,
-# a cycle, a sub-issue, a mention; the owner pushes "Fixes BT-3" to main
-# over HTTPS and BT-3 is done with the commit beside it; Eva opens a pull
-# request from bt-5-free-space that says "Closes BT-5", which puts BT-5 in
+# a cycle, a sub-issue, a mention; the owner pushes "Fixes BT-4" to main
+# over HTTPS and BT-4 is done with the commit beside it; Eva opens a pull
+# request from bt-6-free-space that says "Closes BT-6", which puts BT-6 in
 # review, and the owner merges it, which closes it.
 #
 # Then Chromium on the laptop signs in as the owner through LosOS Login and
@@ -306,64 +306,64 @@ pkgs.testers.nixosTest {
             return ok("POST", "/tracker/issues", {"project": "BT", **fields}, token=owner)
         three = new(title="Log a failed copy to /var/log/backup.log", priority=3, assignee="notshared",
                     labels=["feature"], cycle=cycle, estimate=1, category="unstarted")
-        assert three["key"] == "BT-3", three
+        assert three["key"] == "BT-4", three
         new(title="Backup runs twice after a reboot at midnight", priority=1, assignee="notshared",
             labels=["bug"], cycle=cycle, estimate=2, category="started", due=soon)
         five = new(title="Check free space on the NAS before copying", priority=2, assignee="eva",
                    labels=["bug"], cycle=cycle, estimate=2, category="unstarted")
-        assert five["key"] == "BT-5", five
+        assert five["key"] == "BT-6", five
         new(title="Copy only the photos that changed", priority=2, assignee="eva",
             labels=["feature"], cycle=cycle, estimate=3, category="unstarted")
         new(title="Write the README section on restoring", priority=4, assignee="jonas",
             labels=["docs"], category="unstarted")
         new(title="Send a mail when a backup fails", priority=3, labels=["feature"], category="backlog")
         new(title="Wake the NAS with a magic packet", parent="BT-1", assignee="notshared", priority=2)
-        ok("POST", "/tracker/issues/BT-4/relations", {"kind": "blocks", "other": "BT-1"}, token=owner)
+        ok("POST", "/tracker/issues/BT-5/relations", {"kind": "blocks", "other": "BT-1"}, token=owner)
         ok("POST", "/tracker/issues/BT-1/comments",
-           {"body": "@notshared BT-4 has to land first or it copies twice."}, token=eva)
+           {"body": "@notshared BT-5 has to land first or it copies twice."}, token=eva)
         mine = ok("GET", "/tracker/issues?assignee=me", token=owner)["issues"]
-        assert {i["key"] for i in mine} >= {"BT-3", "BT-4", "BT-10"}, mine
+        assert {i["key"] for i in mine} >= {"BT-4", "BT-5", "BT-11"}, mine
         inbox = ok("GET", "/tracker/inbox", token=owner)
         assert any(i["kind"] == "mention" and i["issue"]["key"] == "BT-1" for i in inbox["items"]), inbox
 
-    with subtest("a commit that says Fixes BT-3 closes it"):
+    with subtest("a commit that says Fixes BT-4 closes it"):
         laptop.succeed("printf 'log=/var/log/backup.log\\n' >> /tmp/main/backup.sh")
-        commit("/tmp/main", MATUS, "Log a failed copy\n\nFixes BT-3.")
+        commit("/tmp/main", MATUS, "Log a failed copy\n\nFixes BT-4.")
         laptop.succeed(f"cd /tmp/main && git push -q {url(owner)} main")
         box.wait_until_succeeds(
-            f"curl -fsS -H 'Authorization: token {git_admin}' http://127.0.0.1:3000/api/v1/tracker/issues/BT-3"
+            f"curl -fsS -H 'Authorization: token {git_admin}' http://127.0.0.1:3000/api/v1/tracker/issues/BT-4"
             " | jq -e '.state.category == \"done\"'",
             timeout=60,
         )
-        three = issue("BT-3", owner)
+        three = issue("BT-4", owner)
         assert [(l["kind"], l["closes"]) for l in three["links"]] == [("commit", True)], three
 
-    with subtest("Eva's pull request puts BT-5 in review and the merge closes it"):
+    with subtest("Eva's pull request puts BT-6 in review and the merge closes it"):
         laptop.succeed(
             f"git clone -q {url(eva)} /tmp/eva",
-            "cd /tmp/eva && git checkout -q -b bt-5-free-space",
+            "cd /tmp/eva && git checkout -q -b bt-6-free-space",
             "printf 'df -h \"$2\"\\n' >> /tmp/eva/backup.sh",
         )
         commit("/tmp/eva", EVA, "Check free space first")
-        laptop.succeed(f"cd /tmp/eva && git push -q {url(eva)} bt-5-free-space")
+        laptop.succeed(f"cd /tmp/eva && git push -q {url(eva)} bt-6-free-space")
         pr = ok("POST", f"/repos/{REPO}/pulls", {
             "title": "Check free space first",
-            "body": "Stops before copying when the NAS is nearly full.\n\nCloses BT-5.",
-            "head": "bt-5-free-space",
+            "body": "Stops before copying when the NAS is nearly full.\n\nCloses BT-6.",
+            "head": "bt-6-free-space",
             "base": "main",
         }, token=eva)
         box.wait_until_succeeds(
-            f"curl -fsS -H 'Authorization: token {git_admin}' http://127.0.0.1:3000/api/v1/tracker/issues/BT-5"
+            f"curl -fsS -H 'Authorization: token {git_admin}' http://127.0.0.1:3000/api/v1/tracker/issues/BT-6"
             " | jq -e '.state.name == \"In Review\"'",
             timeout=60,
         )
         ok("POST", f"/repos/{REPO}/pulls/{pr['number']}/merge", {"style": "merge"}, token=owner)
         box.wait_until_succeeds(
-            f"curl -fsS -H 'Authorization: token {git_admin}' http://127.0.0.1:3000/api/v1/tracker/issues/BT-5"
+            f"curl -fsS -H 'Authorization: token {git_admin}' http://127.0.0.1:3000/api/v1/tracker/issues/BT-6"
             " | jq -e '.state.category == \"done\"'",
             timeout=60,
         )
-        five = issue("BT-5", owner)
+        five = issue("BT-6", owner)
         assert any(l["kind"] == "pull" and l["closes"] for l in five["links"]), five
 
     def issue_shots(phase, folder):
@@ -388,9 +388,9 @@ pkgs.testers.nixosTest {
         issue_shots("tracker", "after")
         laptop.copy_from_machine("/tmp/shots/after", "shots")
         # What the pages did, as LosOS Git has it.
-        six = issue("BT-6", owner)
+        six = issue("BT-7", owner)
         assert six["state"]["name"] == "In Progress", six
-        assert issue("BT-7", owner)["state"]["name"] == "In Progress"
+        assert issue("BT-8", owner)["state"]["name"] == "In Progress"
         made = [i for i in ok("GET", "/tracker/issues?project=BT", token=owner)["issues"]
                 if i["title"] == "Rotate the backup key every year"]
         assert len(made) == 1, made
