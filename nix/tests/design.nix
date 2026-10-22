@@ -197,7 +197,8 @@ let
   # person's menu with Sign out and its keys, and the palette finding Sign out
   # as it is typed, one picture per letter. Dark, 1280x900 at two device
   # pixels per CSS pixel, with the caret hidden; film.json lists each one
-  # with what is pressed next and where.
+  # with what is pressed next and where. The motion comes as frames at 60
+  # per second (`clip`), for video.
   person = {
     selector = "[data-testid=signed-in-as]";
   };
@@ -217,6 +218,10 @@ let
         signOut.selector = "dialog[open] >> text=Sign out";
       };
     };
+  };
+  filmClip = {
+    fps = 60;
+    ms = 300;
   };
   filmPlan = pkgs.writeText "film-plan.json" (
     builtins.toJSON {
@@ -301,6 +306,43 @@ let
             name = "07-palette-sign";
           }
         )
+        {
+          name = "clip-person-menu";
+          path = "/";
+          clip = filmClip;
+          steps = [
+            { click = person; }
+            { waitFor.selector = "[data-slot=person-menu]"; }
+          ];
+        }
+        {
+          name = "clip-palette-open";
+          path = "/";
+          clip = filmClip;
+          steps = [
+            { press = "Control+Shift+P"; }
+            { waitFor.selector = "dialog[open]"; }
+          ];
+        }
+        {
+          name = "clip-palette-close";
+          path = "/";
+          clip = filmClip;
+          steps = [
+            { press = "Control+Shift+P"; }
+            { waitFor.selector = "dialog[open]"; }
+            { freeze = true; }
+            { press = "Escape"; }
+          ];
+        }
+        {
+          name = "clip-switch";
+          path = "/settings/security";
+          clip = filmClip;
+          steps = [
+            { click.selector = "[data-slot=switch]"; }
+          ];
+        }
       ];
     }
   );
@@ -455,5 +497,7 @@ pkgs.testers.nixosTest {
         assert len(film) == 7, film
         size = laptop.succeed("identify -format '%w %h' /tmp/film/01-home.png")
         assert size == "2560 1800", size
+        for clip in ["person-menu", "palette-open", "palette-close", "switch"]:
+            laptop.succeed(f"test -s /tmp/film/clip-{clip}-clip-018.png")
   '';
 }
