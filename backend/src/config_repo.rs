@@ -148,6 +148,20 @@ pub enum GitOp {
     /// A token for one of `login`'s computers, replacing one of the same
     /// name: clone and push, and read who it belongs to.
     CreateToken { login: String, name: String },
+    /// One repository as `login` sees it, with their permissions on it.
+    RepoAs {
+        login: String,
+        owner: String,
+        name: String,
+    },
+    /// Link a repository to a chat room (`crate::git_rooms`), as `login`,
+    /// who must be its administrator. An empty `room` unlinks it.
+    SetChatRoom {
+        login: String,
+        owner: String,
+        name: String,
+        room: String,
+    },
 }
 
 impl GitOp {
@@ -169,6 +183,10 @@ impl GitOp {
             GitOp::CreateToken { login, .. } => {
                 ("POST", format!("/api/v1/admin/users/{login}/tokens"))
             }
+            GitOp::RepoAs { owner, name, .. } => ("GET", format!("/api/v1/repos/{owner}/{name}")),
+            GitOp::SetChatRoom { owner, name, .. } => {
+                ("PATCH", format!("/api/v1/repos/{owner}/{name}"))
+            }
         }
     }
 
@@ -177,6 +195,8 @@ impl GitOp {
     pub fn acting_as(&self) -> Option<&str> {
         match self {
             GitOp::SearchRepos { login, .. }
+            | GitOp::RepoAs { login, .. }
+            | GitOp::SetChatRoom { login, .. }
                 if !login.is_empty()
                     && login
                         .bytes()
@@ -191,7 +211,10 @@ impl GitOp {
     /// The JSON body, or `None` for a read.
     pub fn body(&self) -> Option<String> {
         let doc = match self {
-            GitOp::ListRepos { .. } | GitOp::SearchRepos { .. } => return None,
+            GitOp::ListRepos { .. } | GitOp::SearchRepos { .. } | GitOp::RepoAs { .. } => {
+                return None
+            }
+            GitOp::SetChatRoom { room, .. } => json!({ "chat_room": room }),
             GitOp::EnsureUser {
                 full_name,
                 email,

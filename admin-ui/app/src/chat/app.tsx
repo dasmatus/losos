@@ -331,6 +331,21 @@ function ChatHome({ signed }: { signed: Signed }) {
     const search = new URLSearchParams(window.location.search);
     const raw = search.get("with");
     const shared = readShare(search);
+    // `?join=<room>` from a LosOS Git repository: that room, joined first.
+    const joining = linkedRoom(window.location.search);
+    if (joining !== null) {
+      navigate(withoutLink(window.location.href), { replace: true });
+      const there = client.getRoom(joining.room);
+      if (there !== null && there.getMyMembership() === "join") {
+        setCurrent(joining.room);
+        return;
+      }
+      client
+        .joinRoom(joining.room, { viaServers: joining.via })
+        .then((room) => setCurrent(room.roomId))
+        .catch((error: unknown) => failed(t, error));
+      return;
+    }
     if (raw === null && shared === null) return;
     const video = linkedCall(window.location.search);
     navigate(withoutCall(withoutLink(window.location.href)), { replace: true });
