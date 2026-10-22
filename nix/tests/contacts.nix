@@ -623,5 +623,8 @@ pkgs.testers.nixosTest {
             # The browser imported the 2.1 card and added one contact.
             assert "Ondrej Rak" in names(ok(C, matus))
             assert "Lucia Malá" in names(ok(C, matus))
+
+        with subtest("the launch film's pictures"):
+            browser("film")
   '';
 }

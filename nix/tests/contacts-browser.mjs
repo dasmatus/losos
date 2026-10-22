@@ -4,13 +4,14 @@
 //   node contacts-browser.mjs before <out>  the admin pages before Contacts
 //   node contacts-browser.mjs off    <out>  the book with sharing off
 //   node contacts-browser.mjs on     <out>  the book and the apps that use it
+//   node contacts-browser.mjs film   <out>  the launch film's states, in <out>/film/
 //
 // As in nix/tests/chat-browser.mjs the box is reached through a SOCKS proxy
 // on the LAN, so pages load at https://mattbox.local/. Pictures go to
 // <out>/pr/. It exits non-zero at the first step that does not happen,
 // after a picture of every open page.
 import { createRequire } from "node:module";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const { chromium } = createRequire(import.meta.url)(process.env.CONTACTS_PLAYWRIGHT ?? "playwright");
 
@@ -25,9 +26,9 @@ const browser = await chromium.launch({ chromiumSandbox: false, proxy: { server:
 const problems = [];
 const pages = [];
 
-async function person(name, password) {
+async function person(name, password, viewport = { width: 1280, height: 860 }) {
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 860 },
+    viewport,
     deviceScaleFactor: 2,
     colorScheme: "dark",
     locale: "en-US",
@@ -241,8 +242,122 @@ async function on() {
   await shot(owner, "chat-from-contact");
 }
 
+// ── The launch film ────────────────────────────────────────────────────────
+// One full-viewport picture per state at 1280x900, and per typed letter,
+// with a manifest of where each picture leads and what it may point at.
+
+const steps = [];
+
+async function box(locator) {
+  const b = await locator.boundingBox();
+  if (b === null) throw new Error("a film target is not on the screen");
+  return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) };
+}
+
+async function frame(page, title, action = { kind: "none" }, targets = {}) {
+  await settle(page);
+  const file = `${String(steps.length + 1).padStart(2, "0")}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.png`;
+  await page.screenshot({ path: `${out}/film/${file}` });
+  const at = new URL(page.url());
+  const shown = {};
+  for (const [name, locator] of Object.entries(targets)) shown[name] = await box(locator);
+  steps.push({ file, url: `${HOST}${at.pathname}${at.search}`, title, action, targets: shown });
+  console.log(`film ${file}`);
+}
+
+/** Types `text` a letter at a time, a picture after each. */
+async function typed(page, field, text, title) {
+  await field.click();
+  for (let i = 1; i <= text.length; i++) {
+    await field.pressSequentially(text[i - 1], { delay: 40 });
+    await page.waitForTimeout(i === text.length ? 1500 : 400);
+    await frame(page, `${title} ${text.slice(0, i)}`, { kind: "type", target: "field", text: text.slice(0, i) }, { field });
+  }
+}
+
+async function film() {
+  mkdirSync(`${out}/film`, { recursive: true });
+  const owner = await person("matus", process.env.CONTACTS_MATUS_PASSWORD, { width: 1280, height: 900 });
+  await overview(owner);
+  await frame(owner, "Overview with Contacts", { kind: "click", target: "contacts" }, { contacts: contactsLink(owner) });
+
+  await contactsLink(owner).click();
+  await owner.waitForURL(`${ORIGIN}/contacts`);
+  const list = owner.getByRole("region", { name: "Your contacts" });
+  const eva = list.getByRole("button", { name: /Eva Nováková/ });
+  await eva.waitFor();
+  await frame(owner, "The book", { kind: "click", target: "eva" }, { eva });
+
+  await eva.click();
+  const card = owner.getByRole("article");
+  await card.getByRole("heading", { name: "Eva Nováková" }).waitFor();
+  const button = (name) => card.getByRole("button", { name, exact: true });
+  await frame(owner, "Eva's card", { kind: "click", target: "mail" }, {
+    mail: button("Mail"),
+    chat: button("Chat"),
+    call: button("Call"),
+    video: button("Video"),
+  });
+
+  await button("Mail").click();
+  await owner.waitForURL(`${ORIGIN}/mail**`);
+  await owner.locator("#mail-to").waitFor();
+  await frame(owner, "A message to Eva", { kind: "none" }, { to: owner.locator("#mail-to") });
+  await owner.keyboard.press("Escape");
+
+  // Mail's To field suggests the book as a name is typed.
+  await owner.goto(`${ORIGIN}/mail`);
+  await owner.getByRole("button", { name: "Write" }).first().click();
+  const to = owner.locator("#mail-to");
+  await to.waitFor();
+  await typed(owner, to, "Eva", "Mail To");
+  await frame(owner, "Mail suggests Eva", { kind: "click", target: "eva" }, {
+    eva: owner.getByRole("option", { name: /Eva Nováková/ }).first(),
+  });
+  await owner.keyboard.press("Escape");
+
+  // Chat's "Message someone" does the same.
+  await owner.goto(`${ORIGIN}/chat/`);
+  await owner.getByRole("heading", { name: "Conversations" }).waitFor();
+  await owner.getByRole("button", { name: "Message someone" }).first().click();
+  const who = owner.getByRole("textbox", { name: "Name or @name:server" });
+  await who.waitFor();
+  await typed(owner, who, "Eva", "Chat");
+  await frame(owner, "Chat suggests Eva", { kind: "none" });
+  await owner.keyboard.press("Escape");
+
+  // Importing a .vcf file from an old phone.
+  await owner.goto(`${ORIGIN}/contacts`);
+  await owner.getByRole("button", { name: "Import", exact: true }).click();
+  const importer = owner.getByRole("dialog");
+  await importer.locator('input[type="file"]').setInputFiles({
+    name: "phone.vcf",
+    mimeType: "text/vcard",
+    buffer: readFileSync(OLD_CARD),
+  });
+  await importer.getByText(/updated/).waitFor();
+  await frame(owner, "Import from a phone", { kind: "none" });
+  await importer.getByRole("button", { name: "Done" }).click();
+
+  writeFileSync(
+    `${out}/film/manifest.json`,
+    JSON.stringify(
+      {
+        feature: "contacts",
+        viewport: { width: 1280, height: 900 },
+        dpr: 2,
+        commit: process.env.CONTACTS_COMMIT ?? "",
+        test: "losos-contacts",
+        steps,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+}
+
 try {
-  await { before, off, on }[phase]();
+  await { before, off, on, film }[phase]();
   if (problems.length > 0) throw new Error(`the page reported: ${problems.join("; ")}`);
 } catch (error) {
   for (const [i, page] of pages.entries()) {
