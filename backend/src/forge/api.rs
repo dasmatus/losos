@@ -88,6 +88,7 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
     let scope = super::pulls::routes(scope);
     let scope = super::code::routes(scope);
     let scope = super::reviewer::api::routes(scope);
+    let scope = super::matrix::routes(scope);
     cfg.service(super::worktrees::routes(scope));
 }
 
@@ -140,6 +141,7 @@ pub fn user_json(u: &User, viewer: &Caller) -> Value {
         "email": if own { u.email.as_str() } else { "" },
         "is_admin": u.is_admin,
         "is_bot": u.is_bot,
+        "matrix_id": u.matrix_id,
         "created": u.created,
     })
 }
@@ -171,6 +173,7 @@ pub fn repo_json(req: &HttpRequest, state: &State, repo: &Repo, permission: Perm
         "visibility": repo.visibility,
         "default_branch": repo.default_branch,
         "ai_review": state.store.ai_review(repo.id).unwrap_or(false),
+        "chat_room": repo.chat_room,
         "empty": empty,
         "fork": repo.fork_of.is_some(),
         "parent_id": repo.fork_of,
@@ -483,6 +486,9 @@ struct EditRepo {
     private: Option<bool>,
     visibility: Option<String>,
     default_branch: Option<String>,
+    /// The repository's chat room (`!id:server`), or `""` for none. lososd
+    /// sets it once it has made the room (`backend/src/chat.rs`).
+    chat_room: Option<String>,
 }
 
 async fn edit_repo(
@@ -508,6 +514,16 @@ async fn edit_repo(
         super::names::repo(n).map_err(Fail::bad)?;
     }
     let visibility = asked_visibility(body.visibility.as_deref(), body.private)?;
+    let room = body.chat_room.as_deref().map(str::trim);
+    if let Some(r) = room.filter(|r| !r.is_empty()) {
+        let ok = r.len() <= 255
+            && r.starts_with('!')
+            && r.split_once(':')
+                .is_some_and(|(_, server)| super::matrix::server_name_ok(server));
+        if !ok {
+            return Err(Fail::bad("That is not a chat room's ID."));
+        }
+    }
     let branch = body.default_branch.as_deref().map(str::trim);
     let dir = state.config.repo_path(&repo.owner, &repo.name);
     if let Some(b) = branch {
@@ -528,6 +544,11 @@ async fn edit_repo(
         visibility,
         branch,
     )?;
+    if let Some(r) = room {
+        state
+            .store
+            .set_chat_room(repo.id, Some(r).filter(|r| !r.is_empty()))?;
+    }
     if let Some(b) = branch {
         state.git.set_head(&dir, b)?;
     }
@@ -615,10 +636,26 @@ async fn put_collaborator(
             "Only the repository's administrators may add people.",
         ));
     }
-    let who = state
-        .store
-        .user(&path.2)?
-        .ok_or_else(|| Fail::not_found("account"))?;
+    // A person from another box can be added by their chat address
+    // (`@eva:kitchenbox.local`, or the login it makes) before they ever
+    // signed in here.
+    let who = match state.store.user(&path.2)? {
+        Some(u) => u,
+        None => {
+            let id = if path.2.starts_with('@') {
+                path.2.clone()
+            } else {
+                match path.2.split_once('@') {
+                    Some((local, server)) => format!("@{local}:{server}"),
+                    None => return Err(Fail::not_found("account")),
+                }
+            };
+            if super::matrix::split_id(&id).is_none() {
+                return Err(Fail::not_found("account"));
+            }
+            state.store.ensure_remote_user(&id, "")?
+        }
+    };
     if who.id == repo.owner_id {
         return Err(Fail::bad("The owner already has every right."));
     }
@@ -628,6 +665,11 @@ async fn put_collaborator(
         .unwrap_or("write");
     let level =
         Permission::parse(level).ok_or_else(|| Fail::bad("permission is read, write or admin"))?;
+    if who.is_remote() && level == Permission::Admin {
+        return Err(Fail::bad(
+            "A person from another box may read or write here, not run the repository.",
+        ));
+    }
     state.store.set_collaborator(repo.id, who.id, level)?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -1104,6 +1146,13 @@ async fn create_status(
         .map(|u| u.login.clone())
         .unwrap_or_else(|| "admin".into());
     super::statuses::set(&state.store, repo.id, &path.2, &body, &who)?;
+    super::events::status(
+        &repo,
+        &path.2,
+        &body.context,
+        &body.state,
+        &body.description,
+    );
     let list = super::statuses::list(&state.store, repo.id, &path.2)?;
     Ok(HttpResponse::Created().json(json!({
         "state": super::statuses::combined(&list),

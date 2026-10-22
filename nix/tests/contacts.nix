@@ -96,12 +96,29 @@ let
     withFirefox = false;
     withWebkit = false;
   };
-  fonts = pkgs.makeFontsConf {
-    fontDirectories = [
-      pkgs.dejavu_fonts
-      pkgs.noto-fonts-color-emoji
-    ];
-  };
+  # makeFontsConf carries no conf.d, so nothing maps the page's generic
+  # families (system-ui, sans-serif, monospace) to a face, and Chromium
+  # drew every page in DejaVu Serif. The aliases name the faces outright.
+  fonts = pkgs.writeText "contacts-fonts.conf" ''
+    <?xml version="1.0"?>
+    <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+    <fontconfig>
+      <include>${
+        pkgs.makeFontsConf {
+          fontDirectories = [
+            pkgs.dejavu_fonts
+            pkgs.noto-fonts-color-emoji
+          ];
+        }
+      }</include>
+      <alias binding="same"><family>system-ui</family><prefer><family>DejaVu Sans</family></prefer></alias>
+      <alias binding="same"><family>ui-sans-serif</family><prefer><family>DejaVu Sans</family></prefer></alias>
+      <alias><family>sans-serif</family><prefer><family>DejaVu Sans</family><family>Noto Color Emoji</family></prefer></alias>
+      <alias><family>serif</family><prefer><family>DejaVu Serif</family></prefer></alias>
+      <alias binding="same"><family>ui-monospace</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+      <alias><family>monospace</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+    </fontconfig>
+  '';
 
   # The files people bring from their phones and other address books.
   #
@@ -325,6 +342,9 @@ pkgs.testers.nixosTest {
 
     start_all()
     box.wait_for_unit("lososd.service")
+    # lososd's unit is up before its API: under emulation loading the
+    # plugins takes it a minute, and the claim would meet nginx's 502.
+    box.wait_for_open_port(8082)
     box.wait_for_unit("nginx.service")
     box.wait_for_unit("dendrite.service")
     box.wait_for_unit("losos-mail.service")
@@ -371,6 +391,7 @@ pkgs.testers.nixosTest {
         path = "/run/booted-system" if to is None else f"/run/booted-system/specialisation/{to}"
         box.succeed(f"{path}/bin/switch-to-configuration test >&2")
         box.wait_for_unit("lososd.service")
+        box.wait_for_open_port(8082)
         box.wait_for_unit("nginx.service")
 
     def names(book):
