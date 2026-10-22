@@ -822,11 +822,12 @@ pkgs.testers.nixosTest {
         until_js(page, "!document.querySelector('.animate-spin')", timeout=30000)
         time.sleep(1)
 
-    def shot(page, name):
+    def shot(page, name, top=True):
         settle(page)
-        # Every picture from the top of the page, so a Before and its
-        # After differ only in what changed.
-        page.evaluate("window.scrollTo(0, 0)")
+        # From the top of the page, so a Before and its After differ only
+        # in what changed; a picture of the timeline's end stays put.
+        if top:
+            page.evaluate("window.scrollTo(0, 0)")
         page.screenshot(path=f"{SHOTS}/{name}.png")
 
     def opened(page):
@@ -1222,7 +1223,8 @@ pkgs.testers.nixosTest {
             assert page.locator("[data-e2ee]").get_attribute("data-refused") == "0"
         notice = jan.locator("[data-call-notice]").last
         notice.get_by_role("button", name="Join", exact=True).wait_for()
-        shot(jan, "timeline-join")
+        notice.scroll_into_view_if_needed()
+        shot(jan, "timeline-join", top=False)
         notice.get_by_role("button", name="Join", exact=True).click()
         for page in (owner, her, jan):
             live(page, 2, frames=0)
