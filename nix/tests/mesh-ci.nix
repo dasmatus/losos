@@ -52,32 +52,9 @@ let
 
   # The admin UI as it ships, without the Lab page, which this test never
   # opens and whose WebAssembly takes longer to build than the test to run.
-  ui = lososPkgs.losos-admin-ui.overrideAttrs (
-    _:
-    {
-      pname = "losos-admin-ui-without-lab";
-      preBuild = ''
-        cat > vite.ci-test.config.ts <<'EOF'
-        import base from "./vite.config";
-        import { join } from "node:path";
-        import { fileURLToPath } from "node:url";
-        const root = fileURLToPath(new URL(".", import.meta.url));
-        const config = base as Record<string, any>;
-        config.build.rolldownOptions.input = {
-          main: join(root, "index.html"),
-          manage: join(root, "manage/index.html"),
-        };
-        export default config;
-        EOF
-      '';
-      buildPhase = ''
-        runHook preBuild
-        npx vite build --config vite.ci-test.config.ts
-        runHook postBuild
-      '';
-    }
+  ui = import ./admin-ui-without-lab.nix (
     # The earlier UI shares this one's lock file, so its npm cache too.
-    // lib.optionalAttrs (!after) { src = before; }
+    lososPkgs.losos-admin-ui.overrideAttrs (_: lib.optionalAttrs (!after) { src = before; })
   );
 
   stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
