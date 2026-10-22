@@ -270,7 +270,20 @@ const context = await browser.newContext({
   // The sign-in below goes through Node's TLS, which the pin above does not
   // reach; the box's certificate is the self-signed one either way.
   ignoreHTTPSErrors: true,
+  // The film's take hides the caret with a style of its own, which the
+  // admin page's style-src would refuse.
+  ...(opts.typing ? { bypassCSP: true } : {}),
 });
+if (opts.typing) {
+  // The film draws its own caret and pointer.
+  await context.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const style = document.createElement("style");
+      style.textContent = "* { caret-color: transparent !important; }";
+      document.head.append(style);
+    });
+  });
+}
 const page = await context.newPage();
 page.setDefaultTimeout(180_000);
 const problems = [];

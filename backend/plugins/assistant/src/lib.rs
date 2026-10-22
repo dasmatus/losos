@@ -197,7 +197,9 @@ fn answer(kept: &mut Kept, ask: &Ask) -> Result<(), String> {
     let body = model::chat_body(&model_name(), context(), ask);
     let stream = http::Request::post(&format!("{url}/api/chat"))
         .json(&body)
-        .timeout_ms(890_000)
+        // The whole job but ten seconds: the first token can be minutes
+        // away on two old cores reading 2,500 tokens of material.
+        .timeout_ms(1_790_000)
         .send()
         .map_err(|e| format!("the model did not answer: {e}"))?;
     if !(200..300).contains(&stream.status) {
