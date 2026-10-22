@@ -143,6 +143,37 @@ and is never served or built by nix.
   `gh`, never an edge-made key. `losos cloud setup` and `losos git setup` mint an
   app password and a LosOS Git token per computer with the owner's password
   (`backend/src/devices.rs`); `losos git credential` is git's helper.
+- Calls (`modules/calls.nix`, `losos.calls.enable`, only while chat runs):
+  `losos-calls` (`backend/src/calls/`, str0m, ICE-lite, VP8 and Opus) is an
+  SFU as `shared` on `/run/losos-calls/http.sock` (nginx's group only),
+  `/calls/api/` behind LosOS Login with no spare-key bypass. nginx hands
+  the SFU the signed-in person as `Remote-User` (`calls/person.rs`), the
+  Matrix id `@<name>:<server>`; Dendrite answers no OpenID check with
+  federation off, so calls take no Matrix token.
+  Every frame is AES-GCM sealed in the browser by an encoded transform
+  (`admin-ui/app/src/calls/e2ee.ts`, worker `e2ee-worker.ts`), sender keys
+  ratchet on a join and are replaced on a leave, and travel as Olm
+  to-device `org.losos.call.key`; the room gets `org.losos.call`
+  started/ended events (`src/chat/calls.tsx`). In Chromium a worker held
+  by an `RTCRtpScriptTransform` loses its own `postMessage` and timers, so
+  stats go over a MessagePort from the frame path. `--address IP=OFFERED`
+  offers a forwarded port's address; `nix/tests/calls.nix` reaches the SFU
+  that way and reads its `--tap` (`lososInternal.callsTap`) to prove the
+  box holds only ciphertext. Behind an edge (`losos.proxy.enable`) the SFU
+  keeps one QUIC link to the edge's relay (`calls/relay.rs`,
+  `edge/registrar/src/calls_relay.rs`) and opens no port. The screen is a
+  third transceiver (`p<pid>-screen`); the black background is MediaPipe's
+  selfie segmenter in the browser before the seal (`calls/background.ts`,
+  files under `/chat/calls-ml/`, model from `LOSOS_SEGMENTER_MODEL`).
+  Podcast mode composites on the host's canvas and sends WebM to
+  `/calls/api/stream`, which ffmpeg passes to RTMP: the one plaintext path,
+  marked public in the UI. Guests: only an official edge answers
+  `POST /calls/guest-link`; the box serves `/calls/guest/` (its own Vite
+  build, `vite.guest.config.ts`) and `/calls/guest/ws` without LosOS Login,
+  and the link's `#` secret, which no server sees, keys an ECDH pair per
+  guest (`calls/guests.ts`). lososd runs `HTTP_WORKERS` (8) and a 120 s
+  `client_request_timeout` because its handlers block; one worker per core
+  and the 5 s default 408'd chat on a two-core box.
 - LosOS Diagrams at `/diagrams/` (sidebar entry Diagrams; `/lab/` 301s
   there; internal names stay `lab`: the section, `/api/lab/*`, the crates,
   `src/lab/`): a screen of the admin SPA at `/diagrams`, laid out like Mail
