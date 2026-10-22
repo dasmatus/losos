@@ -239,12 +239,12 @@ async function tracker(s, base) {
   await pin.click();
   await p.locator('[data-pin="issue:BT-5"][aria-pressed="true"]').waitFor();
   await row(p, "BT-1").click({ button: "right" });
-  const menu = p.locator('[data-slot="context-menu"]');
-  const pinItem = menu.getByRole("menuitem", { name: "Pin to sidebar" });
+  const rowMenu = p.locator('[data-slot="context-menu"]');
+  const pinItem = rowMenu.getByRole("menuitem", { name: "Pin to sidebar" });
   await pinItem.waitFor();
-  await s.take("row-menu", "an issue's right-click menu", { kind: "click", target: "pin" }, { menu, pin: pinItem });
+  await s.take("row-menu", "an issue's right-click menu", { kind: "click", target: "pin" }, { menu: rowMenu, pin: pinItem });
   await pinItem.click();
-  await menu.waitFor({ state: "detached" });
+  await rowMenu.waitFor({ state: "detached" });
 
   await p.goto(`${base}/`);
   const pinned = p.getByRole("navigation", { name: "Sections", exact: true }).getByRole("group", { name: "Pinned" });
