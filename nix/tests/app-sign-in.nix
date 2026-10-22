@@ -29,6 +29,8 @@ pkgs.testers.nixosTest {
     ];
     losos.backend.package = lososPkgs.losos-ctl;
     losos.git.enable = true;
+    # The socket's other user. Nothing else here would make the account.
+    services.nginx.enable = true;
 
     environment.systemPackages = [
       pkgs.curl

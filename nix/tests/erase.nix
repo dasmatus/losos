@@ -206,6 +206,7 @@ pkgs.testers.nixosTest {
     machine.start()
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("minio.service")
+    machine.wait_for_open_port(9000)
     machine.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
     machine.wait_until_succeeds("test -s /var/secrets/losos-admin-token")
 
@@ -293,6 +294,7 @@ pkgs.testers.nixosTest {
         # The bucket is somewhere the wipe does not reach. mc keeps its alias
         # under /root, which is the tmpfs root, so it is set again.
         machine.wait_for_unit("minio.service")
+        machine.wait_for_open_port(9000)
         machine.succeed(
             "mc alias set local http://127.0.0.1:9000 boxbackup boxbackup-secret-123",
             "mc ls local/box-backups | grep -c .",
