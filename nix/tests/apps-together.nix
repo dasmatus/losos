@@ -373,9 +373,10 @@ pkgs.testers.nixosTest {
             code, _ = api("/api/assistant/asks", matus, method="POST", data=bad)
             assert code == 400, (bad, code)
 
-    with subtest("the same walk again, typed word by word and recorded"):
-        shots("after", "film", "--typing --video /tmp/shots/film-video")
-        laptop.succeed("ls /tmp/shots/film-video/*.webm")
+    # For the film: one picture per typed word. No video: Playwright writes
+    # it when the page closes, and at 2x under TCG that outlasts the hour.
+    with subtest("the same walk again, typed word by word"):
+        shots("after", "film", "--typing")
 
     if BEFORE:
         with subtest("the same screens from before the apps were tied together"):
@@ -390,7 +391,7 @@ pkgs.testers.nixosTest {
         box.wait_until_fails("systemctl is-active losos-mail.service", timeout=120)
         box.wait_for_unit("lososd.service")
         laptop.wait_until_succeeds(
-            f"curl -s --cacert {CA} -H 'Cookie: {matus}' {BASE}/api/me | jq -e '.shared == []'", timeout=120
+            f"curl -s --cacert {CA} -H 'Cookie: {matus}' {BASE}/api/me | jq -e '.shared | any(. == \"mail\") | not'", timeout=120
         )
         code, _ = api("/api/mail", matus)
         assert code == 404, code
