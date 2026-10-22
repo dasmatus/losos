@@ -63,6 +63,70 @@ export default defineMessages({
     de: "Melde dich an, um deine Repositorys und die mit dir geteilten zu sehen.",
   },
 
+  "git.chatSignIn.open": { en: "Use your chat address", sk: "Použiť chatovú adresu", de: "Mit Chat-Adresse" },
+  "git.chatSignIn.title": {
+    en: "Sign in with your chat address",
+    sk: "Prihlásenie chatovou adresou",
+    de: "Mit deiner Chat-Adresse anmelden",
+  },
+  "git.chatSignIn.body": {
+    en: "Your account is on another LosOS box? Your box tells this one who you are, and you can comment, open issues and propose changes here.",
+    sk: "Máš účet na inom LosOS boxe? Tvoj box povie tomuto, kto si, a môžeš tu komentovať, zakladať úlohy a navrhovať zmeny.",
+    de: "Dein Konto ist auf einer anderen LosOS-Box? Deine Box sagt dieser, wer du bist, und du kannst hier kommentieren, Issues anlegen und Änderungen vorschlagen.",
+  },
+  "git.chatSignIn.address": { en: "Your chat address", sk: "Tvoja chatová adresa", de: "Deine Chat-Adresse" },
+  "git.chatSignIn.hint": {
+    en: "It is in LosOS Chat on your box, under your name.",
+    sk: "Nájdeš ju v LosOS Chat na svojom boxe, pod svojím menom.",
+    de: "Du findest sie in LosOS Chat auf deiner Box, unter deinem Namen.",
+  },
+  "git.chatSignIn.bad": {
+    en: "A chat address looks like @you:yourbox.local.",
+    sk: "Chatová adresa vyzerá takto: @ty:tvojbox.local.",
+    de: "Eine Chat-Adresse sieht so aus: @du:deinebox.local.",
+  },
+  "git.chatSignIn.go": { en: "Continue on your box", sk: "Pokračovať na tvojom boxe", de: "Weiter auf deiner Box" },
+  "git.chatSignIn.failed": {
+    en: "Could not sign you in",
+    sk: "Prihlásenie sa nepodarilo",
+    de: "Anmelden hat nicht geklappt",
+  },
+  "git.remote.branches": {
+    en: "You push to branches whose names start with {prefix} and propose them in a pull request.",
+    sk: "Posielaš do vetiev, ktorých názov začína {prefix}, a navrhuješ ich v pull requeste.",
+    de: "Du pushst in Branches, deren Name mit {prefix} beginnt, und schlägst sie in einem Pull-Request vor.",
+  },
+  "git.remote.copyPassword": { en: "Copy git password", sk: "Kopírovať heslo pre git", de: "Git-Passwort kopieren" },
+  "git.remote.passwordCopied": {
+    en: "Copied. Use it as the password when git asks.",
+    sk: "Skopírované. Zadaj ho ako heslo, keď sa git spýta.",
+    de: "Kopiert. Gib es als Passwort ein, wenn git fragt.",
+  },
+  "git.room.title": { en: "Chat room", sk: "Miestnosť v chate", de: "Chatraum" },
+  "git.room.label": {
+    en: "Talk about this repository in LosOS Chat",
+    sk: "Rozprávať sa o tomto repozitári v LosOS Chat",
+    de: "In LosOS Chat über dieses Repository reden",
+  },
+  "git.room.hintPublic": {
+    en: "A room for it, where LosOS Git posts pushes, pull requests, issues and checks. Anyone can join from their own box.",
+    sk: "Miestnosť preň, kam LosOS Git píše pushe, pull requesty, úlohy a kontroly. Pridať sa môže ktokoľvek zo svojho boxu.",
+    de: "Ein Raum dafür, in den LosOS Git Pushes, Pull-Requests, Issues und Prüfungen schreibt. Jeder kann von seiner eigenen Box beitreten.",
+  },
+  "git.room.hintPrivate": {
+    en: "A room for it, where LosOS Git posts pushes, pull requests, issues and checks. People join when you invite them from chat.",
+    sk: "Miestnosť preň, kam LosOS Git píše pushe, pull requesty, úlohy a kontroly. Ľudia sa pridajú, keď ich pozveš z chatu.",
+    de: "Ein Raum dafür, in den LosOS Git Pushes, Pull-Requests, Issues und Prüfungen schreibt. Leute kommen dazu, wenn du sie im Chat einlädst.",
+  },
+  "git.room.open": { en: "Chat", sk: "Chat", de: "Chat" },
+  "git.room.made": { en: "The room is ready", sk: "Miestnosť je pripravená", de: "Der Raum ist bereit" },
+  "git.room.unlinked": {
+    en: "The repository no longer posts to the room",
+    sk: "Repozitár už do miestnosti nepíše",
+    de: "Das Repository schreibt nicht mehr in den Raum",
+  },
+  "git.room.failed": { en: "The room did not change", sk: "Miestnosť sa nezmenila", de: "Der Raum hat sich nicht geändert" },
+
   // ── Repositories ──────────────────────────────────────────────────────
   "git.repos.title": { en: "Repositories", sk: "Repozitáre", de: "Repositorys" },
   "git.repos.summary": {
