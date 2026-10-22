@@ -22,7 +22,7 @@ dem Handy öffnet sie sich als Overlay.
 | Bereich           | Was dort ist                                                                                                 |
 | ----------------- | ------------------------------------------------------------------------------------------------------------ |
 | **Übersicht**     | Ob die Box antwortet und seit wann, die Speicherkarte, die App-Kacheln und dein Board mit Widgets.            |
-| **Apps**          | Die Apps auf dieser Box mit ihrem Modus, eine Suche in Artifact Hub und die von dort installierten Apps.      |
+| **Apps**          | Die Apps auf dieser Box mit ihren Einstellungen, eine Suche in Artifact Hub und die von dort installierten Apps.      |
 | **Speicher**      | Wie voll die Festplatte ist, was den Platz belegt, und die Reserve, die du freigeben kannst.                  |
 | **Mesh**          | Anderen Boxen beitreten, die Stunden, in denen diese Box ihre freie Zeit verleiht, **Markt** mit dem Teilen der Festplatte und **Maschinen**. |
 | **Diagramme**     | LosOS Diagrams: Diagramme, Pläne und Boards als Karten, dazu das Netzwerk dieser Box gezeichnet und simuliert. |

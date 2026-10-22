@@ -81,7 +81,6 @@ let
     "cluster"
     "hardening.enable"
     "hostName"
-    "forgejo.mode"
     "shared.fscrypt"
     "storage"
     "tls"
@@ -96,10 +95,8 @@ let
   # Options that take effect only while another (a bool) is on. The pane
   # greys the row and says so while that one is off in the draft. The value
   # still saves; it just does nothing until the gate opens. Each pair is
-  # enforced in the modules, not here (lososInternal.federation in
-  # modules/options.nix for the two below).
+  # enforced in the modules, not here (modules/cluster.nix for the first).
   needs = {
-    "forgejo.federation.enable" = "sharingMyStorage";
     "vms.host" = "sharingMyStorage";
     "inference.lend.enable" = "proxy.enable";
   };

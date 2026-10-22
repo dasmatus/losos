@@ -149,7 +149,7 @@ in
 
     directories = [
       "/nix" # the nix store, so packages survive reboot
-      "/var" # service state: losos-cloud, postgres, forgejo, k3s/rke2, /var/secrets, etc.
+      "/var" # service state: losos-cloud, losos-git, k3s/rke2, /var/secrets, etc.
       "/etc/ssh" # host keys
       "/etc/keys" # LUKS keyfile source, so auto-upgrade rebuilds can re-bake the initrd
       "/etc/nixos" # the flake source, so auto-upgrade can rebuild without a remote
@@ -172,7 +172,7 @@ in
       }
       "/home/notshared/data"
       "/home/shared/data"
-      # Service state lives under /var/lib/{losos-cloud,forgejo} and is covered
+      # Service state lives under /var/lib/{losos-cloud,losos-git} and is covered
       # by the whole-/var bind mount above; so are lososd's
       # /var/lib/losos/state.json, the container images and Kubernetes state
       # under /var/lib/rancher, and the secrets at /var/secrets (the admin

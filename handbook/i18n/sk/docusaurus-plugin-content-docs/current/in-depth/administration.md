@@ -22,7 +22,7 @@ Služby na tom istom hostiteľovi:
 | -------------------- | ------------------------- |
 | Admin UI             | `<host>.local/`           |
 | LosOS Cloud          | `<host>.local/cloud/`     |
-| Forgejo (voliteľné)  | `<host>.local/forgejo/`   |
+| LosOS Git            | `<host>.local/git/`       |
 | Príručka             | `<host>.local/handbook/`  |
 | [Diagramy](/in-depth/diagrams.md) | `<host>.local/diagrams/` |
 
@@ -101,7 +101,7 @@ internetu (napríklad dlaždica s počasím), ale nie zo zariadenia. Limit je
 Editor má aj kartu **Vytvoriť s AI**, kde jazykový model na zariadení
 napíše widget podľa opisu a vloží jeho súbory do editora, aby ste si ich pred
 uložením prečítali. Beží na zariadení, takže to, čo napíšete, zostane na ňom
-a tvorba nič nestojí; pozri [Tvorca widgetov](widget-builder.md).
+a tvorba nič nestojí; pozri [Vytvoriť s AI](widget-builder.md).
 
 ## Admin token {#admin-token}
 
@@ -145,24 +145,26 @@ kliknutí. Prihlásenia sú vo vlastnom Redise LosOS Login, na sokete, ktorý
 otvorí iba on, takže reštart LosOS Login ani nočný reštart nikoho
 neodhlási.
 
-LosOS Cloud a LosOS Git prihlasujú ľudí rovnako. nginx sa na prihlasovacej stránke každej aplikácie spýta LosOS
-Login a pošle človeka ďalej v troch hlavičkách, `X-Losos-Cloud-User`,
-`-Name` a `-Email`, ktoré nastaví pri každej požiadavke na niektorú z
-aplikácií, takže žiadny klient nepošle vlastné. Vlastník, v skupine
-`losos-owner`, príde do oboch ako účet `notshared`; ktokoľvek iný pod svojím
-prihlasovacím menom. LosOS Cloud číta hlavičky sám
-(`backend/src/cloud/auth.rs`), Forgejo svojím prihlásením cez reverzný proxy, a
-každá pri prvej návšteve vytvorí účet; lososd potom drží meno a adresu v
-oboch aplikáciách v súlade so súborom ľudí. Človeka, ktorého LosOS Login
+LosOS Cloud a LosOS Git prihlasujú ľudí rovnako. nginx sa spýta LosOS Login
+a pošle človeka ďalej v troch hlavičkách, `X-Losos-Cloud-User`, `-Name` a
+`-Email`, ktoré nastaví pri každej požiadavke na niektorú z aplikácií, takže
+žiadny klient nepošle vlastné. Vlastník, v skupine `losos-owner`, príde do
+oboch ako účet `notshared`; ktokoľvek iný pod svojím prihlasovacím menom.
+LosOS Cloud (`backend/src/cloud/auth.rs`) aj LosOS Git
+(`backend/src/forge/auth.rs`) čítajú hlavičky samy a každá pri prvej
+návšteve vytvorí účet; lososd potom drží meno a adresu v oboch aplikáciách
+v súlade so súborom ľudí. Na požiadavku do LosOS Git, ktorá prinesie vlastný
+token v `Authorization` (git, API), sa nginx nepýta. Človeka, ktorého LosOS Login
 nepozná, pošle nginx tam, z LAN aj cez okrajový server; žiadna aplikácia
 neukazuje vlastnú prihlasovaciu stránku. Cez okrajový server tunel doručuje
 z loopbacku s `X-Forwarded-Proto: https`, čomu nginx verí iba z loopbacku, a
 lososd pridá každé verejné meno, na ktorom zariadenie odpovedá, medzi domény
 cookies LosOS Login. Kým sa LosOS Login spúšťa, aplikácie odpovedajú 503 so
-stránkou, ktorá to skúša znova sama. Obe aplikácie
-počúvajú na loopbacku a firewall odmietne spojenie na ktorýkoľvek z ich
-portov od akéhokoľvek procesu na zariadení okrem roota, nginx a samotnej
-aplikácie, takže nič na zariadení im nemôže pomenovať človeka. Mená
+stránkou, ktorá to skúša znova sama. Obe aplikácie čítajú hlavičky iba na
+svojich unixových socketoch, `/run/losos-cloud/http.sock` a
+`/run/losos-git/http.sock`, ktoré smie otvoriť iba root a nginx; port LosOS
+Git na loopbacku, `127.0.0.1:3000`, berie tokeny a hlavičky nikdy. Takže nič
+na zariadení nemôže ani jednej aplikácii pomenovať človeka. Mená
 `notshared`, `shared` a `losos` sú vyhradené pre vlastné účty zariadenia.
 
 Každý človek so skupinou `losos-account` (Vlastný účet na paneli
@@ -219,8 +221,8 @@ predvolenú hodnotu, hodnotu, s ktorou zariadenie beží, a editor pre jej typ:
 prepínač, číslo s hranicami, výber, textové pole alebo jednu položku na
 riadok pre zoznam.
 
-- Voľba, ktorú už upravuje jeden z ostatných panelov (meno, režimy behu
-  aplikácií, prepínače hardeningu), sa zobrazí so svojou hodnotou a odkazom
+- Voľba, ktorú už upravuje jeden z ostatných panelov (meno, nastavenia
+  mesh, prepínače hardeningu), sa zobrazí so svojou hodnotou a odkazom
   na ten panel, aby bolo jedno miesto, kde ju zmeniť.
 - Tri voľby, ktoré zapisuje inštalátor (`targetDrives`, `tpm.enable`,
   `bios`), a balíky, ktoré vyberá zostavenie, sú len na čítanie. Riadok pre
@@ -253,9 +255,8 @@ História** vypisuje posledných štyridsať.
 S `losos.configRepo.enable` (predvolené) a zapnutým LosOS Git drží lososd
 konfiguráciu aj v súkromnom repozitári na LosOS Git, `<owner>/losos-config`,
 ktorý vlastní administrátorov vlastný účet (`notshared`). Účet sa vytvorí
-pri prvej synchronizácii s admin heslom a pri každej zmene hesla a pri
-každom nastavení počítača pre LosOS Git sa s ním zosúladí. Reconciler v
-lososd beží každých 30 s:
+pri prvej synchronizácii ako správca LosOS Git. Reconciler v lososd beží
+každých 30 s:
 
 - commitne všetko necommitnuté a pushne vetvu zariadenia, keď LosOS Git
   zaostáva;
@@ -271,80 +272,64 @@ lososd beží každých 30 s:
 **Synchronizovať teraz** na paneli História spustí jeden tik okamžite. `losos-ctl
 config` vypíše ten istý dokument a `losos-ctl config --sync` spustí tik.
 Tajomstvá sa do repozitára nikdy nedostanú. `overrides.nix` nesie iba
-hodnoty volieb a token, ktorým sa lososd autentifikuje voči LosOS Git, žije v
-`/var/lib/forgejo/.losos-token`, mimo `/etc/nixos`. Nestojí za tým žiadny
-runner Forgejo Actions. Zariadenie sa periodicky dotazuje.
+hodnoty volieb a token, ktorým sa lososd autentifikuje voči LosOS Git, je
+admin token, ktorý LosOS Git zapíše pri prvom štarte,
+`/var/lib/losos-git/admin-token`, mimo `/etc/nixos`. Nestojí za tým žiadny
+CI runner. Zariadenie sa periodicky dotazuje.
 
-Adresa na klonovanie je zobrazená na paneli (`http://<box>/forgejo/<owner>/
-losos-config.git`). Repozitár je súkromný, takže potrebuje admin heslo.
-Démon komunikuje s Forgejom cez loopback s bot účtom `losos`, ktorý vytvorí
-štartovací skript Forgeja a vydá mu token (`nix/forgejo-bootstrap.nix`).
+Adresa na klonovanie je zobrazená na paneli (`http://<box>/git/<owner>/
+losos-config.git`). Repozitár je súkromný, takže počítač potrebuje vlastný
+token (`losos git setup`, [Terminálový klient](../manual/terminal)). lososd
+komunikuje s LosOS Git cez jeho port na loopbacku s admin tokenom a tam,
+kde ide o volanie vlastníka, koná za neho s `X-Losos-As`.
 
-### Federácia {#federation}
+### Prechod z Forgejo {#moving-from-forgejo}
 
-Federácia beží iba vtedy, keď zariadenie zdieľa svoj disk.
-`losos.forgejo.federation.enable` je spojená logickým AND s
-`losos.sharingMyStorage`, nastavením, ktoré odomyká zdieľaný dátový pool
-(`lososInternal.federation` v `modules/options.nix`). S vypnutým zdieľaním
-LosOS Git nekomunikuje so žiadnym iným serverom, nech hovorí jeho vlastná
-voľba čokoľvek. Panel Aplikácie prepínač zosivie aj s dôvodom a panel
-Rozšírené zobrazí riadok ako nedostupný a odkáže naň. LosOS Cloud
-nefederuje: súbor opustí zariadenie cez odkaz na zdieľanie alebo účet
-človeka, nikdy ako zdieľanie na iný server.
+Zariadenie, na ktorom bežal Forgejo, prenesie jeho záznamy do LosOS Git
+samo, pri prvom štarte po aktualizácii a skôr, ako LosOS Git odpovie:
+repozitáre, účty, spolupracovníkov, prístupové tokeny (staré hodnoty
+fungujú ďalej pre git aj API), štítky, issues, pull requesty, komentáre,
+priradených ľudí a prílohy. Z organizácie sa stane účet s rovnakým menom.
 
-`losos.forgejo.federation.enable` (predvolene zapnuté) zapína ActivityPub
-stránku Forgeja v oboch režimoch: `[federation] ENABLED` v app.ini, so
-`SHARE_USER_STATISTICS = false`, aby nodeinfo nezverejňovalo súčty účtov ani
-aktivity. Dodávaný Forgejo (16.x) federuje hviezdičky (Settings → Federation
-repozitára vypisuje servery, ktorých hviezdičky sa rátajú), umožňuje sledovať
-účty z iných serverov a servíruje nodeinfo a jedného ActivityPub aktéra na
-každý účet a repozitár pod `/api/v1/activitypub/`; každá prichádzajúca
-požiadavka musí niesť platný HTTP podpis. V režime kontajnera front vhost
-pridá cesty s presnou zhodou pre `/.well-known/nodeinfo` a
-`/.well-known/webfinger`, dve adresy, podľa ktorých iné servery zariadenie
-objavia, a ktoré Forgejo servíruje v koreni hostiteľa, nie pod `ROOT_URL`;
-nie sú chránené ochranou „len LAN“, rovnako ako `/forgejo/`. Dosah sa riadi
-`ROOT_URL`: cez edge je to `https://<proxy hostname>/forgejo/` a federovať
-so zariadením môže akýkoľvek server; na zariadení len v LAN je to
-`https://<host>.local/forgejo/`, takže môžu iba iné zariadenia v tej istej
-LAN. `nix/tests/forgejo-federation.nix` spustí skutočný Forgejo a opýta sa ho, so
-zapnutým a potom vypnutým zdieľaním.
+Správa je `/var/lib/losos-git/forgejo/import.json`. Počíta, čo mal Forgejo
+a čo prešlo, tabuľku po tabuľke, a pomenuje, čo neprešlo, napríklad
+míľniky, vydania a záznamy časovej osi. Vedľa nej zostáva úplný dump
+databázy Forgejo (`forgejo.sql`, na natívnom zariadení `forgejo.db`) a
+priečinok Forgejo aj dáta Postgresu zostávajú, kde boli. Ak sa prechod
+nepodarí, nič sa nezmení a skúsi sa znova pri ďalšom štarte; LosOS Git
+medzitým repozitáre obsluhuje.
 
 ### Nastavenia aplikácií pre celé zariadenie {#box-wide-app-settings}
 
 Panel Aplikácie nesie nastavenia, ktoré platia pre všetkých v LosOS Cloud a
 LosOS Git, teda tie, ktoré si inak každá aplikácia drží na vlastných
 stránkach správy. Každé pole je voľba, `losos.cloud.trashDays` alebo jedna
-pod `losos.forgejo.site.*`, takže ide cez Použiť, bránu, Históriu a repozitár
+pod `losos.git.site.*`, takže ide cez Použiť, bránu, Históriu a repozitár
 konfigurácie ako každé iné nastavenie. Panel Rozšírené ukazuje ich hodnoty a
 odkazuje na sekciu aplikácie na paneli Aplikácie (`/apps#cloud`,
 `/apps#git`), namiesto toho aby kreslil druhý editor (`ON_PANE` v
-`admin-ui/app/src/lib/option-value.ts`). Kreslí sa tam aj prepínač
-federácie vyššie, na začiatku sekcie LosOS Git.
+`admin-ui/app/src/lib/option-value.ts`).
 
 | Voľba | Čo nastaví v aplikácii |
 | --- | --- |
 | `losos.cloud.trashDays` | koľko dní zostane zmazaný súbor v koši (1 až 365, predvolene 30) |
-| `losos.forgejo.site.requireSignIn` | `[service] REQUIRE_SIGNIN_VIEW` |
-| `losos.forgejo.site.keepEmailPrivate` | `[service] DEFAULT_KEEP_EMAIL_PRIVATE` |
-| `losos.forgejo.site.defaultPrivate` | `[repository] DEFAULT_PRIVATE` |
-| `losos.forgejo.site.pushCreate` | `[repository] ENABLE_PUSH_CREATE_USER` |
-| `losos.forgejo.site.landingPage` | `[server] LANDING_PAGE` |
+| `losos.git.site.requireSignIn` | `losos-git serve --require-sign-in` |
+| `losos.git.site.defaultPrivate` | `--public-by-default` pri `"public"` |
+| `losos.git.site.pushCreate` | `--push-create` |
 
 `modules/cloud.nix` odovzdá `trashDays` službe ako `--trash-days` a
 hodinové upratovanie služby natrvalo zmaže všetko, čo leží v niečom koši
 dlhšie.
 
-Päť nastavení Forgejo sú kľúče `app.ini`, ktoré Správa stránky vo Forgejo
-ukazuje bez možnosti zmeny. Oba režimy čítajú jednu množinu atribútov,
-`lososInternal.forgejoSite`.
+Tri nastavenia LosOS Git sú prepínače na jeho príkazovom riadku
+(`modules/git.nix`), takže vnútri neho nie je stránka, kde by sa dali
+zmeniť.
 
 :::note[Čo zostáva v aplikáciách]
 Všetko, čo si nastaví účet sám pre seba, zostáva v aplikácii. V LosOS Git
-zostáva účet vlastníka správcom Forgejo pre to, čo LosOS zatiaľ nepokrýva:
-nastavenia Forgejo uložené v databáze a zoznam účtov. LosOS Cloud v sebe
-nemá vôbec žiadneho správcu: kto ho smie používať, rozhoduje LosOS Login, a
-všetko pre celé zariadenie je nastavenie na paneli Aplikácie.
+je účet vlastníka správcom. LosOS Cloud v sebe nemá vôbec žiadneho správcu:
+kto ho smie používať, rozhoduje LosOS Login, a všetko pre celé zariadenie je
+nastavenie na paneli Aplikácie.
 :::
 
 ## Záloha, obnova a vymazanie {#backup-restore-and-erase}
@@ -359,10 +344,9 @@ požiadanie ukáže; bez neho nikto zálohu neotvorí.
 
 Záloha obsahuje:
 
-- `/var/lib/losos-cloud` a `/var/lib/forgejo`, pričom databázu LosOS Cloud
-  najprv skopíruje vlastná záloha SQLite, aby ju zápis počas kopírovania
-  nemohol roztrhnúť;
-- `pg_dump` databázy `forgejo`;
+- `/var/lib/losos-cloud` a `/var/lib/losos-git`, pričom databázy SQLite
+  LosOS Cloud a LosOS Git najprv skopíruje vlastná záloha SQLite, aby ich
+  zápis počas kopírovania nemohol roztrhnúť;
 - zdieľaný priečinok. Keď je zdieľanie zapnuté, je to politika fscrypt a
   Linux pre zamknutý súbor fscrypt nedáva šifrovaný text, takže skript
   politiku na kopírovanie odomkne a potom ju znova zamkne. V buckete ho

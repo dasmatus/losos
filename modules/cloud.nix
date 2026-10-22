@@ -140,7 +140,7 @@ let
     chmod 0700 ${stateDir}
 
     # Nextcloud first stops for good, so nothing writes while its files
-    # move. The pod's manifest link goes (modules/workloads.nix removes it
+    # move. The pod's manifest link goes (modules/cluster.nix removes it
     # too, but that may run after this on the boot that switches), and a
     # pod still running is stopped through the runtime. Natively there is
     # nothing to do: the switch to this system stopped php-fpm already.

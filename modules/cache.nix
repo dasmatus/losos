@@ -15,7 +15,7 @@
 #
 # WHAT FILLS IT. `.github/workflows/ci.yml` publishes signed GHCR artifacts
 # through .github/actions/proxy-push after each build job:
-# losos-ctl, losos-registrar, losos-admin-ui, and the pause and Forgejo images.
+# losos-ctl, losos-registrar, losos-admin-ui, and the pause and Nextcloud images.
 # Those are exactly the paths cache.nixos.org cannot serve, because this flake
 # builds them. losos-admin-ui earns its place there only since it became a real
 # npm build; while it was a `cp -rT` of some static files, pushing it saved a

@@ -70,7 +70,7 @@ pkgs.testers.nixosTest {
         backend.package = lososPkgs.losos-ctl;
         admin.ui = lososPkgs.losos-admin-ui;
         cloud.enable = true;
-        forgejo.enable = false;
+        git.enable = false;
         configRepo.enable = false;
         mdns.enable = true;
       };

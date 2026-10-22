@@ -100,7 +100,7 @@ export async function searchRepos(query: string, signal: AbortSignal): Promise<A
     if (!isRecord(entry)) continue;
     const owner = nonEmptyString(entry["owner"]);
     const name = nonEmptyString(entry["name"]);
-    // Both go into a path: keep the characters Forgejo allows in names.
+    // Both go into a path: keep the characters LosOS Git allows in names.
     if (owner === null || name === null || !/^[\w.-]+$/.test(owner) || !/^[\w.-]+$/.test(name)) continue;
     items.push({ owner, name, private: entry["private"] === true, description: nonEmptyString(entry["description"]) });
   }
@@ -157,7 +157,7 @@ export function fileHref(file: CloudFile): string {
 }
 
 export function repoHref(repo: GitRepo): string {
-  return `/forgejo/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`;
+  return `/git/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`;
 }
 
 /** Each segment of a path, escaped on its own. */

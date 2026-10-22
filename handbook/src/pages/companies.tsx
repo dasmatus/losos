@@ -59,8 +59,8 @@ const IN_THE_BOX: Feature[] = [
     title: <Translate id="losos.companies.box.git.title">LosOS Git</Translate>,
     body: (
       <Translate id="losos.companies.box.git.body">
-        Repositories, issues and pull requests. Your source code stops living
-        on someone else's servers. Built on Forgejo.
+        Your repositories on your own box. Your source code stops living on
+        someone else's servers.
       </Translate>
     ),
     to: '/manual/apps',
@@ -157,16 +157,6 @@ const EUROPEAN: Feature[] = [
       </Translate>
     ),
     to: 'https://nextcloud.com',
-  },
-  {
-    title: 'Forgejo',
-    body: (
-      <Translate id="losos.companies.eu.forgejo">
-        The base of LosOS Git. A community project under Codeberg e.V., a
-        non-profit in Berlin.
-      </Translate>
-    ),
-    to: 'https://forgejo.org',
   },
   {
     title: 'NixOS',
@@ -621,7 +611,7 @@ export default function Companies(): ReactNode {
         <Section title={<Translate id="losos.companies.cost.title">No fee per seat</Translate>}>
           <p className={styles.prose}>
             <Translate id="losos.companies.cost.body">
-              LosOS and Forgejo are free software. Your fortieth
+              LosOS is free software. Your fortieth
               hire costs a user account, not a subscription. You pay once for
               the hardware and then for the electricity, and an office mini-PC
               does the job.

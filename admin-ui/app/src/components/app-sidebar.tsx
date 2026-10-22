@@ -13,6 +13,7 @@ import {
   Search01Icon,
   Settings01Icon,
   Share08Icon,
+  WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -58,6 +59,7 @@ import { pinKey, viewPin, type PinView } from "@/lib/pins";
  *     Machines              virtual machines on the mesh
  *   Diagrams                (LosOS Diagrams at /diagrams)
  *   Mail                    (LosOS Mail at /mail, only on the shared side)
+ *   Mesh CI                 (workflows at /ci, only on the shared side)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
  *
@@ -141,6 +143,13 @@ const TREE: readonly Entry[] = [
     icon: Mail01Icon,
   },
   {
+    kind: "link",
+    key: "ci",
+    to: "/ci",
+    label: "shell.nav.ci",
+    icon: WorkflowSquare01Icon,
+  },
+  {
     kind: "fold",
     key: "settings",
     label: "shell.nav.settings",
@@ -164,6 +173,7 @@ function allowed(entry: LinkEntry): boolean {
   // Shared-side: there only while the box shares its storage, which lososd
   // says in /api/me's `shared`. With sharing off the page does not exist.
   if (entry.key === "mail") return sharedApp("mail");
+  if (entry.key === "ci") return sharedApp("ci");
   return true;
 }
 
@@ -183,7 +193,11 @@ function visible(entries: readonly Entry[]): Entry[] {
 }
 
 function isCurrent(entry: LinkEntry, pathname: string): boolean {
+  // An app of the owner's own (/apps/<id>, src/apps/) is under Apps.
+  if (entry.pane === "apps" && pathname.startsWith("/apps/")) return true;
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
+  // A run of Mesh CI is still Mesh CI.
+  if (entry.key === "ci") return pathname === "/ci" || pathname.startsWith("/ci/");
   return pathname.replace(/(.)\/$/, "$1") === entry.to;
 }
 

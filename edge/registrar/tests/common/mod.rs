@@ -709,6 +709,7 @@ impl Edge {
             routes: None,
             operator: None,
             manage: None,
+            ci_dir: None,
             onramp: None,
         };
         if let Some(tweak) = tweak {
