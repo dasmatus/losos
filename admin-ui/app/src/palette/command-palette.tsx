@@ -90,6 +90,24 @@ export default function CommandPalette() {
   const t = useT();
   const { open, query, serial } = React.useSyncExternalStore(subscribePalette, paletteState, paletteState);
   const titleId = React.useId();
+  // The body stays until the dialog's way out (index.css) has finished:
+  // unmounted at once, an empty box would fade. With reduced motion there
+  // is nothing to wait for and it goes at once.
+  const [kept, setKept] = React.useState(open);
+  React.useEffect(() => {
+    if (open) {
+      setKept(true);
+      return;
+    }
+    let live = true;
+    const leaving = document.getElementById(titleId)?.closest("dialog")?.getAnimations() ?? [];
+    void Promise.allSettled(leaving.map((animation) => animation.finished)).then(() => {
+      if (live) setKept(false);
+    });
+    return () => {
+      live = false;
+    };
+  }, [open, titleId]);
 
   return (
     <Dialog
@@ -106,7 +124,7 @@ export default function CommandPalette() {
       </h2>
       {/* A fresh body per opening: the query starts from what was handed
           over and nothing lingers from the last search. */}
-      {open && <PaletteBody key={serial} initial={query} />}
+      {(open || kept) && <PaletteBody key={serial} initial={query} />}
     </Dialog>
   );
 }
