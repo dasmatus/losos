@@ -335,7 +335,6 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = ui;
-          backend.plugins = lososPkgs.losos-plugins;
           git.enable = false;
           # The shared user's side of the box: chat's gate, and so calls'.
           sharingMyStorage = true;
