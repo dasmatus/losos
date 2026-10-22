@@ -24,7 +24,7 @@ Služby na tom istom hostiteľovi:
 | LosOS Cloud          | `<host>.local/cloud/`     |
 | Forgejo (voliteľné)  | `<host>.local/forgejo/`   |
 | Príručka             | `<host>.local/handbook/`  |
-| [Lab](/in-depth/lab.md)        | `<host>.local/lab/`       |
+| [Diagramy](/in-depth/diagrams.md) | `<host>.local/diagrams/` |
 
 IP adresa zariadenia (tá z bannera na tty1) a jeho holé meno fungujú všade
 namiesto `<host>.local`, LosOS Cloud nevynímajúc. Tak sa dostanete dnu z

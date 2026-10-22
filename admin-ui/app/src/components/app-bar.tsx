@@ -29,8 +29,9 @@ import { cn } from "@/lib/utils";
  * this bar with `onSignOut`; the menu shows the keys.
  *
  * `width="page"` keeps the bar on the content column (max-w-6xl) for apps
- * laid out as pages under a sidebar; `width="full"` runs it edge to edge for
- * apps laid out as panes (Chat, an editor). */
+ * laid out as pages under a sidebar, `width="wide"` on the wider column
+ * (max-w-[96rem]) of a canvas such as Diagrams; `width="full"` runs it edge
+ * to edge for apps laid out as panes (Chat, an editor). */
 
 export interface AppBarPerson {
   /** What the bar shows: the person's name, or "Spare admin key". */
@@ -54,7 +55,7 @@ export interface AppBarProps {
   homeLink?: React.ReactElement | undefined;
   /** Shown beside the name on wide screens, such as "this box". */
   badge?: React.ReactNode;
-  width?: "page" | "full";
+  width?: "page" | "wide" | "full";
   /** The app's own controls, between the name and the settings. A search
    *  takes the free space; anything else sits at the right. */
   children?: React.ReactNode;
@@ -96,7 +97,9 @@ export function AppBar({
       <div
         className={cn(
           "flex w-full items-center gap-3 py-3",
-          width === "page" ? "mx-auto max-w-6xl px-4 sm:px-6" : "px-4",
+          width === "page" && "mx-auto max-w-6xl px-4 sm:px-6",
+          width === "wide" && "mx-auto max-w-[96rem] px-4 sm:px-6",
+          width === "full" && "px-4",
         )}
       >
         <TooltipProvider>
