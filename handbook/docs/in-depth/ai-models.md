@@ -34,7 +34,7 @@ On the Market pane the switch is **Lend memory to AI models**, under
   the tunnel, reach its port; every other user on the box is refused.
 - It cannot take more than the memory the owner set. The unit has a hard
   memory limit, and when the server grows past it, systemd stops the
-  server, never LosOS cloud.
+  server, never LosOS Cloud.
 - It runs at a low processor and disk weight, so the owner's own work comes
   first.
 - The edge reaches it through a second service on the box's existing

@@ -23,8 +23,10 @@ export const buttonVariants = cva(
   cn(
     "inline-flex shrink-0 items-center justify-center gap-2 rounded-control",
     "text-sm font-medium whitespace-nowrap select-none",
-    "transition-[background-color,border-color,color,box-shadow,transform] duration-150",
-    "active:translate-y-px",
+    // A press sinks the button a little and lets it back up when released:
+    // `scale` is its own CSS property in Tailwind v4, so it is named here.
+    "transition-[background-color,border-color,color,box-shadow,opacity,scale] duration-150 ease-snap",
+    "active:scale-[0.97]",
     "disabled:pointer-events-none disabled:opacity-45",
     "[&_svg]:pointer-events-none [&_svg]:shrink-0",
   ),
@@ -42,7 +44,7 @@ export const buttonVariants = cva(
         // `text-white` — --crit is a light coral in the dark palette, and
         // white on it does not read.
         destructive: "bg-crit text-surface hover:opacity-90",
-        link: "text-accent underline-offset-4 hover:underline",
+        link: "text-accent underline-offset-4 hover:underline active:scale-100",
       },
       size: {
         xs: "h-6 gap-1 px-2 text-[12px]",

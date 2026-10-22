@@ -63,7 +63,7 @@ The commands:
 | `losos edge reconcile` | have the edge write its routing config again now |
 | `losos edge escrow releaser` | the escrow key's address, its ETH on each network and whether each escrow takes it; `--new` makes the key on the edge, `--replace` makes another |
 | `losos ci setup --edge <url>` | give a GitHub repository its own key and token for the edge |
-| `losos cloud setup` | put LosOS cloud in the file manager, with an app password of this computer's own in the keychain |
+| `losos cloud setup` | put LosOS Cloud in the file manager, with an app password of this computer's own in the keychain |
 | `losos git setup` | let git clone and push to LosOS Git with a token of this computer's own, through `losos git credential` |
 | `losos --version`, `losos --help` | |
 

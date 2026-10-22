@@ -36,9 +36,9 @@ export default defineMessages({
   // ── The list ──────────────────────────────────────────────────────────
   "users.list.title": { en: "People", sk: "Ľudia", de: "Personen" },
   "users.list.caption": {
-    en: "Removing someone stops them signing in. Their files in LosOS cloud and LosOS Git stay.",
-    sk: "Odstránený človek sa už neprihlási. Súbory v LosOS cloud a LosOS Git zostanú.",
-    de: "Wer entfernt wird, kann sich nicht mehr anmelden. Die Dateien in LosOS cloud und LosOS Git bleiben.",
+    en: "Removing someone stops them signing in. Their files in LosOS Cloud and LosOS Git stay.",
+    sk: "Odstránený človek sa už neprihlási. Súbory v LosOS Cloud a LosOS Git zostanú.",
+    de: "Wer entfernt wird, kann sich nicht mehr anmelden. Die Dateien in LosOS Cloud und LosOS Git bleiben.",
   },
   "users.badge.owner": { en: "Owner", sk: "Vlastník", de: "Besitzer" },
   "users.badge.you": { en: "You", sk: "Vy", de: "Sie" },
@@ -101,9 +101,9 @@ export default defineMessages({
   "users.form.partsTitle": { en: "Can change", sk: "Môže meniť", de: "Darf ändern" },
   "users.form.add": { en: "Add", sk: "Pridať", de: "Hinzufügen" },
   "users.form.caption": {
-    en: "They sign in at this box's sign-in page with this name and password. LosOS cloud and LosOS Git open under their own name, with files of their own.",
-    sk: "Prihlásia sa na prihlasovacej stránke tohto zariadenia týmto menom a heslom. LosOS cloud a LosOS Git sa im otvoria pod ich vlastným menom, s vlastnými súbormi.",
-    de: "Sie melden sich auf der Anmeldeseite dieser Box mit diesem Namen und Passwort an. LosOS cloud und LosOS Git öffnen sich unter ihrem eigenen Namen, mit eigenen Dateien.",
+    en: "They sign in at this box's sign-in page with this name and password. LosOS Cloud and LosOS Git open under their own name, with files of their own.",
+    sk: "Prihlásia sa na prihlasovacej stránke tohto zariadenia týmto menom a heslom. LosOS Cloud a LosOS Git sa im otvoria pod ich vlastným menom, s vlastnými súbormi.",
+    de: "Sie melden sich auf der Anmeldeseite dieser Box mit diesem Namen und Passwort an. LosOS Cloud und LosOS Git öffnen sich unter ihrem eigenen Namen, mit eigenen Dateien.",
   },
   "users.form.failed": {
     en: "Could not add them.",
@@ -158,9 +158,9 @@ export default defineMessages({
     de: "{name} entfernen?",
   },
   "users.removeDialog.body": {
-    en: "They can no longer sign in to this box. Their files in LosOS cloud and LosOS Git stay where they are.",
-    sk: "Do tohto zariadenia sa už neprihlásia. Ich súbory v LosOS cloud a LosOS Git zostanú, kde sú.",
-    de: "Sie können sich nicht mehr an dieser Box anmelden. Ihre Dateien in LosOS cloud und LosOS Git bleiben, wo sie sind.",
+    en: "They can no longer sign in to this box. Their files in LosOS Cloud and LosOS Git stay where they are.",
+    sk: "Do tohto zariadenia sa už neprihlásia. Ich súbory v LosOS Cloud a LosOS Git zostanú, kde sú.",
+    de: "Sie können sich nicht mehr an dieser Box anmelden. Ihre Dateien in LosOS Cloud und LosOS Git bleiben, wo sie sind.",
   },
   "users.removed": {
     en: "{name} can no longer sign in",
@@ -264,8 +264,8 @@ export default defineMessages({
     de: "Dein Konto öffnen",
   },
   "users.rules.caption": {
-    en: "People held by a rule reach only their own account, and LosOS Login keeps them out of LosOS cloud and LosOS Git. The spare key is never held.",
-    sk: "Ľudia zadržaní pravidlom sa dostanú iba k vlastnému účtu a LosOS Login ich nepustí do LosOS cloud ani LosOS Git. Náhradný kľúč sa nezadržiava nikdy.",
-    de: "Wen eine Regel anhält, erreicht nur das eigene Konto, und LosOS Login lässt ihn nicht in LosOS cloud und LosOS Git. Der Ersatzschlüssel wird nie angehalten.",
+    en: "People held by a rule reach only their own account, and LosOS Login keeps them out of LosOS Cloud and LosOS Git. The spare key is never held.",
+    sk: "Ľudia zadržaní pravidlom sa dostanú iba k vlastnému účtu a LosOS Login ich nepustí do LosOS Cloud ani LosOS Git. Náhradný kľúč sa nezadržiava nikdy.",
+    de: "Wen eine Regel anhält, erreicht nur das eigene Konto, und LosOS Login lässt ihn nicht in LosOS Cloud und LosOS Git. Der Ersatzschlüssel wird nie angehalten.",
   },
 });

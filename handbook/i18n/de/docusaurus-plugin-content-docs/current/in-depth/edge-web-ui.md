@@ -74,7 +74,7 @@ Box selbst:
 - **Einstellungen von LosOS Cloud und LosOS Git.** Standardsprache,
   Telefonregion, wie lange gelöschte Dateien und alte Versionen bleiben, das
   Standardkontingent, öffentliche Links mit Passwort und Ablauf, und bei
-  LosOS Git Anmeldung, Privatsphäre und Push. Die Föderation von LosOS cloud
+  LosOS Git Anmeldung, Privatsphäre und Push. Die Föderation von LosOS Cloud
   mit anderen Boxen ist auch hier. Eine Einstellung, die die Box in ihrer eigenen
   Konfiguration festgelegt hat, erscheint nicht.
 - **Installierte Apps.** Was auf der Box läuft, mit einer Schaltfläche zum

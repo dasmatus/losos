@@ -1140,16 +1140,16 @@ messages! {
         de: "LOSOS_CI_GPG_KEY hat eine Passphrase. CI braucht einen Schlüssel ohne, wie ihn losos ci setup erzeugt.",
     },
 
-    // ── This computer: LosOS cloud and LosOS Git ────────────────────────────
+    // ── This computer: LosOS Cloud and LosOS Git ────────────────────────────
     "tui.help.cmd.cloud" => {
-        en: "Set up this computer for LosOS cloud",
-        sk: "Nastaviť tento počítač pre LosOS cloud",
-        de: "Diesen Computer für LosOS cloud einrichten",
+        en: "Set up this computer for LosOS Cloud",
+        sk: "Nastaviť tento počítač pre LosOS Cloud",
+        de: "Diesen Computer für LosOS Cloud einrichten",
     },
     "tui.help.cmd.cloudSetup" => {
-        en: "Put LosOS cloud in the file manager, signed in with an app password of this computer's own",
-        sk: "Pridať LosOS cloud do správcu súborov, prihlásený vlastným heslom aplikácie tohto počítača",
-        de: "LosOS cloud in die Dateiverwaltung legen, angemeldet mit einem eigenen App-Passwort dieses Computers",
+        en: "Put LosOS Cloud in the file manager, signed in with an app password of this computer's own",
+        sk: "Pridať LosOS Cloud do správcu súborov, prihlásený vlastným heslom aplikácie tohto počítača",
+        de: "LosOS Cloud in die Dateiverwaltung legen, angemeldet mit einem eigenen App-Passwort dieses Computers",
     },
     "tui.help.cmd.git" => {
         en: "Set up this computer for LosOS Git",
@@ -1172,9 +1172,9 @@ messages! {
         de: "Dieser Computer",
     },
     "tui.computer.summary" => {
-        en: "LosOS cloud and LosOS Git on the computer you are using now",
-        sk: "LosOS cloud a LosOS Git na počítači, ktorý práve používate",
-        de: "LosOS cloud und LosOS Git auf dem Computer, den du gerade benutzt",
+        en: "LosOS Cloud and LosOS Git on the computer you are using now",
+        sk: "LosOS Cloud a LosOS Git na počítači, ktorý práve používate",
+        de: "LosOS Cloud und LosOS Git auf dem Computer, den du gerade benutzt",
     },
     "tui.computer.keywords" => {
         en: "computer laptop device files webdav git clone setup",
@@ -1182,9 +1182,9 @@ messages! {
         de: "Computer Laptop Gerät Dateien WebDAV git klonen einrichten",
     },
     "tui.computer.cloud" => {
-        en: "LosOS cloud",
-        sk: "LosOS cloud",
-        de: "LosOS cloud",
+        en: "LosOS Cloud",
+        sk: "LosOS Cloud",
+        de: "LosOS Cloud",
     },
     "tui.computer.git" => {
         en: "LosOS Git",
@@ -1237,9 +1237,9 @@ messages! {
         de: "Starte losos auf dem Computer, den du einrichten willst; dieser Bildschirm wurde ohne seinen Schlüsselbund geöffnet.",
     },
     "tui.computer.passwordPrompt" => {
-        en: "Your LosOS password (the one for LosOS cloud): ",
-        sk: "Vaše heslo k LosOS (to isté ako do LosOS cloud): ",
-        de: "Dein LosOS-Passwort (das von LosOS cloud): ",
+        en: "Your LosOS password (the one for LosOS Cloud): ",
+        sk: "Vaše heslo k LosOS (to isté ako do LosOS Cloud): ",
+        de: "Dein LosOS-Passwort (das von LosOS Cloud): ",
     },
     "tui.computer.emptyPassword" => {
         en: "No password was given. Nothing was set up.",
@@ -1247,9 +1247,9 @@ messages! {
         de: "Es wurde kein Passwort angegeben. Nichts wurde eingerichtet.",
     },
     "tui.computer.wrongPassword" => {
-        en: "That is not the password of LosOS cloud. Nothing was set up.",
-        sk: "To nie je heslo k LosOS cloud. Nič sa nenastavilo.",
-        de: "Das ist nicht das Passwort von LosOS cloud. Nichts wurde eingerichtet.",
+        en: "That is not the password of LosOS Cloud. Nothing was set up.",
+        sk: "To nie je heslo k LosOS Cloud. Nič sa nenastavilo.",
+        de: "Das ist nicht das Passwort von LosOS Cloud. Nichts wurde eingerichtet.",
     },
     "tui.computer.gitOff" => {
         en: "LosOS Git is off on this box, so there is nothing to set up.",
@@ -1282,9 +1282,9 @@ messages! {
         de: "{command} ist fehlgeschlagen. Das Token liegt im Schlüsselbund; führe losos git setup erneut aus, sobald git funktioniert.",
     },
     "tui.computer.cloudLabel" => {
-        en: "LosOS cloud on {host}",
-        sk: "LosOS cloud na {host}",
-        de: "LosOS cloud auf {host}",
+        en: "LosOS Cloud on {host}",
+        sk: "LosOS Cloud na {host}",
+        de: "LosOS Cloud auf {host}",
     },
     "tui.computer.gitLabel" => {
         en: "LosOS Git on {host}",
@@ -1292,19 +1292,19 @@ messages! {
         de: "LosOS Git auf {host}",
     },
     "tui.computer.notBox" => {
-        en: "{url} is an edge. LosOS cloud and LosOS Git live on a box.",
-        sk: "{url} je edge. LosOS cloud a LosOS Git bežia na zariadení.",
-        de: "{url} ist eine Edge. LosOS cloud und LosOS Git laufen auf einer Box.",
+        en: "{url} is an edge. LosOS Cloud and LosOS Git live on a box.",
+        sk: "{url} je edge. LosOS Cloud a LosOS Git bežia na zariadení.",
+        de: "{url} ist eine Edge. LosOS Cloud und LosOS Git laufen auf einer Box.",
     },
     "tui.computer.cloudDone" => {
-        en: "LosOS cloud is set up on this computer as {device}.",
-        sk: "LosOS cloud je na tomto počítači nastavený ako {device}.",
-        de: "LosOS cloud ist auf diesem Computer als {device} eingerichtet.",
+        en: "LosOS Cloud is set up on this computer as {device}.",
+        sk: "LosOS Cloud je na tomto počítači nastavený ako {device}.",
+        de: "LosOS Cloud ist auf diesem Computer als {device} eingerichtet.",
     },
     "tui.computer.cloudWhere" => {
-        en: "Open LosOS cloud in the file manager's sidebar, or at {location}",
-        sk: "LosOS cloud otvoríte v bočnom paneli správcu súborov alebo na {location}",
-        de: "Öffne LosOS cloud in der Seitenleiste der Dateiverwaltung oder unter {location}",
+        en: "Open LosOS Cloud in the file manager's sidebar, or at {location}",
+        sk: "LosOS Cloud otvoríte v bočnom paneli správcu súborov alebo na {location}",
+        de: "Öffne LosOS Cloud in der Seitenleiste der Dateiverwaltung oder unter {location}",
     },
     "tui.computer.cloudCertificate" => {
         en: "The file manager asks you to accept the box's own certificate when it first connects.",
@@ -1312,9 +1312,9 @@ messages! {
         de: "Die Dateiverwaltung fragt beim ersten Verbinden, ob sie das eigene Zertifikat der Box annehmen soll.",
     },
     "tui.computer.cloudRevoke" => {
-        en: "To take this computer's access away, delete \"LosOS on {device}\" under Security in LosOS cloud's settings.",
-        sk: "Prístup tohto počítača zrušíte vymazaním „LosOS on {device}“ v časti Zabezpečenie v nastaveniach LosOS cloud.",
-        de: "Um diesem Computer den Zugang zu nehmen, lösche „LosOS on {device}“ unter Sicherheit in den Einstellungen von LosOS cloud.",
+        en: "To take this computer's access away, delete \"LosOS on {device}\" under Security in LosOS Cloud's settings.",
+        sk: "Prístup tohto počítača zrušíte vymazaním „LosOS on {device}“ v časti Zabezpečenie v nastaveniach LosOS Cloud.",
+        de: "Um diesem Computer den Zugang zu nehmen, lösche „LosOS on {device}“ unter Sicherheit in den Einstellungen von LosOS Cloud.",
     },
     "tui.computer.gitDone" => {
         en: "LosOS Git is set up on this computer as {device}.",

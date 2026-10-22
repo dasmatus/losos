@@ -1,7 +1,7 @@
 import { defineMessages } from "./define";
 
 /* The command palette (src/palette/): Ctrl/Cmd+Shift+P, a colon, or the
- * search button at the top of the sidebar. LosOS cloud and LosOS Git are product names and stay
+ * search button at the top of the sidebar. LosOS Cloud and LosOS Git are product names and stay
  * the same in every language. */
 export default defineMessages({
   "palette.title": { en: "Search", sk: "Hľadať", de: "Suchen" },
@@ -30,7 +30,7 @@ export default defineMessages({
 
   "palette.group.pages": { en: "Pages", sk: "Stránky", de: "Seiten" },
   "palette.group.apps": { en: "Apps", sk: "Aplikácie", de: "Apps" },
-  "palette.group.files": { en: "Files in LosOS cloud", sk: "Súbory v LosOS cloud", de: "Dateien in LosOS cloud" },
+  "palette.group.files": { en: "Files in LosOS Cloud", sk: "Súbory v LosOS Cloud", de: "Dateien in LosOS Cloud" },
   "palette.group.repos": {
     en: "Repositories in LosOS Git",
     sk: "Repozitáre v LosOS Git",
@@ -40,24 +40,24 @@ export default defineMessages({
   "palette.group.install": { en: "Apps to install", sk: "Aplikácie na inštaláciu", de: "Apps zum Installieren" },
   "palette.group.actions": { en: "Actions", sk: "Akcie", de: "Aktionen" },
 
-  "palette.inCloud": { en: "LosOS cloud", sk: "LosOS cloud", de: "LosOS cloud" },
+  "palette.inCloud": { en: "LosOS Cloud", sk: "LosOS Cloud", de: "LosOS Cloud" },
   "palette.inGit": { en: "LosOS Git", sk: "LosOS Git", de: "LosOS Git" },
 
-  "palette.files.looking": { en: "Looking in LosOS cloud", sk: "Hľadám v LosOS cloud", de: "Suche in LosOS cloud" },
+  "palette.files.looking": { en: "Looking in LosOS Cloud", sk: "Hľadám v LosOS Cloud", de: "Suche in LosOS Cloud" },
   "palette.files.signIn": {
     en: "File search works after your next sign-in with your password.",
     sk: "Hľadanie v súboroch začne fungovať po vašom ďalšom prihlásení heslom.",
     de: "Die Dateisuche funktioniert ab deiner nächsten Anmeldung mit dem Passwort.",
   },
   "palette.files.notUp": {
-    en: "LosOS cloud is not running, so its files cannot be searched.",
-    sk: "LosOS cloud nebeží, takže v jeho súboroch sa nedá hľadať.",
-    de: "LosOS cloud läuft nicht, darum lassen sich seine Dateien nicht durchsuchen.",
+    en: "LosOS Cloud is not running, so its files cannot be searched.",
+    sk: "LosOS Cloud nebeží, takže v jeho súboroch sa nedá hľadať.",
+    de: "LosOS Cloud läuft nicht, darum lassen sich seine Dateien nicht durchsuchen.",
   },
   "palette.files.failed": {
-    en: "LosOS cloud did not answer.",
-    sk: "LosOS cloud neodpovedal.",
-    de: "LosOS cloud hat nicht geantwortet.",
+    en: "LosOS Cloud did not answer.",
+    sk: "LosOS Cloud neodpovedal.",
+    de: "LosOS Cloud hat nicht geantwortet.",
   },
   "palette.repos.looking": { en: "Looking in LosOS Git", sk: "Hľadám v LosOS Git", de: "Suche in LosOS Git" },
   "palette.repos.notUp": { en: "LosOS Git is not running.", sk: "LosOS Git nebeží.", de: "LosOS Git läuft nicht." },
@@ -68,9 +68,9 @@ export default defineMessages({
   },
   "palette.text.looking": { en: "Looking inside files", sk: "Hľadám v obsahu súborov", de: "Suche in den Dateien" },
   "palette.text.partial": {
-    en: "LosOS cloud is still reading your files, so more may turn up.",
-    sk: "LosOS cloud ešte číta vaše súbory, takže môže pribudnúť viac.",
-    de: "LosOS cloud liest deine Dateien noch, es kann also mehr dazukommen.",
+    en: "LosOS Cloud is still reading your files, so more may turn up.",
+    sk: "LosOS Cloud ešte číta vaše súbory, takže môže pribudnúť viac.",
+    de: "LosOS Cloud liest deine Dateien noch, es kann also mehr dazukommen.",
   },
   "palette.text.failed": {
     en: "The search inside files did not answer.",

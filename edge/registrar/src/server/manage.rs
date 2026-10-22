@@ -2,7 +2,7 @@
 //!
 //! A company's own edge (a gateway on the office LAN) lists the boxes that
 //! enrolled with it, and for each box whose owner switched it on, shows and
-//! changes that box's LosOS cloud, LosOS Git and app settings. The box
+//! changes that box's LosOS Cloud, LosOS Git and app settings. The box
 //! decides, not the edge: the owner's switch lives on the box
 //! (`backend/src/edge.rs`, "management"), the box says on its heartbeats
 //! that it is on (`crate::announce`, `managed`), and every call this page

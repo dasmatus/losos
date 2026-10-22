@@ -4,6 +4,7 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { LinkSquare02Icon, PinIcon, PinOffIcon } from "@hugeicons/core-free-icons";
 import { useT } from "@/lib/i18n-react";
 import { isPinned, toggled, type Pin } from "@/lib/pins";
+import { popupMotion } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { usePins, useSavePins } from "./pins-dialog";
 
@@ -63,9 +64,7 @@ export function PinMenu({
             aria-label={name}
             className={cn(
               "min-w-48 rounded-card border border-line bg-surface p-1 text-ink shadow-md outline-none",
-              "origin-(--transform-origin) transition-[opacity,scale] duration-100 ease-out",
-              "data-starting-style:scale-95 data-starting-style:opacity-0",
-              "data-ending-style:scale-95 data-ending-style:opacity-0",
+              popupMotion,
             )}
           >
             {canPin && (

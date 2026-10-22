@@ -39,7 +39,7 @@ Speicher**, mit der Menge in GiB.
   abgewiesen.
 - Er kann nicht mehr Arbeitsspeicher nehmen, als der Besitzer eingestellt
   hat. Die Unit hat ein hartes Speicherlimit, und wächst der Server darüber
-  hinaus, beendet systemd den Server, nie LosOS cloud.
+  hinaus, beendet systemd den Server, nie LosOS Cloud.
 - Er läuft mit niedrigem Prozessor- und Festplattengewicht, damit die
   eigene Arbeit des Besitzers Vorrang hat.
 - Der Edge erreicht ihn über einen zweiten Dienst im bestehenden Tunnel der

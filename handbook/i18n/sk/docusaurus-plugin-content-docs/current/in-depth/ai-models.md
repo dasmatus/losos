@@ -35,7 +35,7 @@ zariadenia. Na paneli Trh je to prepínač **Požičiavať pamäť modelom AI** 
   ktorý prevádzkuje tunel; každého iného používateľa na zariadení odmietne.
 - Nevezme si viac pamäte, než vlastník nastavil. Jednotka má pevný limit
   pamäte, a keď server tento limit prekročí, systemd zastaví server, nikdy
-  nie LosOS cloud.
+  nie LosOS Cloud.
 - Beží s nízkou váhou procesora a disku, takže vlastná práca vlastníka má
   prednosť.
 - Edge sa k nemu dostane cez druhú službu na existujúcom tuneli zariadenia.

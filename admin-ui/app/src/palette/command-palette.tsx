@@ -18,6 +18,7 @@ import { useLocale, useT } from "@/lib/i18n-react";
 import { getPinsState, getServerPinsState, subscribePins, viewPin } from "@/lib/pins";
 import { getTheme, subscribeTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { actionItems, appItems, pageItems, pinItems, rank, type GroupId, type Item, type Target } from "./items";
 import {
   cloudTextHref,
@@ -35,12 +36,12 @@ import {
 import { closePalette, paletteState, subscribePalette } from "./store";
 
 /* The command palette: one box that finds a page, a setting, an app, a file
- * in LosOS cloud, a repository in LosOS Git, one of the owner's pins or an
+ * in LosOS Cloud, a repository in LosOS Git, one of the owner's pins or an
  * app to install, and opens it. Ctrl/Cmd+Shift+P opens it from anywhere on the page, a colon typed
  * outside a text field does too, and so does the search button at the top of
  * the sidebar.
  *
- * Text inside files is its own group: LosOS cloud's files through the box's
+ * Text inside files is its own group: LosOS Cloud's files through the box's
  * index, LosOS Git's default branches through `git grep`, cloud first.
  *
  * Built on the native <dialog> (components/ui/dialog.tsx) and the ARIA
@@ -49,7 +50,7 @@ import { closePalette, paletteState, subscribePalette } from "./store";
  * Radix were not used because the admin page's `style-src 'self'` refuses
  * the <style> element their scroll lock injects.
  *
- * Results open where they live: a page here by the router, LosOS cloud and
+ * Results open where they live: a page here by the router, LosOS Cloud and
  * LosOS Git by a real navigation (Ctrl/Cmd+Enter or a Ctrl/Cmd-click opens
  * those in a new tab), and an app from the catalogue on the Apps pane with
  * its install dialog already open, so installing still goes through the two
@@ -88,6 +89,24 @@ export default function CommandPalette() {
   const t = useT();
   const { open, query, serial } = React.useSyncExternalStore(subscribePalette, paletteState, paletteState);
   const titleId = React.useId();
+  // The body stays until the dialog's way out (index.css) has finished:
+  // unmounted at once, an empty box would fade. With reduced motion there
+  // is nothing to wait for and it goes at once.
+  const [kept, setKept] = React.useState(open);
+  React.useEffect(() => {
+    if (open) {
+      setKept(true);
+      return;
+    }
+    let live = true;
+    const leaving = document.getElementById(titleId)?.closest("dialog")?.getAnimations() ?? [];
+    void Promise.allSettled(leaving.map((animation) => animation.finished)).then(() => {
+      if (live) setKept(false);
+    });
+    return () => {
+      live = false;
+    };
+  }, [open, titleId]);
 
   return (
     <Dialog
@@ -104,7 +123,7 @@ export default function CommandPalette() {
       </h2>
       {/* A fresh body per opening: the query starts from what was handed
           over and nothing lingers from the last search. */}
-      {open && <PaletteBody key={serial} initial={query} />}
+      {(open || kept) && <PaletteBody key={serial} initial={query} />}
     </Dialog>
   );
 }
@@ -424,16 +443,9 @@ function Option({
             )
           )}
         </span>
+        {item.keys !== undefined && <KbdGroup keys={item.keys} className="shrink-0" />}
       </div>
     </PinMenu>
-  );
-}
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="inline-flex min-w-5 items-center justify-center rounded-[4px] border border-line bg-sunk px-1 font-sans text-[11px] leading-[18px] text-muted">
-      {children}
-    </kbd>
   );
 }
 
