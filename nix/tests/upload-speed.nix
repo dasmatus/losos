@@ -25,10 +25,11 @@ let
     #!${pkgs.python3}/bin/python3
     ${builtins.readFile ./upload-speed.py}
   '';
-  # What the front vhost puts on every upload: streamed both ways, no size
-  # cap, and the person LosOS Login named.
+  # What the front vhost puts on every upload: streamed both ways in 1 MiB
+  # pieces, no size cap, and the person LosOS Login named.
   streamed = ''
     client_max_body_size 0;
+    client_body_buffer_size 1m;
     proxy_request_buffering off;
     proxy_buffering off;
     proxy_http_version 1.1;
@@ -120,7 +121,7 @@ pkgs.testers.nixosTest {
 
     box.succeed("upload-speed /tmp/upload-speed.json >&2")
     result = json.loads(box.succeed("cat /tmp/upload-speed.json"))
-    box.copy_from_vm("/tmp/upload-speed.json", "")
+    box.copy_from_machine("/tmp/upload-speed.json")
     for name in ("large", "small", "chunkedSend", "chunkedJoin", "push"):
         print(f"{name}: {result[name]['median']} s, {result[name]['mibPerSecond']} MiB/s")
     print(f"peak memory: {result['peakMiB']}")
