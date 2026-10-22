@@ -236,7 +236,10 @@ const page = async (ctx) => {
 
 const problems = [];
 const watch = (p) => {
-  p.on("pageerror", (e) => problems.push(String(e)));
+  p.on("pageerror", (e) => problems.push(`${e}\n${e.stack ?? ""}`));
+  p.on("console", (m) => {
+    if (m.type() === "error") console.error(`console: ${m.text()}`);
+  });
   p.on("response", (r) => {
     const path = new URL(r.url()).pathname;
     // LosOS Git without LosOS Reviewer answers the AI review's address 404;
@@ -270,7 +273,13 @@ try {
     }
   }
 } catch (e) {
-  if (last !== null) await last.screenshot({ path: join(out, `failed-${phase}.png`) }).catch(() => {});
+  if (last !== null) {
+    await last.screenshot({ path: join(out, `failed-${phase}.png`) }).catch(() => {});
+    const html = await last.content().catch(() => "");
+    writeFileSync(join(out, `failed-${phase}.html`), html);
+    console.error(`failed at ${last.url()}`);
+  }
+  if (problems.length > 0) console.error(`the pages reported errors:\n${problems.join("\n")}`);
   throw e;
 } finally {
   s.save();
