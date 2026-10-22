@@ -659,14 +659,17 @@ in
                 ${toGit}
               '';
             };
-            # The pages: one document for every path, behind LosOS Login like
-            # LosOS Cloud's (modules/cloud.nix). Without the admin UI there
-            # are no pages, and the socket answers the rest as before.
+            # The pages: one document for every path. They hold no data, so
+            # a visitor gets them too and reads the public repositories
+            # through the API; with `git.site.requireSignIn` they are behind
+            # LosOS Login like LosOS Cloud's (modules/cloud.nix). Without the
+            # admin UI there are no pages, and the socket answers the rest as
+            # before.
             "/git/" =
               if gitPages then
                 {
                   tryFiles = "$uri /git/index.html";
-                  extraConfig = lib.optionalString signInGit ''
+                  extraConfig = lib.optionalString (signInGit && config.losos.git.site.requireSignIn) ''
                     auth_request /internal/losos-app-sign-in;
                     error_page 401 = @losos-app-sign-in;
                     error_page 403 @losos-app-held;

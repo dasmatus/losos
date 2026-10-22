@@ -296,10 +296,21 @@ fn commit_json(c: &Commit) -> Value {
     })
 }
 
+/// The author of a review or a line comment. LosOS Reviewer is the box's
+/// one bot account; its reviews and comments carry its name and the mark
+/// the pages draw beside it.
+fn author(login: &str) -> Value {
+    if login == super::reviewer::worker::BOT_LOGIN {
+        json!({ "login": login, "is_bot": true, "full_name": super::reviewer::worker::BOT_NAME })
+    } else {
+        json!({ "login": login, "is_bot": false })
+    }
+}
+
 fn review_json(r: &Review) -> Value {
     json!({
         "id": r.id,
-        "user": { "login": r.reviewer },
+        "user": author(&r.reviewer),
         "state": r.state,
         "body": r.body,
         "commit_id": r.commit_id,
@@ -312,7 +323,7 @@ fn line_json(c: &LineComment) -> Value {
         "id": c.id,
         "review_id": c.review_id,
         "in_reply_to": c.reply_to,
-        "user": { "login": c.poster },
+        "user": author(&c.poster),
         "path": c.path,
         "line": c.line,
         "side": c.side,
@@ -973,6 +984,22 @@ async fn request_reviewers(
                 "The author cannot review their own pull request.",
             ));
         }
+        if who.login == super::reviewer::worker::BOT_LOGIN {
+            // The box's own reviewer reads every repository that asked for
+            // it, and none other.
+            if !state.reviewer.available() {
+                return Err(Fail::bad(
+                    "LosOS Reviewer needs the box's code model: turn on Build with AI.",
+                ));
+            }
+            if !state.store.ai_review(repo.id)? {
+                return Err(Fail::bad(
+                    "AI review is off for this repository. Turn it on in its settings.",
+                ));
+            }
+            asked.push(who);
+            continue;
+        }
         if Caller::person(who.clone()).permission(&state.store, &repo)? == Permission::None {
             return Err(Fail::bad(format!(
                 "{} cannot see this repository.",
@@ -983,19 +1010,32 @@ async fn request_reviewers(
     }
     for who in &asked {
         state.store.request_review(pr.id, who.id, Some(user.id))?;
-        notify_review_requested(&repo, &pr, who);
+        notify_review_requested(&state, &repo, &pr, who);
     }
     Ok(HttpResponse::Ok().json(pull_json(&state, &repo, &pr, p)?))
 }
 
-/// Someone was asked to review: the code reviewer starts on it.
-pub fn notify_review_requested(repo: &Repo, pr: &Issue, who: &User) {
+/// Someone was asked to review: the code reviewer starts on it when it is
+/// the one asked.
+pub fn notify_review_requested(state: &State, repo: &Repo, pr: &Issue, who: &User) {
     tracing::info!(
         repo = format!("{}/{}", repo.owner, repo.name),
         number = pr.number,
         reviewer = who.login.as_str(),
         "review requested"
     );
+    let head = pr.head_sha.clone().or_else(|| {
+        pr.head_branch.as_deref().and_then(|b| {
+            state
+                .git
+                .commit_of(&repo_dir(state, repo), b)
+                .ok()
+                .flatten()
+        })
+    });
+    if let Some(head) = head {
+        super::reviewer::worker::review_requested(state, repo.id, pr.id, &head, who.id);
+    }
 }
 
 async fn unrequest_reviewer(

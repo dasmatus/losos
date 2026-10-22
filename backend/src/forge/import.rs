@@ -16,7 +16,7 @@
 //! remembers its Forgejo id (`forgejo_ids`), so running it again changes
 //! nothing that is already there.
 
-use super::db::Store;
+use super::db::{Store, Visibility};
 use super::{names, repo_path};
 use anyhow::Context;
 use rusqlite::{params, OptionalExtension, Transaction};
@@ -258,6 +258,13 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
 
     // ── Repositories ─────────────────────────────────────────────────────
     let mut repo_owner: BTreeMap<i64, i64> = BTreeMap::new(); // forgejo repo -> forgejo owner
+                                                              // Forgejo's owner visibility: 0 public, 1 limited (signed-in only),
+                                                              // 2 private. A repository that is not private reads no wider than its
+                                                              // owner does.
+    let owner_visibility: BTreeMap<i64, i64> = tables["user"]
+        .iter()
+        .map(|u| (int(u, "id"), int(u, "visibility")))
+        .collect();
     for row in &tables["repository"] {
         let id = int(row, "id");
         let owner_f = int(row, "owner_id");
@@ -297,22 +304,33 @@ pub fn import(store: &Store, state_dir: &Path, from: &Path) -> anyhow::Result<Re
             b if b.is_empty() => "main".to_string(),
             b => b,
         };
+        let visibility = if flag(row, "is_private") {
+            Visibility::Private
+        } else {
+            match owner_visibility.get(&owner_f).copied().unwrap_or(0) {
+                0 => Visibility::Public,
+                1 => Visibility::Internal,
+                _ => Visibility::Private,
+            }
+        };
         let local = match mapped(&tx, "repo", id)? {
             Some(l) => l,
             None => {
                 tx.execute(
                     "INSERT INTO repos (owner_id, name, lower_name, description, private,
-                                        default_branch, created, updated)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                                        visibility, default_branch, created, updated)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                      ON CONFLICT (owner_id, lower_name) DO UPDATE SET
                        description = excluded.description, private = excluded.private,
+                       visibility = excluded.visibility,
                        default_branch = excluded.default_branch, created = excluded.created",
                     params![
                         owner,
                         name,
                         name.to_lowercase(),
                         text(row, "description"),
-                        flag(row, "is_private"),
+                        visibility != Visibility::Public,
+                        visibility.as_str(),
                         branch,
                         time(row, "created_unix"),
                         time(row, "updated_unix"),
@@ -759,7 +777,7 @@ mod tests {
                  "is_admin": true, "type": 0, "created_unix": 1_760_000_000},
                 {"id": 2, "name": "eva", "full_name": "", "email": "eva@box.local",
                  "is_admin": false, "type": 0, "created_unix": 1_760_000_000},
-                {"id": 3, "name": "team", "type": 1, "created_unix": 1_760_000_000},
+                {"id": 3, "name": "team", "type": 1, "visibility": 1, "created_unix": 1_760_000_000},
                 {"id": 4, "name": "forgejo-actions", "type": 4}
             ]),
         );
@@ -878,6 +896,7 @@ mod tests {
 
         let notes = store.repo("matus", "notes").unwrap().unwrap();
         assert!(notes.private && notes.description == "My notes");
+        assert_eq!(notes.visibility, Visibility::Private);
         let hooks = state.path().join("repositories/matus/notes.git/hooks");
         let left: Vec<_> = std::fs::read_dir(&hooks)
             .unwrap()
@@ -886,6 +905,8 @@ mod tests {
         assert_eq!(left, vec!["update.sample"], "Forgejo's hooks are gone");
         let site = store.repo("team", "site").unwrap().unwrap();
         assert_eq!(site.default_branch, "trunk");
+        // Public under an organisation only signed-in people could see.
+        assert_eq!(site.visibility, Visibility::Internal);
         assert!(
             store.repo("matus", "gone").unwrap().is_none(),
             "no Git data, no record"

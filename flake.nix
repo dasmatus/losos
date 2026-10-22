@@ -523,6 +523,9 @@
         losos-git-pages = import ./nix/tests/git-pages.nix { inherit pkgs; };
         # A Forgejo box's switch: everything it held, carried into LosOS Git.
         losos-git-forgejo = import ./nix/tests/git-forgejo.nix { inherit pkgs; };
+        # LosOS Reviewer: the code model's reviews of pull requests, on
+        # recorded answers (nix/tests/git-reviewer.nix).
+        losos-git-reviewer = import ./nix/tests/git-reviewer.nix { inherit pkgs; };
         # The signed installer medium under OVMF's Secure Boot build: the
         # real ISO (plus the test backdoor) signed with a throwaway key the
         # sandbox makes, boots with that key enrolled beside Microsoft's and

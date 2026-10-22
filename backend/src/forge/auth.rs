@@ -11,7 +11,7 @@
 //! may. A token may do what its scopes say on top of that, and never more:
 //! `write:repository` pushes, `read:repository` clones, and so on.
 
-use super::db::{Permission, Repo, Store, Token, User};
+use super::db::{Permission, Repo, Store, Token, User, Visibility};
 
 /// The scope families a token can carry, as `read:<family>` or
 /// `write:<family>`, or `all`.
@@ -85,18 +85,24 @@ impl Caller {
         }
     }
 
-    /// What this caller may do in `repo`, before the token's scopes.
+    /// What this caller may do in `repo`, before the token's scopes. A
+    /// public repository reads for anyone, an internal one for every
+    /// account on the box; past that it is ownership and collaboration.
     pub fn permission(&self, store: &Store, repo: &Repo) -> anyhow::Result<Permission> {
-        let public = if repo.private {
-            Permission::None
-        } else {
-            Permission::Read
+        let read_if = |open: bool| {
+            if open {
+                Permission::Read
+            } else {
+                Permission::None
+            }
         };
         Ok(match &self.who {
             Who::Admin => Permission::Admin,
-            Who::Nobody => public,
+            Who::Nobody => read_if(repo.visibility == Visibility::Public),
             Who::Person(u) if u.id == repo.owner_id || u.is_admin => Permission::Admin,
-            Who::Person(u) => store.collaborator(repo.id, u.id)?.max(public),
+            Who::Person(u) => store
+                .collaborator(repo.id, u.id)?
+                .max(read_if(repo.visibility != Visibility::Private)),
         })
     }
 
@@ -381,7 +387,7 @@ mod tests {
         let owner = store.ensure_user("notshared", "", "").unwrap();
         let jana = store.ensure_user("jana", "", "").unwrap();
         let repo = store
-            .create_repo(owner.id, "r", "", true, "main", None)
+            .create_repo(owner.id, "r", "", Visibility::Private, "main", None)
             .unwrap();
         let p = |c: &Caller| c.permission(&store, &repo).unwrap();
         assert_eq!(p(&Caller::person(owner.clone())), Permission::Admin);
@@ -392,7 +398,7 @@ mod tests {
             .unwrap();
         assert_eq!(p(&Caller::person(jana.clone())), Permission::Write);
         let public = store
-            .create_repo(owner.id, "p", "", false, "main", None)
+            .create_repo(owner.id, "p", "", Visibility::Public, "main", None)
             .unwrap();
         assert_eq!(
             Caller::nobody().permission(&store, &public).unwrap(),
@@ -402,12 +408,32 @@ mod tests {
         let (t, _) = store
             .create_token(owner.id, "t", &["read:repository".into()])
             .unwrap();
-        let c = Caller::with_token(owner, &t);
+        let c = Caller::with_token(owner.clone(), &t);
         assert_eq!(c.repo_access(&store, &repo).unwrap(), Permission::Read);
         let (t, _) = store
             .create_token(jana.id, "u", &["read:user".into()])
             .unwrap();
-        let c = Caller::with_token(jana, &t);
+        let c = Caller::with_token(jana.clone(), &t);
         assert_eq!(c.repo_access(&store, &public).unwrap(), Permission::None);
+        // Internal: every account on the box reads it, nobody else does.
+        let ours = store
+            .create_repo(owner.id, "i", "", Visibility::Internal, "main", None)
+            .unwrap();
+        let eva = store.ensure_user("eva", "", "").unwrap();
+        assert_eq!(
+            Caller::person(eva).permission(&store, &ours).unwrap(),
+            Permission::Read
+        );
+        assert_eq!(
+            Caller::nobody().permission(&store, &ours).unwrap(),
+            Permission::None
+        );
+        store
+            .set_collaborator(ours.id, jana.id, Permission::Write)
+            .unwrap();
+        assert_eq!(
+            Caller::person(jana).permission(&store, &ours).unwrap(),
+            Permission::Write
+        );
     }
 }

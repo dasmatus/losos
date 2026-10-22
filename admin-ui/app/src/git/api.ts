@@ -17,6 +17,10 @@ export interface User {
 
 export type Permission = "none" | "read" | "write" | "admin";
 
+/** Who may read a repository: its people, everyone signed in to the box,
+ *  or anyone. */
+export type Visibility = "private" | "internal" | "public";
+
 export interface Repo {
   id: number;
   owner: { login: string };
@@ -24,6 +28,7 @@ export interface Repo {
   full_name: string;
   description: string;
   private: boolean;
+  visibility: Visibility;
   default_branch: string;
   empty: boolean;
   fork: boolean;
@@ -76,6 +81,10 @@ export interface File {
 
 export interface Login {
   login: string;
+  /** Set on review and line comment authors: LosOS Reviewer, the box's bot,
+   * with its name. */
+  is_bot?: boolean;
+  full_name?: string;
 }
 
 export interface Issue {
@@ -220,7 +229,10 @@ export interface AiReview {
 export interface AiReviewSetting {
   enabled: boolean;
   available: boolean;
+  /** The box's code model, while Build with AI is on. */
+  model?: string | null;
   reviewer: { login: string; full_name: string };
+  canChange?: boolean;
 }
 
 export type MergeStyle = "merge" | "squash" | "fast-forward";
@@ -288,10 +300,13 @@ const filePath = (path: string) => path.split("/").map(e).join("/");
 export const git = {
   me: (signal?: AbortSignal) => call<User>("GET", "/user", undefined, signal),
   repos: (signal?: AbortSignal) => call<Repo[]>("GET", "/user/repos", undefined, signal),
-  createRepo: (name: string, description: string, isPrivate: boolean) =>
-    call<Repo>("POST", "/user/repos", { name, description, private: isPrivate, auto_init: true }),
+  /** What a visitor may read: the public repositories. */
+  publicRepos: (signal?: AbortSignal) =>
+    call<{ data: Repo[] }>("GET", "/repos/search?limit=200", undefined, signal).then((r) => r.data),
+  createRepo: (name: string, description: string, visibility: Visibility) =>
+    call<Repo>("POST", "/user/repos", { name, description, visibility, auto_init: true }),
   repo: (o: string, r: string, signal?: AbortSignal) => call<Repo>("GET", repoPath(o, r), undefined, signal),
-  editRepo: (o: string, r: string, change: { name?: string; description?: string; private?: boolean; default_branch?: string }) =>
+  editRepo: (o: string, r: string, change: { name?: string; description?: string; visibility?: Visibility; default_branch?: string }) =>
     call<Repo>("PATCH", repoPath(o, r), change),
   collaborators: (o: string, r: string, signal?: AbortSignal) =>
     call<(User & { permission: Permission })[]>("GET", `${repoPath(o, r)}/collaborators`, undefined, signal),
@@ -358,6 +373,7 @@ export const git = {
     call<Checks>("GET", `${repoPath(o, r)}/commits/${e(sha)}/statuses`, undefined, signal),
   aiReviewSetting: (o: string, r: string, signal?: AbortSignal) =>
     call<AiReviewSetting>("GET", `${repoPath(o, r)}/ai-review`, undefined, signal),
+  setAiReview: (o: string, r: string, enabled: boolean) => call<AiReviewSetting>("PUT", `${repoPath(o, r)}/ai-review`, { enabled }),
   aiReview: (o: string, r: string, n: number, signal?: AbortSignal) =>
     call<AiReview>("GET", `${repoPath(o, r)}/pulls/${n}/ai-review`, undefined, signal),
 };

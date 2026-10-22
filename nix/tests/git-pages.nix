@@ -19,13 +19,51 @@
 # a review and the review sent with Approve. Eva answers on the line, and
 # the owner resolves the thread, looks at the worktrees, squash-merges and
 # deletes the branch. After each step the test reads LosOS Git's API to see
-# that the page did what it showed. Last, the same addresses on the box
-# without the pages, for the pull request's "before" column.
+# that the page did what it showed.
+#
+# Then LosOS Reviewer: Eva opens #2, a pruning script, while the
+# repository's AI review is off, and the pages are pictured; the owner turns
+# it on and asks the bot, which reviews #2 with the stand-in for Ollama from
+# nix/tests/git-reviewer.nix, and the same pages are pictured again. Then
+# who may see a repository: the owner makes a public one and shares
+# backup-tool with everyone on the box, and a visitor who has not signed
+# in reads the public one (with LOSOS_GIT_OLD_UI, the same steps on the
+# pages before first). Last, the same addresses on the box without the
+# pages, for the pull request's "before" column.
 { pkgs }:
 
 let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
+
+  # LosOS Reviewer's model: Ollama replaced by the stand-in that replays
+  # what Qwen2.5-Coder 1.5B answered about the same prune.sh
+  # (git-reviewer/ollama-stand-in.py, recorded 2026-10-21). The comment
+  # comes from the box's own check; the model only describes the file.
+  model = "qwen2.5-coder:1.5b";
+  answers = pkgs.writeText "answers.json" (
+    builtins.toJSON [
+      {
+        kind = "find";
+        path = "prune.sh";
+        answer = "LGTM";
+      }
+      {
+        kind = "describe";
+        path = "prune.sh";
+        answer = "Adds a script to prune old data directories in the target folder.";
+      }
+    ]
+  );
+  pruneSh = pkgs.writeText "prune.sh" ''
+    #!/bin/sh
+    set -eu
+    TARGET="$1"
+    KEEP="''${2:-7}"
+    for d in $(ls -1 "$TARGET" | sort | head -n -"$KEEP"); do
+      rm -rf $TARGET/$d
+    done
+  '';
 
   # Playwright from nixpkgs' playwright-driver (playwright-core), which the
   # binary cache carries, under the Node it is built for.
@@ -63,12 +101,26 @@ pkgs.testers.nixosTest {
         admin.ui = lososPkgs.losos-admin-ui;
         git.enable = true;
         mdns.enable = true;
+        # What modules/git.nix reads to find the model; modules/builder.nix
+        # (the real Ollama) is not imported, the stand-in takes its port.
+        builder = {
+          enable = true;
+          inherit model;
+        };
+      };
+      systemd.services.ollama-stand-in = {
+        wantedBy = [ "multi-user.target" ];
+        before = [ "losos-git.service" ];
+        serviceConfig.ExecStart = "${pkgs.python3}/bin/python3 ${./git-reviewer/ollama-stand-in.py} 11434 ${model} ${answers} 45";
       };
       # The same box before the pages, for the pictures' "before" column:
       # LosOS Git answered every /git/ address itself.
       specialisation.before.configuration.services.nginx.virtualHosts."losos-front".locations."/git/" =
         lib.mkForce
           { proxyPass = "http://unix:/run/losos-git/http.sock:/"; };
+      # Every page behind LosOS Login, as it was before repositories had
+      # three levels: the "before" column of the visibility pictures.
+      specialisation.signed-in-only.configuration.losos.git.site.requireSignIn = true;
       environment.systemPackages = [
         pkgs.jq
         pkgs.curl
@@ -106,6 +158,7 @@ pkgs.testers.nixosTest {
 
   testScript = ''
     import json
+    import os
 
     HOST = "mattbox.local"
     BASE = f"https://{HOST}"
@@ -311,6 +364,74 @@ pkgs.testers.nixosTest {
         assert laptop.succeed("git -C /tmp/main rev-list --count main").strip() == "3"
         laptop.succeed("grep -q 'for try in 1 2 3' /tmp/main/backup.sh")
         laptop.copy_from_machine("/tmp/shots/after", "shots")
+
+    with subtest("LosOS Reviewer: pull request #2 before and after AI review is on"):
+        laptop.succeed(
+            "cd /tmp/eva && git fetch -q origin && git checkout -q -b prune-copies origin/main",
+            "cp ${pruneSh} /tmp/eva/prune.sh && chmod +x /tmp/eva/prune.sh",
+        )
+        commit("/tmp/eva", EVA, "Prune old copies on the NAS")
+        laptop.succeed(f"cd /tmp/eva && git push -q {url(eva)} prune-copies")
+        pr = ok("POST", f"/repos/{REPO}/pulls", {
+            "title": "Prune old copies",
+            "body": "Keeps the newest seven copies on the NAS and deletes the rest.",
+            "head": "prune-copies",
+            "base": "main",
+        }, token=eva)
+        assert pr["number"] == 2, pr
+        setting = ok("GET", f"/repos/{REPO}/ai-review", token=owner)
+        assert setting["enabled"] is False and setting["available"], setting
+        assert setting["model"] == "${model}", setting
+        git_shots("reviewer", "reviewer-before", "--test", "losos-git-pages")
+        assert ok("GET", f"/repos/{REPO}/pulls/2/reviews") == []
+
+        ok("PUT", f"/repos/{REPO}/ai-review", {"enabled": True}, token=owner)
+        ok("POST", f"/repos/{REPO}/pulls/2/requested_reviewers", {"reviewers": ["losos-reviewer"]}, token=owner)
+        box.wait_until_succeeds(
+            f"curl -fsS -H 'Authorization: token {git_admin}'"
+            f" http://127.0.0.1:3000/api/v1/repos/{REPO}/pulls/2/reviews"
+            " | jq -e 'map(select(.user.login == \"losos-reviewer\" and .user.is_bot)) | length == 1'",
+            timeout=300,
+        )
+        lines = ok("GET", f"/repos/{REPO}/pulls/2/comments")
+        assert [(c["path"], c["line"]) for c in lines] == [("prune.sh", 6)], lines
+        assert '```suggestion\n  rm -rf "$TARGET/$d"\n```' in lines[0]["body"], lines[0]
+        git_shots("reviewer", "reviewer-after", "--reviewed", "--test", "losos-git-pages")
+        laptop.copy_from_machine("/tmp/shots/reviewer-before", "shots")
+        laptop.copy_from_machine("/tmp/shots/reviewer-after", "shots")
+
+    with subtest("who may see a repository: private, this box, public"):
+        # LOSOS_GIT_OLD_UI, a losos-admin-ui from before the three levels,
+        # gives the pictures their "before" column: its pages over this
+        # box, every page behind LosOS Login.
+        old_ui = os.environ.get("LOSOS_GIT_OLD_UI", "")
+        if old_ui:
+            ui = "${lososPkgs.losos-admin-ui}"
+            box.succeed(
+                "/run/booted-system/specialisation/signed-in-only/bin/switch-to-configuration test",
+                f"mount --bind {old_ui} {ui}",
+                "systemctl restart nginx",
+            )
+            box.wait_for_open_port(443)
+            git_shots("visibility", "visibility-before", "--old", "--test", "losos-git-pages")
+            ok("DELETE", "/repos/notshared/website")
+            box.succeed(
+                f"umount {ui}",
+                "/run/booted-system/bin/switch-to-configuration test",
+                "systemctl restart nginx",
+            )
+            box.wait_for_open_port(443)
+            box.wait_for_open_port(3000)
+            laptop.copy_from_machine("/tmp/shots/visibility-before", "shots")
+        git_shots("visibility", "visibility-after", "--test", "losos-git-pages")
+        site = ok("GET", "/repos/notshared/website")
+        assert site["visibility"] == "public" and site["private"] is False, site
+        tool = ok("GET", f"/repos/{REPO}")
+        assert tool["visibility"] == "internal" and tool["private"] is True, tool
+        # What the visitor's pages read: the public one, and nothing else.
+        found = json.loads(curl(f"https://{HOST}/git/api/v1/repos/search"))
+        assert [r["full_name"] for r in found["data"]] == ["notshared/website"], found
+        laptop.copy_from_machine("/tmp/shots/visibility-after", "shots")
 
     with subtest("the pictures: the same addresses before the pages"):
         box.succeed("/run/current-system/specialisation/before/bin/switch-to-configuration test")

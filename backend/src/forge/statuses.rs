@@ -192,7 +192,14 @@ mod tests {
         let store = Store::in_memory().unwrap();
         let user = store.ensure_user("matus", "Matus", "").unwrap();
         let repo = store
-            .create_repo(user.id, "site", "", true, "main", None)
+            .create_repo(
+                user.id,
+                "site",
+                "",
+                crate::forge::db::Visibility::Private,
+                "main",
+                None,
+            )
             .unwrap();
         let sha = "A".repeat(40);
         let mut s = NewStatus {

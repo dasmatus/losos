@@ -16,9 +16,10 @@ nastavil, je vlastník a jeho repozitáre sú pod `notshared`.
 
 ## Repozitáre \{#repositories}
 
-Prvá stránka ukazuje vaše repozitáre a tie, ktoré s vami niekto zdieľa.
-**Nový repozitár** vytvorí ďalší, súkromný, ak to nevypnete. Prázdny
-repozitár ukáže príkazy, ktorými doň pushnete prvú vetvu.
+Prvá stránka ukazuje vaše repozitáre, tie, ktoré s vami niekto zdieľa, a
+tie, ktoré môže čítať každý na zariadení. **Nový repozitár** vytvorí ďalší
+a spýta sa, kto ho uvidí. Prázdny repozitár ukáže príkazy, ktorými doň
+pushnete prvú vetvu.
 
 Stránky repozitára sú v bočnom paneli:
 
@@ -30,8 +31,23 @@ Stránky repozitára sú v bočnom paneli:
   čo v nej je a v predvolenej vetve nie.
 - **Pracovné stromy** zobrazujú checkouty, ktoré do repozitára pushujú
   (pozri nižšie).
-- **Nastavenia** premenujú repozitár, zmenia jeho popis a urobia ho
-  súkromným či verejným. Vidí ich len vlastník repozitára a jeho správcovia.
+- **Nastavenia** premenujú repozitár, zmenia jeho popis a to, kto ho vidí.
+  Vidí ich len vlastník repozitára a jeho správcovia.
+
+### Kto vidí repozitár \{#who-can-see-a-repository}
+
+Každý repozitár má jedno z troch nastavení, ktoré ukazuje odznak pri jeho
+mene:
+
+- **Súkromný**: vy a ľudia, ktorých pridáte. Je predvolené.
+- **Tento box**: každý, kto má na zariadení účet, keď sa prihlási.
+- **Verejný**: ktokoľvek, kto sa dostane k zariadeniu, aj bez
+  prihlásenia. Môže čítať kód, históriu a pull requesty a klonovať ho.
+  Cez edge je to ktokoľvek na internete.
+
+Pri každom nastavení môžete pushovať len vy a ľudia, ktorých pridáte. Kto
+otvorí `/git/` bez prihlásenia, uvidí verejné repozitáre a tlačidlo
+**Prihlásiť sa**.
 
 ## Klonovanie a push \{#clone-and-push}
 
@@ -116,4 +132,6 @@ pomenovaný pracovný strom, ukáže meno toho stromu vo svojej hlavičke.
 
 ## Nastavenia \{#settings}
 
-`losos.git.enable` vypne LosOS Git. Je na paneli **Rozšírené**.
+`losos.git.enable` vypne LosOS Git. `losos.git.site.requireSignIn`
+vyžiada od každého prihlásenie skôr, než LosOS Git niečo ukáže, aj
+verejné repozitáre. Obe sú na paneli **Rozšírené**.

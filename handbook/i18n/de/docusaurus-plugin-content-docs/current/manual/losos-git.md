@@ -17,10 +17,10 @@ liegen unter `notshared`.
 
 ## Repositorys \{#repositories}
 
-Die erste Seite zeigt deine Repositorys und die, die jemand mit dir teilt.
-**Neues Repository** legt eins an, privat, solange du das nicht
-ausschaltest. Ein leeres Repository zeigt die Befehle, mit denen du einen
-ersten Branch hineinpushst.
+Die erste Seite zeigt deine Repositorys, die, die jemand mit dir teilt,
+und die, die alle auf der Box lesen können. **Neues Repository** legt eins
+an und fragt, wer es sieht. Ein leeres Repository zeigt die Befehle, mit
+denen du einen ersten Branch hineinpushst.
 
 Die Seiten eines Repositorys stehen in der Seitenleiste:
 
@@ -32,9 +32,25 @@ Die Seiten eines Repositorys stehen in der Seitenleiste:
   einem Branch zeigt, was er hat und der Standard-Branch nicht.
 - **Worktrees** zeigt die Checkouts, die in das Repository pushen (siehe
   unten).
-- **Einstellungen** benennt das Repository um, ändert seine Beschreibung
-  und macht es privat oder öffentlich. Nur der Besitzer des Repositorys und
-  seine Admins sehen sie.
+- **Einstellungen** benennt das Repository um und ändert seine
+  Beschreibung und wer es sieht. Nur der Besitzer des Repositorys und seine
+  Admins sehen sie.
+
+### Wer ein Repository sieht \{#who-can-see-a-repository}
+
+Jedes Repository hat eine von drei Einstellungen, die ein Abzeichen neben
+seinem Namen zeigt:
+
+- **Privat**: du und die Leute, die du hinzufügst. Das ist die Vorgabe.
+- **Diese Box**: alle mit einem Konto auf der Box, sobald sie angemeldet
+  sind.
+- **Öffentlich**: alle, die die Box erreichen, auch ohne Anmeldung. Sie
+  können den Code, die Geschichte und die Pull-Requests lesen und es
+  klonen. Über einen Edge sind das alle im Internet.
+
+Bei jeder Einstellung können nur du und die Leute, die du hinzufügst,
+pushen. Wer `/git/` ohne Anmeldung öffnet, sieht die öffentlichen
+Repositorys und einen Knopf **Anmelden**.
 
 ## Klonen und pushen \{#clone-and-push}
 
@@ -125,5 +141,6 @@ Push setzt ihn wieder darauf.
 
 ## Einstellungen \{#settings}
 
-`losos.git.enable` schaltet LosOS Git aus. Es steht im Bereich
-**Erweitert**.
+`losos.git.enable` schaltet LosOS Git aus. `losos.git.site.requireSignIn`
+verlangt von allen eine Anmeldung, bevor LosOS Git etwas zeigt, auch
+öffentliche Repositorys. Beide stehen im Bereich **Erweitert**.

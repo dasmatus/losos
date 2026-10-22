@@ -40,6 +40,7 @@ pub mod import;
 pub mod internal;
 pub mod names;
 pub mod pulls;
+pub mod reviewer;
 pub mod server;
 pub mod statuses;
 pub mod transport;

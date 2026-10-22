@@ -14,6 +14,8 @@
 #     streamed, and a token that is not the box's, someone else's private
 #     repository and a push to a repository that does not exist all turned
 #     away;
+#   * private, internal and public repositories read for exactly their
+#     people, through the API, the pages and git, and push for none else;
 #   * the headers that name a person count only on the socket nginx opens.
 { pkgs }:
 
@@ -270,6 +272,52 @@ pkgs.testers.nixosTest {
         # A push to a repository that does not exist makes none.
         laptop.fail(f"cd /tmp/notes && git push -q {url(owner, 'notshared/nothing.git')} main")
         assert forge("GET", "/repos/notshared/nothing")[0] == 404
+
+    with subtest("each visibility reads for its people, and only its people push"):
+        names = ("closed", "ours", "open")
+        for name, vis in zip(names, ("private", "internal", "public")):
+            code, repo = forge("POST", "/user/repos",
+                               {"name": name, "visibility": vis, "auto_init": True}, token=owner)
+            assert code == 201 and repo["visibility"] == vis, (code, repo)
+            assert repo["private"] == (vis != "public"), repo
+
+        def reads(token, name):
+            where = url(token, f"notshared/{name}.git") if token else f"http://{BOX}/git/notshared/{name}.git"
+            return laptop.execute(f"git ls-remote {where} >/dev/null 2>&1")[0] == 0
+
+        # Nobody signed in; another account on the box; the owner.
+        assert [reads(None, n) for n in names] == [False, False, True]
+        assert [reads(matus, n) for n in names] == [False, True, True]
+        assert [reads(owner, n) for n in names] == [True, True, True]
+        # Reading is all the others get: a push from a clone is refused.
+        laptop.succeed(f"git clone -q {url(matus, 'notshared/open.git')} /tmp/open")
+        laptop.fail(
+            "cd /tmp/open && echo hi > hi.txt && git add hi.txt"
+            " && git -c user.name=Matus -c user.email=m@x commit -qm hi && git push -q origin main"
+        )
+        # The API agrees: a visitor's list holds the public one only, an
+        # account's list the two the box shares and nothing private.
+        found = json.loads(laptop.succeed(f"curl -fsS http://{BOX}/git/api/v1/repos/search"))
+        assert [r["full_name"] for r in found["data"]] == ["notshared/open"], found
+        code, mine = forge("GET", "/user/repos", token=matus)
+        theirs = sorted(r["name"] for r in mine if r["owner"]["login"] == "notshared")
+        assert theirs == ["open", "ours"], mine
+        # A visitor reads the public one's code, and of the others not even
+        # that they exist (nix/tests/git-pages.nix has the pages).
+        laptop.succeed(f"curl -fsS http://{BOX}/git/api/v1/repos/notshared/open/readme | grep -q open")
+        code = laptop.succeed(
+            f"curl -s -o /dev/null -w '%{{http_code}}' http://{BOX}/git/api/v1/repos/notshared/ours"
+        )
+        assert code == "404", code
+        # Changed back: the public one closes to visitors at once.
+        code, repo = forge("PATCH", "/repos/notshared/open", {"visibility": "private"}, token=owner)
+        assert code == 200 and repo["visibility"] == "private", (code, repo)
+        assert not reads(None, "open") and not reads(matus, "open")
+        # Forgejo's flag still works, and the two saying different things is refused.
+        code, repo = forge("PATCH", "/repos/notshared/open", {"private": False}, token=owner)
+        assert code == 200 and repo["visibility"] == "public", (code, repo)
+        code, why = forge("PATCH", "/repos/notshared/ours", {"visibility": "public", "private": True}, token=owner)
+        assert code == 422, (code, why)
 
     with subtest("only nginx's socket believes the sign-in headers"):
         named = "-H 'X-Losos-Cloud-User: notshared'"
