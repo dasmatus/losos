@@ -14,7 +14,7 @@
  * are taken only from the frame's own window and this origin: the editor is
  * on /browser/ of this same box.
  *
- * LosOS cloud mounts <OfficeEditor> at /cloud/office/:fileId; Documents
+ * LosOS Cloud mounts <OfficeEditor> at /cloud/office/:fileId; Documents
  * (src/screens/Office.tsx) shows it for a plain folder and for a document
  * shared from another box. */
 

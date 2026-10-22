@@ -28,7 +28,9 @@ eingerichtet hat, bekommt die des Besitzers.
   um es groß zu sehen, und blättere mit den Pfeiltasten weiter.
 - **Papierkorb** behält gelöschte Dateien 30 Tage oder so lange, wie es
   der Bereich **Apps** sagt. Stell eine wieder her oder lösche sie
-  endgültig.
+  endgültig. Was du über die
+  [Netzwerkfreigabe](files-on-your-computer#the-network-share) löschst,
+  landet nicht darin.
 - **Geräte** listet die Computer und Telefone, die synchronisieren, und
   meldet eins ab.
 - Das Suchfeld oben findet Dateien nach Namen.

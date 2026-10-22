@@ -29,7 +29,7 @@
 #   * how much memory coolwsd takes idle and with documents open.
 #
 # Matus claims the box and adds Eva through lososd's own routes, and each
-# signs in at /auth/. LosOS cloud is a stub, as in nix/tests/identity.nix:
+# signs in at /auth/. LosOS Cloud is a stub, as in nix/tests/identity.nix:
 # the claim only asks it to take the owner's password.
 { pkgs }:
 

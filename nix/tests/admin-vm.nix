@@ -90,8 +90,8 @@ pkgs.testers.nixosTest {
     assert "unauthorized" in body, f"expected unauthorized body, got {body!r}"
 
     # 4. lososd mints the admin token on first start (mode 0600 under /var).
-    machine.succeed("test -s /var/secrets/losos-admin-token")
-    token = machine.succeed("cat /var/secrets/losos-admin-token").strip()
+    machine.succeed("test -s /etc/credstore.encrypted/admin-token")
+    token = machine.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip()
     assert len(token) == 64, f"token not 64 hex chars: {token!r}"
 
     # 5. With the token the admin API answers 200 and returns the same state.

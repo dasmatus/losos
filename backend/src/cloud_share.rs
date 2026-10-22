@@ -110,6 +110,9 @@ impl Share {
             }
             self.failures.record_success(&name);
             self.remember(key, now);
+            // A LosOS password seen in the clear: the Windows share may
+            // take it too (`crate::windows`).
+            people.password_checked(&name, &Secret::new(&password));
         }
         self.arrive(backend, &person);
         Answer::Person(person)

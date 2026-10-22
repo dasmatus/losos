@@ -6,7 +6,7 @@
 #                                                     │ WOPI, server side
 #                                                     ▼
 #                                    WOPI host 127.0.0.1:8093 (/wopi/files/)
-#                                    LosOS cloud, or losos-office over a folder
+#                                    LosOS Cloud, or losos-office over a folder
 #
 # What is load-bearing here:
 #
@@ -15,7 +15,7 @@
 #     token to coolwsd; only coolwsd calls the host. alias_groups names the
 #     one WOPI host coolwsd may fetch from, so a WOPISrc pointing anywhere
 #     else (another port on the box, a LAN address) is refused.
-#   * /browser/ and /cool/ are public wherever LosOS cloud is (the LAN, the
+#   * /browser/ and /cool/ are public wherever LosOS Cloud is (the LAN, the
 #     tunnel, a share opened from another box): the token is the
 #     authentication, and nginx refuses the three coolwsd endpoints that are
 #     not about a document (the admin console, metrics, convert-to).

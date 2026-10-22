@@ -38,10 +38,13 @@ versiegelt den Schlüssel anschließend mit `systemd-cryptenroll` im TPM. Beim
 Start fragt die initrd den Chip nach dem Schlüssel und öffnet das Volume.
 Die Boot-Partition enthält kein Geheimnis.
 
-Die Box versiegelt außerdem ein kleineres Geheimnis im Chip:
+Die Box versiegelt außerdem kleinere Geheimnisse im Chip:
 
 - Den Schlüssel, der das Speicherverzeichnis des Mesh verschlüsselt
   (`modules/fscrypt.nix`).
+- Jedes Geheimnis in ihrem Speicher für Zugangsdaten: den Ersatzschlüssel,
+  die Schlüssel von LosOS Login und die Schlüssel des Sicherungs-Buckets
+  (siehe [Zugangsdaten](credentials.md)).
 
 :::note[Die Wiederherstellungskopie des Schlüssels]
 Eine Kopie des Festplattenschlüssels bleibt außerdem im verschlüsselten
