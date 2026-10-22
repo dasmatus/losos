@@ -23,6 +23,9 @@
 #
 # Layout of the output:
 #
+#   office/branding.css        tokens.css and office/branding.css in one
+#                              file, served as Collabora's branding.css
+#
 #   authelia/                  LosOS Login's logo and favicon
 { pkgs }:
 
@@ -47,6 +50,12 @@ let
         ];
       }
       ''
+        # ── LosOS Office: Collabora's branding.css ────────────────────────
+        # One file: the palette, then the rules that dress the editor in it
+        # (./office/branding.css says why both are one file).
+        install -d "$out/office"
+        cat ${tokens} ${./office/branding.css} > "$out/office/branding.css"
+
 
         # ── Authelia: server.asset_path ───────────────────────────────────
         # The sign-in pages' logo and favicon. Authelia serves a file from
@@ -61,6 +70,10 @@ let
       '';
 in
 {
+  # LosOS Office (modules/office.nix): the stylesheet coolwsd's editor page
+  # links as /browser/<version>/branding.css.
+  office.branding = "${package}/office/branding.css";
+
   inherit package;
 
   authelia = {

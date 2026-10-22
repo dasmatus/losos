@@ -15,6 +15,8 @@ import { CloudRoot } from "./app";
 import "./open-diagrams";
 import "./notes/opener";
 import "./collab/opener";
+// Office once the box says which types its Collabora opens.
+import "./office/opener";
 
 applyStoredTheme();
 applyFavicon();

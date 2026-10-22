@@ -343,6 +343,9 @@
             # LosOS Cloud (backend/src/cloud/): files, calendars, contacts and
             # boards at /cloud/, and to the Nextcloud desktop and phone apps.
             ./modules/cloud.nix
+            # Office documents in the browser: Collabora Online and its WOPI
+            # host (backend/src/office/).
+            ./modules/office.nix
             # Its files in Windows' Network view, as an SMB share.
             ./modules/windows.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
@@ -470,6 +473,7 @@
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        losos-design = import ./nix/tests/design.nix { inherit pkgs; };
         losos-agents = import ./nix/tests/agents.nix { inherit pkgs; };
         # The banner a box off the mesh shows over every page, both states
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
@@ -527,6 +531,18 @@
         # its sandbox, PDFs, a changed file, the Git search and who may ask
         # (nix/tests/search.nix).
         losos-search = import ./nix/tests/search.nix { inherit pkgs; };
+        # Collabora Online behind the front vhost over the folder host: open,
+        # type, save, save as PDF, two people in one document, the token
+        # rules and what nginx refuses (nix/tests/office.nix).
+        losos-office = import ./nix/tests/office.nix { inherit pkgs; };
+        # Office over LosOS Cloud's own files: discovery saved for a cloud
+        # with no network, coolwsd through nginx's loopback bridge to the
+        # cloud's socket, a save landing in the person's cloud
+        # (nix/tests/office-cloud.nix).
+        losos-office-cloud = import ./nix/tests/office-cloud.nix { inherit pkgs; };
+        # Markdown documents and presentations in LosOS Office, with no
+        # Collabora on the box (nix/tests/office-markdown.nix).
+        losos-office-markdown = import ./nix/tests/office-markdown.nix { inherit pkgs; };
         # The box half of models split across boxes: the RPC server as
         # `shared`, its memory cap, the lend file, the loopback owner rule
         # and the `:llm` tunnel service (nix/tests/inference-lend.nix).

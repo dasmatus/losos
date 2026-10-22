@@ -142,7 +142,7 @@ fn expect(pane: PaneId) -> &'static [&'static str] {
         PaneId::History => &["matus/losos-config", "4f2a9c1"],
         PaneId::Backup => &["matus-losos", "Back up now"],
         PaneId::About => &["mattbox", "Handbook", "23:00-07:00"],
-        PaneId::Computer => &["LosOS cloud", "LosOS Git", "Not set up", "testpc"],
+        PaneId::Computer => &["LosOS Cloud", "LosOS Git", "Not set up", "testpc"],
         PaneId::EdgeOverview => &["Holds a LosOS certificate", "Relay routes", "Reconcile"],
         PaneId::EdgeSecrets => &["stripe-secret-key", "usdc-releaser-key", "Not set"],
     }

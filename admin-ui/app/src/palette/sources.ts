@@ -15,7 +15,7 @@ import { authedGet, isRecord, nonEmptyString, notPresent } from "@/screens/setti
 
 export interface CloudFile {
   name: string;
-  /** Where it sits in LosOS cloud, from the owner's root. */
+  /** Where it sits in LosOS Cloud, from the owner's root. */
   path: string;
   /** LosOS Cloud's file id: /cloud/files?fileid=<id> opens it. */
   id: number;
@@ -29,7 +29,7 @@ export interface GitRepo {
   description: string | null;
 }
 
-/** A file in LosOS cloud whose text matched. */
+/** A file in LosOS Cloud whose text matched. */
 export interface CloudText {
   /** From the owner's root, without a leading slash. */
   path: string;

@@ -316,7 +316,7 @@ let
         ../../modules/identity.nix
       ];
       # The real UI signs in through LosOS Login, which claims the box with
-      # a password lososd also gives LosOS cloud: a stand-in answers that.
+      # a password lososd also gives LosOS Cloud: a stand-in answers that.
       systemd.services.lososd = lib.mkIf real {
         path = lib.mkBefore [ stubOcc ];
         environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";

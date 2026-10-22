@@ -1,4 +1,5 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
+import { popupMotion } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 
 /* shadcn/ui's Tooltip from its base registry, on Base UI and the LosOS
@@ -42,9 +43,7 @@ function TooltipContent({
           data-slot="tooltip-content"
           className={cn(
             "w-fit rounded-control bg-ink px-2 py-1 text-[12px] leading-snug text-surface shadow-md",
-            "origin-(--transform-origin) transition-[opacity,scale] duration-150 ease-out",
-            "data-starting-style:scale-95 data-starting-style:opacity-0",
-            "data-ending-style:scale-95 data-ending-style:opacity-0",
+            popupMotion,
             className,
           )}
           {...props}
