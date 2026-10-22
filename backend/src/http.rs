@@ -964,6 +964,9 @@ async fn post_person_remove(
                         tracing::warn!(error = %e, person = %name, "a removed person's chat devices stayed signed in")
                     }
                 }
+                if let Err(e) = api.profiles.forget(&name) {
+                    tracing::warn!(error = ?e, "a removed person's profile stayed");
+                }
                 HttpResponse::Ok().json(serde_json::json!({ "name": name, "removed": true }))
             }
             Err(e) => error_response(e),
