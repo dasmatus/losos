@@ -158,7 +158,7 @@ export async function serve({ csp = false } = {}) {
             ? MANAGE_CSP
             : file.startsWith('/chat/') || file === 'chat/index.html'
               ? CHAT_CSP
-              : ADMIN_CSP;
+            : ADMIN_CSP;
       res.writeHead(200, {
         'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
         ...(csp ? { 'Content-Security-Policy': policy } : {}),
