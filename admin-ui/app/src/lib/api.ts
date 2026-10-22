@@ -3054,6 +3054,40 @@ export interface MailDraft {
   subject: string;
   text: string;
   inReplyTo?: string;
+  /** Files the message carries, read by the page (from the computer, from
+   *  LosOS Cloud, or a forwarded message's own). */
+  attachments?: MailFile[];
+}
+
+/** One attached file on its way to lososd. */
+export interface MailFile {
+  name: string;
+  type: string;
+  /** The bytes, base64. */
+  data: string;
+}
+
+/** What lososd takes in all (backend/src/mail.rs MAX_ATTACHMENT_BYTES). */
+export const MAIL_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+/** A file as POST /api/mail/send carries it. */
+export async function mailFile(file: File): Promise<MailFile> {
+  const url = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("could not read the file"));
+    reader.readAsDataURL(file);
+  });
+  return { name: file.name, type: file.type || "application/octet-stream", data: url.slice(url.indexOf(",") + 1) };
+}
+
+/** An attachment of a message the person can read, as a File, to forward
+ *  or to save into LosOS Cloud. */
+export async function fetchMailAttachment(attachment: MailAttachment): Promise<File> {
+  const res = await fetch(mailAttachmentUrl(attachment), { credentials: "same-origin" });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  const blob = await res.blob();
+  return new File([blob], attachment.name, { type: attachment.type || blob.type || "application/octet-stream" });
 }
 
 export interface MailChange {
@@ -3117,6 +3151,59 @@ export function sendMail(draft: MailDraft): Promise<{ ok: true }> {
     contentType: "application/json",
     body: JSON.stringify(draft),
   });
+}
+
+// ── The box's AI on what the person shows it (backend/plugins/assistant) ──
+
+export interface AssistantStatus {
+  /** The box runs a language model at all. */
+  available: boolean;
+  /** Its model is pulled and answering. */
+  ready?: boolean;
+  model?: string;
+}
+
+/** Something the person chose to show the model: a file, a note, a thread. */
+export interface AssistantSource {
+  title: string;
+  text: string;
+}
+
+export interface AssistantAsk {
+  id: string;
+  state: "queued" | "running" | "done" | "failed" | "stopped";
+  answer: string;
+  /** Some of the material did not fit and was cut. */
+  cut: boolean;
+  error?: string;
+}
+
+/** GET /api/assistant. */
+export function getAssistant(options: RequestOptions = {}): Promise<AssistantStatus> {
+  return call<AssistantStatus>("/api/assistant", options);
+}
+
+/** POST /api/assistant/asks. A 429 means the model is busy with another. */
+export function askAssistant(
+  ask: { question: string; sources: AssistantSource[]; lang: string },
+  options: RequestOptions = {},
+): Promise<AssistantAsk> {
+  return call<AssistantAsk>("/api/assistant/asks", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(ask),
+  });
+}
+
+/** GET /api/assistant/asks/{id}. */
+export function getAssistantAsk(id: string, options: RequestOptions = {}): Promise<AssistantAsk> {
+  return call<AssistantAsk>(`/api/assistant/asks/${encodeURIComponent(id)}`, options);
+}
+
+/** DELETE /api/assistant/asks/{id}: stop it. */
+export function stopAssistantAsk(id: string): Promise<AssistantAsk> {
+  return call<AssistantAsk>(`/api/assistant/asks/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 /* A person's own folders and filters: the mail plugin
