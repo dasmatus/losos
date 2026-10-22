@@ -38,7 +38,7 @@ Ten Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
 (the terminal envelope, its own workspace, a path dependency of lososd, the
 registrar and the client), `backend/plugins` (lososd's WebAssembly plugins,
 their SDK and WIT, its own workspace, linted for the host and wasm32), `edge/registrar/`, `edge/vercel/` (outside the
-flake), the terminal client `admin-ui/tui`, and the Lab's `admin-ui/lab/core`,
+flake), the terminal client `admin-ui/tui`, and Diagrams' `admin-ui/lab/core`,
 `admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32), and
 the Solana escrow program `edge/contracts/solana` (`cargo build-sbf`, outside
 the flake). All ten must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
@@ -143,11 +143,20 @@ and is never served or built by nix.
   `gh`, never an edge-made key. `losos cloud setup` and `losos git setup` mint an
   app password and a Forgejo token per computer with the owner's password
   (`backend/src/devices.rs`); `losos git credential` is git's helper.
-- LosOS Lab, the setup visualizer at `/lab/` (sidebar entry Lab): the
-  admin UI's second Vite page (`admin-ui/app/lab/`, `src/lab/`) over a Rust
-  core in WebAssembly (`admin-ui/lab/core`, `losos-lab-core`, contract in
-  its README), under its own CSP arm (the admin one plus
-  `'wasm-unsafe-eval'`). The box copy has simulated consoles, or libvirt
+- LosOS Diagrams at `/diagrams/` (sidebar entry Diagrams; `/lab/` 301s
+  there; internal names stay `lab`: the section, `/api/lab/*`, the crates,
+  `src/lab/`): a screen of the admin SPA at `/diagrams`, laid out like Mail
+  (`src/lab/app.tsx`, a lazy chunk; the shell widens on that route) over a
+  Rust core in WebAssembly (`admin-ui/lab/core`, `losos-lab-core`, contract
+  in its README). The admin CSP carries `'wasm-unsafe-eval'` for it; the
+  hosted copy alone builds `admin-ui/app/diagrams/index.html`
+  (`VITE_LAB_HOSTED=1`). Its default view is a JSON Canvas
+  1.0 editor (`core/src/canvas/`, `src/lab/canvas/`): files are `.canvas`
+  with Advanced Canvas `styleAttributes`, unknown keys kept on save;
+  devices are cards with `losos.device`, cables edges with `losos.link`,
+  machine cards `losos.machine` over `/api/vms`. It opens and saves in LosOS
+  Cloud with `ifMatch`, and Cloud opens `.canvas` in it
+  (`src/cloud/open-diagrams.ts`). The box copy has simulated consoles, or libvirt
   guests through `losos-registrar lab` with `losos.lab.libvirt.enable`;
   `admin-ui/lab/engine/build.sh` and `lab.yml` build the hosted copy with
   qemu-wasm guests and deploy it to Vercel when the secrets exist.
@@ -157,7 +166,7 @@ and is never served or built by nix.
   orthographic camera, in one module with the core. The page draws with the
   SVG canvas first, then loads one module (`src/lab/render.ts`), replays the
   core's calls into that module's `Lab` and swaps `bevy-canvas.tsx` in;
-  anything that fails leaves it on SVG. No Python in the Lab.
+  anything that fails leaves it on SVG. No Python in Diagrams.
 - `cloud.nix` + `backend/src/cloud/` (`losos-cloud`): LosOS Cloud, the
   owner's files, photos, calendars, contacts and boards, in the browser at
   `/cloud/` (`admin-ui/app/cloud/`) and to the Nextcloud desktop and phone
@@ -217,11 +226,33 @@ and is never served or built by nix.
   changed is re-read); Git is `git grep` per query as `forgejo`. Both answer
   on Accept=yes sockets under `/run/losos-search` that only root (lososd's
   `/api/{cloud,git}/text`) can open. `nix/tests/search.nix` boots it.
+- `windows.nix` + `backend/src/windows.rs` + `backend/src/cloud/watch.rs`
+  (`losos.cloud.windows.enable`, on by default): the box under Network in
+  File Explorer (wsdd, LLMNR) and each person's LosOS Cloud files as
+  `\\<box>\<name>` over Samba, SMB2 and up, LAN only; ksmbd stays
+  blocked. NTLM needs the NT hash, so lososd makes one whenever a LosOS
+  password passes through it in the clear (`People` add, set, check) and
+  writes Samba's `smbpasswd`, shares and name map, and the
+  `losos-win-<name>` accounts as userdb records on /run. Samba writes as
+  `losos-cloud`; `losos-cloud serve --watch` scans what changed so ids and
+  ETags follow. While on, `_smb._tcp` replaces the WebDAV mDNS entry so
+  Finder and GNOME list the box once. `nix/tests/windows.nix` boots it.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
   `losos-tokens.css` into Forgejo's custom CSS and LosOS Login's page;
   LosOS Cloud is part of the SPA's own build, so one colour change moves
   all of them. `default.nix` is the data every caller imports. Owners see
   LosOS Cloud and LosOS Git.
+- `credentials.nix` + `backend/src/credentials.rs` (`losos.credentials.entries`):
+  every secret of the box (admin token, LosOS Login's keys, lososd's OIDC
+  client secret, the mail master secret, the backup bucket's keys) is a
+  systemd-creds file in `/etc/credstore.encrypted`, sealed to the TPM with no
+  PCRs or to the host key, persisted, wiped on erase, and handed to its units
+  by `LoadCredentialEncrypted=`. The boot unit `losos-credentials` makes the
+  box's own values, adopts an older build's plaintext and deletes it, and
+  sets aside a file that no longer opens. lososd lists them
+  (`GET /api/credentials`, the Credentials pane, `losos credentials`) and
+  makes new values for the rotatable ones; no value is ever in the API.
+  `nix/tests/credentials.nix` boots it with and without a TPM.
 - `hardening.nix` (install only): KSPP primitives, on by default, with
   `apparmor`, `malloc`, `nosmt`, `usbguard` opt-in. `nix/tests/hardening.nix`
   asserts both halves.
@@ -387,8 +418,12 @@ and is never served or built by nix.
 15. Keep `start_supervisor`'s re-attach in `supervisor.rs`. `nixos-rebuild
     switch` restarts lososd mid-rebuild and a rebuild would otherwise read
     `building` forever.
-16. `losos.admin.tokenFile` is written by lososd on first start. Do not
-    declare it from nix.
+16. A secret the box makes for itself is a credential in
+    `/etc/credstore.encrypted` (`modules/credentials.nix`), the admin token
+    included: a module declares it under `losos.credentials.entries` with
+    the units that read it, not as a new plaintext file under `/var/secrets`. Seal with
+    `--tpm2-pcrs=` (no PCRs), and list an old plaintext path under `legacy`
+    so the boot unit adopts and deletes it.
 17. The compute window's time zone travels with its bounds and the edge
     evaluates `now` per node in `modules/edge.nix`. Hoisting it enforced a
     Berlin window in UTC and slid an hour at each DST change.
@@ -504,8 +539,8 @@ missing.
 `boot.nix`): the root is tmpfs; `/persist` is LUKS-encrypted ext4 (with the
 `encrypt` feature, because fscrypt needs it and btrfs cannot provide it). Only the
 dirs in `environment.persistence."/persist".directories` survive a reboot
-(`/nix`, `/var`, `/etc/ssh`, `/etc/keys`, `/etc/nixos`, `/etc/rancher`, the two
-data homes, `machine-id`). **Anything new that must persist across reboot must be added
+(`/nix`, `/var`, `/etc/ssh`, `/etc/keys`, `/etc/nixos`, `/etc/rancher`,
+`/etc/credstore.encrypted`, the two data homes, `machine-id`). **Anything new that must persist across reboot must be added
 to that list** or it silently vanishes on the next boot. `/persist` is
 `neededForBoot` so impermanence bind-mounts resolve before the sysroot is
 populated. The volume is always formatted, unattended, from a random keyfile
@@ -881,10 +916,11 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   strict policy and refuse the inline script just the same, so don't
   "simplify" the frame into one. `nix/tests/front-vhost.nix` asserts the arm and
   that the strict policy still covers everything else.
-- **The admin token is created by lososd, not by NixOS.** `losos.admin.tokenFile`
-  (default `/var/secrets/losos-admin-token`, persisted via `/var`) is written
-  with a 64-hex-char random value (mode 0600) by lososd on first start if
-  absent. NixOS doesn't manage it — don't try to declare it as a store path.
+- **The admin token is a credential, not a NixOS file.** `modules/credentials.nix`
+  makes it at first boot and seals it as `admin-token` in
+  `/etc/credstore.encrypted`; lososd reads `%d/admin-token`.
+  `losos.admin.tokenFile` is only the old plaintext path, adopted once and
+  deleted. Don't declare it as a store path.
 - **`/etc/rancher` must stay persisted** (`impermanence.nix`). `/var` covers
   the bulk of both Kubernetes instances' state, but the agent writes
   `/etc/rancher/node/password` on its first join and the server stores a hash of

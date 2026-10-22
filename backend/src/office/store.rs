@@ -1,7 +1,7 @@
 //! Where the documents live: the trait a file store implements for the WOPI
 //! host, and [`DirStore`], a plain folder.
 //!
-//! LosOS cloud implements [`OfficeStore`] over its own store: `file_id` is
+//! LosOS Cloud implements [`OfficeStore`] over its own store: `file_id` is
 //! its integer file id, `version` its ETag, `user` the LosOS Login name, and
 //! every call checks that person's access afresh, so a share taken away
 //! mid-session stops the next save. [`DirStore`] is a folder everyone who

@@ -110,6 +110,21 @@ export default defineMessages({
     sk: "bezpečnosť ochrana spevnenie pamäť procesor uzamknúť bezpečný",
     de: "Härtung härten Schutz Speicher Prozessor absichern sicher",
   },
+  "settings.panes.credentials.label": {
+    en: "Credentials",
+    sk: "Prihlasovacie údaje",
+    de: "Zugangsdaten",
+  },
+  "settings.panes.credentials.summary": {
+    en: "Every secret this box keeps, sealed to it, and what each one is for.",
+    sk: "Všetky tajomstvá, ktoré toto zariadenie uchováva, zapečatené preň, a na čo každé slúži.",
+    de: "Jedes Geheimnis, das diese Box aufbewahrt, an sie gebunden, und wofür es da ist.",
+  },
+  "settings.panes.credentials.keywords": {
+    en: "",
+    sk: "heslo heslá tajomstvo kľúč token šifrovanie tpm zapečatené obnoviť vymeniť",
+    de: "Passwort Passwörter Geheimnis Schlüssel Token Verschlüsselung TPM versiegelt erneuern wechseln",
+  },
   "settings.panes.users.label": { en: "Users", sk: "Používatelia", de: "Benutzer" },
   "settings.panes.users.summary": {
     en: "Who can sign in to this box, and what each person can change.",

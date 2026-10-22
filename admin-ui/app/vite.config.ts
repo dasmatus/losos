@@ -74,7 +74,7 @@ function themeBoot(): Plugin {
 }
 
 /* LosOS Lab's splash can carry a two-panel meme: LOSOS_LAB_MEME names a
- * folder with no.jpg and yes.jpg, which are copied beside dist/lab/index.html
+ * folder with no.jpg and yes.jpg, which are copied beside dist/diagrams/index.html
  * as meme-no.jpg and meme-yes.jpg, and __LAB_MEME__ tells the page they are
  * there. The repository carries no such folder (admin-ui/lab/build.py reads
  * the same variable for the old page). */
@@ -87,7 +87,7 @@ function labMeme(): Plugin {
     configureServer(server) {
       if (!dir) return;
       for (const [name, src] of Object.entries(files)) {
-        server.middlewares.use(`/lab/${name}`, (_req, res) => {
+        server.middlewares.use(`/diagrams/${name}`, (_req, res) => {
           res.setHeader("Content-Type", "image/jpeg");
           res.end(readFileSync(join(dir, src)));
         });
@@ -96,7 +96,7 @@ function labMeme(): Plugin {
     buildStart() {
       if (!dir) return;
       for (const [name, src] of Object.entries(files)) {
-        this.emitFile({ type: "asset", fileName: `lab/${name}`, source: readFileSync(join(dir, src)) });
+        this.emitFile({ type: "asset", fileName: `diagrams/${name}`, source: readFileSync(join(dir, src)) });
       }
     },
   };
@@ -119,19 +119,22 @@ export default defineConfig({
     sourcemap: false,
     // The appliance has no external hosts and no CDN: one origin, one bundle.
     modulePreload: { polyfill: false },
-    // Six pages: the admin SPA at /, LosOS Lab at /lab/ (nginx serves
-    // dist/lab/index.html there under the Lab's own CSP), LosOS Chat at
-    // /chat/ (the admin SPA's own document under chat's CSP, for the
-    // crypto's WebAssembly; modules/chat.nix), a company edge's manage page,
-    // which the edge serves at /manage/ from this same dist/
+    // Five pages: the admin SPA at / (LosOS Diagrams is its screen at
+    // /diagrams), LosOS Chat at /chat/ (the admin SPA's own document under
+    // chat's CSP, which adds blob: media for decrypted voice messages and
+    // videos; modules/chat.nix), a company edge's manage page, which the
+    // edge serves at /manage/ from this same dist/
     // (edge/registrar/src/server/manage.rs), LosOS Cloud at /cloud/ and the
     // knowledge bases published from it at /kb/ (modules/cloud.nix). They
-    // share chunks.
+    // share chunks. The hosted copy of Diagrams (VITE_LAB_HOSTED=1,
+    // admin-ui/lab/engine/build.sh) adds diagrams/index.html, the same
+    // screen on a page of its own; a box never gets that page, so nothing
+    // shadows the SPA's /diagrams.
     rolldownOptions: {
       input: {
         main: join(root, "index.html"),
-        lab: join(root, "lab/index.html"),
         chat: join(root, "chat/index.html"),
+        ...(process.env["VITE_LAB_HOSTED"] === "1" ? { diagrams: join(root, "diagrams/index.html") } : {}),
         manage: join(root, "manage/index.html"),
         cloud: join(root, "cloud/index.html"),
         kb: join(root, "kb/index.html"),

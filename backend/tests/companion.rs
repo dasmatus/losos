@@ -192,6 +192,13 @@ fn a_companion_token_reads_as_its_person_and_does_nothing_else() {
     );
 
     assert_eq!(d.call("GET", "/api/status", Some(ADA)).0, 200);
+    // Mail is a companion route; this box has none, so it says so.
+    let (status, answer) = d.call("GET", "/api/mail/messages/m1", Some(ADA));
+    assert_eq!(status, 404, "{answer}");
+    assert_eq!(
+        d.call("GET", "/api/mail/messages/m1/html", Some(ADA)).0,
+        403
+    );
     // Anything off its routes, or not a read, is refused, administrator or not.
     for (method, path) in [
         ("GET", "/api/settings"),

@@ -42,6 +42,7 @@ export const HANDBOOK_ENTRIES = {
   "custom-domain": "types/official-edge/",
   "edge-manages-box": "types/company-edge/",
   tpm: "reference/tpm/",
+  credentials: "reference/credentials/",
 } as const;
 
 export type HandbookEntry = keyof typeof HANDBOOK_ENTRIES;

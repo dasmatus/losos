@@ -83,6 +83,9 @@ const Mail = React.lazy(() => import("@/mail/app"));
 /* LosOS Chat (src/chat/), the same: on the shared side only, and the only
  * screen that brings matrix-js-sdk and its crypto. */
 const Chat = React.lazy(() => import("@/chat/app"));
+/* LosOS Diagrams (src/lab/): its own chunk with the Rust core's
+ * WebAssembly, fetched when /diagrams is first opened. */
+const Diagrams = React.lazy(() => import("@/lab/app"));
 const WidgetBoard = React.lazy(() =>
   import("@/widgets/board").then((m) => ({ default: m.WidgetBoard })),
 );
@@ -222,6 +225,9 @@ function Shell() {
    * says why instead of failing pane by pane. */
   const me = useMe();
   const held = signedIn && (me?.locked?.length ?? 0) > 0;
+  /* LosOS Diagrams draws on a canvas beside an inspector, which wants more
+   * room than a pane of rows: on /diagrams the bar and the page are wider. */
+  const wide = useLocation().pathname.startsWith("/diagrams");
   const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
   const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
   const searchable = signedIn && !held;
@@ -308,7 +314,7 @@ function Shell() {
 
   return (
     <div className={cn("losos-shell min-h-dvh text-ink", editing && "flex h-dvh flex-col")}>
-      <TopBar signedIn={signedIn} />
+      <TopBar signedIn={signedIn} wide={wide} />
       <ContextMenuHost page={pageMenu} search={searchable ? (text) => openPalette(text) : undefined} />
 
       {editing ? (
@@ -320,7 +326,8 @@ function Shell() {
       ) : (
       <SidebarProvider
         className={cn(
-          "mx-auto flex w-full max-w-6xl px-4 pt-5 pb-12 sm:px-6",
+          "mx-auto flex w-full px-4 pt-5 pb-12 sm:px-6",
+          wide ? "max-w-[96rem]" : "max-w-6xl",
           "max-md:flex-col max-md:gap-3 md:gap-6",
         )}
       >
@@ -357,6 +364,7 @@ function Shell() {
             {/* nginx serves /chat/ only on the shared side, under chat's
                 own policy (modules/chat.nix); off it, /chat/ goes home. */}
             <Route path="/chat/*" element={<Chat />} />
+            <Route path="/diagrams/*" element={<Diagrams />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />
@@ -385,7 +393,7 @@ function Shell() {
 
 // ── Chrome ────────────────────────────────────────────────────────────────
 
-function TopBar({ signedIn }: { signedIn: boolean }) {
+function TopBar({ signedIn, wide }: { signedIn: boolean; wide: boolean }) {
   const t = useT();
   const me = useMe();
   let person: AppBarPerson | null = null;
@@ -412,6 +420,7 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
       badge={<Badge variant="outline">{t("shell.thisBox")}</Badge>}
       person={person}
       onSignOut={signedIn ? signOut : undefined}
+      width={wide ? "wide" : "page"}
     />
   );
 }

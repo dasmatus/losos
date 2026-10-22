@@ -131,12 +131,10 @@ pkgs.testers.nixosTest {
         # What a laptop's mDNS would answer.
         networking.extraHosts = "192.168.1.1 mattbox.local";
         environment.variables = lib.mkIf screens {
-          PLAYWRIGHT_BROWSERS_PATH = "${
-            pkgs.playwright-driver.browsers.override {
-              withFirefox = false;
-              withWebkit = false;
-            }
-          }";
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers.override {
+            withFirefox = false;
+            withWebkit = false;
+          }}";
           PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
         };
         fonts = lib.mkIf screens {
@@ -254,8 +252,10 @@ pkgs.testers.nixosTest {
         local = box.succeed("ss -Hltn 'sport = :8096' | awk '{print $4}'").split()
         assert local == ["127.0.0.1:8096"], local
         laptop.fail(f"curl -s --max-time 5 http://{BOX}:8096/")
-        # The secret it shares with lososd is root's alone.
-        assert box.succeed("stat -c '%U %a' /var/lib/losos-mail/master-secret").strip() == "root 600"
+        # The secret it shares with lososd is sealed in the credential store,
+        # and no plaintext copy is left where an older build kept it.
+        assert box.succeed("stat -c '%U %a' /etc/credstore.encrypted/mail-master").strip() == "root 600"
+        box.fail("test -e /var/lib/losos-mail/master-secret")
         # Its own mail listeners are not configured: nothing on 25, 143, 993.
         for port in (25, 143, 465, 587, 993):
             box.fail(f"ss -Hltn 'sport = :{port}' | grep -q LISTEN")
@@ -368,7 +368,9 @@ pkgs.testers.nixosTest {
     with subtest("formatted mail is drawn only from its own sandboxed route"):
         # A sender's HTML, put in Eva's inbox the way delivery would: through
         # Stalwart's JMAP as Eva, from the box itself.
-        secret = box.succeed("cat /var/lib/losos-mail/master-secret").strip()
+        secret = box.succeed(
+            "systemd-creds decrypt --name=mail-master /etc/credstore.encrypted/mail-master -"
+        ).strip()
         jmap = f"curl -sf -u 'eva%losos:{secret}' http://127.0.0.1:8096"
         session = json.loads(box.succeed(f"{jmap}/jmap/session"))
         account = session["primaryAccounts"]["urn:ietf:params:jmap:mail"]

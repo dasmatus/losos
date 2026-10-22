@@ -146,6 +146,20 @@ pub struct Listed {
     pub disabled: bool,
 }
 
+/// Everyone in `doc`, as the Windows shares need them.
+fn accounts(doc: &Document) -> Vec<crate::windows::Account> {
+    doc.users
+        .iter()
+        .map(|(name, r)| crate::windows::Account {
+            name: name.clone(),
+            display_name: r.displayname.clone(),
+            groups: r.groups.clone(),
+            disabled: r.disabled,
+            hash: r.password.clone(),
+        })
+        .collect()
+}
+
 /// Whether anyone enabled in `doc` is an administrator.
 fn any_admin(doc: &Document) -> bool {
     doc.users
@@ -220,6 +234,9 @@ pub struct People {
     pub headers: bool,
     /// The group Authelia runs as, given read access on each write.
     group: Option<String>,
+    /// The Windows shares, while they are on: told of every write and of
+    /// every password seen in the clear (`crate::windows`).
+    windows: Option<crate::windows::Windows>,
     lock: Mutex<()>,
 }
 
@@ -275,6 +292,7 @@ impl People {
             path: path.into(),
             headers: false,
             group,
+            windows: None,
             lock: Mutex::new(()),
         }
     }
@@ -288,7 +306,52 @@ impl People {
             .filter(|g| !g.is_empty());
         let mut people = People::new(Self::sanitize_people_path(path), group);
         people.headers = std::env::var("LOSOS_IDENTITY").is_ok_and(|v| v == "authelia");
+        people.windows = crate::windows::Windows::from_env();
         people
+    }
+
+    /// The same file, with the Windows shares kept by `windows`.
+    pub fn with_windows(mut self, windows: crate::windows::Windows) -> People {
+        self.windows = Some(windows);
+        self
+    }
+
+    /// Whether the Windows shares are on.
+    pub fn windows_on(&self) -> bool {
+        self.windows.is_some()
+    }
+
+    /// Where `name` stands with Windows, while the shares are on.
+    pub fn windows_status(&self, name: &str) -> anyhow::Result<Option<crate::windows::Status>> {
+        let Some(windows) = &self.windows else {
+            return Ok(None);
+        };
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let doc = self.read()?;
+        Ok(accounts(&doc)
+            .into_iter()
+            .find(|a| a.name == name)
+            .map(|a| windows.status(&a)))
+    }
+
+    /// Write what Samba reads from the file as it is: once at start, since
+    /// its accounts live on /run.
+    pub fn sync_windows(&self) -> anyhow::Result<()> {
+        if let Some(windows) = &self.windows {
+            let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+            windows.sync(&accounts(&self.read()?));
+        }
+        Ok(())
+    }
+
+    /// `secret` is `name`'s password in `doc`: Windows may take it too.
+    fn learn_windows(&self, doc: &Document, name: &str, secret: &Secret) {
+        if let Some(windows) = &self.windows {
+            let all = accounts(doc);
+            if let Some(account) = all.iter().find(|a| a.name == name) {
+                windows.learn(account, secret, &all);
+            }
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -348,6 +411,9 @@ impl People {
             std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o640))?;
         }
         std::fs::rename(&tmp, &self.path)?;
+        if let Some(windows) = &self.windows {
+            windows.sync(&accounts(doc));
+        }
         Ok(())
     }
 
@@ -502,7 +568,9 @@ impl People {
                 groups: groups.iter().map(ToString::to_string).collect(),
             },
         );
-        self.write(&doc)
+        self.write(&doc)?;
+        self.learn_windows(&doc, name, secret);
+        Ok(())
     }
 
     /// Put `name` in `group` if they are not in it yet. Writes nothing when
@@ -574,11 +642,27 @@ impl People {
     /// Whether `secret` is `name`'s password.
     pub fn check_password(&self, name: &str, secret: &Secret) -> anyhow::Result<bool> {
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-        Ok(self
-            .read()?
+        let doc = self.read()?;
+        let ok = doc
             .users
             .get(name)
-            .is_some_and(|r| !r.disabled && verify_password(&r.password, secret)))
+            .is_some_and(|r| !r.disabled && verify_password(&r.password, secret));
+        if ok {
+            self.learn_windows(&doc, name, secret);
+        }
+        Ok(ok)
+    }
+
+    /// A password checked outside the lock against the hash
+    /// [`People::with_hash`] gave (`crate::cloud_share`) turned out right.
+    pub fn password_checked(&self, name: &str, secret: &Secret) {
+        if self.windows.is_none() {
+            return;
+        }
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        if let Ok(doc) = self.read() {
+            self.learn_windows(&doc, name, secret);
+        }
     }
 
     /// Replace `name`'s password.
@@ -591,7 +675,9 @@ impl People {
             .get_mut(name)
             .ok_or_else(|| Refused::Unknown(name.to_string()))?;
         record.password = hash;
-        self.write(&doc)
+        self.write(&doc)?;
+        self.learn_windows(&doc, name, secret);
+        Ok(())
     }
 }
 

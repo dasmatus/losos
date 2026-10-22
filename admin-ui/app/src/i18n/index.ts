@@ -11,14 +11,17 @@ import apps from "./apps";
 import chat from "./chat";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
+import credentials from "./credentials";
 import collab from "./collab";
 import games from "./games";
 import home from "./home";
 import inference from "./inference";
 import install from "./install";
+import diagrams from "./diagrams";
 import lab from "./lab";
 import look from "./look";
 import mail from "./mail";
+import mention from "./mention";
 import machines from "./machines";
 import manage from "./manage";
 import menu from "./menu";
@@ -56,10 +59,12 @@ export const MESSAGES = {
   ...machines,
   ...advanced,
   ...access,
+  ...credentials,
   ...users,
   ...account,
   ...profile,
   ...lab,
+  ...diagrams,
   ...tour,
   ...palette,
   ...pins,
@@ -68,6 +73,7 @@ export const MESSAGES = {
   ...office,
   ...mail,
   ...menu,
+  ...mention,
   ...games,
   ...together,
 };

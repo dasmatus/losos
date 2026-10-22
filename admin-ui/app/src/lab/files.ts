@@ -4,7 +4,8 @@
  * cap, and localStorage. */
 
 export const LAST_KEY = "losos-lab-last";
-export const MAX_FILE = 1 << 20;
+/** The largest file the core opens (files.rs, MAX_BYTES). */
+export const MAX_FILE = 8 << 20;
 
 interface Downloads {
   save(input: { filename: string; data: Blob }): Promise<void>;
@@ -15,8 +16,8 @@ interface ClaudeRuntime {
 
 /** Hand the setup to the viewer as a file. Resolves to false when the person
  *  declined or the viewer cannot save; throws nothing. */
-export async function download(filename: string, text: string): Promise<"saved" | "declined" | "unsupported"> {
-  const blob = new Blob([text], { type: "application/json" });
+export async function download(filename: string, data: string | Blob): Promise<"saved" | "declined" | "unsupported"> {
+  const blob = typeof data === "string" ? new Blob([data], { type: "application/json" }) : data;
   // Inside a claude.ai artifact a plain download link does nothing; the
   // viewer's own save prompt does. Everywhere else (the box) the link.
   const claude = (window as unknown as { claude?: ClaudeRuntime }).claude;
