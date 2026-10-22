@@ -1071,6 +1071,10 @@ jobs:
     # no nested virtualisation, so the box runs under TCG there, about ten
     # times slower.
     timeout-minutes: 120
+    # check.py works in a temporary folder (the box's console log, its
+    # certificate); here it is one the failure upload below can find.
+    env:
+      TMPDIR: ${{ runner.temp }}
     strategy:
       fail-fast: false
       matrix:
@@ -1154,6 +1158,12 @@ jobs:
           python nix/tests/discovery/check.py --os windows --box discovery-box
           --qemu "$env:ProgramFiles\qemu\qemu-system-x86_64.exe"
           --netdev tap,id=lan,ifname=losos-lan
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: discovery-${{ matrix.os }}-console
+          path: ${{ runner.temp }}/losos-discovery-*/qemu.log
+          if-no-files-found: ignore
 
   # Which tags release-media builds. A tag push builds that tag. A manual run
   # with `release_tags` builds the tags it names, or with "missing" every
