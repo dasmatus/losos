@@ -58,7 +58,9 @@ export function ReportDialogHost() {
       toast.done(t("report.sent"));
       setTarget(null);
     } catch (failure) {
-      if (failure instanceof ApiError && (failure.status === 404 || failure.status === 405)) setNoModeration(true);
+      // A box without the reports route answers 404 or 405, or, through
+      // nginx's sections for someone who is not an administrator, 403.
+      if (failure instanceof ApiError && [403, 404, 405].includes(failure.status)) setNoModeration(true);
       else toast.error(t("report.failed"), failure instanceof Error ? failure.message : undefined, { help: "pictures" });
     } finally {
       setBusy(false);

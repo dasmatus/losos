@@ -143,18 +143,18 @@ function ShownPicture({ client, content, onOpen }: { client: MatrixClient; conte
   if (url === "failed") return <p className="text-[13px] text-muted">{t("chat.media.failed")}</p>;
   return (
     <NudityGuard src={url}>
-    <button
-      type="button"
-      onClick={() => url !== null && onOpen(url)}
-      className="block overflow-hidden rounded-control border border-hair bg-sunk"
-      aria-label={t("chat.media.open")}
-    >
-      {url === null ? (
-        <span className={cn("block w-72 max-w-full animate-breathe bg-sunk", ratio > 1 ? "h-96" : ratio > 0.8 ? "h-64" : "h-44")} />
-      ) : (
-        <img src={url} alt={typeof content["body"] === "string" ? content["body"] : ""} className="block max-h-96 max-w-full object-contain sm:max-w-sm" />
-      )}
-    </button>
+      <button
+        type="button"
+        onClick={() => url !== null && onOpen(url)}
+        className="block overflow-hidden rounded-control border border-hair bg-sunk"
+        aria-label={t("chat.media.open")}
+      >
+        {url === null ? (
+          <span className={cn("block w-72 max-w-full animate-breathe bg-sunk", ratio > 1 ? "h-96" : ratio > 0.8 ? "h-64" : "h-44")} />
+        ) : (
+          <img src={url} alt={typeof content["body"] === "string" ? content["body"] : ""} className="block max-h-96 max-w-full object-contain sm:max-w-sm" />
+        )}
+      </button>
     </NudityGuard>
   );
 }
