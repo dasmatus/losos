@@ -36,7 +36,7 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
   claims. Set up a new box only on a trusted LAN: whoever claims it first
   becomes its owner. The window is guarded by source address (`lanOnly`,
   with loopback denied), not by a secret, and closes on first use. While
-  Nextcloud is still installing itself the route answers 503 and changes
+  LosOS Login is still starting the route answers 503 and changes
   nothing (`GET /api/setup/claim` says `ready: false` with the reason); the
   window stays open until a claim succeeds.
 - The claim route also refuses what a web page in a LAN browser could send:
@@ -58,7 +58,7 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
   spare is then stale and only someone who can read the file has a key.
 - Comparison is constant-time.
 - The API listens on `127.0.0.1` only. nginx proxies `/api/` to it behind the
-  LAN-only guard. The hostNetwork Nextcloud pod and LosOS Git share that
+  LAN-only guard. LosOS Cloud, LosOS Git and the apps' hostNetwork pods share that
   loopback, so an iptables owner match (`modules/daemon.nix`) resets any
   connection to the API port that is not made by root or nginx.
 - The LAN-only guard denies `10.42.0.0/16`, the mesh's pod network, before it
@@ -182,16 +182,17 @@ not address the limitations below.
 
 ## Known limitations
 
-### The admin UI shares an origin with Nextcloud and LosOS Git
+### The admin UI shares an origin with LosOS Cloud and LosOS Git
 
 `<host>.local/` serves the admin UI and `/api/`. The same origin serves
-`/nextcloud` and `/git/`, which host user content.
+`/cloud/` and `/git/`, which host user content. LosOS Cloud serves the
+files people upload under a sandboxing CSP, and active types as downloads.
 
 `sessionStorage` is per origin, so a stored XSS in either application can
 read the admin token while a tab holds the spare key. A CSP on the admin
 pages does not help, and neither would an `HttpOnly` cookie: Authelia's
 session cookie rides on every request to the origin, so a script there can
-call `/api/` as whoever is signed in. **An XSS in Nextcloud or LosOS Git is
+call `/api/` as whoever is signed in. **An XSS in LosOS Cloud or LosOS Git is
 a full appliance compromise.**
 
 The fix is a separate origin for the admin UI, such as a second mDNS name.

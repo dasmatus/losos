@@ -40,10 +40,10 @@ opraví.
 
 | Čo                                  | Prečo to nepotrebuje internet                                                                                    |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Prihlásenie na správcovské stránky  | Zariadenie overí heslo voči LosOS cloud priamo na sebe, cez vlastný loopback. Funguje aj vytlačený náhradný kľúč. |
-| LosOS cloud a LosOS Git             | Oba bežia na zariadení, takže súbory, kalendáre, kontakty, repozitáre aj mobilné aplikácie na tej istej Wi-Fi zostávajú lokálne. |
+| Prihlásenie na správcovské stránky  | Zariadenie overí heslo voči LosOS Cloud priamo na sebe, cez vlastný loopback. Funguje aj vytlačený náhradný kľúč. |
+| LosOS Cloud a LosOS Git             | Oba bežia na zariadení, takže súbory, kalendáre, kontakty, repozitáre aj mobilné aplikácie na tej istej Wi-Fi zostávajú lokálne. |
 | Vaše vlastné súbory                 | Sú na šifrovanom disku zariadenia, v každom režime úložiska.                                                     |
-| Lokálne zdieľanie medzi ľuďmi doma  | O zdieľaniach, odkazoch a oprávneniach rozhoduje zariadenie vnútri LosOS cloud.                                  |
+| Lokálne zdieľanie medzi ľuďmi doma  | O zdieľaniach, odkazoch a oprávneniach rozhoduje zariadenie vnútri LosOS Cloud.                                  |
 | Celé admin UI                       | Použiť, Nastavenia, panel Vzhľad, panel Úložisko aj reštarty komunikujú so zariadením cez LAN.                  |
 | Vstavané a ručne písané widgety     | Vykresľujú sa na zariadení, z jeho vlastných hodnôt. Ručne písaný widget, ktorý sa *rozhodne* niečo stiahnuť z internetu, nechá tú časť prázdnu, kým sa svet zvonku nevráti, a zvyšok vykreslí. |
 | Táto príručka                       | Zariadenie poskytuje vlastnú kópiu na `/handbook/` aj s vyhľadávaním. Ak ste túto stránku otvorili z Nastavenia → O zariadení, čítate práve túto kópiu. |

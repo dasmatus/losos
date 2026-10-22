@@ -25,23 +25,6 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   hasGit = builtins.pathExists ../../modules/git.nix;
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-
-  # The image attribute set the workload module reads, never pulled.
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
@@ -77,7 +60,6 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/config-repo.nix
         ]
         ++ lib.optional hasGit ../../modules/git.nix;
@@ -86,15 +68,11 @@ pkgs.testers.nixosTest {
           backend.package = lososPkgs.losos-ctl;
           admin.ui = lososPkgs.losos-admin-ui;
           admin.handbook = lososPkgs.losos-handbook;
-          nextcloud.mode = "container";
-          workloads.nextcloudImage = standIn "losos-nextcloud-stand-in";
         }
         // lib.optionalAttrs hasGit { git.enable = true; };
         # The claim checks the Host against the kernel's hostname, which the
         # test framework would otherwise set to the node's name.
         networking.hostName = lib.mkForce "mattbox";
-        systemd.services.lososd.path = lib.mkAfter [ stubOcc ];
-        systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
         # The configuration repository the installer leaves behind.
         systemd.services.config-tree = {
           wantedBy = [ "multi-user.target" ];

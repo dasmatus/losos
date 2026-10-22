@@ -11,7 +11,7 @@ a telefóny v tej sieti a nič iné.
 
 ## Čo dostanete \{#what-you-get}
 
-- LosOS cloud a LosOS Git na adrese zariadenia, pre každého v sieti, kto má
+- LosOS Cloud a LosOS Git na adrese zariadenia, pre každého v sieti, kto má
   účet.
 - Admin stránky, odomknuté heslom vlastníka.
 - Nočnú samoopravu a samoaktualizáciu, šifrovaný disk a základný hardening.

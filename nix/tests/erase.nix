@@ -62,25 +62,13 @@ pkgs.testers.nixosTest {
       losos.sharingMyStorage = true;
       # No TPM in this VM: the keyfile path, a supported configuration.
       losos.tpm.enable = false;
-      # Container mode, the default. There is no k3s in this VM, so the
-      # restore's stop and start of the local cluster find nothing to do.
-      losos.nextcloud.mode = "container";
+      # There is no k3s and no LosOS Cloud service in this VM, so the
+      # restore's stop and start of the apps find nothing to do.
       losos.reset.graceMinutes = 1;
       losos.gpu.enable = false;
 
       networking.networkmanager.enable = lib.mkForce false;
       losos.mdns.enable = lib.mkForce false;
-
-      services.postgresql = {
-        enable = true;
-        ensureDatabases = [ "nextcloud" ];
-        ensureUsers = [
-          {
-            name = "nextcloud";
-            ensureDBOwnership = true;
-          }
-        ];
-      };
 
       services.minio = {
         enable = true;
@@ -102,6 +90,7 @@ pkgs.testers.nixosTest {
         pkgs.minio-client
         pkgs.jq
         pkgs.fscrypt
+        pkgs.sqlite
       ];
 
       virtualisation = {
@@ -175,6 +164,7 @@ pkgs.testers.nixosTest {
     NOTE = "the plate of salmon stays in the family"
     SHARED_NOTE = "lent to the mesh, kept in fscrypt"
     ROW = "a row the database must keep"
+    EVENT = "a calendar entry LosOS Cloud must keep"
 
     def token():
         return machine.succeed("cat /var/secrets/losos-admin-token").strip()
@@ -216,7 +206,7 @@ pkgs.testers.nixosTest {
     machine.start()
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("minio.service")
-    machine.wait_for_unit("postgresql.service")
+    machine.wait_for_open_port(9000)
     machine.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
     machine.wait_until_succeeds("test -s /var/secrets/losos-admin-token")
 
@@ -224,10 +214,11 @@ pkgs.testers.nixosTest {
         machine.succeed(
             "mc alias set local http://127.0.0.1:9000 boxbackup boxbackup-secret-123",
             "mc mb local/box-backups",
-            "install -d /var/lib/nextcloud/data/data/notshared/files",
-            f"echo '{NOTE}' > /var/lib/nextcloud/data/data/notshared/files/note.txt",
-            "runuser -u postgres -- psql -d nextcloud -c "
-            f"\"create table notes (body text); insert into notes values ('{ROW}');\"",
+            "install -d /var/lib/losos-cloud/notshared/files",
+            f"echo '{NOTE}' > /var/lib/losos-cloud/notshared/files/note.txt",
+            f"sqlite3 /var/lib/losos-cloud/cloud.db \"create table events (body text); insert into events values ('{EVENT}');\"",
+            "install -d /var/lib/losos-git",
+            f"sqlite3 /var/lib/losos-git/git.db \"create table notes (body text); insert into notes values ('{ROW}');\"",
         )
         machine.wait_for_unit("losos-fscrypt-shared.service")
         p = policy()
@@ -258,10 +249,12 @@ pkgs.testers.nixosTest {
         # The locked domain was opened for the copy and locked again.
         machine.succeed(f"fscrypt status {policy()} | grep -c '^Unlocked: *No'")
         # Positive control first, so a grep that cannot read proves nothing.
-        machine.succeed(f"grep -rqF '{NOTE}' /var/lib/nextcloud")
+        machine.succeed(f"grep -rqF '{NOTE}' /var/lib/losos-cloud")
+        machine.succeed(f"grep -rqaF '{EVENT}' /var/lib/losos-cloud")
         machine.fail(f"grep -rqaF '{NOTE}' /var/lib/minio")
         machine.fail(f"grep -rqaF '{SHARED_NOTE}' /var/lib/minio")
         machine.fail(f"grep -rqaF '{ROW}' /var/lib/minio")
+        machine.fail(f"grep -rqaF '{EVENT}' /var/lib/minio")
         machine.fail("test -e /var/lib/losos-backup/stage")
 
     with subtest("an erase can be cancelled during its countdown"):
@@ -271,7 +264,7 @@ pkgs.testers.nixosTest {
         api("POST", "/api/erase/cancel")
         assert api("GET", "/api/backup")["erase"] is None
         machine.sleep(70)
-        machine.succeed("test -e /var/lib/nextcloud/data/data/notshared/files/note.txt")
+        machine.succeed("test -e /var/lib/losos-cloud/notshared/files/note.txt")
 
     old_token = token()
 
@@ -287,13 +280,13 @@ pkgs.testers.nixosTest {
     with subtest("the box comes back empty and unowned"):
         machine.succeed("journalctl -b -u losos-factory-wipe | grep -c 'deleting the owner'")
         machine.fail("test -e /persist/.losos-factory-wipe")
-        machine.fail("test -e /var/lib/nextcloud/data/data/notshared/files/note.txt")
+        machine.fail("test -e /var/lib/losos-cloud/notshared/files/note.txt")
         machine.fail("test -e /var/secrets/losos-backup.env")
         assert token() != old_token, "the admin token survived the erase"
         claim = machine.succeed("curl -fsS 127.0.0.1:8082/api/setup/claim")
         assert '"claimed":false' in claim.replace(" ", ""), claim
-        machine.wait_for_unit("postgresql.service")
-        machine.fail("runuser -u postgres -- psql -d nextcloud -tAc 'select body from notes'")
+        machine.fail("test -e /var/lib/losos-git/git.db")
+        machine.fail("test -e /var/lib/losos-cloud/cloud.db")
         machine.wait_for_unit("losos-fscrypt-shared.service")
         machine.fail(f"test -e {policy()}/lent.txt")
         report = json.loads(machine.succeed("cat /var/lib/losos-erase/report.json"))
@@ -301,6 +294,7 @@ pkgs.testers.nixosTest {
         # The bucket is somewhere the wipe does not reach. mc keeps its alias
         # under /root, which is the tmpfs root, so it is set again.
         machine.wait_for_unit("minio.service")
+        machine.wait_for_open_port(9000)
         machine.succeed(
             "mc alias set local http://127.0.0.1:9000 boxbackup boxbackup-secret-123",
             "mc ls local/box-backups | grep -c .",
@@ -323,10 +317,12 @@ pkgs.testers.nixosTest {
         api("POST", "/api/backup/restore", {"code": old_code.upper()})
         wait_job("done")
         machine.succeed(
-            f"grep -qF '{NOTE}' /var/lib/nextcloud/data/data/notshared/files/note.txt"
+            f"grep -qF '{NOTE}' /var/lib/losos-cloud/notshared/files/note.txt"
         )
-        row = machine.succeed("runuser -u postgres -- psql -d nextcloud -tAc 'select body from notes'")
+        row = machine.succeed("sqlite3 /var/lib/losos-git/git.db 'select body from notes'")
         assert row.strip() == ROW, row
+        event = machine.succeed("sqlite3 /var/lib/losos-cloud/cloud.db 'select body from events'")
+        assert event.strip() == EVENT, event
         p = policy()
         machine.succeed(f"fscrypt status {p} | grep -c '^Unlocked: *Yes'")
         machine.succeed(f"grep -qF '{SHARED_NOTE}' {p}/lent.txt")

@@ -29,7 +29,7 @@ in
       loadModels = [ cfg.model ];
       environmentVariables = {
         # One build at a time, one model in memory: a mini PC shares its
-        # memory with Nextcloud and the mesh.
+        # memory with LosOS Cloud, the apps and the mesh.
         OLLAMA_NUM_PARALLEL = "1";
         OLLAMA_MAX_LOADED_MODELS = "1";
         OLLAMA_MAX_QUEUE = "4";

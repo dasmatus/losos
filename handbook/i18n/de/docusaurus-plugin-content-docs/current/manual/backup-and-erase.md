@@ -51,7 +51,7 @@ Nur die Dateien kommen in Glacier. Der kleine Index, der die Sicherungen
 auflistet, bleibt in Standard, damit die Box einen Wiederherstellungscode
 weiterhin sofort prüfen und alte Sicherungen sofort aufräumen kann. Bei
 Flexible Retrieval und Deep Archive bittet eine Wiederherstellung AWS zuerst,
-die Sicherung bereitzustellen, und wartet; LosOS cloud und LosOS Git laufen
+die Sicherung bereitzustellen, und wartet; LosOS Cloud und LosOS Git laufen
 weiter, bis die Dateien zurück sind. AWS berechnet die Bereitstellung, und
 Glacier-Klassen haben außerdem eine Mindestspeicherdauer, sodass eine früh
 aufgeräumte Sicherung trotzdem für diese Dauer berechnet wird.
@@ -74,14 +74,14 @@ außerhalb der Box auf.
 
 ## Was eine Sicherung enthält \{#what-a-backup-holds}
 
-- die Dateien von LosOS cloud;
+- die Dateien von LosOS Cloud;
 - die Repositorys von LosOS Git;
 - die Datenbanken von beiden;
 - den Ordner, den die Box mit dem Mesh teilt, wenn das Teilen an ist (er wird
   für die Kopie geöffnet und danach wieder gesperrt);
 - jede Einstellung und das Aussehen der Startseite.
 
-Vorschaubilder, die LosOS cloud neu zeichnen kann, bleiben draußen. **Jetzt
+Vorschaubilder, die LosOS Cloud neu zeichnen kann, bleiben draußen. **Jetzt
 sichern** startet eine Sicherung. Die erste kopiert alles, spätere schicken
 nur, was sich geändert hat. Der Bucket behält die letzten sieben.
 
@@ -92,7 +92,7 @@ die Sicherung gemacht hat, und drücke **Wiederherstellen…**. Die neueste
 Sicherung im Bucket kommt zurück:
 
 - was jetzt auf der Box ist, wird durch den Inhalt der Sicherung ersetzt;
-- LosOS cloud und LosOS Git halten an, während die Dateien zurückgelegt
+- LosOS Cloud und LosOS Git halten an, während die Dateien zurückgelegt
   werden, und starten dann wieder. Aus Glacier Flexible Retrieval oder Deep
   Archive wird die Sicherung zuerst bereitgestellt, und das dauert Stunden;
 - die Einstellungen aus der Sicherung werden angewendet, und dabei baut sich

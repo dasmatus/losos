@@ -136,12 +136,11 @@ pub fn parse(text: &str) -> anyhow::Result<OptionsDoc> {
 
 /// Keys an older `overrides.nix` may still spell the old way, and the option
 /// each one is today. [`crate::overrides::parse_settings`] honours the
-/// first two, so a file that reads back fine there must pass the gate here
-/// too. The `forgejo.` ones are LosOS Git's settings from before it replaced
+/// first, so a file that reads back fine there must pass the gate here too.
+/// The `forgejo.` ones are LosOS Git's settings from before it replaced
 /// Forgejo (modules/options.nix keeps them evaluating); joined under the new
 /// name, the next Apply writes them that way.
 const ALIASES: &[(&str, &str)] = &[
-    ("aio.apachePort", "nextcloud.apachePort"),
     ("cfd.enable", "proxy.enable"),
     ("forgejo.enable", "git.enable"),
     ("forgejo.site.requireSignIn", "git.site.requireSignIn"),
@@ -183,7 +182,7 @@ pub fn join(doc: &OptionsDoc, overrides: &str) -> Value {
         .collect();
     let stray: Vec<Value> = set
         .iter()
-        .filter(|(k, _)| doc.find(canonical(k)).is_none())
+        .filter(|(k, _)| doc.find(canonical(k)).is_none() && !crate::overrides::is_retired(k))
         .map(|(k, v)| json!({ "key": k, "value": v }))
         .collect();
     json!({
@@ -216,6 +215,11 @@ pub struct Rejected(pub String);
 /// validate_apply`] handles the shape of the file.
 pub fn check_body(doc: &OptionsDoc, body: &str) -> Result<(), Rejected> {
     for (key, raw) in assignments(body) {
+        // An older box's line for something it no longer has; cmd_apply
+        // drops it on the way to the file.
+        if crate::overrides::is_retired(&key) {
+            continue;
+        }
         let name = canonical(&key);
         let Some(opt) = doc.find(name) else {
             return Err(Rejected(format!(
@@ -429,10 +433,10 @@ pub(crate) mod tests {
                  "description":"The box's name.","default":"mattbox","current":"mattbox","danger":true,"fixed":null,"readOnly":false},
                 {"name":"git.enable","group":"git","editor":{"kind":"bool"},"nixType":"boolean",
                  "default":true,"current":true,"danger":false,"fixed":null,"readOnly":false},
-                {"name":"nextcloud.mode","group":"nextcloud","editor":{"kind":"enum","values":["native","container"]},"nixType":"one of",
-                 "default":"container","current":"container","danger":true,"fixed":null,"readOnly":false},
-                {"name":"nextcloud.federation.enable","group":"nextcloud","editor":{"kind":"bool"},"nixType":"boolean",
-                 "default":true,"current":true,"danger":false,"fixed":null,"readOnly":false,"needs":"sharingMyStorage"},
+                {"name":"git.site.defaultPrivate","group":"git","editor":{"kind":"enum","values":["last","private","public"]},"nixType":"one of",
+                 "default":"last","current":"last","danger":false,"fixed":null,"readOnly":false},
+                {"name":"vms.host","group":"vms","editor":{"kind":"bool"},"nixType":"boolean",
+                 "default":false,"current":false,"danger":false,"fixed":null,"readOnly":false,"needs":"sharingMyStorage"},
                 {"name":"storage.fillPercent","group":"storage","editor":{"kind":"int","min":50,"max":100},"nixType":"integer",
                  "default":90,"current":90,"danger":true,"fixed":null,"readOnly":false},
                 {"name":"cluster.idleLoadThreshold","group":"cluster","editor":{"kind":"float"},"nixType":"float",
@@ -441,12 +445,12 @@ pub(crate) mod tests {
                  "default":["https://proxy.losos.dasmat.us"],"current":["https://proxy.losos.dasmat.us"],"danger":true,"fixed":null,"readOnly":false},
                 {"name":"proxy.noisePublicKeyFile","group":"proxy","editor":{"kind":"nullable","inner":{"kind":"str","form":"path"}},"nixType":"null or string",
                  "default":null,"current":"/var/secrets/x","danger":false,"fixed":null,"readOnly":false},
+                {"name":"proxy.enable","group":"proxy","editor":{"kind":"bool"},"nixType":"boolean",
+                 "default":false,"current":false,"danger":true,"fixed":null,"readOnly":false},
                 {"name":"tpm.enable","group":"tpm","editor":{"kind":"bool"},"nixType":"boolean",
                  "default":true,"current":true,"danger":false,"fixed":"installer","readOnly":true},
                 {"name":"backend.package","group":"backend","editor":{"kind":"opaque","reason":"null or package"},"nixType":"null or package",
-                 "default":{"package":"losos-ctl"},"current":{"package":"losos-ctl"},"danger":true,"fixed":null,"readOnly":true},
-                {"name":"nextcloud.apachePort","group":"nextcloud","editor":{"kind":"int","min":0,"max":65535},"nixType":"16 bit unsigned integer",
-                 "default":11000,"current":11000,"danger":false,"fixed":null,"readOnly":false}
+                 "default":{"package":"losos-ctl"},"current":{"package":"losos-ctl"},"danger":true,"fixed":null,"readOnly":true}
               ],
               "excluded": {"edge": "the VPS side"}
             }"#,
@@ -480,8 +484,12 @@ pub(crate) mod tests {
                 })
             }
         );
-        let back = serde_json::to_value(&doc.find("nextcloud.mode").unwrap().editor).unwrap();
-        assert_eq!(back, json!({"kind":"enum","values":["native","container"]}));
+        let back =
+            serde_json::to_value(&doc.find("git.site.defaultPrivate").unwrap().editor).unwrap();
+        assert_eq!(
+            back,
+            json!({"kind":"enum","values":["last","private","public"]})
+        );
     }
 
     #[test]
@@ -494,14 +502,15 @@ pub(crate) mod tests {
         let doc = sample();
         let out = join(
             &doc,
-            "{ ... }:\n{\n  losos.hostName = \"box2\";\n  losos.aio.apachePort = 12000;\n  losos.ghost = 1;\n}\n",
+            "{ ... }:\n{\n  losos.hostName = \"box2\";\n  losos.cfd.enable = true;\n  losos.nextcloud.mode = \"container\";\n  losos.ghost = 1;\n}\n",
         );
         let opts = out["options"].as_array().unwrap();
         let by = |n: &str| opts.iter().find(|o| o["name"] == n).unwrap().clone();
         assert_eq!(by("hostName")["set"], "\"box2\"");
         assert_eq!(by("git.enable")["set"], Value::Null);
-        // The legacy spelling lands on the option it became.
-        assert_eq!(by("nextcloud.apachePort")["set"], "12000");
+        // The legacy spelling lands on the option it became, and a retired
+        // one is no stray: lososd drops it on the next write.
+        assert_eq!(by("proxy.enable")["set"], "true");
         assert_eq!(out["stray"], json!([{"key": "ghost", "value": "1"}]));
         assert_eq!(out["available"], true);
         let out = join(&doc, "{ ... }:\n{\n  losos.forgejo.enable = false;\n}\n");
@@ -517,10 +526,7 @@ pub(crate) mod tests {
         let out = join(&doc, "{ ... }:\n{\n}\n");
         let opts = out["options"].as_array().unwrap();
         let by = |n: &str| opts.iter().find(|o| o["name"] == n).unwrap().clone();
-        assert_eq!(
-            by("nextcloud.federation.enable")["needs"],
-            "sharingMyStorage"
-        );
+        assert_eq!(by("vms.host")["needs"], "sharingMyStorage");
         assert!(by("git.enable").get("needs").is_none());
     }
 
@@ -528,16 +534,15 @@ pub(crate) mod tests {
     fn a_body_of_fitting_literals_passes() {
         let doc = sample();
         let body = "{ ... }:\n{\n  losos.hostName = \"box2\";\n  losos.git.enable = false;\n  \
-                    losos.nextcloud.mode = \"native\";\n  losos.storage.fillPercent = 75;\n  \
+                    losos.git.site.defaultPrivate = \"private\";\n  losos.storage.fillPercent = 75;\n  \
                     losos.cluster.idleLoadThreshold = 0.5;\n  \
                     losos.cache.substituters = [ \"https://a\" \"https://b\" ];\n  \
                     losos.proxy.noisePublicKeyFile = null;\n  losos.cfd.enable = true;\n}\n";
-        // `cfd.enable` is an alias of proxy.enable, which the sample does not
-        // declare — so that line alone must be the one refused.
-        let err = check_body(&doc, body).unwrap_err();
+        // `cfd.enable` is checked as proxy.enable, the option it became.
+        assert_eq!(check_body(&doc, body), Ok(()));
+        let body = body.replace("losos.cfd.enable = true", "losos.cfd.enable = 1");
+        let err = check_body(&doc, &body).unwrap_err();
         assert!(err.0.contains("losos.cfd.enable"), "{err}");
-        let body = body.replace("  losos.cfd.enable = true;\n", "");
-        assert_eq!(check_body(&doc, &body), Ok(()));
     }
 
     #[test]
@@ -574,8 +579,8 @@ pub(crate) mod tests {
             ),
             ("losos.cluster.idleLoadThreshold = 1;", "must be a decimal"),
             (
-                "losos.nextcloud.mode = \"podman\";",
-                "must be one of native, container",
+                "losos.git.site.defaultPrivate = \"open\";",
+                "must be one of last, private, public",
             ),
             ("losos.hostName = box;", "must be a double-quoted string"),
             (
@@ -632,7 +637,7 @@ pub(crate) mod tests {
         let cases: Vec<(&str, Value)> = vec![
             ("hostName", json!("box-2")),
             ("git.enable", json!(false)),
-            ("nextcloud.mode", json!("native")),
+            ("git.site.defaultPrivate", json!("private")),
             ("storage.fillPercent", json!(80)),
             ("cluster.idleLoadThreshold", json!(1.0)),
             ("cluster.idleLoadThreshold", json!(0.25)),

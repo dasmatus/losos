@@ -28,7 +28,8 @@ pub use envelope::{
 };
 pub use keys::{HostKey, KeyError, Keyring, SeededKey};
 pub use tokens::{
-    path_allowed, Scope, TokenError, TokenRecord, TokenView, Tokens, MAX_NAME_CHARS, MAX_TOKENS,
+    companion_route, path_allowed, Scope, TokenError, TokenRecord, TokenView, Tokens,
+    COMPANION_CLIENT_ID, COMPANION_ROUTES, MAX_NAME_CHARS, MAX_TOKENS,
 };
 
 /// A fingerprint as the contract writes it: upper-case hex, no spaces.

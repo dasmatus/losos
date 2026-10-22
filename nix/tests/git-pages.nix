@@ -36,14 +36,6 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-
   # LosOS Reviewer's model: Ollama replaced by the stand-in that replays
   # what Qwen2.5-Coder 1.5B answered about the same prune.sh
   # (git-reviewer/ollama-stand-in.py, recorded 2026-10-21). The comment
@@ -107,7 +99,6 @@ pkgs.testers.nixosTest {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
         admin.ui = lososPkgs.losos-admin-ui;
-        nextcloud.mode = "native";
         git.enable = true;
         mdns.enable = true;
         # What modules/git.nix reads to find the model; modules/builder.nix
@@ -122,8 +113,6 @@ pkgs.testers.nixosTest {
         before = [ "losos-git.service" ];
         serviceConfig.ExecStart = "${pkgs.python3}/bin/python3 ${./git-reviewer/ollama-stand-in.py} 11434 ${model} ${answers} 45";
       };
-      systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
       # The same box before the pages, for the pictures' "before" column:
       # LosOS Git answered every /git/ address itself.
       specialisation.before.configuration.services.nginx.virtualHosts."losos-front".locations."/git/" =

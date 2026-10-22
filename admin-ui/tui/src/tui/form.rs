@@ -2,7 +2,7 @@
 //!
 //! `/api/apply` takes the WHOLE of `modules/overrides.nix`, so the draft is
 //! a complete settings document and every pane edits a slice of it; Apply
-//! writes all fifteen lines plus every other line the file already carries,
+//! writes all twelve lines plus every other line the file already carries,
 //! the way the web UI's `buildOverridesNix` does. Nothing takes effect until
 //! Apply, and Apply asks before it starts a rebuild. The shell polls
 //! `/api/status` while one runs.
@@ -12,17 +12,13 @@ use serde_json::Value;
 
 use crate::i18n::t;
 
-/// GET /api/settings, the fifteen settings the panes own.
+/// GET /api/settings, the twelve settings the panes own.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub sharing_my_storage: bool,
-    pub nextcloud_mode: String,
     pub host_name: String,
-    pub https: bool,
     pub gpu_enable: bool,
-    /// None while what was typed is not a number.
-    pub apache_port: Option<i64>,
     pub proxy_enable: bool,
     pub cluster_enable: bool,
     pub share_compute: bool,
@@ -37,11 +33,8 @@ pub struct Settings {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SettingKey {
     SharingMyStorage,
-    NextcloudMode,
     HostName,
-    Https,
     GpuEnable,
-    ApachePort,
     ProxyEnable,
     ClusterEnable,
     ShareCompute,
@@ -54,13 +47,10 @@ pub enum SettingKey {
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 15] = [
+    pub const ALL: [SettingKey; 12] = [
         SettingKey::SharingMyStorage,
-        SettingKey::NextcloudMode,
         SettingKey::HostName,
-        SettingKey::Https,
         SettingKey::GpuEnable,
-        SettingKey::ApachePort,
         SettingKey::ProxyEnable,
         SettingKey::ClusterEnable,
         SettingKey::ShareCompute,
@@ -78,14 +68,12 @@ impl SettingKey {
 pub enum SettingValue {
     Bool(bool),
     Text(String),
-    Port(Option<i64>),
 }
 
 impl Settings {
     fn bool_mut(&mut self, key: SettingKey) -> Option<&mut bool> {
         Some(match key {
             SettingKey::SharingMyStorage => &mut self.sharing_my_storage,
-            SettingKey::Https => &mut self.https,
             SettingKey::GpuEnable => &mut self.gpu_enable,
             SettingKey::ProxyEnable => &mut self.proxy_enable,
             SettingKey::ClusterEnable => &mut self.cluster_enable,
@@ -100,7 +88,6 @@ impl Settings {
 
     fn text_mut(&mut self, key: SettingKey) -> Option<&mut String> {
         Some(match key {
-            SettingKey::NextcloudMode => &mut self.nextcloud_mode,
             SettingKey::HostName => &mut self.host_name,
             SettingKey::ComputeWindowStart => &mut self.compute_window_start,
             SettingKey::ComputeWindowEnd => &mut self.compute_window_end,
@@ -124,19 +111,11 @@ impl Settings {
                     *s = v;
                 }
             }
-            SettingValue::Port(v) => {
-                if key == SettingKey::ApachePort {
-                    self.apache_port = v;
-                }
-            }
         }
     }
 
     fn differs(&self, other: &Settings, key: SettingKey) -> bool {
         let (mut a, mut b) = (self.clone(), other.clone());
-        if key == SettingKey::ApachePort {
-            return a.apache_port != b.apache_port;
-        }
         if let (Some(x), Some(y)) = (a.bool_mut(key), b.bool_mut(key)) {
             return x != y;
         }
@@ -163,14 +142,11 @@ fn nix_bool(value: bool) -> &'static str {
     }
 }
 
-/// The fifteen `losos.*` names the lines below always write.
-pub const OWNED_NAMES: [&str; 15] = [
+/// The twelve `losos.*` names the lines below always write.
+pub const OWNED_NAMES: [&str; 12] = [
     "sharingMyStorage",
-    "nextcloud.mode",
     "hostName",
-    "nextcloud.https",
     "gpu.enable",
-    "nextcloud.apachePort",
     "proxy.enable",
     "cluster.enable",
     "cluster.shareCompute",
@@ -183,7 +159,7 @@ pub const OWNED_NAMES: [&str; 15] = [
 ];
 
 /// The full `modules/overrides.nix` body, as the web UI's
-/// `buildOverridesNix` writes it: the fifteen, then every other line the
+/// `buildOverridesNix` writes it: the twelve, then every other line the
 /// file carries, sorted, so the commit lososd makes shows only what changed.
 pub fn build_overrides_nix(s: &Settings, extra: &[(String, String)]) -> String {
     let mut extra: Vec<&(String, String)> = extra
@@ -198,17 +174,8 @@ pub fn build_overrides_nix(s: &Settings, extra: &[(String, String)]) -> String {
             "  losos.sharingMyStorage = {};",
             nix_bool(s.sharing_my_storage)
         ),
-        format!(
-            "  losos.nextcloud.mode = {};",
-            nix_string(&s.nextcloud_mode)
-        ),
         format!("  losos.hostName = {};", nix_string(&s.host_name)),
-        format!("  losos.nextcloud.https = {};", nix_bool(s.https)),
         format!("  losos.gpu.enable = {};", nix_bool(s.gpu_enable)),
-        format!(
-            "  losos.nextcloud.apachePort = {};",
-            s.apache_port.unwrap_or_default()
-        ),
         format!("  losos.proxy.enable = {};", nix_bool(s.proxy_enable)),
         format!("  losos.cluster.enable = {};", nix_bool(s.cluster_enable)),
         format!(
@@ -287,14 +254,9 @@ pub fn is_valid_host_name(value: &str) -> bool {
         && b.iter().all(|c| alnum(c) || *c == b'-')
 }
 
-pub fn is_valid_port(value: Option<i64>) -> bool {
-    value.is_some_and(|p| (1024..=65535).contains(&p))
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Problems {
     pub host_name: Option<String>,
-    pub apache_port: Option<String>,
     pub compute_window: Option<String>,
 }
 
@@ -313,7 +275,6 @@ pub fn problems_of(draft: Option<&Settings>) -> Problems {
     };
     Problems {
         host_name: host_name.map(t),
-        apache_port: (!is_valid_port(d.apache_port)).then(|| t("settings.form.port")),
         compute_window: (!(is_valid_time(&d.compute_window_start)
             && is_valid_time(&d.compute_window_end)))
         .then(|| t("settings.form.window")),
@@ -404,11 +365,8 @@ mod tests {
     pub(crate) fn sample() -> Settings {
         Settings {
             sharing_my_storage: true,
-            nextcloud_mode: "container".into(),
             host_name: "mattbox".into(),
-            https: true,
             gpu_enable: false,
-            apache_port: Some(8080),
             proxy_enable: false,
             cluster_enable: true,
             share_compute: true,
@@ -435,11 +393,11 @@ mod tests {
         );
         let lines: Vec<&str> = body.lines().collect();
         assert_eq!(lines[0], "{ ... }:");
-        assert_eq!(lines[4], "  losos.hostName = \"a\\\"b\\${c}\";");
-        assert_eq!(lines[7], "  losos.nextcloud.apachePort = 8080;");
-        assert_eq!(lines[17], "  losos.apps.ports = [ ];");
-        assert_eq!(lines[18], "  losos.upgradeFlakeUri = \"github:x/y\";");
-        assert_eq!(lines[19], "}");
+        assert_eq!(lines[3], "  losos.hostName = \"a\\\"b\\${c}\";");
+        assert_eq!(lines[4], "  losos.gpu.enable = false;");
+        assert_eq!(lines[14], "  losos.apps.ports = [ ];");
+        assert_eq!(lines[15], "  losos.upgradeFlakeUri = \"github:x/y\";");
+        assert_eq!(lines[16], "}");
         assert!(body.ends_with("}\n"));
         assert!(!body.contains("dropped"));
     }
@@ -450,7 +408,6 @@ mod tests {
         assert!(!is_valid_time("24:00") && !is_valid_time("7:00") && !is_valid_time("23:60"));
         assert!(is_valid_host_name("mattbox-2"));
         assert!(!is_valid_host_name("-x") && !is_valid_host_name("a b") && !is_valid_host_name(""));
-        assert!(is_valid_port(Some(1024)) && !is_valid_port(Some(80)) && !is_valid_port(None));
     }
 
     #[test]
@@ -461,11 +418,11 @@ mod tests {
             serde_json::json!({"available": false, "options": [], "stray": []}),
         );
         assert!(!form.dirty());
-        form.set(SettingKey::Https, SettingValue::Bool(false));
+        form.set(SettingKey::GpuEnable, SettingValue::Bool(true));
         form.set(SettingKey::HostName, SettingValue::Text("box2".into()));
         assert_eq!(form.change_count(), 2);
         assert!(form.apply_body().is_some());
-        form.set(SettingKey::ApachePort, SettingValue::Port(None));
+        form.set(SettingKey::HostName, SettingValue::Text("-box".into()));
         assert!(!form.valid());
         assert!(form.apply_body().is_none());
         form.discard();

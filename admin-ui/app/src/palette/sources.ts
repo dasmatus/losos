@@ -17,7 +17,7 @@ export interface CloudFile {
   name: string;
   /** Where it sits in LosOS cloud, from the owner's root. */
   path: string;
-  /** Nextcloud's file id: /nextcloud/index.php/f/<id> opens it. */
+  /** LosOS Cloud's file id: /cloud/files?fileid=<id> opens it. */
   id: number;
   folder: boolean;
 }
@@ -153,7 +153,7 @@ export async function searchApps(query: string, signal: AbortSignal): Promise<An
 }
 
 export function fileHref(file: CloudFile): string {
-  return `/nextcloud/index.php/f/${file.id}`;
+  return `/cloud/files?fileid=${file.id}`;
 }
 
 export function repoHref(repo: GitRepo): string {
@@ -165,14 +165,11 @@ function segments(path: string): string {
   return path.split("/").filter((part) => part.length > 0).map(encodeURIComponent).join("/");
 }
 
-/* A cloud hit opens its folder in LosOS cloud's Files with the file
- * scrolled to: the index knows paths, and Nextcloud's /f/<id> wants the id
- * only Nextcloud's own database holds. */
+/* A cloud hit opens its folder in LosOS Cloud's Files: the index knows
+ * paths, not the file ids the web app's ?fileid= wants. */
 export function cloudTextHref(hit: CloudText): string {
   const cut = hit.path.lastIndexOf("/");
-  const dir = cut < 0 ? "/" : `/${hit.path.slice(0, cut)}`;
-  const name = hit.path.slice(cut + 1);
-  return `/nextcloud/index.php/apps/files/?dir=${encodeURIComponent(dir)}&scrollto=${encodeURIComponent(name)}`;
+  return cut < 0 ? "/cloud/files" : `/cloud/files/${segments(hit.path.slice(0, cut))}`;
 }
 
 /** The line in LosOS Git's file view. */

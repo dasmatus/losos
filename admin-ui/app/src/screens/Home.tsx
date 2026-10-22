@@ -31,7 +31,6 @@ import {
   probeApps,
   recallAvailability,
   rememberAvailability,
-  servedHere,
   type AppAttention,
   type AppFacts,
   type AppId,
@@ -106,10 +105,10 @@ export function Home({
   const signedIn = React.useSyncExternalStore(subscribeAuth, hasToken, () => false);
   const health = useHealth();
   const { settings, boxState, status, measured } = useBoxFacts(signedIn);
-  const availability = useAvailability(settings);
+  const availability = useAvailability();
   const disk = storage ?? measured;
 
-  const facts = buildFacts({ availability, settings, status, storage: disk });
+  const facts = buildFacts({ availability, status, storage: disk });
   const model = deriveApps(facts);
 
   const hostName = settings?.hostName ?? browserHostName();
@@ -426,12 +425,10 @@ function clampPercent(value: number): number {
  * dot is a state the box actually reported, never a hunch. */
 function buildFacts({
   availability,
-  settings,
   status,
   storage,
 }: {
   availability: { seen: Availabilities; measured: boolean };
-  settings: SettingsResponse | null;
   status: StatusResponse | null;
   storage: HomeStorage | null;
 }): AppFacts {
@@ -461,13 +458,7 @@ function buildFacts({
   return {
     files: availability.seen.files,
     code: availability.seen.code,
-    mail: availability.seen.mail,
     measured: availability.measured,
-    ...(settings === null
-      ? {}
-      : {
-          filesServedHere: servedHere(settings.nextcloudMode),
-        }),
     details,
     attention,
   };
@@ -622,7 +613,7 @@ function useBoxFacts(signedIn: boolean): {
  * overwrites a remembered "present": a box does not lose its apps because one
  * request failed, and the grid emptying itself on a flaky network is the exact
  * failure this whole module exists to avoid. */
-function useAvailability(settings: SettingsResponse | null): {
+function useAvailability(): {
   seen: Availabilities;
   measured: boolean;
 } {
@@ -640,7 +631,6 @@ function useAvailability(settings: SettingsResponse | null): {
         const next: Availabilities = {
           files: probed.files === "unknown" ? previous.files : probed.files,
           code: probed.code === "unknown" ? previous.code : probed.code,
-          mail: probed.mail === "unknown" ? previous.mail : probed.mail,
         };
         rememberAvailability(next);
         return next;
@@ -653,20 +643,6 @@ function useAvailability(settings: SettingsResponse | null): {
       controller.abort();
     };
   }, []);
-
-  /* An app served under this box's own name rather than from this page is not
-   * something the probe can see: there is no route here to ask. Forget what
-   * was remembered about it instead of leaving a stale "present" behind, and
-   * let `filesServedHere` do the deciding. */
-  React.useEffect(() => {
-    if (settings === null) return;
-    if (servedHere(settings.nextcloudMode)) return;
-    setSeen((previous) => ({
-      ...previous,
-      files: "unknown",
-      mail: "unknown",
-    }));
-  }, [settings]);
 
   return { seen, measured };
 }

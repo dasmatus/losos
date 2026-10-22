@@ -133,7 +133,7 @@ export function pageItems(): Item[] {
   return items;
 }
 
-/* The LosOS cloud apps and LosOS Git, as the Overview's tiles have them:
+/* The LosOS Cloud pages and LosOS Git, as the Overview's tiles have them:
  * only what this browser last saw answering (lib/apps.ts), so the palette
  * does not offer a link the grid would have hidden. Settings is left out;
  * it is a page here already. */
@@ -142,7 +142,6 @@ export function appItems(): Item[] {
   const shown = (app: AppDefinition): boolean => {
     if (app.provider === "box") return false;
     if (app.provider === "code") return seen.code !== "absent";
-    if (app.optional === true) return seen.mail === "present";
     return seen.files !== "absent";
   };
   return CATALOGUE.filter(shown).map((app) => ({
@@ -152,7 +151,7 @@ export function appItems(): Item[] {
     detail: t(app.provider === "code" ? "palette.inGit" : "palette.inCloud"),
     icon: app.icon,
     words: `${template(app.name, undefined, "en")} ${both(app.note)}`,
-    target: { kind: "href", href: app.provider === "code" ? "/git/" : `/nextcloud${app.path}` },
+    target: { kind: "href", href: app.provider === "code" ? "/git/" : `/cloud${app.path}` },
     pin: { kind: "tile", app: app.id },
   }));
 }

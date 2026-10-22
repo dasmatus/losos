@@ -20,8 +20,7 @@ them in full.
 | Network  | Reachable from outside      | `losos.proxy.enable`                                | off                     |
 | Network  | Edge address                | `losos.proxy.registrarUrl`                          | the LosOS edge          |
 | Apps     | LosOS Git                   | `losos.git.enable`                                  | on                      |
-| Apps     | mode (read-only)            | `losos.nextcloud.mode`                              | `container`             |
-| Apps     | LosOS cloud, settings for everyone | `losos.nextcloud.site.*` | as LosOS cloud ships |
+| Apps     | LosOS Cloud, days in the trash | `losos.cloud.trashDays` | 30 |
 | Apps     | LosOS Git, settings for everyone | `losos.git.site.*` | as LosOS Git ships |
 | Storage  | Use the reserve             | runs `losos-ctl grow`, and the reserve is `losos.storage.fillPercent` | 90 %  |
 | Mesh     | Join the mesh               | `losos.cluster.enable`                              | off                     |
@@ -42,7 +41,6 @@ them in full.
 | Whether the box updates at all       | `losos.configRepo.upstream.enable` | on                                         |
 | What the nightly rebuild builds      | `losos.upgradeFlakeUri`            | `git+file:///etc/nixos#install`, the box's own repository |
 | The hardening baseline               | `losos.hardening.enable`           | on                                         |
-| LosOS cloud federation               | `losos.nextcloud.federation.enable` | on, while the disk is shared              |
 | The disk unlock mode                 | `losos.tpm.enable`                 | what the installer found                    |
 | UEFI or BIOS                         | `losos.bios`                       | what the installer found                    |
 | The disks                            | `losos.targetDrives`               | what the installer found                    |

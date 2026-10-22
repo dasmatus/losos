@@ -1,6 +1,8 @@
 //! A box or an edge on loopback that answers the envelope the way lososd and
 //! losos-registrar do, with losos-access's own server half, and an `Io` that
-//! captures what a command prints.
+//! captures what a command prints. A box also plays LosOS Login's device
+//! sign-in for the companion ([`Login`]) and takes its Bearer tokens on the
+//! companion's routes, as lososd does.
 
 #![allow(dead_code)]
 
@@ -29,6 +31,104 @@ pub struct Mock {
     pub ring: Arc<Mutex<String>>,
     /// Every call that opened: method, path, body.
     pub calls: Arc<Mutex<Vec<(String, String, Value)>>>,
+    /// LosOS Login's side of the companion's sign-in.
+    pub login: Arc<Mutex<Login>>,
+}
+
+/// What the box's LosOS Login knows of the companion.
+#[derive(Default)]
+pub struct Login {
+    /// The browser says no instead of approving.
+    pub deny: bool,
+    /// How often the token endpoint was asked for the device code.
+    pub polls: u32,
+    /// Live access tokens.
+    pub access: Vec<String>,
+    /// The one refresh token that still counts.
+    pub refresh: Option<String>,
+    pub refreshes: u32,
+    /// Tokens handed back at the revocation endpoint.
+    pub revoked: Vec<String>,
+    /// Every Bearer token the box was shown, live or not.
+    pub shown: Vec<String>,
+    issued: u32,
+}
+
+impl Login {
+    fn issue(&mut self) -> Value {
+        self.issued += 1;
+        let access = format!("authelia_at_{}.sig", self.issued);
+        let refresh = format!("authelia_rt_{}.sig", self.issued);
+        self.access.push(access.clone());
+        self.refresh = Some(refresh.clone());
+        json!({ "access_token": access, "refresh_token": refresh,
+            "expires_in": 3599, "token_type": "bearer", "scope": "openid profile offline_access" })
+    }
+
+    /// The box stops taking every access token it handed out, as an hour
+    /// going by does.
+    pub fn expire(&mut self) {
+        self.access.clear();
+    }
+
+    /// The token endpoint, the device authorization and the revocation.
+    fn answer(&mut self, url: &str, path: &str, form: &HashMap<String, String>) -> (u16, Value) {
+        let oauth = |error: &str| (400, json!({ "error": error }));
+        if form.get("client_id").map(String::as_str) != Some(losos_access::COMPANION_CLIENT_ID) {
+            return (401, json!({ "error": "invalid_client" }));
+        }
+        match path {
+            "/auth/api/oidc/device-authorization" => {
+                let page = format!("{url}/auth/consent/openid/device-authorization");
+                (
+                    200,
+                    json!({ "device_code": "authelia_dc_1", "user_code": "WDJBMJHT",
+                    "verification_uri": page,
+                    "verification_uri_complete": format!("{page}?user_code=WDJBMJHT"),
+                    "expires_in": 600, "interval": 0 }),
+                )
+            }
+            "/auth/api/oidc/token" => match form.get("grant_type").map(String::as_str) {
+                Some("urn:ietf:params:oauth:grant-type:device_code") => {
+                    self.polls += 1;
+                    if form.get("device_code").map(String::as_str) != Some("authelia_dc_1") {
+                        oauth("invalid_grant")
+                    } else if self.polls == 1 {
+                        oauth("authorization_pending")
+                    } else if self.deny {
+                        oauth("access_denied")
+                    } else {
+                        (200, self.issue())
+                    }
+                }
+                Some("refresh_token") => {
+                    // A refresh token counts once; showing an old one ends
+                    // the whole sign-in, as LosOS Login does.
+                    if form.get("refresh_token") == self.refresh.as_ref() {
+                        self.refreshes += 1;
+                        // The access token it replaces stops counting too.
+                        self.access.clear();
+                        (200, self.issue())
+                    } else {
+                        self.access.clear();
+                        self.refresh = None;
+                        oauth("invalid_grant")
+                    }
+                }
+                _ => oauth("unsupported_grant_type"),
+            },
+            "/auth/api/oidc/revocation" => {
+                let token = form.get("token").cloned().unwrap_or_default();
+                self.access.retain(|t| *t != token);
+                if self.refresh.as_ref() == Some(&token) {
+                    self.refresh = None;
+                }
+                self.revoked.push(token);
+                (200, json!({}))
+            }
+            _ => (404, json!({ "error": "not here" })),
+        }
+    }
 }
 
 impl Mock {
@@ -109,13 +209,15 @@ fn serve(
     ));
     let ring = Arc::new(Mutex::new(seeded.to_string()));
     let calls = Arc::new(Mutex::new(Vec::new()));
+    let login = Arc::new(Mutex::new(Login::default()));
     let (key_path, call_path) = if edge {
         ("/operator/host-key", "/operator/call")
     } else {
         ("/api/access/host-key", "/api/access/call")
     };
     {
-        let (host, ring, calls) = (host.clone(), ring.clone(), calls.clone());
+        let (host, ring, calls, login) = (host.clone(), ring.clone(), calls.clone(), login.clone());
+        let url = url.clone();
         std::thread::spawn(move || {
             let replay = Replay::default();
             for mut request in server.incoming_requests() {
@@ -123,11 +225,11 @@ fn serve(
                 let mut body = Vec::new();
                 let _ = request.as_reader().read_to_end(&mut body);
                 // What a box's front door answers outside the API: LosOS
-                // cloud's WebDAV asks for credentials, LosOS Git a page.
-                if !edge && path.starts_with("/nextcloud/") {
+                // Cloud's WebDAV asks for credentials, LosOS Git a page.
+                if !edge && path.starts_with("/remote.php/") {
                     let challenge = tiny_http::Header::from_bytes(
                         "WWW-Authenticate",
-                        r#"Basic realm="LosOS cloud", charset="UTF-8""#,
+                        r#"Basic realm="LosOS Cloud", charset="UTF-8""#,
                     )
                     .unwrap();
                     let _ = request.respond(
@@ -137,7 +239,40 @@ fn serve(
                     );
                     continue;
                 }
-                let (status, content_type, text) = if path == key_path {
+                let bearer = request
+                    .headers()
+                    .iter()
+                    .find(|h| h.field.equiv("Authorization"))
+                    .and_then(|h| h.value.as_str().strip_prefix("Bearer ").map(str::to_string));
+                let method = request.method().as_str().to_string();
+                let (status, content_type, text) = if !edge && path.starts_with("/auth/api/oidc/") {
+                    let form: HashMap<String, String> =
+                        url::form_urlencoded::parse(&body).into_owned().collect();
+                    let (status, answer) = login.lock().unwrap().answer(&url, &path, &form);
+                    (status, "application/json", answer.to_string())
+                } else if let Some(token) = bearer.filter(|_| !edge) {
+                    // lososd: a live companion token, on the companion's
+                    // routes only.
+                    let mut login = login.lock().unwrap();
+                    login.shown.push(token.clone());
+                    if !login.access.contains(&token) {
+                        (
+                            401,
+                            "application/json",
+                            json!({ "error": "sign in" }).to_string(),
+                        )
+                    } else if !losos_access::companion_route(&method, &path) {
+                        (403, "application/json",
+                            json!({ "error": "the LosOS companion reads files, repositories and the box's health, nothing else" }).to_string())
+                    } else {
+                        calls
+                            .lock()
+                            .unwrap()
+                            .push((method.clone(), path.clone(), Value::Null));
+                        let (status, answer) = handler(&method, &path, &Value::Null);
+                        (status, "application/json", answer.to_string())
+                    }
+                } else if path == key_path {
                     let host = host.lock().unwrap();
                     let doc = json!({ "fingerprint": host.fingerprint(), "publicKey": host.armored_public() });
                     (200, "application/json", doc.to_string())
@@ -189,6 +324,7 @@ fn serve(
         host,
         ring,
         calls,
+        login,
     }
 }
 

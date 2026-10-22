@@ -1,26 +1,19 @@
 //! `POST /api/devices/cloud` and `POST /api/devices/git` — credentials for
 //! one computer of the owner's.
 //!
-//! The terminal client sets up a computer to use LosOS cloud and LosOS Git
+//! The terminal client sets up a computer to use LosOS Cloud and LosOS Git
 //! without the owner copying anything: it asks the box for a credential of
 //! that computer's own, keeps it in the computer's keychain and points the
 //! file manager and git at it. The owner's password never leaves the call,
 //! and what is stored on the computer can be revoked on its own.
 //!
-//! Both routes take the owner's password. Nextcloud mints an app password
-//! only for a session that signed in with the real password (`GET
-//! /ocs/v2.php/core/getapppassword`), so that one is sent the way the
-//! sign-in sends it: as a header in request bytes built here, written to a
-//! loopback socket by the backend, never in an argv (see the header of
-//! [`crate::setup`]). LosOS Git holds no passwords: lososd checks the
-//! owner's against the people file and asks LosOS Git, as its
-//! administrator, for a token (`crate::config_repo::GitOp::CreateToken`).
+//! Both routes take the owner's password and check it against LosOS Login's
+//! people file first. LosOS Cloud then makes the app password for the owner
+//! on its socket (`crate::pins::CloudRequest::MintKey`). LosOS Git holds no
+//! passwords: lososd asks it, as its administrator, for a token
+//! (`crate::config_repo::GitOp::CreateToken`).
 //!
-//! The builders and readers are pure so the tests can check every byte.
-//! Requests are HTTP/1.0: both servers then answer with a plain body ended
-//! by the closed connection, and there is no chunked encoding to undo.
-
-use crate::setup::Secret;
+//! The readers are pure so the tests can check every byte.
 
 /// Longest computer name, in characters. It ends up in a token name, which
 /// LosOS Git caps at 100, and in the owner's list of app passwords.
@@ -31,9 +24,10 @@ pub const MAX_DEVICE_CHARS: usize = 48;
 /// administer, nothing about other users.
 pub const GIT_SCOPES: [&str; 2] = ["write:repository", "read:user"];
 
-/// Where Nextcloud's WebDAV tree for `user` starts, below the box's address.
+/// Where LosOS Cloud's WebDAV tree for `user` starts, below the box's
+/// address (`modules/cloud.nix`).
 pub fn dav_path(user: &str) -> String {
-    format!("/nextcloud/remote.php/dav/files/{user}/")
+    format!("/remote.php/dav/files/{user}/")
 }
 
 /// Where LosOS Git starts, below the box's address.
@@ -64,77 +58,9 @@ pub fn validate_device(name: &str) -> Result<String, String> {
 }
 
 /// What both credentials are called, so the owner recognises them in LosOS
-/// cloud's security settings and in LosOS Git's applications.
+/// Cloud's Devices and in LosOS Git's applications.
 pub fn credential_name(device: &str) -> String {
     format!("LosOS on {device}")
-}
-
-/// The app password route beside the sign-in probe's: same Apache, same
-/// subpath, so it is derived from `$LOSOS_NEXTCLOUD_LOGIN_URL` rather than
-/// configured a second time.
-pub fn app_password_path(login_path: &str) -> String {
-    let base = login_path
-        .split_once("/ocs/")
-        .map(|(base, _)| base)
-        .unwrap_or("");
-    format!("{base}/ocs/v2.php/core/getapppassword")
-}
-
-/// `GET …/core/getapppassword` as `user` with the real password. Nextcloud
-/// names the new app password after the `User-Agent`, so that header carries
-/// [`credential_name`]. `client` is forwarded as in
-/// [`crate::signin::login_request`], so Nextcloud's throttle counts the
-/// caller and not lososd.
-pub fn app_password_request(
-    path: &str,
-    host: &str,
-    user: &str,
-    secret: &Secret,
-    device: &str,
-    client: &str,
-) -> Vec<u8> {
-    let mut extra = vec![
-        "OCS-APIRequest: true".to_string(),
-        format!("User-Agent: {}", credential_name(device)),
-    ];
-    if client.parse::<std::net::IpAddr>().is_ok() {
-        extra.push(format!("X-Forwarded-For: {client}"));
-    }
-    basic_request("GET", path, host, user, secret, &extra, None)
-}
-
-fn basic_request(
-    method: &str,
-    path: &str,
-    host: &str,
-    user: &str,
-    secret: &Secret,
-    extra: &[String],
-    body: Option<&str>,
-) -> Vec<u8> {
-    let credentials = crate::signin::base64(format!("{user}:{}", secret.expose()).as_bytes());
-    let mut out = String::new();
-    out.push_str(&format!("{method} {path} HTTP/1.0\r\n"));
-    out.push_str(&format!("Host: {}\r\n", header_safe(host)));
-    out.push_str(&format!("Authorization: Basic {credentials}\r\n"));
-    out.push_str("Accept: application/json\r\n");
-    for line in extra {
-        out.push_str(&header_safe(line));
-        out.push_str("\r\n");
-    }
-    if let Some(body) = body {
-        out.push_str("Content-Type: application/json\r\n");
-        out.push_str(&format!("Content-Length: {}\r\n", body.len()));
-    }
-    out.push_str("Connection: close\r\n\r\n");
-    if let Some(body) = body {
-        out.push_str(body);
-    }
-    out.into_bytes()
-}
-
-fn header_safe(value: &str) -> String {
-    value.chars().filter(|c| !c.is_control()).collect()
 }
 
 /// A whole HTTP/1.x answer split into its status and its body.
@@ -158,7 +84,7 @@ pub enum Minted {
     Unavailable(String),
 }
 
-/// Nextcloud's answer to [`app_password_request`].
+/// LosOS Cloud's answer to `getapppassword`.
 pub fn interpret_app_password(status: u16, body: &str) -> Minted {
     match status {
         200 => {
@@ -170,14 +96,14 @@ pub fn interpret_app_password(status: u16, body: &str) -> Minted {
             {
                 Some(p) => Minted::Credential(p.to_string()),
                 None => {
-                    Minted::Unavailable("LosOS cloud answered without an app password.".to_string())
+                    Minted::Unavailable("LosOS Cloud answered without an app password.".to_string())
                 }
             }
         }
         401 => Minted::Rejected,
         429 => Minted::Throttled,
         code => Minted::Unavailable(format!(
-            "LosOS cloud answered {code} instead of an app password. It may still be starting."
+            "LosOS Cloud answered {code} instead of an app password. It may still be starting."
         )),
     }
 }
@@ -213,10 +139,6 @@ pub struct GitOff;
 mod tests {
     use super::*;
 
-    fn secret() -> Secret {
-        Secret::new("hunter2:with colon")
-    }
-
     #[test]
     fn device_names_are_short_and_plain() {
         assert_eq!(validate_device("  laptop ").unwrap(), "laptop");
@@ -226,48 +148,6 @@ mod tests {
         assert!(validate_device("a\r\nX-Evil: 1").is_err());
         assert!(validate_device("a/b").is_err());
         assert!(validate_device(&"x".repeat(MAX_DEVICE_CHARS + 1)).is_err());
-    }
-
-    #[test]
-    fn the_app_password_route_sits_beside_the_sign_in_probe() {
-        assert_eq!(
-            app_password_path("/nextcloud/ocs/v2.php/cloud/user"),
-            "/nextcloud/ocs/v2.php/core/getapppassword"
-        );
-        assert_eq!(
-            app_password_path("/ocs/v2.php/cloud/user"),
-            "/ocs/v2.php/core/getapppassword"
-        );
-    }
-
-    #[test]
-    fn the_app_password_request_names_the_computer_and_carries_the_password_once() {
-        let raw = app_password_request(
-            "/nextcloud/ocs/v2.php/core/getapppassword",
-            "localhost",
-            "notshared",
-            &secret(),
-            "laptop",
-            "192.168.1.20",
-        );
-        let text = String::from_utf8(raw).unwrap();
-        assert!(text.starts_with("GET /nextcloud/ocs/v2.php/core/getapppassword HTTP/1.0\r\n"));
-        assert!(text.contains("\r\nUser-Agent: LosOS on laptop\r\n"));
-        assert!(text.contains("\r\nOCS-APIRequest: true\r\n"));
-        assert!(text.contains("\r\nX-Forwarded-For: 192.168.1.20\r\n"));
-        let basic = crate::signin::base64(b"notshared:hunter2:with colon");
-        assert!(text.contains(&format!("\r\nAuthorization: Basic {basic}\r\n")));
-        assert!(
-            !text.contains("hunter2"),
-            "the password is only in the header"
-        );
-        assert!(text.ends_with("\r\n\r\n"));
-    }
-
-    #[test]
-    fn a_client_that_is_not_an_address_is_not_forwarded() {
-        let raw = app_password_request("/x", "h", "u", &secret(), "pc", "1.2.3.4\r\nX: y");
-        assert!(!String::from_utf8(raw).unwrap().contains("X-Forwarded-For"));
     }
 
     #[test]
@@ -286,7 +166,7 @@ mod tests {
     }
 
     #[test]
-    fn nextcloud_answers_mean_what_the_client_needs() {
+    fn cloud_answers_mean_what_the_client_needs() {
         let ok = r#"{"ocs":{"meta":{"status":"ok"},"data":{"apppassword":"Abc-123"}}}"#;
         assert_eq!(
             interpret_app_password(200, ok),
