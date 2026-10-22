@@ -6,7 +6,7 @@ slug: /manual/pictures
 
 # Pictures and reporting
 
-![Pictures.](../img/stub-pictures.png)
+![Settings, Look.](../img/settings-look.png)
 
 Pictures that other people send you in [Chat](chat) and [Mail](mail) are
 hidden until you press them. You decide which senders get past that, and

@@ -7,7 +7,7 @@ mdx:
 
 # Hardening
 
-![Hardening.](../img/stub-hardening.png)
+![Settings, Hardware.](../img/settings-hardware.png)
 
 `losos.hardening.enable` is on by default. It sets:
 

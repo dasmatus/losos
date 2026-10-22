@@ -7,7 +7,7 @@ mdx:
 
 # Architecture
 
-![Architecture.](../img/stub-architecture.png)
+![The Overview.](../img/overview.png)
 
 ## Systems in the flake
 

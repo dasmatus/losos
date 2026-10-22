@@ -16,7 +16,7 @@ half and half between the owner of the hosting box and LosOS. The
 hypervisor is KubeVirt on the edge's mesh cluster; the edge's registrar
 sells the replicas and creates the machines.
 
-![The Machines pane.](../img/overview.png)
+![The Machines pane under Mesh.](../img/mesh-none.png)
 
 ## Who can use it
 

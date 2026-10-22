@@ -6,7 +6,7 @@ slug: /manual/files-on-your-computer
 
 # Files on your computer
 
-![Files On Your Computer.](../img/stub-files-on-your-computer.png)
+![The Storage pane.](../img/storage.png)
 
 Your LosOS Cloud files are also a network folder. Any computer on the box's
 network can open it in its file manager, drag files in and out, and open

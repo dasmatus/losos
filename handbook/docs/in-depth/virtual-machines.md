@@ -7,7 +7,7 @@ mdx:
 
 # Virtual machines
 
-![Virtual Machines.](../img/stub-virtual-machines.png)
+![Machines under Mesh.](../img/mesh-none.png)
 
 A box that shares its disk with the mesh can rent virtual machines on the
 mesh, and can host other boxes' machines. A machine is sold by the

@@ -6,7 +6,7 @@ slug: /manual/sharing-and-editing-together
 
 # Sharing and editing together
 
-![Sharing And Editing Together.](../img/stub-sharing-and-editing-together.png)
+![LosOS Cloud's files.](../img/cloud-files.png)
 
 In [LosOS Cloud](losos-cloud), text files open in an editor that several
 people can type in at once. Each person sees the others' faces at the top,

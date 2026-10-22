@@ -7,7 +7,7 @@ mdx:
 
 # Install in depth
 
-![Install.](../img/stub-install.png)
+![Settings, Network.](../img/settings-network.png)
 
 ## Get the installer
 
