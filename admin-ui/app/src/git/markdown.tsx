@@ -129,7 +129,7 @@ function safeHref(url: string): string | null {
   return null;
 }
 
-const INLINE = /(`+)([\s\S]*?[^`])\1(?!`)|\*\*([\s\S]+?)\*\*|\*([^*\s](?:[^*]*[^*\s])?)\*|\b_([^_\s](?:[^_]*[^_\s])?)_\b|!?\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/gu;
+const INLINE = /(`+)([\s\S]*?[^`])\1(?!`)|\*\*([\s\S]+?)\*\*|\*([^*\s](?:[^*]*[^*\s])?)\*|\b_([^_\s](?:[^_]*[^_\s])?)_\b|!?\[([^\]]*)\]\(([^)\s]+)\)|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/gu;
 
 function inline(text: string, key = "i"): React.ReactNode[] {
   const out: React.ReactNode[] = [];
@@ -149,6 +149,10 @@ function inline(text: string, key = "i"): React.ReactNode[] {
       out.push(<strong key={k}>{inline(m[3], k)}</strong>);
     } else if (m[4] !== undefined || m[5] !== undefined) {
       out.push(<em key={k}>{inline(m[4] ?? m[5] ?? "", k)}</em>);
+    } else if (m[6] !== undefined && m[7] !== undefined && m[0].startsWith("!") && /^\/(?!\/)/u.test(m[7])) {
+      // A picture from the box itself, such as one kept in a wiki
+      // (backend/src/forge/wiki.rs `raw`); one from elsewhere stays a link.
+      out.push(<img key={k} src={m[7]} alt={m[6]} loading="lazy" className="inline-block max-w-full rounded-control align-middle" />);
     } else if (m[6] !== undefined && m[7] !== undefined) {
       const href = safeHref(m[7]);
       out.push(

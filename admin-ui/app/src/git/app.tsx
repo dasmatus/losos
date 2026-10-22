@@ -8,6 +8,7 @@ import {
   GitCommitIcon,
   GitPullRequestIcon,
   LaptopIcon,
+  LibraryIcon,
   Settings02Icon,
 } from "@hugeicons/core-free-icons";
 import { PersonAvatar } from "@/components/person";
@@ -363,7 +364,19 @@ function Places() {
           {base !== null && (
             <SidebarGroup>
               {!rail && <SidebarGroupLabel className="truncate">{parts[1]}</SidebarGroupLabel>}
-              <SidebarMenu>{places.map((p) => item(p.to, t(p.label), p.icon, current === p))}</SidebarMenu>
+              <SidebarMenu>
+                {places.map((p) => item(p.to, t(p.label), p.icon, current === p))}
+                {/* The repository's wiki, as LosOS Wiki publishes it: a
+                    site of its own outside these pages (src/wiki/site.tsx). */}
+                <SidebarMenuItem>
+                  <SidebarMenuButton tooltip={t("git.nav.wiki")} render={<a href={`/wiki${base}/`} data-repo-wiki />}>
+                    <SidebarMenuIcon active={false}>
+                      <HugeiconsIcon icon={LibraryIcon} size={13} strokeWidth={1.5} color="currentColor" />
+                    </SidebarMenuIcon>
+                    <span className={cn(rail && "sr-only")}>{t("git.nav.wiki")}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
             </SidebarGroup>
           )}
         </SidebarContent>

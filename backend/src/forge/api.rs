@@ -87,6 +87,7 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
     // scope that matches the prefix answers 404 for the rest.
     let scope = super::pulls::routes(scope);
     let scope = super::code::routes(scope);
+    let scope = super::wiki::routes(scope);
     let scope = super::reviewer::api::routes(scope);
     let scope = super::matrix::routes(scope);
     cfg.service(super::worktrees::routes(scope));
@@ -147,7 +148,7 @@ pub fn user_json(u: &User, viewer: &Caller) -> Value {
 }
 
 /// The address a clone uses, as the caller reached the box.
-fn clone_url(req: &HttpRequest, state: &State, repo: &Repo) -> String {
+pub(super) fn clone_url(req: &HttpRequest, state: &State, repo: &Repo) -> String {
     let info = req.connection_info();
     format!(
         "{}://{}{}{}/{}.git",
@@ -287,7 +288,7 @@ pub(super) fn find_repo(
     Ok((repo, p))
 }
 
-fn visible(
+pub(super) fn visible(
     state: &State,
     caller: &Caller,
     repos: Vec<Repo>,
@@ -562,6 +563,14 @@ async fn edit_repo(
                     .update_repo(repo.id, Some(&repo.name), None, None, None);
                 return Err(e.into());
             }
+            // The wiki goes with it.
+            let wiki = state.config.wiki_path(&repo.owner, &repo.name);
+            if wiki.exists() {
+                let to = state.config.wiki_path(&repo.owner, n);
+                if let Err(e) = std::fs::rename(&wiki, &to) {
+                    tracing::warn!(wiki = %wiki.display(), error = ?e, "the wiki stayed under the old name");
+                }
+            }
         }
     }
     let repo = state
@@ -588,6 +597,12 @@ async fn delete_repo(
     let dir = state.config.repo_path(&repo.owner, &repo.name);
     if let Err(e) = std::fs::remove_dir_all(&dir) {
         tracing::warn!(dir = %dir.display(), error = ?e, "the repository's folder stayed");
+    }
+    let wiki = state.config.wiki_path(&repo.owner, &repo.name);
+    if wiki.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&wiki) {
+            tracing::warn!(dir = %wiki.display(), error = ?e, "the wiki's folder stayed");
+        }
     }
     tracing::info!(
         repo = format!("{}/{}", repo.owner, repo.name),

@@ -86,6 +86,9 @@ const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 /* LosOS Mail (src/mail/): only on the shared side, so most boxes never
  * fetch it. */
 const Mail = React.lazy(() => import("@/mail/app"));
+/* LosOS Wiki (src/wikis/): the box's directory of wikis and the editor of
+ * LosOS Git's spaces. */
+const Wikis = React.lazy(() => import("@/wikis/app"));
 /* LosOS Contacts (src/contacts/): kept in chat's homeserver, so on the
  * shared side only, like Mail and Chat. */
 const Contacts = React.lazy(() => import("@/contacts/app"));
@@ -245,9 +248,12 @@ function Shell() {
    * says why instead of failing pane by pane. */
   const me = useMe();
   const held = signedIn && (me?.locked?.length ?? 0) > 0;
-  /* LosOS Diagrams draws on a canvas beside an inspector, which wants more
-   * room than a pane of rows: on /diagrams the bar and the page are wider. */
-  const wide = useLocation().pathname.startsWith("/diagrams");
+  /* LosOS Diagrams draws on a canvas beside an inspector, and LosOS Wiki
+   * reads a page beside its directory and page tree; both want more room
+   * than a pane of rows, so on /diagrams and /wikis the bar and the page
+   * are wider. */
+  const path = useLocation().pathname;
+  const wide = path.startsWith("/diagrams") || path.startsWith("/wikis");
   const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
   const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
   const searchable = signedIn && !held;
@@ -396,6 +402,7 @@ function Shell() {
             <Route path="/ci" element={<Ci />} />
             <Route path="/ci/runs/:id" element={<Ci />} />
             <Route path="/diagrams/*" element={<Diagrams />} />
+            <Route path="/wikis/*" element={<Wikis />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />

@@ -241,6 +241,17 @@ pub fn adopt_repositories(state: &State) -> anyhow::Result<usize> {
             let Some(name) = file.strip_suffix(".git") else {
                 continue;
             };
+            // A wiki (Forgejo left one per repository that had one) is its
+            // repository's, not a record of its own; it only needs
+            // Forgejo's hooks out before anyone pushes to it.
+            if super::names::wiki_of(name).is_some() {
+                if repo_dir.path().join("HEAD").exists() {
+                    if let Err(e) = clear_hooks(&repo_dir.path()) {
+                        tracing::warn!(wiki = %repo_dir.path().display(), error = ?e, "could not clear hooks");
+                    }
+                }
+                continue;
+            }
             if super::names::repo(name).is_err() || !repo_dir.path().join("HEAD").exists() {
                 continue;
             }

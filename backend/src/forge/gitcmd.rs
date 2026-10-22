@@ -646,6 +646,162 @@ impl Git {
         Ok(entries)
     }
 
+    /// Every file of a commit, folders walked: `(path, blob id, size)`.
+    pub fn files(&self, repo: &Path, commit: &str) -> anyhow::Result<Vec<(String, String, i64)>> {
+        let out = self.run(repo, &["ls-tree", "-r", "-z", "--long", commit])?;
+        Ok(out
+            .split('\0')
+            .filter_map(|rec| {
+                let (meta, path) = rec.split_once('\t')?;
+                let mut m = meta.split_whitespace();
+                let mode = m.next()?;
+                let kind = m.next()?;
+                let oid = m.next()?;
+                let size = m.next()?.parse().ok()?;
+                (kind == "blob" && mode != "120000")
+                    .then(|| (path.to_string(), oid.to_string(), size))
+            })
+            .collect())
+    }
+
+    /// The commits of `to` that touched `path`, newest first, at most
+    /// `limit`; renames followed.
+    pub fn changes(
+        &self,
+        repo: &Path,
+        to: &str,
+        path: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<Commit>> {
+        let out = self.run(
+            repo,
+            &[
+                "log",
+                &format!("--max-count={limit}"),
+                "--follow",
+                "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1e",
+                to,
+                "--",
+                path,
+            ],
+        )?;
+        Ok(out
+            .split('\x1e')
+            .filter_map(|rec| {
+                let rec = rec.trim_start_matches('\n');
+                let f: Vec<&str> = rec.splitn(6, '\x1f').collect();
+                (f.len() == 6).then(|| Commit {
+                    sha: f[0].to_string(),
+                    author_name: f[1].to_string(),
+                    author_email: f[2].to_string(),
+                    date: f[3].to_string(),
+                    subject: f[4].to_string(),
+                    body: f[5].trim_end().to_string(),
+                })
+            })
+            .collect())
+    }
+
+    /// Lines of `commit` holding `needle`, any case, as plain text (no
+    /// pattern), in the files `pathspec` names: `(path, line, text)`, at
+    /// most `per_file` from each file.
+    pub fn grep(
+        &self,
+        repo: &Path,
+        commit: &str,
+        needle: &str,
+        pathspec: &str,
+        per_file: usize,
+    ) -> anyhow::Result<Vec<(String, usize, String)>> {
+        let max = format!("--max-count={per_file}");
+        let (code, out, err) = self.run_status(
+            repo,
+            &[
+                "grep", "-I", "-n", "-z", "-i", "-F", &max, "-e", needle, commit, "--", pathspec,
+            ],
+        )?;
+        // 1 is "nothing matched".
+        match code {
+            0 => {}
+            1 => return Ok(Vec::new()),
+            _ => anyhow::bail!("git grep failed: {}", err.trim()),
+        }
+        let prefix = format!("{commit}:");
+        Ok(out
+            .lines()
+            .filter_map(|l| {
+                let mut f = l.splitn(3, '\0');
+                let path = f.next()?.strip_prefix(&prefix)?.to_string();
+                let line = f.next()?.parse().ok()?;
+                Some((path, line, f.next()?.to_string()))
+            })
+            .collect())
+    }
+
+    /// A commit on `branch` that writes `bytes` to `path` (or, with `None`,
+    /// takes `path` away), on top of `parent` (`None` for a first commit).
+    /// The branch moves only if it is still at `parent`, so two people
+    /// saving at once cannot lose either's words: the second gets an error.
+    #[allow(clippy::too_many_arguments)]
+    pub fn write_file(
+        &self,
+        repo: &Path,
+        branch: &str,
+        parent: Option<&str>,
+        path: &str,
+        bytes: Option<&[u8]>,
+        message: &str,
+        who: &Signature,
+    ) -> anyhow::Result<String> {
+        // A scratch index of its own, so nothing else's is touched.
+        let scratch = tempfile::Builder::new().prefix("index-").tempdir_in(repo)?;
+        let index = scratch.path().join("index");
+        let index = index.to_string_lossy().into_owned();
+        let env = [("GIT_INDEX_FILE", index.as_str())];
+        match parent {
+            Some(p) => self.run_with_input(repo, &["read-tree", p], &env, b"")?,
+            None => self.run_with_input(repo, &["read-tree", "--empty"], &env, b"")?,
+        };
+        match bytes {
+            Some(bytes) => {
+                let blob = self
+                    .run_with_input(repo, &["hash-object", "-w", "--stdin"], &[], bytes)?
+                    .trim()
+                    .to_string();
+                self.run_with_input(
+                    repo,
+                    &[
+                        "update-index",
+                        "--add",
+                        "--cacheinfo",
+                        &format!("100644,{blob},{path}"),
+                    ],
+                    &env,
+                    b"",
+                )?;
+            }
+            None => {
+                // `--force-remove` wants a work tree, which a bare repository
+                // lacks; a zero mode on stdin drops the entry all the same.
+                let line = format!("0 {}\t{path}\n", "0".repeat(40));
+                self.run_with_input(
+                    repo,
+                    &["update-index", "--index-info"],
+                    &env,
+                    line.as_bytes(),
+                )?;
+            }
+        }
+        let tree = self
+            .run_with_input(repo, &["write-tree"], &env, b"")?
+            .trim()
+            .to_string();
+        let parents: Vec<&str> = parent.into_iter().collect();
+        let commit = self.commit_tree(repo, &tree, &parents, message, who)?;
+        self.move_branch(repo, branch, &commit, parent.unwrap_or(""))?;
+        Ok(commit)
+    }
+
     /// The first `max` bytes of a blob, and its whole size.
     pub fn blob(&self, repo: &Path, oid: &str, max: usize) -> anyhow::Result<(Vec<u8>, usize)> {
         if !is_object_id(oid) {
@@ -822,6 +978,111 @@ mod tests {
             git.run(&repo, &["show", "main:README.md"]).unwrap(),
             "# r\n"
         );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_wiki_is_written_file_by_file() {
+        let dir = std::env::temp_dir().join(format!("losos-wiki-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let git = Git::new("git", &dir);
+        let repo = dir.join("o/r.wiki.git");
+        git.init_bare(&repo, "main").unwrap();
+        let who = Signature {
+            name: "Jana".into(),
+            email: "jana@localhost".into(),
+        };
+        let first = git
+            .write_file(
+                &repo,
+                "main",
+                None,
+                "Home.md",
+                Some(b"# Home\nWater the beans.\n"),
+                "Add Home",
+                &who,
+            )
+            .unwrap();
+        let second = git
+            .write_file(
+                &repo,
+                "main",
+                Some(&first),
+                "Guides/Setup.md",
+                Some(b"Set up the hose.\n"),
+                "Add Setup",
+                &who,
+            )
+            .unwrap();
+        let files: Vec<String> = git
+            .files(&repo, &second)
+            .unwrap()
+            .into_iter()
+            .map(|f| f.0)
+            .collect();
+        assert_eq!(files, ["Guides/Setup.md", "Home.md"]);
+        // A save that started from the first commit cannot land over the second.
+        assert!(git
+            .write_file(
+                &repo,
+                "main",
+                Some(&first),
+                "Home.md",
+                Some(b"mine"),
+                "Update Home",
+                &who
+            )
+            .is_err());
+        assert_eq!(
+            git.commit_of(&repo, "main").unwrap().as_deref(),
+            Some(second.as_str())
+        );
+        // Nor can a first save once there is a page.
+        assert!(git
+            .write_file(
+                &repo,
+                "main",
+                None,
+                "Other.md",
+                Some(b"x"),
+                "Add Other",
+                &who
+            )
+            .is_err());
+        let hits = git.grep(&repo, &second, "WATER", "*.md", 3).unwrap();
+        assert_eq!(
+            hits,
+            vec![("Home.md".to_string(), 2, "Water the beans.".to_string())]
+        );
+        assert!(git
+            .grep(&repo, &second, "nothing like it", "*.md", 3)
+            .unwrap()
+            .is_empty());
+        let third = git
+            .write_file(
+                &repo,
+                "main",
+                Some(&second),
+                "Home.md",
+                None,
+                "Delete Home",
+                &who,
+            )
+            .unwrap();
+        let files: Vec<String> = git
+            .files(&repo, &third)
+            .unwrap()
+            .into_iter()
+            .map(|f| f.0)
+            .collect();
+        assert_eq!(files, ["Guides/Setup.md"]);
+        let changes: Vec<String> = git
+            .changes(&repo, &third, "Home.md", 10)
+            .unwrap()
+            .into_iter()
+            .map(|c| c.subject)
+            .collect();
+        assert_eq!(changes, ["Delete Home", "Add Home"]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

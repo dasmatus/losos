@@ -361,7 +361,88 @@ const repoPath = (owner: string, name: string) => `/repos/${e(owner)}/${e(name)}
 /** A path inside a repository, each part escaped and the slashes kept. */
 const filePath = (path: string) => path.split("/").map(e).join("/");
 
+export interface WikiChange {
+  sha: string;
+  date: string;
+  author: string;
+  subject: string;
+}
+
+/** A repository's wiki (backend/src/forge/wiki.rs): its pages, and the
+ *  address to clone it at (`<repo>.wiki.git`). */
+export interface Wiki {
+  exists: boolean;
+  writable: boolean;
+  clone_url: string;
+  branch: string;
+  home: string | null;
+  updated: WikiChange | null;
+  pages: { name: string; title: string; path: string; size: number }[];
+}
+
+export interface WikiPage {
+  name: string;
+  title: string;
+  path: string;
+  /** The page's blob, to save over it and nothing newer. */
+  sha: string;
+  commit: string;
+  text: string;
+  updated: WikiChange | null;
+  /** Its changes, newest first. */
+  history: WikiChange[];
+  /** The `_Sidebar` and `_Footer` around it, and the pages they are, whose
+   *  folders their links start from. */
+  sidebar: string | null;
+  sidebar_page: string | null;
+  footer: string | null;
+  footer_page: string | null;
+}
+
+/** A space as the directory lists it. */
+export interface WikiSpace {
+  owner: string;
+  repo: string;
+  full_name: string;
+  description: string;
+  visibility: Visibility;
+  writable: boolean;
+  pages: number;
+  home: string | null;
+  updated: WikiChange | null;
+  /** The published site, `/wiki/<owner>/<repo>`. */
+  html_url: string;
+}
+
+/** A page whose title holds the words, or one line of one that does. */
+export interface WikiHit {
+  owner: string;
+  repo: string;
+  page: string;
+  title: string;
+  line: number | null;
+  text: string | null;
+  html_url: string;
+}
+
+const wikiPage = (o: string, r: string, page: string) => `${repoPath(o, r)}/wiki/pages/${filePath(page)}`;
+
 export const git = {
+  /** A picture kept in a wiki, for an <img> on its pages. */
+  wikiFile: (o: string, r: string, file: string) => `${BASE}${repoPath(o, r)}/wiki/raw/${filePath(file)}`,
+  wiki: (o: string, r: string, signal?: AbortSignal) => call<Wiki>("GET", `${repoPath(o, r)}/wiki`, undefined, signal),
+  wikiPage: (o: string, r: string, page: string, signal?: AbortSignal) =>
+    call<WikiPage>("GET", wikiPage(o, r, page), undefined, signal),
+  /** `sha` is the page as it was opened, or null for a new page. */
+  saveWikiPage: (o: string, r: string, page: string, text: string, sha: string | null, message: string) =>
+    call<WikiPage>("PUT", wikiPage(o, r, page), { text, sha, message: message === "" ? null : message }),
+  deleteWikiPage: (o: string, r: string, page: string, sha: string) =>
+    call<null>("DELETE", `${wikiPage(o, r, page)}?sha=${e(sha)}`),
+  wikiSearch: (o: string, r: string, q: string, signal?: AbortSignal) =>
+    call<{ hits: WikiHit[] }>("GET", `${repoPath(o, r)}/wiki/search?q=${e(q)}`, undefined, signal).then((x) => x.hits),
+  /** Every space the caller may read, and with `q` the pages that hold it. */
+  wikis: (q: string, signal?: AbortSignal) =>
+    call<{ wikis: WikiSpace[]; hits: WikiHit[] }>("GET", `/wikis${q === "" ? "" : `?q=${e(q)}`}`, undefined, signal),
   me: (signal?: AbortSignal) => call<User>("GET", "/user", undefined, signal),
   repos: (signal?: AbortSignal) => call<Repo[]>("GET", "/user/repos", undefined, signal),
   /** What a visitor may read: the public repositories. */

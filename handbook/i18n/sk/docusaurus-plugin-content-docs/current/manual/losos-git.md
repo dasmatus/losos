@@ -130,6 +130,14 @@ requestom pre túto vetvu, ak nejaký je. Pull request, ktorého vetvu pushuje
 pomenovaný pracovný strom, ukáže meno toho stromu vo svojej hlavičke.
 **Zabudnúť** strom zo zoznamu vyradí; ďalší push ho tam vráti.
 
+## Wiki \{#wiki}
+
+Každý repozitár môže mať wiki: stránky v Markdowne v
+`<repozitár>.wiki.git`, ktoré čítajú a píšu tí istí ľudia ako repozitár.
+**Wiki** v ponuke repozitára otvorí jej zverejnenú stránku.
+V [LosOS Wiki](wiki) sa stránky píšu a nájdete tam wiki všetkých
+repozitárov, ktoré smiete čítať.
+
 ## Ľudia z iných boxov \{#people-of-other-boxes}
 
 Niekto, kto má účet na inom LosOS boxe vo vašej sieti, sa môže zapojiť do
