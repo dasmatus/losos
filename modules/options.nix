@@ -825,7 +825,10 @@ in
 
     cloud.windows.enable = lib.mkOption {
       type = lib.types.bool;
-      default = false;
+      # On wherever LosOS Cloud is (modules/windows.nix asks for both), and
+      # declared so here rather than in defaults.nix: the Network pane draws
+      # this default as the switch's state when overrides.nix has no line.
+      default = true;
       description = ''
         Show the box under Network in Windows' File Explorer, and in Finder
         and Linux file managers, with each person's LosOS Cloud files as a
@@ -833,7 +836,6 @@ in
         the local network, never through the edge. Windows takes a person's
         password once the box has seen it: when it is set, at a sign-in to
         the share from a file manager, or typed once on the Account page.
-        On by default on an installed box (modules/defaults.nix).
       '';
     };
 
