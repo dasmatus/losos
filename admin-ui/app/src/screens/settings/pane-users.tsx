@@ -28,6 +28,7 @@ import { Spinner } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { CustomRole, LoginRules, PeopleResponse, PersonEntry, Role } from "@/lib/api";
 import { paneHref } from "@/lib/routes";
+import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
@@ -565,11 +566,11 @@ function RoleTableSection() {
           <TableBody>
             {TABLE.map((row) => (
               <TableRow key={row.what}>
-                <TableCell className="text-ink">{t(row.what)}</TableCell>
+                <TableCell className="whitespace-normal text-ink">{t(row.what)}</TableCell>
                 {TABLE_ROLES.map((role) => (
                   <TableCell
                     key={role}
-                    className={row.cells[role] === "roles.cell.no" ? "text-faint" : "text-muted"}
+                    className={cn("whitespace-normal", row.cells[role] === "roles.cell.no" ? "text-faint" : "text-muted")}
                   >
                     {t(row.cells[role])}
                   </TableCell>

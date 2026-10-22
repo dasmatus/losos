@@ -447,7 +447,7 @@ pkgs.testers.nixosTest {
             })
             spam = wait_for(eva, folder(ok("/api/mail", eva), "inbox"), "Lottery win")
             ok("/api/reports", tom, method="POST", data={
-                "app": "chat", "ref": "$family-room-1", "reason": "abuse", "about": "eva", "note": "Called me names in the family room.",
+                "app": "chat", "ref": "!family:box.local/$insult-1", "reason": "abuse", "about": "eva", "note": "Called me names in the family room.",
             })
             ok("/api/reports", eva, method="POST", data={
                 "app": "mail", "ref": spam["id"], "reason": "spam", "about": "tom",
