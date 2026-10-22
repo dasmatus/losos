@@ -47,31 +47,18 @@ let
     exec ${pkgs.nodejs}/bin/node ${./issue-shots.mjs} "$@"
   '';
 
-  # LosOS Cloud's boards as backend/src/cloud/boards.rs keeps them (its
-  # SCHEMA), with what a person had on them.
+  # LosOS Cloud's boards as backend/src/cloud/boards.rs keeps them, its
+  # SCHEMA read from the source so the two cannot drift apart, with what a
+  # person had on them.
+  cloudSchema =
+    let
+      after = builtins.elemAt (builtins.split ''pub const SCHEMA: &str = r#"'' (
+        builtins.readFile ../../backend/src/cloud/boards.rs
+      )) 2;
+    in
+    builtins.head (builtins.split ''"#;'' after);
   cloudBoards = pkgs.writeText "cloud-boards.sql" ''
-    CREATE TABLE board (id INTEGER PRIMARY KEY, title TEXT NOT NULL, color TEXT,
-      owner TEXT NOT NULL, repo TEXT, archived INTEGER NOT NULL DEFAULT 0,
-      created INTEGER NOT NULL, updated INTEGER NOT NULL);
-    CREATE TABLE board_member (board_id INTEGER NOT NULL, login TEXT NOT NULL,
-      can_edit INTEGER NOT NULL DEFAULT 0, can_share INTEGER NOT NULL DEFAULT 0,
-      can_manage INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (board_id, login));
-    CREATE TABLE board_column (id INTEGER PRIMARY KEY, board_id INTEGER NOT NULL,
-      title TEXT NOT NULL, position INTEGER NOT NULL, state TEXT);
-    CREATE TABLE board_label (id INTEGER PRIMARY KEY, board_id INTEGER NOT NULL,
-      name TEXT NOT NULL, color TEXT);
-    CREATE TABLE card (id INTEGER PRIMARY KEY, board_id INTEGER NOT NULL,
-      column_id INTEGER NOT NULL, position INTEGER NOT NULL, title TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT ''', due INTEGER, link_repo TEXT,
-      link_number INTEGER, archived INTEGER NOT NULL DEFAULT 0,
-      created INTEGER NOT NULL, updated INTEGER NOT NULL);
-    CREATE TABLE card_label (card_id INTEGER NOT NULL, label_id INTEGER NOT NULL,
-      PRIMARY KEY (card_id, label_id));
-    CREATE TABLE card_assignee (card_id INTEGER NOT NULL, login TEXT NOT NULL,
-      PRIMARY KEY (card_id, login));
-    CREATE TABLE card_comment (id INTEGER PRIMARY KEY, card_id INTEGER NOT NULL,
-      author TEXT NOT NULL, body TEXT NOT NULL, created INTEGER NOT NULL);
-
+    ${cloudSchema}
     INSERT INTO board VALUES
       (1, 'Garden', '31cc7c', 'notshared', NULL, 0, 1760000000, 1760000000),
       (2, 'Backup tool', '0f6e7a', 'notshared', 'notshared/backup-tool', 0, 1760000000, 1760000000);
@@ -81,13 +68,13 @@ let
       (20, 2, 'Ideas', 0, NULL), (21, 2, 'Doing', 1, NULL), (22, 2, 'Done', 2, 'closed');
     INSERT INTO board_label VALUES (30, 1, 'outside', 'ff9900'), (31, 1, 'shopping', '2f7de1');
     INSERT INTO card VALUES
-      (100, 1, 11, 0, 'Plant tomatoes', 'Six plants by the south wall.', 1793404800, NULL, NULL, 0, 1760000000, 1760000100),
-      (101, 1, 10, 0, 'Fix the rain barrel tap', ''', NULL, NULL, NULL, 0, 1760000000, 1760000000),
-      (102, 1, 12, 0, 'Buy seeds', ''', NULL, NULL, NULL, 0, 1760000000, 1760000000),
-      (103, 1, 10, 1, 'Order compost', ''', NULL, NULL, NULL, 0, 1760000000, 1760000000),
-      (200, 2, 21, 0, 'Wake the NAS first', ''', NULL, 'notshared/backup-tool', 1, 0, 1760000000, 1760000000),
-      (201, 2, 22, 0, 'Retry log', ''', NULL, 'notshared/backup-tool', 2, 0, 1760000000, 1760000000),
-      (202, 2, 20, 0, 'Restore one folder from the NAS', 'Bring one folder back without the whole set.', NULL, NULL, NULL, 0, 1760000000, 1760000000);
+      (100, 1, 11, 0, 'Plant tomatoes', 'Six plants by the south wall.', 1793404800, NULL, NULL, 0, 1760000000, 1760000100, NULL),
+      (101, 1, 10, 0, 'Fix the rain barrel tap', ''', NULL, NULL, NULL, 0, 1760000000, 1760000000, NULL),
+      (102, 1, 12, 0, 'Buy seeds', ''', NULL, NULL, NULL, 0, 1760000000, 1760000000, 1760000000),
+      (103, 1, 10, 1, 'Order compost', ''', NULL, NULL, NULL, 0, 1760000000, 1760000000, NULL),
+      (200, 2, 21, 0, 'Wake the NAS first', ''', NULL, 'notshared/backup-tool', 1, 0, 1760000000, 1760000000, NULL),
+      (201, 2, 22, 0, 'Retry log', ''', NULL, 'notshared/backup-tool', 2, 0, 1760000000, 1760000000, 1760000000),
+      (202, 2, 20, 0, 'Restore one folder from the NAS', 'Bring one folder back without the whole set.', NULL, NULL, NULL, 0, 1760000000, 1760000000, NULL);
     INSERT INTO card_label VALUES (100, 30), (103, 30), (102, 31);
     INSERT INTO card_assignee VALUES (100, 'eva'), (101, 'notshared');
     INSERT INTO card_comment VALUES (1, 100, 'eva', 'I have the pots.', 1760000150);
@@ -270,10 +257,12 @@ pkgs.testers.nixosTest {
             " '2026-10-01T07:40:00Z', '2026-10-01T07:40:00Z' FROM issues WHERE number = 1;"
         )
         box.succeed(
-            "install -d -o losos-cloud -g losos-cloud /var/lib/losos-cloud"
+            "install -d /var/lib/losos-cloud"
             " && sqlite3 /var/lib/losos-cloud/cloud.db < ${cloudBoards}"
         )
-        box.succeed("systemctl start losos-git.service")
+        # The box boots with the import before LosOS Git; here the boards
+        # arrive later, so the unit runs by hand in the same order.
+        box.succeed("systemctl start losos-git-boards-import.service", "systemctl start losos-git.service")
         box.wait_for_open_port(3000)
         report = json.loads(box.succeed("cat /var/lib/losos-git/boards/import.json"))
         assert report["complete"] is True, report
