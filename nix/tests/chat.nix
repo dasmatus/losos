@@ -307,7 +307,7 @@ pkgs.testers.nixosTest {
             matus,
             method="POST",
             data={"name": "eva", "displayName": "Eva", "email": "eva@mattbox.local",
-                  "password": EVA_PASSWORD, "groups": []},
+                  "password": EVA_PASSWORD, "groups": ["losos-account"]},
         )
         assert code == 200, (code, body)
         box.wait_until_succeeds(f"grep -q eva {PEOPLE}")
