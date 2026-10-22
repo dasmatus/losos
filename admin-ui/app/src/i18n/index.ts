@@ -8,6 +8,7 @@ import access from "./access";
 import account from "./account";
 import advanced from "./advanced";
 import apps from "./apps";
+import calendar from "./calendar";
 import calls from "./calls";
 import chat from "./chat";
 import cloud from "./cloud";
@@ -76,6 +77,7 @@ export const MESSAGES = {
   ...office,
   ...mail,
   ...contacts,
+  ...calendar,
   ...menu,
   ...mention,
   ...games,

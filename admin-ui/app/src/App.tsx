@@ -40,6 +40,7 @@ import {
   signIn,
   signInPageReady,
   sentToSignIn,
+  sharedApp,
   signInUrl,
   signOut,
   subscribeAuth,
@@ -84,6 +85,11 @@ const Mail = React.lazy(() => import("@/mail/app"));
 /* LosOS Contacts (src/contacts/): kept in chat's homeserver, so on the
  * shared side only, like Mail and Chat. */
 const Contacts = React.lazy(() => import("@/contacts/app"));
+/* LosOS Calendar (src/calendar/): LosOS Cloud's calendars, with
+ * subscriptions and invitations. Its reminders are a small chunk of their
+ * own the shell holds, so they show on every screen. */
+const Calendar = React.lazy(() => import("@/calendar/app"));
+const Reminders = React.lazy(() => import("@/calendar/reminders"));
 /* LosOS Chat (src/chat/), the same: on the shared side only, and the only
  * screen that brings matrix-js-sdk and its crypto. */
 const Chat = React.lazy(() => import("@/chat/app"));
@@ -236,9 +242,11 @@ function Shell() {
    * says why instead of failing pane by pane. */
   const me = useMe();
   const held = signedIn && (me?.locked?.length ?? 0) > 0;
-  /* LosOS Diagrams draws on a canvas beside an inspector, which wants more
-   * room than a pane of rows: on /diagrams the bar and the page are wider. */
-  const wide = useLocation().pathname.startsWith("/diagrams");
+  /* LosOS Diagrams draws on a canvas beside an inspector, and LosOS
+   * Calendar a week of seven columns, which want more room than a pane of
+   * rows: on /diagrams and /calendar the bar and the page are wider. */
+  const path = useLocation().pathname;
+  const wide = path.startsWith("/diagrams") || path.startsWith("/calendar");
   const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
   const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
   const searchable = signedIn && !held;
@@ -375,6 +383,8 @@ function Shell() {
             <Route path="/mail" element={<Mail />} />
             {/* nginx answers /contacts with 404 off the shared side too. */}
             <Route path="/contacts" element={<Contacts />} />
+            {/* nginx answers /calendar with 404 without LosOS Cloud too. */}
+            <Route path="/calendar" element={<Calendar />} />
             {/* nginx serves /chat/ only on the shared side, under chat's
                 own policy (modules/chat.nix); off it, /chat/ goes home. */}
             <Route path="/chat/*" element={<Chat />} />
@@ -394,6 +404,11 @@ function Shell() {
       {signedIn && paletteLoaded && (
         <React.Suspense fallback={null}>
           <CommandPalette />
+        </React.Suspense>
+      )}
+      {signedIn && !held && sharedApp("calendar") && (
+        <React.Suspense fallback={null}>
+          <Reminders />
         </React.Suspense>
       )}
       {signedIn && !held && tourOpen && (

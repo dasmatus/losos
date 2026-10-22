@@ -1355,6 +1355,9 @@ pub struct Fields {
     pub alarms: Vec<i64>,
     /// `video`, `voice` or empty.
     pub call: String,
+    /// Without `repeat`: keep the repeat the event has, which the page
+    /// could not show (a rule of its own, a phone's RDATEs).
+    pub keep_repeat: bool,
 }
 
 impl Fields {
@@ -1538,7 +1541,7 @@ pub fn rewrite(old: &str, f: &Fields, now: i64) -> Result<String, String> {
     for (i, (name, comp)) in comps.iter().enumerate() {
         if i != main {
             let instance = comp.iter().any(|x| Line::parse(x).name == "RECURRENCE-ID");
-            if !(instance && f.repeat.is_none()) {
+            if !(instance && f.repeat.is_none() && !f.keep_repeat) {
                 out.extend(comp.iter().cloned());
             }
             let _ = name;
@@ -1581,7 +1584,10 @@ pub fn rewrite(old: &str, f: &Fields, now: i64) -> Result<String, String> {
                 }
                 _ => {}
             }
-            if in_alarm || (depth == 1 && OWNED.contains(&p.name.as_str())) {
+            let kept_repeat = f.repeat.is_none()
+                && f.keep_repeat
+                && matches!(p.name.as_str(), "RRULE" | "EXDATE");
+            if in_alarm || (depth == 1 && OWNED.contains(&p.name.as_str()) && !kept_repeat) {
                 continue;
             }
             kept.push(l.clone());
@@ -2249,6 +2255,30 @@ mod tests {
         assert!(out.contains("CATEGORIES:Work\r\n"));
         assert!(!out.contains("Old title") && !out.contains("-PT5M"));
         assert_eq!(out.matches("BEGIN:VEVENT").count(), 1);
+    }
+
+    #[test]
+    fn a_repeat_the_page_cannot_show_stays_when_asked() {
+        let phone = vevent(&[
+            "UID:p2",
+            "DTSTART;TZID=Europe/Bratislava:20261023T100000",
+            "DTEND;TZID=Europe/Bratislava:20261023T110000",
+            "SUMMARY:Choir",
+            "RRULE:FREQ=MONTHLY;BYDAY=2TU,4TU",
+            "EXDATE;TZID=Europe/Bratislava:20261110T100000",
+        ]);
+        let mut f = fields();
+        f.attendees.clear();
+        f.keep_repeat = true;
+        let out = rewrite(&phone, &f, 0).unwrap();
+        assert!(
+            out.contains("RRULE:FREQ=MONTHLY;BYDAY=2TU,4TU\r\n"),
+            "{out}"
+        );
+        assert!(out.contains("EXDATE;TZID=Europe/Bratislava:20261110T100000\r\n"));
+        f.keep_repeat = false;
+        let out = rewrite(&phone, &f, 0).unwrap();
+        assert!(!out.contains("RRULE") && !out.contains("EXDATE"));
     }
 
     #[test]

@@ -82,6 +82,7 @@ import {
   type MailPage,
   type MailRole,
   type MailSummary,
+  sharedApp,
 } from "@/lib/api";
 import { useLocale, useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
@@ -89,6 +90,7 @@ import { contextMenu, type MenuBuilder, type MenuItem } from "@/lib/context-menu
 import { PeopleField } from "@/contacts/suggest";
 import { readMailIntent, withoutMailIntent } from "@/lib/intents";
 import { cn } from "@/lib/utils";
+import { InviteCard, isCalendarFile } from "@/calendar/invite";
 import { DeleteFolderDialog, FolderDialog, explainFolder, tree, within, type Placed } from "./folders";
 import { FiltersDialog, blankFilter } from "./filters";
 
@@ -884,6 +886,7 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
           ) : (
             <Reader
               message={open}
+              address={home.address}
               faces={faces}
               locale={locale}
               folders={placed}
@@ -1051,6 +1054,7 @@ function MessageRow({
 
 function Reader({
   message: m,
+  address,
   faces,
   locale,
   folders,
@@ -1064,6 +1068,7 @@ function Reader({
   onDelete,
 }: {
   message: MailMessage;
+  address: string;
   faces: Faces;
   locale: string;
   folders: readonly Placed[];
@@ -1163,6 +1168,13 @@ function Reader({
             </div>
           )}
         </div>
+        {/* An invitation, a guest's answer or a cancellation, as LosOS
+            Calendar reads it (src/calendar/invite.tsx). */}
+        {sharedApp("calendar") &&
+          m.attachments
+            .filter(isCalendarFile)
+            .slice(0, 1)
+            .map((a) => <InviteCard key={a.blobId} attachment={a} address={address} subject={m.subject} />)}
         {m.attachments.length > 0 && (
           <ul className="flex flex-wrap gap-2 px-5 pb-3" aria-label={t("mail.attachments")}>
             {m.attachments.map((a) => (
