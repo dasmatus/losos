@@ -425,8 +425,9 @@ async function safety(owner, eva) {
     const green = document.querySelector("[role=log] img[alt='green.png']");
     return green !== null && green.closest("[data-nudity]") === null;
   });
-  // The numbers are not in the page at all until pressed.
-  const text = await log.innerText();
+  // The numbers are not in the page at all until pressed: not in the log,
+  // and not in the conversation list's last line either.
+  const text = await eva.locator("body").innerText();
   if (text.includes("4242 4242") || text.includes("1987 4263")) throw new Error("a card or IBAN number is in the page unpressed");
   await log.locator("[data-detail=card]").last().scrollIntoViewIfNeeded();
   // The pointer off the log, so no message's quick reactions cover the bars.
