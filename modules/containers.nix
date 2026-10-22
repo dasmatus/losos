@@ -279,6 +279,30 @@ let
     "form-action 'none'"
   ];
 
+  # ── The app frame ─────────────────────────────────────────────────────
+  # The owner's own apps (backend/src/user_apps.rs, src/apps/ in the SPA)
+  # run in `/app-frame/` under `<iframe sandbox="allow-scripts allow-forms">`,
+  # for the reasons the widget frame gives above. The difference is the
+  # script: the frame loads the box's own runtime (React and the LosOS
+  # components, /app-frame/runtime.js, so 'self') and the runtime adds the
+  # app, which lososd compiled from the owner's JSX, as an inline script.
+  # 'self' matches the frame's URL even though the sandbox gives the
+  # document an opaque origin. No 'unsafe-eval': nothing in an app needs it.
+  # `allow-forms` lets an app's <form> call its own submit handler;
+  # `form-action 'none'` keeps the form from going anywhere.
+  appFrameCsp = lib.concatStringsSep "; " [
+    "default-src 'none'"
+    "script-src 'self' 'unsafe-inline'"
+    "style-src 'self' 'unsafe-inline'"
+    "img-src data: blob: https: http:"
+    "font-src 'self' data: https: http:"
+    "media-src data: blob: https: http:"
+    "connect-src https: http:"
+    "frame-ancestors 'self'"
+    "base-uri 'none'"
+    "form-action 'none'"
+  ];
+
   # ── A message's HTML ──────────────────────────────────────────────────
   # LosOS Mail shows an HTML message in `<iframe sandbox>` from lososd's
   # /api/mail/messages/<id>/html, never inside the Mail page. The document
@@ -303,14 +327,15 @@ let
   # One map per header: value on the admin surface, the handbook's and the
   # lab's own values
   # (or the admin value, for the headers they share) under /handbook/ and
-  # /lab/, the widget frame's own value (or nothing) under /widget-frame/,
-  # and a mail message's under its HTML route.
-  adminHeaderMap = variable: value: handbookValue: labValue: frameValue: mailValue: ''
+  # /lab/, each frame's own value (or nothing) under /widget-frame/ and
+  # /app-frame/, and a mail message's under its HTML route.
+  adminHeaderMap = variable: value: handbookValue: labValue: frameValue: appFrameValue: mailValue: ''
     map $uri ${variable} {
         default          "${value}";
         ~^/handbook/     "${handbookValue}";
         ~^/lab/          "${labValue}";
         ~^/widget-frame/ "${frameValue}";
+        ~^/app-frame/    "${appFrameValue}";
         ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";
     }
   '';
@@ -323,6 +348,7 @@ let
       handbookValue = handbookCsp;
       labValue = labCsp;
       frameValue = widgetFrameCsp;
+      appFrameValue = appFrameCsp;
       mailValue = mailFrameCsp;
     }
     {
@@ -348,8 +374,11 @@ let
 
   adminHeaderMaps = lib.concatMapStrings (
     h:
-    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value
-    ) h.frameValue (h.mailValue or h.value)
+    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) h.frameValue (
+      h.appFrameValue or h.frameValue
+    ) (
+      h.mailValue or h.value
+    )
   ) adminHeaders;
 
   # `always` so the headers ride on the 403s the lanOnly guard emits too.
