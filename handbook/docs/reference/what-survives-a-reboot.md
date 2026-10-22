@@ -17,6 +17,7 @@ place:
 | `/nix`                     | The system itself, every version kept for the boot menu               |
 | `/etc/nixos`               | The box's own description: its disks, firmware mode, unlock mode, your settings |
 | `/etc/keys`                | The disk key's recovery copy                                          |
+| `/etc/credstore.encrypted` | The box's own secrets, each sealed to it ([Credentials](credentials.md)) |
 | `/etc/ssh`                 | Host keys, which identify the box. There is no SSH server.            |
 | `/etc/rancher`             | The mesh membership's node password                                   |
 | `/etc/machine-id`          | The box's identity                                                    |

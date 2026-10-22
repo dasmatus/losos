@@ -48,8 +48,9 @@ let
   excluded = {
     edge = "declared for the edge VPS (nixosModules.edge); nothing on the appliance reads it";
     mdns = "set by modules/configuration.nix and modules/edge.nix; with it off nothing on the LAN finds the box";
+    credentials = "declared by the module that owns each secret; the Credentials pane lists them and makes new values";
     nextcloud = "retired with Nextcloud; accepted from an older overrides.nix and ignored";
-    keyring = "retired with Nextcloud's admin password, its only secret; accepted and ignored";
+    keyring = "retired: every secret is in the credential store (modules/credentials.nix); accepted and ignored";
   };
 
   # Options another file on the box sets at normal priority: a line in

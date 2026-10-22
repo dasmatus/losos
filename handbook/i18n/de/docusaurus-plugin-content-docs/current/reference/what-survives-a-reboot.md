@@ -17,6 +17,7 @@ hängt sie per Bind-Mount wieder an ihren Platz:
 | `/nix`                     | Das System selbst, jede Version, die für das Bootmenü aufbewahrt wird |
 | `/etc/nixos`               | Die eigene Beschreibung der Box: ihre Festplatten, Firmware-Modus, Entsperrmodus, deine Einstellungen |
 | `/etc/keys`                | Die Wiederherstellungskopie des Festplattenschlüssels                 |
+| `/etc/credstore.encrypted` | Die eigenen Geheimnisse der Box, jedes an sie gebunden ([Zugangsdaten](credentials.md)) |
 | `/etc/ssh`                 | Host-Schlüssel, die die Box identifizieren. Einen SSH-Server gibt es nicht. |
 | `/etc/rancher`             | Das Node-Passwort der Mesh-Mitgliedschaft                             |
 | `/etc/machine-id`          | Die Identität der Box                                                 |

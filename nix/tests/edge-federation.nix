@@ -236,7 +236,7 @@ pkgs.testers.nixosTest {
     box.wait_for_unit("nginx.service")
     box.wait_until_succeeds("losos-ctl state --json")
     box.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
-    token = box.succeed("cat /var/secrets/losos-admin-token").strip()
+    token = box.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip()
     hdr = f"Authorization: Bearer {token}"
 
     def api(method, path, data=None):
