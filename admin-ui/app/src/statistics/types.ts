@@ -5,7 +5,9 @@
  * in either place.
  *
  * `totals`, `codes` and `protocols` count from `since`, when Traefik last
- * started; `perMinute` is oldest first and holds at most 60 minutes. A route
+ * started, and so do a route's counts (its `p95Ms` is the last hour);
+ * `perMinute` is oldest first and holds at most 60 minutes. `protocols` may be
+ * empty: Traefik's metrics carry no HTTP version. A route
  * is a box or a name on the edge (`host`) and an app on the box (`port`, its
  * LAN port, with no host). */
 

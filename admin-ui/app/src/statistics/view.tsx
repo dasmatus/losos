@@ -77,17 +77,33 @@ function ms(value: number | null): string {
 }
 
 /** One bar split into parts, drawn as SVG rects so no width is a style. */
-function SplitBar({ parts }: { parts: readonly { value: number; fill: string; key: string }[] }) {
+function SplitBar({
+  parts,
+}: {
+  parts: readonly { value: number; fill: string; key: string }[];
+}) {
   const total = parts.reduce((sum, part) => sum + part.value, 0);
   let x = 0;
   return (
-    <svg viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true" className="block h-2 w-full">
+    <svg
+      viewBox="0 0 100 6"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      className="block h-2 w-full"
+    >
       <rect x={0} y={0} width={100} height={6} rx={3} className="fill-sunk" />
       {total > 0 &&
         parts.map((part) => {
           const width = (part.value / total) * 100;
           const rect = (
-            <rect key={part.key} x={x} y={0} width={width} height={6} className={part.fill} />
+            <rect
+              key={part.key}
+              x={x}
+              y={0}
+              width={width}
+              height={6}
+              className={part.fill}
+            />
           );
           x += width;
           return rect;
@@ -96,19 +112,35 @@ function SplitBar({ parts }: { parts: readonly { value: number; fill: string; ke
   );
 }
 
-function Figure({ label, value, detail }: { label: string; value: string; detail?: string }) {
+function Figure({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+}) {
   return (
     <Card className="flex flex-col gap-1 px-4 py-3.5">
       <span className="text-[12.5px] text-muted">{label}</span>
-      <span className="numeric text-[24px] leading-tight font-semibold tracking-tight">{value}</span>
-      {detail !== undefined && <span className="text-[12px] text-muted">{detail}</span>}
+      <span className="numeric text-[24px] leading-tight font-semibold tracking-tight">
+        {value}
+      </span>
+      {detail !== undefined && (
+        <span className="text-[12px] text-muted">{detail}</span>
+      )}
     </Card>
   );
 }
 
-function routeAddress(route: StatisticsRoute, t: ReturnType<typeof useT>): string {
+function routeAddress(
+  route: StatisticsRoute,
+  t: ReturnType<typeof useT>,
+): string {
   if (route.host !== null) return route.host;
-  if (route.port !== undefined) return t("statistics.routes.port", { port: route.port });
+  if (route.port !== undefined)
+    return t("statistics.routes.port", { port: route.port });
   return DASH;
 }
 
@@ -152,26 +184,41 @@ function Ready({ stats }: { stats: Statistics }) {
   const t = useT();
   const hour = lastHour(stats);
   const p95 = React.useMemo(() => {
-    const values = stats.perMinute.flatMap((m) => (m.p95Ms === null ? [] : [m.p95Ms]));
+    const values = stats.perMinute.flatMap((m) =>
+      m.p95Ms === null ? [] : [m.p95Ms],
+    );
     return values.length === 0 ? null : Math.max(...values);
   }, [stats.perMinute]);
   const codeTotal = CODE_CLASSES.reduce((sum, c) => sum + stats.codes[c], 0);
-  const protocolTotal = PROTOCOLS.reduce((sum, p) => sum + stats.protocols[p], 0);
+  const protocolTotal = PROTOCOLS.reduce(
+    (sum, p) => sum + stats.protocols[p],
+    0,
+  );
   const routes = [...stats.routes].sort((a, b) => b.requests - a.requests);
 
   return (
     <>
       <PaneSection>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Figure label={t("statistics.figure.requests")} value={fmt.number(hour.requests)} />
+          <Figure
+            label={t("statistics.figure.requests")}
+            value={fmt.number(hour.requests)}
+          />
           <Figure
             label={t("statistics.figure.errors")}
             value={fmt.number(hour.serverErrors)}
             {...(hour.errorRate !== null
-              ? { detail: t("statistics.errorRate", { rate: fmt.percent(hour.errorRate) }) }
+              ? {
+                  detail: t("statistics.errorRate", {
+                    rate: fmt.percent(hour.errorRate),
+                  }),
+                }
               : {})}
           />
-          <Figure label={t("statistics.figure.sent")} value={fmt.bytes(hour.bytesOut)} />
+          <Figure
+            label={t("statistics.figure.sent")}
+            value={fmt.bytes(hour.bytesOut)}
+          />
           <Figure
             label={t("statistics.figure.connections")}
             value={fmt.number(stats.totals.openConnections)}
@@ -197,20 +244,29 @@ function Ready({ stats }: { stats: Statistics }) {
           <Row>
             <div className="w-full py-1.5">
               <SplitBar
-                parts={CODE_CLASSES.map((c) => ({ key: c, value: stats.codes[c], fill: CODE_FILL[c] }))}
+                parts={CODE_CLASSES.map((c) => ({
+                  key: c,
+                  value: stats.codes[c],
+                  fill: CODE_FILL[c],
+                }))}
               />
             </div>
           </Row>
           {CODE_CLASSES.map((c, index) => (
             <Row key={c} last={index === CODE_CLASSES.length - 1}>
               <span className="flex min-w-0 flex-1 items-center gap-2.5 text-sm">
-                <span className={cn("size-2 shrink-0 rounded-full", CODE_DOT[c])} aria-hidden="true" />
+                <span
+                  className={cn("size-2 shrink-0 rounded-full", CODE_DOT[c])}
+                  aria-hidden="true"
+                />
                 {t(`statistics.codes.${c}`)}
               </span>
               <RowValue>
                 {fmt.number(stats.codes[c])}
                 {codeTotal > 0 && (
-                  <span className="ml-2 text-faint">{fmt.percent(stats.codes[c] / codeTotal)}</span>
+                  <span className="ml-2 text-faint">
+                    {fmt.percent(stats.codes[c] / codeTotal)}
+                  </span>
                 )}
               </RowValue>
             </Row>
@@ -218,39 +274,49 @@ function Ready({ stats }: { stats: Statistics }) {
         </Group>
       </PaneSection>
 
-      <PaneSection>
-        <GroupTitle>{t("statistics.protocols.title")}</GroupTitle>
-        <Group>
-          <Row>
-            <div className="w-full py-1.5">
-              <SplitBar
-                parts={PROTOCOLS.map((p) => ({
-                  key: p,
-                  value: stats.protocols[p],
-                  fill: PROTOCOL_FILL[p],
-                }))}
-              />
-            </div>
-          </Row>
-          {PROTOCOLS.map((p, index) => (
-            <Row key={p} last={index === PROTOCOLS.length - 1}>
-              <span className="flex min-w-0 flex-1 items-center gap-2.5 text-sm">
-                <span className={cn("size-2 shrink-0 rounded-full", PROTOCOL_DOT[p])} aria-hidden="true" />
-                {PROTOCOL_NAME[p]}
-              </span>
-              <RowValue>
-                {fmt.number(stats.protocols[p])}
-                {protocolTotal > 0 && (
-                  <span className="ml-2 text-faint">
-                    {fmt.percent(stats.protocols[p] / protocolTotal)}
-                  </span>
-                )}
-              </RowValue>
+      {/* Traefik's metrics carry no HTTP version, so only a place that
+       * counts protocols another way sends them; the box sends none. */}
+      {protocolTotal > 0 && (
+        <PaneSection>
+          <GroupTitle>{t("statistics.protocols.title")}</GroupTitle>
+          <Group>
+            <Row>
+              <div className="w-full py-1.5">
+                <SplitBar
+                  parts={PROTOCOLS.map((p) => ({
+                    key: p,
+                    value: stats.protocols[p],
+                    fill: PROTOCOL_FILL[p],
+                  }))}
+                />
+              </div>
             </Row>
-          ))}
-        </Group>
-        <GroupCaption>{t("statistics.protocols.caption")}</GroupCaption>
-      </PaneSection>
+            {PROTOCOLS.map((p, index) => (
+              <Row key={p} last={index === PROTOCOLS.length - 1}>
+                <span className="flex min-w-0 flex-1 items-center gap-2.5 text-sm">
+                  <span
+                    className={cn(
+                      "size-2 shrink-0 rounded-full",
+                      PROTOCOL_DOT[p],
+                    )}
+                    aria-hidden="true"
+                  />
+                  {PROTOCOL_NAME[p]}
+                </span>
+                <RowValue>
+                  {fmt.number(stats.protocols[p])}
+                  {protocolTotal > 0 && (
+                    <span className="ml-2 text-faint">
+                      {fmt.percent(stats.protocols[p] / protocolTotal)}
+                    </span>
+                  )}
+                </RowValue>
+              </Row>
+            ))}
+          </Group>
+          <GroupCaption>{t("statistics.protocols.caption")}</GroupCaption>
+        </PaneSection>
+      )}
 
       <PaneSection>
         <GroupTitle>{t("statistics.routes.title")}</GroupTitle>
@@ -264,29 +330,48 @@ function Ready({ stats }: { stats: Statistics }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("statistics.routes.name")}</TableHead>
-                  <TableHead className="text-right">{t("statistics.routes.requests")}</TableHead>
-                  <TableHead className="text-right">{t("statistics.routes.errors")}</TableHead>
-                  <TableHead className="text-right">{t("statistics.routes.sent")}</TableHead>
-                  <TableHead className="text-right">{t("statistics.routes.p95")}</TableHead>
+                  <TableHead className="text-right">
+                    {t("statistics.routes.requests")}
+                  </TableHead>
+                  <TableHead className="text-right">
+                    {t("statistics.routes.errors")}
+                  </TableHead>
+                  <TableHead className="text-right">
+                    {t("statistics.routes.sent")}
+                  </TableHead>
+                  <TableHead className="text-right">
+                    {t("statistics.routes.p95")}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {routes.map((route) => (
                   <TableRow key={route.name}>
                     <TableCell>
-                      <span className="block text-sm text-ink">{route.name}</span>
+                      <span className="block text-sm text-ink">
+                        {route.name}
+                      </span>
                       <span className="block font-mono text-[12px] text-muted">
                         {routeAddress(route, t)}
                       </span>
                     </TableCell>
-                    <TableCell className="numeric text-right">{fmt.number(route.requests)}</TableCell>
+                    <TableCell className="numeric text-right">
+                      {fmt.number(route.requests)}
+                    </TableCell>
                     <TableCell
-                      className={cn("numeric text-right", route.serverErrors > 0 && "text-crit")}
+                      className={cn(
+                        "numeric text-right",
+                        route.serverErrors > 0 && "text-crit",
+                      )}
                     >
                       {fmt.number(route.serverErrors)}
                     </TableCell>
-                    <TableCell className="numeric text-right">{fmt.bytes(route.bytesOut)}</TableCell>
-                    <TableCell className="numeric text-right">{ms(route.p95Ms)}</TableCell>
+                    <TableCell className="numeric text-right">
+                      {fmt.bytes(route.bytesOut)}
+                    </TableCell>
+                    <TableCell className="numeric text-right">
+                      {ms(route.p95Ms)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -295,7 +380,10 @@ function Ready({ stats }: { stats: Statistics }) {
         </Group>
         {stats.since !== null && (
           <GroupCaption>
-            {t("statistics.since", { date: fmt.date(stats.since), time: fmt.time(stats.since) })}
+            {t("statistics.since", {
+              date: fmt.date(stats.since),
+              time: fmt.time(stats.since),
+            })}
           </GroupCaption>
         )}
       </PaneSection>
