@@ -588,7 +588,7 @@ pkgs.testers.nixosTest {
         film = "/tmp/shots/film"
         if phase == "before":
             laptop.succeed("mkdir -p /var/lib/shots /tmp/shots/screenshots/before /tmp/shots/screenshots/after /tmp/shots/film")
-            token = mattbox.succeed("cat /var/secrets/losos-admin-token").strip()
+            token = mattbox.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip()
             laptop.succeed(f"printf %s {shlex.quote(token)} > /var/lib/shots/token")
             shots("shot", "pr", f"{pr}/before/market.png", "ai-models")
             shots("import-wallet", WALLET_PHRASE, WALLET_PASSWORD)
@@ -670,10 +670,10 @@ pkgs.testers.nixosTest {
     with subtest("mattbox finds the edge official over https, and the Market pane draws"):
         mattbox.wait_for_unit("lososd.service")
         mattbox.wait_for_unit("nginx.service")
-        mattbox.wait_until_succeeds("test -s /var/secrets/losos-admin-token")
+        mattbox.wait_until_succeeds("test -s /etc/credstore.encrypted/admin-token")
         def official(_):
             out = mattbox.succeed(
-                "curl -sS -H \"Authorization: Bearer $(cat /var/secrets/losos-admin-token)\" "
+                "curl -sS -H \"Authorization: Bearer $(systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -)\" "
                 "http://127.0.0.1:8082/api/edge"
             )
             doc = json.loads(out)

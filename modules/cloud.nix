@@ -311,7 +311,10 @@ in
         + lib.optionalString mesh.enable (
           " --mesh" + lib.optionalString mesh.selfSigned " --mesh-self-signed"
         )
-        + lib.optionalString knowledgeBases " --knowledge-bases";
+        + lib.optionalString knowledgeBases " --knowledge-bases"
+        # Files the Windows share writes, into the table as they land
+        # (modules/windows.nix).
+        + lib.optionalString cfg.windows.enable " --watch";
         User = "losos-cloud";
         Group = "losos-cloud";
         StateDirectory = "losos-cloud";

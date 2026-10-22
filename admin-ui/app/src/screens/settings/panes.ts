@@ -9,6 +9,7 @@ import {
   InformationCircleIcon,
   Key01Icon,
   LayoutGridIcon,
+  LockPasswordIcon,
   PaintBoardIcon,
   Share08Icon,
   SlidersHorizontalIcon,
@@ -52,6 +53,7 @@ export type SettingsPaneId =
   | "look"
   | "hardware"
   | "security"
+  | "credentials"
   | "account"
   | "users"
   | "access"
@@ -298,6 +300,24 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "ssh",
     "losos",
   ]),
+  /* Credentials right after Access tokens: the ways into the box, then the
+   * secrets the box keeps for itself. */
+  pane("credentials", LockPasswordIcon, [
+    "credential",
+    "credentials",
+    "secret",
+    "secrets",
+    "password",
+    "passwords",
+    "key",
+    "keys",
+    "token",
+    "tpm",
+    "sealed",
+    "encrypted",
+    "rotate",
+    "systemd-creds",
+  ]),
   /* Advanced and History sit between Security and About: every option,
    * then the record of every change. Advanced carries the long tail an
    * owner reaches for rarely and deliberately — like Security, below the
@@ -370,6 +390,7 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
   look: "look",
   hardware: "admin",
   security: "admin",
+  credentials: "admin",
   account: "account",
   users: "admin",
   access: "access",

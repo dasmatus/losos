@@ -45,17 +45,19 @@ const OWNED = {
   'hardening.usbguard': 'security',
 };
 /* Lines of overrides.nix another pane draws its own editor for: each app's
- * box-wide settings, on the Apps pane, and the
- * memory this box lends to AI models, on the Market pane
- * (lib/option-value.ts, ON_PANE). The Advanced row shows the value and links
- * there, to the app's fold on the Apps pane. */
+ * box-wide settings, on the Apps pane, the
+ * memory this box lends to AI models, on the Market pane, and the Windows
+ * share, on the Network pane (lib/option-value.ts, ON_PANE). The Advanced
+ * row shows the value and links there, to the app's fold on the Apps pane. */
 const ON_PANE = Object.fromEntries(
   DOC.options.flatMap((option) =>
     option.name === 'cloud.trashDays' || /^git\.site\./.test(option.name)
       ? [[option.name, 'apps']]
       : /^inference\.lend\.(enable|memoryMiB)$/.test(option.name)
         ? [[option.name, 'market']]
-        : [],
+        : option.name === 'cloud.windows.enable'
+          ? [[option.name, 'network']]
+          : [],
   ),
 );
 const fold = (name) => (name.startsWith('cloud.') ? 'cloud' : name.startsWith('git.') ? 'git' : null);
@@ -429,8 +431,12 @@ await check('the Apps pane draws every box-wide setting of both apps, and Apply 
   // Cleared, the field goes back to the default and the line goes.
   await trash.fill('');
   await trash.press('Enter');
-  // The default comes back on the render after the commit, not with it.
-  for (let i = 0; i < 50 && (await trash.inputValue()) !== '30'; i++) await page.waitForTimeout(100);
+  // The field takes the default from the draft one render later, so wait for it.
+  await trash.evaluate((input) => new Promise((done) => {
+    const settled = () => (input.value === '30' ? done() : requestAnimationFrame(settled));
+    setTimeout(done, 2000);
+    settled();
+  }));
   assert.equal(await trash.inputValue(), '30');
   await flip(row(page, 'git.site.requireSignIn'));
   await flip(row(page, 'git.site.pushCreate'));
