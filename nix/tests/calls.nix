@@ -824,6 +824,9 @@ pkgs.testers.nixosTest {
 
     def shot(page, name):
         settle(page)
+        # Every picture from the top of the page, so a Before and its
+        # After differ only in what changed.
+        page.evaluate("window.scrollTo(0, 0)")
         page.screenshot(path=f"{SHOTS}/{name}.png")
 
     def opened(page):
