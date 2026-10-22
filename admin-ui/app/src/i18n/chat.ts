@@ -6,9 +6,32 @@ import { defineMessages } from "./define";
 export default defineMessages({
   "chat.title": { en: "LosOS Chat", sk: "LosOS Chat", de: "LosOS Chat" },
   "chat.summary": {
-    en: "You are {id}. Chat goes between the people on this box; direct messages and new rooms are end-to-end encrypted.",
-    sk: "Ste {id}. Chat ide medzi ľuďmi na tomto boxe; priame správy a nové miestnosti sú šifrované end-to-end.",
-    de: "Du bist {id}. Der Chat geht zwischen den Personen auf dieser Box; Direktnachrichten und neue Räume sind Ende-zu-Ende-verschlüsselt.",
+    en: "You are {id}. Chat goes between the people on this box and the LosOS boxes on your network; direct messages and new rooms are end-to-end encrypted.",
+    sk: "Ste {id}. Chat ide medzi ľuďmi na tomto boxe a na LosOS boxoch vo vašej sieti; priame správy a nové miestnosti sú šifrované end-to-end.",
+    de: "Du bist {id}. Der Chat geht zwischen den Personen auf dieser Box und auf den LosOS-Boxen in deinem Netz; Direktnachrichten und neue Räume sind Ende-zu-Ende-verschlüsselt.",
+  },
+  "chat.vouch.title": { en: "Who you are", sk: "Kto ste", de: "Wer du bist" },
+  "chat.vouch.summary": {
+    en: "{host} asks this box who you are.",
+    sk: "{host} sa pýta tohto boxu, kto ste.",
+    de: "{host} fragt diese Box, wer du bist.",
+  },
+  "chat.vouch.body": {
+    en: "Say yes and {host} learns your chat address and your name, and you can comment, open issues and propose changes in its LosOS Git. It gets nothing else from this box.",
+    sk: "Ak súhlasíte, {host} sa dozvie vašu chatovú adresu a meno a môžete v jeho LosOS Git komentovať, zakladať úlohy a navrhovať zmeny. Nič iné z tohto boxu nedostane.",
+    de: "Sagst du ja, erfährt {host} deine Chat-Adresse und deinen Namen, und du kannst in seinem LosOS Git kommentieren, Issues anlegen und Änderungen vorschlagen. Sonst bekommt es nichts von dieser Box.",
+  },
+  "chat.vouch.yes": { en: "Tell {host}", sk: "Povedať boxu {host}", de: "{host} Bescheid geben" },
+  "chat.vouch.no": { en: "Not now", sk: "Teraz nie", de: "Jetzt nicht" },
+  "chat.vouch.failed": {
+    en: "This box could not vouch for you just now. Try again in a moment.",
+    sk: "Tento box za vás teraz nemohol ručiť. Skúste to o chvíľu.",
+    de: "Diese Box konnte gerade nicht für dich bürgen. Versuch es gleich noch einmal.",
+  },
+  "chat.vouch.nothing": {
+    en: "This address asks nothing this box answers. Start again from the other box's page.",
+    sk: "Táto adresa sa nepýta nič, na čo tento box odpovedá. Začnite znova zo stránky druhého boxu.",
+    de: "Diese Adresse fragt nichts, was diese Box beantwortet. Fang auf der Seite der anderen Box noch einmal an.",
   },
   "chat.back": { en: "Back to the list", sk: "Späť na zoznam", de: "Zurück zur Liste" },
   "chat.offline": {
