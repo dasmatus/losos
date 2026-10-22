@@ -116,7 +116,7 @@ import {
   type Reading,
 } from "./encryption";
 import { formatBytes } from "@/lib/apps";
-import { CannotOpen, openMail, seal, type Opened } from "./pgp";
+import { CannotOpen, openMail, seal, unlockedKey, type Opened } from "./pgp";
 import { InviteCard, isCalendarFile } from "@/calendar/invite";
 import { ComposeAttachments, ReceivedAttachment, useAttached, useCloud } from "./attachments";
 import { DeleteFolderDialog, FolderDialog, explainFolder, tree, within, type Placed } from "./folders";
@@ -1499,7 +1499,10 @@ function Composer({
           const inside = await Promise.all(
             files.map(async (f) => ({ name: f.name, type: f.type, bytes: new Uint8Array(await f.arrayBuffer()) })),
           );
-          made = await seal({ text, files: inside, encryptTo, signWith: sign ? unlocked : null, inline });
+          // Read now: an unlock that just happened is not in this render's `unlocked`.
+          const signWith = sign ? unlockedKey(own.key.fingerprint) : null;
+          if (sign && signWith === null) throw new Error(t("mail.pgp.unlockFailed"));
+          made = await seal({ text, files: inside, encryptTo, signWith, inline });
         } catch (error) {
           throw new Error(t("mail.pgp.compose.failed", { detail: message(error) }));
         }

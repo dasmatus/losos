@@ -644,6 +644,30 @@ await check('OpenPGP: make a key, then send Eva mail only her key opens', async 
   await done();
 });
 
+await check('OpenPGP: on a new page the key is locked; Send asks for the passphrase, then signs', async () => {
+  const { page, calls, done } = await open();
+  await page.getByRole('button', { name: 'Write' }).click();
+  const compose = page.getByRole('dialog');
+  await compose.getByRole('combobox').first().fill('eva@mattbox.home.arpa');
+  await compose.locator('[data-testid=mail-recipient-key][data-state=found]').waitFor();
+  await compose.getByLabel('Subject').fill('Signed after unlocking');
+  await compose.locator('textarea').fill('Signed once the key opened.');
+  await compose.getByRole('button', { name: 'Send', exact: true }).click();
+  const unlock = page.getByRole('dialog', { name: 'Unlock your key' });
+  await unlock.getByLabel('Passphrase').fill(PASSPHRASE);
+  await unlock.getByRole('button', { name: 'Unlock' }).click();
+  await compose.waitFor({ state: 'detached', timeout: 30_000 });
+  const sent = calls.filter((c) => c.send).at(-1).send;
+  const result = await openpgp.decrypt({
+    message: await openpgp.readMessage({ armoredMessage: sent.pgp.armored }),
+    decryptionKeys: evaKey,
+    verificationKeys: await openpgp.readKey({ armoredKey: ownKey.publicKey }),
+  });
+  assert.equal(result.signatures.length, 1, 'the message is not signed');
+  await result.signatures[0].verified;
+  await done();
+});
+
 await check('OpenPGP: Eva\'s encrypted mail opens after the passphrase, signed by her', async () => {
   const { page, done } = await open();
   const row = page.getByRole('button', { name: /The spare key/ });
