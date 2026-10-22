@@ -109,8 +109,9 @@ let
       mv "$work/cert.pem" ${tlsDir}/cert.pem
       printf '%s' "$want" > ${tlsDir}/names
       echo "certificate for: ''${want:-no address yet}"
+      # --no-block: nginx is ordered after this unit (see losos-hidden-sync).
       if systemctl -q is-active nginx.service; then
-        systemctl reload nginx.service || true
+        systemctl reload --no-block nginx.service || true
       fi
     '';
   };

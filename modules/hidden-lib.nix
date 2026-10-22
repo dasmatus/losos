@@ -121,9 +121,11 @@ rec {
           mv "$tmp" "$1"
         }
 
+        # --no-block: the daemons are ordered after this unit, so a reload
+        # job waits for it to finish, and it would wait for the reload.
         reload() {
           if systemctl -q is-active "$1"; then
-            systemctl reload "$1" || true
+            systemctl reload --no-block "$1" || true
           fi
         }
 
