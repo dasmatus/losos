@@ -91,7 +91,6 @@ dve veci.
 Prvá vysvetľuje, ako sa obrátiť na políciu alebo na linku na nahlasovanie.
 Druhá pošle hlásenie moderátorom boxu. Moderátori dostanú odkaz na správu,
 nikdy jej text ani obrázky, a môžu ju skryť alebo odosielateľa zastaviť.
-Box, ktorý ešte nemá moderovanie, to oznámi a odkazy fungujú ďalej.
 
 LosOS nikdy nič nenahlasuje sám. Nič na boxe sa nepozerá do vašich správ
 ani obrázkov.
@@ -114,4 +113,5 @@ ani obrázkov.
   ktoré je detskou linkou v každej krajine EÚ.
 
 Potom správu nahláste moderátorom boxu, aby ju mohli skryť pre všetkých a
-odosielateľa zastaviť.
+odosielateľa zastaviť. Pozrite si,
+[čo s ňou moderátori urobia](moderation.md#a-report-about-a-child).
