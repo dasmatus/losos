@@ -86,7 +86,8 @@ pkgs.buildNpmPackage {
     };
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
-    FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
+    # fonts.nix: the generic families mapped, or the pictures come out serif.
+    FONTCONFIG_FILE = import ./fonts.nix { inherit pkgs; };
     LOSOS_CALLS_BIN = "${callsPackage}/bin/losos-calls";
     # The sandbox has only loopback; Chromium takes a loopback candidate.
     LOSOS_CALLS_ADDRESS = "127.0.0.1";
