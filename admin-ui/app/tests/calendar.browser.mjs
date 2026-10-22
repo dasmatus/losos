@@ -227,6 +227,7 @@ await check('a new event with a guest, a reminder and a video call is saved', as
   assert.equal(body.call, 'video');
   assert.deepEqual(body.attendees.map((a) => a.email), ['eva@mattbox.home.arpa']);
   assert.equal(body.organizer?.email, 'matus@mattbox.home.arpa');
+  assert.equal(body.organizer?.name, 'Matus');
   await page.getByRole('button', { name: /Review the box/ }).waitFor();
   await done();
 });

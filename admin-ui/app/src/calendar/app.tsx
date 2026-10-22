@@ -309,7 +309,7 @@ function Planner({ calendars, onCalendars }: { calendars: CalendarInfo[]; onCale
           <div className="min-w-0 flex-1">
             <PaneHeader title={t("calendar.title")} summary={t("calendar.summary")} />
           </div>
-          <div className="flex min-w-0 flex-wrap gap-2">
+          <div className="flex min-w-0 flex-wrap gap-2 max-sm:mb-4">
             <Button variant="secondary" onClick={() => setDialog("subscribe")}>
               <HugeiconsIcon icon={Link01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
               {t("calendar.subscribe")}

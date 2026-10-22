@@ -51,6 +51,7 @@ import {
   sendMail,
   sharedApp,
   suggestContacts,
+  useMe,
   type CalendarEvent,
   type CalendarEventFields,
   type CalendarFreq,
@@ -509,6 +510,8 @@ export function EventEditor({
   const t = useT();
   const locale = useLocale();
   const me = useMyAddress();
+  const signedIn = useMe();
+  const myName = signedIn?.displayName || signedIn?.name || "";
   const [form, setForm] = React.useState<Form>(() => formOf(draft));
   const [busy, setBusy] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
@@ -553,7 +556,7 @@ export function EventEditor({
         ...(custom && form.freq === "none" ? { keepRepeat: true } : {}),
         attendees,
         ...(attendees.length > 0 && me !== null
-          ? { organizer: editing?.organizer ?? { email: me } }
+          ? { organizer: editing?.organizer ?? { email: me, ...(myName !== "" ? { name: myName } : {}) } }
           : editing?.organizer !== undefined
             ? { organizer: editing.organizer }
             : {}),
@@ -604,7 +607,8 @@ export function EventEditor({
             <FieldLabel htmlFor={id("allday")}>{t("calendar.allDay")}</FieldLabel>
             <Switch id={id("allday")} isSelected={form.allDay} onChange={(v) => set("allDay", v)} />
           </Field>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {/* A day and a time side by side need the whole row; all-day dates fit two to a row. */}
+          <div className={cn("grid grid-cols-1 gap-3", form.allDay && "sm:grid-cols-2")}>
             <Field>
               <FieldLabel htmlFor={id("start")}>{t("calendar.field.start")}</FieldLabel>
               <div className="flex gap-2">
@@ -625,6 +629,7 @@ export function EventEditor({
                 {!form.allDay && (
                   <Input
                     type="time"
+                    className="w-40 shrink-0"
                     aria-label={t("calendar.field.startTime")}
                     value={form.startTime}
                     required
@@ -645,7 +650,7 @@ export function EventEditor({
               <div className="flex gap-2">
                 <Input id={id("end")} type="date" value={form.endDay} min={form.startDay} required onChange={(e) => set("endDay", e.target.value)} />
                 {!form.allDay && (
-                  <Input type="time" aria-label={t("calendar.field.endTime")} value={form.endTime} required onChange={(e) => set("endTime", e.target.value)} />
+                  <Input type="time" className="w-40 shrink-0" aria-label={t("calendar.field.endTime")} value={form.endTime} required onChange={(e) => set("endTime", e.target.value)} />
                 )}
               </div>
             </Field>

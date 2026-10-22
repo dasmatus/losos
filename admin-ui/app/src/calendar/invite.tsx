@@ -151,11 +151,13 @@ export function InviteCard({ attachment, address, subject }: { attachment: MailA
         </div>
       </div>
       {replier !== undefined && (
-        <p className="flex items-center gap-2 text-sm">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
           <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.5} className="text-ok" aria-hidden="true" />
-          {t(`calendar.invite.answered.${replier.status === "ACCEPTED" || replier.status === "TENTATIVE" || replier.status === "DECLINED" ? replier.status : "ACCEPTED"}`, {
-            name: replier.name || replier.email,
-          })}
+          <span>
+            {t(`calendar.invite.answered.${replier.status === "ACCEPTED" || replier.status === "TENTATIVE" || replier.status === "DECLINED" ? replier.status : "ACCEPTED"}`, {
+              name: replier.name || replier.email,
+            })}
+          </span>
           {applied === "reply" && <Badge variant="secondary">{t("calendar.invite.recorded")}</Badge>}
         </p>
       )}

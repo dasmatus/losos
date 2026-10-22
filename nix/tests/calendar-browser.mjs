@@ -250,6 +250,9 @@ async function on() {
   });
   if (!made.ok()) throw new Error(`the call was not saved: ${made.status()} ${await made.text()}`);
   const call = await made.json();
+  // Made behind the page's back, so the page reads the week again.
+  await owner.reload();
+  await owner.getByRole("button", { name: /Call with Eva/ }).first().waitFor();
   await owner.getByText("Coming up: Call with Eva").first().waitFor({ timeout: 240_000 });
   await owner.getByRole("button", { name: "Join the call" }).first().waitFor();
   await shot(owner, "calendar-reminder");
