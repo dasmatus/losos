@@ -143,6 +143,12 @@ wasmtime = { version = "50", default-features = false, features = ["anyhow", "ru
 # the lock file through zip.
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 
+# Mesh CI (src/ci/, the losos-ci binary) reads GitHub Actions workflows,
+# which are YAML, out of a commit's tree, which LosOS Git hands over as a
+# gzipped tar. serde_yaml is the crate edge/registrar already reads with.
+serde_yaml = "0.9"
+tar = { version = "0.4", default-features = false }
+
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its
 # output, and give it a throwaway filesystem.
@@ -190,3 +196,7 @@ path = "src/bin/losos-search.rs"
 [[bin]]
 name = "losos-git"
 path = "src/bin/losos-git.rs"
+
+[[bin]]
+name = "losos-ci"
+path = "src/bin/losos-ci.rs"

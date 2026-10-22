@@ -14,6 +14,15 @@
     disko.url = "github:nix-community/disko";
     disko.inputs.nixpkgs.follows = "nixpkgs";
 
+    # pm, the LosOS package manager (nix/pm.nix): Mesh CI starts each job's
+    # containers through it and builds workflows' pm recipes with it. Its
+    # source only, built here with this flake's nixpkgs. Pinned to the newest
+    # master whose root Cargo.lock still agrees with its Cargo.toml: from PR
+    # #55 on the lock carries wit-component 0.262 while Cargo.toml asks for
+    # 0.261, so an offline build cannot resolve it.
+    pm.url = "git+https://github.com/losos-project/pm?ref=master&rev=30abe308587967a71ee9142915d735d784430a9e";
+    pm.flake = false;
+
     # devenv is deliberately NOT a flake input. The dev environment lives in
     # devenv.nix, driven by the devenv CLI against devenv.yaml (standalone
     # mode). Wiring it through the flake instead — devenv.lib.mkShell — fails
@@ -35,6 +44,7 @@
       nixpkgs,
       impermanence,
       disko,
+      pm,
     }:
     let
       system = "x86_64-linux";
@@ -62,7 +72,10 @@
       # losos-registrar (the master-proxy edge) and losos-admin-ui (the static
       # admin SPA). See nix/packages.nix.
       packages.${system} =
-        import ./nix/packages.nix { inherit pkgs version; }
+        import ./nix/packages.nix {
+          inherit pkgs version;
+          pmSrc = pm;
+        }
         # Bootable media, built off nixosConfigurations.install. Separate from
         # packages.nix because these are the only outputs that reach back into
         # `self` — they overlay the install system rather than building
@@ -340,6 +353,9 @@
             ./modules/git.nix
             # LosOS Mail: Stalwart as the shared user, only while sharing.
             ./modules/mail.nix
+            # Mesh CI: GitHub Actions workflows on the boxes of the mesh,
+            # only while sharing (backend/src/ci/).
+            ./modules/ci.nix
             # The option document and the configuration repository on LosOS
             # Git (modules/config-repo.nix, backend/src/{options,config_repo}.rs).
             ./modules/config-repo.nix
@@ -529,6 +545,20 @@
         losos-git-pages = import ./nix/tests/git-pages.nix { inherit pkgs; };
         # A Forgejo box's switch: everything it held, carried into LosOS Git.
         losos-git-forgejo = import ./nix/tests/git-forgejo.nix { inherit pkgs; };
+        # Mesh CI: a push to LosOS Git runs its GitHub Actions workflows on
+        # two boxes through pm and Mesh CI's pm plugin, a service container
+        # and a pm recipe included, statuses back on the commit.
+        losos-mesh-ci = import ./nix/tests/mesh-ci.nix {
+          inherit pkgs;
+          pmSrc = pm;
+        };
+        # The same with the real admin UI on boxa and a laptop that takes
+        # the pull request's pictures of the Mesh CI pages.
+        losos-mesh-ci-screens = import ./nix/tests/mesh-ci.nix {
+          inherit pkgs;
+          pmSrc = pm;
+          screens = true;
+        };
         # LosOS Reviewer: the code model's reviews of pull requests, on
         # recorded answers (nix/tests/git-reviewer.nix).
         losos-git-reviewer = import ./nix/tests/git-reviewer.nix { inherit pkgs; };

@@ -33,6 +33,16 @@
     "GET /api/mail/messages/{id}/html": "signed-in",
     "GET /api/mail/attachments/{blob}": "signed-in",
 
+    "GET /api/ci": "signed-in",
+    "PUT /api/ci/runner": "admin",
+    "GET /api/ci/runs": "signed-in",
+    "GET /api/ci/runs/{id}": "signed-in",
+    "POST /api/ci/runs/{id}/cancel": "signed-in",
+    "POST /api/ci/runs/{id}/rerun": "signed-in",
+    "GET /api/ci/jobs/{id}/log": "signed-in",
+    "GET /api/ci/workflows": "signed-in",
+    "POST /api/ci/dispatch": "signed-in",
+
     "GET /api/storage": "storage",
     "POST /api/grow": "storage",
     "POST /api/change": "storage",
