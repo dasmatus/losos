@@ -159,7 +159,7 @@ rec {
           len=$(od -An -tu1 -j385 -N2 "$1" | awk 'NF == 2 { print $1 * 256 + $2 }')
           [ -n "$len" ] || return 1
           hex=$(head -c $((387 + len)) "$1" | sha256sum | cut -c1-64)
-          printf '%s' "$hex" | tr a-f A-F | basenc --base16 -d | basenc --base32 -w0 | tr -d '=' | tr A-Z a-z
+          printf '%s' "$hex" | tr '[:lower:]' '[:upper:]' | basenc --base16 -d | basenc --base32 -w0 | tr -d '=' | tr '[:upper:]' '[:lower:]'
         }
 
         out='{}'
