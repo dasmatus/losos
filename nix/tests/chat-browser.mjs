@@ -429,9 +429,12 @@ async function safety(owner, eva) {
   const text = await log.innerText();
   if (text.includes("4242 4242") || text.includes("1987 4263")) throw new Error("a card or IBAN number is in the page unpressed");
   await log.locator("[data-detail=card]").last().scrollIntoViewIfNeeded();
+  // The pointer off the log, so no message's quick reactions cover the bars.
+  await eva.mouse.move(4, 4);
   await shot(eva, "nudity-and-details");
   await log.locator("[data-detail=iban]").last().click();
   await log.getByText("SK31 1200 0000 1987 4263 7541").waitFor();
+  await eva.mouse.move(4, 4);
   await shot(eva, "details-shown");
   const trusted = await api(eva, "/api/pictures");
   if (!trusted.body?.trusted?.includes("@matus:mattbox.local")) throw new Error(`Eva's trusted senders: ${JSON.stringify(trusted.body)}`);
