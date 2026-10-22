@@ -304,14 +304,14 @@ pkgs.testers.nixosTest {
         soon = box.succeed("date -d '+2 days' +%F").strip()
         def new(**fields):
             return ok("POST", "/tracker/issues", {"project": "BT", **fields}, token=owner)
-        three = new(title="Log a failed copy to /var/log/backup.log", priority=3, assignee="notshared",
+        four = new(title="Log a failed copy to /var/log/backup.log", priority=3, assignee="notshared",
                     labels=["feature"], cycle=cycle, estimate=1, category="unstarted")
-        assert three["key"] == "BT-4", three
+        assert four["key"] == "BT-4", four
         new(title="Backup runs twice after a reboot at midnight", priority=1, assignee="notshared",
             labels=["bug"], cycle=cycle, estimate=2, category="started", due=soon)
-        five = new(title="Check free space on the NAS before copying", priority=2, assignee="eva",
+        six = new(title="Check free space on the NAS before copying", priority=2, assignee="eva",
                    labels=["bug"], cycle=cycle, estimate=2, category="unstarted")
-        assert five["key"] == "BT-6", five
+        assert six["key"] == "BT-6", six
         new(title="Copy only the photos that changed", priority=2, assignee="eva",
             labels=["feature"], cycle=cycle, estimate=3, category="unstarted")
         new(title="Write the README section on restoring", priority=4, assignee="jonas",
@@ -322,7 +322,7 @@ pkgs.testers.nixosTest {
         ok("POST", "/tracker/issues/BT-1/comments",
            {"body": "@notshared BT-5 has to land first or it copies twice."}, token=eva)
         mine = ok("GET", "/tracker/issues?assignee=me", token=owner)["issues"]
-        assert {i["key"] for i in mine} >= {"BT-4", "BT-5", "BT-11"}, mine
+        assert {i["key"] for i in mine} >= {"BT-4", "BT-5", "BT-10"}, mine
         inbox = ok("GET", "/tracker/inbox", token=owner)
         assert any(i["kind"] == "mention" and i["issue"]["key"] == "BT-1" for i in inbox["items"]), inbox
 
