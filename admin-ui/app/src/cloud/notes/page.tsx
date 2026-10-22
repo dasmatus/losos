@@ -1,5 +1,6 @@
 import * as React from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useHref, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { EditorView, ViewPlugin } from "@codemirror/view";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Add01Icon, ArrowLeft01Icon, Search01Icon, SidebarLeftIcon, Tag01Icon, WorkflowSquare01Icon } from "@hugeicons/core-free-icons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -31,6 +32,7 @@ import { accentFor } from "../collab/people";
 import { explain } from "../dialogs";
 import { cloudSource, notes, readText, writeText } from "./api";
 import { onText, wikilinkCompletion } from "./editing";
+import { EditorQuickActions, ReaderQuickActions } from "../quick-text";
 
 /* /cloud/notes: a folder of Markdown as Obsidian opens it, a vault.
  *
@@ -151,6 +153,8 @@ export function NotesPage() {
   const asked = params.get("view") as View | null;
   const tag = params.get("tag");
   const { vault, error, reload } = useVault(root);
+  // LosOS Cloud's own root, for an address that works outside the app.
+  const cloudRoot = useHref("/").replace(/\/$/, "");
   const source = React.useMemo(() => cloudSource(root), [root]);
 
   const path = params.get("note") ?? (tag === null && asked !== "graph" ? (vault?.home()?.path ?? null) : null);
@@ -380,6 +384,7 @@ export function NotesPage() {
             key={note.id}
             file={note.id}
             name={displayName(note)}
+            path={joinPath(root, path)}
             vault={vaultRef}
             onLive={setLive}
             preview={
@@ -412,7 +417,14 @@ export function NotesPage() {
           />
         ) : (
           rendered !== null && (
-            <div ref={bodyRef}>
+            <div ref={bodyRef} tabIndex={-1} className="outline-none">
+              <ReaderQuickActions
+                container={bodyRef}
+                app="notes"
+                path={joinPath(root, path)}
+                title={displayName(note)}
+                sectionHref={(heading) => cloudRoot + href(path, heading)}
+              />
               <NoteView
                 path={path}
                 rendered={rendered}
@@ -694,12 +706,15 @@ function VaultGraph({ vault, onOpen }: { vault: Vault; onOpen: (path: string) =>
 function NoteEditor({
   file,
   name,
+  path,
   vault,
   onLive,
   preview,
 }: {
   file: number;
   name: string;
+  /** The note, a path in LosOS Cloud. */
+  path: string;
   vault: React.RefObject<Vault | null>;
   onLive: (text: string) => void;
   preview: React.ReactNode;
@@ -711,7 +726,18 @@ function NoteEditor({
   const [error, setError] = React.useState<unknown>(null);
   const liveRef = React.useRef(onLive);
   liveRef.current = onLive;
-  const extensions = React.useMemo(() => [wikilinkCompletion(() => vault.current), onText((text) => liveRef.current(text))], [vault]);
+  const [view, setView] = React.useState<EditorView | null>(null);
+  const extensions = React.useMemo(
+    () => [
+      wikilinkCompletion(() => vault.current),
+      onText((text) => liveRef.current(text)),
+      ViewPlugin.define((v) => {
+        setView(v);
+        return { destroy: () => setView(null) };
+      }),
+    ],
+    [vault],
+  );
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -767,6 +793,7 @@ function NoteEditor({
           {preview}
         </div>
       </div>
+      <EditorQuickActions view={view} app="notes" path={path} title={name} vault={() => vault.current} />
     </div>
   );
 }

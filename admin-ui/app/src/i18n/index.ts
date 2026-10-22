@@ -38,6 +38,7 @@ import panes from "./panes";
 import pictures from "./pictures";
 import pins from "./pins";
 import profile from "./profile";
+import quick from "./quick";
 import report from "./report";
 import settings from "./settings";
 import shell from "./shell";
@@ -94,6 +95,7 @@ export const MESSAGES = {
   ...mention,
   ...games,
   ...together,
+  ...quick,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

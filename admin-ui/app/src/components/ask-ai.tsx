@@ -33,7 +33,7 @@ import { saveToCloud } from "@/lib/cloud-files";
 import { useLocale, useT } from "@/lib/i18n-react";
 
 /** Where an ask was made from, for the help link and the tests. */
-export type AskContext = "mail" | "cloud" | "notes" | "chat" | "git";
+export type AskContext = "mail" | "cloud" | "notes" | "chat" | "git" | "office" | "diagrams";
 
 let status: Promise<boolean> | null = null;
 
@@ -129,7 +129,13 @@ export function AskAiDialog({
   sources,
   question: preset,
   context,
-}: AskAiProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
+  use,
+}: AskAiProps & {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Put the answer back where the material came from: a selection it replaces. */
+  use?: { label: string; onUse: (answer: string) => void };
+}) {
   const t = useT();
   const lang = useLocale();
   const id = React.useId();
@@ -325,7 +331,18 @@ export function AskAiDialog({
             <Button variant="secondary" onClick={() => setRun({ state: "asking" })}>
               {t("together.ai.again")}
             </Button>
-            <Button onClick={() => onOpenChange(false)}>{t("together.close")}</Button>
+            {use !== undefined && answer !== "" ? (
+              <>
+                <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                  {t("together.close")}
+                </Button>
+                <Button onClick={() => use.onUse(answer)} data-action="use-answer">
+                  {use.label}
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => onOpenChange(false)}>{t("together.close")}</Button>
+            )}
           </>
         )}
       </DialogFooter>

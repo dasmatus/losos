@@ -495,6 +495,28 @@ in
   scripts.build-iso.exec = "command nix build --no-link -L .#nixosConfigurations.iso.config.system.build.isoImage";
   scripts.build-iso.description = "Build the installer ISO (local-only gate).";
 
+  # CI's `discovery` job on this computer: build the netboot test box
+  # (nix/tests/discovery/box.nix), boot it on a tap, and let
+  # nix/tests/discovery/check.py ask this computer whether it finds the box
+  # and opens its SMB share and WebDAV address. Linux only, and it asks for
+  # sudo (the tap, the mounts, trusting the box's certificate). The host
+  # needs what the job installs: Avahi with nss-mdns, wsdd, socat,
+  # cifs-utils and davfs2. The macOS and Windows legs run in CI only.
+  scripts.discovery.exec = ''
+    set -eu
+    box=$(command nix build --no-link --print-out-paths -L .#losos-disk-discovery-box)
+    if ! ip link show tap-losos >/dev/null 2>&1; then
+      sudo ip tuntap add dev tap-losos mode tap user "$USER"
+      sudo ip addr add 192.168.77.1/24 dev tap-losos
+      sudo ip link set tap-losos up
+    fi
+    kvm=
+    if [ -w /dev/kvm ]; then kvm=--kvm; fi
+    python3 nix/tests/discovery/check.py --os linux --box "$box" $kvm \
+      --netdev tap,id=lan,ifname=tap-losos,script=no,downscript=no
+  '';
+  scripts.discovery.description = "Boot the discovery test box on a tap and check SMB and WebDAV from this computer (Linux, sudo).";
+
   # ── devenv test ──────────────────────────────────────────────────────────
   # `devenv test` runs the fast gates: everything that does not need KVM or a
   # multi-gigabyte closure. The VM tests, the OCI images, the ISO and the
@@ -521,6 +543,7 @@ in
     echo "  build-pkgs · build-images     builds"
     echo "  build-iso                     the installer image"
     echo "  build-media                   demo QCOW2 + closure-carrying ISO"
+    echo "  discovery                     SMB and WebDAV from this computer to a test box"
     echo "  vm-tests                      the real acceptance gate (needs KVM)"
     echo "  devenv test                   all of it bar VM tests, images, media"
 

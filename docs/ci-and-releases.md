@@ -18,6 +18,17 @@ without saying so.
 - the installer ISO, built on every push and then booted under OVMF and
   SeaBIOS by `nix/tests/iso-boot.py`. A boot passes when the installer sends a
   DNS query for `github.com`. On timeout, the job uploads a screenshot.
+- discovery: a netboot test box (`nix/tests/discovery/box.nix`, LosOS Cloud
+  and the Windows share) built once, then booted in QEMU on an Ubuntu, a
+  macOS (Intel) and a Windows Server runner, on a tap, vmnet-host and a TAP
+  adapter. `nix/tests/discovery/check.py` claims it and asks each system
+  with its own tools whether it lists the box once (Avahi, Bonjour, File
+  Explorer's Network view), mounts the owner's SMB share and LosOS Cloud's
+  WebDAV address, and reads and writes a file through both. Then it switches
+  the share off over the box's serial console and checks that the WebDAV
+  entry takes the SMB one's place. Windows Server's WebDAV redirector needs
+  a restart to install, so where it is missing the Windows leg checks WebDAV
+  over HTTP and says so. `devenv shell discovery` runs the Linux leg locally.
 - `losos-registrar` for the dev machine, a static musl build pushed to GHCR
   on every push to main and every tag and served by the proxy (below)
 

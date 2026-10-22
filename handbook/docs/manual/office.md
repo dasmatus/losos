@@ -89,6 +89,9 @@ links, pictures, links to notes and embeds, tags, block link targets,
 footnotes and properties. Select some text first and the button marks it;
 press it again and the mark comes off. **Ctrl B**, **Ctrl I**, **Ctrl K**
 and **Ctrl E** work too.
+Selected text also gets a small bar above it with the marks used most,
+links, mentions and **Ask AI**; see
+[the bar over a selection](admin-pages#the-bar-over-a-selection).
 
 A document is written on the left and read on the right, drawn as Notes
 draws it. **Write** and **Read** give either side the whole width. Links to
