@@ -127,17 +127,31 @@ await check('picked words in Office bring the bar up above them, and it formats 
   assert.equal(await quick(page).count(), 0, 'no bar without a selection');
   await pickLast(page, 5);
   await quick(page).waitFor();
+  // On the first line there is no room above without covering Office's own
+  // toolbar, so the bar goes below the words and the toolbar stays usable.
+  let bar = await quick(page).boundingBox();
+  const first = await page.locator('.cm-line').first().boundingBox();
+  const tools = await page.locator('[data-testid=md-toolbar]').boundingBox();
+  assert.ok(bar.y >= first.y + first.height - 2, `the bar sits below the first line (${bar.y} vs ${first.y + first.height})`);
+  assert.ok(bar.y >= tools.y + tools.height, `the bar leaves the toolbar uncovered (${bar.y} vs ${tools.y + tools.height})`);
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await page.keyboard.insertText('hello world');
+  await pickLast(page, 5);
+  await quick(page).waitFor();
   // Above the words, inside the window.
-  const bar = await quick(page).boundingBox();
-  const line = await page.locator('.cm-line').first().boundingBox();
+  await page.waitForTimeout(250);
+  bar = await quick(page).boundingBox();
+  const line = await page.locator('.cm-line').nth(2).boundingBox();
   assert.ok(bar.y + bar.height <= line.y + 2, `the bar sits above the line (${bar.y + bar.height} vs ${line.y})`);
   await action(page, 'bold').click();
-  assert.equal(await text(page), 'hello **world**');
+  assert.equal(await text(page), 'hello world\n\nhello **world**');
   assert.equal(await action(page, 'bold').getAttribute('aria-pressed'), 'true', 'bold shows pressed');
   await action(page, 'bold').click();
-  assert.equal(await text(page), 'hello world', 'a second press takes it off');
+  assert.equal(await text(page), 'hello world\n\nhello world', 'a second press takes it off');
   await action(page, 'highlight').click();
-  assert.equal(await text(page), 'hello ==world==');
+  assert.equal(await text(page), 'hello world\n\nhello ==world==');
   // Typing over the words takes the bar away.
   await page.keyboard.insertText('there');
   await quick(page).waitFor({ state: 'detached' });

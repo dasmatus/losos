@@ -239,6 +239,7 @@ export function DiagramQuickActions({ svg, busy }: { svg: React.RefObject<SVGSVG
       }
       onReturn={() => svg.current?.focus({ preventScroll: true })}
       onDismiss={() => setDismissed(key)}
+      ceiling={() => svg.current?.getBoundingClientRect().top ?? 0}
     />
   );
 }
