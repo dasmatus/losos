@@ -7,6 +7,8 @@ slug: /manual/calendar
 # Calendar
 
 
+![Calendar's week view.](../img/calendar-week.png)
+
 ![Calendar appears under Pinned in the sidebar when it is pinned, and as a tile on the Overview.](../img/pins-overview.png)
 
 LosOS Calendar keeps your events and the calendars you follow. **Calendar**

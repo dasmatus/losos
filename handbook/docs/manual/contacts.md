@@ -6,6 +6,8 @@ slug: /manual/contacts
 
 # Contacts
 
+![LosOS Contacts.](../img/contacts-list.png)
+
 LosOS Contacts is an address book for each person on the box. **Contacts**
 in the sidebar opens it at `/contacts`. Your book is yours alone. Other
 people on the box, administrators included, cannot read it through the

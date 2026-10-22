@@ -7,6 +7,8 @@ slug: /manual/chat
 # Chat
 
 
+![LosOS Chat.](../img/chat-rooms.png)
+
 ![Chat appears in the sidebar while the box shares its storage in a mesh.](../img/overview.png)
 
 LosOS Chat is a messenger on the box for everyone with a LosOS Login account.
