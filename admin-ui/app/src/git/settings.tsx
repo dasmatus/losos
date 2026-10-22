@@ -15,10 +15,10 @@ import { explain, NotFound, RepoHeader, VisibilityField, WithRepo } from "./part
  * reviews its pull requests. */
 
 export function SettingsView() {
-  return <WithRepo>{(repo) => (repo.permissions.admin ? <Settings repo={repo} /> : <NotFound />)}</WithRepo>;
+  return <WithRepo>{(repo, reload) => (repo.permissions.admin ? <Settings repo={repo} reload={reload} /> : <NotFound />)}</WithRepo>;
 }
 
-function Settings({ repo }: { repo: Repo }) {
+function Settings({ repo, reload }: { repo: Repo; reload: () => void }) {
   const t = useT();
   const id = React.useId();
   const navigate = useNavigate();
@@ -43,7 +43,10 @@ function Settings({ repo }: { repo: Repo }) {
             (next) => {
               setBusy(false);
               toast.success(t("git.settings.saved"));
-              navigate(`/${next.owner.login}/${next.name}/settings`, { replace: true });
+              // A new name is a new route, which loads the repository again;
+              // the same name stays on this route, so it is loaded here.
+              if (next.name === repo.name) reload();
+              else navigate(`/${next.owner.login}/${next.name}/settings`, { replace: true });
             },
             (err: unknown) => {
               setBusy(false);

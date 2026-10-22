@@ -323,7 +323,9 @@ async function visibility(s, base, old) {
   await dialog.getByLabel("Description").fill("The family's web page");
   if (old) {
     const lock = dialog.getByRole("switch", { name: "Private" });
-    if (await lock.isChecked()) await lock.click();
+    // React Aria's switch hides its input under the label, which takes the
+    // pointer; the input still takes a forced uncheck.
+    if (await lock.isChecked()) await lock.uncheck({ force: true });
   } else {
     await dialog.locator("[data-visibility-field]").getByText("Public", { exact: true }).click();
   }
@@ -369,13 +371,14 @@ async function visibility(s, base, old) {
   const away = new Shots(v, base, s.out, s.meta);
   away.steps = s.steps;
   await v.goto(`${base}/git/`);
-  if (old) await v.waitForURL(/\/auth\//);
+  // LosOS Login draws its form after a loading screen.
+  if (old) await v.locator("#username-textfield, input[autocomplete=username]").first().waitFor();
   else await v.getByRole("link", { name: "notshared/website" }).waitFor();
   await away.take("visitor-list", old ? "a visitor is sent to sign in" : "a visitor sees the public repositories", {
     kind: "none",
   }, old ? {} : { signIn: v.locator("[data-sign-in]") });
   await v.goto(`${base}/git/notshared/website`);
-  if (old) await v.waitForURL(/\/auth\//);
+  if (old) await v.locator("#username-textfield, input[autocomplete=username]").first().waitFor();
   else await v.locator("[data-visibility=public]").first().waitFor();
   await away.take("visitor-code", old ? "a public repository, to a visitor" : "a public repository, read without signing in");
   await visitor.close();

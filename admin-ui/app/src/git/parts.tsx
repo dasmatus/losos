@@ -242,13 +242,13 @@ export function NotFound() {
 }
 
 /** The repository the route names, once it is loaded. */
-export function WithRepo({ children }: { children: (repo: Repo) => React.ReactNode }) {
+export function WithRepo({ children }: { children: (repo: Repo, reload: () => void) => React.ReactNode }) {
   const { owner = "", repo: name = "" } = useParams();
   const repo = useRepo(owner, name);
   if (notFound(repo.error)) return <NotFound />;
   if (repo.error !== null) return <ErrorAlert error={repo.error} />;
   if (repo.data === null) return <Loading />;
-  return <>{children(repo.data)}</>;
+  return <>{children(repo.data, repo.reload)}</>;
 }
 
 /** A switch with its label and, maybe, a line under it: shadcn's "Switch
