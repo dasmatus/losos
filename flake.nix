@@ -492,6 +492,10 @@
         # LosOS Contacts: the book in LosOS Cloud, vCard in and out, and the
         # pickers in Mail and Chat (nix/tests/contacts.nix).
         losos-contacts = import ./nix/tests/contacts.nix { inherit pkgs; };
+        # LosOS Calendar: WebCal subscriptions through the sandboxed fetcher,
+        # .ics import, published feeds and an invitation answered in Mail
+        # (nix/tests/calendar.nix).
+        losos-calendar = import ./nix/tests/calendar.nix { inherit pkgs; };
         # Calls from chat: three people in real browsers through the box's
         # SFU, whose copy of every frame is ciphertext (nix/tests/calls.nix).
         losos-calls = import ./nix/tests/calls.nix { inherit pkgs; };
