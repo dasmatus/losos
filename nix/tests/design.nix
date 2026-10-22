@@ -192,6 +192,118 @@ let
       ];
     }
   );
+
+  # The launch film's stills of the shared bar: the home under it, the
+  # person's menu with Sign out and its keys, and the palette finding Sign out
+  # as it is typed, one picture per letter. Dark, 1280x900 at two device
+  # pixels per CSS pixel, with the caret hidden; film.json lists each one
+  # with what is pressed next and where.
+  person = {
+    selector = "[data-testid=signed-in-as]";
+  };
+  typed = text: {
+    name = "palette-${text}";
+    path = "/";
+    steps = [
+      { press = "Control+Shift+P"; }
+      { waitFor.selector = "dialog[open] input"; }
+      { type = text; }
+    ];
+    film = {
+      title = "The palette finds Sign out, with its keys";
+      action.kind = "type";
+      targets = {
+        field.selector = "dialog[open] input";
+        signOut.selector = "dialog[open] >> text=Sign out";
+      };
+    };
+  };
+  filmPlan = pkgs.writeText "film-plan.json" (
+    builtins.toJSON {
+      width = 1280;
+      height = 900;
+      variants = [
+        {
+          suffix = null;
+          colorScheme = "dark";
+          dpr = 2;
+          timezoneId = "Europe/Bratislava";
+          hideCaret = true;
+        }
+      ];
+      shots = map shot [
+        {
+          name = "01-home";
+          path = "/";
+          settle = 1500;
+          steps = [
+            {
+              waitFor = {
+                role = "link";
+                name = "Files";
+              };
+              timeout = 120000;
+            }
+          ];
+          film = {
+            title = "The box's home under the one top bar every app shares";
+            action = {
+              kind = "click";
+              target = "person";
+            };
+            targets = {
+              inherit person;
+              bar.selector = "[data-slot=app-bar]";
+            };
+          };
+        }
+        {
+          name = "02-person-menu";
+          path = "/";
+          steps = [
+            { click = person; }
+            { waitFor.selector = "[data-slot=person-menu]"; }
+          ];
+          film = {
+            title = "The person's menu: Your account, and Sign out with Alt+Shift+Q";
+            action = {
+              kind = "hover";
+              target = "signOut";
+            };
+            targets = {
+              menu.selector = "[data-slot=person-menu]";
+              signOut.selector = "[data-slot=person-menu] >> text=Sign out";
+            };
+          };
+        }
+        {
+          name = "03-palette";
+          path = "/";
+          steps = [
+            { press = "Control+Shift+P"; }
+            { waitFor.selector = "dialog[open] input"; }
+          ];
+          film = {
+            title = "The command palette";
+            action = {
+              kind = "type";
+              target = "field";
+            };
+            targets.field.selector = "dialog[open] input";
+          };
+        }
+        (typed "s" // { name = "04-palette-s"; })
+        (typed "si" // { name = "05-palette-si"; })
+        (typed "sig" // { name = "06-palette-sig"; })
+        (
+          typed "sign"
+          // {
+            name = "07-palette-sign";
+          }
+        )
+      ];
+    }
+  );
 in
 
 pkgs.testers.nixosTest {
@@ -238,6 +350,7 @@ pkgs.testers.nixosTest {
         environment.etc."losos-test/plan.json".source = plan;
         environment.etc."losos-test/veil-plan.json".source = veilPlan;
         environment.etc."losos-test/motion-plan.json".source = motionPlan;
+        environment.etc."losos-test/film-plan.json".source = filmPlan;
         virtualisation.vlans = [ 1 ];
       };
   };
@@ -332,5 +445,15 @@ pkgs.testers.nixosTest {
             for ms in ["000", "080", "240"]:
                 laptop.succeed(f"test -s /tmp/screens/{name}-light-desktop-{ms}ms.png")
             laptop.succeed(f"test -s /tmp/screens/{name}-light-desktop.png")
+
+    with subtest("the launch film's stills of the shared bar"):
+        try:
+            capture("/etc/losos-test/film-plan.json", "/tmp/film")
+        finally:
+            laptop.copy_from_machine("/tmp/film", "")
+        film = json.loads(laptop.succeed("cat /tmp/film/film.json"))
+        assert len(film) == 7, film
+        size = laptop.succeed("identify -format '%w %h' /tmp/film/01-home.png")
+        assert size == "2560 1800", size
   '';
 }
