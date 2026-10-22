@@ -112,6 +112,20 @@ const devices = (page) => page.locator('[data-testid=lab-canvas-wrap] g.node[dat
 const links = (page) => page.locator('[data-testid=lab-canvas-wrap] [data-link]').count();
 const node = (page, name) => page.locator(`[data-testid=lab-canvas-wrap] [data-dev][aria-label^="${name},"]`);
 
+/* A point of `target`, relative to its box, that `cover` does not lie over. */
+async function uncovered(target, cover) {
+  const t = await target.boundingBox();
+  const c = await cover.boundingBox();
+  const inset = 4;
+  for (const [fx, fy] of [[0.5, 0.5], [0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0], [0.5, 1], [0, 0.5], [1, 0.5]]) {
+    const x = inset + fx * (t.width - 2 * inset);
+    const y = inset + fy * (t.height - 2 * inset);
+    const inCover = t.x + x >= c.x && t.x + x <= c.x + c.width && t.y + y >= c.y && t.y + y <= c.y + c.height;
+    if (!inCover) return { x, y };
+  }
+  throw new Error('the new device covers the whole router');
+}
+
 await check('loads inside the admin shell under its policy, simulated, on this box', async () => {
   const { page, clean } = await open();
   await page.locator('aside, nav').getByRole('link', { name: 'Diagrams' }).first().waitFor();
@@ -240,7 +254,10 @@ await check('place from the tray, drag, connect, delete with the keyboard', asyn
   await fresh.click();
   const port = page.getByTestId('connect-port');
   if (await port.count()) await port.selectOption({ index: 0 });
-  await node(page, 'home-router').click();
+  // Where the camera put the setup decides where the new box lands, and it
+  // can come to lie over part of the router: click a part still showing.
+  const router = node(page, 'home-router').locator('rect').first();
+  await router.click({ position: await uncovered(router, fresh) });
   assert.strictEqual(await links(page), linksBefore + 1, 'one cable laid');
   await page.keyboard.press('Escape');
 
