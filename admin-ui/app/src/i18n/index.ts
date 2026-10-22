@@ -15,6 +15,7 @@ import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import credentials from "./credentials";
 import collab from "./collab";
+import contacts from "./contacts";
 import games from "./games";
 import git from "./git";
 import gitReview from "./git-review";
@@ -81,6 +82,7 @@ export const MESSAGES = {
   ...chat,
   ...office,
   ...mail,
+  ...contacts,
   ...menu,
   ...ci,
   ...mention,

@@ -89,6 +89,10 @@ let
   # on the shared side, so with sharing off there is no /mail at all
   # (modules/mail.nix).
   mailEnabled = adminEnabled && config.lososInternal.mail.live;
+  # LosOS Contacts' screen (admin-ui/app/src/contacts/): the book is LosOS
+  # Cloud's address books (backend/src/cloud/contacts.rs), so it exists
+  # exactly where LosOS Cloud runs.
+  contactsEnabled = adminEnabled && config.lososInternal.appSignIn.cloud;
   # Mesh CI's screen (admin-ui/app/src/screens/ci/), the same way: only
   # while Mesh CI runs (modules/ci.nix).
   ciEnabled = adminEnabled && config.lososInternal.ci.live;
@@ -595,6 +599,13 @@ in
           # mail page: both spellings answer 404.
           "= /mail".return = "404";
           "/mail/".return = "404";
+        })
+        (lib.mkIf (adminEnabled && !contactsEnabled) {
+          # LosOS Contacts is a screen of the SPA at /contacts while LosOS
+          # Cloud runs. Without it there is no book: both spellings answer
+          # 404, as /cloud/api/ does.
+          "= /contacts".return = "404";
+          "/contacts/".return = "404";
         })
         (lib.mkIf (adminEnabled && !ciEnabled) {
           # Mesh CI's screen at /ci, gone with Mesh CI.
