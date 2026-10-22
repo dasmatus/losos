@@ -25,12 +25,15 @@
 # the status menu from the keyboard, the board and a drag, the palette, a
 # new issue, the inbox, the cycles, the Garden board. After it the test
 # reads the tracker's API to see that each change the page showed was made.
-# With LOSOS_ISSUES_OLD_UI (a losos-admin-ui from before the tracker) the
-# same repository is pictured on the old pages for the "before" column.
+# With LOSOS_ISSUES_OLD_UI (an admin UI from before the tracker, built
+# through admin-ui-without-lab.nix) the same repository is pictured on the
+# old pages for the "before" column.
 { pkgs }:
 
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
+  # The pages never open Diagrams, so its WebAssembly is left out.
+  ui = import ./admin-ui-without-lab.nix lososPkgs.losos-admin-ui;
 
   shots = pkgs.writeShellScriptBin "issue-shots" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}/index.mjs
@@ -109,7 +112,7 @@ pkgs.testers.nixosTest {
       losos = {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
-        admin.ui = lososPkgs.losos-admin-ui;
+        admin.ui = ui;
         git.enable = true;
         mdns.enable = true;
       };
@@ -384,7 +387,7 @@ pkgs.testers.nixosTest {
     with subtest("the pictures: the same repository before the tracker"):
         old_ui = os.environ.get("LOSOS_ISSUES_OLD_UI", "")
         if old_ui:
-            ui = "${lososPkgs.losos-admin-ui}"
+            ui = "${ui}"
             box.succeed(f"mount --bind {old_ui} {ui}", "systemctl restart nginx")
             box.wait_for_open_port(443)
             issue_shots("before", "before")
