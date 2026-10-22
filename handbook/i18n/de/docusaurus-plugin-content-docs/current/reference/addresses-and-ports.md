@@ -38,7 +38,14 @@ der durch den Tunnel einer Edge ankommt, bekommt **403**.
 | 80      | HTTP      | Alles oben Genannte                                    |
 | 443     | HTTPS     | Dasselbe, mit dem eigenen Zertifikat der Box (`losos.tls.enable`, standardmäßig an) |
 | 5353    | mDNS      | Ankündigung von `<name>.local` und der Box als `_losos._tcp`-Dienst |
+| 445     | SMB       | Die Dateien jeder Person in LosOS Cloud als Windows-Netzwerkfreigabe (`losos.cloud.windows.enable`, standardmäßig an); nur das lokale Netz |
+| 3702 (UDP), 5357 | WS-Discovery | Die Box unter Netzwerk im Windows-Explorer zeigen, solange die Freigabe an ist |
+| 5355    | LLMNR     | Windows antworten, wenn es die Box beim bloßen Namen sucht, solange die Freigabe an ist |
 | 8082    | HTTP      | Die Steuer-API, nur auf dem Loopback der Box; nginx leitet `/api/` dorthin weiter |
+
+Solange die Freigabe an ist, ist der mDNS-Eintrag für LosOS Cloud die
+SMB-Freigabe (`_smb._tcp`), sodass Finder und Linux-Dateimanager die Box
+einmal zeigen.
 
 Sonst ist nichts offen. Die Box erreicht das Mesh und die Edge nach außen.
 Sie öffnet den Tunnel und tritt dem Cluster selbst bei, sodass du zu Hause

@@ -6,8 +6,9 @@
  * lososd binds 127.0.0.1:8082; the front Nginx vhost proxies /api/* to it, so
  * from the browser everything is same-origin and relative. Every route except
  * /api/health wants `Authorization: Bearer <token>`, where the token is 64
- * lowercase hex characters lososd minted into /var/secrets/losos-admin-token
- * on first start. The user reads it off the box and pastes it in.
+ * lowercase hex characters the box made at first boot and keeps sealed as its
+ * `admin-token` credential (modules/credentials.nix). The owner is shown it
+ * once, at the claim, and pastes it in.
  *
  * Token storage is sessionStorage under 'losos-token' — the same key the old
  * plain-JS admin pages used, so a token pasted before an upgrade still works
@@ -1997,6 +1998,62 @@ export function postAccessRevoke(
   });
 }
 
+// ── Credentials (the Credentials pane) ───────────────────────────────────
+
+/** What every credential on the box is sealed to: the TPM, or the host key
+ *  on a box without one. */
+export type CredentialKey = "tpm2" | "host";
+
+/** A credential as lososd lists it (backend/src/credentials.rs). Never its
+ *  value: the API has no route that returns one. */
+export interface Credential {
+  name: string;
+  /** What it belongs to: "login", "mail", "admin", "backup", "cloud", … */
+  app: string;
+  /** lososd's English sentence, for a name this page has no words for. */
+  description: string;
+  /** "box" for one the box makes itself, "owner" for one a person types. */
+  source: "box" | "owner";
+  /** Whether the sealed file is there. */
+  set: boolean;
+  /** Unix seconds of the last change, or null when it is not set. */
+  updated: number | null;
+  sealedWith: CredentialKey;
+  /** The units that read it. */
+  services: string[];
+  /** Whether a new value can be made from here. */
+  rotate: boolean;
+  /** For one the owner gives: the admin page where they set it. */
+  pane: string | null;
+  /** At boot the old file would not open, so the box made a new value. */
+  remade: boolean;
+  /** At boot the box sealed a value an older version kept as a plain file. */
+  adopted: boolean;
+}
+
+export interface CredentialsResponse {
+  /** null on a build without a credential store. */
+  key: CredentialKey | null;
+  credentials: Credential[];
+}
+
+/** GET /api/credentials — every credential, without a value. */
+export function getCredentials(options: RequestOptions = {}): Promise<CredentialsResponse> {
+  return call<CredentialsResponse>("/api/credentials", options);
+}
+
+/** POST /api/credentials/{name}/rotate — make a new value. 409 for one the
+ *  box does not make itself. The answer is the row, never the value. */
+export function postCredentialRotate(
+  name: string,
+  options: RequestOptions = {},
+): Promise<{ credential: Credential }> {
+  return call<{ credential: Credential }>(`/api/credentials/${encodeURIComponent(name)}/rotate`, {
+    ...options,
+    method: "POST",
+  });
+}
+
 // ── People (the Users pane) ───────────────────────────────────────────────
 
 /** Someone who may sign in to this box, as GET /api/people lists them. */
@@ -2134,6 +2191,34 @@ export function postAccount(
  *  them, behind their password. 403 `wrongPassword`, 404 `noCode`. */
 export function postAccountCode(password: string, options: RequestOptions = {}): Promise<{ code: string }> {
   return postJson("/api/account/code", { password }, options);
+}
+
+// ── Windows network share ─────────────────────────────────────────────────
+
+/* Each person's LosOS Cloud files as `\\<box>\<share>` in Windows'
+ * Network view, Finder and Linux file managers (backend/src/windows.rs,
+ * modules/windows.nix). Windows signs in with the LosOS password once the
+ * box has seen it in the clear. */
+export type WindowsShare =
+  | { on: false }
+  | {
+      on: true;
+      /** Windows takes the caller's LosOS password now. */
+      ready: boolean;
+      /** The share's name under `\\<host>\`. */
+      share: string;
+      host: string;
+    };
+
+/** GET /api/windows — the caller's share and whether it is ready. */
+export function getWindowsShare(options: RequestOptions = {}): Promise<WindowsShare> {
+  return call<WindowsShare>("/api/windows", options);
+}
+
+/** POST /api/windows — hand the box the caller's password once, so Windows
+ *  takes it. 403 for a wrong password. */
+export function postWindowsShare(password: string, options: RequestOptions = {}): Promise<WindowsShare> {
+  return postJson("/api/windows", { password }, options);
 }
 
 // ── Profiles ──────────────────────────────────────────────────────────────

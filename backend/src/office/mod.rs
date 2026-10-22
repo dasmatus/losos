@@ -1,10 +1,10 @@
-//! Office documents in LosOS cloud: the WOPI host for Collabora Online.
+//! Office documents in LosOS Cloud: the WOPI host for Collabora Online.
 //!
 //! Collabora Online (`coolwsd`, `modules/office.nix`) renders and edits Word,
 //! Excel, PowerPoint and OpenDocument files in the browser. It keeps no files
 //! of its own: it fetches a document from a WOPI host, the server that owns
 //! the file, and writes it back there. This module is that host, written
-//! against a store trait so LosOS cloud's file store and a plain folder both
+//! against a store trait so LosOS Cloud's file store and a plain folder both
 //! plug in.
 //!
 //! ```text

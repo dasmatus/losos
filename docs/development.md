@@ -228,11 +228,15 @@ this is the reasoning behind it.
   strict policy and refuse the inline script just the same, so don't
   "simplify" the frame into one. `nix/tests/front-vhost.nix` asserts the arm and
   that the strict policy still covers everything else.
-- **lososd creates the admin token, not NixOS.** lososd writes
-  `losos.admin.tokenFile` (default `/var/secrets/losos-admin-token`,
-  persisted through `/var`) on first start if it is absent, as a random
-  64-hex-character value with mode 0600. NixOS does not manage it. Don't try
-  to declare it as a store path.
+- **The admin token is a credential, not a NixOS file.** The boot unit of
+  `modules/credentials.nix` makes it at first boot (64 hex characters) and
+  seals it as `admin-token` in `/etc/credstore.encrypted`; lososd reads it
+  from `$CREDENTIALS_DIRECTORY/admin-token`. `losos.admin.tokenFile` is only
+  where an older build kept it, adopted once and deleted. Don't try to
+  declare it as a store path. Every other secret of the box is a credential
+  the same way: a module declares it under `losos.credentials.entries`,
+  names the units that read it, and lists any plaintext file an older build
+  used under `legacy`.
 - **`/etc/rancher` must stay persisted** (`impermanence.nix`). `/var` covers
   most of both Kubernetes instances' state, but the agent writes
   `/etc/rancher/node/password` on its first join, and the server stores a

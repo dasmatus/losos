@@ -74,6 +74,10 @@ enum Cmd {
         /// of a saved copy (the box's cloud has no network to ask it on).
         #[arg(long, default_value = "http://127.0.0.1:9980")]
         coolwsd: String,
+        /// Watch the files on disk and bring changes made behind the
+        /// service's back into the table as they happen (the Windows share).
+        #[arg(long)]
+        watch: bool,
     },
     /// Bring the table in line with the files on disk, for one person or all.
     Scan {
@@ -134,6 +138,7 @@ fn main() -> anyhow::Result<()> {
             mesh_peer,
             office_wopi,
             coolwsd,
+            watch,
         } => {
             let cloud = Arc::new(Cloud::open(
                 &cli.root,
@@ -143,6 +148,9 @@ fn main() -> anyhow::Result<()> {
                     knowledge_bases,
                 },
             )?);
+            if watch {
+                cloud::watch::spawn(cloud.clone())?;
+            }
             let listen = match (socket, listen) {
                 (Some(s), _) => server::Listen::Unix(s),
                 (None, Some(l)) => server::Listen::Tcp(l),

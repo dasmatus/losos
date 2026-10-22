@@ -197,8 +197,10 @@ minute and never past the token's expiry. A live token issued to
 `losos-companion` is the person it names, as the principal `Companion`,
 which is never an administrator and reaches only `GET` on
 `losos_access::COMPANION_ROUTES` (`/api/me`, `/api/status`, the two cloud
-and the two Git routes); everything else is 403. `/api/me` says
-`"companion": true`.
+and the two Git routes, and `/api/mail`, `/api/mail/messages` and
+`/api/mail/messages/{id}`, where `{id}` is one segment of letters, digits,
+`-` and `_`); everything else is 403. `/api/me` says `"companion": true`. A
+message the companion opens is not marked read.
 
 A refresh is made under a lock file in the companion's folder, after reading
 the keychain again, because LosOS Login ends the whole sign-in when a used
