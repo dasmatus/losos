@@ -609,11 +609,9 @@ pkgs.testers.nixosTest {
             # Once its time is up, LosOS Cloud reads it by itself.
             feed("timetable.ics", timetable(3))
             box.succeed(f"sqlite3 {DB} \"UPDATE calendar_feed SET fetched = 0 WHERE url LIKE '%timetable.ics'\"")
-            box.wait_until_succeeds(
-                f"curl -sk -H 'Cookie: {matus}' 'https://{HOST}{A}/events?from={MONDAY.isoformat()}&to={(MONDAY + timedelta(days=1)).isoformat()}' "
-                "| jq -e '.events[] | select(.summary == \"English\" and .location == \"Room 9\")'",
-                timeout=180,
-            )
+            # From the laptop: the box's own loopback is refused the admin side.
+            retry(lambda _: any(e["summary"] == "English" and e["location"] == "Room 9"
+                                for e in window(matus, MONDAY, 1)), timeout=timedelta(seconds=180))
 
         with subtest("the launch film's pictures"):
             browser("film")
