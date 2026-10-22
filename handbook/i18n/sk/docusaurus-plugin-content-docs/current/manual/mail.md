@@ -114,12 +114,19 @@ prihlásený.
 
 ## Opýtať sa AI zariadenia \{#ask-the-boxs-ai}
 
-Na zariadení, ktoré má jazykový model pre **Vytvoriť s AI**, sa tlačidlom
-**Zhrnúť** v paneli správy opýtate AI na otvorenú správu. Model beží na
-zariadení, takže správa aj odpoveď zostávajú na ňom, a číta len správu, na
-ktorú ste sa pýtali. Odpovedá na jednu otázku naraz, na malom zariadení môže
-odpoveď trvať aj niekoľko minút. Text v správe, ktorý AI prikazuje niečo
-urobiť, sa berie ako časť správy, nie ako vaša požiadavka.
+Tlačidlom **Zhrnúť** v paneli správy sa opýtate vlastného jazykového modelu
+zariadenia na otvorenú správu. Model beží na zariadení, takže správa aj
+odpoveď zostávajú na ňom, a číta len správu, na ktorú ste sa pýtali.
+Odpovedá na jednu otázku naraz, na malom zariadení môže odpoveď trvať minútu
+či dve. Text v správe, ktorý AI prikazuje niečo urobiť, sa berie ako časť
+správy, nie ako vaša požiadavka.
+
+Otázky na poštu, súbory a poznámky idú modelu Gemma 3 1B, ktorý je určený na
+text. **Vytvoriť s AI** má vlastný model na kód. Zariadenie si každý model
+stiahne raz, keď je prvýkrát online, a v pamäti drží naraz len jeden.
+Správca môže zvoliť iný model v **Nastavenia**, **Rozšírené**
+(`assistant.model`). Gemma is provided under and subject to the Gemma Terms
+of Use found at ai.google.dev/gemma/terms.
 
 ## Čo Pošta zatiaľ nerobí \{#what-mail-does-not-do-yet}
 

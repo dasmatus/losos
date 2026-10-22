@@ -29,8 +29,8 @@
 # film's states are numbered there with a manifest.json; the pull request's
 # pictures are under result/shots/pr/.
 #
-# LosOS Git is a stand-in; LosOS Cloud is the real service, for the files
-# chat sends from it and keeps in it.
+# LosOS Git is off; LosOS Cloud is the real service, for the files chat
+# sends from it and keeps in it.
 { pkgs }:
 
 let
@@ -121,7 +121,6 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = ui;
-          backend.plugins = lososPkgs.losos-plugins;
           git.enable = false;
           # The shared user's side of the box: chat's gate.
           sharingMyStorage = true;
