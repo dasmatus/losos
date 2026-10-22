@@ -124,7 +124,7 @@ async function tracker(s, base) {
   const p = s.page;
   await p.goto(`${base}/git/issues`);
   await p.locator("[data-tracker-scope=mine]").waitFor();
-  await row(p, "BT-4").waitFor();
+  await row(p, "BT-5").waitFor();
   const project = p.locator("[data-sidebar=menu-button]", { hasText: "backup-tool" }).first();
   await s.take("my-issues", "the issues given to me, across projects", { kind: "click", target: "project" }, {
     project,
@@ -139,8 +139,7 @@ async function tracker(s, base) {
     create: p.getByRole("button", { name: /New issue/ }),
   });
 
-  // Done is folded; the issue the commit closed opens from the palette
-  // instead, so this one is a Forgejo issue that is still open.
+  // Done is folded, so the issue opened here is one still to do.
   await row(p, "BT-7").click();
   await p.locator("[data-timeline]").waitFor();
   await s.take("issue", "an issue beside the list, with its properties and history", { kind: "press", target: "status" }, {
@@ -148,9 +147,9 @@ async function tracker(s, base) {
     timeline: p.locator("[data-timeline]"),
   });
 
-  // The status menu from the keyboard, on the issue that is open.
+  // The status menu from the keyboard, on the issue just closed: the list
+  // keeps it as the one in focus.
   await p.locator("body").press("Escape");
-  await p.keyboard.press("j");
   await p.keyboard.press("s");
   const menu = p.locator('[data-menu="state"]');
   await menu.waitFor();
