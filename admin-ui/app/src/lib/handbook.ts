@@ -39,6 +39,8 @@ export const HANDBOOK_ENTRIES = {
   terminal: "manual/terminal/",
   chat: "manual/chat/",
   mail: "manual/mail/",
+  git: "manual/losos-git/",
+  "mesh-ci": "manual/mesh-ci/",
   "custom-domain": "types/official-edge/",
   "edge-manages-box": "types/company-edge/",
   tpm: "reference/tpm/",

@@ -18,42 +18,21 @@ aplikácie sa k nemu dostanú cez CalDAV a CardDAV. Podrobnosti sú v
 
 ## LosOS Git \{#losos-git}
 
-Vaše repozitáre, na `http://<address>/forgejo/`. Je to Forgejo v tých istých
-farbách. Pri prvom použití sa v ňom zaregistrujte, vedie si vlastné účty.
-Adresy na klonovanie používajú meno zariadenia, takže počítač, ktorý
-nepreloží `.local`, by mal použiť adresu. Ak zariadenie nie je na kód,
-vypnite LosOS Git na paneli **Aplikácie**.
-
-### Federácia \{#federation}
-
-LosOS Git sa cez ActivityPub rozpráva s inými servermi Forgejo. Forgejo to
-stále označuje za experimentálne. Hviezdičky, ktoré vašim repozitárom dajú
-ľudia na inom serveri, sa započítajú aj tu. Ľudia na iných serveroch môžu
-sledovať účet na vašom zariadení a vidieť, čo robí. Zariadenie odpovedá aj
-na adrese, cez ktorú fediverse hľadá servery, `/.well-known/nodeinfo`. To
-všetko siaha tak ďaleko ako samotné zariadenie. Cez [edge](../types/official-edge)
-je to internet. Na zariadení, ktoré je iba vo vašej lokálnej sieti, sú to
-ostatné zariadenia v tej sieti. Zariadenie nikdy nezverejňuje, koľko má
-účtov ani aké sú aktívne.
-
-Ak sa chcete zapojiť, vypíšte na stránke repozitára
-**Nastavenia → Federácia** ostatné servery, ktorých hviezdičky sa majú
-počítať. Federáciu úplne vypnete prepínačom **Federovať s inými servermi
-Forgejo** v sekcii LosOS Git na paneli **Aplikácie**.
-
-:::note[Federácia potrebuje zdieľanie disku]
-Federácia funguje iba vtedy, keď zariadenie zdieľa svoj disk
-(`losos.sharingMyStorage`), pretože iba vtedy je zdieľaná časť disku
-odomknutá. So zdieľaním vypnutým sa zariadenie nerozpráva so žiadnym iným
-serverom a panel **Aplikácie** ukazuje prepínač federácie sivý.
-:::
+Vaše repozitáre, na `http://<address>/git/<účet>/<repozitár>.git`. LosOS
+Git je vlastný Git server zariadenia. Človek, ktorého pozná LosOS Login, v
+ňom má účet od prvej návštevy, pod tým istým menom. Počítač klonuje a
+pushuje s vlastným tokenom, ktorý si git pýta ako heslo: vyrobí ho
+`losos git setup` ([Terminálový klient](terminal)). Vlastná konfigurácia
+zariadenia je súkromný repozitár `notshared/losos-config`
+([Správa](../in-depth/administration)). Adresy na klonovanie sa riadia
+adresou, cez ktorú ste sa k zariadeniu dostali. Ak zariadenie nie je na kód, vypnite LosOS Git na paneli
+**Aplikácie**.
 
 ## Panel Aplikácie \{#the-apps-pane}
 
-Pri každej aplikácii panel ukazuje, či je zapnutá, v akom
-[režime](../types/app-modes) beží, a odkaz. Pod nimi majú LosOS Cloud aj
-LosOS Git vlastnú rozbaľovaciu sekciu, zavretú, kým ju neotvoríte. Pod tým
-**Nájsť ďalšie** hľadá
+Pri každej aplikácii panel ukazuje, či je zapnutá, a odkaz. Pod nimi majú
+LosOS Cloud aj LosOS Git vlastnú rozbaľovaciu sekciu, zavretú, kým ju
+neotvoríte. Pod tým **Nájsť ďalšie** hľadá
 Helm charty v [Artifact Hub](https://artifacthub.io). Výsledky sťahuje
 zariadenie, takže vyhľadávanie potrebuje internet. Každý riadok uvádza, kto
 chart zverejnil. Nikto na strane LosOS žiadny z nich neskontroloval.
@@ -68,10 +47,9 @@ platia pre každý účet v danej aplikácii.
 Pre LosOS Cloud: koľko dní kôš drží vymazaný súbor. Prázdne pole ho drží
 30 dní.
 
-Pre LosOS Git, po jeho prepínači federácie ([Federácia](#federation)): či niečo vidia iba prihlásené účty, čo návštevník uvidí ako
-prvé, či nový repozitár začína ako súkromný, verejný alebo ako posledný
-repozitár účtu, či je e-mailová adresa nového účtu skrytá a či push do
-repozitára, ktorý ešte neexistuje, ho vytvorí.
+Pre LosOS Git: či niečo vidia iba prihlásené účty, či nový repozitár
+začína ako súkromný, verejný alebo ako posledný repozitár účtu a či push
+do repozitára, ktorý ešte neexistuje, ho vytvorí.
 
 ![Panel Aplikácie s nastaveniami pre všetkých v LosOS Cloud a LosOS Git.](@site/docs/img/apps-site-settings-sk.png)
 
@@ -136,13 +114,40 @@ aplikácie. **Odstrániť** sa najprv opýta a potom aplikáciu zo zariadenia
 odstráni. Jej priečinok s dátami zostane, takže inštalácia pod tým istým
 názvom dáta znova nájde.
 
-:::note[Beh ako shared potrebuje režim záťaže]
+:::note[Beh ako shared potrebuje mesh]
 Aplikácia `notshared` sa nainštaluje na každom zariadení. `shared` potrebuje
-vlastný klaster zariadenia, ktorý beží iba vtedy, keď je Kód nastavený na
-**Oddelene** ([režim záťaže](../types/app-modes)), a
-zariadenie musí zdieľať svoj disk. Inštalovanie vypnete nastavením
+vlastný klaster zariadenia, ktorý beží iba vtedy, keď zariadenie zdieľa
+disk s mesh ([Kde bežia aplikácie](../types/app-modes)). Inštalovanie vypnete nastavením
 `losos.apps.enable` na false na paneli **Rozšírené**.
 :::
+
+## Vaše aplikácie \{#your-apps}
+
+Malé vlastné aplikácie, nákupný zoznam, rozpis domácich prác, zoznam kníh,
+ktoré opíšete a AI na zariadení napíše
+([Vytvoriť s AI](../in-depth/widget-builder)). Sú pod **Vaše aplikácie** na
+stránke Aplikácie. **Vytvoriť aplikáciu** otvorí editor: aplikáciu opíšte na
+karte **Vytvoriť s AI** alebo napíšte jej kód na karte **Kód**. Náhľad vedľa
+je skutočná aplikácia, takže ju môžete používať ešte pred uložením. Čo do
+nej zadáte, zabudne; uložená aplikácia si údaje drží na zariadení.
+
+Každá uložená aplikácia má vlastnú stránku. Aplikácia je jeden komponent
+React zložený z komponentov LosOS, ktorý zariadenie pri uložení skontroluje
+a preloží. Beží len vo vašom prehliadači, v sandboxovanom rámci bez prístupu
+k zariadeniu okrem vlastných údajov. **Upraviť** ju znova otvorí v editore a
+**Odstrániť** ju zo zariadenia zmaže so všetkým, čo sa do nej zadalo.
+
+Každá aplikácia má aj vlastný súkromný repozitár v LosOS Git, pomenovaný
+podľa nej (`app-chores` pre aplikáciu s názvom Chores), a každé uloženie je
+v ňom commit. **Zdroj** na stránke aplikácie ho otvorí. Naklonujte ho,
+upravte `app.jsx` a pošlite zmenu (push): do minúty ju zariadenie
+skontroluje tak ako pri uložení a aplikácia ju spustí. Ak sa zmena nedá
+preložiť, aplikácia zostane taká, aká bola, jej stránka povie prečo a
+zariadenie pridá commit, ktorý aplikáciu vráti, takže to uvidíte aj pri
+ďalšom `git pull`. Súbory, ktoré do repozitára pridáte, v ňom zostanú, a
+údaje aplikácie v ňom nie sú. Keď aplikáciu odstránite, repozitár v LosOS
+Git zostane; ak ho nechcete, zmažte ho tam. Keď je LosOS Git vypnutý,
+verzie si drží zariadenie samo.
 
 ## Aplikácie vytvorené pre zariadenie \{#apps-made-for-the-box}
 

@@ -91,6 +91,7 @@ use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 use crate::zone::{self, ZoneNames};
 
+mod ci;
 mod llm;
 mod manage;
 mod operator;
@@ -263,6 +264,8 @@ struct AppState {
     /// The page boxes are managed from (`manage`); `None` without
     /// `--manage-key-file`.
     manage: manage::Shared,
+    /// Mesh CI's queue (`crate::ci`); `None` without `--ci-dir`.
+    ci: Option<Arc<crate::ci::Ci>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -589,6 +592,16 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         }
     };
 
+    let ci = match &opts.ci_dir {
+        None => None,
+        Some(dir) => Some(Arc::new(
+            crate::ci::Ci::open(Path::new(dir))
+                .await
+                .into_diagnostic()
+                .wrap_err("open the CI queue")?,
+        )),
+    };
+
     let state = AppState {
         reg,
         opts: Arc::new(opts),
@@ -617,6 +630,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         transfers: Arc::new(Semaphore::new(vm::MAX_TRANSFERS)),
         operator,
         manage,
+        ci,
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -723,7 +737,10 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         // The same for the manage page: an app install on a box outlasts
         // the API's budget (`manage`).
         .merge(manage::router(state.clone()))
-        .merge(llm::chat_router(state.clone()));
+        .merge(llm::chat_router(state.clone()))
+        // Mesh CI: a claim waits for work and a submit carries an archive
+        // (`ci`), so both run outside the guard with caps of their own.
+        .merge(ci::router(state.clone()));
 
     Ok(App { state, router })
 }

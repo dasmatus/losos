@@ -105,7 +105,7 @@ let
         hostName = name;
         backend.package = lososPkgs.losos-ctl;
         admin.ui = adminUi;
-        forgejo.enable = false;
+        git.enable = false;
         cloud.enable = true;
         # What a box in a mesh has on by default.
         cloud.mesh.enable = true;

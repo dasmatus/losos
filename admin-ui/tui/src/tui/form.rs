@@ -2,7 +2,7 @@
 //!
 //! `/api/apply` takes the WHOLE of `modules/overrides.nix`, so the draft is
 //! a complete settings document and every pane edits a slice of it; Apply
-//! writes all thirteen lines plus every other line the file already carries,
+//! writes all twelve lines plus every other line the file already carries,
 //! the way the web UI's `buildOverridesNix` does. Nothing takes effect until
 //! Apply, and Apply asks before it starts a rebuild. The shell polls
 //! `/api/status` while one runs.
@@ -12,12 +12,11 @@ use serde_json::Value;
 
 use crate::i18n::t;
 
-/// GET /api/settings, the thirteen settings the panes own.
+/// GET /api/settings, the twelve settings the panes own.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub sharing_my_storage: bool,
-    pub forgejo_mode: String,
     pub host_name: String,
     pub gpu_enable: bool,
     pub proxy_enable: bool,
@@ -34,7 +33,6 @@ pub struct Settings {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SettingKey {
     SharingMyStorage,
-    ForgejoMode,
     HostName,
     GpuEnable,
     ProxyEnable,
@@ -49,9 +47,8 @@ pub enum SettingKey {
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 13] = [
+    pub const ALL: [SettingKey; 12] = [
         SettingKey::SharingMyStorage,
-        SettingKey::ForgejoMode,
         SettingKey::HostName,
         SettingKey::GpuEnable,
         SettingKey::ProxyEnable,
@@ -91,7 +88,6 @@ impl Settings {
 
     fn text_mut(&mut self, key: SettingKey) -> Option<&mut String> {
         Some(match key {
-            SettingKey::ForgejoMode => &mut self.forgejo_mode,
             SettingKey::HostName => &mut self.host_name,
             SettingKey::ComputeWindowStart => &mut self.compute_window_start,
             SettingKey::ComputeWindowEnd => &mut self.compute_window_end,
@@ -146,10 +142,9 @@ fn nix_bool(value: bool) -> &'static str {
     }
 }
 
-/// The thirteen `losos.*` names the lines below always write.
-pub const OWNED_NAMES: [&str; 13] = [
+/// The twelve `losos.*` names the lines below always write.
+pub const OWNED_NAMES: [&str; 12] = [
     "sharingMyStorage",
-    "forgejo.mode",
     "hostName",
     "gpu.enable",
     "proxy.enable",
@@ -164,7 +159,7 @@ pub const OWNED_NAMES: [&str; 13] = [
 ];
 
 /// The full `modules/overrides.nix` body, as the web UI's
-/// `buildOverridesNix` writes it: the thirteen, then every other line the
+/// `buildOverridesNix` writes it: the twelve, then every other line the
 /// file carries, sorted, so the commit lososd makes shows only what changed.
 pub fn build_overrides_nix(s: &Settings, extra: &[(String, String)]) -> String {
     let mut extra: Vec<&(String, String)> = extra
@@ -179,7 +174,6 @@ pub fn build_overrides_nix(s: &Settings, extra: &[(String, String)]) -> String {
             "  losos.sharingMyStorage = {};",
             nix_bool(s.sharing_my_storage)
         ),
-        format!("  losos.forgejo.mode = {};", nix_string(&s.forgejo_mode)),
         format!("  losos.hostName = {};", nix_string(&s.host_name)),
         format!("  losos.gpu.enable = {};", nix_bool(s.gpu_enable)),
         format!("  losos.proxy.enable = {};", nix_bool(s.proxy_enable)),
@@ -371,7 +365,6 @@ mod tests {
     pub(crate) fn sample() -> Settings {
         Settings {
             sharing_my_storage: true,
-            forgejo_mode: "container".into(),
             host_name: "mattbox".into(),
             gpu_enable: false,
             proxy_enable: false,
@@ -400,11 +393,11 @@ mod tests {
         );
         let lines: Vec<&str> = body.lines().collect();
         assert_eq!(lines[0], "{ ... }:");
-        assert_eq!(lines[4], "  losos.hostName = \"a\\\"b\\${c}\";");
-        assert_eq!(lines[5], "  losos.gpu.enable = false;");
-        assert_eq!(lines[15], "  losos.apps.ports = [ ];");
-        assert_eq!(lines[16], "  losos.upgradeFlakeUri = \"github:x/y\";");
-        assert_eq!(lines[17], "}");
+        assert_eq!(lines[3], "  losos.hostName = \"a\\\"b\\${c}\";");
+        assert_eq!(lines[4], "  losos.gpu.enable = false;");
+        assert_eq!(lines[14], "  losos.apps.ports = [ ];");
+        assert_eq!(lines[15], "  losos.upgradeFlakeUri = \"github:x/y\";");
+        assert_eq!(lines[16], "}");
         assert!(body.ends_with("}\n"));
         assert!(!body.contains("dropped"));
     }

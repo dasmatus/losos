@@ -38,8 +38,9 @@ oddiele `/persist`.
 - [Formát aplikácií](/in-depth/app-format.md). Jeden súbor Compose na
   aplikáciu, spustený ako notshared na Podmane bez roota: čo s ním zariadenie
   urobí a ako ho nainštalovať.
-- [Tvorca widgetov](/in-depth/widget-builder.md). Jazykový model na zariadení
-  napíše widget podľa opisu.
+- [Vytvoriť s AI](/in-depth/widget-builder.md). Jazykový model na zariadení
+  napíše widget alebo aplikáciu podľa opisu a zariadenie ich skontroluje a
+  vyskúša.
 - [Master proxy](/in-depth/master-proxy.md). Prístup k zariadeniu z internetu bez
   otvorenia portu.
 - [Federácia edge](/in-depth/edge-federation.md). Vlastný edge v LAN, preposielaný cez oficiálne.

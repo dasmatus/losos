@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 /// Most entries one folder listing returns; the rest are left out and the
 /// answer says so.
 pub const MAX_ENTRIES: usize = 500;
-/// Most repositories one listing returns (Forgejo's page size).
+/// Most repositories one listing returns (one page).
 pub const MAX_REPOS: usize = 50;
 /// Most results one search of LosOS Cloud returns.
 pub const MAX_HITS: usize = 50;
@@ -74,19 +74,19 @@ pub fn validate_query(query: Option<&str>) -> anyhow::Result<Option<String>> {
 /// description holds the text.
 pub fn cmd_git_repos<L: Losos>(l: &mut L, query: Option<&str>) -> anyhow::Result<Value> {
     let query = validate_query(query)?;
-    use crate::config_repo::{classify, Answer, ForgejoOp, NotUp};
+    use crate::config_repo::{classify, Answer, GitOp, NotUp};
     let unavailable =
         |reason: &str| Ok(json!({ "available": false, "reason": reason, "repos": [] }));
     let Some(repo) = l.config_repo() else {
         return unavailable("noGit");
     };
-    if !repo.via_forgejo() {
+    if !repo.via_server() {
         return unavailable("noGit");
     }
-    let op = ForgejoOp::ListRepos {
+    let op = GitOp::ListRepos {
         login: crate::setup::DEFAULT_ADMIN_USER.to_string(),
     };
-    let (status, body) = match l.forgejo_request(&op, None) {
+    let (status, body) = match l.git_request(&op) {
         Ok(answer) => answer,
         Err(e) if e.downcast_ref::<NotUp>().is_some() => return unavailable("notUp"),
         Err(e) => return Err(e),
@@ -111,7 +111,7 @@ pub fn cmd_git_repos<L: Losos>(l: &mut L, query: Option<&str>) -> anyhow::Result
     }
 }
 
-/// The rows of a Forgejo repository list, sorted by name.
+/// The rows of a LosOS Git repository list, sorted by name.
 pub fn parse_repos(doc: &Value) -> Vec<Value> {
     let mut rows: Vec<Value> = doc
         .as_array()
@@ -602,8 +602,8 @@ mod tests {
         assert_eq!(cmd_git_repos(&mut f, None).unwrap()["reason"], "noGit");
         let mut f = FakeLosos::new().with_config_repo();
         assert_eq!(cmd_git_repos(&mut f, None).unwrap()["reason"], "notUp");
-        f.forgejo_routes.insert(
-            "GET /api/v1/users/notshared/repos?limit=50".to_string(),
+        f.git_routes.insert(
+            "GET /api/v1/users/notshared/repos".to_string(),
             (
                 200,
                 r#"[{"name":"site","owner":{"login":"notshared"},"private":false,"description":"web"},

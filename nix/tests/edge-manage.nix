@@ -248,8 +248,8 @@ pkgs.testers.nixosTest {
     code, body = manage("GET", "/manage/api/boxes/office-box/api/site")
     assert code == "200", (code, body)
     names = [o["name"] for o in json.loads(body)["options"]]
-    assert "cloud.trashDays" in names and "forgejo.site.landingPage" in names, names
-    assert all(n == "cloud.trashDays" or n.startswith(("forgejo.site.", "forgejo.federation.")) for n in names), names
+    assert "cloud.trashDays" in names and "git.site.defaultPrivate" in names, names
+    assert all(n == "cloud.trashDays" or n.startswith("git.site.") for n in names), names
     code, body = manage("GET", "/manage/api/boxes/office-box/api/apps")
     assert code == "200", (code, body)
     for method, path, data in [

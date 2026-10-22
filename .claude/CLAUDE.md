@@ -114,13 +114,13 @@ and is never served or built by nix.
   and puts them in `losos-owner`. `nix/tests/identity.nix` boots it.
   LosOS Cloud and LosOS Git take the person from nginx in
   `X-Losos-Cloud-*` headers (`modules/app-sign-in.nix`: LosOS Cloud reads
-  them itself in `backend/src/cloud/auth.rs`, Forgejo through its
-  reverse-proxy sign-in); the owner maps to `notshared`. nginx sets the
-  headers on every request to either app; LosOS Cloud listens on a Unix
-  socket only nginx's group opens, and an iptables owner rule keeps every
-  other local uid off Forgejo's loopback port; drop either and anything on
-  the box can name anyone.
-  `nix/tests/app-sign-in.nix` boots the two real apps on the headers.
+  them in `backend/src/cloud/auth.rs`, LosOS Git in
+  `backend/src/forge/auth.rs`); the owner maps to `notshared`. nginx sets
+  the headers on every request to either app, and each app believes them
+  only on a Unix socket nginx alone opens (LosOS Git's `127.0.0.1:3000`
+  takes tokens and nothing else); drop either and anything on the box can
+  name anyone. `nix/tests/app-sign-in.nix` boots LosOS Git on the headers
+  and `nix/tests/cloud.nix` LosOS Cloud.
 - Terminal access (`docs/terminal-access.md`, `docs/edge-terminal.md`):
   `losos`, a Rust client in `admin-ui/tui` (clap derive, miette reports,
   tracing without time, ratatui) with the web UI's panes, catalogue and
@@ -141,7 +141,7 @@ and is never served or built by nix.
   allowlist. The client keeps keys and tokens in the Secret Service through
   `secret-tool`, never a file; `losos ci setup` pushes a separate CI key with
   `gh`, never an edge-made key. `losos cloud setup` and `losos git setup` mint an
-  app password and a Forgejo token per computer with the owner's password
+  app password and a LosOS Git token per computer with the owner's password
   (`backend/src/devices.rs`); `losos git credential` is git's helper.
 - LosOS Diagrams at `/diagrams/` (sidebar entry Diagrams; `/lab/` 301s
   there; internal names stay `lab`: the section, `/api/lab/*`, the crates,
@@ -177,10 +177,38 @@ and is never served or built by nix.
   that ran Nextcloud over once, files, calendars, contacts, boards, app
   passwords and trash, and leaves Nextcloud's leftovers for the erase;
   `nix/tests/cloud-from-nextcloud.nix` boots a real Nextcloud and checks it.
-- `containers.nix`, `workloads.nix`, `cluster.nix`: Forgejo runs as a
-  hostNetwork pod in the box's own k3s server; `services.rke2` (agent)
-  joins the edge's mesh. Nginx is the only public listener: `/cloud/`,
-  `/forgejo/`, admin SPA on `/`.
+- `containers.nix`, `cluster.nix`: the box's own k3s server runs only the
+  apps of its shared side (sharing on and in a mesh); `services.rke2`
+  (agent) joins the edge's mesh. Nginx is the only public listener:
+  `/cloud/`, `/git/`, admin SPA on `/`.
+- `git.nix` + `backend/src/forge/` (`losos-git`, a second binary of the
+  backend crate): LosOS Git, the box's Git server in place of Forgejo.
+  Smart HTTP (`git upload-pack`/`receive-pack --stateless-rpc`, protocol
+  v2), repositories in `/var/lib/losos-git/repositories/<owner>/<name>.git`,
+  accounts and SHA-256-hashed scoped tokens in SQLite. Two listeners: the
+  unix socket nginx reaches (headers trusted) and `127.0.0.1:3000`
+  (tokens only; lososd uses the admin token in
+  `/var/lib/losos-git/admin-token` with `X-Losos-As`). Issues, PRs,
+  comments, labels and attachments are in the same SQLite. Pull requests
+  are writable: compare, open, line comments in threads, reviews with a
+  verdict, requested reviewers, merge (merge, squash, fast-forward) in a
+  temporary worktree (`forge/pulls.rs`). Worktrees are marked by push
+  options `worktree=` and `computer=` (`forge/worktrees.rs`). The pages
+  are a fifth Vite page of the admin UI (`admin-ui/app/git/`, `src/git/`)
+  at `/git/`: nginx serves them, strips `/git` from `/git/api/` and the
+  smart-HTTP paths to the socket. A write with sign-in headers and no
+  token is refused when `Sec-Fetch-Site`/`Origin` say another site sent
+  it (`server::cross_site`). A box upgraded from Forgejo runs `losos-git-forgejo-import`
+  before LosOS Git: it moves the repositories, exports Forgejo's Postgres
+  (a private copy of the data dir when Postgres is off) or SQLite, keeps a
+  full dump, and `forge/import.rs` takes in accounts, tokens (Forgejo's
+  PBKDF2 hash and salt, so old values work), issues and the rest in one
+  transaction, idempotent through `forgejo_ids`. Anything not carried over
+  is named in `/var/lib/losos-git/forgejo/import.json`; nothing of
+  Forgejo's is deleted. `nix/tests/git-forgejo.nix` switches a real
+  Forgejo box to LosOS Git and checks every record. The old
+  `losos.forgejo.*` names stay as hidden aliases (`lib.doRename`,
+  `options.rs` `ALIASES`). `nix/tests/git.nix` boots it with a laptop.
 - `apps.nix` + `backend/src/apps.rs` + `backend/src/compose.rs`: the run-as
   user picks the runtime. `notshared` apps (a chart from the Apps pane's
   search, a Compose file in the LosOS app format from `POST
@@ -223,9 +251,20 @@ and is never served or built by nix.
 - `search.nix` + `backend/src/textsearch/` (`losos-search`): text inside
   files for the palette. A timer pass keeps an SQLite FTS5 index of the
   owner's cloud files in `/var/lib/losos-search` as `losos-cloud` (only what
-  changed is re-read); Git is `git grep` per query as `forgejo`. Both answer
+  changed is re-read); Git is `git grep` per query as `losos-git`. Both answer
   on Accept=yes sockets under `/run/losos-search` that only root (lososd's
   `/api/{cloud,git}/text`) can open. `nix/tests/search.nix` boots it.
+- `ci.nix` + `backend/src/ci/` (`losos-ci`, page at `/ci`): Mesh CI, the
+  GitHub Actions workflows of LosOS Git's repositories, only on a box that
+  shares and is in a mesh. `losos-ci serve` (user `losos-ci`) plans runs
+  and hands jobs to the edge's `/ci/*` queue; `losos-ci runner` (as
+  `shared`) takes them and starts each job's containers through pm
+  (`nix/pm.nix`, flake input `pm`, never patched) with Mesh CI's signed pm
+  plugin (`backend/plugins/pm-ci`, `nix/ci-pm-plugin.nix`), which answers
+  for `lci-*` containers alone. pm has no exec, so the job container runs
+  an agent that takes steps through a shared folder. `uses:
+  losos-project/pm` builds a signed recipe in pm's jail.
+  `nix/tests/mesh-ci.nix` boots an edge and two boxes.
 - `windows.nix` + `backend/src/windows.rs` + `backend/src/cloud/watch.rs`
   (`losos.cloud.windows.enable`, on by default): the box under Network in
   File Explorer (wsdd, LLMNR) and each person's LosOS Cloud files as
@@ -238,10 +277,10 @@ and is never served or built by nix.
   ETags follow. While on, `_smb._tcp` replaces the WebDAV mDNS entry so
   Finder and GNOME list the box once. `nix/tests/windows.nix` boots it.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
-  `losos-tokens.css` into Forgejo's custom CSS and LosOS Login's page;
-  LosOS Cloud is part of the SPA's own build, so one colour change moves
-  all of them. `default.nix` is the data every caller imports. Owners see
-  LosOS Cloud and LosOS Git.
+  `losos-tokens.css` into LosOS Login's page; LosOS Cloud and LosOS Git are
+  part of the SPA's own build, so one colour change moves all of them.
+  `default.nix` is the data every caller imports. Owners see LosOS Cloud and
+  LosOS Git.
 - `credentials.nix` + `backend/src/credentials.rs` (`losos.credentials.entries`):
   every secret of the box (admin token, LosOS Login's keys, lososd's OIDC
   client secret, the mail master secret, the backup bucket's keys) is a
@@ -286,14 +325,30 @@ and is never served or built by nix.
   every ALSA output once `losos-console` is up. A reboot leaves a marker so
   the nightly reboots stay quiet.
 - `builder.nix` + `backend/src/builder.rs` (install only,
-  `losos.builder.enable`): the admin UI's Build with AI tab. Ollama on
-  `127.0.0.1:11434` serves `losos.builder.model` (llama3.2:3b, pulled once
-  by `ollama-model-loader` into `/var/lib`); lososd streams one build at a
-  time from `/api/chat` and parses the files out of the answer, then
-  checks it (`problems`: unknown ids and `losos` members; `looped`: a
-  repeating answer is cut off) and gives the model one turn to fix what it
-  found. The system prompt is `backend/src/builder-prompt.md`. No edge, no
-  key, no charge.
+  `losos.builder.enable`): Build with AI, for widgets and for the owner's
+  own apps. Ollama on `127.0.0.1:11434` serves `losos.builder.model`
+  (qwen2.5-coder:1.5b, sized for a 4 GiB two-core box, pulled once by
+  `ollama-model-loader` into `/var/lib`); lososd streams one build at a
+  time from `/api/chat`, parses the answer (a fenced block plus `Name:` and
+  `Summary:` lines) and runs the loop: write, check (`jsx::check`, the
+  widget checks, an example from the prompt sent back), try, fix, up to
+  three fixes for an app and one for a widget, keeping the best answer.
+  The try runs in the owner's browser: the build sets `trial`, the page's
+  app frame fills every field, presses the first button and posts what was
+  kept to `/api/builder/builds/{id}/tried`; with no page within
+  `LOSOS_BUILDER_TRY_SECS` the step is skipped. The box drives the loop on
+  purpose: the 1.5B model cannot call tools. The prompts are chat turns with
+  examples: `backend/src/builder-{widget,app}-prompt.md`. No edge, no key,
+  no charge.
+- Your apps (`backend/src/{user_apps,jsx}.rs`, `admin-ui/app/src/apps/`,
+  `src/app-frame/`): an app is one React component in JSX that lososd
+  parses, checks for names that do not exist and compiles with oxc, then
+  keeps in `user-apps.json` with its data under `user-apps/<id>.json`.
+  It runs only in the browser, in `<iframe sandbox="allow-scripts
+  allow-forms" src="/app-frame/">` under nginx's `/app-frame/` CSP arm,
+  with the runtime (React, the 16 LosOS components, `useCollection`,
+  `useStored`, `losos`) as one classic script; data goes through
+  postMessage to `/api/user-apps/<id>/data`. No app code runs on the box.
 - `inference-lend.nix` (box, `losos.inference.lend.*`) + `edge-inference.nix`
   (edge, `losos.edge.inference.*`) + `edge/registrar/src/{inference,meter}.rs`
   + `market/taps.rs`: AI models split across boxes. A lending box runs
@@ -641,14 +696,14 @@ renders the real document (`nix/tests/admin-ui.nix` passes the
 ill-typed values, and any `${`, are refused with the key named. Every
 apply, mode change and reset is a commit in `/etc/nixos` (the repository
 the installer made), and a reconciler thread in lososd polls every 30 s:
-it creates the admin's Forgejo account (`notshared`, the owner password,
-kept in step on set-password and device setup) and a private `losos-config`
-repository through a bot account the Forgejo start-up script mints a token
-for (`nix/forgejo-bootstrap.nix`, token at `/var/lib/forgejo/.losos-token`),
-pushes when behind, and when a clone has pushed ahead fast-forwards, gates
+it creates the owner's LosOS Git account (`notshared`, no password: the
+owner signs in with LosOS Login) and a private `losos-config` repository
+through LosOS Git's admin API (admin token at
+`/var/lib/losos-git/admin-token`, `X-Losos-As` to act as the owner), pushes
+when behind, and when a clone has pushed ahead fast-forwards, gates
 the new `overrides.nix` the same way, and rebuilds; a diverged history is
-reported, never touched. There is deliberately **no Forgejo Actions
-runner** behind this. The sixteen settings the other panes own are linked
+reported, never touched. There is deliberately **no CI runner**
+behind this. `POST /api/config/sync` runs one pass on demand. The fifteen settings the other panes own are linked
 from the Advanced pane, not edited twice; `OWNED` in
 `admin-ui/app/src/lib/option-value.ts` and `OWNED_NAMES` in `lib/api.ts`
 are that list, and `buildOverridesNix` filters extras against it so the
@@ -658,14 +713,13 @@ quotes (it used to cut inside them, which mangled the default
 `upgradeFlakeUri`), and a list is one `[ "a" "b" ]` line, strings only.
 
 **Workloads and the single front door** (`modules/containers.nix` +
-`modules/workloads.nix` + `modules/cluster.nix` + `modules/cloud.nix`):
-systemd-nspawn is gone, and so is Nextcloud. Forgejo runs as a
-**Kubernetes workload in the box's own local k3s cluster** when
-`losos.forgejo.mode == "container"`; LosOS Cloud is a host service of its
-own on a Unix socket. Nginx is the only thing holding public ports:
-path-based routing on the appliance's mDNS name (`/cloud/` plus the
-Nextcloud client addresses, `/forgejo/`) and the admin SPA on the same
-vhost. `admin-ui/design-system/` (`tokens.css` + `losos.css`, plus
+`modules/cluster.nix` + `modules/cloud.nix` + `modules/git.nix`):
+systemd-nspawn is gone, and so are Nextcloud and Forgejo. LosOS Cloud and
+LosOS Git are host services of their own on Unix sockets, and the box's own
+k3s cluster runs only the apps of its shared side. Nginx is the only thing
+holding public ports: path-based routing on the appliance's mDNS name
+(`/cloud/` plus the Nextcloud client addresses, `/git/`) and the admin SPA on
+the same vhost. `admin-ui/design-system/` (`tokens.css` + `losos.css`, plus
 a `react/` wrapper package for claude.ai/design) is **dev-machine-only and no
 longer served at all** — the shipped SPA carries its own palette in
 `admin-ui/app/src/styles/tokens.css`, which `index.css` republishes as
@@ -674,18 +728,14 @@ because `losos-admin-ui`'s source *root* is `admin-ui/app`; that is a stronger
 guarantee than the `design-system` name filter it replaced, which would have
 stopped matching on a rename.
 
-**One look across the admin pages, LosOS Cloud and Forgejo** (`admin-ui/themes/`):
-LosOS Cloud is a page of the admin UI's own build (`admin-ui/app/cloud/`),
-so it shares the components and `tokens.css`. `tokens.css` is plain CSS on
-purpose, because Forgejo's theme and LosOS Login's ship it byte for byte (as
-`losos-tokens.css`) and map their own variables onto it — change a colour
-there and everything moves together. Forgejo gets
-`theme-losos-{auto,light,dark}.css` in `$FORGEJO_CUSTOM/public/assets/css/`
-(tmpfiles links natively, copied by the image's entrypoint) with
-`DEFAULT_THEME = losos-auto`, which Forgejo stamps on accounts at creation —
-an existing account keeps its old theme until its owner switches.
-Owners see the two apps as **LosOS Cloud** and **LosOS Git**: Forgejo's
-`APP_NAME` names it, and both get logos drawn from `admin-ui/themes/brand/` (`marks.py` wraps
+**One look across the admin pages, LosOS Cloud, LosOS Git and LosOS Login** (`admin-ui/themes/`):
+LosOS Cloud and LosOS Git are pages of the admin UI's own build
+(`admin-ui/app/cloud/`, `admin-ui/app/git/`), so they share the components
+and `tokens.css`. `tokens.css` is plain CSS on purpose, because LosOS
+Login's page ships it byte for byte (as `losos-tokens.css`) and maps its own
+variables onto it — change a colour there and everything moves together.
+Owners see the two apps as **LosOS Cloud** and **LosOS Git**, and both get
+logos drawn from `admin-ui/themes/brand/` (`marks.py` wraps
 `salmon.png`, a live coho salmon cut out of a NOAA Fisheries photo, into
 the SVGs and copies it to the SPA and the handbook; every PNG and the
 `.ico` is rendered from those at build time). `plate.png`, the plate of
@@ -695,8 +745,7 @@ own `src/lib/logo.ts`. The apps' marks never change. `brand/CREDITS.md`
 records both sources. A new picture needs a licence that allows use in a
 logo, and Pixabay's does not. The old
 pixel-art fish was dropped over a copyright worry and does not go back in. The rest of the upstream marketing goes by config (no skeleton
-files, no help or sign-up links, no "Powered by") and two Forgejo template
-overrides.
+files, no help or sign-up links, no "Powered by").
 `admin-ui/themes/default.nix` is plain data every caller imports. The workload pods are
 `hostNetwork` (the local cluster runs no CNI), so they answer on loopback — see
 the gotcha about what that costs the `lanOnly` guard.
@@ -742,7 +791,7 @@ units dial the configured edge until the first scan, which is what
 three-VM acceptance test; it is not run by CI.
 
 **The `losos.*` option namespace** (`options.nix`): all project-specific
-knobs (`targetDrive`, `tpm.enable`, `sharingMyStorage`, `forgejo.enable`,
+knobs (`targetDrive`, `tpm.enable`, `sharingMyStorage`, `git.enable`,
 `cloud.*`, `cluster.*` (mesh join, compute window), `shared.fscrypt.*`,
 `upgradeFlakeUri`, `backend.package`,
 `admin.{enable,port,apiPort,tokenFile,ui}`, `proxy.*` (appliance side of the
@@ -934,7 +983,7 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   `disable` and its agent node neither; rke2's `role` description says the same.
   Gate every server-only flag on the role.
 - **The two Kubernetes instances are different clusters on purpose.**
-  `services.k3s` (role `server`) runs *this box's* Forgejo and shared apps;
+  `services.k3s` (role `server`) runs *this box's* shared apps;
   `services.rke2` (role `agent`) joins the edge's mesh. An agent's kubelet cannot
   start while its server is unreachable, and `midnight-reboot.timer` fires
   unconditionally at 00:07 — so putting the box's own services in the edge's
@@ -1015,8 +1064,8 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   the PR that fills `nix/keys/official-edge-root.pub` with the same sign-in
   (`public_repo`). `tests/provision.rs` runs all of it against a fake GitHub
   and a real registrar. The gate decides whom the tooling serves; the root
-  key stays the whole secret. Forgejo Actions is **off** in both Forgejo
-  modes and the box runs no runner: the earlier from-the-box ceremony
+  key stays the whole secret. The box runs no CI runner: the earlier
+  from-the-box ceremony
   (Actions workflows plus `modules/git-runner.nix`) is gone, and
   `docs/provisioning/edge-identity/README.md` is the operator runbook. The
   operator's machine has no Nix store, so `.#losos-registrar-static`
