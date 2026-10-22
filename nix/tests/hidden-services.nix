@@ -353,9 +353,11 @@ pkgs.testers.runNixOSTest (
             '';
           };
           environment.systemPackages = [ pkgs.jq ];
+          # It boots alone, first; under emulation it needs every core to
+          # reach a shell within the driver's five minutes.
           virtualisation = {
             memorySize = 2048;
-            cores = 2;
+            cores = 4;
           };
         };
 
