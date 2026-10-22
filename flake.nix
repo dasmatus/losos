@@ -88,7 +88,14 @@
         # cannot carry a key sealed to hardware it does not have. The header of
         # nix/disk-images.nix says so at length; read it before handing the
         # image to anyone as a way to actually run this.
-        // import ./nix/disk-images.nix { inherit self nixpkgs pkgs; };
+        // import ./nix/disk-images.nix { inherit self nixpkgs pkgs; }
+        # The box CI's discovery jobs boot on Linux, macOS and Windows
+        # runners (nix/tests/discovery/box.nix): test media, not a release,
+        # under the `losos-disk-` prefix so `build-pkgs` leaves it to
+        # `build-media discovery`.
+        // {
+          losos-disk-discovery-box = self.nixosConfigurations.discovery-box.config.system.build.discoveryBox;
+        };
 
       # The dev environment is devenv.nix, entered with `devenv shell` (see
       # devenv.yaml). This devShell exists so a bare `nix develop` still
@@ -429,6 +436,13 @@
         ];
         _module.args.self = self;
       };
+      # The netboot test box CI's discovery jobs boot
+      # (nix/tests/discovery/box.nix), as `losos-disk-discovery-box`.
+      nixosConfigurations.discovery-box = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [ ./nix/tests/discovery/box.nix ];
+      };
+
       # The edge gateway (handbook/docs/in-depth/edge-federation.md): the edge
       # module with LAN advertising, open enrolment and a runtime uplink, as a
       # VM image for a LAN that has no NixOS machine to import nixosModules.edge
