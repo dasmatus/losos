@@ -254,6 +254,9 @@ in
     systemd.services.lososd = {
       environment = {
         LOSOS_MAIL_ADDR = "127.0.0.1:${toString port}";
+        # The same listener for the mail plugin's manifest
+        # (backend/plugins/mail), which names origins.
+        LOSOS_MAIL_URL = "http://127.0.0.1:${toString port}";
         LOSOS_MAIL_SECRET_FILE = secretFile;
         LOSOS_MAIL_DOMAIN = domain;
       };

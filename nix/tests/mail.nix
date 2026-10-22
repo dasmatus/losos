@@ -18,6 +18,11 @@
 #   * Matus writes to Eva, Eva reads it, replies, flags, moves and deletes;
 #   * a message with HTML is drawn only from its own route, under its own
 #     sandboxing CSP and without X-Frame-Options;
+#   * Eva makes, nests, renames, moves and deletes folders of her own
+#     (backend/plugins/mail), her mail going to the bin first; LosOS Mail's
+#     own folders stay put, and each refusal carries its word;
+#   * Matus's filters are saved as his Sieve script, and Stalwart files,
+#     flags and marks read Peter's next mail with lososd stopped;
 #   * mail to another domain, a bad address, the spare key and a signed-out
 #     request are refused, and nobody reads someone else's message;
 #   * nothing but lososd reaches Stalwart: it listens on loopback only;
@@ -70,6 +75,8 @@ pkgs.testers.nixosTest {
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
+          # The mail plugin answers the folder and filter routes.
+          backend.plugins = lososPkgs.losos-plugins;
           admin.ui = if screens then lososPkgs.losos-admin-ui else stubUi;
           forgejo.enable = false;
           sharingMyStorage = true;
@@ -93,7 +100,12 @@ pkgs.testers.nixosTest {
         };
         systemd.tmpfiles.rules = [ "d /home/shared/data 0700 shared shared -" ];
 
-        systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
+        systemd.services.lososd.path = lib.mkForce [
+          pkgs.coreutils
+          # The mail plugin's calls to Stalwart go through the host's curl,
+          # as on a real box (modules/daemon.nix).
+          pkgs.curl
+        ];
         services.authelia.instances.losos.settings.server.endpoints.rate_limits.session_elevation_start.enable =
           false;
         environment.systemPackages = [
@@ -169,6 +181,25 @@ pkgs.testers.nixosTest {
     def curl(args):
         return laptop.succeed(f"curl -sk {args}")
 
+    def box_settings(sharing, mesh):
+        # What Apply would have written for this state: lososd's settings
+        # (and the pages that read them, like the mesh banner) come from
+        # overrides.nix, while the gate itself is the evaluated config.
+        lines = [
+            "{ ... }:",
+            "{",
+            f"  losos.sharingMyStorage = {str(sharing).lower()};",
+            f"  losos.cluster.enable = {str(mesh).lower()};",
+            "}",
+        ]
+        body = "\n".join(lines)
+        # Written beside it and moved in, so lososd never reads half a file.
+        box.succeed(
+            "mkdir -p /etc/nixos/modules"
+            f" && cat > /etc/nixos/modules/overrides.nix.new <<'EOF'\n{body}\nEOF\n"
+            "mv /etc/nixos/modules/overrides.nix.new /etc/nixos/modules/overrides.nix"
+        )
+
     def mail_page():
         return [curl(f"-o /dev/null -w '%{{http_code}}' https://{BOX}{p}") for p in ["/mail", "/mail/"]]
 
@@ -211,6 +242,8 @@ pkgs.testers.nixosTest {
                 return found[0]
             time.sleep(2)
         raise AssertionError(f"{subject!r} never arrived in {mailbox}: {page}")
+
+    box_settings(True, True)
 
     with subtest("Stalwart runs as the shared user, on loopback only"):
         pid = box.succeed("systemctl show -p MainPID --value losos-mail.service").strip()
@@ -263,6 +296,10 @@ pkgs.testers.nixosTest {
         assert ok("/api/me", eva)["shared"] == ["mail"]
         # A screen of the admin pages: /mail falls through to their index.
         assert mail_page() == ["200", "200"]
+        # The saved settings agree with the gate, so no page (the mesh
+        # banner, the About pane) says this box is out of a mesh.
+        settings = ok("/api/settings", matus)
+        assert settings.get("sharingMyStorage") is True and settings.get("clusterEnable") is True, settings
 
     with subtest("each person gets a mailbox on first use"):
         mhome = ok("/api/mail", matus)
@@ -425,12 +462,167 @@ pkgs.testers.nixosTest {
         wait_for(matus, folder(mhome, "inbox"), "Fix the backup script")
         wait_for(matus, folder(mhome, "inbox"), "Photos from the lake")
 
+    secret = box.succeed("cat /var/lib/losos-mail/master-secret").strip()
+
+    def jmap_as(name, calls, using=("core", "mail")):
+        """A JMAP request straight to Stalwart as `name`, from the box: no lososd."""
+        body = {"using": [f"urn:ietf:params:jmap:{u}" for u in using], "methodCalls": calls}
+        box.succeed(f"cat > /tmp/jmap.json <<'EOF'\n{json.dumps(body)}\nEOF")
+        out = box.succeed(
+            f"curl -sf -u '{name}%losos:{secret}' http://127.0.0.1:8096/jmap/"
+            " -H 'Content-Type: application/json' -d @/tmp/jmap.json"
+        )
+        return [r[1] for r in json.loads(out)["methodResponses"]]
+
+    def account_of(name):
+        session = json.loads(box.succeed(f"curl -sf -u '{name}%losos:{secret}' http://127.0.0.1:8096/jmap/session"))
+        return session["primaryAccounts"]["urn:ietf:params:jmap:mail"]
+
+    def named(cookie, name):
+        return next(m for m in ok("/api/mail", cookie)["mailboxes"] if m["name"] == name)
+
+    with subtest("a person's own folders: made, nested, renamed, moved and deleted"):
+        shop = ok("/api/mail/folders", eva, method="POST", data={"name": "Shop", "parentId": None})["id"]
+        receipts = ok("/api/mail/folders", eva, method="POST", data={"name": "Receipts", "parentId": shop})["id"]
+        assert named(eva, "Receipts")["parentId"] == shop
+        assert named(eva, "Shop")["parentId"] is None
+        ok(f"/api/mail/folders/{receipts}", eva, method="PUT", data={"name": "Receipts 2026"})
+        assert named(eva, "Receipts 2026")["id"] == receipts
+        # Each refusal carries the word the page says it by.
+        for path, method, data, want, word in [
+            ("/api/mail/folders", "POST", {"name": "Shop", "parentId": None}, 409, "exists"),
+            ("/api/mail/folders", "POST", {"name": "a/b", "parentId": None}, 400, "badName"),
+            (f"/api/mail/folders/{shop}", "PUT", {"parentId": receipts}, 409, "loop"),
+            (f"/api/mail/folders/{shop}", "DELETE", None, 409, "hasFolders"),
+            (f"/api/mail/folders/{folder(ehome, 'inbox')}", "PUT", {"name": "Mine"}, 403, "own"),
+            (f"/api/mail/folders/{folder(ehome, 'trash')}", "DELETE", None, 403, "own"),
+        ]:
+            code, body = api(path, eva, method=method, data=data)
+            assert code == want and json.loads(body)["code"] == word, (path, method, code, body)
+        ok(f"/api/mail/folders/{receipts}", eva, method="PUT", data={"parentId": None})
+        assert named(eva, "Receipts 2026")["parentId"] is None
+        # A folder's mail goes to the bin before the folder goes, and a
+        # filter that filed into it is turned off.
+        ok("/api/mail/send", matus, method="POST", data={
+            "to": [f"eva@{DOMAIN}"], "subject": "Receipt for the knife", "text": "34 EUR, paid.",
+        })
+        knife = wait_for(eva, folder(ehome, "inbox"), "Receipt for the knife")
+        ok(f"/api/mail/messages/{knife['id']}", eva, method="POST", data={"mailbox": shop})
+        wait_for(eva, shop, "Receipt for the knife")
+        ok("/api/mail/filters", eva, method="PUT", data={"filters": [{
+            "name": "Shop", "enabled": True, "match": "all",
+            "conditions": [{"field": "from", "value": "shop.example"}],
+            "moveTo": shop, "markRead": False, "flag": False,
+        }]})
+        ok(f"/api/mail/folders/{receipts}", eva, method="DELETE")
+        assert ok(f"/api/mail/folders/{shop}", eva, method="DELETE") == {"moved": 1}
+        wait_for(eva, folder(ehome, "trash"), "Receipt for the knife")
+        names = [m["name"] for m in ok("/api/mail", eva)["mailboxes"]]
+        assert "Shop" not in names and "Receipts 2026" not in names, names
+        [left] = ok("/api/mail/filters", eva)["filters"]
+        assert left["enabled"] is False and left["moveTo"] is None, left
+        # Folders are each person's own: Matus has none of Eva's.
+        assert all(m["role"] is not None for m in ok("/api/mail", matus)["mailboxes"])
+
+    with subtest("filters are kept by the mail server and run with Mail closed"):
+        projects = ok("/api/mail/folders", matus, method="POST", data={"name": "Projects", "parentId": None})["id"]
+        losos_box = ok("/api/mail/folders", matus, method="POST", data={"name": "LosOS box", "parentId": projects})["id"]
+        filters = [
+            {
+                "name": "Backup reports", "enabled": True, "match": "all",
+                "conditions": [{"field": "from", "value": "peter@"}, {"field": "subject", "value": "backup"}],
+                "moveTo": losos_box, "markRead": True, "flag": True,
+            },
+            {
+                "name": "Newsletters", "enabled": False, "match": "any",
+                "conditions": [{"field": "subject", "value": "newsletter"}],
+                "moveTo": folder(mhome, "trash"), "markRead": False, "flag": False,
+            },
+        ]
+        assert ok("/api/mail/filters", matus, method="PUT", data={"filters": filters})["filters"] == filters
+        assert ok("/api/mail/filters", matus)["filters"] == filters
+        code, body = api("/api/mail/filters", matus, method="PUT", data={"filters": [{**filters[0], "moveTo": "zz9"}]})
+        assert code == 400, (code, body)
+        code, body = api("/api/mail/filters", matus, method="PUT", data={"filters": [{**filters[0], "conditions": []}]})
+        assert code == 400, (code, body)
+        assert ok("/api/mail/filters", matus)["filters"] == filters, "a refused save changed the filters"
+
+        # What Stalwart runs, read from Stalwart: one active script, the
+        # filter that is on as Sieve, the one that is off only in the comment.
+        maccount = account_of("matus")
+        [got] = jmap_as("matus", [["SieveScript/get", {"accountId": maccount}, "g"]], ("core", "sieve"))
+        [script] = got["list"]
+        assert script["name"] == "losos" and script["isActive"] is True, script
+        sieve = box.succeed(
+            f"curl -sf -u 'matus%losos:{secret}' "
+            f"'http://127.0.0.1:8096/jmap/download/{maccount}/{script['blobId']}/losos.sieve?accept=application/sieve'"
+        )
+        assert f'fileinto :mailboxid "{losos_box}" "LosOS box";' in sieve, sieve
+        assert 'addflag ["\\\\Seen", "\\\\Flagged"];' in sieve, sieve
+        assert "newsletter" not in sieve.split("\n", 1)[1], sieve
+
+        # Mail is closed: lososd is not even running. Peter writes through
+        # Stalwart itself, and the server files the message on its own.
+        box.succeed("systemctl stop lososd.service")
+        paccount = account_of("peter")
+        boxes, idents = jmap_as("peter", [
+            ["Mailbox/get", {"accountId": paccount, "properties": ["role"]}, "m"],
+            ["Identity/get", {"accountId": paccount}, "i"],
+        ], ("core", "mail", "submission"))
+        drafts = next(b["id"] for b in boxes["list"] if b["role"] == "drafts")
+        # onSuccessDestroyEmail adds an implicit Email/set answer at the end.
+        made, submitted, *_ = jmap_as("peter", [
+            ["Email/set", {"accountId": paccount, "create": {"d": {
+                "mailboxIds": {drafts: True},
+                "keywords": {"$draft": True},
+                "from": [{"name": "Peter", "email": f"peter@{DOMAIN}"}],
+                "to": [{"email": f"matus@{DOMAIN}"}],
+                "subject": "Backup log: Sunday",
+                "bodyValues": {"b": {"value": "All 4 folders copied, 38 GiB, no errors."}},
+                "textBody": [{"partId": "b", "type": "text/plain"}],
+            }}}, "e"],
+            ["EmailSubmission/set", {
+                "accountId": paccount,
+                "create": {"s": {"identityId": idents["list"][0]["id"], "emailId": "#d"}},
+                "onSuccessDestroyEmail": ["#s"],
+            }, "s"],
+        ], ("core", "mail", "submission"))
+        assert "s" in submitted.get("created", {}), (made, submitted)
+        deadline = time.time() + 120
+        while True:
+            query, found = jmap_as("matus", [
+                ["Email/query", {"accountId": maccount, "filter": {"subject": "Backup log: Sunday"}}, "q"],
+                ["Email/get", {
+                    "accountId": maccount,
+                    "#ids": {"resultOf": "q", "name": "Email/query", "path": "/ids"},
+                    "properties": ["mailboxIds", "keywords"],
+                }, "g"],
+            ])
+            if found["list"] or time.time() > deadline:
+                break
+            time.sleep(2)
+        [delivered] = found["list"]
+        assert delivered["mailboxIds"] == {losos_box: True}, delivered
+        assert delivered["keywords"].get("$seen") and delivered["keywords"].get("$flagged"), delivered
+        box.succeed("systemctl start lososd.service")
+        box.wait_for_open_port(8082)
+        laptop.wait_until_succeeds(f"curl -sk -o /dev/null -w '%{{http_code}}' -H 'Cookie: {matus}' https://{BOX}/api/me | grep -q 200", timeout=60)
+
+        # In Mail it is in LosOS box, read and flagged; what came before the
+        # filter stays where it was.
+        m = wait_for(matus, losos_box, "Backup log: Sunday")
+        assert m["seen"] is True and m["flagged"] is True, m
+        wait_for(matus, folder(mhome, "inbox"), "Fix the backup script")
+        tree = {f["name"]: f["parentId"] for f in ok("/api/mail", matus)["mailboxes"]}
+        assert tree["LosOS box"] == projects and tree["Projects"] is None, tree
+
     def screens(*args):
         if SCREENS:
             quoted = " ".join("'" + a + "'" for a in args)
             print(laptop.succeed(f"MAIL_SCREENS_PASSWORD='{PASSWORD}' mail-screens {quoted}", timeout=3600))
 
     with subtest("sharing on but in no mesh is not the shared side"):
+        box_settings(True, False)
         box.succeed("/run/current-system/specialisation/alone/bin/switch-to-configuration test")
         box.wait_until_fails("systemctl is-active losos-mail.service", timeout=60)
         box.wait_for_unit("lososd.service")
@@ -439,18 +631,26 @@ pkgs.testers.nixosTest {
         code, _ = api("/api/mail", eva)
         assert code == 404, code
         assert mail_page() == ["404", "404"]
+        box_settings(True, True)
         box.succeed("/run/booted-system/bin/switch-to-configuration test")
         box.wait_for_unit("losos-mail.service")
         box.wait_for_open_port(8096)
         laptop.wait_until_succeeds(f"curl -sk -H 'Cookie: {eva}' https://{BOX}/api/me | jq -e '.shared == [\"mail\"]'", timeout=60)
 
     with subtest("with sharing off there is no mail at all"):
+        box_settings(False, True)
         box.succeed("/run/current-system/specialisation/closed/bin/switch-to-configuration test")
         box.wait_until_fails("systemctl is-active losos-mail.service", timeout=60)
         box.wait_for_unit("lososd.service")
         laptop.wait_until_succeeds(f"curl -sk -o /dev/null -w '%{{http_code}}' -H 'Cookie: {eva}' https://{BOX}/api/me | grep -q 200", timeout=60)
         assert ok("/api/me", eva)["shared"] == [], "shared should be empty"
-        for path in ["/api/mail", f"/api/mail/messages?mailbox={inbox}", f"/api/mail/messages/{sale['id']}"]:
+        for path in [
+            "/api/mail",
+            f"/api/mail/messages?mailbox={inbox}",
+            f"/api/mail/messages/{sale['id']}",
+            # The mail plugin's routes close with the rest.
+            "/api/mail/filters",
+        ]:
             code, body = api(path, eva)
             assert code == 404, (path, code, body)
         code, _ = api("/api/mail/send", matus, method="POST", data={"to": [f"eva@{DOMAIN}"], "text": "x"})
@@ -461,6 +661,7 @@ pkgs.testers.nixosTest {
         screens("sidebar", "01", "sidebar-sharing-off", "the sidebar while the box does not share", "none")
 
     with subtest("with sharing back on, the mail is still there"):
+        box_settings(True, True)
         box.succeed("/run/booted-system/bin/switch-to-configuration test")
         box.wait_for_unit("losos-mail.service")
         box.wait_for_open_port(8096)
@@ -473,6 +674,9 @@ pkgs.testers.nixosTest {
 
     with subtest("Matus reads and answers his mail in the browser"):
         screens("mail", "3")
+
+    with subtest("Matus's folders and filters in the browser"):
+        screens("folders", "20")
 
     if SCREENS:
         laptop.succeed("mail-screens manifest losos-mail-screens")
