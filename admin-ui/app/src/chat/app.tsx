@@ -42,6 +42,8 @@ import { Composer } from "./composer";
 import { failed, ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, openDirect, RoomSettingsDialog, StartChatDialog } from "./dialogs";
 import { readShare, ShareDialog } from "./cloud";
 import { linkedCall, withoutCall, withoutLink, withUserId } from "./links";
+import { useDetailsOn } from "@/components/details";
+import { blackOut } from "@/lib/sensitive";
 import { directPartner, directRooms, isSpace, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
 import { RoomList } from "./room-list";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
@@ -198,6 +200,8 @@ export default function ChatScreen() {
 /** Desktop notifications for new messages while the tab is in the background. */
 function useNotifications(client: MatrixClient, current: string | null): void {
   const t = useT();
+  // A notification can show on a locked screen: no card numbers on it.
+  const detailsOn = useDetailsOn();
   React.useEffect(() => {
     const me = client.getSafeUserId();
     const tell = (ev: MatrixEvent, room: Room | undefined): void => {
@@ -205,7 +209,8 @@ function useNotifications(client: MatrixClient, current: string | null): void {
       if (!document.hidden && room.roomId === current) return;
       if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
       if (client.getPushActionsForEvent(ev)?.notify !== true) return;
-      const body = plainBody(ev.getContent()) || t("chat.reply.attachment");
+      const text = plainBody(ev.getContent());
+      const body = (detailsOn ? blackOut(text) : text) || t("chat.reply.attachment");
       const note = new Notification(roomName(room), { body: `${ev.sender?.name ?? ""}: ${body}`, tag: room.roomId });
       note.onclick = () => {
         window.focus();
@@ -224,7 +229,7 @@ function useNotifications(client: MatrixClient, current: string | null): void {
     return () => {
       client.off(RoomEvent.Timeline, onTimeline);
     };
-  }, [client, current, t]);
+  }, [client, current, t, detailsOn]);
 }
 
 /** The page title carries the unread count while chat is on screen, so a
@@ -326,6 +331,21 @@ function ChatHome({ signed }: { signed: Signed }) {
     const search = new URLSearchParams(window.location.search);
     const raw = search.get("with");
     const shared = readShare(search);
+    // `?join=<room>` from a LosOS Git repository: that room, joined first.
+    const joining = linkedRoom(window.location.search);
+    if (joining !== null) {
+      navigate(withoutLink(window.location.href), { replace: true });
+      const there = client.getRoom(joining.room);
+      if (there !== null && there.getMyMembership() === "join") {
+        setCurrent(joining.room);
+        return;
+      }
+      client
+        .joinRoom(joining.room, { viaServers: joining.via })
+        .then((room) => setCurrent(room.roomId))
+        .catch((error: unknown) => failed(t, error));
+      return;
+    }
     if (raw === null && shared === null) return;
     const video = linkedCall(window.location.search);
     navigate(withoutCall(withoutLink(window.location.href)), { replace: true });

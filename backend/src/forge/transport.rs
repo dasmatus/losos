@@ -103,6 +103,15 @@ struct InfoRefsQuery {
 /// or the answer for a request that may not go on. A push to a repository
 /// that does not exist makes it when the box allows push-to-create and it
 /// is in the pusher's own namespace.
+/// What [`authorize`] found: the repository, where it is, who is pushing,
+/// and the branches they are kept to (`own_branches`), if any.
+struct Allowed {
+    repo: Repo,
+    dir: PathBuf,
+    user: Option<User>,
+    own_branches: Option<String>,
+}
+
 fn authorize(
     req: &HttpRequest,
     state: &State,
@@ -110,7 +119,7 @@ fn authorize(
     repo: &str,
     service: Service,
     may_create: bool,
-) -> Result<(Repo, PathBuf, Option<User>), Fail> {
+) -> Result<Allowed, Fail> {
     let caller = server::caller(req, state)?;
     let name = super::names::strip_git(repo);
     let (Ok(owner), Ok(name)) = (super::names::owner(owner), super::names::repo(name)) else {
@@ -155,7 +164,15 @@ fn authorize(
         }
     };
     let access = caller.repo_access(&state.store, &repo)?;
-    if access < service.needs() {
+    // A person from another box pushes to their own branches only, which
+    // `rpc` checks before git sees the push.
+    let own_branches = match service {
+        Service::ReceivePack if access < service.needs() => {
+            caller.own_branches(&state.store, &repo)?
+        }
+        _ => None,
+    };
+    if access < service.needs() && own_branches.is_none() {
         if caller.user().is_none() && !caller.is_site_admin() {
             return Err(Fail::unauthorized("Sign in to use this repository."));
         }
@@ -171,7 +188,48 @@ fn authorize(
         tracing::error!(path = %path.display(), "a repository on record is missing on disk");
         return Err(Fail::not_found("repository"));
     }
-    Ok((repo, path, caller.user().cloned()))
+    Ok(Allowed {
+        repo,
+        dir: path,
+        user: caller.user().cloned(),
+        own_branches,
+    })
+}
+
+/// The most a push kept to its author's own branches may carry: it is read
+/// whole before git sees it.
+const OWN_BRANCHES_LIMIT: usize = 64 * 1024 * 1024;
+
+/// The refs a push's command list names, or `None` when the request does
+/// not start with one.
+pub fn pushed_refs(body: &[u8]) -> Option<Vec<String>> {
+    let mut refs = Vec::new();
+    let mut at = 0;
+    loop {
+        let len = std::str::from_utf8(body.get(at..at + 4)?)
+            .ok()
+            .and_then(|h| usize::from_str_radix(h, 16).ok())?;
+        if len == 0 {
+            return Some(refs);
+        }
+        if len < 4 {
+            return None;
+        }
+        let line = body.get(at + 4..at + len)?;
+        let line = line.split(|b| *b == 0).next()?;
+        let line = std::str::from_utf8(line).ok()?.trim_end_matches('\n');
+        // `<old> <new> <ref>`; a push certificate or shallow line is not
+        // a command, and is refused rather than read around.
+        let mut parts = line.splitn(3, ' ');
+        let (Some(old), Some(new), Some(name)) = (parts.next(), parts.next(), parts.next()) else {
+            return None;
+        };
+        if old.len() < 40 || new.len() < 40 {
+            return None;
+        }
+        refs.push(name.to_string());
+        at += len;
+    }
 }
 
 fn internal<E: std::fmt::Debug>(e: E) -> HttpResponse {
@@ -204,8 +262,8 @@ async fn info_refs(
             "LosOS Git speaks git's smart protocol only. Update git.",
         ));
     };
-    let (_, dir, _) = match authorize(&req, &state, &owner, &repo, service, true) {
-        Ok(v) => v,
+    let dir = match authorize(&req, &state, &owner, &repo, service, true) {
+        Ok(v) => v.dir,
         Err(fail) => return actix_web::ResponseError::error_response(&fail),
     };
     let protocol = protocol(&req);
@@ -265,7 +323,12 @@ async fn rpc(
     service: Service,
 ) -> HttpResponse {
     let (owner, repo_name) = path.into_inner();
-    let (repo, dir, pusher) = match authorize(&req, &state, &owner, &repo_name, service, false) {
+    let Allowed {
+        repo,
+        dir,
+        user: pusher,
+        own_branches,
+    } = match authorize(&req, &state, &owner, &repo_name, service, false) {
         Ok(v) => v,
         Err(fail) => return actix_web::ResponseError::error_response(&fail),
     };
@@ -284,6 +347,45 @@ async fn rpc(
         .get("content-encoding")
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.eq_ignore_ascii_case("gzip") || v.eq_ignore_ascii_case("x-gzip"));
+
+    // A push kept to its author's own branches is read whole and its
+    // commands checked before git sees any of it.
+    let mut whole: Option<Vec<u8>> = None;
+    if let Some(prefix) = &own_branches {
+        let mut raw = Vec::new();
+        while let Some(chunk) = payload.next().await {
+            let Ok(chunk) = chunk else {
+                return HttpResponse::BadRequest().json(server::message("The push broke off."));
+            };
+            raw.extend_from_slice(&chunk);
+            if raw.len() > OWN_BRANCHES_LIMIT {
+                return HttpResponse::PayloadTooLarge()
+                    .json(server::message("The push is too large."));
+            }
+        }
+        if gzip {
+            use std::io::Read;
+            let mut out = Vec::new();
+            let mut d = flate2::read::GzDecoder::new(&raw[..]).take(OWN_BRANCHES_LIMIT as u64 + 1);
+            if d.read_to_end(&mut out).is_err() || out.len() > OWN_BRANCHES_LIMIT {
+                return HttpResponse::BadRequest().json(server::message("The push is not gzip."));
+            }
+            raw = out;
+        }
+        let ok = pushed_refs(&raw).is_some_and(|refs| {
+            !refs.is_empty()
+                && refs
+                    .iter()
+                    .all(|r| r.starts_with(prefix.as_str()) && r.len() > prefix.len())
+        });
+        if !ok {
+            let branch = prefix.trim_start_matches("refs/heads/");
+            return HttpResponse::Forbidden().json(server::message(&format!(
+                "You may push only to branches under {branch} here: name yours {branch}<name>."
+            )));
+        }
+        whole = Some(raw);
+    }
 
     let before = if service == Service::ReceivePack {
         match state.git.refs(&dir) {
@@ -320,6 +422,15 @@ async fn rpc(
 
     // The request body into git, unzipped on the way when it came gzipped.
     actix_web::rt::spawn(async move {
+        if let Some(whole) = whole {
+            if let Some(keep) = &keep {
+                let mut k = keep.lock().unwrap_or_else(|p| p.into_inner());
+                k.extend_from_slice(&whole[..whole.len().min(PREAMBLE_LIMIT)]);
+            }
+            let _ = stdin.write_all(&whole).await;
+            let _ = stdin.shutdown().await;
+            return;
+        }
         let mut decoder = gzip.then(|| flate2::write::GzDecoder::new(Vec::new()));
         while let Some(chunk) = payload.next().await {
             let Ok(chunk) = chunk else { return };
