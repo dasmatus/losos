@@ -308,6 +308,13 @@
             # The fscrypt policy on the shared data domain, locked and unlocked
             # off losos.sharingMyStorage.
             ./modules/fscrypt.nix
+            # The credential manager: every secret of the box sealed with
+            # systemd-creds in /etc/credstore.encrypted and handed to the
+            # services that read it by LoadCredentialEncrypted=, so a copy of
+            # /persist that leaves the machine carries ciphertext. Next to
+            # fscrypt.nix because the two use the same sealing mechanism and
+            # cover different halves of the same problem.
+            ./modules/credentials.nix
             ./modules/daemon.nix
             ./modules/identity.nix
             # Backups to the owner's S3 bucket, restoring them, and the
@@ -487,6 +494,7 @@
         # with a type the Advanced pane has no editor for.
         losos-options-doc =
           self.nixosConfigurations.install.config.environment.etc."losos/options.json".source;
+        losos-credentials = import ./nix/tests/credentials.nix { inherit pkgs; };
         losos-erase = import ./nix/tests/erase.nix { inherit pkgs impermanence; };
         losos-console = import ./nix/tests/console.nix { inherit pkgs; };
         # The text search behind the admin palette: the cloud index pass in

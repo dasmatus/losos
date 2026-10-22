@@ -94,7 +94,13 @@ Once it is in, the tool has these tools from the companion:
   inside them;
 - list your repositories in LosOS Git and search the code on their
   default branches;
+- list your folders in LosOS Mail, search a folder, and read a message,
+  which stays unread for you;
 - say how the box is doing, and which account the companion reads as.
+
+LosOS Mail is there only on a box that shares its storage in a mesh. Notes
+are files in LosOS Cloud, so the companion finds and searches them with the
+Cloud tools.
 
 The companion reads what you can read. A person with their own account on
 the box gets their own files, not yours.
@@ -106,7 +112,7 @@ browser, and LosOS Login gives the companion two tokens: one that opens the
 box for an hour, and one that gets a new pair when that runs out. If the
 companion goes 30 days without being used, it has to sign in again.
 
-The box lets those tokens read files, repositories and the box's status, and
+The box lets those tokens read files, repositories, mail and the box's status, and
 nothing else, even when you are an administrator. The companion sends only
 reads, and the box refuses anything more. A person whose account is waiting
 for a second step or a new password cannot sign the companion in until that

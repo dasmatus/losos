@@ -82,6 +82,8 @@ struct Api {
     share: crate::cloud_share::Share,
     /// LosOS Mail (`crate::mail`).
     mail: crate::mail::Mail,
+    /// The box's credential store (`crate::credentials`).
+    credentials: crate::credentials::Credentials,
     /// Each person's picture, banner and the rest of their profile
     /// (`crate::profiles`).
     profiles: crate::profiles::Profiles,
@@ -555,7 +557,7 @@ fn gate_at(
             audit("forbidden", Some(&person.name));
             return Err(Box::new(HttpResponse::Forbidden().json(
                 serde_json::json!({
-                    "error": "the LosOS companion reads files, repositories and the box's health, nothing else",
+                    "error": "the LosOS companion reads files, repositories, mail and the box's health, nothing else",
                     "section": section,
                 }),
             )));
@@ -1772,6 +1774,60 @@ async fn get_backup(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/backup", false, || {
         run(&api, crate::erase::cmd_backup)
     })
+}
+
+/// `GET /api/credentials`: every credential the box keeps, without one
+/// value among them (`crate::credentials`).
+async fn get_credentials(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/credentials", false, || {
+        match (api.credentials.key(), api.credentials.list()) {
+            (Ok(key), Ok(list)) => HttpResponse::Ok().json(serde_json::json!({
+                "key": key,
+                "credentials": list,
+            })),
+            (Err(e), _) | (_, Err(e)) => {
+                tracing::error!(error = %e, "listing the credentials");
+                err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "the credential store could not be read",
+                )
+            }
+        }
+    })
+}
+
+/// `POST /api/credentials/{name}/rotate`: make a new value for a credential
+/// the box makes itself, and restart what reads it. The value is made and
+/// sealed here; the answer carries the row, never the value.
+async fn post_credential_rotate(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let name = path.into_inner();
+    guarded(
+        &api,
+        &req,
+        "/api/credentials/{name}/rotate",
+        true,
+        || match api.credentials.rotate(&name) {
+            Ok(Ok(row)) => {
+                tracing::info!(credential = %name, "made a new value for a credential");
+                HttpResponse::Ok().json(serde_json::json!({ "credential": row }))
+            }
+            Ok(Err(refused @ crate::credentials::Refused::NotFound)) => {
+                err(StatusCode::NOT_FOUND, &refused.to_string())
+            }
+            Ok(Err(refused)) => err(StatusCode::CONFLICT, &refused.to_string()),
+            Err(e) => {
+                tracing::error!(error = %e, credential = %name, "making a new credential value");
+                err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "the new value could not be sealed",
+                )
+            }
+        },
+    )
 }
 
 /// `POST /api/backup/target`: set the bucket.
@@ -3200,7 +3256,8 @@ async fn get_mail_messages(api: web::Data<Api>, req: HttpRequest) -> HttpRespons
     })
 }
 
-/// `GET /api/mail/messages/{id}` — open a message, which marks it read.
+/// `GET /api/mail/messages/{id}` — open a message, which marks it read,
+/// unless the LosOS companion opened it for an AI tool.
 async fn get_mail_message(
     api: web::Data<Api>,
     req: HttpRequest,
@@ -3211,7 +3268,10 @@ async fn get_mail_message(
         &req,
         "/api/mail/messages",
         false,
-        |who| match mail_person(&api, who).map(|p| api.mail.message(p, &path)) {
+        |who| match mail_person(&api, who).map(|p| {
+            let by_person = !matches!(who, Principal::Companion(_));
+            api.mail.message(p, &path, by_person)
+        }) {
             Ok(Ok(m)) => HttpResponse::Ok().json(m),
             Ok(Err(r)) => mail_refused(&r),
             Err(resp) => *resp,
@@ -4228,6 +4288,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
     let token_file =
         std::env::var("LOSOS_ADMIN_TOKEN_FILE").unwrap_or_else(|_| DEFAULT_TOKEN_FILE.to_string());
     let token = ensure_token(Path::new(&token_file))?;
+    crate::io_backend::scrub_backup_target_at_start();
 
     actix_web::rt::System::new().block_on(async move {
         let people = crate::people::People::from_env();
@@ -4252,6 +4313,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             login,
             share: crate::cloud_share::Share::default(),
             mail: crate::mail::Mail::from_env(),
+            credentials: crate::credentials::Credentials::from_env(),
             profiles: crate::profiles::Profiles::from_env(),
             image_jobs: tokio::sync::Semaphore::new(IMAGE_JOBS),
             plugins,
@@ -4300,6 +4362,11 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/apply", web::post().to(post_apply))
                 .route("/api/factory-reset", web::post().to(post_factory_reset))
                 .route("/api/backup", web::get().to(get_backup))
+                .route("/api/credentials", web::get().to(get_credentials))
+                .route(
+                    "/api/credentials/{name}/rotate",
+                    web::post().to(post_credential_rotate),
+                )
                 .route("/api/backup/target", web::post().to(post_backup_target))
                 .route("/api/backup/target", web::delete().to(delete_backup_target))
                 .route("/api/backup/run", web::post().to(post_backup_run))
