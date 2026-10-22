@@ -23,7 +23,6 @@ const { check, finish } = runner();
 
 const SETTINGS = {
   sharingMyStorage: false,
-  forgejoMode: 'container',
   hostName: 'mattbox',
   gpuEnable: false,
   proxyEnable: false,
@@ -326,7 +325,7 @@ async function open({
   // a set-up box does: LosOS Cloud's status document and LosOS Git's page.
   if (cloud !== null) {
     await page.route('**/status.php', (route) => json(route, 200, { installed: true, productname: 'LosOS Cloud' }));
-    await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
+    await page.route('**/git/api/v1/version', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
   }
   await page.goto(base + path, { waitUntil: 'networkidle' });
   return { page, errors, marketPosts, llmPosts, vmPosts, applies, domainPosts, backupPosts };
@@ -1162,7 +1161,7 @@ await check('the homepage has a tile for each page of LosOS Cloud, LosOS Git and
   assert.deepEqual(await tiles(page), [
     ['Files', '/cloud/files'],
     ['Photos', '/cloud/photos'],
-    ['Code', '/forgejo/'],
+    ['Code', '/git/'],
     ['Settings', '/settings'],
   ]);
   assert.deepEqual(errors, []);

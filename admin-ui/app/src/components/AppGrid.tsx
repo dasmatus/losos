@@ -61,10 +61,6 @@ export function AppGrid({ model, setupRoute = SETUP_ROUTE, className }: AppGridP
         </p>
       )}
 
-      {model.notice !== null && (
-        <p className="animate-fade-in text-[12.5px] text-muted">{model.notice}</p>
-      )}
-
       {model.offerSetup && <SetupPrompt setupRoute={setupRoute} />}
     </div>
   );

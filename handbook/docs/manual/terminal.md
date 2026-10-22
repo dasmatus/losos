@@ -171,7 +171,7 @@ and keeps it in the keychain. git then gets it from `losos` whenever it
 talks to the box, so cloning and pushing need no password:
 
 ```sh
-git clone https://mattbox.local/forgejo/notshared/notes.git
+git clone https://mattbox.local/git/notshared/notes.git
 ```
 
 When the box has its own certificate, git is told to accept exactly that

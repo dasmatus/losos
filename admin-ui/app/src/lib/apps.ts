@@ -12,8 +12,8 @@
  * `probeApps` fetches the one public, same-origin, token-free URL each app
  * already serves and reads the result:
  *
- *   Files -> GET /status.php   JSON, `installed: true` once LosOS Cloud runs
- *   Code  -> GET /forgejo/     200 when the git host is answering
+ *   Files -> GET /status.php         JSON, `installed: true` once LosOS Cloud runs
+ *   Code  -> GET /git/api/v1/version 200 when LosOS Git is answering
  *
  * Both are same-origin, so `connect-src 'self'` allows them and no token is
  * needed, which is the point: the homepage paints before anyone signs in.
@@ -26,11 +26,8 @@
  *
  * Served here, or served elsewhere
  * -------------------------------
- * modules/containers.nix routes `/forgejo/` on the front vhost only while
- * LosOS Git is in the deployment mode that puts it behind that vhost. In
- * the other mode there is no href worth writing, so `codeServedHere: false`
- * drops its tile and sets a notice, because a tile is a promise that
- * clicking it works. LosOS Cloud is always behind the front door.
+ * modules/containers.nix routes both apps on the front vhost whenever they
+ * run, so a tile always has an href worth writing.
  *
  * Vocabulary: nothing in here may name a container runtime or a scheduler. It
  * is "an app", it "runs on this box", and every user-visible string in this
@@ -44,7 +41,6 @@ import {
   Image02Icon,
   Settings01Icon,
 } from "@hugeicons/core-free-icons";
-import type { ServiceMode } from "@/lib/api";
 import { formatNumber, t, type MessageKey } from "@/lib/i18n";
 
 // ── Catalogue ─────────────────────────────────────────────────────────────
@@ -79,7 +75,7 @@ export interface AppDefinition {
 /** Where LosOS Cloud's web app answers on this box's front door. */
 export const FILES_BASE = "/cloud";
 /** Where the code host answers on this box's front door, when it does. */
-export const CODE_BASE = "/forgejo";
+export const CODE_BASE = "/git";
 
 /** Where the first-run wizard lives in this SPA. */
 export const SETUP_ROUTE = "/setup";
@@ -163,9 +159,6 @@ export interface AppFacts {
    * have its apps than not, and hiding them would be a worse guess than the
    * one this page made before it started measuring at all. */
   readonly measured?: boolean;
-  /** False when this origin has no route to the app at all, whatever its
-   *  state. Derive it with {@link servedHere}; default is true. */
-  readonly codeServedHere?: boolean;
   /** Override where the apps answer. Defaults to {@link FILES_BASE}/{@link CODE_BASE}. */
   readonly filesBase?: string;
   readonly codeBase?: string;
@@ -199,9 +192,6 @@ export interface AppGridModel {
   readonly pendingCount: number;
   /** The box looks unfinished: offer the wizard rather than an empty grid. */
   readonly offerSetup: boolean;
-  /** Why the grid is short, when the reason is configuration rather than an
-   *  unfinished box. Null when there is nothing to explain. */
-  readonly notice: string | null;
 }
 
 function joinPath(base: string, path: string): string {
@@ -214,15 +204,6 @@ function baseFor(provider: Provider, facts: AppFacts): string {
   if (provider === "files") return facts.filesBase ?? FILES_BASE;
   if (provider === "code") return facts.codeBase ?? CODE_BASE;
   return "";
-}
-
-/** Does this origin route to an app running in `mode`?
- *
- *  Only one of the two deployment modes puts the app behind this page's front
- *  door (modules/containers.nix). In the other it answers under a name the
- *  settings response does not carry, so this page cannot link to it. */
-export function servedHere(mode: ServiceMode): boolean {
-  return mode === "container";
 }
 
 /* Whether an app gets a tile, which is the whole point of this module.
@@ -243,7 +224,6 @@ function presenceOf(app: AppDefinition, facts: AppFacts): Presence {
     case "files":
       return resolve(facts.files, facts.measured === true);
     case "code":
-      if (facts.codeServedHere === false) return "hide";
       return resolve(facts.code, facts.measured === true);
     default: {
       const unreachable: never = provider;
@@ -258,13 +238,7 @@ function resolve(state: Availability, measured: boolean): Presence {
   return measured ? "show" : "pending";
 }
 
-function noticeFor(facts: AppFacts): string | null {
-  return facts.codeServedHere === false ? t("apps.notice.code") : null;
-}
-
-/** The grid, derived. The only sanctioned way to decide what gets a tile.
- *  The notice is translated, so call this while rendering a component that
- *  used `useT()`. */
+/** The grid, derived. The only sanctioned way to decide what gets a tile. */
 export function deriveApps(facts: AppFacts): AppGridModel {
   const tiles: AppTileModel[] = [];
   let pendingCount = 0;
@@ -290,7 +264,6 @@ export function deriveApps(facts: AppFacts): AppGridModel {
     tiles,
     pendingCount,
     offerSetup: facts.files === "absent",
-    notice: noticeFor(facts),
   };
 }
 
@@ -418,10 +391,11 @@ export async function probeFiles(options: ProbeOptions = {}): Promise<Availabili
   return "present";
 }
 
-/** Is the code host there? Its front page answering is the whole test. */
+/** Is the code host there? LosOS Git's version answering, signed out, is
+ *  the whole test. */
 export async function probeCode(options: ProbeOptions = {}): Promise<Availability> {
   const base = options.codeBase ?? CODE_BASE;
-  const response = await probe(joinPath(base, "/"), options.signal);
+  const response = await probe(joinPath(base, "/api/v1/version"), options.signal);
   return response === null ? "unknown" : readStatus(response.status);
 }
 

@@ -31,7 +31,7 @@ const BOXES = [
   { id: 'reception', hostname: 'reception', seenAgoSecs: 300, managed: false },
 ];
 const DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json', 'utf8'));
-const SITE_NAMES = /^(cloud\.trashDays|forgejo\.(site\..+|federation\.enable))$/;
+const SITE_NAMES = /^(cloud\.trashDays|git\.site\..+)$/;
 const SITE = {
   available: true,
   version: DOC.version,
@@ -168,13 +168,13 @@ await check("a box's settings change through the edge's relay, only the lines na
   const trash = page.getByLabel('Empty the trash after');
   await trash.fill('14');
   await trash.blur();
-  await page.getByLabel('What a visitor sees first').selectOption('explore');
+  await page.getByLabel('A new repository starts out').selectOption('public');
   await page.getByRole('button', { name: 'Apply' }).click();
   await page.getByText('The box runs its new settings', { exact: true }).waitFor({ timeout: 15000 });
   assert.deepEqual(posts, [
     {
       path: '/api/site',
-      body: { set: { 'forgejo.site.landingPage': '"explore"', 'cloud.trashDays': '14' } },
+      body: { set: { 'git.site.defaultPrivate': '"public"', 'cloud.trashDays': '14' } },
     },
   ]);
   assert.deepEqual(errors, []);
@@ -234,7 +234,6 @@ await check('a deep link reloads, and the page adds no policy violation', async 
 const SECTIONS = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab', 'access'];
 const SETTINGS = {
   sharingMyStorage: false,
-  forgejoMode: 'container',
   hostName: 'office-box',
   gpuEnable: false,
   proxyEnable: true,

@@ -21,8 +21,7 @@ sidebar_position: 1
 | `/cloud/`                     | LosOS Cloud                                         | jeder, auch über eine Edge          |
 | `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/` | Was die Nextcloud-Apps, Kalender-Apps und Dateimanager aufrufen | jeder, auch über eine Edge |
 | `/nextcloud/`                 | Dasselbe, unter der Adresse, die das Nextcloud der Box hatte | jeder, auch über eine Edge |
-| `/forgejo/`                   | LosOS Git                                           | jeder, auch über eine Edge          |
-| `/.well-known/nodeinfo`, `/.well-known/webfinger` | Die Föderations-Erkennung von LosOS Git, solange die Föderation an ist und die Festplatte geteilt wird | jeder, auch über eine Edge |
+| `/git/`                       | LosOS Git                                           | jeder, auch über eine Edge          |
 
 :::note[Was das lokale Netzwerk heißt]
 „Nur das lokale Netzwerk“ heißt: eine Quelladresse in einem privaten Bereich

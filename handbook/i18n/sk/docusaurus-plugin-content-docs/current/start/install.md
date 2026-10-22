@@ -13,8 +13,8 @@ beží sám. **Vymaže všetky pevné disky v počítači.**
 
 - Počítač so 64-bitovým procesorom Intel alebo AMD (x86_64) a firmvérom UEFI
   alebo BIOS, aspoň 4 GiB pamäte a jeden disk s kapacitou 40 GiB alebo viac.
-  Tvorba widgetov pomocou AI chce 8 GiB pamäte, pozrite si
-  [Tvorcu widgetov](/in-depth/widget-builder.md). Dobre sa hodia mini-PC
+  Tvorba widgetov a aplikácií pomocou AI funguje aj na tom, pozrite si
+  [Vytvoriť s AI](/in-depth/widget-builder.md). Dobre sa hodia mini-PC
   určené do kancelárií. Väčšina z nich má vo firmvéri čip TPM 2.0, nazývaný
   Intel PTT alebo AMD fTPM, a inštalátor v ňom uloží kľúč disku. LosOS beží
   iba na x86_64. Na počítač s ARM ho nenainštalujete, a najmä
@@ -94,7 +94,7 @@ Repozitár obsahuje konfiguráciu pre
 Dá VM 4 jadrá, 8 GiB pamäte a 64 GiB disk, firmvér UEFI s vypnutým Secure
 Boot a emulovaný TPM, takže inštalátor zapečatí kľúč disku rovnako ako na
 mini-PC. Čísla sú nad minimom, pretože zariadenie spúšťa LosOS Cloud a LosOS
-Git vo vlastnom clustri a každú noc sa nanovo zostavuje na ten istý disk.
+Git a každú noc sa nanovo zostavuje na ten istý disk.
 
 1. Nainštalujte quickemu a `swtpm`.
 2. Stiahnite inštalačné ISO z vydania a uložte ho ako

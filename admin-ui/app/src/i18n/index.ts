@@ -10,12 +10,15 @@ import advanced from "./advanced";
 import apps from "./apps";
 import calls from "./calls";
 import chat from "./chat";
+import ci from "./ci";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import credentials from "./credentials";
 import collab from "./collab";
 import contacts from "./contacts";
 import games from "./games";
+import git from "./git";
+import gitReview from "./git-review";
 import home from "./home";
 import inference from "./inference";
 import install from "./install";
@@ -37,6 +40,7 @@ import settings from "./settings";
 import shell from "./shell";
 import together from "./together";
 import tour from "./tour";
+import userApps from "./user-apps";
 import users from "./users";
 import widgets from "./widgets";
 import wizard from "./wizard";
@@ -52,10 +56,13 @@ export const MESSAGES = {
   ...inference,
   ...widgets,
   ...apps,
+  ...userApps,
   ...cloudApps,
   ...cloud,
   ...collab,
   ...notes,
+  ...git,
+  ...gitReview,
   ...install,
   ...look,
   ...machines,
@@ -77,6 +84,7 @@ export const MESSAGES = {
   ...mail,
   ...contacts,
   ...menu,
+  ...ci,
   ...mention,
   ...games,
   ...together,

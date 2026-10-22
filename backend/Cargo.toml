@@ -85,6 +85,11 @@ walkdir = "2"
 # (src/people.rs): argon2id in PHC form, the format Authelia reads. Already
 # in the lock file through the access crate.
 argon2 = "0.6"
+# Apps the builder writes are JSX (src/jsx.rs): parsed for the mistakes a
+# small model makes, then compiled to a plain script for the app frame, once,
+# on the box.
+oxc = { version = "0.155", default-features = false, features = ["transformer", "codegen", "semantic"] }
+
 # Profile pictures and banners (src/profiles.rs): decoded, turned upright,
 # cropped, scaled and encoded again, so no camera tag (a photo's position
 # among them) is ever stored. PNG, JPEG, GIF and WebP in; PNG and JPEG out.
@@ -145,6 +150,17 @@ quinn = { version = "0.11", default-features = false, features = ["runtime-tokio
 # src/plugin/host.rs, each checked against its manifest.
 wasmtime = { version = "50", default-features = false, features = ["anyhow", "runtime", "cranelift", "component-model", "std", "parallel-compilation"] }
 
+# LosOS Git (src/forge/, the losos-git binary): git's smart HTTP requests
+# may come gzipped (futures-util and base64 above serve it too). Already in
+# the lock file through zip.
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+
+# Mesh CI (src/ci/, the losos-ci binary) reads GitHub Actions workflows,
+# which are YAML, out of a commit's tree, which LosOS Git hands over as a
+# gzipped tar. serde_yaml is the crate edge/registrar already reads with.
+serde_yaml = "0.9"
+tar = { version = "0.4", default-features = false }
+
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its
 # output, and give it a throwaway filesystem.
@@ -200,3 +216,11 @@ path = "src/bin/losos-calls.rs"
 [[bin]]
 name = "losos-office"
 path = "src/bin/losos-office.rs"
+
+[[bin]]
+name = "losos-git"
+path = "src/bin/losos-git.rs"
+
+[[bin]]
+name = "losos-ci"
+path = "src/bin/losos-ci.rs"
