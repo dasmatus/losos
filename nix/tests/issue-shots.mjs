@@ -125,10 +125,10 @@ async function tracker(s, base) {
   await p.goto(`${base}/git/issues`);
   await p.locator("[data-tracker-scope=mine]").waitFor();
   await row(p, "BT-5").waitFor();
-  const project = p.locator("[data-sidebar=menu-button]", { hasText: "backup-tool" }).first();
+  const project = p.locator("[data-slot=sidebar-menu-button]", { hasText: "backup-tool" }).first();
   await s.take("my-issues", "the issues given to me, across projects", { kind: "click", target: "project" }, {
     project,
-    inbox: p.locator("[data-sidebar=menu-button]", { hasText: "Inbox" }).first(),
+    inbox: p.locator("[data-slot=sidebar-menu-button]", { hasText: "Inbox" }).first(),
   });
 
   await project.click();
@@ -158,7 +158,7 @@ async function tracker(s, base) {
   await started.click();
   await menu.waitFor({ state: "hidden" });
 
-  await p.getByRole("radio", { name: "Board" }).click();
+  await p.locator("[data-layout-board]").click();
   await p.locator("[data-board]").waitFor();
   const card = p.locator('[data-card][data-issue-key="BT-8"]');
   const doing = p.locator('[data-column="In Progress"]');
@@ -196,10 +196,10 @@ async function tracker(s, base) {
   await dialog.waitFor({ state: "hidden" });
   await p.locator("[data-card]", { hasText: "Rotate the backup key every year" }).waitFor();
   await s.take("created", "the new issue on the board", { kind: "click", target: "inbox" }, {
-    inbox: p.locator("[data-sidebar=menu-button]", { hasText: "Inbox" }).first(),
+    inbox: p.locator("[data-slot=sidebar-menu-button]", { hasText: "Inbox" }).first(),
   });
 
-  await p.locator("[data-sidebar=menu-button]", { hasText: "Inbox" }).first().click();
+  await p.locator("[data-slot=sidebar-menu-button]", { hasText: "Inbox" }).first().click();
   await p.locator("[data-inbox-item]").first().waitFor();
   await s.take("inbox", "what happened to the issues I follow", { kind: "click", target: "item" }, {
     item: p.locator("[data-inbox-item]").first(),
@@ -222,7 +222,7 @@ async function tracker(s, base) {
   await p.goto(`${base}/git/notshared/backup-tool`);
   await p.locator("[data-readme]").waitFor();
   await s.take("repository", "the repository, with its issues in the sidebar", { kind: "none" }, {
-    issues: p.locator("[data-sidebar=menu-button]", { hasText: "Issues" }).last(),
+    issues: p.locator("[data-slot=sidebar-menu-button]", { hasText: "Issues" }).last(),
   });
 }
 
