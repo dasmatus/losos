@@ -490,6 +490,13 @@
           inherit pkgs;
           screens = true;
         };
+        # Roles and moderation: reports, held mail, mutes and suspensions
+        # across LosOS Login, lososd and Stalwart (nix/tests/moderation.nix).
+        losos-moderation = import ./nix/tests/moderation.nix { inherit pkgs; };
+        losos-moderation-screens = import ./nix/tests/moderation.nix {
+          inherit pkgs;
+          screens = true;
+        };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
         losos-cloud-from-nextcloud = import ./nix/tests/cloud-from-nextcloud.nix { inherit pkgs; };
         # Notes on a kitchen garden vault, and the folder published as a
