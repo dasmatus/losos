@@ -355,7 +355,7 @@ pkgs.testers.nixosTest {
         return v4 or "[" + machine.succeed(f"getent ahostsv6 {name} | awk 'NR==1{{print $1}}'").strip() + "]"
 
     def visit(machine, at, http3):
-        curl = "${pkgs.curlHTTP3}/bin/curl --http3-only" if http3 else "curl"
+        curl = "${pkgs.curl}/bin/curl --http3-only" if http3 else "curl"
         return machine.wait_until_succeeds(
             f"{curl} -fsSk --max-time 10 --resolve mattbox.acme.losos.cfd:443:{at} "
             "https://mattbox.acme.losos.cfd/",

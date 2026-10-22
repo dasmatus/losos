@@ -271,7 +271,7 @@ pkgs.testers.nixosTest {
     edge_v4 = appliance.succeed("getent ahostsv4 edge | awk 'NR==1{print $1}'").strip()
     edge_addr = edge_v4 or "[" + appliance.succeed("getent ahostsv6 edge | awk 'NR==1{print $1}'").strip() + "]"
     h3 = (
-        "${pkgs.curlHTTP3}/bin/curl -sSk --max-time 10 --http3-only "
+        "${pkgs.curl}/bin/curl -sSk --max-time 10 --http3-only "
         f"--resolve mattbox.losos.cfd:443:{edge_addr} https://mattbox.losos.cfd/"
     )
     appliance.wait_until_succeeds(f"{h3} | grep -q hello-losos", timeout=120)
@@ -295,8 +295,8 @@ pkgs.testers.nixosTest {
     edge.succeed(f"{https} -o /tmp/offline-en.html")
     assert '<html lang="en">' in edge.succeed("cat /tmp/offline-en.html")
     # Kept in the test's output, for the screenshots of the change.
-    edge.copy_from_vm("/tmp/offline.html", "offline-page")
-    edge.copy_from_vm("/tmp/offline-en.html", "offline-page")
+    edge.copy_from_machine("/tmp/offline.html", "offline-page")
+    edge.copy_from_machine("/tmp/offline-en.html", "offline-page")
     appliance.succeed("systemctl start losos-rathole-client.service")
     edge.wait_until_succeeds(f"{https} | grep -q hello-losos", timeout=120)
 
