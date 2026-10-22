@@ -6,6 +6,8 @@ slug: /manual/mesh-ci
 
 # Mesh CI
 
+![Mesh and CI settings live under the admin pages.](../img/overview.png)
+
 Mesh CI runs the GitHub Actions workflows in your
 [LosOS Git](losos-git) repositories. A push or a pull request starts the
 workflows in the commit's `.github/workflows/` folder, the boxes of your
