@@ -74,6 +74,29 @@ await check('empty space offers the page: Back, Forward, Reload, search, the the
   await done();
 });
 
+await check('the first menu on a page grows in from its starting style, like every later one', async () => {
+  const { page, done } = await open();
+  await page.getByRole('main').locator('h1, h2').first().waitFor();
+  // What the popup looks like the moment it is in the page.
+  await page.evaluate(() => {
+    window.__firstMenu = new Promise((found) => {
+      new MutationObserver((_, observer) => {
+        const popup = document.querySelector('[data-slot="context-menu"]');
+        if (popup === null) return;
+        observer.disconnect();
+        found({ starting: popup.hasAttribute('data-starting-style'), opacity: getComputedStyle(popup).opacity });
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+  });
+  const box = await page.getByRole('main').boundingBox();
+  await page.mouse.click(box.x + box.width - 8, box.y + 8, { button: 'right' });
+  const first = await page.evaluate(() => window.__firstMenu);
+  assert.deepEqual(first, { starting: true, opacity: '0' }, 'the first menu skipped its way in');
+  await page.keyboard.press('Escape');
+  await menu(page).waitFor({ state: 'detached' });
+  await done();
+});
+
 await check('the theme is a submenu the arrow keys reach, and picking Dark switches the page', async () => {
   const { page, done } = await open();
   const box = await page.getByRole('main').boundingBox();
