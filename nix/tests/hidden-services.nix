@@ -416,12 +416,12 @@ pkgs.testers.runNixOSTest (
       # One at a time, the heaviest first: four emulated machines booting at
       # once can miss the driver's five minutes for a shell. The box's tunnel
       # and Tor wait for the others and try again.
-      for m in [box, edge, net, client]:
+      for m in [box, client, edge, net]:
           m.start()
           m.wait_for_unit("multi-user.target")
       # Every tor from a network that is there now.
       net.wait_until_succeeds("ss -Htln | grep -q ':7003 '")
-      for m in [edge, box]:
+      for m in [edge, box, client]:
           m.systemctl("restart tor.service")
 
       with subtest("the private I2P network: every router knows the floodfill"):
