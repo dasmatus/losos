@@ -6,6 +6,7 @@ import {
   InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { useT } from "@/lib/i18n-react";
+import { Button } from "./button";
 import { reportConfirmationsHeight } from "./corner";
 import { HelpLink } from "./help-link";
 import {
@@ -71,6 +72,19 @@ export function Confirmations({ className }: { className?: string } = {}) {
               <ToastDescription>{item.description}</ToastDescription>
             ) : null}
             {item.help !== undefined ? <HelpLink entry={item.help} className="mt-1.5" /> : null}
+            {item.action !== undefined ? (
+              <Button
+                size="xs"
+                variant="secondary"
+                className="mt-2"
+                onClick={() => {
+                  item.action?.onClick();
+                  dismissConfirmation(item.id);
+                }}
+              >
+                {item.action.label}
+              </Button>
+            ) : null}
           </div>
           <ToastClose aria-label={t("ui.dismiss")} />
         </Toast>

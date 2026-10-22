@@ -180,9 +180,10 @@ impl Event {
 }
 
 type Consumer = Box<dyn Fn(&Event) + Send + Sync>;
+type Shared = std::sync::Arc<dyn Fn(&Event) + Send + Sync>;
 
-fn consumers() -> &'static Mutex<Vec<Consumer>> {
-    static C: OnceLock<Mutex<Vec<Consumer>>> = OnceLock::new();
+fn consumers() -> &'static Mutex<Vec<Shared>> {
+    static C: OnceLock<Mutex<Vec<Shared>>> = OnceLock::new();
     C.get_or_init(|| Mutex::new(Vec::new()))
 }
 
@@ -196,7 +197,7 @@ pub fn subscribe(f: Consumer) {
     consumers()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .push(f);
+        .push(std::sync::Arc::from(f));
 }
 
 /// Send every event from now on to the socket at `path` as well.
@@ -209,11 +210,13 @@ pub fn deliver_to(path: PathBuf) {
 
 /// Tell everyone.
 pub fn emit(event: Event) {
-    for c in consumers()
+    // Called with the list unlocked: a consumer may emit an event of its
+    // own (the tracker closes an issue for a push and says so).
+    let listeners = consumers()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .iter()
-    {
+        .clone();
+    for c in listeners {
         c(&event);
     }
     let targets = sockets()
@@ -338,6 +341,27 @@ mod tests {
             updated: String::new(),
             chat_room: Some("!room:mattbox.local".into()),
         }
+    }
+
+    #[test]
+    fn an_issue_event_is_the_shape_the_rooms_read() {
+        let e = Event::Issue {
+            action: "closed".into(),
+            owner: "matus".into(),
+            repo: "site".into(),
+            private: true,
+            number: 12,
+            key: Some("SIT-12".into()),
+            title: "Fix the header".into(),
+            author: "eva".into(),
+            chat_room: None,
+        };
+        assert_eq!(
+            e.to_json(),
+            json!({"kind": "issue", "action": "closed", "owner": "matus", "repo": "site",
+                   "private": true, "number": 12, "key": "SIT-12", "title": "Fix the header",
+                   "author": "eva", "chatRoom": null})
+        );
     }
 
     #[test]

@@ -492,6 +492,10 @@
         # LosOS Contacts: the book in LosOS Cloud, vCard in and out, and the
         # pickers in Mail and Chat (nix/tests/contacts.nix).
         losos-contacts = import ./nix/tests/contacts.nix { inherit pkgs; };
+        # LosOS Calendar: WebCal subscriptions through the sandboxed fetcher,
+        # .ics import, published feeds and an invitation answered in Mail
+        # (nix/tests/calendar.nix).
+        losos-calendar = import ./nix/tests/calendar.nix { inherit pkgs; };
         # Calls from chat: three people in real browsers through the box's
         # SFU, whose copy of every frame is ciphertext (nix/tests/calls.nix).
         losos-calls = import ./nix/tests/calls.nix { inherit pkgs; };
@@ -604,6 +608,10 @@
         # Its pages in Chromium: code, a pull request reviewed and merged, the
         # worktrees (nix/tests/git-pages.nix).
         losos-git-pages = import ./nix/tests/git-pages.nix { inherit pkgs; };
+        # LosOS Git's issue tracker: Forgejo's issues and LosOS Cloud's
+        # boards carried over, closing words in commits and pull requests,
+        # and the pages from Chromium (nix/tests/git-issues.nix).
+        losos-git-issues = import ./nix/tests/git-issues.nix { inherit pkgs; };
         # People of another box in LosOS Git by their chat address, and a
         # repository's chat room between two boxes (nix/tests/git-federation.nix).
         losos-git-federation = import ./nix/tests/git-federation.nix { inherit pkgs; };

@@ -103,21 +103,33 @@ fn n(ns: &str, local: &str) -> Name {
     Name::new(ns, local)
 }
 
-fn privileges() -> String {
-    [
-        "<d:all/>",
-        "<d:read/>",
-        "<d:write/>",
-        "<d:write-properties/>",
-        "<d:write-content/>",
-        "<d:bind/>",
-        "<d:unbind/>",
-        "<d:read-current-user-privilege-set/>",
-        "<cal:read-free-busy/>",
-    ]
-    .iter()
-    .map(|p| format!("<d:privilege>{p}</d:privilege>"))
-    .collect()
+/// What the signed-in person may do in a collection. A subscribed calendar
+/// (`calendar::read_only`) is read and renamed, never written: its events
+/// come from the feed.
+fn privileges(read_only: bool) -> String {
+    let all: &[&str] = if read_only {
+        &[
+            "<d:read/>",
+            "<d:write-properties/>",
+            "<d:read-current-user-privilege-set/>",
+            "<cal:read-free-busy/>",
+        ]
+    } else {
+        &[
+            "<d:all/>",
+            "<d:read/>",
+            "<d:write/>",
+            "<d:write-properties/>",
+            "<d:write-content/>",
+            "<d:bind/>",
+            "<d:unbind/>",
+            "<d:read-current-user-privilege-set/>",
+            "<cal:read-free-busy/>",
+        ]
+    };
+    all.iter()
+        .map(|p| format!("<d:privilege>{p}</d:privilege>"))
+        .collect()
 }
 
 fn reports(kind: Kind) -> String {
@@ -216,11 +228,12 @@ fn plain_collection_props(who: &Who, name: &str) -> Vec<(Name, String)> {
             href(&principal_href(&who.login)),
         ),
         (n(DAV, "owner"), href(&principal_href(&who.login))),
-        (n(DAV, "current-user-privilege-set"), privileges()),
+        (n(DAV, "current-user-privilege-set"), privileges(false)),
     ]
 }
 
-fn collection_props(who: &Who, c: &Collection) -> Vec<(Name, String)> {
+fn collection_props(cloud: &Cloud, who: &Who, c: &Collection) -> Vec<(Name, String)> {
+    let read_only = crate::cloud::calendar::read_only(&cloud.store, c.id);
     let token = xml_escape(&sync_token(c));
     let mut p = vec![
         (n(DAV, "displayname"), xml_escape(&c.name)),
@@ -235,7 +248,7 @@ fn collection_props(who: &Who, c: &Collection) -> Vec<(Name, String)> {
             n(DAV, "current-user-principal"),
             href(&principal_href(&who.login)),
         ),
-        (n(DAV, "current-user-privilege-set"), privileges()),
+        (n(DAV, "current-user-privilege-set"), privileges(read_only)),
         (n(DAV, "supported-report-set"), reports(c.kind)),
     ];
     match c.kind {
@@ -549,7 +562,7 @@ async fn propfind(
                         for c in list {
                             out.push(answer(
                                 collection_href(&c),
-                                collection_props(who, &c),
+                                collection_props(cloud, who, &c),
                                 &preq,
                                 none,
                             ));
@@ -566,7 +579,7 @@ async fn propfind(
             };
             out.push(answer(
                 collection_href(&c),
-                collection_props(who, &c),
+                collection_props(cloud, who, &c),
                 &preq,
                 none,
             ));
@@ -919,6 +932,9 @@ async fn put(cloud: &Cloud, place: &Place, req: &HttpRequest, body: web::Payload
         Ok(c) => c,
         Err(r) => return r,
     };
+    if crate::cloud::calendar::read_only(&cloud.store, c.id) {
+        return subscribed();
+    }
     let bytes = match read_body(body, MAX_OBJECT).await {
         Ok(b) => b,
         Err(r) => return r,
@@ -961,6 +977,11 @@ async fn put(cloud: &Cloud, place: &Place, req: &HttpRequest, body: web::Payload
     }
 }
 
+/// A write into a subscribed calendar, whose events only its feed changes.
+fn subscribed() -> HttpResponse {
+    condition(StatusCode::FORBIDDEN, "<d:need-privileges/>")
+}
+
 fn invalid(kind: Kind) -> HttpResponse {
     condition(
         StatusCode::FORBIDDEN,
@@ -979,6 +1000,9 @@ fn delete(cloud: &Cloud, place: &Place, req: &HttpRequest) -> HttpResponse {
         Ok(c) => c,
         Err(r) => return r,
     };
+    if crate::cloud::calendar::read_only(&cloud.store, c.id) {
+        return subscribed();
+    }
     let if_match = etag_header(req, "if-match");
     match pim::delete_object(&cloud.store, &c, uri, if_match.as_deref()) {
         Ok(()) => HttpResponse::NoContent().finish(),

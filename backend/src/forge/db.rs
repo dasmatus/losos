@@ -211,6 +211,9 @@ const MIGRATIONS: &[&str] = &[
         seen  TEXT NOT NULL
     );
     ",
+    // 8: the issue tracker (`super::tracker`): projects with keys and
+    // workflows, issues, cycles, relations, links, views and the inbox.
+    super::tracker::MIGRATION,
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
