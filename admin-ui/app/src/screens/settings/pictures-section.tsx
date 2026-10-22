@@ -8,9 +8,11 @@ import { useT } from "@/lib/i18n-react";
 import { savePictureSettings, trustSender, usePictureSettings } from "@/lib/pictures";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow, SwitchRow } from "./rows";
 
-/* Pictures in Chat and Mail (lib/pictures.ts, backend/src/pictures.rs):
- * which arrive blurred, the senders whose pictures always show, the nudity
- * warning and the age mark that decides what may be changed. */
+/* Pictures and private details in Chat and Mail (lib/pictures.ts,
+ * backend/src/pictures.rs): which pictures arrive blurred, the senders
+ * whose pictures always show, the nudity warning, the black bars over card
+ * and ID numbers (components/details.tsx) and the age mark that decides
+ * what may be changed. */
 
 const BLURS: readonly PictureBlur[] = ["everyone", "strangers", "nobody"];
 
@@ -24,13 +26,14 @@ export function PicturesSection({ disabled }: { disabled: boolean }) {
   const t = useT();
   const settings = usePictureSettings();
   const warningId = React.useId();
+  const detailsId = React.useId();
   const blurId = React.useId();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   if (settings === null) return null;
 
-  const change = async (next: { blur?: PictureBlur; nudityCheck?: boolean }) => {
+  const change = async (next: { blur?: PictureBlur; nudityCheck?: boolean; detailsCheck?: boolean }) => {
     setBusy(true);
     setError(null);
     try {
@@ -99,6 +102,14 @@ export function PicturesSection({ disabled }: { disabled: boolean }) {
           checked={settings.nudityCheck}
           disabled={off || settings.child}
           onCheckedChange={(on) => void change({ nudityCheck: on })}
+        />
+        <SwitchRow
+          id={detailsId}
+          title={t("details.settings.warning")}
+          description={settings.child ? t("details.settings.warningChild") : t("details.settings.warningDetail")}
+          checked={settings.detailsCheck}
+          disabled={off || settings.child}
+          onCheckedChange={(on) => void change({ detailsCheck: on })}
         />
         {settings.trusted.length > 0 && (
           <StackRow>

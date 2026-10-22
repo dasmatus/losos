@@ -8,7 +8,8 @@ slug: /manual/pictures
 
 Pictures that other people send you in [Chat](chat) and [Mail](mail) are
 hidden until you press them. You decide which senders get past that, and
-you can turn on a nudity warning that runs on your own device. This page
+you can turn on a nudity warning that runs on your own device. Card and
+ID numbers in messages are blacked out. This page
 also covers what to do when someone sends you something that has to be
 reported.
 
@@ -24,8 +25,8 @@ hidden from you.
 
 **Always show pictures from** a person, on the patch or on the bar, adds
 them to your trusted senders. Their pictures show at once from then on.
-You can take someone off the list under **Settings > Your account > Pictures in
-Chat and Mail**.
+You can take someone off the list under **Settings > Your account > Pictures and
+private details**.
 
 ## Which pictures are hidden
 
@@ -66,6 +67,22 @@ The check runs on your device. The picture and the result never go to the
 box or to anyone else, whatever you choose. The classifier can be wrong in
 both directions, so treat it as a warning and not a filter. Pictures inside
 Mail messages are not checked. They stay hidden until you show them.
+
+## Card and ID numbers
+
+Card numbers, IBANs, passport and ID card numbers, Slovak and Czech birth
+numbers and US Social Security numbers show as black bars in Chat messages
+and in plain-text Mail. Press a bar to see the number and press it again to
+hide it. Before you send a Chat message or a mail with one of these in its
+text, LosOS asks **Send anyway?** and names each one by its last four
+characters. **Don't send** keeps what you wrote.
+
+Each number is recognised by its own check digits, so a phone number or an
+order number rarely sets it off. The check runs in your browser, like the
+nudity warning, and nothing about it goes to the box. It reads the words
+of a message, not pictures or attachments, and formatted (HTML) mail is
+not blacked out. **Black out private details**, in the same section of
+your account, turns both off. A child's account keeps them on.
 
 ## Reporting a message
 

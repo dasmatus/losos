@@ -15,6 +15,7 @@
  * the message (modules/containers.nix). The plain text, when there is one,
  * is the default view; HTML is one button away. */
 
+import { Masked, useDetailsCheck } from "@/components/details";
 import { openReport } from "@/components/report-dialog";
 import { MailHtml } from "./pictures";
 import * as React from "react";
@@ -1044,7 +1045,9 @@ function MessageRow({
         <span className={cn("truncate pl-4 text-sm", !m.seen && "font-medium")}>
           {m.subject || t("mail.noSubject")}
         </span>
-        <span className="line-clamp-1 pl-4 text-[13px] text-muted">{m.preview}</span>
+        <span className="line-clamp-1 pl-4 text-[13px] text-muted">
+          <Masked text={m.preview} still />
+        </span>
         </span>
       </button>
     </li>
@@ -1193,7 +1196,7 @@ function Reader({
           />
         ) : (
           <pre className="border-t border-hair px-5 py-4 font-sans text-sm leading-relaxed break-words whitespace-pre-wrap">
-            {m.text !== "" ? m.text : m.preview}
+            <Masked text={m.text !== "" ? m.text : m.preview} />
           </pre>
         )}
       </div>
@@ -1222,6 +1225,7 @@ function Composer({
   const [sending, setSending] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [showCc, setShowCc] = React.useState(initial.cc.length > 0);
+  const detailsCheck = useDetailsCheck();
   const list = (value: string) =>
     value
       .split(/[,;]/)
@@ -1232,6 +1236,11 @@ function Composer({
     event.preventDefault();
     setSending(true);
     setProblem(null);
+    // Card and ID numbers are asked about first; "Don't send" keeps the draft.
+    if (!(await detailsCheck.check(`${subject}\n${text}`))) {
+      setSending(false);
+      return;
+    }
     try {
       const draft: MailDraft = { to: list(to), cc: list(cc), subject, text };
       if (initial.inReplyTo !== undefined) draft.inReplyTo = initial.inReplyTo;
@@ -1318,6 +1327,7 @@ function Composer({
           </Button>
         </DialogFooter>
       </form>
+      {detailsCheck.dialog}
     </Dialog>
   );
 }

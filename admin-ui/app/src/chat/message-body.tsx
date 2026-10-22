@@ -2,6 +2,7 @@ import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { CloudSavingDone01Icon, CloudUploadIcon, Download01Icon, File01Icon, SquareLock01Icon } from "@hugeicons/core-free-icons";
 import { EventType, type MatrixClient, type MatrixEvent } from "matrix-js-sdk";
+import { Masked } from "@/components/details";
 import { HiddenPicture, NudityGuard } from "@/components/hidden-picture";
 import { valid as validBlurHash } from "@/lib/blurhash";
 import { useT } from "@/lib/i18n-react";
@@ -13,7 +14,8 @@ import { download, mediaUrl, type MediaSource } from "./media";
 
 /* A message's body. Only the plain `body` is drawn, never `formatted_body`:
  * HTML from other servers would need a sanitiser, and the plain text is
- * always there. Links and Matrix IDs are picked out of it. */
+ * always there. Links and Matrix IDs are picked out of it, and card and ID
+ * numbers are drawn black (components/details.tsx). */
 
 const LINK = /(https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]])|(@[a-z0-9._=/+-]+:[a-z0-9.-]+(?::\d+)?)/gi;
 
@@ -22,7 +24,7 @@ export function RichText({ text, me }: { text: string; me: string }) {
   let last = 0;
   for (const match of text.matchAll(LINK)) {
     const at = match.index;
-    if (at > last) parts.push(text.slice(last, at));
+    if (at > last) parts.push(<Masked key={`t${last}`} text={text.slice(last, at)} />);
     const [whole, url, user] = match;
     if (url !== undefined) {
       parts.push(
@@ -41,7 +43,7 @@ export function RichText({ text, me }: { text: string; me: string }) {
     }
     last = at + whole.length;
   }
-  if (last < text.length) parts.push(text.slice(last));
+  if (last < text.length) parts.push(<Masked key={`t${last}`} text={text.slice(last)} />);
   return <>{parts}</>;
 }
 

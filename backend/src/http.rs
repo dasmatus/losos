@@ -3866,12 +3866,12 @@ async fn get_mail_html(
                     )
                 };
                 HttpResponse::Ok()
-                .content_type("text/html; charset=utf-8")
-                .insert_header(("Content-Security-Policy", csp))
-                .insert_header(("X-Content-Type-Options", "nosniff"))
-                .insert_header(("Referrer-Policy", "no-referrer"))
-                .insert_header(("Cache-Control", "private, no-store"))
-                .body(html)
+                    .content_type("text/html; charset=utf-8")
+                    .insert_header(("Content-Security-Policy", csp))
+                    .insert_header(("X-Content-Type-Options", "nosniff"))
+                    .insert_header(("Referrer-Policy", "no-referrer"))
+                    .insert_header(("Cache-Control", "private, no-store"))
+                    .body(html)
             }
             Ok(Err(r)) => mail_refused(&r),
             Err(resp) => *resp,

@@ -71,9 +71,9 @@ export default defineMessages({
 
   // ── Settings › Account ──
   "pictures.settings.title": {
-    en: "Pictures in Chat and Mail",
-    sk: "Obrázky v Chate a Pošte",
-    de: "Bilder in Chat und Mail",
+    en: "Pictures and private details",
+    sk: "Obrázky a súkromné údaje",
+    de: "Bilder und private Daten",
   },
   "pictures.settings.blur": { en: "Hide pictures from", sk: "Skryť obrázky od", de: "Bilder verbergen von" },
   "pictures.settings.blur.everyone": { en: "Everyone", sk: "Všetkých", de: "Allen" },

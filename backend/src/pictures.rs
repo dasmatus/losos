@@ -17,6 +17,11 @@
 //! browser, and so is the nudity warning (`nudityCheck`): the page scores
 //! the picture on the device and the box never sees what it scored.
 //!
+//! The same goes for the private-details warning (`detailsCheck`, on unless
+//! the person turns it off): before a message goes out, the page looks in
+//! its text for a card number, an IBAN, a passport or ID card number or a
+//! birth number and asks first. The text never comes here for that.
+//!
 //! The settings live in `$LOSOS_PICTURES_FILE` (`/var/lib/losos/pictures.json`,
 //! in lososd's state directory), one entry per sign-in name, beside the
 //! Binance orders that are waiting to finish.
@@ -103,7 +108,7 @@ pub struct Mark {
 }
 
 /// One person's settings.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     #[serde(default)]
@@ -114,8 +119,28 @@ pub struct Settings {
     /// The person's own choice; a child has it on whatever this says.
     #[serde(default)]
     pub nudity_check: bool,
+    /// The private-details warning, on until the person turns it off; a
+    /// child has it on whatever this says.
+    #[serde(default = "on")]
+    pub details_check: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub age: Option<Mark>,
+}
+
+fn on() -> bool {
+    true
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            blur: Blur::default(),
+            trusted: Vec::new(),
+            nudity_check: false,
+            details_check: true,
+            age: None,
+        }
+    }
 }
 
 impl Settings {
@@ -142,6 +167,11 @@ impl Settings {
         self.nudity_check || self.is_child()
     }
 
+    /// Whether the private-details warning is on.
+    pub fn details_check(&self) -> bool {
+        self.details_check || self.is_child()
+    }
+
     pub fn trusts(&self, id: &str) -> bool {
         let id = fold_id(id);
         self.trusted.contains(&id)
@@ -154,6 +184,7 @@ pub fn render(s: &Settings) -> Value {
         "blur": s.blur(),
         "trusted": s.trusted,
         "nudityCheck": s.nudity_check(),
+        "detailsCheck": s.details_check(),
         "age": s.age,
         "child": s.is_child(),
         "mayShowAll": s.is_adult(),
@@ -166,6 +197,7 @@ pub fn render(s: &Settings) -> Value {
 pub struct Change {
     pub blur: Option<Blur>,
     pub nudity_check: Option<bool>,
+    pub details_check: Option<bool>,
 }
 
 /// Read a change strictly: unknown fields and wrong types are refused.
@@ -186,6 +218,10 @@ pub fn parse_change(doc: &Value) -> Result<Change, String> {
             }
             "nudityCheck" => {
                 change.nudity_check = Some(value.as_bool().ok_or("nudityCheck is true or false")?);
+            }
+            "detailsCheck" => {
+                change.details_check =
+                    Some(value.as_bool().ok_or("detailsCheck is true or false")?);
             }
             other => return Err(format!("{other} is not a picture setting")),
         }
@@ -388,7 +424,9 @@ impl Pictures {
     pub fn set(&self, name: &str, change: &Change) -> anyhow::Result<Settings> {
         self.edit(name, |s| {
             if s.is_child()
-                && (change.nudity_check == Some(false) || change.blur == Some(Blur::Nobody))
+                && (change.nudity_check == Some(false)
+                    || change.details_check == Some(false)
+                    || change.blur == Some(Blur::Nobody))
             {
                 return Err(Refused::Child.into());
             }
@@ -400,6 +438,9 @@ impl Pictures {
             }
             if let Some(on) = change.nudity_check {
                 s.nudity_check = on;
+            }
+            if let Some(on) = change.details_check {
+                s.details_check = on;
             }
             Ok(())
         })
@@ -540,6 +581,7 @@ mod tests {
         let s = p.get("ana").unwrap();
         assert_eq!(s.blur(), Blur::Everyone);
         assert!(!s.nudity_check());
+        assert!(s.details_check());
         assert_eq!(render(&s)["mayShowAll"], json!(false));
         assert!(!p.file.exists());
     }
@@ -573,6 +615,12 @@ mod tests {
             ..Change::default()
         };
         assert_eq!(refused(p.set("tom", &off).unwrap_err()), Refused::Child);
+        let quiet = Change {
+            details_check: Some(false),
+            ..Change::default()
+        };
+        assert_eq!(refused(p.set("tom", &quiet).unwrap_err()), Refused::Child);
+        assert!(p.get("tom").unwrap().details_check());
         let strangers = Change {
             blur: Some(Blur::Strangers),
             ..Change::default()
@@ -663,6 +711,20 @@ mod tests {
     }
 
     #[test]
+    fn the_details_warning_is_on_until_turned_off() {
+        // A file written before the warning existed has no detailsCheck.
+        let old: Settings = serde_json::from_value(json!({"blur": "strangers"})).unwrap();
+        assert!(old.details_check());
+        let (_d, p) = store();
+        let off = Change {
+            details_check: Some(false),
+            ..Change::default()
+        };
+        assert!(!p.set("ana", &off).unwrap().details_check());
+        assert_eq!(render(&p.get("ana").unwrap())["detailsCheck"], json!(false));
+    }
+
+    #[test]
     fn strangers_blurs_only_people_the_box_does_not_know() {
         let s = Settings {
             blur: Blur::Strangers,
@@ -683,8 +745,15 @@ mod tests {
             parse_change(&json!({"blur": "strangers", "nudityCheck": true})).unwrap(),
             Change {
                 blur: Some(Blur::Strangers),
-                nudity_check: Some(true)
+                nudity_check: Some(true),
+                details_check: None,
             }
+        );
+        assert_eq!(
+            parse_change(&json!({"detailsCheck": false}))
+                .unwrap()
+                .details_check,
+            Some(false)
         );
         assert!(parse_change(&json!({"blur": "some"})).is_err());
         assert!(parse_change(&json!({"nudityCheck": "yes"})).is_err());

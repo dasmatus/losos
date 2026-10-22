@@ -13,6 +13,7 @@ import chat from "./chat";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import credentials from "./credentials";
+import details from "./details";
 import collab from "./collab";
 import contacts from "./contacts";
 import games from "./games";
@@ -61,6 +62,7 @@ export const MESSAGES = {
   ...install,
   ...look,
   ...pictures,
+  ...details,
   ...report,
   ...machines,
   ...advanced,

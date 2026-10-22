@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Attachment01Icon, Cancel01Icon, CloudIcon, Mic01Icon, SentIcon } from "@hugeicons/core-free-icons";
 import type { MatrixClient, MatrixEvent, Room } from "matrix-js-sdk";
 import { CloudPicker } from "@/components/cloud-picker";
+import { useDetailsCheck } from "@/components/details";
 import { useSendCheck } from "@/components/send-check";
 import { toast } from "@/components/ui/toast";
 import { readCloudFile } from "@/lib/cloud-files";
@@ -56,6 +57,7 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
   const [recording, setRecording] = React.useState<{ recorder: MediaRecorder; started: number } | null>(null);
   const [uploading, setUploading] = React.useState(0);
   const sendCheck = useSendCheck();
+  const detailsCheck = useDetailsCheck();
 
   React.useEffect(() => {
     if (editing !== null) {
@@ -91,6 +93,8 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
   const send = async (): Promise<void> => {
     const body = text.trim();
     if (body === "") return;
+    // Card and ID numbers are asked about first; "Don't send" keeps the text.
+    if (!(await detailsCheck.check(body))) return;
     setText("");
     typing(false);
     const mentions = [...new Set(body.match(MENTION) ?? [])];
@@ -273,6 +277,7 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
         )}
       </div>
       {sendCheck.dialog}
+      {detailsCheck.dialog}
     </div>
   );
 }
