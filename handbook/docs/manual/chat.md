@@ -61,7 +61,9 @@ The lock button in the bar at the top opens **Secure messages** at any time. It 
 ## Writing to people
 
 - **A direct message:** click **Message someone** and pick a person. Everyone
-  with a LosOS Login account on the box is in the list.
+  with a LosOS Login account on the box is in the list, and so is everyone in
+  your [contacts](contacts) with a chat address. A contact's **Chat** button
+  opens the same conversation.
 - **A room:** click **New room**, give it a name, and choose whether it is
   public on the box or by invitation only. Invite people from the room's
   header.

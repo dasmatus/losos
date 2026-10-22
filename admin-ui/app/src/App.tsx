@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ReportDialogHost } from "@/components/report-dialog";
 import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon, Search01Icon } from "@hugeicons/core-free-icons";
@@ -85,6 +86,9 @@ const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 /* LosOS Mail (src/mail/): only on the shared side, so most boxes never
  * fetch it. */
 const Mail = React.lazy(() => import("@/mail/app"));
+/* LosOS Contacts (src/contacts/): kept in chat's homeserver, so on the
+ * shared side only, like Mail and Chat. */
+const Contacts = React.lazy(() => import("@/contacts/app"));
 /* LosOS Chat (src/chat/), the same: on the shared side only, and the only
  * screen that brings matrix-js-sdk and its crypto. */
 const Chat = React.lazy(() => import("@/chat/app"));
@@ -379,6 +383,8 @@ function Shell() {
                 (modules/containers.nix); the screen says so too if the box
                 leaves it while the page is open. */}
             <Route path="/mail" element={<Mail />} />
+            {/* nginx answers /contacts with 404 off the shared side too. */}
+            <Route path="/contacts" element={<Contacts />} />
             {/* nginx serves /chat/ only on the shared side, under chat's
                 own policy (modules/chat.nix); off it, /chat/ goes home. */}
             <Route path="/chat/*" element={<Chat />} />
@@ -409,6 +415,7 @@ function Shell() {
           <Tour />
         </React.Suspense>
       )}
+      {signedIn && <ReportDialogHost />}
       <Toaster />
     </div>
   );

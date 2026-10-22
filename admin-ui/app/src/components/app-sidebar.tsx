@@ -10,6 +10,7 @@ import {
   LayoutGridIcon,
   FlowchartIcon,
   Mail01Icon,
+  ContactBookIcon,
   PencilEdit02Icon,
   PinOffIcon,
   Search01Icon,
@@ -63,7 +64,9 @@ import { useOfficeFolder } from "@/lib/office-folder";
  *     Market                selling storage and compute, and disk sharing
  *     Machines              virtual machines on the mesh
  *   Diagrams                (LosOS Diagrams at /diagrams)
- *   Mail                    (LosOS Mail at /mail, only on the shared side)
+ *   Chat                    (LosOS Chat at /chat/, only on the shared side)
+ *   Mail                    (LosOS Mail at /mail, the same)
+ *   Contacts                (LosOS Contacts at /contacts, wherever LosOS Cloud runs)
  *   Mesh CI                 (workflows at /ci, only on the shared side)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
@@ -94,8 +97,9 @@ interface LinkEntry {
   icon: IconSvgElement;
   /** The settings pane behind it, for matching and for "is this current". */
   pane?: SettingsPaneId;
-  /** An app that runs as the shared user (GET /api/me's `shared`): drawn
-   * only while the box shares its storage and the app is up. */
+  /** An app GET /api/me lists in `shared` while it is up: mail and chat
+   * only while the box shares its storage, contacts wherever LosOS Cloud
+   * runs. */
   shared?: string;
   children?: readonly Entry[];
 }
@@ -162,6 +166,14 @@ const TREE: readonly Entry[] = [
   },
   {
     kind: "link",
+    key: "contacts",
+    to: "/contacts",
+    label: "shell.nav.contacts",
+    icon: ContactBookIcon,
+    shared: "contacts",
+  },
+  {
+    kind: "link",
     key: "ci",
     to: "/ci",
     label: "shell.nav.ci",
@@ -190,8 +202,8 @@ function allowed(entry: LinkEntry, office: boolean): boolean {
   if (entry.pane !== undefined) return paneOpen(entry.pane);
   if (entry.key === "lab") return canUse("lab");
   if (entry.key === "documents") return office;
-  // Shared-side: there only while the box shares its storage, which lososd
-  // says in /api/me's `shared`. With sharing off the page does not exist.
+  // There only while lososd lists the app in /api/me's `shared`: mail and
+  // chat while the box shares its storage, contacts with LosOS Cloud.
   if (entry.shared !== undefined) return sharedApp(entry.shared);
   return true;
 }

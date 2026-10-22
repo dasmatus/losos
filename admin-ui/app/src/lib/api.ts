@@ -2245,6 +2245,8 @@ export interface PersonEntry {
   picture?: string | null;
   banner?: string | null;
   accent?: Accent;
+  /** Marked as an adult or a child (`GET /api/pictures`), or null. */
+  age?: AgeMark | null;
 }
 
 export interface PeopleResponse {
@@ -3274,9 +3276,11 @@ export function getMailMessage(id: string, options: RequestOptions = {}): Promis
   return call<MailMessage>(`/api/mail/messages/${encodeURIComponent(id)}`, options);
 }
 
-/** Where the message's HTML is served, for the sandboxed frame. */
-export function mailHtmlUrl(id: string): string {
-  return apiPath(`/api/mail/messages/${encodeURIComponent(id)}/html`);
+/** Where the message's HTML is served, for the sandboxed frame. Its
+ *  pictures load only with `pictures` (lososd's MAIL_FRAME_CSP_NO_PICTURES
+ *  holds them back otherwise). */
+export function mailHtmlUrl(id: string, pictures = false): string {
+  return apiPath(`/api/mail/messages/${encodeURIComponent(id)}/html${pictures ? "?pictures=1" : ""}`);
 }
 
 /** Where an attachment downloads from. */
@@ -3307,6 +3311,160 @@ export function sendMail(draft: MailDraft): Promise<{ ok: true }> {
     contentType: "application/json",
     body: JSON.stringify(draft),
   });
+}
+
+// ── LosOS Contacts ─────────────────────────────────────────────────────────
+// The book is LosOS Cloud's address books (backend/src/cloud/contacts.rs),
+// under /cloud/api/contacts/, the same cards phones sync over CardDAV.
+// LosOS Cloud knows the caller from LosOS Login's cookie, so these calls
+// carry no admin token, and a 401 from it leaves the stored one alone.
+// The pickers are lososd's (backend/src/contacts.rs).
+
+export interface ContactLabelled {
+  value: string;
+  label: string;
+}
+
+export interface ContactAddress {
+  street: string;
+  locality: string;
+  region: string;
+  code: string;
+  country: string;
+  label: string;
+}
+
+export interface ContactName {
+  family: string;
+  given: string;
+  additional: string;
+  prefix: string;
+  suffix: string;
+}
+
+/** A contact's fields, as the page sends them to be saved. */
+export interface ContactFields {
+  name: string;
+  n?: ContactName;
+  nickname?: string;
+  org?: string;
+  title?: string;
+  emails?: ContactLabelled[];
+  phones?: ContactLabelled[];
+  addresses?: ContactAddress[];
+  urls?: ContactLabelled[];
+  /** `YYYY-MM-DD`, or `--MM-DD` without the year. */
+  birthday?: string;
+  note?: string;
+  /** A Matrix user ID, `@name:server`. */
+  matrix?: string;
+  /** A mesh address, `name@box`, for sharing files. */
+  mesh?: string;
+  uid?: string;
+}
+
+/** A contact as the book keeps it. */
+export interface Contact extends ContactFields {
+  id: string;
+  /** The address book it is in, by name. */
+  book?: string;
+  /** Where the photo loads from, versioned; absent without one. */
+  photo?: string;
+  updated: number;
+}
+
+/** One person a picker offers: a contact, or someone on this box. */
+export interface ContactSuggestion {
+  key: string;
+  source: "contact" | "box";
+  name: string;
+  picture?: string;
+  emails: string[];
+  matrixId?: string;
+  meshAddress?: string;
+  contactId?: string;
+}
+
+export interface ContactsImport {
+  added: number;
+  updated: number;
+  skipped: number;
+  photosDropped: number;
+  leftOut: number;
+}
+
+const CONTACTS = "/cloud/api/contacts";
+
+function contactsCall<T>(path: string, options: CallOptions = {}): Promise<T> {
+  return call<T>(`${CONTACTS}${path}`, { ...options, anonymous: true });
+}
+
+/** GET /cloud/api/contacts — the caller's contacts in every address book, by name. */
+export async function getContacts(options: RequestOptions = {}): Promise<{ contacts: Contact[] }> {
+  const answer = await contactsCall<{ contacts?: Contact[] }>("", options);
+  return { contacts: answer.contacts ?? [] };
+}
+
+/** POST /cloud/api/contacts or PUT /cloud/api/contacts/{id} — save a
+ *  contact's fields. 412 when a phone changed the card since it was read. */
+export function saveContact(id: string | null, fields: ContactFields): Promise<Contact> {
+  return contactsCall<Contact>(id === null ? "" : `/${encodeURIComponent(id)}`, {
+    method: id === null ? "POST" : "PUT",
+    contentType: "application/json",
+    body: JSON.stringify(fields),
+  });
+}
+
+/** DELETE /cloud/api/contacts/{id}. */
+export function deleteContact(id: string): Promise<{ removed: string }> {
+  return contactsCall<{ removed: string }>(`/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** PUT /cloud/api/contacts/{id}/photo — a picture, scaled and squared by the box. */
+export function setContactPhoto(id: string, picture: Blob): Promise<Contact> {
+  return contactsCall<Contact>(`/${encodeURIComponent(id)}/photo`, {
+    method: "PUT",
+    contentType: picture.type || "application/octet-stream",
+    body: picture,
+  });
+}
+
+/** DELETE /cloud/api/contacts/{id}/photo. */
+export function removeContactPhoto(id: string): Promise<Contact> {
+  return contactsCall<Contact>(`/${encodeURIComponent(id)}/photo`, { method: "DELETE" });
+}
+
+/** POST /cloud/api/contacts/import — a .vcf file, one card or many. */
+export function importContacts(file: Blob): Promise<ContactsImport> {
+  return contactsCall<ContactsImport>("/import", {
+    method: "POST",
+    contentType: "text/vcard",
+    body: file,
+  });
+}
+
+/** Where the book, or some contacts of it, downloads as a .vcf file. */
+export function contactsExportUrl(version: "3.0" | "4.0", ids?: readonly string[]): string {
+  const params = new URLSearchParams({ version });
+  if (ids !== undefined && ids.length > 0) params.set("ids", ids.join(","));
+  return `${CONTACTS}/export?${params.toString()}`;
+}
+
+/** GET /api/contacts/suggest — the people a picker offers for `q`: the
+ *  caller's contacts and the people on this box. Empty for the spare key. */
+export async function suggestContacts(
+  q: string,
+  want: "any" | "email" | "matrix" | "mesh" | "box" = "any",
+  options: RequestOptions & { limit?: number } = {},
+): Promise<ContactSuggestion[]> {
+  const params = new URLSearchParams({ q, want, limit: String(options.limit ?? 8) });
+  try {
+    const answer = await call<{ contacts?: ContactSuggestion[] }>(`/api/contacts/suggest?${params.toString()}`, options);
+    return answer.contacts ?? [];
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 403)) return [];
+    throw error;
+  }
 }
 
 // ── The box's AI on what the person shows it (backend/plugins/assistant) ──
@@ -3418,6 +3576,101 @@ export function putMailFilters(filters: MailFilter[]): Promise<{ filters: MailFi
     contentType: "application/json",
     body: JSON.stringify({ filters }),
   });
+}
+
+/* ── Pictures in Chat and Mail (backend/src/pictures.rs) ──────────────────
+ * Which pictures arrive blurred, whom the person trusts, the nudity warning
+ * and the adult or child mark. The box never looks at a picture: the blur
+ * and the warning are drawn in this page. */
+
+/** Which pictures arrive blurred: every one but those from trusted
+ *  senders, only those from strangers, or none (adults only). */
+export type PictureBlur = "everyone" | "strangers" | "nobody";
+
+export interface AgeMark {
+  age: "adult" | "child";
+  /** A finished Binance purchase, or an administrator in People. */
+  by: "binance" | "admin";
+  /** Seconds since 1970. */
+  since: number;
+}
+
+export interface PictureSettings {
+  blur: PictureBlur;
+  /** Chat IDs and mail addresses, in lower case. */
+  trusted: string[];
+  nudityCheck: boolean;
+  /** Private details blacked out and asked about (components/details.tsx). */
+  detailsCheck: boolean;
+  age: AgeMark | null;
+  /** Marked as a child: the warning stays on and `nobody` is refused. */
+  child: boolean;
+  /** Marked as an adult: `nobody` may be chosen. */
+  mayShowAll: boolean;
+}
+
+export interface PictureSender {
+  shown: boolean;
+  because: "trusted" | "known" | "setting" | null;
+  nudityCheck: boolean;
+}
+
+/** GET /api/pictures — the caller's own settings. */
+export function getPictures(options: RequestOptions = {}): Promise<PictureSettings> {
+  return call<PictureSettings>("/api/pictures", options);
+}
+
+/** POST /api/pictures — 403 with code `adultRequired` or `childAccount`
+ *  when the mark does not allow the change. */
+export function postPictures(
+  change: { blur?: PictureBlur; nudityCheck?: boolean; detailsCheck?: boolean },
+  options: RequestOptions = {},
+): Promise<PictureSettings> {
+  return postJson("/api/pictures", change, options);
+}
+
+/** POST /api/pictures/trust — always show (or stop showing) one sender's
+ *  pictures at once. */
+export function postPictureTrust(id: string, trusted: boolean, options: RequestOptions = {}): Promise<PictureSettings> {
+  return postJson("/api/pictures/trust", { id, trusted }, options);
+}
+
+/** GET /api/pictures/sender?id= — whether this chat ID or address's
+ *  pictures show at once. */
+export function getPictureSender(id: string, options: RequestOptions = {}): Promise<PictureSender> {
+  return call<PictureSender>(`/api/pictures/sender?id=${encodeURIComponent(id)}`, options);
+}
+
+/** POST /api/people/age — an administrator's mark. */
+export function postPersonAge(
+  name: string,
+  age: AgeMark["age"] | null,
+  options: RequestOptions = {},
+): Promise<{ name: string; age: AgeMark | null }> {
+  return postJson("/api/people/age", { name, age }, options);
+}
+
+/* ── Reports to the box's moderators ──────────────────────────────────────
+ * `POST /api/reports` belongs to moderation (Settings › Moderation). It
+ * carries a reference to what is reported, never the thing itself. A box
+ * without moderation answers 404. */
+
+export type ReportReason = "child" | "sexual" | "abuse" | "spam" | "other";
+
+export interface ReportTarget {
+  app: "chat" | "mail" | "cloud" | "git" | "profile";
+  /** The sign-in name of the person reported, when they are on this box. */
+  about: string | null;
+  /** A chat event ID, a mail message's ID, a path. */
+  ref: string;
+}
+
+/** POST /api/reports — `{"id"}`. */
+export function postReport(
+  report: ReportTarget & { reason: ReportReason; note: string },
+  options: RequestOptions = {},
+): Promise<{ id: string }> {
+  return postJson("/api/reports", report, options);
 }
 
 // ── Mesh CI (backend/src/ci/, through lososd's ci plugin) ───────────────
