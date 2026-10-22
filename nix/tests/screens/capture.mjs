@@ -26,8 +26,15 @@
 // `press` (a key), `waitText` (exact text), `sleep` (milliseconds) and
 // `goto` (a path). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
+//
+// A plan may also set `dpr` (device scale factor), `timezone` and
+// `colorScheme`, and a shot `targets` ({name: what to locate}): their boxes,
+// in CSS px, are written beside the picture as `<name>.json` with the page's
+// path, for a film that points at them. With `manifest` ({feature, commit,
+// test, host}) the run also writes `manifest.json` in the launch film's
+// shape: each shot's `title` and `action` with its targets and address.
 
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -86,6 +93,8 @@ const browser = await chromium.launch({ channel: 'chromium', args: ['--disable-g
 try {
   const context = await browser.newContext({
     viewport: { width: plan.width ?? 1280, height: plan.height ?? 800 },
+    deviceScaleFactor: plan.dpr ?? 1,
+    timezoneId: plan.timezone,
     ignoreHTTPSErrors: true,
     locale: plan.locale ?? 'en-US',
     colorScheme: plan.colorScheme ?? 'light',
@@ -99,6 +108,7 @@ try {
     });
     if (!r.ok()) throw new Error(`signing in as ${args.user}: ${r.status()} ${await r.text()}`);
   }
+  const steps = [];
   for (const shot of plan.shots) {
     const page = await context.newPage();
     const errors = [];
@@ -112,10 +122,40 @@ try {
     await page.waitForTimeout(shot.settle ?? 500);
     if (errors.length > 0) throw new Error(`${shot.name}: the page threw: ${errors.join('; ')}`);
     const path = join(args.out, `${shot.name}.png`);
+    if (shot.targets || plan.manifest) {
+      const targets = {};
+      for (const [key, what] of Object.entries(shot.targets ?? {})) {
+        const box = await locate(page, what).boundingBox();
+        if (box === null) throw new Error(`${shot.name}: target ${key} is not on screen`);
+        targets[key] = { x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.width), h: Math.round(box.height) };
+      }
+      const where = new URL(page.url());
+      const at = where.pathname + where.hash;
+      writeFileSync(join(args.out, `${shot.name}.json`), JSON.stringify({ path: at, targets }));
+      if (plan.manifest) {
+        steps.push({
+          file: `${shot.name}.png`,
+          url: plan.manifest.host + at,
+          title: shot.title ?? shot.name,
+          action: shot.action ?? { kind: 'none' },
+          targets,
+        });
+      }
+    }
     // Under TCG a busy page can take more than Playwright's 30 s to paint.
     await page.screenshot({ path, fullPage: shot.fullPage ?? false, timeout: 180000 });
     console.log(`captured ${path}`);
     await page.close();
+  }
+  if (plan.manifest) {
+    const { host: _, ...about } = plan.manifest;
+    const manifest = {
+      ...about,
+      viewport: { width: plan.width ?? 1280, height: plan.height ?? 800 },
+      dpr: plan.dpr ?? 1,
+      steps,
+    };
+    writeFileSync(join(args.out, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   }
 } finally {
   await browser.close();

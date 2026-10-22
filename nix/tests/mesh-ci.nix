@@ -421,11 +421,11 @@ let
         boxa.wait_until_succeeds("systemctl is-active authelia-losos.service")
         boxa.wait_for_open_port(9091)
 
-    def capture(name, plan="/etc/losos-test/plan-pages.json"):
+    def capture(name, plan="/etc/losos-test/plan-pages.json", timeout=1800):
         laptop.succeed(
             f"losos-capture --base https://{BOX} --plan {plan} "
             f"--out /tmp/screens/{name} --user matus --password '{PASSWORD}'",
-            timeout=1800,
+            timeout=timeout,
         )
   '';
 
@@ -476,6 +476,113 @@ let
         }
         laptop.succeed(f"cat > /tmp/plan-run.json <<'EOF'\n{json.dumps(run_plan)}\nEOF")
         capture("after-run", "/tmp/plan-run.json")
+
+        # The launch film's states, one picture per state and per typed
+        # character, dark, at twice the pixels, with the boxes of what the
+        # film points at.
+        run_page = f"/ci/runs/{site_run}"
+        services_log = [
+            {"click": {"text": "services"}},
+            {"click": {"text": "Run curl -fsS http://web:7000/ | grep pong"}},
+            {"waitFor": {"selector": "li:has-text('pong')"}},
+        ]
+        recipe_log = [
+            {"click": {"text": "recipe"}},
+            {"click": {"text": "Run losos-project/pm@v0"}},
+            {"waitFor": {"selector": "li:has-text('building hello version 0.1.0')"}},
+        ]
+        dialog = [
+            {"click": {"role": "button", "name": "Run workflow"}},
+            {"waitFor": {"role": "dialog"}},
+        ]
+        film = [
+            {"path": "/", "waitFor": {"role": "link", "name": "Mesh CI"},
+             "title": "the overview: Mesh CI in the sidebar",
+             "action": {"kind": "click", "target": "ci"},
+             "targets": {"ci": {"role": "link", "name": "Mesh CI"}}},
+            {"path": "/ci", "waitFor": {"text": "CI #1"},
+             "title": "Mesh CI: this box's runner and the runs of the mesh",
+             "action": {"kind": "click", "target": "run"},
+             "targets": {"run": {"text": "CI #1"}, "runner": {"text": "This box's runner"}}},
+            {"path": run_page, "waitFor": {"text": "services"},
+             "title": "a push's run: two jobs, one on each box",
+             "action": {"kind": "click", "target": "step"},
+             "steps": [{"click": {"text": "services"}}],
+             "targets": {"services": {"text": "services"}, "recipe": {"text": "recipe"},
+                         "step": {"text": "Run curl -fsS http://web:7000/ | grep pong"}}},
+            {"path": run_page, "waitFor": {"text": "services"}, "steps": services_log,
+             "title": "a step's log: the service answers by name",
+             "action": {"kind": "click", "target": "recipe"},
+             "targets": {"log": {"selector": "li:has-text('pong')"}, "recipe": {"text": "recipe"}}},
+            {"path": run_page, "waitFor": {"text": "recipe"},
+             "steps": [{"click": {"text": "recipe"}}],
+             "title": "the recipe job, run on the other box",
+             "action": {"kind": "click", "target": "step"},
+             "targets": {"step": {"text": "Run losos-project/pm@v0"}}},
+            {"path": run_page, "waitFor": {"text": "recipe"}, "steps": recipe_log,
+             "title": "pm builds the recipe in its jail",
+             "action": {"kind": "none"},
+             "targets": {"log": {"selector": "li:has-text('building hello version 0.1.0')"}}},
+            {"path": "/ci", "waitFor": {"role": "button", "name": "Run workflow"},
+             "title": "back on Mesh CI",
+             "action": {"kind": "click", "target": "dispatch"},
+             "targets": {"dispatch": {"role": "button", "name": "Run workflow"}}},
+            {"path": "/ci", "waitFor": {"role": "button", "name": "Run workflow"}, "steps": dialog,
+             "title": "the Run workflow dialog",
+             "action": {"kind": "type", "target": "repo"},
+             "targets": {"repo": {"selector": "#ci-dispatch-repo"}}},
+        ]
+        typed = "matus/site"
+        for i in range(1, len(typed) + 1):
+            last = i == len(typed)
+            film.append({
+                "path": "/ci", "waitFor": {"role": "button", "name": "Run workflow"},
+                "steps": dialog + [{"fill": {"label": "Repository", "value": typed[:i]}}],
+                "title": f"typing the repository: {typed[:i]}",
+                "action": {"kind": "click", "target": "find"} if last else {"kind": "type", "target": "repo"},
+                "targets": {"repo": {"selector": "#ci-dispatch-repo"},
+                            "find": {"role": "button", "name": "Find workflows"}},
+            })
+        film.append({
+            "path": "/ci", "waitFor": {"role": "button", "name": "Run workflow"},
+            "steps": dialog + [
+                {"fill": {"label": "Repository", "value": typed}},
+                {"click": {"role": "button", "name": "Find workflows"}},
+                {"waitFor": {"selector": "#ci-dispatch-workflow"}},
+            ],
+            "title": "the workflows that start by hand",
+            "action": {"kind": "click", "target": "run"},
+            "targets": {"workflow": {"selector": "#ci-dispatch-workflow"},
+                        "run": {"role": "button", "name": "Run"}},
+        })
+        film.append({
+            "path": "/ci", "waitFor": {"role": "button", "name": "Run workflow"},
+            "steps": dialog + [
+                {"fill": {"label": "Repository", "value": typed}},
+                {"click": {"role": "button", "name": "Find workflows"}},
+                {"waitFor": {"selector": "#ci-dispatch-workflow"}},
+                {"click": {"role": "button", "name": "Run"}},
+                # A box takes the job from the edge's queue first.
+                {"waitFor": {"text": "Run echo started; sleep 900"}, "timeout": 900000},
+            ],
+            "title": "the run it started, already on a box",
+            "targets": {"job": {"text": "wait"}},
+        })
+        for n, shot in enumerate(film, 1):
+            shot["name"] = f"{n:02d}-" + re.sub(r"[^a-z0-9]+", "-", shot["title"].split(":")[0].lower()).strip("-")
+            shot["steps"] = shot.get("steps", []) + [{"sleep": 1000}]
+        film_plan = {
+            "width": 1280,
+            "height": 900,
+            "dpr": 2,
+            "colorScheme": "dark",
+            "timezone": "Europe/Bratislava",
+            "manifest": {"feature": "mesh-ci", "commit": "", "test": "losos-mesh-ci-screens",
+                         "host": "mattbox.local"},
+            "shots": film,
+        }
+        laptop.succeed(f"cat > /tmp/plan-film.json <<'EOF'\n{json.dumps(film_plan)}\nEOF")
+        capture("film", "/tmp/plan-film.json", timeout=5400)
         laptop.copy_from_machine("/tmp/screens", "")
   '';
 
@@ -705,6 +812,7 @@ pkgs.testers.nixosTest {
 
   testScript = ''
     import json
+    import re
 
   ''
   + shootDefs
