@@ -141,7 +141,7 @@ function ThreadView({ client, room, root, me, actions }: { client: MatrixClient;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div ref={box} className="min-h-0 flex-1 overflow-y-auto pb-5" role="log" aria-label={t("chat.thread.label")}>
+      <div ref={box} className="min-h-0 flex-1 overflow-y-auto pb-8" role="log" aria-label={t("chat.thread.label")}>
         {fetched === null ? (
           <div className="flex justify-center p-6"><Spinner size={18} label={t("chat.timeline.loading")} /></div>
         ) : (

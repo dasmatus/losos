@@ -21,6 +21,10 @@ const HOST = process.env.CHAT_HOST ?? "mattbox.local";
 const ORIGIN = `https://${HOST}`;
 const PROXY = process.env.CHAT_PROXY ?? "socks5://127.0.0.1:1080";
 const PICTURE = process.env.CHAT_PICTURE;
+// A plain red square and a plain green one: the stand-in nudity model the
+// test builds flags the first and passes the second.
+const RED = process.env.CHAT_RED;
+const GREEN = process.env.CHAT_GREEN;
 const PEOPLE = {
   matus: process.env.CHAT_MATUS_PASSWORD,
   eva: process.env.CHAT_EVA_PASSWORD,
@@ -243,6 +247,14 @@ async function on() {
   await shot(eva, "thread-list");
   await eva.getByRole("button", { name: "Close threads" }).click();
   await owner.getByRole("main").locator("input[type=file]").first().setInputFiles(PICTURE);
+  // Eva's copy waits blurred, and nothing of it is fetched until she
+  // presses it.
+  const hidden = eva.getByRole("button", { name: /^Picture from Matus, hidden/ }).last();
+  await hidden.waitFor();
+  await eva.waitForTimeout(2000);
+  if ((await eva.getByRole("log").locator("img[alt='salmon.png']").count()) !== 0) throw new Error("Matus's picture was fetched before Eva asked");
+  await shot(eva, "picture-hidden");
+  await hidden.click();
   await eva.getByRole("log").locator("img[src^='blob:']").last().waitFor();
   await owner.getByRole("log").getByText("Hi Eva, chat is up on the box.", { exact: true }).hover();
   await owner.getByRole("button", { name: "Edit", exact: true }).first().click();
@@ -321,6 +333,142 @@ async function on() {
   await shot(owner, "attach-from-cloud");
   await picker.locator("[data-action=pick]").click();
   await eva.waitForFunction((name) => [...document.querySelectorAll('[role="log"] p')].filter((p) => p.textContent === name).length >= 2, PLAN);
+
+  await safety(owner, eva);
+}
+
+/* Pictures and private details (backend/src/pictures.rs,
+ * components/hidden-picture.tsx, components/details.tsx): the account's
+ * section, an administrator marking Eva as a child, the nudity warning on
+ * a picture received and one about to be sent, card and IBAN numbers drawn
+ * black, the report dialog, and the adult mark that allows "No one". */
+async function safety(owner, eva) {
+  const api = (page, path, body) =>
+    page.evaluate(
+      async ([path, body]) => {
+        const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        return { status: r.status, body: await r.json().catch(() => null) };
+      },
+      [path, body],
+    );
+
+  // "No one" needs the adult mark, and lososd itself says so.
+  const early = await api(eva, "/api/pictures", { blur: "nobody" });
+  if (early.status !== 403 || early.body?.code !== "adultRequired") throw new Error(`"No one" without the mark: ${JSON.stringify(early)}`);
+
+  // Eva's account: every picture hidden, the warnings, no age mark.
+  await eva.goto(`${ORIGIN}/settings/account`);
+  const section = eva.getByTestId("account-pictures");
+  await section.waitFor();
+  await section.scrollIntoViewIfNeeded();
+  if ((await eva.getByTestId("pictures-age").textContent())?.trim() === "") throw new Error("no age row");
+  await shot(eva, "account-pictures");
+
+  // Matus marks Eva as a child under Users.
+  await owner.goto(`${ORIGIN}/settings/users`);
+  const row = owner.locator('[data-testid=users-person][data-person="eva"]');
+  await row.getByTestId("users-age-edit").click();
+  await owner.getByTestId("users-age-choice").getByText("Child", { exact: true }).click();
+  await shot(owner, "users-age");
+  await owner.getByTestId("users-age-save").click();
+  await row.getByTestId("users-age").getByText(/child/i).waitFor();
+  await shot(owner, "users-age-child");
+  const marked = await api(eva, "/api/pictures");
+  if (marked.body?.child !== true || marked.body?.nudityCheck !== true || marked.body?.detailsCheck !== true) {
+    throw new Error(`Eva marked as a child: ${JSON.stringify(marked.body)}`);
+  }
+  const quiet = await api(eva, "/api/pictures", { nudityCheck: false });
+  if (quiet.status !== 403 || quiet.body?.code !== "childAccount") throw new Error(`a child turning the warning off: ${JSON.stringify(quiet)}`);
+  await eva.reload();
+  await section.waitFor();
+  await section.scrollIntoViewIfNeeded();
+  for (const name of ["Warn me about nudity", "Black out private details"]) {
+    const toggle = section.getByRole("switch", { name });
+    if (!(await toggle.isChecked()) || (await toggle.isEnabled())) throw new Error(`${name} is not held on for a child`);
+  }
+  await shot(eva, "account-pictures-child");
+
+  // Matus sends a red square, a green one and a message with a card number
+  // and an IBAN. His own page asks first about the numbers.
+  await owner.goto(`${ORIGIN}/chat/`);
+  await owner.getByRole("button", { name: /Eva/ }).first().click();
+  const composer = owner.getByRole("textbox", { name: "Message Eva" });
+  await composer.waitFor();
+  const files = owner.getByRole("main").locator("input[type=file]").first();
+  await files.setInputFiles(RED);
+  await owner.getByRole("log").locator("img[alt='red.png']").waitFor();
+  await files.setInputFiles(GREEN);
+  await owner.getByRole("log").locator("img[alt='green.png']").waitFor();
+  const PAY = "Pay the cabin to SK31 1200 0000 1987 4263 7541, or use my card 4242 4242 4242 4242.";
+  await composer.fill(PAY);
+  await owner.keyboard.press("Enter");
+  const asked = owner.getByRole("dialog", { name: /private details/ });
+  await asked.waitFor();
+  const named = (await asked.getByTestId("details-found").innerText()).split("\n").map((s) => s.trim());
+  if (JSON.stringify(named) !== JSON.stringify(["IBAN ending 7541", "Card number ending 4242"])) throw new Error(`the details named: ${JSON.stringify(named)}`);
+  await shot(owner, "details-send-anyway");
+  await asked.getByRole("button", { name: "Send anyway" }).click();
+  await owner.getByRole("log").locator("[data-detail=iban]").last().waitFor();
+
+  // Eva's page: the pictures wait blurred; she always shows Matus's.
+  await eva.goto(`${ORIGIN}/chat/`);
+  await eva.getByRole("button", { name: /Matus/ }).first().click();
+  const log = eva.getByRole("log");
+  await log.locator("[data-detail=card]").last().waitFor();
+  await log.getByRole("button", { name: /^Picture from Matus, hidden/ }).last().waitFor();
+  await shot(eva, "pictures-hidden-child");
+  await log.getByRole("button", { name: "Always show pictures from Matus" }).last().click();
+  // Red is held behind the warning, green is shown.
+  await log.locator("[data-nudity=flagged]").filter({ has: eva.locator("img[alt='red.png']") }).waitFor();
+  await log.locator("img[alt='green.png']").waitFor();
+  await eva.waitForFunction(() => {
+    const green = document.querySelector("[role=log] img[alt='green.png']");
+    return green !== null && green.closest("[data-nudity]") === null;
+  });
+  // The numbers are not in the page at all until pressed.
+  const text = await log.innerText();
+  if (text.includes("4242 4242") || text.includes("1987 4263")) throw new Error("a card or IBAN number is in the page unpressed");
+  await log.locator("[data-detail=card]").last().scrollIntoViewIfNeeded();
+  await shot(eva, "nudity-and-details");
+  await log.locator("[data-detail=iban]").last().click();
+  await log.getByText("SK31 1200 0000 1987 4263 7541").waitFor();
+  await shot(eva, "details-shown");
+  const trusted = await api(eva, "/api/pictures");
+  if (!trusted.body?.trusted?.includes("@matus:mattbox.local")) throw new Error(`Eva's trusted senders: ${JSON.stringify(trusted.body)}`);
+
+  // Eva tries to send the red square: her page asks, and she does not.
+  const evaFiles = eva.getByRole("main").locator("input[type=file]").first();
+  await evaFiles.setInputFiles(RED);
+  const ask = eva.getByRole("dialog", { name: /may show nudity/ });
+  await ask.waitFor();
+  await shot(eva, "send-anyway");
+  await ask.getByRole("button", { name: "Don't send" }).click();
+  await eva.waitForTimeout(5000);
+  if ((await owner.getByRole("log").locator("img[alt='red.png']").count()) !== 1) throw new Error("Eva's red square went to Matus");
+
+  // Report: how to reach the police and hotlines, and the box's moderators.
+  await log.getByText(/^Pay the cabin to/).last().click({ button: "right" });
+  await eva.locator('[data-slot="context-menu"]').first().getByRole("menuitem", { name: "Report" }).click();
+  const report = eva.getByTestId("report-dialog");
+  await report.waitFor();
+  await report.getByTestId("report-handbook").waitFor();
+  await shot(eva, "report");
+  await eva.getByTestId("report-send").click();
+  await eva.getByText("This box has no moderators to report to yet.", { exact: false }).waitFor();
+  await eva.keyboard.press("Escape");
+
+  // Matus marks Eva as an adult: "No one" is hers to choose.
+  await owner.goto(`${ORIGIN}/settings/users`);
+  await row.getByTestId("users-age-edit").click();
+  await owner.getByTestId("users-age-choice").getByText("Adult", { exact: true }).click();
+  await owner.getByTestId("users-age-save").click();
+  await row.getByTestId("users-age").getByText(/adult/i).waitFor();
+  await eva.goto(`${ORIGIN}/settings/account`);
+  await section.waitFor();
+  await section.scrollIntoViewIfNeeded();
+  await eva.getByTestId("pictures-blur").getByText("No one", { exact: true }).click();
+  await eva.waitForFunction(async () => (await (await fetch("/api/pictures")).json()).blur === "nobody");
+  await shot(eva, "account-pictures-adult");
 }
 
 try {

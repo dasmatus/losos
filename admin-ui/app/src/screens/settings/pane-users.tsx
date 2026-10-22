@@ -23,6 +23,7 @@ import {
 import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Spinner } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { CustomRole, LoginRules, PeopleResponse, PersonEntry, Role } from "@/lib/api";
@@ -235,6 +236,7 @@ function PeopleSection({
   const [resetting, setResetting] = React.useState<PersonEntry | null>(null);
   const [removing, setRemoving] = React.useState<PersonEntry | null>(null);
   const [unpairing, setUnpairing] = React.useState<PersonEntry | null>(null);
+  const [aging, setAging] = React.useState<PersonEntry | null>(null);
   const titleId = React.useId();
   const bodyId = React.useId();
   const resetTitleId = React.useId();
@@ -292,6 +294,11 @@ function PeopleSection({
                     person={{ role, roleName: person.roleName ?? custom?.name ?? null }}
                     data-testid="users-level"
                   />
+                  {person.age != null && (
+                    <Badge variant="outline" data-testid="users-age">
+                      {t(person.age.age === "child" ? "pictures.age.badgeChild" : "pictures.age.badgeAdult")}
+                    </Badge>
+                  )}
                 </div>
               </div>
               {role !== "admin" && role !== "owner" && (
@@ -345,6 +352,13 @@ function PeopleSection({
                   </Button>
                 </div>
               )}
+              {"age" in person && (
+                <div className="flex flex-wrap justify-end gap-2 pt-0.5">
+                  <Button size="sm" variant="ghost" disabled={disabled} data-testid="users-age-edit" onClick={() => setAging(person)}>
+                    {t("pictures.age.edit")}
+                  </Button>
+                </div>
+              )}
               {!you && (person.picture != null || person.banner != null) && (
                 <div className="flex flex-wrap justify-end gap-2 pt-0.5">
                   {(["picture", "banner"] as const)
@@ -377,6 +391,7 @@ function PeopleSection({
         onClose={() => setEditing(null)}
       />
       <PasswordDialog person={resetting} people={people} onClose={() => setResetting(null)} />
+      <AgeDialog person={aging} people={people} onClose={() => setAging(null)} />
       <Dialog
         open={unpairing !== null}
         onOpenChange={(open) => {
@@ -1277,5 +1292,58 @@ function FieldRow({
       <RowText htmlFor={id} title={title} detail={detail} />
       <div className="w-[16rem] max-sm:w-[11rem]">{children}</div>
     </Row>
+  );
+}
+
+// ── The age mark for pictures (backend/src/pictures.rs) ─────────────────
+
+const AGES = ["adult", "child", "none"] as const;
+
+function AgeDialog({ person, people, onClose }: { person: PersonEntry | null; people: PeopleData; onClose: () => void }) {
+  const t = useT();
+  const titleId = React.useId();
+  const bodyId = React.useId();
+  const [age, setAge] = React.useState<(typeof AGES)[number]>("none");
+  React.useEffect(() => setAge(person?.age?.age ?? "none"), [person]);
+  return (
+    <Dialog open={person !== null} onOpenChange={(open) => !open && onClose()} labelledBy={titleId} describedBy={bodyId}>
+      <DialogHeader>
+        <DialogTitle id={titleId}>{t("pictures.age.dialogTitle", { name: person?.displayName ?? "" })}</DialogTitle>
+        <DialogDescription id={bodyId}>{t("pictures.age.dialogBody")}</DialogDescription>
+      </DialogHeader>
+      <DialogBody className="flex flex-col gap-3">
+        <ToggleGroup
+          aria-labelledby={titleId}
+          value={age}
+          onValueChange={(next) => {
+            const found = AGES.find((a) => a === next);
+            if (found !== undefined) setAge(found);
+          }}
+          data-testid="users-age-choice"
+        >
+          {AGES.map((a) => (
+            <ToggleGroupItem key={a} value={a} className="px-3">
+              {t(`pictures.age.choice.${a}`)}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        <p className="text-[12.5px] leading-snug text-muted">{t(`pictures.age.choice.${age}.detail`)}</p>
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="ghost" onClick={onClose}>
+          {t("users.keep")}
+        </Button>
+        <Button
+          data-testid="users-age-save"
+          onClick={() => {
+            const name = person?.name;
+            onClose();
+            if (name !== undefined) void people.setAge(name, age === "none" ? null : age);
+          }}
+        >
+          {t("pictures.age.save")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }

@@ -17,6 +17,8 @@ import {
   type NewPerson,
   type PeopleResponse,
   type ProfileImage,
+  postPersonAge,
+  type AgeMark,
 } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import { t } from "@/lib/i18n";
@@ -51,6 +53,8 @@ export interface PeopleData {
   /** Save a role of the box's own; `id` changes one already saved. */
   saveRole: (role: { id?: string; name: string; sections: string[] }) => Promise<Outcome>;
   removeRole: (id: string, name: string) => Promise<boolean>;
+  /** Mark someone as an adult or a child for pictures, or neither. */
+  setAge: (name: string, age: AgeMark["age"] | null) => Promise<boolean>;
 }
 
 function viewOf(reply: Partial<PeopleResponse>): PeopleResponse {
@@ -207,6 +211,15 @@ export function usePeople(enabled: boolean): PeopleData {
     [attempt],
   );
 
+  const setAge = React.useCallback(
+    async (name: string, age: AgeMark["age"] | null) => {
+      const outcome = await attempt(() => postPersonAge(name, age), t("pictures.age.failed"));
+      if (!outcome.ok && outcome.message.length > 0) toast.error(t("pictures.age.failed"), outcome.message, { help: "sign-in-and-spare-key" });
+      return outcome.ok;
+    },
+    [attempt],
+  );
+
   return {
     state,
     busy,
@@ -220,5 +233,6 @@ export function usePeople(enabled: boolean): PeopleData {
     takeDown,
     saveRole,
     removeRole,
+    setAge,
   };
 }
