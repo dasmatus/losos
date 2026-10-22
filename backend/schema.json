@@ -1683,31 +1683,31 @@
       "POST /api/moderation/reports/{id}": {
         "auth": true,
         "in": "{\"action\": \"hide\"|\"release\"|\"dismiss\"|\"resolve\"}",
-        "out": "the GET /api/moderation document",
+        "out": "the report as it now stands: {\"id\", ..., \"state\", \"handledBy\", \"handledAt\"}",
         "note": "Act on a report. hide moves a mail into the reporter's Quarantine mailbox (no page lists it and lososd refuses to open it) or takes a profile picture or banner down; release lets held mail go; a report about a child can only be hidden, or resolved where the box cannot hide it, never dismissed or released. 409 for a closed report. Moderators and administrators."
       },
       "POST /api/moderation/mute": {
         "auth": true,
         "in": "{\"name\": \"...\", \"minutes\": 1..527040|null, \"reason\": \"...\" (optional)}",
-        "out": "the GET /api/moderation document",
+        "out": "{\"name\": \"...\", \"muted\": hold}",
         "note": "Stop someone sending mail and changing their profile (the `speech` routes of backend/sections.json answer 403 with muted) for `minutes`, or until unmuted when null. Administrators may hold anyone but the owner; moderators members and guests; nobody themselves. Moderators and administrators."
       },
       "POST /api/moderation/unmute": {
         "auth": true,
         "in": "{\"name\": \"...\"}",
-        "out": "the GET /api/moderation document",
+        "out": "{\"name\": \"...\", \"muted\": null}",
         "note": "Lift a mute. Moderators and administrators."
       },
       "POST /api/moderation/suspend": {
         "auth": true,
         "in": "{\"name\": \"...\", \"minutes\": 1..527040|null, \"reason\": \"...\" (optional)}",
-        "out": "the GET /api/moderation document",
+        "out": "{\"name\": \"...\", \"suspended\": hold}",
         "note": "Keep someone out: their people-file record is disabled, so LosOS Login refuses their next request and their next sign-in, and lososd answers 403 with suspended. A timed suspension lifts itself. Same rank rules as mute. Moderators and administrators."
       },
       "POST /api/moderation/unsuspend": {
         "auth": true,
         "in": "{\"name\": \"...\"}",
-        "out": "the GET /api/moderation document",
+        "out": "{\"name\": \"...\", \"suspended\": null}",
         "note": "Let someone back in. Moderators and administrators."
       },
       "GET /api/account": {
