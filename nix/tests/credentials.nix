@@ -193,7 +193,6 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/fscrypt.nix
           ../../modules/backup.nix
         ];
