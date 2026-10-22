@@ -8,6 +8,8 @@ import access from "./access";
 import account from "./account";
 import advanced from "./advanced";
 import apps from "./apps";
+import calls from "./calls";
+import chat from "./chat";
 import ci from "./ci";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
@@ -75,7 +77,9 @@ export const MESSAGES = {
   ...tour,
   ...palette,
   ...pins,
+  ...calls,
   ...manage,
+  ...chat,
   ...office,
   ...mail,
   ...menu,

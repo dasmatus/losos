@@ -8,6 +8,7 @@ export default defineMessages({
   "shell.nav.mesh": { en: "Mesh", sk: "Mesh", de: "Mesh" },
   /* LosOS Diagrams at /diagrams/ (admin-ui/app/diagrams/, admin-ui/lab/). */
   "shell.nav.lab": { en: "Diagrams", sk: "Diagramy", de: "Diagramme" },
+  "shell.nav.chat": { en: "Chat", sk: "Chat", de: "Chat" },
   "shell.nav.mail": { en: "Mail", sk: "Pošta", de: "Mail" },
   "shell.nav.ci": { en: "Mesh CI", sk: "Mesh CI", de: "Mesh CI" },
   "shell.nav.settings": { en: "Settings", sk: "Nastavenia", de: "Einstellungen" },
