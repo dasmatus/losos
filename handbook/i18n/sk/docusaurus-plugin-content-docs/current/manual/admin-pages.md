@@ -99,6 +99,38 @@ Textové polia si nechávajú ponuku prehliadača, kvôli pravopisu a vkladaniu.
 Ponuka ukazuje iba to, čo toto zariadenie vie: položka pre funkciu, ktorú
 zariadenie nemá, v nej nie je, ani sivá.
 
+## Lišta nad výberom \{#the-bar-over-a-selection}
+
+Označte slová v dokumente alebo prezentácii Markdown v LosOS Office alebo
+v poznámke a po pustení tlačidla myši sa nad nimi objaví malá lišta.
+Vyberte karty alebo šípky v Diagramoch a objaví sa nad nimi. Ponúka to,
+čo najpravdepodobnejšie urobíte ďalej, takže to nemusíte hľadať na paneli
+nástrojov.
+
+- **Text, ktorý môžete upravovať** (LosOS Office a Poznámky v režime
+  **Upraviť**): **Opýtať sa AI**, tučné, kurzíva, prečiarknuté,
+  zvýraznenie a kód, odkaz na webovú stránku, odkaz na inú poznámku,
+  zmienka o osobe alebo súbore a Kopírovať. Stlačené tlačidlo ukazuje, že
+  formát už je použitý; ďalším stlačením zmizne. Odkaz si adresu vypýta
+  priamo v lište a odkaz na poznámku či zmienka ponúka mená počas písania.
+- **Poznámka, ktorú čítate**: **Opýtať sa AI**, Kopírovať a skopírovanie
+  odkazu na časť, v ktorej slová sú.
+- **Karty a šípky v Diagramoch**: **Opýtať sa AI**, keď karty obsahujú
+  text, farba, úprava textu jednej karty, zarovnanie viacerých, šípka
+  medzi dvoma kartami, zoskupenie, duplikovanie a odstránenie. Každé
+  tlačidlo robí to isté ako tlačidlo v inšpektore, takže ho jedno Späť
+  vráti.
+
+Keď na zariadení beží Pošta alebo Chat, lišta nad textom pošle slová aj
+e-mailom alebo v chate. **Opýtať sa AI** sa ukazuje iba vtedy, keď je AI
+zariadenia zapnutá; pri texte, ktorý môžete upravovať, vloží **Nahradiť
+výber** odpoveď namiesto označených slov.
+
+Z klávesnice sa do lišty dostanete klávesmi Alt+F10, šípky sa ňou
+pohybujú a Enter alebo medzerník stlačí tlačidlo. Escape vás vráti do
+textu alebo diagramu a skryje lištu, kým neoznačíte niečo iné. Lišta
+zmizne aj vtedy, keď začnete písať cez výber.
+
 ## Pripnuté položky \{#pins}
 
 Pripnite si aplikácie, súbory a repozitáre, ktoré otvárate najčastejšie, a
