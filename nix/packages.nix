@@ -73,6 +73,9 @@
   # from its sibling jobs. flake.nix passes it; the tests that import this
   # file directly get the same file.
   version ? import ./version.nix,
+  # losos-project/pm's source (the flake's `pm` input). The tests that
+  # import this file directly pass none and get no pm.
+  pmSrc ? null,
   ...
 }:
 
@@ -83,6 +86,8 @@ let
   # flake package, and a non-derivation breaks `nix flake check` and
   # `nix flake show` for everything else too.
   images = import ./images.nix { inherit pkgs; };
+  # What Mesh CI's jobs run in unless they name an image.
+  losos-image-ci-base = import ./ci-base-image.nix { inherit pkgs; };
 
   # mold as the linker, ccache in front of gcc, sccache in front of rustc —
   # for both crates, and for the dev shells through the same file, so that
@@ -267,19 +272,23 @@ let
   # nothing else (losos.backend.plugins). Plain rustPlatform like the Lab's
   # crates: rustc links wasm32 with rust-lld, not mold. `names` lets a test
   # build a set with the probe in it.
+  # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
+  # plugin are built from the one workspace.
+  pluginsCargoHash = "sha256-Xgiz1gNTzroUyvjbf/jdMlOJ0geZKjmH8oFrYqCGO8A=";
   lososPlugins =
     {
       pname ? "losos-plugins",
       names ? [
         "look"
         "pins"
+        "ci"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname;
       version = "0.1.0";
       src = lib.cleanSource ./../backend/plugins;
-      cargoHash = "sha256-R9zOwoQRcWl7YGRUZVzPCtGNAVjuY9MPSvegXEd9OY8=";
+      cargoHash = pluginsCargoHash;
       nativeBuildInputs = [
         pkgs.wasm-tools
         pkgs.lld
@@ -307,7 +316,22 @@ let
 
 in
 images
+// lib.optionalAttrs (pmSrc != null) (
+  let
+    pm = import ./pm.nix { inherit pkgs pmSrc; };
+  in
+  {
+    inherit pm;
+    # Mesh CI's pm plugin, signed, as a pm configuration directory.
+    losos-ci-pm-plugin = import ./ci-pm-plugin.nix {
+      inherit pkgs pm pmSrc;
+      baseImage = losos-image-ci-base;
+      cargoHash = pluginsCargoHash;
+    };
+  }
+)
 // {
+  inherit losos-image-ci-base;
   inherit losos-lab-core losos-lab-render losos-lab-virt;
 
   losos-admin-ui = pkgs.buildNpmPackage {
@@ -421,7 +445,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-drpXS13QEvQ+d9GpVHQLE+CCaEDmiN7Ljymn8e6g4jM=";
+    cargoHash = "sha256-rwsmkd4Bx6NV+Rc1Ig+aTwMB0M7+WdH5jYvAwKG6eNc=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -447,7 +471,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-go4JGCxK9vzYoKrRyteqG7JqvbuH5iui9scxTLUTrm8=";
+    cargoHash = "sha256-/8x0VXwOtWciHb73EyTKCX6YJY9E368RWjdYQJfFJDI=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -472,7 +496,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-go4JGCxK9vzYoKrRyteqG7JqvbuH5iui9scxTLUTrm8=";
+    cargoHash = "sha256-/8x0VXwOtWciHb73EyTKCX6YJY9E368RWjdYQJfFJDI=";
     doCheck = false;
   };
 

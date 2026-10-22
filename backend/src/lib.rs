@@ -33,6 +33,7 @@ pub mod backup;
 pub mod boxid;
 pub mod builder;
 pub mod catalogue;
+pub mod ci;
 pub mod cloud;
 pub mod cloud_share;
 pub mod companion;
