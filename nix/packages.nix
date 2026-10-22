@@ -404,6 +404,9 @@ images
   losos-themes = (import ./../admin-ui/themes { inherit pkgs; }).package;
 
   losos-plugins = lososPlugins { };
+
+  # Photos' face models (nix/face-models.nix), read by losos-cloud-photos.
+  losos-face-models = import ./face-models.nix { inherit pkgs; };
   # The same with the probe, a plugin that tries every import, for
   # nix/tests/plugins.nix. Never on a box.
   losos-plugins-probe = lososPlugins {
@@ -421,7 +424,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-t1rmxiH9GnvZx4tZbeewMmnVnHaFwxExe94xQY4KJWU=";
+    cargoHash = "sha256-gEJvrchPcxxk+ukY+pzLd+OsUW+nSG1n8tntowG93w4=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in

@@ -1,7 +1,8 @@
 //! `losos-cloud` — LosOS Cloud, the owner's files and the people's.
 //!
 //! `serve` is the systemd unit (`modules/cloud.nix`); `scan` brings the
-//! table in line with files changed on disk; `import` moves a Nextcloud
+//! table in line with files changed on disk; `photos` reads the pictures'
+//! tags and faces; `import` moves a Nextcloud
 //! data folder's files in. The rules are in [`losos_ctl::cloud`].
 
 use clap::{Parser, Subcommand};
@@ -70,6 +71,17 @@ enum Cmd {
     Scan {
         #[arg(long)]
         owner: Option<String>,
+    },
+    /// Read the tags of every new or changed picture and, with `--models`,
+    /// find the faces in it and group them into people. The box runs it on a
+    /// timer at the lowest priority; without `--models` every face and
+    /// person is deleted.
+    Photos {
+        #[arg(long)]
+        owner: Option<String>,
+        /// Where `yunet.onnx` and `sface.onnx` are.
+        #[arg(long)]
+        models: Option<PathBuf>,
     },
     /// Make an app password for a person, printed once. For the box's own
     /// tools and for tests; people get theirs through Login Flow v2.
@@ -183,6 +195,24 @@ fn main() -> anyhow::Result<()> {
                 let n = cloud.store.scan(&o)?;
                 println!("{o}: {n} changes");
             }
+            Ok(())
+        }
+        Cmd::Photos { owner, models } => {
+            let store = cloud::store::Store::open(&cli.root)?;
+            cloud::photos::init(&store)?;
+            let owners = match owner {
+                Some(o) => vec![o],
+                None => store.owners()?,
+            };
+            let faces = match &models {
+                Some(dir) => cloud::photos::index::Faces::In(dir),
+                None => cloud::photos::index::Faces::Off,
+            };
+            let r = cloud::photos::index::run(&store, faces, &owners)?;
+            println!(
+                "{} photos read, {} faces, {} would not open, {} people",
+                r.photos, r.faces, r.broken, r.people
+            );
             Ok(())
         }
         Cmd::AppPassword { login, name } => {

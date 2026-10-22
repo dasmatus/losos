@@ -968,6 +968,19 @@ in
       '';
     };
 
+    cloud.photos.faces = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Find the faces in LosOS Cloud's photos and group them into people,
+        whom the owner can name. Two small models do it on this box's CPU, in
+        the background at the lowest priority; no face, place or picture
+        leaves the box, and only the photos' owner sees them. Turning it off
+        deletes every face and person found so far; the camera's details
+        (date, camera, lens, place) are read either way.
+      '';
+    };
+
     cloud.mesh.enable = lib.mkOption {
       type = lib.types.bool;
       default = config.losos.sharingMyStorage || config.losos.cluster.enable;

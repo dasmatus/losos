@@ -57,6 +57,7 @@ let
   # The same gate as the shared side's chat, mail and calls.
   knowledgeBases = config.losos.sharingMyStorage && config.losos.cluster.enable;
   signIn = import ./app-sign-in.nix { inherit lib; };
+  faceModels = import ../nix/face-models.nix { inherit pkgs; };
 
   stateDir = "/var/lib/losos-cloud";
   runDir = "/run/losos-cloud";
@@ -362,6 +363,80 @@ in
           "@system-service"
           "~@privileged"
         ];
+      };
+    };
+
+    # Photos (backend/src/cloud/photos/): a pass every few minutes reads the
+    # pictures that are new or changed since the last one, their camera's
+    # details and, with losos.cloud.photos.faces, their faces. It is its own
+    # process at the lowest CPU and disk priority, writing in short
+    # transactions to the database the server reads, so an upload never
+    # waits on it; the models are loaded only when there is a picture to read.
+    systemd.services.losos-cloud-photos = {
+      description = "Read new photos' details and faces in LosOS Cloud";
+      after = [ "losos-cloud.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = lib.escapeShellArgs (
+          [
+            "${pkg}/bin/losos-cloud"
+            "--root"
+            stateDir
+            "photos"
+          ]
+          ++ lib.optionals cfg.photos.faces [
+            "--models"
+            "${faceModels}"
+          ]
+        );
+        User = "losos-cloud";
+        Group = "losos-cloud";
+        StateDirectory = "losos-cloud";
+        StateDirectoryMode = "0700";
+        UMask = "0077";
+        Nice = 19;
+        CPUSchedulingPolicy = "idle";
+        IOSchedulingClass = "idle";
+        # One core at most, and a bound on memory: a picture is shrunk to
+        # 2048 pixels before faces are looked for, and the models take
+        # about 100 MB.
+        CPUQuota = "100%";
+        MemoryMax = "1G";
+        TimeoutStartSec = "6h";
+        NoNewPrivileges = true;
+        CapabilityBoundingSet = "";
+        PrivateNetwork = true;
+        RestrictAddressFamilies = [ "AF_UNIX" ];
+        PrivateTmp = true;
+        PrivateDevices = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        ProtectKernelTunables = true;
+        ProtectKernelModules = true;
+        ProtectKernelLogs = true;
+        ProtectControlGroups = true;
+        ProtectClock = true;
+        ProtectHostname = true;
+        ProtectProc = "invisible";
+        ProcSubset = "pid";
+        RestrictNamespaces = true;
+        RestrictRealtime = true;
+        RestrictSUIDSGID = true;
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        SystemCallArchitectures = "native";
+        SystemCallFilter = [
+          "@system-service"
+          "~@privileged"
+        ];
+      };
+    };
+    systemd.timers.losos-cloud-photos = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnBootSec = "3min";
+        OnUnitInactiveSec = "2min";
+        AccuracySec = "30s";
       };
     };
 
