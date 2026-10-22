@@ -145,6 +145,7 @@ in
       # runs for its own `.local` name (modules/mdns.nix).
       // {
         LOSOS_EDGE_URL = config.losos.proxy.registrarUrl;
+        LOSOS_SHARING_PAUSE_AFTER_SECS = toString config.losos.proxy.pauseSharingAfter;
         # Where the tunnel goes when that configured edge is the path. An
         # edge found on the LAN carries its own in the advert (`rathole=`).
         LOSOS_EDGE_RATHOLE = config.losos.proxy.edgeRatholeEndpoint;

@@ -1069,7 +1069,13 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   lososd scans for edges (`backend/src/edge.rs`: DNS-SD `_losos-edge._tcp`
   plus `losos.proxy.registrarUrl`, `/health` probed) and refuses to turn
   `sharingMyStorage`/`cluster.enable` on with none in reach (409
-  `edgeRequired`; enable-only, so a box can always leave). On top of that,
+  `edgeRequired`; enable-only, so a box can always leave). A sharing box
+  that then finds no edge for `losos.proxy.pauseSharingAfter` (600 s) turns
+  `sharingMyStorage` off itself and back on a minute after one answers
+  (`edge::sharing_step`, `State::sharing_paused_at`, `/api/edge`'s
+  `sharingPausedAt`); only its own pause is undone, and a box that never
+  reached an edge while sharing (the shared side's VM tests) is never
+  paused. On top of that,
   each answering edge is challenged (`GET /identity?nonce=`) and counts as
   official only if its certificate is signed by the LosOS root key in
   `nix/keys/official-edge-root.pub` (`losos.proxy.officialRootKeyFile`), names

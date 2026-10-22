@@ -53,9 +53,10 @@ Netz abhängt. Das Umschalten des Speichers in den Mesh-Modus, **Dem Mesh
 beitreten** und **Die Festplatte dieser Box mit dem Mesh teilen** sind
 ausgegraut mit „Braucht einen erreichbaren Edge-Proxy.“, und die Box lehnt
 jedes Anwenden, das eines davon trotzdem einschaltet, mit derselben
-Begründung ab. Einstellungen, die schon an sind, lässt die Box in Ruhe. Eine
-Box, deren Edge verschwunden ist, behält ihre Konfiguration, kann alles
-andere weiterhin ändern und kann das Teilen immer *ausschalten*. Deine
+Begründung ab. Eine Box, deren Edge verschwunden ist, kann alles andere
+weiterhin ändern und das Teilen immer *ausschalten*. Nach zehn Minuten ohne
+Edge pausiert sie das Teilen selbst und schaltet es eine Minute nachdem eine
+Edge antwortet wieder ein. Deine
 eigenen Dateien und Apps hängen nie von der Edge ab. Auch der Schalter für
 den Tunnel ist nicht gesperrt. Der Tunnel verbindet sich wieder, sobald die
 Edge wieder antwortet.

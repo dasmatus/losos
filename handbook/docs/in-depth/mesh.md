@@ -72,10 +72,16 @@ LAN](master-proxy.md#edge-on-the-same-lan).
 While nothing answers, the box refuses to turn network-dependent sharing on.
 Switching to mesh mode, and any apply that turns `losos.sharingMyStorage` or
 `losos.cluster.enable` on, is answered 409 with the reason, and the switches
-are greyed with the same sentence. Settings that are already on are left
-alone, so a box whose edge went away keeps its configuration and can still
-change anything else. Turning sharing off is always allowed. Your own files
-and apps never depend on the edge.
+are greyed with the same sentence. Turning sharing off is always allowed,
+and the box can change anything else during an outage. Your own files and
+apps never depend on the edge.
+
+A box that shares its storage and then finds no edge for ten minutes turns
+sharing off by itself, the way its switch would, and the Mesh pane says
+**Sharing paused**. Once an edge has answered for a minute, the box turns
+sharing back on. It undoes only its own pause: if you switch sharing on or
+off in the meantime, your choice stays. `losos.proxy.pauseSharingAfter` sets
+the wait in seconds, and `0` turns the pause off.
 
 Finding an edge and trusting it with money are two different questions. Any
 edge that answers opens sharing. Trading on the market is allowed only
