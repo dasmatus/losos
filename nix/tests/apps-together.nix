@@ -74,6 +74,9 @@ in
 
 pkgs.testers.nixosTest {
   name = "losos-apps-together";
+  # Two walks through the apps at 2x on emulated machines, one of them typed
+  # word by word and recorded.
+  globalTimeout = 7200;
 
   nodes = {
     box = _: {
