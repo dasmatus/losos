@@ -121,7 +121,7 @@ A role of the box's own, made under **Roles of your own**, is in the same
 list. [Roles and moderation](moderation) has the table of what each role can
 do.
 
-![The Users pane: three people with their access, and the Add a person form below them.](../img/settings-users.png)
+![The Users pane: everyone with their role, the table of what each role can do, and the Add a person form at the bottom.](../img/settings-users.png)
 
 A new person starts with **Own account** switched on. Give them the name and
 password yourself. They sign in on LosOS Login.
