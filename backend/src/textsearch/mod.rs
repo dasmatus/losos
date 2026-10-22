@@ -9,7 +9,7 @@
 //!   runs as the `losos-cloud` user with the files mounted read-only.
 //! * LosOS Git: no index at all. `losos-search git` runs `git grep` over the
 //!   default branch of each repository when a search comes in ([`git`]), as
-//!   the `forgejo` user. A box holds a handful of repositories, and git
+//!   the `losos-git` user. A box holds a handful of repositories, and git
 //!   reads them faster than a second copy of them could be kept current.
 //!
 //! Each answers one query per connection on a unix socket systemd listens on

@@ -707,7 +707,7 @@ function groupBy(options: readonly OptionDoc[]): [string, OptionDoc[]][] {
  * opened by the link's hash. */
 function appFold(name: string): string | undefined {
   if (name.startsWith("cloud.")) return "cloud";
-  if (name.startsWith("forgejo.")) return "git";
+  if (name.startsWith("git.")) return "git";
   return undefined;
 }
 

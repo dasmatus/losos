@@ -4,10 +4,10 @@
 salmon.png is the source: a live coho salmon, cut out of a NOAA Fisheries
 photo on a transparent ground, 512 px square (CREDITS.md has the source).
 This script embeds it in each mark as a data: URI, so every SVG is
-self-contained and still draws where it is served on its own (the cloud
-page's logo, Forgejo's home page). The PNGs and the .ico each app also wants
-are rasterized from these SVGs at build time (admin-ui/themes/default.nix),
-so only the SVGs and the cut-outs are committed.
+self-contained and still draws where it is served on its own (Authelia's
+sign-in page). The PNGs and the .ico the sign-in page also wants are
+rasterized from these SVGs at build time (admin-ui/themes/default.nix), so
+only the SVGs and the cut-outs are committed.
 
 plate.png, the earlier logo, is a plate of salmon. The admin pages and the
 handbook show it on Halloween only, so this script copies it next to the

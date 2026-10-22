@@ -82,37 +82,35 @@ in
 pkgs.testers.nixosTest {
   name = "losos-tour";
 
-  nodes.box =
-    _:
-    {
-      imports = [
-        ../../modules/options.nix
-        ../../modules/containers.nix
-        ../../modules/tls.nix
-        ../../modules/setup.nix
-        ../../modules/daemon.nix
-        ../../modules/config-repo.nix
-      ];
-      losos = {
-        hostName = "mattbox";
-        backend.package = lososPkgs.losos-ctl;
-        admin.ui = ui;
-        identity.enable = false;
-        forgejo.enable = false;
-      };
-
-      systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
-      environment.systemPackages = [
-        pkgs.curl
-        pkgs.jq
-      ];
-      virtualisation = {
-        memorySize = 1536;
-        cores = 2;
-      };
-
-      specialisation.noBuilder.configuration.losos.builder.enable = false;
+  nodes.box = _: {
+    imports = [
+      ../../modules/options.nix
+      ../../modules/containers.nix
+      ../../modules/tls.nix
+      ../../modules/setup.nix
+      ../../modules/daemon.nix
+      ../../modules/config-repo.nix
+    ];
+    losos = {
+      hostName = "mattbox";
+      backend.package = lososPkgs.losos-ctl;
+      admin.ui = ui;
+      identity.enable = false;
+      git.enable = false;
     };
+
+    systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
+    environment.systemPackages = [
+      pkgs.curl
+      pkgs.jq
+    ];
+    virtualisation = {
+      memorySize = 1536;
+      cores = 2;
+    };
+
+    specialisation.noBuilder.configuration.losos.builder.enable = false;
+  };
 
   testScript = ''
     import json

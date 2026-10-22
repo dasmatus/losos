@@ -17,7 +17,6 @@ const { check, finish } = runner();
 
 const SETTINGS = {
   sharingMyStorage: false,
-  forgejoMode: 'container',
   hostName: 'mattbox',
   gpuEnable: false,
   proxyEnable: false,
@@ -140,7 +139,7 @@ async function open({
   );
   // The apps the Overview probes, answering as on a box that is set up.
   await page.route('**/status.php', (route) => json(route, 200, { installed: true }));
-  await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
+  await page.route('**/git/api/v1/version', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
   await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   await page.goto((csp ?? origin) + path, { waitUntil: 'networkidle' });
   return { page, errors, box };
@@ -158,7 +157,7 @@ await check('the pins the box keeps sit under the sections, each opening in its 
   const href = (name) => group.getByRole('link', { name, exact: true }).getAttribute('href');
   assert.equal(await href('Photos'), '/cloud/photos');
   assert.equal(await href('plan.pdf'), '/cloud/files?fileid=42');
-  assert.equal(await href('site'), '/forgejo/notshared/site');
+  assert.equal(await href('site'), '/git/notshared/site');
   // An installed app opens on the port the box gave it, in a tab of its own.
   assert.equal(await href('jellyfin'), 'http://127.0.0.1:30001/');
   assert.equal(await group.getByRole('link', { name: 'jellyfin' }).getAttribute('target'), '_blank');

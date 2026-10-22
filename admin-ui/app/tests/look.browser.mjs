@@ -21,7 +21,6 @@ const { check, finish } = runner();
 
 const SETTINGS = {
   sharingMyStorage: false,
-  forgejoMode: 'container',
   hostName: 'mattbox',
   gpuEnable: false,
   proxyEnable: false,
@@ -311,7 +310,7 @@ await check('a file that is not a picture lososd takes is refused before it is s
   const { page, writes } = await open({ path: '/settings/look' });
   await page.getByRole('radiogroup', { name: 'Background' }).waitFor();
   await page.getByTestId('background-file').setInputFiles({ name: 'wall.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg/>') });
-  await page.getByText(/not a picture this box takes/).waitFor();
+  await page.getByText(/not a picture this box takes/).first().waitFor();
   assert.deepEqual(writes, []);
   await page.close();
 });
@@ -527,7 +526,7 @@ await check('an empty name is refused in the dialog, with nothing sent', async (
 
 // ── Build with AI ─────────────────────────────────────────────────────────
 
-const BUILDER = { available: true, model: 'llama3.2:3b', builds: [] };
+const BUILDER = { available: true, model: 'qwen2.5-coder:1.5b', builds: [] };
 
 const BUILT = [
   { name: 'index.html', content: '<link rel="stylesheet" href="built.css"><p id="built">built by the model</p>' },
@@ -536,13 +535,22 @@ const BUILT = [
 
 /* The builder on the box: a GET for whether the model is ready, a POST that
  * starts a build, the build read back by id (running, then fixing a mistake
- * the box found, then done), and a DELETE that stops it. */
+ * the box found, then done), and a DELETE that stops it. A widget's steps
+ * are write, check and fix: a widget is checked, never tried. */
+const MISTAKE = 'The script looks up an element with id "clock", and there is none.';
 function builderStub({ stopped = null } = {}) {
   let reads = 0;
+  const step = (kind, running, problems = []) => ({ kind, running, problems, shown: [], skipped: false, started_at: 1 });
   const build = (status, lines, fixing = false) => ({
-    id: 'b1-1', status, prompt: 'a big clock', revision: false, created_at: 1, finished_at: status === 'running' ? null : 2,
+    id: 'b1-1', kind: 'widget', status, prompt: 'a big clock', revision: false, created_at: 1, finished_at: status === 'running' ? null : 2,
     lines, fixing, fault: null, at_limit: false, files: status === 'done' ? BUILT : null,
+    name: null, code: null, problems: [], trial: null,
     notes: status === 'done' ? 'A big clock.' : null,
+    steps: fixing
+      ? [step('write', false), step('check', false, [MISTAKE]), step('fix', true)]
+      : status === 'done'
+        ? [step('write', false), step('check', false, [MISTAKE]), step('fix', false), step('check', false)]
+        : [step('write', status === 'running')],
   });
   return (path, method, route, json) => {
     if (path === '/api/builder') return json(route, 200, BUILDER);
@@ -573,16 +581,16 @@ await check('Build with AI runs on the box for free, and a finished build lands 
   const panel = page.getByTestId('builder-panel');
   await panel.waitFor();
   // Which model, that it stays on the box, that it is free; no price, no balance.
-  assert.match(await page.getByTestId('builder-local').textContent(), /^The AI is llama3\.2:3b, running on this box\. What you write here stays on the box, and building is free\./);
+  assert.match(await page.getByTestId('builder-local').textContent(), /^The AI is qwen2\.5-coder:1\.5b, running on this box\. What you write here stays on the box, and building is free\./);
   assert.equal(await panel.getByText(/€|balance|Anthropic/i).count(), 0);
-  // Meta's licence asks for "Built with Llama".
+  // Who made the model, under which licence, with the licence linked.
   const terms = page.getByTestId('builder-terms');
-  assert.match(await terms.textContent(), /^Built with Llama\./);
+  assert.match(await terms.textContent(), /^The AI is Qwen2\.5-Coder by the Qwen team at Alibaba Cloud, licensed under the Apache License 2\.0\./);
   assert.deepEqual(
     await terms.getByRole('link').evaluateAll((links) => links.map((a) => [a.textContent, a.getAttribute('href'), a.target])),
     [
-      ['License', 'https://www.llama.com/llama3_2/license/', '_blank'],
-      ['Acceptable Use Policy', 'https://www.llama.com/llama3_2/use-policy/', '_blank'],
+      ['License', 'https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct/blob/main/LICENSE', '_blank'],
+      ['About the model', 'https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct', '_blank'],
     ],
   );
   // The template is not a widget worth changing, so there is nothing to tick.
@@ -593,13 +601,18 @@ await check('Build with AI runs on the box for free, and a finished build lands 
   await page.getByTestId('builder-running').filter({ hasText: /lines so far/ }).waitFor({ timeout: 15000 });
   // A mistake the box found sends the widget back to the model, and the tab says so.
   await page.getByTestId('builder-running').filter({ hasText: /found a mistake in the widget and the AI is fixing it/ }).waitFor({ timeout: 15000 });
+  // Each step shows, with what the check found.
+  const steps = page.getByTestId('builder-steps');
+  await steps.getByText('Fixing what was found').waitFor();
+  assert.deepEqual(await steps.locator('> li').evaluateAll((li) => li.map((l) => l.dataset.step)), ['write', 'check', 'fix']);
+  await steps.getByText(MISTAKE).waitFor();
   // Done: back on the Write tab with the model's files in the editor and the frame.
   const built = page.getByTestId('hand-preview').frameLocator('iframe').locator('#built');
   await built.waitFor({ timeout: 20000 });
   assert.equal(await built.evaluate((el) => getComputedStyle(el).color), 'rgb(1, 2, 3)');
   assert.deepEqual(await editor.getByTestId('hand-file').allTextContents(), ['index.html', 'built.css']);
   assert.equal(await code(editor, 'index.html').textContent(), BUILT[0].content);
-  assert.deepEqual(writes, [['POST', '/api/builder/builds', { prompt: 'a big clock', lang: 'en' }]]);
+  assert.deepEqual(writes, [['POST', '/api/builder/builds', { prompt: 'a big clock', kind: 'widget', lang: 'en' }]]);
   assert.deepEqual((await violations(page)).slice(atLoad), []);
   assert.deepEqual(errors, []);
   await page.close();
@@ -627,13 +640,13 @@ await check('a running build can be stopped, and the editor keeps what it had', 
 
 await check('a box still fetching its model says so in the tab, in each language', async () => {
   for (const [locale, add, write, title, tab, words] of [
-    ['en-US', 'Add a widget', 'Write one', 'Write a widget', 'Build with AI', 'still downloading the AI model (llama3.2:3b'],
-    ['sk-SK', 'Pridať widget', 'Napísať', 'Napísať widget', 'Vytvoriť s AI', 'ešte sťahuje model AI (llama3.2:3b'],
-    ['de-DE', 'Widget hinzufügen', 'Eins schreiben', 'Widget schreiben', 'Mit KI bauen', 'lädt das KI-Modell noch herunter (llama3.2:3b'],
+    ['en-US', 'Add a widget', 'Write one', 'Write a widget', 'Build with AI', 'still downloading the AI model (qwen2.5-coder:1.5b'],
+    ['sk-SK', 'Pridať widget', 'Napísať', 'Napísať widget', 'Vytvoriť s AI', 'ešte sťahuje model AI (qwen2.5-coder:1.5b'],
+    ['de-DE', 'Widget hinzufügen', 'Eins schreiben', 'Widget schreiben', 'Mit KI bauen', 'lädt das KI-Modell noch herunter (qwen2.5-coder:1.5b'],
   ]) {
     const { page, errors, writes } = await open({
       locale,
-      builder: (_path, _method, route, json) => json(route, 200, { available: false, reason: 'downloading', model: 'llama3.2:3b' }),
+      builder: (_path, _method, route, json) => json(route, 200, { available: false, reason: 'downloading', model: 'qwen2.5-coder:1.5b' }),
     });
     await page.getByRole('button', { name: add }).first().click();
     await page.getByRole('dialog', { name: add }).getByRole('button', { name: write }).click();

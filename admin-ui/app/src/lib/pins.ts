@@ -8,7 +8,7 @@
  *   tile   an app tile of the Overview      its tile's address (lib/apps.ts)
  *   app    an app from the Apps search      the port the box opened for it
  *   file   a file or folder in LosOS Cloud  /cloud/files?fileid=<id>
- *   repo   a repository on LosOS Git        /forgejo/<owner>/<name>
+ *   repo   a repository on LosOS Git        /git/<owner>/<name>
  *
  * The store has the shape of lib/look.ts: loaded once a tab holds a token,
  * dropped with it, and every change written to the box first and shown

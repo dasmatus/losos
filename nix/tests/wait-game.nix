@@ -78,35 +78,35 @@ pkgs.testers.nixosTest {
   name = "losos-wait-game";
 
   nodes.box = _: {
-      imports = [
-        ../../modules/options.nix
-        ../../modules/containers.nix
-        ../../modules/tls.nix
-        ../../modules/setup.nix
-        ../../modules/daemon.nix
-        ../../modules/config-repo.nix
-      ];
-      losos = {
-        hostName = "mattbox";
-        backend.package = lososPkgs.losos-ctl;
-        admin.ui = ui;
-        identity.enable = false;
-        forgejo.enable = false;
-      };
-
-      # The stand-in first, so it shadows the real nixos-rebuild; git and
-      # the rest of lososd's path stay for the settings commit.
-      systemd.services.lososd.path = lib.mkBefore [ stubRebuild ];
-      systemd.tmpfiles.rules = [ "d /run/wait-game 0755 root root -" ];
-      environment.systemPackages = [
-        pkgs.curl
-        pkgs.jq
-      ];
-      virtualisation = {
-        memorySize = 1536;
-        cores = 2;
-      };
+    imports = [
+      ../../modules/options.nix
+      ../../modules/containers.nix
+      ../../modules/tls.nix
+      ../../modules/setup.nix
+      ../../modules/daemon.nix
+      ../../modules/config-repo.nix
+    ];
+    losos = {
+      hostName = "mattbox";
+      backend.package = lososPkgs.losos-ctl;
+      admin.ui = ui;
+      identity.enable = false;
+      git.enable = false;
     };
+
+    # The stand-in first, so it shadows the real nixos-rebuild; git and
+    # the rest of lososd's path stay for the settings commit.
+    systemd.services.lososd.path = lib.mkBefore [ stubRebuild ];
+    systemd.tmpfiles.rules = [ "d /run/wait-game 0755 root root -" ];
+    environment.systemPackages = [
+      pkgs.curl
+      pkgs.jq
+    ];
+    virtualisation = {
+      memorySize = 1536;
+      cores = 2;
+    };
+  };
 
   testScript = ''
     import json
