@@ -1,8 +1,8 @@
 //! The settings of LosOS Cloud and LosOS Git, on a route of their own.
 //!
 //! `GET /api/site` and `POST /api/site` are the apps section's way to change
-//! what LosOS Cloud keeps (`losos.cloud.trashDays`) and what Forgejo's Site
-//! administration would otherwise hold, without `POST /api/apply`, which writes any option
+//! what LosOS Cloud keeps (`losos.cloud.trashDays`) and LosOS Git's site
+//! settings would otherwise hold, without `POST /api/apply`, which writes any option
 //! and is admin only. A company edge the owner lets manage the box
 //! (`crate::edge::manageable`) reaches these two routes and nothing that
 //! writes the rest of `overrides.nix`.
@@ -18,11 +18,7 @@ use crate::overrides::parse_line;
 
 /// The options this route may read and write, by name or by prefix (a name
 /// ending in `.`), without the `losos.` prefix.
-pub const OPTIONS: &[&str] = &[
-    "cloud.trashDays",
-    "forgejo.site.",
-    "forgejo.federation.enable",
-];
+pub const OPTIONS: &[&str] = &["cloud.trashDays", "git.site."];
 
 pub fn is_site(name: &str) -> bool {
     OPTIONS.iter().any(|o| match o.strip_suffix('.') {
@@ -147,13 +143,13 @@ mod tests {
             "options": [
                 { "name": "cloud.trashDays", "group": "cloud",
                   "editor": { "kind": "int", "min": 1, "max": 3650 }, "nixType": "int" },
-                { "name": "forgejo.site.landingPage", "group": "forgejo",
-                  "editor": { "kind": "enum", "values": ["home", "explore", "login"] }, "nixType": "enum" },
-                { "name": "forgejo.federation.enable", "group": "forgejo",
+                { "name": "git.site.defaultPrivate", "group": "git",
+                  "editor": { "kind": "enum", "values": ["last", "private", "public"] }, "nixType": "enum" },
+                { "name": "git.site.requireSignIn", "group": "git",
                   "editor": { "kind": "bool" }, "nixType": "bool" },
                 { "name": "hostName", "group": "general",
                   "editor": { "kind": "str" }, "nixType": "str" },
-                { "name": "forgejo.site.fixedOne", "group": "forgejo",
+                { "name": "git.site.fixedOne", "group": "git",
                   "editor": { "kind": "bool" }, "nixType": "bool", "fixed": "installer" }
             ]
         }))
@@ -163,11 +159,9 @@ mod tests {
     #[test]
     fn only_the_two_apps_settings_are_site_settings() {
         assert!(is_site("cloud.trashDays"));
-        assert!(is_site("forgejo.site.landingPage"));
-        assert!(is_site("forgejo.federation.enable"));
-        assert!(!is_site("forgejo.site."));
-        assert!(!is_site("forgejo.siteX.a"));
-        assert!(!is_site("forgejo.federation.enabled"));
+        assert!(is_site("git.site.defaultPrivate"));
+        assert!(!is_site("git.site."));
+        assert!(!is_site("git.siteX.a"));
         assert!(!is_site("cloud.trashDaysX"));
         assert!(!is_site("hostName"));
         assert!(!is_site("sharingMyStorage"));
@@ -195,23 +189,23 @@ mod tests {
         assert!(check(&d, "cloud.trashDays", None).is_ok());
         assert!(check(&d, "cloud.trashDays", Some("0")).is_err());
         assert!(check(&d, "cloud.trashDays", Some("30; losos.hostName = \"x\"")).is_err());
-        assert!(check(&d, "forgejo.site.landingPage", Some("\"explore\"")).is_ok());
+        assert!(check(&d, "git.site.defaultPrivate", Some("\"public\"")).is_ok());
         assert!(check(
             &d,
-            "forgejo.site.landingPage",
-            Some("\"explore\"; losos.hostName = \"x\"")
+            "git.site.defaultPrivate",
+            Some("\"public\"; losos.hostName = \"x\"")
         )
         .is_err());
-        assert!(check(&d, "forgejo.site.landingPage", Some("\"exp\nlore\"")).is_err());
+        assert!(check(&d, "git.site.defaultPrivate", Some("\"pub\nlic\"")).is_err());
         assert!(check(
             &d,
-            "forgejo.site.landingPage",
+            "git.site.defaultPrivate",
             Some("\"${builtins.readFile \"/x\"}\"")
         )
         .is_err());
         assert!(check(&d, "hostName", Some("\"x\"")).is_err());
-        assert!(check(&d, "forgejo.site.notDeclared", Some("1")).is_err());
-        assert!(check(&d, "forgejo.site.fixedOne", Some("true")).is_err());
+        assert!(check(&d, "git.site.notDeclared", Some("1")).is_err());
+        assert!(check(&d, "git.site.fixedOne", Some("true")).is_err());
     }
 
     #[test]

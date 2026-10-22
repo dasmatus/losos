@@ -117,7 +117,7 @@ impl LabCore {
                 if p.starts_with("/nextcloud") {
                     return self.cloud_page(d, via_tunnel);
                 }
-                if p.starts_with("/forgejo") {
+                if p.starts_with("/git/") {
                     return self.git_page(d);
                 }
                 let st = self.net.losos.boxes.get(&d.id);
@@ -302,7 +302,7 @@ impl LabCore {
         let mesh = st.map(|s| s.mesh).unwrap_or("off");
         let market = st.map(|s| s.market).unwrap_or("unavailable");
         let html = format!(
-            "<div class=\"page\"><div class=\"pbar\"><img src=\"{plate}\" alt=\"LosOS\"><b>{}</b><span class=\"muted\">Home</span><span style=\"margin-left:auto\" class=\"muted\">Signed in on the LAN</span></div><div class=\"pbody\">\n    <h1>Apps</h1>\n    <div style=\"display:flex;gap:8px;flex-wrap:wrap\"><div class=\"card\" style=\"flex:1;min-width:120px\"><b>LosOS Cloud</b><br><span class=\"muted\">/nextcloud</span></div><div class=\"card\" style=\"flex:1;min-width:120px\"><b>LosOS Git</b><br><span class=\"muted\">/forgejo</span></div></div>\n    <h1 style=\"margin-top:12px\">Mesh</h1>\n    {edges}\n    <div class=\"card\"><b>Path</b>: {path}<br><b>Public address</b>: {public}<br><b>Mesh</b>: {} · <b>Market</b>: {}</div>\n  </div></div>",
+            "<div class=\"page\"><div class=\"pbar\"><img src=\"{plate}\" alt=\"LosOS\"><b>{}</b><span class=\"muted\">Home</span><span style=\"margin-left:auto\" class=\"muted\">Signed in on the LAN</span></div><div class=\"pbody\">\n    <h1>Apps</h1>\n    <div style=\"display:flex;gap:8px;flex-wrap:wrap\"><div class=\"card\" style=\"flex:1;min-width:120px\"><b>LosOS Cloud</b><br><span class=\"muted\">/nextcloud</span></div><div class=\"card\" style=\"flex:1;min-width:120px\"><b>LosOS Git</b><br><span class=\"muted\">/git/</span></div></div>\n    <h1 style=\"margin-top:12px\">Mesh</h1>\n    {edges}\n    <div class=\"card\"><b>Path</b>: {path}<br><b>Public address</b>: {public}<br><b>Mesh</b>: {} · <b>Market</b>: {}</div>\n  </div></div>",
             esc(&d.name),
             esc(mesh),
             esc(market),

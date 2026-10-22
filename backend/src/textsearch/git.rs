@@ -1,11 +1,10 @@
 //! Text in LosOS Git: `git grep` over the default branch of every repository,
 //! at query time.
 //!
-//! Forgejo keeps bare repositories at `<root>/<owner>/<name>.git`. Each one
+//! LosOS Git keeps bare repositories at `<root>/<owner>/<name>.git`. Each one
 //! gets one `git grep` on `HEAD`, which in a bare repository is the default
 //! branch, and the search stops at the hit limit or the deadline, whichever
-//! comes first. Wikis (`<name>.wiki.git`) are left out: they have their own
-//! pages in Forgejo, not lines on a branch.
+//! comes first. Wikis (`<name>.wiki.git`, left by Forgejo) are left out.
 
 use super::{mark, run_capped, GitHit};
 use std::path::{Path, PathBuf};
@@ -20,7 +19,7 @@ const MAX_OUTPUT: usize = 256 << 10;
 /// Characters of a matching line shown.
 const LINE_WIDTH: usize = 120;
 
-/// Forgejo's own rule for owner and repository names, and they go into a URL.
+/// The names LosOS Git allows (`crate::forge::names`), and they go into a URL.
 fn plain_name(name: &str) -> bool {
     !name.is_empty()
         && name

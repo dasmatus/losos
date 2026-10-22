@@ -21,8 +21,7 @@ sidebar_position: 1
 | `/cloud/`                     | LosOS Cloud                                         | ktokoľvek, aj cez edge              |
 | `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/` | To, čo volajú aplikácie Nextcloud, kalendárové aplikácie a správcovia súborov | ktokoľvek, aj cez edge |
 | `/nextcloud/`                 | To isté, na adrese, ktorú používal Nextcloud zariadenia | ktokoľvek, aj cez edge          |
-| `/forgejo/`                   | LosOS Git                                           | ktokoľvek, aj cez edge              |
-| `/.well-known/nodeinfo`, `/.well-known/webfinger` | Zisťovanie federácie LosOS Git, kým je federácia zapnutá a disk zdieľaný | ktokoľvek, aj cez edge |
+| `/git/`                       | LosOS Git                                           | ktokoľvek, aj cez edge              |
 
 :::note[Čo znamená lokálna sieť]
 „Iba lokálna sieť“ znamená zdrojovú adresu zo súkromného rozsahu

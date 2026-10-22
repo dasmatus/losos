@@ -29,7 +29,7 @@ import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, S
  * the read of that: GET /api/config, and POST /api/config/sync for a sync
  * now rather than at the reconciler's next tick. No draft and no Apply bar.
  *
- * The clone address shown is the box's own origin plus Forgejo's path, not
+ * The clone address shown is the box's own origin plus LosOS Git's path, not
  * the loopback URL lososd pushes to: the owner clones from where they are.
  */
 

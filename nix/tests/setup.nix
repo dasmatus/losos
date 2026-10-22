@@ -34,21 +34,17 @@
 { pkgs }:
 
 let
-  # LosOS Git's pod stand-in, on the loopback port modules/containers.nix
-  # proxies /forgejo/ to. A hostNetwork pod is nothing but a process listening
-  # on the host's loopback, so an nginx server block is a faithful one, and it
-  # is here only so the "the vhost still has containers.nix' routes" subtest
-  # asserts a 200 rather than a 502.
+  # LosOS Git's stand-in, on the socket modules/containers.nix proxies /git/
+  # to (modules/git.nix). An nginx server block on the same socket is a
+  # faithful one, and it is here only so the "the vhost still has
+  # containers.nix' routes" subtest asserts a 200 rather than a 502.
   stubGit = {
     services.nginx.virtualHosts."stub-git" = {
-      listen = [
-        {
-          addr = "127.0.0.1";
-          port = 3000;
-        }
-      ];
+      listen = [ { addr = "unix:/run/losos-git/http.sock"; } ];
       locations."/".extraConfig = ''return 200 "stub-git\n";'';
     };
+    # Where modules/git.nix's RuntimeDirectory would put the socket.
+    systemd.tmpfiles.rules = [ "d /run/losos-git 0750 nginx nginx -" ];
   };
 in
 
@@ -73,9 +69,8 @@ pkgs.testers.nixosTest {
         # See the file header: not a gate on the setup routes, and off here so
         # the admin UI package stays out of this closure.
         admin.enable = false;
-        # Only the front vhost's route to it; the pod is the stand-in above.
-        forgejo.enable = true;
-        forgejo.mode = "container";
+        # Only the front vhost's route to it; LosOS Git is the stand-in above.
+        git.enable = true;
       };
 
       # For the script's own inspection of the certificate. The generator gets
@@ -260,7 +255,7 @@ pkgs.testers.nixosTest {
         # page on the edge host reads this document from a public origin, under
         # Chrome's Local Network Access permission. The header must name that
         # origin exactly on this one route and be absent everywhere else — a
-        # wildcard, or the header on the SPA or /forgejo/, would let any page
+        # wildcard, or the header on the SPA or /git/, would let any page
         # the owner has open take inventory of the LAN.
         FINDER = "https://losos-edge.dasmat.us"
         def cors(path, origin):
@@ -270,7 +265,7 @@ pkgs.testers.nixosTest {
         assert cors(STATE_URL, "https://evil.example") is None
         assert cors(STATE_URL, "http://losos-edge.dasmat.us") is None, "scheme is part of the origin"
         assert cors(CERT_URL, FINDER) is None, "the certificate is not for other origins"
-        assert cors("/forgejo/", FINDER) is None, "the service route gets no CORS header"
+        assert cors("/git/", FINDER) is None, "the service route gets no CORS header"
         # And allowing the read did not cost the route its security headers.
         h = headers(STATE_URL, f"-H 'Origin: {FINDER}'")
         assert "default-src 'none'" in h.get("content-security-policy", ""), h
@@ -353,9 +348,9 @@ pkgs.testers.nixosTest {
         # modules/setup.nix merges into the same attribute path rather than
         # declaring a vhost of its own; this is the assertion that the merge did
         # not displace what was already there.
-        got = code("http://127.0.0.1/forgejo/")
-        assert got == "200", f"/forgejo/ went missing: {got}"
-        assert "stub-git" in appliance.succeed("curl -s http://127.0.0.1/forgejo/")
+        got = code("http://127.0.0.1/git/")
+        assert got == "200", f"/git/ went missing: {got}"
+        assert "stub-git" in appliance.succeed("curl -s http://127.0.0.1/git/")
 
     with subtest("republishing changes nothing"):
         # The unit runs on every boot. It must be a function of the certificate

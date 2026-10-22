@@ -12,9 +12,9 @@ own. **It wipes every fixed disk in the machine.**
 ## What you need
 
 - A machine with a 64-bit Intel or AMD processor (x86_64) and UEFI or BIOS
-  firmware, at least 4 GiB of memory and one disk of 40 GiB or more. Building
-  widgets with AI wants 8 GiB of memory, see
-  [Widget builder](/in-depth/widget-builder.md). Mini-PCs built for offices
+  firmware, at least 4 GiB of memory and one disk of 40 GiB or more.
+  Building widgets and apps with AI works on that too, see
+  [Build with AI](/in-depth/widget-builder.md). Mini-PCs built for offices
   suit it well. Most of them have a TPM 2.0 chip in the firmware, called
   Intel PTT or AMD fTPM, and the installer keeps the disk key in it. LosOS runs on x86_64 only. You cannot install it on an ARM machine,
   and in particular **not on an Apple Silicon (M-series) Mac**.
@@ -91,8 +91,8 @@ The repository carries a [quickemu](https://github.com/quickemu-project/quickemu
 configuration, `docs/vm/losos.conf`. It gives the VM 4 cores, 8 GiB of memory and
 a 64 GiB disk, UEFI firmware with Secure Boot off, and an emulated TPM, so the
 installer seals the disk key the way it does on a mini-PC. The numbers are
-above the minimum because the box runs LosOS Cloud and LosOS Git in their own
-cluster and rebuilds itself every night onto the same disk.
+above the minimum because the box runs LosOS Cloud and LosOS Git and
+rebuilds itself every night onto the same disk.
 
 1. Install quickemu and `swtpm`.
 2. Download the installer ISO from a release and save it as

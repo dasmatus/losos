@@ -33,10 +33,3 @@ Bookmarks into Nextcloud's own pages, such as
 Nextcloud. Open `https://<name>.local/cloud/` instead. The desktop and
 phone apps are not affected, since LosOS Cloud still answers them at the
 `/nextcloud` address they were set up with.
-
-## LosOS Git links show the wrong name
-
-LosOS Git prints clone URLs with the box's `.local` name even when you reached
-it by address. The pages work either way. For `git clone`, put the address in
-place of the name, or add the name to your hosts file as
-[The name does not resolve](name-does-not-resolve) describes.

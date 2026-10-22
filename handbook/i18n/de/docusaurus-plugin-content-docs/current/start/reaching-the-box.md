@@ -14,7 +14,7 @@ zuverlässig.
 Das Banner auf dem Bildschirm der Box zeigt `http://192.168.x.y`, die
 Adresse, die dein Router der Box gegeben hat. Jede Seite antwortet darunter:
 die Admin-Seiten unter `/`, LosOS Cloud unter `/cloud/`, LosOS Git unter
-`/forgejo/`, dieses Handbuch unter `/handbook/`. Die Box zeichnet das Banner
+`/git/`, dieses Handbuch unter `/handbook/`. Die Box zeichnet das Banner
 neu, wenn sich die Adresse ändert.
 
 ![Das Banner unter dem Lachs auf dem Bildschirm der Box, mit der Adresse zum Eintippen in einen Browser und dem .local-Namen der Box.](@site/docs/img/tty1-banner.png)

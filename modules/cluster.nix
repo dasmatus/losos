@@ -2,9 +2,9 @@
 # of them.
 #
 #   LOCAL  services.k3s, role = server, state in /var/lib/rancher/k3s, unit
-#          k3s.service. Runs *this box's* Forgejo as a static pod
-#          (modules/workloads.nix) whenever losos.forgejo.mode == "container",
-#          and the apps installed from the catalogue (modules/apps.nix).
+#          k3s.service. Runs *this box's* `shared` apps from the catalogue
+#          (modules/apps.nix) while the box shares and is in a mesh
+#          (lososInternal.sharedSide).
 #          It has no off-box dependency of any kind.
 #   MESH   services.rke2, role = agent, state in /var/lib/rancher/rke2, unit
 #          rke2-agent.service. Joins the edge VPS's cluster for Longhorn and
@@ -15,8 +15,8 @@
 # while its server is unreachable — it fetches node config and certificates
 # from the server on every start — and modules/updates.nix reboots this box
 # unconditionally at 00:07 with Persistent = true. Put the box's own services
-# in the edge's cluster and any edge outage spanning midnight takes Git and
-# the apps down on every joined appliance, and keeps them down for the rest
+# in the edge's cluster and any edge outage spanning midnight takes the
+# apps down on every joined appliance, and keeps them down for the rest
 # of the outage, on a box with no SSH and no shell to notice it from.
 #
 # The mesh instance is rke2 rather than a second k3s because nixpkgs builds
@@ -142,9 +142,9 @@
 # set up the master proxy fails the rebuild instead of failing at 03:00 on a
 # box nobody can log into.
 #
-# See docs/superpowers/specs/2026-09-09-k3s-mesh-design.md; the workloads that
-# run in the local cluster live in modules/workloads.nix, and the edge side of
-# the mesh in modules/edge.nix.
+# See docs/superpowers/specs/2026-09-09-k3s-mesh-design.md; the apps that run
+# in the local cluster come from modules/apps.nix, and the edge side of the
+# mesh is modules/edge.nix.
 {
   config,
   lib,
@@ -155,11 +155,10 @@
 let
   cfg = config.losos.cluster;
 
-  # The LOCAL cluster exists to run this box's own workloads, so it follows
-  # Forgejo's mode switch and nothing else. losos.forgejo.enable is consulted here
-  # as well as the mode, exactly as modules/containers.nix does — enable = false
-  # must not leave a git host running.
-  localEnabled = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
+  # The LOCAL cluster exists to run this box's `shared` apps, which live in
+  # the shared data domain, so it runs exactly while that side does: sharing
+  # on and the box in a mesh. The box's own cloud and Git run on the host.
+  localEnabled = config.lososInternal.sharedSide;
 
   meshEnabled = cfg.enable;
 
@@ -175,9 +174,7 @@ let
   # The local cluster's static-pod directory, and deliberately NOT k3s's own
   # /var/lib/rancher/k3s/agent/pod-manifests: a k3s data-dir wipe must not be
   # able to take the appliance's own workloads with it, and this way the path
-  # is a losos-owned name that modules/workloads.nix can pin its symlinks to.
-  # That module repeats the literal, and has to: it is not a losos.* option, and
-  # options.nix is closed for this change. Change one, change the other.
+  # is a losos-owned name.
   #
   # The flag is --kubelet-arg, not services.k3s.extraKubeletConfig.staticPodPath:
   # k3s always passes its own --pod-manifest-path, a command-line flag beats the
@@ -195,11 +192,10 @@ let
   # pod on the box gets a sandbox at all.
   workloadImages = lib.filter (img: img != null) [
     pauseImage
-    config.losos.workloads.forgejoImage
   ];
 
-  # The same helper modules/workloads.nix uses to spell an image in a pod's
-  # `image:` field. It has to agree with this file to the byte, because the pods
+  # How an image is spelled in a pod's `image:` field. A pod has to spell it
+  # exactly so, because the pods
   # run with imagePullPolicy: Never — a ref the kubelet asks for and containerd
   # does not hold is not an error anyone sees, it is ImagePullBackOff forever.
   imageRef = img: "${img.imageName}:${img.imageTag}";
@@ -302,15 +298,24 @@ let
 in
 {
   config = lib.mkMerge [
+    # A box that ran Nextcloud or Forgejo as a pod still has their manifest
+    # links. They go on every box, so a later local cluster never starts
+    # them; Forgejo's would hold port 3000, where LosOS Git listens.
+    {
+      systemd.tmpfiles.rules = [
+        "r ${staticPodDir}/nextcloud.yaml"
+        "r ${staticPodDir}/forgejo.yaml"
+      ];
+    }
 
-    # ── LOCAL cluster: this box's own workloads ─────────────────────────────
+    # ── LOCAL cluster: the apps of the box's shared side ────────────────────
     (lib.mkIf localEnabled {
       assertions = [
         {
           assertion = pauseImage != null;
           message = ''
-            losos.workloads.pauseImage is null but Forgejo is in
-            "container" mode. Without it the native containerd keeps its own
+            losos.workloads.pauseImage is null but the local cluster
+            runs. Without it the native containerd keeps its own
             default sandbox image (a registry.k8s.io/pause reference), which
             this box neither preloads nor can fetch — every pod would fail to
             create a sandbox, and the failure surfaces as pods that never
@@ -524,10 +529,14 @@ in
       # a changed workload image restarts the cluster as well as the pod. That
       # is rare (an image changes only when this flake's own image derivation
       # does) and the alternative, Wants, buys a quiet ImagePullBackOff instead.
+      # The shared data domain must be fully unlocked or fully locked before
+      # any pod can see it, never half-way through (modules/fscrypt.nix): the
+      # `shared` apps' claims are folders in it.
       systemd.services.k3s = {
         after = [
           "containerd.service"
           "losos-workload-images.service"
+          "losos-fscrypt-shared.service"
         ];
         requires = [
           "containerd.service"
@@ -535,21 +544,10 @@ in
         ];
       };
 
-      # Two things this module does NOT declare, on purpose:
-      #
-      #   * the static-pod directory itself. modules/workloads.nix creates it
-      #     with the same tmpfiles pass that symlinks the manifests into it, on
-      #     the same condition. A second rule for one path only earns a
-      #     "Duplicate line for path" from systemd-tmpfiles on every boot.
-      #   * k3s.service's ordering against postgresql and
-      #     losos-fscrypt-shared. Those exist because the pods hostPath-mount
-      #     those services' sockets and files, so they belong to the module
-      #     that writes the mounts, and it carries them. The containerd and image-import
-      #     ordering just above is this file's, because the runtime is this
-      #     file's choice; the module system merges the two `after` lists.
-      #
-      # Both are load-bearing, so this file and modules/workloads.nix have to
-      # land together — which the shared image refs already force anyway.
+      # The static-pod directory the kubelet is pointed at. Nothing ships a
+      # static pod today, but the flag stays so a later one needs no change
+      # to the cluster's arguments.
+      systemd.tmpfiles.rules = [ "d ${staticPodDir} 0755 root root -" ];
     })
 
     # ── MESH cluster: the edge's rke2 agent ─────────────────────────────────
