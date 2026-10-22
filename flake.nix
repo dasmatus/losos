@@ -334,6 +334,8 @@
             # LosOS Cloud (backend/src/cloud/): files, calendars, contacts and
             # boards at /cloud/, and to the Nextcloud desktop and phone apps.
             ./modules/cloud.nix
+            # Its files in Windows' Network view, as an SMB share.
+            ./modules/windows.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
@@ -470,6 +472,7 @@
         # Two boxes sharing a note and editing it together, apart and
         # together again (nix/tests/mesh-collab.nix).
         losos-mesh-collab = import ./nix/tests/mesh-collab.nix { inherit pkgs; };
+        losos-windows = import ./nix/tests/windows.nix { inherit pkgs; };
         # Apps run as notshared on rootless Podman, with no cluster: the
         # box's own, one in the LosOS app format and a chart from the
         # search (nix/tests/podman-apps.nix).
