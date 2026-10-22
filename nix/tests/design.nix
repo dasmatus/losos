@@ -271,11 +271,11 @@ pkgs.testers.nixosTest {
         return int(code), body
 
     def capture(plan, out):
-        laptop.succeed(
+        print(laptop.succeed(
             f"losos-capture --base https://{BOX} --plan {plan} "
             f"--out {out} --user matus --password '{PASSWORD}'",
             timeout=3600,
-        )
+        ))
         return json.loads(laptop.succeed(f"cat {out}/report.json"))
 
     with subtest("claim the box and sign in"):
