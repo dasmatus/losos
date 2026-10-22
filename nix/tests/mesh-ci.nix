@@ -406,6 +406,8 @@ let
     def claim():
         laptop.wait_for_unit("multi-user.target")
         boxa.wait_for_open_port(443)
+        # lososd's unit is active a moment before its API answers.
+        boxa.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
         body = json.dumps({"name": "matus", "password": PASSWORD})
         out = laptop.succeed(
             f"curl -sk -w '\\n%{{http_code}}' -X POST https://{BOX}/api/setup/claim "
