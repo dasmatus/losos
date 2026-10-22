@@ -97,7 +97,12 @@ let
 
   shots = pkgs.writeShellScriptBin "quick-actions-shots" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}/index.mjs
-    export PLAYWRIGHT_BROWSERS_PATH=${pkgs.playwright-driver.browsers-chromium}
+    export PLAYWRIGHT_BROWSERS_PATH=${
+      pkgs.playwright-driver.browsers.override {
+        withFirefox = false;
+        withWebkit = false;
+      }
+    }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
     export FFMPEG=${pkgs.ffmpeg-headless}/bin/ffmpeg
     exec ${pkgs.nodejs}/bin/node ${./quick-actions-shots.mjs} "$@"
