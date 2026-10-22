@@ -2,13 +2,15 @@
 //!
 //! `serve`, run by `losos-git.service`, `import-forgejo`, run once by
 //! `losos-git-forgejo-import.service` on a box that ran Forgejo
-//! (`modules/git.nix`), and `review-diff`, which reviews a diff the way the
+//! (`modules/git.nix`), `import-boards`, run once by
+//! `losos-git-boards-import.service` to take LosOS Cloud's boards into the
+//! issue tracker, and `review-diff`, which reviews a diff the way the
 //! reviewer reviews a pull request and prints the review.
 //! Everything it does is described in [`losos_ctl::forge`].
 
 use clap::{Parser, Subcommand};
 use losos_ctl::forge::reviewer::{model, patch, review};
-use losos_ctl::forge::{db::Store, import, server, Config};
+use losos_ctl::forge::{db::Store, import, server, tracker, Config};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -64,6 +66,18 @@ enum Cmd {
         state_dir: PathBuf,
         #[arg(long)]
         from: PathBuf,
+    },
+    /// Take LosOS Cloud's boards into the issue tracker from a copy of the
+    /// cloud's database, and write `<report>`.
+    ImportBoards {
+        #[arg(long, default_value = "/var/lib/losos-git")]
+        state_dir: PathBuf,
+        /// A copy of `/var/lib/losos-cloud/cloud.db`.
+        #[arg(long)]
+        from: PathBuf,
+        /// Where to write what came over, as JSON.
+        #[arg(long)]
+        report: PathBuf,
     },
     /// Review the `git diff` on stdin with the box's code model, as LosOS
     /// Reviewer would review a pull request, and print the review. The
@@ -123,10 +137,36 @@ fn main() -> anyhow::Result<()> {
                 "notImported": report.not_imported,
             }))?;
             std::fs::write(from.join("import.json"), text + "\n")?;
+            // What Forgejo had as issues is the tracker's now.
+            tracker::adopt::adopt_repo_issues(&store)?;
             for line in &report.not_imported {
                 println!("not imported: {line}");
             }
             println!("imported: {}", serde_json::to_string(&report.imported)?);
+            Ok(())
+        }
+        Cmd::ImportBoards {
+            state_dir,
+            from,
+            report,
+        } => {
+            let store = Store::open(&state_dir.join("git.db"))?;
+            tracker::adopt::adopt_repo_issues(&store)?;
+            let done = tracker::boards::import(&store, &from)?;
+            let text = serde_json::to_string_pretty(&serde_json::json!({
+                "complete": true,
+                "when": losos_ctl::forge::now(),
+                "report": done,
+            }))?;
+            std::fs::write(&report, text + "\n")?;
+            println!(
+                "boards: {}, cards: {}, linked: {}, comments: {}, projects: {}",
+                done.boards,
+                done.cards,
+                done.linked,
+                done.comments,
+                done.projects.join(" ")
+            );
             Ok(())
         }
         Cmd::ReviewDiff { title, record } => {

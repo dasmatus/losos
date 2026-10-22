@@ -1055,3 +1055,274 @@ fn a_pull_request_from_a_marked_worktree_is_reviewed_and_merged() {
     let (_, log) = api("GET", "/commits?limit=2", &owner, None);
     assert_eq!(log.as_array().unwrap().len(), 2);
 }
+
+/// Wait up to ten seconds for an issue to get to `state`: the tracker takes
+/// pushes and pull requests in on a thread of its own.
+fn wait_for_state(s: &Server, auth: &str, key: &str, state: &str) -> serde_json::Value {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let (status, body) = http(
+            s.port,
+            "GET",
+            &format!("/api/v1/tracker/issues/{key}"),
+            Some(auth),
+            None,
+        );
+        assert_eq!(status, 200, "{body}");
+        let doc = json(&body);
+        if doc["state"]["name"] == state {
+            return doc;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{key} stayed {}, not {state}",
+            doc["state"]["name"]
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+#[test]
+fn issues_are_tracked_and_closed_by_commits_and_pull_requests() {
+    let dir = scratch("tracker");
+    let s = start(&dir, &[]);
+    let owner = format!("token {}", owner_token(&s, r#""all""#, "all"));
+    let jana_token = person_token(&s, "jana");
+    let jana = format!("token {jana_token}");
+    let eva = format!("token {}", person_token(&s, "eva"));
+    let call = |method: &str, path: &str, auth: &str, body: Option<&str>| {
+        let (status, text) = http(s.port, method, &format!("/api/v1{path}"), Some(auth), body);
+        let doc = if text.trim().is_empty() {
+            serde_json::Value::Null
+        } else {
+            json(&text)
+        };
+        (status, doc)
+    };
+
+    let (status, _) = call(
+        "POST",
+        "/user/repos",
+        &owner,
+        Some(r#"{"name":"losos","private":true,"auto_init":true}"#),
+    );
+    assert_eq!(status, 201);
+    let (status, _) = call(
+        "PUT",
+        "/repos/notshared/losos/collaborators/jana",
+        &owner,
+        Some(r#"{"permission":"write"}"#),
+    );
+    assert!(status == 204 || status == 200, "{status}");
+
+    // The repository's project is made on first ask, keyed after it; a
+    // stranger does not see it.
+    let (status, project) = call("GET", "/tracker/repos/notshared/losos", &jana, None);
+    assert_eq!(status, 200, "{project}");
+    assert_eq!(project["key"], "LOS");
+    assert_eq!(project["permission"], "write");
+    let names: Vec<&str> = project["states"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "Backlog",
+            "Todo",
+            "In Progress",
+            "In Review",
+            "Done",
+            "Canceled"
+        ]
+    );
+    let (status, _) = call("GET", "/tracker/projects/LOS", &eva, None);
+    assert_eq!(status, 404);
+
+    // Two issues; the second mentions Jana and waits on the first.
+    let (status, one) = call(
+        "POST",
+        "/tracker/issues",
+        &owner,
+        Some(
+            r#"{"project":"LOS","repo":"notshared/losos","title":"Back up every night","priority":2,"assignee":"jana","labels":["backup"],"due":"2026-11-01"}"#,
+        ),
+    );
+    assert_eq!(status, 201, "{one}");
+    assert_eq!(one["key"], "LOS-1");
+    assert_eq!(one["state"]["name"], "Todo");
+    assert_eq!(one["repo"]["number"], 1);
+    assert_eq!(one["labels"][0]["name"], "backup");
+    let (status, two) = call(
+        "POST",
+        "/tracker/issues",
+        &owner,
+        Some(
+            r#"{"project":"LOS","repo":"notshared/losos","title":"Keep two weeks","body":"@jana once the nightly one works."}"#,
+        ),
+    );
+    assert_eq!(status, 201, "{two}");
+    assert_eq!(two["key"], "LOS-2");
+    let (status, _) = call(
+        "POST",
+        "/tracker/issues/LOS-1/relations",
+        &owner,
+        Some(r#"{"kind":"blocks","other":"LOS-2"}"#),
+    );
+    assert_eq!(status, 204);
+    let (_, doc) = call("GET", "/tracker/issues/LOS-2", &jana, None);
+    assert_eq!(doc["relations"][0]["kind"], "blocked_by");
+    assert_eq!(doc["relations"][0]["issue"]["key"], "LOS-1");
+    assert_eq!(doc["subscribed"], true);
+    let (status, _) = call("GET", "/tracker/issues/LOS-1", &eva, None);
+    assert_eq!(status, 404);
+
+    // The repository's own issue list shows them under their numbers.
+    let (status, list) = call("GET", "/repos/notshared/losos/issues", &owner, None);
+    assert_eq!(status, 200);
+    assert_eq!(list.as_array().unwrap().len(), 2);
+
+    // Jana's inbox and her list.
+    let (_, inbox) = call("GET", "/tracker/inbox", &jana, None);
+    let kinds: Vec<&str> = inbox["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["kind"].as_str().unwrap())
+        .collect();
+    assert!(
+        kinds.contains(&"assigned") && kinds.contains(&"mention"),
+        "{kinds:?}"
+    );
+    assert_eq!(inbox["unread"], 2);
+    let (_, mark) = call("POST", "/tracker/inbox/read", &jana, Some("{}"));
+    assert_eq!(mark["unread"], 0);
+    let (_, mine) = call(
+        "GET",
+        "/tracker/issues?assignee=me&category=active",
+        &jana,
+        None,
+    );
+    let keys: Vec<&str> = mine["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(keys, ["LOS-1"]);
+    let (status, ics) = http(
+        s.port,
+        "GET",
+        "/api/v1/tracker/calendar.ics",
+        Some(&jana),
+        None,
+    );
+    assert_eq!(status, 200);
+    assert!(ics.contains("DTSTART;VALUE=DATE:20261101"), "{ics}");
+    assert!(ics.contains("SUMMARY:LOS-1 Back up every night"), "{ics}");
+
+    // A commit on main that says it fixes LOS-1 closes it, and the
+    // repository's issue with it.
+    let url = format!(
+        "http://jana:{jana_token}@127.0.0.1:{}/notshared/losos.git",
+        s.port
+    );
+    ok(git(&dir, &["clone", "-q", &url, "jana"]));
+    let work = dir.join("jana");
+    std::fs::write(work.join("backup.sh"), "restic backup /persist\n").unwrap();
+    ok(git(&work, &["add", "backup.sh"]));
+    ok(git(
+        &work,
+        &["commit", "-qm", "Back up every night\n\nFixes LOS-1."],
+    ));
+    ok(git(&work, &["push", "-q", "origin", "main"]));
+    let doc = wait_for_state(&s, &jana, "LOS-1", "Done");
+    assert_eq!(doc["links"][0]["kind"], "commit");
+    assert_eq!(doc["links"][0]["closes"], true);
+    assert!(doc["completedAt"].is_string(), "{doc}");
+    let (_, issue) = call("GET", "/repos/notshared/losos/issues/1", &owner, None);
+    assert_eq!(issue["state"], "closed");
+
+    // A branch named after LOS-2 and a pull request that closes it: In
+    // Review when it opens, Done when it merges.
+    ok(git(&work, &["checkout", "-q", "-b", "los-2-two-weeks"]));
+    std::fs::write(
+        work.join("backup.sh"),
+        "restic backup /persist\nrestic forget --keep-within 14d\n",
+    )
+    .unwrap();
+    ok(git(&work, &["commit", "-qam", "Keep two weeks"]));
+    ok(git(&work, &["push", "-q", "origin", "los-2-two-weeks"]));
+    let (status, pr) = call(
+        "POST",
+        "/repos/notshared/losos/pulls",
+        &jana,
+        Some(
+            r#"{"title":"Keep two weeks","body":"Closes LOS-2.","head":"los-2-two-weeks","base":"main"}"#,
+        ),
+    );
+    assert_eq!(status, 201, "{pr}");
+    let n = pr["number"].as_i64().unwrap();
+    assert_eq!(n, 3, "a pull request takes the number after the issues");
+    let doc = wait_for_state(&s, &owner, "LOS-2", "In Review");
+    let pull = doc["links"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["kind"] == "pull")
+        .unwrap_or_else(|| panic!("no pull link: {doc}"));
+    assert_eq!(pull["target"], n.to_string());
+    assert_eq!(pull["closes"], true);
+    let (status, merged) = call(
+        "POST",
+        &format!("/repos/notshared/losos/pulls/{n}/merge"),
+        &owner,
+        Some(r#"{"style":"merge"}"#),
+    );
+    assert_eq!(status, 200, "{merged}");
+    let doc = wait_for_state(&s, &owner, "LOS-2", "Done");
+    let by: Vec<&str> = doc["activity"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|a| a["kind"] == "state")
+        .map(|a| a["actor"].as_str().unwrap_or(""))
+        .collect();
+    assert!(by.contains(&"notshared"), "{doc}");
+
+    // A sub-issue, then a board's worth of changes in one go.
+    let (status, child) = call(
+        "POST",
+        "/tracker/issues",
+        &jana,
+        Some(r#"{"project":"LOS","title":"Test a restore","parent":"LOS-2"}"#),
+    );
+    assert_eq!(status, 201, "{child}");
+    assert_eq!(child["key"], "LOS-4");
+    assert_eq!(child["parent"]["key"], "LOS-2");
+    let (status, _) = call(
+        "POST",
+        "/tracker/issues/bulk",
+        &jana,
+        Some(r#"{"keys":["LOS-4"],"change":{"category":"started","priority":1}}"#),
+    );
+    assert_eq!(status, 200);
+    let (_, doc) = call("GET", "/tracker/issues/LOS-4", &jana, None);
+    assert_eq!(doc["state"]["name"], "In Progress");
+    assert_eq!(doc["priority"], 1);
+    let (_, parent) = call("GET", "/tracker/issues/LOS-2", &jana, None);
+    assert_eq!(parent["children"][0]["key"], "LOS-4");
+
+    // Eva may not write to it, nor see it in her lists.
+    let (status, _) = call(
+        "PATCH",
+        "/tracker/issues/LOS-4",
+        &eva,
+        Some(r#"{"title":"Mine now"}"#),
+    );
+    assert_eq!(status, 404);
+    let (_, hers) = call("GET", "/tracker/issues", &eva, None);
+    assert_eq!(hers["issues"].as_array().unwrap().len(), 0);
+}

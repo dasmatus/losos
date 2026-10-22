@@ -198,6 +198,9 @@ const MIGRATIONS: &[&str] = &[
         CHECK (visibility IN ('private', 'internal', 'public'));
     UPDATE repos SET visibility = CASE private WHEN 0 THEN 'public' ELSE 'private' END;
     ",
+    // 7: the issue tracker (`super::tracker`): projects with keys and
+    // workflows, issues, cycles, relations, links, views and the inbox.
+    super::tracker::MIGRATION,
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
