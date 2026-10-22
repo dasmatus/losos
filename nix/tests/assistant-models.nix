@@ -223,6 +223,7 @@ pkgs.testers.nixosTest {
       box.wait_for_unit("lososd.service")
       box.wait_for_unit("ollama.service")
       box.wait_for_open_port(11434)
+      box.wait_for_open_port(8082)
 
       def api(path, token, method="GET", data=None):
           args = f"-X {method} http://127.0.0.1:8082{path} -H 'Authorization: Bearer {token}'"
@@ -247,6 +248,10 @@ pkgs.testers.nixosTest {
           assert "OLLAMA_MAX_LOADED_MODELS=1" in env, env
           listed = [m["name"] for m in json.loads(box.succeed("curl -sf 127.0.0.1:11434/api/tags"))["models"]]
           assert sorted(listed) == sorted([ASSISTANT, BUILDER]), listed
+          # Nothing about the models leaves the box.
+          assert "OLLAMA_NO_CLOUD=1" in env, env
+          box.succeed("journalctl -u ollama | grep -q 'Ollama cloud disabled: true'")
+          box.fail("journalctl -u ollama | grep -q 'lookup ollama.com'")
 
       with subtest("claim the box"):
           out = box.succeed(

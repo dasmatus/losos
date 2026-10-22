@@ -46,6 +46,9 @@ in
         OLLAMA_NUM_PARALLEL = "1";
         OLLAMA_MAX_LOADED_MODELS = "1";
         OLLAMA_MAX_QUEUE = "4";
+        # Without it Ollama asks ollama.com for its cloud models and for
+        # recommendations, from a box that should talk to no one about this.
+        OLLAMA_NO_CLOUD = "1";
       };
     };
 
