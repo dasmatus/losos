@@ -244,6 +244,9 @@ pub struct Ci {
     posted: Mutex<HashMap<i64, String>>,
     /// One tick at a time.
     ticking: Mutex<()>,
+    /// One planner at a time: two that both find a job unplanned both add it,
+    /// and the run then has every job twice.
+    advancing: Mutex<()>,
 }
 
 /// The state a job's status takes on the commit.
@@ -294,6 +297,7 @@ impl Ci {
             cancel: Mutex::new(HashSet::new()),
             posted: Mutex::new(HashMap::new()),
             ticking: Mutex::new(()),
+            advancing: Mutex::new(()),
         }
     }
 
@@ -629,6 +633,7 @@ impl Ci {
     /// Plan what can be planned, hand mesh jobs to the edge, and close the
     /// run when every job is over.
     pub fn advance(&self, run_id: i64) -> anyhow::Result<()> {
+        let _one = self.advancing.lock().unwrap_or_else(|e| e.into_inner());
         let Some(run) = self.store.run(run_id)? else {
             return Ok(());
         };
@@ -1292,6 +1297,38 @@ jobs:
                 pusher: "matus".into(),
             },
         }
+    }
+
+    #[test]
+    fn planners_at_the_same_time_add_each_job_once() {
+        let (ci, _mesh, _forge, dir) = setup(true);
+        let run = ci.on_event(&push()).unwrap()[0];
+        let build = ci
+            .store
+            .jobs(run)
+            .unwrap()
+            .into_iter()
+            .find(|j| j.job_key == "build")
+            .unwrap();
+        let mut outs = Map::new();
+        outs.insert("version".into(), json!("1.2"));
+        ci.store
+            .set_job_state(build.id, "success", None, Some(0), Some(&outs))
+            .unwrap();
+        std::thread::scope(|s| {
+            for _ in 0..8 {
+                s.spawn(|| ci.advance(run).unwrap());
+            }
+        });
+        let tests = ci
+            .store
+            .jobs(run)
+            .unwrap()
+            .into_iter()
+            .filter(|j| j.job_key == "test")
+            .count();
+        assert_eq!(tests, 2);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
