@@ -62,6 +62,7 @@ import {
   createMailFolder,
   deleteMailFolder,
   deleteMailMessage,
+  getContacts,
   getMail,
   getMailMessage,
   getMailMessages,
@@ -86,6 +87,7 @@ import {
 import { useLocale, useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
 import { contextMenu, type MenuBuilder, type MenuItem } from "@/lib/context-menu";
+import { PeopleField } from "@/contacts/suggest";
 import { readMailIntent, withoutMailIntent } from "@/lib/intents";
 import { cn } from "@/lib/utils";
 import { ComposeAttachments, ReceivedAttachment, useAttached, useCloud } from "./attachments";
@@ -163,10 +165,20 @@ function useFaces(home: MailHome): Faces {
   const [byAddress, setByAddress] = React.useState<ReadonlyMap<string, PersonLike>>(new Map());
   React.useEffect(() => {
     const controller = new AbortController();
-    void getProfiles({ signal: controller.signal })
-      .then(({ people }) => {
+    // The person's contacts name and picture whoever is in them; people on
+    // the box, with their own profiles, come after and win.
+    const book = getContacts({ signal: controller.signal })
+      .then(({ contacts }) => contacts)
+      .catch(() => []);
+    void Promise.all([getProfiles({ signal: controller.signal }), book])
+      .then(([{ people }, contacts]) => {
         const byName = new Map(people.map((p) => [p.name, p]));
         const next = new Map<string, PersonLike>();
+        for (const c of contacts) {
+          for (const e of c.emails ?? []) {
+            next.set(e.value.toLowerCase(), { name: `contact:${c.id}`, displayName: c.name, picture: c.photo ?? null });
+          }
+        }
         for (const p of home.people) {
           const profile = byName.get(p.name);
           if (profile !== undefined) next.set(p.address.toLowerCase(), profile);
@@ -1022,7 +1034,8 @@ function MessageRow({
             className={cn("size-2 shrink-0 rounded-full", m.seen ? "bg-transparent" : "bg-accent")}
           />
           <span className={cn("min-w-0 flex-1 truncate text-sm", !m.seen && "font-medium")}>
-            {(sent ? t("mail.toPrefix") + " " : "") + (who(people) || t("mail.nobody"))}
+            {(sent ? t("mail.toPrefix") + " " : "") +
+              (people.map((a) => a.name ?? faces(a).displayName).join(", ") || t("mail.nobody"))}
           </span>
           {m.hasAttachment && (
             <HugeiconsIcon icon={Attachment01Icon} className="size-3.5 shrink-0 text-muted" aria-label={t("mail.attachment")} />
@@ -1262,13 +1275,15 @@ function Composer({
                 </Button>
               )}
             </span>
-            <Input
+            {/* The person's contacts and the people on this box, as they
+                type (src/contacts/suggest.tsx). */}
+            <PeopleField
               id="mail-to"
+              want="email"
+              multiple
               value={to}
-              onChange={(event) => setTo(event.target.value)}
-              list="mail-people"
+              onChange={setTo}
               autoFocus={initial.to.length === 0}
-              autoComplete="off"
               placeholder={people[0]?.address ?? ""}
               required
             />
@@ -1276,16 +1291,9 @@ function Composer({
           {showCc && (
             <Field>
               <FieldLabel htmlFor="mail-cc">{t("mail.cc")}</FieldLabel>
-              <Input id="mail-cc" value={cc} onChange={(event) => setCc(event.target.value)} list="mail-people" autoComplete="off" />
+              <PeopleField id="mail-cc" want="email" multiple value={cc} onChange={setCc} />
             </Field>
           )}
-          <datalist id="mail-people">
-            {people.map((p) => (
-              <option key={p.address} value={p.address}>
-                {p.label}
-              </option>
-            ))}
-          </datalist>
           <Field>
             <FieldLabel htmlFor="mail-subject">{t("mail.compose.subject")}</FieldLabel>
             <Input id="mail-subject" value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={900} />

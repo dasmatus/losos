@@ -57,6 +57,7 @@ import { paneFromPath } from "@/lib/routes";
 import { useT } from "@/lib/i18n-react";
 import { useWaitGame } from "@/components/play-while-waiting";
 import { cn } from "@/lib/utils";
+import { chatDocument } from "@/chat/document";
 
 /* Screens load on demand.
  *
@@ -84,9 +85,15 @@ const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 /* LosOS Mail (src/mail/): only on the shared side, so most boxes never
  * fetch it. */
 const Mail = React.lazy(() => import("@/mail/app"));
+/* LosOS Contacts (src/contacts/): kept in chat's homeserver, so on the
+ * shared side only, like Mail and Chat. */
+const Contacts = React.lazy(() => import("@/contacts/app"));
 /* LosOS Chat (src/chat/), the same: on the shared side only, and the only
  * screen that brings matrix-js-sdk and its crypto. */
 const Chat = React.lazy(() => import("@/chat/app"));
+/* Calls outlive the chat screen, so the shell holds them, on a document
+ * loaded at /chat/ only: elsewhere matrix-js-sdk stays out of the page. */
+const CallsShell = React.lazy(() => import("@/chat/calls-shell"));
 /* Mesh CI (src/ci/): on the shared side too, beside LosOS Git. */
 const Ci = React.lazy(() => import("@/ci/app"));
 /* LosOS Diagrams (src/lab/): its own chunk with the Rust core's
@@ -184,6 +191,10 @@ function useGate(): Gate {
   if (signedIn) return "open";
   if (claimed === null || (claimed && !asked)) return "unknown";
   return claimed ? "signin" : "setup";
+}
+
+function CallsHolder({ children }: { children: React.ReactNode }) {
+  return chatDocument() ? <CallsShell>{children}</CallsShell> : <>{children}</>;
 }
 
 function Shell() {
@@ -341,6 +352,7 @@ function Shell() {
         <main className="min-w-0 flex-1">
           {signedIn && !held && <MeshNotice />}
           <React.Suspense fallback={<ScreenFallback />}>
+          <CallsHolder>
           {held ? (
             <Settings pane="account" />
           ) : (
@@ -370,6 +382,8 @@ function Shell() {
                 (modules/containers.nix); the screen says so too if the box
                 leaves it while the page is open. */}
             <Route path="/mail" element={<Mail />} />
+            {/* nginx answers /contacts with 404 off the shared side too. */}
+            <Route path="/contacts" element={<Contacts />} />
             {/* nginx serves /chat/ only on the shared side, under chat's
                 own policy (modules/chat.nix); off it, /chat/ goes home. */}
             <Route path="/chat/*" element={<Chat />} />
@@ -383,6 +397,7 @@ function Shell() {
             <Route path="*" element={<NotFound />} />
           </Routes>
           )}
+          </CallsHolder>
           </React.Suspense>
         </main>
       </SidebarProvider>

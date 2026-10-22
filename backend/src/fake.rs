@@ -561,6 +561,9 @@ impl Losos for FakeLosos {
             crate::pins::CloudRequest::List { user, path } => format!("list {user} {path}"),
             crate::pins::CloudRequest::Search { user, query } => format!("search {user} {query}"),
             crate::pins::CloudRequest::Arrive { user, .. } => format!("arrive {user}"),
+            crate::pins::CloudRequest::ContactMatches { user, query, want } => {
+                format!("contacts {user} {want} {query}")
+            }
         });
         self.cloud_answers
             .pop_front()

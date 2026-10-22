@@ -329,6 +329,9 @@
             # LosOS Chat: Dendrite as the shared user while the box shares
             # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
             ./modules/chat.nix
+            # Calls from chat rooms and DMs: the SFU, as the shared user, which
+            # forwards only frames the browsers encrypted (backend/src/calls/).
+            ./modules/calls.nix
             # Backups to the owner's S3 bucket, restoring them, and the
             # boot-time wipe of an erase (backend/src/{backup,erase}.rs).
             ./modules/backup.nix
@@ -472,6 +475,16 @@
         losos-wait-game = import ./nix/tests/wait-game.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
         losos-chat = import ./nix/tests/chat.nix { inherit pkgs; };
+        # LosOS Contacts: the book in LosOS Cloud, vCard in and out, and the
+        # pickers in Mail and Chat (nix/tests/contacts.nix).
+        losos-contacts = import ./nix/tests/contacts.nix { inherit pkgs; };
+        # Calls from chat: three people in real browsers through the box's
+        # SFU, whose copy of every frame is ciphertext (nix/tests/calls.nix).
+        losos-calls = import ./nix/tests/calls.nix { inherit pkgs; };
+        losos-calls-edge = import ./nix/tests/calls.nix {
+          inherit pkgs;
+          throughEdge = true;
+        };
         # Screenshots of a booted box; the plan is read when the driver runs.
         losos-screens = import ./nix/tests/screens.nix { inherit pkgs; };
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
@@ -509,6 +522,9 @@
         # One file through Mail, LosOS Cloud, Notes and the box's AI on one
         # box, with the pull request's pictures (nix/tests/apps-together.nix).
         losos-apps-together = import ./nix/tests/apps-together.nix { inherit pkgs; };
+        # Gemma answers the apps, the coder builds, one model in memory at
+        # a time on a 4 GiB box (nix/tests/assistant-models.nix).
+        losos-assistant-models = import ./nix/tests/assistant-models.nix { inherit pkgs; };
         # Two boxes sharing a note and editing it together, apart and
         # together again (nix/tests/mesh-collab.nix).
         losos-mesh-collab = import ./nix/tests/mesh-collab.nix { inherit pkgs; };
@@ -527,6 +543,7 @@
           # libvirt client; the bundle under test copies them in the way the
           # shipped one does.
           inherit (self.packages.${system}.losos-admin-ui) labCorePkg labVirtPkg labRenderPkg;
+          callsPackage = self.packages.${system}.losos-ctl;
         };
         # Not a VM: the option document of the install configuration
         # (nix/options-doc.nix via modules/config-repo.nix), forced here so

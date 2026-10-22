@@ -72,7 +72,8 @@ einzelne überprüfen oder abmelden.
 
 - **Eine Direktnachricht:** Klick auf **Jemandem schreiben** und wähle eine
   Person. In der Liste stehen alle mit einem Konto bei LosOS Login auf dem
-  Gerät.
+  Gerät und alle deine [Kontakte](contacts) mit einer Chat-Adresse. Der Knopf
+  **Chat** auf der Seite eines Kontakts öffnet dieselbe Unterhaltung.
 - **Ein Raum:** Klick auf **Neuer Raum**, gib ihm einen Namen und wähle, ob
   er auf dem Gerät öffentlich ist oder nur auf Einladung. Personen lädst du
   über die Kopfzeile des Raums ein.

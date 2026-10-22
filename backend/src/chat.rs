@@ -1023,9 +1023,11 @@ impl LoginGate for Authelia {
             body: Value::Null,
         };
         if !(200..300).contains(&status) {
+            tracing::debug!(status, "LosOS Login turned a chat request away");
             return Ok(None);
         }
         let Some(name) = reply.header("remote-user").filter(|n| !n.is_empty()) else {
+            tracing::debug!(status, "LosOS Login named nobody for a chat request");
             return Ok(None);
         };
         let groups = reply

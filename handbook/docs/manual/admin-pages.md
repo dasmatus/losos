@@ -73,10 +73,10 @@ directly.
 
 ## The right-click menu
 
-Right-click on the admin pages, in LosOS Cloud or in Mail, and a menu lists
-what you can do with the thing under the pointer. On a touch screen, press
-and hold. From the keyboard, Shift+F10 or the Menu key opens it for
-whatever has the focus, and the arrow keys move through it.
+Right-click on the admin pages, in LosOS Cloud, Mail or Contacts, and a
+menu lists what you can do with the thing under the pointer. On a touch
+screen, press and hold. From the keyboard, Shift+F10 or the Menu key opens
+it for whatever has the focus, and the arrow keys move through it.
 
 - **Empty space**: Back, Forward, Reload, the search, the light or dark
   theme, and this handbook.
@@ -90,6 +90,9 @@ whatever has the focus, and the arrow keys move through it.
   good.
 - **A message in Mail**: open, reply, reply all, forward, mark as read or
   unread, flag, archive, move to another folder, delete.
+- **A person in Contacts**: mail, chat, call or video, edit, export as
+  `.vcf`, delete. Someone listed under **On this box** offers **Add to
+  contacts** instead of the last three.
 
 The keys shown beside an item work without the menu too. In LosOS Cloud,
 F2 renames the ticked file and Delete moves it to the trash (Cmd+Backspace

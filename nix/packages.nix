@@ -354,7 +354,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-U8WMYU5WYA+0sHdqQJs79kft6PuIBwg9sFg6ze5ErW8=";
+    npmDepsHash = "sha256-+RP46Gutn7cNbCyBatNNtXpE4XK/qy0dL20yG2Sb6wY=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -365,6 +365,13 @@ images
     # nothing else needs a script to run.
     npmFlags = [ "--ignore-scripts" ];
     env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+    # The person segmenter behind a call's black background
+    # (src/calls/background.ts): MediaPipe's selfie segmenter, Apache-2.0,
+    # a fixed version of the model, copied beside the chat page.
+    env.LOSOS_SEGMENTER_MODEL = "${pkgs.fetchurl {
+      url = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite";
+      hash = "sha256-GRrJUprlBu4L7vprLJRaFy2rnQfR6AKikKTkA4ImZYs=";
+    }}";
     # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core,
     # the GPU canvas and, for guests on the relay path, the libvirt client.
     preBuild = labCorePkg + labVirtPkg + labRenderPkg;
@@ -449,7 +456,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-rwsmkd4Bx6NV+Rc1Ig+aTwMB0M7+WdH5jYvAwKG6eNc=";
+    cargoHash = "sha256-DdHJ1AAnXTGnz0d4X5f8c0isowMIC89tgYIU7xt78xM=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -475,7 +482,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-/8x0VXwOtWciHb73EyTKCX6YJY9E368RWjdYQJfFJDI=";
+    cargoHash = "sha256-FA4QaT3fwEAX9Xorhea8MePJHiGKCUi50EXqR6VHA7s=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -500,7 +507,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-/8x0VXwOtWciHb73EyTKCX6YJY9E368RWjdYQJfFJDI=";
+    cargoHash = "sha256-FA4QaT3fwEAX9Xorhea8MePJHiGKCUi50EXqR6VHA7s=";
     doCheck = false;
   };
 

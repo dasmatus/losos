@@ -89,6 +89,10 @@ let
   # on the shared side, so with sharing off there is no /mail at all
   # (modules/mail.nix).
   mailEnabled = adminEnabled && config.lososInternal.mail.live;
+  # LosOS Contacts' screen (admin-ui/app/src/contacts/): the book is LosOS
+  # Cloud's address books (backend/src/cloud/contacts.rs), so it exists
+  # exactly where LosOS Cloud runs.
+  contactsEnabled = adminEnabled && config.lososInternal.appSignIn.cloud;
   # Mesh CI's screen (admin-ui/app/src/screens/ci/), the same way: only
   # while Mesh CI runs (modules/ci.nix).
   ciEnabled = adminEnabled && config.lososInternal.ci.live;
@@ -340,8 +344,9 @@ let
   # drops its `<base href>`, and every page below /auth/ then loads its scripts
   # from the wrong folder and stays blank), the handbook's and chat's own
   # values (or the admin value, for the headers they share) under /handbook/
-  # and /chat/, each frame's own value (or nothing) under /widget-frame/ and
-  # /app-frame/, and a mail message's under its HTML route.
+  # and /chat/ (and chat's for the guest call page, /calls/guest/), each
+  # frame's own value (or nothing) under /widget-frame/ and /app-frame/, and
+  # a mail message's under its HTML route.
   #
   # Collabora Online's two prefixes (modules/office.nix) get nothing either,
   # only while it is on: coolwsd sends its own policy, whose frame-ancestors
@@ -358,6 +363,7 @@ let
         ~^/auth/         "";
         ~^/handbook/     "${handbookValue}";
         ~^/chat/         "${chatValue}";
+        ~^/calls/guest/  "${chatValue}";
         ~^/widget-frame/ "${frameValue}";
         ~^/app-frame/    "${appFrameValue}";
         ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";
@@ -593,6 +599,13 @@ in
           # mail page: both spellings answer 404.
           "= /mail".return = "404";
           "/mail/".return = "404";
+        })
+        (lib.mkIf (adminEnabled && !contactsEnabled) {
+          # LosOS Contacts is a screen of the SPA at /contacts while LosOS
+          # Cloud runs. Without it there is no book: both spellings answer
+          # 404, as /cloud/api/ does.
+          "= /contacts".return = "404";
+          "/contacts/".return = "404";
         })
         (lib.mkIf (adminEnabled && !ciEnabled) {
           # Mesh CI's screen at /ci, gone with Mesh CI.
