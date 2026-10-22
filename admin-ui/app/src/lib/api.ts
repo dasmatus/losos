@@ -3072,7 +3072,11 @@ export type Pin =
   /** A file or folder in LosOS Cloud. */
   | { kind: "file"; id: number; path: string; folder: boolean }
   /** A repository on LosOS Git. */
-  | { kind: "repo"; owner: string; name: string };
+  | { kind: "repo"; owner: string; name: string }
+  /** An issue of LosOS Git's tracker, by its key (`LOS-12`). */
+  | { kind: "issue"; key: string }
+  /** A project of LosOS Git's tracker, by its key (`LOS`). */
+  | { kind: "project"; key: string };
 
 export interface PinsResponse {
   pins: Pin[];

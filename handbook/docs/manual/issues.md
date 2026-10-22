@@ -127,6 +127,26 @@ From the **⋯** menu at the top of an issue:
 - **Add the due day to a calendar** gives the due date as a calendar file;
 - **Assignee's contact card** opens the person it is given to in Contacts.
 
+Right-click an issue in a list or on the board for **Open in new tab**,
+**Copy link**, **Copy key and title**, **Pin to sidebar** and the same Mail
+and Chat items.
+
+**Make an issue** starts an issue from another app. It opens a new tab with
+the title and the words already filled in, to change before you make it:
+
+- in LosOS Mail, the button at the top of a message quotes the message;
+- in LosOS Chat, the menu of a message quotes it;
+- in LosOS Cloud, the right-click menu of a file links to the file;
+- in Office and Notes, the bar over picked words quotes them.
+
+An administrator can pin an issue or a project to the admin pages' sidebar
+with the pin at its top, and the [search](./admin-pages.md#search) on the
+admin pages finds issues by their words or their key. The **Issues** tile
+on the Overview counts the open issues given to you. Typing `@` in a
+description, a comment or a card in LosOS Diagrams offers issues next to
+people and files, and so does the link button over picked words in Office
+and Notes.
+
 Mail, Chat and Contacts are there when the box shares and is in a mesh.
 Every issue with a due date that is given to you is also in a calendar
 feed, at `https://<box>.local/git/api/v1/tracker/calendar.ics`. A calendar

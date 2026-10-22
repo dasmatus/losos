@@ -34,6 +34,10 @@ pub struct Filter {
     pub q: Option<String>,
     /// `manual` (the default), `priority`, `updated`, `created`, `due`.
     pub sort: Option<String>,
+    /// Issue keys: these issues only (the sidebar's pins).
+    pub key: Vec<String>,
+    /// At most this many, after sorting.
+    pub limit: Option<usize>,
 }
 
 /// The query string's form: lists comma separated.
@@ -52,6 +56,8 @@ pub struct FilterQuery {
     pub due: Option<String>,
     pub q: Option<String>,
     pub sort: Option<String>,
+    pub key: Option<String>,
+    pub limit: Option<String>,
 }
 
 fn list(s: &Option<String>) -> Vec<String> {
@@ -88,6 +94,19 @@ impl FilterQuery {
             due: self.due.filter(|d| !d.is_empty()),
             q: self.q.filter(|q| !q.trim().is_empty()),
             sort: self.sort.filter(|s| !s.is_empty()),
+            key: list(&self.key)
+                .into_iter()
+                .map(|k| k.to_ascii_uppercase())
+                .collect(),
+            limit: match self.limit.as_deref().map(str::trim) {
+                None | Some("") => None,
+                Some(n) => Some(
+                    n.parse::<usize>()
+                        .ok()
+                        .filter(|n| *n > 0)
+                        .ok_or_else(|| format!("\"{n}\" is not a number of issues."))?,
+                ),
+            },
         })
     }
 }
@@ -105,6 +124,9 @@ pub struct Context<'a> {
 impl Filter {
     pub fn matches(&self, t: &Ticket, project_key: &str, cx: &Context<'_>) -> bool {
         if !self.project.is_empty() && !self.project.iter().any(|k| k == project_key) {
+            return false;
+        }
+        if !self.key.is_empty() && !self.key.iter().any(|k| k.eq_ignore_ascii_case(&t.key)) {
             return false;
         }
         if !self.category.is_empty() {
@@ -346,6 +368,29 @@ mod tests {
         }
         .into_filter()
         .is_err());
+    }
+
+    #[test]
+    fn a_list_of_keys_picks_those_issues_and_a_limit_is_a_number() {
+        let f = FilterQuery {
+            key: Some("los-3, LOS-5".into()),
+            limit: Some("2".into()),
+            ..Default::default()
+        }
+        .into_filter()
+        .unwrap();
+        assert_eq!(f.limit, Some(2));
+        assert!(f.matches(&ticket(3, Category::Done, 0, None), "LOS", &cx()));
+        assert!(f.matches(&ticket(5, Category::Backlog, 0, None), "LOS", &cx()));
+        assert!(!f.matches(&ticket(4, Category::Backlog, 0, None), "LOS", &cx()));
+        for bad in ["0", "-1", "many"] {
+            assert!(FilterQuery {
+                limit: Some(bad.into()),
+                ..Default::default()
+            }
+            .into_filter()
+            .is_err());
+        }
     }
 
     #[test]

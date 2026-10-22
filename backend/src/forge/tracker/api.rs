@@ -284,6 +284,9 @@ fn filtered(state: &State, c: &Caller, filter: &Filter) -> Result<Vec<Value>, Fa
         .filter(|t| filter.matches(t, keys.get(&t.project_id).map_or("", String::as_str), &cx))
         .collect();
     filter.sort(&mut list);
+    if let Some(n) = filter.limit {
+        list.truncate(n);
+    }
     Ok(list.iter().map(|t| ticket_json(state, t)).collect())
 }
 

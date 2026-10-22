@@ -289,7 +289,7 @@ export function AppSidebar() {
   const pins = usePins();
   const [editing, setEditing] = React.useState(false);
   const views = React.useMemo(
-    () => pins.pins.map((pin) => viewPin(pin, pins.installed)).filter((view): view is PinView => view !== null),
+    () => pins.pins.map((pin) => viewPin(pin, pins.installed, pins.names)).filter((view): view is PinView => view !== null),
     [pins],
   );
   const openEditor = (): void => {

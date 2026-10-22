@@ -197,6 +197,7 @@ export default defineMessages({
 
   // ── The open issue ────────────────────────────────────────────────────
   "tracker.reader.back": { en: "Back to the list", sk: "Späť na zoznam", de: "Zurück zur Liste" },
+  "tracker.menu.open": { en: "Open", sk: "Otvoriť", de: "Öffnen" },
   "tracker.reader.copyLink": { en: "Copy link", sk: "Kopírovať odkaz", de: "Link kopieren" },
   "tracker.reader.copyKey": { en: "Copy key and title", sk: "Kopírovať kľúč a názov", de: "Kürzel und Titel kopieren" },
   "tracker.reader.follow": { en: "Follow", sk: "Sledovať", de: "Folgen" },
