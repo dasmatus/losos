@@ -120,7 +120,7 @@ async function room(s, p) {
   await card.scrollIntoViewIfNeeded();
   const toggle = card.getByRole("switch");
   await s.take(p, "room-off", "a repository's settings: its room in LosOS Chat, off", { kind: "click", target: "toggle" }, { card, toggle });
-  await toggle.click();
+  await toggle.click({ force: true });
   await p.locator('[data-chat-room-setting="on"]').waitFor();
   await p.locator("[data-chat-room]").waitFor();
   await s.take(p, "room-on", "the room made; the repository links it", { kind: "none" }, {
