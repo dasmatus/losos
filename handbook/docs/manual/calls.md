@@ -51,8 +51,8 @@ stops it, so its light goes out, and sends nothing until you turn it on
 again.
 
 Your voice goes out at 128 kb/s over the full range of hearing, with the
-browser's echo cancellation and noise suppression on. Your camera sends up
-to 720p at 30 frames a second. When the connection is short, it lowers the
+browser's echo cancellation and noise suppression on. Your camera sends a
+steady 30 frames a second. When the connection is short, it lowers the
 sharpness first and keeps the movement smooth; a shared screen does the
 opposite and keeps its text sharp.
 

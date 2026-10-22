@@ -288,7 +288,7 @@ await check('Opus sends at 128 kb/s, and the camera keeps its frame rate before 
     };
   });
   assert.equal(sent.audioMax, 128000, JSON.stringify(sent));
-  assert.equal(sent.cameraMax, 1500000, JSON.stringify(sent));
+  assert.equal(sent.cameraMax, 1000000, JSON.stringify(sent));
   assert.equal(sent.camera, 'maintain-framerate', JSON.stringify(sent));
   assert.equal(sent.screen, 'maintain-resolution', JSON.stringify(sent));
   // The encoder aims for the cap, not Opus's 32 kb/s default.

@@ -52,8 +52,8 @@ zastaví, takže zhasne jej svetlo, a kým ju znova nezapnete, neposiela sa
 nič.
 
 Váš hlas sa posiela rýchlosťou 128 kb/s v celom počuteľnom rozsahu, so
-zapnutým potlačením ozveny a šumu v prehliadači. Kamera posiela až 720p pri
-30 snímkach za sekundu. Keď spojenie nestačí, najprv zníži ostrosť a pohyb
+zapnutým potlačením ozveny a šumu v prehliadači. Kamera posiela plynulých
+30 snímok za sekundu. Keď spojenie nestačí, najprv zníži ostrosť a pohyb
 nechá plynulý; zdieľaná obrazovka robí opak a text nechá ostrý.
 
 Štítok **Šifrované end-to-end** hore ukazuje, koľko snímok váš prehliadač

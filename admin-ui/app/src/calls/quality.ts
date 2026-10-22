@@ -10,10 +10,12 @@
  * answers with useinbandfec=1) and DTX is off, so a quiet start of a word
  * is not cut.
  *
- * The camera is asked for 720p at 30 frames a second and sends at most
- * 1.5 Mb/s. When the network is short the browser drops resolution and
- * keeps the frame rate, which is what makes a face look smooth; a screen
- * does the opposite and keeps its text sharp. */
+ * The camera is asked for 640x480 at a steady 30 frames a second and sends
+ * at most 1 Mb/s. A face looks smooth for its frame rate, not its pixels,
+ * and a larger picture costs the black background's segmenter and the
+ * encoder time that a modest laptop then takes out of the frame rate.
+ * When the network is short the browser drops resolution and keeps the
+ * frame rate; a screen does the opposite and keeps its text sharp. */
 
 export const MIC: MediaTrackConstraints = {
   echoCancellation: true,
@@ -24,13 +26,13 @@ export const MIC: MediaTrackConstraints = {
 };
 
 export const CAMERA: MediaTrackConstraints = {
-  width: { ideal: 1280 },
-  height: { ideal: 720 },
+  width: { ideal: 640 },
+  height: { ideal: 480 },
   frameRate: { ideal: 30, max: 30 },
 };
 
 export const AUDIO_SEND: RTCRtpEncodingParameters = { maxBitrate: 128_000, priority: "high", networkPriority: "high" };
-export const CAMERA_SEND: RTCRtpEncodingParameters = { maxBitrate: 1_500_000, maxFramerate: 30 };
+export const CAMERA_SEND: RTCRtpEncodingParameters = { maxBitrate: 1_000_000, maxFramerate: 30 };
 export const SCREEN_SEND: RTCRtpEncodingParameters = { maxBitrate: 2_500_000, maxFramerate: 30 };
 
 export type Degradation = "maintain-framerate" | "maintain-resolution" | "balanced";

@@ -196,6 +196,8 @@ export function receivedClearBytes(kind: Kind, frame: Uint8Array): number {
 export class ReceiveRing {
   private keys = new Map<number, Promise<FrameKeys>>();
   private raw = new Map<number, Uint8Array>();
+  /* Indexes whose key this ring worked out itself rather than was given. */
+  private derived = new Set<number>();
   private newest: number | null = null;
 
   /* A key the sender handed over (rotate, or the one a joiner gets). */
@@ -203,6 +205,7 @@ export class ReceiveRing {
     const i = index & 0xff;
     this.raw.set(i, key.slice());
     this.keys.set(i, frameKeys(key));
+    this.derived.delete(i);
     // A late message for an older index is kept but does not move back.
     if (this.newest === null || (i - this.newest + 256) % 256 < 128) this.newest = i;
     this.forget();
@@ -210,6 +213,14 @@ export class ReceiveRing {
 
   has(index: number): boolean {
     return this.raw.has(index & 0xff);
+  }
+
+  /* Whether the key for `index` was ratcheted here rather than handed
+   * over. A rotation is a fresh key at the next index, so a frame that
+   * outruns its key meets a ratcheted guess that cannot open it: that
+   * frame lacks its key, it was not tampered with. */
+  guessed(index: number): boolean {
+    return this.derived.has(index & 0xff);
   }
 
   /* The frame keys for `index`, ratcheting forward from the newest key when
@@ -246,6 +257,7 @@ export class ReceiveRing {
       if (!this.raw.has(at)) {
         this.raw.set(at, key);
         this.keys.set(at, frameKeys(key));
+        this.derived.add(at);
       }
       if (this.newest === null || (at - this.newest + 256) % 256 < 128) this.newest = at;
     }
@@ -261,6 +273,7 @@ export class ReceiveRing {
         this.raw.get(i)?.fill(0);
         this.raw.delete(i);
         this.keys.delete(i);
+        this.derived.delete(i);
       }
     }
   }
@@ -269,6 +282,7 @@ export class ReceiveRing {
     for (const k of this.raw.values()) k.fill(0);
     this.raw.clear();
     this.keys.clear();
+    this.derived.clear();
     this.newest = null;
   }
 }
