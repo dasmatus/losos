@@ -3,12 +3,12 @@
 // nix/tests/cloud-from-nextcloud.nix runs it on the box itself, twice:
 //
 //   node cloud-move-shots.mjs nextcloud OUT LOGIN PASSWORD
-//   node cloud-move-shots.mjs cloud OUT NAME PASSWORD LAN_ADDRESS
+//   node cloud-move-shots.mjs cloud OUT NAME PASSWORD ADDRESS
 //
 // The first signs in with Nextcloud's own form at nextcloud.test and takes
 // its Files and Deleted files pages; the second signs in through LosOS Login
-// at mattbox.local (the box's LAN address, which the admin routes' LAN guard
-// lets in) and takes the same two places in LosOS Cloud. One window for
+// at mattbox.local (resolved to ADDRESS) and takes the same two places in
+// LosOS Cloud. One window for
 // both: 1280 x 900 at twice the pixels, dark, en-US, reduced motion.
 //
 // Playwright comes from PLAYWRIGHT_CORE (a path to playwright-core, as
@@ -21,7 +21,7 @@ const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? "playwright-cor
 
 const [which, out, login, password, lan] = process.argv.slice(2);
 if (!["nextcloud", "cloud"].includes(which) || !password || (which === "cloud" && !lan)) {
-  console.error("usage: cloud-move-shots.mjs nextcloud|cloud OUT LOGIN PASSWORD [LAN_ADDRESS]");
+  console.error("usage: cloud-move-shots.mjs nextcloud|cloud OUT LOGIN PASSWORD [ADDRESS]");
   process.exit(2);
 }
 mkdirSync(out, { recursive: true });
