@@ -98,7 +98,13 @@ Sobald er drin ist, hat das Werkzeug diese Werkzeuge vom Begleiter:
   ihrem Text suchen;
 - deine Repositories in LosOS Git auflisten und im Code ihrer
   Standard-Branches suchen;
+- deine Ordner in LosOS Mail auflisten, in einem Ordner suchen und eine
+  Nachricht lesen, die für dich ungelesen bleibt;
 - sagen, wie es der Box geht und mit welchem Konto der Begleiter liest.
+
+LosOS Mail gibt es nur auf einer Box, die ihren Speicher in einem Mesh
+teilt. Notizen sind Dateien in LosOS Cloud, also findet und durchsucht der
+Begleiter sie mit den Cloud-Werkzeugen.
 
 Der Begleiter liest, was du lesen kannst. Jemand mit eigenem Konto auf der
 Box bekommt seine eigenen Dateien, nicht deine.
@@ -110,7 +116,7 @@ LosOS Login ein, und LosOS Login gibt dem Begleiter zwei Tokens: eines
 öffnet die Box für eine Stunde, das andere holt danach ein neues Paar.
 Wird der Begleiter 30 Tage lang nicht benutzt, muss er sich neu anmelden.
 
-Die Box lässt diese Tokens Dateien, Repositories und den Zustand der Box
+Die Box lässt diese Tokens Dateien, Repositories, Mail und den Zustand der Box
 lesen, sonst nichts, auch wenn du Administrator bist. Der Begleiter sendet
 nur Lesezugriffe, und die Box lehnt alles andere ab. Wer bei seinem Konto
 noch einen zweiten Schritt oder ein neues Passwort einrichten muss, kann
