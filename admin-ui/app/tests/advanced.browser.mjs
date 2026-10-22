@@ -482,8 +482,12 @@ await check('the Apps pane draws every box-wide setting of both apps, and Apply 
   // Cleared, the field goes back to the default and the line goes.
   await trash.fill('');
   await trash.press('Enter');
-  // The default comes back on the render after the commit, not with it.
-  for (let i = 0; i < 50 && (await trash.inputValue()) !== '30'; i++) await page.waitForTimeout(100);
+  // The field takes the default from the draft one render later, so wait for it.
+  await trash.evaluate((input) => new Promise((done) => {
+    const settled = () => (input.value === '30' ? done() : requestAnimationFrame(settled));
+    setTimeout(done, 2000);
+    settled();
+  }));
   assert.equal(await trash.inputValue(), '30');
   await flip(row(page, 'forgejo.site.requireSignIn'));
   await row(page, 'forgejo.site.landingPage').locator('select').selectOption('login');

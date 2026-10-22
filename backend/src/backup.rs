@@ -54,13 +54,29 @@
 //!
 //! # Secrets
 //!
-//! The bucket's secret key is written to a 0600 file under `/var/secrets`
-//! and handed to the unit as an `EnvironmentFile=`; it is never an argument
-//! vector, never in `overrides.nix` (which is committed to LosOS Git), and
-//! never sent back to the browser, which sees only whether one is set.
+//! The bucket's keys are the credential [`CREDENTIAL`] in the box's
+//! credential store (`crate::credentials`), encrypted to the TPM or the host
+//! key, and systemd opens it into each job's own credential directory
+//! (`LoadCredentialEncrypted=`). The JSON that says which bucket keeps no
+//! secret. The key is never an argument vector, never in `overrides.nix`
+//! (which is committed to LosOS Git), and never sent back to the browser,
+//! which sees only whether one is set.
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
+
+/// The credential the bucket's keys are sealed under, in the lines
+/// [`Target::env_file`] writes. `modules/credentials.nix` declares it.
+pub const CREDENTIAL: &str = "backup-bucket";
+
+/// The secret key out of [`Target::env_file`]'s lines.
+#[must_use]
+pub fn secret_from_env(text: &str) -> Option<String> {
+    text.lines()
+        .find_map(|l| l.strip_prefix("AWS_SECRET_ACCESS_KEY="))
+        .map(str::to_string)
+        .filter(|s| !s.is_empty())
+}
 
 /// Longest endpoint URL accepted.
 const MAX_URL: usize = 200;

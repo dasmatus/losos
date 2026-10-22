@@ -14,6 +14,31 @@ fn box_handler() -> Box<common::Handler> {
     Box::new(|method, path, _body| match (method, path) {
         ("GET", "/api/state") => (200, json!({ "mode": "local" })),
         ("POST", "/api/fail") => (500, json!({ "error": "it broke" })),
+        ("GET", "/api/credentials") => (
+            200,
+            json!({
+                "key": "tpm2",
+                "credentials": [
+                    { "name": "admin-token", "app": "admin", "source": "box", "set": true,
+                      "updated": 1_760_000_000, "services": ["lososd"], "rotate": false,
+                      "adopted": true, "remade": false },
+                    { "name": "authelia-session", "app": "login", "source": "box", "set": true,
+                      "updated": 1_760_000_000, "services": ["authelia-losos"], "rotate": true,
+                      "adopted": false, "remade": false },
+                    { "name": "backup-bucket", "app": "backup", "source": "owner", "set": false,
+                      "updated": null, "services": [], "rotate": false,
+                      "adopted": false, "remade": false },
+                ],
+            }),
+        ),
+        ("POST", "/api/credentials/authelia-session/rotate") => (
+            200,
+            json!({ "name": "authelia-session", "set": true, "services": ["authelia-losos"] }),
+        ),
+        ("POST", "/api/credentials/admin-token/rotate") => (
+            409,
+            json!({ "error": "admin-token cannot be made new here" }),
+        ),
         _ => (404, json!({ "error": "no such route" })),
     })
 }
@@ -285,6 +310,53 @@ fn logs_in_to_an_edge_and_runs_the_edge_commands() {
         "",
     );
     assert_eq!(r.code, 1);
+}
+
+#[test]
+fn lists_the_credentials_of_a_box_and_makes_one_new() {
+    let me = owner();
+    let host = mock(false, me.key.armored_public(), box_handler());
+    let client = Client::new();
+    client.run(&["key", "import", path(&me.file)], "");
+    client.run(
+        &["login", &host.url, "--fingerprint", &host.fingerprint()],
+        TOKEN,
+    );
+
+    let r = client.run(&["credentials", "list"], "");
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.out.starts_with("Sealed to this box's TPM."), "{}", r.out);
+    let row = |name: &str| {
+        r.out
+            .lines()
+            .find(|l| l.starts_with(name))
+            .unwrap_or_else(|| panic!("no row for {name}: {}", r.out))
+            .to_string()
+    };
+    assert!(row("admin-token").contains("made by the box"));
+    assert!(row("admin-token").contains("2025-10-09"));
+    assert!(row("admin-token").contains("read by lososd"));
+    assert!(row("admin-token").contains("moved from a plain file"));
+    assert!(row("backup-bucket").contains("not set"));
+    assert!(
+        r.out.contains("makes a new value for: authelia-session\n"),
+        "{}",
+        r.out
+    );
+
+    let r = client.run(&["credentials", "rotate", "authelia-session"], "");
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.out.contains("restarted authelia-losos"), "{}", r.out);
+
+    let r = client.run(&["credentials", "rotate", "admin-token"], "");
+    assert_eq!(r.code, 1, "the box's refusal is the answer");
+    assert!(r.err.contains("cannot be made new"), "{}", r.err);
+
+    // Never sent: a name that is not a name would walk the path.
+    let calls = host.calls.lock().unwrap().len();
+    let r = client.run(&["credentials", "rotate", "../setup/claim"], "");
+    assert_eq!(r.code, 1);
+    assert_eq!(host.calls.lock().unwrap().len(), calls);
 }
 
 #[test]
