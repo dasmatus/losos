@@ -485,6 +485,9 @@
         # One file through Mail, LosOS Cloud, Notes and the box's AI on one
         # box, with the pull request's pictures (nix/tests/apps-together.nix).
         losos-apps-together = import ./nix/tests/apps-together.nix { inherit pkgs; };
+        # Gemma answers the apps, the coder builds, one model in memory at
+        # a time on a 4 GiB box (nix/tests/assistant-models.nix).
+        losos-assistant-models = import ./nix/tests/assistant-models.nix { inherit pkgs; };
         # Two boxes sharing a note and editing it together, apart and
         # together again (nix/tests/mesh-collab.nix).
         losos-mesh-collab = import ./nix/tests/mesh-collab.nix { inherit pkgs; };
