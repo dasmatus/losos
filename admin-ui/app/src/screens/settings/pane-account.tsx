@@ -278,7 +278,7 @@ function ProfileForm({ profile, data, disabled }: { profile: Profile; data: Prof
                   onClick={() => setAccent(a)}
                   className={cn(
                     "size-6 rounded-full bg-person ring-offset-2 ring-offset-surface transition-shadow",
-                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
+                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
                     "disabled:opacity-50",
                     accent === a ? "ring-2 ring-person" : "hover:ring-2 hover:ring-line",
                   )}

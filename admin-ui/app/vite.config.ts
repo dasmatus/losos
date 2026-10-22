@@ -5,6 +5,7 @@ import { build as esbuild } from "esbuild";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { segmenterQuiet } from "./vite.segmenter-quiet";
 
 /* The theme has to be on the <html> element BEFORE the first paint, or a box
  * whose owner picked Dark while the browser reports Light flashes white for a
@@ -136,6 +137,41 @@ function appFrame(): Plugin {
  * as meme-no.jpg and meme-yes.jpg, and __LAB_MEME__ tells the page they are
  * there. The repository carries no such folder (admin-ui/lab/build.py reads
  * the same variable for the old page). */
+/* The black background behind a person on a call (src/calls/background.ts)
+ * runs MediaPipe's selfie segmenter on the device. Its WebAssembly comes
+ * from the npm package and its model from LOSOS_SEGMENTER_MODEL, which
+ * nix/packages.nix points at a fixed download; both land beside the chat
+ * page under chat/calls-ml/, so the page loads them from the box itself. A
+ * build without the model still builds, and a call then sends no picture
+ * with the black background on rather than the room. */
+function segmenterFiles(): Plugin {
+  const wasm = "node_modules/@mediapipe/tasks-vision/wasm";
+  const files = (): [string, string][] => {
+    const list: [string, string][] = [
+      ["vision_wasm_internal.js", join(wasm, "vision_wasm_internal.js")],
+      ["vision_wasm_internal.wasm", join(wasm, "vision_wasm_internal.wasm")],
+    ];
+    const model = process.env["LOSOS_SEGMENTER_MODEL"];
+    if (model) list.push(["selfie_segmenter.tflite", model]);
+    return list;
+  };
+  return {
+    name: "losos:segmenter-files",
+    configureServer(server) {
+      for (const [name, src] of files()) {
+        server.middlewares.use(`/chat/calls-ml/${name}`, (_req, res) => {
+          res.end(readFileSync(src));
+        });
+      }
+    },
+    buildStart() {
+      for (const [name, src] of files()) {
+        this.emitFile({ type: "asset", fileName: `chat/calls-ml/${name}`, source: readFileSync(src) });
+      }
+    },
+  };
+}
+
 function labMeme(): Plugin {
   const dir = process.env["LOSOS_LAB_MEME"] || "";
   const files = { "meme-no.jpg": "no.jpg", "meme-yes.jpg": "yes.jpg" } as const;
@@ -163,7 +199,7 @@ function labMeme(): Plugin {
 const root = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), labMeme()],
+  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), labMeme(), segmenterFiles(), segmenterQuiet()],
   // Served from the vhost root by nginx.
   base: "/",
   resolve: {
@@ -177,18 +213,22 @@ export default defineConfig({
     sourcemap: false,
     // The appliance has no external hosts and no CDN: one origin, one bundle.
     modulePreload: { polyfill: false },
-    // Five pages: the admin SPA at / (LosOS Diagrams is its screen at
-    // /diagrams), a company edge's manage page, which the edge serves at
-    // /manage/ from this same dist/ (edge/registrar/src/server/manage.rs),
-    // LosOS Cloud at /cloud/ and the knowledge bases published from it at
-    // /kb/ (modules/cloud.nix), and LosOS Git at /git/
-    // (modules/containers.nix). They share chunks. The hosted copy of
-    // Diagrams (VITE_LAB_HOSTED=1, admin-ui/lab/engine/build.sh) adds
-    // diagrams/index.html, the same screen on a page of its own; a box never
-    // gets that page, so nothing shadows the SPA's /diagrams.
+    // Six pages: the admin SPA at / (LosOS Diagrams is its screen at
+    // /diagrams), LosOS Chat at /chat/ (the admin SPA's own document under
+    // chat's CSP, which adds blob: media for decrypted voice messages and
+    // videos; modules/chat.nix), a company edge's manage page, which the
+    // edge serves at /manage/ from this same dist/
+    // (edge/registrar/src/server/manage.rs), LosOS Cloud at /cloud/ and the
+    // knowledge bases published from it at /kb/ (modules/cloud.nix), and
+    // LosOS Git at /git/ (modules/containers.nix). They share chunks. The
+    // hosted copy of Diagrams (VITE_LAB_HOSTED=1,
+    // admin-ui/lab/engine/build.sh) adds diagrams/index.html, the same
+    // screen on a page of its own; a box never gets that page, so nothing
+    // shadows the SPA's /diagrams.
     rolldownOptions: {
       input: {
         main: join(root, "index.html"),
+        chat: join(root, "chat/index.html"),
         ...(process.env["VITE_LAB_HOSTED"] === "1" ? { diagrams: join(root, "diagrams/index.html") } : {}),
         manage: join(root, "manage/index.html"),
         cloud: join(root, "cloud/index.html"),

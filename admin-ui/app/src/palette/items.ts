@@ -1,5 +1,6 @@
 import type { IconSvgElement } from "@hugeicons/react";
 import {
+  BubbleChatIcon,
   BookOpen01Icon,
   ComputerIcon,
   Home01Icon,
@@ -10,7 +11,8 @@ import {
   RoadLocation01Icon,
   Sun03Icon,
 } from "@hugeicons/core-free-icons";
-import { canUse, signOut } from "@/lib/api";
+import { canUse, sharedApp, signOut } from "@/lib/api";
+import { signOutKeys } from "@/lib/shortcuts";
 import { CATALOGUE, recallAvailability, type AppDefinition } from "@/lib/apps";
 import { HANDBOOK_BASE } from "@/lib/handbook";
 import { LOCALE_NAMES, LOCALES, getLocaleChoice, setLocale, t, template, type MessageKey } from "@/lib/i18n";
@@ -30,7 +32,7 @@ import { openTour } from "@/tour/store";
 export type Target =
   /** A route of this page. */
   | { kind: "route"; to: string; state?: unknown }
-  /** Another app on this origin (LosOS cloud, LosOS Git, the Lab, the
+  /** Another app on this origin (LosOS Cloud, LosOS Git, the Lab, the
    *  handbook): a real navigation. */
   | { kind: "href"; href: string; newTab?: boolean }
   | { kind: "run"; run: () => void };
@@ -54,6 +56,8 @@ export interface Item {
   target: Target;
   /** What its right-click menu pins to the sidebar (components/pin-menu.tsx). */
   pin?: Pin;
+  /** The keyboard shortcut that does the same, shown at the right. */
+  keys?: readonly string[];
 }
 
 /** Lower-case and strip diacritics: "Úložisko" -> "ulozisko". */
@@ -129,6 +133,14 @@ export function pageItems(): Item[] {
     icon: FlowchartIcon,
     words: `${template("shell.nav.lab", undefined, "en")} lab canvas obsidian flowchart whiteboard mind map simulator topology network map machines`,
     target: { kind: "route", to: "/diagrams" },
+  });
+  if (sharedApp("chat")) items.push({
+    id: "page-chat",
+    group: "pages",
+    title: t("shell.nav.chat"),
+    icon: BubbleChatIcon,
+    words: `${template("shell.nav.chat", undefined, "en")} matrix messages talk call room`,
+    target: { kind: "href", href: "/chat/" },
   });
   return items;
 }
@@ -230,6 +242,7 @@ export function actionItems(): Item[] {
       icon: Logout01Icon,
       words: `${template("shell.signOut", undefined, "en")} log out lock leave`,
       target: { kind: "run", run: signOut },
+      keys: signOutKeys(),
     },
   );
   return items;

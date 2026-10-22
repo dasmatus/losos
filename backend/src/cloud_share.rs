@@ -1,10 +1,10 @@
-//! `GET /internal/cloud-share`: the LosOS cloud share opened with a LosOS
+//! `GET /internal/cloud-share`: the LosOS Cloud share opened with a LosOS
 //! Login name and password.
 //!
-//! A file manager opens LosOS cloud's WebDAV share
+//! A file manager opens LosOS Cloud's WebDAV share
 //! (`/remote.php/webdav/`, announced on the LAN by `modules/cloud.nix`)
 //! and asks for a name and a password, which it
-//! then sends as Basic auth on every request. LosOS cloud itself knows the
+//! then sends as Basic auth on every request. LosOS Cloud itself knows the
 //! owner only as `notshared` and the other people by no password at all, so
 //! nginx asks this route about every request to the share from the LAN
 //! (`modules/identity.nix`, `/internal/losos-cloud-share`) and gets one of
@@ -13,15 +13,15 @@
 //!   * a person, in `Remote-User`, `Remote-Groups` and `Remote-Name`, when
 //!     the request carries a LosOS Login name and that person's password.
 //!     nginx then drops the `Authorization` header and names the person to
-//!     LosOS cloud in the sign-in headers, as it does for a browser
+//!     LosOS Cloud in the sign-in headers, as it does for a browser
 //!     (`modules/cloud.nix`): the owner arrives as `notshared`;
 //!   * nobody, for everything else: no credentials, an app password, a
 //!     name LosOS Login does not know, a wrong password. nginx passes the
-//!     request on untouched and LosOS cloud answers it with its own
+//!     request on untouched and LosOS Cloud answers it with its own
 //!     accounts and app passwords, as before.
 //!
 //! So nothing that worked stops working, and a wrong LosOS password is a
-//! 401 from LosOS cloud, which also counts it in its own throttle.
+//! 401 from LosOS Cloud, which also counts it in its own throttle.
 //!
 //! Clients send the password on every request and an argon2id check costs
 //! 64 MiB and a fraction of a second, so a name and password that checked
@@ -33,9 +33,9 @@
 //! counted per name, and past the throttle's budget a name is not checked
 //! until its window ends.
 //!
-//! LosOS cloud makes a person's account the first time LosOS Login sends
+//! LosOS Cloud makes a person's account the first time LosOS Login sends
 //! them, and only on its sign-in page. A person who opens the share before
-//! they ever opened LosOS cloud in a browser would get a 401 there, so the
+//! they ever opened LosOS Cloud in a browser would get a 401 there, so the
 //! first time this daemon vouches for someone it signs them in once on
 //! loopback the way nginx would ([`crate::pins::CloudRequest::Arrive`]).
 
@@ -68,7 +68,7 @@ pub struct Share {
     remembered: Mutex<HashMap<[u8; 32], Instant>>,
     failures: Throttle,
     checking: Mutex<()>,
-    /// People LosOS cloud has been sent once since this daemon started.
+    /// People LosOS Cloud has been sent once since this daemon started.
     arrived: Mutex<BTreeSet<String>>,
 }
 
@@ -141,9 +141,9 @@ impl Share {
         m.insert(key, now);
     }
 
-    /// Send `person` to LosOS cloud's sign-in once, so their account
+    /// Send `person` to LosOS Cloud's sign-in once, so their account
     /// exists. The owner's always does. A failure is only logged: the
-    /// request goes on and LosOS cloud answers it.
+    /// request goes on and LosOS Cloud answers it.
     fn arrive(&self, backend: &mut impl Losos, person: &Person) {
         if person.groups.iter().any(|g| g == OWNER) {
             return;
@@ -159,7 +159,7 @@ impl Share {
             display_name: &person.display_name,
         };
         match backend.cloud_request(&request) {
-            // A redirect onwards; anything else is LosOS cloud's error page.
+            // A redirect onwards; anything else is LosOS Cloud's error page.
             Ok((status, _)) if (200..400).contains(&status) => {
                 self.arrived
                     .lock()
@@ -167,9 +167,9 @@ impl Share {
                     .insert(person.name.clone());
             }
             Ok((status, _)) => {
-                tracing::warn!(status, person = %person.name, "LosOS cloud did not take the person");
+                tracing::warn!(status, person = %person.name, "LosOS Cloud did not take the person");
             }
-            Err(e) => tracing::warn!(error = %e, "could not reach LosOS cloud"),
+            Err(e) => tracing::warn!(error = %e, "could not reach LosOS Cloud"),
         }
     }
 }
@@ -187,10 +187,10 @@ pub fn basic_credentials(header: &str) -> Option<(String, String)> {
     (!password.is_empty()).then(|| (name.to_string(), password.to_string()))
 }
 
-/// Whether `password` has the shape of one LosOS cloud made: 72 letters and
+/// Whether `password` has the shape of one LosOS Cloud made: 72 letters and
 /// digits from a login flow, or five dash-joined groups of five from its
 /// security settings. A LosOS password of either shape is still taken by
-/// LosOS cloud's own check if its owner made it an app password.
+/// LosOS Cloud's own check if its owner made it an app password.
 pub fn is_app_password(password: &str) -> bool {
     let flow = password.len() == 72 && password.bytes().all(|b| b.is_ascii_alphanumeric());
     let typed = password.split('-').count() == 5

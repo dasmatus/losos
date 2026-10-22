@@ -54,6 +54,22 @@ export const WIDGET_FRAME_CSP = [
   "form-action 'none'",
 ].join('; ');
 
+/* LosOS Chat's policy (/chat/, modules/containers.nix `chatCsp`): the Lab's
+ * 'wasm-unsafe-eval' for the end-to-end crypto, and blob: for decrypted
+ * pictures and voice messages. Mirror nginx's /chat/ arm here. */
+export const CHAT_CSP = [
+  "default-src 'none'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "style-src 'self'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
+
 /* The app frame's own policy (modules/containers.nix, `appFrameCsp`), for
  * /app-frame/ alone. An app of the owner's runs there under
  * `sandbox="allow-scripts allow-forms"`: the runtime is the box's own
@@ -140,6 +156,8 @@ export async function serve({ csp = false } = {}) {
           ? APP_FRAME_CSP
           : file.startsWith('/manage/') || file === 'manage/index.html'
             ? MANAGE_CSP
+            : file.startsWith('/chat/') || file === 'chat/index.html'
+              ? CHAT_CSP
             : ADMIN_CSP;
       res.writeHead(200, {
         'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
@@ -149,10 +167,10 @@ export async function serve({ csp = false } = {}) {
     };
     // A directory gets its index, as nginx's `index` directive gives it.
     const file = rel === '/' ? 'index.html' : rel.endsWith('/') ? rel + 'index.html' : rel;
-    // The edge's /manage/, LosOS Cloud's /cloud/, a knowledge base's /kb/ and
-    // LosOS Git's /git/ are pages of their own with their own fallback, as
-    // their nginx locations are; /diagrams is the SPA's.
-    const page = ['manage', 'cloud', 'kb', 'git'].find((p) => rel.startsWith(`/${p}/`) || rel === `/${p}`);
+    // The edge's /manage/, LosOS Cloud's /cloud/, a knowledge base's /kb/,
+    // LosOS Git's /git/ and LosOS Chat's /chat/ are pages of their own with
+    // their own fallback, as their nginx locations are; /diagrams is the SPA's.
+    const page = ['manage', 'cloud', 'kb', 'git', 'chat'].find((p) => rel.startsWith(`/${p}/`) || rel === `/${p}`);
     const fallback = page === undefined ? 'index.html' : `${page}/index.html`;
     send(file).catch(() =>
       send(fallback).catch(() => {

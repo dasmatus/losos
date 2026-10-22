@@ -19,26 +19,47 @@
 //                         {"waitText": "Background set."}],
 //               "fullPage": false}]}
 //
+// `variants` takes each shot more than once, in a fresh browser each time,
+// named `<shot>-<suffix>`; without it there is one pass at the plan's own
+// width, height and colour scheme:
+//
+//   "variants": [{"suffix": "light-desktop", "colorScheme": "light"},
+//                {"suffix": "dark-phone", "colorScheme": "dark",
+//                 "width": 390, "height": 844},
+//                {"suffix": "picked-dark", "theme": "dark"}]
+//
+// `theme` is the choice made on the page's own theme toggle (Light or Dark),
+// as against `colorScheme`, the browser's, which Auto follows. A variant can
+// also set `dpr` (device pixels per CSS pixel), `timezoneId`, and
+// `hideCaret`, which makes the text caret transparent.
+//
+// A shot with `"film": {"title", "action", "targets": {key: locator}}` is
+// also listed in film.json beside the pictures: its file, path, title, the
+// action that leads to the next shot, and the CSS px box of each target on
+// this picture, for a film cut from the stills.
+//
+// A shot with `"strip": [ms, ...]` also gets its motion frame by frame: the
+// same steps in a fresh browser with motion allowed (stills take theirs under
+// reduced motion, so nothing is caught halfway), with every animation frozen
+// at its start through the DevTools protocol, then moved to each time in the
+// list and photographed, `<shot>-<ms>ms.png`. A recording would lose the
+// frames a slow emulated machine never paints; a frozen animation waits.
+// `"clip": {"fps": 60, "ms": 300}` takes the same frames at an even rate
+// instead, `<shot>-clip-NNN.png`, for a video at that rate.
+//
+// Every run also writes report.json beside the pictures: per picture, the
+// page's width against the window's (a page wider than a phone scrolls
+// sideways) and the Content-Security-Policy violations the page raised.
+//
 // Steps, in order: `click` / `waitFor` / `gone` / `absent` ({role, name},
 // {text} or {selector}; `gone` waits for it to leave, `absent` fails if it
 // is there now), `fill` ({label, value}), `select` ({label, value}, an
 // option of a native select), `upload` ({selector, file}),
-// `press` (a key), `waitText` (exact text), `sleep` (milliseconds) and
-// `goto` (a path). A shot fails the run when a step does or the page throws:
+// `press` (a key), `type` (text typed at the focus), `hold` (the mouse pressed on a control and left
+// down), `waitText` (exact text), `sleep` (milliseconds), `goto` (a path)
+// and, for a strip, `freeze` (what comes before it plays at full speed,
+// only what comes after is taken frame by frame). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
-//
-// A plan may also set `dpr` (device scale factor), `timezone` and
-// `colorScheme`, and a shot `targets` ({name: what to locate}): their boxes,
-// in CSS px, are written beside the picture as `<name>.json` with the page's
-// path, for a film that points at them. With `manifest` ({feature, commit,
-// test, host}) the run also writes `manifest.json` in the launch film's
-// shape: each shot's `title` and `action` with its targets and address.
-// With `clips` ({frames, fps}) as well, a shot whose action is a click on
-// one of its targets also gets a clip of that click: the page's animations
-// are held, the click is made and the page settles, then the animations are
-// stepped one frame at a time, one picture each, under full motion, into
-// `<name>.frames/`, listed in the manifest as `<name>.mp4` after the
-// picture. The test turns the frames into that video.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -76,8 +97,8 @@ function locate(page, what) {
   throw new Error(`cannot locate ${JSON.stringify(what)}`);
 }
 
-async function step(page, s) {
-  if (s.click) await locate(page, s.click).click();
+async function step(page, s, { force = false } = {}) {
+  if (s.click) await locate(page, s.click).click({ force });
   else if (s.waitFor) await locate(page, s.waitFor).waitFor({ timeout: s.timeout ?? 60000 });
   else if (s.gone) await locate(page, s.gone).waitFor({ state: 'detached', timeout: s.timeout ?? 60000 });
   else if (s.absent) {
@@ -87,115 +108,220 @@ async function step(page, s) {
   else if (s.select) await page.getByLabel(s.select.label, { exact: true }).selectOption(s.select.value);
   else if (s.upload) await page.locator(s.upload.selector).setInputFiles(s.upload.file);
   else if (s.press) await page.keyboard.press(s.press);
+  else if (s.type !== undefined) await page.keyboard.type(s.type);
   else if (s.waitText) await page.getByText(s.waitText, { exact: true }).first().waitFor({ timeout: 60000 });
   else if (s.sleep) await page.waitForTimeout(s.sleep);
   else if (s.goto) await page.goto(base + s.goto, { waitUntil: 'networkidle', timeout: 120000 });
+  else if (s.hold) {
+    // The mouse pressed on it and left down, for what a held control shows.
+    await locate(page, s.hold).hover({ force });
+    await page.mouse.down();
+  }
+  else if (s.freeze) {
+    // Only marks where a strip freezes the motion; nothing to do here.
+  }
   else throw new Error(`unknown step ${JSON.stringify(s)}`);
+}
+
+async function strip(variant, width, shot, name, storageState) {
+  const context = await browser.newContext({
+    viewport: { width, height: variant.height ?? plan.height ?? 800 },
+    ignoreHTTPSErrors: true,
+    locale: variant.locale ?? plan.locale ?? 'en-US',
+    colorScheme: variant.colorScheme ?? plan.colorScheme ?? 'light',
+    reducedMotion: 'no-preference',
+    deviceScaleFactor: variant.dpr ?? 1,
+    ...(variant.timezoneId ? { timezoneId: variant.timezoneId } : {}),
+    // The session and the page's storage of the context that took the
+    // stills, so the strip opens on the same signed-in page.
+    storageState,
+  });
+  const page = await context.newPage();
+  try {
+    await page.goto(base + shot.path, { waitUntil: 'networkidle', timeout: 120000 });
+    if (shot.waitFor) await locate(page, shot.waitFor).waitFor({ timeout: 120000 });
+    // Steps before a `freeze` step play at full speed (opening the dialog
+    // whose closing is the subject, say); the rest are frozen.
+    const all = shot.steps ?? [];
+    const cut = all.findIndex((s) => s.freeze);
+    const frozen = cut < 0 ? all : all.slice(cut + 1);
+    for (const s of cut < 0 ? [] : all.slice(0, cut)) await step(page, s);
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForLoadState('networkidle');
+    // The page's own entrance has to be over before anything is frozen, or
+    // it lands in the strip; a slow emulated box can still be fading the
+    // content in seconds after load. Looping animations (a skeleton's
+    // pulse) never end and are left out.
+    await page.waitForFunction(
+      () =>
+        document
+          .getAnimations()
+          .every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().iterations === Infinity),
+      null,
+      { timeout: 120000 },
+    );
+    await page.waitForTimeout(500);
+    // A forced click skips Playwright's checks, so wait for the first
+    // control to be there and enabled: a switch clicked while its setting
+    // is still loading does nothing. (Later ones may appear only after it.)
+    const first = frozen[0]?.click ?? frozen[0]?.hold;
+    if (first) {
+      const target = locate(page, first);
+      await target.waitFor({ timeout: 60000 });
+      await page.waitForFunction(
+        (el) => !el.matches(':disabled, [aria-disabled=true], [data-disabled]'),
+        await target.elementHandle(),
+        { timeout: 60000 },
+      );
+    }
+    const cdp = await context.newCDPSession(page);
+    let started = [];
+    cdp.on('Animation.animationStarted', ({ animation }) => started.push(animation.id));
+    await cdp.send('Animation.enable');
+    await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
+    // Only what the steps start: the page's own entrance has played. The
+    // page keeps its own list too, for animations the protocol never
+    // reports as started (a dialog's way out, on a slow emulated machine).
+    started = [];
+    await page.evaluate(() => {
+      window.__lososBeforeStrip = new Set(document.getAnimations());
+    });
+    for (const s of frozen) {
+      // The stills already waited for each control to be ready, and a frozen
+      // press would keep Playwright waiting for it to settle.
+      await step(page, s, { force: true });
+    }
+    await page.waitForTimeout(1500);
+    // One at a time: an animation a later one replaced (a hover's, say) is
+    // gone, and the protocol refuses the whole list for one missing id.
+    let ids = [...started];
+    const times = shot.clip
+      ? Array.from({ length: Math.floor((shot.clip.ms * shot.clip.fps) / 1000) + 1 }, (_, i) => (i * 1000) / shot.clip.fps)
+      : shot.strip;
+    for (const [frame, ms] of times.entries()) {
+      const live = [];
+      for (const id of ids) {
+        try {
+          await cdp.send('Animation.seekAnimations', { animations: [id], currentTime: ms });
+          live.push(id);
+        } catch {
+          // Finished or cancelled since.
+        }
+      }
+      ids = live;
+      const fromPage = await page.evaluate((time) => {
+        const fresh = document.getAnimations().filter((a) => !window.__lososBeforeStrip.has(a));
+        for (const a of fresh) a.currentTime = time;
+        return fresh.length;
+      }, ms);
+      if (frame === 0) console.log(`strip ${name}: the page lists ${fromPage} new animations`);
+      const file = shot.clip ? `clip-${String(frame).padStart(3, '0')}` : `${String(ms).padStart(3, '0')}ms`;
+      const path = join(args.out, `${name}-${file}.png`);
+      await page.screenshot({ path, timeout: 180000 });
+    }
+    console.log(`strip ${name}: ${ids.length} animations over ${times.length} frames`);
+    // No motion is a finding too (the before picture of a change that adds
+    // some), so the frames are kept and it is only said.
+    if (ids.length === 0) console.log(`strip ${name}: the steps started no animation`);
+  } catch (e) {
+    console.error(`strip ${name} at ${page.url()}: ${e.message}`);
+    await page.screenshot({ path: join(args.out, `${name}-strip-failed.png`), timeout: 180000 }).catch(() => {});
+    throw e;
+  } finally {
+    await context.close();
+  }
 }
 
 // The full Chromium in its new headless mode: nixpkgs' bundle has no
 // separate headless shell.
 const browser = await chromium.launch({ channel: 'chromium', args: ['--disable-gpu'] });
+const variants = plan.variants ?? [{ suffix: null }];
+const report = [];
+const film = [];
 try {
-  const context = await browser.newContext({
-    viewport: { width: plan.width ?? 1280, height: plan.height ?? 800 },
-    deviceScaleFactor: plan.dpr ?? 1,
-    timezoneId: plan.timezone,
-    ignoreHTTPSErrors: true,
-    locale: plan.locale ?? 'en-US',
-    colorScheme: plan.colorScheme ?? 'light',
-    reducedMotion: 'reduce',
-  });
-  if (args.user) {
-    // LosOS Login's own API, as its sign-in page calls it: the session
-    // cookie lands in this context.
-    const r = await context.request.post(`${base}/auth/api/firstfactor`, {
-      data: { username: args.user, password: args.password },
+  for (const variant of variants) {
+    const width = variant.width ?? plan.width ?? 1280;
+    const context = await browser.newContext({
+      viewport: { width, height: variant.height ?? plan.height ?? 800 },
+      ignoreHTTPSErrors: true,
+      locale: variant.locale ?? plan.locale ?? 'en-US',
+      colorScheme: variant.colorScheme ?? plan.colorScheme ?? 'light',
+      reducedMotion: 'reduce',
+      deviceScaleFactor: variant.dpr ?? 1,
+      ...(variant.timezoneId ? { timezoneId: variant.timezoneId } : {}),
     });
-    if (!r.ok()) throw new Error(`signing in as ${args.user}: ${r.status()} ${await r.text()}`);
-  }
-  const steps = [];
-  for (const shot of plan.shots) {
-    const page = await context.newPage();
-    const errors = [];
-    page.on('pageerror', (e) => errors.push(String(e)));
-    await page.goto(base + shot.path, { waitUntil: 'networkidle', timeout: 120000 });
-    if (shot.waitFor) await locate(page, shot.waitFor).waitFor({ timeout: 120000 });
-    for (const s of shot.steps ?? []) await step(page, s);
-    // Fonts and pictures, then a moment for the layout to settle.
-    await page.evaluate(() => document.fonts.ready);
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(shot.settle ?? 500);
-    if (errors.length > 0) throw new Error(`${shot.name}: the page threw: ${errors.join('; ')}`);
-    const path = join(args.out, `${shot.name}.png`);
-    if (shot.targets || plan.manifest) {
-      const targets = {};
-      for (const [key, what] of Object.entries(shot.targets ?? {})) {
-        const box = await locate(page, what).boundingBox();
-        if (box === null) throw new Error(`${shot.name}: target ${key} is not on screen`);
-        targets[key] = { x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.width), h: Math.round(box.height) };
-      }
-      const where = new URL(page.url());
-      const at = where.pathname + where.hash;
-      writeFileSync(join(args.out, `${shot.name}.json`), JSON.stringify({ path: at, targets }));
-      if (plan.manifest) {
-        steps.push({
-          file: `${shot.name}.png`,
-          url: plan.manifest.host + at,
-          title: shot.title ?? shot.name,
-          action: shot.action ?? { kind: 'none' },
-          targets,
-        });
-      }
+    // A theme picked on the page (lib/theme.ts), as against the browser's
+    // own colour scheme, which is what Auto follows.
+    if (variant.theme) {
+      await context.addInitScript((theme) => {
+        try {
+          localStorage.setItem('losos-theme', theme);
+        } catch {
+          // about:blank has no storage.
+        }
+      }, variant.theme);
     }
-    // Under TCG a busy page can take more than Playwright's 30 s to paint.
-    await page.screenshot({ path, fullPage: shot.fullPage ?? false, timeout: 180000 });
-    console.log(`captured ${path}`);
-    const click = shot.action?.kind === 'click' ? shot.targets?.[shot.action.target] : undefined;
-    if (plan.clips && click) {
-      const dir = join(args.out, `${shot.name}.frames`);
-      mkdirSync(dir, { recursive: true });
-      await page.emulateMedia({ reducedMotion: 'no-preference' });
-      const cdp = await context.newCDPSession(page);
-      await cdp.send('Animation.enable');
-      await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
-      await locate(page, click).click();
-      await page.waitForLoadState('networkidle');
+    // The policy's refusals, counted in the page, since a refused style
+    // shows nowhere else.
+    await context.addInitScript(() => {
+      window.__lososCsp = [];
+      document.addEventListener('securitypolicyviolation', (e) => {
+        window.__lososCsp.push(`${e.violatedDirective} ${e.blockedURI || 'inline'}`);
+      });
+    });
+    if (args.user) {
+      // LosOS Login's own API, as its sign-in page calls it: the session
+      // cookie lands in this context.
+      const r = await context.request.post(`${base}/auth/api/firstfactor`, {
+        data: { username: args.user, password: args.password },
+      });
+      if (!r.ok()) throw new Error(`signing in as ${args.user}: ${r.status()} ${await r.text()}`);
+    }
+    for (const shot of plan.shots) {
+      const name = variant.suffix ? `${shot.name}-${variant.suffix}` : shot.name;
+      const page = await context.newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(String(e)));
+      await page.goto(base + shot.path, { waitUntil: 'networkidle', timeout: 120000 });
+      if (shot.waitFor) await locate(page, shot.waitFor).waitFor({ timeout: 120000 });
+      for (const s of shot.steps ?? []) await step(page, s);
+      // A CSSOM write, which the page's style-src 'self' allows; caret-color
+      // inherits, so the root's reaches every field.
+      if (variant.hideCaret) await page.evaluate(() => document.documentElement.style.setProperty('caret-color', 'transparent'));
+      // Fonts and pictures, then a moment for the layout to settle.
       await page.evaluate(() => document.fonts.ready);
-      await page.waitForTimeout(500);
-      const fps = plan.clips.fps ?? 60;
-      for (let i = 0; i < (plan.clips.frames ?? 30); i++) {
-        // Every animation the click started (and any that were running)
-        // at the same moment, i frames in.
-        await page.evaluate((t) => {
-          for (const a of document.getAnimations()) a.currentTime = t;
-        }, (i * 1000) / fps);
-        await page.screenshot({ path: join(dir, `${String(i).padStart(3, '0')}.png`), timeout: 180000 });
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(shot.settle ?? 500);
+      if (errors.length > 0) throw new Error(`${name}: the page threw: ${errors.join('; ')}`);
+      const path = join(args.out, `${name}.png`);
+      // Under TCG a busy page can take more than Playwright's 30 s to paint.
+      await page.screenshot({ path, fullPage: shot.fullPage ?? false, timeout: 180000 });
+      const seen = await page.evaluate(() => ({
+        pageWidth: document.documentElement.scrollWidth,
+        csp: window.__lososCsp ?? [],
+      }));
+      report.push({ name, path: shot.path, width, ...seen });
+      if (shot.film) {
+        const targets = {};
+        for (const [key, what] of Object.entries(shot.film.targets ?? {})) {
+          const box = await locate(page, what).boundingBox();
+          if (box === null) throw new Error(`${name}: film target ${key} is not on the page`);
+          targets[key] = Object.fromEntries(Object.entries(box).map(([k, v]) => [k, Math.round(v)]));
+        }
+        film.push({ file: `${name}.png`, path: page.url().slice(base.length) || '/', title: shot.film.title, action: shot.film.action ?? { kind: 'none' }, targets });
       }
-      console.log(`captured ${dir}`);
-      if (plan.manifest) {
-        const after = new URL(page.url());
-        steps.push({
-          file: `${shot.name}.mp4`,
-          url: plan.manifest.host + after.pathname + after.hash,
-          title: `${shot.title ?? shot.name}: the click, at ${fps} frames a second`,
-          action: { kind: 'none' },
-          targets: {},
-        });
-      }
+      console.log(`captured ${path}${seen.pageWidth > width ? ` (page is ${seen.pageWidth}px wide)` : ''}`);
+      await page.close();
     }
-    await page.close();
-  }
-  if (plan.manifest) {
-    const { host: _, ...about } = plan.manifest;
-    const manifest = {
-      ...about,
-      viewport: { width: plan.width ?? 1280, height: plan.height ?? 800 },
-      dpr: plan.dpr ?? 1,
-      steps,
-    };
-    writeFileSync(join(args.out, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+    const storageState = await context.storageState();
+    await context.close();
+    for (const shot of plan.shots.filter((s) => s.strip || s.clip)) {
+      const name = variant.suffix ? `${shot.name}-${variant.suffix}` : shot.name;
+      await strip(variant, width, shot, name, storageState);
+    }
   }
 } finally {
+  writeFileSync(join(args.out, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
+  if (film.length > 0) writeFileSync(join(args.out, 'film.json'), `${JSON.stringify(film, null, 2)}\n`);
   await browser.close();
 }

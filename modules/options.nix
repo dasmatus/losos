@@ -964,6 +964,29 @@ in
       '';
     };
 
+    calls.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let people on the box call each other from LosOS chat, by voice or
+        video. Calls belong to the box's shared side, like chat: they exist
+        only while the box shares its storage and is in a mesh. Every
+        frame is encrypted in the caller's browser and decrypted in the
+        others', so the box forwards media it cannot read.
+      '';
+    };
+
+    calls.udpPort = lib.mkOption {
+      type = lib.types.port;
+      default = 7882;
+      description = ''
+        The UDP port call media arrives on, on a box that tunnels through
+        no edge. It is opened on the box's firewall while calls are on. A
+        box with `losos.proxy.enable` opens no port: its media goes
+        through the edge over QUIC (`losos.edge.calls.relay`).
+      '';
+    };
+
     cloud.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -1053,6 +1076,44 @@ in
       '';
     };
 
+    # ── Office documents (modules/office.nix) ───────────────────────────
+    office.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Open, edit and co-edit Word, Excel, PowerPoint and OpenDocument
+        files in the browser with Collabora Online, a LibreOffice that runs
+        on the box. Documents never leave the box: the editor reads and
+        saves them through LosOS Cloud. It runs while the box is up and
+        uses about 550 MB of memory with no document open.
+      '';
+    };
+
+    office.port = lib.mkOption {
+      type = lib.types.port;
+      default = 9980;
+      description = "Loopback port Collabora Online listens on. nginx serves it at /browser/ and /cool/.";
+    };
+
+    office.wopiPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8093;
+      description = ''
+        Loopback port of the server Collabora Online reads documents from
+        and saves them to (the WOPI host): LosOS Cloud, or the folder below.
+      '';
+    };
+
+    office.folder = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/var/lib/losos-office/files";
+      description = ''
+        Edit the documents in this folder instead of LosOS Cloud's, with a
+        small host of its own (losos-office). For a box without LosOS Cloud.
+      '';
+    };
+
     startupSound.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -1096,7 +1157,7 @@ in
       description = ''
         The Ollama model the builder asks. The default, Qwen2.5-Coder 1.5B
         (Apache License 2.0), fits the smallest box LosOS runs on: 4 GiB of
-        memory and two processor cores, beside LosOS cloud and LosOS Git.
+        memory and two processor cores, beside LosOS Cloud and LosOS Git.
         The prompts are written for it. A larger Qwen2.5-Coder such as
         `qwen2.5-coder:7b` writes better apps on a box with 8 GiB or more
         to spare, and takes several times as long.
@@ -1125,7 +1186,7 @@ in
         only by the edge through this box's tunnel; buyers pay the edge per
         token. It runs as the `shared` user, away from the owner's data, and
         cannot take more than `inference.lend.memoryMiB`: a request for more
-        stops the lending server, never LosOS cloud. Needs the edge proxy
+        stops the lending server, never LosOS Cloud. Needs the edge proxy
         (losos.proxy.enable).
       '';
     };
@@ -1137,7 +1198,7 @@ in
         The memory this box lends, in MiB. The edge never gives the box a
         larger share of a model than this, and the lending server is
         stopped if it grows past it. The default leaves a 4 GiB box room
-        for LosOS cloud and LosOS Git; raise it on a box with more.
+        for LosOS Cloud and LosOS Git; raise it on a box with more.
       '';
     };
 
@@ -1444,6 +1505,57 @@ in
       type = lib.types.port;
       default = 9091;
       description = "Loopback port Authelia listens on. nginx serves it at /auth/.";
+    };
+
+    # ── LosOS Chat (modules/chat.nix, backend/src/chat.rs) ─────────────────
+    chat.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Run LosOS Chat: a Matrix homeserver on the box and the chat page at
+        /chat/, where everyone with a LosOS Login account can talk in rooms
+        and direct messages, with end-to-end encryption, files, reactions,
+        threads and voice and video calls on the box's network. Chat runs
+        as the shared user and keeps everything in the shared data domain,
+        so it is there only while the box shares its storage in a mesh it
+        has joined. Signing in to
+        chat is always through LosOS Login; there are no chat passwords.
+      '';
+    };
+
+    chat.serverName = lib.mkOption {
+      type = lib.types.strMatching "[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+";
+      default = "${config.losos.hostName}.local";
+      defaultText = lib.literalExpression ''"''${config.losos.hostName}.local"'';
+      description = ''
+        The part after the colon in everyone's chat address,
+        @name:server-name. Set it once, before people start chatting: the
+        addresses and rooms made under one name do not move to another.
+        Federation needs a name other servers can reach, such as a domain
+        of your own that your edge routes to this box.
+      '';
+    };
+
+    chat.federation.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let people here talk with people on other Matrix servers, and let
+        those servers reach this one. Needs a chat server name other
+        servers can reach (not a .local name).
+      '';
+    };
+
+    chat.port = lib.mkOption {
+      type = lib.types.port;
+      default = 8008;
+      description = "Loopback port the homeserver listens on. nginx serves it at /_matrix/.";
+    };
+
+    chat.maxUploadMiB = lib.mkOption {
+      type = lib.types.ints.between 1 4096;
+      default = 100;
+      description = "The largest file one person can send in chat, in MiB.";
     };
 
     # ── Standalone admin endpoint (lososd HTTP API + static admin UI) ──────
@@ -1790,6 +1902,42 @@ in
       type = lib.types.str;
       default = "50000-50100";
       description = "lo-hi range the registrar allocates per-appliance rathole edge ports from.";
+    };
+
+    edge.calls.relay.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Carry call media for the boxes this edge serves. Each box keeps one
+        QUIC connection to the edge and gets a UDP port of its own, which
+        browsers in its calls send to; the edge passes the datagrams along
+        without being able to read them (they are DTLS-SRTP around frames
+        encrypted end to end). The edge sends from a box's port only to
+        addresses that sent to it.
+      '';
+    };
+
+    edge.calls.relay.port = lib.mkOption {
+      type = lib.types.port;
+      default = 7883;
+      description = "UDP port boxes reach the calls relay on (QUIC).";
+    };
+
+    edge.calls.relay.mediaPorts = lib.mkOption {
+      type = lib.types.str;
+      default = "40000-40999";
+      description = "lo-hi range of UDP ports the calls relay gives boxes, one each, for browsers to send call media to.";
+    };
+
+    edge.calls.relay.addresses = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "10.0.0.5=203.0.113.7" ];
+      description = ''
+        Addresses browsers reach the calls relay's media ports on, `IP`, or
+        `IP=PUBLIC` behind a 1:1 NAT that forwards the ports to IP. Empty:
+        every address of every interface that is up.
+      '';
     };
 
     edge.heartbeatTtl = lib.mkOption {
@@ -3221,6 +3369,22 @@ in
     description = "The shared side is live: losos.sharingMyStorage and losos.cluster.enable.";
   };
 
+  # Whether this box runs chat, as it actually runs: the switch and the
+  # sharing gate together. Chat belongs to the shared user and keeps its
+  # data in the shared domain (modules/chat.nix). Read-only.
+  options.lososInternal.chat = lib.mkOption {
+    type = lib.types.bool;
+    internal = true;
+    readOnly = true;
+    default =
+      config.losos.chat.enable
+      && config.lososInternal.sharedSide
+      && config.losos.identity.enable
+      && config.losos.admin.enable
+      && config.losos.admin.ui != null;
+    description = "LosOS Chat runs: losos.chat.enable, the shared user's apps (lososInternal.sharedSide) and LosOS Login.";
+  };
+
   # ── Mesh CI, as it actually runs ────────────────────────────────────────
   # On the shared side, like mail, and only beside LosOS Git, whose pushes
   # and pull requests start the runs. modules/ci.nix, lososd's environment
@@ -3265,6 +3429,23 @@ in
           "${lib.toLower config.losos.hostName}.home.arpa";
       description = "The domain of this box's mail addresses.";
     };
+  };
+
+  # A directory the SFU writes every forwarded frame into, so a test can
+  # show they are ciphertext (backend/src/calls/tap.rs). Tests only.
+  options.lososInternal.callsTap = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    internal = true;
+  };
+
+  # The addresses the SFU takes media on, as losos-calls' `--address`
+  # (`IP` or `IP=OFFERED`); empty for every address the box has. Tests set
+  # it to reach the SFU through a forwarded port.
+  options.lososInternal.callsAddresses = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [ ];
+    internal = true;
   };
 
   # Whether this box hosts machines, as it actually runs: the switch and

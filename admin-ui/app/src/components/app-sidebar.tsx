@@ -3,6 +3,8 @@ import { Link, useLocation } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   ArrowRight01Icon,
+  BubbleChatIcon,
+  Doc01Icon,
   HardDriveIcon,
   Home01Icon,
   LayoutGridIcon,
@@ -40,9 +42,11 @@ import { cn } from "@/lib/utils";
 import { SHORTCUT_ARIA, openPalette, shortcutLabel } from "@/palette/store";
 import { paneById, paneOpen, type SettingsPaneId } from "@/screens/settings/panes";
 import { canUse, heldBy, sharedApp, useMe } from "@/lib/api";
-import { openInNewTab, PinMenu } from "@/components/pin-menu";
+import { openInNewTab, usePinItems } from "@/components/pin-menu";
 import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
 import { pinKey, viewPin, type PinView } from "@/lib/pins";
+import { contextMenu } from "@/lib/context-menu";
+import { useOfficeFolder } from "@/lib/office-folder";
 
 /* The one panel: every destination on this page in a single sidebar, in the
  * shape of shadcn's Sidebar ("collapses to icons"), inside the recessed box.
@@ -53,6 +57,7 @@ import { pinKey, viewPin, type PinView } from "@/lib/pins";
  *
  *   Overview
  *   Apps
+ *   Documents               (a box that edits a folder of documents)
  *   Storage
  *   Mesh                ▾   (the link opens Mesh; the chevron folds)
  *     Market                selling storage and compute, and disk sharing
@@ -74,7 +79,7 @@ import { pinKey, viewPin, type PinView } from "@/lib/pins";
  * A folded entry opens by itself when the page is on one of its
  * sub-entries. The magnifier at the top opens the command palette
  * (src/palette/), as Ctrl/Cmd+Shift+P does, which finds every entry here and
- * also the pins, apps, files in LosOS cloud and repositories in LosOS Git.
+ * also the pins, apps, files in LosOS Cloud and repositories in LosOS Git.
  *
  * On a wide screen the trigger (or Ctrl/Cmd+B) narrows the panel to a rail of
  * icons, each naming itself in a tooltip; on a phone a row naming where you
@@ -89,6 +94,9 @@ interface LinkEntry {
   icon: IconSvgElement;
   /** The settings pane behind it, for matching and for "is this current". */
   pane?: SettingsPaneId;
+  /** An app that runs as the shared user (GET /api/me's `shared`): drawn
+   * only while the box shares its storage and the app is up. */
+  shared?: string;
   children?: readonly Entry[];
 }
 
@@ -118,6 +126,7 @@ const TREE: readonly Entry[] = [
     icon: Home01Icon,
   },
   { kind: "link", key: "apps", to: "/apps", label: "shell.nav.apps", icon: LayoutGridIcon, pane: "apps" },
+  { kind: "link", key: "documents", to: "/office/", label: "office.files.title", icon: Doc01Icon },
   { kind: "link", key: "storage", to: "/storage", label: "shell.nav.storage", icon: HardDriveIcon, pane: "storage" },
   {
     kind: "link",
@@ -137,10 +146,19 @@ const TREE: readonly Entry[] = [
   },
   {
     kind: "link",
+    key: "chat",
+    to: "/chat/",
+    label: "shell.nav.chat",
+    icon: BubbleChatIcon,
+    shared: "chat",
+  },
+  {
+    kind: "link",
     key: "mail",
     to: "/mail",
     label: "shell.nav.mail",
     icon: Mail01Icon,
+    shared: "mail",
   },
   {
     kind: "link",
@@ -148,6 +166,7 @@ const TREE: readonly Entry[] = [
     to: "/ci",
     label: "shell.nav.ci",
     icon: WorkflowSquare01Icon,
+    shared: "ci",
   },
   {
     kind: "fold",
@@ -167,23 +186,23 @@ const TREE: readonly Entry[] = [
  * anyone else the panes of their sections (GET /api/me). A hidden link's
  * own children that stay visible move up a level, so someone in the market
  * section sees Market without Mesh. A fold left empty goes. */
-function allowed(entry: LinkEntry): boolean {
+function allowed(entry: LinkEntry, office: boolean): boolean {
   if (entry.pane !== undefined) return paneOpen(entry.pane);
   if (entry.key === "lab") return canUse("lab");
+  if (entry.key === "documents") return office;
   // Shared-side: there only while the box shares its storage, which lososd
   // says in /api/me's `shared`. With sharing off the page does not exist.
-  if (entry.key === "mail") return sharedApp("mail");
-  if (entry.key === "ci") return sharedApp("ci");
+  if (entry.shared !== undefined) return sharedApp(entry.shared);
   return true;
 }
 
-function visible(entries: readonly Entry[]): Entry[] {
+function visible(entries: readonly Entry[], office: boolean): Entry[] {
   const out: Entry[] = [];
   for (const entry of entries) {
-    const children = visible(entry.children ?? []);
+    const children = visible(entry.children ?? [], office);
     if (entry.kind === "fold") {
       if (children.length > 0) out.push({ ...entry, children });
-    } else if (allowed(entry)) {
+    } else if (allowed(entry, office)) {
       out.push(entry.children === undefined ? entry : { ...entry, children });
     } else {
       out.push(...children);
@@ -197,8 +216,10 @@ function isCurrent(entry: LinkEntry, pathname: string): boolean {
   if (entry.pane === "apps" && pathname.startsWith("/apps/")) return true;
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
   // A run of Mesh CI is still Mesh CI.
-  if (entry.key === "ci") return pathname === "/ci" || pathname.startsWith("/ci/");
-  return pathname.replace(/(.)\/$/, "$1") === entry.to;
+  const path = pathname.replace(/(.)\/$/, "$1");
+  if (entry.key === "ci") return path === "/ci" || path.startsWith("/ci/");
+  if (entry.key === "documents") return path === "/office";
+  return path === entry.to;
 }
 
 function containsCurrent(entry: Entry, pathname: string): boolean {
@@ -214,10 +235,11 @@ export function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
   const rail = !isMobile && state === "collapsed";
   const me = useMe();
+  const office = useOfficeFolder();
   // Someone a rule of LosOS Login holds gets their account, at the top.
   const tree = React.useMemo(
-    () => ((me?.locked?.length ?? 0) > 0 ? [settingsLeaf("account")] : visible(TREE)),
-    [me],
+    () => ((me?.locked?.length ?? 0) > 0 ? [settingsLeaf("account")] : visible(TREE, office)),
+    [me, office],
   );
 
   // Which folds are open. One that holds the current page opens by itself.
@@ -337,6 +359,7 @@ function PinnedSection({
   const t = useT();
   const { pins } = usePins();
   const { busy, save } = useSavePins();
+  const items = usePinItems();
   // On the rail an empty section is nothing to point at.
   if (views.length === 0 && rail) return null;
 
@@ -379,8 +402,10 @@ function PinnedSection({
             const active = view.inApp && pathname === view.href;
             const pin = pins.find((candidate) => pinKey(candidate) === view.key) ?? null;
             return (
-              <SidebarMenuItem key={view.key}>
-                <PinMenu pin={pin} name={name} newTab={() => openInNewTab(view.href)}>
+              <SidebarMenuItem
+                key={view.key}
+                ref={contextMenu(() => ({ label: name, sections: [[items.newTab(() => openInNewTab(view.href))], [items.pin(pin)]] }))}
+              >
                   <SidebarMenuButton
                     isActive={active}
                     tooltip={name}
@@ -399,7 +424,6 @@ function PinnedSection({
                     <Glyph icon={view.icon} active={active} />
                     <span className="group-data-[collapsible=icon]/sidebar:sr-only">{name}</span>
                   </SidebarMenuButton>
-                </PinMenu>
                 <SidebarMenuAction
                   aria-label={t("pins.unpin", { name })}
                   disabled={busy}

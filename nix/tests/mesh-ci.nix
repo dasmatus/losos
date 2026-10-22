@@ -50,38 +50,11 @@ let
   shots = import ./screens { inherit pkgs; };
   PASSWORD = "Correct-Horse-Battery-9";
 
-  # The admin UI as it ships, without LosOS Diagrams (the Lab), which this
-  # test never opens and whose WebAssembly takes longer to build than the
-  # test to run: its page is left out and the shell's lazy import of it
-  # gets an empty component.
-  ui = lososPkgs.losos-admin-ui.overrideAttrs (
-    _:
-    {
-      pname = "losos-admin-ui-without-lab";
-      preBuild = ''
-        cat > vite.ci-test.config.ts <<'EOF'
-        import base from "./vite.config";
-        import { join } from "node:path";
-        import { fileURLToPath } from "node:url";
-        const root = fileURLToPath(new URL(".", import.meta.url));
-        const config = base as Record<string, any>;
-        config.build.rolldownOptions.input = {
-          main: join(root, "index.html"),
-          manage: join(root, "manage/index.html"),
-        };
-        config.resolve.alias.unshift({ find: /^@\/lab\/app$/, replacement: "/src/no-diagrams.tsx" });
-        export default config;
-        EOF
-        echo 'export default function Diagrams() { return null; }' > src/no-diagrams.tsx
-      '';
-      buildPhase = ''
-        runHook preBuild
-        npx vite build --config vite.ci-test.config.ts
-        runHook postBuild
-      '';
-    }
+  # The admin UI as it ships, without the Lab page, which this test never
+  # opens and whose WebAssembly takes longer to build than the test to run.
+  ui = import ./admin-ui-without-lab.nix (
     # The earlier UI shares this one's lock file, so its npm cache too.
-    // lib.optionalAttrs (!after) { src = before; }
+    lososPkgs.losos-admin-ui.overrideAttrs (_: lib.optionalAttrs (!after) { src = before; })
   );
 
   stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
@@ -320,7 +293,7 @@ let
         ../../modules/identity.nix
       ];
       # The real UI signs in through LosOS Login, which claims the box with
-      # a password lososd also gives LosOS cloud: a stand-in answers that.
+      # a password lososd also gives LosOS Cloud: a stand-in answers that.
       systemd.services.lososd = lib.mkIf real {
         path = lib.mkBefore [ stubOcc ];
         environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
@@ -499,99 +472,99 @@ let
             {"click": {"role": "button", "name": "Run workflow"}},
             {"waitFor": {"role": "dialog"}},
         ]
+        def shot(path, wait, title, targets, action=None, steps=None) -> dict:
+            return {
+                "path": path, "waitFor": wait, "steps": steps or [],
+                "film": {"title": title, "action": action or {"kind": "none"}, "targets": targets},
+            }
+
+        ci_button = {"role": "button", "name": "Run workflow"}
         film: list[dict] = [
-            {"path": "/", "waitFor": {"role": "link", "name": "Mesh CI"},
-             "title": "the overview: Mesh CI in the sidebar",
-             "action": {"kind": "click", "target": "ci"},
-             "targets": {"ci": {"role": "link", "name": "Mesh CI"}}},
-            {"path": "/ci", "waitFor": {"text": "CI #1"},
-             "title": "Mesh CI: this box's runner and the runs of the mesh",
-             "action": {"kind": "click", "target": "run"},
-             "targets": {"run": {"text": "CI #1"}, "runner": {"text": "This box's runner"}}},
-            {"path": run_page, "waitFor": {"text": "services"},
-             "title": "a push's run: two jobs, one on each box",
-             "action": {"kind": "click", "target": "step"},
-             "steps": [{"click": {"text": "services"}}],
-             "targets": {"services": {"text": "services"}, "recipe": {"text": "recipe"},
-                         "step": {"text": "Run curl -fsS http://web:7000/ | grep pong"}}},
-            {"path": run_page, "waitFor": {"text": "services"}, "steps": services_log,
-             "title": "a step's log: the service answers by name",
-             "action": {"kind": "click", "target": "recipe"},
-             "targets": {"log": {"selector": "li:has-text('pong')"}, "recipe": {"text": "recipe"}}},
-            {"path": run_page, "waitFor": {"text": "recipe"},
-             "steps": [{"click": {"text": "recipe"}}],
-             "title": "the recipe job, run on the other box",
-             "action": {"kind": "click", "target": "step"},
-             "targets": {"step": {"text": "Run losos-project/pm@v0"}}},
-            {"path": run_page, "waitFor": {"text": "recipe"}, "steps": recipe_log,
-             "title": "pm builds the recipe in its jail",
-             "action": {"kind": "none"},
-             "targets": {"log": {"selector": "li:has-text('building hello version 0.1.0')"}}},
-            {"path": "/ci", "waitFor": {"role": "button", "name": "Run workflow"},
-             "title": "back on Mesh CI",
-             "action": {"kind": "click", "target": "dispatch"},
-             "targets": {"dispatch": {"role": "button", "name": "Run workflow"}}},
-            {"path": "/ci", "waitFor": {"role": "button", "name": "Run workflow"}, "steps": dialog,
-             "title": "the Run workflow dialog",
-             "action": {"kind": "type", "target": "repo"},
-             "targets": {"repo": {"selector": "#ci-dispatch-repo"}}},
+            shot("/", {"role": "link", "name": "Mesh CI"},
+                 "the overview: Mesh CI in the sidebar",
+                 {"ci": {"role": "link", "name": "Mesh CI"}},
+                 {"kind": "click", "target": "ci"}),
+            shot("/ci", {"text": "CI #1"},
+                 "Mesh CI: this box's runner and the runs of the mesh",
+                 {"run": {"text": "CI #1"}, "runner": {"text": "This box's runner"}},
+                 {"kind": "click", "target": "run"}),
+            shot(run_page, {"text": "services"},
+                 "a push's run: two jobs, one on each box",
+                 {"services": {"text": "services"}, "recipe": {"text": "recipe"},
+                  "step": {"text": "Run curl -fsS http://web:7000/ | grep pong"}},
+                 {"kind": "click", "target": "step"},
+                 [{"click": {"text": "services"}}]),
+            shot(run_page, {"text": "services"},
+                 "a step's log: the service answers by name",
+                 {"log": {"selector": "li:has-text('pong')"}, "recipe": {"text": "recipe"}},
+                 {"kind": "click", "target": "recipe"},
+                 services_log),
+            shot(run_page, {"text": "recipe"},
+                 "the recipe job, run on the other box",
+                 {"step": {"text": "Run losos-project/pm@v0"}},
+                 {"kind": "click", "target": "step"},
+                 [{"click": {"text": "recipe"}}]),
+            shot(run_page, {"text": "recipe"},
+                 "pm builds the recipe in its jail",
+                 {"log": {"selector": "li:has-text('building hello version 0.1.0')"}},
+                 steps=recipe_log),
+            shot("/ci", ci_button, "back on Mesh CI",
+                 {"dispatch": ci_button},
+                 {"kind": "click", "target": "dispatch"}),
+            # The dialog's way in, 200 ms, is also a clip at 60 fps.
+            dict(shot("/ci", ci_button, "the Run workflow dialog",
+                      {"repo": {"selector": "#ci-dispatch-repo"}},
+                      {"kind": "type", "target": "repo"},
+                      [{"freeze": True}] + dialog),
+                 clip={"fps": 60, "ms": 300}),
         ]
         typed = "matus/site"
         for i in range(1, len(typed) + 1):
             last = i == len(typed)
-            film.append({
-                "path": "/ci", "waitFor": {"role": "button", "name": "Run workflow"},
-                "steps": dialog + [{"fill": {"label": "Repository", "value": typed[:i]}}],
-                "title": f"typing the repository: {typed[:i]}",
-                "action": {"kind": "click", "target": "find"} if last else {"kind": "type", "target": "repo"},
-                "targets": {"repo": {"selector": "#ci-dispatch-repo"},
-                            "find": {"role": "button", "name": "Find workflows"}},
-            })
-        film.append({
-            "path": "/ci", "waitFor": {"role": "button", "name": "Run workflow"},
-            "steps": dialog + [
-                {"fill": {"label": "Repository", "value": typed}},
-                {"click": {"role": "button", "name": "Find workflows"}},
-                {"waitFor": {"selector": "#ci-dispatch-workflow"}},
-            ],
-            "title": "the workflows that start by hand",
-            "action": {"kind": "click", "target": "run"},
-            "targets": {"workflow": {"selector": "#ci-dispatch-workflow"},
-                        "run": {"role": "button", "name": "Run"}},
-        })
-        film.append({
-            "path": "/ci", "waitFor": {"role": "button", "name": "Run workflow"},
-            "steps": dialog + [
-                {"fill": {"label": "Repository", "value": typed}},
-                {"click": {"role": "button", "name": "Find workflows"}},
-                {"waitFor": {"selector": "#ci-dispatch-workflow"}},
+            film.append(shot(
+                "/ci", ci_button, f"typing the repository: {typed[:i]}",
+                {"repo": {"selector": "#ci-dispatch-repo"},
+                 "find": {"role": "button", "name": "Find workflows"}},
+                {"kind": "click", "target": "find"} if last else {"kind": "type", "target": "repo"},
+                dialog + [{"fill": {"label": "Repository", "value": typed[:i]}}],
+            ))
+        find = dialog + [
+            {"fill": {"label": "Repository", "value": typed}},
+            {"click": {"role": "button", "name": "Find workflows"}},
+            {"waitFor": {"selector": "#ci-dispatch-workflow"}},
+        ]
+        film.append(shot(
+            "/ci", ci_button, "the workflows that start by hand",
+            {"workflow": {"selector": "#ci-dispatch-workflow"},
+             "run": {"role": "button", "name": "Run"}},
+            {"kind": "click", "target": "run"},
+            find,
+        ))
+        film.append(shot(
+            "/ci", ci_button, "the run it started, already on a box",
+            {"job": {"text": "wait"}},
+            # A box takes the job from the edge's queue first.
+            steps=find + [
                 {"click": {"role": "button", "name": "Run"}},
-                # A box takes the job from the edge's queue first.
                 {"waitFor": {"text": "Run echo started; sleep 900"}, "timeout": 900000},
             ],
-            "title": "the run it started, already on a box",
-            "targets": {"job": {"text": "wait"}},
-        })
-        for n, shot in enumerate(film, 1):
-            shot["name"] = f"{n:02d}-" + re.sub(r"[^a-z0-9]+", "-", shot["title"].split(":")[0].lower()).strip("-")
-            shot["steps"] = shot.get("steps", []) + [{"sleep": 1000}]
+        ))
+        for n, s in enumerate(film, 1):
+            s["name"] = f"{n:02d}-" + re.sub(r"[^a-z0-9]+", "-", s["film"]["title"].split(":")[0].lower()).strip("-")
+            s["steps"] = s["steps"] + [{"sleep": 1000}]
         film_plan = {
             "width": 1280,
             "height": 900,
-            "dpr": 2,
-            "colorScheme": "dark",
-            "timezone": "Europe/Bratislava",
-            "manifest": {"feature": "mesh-ci", "commit": "", "test": "losos-mesh-ci-screens",
-                         "host": "mattbox.local"},
-            "clips": {"frames": 30, "fps": 60},
+            "variants": [{"suffix": None, "colorScheme": "dark", "dpr": 2,
+                          "timezoneId": "Europe/Bratislava", "hideCaret": True}],
             "shots": film,
         }
         laptop.succeed(f"cat > /tmp/plan-film.json <<'EOF'\n{json.dumps(film_plan)}\nEOF")
         capture("film", "/tmp/plan-film.json", timeout=5400)
         laptop.succeed(
-            "cd /tmp/screens/film && for d in *.frames; do"
-            " ffmpeg -loglevel error -framerate 60 -i \"$d/%03d.png\""
-            " -c:v libx264 -crf 16 -pix_fmt yuv420p \"''${d%.frames}.mp4\" && rm -r \"$d\"; done",
+            "cd /tmp/screens/film && for f in *-clip-000.png; do n=''${f%-clip-000.png};"
+            " ffmpeg -loglevel error -framerate 60 -i \"$n-clip-%03d.png\""
+            " -c:v libx264 -crf 16 -pix_fmt yuv420p \"$n.mp4\" && rm \"$n\"-clip-*.png; done",
             timeout=1800,
         )
         laptop.copy_from_machine("/tmp/screens", "")

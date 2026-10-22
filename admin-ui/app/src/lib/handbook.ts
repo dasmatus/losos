@@ -37,6 +37,8 @@ export const HANDBOOK_ENTRIES = {
   "look-and-widgets": "manual/look-and-widgets/",
   "backup-and-erase": "manual/backup-and-erase/",
   terminal: "manual/terminal/",
+  chat: "manual/chat/",
+  calls: "manual/calls/",
   mail: "manual/mail/",
   git: "manual/losos-git/",
   "mesh-ci": "manual/mesh-ci/",

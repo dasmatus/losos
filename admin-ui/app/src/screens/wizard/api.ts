@@ -242,7 +242,7 @@ export function postSetPassword(
  *
  * Four rules, and all four are on screen with a tick each before the owner
  * types a character (`passwordRules`): this one password now opens the admin
- * pages as well as LosOS cloud, so it is held to more than length — but an
+ * pages as well as LosOS Cloud, so it is held to more than length — but an
  * owner who meets what is shown is never refused by a rule they did not see.
  * A symbol is anything that is not a letter, a digit or whitespace, so the
  * hyphen between two words of a passphrase counts. */

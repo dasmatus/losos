@@ -69,7 +69,7 @@ function EdgeSign({ official }: { official: boolean }) {
             data-edge-sign={official ? "official" : "warning"}
             className={cn(
               "inline-flex size-5 shrink-0 items-center justify-center rounded-full align-middle",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
               official ? "text-ok" : "text-warn",
             )}
           />
@@ -166,7 +166,7 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
   );
 }
 
-/* A company's own edge may look after LosOS cloud, LosOS Git and the apps
+/* A company's own edge may look after LosOS Cloud, LosOS Git and the apps
  * from its own page, once the owner says so here. The switch names the edge
  * in use and is bound to it: a box that moves to another edge is not managed
  * by that one. It takes effect at once, like the Access tokens pane, rather

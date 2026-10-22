@@ -36,8 +36,9 @@ Mail asks you to sign in with your own account.
 
 ## Reading and writing
 
-- **Folders**: Inbox, Drafts, Sent, Archive, Junk and Bin, with the unread
-  count beside each.
+- **Folders**: Inbox, Drafts, Sent, Archive, Junk and Bin, with your own
+  folders beside them and the unread count beside each. On a wide screen
+  they are a tree on the left of the list; narrower, a row above it.
 - **Search** looks through the open folder: senders, subjects and text.
 - **Write** opens a new message. The **To** field suggests the other people
   on the box. **Reply**, **Reply all** and **Forward** quote the message.
@@ -48,7 +49,72 @@ Mail asks you to sign in with your own account.
   sender's layout in a sandboxed frame with no scripts, no forms and no
   pictures from outside the box, so the sender cannot tell that you opened
   it. A message with no plain text opens in that frame straight away.
-- Attachments download to your computer. They never open inside the page.
+- Attachments download to your computer, and never open inside the page.
+  [Files and LosOS Cloud](#files-and-losos-cloud) says what else you can do
+  with them.
+- When the sender is on this box and the box has Chat, **Chat** and
+  **Call** in the message's toolbar start a conversation with them.
+- Right-click a message in the list to reply, flag, archive or move it
+  without opening it; see
+  [the right-click menu](admin-pages#the-right-click-menu).
+
+## Your own folders
+
+Make folders of your own beside Mail's and inside them, as deep as you
+like.
+
+- **New folder** (the folder icon at the top of the tree) asks for a name
+  and where to put it. A name cannot have a slash in it, and two folders
+  in the same place cannot share a name.
+- Right-click a folder to open it, make a folder inside it, rename it, move
+  it to another folder or to the top level, or delete it. Mail's own
+  folders only open and take folders inside them.
+- Drag a message onto a folder to move it there. Drag one of your folders
+  onto another to put it inside, or onto the empty space under the tree to
+  bring it to the top level.
+- Deleting a folder moves its messages to the bin first, so nothing is lost
+  by a slip. A folder with folders inside it is not deleted until those are
+  moved or deleted.
+
+## Filters
+
+Filters sort new mail as it arrives. They are kept and run by the mail
+server, so they work while Mail is closed and nobody is signed in.
+
+- **Filters**, next to **Write**, lists them in the order they run. The
+  first filter that matches a message decides what happens to it.
+- A filter looks at who the message is from, who it is to (To or Cc), or
+  its subject, for text it contains. Letter case does not matter. It can
+  ask for every condition to match, or any one of them.
+- It then moves the message to a folder (the bin included, which is how a
+  filter deletes), marks it read, flags it, or any of these together.
+- The switch beside a filter turns it off without losing it, and the arrows
+  change the order.
+- Right-click a message and choose **Filter mail like this…** to start a
+  filter for its sender.
+- Filters act on mail that arrives after they are saved; mail already in a
+  folder stays where it is. Deleting a folder turns off a filter that only
+  moved mail into it.
+
+## Files and LosOS Cloud
+
+- **Save to LosOS Cloud** beside an attachment puts it in the **Mail**
+  folder of your LosOS Cloud. **Open** then opens it in the app that edits
+  it: Notes for Markdown, the shared editor for other text files.
+- While writing, **Attach from this computer** and **Attach from LosOS
+  Cloud** add files, up to 20 MB in all. **Forward** keeps the message's
+  attachments.
+- In LosOS Cloud, right-click a file and choose **Send by mail** to start a
+  message with it attached.
+
+## Ask the box's AI
+
+On a box that runs a language model for **Build with AI**, **Summarise** in
+the message's toolbar asks it about the open message. The model runs on the
+box, so the message and the answer stay there, and it reads only the
+message you asked about. It answers one question at a time; on a small box
+an answer can take a few minutes. Text in a message that tells the AI to do
+something counts as part of the message, not as your request.
 
 ## What Mail does not do yet
 

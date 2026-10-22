@@ -114,7 +114,7 @@ pub trait Losos {
     fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus>;
 
     /// Record the custom domains that are live for this box on its edge, for
-    /// LosOS cloud to trust (`trusted_domains`) and to build its links from
+    /// LosOS Cloud to trust (`trusted_domains`) and to build its links from
     /// when a request arrives on one. The edge verified each of them; this is
     /// only the box learning the answer. Sorted, lowercase, deduplicated.
     fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()>;
@@ -1046,7 +1046,7 @@ pub fn cmd_domain_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
     Ok(view)
 }
 
-/// The live domains in an edge's domains view, as LosOS cloud should trust
+/// The live domains in an edge's domains view, as LosOS Cloud should trust
 /// them: lowercase, a plain host name each, sorted, no duplicates. Anything
 /// that is not a host name is dropped rather than trusted, whatever the edge
 /// sent.
@@ -1066,7 +1066,7 @@ pub fn live_public_names(view: &Value) -> Vec<String> {
     names
 }
 
-/// Hand the live names to LosOS cloud and the relay pass to the announce
+/// Hand the live names to LosOS Cloud and the relay pass to the announce
 /// loop, and take the pass out of the view: the admin page has no use for
 /// it. A failure is logged, not returned: the owner asked to see or change
 /// their domains, and that worked.
@@ -1133,7 +1133,7 @@ fn manage_json(managed_by: Option<&str>, status: &crate::edge::EdgeStatus) -> Va
     })
 }
 
-/// Let the company edge this box uses manage its LosOS cloud, LosOS Git and
+/// Let the company edge this box uses manage its LosOS Cloud, LosOS Git and
 /// app settings, or stop it (`POST /api/edge/manage`). Switching on names the
 /// edge in use, so a box that later moves to another edge is not managed by
 /// that one. Switching off always works.
@@ -1174,7 +1174,7 @@ pub fn cmd_options<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     }
 }
 
-/// The settings of LosOS cloud and LosOS Git (`GET /api/site`; see
+/// The settings of LosOS Cloud and LosOS Git (`GET /api/site`; see
 /// `crate::site`), in the shape of `GET /api/options`.
 pub fn cmd_site<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     match l.read_options_doc()? {
