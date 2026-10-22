@@ -170,7 +170,7 @@ let
           ];
         })
         # What this change adds beyond the opening: the dialog leaving, and
-        # a switch's thumb while it is held down.
+        # a switch's thumb while it is held down (a still: the mouse stays down).
         (shot {
           name = "motion-palette-close";
           path = "/";
@@ -185,7 +185,6 @@ let
         (shot {
           name = "motion-switch-hold";
           path = "/settings/security";
-          strip = frames;
           steps = [
             { hold.selector = "[data-slot=switch]"; }
           ];
@@ -329,7 +328,7 @@ pkgs.testers.nixosTest {
             capture("/etc/losos-test/motion-plan.json", "/tmp/screens")
         finally:
             laptop.copy_from_machine("/tmp/screens", "")
-        for name in ["motion-person-menu", "motion-palette", "motion-switch", "motion-palette-close", "motion-switch-hold"]:
+        for name in ["motion-person-menu", "motion-palette", "motion-switch", "motion-palette-close"]:
             for ms in ["000", "080", "240"]:
                 laptop.succeed(f"test -s /tmp/screens/{name}-light-desktop-{ms}ms.png")
             laptop.succeed(f"test -s /tmp/screens/{name}-light-desktop.png")

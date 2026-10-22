@@ -89,6 +89,17 @@ export default function CommandPalette() {
   const t = useT();
   const { open, query, serial } = React.useSyncExternalStore(subscribePalette, paletteState, paletteState);
   const titleId = React.useId();
+  // The body stays a moment after closing, for the dialog's way out
+  // (index.css, 120 ms): unmounted at once, an empty box would fade.
+  const [kept, setKept] = React.useState(open);
+  React.useEffect(() => {
+    if (open) {
+      setKept(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setKept(false), 150);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   return (
     <Dialog
@@ -105,7 +116,7 @@ export default function CommandPalette() {
       </h2>
       {/* A fresh body per opening: the query starts from what was handed
           over and nothing lingers from the last search. */}
-      {open && <PaletteBody key={serial} initial={query} />}
+      {(open || kept) && <PaletteBody key={serial} initial={query} />}
     </Dialog>
   );
 }
