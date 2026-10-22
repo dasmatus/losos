@@ -44,6 +44,8 @@
 // at its start through the DevTools protocol, then moved to each time in the
 // list and photographed, `<shot>-<ms>ms.png`. A recording would lose the
 // frames a slow emulated machine never paints; a frozen animation waits.
+// `"clip": {"fps": 60, "ms": 300}` takes the same frames at an even rate
+// instead, `<shot>-clip-NNN.png`, for a video at that rate.
 //
 // Every run also writes report.json beside the pictures: per picture, the
 // page's width against the window's (a page wider than a phone scrolls
@@ -128,6 +130,8 @@ async function strip(variant, width, shot, name, storageState) {
     locale: variant.locale ?? plan.locale ?? 'en-US',
     colorScheme: variant.colorScheme ?? plan.colorScheme ?? 'light',
     reducedMotion: 'no-preference',
+    deviceScaleFactor: variant.dpr ?? 1,
+    ...(variant.timezoneId ? { timezoneId: variant.timezoneId } : {}),
     // The session and the page's storage of the context that took the
     // stills, so the strip opens on the same signed-in page.
     storageState,
@@ -191,7 +195,10 @@ async function strip(variant, width, shot, name, storageState) {
     // One at a time: an animation a later one replaced (a hover's, say) is
     // gone, and the protocol refuses the whole list for one missing id.
     let ids = [...started];
-    for (const ms of shot.strip) {
+    const times = shot.clip
+      ? Array.from({ length: Math.floor((shot.clip.ms * shot.clip.fps) / 1000) + 1 }, (_, i) => (i * 1000) / shot.clip.fps)
+      : shot.strip;
+    for (const [frame, ms] of times.entries()) {
       const live = [];
       for (const id of ids) {
         try {
@@ -207,11 +214,12 @@ async function strip(variant, width, shot, name, storageState) {
         for (const a of fresh) a.currentTime = time;
         return fresh.length;
       }, ms);
-      if (ms === shot.strip[0]) console.log(`strip ${name}: the page lists ${fromPage} new animations`);
-      const path = join(args.out, `${name}-${String(ms).padStart(3, '0')}ms.png`);
+      if (frame === 0) console.log(`strip ${name}: the page lists ${fromPage} new animations`);
+      const file = shot.clip ? `clip-${String(frame).padStart(3, '0')}` : `${String(ms).padStart(3, '0')}ms`;
+      const path = join(args.out, `${name}-${file}.png`);
       await page.screenshot({ path, timeout: 180000 });
     }
-    console.log(`strip ${name}: ${ids.length} animations at ${shot.strip.join(', ')} ms`);
+    console.log(`strip ${name}: ${ids.length} animations over ${times.length} frames`);
     // No motion is a finding too (the before picture of a change that adds
     // some), so the frames are kept and it is only said.
     if (ids.length === 0) console.log(`strip ${name}: the steps started no animation`);
@@ -307,7 +315,7 @@ try {
     }
     const storageState = await context.storageState();
     await context.close();
-    for (const shot of plan.shots.filter((s) => s.strip)) {
+    for (const shot of plan.shots.filter((s) => s.strip || s.clip)) {
       const name = variant.suffix ? `${shot.name}-${variant.suffix}` : shot.name;
       await strip(variant, width, shot, name, storageState);
     }
