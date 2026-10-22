@@ -41,6 +41,8 @@ const bundle = async (entry) =>
       format: 'esm',
       platform: 'browser',
       write: false,
+      // src/calls/background.ts reads Vite's base path.
+      define: { 'import.meta.env.BASE_URL': '"/"' },
     })
   ).outputFiles[0].text;
 
@@ -254,6 +256,37 @@ await check('two people see each other through the SFU, decrypted', async () => 
   assert.ok(m.sealed > 50 && e.sealed > 50, JSON.stringify({ m, e }));
   assert.ok(m.opened > 20 && e.opened > 20, JSON.stringify({ m, e }));
   assert.equal(m.refused + e.refused, 0, 'no frame failed to authenticate');
+});
+
+await check('Opus sends at 128 kb/s, and the camera keeps its frame rate before its resolution', async () => {
+  const sent = await matus.evaluate(async () => {
+    const pc = window.connection;
+    const [audio, camera, screen] = pc.getTransceivers().map((t) => t.sender.getParameters());
+    let target = 0;
+    let fps = 0;
+    for (let i = 0; i < 50 && (target === 0 || fps === 0); i++) {
+      for (const r of (await pc.getStats()).values()) {
+        if (r.type === 'outbound-rtp' && r.kind === 'audio') target = r.targetBitrate ?? 0;
+        if (r.type === 'outbound-rtp' && r.kind === 'video' && r.framesPerSecond) fps = Math.max(fps, r.framesPerSecond);
+      }
+      await new Promise((ok) => setTimeout(ok, 200));
+    }
+    return {
+      audioMax: audio.encodings[0]?.maxBitrate,
+      cameraMax: camera.encodings[0]?.maxBitrate,
+      camera: camera.degradationPreference,
+      screen: screen.degradationPreference,
+      target,
+      fps,
+    };
+  });
+  assert.equal(sent.audioMax, 128000, JSON.stringify(sent));
+  assert.equal(sent.cameraMax, 1500000, JSON.stringify(sent));
+  assert.equal(sent.camera, 'maintain-framerate', JSON.stringify(sent));
+  assert.equal(sent.screen, 'maintain-resolution', JSON.stringify(sent));
+  // The encoder aims for the cap, not Opus's 32 kb/s default.
+  assert.ok(sent.target >= 100000, JSON.stringify(sent));
+  assert.ok(sent.fps >= 15, JSON.stringify(sent));
 });
 
 await check('a shared screen reaches the others as a track of its own, beside the camera', async () => {
@@ -515,6 +548,50 @@ await check('the tapped frames are AES-GCM under keys only the members had', asy
     const errors = ffmpegErrors(clean);
     assert.ok(errors <= 3, `${who}: ${errors} decode errors once decrypted`);
   }
+});
+
+await check('a call starts without a camera, or listening only without a microphone', async () => {
+  const r = await create('matus', ['@eva:calls.test', '@jan:calls.test']);
+  call = (await r.json()).call;
+  // Each tab's browser has no camera, or no device at all.
+  const without = async (name, user, device, refuse) => {
+    const p = await ctx.newPage();
+    p.on('pageerror', (e) => console.log(`[${user}] ${e}`));
+    await p.addInitScript((refuse) => {
+      const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = (c) =>
+        (refuse === 'all' || c?.video) ? Promise.reject(new DOMException('Requested device not found', 'NotFoundError')) : open(c);
+    }, refuse);
+    await p.goto(`http://127.0.0.1:${pagePort}/`);
+    await p.waitForFunction(() => typeof window.startCall === 'function');
+    await p.evaluate((o) => window.startCall(o), {
+      socket: `ws://${front}/as/${name}/calls/api/ws`,
+      call,
+      me: { user, device },
+      media: true,
+      video: true,
+    });
+    return p;
+  };
+  const host = await tab('matus', '@matus:calls.test', 'MATUSDEV2', { media: true });
+  const noCamera = await without('eva', '@eva:calls.test', 'EVADEV2', 'camera');
+  const nothing = await without('jan', '@jan:calls.test', 'JANDEV2', 'all');
+  const said = (p) => p.evaluate(() => ({ missing: window.media.missing, camera: window.media.cameraOn, mic: window.media.micOn }));
+  assert.deepEqual(await said(noCamera), { missing: { mic: false, camera: true }, camera: false, mic: true });
+  assert.deepEqual(await said(nothing), { missing: { mic: true, camera: true }, camera: false, mic: false });
+  await until('all three in the call', async () => (await members(host)).length === 3);
+  // The camera-less one is heard: their sound reaches the host, the only
+  // sound it receives, as jan has no microphone.
+  const heard = () =>
+    host.evaluate(async () => {
+      let packets = 0;
+      for (const r of (await window.connection.getStats()).values()) {
+        if (r.type === 'inbound-rtp' && r.kind === 'audio') packets += r.packetsReceived ?? 0;
+      }
+      return packets;
+    });
+  await until("eva's sound at matus", async () => (await heard()) > 100, 30000);
+  for (const p of [host, noCamera, nothing]) await p.evaluate(() => window.session.leave());
 });
 
 await browser.close();

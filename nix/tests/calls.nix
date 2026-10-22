@@ -1251,6 +1251,37 @@ pkgs.testers.nixosTest {
         owner.locator("[data-call-view]").wait_for(state="detached")
         ring.wait_for(state="detached", timeout=60000)
 
+    with subtest("without a camera, a video call starts with it off"):
+        # Jan's browser has no camera: every request for one fails, as on
+        # a desktop with none plugged in. The call goes on without it.
+        nocam = jan.context.new_page()
+        nocam.set_default_timeout(90000)
+        nocam.on("pageerror", lambda err: problems.append(f"jan (no camera): {err}"))
+        nocam.add_init_script("""
+          const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+          navigator.mediaDevices.getUserMedia = (c) => c && c.video
+            ? Promise.reject(new DOMException('Requested device not found', 'NotFoundError'))
+            : open(c);
+        """)
+        nocam.goto(f"https://{HOST}/chat/?with=matus&call=video")
+        nocam.locator("[data-call-view]").wait_for(timeout=60000)
+        nocam.get_by_text("No camera", exact=True).first.wait_for()
+        nocam.get_by_role("button", name="Turn on camera").wait_for()
+        ring = owner.locator("[data-ringing]")
+        ring.wait_for(timeout=60000)
+        ring.get_by_role("button", name="Answer", exact=True).click()
+        owner.locator("[data-call-view]").wait_for()
+        until_js(nocam, "() => document.querySelectorAll('[data-call-view] [data-pid]').length === 2")
+        until_js(owner, "() => document.querySelectorAll('[data-call-view] [data-pid]').length === 2")
+        settle(nocam)
+        shot(nocam, "no-camera")
+        shot(owner, "no-camera-matus")
+        # Jan hangs up; Matus, left alone, leaves by himself.
+        nocam.get_by_role("button", name="Leave the call").click()
+        for page in (nocam, owner):
+            page.locator("[data-call-view]").wait_for(state="detached", timeout=60000)
+        nocam.close()
+
     with subtest("with sharing off there are no calls at all"):
         switch("unshared")
         box.wait_until_fails("systemctl is-active losos-calls.service")

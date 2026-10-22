@@ -11,6 +11,7 @@
 import { fromBase64, randomKey, SendKey, toBase64 } from './e2ee';
 import type { TransformOptions, WorkerIn, WorkerOut, WorkerStats } from './e2ee-protocol';
 import { GuestKeys, parseSecret, type RelayBody } from './guests';
+import { AUDIO_SEND, CAMERA_SEND, degrade, SCREEN_SEND } from './quality';
 
 export interface Member {
   pid: number;
@@ -121,6 +122,7 @@ export class CallSession {
   private early = new Map<number, { from: Sender; msg: KeyMessage }[]>();
   private timers: ReturnType<typeof setInterval>[] = [];
   private unsubscribe: () => void;
+  private audioSender: RTCRtpSender | null = null;
   private videoSender: RTCRtpSender | null = null;
   private screenSender: RTCRtpSender | null = null;
   private screen = new MediaStream();
@@ -221,6 +223,8 @@ export class CallSession {
         break;
       case 'answer':
         await this.pc.setRemoteDescription({ type: 'answer', sdp: m.sdp as string });
+        if (this.videoSender !== null) await degrade(this.videoSender, 'maintain-framerate');
+        if (this.screenSender !== null) await degrade(this.screenSender, 'maintain-resolution');
         break;
       case 'offer': {
         await this.pc.setRemoteDescription({ type: 'offer', sdp: m.sdp as string });
@@ -303,16 +307,18 @@ export class CallSession {
    * that order (the SFU takes the second video m-line for the screen).
    * Muting toggles the track and sharing replaces the screen's; the
    * m-lines never change. The screen is sealed with the same video keys
-   * and the same frame counter as the camera, in the one worker. */
+   * and the same frame counter as the camera, in the one worker. How much
+   * each may send is in quality.ts. */
   private async offer(): Promise<void> {
     const [audio] = this.opts.local.getAudioTracks();
     const [video] = this.opts.local.getVideoTracks();
-    const a = this.pc.addTransceiver(audio ?? 'audio', { direction: 'sendonly', streams: [this.opts.local] });
-    const v = this.pc.addTransceiver(video ?? 'video', { direction: 'sendonly', streams: [this.opts.local] });
+    const a = this.pc.addTransceiver(audio ?? 'audio', { direction: 'sendonly', streams: [this.opts.local], sendEncodings: [AUDIO_SEND] });
+    const v = this.pc.addTransceiver(video ?? 'video', { direction: 'sendonly', streams: [this.opts.local], sendEncodings: [CAMERA_SEND] });
     this.attach(a.sender as Encodable, { op: 'seal', kind: 'audio' });
-    const s = this.pc.addTransceiver('video', { direction: 'sendonly', streams: [this.screen] });
+    const s = this.pc.addTransceiver('video', { direction: 'sendonly', streams: [this.screen], sendEncodings: [SCREEN_SEND] });
     this.attach(v.sender as Encodable, { op: 'seal', kind: 'video' });
     this.attach(s.sender as Encodable, { op: 'seal', kind: 'video' });
+    this.audioSender = a.sender;
     this.videoSender = v.sender;
     this.screenSender = s.sender;
     const offer = await this.pc.createOffer();
@@ -463,6 +469,11 @@ export class CallSession {
    * stays, so no renegotiation is needed. */
   async setVideoTrack(track: MediaStreamTrack | null): Promise<void> {
     await this.videoSender?.replaceTrack(track);
+  }
+
+  /* Send a microphone that was opened after the call started. */
+  async setAudioTrack(track: MediaStreamTrack | null): Promise<void> {
+    await this.audioSender?.replaceTrack(track);
   }
 
   /* This page's participant id, once the SFU said it. */

@@ -9,13 +9,23 @@
  * before it is encrypted. The room never leaves the device.
  *
  * The output starts black and stays black on any frame the segmenter
- * cannot read: a failure shows nothing rather than the room. */
+ * cannot read: a failure shows nothing rather than the room.
+ *
+ * Two things keep the edge of the person from shimmering: each mask is
+ * mixed with the one before it (SMOOTH), and it is drawn with a slight
+ * blur, so the outline follows the person without jumping a pixel each
+ * frame. Frames are drawn on a fixed 30 a second clock that counts the
+ * time a frame took, so a slow mask does not slow the next frame down. */
 
 import type { ImageSegmenter } from "@mediapipe/tasks-vision";
 
 /* Where the vite build puts the segmenter's files (vite.config.ts). */
 const BASE = `${import.meta.env.BASE_URL}chat/calls-ml`;
 const FPS = 30;
+/* How much of the previous mask each new one keeps. */
+const SMOOTH = 0.35;
+/* The mask's blur, in pixels of the sent picture. */
+const FEATHER = 2;
 
 let loading: Promise<ImageSegmenter> | null = null;
 
@@ -54,6 +64,7 @@ export class BlackBackground {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, width, height);
     this.track = out.captureStream(FPS).getVideoTracks()[0] as MediaStreamTrack;
+    this.track.contentHint = "motion";
 
     const mask = document.createElement("canvas");
     const maskCtx = mask.getContext("2d");
@@ -66,6 +77,7 @@ export class BlackBackground {
     void this.video.play().catch(() => undefined);
 
     let image: ImageData | null = null;
+    let previous: Float32Array | null = null;
     const draw = (): void => {
       if (this.video.readyState < 2) return;
       ctx.globalCompositeOperation = "copy";
@@ -81,28 +93,45 @@ export class BlackBackground {
           mask.width = w;
           mask.height = h;
           image = maskCtx.createImageData(w, h);
+          previous = null;
         }
+        previous ??= new Float32Array(values);
         const px = image.data;
-        for (let i = 0; i < values.length; i++) px[i * 4 + 3] = Math.round((values[i] ?? 0) * 255);
+        for (let i = 0; i < values.length; i++) {
+          const v = (values[i] ?? 0) * (1 - SMOOTH) + (previous[i] ?? 0) * SMOOTH;
+          previous[i] = v;
+          px[i * 4 + 3] = Math.round(v * 255);
+        }
         result.close();
         maskCtx.putImageData(image, 0, 0);
-        // The mask, scaled smooth; the person through it; black under it.
+        // The mask, scaled smooth and feathered; the person through it;
+        // black under it.
+        ctx.filter = `blur(${FEATHER}px)`;
         ctx.drawImage(mask, 0, 0, width, height);
+        ctx.filter = "none";
         ctx.globalCompositeOperation = "source-in";
         ctx.drawImage(this.video, 0, 0, width, height);
         ctx.globalCompositeOperation = "destination-over";
         ctx.fillRect(0, 0, width, height);
       } catch {
+        ctx.filter = "none";
+        ctx.globalCompositeOperation = "copy";
         ctx.fillRect(0, 0, width, height);
       }
     };
 
+    // A timer, not the video's frame callback: the video is never on the
+    // page, and a detached video need not report frames. Each wait is
+    // what is left of the frame after drawing it.
+    const period = 1000 / FPS;
+    let due = performance.now();
     const loop = (): void => {
       if (!this.running) return;
       draw();
-      // A timer, not the video's frame callback: the video is never on
-      // the page, and a detached video need not report frames.
-      setTimeout(loop, 1000 / FPS);
+      due += period;
+      const now = performance.now();
+      if (due < now - period) due = now;
+      setTimeout(loop, Math.max(0, due - now));
     };
     loop();
   }

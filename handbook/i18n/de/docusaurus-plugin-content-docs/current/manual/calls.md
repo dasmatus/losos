@@ -27,6 +27,11 @@ ein, sind die Anrufe nach dem nächsten Anwenden zurück.
 **Sprachanruf** und **Videoanruf**. Dein Browser fragt einmal nach dem
 Mikrofon, und nach der Kamera, wenn du mit Video startest.
 
+Ein Anruf braucht keine Kamera. Öffnet der Browser keine, weil keine da ist
+oder du sie nicht erlaubt hast, bist du mit ausgeschalteter Kamera dabei,
+und eine Meldung sagt das; die anderen hören dich wie gewohnt. Ohne
+Mikrofon hörst du nur zu, und der Mikrofonknopf fragt erneut danach.
+
 Alle im Raum bekommen in der Ecke ihrer Chat-Seite eine Karte, die eine
 Minute lang klingelt. **Annehmen** tritt so bei, wie der Anruf gestartet
 wurde. Bei einem Videoanruf tritt **Ohne Video annehmen** nur
@@ -45,6 +50,12 @@ deine Kamera aus und ein, teilen deinen Bildschirm, wechseln deinen
 Hintergrund, laden einen Gast ein, öffnen den Podcast-Modus und verlassen
 den Anruf. Die Kamera auszuschalten hält sie an, ihr Licht geht aus, und
 bis du sie wieder einschaltest, wird nichts gesendet.
+
+Deine Stimme geht mit 128 kb/s über den ganzen hörbaren Bereich hinaus,
+mit Echo- und Rauschunterdrückung des Browsers. Deine Kamera sendet bis zu
+720p mit 30 Bildern pro Sekunde. Reicht die Verbindung nicht, senkt sie
+zuerst die Schärfe und hält die Bewegung flüssig; ein geteilter Bildschirm
+macht es umgekehrt und hält seinen Text scharf.
 
 Das Schild **Ende-zu-Ende-verschlüsselt** oben zeigt, wie viele Bilder dein
 Browser verschlüsselt gesendet und wie viele er empfangen und geöffnet hat.

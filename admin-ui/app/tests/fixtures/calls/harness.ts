@@ -5,6 +5,7 @@
 
 import { CallSession, type KeyMessage, type Member } from '../../../src/calls/session';
 import { Podcast } from '../../../src/calls/podcast';
+import { LocalMedia } from '../../../src/calls/local';
 import type { WorkerStats } from '../../../src/calls/e2ee-protocol';
 
 interface Joined {
@@ -30,10 +31,21 @@ w.startCall = async (opts: {
   me?: Joined;
   dropKeys?: boolean;
   video?: boolean;
+  /* Open the devices as the call page does (src/calls/local.ts), with the
+   * room shown, in place of a plain getUserMedia. */
+  media?: boolean;
   /* Join as a guest, with no key channel of its own. */
   guest?: { invite: string; name: string; secret: string };
 }) => {
-  const local = await navigator.mediaDevices.getUserMedia({ audio: true, video: opts.video !== false });
+  let local: MediaStream;
+  if (opts.media) {
+    localStorage.setItem('losos.calls.background', 'real');
+    const media = await LocalMedia.open(opts.video !== false);
+    w.media = media;
+    local = media.stream;
+  } else {
+    local = await navigator.mediaDevices.getUserMedia({ audio: true, video: opts.video !== false });
+  }
   const bus = new BroadcastChannel('losos-call-keys');
   const me = opts.me ?? { user: '', device: '' };
   const session = new CallSession({
@@ -90,6 +102,7 @@ w.startCall = async (opts: {
   w.session = session;
   w.local = local;
   w.callOpts = opts;
+  w.connection = (session as unknown as { pc: RTCPeerConnection }).pc;
   const mine = document.createElement('video');
   mine.id = 'local';
   mine.autoplay = true;

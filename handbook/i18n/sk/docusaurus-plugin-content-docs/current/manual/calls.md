@@ -27,6 +27,11 @@ Otvorte miestnosť alebo priamu správu. V hlavičke sú dve tlačidlá,
 **Hlasový hovor** a **Videohovor**. Prehliadač sa raz opýta na mikrofón, a
 na kameru, keď začínate s videom.
 
+Hovor kameru nepotrebuje. Ak prehliadač žiadnu neotvorí, lebo žiadna nie je
+alebo ste ju nepovolili, pripojíte sa s vypnutou kamerou a ukáže sa o tom
+správa; ostatní vás počujú ako zvyčajne. Bez mikrofónu sa pripojíte len ako
+poslucháč a tlačidlo mikrofónu sa naň opýta znova.
+
 Každému v miestnosti sa v rohu stránky chatu ukáže karta, ktorá zvoní
 minútu. **Prijať** pripojí tak, ako sa hovor začal. Pri
 videohovore **Prijať bez videa** pripojí len s mikrofónom. **Odmietnuť**
@@ -45,6 +50,11 @@ mikrofón a kameru, zdieľajú obrazovku, prepínajú pozadie, pozývajú hosťa
 otvárajú režim podcastu a ukončia vašu účasť v hovore. Vypnutie kamery ju
 zastaví, takže zhasne jej svetlo, a kým ju znova nezapnete, neposiela sa
 nič.
+
+Váš hlas sa posiela rýchlosťou 128 kb/s v celom počuteľnom rozsahu, so
+zapnutým potlačením ozveny a šumu v prehliadači. Kamera posiela až 720p pri
+30 snímkach za sekundu. Keď spojenie nestačí, najprv zníži ostrosť a pohyb
+nechá plynulý; zdieľaná obrazovka robí opak a text nechá ostrý.
 
 Štítok **Šifrované end-to-end** hore ukazuje, koľko snímok váš prehliadač
 poslal zašifrovaných a koľko prijal a otvoril.
