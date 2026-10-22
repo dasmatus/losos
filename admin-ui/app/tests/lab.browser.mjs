@@ -1,7 +1,8 @@
-/* LosOS Lab (/lab/, the second page of this bundle) under its own policy.
+/* The network views of LosOS Diagrams (/diagrams/, the second page of this
+ * bundle) under its own policy.
  *
  * The real dist/ bundle and the real simulator (src/lab/core-pkg, built by
- * `npm run lab:core`), served with LAB_CSP the way nginx serves /lab/. Every
+ * `npm run lab:core`), served with LAB_CSP the way nginx serves /diagrams/. Every
  * page here fails on a CSP violation and on an uncaught error, so a library
  * that injects a <style> or a component that writes a style attribute turns
  * this red before it reaches a box. What a person does with the Lab is
@@ -24,7 +25,7 @@
 
 import assert from 'node:assert';
 import { readFile } from 'node:fs/promises';
-import { launch, runner, serve } from './harness.mjs';
+import { launch, runner, serve, shellRoutes } from './harness.mjs';
 
 const TOKEN = 'b'.repeat(64);
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -58,11 +59,13 @@ const EDGE = {
 async function open({
   viewport = { width: 1440, height: 900 },
   locale = 'en-US',
-  signedIn = false,
+  signedIn = true,
   scheme = 'light',
   routes = null,
   canvas = 'svg',
+  view = 'logical',
   on = browser,
+  setup = null,
 } = {}) {
   const page = await on.newPage({ viewport, locale, colorScheme: scheme, acceptDownloads: true });
   const errors = [];
@@ -75,17 +78,29 @@ async function open({
   });
   if (signedIn) await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   const authed = (route) => route.request().headers()['authorization'] === `Bearer ${TOKEN}`;
-  await page.route('**/api/**', (route) => json(route, 401, { error: 'unauthorized' }));
+  await shellRoutes(page);
   await page.route('**/api/settings', (route) => (authed(route) ? json(route, 200, SETTINGS) : json(route, 401, {})));
   await page.route('**/api/edge', (route) => (authed(route) ? json(route, 200, EDGE) : json(route, 401, {})));
+  // The machine cards read the Machines pane's list; a 401 there would drop the key.
+  await page.route('**/api/vms', (route) => json(route, 200, { available: false, reason: 'notSharing' }));
   if (routes) await routes(page, authed);
   // The checks below read the SVG canvas's DOM, so they pin it; the GPU
   // canvas has a check of its own at the end.
-  await page.goto(origin + '/lab/' + (canvas ? `?canvas=${canvas}` : ''));
+  // The network checks start in the logical view; the diagram has its own
+  // checks in diagrams.browser.mjs.
+  const query = new URLSearchParams({ ...(canvas ? { canvas } : {}), ...(view ? { view } : {}) });
+  await page.goto(origin + '/diagrams/?' + query);
   await page.getByTestId('lab').waitFor({ timeout: 15000 });
   await page.getByTestId('lab-splash').waitFor({ state: 'detached', timeout: 15000 });
+  // A built-in example in place of this box, for the checks written against it.
+  if (setup) await page.getByTestId('setup-picker').selectOption(setup);
+  /* Sonner's refused copy of its own stylesheet is logged at load, as on
+   * every admin page (tests/app.browser.mjs); its rules come from the
+   * bundle. Nothing after that may add a violation. */
+  const atLoad = await page.evaluate(() => window.__violations);
+  assert.ok(atLoad.length <= 2 && atLoad.every((v) => v === 'style-src-elem inline'), `CSP violations at load: ${atLoad.join(', ')}`);
   const clean = async () => {
-    const violations = await page.evaluate(() => window.__violations);
+    const violations = (await page.evaluate(() => window.__violations)).slice(atLoad.length);
     assert.deepStrictEqual(violations, [], `CSP violations: ${violations.join(', ')}`);
     assert.deepStrictEqual(errors, [], `page errors: ${errors.join(' | ')}`);
   };
@@ -96,14 +111,26 @@ const devices = (page) => page.locator('[data-testid=lab-canvas-wrap] g.node[dat
 const links = (page) => page.locator('[data-testid=lab-canvas-wrap] [data-link]').count();
 const node = (page, name) => page.locator(`[data-testid=lab-canvas-wrap] [data-dev][aria-label^="${name},"]`);
 
-await check('loads under the lab CSP, simulated, signed out says so', async () => {
+/* A point of `target`, relative to its box, that `cover` does not lie over. */
+async function uncovered(target, cover) {
+  const t = await target.boundingBox();
+  const c = await cover.boundingBox();
+  const inset = 4;
+  for (const [fx, fy] of [[0.5, 0.5], [0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0], [0.5, 1], [0, 0.5], [1, 0.5]]) {
+    const x = inset + fx * (t.width - 2 * inset);
+    const y = inset + fy * (t.height - 2 * inset);
+    const inCover = t.x + x >= c.x && t.x + x <= c.x + c.width && t.y + y >= c.y && t.y + y <= c.y + c.height;
+    if (!inCover) return { x, y };
+  }
+  throw new Error('the new device covers the whole router');
+}
+
+await check('loads inside the admin shell under its policy, simulated, on this box', async () => {
   const { page, clean } = await open();
-  await page.getByText('Sign in on the admin page first, then open the lab').waitFor();
-  assert.strictEqual(await page.getByTestId('setup-picker').locator('option[value=this-box-problem]').innerText(), 'This box: sign in on the admin page first');
+  await page.locator('aside, nav').getByRole('link', { name: 'Diagrams' }).first().waitFor();
   assert.match(await page.getByTestId('engine-badge').innerText(), /Simulated consoles/);
-  assert.ok((await devices(page)) >= 5, 'the default setup draws its devices');
-  const picker = page.getByTestId('setup-picker');
-  assert.strictEqual(await picker.inputValue(), 'two-sites');
+  assert.ok((await devices(page)) >= 3, 'this box is drawn with its router and laptop');
+  assert.strictEqual(await page.getByTestId('setup-picker').locator('option[value=this-box-problem]').count(), 0);
   await clean();
   await page.close();
 });
@@ -127,7 +154,7 @@ await check('This box: signed in, the lab draws this box from /api', async () =>
   const { page, clean } = await open({ signedIn: true });
   const picker = page.getByTestId('setup-picker');
   assert.strictEqual(await picker.inputValue(), 'this-box');
-  assert.strictEqual(await page.getByText('Sign in on the admin page first, then open the lab').count(), 0);
+  assert.strictEqual(await page.getByText('Sign in on the admin page first, then open Diagrams').count(), 0);
   assert.ok((await node(page, 'mattbox').count()) === 1, 'the box carries its hostName');
   await clean();
   await page.close();
@@ -196,14 +223,14 @@ await check('ordering: with no official edge the dialog says why and offers no p
 });
 
 await check('place from the tray, drag, connect, delete with the keyboard', async () => {
-  const { page, clean } = await open();
+  const { page, clean } = await open({ setup: 'two-sites' });
   const wrap = await page.getByTestId('lab-canvas-wrap').boundingBox();
   const before = await devices(page);
   const linksBefore = await links(page);
 
   // place: a Box from the tray, dropped on empty canvas
   await page.locator('[data-testid=tray-items] [data-type=box]').click();
-  await page.mouse.click(wrap.x + 420, wrap.y + wrap.height - 90);
+  await page.mouse.click(wrap.x + 150, wrap.y + 70);
   assert.strictEqual(await devices(page), before + 1, 'one device placed');
   const ids = await page.locator('[data-testid=lab-canvas-wrap] g.node[data-dev]').evaluateAll((ns) => ns.map((n) => n.getAttribute('data-dev')));
   const added = ids[ids.length - 1];
@@ -226,7 +253,10 @@ await check('place from the tray, drag, connect, delete with the keyboard', asyn
   await fresh.click();
   const port = page.getByTestId('connect-port');
   if (await port.count()) await port.selectOption({ index: 0 });
-  await node(page, 'home-router').click();
+  // Where the camera put the setup decides where the new box lands, and it
+  // can come to lie over part of the router: click a part still showing.
+  const router = node(page, 'home-router').locator('rect').first();
+  await router.click({ position: await uncovered(router, fresh) });
   assert.strictEqual(await links(page), linksBefore + 1, 'one cable laid');
   await page.keyboard.press('Escape');
 
@@ -241,15 +271,16 @@ await check('place from the tray, drag, connect, delete with the keyboard', asyn
 });
 
 await check('Save, then Open the file: the same setup comes back', async () => {
-  const { page, clean } = await open();
+  const { page, clean } = await open({ setup: 'two-sites' });
   // change something first, so the saved file is not a built-in
   await page.locator('[data-testid=tray-items] [data-type=box]').click();
   const wrap = await page.getByTestId('lab-canvas-wrap').boundingBox();
   await page.mouse.click(wrap.x + 420, wrap.y + wrap.height - 90);
   await page.keyboard.press('Escape');
   const saved = await devices(page);
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Save' }).click()]);
-  assert.match(download.suggestedFilename(), /\.llf$/);
+  await page.getByTestId('file-menu').click();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('file-download').click()]);
+  assert.match(download.suggestedFilename(), /\.canvas$/);
   const text = await readFile(await download.path(), 'utf8');
   JSON.parse(text);
 
@@ -284,8 +315,8 @@ await check('Simulation: Step advances the clock and logs events', async () => {
 });
 
 await check('the physical view draws rooms and hardware', async () => {
-  const { page, clean } = await open();
-  await page.getByRole('radio', { name: 'Physical' }).click();
+  const { page, clean } = await open({ setup: 'two-sites' });
+  await page.getByTestId('view-physical').click();
   await page.locator('[data-testid=lab-canvas-wrap] g.hw[data-dev]').first().waitFor();
   assert.ok((await page.locator('[data-testid=lab-canvas-wrap] .room').count()) >= 3, 'rooms drawn');
 
@@ -345,7 +376,7 @@ await check('the chrome speaks Slovak and German, device blurbs stay English', a
     ['de-DE', 'Logisch', 'Simulation'],
   ]) {
     const { page, clean } = await open({ locale });
-    await page.getByRole('radio', { name: logical }).waitFor();
+    await page.getByRole('button', { name: logical, exact: true }).waitFor();
     await page.getByRole('radio', { name: sim }).waitFor();
     await clean();
     await page.close();
@@ -577,6 +608,7 @@ await check('libvirt: signed out, the box copy does not ask the helper', async (
   const helper = fakeHelper();
   let asked = 0;
   const { page, clean } = await open({
+    signedIn: false,
     routes: async (p, authed) => {
       await helper.routes(p, authed);
       await p.route('**/api/lab/hello', (route) => {
@@ -701,6 +733,7 @@ await check('GPU canvas: SVG first, then the swap carries the setup, the selecti
   let release = () => {};
   const held = new Promise((r) => (release = r));
   const { page, clean } = await open({
+    setup: 'two-sites',
     on: gpuBrowser,
     canvas: 'gpu',
     routes: async (p) => {

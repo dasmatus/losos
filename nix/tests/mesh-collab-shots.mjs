@@ -121,7 +121,9 @@ async function window(browser, who, box, problems, strict) {
   // A refusal by the page's policy shows up here even when nothing logs it.
   await context.addInitScript(() => {
     document.addEventListener("securitypolicyviolation", (e) => {
-      console.error(`policy refused ${e.violatedDirective}: ${e.blockedURI || "inline"} (${e.sourceFile}:${e.lineNumber})`);
+      // The element a refused style attribute was on says what wrote it.
+      const on = e.target instanceof Element ? ` on ${e.target.outerHTML.slice(0, 200)}` : "";
+      console.error(`policy refused ${e.violatedDirective}: ${e.blockedURI || "inline"} (${e.sourceFile}:${e.lineNumber})${on}`);
     });
   });
   const page = await context.newPage();
@@ -191,6 +193,10 @@ async function openOwn(w, file) {
   // Files open their app in a new tab; the pictures keep one window each.
   const href = await row.getByRole("link", { name: file, exact: true }).getAttribute("href");
   await w.page.goto(new URL(href, w.base).href);
+  // A Markdown file opens in Notes to read; the shared editor is its Edit view.
+  const edit = w.page.locator("[data-view=edit]");
+  await edit.waitFor({ timeout: WAIT });
+  await edit.click();
   await openEditor(w);
 }
 

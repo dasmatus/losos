@@ -11,7 +11,9 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 pub const SETUP_FORMAT: &str = "losos-lab-setup";
-pub const MAX_BYTES: usize = 1 << 20;
+pub const MAX_BYTES: usize = 8 << 20;
+/// What a refused file is told, whatever it was.
+pub const NOT_A_FILE: &str = "This is not a canvas or a setup file.";
 
 /// `num(v, lo, hi)`: a finite number, rounded and clamped, else nothing.
 fn num(v: Option<&Value>, lo: f64, hi: f64) -> Option<f64> {
@@ -27,12 +29,12 @@ pub fn doc_problem(doc: &Value) -> Option<String> {
         && matches!(prop(d, "devices"), Some(Value::Array(_)))
         && matches!(prop(d, "links"), Some(Value::Array(_)));
     if !ok {
-        return Some("This is not a LosOS Lab setup file.".into());
+        return Some(NOT_A_FILE.into());
     }
     let v = prop(d, "version");
     if v.and_then(Value::as_f64) != Some(1.0) {
         return Some(format!(
-            "This setup file is version {}; this Lab reads version 1.",
+            "This setup file is version {}; LosOS Diagrams reads version 1.",
             slice16(&string(v), 10)
         ));
     }
@@ -40,7 +42,9 @@ pub fn doc_problem(doc: &Value) -> Option<String> {
 }
 
 impl LabCore {
-    pub(crate) fn setup_doc(&self) -> Value {
+    /// The world as a version 1 setup document, the Lab's file before the
+    /// canvas: what the parity suite holds the JS to.
+    pub fn export_setup_v1(&self) -> Value {
         let name = if self.scenario == "file" || self.scenario == "last" {
             Some(self.file_name.clone())
         } else {
@@ -71,6 +75,48 @@ impl LabCore {
         json!({ "format": SETUP_FORMAT, "version": 1, "name": name, "devices": devices, "links": links })
     }
 
+    /// One device of a document (`{type, name, site, x, y, px, py, power,
+    /// cfg}`) into the world, through `newDevice`; `None` for a type the
+    /// tray does not have.
+    pub(crate) fn device_from_doc(&mut self, s: &Value) -> Option<String> {
+        let kind = match prop(Some(s), "type") {
+            Some(Value::String(t)) if type_info(t).is_some() => t.clone(),
+            _ => return None,
+        };
+        let base = default_cfg(&kind);
+        let mut cfg = Vec::new();
+        if let Some(Value::Object(m)) = prop(Some(s), "cfg") {
+            for (k, v) in m {
+                let same = matches!(
+                    (base.get(k), v),
+                    (Some(Value::Bool(_)), Value::Bool(_))
+                        | (Some(Value::String(_)), Value::String(_))
+                );
+                if same {
+                    cfg.push((k.clone(), v.clone()));
+                }
+            }
+        }
+        let site = match prop(Some(s), "site") {
+            Some(Value::String(x)) if is_site(x) => Some(x.clone()),
+            _ => None,
+        };
+        let opts = NewOpts {
+            name: Some(slice16(
+                &device_name(prop(Some(s), "name"), default_name(&kind)),
+                40,
+            )),
+            site,
+            px: num(prop(Some(s), "px"), 0.0, 2000.0),
+            py: num(prop(Some(s), "py"), 0.0, 2000.0),
+            power: Some(prop(Some(s), "power") != Some(&Value::Bool(false))),
+            cfg,
+        };
+        let x = num(prop(Some(s), "x"), -5000.0, 5000.0).unwrap_or(400.0);
+        let y = num(prop(Some(s), "y"), -5000.0, 5000.0).unwrap_or(300.0);
+        Some(self.world.new_device(&kind, x, y, opts, &mut self.rng))
+    }
+
     /// `buildFromDoc` into the (already emptied) world; returns what it left out.
     pub(crate) fn build_from_doc(&mut self, doc: &Value) -> usize {
         let empty = Vec::new();
@@ -83,46 +129,12 @@ impl LabCore {
         let mut ids: HashMap<String, String> = HashMap::new();
         let mut skipped = 0;
         for s in devices.iter().take(200) {
-            let kind = match prop(Some(s), "type") {
-                Some(Value::String(t)) if type_info(t).is_some() => t.clone(),
-                _ => {
-                    skipped += 1;
-                    continue;
+            match self.device_from_doc(s) {
+                Some(id) => {
+                    ids.insert(string(prop(Some(s), "id")), id);
                 }
-            };
-            let base = default_cfg(&kind);
-            let mut cfg = Vec::new();
-            if let Some(Value::Object(m)) = prop(Some(s), "cfg") {
-                for (k, v) in m {
-                    let same = matches!(
-                        (base.get(k), v),
-                        (Some(Value::Bool(_)), Value::Bool(_))
-                            | (Some(Value::String(_)), Value::String(_))
-                    );
-                    if same {
-                        cfg.push((k.clone(), v.clone()));
-                    }
-                }
+                None => skipped += 1,
             }
-            let site = match prop(Some(s), "site") {
-                Some(Value::String(x)) if is_site(x) => Some(x.clone()),
-                _ => None,
-            };
-            let opts = NewOpts {
-                name: Some(slice16(
-                    &device_name(prop(Some(s), "name"), default_name(&kind)),
-                    40,
-                )),
-                site,
-                px: num(prop(Some(s), "px"), 0.0, 2000.0),
-                py: num(prop(Some(s), "py"), 0.0, 2000.0),
-                power: Some(prop(Some(s), "power") != Some(&Value::Bool(false))),
-                cfg,
-            };
-            let x = num(prop(Some(s), "x"), -5000.0, 5000.0).unwrap_or(400.0);
-            let y = num(prop(Some(s), "y"), -5000.0, 5000.0).unwrap_or(300.0);
-            let id = self.world.new_device(&kind, x, y, opts, &mut self.rng);
-            ids.insert(string(prop(Some(s), "id")), id);
         }
         for s in links.iter().take(400) {
             let end = |k: &str| {
@@ -200,14 +212,15 @@ impl LabCore {
     pub(crate) fn setup_filename(&self, doc: &Value) -> String {
         let name = device_name(prop(Some(doc), "name"), "setup");
         let short = slice16(&name, 32);
-        format!("{}.llf", short.trim_end_matches('-'))
+        format!("{}.canvas", short.trim_end_matches('-'))
     }
 }
 
-/// The label of an opened file: its name without `.llf`, `.losos-lab.json` or `.json`.
+/// The label of an opened file: its name without `.canvas`, `.llf`,
+/// `.losos-lab.json` or `.json`.
 pub fn file_label(file_name: &str) -> String {
     let lower = file_name.to_ascii_lowercase();
-    for ext in [".llf", ".losos-lab.json", ".json"] {
+    for ext in [".canvas", ".llf", ".losos-lab.json", ".json"] {
         if lower.ends_with(ext) {
             return file_name[..file_name.len() - ext.len()].to_string();
         }
@@ -217,9 +230,9 @@ pub fn file_label(file_name: &str) -> String {
 
 pub fn parse_doc(text: &str) -> Result<Value, String> {
     if text.len() > MAX_BYTES {
-        return Err("That file is too big to be a setup.".into());
+        return Err("That file is too big to open.".into());
     }
-    serde_json::from_str(text).map_err(|_| "This is not a LosOS Lab setup file.".to_string())
+    serde_json::from_str(text).map_err(|_| NOT_A_FILE.to_string())
 }
 
 pub fn keep_name(mut doc: Value, builtin: bool) -> Value {

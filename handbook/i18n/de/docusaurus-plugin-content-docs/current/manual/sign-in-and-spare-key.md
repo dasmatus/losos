@@ -92,8 +92,8 @@ bis du dich auch in LosOS Cloud abmeldest.
 ## Wer was sieht \{#who-sees-what}
 
 Die Admin-Seiten sind in Bereiche aufgeteilt: Speicher, Sicherung, Apps,
-Markt (mit virtuellen Maschinen), Netzwerk (eigene Domains), Aussehen, das
-Labor und Zugriffstokens. Ein Administrator kann alle benutzen. Nur ein
+Markt (mit virtuellen Maschinen), Netzwerk (eigene Domains), Aussehen,
+Diagramme und Zugriffstokens. Ein Administrator kann alle benutzen. Nur ein
 Administrator kann Einstellungen anwenden, Mesh, Hardware, Sicherheit,
 Benutzer, Erweitert, Historie, Über und Zurücksetzen öffnen, die Box löschen oder
 wiederherstellen und den Wiederherstellungscode sehen. Wer kein

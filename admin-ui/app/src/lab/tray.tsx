@@ -1,21 +1,28 @@
-/* The parts tray along the bottom: four categories, and the devices or the
- * cable kinds of the chosen one. Picking one arms the place or connect tool;
- * Esc disarms it. */
+/* The parts tray along the bottom: the categories, and the cards, devices
+ * or cable kinds of the chosen one. Picking one arms the canvas (a card or
+ * device to put down, a cable kind to wire with); Esc disarms it. On the
+ * diagram the tray starts with cards, templates and machines; the two
+ * network views show only the network parts. */
 
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { actions } from "./actions";
 import { useEngine } from "./engine-hook";
+import { CardItems, MachineItems, TemplateItems } from "./canvas/tray";
 import { DeviceIcon } from "./icons";
 import { useLab } from "./store";
 
-const CATS = ["losos", "net", "end", "links"] as const;
-type Cat = (typeof CATS)[number];
+const NET = ["losos", "net", "end", "links"] as const;
+const ALL = ["cards", "templates", "losos", "net", "end", "links", "machines"] as const;
+type Cat = (typeof ALL)[number];
 const CAT_KEY = {
+  cards: "dg.tray.cards",
+  templates: "dg.tray.templates",
   losos: "lab.tray.losos",
   net: "lab.tray.net",
   end: "lab.tray.end",
   links: "lab.tray.links",
+  machines: "dg.tray.machines",
 } as const;
 
 const item = cn(
@@ -30,7 +37,9 @@ export function Tray() {
   const engine = useEngine();
   const t = useT();
   const a = actions();
-  const cat = (CATS as readonly string[]).includes(s.ui.cat) ? (s.ui.cat as Cat) : "losos";
+  const diagram = s.ui.view === "canvas";
+  const CATS: readonly Cat[] = diagram ? ALL : NET;
+  const cat = (CATS as readonly string[]).includes(s.ui.cat) ? (s.ui.cat as Cat) : CATS[0]!;
   return (
     <nav
       aria-label={t("lab.tray.label")}
@@ -54,8 +63,30 @@ export function Tray() {
         ))}
       </div>
       <div className="flex min-w-0 flex-1 items-stretch gap-1.5 overflow-x-auto px-3 py-2" data-testid="tray-items">
-        {cat === "links" ? (
+        {cat === "cards" ? (
+          <CardItems />
+        ) : cat === "templates" ? (
+          <TemplateItems />
+        ) : cat === "machines" ? (
+          <MachineItems />
+        ) : cat === "links" ? (
           <>
+            {diagram && (
+              <button
+                type="button"
+                className={item}
+                aria-pressed={s.ui.tool === "connect" && s.ui.linkKind === "arrow"}
+                data-link-kind="arrow"
+                onClick={() => a.chooseLink("arrow")}
+              >
+                <svg viewBox="0 0 64 56" className="h-[34px] w-10" aria-hidden="true">
+                  <path d="M8 44C24 44 18 12 50 12" fill="none" stroke="var(--muted)" strokeWidth="3" />
+                  <path d="M58 12l-10-5v10z" fill="var(--muted)" />
+                </svg>
+                <span>{t("dg.tray.arrow")}</span>
+                <small className="text-[10.5px] text-muted [text-wrap:balance]">{t("dg.tray.arrowHint")}</small>
+              </button>
+            )}
             {Object.entries(s.catalog.linkKinds).map(([k, v]) => {
               const stroke = k === "fiber" ? "var(--lab-fiber)" : k === "wifi" ? "var(--lab-wifi)" : k === "auto" ? "var(--ink)" : "var(--lab-copper)";
               return (

@@ -150,7 +150,7 @@ návrhom, kým ju klávesom `a` nepoužijete, a zariadenie sa pred zostavením
 opýta, rovnako ako správcovské stránky.
 
 :::note[Čo zostáva v správcovských stránkach]
-Prístupové tokeny, trh, Lab a všetko, čo maže dáta, zostáva v správcovských
+Prístupové tokeny, trh, Diagramy a všetko, čo maže dáta, zostáva v správcovských
 stránkach.
 :::
 

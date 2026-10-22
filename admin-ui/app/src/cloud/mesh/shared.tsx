@@ -11,10 +11,14 @@ import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
 import { CloudError, isAbort } from "../api";
 import { editable, editHref, mesh, type Incoming, type RemoteEntry } from "../collab/api";
+import { sharedDiagramHref } from "../open-diagrams";
 import { PersonAvatar } from "@/components/person";
 import { accentFor, nameOf } from "../collab/people";
 import { formatBytes, formatWhen, iconFor } from "../format";
 import { meshError } from "./share-dialog";
+
+/** A JSON Canvas file opens in LosOS Diagrams, edited together there too. */
+const DIAGRAM = /\.canvas$/i;
 
 /* /cloud/shared: what people on other boxes shared with this person, and
  * /cloud/shared/<share>?folder=<id> to look inside a shared folder. The
@@ -99,7 +103,7 @@ export function SharedView() {
 
   const open = (s: Incoming) => {
     if (s.folder) navigate(`/shared/${encodeURIComponent(s.id)}`);
-    else window.location.assign(editable(s.name) ? editHref(s.fileId, s.id) : mesh.fileUrl(s.id, s.fileId));
+    else window.location.assign(DIAGRAM.test(s.name) ? sharedDiagramHref(s.id, s.fileId) : editable(s.name) ? editHref(s.fileId, s.id) : mesh.fileUrl(s.id, s.fileId));
   };
 
   const shown = (items ?? []).filter((s) => s.state !== "declined");
@@ -252,7 +256,9 @@ export function SharedFolderView() {
           {entries.map((e) => {
             const href = e.folder
               ? `/cloud/shared/${encodeURIComponent(share)}?folder=${e.id}`
-              : editable(e.name)
+              : DIAGRAM.test(e.name)
+                ? sharedDiagramHref(share, e.id)
+                : editable(e.name)
                 ? editHref(e.id, share)
                 : mesh.fileUrl(share, e.id);
             return (

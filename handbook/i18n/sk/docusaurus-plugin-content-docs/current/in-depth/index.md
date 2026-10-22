@@ -45,8 +45,9 @@ oddiele `/persist`.
   otvorenia portu.
 - [Federácia edge](/in-depth/edge-federation.md). Vlastný edge v LAN, preposielaný cez oficiálne.
 - [Webová stránka edge](/in-depth/edge-web-ui.md). Stránka na `/manage/`, z ktorej firemný edge spravuje svoje zariadenia.
-- [Lab](/in-depth/lab.md). Vizualizér nasadenia na `/lab/`, jeho simulovaní a
-  skutoční hostia.
+- [Diagramy](/in-depth/diagrams.md). Editor diagramov na `/diagrams/`: súbory
+  JSON Canvas, LosOS Cloud, karty strojov a sieťový simulátor s jeho
+  simulovanými a skutočnými hosťami.
 - [Hardening](/in-depth/hardening.md). Predvolený základ zabezpečenia a voliteľné
   prepínače.
 - [TPM a kľúč disku](/reference/tpm.md). Čo čip robí a čo stráca zariadenie,

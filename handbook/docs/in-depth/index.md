@@ -41,8 +41,9 @@ directories listed in `modules/impermanence.nix` survive, on an encrypted
   opening a port.
 - [Edge federation](edge-federation.md). Your own edge on the LAN, relayed through the official ones.
 - [Edge web page](edge-web-ui.md). The page a company edge manages its boxes from, at `/manage/`.
-- [Lab](lab.md). The setup visualiser at `/lab/`, its simulated and real
-  guests.
+- [Diagrams](diagrams.md). The diagram editor at `/diagrams/`: JSON Canvas
+  files, LosOS Cloud, machine cards, and the network simulator with its
+  simulated and real guests.
 - [Hardening](hardening.md). The default hardening baseline and the opt-in flags.
 - [TPM and the disk key](../reference/tpm.md). What the chip does, and what a box without
   one gives up.
