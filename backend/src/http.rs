@@ -3721,6 +3721,14 @@ async fn delete_builder_build(
 /// `allow-popups` is for.
 pub const MAIL_FRAME_CSP: &str = "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
 
+/// [`MAIL_FRAME_CSP`] for a message whose pictures stay hidden: no picture
+/// of any kind loads, in an `<img>` or in its CSS (`crate::pictures`).
+pub const MAIL_FRAME_CSP_NO_PICTURES: &str = "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
+
+/// Drawn where a hidden picture would be, so the layout keeps its holes
+/// instead of broken-image icons.
+const MAIL_HIDDEN_PICTURE_STYLE: &str = "<style>img{color:transparent;background:repeating-linear-gradient(45deg,#8881 0 8px,#8882 8px 16px);min-width:24px;min-height:24px}</style>";
+
 fn mail_refused(r: &crate::mail::Refused) -> HttpResponse {
     err(
         StatusCode::from_u16(r.status).unwrap_or(StatusCode::BAD_GATEWAY),
@@ -3845,13 +3853,26 @@ async fn get_mail_html(
         "/api/mail/messages/html",
         false,
         |who| match mail_person(&api, who).map(|p| api.mail.html(p, &path)) {
-            Ok(Ok(html)) => HttpResponse::Ok()
+            Ok(Ok(html)) => {
+                // `?pictures=1` once the person chose to see them; hidden
+                // otherwise, whatever the message says.
+                let shown = query_map(&req).get("pictures").is_some_and(|v| v == "1");
+                let (csp, html) = if shown {
+                    (MAIL_FRAME_CSP, html)
+                } else {
+                    (
+                        MAIL_FRAME_CSP_NO_PICTURES,
+                        format!("{MAIL_HIDDEN_PICTURE_STYLE}{html}"),
+                    )
+                };
+                HttpResponse::Ok()
                 .content_type("text/html; charset=utf-8")
-                .insert_header(("Content-Security-Policy", MAIL_FRAME_CSP))
+                .insert_header(("Content-Security-Policy", csp))
                 .insert_header(("X-Content-Type-Options", "nosniff"))
                 .insert_header(("Referrer-Policy", "no-referrer"))
                 .insert_header(("Cache-Control", "private, no-store"))
-                .body(html),
+                .body(html)
+            }
             Ok(Err(r)) => mail_refused(&r),
             Err(resp) => *resp,
         },

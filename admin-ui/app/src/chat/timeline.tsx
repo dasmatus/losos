@@ -6,6 +6,7 @@ import {
   Comment01Icon,
   Copy01Icon,
   Delete02Icon,
+  Flag02Icon,
   PencilEdit01Icon,
   SmileIcon,
 } from "@hugeicons/core-free-icons";
@@ -22,6 +23,7 @@ import {
   RoomEvent,
   RoomMemberEvent,
 } from "matrix-js-sdk";
+import { openReport } from "@/components/report-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
@@ -169,7 +171,13 @@ function useMoves(client: MatrixClient, room: Room, item: Message, me: string) {
   const file = cloud && carriesFile(item.content);
   const save = (t: ReturnType<typeof useT>): void =>
     void saveAttachment(client, t, { eventId: ev.getId() ?? "", source: sourceOf(item.content), mime: infoOf(item.content).mimetype, name: fileNameOf(item.content) });
-  return { ev, mine, canRedact, isText, live, react, remove, file, save };
+  return { ev, me, mine, canRedact, isText, live, react, remove, file, save };
+}
+
+/** The sign-in name behind a chat ID on this box's own server, else null. */
+function boxName(sender: string, me: string): string | null {
+  const server = (id: string) => id.slice(id.indexOf(":") + 1);
+  return sender.startsWith("@") && server(sender) === server(me) ? sender.slice(1, sender.indexOf(":")) : null;
 }
 
 function messageMenu(
@@ -217,6 +225,13 @@ function messageMenu(
             danger: true,
             hidden: !canRedact,
             onSelect: () => remove(t("chat.message.deleteConfirm")),
+          },
+          {
+            id: "report",
+            label: t("report.action"),
+            icon: Flag02Icon,
+            hidden: mine,
+            onSelect: () => openReport({ app: "chat", about: boxName(ev.getSender() ?? "", moves.me), ref: ev.getId() ?? "" }),
           },
         ],
       ],
