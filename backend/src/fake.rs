@@ -85,6 +85,21 @@ pub struct FakeLosos {
     /// How often the status was asked for: the gate must read it on every
     /// turn-on, and a read-only command must not.
     pub edge_asked: usize,
+    /// Stands in for `user-apps.json`.
+    pub user_apps: crate::user_apps::UserApps,
+    /// Stands in for `user-apps/<id>.json`, by app id.
+    pub app_data: std::collections::BTreeMap<String, crate::user_apps::AppData>,
+    /// Every app version, local and pushed, by sha: one object store for
+    /// the box and the fake LosOS Git, as fetching would make it.
+    pub app_commits: std::collections::BTreeMap<String, FakeAppCommit>,
+    /// Each app's branch, by app id.
+    pub app_heads: std::collections::BTreeMap<String, String>,
+    /// The fake LosOS Git's branch of each app repository, by URL.
+    pub app_remotes: std::collections::BTreeMap<String, String>,
+    /// Every push of an app repository, by URL.
+    pub app_pushes: Vec<String>,
+    /// The fake LosOS Git does not answer fetches and pushes.
+    pub app_remote_down: bool,
     // ── The pin picker ──────────────────────────────────────────────────
     /// LosOS Cloud's next answers, in order; empty is "not answering".
     pub cloud_answers: std::collections::VecDeque<(u16, Vec<u8>)>,
@@ -167,7 +182,70 @@ pub struct FakeCommit {
     pub body: String,
 }
 
+/// One app version in the fake's object store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FakeAppCommit {
+    pub parent: Option<String>,
+    pub files: std::collections::BTreeMap<String, String>,
+    pub subject: String,
+    pub body: String,
+}
+
 impl FakeLosos {
+    /// Make an app version in the store and return its sha.
+    pub fn app_commit_object(
+        &mut self,
+        parent: Option<String>,
+        files: &[(&str, String)],
+        subject: &str,
+        body: &str,
+    ) -> String {
+        let sha = format!("{:040x}", 0xa000_0000_u64 + self.app_commits.len() as u64);
+        self.app_commits.insert(
+            sha.clone(),
+            FakeAppCommit {
+                parent,
+                files: files
+                    .iter()
+                    .map(|(n, t)| (n.to_string(), t.clone()))
+                    .collect(),
+                subject: subject.to_string(),
+                body: body.to_string(),
+            },
+        );
+        sha
+    }
+
+    /// What a clone pushing to `url` does: a version on top of the
+    /// remote's branch with `files` changed.
+    pub fn push_from_clone(&mut self, url: &str, changed: &[(&str, String)]) -> String {
+        let parent = self.app_remotes.get(url).cloned();
+        let mut files: Vec<(String, String)> = parent
+            .as_ref()
+            .and_then(|p| self.app_commits.get(p))
+            .map(|c| c.files.clone().into_iter().collect())
+            .unwrap_or_default();
+        for (name, text) in changed {
+            files.retain(|(n, _)| n != name);
+            files.push((name.to_string(), text.clone()));
+        }
+        let refs: Vec<(&str, String)> =
+            files.iter().map(|(n, t)| (n.as_str(), t.clone())).collect();
+        let sha = self.app_commit_object(parent, &refs, "Pushed from a clone", "");
+        self.app_remotes.insert(url.to_string(), sha.clone());
+        sha
+    }
+
+    fn app_history(&self, of: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut at = Some(of.to_string());
+        while let Some(sha) = at {
+            at = self.app_commits.get(&sha).and_then(|c| c.parent.clone());
+            out.push(sha);
+        }
+        out
+    }
+
     /// A fresh appliance: default state, the committed overrides body, no log.
     pub fn new() -> Self {
         FakeLosos {
@@ -224,6 +302,13 @@ impl FakeLosos {
                 None,
             ),
             edge_asked: 0,
+            user_apps: crate::user_apps::UserApps::default(),
+            app_data: std::collections::BTreeMap::new(),
+            app_commits: std::collections::BTreeMap::new(),
+            app_heads: std::collections::BTreeMap::new(),
+            app_remotes: std::collections::BTreeMap::new(),
+            app_pushes: Vec::new(),
+            app_remote_down: false,
             cloud_answers: std::collections::VecDeque::new(),
             cloud_calls: Vec::new(),
             options_doc: None,
@@ -480,6 +565,122 @@ impl Losos for FakeLosos {
         self.cloud_answers
             .pop_front()
             .ok_or_else(|| anyhow::anyhow!("the fake LosOS Cloud is not answering"))
+    }
+
+    fn load_user_apps(&mut self) -> anyhow::Result<crate::user_apps::UserApps> {
+        Ok(self.user_apps.clone())
+    }
+
+    fn save_user_apps(&mut self, apps: &crate::user_apps::UserApps) -> anyhow::Result<()> {
+        self.user_apps = apps.clone();
+        Ok(())
+    }
+
+    fn load_app_data(&mut self, id: &str) -> anyhow::Result<crate::user_apps::AppData> {
+        Ok(self.app_data.get(id).cloned().unwrap_or_default())
+    }
+
+    fn save_app_data(&mut self, id: &str, data: &crate::user_apps::AppData) -> anyhow::Result<()> {
+        self.app_data.insert(id.to_string(), data.clone());
+        Ok(())
+    }
+
+    fn remove_app_data(&mut self, id: &str) -> anyhow::Result<()> {
+        self.app_data.remove(id);
+        Ok(())
+    }
+
+    fn app_repo_head(&mut self, id: &str) -> anyhow::Result<Option<String>> {
+        Ok(self.app_heads.get(id).cloned())
+    }
+
+    fn app_repo_commit(
+        &mut self,
+        id: &str,
+        files: &[(&str, String)],
+        subject: &str,
+        body: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let head = self.app_heads.get(id).cloned();
+        let mut tree = head
+            .as_ref()
+            .and_then(|h| self.app_commits.get(h))
+            .map(|c| c.files.clone())
+            .unwrap_or_default();
+        let before = tree.clone();
+        for (name, text) in files {
+            tree.insert(name.to_string(), text.clone());
+        }
+        if head.is_some() && tree == before {
+            return Ok(None);
+        }
+        let all: Vec<(&str, String)> = tree.iter().map(|(n, t)| (n.as_str(), t.clone())).collect();
+        let sha = self.app_commit_object(head, &all, subject, body);
+        self.app_heads.insert(id.to_string(), sha.clone());
+        Ok(Some(sha))
+    }
+
+    fn app_repo_fetch(&mut self, _id: &str, url: &str) -> anyhow::Result<Option<String>> {
+        if self.app_remote_down {
+            return Err(
+                crate::config_repo::NotUp("the fake LosOS Git is not up".to_string()).into(),
+            );
+        }
+        Ok(self.app_remotes.get(url).cloned())
+    }
+
+    fn app_repo_is_ancestor(
+        &mut self,
+        _id: &str,
+        ancestor: &str,
+        of: &str,
+    ) -> anyhow::Result<bool> {
+        Ok(self.app_history(of).iter().any(|s| s == ancestor))
+    }
+
+    fn app_repo_show(
+        &mut self,
+        _id: &str,
+        rev: &str,
+        path: &str,
+    ) -> anyhow::Result<Option<String>> {
+        Ok(self
+            .app_commits
+            .get(rev)
+            .and_then(|c| c.files.get(path).cloned()))
+    }
+
+    fn app_repo_set_head(&mut self, id: &str, sha: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(self.app_commits.contains_key(sha), "unknown commit {sha}");
+        self.app_heads.insert(id.to_string(), sha.to_string());
+        Ok(())
+    }
+
+    fn app_repo_push(&mut self, id: &str, url: &str) -> anyhow::Result<()> {
+        if self.app_remote_down {
+            return Err(
+                crate::config_repo::NotUp("the fake LosOS Git is not up".to_string()).into(),
+            );
+        }
+        let head = self
+            .app_heads
+            .get(id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("nothing to push"))?;
+        if let Some(remote) = self.app_remotes.get(url) {
+            anyhow::ensure!(
+                self.app_history(&head).contains(remote),
+                "rejected: not a fast-forward"
+            );
+        }
+        self.app_remotes.insert(url.to_string(), head);
+        self.app_pushes.push(url.to_string());
+        Ok(())
+    }
+
+    fn app_repo_remove(&mut self, id: &str) -> anyhow::Result<()> {
+        self.app_heads.remove(id);
+        Ok(())
     }
 
     fn vg_free(&mut self) -> anyhow::Result<crate::grow::VgFree> {

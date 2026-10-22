@@ -187,6 +187,8 @@ function visible(entries: readonly Entry[]): Entry[] {
 }
 
 function isCurrent(entry: LinkEntry, pathname: string): boolean {
+  // An app of the owner's own (/apps/<id>, src/apps/) is under Apps.
+  if (entry.pane === "apps" && pathname.startsWith("/apps/")) return true;
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
   return pathname === entry.to;
 }

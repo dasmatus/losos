@@ -126,6 +126,36 @@ Festplatte mit einem Mesh teilt ([Wo die Apps laufen](../types/app-modes)). Um d
 setze `losos.apps.enable` im Bereich **Erweitert** auf false.
 :::
 
+## Deine Apps \{#your-apps}
+
+Kleine eigene Apps, eine Einkaufsliste, ein Putzplan, eine Leseliste,
+die du beschreibst und die KI auf der Box schreibt
+([Mit KI bauen](../in-depth/widget-builder)). Sie stehen unter **Deine Apps**
+auf der Seite Apps. **App erstellen** öffnet den Editor: Beschreibe die App
+im Tab **Mit KI bauen** oder schreibe ihren Code im Tab **Code**. Die
+Vorschau daneben ist die echte App, du kannst sie also vor dem Speichern
+benutzen. Was du dort eingibst, vergisst sie; die gespeicherte App behält
+ihre Daten auf der Box.
+
+Jede gespeicherte App hat eine eigene Seite. Eine App ist eine
+React-Komponente aus den LosOS-Komponenten, die die Box beim Speichern prüft
+und übersetzt. Sie läuft nur in deinem Browser, in einem abgeschotteten
+Rahmen ohne Zugriff auf die Box außer auf ihre eigenen Daten. **Ändern**
+öffnet sie wieder im Editor, und **Löschen** entfernt sie von der Box mit
+allem, was eingegeben wurde.
+
+Jede App hat außerdem ein eigenes privates Repository in LosOS Git, nach ihr
+benannt (`app-chores` für eine App namens Chores), und jedes Speichern ist
+dort ein Commit. **Quelle** auf der Seite der App öffnet es. Klone es, ändere
+`app.jsx` und pushe: Innerhalb einer Minute prüft die Box die Änderung wie
+beim Speichern, und die App führt sie aus. Lässt sich die Änderung nicht
+übersetzen, bleibt die App, wie sie war, ihre Seite sagt warum, und die Box
+fügt einen Commit hinzu, der die App zurücksetzt, sodass dein nächstes
+`git pull` das ebenfalls zeigt. Dateien, die du ins Repository legst,
+bleiben dort, und die Daten der App sind nicht darin. Das Repository bleibt
+in LosOS Git, wenn du die App löschst; lösche es dort, wenn du es nicht mehr
+willst. Ist LosOS Git aus, behält die Box die Versionen selbst.
+
 ## Apps, die für die Box gemacht sind \{#apps-made-for-the-box}
 
 Apps können auch als Compose-Datei im
