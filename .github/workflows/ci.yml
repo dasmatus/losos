@@ -1071,10 +1071,6 @@ jobs:
     # no nested virtualisation, so the box runs under TCG there, about ten
     # times slower.
     timeout-minutes: 120
-    # check.py works in a temporary folder (the box's console log, its
-    # certificate); here it is one the failure upload below can find.
-    env:
-      TMPDIR: ${{ runner.temp }}
     strategy:
       fail-fast: false
       matrix:
@@ -1115,6 +1111,8 @@ jobs:
           grep '^hosts:' /etc/nsswitch.conf
       - name: Linux, check
         if: runner.os == 'Linux'
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: >-
           python3 nix/tests/discovery/check.py --os linux --box discovery-box --kvm
           --netdev tap,id=lan,ifname=tap0,script=no,downscript=no
@@ -1126,6 +1124,8 @@ jobs:
         run: brew install qemu
       - name: macOS, check
         if: runner.os == 'macOS'
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: >-
           python3 nix/tests/discovery/check.py --os macos --box discovery-box --sudo
           --qemu "$(brew --prefix)/bin/qemu-system-x86_64"
@@ -1154,6 +1154,8 @@ jobs:
       - name: Windows, check
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: >-
           python nix/tests/discovery/check.py --os windows --box discovery-box
           --qemu "$env:ProgramFiles\qemu\qemu-system-x86_64.exe"
