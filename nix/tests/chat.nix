@@ -29,8 +29,8 @@
 # film's states are numbered there with a manifest.json; the pull request's
 # pictures are under result/shots/pr/.
 #
-# LosOS Git is a stand-in; LosOS Cloud is the real service, for the files
-# chat sends from it and keeps in it.
+# LosOS Git is off; LosOS Cloud is the real service, for the files chat
+# sends from it and keeps in it.
 { pkgs }:
 
 let
@@ -70,14 +70,6 @@ let
       runHook postBuild
     '';
   });
-
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
 
   # The playwright the admin UI pins (to nixpkgs' playwright-driver, which
   # nix/tests/admin-ui.nix asserts), from the same lock file and hash.
@@ -122,7 +114,6 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/chat.nix
           ../../modules/cloud.nix
         ];
@@ -130,9 +121,7 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = ui;
-          forgejo.enable = true;
-          forgejo.mode = "container";
-          workloads.forgejoImage = standIn "losos-forgejo-stand-in";
+          git.enable = false;
           # The shared user's side of the box: chat's gate.
           sharingMyStorage = true;
           cluster.enable = true;
