@@ -540,7 +540,7 @@ function LogSection({ view }: { view: ModerationView }) {
                 <TableRow key={`${entry.at}-${i}`} data-testid="moderation-log-line" data-action={entry.action}>
                   <TableCell className="numeric whitespace-nowrap text-muted">{when(entry.at)}</TableCell>
                   <TableCell className="whitespace-nowrap text-ink">{who(entry.by)}</TableCell>
-                  <TableCell className="text-muted">
+                  <TableCell className="whitespace-normal text-muted">
                     <LogLine entry={entry} view={view} />
                   </TableCell>
                 </TableRow>
