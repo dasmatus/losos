@@ -3374,7 +3374,8 @@ async fn delete_mail_message(
     )
 }
 
-/// `POST /api/mail/send` `{"to", "cc"?, "subject", "text", "inReplyTo"?}`.
+/// `POST /api/mail/send` `{"to", "cc"?, "subject", "text", "inReplyTo"?,
+/// "attachments"?: [{"name", "type", "data": base64}]}`.
 async fn post_mail_send(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
     guarded_as(&api, &req, "/api/mail/send", true, |who| {
         let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
@@ -4506,7 +4507,13 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .app_data(web::PayloadConfig::new(payload_cap))
                 .route("/api/health", web::get().to(health))
                 .route("/api/mail", web::get().to(get_mail))
-                .route("/api/mail/send", web::post().to(post_mail_send))
+                // A message carries its attachments, so this one route takes
+                // more than the cap above.
+                .service(
+                    web::resource("/api/mail/send")
+                        .app_data(web::PayloadConfig::new(crate::mail::MAX_SEND_BYTES))
+                        .route(web::post().to(post_mail_send)),
+                )
                 .route("/api/mail/messages", web::get().to(get_mail_messages))
                 .route("/api/mail/messages/{id}", web::get().to(get_mail_message))
                 .route("/api/mail/messages/{id}", web::post().to(post_mail_message))

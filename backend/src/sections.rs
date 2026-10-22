@@ -125,6 +125,23 @@ mod tests {
             };
             served.insert(format!("{method} {path}"));
         }
+        // `web::resource("/api/x")...route(web::post()...` for a route with
+        // its own limits, up to the next plain `.route("`.
+        for piece in flat.split("web::resource(").skip(1) {
+            let Some((path, after)) = piece
+                .trim_start()
+                .strip_prefix('"')
+                .and_then(|rest| rest.split_once('"'))
+            else {
+                continue;
+            };
+            let own = after.split(".route(\"").next().unwrap_or("");
+            for m in own.split(".route(web::").skip(1) {
+                if let Some((method, _)) = m.split_once('(') {
+                    served.insert(format!("{} {path}", method.to_ascii_uppercase()));
+                }
+            }
+        }
         // And every route a shipped plugin's manifest declares. The probe
         // is a test plugin that never ships; its routes are admin only.
         let plugins = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins");

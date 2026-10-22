@@ -1,5 +1,5 @@
 import { Doc01Icon, PresentationBarChart01Icon } from "@hugeicons/core-free-icons";
-import { registerOpener } from "../openers";
+import { registerOpener, registeringOpener } from "../openers";
 import { officeTypes, opensInOffice } from "./api";
 import { isMarkdown } from "./markdown/new";
 
@@ -7,8 +7,8 @@ import { isMarkdown } from "./markdown/new";
  * the types the box's Collabora opens. A box without Office answers the
  * call with 404, and then nothing registers: its documents keep opening as
  * the browser shows them. */
-officeTypes().then(
-  (types) =>
+registeringOpener(
+  officeTypes().then((types) =>
     registerOpener({
       id: "office",
       label: "office.open",
@@ -16,7 +16,7 @@ officeTypes().then(
       accepts: (entry) => opensInOffice(entry.name, types),
       href: (entry) => `/cloud/office/${entry.id}`,
     }),
-  () => {},
+  ),
 );
 
 /* Markdown is Office's own, with or without Collabora: a .md opens in

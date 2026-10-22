@@ -74,6 +74,35 @@ Werkseinstellungen entfernt ihn, und `losos.search.enable` im Bereich
 Erweitert schaltet ihn ab. LosOS Git braucht keinen Index: Jede Suche liest
 die Repositorys direkt.
 
+## Das Rechtsklick-Menü \{#the-right-click-menu}
+
+Klick mit der rechten Maustaste auf den Verwaltungsseiten, in LosOS Cloud
+oder in Mail, und ein Menü zeigt, was du mit dem tun kannst, was unter dem
+Zeiger liegt. Auf einem Touchscreen hältst du den Finger gedrückt. Mit der
+Tastatur öffnet Shift+F10 oder die Menütaste es für das, was den Fokus hat,
+und die Pfeiltasten bewegen sich darin.
+
+- **Leere Fläche**: Zurück, Vorwärts, Neu laden, die Suche, das helle oder
+  dunkle Design und dieses Handbuch.
+- **Markierter Text**: Kopieren und eine Suche nach den Wörtern.
+- **Ein Link**: in neuem Tab öffnen oder die Adresse kopieren.
+- **Eine App-Kachel oder ein angehefteter Eintrag**: in neuem Tab öffnen,
+  anheften oder lösen.
+- **Eine Datei oder ein Ordner in LosOS Cloud**: öffnen, herunterladen,
+  umbenennen, verschieben, kopieren, frühere Versionen, Stern, teilen, Link
+  kopieren, löschen. Sind mehrere Dateien markiert, wirkt das Menü auf alle.
+  Die Fläche um die Liste bietet einen neuen Ordner und das Hochladen, eine
+  Datei im Papierkorb das Wiederherstellen oder endgültige Löschen.
+- **Eine Nachricht in Mail**: öffnen, antworten, allen antworten,
+  weiterleiten, als gelesen oder ungelesen markieren, markieren,
+  archivieren, in einen anderen Ordner verschieben, löschen.
+
+Die Tasten neben einem Eintrag funktionieren auch ohne Menü. In LosOS Cloud
+benennt F2 die markierte Datei um und Entf verschiebt sie in den Papierkorb
+(auf dem Mac Cmd+Rücktaste). Textfelder behalten das Menü des Browsers, für
+Rechtschreibung und Einfügen. Das Menü zeigt nur, was diese Box kann: Ein
+Eintrag für eine Funktion, die die Box nicht hat, fehlt, statt grau zu sein.
+
 ## Angeheftete Einträge \{#pins}
 
 Hefte die Apps, Dateien und Repositorys an, die du am häufigsten öffnest,
