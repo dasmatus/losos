@@ -33,6 +33,7 @@ import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
 import profile from "./profile";
+import quick from "./quick";
 import settings from "./settings";
 import shell from "./shell";
 import together from "./together";
@@ -82,6 +83,7 @@ export const MESSAGES = {
   ...mention,
   ...games,
   ...together,
+  ...quick,
 };
 
 export type MessageKey = keyof typeof MESSAGES;
