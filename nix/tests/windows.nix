@@ -190,7 +190,7 @@ pkgs.testers.nixosTest {
 
     with subtest("a second person, added on the Users pane"):
         cookie = sign_in("matus", PASSWORD)
-        person = {"name": "eva", "displayName": "Eva", "email": "eva@mattbox.local", "password": EVA, "groups": []}
+        person = {"name": "eva", "displayName": "Eva", "email": "eva@mattbox.local", "password": EVA, "groups": ["losos-account"]}
         out = curl(
             f"-w '\\n%{{http_code}}' -X POST {BASE}/api/people -H 'Cookie: {cookie}'"
             f" -H 'Content-Type: application/json' -d '{json.dumps(person)}'"
