@@ -41,7 +41,7 @@ import { chatDocument } from "./document";
 import { Composer } from "./composer";
 import { failed, ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, openDirect, RoomSettingsDialog, StartChatDialog } from "./dialogs";
 import { readShare, ShareDialog } from "./cloud";
-import { linkedCall, withoutCall, withoutLink, withUserId } from "./links";
+import { linkedCall, linkedRoom, withoutCall, withoutLink, withUserId } from "./links";
 import { useDetailsOn } from "@/components/details";
 import { blackOut } from "@/lib/sensitive";
 import { directPartner, directRooms, isSpace, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";

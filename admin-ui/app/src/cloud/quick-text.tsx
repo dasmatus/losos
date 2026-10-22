@@ -338,6 +338,7 @@ export function EditorQuickActions({
       }}
       onReturn={() => view?.focus()}
       onDismiss={() => setDismissed(key)}
+      ceiling={() => view?.scrollDOM.getBoundingClientRect().top ?? 0}
     />
   );
 }

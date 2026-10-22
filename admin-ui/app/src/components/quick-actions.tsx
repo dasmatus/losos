@@ -67,6 +67,9 @@ export interface QuickActionsProps {
   onReturn: () => void;
   /** Escape was pressed in the bar: leave the selection, hide the bar. */
   onDismiss?: () => void;
+  /** The top of the area the bar may cover, read when it is placed: the
+   *  app's own toolbar above it stays clickable. */
+  ceiling?: () => number;
   className?: string;
 }
 
@@ -77,7 +80,7 @@ export function insideQuickActions(node: EventTarget | null): boolean {
   return node instanceof Element && node.closest("[data-quick-actions], [data-quick-popup], [data-slot=ask-ai]") !== null;
 }
 
-export function QuickActions({ anchor, label, sections, ask, onReturn, onDismiss, className }: QuickActionsProps) {
+export function QuickActions({ anchor, label, sections, ask, onReturn, onDismiss, ceiling, className }: QuickActionsProps) {
   const t = useT();
   const ready = useAssistant();
   const bar = React.useRef<HTMLDivElement>(null);
@@ -115,7 +118,7 @@ export function QuickActions({ anchor, label, sections, ask, onReturn, onDismiss
   React.useLayoutEffect(() => {
     const el = bar.current;
     if (el === null || held === null) return;
-    const next = placeBar(held, el.offsetWidth, el.offsetHeight, window.innerWidth, window.innerHeight);
+    const next = placeBar(held, el.offsetWidth, el.offsetHeight, window.innerWidth, window.innerHeight, ceiling?.() ?? 0);
     setPos((p) => (p !== null && p.x === next.x && p.y === next.y && p.side === next.side ? p : next));
   }, [held, prompt, visible.length, ready]);
 

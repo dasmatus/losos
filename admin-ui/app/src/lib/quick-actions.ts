@@ -122,18 +122,20 @@ export function isQuickKey(event: KeyboardEvent): boolean {
 
 /** Where the bar sits for a selection drawn at `rect`, a bar of `w` by `h`,
  *  in a window of `vw` by `vh`: centred above it, or below when there is no
- *  room above, and always inside the window by `pad`. */
+ *  room above, and always inside the window by `pad`. Nothing above `ceiling`
+ *  is covered, so an app's own toolbar stays in reach. */
 export function placeBar(
   rect: { left: number; top: number; right: number; bottom: number },
   w: number,
   h: number,
   vw: number,
   vh: number,
+  ceiling = 0,
   gap = 8,
   pad = 8,
 ): { x: number; y: number; side: "top" | "bottom" } {
   const above = rect.top - gap - h;
-  const side = above >= pad ? "top" : "bottom";
+  const side = above >= Math.max(ceiling, 0) + pad ? "top" : "bottom";
   const y = side === "top" ? above : Math.min(rect.bottom + gap, vh - h - pad);
   const centre = (rect.left + rect.right) / 2;
   const x = Math.max(pad, Math.min(centre - w / 2, vw - w - pad));
