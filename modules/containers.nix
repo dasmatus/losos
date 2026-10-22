@@ -98,10 +98,10 @@ let
   # hand out its manual any more than its settings.
   handbook = config.losos.admin.handbook;
   handbookEnabled = adminEnabled && handbook != null;
-  # LosOS Lab, the setup visualizer: the admin UI's second page
-  # (admin-ui/app/lab/), so it comes out of the same bundle. Under the admin
-  # guard for the same reason as the handbook, and more so: it reads this
-  # box's settings with the owner's token.
+  # LosOS Diagrams (once the Lab): a screen of the admin UI at /diagrams
+  # (admin-ui/app/src/lab/), so it comes out of the same bundle and sits
+  # behind the same guard: it reads this box's settings with the owner's
+  # token.
   labEnabled = adminEnabled && config.losos.admin.lab;
   # The Lab's guests under libvirt (modules/lab.nix): their console and NIC
   # WebSockets skip lososd and go to the helper, which checks a per-guest
@@ -203,11 +203,21 @@ let
   # for the dashboard's cross-origin probe of the Tahoe web UI, and Tahoe-LAFS
   # is gone — with it the :3456 vhost, the probe, and any reason for this page
   # to talk to a second origin.
+  #
+  # script-src carries 'wasm-unsafe-eval' for LosOS Diagrams, a screen of
+  # this page at /diagrams whose core is Rust compiled to WebAssembly
+  # (admin-ui/lab/core). It lets the page compile WebAssembly and nothing
+  # more: eval() and new Function() stay refused, and compiling a module
+  # takes script that is already running, which this policy still allows
+  # only from 'self'. It was a policy of its own while Diagrams was a page
+  # of its own; as a screen it is reached by the router without a page load,
+  # so the admin document needs it. img-src's blob: is the pictures and
+  # setup files Diagrams hands out.
   adminCsp = lib.concatStringsSep "; " [
     "default-src 'none'"
-    "script-src 'self'"
+    "script-src 'self' 'wasm-unsafe-eval'"
     "style-src 'self'"
-    "img-src 'self' data:"
+    "img-src 'self' data: blob:"
     "font-src 'self'"
     "connect-src 'self'"
     # The board embeds `/widget-frame/` (below) for the owner's hand-written
@@ -239,27 +249,6 @@ let
     "script-src 'self' 'unsafe-inline'"
     "style-src 'self' 'unsafe-inline'"
     "img-src 'self' data:"
-    "font-src 'self'"
-    "connect-src 'self'"
-    "frame-ancestors 'none'"
-    "base-uri 'none'"
-    "form-action 'none'"
-  ];
-
-  # LosOS Lab's policy: the admin policy plus 'wasm-unsafe-eval', which is
-  # what lets the page compile its WebAssembly (the Lab's Rust core,
-  # admin-ui/lab/core) and nothing more: eval() and new Function() stay
-  # refused. Kept off the admin pages, which run no WebAssembly. Style is
-  # 'self' like the admin page's: the canvas places things with React style
-  # props, which are CSSOM writes the policy allows. blob: images are the
-  # setup files and screenshots the Lab hands out. No remote origin: the
-  # box's copy has no qemu-wasm engine, fetches nothing but /api/ and its
-  # own files, and its guests, when there are any, come through /api/lab.
-  labCsp = lib.concatStringsSep "; " [
-    "default-src 'none'"
-    "script-src 'self' 'wasm-unsafe-eval'"
-    "style-src 'self'"
-    "img-src 'self' data: blob:"
     "font-src 'self'"
     "connect-src 'self'"
     "frame-ancestors 'none'"
@@ -324,10 +313,12 @@ let
   ];
 
   # One map per header: value on the admin surface, empty (header omitted) on
-  # the proxied Git route, the handbook's and the lab's own values
-  # (or the admin value, for the headers they share) under /handbook/ and
-  # /lab/, the widget frame's own value (or nothing) under /widget-frame/,
-  # and a mail message's under its HTML route.
+  # the proxied Git route and on LosOS Login under /auth/, which sends its
+  # own (the admin `base-uri 'none'` drops its `<base href>`, and every page
+  # below /auth/ then loads its scripts from the wrong folder and stays
+  # blank), the handbook's own value (or the admin value, for the headers
+  # they share) under /handbook/, the widget frame's own value (or nothing)
+  # under /widget-frame/, and a mail message's under its HTML route.
   #
   # Collabora Online's two prefixes (modules/office.nix) get nothing either,
   # only while it is on: coolwsd sends its own policy, whose frame-ancestors
@@ -337,13 +328,13 @@ let
     ~^/browser/      "";
         ~^/cool/         "";
   '';
-  adminHeaderMap = variable: value: handbookValue: labValue: frameValue: mailValue: ''
+  adminHeaderMap = variable: value: handbookValue: frameValue: mailValue: ''
     map $uri ${variable} {
         default          "${value}";
         ~^/forgejo       "";
         ${officeArms}
+        ~^/auth/         "";
         ~^/handbook/     "${handbookValue}";
-        ~^/lab/          "${labValue}";
         ~^/widget-frame/ "${frameValue}";
         ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";
     }
@@ -355,7 +346,6 @@ let
       variable = "$losos_csp";
       value = adminCsp;
       handbookValue = handbookCsp;
-      labValue = labCsp;
       frameValue = widgetFrameCsp;
       mailValue = mailFrameCsp;
     }
@@ -382,7 +372,7 @@ let
 
   adminHeaderMaps = lib.concatMapStrings (
     h:
-    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) h.frameValue (
+    adminHeaderMap h.variable h.value (h.handbookValue or h.value) h.frameValue (
       h.mailValue or h.value
     )
   ) adminHeaders;
@@ -553,15 +543,20 @@ in
           "/manage/".return = "404";
         }
         (lib.mkIf labEnabled {
-          # LosOS Lab: lab/index.html in the admin UI's bundle, on real paths
-          # under /lab/ like the SPA is on /, so every deep link and reload
-          # gets the page. Its scripts and the core's .wasm are in the
-          # shared /assets/. LAN-only like the rest of the admin surface; the
-          # header map above gives this prefix its own CSP.
-          "/lab/" = {
-            tryFiles = "$uri /lab/index.html";
-            extraConfig = lanOnly;
-          };
+          # LosOS Diagrams is a screen of the SPA at /diagrams, reached
+          # through `/`'s fallback like every pane; its scripts and the
+          # core's .wasm are in /assets/. This is the page's old address,
+          # from before it was LosOS Diagrams. A return runs before the
+          # access phase, so no guard here: the redirect says nothing, and
+          # /diagrams/ keeps `/`'s.
+          "/lab/".return = "301 /diagrams/$is_args$args";
+        })
+        (lib.mkIf (adminEnabled && !labEnabled) {
+          # With Diagrams off (losos.admin.lab) there is no screen to fall
+          # back to: both spellings answer 404, as Mail's do off the shared
+          # side.
+          "= /diagrams".return = "404";
+          "/diagrams/".return = "404";
         })
         (lib.mkIf (adminEnabled && !mailEnabled) {
           # LosOS Mail is a screen of the SPA at /mail, reached through `/`'s
@@ -576,7 +571,7 @@ in
           # the prefix match. Same LAN-only guard. The page's own origin is
           # what the helper checks the Origin header against, so the Host
           # goes through as the browser sent it, port included. `connect-src
-          # 'self'` in labCsp covers ws:// and wss:// to the same host.
+          # 'self'` in adminCsp covers ws:// and wss:// to the same host.
           "/api/lab/ws/" = {
             proxyPass = "http://127.0.0.1:${toString config.losos.lab.libvirt.port}/lab/v1/guests/";
             proxyWebsockets = true;

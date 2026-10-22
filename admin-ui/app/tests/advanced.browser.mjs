@@ -46,17 +46,19 @@ const OWNED = {
   'hardening.usbguard': 'security',
 };
 /* Lines of overrides.nix another pane draws its own editor for: each app's
- * box-wide settings and its federation switch, on the Apps pane, and the
- * memory this box lends to AI models, on the Market pane
- * (lib/option-value.ts, ON_PANE). The Advanced row shows the value and links
- * there, to the app's fold on the Apps pane. */
+ * box-wide settings and its federation switch, on the Apps pane, the
+ * memory this box lends to AI models, on the Market pane, and the Windows
+ * share, on the Network pane (lib/option-value.ts, ON_PANE). The Advanced
+ * row shows the value and links there, to the app's fold on the Apps pane. */
 const ON_PANE = Object.fromEntries(
   DOC.options.flatMap((option) =>
     option.name === 'cloud.trashDays' || /^forgejo\.(site\.|federation\.enable$)/.test(option.name)
       ? [[option.name, 'apps']]
       : /^inference\.lend\.(enable|memoryMiB)$/.test(option.name)
         ? [[option.name, 'market']]
-        : [],
+        : option.name === 'cloud.windows.enable'
+          ? [[option.name, 'network']]
+          : [],
   ),
 );
 const fold = (name) => (name.startsWith('cloud.') ? 'cloud' : name.startsWith('forgejo.') ? 'git' : null);

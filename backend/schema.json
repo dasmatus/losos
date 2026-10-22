@@ -1925,6 +1925,16 @@
         "out": "backupResponse",
         "note": "The bucket without its secret key, the last backup (`/var/lib/losos-backup/last.json`), the backup or restore job, an erase under way with `secondsLeft` and `cancellable`, the report the last erase left (kept past the wipe in `/var/lib/losos-erase`), and the countdown length. Nothing set up is 200 with nulls."
       },
+      "GET /api/credentials": {
+        "auth": true,
+        "out": "{\"key\": \"tpm2\"|\"host\", \"credentials\": [{\"name\", \"app\", \"description\", \"source\": \"box\"|\"owner\", \"set\", \"updated\", \"sealedWith\", \"services\", \"rotate\", \"pane\", \"remade\", \"adopted\"}]}",
+        "note": "Every credential in /etc/credstore.encrypted that modules/credentials.nix declares, without its value. Admin only."
+      },
+      "POST /api/credentials/{name}/rotate": {
+        "auth": true,
+        "out": "{\"credential\": {the row above}}",
+        "note": "Make a new value for a credential the box makes itself, seal it and restart its readers. 404 for an unknown name, 409 for one the box does not make or that cannot change. The value is never in the answer. Audited."
+      },
       "POST /api/backup/target": {
         "auth": true,
         "in": "{\"endpoint\": \"https://s3.example.com\", \"bucket\": \"box-backups\", \"prefix\": \"\", \"region\": \"\", \"accessKeyId\": \"...\", \"secretAccessKey\": \"...\" (optional when one is stored), \"storageClass\": \"standard\" | \"glacierInstant\" | \"glacier\" | \"deepArchive\" (optional, standard)}",

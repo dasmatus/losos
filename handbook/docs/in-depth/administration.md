@@ -24,7 +24,7 @@ Services on the same host:
 | LosOS Cloud      | `<host>.local/cloud/`     |
 | Forgejo (opt-in) | `<host>.local/forgejo/`   |
 | Handbook         | `<host>.local/handbook/`  |
-| [Lab](lab.md)       | `<host>.local/lab/`       |
+| [Diagrams](diagrams.md) | `<host>.local/diagrams/` |
 
 The box's IP address (the one on the tty1 banner) and its bare name work in
 place of `<host>.local` everywhere, LosOS Cloud included. That is the way
@@ -107,9 +107,10 @@ and a build costs nothing; see [Widget builder](widget-builder.md).
 
 ## Admin token
 
-`lososd` writes a random 64-hex-character token to
-`/var/secrets/losos-admin-token` (mode 0600) on first start. The token can
-change any setting, so it is root.
+The box makes a random 64-hex-character token on first boot and keeps it
+sealed in its credential store, as `admin-token` (see
+[Credentials](../reference/credentials.md)); `lososd` reads it from its own
+credential directory. The token can change any setting, so it is root.
 
 On a new, unclaimed box, the first LAN caller to submit `POST /api/setup/claim`
 sets the owner password, becomes the first person who can sign in (an
@@ -379,8 +380,9 @@ metadata with it, so the class is chosen on the pane instead.
 
 The bucket keeps the last seven. lososd runs each backup and restore as a
 transient unit, `losos-backup-<job>`, started by systemd outside lososd's
-`ProtectHome=true` sandbox. The bucket's keys reach it as an
-`EnvironmentFile=` in `/var/secrets`, never on a command line.
+`ProtectHome=true` sandbox. The bucket's keys are sealed in the credential
+store and reach the unit through `LoadCredentialEncrypted=`, never on a
+command line or in a plain file.
 
 **Restore** takes the recovery code of the box that made the backup. The
 newest snapshot comes back: the apps stop, the files are synced back, the

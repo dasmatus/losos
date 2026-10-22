@@ -33,9 +33,11 @@ makes a random key, formats the volume with it, and then seals the key to the
 TPM with `systemd-cryptenroll`. At boot the initrd asks the chip for the key
 and opens the volume. The boot partition carries no secret.
 
-The box seals a smaller secret to the chip as well:
+The box seals smaller secrets to the chip as well:
 
 - The key that encrypts the mesh's storage directory (`modules/fscrypt.nix`).
+- Every secret in its credential store: the spare key, LosOS Login's keys
+  and the backup bucket's keys (see [Credentials](credentials.md)).
 
 :::note[The recovery copy of the key]
 A copy of the disk key also stays inside the encrypted volume at

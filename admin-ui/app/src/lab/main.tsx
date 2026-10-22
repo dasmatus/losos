@@ -1,8 +1,8 @@
-/* LosOS Lab's entry: lab/index.html loads this. The Lab is its own page,
- * not a route of the admin SPA, because it runs under a policy of its own
- * (script-src adds 'wasm-unsafe-eval' for the core) and carries the core's
- * WebAssembly, which the admin pages have no use for. It shares the SPA's
- * components, palette, theme and language. */
+/* The hosted copy's entry: diagrams/index.html loads this, and only the
+ * hosted build (VITE_LAB_HOSTED=1, admin-ui/lab/engine/build.sh) has that
+ * page. On a box LosOS Diagrams is a screen of the admin UI at /diagrams
+ * (App.tsx). This page is the same screen with no box behind it. It shares
+ * the SPA's components, palette, theme and language. */
 
 import { createRoot } from "react-dom/client";
 import { applyFavicon } from "@/lib/logo";
@@ -16,12 +16,10 @@ import { applyStoredTheme } from "@/lib/theme";
  * Sonner toast; this import costs it a few kB of CSS and nothing else. */
 import "sonner/dist/styles.css";
 import "@/styles/index.css";
-import "./lab.css";
 import { LabRoot } from "./app";
 
 applyStoredTheme();
 applyFavicon();
-document.body.classList.add("lab-body");
 
 const container = document.getElementById("lab");
 if (container === null) throw new Error("#lab is missing from lab/index.html");

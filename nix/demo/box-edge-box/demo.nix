@@ -263,7 +263,7 @@ pkgs.testers.nixosTest {
         )
         m.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
         m.forward_port(host_port=ports[name], guest_port=80)
-        tokens[name] = m.succeed("cat /var/secrets/losos-admin-token").strip()
+        tokens[name] = m.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip()
         note(f"{name}.token", tokens[name])
         note(f"{name}.port", str(ports[name]))
 

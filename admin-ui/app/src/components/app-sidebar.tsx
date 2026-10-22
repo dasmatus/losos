@@ -7,8 +7,8 @@ import {
   HardDriveIcon,
   Home01Icon,
   LayoutGridIcon,
+  FlowchartIcon,
   Mail01Icon,
-  NetworkIcon,
   PencilEdit02Icon,
   PinOffIcon,
   Search01Icon,
@@ -60,7 +60,7 @@ import { useOfficeFolder } from "@/lib/office-folder";
  *   Mesh                ▾   (the link opens Mesh; the chevron folds)
  *     Market                selling storage and compute, and disk sharing
  *     Machines              virtual machines on the mesh
- *   Lab                     (LosOS Lab at /lab/, a page of its own)
+ *   Diagrams                (LosOS Diagrams at /diagrams)
  *   Mail                    (LosOS Mail at /mail, only on the shared side)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
@@ -91,9 +91,6 @@ interface LinkEntry {
   icon: IconSvgElement;
   /** The settings pane behind it, for matching and for "is this current". */
   pane?: SettingsPaneId;
-  /** A page outside this app (the lab at /lab/): a plain link that loads it,
-   * not a router link that would draw this app's 404 at that address. */
-  external?: boolean;
   children?: readonly Entry[];
 }
 
@@ -137,10 +134,9 @@ const TREE: readonly Entry[] = [
   {
     kind: "link",
     key: "lab",
-    to: "/lab/",
+    to: "/diagrams",
     label: "shell.nav.lab",
-    icon: NetworkIcon,
-    external: true,
+    icon: FlowchartIcon,
   },
   {
     kind: "link",
@@ -156,7 +152,7 @@ const TREE: readonly Entry[] = [
     icon: Settings01Icon,
     railTo: "/settings",
     children: (
-      ["network", "look", "hardware", "security", "account", "users", "access", "advanced", "history", "backup", "about", "reset"] as const
+      ["network", "look", "hardware", "security", "account", "users", "access", "credentials", "advanced", "history", "backup", "about", "reset"] as const
     ).map(
       settingsLeaf,
     ),
@@ -195,7 +191,7 @@ function visible(entries: readonly Entry[], office: boolean): Entry[] {
 function isCurrent(entry: LinkEntry, pathname: string): boolean {
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
   if (entry.key === "documents") return pathname === "/office" || pathname === "/office/";
-  return pathname === entry.to;
+  return pathname.replace(/(.)\/$/, "$1") === entry.to;
 }
 
 function containsCurrent(entry: Entry, pathname: string): boolean {
@@ -500,13 +496,7 @@ function TopEntry({ entry, pathname, rail, open, onOpenChange }: TopEntryProps) 
     <SidebarMenuButton
       isActive={active}
       tooltip={label}
-      render={
-        entry.external === true ? (
-          <a href={entry.to} />
-        ) : (
-          <Link to={entry.to} aria-current={active ? "page" : undefined} />
-        )
-      }
+      render={<Link to={entry.to} aria-current={active ? "page" : undefined} />}
     >
       <Glyph icon={entry.icon} active={active} />
       <span className="group-data-[collapsible=icon]/sidebar:sr-only">{label}</span>

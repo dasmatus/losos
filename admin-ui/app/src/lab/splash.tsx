@@ -45,7 +45,7 @@ export function Splash({ step, gone, error }: { step: SplashStep; gone: boolean;
         <div className="sp-pane">
           <img src={logoUrl} alt="" width={84} height={84} />
           <div className="sp-los">
-            LosOS <span>Lab</span>
+            LosOS <span>Diagrams</span>
           </div>
           <div className="sp-load">
             <span className={cn(step === "failed" && "max-w-[min(520px,90vw)] text-center text-crit")}>{msg}</span>

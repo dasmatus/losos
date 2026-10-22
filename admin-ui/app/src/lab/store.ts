@@ -8,6 +8,7 @@
 
 import { useSyncExternalStore } from "react";
 import {
+  type CanvasSnap,
   type Catalog,
   Core,
   type Device,
@@ -20,17 +21,45 @@ import {
   type Snapshot,
   type TickResult,
 } from "./core";
+import type { MachinesView } from "./canvas/machines";
+import type { LiveView } from "./canvas/shared";
 import type { Ordering } from "./order";
 import type { GpuState } from "./render";
-import { type Cam, fitCam, Scene, type View, zoomCam } from "./scene";
+import { type Cam, fitCam, fitCanvas, Scene, type View, zoomCam } from "./scene";
 
 export type { Cam, View } from "./scene";
+/** What the page shows: the canvas (the diagram), or one of the
+ *  simulator's two views of the network. */
+export type Workspace = "canvas" | View;
 export type Tool = "select" | "place" | "connect" | "delete";
+/** A card the next click on the canvas puts down. */
+export type CardTool =
+  | { kind: "text"; shape?: string }
+  | { kind: "group" }
+  | { kind: "link" }
+  | { kind: "file"; file?: string }
+  /** A machine on the mesh: one ordered (`order`), or one planned from an image. */
+  | { kind: "machine"; order?: string; name?: string; image?: string; imageName?: string }
+  /** A template, centred where the click lands. */
+  | { kind: "template"; key: string };
+export interface CanvasSel {
+  nodes: string[];
+  edges: string[];
+}
+export const NO_CSEL: CanvasSel = { nodes: [], edges: [] };
 export type Tab = "status" | "config" | "physical" | "console" | "desktop";
 export type Sel = { kind: "dev" | "link"; id: string } | null;
 export type Wide = "none" | "console" | "desk";
 export interface Ui {
-  view: View;
+  view: Workspace;
+  /** The canvas's own selection: cards and arrows. */
+  csel: CanvasSel;
+  /** Armed from the tray: a card or shape to put down. */
+  cardTool: CardTool | null;
+  /** The hand: a drag on the canvas pans instead of selecting. */
+  hand: boolean;
+  /** The card or arrow whose words are being typed. */
+  editing: { kind: "node" | "edge"; id: string } | null;
   tool: Tool;
   placeType: string | null;
   linkKind: string | null;
@@ -74,7 +103,8 @@ export interface DeskState {
   notes: string;
 }
 
-type Channel = "model" | "frame" | "events" | "cam";
+/** `people`: who else has the diagram open, their pointers and selections. */
+type Channel = "model" | "frame" | "events" | "cam" | "people";
 
 export type ConsoleSink = (lines: string[], done: boolean) => void;
 
@@ -85,7 +115,11 @@ export class LabStore {
   readonly catalog: Catalog;
   snap: Snapshot;
   ui: Ui = {
-    view: "logical",
+    view: "canvas",
+    csel: NO_CSEL,
+    cardTool: null,
+    hand: false,
+    editing: null,
     tool: "select",
     placeType: null,
     linkKind: null,
@@ -93,14 +127,16 @@ export class LabStore {
     connectPort: "",
     sel: null,
     tab: "status",
-    cat: "losos",
+    cat: "cards",
     folded: false,
     wide: "none",
     sheet: false,
   };
   /** Set by the layout: below 900 px the inspector is a sheet. */
   phone = false;
-  cams: Record<View, Cam> = { logical: { x: 0, y: 0, k: 1 }, physical: { x: 0, y: 0, k: 1 } };
+  cams: Record<Workspace, Cam> = { canvas: { x: 0, y: 0, k: 1 }, logical: { x: 0, y: 0, k: 1 }, physical: { x: 0, y: 0, k: 1 } };
+  /** The diagram, as the core last drew it. */
+  canvas: CanvasSnap;
   frame: Frame = { packets: [], status: "", clockText: "", inFlight: 0, playing: false, frameFrac: 0 };
   events: LabEvent[] = [];
   extras: ExtraOption[] = [];
@@ -110,6 +146,14 @@ export class LabStore {
   thisBoxProblem: string | null = null;
   /** Whether this box lets the Lab order hardware, and what the edge sells. */
   ordering: Ordering | null = null;
+  /** Whether LosOS Cloud answers on this box for the person on the page. */
+  cloud = false;
+  /** The LosOS Cloud file this diagram was opened from or saved to. */
+  cloudFile: { path: string; etag: string; id?: number } | null = null;
+  /** The diagram as several people edit it (canvas/shared.ts), while it is. */
+  live: LiveView | null = null;
+  /** The box's machines on the mesh, for the canvas's machine cards. */
+  machines: MachinesView = { state: "off" };
   /** The text of the file opened in this tab, so the picker can go back to it. */
   openedText: { text: string; fileName: string } | null = null;
   linkBorn = new Map<string, number>();
@@ -127,12 +171,13 @@ export class LabStore {
   /** Called after every snapshot; the engine reconciles its guests there. */
   onRefresh: () => void = () => {};
 
-  private version: Record<Channel, number> = { model: 0, frame: 0, events: 0, cam: 0 };
+  private version: Record<Channel, number> = { model: 0, frame: 0, events: 0, cam: 0, people: 0 };
   private listeners: Record<Channel, Set<() => void>> = {
     model: new Set(),
     frame: new Set(),
     events: new Set(),
     cam: new Set(),
+    people: new Set(),
   };
   /** The snapshot with its lookups; rebuilt on every refresh. */
   scene: Scene;
@@ -142,6 +187,7 @@ export class LabStore {
     this.catalog = core.catalog();
     this.scenarios = this.catalog.scenarios;
     this.snap = core.snapshot();
+    this.canvas = core.canvas();
     this.scene = new Scene(this.snap, this.catalog, this.linkBorn);
   }
 
@@ -194,13 +240,30 @@ export class LabStore {
   /** Re-read the world after the core changed it. */
   refresh(): void {
     this.snap = this.core.snapshot();
+    this.canvas = this.core.canvas();
     this.index();
     // A selection whose device or cable is gone is dropped.
     const sel = this.ui.sel;
     if (sel && (sel.kind === "dev" ? !this.dev(sel.id) : !this.link(sel.id))) this.ui.sel = null;
+    this.ui.csel = this.liveCsel(this.ui.csel);
     if (this.ui.view === "physical") this.placePhysical();
     this.onRefresh();
     this.emit("model");
+  }
+
+  /** Re-read the canvas alone: a drag step, which moves cards and no cable. */
+  refreshCanvas(): void {
+    this.canvas = this.core.canvas();
+    this.emit("model");
+  }
+
+  /** The part of a selection that still exists. */
+  private liveCsel(c: CanvasSel): CanvasSel {
+    const n = new Set(this.canvas.nodes.map((x) => x.id));
+    const e = new Set(this.canvas.edges.map((x) => x.id));
+    const nodes = c.nodes.filter((id) => n.has(id));
+    const edges = c.edges.filter((id) => e.has(id));
+    return nodes.length === c.nodes.length && edges.length === c.edges.length ? c : { nodes, edges };
   }
 
   setUi(patch: Partial<Ui>): void {
@@ -250,6 +313,9 @@ export class LabStore {
       placeType: null,
       linkKind: null,
       connectFrom: null,
+      csel: NO_CSEL,
+      cardTool: null,
+      editing: null,
       sel: d ? { kind: "dev", id: d.id } : null,
       tab: d?.type === "laptop" ? "desktop" : "status",
     };
@@ -277,7 +343,7 @@ export class LabStore {
     const { width, height } = this.viewport;
     if (!width) return;
     const view = this.ui.view;
-    this.cams[view] = fitCam(view, this.snap.world.devices, width, height);
+    this.cams[view] = view === "canvas" ? fitCanvas(this.canvas.nodes, width, height) : fitCam(view, this.snap.world.devices, width, height);
     this.emit("cam");
   }
 

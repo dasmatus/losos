@@ -320,7 +320,10 @@ in
         + lib.optionalString office (
           " --office-wopi http://127.0.0.1:${toString config.losos.office.wopiPort}"
           + " --coolwsd /run/losos-office-discovery/discovery.xml"
-        );
+        )
+        # Files the Windows share writes, into the table as they land
+        # (modules/windows.nix).
+        + lib.optionalString cfg.windows.enable " --watch";
         User = "losos-cloud";
         Group = "losos-cloud";
         StateDirectory = "losos-cloud";

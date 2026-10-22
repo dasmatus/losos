@@ -308,6 +308,13 @@
             # The fscrypt policy on the shared data domain, locked and unlocked
             # off losos.sharingMyStorage.
             ./modules/fscrypt.nix
+            # The credential manager: every secret of the box sealed with
+            # systemd-creds in /etc/credstore.encrypted and handed to the
+            # services that read it by LoadCredentialEncrypted=, so a copy of
+            # /persist that leaves the machine carries ciphertext. Next to
+            # fscrypt.nix because the two use the same sealing mechanism and
+            # cover different halves of the same problem.
+            ./modules/credentials.nix
             ./modules/daemon.nix
             ./modules/identity.nix
             # Backups to the owner's S3 bucket, restoring them, and the
@@ -330,6 +337,8 @@
             # Office documents in the browser: Collabora Online and its WOPI
             # host (backend/src/office/).
             ./modules/office.nix
+            # Its files in Windows' Network view, as an SMB share.
+            ./modules/windows.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
@@ -453,6 +462,12 @@
         # The banner a box off the mesh shows over every page, both states
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
+        # LosOS Diagrams on a box with LosOS Cloud: the /lab/ move, a .canvas
+        # file opened and saved back, and the pull request's pictures.
+        losos-diagrams = import ./nix/tests/diagrams.nix { inherit pkgs; };
+        # Two people on two boxes drawing in one shared diagram at once
+        # (nix/tests/diagrams-together.nix).
+        losos-diagrams-together = import ./nix/tests/diagrams-together.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-mail = import ./nix/tests/mail.nix { inherit pkgs; };
         losos-mail-screens = import ./nix/tests/mail.nix {
@@ -473,6 +488,7 @@
         # Two boxes sharing a note and editing it together, apart and
         # together again (nix/tests/mesh-collab.nix).
         losos-mesh-collab = import ./nix/tests/mesh-collab.nix { inherit pkgs; };
+        losos-windows = import ./nix/tests/windows.nix { inherit pkgs; };
         # Apps run as notshared on rootless Podman, with no cluster: the
         # box's own, one in the LosOS app format and a chart from the
         # search (nix/tests/podman-apps.nix).
@@ -494,6 +510,7 @@
         # with a type the Advanced pane has no editor for.
         losos-options-doc =
           self.nixosConfigurations.install.config.environment.etc."losos/options.json".source;
+        losos-credentials = import ./nix/tests/credentials.nix { inherit pkgs; };
         losos-erase = import ./nix/tests/erase.nix { inherit pkgs impermanence; };
         losos-console = import ./nix/tests/console.nix { inherit pkgs; };
         # The text search behind the admin palette: the cloud index pass in

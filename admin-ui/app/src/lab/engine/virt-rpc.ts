@@ -197,7 +197,7 @@ export class VirtRpcBackend implements GuestBackend {
       await client.open(daemonUri(t.uri ?? ""));
       const spec = {
         name,
-        title: `LosOS Lab: ${device.name}`,
+        title: `LosOS Diagrams: ${device.name}`,
         memoryMiB: hello.memoryMiB ?? 96,
         kernel: `${dir}/bzImage`,
         disk: `${dir}/${device.image === "gear" ? "gear.bin" : "rootfs.bin"}`,
