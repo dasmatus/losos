@@ -1,0 +1,282 @@
+// Pictures of LosOS Git between two boxes, from a real browser: someone of
+// another box signing in with their chat address, and a repository's room
+// in LosOS Chat on both boxes. nix/tests/git-federation.nix runs it in its
+// laptop VM against the two boxes' own nginx, in phases, with the test's
+// own requests in between; the same pictures serve the pull request and the
+// launch film.
+//
+//   node git-federation-shots.mjs OUT PHASE [--old] [--commit SHA] [--test NAME]
+//
+// The boxes are https://mattbox.local (Matus, the owner, with the
+// repository notshared/site) and https://kitchenbox.local (Eva). The
+// browser trusts each box's certificate by its public key
+// (/etc/losos-mattbox.pem, /etc/losos-kitchenbox.pem). PHASE is one of
+//
+//   room     Matus on mattbox: the repository's settings, the room switch
+//            turned on, the repository with its Chat button;
+//   eva      Eva: mattbox's repository as a visitor, "Use your chat
+//            address", her box asking her, back on mattbox as
+//            @eva:kitchenbox.local, her pull request, and the repository's
+//            room in her own box's chat;
+//   chat     Matus: the repository's room in mattbox's chat;
+//   before   with --old, the pages before this change: the visitor's
+//            repository page, the owner's settings and his repository.
+//
+// The window is 1280 x 900 at twice the pixels, dark, en-US, reduced motion,
+// Europe/Bratislava.
+
+import { createHash, X509Certificate } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+const VIEW = { width: 1280, height: 900 };
+const MATT = "https://mattbox.local";
+const KITCHEN = "https://kitchenbox.local";
+const REPO = "/git/notshared/site";
+const MATUS = ["matus", "Correct-Horse-Battery-9"];
+const EVA = ["eva", "Eva-Long-Password-3"];
+
+const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? "playwright-core");
+
+function spkiPin(pemFile) {
+  const cert = new X509Certificate(readFileSync(pemFile));
+  const der = cert.publicKey.export({ type: "spki", format: "der" });
+  return createHash("sha256").update(der).digest("base64");
+}
+
+class Shots {
+  constructor(out, meta) {
+    this.out = out;
+    this.meta = meta;
+    mkdirSync(out, { recursive: true });
+    const manifest = join(out, "manifest.json");
+    this.steps = existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")).steps : [];
+  }
+
+  async settle(p) {
+    await p.waitForLoadState("networkidle");
+    await p.evaluate(() => document.fonts.ready.then(() => true));
+    await p.waitForFunction(
+      () => {
+        const seen = (el) => {
+          const r = el.getBoundingClientRect();
+          return r.bottom > 0 && r.top < innerHeight && r.width > 0;
+        };
+        const imgs = [...document.images].filter(seen);
+        if (imgs.some((i) => !i.complete || i.naturalWidth === 0)) return false;
+        if ([...document.querySelectorAll("[data-skeleton], [data-slot=spinner], .animate-spin")].some(seen)) return false;
+        if (document.querySelector("[data-sonner-toast]")) return false;
+        return true;
+      },
+      undefined,
+      { timeout: 120_000 },
+    );
+    await p.evaluate(() => {
+      document.documentElement.style.caretColor = "transparent";
+    });
+    await p.waitForTimeout(300);
+  }
+
+  async take(p, slug, title, action = { kind: "none" }, targets = {}) {
+    await this.settle(p);
+    const file = `${String(this.steps.length + 1).padStart(2, "0")}-${slug}.png`;
+    await p.screenshot({ path: join(this.out, file), timeout: 180_000 });
+    const found = {};
+    for (const [key, loc] of Object.entries(targets)) {
+      const b = await loc.boundingBox().catch(() => null);
+      if (b) found[key] = { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) };
+    }
+    const url = new URL(p.url());
+    this.steps.push({ file, url: `${url.host}${url.pathname}${url.search}`, title, action, targets: found });
+    console.log(file, title);
+  }
+
+  save() {
+    const manifest = { feature: "git-federation", viewport: VIEW, dpr: 2, ...this.meta, steps: this.steps };
+    writeFileSync(join(this.out, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+  }
+}
+
+async function signIn(page, base, [name, password]) {
+  await page.goto(`${base}/auth/`);
+  const status = await page.evaluate(
+    async ([username, password, targetURL]) => {
+      const r = await fetch("/auth/api/firstfactor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, keepMeLoggedIn: false, targetURL }),
+      });
+      return r.status;
+    },
+    [name, password, `${base}/`],
+  );
+  if (status !== 200) throw new Error(`sign-in refused at ${base}: ${status}`);
+}
+
+async function room(s, p) {
+  await p.goto(`${MATT}${REPO}/settings`);
+  const card = p.locator("[data-chat-room-setting]");
+  await card.waitFor();
+  await card.scrollIntoViewIfNeeded();
+  const toggle = card.getByRole("switch");
+  await s.take(p, "room-off", "a repository's settings: its room in LosOS Chat, off", { kind: "click", target: "toggle" }, { card, toggle });
+  await toggle.click();
+  await p.locator('[data-chat-room-setting="on"]').waitFor();
+  await p.locator("[data-chat-room]").waitFor();
+  await s.take(p, "room-on", "the room made; the repository links it", { kind: "none" }, {
+    card,
+    chat: p.locator("[data-chat-room]"),
+  });
+  await p.goto(`${MATT}${REPO}`);
+  await p.locator("[data-readme]").waitFor();
+  await s.take(p, "repo-chat", "the repository with its Chat button", { kind: "click", target: "chat" }, {
+    chat: p.locator("[data-chat-room]"),
+  });
+}
+
+async function eva(s, p) {
+  await p.goto(`${MATT}${REPO}`);
+  await p.locator("[data-readme]").waitFor();
+  const ask = p.locator("[data-chat-sign-in]");
+  await s.take(p, "visitor", "mattbox's public repository, for someone who has no account there", { kind: "click", target: "ask" }, {
+    ask,
+    signIn: p.locator("[data-sign-in]"),
+  });
+  await ask.click();
+  await p.locator("[data-chat-address]").fill("@eva:kitchenbox.local");
+  const go = p.locator("[data-chat-continue]");
+  await s.take(p, "address", "Eva gives her chat address", { kind: "click", target: "go" }, {
+    dialog: p.getByRole("dialog"),
+    go,
+  });
+  await go.click();
+  await p.waitForURL(`${KITCHEN}/chat/vouch**`);
+  const yes = p.locator("[data-vouch-yes]");
+  await yes.waitFor();
+  await s.take(p, "vouch", "her own box asks before it tells mattbox who she is", { kind: "click", target: "yes" }, { yes });
+  await yes.click();
+  await p.waitForURL(`${MATT}${REPO}**`);
+  await p.locator("[data-contributor-note]").waitFor();
+  await p.locator("[data-me]", { hasText: "Eva" }).waitFor();
+  await s.take(p, "contributor", "back on mattbox as @eva:kitchenbox.local, with her own branches", { kind: "none" }, {
+    me: p.locator("[data-me]"),
+    note: p.locator("[data-contributor-note]"),
+  });
+  await p.goto(`${MATT}${REPO}/pulls/1`);
+  await p.locator("[data-pull-title]").waitFor();
+  await s.take(p, "pull", "her pull request, from her branch, with Matus's answer", { kind: "click", target: "chat" }, {
+    title: p.locator("[data-pull-title]"),
+    chat: p.locator("[data-chat-room]"),
+  });
+  await p.locator("[data-chat-room]").click();
+  await p.waitForURL(`${KITCHEN}/chat/**`);
+  const log = p.getByRole("log");
+  await log.getByText("opened pull request #1", { exact: false }).first().waitFor();
+  await s.take(p, "eva-room", "the repository's room, in Eva's chat on kitchenbox", { kind: "none" }, { log });
+}
+
+async function chat(s, p) {
+  await p.goto(`${MATT}${REPO}`);
+  await p.locator("[data-chat-room]").click();
+  await p.waitForURL(`${MATT}/chat/**`);
+  const log = p.getByRole("log");
+  await log.getByText("opened pull request #1", { exact: false }).first().waitFor();
+  await log.getByText("@eva:kitchenbox.local", { exact: false }).first().waitFor();
+  await s.take(p, "matus-room", "the same room in Matus's chat on mattbox", { kind: "none" }, { log });
+}
+
+async function before(s, visitor, owner) {
+  await visitor.goto(`${MATT}${REPO}`);
+  await visitor.locator("[data-readme]").waitFor();
+  await s.take(visitor, "visitor", "mattbox's public repository, for someone who has no account there", { kind: "none" }, {
+    signIn: visitor.locator("[data-sign-in]"),
+  });
+  await owner.goto(`${MATT}${REPO}/settings`);
+  await owner.locator("[data-repo-settings]").waitFor();
+  await s.take(owner, "settings", "a repository's settings", { kind: "none" });
+  await owner.goto(`${MATT}${REPO}`);
+  await owner.locator("[data-readme]").waitFor();
+  await s.take(owner, "repo", "the repository", { kind: "none" });
+}
+
+function parse(argv) {
+  const pos = [];
+  const opts = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (["--commit", "--test"].includes(a)) opts[a.slice(2)] = argv[++i];
+    else if (a === "--old") opts.old = true;
+    else pos.push(a);
+  }
+  if (pos.length < 2 || !["room", "eva", "chat", "before"].includes(pos[1])) {
+    console.error("usage: git-federation-shots.mjs OUT room|eva|chat|before [--old] [--commit SHA] [--test NAME]");
+    process.exit(2);
+  }
+  return { out: pos[0], phase: pos[1], opts };
+}
+
+const { out, phase, opts } = parse(process.argv.slice(2));
+const pins = ["/etc/losos-mattbox.pem", "/etc/losos-kitchenbox.pem"].map(spkiPin).join(",");
+const browser = await chromium.launch({ args: [`--ignore-certificate-errors-spki-list=${pins}`] });
+const window = () =>
+  browser.newContext({
+    viewport: VIEW,
+    deviceScaleFactor: 2,
+    colorScheme: "dark",
+    locale: "en-US",
+    timezoneId: "Europe/Bratislava",
+    reducedMotion: "reduce",
+  });
+const page = async (ctx) => {
+  const p = await ctx.newPage();
+  p.setDefaultTimeout(180_000);
+  p.setDefaultNavigationTimeout(180_000);
+  return p;
+};
+
+const problems = [];
+const watch = (p) => {
+  p.on("pageerror", (e) => problems.push(String(e)));
+  p.on("response", (r) => {
+    const path = new URL(r.url()).pathname;
+    // LosOS Git without LosOS Reviewer answers the AI review's address 404;
+    // a visitor's first /user is the 401 that makes them one.
+    if (r.status() === 404 && path.endsWith("/ai-review")) return;
+    if (r.status() === 401 && path === "/git/api/v1/user") return;
+    if (r.status() >= 500) problems.push(`${r.status()} ${r.request().method()} ${r.url()}`);
+  });
+};
+
+const s = new Shots(out, { commit: opts.commit ?? "", test: opts.test ?? "" });
+let last = null;
+try {
+  if (phase === "before") {
+    const visitor = await page(await window());
+    const owner = await page(await window());
+    last = owner;
+    await signIn(owner, MATT, MATUS);
+    await before(s, visitor, owner);
+  } else {
+    const p = await page(await window());
+    last = p;
+    watch(p);
+    if (phase === "eva") {
+      await signIn(p, KITCHEN, EVA);
+      await eva(s, p);
+    } else {
+      await signIn(p, MATT, MATUS);
+      if (phase === "room") await room(s, p);
+      else await chat(s, p);
+    }
+  }
+} catch (e) {
+  if (last !== null) await last.screenshot({ path: join(out, `failed-${phase}.png`) }).catch(() => {});
+  throw e;
+} finally {
+  s.save();
+}
+await browser.close();
+if (problems.length > 0 && opts.old !== true) {
+  console.error(`the pages reported errors:\n${problems.join("\n")}`);
+  process.exit(1);
+}

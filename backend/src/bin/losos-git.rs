@@ -63,6 +63,9 @@ enum Cmd {
         /// Reach a chat server at a fixed address, `name=url` (tests).
         #[arg(long, hide = true)]
         matrix_server_url: Vec<String>,
+        /// This box's own chat server name, which nobody signs in through.
+        #[arg(long)]
+        matrix_server_name: Option<String>,
     },
     /// Carry Forgejo's records into LosOS Git from the export in `--from`
     /// (`<from>/tables/*.json`), and write `<from>/import.json`.
@@ -172,6 +175,7 @@ fn main() -> anyhow::Result<()> {
             events_socket,
             matrix_self_signed,
             matrix_server_url,
+            matrix_server_name,
         } => {
             for path in events_socket {
                 losos_ctl::forge::events::deliver_to(path);
@@ -191,6 +195,7 @@ fn main() -> anyhow::Result<()> {
                             .filter_map(|s| s.split_once('='))
                             .map(|(n, u)| (n.to_string(), u.to_string()))
                             .collect(),
+                        own: matrix_server_name,
                     },
                 },
                 server::Listen {

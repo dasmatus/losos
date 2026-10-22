@@ -59,6 +59,9 @@ pub struct MatrixConfig {
     /// Where to reach a server instead of finding it (`name` to a base URL
     /// such as `http://127.0.0.1:8448`), for tests.
     pub urls: HashMap<String, String>,
+    /// This box's own chat server name: its people sign in with LosOS
+    /// Login, never through it.
+    pub own: Option<String>,
 }
 
 /// `@eva:kitchenbox.local` → (`eva`, `kitchenbox.local`), or `None` when
@@ -170,6 +173,29 @@ fn base_url(store: &Store, config: &MatrixConfig, server: &str) -> Result<String
     Ok(format!("https://{server}:8448"))
 }
 
+/// Whether an address may be another box: not this one (loopback, the
+/// unspecified address) and not link-local or multicast.
+fn reachable(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            !(v4.is_loopback()
+                || v4.is_unspecified()
+                || v4.is_link_local()
+                || v4.is_multicast()
+                || v4.is_broadcast())
+        }
+        std::net::IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return reachable(std::net::IpAddr::V4(v4));
+            }
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || (v6.segments()[0] & 0xffc0) == 0xfe80)
+        }
+    }
+}
+
 /// One `GET`, answered as JSON. `server` names whose key a self-signed
 /// certificate is kept under.
 fn get(
@@ -199,6 +225,10 @@ fn get(
         .map_err(|_| unreachable())?
         .next()
         .ok_or_else(unreachable)?;
+    // Another server's name never leads back into this box.
+    if !config.urls.contains_key(server) && !reachable(addr.ip()) {
+        return Err(unreachable());
+    }
     let tcp = TcpStream::connect_timeout(&addr, TIMEOUT).map_err(|_| unreachable())?;
     tcp.set_read_timeout(Some(TIMEOUT))
         .map_err(|_| unreachable())?;
@@ -458,6 +488,11 @@ async fn session(req: HttpRequest, body: web::Json<NewSession>, state: web::Data
     if !server_name_ok(&server) {
         return Err(Fail::bad("That is not a chat server's name."));
     }
+    if state.config.matrix.own.as_deref() == Some(server.as_str()) {
+        return Err(Fail::bad(
+            "That is this box's own chat server: sign in here instead.",
+        ));
+    }
     if body.access_token.is_empty() || body.access_token.len() > 512 {
         return Err(Fail::bad("The token is missing."));
     }
@@ -509,6 +544,24 @@ async fn session(req: HttpRequest, body: web::Json<NewSession>, state: web::Data
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_server_name_never_leads_back_into_this_box() {
+        for ip in [
+            "127.0.0.1",
+            "0.0.0.0",
+            "169.254.1.1",
+            "::1",
+            "fe80::1",
+            "::ffff:127.0.0.1",
+            "224.0.0.251",
+        ] {
+            assert!(!reachable(ip.parse().unwrap()), "{ip}");
+        }
+        for ip in ["192.168.1.20", "10.0.0.5", "203.0.113.7", "fd00::5"] {
+            assert!(reachable(ip.parse().unwrap()), "{ip}");
+        }
+    }
 
     #[test]
     fn addresses_split_and_become_logins_no_box_account_can_have() {

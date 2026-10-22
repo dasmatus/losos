@@ -41,7 +41,7 @@ import { chatDocument } from "./document";
 import { Composer } from "./composer";
 import { failed, ImageViewer, InviteDialog, JoinDialog, NewRoomDialog, openDirect, RoomSettingsDialog, StartChatDialog } from "./dialogs";
 import { readShare, ShareDialog } from "./cloud";
-import { linkedCall, withoutCall, withoutLink, withUserId } from "./links";
+import { linkedCall, linkedRoom, withoutCall, withoutLink, withUserId } from "./links";
 import { directPartner, directRooms, isSpace, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
 import { RoomList } from "./room-list";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
@@ -326,6 +326,21 @@ function ChatHome({ signed }: { signed: Signed }) {
     const search = new URLSearchParams(window.location.search);
     const raw = search.get("with");
     const shared = readShare(search);
+    // `?join=<room>` from a LosOS Git repository: that room, joined first.
+    const joining = linkedRoom(window.location.search);
+    if (joining !== null) {
+      navigate(withoutLink(window.location.href), { replace: true });
+      const there = client.getRoom(joining.room);
+      if (there !== null && there.getMyMembership() === "join") {
+        setCurrent(joining.room);
+        return;
+      }
+      client
+        .joinRoom(joining.room, { viaServers: joining.via })
+        .then((room) => setCurrent(room.roomId))
+        .catch((error: unknown) => failed(t, error));
+      return;
+    }
     if (raw === null && shared === null) return;
     const video = linkedCall(window.location.search);
     navigate(withoutCall(withoutLink(window.location.href)), { replace: true });
