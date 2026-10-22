@@ -84,6 +84,9 @@ const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 /* LosOS Mail (src/mail/): only on the shared side, so most boxes never
  * fetch it. */
 const Mail = React.lazy(() => import("@/mail/app"));
+/* LosOS Chat (src/chat/), the same: on the shared side only, and the only
+ * screen that brings matrix-js-sdk and its crypto. */
+const Chat = React.lazy(() => import("@/chat/app"));
 /* Mesh CI (src/ci/): on the shared side too, beside LosOS Git. */
 const Ci = React.lazy(() => import("@/ci/app"));
 /* LosOS Diagrams (src/lab/): its own chunk with the Rust core's
@@ -367,6 +370,9 @@ function Shell() {
                 (modules/containers.nix); the screen says so too if the box
                 leaves it while the page is open. */}
             <Route path="/mail" element={<Mail />} />
+            {/* nginx serves /chat/ only on the shared side, under chat's
+                own policy (modules/chat.nix); off it, /chat/ goes home. */}
+            <Route path="/chat/*" element={<Chat />} />
             {/* The same for Mesh CI. LosOS Git's checks link a run's job as
                 /ci/runs/<id>#job-<job>. */}
             <Route path="/ci" element={<Ci />} />

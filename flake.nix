@@ -326,6 +326,9 @@
             ./modules/credentials.nix
             ./modules/daemon.nix
             ./modules/identity.nix
+            # LosOS Chat: Dendrite as the shared user while the box shares
+            # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
+            ./modules/chat.nix
             # Backups to the owner's S3 bucket, restoring them, and the
             # boot-time wipe of an erase (backend/src/{backup,erase}.rs).
             ./modules/backup.nix
@@ -468,6 +471,7 @@
         # real rebuild, with the pull request's pictures (nix/tests/wait-game.nix).
         losos-wait-game = import ./nix/tests/wait-game.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
+        losos-chat = import ./nix/tests/chat.nix { inherit pkgs; };
         # Screenshots of a booted box; the plan is read when the driver runs.
         losos-screens = import ./nix/tests/screens.nix { inherit pkgs; };
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };

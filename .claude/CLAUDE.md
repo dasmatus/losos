@@ -223,6 +223,18 @@ and is never served or built by nix.
   host network without root, turn claims into folders in that user's data
   domain and refuse a chart that needs more; nginx forwards a port of
   `losos.apps.ports` to it, LAN only. `nix/tests/podman-apps.nix` boots it.
+- `chat.nix` + `backend/src/chat.rs` + `admin-ui/app/src/chat/` (LosOS
+  Chat, `/chat/`, its own Vite page of the admin UI): Dendrite as `shared` in
+  `/home/shared/data/chat`, only while `lososInternal.sharedSide`
+  (`sharingMyStorage` and `cluster.enable`, the gate mail shares); off, nginx
+  sends `/chat/` home and `/_matrix/` 404s. No Matrix passwords: lososd is an
+  application service over every user and the only way in
+  (`/api/chat/session`), and nginx asks `/internal/chat/authz` before every
+  client and media request (LosOS Login cookie plus a token of that same
+  person). Dendrite has no thread list; lososd answers it through
+  `losos-chat-threads` as `shared`. The client is matrix-js-sdk with its Rust
+  crypto under the Lab's CSP arm. `nix/tests/chat.nix` boots it and drives
+  two browsers (`chat-browser.mjs`); its output holds the screenshots.
 - `mail.nix` + `backend/src/mail.rs` (`losos.mail.*`): LosOS Mail. Stalwart
   as `shared`, mailboxes in `/home/shared/data/mail`, loopback HTTP only (no
   SMTP or IMAP listener), its own unit rather than nixpkgs' module because a

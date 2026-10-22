@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   ArrowRight01Icon,
+  BubbleChatIcon,
   Doc01Icon,
   HardDriveIcon,
   Home01Icon,
@@ -93,6 +94,9 @@ interface LinkEntry {
   icon: IconSvgElement;
   /** The settings pane behind it, for matching and for "is this current". */
   pane?: SettingsPaneId;
+  /** An app that runs as the shared user (GET /api/me's `shared`): drawn
+   * only while the box shares its storage and the app is up. */
+  shared?: string;
   children?: readonly Entry[];
 }
 
@@ -142,10 +146,19 @@ const TREE: readonly Entry[] = [
   },
   {
     kind: "link",
+    key: "chat",
+    to: "/chat/",
+    label: "shell.nav.chat",
+    icon: BubbleChatIcon,
+    shared: "chat",
+  },
+  {
+    kind: "link",
     key: "mail",
     to: "/mail",
     label: "shell.nav.mail",
     icon: Mail01Icon,
+    shared: "mail",
   },
   {
     kind: "link",
@@ -153,6 +166,7 @@ const TREE: readonly Entry[] = [
     to: "/ci",
     label: "shell.nav.ci",
     icon: WorkflowSquare01Icon,
+    shared: "ci",
   },
   {
     kind: "fold",
@@ -178,8 +192,7 @@ function allowed(entry: LinkEntry, office: boolean): boolean {
   if (entry.key === "documents") return office;
   // Shared-side: there only while the box shares its storage, which lososd
   // says in /api/me's `shared`. With sharing off the page does not exist.
-  if (entry.key === "mail") return sharedApp("mail");
-  if (entry.key === "ci") return sharedApp("ci");
+  if (entry.shared !== undefined) return sharedApp(entry.shared);
   return true;
 }
 
