@@ -111,6 +111,8 @@ in
 
 pkgs.testers.nixosTest {
   name = "losos-quick-actions";
+  # Under TCG the two passes of pictures take most of an hour each.
+  globalTimeout = 3 * 3600;
 
   nodes = {
     box = _: {
