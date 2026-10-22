@@ -6,6 +6,8 @@ slug: /manual/contacts
 
 # Contacts
 
+![A contact.](../img/contacts-eva.png)
+
 ![LosOS Contacts.](../img/contacts-list.png)
 
 LosOS Contacts is an address book for each person on the box. **Contacts**
