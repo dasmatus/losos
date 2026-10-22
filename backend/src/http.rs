@@ -3529,8 +3529,9 @@ async fn find_mail_keys(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 .and_then(|q| q.get("email").cloned())
                 .unwrap_or_default();
         match keys.find(&person.name, &email, || contact_cards(&api, person)) {
-            Ok(found) => HttpResponse::Ok()
-                .json(serde_json::json!({ "email": email.trim().to_ascii_lowercase(), "keys": found })),
+            Ok(found) => HttpResponse::Ok().json(
+                serde_json::json!({ "email": email.trim().to_ascii_lowercase(), "keys": found }),
+            ),
             Err(r) => mail_refused(&r),
         }
     })
@@ -3551,7 +3552,10 @@ async fn get_mail_raw(
         |who| match mail_person(&api, who).map(|p| api.mail.raw(p, &path)) {
             Ok(Ok(bytes)) => HttpResponse::Ok()
                 .content_type("application/octet-stream")
-                .insert_header(("Content-Disposition", "attachment; filename=\"message.eml\""))
+                .insert_header((
+                    "Content-Disposition",
+                    "attachment; filename=\"message.eml\"",
+                ))
                 .insert_header(("X-Content-Type-Options", "nosniff"))
                 .insert_header(("Cache-Control", "private, no-store"))
                 .body(bytes),

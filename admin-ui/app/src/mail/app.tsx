@@ -714,18 +714,22 @@ function MessageRow({
   );
 }
 
+function isPgp(m: MailSummary): boolean {
+  return m.pgp === "encrypted" || m.pgp === "signed";
+}
+
 /* An OpenPGP message, opened in the browser: fetched raw, decrypted with the
  * person's unlocked key, its signature checked against the sender's keys.
  * Opened again when the key is unlocked or locked. */
 function useOpened(m: MailMessage, own: OwnKey): { reading: Reading | null; opened: Opened | null } {
   const unlocked = useUnlocked(own);
   const [state, setState] = React.useState<{ reading: Reading | null; opened: Opened | null }>({
-    reading: m.pgp !== null ? { state: "opening" } : null,
+    reading: isPgp(m) ? { state: "opening" } : null,
     opened: null,
   });
   const ownState = own.state;
   React.useEffect(() => {
-    if (m.pgp === null) {
+    if (!isPgp(m)) {
       setState({ reading: null, opened: null });
       return;
     }
@@ -770,6 +774,7 @@ function useOpened(m: MailMessage, own: OwnKey): { reading: Reading | null; open
       }
     })();
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m.id, m.pgp, m.from, unlocked, ownState]);
   return state;
 }
@@ -835,7 +840,7 @@ function Reader({
   const others = folders.filter((f) => !m.mailboxIds.includes(f.id) && f.role !== "drafts");
   const { reading, opened } = useOpened(m, own);
   const [unlocking, setUnlocking] = React.useState(false);
-  const pgp = m.pgp !== null;
+  const pgp = isPgp(m);
   const openedText = opened === null ? "" : opened.text.trim() !== "" ? opened.text : opened.html !== null ? htmlText(opened.html) : "";
   React.useEffect(() => {
     if (opened !== null) onOpened(openedText);

@@ -99,7 +99,7 @@ impl PublicKey {
 
     pub fn names(&self, email: &str) -> bool {
         let email = email.to_ascii_lowercase();
-        self.emails().iter().any(|e| *e == email)
+        self.emails().contains(&email)
     }
 }
 
@@ -188,14 +188,20 @@ pub fn check_own(public: &str, locked: &str, address: &str) -> Result<Own, Refus
     if !public.names(address) {
         return refuse(
             400,
-            format!("the key is for {}, not for {address}", public.emails().join(", ")),
+            format!(
+                "the key is for {}, not for {address}",
+                public.emails().join(", ")
+            ),
         );
     }
     let Ok((secret, _)) = SignedSecretKey::from_string(locked) else {
         return refuse(400, "that is not a private key");
     };
     if format!("{:X}", secret.fingerprint()) != public.fingerprint {
-        return refuse(400, "the private key and the public key are not the same key");
+        return refuse(
+            400,
+            "the private key and the public key are not the same key",
+        );
     }
     let unlocked = !secret.primary_key.secret_params().is_encrypted()
         || secret
@@ -593,7 +599,8 @@ impl Keys {
     pub fn from_env(domain: &str) -> Keys {
         let var = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
         Keys::new(
-            var("LOSOS_MAIL_KEYS_DIR").map_or_else(|| "/var/lib/losos/mail-keys".into(), PathBuf::from),
+            var("LOSOS_MAIL_KEYS_DIR")
+                .map_or_else(|| "/var/lib/losos/mail-keys".into(), PathBuf::from),
             var("LOSOS_MAIL_WKD_DIR").map_or_else(|| "/var/lib/losos-wkd".into(), PathBuf::from),
             domain.to_string(),
             var("LOSOS_MAIL_KEYSERVER").map(|k| k.trim_end_matches('/').to_string()),
@@ -725,11 +732,13 @@ impl Keys {
                 Some(bytes) => {
                     write_file(&file, bytes, 0o644).map_err(|e| broken("publish the key", e))?;
                     for dir in [root.clone(), root.join("hu")] {
-                        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755));
+                        let _ =
+                            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755));
                     }
                     let policy = root.join("policy");
                     if !policy.exists() {
-                        write_file(&policy, b"", 0o644).map_err(|e| broken("publish the key", e))?;
+                        write_file(&policy, b"", 0o644)
+                            .map_err(|e| broken("publish the key", e))?;
                     }
                 }
                 None => match std::fs::remove_file(&file) {
@@ -952,7 +961,10 @@ mod tests {
         let k = key("Eva <eva@mattbox.home.arpa>", Some("long passphrase"));
         let locked = k.to_armored_string(ArmorOptions::default()).unwrap();
         let own = check_own(&armored_public(&k), &locked, "eva@mattbox.home.arpa").unwrap();
-        assert_eq!(own.public.emails(), vec!["eva@mattbox.home.arpa".to_string()]);
+        assert_eq!(
+            own.public.emails(),
+            vec!["eva@mattbox.home.arpa".to_string()]
+        );
         // The binary is the public key alone.
         let again = read_public(&own.public.binary());
         assert_eq!(again.len(), 1);
@@ -1014,8 +1026,8 @@ mod tests {
     #[test]
     fn a_vcard_hands_over_its_key_only_for_its_own_address() {
         let k = key("Friend <friend@example.org>", None);
-        let b64 = base64::engine::general_purpose::STANDARD
-            .encode(k.to_public_key().to_bytes().unwrap());
+        let b64 =
+            base64::engine::general_purpose::STANDARD.encode(k.to_public_key().to_bytes().unwrap());
         let v4 = format!(
             "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Friend\r\nEMAIL;TYPE=work:friend@example.org\r\nKEY:data:application/pgp-keys;base64,{}\r\n {}\r\nEND:VCARD\r\n",
             &b64[..40],
@@ -1047,7 +1059,10 @@ mod tests {
             out: &Path,
         ) -> anyhow::Result<()> {
             std::fs::write(out, b"sealed")?;
-            self.0.lock().unwrap().insert(out.to_path_buf(), value.to_vec());
+            self.0
+                .lock()
+                .unwrap()
+                .insert(out.to_path_buf(), value.to_vec());
             Ok(())
         }
         fn open(&self, _name: &str, path: &Path) -> anyhow::Result<Vec<u8>> {
@@ -1074,10 +1089,8 @@ mod tests {
     }
 
     fn store(name: &str) -> (Keys, Arc<Jar>, Arc<Web>, PathBuf) {
-        let dir = std::env::temp_dir().join(format!(
-            "losos-mail-pgp-{name}-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("losos-mail-pgp-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let jar = Arc::new(Jar::default());
         let web = Arc::new(Web::default());
@@ -1098,7 +1111,8 @@ mod tests {
         let k = key("Eva <eva@mattbox.home.arpa>", Some("long passphrase"));
         let locked = k.to_armored_string(ArmorOptions::default()).unwrap();
         let own = check_own(&armored_public(&k), &locked, "eva@mattbox.home.arpa").unwrap();
-        keys.set("eva", &own, Some(crate::credentials::Key::Tpm2)).unwrap();
+        keys.set("eva", &own, Some(crate::credentials::Key::Tpm2))
+            .unwrap();
 
         // Sealed, not left as it came.
         let on_disk = std::fs::read(dir.join("keys/eva/locked.cred")).unwrap();
@@ -1121,14 +1135,19 @@ mod tests {
         }
 
         // Another person on the box finds it, and only the box is asked.
-        let found = keys.find("adam", "EVA@mattbox.home.arpa", Vec::new).unwrap();
+        let found = keys
+            .find("adam", "EVA@mattbox.home.arpa", Vec::new)
+            .unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].source, Source::Box);
 
         keys.remove("eva").unwrap();
         assert!(keys.mine("eva").unwrap().is_none());
         assert!(!dir.join("wkd/hu").join(&hash).exists());
-        assert!(keys.find("adam", "eva@mattbox.home.arpa", Vec::new).unwrap().is_empty());
+        assert!(keys
+            .find("adam", "eva@mattbox.home.arpa", Vec::new)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -1139,12 +1158,18 @@ mod tests {
         let fp = format!("{:X}", friend.fingerprint());
 
         // Nothing anywhere: WKD (both methods), then the keyserver.
-        assert!(keys.find("eva", "friend@example.org", Vec::new).unwrap().is_empty());
+        assert!(keys
+            .find("eva", "friend@example.org", Vec::new)
+            .unwrap()
+            .is_empty());
         let asked = web.1.lock().unwrap().clone();
         assert_eq!(asked.len(), 3, "{asked:?}");
         assert!(asked[0].starts_with("https://openpgpkey.example.org/"));
         assert!(asked[1].starts_with("https://example.org/"));
-        assert_eq!(asked[2], "https://keys.example.net/vks/v1/by-email/friend%40example.org");
+        assert_eq!(
+            asked[2],
+            "https://keys.example.net/vks/v1/by-email/friend%40example.org"
+        );
 
         // The direct method answers.
         web.0.lock().unwrap().insert(asked[1].clone(), bin.clone());
@@ -1154,25 +1179,49 @@ mod tests {
 
         // A key WKD serves for some other address is not taken.
         let stranger = key("Stranger <x@example.org>", None);
-        web.0
-            .lock()
+        web.0.lock().unwrap().insert(
+            asked[1].clone(),
+            stranger.to_public_key().to_bytes().unwrap(),
+        );
+        assert!(keys
+            .find("eva", "friend@example.org", Vec::new)
             .unwrap()
-            .insert(asked[1].clone(), stranger.to_public_key().to_bytes().unwrap());
-        assert!(keys.find("eva", "friend@example.org", Vec::new).unwrap().is_empty());
+            .is_empty());
 
         // Autocrypt: learned from the sender's own mail, newer wins, and the
         // web is not asked once it is known.
         let header = autocrypt_header("friend@example.org", &bin);
-        keys.learn("eva", "eva@mattbox.home.arpa", "Friend@example.org", "2026-10-22T08:00:00Z", &header);
+        keys.learn(
+            "eva",
+            "eva@mattbox.home.arpa",
+            "Friend@example.org",
+            "2026-10-22T08:00:00Z",
+            &header,
+        );
         web.1.lock().unwrap().clear();
         let found = keys.find("eva", "friend@example.org", Vec::new).unwrap();
         assert_eq!((found.len(), found[0].source), (1, Source::Autocrypt));
         assert!(web.1.lock().unwrap().is_empty());
         // An older message does not replace it; a header for someone else
         // than the sender is ignored.
-        let stranger_header = autocrypt_header("friend@example.org", &stranger.to_public_key().to_bytes().unwrap());
-        keys.learn("eva", "eva@mattbox.home.arpa", "friend@example.org", "2026-10-21T08:00:00Z", &stranger_header);
-        keys.learn("eva", "eva@mattbox.home.arpa", "mallory@example.org", "2026-10-23T08:00:00Z", &stranger_header);
+        let stranger_header = autocrypt_header(
+            "friend@example.org",
+            &stranger.to_public_key().to_bytes().unwrap(),
+        );
+        keys.learn(
+            "eva",
+            "eva@mattbox.home.arpa",
+            "friend@example.org",
+            "2026-10-21T08:00:00Z",
+            &stranger_header,
+        );
+        keys.learn(
+            "eva",
+            "eva@mattbox.home.arpa",
+            "mallory@example.org",
+            "2026-10-23T08:00:00Z",
+            &stranger_header,
+        );
         let found = keys.find("eva", "friend@example.org", Vec::new).unwrap();
         assert_eq!(found[0].fingerprint, fp);
         // Adam learned nothing.
@@ -1182,9 +1231,12 @@ mod tests {
         let card_key = key("Friend <friend@example.org>", None);
         let card = format!(
             "BEGIN:VCARD\nEMAIL:friend@example.org\nKEY;ENCODING=b:{}\nEND:VCARD\n",
-            base64::engine::general_purpose::STANDARD.encode(card_key.to_public_key().to_bytes().unwrap())
+            base64::engine::general_purpose::STANDARD
+                .encode(card_key.to_public_key().to_bytes().unwrap())
         );
-        let found = keys.find("eva", "friend@example.org", || vec![card]).unwrap();
+        let found = keys
+            .find("eva", "friend@example.org", || vec![card])
+            .unwrap();
         assert_eq!(found.len(), 2);
         assert_eq!(found[0].source, Source::Contacts);
         assert_eq!(found[1].source, Source::Autocrypt);

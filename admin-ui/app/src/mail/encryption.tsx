@@ -64,7 +64,7 @@ export function useOwnKey(): [OwnKey, (next: MailOwnKey | null) => void] {
   React.useEffect(() => {
     const controller = new AbortController();
     getMailKey({ signal: controller.signal })
-      .then(({ key }) => setOwn(key === null ? { state: "none" } : { state: "set", key }))
+      .then(({ key }) => setOwn(key == null ? { state: "none" } : { state: "set", key }))
       .catch(() => {
         if (!controller.signal.aborted) setOwn({ state: "failed" });
       });

@@ -504,15 +504,11 @@ pub fn parse_draft(doc: &Value) -> Result<Draft, Refused> {
 /// Lines of `text` end in CRLF, and no line is longer than RFC 5322's 998.
 fn crlf_only(text: &str) -> bool {
     let bytes = text.as_bytes();
-    bytes
-        .iter()
-        .enumerate()
-        .all(|(i, &b)| match b {
-            b'\n' => i > 0 && bytes[i - 1] == b'\r',
-            b'\r' => bytes.get(i + 1) == Some(&b'\n'),
-            _ => true,
-        })
-        && text.split("\r\n").all(|l| l.len() <= 998)
+    bytes.iter().enumerate().all(|(i, &b)| match b {
+        b'\n' => i > 0 && bytes[i - 1] == b'\r',
+        b'\r' => bytes.get(i + 1) == Some(&b'\n'),
+        _ => true,
+    }) && text.split("\r\n").all(|l| l.len() <= 998)
 }
 
 /// `pgp`: `{"mime": "encrypted", "armored"}` or `{"mime": "signed",
@@ -1255,7 +1251,8 @@ pub fn mailbox(name: Option<&str>, email: &str) -> String {
         }
         Some(n) if n.is_ascii() => format!(
             "\"{}\" <{email}>",
-            n.replace(['\\', '"'], "").replace(|c: char| c.is_control(), "")
+            n.replace(['\\', '"'], "")
+                .replace(|c: char| c.is_control(), "")
         ),
         Some(n) => format!("{} <{email}>", encoded(n)),
     }
@@ -1290,7 +1287,10 @@ pub fn raw_message(env: &Envelope<'_>, body: &PgpBody, boundary: &str) -> Vec<u8
             .join(" ")
     };
     let mut out = String::new();
-    out.push_str(&format!("From: {}\r\n", mailbox(env.from.name.as_deref(), &env.from.email)));
+    out.push_str(&format!(
+        "From: {}\r\n",
+        mailbox(env.from.name.as_deref(), &env.from.email)
+    ));
     out.push_str(&format!("To: {}\r\n", env.to.join(", ")));
     if !env.cc.is_empty() {
         out.push_str(&format!("Cc: {}\r\n", env.cc.join(", ")));
@@ -1361,10 +1361,13 @@ pub fn import_calls(account: &str, blob: &str, drafts: &str) -> Vec<Value> {
 
 pub fn parse_imported(resp: &Value) -> Result<String, Refused> {
     let args = answer(resp, "Email/import", "e")?;
-    if let Some(why) = args
-        .pointer("/notCreated/m")
-        .map(|e| e.get("description").or_else(|| e.get("type")).and_then(Value::as_str).unwrap_or("refused").to_string())
-    {
+    if let Some(why) = args.pointer("/notCreated/m").map(|e| {
+        e.get("description")
+            .or_else(|| e.get("type"))
+            .and_then(Value::as_str)
+            .unwrap_or("refused")
+            .to_string()
+    }) {
         tracing::warn!(why, "the mail server would not take a message");
         return refuse(422, format!("the message was not sent: {why}"));
     }
@@ -2436,16 +2439,34 @@ mod tests {
     #[test]
     fn openpgp_mail_is_told_apart_by_its_type_or_its_armour() {
         assert_eq!(
-            pgp_kind("multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=x", ""),
+            pgp_kind(
+                "multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=x",
+                ""
+            ),
             Some("encrypted")
         );
         assert_eq!(
-            pgp_kind("multipart/signed; micalg=pgp-sha256;\r\n protocol=\"application/pgp-signature\"", ""),
+            pgp_kind(
+                "multipart/signed; micalg=pgp-sha256;\r\n protocol=\"application/pgp-signature\"",
+                ""
+            ),
             Some("signed")
         );
-        assert_eq!(pgp_kind("multipart/signed; protocol=\"application/pkcs7-signature\"", ""), None);
-        assert_eq!(pgp_kind("text/plain", "hi\n-----BEGIN PGP MESSAGE-----\n"), Some("encrypted"));
-        assert_eq!(pgp_kind("", "-----BEGIN PGP SIGNED MESSAGE-----"), Some("signed"));
+        assert_eq!(
+            pgp_kind(
+                "multipart/signed; protocol=\"application/pkcs7-signature\"",
+                ""
+            ),
+            None
+        );
+        assert_eq!(
+            pgp_kind("text/plain", "hi\n-----BEGIN PGP MESSAGE-----\n"),
+            Some("encrypted")
+        );
+        assert_eq!(
+            pgp_kind("", "-----BEGIN PGP SIGNED MESSAGE-----"),
+            Some("signed")
+        );
         assert_eq!(pgp_kind("text/plain", "hello"), None);
     }
 
@@ -2456,7 +2477,8 @@ mod tests {
         assert_eq!(
             body,
             PgpBody::Encrypted {
-                armored: "-----BEGIN PGP MESSAGE-----\r\n\r\nwV4D\r\n-----END PGP MESSAGE-----".into()
+                armored: "-----BEGIN PGP MESSAGE-----\r\n\r\nwV4D\r\n-----END PGP MESSAGE-----"
+                    .into()
             }
         );
         // Anything after the armour could be a header or a part of its own.
@@ -2474,11 +2496,17 @@ mod tests {
         // A signed part is kept byte for byte, so it must already be CRLF.
         let lf = part.replace("\r\n", "\n");
         assert!(parse_pgp(&json!({ "mime": "signed", "part": lf, "signature": sig })).is_err());
-        assert!(parse_pgp(&json!({ "mime": "signed", "part": "hello\r\n\r\n", "signature": sig })).is_err());
+        assert!(
+            parse_pgp(&json!({ "mime": "signed", "part": "hello\r\n\r\n", "signature": sig }))
+                .is_err()
+        );
         assert!(parse_pgp(&json!({ "mime": "other" })).is_err());
         let draft = parse_draft(&json!({ "to": "eva@x.org", "text": "", "pgp": { "mime": "encrypted", "armored": armored } })).unwrap();
         assert!(draft.pgp.is_some());
-        assert!(parse_draft(&json!({ "to": "eva@x.org", "text": "" })).unwrap().pgp.is_none());
+        assert!(parse_draft(&json!({ "to": "eva@x.org", "text": "" }))
+            .unwrap()
+            .pgp
+            .is_none());
     }
 
     #[test]
@@ -2489,14 +2517,20 @@ mod tests {
         let long = encoded(&"ľ".repeat(80));
         assert!(long.split("\r\n ").all(|w| w.len() <= 75), "{long}");
         assert_eq!(mailbox(Some("Eva"), "eva@x.org"), "Eva <eva@x.org>");
-        assert_eq!(mailbox(Some("Eva, M."), "eva@x.org"), "\"Eva, M.\" <eva@x.org>");
+        assert_eq!(
+            mailbox(Some("Eva, M."), "eva@x.org"),
+            "\"Eva, M.\" <eva@x.org>"
+        );
         assert_eq!(mailbox(None, "eva@x.org"), "eva@x.org");
         assert!(mailbox(Some("Éva"), "eva@x.org").starts_with("=?UTF-8?B?"));
     }
 
     #[test]
     fn an_encrypted_message_is_rfc_3156_with_the_armour_untouched() {
-        let from = Address { name: Some("Matúš".into()), email: "matus@mattbox.home.arpa".into() };
+        let from = Address {
+            name: Some("Matúš".into()),
+            email: "matus@mattbox.home.arpa".into(),
+        };
         let to = vec!["eva@mattbox.home.arpa".to_string()];
         let env = Envelope {
             from: &from,
@@ -2507,13 +2541,24 @@ mod tests {
             message_id: "<abc@mattbox.home.arpa>",
             in_reply_to: &["m1@x".to_string()],
             references: &["m0@x".to_string(), "m1@x".to_string()],
-            autocrypt: Some(" addr=matus@mattbox.home.arpa; prefer-encrypt=mutual; keydata=\r\n AAAA"),
+            autocrypt: Some(
+                " addr=matus@mattbox.home.arpa; prefer-encrypt=mutual; keydata=\r\n AAAA",
+            ),
         };
         let armored = "-----BEGIN PGP MESSAGE-----\r\n\r\nwV4D\r\n-----END PGP MESSAGE-----";
-        let raw = String::from_utf8(raw_message(&env, &PgpBody::Encrypted { armored: armored.into() }, "B1")).unwrap();
+        let raw = String::from_utf8(raw_message(
+            &env,
+            &PgpBody::Encrypted {
+                armored: armored.into(),
+            },
+            "B1",
+        ))
+        .unwrap();
         assert!(raw.contains("\r\nTo: eva@mattbox.home.arpa\r\n"));
         assert!(raw.contains("In-Reply-To: <m1@x>\r\nReferences: <m0@x> <m1@x>\r\n"));
-        assert!(raw.contains("Autocrypt: addr=matus@mattbox.home.arpa; prefer-encrypt=mutual; keydata=\r\n AAAA\r\n"));
+        assert!(raw.contains(
+            "Autocrypt: addr=matus@mattbox.home.arpa; prefer-encrypt=mutual; keydata=\r\n AAAA\r\n"
+        ));
         assert!(raw.contains("Content-Type: multipart/encrypted;\r\n protocol=\"application/pgp-encrypted\";\r\n boundary=\"B1\""));
         assert!(raw.contains("--B1\r\nContent-Type: application/pgp-encrypted\r\n"));
         assert!(raw.contains("Version: 1\r\n"));
@@ -2524,13 +2569,19 @@ mod tests {
         let part = "Content-Type: text/plain; charset=utf-8\r\n\r\nAhoj";
         let raw = String::from_utf8(raw_message(
             &env,
-            &PgpBody::Signed { part: part.into(), signature: "SIG".into(), micalg: "pgp-sha256" },
+            &PgpBody::Signed {
+                part: part.into(),
+                signature: "SIG".into(),
+                micalg: "pgp-sha256",
+            },
             "B2",
         ))
         .unwrap();
         assert!(raw.contains("multipart/signed; micalg=pgp-sha256;"));
         // Exactly the bytes signed, between the delimiter and the next one.
-        assert!(raw.contains(&format!("--B2\r\n{part}\r\n--B2\r\nContent-Type: application/pgp-signature")));
+        assert!(raw.contains(&format!(
+            "--B2\r\n{part}\r\n--B2\r\nContent-Type: application/pgp-signature"
+        )));
     }
 
     #[test]
@@ -2544,14 +2595,20 @@ mod tests {
         };
         let calls = import_calls("c", "blob1", "d");
         assert_eq!(calls[0][1]["emails"]["m"]["blobId"], "blob1");
-        assert_eq!(calls[0][1]["emails"]["m"]["mailboxIds"], json!({ "d": true }));
+        assert_eq!(
+            calls[0][1]["emails"]["m"]["mailboxIds"],
+            json!({ "d": true })
+        );
         let resp = json!({ "methodResponses": [["Email/import", { "created": { "m": { "id": "e9" } } }, "e"]] });
         assert_eq!(parse_imported(&resp).unwrap(), "e9");
         let resp = json!({ "methodResponses": [["Email/import", { "notCreated": { "m": { "type": "invalidEmail" } } }, "e"]] });
         assert_eq!(parse_imported(&resp).unwrap_err().status, 422);
         let calls = submit_calls("c", "i7", "e9", &prep);
         assert_eq!(calls[0][1]["create"]["send"]["emailId"], "e9");
-        assert_eq!(calls[0][1]["onSuccessUpdateEmail"]["#send"]["mailboxIds/s"], true);
+        assert_eq!(
+            calls[0][1]["onSuccessUpdateEmail"]["#send"]["mailboxIds/s"],
+            true
+        );
     }
 
     #[test]
@@ -2563,10 +2620,16 @@ mod tests {
             message_id: vec![],
             references: vec![],
         };
-        let from = Address { name: None, email: "matus@mattbox.home.arpa".into() };
+        let from = Address {
+            name: None,
+            email: "matus@mattbox.home.arpa".into(),
+        };
         let draft = parse_draft(&json!({ "to": "eva@mattbox.home.arpa", "text": "hi" })).unwrap();
         let mut calls = send_calls("c", &from, &prep, &draft);
         with_header(&mut calls, "header:Autocrypt:asRaw", " addr=x");
-        assert_eq!(calls[0][1]["create"]["draft"]["header:Autocrypt:asRaw"], " addr=x");
+        assert_eq!(
+            calls[0][1]["create"]["draft"]["header:Autocrypt:asRaw"],
+            " addr=x"
+        );
     }
 }
