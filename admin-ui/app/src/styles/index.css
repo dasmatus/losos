@@ -16,8 +16,8 @@
 @import "./tokens.css";
 
 /* ── Palette ──────────────────────────────────────────────────────────────
- * Lives in tokens.css, as plain custom properties, because the Nextcloud and
- * Forgejo themes (admin-ui/themes/) ship the same file and cannot run
+ * Lives in tokens.css, as plain custom properties, because the Nextcloud
+ * theme and LosOS Login (admin-ui/themes/) ship the same file and cannot run
  * Tailwind. Everything below reads it through var(); see that file's header
  * for the three-state Auto/Light/Dark rules. */
 

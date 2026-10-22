@@ -31,10 +31,12 @@ let
     ps.requests
     ps.pillow
   ]);
-  script = name: file: pkgs.writeScriptBin name ''
-    #!${python}/bin/python3
-    ${builtins.readFile file}
-  '';
+  script =
+    name: file:
+    pkgs.writeScriptBin name ''
+      #!${python}/bin/python3
+      ${builtins.readFile file}
+    '';
   flows = script "cloud-flows" ./cloud-flows.py;
   seed = script "cloud-seed" ./cloud-seed.py;
   # Playwright from nixpkgs' playwright-driver (playwright-core), which the
@@ -77,7 +79,7 @@ pkgs.testers.nixosTest {
         backend.plugins = lososPkgs.losos-plugins;
         admin.ui = lososPkgs.losos-admin-ui;
         cloud.enable = true;
-        forgejo.enable = false;
+        git.enable = false;
         configRepo.enable = false;
         mdns.enable = true;
       };

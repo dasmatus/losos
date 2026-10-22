@@ -237,6 +237,10 @@ pub struct ServeOpts {
     /// unless `--calls-relay-listen` was given, and `GET /calls/relay`
     /// answers 404.
     pub calls_relay: Option<crate::calls_relay::CallsRelayOpts>,
+    /// Mesh CI's queue (`crate::ci`): the directory it keeps the archives
+    /// of waiting jobs in. `None` unless `--ci-dir` was given, and every
+    /// `/ci/*` route answers 503.
+    pub ci_dir: Option<String>,
 }
 
 /// `serve --manage-key-file FILE [--manage-ui DIR]`.
@@ -533,6 +537,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 domains: parse_domains(&rest)?,
                 routes: parse_routes(&rest)?,
                 enrol_dir: arg(&rest, "--enrol-dir").map(str::to_string),
+                ci_dir: arg(&rest, "--ci-dir").map(str::to_string),
                 operator: arg(&rest, "--access-dir").map(|dir| crate::operator::OperatorOpts {
                     access_dir: dir.to_string(),
                     keys_file: arg(&rest, "--access-keys-file")

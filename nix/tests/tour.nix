@@ -43,28 +43,7 @@ let
 
   # The admin UI as it ships, without the Lab page, which this test never
   # opens and whose WebAssembly takes longer to build than the test to run.
-  ui = lososPkgs.losos-admin-ui.overrideAttrs (_: {
-    pname = "losos-admin-ui-without-lab";
-    preBuild = ''
-      cat > vite.tour-test.config.ts <<'EOF'
-      import base from "./vite.config";
-      import { join } from "node:path";
-      import { fileURLToPath } from "node:url";
-      const root = fileURLToPath(new URL(".", import.meta.url));
-      const config = base as Record<string, any>;
-      config.build.rolldownOptions.input = {
-        main: join(root, "index.html"),
-        manage: join(root, "manage/index.html"),
-      };
-      export default config;
-      EOF
-    '';
-    buildPhase = ''
-      runHook preBuild
-      npx vite build --config vite.tour-test.config.ts
-      runHook postBuild
-    '';
-  });
+  ui = import ./admin-ui-without-lab.nix lososPkgs.losos-admin-ui;
 
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
@@ -82,37 +61,35 @@ in
 pkgs.testers.nixosTest {
   name = "losos-tour";
 
-  nodes.box =
-    _:
-    {
-      imports = [
-        ../../modules/options.nix
-        ../../modules/containers.nix
-        ../../modules/tls.nix
-        ../../modules/setup.nix
-        ../../modules/daemon.nix
-        ../../modules/config-repo.nix
-      ];
-      losos = {
-        hostName = "mattbox";
-        backend.package = lososPkgs.losos-ctl;
-        admin.ui = ui;
-        identity.enable = false;
-        forgejo.enable = false;
-      };
-
-      systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
-      environment.systemPackages = [
-        pkgs.curl
-        pkgs.jq
-      ];
-      virtualisation = {
-        memorySize = 1536;
-        cores = 2;
-      };
-
-      specialisation.noBuilder.configuration.losos.builder.enable = false;
+  nodes.box = _: {
+    imports = [
+      ../../modules/options.nix
+      ../../modules/containers.nix
+      ../../modules/tls.nix
+      ../../modules/setup.nix
+      ../../modules/daemon.nix
+      ../../modules/config-repo.nix
+    ];
+    losos = {
+      hostName = "mattbox";
+      backend.package = lososPkgs.losos-ctl;
+      admin.ui = ui;
+      identity.enable = false;
+      git.enable = false;
     };
+
+    systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
+    environment.systemPackages = [
+      pkgs.curl
+      pkgs.jq
+    ];
+    virtualisation = {
+      memorySize = 1536;
+      cores = 2;
+    };
+
+    specialisation.noBuilder.configuration.losos.builder.enable = false;
+  };
 
   testScript = ''
     import json

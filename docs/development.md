@@ -101,7 +101,7 @@ Before / After prose, a screenshots table, How, Tested, notes for the
 reviewer. Keep every section.
 
 Screenshots are required for any change a person can see: the admin UI and
-the wizard, the installer and the tty1 banner, LosOS Cloud and the Forgejo
+the wizard, the installer and the tty1 banner, LosOS Cloud, LosOS Git, the LosOS Login
 theme, the handbook and docs pages. Take a Before and an After per screen at
 the same window size and in the same state, so the only difference is the
 change, and drag them into the table. A change with nothing visible says
@@ -251,7 +251,7 @@ this is the reasoning behind it.
   nodes `disable` and its agent node neither, and rke2's `role` description
   says the same. Gate every server-only flag on the role.
 - **The two Kubernetes instances are separate clusters on purpose.**
-  `services.k3s` (role `server`) runs *this box's* Forgejo and shared apps.
+  `services.k3s` (role `server`) runs *this box's* shared apps.
   `services.rke2` (role `agent`) joins the edge's mesh. An agent's kubelet
   cannot start while its server is unreachable, and `midnight-reboot.timer`
   fires unconditionally at 00:07. Putting the box's own services in the
@@ -352,9 +352,8 @@ this is the reasoning behind it.
     against a fake GitHub and a real registrar.
   - The allowlist decides whom the tooling serves. The root key is still the
     whole secret.
-  - Forgejo Actions is **off** in both Forgejo modes and the box runs no
-    runner. The earlier ceremony from the box (Actions workflows plus
-    `modules/git-runner.nix`) is gone, and
+  - The box runs no CI runner. The earlier ceremony from the box (Forgejo
+    Actions workflows plus `modules/git-runner.nix`) is gone, and
     `docs/provisioning/edge-identity/README.md` is the operator runbook.
   - The operator's machine has no Nix store, so `.#losos-registrar-static`
     (`pkgsStatic`, musl, same `cargoHash`) is the binary for it. CI's

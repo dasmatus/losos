@@ -1,0 +1,635 @@
+// The interface a pm plugin is compiled against.
+//
+// A plugin is a WebAssembly *component*: pm loads it into its own process and
+// calls it to answer two questions the built-in tables cannot always answer.
+//
+//   * `classify-command` is asked what a build-step command needs from the
+//     build jail, and is only ever asked about a command that matched NO
+//     built-in fingerprint. A plugin therefore cannot reclassify `cargo` as
+//     needing no network, or `git` as needing no version control: it can only
+//     name a command pm would otherwise have refused to run at all.
+//
+//   * `scan-source` is asked what a source file implies the built program will
+//     need at run time, for the file extensions the plugin claimed in its
+//     manifest. Its answers land in the package's permission profile with
+//     `plugin` provenance, in audit mode, where they deny nothing until a
+//     human promotes the profile.
+//
+// The world imports exactly one thing - a one-way `log` - and nothing else. No
+// WASI, no filesystem, no clock, no randomness, no network, no environment. A
+// plugin is a pure function from the bytes pm hands it to the answer it hands
+// back, and pm enforces that by never linking anything else into it.
+package pm:plugin@0.1.0;
+
+/// The values that cross the boundary.
+///
+/// Each mirrors a type pm already has, and the host refuses anything it cannot
+/// map back - see `pm::plugin::convert`.
+interface types {
+    /// One capability a build step may need from the jail.
+    ///
+    /// Mirrors pm's `policy::Capability`. A plugin may only return the ones it
+    /// listed in `manifest.grants-at-most`; anything else is dropped and
+    /// logged, so a plugin cannot quietly grow its reach after it was reviewed.
+    enum capability {
+        /// Compilers, linkers, headers and build systems.
+        toolchain,
+        /// The basic file-manipulation utilities.
+        coreutils,
+        /// A POSIX shell.
+        shell,
+        /// Archive and compression tools.
+        archive,
+        /// The host's network namespace.
+        network,
+        /// Version-control clients.
+        version-control,
+    }
+
+    /// One thing the built package may do at run time.
+    ///
+    /// Mirrors pm's `perms::Permission`. Paths are absolute or
+    /// package-relative exactly as the source spelled them; pm normalises but
+    /// deliberately does not canonicalise them, because they routinely name
+    /// files that do not exist on the machine doing the building.
+    variant permission {
+        /// Read this path, and everything under it if it is a directory.
+        read-path(string),
+        /// Write this path, and everything under it if it is a directory.
+        write-path(string),
+        /// Execute this path, or anything under it if it is a directory.
+        exec-path(string),
+        /// Reach the network.
+        network,
+        /// Fork or exec child processes at all.
+        spawn,
+    }
+
+    /// What a plugin says about a command it recognises.
+    record verdict {
+        /// A short, stable name for the thing that was recognised, e.g.
+        /// `zig-build`. pm records it prefixed with the plugin's own name, so
+        /// `pm explain` shows `zig:zig-build` and a plugin can never be
+        /// mistaken for a built-in. Must be 1-32 characters of
+        /// `[a-z0-9]` and `-`.
+        fingerprint: string,
+        /// What a command matching it needs from the jail.
+        capabilities: list<capability>,
+    }
+
+    /// One permission the plugin asks for, and the reason.
+    record grant {
+        /// What is being asked for.
+        permission: permission,
+        /// One line a human can check the claim against, conventionally
+        /// `<line>: <what was found>`. pm prefixes it with the plugin name and
+        /// the file, so the reader always knows who asked and about what.
+        evidence: string,
+    }
+
+    /// A source file handed to `scan-source`.
+    record source-file {
+        /// Path relative to the scanned tree, `/` separated. Never absolute,
+        /// and never escaping the tree.
+        path: string,
+        /// The file's contents. Only valid UTF-8 is ever handed over; pm skips
+        /// anything else before the plugin is reached.
+        contents: string,
+    }
+
+    /// A named constant a build file may substitute into a step command.
+    ///
+    /// The point is the things a build file would otherwise have to hardcode and get
+    /// wrong - where a distribution puts unit files, where a sysext image goes. A
+    /// plugin knows its own ecosystem's answer; the build file should not have to.
+    ///
+    /// These are **constants**, not computed values. A plugin has no filesystem, no
+    /// environment and no clock, so there is nothing for it to compute one *from*; the
+    /// whole list is fixed in the component and pm reads it once, at load. That is also
+    /// what makes it reviewable: `pm plugins` prints every symbol a plugin offers, and
+    /// the list cannot change afterwards depending on what it was asked.
+    record symbol {
+        /// How a build file refers to it, after the plugin's own name:
+        /// `%{<plugin>:<name>}`. Must be 1-32 characters of `[a-z0-9]`, `-` and `_`.
+        name: string,
+        /// What it expands to.
+        ///
+        /// **Must be a single word.** A step command is split on whitespace with no
+        /// shell involved, so a value containing any would not land in the command as
+        /// one argument - it would add arguments to it. pm drops a value holding
+        /// whitespace, a control character or a NUL rather than letting a plugin
+        /// lengthen an argument list a build file already wrote out.
+        value: string,
+        /// One line saying what it is, for `pm plugins`.
+        summary: string,
+    }
+
+    /// What a recipe function returns, so pm can check it and hand it to the
+    /// recipe as the matching pm type rather than as loose data.
+    ///
+    /// Values cross the boundary as JSON text. Every kind but `any` is an object
+    /// with exactly the keys a recipe would write by hand, and pm refuses one with
+    /// a key missing, misspelt or of the wrong type - the same checks a recipe's own
+    /// `step(#{ ... })` gets - so a plugin cannot hand a recipe something the recipe
+    /// could not have written itself.
+    enum recipe-value {
+        /// Any JSON value: a string, an integer, a boolean, an array, an object or
+        /// `null` (which a recipe sees as `()`). Floating-point numbers are refused,
+        /// because recipes have none.
+        any,
+        /// A build step: `{"stage", "name", "run", "dl_urls"?}`. The recipe gets a
+        /// `Step`.
+        step,
+        /// An array of build steps. The recipe gets an array of `Step`.
+        steps,
+        /// A kernel: `{"image", "cmdline"?}`. The recipe gets a `Kernel`.
+        kernel,
+        /// A whole package: `{"name", "version", "dependencies"?, "steps"?,
+        /// "kernel"?}`. The recipe gets a `Package` it can extend and then declare.
+        %package,
+    }
+
+    /// A function a plugin adds to Rhai recipes, under the plugin's own name:
+    /// `systemd::install_unit("foo.service")`.
+    record recipe-function {
+        /// How a recipe calls it, after `<plugin>::` (with any `-` in the plugin's
+        /// name written `_`). 1-32 characters of `[a-z0-9_]`, not starting with a
+        /// digit.
+        name: string,
+        /// Its parameters' names, for documentation. Their number is the
+        /// function's arity: pm only calls it with exactly that many arguments.
+        params: list<string>,
+        /// What it returns.
+        returns: recipe-value,
+        /// What it does, in Markdown, shown by `pm plugins` and by `pm-lsp`.
+        doc: string,
+    }
+
+    /// A machine pm is about to boot for a package that ships its own kernel, laid
+    /// out in a directory of its own. Every path is absolute and already exists.
+    record machine {
+        /// A name unique on the host: `pm-vm-` and random characters.
+        name: string,
+        /// One line saying what runs in it, for a list of machines.
+        title: string,
+        /// The machine's directory, where `launch.files` are written. Searchable
+        /// but not listable, and every file in it private to its owner.
+        directory: string,
+        /// The package's kernel image.
+        kernel: string,
+        /// The initramfs pm assembled: the package, its libraries and pm's init.
+        initramfs: string,
+        /// The whole kernel command line, pm's parameters included.
+        cmdline: string,
+        /// Memory the guest needs.
+        memory-mib: u64,
+        /// Virtual CPUs.
+        cpus: u32,
+        /// Whether pm itself can use KVM.
+        kvm: bool,
+        /// The Unix socket the guest's second serial port has to connect to: pm's
+        /// init reports there how the entrypoint exited.
+        status-socket: string,
+    }
+
+    /// A file `launch-machine` wants in the machine's directory.
+    record launch-file {
+        /// A plain file name: letters, digits, `.`, `_` and `-`, not starting with
+        /// `.`, and not one of the machine's own files.
+        name: string,
+        /// What it holds.
+        contents: string,
+    }
+
+    /// How to start a machine: one program from the plugin's `launchers`, found on
+    /// `PATH`, with these arguments, run in the machine's directory.
+    ///
+    /// The program owns the guest's console and must live exactly as long as the
+    /// machine: pm waits for it to exit, gives it pm's terminal or a pseudo-terminal
+    /// it copies, and sends it SIGTERM if pm dies first.
+    record launch {
+        program: string,
+        args: list<string>,
+        files: list<launch-file>,
+    }
+
+    /// How a disk image is laid out.
+    enum disk-format {
+        /// The disk's bytes, one for one.
+        raw,
+        /// QEMU's copy-on-write format, which can sit on top of another image.
+        qcow2,
+    }
+
+    /// What a machine's firmware is.
+    enum firmware {
+        /// UEFI, from the host's OVMF (AAVMF on arm64), without Secure Boot: the
+        /// template's own boot loader starts it, signed or not.
+        uefi,
+        /// A legacy PC BIOS, from SeaBIOS. x86-64 only.
+        bios,
+    }
+
+    /// The image a machine is made from, already on this host.
+    ///
+    /// A template is installed once and every machine made from it is a
+    /// copy-on-write layer on top, so it must never change once installed: its name
+    /// carries `digest` for that reason, and a different image under the same name is
+    /// a different template.
+    record machine-template {
+        /// What it is called: the package's name, or the image's file name. 1-64
+        /// characters of `[a-z0-9]`, `.`, `_` and `-`.
+        name: string,
+        /// The image's SHA-256, in lowercase hex.
+        digest: string,
+        /// The image file, readable by whoever runs pm.
+        image: string,
+        /// How `image` is laid out.
+        format: disk-format,
+        /// The image file's length in bytes: what has to be uploaded.
+        file-size: u64,
+        /// The size of the disk the image describes, in bytes: its length for a raw
+        /// image, the size in its header for a qcow2 one. A machine's disk is never
+        /// smaller.
+        disk-size: u64,
+        /// The firmware the image boots with.
+        firmware: firmware,
+    }
+
+    /// The colour a machine's windows are framed in, so which machine a window
+    /// belongs to is visible at a glance. Qubes OS's eight.
+    enum machine-label {
+        red,
+        orange,
+        yellow,
+        green,
+        gray,
+        blue,
+        purple,
+        black,
+    }
+
+    /// The system a machine installs from CDs.
+    enum guest-system {
+        /// Linux, or anything else that brings its own virtio drivers.
+        linux,
+        /// Windows, which needs virtio's drivers from a CD of their own, Hyper-V's
+        /// enlightenments and a TPM, and has no waypipe to show windows through, so
+        /// its whole screen is one window.
+        windows,
+    }
+
+    /// A CD image, already on this host. Like a template it is installed once and
+    /// shared by every machine given it, so its name carries `digest` too.
+    record machine-media {
+        /// What it is called: the image's file name. 1-64 characters of `[a-z0-9]`,
+        /// `.`, `_` and `-`.
+        name: string,
+        /// The image's SHA-256, in lowercase hex.
+        digest: string,
+        /// The image file, readable by whoever runs pm.
+        image: string,
+        /// The image file's length in bytes: what has to be uploaded.
+        file-size: u64,
+    }
+
+    /// A machine that starts empty and installs its system from CDs.
+    record machine-installer {
+        /// What it installs.
+        system: guest-system,
+        /// The CDs, in the order the machine is given them; it boots from the
+        /// first while its disk has nothing to boot.
+        media: list<machine-media>,
+    }
+
+    /// What a machine's disk starts from.
+    variant machine-source {
+        /// A copy-on-write layer over a template, ready to boot.
+        template(machine-template),
+        /// Nothing: the machine installs a system from CDs.
+        installer(machine-installer),
+    }
+
+    /// A machine to make.
+    record machine-spec {
+        /// What it is called, which is also how every later request names it. 1-32
+        /// characters of `[a-z0-9]` and `-`, starting with a letter.
+        name: string,
+        /// The colour its windows are framed in.
+        label: machine-label,
+        /// What its disk starts from.
+        source: machine-source,
+        /// The size of its disk, in bytes; never less than a template's.
+        disk-size: u64,
+        /// Memory, in MiB.
+        memory-mib: u64,
+        /// Virtual CPUs.
+        cpus: u32,
+        /// Whether the host has KVM. A machine without it is emulated, slowly.
+        kvm: bool,
+        /// The host's architecture, as Rust spells it: `x86_64` or `aarch64`. The
+        /// machine is the same.
+        arch: string,
+    }
+
+    /// Where the machines of whoever asks are kept, and what a plugin cannot find
+    /// out for itself. Every user has machines of their own, as every user has
+    /// files of their own: pm asks on behalf of one user, and the plugin plans for
+    /// that user's machines alone.
+    record machine-place {
+        /// The directory that user's machines, and the templates and CDs they were
+        /// made from, are kept in: `pm/machines` under `$XDG_DATA_HOME`. pm has made
+        /// it, readable by that user alone, before it asks.
+        directory: string,
+        /// Whether the machines run under the user's own service manager
+        /// (`systemctl --user`) rather than the system's: true for everyone but
+        /// root, whose machines are the system's.
+        user-manager: bool,
+        /// 32 random bytes, fresh for each request, for what has to differ from one
+        /// machine to the next and that a plugin, which has no randomness of its
+        /// own, cannot draw: an identifier, a network card's address, a vsock
+        /// address.
+        random: list<u8>,
+        /// The host's first GPU render node (`/dev/dri/renderD128`, say), or none
+        /// on a host without a GPU: what a machine's own GPU (VirGL) would render
+        /// on. A plugin that gives a machine one has to give it none here, or the
+        /// machine cannot start.
+        render-node: option<string>,
+    }
+
+    /// Something to do to the host's machines.
+    variant machine-request {
+        /// Install the template or CDs that are not installed yet, and make a
+        /// machine from them. The machine is left stopped.
+        create(machine-spec),
+        /// Print every machine, to pm's standard output.
+        %list,
+        /// Start the named machine, unless it runs already.
+        start(string),
+        /// Ask the named machine's guest to shut down, if it runs.
+        stop(string),
+        /// Power the named machine off at once, if it runs.
+        kill(string),
+        /// Power the named machine off if it runs, and delete it and its disk. Its
+        /// template stays.
+        remove(string),
+    }
+
+    /// One thing to run for a request.
+    ///
+    /// pm runs a request's steps in order and stops at the first that fails. It
+    /// evaluates every step's conditions before it runs the first one, so the plan is
+    /// fixed by the state the host was in when the request was made, not by what the
+    /// earlier steps have already changed. When a step fails, pm runs the `undo` of
+    /// every step that had finished, newest first. Never the failed step's own: a
+    /// step that failed is taken to have changed nothing, and its undo could take
+    /// away something that was there before the request - a disk that made the step
+    /// fail by existing already, say.
+    ///
+    /// Every launch here, conditions and undos included, is held to `launchers`, runs
+    /// with pm's standard output and error (the conditions with neither), and has its
+    /// files written to a directory private to the request.
+    record machine-step {
+        /// One line saying what the step does, for pm's log.
+        summary: string,
+        /// What to run.
+        run: launch,
+        /// Run the step only if this exits successfully.
+        when: option<launch>,
+        /// Skip the step if this exits successfully.
+        unless: option<launch>,
+        /// How to take the step back if a later one fails.
+        undo: option<launch>,
+    }
+
+    /// Whose containers a request is about, and what a plugin cannot find out for
+    /// itself. Like machines, every user's containers are their own: pm asks on behalf
+    /// of one user, and the plugin plans for that user's containers alone.
+    record container-place {
+        /// Whether that user is not root, so their containers run rootless, in user
+        /// namespaces of their own, with no daemon and no privilege beyond theirs. A
+        /// plugin may refuse root's, and pm's podman plugin does.
+        rootless: bool,
+    }
+
+    /// Something to do to the containers of whoever asks.
+    ///
+    /// Every name has been checked by pm: 1-64 characters of `[a-zA-Z0-9_.-]`,
+    /// starting with a letter or digit. Every file is an absolute path to a file that
+    /// existed when pm was asked.
+    variant container-request {
+        /// Print the name of every container, running or not, one to a line.
+        %list,
+        /// Print the named container's state, as the runtime names it: `running`,
+        /// `exited`, `paused` and so on.
+        status(string),
+        /// Print the named container's published ports, one to a line, as
+        /// `<container port>/<protocol> -> <host address>:<host port>`.
+        ports(string),
+        /// Make and start what a compose file describes, in the background.
+        up(string),
+        /// Make what a compose file describes and leave it stopped.
+        create(string),
+        /// Stop and remove what a compose file describes. Named volumes stay.
+        down(string),
+        /// Start the named container.
+        start(string),
+        /// Stop the named container, letting it shut down in its own time.
+        stop(string),
+        /// Pause the named container.
+        pause(string),
+        /// Resume the paused container.
+        unpause(string),
+        /// Remove the named container, which has to be stopped.
+        remove(string),
+        /// Print the versions of the programs that run containers.
+        version,
+    }
+
+    /// A hook a plugin implements.
+    ///
+    /// pm calls a hook only if the manifest lists it. The exports are all
+    /// mandatory - the component model has no optional export - so a plugin
+    /// that implements one hook still exports the other and returns the empty
+    /// answer from it.
+    enum hook {
+        /// `classify-command` is implemented.
+        classify-command,
+        /// `scan-source` is implemented.
+        scan-source,
+    }
+
+    /// What a plugin is, and the most it will ever ask for.
+    ///
+    /// pm asks for this exactly once, when it loads the plugin, and prints it
+    /// under `pm plugins`. It is the plugin's own claim about itself: pm holds
+    /// it to the claim, which is what makes reviewing a plugin cheap, but a
+    /// claim is not a defence against a key you should not have trusted.
+    record manifest {
+        /// Identifies the plugin everywhere pm mentions it. Must be 1-32
+        /// characters of `[a-z0-9]` and `-`.
+        name: string,
+        /// Free-form version string, shown but not interpreted.
+        version: string,
+        /// One line saying what the plugin is for.
+        summary: string,
+        /// Which hooks pm should call.
+        hooks: list<hook>,
+        /// The most `classify-command` will ever return. A verdict asking for
+        /// anything outside this set has the extra capabilities dropped.
+        /// Ignored when `classify-command` is not among the hooks.
+        grants-at-most: list<capability>,
+        /// File extensions, without the dot, that `scan-source` wants to see.
+        /// Ignored when `scan-source` is not among the hooks.
+        source-extensions: list<string>,
+        /// Named constants build files may substitute into step commands.
+        ///
+        /// Not gated on a hook: nothing calls back into the plugin to read them, they
+        /// are data pm takes once and keeps. A plugin offering none is the normal case.
+        symbols: list<symbol>,
+    }
+}
+
+/// The only thing pm lends a plugin.
+interface host {
+    /// How loud a message is. Mapped onto pm's own `tracing` levels.
+    enum level {
+        error,
+        warn,
+        info,
+        debug,
+        trace,
+    }
+
+    /// Write a line into pm's log, tagged with the plugin's name.
+    ///
+    /// One-way and returns nothing, so it tells the plugin nothing about the
+    /// host and cannot make one call's answer depend on another's. That is why
+    /// it is safe to hand a plugin at all.
+    log: func(level: level, message: string);
+}
+
+/// The world every pm plugin exports.
+world plugin {
+    use types.{manifest, verdict, grant, source-file};
+
+    import host;
+
+    /// Name the plugin and the most it will ask for. Called once, at load.
+    export describe: func() -> manifest;
+
+    /// Classify a build-step command that matched no built-in fingerprint.
+    ///
+    /// `none` means "I do not recognise this", which is the answer that leaves
+    /// pm's own behaviour unchanged.
+    export classify-command: func(command: string) -> option<verdict>;
+
+    /// Infer what a source file implies the built program will need.
+    ///
+    /// The empty list means "nothing found", which is the answer that leaves
+    /// the profile unchanged.
+    export scan-source: func(file: source-file) -> list<grant>;
+}
+
+/// The world pm's own bundled plugins export.
+///
+/// Everything a third-party plugin exports, plus the list of fingerprint names its
+/// `classify-command` can answer with. pm embeds these components in its own binary and
+/// consults them **before** any plugin loaded from disk; they replace what used to be
+/// tables compiled into pm. A third-party plugin is built against `plugin`, never this.
+world bundled {
+    include plugin;
+
+    /// Every fingerprint name `classify-command` can return, in the order it tries
+    /// them. pm lists these when a command matches nothing, and recognises them when it
+    /// reads back a serialised build policy.
+    export fingerprints: func() -> list<string>;
+}
+
+/// The world of a plugin that also adds functions to Rhai recipes.
+///
+/// Everything `plugin` exports, plus a list of functions and the one entry point that
+/// runs them. pm notices the extra exports when it loads the component; a plugin built
+/// against plain `plugin` loads exactly as before.
+///
+/// A recipe function runs like every other call: in a fresh instance, metered, with
+/// nothing but `log` to talk to. Its answer is a function of its arguments alone, which
+/// is what lets a recipe that calls it still evaluate to the same package everywhere.
+/// The plugin's file hash is already part of the build policy digest, so a recipe
+/// function that changes changes that digest too.
+world recipe-plugin {
+    include plugin;
+
+    use types.{recipe-function};
+
+    /// Every function this plugin adds to recipes. Called once, at load.
+    export recipe-functions: func() -> list<recipe-function>;
+
+    /// Run the recipe function called `name`.
+    ///
+    /// `args` holds one JSON text per parameter. The answer is JSON text of the kind
+    /// the function's `returns` names, or a message for the recipe's author, which
+    /// fails the recipe with that message.
+    export call-recipe-function: func(name: string, args: list<string>) -> result<string, string>;
+}
+
+/// The world of a plugin that can start the virtual machine a package that ships its
+/// own kernel boots in, instead of pm starting QEMU itself.
+///
+/// Everything `plugin` exports, plus the programs it may have pm run and the one
+/// call that decides how. This is the only world in which a plugin's answer makes
+/// pm run anything: the answer names a program, and pm runs it only if it is one of
+/// `launchers`, which pm reads once at load and prints under `pm plugins`, so what
+/// a reviewer sees there is the most the plugin can ever start. Like every other
+/// call, `launch-machine` runs in a fresh, metered instance with nothing but `log`:
+/// it describes the machine, it does not reach it.
+world vm-plugin {
+    include plugin;
+
+    use types.{machine, launch};
+
+    /// Every program `launch-machine` may name: bare names, found on `PATH`.
+    /// Called once, at load.
+    export launchers: func() -> list<string>;
+
+    /// How to start `machine`, or `none` to leave it to the next plugin, and in the
+    /// end to pm's own QEMU. An error fails the boot with the plugin's message.
+    export launch-machine: func(machine: machine) -> result<option<launch>, string>;
+}
+
+/// The world of a plugin that manages the host's persistent virtual machines, for
+/// `pm machine`.
+///
+/// Everything `vm-plugin` exports, plus the one call that turns a request into the
+/// steps that carry it out. The plugin decides what to run and pm runs it, held to
+/// the same `launchers` a `vm-plugin` is: the plugin still reaches nothing, and the
+/// most it can make pm execute is still what `pm plugins` printed.
+world machine-plugin {
+    include vm-plugin;
+
+    use types.{machine-request, machine-place, machine-step};
+
+    /// The steps that carry `request` out for the user `place` describes, in order.
+    /// An error refuses the request with the plugin's message, before anything runs.
+    ///
+    /// It replaced `machine-steps`, which took no place: every machine was the one
+    /// hypervisor daemon's, wherever the plugin put it. A plugin that still exports
+    /// that is not one pm asks about machines.
+    export machine-plan: func(request: machine-request, place: machine-place) -> result<list<machine-step>, string>;
+}
+
+/// The world of a plugin that manages each user's containers, for `pm container`.
+///
+/// Everything `vm-plugin` exports, plus the one call that turns a request into the
+/// steps that carry it out. pm runs them exactly as it runs a `machine-plugin`'s,
+/// held to the same `launchers`: the plugin reaches nothing, and the most it can make
+/// pm execute is what `pm plugins` printed.
+world container-plugin {
+    include vm-plugin;
+
+    use types.{container-request, container-place, machine-step};
+
+    /// The steps that carry `request` out for the user `place` describes, in order.
+    /// An error refuses the request with the plugin's message, before anything runs.
+    export container-plan: func(request: container-request, place: container-place) -> result<list<machine-step>, string>;
+}

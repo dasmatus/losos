@@ -48,12 +48,13 @@ a formát komunikácie v [`backend/schema.json`](https://github.com/dasmatus/los
 
 ## Pracovné záťaže {#workloads}
 
-LosOS Cloud (`modules/cloud.nix`, `backend/src/cloud/`) je samostatná služba
-na hostiteľovi, ktorá počúva na Unix sockete, ktorý smie otvoriť iba nginx.
-Forgejo beží vo vlastnom k3s klastri zariadenia
-(`losos.forgejo.mode = "container"`) alebo natívne na hostiteľovi; jeho pod
-používa `hostNetwork`. nginx je jediná služba na verejných portoch a
-smeruje podľa cesty.
+LosOS Cloud (`modules/cloud.nix`, `backend/src/cloud/`) a LosOS Git
+(`modules/git.nix`, `backend/src/forge/`) sú samostatné služby na
+hostiteľovi a každá počúva na Unix sockete, ktorý smie otvoriť iba nginx.
+Vlastný k3s klaster zariadenia prevádzkuje iba aplikácie inštalované ako
+`shared`, kým zariadenie zdieľa disk s mesh; jeho pody používajú
+`hostNetwork`. nginx je jediná služba na verejných portoch a smeruje podľa
+cesty.
 
 ## Rozloženie repozitára {#repository-layout}
 
@@ -241,16 +242,15 @@ a akékoľvek `${` a pomenuje kľúč, ktorý odmietol.
 
 Každé použitie zmien (apply), zmena režimu a reset je commit v `/etc/nixos`,
 repozitári, ktorý vytvoril inštalátor. Zosúlaďovacie vlákno v lososd sa
-dopytuje každých 30 s. Vytvorí administrátorov účet vo Forgejo (`notshared`,
-s heslom vlastníka, udržiavaným v súlade pri zmene hesla a nastavení počítača) a
-súkromný repozitár `losos-config`. Robí to cez účet bota, ktorého token
-vyrobí štartovací skript Forgejo (`nix/forgejo-bootstrap.nix`, token v
-`/var/lib/forgejo/.losos-token`). Keď Forgejo zaostáva, pushne. Keď klon
-pushol dopredu, urobí fast-forward, nový `overrides.nix` prepustí rovnakou
-bránou a spustí prestavbu. Rozdvojenú históriu nahlási a nikdy sa jej
-nedotkne. Za tým všetkým zámerne **nie je žiadny runner Forgejo Actions**.
+dopytuje každých 30 s. Vytvorí administrátorov účet v LosOS Git
+(`notshared`, správca) a súkromný repozitár `losos-config`, s admin
+tokenom, ktorý LosOS Git zapíše pri prvom štarte
+(`/var/lib/losos-git/admin-token`). Keď LosOS Git zaostáva, pushne. Keď
+klon pushol dopredu, urobí fast-forward, nový `overrides.nix` prepustí
+rovnakou bránou a spustí prestavbu. Rozdvojenú históriu nahlási a nikdy sa
+jej nedotkne. Za tým všetkým zámerne **nie je žiadny CI runner**.
 
-Panel Rozšírené odkazuje na šestnásť nastavení, ktoré vlastnia ostatné panely,
+Panel Rozšírené odkazuje na pätnásť nastavení, ktoré vlastnia ostatné panely,
 namiesto toho, aby ich upravoval druhýkrát. `OWNED` v
 `admin-ui/app/src/lib/option-value.ts` a `OWNED_NAMES` v `lib/api.ts` sú
 tento zoznam a `buildOverridesNix` podľa neho filtruje ďalšie kľúče, aby
@@ -260,17 +260,42 @@ kedysi ju odrezával aj v nich, čo pokazilo predvolené `upgradeFlakeUri`. A
 zoznam je jeden riadok `[ "a" "b" ]`, iba reťazce.
 
 **Pracovné záťaže a jediné predné dvere** (`modules/containers.nix`,
-`modules/workloads.nix`, `modules/cluster.nix`, `modules/cloud.nix`).
-systemd-nspawn je preč. Keď `losos.forgejo.mode == "container"`, Forgejo beží
-ako Kubernetes záťaž vo vlastnom lokálnom k3s klastri zariadenia. LosOS Cloud
-beží na hostiteľovi pod vlastným používateľom. nginx je jediný proces, ktorý
-drží verejné porty. Smeruje podľa cesty na mDNS mene zariadenia
-(`<hostName>.local/cloud/` a adresy, ktoré volajú aplikácie Nextcloud,
-`/forgejo/`) a na tom istom vhoste servíruje administračnú SPA.servíruje administračnú SPA. Aplikácie, ktoré vlastník nainštaluje ako
+`modules/cluster.nix`, `modules/cloud.nix`, `modules/git.nix`).
+systemd-nspawn je preč a s ním aj režimy aplikácií: LosOS Cloud a LosOS Git
+bežia na hostiteľovi, každá pod vlastným používateľom, a vlastný lokálny k3s
+klaster zariadenia prevádzkuje iba aplikácie inštalované ako `shared`. nginx
+je jediný proces, ktorý drží verejné porty. Smeruje podľa cesty na mDNS mene
+zariadenia (`<hostName>.local/cloud/` a adresy, ktoré volajú aplikácie
+Nextcloud, `/git/`) a na tom istom vhoste servíruje administračnú SPA.
+Aplikácie, ktoré vlastník nainštaluje ako
 `notshared`, a vlastné aplikácie zariadenia naopak bežia na Podmane bez
 roota cez Podman Compose (`modules/apps.nix`,
 [Formát aplikácií](app-format.md)), takže zariadenie, ktoré nič nezdieľa,
 pre ne nepotrebuje klaster.
+
+**LosOS Git** (`modules/git.nix`, `backend/src/forge/`, binárka
+`losos-git` z crate lososd). Git server zariadenia, pod vlastným
+používateľom. Smart HTTP gitu (`git-upload-pack` a `git-receive-pack
+--stateless-rpc`, vrátane protokolu v2) prúdi oboma smermi, účty, tokeny a
+záznamy repozitárov sú jeden súbor SQLite a repozitáre sú holé pod
+`/var/lib/losos-git/repositories/<owner>/<name>.git`. Počúva dvakrát: na
+`/run/losos-git/http.sock`, ktorý smie otvoriť iba nginx a ktorý je jediné
+miesto, kde verí človeku, ktorého LosOS Login pomenuje v hlavičkách
+`X-Losos-Cloud-*`, a na `127.0.0.1:3000` iba pre tokeny, kde lososd drží
+repozitár konfigurácie a vyrába tokeny počítačov. Token je uložený ako
+jeho SHA-256 a nesie rozsahy. Issues, pull requesty, komentáre, štítky a
+prílohy sú v tom istom súbore a číta ich `/api/v1/repos/…`.
+
+Zariadenie, na ktorom bežal Forgejo, si jeho záznamy prinesie. Pred prvým
+štartom LosOS Git presunie `losos-git-forgejo-import` repozitáre bez ich
+hookov, vyexportuje databázu Forgejo (z Postgresu, na natívnom zariadení zo
+SQLite), ponechá jej úplný dump a `losos-git import-forgejo` prevezme účty,
+spolupracovníkov, prístupové tokeny (staré hodnoty fungujú ďalej), štítky,
+issues, pull requesty, komentáre, priradených ľudí a prílohy. Z organizácie
+sa stane účet s rovnakým menom. Čo v LosOS Git nemá miesto (míľniky,
+vydania, záznamy časovej osi ako „zavrel to“), je spočítané a pomenované v
+správe, nikdy potichu zahodené. Nič z Forgejo sa nemaže a neúspešný beh
+nič nezmení a skúsi sa znova pri ďalšom štarte.
 
 `admin-ui/design-system/` (`tokens.css` a `losos.css`, plus obalový balík
 `react/` pre claude.ai/design) je iba pre vývojársky stroj a už sa vôbec
@@ -281,21 +306,16 @@ kľúče témy Tailwind v4. Dizajnový systém zostáva mimo Nix closure, preto�
 než filter podľa názvu `design-system`, ktorý nahradil a ktorý by
 premenovanie pokazilo.
 
-**Jeden vzhľad pre administračné stránky, LosOS Cloud a Forgejo**
-(`admin-ui/themes/`). LosOS Cloud je stránka vlastného zostavenia
-administračného rozhrania (`admin-ui/app/cloud/`), takže používa tie isté
-komponenty aj `tokens.css`. `tokens.css` je zámerne čisté CSS: téma Forgejo a
-téma LosOS Login ho dodávajú bajt po bajte ako `losos-tokens.css` a mapujú naň
-vlastné premenné, takže farba zmenená tam pohne všetkými.
-
-Forgejo dostane `theme-losos-{auto,light,dark}.css`
-v `$FORGEJO_CUSTOM/public/assets/css/`, natívne prepojené cez tmpfiles a
-skopírované vstupným bodom obrazu, s `DEFAULT_THEME = losos-auto`. Forgejo to
-vtlačí účtom pri ich vytvorení, takže existujúci účet si ponechá starú tému,
-kým ju jeho vlastník neprepne.
+**Jeden vzhľad pre administračné stránky, LosOS Cloud a LosOS Git**
+(`admin-ui/themes/`). LosOS Cloud a LosOS Git sú stránky vlastného
+zostavenia administračného rozhrania (`admin-ui/app/cloud/`,
+`admin-ui/app/git/`), takže používajú tie isté komponenty aj `tokens.css`.
+`tokens.css` je zámerne čisté CSS: téma LosOS Login ho dodáva bajt po bajte
+ako `losos-tokens.css` a mapuje naň vlastné premenné, takže farba zmenená
+tam pohne všetkými.
 
 Vlastníci vidia tieto dve aplikácie ako **LosOS Cloud** a **LosOS Git**.
-`APP_NAME` vo Forgejo pomenúva Forgejo. Obe dostanú logá nakreslené z `admin-ui/themes/brand/`.
+Obe dostanú logá nakreslené z `admin-ui/themes/brand/`.
 `marks.py` zabalí `salmon.png`, živého lososa kisuča vystrihnutého z
 fotografie NOAA Fisheries, do SVG a skopíruje ho do SPA a príručky. Zostavenie
 z nich vyrenderuje každé PNG aj `.ico`. 31. októbra, podľa vlastného dátumu
@@ -304,8 +324,7 @@ návštevníka, ukážu administračné stránky a príručka namiesto toho
 uvádza, odkiaľ obe obrázky pochádzajú. Stará pixel-artová ryba bola
 odstránená pre obavy z autorských práv a späť sa nevracia. Zvyšok
 značky upstreamu sa rieši konfiguráciou (žiadne súbory skeleton, žiadne
-odkazy na pomoc ani registráciu, žiadne „Powered by“) a dvoma prepísanými
-šablónami Forgejo.
+odkazy na pomoc ani registráciu, žiadne „Powered by“).
 
 `admin-ui/themes/default.nix` sú čisté dáta, ktoré importuje každý volajúci.
 Pody záťaží používajú `hostNetwork`, keďže lokálny klaster nemá žiadne CNI,
@@ -341,7 +360,7 @@ presne originy v `losos.setup.finderOrigins` (nginx map, overený v
 **Menný priestor volieb `losos.*`** (`options.nix`). Všetky nastavenia
 špecifické pre projekt sú pod `options.losos`, s predvolenými hodnotami v
 `defaults.nix`: `targetDrive`, `tpm.enable`, `sharingMyStorage`,
-`forgejo.enable`, `cloud.*`, `cluster.*` (pripojenie k mesh, výpočtové
+`git.enable`, `cloud.*`, `cluster.*` (pripojenie k mesh, výpočtové
 okno), `shared.fscrypt.*`, `upgradeFlakeUri`, `backend.package`,
 `admin.{enable,port,apiPort,tokenFile,ui}`, `proxy.*` (strana zariadenia v
 master proxy) a `edge.*` (strana VPS, používaná cez výstup flaku

@@ -62,7 +62,7 @@ Every service runs:
 Services find each other by name: each service name points at `127.0.0.1`.
 Because they share one network, they must listen on different ports, all
 from 1024 up, and none of the ports the box keeps for itself (its web
-server, its admin API on 8082, Forgejo's 3000, PostgreSQL's 5432, Redis's
+server, its admin API on 8082, LosOS Git's 3000, PostgreSQL's 5432, Redis's
 6379, the cluster's ports, the forward range 30000 to 30099).
 
 Volumes:

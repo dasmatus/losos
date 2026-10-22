@@ -18,41 +18,20 @@ und die Handy-Apps synchronisieren mit ihm, und Kalender-Apps erreichen ihn
 
 ## LosOS Git \{#losos-git}
 
-Deine Repositorys, unter `http://<address>/forgejo/`. Das ist Forgejo in
-denselben Farben. Registriere dich beim ersten Mal darin. Es führt eigene
-Konten. Clone-URLs verwenden den Namen der Box; ein Rechner, der `.local`
-nicht auflöst, sollte stattdessen die Adresse verwenden. Schalte es im
-Bereich **Apps** ab, wenn die Box nicht für Code gedacht ist.
-
-### Föderation \{#federation}
-
-LosOS Git spricht ActivityPub mit anderen Forgejo-Servern. Forgejo nennt das
-noch experimentell. Sterne, die Leute auf einem anderen Server deinen
-Repositorys geben, zählen hier. Leute auf anderen Servern können einem Konto
-auf deiner Box folgen und sehen, was es tut. Die Box antwortet außerdem auf
-die Erkennungsadresse des Fediverse, `/.well-known/nodeinfo`. All das reicht
-so weit wie die Box selbst. Über eine [Edge](../types/official-edge) ist das
-das Internet. Bei einer Box, die nur in deinem lokalen Netz ist, sind es die
-anderen Boxen in diesem Netz. Die Box veröffentlicht nie, wie viele Konten
-sie hat oder wie aktiv sie sind.
-
-Um mitzumachen, trägst du auf der Seite **Einstellungen → Föderation** eines
-Repositorys die anderen Server ein, deren Sterne zählen. Um die Föderation
-ganz abzuschalten, schalte **Mit anderen Forgejo-Servern föderieren** im
-Abschnitt LosOS Git des Bereichs **Apps** aus.
-
-:::note[Föderation nur mit geteilter Festplatte]
-Die Föderation funktioniert nur, solange die Box ihre
-Festplatte teilt (`losos.sharingMyStorage`), weil der geteilte Teil der
-Festplatte nur dann entsperrt ist. Ist das Teilen aus, spricht die Box mit
-keinem anderen Server, und der Bereich **Apps** zeigt den
-Föderationsschalter ausgegraut.
-:::
+Deine Repositorys, unter `http://<address>/git/<konto>/<repository>.git`.
+LosOS Git ist der eigene Git-Server der Box. Wen LosOS Login kennt, hat
+darin ab dem ersten Besuch ein Konto, unter demselben Namen. Ein Rechner
+klont und pusht mit einem eigenen Token, das git als Passwort abfragt:
+`losos git setup` erstellt eines ([Der Terminal-Client](terminal)). Die
+eigene Konfiguration der Box ist das private Repository
+`notshared/losos-config` ([Administration](../in-depth/administration)).
+Clone-Adressen folgen der Adresse, über die du die Box erreicht hast.
+Schalte es im Bereich
+**Apps** ab, wenn die Box nicht für Code gedacht ist.
 
 ## Der Bereich Apps \{#the-apps-pane}
 
-Für jede App zeigt der Bereich, ob sie an ist, in welchem
-[Modus](../types/app-modes) sie läuft, und einen Link. Darunter haben LosOS
+Für jede App zeigt der Bereich, ob sie an ist, und einen Link. Darunter haben LosOS
 Cloud und LosOS Git je einen eigenen ausklappbaren Abschnitt, geschlossen,
 bis du ihn öffnest. Darunter durchsucht
 **Mehr finden** [Artifact Hub](https://artifacthub.io) nach Helm-Charts. Die
@@ -70,12 +49,9 @@ Einstellungen, die für jedes Konto in der jeweiligen App gelten.
 Für LosOS Cloud: wie viele Tage der Papierkorb eine gelöschte Datei behält.
 Ein leeres Feld behält sie 30 Tage.
 
-Für LosOS Git, nach seinem Föderationsschalter ([Föderation](#federation)):
-ob nur angemeldete Konten überhaupt etwas sehen, was ein
-Besucher zuerst sieht, ob ein neues Repository privat, öffentlich oder wie
-das letzte des Kontos beginnt, ob die E-Mail-Adresse eines neuen Kontos
-verborgen ist und ob ein Push in ein noch nicht vorhandenes Repository es
-anlegt.
+Für LosOS Git: ob nur angemeldete Konten überhaupt etwas sehen, ob ein
+neues Repository privat, öffentlich oder wie das letzte des Kontos beginnt
+und ob ein Push in ein noch nicht vorhandenes Repository es anlegt.
 
 ![Der Bereich Apps mit den Einstellungen für alle in LosOS Cloud und LosOS Git.](@site/docs/img/apps-site-settings-de.png)
 
@@ -143,13 +119,42 @@ weil der eigene Cluster der Box kein internes Netz hat. Ein geplanter Job
 Datenordner bleibt, sodass eine Installation unter demselben Namen die Daten
 wiederfindet.
 
-:::note[Als shared nur im Workload-Modus]
+:::note[Als shared nur mit einem Mesh]
 Eine `notshared`-App lässt sich auf jeder Box installieren. `shared`
-braucht den eigenen Cluster der Box, der nur läuft, solange Code auf
-**Abgeschottet** steht ([Workload-Modus](../types/app-modes)),
-und die Box muss ihre Festplatte teilen. Um das Installieren abzuschalten,
+braucht den eigenen Cluster der Box, der nur läuft, solange die Box ihre
+Festplatte mit einem Mesh teilt ([Wo die Apps laufen](../types/app-modes)). Um das Installieren abzuschalten,
 setze `losos.apps.enable` im Bereich **Erweitert** auf false.
 :::
+
+## Deine Apps \{#your-apps}
+
+Kleine eigene Apps, eine Einkaufsliste, ein Putzplan, eine Leseliste,
+die du beschreibst und die KI auf der Box schreibt
+([Mit KI bauen](../in-depth/widget-builder)). Sie stehen unter **Deine Apps**
+auf der Seite Apps. **App erstellen** öffnet den Editor: Beschreibe die App
+im Tab **Mit KI bauen** oder schreibe ihren Code im Tab **Code**. Die
+Vorschau daneben ist die echte App, du kannst sie also vor dem Speichern
+benutzen. Was du dort eingibst, vergisst sie; die gespeicherte App behält
+ihre Daten auf der Box.
+
+Jede gespeicherte App hat eine eigene Seite. Eine App ist eine
+React-Komponente aus den LosOS-Komponenten, die die Box beim Speichern prüft
+und übersetzt. Sie läuft nur in deinem Browser, in einem abgeschotteten
+Rahmen ohne Zugriff auf die Box außer auf ihre eigenen Daten. **Ändern**
+öffnet sie wieder im Editor, und **Löschen** entfernt sie von der Box mit
+allem, was eingegeben wurde.
+
+Jede App hat außerdem ein eigenes privates Repository in LosOS Git, nach ihr
+benannt (`app-chores` für eine App namens Chores), und jedes Speichern ist
+dort ein Commit. **Quelle** auf der Seite der App öffnet es. Klone es, ändere
+`app.jsx` und pushe: Innerhalb einer Minute prüft die Box die Änderung wie
+beim Speichern, und die App führt sie aus. Lässt sich die Änderung nicht
+übersetzen, bleibt die App, wie sie war, ihre Seite sagt warum, und die Box
+fügt einen Commit hinzu, der die App zurücksetzt, sodass dein nächstes
+`git pull` das ebenfalls zeigt. Dateien, die du ins Repository legst,
+bleiben dort, und die Daten der App sind nicht darin. Das Repository bleibt
+in LosOS Git, wenn du die App löschst; lösche es dort, wenn du es nicht mehr
+willst. Ist LosOS Git aus, behält die Box die Versionen selbst.
 
 ## Apps, die für die Box gemacht sind \{#apps-made-for-the-box}
 

@@ -33,10 +33,3 @@ Záložky na vlastné stránky Nextcloudu, napríklad
 Nextcloud nemá. Otvorte namiesto nich `https://<name>.local/cloud/`.
 Aplikácií pre počítač a telefón sa to netýka, LosOS Cloud im stále odpovedá
 na adrese `/nextcloud`, s ktorou boli nastavené.
-
-## Odkazy v LosOS Git ukazujú nesprávne meno \{#losos-git-links-show-the-wrong-name}
-
-LosOS Git vypisuje URL na klonovanie s menom `.local` zariadenia, aj keď ste
-sa k nemu dostali cez adresu. Stránky fungujú v oboch prípadoch. Pri
-`git clone` dajte namiesto mena adresu, alebo pridajte meno do súboru hosts,
-ako opisuje stránka [Meno sa nedá preložiť](name-does-not-resolve).

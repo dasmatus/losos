@@ -49,32 +49,9 @@ let
 
   # The admin UI as it ships, without the Lab page, which this test never
   # opens and whose WebAssembly takes longer to build than the test to run.
-  ui = lososPkgs.losos-admin-ui.overrideAttrs (
-    _:
-    {
-      pname = "losos-admin-ui-without-lab";
-      preBuild = ''
-        cat > vite.credentials-test.config.ts <<'EOF'
-        import base from "./vite.config";
-        import { join } from "node:path";
-        import { fileURLToPath } from "node:url";
-        const root = fileURLToPath(new URL(".", import.meta.url));
-        const config = base as Record<string, any>;
-        config.build.rolldownOptions.input = {
-          main: join(root, "index.html"),
-          manage: join(root, "manage/index.html"),
-        };
-        export default config;
-        EOF
-      '';
-      buildPhase = ''
-        runHook preBuild
-        npx vite build --config vite.credentials-test.config.ts
-        runHook postBuild
-      '';
-    }
+  ui = import ./admin-ui-without-lab.nix (
     # The earlier UI shares this one's lock file, so its npm cache too.
-    // lib.optionalAttrs (!after) { src = before; }
+    lososPkgs.losos-admin-ui.overrideAttrs (_: lib.optionalAttrs (!after) { src = before; })
   );
 
   # What a reader of `probe` saw: a digest, so the value itself is never
@@ -193,7 +170,6 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/fscrypt.nix
           ../../modules/backup.nix
         ];
@@ -204,7 +180,7 @@ pkgs.testers.nixosTest {
           backend.package = lososPkgs.losos-ctl;
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = ui;
-          forgejo.enable = false;
+          git.enable = false;
         };
         # systemd-creds and systemctl on it as on a real box, where NixOS
         # appends systemd to every unit's path; mkForce drops that default.
