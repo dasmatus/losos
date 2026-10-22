@@ -274,6 +274,9 @@ pub struct Mailbox {
     pub name: String,
     /// `inbox`, `drafts`, `sent`, `junk`, `trash`, `archive`, or `null`.
     pub role: Option<String>,
+    /// The folder it sits in, or `null` at the top. A person's own
+    /// folders nest (backend/plugins/mail); LosOS Mail's stay at the top.
+    pub parent_id: Option<String>,
     pub total: u64,
     pub unread: u64,
 }
@@ -630,6 +633,10 @@ pub fn parse_mailboxes(resp: &Value) -> Result<Vec<Mailbox>, Refused> {
                 id: m.get("id")?.as_str()?.to_string(),
                 name: m.get("name")?.as_str()?.to_string(),
                 role: m.get("role").and_then(Value::as_str).map(str::to_string),
+                parent_id: m
+                    .get("parentId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
                 total: m.get("totalEmails").and_then(Value::as_u64).unwrap_or(0),
                 unread: m.get("unreadEmails").and_then(Value::as_u64).unwrap_or(0),
             })
@@ -1576,6 +1583,7 @@ mod tests {
             { "id": "c", "name": "Junk Mail", "role": "junk", "totalEmails": 0, "unreadEmails": 0 },
             { "id": "b", "name": "Deleted Items", "role": "trash", "totalEmails": 1, "unreadEmails": 0 },
             { "id": "z", "name": "Receipts", "role": null, "totalEmails": 2, "unreadEmails": 1 },
+            { "id": "y", "name": "2026", "role": null, "parentId": "z", "totalEmails": 0, "unreadEmails": 0 },
             { "id": "d", "name": "Drafts", "role": "drafts", "totalEmails": 0, "unreadEmails": 0 },
             { "id": "e", "name": "Sent Items", "role": "sent", "totalEmails": 3, "unreadEmails": 0 },
             { "id": "a", "name": "Inbox", "role": "inbox", "totalEmails": 5, "unreadEmails": 2 },
@@ -1607,12 +1615,20 @@ mod tests {
                 "Inbox",
                 "Drafts",
                 "Sent Items",
+                "2026",
                 "Receipts",
                 "Junk Mail",
                 "Deleted Items"
             ]
         );
         assert_eq!(boxes[0].unread, 2);
+        // The page draws the tree from each folder's parent.
+        assert_eq!(boxes[3].parent_id.as_deref(), Some("z"));
+        assert_eq!(boxes[4].parent_id, None);
+        assert_eq!(
+            serde_json::to_value(&boxes[3]).unwrap()["parentId"],
+            json!("z")
+        );
         assert_eq!(with_role(&boxes, "sent"), Some("e"));
     }
 
@@ -1883,7 +1899,7 @@ mod tests {
         let mail = Mail::new(Some(config(&dir)), Box::new(fake));
         let boxes = mail.mailboxes(&person("eva")).unwrap();
         // Stalwart had no Archive; there is one now, after Sent.
-        assert_eq!(boxes.len(), 7);
+        assert_eq!(boxes.len(), 8);
         assert_eq!(boxes[3].role.as_deref(), Some("archive"));
         mail.mailboxes(&person("eva")).unwrap();
 

@@ -36,8 +36,9 @@ Mail asks you to sign in with your own account.
 
 ## Reading and writing
 
-- **Folders**: Inbox, Drafts, Sent, Archive, Junk and Bin, with the unread
-  count beside each.
+- **Folders**: Inbox, Drafts, Sent, Archive, Junk and Bin, with your own
+  folders beside them and the unread count beside each. On a wide screen
+  they are a tree on the left of the list; narrower, a row above it.
 - **Search** looks through the open folder: senders, subjects and text.
 - **Write** opens a new message. The **To** field suggests the other people
   on the box. **Reply**, **Reply all** and **Forward** quote the message.
@@ -52,6 +53,44 @@ Mail asks you to sign in with your own account.
 - Right-click a message in the list to reply, flag, archive or move it
   without opening it; see
   [the right-click menu](admin-pages#the-right-click-menu).
+
+## Your own folders
+
+Make folders of your own beside Mail's and inside them, as deep as you
+like.
+
+- **New folder** (the folder icon at the top of the tree) asks for a name
+  and where to put it. A name cannot have a slash in it, and two folders
+  in the same place cannot share a name.
+- Right-click a folder to open it, make a folder inside it, rename it, move
+  it to another folder or to the top level, or delete it. Mail's own
+  folders only open and take folders inside them.
+- Drag a message onto a folder to move it there. Drag one of your folders
+  onto another to put it inside, or onto the empty space under the tree to
+  bring it to the top level.
+- Deleting a folder moves its messages to the bin first, so nothing is lost
+  by a slip. A folder with folders inside it is not deleted until those are
+  moved or deleted.
+
+## Filters
+
+Filters sort new mail as it arrives. They are kept and run by the mail
+server, so they work while Mail is closed and nobody is signed in.
+
+- **Filters**, next to **Write**, lists them in the order they run. The
+  first filter that matches a message decides what happens to it.
+- A filter looks at who the message is from, who it is to (To or Cc), or
+  its subject, for text it contains. Letter case does not matter. It can
+  ask for every condition to match, or any one of them.
+- It then moves the message to a folder (the bin included, which is how a
+  filter deletes), marks it read, flags it, or any of these together.
+- The switch beside a filter turns it off without losing it, and the arrows
+  change the order.
+- Right-click a message and choose **Filter mail like this…** to start a
+  filter for its sender.
+- Filters act on mail that arrives after they are saved; mail already in a
+  folder stays where it is. Deleting a folder turns off a filter that only
+  moved mail into it.
 
 ## What Mail does not do yet
 

@@ -1041,6 +1041,44 @@ in
       '';
     };
 
+    # ── Office documents (modules/office.nix) ───────────────────────────
+    office.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Open, edit and co-edit Word, Excel, PowerPoint and OpenDocument
+        files in the browser with Collabora Online, a LibreOffice that runs
+        on the box. Documents never leave the box: the editor reads and
+        saves them through LosOS cloud. It runs while the box is up and
+        uses about 550 MB of memory with no document open.
+      '';
+    };
+
+    office.port = lib.mkOption {
+      type = lib.types.port;
+      default = 9980;
+      description = "Loopback port Collabora Online listens on. nginx serves it at /browser/ and /cool/.";
+    };
+
+    office.wopiPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8093;
+      description = ''
+        Loopback port of the server Collabora Online reads documents from
+        and saves them to (the WOPI host): LosOS cloud, or the folder below.
+      '';
+    };
+
+    office.folder = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/var/lib/losos-office/files";
+      description = ''
+        Edit the documents in this folder instead of LosOS cloud's, with a
+        small host of its own (losos-office). For a box without LosOS cloud.
+      '';
+    };
+
     startupSound.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
