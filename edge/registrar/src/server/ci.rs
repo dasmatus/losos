@@ -49,16 +49,17 @@ struct Auth {
     token: String,
 }
 
-/// The queue, and the caller as a box of the mesh, or the answer.
-async fn member<'a>(st: &'a AppState, auth: &Auth) -> Result<&'a Ci, Response> {
+/// The queue, and the caller as a box of the mesh, or the answer (boxed:
+/// a `Response` is too large for clippy to pass in an `Err`).
+async fn member<'a>(st: &'a AppState, auth: &Auth) -> Result<&'a Ci, Box<Response>> {
     let Some(ci) = st.ci.as_deref() else {
-        return Err(CiError::Unconfigured.into_response());
+        return Err(Box::new(CiError::Unconfigured.into_response()));
     };
     let tenant = authenticate(st, &auth.appliance_id, &auth.token)
         .await
-        .map_err(IntoResponse::into_response)?;
+        .map_err(|e| Box::new(e.into_response()))?;
     if !tenant.cluster {
-        return Err(CiError::Forbidden.into_response());
+        return Err(Box::new(CiError::Forbidden.into_response()));
     }
     Ok(ci)
 }
@@ -79,7 +80,7 @@ struct SubmitReq {
 async fn submit(State(st): State<AppState>, Json(req): Json<SubmitReq>) -> Response {
     let ci = match member(&st, &req.auth).await {
         Ok(ci) => ci,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let Ok(_permit) = ci.inflight.try_acquire() else {
         return busy();
@@ -110,7 +111,7 @@ struct ClaimReq {
 async fn claim(State(st): State<AppState>, Json(req): Json<ClaimReq>) -> Response {
     let ci = match member(&st, &req.auth).await {
         Ok(ci) => ci,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let Ok(_permit) = ci.inflight.try_acquire() else {
         return busy();
@@ -150,7 +151,7 @@ struct UpdateReq {
 async fn update(State(st): State<AppState>, Json(req): Json<UpdateReq>) -> Response {
     let ci = match member(&st, &req.auth).await {
         Ok(ci) => ci,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     match ci.update(&req.auth.appliance_id, &req.id, req.report).await {
         Ok(cancel) => Json(serde_json::json!({ "cancel": cancel })).into_response(),
@@ -176,7 +177,7 @@ struct JobsReq {
 async fn jobs(State(st): State<AppState>, Json(req): Json<JobsReq>) -> Response {
     let ci = match member(&st, &req.auth).await {
         Ok(ci) => ci,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let wanted: Vec<(String, usize)> = req.jobs.into_iter().map(|w| (w.id, w.log_from)).collect();
     let views = ci.jobs(&req.auth.appliance_id, &wanted).await;
@@ -193,7 +194,7 @@ struct CancelReq {
 async fn cancel(State(st): State<AppState>, Json(req): Json<CancelReq>) -> Response {
     let ci = match member(&st, &req.auth).await {
         Ok(ci) => ci,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     match ci.cancel(&req.auth.appliance_id, &req.id).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
