@@ -487,7 +487,8 @@ pkgs.testers.nixosTest {
             assert tax["readOnly"] and tax["name"] == "Tax deadlines", tax
             assert tax["feed"]["url"] == "webcal://feeds.example/tax.ics" and tax["feed"]["error"] == "", tax
             # The read ran in its own unit, not in LosOS Cloud.
-            box.succeed("journalctl -b -o cat -u 'losos-webcal@*' | grep -q .")
+            accepted = int(box.succeed("systemctl show -P NAccepted losos-webcal.socket").strip())
+            assert accepted >= 1, accepted
             events = window(matus, TODAY, 3)
             assert "Income tax advance" in summaries(events, tax["uri"]), events
             year = window(matus, MONDAY, 200)

@@ -550,6 +550,11 @@ pub fn subscribe(cloud: &Cloud, login: &str, s: &Subscription) -> Result<(Calend
     let store = &cloud.store;
     let url = webcal::normalize(&s.url).map_err(CalendarError::Bad)?;
     let color = clean_color(s.color.as_deref())?;
+    // The same address twice is the same subscription, read again now.
+    if let Some(c) = subscribed_to(store, login, &url)? {
+        let report = refresh(cloud, &c)?;
+        return Ok((view(store, &c)?, report));
+    }
     let given = s.name.as_deref().map(str::trim).filter(|n| !n.is_empty());
     let c = make(
         store,
@@ -633,8 +638,8 @@ pub fn subscribe(cloud: &Cloud, login: &str, s: &Subscription) -> Result<(Calend
 /// Keep a subscription without reading it now: the next pass of
 /// [`refresh_due`] does. For one carried over from another server; the
 /// person's subscription to the same address, when there is one.
-pub fn adopt(store: &Store, login: &str, s: &Subscription) -> Result<Collection> {
-    let url = webcal::normalize(&s.url).map_err(CalendarError::Bad)?;
+/// The person's subscription to `url` (normalized), if they have one.
+fn subscribed_to(store: &Store, login: &str, url: &str) -> Result<Option<Collection>> {
     let held: Option<String> = store.with_db(|db| {
         Ok(db
             .query_row(
@@ -645,8 +650,16 @@ pub fn adopt(store: &Store, login: &str, s: &Subscription) -> Result<Collection>
             )
             .optional()?)
     })?;
-    if let Some(uri) = held {
-        return Ok(pim::collection(store, login, Kind::Calendar, &uri)?);
+    match held {
+        Some(uri) => Ok(Some(pim::collection(store, login, Kind::Calendar, &uri)?)),
+        None => Ok(None),
+    }
+}
+
+pub fn adopt(store: &Store, login: &str, s: &Subscription) -> Result<Collection> {
+    let url = webcal::normalize(&s.url).map_err(CalendarError::Bad)?;
+    if let Some(c) = subscribed_to(store, login, &url)? {
+        return Ok(c);
     }
     let color = clean_color(s.color.as_deref()).unwrap_or(None);
     let name = s
