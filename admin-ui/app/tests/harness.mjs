@@ -53,6 +53,24 @@ export const WIDGET_FRAME_CSP = [
   "form-action 'none'",
 ].join('; ');
 
+/* The app frame's own policy (modules/containers.nix, `appFrameCsp`), for
+ * /app-frame/ alone. An app of the owner's runs there under
+ * `sandbox="allow-scripts allow-forms"`: the runtime is the box's own
+ * script ('self'), the app is an inline script the runtime adds. Mirror
+ * any change here. */
+export const APP_FRAME_CSP = [
+  "default-src 'none'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src data: blob: https: http:",
+  "font-src 'self' data: https: http:",
+  "media-src data: blob: https: http:",
+  "connect-src https: http:",
+  "frame-ancestors 'self'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
+
 /* LosOS Lab's policy (/lab/, a second page of the same bundle). It differs
  * from the admin page's in 'wasm-unsafe-eval' (the simulator is a
  * WebAssembly module), blob: workers and images, and the closing
@@ -108,11 +126,13 @@ export async function serve({ csp = false } = {}) {
       const body = await readFile(join(DIST, file));
       const policy = file.startsWith('/widget-frame/')
         ? WIDGET_FRAME_CSP
-        : file.startsWith('/lab/') || file === 'lab/index.html'
-          ? LAB_CSP
-          : file.startsWith('/manage/') || file === 'manage/index.html'
-            ? MANAGE_CSP
-            : ADMIN_CSP;
+        : file.startsWith('/app-frame/')
+          ? APP_FRAME_CSP
+          : file.startsWith('/lab/') || file === 'lab/index.html'
+            ? LAB_CSP
+            : file.startsWith('/manage/') || file === 'manage/index.html'
+              ? MANAGE_CSP
+              : ADMIN_CSP;
       res.writeHead(200, {
         'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
         ...(csp ? { 'Content-Security-Policy': policy } : {}),

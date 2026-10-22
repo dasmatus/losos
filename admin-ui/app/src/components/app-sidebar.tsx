@@ -197,6 +197,8 @@ function visible(entries: readonly Entry[]): Entry[] {
 }
 
 function isCurrent(entry: LinkEntry, pathname: string): boolean {
+  // An app of the owner's own (/apps/<id>, src/apps/) is under Apps.
+  if (entry.pane === "apps" && pathname.startsWith("/apps/")) return true;
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
   // A run of Mesh CI is still Mesh CI.
   if (entry.key === "ci") return pathname === "/ci" || pathname.startsWith("/ci/");

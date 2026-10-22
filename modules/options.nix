@@ -944,32 +944,37 @@ in
       type = lib.types.bool;
       default = true;
       description = ''
-        Write widgets with AI: the "Build with AI" tab of the widget editor
-        asks a language model that runs on this box (Ollama, on loopback
-        only). What the owner types never leaves the box, and building is
-        free. The model is downloaded once, in the background, the first
-        time the box is online. While it writes, it needs about 4 GiB of
-        memory; it lets go of it five minutes after the last build.
+        Build widgets and apps with AI: the "Build with AI" tabs of the
+        widget editor and of Your apps ask a language model that runs on
+        this box (Ollama, on loopback only). What the owner types never
+        leaves the box, and building is free. The model is downloaded once,
+        about 1 GB, in the background, the first time the box is online.
+        While it writes, it needs about 1.5 GiB of memory; it lets go of it
+        five minutes after the last build.
       '';
     };
 
     builder.model = lib.mkOption {
       type = lib.types.str;
-      default = "llama3.2:3b";
+      default = "qwen2.5-coder:1.5b";
       description = ''
-        The Ollama model the widget builder asks. The prompt is written
-        for Llama 3.2 3B; a larger model writes better widgets and needs
-        more memory and time.
+        The Ollama model the builder asks. The default, Qwen2.5-Coder 1.5B
+        (Apache License 2.0), fits the smallest box LosOS runs on: 4 GiB of
+        memory and two processor cores, beside LosOS cloud and LosOS Git.
+        The prompts are written for it. A larger Qwen2.5-Coder such as
+        `qwen2.5-coder:7b` writes better apps on a box with 8 GiB or more
+        to spare, and takes several times as long.
       '';
     };
 
     builder.contextTokens = lib.mkOption {
       type = lib.types.ints.between 4096 131072;
-      default = 8192;
+      default = 12288;
       description = ''
-        The widget builder's context window, in tokens: its instructions
-        (about 3,000), the widget to change and the answer (up to 4,096).
-        Each token of window costs the model some memory while it runs.
+        The builder's context window, in tokens: its instructions (about
+        3,000), the widget or app to change, a second turn when the box finds
+        a mistake, and the answer (up to 4,096). Each token of window costs
+        the model some memory while it runs.
       '';
     };
 

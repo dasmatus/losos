@@ -14,8 +14,8 @@ eingebaute Festplatte im Rechner.**
 
 - Einen Rechner mit einem 64-Bit-Prozessor von Intel oder AMD (x86_64) und
   UEFI- oder BIOS-Firmware, mindestens 4 GiB Arbeitsspeicher und einer
-  Festplatte mit 40 GiB oder mehr. Widgets mit KI bauen braucht 8 GiB
-  Arbeitsspeicher, siehe [Widget-Baukasten](/in-depth/widget-builder.md).
+  Festplatte mit 40 GiB oder mehr. Widgets und Apps mit KI bauen geht auch
+  damit, siehe [Mit KI bauen](/in-depth/widget-builder.md).
   Mini-PCs für Büros eignen sich gut. Die meisten haben einen TPM-2.0-Chip in
   der Firmware, Intel PTT oder AMD fTPM genannt, und der Installer bewahrt den
   Festplattenschlüssel darin auf. LosOS läuft nur auf x86_64. Auf einem

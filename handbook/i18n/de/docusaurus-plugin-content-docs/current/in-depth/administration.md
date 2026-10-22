@@ -109,7 +109,7 @@ Der Editor hat auch einen Tab **Mit KI bauen**, in dem ein Sprachmodell auf
 der Box das Widget nach einer Beschreibung schreibt und seine Dateien in den
 Editor legt, damit du sie vor dem Speichern liest. Es läuft auf der Box, also
 bleibt, was du eintippst, dort, und ein Bau kostet nichts; siehe
-[Widget-Baukasten](widget-builder.md).
+[Mit KI bauen](widget-builder.md).
 
 ## Admin-Token {#admin-token}
 

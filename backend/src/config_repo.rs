@@ -129,6 +129,10 @@ pub enum GitOp {
         name: String,
         branch: String,
     },
+    /// Make sure an app's private repository exists under `owner`
+    /// ([`crate::app_repo`]). An existing one is left as it is, visibility
+    /// included.
+    EnsureAppRepo { owner: String, name: String },
     /// The repositories an account owns, private ones included. The
     /// sidebar's pin picker reads it.
     ListRepos { login: String },
@@ -151,7 +155,7 @@ impl GitOp {
     pub fn route(&self) -> (&'static str, String) {
         match self {
             GitOp::EnsureUser { login, .. } => ("PUT", format!("/api/v1/admin/users/{login}")),
-            GitOp::EnsureRepo { owner, name, .. } => {
+            GitOp::EnsureRepo { owner, name, .. } | GitOp::EnsureAppRepo { owner, name } => {
                 ("PUT", format!("/api/v1/admin/users/{owner}/repos/{name}"))
             }
             GitOp::ListRepos { login } => ("GET", format!("/api/v1/users/{login}/repos")),
@@ -204,6 +208,11 @@ impl GitOp {
                 "private": true,
                 "default_branch": branch,
                 "description": REPO_DESCRIPTION,
+            }),
+            GitOp::EnsureAppRepo { .. } => json!({
+                "private": true,
+                "default_branch": crate::app_repo::BRANCH,
+                "description": crate::app_repo::REPO_DESCRIPTION,
             }),
             GitOp::CreateToken { name, .. } => json!({
                 "name": name,
@@ -444,10 +453,34 @@ pub const FIRST_SYNC_AFTER: std::time::Duration = std::time::Duration::from_secs
 /// The gap between syncs. A push from a clone is picked up within this.
 pub const SYNC_EVERY: std::time::Duration = std::time::Duration::from_secs(30);
 
+static NUDGED: std::sync::Mutex<bool> = std::sync::Mutex::new(false);
+static WAKE: std::sync::Condvar = std::sync::Condvar::new();
+
+/// Run the next sync now rather than at the end of the wait: a saved app
+/// reaches LosOS Git in a second, not half a minute.
+pub fn nudge() {
+    let mut nudged = NUDGED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    *nudged = true;
+    WAKE.notify_all();
+}
+
+fn wait_for_nudge(at_most: std::time::Duration) {
+    let nudged = NUDGED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (mut nudged, _) = WAKE
+        .wait_timeout_while(nudged, at_most, |n| !*n)
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    *nudged = false;
+}
+
 /// Keep `/etc/nixos` in step with LosOS Git for the life of the daemon.
 ///
-/// One detached thread, running [`crate::losos::cmd_config_sync`] under the
-/// state lock every [`SYNC_EVERY`]. Nothing is started when no repository is
+/// One detached thread, running [`crate::losos::cmd_config_sync`] and then
+/// [`crate::user_apps::cmd_sync`] under the state lock every [`SYNC_EVERY`],
+/// or sooner after a [`nudge`]. Nothing is started when no repository is
 /// configured: a box with LosOS Git off commits locally and that is all.
 /// Every outcome is a report the History pane reads, so the thread itself
 /// never has anything to say beyond a debug line.
@@ -469,7 +502,12 @@ pub fn start_reconciler(backend: &crate::io_backend::IoLosos) {
                     ),
                     Err(e) => tracing::warn!(error = ?e, "configuration sync could not run"),
                 }
-                std::thread::sleep(SYNC_EVERY);
+                // The owner's apps, each in a repository of its own
+                // (crate::app_repo), ride the same thread.
+                if let Err(e) = backend.serialized(crate::user_apps::cmd_sync) {
+                    tracing::warn!(error = ?e, "the apps' repositories could not be synced");
+                }
+                wait_for_nudge(SYNC_EVERY);
             }
         });
     if let Err(e) = spawned {

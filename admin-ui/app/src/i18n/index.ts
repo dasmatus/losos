@@ -30,6 +30,7 @@ import profile from "./profile";
 import settings from "./settings";
 import shell from "./shell";
 import tour from "./tour";
+import userApps from "./user-apps";
 import users from "./users";
 import widgets from "./widgets";
 import wizard from "./wizard";
@@ -45,6 +46,7 @@ export const MESSAGES = {
   ...inference,
   ...widgets,
   ...apps,
+  ...userApps,
   ...cloudApps,
   ...cloud,
   ...collab,

@@ -466,6 +466,10 @@
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
+        # Your apps: Chromium on a laptop asks the box for an app, watches it
+        # written, uses it and saves it, and keeps every screen
+        # (nix/tests/app-builder.nix).
+        losos-app-builder = import ./nix/tests/app-builder.nix { inherit pkgs; };
         losos-mail = import ./nix/tests/mail.nix { inherit pkgs; };
         losos-mail-screens = import ./nix/tests/mail.nix {
           inherit pkgs;
