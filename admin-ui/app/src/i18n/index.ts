@@ -26,6 +26,7 @@ import mail from "./mail";
 import mention from "./mention";
 import machines from "./machines";
 import manage from "./manage";
+import moderation from "./moderation";
 import notes from "./notes";
 import palette from "./palette";
 import panes from "./panes";
@@ -64,6 +65,7 @@ export const MESSAGES = {
   ...access,
   ...credentials,
   ...users,
+  ...moderation,
   ...account,
   ...profile,
   ...lab,

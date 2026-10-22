@@ -96,7 +96,8 @@ Markt (mit virtuellen Maschinen), Netzwerk (eigene Domains), Aussehen,
 Diagramme und Zugriffstokens. Ein Administrator kann alle benutzen. Nur ein
 Administrator kann Einstellungen anwenden, Mesh, Hardware, Sicherheit,
 Benutzer, Erweitert, Historie, Über und Zurücksetzen öffnen, die Box löschen oder
-wiederherstellen und den Wiederherstellungscode sehen. Wer kein
+wiederherstellen und den Wiederherstellungscode sehen. Moderatoren öffnen
+außerdem Moderation. Wer kein
 Administrator ist, bekommt die Bereiche, die ihm gegeben wurden, oder liest
 alle Bereiche, ohne etwas ändern zu können. Die Übersicht sieht jeder, der
 angemeldet ist. Die Admin-Seiten blenden die Bereiche aus, die eine Person
@@ -116,14 +117,20 @@ es, wenn die Box Personen selbst mit LosOS Login anmeldet. Eine Box, deren
 Anmeldung woanders läuft, hat keinen Bereich Benutzer.
 
 Um jemanden hinzuzufügen, füll **Person hinzufügen** aus: einen Anmeldenamen,
-den vollständigen Namen, ein Passwort nach denselben Regeln wie deins und den
-Zugriff.
+den vollständigen Namen, ein Passwort nach denselben Regeln wie deins und die
+Rolle.
 
-- **Ausgewählte Teile**: sieht und ändert nur die eingeschalteten Teile, zum
-  Beispiel Speicher und Sicherung.
-- **Sieht alles**: sieht jeden Bereich und ändert nur die eingeschalteten
-  Teile.
+- **Mitglied**: sieht und ändert nur die eingeschalteten Teile, zum Beispiel
+  Speicher und Sicherung. Mit **Sieht alle Teile** sieht es auch jeden
+  Bereich.
+- **Moderator**: ein Mitglied, das außerdem Meldungen bearbeitet und
+  Mitglieder und Gäste stummschaltet oder sperrt.
+- **Gast**: eigenes Konto, Mail und Profil, kein Teil der Box.
 - **Administrator**: darf alles ändern, auch wer sich anmelden kann.
+
+Eine eigene Rolle der Box aus **Eigene Rollen** steht in derselben Liste.
+Was jede Rolle darf, zeigt die Tabelle unter
+[Rollen und Moderation](moderation).
 
 ![Der Bereich Benutzer: drei Personen mit ihrem Zugriff, darunter das Formular Person hinzufügen.](@site/docs/img/settings-users-de.png)
 
@@ -131,13 +138,15 @@ Bei einer neuen Person ist **Eigenes Konto** eingeschaltet. Gib Namen und Passwo
 LosOS Cloud und LosOS Git legen beim ersten Öffnen jeweils ein eigenes Konto
 an.
 
-Wer eine Authenticator-App oder einen Passkey hat, trägt das Abzeichen
-**Zwei-Faktor**. Wen eine Anmelderegel anhält, trägt das Abzeichen
-**Angehalten**, mit dem Grund unter dem Namen.
+Jede Person trägt ein Abzeichen mit ihrer Rolle. Wer eine Authenticator-App
+oder einen Passkey hat, trägt das Abzeichen **Zwei-Faktor**. Wen eine
+Anmelderegel anhält, trägt das Abzeichen **Angehalten**, mit dem Grund unter
+dem Namen. Wer stummgeschaltet oder gesperrt ist, trägt **Stumm** oder
+**Gesperrt**.
 
 Jede Person in der Liste hat diese Knöpfe:
 
-- **Zugriff** ändert, was die Person tun darf. Das gilt ab dem nächsten
+- **Zugriff** ändert ihre Rolle und ihre Teile. Das gilt ab dem nächsten
   Klick, ohne neue Anmeldung.
 - **Neues Passwort** ist für jemanden, der seins verloren hat. Das alte gilt
   sofort nicht mehr.

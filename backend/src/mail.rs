@@ -604,6 +604,29 @@ pub fn archive_calls(account: &str) -> Vec<Value> {
     ]
 }
 
+/// The folder mail a moderator holds goes to (`crate::moderation`). It has
+/// no JMAP role, so it is found by name, and the page never lists it.
+pub const QUARANTINE: &str = "Quarantine";
+
+/// Make the Quarantine folder, then read the folders again.
+pub fn quarantine_calls(account: &str) -> Vec<Value> {
+    vec![
+        json!(["Mailbox/set", {
+            "accountId": account,
+            "create": { "q": { "name": QUARANTINE } },
+        }, "s"]),
+        json!(["Mailbox/get", { "accountId": account, "properties": MAILBOX_PROPS }, "m"]),
+    ]
+}
+
+/// The id of the Quarantine folder.
+pub fn quarantine_of(boxes: &[Mailbox]) -> Option<&str> {
+    boxes
+        .iter()
+        .find(|m| m.role.is_none() && m.name == QUARANTINE)
+        .map(|m| m.id.as_str())
+}
+
 /// Where a role sorts in the folder list: the inbox first, the bin last.
 fn role_rank(role: Option<&str>) -> u8 {
     match role {
@@ -1270,7 +1293,14 @@ impl Mail {
         Ok((account, doc))
     }
 
+    /// The folders the page lists: every one but Quarantine.
     pub fn mailboxes(&self, person: &crate::people::Person) -> Result<Vec<Mailbox>, Refused> {
+        let mut boxes = self.all_mailboxes(person)?;
+        boxes.retain(|m| !(m.role.is_none() && m.name == QUARANTINE));
+        Ok(boxes)
+    }
+
+    fn all_mailboxes(&self, person: &crate::people::Person) -> Result<Vec<Mailbox>, Refused> {
         let (_, resp) = self.jmap(person, mailboxes_call)?;
         let boxes = parse_mailboxes(&resp)?;
         if with_role(&boxes, "archive").is_some() {
@@ -1278,6 +1308,46 @@ impl Mail {
         }
         let (_, resp) = self.jmap(person, archive_calls)?;
         parse_mailboxes(&resp)
+    }
+
+    /// Move `person`'s message `id` into Quarantine, making the folder the
+    /// first time. Nothing of the message is read.
+    pub fn hold(&self, person: &crate::people::Person, id: &str) -> Result<(), Refused> {
+        check_id(id)?;
+        let boxes = self.all_mailboxes(person)?;
+        let quarantine = match quarantine_of(&boxes) {
+            Some(q) => q.to_string(),
+            None => {
+                let (_, resp) = self.jmap(person, quarantine_calls)?;
+                let boxes = parse_mailboxes(&resp)?;
+                quarantine_of(&boxes)
+                    .ok_or_else(|| odd("no Quarantine"))?
+                    .to_string()
+            }
+        };
+        self.change(
+            person,
+            id,
+            &Change {
+                mailbox: Some(quarantine),
+                ..Change::default()
+            },
+        )
+    }
+
+    /// Move a held message back to `person`'s inbox.
+    pub fn release(&self, person: &crate::people::Person, id: &str) -> Result<(), Refused> {
+        check_id(id)?;
+        let boxes = self.all_mailboxes(person)?;
+        let inbox = with_role(&boxes, "inbox").ok_or_else(|| odd("no Inbox"))?;
+        self.change(
+            person,
+            id,
+            &Change {
+                mailbox: Some(inbox.to_string()),
+                ..Change::default()
+            },
+        )
     }
 
     pub fn list(
@@ -1915,6 +1985,67 @@ mod tests {
         }
         let jmap: Value = serde_json::from_slice(seen[3].body.as_ref().unwrap()).unwrap();
         assert_eq!(jmap["methodCalls"][0][1]["accountId"], "d");
+    }
+
+    #[test]
+    fn held_mail_goes_to_a_quarantine_the_page_never_lists() {
+        let dir = tempdir();
+        let fake = Fake::default();
+        let seen = fake.seen.clone();
+        let folders = |extra: &[Value]| {
+            let mut list = mailboxes_answer()["methodResponses"][0][1]["list"].clone();
+            let all = list.as_array_mut().unwrap();
+            all.push(json!({ "id": "f", "name": "Archive", "role": "archive", "totalEmails": 0, "unreadEmails": 0 }));
+            all.extend(extra.iter().cloned());
+            list
+        };
+        let quarantine = json!({ "id": "q", "name": QUARANTINE, "role": null, "totalEmails": 1, "unreadEmails": 1 });
+        let moved =
+            json!({ "methodResponses": [["Email/set", { "updated": { "m1": null } }, "s"]] });
+        *fake.answers.lock().unwrap() = vec![
+            ok(json!({ "data": 1 })),
+            ok(json!({ "data": 2 })),
+            ok(json!({ "primaryAccounts": { "urn:ietf:params:jmap:mail": "d" } })),
+            ok(json!({ "methodResponses": [["Mailbox/get", { "list": folders(&[]) }, "m"]] })),
+            ok(json!({ "methodResponses": [
+                ["Mailbox/set", { "created": { "q": { "id": "q" } } }, "s"],
+                ["Mailbox/get", { "list": folders(std::slice::from_ref(&quarantine)) }, "m"],
+            ]})),
+            ok(moved.clone()),
+            ok(
+                json!({ "methodResponses": [["Mailbox/get", { "list": folders(std::slice::from_ref(&quarantine)) }, "m"]] }),
+            ),
+            ok(
+                json!({ "methodResponses": [["Mailbox/get", { "list": folders(&[quarantine]) }, "m"]] }),
+            ),
+            ok(moved),
+        ];
+        let mail = Mail::new(Some(config(&dir)), Box::new(fake));
+        mail.hold(&person("eva"), "m1").unwrap();
+        let boxes = mail.mailboxes(&person("eva")).unwrap();
+        assert!(boxes.iter().all(|b| b.name != QUARANTINE), "{boxes:?}");
+        mail.release(&person("eva"), "m1").unwrap();
+
+        let seen = seen.lock().unwrap();
+        let body =
+            |i: usize| -> Value { serde_json::from_slice(seen[i].body.as_ref().unwrap()).unwrap() };
+        assert_eq!(
+            body(4)["methodCalls"][0][1]["create"]["q"]["name"],
+            QUARANTINE
+        );
+        assert_eq!(
+            body(5)["methodCalls"][0][1]["update"]["m1"]["mailboxIds"],
+            json!({ "q": true })
+        );
+        // Nothing of the message was read on the way.
+        for i in 3..seen.len() {
+            let calls = body(i)["methodCalls"].to_string();
+            assert!(!calls.contains("Email/get"), "{calls}");
+        }
+        assert_eq!(
+            body(8)["methodCalls"][0][1]["update"]["m1"]["mailboxIds"],
+            json!({ "a": true })
+        );
     }
 
     #[test]
