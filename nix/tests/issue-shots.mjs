@@ -194,8 +194,10 @@ async function tracker(s, base) {
   await typeWords(s, "Rotate the backup key every year", "create", "a new issue", () => ({ dialog }));
   await p.keyboard.press("Control+Enter");
   await dialog.waitFor({ state: "hidden" });
-  await p.locator("[data-card]", { hasText: "Rotate the backup key every year" }).waitFor();
-  await s.take("created", "the new issue on the board", { kind: "click", target: "inbox" }, {
+  // The palette's issue opened in its project's list, so the new issue
+  // opens there too.
+  await p.locator("[data-issue-key]", { hasText: "Rotate the backup key every year" }).first().waitFor();
+  await s.take("created", "the new issue, open beside the list", { kind: "click", target: "inbox" }, {
     inbox: p.locator("[data-slot=sidebar-menu-button]", { hasText: "Inbox" }).first(),
   });
 

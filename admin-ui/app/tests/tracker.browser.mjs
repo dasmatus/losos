@@ -1,11 +1,12 @@
 /* LosOS Git's issues (/git/issues) under the admin page's policy, with the
  * tracker's API at /git/api/v1/tracker/ stood in by page.route the way
  * backend/src/forge/tracker/api.rs answers. Every page fails on a CSP
- * violation or an uncaught error. Walked: My issues, the keyboard (j, Enter,
- * s and a state), the board and a card dragged to another column, the
- * palette, a new issue with c, the inbox, a reader who gets no property
- * chips, a description whose Markdown carries script, German, and the phone
- * layout. nix/tests/git-issues.nix runs the same pages against a real box. */
+ * violation or an uncaught error. Walked: My issues, the keyboard (j,
+ * Enter, s and a state, s on a row with nothing open), the board and a
+ * card dragged to another column, the palette, a new issue with c, the
+ * inbox, a reader who gets no property chips, a description whose Markdown
+ * carries script, German, and the phone layout. nix/tests/git-issues.nix
+ * runs the same pages against a real box. */
 
 import assert from 'node:assert';
 import { launch, runner, serve } from './harness.mjs';
@@ -235,6 +236,22 @@ await check('j and Enter open an issue; s picks a status', async () => {
   await page.locator(`[data-reader="${key}"] [data-prop="state"]`, { hasText: 'Done' }).waitFor();
   const patch = m.calls.find((c) => c.method === 'PATCH' && c.path === `/tracker/issues/${key}`);
   assert.equal(patch.body.state, 5);
+  await settle();
+  await page.close();
+});
+
+await check('s on the row in focus, with no issue open, opens the status menu for it', async () => {
+  const { page, m, settle } = await open('/issues/p/BT');
+  await page.locator('[data-issue-list] [data-issue-key="BT-1"]').waitFor();
+  await page.keyboard.press('j');
+  await page.keyboard.press('s');
+  const menu = page.locator('[data-menu="state"]');
+  await menu.waitFor();
+  await menu.locator('[data-state-id="6"]').click();
+  await page.locator('[data-selection-bar]').waitFor({ state: 'hidden' });
+  const patch = m.calls.find((c) => c.method === 'PATCH');
+  assert.ok(patch, 'no change was sent');
+  assert.equal(patch.body.state, 6);
   await settle();
   await page.close();
 });

@@ -482,15 +482,20 @@ function ScopeScreen({ scope }: { scope: Scope }) {
         )}
       </Card>
 
-      {selected.size > 0 && (
+      {/* The picked issues, or the one in focus while S, P, A or L has a
+          menu open on it with nothing beside the list to anchor it to. */}
+      {(selected.size > 0 || (open === null && focus !== null && menu !== null)) && (
         <SelectionBar
-          count={selected.size}
+          count={selectedIssues.length}
           project={selectedProject}
           issues={selectedIssues}
           menu={menu}
           onMenu={setMenu}
           onChange={(fields, done) => void change(fields, done)}
-          onClear={() => setSelected(new Set())}
+          onClear={() => {
+            setSelected(new Set());
+            setMenu(null);
+          }}
         />
       )}
 
