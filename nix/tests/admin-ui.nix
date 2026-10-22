@@ -62,7 +62,7 @@ pkgs.buildNpmPackage {
   # nix/packages.nix carries the SAME hash over the SAME lock file — two
   # derivations, one dependency set. Change both together or the second one
   # fails with the correct hash in its error.
-  npmDepsHash = "sha256-xuNMvZ29PHuMfTjWRsQ1tap+6QVQuScKoaI/MUra3eo=";
+  npmDepsHash = "sha256-U8WMYU5WYA+0sHdqQJs79kft6PuIBwg9sFg6ze5ErW8=";
 
   # No postinstall scripts: playwright must not try to fetch browsers (there is
   # no network here, and the ones it would fetch are not the ones this runs

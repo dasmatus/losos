@@ -11,6 +11,8 @@
     "GET /api/setup/claim": "public",
     "POST /api/setup/claim": "public",
     "GET /internal/cloud-share": "internal",
+    "GET /internal/chat/authz": "internal",
+    "GET /internal/chat/threads/{room}": "internal",
 
     "GET /api/me": "signed-in",
     "GET /api/state": "signed-in",
@@ -21,6 +23,9 @@
     "GET /api/look": "signed-in",
     "GET /api/look/background": "signed-in",
     "POST /api/set-password": "signed-in",
+    "GET /api/chat": "signed-in",
+    "POST /api/chat/session": "signed-in",
+    "GET /api/chat/people": "signed-in",
     "GET /api/windows": "signed-in",
     "POST /api/windows": "signed-in",
 

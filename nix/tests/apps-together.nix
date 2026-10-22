@@ -39,21 +39,7 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  noLab =
-    ui:
-    ui.overrideAttrs {
-      preBuild = "";
-      buildPhase = ''
-        runHook preBuild
-        cat > vite.nolab.config.ts <<'EOF'
-        import config from "./vite.config";
-        delete (config.build!.rolldownOptions!.input as Record<string, string>)["lab"];
-        export default config;
-        EOF
-        node_modules/.bin/vite build --config vite.nolab.config.ts
-        runHook postBuild
-      '';
-    };
+  noLab = import ./admin-ui-without-lab.nix;
 
   model = "gemma3:1b";
   # What the stand-in answers, by a word in the material.
