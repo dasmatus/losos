@@ -258,7 +258,7 @@ pkgs.testers.nixosTest {
         assert all(a["stream"] is False for a in asked)
         deny = box.succeed("systemctl show losos-git -p IPAddressDeny --value").strip()
         allow = box.succeed("systemctl show losos-git -p IPAddressAllow --value").strip()
-        assert deny in ("any", "0.0.0.0/0 ::/0"), deny
+        assert deny == "any" or set(deny.split()) == {"0.0.0.0/0", "::/0"}, deny
         assert "127.0.0.0/8" in allow, allow
 
     with subtest("People reply to its comments, resolve them, and ask it again"):
