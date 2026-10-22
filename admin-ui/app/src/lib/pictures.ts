@@ -22,6 +22,7 @@ const FALLBACK: PictureSettings = {
   blur: "everyone",
   trusted: [],
   nudityCheck: false,
+  detailsCheck: true,
   age: null,
   child: false,
   mayShowAll: false,
@@ -114,7 +115,7 @@ export async function trustSender(sender: string, trusted = true): Promise<void>
 
 /** Change the person's own settings. Throws the ApiError lososd answers,
  *  whose `code` is `adultRequired` or `childAccount`. */
-export async function savePictureSettings(change: { blur?: PictureBlur; nudityCheck?: boolean }): Promise<PictureSettings> {
+export async function savePictureSettings(change: { blur?: PictureBlur; nudityCheck?: boolean; detailsCheck?: boolean }): Promise<PictureSettings> {
   const next = await postPictures(change);
   forgetAnswers(next);
   return next;

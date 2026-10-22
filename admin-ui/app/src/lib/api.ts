@@ -3357,6 +3357,8 @@ export interface PictureSettings {
   /** Chat IDs and mail addresses, in lower case. */
   trusted: string[];
   nudityCheck: boolean;
+  /** Private details blacked out and asked about (components/details.tsx). */
+  detailsCheck: boolean;
   age: AgeMark | null;
   /** Marked as a child: the warning stays on and `nobody` is refused. */
   child: boolean;
@@ -3378,7 +3380,7 @@ export function getPictures(options: RequestOptions = {}): Promise<PictureSettin
 /** POST /api/pictures — 403 with code `adultRequired` or `childAccount`
  *  when the mark does not allow the change. */
 export function postPictures(
-  change: { blur?: PictureBlur; nudityCheck?: boolean },
+  change: { blur?: PictureBlur; nudityCheck?: boolean; detailsCheck?: boolean },
   options: RequestOptions = {},
 ): Promise<PictureSettings> {
   return postJson("/api/pictures", change, options);

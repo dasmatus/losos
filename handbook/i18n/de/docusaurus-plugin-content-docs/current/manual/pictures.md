@@ -9,7 +9,8 @@ slug: /manual/pictures
 Bilder, die dir andere in [Chat](chat) und [Mail](mail) schicken, bleiben
 verborgen, bis du darauf drückst. Du entscheidest, welche Absender daran
 vorbeikommen, und du kannst eine Nacktheitswarnung einschalten, die auf
-deinem eigenen Gerät läuft. Diese Seite sagt auch, was zu tun ist, wenn dir
+deinem eigenen Gerät läuft. Karten- und Ausweisnummern in Nachrichten
+sind geschwärzt. Diese Seite sagt auch, was zu tun ist, wenn dir
 jemand etwas schickt, das gemeldet werden muss.
 
 ## Verborgene Bilder \{#hidden-pictures}
@@ -24,7 +25,8 @@ daneben. Deine eigenen Bilder werden dir nie verborgen.
 
 **Bilder von ... immer anzeigen**, auf der Fläche oder der Leiste, nimmt
 die Person in deine vertrauten Absender auf. Ihre Bilder erscheinen ab
-dann sofort. Unter **Einstellungen > Dein Konto > Bilder in Chat und Mail**
+dann sofort. Unter **Einstellungen > Dein Konto > Bilder und
+private Daten**
 nimmst du jemanden wieder von der Liste.
 
 ## Welche Bilder verborgen sind \{#which-pictures-are-hidden}
@@ -69,6 +71,25 @@ die Box oder an jemand anderen, egal wie du dich entscheidest. Der
 Klassifikator kann sich in beide Richtungen irren, nimm ihn als Warnung,
 nicht als Filter. Bilder in Mail-Nachrichten werden nicht geprüft. Sie
 bleiben verborgen, bis du sie anzeigst.
+
+## Karten- und Ausweisnummern \{#card-and-id-numbers}
+
+Kartennummern, IBANs, Pass- und Ausweisnummern, slowakische und tschechische
+Geburtsnummern und US-Sozialversicherungsnummern erscheinen in
+Chat-Nachrichten und in Mail mit reinem Text als schwarze Balken. Drück auf
+einen Balken, um die Nummer zu sehen, und noch einmal, um sie zu verbergen.
+Bevor du eine Chat-Nachricht oder eine Mail sendest, die eine davon
+enthält, fragt LosOS, ob du trotzdem senden willst, und nennt jede mit
+ihren letzten vier Zeichen. **Nicht senden** behält, was du geschrieben
+hast.
+
+Jede Nummer wird an ihren eigenen Prüfziffern erkannt, deshalb löst eine
+Telefon- oder Bestellnummer das selten aus. Die Prüfung läuft in deinem
+Browser, wie die Nacktheitswarnung, und nichts davon geht an die Box. Sie
+liest die Wörter einer Nachricht, keine Bilder oder Anhänge, und
+formatierte (HTML-)Mail wird nicht geschwärzt. **Private Daten schwärzen**
+im selben Abschnitt deines Kontos schaltet beides ab. Ein Kinderkonto
+behält es an.
 
 ## Eine Nachricht melden \{#reporting-a-message}
 

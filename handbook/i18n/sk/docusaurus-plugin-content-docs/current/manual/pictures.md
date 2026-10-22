@@ -9,8 +9,8 @@ slug: /manual/pictures
 Obrázky, ktoré vám iní ľudia pošlú v [Chate](chat) a [Pošte](mail), sú
 skryté, kým ich nestlačíte. Sami rozhodujete, ktorých odosielateľov to
 obíde, a môžete zapnúť upozornenie na nahotu, ktoré beží vo vašom vlastnom
-zariadení. Táto stránka popisuje aj to, čo robiť, keď vám niekto pošle
-niečo, čo treba nahlásiť.
+zariadení. Čísla kariet a dokladov sú v správach zakryté. Táto stránka
+popisuje aj to, čo robiť, keď vám niekto pošle niečo, čo treba nahlásiť.
 
 ## Skryté obrázky \{#hidden-pictures}
 
@@ -23,8 +23,8 @@ obrázky**. Vaše vlastné obrázky sa pred vami nikdy neskrývajú.
 
 **Vždy zobrazovať obrázky od** na plôške alebo na pruhu pridá danú osobu
 medzi dôveryhodných odosielateľov. Jej obrázky sa odvtedy zobrazia hneď.
-Zo zoznamu ju odoberiete v **Nastavenia > Váš účet > Obrázky v Chate a
-Pošte**.
+Zo zoznamu ju odoberiete v **Nastavenia > Váš účet > Obrázky a
+súkromné údaje**.
 
 ## Ktoré obrázky sú skryté \{#which-pictures-are-hidden}
 
@@ -65,6 +65,23 @@ Kontrola beží vo vašom zariadení. Obrázok ani výsledok sa nikdy nedostanú
 box ani k nikomu inému, nech sa rozhodnete akokoľvek. Klasifikátor sa môže
 mýliť oboma smermi, berte ho ako upozornenie, nie ako filter. Obrázky v
 správach Pošty sa nekontrolujú. Zostávajú skryté, kým ich nezobrazíte.
+
+## Čísla kariet a dokladov \{#card-and-id-numbers}
+
+Čísla platobných kariet, IBAN, čísla pasov a občianskych preukazov,
+slovenské a české rodné čísla a americké čísla sociálneho zabezpečenia sa v
+správach Chatu a v Pošte s obyčajným textom zobrazia ako čierne pruhy.
+Stlačením pruhu číslo zobrazíte, ďalším stlačením ho znova skryjete. Skôr
+než pošlete správu v Chate alebo e-mail, ktorý niektoré z nich obsahuje,
+LosOS sa spýta, či ho chcete poslať aj tak, a každé pomenuje poslednými
+štyrmi znakmi. **Neposielať** ponechá, čo ste napísali.
+
+Každé číslo sa rozpozná podľa jeho vlastných kontrolných číslic, takže
+telefónne číslo alebo číslo objednávky ho spustí len zriedka. Kontrola
+beží vo vašom prehliadači, rovnako ako upozornenie na nahotu, a nič z nej
+sa nedostane na box. Číta slová správy, nie obrázky ani prílohy, a
+formátovaná (HTML) pošta sa nezakrýva. **Zakryť súkromné údaje** v tej
+istej časti účtu vypne oboje. Detský účet ich má vždy zapnuté.
 
 ## Nahlásenie správy \{#reporting-a-message}
 
