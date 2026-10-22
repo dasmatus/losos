@@ -46,7 +46,11 @@ kreslí simulátor.
 - **Skupiny, farby a rozloženie.** Skupina je rámik s popisom; karty v nej
   sa hýbu s ňou. Šesť farieb sa riadi svetlou a tmavou témou, alebo si
   vyberte ľubovoľnú farbu. Inšpektor mení poradie, zarovnáva, zoskupuje,
-  duplikuje a maže vybrané. Späť a Znova pokrývajú každú zmenu.
+  duplikuje a maže vybrané, a to isté robí lišta, ktorá sa objaví nad
+  výberom (pozrite
+  [lištu nad výberom](../manual/admin-pages#the-bar-over-a-selection)) a
+  ktorá navyše nakreslí šípku medzi dvoma vybranými kartami. Späť a Znova
+  pokrývajú každú zmenu.
 - **Šablóny.** Vývojový diagram, architektúra služby, myšlienková mapa,
   tabuľa a domáca sieť, položené tam, kam kliknete.
 - **Súbory.** **Súbor** uloží diagram ako súbor `.canvas` a otvorí ho.

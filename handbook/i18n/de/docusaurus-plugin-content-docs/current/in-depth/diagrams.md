@@ -51,7 +51,10 @@ Netzwerk darin, wie der Simulator es zeichnet.
 - **Gruppen, Farben und Anordnung.** Eine Gruppe ist ein beschrifteter
   Rahmen; Karten darin bewegen sich mit ihr. Sechs Farben folgen dem hellen
   und dem dunklen Thema, oder wähle eine beliebige Farbe. Der Inspektor
-  ordnet, richtet aus, gruppiert, dupliziert und löscht die Auswahl.
+  ordnet, richtet aus, gruppiert, dupliziert und löscht die Auswahl, und
+  dasselbe tut eine Leiste, die über der Auswahl erscheint (siehe
+  [die Leiste über einer Auswahl](../manual/admin-pages#the-bar-over-a-selection)),
+  die außerdem einen Pfeil zwischen zwei ausgewählten Karten zieht.
   Rückgängig und Wiederholen decken jede Änderung ab.
 - **Vorlagen.** Ein Flussdiagramm, eine Dienstarchitektur, eine Mindmap,
   ein Board und ein Heimnetz, abgelegt, wo du klickst.
