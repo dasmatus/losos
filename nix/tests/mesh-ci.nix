@@ -583,10 +583,17 @@ let
             "timezone": "Europe/Bratislava",
             "manifest": {"feature": "mesh-ci", "commit": "", "test": "losos-mesh-ci-screens",
                          "host": "mattbox.local"},
+            "clips": {"frames": 30, "fps": 60},
             "shots": film,
         }
         laptop.succeed(f"cat > /tmp/plan-film.json <<'EOF'\n{json.dumps(film_plan)}\nEOF")
         capture("film", "/tmp/plan-film.json", timeout=5400)
+        laptop.succeed(
+            "cd /tmp/screens/film && for d in *.frames; do"
+            " ffmpeg -loglevel error -framerate 60 -i \"$d/%03d.png\""
+            " -c:v libx264 -crf 16 -pix_fmt yuv420p \"''${d%.frames}.mp4\" && rm -r \"$d\"; done",
+            timeout=1800,
+        )
         laptop.copy_from_machine("/tmp/screens", "")
   '';
 
@@ -808,6 +815,8 @@ pkgs.testers.nixosTest {
       environment.systemPackages = [
         pkgs.curl
         pkgs.jq
+        # The film's clips, from their frames.
+        pkgs.ffmpeg-headless
       ];
       environment.etc."losos-test/plan-pages.json".source = plan;
       virtualisation.vlans = [ 1 ];

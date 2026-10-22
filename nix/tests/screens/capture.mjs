@@ -33,6 +33,12 @@
 // path, for a film that points at them. With `manifest` ({feature, commit,
 // test, host}) the run also writes `manifest.json` in the launch film's
 // shape: each shot's `title` and `action` with its targets and address.
+// With `clips` ({frames, fps}) as well, a shot whose action is a click on
+// one of its targets also gets a clip of that click: the page's animations
+// are held, the click is made and the page settles, then the animations are
+// stepped one frame at a time, one picture each, under full motion, into
+// `<name>.frames/`, listed in the manifest as `<name>.mp4` after the
+// picture. The test turns the frames into that video.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -145,6 +151,39 @@ try {
     // Under TCG a busy page can take more than Playwright's 30 s to paint.
     await page.screenshot({ path, fullPage: shot.fullPage ?? false, timeout: 180000 });
     console.log(`captured ${path}`);
+    const click = shot.action?.kind === 'click' ? shot.targets?.[shot.action.target] : undefined;
+    if (plan.clips && click) {
+      const dir = join(args.out, `${shot.name}.frames`);
+      mkdirSync(dir, { recursive: true });
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      const cdp = await context.newCDPSession(page);
+      await cdp.send('Animation.enable');
+      await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
+      await locate(page, click).click();
+      await page.waitForLoadState('networkidle');
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(500);
+      const fps = plan.clips.fps ?? 60;
+      for (let i = 0; i < (plan.clips.frames ?? 30); i++) {
+        // Every animation the click started (and any that were running)
+        // at the same moment, i frames in.
+        await page.evaluate((t) => {
+          for (const a of document.getAnimations()) a.currentTime = t;
+        }, (i * 1000) / fps);
+        await page.screenshot({ path: join(dir, `${String(i).padStart(3, '0')}.png`), timeout: 180000 });
+      }
+      console.log(`captured ${dir}`);
+      if (plan.manifest) {
+        const after = new URL(page.url());
+        steps.push({
+          file: `${shot.name}.mp4`,
+          url: plan.manifest.host + after.pathname + after.hash,
+          title: `${shot.title ?? shot.name}: the click, at ${fps} frames a second`,
+          action: { kind: 'none' },
+          targets: {},
+        });
+      }
+    }
     await page.close();
   }
   if (plan.manifest) {
