@@ -368,8 +368,10 @@ pkgs.testers.nixosTest {
           # lososd starts and stops the tunnel units with systemctl.
           pkgs.systemd
         ];
-        # ICE and DTLS in the log, for a call that does not connect.
-        systemd.services.losos-calls = lib.mkIf config.losos.calls.enable {
+        # ICE and DTLS in the log, for a call that does not connect. Only
+        # where the unit exists: with sharing off this line alone would
+        # make a unit with no ExecStart.
+        systemd.services.losos-calls = lib.mkIf (config.losos.calls.enable && config.lososInternal.chat) {
           environment.RUST_LOG = "info,str0m=debug";
         };
         environment.systemPackages = [
@@ -820,8 +822,12 @@ pkgs.testers.nixosTest {
         until_js(page, "!document.querySelector('.animate-spin')", timeout=30000)
         time.sleep(1)
 
-    def shot(page, name):
+    def shot(page, name, top=True):
         settle(page)
+        # From the top of the page, so a Before and its After differ only
+        # in what changed; a picture of the timeline's end stays put.
+        if top:
+            page.evaluate("window.scrollTo(0, 0)")
         page.screenshot(path=f"{SHOTS}/{name}.png")
 
     def opened(page):
@@ -1217,7 +1223,8 @@ pkgs.testers.nixosTest {
             assert page.locator("[data-e2ee]").get_attribute("data-refused") == "0"
         notice = jan.locator("[data-call-notice]").last
         notice.get_by_role("button", name="Join", exact=True).wait_for()
-        shot(jan, "timeline-join")
+        notice.scroll_into_view_if_needed()
+        shot(jan, "timeline-join", top=False)
         notice.get_by_role("button", name="Join", exact=True).click()
         for page in (owner, her, jan):
             live(page, 2, frames=0)
