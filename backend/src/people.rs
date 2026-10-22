@@ -49,7 +49,7 @@ pub const LOCKED: &str = "losos-locked";
 /// change of access keeps them.
 pub const MARKS: [&str; 2] = [TWO_FACTOR, LOCKED];
 /// Names already taken by the box's own accounts in LosOS Cloud and LosOS
-/// Git: the owner's, the shared domain's and the Forgejo bot's. A person
+/// Git: the owner's, the shared domain's and the bot's. A person
 /// signing in under one of them would arrive as that account.
 const RESERVED: [&str; 3] = ["notshared", "shared", "losos"];
 /// Sign-in names: what Authelia and the audit log show. Lower case so two

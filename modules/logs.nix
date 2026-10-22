@@ -8,7 +8,7 @@
 #
 #   journal         Most services log only to it. Capped at
 #                   losos.logs.journalMaxUse and a month.
-#   pod logs        Forgejo and every app write to stdout, which
+#   pod logs        The apps write to stdout, which
 #                   the kubelet keeps under /var/log/pods: three files of
 #                   10 MiB per container, in both clusters and on the edge.
 #   nginx           /var/log/nginx/*.log, rotated by nixpkgs' own rule

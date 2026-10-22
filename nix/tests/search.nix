@@ -13,7 +13,7 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
   files = "/var/lib/losos-cloud/notshared/files";
-  repos = "/var/lib/forgejo/repositories";
+  repos = "/var/lib/losos-git/repositories";
 
   # A one-page PDF with a known sentence in it.
   invoice = pkgs.runCommand "invoice.pdf" { } ''
@@ -34,18 +34,18 @@ pkgs.testers.nixosTest {
       ];
       losos.backend.package = lososPkgs.losos-ctl;
       losos.cloud.enable = true;
-      losos.forgejo.enable = true;
-      # The two app users, as modules/cloud.nix and
-      # modules/configuration.nix declare them.
+      losos.git.enable = true;
+      # The two app users, as modules/cloud.nix and modules/git.nix declare
+      # them.
       users.groups.losos-cloud = { };
       users.users.losos-cloud = {
         group = "losos-cloud";
         isSystemUser = true;
       };
-      users.groups.forgejo.gid = 1003;
-      users.users.forgejo = {
+      users.groups.losos-git.gid = 1003;
+      users.users.losos-git = {
         uid = 1003;
-        group = "forgejo";
+        group = "losos-git";
         isSystemUser = true;
       };
       environment.systemPackages = [
@@ -111,13 +111,13 @@ pkgs.testers.nixosTest {
         last = machine.succeed("journalctl -u losos-search-index.service -o cat | grep 'index up to date' | tail -n 1")
         assert "read=1 " in last and "removed=1 " in last, last
 
-    with subtest("Git: the default branch of each repository, as forgejo"):
+    with subtest("Git: the default branch of each repository, as losos-git"):
         machine.succeed(
-            "install -d -m 0750 -o forgejo -g forgejo /var/lib/forgejo ${repos} ${repos}/matus",
+            "install -d -m 0750 -o losos-git -g losos-git /var/lib/losos-git ${repos} ${repos}/matus",
             "mkdir -p /tmp/work && cd /tmp/work && git init -q -b main && echo 'def tax_due(x):' > taxes.py"
             " && git add . && git -c user.name=t -c user.email=t@t commit -qm first",
             "git clone -q --bare /tmp/work ${repos}/matus/accounts.git",
-            "chown -R forgejo:forgejo /var/lib/forgejo",
+            "chown -R losos-git:losos-git /var/lib/losos-git",
         )
         answer = ask("git", "TAX_due")
         hits = answer["hits"]

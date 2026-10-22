@@ -14,14 +14,14 @@ USB stick, and after that you only use it through a web browser.
 | What you see          | What it is                                                                                      |
 | --------------------- | ----------------------------------------------------------------------------------------------- |
 | **LosOS Cloud**       | Your files, photos, calendars, contacts and boards. The Nextcloud apps sync with it. At `/cloud/`. |
-| **LosOS Git**         | Your code repositories, on by default. Built on Forgejo. At `/forgejo/`.                        |
+| **LosOS Git**         | Your code repositories, on by default. The box's own Git server. At `/git/`.                    |
 | **The admin pages**   | Where you set up and look after the box. At `/`, reachable only from your local network.         |
 | **The mesh**          | Optional. Spare disk and CPU lent to other LosOS boxes, and borrowed from them.                  |
 | **Remote access**     | Optional. A public address for the box through an edge server, with no port opened at home.      |
 
 ## What makes it different from a NAS
 
-![Inside a box: nginx is the one front door, routing to LosOS Cloud, LosOS Git and the admin pages; behind it the control daemon, the box's own cluster running LosOS Git, and the mesh agent; under them a RAM system disk and one encrypted volume.](../img/box-architecture.svg)
+![Inside a box: nginx is the one front door, routing to LosOS Cloud, LosOS Git and the admin pages; behind it the control daemon with the two apps beside it, the box's own cluster for apps installed as shared, and the mesh agent; under them a RAM system disk and one encrypted volume.](../img/box-architecture.svg)
 
 - **It forgets everything it does not need.** The box rebuilds its system
   disk from scratch on every boot. Only your data, the settings you chose and

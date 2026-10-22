@@ -66,7 +66,7 @@ Jeder Dienst läuft:
 Dienste finden einander über ihren Namen: Jeder Dienstname zeigt auf
 `127.0.0.1`. Weil sie ein Netz teilen, müssen sie auf verschiedenen Ports
 lauschen, alle ab 1024, und auf keinem der Ports, die die Box für sich
-behält (ihr Webserver, ihre Admin-API auf 8082, Forgejo auf 3000,
+behält (ihr Webserver, ihre Admin-API auf 8082, LosOS Git auf 3000,
 PostgreSQL auf 5432, Redis auf 6379, die Ports des Clusters, der
 Weiterleitungsbereich 30000 bis 30099).
 

@@ -1,4 +1,4 @@
-//! The widget builder end to end: lososd, `curl` and a stand-in for Ollama on
+//! The builder end to end, widgets and apps: lososd, `curl` and a stand-in for Ollama on
 //! loopback that streams a recorded answer the way Ollama does.
 //!
 //! The stand-in checks what lososd sends (the model, the context window, the
@@ -17,10 +17,16 @@ use std::time::{Duration, Instant};
 
 const BOOT_TIMEOUT: Duration = Duration::from_secs(20);
 
-const ANSWER: &str = "<file name=\"index.html\">\n<p id=\"t\">…</p>\n<script>\nsetInterval(function () { document.getElementById(\"t\").textContent = new Date().toLocaleTimeString(losos.lang); }, 1000);\n</script>\n</file>\n<summary>A clock.</summary>";
+const ANSWER: &str = "```html\n<p id=\"t\">…</p>\n<script>\nsetInterval(function () { document.getElementById(\"t\").textContent = new Date().toLocaleTimeString(losos.lang); }, 1000);\n</script>\n```\nSummary: A clock.";
 
 /// A clock whose script looks up an element the markup does not have.
-const MISTAKE: &str = "<file name=\"index.html\">\n<p id=\"t\">…</p>\n<script>\ndocument.getElementById(\"clock\").textContent = new Date().toLocaleTimeString(losos.lang);\n</script>\n</file>\n<summary>A clock.</summary>";
+const MISTAKE: &str = "```html\n<p id=\"t\">…</p>\n<script>\ndocument.getElementById(\"clock\").textContent = new Date().toLocaleTimeString(losos.lang);\n</script>\n```\nSummary: A clock.";
+
+/// An app, the way the model answers.
+const APP: &str = "```jsx\nfunction App() {\n  const items = useCollection(\"items\");\n  return (\n    <Page title=\"Nákup\">\n      {items.items.map(i => <Text key={i.id}>{i.name}</Text>)}\n    </Page>\n  );\n}\n```\nName: Nákupný zoznam\nSummary: Zoznam nákupov.";
+
+/// An app with a component the frame does not have.
+const APP_MISTAKE: &str = "```jsx\nfunction App() {\n  return <Page><DataGrid /></Page>;\n}\n```\nName: Grid\nSummary: A grid.";
 
 /// What the stand-in does with a chat: answer at once, or trickle the answer
 /// out slowly enough for a test to stop it halfway.
@@ -32,7 +38,7 @@ enum Pace {
     NoMemory,
 }
 
-/// A stand-in for Ollama: `GET /api/tags` lists `llama3.2:3b`, `POST
+/// A stand-in for Ollama: `GET /api/tags` lists `qwen2.5-coder:1.5b`, `POST
 /// /api/chat` streams an answer in pieces, [`ANSWER`] unless told others.
 /// Every chat body is kept.
 struct Ollama {
@@ -82,7 +88,7 @@ fn serve(mut stream: TcpStream, pace: Pace, seen: &Mutex<Vec<Value>>, answers: &
     let mut body = vec![0; length];
     reader.read_exact(&mut body).unwrap();
     if first.starts_with("GET /api/tags") {
-        let doc = json!({ "models": [{ "name": "llama3.2:3b" }] }).to_string();
+        let doc = json!({ "models": [{ "name": "qwen2.5-coder:1.5b" }] }).to_string();
         let _ = write!(
             stream,
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{doc}",
@@ -140,6 +146,12 @@ impl Drop for Daemon {
 
 impl Daemon {
     fn start(ollama: Option<&Ollama>) -> Daemon {
+        // No page tries the apps here, unless a test says it will.
+        Daemon::start_trying(ollama, 1)
+    }
+
+    /// A box whose builds wait `try_secs` for the page to try an app.
+    fn start_trying(ollama: Option<&Ollama>, try_secs: u64) -> Daemon {
         let dir = TempDir::new().unwrap();
         let token_file = dir.path().join("token");
         let port = TcpListener::bind(("127.0.0.1", 0))
@@ -158,8 +170,9 @@ impl Daemon {
             .stderr(Stdio::null());
         if let Some(o) = ollama {
             cmd.env("LOSOS_BUILDER_URL", format!("http://127.0.0.1:{}", o.port))
-                .env("LOSOS_BUILDER_MODEL", "llama3.2:3b")
-                .env("LOSOS_BUILDER_CONTEXT", "8192");
+                .env("LOSOS_BUILDER_MODEL", "qwen2.5-coder:1.5b")
+                .env("LOSOS_BUILDER_CONTEXT", "12288")
+                .env("LOSOS_BUILDER_TRY_SECS", try_secs.to_string());
         }
         let child = cmd.spawn().unwrap();
         let deadline = Instant::now() + BOOT_TIMEOUT;
@@ -248,7 +261,7 @@ fn a_build_asks_the_model_on_the_box_and_hands_back_the_widget() {
         daemon.call("GET", "/api/builder", None),
         (
             200,
-            json!({ "available": true, "model": "llama3.2:3b", "builds": [] })
+            json!({ "available": true, "model": "qwen2.5-coder:1.5b", "builds": [] })
         )
     );
 
@@ -269,24 +282,26 @@ fn a_build_asks_the_model_on_the_box_and_hands_back_the_widget() {
         .unwrap()
         .starts_with("<p id=\"t\">"));
     assert_eq!(done["notes"], "A clock.");
+    assert_eq!(done["kind"], "widget");
+    assert_eq!(done["problems"], json!([]));
     assert_eq!(done["fault"], Value::Null);
     assert!(done["lines"].as_u64().unwrap() >= 5);
 
     let chats = ollama.chats.lock().unwrap();
     assert_eq!(chats.len(), 1);
     let chat = &chats[0];
-    assert_eq!(chat["model"], "llama3.2:3b");
+    assert_eq!(chat["model"], "qwen2.5-coder:1.5b");
     assert_eq!(chat["stream"], true);
-    assert_eq!(chat["options"]["num_ctx"], 8192);
-    assert_eq!(chat["messages"][0]["role"], "system");
-    assert_eq!(chat["messages"][0]["content"], losos_ctl::builder::PROMPT);
-    let request = chat["messages"][1]["content"].as_str().unwrap();
-    assert!(
-        request.starts_with("<request>\na clock\n</request>\n"),
-        "{request}"
+    assert_eq!(chat["options"]["num_ctx"], 12288);
+    let messages = chat["messages"].as_array().unwrap();
+    assert_eq!(
+        messages[..7],
+        losos_ctl::builder::prompt_messages(losos_ctl::builder::WIDGET_PROMPT)[..]
     );
+    let request = messages[7]["content"].as_str().unwrap();
+    assert!(request.starts_with("a clock\n"), "{request}");
     assert!(
-        request.ends_with("Write the summary in Slovak.\n"),
+        request.ends_with("Write the summary in Slovak."),
         "{request}"
     );
 
@@ -397,18 +412,18 @@ fn a_widget_with_a_mistake_the_box_can_see_goes_back_to_the_model_once() {
     let chats = ollama.chats.lock().unwrap();
     assert_eq!(chats.len(), 2);
     let turn = chats[1]["messages"].as_array().unwrap();
-    assert_eq!(turn.len(), 4);
-    assert_eq!(turn[2]["role"], "assistant");
-    assert_eq!(turn[2]["content"], MISTAKE);
-    assert_eq!(turn[3]["role"], "user");
-    let note = turn[3]["content"].as_str().unwrap();
+    assert_eq!(turn.len(), 10);
+    assert_eq!(turn[8]["role"], "assistant");
+    assert_eq!(turn[8]["content"], MISTAKE);
+    assert_eq!(turn[9]["role"], "user");
+    let note = turn[9]["content"].as_str().unwrap();
     assert!(note.contains("getElementById(\"clock\")"), "{note}");
 }
 
 #[test]
 fn a_model_that_repeats_itself_is_cut_off_and_asked_again() {
     let looping = format!(
-        "<file name=\"index.html\">\n<div>\n{}",
+        "```html\n<div>\n{}",
         "<span class=\"day\"></span>\n".repeat(200)
     );
     let ollama = Ollama::answering(Pace::Quick, vec![looping, ANSWER.to_string()]);
@@ -429,9 +444,9 @@ fn a_model_that_repeats_itself_is_cut_off_and_asked_again() {
     assert_eq!(chats.len(), 2);
     let turn = chats[1]["messages"].as_array().unwrap();
     // The model is shown where it went round in circles, not 200 lines of it.
-    let shown = turn[2]["content"].as_str().unwrap();
+    let shown = turn[8]["content"].as_str().unwrap();
     assert!(shown.lines().count() < 30, "{shown}");
-    assert!(turn[3]["content"].as_str().unwrap().contains("repeated"));
+    assert!(turn[9]["content"].as_str().unwrap().contains("repeated"));
 }
 
 #[test]
@@ -453,4 +468,307 @@ fn a_second_answer_that_is_worse_than_the_first_is_dropped() {
         .unwrap()
         .contains("getElementById(\"clock\")"));
     assert_eq!(ollama.chats.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn an_app_is_built_compiled_saved_and_keeps_its_data() {
+    let ollama = Ollama::answering(Pace::Quick, vec![APP.to_string()]);
+    let daemon = Daemon::start(Some(&ollama));
+    let (status, started) = daemon.call(
+        "POST",
+        "/api/builder/builds",
+        Some(&json!({ "kind": "app", "prompt": "nákupný zoznam", "lang": "sk" })),
+    );
+    assert_eq!(status, 200, "{started}");
+    assert_eq!(started["kind"], "app");
+    let done = daemon.settle(started["id"].as_str().unwrap());
+    assert_eq!(done["status"], "done", "{done}");
+    assert_eq!(done["files"][0]["name"], "app.jsx");
+    assert_eq!(done["name"], "Nákupný zoznam");
+    assert_eq!(done["notes"], "Zoznam nákupov.");
+    assert_eq!(done["problems"], json!([]));
+    let code = done["code"].as_str().unwrap();
+    assert!(code.contains("React.createElement(Page"), "{code}");
+    {
+        let chats = ollama.chats.lock().unwrap();
+        assert_eq!(chats.len(), 1, "a clean app gets no second turn");
+        let messages = chats[0]["messages"].as_array().unwrap();
+        assert!(messages[0]["content"]
+            .as_str()
+            .unwrap()
+            .starts_with("You write small apps"));
+        assert!(messages[7]["content"]
+            .as_str()
+            .unwrap()
+            .ends_with("Write the app's words and the summary in Slovak."));
+    }
+
+    // Saved as the owner keeps it, and listed without its code.
+    let (status, saved) = daemon.call(
+        "POST",
+        "/api/user-apps",
+        Some(&json!({ "name": done["name"], "summary": done["notes"], "source": done["files"][0]["content"] })),
+    );
+    assert_eq!(status, 200, "{saved}");
+    let id = saved["app"]["id"].as_str().unwrap().to_string();
+    assert_eq!(saved["app"]["code"], done["code"]);
+    let (_, list) = daemon.call("GET", "/api/user-apps", None);
+    assert_eq!(list["apps"][0]["name"], "Nákupný zoznam");
+    assert!(list["apps"][0].get("source").is_none());
+
+    // Its data: added, changed, read back, removed.
+    let data = format!("/api/user-apps/{id}/data");
+    let (status, added) = daemon.call(
+        "POST",
+        &data,
+        Some(&json!({ "op": "add", "collection": "items", "value": { "name": "mlieko" } })),
+    );
+    assert_eq!(status, 200, "{added}");
+    let item = added["item"]["id"].as_str().unwrap().to_string();
+    let (status, _) = daemon.call(
+        "POST",
+        &data,
+        Some(&json!({ "op": "update", "collection": "items", "id": item, "value": { "done": true } })),
+    );
+    assert_eq!(status, 200);
+    let (_, kept) = daemon.call("GET", &data, None);
+    assert_eq!(kept["collections"]["items"][0]["name"], "mlieko");
+    assert_eq!(kept["collections"]["items"][0]["done"], true);
+    let (status, refused) = daemon.call("POST", &data, Some(&json!({ "op": "drop" })));
+    assert_eq!(status, 400, "{refused}");
+
+    // An app the box does not have is a 404, and a deleted one takes its
+    // data with it.
+    assert_eq!(daemon.call("GET", "/api/user-apps/u99/data", None).0, 404);
+    assert_eq!(daemon.call("GET", "/api/user-apps/u99", None).0, 404);
+    let (_, gone) = daemon.call("DELETE", &format!("/api/user-apps/{id}"), None);
+    assert_eq!(gone["deleted"], true);
+    assert_eq!(daemon.call("GET", &data, None).0, 404);
+}
+
+#[test]
+fn an_app_with_a_component_that_does_not_exist_goes_back_to_the_model_once() {
+    let ollama = Ollama::answering(Pace::Quick, vec![APP_MISTAKE.to_string(), APP.to_string()]);
+    let daemon = Daemon::start(Some(&ollama));
+    let (_, started) = daemon.call(
+        "POST",
+        "/api/builder/builds",
+        Some(&json!({ "kind": "app", "prompt": "a grid" })),
+    );
+    let done = daemon.settle(started["id"].as_str().unwrap());
+    assert_eq!(done["status"], "done", "{done}");
+    assert_eq!(done["problems"], json!([]));
+    let chats = ollama.chats.lock().unwrap();
+    assert_eq!(chats.len(), 2);
+    let note = chats[1]["messages"][9]["content"].as_str().unwrap();
+    assert!(
+        note.contains("there is no component called DataGrid"),
+        "{note}"
+    );
+    assert!(
+        note.ends_with("then the Name: and Summary: lines. It is still the app for: a grid"),
+        "{note}"
+    );
+}
+
+#[test]
+fn a_fix_that_sends_an_example_back_goes_back_to_the_model_with_what_was_asked() {
+    // The last example answer in the instructions, the disk, sent for a
+    // shopping list: it compiles and checks clean, and is the wrong app.
+    let turns = losos_ctl::builder::prompt_messages(losos_ctl::builder::APP_PROMPT);
+    let disk = turns.last().unwrap()["content"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let ollama = Ollama::answering(Pace::Quick, vec![disk, APP.to_string()]);
+    let daemon = Daemon::start(Some(&ollama));
+    let (_, started) = daemon.call(
+        "POST",
+        "/api/builder/builds",
+        Some(&json!({ "kind": "app", "prompt": "a shopping list" })),
+    );
+    let done = daemon.settle(started["id"].as_str().unwrap());
+    assert_eq!(done["status"], "done", "{done}");
+    assert_eq!(
+        done["name"], "Nákupný zoznam",
+        "the shopping list is kept: {done}"
+    );
+    let chats = ollama.chats.lock().unwrap();
+    assert_eq!(chats.len(), 2);
+    let note = chats[1]["messages"][9]["content"].as_str().unwrap();
+    assert!(
+        note.contains(
+            "This is the example from the instructions, the app for \"Show how full the disk is.\""
+        ),
+        "{note}"
+    );
+    assert!(
+        note.ends_with("It is still the app for: a shopping list"),
+        "{note}"
+    );
+}
+
+/// The page's half of a try: wait for the build to ask for a try other than
+/// `done`, then report.
+fn report_try(daemon: &Daemon, id: &str, done: Option<&str>, report: &Value) -> Value {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let (_, build) = daemon.call("GET", &format!("/api/builder/builds/{id}"), None);
+        if let Some(trial) = build["trial"]["id"].as_str().filter(|t| Some(*t) != done) {
+            assert!(
+                build["trial"]["code"]
+                    .as_str()
+                    .unwrap()
+                    .contains("window.LosOS"),
+                "{build}"
+            );
+            let mut body = report.clone();
+            body["trial"] = json!(trial);
+            let (status, taken) = daemon.call(
+                "POST",
+                &format!("/api/builder/builds/{id}/tried"),
+                Some(&body),
+            );
+            assert_eq!(status, 200, "{taken}");
+            return build;
+        }
+        assert_ne!(
+            build["status"], "done",
+            "the build finished without asking for a try: {build}"
+        );
+        assert!(Instant::now() < deadline, "the build never asked for a try");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn an_app_that_keeps_nothing_when_tried_goes_back_to_the_model_with_what_the_try_found() {
+    let ollama = Ollama::answering(Pace::Quick, vec![APP.to_string(), APP.to_string()]);
+    let daemon = Daemon::start_trying(Some(&ollama), 20);
+    let (_, started) = daemon.call(
+        "POST",
+        "/api/builder/builds",
+        Some(&json!({ "kind": "app", "prompt": "a shopping list" })),
+    );
+    let id = started["id"].as_str().unwrap().to_string();
+
+    // The first try: a field and an Add button, and nothing kept.
+    let asking = report_try(
+        &daemon,
+        &id,
+        None,
+        &json!({ "shown": ["h1: Nákup", "input[text] \"Item\"", "button: Add"], "pressed": "Add",
+                 "kept": [], "errors": [], "threwOnPress": [] }),
+    );
+    // The preview shows the app being tried.
+    assert!(asking["code"]
+        .as_str()
+        .unwrap()
+        .contains("React.createElement(Page"));
+    // The second: it keeps the entry.
+    let first = asking["trial"]["id"].as_str().unwrap();
+    report_try(
+        &daemon,
+        &id,
+        Some(first),
+        &json!({ "shown": ["h1: Nákup", "input[text] \"Item\"", "button: Add"], "pressed": "Add",
+                 "kept": ["items: 0 to 1"], "errors": [], "threwOnPress": [] }),
+    );
+    let done = daemon.settle(&id);
+    assert_eq!(done["status"], "done", "{done}");
+    assert_eq!(done["problems"], json!([]));
+    assert_eq!(done["trial"], Value::Null);
+    let kinds: Vec<&str> = done["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, ["write", "check", "try", "fix", "check", "try"]);
+    assert!(done["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|s| s["running"] == false));
+    assert_eq!(done["steps"][2]["shown"][2], "button: Add");
+    assert!(done["steps"][2]["problems"][0]
+        .as_str()
+        .unwrap()
+        .contains("kept nothing"));
+
+    let chats = ollama.chats.lock().unwrap();
+    assert_eq!(chats.len(), 2);
+    let note = chats[1]["messages"][9]["content"].as_str().unwrap();
+    assert!(
+        note.contains("\"Add\" was pressed, the app kept nothing"),
+        "{note}"
+    );
+
+    // A report for a try the build is not waiting for is refused.
+    let (status, _) = daemon.call(
+        "POST",
+        &format!("/api/builder/builds/{id}/tried"),
+        Some(&json!({ "trial": "t0", "shown": [] })),
+    );
+    assert_eq!(status, 409);
+}
+
+#[test]
+fn an_app_with_no_page_to_try_it_in_is_kept_untried_and_fixes_stop_at_three() {
+    let ollama = Ollama::answering(Pace::Quick, vec![APP_MISTAKE.to_string()]);
+    let daemon = Daemon::start(Some(&ollama));
+    let (_, started) = daemon.call(
+        "POST",
+        "/api/builder/builds",
+        Some(&json!({ "kind": "app", "prompt": "a grid" })),
+    );
+    let done = daemon.settle(started["id"].as_str().unwrap());
+    // The model never fixes it: one answer and three fixes, then the box
+    // hands over what it has, with the mistake named.
+    assert_eq!(ollama.chats.lock().unwrap().len(), 4);
+    assert_eq!(done["status"], "done", "{done}");
+    assert!(
+        done["problems"][0].as_str().unwrap().contains("DataGrid"),
+        "{done}"
+    );
+
+    let ollama = Ollama::answering(Pace::Quick, vec![APP.to_string()]);
+    let daemon = Daemon::start(Some(&ollama));
+    let (_, started) = daemon.call(
+        "POST",
+        "/api/builder/builds",
+        Some(&json!({ "kind": "app", "prompt": "a list" })),
+    );
+    let done = daemon.settle(started["id"].as_str().unwrap());
+    assert_eq!(done["status"], "done", "{done}");
+    let last = done["steps"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(last["kind"], "try");
+    assert_eq!(last["skipped"], true);
+    assert_eq!(ollama.chats.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn source_that_does_not_compile_is_refused_and_the_check_says_why() {
+    let daemon = Daemon::start(None);
+    let (status, refused) = daemon.call(
+        "POST",
+        "/api/user-apps",
+        Some(&json!({ "name": "Broken", "source": "function App() {\n  return <Page>;\n}" })),
+    );
+    assert_eq!(status, 400, "{refused}");
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap()
+            .contains("Line 3 has a syntax error"),
+        "{refused}"
+    );
+    let (status, checked) = daemon.call(
+        "POST",
+        "/api/user-apps/check",
+        Some(&json!({ "source": "function App() { return <Page><Nope /></Page>; }" })),
+    );
+    assert_eq!(status, 200);
+    assert!(checked["code"].is_string());
+    assert!(checked["problems"][0].as_str().unwrap().contains("Nope"));
 }
