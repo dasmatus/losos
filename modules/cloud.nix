@@ -255,6 +255,10 @@ in
     # nginx opens the socket.
     users.users.${config.services.nginx.user}.extraGroups = [ "losos-cloud" ];
 
+    # LosOS Contacts is LosOS Cloud's address books (backend/src/cloud/contacts.rs):
+    # lososd lists it in /api/me and asks the book for the people pickers.
+    systemd.services.lososd.environment.LOSOS_CLOUD_CONTACTS = "1";
+
     # Once, on the first boot without Nextcloud: everything it held comes
     # into LosOS Cloud before LosOS Cloud starts. Should it fail, the cloud
     # does not start on an empty folder, and the next boot or rebuild tries

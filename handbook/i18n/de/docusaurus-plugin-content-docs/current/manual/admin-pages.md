@@ -96,6 +96,9 @@ und die Pfeiltasten bewegen sich darin.
 - **Eine Nachricht in Mail**: öffnen, antworten, allen antworten,
   weiterleiten, als gelesen oder ungelesen markieren, markieren,
   archivieren, in einen anderen Ordner verschieben, löschen.
+- **Eine Person in Kontakte**: Mail, Chat, Anruf oder Video, bearbeiten,
+  als `.vcf` exportieren, löschen. Wer unter **Auf dieser Box** steht,
+  bietet statt der letzten drei **Zu Kontakten hinzufügen**.
 
 Die Tasten neben einem Eintrag funktionieren auch ohne Menü. In LosOS Cloud
 benennt F2 die markierte Datei um und Entf verschiebt sie in den Papierkorb

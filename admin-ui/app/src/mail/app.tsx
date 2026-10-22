@@ -15,6 +15,9 @@
  * the message (modules/containers.nix). The plain text, when there is one,
  * is the default view; HTML is one button away. */
 
+import { Masked, useDetailsCheck } from "@/components/details";
+import { openReport } from "@/components/report-dialog";
+import { MailHtml } from "./pictures";
 import * as React from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
@@ -23,6 +26,7 @@ import {
   Attachment01Icon,
   Delete02Icon,
   FileEditIcon,
+  Flag02Icon,
   FavouriteIcon,
   Folder01Icon,
   InboxIcon,
@@ -62,13 +66,13 @@ import {
   createMailFolder,
   deleteMailFolder,
   deleteMailMessage,
+  getContacts,
   getMail,
   getMailMessage,
   getMailMessages,
   getProfiles,
   loadMe,
   mailFile,
-  mailHtmlUrl,
   sendMail,
   signInUrl,
   updateMailFolder,
@@ -86,6 +90,7 @@ import {
 import { useLocale, useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
 import { contextMenu, type MenuBuilder, type MenuItem } from "@/lib/context-menu";
+import { PeopleField } from "@/contacts/suggest";
 import { readMailIntent, withoutMailIntent } from "@/lib/intents";
 import { cn } from "@/lib/utils";
 import { ComposeAttachments, ReceivedAttachment, useAttached, useCloud } from "./attachments";
@@ -163,10 +168,20 @@ function useFaces(home: MailHome): Faces {
   const [byAddress, setByAddress] = React.useState<ReadonlyMap<string, PersonLike>>(new Map());
   React.useEffect(() => {
     const controller = new AbortController();
-    void getProfiles({ signal: controller.signal })
-      .then(({ people }) => {
+    // The person's contacts name and picture whoever is in them; people on
+    // the box, with their own profiles, come after and win.
+    const book = getContacts({ signal: controller.signal })
+      .then(({ contacts }) => contacts)
+      .catch(() => []);
+    void Promise.all([getProfiles({ signal: controller.signal }), book])
+      .then(([{ people }, contacts]) => {
         const byName = new Map(people.map((p) => [p.name, p]));
         const next = new Map<string, PersonLike>();
+        for (const c of contacts) {
+          for (const e of c.emails ?? []) {
+            next.set(e.value.toLowerCase(), { name: `contact:${c.id}`, displayName: c.name, picture: c.photo ?? null });
+          }
+        }
         for (const p of home.people) {
           const profile = byName.get(p.name);
           if (profile !== undefined) next.set(p.address.toLowerCase(), profile);
@@ -1022,7 +1037,8 @@ function MessageRow({
             className={cn("size-2 shrink-0 rounded-full", m.seen ? "bg-transparent" : "bg-accent")}
           />
           <span className={cn("min-w-0 flex-1 truncate text-sm", !m.seen && "font-medium")}>
-            {(sent ? t("mail.toPrefix") + " " : "") + (who(people) || t("mail.nobody"))}
+            {(sent ? t("mail.toPrefix") + " " : "") +
+              (people.map((a) => a.name ?? faces(a).displayName).join(", ") || t("mail.nobody"))}
           </span>
           {m.hasAttachment && (
             <HugeiconsIcon icon={Attachment01Icon} className="size-3.5 shrink-0 text-muted" aria-label={t("mail.attachment")} />
@@ -1037,7 +1053,9 @@ function MessageRow({
         <span className={cn("truncate pl-4 text-sm", !m.seen && "font-medium")}>
           {m.subject || t("mail.noSubject")}
         </span>
-        <span className="line-clamp-1 pl-4 text-[13px] text-muted">{m.preview}</span>
+        <span className="line-clamp-1 pl-4 text-[13px] text-muted">
+          <Masked text={m.preview} still />
+        </span>
         </span>
       </button>
     </li>
@@ -1127,6 +1145,8 @@ function Reader({
         )}
         <PersonLinks message={m} home={home} />
         <span className="ml-auto" />
+        {!folders.some(({ folder: f }) => f.role === "sent" && m.mailboxIds.includes(f.id)) &&
+          tool(Flag02Icon, t("report.action"), () => openReport({ app: "mail", about: null, ref: m.id }))}
         {tool(Delete02Icon, t("mail.delete"), onDelete)}
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -1170,20 +1190,15 @@ function Reader({
           </ul>
         )}
         {html ? (
-          // White, as senders lay their HTML out for it, and inset like a card
-          // so it does not read as a hole in the dark theme.
-          <div className="mx-5 mb-5 flex min-h-80 flex-1 overflow-hidden rounded-card border border-line">
-            <iframe
-              title={t("mail.htmlTitle")}
-              src={mailHtmlUrl(m.id)}
-              sandbox="allow-popups allow-popups-to-escape-sandbox"
-              referrerPolicy="no-referrer"
-              className="w-full flex-1 bg-white"
-            />
-          </div>
+          <MailHtml
+            id={m.id}
+            from={m.from[0]}
+            title={t("mail.htmlTitle")}
+            own={folders.some(({ folder: f }) => f.role === "sent" && m.mailboxIds.includes(f.id))}
+          />
         ) : (
           <pre className="border-t border-hair px-5 py-4 font-sans text-sm leading-relaxed break-words whitespace-pre-wrap">
-            {m.text !== "" ? m.text : m.preview}
+            <Masked text={m.text !== "" ? m.text : m.preview} />
           </pre>
         )}
       </div>
@@ -1212,6 +1227,7 @@ function Composer({
   const [sending, setSending] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [showCc, setShowCc] = React.useState(initial.cc.length > 0);
+  const detailsCheck = useDetailsCheck();
   const attached = useAttached({ cloud: initial.cloud, carry: initial.carry });
   const list = (value: string) =>
     value
@@ -1223,6 +1239,11 @@ function Composer({
     event.preventDefault();
     setSending(true);
     setProblem(null);
+    // Card and ID numbers are asked about first; "Don't send" keeps the draft.
+    if (!(await detailsCheck.check(`${subject}\n${text}`))) {
+      setSending(false);
+      return;
+    }
     try {
       const draft: MailDraft = { to: list(to), cc: list(cc), subject, text };
       if (initial.inReplyTo !== undefined) draft.inReplyTo = initial.inReplyTo;
@@ -1262,13 +1283,15 @@ function Composer({
                 </Button>
               )}
             </span>
-            <Input
+            {/* The person's contacts and the people on this box, as they
+                type (src/contacts/suggest.tsx). */}
+            <PeopleField
               id="mail-to"
+              want="email"
+              multiple
               value={to}
-              onChange={(event) => setTo(event.target.value)}
-              list="mail-people"
+              onChange={setTo}
               autoFocus={initial.to.length === 0}
-              autoComplete="off"
               placeholder={people[0]?.address ?? ""}
               required
             />
@@ -1276,16 +1299,9 @@ function Composer({
           {showCc && (
             <Field>
               <FieldLabel htmlFor="mail-cc">{t("mail.cc")}</FieldLabel>
-              <Input id="mail-cc" value={cc} onChange={(event) => setCc(event.target.value)} list="mail-people" autoComplete="off" />
+              <PeopleField id="mail-cc" want="email" multiple value={cc} onChange={setCc} />
             </Field>
           )}
-          <datalist id="mail-people">
-            {people.map((p) => (
-              <option key={p.address} value={p.address}>
-                {p.label}
-              </option>
-            ))}
-          </datalist>
           <Field>
             <FieldLabel htmlFor="mail-subject">{t("mail.compose.subject")}</FieldLabel>
             <Input id="mail-subject" value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={900} />
@@ -1317,6 +1333,7 @@ function Composer({
           </Button>
         </DialogFooter>
       </form>
+      {detailsCheck.dialog}
     </Dialog>
   );
 }

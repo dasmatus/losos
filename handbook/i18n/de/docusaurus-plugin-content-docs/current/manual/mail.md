@@ -41,8 +41,9 @@ deinem eigenen Konto anzumelden.
   Nachrichten. Auf einem breiten Bildschirm sind sie ein Baum links von der
   Liste, auf einem schmaleren eine Zeile darüber.
 - **Suchen** durchsucht den offenen Ordner: Absender, Betreff und Text.
-- **Schreiben** öffnet eine neue Nachricht. Das Feld **An** schlägt die
-  anderen Personen auf der Box vor. **Antworten**, **Allen antworten** und
+- **Schreiben** öffnet eine neue Nachricht. Die Felder **An** und **Cc**
+  schlagen deine [Kontakte](contacts) und die anderen Personen auf der Box
+  vor. **Antworten**, **Allen antworten** und
   **Weiterleiten** zitieren die Nachricht.
 - **Markieren**, **Als ungelesen markieren**, **Archivieren** und
   **Verschieben nach** wirken auf die offene Nachricht. **Löschen**
@@ -119,13 +120,20 @@ angemeldet ist.
 
 ## Die KI der Box fragen \{#ask-the-boxs-ai}
 
-Auf einer Box mit einem Sprachmodell für **Mit KI bauen** fragt
-**Zusammenfassen** in der Leiste der Nachricht die KI nach der offenen
-Nachricht. Das Modell läuft auf der Box, Nachricht und Antwort bleiben also
-dort, und es liest nur die Nachricht, nach der du gefragt hast. Es
-beantwortet eine Frage nach der anderen; auf einer kleinen Box kann eine
-Antwort ein paar Minuten dauern. Text in einer Nachricht, der der KI etwas
-befiehlt, zählt zur Nachricht und nicht als deine Bitte.
+**Zusammenfassen** in der Leiste der Nachricht fragt das eigene Sprachmodell
+der Box nach der offenen Nachricht. Das Modell läuft auf der Box, Nachricht
+und Antwort bleiben also dort, und es liest nur die Nachricht, nach der du
+gefragt hast. Es beantwortet eine Frage nach der anderen; auf einer kleinen
+Box kann eine Antwort ein, zwei Minuten dauern. Text in einer Nachricht, der
+der KI etwas befiehlt, zählt zur Nachricht und nicht als deine Bitte.
+
+Fragen zu Mail, Dateien und Notizen gehen an Gemma 3 1B, ein Modell für
+Text. **Mit KI bauen** behält ein Modell für Code. Die Box lädt jedes Modell
+einmal herunter, wenn sie zum ersten Mal online ist, und hält immer nur
+eines im Speicher. Eine Administratorin oder ein Administrator kann unter
+**Einstellungen**, **Erweitert** ein anderes Modell wählen
+(`assistant.model`). Gemma is provided under and subject to the Gemma Terms
+of Use found at ai.google.dev/gemma/terms.
 
 ## Was Mail noch nicht kann \{#what-mail-does-not-do-yet}
 

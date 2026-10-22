@@ -74,14 +74,6 @@ let
     '';
   });
 
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
@@ -334,7 +326,6 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/chat.nix
           ../../modules/calls.nix
           ../../modules/proxy.nix
@@ -344,9 +335,7 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = ui;
-          forgejo.enable = true;
-          forgejo.mode = "container";
-          workloads.forgejoImage = standIn "losos-forgejo-stand-in";
+          git.enable = false;
           # The shared user's side of the box: chat's gate, and so calls'.
           sharingMyStorage = true;
           cluster.enable = true;
