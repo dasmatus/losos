@@ -6,6 +6,9 @@
  * `shared`), and the AI only when the box's model answers. A link into an
  * app the box does not run could only fail, so it is left out, not greyed.
  *
+ * Words picked in a document or a note travel the same way, from the bar
+ * over the selection (cloud/quick-text.tsx).
+ *
  * The menu is built by plain functions (lib/context-menu.ts), so the AI's
  * dialog lives in <CloudTogether>, mounted once beside the app, and the
  * menu item asks it to open. */
@@ -16,6 +19,7 @@ import { AskAiDialog, assistantReady } from "@/components/ask-ai";
 import { loadMe, type AssistantSource } from "@/lib/api";
 import { readCloudText, textual } from "@/lib/cloud-files";
 import { addMenuItems } from "@/lib/context-menu";
+import { addQuickActions } from "@/lib/quick-actions";
 import { t } from "@/lib/i18n";
 import { canHandTo, chatShareHref, composeMailHref } from "@/lib/intents";
 import type { Entry } from "./api";
@@ -59,6 +63,25 @@ addMenuItems("cloud.entry", (entries) => {
     },
   ];
 });
+
+// Words picked in a document or a note go to Mail or Chat in a new tab, so
+// the document stays open where it was.
+addQuickActions("text.selection", ({ text }) => [
+  {
+    id: "send-mail",
+    label: t("together.send.mail"),
+    icon: Mail01Icon,
+    hidden: !canHandTo("mail"),
+    onSelect: () => window.open(composeMailHref({ body: text }), "_blank", "noopener"),
+  },
+  {
+    id: "send-chat",
+    label: t("together.send.chat"),
+    icon: BubbleChatIcon,
+    hidden: !canHandTo("chat"),
+    onSelect: () => window.open(chatShareHref({ text }), "_blank", "noopener"),
+  },
+]);
 
 /** Mounted once on Cloud's page: learns what this box runs for the person
  *  and draws the AI's dialog when a file's menu asks for it. */
