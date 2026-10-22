@@ -66,6 +66,13 @@ git fragt nach einem Namen und einem Token. `losos git setup` aus dem
 macht ein Token für einen Rechner und gibt es git, sodass Klonen und
 Pushen danach kein Passwort mehr brauchen.
 
+## Issues \{#issues}
+
+Fehler, Aufgaben und Ideen zu einem Repository und zu Arbeit, die kein
+Code ist, stehen im Issue-Tracker unter **Issues** in der Seitenleiste.
+Die **Issues** eines Repositorys öffnen dort sein Projekt. Siehe
+[Issues in LosOS Git](issues).
+
 ## Pull-Requests \{#pull-requests}
 
 Pushe einen Branch und drück dann **Pull-Request öffnen** auf der Seite
@@ -138,6 +145,53 @@ Pull-Request zu diesem Branch, falls es einen gibt. Ein Pull-Request, dessen
 Branch aus einem benannten Worktree gepusht wird, zeigt dessen Namen in
 seinem Kopf. **Vergessen** nimmt einen Worktree von der Liste; sein nächster
 Push setzt ihn wieder darauf.
+
+## Leute von anderen Boxen \{#people-of-other-boxes}
+
+Wer ein Konto auf einer anderen LosOS-Box in deinem Netz hat, kann ohne
+Konto auf deinem Gerät bei deinen öffentlichen Repositorys mitmachen. Die
+Person meldet sich mit ihrer Chat-Adresse an, der Adresse, die LosOS Chat
+unter ihrem Namen zeigt, etwa `@eva:kitchenbox.local`.
+
+1. Auf der Repository-Seite deines Geräts drückt sie **Mit Chat-Adresse**,
+   tippt die Adresse und drückt **Weiter auf deiner Box**.
+2. Ihre eigene Box öffnet sich und fragt, ob sie deiner sagen soll, wer sie
+   ist. Sie drückt **`<name>.local` Bescheid geben**.
+3. Sie ist zurück auf deinem Gerät, angemeldet als `@eva:kitchenbox.local`.
+
+Ihre Box sagt deiner nur die Chat-Adresse und den Namen. Dein Gerät prüft
+die Antwort beim Chat-Server ihrer Box, bevor es ihr glaubt. Wer ein Konto
+auf deinem Gerät hat, meldet sich wie bisher mit LosOS Login an.
+
+So angemeldet kann sie kommentieren, reviewen und Pull-Requests öffnen. In
+deine Branches pushen kann sie nicht. Sie pusht in Branches, deren Name mit
+ihrem Anmeldenamen hier beginnt, zum Beispiel `eva@kitchenbox.local/hours`,
+und bittet in einem Pull-Request um die Änderung. **Git-Passwort kopieren**
+auf der Repository-Seite kopiert das Passwort, nach dem git fragt; der
+Benutzername ist egal.
+
+```sh
+git push https://<name>.local/git/notshared/site.git HEAD:eva@kitchenbox.local/hours
+```
+
+Zusammenführen dürfen nur du und deine Admins. **Abmelden** beendet ihren
+Besuch auf diesem Computer.
+
+## Ein Chatraum für ein Repository \{#a-chat-room-for-a-repository}
+
+Mit LosOS Chat auf dem Gerät haben die **Einstellungen** eines Repositorys
+den Schalter **In LosOS Chat über dieses Repository reden**. Schalte ihn
+ein, und das Gerät macht in deinem Chat einen Raum für das Repository, mit
+LosOS Git darin. LosOS Git schreibt dort jeden Push, Pull-Request,
+Kommentar, jede Zusammenführung und jedes Prüfergebnis hinein.
+
+Im Kopf des Repositorys steht dann für alle, die angemeldet sind, ein
+Knopf **Chat**. Einem öffentlichen Repository kann jede Person beitreten,
+auch aus dem Chat ihrer eigenen Box. Einem privaten tritt man bei, wenn du
+die Person im Chat einlädst.
+
+Schaltest du ihn aus, hören die Beiträge auf. Der Raum und sein Inhalt
+bleiben in deinem Chat.
 
 ## Einstellungen \{#settings}
 

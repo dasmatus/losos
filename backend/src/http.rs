@@ -82,8 +82,11 @@ struct Api {
     share: crate::cloud_share::Share,
     /// LosOS Chat's homeserver, as far as lososd runs it (`crate::chat`).
     chat: crate::chat::Chat,
+    /// The chat rooms lososd made for LosOS Git repositories
+    /// (`crate::git_rooms`).
+    git_rooms: crate::git_rooms::Rooms,
     /// LosOS Cloud runs here, and with it LosOS Contacts' address books
-    /// (`LOSOS_CLOUD_CONTACTS`, `modules/cloud.nix`).
+    /// and LosOS Calendar (`LOSOS_CLOUD_CONTACTS`, `modules/cloud.nix`).
     contacts: bool,
     /// LosOS Mail (`crate::mail`).
     mail: crate::mail::Mail,
@@ -668,11 +671,13 @@ fn shared_apps(api: &Api) -> Vec<&'static str> {
     if api.chat.live() {
         apps.push("chat");
     }
-    // Not a shared-side app: LosOS Contacts is LosOS Cloud's address books,
-    // on every box that runs LosOS Cloud. Listed here because the sidebar
-    // draws the app entries this list names.
+    // Not shared-side apps: LosOS Contacts and LosOS Calendar are LosOS
+    // Cloud's address books and calendars, on every box that runs LosOS
+    // Cloud. Listed here because the sidebar draws the app entries this
+    // list names.
     if api.contacts {
         apps.push("contacts");
+        apps.push("calendar");
     }
     // modules/ci.nix names the socket only while Mesh CI runs.
     if std::env::var_os("LOSOS_CI_SOCKET").is_some() {
@@ -2638,6 +2643,212 @@ async fn post_chat_session(
             })),
         Ok(Err(e)) => chat_refused(&e),
         Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// `POST /api/chat/openid`: a Matrix OpenID token for the person LosOS Login
+/// signed in, for another box to learn their chat address from
+/// (`crate::chat::Chat::openid`). The chat page's "tell that box who you
+/// are" asks for it; never the spare key or the edge.
+async fn post_chat_openid(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let person = match chat_person(&api, &req, "/api/chat/openid", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let api = api.clone();
+    match web::block(move || api.chat.openid(&person)).await {
+        Ok(Ok(token)) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(token),
+        Ok(Err(e)) => chat_refused(&e),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// `POST /api/chat/git-room` `{"owner": "...", "repo": "..."}`: give a
+/// LosOS Git repository a chat room (`crate::git_rooms`). Only an
+/// administrator of the repository, asked of LosOS Git as that person. A
+/// repository that has its room gets the same one back.
+async fn post_chat_git_room(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let person = match chat_person(&api, &req, "/api/chat/git-room", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let field = |k: &str| {
+        doc.get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let (owner, repo) = (field("owner"), field("repo"));
+    if !crate::git_rooms::plain_name(&owner) || !crate::git_rooms::plain_name(&repo) {
+        return err(
+            StatusCode::BAD_REQUEST,
+            r#"body must be JSON: {"owner": "...", "repo": "..."}"#,
+        );
+    }
+    if !api.chat.live() {
+        return chat_refused(&crate::chat::ChatError::Off);
+    }
+    let api = api.clone();
+    let made = web::block(move || git_room(&api, &person, &owner, &repo)).await;
+    match made {
+        Ok(Ok(room)) => HttpResponse::Ok().json(serde_json::json!({ "room": room })),
+        Ok(Err((status, message))) => err(status, &message),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+fn git_room(
+    api: &Api,
+    person: &crate::people::Person,
+    owner: &str,
+    repo: &str,
+) -> Result<String, (StatusCode, String)> {
+    use crate::config_repo::{classify, Answer, GitOp};
+    use crate::losos::Losos;
+    let login = if person.groups.iter().any(|g| g == crate::people::OWNER) {
+        crate::app_names::OWNER_ACCOUNT.to_string()
+    } else {
+        person.name.clone()
+    };
+    let not_up = |e: anyhow::Error| {
+        tracing::warn!(error = ?e, "LosOS Git for a chat room");
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "LosOS Git is not answering; try again in a moment.".to_string(),
+        )
+    };
+    let mut backend = api.backend.clone();
+    let (status, body) = backend
+        .git_request(&GitOp::RepoAs {
+            login: login.clone(),
+            owner: owner.to_string(),
+            name: repo.to_string(),
+        })
+        .map_err(not_up)?;
+    let doc = match classify(status, &body) {
+        Answer::Ok(doc) => doc,
+        Answer::Missing => {
+            return Err((StatusCode::NOT_FOUND, "No such repository.".to_string()));
+        }
+        Answer::Exists | Answer::Refused { .. } => {
+            return Err((
+                StatusCode::BAD_GATEWAY,
+                format!("LosOS Git answered {status}."),
+            ));
+        }
+    };
+    if doc["permissions"]["admin"] != serde_json::json!(true) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Only an administrator of the repository can give it a chat room.".to_string(),
+        ));
+    }
+    let linked = doc["chat_room"].as_str().unwrap_or("");
+    let room = match api.git_rooms.get(owner, repo) {
+        Some(room) if room == linked => return Ok(room),
+        // Made before, unlinked since: link the same room again.
+        Some(room) => room,
+        None => {
+            let server = api.chat.server_name().unwrap_or_default();
+            let made = api.chat.git_room(
+                person,
+                &crate::chat::RepoRoom {
+                    name: repo.to_string(),
+                    url: format!("https://{server}/git/{owner}/{repo}"),
+                    public: doc["visibility"] == "public",
+                },
+            );
+            let room = made.map_err(|e| {
+                (
+                    StatusCode::from_u16(e.status()).unwrap_or(StatusCode::BAD_GATEWAY),
+                    e.to_string(),
+                )
+            })?;
+            api.git_rooms.set(owner, repo, &room).map_err(|e| {
+                tracing::warn!(error = ?e, "the chat room of a repository was not kept");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "The room was made but could not be kept.".to_string(),
+                )
+            })?;
+            room
+        }
+    };
+    let (status, body) = backend
+        .git_request(&GitOp::SetChatRoom {
+            login,
+            owner: owner.to_string(),
+            name: repo.to_string(),
+            room: room.clone(),
+        })
+        .map_err(not_up)?;
+    match classify(status, &body) {
+        Answer::Ok(_) => Ok(room),
+        _ => Err((
+            StatusCode::BAD_GATEWAY,
+            format!("LosOS Git would not link the room ({status})."),
+        )),
+    }
+}
+
+/// Take LosOS Git's events and post those of a repository with a room
+/// there (`crate::git_rooms`). Only where chat runs and `modules/chat.nix`
+/// names the socket.
+fn listen_for_git_events(api: &web::Data<Api>) {
+    let Some(path) = std::env::var_os("LOSOS_GIT_CHAT_EVENTS_SOCKET") else {
+        return;
+    };
+    if !api.chat.live() {
+        return;
+    }
+    let api = api.clone();
+    let started = crate::git_rooms::listen(std::path::Path::new(&path), move |event| {
+        git_event(&api, &event);
+    });
+    if let Err(e) = started {
+        tracing::warn!(error = ?e, "LosOS Git's events will not reach chat rooms");
+    }
+}
+
+fn git_event(api: &Api, event: &serde_json::Value) {
+    let text = |k: &str| {
+        event
+            .get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+    };
+    let room = text("chatRoom");
+    if room.is_empty() || api.git_rooms.get(text("owner"), text("repo")).as_deref() != Some(room) {
+        return;
+    }
+    let Some(server) = api.chat.server_name() else {
+        return;
+    };
+    let owner = api
+        .people
+        .list()
+        .ok()
+        .and_then(|all| {
+            all.into_iter()
+                .find(|p| p.groups.iter().any(|g| g == crate::people::OWNER))
+        })
+        .map(|p| format!("@{}:{server}", p.name))
+        .unwrap_or_default();
+    let who = |login: &str| {
+        crate::git_rooms::address(login, server, crate::app_names::OWNER_ACCOUNT, &owner)
+    };
+    let Some(notice) = crate::git_rooms::notice(event, &format!("https://{server}"), &who) else {
+        return;
+    };
+    if let Err(e) = api.chat.git_notice(room, &notice) {
+        tracing::warn!(error = %e, room, "a LosOS Git notice was not posted");
     }
 }
 
@@ -5706,6 +5917,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             login,
             share: crate::cloud_share::Share::default(),
             chat: crate::chat::Chat::from_env(),
+            git_rooms: crate::git_rooms::Rooms::from_env(),
             contacts: std::env::var("LOSOS_CLOUD_CONTACTS").is_ok_and(|v| v == "1"),
             mail: crate::mail::Mail::from_env(),
             credentials: crate::credentials::Credentials::from_env(),
@@ -5724,6 +5936,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             .max(crate::profiles::MAX_UPLOAD_BYTES)
             .max(1024 * 1024);
         owner_in_owner_group(&api);
+        listen_for_git_events(&api);
         start_login_marks(api.clone());
         sync_names_later(api.clone(), None);
         let server = HttpServer::new(move || {
@@ -5966,6 +6179,8 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/chat", web::get().to(get_chat))
                 .route("/api/chat/session", web::post().to(post_chat_session))
                 .route("/api/chat/people", web::get().to(get_chat_people))
+                .route("/api/chat/openid", web::post().to(post_chat_openid))
+                .route("/api/chat/git-room", web::post().to(post_chat_git_room))
                 .route("/api/contacts/suggest", web::get().to(get_contacts_suggest))
                 .route("/internal/chat/authz", web::get().to(get_chat_authz))
                 .route(

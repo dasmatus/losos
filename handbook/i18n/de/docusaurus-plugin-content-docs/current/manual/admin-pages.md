@@ -106,6 +106,41 @@ benennt F2 die markierte Datei um und Entf verschiebt sie in den Papierkorb
 Rechtschreibung und Einfügen. Das Menü zeigt nur, was diese Box kann: Ein
 Eintrag für eine Funktion, die die Box nicht hat, fehlt, statt grau zu sein.
 
+## Die Leiste über einer Auswahl \{#the-bar-over-a-selection}
+
+Markier Wörter in einem Markdown-Dokument oder einer Präsentation in LosOS
+Office oder in einer Notiz, und sobald du die Maustaste loslässt, erscheint
+darüber eine kleine Leiste. Wähl Karten oder Pfeile in Diagrams aus, und
+sie erscheint über ihnen. Sie bietet an, was du am wahrscheinlichsten als
+Nächstes tust, damit du es nicht in der Werkzeugleiste suchen musst.
+
+- **Text, den du bearbeiten kannst** (LosOS Office und Notizen unter
+  **Bearbeiten**): **KI fragen**, fett, kursiv, durchgestrichen,
+  hervorgehoben und Code, ein Link auf eine Webseite, ein Link auf eine
+  andere Notiz, eine Erwähnung einer Person oder Datei und Kopieren. Ein
+  gedrückter Knopf zeigt, dass die Auszeichnung schon gesetzt ist; ein
+  zweiter Druck nimmt sie weg. Ein Link fragt seine Adresse direkt in der
+  Leiste ab, und ein Link auf eine Notiz oder eine Erwähnung schlägt beim
+  Tippen Namen vor.
+- **Eine Notiz, die du liest**: **KI fragen**, Kopieren und den Link auf
+  den Abschnitt kopieren, in dem die Wörter stehen.
+- **Karten und Pfeile in Diagrams**: **KI fragen**, wenn die Karten Text
+  haben, eine Farbe, den Text einer Karte bearbeiten, mehrere ausrichten,
+  ein Pfeil zwischen zwei Karten, gruppieren, duplizieren und löschen.
+  Jeder Knopf tut dasselbe wie der im Inspektor, also nimmt ein
+  Rückgängig ihn zurück.
+
+Laufen Mail oder Chat auf der Box, schickt die Leiste über Text die Wörter
+auch per Mail oder im Chat. **KI fragen** erscheint nur, solange die KI der
+Box eingeschaltet ist; bei Text, den du bearbeiten kannst, setzt **Auswahl
+ersetzen** die Antwort an die Stelle der Wörter.
+
+Mit der Tastatur bringt dich Alt+F10 in die Leiste, die Pfeiltasten
+bewegen sich darin, und Enter oder die Leertaste drückt einen Knopf. Escape
+führt zurück in den Text oder das Diagramm und blendet die Leiste aus, bis
+du etwas anderes auswählst. Tippst du über die Auswahl, verschwindet sie
+auch.
+
 ## Angeheftete Einträge \{#pins}
 
 Hefte die Apps, Dateien und Repositorys an, die du am häufigsten öffnest,

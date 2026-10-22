@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 /* shadcn/ui Textarea, on the palette: the Input's chrome, several lines
  * tall, resizable downwards only. Used for a list option (one item per
  * line) on the Advanced pane. */
-export function Textarea({ className, ...props }: React.ComponentPropsWithoutRef<"textarea">) {
+export function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
   return (
     <textarea
       data-slot="textarea"

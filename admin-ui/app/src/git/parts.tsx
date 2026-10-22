@@ -1,11 +1,11 @@
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { Copy01Icon, Globe02Icon, LockIcon, UserGroupIcon } from "@hugeicons/core-free-icons";
+import { BubbleChatIcon, Copy01Icon, Globe02Icon, LockIcon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import { PersonAvatar, type AvatarSize } from "@/components/person";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -16,8 +16,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
-import { GitError, type Branch, type Repo, type Visibility } from "./api";
-import { notFound, useFaces, useRepo } from "./store";
+import { chatToken, GitError, roomLink, type Branch, type Repo, type Visibility } from "./api";
+import { notFound, useFaces, useMe, useRepo } from "./store";
 
 /* Pieces every page of LosOS Git draws the same way. */
 
@@ -142,6 +142,9 @@ export function VisibilityField({ value, onChange }: { value: Visibility; onChan
 
 /** owner / repo, who may read it, and the clone address. */
 export function RepoHeader({ repo, children }: { repo: Repo; children?: React.ReactNode }) {
+  const t = useT();
+  const me = useMe();
+  const room = repo.chat_room ?? null;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-2">
@@ -157,11 +160,45 @@ export function RepoHeader({ repo, children }: { repo: Repo; children?: React.Re
         <VisibilityBadge visibility={repo.visibility} />
         <div className="ml-auto flex items-center gap-2">
           {children}
+          {room !== null && me !== null && (
+            <a href={roomLink(room, me)} className={buttonVariants({ variant: "secondary", size: "sm" })} data-chat-room>
+              <HugeiconsIcon icon={BubbleChatIcon} size={15} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+              {t("git.room.open")}
+            </a>
+          )}
           <CloneButton url={repo.clone_url} />
         </div>
       </div>
       {repo.description !== "" && <p className="text-[13px] text-muted">{repo.description}</p>}
+      {me?.matrix_id && <ContributorNote login={me.login} />}
     </div>
+  );
+}
+
+/** For someone of another box: where their pushes go, and the password
+ *  git asks for. */
+function ContributorNote({ login }: { login: string }) {
+  const t = useT();
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted" data-contributor-note>
+      <span>
+        {t("git.remote.branches", { prefix: `${login}/` })}
+      </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          const token = chatToken() ?? "";
+          void navigator.clipboard.writeText(token).then(
+            () => toast.success(t("git.remote.passwordCopied")),
+            () => toast.status(token),
+          );
+        }}
+      >
+        <HugeiconsIcon icon={Copy01Icon} size={15} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+        {t("git.remote.copyPassword")}
+      </Button>
+    </p>
   );
 }
 

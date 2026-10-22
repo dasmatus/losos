@@ -88,7 +88,14 @@
         # cannot carry a key sealed to hardware it does not have. The header of
         # nix/disk-images.nix says so at length; read it before handing the
         # image to anyone as a way to actually run this.
-        // import ./nix/disk-images.nix { inherit self nixpkgs pkgs; };
+        // import ./nix/disk-images.nix { inherit self nixpkgs pkgs; }
+        # The box CI's discovery jobs boot on Linux, macOS and Windows
+        # runners (nix/tests/discovery/box.nix): test media, not a release,
+        # under the `losos-disk-` prefix so `build-pkgs` leaves it to
+        # `build-media discovery`.
+        // {
+          losos-disk-discovery-box = self.nixosConfigurations.discovery-box.config.system.build.discoveryBox;
+        };
 
       # The dev environment is devenv.nix, entered with `devenv shell` (see
       # devenv.yaml). This devShell exists so a bare `nix develop` still
@@ -429,6 +436,13 @@
         ];
         _module.args.self = self;
       };
+      # The netboot test box CI's discovery jobs boot
+      # (nix/tests/discovery/box.nix), as `losos-disk-discovery-box`.
+      nixosConfigurations.discovery-box = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [ ./nix/tests/discovery/box.nix ];
+      };
+
       # The edge gateway (handbook/docs/in-depth/edge-federation.md): the edge
       # module with LAN advertising, open enrolment and a runtime uplink, as a
       # VM image for a LAN that has no NixOS machine to import nixosModules.edge
@@ -478,6 +492,10 @@
         # LosOS Contacts: the book in LosOS Cloud, vCard in and out, and the
         # pickers in Mail and Chat (nix/tests/contacts.nix).
         losos-contacts = import ./nix/tests/contacts.nix { inherit pkgs; };
+        # LosOS Calendar: WebCal subscriptions through the sandboxed fetcher,
+        # .ics import, published feeds and an invitation answered in Mail
+        # (nix/tests/calendar.nix).
+        losos-calendar = import ./nix/tests/calendar.nix { inherit pkgs; };
         # Calls from chat: three people in real browsers through the box's
         # SFU, whose copy of every frame is ciphertext (nix/tests/calls.nix).
         losos-calls = import ./nix/tests/calls.nix { inherit pkgs; };
@@ -519,6 +537,9 @@
           screens = true;
         };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # How fast LosOS Cloud and LosOS Git take files in on a two-core,
+        # 4 GiB box, as numbers to compare trees by (nix/tests/upload-speed.nix).
+        losos-upload-speed = import ./nix/tests/upload-speed.nix { inherit pkgs; };
         # The right-click menu on the admin page and in LosOS Cloud, with
         # the pull request's pictures (nix/tests/context-menu.nix).
         losos-context-menu = import ./nix/tests/context-menu.nix { inherit pkgs; };
@@ -577,6 +598,7 @@
         # Markdown documents and presentations in LosOS Office, with no
         # Collabora on the box (nix/tests/office-markdown.nix).
         losos-office-markdown = import ./nix/tests/office-markdown.nix { inherit pkgs; };
+        losos-quick-actions = import ./nix/tests/quick-actions.nix { inherit pkgs; };
         # The box half of models split across boxes: the RPC server as
         # `shared`, its memory cap, the lend file, the loopback owner rule
         # and the `:llm` tunnel service (nix/tests/inference-lend.nix).
@@ -593,6 +615,13 @@
         # Its pages in Chromium: code, a pull request reviewed and merged, the
         # worktrees (nix/tests/git-pages.nix).
         losos-git-pages = import ./nix/tests/git-pages.nix { inherit pkgs; };
+        # LosOS Git's issue tracker: Forgejo's issues and LosOS Cloud's
+        # boards carried over, closing words in commits and pull requests,
+        # and the pages from Chromium (nix/tests/git-issues.nix).
+        losos-git-issues = import ./nix/tests/git-issues.nix { inherit pkgs; };
+        # People of another box in LosOS Git by their chat address, and a
+        # repository's chat room between two boxes (nix/tests/git-federation.nix).
+        losos-git-federation = import ./nix/tests/git-federation.nix { inherit pkgs; };
         # A Forgejo box's switch: everything it held, carried into LosOS Git.
         losos-git-forgejo = import ./nix/tests/git-forgejo.nix { inherit pkgs; };
         # Mesh CI: a push to LosOS Git runs its GitHub Actions workflows on
