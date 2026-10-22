@@ -1167,8 +1167,17 @@ fn a_person_from_another_box_signs_in_by_chat_address_and_proposes_a_change() {
     let work = dir.join("eva");
     std::fs::write(work.join("README.md"), "# site\n\nOpen on Sundays.\n").unwrap();
     ok(git(&work, &["commit", "-qam", "Say when it is open"]));
+    // git prints why, beside the ref, and main stays where it was.
+    let main_before = git(&work, &["ls-remote", "origin", "refs/heads/main"]).stdout;
     let refused = git(&work, &["push", "-q", "origin", "HEAD:main"]);
     assert!(!refused.status.success());
+    let said = String::from_utf8_lossy(&refused.stderr);
+    assert!(said.contains("[remote rejected]"), "{said}");
+    assert!(said.contains("under eva@kitchenbox.local/"), "{said}");
+    assert_eq!(
+        git(&work, &["ls-remote", "origin", "refs/heads/main"]).stdout,
+        main_before
+    );
     let refused = git(&work, &["push", "-q", "origin", "HEAD:refs/heads/hours"]);
     assert!(!refused.status.success());
     ok(git(

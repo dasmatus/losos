@@ -512,6 +512,9 @@
           screens = true;
         };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # How fast LosOS Cloud and LosOS Git take files in on a two-core,
+        # 4 GiB box, as numbers to compare trees by (nix/tests/upload-speed.nix).
+        losos-upload-speed = import ./nix/tests/upload-speed.nix { inherit pkgs; };
         # The right-click menu on the admin page and in LosOS Cloud, with
         # the pull request's pictures (nix/tests/context-menu.nix).
         losos-context-menu = import ./nix/tests/context-menu.nix { inherit pkgs; };
