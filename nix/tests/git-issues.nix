@@ -256,7 +256,7 @@ pkgs.testers.nixosTest {
 
     with subtest("issues carried over from Forgejo and LosOS Cloud's boards are there"):
         box.succeed("systemctl stop losos-git.service")
-        repo_id = sql(f"SELECT r.id FROM repos r JOIN users u ON u.id = r.owner_id WHERE u.login = 'notshared' AND r.name = 'backup-tool'")
+        repo_id = sql("SELECT r.id FROM repos r JOIN users u ON u.id = r.owner_id WHERE u.login = 'notshared' AND r.name = 'backup-tool'")
         uid = {who: sql(f"SELECT id FROM users WHERE login = '{who}'") for who in ("notshared", "eva")}
         sql(
             "INSERT INTO issues (repo_id, number, poster_id, title, body, closed, created, updated, closed_at) VALUES"
@@ -271,7 +271,7 @@ pkgs.testers.nixosTest {
         )
         box.succeed(
             "install -d -o losos-cloud -g losos-cloud /var/lib/losos-cloud"
-            f" && sqlite3 /var/lib/losos-cloud/cloud.db < ${cloudBoards}"
+            " && sqlite3 /var/lib/losos-cloud/cloud.db < ${cloudBoards}"
         )
         box.succeed("systemctl start losos-git.service")
         box.wait_for_open_port(3000)
