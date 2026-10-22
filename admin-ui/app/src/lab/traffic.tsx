@@ -6,7 +6,6 @@
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowDown01Icon, ArrowRight01Icon, ArrowUp01Icon, NextIcon, PauseIcon, PlayIcon } from "@hugeicons/core-free-icons";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -34,7 +33,7 @@ function Live() {
   const s = useLab("frame");
   return (
     <>
-      <span className="rounded-full border border-hair bg-sunk px-2 py-0.5 font-mono text-[12px] text-ink" data-testid="lab-clock">
+      <span className="font-mono text-[12px] text-ink" data-testid="lab-clock">
         {s.frame.clockText || s.snap.clock.text}
       </span>
     </>
@@ -140,7 +139,7 @@ export function SimBar() {
               data-proto={k}
               onClick={() => a.setFilter(k, !on)}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2 py-px text-[11.5px] text-ink",
+                "inline-flex items-center gap-1.5 rounded-control px-1.5 py-px text-[11.5px] text-ink hover:bg-sunk",
                 "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none",
                 !on && "opacity-45",
               )}
@@ -199,12 +198,12 @@ export function EventList() {
                       {p?.label ?? e.proto}
                     </span>
                     {e.real && (
-                      <Badge variant="ok" className="ml-1 px-1.5 text-[10.5px] leading-4">{t("lab.events.guestFrame")}</Badge>
+                      <span className="ml-1.5 text-[11px] text-ok">{t("lab.events.guestFrame")}</span>
                     )}
                   </TableCell>
                   <TableCell className="min-w-[260px] px-2.5 py-1 text-[12px] whitespace-normal">
                     {e.info}
-                    {e.fail && <Badge variant="crit" className="ml-1 px-1.5 text-[11px] leading-4">{t("lab.events.dropped")}</Badge>}
+                    {e.fail && <span className="ml-1.5 font-medium text-crit">{t("lab.events.dropped")}</span>}
                   </TableCell>
                 </TableRow>
               );

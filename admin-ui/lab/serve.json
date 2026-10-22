@@ -2,14 +2,19 @@
   "redirects": [
     {
       "source": "/",
-      "destination": "/lab/",
+      "destination": "/diagrams/",
       "type": 302
+    },
+    {
+      "source": "/lab/**",
+      "destination": "/diagrams/",
+      "type": 301
     }
   ],
   "rewrites": [
     {
-      "source": "/lab/**",
-      "destination": "/lab/index.html"
+      "source": "/diagrams/**",
+      "destination": "/diagrams/index.html"
     }
   ],
   "headers": [

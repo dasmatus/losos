@@ -48,10 +48,10 @@
 #                because that is how they reach a binary cache: the appliance
 #                substitutes them, it never builds them (see the header of
 #                nix/images.nix).
-#   losos-lab-core — LosOS Lab's core in Rust (admin-ui/lab/core/), built
-#                for wasm32 and run through wasm-bindgen. The Lab itself is
-#                the admin UI's second page (admin-ui/app/lab/), served at
-#                /lab/, and imports this package.
+#   losos-lab-core — LosOS Diagrams' core in Rust (admin-ui/lab/core/),
+#                built for wasm32 and run through wasm-bindgen. The page is
+#                the admin UI's second page (admin-ui/app/diagrams/), served
+#                at /diagrams/, and imports this package.
 #   losos-lab-render is the Lab's canvas, built from admin-ui/lab/render/.
 #                Bevy draws the two views as a 3D scene in one wasm module
 #                with the core, through wasm-bindgen and then wasm-opt. It

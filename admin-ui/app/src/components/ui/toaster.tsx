@@ -29,7 +29,8 @@ const ICONS: Record<ConfirmationTone, typeof CheckmarkCircle02Icon> = {
   error: Alert02Icon,
 };
 
-export function Confirmations() {
+/** `className` moves the corner, as Diagrams does to clear its toolbar. */
+export function Confirmations({ className }: { className?: string } = {}) {
   const items = useConfirmations();
   const t = useT();
   const viewport = React.useRef<HTMLOListElement>(null);
@@ -74,7 +75,7 @@ export function Confirmations() {
           <ToastClose aria-label={t("ui.dismiss")} />
         </Toast>
       ))}
-      <ToastViewport ref={viewport} label={t("ui.confirmations")} />
+      <ToastViewport ref={viewport} label={t("ui.confirmations")} className={className} />
     </ToastProvider>
   );
 }

@@ -144,7 +144,7 @@ draft until you press `a` to apply it, and the box asks before it rebuilds,
 as the admin pages do.
 
 :::note[What stays in the admin pages]
-Access tokens, the market, the Lab and anything that wipes data stay in
+Access tokens, the market, Diagrams and anything that wipes data stay in
 the admin pages.
 :::
 
