@@ -22,8 +22,6 @@
   pkgs,
   lib,
   config,
-  # on -> the install configuration with losos.sharingMyStorage forced to `on`.
-  sharing,
   # The install configuration as a box that joined the mesh: the tunnel on,
   # a name of its own, losos.cluster.enable on.
   mesh,
@@ -32,13 +30,6 @@
 let
   must = cond: msg: if cond then true else throw "nix/tests/invariants.nix: ${msg}";
 
-  # Federation runs only while the box shares its disk (modules/options.nix,
-  # lososInternal.federation). Asserted on both sides, with the per-service
-  # switches at their defaults (on), because each half fails quietly: a gate
-  # that never opens looks like a server nobody federates with, and one that
-  # never closes publishes the box to every server that asks.
-  shared = sharing true;
-  unshared = sharing false;
   frontRoutes = c: builtins.attrNames c.services.nginx.virtualHosts."losos-front".locations;
 
   gc = config.nix.gc;
@@ -91,14 +82,10 @@ assert must (lib.elem config.system.build.nixos-rebuild config.systemd.services.
   "nixos-rebuild is not on lososd's unit path: systemd-run resolves the rebuild command against the caller's PATH, so every Apply, storage-mode change and factory reset fails before the rebuild unit exists";
 assert must ((config.systemd.services.lososd.serviceConfig.ProcSubset or "all") != "pid")
   "lososd runs with ProcSubset=pid: that hides /proc/devices and /proc/mounts, lvm2's vgs exits 4 without them, and every `losos-ctl grow` (the Storage pane's Use reserve) fails at its first step";
-assert must shared.lososInternal.federation.forgejo
-  "with losos.sharingMyStorage on and the federation switch at its default, lososInternal.federation.forgejo is off";
-assert must (lib.elem "= /.well-known/nodeinfo" (frontRoutes shared))
-  "with disk sharing on, the front vhost lacks LosOS Git's /.well-known/nodeinfo route";
-assert must (!unshared.lososInternal.federation.forgejo)
-  "with losos.sharingMyStorage off, lososInternal.federation.forgejo is still on: the shared data pool is locked and nothing may talk to other servers";
-assert must (!(lib.elem "= /.well-known/nodeinfo" (frontRoutes unshared)))
-  "with disk sharing off, the front vhost still routes /.well-known/nodeinfo to LosOS Git";
+assert must (lib.elem "/git/" (frontRoutes config) && config.systemd.services ? losos-git)
+  "LosOS Git is not on the box: no /git/ route on the front vhost or no losos-git.service, so the configuration repository has nowhere to go and the nightly update stops following main";
+assert must (lib.elem "r /var/lib/losos/k3s-static-pods/forgejo.yaml" config.systemd.tmpfiles.rules)
+  "the Forgejo static pod of an older generation is not removed: it keeps port 3000, where LosOS Git listens for lososd";
 assert must (mesh.boot.kernel.sysctl."vm.overcommit_memory" == 1)
   "vm.overcommit_memory is not settled on a box that joins the mesh: rke2 and redis both define it, and a clash means a box with Join the mesh on does not build";
 assert must (lib.elem "node.longhorn.io/create-default-disk=true" mesh.services.rke2.nodeLabel)

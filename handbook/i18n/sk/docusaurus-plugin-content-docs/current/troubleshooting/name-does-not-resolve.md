@@ -34,9 +34,8 @@ linuxových desktopov to robí. Tieto nie:
 ![Banner pod lososom na obrazovke zariadenia: IP adresa funguje tam, kde meno .local nie.](@site/docs/img/tty1-banner.png)
 
 - **Použite adresu.** Odpovedá na nej všetko, aplikácie nevynímajúc. Panel
-  O zariadení ukazuje, ktorú adresu váš prehliadač používa. Meno potrebujú
-  iba dve veci: certifikát pre `https://`, ktorý zariadenie vydáva pre
-  meno, a URL na klonovanie v LosOS Git, ktoré meno vypisujú.
+  O zariadení ukazuje, ktorú adresu váš prehliadač používa. Meno potrebuje
+  iba certifikát pre `https://`, pretože ho zariadenie vydáva pre meno.
 - **Na hostiteľovi VM** pridajte riadok do súboru `hosts` hostiteľa. Na
   Linuxe a macOS je to `/etc/hosts`, vo Windows
   `C:\Windows\System32\drivers\etc\hosts`. Riadok je

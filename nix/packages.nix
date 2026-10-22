@@ -41,12 +41,12 @@
 #                losos-static is the same crate linked against musl for
 #                machines without a Nix store; CI publishes it beside
 #                install.sh. Both share one cargoHash.
-#   losos-image-{pause,forgejo} — the OCI images the local k3s
-#                cluster runs as static pods, defined in nix/images.nix and
-#                merged in below. modules/defaults.nix wires them to
-#                losos.workloads.*. They are exported as flake packages
-#                because that is how they reach a binary cache: the appliance
-#                substitutes them, it never builds them (see the header of
+#   losos-image-pause — the OCI image the local k3s
+#                cluster builds its pods on, defined in nix/images.nix and
+#                merged in below. modules/defaults.nix wires it to
+#                losos.workloads.pauseImage. It is a flake package
+#                because that is how it reaches a binary cache: the appliance
+#                substitutes it, it never builds it (see the header of
 #                nix/images.nix).
 #   losos-lab-core — LosOS Diagrams' core in Rust (admin-ui/lab/core/),
 #                built for wasm32 and run through wasm-bindgen. The page is
@@ -73,6 +73,9 @@
   # from its sibling jobs. flake.nix passes it; the tests that import this
   # file directly get the same file.
   version ? import ./version.nix,
+  # losos-project/pm's source (the flake's `pm` input). The tests that
+  # import this file directly pass none and get no pm.
+  pmSrc ? null,
   ...
 }:
 
@@ -83,6 +86,8 @@ let
   # flake package, and a non-derivation breaks `nix flake check` and
   # `nix flake show` for everything else too.
   images = import ./images.nix { inherit pkgs; };
+  # What Mesh CI's jobs run in unless they name an image.
+  losos-image-ci-base = import ./ci-base-image.nix { inherit pkgs; };
 
   # mold as the linker, ccache in front of gcc, sccache in front of rustc —
   # for both crates, and for the dev shells through the same file, so that
@@ -267,6 +272,9 @@ let
   # nothing else (losos.backend.plugins). Plain rustPlatform like the Lab's
   # crates: rustc links wasm32 with rust-lld, not mold. `names` lets a test
   # build a set with the probe in it.
+  # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
+  # plugin are built from the one workspace.
+  pluginsCargoHash = "sha256-KfPuzfODxOgD0a1zjrob4bsYM56pwi8k3Jar5vs4+R8=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -275,13 +283,14 @@ let
         "look"
         "pins"
         "mail"
+        "ci"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname;
       version = "0.1.0";
       src = lib.cleanSource ./../backend/plugins;
-      cargoHash = "sha256-BqSi8N3KGThyxoZA/6UO+ZAPrpDLyL0W0KPoSqGrNZY=";
+      cargoHash = pluginsCargoHash;
       nativeBuildInputs = [
         pkgs.wasm-tools
         pkgs.lld
@@ -309,7 +318,22 @@ let
 
 in
 images
+// lib.optionalAttrs (pmSrc != null) (
+  let
+    pm = import ./pm.nix { inherit pkgs pmSrc; };
+  in
+  {
+    inherit pm;
+    # Mesh CI's pm plugin, signed, as a pm configuration directory.
+    losos-ci-pm-plugin = import ./ci-pm-plugin.nix {
+      inherit pkgs pm pmSrc;
+      baseImage = losos-image-ci-base;
+      cargoHash = pluginsCargoHash;
+    };
+  }
+)
 // {
+  inherit losos-image-ci-base;
   inherit losos-lab-core losos-lab-render losos-lab-virt;
 
   losos-admin-ui = pkgs.buildNpmPackage {
@@ -330,7 +354,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-AzEnretWZwPcfioBLC+xS2zEITFmfBp1wgNAozC62Jc=";
+    npmDepsHash = "sha256-+RP46Gutn7cNbCyBatNNtXpE4XK/qy0dL20yG2Sb6wY=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -405,9 +429,9 @@ images
     '';
   };
 
-  # The LosOS look for Forgejo and LosOS Login — the admin SPA's tokens.css
-  # plus each app's mapping onto it. Consumed by modules/services.nix,
-  # modules/identity.nix and images.nix through admin-ui/themes/default.nix,
+  # The LosOS look for LosOS Login: the admin SPA's tokens.css plus its
+  # mapping onto it. Consumed by modules/identity.nix through
+  # admin-ui/themes/default.nix,
   # not through this attribute; it is exported so the files can be built and
   # read on their own.
   losos-themes = (import ./../admin-ui/themes { inherit pkgs; }).package;
@@ -432,7 +456,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-RZDK10Sv4Vv/zRdXcaiqdjwXf2eYbPimemELr15t1gs=";
+    cargoHash = "sha256-DdHJ1AAnXTGnz0d4X5f8c0isowMIC89tgYIU7xt78xM=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -458,7 +482,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-XdvKJI88GaqLkfJFJuh4uvjgNqQdeCi727mwtXg9flw=";
+    cargoHash = "sha256-FA4QaT3fwEAX9Xorhea8MePJHiGKCUi50EXqR6VHA7s=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -483,7 +507,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-XdvKJI88GaqLkfJFJuh4uvjgNqQdeCi727mwtXg9flw=";
+    cargoHash = "sha256-FA4QaT3fwEAX9Xorhea8MePJHiGKCUi50EXqR6VHA7s=";
     doCheck = false;
   };
 

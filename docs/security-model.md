@@ -58,7 +58,7 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
   spare is then stale and only someone who can read the file has a key.
 - Comparison is constant-time.
 - The API listens on `127.0.0.1` only. nginx proxies `/api/` to it behind the
-  LAN-only guard. LosOS Cloud and the hostNetwork Forgejo pod share that
+  LAN-only guard. LosOS Cloud, LosOS Git and the apps' hostNetwork pods share that
   loopback, so an iptables owner match (`modules/daemon.nix`) resets any
   connection to the API port that is not made by root or nginx.
 - The LAN-only guard denies `10.42.0.0/16`, the mesh's pod network, before it
@@ -182,17 +182,17 @@ not address the limitations below.
 
 ## Known limitations
 
-### The admin UI shares an origin with LosOS Cloud and Forgejo
+### The admin UI shares an origin with LosOS Cloud and LosOS Git
 
 `<host>.local/` serves the admin UI and `/api/`. The same origin serves
-`/cloud/` and `/forgejo/`, which host user content. LosOS Cloud serves the
+`/cloud/` and `/git/`, which host user content. LosOS Cloud serves the
 files people upload under a sandboxing CSP, and active types as downloads.
 
 `sessionStorage` is per origin, so a stored XSS in either application can
 read the admin token while a tab holds the spare key. A CSP on the admin
 pages does not help, and neither would an `HttpOnly` cookie: Authelia's
 session cookie rides on every request to the origin, so a script there can
-call `/api/` as whoever is signed in. **An XSS in LosOS Cloud or Forgejo is
+call `/api/` as whoever is signed in. **An XSS in LosOS Cloud or LosOS Git is
 a full appliance compromise.**
 
 The fix is a separate origin for the admin UI, such as a second mDNS name.

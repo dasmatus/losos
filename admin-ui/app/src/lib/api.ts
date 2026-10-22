@@ -25,9 +25,6 @@ export type Mode = "local" | "mesh";
 /** Lifecycle of the last or current rebuild. */
 export type RebuildState = "idle" | "building" | "done" | "failed";
 
-/** Where a service runs. Never spell either of these at the user. */
-export type ServiceMode = "native" | "container";
-
 export interface StateResponse {
   mode: Mode;
   /** True iff mode === "mesh". Mirrors losos.sharingMyStorage. */
@@ -36,7 +33,6 @@ export interface StateResponse {
 
 export interface SettingsResponse {
   sharingMyStorage: boolean;
-  forgejoMode: ServiceMode;
   hostName: string;
   gpuEnable: boolean;
   proxyEnable: boolean;
@@ -1315,18 +1311,20 @@ export function postLlmChat(
   return postJson<ChatAnswer>("/api/market/llm/chat", { meter, messages, maxTokens }, options);
 }
 
-// ── Widget builder ────────────────────────────────────────────────────────
+// ── The builder ───────────────────────────────────────────────────────────
 
-/* A language model on this box writes a widget from the owner's description
- * (backend/src/builder.rs, Ollama on loopback). Nothing leaves the box and a
- * build costs nothing. A build takes minutes on the box's processor, so it
- * runs in the background and the page polls it. */
+/* A language model on this box writes a widget or an app from the owner's
+ * description (backend/src/builder.rs, Ollama on loopback). Nothing leaves
+ * the box and a build costs nothing. A build takes minutes on the box's
+ * processor, so it runs in the background and the page polls it. */
 
 export type BuildStatus = "running" | "done" | "failed" | "stopped";
-export type BuildFault = "noWidget" | "unusable" | "upstream" | "memory";
+export type BuildFault = "noWidget" | "noApp" | "unusable" | "upstream" | "memory";
+export type BuildKind = "widget" | "app";
 
 export interface BuildSummary {
   id: string;
+  kind: BuildKind;
   status: BuildStatus;
   prompt: string;
   revision: boolean;
@@ -1334,17 +1332,41 @@ export interface BuildSummary {
   finished_at: number | null;
   /** Lines of the answer written so far. */
   lines: number;
-  /** The box found a mistake in the first answer and the model is writing
-   *  a second one. */
+  /** The box found a mistake and the model is writing the code again. */
   fixing: boolean;
+  /** How many steps the build has taken. */
+  steps: number;
   fault: BuildFault | null;
   has_source: boolean;
 }
 
-export interface BuildView extends Omit<BuildSummary, "has_source"> {
+/** One step of a build: the model writes or fixes, the box checks the
+ *  code, the page tries the app. */
+export interface BuildStep {
+  kind: "write" | "check" | "try" | "fix";
+  running: boolean;
+  /** What it found wrong, as sentences. */
+  problems: string[];
+  /** For a try: what the app showed, a line per element. */
+  shown: string[];
+  /** For a try: no page was open to try the app in. */
+  skipped: boolean;
+  started_at: number;
+}
+
+export interface BuildView extends Omit<BuildSummary, "has_source" | "steps"> {
+  steps: BuildStep[];
+  /** An app the build asks the page to try in its preview now. */
+  trial: { id: string; code: string } | null;
   /** The answer ran into its length limit; the widget may be unfinished. */
   at_limit: boolean;
   files: WidgetFile[] | null;
+  /** The name the model gave an app. */
+  name: string | null;
+  /** An app compiled for the app frame, when it compiles. */
+  code: string | null;
+  /** What the box's checks still find wrong, as sentences. */
+  problems: string[];
   /** What the model says it made, in the page's language. */
   notes: string | null;
 }
@@ -1362,9 +1384,10 @@ export function getBuilder(options: RequestOptions = {}): Promise<BuilderRespons
   return call<BuilderResponse>("/api/builder", options);
 }
 
-/** POST /api/builder/builds — start a build; `base` is the widget to change. */
+/** POST /api/builder/builds — start a build; `base` is the widget to
+ *  change, or the source of the app to change. */
 export function postBuilderBuild(
-  request: { prompt: string; base?: WidgetFile[]; lang: string },
+  request: { prompt: string; kind?: BuildKind; base?: WidgetFile[] | string; lang: string },
   options: RequestOptions = {},
 ): Promise<BuildView> {
   return call<BuildView>("/api/builder/builds", {
@@ -1380,9 +1403,144 @@ export function getBuilderBuild(id: string, options: RequestOptions = {}): Promi
   return call<BuildView>(`/api/builder/builds/${encodeURIComponent(id)}`, options);
 }
 
+/** POST /api/builder/builds/{id}/tried — what the preview found when it
+ *  tried the app the build asked it to. */
+export function postBuilderTried(
+  id: string,
+  report: {
+    trial: string;
+    shown: string[];
+    pressed: string;
+    kept: string[];
+    chose: string[];
+    keptAfterChoosing: string[];
+    errors: string[];
+    threwOnPress: string[];
+  },
+  options: RequestOptions = {},
+): Promise<{ taken: boolean }> {
+  return call<{ taken: boolean }>(`/api/builder/builds/${encodeURIComponent(id)}/tried`, {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(report),
+  });
+}
+
 /** DELETE /api/builder/builds/{id} — stop a running build. */
 export function stopBuilderBuild(id: string, options: RequestOptions = {}): Promise<BuildView> {
   return call<BuildView>(`/api/builder/builds/${encodeURIComponent(id)}`, { ...options, method: "DELETE" });
+}
+
+// ── The owner's own apps ──────────────────────────────────────────────────
+
+/* Apps kept on the box (backend/src/user_apps.rs): a React component in JSX
+ * the box compiles, and the data it keeps. Making and changing one is the
+ * apps section's; opening one is anyone's who is signed in. */
+
+export interface UserAppSummary {
+  id: string;
+  name: string;
+  summary: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** An app's repository on LosOS Git (backend/src/app_repo.rs). */
+export interface UserAppRepo {
+  /** `owner/name`, once the box has made it. */
+  name?: string;
+  /** `synced`, `local`, `diverged` or `refused`. */
+  state: "synced" | "local" | "diverged" | "refused";
+  detail?: string;
+}
+
+export interface UserApp extends UserAppSummary {
+  prompt: string | null;
+  /** The JSX the owner keeps. */
+  source: string;
+  /** The script the app frame runs. */
+  code: string;
+  /** Absent until the box's first sync after the app was saved. */
+  repo?: UserAppRepo;
+}
+
+export interface UserAppsResponse {
+  apps: UserAppSummary[];
+  limits: { apps: number; nameChars: number; sourceBytes: number; dataBytes: number };
+}
+
+export type AppItem = Record<string, unknown> & { id: string };
+export interface AppData {
+  collections: Record<string, AppItem[]>;
+  stored: Record<string, unknown>;
+}
+
+export type AppDataOp =
+  | { op: "add"; collection: string; value: Record<string, unknown> }
+  | { op: "update"; collection: string; id: string; value: Record<string, unknown> }
+  | { op: "remove"; collection: string; id: string }
+  | { op: "replace"; collection: string; items: Record<string, unknown>[] }
+  | { op: "set"; key: string; value: unknown };
+
+/** GET /api/user-apps. */
+export function getUserApps(options: RequestOptions = {}): Promise<UserAppsResponse> {
+  return call<UserAppsResponse>("/api/user-apps", options);
+}
+
+/** GET /api/user-apps/{id}. */
+export function getUserApp(id: string, options: RequestOptions = {}): Promise<{ app: UserApp }> {
+  return call<{ app: UserApp }>(`/api/user-apps/${encodeURIComponent(id)}`, options);
+}
+
+/** POST /api/user-apps — add an app, or a new version of the one `id` names. */
+export function saveUserApp(
+  draft: { id?: string; name: string; summary?: string | null; prompt?: string | null; source: string },
+  options: RequestOptions = {},
+): Promise<{ app: UserApp; problems: string[] }> {
+  return call<{ app: UserApp; problems: string[] }>("/api/user-apps", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(draft),
+  });
+}
+
+/** POST /api/user-apps/check — compile without saving. */
+export function checkUserApp(
+  source: string,
+  options: RequestOptions = {},
+): Promise<{ code: string | null; problems: string[] }> {
+  return call<{ code: string | null; problems: string[] }>("/api/user-apps/check", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ source }),
+  });
+}
+
+/** DELETE /api/user-apps/{id}. */
+export function deleteUserApp(id: string, options: RequestOptions = {}): Promise<{ deleted: boolean }> {
+  return call<{ deleted: boolean }>(`/api/user-apps/${encodeURIComponent(id)}`, { ...options, method: "DELETE" });
+}
+
+/** GET /api/user-apps/{id}/data. */
+export function getUserAppData(id: string, options: RequestOptions = {}): Promise<AppData> {
+  return call<AppData>(`/api/user-apps/${encodeURIComponent(id)}/data`, options);
+}
+
+/** POST /api/user-apps/{id}/data — one write. */
+export function writeUserAppData(
+  id: string,
+  op: AppDataOp,
+  options: RequestOptions = {},
+): Promise<Record<string, unknown>> {
+  return call<Record<string, unknown>>(`/api/user-apps/${encodeURIComponent(id)}/data`, {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(op),
+  });
 }
 
 // ── Virtual machines ──────────────────────────────────────────────────────
@@ -2516,9 +2674,9 @@ export function buildOverridesNix(
   settings: SettingsResponse,
   /* Every other `losos.<name>` the file should carry, as Nix literals the
    * Advanced pane produced (lib/option-value.ts): one line each, after the
-   * thirteen above, sorted so the file is stable from one apply to the next
+   * twelve above, sorted so the file is stable from one apply to the next
    * and the commit lososd makes shows only what changed. A name here that is
-   * one of the thirteen would be a second line for the same key; the first
+   * one of the twelve would be a second line for the same key; the first
    * wins in lososd's parser, so the form's own value would silently win over
    * the Advanced pane's. The pane never hands one in (it edits those through
    * the form), and the filter below is the belt to that. */
@@ -2532,7 +2690,6 @@ export function buildOverridesNix(
     "{ ... }:",
     "{",
     `  losos.sharingMyStorage = ${nixBool(settings.sharingMyStorage)};`,
-    `  losos.forgejo.mode = ${nixString(settings.forgejoMode)};`,
     `  losos.hostName = ${nixString(settings.hostName)};`,
     `  losos.gpu.enable = ${nixBool(settings.gpuEnable)};`,
     `  losos.proxy.enable = ${nixBool(settings.proxyEnable)};`,
@@ -2550,10 +2707,9 @@ export function buildOverridesNix(
   ].join("\n");
 }
 
-/** The thirteen `losos.*` names the lines above always write. */
+/** The twelve `losos.*` names the lines above always write. */
 export const OWNED_NAMES: ReadonlySet<string> = new Set([
   "sharingMyStorage",
-  "forgejo.mode",
   "hostName",
   "gpu.enable",
   "proxy.enable",
@@ -2578,7 +2734,7 @@ export function isValidTime(value: string): boolean {
 }
 
 /* An RFC 1123 label. The value becomes the system hostname, the mDNS name,
- * the address LosOS Cloud hands its apps and Forgejo's ROOT_URL. A space or a slash
+ * the address LosOS Cloud hands its apps and the addresses LosOS Git hands out. A space or a slash
  * fails evaluation; a leading hyphen or a 64th character gives a box that
  * boots unreachable — and there is no SSH and no shell login to fix it. */
 export const HOSTNAME_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
@@ -2834,11 +2990,11 @@ export type ConfigSyncState =
 export interface ConfigRepository {
   owner: string;
   name: string;
-  /** The repository's page on this box: /forgejo/<owner>/<name>. */
+  /** The repository's page on this box: /git/<owner>/<name>. */
   url: string;
   /** The URL lososd pushes to (loopback; not for the owner). */
   clone: string;
-  viaForgejo: boolean;
+  viaServer: boolean;
 }
 
 export interface ConfigHead {
@@ -3415,5 +3571,152 @@ export function putMailFilters(filters: MailFilter[]): Promise<{ filters: MailFi
     method: "PUT",
     contentType: "application/json",
     body: JSON.stringify({ filters }),
+  });
+}
+
+// ── Mesh CI (backend/src/ci/, through lososd's ci plugin) ───────────────
+
+export type CiState = "queued" | "running" | "success" | "failure" | "cancelled" | "skipped" | "error";
+export type CiLend = "always" | "window" | "never";
+
+/** GET /api/ci — this box's runner and whether the mesh's queue answers. */
+export interface CiOverview {
+  box: string;
+  lend: CiLend;
+  lendingNow: boolean;
+  window: { start: string; end: string } | null;
+  mesh: boolean;
+  privateOnMesh: boolean;
+  canChange: boolean;
+}
+
+export interface CiJobSummary {
+  name: string;
+  state: CiState;
+  runner: string;
+}
+
+export interface CiRun {
+  id: number;
+  owner: string;
+  repo: string;
+  private: boolean;
+  workflowFile: string;
+  workflowName: string;
+  number: number;
+  event: string;
+  sha: string;
+  gitRef: string;
+  title: string;
+  actor: string;
+  state: CiState;
+  message: string;
+  created: number;
+  started: number | null;
+  finished: number | null;
+}
+
+export interface CiJob {
+  id: number;
+  runId: number;
+  jobKey: string;
+  name: string;
+  matrix: Record<string, unknown>;
+  state: CiState;
+  /** `box`: this box's runner. `mesh`: any box of the mesh. */
+  placement: "box" | "mesh";
+  runner: string;
+  exitCode: number | null;
+  outputs: Record<string, unknown>;
+  continueOnError: boolean;
+  logLen: number;
+  created: number;
+  started: number | null;
+  finished: number | null;
+}
+
+export interface CiRunDetail extends CiRun {
+  jobs: CiJob[];
+  canChange: boolean;
+}
+
+export interface CiLog {
+  state: CiState;
+  from: number;
+  next: number;
+  text: string;
+}
+
+export interface CiWorkflows {
+  ref: string | null;
+  sha: string | null;
+  canRun: boolean;
+  workflows: { file: string; name: string }[];
+}
+
+export function getCi(options: RequestOptions = {}): Promise<CiOverview> {
+  return call<CiOverview>("/api/ci", options);
+}
+
+/** PUT /api/ci/runner — when this box lends its runner. Administrators. */
+export function setCiLend(lend: CiLend): Promise<{ lend: CiLend }> {
+  return call<{ lend: CiLend }>("/api/ci/runner", {
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({ lend }),
+  });
+}
+
+/** GET /api/ci/runs — newest first, only repositories this person reads. */
+export function getCiRuns(
+  filter: { owner?: string; repo?: string; before?: number } = {},
+  options: RequestOptions = {},
+): Promise<{ runs: (CiRun & { jobs: CiJobSummary[] })[] }> {
+  const params = new URLSearchParams();
+  if (filter.owner !== undefined && filter.repo !== undefined) {
+    params.set("owner", filter.owner);
+    params.set("repo", filter.repo);
+  }
+  if (filter.before !== undefined) params.set("before", String(filter.before));
+  const query = params.toString();
+  return call(`/api/ci/runs${query === "" ? "" : `?${query}`}`, options);
+}
+
+export function getCiRun(id: number, options: RequestOptions = {}): Promise<CiRunDetail> {
+  return call<CiRunDetail>(`/api/ci/runs/${id}`, options);
+}
+
+/** GET /api/ci/jobs/{id}/log — the log from byte `from` on. */
+export function getCiLog(job: number, from = 0, options: RequestOptions = {}): Promise<CiLog> {
+  return call<CiLog>(`/api/ci/jobs/${job}/log?from=${from}`, options);
+}
+
+export function cancelCiRun(id: number): Promise<{ id: number }> {
+  return call<{ id: number }>(`/api/ci/runs/${id}/cancel`, { method: "POST" });
+}
+
+/** POST /api/ci/runs/{id}/rerun — a new run of the same commit. */
+export function rerunCiRun(id: number): Promise<{ id: number }> {
+  return call<{ id: number }>(`/api/ci/runs/${id}/rerun`, { method: "POST" });
+}
+
+/** GET /api/ci/workflows — the workflows of a branch that take workflow_dispatch. */
+export function getCiWorkflows(
+  owner: string,
+  repo: string,
+  ref = "",
+  options: RequestOptions = {},
+): Promise<CiWorkflows> {
+  const params = new URLSearchParams({ owner, repo });
+  if (ref !== "") params.set("ref", ref);
+  return call<CiWorkflows>(`/api/ci/workflows?${params.toString()}`, options);
+}
+
+/** POST /api/ci/dispatch — run a workflow by hand. */
+export function dispatchCi(owner: string, repo: string, workflow: string, ref = ""): Promise<{ id: number }> {
+  return call<{ id: number }>("/api/ci/dispatch", {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ owner, repo, workflow, ref }),
   });
 }

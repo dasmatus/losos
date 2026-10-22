@@ -133,36 +133,11 @@
     homeMode = "700"; # owner only; notshared cannot enter, let alone read
   };
 
-  # ── Service accounts for the workload pods ────────────────────────────────
-  # systemd-nspawn is gone. Forgejo runs as a pod
-  # in this box's own local k3s cluster (modules/workloads.nix), and because
-  # that cluster runs no CNI the pods are `hostNetwork` — they share the host's
-  # network *and* user namespace. So `runAsUser` in a pod spec is a real uid on
-  # this machine, not a container-local fiction, and the account has to
-  # exist for reasons that are not cosmetic:
-  #
-  #   * PostgreSQL peer auth over /run/postgresql compares the *kernel's* uid of
-  #     the connecting process and maps it to a role through getpwuid. With no
-  #     passwd entry for 1003 the lookup fails, so the Forgejo pod cannot
-  #     authenticate even once the database exists — and it fails as a pod
-  #     crash-loop on a box with no shell, not as a rebuild error.
-  #   * The tmpfiles rules in modules/workloads.nix chown the state directories
-  #     to this id. Without the account the directories end up owned by bare
-  #     numbers, which works but makes the box unreadable to anyone debugging it.
-  #
-  # modules/workloads.nix hardcodes the same number and says so in its own
-  # comment; keep the two in step. It is pinned rather than allocated because
-  # a dynamically assigned uid would differ per box and could not be written
-  # into a pod spec at eval time. 1002 was Nextcloud's and stays unused: the
-  # files a box's Nextcloud left behind carry it until LosOS Cloud takes them
-  # in (modules/cloud.nix).
-  users.groups.forgejo.gid = 1003;
-  users.users.forgejo = {
-    uid = 1003;
-    group = "forgejo";
-    isSystemUser = true;
-    description = "Forgejo workload";
-  };
+  # ── Retired workload uids ─────────────────────────────────────────────────
+  # The box's own apps no longer run as pods. 1002 was Nextcloud's and stays
+  # unused: the files a box's Nextcloud left behind carry it until LosOS Cloud
+  # takes them in (modules/cloud.nix). 1003 was Forgejo's; LosOS Git's account
+  # has it now (modules/git.nix).
 
   # ── GPU / graphics ────────────────────────────────────────────────────────
   # Enables /dev/dri + Mesa and the VA-API drivers for hardware video decode

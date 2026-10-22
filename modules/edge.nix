@@ -972,6 +972,7 @@ let
     ++ manageArgs
     ++ callsRelayArgs
     ++ inferenceArgs
+    ++ ciArgs
   );
 
   # Call media for this edge's boxes (losos.edge.calls.relay,
@@ -998,6 +999,12 @@ let
       from = lib.toInt (lib.elemAt parts 0);
       to = lib.toInt (lib.elemAt parts 1);
     };
+  # Mesh CI's job queue (edge/registrar/src/ci.rs): the jobs boxes hand
+  # over, kept in the registrar's StateDirectory across restarts.
+  ciArgs = lib.optionals cfg.ci.enable [
+    "--ci-dir"
+    "/var/lib/losos-registrar/ci"
+  ];
 
   # Models split across boxes (losos.edge.inference,
   # modules/edge-inference.nix): the catalogue, the loopback ports the

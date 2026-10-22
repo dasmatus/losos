@@ -74,14 +74,6 @@ let
     '';
   });
 
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
@@ -92,44 +84,58 @@ let
       pkgs.noto-fonts-color-emoji
     ];
   };
-  # Each person's camera: a public-domain NASA portrait from the ISS
-  # (images.nasa.gov), cut to 4:3 and looped by Chromium's fake device. A
-  # real room behind a real person is what the black background is for.
+  # Each person's camera: a drawn stand-in, a person in a room of their own
+  # (calls-faces.py), with a slow drift so the picture moves like a webcam's,
+  # looped by Chromium's fake device. A room behind the person is what the
+  # black background is for.
   camera =
     {
-      id,
-      hash,
-      crop,
+      name,
+      wall,
+      floor,
+      skin,
+      hair,
+      shirt,
+      style,
+      room,
     }:
-    pkgs.runCommand "camera-${id}.y4m"
-      {
-        photo = pkgs.fetchurl {
-          url = "https://images-assets.nasa.gov/image/${id}/${id}~medium.jpg";
-          inherit hash;
-        };
-      }
-      ''
-        ${pkgs.ffmpeg-headless}/bin/ffmpeg -v error -loop 1 -i $photo \
-          -vf "crop=${crop},scale=640:480,format=yuv420p" -t 2 -r 15 $out
-      '';
+    pkgs.runCommand "camera-${name}.y4m" { } ''
+      ${pkgs.python3}/bin/python3 -I ${./calls-faces.py} ${pkgs.imagemagick}/bin/magick still.png \
+        '${wall}' '${floor}' '${skin}' '${hair}' '${shirt}' ${style} ${room}
+      ${pkgs.ffmpeg-headless}/bin/ffmpeg -v error -loop 1 -i still.png \
+        -vf "scale=680:510,crop=640:480:'20+12*sin(2*PI*t/4)':'15+6*sin(2*PI*t/2)',format=yuv420p" \
+        -t 4 -r 15 $out
+    '';
   cameras = {
-    # Suni Williams.
     matus = camera {
-      id = "iss072e189112";
-      hash = "sha256-g6EUB3cUWqDmjq1g1lu1k82zm1GrXI8dofGwVDGl6ME=";
-      crop = "1000:750:280:0";
+      name = "matus";
+      wall = "#d9cbb8";
+      floor = "#8a6f55";
+      skin = "#f0c7a5";
+      hair = "#4a3022";
+      shirt = "#2f5d8a";
+      style = "short";
+      room = "shelf";
     };
-    # Josh Cassada.
     eva = camera {
-      id = "iss068e017360";
-      hash = "sha256-h+9Sp48WRyB6woygLZJoUumNNdHkg0Qi8ue4d2tMNRs=";
-      crop = "640:480:267:160";
+      name = "eva";
+      wall = "#b9cfc4";
+      floor = "#7d6a58";
+      skin = "#e8b896";
+      hair = "#a0452a";
+      shirt = "#3f7d5a";
+      style = "long";
+      room = "plant";
     };
-    # Jack Hathaway.
     jan = camera {
-      id = "iss074e0325621";
-      hash = "sha256-EqIdfpxmWQWdajlXOAmQ9kxDHDaiELe93C4E8sDG5uA=";
-      crop = "1137:853:143:0";
+      name = "jan";
+      wall = "#d8d2e4";
+      floor = "#6f6a7d";
+      skin = "#f3d1b5";
+      hair = "#c9a35a";
+      shirt = "#c4692e";
+      style = "beard";
+      room = "window";
     };
   };
   # The podcast's overlay: a transparent frame with a tag in one corner.
@@ -320,7 +326,6 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/chat.nix
           ../../modules/calls.nix
           ../../modules/proxy.nix
@@ -330,9 +335,8 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = ui;
-          forgejo.enable = true;
-          forgejo.mode = "container";
-          workloads.forgejoImage = standIn "losos-forgejo-stand-in";
+          backend.plugins = lososPkgs.losos-plugins;
+          git.enable = false;
           # The shared user's side of the box: chat's gate, and so calls'.
           sharingMyStorage = true;
           cluster.enable = true;

@@ -1,0 +1,20 @@
+{
+  "name": "ci",
+  "description": "The admin pages' way to Mesh CI: runs, logs and the runner, relayed to losos-ci.",
+  "routes": [
+    { "method": "GET", "path": "/api/ci" },
+    { "method": "PUT", "path": "/api/ci/runner" },
+    { "method": "GET", "path": "/api/ci/runs" },
+    { "method": "GET", "path": "/api/ci/runs/{id}" },
+    { "method": "POST", "path": "/api/ci/runs/{id}/cancel" },
+    { "method": "POST", "path": "/api/ci/runs/{id}/rerun" },
+    { "method": "GET", "path": "/api/ci/jobs/{id}/log" },
+    { "method": "GET", "path": "/api/ci/workflows" },
+    { "method": "POST", "path": "/api/ci/dispatch" }
+  ],
+  "http": ["unix:${LOSOS_CI_SOCKET:-/run/losos-ci/api.sock}"],
+  "limits": { "memoryMiB": 32, "timeoutSecs": 60 },
+  "config": {
+    "socket": "${LOSOS_CI_SOCKET:-/run/losos-ci/api.sock}"
+  }
+}
