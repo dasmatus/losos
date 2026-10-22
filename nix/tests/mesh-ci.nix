@@ -633,8 +633,7 @@ let
         where = BOXES[job["runner"]]
         where.wait_until_succeeds(
             "runuser -u shared -- env XDG_CONFIG_HOME=${lososPkgs.losos-ci-pm-plugin}"
-            " XDG_RUNTIME_DIR=/run/user/1001 CONTAINERS_STORAGE_CONF=$(systemctl show -p Environment losos-ci-runner"
-            " | tr ' ' '\\n' | sed -n 's/^CONTAINERS_STORAGE_CONF=//p')"
+            " $(systemctl show -p Environment --value losos-ci-runner)"
             " ${pm}/bin/pm container list | grep -q lci-",
             timeout=300,
         )
@@ -643,8 +642,7 @@ let
         assert run["state"] == "cancelled", run
         where.wait_until_succeeds(
             "test -z \"$(runuser -u shared -- env XDG_CONFIG_HOME=${lososPkgs.losos-ci-pm-plugin}"
-            " XDG_RUNTIME_DIR=/run/user/1001 CONTAINERS_STORAGE_CONF=$(systemctl show -p Environment losos-ci-runner"
-            " | tr ' ' '\\n' | sed -n 's/^CONTAINERS_STORAGE_CONF=//p')"
+            " $(systemctl show -p Environment --value losos-ci-runner)"
             " ${pm}/bin/pm container list)\"",
             timeout=300,
         )
