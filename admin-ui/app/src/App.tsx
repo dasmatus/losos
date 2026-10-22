@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ReportDialogHost } from "@/components/report-dialog";
 import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon, Search01Icon } from "@hugeicons/core-free-icons";
@@ -417,6 +418,7 @@ function Shell() {
           <Tour />
         </React.Suspense>
       )}
+      {signedIn && <ReportDialogHost />}
       <Toaster />
     </div>
   );

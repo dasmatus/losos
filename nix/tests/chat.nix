@@ -18,7 +18,12 @@
 #     Dendrite has none) work through nginx;
 #   * the chat page itself: two people in two browsers, an end-to-end
 #     encrypted conversation, a reply, a reaction, a thread, a picture and an
-#     edit, and a recovery key that lets a second device read the past.
+#     edit, and a recovery key that lets a second device read the past;
+#   * pictures from others wait blurred and unfetched; an administrator
+#     marks a person a child or an adult, which holds the nudity warning on
+#     or allows "No one"; the warning (on a stand-in model that flags red)
+#     holds a picture back and asks before one is sent; card and IBAN
+#     numbers are black bars, asked about before sending; Report opens.
 #
 # The browser is Chromium under Playwright in the test driver
 # (nix/tests/chat-browser.mjs), talking to the box through a SOCKS proxy on
@@ -37,12 +42,28 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
+  # The nudity warning's stand-in model (nudity-stand-in.py): red pictures
+  # are flagged, green ones are not, and nothing real is ever looked at.
+  nudityStandIn =
+    pkgs.runCommand "nudity-stand-in.onnx"
+      { nativeBuildInputs = [ (pkgs.python3.withPackages (p: [ p.onnx ])) ]; }
+      "python3 ${./nudity-stand-in.py} $out";
+  squares = pkgs.runCommand "chat-test-squares" { nativeBuildInputs = [ pkgs.imagemagick ]; } ''
+    mkdir $out
+    magick -size 480x320 xc:'#d01010' $out/red.png
+    magick -size 480x320 xc:'#10b030' $out/green.png
+  '';
+
   # The admin UI as it ships, without LosOS Diagrams' WebAssembly, which
   # takes longer to build than the test to run: stand-ins take the place of
   # the three packages, so the bundle builds without Bevy, and only
-  # /diagrams, which no step here opens, would fail.
-  ui = lososPkgs.losos-admin-ui.overrideAttrs (_: {
+  # /diagrams, which no step here opens, would fail. The nudity model is
+  # the stand-in above.
+  ui = lososPkgs.losos-admin-ui.overrideAttrs (old: {
     pname = "losos-admin-ui-without-lab";
+    env = old.env // {
+      LOSOS_NUDITY_MODEL = "${nudityStandIn}";
+    };
     preBuild = ''
       for f in core-pkg/losos_lab_core virt-pkg/losos_lab_virt \
                render-pkg/webgpu/losos_lab_render render-pkg/webgl2/losos_lab_render; do
@@ -435,6 +456,8 @@ pkgs.testers.nixosTest {
         "FONTCONFIG_FILE": "${fonts}",
         "CHAT_HOST": HOST,
         "CHAT_PICTURE": "${picture}",
+        "CHAT_RED": "${squares}/red.png",
+        "CHAT_GREEN": "${squares}/green.png",
         "CHAT_MATUS_PASSWORD": PASSWORD,
         "CHAT_EVA_PASSWORD": EVA_PASSWORD,
     }
