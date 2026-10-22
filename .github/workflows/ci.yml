@@ -450,8 +450,10 @@ jobs:
     if: ${{ !inputs.release_tags }}
     runs-on: ubuntu-latest
     # losos-admin-ui builds losos-lab-render, Bevy for wasm32 twice, which
-    # alone takes about 20 minutes from an empty cache.
-    timeout-minutes: 60
+    # alone takes about 20 minutes from an empty cache. With the calls
+    # browser checks the job took about 41 minutes on a warm run and hit 60
+    # on a slow runner.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
