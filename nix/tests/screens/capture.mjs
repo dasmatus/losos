@@ -46,8 +46,10 @@
 // {text} or {selector}; `gone` waits for it to leave, `absent` fails if it
 // is there now), `fill` ({label, value}), `select` ({label, value}, an
 // option of a native select), `upload` ({selector, file}),
-// `press` (a key), `waitText` (exact text), `sleep` (milliseconds) and
-// `goto` (a path). A shot fails the run when a step does or the page throws:
+// `press` (a key), `hold` (the mouse pressed on a control and left
+// down), `waitText` (exact text), `sleep` (milliseconds), `goto` (a path)
+// and, for a strip, `freeze` (what comes before it plays at full speed,
+// only what comes after is taken frame by frame). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -100,6 +102,14 @@ async function step(page, s, { force = false } = {}) {
   else if (s.waitText) await page.getByText(s.waitText, { exact: true }).first().waitFor({ timeout: 60000 });
   else if (s.sleep) await page.waitForTimeout(s.sleep);
   else if (s.goto) await page.goto(base + s.goto, { waitUntil: 'networkidle', timeout: 120000 });
+  else if (s.hold) {
+    // The mouse pressed on it and left down, for what a held control shows.
+    await locate(page, s.hold).hover({ force });
+    await page.mouse.down();
+  }
+  else if (s.freeze) {
+    // Only marks where a strip freezes the motion; nothing to do here.
+  }
   else throw new Error(`unknown step ${JSON.stringify(s)}`);
 }
 
@@ -118,6 +128,12 @@ async function strip(variant, width, shot, name, storageState) {
   try {
     await page.goto(base + shot.path, { waitUntil: 'networkidle', timeout: 120000 });
     if (shot.waitFor) await locate(page, shot.waitFor).waitFor({ timeout: 120000 });
+    // Steps before a `freeze` step play at full speed (opening the dialog
+    // whose closing is the subject, say); the rest are frozen.
+    const all = shot.steps ?? [];
+    const cut = all.findIndex((s) => s.freeze);
+    const frozen = cut < 0 ? all : all.slice(cut + 1);
+    for (const s of cut < 0 ? [] : all.slice(0, cut)) await step(page, s);
     await page.evaluate(() => document.fonts.ready);
     await page.waitForLoadState('networkidle');
     // The page's own entrance has to be over before anything is frozen, or
@@ -136,9 +152,9 @@ async function strip(variant, width, shot, name, storageState) {
     // A forced click skips Playwright's checks, so wait for the first
     // control to be there and enabled: a switch clicked while its setting
     // is still loading does nothing. (Later ones may appear only after it.)
-    const first = shot.steps?.[0];
-    if (first?.click) {
-      const target = locate(page, first.click);
+    const first = frozen[0]?.click ?? frozen[0]?.hold;
+    if (first) {
+      const target = locate(page, first);
       await target.waitFor({ timeout: 60000 });
       await page.waitForFunction(
         (el) => !el.matches(':disabled, [aria-disabled=true], [data-disabled]'),
@@ -153,7 +169,7 @@ async function strip(variant, width, shot, name, storageState) {
     await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
     // Only what the steps start: the page's own entrance has played.
     started = [];
-    for (const s of shot.steps ?? []) {
+    for (const s of frozen) {
       // The stills already waited for each control to be ready, and a frozen
       // press would keep Playwright waiting for it to settle.
       await step(page, s, { force: true });
@@ -177,7 +193,9 @@ async function strip(variant, width, shot, name, storageState) {
       await page.screenshot({ path, timeout: 180000 });
     }
     console.log(`strip ${name}: ${ids.length} animations at ${shot.strip.join(', ')} ms`);
-    if (ids.length === 0) throw new Error(`${name}: the steps started no animation`);
+    // No motion is a finding too (the before picture of a change that adds
+    // some), so the frames are kept and it is only said.
+    if (ids.length === 0) console.log(`strip ${name}: the steps started no animation`);
   } catch (e) {
     console.error(`strip ${name} at ${page.url()}: ${e.message}`);
     await page.screenshot({ path: join(args.out, `${name}-strip-failed.png`), timeout: 180000 }).catch(() => {});
