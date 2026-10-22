@@ -46,9 +46,10 @@ let
 
   # The nudity warning's stand-in model (nudity-stand-in.py): red pictures
   # are flagged, green ones are not, and nothing real is ever looked at.
-  nudityStandIn = pkgs.runCommand "nudity-stand-in.onnx" {
-    nativeBuildInputs = [ (pkgs.python3.withPackages (p: [ p.onnx ])) ];
-  } "python3 ${./nudity-stand-in.py} $out";
+  nudityStandIn =
+    pkgs.runCommand "nudity-stand-in.onnx"
+      { nativeBuildInputs = [ (pkgs.python3.withPackages (p: [ p.onnx ])) ]; }
+      "python3 ${./nudity-stand-in.py} $out";
   squares = pkgs.runCommand "chat-test-squares" { nativeBuildInputs = [ pkgs.imagemagick ]; } ''
     mkdir $out
     magick -size 480x320 xc:'#d01010' $out/red.png
