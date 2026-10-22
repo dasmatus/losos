@@ -72,6 +72,40 @@ Každý vidí kurzor a meno toho druhého a každá zmena sa na druhej obrazovke
 objaví hneď, ako vznikne. Nikto nečaká, kým druhý skončí, a jedno uloženie
 zachová zmeny všetkých.
 
+## Dokumenty a prezentácie v Markdowne \{#markdown-documents-and-presentations}
+
+**Nový dokument** a **Nová prezentácia** v lište súborov LosOS Cloud
+vytvoria v priečinku, v ktorom ste, súbor Markdown s názvom *Dokument bez
+názvu* alebo *Prezentácia bez názvu* a otvoria ho v LosOS Office. Názov
+zmeníte kliknutím naň hore. Súbory Markdown sú vlastné LosOS, takže sa
+otvoria, aj keď Collabora nie je zapnutá, a každý súbor `.md` ponúka v
+ponuke pravého tlačidla **Otvoriť v LosOS Office**.
+
+Lišta nad textom má tlačidlo na všetko, čo Markdown vie zapísať, v podobe,
+ktorú čítajú GitHub aj Obsidian: nadpisy, tučné písmo, kurzívu,
+prečiarknutie, zvýraznenie, kód, dolný a horný index, klávesy, skryté
+komentáre, odrážkové, číslované a úlohové zoznamy, citácie, bloky kódu,
+vzorce v riadku aj samostatne, tabuľky, zbalené časti, vodorovné čiary,
+upozornenia, odkazy, obrázky, odkazy na poznámky a vložené poznámky,
+štítky, ciele odkazov na blok, poznámky pod čiarou a vlastnosti. Najprv
+označte text a tlačidlo ho naformátuje; ďalším stlačením formát zmizne.
+Fungujú aj **Ctrl B**, **Ctrl I**, **Ctrl K** a **Ctrl E**.
+
+Dokument sa píše vľavo a číta vpravo, vykreslený tak ako v Poznámkach.
+**Písať** a **Čítať** dajú jednej strane celú šírku. Odkazy na iné poznámky
+a obrázky sa hľadajú v tom istom priečinku alebo v trezore Obsidianu, v
+ktorom súbor je. Písanie je spoločné ako v každom textovom súbore LosOS
+Cloud: všetci v súbore píšu naraz a box uloží text chvíľu po tom, ako
+písanie prestane.
+
+Prezentácia je súbor Markdown s `slides: true` vo vlastnostiach. Každý
+riadok `---` začína novú snímku. Každá snímka má rovnaké rozloženie: text v
+strede, vycentrovaný, a obrázky vpravo. Snímky sú vypísané vľavo a snímka,
+v ktorej je kurzor, sa vpravo ukazuje tak, ako bude vyzerať. **Prezentovať**
+ju prehrá na celú obrazovku; šípky, medzerník a Page Down ňou posúvajú a
+Escape ju ukončí. Tlačidlo PDF vytlačí dokument ako strany a prezentáciu po
+jednej snímke na stranu.
+
 ## Čo zostáva súkromné \{#what-stays-private}
 
 Editor beží na zariadení a dokument číta priamo z jeho disku. Nič sa
