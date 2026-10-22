@@ -1,24 +1,26 @@
 // Photos in LosOS Cloud in pictures, for the pull request. Run on the box by
 // nix/tests/cloud-photos.nix, after the pass has read every photo:
 //
-//   node cloud-photos-shots.mjs after|before OUT NAME PASSWORD ADDRESS
+//   node cloud-photos-shots.mjs after|before|film OUT NAME PASSWORD ADDRESS
 //
 // Signs in through LosOS Login at mattbox.local (resolved to ADDRESS) and
 // takes the Photos page and the viewer; `after` also takes a person, the
-// photos by camera and by place, and the viewer's details. One window for
-// all: 1280 x 900 at twice the pixels, dark, en-US, reduced motion.
+// photos by camera and by place, and the viewer's details. `film` takes the
+// launch film's frames, numbered, with a manifest.json of what each shows
+// and where to point. One window for all: 1280 x 900 at twice the pixels,
+// dark, en-US, reduced motion, no caret.
 //
 // Playwright comes from PLAYWRIGHT_CORE (a path to playwright-core, as
 // nixpkgs' playwright-driver is) or the `playwright-core` package.
 
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
 const [which, out, login, password, lan] = process.argv.slice(2);
-if (!["after", "before"].includes(which) || !lan) {
-  console.error("usage: cloud-photos-shots.mjs after|before OUT NAME PASSWORD ADDRESS");
+if (!["after", "before", "film"].includes(which) || !lan) {
+  console.error("usage: cloud-photos-shots.mjs after|before|film OUT NAME PASSWORD ADDRESS");
   process.exit(2);
 }
 mkdirSync(out, { recursive: true });
@@ -47,6 +49,7 @@ page.on("console", (m) => {
 const base = "https://mattbox.local";
 
 async function settle() {
+  await page.addStyleTag({ content: "* { caret-color: transparent !important; }" }).catch(() => {});
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => document.fonts.ready.then(() => true));
   // Every picture on screen has arrived.
@@ -70,6 +73,69 @@ async function viewer(name) {
   await page.locator("#cloud-viewer-title").waitFor();
 }
 
+const steps = [];
+async function box(locator) {
+  const b = await locator.first().boundingBox();
+  return b && { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) };
+}
+async function frame(file, url, title, action, targets) {
+  await take(file);
+  const boxes = {};
+  for (const [name, locator] of Object.entries(targets)) {
+    const b = await box(locator);
+    if (b) boxes[name] = b;
+  }
+  steps.push({ file, url: `mattbox.local${url}`, title, action, targets: boxes });
+}
+
+async function film() {
+  const select = page.locator("[data-photos-by] select");
+  await photos();
+  await frame("01-photos.png", "/cloud/photos", "every photo by the month it was taken", { kind: "click", target: "groupBy" }, {
+    groupBy: select,
+    first: page.locator("[data-photos] button"),
+  });
+  await photos("?by=camera");
+  await frame("02-by-camera.png", "/cloud/photos?by=camera", "the photos by camera", { kind: "click", target: "groupBy" }, {
+    groupBy: select,
+  });
+  await photos("?by=place");
+  const oldTown = page.getByRole("button", { name: "old-town.jpg", exact: true });
+  await frame("03-by-place.png", "/cloud/photos?by=place", "the photos by where they were taken", { kind: "click", target: "photo" }, {
+    groupBy: select,
+    photo: oldTown,
+  });
+  await viewer("old-town.jpg");
+  await frame("04-viewer.png", "/cloud/photos?by=place", "one photo, large", { kind: "click", target: "details" }, {
+    details: page.locator("[data-photo-info]"),
+  });
+  await page.locator("[data-photo-info]").click();
+  await page.locator("[data-photo-details]").waitFor();
+  await frame("05-details.png", "/cloud/photos?by=place", "what the camera wrote: when, which camera, where", { kind: "click", target: "tags" }, {
+    panel: page.locator("[data-photo-details]"),
+    tags: page.locator("[data-photo-tags] summary"),
+  });
+  await page.locator("[data-photo-tags] summary").click();
+  await frame("06-tags.png", "/cloud/photos?by=place", "every tag the camera saved", { kind: "none" }, {
+    panel: page.locator("[data-photo-details]"),
+  });
+  writeFileSync(
+    join(out, "manifest.json"),
+    JSON.stringify(
+      {
+        feature: "photos",
+        viewport: { width: 1280, height: 900 },
+        dpr: 2,
+        commit: process.env.LOSOS_COMMIT ?? "",
+        test: "losos-cloud-photos",
+        steps,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
 async function walk() {
   await page.goto(`${base}/auth/`);
   const status = await page.evaluate(
@@ -84,6 +150,7 @@ async function walk() {
     [login, password, `${base}/cloud/`],
   );
   if (status !== 200) throw new Error(`sign-in refused: ${status}`);
+  if (which === "film") return film();
 
   await photos();
   await take("photos.png");

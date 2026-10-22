@@ -1,13 +1,13 @@
 # nixos-test-vms config for Photos in LosOS Cloud
 # (backend/src/cloud/photos/, `losos-cloud-photos` in modules/cloud.nix).
 #
-# The owner uploads ten real photographs over WebDAV, the way the phone app
-# does: NASA's portraits of three astronauts (public domain), a group photo
-# from the space station, and a street in Bratislava whose camera wrote down
-# where it was (CC BY 3.0, adirricor on Panoramio, through Wikimedia
-# Commons). Half go up while the background pass is already reading the
-# first half, and every upload still answers at once. Then the test checks
-# that
+# The owner uploads thirteen pictures over WebDAV, the way the phone app
+# does: NASA's portraits of three astronauts and a group photo from the
+# space station (public domain, real faces for the models to tell apart),
+# and four landscapes drawn at build time (nix/tests/cloud-photos-draw.py)
+# with the EXIF block a phone writes, places included. Half go up while the
+# background pass is already reading the first half, and every upload still
+# answers at once. Then the test checks that
 #
 #   * every photo was read once, and a second pass has nothing to do;
 #   * each astronaut's photos are one person and no one else's, with the
@@ -20,6 +20,9 @@
 #     none of it: no photo, no face, no name, and cannot rename anyone;
 #   * with losos.cloud.photos.faces off, the next pass deletes every face
 #     and person and keeps the camera's details.
+#
+# Last, the portraits go to the trash and the launch film's frames are taken
+# of the landscapes alone.
 #
 # The pictures for the pull request come from a browser on the box
 # (nix/tests/cloud-photos-shots.mjs). `beforeUi`, when given, is the admin
@@ -34,10 +37,19 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  # The admin UI without LosOS Diagrams' WebAssembly, as in
-  # nix/tests/mesh-collab.nix: nothing here uses it.
+  # The admin UI without LosOS Diagrams and the Lab, whose WebAssembly
+  # (Bevy among it) takes longer to build than this test runs: their pages
+  # are left out and their modules are empty stand-ins. Nothing here opens
+  # either; the shipped package builds both.
   noLab = ui: ui.overrideAttrs {
-    preBuild = "";
+    preBuild = ''
+      for pkg in core-pkg/losos_lab_core virt-pkg/losos_lab_virt \
+          render-pkg/webgpu/losos_lab_render render-pkg/webgl2/losos_lab_render; do
+        mkdir -p "src/lab/$(dirname "$pkg")"
+        printf 'export default async function init() {}\nexport class Lab {}\n' > "src/lab/$pkg.js"
+        : > "src/lab/''${pkg}_bg.wasm"
+      done
+    '';
     buildPhase = ''
       runHook preBuild
       cat > vite.nolab.config.ts <<'EOF'
@@ -74,14 +86,18 @@ let
     (nasa "jsc2018e095073_alt" "orig" "c9d1054dd50010477099b093e73aaff95759ab19099c143f5c18cb0b298ae96a")
     # Expedition 59, Koch among them.
     (nasa "iss059e098878" "orig" "774afc687eea73b90ae063589c56c13ce613b4dd2a7c8880da8a196ff290e818")
-    {
-      name = "bratislava.jpg";
-      path = pkgs.fetchurl {
-        url = "https://upload.wikimedia.org/wikipedia/commons/f/fd/Bratislava_01-2009_-_panoramio_-_adirricor_%286%29.jpg";
-        sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
-      };
-    }
   ];
+  landscapes =
+    pkgs.runCommand "losos-test-landscapes"
+      { nativeBuildInputs = [ (pkgs.python3.withPackages (ps: [ ps.pillow ])) ]; }
+      "python3 ${./cloud-photos-draw.py} $out";
+  pictures = pkgs.symlinkJoin {
+    name = "losos-test-pictures";
+    paths = [
+      photos
+      landscapes
+    ];
+  };
 
   shots = pkgs.writeShellScriptBin "cloud-photos-shots" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}/index.mjs
@@ -128,7 +144,7 @@ pkgs.testers.nixosTest {
       pkgs.curl
       shots
     ];
-    environment.etc."losos-test-photos".source = photos;
+    environment.etc."losos-test-photos".source = pictures;
     fonts.packages = [ pkgs.dejavu_fonts ];
     virtualisation = {
       memorySize = 3072;
@@ -180,12 +196,12 @@ pkgs.testers.nixosTest {
             " https://127.0.0.1/remote.php/dav/files/notshared/Pictures"
         )
         names = sorted(box.succeed("ls /etc/losos-test-photos").split())
-        assert len(names) == 10, names
-        first, rest = names[:5], names[5:]
+        assert len(names) == 13, names
+        first, rest = names[:6], names[6:]
         for n in first:
             upload(n)
         box.succeed("systemctl start --no-block losos-cloud-photos.service")
-        box.wait_until_succeeds("systemctl is-active losos-cloud-photos.service | grep -q activating", timeout=60)
+        box.wait_until_succeeds("systemctl show -P ActiveState losos-cloud-photos.service | grep -qx activating", timeout=60)
         took = [upload(n) for n in rest]
         print("uploads during the pass took", [round(t, 2) for t in took], "seconds")
         busy = box.succeed("systemctl is-active losos-cloud-photos.service || true").strip()
@@ -201,7 +217,7 @@ pkgs.testers.nixosTest {
         box.succeed("journalctl -u losos-cloud-photos.service -o cat | tail -n 3 | grep -q '^0 photos read'")
         data = call("GET", "/photos")
         print(json.dumps(data["index"]))
-        assert data["index"]["total"] == 10 and data["index"]["done"] == 10, data["index"]
+        assert data["index"]["total"] == 13 and data["index"]["done"] == 13, data["index"]
         assert data["index"]["faces"] is True
 
     by_name = {p["name"]: p for p in data["photos"]}
@@ -224,7 +240,7 @@ pkgs.testers.nixosTest {
         assert photos_of(glover) == {"KSC-20200814-PH-SPX01_0005.jpg", "NHQ202009150002.jpg", "jsc2020e032979.jpg"}, photos_of(glover)
         assert photos_of(meir) == {"NHQ202009150005.jpg", "jsc2025e078605_alt.jpg", "iss074e0365172.jpg"}, photos_of(meir)
         assert photos_of(koch) <= {"NHQ202009160004.jpg", "jsc2018e095073_alt.jpg", "iss059e098878.jpg"}, photos_of(koch)
-        assert not by_name["bratislava.jpg"]["people"]
+        assert not any(by_name[n]["people"] for n in ("old-town.jpg", "danube.jpg", "vienna.jpg", "tatras.jpg"))
         print("Koch's photos:", sorted(photos_of(koch)))
 
     with subtest("the camera's details came through"):
@@ -233,8 +249,9 @@ pkgs.testers.nixosTest {
         assert m["taken"].startswith("2026-03-09"), m
         e = by_name["iss059e098878.jpg"]
         assert e["camera"] == "NIKON D5" and e["taken"].startswith("2019-06-08"), e
-        b = by_name["bratislava.jpg"]
-        assert abs(b["lat"] - 48.14) < 0.1 and abs(b["lon"] - 17.1) < 0.1, b
+        b = by_name["old-town.jpg"]
+        assert abs(b["lat"] - 48.1437) < 0.001 and abs(b["lon"] - 17.1080) < 0.001, b
+        assert b["camera"] == "Google Pixel 8" and b["taken"] == "2025-05-17T18:42:10", b
         d = call("GET", f"/photos/{m['id']}")
         assert d["summary"]["lens"] and d["summary"]["exposure"] and d["summary"]["iso"], d["summary"]
         groups = {f["group"] for f in d["fields"]}
@@ -306,5 +323,22 @@ pkgs.testers.nixosTest {
             "runuser -u losos-cloud -- ${pkgs.sqlite}/bin/sqlite3 /var/lib/losos-cloud/cloud.db"
             " 'SELECT COUNT(*) FROM photo_faces; SELECT COUNT(*) FROM photo_people;'"
         ).split() == ["0", "0"]
+
+    with subtest("the film's frames: the owner's own trips, no one's face"):
+        # The portraits go to the trash and the next pass forgets them, so
+        # only the drawn landscapes are left on screen.
+        for n in names:
+            if n not in ("old-town.jpg", "danube.jpg", "vienna.jpg", "tatras.jpg"):
+                box.succeed(
+                    f"curl -sSf -k -u notshared:{app_password} -X DELETE"
+                    f" https://127.0.0.1/remote.php/dav/files/notshared/Pictures/{n}"
+                )
+        box.succeed("systemctl start losos-cloud-photos.service")
+        left = call("GET", "/photos")
+        assert sorted(p["name"] for p in left["photos"]) == ["danube.jpg", "old-town.jpg", "tatras.jpg", "vienna.jpg"]
+        status, out = box.execute(f"cloud-photos-shots film /tmp/shots/film matus '{PASSWORD}' 127.0.0.1 2>&1", timeout=3000)
+        print(out)
+        box.copy_from_machine("/tmp/shots/film", "shots")
+        assert status == 0, "the film's frames failed; shots/film/failed.png shows where"
   '';
 }
