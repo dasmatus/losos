@@ -70,26 +70,24 @@ let
 
   # Tom's picture and banner: a plain figure and a plain sky, in the
   # palette. Nobody's photo, and nothing anyone would mind seeing.
-  pictures =
-    pkgs.runCommand "moderation-pictures" { nativeBuildInputs = [ python ]; }
-      ''
-        mkdir -p $out
-        python3 - $out <<'EOF'
-        import sys
-        from PIL import Image, ImageDraw
-        out = sys.argv[1]
-        img = Image.new("RGB", (512, 512), (176, 106, 40))
-        d = ImageDraw.Draw(img)
-        d.ellipse([150, 90, 362, 302], fill=(248, 236, 220))
-        d.ellipse([80, 330, 432, 700], fill=(120, 70, 30))
-        img.save(f"{out}/picture.png")
-        img = Image.new("RGB", (1500, 500))
-        d = ImageDraw.Draw(img)
-        for y in range(500):
-            d.line([(0, y), (1500, y)], fill=(200 - y // 5, 120 - y // 8, 60))
-        img.save(f"{out}/banner.png")
-        EOF
-      '';
+  pictures = pkgs.runCommand "moderation-pictures" { nativeBuildInputs = [ python ]; } ''
+    mkdir -p $out
+    python3 - $out <<'EOF'
+    import sys
+    from PIL import Image, ImageDraw
+    out = sys.argv[1]
+    img = Image.new("RGB", (512, 512), (176, 106, 40))
+    d = ImageDraw.Draw(img)
+    d.ellipse([150, 90, 362, 302], fill=(248, 236, 220))
+    d.ellipse([80, 330, 432, 700], fill=(120, 70, 30))
+    img.save(f"{out}/picture.png")
+    img = Image.new("RGB", (1500, 500))
+    d = ImageDraw.Draw(img)
+    for y in range(500):
+        d.line([(0, y), (1500, y)], fill=(200 - y // 5, 120 - y // 8, 60))
+    img.save(f"{out}/banner.png")
+    EOF
+  '';
 in
 
 pkgs.testers.nixosTest {
