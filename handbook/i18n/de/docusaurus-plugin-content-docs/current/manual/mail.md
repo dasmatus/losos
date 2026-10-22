@@ -53,8 +53,11 @@ deinem eigenen Konto anzumelden.
   Skripte, ohne Formulare und ohne Bilder von außerhalb der Box, sodass der
   Absender nicht erfährt, dass du die Nachricht geöffnet hast. Eine
   Nachricht ohne reinen Text öffnet sich gleich in diesem Rahmen.
-- Anhänge werden auf deinen Rechner heruntergeladen. Sie öffnen sich nie in
-  der Seite.
+- Anhänge werden auf deinen Rechner heruntergeladen und öffnen sich nie in
+  der Seite. Was du sonst mit ihnen tun kannst, steht unter
+  [Dateien und LosOS Cloud](#files-and-losos-cloud).
+- Ist der Absender auf dieser Box und hat die Box Chat, beginnen **Chat**
+  und **Anrufen** in der Leiste der Nachricht ein Gespräch mit ihm.
 - Mit einem Rechtsklick auf eine Nachricht in der Liste antwortest du,
   markierst, archivierst oder verschiebst sie, ohne sie zu öffnen; siehe
   [das Rechtsklick-Menü](admin-pages#the-right-click-menu).
@@ -101,6 +104,28 @@ angemeldet ist.
 - Filter wirken auf Mail, die nach dem Speichern ankommt; Mail, die schon
   in einem Ordner liegt, bleibt, wo sie ist. Wird ein Ordner gelöscht,
   schaltet sich ein Filter aus, der nur dorthin verschoben hat.
+
+## Dateien und LosOS Cloud \{#files-and-losos-cloud}
+
+- **In LosOS Cloud speichern** neben einem Anhang legt ihn in den Ordner
+  **Mail** deiner LosOS Cloud. **Öffnen** öffnet ihn dann in der App, die
+  ihn bearbeitet: Markdown in Notizen, andere Textdateien im gemeinsamen
+  Editor.
+- Beim Schreiben fügen **Von diesem Computer anhängen** und **Aus LosOS
+  Cloud anhängen** Dateien hinzu, zusammen bis zu 20 MB. **Weiterleiten**
+  behält die Anhänge der Nachricht.
+- In LosOS Cloud öffnet ein Rechtsklick auf eine Datei und **Per Mail
+  senden** eine neue Nachricht mit der Datei im Anhang.
+
+## Die KI der Box fragen \{#ask-the-boxs-ai}
+
+Auf einer Box mit einem Sprachmodell für **Mit KI bauen** fragt
+**Zusammenfassen** in der Leiste der Nachricht die KI nach der offenen
+Nachricht. Das Modell läuft auf der Box, Nachricht und Antwort bleiben also
+dort, und es liest nur die Nachricht, nach der du gefragt hast. Es
+beantwortet eine Frage nach der anderen; auf einer kleinen Box kann eine
+Antwort ein paar Minuten dauern. Text in einer Nachricht, der der KI etwas
+befiehlt, zählt zur Nachricht und nicht als deine Bitte.
 
 ## Was Mail noch nicht kann \{#what-mail-does-not-do-yet}
 

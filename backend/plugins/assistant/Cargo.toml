@@ -1,0 +1,19 @@
+[package]
+name = "losos-plugin-assistant"
+description = "lososd plugin: questions to the box's own language model about what the person shows it"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+losos-plugin.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

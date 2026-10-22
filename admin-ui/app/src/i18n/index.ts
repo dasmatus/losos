@@ -32,6 +32,7 @@ import pins from "./pins";
 import profile from "./profile";
 import settings from "./settings";
 import shell from "./shell";
+import together from "./together";
 import tour from "./tour";
 import users from "./users";
 import widgets from "./widgets";
@@ -72,6 +73,7 @@ export const MESSAGES = {
   ...menu,
   ...mention,
   ...games,
+  ...together,
 };
 
 export type MessageKey = keyof typeof MESSAGES;
