@@ -167,8 +167,13 @@ async function strip(variant, width, shot, name, storageState) {
     cdp.on('Animation.animationStarted', ({ animation }) => started.push(animation.id));
     await cdp.send('Animation.enable');
     await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
-    // Only what the steps start: the page's own entrance has played.
+    // Only what the steps start: the page's own entrance has played. The
+    // page keeps its own list too, for animations the protocol never
+    // reports as started (a dialog's way out, on a slow emulated machine).
     started = [];
+    await page.evaluate(() => {
+      window.__lososBeforeStrip = new Set(document.getAnimations());
+    });
     for (const s of frozen) {
       // The stills already waited for each control to be ready, and a frozen
       // press would keep Playwright waiting for it to settle.
@@ -189,6 +194,12 @@ async function strip(variant, width, shot, name, storageState) {
         }
       }
       ids = live;
+      const fromPage = await page.evaluate((time) => {
+        const fresh = document.getAnimations().filter((a) => !window.__lososBeforeStrip.has(a));
+        for (const a of fresh) a.currentTime = time;
+        return fresh.length;
+      }, ms);
+      if (ms === shot.strip[0]) console.log(`strip ${name}: the page lists ${fromPage} new animations`);
       const path = join(args.out, `${name}-${String(ms).padStart(3, '0')}ms.png`);
       await page.screenshot({ path, timeout: 180000 });
     }
