@@ -67,6 +67,16 @@ async function shot(page, name) {
 
 const contactsLink = (page) => page.getByRole("link", { name: "Contacts", exact: true });
 
+/** The overview once its app tiles are in, so Before and After show the
+ *  same state rather than one of them still looking for the apps. */
+async function overview(page) {
+  await page.goto(`${ORIGIN}/`);
+  await page
+    .getByText("Looking for the apps on this box.")
+    .waitFor({ state: "detached", timeout: 120_000 })
+    .catch(() => {});
+}
+
 /** Mail's To field with "ev" typed into it. */
 async function mailTo(page, name) {
   await page.goto(`${ORIGIN}/mail`);
@@ -93,7 +103,7 @@ async function chatPicker(page, name) {
 
 async function before() {
   const owner = await person("matus", process.env.CONTACTS_MATUS_PASSWORD);
-  await owner.goto(`${ORIGIN}/`);
+  await overview(owner);
   await owner.getByRole("link", { name: "Chat", exact: true }).waitFor();
   await shot(owner, "sidebar-before");
   await mailTo(owner, "mail-to-before");
@@ -104,7 +114,7 @@ async function off() {
   // Without the shared side Contacts stays, LosOS Cloud keeps the book;
   // only the ways to reach someone through chat and mail are gone.
   const owner = await person("matus", process.env.CONTACTS_MATUS_PASSWORD);
-  await owner.goto(`${ORIGIN}/`);
+  await overview(owner);
   await contactsLink(owner).waitFor();
   if ((await owner.getByRole("link", { name: "Chat", exact: true }).count()) !== 0) {
     throw new Error("Chat is in the sidebar with sharing off");
@@ -126,7 +136,7 @@ async function off() {
 
 async function on() {
   const owner = await person("matus", process.env.CONTACTS_MATUS_PASSWORD);
-  await owner.goto(`${ORIGIN}/`);
+  await overview(owner);
   await contactsLink(owner).waitFor();
   await shot(owner, "sidebar-after");
 
