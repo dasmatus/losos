@@ -3317,8 +3317,13 @@ export function subscribeCalendar(sub: {
 }
 
 /** POST /cloud/api/calendar/import — an .ics file into a calendar, or a new one. */
-export function importCalendar(file: Blob, calendar?: string): Promise<{ calendar: CalendarInfo; report: CalendarReport }> {
-  const q = calendar !== undefined && calendar !== "" ? `?calendar=${encodeURIComponent(calendar)}` : "";
+export function importCalendar(file: Blob, calendar?: string, name?: string): Promise<{ calendar: CalendarInfo; report: CalendarReport }> {
+  const q =
+    calendar !== undefined && calendar !== ""
+      ? `?calendar=${encodeURIComponent(calendar)}`
+      : name
+        ? `?name=${encodeURIComponent(name)}`
+        : "";
   return calendarCall(`/import${q}`, { method: "POST", contentType: "text/calendar", body: file });
 }
 

@@ -751,22 +751,15 @@ fn object_uri(uid: &str) -> String {
 /// An `.ics` file's events into one of the person's calendars. An event
 /// whose UID is there already is rewritten, so the same file twice adds
 /// nothing.
+/// An .ics file into the calendar `uri`, or, without one, into a new
+/// calendar called `name`, else what the file calls itself, else "Imported".
 pub fn import(
     store: &Store,
     login: &str,
     uri: Option<&str>,
+    name: Option<&str>,
     bytes: &[u8],
 ) -> Result<(CalendarView, Report)> {
-    let c = match uri {
-        Some(u) => calendar(store, login, u)?,
-        None => calendars(store, login)?
-            .into_iter()
-            .find(|c| !read_only(store, c.id))
-            .ok_or(CalendarError::NoCalendar)?,
-    };
-    if read_only(store, c.id) {
-        return Err(CalendarError::ReadOnly);
-    }
     let text = std::str::from_utf8(bytes)
         .map_err(|_| CalendarError::Bad("the file is not UTF-8 text".into()))?;
     if !text
@@ -777,6 +770,20 @@ pub fn import(
         return Err(CalendarError::Bad(
             "the file is not an iCalendar (.ics) file".into(),
         ));
+    }
+    let c = match uri {
+        Some(u) => calendar(store, login, u)?,
+        None => {
+            let own = ical::parse(text).name;
+            let named = [name.unwrap_or(""), &own]
+                .into_iter()
+                .find_map(|n| clean_name(n).ok())
+                .unwrap_or_else(|| "Imported".to_owned());
+            make(store, login, "calendar", &named, None)?
+        }
+    };
+    if read_only(store, c.id) {
+        return Err(CalendarError::ReadOnly);
     }
     let total = ical::split(text, usize::MAX).len();
     let pieces = ical::split(text, MAX_EVENTS);
@@ -1418,7 +1425,7 @@ pub fn public(cloud: &Cloud, method: &str, path: &str) -> Option<HttpResponse> {
 /// DELETE /calendar/calendars/<uri>/publish  and taken back
 /// POST   /calendar/calendars/<uri>/refresh  a subscription, read now
 /// POST   /calendar/subscriptions            {url, name?, color?, refresh?}
-/// POST   /calendar/import?calendar=         an .ics as the body
+/// POST   /calendar/import?calendar=&name=   an .ics, into one or a new one
 /// GET    /calendar/events?from=&to=         occurrences, days
 /// POST   /calendar/events                   {calendar, ...fields}
 /// GET    /calendar/events/<id>              one, as it repeats
@@ -1492,8 +1499,9 @@ pub async fn api(
             Ok(b) => {
                 let q = query(req);
                 let uri = q.get("calendar").filter(|s| !s.is_empty()).cloned();
+                let name = q.get("name").cloned();
                 answer_json(
-                    import(store, &login, uri.as_deref(), &b)
+                    import(store, &login, uri.as_deref(), name.as_deref(), &b)
                         .map(|(c, report)| json!({ "calendar": c, "report": report })),
                 )
             }
@@ -1717,12 +1725,18 @@ mod tests {
     fn an_import_twice_updates_and_a_published_calendar_serves_it() {
         let (_d, cloud) = cloud();
         let s = &cloud.store;
-        let (cal, r) = import(s, "matus", None, FEED.as_bytes()).unwrap();
+        let (cal, r) = import(s, "matus", None, None, FEED.as_bytes()).unwrap();
         assert_eq!((r.added, r.updated), (2, 0));
-        assert_eq!(cal.uri, "personal");
-        let (_, r) = import(s, "matus", None, FEED.as_bytes()).unwrap();
+        assert!(cal.uri.starts_with("calendar-") && cal.name == "Tax deadlines");
+        let (_, r) = import(s, "matus", Some(&cal.uri), None, FEED.as_bytes()).unwrap();
         assert_eq!((r.added, r.updated), (0, 2));
-        assert!(import(s, "matus", None, b"BEGIN:VCARD\r\nEND:VCARD\r\n").is_err());
+        let (named, _) = import(s, "matus", None, Some("Taxes"), FEED.as_bytes()).unwrap();
+        assert_eq!(named.name, "Taxes");
+        let before = calendars(s, "matus").unwrap().len();
+        assert!(import(s, "matus", None, None, b"BEGIN:VCARD\r\nEND:VCARD\r\n").is_err());
+        assert_eq!(calendars(s, "matus").unwrap().len(), before);
+        let (_, r) = import(s, "matus", Some("personal"), None, FEED.as_bytes()).unwrap();
+        assert_eq!(r.added, 2);
         let published = publish(s, "matus", "personal", true)
             .unwrap()
             .published

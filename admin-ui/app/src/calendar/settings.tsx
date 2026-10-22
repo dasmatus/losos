@@ -226,7 +226,7 @@ export function ImportDialog({ calendars, onClose, onImported }: { calendars: Ca
     setBusy(file.name);
     setProblem(null);
     setDone(null);
-    importCalendar(file, into)
+    importCalendar(file, into, file.name.replace(/\.ics$/i, ""))
       .then(({ calendar, report }) => {
         setDone({ name: calendar.name, report });
         onImported();
