@@ -44,6 +44,7 @@ pub mod pulls;
 pub mod reviewer;
 pub mod server;
 pub mod statuses;
+pub mod tracker;
 pub mod transport;
 pub mod worktrees;
 

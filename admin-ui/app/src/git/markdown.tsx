@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Link } from "react-router-dom";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 
@@ -6,7 +7,10 @@ import { cn } from "@/lib/utils";
  * draws the common part of it (headings, paragraphs, lists, quotes, code,
  * tables, links, emphasis) as React elements, never as HTML from the text, so a
  * comment cannot put markup or script on the page. Raw HTML in the text
- * stays text; a link goes only to http(s), mailto or a path on the box. */
+ * stays text; a link goes only to http(s), mailto or a path on the box.
+ * Given the keys of the tracker's projects, `LOS-12` becomes a link to
+ * that issue and `@eva` is set apart, as LosOS Git reads them
+ * (backend/src/forge/tracker/refs.rs). */
 
 type Block =
   | { kind: "heading"; level: number; text: string }
@@ -131,13 +135,52 @@ function safeHref(url: string): string | null {
 
 const INLINE = /(`+)([\s\S]*?[^`])\1(?!`)|\*\*([\s\S]+?)\*\*|\*([^*\s](?:[^*]*[^*\s])?)\*|\b_([^_\s](?:[^_]*[^_\s])?)_\b|!?\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/gu;
 
+/* The project keys of the Markdown being drawn, set for the length of one
+ * synchronous render by `Markdown`. */
+let projectKeys: ReadonlySet<string> | null = null;
+
+const REFS = /\b([A-Z][A-Z0-9]{1,5})-(\d+)\b|(^|[^\w.@])@([A-Za-z0-9][A-Za-z0-9_.-]*[A-Za-z0-9]|[A-Za-z0-9])/gu;
+
+/** Plain text, with issue keys and @-mentions picked out. */
+function refs(text: string, key: string): React.ReactNode[] {
+  if (projectKeys === null) return [text];
+  const keys = projectKeys;
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  let n = 0;
+  for (const m of text.matchAll(REFS)) {
+    const k = `${key}-r${n++}`;
+    if (m[1] !== undefined && m[2] !== undefined) {
+      if (!keys.has(m[1])) continue;
+      if (m.index > last) out.push(text.slice(last, m.index));
+      out.push(
+        <Link key={k} to={`/issues/${m[1]}-${m[2]}`} className="font-medium text-accent hover:underline" data-issue-ref>
+          {m[0]}
+        </Link>,
+      );
+      last = m.index + m[0].length;
+    } else if (m[4] !== undefined) {
+      const at = m.index + (m[3]?.length ?? 0);
+      if (at > last) out.push(text.slice(last, at));
+      out.push(
+        <span key={k} className="rounded-control bg-accent-wash px-1 font-medium text-accent" data-mention>
+          @{m[4]}
+        </span>,
+      );
+      last = at + 1 + m[4].length;
+    }
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 function inline(text: string, key = "i"): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   let last = 0;
   let n = 0;
   for (const m of text.matchAll(INLINE)) {
     const at = m.index;
-    if (at > last) out.push(text.slice(last, at));
+    if (at > last) out.push(...refs(text.slice(last, at), `${key}-t${n}`));
     const k = `${key}-${n++}`;
     if (m[2] !== undefined) {
       out.push(
@@ -169,7 +212,7 @@ function inline(text: string, key = "i"): React.ReactNode[] {
     }
     last = at + m[0].length;
   }
-  if (last < text.length) out.push(text.slice(last));
+  if (last < text.length) out.push(...refs(text.slice(last), `${key}-t${n}`));
   return out;
 }
 
@@ -180,9 +223,27 @@ function lines(text: string, key: string): React.ReactNode[] {
 
 const HEADING = ["text-[19px]", "text-[17px]", "text-[15px]", "text-[14px]", "text-[13.5px]", "text-[13px]"];
 
-export function Markdown({ source, className }: { source: string; className?: string }) {
+export function Markdown({
+  source,
+  className,
+  issueKeys,
+}: {
+  source: string;
+  className?: string;
+  /** The tracker's project keys, to link `LOS-12` and mark `@eva`. */
+  issueKeys?: ReadonlySet<string>;
+}) {
   const t = useT();
   const parsed = React.useMemo(() => blocks(source), [source]);
+  projectKeys = issueKeys ?? null;
+  try {
+    return drawn(parsed, className, t);
+  } finally {
+    projectKeys = null;
+  }
+}
+
+function drawn(parsed: Block[], className: string | undefined, t: ReturnType<typeof useT>) {
   return (
     <div className={cn("flex min-w-0 flex-col gap-3 text-[14px] leading-relaxed text-ink [overflow-wrap:anywhere]", className)} data-markdown>
       {parsed.map((b, i) => {
