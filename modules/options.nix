@@ -1571,6 +1571,19 @@ in
       '';
     };
 
+    mail.keyserver = lib.mkOption {
+      type = lib.types.nullOr (lib.types.strMatching "https://[A-Za-z0-9.-]+(:[0-9]+)?");
+      default = "https://keys.openpgp.org";
+      example = "https://keys.mailvelope.com";
+      description = ''
+        The OpenPGP keyserver LosOS Mail asks for someone's key when
+        neither LosOS Contacts, Autocrypt nor the recipient's own Web Key
+        Directory has one. It is asked by email address over the VKS
+        interface (`/vks/v1/by-email/`), which keys.openpgp.org and Hagrid
+        servers answer. Null asks no keyserver.
+      '';
+    };
+
     # ── Mesh CI (modules/ci.nix) ─────────────────────────────────────────────
     ci.enable = lib.mkOption {
       type = lib.types.bool;

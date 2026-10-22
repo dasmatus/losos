@@ -58,6 +58,8 @@ let
   # The real path is /persist/home/shared/data, bind-mounted here by
   # modules/impermanence.nix; the unit sees the bind-mounted view.
   dataDir = "/home/shared/data/mail";
+  # The box's Web Key Directory: public keys lososd publishes, nginx serves.
+  wkdDir = "/var/lib/losos-wkd";
   credential = "%{file:/run/credentials/losos-mail.service/mail-master}%";
 
   fscrypt = config.losos.shared.fscrypt.enable;
@@ -247,7 +249,41 @@ in
         LOSOS_MAIL_ADDR = "127.0.0.1:${toString port}";
         LOSOS_MAIL_SECRET_FILE = "%d/mail-master";
         LOSOS_MAIL_DOMAIN = domain;
+        # OpenPGP (backend/src/mail_pgp.rs): people's keys, the private
+        # half locked with their passphrase and sealed again with
+        # systemd-creds, under lososd's own 0700 state directory; the
+        # public halves in the Web Key Directory nginx serves.
+        LOSOS_MAIL_KEYS_DIR = "/var/lib/losos/mail-keys";
+        LOSOS_MAIL_WKD_DIR = wkdDir;
+        LOSOS_MAIL_KEYSERVER = lib.optionalString (
+          config.losos.mail.keyserver != null
+        ) config.losos.mail.keyserver;
       };
+    };
+
+    # ── The box's Web Key Directory ────────────────────────────────────────
+    # Public keys only, written by lososd when a person sets their key and
+    # served as plain files, so a mail program anywhere finds the key of
+    # eva@<domain> the way WKD says (draft-koch-openpgp-webkey-service):
+    # the direct method's /.well-known/openpgpkey/hu/<hash> and the
+    # advanced method's /.well-known/openpgpkey/<domain>/hu/<hash>, which
+    # lososd writes under both paths. Not behind the LAN-only guard: a key
+    # directory is for the people who do not have the key yet, which is
+    # everyone outside. Nothing here is secret, and nginx serves nothing
+    # but these files under that prefix.
+    systemd.tmpfiles.rules = [ "d ${wkdDir} 0755 root root -" ];
+
+    services.nginx.virtualHosts."losos-front".locations."/.well-known/openpgpkey/" = {
+      alias = "${wkdDir}/";
+      extraConfig = ''
+        default_type application/octet-stream;
+        autoindex off;
+        # Every mail program asks from anywhere; WKD asks servers to say so.
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Cache-Control "public, max-age=3600" always;
+        limit_except GET HEAD { deny all; }
+      '';
     };
   };
 }

@@ -8,7 +8,11 @@
  * /api/mail/messages/<id>/html, shown in an <iframe sandbox> without
  * allow-scripts or allow-same-origin, under a policy that loads nothing off
  * the message (modules/containers.nix). The plain text, when there is one,
- * is the default view; HTML is one button away. */
+ * is the default view; HTML is one button away.
+ *
+ * OpenPGP mail is the exception: the box cannot read it, so the page fetches
+ * the raw message, opens it in the browser (./pgp.ts, ./encryption.tsx) and
+ * shows its text and attachments, never its HTML. */
 
 import * as React from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
@@ -32,6 +36,9 @@ import {
   SpamIcon,
   ArrowTurnForwardIcon,
   Archive02Icon,
+  CheckmarkBadge01Icon,
+  Key01Icon,
+  SquareLock02Icon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { PersonAvatar, type PersonLike } from "@/components/person";
@@ -46,6 +53,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PaneHeader } from "@/screens/settings/rows";
@@ -53,9 +61,11 @@ import {
   ApiError,
   changeMailMessage,
   deleteMailMessage,
+  findMailKeys,
   getMail,
   getMailMessage,
   getMailMessages,
+  getMailRaw,
   getProfiles,
   loadMe,
   mailAttachmentUrl,
@@ -74,6 +84,18 @@ import {
 import { useLocale, useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import {
+  KeyDialog,
+  SecurityNote,
+  sourceName,
+  UnlockDialog,
+  useOwnKey,
+  useRecipients,
+  useUnlocked,
+  type OwnKey,
+  type Reading,
+} from "./encryption";
+import { CannotOpen, openMail, seal, type Opened } from "./pgp";
 
 /* How often the open folder and the counts are read again. */
 const REFRESH_MS = 30_000;
@@ -191,12 +213,12 @@ function when(iso: string, locale: string): string {
 }
 
 /* The quoted text under a reply or a forward. */
-function quoted(m: MailMessage, locale: string, t: ReturnType<typeof useT>): string {
+function quoted(m: MailMessage, text: string, locale: string, t: ReturnType<typeof useT>): string {
   const head = t("mail.compose.wrote", {
     when: new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(m.receivedAt)),
     who: who(m.from),
   });
-  const body = (m.text !== "" ? m.text : m.preview)
+  const body = (text !== "" ? text : m.preview)
     .split("\n")
     .map((line) => `> ${line}`)
     .join("\n");
@@ -281,6 +303,10 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
   const [openError, setOpenError] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<MailDraft | null>(null);
   const [column, setColumn] = React.useState<Column>("list");
+  const [own, setOwn] = useOwnKey();
+  const [keys, setKeys] = React.useState(false);
+  // What an opened OpenPGP message said, for quoting it in a reply.
+  const [opened, setOpened] = React.useState<{ id: string; text: string } | null>(null);
 
   const folder = home.mailboxes.find((f) => f.id === folderId) ?? inbox;
 
@@ -363,6 +389,8 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
     }
   };
 
+  const textOf = (m: MailMessage) => (opened?.id === m.id ? opened.text : m.pgp === "encrypted" ? "" : m.text);
+
   const reply = (m: MailMessage, all: boolean) => {
     const to = (m.replyTo.length > 0 ? m.replyTo : m.from).map((a) => a.email);
     const cc = all
@@ -372,13 +400,13 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
       to,
       cc,
       subject: withPrefix(t("mail.compose.re"), m.subject),
-      text: quoted(m, locale, t),
+      text: quoted(m, textOf(m), locale, t),
       inReplyTo: m.id,
     });
   };
 
   const forward = (m: MailMessage) => {
-    setDraft({ to: [], cc: [], subject: withPrefix(t("mail.compose.fwd"), m.subject), text: quoted(m, locale, t) });
+    setDraft({ to: [], cc: [], subject: withPrefix(t("mail.compose.fwd"), m.subject), text: quoted(m, textOf(m), locale, t) });
   };
 
   const faces = useFaces(home);
@@ -392,10 +420,21 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
         <div className="min-w-0 flex-1">
           <PaneHeader title={t("mail.title")} summary={t("mail.summary", { address: home.address })} />
         </div>
-        <Button onClick={() => setDraft({ to: [], cc: [], subject: "", text: "" })} className="shrink-0">
-          <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-          {t("mail.compose.new")}
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button variant="secondary" onClick={() => setKeys(true)} data-testid="mail-encryption">
+            <HugeiconsIcon
+              icon={own.state === "set" ? SquareLock02Icon : Key01Icon}
+              strokeWidth={1.5}
+              color="currentColor"
+              aria-hidden="true"
+            />
+            {t("mail.pgp.button")}
+          </Button>
+          <Button onClick={() => setDraft({ to: [], cc: [], subject: "", text: "" })}>
+            <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            {t("mail.compose.new")}
+          </Button>
+        </div>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -542,6 +581,9 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
           ) : (
             <Reader
               message={open}
+              own={own}
+              onSetUp={() => setKeys(true)}
+              onOpened={(text) => setOpened({ id: open.id, text })}
               faces={faces}
               locale={locale}
               folders={home.mailboxes}
@@ -577,6 +619,8 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
         <Composer
           initial={draft}
           from={home.address}
+          own={own}
+          onSetUp={() => setKeys(true)}
           people={home.people.map((p) => ({ address: p.address, label: p.displayName || p.name }))}
           onClose={() => setDraft(null)}
           onSent={() => {
@@ -585,6 +629,15 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
             void refreshHome();
             void refreshList();
           }}
+        />
+      )}
+      {keys && (
+        <KeyDialog
+          own={own}
+          address={home.address}
+          name={home.people.find((p) => p.address === home.address)?.displayName ?? home.name}
+          onOwn={setOwn}
+          onClose={() => setKeys(false)}
         />
       )}
     </TooltipProvider>
@@ -633,7 +686,13 @@ function MessageRow({
           <span className={cn("min-w-0 flex-1 truncate text-sm", !m.seen && "font-medium")}>
             {(sent ? t("mail.toPrefix") + " " : "") + (who(people) || t("mail.nobody"))}
           </span>
-          {m.hasAttachment && (
+          {m.pgp === "encrypted" && (
+            <HugeiconsIcon icon={SquareLock02Icon} className="size-3.5 shrink-0 text-ok" aria-label={t("mail.pgp.list.encrypted")} />
+          )}
+          {m.pgp === "signed" && (
+            <HugeiconsIcon icon={CheckmarkBadge01Icon} className="size-3.5 shrink-0 text-muted" aria-label={t("mail.pgp.list.signed")} />
+          )}
+          {m.hasAttachment && m.pgp !== "encrypted" && (
             <HugeiconsIcon icon={Attachment01Icon} className="size-3.5 shrink-0 text-muted" aria-label={t("mail.attachment")} />
           )}
           {m.flagged && (
@@ -646,15 +705,100 @@ function MessageRow({
         <span className={cn("truncate pl-4 text-sm", !m.seen && "font-medium")}>
           {m.subject || t("mail.noSubject")}
         </span>
-        <span className="line-clamp-1 pl-4 text-[13px] text-muted">{m.preview}</span>
+        <span className="line-clamp-1 pl-4 text-[13px] text-muted">
+          {m.pgp === "encrypted" ? t("mail.pgp.list.encrypted") : m.preview}
+        </span>
         </span>
       </button>
     </li>
   );
 }
 
+/* An OpenPGP message, opened in the browser: fetched raw, decrypted with the
+ * person's unlocked key, its signature checked against the sender's keys.
+ * Opened again when the key is unlocked or locked. */
+function useOpened(m: MailMessage, own: OwnKey): { reading: Reading | null; opened: Opened | null } {
+  const unlocked = useUnlocked(own);
+  const [state, setState] = React.useState<{ reading: Reading | null; opened: Opened | null }>({
+    reading: m.pgp !== null ? { state: "opening" } : null,
+    opened: null,
+  });
+  const ownState = own.state;
+  React.useEffect(() => {
+    if (m.pgp === null) {
+      setState({ reading: null, opened: null });
+      return;
+    }
+    if (ownState === "loading") return;
+    const controller = new AbortController();
+    const from = m.from[0]?.email ?? "";
+    setState({ reading: { state: "opening" }, opened: null });
+    void (async () => {
+      try {
+        const [raw, found] = await Promise.all([
+          getMailRaw(m.id, { signal: controller.signal }),
+          from !== ""
+            ? findMailKeys(from, { signal: controller.signal }).catch(() => ({ keys: [] }))
+            : Promise.resolve({ keys: [] }),
+        ]);
+        const opened = await openMail(
+          raw,
+          unlocked,
+          found.keys.map((k) => k.publicKey),
+        );
+        if (controller.signal.aborted) return;
+        setState({
+          reading:
+            opened.kind === "plain"
+              ? null
+              : { state: "open", kind: opened.kind, inline: opened.inline, signature: opened.signature, from },
+          opened,
+        });
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (error instanceof CannotOpen) {
+          const reading: Reading =
+            error.kind === "locked"
+              ? ownState === "set"
+                ? { state: "locked" }
+                : { state: "noKey" }
+              : { state: error.kind };
+          setState({ reading, opened: null });
+        } else {
+          setState({ reading: { state: "broken" }, opened: null });
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, [m.id, m.pgp, m.from, unlocked, ownState]);
+  return state;
+}
+
+/* A decrypted message's HTML, as text: it never becomes a document here,
+ * so nothing in it loads or runs. */
+function htmlText(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  for (const el of doc.querySelectorAll("br")) el.replaceWith("\n");
+  for (const el of doc.querySelectorAll("p, div, li, tr, h1, h2, h3, h4, h5, h6")) el.append("\n");
+  return (doc.body.textContent ?? "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/* Decrypted attachments, as downloads from blob: URLs that live as long as
+ * the message is open. */
+function useBlobUrls(files: Opened["attachments"] | undefined): string[] {
+  const urls = React.useMemo(
+    () => (files ?? []).map((f) => URL.createObjectURL(new Blob([f.bytes as BlobPart], { type: f.type }))),
+    [files],
+  );
+  React.useEffect(() => () => urls.forEach((u) => URL.revokeObjectURL(u)), [urls]);
+  return urls;
+}
+
 function Reader({
   message: m,
+  own,
+  onSetUp,
+  onOpened,
   faces,
   locale,
   folders,
@@ -668,6 +812,9 @@ function Reader({
   onDelete,
 }: {
   message: MailMessage;
+  own: OwnKey;
+  onSetUp: () => void;
+  onOpened: (text: string) => void;
   faces: Faces;
   locale: string;
   folders: readonly MailFolder[];
@@ -686,6 +833,15 @@ function Reader({
   const [html, setHtml] = React.useState(m.text.trim() === "" && m.hasHtml);
   React.useEffect(() => setHtml(m.text.trim() === "" && m.hasHtml), [m.id, m.text, m.hasHtml]);
   const others = folders.filter((f) => !m.mailboxIds.includes(f.id) && f.role !== "drafts");
+  const { reading, opened } = useOpened(m, own);
+  const [unlocking, setUnlocking] = React.useState(false);
+  const pgp = m.pgp !== null;
+  const openedText = opened === null ? "" : opened.text.trim() !== "" ? opened.text : opened.html !== null ? htmlText(opened.html) : "";
+  React.useEffect(() => {
+    if (opened !== null) onOpened(openedText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened]);
+  const blobs = useBlobUrls(opened?.attachments);
 
   // Icon buttons name themselves in a tooltip, as the sidebar's rail does.
   const tool = (icon: IconSvgElement, label: string, onClick: () => void, pressed?: boolean) => (
@@ -736,7 +892,9 @@ function Reader({
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="flex flex-col gap-1 px-5 pt-4 pb-3">
-          <h2 className="text-[17px] leading-tight font-semibold tracking-tight break-words">{m.subject || t("mail.noSubject")}</h2>
+          <h2 className="text-[17px] leading-tight font-semibold tracking-tight break-words">
+            {opened?.subject || m.subject || t("mail.noSubject")}
+          </h2>
           <p className="flex items-center gap-2 pt-1 text-sm break-words">
             {m.from[0] !== undefined && <PersonAvatar person={faces(m.from[0])} size="sm" />}
             <span className="min-w-0">
@@ -759,15 +917,24 @@ function Reader({
           <p className="text-[13px] text-muted">
             {new Intl.DateTimeFormat(locale, { dateStyle: "full", timeStyle: "short" }).format(new Date(m.receivedAt))}
           </p>
-          {m.hasHtml && m.text.trim() !== "" && (
+          {!pgp && m.hasHtml && m.text.trim() !== "" && (
             <div className="pt-1">
               <Button variant="link" size="xs" className="px-0" onClick={() => setHtml(!html)}>
                 {html ? t("mail.showText") : t("mail.showHtml")}
               </Button>
             </div>
           )}
+          {reading !== null && (
+            <div className="pt-2">
+              <SecurityNote
+                reading={reading}
+                onUnlock={() => setUnlocking(true)}
+                onSetUp={onSetUp}
+              />
+            </div>
+          )}
         </div>
-        {m.attachments.length > 0 && (
+        {!pgp && m.attachments.length > 0 && (
           <ul className="flex flex-wrap gap-2 px-5 pb-3" aria-label={t("mail.attachments")}>
             {m.attachments.map((a) => (
               <li key={a.blobId}>
@@ -784,7 +951,33 @@ function Reader({
             ))}
           </ul>
         )}
-        {html ? (
+        {pgp && opened !== null && opened.attachments.length > 0 && (
+          <ul className="flex flex-wrap gap-2 px-5 pb-3" aria-label={t("mail.attachments")}>
+            {opened.attachments.map((a, i) => (
+              <li key={`${i}-${a.name}`}>
+                <a
+                  href={blobs[i]}
+                  download={a.name}
+                  className="flex items-center gap-2 rounded-control border border-line px-2.5 py-1.5 text-[13px] hover:bg-sunk"
+                >
+                  <HugeiconsIcon icon={Attachment01Icon} className="size-3.5 text-muted" />
+                  <span className="max-w-48 truncate">{a.name}</span>
+                  <span className="text-muted tabular-nums">{size(a.bytes.length)}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+        {pgp ? (
+          opened !== null && (
+            <pre
+              data-testid="mail-opened"
+              className="border-t border-hair px-5 py-4 font-sans text-sm leading-relaxed break-words whitespace-pre-wrap animate-fade-in"
+            >
+              {openedText}
+            </pre>
+          )
+        ) : html ? (
           // White, as senders lay their HTML out for it, and inset like a card
           // so it does not read as a hole in the dark theme.
           <div className="mx-5 mb-5 flex min-h-80 flex-1 overflow-hidden rounded-card border border-line">
@@ -802,19 +995,29 @@ function Reader({
           </pre>
         )}
       </div>
+      {unlocking && own.state === "set" && <UnlockDialog own={own.key} onClose={() => setUnlocking(false)} />}
     </>
   );
+}
+
+/* Something that looks like an address, for the key lookup while typing. */
+function addressLike(s: string): boolean {
+  return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(s);
 }
 
 function Composer({
   initial,
   from,
+  own,
+  onSetUp,
   people,
   onClose,
   onSent,
 }: {
   initial: MailDraft;
   from: string;
+  own: OwnKey;
+  onSetUp: () => void;
   people: readonly { address: string; label: string }[];
   onClose: () => void;
   onSent: () => void;
@@ -827,18 +1030,56 @@ function Composer({
   const [sending, setSending] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [showCc, setShowCc] = React.useState(initial.cc.length > 0);
+  const [unlocking, setUnlocking] = React.useState(false);
   const list = (value: string) =>
     value
       .split(/[,;]/)
       .map((s) => s.trim())
       .filter((s) => s !== "");
 
-  const send = async (event: React.FormEvent) => {
-    event.preventDefault();
+  // OpenPGP: encrypt by itself once every recipient has a key, until the
+  // person decides; sign whenever there is a key to sign with.
+  const hasKey = own.state === "set";
+  const unlocked = useUnlocked(own);
+  const recipients = React.useMemo(
+    () => [...new Set([...list(to), ...list(cc)].map((a) => a.toLowerCase()))].filter(addressLike),
+    [to, cc],
+  );
+  const keys = useRecipients(recipients);
+  const allKeys =
+    recipients.length > 0 && recipients.every((a) => keys.get(a)?.state === "found");
+  const [encryptChoice, setEncryptChoice] = React.useState<boolean | null>(null);
+  const [signChoice, setSignChoice] = React.useState<boolean | null>(null);
+  const [inline, setInline] = React.useState(false);
+  const encrypt = hasKey && (encryptChoice ?? allKeys);
+  const sign = hasKey && (signChoice ?? (encrypt || unlocked !== null));
+  const missing = encrypt ? recipients.filter((a) => keys.get(a)?.state === "none") : [];
+  const looking = encrypt && recipients.some((a) => keys.get(a) === undefined || keys.get(a)?.state === "looking");
+
+  const deliver = async () => {
     setSending(true);
     setProblem(null);
     try {
-      const draft: MailDraft = { to: list(to), cc: list(cc), subject, text };
+      let made: { text: string; pgp?: MailDraft["pgp"] } = { text };
+      if (own.state === "set" && (encrypt || sign)) {
+        const encryptTo: string[] = [];
+        if (encrypt) {
+          for (const a of recipients) {
+            const r = keys.get(a);
+            if (r?.state !== "found") throw new Error(t("mail.pgp.compose.missing", { who: a }));
+            encryptTo.push(r.key.publicKey);
+          }
+          // And to the sender, so the copy in Sent can be read again.
+          encryptTo.push(own.key.publicKey);
+        }
+        try {
+          made = await seal({ text, encryptTo, signWith: sign ? unlocked : null, inline });
+        } catch (error) {
+          throw new Error(t("mail.pgp.compose.failed", { detail: message(error) }));
+        }
+      }
+      const draft: MailDraft = { to: list(to), cc: list(cc), subject, text: made.text };
+      if (made.pgp !== undefined) draft.pgp = made.pgp;
       if (initial.inReplyTo !== undefined) draft.inReplyTo = initial.inReplyTo;
       await sendMail(draft);
       onSent();
@@ -846,6 +1087,15 @@ function Composer({
       setProblem(message(error));
       setSending(false);
     }
+  };
+
+  const send = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (sign && unlocked === null) {
+      setUnlocking(true);
+      return;
+    }
+    void deliver();
   };
 
   return (
@@ -857,7 +1107,7 @@ function Composer({
       labelledBy="mail-compose-title"
       dialogClassName="w-[min(40rem,calc(100vw-1rem))]"
     >
-      <form onSubmit={(event) => void send(event)}>
+      <form onSubmit={send}>
         <DialogHeader>
           <DialogTitle id="mail-compose-title">
             {initial.inReplyTo !== undefined ? t("mail.compose.reply") : t("mail.compose.title")}
@@ -898,6 +1148,45 @@ function Composer({
               </option>
             ))}
           </datalist>
+          {hasKey && recipients.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5" aria-live="polite">
+              {recipients.map((a) => {
+                const r = keys.get(a);
+                const state = r?.state ?? "looking";
+                return (
+                  <li
+                    key={a}
+                    data-testid="mail-recipient-key"
+                    data-state={state}
+                    className={cn(
+                      "flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[12px]",
+                      state === "found" ? "border-ok/25 bg-ok/10" : "border-line bg-sunk text-muted",
+                    )}
+                  >
+                    {state === "looking" ? (
+                      <Spinner className="size-3" />
+                    ) : (
+                      <HugeiconsIcon
+                        icon={state === "found" ? SquareLock02Icon : Key01Icon}
+                        size={13}
+                        strokeWidth={1.5}
+                        aria-hidden="true"
+                        className={state === "found" ? "text-ok" : undefined}
+                      />
+                    )}
+                    <span className="truncate">{a}</span>
+                    <span className="shrink-0 text-muted">
+                      {r?.state === "found"
+                        ? t("mail.pgp.compose.found", { where: sourceName(r.key.source, t) })
+                        : state === "none"
+                          ? t("mail.pgp.compose.none")
+                          : t("mail.pgp.compose.looking")}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
           <Field>
             <FieldLabel htmlFor="mail-subject">{t("mail.compose.subject")}</FieldLabel>
             <Input id="mail-subject" value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={900} />
@@ -915,19 +1204,83 @@ function Composer({
               className="min-h-56 font-sans"
             />
           </Field>
-          <p className="text-[12px] text-muted">{t("mail.compose.local")}</p>
+          {hasKey ? (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
+              <span className="flex items-center gap-2">
+                <Switch
+                  id="mail-encrypt"
+                  size="sm"
+                  isSelected={encrypt}
+                  onChange={(on) => setEncryptChoice(on)}
+                  data-testid="mail-encrypt"
+                />
+                <label htmlFor="mail-encrypt" className="flex items-center gap-1">
+                  <HugeiconsIcon icon={SquareLock02Icon} size={14} strokeWidth={1.5} aria-hidden="true" />
+                  {t("mail.pgp.compose.encrypt")}
+                </label>
+              </span>
+              <span className="flex items-center gap-2">
+                <Switch
+                  id="mail-sign"
+                  size="sm"
+                  isSelected={sign}
+                  onChange={(on) => setSignChoice(on)}
+                  data-testid="mail-sign"
+                />
+                <label htmlFor="mail-sign" className="flex items-center gap-1">
+                  <HugeiconsIcon icon={CheckmarkBadge01Icon} size={14} strokeWidth={1.5} aria-hidden="true" />
+                  {t("mail.pgp.compose.sign")}
+                </label>
+              </span>
+              {(encrypt || sign) && (
+                <span className="flex items-center gap-2 text-muted">
+                  <Switch id="mail-inline" size="sm" isSelected={inline} onChange={setInline} />
+                  <label htmlFor="mail-inline">{t("mail.pgp.compose.inline")}</label>
+                </span>
+              )}
+            </div>
+          ) : (
+            <p className="text-[12px] text-muted">
+              <Button type="button" variant="link" size="xs" className="px-0" onClick={onSetUp}>
+                {t("mail.pgp.compose.noKeyYet")}
+              </Button>
+            </p>
+          )}
+          {missing.length > 0 && (
+            <Alert variant="warn" role="status">
+              <HugeiconsIcon icon={Alert01Icon} strokeWidth={1.5} aria-hidden="true" />
+              <AlertDescription>{t("mail.pgp.compose.missing", { who: missing.join(", ") })}</AlertDescription>
+            </Alert>
+          )}
+          <p className="text-[12px] text-muted">
+            {t("mail.compose.local")}
+            {encrypt && ` ${t("mail.pgp.compose.subjectOpen")}`}
+          </p>
           {problem !== null && <Failed text={problem} />}
         </DialogBody>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={sending}>
             {t("mail.compose.discard")}
           </Button>
-          <Button type="submit" disabled={sending}>
-            {sending ? <Spinner className="size-4" /> : <HugeiconsIcon icon={MailSend01Icon} className="size-4" />}
+          <Button type="submit" disabled={sending || missing.length > 0 || looking} data-encrypted={encrypt || undefined}>
+            {sending ? (
+              <Spinner className="size-4" />
+            ) : (
+              <HugeiconsIcon icon={encrypt ? SquareLock02Icon : MailSend01Icon} className="size-4" />
+            )}
             {t("mail.compose.send")}
           </Button>
         </DialogFooter>
       </form>
+      {unlocking && own.state === "set" && (
+        <UnlockDialog
+          own={own.key}
+          onClose={(ok) => {
+            setUnlocking(false);
+            if (ok) void deliver();
+          }}
+        />
+      )}
     </Dialog>
   );
 }

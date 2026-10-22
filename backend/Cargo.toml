@@ -149,7 +149,18 @@ flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 serde_yaml = "0.9"
 tar = { version = "0.4", default-features = false }
 
+# OpenPGP in LosOS Mail (src/mail_pgp.rs): the box checks the public half of
+# a person's key before it publishes it (WKD, Autocrypt), learns the keys
+# other people's mail carries, and makes sure a private key it keeps is
+# locked with a passphrase it never sees. The same rPGP the access crate
+# uses, so the tree keeps one copy; bzip2 off for the same reason. SHA-1 is
+# what WKD hashes an address's local part with (RFC draft-koch-openpgp-webkey).
+pgp = { version = "0.21", default-features = false }
+sha1 = "0.10"
+
 [dev-dependencies]
+# Keys for the mail key store's tests (src/mail_pgp.rs); rPGP's own version.
+rand = "0.8"
 # The CLI book's integration-testing trio: run the real binary, assert on its
 # output, and give it a throwaway filesystem.
 assert_cmd = "2"

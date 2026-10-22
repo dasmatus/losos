@@ -32,6 +32,11 @@
     "DELETE /api/mail/messages/{id}": "signed-in",
     "GET /api/mail/messages/{id}/html": "signed-in",
     "GET /api/mail/attachments/{blob}": "signed-in",
+    "GET /api/mail/messages/{id}/raw": "signed-in",
+    "GET /api/mail/keys": "signed-in",
+    "PUT /api/mail/keys": "signed-in",
+    "DELETE /api/mail/keys": "signed-in",
+    "GET /api/mail/keys/find": "signed-in",
 
     "GET /api/ci": "signed-in",
     "PUT /api/ci/runner": "admin",
