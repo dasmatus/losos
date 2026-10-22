@@ -16,8 +16,9 @@
 #     memory together, and neither runs the box out of memory.
 #
 # The memory seen while each model answers is written to memory.json in the
-# test's output. Under TCG this is slow (minutes per answer), so the
-# material and the questions are short.
+# test's output. Under TCG Gemma reads about four seconds a token and
+# writes about seven, so one answer takes some twenty minutes: the
+# material and the questions are short and the test gets three hours.
 { pkgs }:
 
 let
@@ -153,6 +154,8 @@ in
 
 pkgs.testers.nixosTest {
   name = "losos-assistant-models";
+  # Two answers on emulated cores; see the note at the top.
+  globalTimeout = 10800;
 
   nodes.box = _: {
     imports = [
@@ -289,7 +292,7 @@ pkgs.testers.nixosTest {
               "model": BUILDER,
               "stream": False,
               "messages": [{"role": "user", "content": "Write an HTML comment that says hello."}],
-              "options": {"num_ctx": 12288, "num_predict": 24},
+              "options": {"num_ctx": 12288, "num_predict": 12},
           }
           box.succeed(
               f"curl -sf --max-time 3600 127.0.0.1:11434/api/chat -d '{json.dumps(body)}' > /tmp/coder.json"
