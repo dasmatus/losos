@@ -38,7 +38,8 @@ pkgs.buildNpmPackage {
     PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers;
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
-    FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
+    # fonts.nix: the generic families mapped, or the pictures come out serif.
+    FONTCONFIG_FILE = import ./fonts.nix { inherit pkgs; };
   };
 
   # `npm run build` already ran (npmBuildScript default); the install phase

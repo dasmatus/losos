@@ -287,7 +287,7 @@ pkgs.testers.nixosTest {
         ])
         box.succeed(f"mkdir -p /etc/nixos/modules && cat > /etc/nixos/modules/overrides.nix <<'EOF'\n{content}\nEOF")
 
-    with subtest("the claim makes Matus, and an administrator adds Eva"):
+    with subtest("the claim makes Matus, and an administrator adds Eva, who may open her own account"):
         code, body = call(
             "/api/setup/claim",
             method="POST",
