@@ -38,6 +38,7 @@ export const HANDBOOK_ENTRIES = {
   "backup-and-erase": "manual/backup-and-erase/",
   terminal: "manual/terminal/",
   chat: "manual/chat/",
+  calls: "manual/calls/",
   mail: "manual/mail/",
   git: "manual/losos-git/",
   "mesh-ci": "manual/mesh-ci/",

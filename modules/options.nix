@@ -964,6 +964,29 @@ in
       '';
     };
 
+    calls.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let people on the box call each other from LosOS chat, by voice or
+        video. Calls belong to the box's shared side, like chat: they exist
+        only while the box shares its storage and is in a mesh. Every
+        frame is encrypted in the caller's browser and decrypted in the
+        others', so the box forwards media it cannot read.
+      '';
+    };
+
+    calls.udpPort = lib.mkOption {
+      type = lib.types.port;
+      default = 7882;
+      description = ''
+        The UDP port call media arrives on, on a box that tunnels through
+        no edge. It is opened on the box's firewall while calls are on. A
+        box with `losos.proxy.enable` opens no port: its media goes
+        through the edge over QUIC (`losos.edge.calls.relay`).
+      '';
+    };
+
     cloud.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -1919,6 +1942,42 @@ in
       type = lib.types.str;
       default = "50000-50100";
       description = "lo-hi range the registrar allocates per-appliance rathole edge ports from.";
+    };
+
+    edge.calls.relay.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Carry call media for the boxes this edge serves. Each box keeps one
+        QUIC connection to the edge and gets a UDP port of its own, which
+        browsers in its calls send to; the edge passes the datagrams along
+        without being able to read them (they are DTLS-SRTP around frames
+        encrypted end to end). The edge sends from a box's port only to
+        addresses that sent to it.
+      '';
+    };
+
+    edge.calls.relay.port = lib.mkOption {
+      type = lib.types.port;
+      default = 7883;
+      description = "UDP port boxes reach the calls relay on (QUIC).";
+    };
+
+    edge.calls.relay.mediaPorts = lib.mkOption {
+      type = lib.types.str;
+      default = "40000-40999";
+      description = "lo-hi range of UDP ports the calls relay gives boxes, one each, for browsers to send call media to.";
+    };
+
+    edge.calls.relay.addresses = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "10.0.0.5=203.0.113.7" ];
+      description = ''
+        Addresses browsers reach the calls relay's media ports on, `IP`, or
+        `IP=PUBLIC` behind a 1:1 NAT that forwards the ports to IP. Empty:
+        every address of every interface that is up.
+      '';
     };
 
     edge.heartbeatTtl = lib.mkOption {
@@ -3350,6 +3409,22 @@ in
     description = "The shared side is live: losos.sharingMyStorage and losos.cluster.enable.";
   };
 
+  # Whether this box runs chat, as it actually runs: the switch and the
+  # sharing gate together. Chat belongs to the shared user and keeps its
+  # data in the shared domain (modules/chat.nix). Read-only.
+  options.lososInternal.chat = lib.mkOption {
+    type = lib.types.bool;
+    internal = true;
+    readOnly = true;
+    default =
+      config.losos.chat.enable
+      && config.lososInternal.sharedSide
+      && config.losos.identity.enable
+      && config.losos.admin.enable
+      && config.losos.admin.ui != null;
+    description = "LosOS Chat runs: losos.chat.enable, the shared user's apps (lososInternal.sharedSide) and LosOS Login.";
+  };
+
   # ── Mesh CI, as it actually runs ────────────────────────────────────────
   # On the shared side, like mail, and only beside LosOS Git, whose pushes
   # and pull requests start the runs. modules/ci.nix, lososd's environment
@@ -3396,17 +3471,21 @@ in
     };
   };
 
-  options.lososInternal.chat = lib.mkOption {
-    type = lib.types.bool;
+  # A directory the SFU writes every forwarded frame into, so a test can
+  # show they are ciphertext (backend/src/calls/tap.rs). Tests only.
+  options.lososInternal.callsTap = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
     internal = true;
-    readOnly = true;
-    default =
-      config.losos.chat.enable
-      && config.lososInternal.sharedSide
-      && config.losos.identity.enable
-      && config.losos.admin.enable
-      && config.losos.admin.ui != null;
-    description = "LosOS Chat runs: losos.chat.enable, the shared user's apps (lososInternal.sharedSide) and LosOS Login.";
+  };
+
+  # The addresses the SFU takes media on, as losos-calls' `--address`
+  # (`IP` or `IP=OFFERED`); empty for every address the box has. Tests set
+  # it to reach the SFU through a forwarded port.
+  options.lososInternal.callsAddresses = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [ ];
+    internal = true;
   };
 
   # Whether this box hosts machines, as it actually runs: the switch and

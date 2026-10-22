@@ -62,6 +62,13 @@ futures-util = { version = "0.3", default-features = false }
 # The terminal envelope (`crate::operator`): the same OpenPGP code the box
 # uses, from the box's crate tree, so the two sides cannot drift.
 losos-access = { path = "../../backend/access" }
+# Call media for the boxes behind this edge (`calls_relay`): QUIC to each
+# box, a self-signed certificate made at start, and the interfaces the
+# browsers reach. quinn and rustls are already in the lock tree.
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
+if-addrs = "0.15"
 # Mesh CI (`ci.rs`): a commit's archive travels in the JSON body as
 # base64. Already in the lock tree through reqwest.
 base64 = "0.22"

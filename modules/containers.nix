@@ -340,8 +340,9 @@ let
   # drops its `<base href>`, and every page below /auth/ then loads its scripts
   # from the wrong folder and stays blank), the handbook's and chat's own
   # values (or the admin value, for the headers they share) under /handbook/
-  # and /chat/, each frame's own value (or nothing) under /widget-frame/ and
-  # /app-frame/, and a mail message's under its HTML route.
+  # and /chat/ (and chat's for the guest call page, /calls/guest/), each
+  # frame's own value (or nothing) under /widget-frame/ and /app-frame/, and
+  # a mail message's under its HTML route.
   #
   # Collabora Online's two prefixes (modules/office.nix) get nothing either,
   # only while it is on: coolwsd sends its own policy, whose frame-ancestors
@@ -358,6 +359,7 @@ let
         ~^/auth/         "";
         ~^/handbook/     "${handbookValue}";
         ~^/chat/         "${chatValue}";
+        ~^/calls/guest/  "${chatValue}";
         ~^/widget-frame/ "${frameValue}";
         ~^/app-frame/    "${appFrameValue}";
         ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";
