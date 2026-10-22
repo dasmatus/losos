@@ -177,7 +177,14 @@ const create = async (name, invited) =>
     body: JSON.stringify({ room: '!room:calls.test', invited, video: true }),
   });
 
-const ctx = await browser.newContext();
+/* Chromium lists the machine's interfaces to WebRTC only for a page whose
+ * camera or microphone permission reads granted; otherwise it gathers on
+ * the default route alone. The fake-UI flag answers getUserMedia's prompt
+ * but leaves that status unasked in the headless shell (what Playwright
+ * launches, and the nix check runs), and the build sandbox has loopback
+ * and no route: without the grant no candidate is gathered, no ICE check
+ * reaches the SFU and every DTLS handshake times out. */
+const ctx = await browser.newContext({ permissions: ['camera', 'microphone'] });
 const tab = async (name, user, device, extra = {}) => {
   const p = await ctx.newPage();
   p.on('pageerror', (e) => console.log(`[${user}] ${e}`));

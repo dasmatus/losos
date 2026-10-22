@@ -90,7 +90,7 @@ prihlásená, kým sa neodhlásite aj z tej aplikácie.
 ## Kto čo vidí \{#who-sees-what}
 
 Správcovské stránky sú rozdelené na časti: úložisko, záloha, aplikácie, trh
-(aj s virtuálnymi strojmi), sieť (vlastné domény), vzhľad, Laboratórium a
+(aj s virtuálnymi strojmi), sieť (vlastné domény), vzhľad, Diagramy a
 prístupové tokeny. Správca môže používať všetky. Iba správca môže použiť
 nastavenia, otvoriť Mesh, Hardvér, Zabezpečenie, Používatelia, Rozšírené, História,
 O zariadení a Reset, zmazať alebo obnoviť zariadenie a pozrieť si kód na

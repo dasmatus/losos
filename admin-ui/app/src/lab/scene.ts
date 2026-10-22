@@ -157,9 +157,27 @@ export function dropSpot(d: Device, x: number, y: number): { site: string; px: n
 }
 
 // ── the camera ──────────────────────────────────────────────────────────
-export function zoomCam(c: Cam, mx: number, my: number, factor: number): Cam {
-  const k = Math.max(0.3, Math.min(2.5, c.k * factor));
+export function zoomCam(c: Cam, mx: number, my: number, factor: number, min = 0.3, max = 2.5): Cam {
+  const k = Math.max(min, Math.min(max, c.k * factor));
   return { k, x: mx - (mx - c.x) * (k / c.k), y: my - (my - c.y) * (k / c.k) };
+}
+
+/** The camera that shows every card (or `only` those) in a viewport of
+ *  this size; an empty canvas is shown at 1:1 round the origin. */
+export function fitCanvas(
+  nodes: readonly { x: number; y: number; width: number; height: number }[],
+  width: number,
+  height: number,
+): Cam {
+  if (nodes.length === 0) return { x: width / 2, y: height / 2, k: 1 };
+  const minX = Math.min(...nodes.map((n) => n.x)) - 60;
+  const minY = Math.min(...nodes.map((n) => n.y)) - 60;
+  const maxX = Math.max(...nodes.map((n) => n.x + n.width)) + 60;
+  const maxY = Math.max(...nodes.map((n) => n.y + n.height)) + 60;
+  const w = Math.max(120, width - 56);
+  const h = Math.max(120, height - 24);
+  const k = Math.max(0.1, Math.min(1, Math.min(w / (maxX - minX), h / (maxY - minY))));
+  return { k, x: (w - (maxX - minX) * k) / 2 - minX * k, y: (h - (maxY - minY) * k) / 2 - minY * k + 12 };
 }
 
 /** The camera that shows the whole view in a viewport of this size. */

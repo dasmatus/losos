@@ -85,7 +85,7 @@ in until you sign out of that app too.
 ## Who sees what
 
 The admin pages are split into sections: storage, backup, apps, market
-(with virtual machines), network (custom domains), look, the Lab and access
+(with virtual machines), network (custom domains), look, Diagrams and access
 tokens. An administrator can use all of them, and only an administrator can
 apply settings or use Mesh, Hardware, Security, Users, Advanced, History,
 About and Reset, erase or restore the box, or see the recovery code. A person who is

@@ -24,7 +24,7 @@
 #
 # nix/cluster.nix is not imported: `cluster.enable`
 # is the gate's half, with no edge to join. The admin UI is built without
-# LosOS Lab, as in nix/tests/mesh-collab.nix.
+# LosOS Diagrams, as in nix/tests/mesh-collab.nix.
 { pkgs }:
 
 let
@@ -37,7 +37,8 @@ let
       runHook preBuild
       cat > vite.nolab.config.ts <<'EOF'
       import config from "./vite.config";
-      delete (config.build!.rolldownOptions!.input as Record<string, string>)["lab"];
+      // Before the rename the page was `lab`; a Before UI may still have it.
+      for (const page of ["diagrams", "lab"]) delete (config.build!.rolldownOptions!.input as Record<string, string>)[page];
       export default config;
       EOF
       node_modules/.bin/vite build --config vite.nolab.config.ts

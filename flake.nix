@@ -320,9 +320,6 @@
             # LosOS Chat: Dendrite as the shared user while the box shares
             # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
             ./modules/chat.nix
-            # Calls from chat rooms and DMs: the SFU, as the shared user, which
-            # forwards only frames the browsers encrypted (backend/src/calls/).
-            ./modules/calls.nix
             # Backups to the owner's S3 bucket, restoring them, and the
             # boot-time wipe of an erase (backend/src/{backup,erase}.rs).
             ./modules/backup.nix
@@ -340,11 +337,11 @@
             # LosOS Cloud (backend/src/cloud/): files, calendars, contacts and
             # boards at /cloud/, and to the Nextcloud desktop and phone apps.
             ./modules/cloud.nix
-            # Its files in Windows' Network view, as an SMB share.
-            ./modules/windows.nix
             # Office documents in the browser: Collabora Online and its WOPI
             # host (backend/src/office/).
             ./modules/office.nix
+            # Its files in Windows' Network view, as an SMB share.
+            ./modules/windows.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
@@ -461,7 +458,7 @@
         losos-wait-game = import ./nix/tests/wait-game.nix { inherit pkgs; };
         losos-identity = import ./nix/tests/identity.nix { inherit pkgs; };
         losos-chat = import ./nix/tests/chat.nix { inherit pkgs; };
-        # LosOS Contacts: books kept in Matrix, vCard in and out, and the
+        # LosOS Contacts: the book in LosOS Cloud, vCard in and out, and the
         # pickers in Mail and Chat (nix/tests/contacts.nix).
         losos-contacts = import ./nix/tests/contacts.nix { inherit pkgs; };
         # Calls from chat: three people in real browsers through the box's
@@ -479,6 +476,12 @@
         # The banner a box off the mesh shows over every page, both states
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
+        # LosOS Diagrams on a box with LosOS Cloud: the /lab/ move, a .canvas
+        # file opened and saved back, and the pull request's pictures.
+        losos-diagrams = import ./nix/tests/diagrams.nix { inherit pkgs; };
+        # Two people on two boxes drawing in one shared diagram at once
+        # (nix/tests/diagrams-together.nix).
+        losos-diagrams-together = import ./nix/tests/diagrams-together.nix { inherit pkgs; };
         losos-app-sign-in = import ./nix/tests/app-sign-in.nix { inherit pkgs; };
         losos-mail = import ./nix/tests/mail.nix { inherit pkgs; };
         losos-mail-screens = import ./nix/tests/mail.nix {
@@ -511,7 +514,6 @@
           # libvirt client; the bundle under test copies them in the way the
           # shipped one does.
           inherit (self.packages.${system}.losos-admin-ui) labCorePkg labVirtPkg labRenderPkg;
-          callsPackage = self.packages.${system}.losos-ctl;
         };
         # Not a VM: the option document of the install configuration
         # (nix/options-doc.nix via modules/config-repo.nix), forced here so

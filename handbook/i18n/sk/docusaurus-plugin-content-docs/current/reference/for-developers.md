@@ -9,7 +9,7 @@ Väčšina tejto príručky je pre vlastníkov. Zostavovanie, testovanie a úpra
 LosOS opisujú dve miesta:
 
 - kapitola [Do hĺbky](/in-depth/index.md): Inštalácia podrobne, Správa,
-  Mesh, Trh, Virtuálne stroje, Master proxy, Federácia edge, Lab, Hardening,
+  Mesh, Trh, Virtuálne stroje, Master proxy, Federácia edge, Diagramy, Hardening,
   Architektúra;
 - [`.claude/CLAUDE.md`](https://github.com/dasmatus/losos/blob/main/.claude/CLAUDE.md)
   v repozitári: príkazy na zostavenie, architektúra naprieč súbormi a zoznam

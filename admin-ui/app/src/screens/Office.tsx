@@ -5,7 +5,7 @@
  *   /office/              the folder's documents
  *   /office/#file=<id>    one of them in the editor
  *
- * LosOS cloud lists its own files and opens the same editor
+ * LosOS Cloud lists its own files and opens the same editor
  * (src/cloud/office/editor.tsx) from them. */
 
 import * as React from "react";

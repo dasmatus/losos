@@ -768,18 +768,20 @@ await check('every sidebar entry, folded or not, lands on its own address', asyn
   await page.close();
 });
 
-/* Lab is a page of its own that nginx serves at /lab/ (admin-ui/lab/), not
- * a route of this app, so its entry must be a plain link that loads the
- * page. A router link would draw this app's "nothing here" at /lab/. */
-await check('the Lab entry is a plain link that loads /lab/', async () => {
+/* Diagrams is a screen of this app at /diagrams, inside the same top bar
+ * and sidebar as every pane, so its entry is a router link: no page load,
+ * and the entry is the one marked current there. */
+await check('the Diagrams entry opens /diagrams inside the app, without a page load', async () => {
   const { page } = await open({ stored: true });
-  const lab = nav(page).getByRole('link', { name: 'Lab', exact: true });
-  assert.equal(await lab.getAttribute('href'), '/lab/');
-  const [request] = await Promise.all([
-    page.waitForRequest((r) => r.isNavigationRequest() && r.url() === origin + '/lab/'),
-    lab.click(),
-  ]);
-  assert.ok(request, 'clicking Lab loaded no page');
+  const entry = nav(page).getByRole('link', { name: 'Diagrams', exact: true });
+  assert.equal(await entry.getAttribute('href'), '/diagrams');
+  let loads = 0;
+  page.on('request', (r) => { if (r.isNavigationRequest() && r.frame() === page.mainFrame()) loads += 1; });
+  await entry.click();
+  await page.waitForURL(origin + '/diagrams');
+  await nav(page).locator('a[aria-current="page"]').filter({ hasText: 'Diagrams' }).waitFor({ timeout: 2000 });
+  await page.getByTestId('lab').waitFor();
+  assert.equal(loads, 0, 'clicking Diagrams loaded a new page');
   await page.close();
 });
 
