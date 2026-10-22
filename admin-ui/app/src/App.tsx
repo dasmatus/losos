@@ -1,10 +1,10 @@
 import * as React from "react";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Compass01Icon, UserCircleIcon } from "@hugeicons/core-free-icons";
+import { Compass01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { AppBar, type AppBarPerson } from "@/components/app-bar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MeshNotice } from "@/components/mesh-notice";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PersonAvatar } from "@/components/person";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,9 +28,8 @@ import { HelpLink } from "@/components/ui/help-link";
 import type { HandbookEntry } from "@/lib/handbook";
 import { Input, MonoInput } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { LanguagePicker } from "@/components/ui/language-picker";
+import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { toast, Toaster } from "@/components/ui/toast";
 import {
   getClaimState,
@@ -40,6 +39,7 @@ import {
   makeFirstAccount,
   signIn,
   signInPageReady,
+  sentToSignIn,
   signInUrl,
   signOut,
   subscribeAuth,
@@ -51,13 +51,13 @@ import { followPins } from "@/lib/pins";
 import { readProgress } from "@/screens/wizard/progress";
 import { isTourOpen, startTour, subscribeTour } from "@/tour/store";
 import { closePalette, isPaletteColon, isPaletteShortcut, openPalette, paletteState, subscribePalette } from "@/palette/store";
-import { logoFor } from "@/lib/logo";
 import { seededShuffle } from "@/lib/shuffle";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
 import { useT } from "@/lib/i18n-react";
 import { useWaitGame } from "@/components/play-while-waiting";
 import { cn } from "@/lib/utils";
+import { chatDocument } from "@/chat/document";
 
 /* Screens load on demand.
  *
@@ -69,6 +69,9 @@ import { cn } from "@/lib/utils";
 const Wizard = React.lazy(() => import("@/screens/Wizard"));
 const Home = React.lazy(() => import("@/screens/Home"));
 const Settings = React.lazy(() => import("@/screens/Settings"));
+/* Documents (losos.office.folder) and the editor, on boxes that edit a
+ * folder of documents. */
+const Office = React.lazy(() => import("@/screens/Office"));
 const AppScreen = React.lazy(() => import("@/apps/screens").then((m) => ({ default: m.AppScreen })));
 const AppEditorScreen = React.lazy(() =>
   import("@/apps/screens").then((m) => ({ default: m.AppEditorScreen })),
@@ -82,6 +85,15 @@ const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 /* LosOS Mail (src/mail/): only on the shared side, so most boxes never
  * fetch it. */
 const Mail = React.lazy(() => import("@/mail/app"));
+/* LosOS Contacts (src/contacts/): kept in chat's homeserver, so on the
+ * shared side only, like Mail and Chat. */
+const Contacts = React.lazy(() => import("@/contacts/app"));
+/* LosOS Chat (src/chat/), the same: on the shared side only, and the only
+ * screen that brings matrix-js-sdk and its crypto. */
+const Chat = React.lazy(() => import("@/chat/app"));
+/* Calls outlive the chat screen, so the shell holds them, on a document
+ * loaded at /chat/ only: elsewhere matrix-js-sdk stays out of the page. */
+const CallsShell = React.lazy(() => import("@/chat/calls-shell"));
 /* Mesh CI (src/ci/): on the shared side too, beside LosOS Git. */
 const Ci = React.lazy(() => import("@/ci/app"));
 /* LosOS Diagrams (src/lab/): its own chunk with the Rust core's
@@ -181,9 +193,14 @@ function useGate(): Gate {
   return claimed ? "signin" : "setup";
 }
 
+function CallsHolder({ children }: { children: React.ReactNode }) {
+  return chatDocument() ? <CallsShell>{children}</CallsShell> : <>{children}</>;
+}
+
 function Shell() {
   const gate = useGate();
   const t = useT();
+  const location = useLocation();
 
   /* The look — the wallpaper and the hand-written widgets — follows the
    * token: loaded on sign-in, dropped on sign-out. Once, for the page. */
@@ -230,6 +247,17 @@ function Shell() {
   const wide = useLocation().pathname.startsWith("/diagrams");
   const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
   const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
+  const searchable = signedIn && !held;
+  const pageMenu = usePageMenu(() => [
+    {
+      id: "palette",
+      label: t("menu.palette"),
+      icon: Search01Icon,
+      keys: ["Mod", "Shift", "P"],
+      hidden: !searchable,
+      onSelect: () => openPalette(),
+    },
+  ]);
   // Once fetched, the palette stays mounted so it can close the way it opened.
   const [paletteLoaded, setPaletteLoaded] = React.useState(false);
   React.useEffect(() => {
@@ -296,10 +324,23 @@ function Shell() {
     );
   }
 
-  return (
-    <div className="losos-shell min-h-dvh text-ink">
-      <TopBar signedIn={signedIn} wide={wide} />
+  /* An open document takes the whole width under the top bar: the editor
+   * has toolbars and a sidebar of its own, and its own <main>. */
+  const editing =
+    signedIn && !held && location.pathname.startsWith("/office") && location.hash.length > 1;
 
+  return (
+    <div className={cn("losos-shell min-h-dvh text-ink", editing && "flex h-dvh flex-col")}>
+      <TopBar signedIn={signedIn} wide={wide} />
+      <ContextMenuHost page={pageMenu} search={searchable ? (text) => openPalette(text) : undefined} />
+
+      {editing ? (
+        <div className="min-h-0 flex-1">
+          <React.Suspense fallback={<ScreenFallback />}>
+            <Office hash={location.hash} />
+          </React.Suspense>
+        </div>
+      ) : (
       <SidebarProvider
         className={cn(
           "mx-auto flex w-full px-4 pt-5 pb-12 sm:px-6",
@@ -311,6 +352,7 @@ function Shell() {
         <main className="min-w-0 flex-1">
           {signedIn && !held && <MeshNotice />}
           <React.Suspense fallback={<ScreenFallback />}>
+          <CallsHolder>
           {held ? (
             <Settings pane="account" />
           ) : (
@@ -332,6 +374,7 @@ function Shell() {
             <Route path="/mesh" element={<SettingsRoute pane="mesh" />} />
             <Route path="/machines" element={<SettingsRoute pane="machines" />} />
             <Route path="/apps" element={<SettingsRoute pane="apps" />} />
+            <Route path="/office" element={<Office hash={location.hash} />} />
             <Route path="/apps/new" element={<AppEditorScreen />} />
             <Route path="/apps/:id" element={<AppScreen />} />
             <Route path="/apps/:id/edit" element={<AppEditorScreen />} />
@@ -339,6 +382,11 @@ function Shell() {
                 (modules/containers.nix); the screen says so too if the box
                 leaves it while the page is open. */}
             <Route path="/mail" element={<Mail />} />
+            {/* nginx answers /contacts with 404 off the shared side too. */}
+            <Route path="/contacts" element={<Contacts />} />
+            {/* nginx serves /chat/ only on the shared side, under chat's
+                own policy (modules/chat.nix); off it, /chat/ goes home. */}
+            <Route path="/chat/*" element={<Chat />} />
             {/* The same for Mesh CI. LosOS Git's checks link a run's job as
                 /ci/runs/<id>#job-<job>. */}
             <Route path="/ci" element={<Ci />} />
@@ -349,9 +397,11 @@ function Shell() {
             <Route path="*" element={<NotFound />} />
           </Routes>
           )}
+          </CallsHolder>
           </React.Suspense>
         </main>
       </SidebarProvider>
+      )}
 
       <SignInDialog open={!signedIn} />
       {signedIn && paletteLoaded && (
@@ -373,92 +423,33 @@ function Shell() {
 
 function TopBar({ signedIn, wide }: { signedIn: boolean; wide: boolean }) {
   const t = useT();
-  const logo = logoFor();
-  return (
-    <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
-      <div className={cn("mx-auto flex w-full items-center gap-3 px-4 py-3 sm:px-6", wide ? "max-w-[96rem]" : "max-w-6xl")}>
-        {/* The logo in place of the name, a live salmon (a plate of it on
-            Halloween; lib/logo.ts picks); its alt text is the name. A photo
-            needs a word of explanation, so the logo is a tooltip trigger
-            whose accessible name is that explanation (Base UI shows no
-            tooltip on touch). */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label={t(logo.tip)}
-                  className="inline-flex shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                />
-              }
-            >
-              <img src={logo.url} alt="LosOS" width={32} height={32} className="size-8" />
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="start" className="max-w-[22rem]">
-              {t(logo.tip)}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <Badge variant="outline" className="hidden sm:inline-flex">
-          {t("shell.thisBox")}
-        </Badge>
-        <div className="flex-1" />
-        <LanguagePicker />
-        <ThemeToggle />
-        {signedIn && <WhoIsSignedIn />}
-        {signedIn && (
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            {t("shell.signOut")}
-          </Button>
-        )}
-      </div>
-    </header>
-  );
-}
-
-/* Who this tab is signed in as, from GET /api/me: the person's name on
- * LosOS Login, or the spare key. The name hides on a phone, where the icon
- * stays and the tooltip says the rest. */
-function WhoIsSignedIn() {
-  const t = useT();
   const me = useMe();
-  if (me === null) return null;
-  const name = me.spareKey ? t("shell.me.spareKey") : (me.displayName ?? me.name ?? "");
-  const tip = me.spareKey
-    ? t("shell.me.spareKeyTip")
-    : `${t("shell.me.signedIn", { name: me.name ?? name })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`;
+  let person: AppBarPerson | null = null;
+  if (signedIn && me !== null) {
+    const name = me.spareKey ? t("shell.me.spareKey") : (me.displayName ?? me.name ?? "");
+    const tip = me.spareKey
+      ? t("shell.me.spareKeyTip")
+      : `${t("shell.me.signedIn", { name: me.name ?? name })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`;
+    person = { label: name, tip };
+    if (!me.spareKey && me.name) {
+      person.avatar = (
+        <PersonAvatar
+          size="xs"
+          data-testid="signed-in-avatar"
+          person={{ name: me.name, displayName: me.displayName ?? me.name, picture: me.picture, accent: me.accent }}
+        />
+      );
+      person.accountLink = <Link to="/settings/account" />;
+    }
+  }
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label={tip}
-              data-testid="signed-in-as"
-              className="inline-flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-            />
-          }
-        >
-          {me.spareKey || !me.name ? (
-            <HugeiconsIcon icon={UserCircleIcon} size={18} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-          ) : (
-            <PersonAvatar
-              size="xs"
-              data-testid="signed-in-avatar"
-              person={{ name: me.name, displayName: me.displayName ?? me.name, picture: me.picture, accent: me.accent }}
-            />
-          )}
-          <span data-testid="signed-in-name" className="hidden max-w-[12rem] truncate sm:inline">
-            {name}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" align="end" className="max-w-[22rem]">
-          {tip}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <AppBar
+      homeLink={<Link to="/" />}
+      badge={<Badge variant="outline">{t("shell.thisBox")}</Badge>}
+      person={person}
+      onSignOut={signedIn ? signOut : undefined}
+      width={wide ? "wide" : "page"}
+    />
   );
 }
 
@@ -552,7 +543,7 @@ function SignInDialog({ open }: { open: boolean }) {
    * anyone to an error page, and goes on by itself once it is up. */
   const [portal, setPortal] = React.useState<"checking" | "starting" | "ready">("checking");
   const game = useWaitGame(open && mode === "signin" && portal === "starting");
-  const [wanted, setWanted] = React.useState(false);
+  const [wanted, setWanted] = React.useState(sentToSignIn);
   const [fact, setFact] = React.useState(0);
   React.useEffect(() => {
     if (!open || mode !== "signin" || portal === "ready") return;

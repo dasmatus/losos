@@ -21,6 +21,14 @@ pub fn init(store: &Store) -> Result<(), StoreError> {
 /// The scopes of the later parts, mounted ahead of the catch-all handler,
 /// so a path one of them claims is theirs.
 pub fn scopes(cfg: &mut web::ServiceConfig, cloud: &std::sync::Arc<Cloud>) {
+    // Office documents, when the box runs Collabora: the web app's two
+    // calls, and the WOPI routes coolwsd reaches through nginx's loopback
+    // bridge (modules/office.nix). nginx routes no /wopi/ from outside.
+    if let Some(sessions) = cloud.office.get() {
+        cfg.app_data(web::Data::from(sessions.clone()))
+            .service(crate::cloud::office::scope())
+            .service(crate::office::actix::wopi_scope(sessions.wopi.clone()));
+    }
     // Editing together once `mesh::start` ran, and sharing across boxes
     // when the box talks to other boxes.
     if let Some(mesh) = cloud.mesh.get() {
@@ -45,6 +53,9 @@ pub async fn api(
     match (req.method().as_str(), segs) {
         (_, ["notes", rest @ ..]) => crate::cloud::notes::api(req, cloud, who, rest, body).await,
         (_, ["kb", rest @ ..]) => crate::cloud::notes::kb::api(req, cloud, who, rest, body).await,
+        (_, ["contacts", rest @ ..]) => {
+            crate::cloud::contacts::api(req, cloud, who, rest, body).await
+        }
         ("GET", ["boards"]) => match crate::cloud::boards::list(store, &who.login) {
             Ok(list) => HttpResponse::Ok().json(serde_json::json!({ "boards": list })),
             Err(e) => crate::cloud::api::store_error(&e),

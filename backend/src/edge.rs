@@ -1016,7 +1016,7 @@ pub fn check_market_gate(edge: &EdgeStatus) -> Result<(), OfficialEdgeRequired> 
 
 // ── management: a company's own edge looking after this box ───────────────
 //
-// A local edge's web page can change this box's LosOS cloud, LosOS Git and
+// A local edge's web page can change this box's LosOS Cloud, LosOS Git and
 // app settings, but only once the owner switched it on for that edge
 // (`State::managed_by`, `POST /api/edge/manage`). The edge calls lososd
 // through the box's own tunnel, which is pinned to the edge's Noise key, and

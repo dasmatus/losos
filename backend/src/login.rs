@@ -12,7 +12,7 @@
 //!     Authelia asks for it on every sign-in.
 //!   * [`crate::people::LOCKED`]: a rule caught them (two-factor sign-in is
 //!     required and they have none, or their password is older than the
-//!     box allows). Authelia keeps them out of LosOS cloud and LosOS Git,
+//!     box allows). Authelia keeps them out of LosOS Cloud and LosOS Git,
 //!     and this daemon lets them into their own account and nothing else
 //!     until they comply.
 //!

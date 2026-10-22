@@ -73,6 +73,9 @@ ihrer App möglich sind:
 - **Nachricht zurückhalten** verschiebt eine gemeldete Mail aus dem
   Posteingang in einen Ordner, den keine Seite zeigt. Die Box weigert sich,
   sie zu öffnen. **Freigeben** legt sie zurück.
+- **Nachricht ausblenden** entfernt eine gemeldete Nachricht aus LosOS
+  Chat auf jedem Gerät. Im Raum bleibt ein Hinweis, dass eine Nachricht
+  gelöscht wurde. Das geht bei Nachrichten von Personen auf dieser Box.
 - **Entfernen** nimmt ein gemeldetes Profilbild oder Banner herunter.
 - **Erledigt** schließt eine Meldung, die du anders gelöst hast, zum
   Beispiel im Gespräch mit der Person.
@@ -82,8 +85,8 @@ ihrer App möglich sind:
 Administratoren bei allen außer dem Besitzer. Niemand kann bei sich selbst
 eingreifen.
 
-- **Stummschalten** hindert jemanden daran, Mail zu senden und das Profil zu
-  ändern. Lesen kann die Person weiter alles, was sie vorher lesen konnte.
+- **Stummschalten** hindert jemanden daran, Mail zu senden, in LosOS Chat zu
+  schreiben und das Profil zu ändern. Lesen kann die Person weiter alles, was sie vorher lesen konnte.
 - **Sperren** lässt LosOS Login die Person ab ihrem nächsten Klick nicht mehr
   hinein. Ihre Dateien, Mails und Konten bleiben auf der Box.
 

@@ -66,6 +66,9 @@ v jeho aplikácii dá urobiť:
 - **Zadržať správu** presunie nahlásenú poštu z doručenej do priečinka,
   ktorý žiadna stránka neukazuje. Zariadenie ju odmietne otvoriť.
   **Uvoľniť** ju vráti.
+- **Skryť správu** odstráni nahlásenú správu z LosOS Chat na každom
+  zariadení. V miestnosti zostane poznámka, že správa bola zmazaná. Funguje
+  pri správach od ľudí na tomto zariadení.
 - **Odstrániť ho** stiahne nahlásenú profilovú fotku alebo banner.
 - **Vybavené** uzavrie nahlásenie, ktoré ste vyriešili inak, napríklad
   rozhovorom s daným človekom.
@@ -74,7 +77,8 @@ v jeho aplikácii dá urobiť:
 **Ľudia.** Moderátori môžu zasiahnuť pri členoch a hosťoch. Správcovia pri
 každom okrem vlastníka. Nikto nemôže zasiahnuť sám pri sebe.
 
-- **Stíšiť** mu zastaví posielanie pošty a zmeny profilu. Naďalej číta
+- **Stíšiť** mu zastaví posielanie pošty, písanie v LosOS Chat a zmeny
+  profilu. Naďalej číta
   všetko, čo čítal predtým.
 - **Pozastaviť** zastaví LosOS Login, aby ho pustil dnu, od jeho ďalšieho
   kliknutia. Jeho súbory, pošta a účty na zariadení zostanú.

@@ -215,6 +215,7 @@ export default defineMessages({
     de: "{state}, von {name}",
   },
   "moderation.action.holdMail": { en: "Hold the message", sk: "Zadržať správu", de: "Nachricht zurückhalten" },
+  "moderation.action.hideMessage": { en: "Hide the message", sk: "Skryť správu", de: "Nachricht ausblenden" },
   "moderation.action.takeDown": { en: "Take it down", sk: "Odstrániť ho", de: "Entfernen" },
   "moderation.action.release": { en: "Let it go", sk: "Uvoľniť", de: "Freigeben" },
   "moderation.action.dismiss": { en: "Nothing wrong", sk: "Bez problému", de: "Kein Problem" },
@@ -270,9 +271,9 @@ export default defineMessages({
   "moderation.action.unsuspend": { en: "Lift suspension", sk: "Zrušiť pozastavenie", de: "Sperre aufheben" },
   "moderation.muteTitle": { en: "Mute {name}", sk: "Stíšiť {name}", de: "{name} stummschalten" },
   "moderation.muteBody": {
-    en: "They keep reading. They cannot send mail or change their profile.",
-    sk: "Ďalej čítajú. Nemôžu posielať poštu ani meniť svoj profil.",
-    de: "Lesen geht weiter. Mail senden und das Profil ändern geht nicht.",
+    en: "They keep reading. They cannot send mail, write in chat or change their profile.",
+    sk: "Ďalej čítajú. Nemôžu posielať poštu, písať v chate ani meniť svoj profil.",
+    de: "Lesen geht weiter. Mail senden, im Chat schreiben und das Profil ändern geht nicht.",
   },
   "moderation.suspendTitle": { en: "Suspend {name}", sk: "Pozastaviť {name}", de: "{name} sperren" },
   "moderation.suspendBody": {

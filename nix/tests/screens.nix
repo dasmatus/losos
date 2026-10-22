@@ -1,7 +1,7 @@
 # Screenshots of a booted box, for PR descriptions and films.
 #
 # The box is the real front door: nginx, LosOS Login, lososd, LosOS Git, the
-# admin pages and the handbook, all built from this tree. LosOS cloud is a
+# admin pages and the handbook, all built from this tree. LosOS Cloud is a
 # stub (lososd in native mode with an `occ` that says "installed"), as in
 # nix/tests/identity.nix. A client VM claims the box as Matus, signs in
 # through LosOS Login and drives Playwright's Chromium at

@@ -254,7 +254,11 @@ function ReportRow({
               </Button>
               {canHide && (
                 <Button size="sm" disabled={disabled} data-testid="moderation-hide" onClick={() => void data.act(report.id, "hide")}>
-                  {report.app === "mail" ? t("moderation.action.holdMail") : t("moderation.action.takeDown")}
+                  {report.app === "mail"
+                    ? t("moderation.action.holdMail")
+                    : report.app === "chat"
+                      ? t("moderation.action.hideMessage")
+                      : t("moderation.action.takeDown")}
                 </Button>
               )}
             </>

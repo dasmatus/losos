@@ -988,7 +988,7 @@ const SHOTS = [
       await settle(page, 1200);
     },
   },
-  /* Pins: the sidebar with six, and the list open on a LosOS cloud folder. */
+  /* Pins: the sidebar with six, and the list open on a LosOS Cloud folder. */
   { name: 'pins-overview', path: '/', pins: PINS, langs: true },
   {
     name: 'pins-dialog',

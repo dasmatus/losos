@@ -145,7 +145,7 @@ KeePassXC all work. Every item carries `service=losos` and a `kind`:
 |---|---|---|
 | `gpg-key` | `fingerprint` | the armoured secret key, as exported (still under its passphrase if it had one) |
 | `host` | `url` | JSON: `{"url", "kind": "box"\|"edge", "fingerprint", "publicKey", "token", "keyFingerprint", "tlsPin"?}` |
-| `cloud` | `url` | JSON: `{"url", "user", "secret", "location"}`, the LosOS cloud app password of `losos cloud setup` |
+| `cloud` | `url` | JSON: `{"url", "user", "secret", "location"}`, the LosOS Cloud app password of `losos cloud setup` |
 | `git` | `url`, `protocol`, `server` | the same, with the LosOS Git token of `losos git setup`; `server` is the host as git's credential protocol names it |
 | `companion` | `url` | JSON: `{"url", "tlsPin"?, "accessToken", "expiresAt", "refreshToken"}`, the AI agent companion's LosOS Login sign-in (below) |
 
@@ -217,7 +217,7 @@ The AI tools' own MCP sign-in (OAuth for remote MCP servers) does not fit:
 the companion is a local stdio server, and the tools' OAuth is for HTTP
 servers that trust a public certificate.
 
-## This computer: LosOS cloud and LosOS Git
+## This computer: LosOS Cloud and LosOS Git
 
 `losos cloud setup` and `losos git setup` ask the box for a credential of
 the computer's own over a sealed call:
@@ -251,5 +251,5 @@ credential`, so only `losos` answers for the box, and
 `http.<url>.sslVerify false` and `http.<url>.pinnedPubkey
 sha256//<base64>` of the certificate's public key, read over the pinned
 connection, which is libcurl's form of the same pin. `cloud setup` adds
-`<davs location> LosOS cloud` to `$XDG_CONFIG_HOME/gtk-3.0/bookmarks` once.
+`<davs location> LosOS Cloud` to `$XDG_CONFIG_HOME/gtk-3.0/bookmarks` once.
 

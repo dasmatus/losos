@@ -324,12 +324,12 @@ function BoxParts() {
         </PaneSection>
       ) : form.options.options.length === 0 ? (
         <PaneSection>
-          <GroupTitle>LosOS cloud · LosOS Git</GroupTitle>
+          <GroupTitle>LosOS Cloud · LosOS Git</GroupTitle>
           <GroupCaption>{t("manage.site.none")}</GroupCaption>
         </PaneSection>
       ) : (
         <>
-          <SiteSettings form={form} app="cloud" title="LosOS cloud" />
+          <SiteSettings form={form} app="cloud" title="LosOS Cloud" />
           <SiteSettings form={form} app="git" title="LosOS Git" />
         </>
       )}

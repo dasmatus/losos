@@ -57,7 +57,7 @@ fn run() -> anyhow::Result<()> {
     // which is what serialises a bus `Change` against a `POST /api/change`
     // against a rebuild watcher recording an outcome.
     let paths = Paths::from_env();
-    // An older build kept a LosOS cloud app password here for the pin
+    // An older build kept a LosOS Cloud app password here for the pin
     // picker; it asks LosOS Cloud over its socket now.
     let _ = std::fs::remove_file(paths.retired_cloud_key_file());
     let backend = IoLosos::new(paths);

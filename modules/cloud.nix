@@ -56,6 +56,8 @@ let
   pkg = config.losos.backend.package;
   # The same gate as the shared side's chat, mail and calls.
   knowledgeBases = config.losos.sharingMyStorage && config.losos.cluster.enable;
+  # Office edits the cloud's files unless it was given a folder of its own.
+  office = config.losos.office.enable && config.losos.office.folder == null;
   signIn = import ./app-sign-in.nix { inherit lib; };
 
   stateDir = "/var/lib/losos-cloud";
@@ -253,6 +255,10 @@ in
     # nginx opens the socket.
     users.users.${config.services.nginx.user}.extraGroups = [ "losos-cloud" ];
 
+    # LosOS Contacts is LosOS Cloud's address books (backend/src/cloud/contacts.rs):
+    # lososd lists it in /api/me and asks the book for the people pickers.
+    systemd.services.lososd.environment.LOSOS_CLOUD_CONTACTS = "1";
+
     # Once, on the first boot without Nextcloud: everything it held comes
     # into LosOS Cloud before LosOS Cloud starts. Should it fail, the cloud
     # does not start on an empty folder, and the next boot or rebuild tries
@@ -312,6 +318,13 @@ in
           " --mesh" + lib.optionalString mesh.selfSigned " --mesh-self-signed"
         )
         + lib.optionalString knowledgeBases " --knowledge-bases"
+        # Office documents open in Collabora (modules/office.nix): coolwsd
+        # reaches /wopi/files/ through nginx on the WOPI port, and the types
+        # it opens come from the copy of its discovery saved under /run.
+        + lib.optionalString office (
+          " --office-wopi http://127.0.0.1:${toString config.losos.office.wopiPort}"
+          + " --coolwsd /run/losos-office-discovery/discovery.xml"
+        )
         # Files the Windows share writes, into the table as they land
         # (modules/windows.nix).
         + lib.optionalString cfg.windows.enable " --watch";
