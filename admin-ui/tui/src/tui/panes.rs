@@ -326,14 +326,6 @@ fn join_nonempty(parts: &[String], sep: &str) -> String {
         .join(sep)
 }
 
-fn mode_label(mode: &str) -> String {
-    t(if mode == "native" {
-        "panes.apps.mode.native"
-    } else {
-        "panes.apps.mode.container"
-    })
-}
-
 fn phase_key(phase: &str) -> &'static str {
     match phase {
         "installing" => "install.phase.installing",
@@ -486,22 +478,13 @@ fn overview(ctx: &Ctx<'_>, cols: usize) -> PaneModel {
         }
     }
 
-    // The apps, as the home screen's grid has them: LosOS Cloud is always
-    // behind the front door, LosOS Git only in container mode.
-    let code_here = saved.is_none_or(|s| s.forgejo_mode == "container");
+    // The apps, as the home screen's grid has them.
     let mut names: Vec<String> = FILES_APPS
         .iter()
         .map(|id| t(&format!("apps.{id}.name")))
         .collect();
-    if code_here {
-        names.push(t("apps.code.name"));
-    }
+    names.push(t("apps.code.name"));
     names.push(t("apps.settings.name"));
-    let notice = if code_here {
-        String::new()
-    } else {
-        t("apps.notice.code")
-    };
     let mut installed = Vec::new();
     if let Some(apps) = ctx.res.get("/api/apps").data() {
         if apps["available"] == Value::Bool(true) {
@@ -530,8 +513,7 @@ fn overview(ctx: &Ctx<'_>, cols: usize) -> PaneModel {
         Section::new("apps")
             .title(t("shell.nav.apps"))
             .lines(app_grid(&names, cols.saturating_sub(2)))
-            .rows(installed)
-            .caption(notice),
+            .rows(installed),
     );
 
     // The storage strip.
@@ -919,34 +901,6 @@ pub fn chart_path(chart: &Chart) -> String {
 fn apps(ctx: &Ctx<'_>) -> PaneModel {
     let base = settings_base(PaneId::Apps);
     let mut sections = Vec::new();
-    match form_loading(ctx.form) {
-        Some(waiting) => sections.extend(waiting),
-        None => {
-            let draft = ctx.form.draft.as_ref().expect("form is ready");
-            let options: Vec<(String, String)> = ["container", "native"]
-                .iter()
-                .map(|v| ((*v).to_string(), mode_label(v)))
-                .collect();
-            sections.push(
-                Section::new("modes")
-                    .title(t("panes.apps.onThisBox"))
-                    .rows(vec![Row::new("code-mode", t("panes.apps.code.title"))
-                        .detail(t("panes.apps.code.detail"))
-                        .control(Control::Choice {
-                            value: draft.forgejo_mode.clone(),
-                            options,
-                            disabled: false,
-                            key: SettingKey::ForgejoMode,
-                        })])
-                    .caption(tr!(
-                        "panes.apps.modeCaption",
-                        kept = mode_label("container"),
-                        native = mode_label("native")
-                    )),
-            );
-        }
-    }
-
     let apps = ctx.res.get("/api/apps");
     let available = apps
         .data()

@@ -34,7 +34,7 @@ na bootovacom oddiele.
 kalendáre, kontakty a tabule, s ktorou sa synchronizujú aplikácie Nextcloud
 pre počítač a telefón.
 
-**LosOS Git.** Forgejo vo farbách zariadenia: repozitáre.
+**LosOS Git.** Vlastný Git server zariadenia: repozitáre.
 
 **Trh.** Platba za zdieľaný disk a CPU a ich nákup, v USDC, Bitcoine alebo
 Monere, alebo kartou tam, kde edge karty prijíma. Funguje iba na edge LosOS.

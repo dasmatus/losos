@@ -62,7 +62,6 @@ let
     // lib.optionalAttrs (!after) { src = before; }
   );
 
-
   # The box's settings as Apply writes them: a named box with its tunnel on,
   # sharing its storage, joined to a mesh or not.
   overrides =
@@ -72,7 +71,6 @@ let
 
       {
         losos.sharingMyStorage = true;
-        losos.forgejo.mode = "container";
         losos.hostName = "kitchenbox";
         losos.gpu.enable = true;
         losos.proxy.enable = true;
@@ -212,14 +210,13 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
         ];
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = ui;
-          forgejo.enable = false;
+          git.enable = false;
         };
         systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
         environment.systemPackages = [ pkgs.jq ];

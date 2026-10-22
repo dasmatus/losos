@@ -379,7 +379,7 @@
     "message": "LosOS Git"
   },
   "losos.home.feature.git.body": {
-    "message": "Ihre Code-Repositorys, auf derselben Box und hinter demselben Passwort. Gebaut auf Forgejo."
+    "message": "Ihre Code-Repositorys, auf derselben Box und hinter demselben Passwort. Der eigene Git-Server der Box."
   },
   "losos.home.feature.self.title": {
     "message": "Jeden Morgen ein frisches System"
@@ -602,7 +602,7 @@
     "message": "LosOS Git"
   },
   "losos.companies.box.git.body": {
-    "message": "Repositories, Issues und Pull Requests. Ihr Quellcode liegt nicht länger auf fremden Servern. Gebaut auf Forgejo."
+    "message": "Ihre Repositorys auf Ihrer eigenen Box. Ihr Quellcode liegt nicht länger auf fremden Servern."
   },
   "losos.companies.box.disk.title": {
     "message": "Ein Laufwerk, das gestohlen nichts nützt"
@@ -648,9 +648,6 @@
   },
   "losos.companies.eu.nextcloud": {
     "message": "LosOS Cloud spricht sein Protokoll, deshalb synchronisieren seine Desktop- und Handy-Apps mit der Box. Entwickelt von der Nextcloud GmbH in Stuttgart."
-  },
-  "losos.companies.eu.forgejo": {
-    "message": "Die Grundlage von LosOS Git. Ein Gemeinschaftsprojekt unter dem Dach von Codeberg e.V., einem gemeinnützigen Verein in Berlin."
   },
   "losos.companies.eu.nixos": {
     "message": "Das System, aus dem sich jede Box baut. Betreut von der NixOS Foundation in den Niederlanden."
@@ -857,7 +854,7 @@
     "message": "Keine Gebühr pro Nutzer"
   },
   "losos.companies.cost.body": {
-    "message": "LosOS und Forgejo sind freie Software. Ihre vierzigste Einstellung kostet ein Benutzerkonto, kein Abonnement. Sie zahlen einmal für die Hardware und dann für den Strom, und ein Büro-Mini-PC reicht dafür."
+    "message": "LosOS ist freie Software. Ihre vierzigste Einstellung kostet ein Benutzerkonto, kein Abonnement. Sie zahlen einmal für die Hardware und dann für den Strom, und ein Büro-Mini-PC reicht dafür."
   },
   "losos.companies.soon.intro": {
     "message": "LosOS ist eine Vorabversion, noch ohne Supportvertrag und ohne Zertifizierung. Das sind die Teile, die noch entstehen."

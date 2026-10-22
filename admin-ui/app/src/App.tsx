@@ -71,6 +71,10 @@ const Settings = React.lazy(() => import("@/screens/Settings"));
 /* Documents (losos.office.folder) and the editor, on boxes that edit a
  * folder of documents. */
 const Office = React.lazy(() => import("@/screens/Office"));
+const AppScreen = React.lazy(() => import("@/apps/screens").then((m) => ({ default: m.AppScreen })));
+const AppEditorScreen = React.lazy(() =>
+  import("@/apps/screens").then((m) => ({ default: m.AppEditorScreen })),
+);
 /* The first-run tour (src/tour/): its own chunk, fetched only when it opens,
  * which on most visits is never. */
 const Tour = React.lazy(() => import("@/tour/tour"));
@@ -83,6 +87,8 @@ const Mail = React.lazy(() => import("@/mail/app"));
 /* LosOS Chat (src/chat/), the same: on the shared side only, and the only
  * screen that brings matrix-js-sdk and its crypto. */
 const Chat = React.lazy(() => import("@/chat/app"));
+/* Mesh CI (src/ci/): on the shared side too, beside LosOS Git. */
+const Ci = React.lazy(() => import("@/ci/app"));
 /* LosOS Diagrams (src/lab/): its own chunk with the Rust core's
  * WebAssembly, fetched when /diagrams is first opened. */
 const Diagrams = React.lazy(() => import("@/lab/app"));
@@ -357,6 +363,9 @@ function Shell() {
             <Route path="/machines" element={<SettingsRoute pane="machines" />} />
             <Route path="/apps" element={<SettingsRoute pane="apps" />} />
             <Route path="/office" element={<Office hash={location.hash} />} />
+            <Route path="/apps/new" element={<AppEditorScreen />} />
+            <Route path="/apps/:id" element={<AppScreen />} />
+            <Route path="/apps/:id/edit" element={<AppEditorScreen />} />
             {/* nginx answers /mail with 404 off the shared side
                 (modules/containers.nix); the screen says so too if the box
                 leaves it while the page is open. */}
@@ -364,6 +373,10 @@ function Shell() {
             {/* nginx serves /chat/ only on the shared side, under chat's
                 own policy (modules/chat.nix); off it, /chat/ goes home. */}
             <Route path="/chat/*" element={<Chat />} />
+            {/* The same for Mesh CI. LosOS Git's checks link a run's job as
+                /ci/runs/<id>#job-<job>. */}
+            <Route path="/ci" element={<Ci />} />
+            <Route path="/ci/runs/:id" element={<Ci />} />
             <Route path="/diagrams/*" element={<Diagrams />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />

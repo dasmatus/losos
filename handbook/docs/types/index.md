@@ -34,9 +34,10 @@ virtual machines.
 
 ## 3. How the apps run
 
-[App modes](./app-modes.md) explains the two modes. By default, LosOS Cloud and LosOS
-Git run as workloads in the box's own small Kubernetes cluster. They can also
-run natively on the host. You see the same apps either way.
+LosOS Cloud and LosOS Git run on the box itself as system services. Apps you
+install run on rootless Podman, or in the box's own small Kubernetes cluster
+when they run as `shared`. [Where the apps run](./app-modes.md) has the
+details.
 
 ## 4. What the disk is for
 
