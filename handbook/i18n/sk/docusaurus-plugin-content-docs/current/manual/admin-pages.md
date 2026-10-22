@@ -71,6 +71,37 @@ zariadení, výmaz do továrenského stavu ho zmaže a `losos.search.enable` na
 paneli Rozšírené ho vypne. LosOS Git index nepotrebuje: každé vyhľadávanie
 číta repozitáre priamo.
 
+## Ponuka pravého tlačidla \{#the-right-click-menu}
+
+Kliknite pravým tlačidlom na stránkach správy, v LosOS Cloud alebo v Pošte
+a ponuka ukáže, čo môžete urobiť s tým, čo je pod ukazovateľom. Na
+dotykovej obrazovke podržte prst. Z klávesnice ju otvorí Shift+F10 alebo
+kláves Menu pre to, čo má práve fokus, a šípky sa ňou pohybujú.
+
+- **Prázdne miesto**: Späť, Dopredu, Načítať znova, vyhľadávanie, svetlý
+  alebo tmavý vzhľad a táto príručka.
+- **Označený text**: Kopírovať a hľadanie označených slov.
+- **Odkaz**: otvoriť na novej karte alebo skopírovať adresu.
+- **Dlaždica aplikácie alebo pripnutá položka**: otvoriť na novej karte,
+  pripnúť alebo odopnúť.
+- **Súbor alebo priečinok v LosOS Cloud**: otvoriť, stiahnuť, premenovať,
+  presunúť, skopírovať, staršie verzie, hviezdička, zdieľať, skopírovať odkaz,
+  vymazať. Keď je zaškrtnutých viac súborov, ponuka pracuje so všetkými.
+  Miesto okolo zoznamu ponúka nový priečinok a nahrávanie, súbor v koši
+  obnovenie alebo vymazanie natrvalo.
+- **Správa v Pošte**: otvoriť, odpovedať, odpovedať všetkým, preposlať,
+  označiť ako prečítanú alebo neprečítanú, označiť, archivovať, presunúť
+  do iného priečinka, odstrániť.
+- **Človek v Kontaktoch**: pošta, chat, hovor alebo video, upraviť,
+  exportovať ako `.vcf`, odstrániť. Človek v zozname **Na tomto boxe**
+  ponúka namiesto posledných troch **Pridať do kontaktov**.
+
+Klávesy vedľa položky fungujú aj bez ponuky. V LosOS Cloud F2 premenuje
+zaškrtnutý súbor a Delete ho presunie do koša (na Macu Cmd+Backspace).
+Textové polia si nechávajú ponuku prehliadača, kvôli pravopisu a vkladaniu.
+Ponuka ukazuje iba to, čo toto zariadenie vie: položka pre funkciu, ktorú
+zariadenie nemá, v nej nie je, ani sivá.
+
 ## Pripnuté položky \{#pins}
 
 Pripnite si aplikácie, súbory a repozitáre, ktoré otvárate najčastejšie, a

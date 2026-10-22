@@ -121,7 +121,7 @@ impl Paths {
         self.state_dir.join("git-auth")
     }
 
-    /// Where an older build kept a LosOS cloud app password for the pin
+    /// Where an older build kept a LosOS Cloud app password for the pin
     /// picker; removed at start, since the picker asks over the socket now.
     pub fn retired_cloud_key_file(&self) -> PathBuf {
         self.state_dir.join("cloud-key")
@@ -810,13 +810,13 @@ pub const DEFAULT_RELAY_PASS_FILE: &str = "/run/losos/relay-pass";
 
 /// How often the daemon asks the edge which custom domains are live, besides
 /// every time the owner opens or changes them. A domain the edge turns live
-/// on its own (the owner's DNS records appeared) reaches LosOS cloud within
+/// on its own (the owner's DNS records appeared) reaches LosOS Cloud within
 /// this, so it is short enough that an owner who just added the records is
 /// not left at "Untrusted domain" for long, and long enough to be one small
 /// request in a quiet hour.
 pub const DOMAIN_SYNC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(120);
 
-/// Keep the live custom domains fresh for LosOS cloud: ask the edge once now
+/// Keep the live custom domains fresh for LosOS Cloud: ask the edge once now
 /// and then every [`DOMAIN_SYNC_INTERVAL`]. Only an official edge is asked
 /// (the same gate as the Network pane), and an answer that does not come
 /// leaves the last one in place.

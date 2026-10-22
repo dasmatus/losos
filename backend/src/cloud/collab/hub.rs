@@ -537,7 +537,13 @@ mod tests {
         doc.room.replace_text("one\ntwo\n");
         settle().await;
         drop(doc);
-        settle().await;
+        // The idle timer is 200 ms; a busy test runner can be late by more
+        // than one settle, so wait for the close rather than for a fixed time.
+        let mut waited = 0;
+        while h.get(&DocKey::File(id)).is_some() && waited < 50 {
+            settle().await;
+            waited += 1;
+        }
         assert!(h.get(&DocKey::File(id)).is_none(), "closed when idle");
         store.overwrite(id, b"zero\none\n");
         let doc = h.open(DocKey::File(id)).await.unwrap();
@@ -545,6 +551,16 @@ mod tests {
         settle().await;
         drop(doc);
         settle().await;
+        // The close is a timer and a write on a blocking thread, so a busy
+        // runner can still hold the room here; reopening it then would read
+        // the room, not the file written below.
+        for _ in 0..40 {
+            if h.get(&DocKey::File(id)).is_none() {
+                break;
+            }
+            settle().await;
+        }
+        assert!(h.get(&DocKey::File(id)).is_none(), "closed when idle");
         // Typed while the file was edited elsewhere and nobody had it open.
         let mut text = std::fs::read(dir.join(format!("f{id}.ydoc"))).unwrap();
         let typed = Room::from_state(&text).unwrap();

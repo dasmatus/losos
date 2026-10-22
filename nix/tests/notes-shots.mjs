@@ -122,11 +122,11 @@ async function after(s, page, anon, base) {
   });
 
   await folder.click({ button: "right" });
-  await p.waitForSelector("[data-row-menu]");
-  const open = p.locator('[data-row-menu] [data-action="notes-open"]');
+  await p.waitForSelector('[data-slot="context-menu"]');
+  const open = p.locator('[data-slot="context-menu"] [data-item="folder-notes-open"]');
   await s.take(p, "folder-menu", "a right click on the folder", { kind: "click", target: "open" }, {
     open,
-    publish: p.locator('[data-row-menu] [data-action="kb-publish"]'),
+    publish: p.locator('[data-slot="context-menu"] [data-item="folder-kb-publish"]'),
   });
   await open.click();
   await waitNote(p, "Home.md");
@@ -219,7 +219,7 @@ async function after(s, page, anon, base) {
   await p.goto(`${base}/cloud/files`);
   await folder.waitFor();
   await folder.click({ button: "right" });
-  const publish = p.locator('[data-row-menu] [data-action="kb-publish"]');
+  const publish = p.locator('[data-slot="context-menu"] [data-item="folder-kb-publish"]');
   await publish.waitFor();
   await s.take(p, "publish-menu", "publishing the folder", { kind: "click", target: "publish" }, { publish });
   await publish.click();
@@ -279,7 +279,7 @@ async function before(s, page, anon, base) {
   const folder = p.locator(`[data-entry="${VAULT}"]`);
   await folder.waitFor();
   await folder.click({ button: "right" });
-  await p.waitForSelector("[data-row-menu]");
+  await p.waitForSelector('[data-slot="context-menu"]');
   await s.take(p, "folder-menu", "the folder's menu with knowledge bases off");
   await anon.goto(`${base}/kb/kitchen-garden/`);
   await anon.waitForSelector("[data-kb-missing]");

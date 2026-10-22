@@ -9,7 +9,10 @@ Recent and Photos have something to sort. The pictures are drawn here
 
 BASE is the server's origin (https://mattbox.local), PASSWORD an app
 password or the person's LosOS Login password, CAFILE the box's own
-certificate when the system does not trust it yet.
+certificate when the system does not trust it yet. The files go to
+/remote.php/webdav/, the signed-in person's own folder, because the
+owner's LosOS Login name (matus) is not the name of their folder
+(notshared).
 """
 
 import base64
@@ -118,7 +121,7 @@ def main() -> None:
     base, login, password = sys.argv[1:4]
     context = ssl.create_default_context(cafile=sys.argv[4]) if len(sys.argv) > 4 else None
     auth = "Basic " + base64.b64encode(f"{login}:{password}".encode()).decode()
-    root = f"{base.rstrip('/')}/remote.php/dav/files/{urllib.parse.quote(login)}/"
+    root = f"{base.rstrip('/')}/remote.php/webdav/"
 
     def send(method: str, path: str, body: bytes | None = None, headers: dict[str, str] | None = None) -> int:
         url = root + urllib.parse.quote(path)

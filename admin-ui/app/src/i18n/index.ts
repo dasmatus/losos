@@ -8,11 +8,14 @@ import access from "./access";
 import account from "./account";
 import advanced from "./advanced";
 import apps from "./apps";
+import calls from "./calls";
+import chat from "./chat";
 import ci from "./ci";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import credentials from "./credentials";
 import collab from "./collab";
+import contacts from "./contacts";
 import games from "./games";
 import git from "./git";
 import tracker from "./tracker";
@@ -27,13 +30,16 @@ import mail from "./mail";
 import mention from "./mention";
 import machines from "./machines";
 import manage from "./manage";
+import menu from "./menu";
 import notes from "./notes";
+import office from "./office";
 import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
 import profile from "./profile";
 import settings from "./settings";
 import shell from "./shell";
+import together from "./together";
 import tour from "./tour";
 import userApps from "./user-apps";
 import users from "./users";
@@ -73,11 +79,17 @@ export const MESSAGES = {
   ...tour,
   ...palette,
   ...pins,
+  ...calls,
   ...manage,
+  ...chat,
+  ...office,
   ...mail,
+  ...contacts,
+  ...menu,
   ...ci,
   ...mention,
   ...games,
+  ...together,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

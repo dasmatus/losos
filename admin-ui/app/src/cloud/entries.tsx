@@ -13,13 +13,14 @@ import {
   StarIcon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/components/ui/toast";
+import { contextMenu } from "@/lib/context-menu";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { cloud, contentUrl, hasPreview, joinPath, parentOf, previewUrl, type Entry } from "./api";
 import { MoveDialog, NameDialog, VersionsDialog, failed } from "./dialogs";
+import { useEntryMenu } from "./entry-menu";
 import { formatBytes, formatFull, formatWhen, iconFor } from "./format";
 import { MeshShareDialog } from "./mesh/share-dialog";
 import { folderActionsFor, openersFor, type FolderAction } from "./openers";
@@ -133,6 +134,7 @@ export function EntryTable({
   const navigate = useNavigate();
   const all = entries.length > 0 && entries.every((e) => selected.has(e.path));
   const last = React.useRef<number | null>(null);
+  const menu = useEntryMenu({ entries, selected, onSelectedChange });
 
   const pick = (index: number, entry: Entry, shift: boolean) => {
     const next = new Set(selected);
@@ -158,146 +160,95 @@ export function EntryTable({
     </TableHead>
   );
 
-  // What a right click on a row offers: the apps that open a file, the
-  // actions a folder has (Notes, knowledge bases).
-  const [menuFor, setMenuFor] = React.useState<Entry | null>(null);
-  const [dialog, setDialog] = React.useState<{ action: FolderAction; folder: Entry } | null>(null);
-  const menuItems =
-    menuFor === null
-      ? []
-      : menuFor.dir
-        ? folderActionsFor(menuFor).map((a) => ({
-            id: a.id,
-            label: t(a.label(menuFor)),
-            icon: a.icon,
-            run: () => {
-              if (a.href !== undefined) navigate(a.href(menuFor));
-              else if (a.Dialog !== undefined) setDialog({ action: a, folder: menuFor });
-            },
-          }))
-        : openersFor(menuFor).map((o) => ({
-            id: o.id,
-            label: t(o.label),
-            icon: o.icon,
-            run: () => window.open(o.href(menuFor), "_blank", "noopener"),
-          }));
-
   return (
-    <ContextMenu>
-      <ContextMenuTrigger
-        render={<div />}
-        onContextMenu={(event: React.MouseEvent) => {
-          const row = (event.target as HTMLElement).closest<HTMLElement>("[data-entry-id]");
-          const entry = row === null ? undefined : entries.find((e) => String(e.id) === row.dataset["entryId"]);
-          const offered = entry === undefined ? 0 : entry.dir ? folderActionsFor(entry).length : openersFor(entry).length;
-          // Nothing to offer: the browser's own menu.
-          if (entry === undefined || offered === 0) {
-            event.stopPropagation();
-            setMenuFor(null);
-            return;
-          }
-          setMenuFor(entry);
-        }}
-      >
-    <Table data-files>
-      <TableHeader>
-        <TableRow className="hover:bg-transparent">
-          <TableHead className="w-10">
-            <input
-              type="checkbox"
-              role="checkbox"
-              aria-label={t("cloud.selectAll")}
-              checked={all}
-              onChange={() => onSelectedChange(all ? new Set() : new Set(entries.map((e) => e.path)))}
-              className="size-4 accent-accent"
-            />
-          </TableHead>
-          {head("name", t("cloud.col.name"))}
-          {showFolder && <TableHead className="max-md:hidden">{t("cloud.col.folder")}</TableHead>}
-          {head("size", t("cloud.col.size"), "w-28 text-right max-sm:hidden")}
-          {head("mtime", t("cloud.col.modified"), "w-40 max-sm:hidden")}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {entries.map((entry, index) => {
-          const isSel = selected.has(entry.path);
-          const href = entryHref(entry);
-          const inApp = entry.dir;
-          return (
-            <TableRow
-              key={entry.id}
-              data-state={isSel ? "selected" : undefined}
-              data-entry={entry.name}
-              data-entry-id={entry.id}
-              className={cn("group/row", highlight === entry.id && "bg-accent-wash")}
-              onClick={(event) => {
-                // A click on the row's empty space picks it, as in a file manager.
-                if ((event.target as HTMLElement).closest("a,button,input") === null) pick(index, entry, event.shiftKey);
-              }}
-              onDoubleClick={(event) => {
-                if ((event.target as HTMLElement).closest("a,button,input") !== null) return;
-                if (inApp) navigate(href);
-                else window.open(href, "_blank", "noopener");
-              }}
-            >
-              <TableCell>
-                <input
-                  type="checkbox"
-                  role="checkbox"
-                  aria-label={t("cloud.select", { name: entry.name })}
-                  checked={isSel}
-                  onChange={(event) => pick(index, entry, (event.nativeEvent as MouseEvent).shiftKey)}
-                  className="size-4 accent-accent"
-                />
-              </TableCell>
-              <TableCell className="max-w-0 w-full">
-                <div className="flex min-w-0 items-center gap-3">
-                  <Thumb entry={entry} />
-                  {inApp ? (
-                    <Link to={href} className="min-w-0 truncate font-medium hover:underline">
-                      {entry.name}
-                    </Link>
-                  ) : (
-                    <a href={href} target="_blank" rel="noopener" className="min-w-0 truncate font-medium hover:underline">
-                      {entry.name}
-                    </a>
-                  )}
-                  <FavoriteButton entry={entry} />
-                </div>
-              </TableCell>
-              {showFolder && (
-                <TableCell className="max-md:hidden text-muted">
-                  <Link to={folderHref(parentOf(entry.path))} className="hover:text-ink hover:underline">
-                    {parentOf(entry.path) === "" ? t("cloud.nav.files") : parentOf(entry.path)}
-                  </Link>
+    <>
+      <Table data-files>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="w-10">
+              <input
+                type="checkbox"
+                role="checkbox"
+                aria-label={t("cloud.selectAll")}
+                checked={all}
+                onChange={() => onSelectedChange(all ? new Set() : new Set(entries.map((e) => e.path)))}
+                className="size-4 accent-accent"
+              />
+            </TableHead>
+            {head("name", t("cloud.col.name"))}
+            {showFolder && <TableHead className="max-md:hidden">{t("cloud.col.folder")}</TableHead>}
+            {head("size", t("cloud.col.size"), "w-28 text-right max-sm:hidden")}
+            {head("mtime", t("cloud.col.modified"), "w-40 max-sm:hidden")}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {entries.map((entry, index) => {
+            const isSel = selected.has(entry.path);
+            const href = entryHref(entry);
+            const inApp = entry.dir;
+            return (
+              <TableRow
+                key={entry.id}
+                ref={contextMenu(menu.row(entry))}
+                data-state={isSel ? "selected" : undefined}
+                data-entry={entry.name}
+                data-entry-id={entry.id}
+                className={cn("group/row", highlight === entry.id && "bg-accent-wash")}
+                onClick={(event) => {
+                  // A click on the row's empty space picks it, as in a file manager.
+                  if ((event.target as HTMLElement).closest("a,button,input") === null) pick(index, entry, event.shiftKey);
+                }}
+                onDoubleClick={(event) => {
+                  if ((event.target as HTMLElement).closest("a,button,input") !== null) return;
+                  if (inApp) navigate(href);
+                  else window.open(href, "_blank", "noopener");
+                }}
+              >
+                <TableCell>
+                  <input
+                    type="checkbox"
+                    role="checkbox"
+                    aria-label={t("cloud.select", { name: entry.name })}
+                    checked={isSel}
+                    onChange={(event) => pick(index, entry, (event.nativeEvent as MouseEvent).shiftKey)}
+                    className="size-4 accent-accent"
+                  />
                 </TableCell>
-              )}
-              <TableCell className="numeric text-right text-muted max-sm:hidden">
-                {entry.dir ? "" : formatBytes(entry.size)}
-              </TableCell>
-              <TableCell className="text-muted max-sm:hidden" title={formatFull(entry.mtime)}>
-                {formatWhen(entry.mtime)}
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
-      </ContextMenuTrigger>
-      {menuItems.length > 0 && (
-        <ContextMenuContent aria-label={menuFor?.name} data-row-menu>
-          {menuItems.map((item) => (
-            <ContextMenuItem key={item.id} onClick={item.run} data-action={item.id}>
-              <HugeiconsIcon icon={item.icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-              {item.label}
-            </ContextMenuItem>
-          ))}
-        </ContextMenuContent>
-      )}
-      {dialog?.action.Dialog !== undefined && (
-        <dialog.action.Dialog folder={dialog.folder} open onOpenChange={(open) => !open && setDialog(null)} />
-      )}
-    </ContextMenu>
+                <TableCell className="max-w-0 w-full">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Thumb entry={entry} />
+                    {inApp ? (
+                      <Link to={href} className="min-w-0 truncate font-medium hover:underline">
+                        {entry.name}
+                      </Link>
+                    ) : (
+                      <a href={href} target="_blank" rel="noopener" className="min-w-0 truncate font-medium hover:underline">
+                        {entry.name}
+                      </a>
+                    )}
+                    <FavoriteButton entry={entry} />
+                  </div>
+                </TableCell>
+                {showFolder && (
+                  <TableCell className="max-md:hidden text-muted">
+                    <Link to={folderHref(parentOf(entry.path))} className="hover:text-ink hover:underline">
+                      {parentOf(entry.path) === "" ? t("cloud.nav.files") : parentOf(entry.path)}
+                    </Link>
+                  </TableCell>
+                )}
+                <TableCell className="numeric text-right text-muted max-sm:hidden">
+                  {entry.dir ? "" : formatBytes(entry.size)}
+                </TableCell>
+                <TableCell className="text-muted max-sm:hidden" title={formatFull(entry.mtime)}>
+                  {formatWhen(entry.mtime)}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+      {menu.dialogs}
+    </>
   );
 }
 

@@ -75,7 +75,7 @@ export function Dialog({
     >
       <div
         className={cn(
-          "animate-pop rounded-card border border-line bg-surface text-ink shadow-pop",
+          "rounded-card border border-line bg-surface text-ink shadow-pop",
           "max-h-[calc(100dvh-4rem)] overflow-y-auto",
           className,
         )}

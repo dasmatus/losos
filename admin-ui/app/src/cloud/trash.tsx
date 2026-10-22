@@ -7,6 +7,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Spinner } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/components/ui/toast";
+import { contextMenu } from "@/lib/context-menu";
 import { useT } from "@/lib/i18n-react";
 import { cloud, isAbort, parentOf, type Trashed } from "./api";
 import { ConfirmDialog, explain, failed } from "./dialogs";
@@ -90,7 +91,25 @@ export function TrashView() {
             </TableHeader>
             <TableBody>
               {items.map((item) => (
-                <TableRow key={item.id} data-entry={item.name}>
+                <TableRow
+                  key={item.id}
+                  data-entry={item.name}
+                  ref={contextMenu(() => ({
+                    label: item.name,
+                    sections: [
+                      [{ id: "restore", label: t("cloud.trash.restore"), icon: RestoreBinIcon, onSelect: () => void restore(item) }],
+                      [
+                        {
+                          id: "purge",
+                          label: `${t("cloud.trash.purgeConfirm")}…`,
+                          icon: Delete02Icon,
+                          danger: true,
+                          onSelect: () => setPurging(item),
+                        },
+                      ],
+                    ],
+                  }))}
+                >
                   <TableCell className="w-full max-w-0">
                     <div className="flex min-w-0 items-center gap-3">
                       <HugeiconsIcon

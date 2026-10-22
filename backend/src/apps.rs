@@ -1042,7 +1042,7 @@ pub fn cmd_app_install<L: Losos>(l: &mut L, req: &InstallRequest) -> anyhow::Res
     config.check_name(&req.release)?;
     if req.run_as == RunAs::Shared && !config.kube {
         return conflict(
-            "An app can run as shared only while LosOS cloud or LosOS Git is kept separate. \
+            "An app can run as shared only while LosOS Cloud or LosOS Git is kept separate. \
              Choose notshared.",
         );
     }

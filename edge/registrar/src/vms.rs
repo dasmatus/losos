@@ -133,7 +133,7 @@ pub struct Image {
     #[serde(default)]
     pub min_disk_gib: u64,
     /// The least memory it runs in; the replica gets the larger of this and
-    /// the edge's `--vm-memory-mib`. LosOS runs two clusters and LosOS cloud,
+    /// the edge's `--vm-memory-mib`. LosOS runs two clusters and LosOS Cloud,
     /// so it asks for more than a cloud image does.
     #[serde(default)]
     pub min_memory_mib: u64,
