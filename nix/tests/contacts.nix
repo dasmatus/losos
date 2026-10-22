@@ -40,12 +40,20 @@ let
   before = beforeSrc != null;
 
   # The admin UI as it ships, without the Lab page and LosOS Cloud's page,
-  # which this test never opens.
+  # which this test never opens. Stand-ins take the place of LosOS
+  # Diagrams' three WebAssembly packages (as nix/tests/calls.nix), so the
+  # bundle builds without Bevy; only /diagrams, never opened here, would fail.
   ui = lososPkgs.losos-admin-ui.overrideAttrs (
     _:
     {
       pname = "losos-admin-ui-without-lab";
       preBuild = ''
+        for f in core-pkg/losos_lab_core virt-pkg/losos_lab_virt \
+                 render-pkg/webgpu/losos_lab_render render-pkg/webgl2/losos_lab_render; do
+          mkdir -p "src/lab/$(dirname "$f")"
+          echo 'export default function init() { throw new Error("not in this build"); } export class Lab {}' > "src/lab/$f.js"
+          : > "src/lab/''${f}_bg.wasm"
+        done
         cat > vite.contacts-test.config.ts <<'EOF'
         import base from "./vite.config";
         import { join } from "node:path";
