@@ -25,6 +25,13 @@ const TABLE: &str = include_str!("../sections.json");
 struct Table {
     viewers: String,
     sections: Vec<String>,
+    /// Sections `losos-viewers` do not read: reports and who is muted.
+    private: Vec<String>,
+    /// The `signed-in` routes that change something and that a guest may
+    /// still call (`crate::roles`).
+    guests: Vec<String>,
+    /// The routes a muted person may not call (`crate::moderation`).
+    speech: Vec<String>,
     edge: Vec<String>,
     routes: BTreeMap<String, String>,
 }
@@ -54,9 +61,30 @@ pub fn allows(person: &Person, method: &str, section: &str) -> bool {
             let group = format!("losos-{named}");
             person.groups.contains(&group)
                 || (method.eq_ignore_ascii_case("GET")
+                    && !table().private.iter().any(|p| p == named)
                     && person.groups.iter().any(|g| *g == table().viewers))
         }
     }
+}
+
+/// Whether a guest (`crate::roles::GUESTS`) may call `method` on
+/// `pattern`, a route in `section`: reading anything signed in, and of what
+/// changes something only the few routes the table's `guests` list names.
+/// Named sections stay as their groups say.
+pub fn guest_allows(method: &str, pattern: &str, section: &str) -> bool {
+    section != "signed-in"
+        || method.eq_ignore_ascii_case("GET")
+        || table()
+            .guests
+            .contains(&format!("{} {pattern}", method.to_ascii_uppercase()))
+}
+
+/// Whether `method` on `pattern` is speaking: sending mail, changing what
+/// others see on a profile. A muted person may not.
+pub fn speech(method: &str, pattern: &str) -> bool {
+    table()
+        .speech
+        .contains(&format!("{} {pattern}", method.to_ascii_uppercase()))
 }
 
 /// Whether a company edge the owner let manage this box may call `method`
@@ -188,7 +216,10 @@ mod tests {
         assert!(allows(&p, "GET", section("GET", "/api/storage")));
         assert!(!allows(&p, "POST", section("POST", "/api/grow")));
         assert!(!allows(&p, "GET", section("GET", "/api/recovery")));
-        assert_eq!(usable(&p).len(), table().sections.len());
+        assert_eq!(
+            usable(&p).len(),
+            table().sections.len() - table().private.len()
+        );
     }
 
     #[test]
@@ -205,6 +236,51 @@ mod tests {
             assert!(
                 table().sections.contains(s),
                 "edge section {s} is not declared"
+            );
+        }
+    }
+
+    #[test]
+    fn viewers_do_not_read_the_moderation_queue() {
+        let p = person(&["losos-viewers"]);
+        assert!(!allows(&p, "GET", section("GET", "/api/moderation")));
+        assert!(allows(
+            &person(&["losos-moderation"]),
+            "GET",
+            section("GET", "/api/moderation")
+        ));
+        assert!(!usable(&p).contains(&"moderation"));
+    }
+
+    #[test]
+    fn guests_read_and_change_only_what_the_table_lets_them() {
+        let at = |m: &str, r: &str| guest_allows(m, r, section(m, r));
+        assert!(at("GET", "/api/ci/runs"));
+        assert!(at("POST", "/api/mail/send"));
+        assert!(at("POST", "/api/reports"));
+        assert!(!at("POST", "/api/ci/dispatch"));
+        assert!(!at("POST", "/api/ci/runs/{id}/rerun"));
+        // A named section is its group's business, not this rule's.
+        assert!(at("POST", "/api/account/profile"));
+    }
+
+    #[test]
+    fn every_route_the_lists_name_is_served_and_signed_in_or_account() {
+        for r in table().guests.iter().chain(&table().speech) {
+            let (m, p) = r.split_once(' ').unwrap();
+            assert!(
+                matches!(section(m, p), "signed-in" | "account"),
+                "{r} is in {}",
+                section(m, p)
+            );
+            assert!(table().routes.contains_key(r), "{r} is not in routes");
+        }
+        assert!(speech("POST", "/api/mail/send"));
+        assert!(!speech("POST", "/api/reports"));
+        for s in &table().private {
+            assert!(
+                table().sections.contains(s),
+                "private section {s} is not declared"
             );
         }
     }

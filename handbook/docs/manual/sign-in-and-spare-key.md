@@ -88,7 +88,8 @@ The admin pages are split into sections: storage, backup, apps, market
 (with virtual machines), network (custom domains), look, Diagrams and access
 tokens. An administrator can use all of them, and only an administrator can
 apply settings or use Mesh, Hardware, Security, Users, Advanced, History,
-About and Reset, erase or restore the box, or see the recovery code. A person who is
+About and Reset, erase or restore the box, or see the recovery code.
+Moderators also open Moderation. A person who is
 not an administrator gets the sections they were given, or reads every
 section without changing anything. Anyone signed in sees the overview. The
 admin pages hide the panes a person cannot use.
@@ -107,13 +108,18 @@ people in itself with LosOS Login. A box whose sign-in runs somewhere else has
 no Users pane.
 
 To add someone, fill in **Add a person**: a sign-in name, their full name, a
-password that follows the same rules as yours, and their access.
+password that follows the same rules as yours, and their role.
 
-- **Chosen parts**: they see and change only the parts switched on, for
-  example Storage and Backup.
-- **Sees everything**: they see every pane and change only the parts
-  switched on.
+- **Member**: they see and change only the parts switched on, for example
+  Storage and Backup. **Sees every part** lets them look at every pane too.
+- **Moderator**: a member who also handles reports, and mutes or suspends
+  members and guests.
+- **Guest**: their own account, mail and profile, and no part of the box.
 - **Administrator**: they can change everything, including who can sign in.
+
+A role of the box's own, made under **Roles of your own**, is in the same
+list. [Roles and moderation](moderation) has the table of what each role can
+do.
 
 ![The Users pane: three people with their access, and the Add a person form below them.](../img/settings-users.png)
 
@@ -122,13 +128,14 @@ password yourself. They sign in on LosOS Login.
 LosOS Cloud and LosOS Git each make them an account of their own the first
 time they open the app.
 
-A person with an authenticator app or a passkey has a **Two-factor** badge.
-One a sign-in rule holds has a **Held** badge, with the reason below their
-name.
+Each person has a badge with their role. A person with an authenticator app
+or a passkey has a **Two-factor** badge. One a sign-in rule holds has a
+**Held** badge, with the reason below their name. A muted or suspended
+person has a **Muted** or **Suspended** badge.
 
 Each person in the list has these buttons:
 
-- **Access** changes what they can do. It applies from their next click,
+- **Access** changes their role and parts. It applies from their next click,
   with no new sign-in.
 - **New password** is for someone who lost theirs. The old one stops working
   at once.
