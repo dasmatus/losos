@@ -497,8 +497,11 @@ let
         b.wait_for_unit("losos-ci-runner.service")
         b.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
 
+    # lososd keeps its admin token in the credential store.
+    ADMIN_TOKEN = "systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -"
+
     def api(b, method, path, body=None):
-        token = b.succeed("cat /var/secrets/losos-admin-token").strip()
+        token = b.succeed(ADMIN_TOKEN).strip()
         args = f"-fsS -X {method} -H 'Authorization: Bearer {token}'"
         if body is not None:
             args += f" -H 'Content-Type: application/json' -d '{json.dumps(body)}'"
@@ -530,7 +533,7 @@ let
 
     def wait_run(b, run_id, timeout):
         b.wait_until_succeeds(
-            "curl -fsS -H \"Authorization: Bearer $(cat /var/secrets/losos-admin-token)\""
+            "curl -fsS -H \"Authorization: Bearer $(" + ADMIN_TOKEN + ")\""
             f" 127.0.0.1:8082/api/ci/runs/{run_id}"
             " | jq -e '.state as $s | [\"success\",\"failure\",\"cancelled\",\"error\"] | index($s)'",
             timeout=timeout,
@@ -562,7 +565,7 @@ let
     for name, b in BOXES.items():
         assert api(b, "PUT", "/api/ci/runner", {"lend": "always"})["lend"] == "always"
         b.wait_until_succeeds(
-            "curl -fsS -H \"Authorization: Bearer $(cat /var/secrets/losos-admin-token)\""
+            "curl -fsS -H \"Authorization: Bearer $(" + ADMIN_TOKEN + ")\""
             " 127.0.0.1:8082/api/ci | jq -e '.mesh == true'",
             timeout=180,
         )
@@ -593,7 +596,7 @@ let
     with subtest("a push runs the workflow's jobs on both boxes of the mesh"):
         sha = push("site")
         boxa.wait_until_succeeds(
-            "curl -fsS -H \"Authorization: Bearer $(cat /var/secrets/losos-admin-token)\""
+            "curl -fsS -H \"Authorization: Bearer $(" + ADMIN_TOKEN + ")\""
             " '127.0.0.1:8082/api/ci/runs?owner=matus&repo=site' | jq -e '.runs | length == 1'",
             timeout=300,
         )
@@ -627,7 +630,7 @@ let
     with subtest("a private repository's job stays on its own box"):
         push("notes")
         boxa.wait_until_succeeds(
-            "curl -fsS -H \"Authorization: Bearer $(cat /var/secrets/losos-admin-token)\""
+            "curl -fsS -H \"Authorization: Bearer $(" + ADMIN_TOKEN + ")\""
             " '127.0.0.1:8082/api/ci/runs?owner=matus&repo=notes' | jq -e '.runs | length == 1'",
             timeout=300,
         )
@@ -642,7 +645,7 @@ let
         run_id = api(boxa, "POST", "/api/ci/dispatch",
                      {"owner": "matus", "repo": "site", "workflow": ".github/workflows/slow.yml"})["id"]
         boxa.wait_until_succeeds(
-            "curl -fsS -H \"Authorization: Bearer $(cat /var/secrets/losos-admin-token)\""
+            "curl -fsS -H \"Authorization: Bearer $(" + ADMIN_TOKEN + ")\""
             f" 127.0.0.1:8082/api/ci/runs/{run_id} | jq -e '.jobs[0].state == \"running\"'",
             timeout=900,
         )
