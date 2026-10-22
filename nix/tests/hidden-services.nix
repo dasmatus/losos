@@ -215,10 +215,19 @@ pkgs.testers.runNixOSTest (
 
     # The box's and the edge's tor read every file in
     # /var/lib/losos-hidden/tor/ (modules/hidden-lib.nix).
+    # A unit of its own: tor's ExecStartPre runs inside its sandbox, where
+    # that directory is read-only.
     hiddenTestnet = {
-      systemd.services.tor.serviceConfig.ExecStartPre = lib.mkBefore [
-        "+${testnet} /var/lib/losos-hidden/tor/testnet.conf"
-      ];
+      systemd.services.tor-testnet = {
+        wantedBy = [ "tor.service" ];
+        before = [ "tor.service" ];
+        after = [ "systemd-tmpfiles-setup.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = "${testnet} /var/lib/losos-hidden/tor/testnet.conf";
+        };
+      };
       lososInternal.hidden.i2pHops = 1;
     };
   in
