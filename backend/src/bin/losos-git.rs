@@ -56,6 +56,13 @@ enum Cmd {
         /// Tell this socket about pushes and pull requests (Mesh CI's).
         #[arg(long)]
         events_socket: Vec<PathBuf>,
+        /// Take other boxes' self-signed certificates when asking their
+        /// chat servers who someone is, keeping each one's key.
+        #[arg(long)]
+        matrix_self_signed: bool,
+        /// Reach a chat server at a fixed address, `name=url` (tests).
+        #[arg(long, hide = true)]
+        matrix_server_url: Vec<String>,
     },
     /// Carry Forgejo's records into LosOS Git from the export in `--from`
     /// (`<from>/tables/*.json`), and write `<from>/import.json`.
@@ -163,6 +170,8 @@ fn main() -> anyhow::Result<()> {
             base_path,
             internal_socket,
             events_socket,
+            matrix_self_signed,
+            matrix_server_url,
         } => {
             for path in events_socket {
                 losos_ctl::forge::events::deliver_to(path);
@@ -175,6 +184,14 @@ fn main() -> anyhow::Result<()> {
                     default_private: !public_by_default,
                     push_create,
                     base_path,
+                    matrix: losos_ctl::forge::matrix::MatrixConfig {
+                        self_signed: matrix_self_signed,
+                        urls: matrix_server_url
+                            .iter()
+                            .filter_map(|s| s.split_once('='))
+                            .map(|(n, u)| (n.to_string(), u.to_string()))
+                            .collect(),
+                    },
                 },
                 server::Listen {
                     socket,
