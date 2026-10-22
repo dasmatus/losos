@@ -39,17 +39,26 @@ const page = await context.newPage();
 page.setDefaultTimeout(300_000);
 page.setDefaultNavigationTimeout(300_000);
 const errors = [];
-page.on("pageerror", (e) => errors.push(String(e)));
 // The admin page's policy (style-src 'self') refuses anything a library
-// injects; a refusal is a bug, not a look.
+// injects; a refusal is a bug, not a look. What a plain load of LosOS
+// Cloud's Files page already logs (sonner's stylesheet, which the bundle
+// carries instead) is the baseline, as tests/*.browser.mjs keep it.
+const baseline = new Set();
+let watching = false;
+page.on("pageerror", (e) => errors.push(String(e)));
 page.on("console", (m) => {
-  if (m.type() === "error" && /Content Security Policy/i.test(m.text())) errors.push(m.text());
+  if (m.type() !== "error" || !/Content Security Policy/i.test(m.text())) return;
+  if (!watching) baseline.add(m.text());
+  else if (!baseline.has(m.text())) errors.push(m.text());
 });
 
 const base = "https://mattbox.local";
 
 async function settle() {
-  await page.addStyleTag({ content: "* { caret-color: transparent !important; }" }).catch(() => {});
+  // A CSSOM write, which style-src 'self' allows; a <style> it refuses.
+  await page.evaluate(() => {
+    document.documentElement.style.caretColor = "transparent";
+  });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => document.fonts.ready.then(() => true));
   // Every picture on screen has arrived.
@@ -75,6 +84,8 @@ async function viewer(name) {
 
 const steps = [];
 async function box(locator) {
+  // A target that is not on screen is a broken frame, not a wait.
+  if ((await locator.count()) === 0) throw new Error(`no ${locator} on screen`);
   const b = await locator.first().boundingBox();
   return b && { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) };
 }
@@ -89,7 +100,7 @@ async function frame(file, url, title, action, targets) {
 }
 
 async function film() {
-  const select = page.locator("[data-photos-by] select");
+  const select = page.locator("select[data-photos-by]");
   await photos();
   await frame("01-photos.png", "/cloud/photos", "every photo by the month it was taken", { kind: "click", target: "groupBy" }, {
     groupBy: select,
@@ -150,6 +161,10 @@ async function walk() {
     [login, password, `${base}/cloud/`],
   );
   if (status !== 200) throw new Error(`sign-in refused: ${status}`);
+  await page.goto(`${base}/cloud/`);
+  await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(1000);
+  watching = true;
   if (which === "film") return film();
 
   await photos();
