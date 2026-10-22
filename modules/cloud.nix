@@ -56,6 +56,8 @@ let
   pkg = config.losos.backend.package;
   # The same gate as the shared side's chat, mail and calls.
   knowledgeBases = config.losos.sharingMyStorage && config.losos.cluster.enable;
+  # Office edits the cloud's files unless it was given a folder of its own.
+  office = config.losos.office.enable && config.losos.office.folder == null;
   signIn = import ./app-sign-in.nix { inherit lib; };
 
   stateDir = "/var/lib/losos-cloud";
@@ -311,7 +313,14 @@ in
         + lib.optionalString mesh.enable (
           " --mesh" + lib.optionalString mesh.selfSigned " --mesh-self-signed"
         )
-        + lib.optionalString knowledgeBases " --knowledge-bases";
+        + lib.optionalString knowledgeBases " --knowledge-bases"
+        # Office documents open in Collabora (modules/office.nix): coolwsd
+        # reaches /wopi/files/ through nginx on the WOPI port, and the types
+        # it opens come from the copy of its discovery saved under /run.
+        + lib.optionalString office (
+          " --office-wopi http://127.0.0.1:${toString config.losos.office.wopiPort}"
+          + " --coolwsd /run/losos-office-discovery/discovery.xml"
+        );
         User = "losos-cloud";
         Group = "losos-cloud";
         StateDirectory = "losos-cloud";

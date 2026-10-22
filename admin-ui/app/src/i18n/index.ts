@@ -23,6 +23,7 @@ import machines from "./machines";
 import manage from "./manage";
 import menu from "./menu";
 import notes from "./notes";
+import office from "./office";
 import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
@@ -64,6 +65,7 @@ export const MESSAGES = {
   ...pins,
   ...manage,
   ...chat,
+  ...office,
   ...mail,
   ...menu,
   ...games,

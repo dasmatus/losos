@@ -180,3 +180,7 @@ path = "src/bin/losos-search.rs"
 [[bin]]
 name = "losos-chat-threads"
 path = "src/bin/losos-chat-threads.rs"
+
+[[bin]]
+name = "losos-office"
+path = "src/bin/losos-office.rs"

@@ -1,0 +1,21 @@
+{
+  "name": "mail",
+  "description": "A person's own folders and filters in LosOS Mail.",
+  "routes": [
+    { "method": "POST", "path": "/api/mail/folders" },
+    { "method": "PUT", "path": "/api/mail/folders/{id}" },
+    { "method": "DELETE", "path": "/api/mail/folders/{id}" },
+    { "method": "GET", "path": "/api/mail/filters" },
+    { "method": "PUT", "path": "/api/mail/filters" }
+  ],
+  "files": [
+    { "path": "${LOSOS_MAIL_SECRET_FILE:-}", "access": "ro" }
+  ],
+  "http": ["${LOSOS_MAIL_URL:-}"],
+  "locks": ["mail"],
+  "limits": { "memoryMiB": 32, "timeoutSecs": 60 },
+  "config": {
+    "url": "${LOSOS_MAIL_URL:-}",
+    "secretFile": "${LOSOS_MAIL_SECRET_FILE:-}"
+  }
+}
