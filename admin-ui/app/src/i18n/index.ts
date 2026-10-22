@@ -14,6 +14,7 @@ import ci from "./ci";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import credentials from "./credentials";
+import details from "./details";
 import collab from "./collab";
 import contacts from "./contacts";
 import games from "./games";
@@ -34,8 +35,10 @@ import notes from "./notes";
 import office from "./office";
 import palette from "./palette";
 import panes from "./panes";
+import pictures from "./pictures";
 import pins from "./pins";
 import profile from "./profile";
+import report from "./report";
 import settings from "./settings";
 import shell from "./shell";
 import together from "./together";
@@ -65,6 +68,9 @@ export const MESSAGES = {
   ...gitReview,
   ...install,
   ...look,
+  ...pictures,
+  ...details,
+  ...report,
   ...machines,
   ...advanced,
   ...access,

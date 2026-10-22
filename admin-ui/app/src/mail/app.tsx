@@ -15,6 +15,9 @@
  * the message (modules/containers.nix). The plain text, when there is one,
  * is the default view; HTML is one button away. */
 
+import { Masked, useDetailsCheck } from "@/components/details";
+import { openReport } from "@/components/report-dialog";
+import { MailHtml } from "./pictures";
 import * as React from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
@@ -23,6 +26,7 @@ import {
   Attachment01Icon,
   Delete02Icon,
   FileEditIcon,
+  Flag02Icon,
   FavouriteIcon,
   Folder01Icon,
   InboxIcon,
@@ -69,7 +73,6 @@ import {
   getProfiles,
   loadMe,
   mailFile,
-  mailHtmlUrl,
   sendMail,
   signInUrl,
   updateMailFolder,
@@ -1050,7 +1053,9 @@ function MessageRow({
         <span className={cn("truncate pl-4 text-sm", !m.seen && "font-medium")}>
           {m.subject || t("mail.noSubject")}
         </span>
-        <span className="line-clamp-1 pl-4 text-[13px] text-muted">{m.preview}</span>
+        <span className="line-clamp-1 pl-4 text-[13px] text-muted">
+          <Masked text={m.preview} still />
+        </span>
         </span>
       </button>
     </li>
@@ -1140,6 +1145,8 @@ function Reader({
         )}
         <PersonLinks message={m} home={home} />
         <span className="ml-auto" />
+        {!folders.some(({ folder: f }) => f.role === "sent" && m.mailboxIds.includes(f.id)) &&
+          tool(Flag02Icon, t("report.action"), () => openReport({ app: "mail", about: null, ref: m.id }))}
         {tool(Delete02Icon, t("mail.delete"), onDelete)}
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -1183,20 +1190,15 @@ function Reader({
           </ul>
         )}
         {html ? (
-          // White, as senders lay their HTML out for it, and inset like a card
-          // so it does not read as a hole in the dark theme.
-          <div className="mx-5 mb-5 flex min-h-80 flex-1 overflow-hidden rounded-card border border-line">
-            <iframe
-              title={t("mail.htmlTitle")}
-              src={mailHtmlUrl(m.id)}
-              sandbox="allow-popups allow-popups-to-escape-sandbox"
-              referrerPolicy="no-referrer"
-              className="w-full flex-1 bg-white"
-            />
-          </div>
+          <MailHtml
+            id={m.id}
+            from={m.from[0]}
+            title={t("mail.htmlTitle")}
+            own={folders.some(({ folder: f }) => f.role === "sent" && m.mailboxIds.includes(f.id))}
+          />
         ) : (
           <pre className="border-t border-hair px-5 py-4 font-sans text-sm leading-relaxed break-words whitespace-pre-wrap">
-            {m.text !== "" ? m.text : m.preview}
+            <Masked text={m.text !== "" ? m.text : m.preview} />
           </pre>
         )}
       </div>
@@ -1225,6 +1227,7 @@ function Composer({
   const [sending, setSending] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [showCc, setShowCc] = React.useState(initial.cc.length > 0);
+  const detailsCheck = useDetailsCheck();
   const attached = useAttached({ cloud: initial.cloud, carry: initial.carry });
   const list = (value: string) =>
     value
@@ -1236,6 +1239,11 @@ function Composer({
     event.preventDefault();
     setSending(true);
     setProblem(null);
+    // Card and ID numbers are asked about first; "Don't send" keeps the draft.
+    if (!(await detailsCheck.check(`${subject}\n${text}`))) {
+      setSending(false);
+      return;
+    }
     try {
       const draft: MailDraft = { to: list(to), cc: list(cc), subject, text };
       if (initial.inReplyTo !== undefined) draft.inReplyTo = initial.inReplyTo;
@@ -1325,6 +1333,7 @@ function Composer({
           </Button>
         </DialogFooter>
       </form>
+      {detailsCheck.dialog}
     </Dialog>
   );
 }

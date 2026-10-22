@@ -2,7 +2,11 @@ import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { CloudSavingDone01Icon, CloudUploadIcon, Download01Icon, File01Icon, SquareLock01Icon } from "@hugeicons/core-free-icons";
 import { EventType, type MatrixClient, type MatrixEvent } from "matrix-js-sdk";
+import { Masked } from "@/components/details";
+import { HiddenPicture, NudityGuard } from "@/components/hidden-picture";
+import { valid as validBlurHash } from "@/lib/blurhash";
 import { useT } from "@/lib/i18n-react";
+import { trustSender, useRevealed, useSenderShown } from "@/lib/pictures";
 import { openFileHref } from "@/lib/intents";
 import { cn } from "@/lib/utils";
 import { saveAttachment, useCloud, useSaved } from "./cloud";
@@ -10,7 +14,8 @@ import { download, mediaUrl, type MediaSource } from "./media";
 
 /* A message's body. Only the plain `body` is drawn, never `formatted_body`:
  * HTML from other servers would need a sanitiser, and the plain text is
- * always there. Links and Matrix IDs are picked out of it. */
+ * always there. Links and Matrix IDs are picked out of it, and card and ID
+ * numbers are drawn black (components/details.tsx). */
 
 const LINK = /(https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]])|(@[a-z0-9._=/+-]+:[a-z0-9.-]+(?::\d+)?)/gi;
 
@@ -19,7 +24,7 @@ export function RichText({ text, me }: { text: string; me: string }) {
   let last = 0;
   for (const match of text.matchAll(LINK)) {
     const at = match.index;
-    if (at > last) parts.push(text.slice(last, at));
+    if (at > last) parts.push(<Masked key={`t${last}`} text={text.slice(last, at)} />);
     const [whole, url, user] = match;
     if (url !== undefined) {
       parts.push(
@@ -38,7 +43,7 @@ export function RichText({ text, me }: { text: string; me: string }) {
     }
     last = at + whole.length;
   }
-  if (last < text.length) parts.push(text.slice(last));
+  if (last < text.length) parts.push(<Masked key={`t${last}`} text={text.slice(last)} />);
   return <>{parts}</>;
 }
 
@@ -84,25 +89,73 @@ export function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function Picture({ client, content, onOpen }: { client: MatrixClient; content: Record<string, unknown>; onOpen: (url: string) => void }) {
+/** The BlurHash a picture's sender put in its `info` (MSC2448), if any. */
+export function blurHashOf(content: Record<string, unknown>): string | null {
+  const info = (typeof content["info"] === "object" && content["info"] !== null ? content["info"] : {}) as Record<string, unknown>;
+  const hash = info["xyz.amorgan.blurhash"] ?? info["blurhash"];
+  return validBlurHash(hash) ? hash : null;
+}
+
+/* A picture from someone else waits blurred until it is pressed, unless the
+ * person's settings show this sender's pictures at once (lib/pictures.ts).
+ * Until then nothing of it is fetched: the placeholder is drawn from the
+ * BlurHash in the (already decrypted) event. */
+function Picture({
+  client,
+  event,
+  content,
+  me,
+  onOpen,
+}: {
+  client: MatrixClient;
+  event: MatrixEvent;
+  content: Record<string, unknown>;
+  me: string;
+  onOpen: (url: string) => void;
+}) {
+  const sender = event.getSender() ?? "";
+  const mine = sender === me;
+  const answer = useSenderShown(mine ? null : sender);
+  const [revealed, reveal] = useRevealed(event.getId() ?? sourceOf(content).file?.url ?? sourceOf(content).url ?? "");
+  const info = infoOf(content);
+  if (!mine && !revealed && answer?.shown !== true) {
+    if (answer === null) return <span className="block h-44 w-72 max-w-full animate-breathe rounded-control bg-sunk" />;
+    const name = event.sender?.name ?? sender;
+    const ratio = info.w !== undefined && info.h !== undefined && info.w > 0 ? info.h / info.w : undefined;
+    return (
+      <HiddenPicture
+        from={name}
+        hash={blurHashOf(content)}
+        {...(ratio !== undefined ? { ratio } : {})}
+        onReveal={reveal}
+        onTrust={() => void trustSender(sender).catch(reveal)}
+      />
+    );
+  }
+  return <ShownPicture client={client} content={content} onOpen={onOpen} />;
+}
+
+function ShownPicture({ client, content, onOpen }: { client: MatrixClient; content: Record<string, unknown>; onOpen: (url: string) => void }) {
   const t = useT();
   const info = infoOf(content);
   const url = useMedia(client, sourceOf(content), info.mimetype, 640);
   const ratio = info.w !== undefined && info.h !== undefined && info.w > 0 ? Math.min(info.h / info.w, 1.5) : 0.66;
   if (url === "failed") return <p className="text-[13px] text-muted">{t("chat.media.failed")}</p>;
   return (
-    <button
-      type="button"
-      onClick={() => url !== null && onOpen(url)}
-      className="block overflow-hidden rounded-control border border-hair bg-sunk"
-      aria-label={t("chat.media.open")}
-    >
-      {url === null ? (
-        <span className={cn("block w-72 max-w-full animate-breathe bg-sunk", ratio > 1 ? "h-96" : ratio > 0.8 ? "h-64" : "h-44")} />
-      ) : (
-        <img src={url} alt={typeof content["body"] === "string" ? content["body"] : ""} className="block max-h-96 max-w-full object-contain sm:max-w-sm" />
-      )}
-    </button>
+    <NudityGuard src={url}>
+      <button
+        type="button"
+        onClick={() => url !== null && onOpen(url)}
+        className="block overflow-hidden rounded-control border border-hair bg-sunk"
+        aria-label={t("chat.media.open")}
+      >
+        {url === null ? (
+          <span className={cn("block w-72 max-w-full animate-breathe bg-sunk", ratio > 1 ? "h-96" : ratio > 0.8 ? "h-64" : "h-44")} />
+        ) : (
+          <img src={url} alt={typeof content["body"] === "string" ? content["body"] : ""} className="block max-h-96 max-w-full object-contain sm:max-w-sm" />
+        )}
+      </button>
+    </NudityGuard>
   );
 }
 
@@ -208,12 +261,12 @@ export function MessageBody({ client, event, content, me, onOpenImage }: BodyPro
   if (event.getType() === EventType.RoomMessageEncrypted || event.isBeingDecrypted()) {
     return <p className="text-[13.5px] text-faint italic">{t("chat.message.decrypting")}</p>;
   }
-  if (event.getType() === EventType.Sticker) return <Picture client={client} content={content} onOpen={onOpenImage} />;
+  if (event.getType() === EventType.Sticker) return <Picture client={client} event={event} content={content} me={me} onOpen={onOpenImage} />;
   const msgtype = content["msgtype"];
   const body = typeof content["body"] === "string" ? content["body"] : "";
   switch (msgtype) {
     case "m.image":
-      return <Picture client={client} content={content} onOpen={onOpenImage} />;
+      return <Picture client={client} event={event} content={content} me={me} onOpen={onOpenImage} />;
     case "m.video":
       return <Playable client={client} content={content} video />;
     case "m.audio":
