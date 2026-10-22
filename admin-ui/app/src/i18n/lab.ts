@@ -1,6 +1,6 @@
 import { defineMessages } from "./define";
 
-/* LosOS Lab (src/lab/), the setup visualizer at /lab/. The chrome is here;
+/* LosOS Diagrams (src/lab/) at /diagrams/: the network views' strings. The chrome is here;
  * what the core says (device blurbs, setup names, refusals, console output,
  * the pages Danube shows) stays in English, as the software it models does. */
 export default defineMessages({
@@ -10,7 +10,7 @@ export default defineMessages({
   "lab.top.setup": { en: "Setup", sk: "Zostava", de: "Aufbau" },
   "lab.top.mySetup": { en: "My setup", sk: "Moja zostava", de: "Mein Aufbau" },
   "lab.top.file": { en: "File", sk: "Súbor", de: "Datei" },
-  "lab.top.last": { en: "Last setup", sk: "Posledná zostava", de: "Letzter Aufbau" },
+  "lab.top.last": { en: "Last diagram", sk: "Posledný diagram", de: "Letztes Diagramm" },
   "lab.top.files": { en: "Setup file", sk: "Súbor zostavy", de: "Aufbaudatei" },
   "lab.top.save": { en: "Save", sk: "Uložiť", de: "Speichern" },
   "lab.top.saveTip": { en: "Download this setup as a file", sk: "Stiahnuť túto zostavu ako súbor", de: "Diesen Aufbau als Datei herunterladen" },
@@ -29,21 +29,21 @@ export default defineMessages({
   "lab.canvas.loading": { en: "SVG canvas, GPU canvas loading", sk: "SVG plátno, načítava sa GPU plátno", de: "SVG-Zeichenfläche, GPU-Zeichenfläche lädt" },
   "lab.canvas.gpu": { en: "GPU canvas on {backend}", sk: "GPU plátno cez {backend}", de: "GPU-Zeichenfläche über {backend}" },
   "lab.canvas.fallback": {
-    en: "The GPU canvas did not start, so the Lab stays on its SVG canvas.",
-    sk: "GPU plátno sa nespustilo, Lab zostáva na SVG plátne.",
-    de: "Die GPU-Zeichenfläche ist nicht gestartet, das Lab bleibt bei seiner SVG-Zeichenfläche.",
+    en: "The GPU canvas did not start, so the network stays on its SVG canvas.",
+    sk: "GPU plátno sa nespustilo, sieť zostáva na SVG plátne.",
+    de: "Die GPU-Zeichenfläche ist nicht gestartet, das Netzwerk bleibt auf der SVG-Zeichenfläche.",
   },
   "lab.canvas.lost": {
-    en: "The GPU canvas lost its device, so the Lab is back on its SVG canvas. The next visit tries WebGL2.",
-    sk: "GPU plátno stratilo zariadenie, Lab je späť na SVG plátne. Pri ďalšej návšteve skúsi WebGL2.",
-    de: "Die GPU-Zeichenfläche hat ihr Gerät verloren, das Lab ist zurück auf der SVG-Zeichenfläche. Der nächste Besuch versucht WebGL2.",
+    en: "The GPU canvas lost its device, so the network is back on its SVG canvas. The next visit tries WebGL2.",
+    sk: "GPU plátno stratilo zariadenie, sieť je späť na SVG plátne. Pri ďalšej návšteve skúsi WebGL2.",
+    de: "Die GPU-Zeichenfläche hat ihr Gerät verloren, das Netzwerk ist zurück auf der SVG-Zeichenfläche. Der nächste Besuch versucht WebGL2.",
   },
 
   // ── "This box" ──
   "lab.thisBox.signIn": {
-    en: "Sign in on the admin page first, then open the lab from its sidebar: the lab reads this box with the same key.",
-    sk: "Najprv sa prihláste na stránke správy a potom otvorte laboratórium z jej bočného panela: laboratórium číta toto zariadenie tým istým kľúčom.",
-    de: "Melde dich zuerst auf der Verwaltungsseite an und öffne dann das Labor über ihre Seitenleiste: Das Labor liest diese Box mit demselben Schlüssel.",
+    en: "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key.",
+    sk: "Najprv sa prihláste na stránke správy a potom otvorte Diagramy z jej bočného panela: Diagramy čítajú toto zariadenie tým istým kľúčom.",
+    de: "Melde dich zuerst auf der Verwaltungsseite an und öffne dann Diagramme über ihre Seitenleiste: Diagramme liest diese Box mit demselben Schlüssel.",
   },
   "lab.thisBox.signInShort": {
     en: "This box: sign in on the admin page first",
@@ -58,7 +58,7 @@ export default defineMessages({
   "lab.thisBox.noAnswerShort": { en: "This box: not answering", sk: "Toto zariadenie: neodpovedá", de: "Diese Box: antwortet nicht" },
 
   // ── splash ──
-  "lab.splash.label": { en: "Loading LosOS Lab", sk: "Načítava sa LosOS Lab", de: "LosOS Lab wird geladen" },
+  "lab.splash.label": { en: "Loading LosOS Diagrams", sk: "Načítava sa LosOS Diagrams", de: "LosOS Diagrams wird geladen" },
   "lab.splash.style": { en: "style network simulation", sk: "simulácia siete v jeho štýle", de: "Netzwerksimulation in seinem Stil" },
   "lab.splash.canvas": { en: "Loading the canvas", sk: "Načítava sa plátno", de: "Die Arbeitsfläche wird geladen" },
   "lab.splash.qemu": {
@@ -68,14 +68,14 @@ export default defineMessages({
   },
   "lab.splash.placing": { en: "Placing the devices", sk: "Rozmiestňujú sa zariadenia", de: "Die Geräte werden aufgestellt" },
   "lab.splash.coreBroken": {
-    en: "The Lab's core did not load: {detail}",
-    sk: "Jadro laboratória sa nenačítalo: {detail}",
-    de: "Der Kern des Labors wurde nicht geladen: {detail}",
+    en: "The core of LosOS Diagrams did not load: {detail}",
+    sk: "Jadro LosOS Diagrams sa nenačítalo: {detail}",
+    de: "Der Kern von LosOS Diagrams wurde nicht geladen: {detail}",
   },
   "lab.splash.failed": {
-    en: "The Lab could not start: {detail}",
-    sk: "Laboratórium sa nepodarilo spustiť: {detail}",
-    de: "Das Labor konnte nicht starten: {detail}",
+    en: "LosOS Diagrams could not start: {detail}",
+    sk: "LosOS Diagrams sa nepodarilo spustiť: {detail}",
+    de: "LosOS Diagrams konnte nicht starten: {detail}",
   },
 
   // ── canvas ──
@@ -133,9 +133,9 @@ export default defineMessages({
   "lab.sim.showEvents": { en: "Show the event list", sk: "Zobraziť zoznam udalostí", de: "Ereignisliste zeigen" },
   "lab.sim.hideEvents": { en: "Hide the event list", sk: "Skryť zoznam udalostí", de: "Ereignisliste ausblenden" },
   "lab.sim.clockTip": {
-    en: "Lab clock. LosOS's timers fire on it.",
-    sk: "Hodiny laboratória. Časovače LosOS sa spúšťajú podľa nich.",
-    de: "Laboruhr. Die Timer von LosOS laufen nach ihr.",
+    en: "Simulator clock. LosOS's timers fire on it.",
+    sk: "Hodiny simulátora. Časovače LosOS sa spúšťajú podľa nich.",
+    de: "Simulatoruhr. Die Timer von LosOS laufen nach ihr.",
   },
   "lab.sim.play": { en: "Play", sk: "Spustiť", de: "Abspielen" },
   "lab.sim.pause": { en: "Pause", sk: "Pozastaviť", de: "Pause" },

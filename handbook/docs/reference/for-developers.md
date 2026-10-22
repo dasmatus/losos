@@ -10,7 +10,7 @@ is covered in two places:
 
 - the [In depth](/in-depth/index.md) chapter: Install in depth,
   Administration, Mesh, Market, Virtual machines, Master proxy, Edge
-  federation, Lab, Hardening, Architecture;
+  federation, Diagrams, Hardening, Architecture;
 - [`.claude/CLAUDE.md`](https://github.com/dasmatus/losos/blob/main/.claude/CLAUDE.md) in the
   repository: the build commands, the cross-file architecture and the list of
   mistakes that are easy to make again.

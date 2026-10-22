@@ -1,8 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": false,
-  "redirects": [{ "source": "/", "destination": "/lab/", "permanent": false }],
-  "rewrites": [{ "source": "/lab/(.*)", "destination": "/lab/index.html" }],
+  "redirects": [
+    { "source": "/", "destination": "/diagrams/", "permanent": false },
+    { "source": "/lab/:path*", "destination": "/diagrams/:path*", "permanent": true }
+  ],
+  "rewrites": [{ "source": "/diagrams/(.*)", "destination": "/diagrams/index.html" }],
   "headers": [
     {
       "source": "/(.*)",
@@ -13,7 +16,7 @@
       ]
     },
     {
-      "source": "/lab/(qemu|guest|vendor)/(.*)",
+      "source": "/diagrams/(qemu|guest|vendor)/(.*)",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400" }]
     },
     {

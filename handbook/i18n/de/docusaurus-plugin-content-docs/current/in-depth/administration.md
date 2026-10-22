@@ -24,7 +24,7 @@ Dienste auf demselben Host:
 | LosOS Cloud         | `<host>.local/cloud/`     |
 | Forgejo (optional)  | `<host>.local/forgejo/`   |
 | Handbuch            | `<host>.local/handbook/`  |
-| [Lab](/in-depth/lab.md)       | `<host>.local/lab/`       |
+| [Diagramme](/in-depth/diagrams.md) | `<host>.local/diagrams/` |
 
 Die IP-Adresse der Box (die aus dem tty1-Banner) und ihr bloßer Name
 funktionieren überall anstelle von `<host>.local`, auch bei LosOS Cloud. So

@@ -10,15 +10,15 @@
 # stock ubuntu runner. It takes a while: qemu-wasm compiles QEMU and its
 # libraries with emscripten, and the guest kernel is a real Linux build.
 #
-# What comes out (the page lives at /lab/, as on the box):
-#   OUT/lab/index.html, OUT/assets/, theme-boot.js   the admin UI's Lab page,
+# What comes out (the page lives at /diagrams/, as on the box):
+#   OUT/diagrams/index.html, OUT/assets/, theme-boot.js   the admin UI's Lab page,
 #                                                    VITE_LAB_HOSTED=1
-#   OUT/lab/qemu/out.js, *.wasm, *.worker.js     qemu-system-x86_64 for wasm32
-#   OUT/lab/qemu/pc-bios/                        SeaBIOS and the option ROMs
-#   OUT/lab/guest/bzImage                        Linux 6.1 for every guest
-#   OUT/lab/guest/rootfs.bin                     the LosOS stand-in (busybox)
-#   OUT/lab/guest/gear.bin                       Netzgeräte Betriebssystem (nix)
-#   OUT/lab/vendor/xterm.js xterm.css xterm-pty.js   the consoles
+#   OUT/diagrams/qemu/out.js, *.wasm, *.worker.js     qemu-system-x86_64 for wasm32
+#   OUT/diagrams/qemu/pc-bios/                        SeaBIOS and the option ROMs
+#   OUT/diagrams/guest/bzImage                        Linux 6.1 for every guest
+#   OUT/diagrams/guest/rootfs.bin                     the LosOS stand-in (busybox)
+#   OUT/diagrams/guest/gear.bin                       Netzgeräte Betriebssystem (nix)
+#   OUT/diagrams/vendor/xterm.js xterm.css xterm-pty.js   the consoles
 #   OUT/vercel.json                              COOP/COEP on every path
 set -euo pipefail
 
@@ -38,8 +38,8 @@ BUSYBOX_TARBALL=busybox_1.36.1.orig.tar.bz2
 XTERM_VERSION=5.3.0
 XTERM_PTY_VERSION=0.10.1
 
-mkdir -p "$OUT"/lab
-ENG="$OUT/lab"
+mkdir -p "$OUT"/diagrams
+ENG="$OUT/diagrams"
 mkdir -p "$ENG"/{qemu/pc-bios,guest,vendor}
 
 echo "== qemu-wasm ($QEMU_WASM_REV)"
@@ -106,7 +106,7 @@ for pkg in core virt render; do
   chmod -R u+w "$APP/src/lab/$pkg-pkg"
 done
 (cd "$APP" && npm ci --ignore-scripts && VITE_LAB_HOSTED=1 npm run build -- --outDir "$WORK/dist" --emptyOutDir)
-cp -r "$WORK/dist/lab/." "$OUT/lab/"
+cp -r "$WORK/dist/diagrams/." "$OUT/diagrams/"
 cp -r "$WORK/dist/assets" "$WORK/dist/theme-boot.js" "$OUT/"
 cp "$LAB/vercel.json" "$LAB/serve.json" "$OUT/"
 du -sh "$OUT"
