@@ -6,6 +6,9 @@ slug: /manual/issues
 
 # Issues in LosOS Git
 
+
+![Issues live under LosOS Git; the Git tile is on the Overview.](../img/overview.png)
+
 LosOS Git keeps the box's issues: bugs, tasks and ideas, for code and for
 anything else. They live at **Issues** in LosOS Git's sidebar, at
 `https://<box>.local/git/issues`, in one list for every project on the box.

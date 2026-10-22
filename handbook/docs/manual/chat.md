@@ -6,6 +6,9 @@ slug: /manual/chat
 
 # Chat
 
+
+![Chat appears in the sidebar while the box shares its storage in a mesh.](../img/overview.png)
+
 LosOS Chat is a messenger on the box for everyone with a LosOS Login account.
 People write to each other in direct messages and in rooms, share pictures
 and files, reply in threads and react to messages. Direct messages and new

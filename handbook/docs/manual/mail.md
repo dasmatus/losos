@@ -6,6 +6,9 @@ slug: /manual/mail
 
 # Mail
 
+
+![Mail appears in the sidebar while the box shares its storage in a mesh.](../img/overview.png)
+
 LosOS Mail is a mail client for the people on the box. Each person signed in
 through LosOS Login has a mailbox, and **Mail** in the sidebar opens it at
 `/mail`. The mail server is Stalwart. It runs on the shared side of the
