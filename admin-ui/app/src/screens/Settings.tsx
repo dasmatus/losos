@@ -22,6 +22,7 @@ import { MeshPane } from "./settings/pane-mesh";
 import { NetworkPane } from "./settings/pane-network";
 import { ResetPane } from "./settings/pane-reset";
 import { SecurityPane } from "./settings/pane-security";
+import { StatisticsPane } from "./settings/pane-statistics";
 import { StoragePane } from "./settings/pane-storage";
 import { DEFAULT_PANE, paneById, type SettingsPaneId } from "./settings/panes";
 import { PaneHeader } from "./settings/rows";
@@ -105,6 +106,9 @@ function Pane({
       return <MachinesPane locked={form.locked} />;
     case "apps":
       return <AppsPane form={form} />;
+    case "statistics":
+      // No draft, no Apply bar: it only reads what Traefik counted.
+      return <StatisticsPane />;
     case "network":
       return <NetworkPane form={form} />;
     case "look":

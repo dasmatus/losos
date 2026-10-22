@@ -66,6 +66,17 @@ export default defineMessages({
     sk: "aplikácia súbory kód inštalovať hľadať pridať katalóg jazyk telefón zdieľanie odkaz heslo platnosť kvóta miesto kôš verzie prihlásenie súkromný repozitár e-mail správa",
     de: "App Dateien Code installieren suchen hinzufügen Katalog Sprache Telefon Teilen Link Passwort Ablauf Kontingent Speicher Papierkorb Versionen Anmeldung privat Repository E-Mail Verwaltung",
   },
+  "settings.panes.statistics.label": { en: "Statistics", sk: "Štatistiky", de: "Statistik" },
+  "settings.panes.statistics.summary": {
+    en: "How much the apps on this box were asked for, how they answered and how quickly.",
+    sk: "Koľko žiadostí dostali aplikácie na tomto zariadení, ako na ne odpovedali a ako rýchlo.",
+    de: "Wie oft die Apps auf dieser Box aufgerufen wurden, wie sie geantwortet haben und wie schnell.",
+  },
+  "settings.panes.statistics.keywords": {
+    en: "",
+    sk: "návštevnosť žiadosti návštevy chyby prenos rýchlosť odozva",
+    de: "Verkehr Anfragen Aufrufe Fehler Datenmenge Geschwindigkeit Antwortzeit",
+  },
   "settings.panes.network.label": { en: "Network", sk: "Sieť", de: "Netzwerk" },
   "settings.panes.network.summary": {
     en: "The name this box answers to, and how it is reached from outside your home.",

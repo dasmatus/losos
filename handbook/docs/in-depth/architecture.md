@@ -51,8 +51,10 @@ LosOS Cloud (`modules/cloud.nix`, `backend/src/cloud/`) and LosOS Git
 (`modules/git.nix`, `backend/src/forge/`) are services of their own on the
 host, each listening on a Unix socket only nginx may open. The box's own k3s
 cluster runs only the apps installed as `shared`, while the box shares its
-disk with a mesh; its pods use `hostNetwork`. nginx is the only service
-on public ports and routes by path.
+disk with a mesh; its pods use `hostNetwork`. nginx holds the box's web
+ports and routes by path. Traefik holds the installed apps' LAN ports
+(`losos.apps.ports`) and reads each app's route from the labels on its
+containers.
 
 ## Repository layout
 
@@ -255,14 +257,21 @@ matter here. `overrides.rs`'s `parse_line` cuts a value at the first `#`
 `modules/cluster.nix`, `modules/cloud.nix`, `modules/git.nix`).
 systemd-nspawn is gone, and so are the app modes: LosOS Cloud and LosOS Git
 run on the host, each as its own user, and the box's own local k3s cluster
-runs only the apps installed as `shared`. nginx is the only process holding
-public ports. It routes by path on the appliance's mDNS name
+runs only the apps installed as `shared`. nginx holds the web ports, 80
+and 443. It routes by path on the appliance's mDNS name
 (`<hostName>.local/cloud/` and the addresses the Nextcloud apps call,
 `/git/`) and serves the admin SPA on the same vhost. Apps an owner installs
 as `notshared`, and the box's
 own apps, run on rootless Podman with Podman Compose instead
 (`modules/apps.nix`, [App format](app-format.md)), so a box that shares
-nothing needs no cluster for them.
+nothing needs no cluster for them. Each installed app is opened on a LAN
+port of `losos.apps.ports` by Traefik (`losos-traefik`, as its own user).
+Traefik reads the routes from the labels the box puts on the app's
+containers, through a Podman API of `notshared` that only Traefik's group
+may open. A `shared` app gets a route file instead. Traefik's API and
+Prometheus metrics answer on `127.0.0.1:${losos.apps.traefikPort}` (8089),
+where lososd's statistics plugin reads them once a minute for
+`GET /api/statistics`.
 
 **LosOS Git** (`modules/git.nix`, `backend/src/forge/`, the `losos-git`
 binary of lososd's crate). The box's Git server, as its own user. git's

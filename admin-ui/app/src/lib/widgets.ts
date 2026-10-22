@@ -23,7 +23,7 @@ import { parseSpec, type WidgetSpec } from "@/widgets/spec";
  * imports this — never the other way round, so that persistence does not drag
  * React and the five widget implementations into anything that only wants to
  * know what is on the board. */
-export type BuiltinId = "uptime" | "disk" | "mesh" | "apps" | "rebuilds";
+export type BuiltinId = "uptime" | "disk" | "mesh" | "apps" | "rebuilds" | "statistics";
 
 export const BUILTIN_IDS: readonly BuiltinId[] = [
   "uptime",
@@ -31,6 +31,7 @@ export const BUILTIN_IDS: readonly BuiltinId[] = [
   "mesh",
   "apps",
   "rebuilds",
+  "statistics",
 ] as const;
 
 export function isBuiltinId(value: unknown): value is BuiltinId {
