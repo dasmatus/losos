@@ -80,14 +80,6 @@ let
     // lib.optionalAttrs before { src = beforeSrc; }
   );
 
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
-
   playwright =
     (pkgs.buildNpmPackage {
       pname = "losos-calendar-test-playwright";
@@ -171,7 +163,6 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/chat.nix
           ../../modules/mail.nix
           ../../modules/cloud.nix
@@ -180,9 +171,8 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = ui;
-          forgejo.enable = true;
-          forgejo.mode = "container";
-          workloads.forgejoImage = standIn "losos-forgejo-stand-in";
+          backend.plugins = lososPkgs.losos-plugins;
+          git.enable = false;
           # LosOS Cloud keeps the calendars.
           cloud.enable = true;
           # The shared user's side of the box: chat's gate, and mail's.
@@ -350,6 +340,9 @@ pkgs.testers.nixosTest {
 
     start_all()
     box.wait_for_unit("lososd.service")
+    # lososd's unit is up before its API: under emulation loading the
+    # plugins takes it a minute, and the claim would meet nginx's 502.
+    box.wait_for_open_port(8082)
     box.wait_for_unit("nginx.service")
     box.wait_for_unit("dendrite.service")
     box.wait_for_unit("losos-mail.service")
