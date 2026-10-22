@@ -395,9 +395,10 @@ pkgs.testers.runNixOSTest (
       TOR = "--socks5-hostname 127.0.0.1:9050"
       I2P = "--socks5-hostname 127.0.0.1:4447"
 
-      start_all()
-      net.wait_for_unit("multi-user.target")
-      for m in [edge, box, client]:
+      # One at a time: four emulated machines booting at once can miss the
+      # driver's wait for a shell.
+      for m in [net, edge, box, client]:
+          m.start()
           m.wait_for_unit("multi-user.target")
 
       with subtest("the private I2P network: every router knows the floodfill"):
