@@ -31,6 +31,17 @@ let
       name = "admin-home";
       path = "/";
       settle = 1500;
+      # The tiles, once the box has found its apps: both columns in the
+      # same state, not one of them still loading.
+      steps = [
+        {
+          waitFor = {
+            role = "link";
+            name = "Files";
+          };
+          timeout = 120000;
+        }
+      ];
     }
     {
       name = "admin-apps";
