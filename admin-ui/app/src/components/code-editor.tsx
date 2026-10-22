@@ -1,4 +1,5 @@
-/* A code editor with completions, for the files of a hand-written widget.
+/* A code editor with completions, for the files of a hand-written widget
+ * and the source of an app (src/apps/).
  *
  * CodeMirror 6, not Monaco, because of the admin page's CSP (`style-src
  * 'self'`, modules/containers.nix): Monaco writes its theme into `<style>`
@@ -19,6 +20,7 @@ import {
   autocompletion,
   closeBrackets,
   closeBracketsKeymap,
+  completeFromList,
   completionKeymap,
   type CompletionSource,
 } from "@codemirror/autocomplete";
@@ -43,6 +45,7 @@ import {
   lineNumbers,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
+import { APP_COMPLETIONS } from "@/apps/names";
 import { cn } from "@/lib/utils";
 import { cssCompletions, htmlFileNames, scriptCompletions } from "@/widgets/completions";
 import type { FileLanguage } from "@/widgets/files";
@@ -132,6 +135,11 @@ function languageExtension(language: FileLanguage, files: () => readonly string[
       return [css(), style];
     case "javascript":
       return [javascript(), script];
+    case "jsx": {
+      // An app (src/apps/): the names the app frame gives it.
+      const jsx = javascript({ jsx: true });
+      return [jsx, jsx.language.data.of({ autocomplete: completeFromList(APP_COMPLETIONS) })];
+    }
     case "json":
       return json();
     default:

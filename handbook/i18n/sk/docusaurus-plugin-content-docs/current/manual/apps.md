@@ -121,6 +121,34 @@ disk s mesh ([Kde bežia aplikácie](../types/app-modes)). Inštalovanie vypnete
 `losos.apps.enable` na false na paneli **Rozšírené**.
 :::
 
+## Vaše aplikácie \{#your-apps}
+
+Malé vlastné aplikácie, nákupný zoznam, rozpis domácich prác, zoznam kníh,
+ktoré opíšete a AI na zariadení napíše
+([Vytvoriť s AI](../in-depth/widget-builder)). Sú pod **Vaše aplikácie** na
+stránke Aplikácie. **Vytvoriť aplikáciu** otvorí editor: aplikáciu opíšte na
+karte **Vytvoriť s AI** alebo napíšte jej kód na karte **Kód**. Náhľad vedľa
+je skutočná aplikácia, takže ju môžete používať ešte pred uložením. Čo do
+nej zadáte, zabudne; uložená aplikácia si údaje drží na zariadení.
+
+Každá uložená aplikácia má vlastnú stránku. Aplikácia je jeden komponent
+React zložený z komponentov LosOS, ktorý zariadenie pri uložení skontroluje
+a preloží. Beží len vo vašom prehliadači, v sandboxovanom rámci bez prístupu
+k zariadeniu okrem vlastných údajov. **Upraviť** ju znova otvorí v editore a
+**Odstrániť** ju zo zariadenia zmaže so všetkým, čo sa do nej zadalo.
+
+Každá aplikácia má aj vlastný súkromný repozitár v LosOS Git, pomenovaný
+podľa nej (`app-chores` pre aplikáciu s názvom Chores), a každé uloženie je
+v ňom commit. **Zdroj** na stránke aplikácie ho otvorí. Naklonujte ho,
+upravte `app.jsx` a pošlite zmenu (push): do minúty ju zariadenie
+skontroluje tak ako pri uložení a aplikácia ju spustí. Ak sa zmena nedá
+preložiť, aplikácia zostane taká, aká bola, jej stránka povie prečo a
+zariadenie pridá commit, ktorý aplikáciu vráti, takže to uvidíte aj pri
+ďalšom `git pull`. Súbory, ktoré do repozitára pridáte, v ňom zostanú, a
+údaje aplikácie v ňom nie sú. Keď aplikáciu odstránite, repozitár v LosOS
+Git zostane; ak ho nechcete, zmažte ho tam. Keď je LosOS Git vypnutý,
+verzie si drží zariadenie samo.
+
 ## Aplikácie vytvorené pre zariadenie \{#apps-made-for-the-box}
 
 Aplikácie môžu prísť aj ako súbor Compose vo
